@@ -6,7 +6,7 @@
     "files": 42,
     "directories": 25
   },
-  "maximumEntries": 56,
+  "maximumEntries": 55,
   "targetMaxEntries": 45,
   "classifications": {
     "conventional": [
@@ -18,7 +18,6 @@
       ".nvmrc",
       "CHANGELOG.md",
       "CONTRIBUTING.md",
-      "Dockerfile",
       "package.json",
       "README.md"
     ],

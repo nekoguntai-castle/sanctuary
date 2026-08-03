@@ -18,7 +18,6 @@ on:
       - '!server/*.mdx'
       - '!server/**/*.mdx'
       - 'docker/**'
-      - 'Dockerfile'
       - 'metadata.json'
       - '.dockerignore'
       - 'docker-compose.yml'
@@ -49,7 +48,6 @@ on:
       - '!server/*.mdx'
       - '!server/**/*.mdx'
       - 'docker/**'
-      - 'Dockerfile'
       - 'metadata.json'
       - '.dockerignore'
       - 'docker-compose.yml'
@@ -150,7 +148,7 @@ jobs:
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
         with:
           context: .
-          file: ./Dockerfile
+          file: ./docker/frontend/Dockerfile
           push: false
           outputs: type=cacheonly
           tags: sanctuary-ci/frontend:${{ github.sha }}

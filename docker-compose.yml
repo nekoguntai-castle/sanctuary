@@ -506,7 +506,7 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: docker/frontend/Dockerfile
       args:
         VITE_API_URL: ${VITE_API_URL:-}
     image: sanctuary-frontend:local

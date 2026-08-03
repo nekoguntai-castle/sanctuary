@@ -261,7 +261,11 @@ test_repository_structure() {
     assert_file_exists "$PROJECT_ROOT/server/prisma/seed.ts" "database seed script should exist"
 
     # Check frontend Dockerfile
-    assert_file_exists "$PROJECT_ROOT/Dockerfile" "frontend Dockerfile should exist"
+    assert_file_exists "$PROJECT_ROOT/docker/frontend/Dockerfile" "frontend Dockerfile should exist"
+    if [[ -e "$PROJECT_ROOT/Dockerfile" ]]; then
+        log_error "legacy root frontend Dockerfile should be retired"
+        return 1
+    fi
 
     log_success "Repository structure verified"
     return 0

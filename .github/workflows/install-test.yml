@@ -10,7 +10,6 @@ on:
       - 'install.sh'
       - 'docker-compose.yml'
       - 'docker-compose.*.yml'
-      - 'Dockerfile'
       - 'server/Dockerfile'
       - 'server/prisma/**'
       - 'docker/**'
@@ -43,7 +42,6 @@ on:
       - 'install.sh'
       - 'docker-compose.yml'
       - 'docker-compose.*.yml'
-      - 'Dockerfile'
       - 'server/Dockerfile'
       - 'server/prisma/**'
       - 'docker/**'
@@ -1309,7 +1307,7 @@ jobs:
             echo "" >> "$summary"
             echo "Install tests run when these files change:" >> "$summary"
             echo "- \`install.sh\`, \`scripts/setup.sh\`, \`scripts/reset-user-2fa.sh\`" >> "$summary"
-            echo "- \`docker-compose*.yml\`, \`Dockerfile\`, \`server/Dockerfile\`, \`docker/**\`" >> "$summary"
+            echo "- \`docker-compose*.yml\`, \`server/Dockerfile\`, \`docker/**\`" >> "$summary"
             echo "- \`server/prisma/**\`, \`tests/install/**\`" >> "$summary"
             echo "- \`.github/workflows/install-test.yml\`" >> "$summary"
             exit 0

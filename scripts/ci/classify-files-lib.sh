@@ -140,7 +140,7 @@ is_build_file() {
     package.json|package-lock.json|server/package.json|server/package-lock.json)
       return 0
       ;;
-    Dockerfile|server/Dockerfile|vite.config.*|tsconfig*.json|server/tsconfig*.json)
+    docker/frontend/Dockerfile|server/Dockerfile|vite.config.*|tsconfig*.json|server/tsconfig*.json)
       return 0
       ;;
     src/App.tsx|src/main.tsx|index.html|server/src/index.ts|server/prisma/*)

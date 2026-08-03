@@ -45,7 +45,7 @@ on:
       - 'server/vitest.config.ts'
       - 'gateway/vitest.config.ts'
       - 'playwright.config.ts'
-      - 'Dockerfile'
+      - 'docker/frontend/Dockerfile'
       - 'server/Dockerfile'
       - '.github/mutation-baseline.json'
       - '.github/actions/**'

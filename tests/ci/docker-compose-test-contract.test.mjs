@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 const compose = readFileSync('docker-compose.test.yml', 'utf8');
-const dockerfile = readFileSync('Dockerfile', 'utf8');
+const frontendDockerfile = 'docker/frontend/Dockerfile';
+const dockerfile = readFileSync(frontendDockerfile, 'utf8');
 
 function mappingBlock(source, key, indentation) {
   const lines = source.split('\n');
@@ -62,7 +63,10 @@ function assertFrontendServiceContract(source, serviceName) {
   const build = mappingBlock(service, 'build', 4);
   const volumes = mappingBlock(service, 'volumes', 4);
 
-  assert.match(build, /^      context: \.\n      dockerfile: Dockerfile\n      target: deps$/m);
+  assert.match(
+    build,
+    /^      context: \.\n      dockerfile: docker\/frontend\/Dockerfile\n      target: deps$/m,
+  );
   assert.equal(mappingHasKey(service, 'image', 4), false);
   assert.match(volumes, /^      - \/app\/node_modules$/m);
   assert.equal(hasHostNodeModulesMount(volumes), false);
@@ -94,7 +98,7 @@ test('service contract rejects structurally misplaced and host-native mounts', (
   frontend-test:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: docker/frontend/Dockerfile
       target: deps
     volumes:
       - .:/app
@@ -107,7 +111,7 @@ test('service contract rejects structurally misplaced and host-native mounts', (
   frontend-test:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: docker/frontend/Dockerfile
       target: deps
     labels:
       - .:/app
@@ -121,7 +125,7 @@ test('service contract rejects structurally misplaced and host-native mounts', (
   frontend-test:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: docker/frontend/Dockerfile
       target: deps
     volumes:
       - .:/app
@@ -143,7 +147,7 @@ test('service contract rejects structurally misplaced and host-native mounts', (
   frontend-test:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: docker/frontend/Dockerfile
       target: deps
     volumes:
       - .:/app
@@ -159,7 +163,7 @@ ${violation}`,
   frontend-test:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: docker/frontend/Dockerfile
       target: deps
     "image": host/frontend
     volumes:

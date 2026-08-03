@@ -123,7 +123,7 @@ services:
   frontend-test:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: docker/frontend/Dockerfile
       target: deps
     container_name: sanctuary-frontend-test
     working_dir: /app
@@ -140,7 +140,7 @@ services:
   frontend-coverage:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: docker/frontend/Dockerfile
       target: deps
     container_name: sanctuary-frontend-coverage
     working_dir: /app

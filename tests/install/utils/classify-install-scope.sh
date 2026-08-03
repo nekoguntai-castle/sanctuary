@@ -414,7 +414,7 @@ while IFS= read -r file; do
       add_scope upgrade
       reason="Upgrade CI helper changed"
       ;;
-    docker-compose.yml|docker-compose.*.yml|Dockerfile|server/Dockerfile|docker/*)
+    docker-compose.yml|docker-compose.*.yml|docker/frontend/Dockerfile|server/Dockerfile|docker/*)
       enable_unit
       enable_fresh_install
       enable_container_health

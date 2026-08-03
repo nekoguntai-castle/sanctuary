@@ -1433,6 +1433,19 @@ for docker_input in \
     2
 done
 
+assert_not_contains "$DOCKER_BUILD_WORKFLOW" \
+  "docker-build omits retired root frontend Dockerfile trigger" \
+  "'Dockerfile'"
+
+assert_not_contains "$REPO_ROOT/.github/workflows/install-test.yml" \
+  "install-test omits retired root frontend Dockerfile trigger" \
+  "'Dockerfile'"
+
+assert_occurrence_count "$TEST_WORKFLOW" \
+  "test workflow uses canonical frontend Dockerfile trigger" \
+  "'docker/frontend/Dockerfile'" \
+  1
+
 for retired_frontend_input in \
   "'App.tsx'" \
   "'index.tsx'" \
@@ -1482,6 +1495,7 @@ assert_named_job_step_config "$DOCKER_BUILD_WORKFLOW" \
   "build-frontend" \
   "Build frontend" \
   "uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f" \
+  "file: ./docker/frontend/Dockerfile" \
   "push: false" \
   "outputs: type=cacheonly" \
   "cache-from: type=gha,scope=frontend" \
