@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "root-layout-classification.schema.json",
+  "title": "Sanctuary tracked root-layout contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "baseline",
+    "maximumEntries",
+    "targetMaxEntries",
+    "classifications"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "baseline": {
+      "description": "Immutable tracked-root baseline captured before convergence.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "files", "directories"],
+      "properties": {
+        "total": { "const": 67 },
+        "files": { "const": 42 },
+        "directories": { "const": 25 }
+      }
+    },
+    "maximumEntries": {
+      "description": "Current non-increasing ceiling; lower this after each atomic path migration.",
+      "type": "integer",
+      "minimum": 45,
+      "maximum": 67
+    },
+    "targetMaxEntries": {
+      "description": "Bounded final target retained independently from the current migration ceiling.",
+      "const": 45
+    },
+    "classifications": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["conventional", "generated", "project", "tooling"],
+      "properties": {
+        "conventional": {
+          "description": "Ecosystem and community contracts conventionally discovered at repository root.",
+          "$ref": "#/$defs/entryList"
+        },
+        "generated": {
+          "description": "Committed machine-derived root artifacts.",
+          "$ref": "#/$defs/entryList"
+        },
+        "project": {
+          "description": "First-party application, runtime, deployment, documentation, and test content.",
+          "$ref": "#/$defs/entryList"
+        },
+        "tooling": {
+          "description": "Build, test, quality, and developer tooling contracts.",
+          "$ref": "#/$defs/entryList"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "entryList": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^[^/]+$"
+      },
+      "uniqueItems": true
+    }
+  }
+}

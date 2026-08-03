@@ -1531,6 +1531,9 @@ assert_contains_in_order "$QUALITY_WORKFLOW" \
   "quality determine-scope diagnostics" \
   "determine-scope:" \
   'DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-determine-scope' \
+  "Verify Node.js toolchain" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/root-layout-classification.log"' \
+  "scripts/quality/check-root-layout.mjs" \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/classify-quality-scope.log"' \
   'scripts/ci/retry-command.sh "classify quality scope"' \
   "scripts/ci/classify-quality-scope.sh" \

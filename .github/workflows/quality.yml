@@ -4,6 +4,7 @@ name: Code Quality
 # - lint:     repo-owned TypeScript policy gate for production source
 # - audit:    high/critical npm advisory gate across every package lockfile
 # - deprecations: exact, expiring inventory for npm's lockfile-backed warnings
+# - root layout: exhaustive tracked-root classification and non-increasing ceiling
 # - gitleaks: secret scanning (layered over .gitleaks.toml allowlist)
 # - semgrep:  Forgejo-compatible SAST gate for new Semgrep ERROR findings
 # - actionlint: workflow syntax/expression validation with Forgejo action URL allowlist
@@ -62,6 +63,14 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           fetch-depth: 0
+
+      - name: Verify Node.js toolchain
+        uses: ./.github/actions/setup-node-toolchain
+
+      - name: Check tracked root layout
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/root-layout-classification.log"
+          node ${{ github.workspace }}/scripts/quality/check-root-layout.mjs
 
       - name: Classify quality scope
         id: classify
@@ -646,6 +655,7 @@ jobs:
           bash -n scripts/ci/prepare-integration-db.sh
           node --check scripts/ci/check-integration-db.mjs
           node --check scripts/ci/check-npm-deprecations.mjs
+          node --check scripts/quality/check-root-layout.mjs
           bash -n scripts/ci/frontend-coverage-shard.sh
           bash -n scripts/ci/frontend-coverage-merge.sh
           bash -n scripts/ci/install-test-ports.sh
@@ -719,6 +729,7 @@ jobs:
           # Node CI helper tests.
           node tests/ci/check-github-action-runtimes.test.mjs
           node tests/ci/check-npm-deprecations.test.mjs
+          node tests/ci/check-root-layout.test.mjs
           node tests/ci/provider-context-node.test.mjs
           # Phase 1-7 portability tests + leak gate.
           bash tests/ci/provider-context.test.sh
