@@ -10,7 +10,6 @@
     "../../gateway",
     "../../llm-egress-proxy",
     "../../tests",
-    "../../e2e",
     "../../scripts/verify-addresses"
   ]
 }

@@ -426,9 +426,9 @@ EOF_DOC
   assert_exact_output "$output_file" "build_changed" "true"
 
   base_sha="$head_sha"
-  mkdir -p "$repo_dir/e2e/render-regression"
-  printf 'export const fixture = true;\n' > "$repo_dir/e2e/render-regression/renderRegressionHarness.ts"
-  git -C "$repo_dir" add e2e/render-regression/renderRegressionHarness.ts
+  mkdir -p "$repo_dir/tests/e2e/render-regression"
+  printf 'export const fixture = true;\n' > "$repo_dir/tests/e2e/render-regression/renderRegressionHarness.ts"
+  git -C "$repo_dir" add tests/e2e/render-regression/renderRegressionHarness.ts
   git -C "$repo_dir" commit -qm "render e2e"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
 
@@ -457,9 +457,9 @@ EOF_DOC
   assert_exact_output "$output_file" "build_changed" "false"
 
   base_sha="$head_sha"
-  mkdir -p "$repo_dir/e2e/fixtures"
-  printf 'export const browserFixture = true;\n' > "$repo_dir/e2e/fixtures/browserFixture.ts"
-  git -C "$repo_dir" add e2e/fixtures/browserFixture.ts
+  mkdir -p "$repo_dir/tests/e2e/fixtures"
+  printf 'export const browserFixture = true;\n' > "$repo_dir/tests/e2e/fixtures/browserFixture.ts"
+  git -C "$repo_dir" add tests/e2e/fixtures/browserFixture.ts
   git -C "$repo_dir" commit -qm "browser e2e fixture"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
 

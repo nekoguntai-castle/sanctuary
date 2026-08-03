@@ -75,8 +75,8 @@ git rev-parse --verify "$head_sha^{commit}" >/dev/null
 
 is_docs_only_file() {
   case "$1" in
-    public/*)
-      # Markdown under public/ is a shipped asset, not repository documentation.
+    src/public/*)
+      # Markdown under src/public/ is a shipped asset, not repository documentation.
       return 1
       ;;
     *.md|*.mdx)
@@ -97,7 +97,7 @@ is_both_image_file() {
 
 is_frontend_image_file() {
   case "$1" in
-    src/*|public/*)
+    src/*)
       return 0
       ;;
     docker/frontend/Dockerfile|config/tooling/tsconfig*.json|config/tooling/vite*.ts)

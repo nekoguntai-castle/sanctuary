@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly RENDER_SPEC='e2e/render-regression.spec.ts'
+readonly RENDER_SPEC='tests/e2e/render-regression.spec.ts'
 readonly GROUP_ADMIN_AUTH='admin-auth'
 readonly GROUP_WALLET_LIFECYCLE='wallet-lifecycle'
 readonly GROUP_WALLET_TRANSACTIONS='wallet-transactions'
@@ -19,30 +19,30 @@ list_group_specs() {
   case "${1:-}" in
     "$GROUP_ADMIN_AUTH")
       printf '%s\n' \
-        e2e/accessibility.spec.ts \
-        e2e/admin-drafts-smoke.spec.ts \
-        e2e/admin-operations.spec.ts \
-        e2e/auth.spec.ts
+        tests/e2e/accessibility.spec.ts \
+        tests/e2e/admin-drafts-smoke.spec.ts \
+        tests/e2e/admin-operations.spec.ts \
+        tests/e2e/auth.spec.ts
       ;;
     "$GROUP_WALLET_LIFECYCLE")
       printf '%s\n' \
-        e2e/create-wallet-flow.spec.ts \
-        e2e/import-wallet-flow.spec.ts
+        tests/e2e/create-wallet-flow.spec.ts \
+        tests/e2e/import-wallet-flow.spec.ts
       ;;
     "$GROUP_WALLET_TRANSACTIONS")
       printf '%s\n' \
-        e2e/error-recovery.spec.ts \
-        e2e/send-transaction-flow.spec.ts
+        tests/e2e/error-recovery.spec.ts \
+        tests/e2e/send-transaction-flow.spec.ts
       ;;
     "$GROUP_WALLET_EXPERIENCE")
       printf '%s\n' \
-        e2e/console-drawer-smoke.spec.ts \
-        e2e/dashboard-price-blocks.spec.ts \
-        e2e/network-sync-toggle-dark.spec.ts \
-        e2e/settings-persistence.spec.ts \
-        e2e/user-journeys.spec.ts \
-        e2e/wallet-sharing-privacy.spec.ts \
-        e2e/wallet.spec.ts
+        tests/e2e/console-drawer-smoke.spec.ts \
+        tests/e2e/dashboard-price-blocks.spec.ts \
+        tests/e2e/network-sync-toggle-dark.spec.ts \
+        tests/e2e/settings-persistence.spec.ts \
+        tests/e2e/user-journeys.spec.ts \
+        tests/e2e/wallet-sharing-privacy.spec.ts \
+        tests/e2e/wallet.spec.ts
       ;;
     *)
       echo "Unknown browser E2E group: ${1:-}" >&2
@@ -54,7 +54,7 @@ list_group_specs() {
 }
 
 list_repo_browser_specs() {
-  find e2e -maxdepth 1 -name '*.spec.ts' ! -name "$(basename "$RENDER_SPEC")" | sort
+  find tests/e2e -maxdepth 1 -name '*.spec.ts' ! -name "$(basename "$RENDER_SPEC")" | sort
 }
 
 list_assigned_specs() {

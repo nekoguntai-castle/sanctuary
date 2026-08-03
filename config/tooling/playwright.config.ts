@@ -16,7 +16,7 @@ const BASE_URL = process.env.BASE_URL || DEFAULT_BASE_URL;
  * Run headed: npm run test:e2e:headed
  */
 export default defineConfig({
-  testDir: path.join(repoRoot, 'e2e'),
+  testDir: path.join(repoRoot, 'tests/e2e'),
   outputDir: path.join(repoRoot, 'test-results'),
   fullyParallel: true,
   forbidOnly: !!process.env.CI,

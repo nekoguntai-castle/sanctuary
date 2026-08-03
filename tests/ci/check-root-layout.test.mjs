@@ -228,7 +228,7 @@ test("real Git inventory collapses nested paths and ignores untracked files", ()
 
 test("the real repository classification is complete", () => {
   const result = runCheck();
-  assert.deepEqual(result.counts, { total: 27, files: 10, directories: 17 });
+  assert.deepEqual(result.counts, { total: 24, files: 10, directories: 14 });
   assert.deepEqual(result.errors, []);
 });
 
@@ -259,6 +259,9 @@ test("the real repository retains only intentional loose-file contracts", () => 
     "metadata.json",
     "README.template.md",
   ]) {
+    assert.ok(!inventory.some(({ path }) => path === retired), retired);
+  }
+  for (const retired of ["assets", "e2e", "public"]) {
     assert.ok(!inventory.some(({ path }) => path === retired), retired);
   }
 });

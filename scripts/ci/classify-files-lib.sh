@@ -14,6 +14,11 @@ SANCTUARY_CI_CLASSIFY_FILES_LIB_LOADED=1
 
 is_frontend_file() {
   case "$1" in
+    tests/e2e/*)
+      return 1
+      ;;
+  esac
+  case "$1" in
     src/*|shared/*|config/tooling/vitest*.ts|scripts/ci/frontend-coverage-*.sh|package.json|package-lock.json|tests/*.ts|tests/*.tsx|tests/*.mts|tests/*.cts|tests/*.js|tests/*.jsx|tests/*.mjs|tests/*.cjs|tests/*.json)
       return 0
       ;;
@@ -87,7 +92,7 @@ is_llm_egress_proxy_file() {
 
 is_e2e_file() {
   case "$1" in
-    e2e/*|config/tooling/playwright.config.ts)
+    tests/e2e/*|config/tooling/playwright.config.ts)
       return 0
       ;;
   esac
@@ -102,9 +107,9 @@ is_browser_smoke_file() {
     src/app/*|src/api/*|src/components/Layout/*|src/components/Login/*|src/components/DraftList/*|src/components/AuditLogs/*|src/components/Monitoring/*|src/components/WalletDetail/*)
       return 0
       ;;
-    e2e/*)
+    tests/e2e/*)
       case "$1" in
-        e2e/render-regression.spec.ts|e2e/render-regression/*|e2e/render-regression.spec.ts-snapshots/*)
+        tests/e2e/render-regression.spec.ts|tests/e2e/render-regression/*|tests/e2e/render-regression.spec.ts-snapshots/*)
           return 1
           ;;
       esac
@@ -128,7 +133,7 @@ is_render_file() {
     src/app/*|src/components/*|src/hooks/*|src/contexts/*|src/providers/*|src/themes/*|src/utils/*)
       return 0
       ;;
-    e2e/render-regression.spec.ts|e2e/render-regression/*|e2e/render-regression.spec.ts-snapshots/*)
+    tests/e2e/render-regression.spec.ts|tests/e2e/render-regression/*|tests/e2e/render-regression.spec.ts-snapshots/*)
       return 0
       ;;
   esac
@@ -152,7 +157,7 @@ is_build_file() {
 
 is_test_file() {
   case "$1" in
-    tests/*.test.ts|tests/*.test.tsx|tests/*.spec.ts|tests/*.spec.tsx|tests/llm-egress-proxy/*.test.ts|tests/llm-egress-proxy/*.spec.ts|server/tests/*.test.ts|server/tests/*.spec.ts|gateway/tests/*.test.ts|gateway/tests/*.spec.ts|e2e/*.spec.ts)
+    tests/*.test.ts|tests/*.test.tsx|tests/*.spec.ts|tests/*.spec.tsx|tests/llm-egress-proxy/*.test.ts|tests/llm-egress-proxy/*.spec.ts|server/tests/*.test.ts|server/tests/*.spec.ts|gateway/tests/*.test.ts|gateway/tests/*.spec.ts)
       return 0
       ;;
   esac

@@ -45,9 +45,9 @@ main() {
     "$GROUP_SCRIPT" "$group"
   done < "$groups_file" | sort > "$specs_file"
 
-  assert_not_contains "$specs_file" 'e2e/render-regression.spec.ts'
+  assert_not_contains "$specs_file" 'tests/e2e/render-regression.spec.ts'
 
-  repo_count="$(find "$ROOT_DIR/e2e" -maxdepth 1 -name '*.spec.ts' ! -name 'render-regression.spec.ts' | wc -l | tr -d ' ')"
+  repo_count="$(find "$ROOT_DIR/tests/e2e" -maxdepth 1 -name '*.spec.ts' ! -name 'render-regression.spec.ts' | wc -l | tr -d ' ')"
   assigned_count="$(wc -l < "$specs_file" | tr -d ' ')"
   [ "$repo_count" = "$assigned_count" ] || fail "expected ${repo_count} assigned browser specs, got ${assigned_count}"
 

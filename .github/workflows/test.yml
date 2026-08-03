@@ -31,7 +31,6 @@ on:
       - '!gateway/**/*.md'
       - '!gateway/*.mdx'
       - '!gateway/**/*.mdx'
-      - 'e2e/**'
       - 'scripts/**'
       - 'package*.json'
       - 'server/package*.json'
@@ -823,7 +822,7 @@ jobs:
             scripts/ci/with-runner-lock.sh node-toolchain scripts/ci/retry-command.sh "quick browser npm ci" scripts/ci/time-command.sh "quick browser npm ci" npm ci --audit=false --fund=false --cache .tmp/npm-cache
             scripts/ci/time-command.sh "quick browser playwright install" scripts/ci/install-playwright-chromium.sh
             scripts/ci/time-command.sh "quick browser frontend build" scripts/ci/retry-command.sh "quick browser frontend build" npm run build
-            scripts/ci/retry-playwright-infrastructure-failure.sh "quick browser smoke" scripts/ci/time-command.sh "quick browser smoke" npm run test:e2e -- --project=chromium e2e/admin-drafts-smoke.spec.ts
+            scripts/ci/retry-playwright-infrastructure-failure.sh "quick browser smoke" scripts/ci/time-command.sh "quick browser smoke" npm run test:e2e -- --project=chromium tests/e2e/admin-drafts-smoke.spec.ts
           '
 
       - name: Write quick browser diagnostic summary
@@ -914,7 +913,7 @@ jobs:
             scripts/ci/with-runner-lock.sh node-toolchain scripts/ci/retry-command.sh "quick render npm ci" scripts/ci/time-command.sh "quick render npm ci" npm ci --audit=false --fund=false --cache .tmp/npm-cache
             scripts/ci/time-command.sh "quick render playwright install" scripts/ci/install-playwright-chromium.sh
             scripts/ci/time-command.sh "quick render frontend build" scripts/ci/retry-command.sh "quick render frontend build" npm run build
-            scripts/ci/retry-playwright-infrastructure-failure.sh "quick render regression" scripts/ci/time-command.sh "quick render regression" npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts
+            scripts/ci/retry-playwright-infrastructure-failure.sh "quick render regression" scripts/ci/time-command.sh "quick render regression" npm run test:e2e -- --project=chromium tests/e2e/render-regression.spec.ts
           '
 
       - name: Write quick render diagnostic summary
@@ -2575,7 +2574,7 @@ jobs:
           scripts/ci/with-runner-lock.sh e2e
           scripts/ci/retry-playwright-infrastructure-failure.sh "render regression E2E"
           scripts/ci/time-command.sh "render regression E2E"
-          npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts
+          npm run test:e2e -- --project=chromium tests/e2e/render-regression.spec.ts
         env:
           CI: 'true'
           NODE_ENV: test

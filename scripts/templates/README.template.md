@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.svg" alt="Sanctuary Logo" width="80" height="80" />
+  <img src="docs/assets/logo.svg" alt="Sanctuary Logo" width="80" height="80" />
 </p>
 
 <h1 align="center">Sanctuary</h1>
@@ -203,22 +203,22 @@ Sanctuary is a **watch-only wallet coordinator** that helps you manage Bitcoin w
 ## Screenshots
 
 <p align="center">
-  <img src="assets/screenshots/dashboard.png" alt="Dashboard" width="800" />
+  <img src="docs/assets/screenshots/dashboard.png" alt="Dashboard" width="800" />
   <br/><em>Dashboard - Overview of your wallets and recent activity</em>
 </p>
 
 <p align="center">
-  <img src="assets/screenshots/wallet.png" alt="Wallet Detail" width="800" />
+  <img src="docs/assets/screenshots/wallet.png" alt="Wallet Detail" width="800" />
   <br/><em>Wallet Detail - Addresses, UTXOs, and transaction history</em>
 </p>
 
 <p align="center">
-  <img src="assets/screenshots/send.png" alt="Send Transaction" width="800" />
+  <img src="docs/assets/screenshots/send.png" alt="Send Transaction" width="800" />
   <br/><em>Send Transaction - Build and sign transactions with your hardware wallet</em>
 </p>
 
 <p align="center">
-  <img src="assets/screenshots/settings.png" alt="Settings" width="800" />
+  <img src="docs/assets/screenshots/settings.png" alt="Settings" width="800" />
   <br/><em>Settings - Customize themes and preferences</em>
 </p>
 
@@ -261,10 +261,10 @@ Sanctuary is a **watch-only wallet coordinator** that helps you manage Bitcoin w
 ## Architecture
 
 <p align="center">
-  <img src="assets/architecture.png" alt="Sanctuary Architecture Diagram" width="900" />
+  <img src="docs/assets/architecture.png" alt="Sanctuary Architecture Diagram" width="900" />
 </p>
 
-> The diagram source file is available at [`assets/architecture.drawio`](assets/architecture.drawio) and can be edited with [draw.io](https://app.diagrams.net/).
+> The diagram source file is available at [`docs/assets/architecture.drawio`](docs/assets/architecture.drawio) and can be edited with [draw.io](https://app.diagrams.net/).
 
 > **Living architecture docs:** the [C4-model diagrams in `docs/architecture/`](docs/architecture/) (Context, Container, Component) plus auto-generated `dependency-cruiser` module graphs render natively on GitHub (every node is a clickable Mermaid link to source). Forgejo CI validates the diagrams and builds the Docusaurus site without publishing it. When adding a new subsystem or cross-service entry point, update the relevant diagram in the same PR — see [`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md#architecture-diagrams).
 
@@ -1295,6 +1295,7 @@ sanctuary/
 │   ├── contexts/      # React context providers
 │   ├── hooks/         # Custom React hooks
 │   ├── providers/     # Application providers
+│   ├── public/        # Static frontend assets copied by Vite
 │   ├── services/      # Frontend services (hardware wallet, etc.)
 │   ├── themes/        # Color theme definitions
 │   ├── types/         # Frontend types
@@ -1319,7 +1320,8 @@ sanctuary/
 │       ├── middleware/ # Auth, rate limiting, logging
 │       ├── routes/     # Proxy routes to backend
 │       └── services/   # Push notifications (FCM/APNs)
-├── assets/            # Logo, screenshots, architecture diagram
+├── docs/              # Documentation and repository media
+│   └── assets/        # Logo, screenshots, architecture diagram
 ├── docker/            # Docker configuration files
 └── docker-compose.yml
 ```

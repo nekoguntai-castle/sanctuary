@@ -15,7 +15,7 @@ This document describes the state machines and interaction flows in Sanctuary. U
 
 ## Authentication Flow
 
-![Authentication Flow](../../assets/state-diagram-Authentication.png)
+![Authentication Flow](../assets/state-diagram-Authentication.png)
 
 ### States
 
@@ -51,7 +51,7 @@ This document describes the state machines and interaction flows in Sanctuary. U
 
 ## Wallet Sync State Machine
 
-![Wallet Sync State Machine](../../assets/state-diagram-Wallet-Sync.png)
+![Wallet Sync State Machine](../assets/state-diagram-Wallet-Sync.png)
 
 ### States
 
@@ -104,7 +104,7 @@ This document describes the state machines and interaction flows in Sanctuary. U
 
 ## Transaction Draft Flow
 
-![Transaction Draft Flow](../../assets/state-diagram-Transaction-Draft.png)
+![Transaction Draft Flow](../assets/state-diagram-Transaction-Draft.png)
 
 ### States (Multi-sig)
 
@@ -154,7 +154,7 @@ This document describes the state machines and interaction flows in Sanctuary. U
 
 ## Notification Delivery Flow
 
-![Notification Flow](../../assets/state-diagram-Notification-Flow.png)
+![Notification Flow](../assets/state-diagram-Notification-Flow.png)
 
 ### Event Sources
 
@@ -202,7 +202,7 @@ This document describes the state machines and interaction flows in Sanctuary. U
 
 ## WebSocket Event Flow
 
-![WebSocket Flow](../../assets/state-diagram-WebSocket-Events.png)
+![WebSocket Flow](../assets/state-diagram-WebSocket-Events.png)
 
 ### Architecture
 
@@ -253,7 +253,7 @@ Client (Browser) ←→ WebSocket Server ←→ Redis Pub/Sub ←→ Worker Proc
 
 ## Ownership Transfer Flow
 
-![Ownership Transfer Flow](../../assets/state-diagram-Ownership-Transfer.png)
+![Ownership Transfer Flow](../assets/state-diagram-Ownership-Transfer.png)
 
 ### States
 

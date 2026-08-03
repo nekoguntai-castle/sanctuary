@@ -28,7 +28,7 @@ docker/nginx/ssl/*.pem
 # Development files
 *.md
 !README.md
-!public/**/*.md
+!src/public/**/*.md
 LICENSE
 .dockerignore
 Dockerfile*

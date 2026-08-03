@@ -180,7 +180,7 @@ case "$lane" in
     exec npx playwright test --config config/tooling/playwright.config.ts --project=chromium --grep '@smoke|browser-smoke'
     ;;
   render_regression)
-    exec npx playwright test --config config/tooling/playwright.config.ts --project=chromium e2e/render-regression.spec.ts
+    exec npx playwright test --config config/tooling/playwright.config.ts --project=chromium tests/e2e/render-regression.spec.ts
     ;;
   e2e_full)
     exec npx playwright test --config config/tooling/playwright.config.ts

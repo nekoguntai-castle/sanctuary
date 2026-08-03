@@ -13,7 +13,7 @@ export default defineConfig(() => {
     return {
       root: frontendRoot,
       envDir: repoRoot,
-      publicDir: path.join(repoRoot, 'public'),
+      publicDir: path.join(repoRoot, 'src/public'),
       cacheDir: path.join(repoRoot, 'node_modules/.vite'),
       server: {
         port: 3000,

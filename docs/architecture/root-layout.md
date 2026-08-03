@@ -31,6 +31,11 @@ editor metadata—reduced the tracked root to 27 entries: the final 10-file
 allowlist and 17 directories. The total ceiling remains at the 35-entry
 checkpoint until the directory-owner migrations land; the real-repository test
 already pins the exact loose-file inventory so it cannot regress meanwhile.
+Moving repository media under `docs/assets/`, browser specifications under
+`tests/e2e/`, and Vite static files under `src/public/` reduces the tracked root
+to 24 entries: 10 files and 14 directories. The explicit Vite, Playwright,
+TypeScript, Docker, and CI classifier paths preserve the three owners' runtime
+and test semantics.
 `src/` is now the sole frontend source root, and shared ambient declarations
 live in `shared/types/ambient-modules.d.ts`. The root
 `config/popular-models.json` path remains an external compatibility contract

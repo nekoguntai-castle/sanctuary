@@ -4,10 +4,10 @@
   "entries": [
     {
       "id": "javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket",
-      "path": "assets/state-diagram.drawio",
+      "path": "docs/assets/state-diagram.drawio",
       "startLine": 419,
       "endLine": 419,
-      "sha256": "52f03aaef130eb4cfd3eee0ace88998ba9bb50c315d38d664f46acbd09be8011",
+      "sha256": "08b61352955d2b8d450f288465bcbaf29f9b319ca79c47e191b297b6832a3ee8",
       "reason": "Existing finding on the initial Forgejo Semgrep baseline; triage and remove this entry when fixed."
     },
     {

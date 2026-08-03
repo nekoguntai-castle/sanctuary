@@ -8,7 +8,7 @@
 //
 // CLI: node scripts/codemod/rewrite-shared-imports.mjs [--dry-run] [paths...]
 // Default paths: server/src, server/tests, gateway/src, gateway/tests, tests
-// plus the frontend tree (src and e2e — anywhere @shared/* appears).
+// plus the frontend tree (src and tests — anywhere @shared/* appears).
 //
 // One-shot script — delete after Phase D merges.
 
@@ -28,7 +28,6 @@ const DEFAULT_TARGETS = [
   'gateway/tests',
   'tests',
   'src',
-  'e2e',
   'scripts',
 ];
 

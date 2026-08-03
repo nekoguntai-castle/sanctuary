@@ -52,9 +52,9 @@ paths = [
   # assert_contains/assert_not_contains arguments to prove the
   # redactor stack hides them. No real credentials.
   '''tests/ci/run-with-log\.test\.sh''',
-  '''e2e/admin-operations\.spec\.ts''',
-  '''e2e/render-regression\.spec\.ts''',
-  '''e2e/render-regression/renderRegressionHarness\.ts''',
+  '''tests/e2e/admin-operations\.spec\.ts''',
+  '''tests/e2e/render-regression\.spec\.ts''',
+  '''tests/e2e/render-regression/renderRegressionHarness\.ts''',
   # config/env/.env.example ships default placeholders, not real secrets.
   '''\.env\.example$''',
   '''server/\.env\.example$''',

@@ -71,7 +71,7 @@ assert_images() {
 main() {
   local temp_dir repo_dir output_file base_sha head_sha
 
-  grep -Fxq '!public/**/*.md' "$ROOT_DIR/.dockerignore" \
+  grep -Fxq '!src/public/**/*.md' "$ROOT_DIR/.dockerignore" \
     || fail "public Markdown assets must be included in the frontend Docker context"
 
   temp_dir="$(mktemp -d)"
@@ -130,19 +130,19 @@ main() {
   assert_images "$output_file" "true" "true"
 
   base_sha="$head_sha"
-  commit_file "$repo_dir" "public/favicon.svg" "<svg />" "public asset"
+  commit_file "$repo_dir" "src/public/favicon.svg" "<svg />" "public asset"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_images "$output_file" "true" "false"
 
   base_sha="$head_sha"
-  commit_file "$repo_dir" "public/help.md" "# Product help" "public markdown asset"
+  commit_file "$repo_dir" "src/public/help.md" "# Product help" "public markdown asset"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_images "$output_file" "true" "false"
 
   base_sha="$head_sha"
-  commit_file "$repo_dir" "public/guide.mdx" "# Product guide" "public mdx asset"
+  commit_file "$repo_dir" "src/public/guide.mdx" "# Product guide" "public mdx asset"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_images "$output_file" "true" "false"

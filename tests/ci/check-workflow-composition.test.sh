@@ -1053,7 +1053,7 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "scripts/ci/with-runner-lock.sh e2e" \
   'scripts/ci/retry-playwright-infrastructure-failure.sh "render regression E2E"' \
   'scripts/ci/time-command.sh "render regression E2E"' \
-  "npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts" \
+  "npm run test:e2e -- --project=chromium tests/e2e/render-regression.spec.ts" \
   "Write render E2E diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Render E2E"' \
   "Upload render E2E diagnostics" \
@@ -1292,13 +1292,13 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "quick browser Playwright infrastructure retry" \
   'scripts/ci/retry-playwright-infrastructure-failure.sh "quick browser smoke"' \
   'scripts/ci/time-command.sh "quick browser smoke"' \
-  "npm run test:e2e -- --project=chromium e2e/admin-drafts-smoke.spec.ts"
+  "npm run test:e2e -- --project=chromium tests/e2e/admin-drafts-smoke.spec.ts"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
   "quick render Playwright infrastructure retry" \
   'scripts/ci/retry-playwright-infrastructure-failure.sh "quick render regression"' \
   'scripts/ci/time-command.sh "quick render regression"' \
-  "npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts"
+  "npm run test:e2e -- --project=chromium tests/e2e/render-regression.spec.ts"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full browser Playwright infrastructure retry" \
@@ -1310,7 +1310,7 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "full render Playwright infrastructure retry" \
   'scripts/ci/retry-playwright-infrastructure-failure.sh "render regression E2E"' \
   'scripts/ci/time-command.sh "render regression E2E"' \
-  "npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts"
+  "npm run test:e2e -- --project=chromium tests/e2e/render-regression.spec.ts"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full frontend coverage merge Vitest retry" \
@@ -1431,7 +1431,6 @@ assert_contains_in_order "$VV" \
 DOCKER_BUILD_WORKFLOW="$REPO_ROOT/.github/workflows/docker-build.yml"
 
 for docker_input in \
-  "'public/**'" \
   "'src/**'" \
   "'shared/**'" \
   "'gateway/package.json'"; do
@@ -1440,6 +1439,10 @@ for docker_input in \
     "$docker_input" \
     2
 done
+
+assert_not_contains "$DOCKER_BUILD_WORKFLOW" \
+  "docker-build omits retired root public directory trigger" \
+  "'public/**'"
 
 for retired_root_input in "'index.html'" "'metadata.json'"; do
   assert_not_contains "$DOCKER_BUILD_WORKFLOW" \
@@ -1450,6 +1453,10 @@ done
 assert_not_contains "$TEST_WORKFLOW" \
   "test workflow omits retired root HTML entry trigger" \
   "'index.html'"
+
+assert_not_contains "$TEST_WORKFLOW" \
+  "test workflow omits retired root browser E2E trigger" \
+  "'e2e/**'"
 
 assert_not_contains "$DOCKER_BUILD_WORKFLOW" \
   "docker-build omits retired root frontend Dockerfile trigger" \

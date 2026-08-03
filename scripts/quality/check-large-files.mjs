@@ -45,7 +45,7 @@ const allowedCategories = new Set([
   'test-fixture',
 ]);
 const reviewDatePattern = /^\d{4}-\d{2}-\d{2}$/;
-const testDirectoryPattern = /(^|\/)(?:tests|e2e)\//;
+const testDirectoryPattern = /(^|\/)tests\//;
 const testFilePattern = /(?:\.test|\.spec)\.(?:cjs|js|mjs|ts|tsx)$/;
 
 function isScannedCodeFile(filePath) {

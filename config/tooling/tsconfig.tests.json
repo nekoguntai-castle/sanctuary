@@ -11,6 +11,6 @@
     "../../gateway",
     "../../llm-egress-proxy",
     "../../scripts",
-    "../../e2e"
+    "../../tests/e2e"
   ]
 }
