@@ -131,6 +131,7 @@ case "$1" in
     [ "$JWT_SECRET" = "offline-build-jwt-secret-not-for-runtime" ] || exit 1
     [ "$ENCRYPTION_KEY" = "offline-build-encryption-key-not-for-runtime" ] || exit 1
     [ "$ENCRYPTION_SALT" = "offline-build-encryption-salt" ] || exit 1
+    [ "$WORKER_DIAGNOSTICS_SECRET" = "0000000000000000000000000000000000000000000000000000000000000000" ] || exit 1
     [ "$LLM_EGRESS_PROXY_SECRET" = "0000000000000000000000000000000000000000000000000000000000000000" ] || exit 1
     exit 0
     ;;

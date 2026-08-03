@@ -165,6 +165,7 @@ build_sanctuary_images() {
     JWT_SECRET="offline-build-jwt-secret-not-for-runtime" \
     ENCRYPTION_KEY="offline-build-encryption-key-not-for-runtime" \
     ENCRYPTION_SALT="offline-build-encryption-salt" \
+    WORKER_DIAGNOSTICS_SECRET="0000000000000000000000000000000000000000000000000000000000000000" \
     LLM_EGRESS_PROXY_SECRET="0000000000000000000000000000000000000000000000000000000000000000" \
     docker compose -f "$OFFLINE_REPO_ROOT/docker-compose.yml" build \
       backend frontend gateway llm-egress-proxy
