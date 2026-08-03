@@ -34,6 +34,9 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: init.defaultBranch
+  GIT_CONFIG_VALUE_0: main
   NODE_VERSION: '24'
   PYTHON_VERSION: '3'
   GITLEAKS_VERSION: '8.30.1'
@@ -678,6 +681,7 @@ jobs:
           bash -n tests/ci/write-preflight-diagnostics.test.sh
           bash -n tests/ci/write-empty-diagnostic-breadcrumb.test.sh
           bash -n tests/ci/write-diagnostic-summary.test.sh
+          bash -n tests/ci/git-default-branch.test.sh
           bash -n tests/ci/check-workflow-composition.test.sh
           bash -n scripts/ci/check-workflows-test-only.sh
           bash -n tests/ci/workflows-test-only.test.sh
@@ -732,6 +736,7 @@ jobs:
           bash tests/ci/write-preflight-diagnostics.test.sh
           bash tests/ci/write-empty-diagnostic-breadcrumb.test.sh
           bash tests/ci/write-diagnostic-summary.test.sh
+          bash tests/ci/git-default-branch.test.sh
           bash tests/ci/check-workflow-composition.test.sh
           bash tests/ci/workflows-test-only.test.sh
           QUALITY_CI_CLASSIFIER_TESTS

@@ -54,6 +54,9 @@ permissions:
   contents: read
 
 env:
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: init.defaultBranch
+  GIT_CONFIG_VALUE_0: main
   NODE_VERSION: '24'
   PYTHON_VERSION: '3'
   SANCTUARY_RUNNER_LOCK_DIR: ${{ github.workspace }}/.tmp/runner-locks-v2

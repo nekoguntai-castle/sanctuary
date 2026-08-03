@@ -1349,6 +1349,18 @@ assert_jobs_use_node24_runners \
 
 assert_runner_parser_rejects_post_comment_drift
 
+for workflow_path in \
+  "$REPO_ROOT"/.github/workflows/*.yml \
+  "$REPO_ROOT"/.github/workflows/*.yaml; do
+  [ -e "$workflow_path" ] || continue
+  workflow="${workflow_path##*/}"
+  assert_occurrence_count \
+    "$workflow_path" \
+    "$workflow configures Git's initial branch once" \
+    "GIT_CONFIG_KEY_0: init.defaultBranch" \
+    1
+done
+
 # --- summary ----------------------------------------------------------------
 echo
 echo "===================="
