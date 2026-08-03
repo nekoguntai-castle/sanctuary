@@ -43,6 +43,70 @@ require_non_negative_integer() {
   esac
 }
 
+docker_tls_required() {
+  case "${SANCTUARY_REQUIRE_DOCKER_TLS:-}" in
+    1|true|TRUE|yes|YES)
+      return 0
+      ;;
+    ''|0|false|FALSE|no|NO)
+      return 1
+      ;;
+    *)
+      fail "SANCTUARY_REQUIRE_DOCKER_TLS must be a boolean"
+      ;;
+  esac
+}
+
+docker_tls_configured() {
+  [ -n "${DOCKER_TLS_VERIFY:-}" ] || [ -n "${DOCKER_CERT_PATH:-}" ]
+}
+
+docker_tls_endpoint_configured() {
+  case "${DOCKER_HOST:-}" in
+    tcp://*:2376)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+docker_tls_locked() {
+  docker_tls_required || docker_tls_configured || docker_tls_endpoint_configured
+}
+
+validate_tls_configuration() {
+  local cert_file
+
+  if docker_tls_locked; then
+    if docker_tls_required; then
+      case "${DOCKER_HOST:-}" in
+        tcp://*:2376)
+          ;;
+        *)
+          fail "required TLS Docker transport requires DOCKER_HOST=tcp://<host>:2376"
+          ;;
+      esac
+    else
+      case "${DOCKER_HOST:-}" in
+        tcp://*:*)
+          ;;
+        *)
+          fail "configured TLS Docker transport requires an explicit tcp:// endpoint"
+          ;;
+      esac
+    fi
+    [ "${DOCKER_TLS_VERIFY:-}" = "1" ] ||
+      fail "TLS Docker transport requires DOCKER_TLS_VERIFY=1"
+    [ -n "${DOCKER_CERT_PATH:-}" ] ||
+      fail "TLS Docker transport requires DOCKER_CERT_PATH"
+
+    for cert_file in ca.pem cert.pem key.pem; do
+      [ -r "$DOCKER_CERT_PATH/$cert_file" ] ||
+        fail "TLS Docker transport requires readable $DOCKER_CERT_PATH/$cert_file"
+    done
+  fi
+}
+
 docker_ready() {
   local endpoint="$1"
 
@@ -73,6 +137,10 @@ collect_candidates() {
 
   if [ -n "${DOCKER_HOST:-}" ]; then
     add_candidate "$DOCKER_HOST"
+  fi
+
+  if docker_tls_locked; then
+    return 0
   fi
 
   add_candidate "__default__"
@@ -112,6 +180,8 @@ activate_candidate() {
     unset DOCKER_HOST
     if [ -n "$env_file" ]; then
       echo "DOCKER_HOST=" >> "$env_file"
+      echo "DOCKER_TLS_VERIFY=" >> "$env_file"
+      echo "DOCKER_CERT_PATH=" >> "$env_file"
       echo "SANCTUARY_DOCKER_PUBLISHED_HOST=$published_host" >> "$env_file"
     fi
     return 0
@@ -120,6 +190,8 @@ activate_candidate() {
   export DOCKER_HOST="$endpoint"
   if [ -n "$env_file" ]; then
     echo "DOCKER_HOST=$endpoint" >> "$env_file"
+    echo "DOCKER_TLS_VERIFY=${DOCKER_TLS_VERIFY:-}" >> "$env_file"
+    echo "DOCKER_CERT_PATH=${DOCKER_CERT_PATH:-}" >> "$env_file"
     echo "SANCTUARY_DOCKER_PUBLISHED_HOST=$published_host" >> "$env_file"
   fi
 }
@@ -138,6 +210,7 @@ main() {
   local interval="${SANCTUARY_DOCKER_WAIT_INTERVAL_SECONDS:-3}"
   require_non_negative_integer SANCTUARY_DOCKER_WAIT_SECONDS "$timeout"
   require_non_negative_integer SANCTUARY_DOCKER_WAIT_INTERVAL_SECONDS "$interval"
+  validate_tls_configuration
 
   local deadline=$((SECONDS + timeout))
   local attempt=1
