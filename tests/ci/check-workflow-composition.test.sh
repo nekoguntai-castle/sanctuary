@@ -118,6 +118,23 @@ assert_occurrence_count() {
   fi
 }
 
+assert_cache_calls_use_wrapper() {
+  local matches
+
+  matches="$(
+    git -C "$REPO_ROOT" grep -n 'uses: actions/cache@' -- \
+      .github ':(exclude).github/actions/cache/action.yml' || true
+  )"
+  if [ -z "$matches" ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: action cache calls use repository wrapper"
+  else
+    FAIL=$((FAIL + 1))
+    FAILURES+=("raw actions/cache calls found outside .github/actions/cache/action.yml: $matches")
+    echo "FAIL: action cache calls use repository wrapper" >&2
+  fi
+}
+
 node24_runner_report() {
   awk '
       function finish_job() {
@@ -1348,6 +1365,7 @@ assert_jobs_use_node24_runners \
   32
 
 assert_runner_parser_rejects_post_comment_drift
+assert_cache_calls_use_wrapper
 
 for workflow_path in \
   "$REPO_ROOT"/.github/workflows/*.yml \

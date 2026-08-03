@@ -2,8 +2,8 @@ name: 'Cache npm'
 description: >-
   Restore (and save on success) the runner-wide npm download cache, keyed
   on lockfile hash. Sibling to the upload-artifact / download-artifact
-  composites; uses the same actions/cache@<sha> pin that scripts/ci/
-  action-runtime-manifests/actions/cache/<sha>/action.yml validates.
+  composites; delegates to the repository cache wrapper, which owns the
+  actions/cache@<sha> pin validated by the action-runtime manifest guard.
 
   The key is `<runner.os>-npm-<hashFiles(inputs.lockfile-glob)>`; on
   miss we fall back to `<runner.os>-npm-` so a stale-but-not-too-stale
@@ -27,7 +27,7 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+    - uses: ./.github/actions/cache
       with:
         path: ${{ inputs.cache-paths }}
         key: ${{ runner.os }}-npm-${{ hashFiles(inputs.lockfile-glob) }}

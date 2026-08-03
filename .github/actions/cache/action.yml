@@ -1,0 +1,35 @@
+name: Cache
+description: >-
+  Repository-owned actions/cache wrapper that performs one cache-service
+  reachability decision per job before registering restore and save steps.
+inputs:
+  path:
+    description: Files or directories to cache.
+    required: true
+  key:
+    description: Explicit cache key.
+    required: true
+  restore-keys:
+    description: Newline-separated prefix keys used to restore stale caches.
+    required: false
+    default: ''
+outputs:
+  cache-hit:
+    description: Whether actions/cache restored the exact requested key.
+    value: ${{ steps.cache.outputs.cache-hit }}
+runs:
+  using: composite
+  steps:
+    - name: Check action cache service
+      id: cache-health
+      shell: bash
+      run: ${{ github.workspace }}/scripts/ci/check-actions-cache-service.sh
+
+    - name: Restore cache
+      id: cache
+      if: steps.cache-health.outputs.available == 'true'
+      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+      with:
+        path: ${{ inputs.path }}
+        key: ${{ inputs.key }}
+        restore-keys: ${{ inputs.restore-keys }}

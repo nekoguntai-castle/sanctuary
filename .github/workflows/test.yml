@@ -536,7 +536,7 @@ jobs:
       # (`.stryker-cache/critical-incremental.shard-N.json`) and its own cache
       # key prefix so shards don't invalidate each other's caches.
       - name: Restore Stryker incremental cache (shard ${{ matrix.shard }})
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        uses: ./.github/actions/cache
         with:
           path: server/.stryker-cache
           key: stryker-critical-shard-${{ matrix.shard }}-${{ hashFiles('server/src/services/bitcoin/addressDerivation.ts', 'server/src/services/bitcoin/addressDerivation/**', 'server/src/services/bitcoin/psbtValidation.ts', 'server/src/services/bitcoin/psbtInfo.ts', 'server/src/services/bitcoin/validationEvidenceContracts.ts', 'server/src/services/bitcoin/transactions/broadcastContracts.ts', 'server/src/services/bitcoin/blockchain/broadcastPreflight.ts', 'server/src/api/transactions/broadcastIntent.ts', 'server/src/middleware/auth.ts', 'server/src/services/accessControl.ts', 'server/scripts/mutation/shards.mjs', 'server/stryker.critical.config.mjs') }}
@@ -658,7 +658,7 @@ jobs:
       # still invalidates the cache and forces npm ci's desync validation.
       - name: Restore gateway node_modules cache
         id: cache-quick-gateway-node-modules
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        uses: ./.github/actions/cache
         with:
           path: gateway/node_modules
           key: ${{ runner.os }}-${{ runner.arch }}-gateway-node-modules-node-${{ hashFiles('.nvmrc') }}-${{ hashFiles('gateway/package.json', 'gateway/package-lock.json') }}
@@ -736,7 +736,7 @@ jobs:
 
       - name: Restore root node_modules cache
         id: cache-quick-llmproxy-root-node-modules
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        uses: ./.github/actions/cache
         with:
           path: node_modules
           key: ${{ runner.os }}-${{ runner.arch }}-root-node-modules-node-${{ hashFiles('.nvmrc') }}-${{ hashFiles('package.json', 'package-lock.json') }}
@@ -751,7 +751,7 @@ jobs:
 
       - name: Restore llm-egress-proxy node_modules cache
         id: cache-quick-llmproxy-node-modules
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        uses: ./.github/actions/cache
         with:
           path: llm-egress-proxy/node_modules
           key: ${{ runner.os }}-${{ runner.arch }}-llm-egress-proxy-node-modules-node-${{ hashFiles('.nvmrc') }}-${{ hashFiles('llm-egress-proxy/package.json', 'llm-egress-proxy/package-lock.json') }}
@@ -815,7 +815,7 @@ jobs:
 
       - name: Cache Playwright browsers
         continue-on-error: true
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        uses: ./.github/actions/cache
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
@@ -906,7 +906,7 @@ jobs:
 
       - name: Cache Playwright browsers
         continue-on-error: true
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        uses: ./.github/actions/cache
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
@@ -2153,7 +2153,7 @@ jobs:
       # (`.stryker-cache/critical-incremental.shard-N.json`) and its own cache
       # key prefix so shards don't invalidate each other's caches.
       - name: Restore Stryker incremental cache (shard ${{ matrix.shard }})
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        uses: ./.github/actions/cache
         with:
           path: server/.stryker-cache
           key: stryker-critical-shard-${{ matrix.shard }}-${{ hashFiles('server/src/services/bitcoin/addressDerivation.ts', 'server/src/services/bitcoin/addressDerivation/**', 'server/src/services/bitcoin/psbtValidation.ts', 'server/src/services/bitcoin/psbtInfo.ts', 'server/src/services/bitcoin/validationEvidenceContracts.ts', 'server/src/services/bitcoin/transactions/broadcastContracts.ts', 'server/src/services/bitcoin/blockchain/broadcastPreflight.ts', 'server/src/api/transactions/broadcastIntent.ts', 'server/src/middleware/auth.ts', 'server/src/services/accessControl.ts', 'server/scripts/mutation/shards.mjs', 'server/stryker.critical.config.mjs') }}
@@ -2317,7 +2317,7 @@ jobs:
 
       - name: Cache Playwright browsers
         continue-on-error: true
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        uses: ./.github/actions/cache
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
@@ -2551,7 +2551,7 @@ jobs:
 
       - name: Cache Playwright browsers
         continue-on-error: true
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        uses: ./.github/actions/cache
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}

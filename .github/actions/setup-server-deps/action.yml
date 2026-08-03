@@ -23,7 +23,7 @@ runs:
     # captured before the workspace migration (which had a different layout).
     - name: Restore workspace node_modules cache
       id: cache-server-node-modules
-      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+      uses: ./.github/actions/cache
       with:
         path: |
           node_modules
@@ -36,7 +36,7 @@ runs:
 
     - name: Restore server Prisma client cache
       id: cache-server-prisma
-      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+      uses: ./.github/actions/cache
       with:
         path: server/src/generated/prisma
         key: ${{ runner.os }}-${{ runner.arch }}-server-prisma-v3-${{ hashFiles('server/prisma/schema.prisma', 'package-lock.json', 'server/package.json') }}

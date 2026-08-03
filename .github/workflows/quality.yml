@@ -631,6 +631,7 @@ jobs:
           bash -n scripts/ci/create-isolated-workspace.sh
           bash -n scripts/ci/run-in-isolated-workspace.sh
           bash -n scripts/ci/collect-playwright-artifacts.sh
+          bash -n scripts/ci/check-actions-cache-service.sh
           bash -n scripts/ci/report-workflow-durations.sh
           bash -n scripts/ci/report-workflow-trends.sh
           bash -n scripts/ci/report-timing-notices.sh
@@ -668,6 +669,7 @@ jobs:
           bash -n tests/ci/wait-for-docker.test.sh
           bash -n tests/ci/isolated-workspace.test.sh
           bash -n tests/ci/collect-playwright-artifacts.test.sh
+          bash -n tests/ci/check-actions-cache-service.test.sh
           bash -n tests/ci/report-workflow-trends.test.sh
           bash -n tests/ci/report-timing-notices.test.sh
           bash -n tests/ci/retry-command.test.sh
@@ -722,6 +724,7 @@ jobs:
           bash tests/ci/wait-for-docker.test.sh
           bash tests/ci/isolated-workspace.test.sh
           bash tests/ci/collect-playwright-artifacts.test.sh
+          bash tests/ci/check-actions-cache-service.test.sh
           bash tests/ci/report-workflow-trends.test.sh
           bash tests/ci/report-timing-notices.test.sh
           bash tests/ci/retry-command.test.sh
