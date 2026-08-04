@@ -167,9 +167,24 @@ describe('Encryption Utilities', async () => {
       expect(() => decrypt(tampered)).toThrow();
     });
 
+    it.each([3, 15, 17])(
+      'should reject a %i-byte auth tag before invoking crypto',
+      async (length) => {
+        const { decrypt } = await getEncryptionModule();
+        const iv = Buffer.alloc(16).toString('base64');
+        const authTag = Buffer.alloc(length).toString('base64');
+
+        expect(() => decrypt(`${iv}:${authTag}:dGVzdA==`)).toThrow(
+          'Invalid encrypted string authentication tag length'
+        );
+      }
+    );
+
     it('should throw error for invalid base64 in IV', async () => {
       const { decrypt } = await getEncryptionModule();
-      expect(() => decrypt('!!!invalid!!!:dGVzdA==:dGVzdA==')).toThrow();
+      expect(() =>
+        decrypt('!!!invalid!!!:AAAAAAAAAAAAAAAAAAAAAA==:dGVzdA==')
+      ).toThrow();
     });
   });
 

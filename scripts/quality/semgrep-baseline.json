@@ -57,14 +57,6 @@
       "endLine": 92,
       "sha256": "daf4135518e5915035a4f93e477ea44a38053c40453e3c66dca01dc33c7c637c",
       "reason": "Existing finding on the initial Forgejo Semgrep baseline; triage and remove this entry when fixed."
-    },
-    {
-      "id": "javascript.node-crypto.security.gcm-no-tag-length.gcm-no-tag-length",
-      "path": "server/src/utils/encryption.ts",
-      "startLine": 79,
-      "endLine": 83,
-      "sha256": "402c664ffef2b3f801d6b0356aa7c1ba734dd98c5606497ce58a0b1a023987ae",
-      "reason": "Existing finding on the initial Forgejo Semgrep baseline; triage and remove this entry when fixed."
     }
   ]
 }

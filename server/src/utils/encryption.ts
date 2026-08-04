@@ -3,6 +3,7 @@ import { promisify } from 'util';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
+const AUTH_TAG_LENGTH = 16;
 const scryptAsync = promisify(crypto.scrypt) as (
   password: crypto.BinaryLike,
   salt: crypto.BinaryLike,
@@ -75,13 +76,18 @@ export function decrypt(encrypted: string): string {
   }
 
   const [ivB64, authTagB64, ciphertextB64] = parts;
+  const authTag = Buffer.from(authTagB64, 'base64');
+  if (authTag.length !== AUTH_TAG_LENGTH) {
+    throw new Error('Invalid encrypted string authentication tag length');
+  }
 
   const decipher = crypto.createDecipheriv(
     ALGORITHM,
     getEncryptionKey(),
-    Buffer.from(ivB64, 'base64')
+    Buffer.from(ivB64, 'base64'),
+    { authTagLength: AUTH_TAG_LENGTH }
   );
-  decipher.setAuthTag(Buffer.from(authTagB64, 'base64'));
+  decipher.setAuthTag(authTag);
 
   return (
     decipher.update(ciphertextB64, 'base64', 'utf8') + decipher.final('utf8')
