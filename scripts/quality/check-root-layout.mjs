@@ -14,7 +14,8 @@ const IMMUTABLE_BASELINE = Object.freeze({
   files: 42,
   directories: 25,
 });
-const BOUNDED_TARGET = 35;
+const FINAL_MAXIMUM_FILES = 10;
+const FINAL_MAXIMUM_DIRECTORIES = 12;
 
 function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -67,16 +68,39 @@ function validateClassifications(classifications) {
     throw new Error("classifications must be an object");
   assertExactKeys(classifications, CATEGORY_NAMES, "classifications");
   for (const category of CATEGORY_NAMES) {
-    const entries = classifications[category];
-    if (!Array.isArray(entries))
-      throw new Error(`classifications.${category} must be an array`);
-    entries.forEach((entry, index) =>
-      requireEntry(entry, `classifications.${category}[${index}]`),
+    const group = classifications[category];
+    if (!isPlainObject(group))
+      throw new Error(`classifications.${category} must be an object`);
+    assertExactKeys(
+      group,
+      ["files", "directories"],
+      `classifications.${category}`,
     );
-    const sorted = [...entries].sort((a, b) => a.localeCompare(b));
-    if (JSON.stringify(sorted) !== JSON.stringify(entries))
-      throw new Error(`classifications.${category} must be sorted`);
+    for (const kind of ["files", "directories"]) {
+      const entries = group[kind];
+      if (!Array.isArray(entries))
+        throw new Error(`classifications.${category}.${kind} must be an array`);
+      entries.forEach((entry, index) =>
+        requireEntry(entry, `classifications.${category}.${kind}[${index}]`),
+      );
+      const sorted = [...entries].sort((a, b) => a.localeCompare(b));
+      if (JSON.stringify(sorted) !== JSON.stringify(entries))
+        throw new Error(`classifications.${category}.${kind} must be sorted`);
+    }
   }
+}
+
+function validateRetiredEntries(retiredEntries) {
+  if (!Array.isArray(retiredEntries))
+    throw new Error("retiredEntries must be an array");
+  retiredEntries.forEach((entry, index) =>
+    requireEntry(entry, `retiredEntries[${index}]`),
+  );
+  const sorted = [...retiredEntries].sort((a, b) => a.localeCompare(b));
+  if (JSON.stringify(sorted) !== JSON.stringify(retiredEntries))
+    throw new Error("retiredEntries must be sorted");
+  if (new Set(retiredEntries).size !== retiredEntries.length)
+    throw new Error("retiredEntries must not contain duplicates");
 }
 
 export function parseConfig(raw) {
@@ -92,29 +116,44 @@ export function parseConfig(raw) {
     "$schema",
     "schemaVersion",
     "baseline",
-    "maximumEntries",
-    "targetMaxEntries",
+    "maximumFiles",
+    "maximumDirectories",
     "classifications",
+    "retiredEntries",
   ];
   assertExactKeys(config, keys, "root-layout config");
-  if (config.schemaVersion !== 1)
+  if (config.schemaVersion !== 2)
     throw new Error(
       `unsupported root-layout schema version: ${String(config.schemaVersion)}`,
     );
   if (config.$schema !== "./root-layout-classification.schema.json")
     throw new Error("root-layout config must reference its local schema");
   validateCounts(config.baseline);
-  requireInteger(config.maximumEntries, "maximumEntries", 1);
-  requireInteger(config.targetMaxEntries, "targetMaxEntries", 1);
-  if (config.targetMaxEntries !== BOUNDED_TARGET)
-    throw new Error(`targetMaxEntries must remain ${BOUNDED_TARGET}`);
-  if (config.maximumEntries > config.baseline.total)
-    throw new Error("maximumEntries cannot exceed the baseline total");
-  if (config.targetMaxEntries >= config.baseline.total)
-    throw new Error("targetMaxEntries must be below the baseline total");
-  if (config.maximumEntries < config.targetMaxEntries)
-    throw new Error("maximumEntries cannot be below the bounded target");
+  requireInteger(config.maximumFiles, "maximumFiles", 1);
+  requireInteger(config.maximumDirectories, "maximumDirectories", 1);
+  if (config.maximumFiles !== FINAL_MAXIMUM_FILES)
+    throw new Error(`maximumFiles must remain ${FINAL_MAXIMUM_FILES}`);
+  if (config.maximumDirectories !== FINAL_MAXIMUM_DIRECTORIES)
+    throw new Error(
+      `maximumDirectories must remain ${FINAL_MAXIMUM_DIRECTORIES}`,
+    );
   validateClassifications(config.classifications);
+  validateRetiredEntries(config.retiredEntries);
+
+  const classified = new Map();
+  for (const { path, category, kind } of flattenedClassifications(config)) {
+    const previous = classified.get(path);
+    if (previous) {
+      throw new Error(
+        `duplicate root classification: ${path} (${previous.category}/${previous.kind}, ${category}/${kind})`,
+      );
+    }
+    classified.set(path, { category, kind });
+  }
+  for (const retired of config.retiredEntries) {
+    if (classified.has(retired))
+      throw new Error(`retired root entry is still classified: ${retired}`);
+  }
   return config;
 }
 
@@ -139,9 +178,18 @@ export function inventoryTrackedFiles(trackedFiles) {
 }
 
 function flattenedClassifications(config) {
-  return CATEGORY_NAMES.flatMap((category) =>
-    config.classifications[category].map((path) => ({ path, category })),
-  );
+  return CATEGORY_NAMES.flatMap((category) => [
+    ...config.classifications[category].files.map((path) => ({
+      path,
+      category,
+      kind: "file",
+    })),
+    ...config.classifications[category].directories.map((path) => ({
+      path,
+      category,
+      kind: "directory",
+    })),
+  ]);
 }
 
 function inventoryCounts(inventory) {
@@ -156,36 +204,47 @@ function inventoryCounts(inventory) {
 export function evaluateLayout(config, trackedFiles) {
   const inventory = inventoryTrackedFiles(trackedFiles);
   const entries = flattenedClassifications(config);
-  const actual = new Set(inventory.map(({ path }) => path));
+  const actual = new Map(inventory.map(({ path, kind }) => [path, kind]));
   const classified = new Map();
   const errors = [];
-  for (const { path, category } of entries) {
-    if (classified.has(path)) {
-      errors.push(
-        `duplicate root classification: ${path} (${classified.get(path)}, ${category})`,
-      );
-    } else {
-      classified.set(path, category);
-    }
-  }
-  for (const { path } of inventory) {
+  for (const { path, category, kind } of entries)
+    classified.set(path, { category, kind });
+  for (const { path, kind } of inventory) {
     if (!classified.has(path))
       errors.push(`unclassified tracked root entry: ${path}`);
+    else if (classified.get(path).kind !== kind)
+      errors.push(
+        `root entry kind mismatch: ${path} is tracked as ${kind}, classified as ${classified.get(path).kind}`,
+      );
   }
   for (const { path, category } of entries) {
     if (!actual.has(path))
       errors.push(`stale ${category} root classification: ${path}`);
   }
-  if (inventory.length > config.maximumEntries) {
+  for (const retired of config.retiredEntries) {
+    if (actual.has(retired))
+      errors.push(`retired root entry has been reintroduced: ${retired}`);
+  }
+  const counts = inventoryCounts(inventory);
+  if (counts.files > config.maximumFiles) {
     errors.push(
-      `tracked root has ${inventory.length} entries; current maximum is ${config.maximumEntries}`,
+      `tracked root has ${counts.files} files; maximum is ${config.maximumFiles}`,
+    );
+  }
+  if (counts.directories > config.maximumDirectories) {
+    errors.push(
+      `tracked root has ${counts.directories} directories; maximum is ${config.maximumDirectories}`,
     );
   }
   return {
     inventory,
-    counts: inventoryCounts(inventory),
+    counts,
     classificationCounts: Object.fromEntries(
-      CATEGORY_NAMES.map((name) => [name, config.classifications[name].length]),
+      CATEGORY_NAMES.map((name) => [
+        name,
+        config.classifications[name].files.length +
+          config.classifications[name].directories.length,
+      ]),
     ),
     errors,
   };
@@ -228,15 +287,17 @@ function isMainModule() {
 if (isMainModule()) {
   try {
     const result = runCheck();
-    if (process.argv.includes("--json"))
-      console.log(JSON.stringify(result, null, 2));
+    const jsonOutput = process.argv.includes("--json");
+    if (jsonOutput) console.log(JSON.stringify(result, null, 2));
     if (result.errors.length > 0) throw new Error(result.errors.join("; "));
-    const classes = CATEGORY_NAMES.map(
-      (name) => `${name}=${result.classificationCounts[name]}`,
-    ).join(", ");
-    console.log(
-      `root-layout: ${result.counts.total} classified entries (${result.counts.files} files, ${result.counts.directories} directories; ${classes}); current maximum ${result.config.maximumEntries}, bounded target <=${result.config.targetMaxEntries}`,
-    );
+    if (!jsonOutput) {
+      const classes = CATEGORY_NAMES.map(
+        (name) => `${name}=${result.classificationCounts[name]}`,
+      ).join(", ");
+      console.log(
+        `root-layout: ${result.counts.total} classified entries (${result.counts.files}/${result.config.maximumFiles} files, ${result.counts.directories}/${result.config.maximumDirectories} directories; ${classes})`,
+      );
+    }
   } catch (error) {
     console.error(
       `root-layout: failed: ${error instanceof Error ? error.message : String(error)}`,

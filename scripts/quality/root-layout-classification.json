@@ -1,39 +1,93 @@
 {
   "$schema": "./root-layout-classification.schema.json",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "baseline": {
     "total": 67,
     "files": 42,
     "directories": 25
   },
-  "maximumEntries": 35,
-  "targetMaxEntries": 35,
+  "maximumFiles": 10,
+  "maximumDirectories": 12,
   "classifications": {
-    "conventional": [
-      ".dockerignore",
-      ".github",
-      ".gitignore",
-      ".nvmrc",
-      "package.json",
-      "README.md"
-    ],
-    "generated": ["package-lock.json"],
-    "project": [
-      "config",
-      "docker",
-      "docker-compose.yml",
-      "docs",
-      "gateway",
-      "install.sh",
-      "llm-egress-proxy",
-      "server",
-      "shared",
-      "src",
-      "start.sh",
-      "tasks",
-      "tests",
-      "uninstall.sh"
-    ],
-    "tooling": ["scripts"]
-  }
+    "conventional": {
+      "files": [
+        ".dockerignore",
+        ".gitignore",
+        ".nvmrc",
+        "package.json",
+        "README.md"
+      ],
+      "directories": [".github"]
+    },
+    "generated": {
+      "files": ["package-lock.json"],
+      "directories": []
+    },
+    "project": {
+      "files": ["docker-compose.yml", "install.sh", "start.sh", "uninstall.sh"],
+      "directories": [
+        "config",
+        "docker",
+        "docs",
+        "gateway",
+        "llm-egress-proxy",
+        "server",
+        "shared",
+        "src",
+        "tasks",
+        "tests"
+      ]
+    },
+    "tooling": {
+      "files": [],
+      "directories": ["scripts"]
+    }
+  },
+  "retiredEntries": [
+    ".dependency-cruiser.cjs",
+    ".env.example",
+    ".gitleaks.toml",
+    ".gitleaksignore",
+    ".jscpd.json",
+    ".node-version",
+    "App.tsx",
+    "assets",
+    "CHANGELOG.md",
+    "components",
+    "contexts",
+    "CONTRIBUTING.md",
+    "docker-compose.monitoring.yml",
+    "docker-compose.prod.yml",
+    "docker-compose.ssl.yml",
+    "docker-compose.test.yml",
+    "docker-compose.tor.yml",
+    "DOCKER.md",
+    "Dockerfile",
+    "e2e",
+    "eslint.config.js",
+    "global.d.ts",
+    "hooks",
+    "index.html",
+    "index.tsx",
+    "metadata.json",
+    "playwright.config.ts",
+    "providers",
+    "public",
+    "README.template.md",
+    "services",
+    "stryker.config.mjs",
+    "themes",
+    "tools",
+    "tsconfig.app.json",
+    "tsconfig.json",
+    "tsconfig.scripts.json",
+    "tsconfig.tests.json",
+    "types",
+    "utils",
+    "vite.config.ts",
+    "vite.nodePolyfills.ts",
+    "vitest.config.ts",
+    "vitest.coverage-shard.config.ts",
+    "website"
+  ]
 }

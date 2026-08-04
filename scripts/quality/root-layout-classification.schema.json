@@ -8,13 +8,14 @@
     "$schema",
     "schemaVersion",
     "baseline",
-    "maximumEntries",
-    "targetMaxEntries",
-    "classifications"
+    "maximumFiles",
+    "maximumDirectories",
+    "classifications",
+    "retiredEntries"
   ],
   "properties": {
     "$schema": { "type": "string" },
-    "schemaVersion": { "const": 1 },
+    "schemaVersion": { "const": 2 },
     "baseline": {
       "description": "Immutable tracked-root baseline captured before convergence.",
       "type": "object",
@@ -26,15 +27,13 @@
         "directories": { "const": 25 }
       }
     },
-    "maximumEntries": {
-      "description": "Current non-increasing ceiling; lower this after each atomic path migration.",
-      "type": "integer",
-      "minimum": 35,
-      "maximum": 67
+    "maximumFiles": {
+      "description": "Final hard cap for tracked loose files at repository root.",
+      "const": 10
     },
-    "targetMaxEntries": {
-      "description": "Bounded final target retained independently from the current migration ceiling.",
-      "const": 35
+    "maximumDirectories": {
+      "description": "Final hard cap for tracked directories at repository root.",
+      "const": 12
     },
     "classifications": {
       "type": "object",
@@ -43,24 +42,37 @@
       "properties": {
         "conventional": {
           "description": "Ecosystem and community contracts conventionally discovered at repository root.",
-          "$ref": "#/$defs/entryList"
+          "$ref": "#/$defs/classificationGroup"
         },
         "generated": {
           "description": "Committed machine-derived root artifacts.",
-          "$ref": "#/$defs/entryList"
+          "$ref": "#/$defs/classificationGroup"
         },
         "project": {
           "description": "First-party application, runtime, deployment, documentation, and test content.",
-          "$ref": "#/$defs/entryList"
+          "$ref": "#/$defs/classificationGroup"
         },
         "tooling": {
           "description": "Build, test, quality, and developer tooling contracts.",
-          "$ref": "#/$defs/entryList"
+          "$ref": "#/$defs/classificationGroup"
         }
       }
+    },
+    "retiredEntries": {
+      "description": "Immutable top-level paths removed from the 67-entry baseline and prohibited from returning.",
+      "$ref": "#/$defs/entryList"
     }
   },
   "$defs": {
+    "classificationGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["files", "directories"],
+      "properties": {
+        "files": { "$ref": "#/$defs/entryList" },
+        "directories": { "$ref": "#/$defs/entryList" }
+      }
+    },
     "entryList": {
       "type": "array",
       "items": {
