@@ -472,6 +472,16 @@ assert_runner_parser_rejects_post_comment_drift() {
 # --- release-candidate.yml --------------------------------------------------
 RC="$REPO_ROOT/.github/workflows/release-candidate.yml"
 
+assert_occurrence_count "$RC" \
+  "release-candidate disables restart for CI-created Compose stacks" \
+  "SANCTUARY_RESTART_POLICY: 'no'" \
+  1
+
+assert_occurrence_count "$RC" \
+  "every release-candidate isolated checkout rewrites historical restart policies" \
+  "sed -i -E" \
+  3
+
 assert_contains_in_order "$RC" \
   "release-candidate fresh-install-test composition" \
   "scripts/ci/run-with-log.sh" \
@@ -592,6 +602,44 @@ done
 
 # --- install-test.yml -------------------------------------------------------
 IT="$REPO_ROOT/.github/workflows/install-test.yml"
+
+assert_occurrence_count "$IT" \
+  "install-test disables restart for CI-created Compose stacks" \
+  "SANCTUARY_RESTART_POLICY: 'no'" \
+  1
+
+# Production retains `unless-stopped` by default, while CI can atomically
+# override every long-running Sanctuary service to `no`. This prevents an
+# interrupted terminal-run stack from being resurrected with the shared DIND
+# daemon after a runner restart.
+COMPOSE_BASE="$REPO_ROOT/docker-compose.yml"
+COMPOSE_MONITORING="$REPO_ROOT/docker/compose/monitoring.yml"
+COMPOSE_TOR="$REPO_ROOT/docker/compose/tor.yml"
+
+for compose_file in "$COMPOSE_BASE" "$COMPOSE_MONITORING" "$COMPOSE_TOR"; do
+  assert_not_contains "$compose_file" \
+    "$(basename "$compose_file") has no fixed unless-stopped restart policy" \
+    "restart: unless-stopped"
+done
+
+assert_occurrence_count "$COMPOSE_BASE" \
+  "base Compose makes every persistent restart policy CI-overridable" \
+  'restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"' \
+  9
+assert_occurrence_count "$COMPOSE_MONITORING" \
+  "monitoring Compose makes every restart policy CI-overridable" \
+  'restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"' \
+  6
+assert_occurrence_count "$COMPOSE_TOR" \
+  "Tor Compose makes its restart policy CI-overridable" \
+  'restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"' \
+  1
+
+assert_contains_in_order "$REPO_ROOT/tests/install/e2e/upgrade-install.test.sh" \
+  "upgrade source disables historical restart policies before install" \
+  'if [ "$UPGRADE_SOURCE_CREATED" = "true" ]; then' \
+  'force_test_compose_restart_policy_no "$PROJECT_ROOT"' \
+  'run_install_script "$PROJECT_ROOT"'
 
 assert_contains_in_order "$IT" \
   "install-test fresh-install-test composition" \

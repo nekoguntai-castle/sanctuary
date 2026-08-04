@@ -41,7 +41,7 @@ services:
   tor:
     image: dperson/torproxy:latest
     container_name: ${TOR_CONTAINER_NAME:-sanctuary-tor}
-    restart: unless-stopped
+    restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
     networks:
       - sanctuary-network
     environment:

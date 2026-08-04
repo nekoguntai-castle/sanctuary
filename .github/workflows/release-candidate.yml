@@ -80,6 +80,8 @@ env:
   GIT_CONFIG_VALUE_0: main
   HTTPS_PORT: 8443
   HTTP_PORT: 8080
+  # Interrupted CI projects must stay stopped across DIND/runner restarts.
+  SANCTUARY_RESTART_POLICY: 'no'
   # Share the runner-lock namespace with test.yml / install-test.yml so the
   # node-toolchain (cleanup) and e2e locks here actually serialize against
   # those workflows' lock-takers on the shared self-hosted runner.
@@ -226,6 +228,11 @@ jobs:
         run: |
           scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" bash -c '
             workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible fresh-install)"
+            for relative_path in docker-compose.yml docker-compose.ghcr.yml docker-compose.monitoring.yml docker-compose.tor.yml docker/compose/monitoring.yml docker/compose/tor.yml; do
+              compose_file="$workspace/$relative_path"
+              [ -f "$compose_file" ] || continue
+              sed -i -E '\''s/^([[:space:]]*restart:).*/\1 "no"/'\'' "$compose_file"
+            done
             echo "SANCTUARY_INSTALL_WORKSPACE=$workspace" >> "$GITHUB_ENV"
           '
 
@@ -359,6 +366,11 @@ jobs:
         run: |
           scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" bash -c '
             workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible container-health)"
+            for relative_path in docker-compose.yml docker-compose.ghcr.yml docker-compose.monitoring.yml docker-compose.tor.yml docker/compose/monitoring.yml docker/compose/tor.yml; do
+              compose_file="$workspace/$relative_path"
+              [ -f "$compose_file" ] || continue
+              sed -i -E '\''s/^([[:space:]]*restart:).*/\1 "no"/'\'' "$compose_file"
+            done
             echo "SANCTUARY_INSTALL_WORKSPACE=$workspace" >> "$GITHUB_ENV"
           '
 
@@ -524,6 +536,11 @@ jobs:
         run: |
           scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" bash -c '
             workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible auth-flow)"
+            for relative_path in docker-compose.yml docker-compose.ghcr.yml docker-compose.monitoring.yml docker-compose.tor.yml docker/compose/monitoring.yml docker/compose/tor.yml; do
+              compose_file="$workspace/$relative_path"
+              [ -f "$compose_file" ] || continue
+              sed -i -E '\''s/^([[:space:]]*restart:).*/\1 "no"/'\'' "$compose_file"
+            done
             echo "SANCTUARY_INSTALL_WORKSPACE=$workspace" >> "$GITHUB_ENV"
           '
 

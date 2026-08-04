@@ -16,6 +16,8 @@
 #   - JWT_SECRET: Required for authentication (must be set)
 #   - LOG_LEVEL: Logging verbosity - debug, info, warn, error (default: info)
 #   - GATEWAY_PORT: Mobile API gateway port (default: 4000)
+#   - SANCTUARY_RESTART_POLICY: Container restart policy (default: unless-stopped;
+#     CI sets this to no so interrupted test stacks cannot survive runner restarts)
 #
 # Runtime secrets:
 #   Keep env files and TLS private keys outside the repo when possible.
@@ -40,7 +42,7 @@ services:
   # ============================================
   redis:
     image: redis:7-alpine
-    restart: unless-stopped
+    restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     command:
@@ -92,7 +94,7 @@ services:
   # ============================================
   postgres:
     image: postgres:16-alpine
-    restart: unless-stopped
+    restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-sanctuary}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
@@ -175,7 +177,7 @@ services:
       dockerfile: server/Dockerfile
     image: sanctuary-backend:local
     pull_policy: build # Always build locally, never pull
-    restart: unless-stopped
+    restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -315,7 +317,7 @@ services:
   worker:
     image: sanctuary-backend:local
     pull_policy: never # Reuse image built by backend service
-    restart: unless-stopped
+    restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -404,7 +406,7 @@ services:
   mcp:
     image: sanctuary-backend:local
     pull_policy: never # Reuse image built by backend service
-    restart: unless-stopped
+    restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
     profiles:
       - mcp
     depends_on:
@@ -511,7 +513,7 @@ services:
         VITE_API_URL: ${VITE_API_URL:-}
     image: sanctuary-frontend:local
     pull_policy: build # Always build locally, never pull
-    restart: unless-stopped
+    restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
     depends_on:
       backend:
         condition: service_healthy
@@ -577,7 +579,7 @@ services:
       dockerfile: gateway/Dockerfile
     image: sanctuary-gateway:local
     pull_policy: build # Always build locally, never pull
-    restart: unless-stopped
+    restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
     depends_on:
       backend:
         condition: service_healthy
@@ -688,7 +690,7 @@ services:
       dockerfile: Dockerfile
     image: sanctuary-llm-egress-proxy:local
     pull_policy: build # Always build locally, never pull
-    restart: unless-stopped
+    restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
     depends_on:
       backend:
         condition: service_healthy
@@ -749,7 +751,7 @@ services:
   # ============================================
   docker-proxy:
     image: tecnativa/docker-socket-proxy:latest
-    restart: unless-stopped
+    restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
     environment:
       # Allow container management and image pulls
       CONTAINERS: 1

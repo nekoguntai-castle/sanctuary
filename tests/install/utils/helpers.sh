@@ -397,6 +397,29 @@ disable_compose_project_restart_policy() {
     docker ps -a --filter "label=com.docker.compose.project=$project" -q | xargs -r docker update --restart=no 2>/dev/null || true
 }
 
+# Rewrite only an isolated test checkout so historical Compose files that do
+# not support SANCTUARY_RESTART_POLICY cannot create restartable containers.
+# The caller must pass a disposable test workspace, never a production checkout.
+force_test_compose_restart_policy_no() {
+    local project_dir="$1"
+    local relative_path
+    local compose_file
+    local compose_paths=(
+        docker-compose.yml
+        docker-compose.ghcr.yml
+        docker-compose.monitoring.yml
+        docker-compose.tor.yml
+        docker/compose/monitoring.yml
+        docker/compose/tor.yml
+    )
+
+    for relative_path in "${compose_paths[@]}"; do
+        compose_file="$project_dir/$relative_path"
+        [ -f "$compose_file" ] || continue
+        sed -i -E 's/^([[:space:]]*restart:).*/\1 "no"/' "$compose_file"
+    done
+}
+
 cleanup_compose_projects_by_prefix() {
     local prefix="$1"
     local exclude_project="${2:-}"

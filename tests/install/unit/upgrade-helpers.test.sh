@@ -688,6 +688,10 @@ test_upgrade_harness_restart_fallback_is_opt_in() {
     "same-commit source and target should fail unless restart fallback is explicit" || failures=1
   assert_contains "$contents" "Set SANCTUARY_UPGRADE_ALLOW_RESTART_FALLBACK=true only for explicit restart-debug runs" \
     "restart fallback should require an explicit debug opt-in" || failures=1
+  assert_contains "$contents" 'export SANCTUARY_RESTART_POLICY=no' \
+    "restart fallback should use the non-mutating current Compose override" || failures=1
+  assert_contains "$contents" 'if [ "$UPGRADE_SOURCE_CREATED" = "true" ]; then' \
+    "historical Compose rewriting should be limited to a disposable source checkout" || failures=1
 
   return "$failures"
 }
@@ -1083,6 +1087,56 @@ test_disable_compose_project_restart_policy_updates_project_containers() {
     "upgrade test containers should not resurrect after daemon restarts"
 }
 
+test_force_test_compose_restart_policy_no_rewrites_historical_files() {
+  local checkout="$TEST_TMP_DIR/historical-checkout"
+  local contents
+  mkdir -p "$checkout/docker/compose"
+
+  cat > "$checkout/docker-compose.yml" <<'EOF'
+services:
+  backend:
+    image: historical-backend
+    restart: unless-stopped
+  migrate:
+    image: historical-backend
+    restart: "no"
+EOF
+  cat > "$checkout/docker-compose.monitoring.yml" <<'EOF'
+services:
+  prometheus:
+    image: historical-prometheus
+    restart: always # historical policy
+EOF
+  cat > "$checkout/docker-compose.ghcr.yml" <<'EOF'
+services:
+  backend:
+    image: historical-prebuilt-backend
+    restart: unless-stopped
+EOF
+  cat > "$checkout/docker/compose/tor.yml" <<'EOF'
+services:
+  tor:
+    image: historical-tor
+    restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
+EOF
+
+  force_test_compose_restart_policy_no "$checkout"
+
+  contents="$(cat \
+    "$checkout/docker-compose.yml" \
+    "$checkout/docker-compose.ghcr.yml" \
+    "$checkout/docker-compose.monitoring.yml" \
+    "$checkout/docker/compose/tor.yml")"
+  assert_equals "5" "$(grep -c 'restart: "no"' <<<"$contents")" \
+    "every historical and current restart declaration should become no" || return 1
+  assert_not_contains "$contents" "unless-stopped" \
+    "historical test checkout must not retain unless-stopped" || return 1
+  assert_not_contains "$contents" "restart: always" \
+    "historical test checkout must not retain always" || return 1
+  assert_contains "$contents" "image: historical-backend" \
+    "non-restart Compose content must be preserved" || return 1
+}
+
 test_exit_cleanup_trap_runs_on_normal_exit() {
   local trap_script="$TEST_TMP_DIR/trap-check.sh"
   local trap_log="$TEST_TMP_DIR/trap.log"
@@ -1221,6 +1275,7 @@ main() {
   run_test "diagnostic redaction hides log secrets" test_diagnostic_redaction_hides_log_secrets
   run_test "stale upgrade projects cleanup skips current project" test_cleanup_compose_projects_by_prefix_skips_current_project
   run_test "upgrade cleanup disables restart policy" test_disable_compose_project_restart_policy_updates_project_containers
+  run_test "historical Compose files disable restart before startup" test_force_test_compose_restart_policy_no_rewrites_historical_files
   run_test "exit cleanup trap runs on normal exit" test_exit_cleanup_trap_runs_on_normal_exit
   run_test "exit cleanup trap preserves failure status" test_exit_cleanup_trap_preserves_failure_status
   run_test "upgrade cleanup preserves failed fixture status" test_upgrade_finish_preserves_failed_fixture_status

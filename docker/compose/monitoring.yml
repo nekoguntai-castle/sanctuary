@@ -41,7 +41,7 @@ services:
   jaeger:
     image: jaegertracing/all-in-one:1.53
     container_name: ${JAEGER_CONTAINER_NAME:-sanctuary-jaeger}
-    restart: unless-stopped
+    restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
     ports:
@@ -78,7 +78,7 @@ services:
   loki:
     image: grafana/loki:2.9.0
     container_name: ${LOKI_CONTAINER_NAME:-sanctuary-loki}
-    restart: unless-stopped
+    restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
     ports:
       - "${MONITORING_BIND_ADDR:-127.0.0.1}:${LOKI_PORT:-3100}:3100"
     volumes:
@@ -116,7 +116,7 @@ services:
   promtail:
     image: grafana/promtail:3.5.0
     container_name: ${PROMTAIL_CONTAINER_NAME:-sanctuary-promtail}
-    restart: unless-stopped
+    restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
     depends_on:
       - loki
     volumes:
@@ -156,7 +156,7 @@ services:
   prometheus:
     image: prom/prometheus:v2.47.0
     container_name: ${PROMETHEUS_CONTAINER_NAME:-sanctuary-prometheus}
-    restart: unless-stopped
+    restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
     ports:
       - "${MONITORING_BIND_ADDR:-127.0.0.1}:${PROMETHEUS_PORT:-9090}:9090"
     volumes:
@@ -208,7 +208,7 @@ services:
   alertmanager:
     image: prom/alertmanager:v0.26.0
     container_name: ${ALERTMANAGER_CONTAINER_NAME:-sanctuary-alertmanager}
-    restart: unless-stopped
+    restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
     ports:
       - "${MONITORING_BIND_ADDR:-127.0.0.1}:${ALERTMANAGER_PORT:-9093}:9093"
     volumes:
@@ -258,7 +258,7 @@ services:
   grafana:
     image: grafana/grafana:10.2.0
     container_name: ${GRAFANA_CONTAINER_NAME:-sanctuary-grafana}
-    restart: unless-stopped
+    restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
     depends_on:
       - loki
       - prometheus

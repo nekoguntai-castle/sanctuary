@@ -482,6 +482,7 @@ setup() {
     export SANCTUARY_ENV_FILE="$TEST_ENV_FILE"
     export SANCTUARY_SSL_DIR="$TEST_SSL_DIR"
     export SANCTUARY_COMPOSE_SSL_DIR="$TEST_COMPOSE_SSL_DIR"
+    export SANCTUARY_RESTART_POLICY=no
 
     setup_exit_cleanup_trap "teardown"
     cleanup_compose_projects_by_prefix "sanctuary-upgrade-test-" "$COMPOSE_PROJECT_NAME" 2>/dev/null || true
@@ -541,6 +542,9 @@ test_ensure_existing_installation() {
 
     cd "$PROJECT_ROOT"
 
+    if [ "$UPGRADE_SOURCE_CREATED" = "true" ]; then
+        force_test_compose_restart_policy_no "$PROJECT_ROOT"
+    fi
     if ! run_install_script "$PROJECT_ROOT"; then
         return 1
     fi

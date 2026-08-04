@@ -126,6 +126,8 @@ env:
   HTTPS_PORT: 8443
   HTTP_PORT: 8080
   COMPOSE_BAKE: 'false'
+  # Interrupted CI projects must stay stopped across DIND/runner restarts.
+  SANCTUARY_RESTART_POLICY: 'no'
   SANCTUARY_RUNNER_LOCK_DIR: ${{ github.workspace }}/.tmp/runner-locks-v2
 
 jobs:
