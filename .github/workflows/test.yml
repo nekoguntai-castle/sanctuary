@@ -57,6 +57,7 @@ env:
   GIT_CONFIG_KEY_0: init.defaultBranch
   GIT_CONFIG_VALUE_0: main
   NODE_VERSION: '24'
+  NPM_VERSION: '11.19.0'
   SANCTUARY_RUNNER_LOCK_DIR: ${{ github.workspace }}/.tmp/runner-locks-v2
 
 jobs:
@@ -129,7 +130,7 @@ jobs:
             set -euo pipefail
             for attempt in 1 2 3; do
               echo "npm ci (quick hygiene), attempt $attempt"
-              if npm ci --audit=false --fund=false --cache .tmp/npm-cache; then
+              if npm ci --strict-allow-scripts --audit=false --fund=false --cache .tmp/npm-cache; then
                 break
               fi
               if [ "$attempt" -eq 3 ]; then
@@ -193,7 +194,7 @@ jobs:
             set -euo pipefail
             for attempt in 1 2 3; do
               echo "npm ci (quick frontend), attempt $attempt"
-              if npm ci --audit=false --fund=false --cache .tmp/npm-cache; then
+              if npm ci --strict-allow-scripts --audit=false --fund=false --cache .tmp/npm-cache; then
                 break
               fi
               if [ "$attempt" -eq 3 ]; then
@@ -648,7 +649,7 @@ jobs:
         if: steps.cache-quick-gateway-node-modules.outputs.cache-hit != 'true'
         run: >
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-dependencies.log"
-          npm ci
+          npm ci --strict-allow-scripts
 
       - name: Run related gateway tests
         env:
@@ -726,7 +727,7 @@ jobs:
         if: steps.cache-quick-llmproxy-root-node-modules.outputs.cache-hit != 'true'
         run: >
           scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/root-install-dependencies.log"
-          npm ci
+          npm ci --strict-allow-scripts
 
       - name: Restore llm-egress-proxy node_modules cache
         id: cache-quick-llmproxy-node-modules
@@ -741,7 +742,7 @@ jobs:
         if: steps.cache-quick-llmproxy-node-modules.outputs.cache-hit != 'true'
         run: >
           scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/llm-egress-proxy-install-dependencies.log"
-          npm --prefix llm-egress-proxy ci
+          npm --prefix llm-egress-proxy ci --strict-allow-scripts
 
       - name: Build LLM egress proxy
         run: >
@@ -814,7 +815,7 @@ jobs:
               scripts/ci/collect-playwright-artifacts.sh quick-browser || echo "::warning::Could not collect quick browser Playwright artifacts"
             }
             trap collect_artifacts EXIT
-            scripts/ci/with-runner-lock.sh node-toolchain scripts/ci/retry-command.sh "quick browser npm ci" scripts/ci/time-command.sh "quick browser npm ci" npm ci --audit=false --fund=false --cache .tmp/npm-cache
+            scripts/ci/with-runner-lock.sh node-toolchain scripts/ci/retry-command.sh "quick browser npm ci" scripts/ci/time-command.sh "quick browser npm ci" npm ci --strict-allow-scripts --audit=false --fund=false --cache .tmp/npm-cache
             scripts/ci/time-command.sh "quick browser playwright install" scripts/ci/install-playwright-chromium.sh
             scripts/ci/time-command.sh "quick browser frontend build" scripts/ci/retry-command.sh "quick browser frontend build" npm run build
             scripts/ci/retry-playwright-infrastructure-failure.sh "quick browser smoke" scripts/ci/time-command.sh "quick browser smoke" npm run test:e2e -- --project=chromium tests/e2e/admin-drafts-smoke.spec.ts
@@ -905,7 +906,7 @@ jobs:
               scripts/ci/collect-playwright-artifacts.sh quick-render || echo "::warning::Could not collect quick render Playwright artifacts"
             }
             trap collect_artifacts EXIT
-            scripts/ci/with-runner-lock.sh node-toolchain scripts/ci/retry-command.sh "quick render npm ci" scripts/ci/time-command.sh "quick render npm ci" npm ci --audit=false --fund=false --cache .tmp/npm-cache
+            scripts/ci/with-runner-lock.sh node-toolchain scripts/ci/retry-command.sh "quick render npm ci" scripts/ci/time-command.sh "quick render npm ci" npm ci --strict-allow-scripts --audit=false --fund=false --cache .tmp/npm-cache
             scripts/ci/time-command.sh "quick render playwright install" scripts/ci/install-playwright-chromium.sh
             scripts/ci/time-command.sh "quick render frontend build" scripts/ci/retry-command.sh "quick render frontend build" npm run build
             scripts/ci/retry-playwright-infrastructure-failure.sh "quick render regression" scripts/ci/time-command.sh "quick render regression" npm run test:e2e -- --project=chromium tests/e2e/render-regression.spec.ts
@@ -1651,7 +1652,7 @@ jobs:
           scripts/ci/with-runner-lock.sh node-toolchain
           scripts/ci/retry-command.sh "frontend typecheck npm ci"
           scripts/ci/time-command.sh "frontend typecheck npm ci"
-          npm ci --audit=false --fund=false --cache .tmp/npm-cache
+          npm ci --strict-allow-scripts --audit=false --fund=false --cache .tmp/npm-cache
 
       - name: Run strict app typecheck
         if: matrix.target == 'app-typecheck'
@@ -1723,7 +1724,7 @@ jobs:
           scripts/ci/with-runner-lock.sh node-toolchain
           scripts/ci/retry-command.sh "frontend coverage npm ci"
           scripts/ci/time-command.sh "frontend coverage npm ci"
-          npm ci --audit=false --fund=false --cache .tmp/npm-cache
+          npm ci --strict-allow-scripts --audit=false --fund=false --cache .tmp/npm-cache
 
       - name: Run frontend coverage shard 1
         run: >
@@ -1786,7 +1787,7 @@ jobs:
           scripts/ci/with-runner-lock.sh node-toolchain
           scripts/ci/retry-command.sh "frontend coverage npm ci"
           scripts/ci/time-command.sh "frontend coverage npm ci"
-          npm ci --audit=false --fund=false --cache .tmp/npm-cache
+          npm ci --strict-allow-scripts --audit=false --fund=false --cache .tmp/npm-cache
 
       - name: Run frontend coverage shard 2
         run: >
@@ -1850,7 +1851,7 @@ jobs:
           scripts/ci/with-runner-lock.sh node-toolchain
           scripts/ci/retry-command.sh "frontend coverage merge npm ci"
           scripts/ci/time-command.sh "frontend coverage merge npm ci"
-          npm ci --audit=false --fund=false --cache .tmp/npm-cache
+          npm ci --strict-allow-scripts --audit=false --fund=false --cache .tmp/npm-cache
 
       - name: Download frontend coverage shard 1
         uses: ./.github/actions/download-artifact
@@ -1988,7 +1989,7 @@ jobs:
           ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
           ${{ github.workspace }}/scripts/ci/retry-command.sh "gateway npm ci"
           ${{ github.workspace }}/scripts/ci/time-command.sh "gateway npm ci"
-          npm ci --audit=false --fund=false --cache .tmp/npm-cache
+          npm ci --strict-allow-scripts --audit=false --fund=false --cache .tmp/npm-cache
 
       - name: Run gateway coverage
         env:
@@ -2051,7 +2052,7 @@ jobs:
           scripts/ci/with-runner-lock.sh node-toolchain
           scripts/ci/retry-command.sh "LLM egress proxy root npm ci"
           scripts/ci/time-command.sh "LLM egress proxy root npm ci"
-          npm ci --audit=false --fund=false --cache .tmp/npm-cache
+          npm ci --strict-allow-scripts --audit=false --fund=false --cache .tmp/npm-cache
 
       - name: Install LLM egress proxy dependencies
         run: >
@@ -2059,7 +2060,7 @@ jobs:
           scripts/ci/with-runner-lock.sh node-toolchain
           scripts/ci/retry-command.sh "LLM egress proxy npm ci"
           scripts/ci/time-command.sh "LLM egress proxy npm ci"
-          npm --prefix llm-egress-proxy ci --audit=false --fund=false --cache .tmp/npm-cache-llm-egress-proxy
+          npm --prefix llm-egress-proxy ci --strict-allow-scripts --audit=false --fund=false --cache .tmp/npm-cache-llm-egress-proxy
 
       - name: Build LLM egress proxy
         run: >
@@ -2302,7 +2303,7 @@ jobs:
           scripts/ci/with-runner-lock.sh node-toolchain
           scripts/ci/retry-command.sh "browser npm ci"
           scripts/ci/time-command.sh "browser npm ci"
-          npm ci --audit=false --fund=false --cache .tmp/npm-cache
+          npm ci --strict-allow-scripts --audit=false --fund=false --cache .tmp/npm-cache
 
       - name: Cache Playwright browsers
         continue-on-error: true
@@ -2536,7 +2537,7 @@ jobs:
           scripts/ci/with-runner-lock.sh node-toolchain
           scripts/ci/retry-command.sh "render npm ci"
           scripts/ci/time-command.sh "render npm ci"
-          npm ci --audit=false --fund=false --cache .tmp/npm-cache
+          npm ci --strict-allow-scripts --audit=false --fund=false --cache .tmp/npm-cache
 
       - name: Cache Playwright browsers
         continue-on-error: true
@@ -2635,7 +2636,7 @@ jobs:
             scripts/ci/with-runner-lock.sh node-toolchain \
             scripts/ci/retry-command.sh "build check frontend npm ci" \
             scripts/ci/time-command.sh "build check frontend npm ci" \
-            npm ci --audit=false --fund=false --cache .tmp/npm-cache
+            npm ci --strict-allow-scripts --audit=false --fund=false --cache .tmp/npm-cache
           scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/frontend-build.log" \
             scripts/ci/with-runner-lock.sh node-toolchain \
             scripts/ci/retry-command.sh "build check frontend build" \

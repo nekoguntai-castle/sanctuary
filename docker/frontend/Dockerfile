@@ -3,8 +3,14 @@
 # Optimized for fast builds with better layer caching
 # =============================================
 
+# Shared Node/npm toolchain. npm 11.16+ is required for package.json's
+# allowScripts policy; both dependency and build stages inherit this layer.
+FROM node:24-alpine AS node-toolchain
+ARG NPM_VERSION=11.19.0
+RUN npm install --global --audit=false --fund=false "npm@$NPM_VERSION"
+
 # Stage 1: Dependencies
-FROM node:24-alpine AS deps
+FROM node-toolchain AS deps
 WORKDIR /app
 
 # Install shell, Python, and build tools used by native dependencies and the
@@ -21,10 +27,10 @@ COPY server/.husky ./server/.husky
 COPY gateway/package.json ./gateway/
 
 # Install dependencies
-RUN npm ci
+RUN npm ci --strict-allow-scripts
 
 # Stage 2: Builder
-FROM node:24-alpine AS builder
+FROM node-toolchain AS builder
 WORKDIR /app
 
 # Copy dependencies from deps stage

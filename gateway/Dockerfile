@@ -2,8 +2,13 @@
 # Phase G: workspace-aware build (@sanctuary/shared via npm workspaces)
 # Multi-stage build for minimal production image
 
+# Shared Node/npm toolchain. npm 11.16+ is required by the root package policy.
+FROM node:24-alpine AS node-toolchain
+ARG NPM_VERSION=11.19.0
+RUN npm install --global --audit=false --fund=false "npm@$NPM_VERSION"
+
 # Stage 1: Dependencies — install at the workspace root
-FROM node:24-alpine AS deps
+FROM node-toolchain AS deps
 WORKDIR /repo
 
 # Copy root + workspace member package files first for layer caching.
@@ -14,10 +19,10 @@ COPY gateway/package.json ./gateway/
 
 # Workspace-aware install. --include-workspace-root pulls root devDeps
 # (typescript, vitest, etc.) so the builder stage can compile.
-RUN npm ci --include-workspace-root --ignore-scripts
+RUN npm ci --strict-allow-scripts --include-workspace-root --ignore-scripts
 
 # Stage 2: Builder
-FROM node:24-alpine AS builder
+FROM node-toolchain AS builder
 WORKDIR /repo
 
 COPY --from=deps /repo/node_modules ./node_modules

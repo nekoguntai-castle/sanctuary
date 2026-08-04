@@ -2,6 +2,12 @@
   "name": "verify-addresses",
   "version": "1.0.0",
   "description": "Cross-implementation address verification for Sanctuary",
+  "allowScripts": {
+    "core-js": false,
+    "esbuild@0.27.2": true,
+    "fsevents": false,
+    "tiny-secp256k1": false
+  },
   "type": "module",
   "scripts": {
     "generate": "tsx generate-vectors.ts",

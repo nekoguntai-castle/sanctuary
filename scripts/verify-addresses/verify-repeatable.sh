@@ -47,7 +47,7 @@ install_node_dependencies() {
     return
   fi
 
-  npm --prefix "$script_dir" ci
+  npm --prefix "$script_dir" ci --strict-allow-scripts
 }
 
 install_python_dependencies() {

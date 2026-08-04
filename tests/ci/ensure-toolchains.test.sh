@@ -48,7 +48,7 @@ EOF
 #!/usr/bin/env bash
 set -euo pipefail
 if [ "${1:-}" = "--version" ]; then
-  echo "${SANCTUARY_STUB_NPM_VERSION:-11.6.2}"
+  echo "${SANCTUARY_STUB_NPM_VERSION:-11.19.0}"
   exit 0
 fi
 exit 2
@@ -75,15 +75,19 @@ main() {
   bash -n "$PYTHON_SCRIPT"
   write_toolchain_stubs
 
-  PATH="$TEST_TEMP_DIR/bin:$PATH" NODE_VERSION=24.14.1 bash "$NODE_SCRIPT" >/dev/null
-  PATH="$TEST_TEMP_DIR/bin:$PATH" NODE_VERSION=24.14 bash "$NODE_SCRIPT" >/dev/null
-  PATH="$TEST_TEMP_DIR/bin:$PATH" NODE_VERSION=24 bash "$NODE_SCRIPT" >/dev/null
+  PATH="$TEST_TEMP_DIR/bin:$PATH" NODE_VERSION=24.14.1 NPM_VERSION=11.19.0 bash "$NODE_SCRIPT" >/dev/null
+  PATH="$TEST_TEMP_DIR/bin:$PATH" NODE_VERSION=24.14 NPM_VERSION=11.19 bash "$NODE_SCRIPT" >/dev/null
+  PATH="$TEST_TEMP_DIR/bin:$PATH" NODE_VERSION=24 NPM_VERSION=11 bash "$NODE_SCRIPT" >/dev/null
   assert_fails_with 'expected Node.js 24.14.2, got 24.14.1' \
-    env PATH="$TEST_TEMP_DIR/bin:$PATH" NODE_VERSION=24.14.2 bash "$NODE_SCRIPT"
+    env PATH="$TEST_TEMP_DIR/bin:$PATH" NODE_VERSION=24.14.2 NPM_VERSION=11.19.0 bash "$NODE_SCRIPT"
   assert_fails_with 'NODE_VERSION is required' \
-    env -u NODE_VERSION -u SANCTUARY_NODE_VERSION PATH="$TEST_TEMP_DIR/bin:$PATH" bash "$NODE_SCRIPT"
+    env -u NODE_VERSION -u SANCTUARY_NODE_VERSION PATH="$TEST_TEMP_DIR/bin:$PATH" NPM_VERSION=11.19.0 bash "$NODE_SCRIPT"
+  assert_fails_with 'expected npm 11.19.1, got 11.19.0' \
+    env PATH="$TEST_TEMP_DIR/bin:$PATH" NODE_VERSION=24 NPM_VERSION=11.19.1 bash "$NODE_SCRIPT"
+  assert_fails_with 'NPM_VERSION is required' \
+    env -u NPM_VERSION -u SANCTUARY_NPM_VERSION PATH="$TEST_TEMP_DIR/bin:$PATH" NODE_VERSION=24 bash "$NODE_SCRIPT"
   assert_fails_with 'unexpected arguments' \
-    env PATH="$TEST_TEMP_DIR/bin:$PATH" NODE_VERSION=24 bash "$NODE_SCRIPT" extra
+    env PATH="$TEST_TEMP_DIR/bin:$PATH" NODE_VERSION=24 NPM_VERSION=11.19.0 bash "$NODE_SCRIPT" extra
 
   : > "$TEST_TEMP_DIR/github-env"
   PATH="$TEST_TEMP_DIR/bin:$PATH" \

@@ -54,6 +54,7 @@ env:
   GIT_CONFIG_KEY_0: init.defaultBranch
   GIT_CONFIG_VALUE_0: main
   NODE_VERSION: '24'
+  NPM_VERSION: '11.19.0'
   PYTHON_VERSION: '3'
   SANCTUARY_RUNNER_LOCK_DIR: ${{ github.workspace }}/.tmp/runner-locks-v2
 
@@ -91,7 +92,7 @@ jobs:
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-server-dependencies.log" \
             ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain bash -c '
             set -euo pipefail
-            ${{ github.workspace }}/scripts/ci/retry-command.sh "vector root npm ci" npm ci --ignore-scripts
+            ${{ github.workspace }}/scripts/ci/retry-command.sh "vector root npm ci" npm ci --strict-allow-scripts --ignore-scripts
             ${{ github.workspace }}/scripts/ci/retry-command.sh "vector shared workspace build" npm --workspace shared run build
             cd server
             ${{ github.workspace }}/scripts/ci/retry-command.sh "vector prisma generate" npx prisma generate
@@ -300,7 +301,7 @@ jobs:
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-server-dependencies.log" \
           ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain bash -c '
             set -euo pipefail
-            ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector root npm ci" npm ci --ignore-scripts
+            ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector root npm ci" npm ci --strict-allow-scripts --ignore-scripts
             ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector shared workspace build" npm --workspace shared run build
             cd server
             ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector prisma generate" npx prisma generate
@@ -311,7 +312,7 @@ jobs:
         run: >
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-psbt-dependencies.log"
           ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
-          npm ci
+          npm ci --strict-allow-scripts
 
       - name: Generate PSBT vectors
         working-directory: scripts/verify-psbt
@@ -367,7 +368,7 @@ jobs:
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/run-psbt-vector-tests.log" \
           ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain bash -c '
             set -euo pipefail
-            ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector root npm ci" npm ci --ignore-scripts
+            ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector root npm ci" npm ci --strict-allow-scripts --ignore-scripts
             ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector shared workspace build" npm --workspace shared run build
             cd server
             ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector prisma generate" npx prisma generate

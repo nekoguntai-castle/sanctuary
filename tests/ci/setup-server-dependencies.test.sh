@@ -35,7 +35,7 @@ write_mock_commands() {
 #!/usr/bin/env bash
 printf 'npm:%s:%s\\n' "\$PWD" "\$*" >> "$log_file"
 case " \$* " in
-  *" ci --ignore-scripts "*) exit 0 ;;
+  *" ci --strict-allow-scripts --ignore-scripts "*) exit 0 ;;
   *" --workspace shared run build "*) exit 0 ;;
   *) exit 64 ;;
 esac
@@ -88,7 +88,7 @@ main() {
 
   # Phase B: install at root for workspace hoisting; build shared after.
   # Phase H: ensure-shared-module-resolution.mjs invocation removed.
-  assert_contains "$log_file" "npm:$root_dir:ci --ignore-scripts"
+  assert_contains "$log_file" "npm:$root_dir:ci --strict-allow-scripts --ignore-scripts"
   assert_contains "$log_file" "npm:$root_dir:--workspace shared run build"
   assert_contains "$log_file" "npx:$server_dir:prisma generate"
   if grep -Fq "ensure-shared-module-resolution" "$log_file"; then
@@ -112,7 +112,7 @@ main() {
     SERVER_PRISMA_CACHE_HIT=true \
     bash "$SCRIPT"
 
-  if grep -Fq "npm:$root_dir:ci --ignore-scripts" "$hit_log"; then
+  if grep -Fq "npm:$root_dir:ci --strict-allow-scripts --ignore-scripts" "$hit_log"; then
     fail 'expected npm ci to be skipped when SERVER_NODE_MODULES_CACHE_HIT=true'
   fi
   if grep -Fq "npx:$server_dir:prisma generate" "$hit_log"; then
@@ -134,7 +134,7 @@ main() {
     SERVER_PRISMA_CACHE_HIT=true \
     bash "$SCRIPT"
 
-  assert_contains "$partial_log" "npm:$root_dir:ci --ignore-scripts"
+  assert_contains "$partial_log" "npm:$root_dir:ci --strict-allow-scripts --ignore-scripts"
   assert_contains "$partial_log" "npm:$root_dir:--workspace shared run build"
   if grep -Fq "npx:$server_dir:prisma generate" "$partial_log"; then
     fail 'expected prisma generate to be skipped when SERVER_PRISMA_CACHE_HIT=true even on partial node_modules miss'

@@ -7,7 +7,7 @@ WORKDIR /app
 
 # Install dependencies
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --strict-allow-scripts --ignore-scripts
 
 # Build TypeScript
 COPY tsconfig.json ./

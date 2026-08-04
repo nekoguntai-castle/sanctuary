@@ -29,6 +29,7 @@ env:
   GIT_CONFIG_KEY_0: init.defaultBranch
   GIT_CONFIG_VALUE_0: main
   NODE_VERSION: '24'
+  NPM_VERSION: '11.19.0'
   SANCTUARY_RUNNER_LOCK_DIR: ${{ github.workspace }}/.tmp/runner-locks-v2
 
 jobs:
@@ -42,11 +43,8 @@ jobs:
           clean: false
           fetch-depth: 0
 
-      - name: Check Node.js
-        run: |
-          node --version
-          npm --version
-          node -e 'const major = Number(process.versions.node.split(".")[0]); if (major !== Number(process.env.NODE_VERSION)) { throw new Error(`Expected Node ${process.env.NODE_VERSION}, got ${process.version}`); }'
+      - name: Verify Node.js toolchain
+        uses: ./.github/actions/setup-node-toolchain
 
       - name: Prepare architecture workspace
         run: |
@@ -70,8 +68,8 @@ jobs:
           # Phase B: root npm ci installs all workspaces (shared, server, gateway).
           # Per-package npm ci is redundant and broken because workspace deps
           # don't publish to the npm registry. The docs site remains standalone.
-          scripts/ci/retry-command.sh "root npm ci" npm ci --audit=false --fund=false --cache "$ARCH_WORKDIR/.npm-cache/root"
-          scripts/ci/retry-command.sh "docs-site npm ci" npm --prefix docs/site ci --audit=false --fund=false --cache "$ARCH_WORKDIR/.npm-cache/docs-site"
+          scripts/ci/retry-command.sh "root npm ci" npm ci --strict-allow-scripts --audit=false --fund=false --cache "$ARCH_WORKDIR/.npm-cache/root"
+          scripts/ci/retry-command.sh "docs-site npm ci" npm --prefix docs/site ci --strict-allow-scripts --audit=false --fund=false --cache "$ARCH_WORKDIR/.npm-cache/docs-site"
           INNER
 
       - name: Lint diagram click hrefs

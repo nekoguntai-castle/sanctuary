@@ -1,0 +1,159 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "location": "node_modules/@firebase/util",
+      "package": "@firebase/util",
+      "version": "1.15.1",
+      "scripts": { "postinstall": "node ./postinstall.js" },
+      "allowed": false,
+      "optional": false,
+      "owner": "Sanctuary maintainers",
+      "rationale": "Firebase's postinstall compatibility message is not required at runtime.",
+      "reviewOn": "2026-08-31"
+    },
+    {
+      "location": "node_modules/@prisma/engines",
+      "package": "@prisma/engines",
+      "version": "7.8.0",
+      "scripts": { "postinstall": "node scripts/postinstall.js" },
+      "allowed": true,
+      "optional": false,
+      "owner": "Sanctuary maintainers",
+      "rationale": "Prisma must fetch and select the engine binary for the locked platform.",
+      "reviewOn": "2026-08-31"
+    },
+    {
+      "location": "node_modules/@stellar/stellar-sdk",
+      "package": "@stellar/stellar-sdk",
+      "version": "14.2.0",
+      "scripts": { "postinstall": "yarn setup || true" },
+      "allowed": false,
+      "optional": false,
+      "owner": "Sanctuary maintainers",
+      "rationale": "The Stellar SDK setup script is not needed by Sanctuary's browser bundle.",
+      "reviewOn": "2026-08-31"
+    },
+    {
+      "location": "node_modules/blake-hash",
+      "package": "blake-hash",
+      "version": "2.0.0",
+      "scripts": { "install": "node-gyp-build || exit 0" },
+      "allowed": false,
+      "optional": false,
+      "owner": "Sanctuary maintainers",
+      "rationale": "Sanctuary does not require this optional native acceleration path.",
+      "reviewOn": "2026-08-31"
+    },
+    {
+      "location": "node_modules/cbor-extract",
+      "package": "cbor-extract",
+      "version": "2.2.2",
+      "scripts": { "install": "node-gyp-build-optional-packages" },
+      "allowed": false,
+      "optional": true,
+      "owner": "Sanctuary maintainers",
+      "rationale": "CBOR decoding has a supported JavaScript fallback without the optional native package.",
+      "reviewOn": "2026-08-31"
+    },
+    {
+      "location": "node_modules/esbuild",
+      "package": "esbuild",
+      "version": "0.28.1",
+      "scripts": { "postinstall": "node install.js" },
+      "allowed": true,
+      "optional": false,
+      "owner": "Sanctuary maintainers",
+      "rationale": "Esbuild must verify or install the binary matching the locked package and platform.",
+      "reviewOn": "2026-08-31"
+    },
+    {
+      "location": "node_modules/fsevents",
+      "package": "fsevents",
+      "version": "2.3.2",
+      "scripts": { "install": "node-gyp rebuild" },
+      "allowed": false,
+      "optional": true,
+      "owner": "Sanctuary maintainers",
+      "rationale": "The macOS-only watcher optimization is unnecessary in Linux CI and is allowed to fall back locally.",
+      "reviewOn": "2026-08-31"
+    },
+    {
+      "location": "node_modules/msgpackr-extract",
+      "package": "msgpackr-extract",
+      "version": "3.0.4",
+      "scripts": { "install": "node-gyp-build-optional-packages" },
+      "allowed": false,
+      "optional": true,
+      "owner": "Sanctuary maintainers",
+      "rationale": "MessagePack decoding retains its supported JavaScript fallback.",
+      "reviewOn": "2026-08-31"
+    },
+    {
+      "location": "node_modules/prisma",
+      "package": "prisma",
+      "version": "7.8.0",
+      "scripts": { "preinstall": "node scripts/preinstall-entry.js" },
+      "allowed": true,
+      "optional": false,
+      "owner": "Sanctuary maintainers",
+      "rationale": "Prisma's platform compatibility check is required before client generation.",
+      "reviewOn": "2026-08-31"
+    },
+    {
+      "location": "node_modules/protobufjs",
+      "package": "protobufjs",
+      "version": "7.6.5",
+      "scripts": { "postinstall": "node scripts/postinstall" },
+      "allowed": false,
+      "optional": false,
+      "owner": "Sanctuary maintainers",
+      "rationale": "The protobufjs postinstall notice does not affect generated runtime code.",
+      "reviewOn": "2026-08-31"
+    },
+    {
+      "location": "node_modules/tiny-secp256k1",
+      "package": "tiny-secp256k1",
+      "version": "1.1.7",
+      "scripts": { "install": "npm run build || echo \"secp256k1 bindings compilation fail. Pure JS implementation will be used.\"" },
+      "allowed": false,
+      "optional": false,
+      "owner": "Sanctuary maintainers",
+      "rationale": "The package explicitly supports its pure JavaScript implementation when native bindings are absent.",
+      "reviewOn": "2026-08-31"
+    },
+    {
+      "location": "node_modules/tsx/node_modules/fsevents",
+      "package": "fsevents",
+      "version": "2.3.3",
+      "scripts": { "install": "node-gyp rebuild" },
+      "allowed": false,
+      "optional": true,
+      "owner": "Sanctuary maintainers",
+      "rationale": "The macOS-only watcher optimization is unnecessary in Linux CI and is allowed to fall back locally.",
+      "reviewOn": "2026-08-31"
+    },
+    {
+      "location": "node_modules/usb",
+      "package": "usb",
+      "version": "2.18.0",
+      "scripts": { "install": "node-gyp-build" },
+      "allowed": false,
+      "optional": false,
+      "owner": "Sanctuary maintainers",
+      "rationale": "Browser WebUSB integrations do not load the Node native USB binding.",
+      "reviewOn": "2026-08-31"
+    },
+    {
+      "location": "node_modules/vite/node_modules/fsevents",
+      "package": "fsevents",
+      "version": "2.3.3",
+      "scripts": { "install": "node-gyp rebuild" },
+      "allowed": false,
+      "optional": true,
+      "owner": "Sanctuary maintainers",
+      "rationale": "The macOS-only watcher optimization is unnecessary in Linux CI and is allowed to fall back locally.",
+      "reviewOn": "2026-08-31"
+    }
+  ]
+}

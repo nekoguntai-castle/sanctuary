@@ -37,6 +37,7 @@ env:
   GIT_CONFIG_KEY_0: init.defaultBranch
   GIT_CONFIG_VALUE_0: main
   NODE_VERSION: '24'
+  NPM_VERSION: '11.19.0'
   PYTHON_VERSION: '3'
   GITLEAKS_VERSION: '8.30.1'
   SEMGREP_VERSION: '1.161.0'
@@ -250,7 +251,7 @@ jobs:
           install_log="$warning_workdir/npm-ci.log"
           for attempt in 1 2 3; do
             echo "npm deprecation clean install, attempt $attempt"
-            if npm ci --ignore-scripts --audit=false --fund=false --cache "$warning_workdir/.npm-cache" >"$install_log" 2>&1; then
+            if npm ci --strict-allow-scripts --ignore-scripts --audit=false --fund=false --cache "$warning_workdir/.npm-cache" >"$install_log" 2>&1; then
               break
             else
               install_status="$?"
@@ -262,6 +263,7 @@ jobs:
             sleep $((attempt * 10))
           done
           redact_file "$install_log" "$DIAGNOSTIC_DIR/npm-deprecation-install.log"
+          node scripts/ci/check-npm-install-scripts.mjs --verify-installed
           node scripts/ci/check-npm-deprecations.mjs --install-log "$install_log"
           QUALITY_NPM_DEPRECATIONS
 
@@ -654,6 +656,7 @@ jobs:
           bash -n scripts/ci/backend-integration-groups.sh
           bash -n scripts/ci/prepare-integration-db.sh
           node --check scripts/ci/check-integration-db.mjs
+          node --check scripts/ci/check-npm-install-scripts.mjs
           node --check scripts/ci/check-npm-deprecations.mjs
           node --check scripts/quality/check-root-layout.mjs
           bash -n scripts/ci/frontend-coverage-shard.sh
@@ -728,6 +731,7 @@ jobs:
           bash -n tests/ci/workflows-test-only.test.sh
           # Node CI helper tests.
           node tests/ci/check-github-action-runtimes.test.mjs
+          node tests/ci/check-npm-install-scripts.test.mjs
           node tests/ci/check-npm-deprecations.test.mjs
           node tests/ci/check-root-layout.test.mjs
           node tests/ci/docker-compose-test-contract.test.mjs

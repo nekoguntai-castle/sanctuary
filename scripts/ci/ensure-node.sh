@@ -47,8 +47,22 @@ main() {
   local npm_bin="${NPM_BINARY:-npm}"
   command -v "$npm_bin" >/dev/null 2>&1 || fail "npm executable not found: $npm_bin"
 
+  local expected_npm="${SANCTUARY_NPM_VERSION:-${NPM_VERSION:-}}"
+  if [ -z "$expected_npm" ]; then
+    fail 'NPM_VERSION is required'
+  fi
+  if [[ ! "$expected_npm" =~ ^[0-9]+([.][0-9]+){0,2}$ ]]; then
+    fail "NPM_VERSION must be a numeric major, major.minor, or major.minor.patch version"
+  fi
+
+  local actual_npm
+  actual_npm="$("$npm_bin" --version)"
+  if ! version_matches "$expected_npm" "$actual_npm"; then
+    fail "expected npm ${expected_npm}, got ${actual_npm}"
+  fi
+
   echo "Node.js ${actual}"
-  echo "npm $("$npm_bin" --version)"
+  echo "npm ${actual_npm}"
 }
 
 main "$@"

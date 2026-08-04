@@ -52,7 +52,7 @@ run_attempt() {
   if [ "$status" -eq 0 ]; then
     (
       cd "$lint_workdir/repo"
-      npm ci --audit=false --fund=false &&
+      npm ci --strict-allow-scripts --audit=false --fund=false &&
         npm run lint
     ) || status="$?"
   fi

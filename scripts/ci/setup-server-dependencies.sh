@@ -23,7 +23,7 @@ run_setup() {
     cd "$ROOT_DIR"
     "$ROOT_DIR/scripts/ci/retry-command.sh" "root npm ci (workspaces)" \
       "$ROOT_DIR/scripts/ci/time-command.sh" "root npm ci (workspaces)" \
-      npm ci --ignore-scripts
+      npm ci --strict-allow-scripts --ignore-scripts
   else
     echo "setup-server-dependencies: server node_modules cache hit; skipping npm ci"
   fi

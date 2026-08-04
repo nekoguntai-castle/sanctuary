@@ -3,8 +3,22 @@
   "private": true,
   "version": "0.8.58",
   "type": "module",
+  "packageManager": "npm@11.19.0",
   "engines": {
-    "node": ">=24 <25"
+    "node": ">=24 <25",
+    "npm": ">=11.16 <12"
+  },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": ">=24 <25",
+      "onFail": "error"
+    },
+    "packageManager": {
+      "name": "npm",
+      "version": ">=11.16 <12",
+      "onFail": "error"
+    }
   },
   "overrides": {
     "protobufjs": "7.6.5",
@@ -13,6 +27,20 @@
     "hono": "4.12.26",
     "undici": "7.29.0",
     "zod": "4.3.6"
+  },
+  "allowScripts": {
+    "@firebase/util": false,
+    "@prisma/engines@7.8.0": true,
+    "@stellar/stellar-sdk": false,
+    "blake-hash": false,
+    "cbor-extract": false,
+    "esbuild@0.28.1": true,
+    "fsevents": false,
+    "msgpackr-extract": false,
+    "prisma@7.8.0": true,
+    "protobufjs": false,
+    "tiny-secp256k1": false,
+    "usb": false
   },
   "workspaces": [
     "shared",
@@ -72,6 +100,7 @@
     "check:bitcoin-network-boundaries": "node scripts/check-bitcoin-network-boundaries.mjs",
     "check:safety-catch-guards": "node scripts/check-safety-catch-guards.mjs",
     "check:github-action-runtimes": "node scripts/ci/check-github-action-runtimes.mjs",
+    "check:npm-install-scripts": "node scripts/ci/check-npm-install-scripts.mjs",
     "check:architecture-boundaries": "node scripts/check-architecture-boundaries.mjs",
     "check:openapi-route-coverage": "node scripts/check-openapi-route-coverage.mjs",
     "check:semgrep-baseline": "node scripts/quality/check-semgrep-baseline.mjs reports/semgrep/semgrep.json scripts/quality/semgrep-baseline.json",

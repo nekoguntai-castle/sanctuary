@@ -3,6 +3,10 @@
   "private": true,
   "version": "0.0.0",
   "description": "Docusaurus site that renders Sanctuary's curated docs, service architecture pages, and auto-generated dependency graphs.",
+  "allowScripts": {
+    "core-js": false,
+    "fsevents": false
+  },
   "scripts": {
     "start": "docusaurus start",
     "build": "docusaurus build",

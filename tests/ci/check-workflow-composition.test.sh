@@ -1644,9 +1644,98 @@ assert_named_job_step_config_rejected \
 # --- quality workflow diagnostic coverage -----------------------------------
 QUALITY_WORKFLOW="$REPO_ROOT/.github/workflows/quality.yml"
 
+for node_workflow in architecture quality test verify-vectors; do
+  assert_contains_in_order \
+    "$REPO_ROOT/.github/workflows/${node_workflow}.yml" \
+    "${node_workflow} pins an allowScripts-capable npm" \
+    "NODE_VERSION: '24'" \
+    "NPM_VERSION: '11.19.0'"
+done
+
+declare -A strict_install_counts=(
+  [architecture.yml]=2
+  [quality.yml]=1
+  [test.yml]=17
+  [verify-vectors.yml]=4
+)
+for workflow in "${!strict_install_counts[@]}"; do
+  assert_occurrence_count \
+    "$REPO_ROOT/.github/workflows/$workflow" \
+    "$workflow makes every npm ci fail closed on unknown lifecycle scripts" \
+    "--strict-allow-scripts" \
+    "${strict_install_counts[$workflow]}"
+done
+
+npm_ci_sources=(
+  "$REPO_ROOT/.github/workflows/architecture.yml"
+  "$REPO_ROOT/.github/workflows/quality.yml"
+  "$REPO_ROOT/.github/workflows/test.yml"
+  "$REPO_ROOT/.github/workflows/verify-vectors.yml"
+  "$REPO_ROOT/docker/frontend/Dockerfile"
+  "$REPO_ROOT/gateway/Dockerfile"
+  "$REPO_ROOT/server/Dockerfile"
+  "$REPO_ROOT/llm-egress-proxy/Dockerfile"
+  "$REPO_ROOT/scripts/ci/setup-server-dependencies.sh"
+  "$REPO_ROOT/scripts/ci/run-quality-lint.sh"
+  "$REPO_ROOT/scripts/verify-addresses/verify-repeatable.sh"
+)
+unprotected_npm_ci=()
+while IFS=: read -r file line content; do
+  trimmed="${content#"${content%%[![:space:]]*}"}"
+  [[ "$trimmed" == \#* ]] && continue
+  command_content="$(sed -E 's/"[^"]*npm ci[^"]*"//g' <<<"$content")"
+  if ! grep -Eq "npm( --prefix (\"[^\"]+\"|'[^']+'|[^ ]+))? ci" <<<"$command_content"; then
+    continue
+  fi
+  [[ "$content" == *"--strict-allow-scripts"* || "$content" == *"--ignore-scripts"* ]] && continue
+  unprotected_npm_ci+=("$file:$line:$content")
+done < <(rg -n 'npm( --prefix [^ ]+)? ci' "${npm_ci_sources[@]}")
+
+if [ "${#unprotected_npm_ci[@]}" -eq 0 ]; then
+  PASS=$((PASS + 1))
+  echo "PASS: every executable npm ci is strict or lifecycle-disabled"
+else
+  FAIL=$((FAIL + 1))
+  FAILURES+=("unprotected npm ci callsites: ${unprotected_npm_ci[*]}")
+  echo "FAIL: every executable npm ci is strict or lifecycle-disabled" >&2
+fi
+
+assert_contains_in_order \
+  "$REPO_ROOT/.github/actions/setup-node-toolchain/action.yml" \
+  "Node toolchain installs and verifies pinned npm" \
+  'expected="${SANCTUARY_NPM_VERSION:-${NPM_VERSION:-}}"' \
+  'npm install --global --audit=false --fund=false "npm@$expected"' \
+  'scripts/ci/ensure-node.sh'
+
+for dockerfile in docker/frontend/Dockerfile server/Dockerfile gateway/Dockerfile; do
+  assert_contains_in_order \
+    "$REPO_ROOT/$dockerfile" \
+    "$dockerfile pins an allowScripts-capable npm" \
+    "FROM node:24-alpine AS node-toolchain" \
+    "ARG NPM_VERSION=11.19.0" \
+    'npm install --global --audit=false --fund=false "npm@$NPM_VERSION"' \
+    "FROM node-toolchain AS deps" \
+    "FROM node-toolchain AS builder"
+done
+
+for install_path in \
+  docker/frontend/Dockerfile \
+  server/Dockerfile \
+  gateway/Dockerfile \
+  llm-egress-proxy/Dockerfile \
+  scripts/ci/setup-server-dependencies.sh \
+  scripts/ci/run-quality-lint.sh; do
+  assert_occurrence_count \
+    "$REPO_ROOT/$install_path" \
+    "$install_path makes npm ci fail closed on unknown lifecycle scripts" \
+    "--strict-allow-scripts" \
+    1
+done
+
 assert_contains_in_order "$QUALITY_WORKFLOW" \
   "quality frontend Compose contract" \
   "Run CI classifier tests" \
+  "node tests/ci/check-npm-install-scripts.test.mjs" \
   "node tests/ci/check-root-layout.test.mjs" \
   "node tests/ci/docker-compose-test-contract.test.mjs" \
   "node tests/ci/provider-context-node.test.mjs"
@@ -1694,8 +1783,9 @@ assert_contains_in_order "$QUALITY_WORKFLOW" \
   'DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-dependency-audit' \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/npm-deprecations.log"' \
   'source "$source_workspace/scripts/ci/redactor.sh"' \
-  "npm ci --ignore-scripts --audit=false --fund=false" \
+  "npm ci --strict-allow-scripts --ignore-scripts --audit=false --fund=false" \
   'redact_file "$install_log" "$DIAGNOSTIC_DIR/npm-deprecation-install.log"' \
+  "node scripts/ci/check-npm-install-scripts.mjs --verify-installed" \
   "node scripts/ci/check-npm-deprecations.mjs" \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/npm-audit.log"' \
   "node scripts/ci/npm-audit-gate.mjs" \
