@@ -1,0 +1,189 @@
+{
+  "schemaVersion": 1,
+  "updatedOn": "2026-08-04",
+  "note": "Indicators of compromise for npm supply-chain incidents. This list is intentionally data-only: add entries here, never in ioc-sweep.mjs. Seeded from the September 2025 chalk/debug maintainer-account compromise and the Shai-Hulud self-propagating worm. Reconcile against authoritative advisories before treating a clean sweep as complete.",
+  "packages": [
+    {
+      "name": "chalk",
+      "versions": ["5.6.1"],
+      "incident": "npm-2025-09-maintainer-compromise",
+      "reference": "https://github.com/chalk/chalk/issues/656"
+    },
+    {
+      "name": "debug",
+      "versions": ["4.4.2"],
+      "incident": "npm-2025-09-maintainer-compromise",
+      "reference": "https://github.com/debug-js/debug/issues/1005"
+    },
+    {
+      "name": "ansi-styles",
+      "versions": ["6.2.2"],
+      "incident": "npm-2025-09-maintainer-compromise",
+      "reference": "https://github.com/chalk/chalk/issues/656"
+    },
+    {
+      "name": "ansi-regex",
+      "versions": ["6.2.1"],
+      "incident": "npm-2025-09-maintainer-compromise",
+      "reference": "https://github.com/chalk/chalk/issues/656"
+    },
+    {
+      "name": "strip-ansi",
+      "versions": ["7.1.1"],
+      "incident": "npm-2025-09-maintainer-compromise",
+      "reference": "https://github.com/chalk/chalk/issues/656"
+    },
+    {
+      "name": "wrap-ansi",
+      "versions": ["9.0.1"],
+      "incident": "npm-2025-09-maintainer-compromise",
+      "reference": "https://github.com/chalk/chalk/issues/656"
+    },
+    {
+      "name": "slice-ansi",
+      "versions": ["7.1.1"],
+      "incident": "npm-2025-09-maintainer-compromise",
+      "reference": "https://github.com/chalk/chalk/issues/656"
+    },
+    {
+      "name": "supports-color",
+      "versions": ["10.2.1"],
+      "incident": "npm-2025-09-maintainer-compromise",
+      "reference": "https://github.com/chalk/chalk/issues/656"
+    },
+    {
+      "name": "supports-hyperlinks",
+      "versions": ["4.1.1"],
+      "incident": "npm-2025-09-maintainer-compromise",
+      "reference": "https://github.com/chalk/chalk/issues/656"
+    },
+    {
+      "name": "chalk-template",
+      "versions": ["1.1.1"],
+      "incident": "npm-2025-09-maintainer-compromise",
+      "reference": "https://github.com/chalk/chalk/issues/656"
+    },
+    {
+      "name": "color",
+      "versions": ["5.0.1"],
+      "incident": "npm-2025-09-maintainer-compromise",
+      "reference": "https://github.com/chalk/chalk/issues/656"
+    },
+    {
+      "name": "color-convert",
+      "versions": ["3.1.1"],
+      "incident": "npm-2025-09-maintainer-compromise",
+      "reference": "https://github.com/chalk/chalk/issues/656"
+    },
+    {
+      "name": "color-name",
+      "versions": ["2.0.1"],
+      "incident": "npm-2025-09-maintainer-compromise",
+      "reference": "https://github.com/chalk/chalk/issues/656"
+    },
+    {
+      "name": "color-string",
+      "versions": ["2.1.1"],
+      "incident": "npm-2025-09-maintainer-compromise",
+      "reference": "https://github.com/chalk/chalk/issues/656"
+    },
+    {
+      "name": "is-arrayish",
+      "versions": ["0.3.3"],
+      "incident": "npm-2025-09-maintainer-compromise",
+      "reference": "https://github.com/chalk/chalk/issues/656"
+    },
+    {
+      "name": "simple-swizzle",
+      "versions": ["0.2.3"],
+      "incident": "npm-2025-09-maintainer-compromise",
+      "reference": "https://github.com/chalk/chalk/issues/656"
+    },
+    {
+      "name": "error-ex",
+      "versions": ["1.3.3"],
+      "incident": "npm-2025-09-maintainer-compromise",
+      "reference": "https://github.com/chalk/chalk/issues/656"
+    },
+    {
+      "name": "has-ansi",
+      "versions": ["6.0.1"],
+      "incident": "npm-2025-09-maintainer-compromise",
+      "reference": "https://github.com/chalk/chalk/issues/656"
+    },
+    {
+      "name": "backslash",
+      "versions": ["0.2.1"],
+      "incident": "npm-2025-09-maintainer-compromise",
+      "reference": "https://github.com/chalk/chalk/issues/656"
+    }
+  ],
+  "scriptPatterns": [
+    {
+      "id": "curl-pipe-shell",
+      "pattern": "(curl|wget)[^\\n]{0,120}\\|[^\\n]{0,20}(sh|bash|node)\\b",
+      "description": "Install hook downloading and directly executing remote content."
+    },
+    {
+      "id": "base64-eval",
+      "pattern": "eval\\s*\\(\\s*(atob|Buffer\\.from)\\s*\\(",
+      "description": "Install hook evaluating base64-decoded content."
+    },
+    {
+      "id": "child-process-spawn-remote",
+      "pattern": "child_process[^\\n]{0,80}(curl|wget|Invoke-WebRequest)",
+      "description": "Install hook shelling out to a network fetch."
+    },
+    {
+      "id": "trufflehog-credential-scan",
+      "pattern": "trufflehog",
+      "description": "Shai-Hulud used TruffleHog to harvest credentials from the host."
+    }
+  ],
+  "networkIndicators": [
+    {
+      "id": "shai-hulud-webhook",
+      "value": "webhook.site/bb8ca5f6-4175-45d2-b042-fc9ebb8170b7",
+      "description": "Shai-Hulud exfiltration endpoint."
+    },
+    {
+      "id": "webhook-site-generic",
+      "value": "webhook.site",
+      "description": "Generic request-bin host; never legitimate in a dependency install hook."
+    },
+    {
+      "id": "npmjs-help-typosquat",
+      "value": "npmjs.help",
+      "description": "Phishing domain used to harvest npm maintainer credentials."
+    }
+  ],
+  "fileIndicators": [
+    {
+      "id": "shai-hulud-workflow",
+      "path": ".github/workflows/shai-hulud-workflow.yml",
+      "description": "Workflow planted by the Shai-Hulud worm to exfiltrate repository secrets."
+    },
+    {
+      "id": "shai-hulud-bundle",
+      "path": "node_modules/.package-lock-bundle.js",
+      "description": "Staging payload observed alongside Shai-Hulud installs."
+    }
+  ],
+  "hookIndicators": [
+    {
+      "id": "claude-settings",
+      "path": ".claude/settings.json",
+      "description": "Claude Code hook configuration; hooks execute shell on tool events."
+    },
+    {
+      "id": "claude-settings-local",
+      "path": ".claude/settings.local.json",
+      "description": "Local Claude Code hook overrides."
+    },
+    {
+      "id": "vscode-tasks",
+      "path": ".vscode/tasks.json",
+      "description": "VS Code tasks can auto-run on folder open."
+    }
+  ]
+}
