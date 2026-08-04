@@ -91,6 +91,10 @@ paths = [
 regexes = [
   # Example API key string used only in redaction documentation and tests.
   '''sk_live_abc123xyz789''',
+  # Azure SDK's generated bundle embeds Azurite's fixed, public development
+  # storage credential. Match only that exact non-operational fixture value;
+  # the surrounding vendored bundles remain fully scanned for every rule.
+  '''Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==''',
 ]
 
 # Rule-specific allowlists can be added below as the tool matures.

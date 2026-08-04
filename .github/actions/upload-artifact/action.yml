@@ -1,8 +1,7 @@
 name: 'Upload artifact'
 description: >-
-  Provider-aware wrapper around the artifact-upload action. The inner `uses:`
-  is currently pinned to the Forgejo artifact action because the workflows
-  run on Forgejo Actions today.
+  Provider-aware wrapper around the repository-vendored Forgejo artifact
+  uploader used by the Forgejo Actions workflows.
 
   Porting back to GitHub Actions: change the inner `uses:` below to
   `actions/upload-artifact@v4` (one edit; every workflow callsite goes
@@ -11,11 +10,12 @@ description: >-
   composite keeps the swap cost at one file.
 
   Forgejo 16 only supports its patched v4 artifact protocol. A live v6 canary
-  on PR #642 reached blob upload but was rejected as unauthorized. Keep this
-  exact v4 compatibility pin until Forgejo documents support for v6; do not
-  replace the remaining Node 20 runtime exception with warning suppression.
+  on PR #642 reached blob upload but was rejected as unauthorized. The local
+  vendored action retains the exact proven v4 protocol while rebuilding its
+  runtime for Node 24 and replacing deprecated internals. Its provenance and
+  reproducible patch/build contract live under scripts/ci/vendor.
 
-  See also: tests/ci/check-provider-leaks.sh (Phase 7) which gates against
+  See also: scripts/ci/check-provider-leaks.sh (Phase 7) which gates against
   re-introducing raw `uses: https://data.forgejo.org/...` lines outside of
   this directory.
 inputs:
@@ -53,7 +53,7 @@ runs:
   steps:
     - name: Upload artifact
       id: upload
-      uses: https://data.forgejo.org/forgejo/upload-artifact@16871d9e8cfcf27ff31822cac382bbb5450f1e1e
+      uses: ./.github/actions/vendor/forgejo-artifact-v4/upload
       with:
         name: ${{ inputs.name }}
         path: ${{ inputs.path }}

@@ -52,6 +52,11 @@ allow_file_path() {
     # Composite actions are the integration boundary
     .github/actions/*/action.yml)
       return 0 ;;
+    # The reviewed Forgejo artifact actions are vendored local JavaScript
+    # actions. Their generated bundles legitimately consume the provider
+    # action environment at this same integration boundary.
+    .github/actions/vendor/forgejo-artifact-v4/*)
+      return 0 ;;
     # The isolated-workspace bridge intentionally re-exports GITHUB_WORKSPACE
     # so downstream Sanctuary scripts and any external composite actions see
     # the per-job clone path. That export IS the abstraction boundary.
@@ -70,6 +75,8 @@ allow_file_path() {
     # The leak gate itself encodes the pattern strings it searches for
     scripts/ci/check-provider-leaks.sh)
       return 0 ;;
+    scripts/ci/vendor/forgejo-artifact-v4/*)
+      return 0 ;;
     # Install-test subsystem has its own classify-install-scope contract and
     # workspace-detection helpers; carved out from this gate. (See
     # tests/install/utils/classify-install-scope.sh.)
@@ -85,9 +92,13 @@ allow_workflow_url() {
   case "$p" in
     .github/actions/upload-artifact/action.yml|.github/actions/download-artifact/action.yml)
       return 0 ;;
+    .github/actions/vendor/forgejo-artifact-v4/*)
+      return 0 ;;
     scripts/ci/check-github-action-runtimes.mjs|tests/ci/check-github-action-runtimes.test.mjs)
       return 0 ;;
     scripts/ci/check-provider-leaks.sh)
+      return 0 ;;
+    scripts/ci/vendor/forgejo-artifact-v4/*)
       return 0 ;;
     *.md|*.mdx)
       return 0 ;;

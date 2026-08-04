@@ -1,15 +1,15 @@
 name: 'Download artifact'
 description: >-
-  Provider-aware wrapper around the artifact-download action. The inner
-  `uses:` is currently pinned to the Forgejo artifact action because the
-  workflows run on Forgejo Actions today.
+  Provider-aware wrapper around the repository-vendored Forgejo artifact
+  downloader used by the Forgejo Actions workflows.
 
   Porting back to GitHub Actions: change the inner `uses:` below to
   `actions/download-artifact@v4`.
 
   Forgejo 16 only supports its patched v4 artifact protocol. The paired v7
-  canary is blocked by the v6 upload incompatibility recorded on PR #642. Keep
-  this exact v4 compatibility pin until Forgejo documents newer support.
+  canary is blocked by the v6 upload incompatibility recorded on PR #642. The
+  local vendored action retains the exact proven v4 protocol while rebuilding
+  its runtime for Node 24 and replacing deprecated internals.
 inputs:
   name:
     description: 'Artifact name. Omit to download all artifacts.'
@@ -36,7 +36,7 @@ runs:
   steps:
     - name: Download artifact
       id: download
-      uses: https://data.forgejo.org/forgejo/download-artifact@d8d0a99033603453ad2255e58720b460a0555e1e
+      uses: ./.github/actions/vendor/forgejo-artifact-v4/download
       with:
         name: ${{ inputs.name }}
         path: ${{ inputs.path }}

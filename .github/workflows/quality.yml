@@ -649,6 +649,7 @@ jobs:
           bash -n scripts/ci/plan-test-run.sh
           bash -n scripts/ci/run-lane.sh
           bash -n scripts/ci/check-provider-leaks.sh
+          bash -n scripts/ci/vendor/forgejo-artifact-v4/build.sh
           bash -n scripts/ci/classify-test-changes.sh
           bash -n scripts/ci/classify-docker-build-images.sh
           bash -n scripts/ci/classify-quality-scope.sh
@@ -658,6 +659,10 @@ jobs:
           node --check scripts/ci/check-integration-db.mjs
           node --check scripts/ci/check-npm-install-scripts.mjs
           node --check scripts/ci/check-npm-deprecations.mjs
+          node --check scripts/ci/vendor/forgejo-artifact-v4/patch-dependencies.mjs
+          node --check scripts/ci/vendor/forgejo-artifact-v4/validate-patched-dependencies.mjs
+          node --check scripts/ci/vendor/forgejo-artifact-v4/verify-vendor.mjs
+          node --check scripts/ci/vendor/forgejo-artifact-v4/write-provenance.mjs
           node --check scripts/quality/check-root-layout.mjs
           bash -n scripts/ci/frontend-coverage-shard.sh
           bash -n scripts/ci/frontend-coverage-merge.sh

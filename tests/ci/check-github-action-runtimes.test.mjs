@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -6,8 +7,10 @@ import { fileURLToPath } from 'node:url';
 import { checkActionRuntimes } from '../../scripts/ci/check-github-action-runtimes.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const UPLOAD_ARTIFACT_SHA = '16871d9e8cfcf27ff31822cac382bbb5450f1e1e';
-const DOWNLOAD_ARTIFACT_SHA = 'd8d0a99033603453ad2255e58720b460a0555e1e';
+const VENDORED_UPLOAD_ACTION = './.github/actions/vendor/forgejo-artifact-v4/upload';
+const VENDORED_DOWNLOAD_ACTION = './.github/actions/vendor/forgejo-artifact-v4/download';
+const VENDORED_UPLOAD_SHA = '16871d9e8cfcf27ff31822cac382bbb5450f1e1e';
+const VENDORED_DOWNLOAD_SHA = 'd8d0a99033603453ad2255e58720b460a0555e1e';
 
 function writeFile(filePath, content) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -66,13 +69,11 @@ function assertArtifactWrapperContract() {
 
   assert.match(
     upload,
-    new RegExp(`uses: https://data\\.forgejo\\.org/forgejo/upload-artifact@${UPLOAD_ARTIFACT_SHA}`),
+    /uses: \.\/\.github\/actions\/vendor\/forgejo-artifact-v4\/upload/,
   );
   assert.match(
     download,
-    new RegExp(
-      `uses: https://data\\.forgejo\\.org/forgejo/download-artifact@${DOWNLOAD_ARTIFACT_SHA}`,
-    ),
+    /uses: \.\/\.github\/actions\/vendor\/forgejo-artifact-v4\/download/,
   );
   assert.deepEqual(topLevelSectionKeys(upload, 'inputs'), [
     'name',
@@ -101,6 +102,117 @@ function assertArtifactWrapperContract() {
     );
   }
   assert.match(download, /value: \$\{\{ steps\.download\.outputs\.download-path \}\}/);
+}
+
+function assertVendoredArtifactRuntimeContract() {
+  for (const [label, actionPath] of [
+    ['upload', VENDORED_UPLOAD_ACTION],
+    ['download', VENDORED_DOWNLOAD_ACTION],
+  ]) {
+    const manifestPath = path.join(REPO_ROOT, actionPath, 'action.yml');
+    const manifest = fs.readFileSync(manifestPath, 'utf8');
+
+    assert.match(manifest, /^\s*using:\s*['"]?node24['"]?\s*$/m, `${label} must use node24`);
+    const bundlePath = label === 'upload' ? 'dist/upload/index.js' : 'dist/index.js';
+    const escapedBundlePath = bundlePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    assert.match(
+      manifest,
+      new RegExp(`^\\s*main:\\s*['"]?${escapedBundlePath}['"]?\\s*$`, 'm'),
+      `${label} must execute its reviewed vendored bundle`,
+    );
+  }
+
+  const vendorRoot = path.join(REPO_ROOT, '.github/actions/vendor/forgejo-artifact-v4');
+  const provenance = JSON.parse(fs.readFileSync(path.join(vendorRoot, 'provenance.json'), 'utf8'));
+  assert.equal(provenance.runtime, 'node24');
+  assert.equal(provenance.protocol, 'Forgejo patched artifact v4');
+  assert.equal(provenance.upstream.upload.commit, VENDORED_UPLOAD_SHA);
+  assert.equal(provenance.upstream.download.commit, VENDORED_DOWNLOAD_SHA);
+
+  for (const relativePath of Object.keys(provenance.files)) {
+    const trackedPath = path.posix.join(
+      '.github/actions/vendor/forgejo-artifact-v4',
+      relativePath,
+    );
+    const tracked = spawnSync('git', ['ls-files', '--error-unmatch', trackedPath], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+    });
+    assert.equal(tracked.status, 0, `vendored provenance file is not tracked: ${trackedPath}`);
+  }
+
+  const verification = spawnSync(
+    process.execPath,
+    [path.join(REPO_ROOT, 'scripts/ci/vendor/forgejo-artifact-v4/verify-vendor.mjs'), vendorRoot],
+    { encoding: 'utf8' },
+  );
+  assert.equal(
+    verification.status,
+    0,
+    `vendor provenance verification failed:\n${verification.stdout}${verification.stderr}`,
+  );
+}
+
+function runVendoredUploadFixture(searchPath, includeHiddenFiles) {
+  const bundlePath = path.join(
+    REPO_ROOT,
+    VENDORED_UPLOAD_ACTION,
+    'dist/upload/index.js',
+  );
+  const env = {
+    ...process.env,
+    NODE_OPTIONS: '--throw-deprecation',
+    INPUT_NAME: 'hidden-file-contract-fixture',
+    INPUT_PATH: searchPath,
+    'INPUT_IF-NO-FILES-FOUND': 'ignore',
+    'INPUT_RETENTION-DAYS': '',
+    'INPUT_COMPRESSION-LEVEL': '6',
+    INPUT_OVERWRITE: 'false',
+    'INPUT_INCLUDE-HIDDEN-FILES': String(includeHiddenFiles),
+  };
+  for (const secretName of [
+    'ACTIONS_RUNTIME_TOKEN',
+    'ACTIONS_RUNTIME_URL',
+    'ACTIONS_RESULTS_URL',
+    'GITHUB_TOKEN',
+  ]) {
+    delete env[secretName];
+  }
+
+  return spawnSync(process.execPath, [bundlePath], { encoding: 'utf8', env });
+}
+
+function assertVendoredUploadHiddenFileContract() {
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'artifact-hidden-contract-'));
+  const explicitHiddenFile = path.join(fixtureRoot, '.explicit-hidden.txt');
+  writeFile(path.join(fixtureRoot, 'visible.txt'), 'visible');
+  writeFile(explicitHiddenFile, 'hidden');
+  writeFile(path.join(fixtureRoot, 'nested/visible.txt'), 'visible');
+  writeFile(path.join(fixtureRoot, 'nested/.hidden-file.txt'), 'hidden');
+  writeFile(path.join(fixtureRoot, 'nested/.hidden-directory/secret.txt'), 'hidden');
+
+  try {
+    for (const [searchPath, includeHiddenFiles, expectedCount, expectedStatus] of [
+      [fixtureRoot, false, 2, 1],
+      [fixtureRoot, true, 5, 1],
+      [explicitHiddenFile, false, 0, 0],
+      [explicitHiddenFile, true, 1, 1],
+    ]) {
+      const result = runVendoredUploadFixture(searchPath, includeHiddenFiles);
+      const output = `${result.stdout}${result.stderr}`;
+      assert.equal(result.status, expectedStatus, output);
+      assert.doesNotMatch(output, /DeprecationWarning|DEP0040|DEP0169|DEP0005/);
+      assert.doesNotMatch(output, /GHESNotSupported|not currently supported on GHES/);
+      if (expectedCount === 0) {
+        assert.match(output, /No files were found/);
+      } else {
+        assert.match(output, new RegExp(`there will be ${expectedCount} files? uploaded`));
+        assert.match(output, /ACTIONS_(?:RUNTIME_TOKEN|RESULTS_URL)/);
+      }
+    }
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
 }
 
 async function runFixture(workflowContent, configure = () => {}, runtimeOptions = {}) {
@@ -171,63 +283,6 @@ jobs:
   assert.equal(result.findings[0].runtime, 'node20');
   assert.match(result.findings[0].chain, /runtime-check\.yml:8/);
   assert.match(result.findings[0].chain, /actions\/bad@v1/);
-}
-
-async function assertAllowsInspectedForgejoArtifactCompatibilityRuntime() {
-  const spec = `https://data.forgejo.org/forgejo/upload-artifact@${UPLOAD_ARTIFACT_SHA}`;
-  const result = await runFixture(
-    `
-name: Runtime Check
-on: pull_request
-jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: ${spec}
-`,
-    (_rootDir, manifestRoot) => {
-      writeRemoteAction(
-        manifestRoot,
-        `forgejo/upload-artifact@${UPLOAD_ARTIFACT_SHA}`,
-        "name: upload\nruns:\n  using: node20\n  main: dist/upload/index.js\n",
-      );
-    },
-  );
-
-  assert.equal(result.errors.length, 0);
-  assert.equal(result.findings.length, 0);
-  assert.deepEqual(result.runtimeExceptions, [{ runtime: 'node20', spec }]);
-  assert.equal(result.checkedManifests, 1);
-}
-
-async function assertBlocksUnexpectedRuntimeAtForgejoArtifactCompatibilityPin() {
-  const spec = `https://data.forgejo.org/forgejo/upload-artifact@${UPLOAD_ARTIFACT_SHA}`;
-
-  for (const runtime of ['node12', 'node16']) {
-    const result = await runFixture(
-      `
-name: Runtime Check
-on: pull_request
-jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: ${spec}
-`,
-      (_rootDir, manifestRoot) => {
-        writeRemoteAction(
-          manifestRoot,
-          `forgejo/upload-artifact@${UPLOAD_ARTIFACT_SHA}`,
-          `name: upload\nruns:\n  using: ${runtime}\n  main: dist/upload/index.js\n`,
-        );
-      },
-    );
-
-    assert.equal(result.errors.length, 0);
-    assert.equal(result.findings.length, 1);
-    assert.equal(result.findings[0].runtime, runtime);
-    assert.deepEqual(result.runtimeExceptions, []);
-  }
 }
 
 async function assertBlocksFloatingForgejoActionRef() {
@@ -839,8 +894,6 @@ jobs: {}
 
 await assertAllowsModernActions();
 await assertBlocksDirectDeprecatedRuntime();
-await assertAllowsInspectedForgejoArtifactCompatibilityRuntime();
-await assertBlocksUnexpectedRuntimeAtForgejoArtifactCompatibilityPin();
 await assertBlocksFloatingForgejoActionRef();
 await assertBlocksPinnedForgejoDeprecatedRuntime();
 await assertBlocksCompositeNestedDeprecatedRuntime();
@@ -860,4 +913,6 @@ await assertBlocksRenamedTestSuiteWorkflow();
 await assertBlocksBackendIntegrationMatrix();
 await assertAllowsRealFullTestSummaryGate();
 assertArtifactWrapperContract();
+assertVendoredArtifactRuntimeContract();
+assertVendoredUploadHiddenFileContract();
 console.log('github action runtime guard regression checks passed');

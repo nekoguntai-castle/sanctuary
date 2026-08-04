@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "runtime": "node24",
+  "protocol": "Forgejo patched artifact v4",
+  "forgejoCompatibilityBoundary": "disable upstream GHES rejection and use the Forgejo-provided results service",
+  "protocolDependencies": {
+    "@azure/storage-blob": "12.17.0",
+    "node-fetch": {
+      "upload": "2.7.0",
+      "download": "2.6.12"
+    },
+    "unzip-stream": "0.3.1",
+    "punycode": {
+      "upload": "2.1.1",
+      "download": "2.3.1"
+    },
+    "@vercel/ncc": {
+      "upload": "0.36.0",
+      "download": "0.33.4"
+    }
+  },
+  "upstream": {
+    "upload": {
+      "repository": "https://data.forgejo.org/forgejo/upload-artifact",
+      "commit": "16871d9e8cfcf27ff31822cac382bbb5450f1e1e",
+      "archiveSha256": "6383687c4832a4f77bb28dea05b3b0d8fc636b3d572416fad630d436cf125df1",
+      "artifactPackageVersion": "2.1.1"
+    },
+    "download": {
+      "repository": "https://data.forgejo.org/forgejo/download-artifact",
+      "commit": "d8d0a99033603453ad2255e58720b460a0555e1e",
+      "archiveSha256": "85011bcbcd2bfac17da6c593a40600ee7e66fce6b69264e7f392ad7319779f02",
+      "artifactPackageVersion": "2.1.4"
+    }
+  },
+  "files": {
+    "download/LICENSE": "3e855ffa704114a51628ef8f0bf3aeb41728adf9d9070e263bf58aa5640b0eb5",
+    "download/action.yml": "4e84b9a7e2aa2ddc3b9e6392b5e2a6a5cd64d9847110b10ce9bf1e37809f0a17",
+    "download/dist/index.js": "53d3af4d152d62e7f8d53cc3e1776755c1339166a2d02e6e2c621a75d86547b9",
+    "download/dist/licenses.txt": "d329d6f99d9fd841c3ee4415a6f35a92d2f697c14c39e1dc9f1efde18720550e",
+    "package.json": "a51bff776fdd53226e2e67d8f654d17dadfe3decc8bf8bf869cba3aff9813826",
+    "upload/LICENSE": "3e855ffa704114a51628ef8f0bf3aeb41728adf9d9070e263bf58aa5640b0eb5",
+    "upload/action.yml": "03184a8950bd63530ca4b4c91f6628003ca742d5c54bc5890d8c090e97014b92",
+    "upload/dist/upload/index.js": "fc9d516f51d543424f90fad3c98c4350e9dc04c3078bc18719bbe78c167de852",
+    "upload/dist/upload/licenses.txt": "f36dfd69a0e38cd9ce5b01b4d890f4c459ad83a8ab3b2a5870710f20a9a3ce35"
+  }
+}

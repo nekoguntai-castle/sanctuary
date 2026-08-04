@@ -99,7 +99,7 @@
     "check:browser-auth-contract": "node scripts/check-browser-auth-contract.mjs",
     "check:bitcoin-network-boundaries": "node scripts/check-bitcoin-network-boundaries.mjs",
     "check:safety-catch-guards": "node scripts/check-safety-catch-guards.mjs",
-    "check:github-action-runtimes": "node scripts/ci/check-github-action-runtimes.mjs",
+    "check:github-action-runtimes": "node scripts/ci/check-github-action-runtimes.mjs && node scripts/ci/vendor/forgejo-artifact-v4/verify-vendor.mjs .github/actions/vendor/forgejo-artifact-v4",
     "check:npm-install-scripts": "node scripts/ci/check-npm-install-scripts.mjs",
     "check:architecture-boundaries": "node scripts/check-architecture-boundaries.mjs",
     "check:openapi-route-coverage": "node scripts/check-openapi-route-coverage.mjs",
