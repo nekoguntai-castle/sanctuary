@@ -7,7 +7,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Hoist mutable state
-const { mockSend, mockSendEachForMulticast, mockMessaging, mockCert, mockInitializeApp, mockLogger, mockConfigRef } = vi.hoisted(() => {
+const { mockApp, mockSend, mockSendEachForMulticast, mockMessaging, mockCert, mockInitializeApp, mockLogger, mockConfigRef } = vi.hoisted(() => {
+  const mockApp = { name: 'mock-app' };
   const mockSend = vi.fn();
   const mockSendEachForMulticast = vi.fn();
   const mockMessaging = vi.fn(() => ({
@@ -15,7 +16,7 @@ const { mockSend, mockSendEachForMulticast, mockMessaging, mockCert, mockInitial
     sendEachForMulticast: mockSendEachForMulticast,
   }));
   const mockCert = vi.fn(() => 'mock-credential');
-  const mockInitializeApp = vi.fn();
+  const mockInitializeApp = vi.fn(() => mockApp);
   const mockLogger = {
     info: vi.fn(),
     error: vi.fn(),
@@ -31,17 +32,16 @@ const { mockSend, mockSendEachForMulticast, mockMessaging, mockCert, mockInitial
       },
     },
   };
-  return { mockSend, mockSendEachForMulticast, mockMessaging, mockCert, mockInitializeApp, mockLogger, mockConfigRef };
+  return { mockApp, mockSend, mockSendEachForMulticast, mockMessaging, mockCert, mockInitializeApp, mockLogger, mockConfigRef };
 });
 
-vi.mock('firebase-admin', () => ({
-  default: {
-    credential: {
-      cert: mockCert,
-    },
-    initializeApp: mockInitializeApp,
-    messaging: mockMessaging,
-  },
+vi.mock('firebase-admin/app', () => ({
+  cert: mockCert,
+  initializeApp: mockInitializeApp,
+}));
+
+vi.mock('firebase-admin/messaging', () => ({
+  getMessaging: mockMessaging,
 }));
 
 vi.mock('../../../../src/utils/logger', () => ({
@@ -81,6 +81,7 @@ describe('FCM Service', () => {
 
       expect(result).toBe(true);
       expect(mockInitializeApp).toHaveBeenCalled();
+      expect(mockMessaging).toHaveBeenCalledWith(mockApp);
       expect(mockCert).toHaveBeenCalledWith({
         projectId: 'test-project',
         privateKey: '-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----',

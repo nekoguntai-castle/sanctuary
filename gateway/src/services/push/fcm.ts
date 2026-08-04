@@ -4,19 +4,25 @@
  * Sends push notifications to Android devices.
  */
 
-import admin from 'firebase-admin';
+import { cert, initializeApp, type FirebaseError } from 'firebase-admin/app';
+import {
+  getMessaging,
+  type Message,
+  type Messaging,
+  type MulticastMessage,
+} from 'firebase-admin/messaging';
 import { config } from '../../config';
 import { createLogger } from '../../utils/logger';
 
 const log = createLogger('FCM');
 
-let fcmInitialized = false;
+let messaging: Messaging | undefined;
 
 /**
  * Initialize Firebase Admin SDK
  */
 export function initializeFCM(): boolean {
-  if (fcmInitialized) return true;
+  if (messaging) return true;
 
   if (!config.fcm.projectId || !config.fcm.privateKey || !config.fcm.clientEmail) {
     log.warn('FCM not configured - Android push notifications disabled');
@@ -24,14 +30,14 @@ export function initializeFCM(): boolean {
   }
 
   try {
-    admin.initializeApp({
-      credential: admin.credential.cert({
+    const app = initializeApp({
+      credential: cert({
         projectId: config.fcm.projectId,
         privateKey: config.fcm.privateKey,
         clientEmail: config.fcm.clientEmail,
       }),
     });
-    fcmInitialized = true;
+    messaging = getMessaging(app);
     log.info('FCM initialized successfully');
     return true;
   } catch (err) {
@@ -44,7 +50,7 @@ export function initializeFCM(): boolean {
  * Check if FCM is available
  */
 export function isFCMAvailable(): boolean {
-  return fcmInitialized;
+  return messaging !== undefined;
 }
 
 export interface FCMNotification {
@@ -60,12 +66,13 @@ export async function sendToDevice(
   pushToken: string,
   notification: FCMNotification
 ): Promise<{ success: boolean; error?: string }> {
-  if (!fcmInitialized) {
+  const client = messaging;
+  if (!client) {
     return { success: false, error: 'FCM not initialized' };
   }
 
   try {
-    const message: admin.messaging.Message = {
+    const message: Message = {
       token: pushToken,
       notification: {
         title: notification.title,
@@ -83,11 +90,11 @@ export async function sendToDevice(
       },
     };
 
-    const response = await admin.messaging().send(message);
+    const response = await client.send(message);
     log.debug('FCM notification sent', { messageId: response });
     return { success: true };
   } catch (err) {
-    const error = err as admin.FirebaseError;
+    const error = err as FirebaseError;
     log.error('FCM send error', { error: error.message, code: error.code });
 
     // Handle invalid/expired tokens
@@ -109,7 +116,8 @@ export async function sendToDevices(
   pushTokens: string[],
   notification: FCMNotification
 ): Promise<{ success: number; failed: number; invalidTokens: string[] }> {
-  if (!fcmInitialized) {
+  const client = messaging;
+  if (!client) {
     return { success: 0, failed: pushTokens.length, invalidTokens: [] };
   }
 
@@ -118,7 +126,7 @@ export async function sendToDevices(
   }
 
   try {
-    const message: admin.messaging.MulticastMessage = {
+    const message: MulticastMessage = {
       tokens: pushTokens,
       notification: {
         title: notification.title,
@@ -136,7 +144,7 @@ export async function sendToDevices(
       },
     };
 
-    const response = await admin.messaging().sendEachForMulticast(message);
+    const response = await client.sendEachForMulticast(message);
 
     const invalidTokens: string[] = [];
     response.responses.forEach((resp, idx) => {

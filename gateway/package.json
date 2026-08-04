@@ -23,16 +23,16 @@
   },
   "dependencies": {
     "@parse/node-apn": "^8.0.0",
+    "@sanctuary/shared": "*",
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "express-rate-limit": "^8.3.2",
-    "firebase-admin": "^13.7.0",
+    "firebase-admin": "^14.2.0",
     "helmet": "^8.1.0",
     "http-proxy-middleware": "^3.0.7",
     "jsonwebtoken": "^9.0.2",
     "ws": "^8.21.0",
-    "zod": "^4.3.4",
-    "@sanctuary/shared": "*"
+    "zod": "^4.3.4"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
