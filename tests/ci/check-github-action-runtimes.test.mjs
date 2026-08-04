@@ -2,7 +2,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { checkActionRuntimes } from '../../scripts/ci/check-github-action-runtimes.mjs';
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const UPLOAD_ARTIFACT_SHA = '16871d9e8cfcf27ff31822cac382bbb5450f1e1e';
+const DOWNLOAD_ARTIFACT_SHA = 'd8d0a99033603453ad2255e58720b460a0555e1e';
 
 function writeFile(filePath, content) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -29,6 +34,73 @@ function writeRemoteAction(manifestRoot, spec, content) {
     path.join(manifestRoot, owner, repo, encodeURIComponent(ref), ...actionPath, 'action.yml'),
     content,
   );
+}
+
+function topLevelSectionKeys(source, section) {
+  const lines = source.split(/\r?\n/);
+  const start = lines.findIndex((line) => line === `${section}:`);
+  assert.notEqual(start, -1, `missing ${section} section`);
+
+  const keys = [];
+  for (const line of lines.slice(start + 1)) {
+    if (/^[^ ]/.test(line)) {
+      break;
+    }
+    const match = line.match(/^  ([a-z0-9-]+):/);
+    if (match) {
+      keys.push(match[1]);
+    }
+  }
+  return keys;
+}
+
+function assertArtifactWrapperContract() {
+  const upload = fs.readFileSync(
+    path.join(REPO_ROOT, '.github/actions/upload-artifact/action.yml'),
+    'utf8',
+  );
+  const download = fs.readFileSync(
+    path.join(REPO_ROOT, '.github/actions/download-artifact/action.yml'),
+    'utf8',
+  );
+
+  assert.match(
+    upload,
+    new RegExp(`uses: https://data\\.forgejo\\.org/forgejo/upload-artifact@${UPLOAD_ARTIFACT_SHA}`),
+  );
+  assert.match(
+    download,
+    new RegExp(
+      `uses: https://data\\.forgejo\\.org/forgejo/download-artifact@${DOWNLOAD_ARTIFACT_SHA}`,
+    ),
+  );
+  assert.deepEqual(topLevelSectionKeys(upload, 'inputs'), [
+    'name',
+    'path',
+    'retention-days',
+    'if-no-files-found',
+    'overwrite',
+    'include-hidden-files',
+  ]);
+  assert.deepEqual(topLevelSectionKeys(upload, 'outputs'), [
+    'artifact-id',
+    'artifact-url',
+  ]);
+  assert.deepEqual(topLevelSectionKeys(download, 'inputs'), [
+    'name',
+    'path',
+    'pattern',
+    'merge-multiple',
+  ]);
+  assert.deepEqual(topLevelSectionKeys(download, 'outputs'), ['download-path']);
+
+  for (const output of ['artifact-id', 'artifact-url']) {
+    assert.match(
+      upload,
+      new RegExp('value: \\$\\{\\{ steps\\.upload\\.outputs\\.' + output + ' \\}\\}'),
+    );
+  }
+  assert.match(download, /value: \$\{\{ steps\.download\.outputs\.download-path \}\}/);
 }
 
 async function runFixture(workflowContent, configure = () => {}, runtimeOptions = {}) {
@@ -101,7 +173,8 @@ jobs:
   assert.match(result.findings[0].chain, /actions\/bad@v1/);
 }
 
-async function assertAllowsForgejoArtifactFallback() {
+async function assertAllowsInspectedForgejoArtifactCompatibilityRuntime() {
+  const spec = `https://data.forgejo.org/forgejo/upload-artifact@${UPLOAD_ARTIFACT_SHA}`;
   const result = await runFixture(
     `
 name: Runtime Check
@@ -110,16 +183,54 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+      - uses: ${spec}
 `,
+    (_rootDir, manifestRoot) => {
+      writeRemoteAction(
+        manifestRoot,
+        `forgejo/upload-artifact@${UPLOAD_ARTIFACT_SHA}`,
+        "name: upload\nruns:\n  using: node20\n  main: dist/upload/index.js\n",
+      );
+    },
   );
 
   assert.equal(result.errors.length, 0);
   assert.equal(result.findings.length, 0);
-  assert.equal(result.checkedManifests, 0);
+  assert.deepEqual(result.runtimeExceptions, [{ runtime: 'node20', spec }]);
+  assert.equal(result.checkedManifests, 1);
 }
 
-async function assertCustomAllowlistCanBeTightened() {
+async function assertBlocksUnexpectedRuntimeAtForgejoArtifactCompatibilityPin() {
+  const spec = `https://data.forgejo.org/forgejo/upload-artifact@${UPLOAD_ARTIFACT_SHA}`;
+
+  for (const runtime of ['node12', 'node16']) {
+    const result = await runFixture(
+      `
+name: Runtime Check
+on: pull_request
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ${spec}
+`,
+      (_rootDir, manifestRoot) => {
+        writeRemoteAction(
+          manifestRoot,
+          `forgejo/upload-artifact@${UPLOAD_ARTIFACT_SHA}`,
+          `name: upload\nruns:\n  using: ${runtime}\n  main: dist/upload/index.js\n`,
+        );
+      },
+    );
+
+    assert.equal(result.errors.length, 0);
+    assert.equal(result.findings.length, 1);
+    assert.equal(result.findings[0].runtime, runtime);
+    assert.deepEqual(result.runtimeExceptions, []);
+  }
+}
+
+async function assertBlocksFloatingForgejoActionRef() {
   const result = await runFixture(
     `
 name: Runtime Check
@@ -130,13 +241,36 @@ jobs:
     steps:
       - uses: https://data.forgejo.org/forgejo/upload-artifact@v4
 `,
-    () => {},
-    { allowedRuntimeActions: [] },
   );
 
   assert.equal(result.errors.length, 1);
-  assert.match(result.errors[0], /absolute Forgejo action URL must be explicitly allowed/);
+  assert.match(result.errors[0], /Forgejo action must use an exact commit SHA/);
   assert.equal(result.findings.length, 0);
+}
+
+async function assertBlocksPinnedForgejoDeprecatedRuntime() {
+  const result = await runFixture(
+    `
+name: Runtime Check
+on: pull_request
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: https://data.forgejo.org/forgejo/bad-action@1111111111111111111111111111111111111111
+`,
+    (_rootDir, manifestRoot) => {
+      writeRemoteAction(
+        manifestRoot,
+        'forgejo/bad-action@1111111111111111111111111111111111111111',
+        "name: bad\nruns:\n  using: node20\n  main: dist/index.js\n",
+      );
+    },
+  );
+
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.findings.length, 1);
+  assert.equal(result.findings[0].runtime, 'node20');
 }
 
 async function assertBlocksCompositeNestedDeprecatedRuntime() {
@@ -705,8 +839,10 @@ jobs: {}
 
 await assertAllowsModernActions();
 await assertBlocksDirectDeprecatedRuntime();
-await assertAllowsForgejoArtifactFallback();
-await assertCustomAllowlistCanBeTightened();
+await assertAllowsInspectedForgejoArtifactCompatibilityRuntime();
+await assertBlocksUnexpectedRuntimeAtForgejoArtifactCompatibilityPin();
+await assertBlocksFloatingForgejoActionRef();
+await assertBlocksPinnedForgejoDeprecatedRuntime();
 await assertBlocksCompositeNestedDeprecatedRuntime();
 await assertBlocksLocalDeprecatedRuntime();
 await assertFailsClosedOnMissingManifest();
@@ -723,4 +859,5 @@ await assertBlocksFalseFullLaneDependency();
 await assertBlocksRenamedTestSuiteWorkflow();
 await assertBlocksBackendIntegrationMatrix();
 await assertAllowsRealFullTestSummaryGate();
+assertArtifactWrapperContract();
 console.log('github action runtime guard regression checks passed');

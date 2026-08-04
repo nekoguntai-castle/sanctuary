@@ -10,6 +10,11 @@ description: >-
   the action URL format, so we cannot pick at runtime. Centralizing in this
   composite keeps the swap cost at one file.
 
+  Forgejo 16 only supports its patched v4 artifact protocol. A live v6 canary
+  on PR #642 reached blob upload but was rejected as unauthorized. Keep this
+  exact v4 compatibility pin until Forgejo documents support for v6; do not
+  replace the remaining Node 20 runtime exception with warning suppression.
+
   See also: tests/ci/check-provider-leaks.sh (Phase 7) which gates against
   re-introducing raw `uses: https://data.forgejo.org/...` lines outside of
   this directory.
@@ -36,11 +41,19 @@ inputs:
     description: 'Include hidden files (dotfiles, .npm-cache, etc.) in the artifact (true|false).'
     required: false
     default: 'false'
+outputs:
+  artifact-id:
+    description: Unique identifier for the uploaded artifact.
+    value: ${{ steps.upload.outputs.artifact-id }}
+  artifact-url:
+    description: Authenticated download URL for the uploaded artifact.
+    value: ${{ steps.upload.outputs.artifact-url }}
 runs:
   using: composite
   steps:
     - name: Upload artifact
-      uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+      id: upload
+      uses: https://data.forgejo.org/forgejo/upload-artifact@16871d9e8cfcf27ff31822cac382bbb5450f1e1e
       with:
         name: ${{ inputs.name }}
         path: ${{ inputs.path }}

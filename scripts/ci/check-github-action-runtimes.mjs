@@ -9,10 +9,13 @@ import {
 } from './action-runtime-workflow-guards.mjs';
 
 const DEFAULT_BANNED_RUNTIMES = ['node12', 'node16', 'node20'];
-const DEFAULT_ALLOWED_RUNTIME_ACTIONS = [
-  'https://data.forgejo.org/forgejo/upload-artifact@v4',
-  'https://data.forgejo.org/forgejo/download-artifact@v4',
-];
+// Forgejo 16 documents patched v4 as its supported artifact protocol. The v6
+// upload canary on PR #642 failed at blob upload with `unauthorized`. Keep the
+// exception exact and inspected; arbitrary Forgejo Node 20 actions still fail.
+const FORGEJO_ARTIFACT_RUNTIME_EXCEPTIONS = new Set([
+  'https://data.forgejo.org/forgejo/upload-artifact@16871d9e8cfcf27ff31822cac382bbb5450f1e1e',
+  'https://data.forgejo.org/forgejo/download-artifact@d8d0a99033603453ad2255e58720b460a0555e1e',
+]);
 const DEFAULT_FETCH_TIMEOUT_MS = 10000;
 const DEFAULT_MANIFEST_ROOT = 'scripts/ci/action-runtime-manifests';
 const ACTION_MANIFEST_NAMES = ['action.yml', 'action.yaml'];
@@ -23,7 +26,6 @@ function parseArgs(argv) {
     workflowDir: '.github/workflows',
     manifestRoot: undefined,
     bannedRuntimes: DEFAULT_BANNED_RUNTIMES,
-    allowedRuntimeActions: DEFAULT_ALLOWED_RUNTIME_ACTIONS,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -41,12 +43,6 @@ function parseArgs(argv) {
       options.bannedRuntimes = readOptionValue(argv, index)
         .split(',')
         .map((runtime) => runtime.trim())
-        .filter(Boolean);
-      index += 1;
-    } else if (arg === '--allowed-runtime-actions') {
-      options.allowedRuntimeActions = readOptionValue(argv, index)
-        .split(',')
-        .map((action) => action.trim())
         .filter(Boolean);
       index += 1;
     } else {
@@ -133,7 +129,7 @@ function parseUsesSpec(spec) {
     return { kind: 'skip', reason: 'docker action', spec };
   }
   if (/^https?:\/\//.test(spec)) {
-    return { kind: 'absolute', spec };
+    return parseAbsoluteActionSpec(spec);
   }
   if (spec.startsWith('./')) {
     return { kind: 'local', actionPath: spec, spec };
@@ -167,6 +163,22 @@ function parseUsesSpec(spec) {
   };
 }
 
+function parseAbsoluteActionSpec(spec) {
+  const match = spec.match(
+    /^https:\/\/data\.forgejo\.org\/([^/]+)\/([^/@]+)(?:\/([^@]+))?@([^/]+)$/,
+  );
+  if (!match) {
+    return { kind: 'unresolved', reason: 'unsupported absolute action URL', spec };
+  }
+
+  const [, owner, repo, actionPath = '', ref] = match;
+  if (!/^[0-9a-f]{40}$/.test(ref)) {
+    return { kind: 'unresolved', reason: 'Forgejo action must use an exact commit SHA', spec };
+  }
+
+  return { kind: 'remote', owner, repo, actionPath, ref, spec };
+}
+
 function manifestCacheKey(action) {
   if (action.kind === 'local') {
     return `local:${action.actionPath}`;
@@ -174,8 +186,8 @@ function manifestCacheKey(action) {
   return `remote:${action.owner}/${action.repo}/${action.ref}/${action.actionPath}`;
 }
 
-function isAllowedRuntimeAction(action, options) {
-  return options.allowedRuntimeActions.includes(action.spec);
+function isForgejoArtifactRuntimeException(action, runtime) {
+  return runtime === 'node20' && FORGEJO_ARTIFACT_RUNTIME_EXCEPTIONS.has(action.spec);
 }
 
 function remoteFixtureDir(manifestRoot, action) {
@@ -379,16 +391,6 @@ async function inspectAction(action, options, state, chain = []) {
   if (action.kind === 'skip') {
     return;
   }
-  if (action.kind === 'absolute') {
-    if (isAllowedRuntimeAction(action, options)) {
-      return;
-    }
-    addUniqueError(
-      state,
-      `${action.spec}: absolute Forgejo action URL must be explicitly allowed by --allowed-runtime-actions`,
-    );
-    return;
-  }
   if (action.kind === 'unresolved') {
     addUniqueError(state, `${action.spec}: ${action.reason}`);
     return;
@@ -419,11 +421,18 @@ async function inspectAction(action, options, state, chain = []) {
     }
 
     const runtime = extractRuntime(manifest.text);
-    if (options.bannedRuntimes.includes(runtime) && !isAllowedRuntimeAction(action, options)) {
-      state.findings.push({
-        runtime,
-        chain: formatChain(chain, action, manifest),
-      });
+    if (options.bannedRuntimes.includes(runtime)) {
+      if (isForgejoArtifactRuntimeException(action, runtime)) {
+        if (!state.runtimeExceptionSet.has(action.spec)) {
+          state.runtimeExceptionSet.add(action.spec);
+          state.runtimeExceptions.push({ runtime, spec: action.spec });
+        }
+      } else {
+        state.findings.push({
+          runtime,
+          chain: formatChain(chain, action, manifest),
+        });
+      }
     }
 
     if (runtime === 'composite') {
@@ -469,7 +478,6 @@ export async function checkActionRuntimes(rawOptions = {}) {
     workflowDir: rawOptions.workflowDir ?? '.github/workflows',
     manifestRoot: manifestRoot ? path.resolve(rootDir, manifestRoot) : '',
     bannedRuntimes: rawOptions.bannedRuntimes ?? DEFAULT_BANNED_RUNTIMES,
-    allowedRuntimeActions: rawOptions.allowedRuntimeActions ?? DEFAULT_ALLOWED_RUNTIME_ACTIONS,
   };
   const state = {
     errors: [],
@@ -477,6 +485,8 @@ export async function checkActionRuntimes(rawOptions = {}) {
     failedManifests: new Set(),
     findings: [],
     manifestCache: new Map(),
+    runtimeExceptions: [],
+    runtimeExceptionSet: new Set(),
     visiting: new Set(),
   };
 
@@ -487,6 +497,7 @@ export async function checkActionRuntimes(rawOptions = {}) {
   return {
     errors: state.errors,
     findings: state.findings,
+    runtimeExceptions: state.runtimeExceptions,
     checkedManifests: state.manifestCache.size,
   };
 }
@@ -508,14 +519,23 @@ function printResult(result) {
       `github-action-runtimes: banned runtime ${finding.runtime}: ${finding.chain}`,
     );
   }
+  for (const exception of result.runtimeExceptions) {
+    console.log(
+      `github-action-runtimes: Forgejo artifact compatibility exception ${exception.runtime}: ${exception.spec}`,
+    );
+  }
 
   if (result.errors.length > 0 || result.findings.length > 0) {
     process.exitCode = 1;
     return;
   }
 
+  const exceptionSummary =
+    result.runtimeExceptions.length === 0
+      ? 'no banned runtimes found'
+      : `${result.runtimeExceptions.length} exact Forgejo artifact compatibility exception(s) remain`;
   console.log(
-    `github-action-runtimes: checked ${result.checkedManifests} action manifest(s); no banned runtimes found`,
+    `github-action-runtimes: checked ${result.checkedManifests} action manifest(s); ${exceptionSummary}`,
   );
 }
 

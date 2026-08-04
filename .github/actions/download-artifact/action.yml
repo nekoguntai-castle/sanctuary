@@ -6,6 +6,10 @@ description: >-
 
   Porting back to GitHub Actions: change the inner `uses:` below to
   `actions/download-artifact@v4`.
+
+  Forgejo 16 only supports its patched v4 artifact protocol. The paired v7
+  canary is blocked by the v6 upload incompatibility recorded on PR #642. Keep
+  this exact v4 compatibility pin until Forgejo documents newer support.
 inputs:
   name:
     description: 'Artifact name. Omit to download all artifacts.'
@@ -23,11 +27,16 @@ inputs:
     description: 'Merge all matched artifacts into a single directory (true|false).'
     required: false
     default: 'false'
+outputs:
+  download-path:
+    description: Absolute path where artifacts were downloaded.
+    value: ${{ steps.download.outputs.download-path }}
 runs:
   using: composite
   steps:
     - name: Download artifact
-      uses: https://data.forgejo.org/forgejo/download-artifact@v4
+      id: download
+      uses: https://data.forgejo.org/forgejo/download-artifact@d8d0a99033603453ad2255e58720b460a0555e1e
       with:
         name: ${{ inputs.name }}
         path: ${{ inputs.path }}
