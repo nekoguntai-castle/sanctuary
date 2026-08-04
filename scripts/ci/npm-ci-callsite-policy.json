@@ -1,0 +1,146 @@
+{
+  "schemaVersion": 1,
+  "note": "Every tracked, executable-capable file containing an npm-ci reference. A new file here must be reviewed and classified before CI passes. Markdown, docs/, and tasks/ are excluded because they cannot execute.",
+  "callsites": [
+    {
+      "file": ".github/actions/cache-npm/action.yml",
+      "executable": true,
+      "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."
+    },
+    {
+      "file": ".github/actions/setup-server-deps/action.yml",
+      "executable": false,
+      "expectedMatches": 1,
+      "rationale": "Describes the delegated install in prose; the real npm ci lives in scripts/ci/setup-server-dependencies.sh."
+    },
+    {
+      "file": ".github/workflows/architecture.yml",
+      "executable": true,
+      "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."
+    },
+    {
+      "file": ".github/workflows/install-test.yml",
+      "executable": true,
+      "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."
+    },
+    {
+      "file": ".github/workflows/quality.yml",
+      "executable": true,
+      "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."
+    },
+    {
+      "file": ".github/workflows/test.yml",
+      "executable": true,
+      "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."
+    },
+    {
+      "file": ".github/workflows/verify-vectors.yml",
+      "executable": true,
+      "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."
+    },
+    {
+      "file": "docker/frontend/Dockerfile",
+      "executable": true,
+      "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."
+    },
+    {
+      "file": "gateway/Dockerfile",
+      "executable": true,
+      "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."
+    },
+    {
+      "file": "llm-egress-proxy/Dockerfile",
+      "executable": true,
+      "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."
+    },
+    {
+      "file": "scripts/ci/backend-coverage-merge.sh",
+      "executable": true,
+      "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."
+    },
+    {
+      "file": "scripts/ci/backend-coverage-shard.sh",
+      "executable": true,
+      "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."
+    },
+    {
+      "file": "scripts/ci/check-npm-ci-callsites.mjs",
+      "executable": false,
+      "expectedMatches": 1,
+      "rationale": "This guard; mentions npm ci in documentation and pattern constants only."
+    },
+    {
+      "file": "scripts/ci/frontend-coverage-merge.sh",
+      "executable": true,
+      "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."
+    },
+    {
+      "file": "scripts/ci/frontend-coverage-shard.sh",
+      "executable": true,
+      "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."
+    },
+    {
+      "file": "scripts/ci/npm-ci-callsite-policy.json",
+      "executable": false,
+      "expectedMatches": 0,
+      "rationale": "This policy file; mentions npm ci in its explanatory note."
+    },
+    {
+      "file": "scripts/ci/run-quality-lint.sh",
+      "executable": true,
+      "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."
+    },
+    {
+      "file": "scripts/ci/setup-server-dependencies.sh",
+      "executable": true,
+      "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."
+    },
+    {
+      "file": "scripts/quality/check-lockfile-peer-resolution.sh",
+      "executable": true,
+      "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."
+    },
+    {
+      "file": "server/Dockerfile",
+      "executable": true,
+      "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."
+    },
+    {
+      "file": "tests/ci/check-npm-ci-callsites.test.mjs",
+      "executable": false,
+      "expectedMatches": 3,
+      "rationale": "Assertions and fixtures for this guard, not invocations."
+    },
+    {
+      "file": "tests/ci/check-npm-install-scripts.test.mjs",
+      "executable": true,
+      "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."
+    },
+    {
+      "file": "tests/ci/check-workflow-composition.test.sh",
+      "executable": true,
+      "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."
+    },
+    {
+      "file": "tests/ci/docker-compose-test-contract.test.mjs",
+      "executable": true,
+      "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."
+    },
+    {
+      "file": "tests/ci/report-timing-notices.test.sh",
+      "executable": false,
+      "expectedMatches": 1,
+      "rationale": "Fixture log output asserted by the timing-notice test, not an invocation."
+    },
+    {
+      "file": "tests/ci/run-quality-lint.test.sh",
+      "executable": true,
+      "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."
+    },
+    {
+      "file": "tests/ci/setup-server-dependencies.test.sh",
+      "executable": true,
+      "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."
+    }
+  ]
+}

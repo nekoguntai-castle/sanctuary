@@ -103,6 +103,7 @@
     "check:npm-install-scripts": "node scripts/ci/check-npm-install-scripts.mjs",
     "check:ioc-sweep": "node scripts/ci/ioc-sweep.mjs",
     "test:ioc-sweep": "node --test tests/ci/ioc-sweep.test.mjs",
+    "check:npm-ci-callsites": "node scripts/ci/check-npm-ci-callsites.mjs",
     "check:architecture-boundaries": "node scripts/check-architecture-boundaries.mjs",
     "check:openapi-route-coverage": "node scripts/check-openapi-route-coverage.mjs",
     "check:semgrep-baseline": "node scripts/quality/check-semgrep-baseline.mjs reports/semgrep/semgrep.json scripts/quality/semgrep-baseline.json",
