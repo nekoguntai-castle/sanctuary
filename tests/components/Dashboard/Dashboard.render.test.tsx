@@ -357,6 +357,20 @@ describe('Dashboard render branches', () => {
     expect(screen.getByText('Create Your First Wallet')).toBeInTheDocument();
   });
 
+  // The empty-network boundary. Upcoming work changes when the Wallets card
+  // appears, so pin the one case that must not move: with no wallets there is
+  // no Wallets card at all, and activity still renders below the welcome copy.
+  // An empty Wallets card here would be a regression, not a layout choice.
+  it('renders no wallets card and keeps activity when the network has no wallets', () => {
+    mocks.dashboardData = makeDashboardState({
+      filteredWallets: [],
+    });
+    render(<Dashboard />);
+
+    expect(screen.queryByTestId('wallet-summary')).not.toBeInTheDocument();
+    expect(screen.getByTestId('recent-transactions')).toBeInTheDocument();
+  });
+
   it('renders signet error copy and symbol', () => {
     mocks.dashboardData = makeDashboardState({
       isMainnet: false,
