@@ -3,11 +3,13 @@
 UPGRADE_FIXTURE_LABEL="optional-profiles"
 
 upgrade_fixture_before_source_install() {
-    local monitoring_compose
-
     enable_upgrade_monitoring
-    monitoring_compose="$(resolve_compose_overlay "$PROJECT_ROOT" monitoring)"
-    patch_upgrade_monitoring_compose_isolation "$monitoring_compose"
+
+    # Diagnostic for #660: this lane fails in CI on the Loki config bind mount
+    # but passes locally, so report whether the source is visible to the job
+    # and to the daemon before the stack starts.
+    probe_monitoring_bind_sources "$PROJECT_ROOT"
+
     return 0
 }
 
@@ -16,10 +18,9 @@ upgrade_fixture_after_source_install() {
 }
 
 upgrade_fixture_before_upgrade() {
-    local monitoring_compose
+    probe_monitoring_bind_sources "$TARGET_PROJECT_ROOT"
 
-    monitoring_compose="$(resolve_compose_overlay "$TARGET_PROJECT_ROOT" monitoring)"
-    patch_upgrade_monitoring_compose_isolation "$monitoring_compose"
+    return 0
 }
 
 upgrade_fixture_after_upgrade() {

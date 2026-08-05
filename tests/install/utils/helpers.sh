@@ -397,6 +397,32 @@ disable_compose_project_restart_policy() {
     docker ps -a --filter "label=com.docker.compose.project=$project" -q | xargs -r docker update --restart=no 2>/dev/null || true
 }
 
+# Diagnostic for #660. The optional-profiles lane fails in CI with a bare
+# "not a directory" mount error on docker/monitoring/loki-config.yml, which is
+# what Docker reports when the bind source is absent: it creates the missing
+# path as a directory, which then cannot mount onto a file in the image. The
+# lane passes locally, so the open question is whether the file is missing from
+# the job's filesystem or merely invisible to the Docker daemon.
+#
+# Mounts the project root read-only and lists the subpath from inside, so the
+# probe cannot itself create the directory it is looking for. Never fails the
+# caller -- it only reports.
+probe_monitoring_bind_sources() {
+    local project_dir="$1"
+    local rel="docker/monitoring"
+
+    printf '[probe] job view of %s/%s:\n' "$project_dir" "$rel" >&2
+    ls -la "$project_dir/$rel" >&2 2>&1 ||
+        printf '[probe] job view: MISSING\n' >&2
+
+    printf '[probe] daemon view of %s (mounted ro):\n' "$rel" >&2
+    docker run --rm -v "$project_dir:/probe:ro" alpine:3 \
+        ls -la "/probe/$rel" >&2 2>&1 ||
+        printf '[probe] daemon view: MISSING or unavailable\n' >&2
+
+    return 0
+}
+
 read_package_version() {
     sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$1" 2>/dev/null | head -1
 }
