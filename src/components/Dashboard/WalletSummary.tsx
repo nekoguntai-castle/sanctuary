@@ -8,7 +8,7 @@ import { WalletEmptyState } from '../ui/EmptyState';
 import { TabNetwork } from '../NetworkTabs';
 import { useUserPreference } from '../../hooks/useUserPreference';
 import { ShowMoreToggle } from '../ui/ShowMoreToggle';
-import { Card } from '../ui/Card';
+import { CollapsibleSection } from '../ui/CollapsibleSection';
 
 const distributionColors = [
     'bg-primary-500',
@@ -456,14 +456,29 @@ const WalletSummaryImpl: React.FC<WalletSummaryProps> = ({
   const clearHover = () => setHoveredWalletId(null);
 
   return (
-    <Card interactive>
-       <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-medium text-sanctuary-900 dark:text-sanctuary-100 flex items-center">
-             <WalletIcon className="w-5 h-5 mr-2 text-sanctuary-400" />
-             {getNetworkLabel(selectedNetwork)} Wallets
-          </h3>
-       </div>
-
+    <CollapsibleSection
+      testId="dashboard-wallets"
+      // Distinct from `walletsExpanded`, which still owns the six-row/all-rows
+      // choice below. Section disclosure and row cap are separate decisions.
+      preferenceKey="viewSettings.dashboard.walletsCollapsed"
+      // The card shell performs no action of its own; the disclosure button,
+      // the row links, and the show-more toggle each carry their own affordance.
+      interactive={false}
+      headingClassName="text-lg font-medium text-sanctuary-900 dark:text-sanctuary-100"
+      headerClassName="flex items-center justify-between gap-4 mb-4"
+      title={
+        <>
+          <WalletIcon className="w-5 h-5 mr-2 text-sanctuary-400" />
+          {getNetworkLabel(selectedNetwork)} Wallets
+        </>
+      }
+      summary={
+        <span className="flex items-center gap-2 text-sm text-sanctuary-400">
+          <span>{filteredWallets.length} wallets</span>
+          <Amount sats={totalBalance} />
+        </span>
+      }
+    >
        <WalletDistributionBar
          wallets={filteredWallets}
          totalBalance={totalBalance}
@@ -487,7 +502,7 @@ const WalletSummaryImpl: React.FC<WalletSummaryProps> = ({
            className="mt-3 w-full"
          />
        )}
-    </Card>
+    </CollapsibleSection>
   );
 };
 WalletSummaryImpl.displayName = 'WalletSummary';

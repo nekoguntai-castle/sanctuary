@@ -48,6 +48,12 @@ interface CollapsibleSectionProps {
   /** Extra classes for the card shell. */
   className?: string;
   headerClassName?: string;
+  /**
+   * `data-testid` for the card shell. Needed by callers whose layout contracts
+   * measure the card box itself — a wrapper element would report a different
+   * width, since `clientWidth` excludes the card's border.
+   */
+  testId?: string;
   children: ReactNode;
 }
 
@@ -76,6 +82,7 @@ export const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
   interactive = true,
   className = '',
   headerClassName = 'flex items-center justify-between gap-4 px-2 mb-2',
+  testId,
   children,
 }) => {
   const [collapsed, setCollapsed] = useUserPreference(preferenceKey, defaultCollapsed);
@@ -84,7 +91,13 @@ export const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
   const Heading = `h${headingLevel}` as const;
 
   return (
-    <Card as="section" padding={padding} interactive={interactive} className={className}>
+    <Card
+      as="section"
+      padding={padding}
+      interactive={interactive}
+      className={className}
+      data-testid={testId}
+    >
       <div className={headerClassName}>
         <div className="flex items-center gap-2 min-w-0">
           <Heading className={headingClassName}>

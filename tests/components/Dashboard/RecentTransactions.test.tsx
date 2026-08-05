@@ -28,13 +28,36 @@ vi.mock('../../../src/components/TransactionList', () => ({
   },
 }));
 
+const mockPreferences = new Map<string, unknown>();
+
+vi.mock('../../../src/hooks/useUserPreference', async () => {
+  const { useState } = await import('react');
+  return {
+    useUserPreference: (key: string, defaultValue: unknown) => {
+      const [value, setValue] = useState(
+        mockPreferences.has(key) ? mockPreferences.get(key) : defaultValue
+      );
+      return [
+        value,
+        (newValue: unknown) => {
+          mockPreferences.set(key, newValue);
+          setValue(newValue);
+        },
+      ];
+    },
+  };
+});
+
 vi.mock('lucide-react', () => ({
   Activity: () => <span data-testid="activity-icon" />,
+  ChevronDown: () => <span data-testid="chevron-down-icon" />,
+  ChevronUp: () => <span data-testid="chevron-up-icon" />,
 }));
 
 describe('RecentTransactions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPreferences.clear();
   });
 
   it('renders activity section and forwards props to TransactionList', () => {
@@ -77,5 +100,66 @@ describe('RecentTransactions', () => {
 
     await user.click(screen.getByRole('button', { name: 'Trigger Tx' }));
     expect(mockNavigate).toHaveBeenCalledWith('/wallets/wallet-2?tx=abc123');
+  });
+
+  describe('section collapse', () => {
+    const renderSection = (recentTx: any[] = [{ id: 'tx-a', walletId: 'wallet-1' }]) =>
+      render(
+        <RecentTransactions
+          recentTx={recentTx as any}
+          wallets={[] as any}
+          confirmationThreshold={1}
+          deepConfirmationThreshold={3}
+        />
+      );
+
+    const disclosure = () => screen.getByRole('button', { name: /Recent Activity/ });
+
+    it('starts expanded with the activity body reachable', () => {
+      renderSection();
+
+      expect(disclosure()).toHaveAttribute('aria-expanded', 'true');
+      const body = document.getElementById(disclosure().getAttribute('aria-controls')!);
+      expect(body).not.toBeNull();
+      expect(body).not.toHaveAttribute('hidden');
+      expect(screen.getByTestId('transaction-list')).toBeInTheDocument();
+    });
+
+    it('collapses on activation and persists under its own preference key', async () => {
+      const user = userEvent.setup();
+      renderSection();
+
+      await user.click(disclosure());
+
+      expect(disclosure()).toHaveAttribute('aria-expanded', 'false');
+      const body = document.getElementById(disclosure().getAttribute('aria-controls')!);
+      expect(body).toHaveAttribute('hidden');
+      expect(mockPreferences.get('viewSettings.dashboard.recentActivityCollapsed')).toBe(true);
+      // The wallets section must not be dragged along with it.
+      expect(mockPreferences.has('viewSettings.dashboard.walletsCollapsed')).toBe(false);
+    });
+
+    it('honours a persisted collapsed preference on mount', () => {
+      mockPreferences.set('viewSettings.dashboard.recentActivityCollapsed', true);
+      renderSection();
+
+      expect(disclosure()).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('summarises the loaded rows while collapsed', async () => {
+      const user = userEvent.setup();
+      renderSection([{ id: 'a' }, { id: 'b' }, { id: 'c' }]);
+
+      await user.click(disclosure());
+      expect(screen.getByText('3 shown')).toBeInTheDocument();
+    });
+
+    it('says so plainly when there is nothing to summarise', async () => {
+      const user = userEvent.setup();
+      renderSection([]);
+
+      await user.click(disclosure());
+      expect(screen.getByText('No activity')).toBeInTheDocument();
+    });
   });
 });

@@ -79,7 +79,7 @@ const transaction = (overrides: Partial<Transaction> = {}): Transaction =>
     amount: 125_000,
     fee: 500,
     confirmations: 6,
-    timestamp: '2026-08-01T00:00:00.000Z',
+    timestamp: Date.parse('2026-08-01T00:00:00.000Z'),
     ...overrides,
   }) as Transaction;
 

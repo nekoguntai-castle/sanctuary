@@ -101,7 +101,10 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const [tableHeight, setTableHeight] = useState(600);
 
   const recalcHeight = useCallback(() => {
-    const rect = tableContainerRef.current!.getBoundingClientRect();
+    const container = tableContainerRef.current;
+    /* v8 ignore next -- the ResizeObserver below can fire after unmount. */
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
     const bottomMargin = 32; // breathing room at bottom
     const available = window.innerHeight - rect.top - bottomMargin;
     const contentHeight = filteredTransactions.length * 52 + 48;
@@ -111,7 +114,22 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   useEffect(() => {
     recalcHeight();
     window.addEventListener('resize', recalcHeight);
-    return () => window.removeEventListener('resize', recalcHeight);
+
+    // A window resize is not the only thing that invalidates this measurement.
+    // Inside a collapsed disclosure the container measures zero, and revealing
+    // it changes no window dimension and fires no resize event — so without an
+    // element-level observer the table would keep the height it computed while
+    // hidden until the user happened to resize.
+    const resizeObserver =
+      typeof ResizeObserver === 'function' ? new ResizeObserver(recalcHeight) : null;
+    const container = tableContainerRef.current;
+    /* v8 ignore next -- defensive guard; effects run only after the container ref has mounted. */
+    if (container) resizeObserver?.observe(container);
+
+    return () => {
+      window.removeEventListener('resize', recalcHeight);
+      resizeObserver?.disconnect();
+    };
   }, [recalcHeight]);
 
   // Shared by the phone modal and the tablet+ split pane — both render the same

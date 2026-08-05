@@ -1,4 +1,4 @@
-import { act,fireEvent,render,screen } from '@testing-library/react';
+import { act,fireEvent,render,screen,within } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import userEvent from '@testing-library/user-event';
@@ -301,17 +301,80 @@ describe('WalletSummary', () => {
     // The distribution bar keeps every wallet even while the table is truncated.
     expect(document.querySelectorAll('.relative[style*="width"]')).toHaveLength(9);
 
+    // Two chevrons now live in this card: the section disclosure in the header
+    // and the row-cap toggle at the foot. They are deliberately separate
+    // controls, so scope the icon assertions to the toggle rather than the
+    // document — an unscoped query matches both.
     const toggle = screen.getByRole('button', { name: /Show all 9 wallets/ });
-    expect(screen.getByTestId('chevron-down-icon')).toBeInTheDocument();
+    expect(within(toggle).getByTestId('chevron-down-icon')).toBeInTheDocument();
 
     await user.click(toggle);
 
     expect(screen.getByText('Wallet 8')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Show less/ })).toBeInTheDocument();
-    expect(screen.getByTestId('chevron-up-icon')).toBeInTheDocument();
+    const showLess = screen.getByRole('button', { name: /Show less/ });
+    expect(within(showLess).getByTestId('chevron-up-icon')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /Show less/ }));
     expect(screen.queryByText('Wallet 8')).not.toBeInTheDocument();
+  });
+
+  describe('section collapse', () => {
+    const disclosure = () => screen.getByRole('button', { name: /Wallets/ });
+
+    const renderSection = (walletCount = 3) =>
+      renderWalletSummary(
+        <WalletSummary
+          selectedNetwork="mainnet"
+          filteredWallets={makeWallets(walletCount)}
+          totalBalance={9000}
+        />
+      );
+
+    it('starts expanded with the wallet body reachable', () => {
+      renderSection();
+
+      expect(disclosure()).toHaveAttribute('aria-expanded', 'true');
+      const body = document.getElementById(disclosure().getAttribute('aria-controls')!);
+      expect(body).not.toHaveAttribute('hidden');
+    });
+
+    it('collapses under a key distinct from the row-cap preference', async () => {
+      const user = userEvent.setup();
+      renderSection();
+
+      await user.click(disclosure());
+
+      expect(disclosure()).toHaveAttribute('aria-expanded', 'false');
+      expect(mockPreferences.get('viewSettings.dashboard.walletsCollapsed')).toBe(true);
+      // walletsExpanded still owns the six-row/all-rows choice and must not be
+      // touched by whole-section disclosure.
+      expect(mockPreferences.has('viewSettings.dashboard.walletsExpanded')).toBe(false);
+    });
+
+    it('summarises wallet count and total balance while collapsed', async () => {
+      const user = userEvent.setup();
+      renderSection(4);
+
+      await user.click(disclosure());
+
+      // Scoped to the summary: the mocked Amount renders a bare number, and the
+      // wallet rows render amounts of their own.
+      const summary = screen.getByText('4 wallets').parentElement!;
+      expect(within(summary).getByTestId('amount')).toHaveTextContent('9000');
+    });
+
+    it('keeps the row-cap toggle working independently of section collapse', async () => {
+      const user = userEvent.setup();
+      renderSection(9);
+
+      await user.click(screen.getByRole('button', { name: /Show all 9 wallets/ }));
+
+      expect(screen.getByText('Wallet 8')).toBeInTheDocument();
+      expect(mockPreferences.get('viewSettings.dashboard.walletsExpanded')).toBe(true);
+      // Expanding rows must not have collapsed or disturbed the section itself.
+      expect(disclosure()).toHaveAttribute('aria-expanded', 'true');
+      expect(mockPreferences.has('viewSettings.dashboard.walletsCollapsed')).toBe(false);
+    });
   });
 
   it('honours a previously persisted expanded preference on mount', () => {
