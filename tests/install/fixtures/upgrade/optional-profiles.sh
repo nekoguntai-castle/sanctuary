@@ -5,9 +5,10 @@ UPGRADE_FIXTURE_LABEL="optional-profiles"
 upgrade_fixture_before_source_install() {
     enable_upgrade_monitoring
 
-    # Diagnostic for #660: this lane fails in CI on the Loki config bind mount
-    # but passes locally, so report whether the source is visible to the job
-    # and to the daemon before the stack starts.
+    # #660: the runner's job and DIND daemon do not share a filesystem, so the
+    # monitoring config bind mounts resolve to nothing daemon-side. Seed them,
+    # then report what the daemon actually sees.
+    sync_monitoring_configs_to_daemon "$PROJECT_ROOT"
     probe_monitoring_bind_sources "$PROJECT_ROOT"
 
     return 0
@@ -18,6 +19,7 @@ upgrade_fixture_after_source_install() {
 }
 
 upgrade_fixture_before_upgrade() {
+    sync_monitoring_configs_to_daemon "$TARGET_PROJECT_ROOT"
     probe_monitoring_bind_sources "$TARGET_PROJECT_ROOT"
 
     return 0

@@ -423,6 +423,39 @@ probe_monitoring_bind_sources() {
     return 0
 }
 
+# CI shim for #660. On the Forgejo runner the job and the DIND daemon do not
+# share a filesystem, so a bind mount of an individual config file fails: the
+# daemon resolves the host path against its own filesystem, finds nothing,
+# auto-creates the source as a *directory*, then cannot mount that onto a file
+# in the image. Confirmed by probe_monitoring_bind_sources -- every *.yml is a
+# file job-side and a directory daemon-side.
+#
+# Seed the daemon-side copies from the job side before the stack starts, so the
+# compose files themselves stay exactly as production ships them.
+#
+# A no-op where the two already share a filesystem (local runs): the cleanup
+# only removes directories named *.yml, which never exist when the real files
+# are present, and the tar extract rewrites identical content.
+#
+# The proper fix is to mount the runner workspace into the DIND container at
+# the same path; this only stops a runner misconfiguration from masking real
+# upgrade regressions.
+sync_monitoring_configs_to_daemon() {
+    local project_dir="$1"
+
+    [ -d "$project_dir/docker/monitoring" ] || return 0
+
+    docker run --rm -v "$project_dir/docker:/dst" alpine:3 sh -c \
+        'find /dst/monitoring -maxdepth 1 -type d -name "*.yml" -exec rm -rf {} + 2>/dev/null || true' \
+        >/dev/null 2>&1 || return 0
+
+    tar -C "$project_dir/docker" -cf - monitoring 2>/dev/null |
+        docker run --rm -i -v "$project_dir/docker:/dst" alpine:3 \
+            tar -C /dst -xf - >/dev/null 2>&1 || true
+
+    return 0
+}
+
 read_package_version() {
     sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$1" 2>/dev/null | head -1
 }
