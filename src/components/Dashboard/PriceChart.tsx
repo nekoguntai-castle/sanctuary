@@ -1,9 +1,11 @@
-import { ArrowDownLeft, ArrowUpRight } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Minus, TrendingDown, TrendingUp } from 'lucide-react';
 import { Amount } from '../Amount';
 import { AnimatedPrice } from './PriceChart/AnimatedPrice';
 import { PriceChartBody } from './PriceChart/PriceChartBody';
 import { TimeframeControls } from './PriceChart/TimeframeControls';
 import type { PriceChartProps, PendingTotals } from './PriceChart/types';
+import { buildBalanceTrend, formatBalanceTrend } from './PriceChart/balanceTrendModel';
+import type { BalanceTrend } from './PriceChart/balanceTrendModel';
 import { Card } from '../ui/Card';
 
 /**
@@ -41,6 +43,37 @@ function PendingTotalsRow({ pendingTotals }: { pendingTotals: PendingTotals }) {
   );
 }
 
+/**
+ * Direction is carried by three independent signals — an icon, a written sign,
+ * and colour — so the colour is the last of them, never the only one.
+ *
+ * This describes the BTC balance over the period, not fiat performance: a
+ * balance can fall while its market value rises.
+ */
+const TREND_PRESENTATION: Record<
+  BalanceTrend['direction'],
+  { icon: typeof TrendingUp; className: string }
+> = {
+  gain: { icon: TrendingUp, className: 'text-success-600 dark:text-success-400' },
+  loss: { icon: TrendingDown, className: 'text-rose-600 dark:text-rose-400' },
+  flat: { icon: Minus, className: 'text-sanctuary-500 dark:text-sanctuary-400' },
+};
+
+function BalanceTrendRow({ trend }: { trend: BalanceTrend }) {
+  const { icon: Icon, className } = TREND_PRESENTATION[trend.direction];
+
+  return (
+    <p
+      data-testid="balance-trend"
+      data-direction={trend.direction}
+      className={`flex items-center gap-1 text-xs font-medium ${className}`}
+    >
+      <Icon className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+      {formatBalanceTrend(trend)}
+    </p>
+  );
+}
+
 export function PriceChart({
   totalBalance,
   chartReady,
@@ -50,6 +83,10 @@ export function PriceChart({
   pendingTotals,
   walletCount,
 }: PriceChartProps) {
+  // Same point set the chart draws, so the annotation and the line can never
+  // disagree about which way the period went.
+  const trend = buildBalanceTrend(chartData, timeframe);
+
   return (
     <Card>
       {/* Eyebrow and timeframe share a row — the controls used to occupy a full
@@ -71,13 +108,16 @@ export function PriceChart({
             size="xl"
             className="font-bold text-sanctuary-900 dark:text-sanctuary-50"
           />
+          <BalanceTrendRow trend={trend} />
+          {/* Pending is unconfirmed exposure, deliberately kept apart from the
+              confirmed period change above it. */}
           <PendingTotalsRow pendingTotals={pendingTotals} />
           <p className="text-xs text-sanctuary-400">
             across {walletCount} {walletCount === 1 ? 'wallet' : 'wallets'}
           </p>
         </div>
         <div className="flex-1 lg:w-2/3 min-w-[200px]">
-          <PriceChartBody chartReady={chartReady} chartData={chartData} />
+          <PriceChartBody chartReady={chartReady} chartData={chartData} direction={trend.direction} />
         </div>
       </div>
     </Card>

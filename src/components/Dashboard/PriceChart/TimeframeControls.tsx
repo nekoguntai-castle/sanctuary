@@ -24,6 +24,10 @@ export function TimeframeControls({ timeframe, setTimeframe }: TimeframeControls
       {TIMEFRAMES.map((timeframeOption) => (
         <button
           key={timeframeOption}
+          type="button"
+          // Selection was previously conveyed by background colour alone, which
+          // no screen reader announces.
+          aria-pressed={timeframe === timeframeOption}
           onClick={() => setTimeframe(timeframeOption)}
           className={getTimeframeButtonClass(timeframe === timeframeOption)}
         >

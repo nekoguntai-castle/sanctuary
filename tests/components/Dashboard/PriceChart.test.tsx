@@ -228,3 +228,110 @@ describe('AnimatedPrice', () => {
     expect(cancelSpy).not.toHaveBeenCalled();
   });
 });
+
+describe('PriceChart balance trend', () => {
+  const renderChart = (chartData: { name: string; sats: number }[], timeframe: any = '1W') =>
+    render(
+      <PriceChart
+        totalBalance={1_125_000}
+        chartReady={true}
+        timeframe={timeframe}
+        setTimeframe={vi.fn()}
+        chartData={chartData}
+        pendingTotals={{ incoming: 0, outgoing: 0 }}
+        walletCount={2}
+      />
+    );
+
+  it('states a gain in words, not only in colour', () => {
+    renderChart([
+      { name: 'a', sats: 1_000_000 },
+      { name: 'b', sats: 1_125_000 },
+    ]);
+
+    const trend = screen.getByTestId('balance-trend');
+    expect(trend).toHaveAttribute('data-direction', 'gain');
+    // The sign and the number are in the text: a reader who cannot distinguish
+    // the colours still learns which way the balance went.
+    expect(trend).toHaveTextContent('+125,000 sats (+12.5%) over the past week');
+  });
+
+  it('states a loss with a negative sign', () => {
+    renderChart(
+      [
+        { name: 'a', sats: 200_000 },
+        { name: 'b', sats: 150_000 },
+      ],
+      '1M'
+    );
+
+    const trend = screen.getByTestId('balance-trend');
+    expect(trend).toHaveAttribute('data-direction', 'loss');
+    expect(trend).toHaveTextContent('-50,000 sats (-25.0%) over the past month');
+  });
+
+  it('says no change rather than showing a bare zero', () => {
+    renderChart([{ name: 'a', sats: 5 }, { name: 'b', sats: 5 }], 'ALL');
+
+    const trend = screen.getByTestId('balance-trend');
+    expect(trend).toHaveAttribute('data-direction', 'flat');
+    expect(trend).toHaveTextContent('No change over all time');
+  });
+
+  it('treats an empty history as flat instead of inventing a direction', () => {
+    renderChart([]);
+
+    expect(screen.getByTestId('balance-trend')).toHaveAttribute('data-direction', 'flat');
+  });
+
+  it('omits the percentage when the period opened at zero', () => {
+    renderChart([
+      { name: 'a', sats: 0 },
+      { name: 'b', sats: 100_000 },
+    ]);
+
+    const trend = screen.getByTestId('balance-trend');
+    expect(trend).toHaveTextContent('+100,000 sats over the past week');
+    expect(trend.textContent).not.toContain('%');
+  });
+
+  it('drives the chart from the same direction as the annotation', () => {
+    renderChart([
+      { name: 'a', sats: 200_000 },
+      { name: 'b', sats: 150_000 },
+    ]);
+
+    // One trend model feeds both, so the line cannot disagree with the words.
+    expect(screen.getByTestId('balance-trend')).toHaveAttribute('data-direction', 'loss');
+    expect(screen.getByTestId('price-chart-body')).toHaveAttribute('data-direction', 'loss');
+  });
+
+  it('keeps pending exposure separate from the confirmed period change', () => {
+    render(
+      <PriceChart
+        totalBalance={1_000_000}
+        chartReady={true}
+        timeframe="1W"
+        setTimeframe={vi.fn()}
+        chartData={[
+          { name: 'a', sats: 1_000_000 },
+          { name: 'b', sats: 1_125_000 },
+        ]}
+        pendingTotals={{ incoming: 40_000, outgoing: 0 }}
+        walletCount={2}
+      />
+    );
+
+    // Unconfirmed sats must not be folded into the confirmed change.
+    expect(screen.getByTestId('balance-trend')).toHaveTextContent('+125,000 sats');
+    expect(screen.getByText('pending')).toBeInTheDocument();
+  });
+
+  it('announces which timeframe is selected', () => {
+    renderChart([{ name: 'a', sats: 1 }], '1M');
+
+    // Previously carried by background colour alone.
+    expect(screen.getByRole('button', { name: '1M' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '1W' })).toHaveAttribute('aria-pressed', 'false');
+  });
+});
