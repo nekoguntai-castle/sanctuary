@@ -191,7 +191,15 @@ const A11Y_API_RESPONSES: Record<string, MockApiResponse> = {
   'GET /devices/models': mockResponse([]),
 };
 
-function getA11yApiResponse(method: string, path: string): MockApiResponse | null {
+function getA11yApiResponse(
+  method: string,
+  path: string,
+  overrides: Record<string, MockApiResponse>
+): MockApiResponse | null {
+  const override = overrides[`${method} ${path}`];
+  if (override) {
+    return override;
+  }
   const response = A11Y_API_RESPONSES[`${method} ${path}`];
   if (response) {
     return response;
@@ -202,10 +210,13 @@ function getA11yApiResponse(method: string, path: string): MockApiResponse | nul
   return null;
 }
 
-function createA11yApiRouteHandler(unhandledRequests: string[]) {
+function createA11yApiRouteHandler(
+  unhandledRequests: string[],
+  overrides: Record<string, MockApiResponse> = {}
+) {
   const apiRouteHandler = async (route: Route) => {
     const { method, path, requestKey } = parseApiRoute(route);
-    const response = getA11yApiResponse(method, path);
+    const response = getA11yApiResponse(method, path, overrides);
 
     if (response) {
       await json(route, response.body, response.status);
@@ -219,15 +230,40 @@ function createA11yApiRouteHandler(unhandledRequests: string[]) {
   return apiRouteHandler;
 }
 
-async function mockA11yApi(page: Page) {
+async function mockA11yApi(
+  page: Page,
+  overrides: Record<string, MockApiResponse> = {}
+) {
   await page.addInitScript(() => {
     localStorage.setItem('sanctuary_token', 'playwright-a11y-token');
   });
 
   const unhandledRequests: string[] = [];
-  await registerApiRoutes(page, createA11yApiRouteHandler(unhandledRequests));
+  await registerApiRoutes(page, createA11yApiRouteHandler(unhandledRequests, overrides));
   return unhandledRequests;
 }
+
+/**
+ * Recent Activity rows. The shared fixture returns an empty list, which renders
+ * the empty state rather than the table — no use for an overflow assertion.
+ *
+ * Eleven rows for a default page size of ten: the eleventh is the next-page
+ * probe, so the pagination footer renders too.
+ */
+const activityRows = (count = 11) =>
+  Array.from({ length: count }, (_, index) => ({
+    id: `a11y-tx-${index}`,
+    txid: String(index).padStart(64, 'b'),
+    walletId: WALLET_ID,
+    walletName: WALLET.name,
+    type: index % 2 === 0 ? 'received' : 'sent',
+    amount: 125_000 + index,
+    fee: 220,
+    confirmations: 6,
+    blockHeight: 850_000 - index,
+    blockTime: `2026-08-0${(index % 9) + 1}T00:00:00.000Z`,
+    labels: [],
+  }));
 
 test.describe('Accessibility', () => {
   const runtimeErrors = new WeakMap<Page, string[]>();
@@ -489,6 +525,128 @@ test.describe('Accessibility', () => {
       return document.documentElement.scrollWidth > document.documentElement.clientWidth;
     });
     expect(hasOverflow).toBe(false);
+
+    expect(unhandledRequests).toEqual([]);
+  });
+
+  // --- Responsive: desktop card-local overflow ---
+
+  /**
+   * The document-level check above proves the page does not scroll sideways. It
+   * cannot prove the activity table fits, because a nested scroller absorbs its
+   * own overflow and leaves the document clean — the table can be unusable while
+   * that assertion still passes.
+   *
+   * These widths are where Recent Activity is now full width: the two-column
+   * layout that used to squeeze it into ~688px is gone, so if the shared
+   * TransactionList responsive rules were ever going to be enough, it is here.
+   */
+  for (const width of [1280, 1920]) {
+    test(`recent activity fits its card at ${width}px without nested scrolling`, async ({ page }) => {
+      const unhandledRequests = await mockA11yApi(page, {
+        'GET /transactions/recent': mockResponse(activityRows()),
+      });
+
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/#/');
+
+      const card = page.getByTestId('dashboard-recent-activity');
+      await expect(card).toBeVisible();
+
+      const overflow = await card.evaluate((el) => {
+        // Every scrollable box inside the card, not just the card itself.
+        const boxes = [el, ...Array.from(el.querySelectorAll('*'))] as HTMLElement[];
+        return boxes
+          .filter((box) => box.scrollWidth > box.clientWidth + 1)
+          .map((box) => ({
+            tag: box.tagName.toLowerCase(),
+            scrollWidth: box.scrollWidth,
+            clientWidth: box.clientWidth,
+          }));
+      });
+
+      expect(overflow).toEqual([]);
+      expect(unhandledRequests).toEqual([]);
+    });
+  }
+
+  // --- Dashboard controls ---
+
+  test('activity paging controls are labelled and keyboard reachable', async ({ page }) => {
+    const unhandledRequests = await mockA11yApi(page, {
+      'GET /transactions/recent': mockResponse(activityRows()),
+    });
+
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/#/');
+
+    const next = page.getByRole('button', { name: 'Next activity page' });
+    await expect(next).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Previous activity page' })).toBeDisabled();
+
+    // Named for a screen reader, not just an arrow glyph, and focusable.
+    await next.focus();
+    await expect(next).toBeFocused();
+
+    // The Entries selector is a labelled control rather than a bare select.
+    await expect(page.getByLabel(/Entries/)).toBeVisible();
+
+    expect(unhandledRequests).toEqual([]);
+  });
+
+  test('dashboard sections expose disclosure state', async ({ page }) => {
+    const unhandledRequests = await mockA11yApi(page, {
+      'GET /transactions/recent': mockResponse(activityRows()),
+    });
+
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/#/');
+
+    const disclosure = page.getByRole('button', { name: /Recent Activity/ });
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+
+    await disclosure.click();
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+
+    expect(unhandledRequests).toEqual([]);
+  });
+
+  test('balance direction is legible without colour', async ({ page }) => {
+    const unhandledRequests = await mockA11yApi(page, {
+      'GET /transactions/balance-history': mockResponse([
+        { timestamp: '2026-08-01T00:00:00.000Z', balance: 1_000_000 },
+        { timestamp: '2026-08-02T00:00:00.000Z', balance: 1_125_000 },
+      ]),
+    });
+
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/#/');
+
+    // The direction is in the text itself, so a reader who cannot distinguish
+    // the stroke colour still learns which way the balance went.
+    const trend = page.getByTestId('balance-trend');
+    await expect(trend).toBeVisible();
+    await expect(trend).toContainText(/over (the past|all time)/);
+
+    expect(unhandledRequests).toEqual([]);
+  });
+
+  test('timeframe selection is announced, not just coloured', async ({ page }) => {
+    const unhandledRequests = await mockA11yApi(page);
+
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/#/');
+
+    await expect(page.getByRole('button', { name: '1W', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+
+    await page.getByRole('button', { name: '1M', exact: true }).click();
+    await expect(page.getByRole('button', { name: '1M', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
 
     expect(unhandledRequests).toEqual([]);
   });
