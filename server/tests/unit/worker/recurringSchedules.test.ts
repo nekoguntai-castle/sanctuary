@@ -71,6 +71,123 @@ describe('recurring schedule contracts', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test double for WorkerJobQueue
     }) as any;
 
+  const buildCompletedBeforeBootQueue = (
+    activatedAt: number,
+    lastCompletedAt: number,
+  ) =>
+    ({
+      inspectRecurringSchedules: vi.fn().mockResolvedValue({
+        healthy: true,
+        missing: [],
+        mismatched: [],
+        unexpected: [],
+        inspectionFailures: [],
+      }),
+      getRecurringHeartbeatSnapshot: vi.fn().mockResolvedValue({
+        healthy: true,
+        records: {
+          'sync:check-stale-wallets': {
+            version: 1,
+            schedulerId: 'sync:check-stale-wallets',
+            recurrenceFingerprint: 'every:300000',
+            activatedAt,
+            lastCompletedAt,
+          },
+          'maintenance:webhook:recover-due-deliveries': {
+            version: 1,
+            schedulerId: 'maintenance:webhook:recover-due-deliveries',
+            recurrenceFingerprint: 'pattern:* * * * *:tz:UTC',
+            activatedAt,
+            lastCompletedAt,
+          },
+        },
+      }),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test double for WorkerJobQueue
+    }) as any;
+
+  it('grants startup grace when the last completion predates this worker boot', async () => {
+    // Upgrade regression: an upgrade whose downtime exceeds maxAgeMs (2x the
+    // sync interval) leaves a durable lastCompletedAt from *before* the
+    // restart. The startup grace only forgave never-completed schedules, so
+    // the schedule was stale the instant the new worker booted, /health 503'd,
+    // and the backend's critical worker-heartbeat service aborted startup long
+    // before the job could run again. A slow rebuild bricked the whole stack.
+    const definitions = buildBaselineRecurringSchedules(config);
+    const activatedAt = 1_000_000;
+    const lastCompletedAt = activatedAt + 60_000;
+    const bootedAt = lastCompletedAt + 14 * 60_000; // 14m upgrade downtime
+    const queue = buildCompletedBeforeBootQueue(activatedAt, lastCompletedAt);
+
+    await expect(
+      inspectRecurringScheduleHealth(
+        queue,
+        definitions,
+        bootedAt + 30_000,
+        [],
+        true,
+        bootedAt,
+      ),
+    ).resolves.toEqual(expect.objectContaining({ healthy: true, stale: [] }));
+  });
+
+  it('reports staleness once a pre-boot completion outlives the grace window', async () => {
+    // Anti-masking: forgiving a pre-boot completion must expire with the grace
+    // window, so a schedule that never runs on the new worker is still caught.
+    const definitions = buildBaselineRecurringSchedules(config);
+    const activatedAt = 1_000_000;
+    const lastCompletedAt = activatedAt + 60_000;
+    const bootedAt = lastCompletedAt + 14 * 60_000;
+    const queue = buildCompletedBeforeBootQueue(activatedAt, lastCompletedAt);
+
+    await expect(
+      inspectRecurringScheduleHealth(
+        queue,
+        definitions,
+        bootedAt + 400_000,
+        [],
+        true,
+        bootedAt,
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        healthy: false,
+        stale: [
+          'sync:check-stale-wallets',
+          'maintenance:webhook:recover-due-deliveries',
+        ],
+      }),
+    );
+  });
+
+  it('still reports staleness for a completion that went stale while up', async () => {
+    // Anti-masking: a worker that has been up far longer than its grace window
+    // gets no forgiveness, even though its completion predates nothing.
+    const definitions = buildBaselineRecurringSchedules(config);
+    const activatedAt = 1_000_000;
+    const bootedAt = activatedAt;
+    const lastCompletedAt = bootedAt + 60_000; // completed after boot
+    const queue = buildCompletedBeforeBootQueue(activatedAt, lastCompletedAt);
+
+    await expect(
+      inspectRecurringScheduleHealth(
+        queue,
+        definitions,
+        lastCompletedAt + 700_000,
+        [],
+        true,
+        bootedAt,
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        healthy: false,
+        stale: [
+          'sync:check-stale-wallets',
+          'maintenance:webhook:recover-due-deliveries',
+        ],
+      }),
+    );
+  });
+
   it('defines the complete baseline and explicit conditional sets', () => {
     const baseline = buildBaselineRecurringSchedules(config);
 

@@ -370,13 +370,21 @@ export async function inspectRecurringScheduleHealth(
       if (!record) return true;
       // Anti-masking is preserved: for a worker that has been up longer than the
       // grace window, workerStartedAt is already older than the window, so this
-      // only ever forgives a schedule that has genuinely never completed on a
+      // only ever forgives a schedule that has not yet had a chance to run on a
       // freshly booted process.
+      //
+      // A completion recorded before this process booted counts as "not yet
+      // run" too. lastCompletedAt is durable, so an upgrade whose downtime
+      // exceeds maxAgeMs leaves a pre-restart completion that is already stale
+      // the instant the new worker boots. Restricting the grace to
+      // never-completed schedules meant /health 503'd and the backend's
+      // critical worker-heartbeat service aborted startup long before the job
+      // could run again, so a slow rebuild took the whole stack down.
       const graceStartedAt = Math.max(record.activatedAt, workerStartedAt);
-      if (
-        record.lastCompletedAt === undefined &&
-        now - graceStartedAt <= freshness.startupGraceMs
-      ) {
+      const notRunSinceBoot =
+        record.lastCompletedAt === undefined ||
+        record.lastCompletedAt < workerStartedAt;
+      if (notRunSinceBoot && now - graceStartedAt <= freshness.startupGraceMs) {
         return false;
       }
       return (
