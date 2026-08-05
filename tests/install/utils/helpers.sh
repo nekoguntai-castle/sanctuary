@@ -411,6 +411,10 @@ probe_monitoring_bind_sources() {
     local project_dir="$1"
     local rel="docker/monitoring"
 
+    # Carry the seeding outcome into the failure tail. The seeding itself runs
+    # at lane start, far outside the 256 KiB the diagnostic summary echoes.
+    printf '[probe] monitoring config seeding: %s\n' "${SYNC_MONITORING_STATUS:-unset}" >&2
+
     printf '[probe] job view of %s/%s:\n' "$project_dir" "$rel" >&2
     ls -la "$project_dir/$rel" >&2 2>&1 ||
         printf '[probe] job view: MISSING\n' >&2
@@ -440,19 +444,43 @@ probe_monitoring_bind_sources() {
 # The proper fix is to mount the runner workspace into the DIND container at
 # the same path; this only stops a runner misconfiguration from masking real
 # upgrade regressions.
+SYNC_MONITORING_STATUS="not attempted"
+
 sync_monitoring_configs_to_daemon() {
     local project_dir="$1"
+    local src="$project_dir/docker/monitoring"
+    local cid=""
 
-    [ -d "$project_dir/docker/monitoring" ] || return 0
+    if [ ! -d "$src" ]; then
+        SYNC_MONITORING_STATUS="skipped: $src absent job-side"
+        return 0
+    fi
 
-    docker run --rm -v "$project_dir/docker:/dst" alpine:3 sh -c \
-        'find /dst/monitoring -maxdepth 1 -type d -name "*.yml" -exec rm -rf {} + 2>/dev/null || true' \
-        >/dev/null 2>&1 || return 0
+    # A long-lived helper holds the bind mount open. docker cp into a *running*
+    # container writes through an active bind mount, which a piped `tar` into a
+    # throwaway container did not reliably do -- the first attempt at this
+    # silently produced nothing and, because its output was suppressed, gave no
+    # indication of why.
+    if ! cid="$(docker run -d -v "$project_dir/docker:/dst" alpine:3 sleep 300 2>&1)"; then
+        SYNC_MONITORING_STATUS="failed: helper container did not start: $cid"
+        return 0
+    fi
 
-    tar -C "$project_dir/docker" -cf - monitoring 2>/dev/null |
-        docker run --rm -i -v "$project_dir/docker:/dst" alpine:3 \
-            tar -C /dst -xf - >/dev/null 2>&1 || true
+    # Clear the bogus directories Docker auto-created for earlier failed mounts.
+    # Only ever matches daemon-side wreckage: a real config is never a directory.
+    docker exec "$cid" sh -c \
+        'find /dst/monitoring -maxdepth 1 -type d -name "*.yml" -exec rm -rf {} + 2>/dev/null; mkdir -p /dst/monitoring' \
+        2>&1 || true
 
+    if docker cp "$src/." "$cid:/dst/monitoring/" 2>&1; then
+        SYNC_MONITORING_STATUS="copied $(find "$src" -type f | wc -l) file(s) to daemon"
+    else
+        SYNC_MONITORING_STATUS="failed: docker cp into $cid"
+    fi
+
+    docker rm -f "$cid" >/dev/null 2>&1 || true
+
+    printf '[sync] %s\n' "$SYNC_MONITORING_STATUS" >&2
     return 0
 }
 
