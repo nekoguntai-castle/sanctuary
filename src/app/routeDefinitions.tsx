@@ -66,9 +66,10 @@ export const appRouteDefinitions: AppRouteDefinition[] = [
     path: "/",
     component: Dashboard,
     fallback: <DashboardSkeleton />,
-    // Wallets and Recent Activity sit side by side at 2xl; the default
-    // max-w-7xl cap would starve both columns on a wide monitor.
-    contentWidth: "wide",
+    // No contentWidth override: the "wide" cap existed only to feed the
+    // side-by-side Wallets/Recent Activity columns. Stacked full-width, the
+    // transaction table gets ~920px inside the default max-w-7xl cap at 1280px
+    // — more than the ~728px the wide two-column layout gave it.
     nav: {
       label: "Dashboard",
       icon: LayoutDashboard,

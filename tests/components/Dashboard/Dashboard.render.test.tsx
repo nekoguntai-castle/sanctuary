@@ -1,4 +1,4 @@
-import { render,screen } from '@testing-library/react';
+import { cleanup,render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
@@ -262,8 +262,9 @@ describe('Dashboard render branches', () => {
     });
     render(<Dashboard />);
 
-    expect(screen.getByText('tBTC')).toBeInTheDocument();
-    expect(screen.getByText('Testnet3 coins have no market value')).toBeInTheDocument();
+    // Testnet coins have no price, so the card is omitted rather than rendering
+    // a placeholder explaining its own emptiness.
+    expect(screen.queryByText('Bitcoin Price')).not.toBeInTheDocument();
     expect(screen.getByText('Testnet3 node status is unavailable')).toBeInTheDocument();
     expect(screen.getByText('Open Admin → Node Config to review Testnet3 settings.')).toBeInTheDocument();
     expect(screen.queryByText('Update Available: v2.0.0')).not.toBeInTheDocument();
@@ -371,6 +372,70 @@ describe('Dashboard render branches', () => {
     expect(screen.getByTestId('recent-transactions')).toBeInTheDocument();
   });
 
+  // The Wallets card earns its place only once there is a comparison to make.
+  // With one wallet it would restate the Total Balance card directly above it.
+  it('omits the wallets card for a single active-network wallet', () => {
+    mocks.dashboardData = makeDashboardState({
+      filteredWallets: [{ id: 'w1' }],
+    });
+    render(<Dashboard />);
+
+    expect(screen.queryByTestId('wallet-summary')).not.toBeInTheDocument();
+    expect(screen.getByTestId('recent-transactions')).toBeInTheDocument();
+  });
+
+  it('renders the wallets card from two active-network wallets', () => {
+    mocks.dashboardData = makeDashboardState({
+      filteredWallets: [{ id: 'w1' }, { id: 'w2' }],
+    });
+    render(<Dashboard />);
+
+    expect(screen.getByTestId('wallet-summary')).toBeInTheDocument();
+    expect(screen.getByTestId('recent-transactions')).toBeInTheDocument();
+  });
+
+  // Counted from the active network's wallets, not every wallet the user owns —
+  // two wallets split across networks must not summon the card.
+  it('counts only active-network wallets toward the two-wallet threshold', () => {
+    mocks.dashboardData = makeDashboardState({
+      wallets: [{ id: 'w1' }, { id: 'w2-other-network' }],
+      filteredWallets: [{ id: 'w1' }],
+    });
+    render(<Dashboard />);
+
+    expect(screen.queryByTestId('wallet-summary')).not.toBeInTheDocument();
+  });
+
+  // The stacked layout replaced a two-column grid; the row wrapper is gone, not
+  // merely collapsed to one column.
+  it('renders wallets and activity as stacked siblings, not a shared row', () => {
+    mocks.dashboardData = makeDashboardState({
+      filteredWallets: [{ id: 'w1' }, { id: 'w2' }],
+    });
+    render(<Dashboard />);
+
+    expect(screen.queryByTestId('dashboard-primary-row')).not.toBeInTheDocument();
+  });
+
+  // Dropping Bitcoin Price must not leave a hole where its column was: the
+  // telemetry row reflows to two columns so Fee Estimation and Node Status
+  // share the width evenly.
+  it('reflows telemetry to two columns when Bitcoin Price is omitted', () => {
+    mocks.dashboardData = makeDashboardState({ isMainnet: true });
+    const { container: mainnet } = render(<Dashboard />);
+    expect(mainnet.querySelector('.stagger-enter')?.className).toContain('lg:grid-cols-3');
+    expect(screen.getByText('Bitcoin Price')).toBeInTheDocument();
+
+    cleanup();
+
+    mocks.dashboardData = makeDashboardState({ isMainnet: false, selectedNetwork: 'signet' });
+    const { container: signet } = render(<Dashboard />);
+    const telemetry = signet.querySelector('.stagger-enter');
+    expect(telemetry?.className).toContain('lg:grid-cols-2');
+    expect(telemetry?.className).not.toContain('lg:grid-cols-3');
+    expect(screen.queryByText('Bitcoin Price')).not.toBeInTheDocument();
+  });
+
   it('renders signet error copy and symbol', () => {
     mocks.dashboardData = makeDashboardState({
       isMainnet: false,
@@ -381,8 +446,7 @@ describe('Dashboard render branches', () => {
     });
     render(<Dashboard />);
 
-    expect(screen.getByText('sBTC')).toBeInTheDocument();
-    expect(screen.getByText('Signet coins have no market value')).toBeInTheDocument();
+    expect(screen.queryByText('Bitcoin Price')).not.toBeInTheDocument();
     expect(screen.getByText('Signet sync is off')).toBeInTheDocument();
   });
 
@@ -402,7 +466,7 @@ describe('Dashboard render branches', () => {
     });
     render(<Dashboard />);
 
-    expect(screen.getByText('tBTC')).toBeInTheDocument();
+    expect(screen.queryByText('Bitcoin Price')).not.toBeInTheDocument();
     expect(screen.getByText('Connected')).toBeInTheDocument();
     expect(screen.getByText('4,500,000')).toBeInTheDocument();
     expect(screen.getByText('testnet.example.com')).toBeInTheDocument();

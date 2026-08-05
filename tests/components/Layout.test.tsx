@@ -591,10 +591,13 @@ describe('Layout', () => {
       expect(wrapper?.className).toContain('2xl:max-w-[96rem]');
     });
 
-    it('widens content at 2xl for the dashboard (wallets sit beside recent activity)', () => {
+    // The dashboard gave up its "wide" opt-in when Wallets and Recent Activity
+    // stopped sharing a row; stacked full width, they need no extra cap.
+    it('keeps the default cap for the dashboard now that its sections stack', () => {
       renderLayout('/');
       const wrapper = screen.getByTestId('page-content').parentElement;
-      expect(wrapper?.className).toContain('2xl:max-w-[96rem]');
+      expect(wrapper?.className).toContain('max-w-7xl');
+      expect(wrapper?.className).not.toContain('2xl:max-w-[96rem]');
     });
   });
 

@@ -21,7 +21,7 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
   const navigate = useNavigate();
 
   return (
-    <Card interactive>
+    <Card interactive data-testid="dashboard-recent-activity">
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-lg font-medium text-sanctuary-900 dark:text-sanctuary-100 flex items-center">
           <Activity className="w-5 h-5 mr-2 text-sanctuary-400" />

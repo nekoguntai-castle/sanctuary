@@ -49,6 +49,11 @@ export function DashboardContent({ data }: DashboardContentProps) {
     refreshMempoolData,
   } = data;
 
+  // Two wallets is where a Wallets card starts saying something the Total
+  // Balance card above it doesn't. Counted from the active network's wallets,
+  // not every wallet the user owns.
+  const showWallets = filteredWallets.length >= 2;
+
   // Shared between the welcome and populated branches, which wrap it in
   // different stagger delays.
   const recentActivity = (
@@ -88,18 +93,16 @@ export function DashboardContent({ data }: DashboardContentProps) {
             />
           </div>
 
-          {/* Side by side on wide screens: what you own next to what just
-              happened. items-start so the shorter card doesn't stretch.
+          {/* Stacked full-width planes. Side-by-side columns forced both
+              tables under their comfortable minimum at every viewport below
+              1800px, and coupled two independently-sized cards into one row.
+              Full width gives each table more room than the old wide column
+              did, and lets the two sections collapse independently.
 
-              1800px, not 2xl. The sidebar takes 256px and the content wrapper
-              64px of padding, so a 1536px viewport leaves ~600px per column —
-              under the wallet table's ~548px minimum plus the transaction
-              table's ~714px. At 1800px+ the "wide" cap gives ~740px columns,
-              which both tables clear. */}
-          <div
-            data-testid="dashboard-primary-row"
-            className="grid grid-cols-1 min-[1800px]:grid-cols-2 gap-4 items-start"
-          >
+              Wallets earns its own plane only once there is a comparison to
+              make. With a single wallet the card would restate the Total
+              Balance above it, so the dashboard goes straight to activity. */}
+          {showWallets && (
             <div className="animate-fade-in-up-2">
               <WalletSummary
                 selectedNetwork={selectedNetwork}
@@ -107,25 +110,37 @@ export function DashboardContent({ data }: DashboardContentProps) {
                 totalBalance={totalBalance}
               />
             </div>
-            <div className="animate-fade-in-up-3">{recentActivity}</div>
+          )}
+          {/* Delay follows the card actually above it — with Wallets hidden,
+              up-3 would leave a visible gap in the stagger. */}
+          <div className={showWallets ? 'animate-fade-in-up-3' : 'animate-fade-in-up-2'}>
+            {recentActivity}
           </div>
         </>
       )}
 
-      {/* Ambient market/network telemetry - 3 columns at lg+, 2 on tablet portrait, 1 on phone.
-          `stagger-enter` owns the delays for all three children via nth-child, which
+      {/* Ambient market/network telemetry - 1 column on phone, 2 on tablet portrait,
+          then one column per card at lg+ so a hidden Bitcoin Price doesn't leave a
+          gap. `stagger-enter` owns the delays for all children via nth-child, which
           outranks any animate-fade-in-up-* class on a child — don't add one here. */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 stagger-enter">
+      <div
+        className={`grid grid-cols-1 sm:grid-cols-2 gap-4 stagger-enter ${
+          isMainnet ? 'lg:grid-cols-3' : 'lg:grid-cols-2'
+        }`}
+      >
 
-        <BitcoinPriceCard
-          isMainnet={isMainnet}
-          selectedNetwork={selectedNetwork}
-          btcPrice={btcPrice}
-          currencySymbol={currencySymbol}
-          priceChange24h={priceChange24h}
-          priceChangePositive={priceChangePositive}
-          lastPriceUpdate={lastPriceUpdate}
-        />
+        {/* Testnet and signet coins have no market value, so there is no price
+            to show. An explanatory placeholder card is still a card the reader
+            has to parse and dismiss — omit it instead. */}
+        {isMainnet && (
+          <BitcoinPriceCard
+            btcPrice={btcPrice}
+            currencySymbol={currencySymbol}
+            priceChange24h={priceChange24h}
+            priceChangePositive={priceChangePositive}
+            lastPriceUpdate={lastPriceUpdate}
+          />
+        )}
 
         <FeeEstimationCard fees={fees} formatFeeRate={formatFeeRate} />
 

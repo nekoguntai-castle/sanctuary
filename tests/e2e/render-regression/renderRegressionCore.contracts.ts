@@ -30,9 +30,10 @@ export async function renderDashboardRendersCoreCardsAndNetworkSpecificPlacehold
     .getByRole("tablist", { name: "Network tabs" })
     .getByRole("tab", { name: "Testnet3" })
     .click();
-  await expect(
-    page.getByText("Testnet3 coins have no market value"),
-  ).toBeVisible();
+  // Bitcoin Price is mainnet-only: on Testnet3 the card is omitted outright, and
+  // the telemetry row reflows to two cards rather than leaving a blank slot.
+  await expect(page.getByText("Bitcoin Price")).toHaveCount(0);
+  await expect(page.getByText("Fee Estimation")).toBeVisible();
   await expect(page.getByText(/^Connected$/)).toBeVisible();
   await expect(page.getByRole("main").getByText("900,123").last()).toBeVisible();
   await expect(page.getByText("2/3(active/total)")).toBeVisible();
@@ -42,34 +43,36 @@ export async function renderDashboardRendersCoreCardsAndNetworkSpecificPlacehold
 }
 
 /**
- * The dashboard's primary row goes two-column only above 1800px, and the whole
- * e2e suite otherwise runs at 1280x720 — so before this case the two-column
- * branch, the "wide" content cap, and the auto-fit stats grid at half width had
- * never rendered in any test.
+ * Wallets and Recent Activity used to share a two-column row above 1800px, fed
+ * by the dashboard route's `contentWidth: "wide"`. Both are gone: the sections
+ * are full-width stacked siblings at every viewport, and the route is back on
+ * the default cap.
  *
- * Deliberately assertion-only, no screenshot. The three computed-style checks
- * below are what actually catch a regression here; a baseline PNG would add a
- * calibration loop and a recharts animation to fight, for no extra coverage.
+ * This case runs at the wide viewport because that is the width where the old
+ * layout differed — if the two-column row ever comes back, it comes back here
+ * first and nowhere else in the suite (everything else runs at 1280x720).
  *
- * The magic numbers are derived, not observed — keep this arithmetic in sync if
- * the layout constants move:
- *   main   = 1920 - 256 sidebar (LayoutShell `lg:w-64`)               = 1664
- *   wrapper= min(1664, 1536 `2xl:max-w-[96rem]`)                      = 1536
- *   row    = 1536 - 64 (`md:px-8`, 32 each side)                      = 1472
- *   column = (1472 - 16 `gap-4`) / 2                                  =  728
- *   card   = 728 - 40 (Card padding `md` = p-5, 20 each side)         =  688
- *   tracks = auto-fit minmax(144px, 1fr) with 12px gap in 688px       =    4
- *            (4 -> 4*144 + 3*12 = 612 fits; 5 -> 5*144 + 4*12 = 768 does not)
+ * Deliberately assertion-only, no screenshot: the computed-style checks are what
+ * catch a regression, and a baseline PNG would add a calibration loop and a
+ * recharts animation to fight for no extra coverage.
+ *
+ * The width is derived, not observed — keep this arithmetic in sync if the
+ * layout constants move:
+ *   main    = 1920 - 256 sidebar (LayoutShell `lg:w-64`)              = 1664
+ *   wrapper = min(1664, 1280 default `max-w-7xl`)                     = 1280
+ *   content = 1280 - 64 (`md:px-8`, 32 each side)                     = 1216
+ *   card    = 1216 - 2 (Card `border`, 1 each side; clientWidth
+ *             excludes borders)                                       = 1214
  */
-export async function renderDashboardWideViewportRendersTwoColumnPrimaryRow({
+export async function renderDashboardWideViewportStacksSections({
   page,
 }: {
   page: Page;
 }): Promise<void> {
-  // chromium only, matching expectChromiumMainScreenshot: exact pixel widths and
-  // grid track counts are calibrated for one engine, not a cross-browser
-  // contract. Guarding here rather than with test.skip() keeps the suite free of
-  // disabled tests (scripts/test-hygiene.mjs).
+  // chromium only, matching expectChromiumMainScreenshot: exact pixel widths are
+  // calibrated for one engine, not a cross-browser contract. Guarding here
+  // rather than with test.skip() keeps the suite free of disabled tests
+  // (scripts/test-hygiene.mjs).
   if (test.info().project.name !== "chromium") {
     return;
   }
@@ -79,40 +82,20 @@ export async function renderDashboardWideViewportRendersTwoColumnPrimaryRow({
   await page.goto("/#/");
   await expect(page.getByText("Bitcoin Price")).toBeVisible();
 
-  const primaryRow = page.getByTestId("dashboard-primary-row");
-  await expect(primaryRow).toBeVisible();
+  // The two-column row is gone outright, not merely collapsed to one column.
+  await expect(page.getByTestId("dashboard-primary-row")).toHaveCount(0);
 
-  // Poll rather than assert once: `min-[1800px]:grid-cols-2` is an arbitrary
-  // variant, and Tailwind here is the CDN build whose JIT emits those
-  // asynchronously after first paint.
-  await expect
-    .poll(
-      () =>
-        primaryRow.evaluate(
-          (el) => getComputedStyle(el).gridTemplateColumns.split(" ").length,
-        ),
-      { timeout: 15_000 },
-    )
-    .toBe(2);
+  const activity = page.getByTestId("dashboard-recent-activity");
+  await expect(activity).toBeVisible();
 
-  // Pins the dashboard route's `contentWidth: "wide"`. Under "default" this
-  // would be 1280 - 64 = 1216.
+  // Poll rather than assert once: Tailwind here is the CDN build whose JIT
+  // emits classes asynchronously after first paint.
+  //
+  // Pins both halves of the change at once — full width (not a ~688px column)
+  // and the default content cap (not the 1472px "wide" one).
   await expect
-    .poll(() => primaryRow.evaluate((el) => el.clientWidth))
-    .toBe(1472);
-
-  // The stats grid is container-relative (auto-fit), not viewport-keyed: it must
-  // step down to 4 tracks inside a half-width column, not stay at the 7 it shows
-  // full width.
-  await expect
-    .poll(() =>
-      primaryRow
-        .getByTestId("transaction-stats-grid")
-        .evaluate(
-          (el) => getComputedStyle(el).gridTemplateColumns.split(" ").length,
-        ),
-    )
-    .toBe(4);
+    .poll(() => activity.evaluate((el) => el.clientWidth), { timeout: 15_000 })
+    .toBe(1214);
 
   expect(unhandledRequests).toEqual([]);
 }

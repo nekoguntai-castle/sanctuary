@@ -122,7 +122,10 @@ test.describe('User journey flows', () => {
     await expect(page.getByText('Bitcoin Price')).toBeVisible();
 
     await networkTabs.getByRole('tab', { name: 'Testnet3' }).click();
-    await expect(page.getByText('Testnet3 coins have no market value')).toBeVisible();
+    // Testnet coins have no market value, so the card is omitted rather than
+    // showing a placeholder that explains its own emptiness.
+    await expect(page.getByText('Bitcoin Price')).toHaveCount(0);
+    await expect(page.getByText('Fee Estimation')).toBeVisible();
 
     await networkTabs.getByRole('tab', { name: /Mainnet/i }).click();
     await expect(page.getByText('Bitcoin Price')).toBeVisible();
