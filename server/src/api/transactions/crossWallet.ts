@@ -17,6 +17,14 @@ import { requireAuthenticatedUser } from '../../middleware/auth';
 /** Pagination for recent transactions (max 50, default 10) */
 const RecentTxLimitSchema = z.coerce.number().int().catch(10).transform(v => Math.max(1, Math.min(v, 50)));
 
+/**
+ * How many rows to skip before the page (default 0).
+ *
+ * Negative values clamp to 0 rather than erroring: this is a read-only preview
+ * endpoint, and a nonsensical offset should return the first page, not a 400.
+ */
+const RecentTxOffsetSchema = z.coerce.number().int().catch(0).transform(v => Math.max(0, v));
+
 /** Total balance param (defaults to 0 for invalid input) */
 const TotalBalanceSchema = z.coerce.number().int().catch(0);
 
@@ -95,6 +103,8 @@ router.get('/transactions/recent', asyncHandler(async (req, res) => {
   const userId = requireAuthenticatedUser(req).userId;
   /* v8 ignore next -- schema catch provides default for malformed query input */
   const limit = RecentTxLimitSchema.safeParse(req.query.limit).data ?? 10;
+  /* v8 ignore next -- schema catch provides default for malformed query input */
+  const offset = RecentTxOffsetSchema.safeParse(req.query.offset).data ?? 0;
   const requestedWalletIds = req.query.walletIds
     ? (req.query.walletIds as string).split(',').filter(Boolean)
     : null;
@@ -134,12 +144,19 @@ router.get('/transactions/recent', asyncHandler(async (req, res) => {
         },
       },
     },
-    // Sort pending transactions (null blockTime) first, then by date descending
+    // Sort pending transactions (null blockTime) first, then by date descending.
+    //
+    // `id` is the tie-breaker, not decoration: without a total order, rows that
+    // share a blockTime and createdAt can come back in a different order per
+    // query, so a paged reader could see the same row twice or skip one
+    // entirely. Only relevant once offset exists.
     orderBy: [
       { blockTime: { sort: 'desc', nulls: 'first' } },
       { createdAt: 'desc' },
+      { id: 'desc' },
     ],
     take: limit,
+    skip: offset,
   });
 
   // Build frozen/locked state from unspent outputs created by each transaction.

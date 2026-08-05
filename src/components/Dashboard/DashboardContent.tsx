@@ -34,6 +34,13 @@ export function DashboardContent({ data }: DashboardContentProps) {
     wallets,
     filteredWallets,
     recentTx,
+    activityPage,
+    activityPageSize,
+    activityHasNextPage,
+    activityHasPreviousPage,
+    activityFetching,
+    setActivityPage,
+    setActivityPageSize,
     pendingTxs,
     pendingTotals,
     fees,
@@ -62,6 +69,13 @@ export function DashboardContent({ data }: DashboardContentProps) {
       wallets={wallets}
       confirmationThreshold={bitcoinStatus?.confirmationThreshold}
       deepConfirmationThreshold={bitcoinStatus?.deepConfirmationThreshold}
+      page={activityPage}
+      pageSize={activityPageSize}
+      hasPreviousPage={activityHasPreviousPage}
+      hasNextPage={activityHasNextPage}
+      isFetching={activityFetching}
+      onPageChange={setActivityPage}
+      onPageSizeChange={setActivityPageSize}
     />
   );
 

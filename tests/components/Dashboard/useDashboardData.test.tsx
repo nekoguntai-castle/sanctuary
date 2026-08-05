@@ -28,6 +28,9 @@ let walletsData: any[] | undefined;
 let walletsLoading = false;
 let recentTxData: any[] | undefined;
 let txLoading = false;
+let recentTxFetching = false;
+let recentTxHasNext = false;
+const recentTxCalls: { pageSize: number; page: number }[] = [];
 let pendingTxData: any[] | undefined;
 let balanceHistoryData: Array<{ name: string; value: number }>;
 
@@ -107,7 +110,18 @@ vi.mock('../../../src/hooks/useNotificationSound', () => ({
 
 vi.mock('../../../src/hooks/queries/useWallets', () => ({
   useWallets: () => ({ data: walletsData, isLoading: walletsLoading }),
-  useRecentTransactions: () => ({ data: recentTxData, isLoading: txLoading }),
+  useRecentTransactions: (_ids: string[], pageSize: number, page: number) => {
+    recentTxCalls.push({ pageSize, page });
+    return {
+      data: recentTxData,
+      isLoading: txLoading,
+      isFetching: recentTxFetching,
+      page,
+      pageSize,
+      hasPreviousPage: page > 0,
+      hasNextPage: recentTxHasNext,
+    };
+  },
   usePendingTransactions: () => ({ data: pendingTxData }),
   useInvalidateAllWallets: () => mockInvalidateAllWallets,
   useUpdateWalletSyncStatus: () => mockUpdateWalletSyncStatus,
@@ -139,12 +153,38 @@ vi.mock('../../../src/contexts/UserContext', () => ({
   useUser: () => userState,
 }));
 
+// Stateful, matching the pattern in WalletSummary.test: the activity page size
+// runs through this hook, and the reset-on-change effect needs a real setter.
+const mockPreferences = new Map<string, unknown>();
+
+vi.mock('../../../src/hooks/useUserPreference', async () => {
+  const { useState } = await import('react');
+  return {
+    useUserPreference: (key: string, defaultValue: unknown) => {
+      const [value, setValue] = useState(
+        mockPreferences.has(key) ? mockPreferences.get(key) : defaultValue
+      );
+      return [
+        value,
+        (newValue: unknown) => {
+          mockPreferences.set(key, newValue);
+          setValue(newValue);
+        },
+      ];
+    },
+  };
+});
+
 vi.mock('../../../src/hooks/useDelayedRender', () => ({
   useDelayedRender: () => delayedRenderReady,
 }));
 
 const resetState = () => {
   mockSearchParams = new URLSearchParams();
+  recentTxFetching = false;
+  recentTxHasNext = false;
+  recentTxCalls.length = 0;
+  mockPreferences.clear();
   walletsData = [
     {
       id: 'w-main-low',
@@ -802,5 +842,79 @@ describe('useDashboardData', () => {
       });
     });
     expect(mockUpdateWalletSyncStatus).toHaveBeenCalledWith('w-main-high', false, 'partial');
+  });
+
+  describe('recent activity paging', () => {
+    it('starts on the first page at the persisted page size', () => {
+      mockPreferences.set('viewSettings.dashboard.activityPageSize', 20);
+
+      const { result } = renderHook(() => useDashboardData());
+
+      expect(result.current.activityPageSize).toBe(20);
+      expect(result.current.activityPage).toBe(0);
+      expect(recentTxCalls.at(-1)).toMatchObject({ pageSize: 20, page: 0 });
+    });
+
+    it('requests the page the reader moved to', () => {
+      const { result } = renderHook(() => useDashboardData());
+
+      act(() => {
+        result.current.setActivityPage(2);
+      });
+
+      expect(result.current.activityPage).toBe(2);
+      expect(recentTxCalls.at(-1)).toMatchObject({ page: 2 });
+    });
+
+    it('returns to the first page when the page size changes', () => {
+      const { result } = renderHook(() => useDashboardData());
+
+      act(() => {
+        result.current.setActivityPage(3);
+      });
+      expect(result.current.activityPage).toBe(3);
+
+      act(() => {
+        result.current.setActivityPageSize(5);
+      });
+
+      // Page 4 of a 10-row paging is not page 4 of a 5-row paging, and may not
+      // exist at all.
+      expect(result.current.activityPage).toBe(0);
+      expect(result.current.activityPageSize).toBe(5);
+    });
+
+    it('steps back rather than stranding the reader on an emptied page', async () => {
+      const { result, rerender } = renderHook(() => useDashboardData());
+
+      act(() => {
+        result.current.setActivityPage(2);
+      });
+      expect(result.current.activityPage).toBe(2);
+
+      // Invalidation shrank the set: this page no longer has rows. Re-render
+      // rather than re-setting the page, which React would bail out of.
+      recentTxData = [];
+      await act(async () => {
+        rerender();
+      });
+
+      expect(result.current.activityPage).toBeLessThan(2);
+    });
+
+    it('waits for the request to settle before stepping back', () => {
+      recentTxFetching = true;
+      recentTxData = [];
+
+      const { result } = renderHook(() => useDashboardData());
+
+      act(() => {
+        result.current.setActivityPage(2);
+      });
+
+      // An in-flight page is empty because it has not arrived, not because it
+      // does not exist — stepping back here would fight the reader's click.
+      expect(result.current.activityPage).toBe(2);
+    });
   });
 });

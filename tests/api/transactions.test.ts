@@ -396,6 +396,22 @@ describe('Transactions API', () => {
       expect(mockGet).toHaveBeenCalledWith('/transactions/recent', { limit: 5 });
     });
 
+    it('omits offset for the first page so the request URL is unchanged', async () => {
+      mockGet.mockResolvedValue([]);
+      await getRecentTransactions(5, undefined, 0);
+      expect(mockGet).toHaveBeenCalledWith('/transactions/recent', { limit: 5 });
+    });
+
+    it('sends offset once past the first page', async () => {
+      mockGet.mockResolvedValue([]);
+      await getRecentTransactions(5, ['w1'], 15);
+      expect(mockGet).toHaveBeenCalledWith('/transactions/recent', {
+        limit: 5,
+        offset: 15,
+        walletIds: 'w1',
+      });
+    });
+
     it('should pass walletIds filter', async () => {
       mockGet.mockResolvedValue([]);
       await getRecentTransactions(10, ['w1', 'w2']);

@@ -498,6 +498,134 @@ describe('transactions cross-wallet routes', () => {
     expect(lockedTx.lockedByDraftLabel).toBe('Pending Send');
   });
 
+  describe('GET /transactions/recent paging', () => {
+    const singleWallet = () => {
+      mockPrismaClient.wallet.findMany.mockResolvedValue([
+        { id: 'wallet-1', name: 'Main Wallet', network: 'mainnet' },
+      ]);
+      mockPrismaClient.transaction.findMany.mockResolvedValue([]);
+    };
+
+    const findManyArgs = () => mockPrismaClient.transaction.findMany.mock.calls[0][0];
+
+    it('defaults to the first page', async () => {
+      singleWallet();
+
+      const response = await request(app).get('/api/v1/transactions/recent');
+
+      expect(response.status).toBe(200);
+      expect(findManyArgs()).toMatchObject({ take: 10, skip: 0 });
+    });
+
+    it('passes a requested offset through to the query', async () => {
+      singleWallet();
+
+      const response = await request(app)
+        .get('/api/v1/transactions/recent')
+        .query({ limit: '5', offset: '10' });
+
+      expect(response.status).toBe(200);
+      expect(findManyArgs()).toMatchObject({ take: 5, skip: 10 });
+    });
+
+    it('clamps a negative offset to the first page rather than erroring', async () => {
+      singleWallet();
+
+      const response = await request(app)
+        .get('/api/v1/transactions/recent')
+        .query({ offset: '-25' });
+
+      expect(response.status).toBe(200);
+      expect(findManyArgs()).toMatchObject({ skip: 0 });
+    });
+
+    it('falls back to the first page for a non-numeric offset', async () => {
+      singleWallet();
+
+      const response = await request(app)
+        .get('/api/v1/transactions/recent')
+        .query({ offset: 'not-a-number' });
+
+      expect(response.status).toBe(200);
+      expect(findManyArgs()).toMatchObject({ skip: 0 });
+    });
+
+    it('keeps the 50-row ceiling while paging', async () => {
+      singleWallet();
+
+      const response = await request(app)
+        .get('/api/v1/transactions/recent')
+        .query({ limit: '500', offset: '5' });
+
+      expect(response.status).toBe(200);
+      expect(findManyArgs()).toMatchObject({ take: 50, skip: 5 });
+    });
+
+    it('orders by a total key so paging cannot repeat or skip a row', async () => {
+      singleWallet();
+
+      await request(app).get('/api/v1/transactions/recent').query({ offset: '10' });
+
+      // Without the trailing id, rows sharing blockTime and createdAt have no
+      // defined relative order, and the same offset can return different rows
+      // between requests.
+      expect(findManyArgs().orderBy).toEqual([
+        { blockTime: { sort: 'desc', nulls: 'first' } },
+        { createdAt: 'desc' },
+        { id: 'desc' },
+      ]);
+    });
+
+    it('returns a short final page without complaint', async () => {
+      mockPrismaClient.wallet.findMany.mockResolvedValue([
+        { id: 'wallet-1', name: 'Main Wallet', network: 'mainnet' },
+      ]);
+      mockPrismaClient.transaction.findMany.mockResolvedValue([
+        {
+          id: 'tx-last',
+          txid: 'b'.repeat(64),
+          walletId: 'wallet-1',
+          type: 'received',
+          amount: BigInt(5000),
+          fee: BigInt(0),
+          balanceAfter: BigInt(5000),
+          blockHeight: BigInt(849999),
+          confirmations: 0,
+          blockTime: new Date('2026-01-01T00:00:00.000Z'),
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
+          address: null,
+          transactionLabels: [],
+          rbfStatus: null,
+        },
+      ]);
+      mocks.getCachedBlockHeight.mockReturnValue(850000);
+
+      const response = await request(app)
+        .get('/api/v1/transactions/recent')
+        .query({ limit: '10', offset: '40' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveLength(1);
+    });
+
+    it('applies the offset alongside a wallet filter', async () => {
+      mockPrismaClient.wallet.findMany.mockResolvedValue([
+        { id: 'wallet-2', name: 'Second', network: 'mainnet' },
+      ]);
+      mockPrismaClient.transaction.findMany.mockResolvedValue([]);
+
+      const response = await request(app)
+        .get('/api/v1/transactions/recent')
+        .query({ walletIds: 'wallet-2', offset: '3' });
+
+      expect(response.status).toBe(200);
+      expect(findManyArgs()).toMatchObject({
+        skip: 3,
+        where: expect.objectContaining({ walletId: { in: ['wallet-2'] } }),
+      });
+    });
+  });
+
   it('returns 500 when wallet lookup fails for recent transactions', async () => {
     mockPrismaClient.wallet.findMany.mockRejectedValue(new Error('database down'));
 

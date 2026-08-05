@@ -84,7 +84,7 @@ describe('useWallets hooks memoization', () => {
       });
 
       // Verify API called with correct params
-      expect(transactionsApi.getRecentTransactions).toHaveBeenCalledWith(10, ['wallet1', 'wallet2']);
+      expect(transactionsApi.getRecentTransactions).toHaveBeenCalledWith(11, ['wallet1', 'wallet2'], 0);
       expect(result.current.data).toEqual(mockTransactions);
     });
 
@@ -149,8 +149,9 @@ describe('useWallets hooks memoization', () => {
         expect(result.current.isLoading).toBe(false);
       });
 
-      // Verify limit is passed to API
-      expect(transactionsApi.getRecentTransactions).toHaveBeenCalledWith(5, ['wallet1']);
+      // Verify limit is passed to API as pageSize + 1: the extra row is the
+      // next-page probe, and is sliced off before display.
+      expect(transactionsApi.getRecentTransactions).toHaveBeenCalledWith(6, ['wallet1'], 0);
     });
 
     it('should return empty array when no wallets provided', async () => {

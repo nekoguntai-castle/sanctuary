@@ -370,6 +370,7 @@ export async function findByWalletIdsWithDetails(
     orderBy?: Prisma.TransactionOrderByWithRelationInput | Prisma.TransactionOrderByWithRelationInput[];
     select?: Prisma.TransactionSelect;
     take?: number;
+    skip?: number;
   }
 ) {
   const query: Prisma.TransactionFindManyArgs = {
@@ -380,6 +381,7 @@ export async function findByWalletIdsWithDetails(
     },
     orderBy: options?.orderBy ?? { blockTime: 'desc' },
     take: options?.take,
+    skip: options?.skip,
   };
   if (options?.select) query.select = options.select;
   else if (options?.include) query.include = options.include;

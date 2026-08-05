@@ -1,4 +1,4 @@
-import { render,screen } from '@testing-library/react';
+import { cleanup,render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { RecentTransactions } from '../../../src/components/Dashboard/RecentTransactions';
@@ -52,7 +52,20 @@ vi.mock('lucide-react', () => ({
   Activity: () => <span data-testid="activity-icon" />,
   ChevronDown: () => <span data-testid="chevron-down-icon" />,
   ChevronUp: () => <span data-testid="chevron-up-icon" />,
+  ChevronLeft: () => <span data-testid="chevron-left-icon" />,
+  ChevronRight: () => <span data-testid="chevron-right-icon" />,
 }));
+
+const pagingProps = (overrides: Record<string, unknown> = {}) => ({
+  page: 0,
+  pageSize: 10,
+  hasPreviousPage: false,
+  hasNextPage: false,
+  isFetching: false,
+  onPageChange: vi.fn(),
+  onPageSizeChange: vi.fn(),
+  ...overrides,
+});
 
 describe('RecentTransactions', () => {
   beforeEach(() => {
@@ -70,6 +83,7 @@ describe('RecentTransactions', () => {
         wallets={wallets as any}
         confirmationThreshold={2}
         deepConfirmationThreshold={6}
+        {...pagingProps()}
       />
     );
 
@@ -92,6 +106,7 @@ describe('RecentTransactions', () => {
         wallets={[] as any}
         confirmationThreshold={1}
         deepConfirmationThreshold={3}
+        {...pagingProps()}
       />
     );
 
@@ -102,14 +117,101 @@ describe('RecentTransactions', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/wallets/wallet-2?tx=abc123');
   });
 
+  describe('pagination controls', () => {
+    const renderPaged = (overrides: Record<string, unknown> = {}, rows = 3) =>
+      render(
+        <RecentTransactions
+          recentTx={Array.from({ length: rows }, (_, i) => ({ id: `tx-${i}` })) as any}
+          wallets={[] as any}
+          confirmationThreshold={1}
+          deepConfirmationThreshold={3}
+          {...pagingProps(overrides)}
+        />
+      );
+
+    it('hides the whole footer when everything fits on one page', () => {
+      renderPaged({ hasPreviousPage: false, hasNextPage: false });
+
+      // Not just the arrows: an Entries selector next to two dead arrows is
+      // three controls all saying "there is nothing more".
+      expect(screen.queryByTestId('activity-pagination')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Next activity page')).not.toBeInTheDocument();
+      expect(screen.queryByText('Entries')).not.toBeInTheDocument();
+    });
+
+    it('shows the footer once a second page exists', () => {
+      renderPaged({ hasNextPage: true });
+
+      expect(screen.getByTestId('activity-pagination')).toBeInTheDocument();
+      expect(screen.getByLabelText('Previous activity page')).toBeDisabled();
+      expect(screen.getByLabelText('Next activity page')).toBeEnabled();
+    });
+
+    it('cannot page back from the first page or forward from a short last page', () => {
+      renderPaged({ page: 0, hasPreviousPage: false, hasNextPage: true });
+      expect(screen.getByLabelText('Previous activity page')).toBeDisabled();
+
+      cleanup();
+
+      renderPaged({ page: 3, hasPreviousPage: true, hasNextPage: false });
+      expect(screen.getByLabelText('Next activity page')).toBeDisabled();
+    });
+
+    it('requests the neighbouring page on activation', async () => {
+      const user = userEvent.setup();
+      const onPageChange = vi.fn();
+      renderPaged({ page: 2, hasPreviousPage: true, hasNextPage: true, onPageChange });
+
+      await user.click(screen.getByLabelText('Next activity page'));
+      expect(onPageChange).toHaveBeenCalledWith(3);
+
+      await user.click(screen.getByLabelText('Previous activity page'));
+      expect(onPageChange).toHaveBeenCalledWith(1);
+    });
+
+    it('locks both arrows while a page is in flight', () => {
+      renderPaged({ page: 1, hasPreviousPage: true, hasNextPage: true, isFetching: true });
+
+      // A second click before the request settles would skip a page.
+      expect(screen.getByLabelText('Previous activity page')).toBeDisabled();
+      expect(screen.getByLabelText('Next activity page')).toBeDisabled();
+    });
+
+    it('offers the three page sizes and reports the chosen one', async () => {
+      const user = userEvent.setup();
+      const onPageSizeChange = vi.fn();
+      renderPaged({ hasNextPage: true, onPageSizeChange });
+
+      const select = screen.getByLabelText(/Entries/);
+      expect(
+        Array.from(select.querySelectorAll('option')).map(o => o.textContent)
+      ).toEqual(['5', '10', '20']);
+
+      await user.selectOptions(select, '20');
+      expect(onPageSizeChange).toHaveBeenCalledWith(20);
+    });
+
+    it('states the visible range rather than inventing a total', () => {
+      renderPaged({ page: 1, pageSize: 10, hasPreviousPage: true, hasNextPage: true }, 10);
+
+      // The endpoint returns a page and never counts the set, so "of 57" would
+      // be a number nothing produced.
+      expect(screen.getAllByText('Showing 11–20').length).toBeGreaterThan(0);
+    });
+  });
+
   describe('section collapse', () => {
-    const renderSection = (recentTx: any[] = [{ id: 'tx-a', walletId: 'wallet-1' }]) =>
+    const renderSection = (
+      recentTx: any[] = [{ id: 'tx-a', walletId: 'wallet-1' }],
+      overrides: Partial<ReturnType<typeof pagingProps>> = {}
+    ) =>
       render(
         <RecentTransactions
           recentTx={recentTx as any}
           wallets={[] as any}
           confirmationThreshold={1}
           deepConfirmationThreshold={3}
+          {...pagingProps(overrides)}
         />
       );
 
@@ -155,12 +257,13 @@ describe('RecentTransactions', () => {
       expect(disclosure()).toHaveAttribute('aria-expanded', 'false');
     });
 
-    it('summarises the loaded rows while collapsed', async () => {
+    it('summarises the visible range while collapsed', async () => {
       const user = userEvent.setup();
-      renderSection([{ id: 'a' }, { id: 'b' }, { id: 'c' }]);
+      renderSection([{ id: 'a' }, { id: 'b' }, { id: 'c' }], { page: 1, pageSize: 3 });
 
       await user.click(disclosure());
-      expect(screen.getByText('3 shown')).toBeInTheDocument();
+      // Truthful about position without inventing a total the endpoint never returns.
+      expect(screen.getByText('Showing 4–6')).toBeInTheDocument();
     });
 
     it('says so plainly when there is nothing to summarise', async () => {

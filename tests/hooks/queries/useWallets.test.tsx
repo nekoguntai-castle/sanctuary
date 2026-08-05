@@ -159,8 +159,65 @@ describe('aggregated transaction hooks', () => {
     const { result } = renderHook(() => useRecentTransactions(['w1', 'w2'], 5), { wrapper: createWrapper(queryClient) });
     await waitFor(() => expect(result.current.data).toHaveLength(1));
 
-    expect(mockGetRecentTransactions).toHaveBeenCalledWith(5, ['w1', 'w2']);
+    // pageSize + 1: the extra row is how hasNextPage is derived without a
+    // second COUNT query over every wallet.
+    expect(mockGetRecentTransactions).toHaveBeenCalledWith(6, ['w1', 'w2'], 0);
     expect(result.current.data[0].txid).toBe('tx1');
+    expect(result.current.hasNextPage).toBe(false);
+    expect(result.current.hasPreviousPage).toBe(false);
+  });
+
+  it('derives paging state and hides the sentinel row', async () => {
+    // Six rows back for a page size of five: the sixth exists only to prove a
+    // next page, and must not be displayed.
+    mockGetRecentTransactions.mockResolvedValue(
+      Array.from({ length: 6 }, (_, i) => ({ txid: `tx${i}`, amount: 1 })) as any
+    );
+
+    const { result } = renderHook(() => useRecentTransactions(['w1'], 5, 2), {
+      wrapper: createWrapper(queryClient),
+    });
+    await waitFor(() => expect(result.current.data).toHaveLength(5));
+
+    expect(mockGetRecentTransactions).toHaveBeenCalledWith(6, ['w1'], 10);
+    expect(result.current.hasNextPage).toBe(true);
+    expect(result.current.hasPreviousPage).toBe(true);
+    expect(result.current.data.map(t => t.txid)).not.toContain('tx5');
+  });
+
+  it('keeps rows while paging but never across a wallet-set change', async () => {
+    mockGetRecentTransactions.mockResolvedValue([{ txid: 'mainnet-tx', amount: 1 } as any]);
+
+    const { result, rerender } = renderHook(
+      ({ ids, page }: { ids: string[]; page: number }) => useRecentTransactions(ids, 5, page),
+      { wrapper: createWrapper(queryClient), initialProps: { ids: ['w1'], page: 0 } }
+    );
+    await waitFor(() => expect(result.current.data).toHaveLength(1));
+
+    // Same wallets, next page: the previous rows stay on screen so the table
+    // does not collapse mid-click.
+    mockGetRecentTransactions.mockImplementation(() => new Promise(() => {}));
+    rerender({ ids: ['w1'], page: 1 });
+    expect(result.current.data).toHaveLength(1);
+
+    // Different wallet set: showing the previous network's activity would be a
+    // straightforward lie, so it must fall back to empty.
+    rerender({ ids: ['w2'], page: 0 });
+    expect(result.current.data).toHaveLength(0);
+  });
+
+  it('reports no next page on a short final page', async () => {
+    mockGetRecentTransactions.mockResolvedValue(
+      Array.from({ length: 2 }, (_, i) => ({ txid: `tx${i}`, amount: 1 })) as any
+    );
+
+    const { result } = renderHook(() => useRecentTransactions(['w1'], 5, 1), {
+      wrapper: createWrapper(queryClient),
+    });
+    await waitFor(() => expect(result.current.data).toHaveLength(2));
+
+    expect(result.current.hasNextPage).toBe(false);
+    expect(result.current.hasPreviousPage).toBe(true);
   });
 
   it('returns empty pending transactions when walletIds are empty', () => {

@@ -11,6 +11,7 @@ import { useWallets, useRecentTransactions, useInvalidateAllWallets, useUpdateWa
 import { useFeeEstimates, useBitcoinStatus, useMempoolData } from '../../../hooks/queries/useBitcoin';
 import { useCurrency } from '../../../contexts/CurrencyContext';
 import { useDelayedRender } from '../../../hooks/useDelayedRender';
+import { useUserPreference } from '../../../hooks/useUserPreference';
 import {
   buildBalanceNotification,
   buildBlockNotification,
@@ -94,9 +95,38 @@ export function useDashboardData() {
   // Filtered wallet IDs for network-specific data
   const filteredWalletIds = useMemo(() => filteredWallets.map(w => w.id), [filteredWallets]);
 
-  // Fetch recent transactions for selected network only
-  const { data: recentTxRawData } = useRecentTransactions(filteredWalletIds, 10);
-  const recentTxRaw = recentTxRawData ?? EMPTY_TRANSACTIONS;
+  // Fetch recent transactions for selected network only.
+  //
+  // Page size persists, the current page does not: returning to the dashboard
+  // on page 4 of an activity list you have not looked at in a week is
+  // disorienting, and the rows underneath will have moved anyway.
+  const [activityPageSize, setActivityPageSize] = useUserPreference(
+    'viewSettings.dashboard.activityPageSize',
+    10
+  );
+  const [activityPage, setActivityPage] = useState(0);
+
+  // Page 1 is the only page guaranteed to exist for a different network or a
+  // different page size, so both reset rather than landing on an empty page.
+  useEffect(() => {
+    setActivityPage(0);
+  }, [selectedNetwork, activityPageSize]);
+
+  const recentActivity = useRecentTransactions(filteredWalletIds, activityPageSize, activityPage);
+  const recentTxRaw = recentActivity.data ?? EMPTY_TRANSACTIONS;
+
+  // If invalidation shrinks the result set while the reader is past the first
+  // page, step back rather than stranding them on an empty page with a
+  // previous-page button as the only way out.
+  useEffect(() => {
+    if (
+      !recentActivity.isFetching &&
+      activityPage > 0 &&
+      recentTxRaw.length === 0
+    ) {
+      setActivityPage(current => Math.max(0, current - 1));
+    }
+  }, [recentActivity.isFetching, activityPage, recentTxRaw.length]);
 
   // Fetch pending transactions for selected network only
   const { data: pendingTxsData } = usePendingTransactions(filteredWalletIds);
@@ -309,6 +339,13 @@ export function useDashboardData() {
     filteredWallets,
     walletCounts,
     recentTx,
+    activityPage: recentActivity.page,
+    activityPageSize,
+    activityHasNextPage: recentActivity.hasNextPage,
+    activityHasPreviousPage: recentActivity.hasPreviousPage,
+    activityFetching: recentActivity.isFetching,
+    setActivityPage,
+    setActivityPageSize,
     pendingTxs,
     pendingTotals,
     fees,

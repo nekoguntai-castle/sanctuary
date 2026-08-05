@@ -45,25 +45,52 @@ export const useImportWallet = createMutation(walletsApi.importWallet, {
  * Hook to fetch recent transactions across all wallets
  * Uses single API call to /transactions/recent endpoint for efficiency
  */
-export function useRecentTransactions(walletIds: string[], limit: number = 10) {
+export function useRecentTransactions(
+  walletIds: string[],
+  pageSize: number = 10,
+  page: number = 0
+) {
   // Create stable key from wallet IDs
   const walletIdsKey = walletIds.join(',');
 
+  // One row beyond the page is all it takes to know whether a next page exists,
+  // and it costs one row instead of a second COUNT query over every wallet.
+  const requestLimit = pageSize + 1;
+  const offset = page * pageSize;
+
   const query = useQuery({
-    queryKey: ['recentTransactions', walletIdsKey, limit],
+    queryKey: ['recentTransactions', walletIdsKey, pageSize, page],
     queryFn: async () => {
       if (walletIds.length === 0) return [];
       // Single API call - server handles aggregation and sorting
-      return transactionsApi.getRecentTransactions(limit, walletIds);
+      return transactionsApi.getRecentTransactions(requestLimit, walletIds, offset);
     },
     enabled: walletIds.length > 0,
-    // Don't keep previous data when wallet IDs change - show empty for new networks
+    // Hold the previous page's rows while the next one loads, so the table does
+    // not collapse and reflow between clicks. Deliberately scoped to the same
+    // wallet set: switching network must show that network's activity or
+    // nothing, never the previous network's rows.
+    placeholderData: (previousData, previousQuery) => {
+      const previousWalletsKey = (previousQuery?.queryKey as unknown[] | undefined)?.[1];
+      return previousWalletsKey === walletIdsKey ? previousData : undefined;
+    },
   });
+
+  const rows = walletIds.length === 0 ? EMPTY_TRANSACTIONS : (query.data ?? EMPTY_TRANSACTIONS);
+  const hasNextPage = rows.length > pageSize;
 
   return {
     // When no wallets selected (empty array), always return empty - don't show stale data
-    data: walletIds.length === 0 ? EMPTY_TRANSACTIONS : (query.data ?? EMPTY_TRANSACTIONS),
+    data: hasNextPage ? rows.slice(0, pageSize) : rows,
+    page,
+    pageSize,
+    hasPreviousPage: page > 0,
+    hasNextPage,
+    // Distinguishes "first ever load" from "loading the next page": the latter
+    // still has rows on screen, so the controls disable rather than the table
+    // disappearing.
     isLoading: query.isLoading,
+    isFetching: query.isFetching,
     isError: query.isError,
     refetch: query.refetch,
   };

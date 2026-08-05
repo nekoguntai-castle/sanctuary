@@ -158,8 +158,17 @@ export async function createBatchTransaction(
  * @param limit - Max transactions to return (default: 10)
  * @param walletIds - Optional array of wallet IDs to filter by (for network filtering)
  */
-export async function getRecentTransactions(limit: number = 10, walletIds?: string[]): Promise<RecentTransaction[]> {
+export async function getRecentTransactions(
+  limit: number = 10,
+  walletIds?: string[],
+  offset: number = 0
+): Promise<RecentTransaction[]> {
   const params: Record<string, string | number> = { limit };
+  // Omitted when zero so the common first-page request keeps its existing URL,
+  // and so cached responses from before offset existed still match.
+  if (offset > 0) {
+    params.offset = offset;
+  }
   if (walletIds && walletIds.length > 0) {
     params.walletIds = walletIds.join(',');
   }

@@ -208,6 +208,14 @@ export const transactionPaths = {
           schema: { type: 'integer', minimum: 1, maximum: 50, default: 10 },
         },
         {
+          name: 'offset',
+          in: 'query',
+          required: false,
+          description:
+            'Rows to skip before the returned page. Out-of-range or negative values clamp to 0. Results are totally ordered, so paging cannot repeat or skip a row.',
+          schema: { type: 'integer', minimum: 0, default: 0 },
+        },
+        {
           name: 'walletIds',
           in: 'query',
           required: false,
