@@ -545,9 +545,21 @@ test_ensure_existing_installation() {
     if [ "$UPGRADE_SOURCE_CREATED" = "true" ]; then
         force_test_compose_restart_policy_no "$PROJECT_ROOT"
     fi
+
+    # Drop the shared, unversioned local image tags so this checkout must build
+    # its own. Without this a lane can inherit an image another lane built from
+    # a different ref (see assert_installed_image_matches_checkout).
+    purge_shared_local_images
+
     if ! run_install_script "$PROJECT_ROOT"; then
         return 1
     fi
+
+    if ! assert_installed_image_matches_checkout "$PROJECT_ROOT"; then
+        log_error "Source installation is running code from the wrong ref"
+        return 1
+    fi
+
     disable_compose_project_restart_policy "$COMPOSE_PROJECT_NAME"
 
     # Wait for containers

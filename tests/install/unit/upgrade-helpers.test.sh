@@ -203,6 +203,70 @@ run_test() {
   fi
 }
 
+# Stubs `docker run --rm --entrypoint cat <image> /app/package.json`, the only
+# docker call assert_installed_image_matches_checkout makes. An empty version
+# stands in for an image whose package.json cannot be read.
+# The version must live in a global: bash has no closures, so a `local` set
+# here would already be out of scope by the time docker() is invoked, and the
+# stub would silently emit nothing.
+STUB_DOCKER_IMAGE_VERSION=""
+stub_docker_image_version() {
+  STUB_DOCKER_IMAGE_VERSION="$1"
+  docker() {
+    if [ "$1" = "run" ]; then
+      [ -n "$STUB_DOCKER_IMAGE_VERSION" ] &&
+        printf '{"name":"sanctuary","version":"%s"}\n' "$STUB_DOCKER_IMAGE_VERSION"
+      return 0
+    fi
+    return 0
+  }
+}
+
+write_checkout_package_json() {
+  local dir="$1"
+  mkdir -p "$dir"
+  printf '{"name":"sanctuary","version":"%s"}\n' "$2" > "$dir/package.json"
+}
+
+test_assert_installed_image_matches_checkout_accepts_match() {
+  local checkout="$TEST_TMP_DIR/checkout-match"
+  write_checkout_package_json "$checkout" "0.8.57"
+  stub_docker_image_version "0.8.57"
+
+  assert_installed_image_matches_checkout "$checkout" >/dev/null 2>&1
+  local rc=$?
+  unset -f docker
+  assert_equals "0" "$rc" "matching versions should pass"
+}
+
+test_assert_installed_image_matches_checkout_rejects_mismatch() {
+  # The real regression: a v0.8.57 checkout booting a v0.8.59 image because the
+  # shared :local tag was left behind by another lane.
+  local checkout="$TEST_TMP_DIR/checkout-mismatch"
+  write_checkout_package_json "$checkout" "0.8.57"
+  stub_docker_image_version "0.8.59"
+
+  local output
+  output="$(assert_installed_image_matches_checkout "$checkout" 2>&1)"
+  local rc=$?
+  unset -f docker
+  assert_equals "1" "$rc" "mismatched versions should fail"
+  assert_contains "$output" "0.8.59" "error should name the image version"
+  assert_contains "$output" "0.8.57" "error should name the checkout version"
+}
+
+test_assert_installed_image_matches_checkout_skips_when_unreadable() {
+  # Fail open: an image we cannot inspect must not manufacture a failure.
+  local checkout="$TEST_TMP_DIR/checkout-unreadable"
+  write_checkout_package_json "$checkout" "0.8.57"
+  stub_docker_image_version ""
+
+  assert_installed_image_matches_checkout "$checkout" >/dev/null 2>&1
+  local rc=$?
+  unset -f docker
+  assert_equals "0" "$rc" "unreadable image version should not fail the install"
+}
+
 make_commit() {
   local repo="$1"
   local content="$2"
@@ -1283,6 +1347,9 @@ main() {
   run_test "upgrade cleanup fails successful fixture on cleanup failure" test_upgrade_finish_fails_successful_fixture_on_cleanup_failure
   run_test "browser refresh smoke sends csrf header" test_browser_refresh_smoke_sends_csrf_header
   run_test "support package smoke confirms shareable aggregate" test_support_package_smoke_confirms_shareable_aggregate
+  run_test "installed image matching checkout passes" test_assert_installed_image_matches_checkout_accepts_match
+  run_test "installed image from another ref fails" test_assert_installed_image_matches_checkout_rejects_mismatch
+  run_test "unreadable image version is not a failure" test_assert_installed_image_matches_checkout_skips_when_unreadable
 
   echo ""
   echo "Total:  $TESTS_RUN"

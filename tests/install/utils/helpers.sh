@@ -397,6 +397,56 @@ disable_compose_project_restart_policy() {
     docker ps -a --filter "label=com.docker.compose.project=$project" -q | xargs -r docker update --restart=no 2>/dev/null || true
 }
 
+read_package_version() {
+    sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$1" 2>/dev/null | head -1
+}
+
+# The :local image tags carry no ref, so every lane on a runner shares them and
+# `pull_policy: build` skips the build whenever the tag already exists. Drop
+# them before installing a checkout so its build cannot be short-circuited by
+# another lane's image. Layer cache is untouched, so this stays cheap.
+purge_shared_local_images() {
+    docker image rm -f \
+        sanctuary-backend:local \
+        sanctuary-frontend:local \
+        sanctuary-gateway:local \
+        sanctuary-llm-egress-proxy:local >/dev/null 2>&1 || true
+}
+
+# Guard against an install running an image built from a different ref.
+#
+# `sanctuary-backend:local` is unversioned and shared by every lane on a
+# runner, and `pull_policy: build` only builds when the image is absent, so a
+# later lane can silently reuse an earlier lane's image. When that happens the
+# old-version install boots new-version code and dies on a config validation
+# error for an env var its own installer never generated -- surfacing only as a
+# generic "container unhealthy" timeout that says nothing about the real cause.
+# Compare the built image against the checkout so the failure names itself.
+assert_installed_image_matches_checkout() {
+    local project_dir="$1"
+    local image="${2:-sanctuary-backend:local}"
+    local expected actual
+
+    [ -f "$project_dir/package.json" ] || return 0
+    expected="$(read_package_version "$project_dir/package.json")"
+    [ -n "$expected" ] || return 0
+
+    actual="$(docker run --rm --entrypoint cat "$image" /app/package.json 2>/dev/null | read_package_version /dev/stdin)"
+    [ -n "$actual" ] || return 0
+
+    if [ "$expected" != "$actual" ]; then
+        # Plain stderr, not log_error: this helper is sourced by contexts that
+        # do not define the logging helpers.
+        printf '[ERROR] Image %s reports version %s but the checkout is %s\n' \
+            "$image" "$actual" "$expected" >&2
+        printf '[ERROR] The build reused an image or layer cache from a different ref.\n' >&2
+        printf '[ERROR] Checkout: %s\n' "$project_dir" >&2
+        return 1
+    fi
+
+    return 0
+}
+
 # Rewrite only an isolated test checkout so historical Compose files that do
 # not support SANCTUARY_RESTART_POLICY cannot create restartable containers.
 # The caller must pass a disposable test workspace, never a production checkout.
