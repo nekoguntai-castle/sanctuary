@@ -551,6 +551,14 @@ test_ensure_existing_installation() {
     # a different ref (see assert_installed_image_matches_checkout).
     purge_shared_local_images
 
+    # Called here rather than from upgrade_fixture_before_source_install
+    # because no fixture hook is ever dispatched -- the harness defines none of
+    # them. See the dead-hook issue; until that is fixed a fixture cannot run
+    # setup of its own.
+    if [ "$UPGRADE_ENABLE_MONITORING" = "yes" ]; then
+        sync_monitoring_configs_to_daemon "$PROJECT_ROOT"
+    fi
+
     if ! run_install_script "$PROJECT_ROOT"; then
         return 1
     fi
@@ -1170,6 +1178,12 @@ test_restart_containers_after_upgrade() {
 
     # Load secrets from runtime env
     load_runtime_env || return 1
+
+    # Same reason as the source install: fixture hooks are never dispatched, so
+    # the target checkout's monitoring configs have to be seeded from here.
+    if [ "$UPGRADE_ENABLE_MONITORING" = "yes" ]; then
+        sync_monitoring_configs_to_daemon "$PROJECT_ROOT"
+    fi
 
     if ! run_install_script "$PROJECT_ROOT"; then
         return 1
