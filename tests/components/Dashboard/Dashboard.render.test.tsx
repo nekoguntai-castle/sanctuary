@@ -417,6 +417,20 @@ describe('Dashboard render branches', () => {
     expect(screen.queryByTestId('dashboard-primary-row')).not.toBeInTheDocument();
   });
 
+  // Hover lift promises a click target. These card shells have none — the
+  // actionable things are the controls and rows inside them.
+  //
+  // Covers the telemetry row specifically; WalletSummary and RecentTransactions
+  // are mocked in this file, so their shells are asserted in their own tests.
+  it('does not advertise clickability on card shells that do not act', () => {
+    mocks.dashboardData = makeDashboardState({
+      filteredWallets: [{ id: 'w1' }, { id: 'w2' }],
+    });
+    const { container } = render(<Dashboard />);
+
+    expect(container.querySelectorAll('.card-interactive')).toHaveLength(0);
+  });
+
   // Dropping Bitcoin Price must not leave a hole where its column was: the
   // telemetry row reflows to two columns so Fee Estimation and Node Status
   // share the width evenly.

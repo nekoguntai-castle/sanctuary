@@ -139,6 +139,15 @@ describe('RecentTransactions', () => {
       expect(mockPreferences.has('viewSettings.dashboard.walletsCollapsed')).toBe(false);
     });
 
+    it('does not give the card shell a hover lift it cannot honour', () => {
+      renderSection();
+
+      const card = screen.getByTestId('dashboard-recent-activity');
+      expect(card.className).not.toContain('card-interactive');
+      // The disclosure remains a real control.
+      expect(disclosure()).toBeInTheDocument();
+    });
+
     it('honours a persisted collapsed preference on mount', () => {
       mockPreferences.set('viewSettings.dashboard.recentActivityCollapsed', true);
       renderSection();

@@ -43,6 +43,10 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
       }
     >
       <TransactionList
+        // A preview of the newest rows, not the whole history: the seven
+        // statistic tiles would describe only what is loaded and read as totals
+        // for everything.
+        density="compact"
         transactions={recentTx}
         showWalletBadge={true}
         wallets={wallets}

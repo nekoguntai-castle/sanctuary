@@ -179,7 +179,7 @@ export const NodeStatusCard: React.FC<NodeStatusCardProps> = ({
 }) => (
   // No stagger class: the telemetry row's `stagger-enter` parent owns the
   // per-child delay via nth-child, which outranks any animate-fade-in-up-*.
-  <Card interactive>
+  <Card>
     <div className="flex items-center justify-between mb-4">
       <div className="flex items-center space-x-2">
         <h3 className="text-[11px] font-semibold text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-[0.08em]">Node Status</h3>

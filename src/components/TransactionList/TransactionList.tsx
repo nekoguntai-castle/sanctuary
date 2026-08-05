@@ -30,6 +30,16 @@ interface TransactionListProps {
   walletBalance?: number; // Current wallet balance in sats for showing running balance column
   transactionStats?: TransactionStats; // Pre-computed stats from API (for all transactions, not just displayed)
   walletLabels?: Label[];
+  /**
+   * `'comfortable'` (default) is the wallet-detail presentation: the seven-tile
+   * statistics grid, and an empty state that reserves 300px so the viewport
+   * doesn't collapse.
+   *
+   * `'compact'` is for previews that show a page of a larger set. It drops the
+   * statistics — they would describe only the loaded page and read as totals for
+   * everything — and lets the empty state size to its content.
+   */
+  density?: 'comfortable' | 'compact';
 }
 
 const EMPTY_LABELS: Label[] = [];
@@ -51,6 +61,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   deepConfirmationThreshold = 3,
   walletBalance,
   transactionStats,
+  density = 'comfortable',
 }) => {
   const { format } = usePriceFreeFormatter();
   const { enabled: aiEnabled } = useAIStatus();
@@ -108,8 +119,12 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     const bottomMargin = 32; // breathing room at bottom
     const available = window.innerHeight - rect.top - bottomMargin;
     const contentHeight = filteredTransactions.length * 52 + 48;
-    setTableHeight(Math.max(300, Math.min(contentHeight, available)));
-  }, [filteredTransactions.length]);
+    // The comfortable floor keeps the wallet-detail viewport from collapsing. A
+    // compact preview showing three rows should be three rows tall, so its floor
+    // only has to clear the header row.
+    const minHeight = density === 'comfortable' ? 300 : 100;
+    setTableHeight(Math.max(minHeight, Math.min(contentHeight, available)));
+  }, [filteredTransactions.length, density]);
 
   useEffect(() => {
     recalcHeight();
@@ -163,7 +178,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
 
   return (
     <>
-      <TransactionStatsGrid txStats={txStats} />
+      {density === 'comfortable' && <TransactionStatsGrid txStats={txStats} />}
 
       <div className={ownsSelection ? 'tablet:flex tablet:gap-4 tablet:items-start' : undefined}>
         <div
@@ -171,7 +186,11 @@ export const TransactionList: React.FC<TransactionListProps> = ({
           className={ownsSelection ? 'tablet:flex-1 tablet:min-w-0' : undefined}
         >
           {filteredTransactions.length === 0 ? (
-            <div className="flex min-h-[300px] items-center justify-center text-center py-10">
+            <div
+              className={`flex items-center justify-center text-center ${
+                density === 'comfortable' ? 'min-h-[300px] py-10' : 'py-6'
+              }`}
+            >
               <p className="text-sanctuary-400 dark:text-sanctuary-500">No transactions found.</p>
             </div>
           ) : (

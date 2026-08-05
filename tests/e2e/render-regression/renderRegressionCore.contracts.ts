@@ -21,6 +21,10 @@ export async function renderDashboardRendersCoreCardsAndNetworkSpecificPlacehold
 
   await expect(page.getByText("Update Available: v0.9.0")).toBeVisible();
   await expect(page.getByText("Bitcoin Price")).toBeVisible();
+
+  // Recent Activity is a preview of a larger set, so it renders no statistics
+  // tiles — they would describe only the loaded page. Wallet Detail keeps them.
+  await expect(page.getByTestId("transaction-stats-grid")).toHaveCount(0);
   await expect(page.getByText("Fee Estimation")).toBeVisible();
   await expect(page.getByText("Node Status")).toBeVisible();
   await expect(page.getByTitle("Mainnet block height")).toBeVisible();

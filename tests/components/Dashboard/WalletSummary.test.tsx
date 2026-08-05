@@ -351,6 +351,13 @@ describe('WalletSummary', () => {
       expect(mockPreferences.has('viewSettings.dashboard.walletsExpanded')).toBe(false);
     });
 
+    it('does not give the card shell a hover lift it cannot honour', () => {
+      renderSection();
+
+      const card = screen.getByTestId('dashboard-wallets');
+      expect(card.className).not.toContain('card-interactive');
+    });
+
     it('summarises wallet count and total balance while collapsed', async () => {
       const user = userEvent.setup();
       renderSection(4);

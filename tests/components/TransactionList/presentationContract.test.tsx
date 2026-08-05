@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
@@ -124,5 +124,39 @@ describe('TransactionList presentation contract', () => {
     renderList([]);
 
     expect(screen.getByTestId('transaction-stats-grid')).toBeInTheDocument();
+  });
+
+  describe('compact density', () => {
+    const renderCompact = (transactions: Transaction[]) =>
+      render(
+        <MemoryRouter>
+          <TransactionList transactions={transactions} walletId="wallet-1" density="compact" />
+        </MemoryRouter>
+      );
+
+    it('omits the statistics grid', () => {
+      renderCompact([transaction()]);
+
+      // The tiles would describe only the loaded page and read as totals for
+      // everything the wallet has ever done.
+      expect(screen.queryByTestId('transaction-stats-grid')).not.toBeInTheDocument();
+    });
+
+    it('does not reserve the 300px empty panel', () => {
+      const { container } = renderCompact([]);
+
+      expect(screen.getByText('No transactions found.')).toBeInTheDocument();
+      expect(container.querySelector('.min-h-\\[300px\\]')).toBeNull();
+    });
+
+    it('leaves the comfortable default untouched for other callers', () => {
+      // Rendered second in the same file on purpose: a density option
+      // implemented as module state rather than a prop would leak between these.
+      renderCompact([transaction()]);
+      cleanup();
+      renderList([transaction()]);
+
+      expect(screen.getByTestId('transaction-stats-grid')).toBeInTheDocument();
+    });
   });
 });
