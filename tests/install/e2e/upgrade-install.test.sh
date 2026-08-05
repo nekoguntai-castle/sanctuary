@@ -565,6 +565,10 @@ test_ensure_existing_installation() {
     # Wait for containers
     if ! wait_for_all_containers_healthy 300; then
         log_error "Initial installation failed"
+        # Re-probe on the failure path. The diagnostic summary only echoes the
+        # last 256 KiB of a lane log, and this lane exceeds that, so a probe
+        # emitted at lane start scrolls out of the tail before anyone reads it.
+        probe_monitoring_bind_sources "$PROJECT_ROOT"
         return 1
     fi
 
