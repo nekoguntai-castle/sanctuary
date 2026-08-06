@@ -245,6 +245,32 @@ if [ -f "$log.status.json" ]; then
 fi
 [ "$FAIL" -eq "$prev_fail" ] && end_test_pass
 
+# ----- 9b. SIGKILL: output written before the kill survives ---------------
+# A step killed by its own timeout is SIGKILLed, so no trap can run. Everything
+# already emitted must therefore be on disk by then. It was not: awk in
+# redact_stream, sed after it, and awk in cap_filter all block-buffer into the
+# next pipe, so up to a few KiB sat unwritten and died with the process. That is
+# why sanctuary#703's recovered address-verifier.log was 0 bytes -- the step was
+# identified, but nothing it printed survived to say why.
+prev_fail=$FAIL
+start_test "SIGKILL: output emitted before the kill is already on disk"
+log="$CURRENT_DIR/kill.log"
+"$WRAPPER" "$log" bash -c 'echo "MARKER_BEFORE_KILL"; echo "second line"; sleep 30' &
+wpid=$!
+# Long enough that the lines are unambiguously through the wrapped command.
+sleep 2
+pkill -KILL -P "$wpid" 2>/dev/null || true
+kill -KILL "$wpid" 2>/dev/null || true
+wait "$wpid" 2>/dev/null
+sleep 0.3
+if [ ! -s "$log" ]; then
+  end_test_fail "log is empty after SIGKILL; buffered output was lost ($(wc -c <"$log" 2>/dev/null) bytes)"
+else
+  assert_contains "$log" "MARKER_BEFORE_KILL" "pre-kill output survived" || true
+  assert_contains "$log" "second line" "all pre-kill lines survived" || true
+fi
+[ "$FAIL" -eq "$prev_fail" ] && end_test_pass
+
 # ----- 10. stderr capture proven directly ---------------------------------
 prev_fail=$FAIL
 start_test "stderr capture: secrets on stderr are redacted and present in log"

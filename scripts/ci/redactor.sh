@@ -12,8 +12,27 @@
 
 # shellcheck disable=SC2120
 
+# A step killed by its own timeout dies on SIGKILL, so nothing gets a chance to
+# flush on the way out -- whatever is still sitting in a filter buffer is lost.
+# mawk block-buffers stdin (fflush and stdbuf do not help; it never processes the
+# line at all) and sed block-buffers stdout, so the log could end up empty even
+# though the step printed seconds earlier. That is the 0-byte address-verifier
+# log in sanctuary#703.
+#
+# Probe for the unbuffering flags rather than passing them blind: -W interactive
+# is mawk-only and gawk rejects it, and -u is GNU sed only.
+SANCTUARY_STREAM_AWK_ARGS=''
+SANCTUARY_STREAM_SED_ARGS=''
+if awk -W version 2>&1 | head -n 1 | grep -qi '^mawk'; then
+    SANCTUARY_STREAM_AWK_ARGS='-W interactive'
+fi
+if printf '\n' | sed -u -e '' >/dev/null 2>&1; then
+    SANCTUARY_STREAM_SED_ARGS='-u'
+fi
+
 redact_stream() {
-    awk '
+    # shellcheck disable=SC2086 -- deliberate splitting of the probed flags
+    awk $SANCTUARY_STREAM_AWK_ARGS '
     {
         line = $0
         lower_line = tolower(line)
@@ -37,7 +56,11 @@ redact_stream() {
             lower_line = tolower(line)
         }
         print line
-    }' | sed -E \
+        # Flush per line. A step killed by its own timeout dies on SIGKILL, so
+        # anything still sitting in the block buffer of awk is lost -- which is
+        # how a diagnostic log ends up 0 bytes despite the step having printed.
+        fflush()
+    }' | sed $SANCTUARY_STREAM_SED_ARGS -E \
         -e 's#https?://(10(\.[0-9]{1,3}){3}|172\.(1[6-9]|2[0-9]|3[0-1])(\.[0-9]{1,3}){2}|192\.168(\.[0-9]{1,3}){2})(:[0-9]+)?[^[:space:]]*#<private-url>#g' \
         -e 's#(10(\.[0-9]{1,3}){3}|172\.(1[6-9]|2[0-9]|3[0-1])(\.[0-9]{1,3}){2}|192\.168(\.[0-9]{1,3}){2})#<private-ip>#g'
 }

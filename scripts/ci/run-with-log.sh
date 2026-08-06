@@ -158,7 +158,8 @@ STARTED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 # SIGPIPEd). On truncation, append a single marker line and touch the
 # truncation flag file so the parent knows to set sidecar.truncated=true.
 cap_filter() {
-  awk -v cap="$1" -v flag_file="$2" '
+  # shellcheck disable=SC2086 -- deliberate splitting of the probed flags
+  awk ${SANCTUARY_STREAM_AWK_ARGS:-} -v cap="$1" -v flag_file="$2" '
     BEGIN { written = 0; truncated = 0 }
     {
       line = $0
@@ -169,6 +170,8 @@ cap_filter() {
       if (written + n <= cap) {
         print line
         written += n
+        # Same reason as redactor.sh: survive a SIGKILL with the log intact.
+        fflush()
       } else {
         remaining = cap - written
         if (remaining > 0) {
@@ -176,6 +179,7 @@ cap_filter() {
         }
         printf "\n[run-with-log] LOG TRUNCATED AT %d BYTES\n", cap
         truncated = 1
+        fflush()
       }
     }
     END {

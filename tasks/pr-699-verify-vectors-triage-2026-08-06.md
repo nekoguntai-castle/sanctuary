@@ -85,42 +85,40 @@ timeout guarantees you will not get.
 
 ---
 
-## Suspects — ranked, all unproven
+## Root cause — CONFIRMED (this section previously ranked it wrong)
 
-No step-level log survives, so the specific hang point is **not** established.
-Ranked by fit with "works on DIND, silent 30-min hang on rootless Podman":
+**The hang is a wedged rootless-Podman archive endpoint on the runner.** The
+`context deadline exceeded` on `/containers/<id>/archive` over `podman.sock`,
+present in every failed run, is the *cause* — not, as this document originally
+argued, a consequence of the timeout kill. `runner-infra fix/podman-archive-health`
+addresses it.
 
-1. **`with-runner-lock.sh` blocking on `flock`.** Line 26 defaults
-   `SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS` to **3600** and line 54 runs
-   `flock -w "$timeout"`. A 60-minute lock wait inside a 30-minute job produces
-   exactly this signature — total silence, killed at exactly 30:00, every time.
-   Both remaining steps (`Install server dependencies`, `Run cross-implementation
-   address verifier`) are lock-wrapped on `node-toolchain`, and verify-vectors is
-   always scheduled alongside `test.yml` and `quality.yml` for the same PR
-   (8905/8906/8907, 8871/8872/8873, 8889/8890/8891).
+**The runner lock was the leading suspect here and it was wrong.** It is left on
+the record deliberately: the reason a wrong suspect survived three identical
+30-minute runs is that no evidence existed to rule it out, which is the actual
+defect the follow-up work fixed.
 
-2. **`docker compose up -d` pulling `bitcoin/bitcoin:27.0`** in
-   `verify-repeatable.sh` → `start_bitcoin_core`. Unbounded, no timeout. Note the
-   short-name-resolution theory is **ruled out**: `install-test.yml` pulls
-   `redis:7-alpine` and `postgres:16-alpine` and passes on Podman (run 8878).
+What the diagnostics now show (runs 8953 and 8965, after #703 landed):
 
-3. **`wait_for_bitcoin_core` reaching a published port** — `curl` against
-   `http://$(sanctuary_current_docker_published_host):18443`. This is the exact
-   #667 finding (published ports resolve via `host.containers.internal`, not
-   loopback). Bounded at 60 × 2 s = 120 s, so it cannot *alone* reach 30 minutes,
-   but it fails the job either way once the hang above is cleared.
+| step | result |
+|---|---|
+| Wait for Docker | exit 0, ~1 s — the daemon API is fine |
+| Install server dependencies | exit 0, ~13 s |
+| **Run cross-implementation address verifier** | **killed at its 8-minute step budget, no sidecar** |
 
-4. **Fixed identifiers in `scripts/verify-addresses/docker-compose.yml`** —
-   `container_name: bitcoin-core-address-verify` and `ports: "18443:18443"`. Both
-   collide with any concurrent run on the same host. Same class of problem #664
-   tracks for `sanctuary-*:local`.
+Reproduced identically on both runs, to the second. The failure is `npm run
+verify:repeatable`, which starts bitcoind via compose and reaches it over a
+published port — the same rootless-Podman surface as the archive endpoint.
 
-`wait-for-docker.sh` is **ruled out** as the 30-minute hang: it is bounded at 120 s
-(`SANCTUARY_DOCKER_WAIT_SECONDS:-120`) and would fail loudly. `docker-build.yml`
-and `quality.yml` both call it on bare `ubuntu-22.04` and pass on the Podman fleet,
-so Docker is reachable without the `docker-socket` label.
+Ruled out along the way, with evidence:
 
----
+- **`wait-for-docker.sh`** — bounded at 120 s and reports success in the recovered
+  logs. `docker-build.yml` and `quality.yml` also call it on bare `ubuntu-22.04`
+  and pass.
+- **Podman short-name image resolution** — `install-test.yml` pulls
+  `redis:7-alpine` and `postgres:16-alpine` and passes.
+- **The runner lock** — `with-runner-lock.sh` now reports contention explicitly,
+  and no such message appears.
 
 ## Recommended sequence
 
