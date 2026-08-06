@@ -89,6 +89,48 @@ isolate_legacy_optional_profile_compose() {
     fi
 }
 
+# Released tags cannot be changed, and every tag up to v0.8.59 sets
+# mem_swappiness on nine services. cgroup v2 does not implement
+# memory.swappiness at all: Docker discards the key silently, but Podman's crun
+# refuses it and aborts the entire compose up, so the upgrade lanes cannot even
+# install their own source ref on a rootless Podman runner.
+#
+# Stripping it costs nothing that was working — the key was already inert on
+# every cgroup v2 host, which is every host in this project. Only this one dead
+# key is removed; the legacy stack's real resource policy (limits, reservations,
+# swap limits) is left exactly as shipped, so the upgrade test still exercises
+# the released configuration in every respect that has an effect.
+#
+# Remove this adapter once no supported upgrade source ref predates the fix.
+adapt_legacy_cgroup_v1_keys() {
+    local project_dir="$1"
+    local -a compose_files=()
+    local f
+
+    [ -d "$project_dir" ] || return 0
+
+    [ -f "$project_dir/docker-compose.yml" ] && compose_files+=("$project_dir/docker-compose.yml")
+    for f in "$project_dir"/docker/compose/*.yml; do
+        [ -f "$f" ] && compose_files+=("$f")
+    done
+    [ "${#compose_files[@]}" -gt 0 ] || return 0
+
+    local stripped=0
+    for f in "${compose_files[@]}"; do
+        grep -qE '^[[:space:]]*mem_swappiness:' "$f" || continue
+
+        local tmp_file
+        tmp_file="$(mktemp "${f}.XXXXXX")"
+        grep -vE '^[[:space:]]*mem_swappiness:' "$f" > "$tmp_file"
+        mv "$tmp_file" "$f"
+        stripped=$((stripped + 1))
+    done
+
+    if [ "$stripped" -gt 0 ]; then
+        log_info "Stripped cgroup v1-only mem_swappiness from $stripped legacy compose file(s); cgroup v2 does not implement it"
+    fi
+}
+
 adapt_legacy_compose_ssl_mount() {
     local project_dir="$1"
     local compose_file="$project_dir/docker-compose.yml"

@@ -679,6 +679,99 @@ EOF
     "legacy compose SSL mount should use Docker-visible path when available"
 }
 
+# The upgrade lanes install a released tag before upgrading to HEAD. Released
+# tags cannot be changed, and every tag up to and including v0.8.59 carries
+# mem_swappiness on nine services — a key cgroup v2 does not implement. Docker
+# discarded it silently; Podman's crun aborts the whole compose up, so on the
+# converted runners the upgrade gate cannot install its own source ref.
+#
+# Stripping it from the source checkout costs nothing that was working: the key
+# was inert on every cgroup v2 host, which is every host in this project.
+test_legacy_cgroup_v1_keys_are_stripped_from_source_checkout() {
+  local source_checkout="$TEST_TMP_DIR/legacy-src"
+  local compose_file="$source_checkout/docker-compose.yml"
+
+  mkdir -p "$source_checkout"
+  cat > "$compose_file" <<'EOF'
+services:
+  postgres:
+    image: postgres:16-alpine
+    mem_swappiness: 10
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+  redis:
+    image: redis:7-alpine
+    mem_swappiness: 0
+EOF
+
+  adapt_legacy_cgroup_v1_keys "$source_checkout"
+
+  local contents
+  contents="$(cat "$compose_file")"
+
+  if grep -q 'mem_swappiness' "$compose_file"; then
+    echo -e "${RED}ASSERTION FAILED:${NC} mem_swappiness should be stripped from a legacy source checkout"
+    return 1
+  fi
+
+  # Everything else must survive: this adapts one dead key, it does not rewrite
+  # the legacy stack's resource policy.
+  assert_contains "$contents" "memory: 1G" "memory limits must survive the adaptation"
+  assert_contains "$contents" "postgres:16-alpine" "service definitions must survive the adaptation"
+  assert_contains "$contents" "redis:7-alpine" "all services must survive the adaptation"
+}
+
+# A checkout that never had the key must be left byte-identical, so the adapter
+# is a no-op once no supported upgrade source predates the fix.
+test_current_checkout_without_cgroup_v1_keys_is_untouched() {
+  local source_checkout="$TEST_TMP_DIR/current-src"
+  local compose_file="$source_checkout/docker-compose.yml"
+
+  mkdir -p "$source_checkout"
+  cat > "$compose_file" <<'EOF'
+services:
+  postgres:
+    image: postgres:16-alpine
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+EOF
+
+  local before
+  before="$(cat "$compose_file")"
+
+  adapt_legacy_cgroup_v1_keys "$source_checkout"
+
+  assert_equals "$before" "$(cat "$compose_file")" \
+    "a checkout without cgroup v1 keys must be left unchanged"
+}
+
+# Overlays ship the same key and are installed by the same legacy install.sh.
+test_legacy_cgroup_v1_keys_are_stripped_from_overlays() {
+  local source_checkout="$TEST_TMP_DIR/legacy-overlay-src"
+  mkdir -p "$source_checkout/docker/compose"
+  cat > "$source_checkout/docker-compose.yml" <<'EOF'
+services:
+  postgres:
+    mem_swappiness: 10
+EOF
+  cat > "$source_checkout/docker/compose/monitoring.yml" <<'EOF'
+services:
+  promtail:
+    mem_swappiness: 10
+EOF
+
+  adapt_legacy_cgroup_v1_keys "$source_checkout"
+
+  if grep -rq 'mem_swappiness' "$source_checkout"; then
+    echo -e "${RED}ASSERTION FAILED:${NC} mem_swappiness should be stripped from compose overlays too"
+    return 1
+  fi
+}
+
 test_current_compose_ssl_mount_is_left_unchanged() {
   local source_checkout="$TEST_TMP_DIR/source"
   local compose_file="$source_checkout/docker-compose.yml"
@@ -1482,6 +1575,9 @@ main() {
   run_test "upgrade selection labels are sanitized" test_upgrade_selection_labels_are_sanitized
   run_test "upgrade selection manifest records resolved refs" test_upgrade_selection_manifest_records_resolved_refs
   run_test "legacy optional profile compose is isolated" test_legacy_optional_profile_compose_is_isolated
+  run_test "legacy cgroup v1 keys are stripped" test_legacy_cgroup_v1_keys_are_stripped_from_source_checkout
+  run_test "current checkout without cgroup v1 keys untouched" test_current_checkout_without_cgroup_v1_keys_is_untouched
+  run_test "legacy cgroup v1 keys stripped from overlays" test_legacy_cgroup_v1_keys_are_stripped_from_overlays
   run_test "legacy optional profile compose can use target tor overlay" test_legacy_optional_profile_compose_can_use_target_tor_overlay
   run_test "tor compose uses supported hidden service config" test_tor_compose_uses_supported_hidden_service_config
   run_test "legacy compose ssl mount uses docker visible path" test_legacy_compose_ssl_mount_uses_docker_visible_path
