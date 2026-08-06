@@ -331,21 +331,26 @@ release-candidate validations to be replaced before their jobs started. The
 Docker-backed jobs use run-scoped projects and ports on the DIND runner so the
 two workflows can coexist without coupling their pending slots.
 
-Docker-backed install and release jobs also require the organization's
-`x300-canary` runner label. That label selects the Docker-in-Docker runner whose
-daemon socket can be mounted into the production `docker-proxy` service at
-`/var/run/docker.sock`.
+Docker-backed install and release jobs require the organization's
+`docker-socket` runner label. It means "runner that can expose a mountable
+Docker API socket for the production `docker-proxy` service" — a capability,
+not a host. Both runners carry it, so these lanes schedule on either.
 
-The rootless Podman runner does not satisfy that contract today, but the
-obstacle is narrower than engine incompatibility. Podman exposes a
-Docker-compatible API socket under `$XDG_RUNTIME_DIR/podman/`, and that runner
-already targets it through `DOCKER_HOST`. What blocks it is that
-`docker-compose.yml` hardcodes `/var/run/docker.sock` as the mount *source*,
-which does not exist on a rootless host, and that the runner's `valid_volumes`
-allowlist is empty so no bind mount is permitted. Whether
-`tecnativa/docker-socket-proxy` works against Podman's compat API is untested;
-see issue #667. Treat the label as "runner that can expose a mountable Docker
-API socket" rather than "runner running Docker-in-Docker".
+It replaced `x300-canary`, which pinned twelve jobs to a single host and made
+that host a single point of failure for the release gate. The pin existed
+because the fleet ran Docker-in-Docker there; the fleet now runs rootless
+Podman on every runner, and Podman's Docker-compatible API socket under
+`$XDG_RUNTIME_DIR/podman/` satisfies the same contract. Verified end to end by
+the canary in `.github/workflows/podman-socket-canary.yml`, which exercises the
+socket mount, `tecnativa/docker-socket-proxy` against the compat API, published
+ports, volume uid mapping, and healthcheck execution.
+
+Two engine differences these lanes depend on, both handled in-tree:
+
+- published ports resolve via `host.containers.internal`, not loopback, so
+  container detection checks `/run/.containerenv` as well as `/.dockerenv`
+- a healthcheck embedding shell syntax must use `CMD-SHELL`; the
+  `["CMD","sh","-c",<script>]` form arrives truncated and never runs
 
 The Docker-backed install jobs in `install-test.yml` and `release-candidate.yml`
 run through a diagnostic logging harness so failures that happen *before* a

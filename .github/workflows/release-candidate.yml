@@ -185,7 +185,7 @@ jobs:
     name: Fresh Install E2E
     # Requires a Docker-in-Docker runner: the stack mounts the daemon socket
     # into docker-proxy, which rootless Podman runners cannot provide.
-    runs-on: [ubuntu-22.04, x300-canary]
+    runs-on: [ubuntu-22.04, docker-socket]
     needs: validation-info
     timeout-minutes: 30
     env:
@@ -322,7 +322,7 @@ jobs:
   # ============================================
   container-health-test:
     name: Container Health
-    runs-on: [ubuntu-22.04, x300-canary]
+    runs-on: [ubuntu-22.04, docker-socket]
     concurrency:
       group: sanctuary-runner-e2e
       cancel-in-progress: false
@@ -491,7 +491,7 @@ jobs:
   # ============================================
   auth-flow-test:
     name: Auth Flow
-    runs-on: [ubuntu-22.04, x300-canary]
+    runs-on: [ubuntu-22.04, docker-socket]
     concurrency:
       group: sanctuary-runner-e2e
       cancel-in-progress: false

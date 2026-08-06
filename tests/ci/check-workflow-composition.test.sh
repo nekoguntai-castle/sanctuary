@@ -524,13 +524,13 @@ assert_contains_in_order "$RC" \
   "cancel-in-progress: false"
 
 assert_contains_in_order "$RC" \
-  "release-candidate Docker jobs require the DIND runner" \
+  "release-candidate Docker jobs require the docker-socket capability label" \
   "fresh-install-test:" \
-  "runs-on: [ubuntu-22.04, x300-canary]" \
+  "runs-on: [ubuntu-22.04, docker-socket]" \
   "container-health-test:" \
-  "runs-on: [ubuntu-22.04, x300-canary]" \
+  "runs-on: [ubuntu-22.04, docker-socket]" \
   "auth-flow-test:" \
-  "runs-on: [ubuntu-22.04, x300-canary]"
+  "runs-on: [ubuntu-22.04, docker-socket]"
 
 assert_occurrence_count "$RC" \
   "every release-candidate ad hoc stack generates the diagnostics secret" \
@@ -691,25 +691,25 @@ assert_contains_in_order "$IT" \
   'cancel-in-progress: ${{ github.event_name == '\''pull_request'\'' }}'
 
 assert_contains_in_order "$IT" \
-  "install-test Docker jobs require the DIND runner" \
+  "install-test Docker jobs require the docker-socket capability label" \
   "fresh-install-test:" \
-  "runs-on: [ubuntu-22.04, x300-canary]" \
+  "runs-on: [ubuntu-22.04, docker-socket]" \
   "install-script-test:" \
-  "runs-on: [ubuntu-22.04, x300-canary]" \
+  "runs-on: [ubuntu-22.04, docker-socket]" \
   "install-stack-smoke:" \
-  "runs-on: [ubuntu-22.04, x300-canary]" \
+  "runs-on: [ubuntu-22.04, docker-socket]" \
   "container-health-test:" \
-  "runs-on: [ubuntu-22.04, x300-canary]" \
+  "runs-on: [ubuntu-22.04, docker-socket]" \
   "auth-flow-test:" \
-  "runs-on: [ubuntu-22.04, x300-canary]" \
+  "runs-on: [ubuntu-22.04, docker-socket]" \
   "upgrade-baseline-test:" \
-  "runs-on: [ubuntu-22.04, x300-canary]" \
+  "runs-on: [ubuntu-22.04, docker-socket]" \
   "upgrade-extended-fixture-test:" \
-  "runs-on: [ubuntu-22.04, x300-canary]" \
+  "runs-on: [ubuntu-22.04, docker-socket]" \
   "upgrade-extended-test:" \
-  "runs-on: [ubuntu-22.04, x300-canary]" \
+  "runs-on: [ubuntu-22.04, docker-socket]" \
   "docker-resource-cleanup:" \
-  "runs-on: [ubuntu-22.04, x300-canary]"
+  "runs-on: [ubuntu-22.04, docker-socket]"
 
 assert_contains_in_order "$IT" \
   "install stack supplies the diagnostics secret" \

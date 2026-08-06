@@ -233,7 +233,7 @@ jobs:
     name: Fresh Install E2E Test
     # Requires the organization's DIND-capable runner because the production
     # compose stack mounts the Docker daemon socket into docker-proxy.
-    runs-on: [ubuntu-22.04, x300-canary]
+    runs-on: [ubuntu-22.04, docker-socket]
     concurrency:
       group: sanctuary-runner-e2e
       cancel-in-progress: false
@@ -401,7 +401,7 @@ jobs:
   # ============================================
   install-script-test:
     name: Install Script E2E Test
-    runs-on: [ubuntu-22.04, x300-canary]
+    runs-on: [ubuntu-22.04, docker-socket]
     concurrency:
       group: sanctuary-runner-e2e
       cancel-in-progress: false
@@ -445,7 +445,7 @@ jobs:
   # ============================================
   install-stack-smoke:
     name: Install Stack Smoke
-    runs-on: [ubuntu-22.04, x300-canary]
+    runs-on: [ubuntu-22.04, docker-socket]
     concurrency:
       group: sanctuary-runner-e2e
       cancel-in-progress: false
@@ -611,7 +611,7 @@ jobs:
   # ============================================
   container-health-test:
     name: Container Health Test
-    runs-on: [ubuntu-22.04, x300-canary]
+    runs-on: [ubuntu-22.04, docker-socket]
     concurrency:
       group: sanctuary-runner-e2e
       cancel-in-progress: false
@@ -752,7 +752,7 @@ jobs:
   # ============================================
   auth-flow-test:
     name: Authentication Flow Test
-    runs-on: [ubuntu-22.04, x300-canary]
+    runs-on: [ubuntu-22.04, docker-socket]
     concurrency:
       group: sanctuary-runner-e2e
       cancel-in-progress: false
@@ -897,7 +897,7 @@ jobs:
   # ============================================
   upgrade-baseline-test:
     name: Upgrade Baseline
-    runs-on: [ubuntu-22.04, x300-canary]
+    runs-on: [ubuntu-22.04, docker-socket]
     concurrency:
       group: sanctuary-runner-e2e
       cancel-in-progress: false
@@ -1086,7 +1086,7 @@ jobs:
 
   upgrade-extended-fixture-test:
     name: Upgrade Extended Fixtures
-    runs-on: [ubuntu-22.04, x300-canary]
+    runs-on: [ubuntu-22.04, docker-socket]
     concurrency:
       group: sanctuary-runner-e2e
       cancel-in-progress: false
@@ -1176,7 +1176,7 @@ jobs:
 
   upgrade-extended-test:
     name: Upgrade Extended
-    runs-on: [ubuntu-22.04, x300-canary]
+    runs-on: [ubuntu-22.04, docker-socket]
     timeout-minutes: 60
     concurrency:
       group: sanctuary-runner-e2e
@@ -1204,7 +1204,7 @@ jobs:
 
   docker-resource-cleanup:
     name: Docker Resource Cleanup
-    runs-on: [ubuntu-22.04, x300-canary]
+    runs-on: [ubuntu-22.04, docker-socket]
     timeout-minutes: 15
     needs: [determine-scope, fresh-install-test, install-stack-smoke, container-health-test, auth-flow-test, upgrade-baseline-test, upgrade-extended-test]
     if: always() && github.event_name != 'pull_request'

@@ -1,4 +1,11 @@
 self-hosted-runner:
   labels:
     - ubuntu-20.04
+    # Capability label: "runner that can expose a mountable Docker API socket
+    # for the production docker-proxy service". Carried by every runner, which
+    # is what lets the Docker-backed install and release lanes schedule on any
+    # of them instead of pinning to one host.
+    - docker-socket
+    # Retained while nothing targets it; drop once a release gate has run green
+    # through docker-socket. See #668.
     - x300-canary
