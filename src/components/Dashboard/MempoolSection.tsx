@@ -5,6 +5,7 @@ import type { BitcoinStatus, BlockData, QueuedBlocksSummary } from '../../api/bi
 import { formatNetworkTitle, getNetworkColorClass } from '../../app/networks';
 import { Bitcoin, RefreshCw, Wifi, WifiOff } from 'lucide-react';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
+import { SectionSummary } from '../ui/SectionSummary';
 import { formatAverageFee } from '../BlockVisualizer/QueuedSummaryBlock/queuedSummaryHelpers';
 import type { PendingTransaction } from '../../types';
 
@@ -227,17 +228,7 @@ function MempoolCollapsedSummary({
     parts.push(`${pendingTxs.length.toLocaleString()} pending`);
   }
 
-  if (parts.length === 0) {
-    return null;
-  }
-
-  // min-w-0 on the span itself: as a flex item its default min-width:auto would
-  // block shrinking and `truncate` would never engage.
-  return (
-    <span className="text-xs text-sanctuary-500 dark:text-sanctuary-400 tabular-nums truncate min-w-0">
-      {parts.join(' · ')}
-    </span>
-  );
+  return <SectionSummary parts={parts} />;
 }
 
 function BlockVisualizerContent({

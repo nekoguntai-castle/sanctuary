@@ -49,13 +49,23 @@ export const Amount: React.FC<AmountProps> = ({
   // Use primary-500 for fiat (adapts to theme accent color)
   const fiatColorClass = 'text-primary-500 dark:text-primary-400';
 
-  if (inline && fiatValue) {
+  // Gated on `inline` alone, not `inline && fiatValue`. `formatFiat` returns
+  // null whenever fiat is switched off or the network is not mainnet, and the
+  // old condition sent those cases to the block branch below — emitting a
+  // `<div>` into callers that place this inside phrasing content
+  // (SectionSummary, PriceChart's pending totals row). That is invalid HTML,
+  // and a block-level box beside inline text forces an anonymous block box, so
+  // the row wraps onto two lines however hard the caller tries to keep it on
+  // one. `inline` now means inline whether or not there is a fiat line to add.
+  if (inline) {
     return (
       <span className={className}>
         <span className={`${btcSizeClass} font-mono tabular-nums`}>{displayBtc}</span>
-        <span className={`ml-2 ${fiatSizeClass} font-mono tabular-nums ${fiatColorClass} ${fiatClassName}`}>
-          {fiatValue}
-        </span>
+        {fiatValue && (
+          <span className={`ml-2 ${fiatSizeClass} font-mono tabular-nums ${fiatColorClass} ${fiatClassName}`}>
+            {fiatValue}
+          </span>
+        )}
       </span>
     );
   }

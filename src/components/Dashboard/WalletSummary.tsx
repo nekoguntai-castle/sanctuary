@@ -9,6 +9,7 @@ import { TabNetwork } from '../NetworkTabs';
 import { useUserPreference } from '../../hooks/useUserPreference';
 import { ShowMoreToggle } from '../ui/ShowMoreToggle';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
+import { SectionSummary } from '../ui/SectionSummary';
 
 const distributionColors = [
     'bg-primary-500',
@@ -473,10 +474,19 @@ const WalletSummaryImpl: React.FC<WalletSummaryProps> = ({
         </>
       }
       summary={
-        <span className="flex items-center gap-2 text-sm text-sanctuary-400">
-          <span>{filteredWallets.length} wallets</span>
-          <Amount sats={totalBalance} />
-        </span>
+        <SectionSummary
+          testId="dashboard-wallets-summary"
+          parts={[
+            `${filteredWallets.length} ${filteredWallets.length === 1 ? 'wallet' : 'wallets'}`,
+            // `inline` is the fix for the squashed bar: without it Amount takes
+            // its `flex flex-col` branch and stacks fiat under BTC, so a
+            // two-line block sat beside a one-line count. Amount's inline
+            // branch is gated on `inline` alone, so this stays one phrasing-
+            // level span when there is no fiat to show either (fiat off, or a
+            // non-mainnet network) — see the comment on that branch.
+            <Amount sats={totalBalance} size="sm" inline />,
+          ]}
+        />
       }
     >
        <WalletDistributionBar

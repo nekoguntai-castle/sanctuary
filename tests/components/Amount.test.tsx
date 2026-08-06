@@ -7,6 +7,7 @@
 import { render,screen } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
 import { Amount } from '../../src/components/Amount';
+import { useCurrency } from '../../src/contexts/CurrencyContext';
 
 // Mock the CurrencyContext
 vi.mock('../../src/contexts/CurrencyContext', () => ({
@@ -103,6 +104,30 @@ describe('Amount', () => {
 
       const fiatSpan = container.querySelectorAll('span span')[1];
       expect(fiatSpan).toHaveClass('ml-2');
+    });
+
+    it('should stay phrasing-level inline when there is no fiat to show', () => {
+      // Non-regression: `formatFiat` returns null whenever fiat is switched off
+      // or the network is not mainnet, which is the default state for
+      // testnet/signet users. The inline branch used to be gated on
+      // `inline && fiatValue`, so those callers silently fell through to the
+      // block `<div class="flex flex-col">`.
+      //
+      // That div is flow content emitted into callers' phrasing-content spans
+      // (SectionSummary, PriceChart's pending row) — invalid HTML, and a
+      // block-level box beside inline text forces an anonymous block box, so
+      // the row breaks onto two lines. `truncate`/`whitespace-nowrap` cannot
+      // prevent that.
+      vi.mocked(useCurrency).mockReturnValueOnce({
+        format: (sats: number) => `${(sats / 100_000_000).toFixed(8)} BTC`,
+        formatFiat: () => null,
+      } as unknown as ReturnType<typeof useCurrency>);
+
+      const { container } = render(<Amount sats={100000} inline={true} />);
+
+      expect(container.querySelector('div')).not.toBeInTheDocument();
+      expect(container.firstElementChild?.tagName).toBe('SPAN');
+      expect(screen.getByText('0.00100000 BTC')).toBeInTheDocument();
     });
   });
 

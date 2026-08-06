@@ -15,8 +15,13 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
+// `inline` is surfaced as an attribute rather than swallowed: the collapsed
+// summary's one-line layout depends on it, and a mock that ignores the prop
+// would stay green if a caller dropped it.
 vi.mock('../../../src/components/Amount', () => ({
-  Amount: ({ sats }: { sats: number }) => <span data-testid="amount">{sats}</span>,
+  Amount: ({ sats, inline }: { sats: number; inline?: boolean }) => (
+    <span data-testid="amount" data-inline={String(Boolean(inline))}>{sats}</span>
+  ),
 }));
 
 const mockPreferences = new Map<string, unknown>();
@@ -364,10 +369,36 @@ describe('WalletSummary', () => {
 
       await user.click(disclosure());
 
-      // Scoped to the summary: the mocked Amount renders a bare number, and the
-      // wallet rows render amounts of their own.
-      const summary = screen.getByText('4 wallets').parentElement!;
+      // Scoped by testid rather than by traversing up from the count text: the
+      // mocked Amount renders a bare number and the wallet rows render amounts
+      // of their own.
+      const summary = screen.getByTestId('dashboard-wallets-summary');
+      expect(summary).toHaveTextContent('4 wallets');
       expect(within(summary).getByTestId('amount')).toHaveTextContent('9000');
+    });
+
+    it('renders the total inline so the collapsed bar stays on one line', async () => {
+      const user = userEvent.setup();
+      renderSection(4);
+
+      await user.click(disclosure());
+
+      // The reported defect: without `inline`, Amount takes its `flex flex-col`
+      // branch and stacks fiat under BTC, so a two-line block sat beside a
+      // one-line count. Asserted at the prop boundary because jsdom has no
+      // layout engine — the classes that do the rest of the work are pinned in
+      // the SectionSummary unit test.
+      const amount = within(screen.getByTestId('dashboard-wallets-summary')).getByTestId('amount');
+      expect(amount).toHaveAttribute('data-inline', 'true');
+    });
+
+    it('uses a singular wallet label for a single wallet', async () => {
+      const user = userEvent.setup();
+      renderSection(1);
+
+      await user.click(disclosure());
+
+      expect(screen.getByTestId('dashboard-wallets-summary')).toHaveTextContent('1 wallet');
     });
 
     it('keeps the row-cap toggle working independently of section collapse', async () => {
