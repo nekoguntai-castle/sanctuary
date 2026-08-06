@@ -207,6 +207,7 @@ jobs:
           ./tests/install/unit/install-scope.test.sh
           ./tests/install/unit/cleanup-containers-guard.test.sh
           ./tests/ci/check-workflow-composition.test.sh
+          ./tests/ci/relay-job-diagnosability.test.sh
           INNER
 
       - name: Write install unit diagnostic summary
@@ -411,17 +412,32 @@ jobs:
     timeout-minutes: 30
 
     steps:
+      # This lane runs no tests of its own: it relays the combined install job's
+      # status. Say so in the failure text and name the upstream result, because
+      # a bare "Install Script E2E Test: failure" reads like an E2E regression
+      # and sends the reader looking for diagnostics this job never produces.
       - name: Verify combined install script result
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          FRESH_INSTALL_RESULT: ${{ needs.fresh-install-test.result }}
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
+          if [ "$EVENT_NAME" = "pull_request" ]; then
             echo "Install script E2E runs outside pull_request CI."
             exit 0
           fi
-          if [ "${{ needs.fresh-install-test.result }}" != "success" ]; then
-            echo "::error::Install script E2E failed in the combined install job"
-            exit 1
-          fi
-          echo "Install script E2E passed in the combined install job."
+          case "$FRESH_INSTALL_RESULT" in
+            success)
+              echo "Install script E2E passed in the combined install job."
+              ;;
+            skipped|cancelled)
+              echo "::error::Install script E2E did not run: the combined install job was ${FRESH_INSTALL_RESULT}. This lane relays that job and runs no tests itself, so there is nothing to diagnose here — look at Fresh Install E2E Test and whatever caused it to be ${FRESH_INSTALL_RESULT}."
+              exit 1
+              ;;
+            *)
+              echo "::error::Install script E2E failed in the combined install job (result: ${FRESH_INSTALL_RESULT}). Diagnostics are attached to the Fresh Install E2E Test job, not this one."
+              exit 1
+              ;;
+          esac
 
   # ============================================
   # Reusable Stack Smoke Test
