@@ -28,7 +28,9 @@ export async function renderDashboardRendersCoreCardsAndNetworkSpecificPlacehold
   await expect(page.getByText("Fee Estimation")).toBeVisible();
   await expect(page.getByText("Node Status")).toBeVisible();
   await expect(page.getByTitle("Mainnet block height")).toBeVisible();
-  await expect(page.getByText("22 sat/vB")).toBeVisible();
+  // The unit is stated once on the fee card header now, not per tier.
+  await expect(page.getByText("sat/vB")).toBeVisible();
+  await expect(page.getByRole("main").getByText("22", { exact: true })).toBeVisible();
 
   await page
     .getByRole("tablist", { name: "Network tabs" })
@@ -40,7 +42,8 @@ export async function renderDashboardRendersCoreCardsAndNetworkSpecificPlacehold
   await expect(page.getByText("Fee Estimation")).toBeVisible();
   await expect(page.getByText(/^Connected$/)).toBeVisible();
   await expect(page.getByRole("main").getByText("900,123").last()).toBeVisible();
-  await expect(page.getByText("2/3(active/total)")).toBeVisible();
+  // The Pool:/Height: label column collapsed into one support line.
+  await expect(page.getByText("2/3")).toBeVisible();
   await expectChromiumMainScreenshot(page, "dashboard-testnet-shell.png");
 
   expect(unhandledRequests).toEqual([]);

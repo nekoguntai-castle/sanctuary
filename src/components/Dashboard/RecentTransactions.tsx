@@ -145,11 +145,11 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
       // button, the paging controls and the transaction rows do.
       interactive={false}
       padding="md"
-      headingClassName="text-lg font-medium text-sanctuary-900 dark:text-sanctuary-100"
+      headingClassName="text-[11px] font-semibold text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-[0.08em]"
       headerClassName="flex items-center justify-between gap-4 mb-6"
       title={
         <>
-          <Activity className="w-5 h-5 mr-2 text-sanctuary-400" />
+          <Activity className="w-3.5 h-3.5 mr-1.5 text-sanctuary-400" />
           Recent Activity
         </>
       }

@@ -1,7 +1,6 @@
 import React from 'react';
-import { Zap } from 'lucide-react';
 import { AnimatedFeeRate } from './AnimatedFeeRate';
-import { Card } from '../ui/Card';
+import { TelemetryCard } from './TelemetryCard';
 
 interface FeeEstimate {
   fast: number;
@@ -15,47 +14,58 @@ interface FeeEstimationCardProps {
 }
 
 const FEE_TIERS = [
-  { label: 'Fast', key: 'fast' as const, dot: 'bg-success-500', time: '~10 min / ~1 block' },
-  { label: 'Normal', key: 'medium' as const, dot: 'bg-warning-500', time: '~30 min / ~3 blocks' },
-  { label: 'Slow', key: 'slow' as const, dot: 'bg-sanctuary-400', time: '~60 min / ~6 blocks' },
+  { label: 'fast', key: 'fast' as const, dot: 'bg-success-500', time: '~10 min / ~1 block' },
+  { label: 'normal', key: 'medium' as const, dot: 'bg-warning-500', time: '~30 min / ~3 blocks' },
+  { label: 'slow', key: 'slow' as const, dot: 'bg-sanctuary-400', time: '~60 min / ~6 blocks' },
 ] as const;
 
 const TYPICAL_VB = 140;
 
+/**
+ * The three tiers used to be three nested inset panels stacked vertically,
+ * which made this the tallest card in the row and buried the numbers inside
+ * chrome. They are one headline row now — the rates are what the reader came
+ * for, and the tier names sit under them as the legend.
+ */
 export const FeeEstimationCard: React.FC<FeeEstimationCardProps> = ({ fees, formatFeeRate }) => (
-  // No stagger class: the telemetry row's `stagger-enter` parent owns the
-  // per-child delay via nth-child, which outranks any animate-fade-in-up-*.
-  <Card>
-    <div className="flex items-center justify-between mb-4">
-      <h3 className="text-[11px] font-semibold text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-[0.08em]">Fee Estimation</h3>
-      <Zap className="w-4 h-4 text-warning-500" />
-    </div>
-    <div className="space-y-2">
-      {FEE_TIERS.map((tier) => {
-        const rate = fees?.[tier.key];
-        const estSats = rate !== undefined ? Math.round(rate * TYPICAL_VB) : undefined;
-        return (
-          <div key={tier.label} className="relative group/fee flex justify-between items-center p-2.5 surface-secondary rounded-lg">
-            <div className="flex items-center">
-              <div className={`w-2 h-2 rounded-full ${tier.dot} mr-2`}></div>
-              <span className="text-sm text-sanctuary-600 dark:text-sanctuary-300">{tier.label}</span>
-            </div>
-            <span className="font-bold text-sm font-mono tabular-nums text-sanctuary-900 dark:text-sanctuary-100">
-              <AnimatedFeeRate value={formatFeeRate(rate)} />
+  <TelemetryCard
+    title="Fee Estimation"
+    testId="telemetry-fees"
+    titleAdornment={
+      <span className="text-[10px] text-sanctuary-400 font-mono">sat/vB</span>
+    }
+    headline={
+      <span className="flex items-baseline gap-2">
+        {FEE_TIERS.map((tier, index) => (
+          <React.Fragment key={tier.key}>
+            {index > 0 && <span className="text-sanctuary-300 dark:text-sanctuary-600">·</span>}
+            <span className="relative group/fee inline-flex items-center gap-1.5">
+              <span className={`w-1.5 h-1.5 rounded-full ${tier.dot} shrink-0`} aria-hidden="true" />
+              <AnimatedFeeRate value={formatFeeRate(fees?.[tier.key])} />
+              {/* Tooltip styles live in src/index.html */}
+              <span className="tooltip-popup bottom-full left-1/2 -translate-x-1/2 mb-2">
+                <span className="tooltip-arrow -bottom-1 left-1/2 -translate-x-1/2 border-b border-r" />
+                <span className="block">{tier.time}</span>
+                {fees?.[tier.key] !== undefined && (
+                  <span className="block text-sanctuary-400 dark:text-sanctuary-500 tabular-nums">
+                    ~{Math.round(fees[tier.key] * TYPICAL_VB).toLocaleString()} sats for a typical tx
+                  </span>
+                )}
+              </span>
             </span>
-            {/* Fee tooltip */}
-            <div className="tooltip-popup bottom-full left-1/2 -translate-x-1/2 mb-2">
-              <div className="tooltip-arrow -bottom-1 left-1/2 -translate-x-1/2 border-b border-r" />
-              <div>{tier.time}</div>
-              {estSats !== undefined && (
-                <div className="text-sanctuary-400 dark:text-sanctuary-500 tabular-nums">
-                  ~{estSats.toLocaleString()} sats for typical tx (~{TYPICAL_VB} vB)
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  </Card>
+          </React.Fragment>
+        ))}
+      </span>
+    }
+    support={
+      <span className="flex items-center gap-2 font-mono">
+        {FEE_TIERS.map((tier, index) => (
+          <React.Fragment key={tier.key}>
+            {index > 0 && <span className="text-sanctuary-300 dark:text-sanctuary-600">·</span>}
+            <span>{tier.label}</span>
+          </React.Fragment>
+        ))}
+      </span>
+    }
+  />
 );

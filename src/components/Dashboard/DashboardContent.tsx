@@ -8,6 +8,7 @@ import { BitcoinPriceCard } from './BitcoinPriceCard';
 import { FeeEstimationCard } from './FeeEstimationCard';
 import { UpdateBanner } from './UpdateBanner';
 import { WelcomeState } from './WelcomeState';
+import { TimeframeControls } from './PriceChart/TimeframeControls';
 
 interface DashboardContentProps {
   data: ReturnType<typeof useDashboardData>;
@@ -91,6 +92,21 @@ export function DashboardContent({ data }: DashboardContentProps) {
         <UpdateBanner versionInfo={versionInfo} onDismiss={() => setUpdateDismissed(true)} />
       )}
 
+      {/* Page-level period. It scopes the balance chart AND the activity
+          summary, so it sits above both rather than inside either — a control
+          in one card's header understates what it governs.
+
+          Omitted in the welcome branch: with no wallets there is no chart and
+          no activity, so the control would scope nothing. */}
+      {filteredWallets.length > 0 && (
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-[11px] font-semibold text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-[0.08em]">
+            Dashboard
+          </h2>
+          <TimeframeControls timeframe={timeframe} setTimeframe={setTimeframe} />
+        </div>
+      )}
+
       {/* Welcome state, or the user's own money: balance, then wallets beside activity */}
       {filteredWallets.length === 0 ? (
         <>
@@ -105,7 +121,6 @@ export function DashboardContent({ data }: DashboardContentProps) {
               totalBalance={totalBalance}
               chartReady={chartReady}
               timeframe={timeframe}
-              setTimeframe={setTimeframe}
               chartData={chartData}
               pendingTotals={pendingTotals}
               walletCount={filteredWallets.length}
@@ -164,7 +179,6 @@ export function DashboardContent({ data }: DashboardContentProps) {
         <FeeEstimationCard fees={fees} formatFeeRate={formatFeeRate} />
 
         <NodeStatusCard
-          isMainnet={isMainnet}
           selectedNetwork={selectedNetwork}
           nodeStatus={nodeStatus}
           bitcoinStatus={bitcoinStatus}

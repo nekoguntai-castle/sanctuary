@@ -37,8 +37,8 @@ export interface PendingTotals {
 export interface PriceChartProps {
   totalBalance: number;
   chartReady: boolean;
+  /** Read-only here; the selector that sets it lives in the page header. */
   timeframe: Timeframe;
-  setTimeframe: (timeframe: Timeframe) => void;
   chartData: PriceChartPoint[];
   pendingTotals: PendingTotals;
   walletCount: number;

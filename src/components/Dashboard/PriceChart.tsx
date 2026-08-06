@@ -2,7 +2,6 @@ import { ArrowDownLeft, ArrowUpRight, Minus, TrendingDown, TrendingUp } from 'lu
 import { Amount } from '../Amount';
 import { AnimatedPrice } from './PriceChart/AnimatedPrice';
 import { PriceChartBody } from './PriceChart/PriceChartBody';
-import { TimeframeControls } from './PriceChart/TimeframeControls';
 import type { PriceChartProps, PendingTotals } from './PriceChart/types';
 import { buildBalanceTrend, formatBalanceTrend } from './PriceChart/balanceTrendModel';
 import type { BalanceTrend } from './PriceChart/balanceTrendModel';
@@ -78,7 +77,6 @@ export function PriceChart({
   totalBalance,
   chartReady,
   timeframe,
-  setTimeframe,
   chartData,
   pendingTotals,
   walletCount,
@@ -89,14 +87,12 @@ export function PriceChart({
 
   return (
     <Card>
-      {/* Eyebrow and timeframe share a row — the controls used to occupy a full
-          row of their own above the chart. */}
-      <div className="flex items-center justify-between gap-4 mb-1">
-        <p className="text-[11px] font-semibold text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-[0.08em]">
-          Total Balance
-        </p>
-        <TimeframeControls timeframe={timeframe} setTimeframe={setTimeframe} />
-      </div>
+      {/* The period selector moved to the page header: it scopes the activity
+          summary as well as this chart, so a control living inside one card
+          understated what it governed. */}
+      <p className="text-[11px] font-semibold text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-[0.08em] mb-1">
+        Total Balance
+      </p>
 
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         {/* The left column was two lines against a ~170px chart; the pending

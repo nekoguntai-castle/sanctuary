@@ -34,19 +34,19 @@ export const DashboardSkeleton: React.FC = () => (
       </div>
     </div>
 
-    {/* Top Stats Row - 3 cards matching BTC Price / Fee / Node layout */}
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+    {/* Page header: title and the period selector that scopes the page */}
+    <div className="flex items-center justify-between gap-4">
+      <Skeleton className="h-3 w-20" />
+      <Skeleton className="h-8 w-56 rounded-lg" />
+    </div>
+
+    {/* Telemetry row — three cards on one shape: eyebrow, headline, support */}
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       {Array.from({ length: 3 }).map((_, i) => (
-        <div key={i} className="surface-elevated rounded-xl p-6 border border-sanctuary-200 dark:border-sanctuary-800">
-          <div className="flex justify-between mb-4">
-            <Skeleton className="h-3 w-24" />
-            <Skeleton className="w-9 h-9 rounded-lg" />
-          </div>
-          <Skeleton className="h-8 w-32 mb-3" />
-          <div className="flex justify-between">
-            <Skeleton className="h-3 w-16" />
-            <Skeleton className="h-3 w-12" />
-          </div>
+        <div key={i} className="surface-elevated rounded-xl p-5 border border-sanctuary-200 dark:border-sanctuary-800">
+          <Skeleton className="h-3 w-20 mb-3" />
+          <Skeleton className="h-7 w-32 mb-2" />
+          <Skeleton className="h-3 w-24" />
         </div>
       ))}
     </div>

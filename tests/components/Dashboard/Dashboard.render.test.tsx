@@ -45,10 +45,12 @@ vi.mock('../../../src/components/Dashboard/PriceChart', () => ({
       {value === null ? `${symbol}-----` : `${symbol}${value}`}
     </div>
   ),
+  // The card reads the period but no longer sets it — the selector moved to
+  // the page header, which is left unmocked so the wiring is exercised.
   PriceChart: (props: any) => (
-    <button data-testid="price-chart" onClick={() => props.setTimeframe('1M')}>
+    <div data-testid="price-chart">
       {props.timeframe}:{props.totalBalance}
-    </button>
+    </div>
   ),
 }));
 
@@ -78,6 +80,23 @@ vi.mock('lucide-react', () => ({
   Download: () => <span data-testid="download-icon" />,
   X: () => <span data-testid="dismiss-icon" />,
   Loader2: (props: any) => <span data-testid="loader-icon" className={props.className} />,
+  // Disclosure chevrons: collapsible sections, the wallets row cap, and the
+  // node card's server list.
+  ChevronDown: () => <span data-testid="chevron-down-icon" />,
+  ChevronUp: () => <span data-testid="chevron-up-icon" />,
+  ChevronLeft: () => <span data-testid="chevron-left-icon" />,
+  ChevronRight: () => <span data-testid="chevron-right-icon" />,
+  Activity: () => <span data-testid="activity-icon" />,
+  ArrowDownLeft: () => <span data-testid="arrow-in-icon" />,
+  ArrowUpRight: () => <span data-testid="arrow-out-icon" />,
+  Wallet: () => <span data-testid="wallet-icon" />,
+  RefreshCw: () => <span data-testid="refresh-icon" />,
+  Check: () => <span data-testid="check-icon" />,
+  AlertTriangle: () => <span data-testid="alert-icon" />,
+  Clock: () => <span data-testid="clock-icon" />,
+  Minus: () => <span data-testid="minus-icon" />,
+  Wifi: () => <span data-testid="wifi-icon" />,
+  WifiOff: () => <span data-testid="wifi-off-icon" />,
 }));
 
 const makeDashboardState = (overrides: Partial<any> = {}) => ({
@@ -177,17 +196,23 @@ describe('Dashboard render branches', () => {
     expect(screen.getByText('Connected')).toBeInTheDocument();
     expect(screen.getByText('900,000')).toBeInTheDocument();
     expect(screen.getByText('2/3')).toBeInTheDocument();
+    // The per-server breakdown sits behind a disclosure now.
+    await userEvent.click(screen.getByRole('button', { name: /server/ }));
     expect(screen.getByText('Primary')).toBeInTheDocument();
     expect(screen.getByText('(2 conns)')).toBeInTheDocument();
 
-    expect(screen.getByText('12 sat/vB')).toBeInTheDocument();
-    expect(screen.getByText('8 sat/vB')).toBeInTheDocument();
-    expect(screen.getByText('3 sat/vB')).toBeInTheDocument();
+    // The unit is stated once on the card header rather than per tier.
+    expect(screen.getByText('sat/vB')).toBeInTheDocument();
+    expect(screen.getByText('12')).toBeInTheDocument();
+    expect(screen.getByText('8')).toBeInTheDocument();
+    expect(screen.getByText('3')).toBeInTheDocument();
 
     expect(screen.queryByTestId('network-tabs')).not.toBeInTheDocument();
     expect(mocks.handleNetworkChange).not.toHaveBeenCalled();
 
-    await user.click(screen.getByTestId('price-chart'));
+    // The period selector now sits in the page header, above both the balance
+    // chart and the activity summary it scopes.
+    await user.click(screen.getByRole('button', { name: '1M' }));
     expect(mocks.setTimeframe).toHaveBeenCalledWith('1M');
 
     await user.click(screen.getByTitle('Dismiss'));
@@ -218,7 +243,7 @@ describe('Dashboard render branches', () => {
     rerender(<Dashboard />);
     expect(screen.getByText('-1.11%')).toBeInTheDocument();
     expect(screen.getByTestId('trending-down')).toBeInTheDocument();
-    expect(screen.getByText('Host:')).toBeInTheDocument();
+    // The Host:/Height: label column is gone; the host stands on its own.
     expect(screen.getByText('electrum.example')).toBeInTheDocument();
     expect(screen.getByText('🔒')).toBeInTheDocument();
 
@@ -295,10 +320,10 @@ describe('Dashboard render branches', () => {
     expect(screen.getByText('---')).toBeInTheDocument();
     expect(screen.queryByTestId('trending-up')).not.toBeInTheDocument();
     expect(screen.queryByTestId('trending-down')).not.toBeInTheDocument();
-    expect(screen.getByText('initializing...')).toBeInTheDocument();
+    expect(screen.getByText(/initializing/)).toBeInTheDocument();
   });
 
-  it('renders server health edge states and singular/plural connection labels', () => {
+  it('renders server health edge states and singular/plural connection labels', async () => {
     mocks.dashboardData = makeDashboardState({
       bitcoinStatus: {
         connected: true,
@@ -332,6 +357,7 @@ describe('Dashboard render branches', () => {
     });
     render(<Dashboard />);
 
+    await userEvent.click(screen.getByRole('button', { name: /server/ }));
     expect(screen.getByText('Unchecked')).toBeInTheDocument();
     expect(screen.getByText('Unhealthy')).toBeInTheDocument();
     expect(screen.getByText('(1 conn)')).toBeInTheDocument();
@@ -345,7 +371,7 @@ describe('Dashboard render branches', () => {
     });
     render(<Dashboard />);
 
-    const feeLabels = screen.getAllByText('--- sat/vB');
+    const feeLabels = screen.getAllByText('---');
     expect(feeLabels).toHaveLength(3);
   });
 

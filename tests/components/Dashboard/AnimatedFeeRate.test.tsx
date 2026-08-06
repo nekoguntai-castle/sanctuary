@@ -9,9 +9,11 @@ const expectNoTransitionClass = (container: HTMLElement): void => {
 };
 
 const registerRenderingTests = (): void => {
-  it('renders value with sat/vB suffix', () => {
+  it('renders the bare figure, leaving the unit to the card', () => {
     render(<AnimatedFeeRate value="20" />);
-    expect(screen.getByText('20 sat/vB')).toBeInTheDocument();
+    // The unit is stated once on the card, not repeated per tier.
+    expect(screen.getByText('20')).toBeInTheDocument();
+    expect(screen.queryByText('20 sat/vB')).not.toBeInTheDocument();
   });
 };
 

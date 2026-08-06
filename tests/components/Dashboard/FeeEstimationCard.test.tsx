@@ -23,14 +23,18 @@ describe('FeeEstimationCard', () => {
       <FeeEstimationCard fees={fees} formatFeeRate={mockFormatFeeRate} />,
     );
 
-    expect(screen.getByText('Fast')).toBeInTheDocument();
-    expect(screen.getByText('Normal')).toBeInTheDocument();
-    expect(screen.getByText('Slow')).toBeInTheDocument();
+    // Tier names sit under the rates as the legend now, lower-cased: the
+    // numbers are what the reader came for, not the labels.
+    expect(screen.getByText('fast')).toBeInTheDocument();
+    expect(screen.getByText('normal')).toBeInTheDocument();
+    expect(screen.getByText('slow')).toBeInTheDocument();
+    // The unit is stated once on the card rather than repeated per row.
+    expect(screen.getByText('sat/vB')).toBeInTheDocument();
 
     const feeRates = screen.getAllByTestId('animated-fee-rate');
-    expect(feeRates[0]).toHaveTextContent('20 sat/vB');
-    expect(feeRates[1]).toHaveTextContent('10 sat/vB');
-    expect(feeRates[2]).toHaveTextContent('3 sat/vB');
+    expect(feeRates[0]).toHaveTextContent('20');
+    expect(feeRates[1]).toHaveTextContent('10');
+    expect(feeRates[2]).toHaveTextContent('3');
   });
 
   it('renders --- when fees are null', () => {

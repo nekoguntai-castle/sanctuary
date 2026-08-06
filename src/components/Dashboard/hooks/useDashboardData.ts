@@ -41,7 +41,14 @@ export function useDashboardData() {
   const { btcPrice, priceChange24h, currencySymbol, lastPriceUpdate } = useCurrency();
   const { selectedNetwork } = useActiveNetwork();
   const navigate = useNavigate();
-  const [timeframe, setTimeframe] = useState<Timeframe>('1W');
+  // Persisted, like the activity page size and unlike the activity page. The
+  // reasoning is the same: a *lens* on the data is worth restoring, a
+  // *position* within it is not. Now that this period scopes both the balance
+  // chart and the activity summary, losing it on every visit is worse still.
+  const [timeframe, setTimeframe] = useUserPreference<Timeframe>(
+    'viewSettings.dashboard.timeframe',
+    '1W'
+  );
 
   // Version check state
   const [versionInfo, setVersionInfo] = useState<adminApi.VersionInfo | null>(null);

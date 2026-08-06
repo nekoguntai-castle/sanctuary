@@ -88,9 +88,10 @@ describe('BitcoinPriceCard', () => {
         />,
       );
 
-      // Time should be rendered (the exact format depends on locale)
+      // Time should be rendered (the exact format depends on locale), now
+      // labelled rather than sitting bare in the corner.
       const timeText = updateTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      expect(screen.getByText(timeText)).toBeInTheDocument();
+      expect(screen.getByText(`updated ${timeText}`)).toBeInTheDocument();
     });
 
     it('does not show time when lastPriceUpdate is null', () => {

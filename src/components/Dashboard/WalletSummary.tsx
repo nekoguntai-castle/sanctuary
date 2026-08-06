@@ -465,11 +465,11 @@ const WalletSummaryImpl: React.FC<WalletSummaryProps> = ({
       // The card shell performs no action of its own; the disclosure button,
       // the row links, and the show-more toggle each carry their own affordance.
       interactive={false}
-      headingClassName="text-lg font-medium text-sanctuary-900 dark:text-sanctuary-100"
+      headingClassName="text-[11px] font-semibold text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-[0.08em]"
       headerClassName="flex items-center justify-between gap-4 mb-4"
       title={
         <>
-          <WalletIcon className="w-5 h-5 mr-2 text-sanctuary-400" />
+          <WalletIcon className="w-3.5 h-3.5 mr-1.5 text-sanctuary-400" />
           {getNetworkLabel(selectedNetwork)} Wallets
         </>
       }

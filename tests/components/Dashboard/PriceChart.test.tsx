@@ -1,5 +1,4 @@
 import { act,render,screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { describe,expect,it,vi } from 'vitest';
 import { AnimatedPrice,PriceChart } from '../../../src/components/Dashboard/PriceChart';
@@ -67,16 +66,12 @@ vi.mock('recharts', () => ({
 }));
 
 describe('PriceChart', () => {
-  it('renders total balance and timeframe controls', async () => {
-    const user = userEvent.setup();
-    const setTimeframe = vi.fn();
-
+  it('renders the total balance and the chart', () => {
     render(
       <PriceChart
         totalBalance={123456}
         chartReady={true}
         timeframe="1W"
-        setTimeframe={setTimeframe}
         chartData={[{ name: 'Jan', sats: 1000 }]}
         pendingTotals={{ incoming: 0, outgoing: 0 }}
         walletCount={1}
@@ -85,10 +80,9 @@ describe('PriceChart', () => {
 
     expect(screen.getByTestId('amount')).toHaveTextContent('123456');
     expect(screen.getByTestId('responsive-container')).toBeInTheDocument();
-    expect(screen.getByText('1W')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: '1M' }));
-    expect(setTimeframe).toHaveBeenCalledWith('1M');
+    // The period selector moved to the page header — it scopes the activity
+    // summary as well as this chart, so it no longer lives in this card.
+    expect(screen.queryByRole('button', { name: '1M' })).not.toBeInTheDocument();
   });
 
   it('renders chart tooltip with active and inactive states', () => {
@@ -97,7 +91,6 @@ describe('PriceChart', () => {
         totalBalance={100}
         chartReady={true}
         timeframe="1D"
-        setTimeframe={vi.fn()}
         chartData={[{ name: 'Jan', sats: 1000 }]}
         pendingTotals={{ incoming: 0, outgoing: 0 }}
         walletCount={1}
@@ -117,7 +110,6 @@ describe('PriceChart', () => {
         totalBalance={1}
         chartReady={false}
         timeframe="1D"
-        setTimeframe={vi.fn()}
         chartData={[{ name: 'Now', sats: 1 }]}
         pendingTotals={{ incoming: 0, outgoing: 0 }}
         walletCount={1}
@@ -133,7 +125,6 @@ describe('PriceChart', () => {
         totalBalance={123456}
         chartReady={true}
         timeframe="1W"
-        setTimeframe={vi.fn()}
         chartData={[{ name: 'Jan', sats: 1000 }]}
         pendingTotals={{ incoming: 0, outgoing: 0 }}
         walletCount={1}
@@ -267,7 +258,6 @@ describe('PriceChart balance trend', () => {
         totalBalance={1_125_000}
         chartReady={true}
         timeframe={timeframe}
-        setTimeframe={vi.fn()}
         chartData={chartData}
         pendingTotals={{ incoming: 0, outgoing: 0 }}
         walletCount={2}
@@ -343,7 +333,6 @@ describe('PriceChart balance trend', () => {
         totalBalance={1_000_000}
         chartReady={true}
         timeframe="1W"
-        setTimeframe={vi.fn()}
         chartData={[
           { name: 'a', sats: 1_000_000 },
           { name: 'b', sats: 1_125_000 },
@@ -356,14 +345,6 @@ describe('PriceChart balance trend', () => {
     // Unconfirmed sats must not be folded into the confirmed change.
     expect(screen.getByTestId('balance-trend')).toHaveTextContent('+125,000 sats');
     expect(screen.getByText('pending')).toBeInTheDocument();
-  });
-
-  it('announces which timeframe is selected', () => {
-    renderChart([{ name: 'a', sats: 1 }], '1M');
-
-    // Previously carried by background colour alone.
-    expect(screen.getByRole('button', { name: '1M' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: '1W' })).toHaveAttribute('aria-pressed', 'false');
   });
 
   describe('balance axis', () => {

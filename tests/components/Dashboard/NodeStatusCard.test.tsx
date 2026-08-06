@@ -1,3 +1,4 @@
+import userEvent from '@testing-library/user-event';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { NodeStatusCard } from '../../../src/components/Dashboard/NodeStatusCard';
@@ -6,13 +7,15 @@ vi.mock('lucide-react', () => ({
   Zap: () => <span data-testid="zap-icon" />,
   CheckCircle2: () => <span data-testid="connected-icon" />,
   XCircle: () => <span data-testid="error-icon" />,
+  // ShowMoreToggle draws the server-list disclosure chevron.
+  ChevronDown: () => <span data-testid="chevron-down-icon" />,
+  ChevronUp: () => <span data-testid="chevron-up-icon" />,
 }));
 
 describe('NodeStatusCard', () => {
   it('renders nothing in PoolDisplay when pool is disabled and host is empty', () => {
     const { container } = render(
       <NodeStatusCard
-        isMainnet={true}
         selectedNetwork="mainnet"
         nodeStatus="connected"
         bitcoinStatus={{
@@ -37,7 +40,6 @@ describe('NodeStatusCard', () => {
     it('shows connected indicator for configured non-mainnet status', () => {
       const { container } = render(
         <NodeStatusCard
-          isMainnet={false}
           selectedNetwork="testnet3"
           nodeStatus="connected"
           bitcoinStatus={undefined}
@@ -51,7 +53,6 @@ describe('NodeStatusCard', () => {
     it('shows error indicator for error status', () => {
       const { container } = render(
         <NodeStatusCard
-          isMainnet={true}
           selectedNetwork="mainnet"
           nodeStatus="error"
           bitcoinStatus={{ connected: false, error: 'Connection refused' }}
@@ -65,7 +66,6 @@ describe('NodeStatusCard', () => {
     it('shows checking indicator for checking status', () => {
       const { container } = render(
         <NodeStatusCard
-          isMainnet={true}
           selectedNetwork="mainnet"
           nodeStatus="checking"
           bitcoinStatus={undefined}
@@ -79,7 +79,6 @@ describe('NodeStatusCard', () => {
     it('shows default indicator for unknown status', () => {
       const { container } = render(
         <NodeStatusCard
-          isMainnet={true}
           selectedNetwork="mainnet"
           nodeStatus="unknown"
           bitcoinStatus={undefined}
@@ -95,7 +94,6 @@ describe('NodeStatusCard', () => {
     it('shows Error label with icon for error status', () => {
       render(
         <NodeStatusCard
-          isMainnet={true}
           selectedNetwork="mainnet"
           nodeStatus="error"
           bitcoinStatus={{ connected: false }}
@@ -108,7 +106,6 @@ describe('NodeStatusCard', () => {
     it('shows Checking... label for checking status', () => {
       render(
         <NodeStatusCard
-          isMainnet={true}
           selectedNetwork="mainnet"
           nodeStatus="checking"
           bitcoinStatus={undefined}
@@ -121,7 +118,6 @@ describe('NodeStatusCard', () => {
     it('shows Unknown label for unknown status', () => {
       render(
         <NodeStatusCard
-          isMainnet={true}
           selectedNetwork="mainnet"
           nodeStatus="unknown"
           bitcoinStatus={undefined}
@@ -149,7 +145,6 @@ describe('NodeStatusCard', () => {
     it('shows host with SSL indicator when pool is disabled but host is set', () => {
       render(
         <NodeStatusCard
-          isMainnet={true}
           selectedNetwork="mainnet"
           nodeStatus="connected"
           bitcoinStatus={{
@@ -162,14 +157,13 @@ describe('NodeStatusCard', () => {
         />,
       );
 
-      expect(screen.getByText('Host:')).toBeInTheDocument();
       expect(screen.getByText('electrum.example.com')).toBeInTheDocument();
+      expect(screen.getByText('🔒')).toBeInTheDocument();
     });
 
     it('shows host without SSL indicator when useSsl is false', () => {
       render(
         <NodeStatusCard
-          isMainnet={true}
           selectedNetwork="mainnet"
           nodeStatus="connected"
           bitcoinStatus={{
@@ -182,13 +176,13 @@ describe('NodeStatusCard', () => {
         />,
       );
 
-      expect(screen.getByText('Host:')).toBeInTheDocument();
+      expect(screen.getByText('electrum.example.com')).toBeInTheDocument();
+      expect(screen.queryByText('🔒')).not.toBeInTheDocument();
     });
 
-    it('shows pool stats when pool is enabled with stats', () => {
+    it('shows pool stats when pool is enabled with stats', async () => {
       render(
         <NodeStatusCard
-          isMainnet={true}
           selectedNetwork="mainnet"
           nodeStatus="connected"
           bitcoinStatus={{
@@ -217,8 +211,14 @@ describe('NodeStatusCard', () => {
         />,
       );
 
-      expect(screen.getByText('Pool:')).toBeInTheDocument();
+      expect(screen.getByText('pool')).toBeInTheDocument();
       expect(screen.getByText(/3\/5/)).toBeInTheDocument();
+      // The per-server breakdown is a drill-down now: expanded by default it
+      // made this the tallest card in the row for detail most readers are not
+      // asking for.
+      expect(screen.queryByText('server1')).not.toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: /2 servers/ }));
+
       expect(screen.getByText('server1')).toBeInTheDocument();
       expect(screen.getByText('server2')).toBeInTheDocument();
       expect(screen.getByText(/2 conns/)).toBeInTheDocument();
@@ -228,7 +228,6 @@ describe('NodeStatusCard', () => {
     it('shows initializing when pool is enabled but stats is null', () => {
       render(
         <NodeStatusCard
-          isMainnet={true}
           selectedNetwork="mainnet"
           nodeStatus="connected"
           bitcoinStatus={{
@@ -244,13 +243,13 @@ describe('NodeStatusCard', () => {
         />,
       );
 
-      expect(screen.getByText('initializing...')).toBeInTheDocument();
+      expect(screen.getByText('pool')).toBeInTheDocument();
+      expect(screen.getByText(/initializing/)).toBeInTheDocument();
     });
 
-    it('shows server with no health check as neutral indicator', () => {
+    it('shows server with no health check as neutral indicator', async () => {
       const { container } = render(
         <NodeStatusCard
-          isMainnet={true}
           selectedNetwork="mainnet"
           nodeStatus="connected"
           bitcoinStatus={{
@@ -278,6 +277,8 @@ describe('NodeStatusCard', () => {
         />,
       );
 
+      await userEvent.click(screen.getByRole('button', { name: /1 server/ }));
+
       expect(screen.getByText('unchecked')).toBeInTheDocument();
       // The unchecked server should use bg-sanctuary-400 (neutral) not bg-success-500 or bg-warning-500
       const serverDots = container.querySelectorAll('.w-1\\.5.h-1\\.5.rounded-full');
@@ -289,7 +290,6 @@ describe('NodeStatusCard', () => {
     it('shows block height when connected with bitcoinStatus', () => {
       render(
         <NodeStatusCard
-          isMainnet={true}
           selectedNetwork="mainnet"
           nodeStatus="connected"
           bitcoinStatus={{
@@ -301,14 +301,14 @@ describe('NodeStatusCard', () => {
         />,
       );
 
-      expect(screen.getByText('Height:')).toBeInTheDocument();
+      // The label column is gone; each figure keeps a word in front of it.
+      expect(screen.getByText('height')).toBeInTheDocument();
       expect(screen.getByText('900,000')).toBeInTheDocument();
     });
 
     it('shows error message when node status is error with error string', () => {
       render(
         <NodeStatusCard
-          isMainnet={true}
           selectedNetwork="mainnet"
           nodeStatus="error"
           bitcoinStatus={{ connected: false, error: 'Connection timeout' }}
@@ -321,7 +321,6 @@ describe('NodeStatusCard', () => {
     it('does not show error message when no error string', () => {
       render(
         <NodeStatusCard
-          isMainnet={true}
           selectedNetwork="mainnet"
           nodeStatus="error"
           bitcoinStatus={{ connected: false }}
@@ -336,7 +335,6 @@ describe('NodeStatusCard', () => {
     it('shows unavailable testnet3 status without claiming it is unconfigured', () => {
       render(
         <NodeStatusCard
-          isMainnet={false}
           selectedNetwork="testnet3"
           nodeStatus="unknown"
           bitcoinStatus={undefined}
@@ -351,7 +349,6 @@ describe('NodeStatusCard', () => {
     it('shows signet error message from the network status API', () => {
       render(
         <NodeStatusCard
-          isMainnet={false}
           selectedNetwork="signet"
           nodeStatus="error"
           bitcoinStatus={{ connected: false, error: 'Signet sync is off' }}
@@ -364,7 +361,6 @@ describe('NodeStatusCard', () => {
     it('shows checking copy while a non-mainnet status request is in flight', () => {
       render(
         <NodeStatusCard
-          isMainnet={false}
           selectedNetwork="testnet3"
           nodeStatus="checking"
           bitcoinStatus={undefined}
@@ -377,7 +373,6 @@ describe('NodeStatusCard', () => {
     it('shows configured testnet3 Electrum host when connected', () => {
       render(
         <NodeStatusCard
-          isMainnet={false}
           selectedNetwork="testnet3"
           nodeStatus="connected"
           bitcoinStatus={{
@@ -401,7 +396,6 @@ describe('NodeStatusCard', () => {
     it('shows MAINNET badge for mainnet', () => {
       render(
         <NodeStatusCard
-          isMainnet={true}
           selectedNetwork="mainnet"
           nodeStatus="checking"
           bitcoinStatus={undefined}
@@ -414,7 +408,6 @@ describe('NodeStatusCard', () => {
     it('shows TESTNET3 badge for testnet3', () => {
       render(
         <NodeStatusCard
-          isMainnet={false}
           selectedNetwork="testnet3"
           nodeStatus="unknown"
           bitcoinStatus={undefined}
@@ -427,7 +420,6 @@ describe('NodeStatusCard', () => {
     it('shows SIGNET badge for signet', () => {
       render(
         <NodeStatusCard
-          isMainnet={false}
           selectedNetwork="signet"
           nodeStatus="unknown"
           bitcoinStatus={undefined}
