@@ -210,7 +210,7 @@ check_docker_prerequisites() {
 
     # Check if we can connect to Docker
     if ! docker info &>/dev/null; then
-        if [ -e /var/run/docker.sock ]; then
+        if [ -e "${SANCTUARY_DOCKER_SOCKET:-/var/run/docker.sock}" ]; then
             # Socket exists but no permission
             echo -e "${RED}✗${NC} Cannot access Docker (permission denied)"
             echo ""

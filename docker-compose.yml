@@ -784,7 +784,15 @@ services:
       INFO: 0
       VERSION: 0
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Source is parameterised because it is a HOST path and differs by engine:
+      # Docker exposes /var/run/docker.sock, rootless Podman exposes
+      # /run/user/<uid>/podman/podman.sock. A bind whose source does not exist is
+      # auto-created as a directory, so on Podman this silently handed
+      # docker-proxy a directory where it expects a socket — and because
+      # docker-proxy has no healthcheck and no install test exercises it, nothing
+      # reported the breakage. The container-side path is unchanged, so nothing
+      # inside the images differs. Default keeps operator installs identical.
+      - ${SANCTUARY_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock:ro
     networks:
       - sanctuary-network
     # Run with minimal privileges
