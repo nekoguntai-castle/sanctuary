@@ -1689,7 +1689,11 @@ while IFS=: read -r file line content; do
   fi
   [[ "$content" == *"--strict-allow-scripts"* || "$content" == *"--ignore-scripts"* ]] && continue
   unprotected_npm_ci+=("$file:$line:$content")
-done < <(rg -n 'npm( --prefix [^ ]+)? ci' "${npm_ci_sources[@]}")
+# grep, not rg: ripgrep is not installed in the CI job container, and its
+# absence made this check silently vacuous (no matches -> "PASS") while emitting
+# "rg: command not found" and failing the job. grep -nE emits the same
+# file:line:content shape for a multi-file argument list.
+done < <(grep -nE 'npm( --prefix [^ ]+)? ci' "${npm_ci_sources[@]}")
 
 if [ "${#unprotected_npm_ci[@]}" -eq 0 ]; then
   PASS=$((PASS + 1))
