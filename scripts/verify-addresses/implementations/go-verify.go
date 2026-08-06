@@ -21,6 +21,7 @@ import (
 	"strconv"
 
 	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/btcutil/base58"
 	"github.com/btcsuite/btcd/btcutil/hdkeychain"
@@ -271,9 +272,29 @@ func encodeNativeSegwitAddress(pubKeyBytes []byte, net *chaincfg.Params) (string
 	return addr.EncodeAddress(), nil
 }
 
+// encodeTaprootAddress derives a BIP-86 key-path-only P2TR address.
+//
+// The derived key is the *internal* key. BIP-86 requires it to be tweaked
+// before use as the output key:
+//
+//	output_key = internal_key + H_TapTweak(internal_key) * G
+//
+// Truncating the compressed key to its x-only form and encoding that directly
+// yields the internal key as the output key, which is a different address --
+// funds sent there are not spendable by a BIP-86 wallet. This produced a
+// disagreement against Bitcoin Core, bitcoinjs-lib, Caravan and bip_utils on
+// every taproot case, mainnet and testnet, which went unseen while a missing
+// cwd in go.ts kept this implementation out of the comparison entirely.
+//
+// ComputeTaprootKeyNoScript applies the no-script-tree tweak, matching
+// bitcoinjs's p2tr({ internalPubkey }).
 func encodeTaprootAddress(pubKeyBytes []byte, net *chaincfg.Params) (string, error) {
-	xOnlyPubKey := pubKeyBytes[1:33] // Remove prefix byte
-	addr, err := btcutil.NewAddressTaproot(xOnlyPubKey, net)
+	internalKey, err := btcec.ParsePubKey(pubKeyBytes)
+	if err != nil {
+		return "", err
+	}
+	outputKey := txscript.ComputeTaprootKeyNoScript(internalKey)
+	addr, err := btcutil.NewAddressTaproot(schnorr.SerializePubKey(outputKey), net)
 	if err != nil {
 		return "", err
 	}

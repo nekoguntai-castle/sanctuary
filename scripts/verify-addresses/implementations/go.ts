@@ -26,6 +26,13 @@ async function runGo(args: string[]): Promise<GoResult> {
   return new Promise((resolve, reject) => {
     const proc = spawn('go', ['run', GO_SCRIPT, ...args], {
       stdio: ['pipe', 'pipe', 'pipe'],
+      // go.mod sits beside go-verify.go, not at the repo root. Without an
+      // explicit cwd this inherits the caller's directory (verify-addresses/),
+      // where Go finds no module, cannot resolve btcd, and exits non-zero. The
+      // generator reads that as "btcd/btcutil UNAVAILABLE", drops Go from the
+      // panel, and still prints "All vectors verified successfully" -- five-way
+      // agreement silently degraded to four-way.
+      cwd: __dirname,
       env: {
         ...process.env,
         // Ensure Go modules work
