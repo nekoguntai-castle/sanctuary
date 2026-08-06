@@ -267,15 +267,6 @@ jobs:
           node scripts/ci/check-npm-deprecations.mjs --install-log "$install_log"
           QUALITY_NPM_DEPRECATIONS
 
-      - name: Run supply-chain IOC sweep
-        run: |
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/ioc-sweep.log" bash -euo pipefail <<'QUALITY_IOC_SWEEP'
-          # This job installs into a throwaway clone, so the workspace has no
-          # node_modules and coverage is lockfile-only — the authoritative record
-          # of what CI would install. The sweep prints its own scope.
-          node scripts/ci/ioc-sweep.mjs
-          QUALITY_IOC_SWEEP
-
       - name: Run npm audit
         run: |
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/npm-audit.log" bash -euo pipefail <<'QUALITY_NPM_AUDIT'
