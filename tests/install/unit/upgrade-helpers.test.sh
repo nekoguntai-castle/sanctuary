@@ -931,6 +931,68 @@ EOF
   fi
 }
 
+# Confirmed by run 8824's captured health log, not inferred: the legacy gateway
+# healthcheck fails every probe with
+#   [: line 0: syntax error: unexpected end of file (expecting "then")
+# because v0.8.59 uses ["CMD","sh","-c",<script>], which does not survive the
+# compose -> Podman path when <script> contains shell syntax. #678 fixed this on
+# main; a released tag cannot be changed.
+test_legacy_healthcheck_cmd_form_is_rewritten() {
+  local src="$TEST_TMP_DIR/legacy-hc"
+  mkdir -p "$src"
+  cat > "$src/docker-compose.yml" <<'EOF'
+services:
+  gateway:
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "sh",
+          "-c",
+          'if [ "$$TLS_ENABLED" = "true" ]; then wget -q --spider https://localhost:4000/health; else wget -q --spider http://localhost:4000/health; fi',
+        ]
+      interval: 30s
+EOF
+
+  adapt_legacy_healthcheck_shell_form "$src"
+
+  local c
+  c="$(cat "$src/docker-compose.yml")"
+
+  assert_contains "$c" '"CMD-SHELL",' "the CMD/sh/-c triple should collapse to CMD-SHELL"
+  assert_contains "$c" 'TLS_ENABLED' "the healthcheck script itself must survive"
+  assert_contains "$c" "interval: 30s" "surrounding healthcheck keys must survive"
+
+  if grep -qE '^[[:space:]]*"sh",' "$src/docker-compose.yml"; then
+    echo -e "${RED}ASSERTION FAILED:${NC} the \"sh\" element should have been removed"
+    return 1
+  fi
+  if grep -qE '^[[:space:]]*"-c",' "$src/docker-compose.yml"; then
+    echo -e "${RED}ASSERTION FAILED:${NC} the \"-c\" element should have been removed"
+    return 1
+  fi
+}
+
+# A bare CMD array carries no shell syntax and works on both engines; rewriting
+# it would be needless churn in a released checkout.
+test_legacy_bare_cmd_healthcheck_untouched() {
+  local src="$TEST_TMP_DIR/legacy-bare-hc"
+  mkdir -p "$src"
+  cat > "$src/docker-compose.yml" <<'EOF'
+services:
+  redis:
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+EOF
+  local before
+  before="$(cat "$src/docker-compose.yml")"
+
+  adapt_legacy_healthcheck_shell_form "$src"
+
+  assert_equals "$before" "$(cat "$src/docker-compose.yml")" \
+    "a bare CMD healthcheck must be left unchanged"
+}
+
 test_current_compose_ssl_mount_is_left_unchanged() {
   local source_checkout="$TEST_TMP_DIR/source"
   local compose_file="$source_checkout/docker-compose.yml"
@@ -1736,6 +1798,8 @@ main() {
   run_test "legacy optional profile compose is isolated" test_legacy_optional_profile_compose_is_isolated
   run_test "legacy cgroup v1 keys are stripped" test_legacy_cgroup_v1_keys_are_stripped_from_source_checkout
   run_test "legacy docker socket mounts are parameterised" test_legacy_docker_socket_mounts_are_parameterised
+  run_test "legacy healthcheck CMD form is rewritten" test_legacy_healthcheck_cmd_form_is_rewritten
+  run_test "legacy bare CMD healthcheck untouched" test_legacy_bare_cmd_healthcheck_untouched
   run_test "upgrade teardown captures diagnostics before cleanup" test_upgrade_teardown_captures_diagnostics_before_cleanup
   run_test "unhealthy capture dumps the unhealthy container" test_unhealthy_capture_dumps_unhealthy_container
   run_test "unhealthy capture is quiet when all healthy" test_unhealthy_capture_is_quiet_when_all_healthy

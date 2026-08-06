@@ -115,6 +115,66 @@ isolate_legacy_optional_profile_compose() {
 # checkout already carrying the parameterised form is left alone.
 #
 # Remove once every supported upgrade source ref includes #682.
+# Released tags up to v0.8.59 write the gateway healthcheck as
+#   ["CMD", "sh", "-c", '<script with shell syntax>']
+# which does not survive the compose -> Podman path: the script reaches sh
+# truncated and every probe fails with
+#   [: line 0: syntax error: unexpected end of file (expecting "then")
+# leaving the container permanently unhealthy. Confirmed from run 8824's
+# captured health log. #678 fixed this on main by switching to CMD-SHELL; a
+# released tag cannot be changed.
+#
+# Collapses the CMD/sh/-c triple to CMD-SHELL, which is semantically identical
+# (both run the script through the container's shell) and round-trips intact on
+# both engines. Bare CMD arrays carry no shell syntax and are left alone.
+#
+# Remove once every supported upgrade source ref includes #678.
+adapt_legacy_healthcheck_shell_form() {
+    local project_dir="$1"
+    local -a compose_files=()
+    local f
+
+    [ -d "$project_dir" ] || return 0
+
+    [ -f "$project_dir/docker-compose.yml" ] && compose_files+=("$project_dir/docker-compose.yml")
+    for f in "$project_dir"/docker/compose/*.yml; do
+        [ -f "$f" ] && compose_files+=("$f")
+    done
+    [ "${#compose_files[@]}" -gt 0 ] || return 0
+
+    local rewritten=0
+    for f in "${compose_files[@]}"; do
+        # Only the multi-line array form is affected; a single-line
+        # ["CMD", "redis-cli", "ping"] has no shell to truncate.
+        grep -qE '^[[:space:]]*"sh",[[:space:]]*$' "$f" || continue
+
+        local tmp_file
+        tmp_file="$(mktemp "${f}.XXXXXX")"
+        awk '
+            { line[NR] = $0 }
+            END {
+                for (i = 1; i <= NR; i++) {
+                    if (line[i]   ~ /^[[:space:]]*"CMD",[[:space:]]*$/ &&
+                        line[i+1] ~ /^[[:space:]]*"sh",[[:space:]]*$/  &&
+                        line[i+2] ~ /^[[:space:]]*"-c",[[:space:]]*$/) {
+                        match(line[i], /^[[:space:]]*/)
+                        printf "%s\"CMD-SHELL\",\n", substr(line[i], 1, RLENGTH)
+                        i += 2
+                        continue
+                    }
+                    print line[i]
+                }
+            }
+        ' "$f" > "$tmp_file"
+        mv "$tmp_file" "$f"
+        rewritten=$((rewritten + 1))
+    done
+
+    if [ "$rewritten" -gt 0 ]; then
+        log_info "Rewrote CMD/sh/-c healthchecks to CMD-SHELL in $rewritten legacy compose file(s); the array form truncates on Podman"
+    fi
+}
+
 adapt_legacy_host_path_mounts() {
     local project_dir="$1"
     local -a compose_files=()
