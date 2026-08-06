@@ -648,7 +648,11 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      # 30s to match the other Node services (backend, worker). At 10s the
+      # gateway was marked unhealthy before it finished loading TLS certs and
+      # binding 4000, which failed install-test run 8650 two seconds before the
+      # service logged a successful start.
+      start_period: 30s
     networks:
       - sanctuary-network
     logging:

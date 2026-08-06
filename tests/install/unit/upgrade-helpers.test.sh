@@ -1048,6 +1048,62 @@ EOF
 }
 
 # Outside any container both markers are absent and loopback stays correct.
+# A container healthcheck is retryable by design: it can report unhealthy while
+# the service is still coming up and then recover. wait_for_container_healthy
+# treated the first "unhealthy" as terminal, so a slow-starting service failed
+# the lane even though it became healthy moments later. This is what failed the
+# gateway on install-test run 8650 — the gateway logged "started with HTTPS on
+# port 4000" two seconds after the waiter had already given up.
+test_wait_for_container_healthy_tolerates_recovery() {
+  local fake_bin="$TEST_TMP_DIR/bin-health-recover"
+  mkdir -p "$fake_bin"
+  local counter="$TEST_TMP_DIR/health-calls"
+  : > "$counter"
+
+  cat > "$fake_bin/docker" <<EOF
+#!/bin/sh
+if [ "\$1" = "inspect" ]; then
+  printf 'x' >> "$counter"
+  calls=\$(wc -c < "$counter" | tr -d ' ')
+  if [ "\$calls" -lt 2 ]; then echo "unhealthy"; else echo "healthy"; fi
+  exit 0
+fi
+exit 0
+EOF
+  chmod +x "$fake_bin/docker"
+
+  if PATH="$fake_bin:$PATH" HEALTH_CHECK_TIMEOUT=30 \
+      bash -c 'source "$1"; wait_for_container_healthy "svc" 30' _ \
+      "$PROJECT_ROOT/tests/install/utils/helpers.sh" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo -e "${RED}ASSERTION FAILED:${NC} waiter should tolerate a transient unhealthy state and succeed on recovery"
+  return 1
+}
+
+# A container that never recovers must still fail, and on the timeout path
+# rather than silently passing.
+test_wait_for_container_healthy_fails_when_never_healthy() {
+  local fake_bin="$TEST_TMP_DIR/bin-health-stuck"
+  mkdir -p "$fake_bin"
+
+  cat > "$fake_bin/docker" <<'EOF'
+#!/bin/sh
+[ "$1" = "inspect" ] && { echo "unhealthy"; exit 0; }
+exit 0
+EOF
+  chmod +x "$fake_bin/docker"
+
+  if PATH="$fake_bin:$PATH" \
+      bash -c 'source "$1"; wait_for_container_healthy "svc" 5' _ \
+      "$PROJECT_ROOT/tests/install/utils/helpers.sh" >/dev/null 2>&1; then
+    echo -e "${RED}ASSERTION FAILED:${NC} a permanently unhealthy container must fail the waiter"
+    return 1
+  fi
+  return 0
+}
+
 test_install_test_host_uses_localhost_outside_container() {
   local host
   host="$(SANCTUARY_INSTALL_TEST_HOST="" \
@@ -1451,6 +1507,8 @@ main() {
   run_test "install test host detects podman container marker" test_install_test_host_detects_podman_container_marker
   run_test "install test host still prefers docker internal on docker" test_install_test_host_still_prefers_docker_internal_on_docker
   run_test "install test host uses localhost outside container" test_install_test_host_uses_localhost_outside_container
+  run_test "health waiter tolerates transient unhealthy" test_wait_for_container_healthy_tolerates_recovery
+  run_test "health waiter still fails when never healthy" test_wait_for_container_healthy_fails_when_never_healthy
   run_test "redacted env hides upgrade secrets" test_redacted_env_hides_upgrade_secrets
   run_test "diagnostic redaction hides log secrets" test_diagnostic_redaction_hides_log_secrets
   run_test "stale upgrade projects cleanup skips current project" test_cleanup_compose_projects_by_prefix_skips_current_project

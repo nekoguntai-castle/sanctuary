@@ -282,18 +282,29 @@ wait_for_container_healthy() {
 
     log_info "Waiting for container '$container_name' to be healthy (timeout: ${timeout}s)..."
 
+    local reported_unhealthy=false
+
     while true; do
         local health=$(docker inspect -f '{{.State.Health.Status}}' "$container_name" 2>/dev/null)
 
         if [ "$health" = "healthy" ]; then
-            log_success "Container '$container_name' is healthy"
+            if [ "$reported_unhealthy" = true ]; then
+                log_success "Container '$container_name' recovered and is healthy"
+            else
+                log_success "Container '$container_name' is healthy"
+            fi
             return 0
         fi
 
-        if [ "$health" = "unhealthy" ]; then
-            log_error "Container '$container_name' is unhealthy"
-            docker logs "$container_name" --tail 50 2>&1 | head -20
-            return 1
+        # `unhealthy` is not terminal. A healthcheck is retried by the engine,
+        # so a service that is still starting can report unhealthy and then
+        # recover — which is exactly what the gateway did on install-test run
+        # 8650, logging "started with HTTPS on port 4000" two seconds after this
+        # waiter had already given up. Keep polling until the timeout and let
+        # the timeout branch be the single place that fails.
+        if [ "$health" = "unhealthy" ] && [ "$reported_unhealthy" = false ]; then
+            reported_unhealthy=true
+            log_warning "Container '$container_name' is unhealthy; continuing to wait for recovery"
         fi
 
         local elapsed=$(($(date +%s) - start_time))
