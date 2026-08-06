@@ -1030,6 +1030,54 @@ test_monitoring_sync_still_runs_when_path_is_untranslated() {
   return 0
 }
 
+# v0.8.59's monitoring.yml carries literal ./docker/monitoring mount sources.
+# Compose resolves them against the source checkout, producing a /workspace/...
+# path the engine cannot see — the same failure #698 fixed on main, reappearing
+# from a released tag (run 8880).
+test_legacy_monitoring_config_paths_are_parameterised() {
+  local src="$TEST_TMP_DIR/legacy-mon"
+  mkdir -p "$src/docker/compose"
+  cat > "$src/docker/compose/monitoring.yml" <<'EOF'
+services:
+  loki:
+    volumes:
+      - ./docker/monitoring/loki-config.yml:/etc/loki/local-config.yaml:ro
+  prometheus:
+    volumes:
+      - ./docker/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+EOF
+
+  adapt_legacy_host_path_mounts "$src"
+
+  local c
+  c="$(cat "$src/docker/compose/monitoring.yml")"
+
+  assert_contains "$c" '${SANCTUARY_MONITORING_CONFIG_DIR:-./docker/monitoring}/loki-config.yml:/etc/loki/local-config.yaml:ro' \
+    "legacy loki config source should be parameterised"
+  assert_contains "$c" '${SANCTUARY_MONITORING_CONFIG_DIR:-./docker/monitoring}/prometheus.yml:/etc/prometheus/prometheus.yml:ro' \
+    "legacy prometheus config source should be parameterised"
+}
+
+# The variable is global but the lane installs two stacks with different config
+# directories. Scoping it per install is what keeps the source checkout from
+# pointing at the target's configs — run 8880 translated the target's path while
+# the source install was the one that needed it.
+test_install_scopes_monitoring_config_dir_per_checkout() {
+  local lane="$PROJECT_ROOT/tests/install/e2e/upgrade-install.test.sh"
+  local body
+  body="$(awk '/^run_install_script\(\) \{/{f=1} f{print} f&&/^\}/{exit}' "$lane")"
+
+  if ! printf '%s\n' "$body" | grep -q 'SANCTUARY_MONITORING_CONFIG_DIR'; then
+    echo -e "${RED}ASSERTION FAILED:${NC} run_install_script must scope SANCTUARY_MONITORING_CONFIG_DIR to the checkout it installs"
+    return 1
+  fi
+  if ! printf '%s\n' "$body" | grep -q 'monitoring_config_dir_for_compose "$project_dir"'; then
+    echo -e "${RED}ASSERTION FAILED:${NC} the scoped value must be derived from the checkout being installed"
+    return 1
+  fi
+  return 0
+}
+
 test_current_compose_ssl_mount_is_left_unchanged() {
   local source_checkout="$TEST_TMP_DIR/source"
   local compose_file="$source_checkout/docker-compose.yml"
@@ -1835,6 +1883,8 @@ main() {
   run_test "legacy optional profile compose is isolated" test_legacy_optional_profile_compose_is_isolated
   run_test "legacy cgroup v1 keys are stripped" test_legacy_cgroup_v1_keys_are_stripped_from_source_checkout
   run_test "legacy docker socket mounts are parameterised" test_legacy_docker_socket_mounts_are_parameterised
+  run_test "legacy monitoring config paths are parameterised" test_legacy_monitoring_config_paths_are_parameterised
+  run_test "install scopes monitoring config dir per checkout" test_install_scopes_monitoring_config_dir_per_checkout
   run_test "legacy healthcheck CMD form is rewritten" test_legacy_healthcheck_cmd_form_is_rewritten
   run_test "monitoring sync stands down when reachable" test_monitoring_sync_stands_down_when_configs_are_reachable
   run_test "monitoring sync still runs when untranslated" test_monitoring_sync_still_runs_when_path_is_untranslated

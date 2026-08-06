@@ -372,13 +372,34 @@ run_install_script() {
     adapt_legacy_compose_ssl_mount "$project_dir"
     adapt_legacy_shared_backend_builds "$project_dir"
 
+    # Scope the monitoring config directory to the checkout being installed. The
+    # variable is global but the lane installs two stacks with different config
+    # directories: run 8880 translated the target's path while the source
+    # install was the one that needed it, so the source still mounted
+    # /workspace/... and the engine could not see it. Restored on every exit so
+    # the two installs cannot leak each other's paths.
+    local previous_monitoring_dir="${SANCTUARY_MONITORING_CONFIG_DIR:-}"
+    local had_monitoring_dir="${SANCTUARY_MONITORING_CONFIG_DIR+set}"
+    SANCTUARY_MONITORING_CONFIG_DIR="$(monitoring_config_dir_for_compose "$project_dir")"
+    export SANCTUARY_MONITORING_CONFIG_DIR
+
+    restore_monitoring_config_dir() {
+        if [ -n "$had_monitoring_dir" ]; then
+            export SANCTUARY_MONITORING_CONFIG_DIR="$previous_monitoring_dir"
+        else
+            unset SANCTUARY_MONITORING_CONFIG_DIR
+        fi
+    }
+
     if run_install_script_attempt "$project_dir" "$install_log" false; then
         if ! install_log_has_buildkit_cache_corruption "$install_log"; then
+            restore_monitoring_config_dir
             return 0
         fi
 
         log_warning "install.sh exited successfully after BuildKit cache corruption; retrying source install"
         if retry_install_script_after_cache_recovery "$project_dir" "$install_log"; then
+            restore_monitoring_config_dir
             return 0
         fi
         exit_code=$?
@@ -386,12 +407,14 @@ run_install_script() {
         exit_code=$?
         if install_log_has_buildkit_cache_corruption "$install_log"; then
             if retry_install_script_after_cache_recovery "$project_dir" "$install_log"; then
+                restore_monitoring_config_dir
                 return 0
             fi
             exit_code=$?
         fi
     fi
 
+    restore_monitoring_config_dir
     log_error "install.sh failed for checkout: $project_dir"
     log_error "Install log: $install_log"
     return "$exit_code"

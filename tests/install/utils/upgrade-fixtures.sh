@@ -192,17 +192,24 @@ adapt_legacy_host_path_mounts() {
     local param_sock='- ${SANCTUARY_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock:ro'
     local legacy_ctrs='- /var/lib/docker/containers:/var/lib/docker/containers:ro'
     local param_ctrs='- ${SANCTUARY_DOCKER_CONTAINERS_DIR:-/var/lib/docker/containers}:/var/lib/docker/containers:ro'
+    # Config FILES, not the daemon socket: compose resolves ./docker/monitoring
+    # against the checkout, producing a /workspace/... path the engine cannot
+    # see. Same treatment #698 gave main.
+    local legacy_mon='- ./docker/monitoring'
+    local param_mon='- ${SANCTUARY_MONITORING_CONFIG_DIR:-./docker/monitoring}'
 
     local adapted=0
     for f in "${compose_files[@]}"; do
         # -- : the patterns begin with "- ", which grep would parse as options.
-        grep -Fq -- "$legacy_sock" "$f" || grep -Fq -- "$legacy_ctrs" "$f" || continue
+        grep -Fq -- "$legacy_sock" "$f" || grep -Fq -- "$legacy_ctrs" "$f" ||
+            grep -Fq -- "$legacy_mon" "$f" || continue
 
         local tmp_file
         tmp_file="$(mktemp "${f}.XXXXXX")"
         while IFS= read -r line || [ -n "$line" ]; do
             line="${line//$legacy_sock/$param_sock}"
             line="${line//$legacy_ctrs/$param_ctrs}"
+            line="${line//$legacy_mon/$param_mon}"
             printf '%s
 ' "$line"
         done < "$f" > "$tmp_file"
