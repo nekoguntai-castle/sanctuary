@@ -136,6 +136,10 @@ apply_upgrade_test_network_defaults
 TEST_RUNTIME_DIR="${SANCTUARY_RUNTIME_DIR:-$TEST_ROOT/sanctuary-upgrade-runtime-${TEST_ID}}"
 TEST_SSL_DIR="${SANCTUARY_SSL_DIR:-$TEST_RUNTIME_DIR/ssl}"
 TEST_COMPOSE_SSL_DIR="${SANCTUARY_COMPOSE_SSL_DIR:-$(docker_visible_path "$TEST_SSL_DIR")}"
+# Same treatment as the SSL directory: give compose a path the engine can read.
+# Without this the monitoring overlay mounts /workspace/... and rootless Podman
+# fails with "mkdir /workspace: permission denied" (run 8833).
+export SANCTUARY_MONITORING_CONFIG_DIR="${SANCTUARY_MONITORING_CONFIG_DIR:-$(monitoring_config_dir_for_compose "$TARGET_PROJECT_ROOT")}"
 TEST_HTTP_HOST=$(default_install_test_host)
 API_BASE_URL="https://${TEST_HTTP_HOST}:${HTTPS_PORT}"
 BROWSER_BASE_URL="https://${UPGRADE_BROWSER_HOST}:${HTTPS_PORT}"

@@ -498,6 +498,23 @@ probe_monitoring_bind_sources() {
 # upgrade regressions.
 SYNC_MONITORING_STATUS="not attempted"
 
+# Resolve a daemon-visible path for the monitoring configs, or echo the input
+# unchanged when no translation is available.
+#
+# The overlay bind-mounts config files from the project directory. Compose
+# resolves those against the project dir, which inside a CI job is /workspace/...
+# — visible to the job container, not to the engine. docker_visible_path reads
+# the job container's own mount table, so where the workspace is a host bind
+# mount (rootless Podman) it yields the real host path and the engine can read
+# the files directly. This is how the SSL directory has always been handled.
+monitoring_config_dir_for_compose() {
+    local project_dir="$1"
+    local src="$project_dir/docker/monitoring"
+
+    [ -d "$src" ] || { printf '%s\n' "$src"; return 0; }
+    docker_visible_path "$src" 2>/dev/null || printf '%s\n' "$src"
+}
+
 sync_monitoring_configs_to_daemon() {
     local project_dir="$1"
     local src="$project_dir/docker/monitoring"
@@ -505,6 +522,18 @@ sync_monitoring_configs_to_daemon() {
 
     if [ ! -d "$src" ]; then
         SYNC_MONITORING_STATUS="skipped: $src absent job-side"
+        return 0
+    fi
+
+    # When the engine can already read the configs at a translated host path,
+    # copying them somewhere else is unnecessary — and on rootless Podman the
+    # copy cannot work anyway: the helper container's bind mount fails with
+    # "mkdir /workspace: permission denied", the same error the shim exists to
+    # avoid. Stand down and let the compose mount use the real path.
+    if [ -n "${SANCTUARY_MONITORING_CONFIG_DIR:-}" ] &&
+       [ "${SANCTUARY_MONITORING_CONFIG_DIR}" != "$src" ]; then
+        SYNC_MONITORING_STATUS="skipped: configs reachable at ${SANCTUARY_MONITORING_CONFIG_DIR}"
+        printf '[sync] %s\n' "$SYNC_MONITORING_STATUS" >&2
         return 0
     fi
 

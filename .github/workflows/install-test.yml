@@ -209,6 +209,7 @@ jobs:
           ./tests/install/unit/healthcheck-shell-form.test.sh
           ./tests/install/unit/host-path-parameterisation.test.sh
           ./tests/install/unit/cgroup-v2-compat.test.sh
+          ./tests/install/unit/monitoring-config-path.test.sh
           ./tests/ci/check-workflow-composition.test.sh
           ./tests/ci/relay-job-diagnosability.test.sh
           INNER

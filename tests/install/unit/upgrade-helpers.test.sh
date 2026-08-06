@@ -993,6 +993,43 @@ EOF
     "a bare CMD healthcheck must be left unchanged"
 }
 
+# The shim exists to work around a job/engine filesystem split. When the configs
+# are already reachable at a translated path there is nothing to work around,
+# and on rootless Podman the shim's own helper-container bind mount fails with
+# the very error it exists to avoid (run 8833).
+test_monitoring_sync_stands_down_when_configs_are_reachable() {
+  local src="$TEST_TMP_DIR/proj-standdown"
+  mkdir -p "$src/docker/monitoring"
+  : > "$src/docker/monitoring/prometheus.yml"
+
+  local out
+  out="$(SANCTUARY_MONITORING_CONFIG_DIR="/host/real/path" \
+    bash -c 'source "$1"; sync_monitoring_configs_to_daemon "$2"; echo "STATUS=$SYNC_MONITORING_STATUS"' _ \
+    "$PROJECT_ROOT/tests/install/utils/helpers.sh" "$src" 2>&1)"
+
+  assert_contains "$out" "STATUS=skipped: configs reachable at /host/real/path" \
+    "the shim should stand down when the engine can already read the configs"
+}
+
+# With no translation available the value equals the job-side path, so the shim
+# must still run — a Docker-in-Docker host still needs it.
+test_monitoring_sync_still_runs_when_path_is_untranslated() {
+  local src="$TEST_TMP_DIR/proj-runs"
+  mkdir -p "$src/docker/monitoring"
+  : > "$src/docker/monitoring/prometheus.yml"
+
+  local out
+  out="$(SANCTUARY_MONITORING_CONFIG_DIR="$src/docker/monitoring" \
+    bash -c 'source "$1"; sync_monitoring_configs_to_daemon "$2" >/dev/null 2>&1; echo "STATUS=$SYNC_MONITORING_STATUS"' _ \
+    "$PROJECT_ROOT/tests/install/utils/helpers.sh" "$src" 2>&1)"
+
+  if echo "$out" | grep -q "skipped: configs reachable"; then
+    echo -e "${RED}ASSERTION FAILED:${NC} shim must not stand down when the path was not translated"
+    return 1
+  fi
+  return 0
+}
+
 test_current_compose_ssl_mount_is_left_unchanged() {
   local source_checkout="$TEST_TMP_DIR/source"
   local compose_file="$source_checkout/docker-compose.yml"
@@ -1799,6 +1836,8 @@ main() {
   run_test "legacy cgroup v1 keys are stripped" test_legacy_cgroup_v1_keys_are_stripped_from_source_checkout
   run_test "legacy docker socket mounts are parameterised" test_legacy_docker_socket_mounts_are_parameterised
   run_test "legacy healthcheck CMD form is rewritten" test_legacy_healthcheck_cmd_form_is_rewritten
+  run_test "monitoring sync stands down when reachable" test_monitoring_sync_stands_down_when_configs_are_reachable
+  run_test "monitoring sync still runs when untranslated" test_monitoring_sync_still_runs_when_path_is_untranslated
   run_test "legacy bare CMD healthcheck untouched" test_legacy_bare_cmd_healthcheck_untouched
   run_test "upgrade teardown captures diagnostics before cleanup" test_upgrade_teardown_captures_diagnostics_before_cleanup
   run_test "unhealthy capture dumps the unhealthy container" test_unhealthy_capture_dumps_unhealthy_container
