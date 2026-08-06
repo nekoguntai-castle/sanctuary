@@ -11,12 +11,15 @@
 # artifact. The step summary itself never inlines log bodies; the full
 # redacted logs remain in the diagnostic artifact.
 #
-# When any captured log has a non-zero `wrapped_exit` in its sidecar JSON,
-# this helper additionally echoes the tail of that log (256 KiB cap, wrapped
-# in `::group::` blocks) to STDERR so the failure is visible in the runner's
-# step output without depending on the artifacts API. Successful logs are
-# never echoed. Logs exceeding the inline cap are still complete in the
-# uploaded artifact. See .github/CONTRIBUTING.md ("Diagnosing CI failures").
+# When a captured log has a non-zero `wrapped_exit` in its sidecar JSON, or no
+# usable sidecar at all, this helper additionally echoes the tail of that log
+# (256 KiB cap, wrapped in `::group::` blocks) to STDERR so the failure is
+# visible in the runner's step output without depending on the artifacts API.
+# A missing or malformed sidecar is how a step killed mid-run presents, since
+# run-with-log.sh writes the sidecar only after the wrapped command returns.
+# Logs that completed cleanly are never echoed. Logs exceeding the inline cap
+# are still complete in the uploaded artifact.
+# See .github/CONTRIBUTING.md ("Diagnosing CI failures").
 
 set -euo pipefail
 
@@ -225,7 +228,20 @@ index_tmp.write_text("\n".join(index_lines), encoding="utf-8")
 # version). Bounded per-log so the runner output stays readable; the
 # full redacted log is still in the uploaded diagnostic artifact.
 ECHO_TAIL_BYTES = 256 * 1024  # 256 KiB per failed log
-failed_records = [r for r in records if str(r["wrapped_exit"]) not in ("0", "n/a")]
+
+
+def worth_echoing(record):
+    # The step ran and reported a non-zero status.
+    if str(record["wrapped_exit"]) not in ("0", "n/a"):
+        return True
+    # No usable sidecar. run-with-log.sh writes it after the wrapped command
+    # returns, so "missing" or "malformed" is what a step killed mid-run looks
+    # like -- the case that most needs a log tail was the one case that never
+    # got one, because "n/a" was filtered out alongside a clean exit 0.
+    return record["status_note"] != "ok"
+
+
+failed_records = [r for r in records if worth_echoing(r)]
 if failed_records:
     print("=" * 72, file=sys.stderr)
     print(

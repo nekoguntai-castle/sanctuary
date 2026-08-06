@@ -188,6 +188,66 @@ else
   [ "$FAIL" -eq "$prev_fail" ] && end_test_pass
 fi
 
+# ----- killed mid-step: log present, sidecar never written ----------------
+# run-with-log.sh writes the sidecar only after the wrapped command returns, so
+# a step killed by its own timeout leaves a log with no sidecar. That case used
+# to be filtered out of the echo alongside a clean exit 0 ("n/a" covered both),
+# which is why sanctuary#699's verify-vectors timeouts produced no readable
+# evidence at all. The tail must be echoed for it.
+prev_fail=$FAIL
+start_test "missing sidecar: the log tail is still echoed"
+diag="$CURRENT_DIR/diagnostics"
+summary="$CURRENT_DIR/summary.md"
+stderr_file="$CURRENT_DIR/stderr.txt"
+mkdir -p "$diag"
+cat > "$diag/address-verifier.log" <<'LOG'
+waiting for bitcoind, attempt 59
+KILLED_MID_STEP_MARKER
+LOG
+run_summary "$diag" "Verify Bitcoin Vectors" "$summary" 2>"$stderr_file"
+status=$?
+if [ "$status" -ne 0 ]; then
+  end_test_fail "expected exit 0, got $status"
+else
+  assert_contains "$stderr_file" "KILLED_MID_STEP_MARKER" "killed-step log body echoed" || true
+  assert_contains "$stderr_file" "::group::Failed log tail (address-verifier.log" "killed-step group header" || true
+  [ "$FAIL" -eq "$prev_fail" ] && end_test_pass
+fi
+
+# ----- clean run: nothing is echoed ---------------------------------------
+# Guards the other side of the change above: widening the echo selector must
+# not start dumping logs on green runs.
+prev_fail=$FAIL
+start_test "clean sidecar: no log tail is echoed"
+diag="$CURRENT_DIR/diagnostics"
+summary="$CURRENT_DIR/summary.md"
+stderr_file="$CURRENT_DIR/stderr.txt"
+mkdir -p "$diag"
+cat > "$diag/happy.log" <<'LOG'
+SHOULD_NOT_BE_ECHOED
+LOG
+cat > "$diag/happy.log.status.json" <<'JSON'
+{
+  "schema_version": 1,
+  "wrapped_exit": 0,
+  "redactor_exit": 0,
+  "cap_exit": 0,
+  "sink_status": "ok",
+  "started_at": "2026-05-10T00:00:00Z",
+  "ended_at": "2026-05-10T00:00:01Z",
+  "truncated": false
+}
+JSON
+run_summary "$diag" "Verify Bitcoin Vectors" "$summary" 2>"$stderr_file"
+status=$?
+if [ "$status" -ne 0 ]; then
+  end_test_fail "expected exit 0, got $status"
+else
+  assert_not_contains "$stderr_file" "SHOULD_NOT_BE_ECHOED" "clean log body not echoed" || true
+  assert_not_contains "$stderr_file" "Failed log tail" "no failed-tail header on a clean run" || true
+  [ "$FAIL" -eq "$prev_fail" ] && end_test_pass
+fi
+
 # ----- summary ------------------------------------------------------------
 echo
 echo "===================="

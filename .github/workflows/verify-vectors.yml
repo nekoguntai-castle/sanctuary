@@ -57,6 +57,10 @@ env:
   NPM_VERSION: '11.19.0'
   PYTHON_VERSION: '3'
   SANCTUARY_RUNNER_LOCK_DIR: ${{ github.workspace }}/.tmp/runner-locks-v2
+  # Must stay below the smallest timeout-minutes of any step that takes the
+  # lock (5m today), or the step kills the wait before with-runner-lock.sh can
+  # report the contention. tests/ci/with-runner-lock.test.sh enforces this.
+  SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS: '120'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -83,11 +87,13 @@ jobs:
         run: python3 -m venv --help >/dev/null
 
       - name: Wait for Docker
+        timeout-minutes: 4
         run: >
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/wait-for-docker.log"
           ${{ github.workspace }}/scripts/ci/wait-for-docker.sh
 
       - name: Install server dependencies
+        timeout-minutes: 10
         run: |
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-server-dependencies.log" \
             ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain bash -c '
@@ -99,6 +105,7 @@ jobs:
           '
 
       - name: Run cross-implementation address verifier
+        timeout-minutes: 8
         working-directory: scripts/verify-addresses
         run: >
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/address-verifier.log"
@@ -106,6 +113,7 @@ jobs:
           npm run verify:repeatable
 
       - name: Run address derivation tests
+        timeout-minutes: 5
         working-directory: server
         run: >
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/address-derivation-tests.log"
@@ -113,6 +121,7 @@ jobs:
           npm run test:run:ci -- tests/unit/services/bitcoin/addressDerivation.verified.test.ts
 
       - name: Run derivation path tests
+        timeout-minutes: 5
         working-directory: server
         run: >
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/derivation-path-tests.log"
@@ -120,6 +129,7 @@ jobs:
           npm run test:run:ci -- tests/unit/services/scriptTypes/derivationPaths.test.ts
 
       - name: Run multisig key ordering tests
+        timeout-minutes: 5
         working-directory: server
         run: >
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/multisig-key-ordering-tests.log"
@@ -127,6 +137,7 @@ jobs:
           npm run test:run:ci -- tests/unit/services/bitcoin/multisigKeyOrdering.test.ts
 
       - name: Run xpub validation tests
+        timeout-minutes: 5
         working-directory: server
         run: >
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/xpub-validation-tests.log"
@@ -134,6 +145,7 @@ jobs:
           npm run test:run:ci -- tests/unit/services/bitcoin/xpubValidation.test.ts
 
       - name: Run property-based tests
+        timeout-minutes: 5
         working-directory: server
         run: >
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/property-based-tests.log"
@@ -141,6 +153,7 @@ jobs:
           npm run test:run:ci -- tests/unit/services/bitcoin/propertyBased.test.ts
 
       - name: Run descriptor checksum tests
+        timeout-minutes: 5
         working-directory: server
         run: >
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/descriptor-checksum-tests.log"
@@ -148,6 +161,7 @@ jobs:
           npm run test:run:ci -- tests/unit/services/bitcoin/descriptorChecksum.test.ts
 
       - name: Run PSBT BIP-174 verification tests
+        timeout-minutes: 5
         working-directory: server
         run: >
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/psbt-bip174-tests.log"
@@ -155,15 +169,31 @@ jobs:
           npm run test:run:ci -- tests/unit/services/bitcoin/psbt.verified.test.ts
 
       - name: Run PSBT property-based tests
+        timeout-minutes: 5
         working-directory: server
         run: >
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/psbt-property-tests.log"
           ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
           npm run test:run:ci -- tests/unit/services/bitcoin/psbt.property.test.ts
 
+      # A failure outside a wrapped command (setup, an action, a step killed by
+      # its own timeout) leaves no run-with-log.sh sidecar, so the summary below
+      # would report an empty directory. This leaves a publishable breadcrumb
+      # instead -- the same shape quality.yml and test.yml already use.
+      - name: Write vector failure breadcrumb
+        if: failure()
+        continue-on-error: true
+        timeout-minutes: 2
+        run: >
+          ${{ github.workspace }}/scripts/ci/write-empty-diagnostic-breadcrumb.sh
+          "$DIAGNOSTIC_DIR"
+          "verify-vectors-failure.log"
+          "Verify Bitcoin Vectors"
+
       - name: Write vector diagnostic summary
         if: always()
         continue-on-error: true
+        timeout-minutes: 2
         run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Verify Bitcoin Vectors"
 
       - name: Upload vector diagnostics
