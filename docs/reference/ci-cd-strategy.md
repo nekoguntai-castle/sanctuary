@@ -333,8 +333,19 @@ two workflows can coexist without coupling their pending slots.
 
 Docker-backed install and release jobs also require the organization's
 `x300-canary` runner label. That label selects the Docker-in-Docker runner whose
-daemon socket can be mounted into the production `docker-proxy` service;
-rootless Podman runners cannot satisfy that compose contract.
+daemon socket can be mounted into the production `docker-proxy` service at
+`/var/run/docker.sock`.
+
+The rootless Podman runner does not satisfy that contract today, but the
+obstacle is narrower than engine incompatibility. Podman exposes a
+Docker-compatible API socket under `$XDG_RUNTIME_DIR/podman/`, and that runner
+already targets it through `DOCKER_HOST`. What blocks it is that
+`docker-compose.yml` hardcodes `/var/run/docker.sock` as the mount *source*,
+which does not exist on a rootless host, and that the runner's `valid_volumes`
+allowlist is empty so no bind mount is permitted. Whether
+`tecnativa/docker-socket-proxy` works against Podman's compat API is untested;
+see issue #667. Treat the label as "runner that can expose a mountable Docker
+API socket" rather than "runner running Docker-in-Docker".
 
 The Docker-backed install jobs in `install-test.yml` and `release-candidate.yml`
 run through a diagnostic logging harness so failures that happen *before* a

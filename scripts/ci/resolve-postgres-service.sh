@@ -20,7 +20,8 @@ is_containerized_runner() {
   case "${SANCTUARY_CONTAINERIZED_RUNNER:-auto}" in
     true) return 0 ;;
     false) return 1 ;;
-    auto) [ -f /.dockerenv ] ;;
+    # Docker writes /.dockerenv; Podman writes /run/.containerenv (see #667).
+    auto) [ -f /.dockerenv ] || [ -f /run/.containerenv ] ;;
     *) fail 'SANCTUARY_CONTAINERIZED_RUNNER must be true, false, or auto' ;;
   esac
 }

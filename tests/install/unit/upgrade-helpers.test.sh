@@ -368,7 +368,7 @@ test_fixture_defaults_are_composable() {
   apply_upgrade_test_network_defaults
 
   local expected_browser_host="127.0.0.1"
-  if [ -f /.dockerenv ]; then
+  if is_containerized_runtime; then
     expected_browser_host="$(default_install_test_host)"
   fi
   assert_equals "$expected_browser_host" "$UPGRADE_BROWSER_HOST" "browser fixture should use IP origin"
@@ -985,6 +985,81 @@ test_install_test_host_honors_override() {
   assert_equals "gateway.example.invalid" "$host" "explicit test host should win"
 }
 
+# Podman writes /run/.containerenv rather than Docker's /.dockerenv, so a
+# marker check that only looks for /.dockerenv concludes "not containerised"
+# and returns localhost. On a rootless Podman runner the published port is not
+# reachable on loopback, which is what the issue #667 canary observed.
+test_install_test_host_detects_podman_container_marker() {
+  local fake_bin="$TEST_TMP_DIR/bin"
+  mkdir -p "$fake_bin"
+  cat > "$fake_bin/getent" <<'EOF'
+#!/bin/sh
+if [ "$1" = "hosts" ] && [ "$2" = "host.containers.internal" ]; then
+  echo "10.88.0.1       host.containers.internal"
+  exit 0
+fi
+exit 2
+EOF
+  chmod +x "$fake_bin/getent"
+
+  local marker="$TEST_TMP_DIR/containerenv"
+  : > "$marker"
+
+  local host
+  host="$(SANCTUARY_INSTALL_TEST_HOST="" \
+    SANCTUARY_CONTAINER_MARKER_DOCKER="$TEST_TMP_DIR/absent-dockerenv" \
+    SANCTUARY_CONTAINER_MARKER_PODMAN="$marker" \
+    PATH="$fake_bin:$PATH" \
+    bash -c 'source "$1"; default_install_test_host' _ \
+    "$PROJECT_ROOT/tests/install/utils/helpers.sh")"
+
+  assert_equals "10.88.0.1" "$host" \
+    "Podman container marker should resolve via host.containers.internal, not localhost"
+}
+
+# A Docker runner must keep resolving through host.docker.internal exactly as
+# before; host.containers.internal does not exist there.
+test_install_test_host_still_prefers_docker_internal_on_docker() {
+  local fake_bin="$TEST_TMP_DIR/bin-docker"
+  mkdir -p "$fake_bin"
+  cat > "$fake_bin/getent" <<'EOF'
+#!/bin/sh
+if [ "$1" = "hosts" ] && [ "$2" = "host.docker.internal" ]; then
+  echo "172.17.0.1      host.docker.internal"
+  exit 0
+fi
+exit 2
+EOF
+  chmod +x "$fake_bin/getent"
+
+  local marker="$TEST_TMP_DIR/dockerenv"
+  : > "$marker"
+
+  local host
+  host="$(SANCTUARY_INSTALL_TEST_HOST="" \
+    SANCTUARY_CONTAINER_MARKER_DOCKER="$marker" \
+    SANCTUARY_CONTAINER_MARKER_PODMAN="$TEST_TMP_DIR/absent-containerenv" \
+    PATH="$fake_bin:$PATH" \
+    bash -c 'source "$1"; default_install_test_host' _ \
+    "$PROJECT_ROOT/tests/install/utils/helpers.sh")"
+
+  assert_equals "172.17.0.1" "$host" \
+    "Docker container should still resolve via host.docker.internal"
+}
+
+# Outside any container both markers are absent and loopback stays correct.
+test_install_test_host_uses_localhost_outside_container() {
+  local host
+  host="$(SANCTUARY_INSTALL_TEST_HOST="" \
+    SANCTUARY_CONTAINER_MARKER_DOCKER="$TEST_TMP_DIR/absent-dockerenv" \
+    SANCTUARY_CONTAINER_MARKER_PODMAN="$TEST_TMP_DIR/absent-containerenv" \
+    bash -c 'source "$1"; default_install_test_host' _ \
+    "$PROJECT_ROOT/tests/install/utils/helpers.sh")"
+
+  assert_equals "localhost" "$host" \
+    "no container marker should resolve to localhost"
+}
+
 test_redacted_env_hides_upgrade_secrets() {
   local env_file="$TEST_TMP_DIR/sanctuary.env"
   local redacted_file="$TEST_TMP_DIR/redacted.env"
@@ -1373,6 +1448,9 @@ main() {
   run_test "docker visible path maps workspace volume" test_docker_visible_path_maps_workspace_volume
   run_test "install test host resolves default" test_install_test_host_resolves_default
   run_test "install test host honors override" test_install_test_host_honors_override
+  run_test "install test host detects podman container marker" test_install_test_host_detects_podman_container_marker
+  run_test "install test host still prefers docker internal on docker" test_install_test_host_still_prefers_docker_internal_on_docker
+  run_test "install test host uses localhost outside container" test_install_test_host_uses_localhost_outside_container
   run_test "redacted env hides upgrade secrets" test_redacted_env_hides_upgrade_secrets
   run_test "diagnostic redaction hides log secrets" test_diagnostic_redaction_hides_log_secrets
   run_test "stale upgrade projects cleanup skips current project" test_cleanup_compose_projects_by_prefix_skips_current_project

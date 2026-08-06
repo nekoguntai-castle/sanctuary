@@ -1,0 +1,339 @@
+name: Podman Socket Canary
+
+# Canary for issue #667: determine empirically whether the Docker-backed
+# install/upgrade lanes can run on a rootless Podman runner.
+#
+# The lanes currently pin `runs-on: [ubuntu-22.04, x300-canary]` because
+# `docker-compose.yml` mounts the Docker daemon socket into the `docker-proxy`
+# service. This workflow tests whether that contract can be satisfied by
+# Podman's Docker-compatible API socket instead.
+#
+# Targets the rootless Podman runner via the `docker` label, which only that
+# runner carries (x300 has ubuntu-*, x300-canary, playwright-*). Override with
+# the `runner_label` input to re-run the same probes on the DIND runner for a
+# side-by-side baseline.
+#
+# Manual dispatch only. Every probe is non-fatal and reports its verdict; the
+# summary job decides pass/fail so a single missing API endpoint produces a
+# diagnosis rather than an opaque red.
+#
+# Run 8602 failed probe 2 on the wrong socket path; 8603 passed after both the
+# path fix and a valid_volumes change, which confounded the two. valid_volumes
+# governs mounts the RUNNER makes into job containers, whereas the compose
+# socket mount is issued to the daemon from inside the job and may not be
+# subject to it. Re-running with valid_volumes back at [] isolates that.
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner_label:
+        description: 'Runner label to target (docker = Podman/kumo, x300-canary = DIND/x300)'
+        required: false
+        default: 'docker'
+        type: string
+      socket_path_override:
+        description: 'Try this daemon socket path first (host-side path, resolved by the daemon)'
+        required: false
+        default: ''
+        type: string
+  push:
+    paths:
+      - '.github/workflows/podman-socket-canary.yml'
+
+# No `permissions:` block: Forgejo Actions does not support it, and
+# tests/ci/check-workflow-composition.test.sh enforces its absence. Repository
+# workflow permissions are already read-only by policy.
+env:
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: init.defaultBranch
+  GIT_CONFIG_VALUE_0: main
+
+concurrency:
+  group: podman-socket-canary-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  socket-canary:
+    name: Podman socket contract canary
+    runs-on: ${{ inputs.runner_label || 'docker' }}
+    timeout-minutes: 20
+    env:
+      PROBE_NET: podman-canary-net-${{ github.run_id }}
+      PROXY_NAME: podman-canary-proxy-${{ github.run_id }}
+      PG_NAME: podman-canary-pg-${{ github.run_id }}
+      PUB_NAME: podman-canary-pub-${{ github.run_id }}
+      RESULTS: ${{ github.workspace }}/.tmp/canary-results
+      SOCKET_PATH_OVERRIDE: ${{ inputs.socket_path_override }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          clean: false
+
+      - name: Initialise result log
+        run: |
+          mkdir -p "$RESULTS"
+          : > "$RESULTS/verdicts.tsv"
+          echo "Recording probe verdicts to $RESULTS/verdicts.tsv"
+
+      # ---------------------------------------------------------------
+      # Probe 1 — engine identity
+      # Establishes which engine is actually serving the API. Under Podman
+      # the server component reports "Podman Engine"; under DIND it reports
+      # "Docker Engine". Nothing here should fail on either engine.
+      # ---------------------------------------------------------------
+      - name: 'Probe 1: engine identity'
+        id: identity
+        continue-on-error: true
+        run: |
+          set -x
+          echo "DOCKER_HOST=${DOCKER_HOST:-<unset>}"
+          docker version || true
+          docker info --format '{{json .}}' 2>/dev/null | head -c 4000 || docker info || true
+
+          server="$(docker version --format '{{.Server.Version}}' 2>/dev/null || echo unknown)"
+          engine="$(docker version --format '{{.Server.Platform.Name}}' 2>/dev/null || echo unknown)"
+          echo "server_version=$server" >> "$GITHUB_OUTPUT"
+          echo "engine=$engine" >> "$GITHUB_OUTPUT"
+          printf 'identity\tpass\t%s / %s\n' "$engine" "$server" >> "$RESULTS/verdicts.tsv"
+
+      # ---------------------------------------------------------------
+      # Probe 2 — can the daemon socket be bind-mounted into a container?
+      # This is the crux. `docker-compose.yml:779` mounts the socket into
+      # docker-proxy. Two things can block it on the Podman runner:
+      #   - the source path differs (no /var/run/docker.sock)
+      #   - the runner's `valid_volumes` allowlist is empty
+      # Resolves the real socket path from DOCKER_HOST, then tries the mount.
+      # ---------------------------------------------------------------
+      - name: 'Probe 2: socket bind-mount into a container'
+        id: mount
+        continue-on-error: true
+        run: |
+          set -x
+          # The -v source is resolved by the DAEMON on the host, not inside this
+          # job container, so DOCKER_HOST as seen from here is not a reliable
+          # guide (run 8602 fell back to /var/run/docker.sock and failed). Try
+          # the known rootless Podman socket first, then the Docker default, and
+          # report which one worked.
+          candidates="${SOCKET_PATH_OVERRIDE:-} /run/user/1001/podman/podman.sock /var/run/docker.sock"
+          echo "DOCKER_HOST as seen from the job: ${DOCKER_HOST:-<unset>}"
+
+          found=""
+          for sock in $candidates; do
+            [ -n "$sock" ] || continue
+            echo "--- trying $sock"
+            if docker run --rm -v "$sock:/var/run/docker.sock:ro" \
+                docker.io/library/alpine:3.20 test -S /var/run/docker.sock; then
+              found="$sock"
+              break
+            fi
+          done
+
+          if [ -n "$found" ]; then
+            echo "socket_path=$found" >> "$GITHUB_OUTPUT"
+            printf 'socket-mount\tpass\tmountable at %s\n' "$found" >> "$RESULTS/verdicts.tsv"
+          else
+            echo "socket_path=" >> "$GITHUB_OUTPUT"
+            printf 'socket-mount\tFAIL\tnone of [%s] mountable — check valid_volumes\n' \
+              "$candidates" >> "$RESULTS/verdicts.tsv"
+            exit 1
+          fi
+
+      # ---------------------------------------------------------------
+      # Probe 3 — docker-socket-proxy against the compat API
+      # The decisive probe. Mirrors the exact permission set from
+      # docker-compose.yml:756-777 and exercises the endpoints the stack
+      # relies on. tecnativa/docker-socket-proxy is HAProxy filtering Docker
+      # API paths; Podman implements most Docker REST endpoints but not all.
+      # Expected: /containers/json and /images/json return 200,
+      # /volumes and /info return 403 (denied by policy, not missing).
+      # ---------------------------------------------------------------
+      - name: 'Probe 3: docker-socket-proxy against compat API'
+        id: proxy
+        continue-on-error: true
+        env:
+          CANARY_SOCKET_PATH: ${{ steps.mount.outputs.socket_path }}
+        run: |
+          set -x
+          sock="${CANARY_SOCKET_PATH}"
+          # Guard: without a mountable socket this probe cannot run at all, and
+          # an empty -v source produces a confusing docker error instead of a
+          # verdict (run 8602 produced no proxy line for exactly this reason).
+          if [ -z "$sock" ]; then
+            printf 'proxy-start\tSKIP\tno mountable socket from probe 2\n' >> "$RESULTS/verdicts.tsv"
+            exit 0
+          fi
+          docker network create "$PROBE_NET" || true
+
+          docker run -d --name "$PROXY_NAME" --network "$PROBE_NET" \
+            -e CONTAINERS=1 -e POST=1 -e IMAGES=1 -e NETWORKS=1 \
+            -e VOLUMES=0 -e EXEC=0 -e SWARM=0 -e NODES=0 -e SERVICES=0 \
+            -e TASKS=0 -e SECRETS=0 -e CONFIGS=0 -e PLUGINS=0 -e SYSTEM=0 \
+            -e DISTRIBUTION=0 -e AUTH=0 -e BUILD=0 -e COMMIT=0 -e EVENTS=0 \
+            -e INFO=0 -e VERSION=0 \
+            -v "$sock:/var/run/docker.sock:ro" \
+            docker.io/tecnativa/docker-socket-proxy:latest
+
+          # Give HAProxy a moment, then confirm it stayed up.
+          for _ in $(seq 1 15); do
+            state="$(docker inspect -f '{{.State.Running}}' "$PROXY_NAME" 2>/dev/null || echo false)"
+            [ "$state" = "true" ] && break
+            sleep 1
+          done
+          docker logs "$PROXY_NAME" 2>&1 | tail -30 || true
+
+          if [ "$(docker inspect -f '{{.State.Running}}' "$PROXY_NAME" 2>/dev/null)" != "true" ]; then
+            printf 'proxy-start\tFAIL\tproxy container did not stay running\n' >> "$RESULTS/verdicts.tsv"
+            exit 1
+          fi
+          printf 'proxy-start\tpass\t\n' >> "$RESULTS/verdicts.tsv"
+
+          probe() {
+            name="$1"; path="$2"; want="$3"
+            code="$(docker run --rm --network "$PROBE_NET" docker.io/curlimages/curl:8.10.1 \
+              -s -o /dev/null -w '%{http_code}' --max-time 15 \
+              "http://${PROXY_NAME}:2375${path}" || echo 000)"
+            echo "$name -> $code (want $want)"
+            if [ "$code" = "$want" ]; then
+              printf 'api%s\tpass\t%s returned %s\n' "$name" "$path" "$code" >> "$RESULTS/verdicts.tsv"
+            else
+              printf 'api%s\tFAIL\t%s returned %s, wanted %s\n' \
+                "$name" "$path" "$code" "$want" >> "$RESULTS/verdicts.tsv"
+            fi
+          }
+
+          # Allowed by the permission set above.
+          probe '-containers' '/v1.41/containers/json' 200
+          probe '-images'     '/v1.41/images/json'     200
+          probe '-networks'   '/v1.41/networks'        200
+          # Denied by policy — a 403 proves the filter works rather than the
+          # endpoint being absent. A 404 here means Podman lacks the endpoint.
+          probe '-volumes'    '/v1.41/volumes'         403
+          probe '-info'       '/v1.41/info'            403
+
+      # ---------------------------------------------------------------
+      # Probe 4 — port publishing
+      # Rootless publishing differs from rootful; counting-cats needed
+      # COUNTING_CATS_DOCKER_PUBLISHED_HOST_OVERRIDE with
+      # host.containers.internal for exactly this. The install lanes assign
+      # per-workspace port offsets and then reach the stack over them.
+      # ---------------------------------------------------------------
+      - name: 'Probe 4: published port reachable from the job'
+        continue-on-error: true
+        run: |
+          set -x
+          docker run -d --name "$PUB_NAME" -p 18099:80 docker.io/library/nginx:1.27-alpine
+          ok=false
+          for host in 127.0.0.1 host.containers.internal host.docker.internal; do
+            for _ in $(seq 1 10); do
+              if curl -fsS --max-time 3 "http://${host}:18099/" >/dev/null 2>&1; then
+                echo "reachable via $host"
+                printf 'port-publish\tpass\treachable via %s\n' "$host" >> "$RESULTS/verdicts.tsv"
+                ok=true
+                break 2
+              fi
+              sleep 2
+            done
+          done
+          if [ "$ok" != true ]; then
+            printf 'port-publish\tFAIL\tpublished port not reachable on any candidate host\n' \
+              >> "$RESULTS/verdicts.tsv"
+            exit 1
+          fi
+
+      # ---------------------------------------------------------------
+      # Probe 5 — volume uid mapping
+      # Postgres is the classic rootless biter: the entrypoint chowns its data
+      # directory, which fails under an unexpected userns mapping. The stack
+      # runs postgres:16-alpine, so test that exact image.
+      # ---------------------------------------------------------------
+      - name: 'Probe 5: postgres on a named volume (uid mapping)'
+        continue-on-error: true
+        run: |
+          set -x
+          docker volume create "$PG_NAME" || true
+          docker run -d --name "$PG_NAME" \
+            -e POSTGRES_PASSWORD=canary \
+            -e POSTGRES_USER=canary \
+            -e POSTGRES_DB=canary \
+            -v "$PG_NAME:/var/lib/postgresql/data" \
+            docker.io/library/postgres:16-alpine
+
+          ready=false
+          for _ in $(seq 1 30); do
+            if docker exec "$PG_NAME" pg_isready -U canary >/dev/null 2>&1; then
+              ready=true
+              break
+            fi
+            sleep 2
+          done
+          docker logs "$PG_NAME" 2>&1 | tail -30 || true
+
+          if [ "$ready" = true ]; then
+            printf 'pg-volume\tpass\tpostgres reached ready on a named volume\n' >> "$RESULTS/verdicts.tsv"
+          else
+            printf 'pg-volume\tFAIL\tpostgres never became ready — check userns/uid mapping\n' \
+              >> "$RESULTS/verdicts.tsv"
+            exit 1
+          fi
+
+      # ---------------------------------------------------------------
+      # Verdict
+      # ---------------------------------------------------------------
+      - name: Canary verdict
+        if: always()
+        env:
+          # Never interpolate ${{ }} directly into run: — runner_label is a
+          # dispatch input and would be a shell-injection vector.
+          CANARY_RUNNER_LABEL: ${{ inputs.runner_label || 'docker' }}
+          CANARY_ENGINE: ${{ steps.identity.outputs.engine }}
+          CANARY_SERVER_VERSION: ${{ steps.identity.outputs.server_version }}
+        run: |
+          {
+            echo "## Podman socket canary"
+            echo
+            echo "- runner label: \`${CANARY_RUNNER_LABEL}\`"
+            echo "- engine: \`${CANARY_ENGINE}\`"
+            echo "- server version: \`${CANARY_SERVER_VERSION}\`"
+            echo
+            echo "| probe | verdict | detail |"
+            echo "|---|---|---|"
+            if [ -s "$RESULTS/verdicts.tsv" ]; then
+              while IFS=$'\t' read -r probe verdict detail; do
+                echo "| \`$probe\` | $verdict | ${detail:-—} |"
+              done < "$RESULTS/verdicts.tsv"
+            else
+              echo "| — | no probes recorded | canary aborted before probe 1 |"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          cat "$RESULTS/verdicts.tsv" || true
+          if grep -q 'FAIL' "$RESULTS/verdicts.tsv" 2>/dev/null; then
+            echo "::error::One or more probes failed — see the summary table. This is a"
+            echo "::error::diagnosis, not a build break: record the failing probes on issue #667."
+            exit 1
+          fi
+          echo "All probes passed. The compose socket contract is satisfiable on this runner."
+
+      - name: Upload canary results
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: podman-socket-canary-${{ github.run_id }}
+          path: .tmp/canary-results/
+          if-no-files-found: warn
+          retention-days: 14
+
+      # ---------------------------------------------------------------
+      # Cleanup — scoped to this run only. Never use an unscoped prune here:
+      # this runner executes concurrent jobs and an unscoped cleanup has
+      # previously wiped a neighbouring job's Postgres.
+      # ---------------------------------------------------------------
+      - name: Cleanup (scoped to this run)
+        if: always()
+        run: |
+          docker rm -f "$PROXY_NAME" "$PG_NAME" "$PUB_NAME" 2>/dev/null || true
+          docker volume rm -f "$PG_NAME" 2>/dev/null || true
+          docker network rm "$PROBE_NET" 2>/dev/null || true

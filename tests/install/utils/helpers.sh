@@ -803,23 +803,38 @@ docker_host_gateway() {
         "$((16#${gateway_hex:0:2}))"
 }
 
+# Docker writes /.dockerenv; Podman writes /run/.containerenv. Checking only the
+# Docker marker made a rootless Podman job look uncontainerised and fall back to
+# loopback, where the published port is not reachable (see #667). The paths are
+# overridable so both branches are testable.
+is_containerized_runtime() {
+    local docker_marker="${SANCTUARY_CONTAINER_MARKER_DOCKER:-/.dockerenv}"
+    local podman_marker="${SANCTUARY_CONTAINER_MARKER_PODMAN:-/run/.containerenv}"
+
+    [ -f "$docker_marker" ] || [ -f "$podman_marker" ]
+}
+
 default_install_test_host() {
     if [ -n "${SANCTUARY_INSTALL_TEST_HOST:-}" ]; then
         echo "$SANCTUARY_INSTALL_TEST_HOST"
         return 0
     fi
 
-    if [ ! -f /.dockerenv ]; then
+    if ! is_containerized_runtime; then
         echo "localhost"
         return 0
     fi
 
-    local host_internal
-    host_internal=$(getent hosts host.docker.internal 2>/dev/null | awk 'NR == 1 { print $1 }')
-    if [ -n "$host_internal" ]; then
-        echo "$host_internal"
-        return 0
-    fi
+    # host.containers.internal is Podman's name for the host; host.docker.internal
+    # is Docker's. Only one resolves on any given engine, so try both.
+    local host_alias host_internal
+    for host_alias in host.containers.internal host.docker.internal; do
+        host_internal=$(getent hosts "$host_alias" 2>/dev/null | awk 'NR == 1 { print $1 }')
+        if [ -n "$host_internal" ]; then
+            echo "$host_internal"
+            return 0
+        fi
+    done
 
     docker_host_gateway || echo "localhost"
 }
