@@ -638,11 +638,15 @@ services:
       # Automatically uses https when TLS_ENABLED=true, http otherwise
       # --no-check-certificate handles self-signed certs
       # Note: $$ escapes $ for Docker Compose so shell evaluates TLS_ENABLED at runtime
+      # CMD-SHELL, not CMD + sh -c: this is the only healthcheck in the file
+      # that embeds a shell conditional, and the ["CMD","sh","-c",<script>] form
+      # does not survive the compose -> Podman compat API path — the script
+      # reaches sh truncated, failing every probe with
+      #   [: line 0: syntax error: unexpected end of file (expecting "then")
+      # CMD-SHELL round-trips intact on both engines. See install-test run 8667.
       test:
         [
-          "CMD",
-          "sh",
-          "-c",
+          "CMD-SHELL",
           'if [ "$$TLS_ENABLED" = "true" ]; then wget --no-verbose --tries=1 --spider --no-check-certificate https://localhost:4000/health; else wget --no-verbose --tries=1 --spider http://localhost:4000/health; fi',
         ]
       interval: 30s

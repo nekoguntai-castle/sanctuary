@@ -206,6 +206,7 @@ jobs:
           ./tests/install/unit/upgrade-helpers.test.sh
           ./tests/install/unit/install-scope.test.sh
           ./tests/install/unit/cleanup-containers-guard.test.sh
+          ./tests/install/unit/healthcheck-shell-form.test.sh
           ./tests/ci/check-workflow-composition.test.sh
           ./tests/ci/relay-job-diagnosability.test.sh
           INNER
