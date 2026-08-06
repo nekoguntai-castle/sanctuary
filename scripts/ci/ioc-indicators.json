@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "updatedOn": "2026-08-05",
-  "note": "Indicators of compromise for npm supply-chain incidents. Data-only: add entries here, never in ioc-sweep.mjs. Package list reconciled 2026-08-05 against two independent published analyses (Wiz and Semgrep), which agree on all 25 name@version pairs for the September 2025 maintainer-account compromise. KNOWN LIMITATION: this does not enumerate the full Shai-Hulud package wave (reported at 500+ packages); Shai-Hulud is covered here only by behavioural indicators (exfiltration endpoint, planted workflow, TruffleHog usage, phishing domain). Consult a live advisory feed before treating a clean sweep as exhaustive.",
+  "updatedOn": "2026-08-06",
+  "note": "Indicators of compromise for npm supply-chain incidents. Data-only: add entries here, never in ioc-sweep.mjs. The September 2025 maintainer-account compromise was reconciled 2026-08-05 against two independent published analyses (Wiz and Semgrep), which agree on all 25 name@version pairs. The August 2026 keyv/cacheable compromise was reconciled 2026-08-06 against Socket and Aikido: they agree on nine name@version pairs, and disagree on file-entry-cache (Socket 11.1.7, Aikido 11.1.6) — both versions are listed rather than picking a winner, because a spurious extra version costs an investigation while a missing one costs a miss. ecto@5.0.1 and @thiennq/docs-viewer@1.6.2 are single-source and retained on the same basis as color@5.0.1. Socket additionally flags @keyv/redis, @keyv/sqlite and @keyv/mongo at 6.0.0 as suspect but confirms the payload only in keyv itself; they are deliberately NOT listed, because shipping an unconfirmed indicator is what the 2026-08-05 reconciliation removed. KNOWN LIMITATION: neither wave is enumerated in full — Shai-Hulud was reported at 500+ packages and the August 2026 campaign at 400-2200+ across 1381 versions; both are covered beyond these pairs only behaviourally (exfiltration endpoints, planted workflow, TruffleHog usage, phishing domain, Bun dropper URL, stage-2 payload path). Consult a live advisory feed before treating a clean sweep as exhaustive.",
   "packages": [
     {
       "name": "chalk",
@@ -202,6 +202,103 @@
       ],
       "incident": "npm-2025-09-maintainer-compromise",
       "reference": "https://www.wiz.io/blog/widespread-npm-supply-chain-attack-breaking-down-impact-scope-across-debug-chalk"
+    },
+    {
+      "name": "keyv",
+      "versions": [
+        "6.0.0"
+      ],
+      "incident": "npm-2026-08-keyv-cacheable-compromise",
+      "reference": "https://www.wiz.io/blog/keyv-and-cacheable-npm-supply-chain-attack"
+    },
+    {
+      "name": "cacheable",
+      "versions": [
+        "2.5.1"
+      ],
+      "incident": "npm-2026-08-keyv-cacheable-compromise",
+      "reference": "https://www.wiz.io/blog/keyv-and-cacheable-npm-supply-chain-attack"
+    },
+    {
+      "name": "@cacheable/utils",
+      "versions": [
+        "2.5.1"
+      ],
+      "incident": "npm-2026-08-keyv-cacheable-compromise",
+      "reference": "https://www.wiz.io/blog/keyv-and-cacheable-npm-supply-chain-attack"
+    },
+    {
+      "name": "@cacheable/memory",
+      "versions": [
+        "2.2.1"
+      ],
+      "incident": "npm-2026-08-keyv-cacheable-compromise",
+      "reference": "https://www.wiz.io/blog/keyv-and-cacheable-npm-supply-chain-attack"
+    },
+    {
+      "name": "@cacheable/net",
+      "versions": [
+        "2.1.1"
+      ],
+      "incident": "npm-2026-08-keyv-cacheable-compromise",
+      "reference": "https://www.wiz.io/blog/keyv-and-cacheable-npm-supply-chain-attack"
+    },
+    {
+      "name": "@cacheable/node-cache",
+      "versions": [
+        "3.1.2"
+      ],
+      "incident": "npm-2026-08-keyv-cacheable-compromise",
+      "reference": "https://www.wiz.io/blog/keyv-and-cacheable-npm-supply-chain-attack"
+    },
+    {
+      "name": "cacheable-request",
+      "versions": [
+        "13.0.20"
+      ],
+      "incident": "npm-2026-08-keyv-cacheable-compromise",
+      "reference": "https://www.wiz.io/blog/keyv-and-cacheable-npm-supply-chain-attack"
+    },
+    {
+      "name": "cache-manager",
+      "versions": [
+        "7.2.10"
+      ],
+      "incident": "npm-2026-08-keyv-cacheable-compromise",
+      "reference": "https://www.wiz.io/blog/keyv-and-cacheable-npm-supply-chain-attack"
+    },
+    {
+      "name": "flat-cache",
+      "versions": [
+        "6.1.24"
+      ],
+      "incident": "npm-2026-08-keyv-cacheable-compromise",
+      "reference": "https://www.wiz.io/blog/keyv-and-cacheable-npm-supply-chain-attack"
+    },
+    {
+      "name": "file-entry-cache",
+      "versions": [
+        "11.1.6",
+        "11.1.7"
+      ],
+      "incident": "npm-2026-08-keyv-cacheable-compromise",
+      "reference": "https://www.aikido.dev/blog/keyv-and-friends-compromised-in-npm-supply-chain-attack"
+    },
+    {
+      "name": "ecto",
+      "versions": [
+        "5.0.1"
+      ],
+      "incident": "npm-2026-08-keyv-cacheable-compromise",
+      "reference": "https://www.aikido.dev/blog/keyv-and-friends-compromised-in-npm-supply-chain-attack"
+    },
+    {
+      "name": "@thiennq/docs-viewer",
+      "versions": [
+        "1.6.2"
+      ],
+      "incident": "npm-2026-08-keyv-cacheable-compromise",
+      "reference": "https://socket.dev/blog/popular-npm-packages-in-the-keyv-and-cacheable-namespaces-compromised-in-active-supply-chain"
     }
   ],
   "scriptPatterns": [
@@ -241,6 +338,31 @@
       "id": "npmjs-help-typosquat",
       "value": "npmjs.help",
       "description": "Phishing domain used to harvest npm maintainer credentials."
+    },
+    {
+      "id": "keyv-exfil-router",
+      "value": "npm-cache.com",
+      "description": "Exfiltration endpoint for the August 2026 keyv/cacheable stealer."
+    },
+    {
+      "id": "keyv-bun-dropper",
+      "value": "oven-sh/bun/releases/download/bun-v1.3.13",
+      "description": "The stealer downloads this pinned Bun runtime to execute its payload; never legitimate in an install hook."
+    },
+    {
+      "id": "keyv-eth-c2",
+      "value": "eth-mainnet.nodereal.io",
+      "description": "Ethereum RPC host used to resolve the C2 address from a smart contract."
+    },
+    {
+      "id": "keyv-mirror-pypi",
+      "value": "pypi-get.com",
+      "description": "Attacker-controlled registry mirror in the August 2026 campaign."
+    },
+    {
+      "id": "keyv-mirror-js",
+      "value": "js-mirror.com",
+      "description": "Attacker-controlled registry mirror in the August 2026 campaign."
     }
   ],
   "fileIndicators": [
@@ -248,6 +370,11 @@
       "id": "shai-hulud-workflow",
       "path": ".github/workflows/shai-hulud-workflow.yml",
       "description": "Workflow planted by the Shai-Hulud worm to exfiltrate repository secrets."
+    },
+    {
+      "id": "keyv-stage2-payload",
+      "path": "node_modules/keyv/Math_Symbol.js",
+      "description": "Stage-2 stealer dropped by the August 2026 keyv compromise. Scoped to node_modules/keyv deliberately: Math_Symbol.js is also a legitimate Unicode table shipped by regenerate-unicode-properties, so a bare filename match would fire on clean trees."
     }
   ],
   "hookIndicators": [
