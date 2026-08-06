@@ -279,6 +279,84 @@ jobs:
           fi
 
       # ---------------------------------------------------------------
+      # Probe 6 — compose healthcheck shell form
+      # The gap that let this canary pass 10/10 on x300 while a real Podman
+      # incompatibility sat in docker-compose.yml: a healthcheck written as
+      # ["CMD","sh","-c",<script>] does not survive the compose -> Podman compat
+      # path when <script> contains shell syntax. It reaches sh truncated and
+      # every probe fails with a syntax error, marking the container
+      # permanently unhealthy (install-test run 8667).
+      #
+      # cmd-shell is the form the compose file now relies on, so its failure is
+      # a real failure. cmd-array is recorded informationally: it documents
+      # whether this engine has the quirk at all, which is what makes a
+      # side-by-side run against the DIND runner meaningful.
+      # ---------------------------------------------------------------
+      - name: 'Probe 6: compose healthcheck shell form'
+        continue-on-error: true
+        env:
+          HC_PROJECT: hc-canary-${{ github.run_id }}
+        run: |
+          set -x
+          cat > /tmp/hc-canary.yml <<'COMPOSE'
+          services:
+            hcshell:
+              image: docker.io/library/alpine:3.20
+              environment:
+                TLS_ENABLED: "true"
+              command: ["sleep", "180"]
+              healthcheck:
+                test: ["CMD-SHELL", 'if [ "$$TLS_ENABLED" = "true" ]; then exit 0; else exit 1; fi']
+                interval: 5s
+                timeout: 5s
+                retries: 3
+                start_period: 2s
+            hcarray:
+              image: docker.io/library/alpine:3.20
+              environment:
+                TLS_ENABLED: "true"
+              command: ["sleep", "180"]
+              healthcheck:
+                test: ["CMD", "sh", "-c", 'if [ "$$TLS_ENABLED" = "true" ]; then exit 0; else exit 1; fi']
+                interval: 5s
+                timeout: 5s
+                retries: 3
+                start_period: 2s
+          COMPOSE
+
+          docker compose -f /tmp/hc-canary.yml -p "$HC_PROJECT" up -d
+
+          # Poll for up to 60s; a healthcheck needs several intervals to settle.
+          settle() {
+            svc="$1"; want_healthy="$2"
+            for _ in $(seq 1 12); do
+              st="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' \
+                    "${HC_PROJECT}-${svc}-1" 2>/dev/null || echo missing)"
+              [ "$st" = "healthy" ] && break
+              sleep 5
+            done
+            echo "$st"
+          }
+
+          shell_state="$(settle hcshell)"
+          array_state="$(settle hcarray)"
+          docker inspect -f '{{range .State.Health.Log}}exit={{.ExitCode}} out={{.Output}}{{end}}' \
+            "${HC_PROJECT}-hcarray-1" 2>/dev/null | head -c 300 || true
+
+          if [ "$shell_state" = "healthy" ]; then
+            printf 'healthcheck-cmd-shell\tpass\tconditional survived, container healthy\n' >> "$RESULTS/verdicts.tsv"
+          else
+            printf 'healthcheck-cmd-shell\tFAIL\tCMD-SHELL conditional did not go healthy (state: %s) — docker-compose.yml depends on this form\n' \
+              "$shell_state" >> "$RESULTS/verdicts.tsv"
+          fi
+
+          # Informational only: never fails the canary.
+          printf 'healthcheck-cmd-array\tinfo\tCMD+sh -c conditional state: %s (unhealthy here means this engine has the truncation quirk)\n' \
+            "$array_state" >> "$RESULTS/verdicts.tsv"
+
+          docker compose -f /tmp/hc-canary.yml -p "$HC_PROJECT" down -v || true
+
+      # ---------------------------------------------------------------
       # Verdict
       # ---------------------------------------------------------------
       - name: Canary verdict
