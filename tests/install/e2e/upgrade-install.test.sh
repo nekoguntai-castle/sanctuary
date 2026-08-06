@@ -363,6 +363,7 @@ run_install_script() {
     mkdir -p "$TEST_RUNTIME_DIR"
     isolate_legacy_optional_profile_compose "$project_dir" "$TARGET_PROJECT_ROOT"
     adapt_legacy_cgroup_v1_keys "$project_dir"
+    adapt_legacy_host_path_mounts "$project_dir"
     adapt_legacy_compose_ssl_mount "$project_dir"
     adapt_legacy_shared_backend_builds "$project_dir"
 

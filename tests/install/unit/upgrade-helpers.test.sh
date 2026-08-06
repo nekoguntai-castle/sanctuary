@@ -772,6 +772,61 @@ EOF
   fi
 }
 
+# v0.8.59 and earlier hardcode /var/run/docker.sock as a mount SOURCE. Rootless
+# Podman cannot mkdir under /var/run, so the legacy source install aborts its
+# whole compose up with "permission denied" (run 8788) — the same failure #682
+# fixed on main, reappearing from a released tag that cannot be changed.
+test_legacy_docker_socket_mounts_are_parameterised() {
+  local src="$TEST_TMP_DIR/legacy-sock"
+  mkdir -p "$src/docker/compose"
+  cat > "$src/docker-compose.yml" <<'EOF'
+services:
+  docker-proxy:
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+EOF
+  cat > "$src/docker/compose/monitoring.yml" <<'EOF'
+services:
+  promtail:
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+EOF
+
+  adapt_legacy_host_path_mounts "$src"
+
+  local main_c overlay_c
+  main_c="$(cat "$src/docker-compose.yml")"
+  overlay_c="$(cat "$src/docker/compose/monitoring.yml")"
+
+  assert_contains "$main_c" '${SANCTUARY_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock:ro' \
+    "legacy docker-proxy socket source should be parameterised"
+  assert_contains "$overlay_c" '${SANCTUARY_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock:ro' \
+    "legacy promtail socket source should be parameterised"
+  assert_contains "$overlay_c" '${SANCTUARY_DOCKER_CONTAINERS_DIR:-/var/lib/docker/containers}:/var/lib/docker/containers:ro' \
+    "legacy promtail containers dir should be parameterised"
+}
+
+# A checkout already carrying the parameterised form must be left untouched, so
+# the adapter is a no-op once every supported source ref includes #682.
+test_current_checkout_socket_mounts_untouched() {
+  local src="$TEST_TMP_DIR/current-sock"
+  mkdir -p "$src"
+  cat > "$src/docker-compose.yml" <<'EOF'
+services:
+  docker-proxy:
+    volumes:
+      - ${SANCTUARY_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock:ro
+EOF
+  local before
+  before="$(cat "$src/docker-compose.yml")"
+
+  adapt_legacy_host_path_mounts "$src"
+
+  assert_equals "$before" "$(cat "$src/docker-compose.yml")" \
+    "an already-parameterised checkout must be left unchanged"
+}
+
 test_current_compose_ssl_mount_is_left_unchanged() {
   local source_checkout="$TEST_TMP_DIR/source"
   local compose_file="$source_checkout/docker-compose.yml"
@@ -1576,6 +1631,8 @@ main() {
   run_test "upgrade selection manifest records resolved refs" test_upgrade_selection_manifest_records_resolved_refs
   run_test "legacy optional profile compose is isolated" test_legacy_optional_profile_compose_is_isolated
   run_test "legacy cgroup v1 keys are stripped" test_legacy_cgroup_v1_keys_are_stripped_from_source_checkout
+  run_test "legacy docker socket mounts are parameterised" test_legacy_docker_socket_mounts_are_parameterised
+  run_test "current checkout socket mounts untouched" test_current_checkout_socket_mounts_untouched
   run_test "current checkout without cgroup v1 keys untouched" test_current_checkout_without_cgroup_v1_keys_is_untouched
   run_test "legacy cgroup v1 keys stripped from overlays" test_legacy_cgroup_v1_keys_are_stripped_from_overlays
   run_test "legacy optional profile compose can use target tor overlay" test_legacy_optional_profile_compose_can_use_target_tor_overlay

@@ -102,6 +102,59 @@ isolate_legacy_optional_profile_compose() {
 # the released configuration in every respect that has an effect.
 #
 # Remove this adapter once no supported upgrade source ref predates the fix.
+# Released tags up to v0.8.59 hardcode host paths as mount SOURCES:
+# /var/run/docker.sock for docker-proxy and promtail, and
+# /var/lib/docker/containers for promtail. Rootless Podman exposes the socket
+# under /run/user/<uid>/podman/ and cannot mkdir under /var/run, so the legacy
+# source install aborts its entire compose up with "permission denied" — the
+# same failure #682 fixed on main, reappearing from a tag that cannot be
+# changed (run 8788).
+#
+# Rewrites the sources to the parameterised form main now uses, so the runner's
+# SANCTUARY_DOCKER_SOCKET applies. Container-side paths are untouched, and a
+# checkout already carrying the parameterised form is left alone.
+#
+# Remove once every supported upgrade source ref includes #682.
+adapt_legacy_host_path_mounts() {
+    local project_dir="$1"
+    local -a compose_files=()
+    local f
+
+    [ -d "$project_dir" ] || return 0
+
+    [ -f "$project_dir/docker-compose.yml" ] && compose_files+=("$project_dir/docker-compose.yml")
+    for f in "$project_dir"/docker/compose/*.yml; do
+        [ -f "$f" ] && compose_files+=("$f")
+    done
+    [ "${#compose_files[@]}" -gt 0 ] || return 0
+
+    local legacy_sock='- /var/run/docker.sock:/var/run/docker.sock:ro'
+    local param_sock='- ${SANCTUARY_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock:ro'
+    local legacy_ctrs='- /var/lib/docker/containers:/var/lib/docker/containers:ro'
+    local param_ctrs='- ${SANCTUARY_DOCKER_CONTAINERS_DIR:-/var/lib/docker/containers}:/var/lib/docker/containers:ro'
+
+    local adapted=0
+    for f in "${compose_files[@]}"; do
+        # -- : the patterns begin with "- ", which grep would parse as options.
+        grep -Fq -- "$legacy_sock" "$f" || grep -Fq -- "$legacy_ctrs" "$f" || continue
+
+        local tmp_file
+        tmp_file="$(mktemp "${f}.XXXXXX")"
+        while IFS= read -r line || [ -n "$line" ]; do
+            line="${line//$legacy_sock/$param_sock}"
+            line="${line//$legacy_ctrs/$param_ctrs}"
+            printf '%s
+' "$line"
+        done < "$f" > "$tmp_file"
+        mv "$tmp_file" "$f"
+        adapted=$((adapted + 1))
+    done
+
+    if [ "$adapted" -gt 0 ]; then
+        log_info "Parameterised hardcoded Docker host paths in $adapted legacy compose file(s) for engine portability"
+    fi
+}
+
 adapt_legacy_cgroup_v1_keys() {
     local project_dir="$1"
     local -a compose_files=()
