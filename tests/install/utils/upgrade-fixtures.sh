@@ -190,8 +190,12 @@ adapt_legacy_host_path_mounts() {
 
     local legacy_sock='- /var/run/docker.sock:/var/run/docker.sock:ro'
     local param_sock='- ${SANCTUARY_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock:ro'
+    # Dropped rather than parameterised: promtail discovers and streams through
+    # the Docker API, never reading this directory, and on a rootless host
+    # /var/lib/docker cannot be created so the mount aborts compose up entirely.
+    # Verified that v0.8.59's promtail-config.yml uses docker_sd_configs too, so
+    # removing it costs the legacy stack nothing.
     local legacy_ctrs='- /var/lib/docker/containers:/var/lib/docker/containers:ro'
-    local param_ctrs='- ${SANCTUARY_DOCKER_CONTAINERS_DIR:-/var/lib/docker/containers}:/var/lib/docker/containers:ro'
     # Config FILES, not the daemon socket: compose resolves ./docker/monitoring
     # against the checkout, producing a /workspace/... path the engine cannot
     # see. Same treatment #698 gave main.
@@ -207,8 +211,12 @@ adapt_legacy_host_path_mounts() {
         local tmp_file
         tmp_file="$(mktemp "${f}.XXXXXX")"
         while IFS= read -r line || [ -n "$line" ]; do
+            # The containers directory mount is removed outright, not rewritten.
+            case "$line" in
+                *"/var/lib/docker/containers:/var/lib/docker/containers:ro") continue ;;
+            esac
             line="${line//$legacy_sock/$param_sock}"
-            line="${line//$legacy_ctrs/$param_ctrs}"
+
             line="${line//$legacy_mon/$param_mon}"
             printf '%s
 ' "$line"

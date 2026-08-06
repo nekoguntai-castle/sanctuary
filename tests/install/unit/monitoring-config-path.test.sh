@@ -78,6 +78,31 @@ container_side_unchanged() {
     grep -q ':/etc/promtail/config.yml:ro' "$OVERLAY"
 }
 
+# promtail discovers containers through the Docker API (docker_sd_configs against
+# the daemon socket), not by reading /var/lib/docker/containers. The directory
+# mount served nothing, and on a rootless Podman host it is actively fatal:
+# /var/lib/docker does not exist and cannot be created without root, so the
+# mount aborts the whole compose up (run 8904).
+no_containers_dir_mount() {
+  local offenders
+  # Match mount entries only. A comment explaining why the directory is not
+  # mounted must not trip the check that it is not mounted.
+  offenders="$(grep -nE '^[[:space:]]*-[[:space:]]*[^#]*/var/lib/docker/containers' "$OVERLAY" || true)"
+  if [ -n "$offenders" ]; then
+    printf 'promtail no longer reads this directory; the mount must go:\n%s\n' "$offenders" >&2
+    return 1
+  fi
+  return 0
+}
+
+# The socket is what promtail actually needs, so removing the directory must not
+# take the socket with it.
+socket_mount_retained() {
+  grep -q 'SANCTUARY_DOCKER_SOCKET:-/var/run/docker.sock' "$OVERLAY"
+}
+
+check "the vestigial containers-dir mount is gone" no_containers_dir_mount
+check "promtail keeps the daemon socket it actually uses" socket_mount_retained
 check "no literal ./docker/monitoring mount sources remain" no_literal_config_source
 check "every monitoring config source is parameterised" all_sources_parameterised
 check "the default remains the relative project path" default_is_unchanged

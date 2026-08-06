@@ -803,8 +803,12 @@ EOF
     "legacy docker-proxy socket source should be parameterised"
   assert_contains "$overlay_c" '${SANCTUARY_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock:ro' \
     "legacy promtail socket source should be parameterised"
-  assert_contains "$overlay_c" '${SANCTUARY_DOCKER_CONTAINERS_DIR:-/var/lib/docker/containers}:/var/lib/docker/containers:ro' \
-    "legacy promtail containers dir should be parameterised"
+  # Removed outright rather than parameterised: promtail never reads it, and on
+  # a rootless host the mount aborts compose up.
+  if grep -qE '^[[:space:]]*-[[:space:]]*[^#]*/var/lib/docker/containers' "$src/docker/compose/monitoring.yml"; then
+    echo -e "${RED}ASSERTION FAILED:${NC} the legacy containers-dir mount should have been removed"
+    return 1
+  fi
 }
 
 # A checkout already carrying the parameterised form must be left untouched, so

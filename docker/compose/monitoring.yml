@@ -120,13 +120,12 @@ services:
     depends_on:
       - loki
     volumes:
-      # Both sources are host paths that differ by engine; see docker-compose.yml.
-      # Rootless Podman keeps containers under
-      # ~/.local/share/containers/storage/overlay-containers, not
-      # /var/lib/docker/containers, so an unparameterised mount creates an empty
-      # directory and promtail's Docker service discovery finds nothing.
+      # promtail discovers containers through the Docker API (docker_sd_configs
+      # against this socket) and streams their logs from it. It never reads
+      # /var/lib/docker/containers, so that directory is not mounted: it served
+      # nothing, and on a rootless host /var/lib/docker cannot be created, which
+      # aborted the whole compose up.
       - ${SANCTUARY_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock:ro
-      - ${SANCTUARY_DOCKER_CONTAINERS_DIR:-/var/lib/docker/containers}:/var/lib/docker/containers:ro
       - ${SANCTUARY_MONITORING_CONFIG_DIR:-./docker/monitoring}/promtail-config.yml:/etc/promtail/config.yml:ro
       - promtail_positions:/promtail
     command: -config.file=/etc/promtail/config.yml

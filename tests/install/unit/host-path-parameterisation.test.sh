@@ -66,8 +66,16 @@ check "docker-compose.yml parameterises the daemon socket" \
   parameterised docker-compose.yml SANCTUARY_DOCKER_SOCKET
 check "monitoring.yml parameterises the daemon socket" \
   parameterised docker/compose/monitoring.yml SANCTUARY_DOCKER_SOCKET
-check "monitoring.yml parameterises the containers directory" \
-  parameterised docker/compose/monitoring.yml SANCTUARY_DOCKER_CONTAINERS_DIR
+# The containers directory is no longer parameterised — it is not mounted at
+# all. promtail discovers and streams through the Docker API and never reads it,
+# and on a rootless host /var/lib/docker cannot be created, so the mount aborted
+# compose up. Asserting its absence is stronger than asserting its parameter.
+containers_dir_not_mounted() {
+  ! grep -qE '^[[:space:]]*-[[:space:]]*[^#]*/var/lib/docker/containers' \
+    "$PROJECT_ROOT/docker/compose/monitoring.yml"
+}
+check "monitoring.yml does not mount the containers directory at all" \
+  containers_dir_not_mounted
 
 # The default must remain the Docker path: operators run Docker, and this change
 # must not alter what a normal install does.
