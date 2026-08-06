@@ -5,6 +5,7 @@ import { beforeEach,describe,expect,it,vi } from 'vitest';
 import {
 useBalanceHistory,
 useCreateWallet,
+useActivitySummary,
 useImportWallet,
 useInvalidateAllWallets,
 usePendingTransactions,
@@ -27,6 +28,7 @@ vi.mock('../../../src/api/transactions', () => ({
   getRecentTransactions: vi.fn(),
   getPendingTransactions: vi.fn(),
   getBalanceHistory: vi.fn(),
+  getActivitySummary: vi.fn(),
 }));
 
 import * as transactionsApi from '../../../src/api/transactions';
@@ -39,6 +41,7 @@ const mockUpdateWallet = vi.mocked(walletsApi.updateWallet);
 const mockGetRecentTransactions = vi.mocked(transactionsApi.getRecentTransactions);
 const mockGetPendingTransactions = vi.mocked(transactionsApi.getPendingTransactions);
 const mockGetBalanceHistory = vi.mocked(transactionsApi.getBalanceHistory);
+const mockGetActivitySummary = vi.mocked(transactionsApi.getActivitySummary);
 
 const createTestQueryClient = () =>
   new QueryClient({
@@ -365,6 +368,75 @@ describe('useBalanceHistory', () => {
 
     expect(mockGetBalanceHistory).toHaveBeenCalledWith('1M', 1200, ['w1']);
     expect(result.current.data[1].value).toBe(1200);
+  });
+});
+
+describe('useActivitySummary', () => {
+  let queryClient: QueryClient;
+
+  beforeEach(() => {
+    queryClient = createTestQueryClient();
+    vi.clearAllMocks();
+  });
+
+  it('stays undefined and makes no call when there are no wallets', () => {
+    const { result } = renderHook(() => useActivitySummary([], '1W'), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    // Undefined rather than a zeroed placeholder: the collapsed bar renders
+    // nothing until it knows, instead of claiming "0 confirmed".
+    expect(result.current.data).toBeUndefined();
+    expect(mockGetActivitySummary).not.toHaveBeenCalled();
+  });
+
+  it('fetches the summary for the selected period and wallets', async () => {
+    mockGetActivitySummary.mockResolvedValue({
+      count: 14,
+      receivedSats: 1_200_000,
+      sentSats: 770_000,
+      latestAt: '2026-08-01T00:00:00.000Z',
+    } as any);
+
+    const { result } = renderHook(() => useActivitySummary(['w1', 'w2'], '1M'), {
+      wrapper: createWrapper(queryClient),
+    });
+    await waitFor(() => expect(result.current.data).toBeDefined());
+
+    expect(mockGetActivitySummary).toHaveBeenCalledWith('1M', ['w1', 'w2']);
+    expect(result.current.data?.count).toBe(14);
+  });
+
+  it('refetches when the period changes', async () => {
+    mockGetActivitySummary.mockResolvedValue({
+      count: 1,
+      receivedSats: 0,
+      sentSats: 0,
+      latestAt: null,
+    } as any);
+
+    const { rerender, result } = renderHook(
+      ({ timeframe }: { timeframe: '1W' | '1Y' }) => useActivitySummary(['w1'], timeframe),
+      {
+        wrapper: createWrapper(queryClient),
+        initialProps: { timeframe: '1W' as '1W' | '1Y' },
+      }
+    );
+    await waitFor(() => expect(result.current.data).toBeDefined());
+
+    rerender({ timeframe: '1Y' });
+    await waitFor(() => expect(mockGetActivitySummary).toHaveBeenCalledWith('1Y', ['w1']));
+  });
+
+  it('reports a failed aggregate rather than hiding it', async () => {
+    mockGetActivitySummary.mockRejectedValue(new Error('aggregate failed'));
+
+    const { result } = renderHook(() => useActivitySummary(['w1'], '1W'), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.data).toBeUndefined();
   });
 });
 

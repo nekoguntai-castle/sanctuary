@@ -304,6 +304,41 @@ export const transactionPaths = {
       },
     },
   },
+  '/transactions/activity-summary': {
+    get: {
+      tags: ['Transactions'],
+      summary: 'Get aggregate activity summary',
+      description:
+        'Confirmed activity totals across all wallets the user can access, for the selected period. Unconfirmed transactions are excluded, matching the balance-history filter.',
+      security: bearerAuth,
+      parameters: [
+        {
+          name: 'timeframe',
+          in: 'query',
+          required: false,
+          schema: { type: 'string', enum: ['1D', '1W', '1M', '1Y', 'ALL'], default: '1W' },
+        },
+        {
+          name: 'walletIds',
+          in: 'query',
+          required: false,
+          schema: { type: 'string', description: 'Comma-separated wallet IDs to filter.' },
+        },
+      ],
+      responses: {
+        200: {
+          description: 'Activity summary for the period',
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/ActivitySummary' },
+            },
+          },
+        },
+        401: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+  },
   '/wallets/{walletId}/addresses/summary': {
     get: {
       tags: ['Transactions'],

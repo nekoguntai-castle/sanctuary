@@ -7,7 +7,7 @@ import { useNotifications } from '../../../contexts/NotificationContext';
 import { useNotificationSound } from '../../../hooks/useNotificationSound';
 import { useActiveNetwork } from '../../../contexts/ActiveNetworkContext';
 import { createLogger } from '../../../utils/logger';
-import { useWallets, useRecentTransactions, useInvalidateAllWallets, useUpdateWalletSyncStatus, useBalanceHistory, usePendingTransactions } from '../../../hooks/queries/useWallets';
+import { useWallets, useRecentTransactions, useInvalidateAllWallets, useUpdateWalletSyncStatus, useBalanceHistory, usePendingTransactions, useActivitySummary } from '../../../hooks/queries/useWallets';
 import { useFeeEstimates, useBitcoinStatus, useMempoolData } from '../../../hooks/queries/useBitcoin';
 import { useCurrency } from '../../../contexts/CurrencyContext';
 import { useDelayedRender } from '../../../hooks/useDelayedRender';
@@ -127,6 +127,13 @@ export function useDashboardData() {
       setActivityPage(current => Math.max(0, current - 1));
     }
   }, [recentActivity.isFetching, activityPage, recentTxRaw.length]);
+
+  // Headline figures for the collapsed Recent Activity bar. Scoped to the same
+  // period the balance chart uses, and to the same wallets.
+  const { data: activitySummary, isError: activitySummaryError } = useActivitySummary(
+    filteredWalletIds,
+    timeframe
+  );
 
   // Fetch pending transactions for selected network only
   const { data: pendingTxsData } = usePendingTransactions(filteredWalletIds);
@@ -344,6 +351,8 @@ export function useDashboardData() {
     activityHasNextPage: recentActivity.hasNextPage,
     activityHasPreviousPage: recentActivity.hasPreviousPage,
     activityFetching: recentActivity.isFetching,
+    activitySummary,
+    activitySummaryError,
     setActivityPage,
     setActivityPageSize,
     pendingTxs,

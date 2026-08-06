@@ -221,6 +221,36 @@ export function useBalanceHistory(
 }
 
 /**
+ * Hook to fetch confirmed activity totals for the selected dashboard period.
+ *
+ * Deliberately not derived from useRecentTransactions: that returns a page and
+ * never counts the whole set, so any total taken from it would be invented.
+ *
+ * Resolves to `undefined` until the query settles rather than to a zeroed
+ * placeholder — a summary bar reading "0 txns" while loading states something
+ * false about the user's money.
+ */
+export function useActivitySummary(walletIds: string[], timeframe: Timeframe) {
+  const walletIdsKey = walletIds.join(',');
+
+  const query = useQuery({
+    queryKey: ['activitySummary', walletIdsKey, timeframe],
+    queryFn: async () => transactionsApi.getActivitySummary(timeframe, walletIds),
+    enabled: walletIds.length > 0,
+    // Matches the endpoint's own 30s cache; refetching faster than that would
+    // only re-read the same cached aggregate.
+    staleTime: 30000,
+  });
+
+  return {
+    // Never show one wallet set's figures under another's heading.
+    data: walletIds.length === 0 ? undefined : query.data,
+    isLoading: query.isLoading,
+    isError: query.isError,
+  };
+}
+
+/**
  * Hook to fetch per-wallet balance sparkline data for grid cards
  * Uses a single useQuery with Promise.all to batch all per-wallet requests
  */

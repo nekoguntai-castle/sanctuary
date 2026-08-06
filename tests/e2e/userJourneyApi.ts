@@ -337,6 +337,7 @@ const AUTHENTICATED_STATIC_API_RESPONSES: Record<string, MockApiResponse> = {
     queuedBlocksSummary: null,
   }),
   'GET /transactions/recent': mockResponse([]),
+  'GET /transactions/activity-summary': mockResponse({ count: 0, receivedSats: 0, sentSats: 0, latestAt: null }),
   'GET /transactions/balance-history': mockResponse([
     { name: 'Start', value: 250000000 },
     { name: 'Now', value: 250000000 },

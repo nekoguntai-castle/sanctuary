@@ -39,6 +39,7 @@ freezeUTXO,
 generateAddresses,
 getAddresses,
 getAddressSummary,
+getActivitySummary,
 getAllPendingTransactions,
 getBalanceHistory,
 getPendingTransactions,
@@ -453,6 +454,35 @@ describe('Transactions API', () => {
         timeframe: '1M',
         totalBalance: 1000000,
         walletIds: 'w1',
+      });
+    });
+  });
+
+  describe('getActivitySummary', () => {
+    const emptySummary = { count: 0, receivedSats: 0, sentSats: 0, latestAt: null };
+
+    it('should call activity summary with timeframe', async () => {
+      mockGet.mockResolvedValue(emptySummary);
+      await getActivitySummary('1W');
+      expect(mockGet).toHaveBeenCalledWith('/transactions/activity-summary', {
+        timeframe: '1W',
+      });
+    });
+
+    it('should pass walletIds filter', async () => {
+      mockGet.mockResolvedValue(emptySummary);
+      await getActivitySummary('1M', ['w1', 'w2']);
+      expect(mockGet).toHaveBeenCalledWith('/transactions/activity-summary', {
+        timeframe: '1M',
+        walletIds: 'w1,w2',
+      });
+    });
+
+    it('should omit walletIds when the list is empty', async () => {
+      mockGet.mockResolvedValue(emptySummary);
+      await getActivitySummary('1D', []);
+      expect(mockGet).toHaveBeenCalledWith('/transactions/activity-summary', {
+        timeframe: '1D',
       });
     });
   });

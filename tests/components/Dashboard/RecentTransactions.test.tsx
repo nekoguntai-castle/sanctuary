@@ -2,6 +2,8 @@ import { cleanup,render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { RecentTransactions } from '../../../src/components/Dashboard/RecentTransactions';
+import type { ActivitySummary } from '../../../src/api/transactions/types';
+import type { Timeframe } from '../../../src/components/Dashboard/hooks/useDashboardData';
 
 const mockNavigate = vi.fn();
 const mockTransactionList = vi.fn();
@@ -50,10 +52,19 @@ vi.mock('../../../src/hooks/useUserPreference', async () => {
 
 vi.mock('lucide-react', () => ({
   Activity: () => <span data-testid="activity-icon" />,
+  ArrowDownLeft: () => <span data-testid="arrow-in-icon" />,
+  ArrowUpRight: () => <span data-testid="arrow-out-icon" />,
   ChevronDown: () => <span data-testid="chevron-down-icon" />,
   ChevronUp: () => <span data-testid="chevron-up-icon" />,
   ChevronLeft: () => <span data-testid="chevron-left-icon" />,
   ChevronRight: () => <span data-testid="chevron-right-icon" />,
+}));
+
+vi.mock('../../../src/contexts/CurrencyContext', () => ({
+  usePriceFreeFormatter: () => ({
+    format: (sats: number) => `${sats.toLocaleString()} sats`,
+    unit: 'sats',
+  }),
 }));
 
 const pagingProps = (overrides: Record<string, unknown> = {}) => ({
@@ -62,6 +73,9 @@ const pagingProps = (overrides: Record<string, unknown> = {}) => ({
   hasPreviousPage: false,
   hasNextPage: false,
   isFetching: false,
+  activitySummary: undefined as ActivitySummary | undefined,
+  activitySummaryError: false,
+  timeframe: '1W' as Timeframe,
   onPageChange: vi.fn(),
   onPageSizeChange: vi.fn(),
   ...overrides,
@@ -257,21 +271,118 @@ describe('RecentTransactions', () => {
       expect(disclosure()).toHaveAttribute('aria-expanded', 'false');
     });
 
-    it('summarises the visible range while collapsed', async () => {
+    it('summarises the period, not the paging range, while collapsed', async () => {
       const user = userEvent.setup();
-      renderSection([{ id: 'a' }, { id: 'b' }, { id: 'c' }], { page: 1, pageSize: 3 });
+      renderSection([{ id: 'a' }, { id: 'b' }, { id: 'c' }], {
+        page: 1,
+        pageSize: 3,
+        timeframe: '1M',
+        activitySummary: {
+          count: 14,
+          receivedSats: 1_200_000,
+          sentSats: 770_000,
+          latestAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+        },
+      });
 
       await user.click(disclosure());
-      // Truthful about position without inventing a total the endpoint never returns.
-      expect(screen.getByText('Showing 4–6')).toBeInTheDocument();
+
+      // "Showing 4–6" describes what is on screen, and while collapsed nothing
+      // is. The period figures say something the reader cannot otherwise see.
+      // Scoped to the bar: the collapsed body is only `hidden`, so a footer
+      // range would still be findable by an unscoped query.
+      expect(
+        screen.getByTestId('dashboard-activity-summary').textContent
+      ).not.toContain('Showing');
+      const summary = screen.getByTestId('dashboard-activity-summary');
+      // Names the period too: the control that sets it lives in another card,
+      // so "14" alone gives no clue what window it covers.
+      expect(summary).toHaveTextContent('14 confirmed in the past month');
+      expect(summary).toHaveTextContent('3h ago');
     });
 
-    it('says so plainly when there is nothing to summarise', async () => {
+    it('keeps the two directions apart rather than netting them', async () => {
       const user = userEvent.setup();
-      renderSection([]);
+      renderSection([{ id: 'a' }], {
+        activitySummary: {
+          // Equal in and out. A single netted total would render this period
+          // as empty, which is the reason both legs are carried separately.
+          count: 2,
+          receivedSats: 500_000,
+          sentSats: 500_000,
+          latestAt: null,
+        },
+      });
 
       await user.click(disclosure());
-      expect(screen.getByText('No activity')).toBeInTheDocument();
+
+      const summary = screen.getByTestId('dashboard-activity-summary');
+      // Both legs present and equal — a summed figure would render as zero.
+      expect(summary.textContent).toContain('500,000 sats');
+      expect(summary.textContent!.match(/500,000 sats/g)).toHaveLength(2);
+      expect(screen.getByTestId('arrow-in-icon')).toBeInTheDocument();
+      expect(screen.getByTestId('arrow-out-icon')).toBeInTheDocument();
+    });
+
+    it('omits a direction that saw nothing', async () => {
+      const user = userEvent.setup();
+      renderSection([{ id: 'a' }], {
+        activitySummary: { count: 1, receivedSats: 500_000, sentSats: 0, latestAt: null },
+      });
+
+      await user.click(disclosure());
+
+      expect(screen.getByTestId('arrow-in-icon')).toBeInTheDocument();
+      expect(screen.queryByTestId('arrow-out-icon')).not.toBeInTheDocument();
+    });
+
+    it('renders nothing at all until the summary resolves', async () => {
+      const user = userEvent.setup();
+      renderSection([{ id: 'a' }], { activitySummary: undefined });
+
+      await user.click(disclosure());
+
+      // A bar reading "0 confirmed" mid-flight states something false about
+      // the reader's money.
+      expect(screen.queryByTestId('dashboard-activity-summary')).not.toBeInTheDocument();
+    });
+
+    it('says so plainly when the period saw no confirmed activity', async () => {
+      const user = userEvent.setup();
+      renderSection([], {
+        timeframe: '1M',
+        activitySummary: { count: 0, receivedSats: 0, sentSats: 0, latestAt: null },
+      });
+
+      await user.click(disclosure());
+
+      // Not "0 confirmed · 0 sats · never", which is three ways of saying it.
+      expect(screen.getByText('No activity in the past month')).toBeInTheDocument();
+      expect(screen.getByTestId('dashboard-activity-summary').textContent).not.toContain('sats');
+    });
+
+    it('says the aggregate failed rather than looking like it is still loading', async () => {
+      const user = userEvent.setup();
+      renderSection([{ id: 'a' }], { activitySummary: undefined, activitySummaryError: true });
+
+      await user.click(disclosure());
+
+      // Loading is transient and resolves itself; an error is not, and a
+      // permanently bare header reads as "nothing happened".
+      expect(screen.getByTestId('dashboard-activity-summary')).toHaveTextContent(
+        'Activity unavailable'
+      );
+    });
+
+    it('still shows the paging range in the expanded footer', () => {
+      renderSection([{ id: 'a' }, { id: 'b' }, { id: 'c' }], {
+        page: 1,
+        pageSize: 3,
+        hasNextPage: true,
+      });
+
+      // The range did not go away — it moved to where it is accurate.
+      expect(screen.getByText('Showing 4–6')).toBeInTheDocument();
     });
   });
 });

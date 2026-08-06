@@ -33,6 +33,7 @@ export function registerOpenApiWalletTests() {
       ['/wallets/{walletId}/transactions/{txid}/raw', 'get'],
       ['/transactions/recent', 'get'],
       ['/transactions/balance-history', 'get'],
+      ['/transactions/activity-summary', 'get'],
       ['/utxos/{utxoId}/freeze', 'patch'],
       ['/wallets/{walletId}/utxos/select', 'post'],
       ['/wallets/{walletId}/utxos/compare-strategies', 'post'],
@@ -87,6 +88,18 @@ export function registerOpenApiWalletTests() {
       schema: expect.objectContaining({ enum: ['1D', '1W', '1M', '1Y', 'ALL'], default: '1W' }),
     }));
     expect(openApiSpec.components.schemas.BalanceHistoryPoint.required).toEqual(['name', 'value']);
+    expect(openApiSpec.paths['/transactions/activity-summary'].get.parameters).toContainEqual(expect.objectContaining({
+      name: 'timeframe',
+      schema: expect.objectContaining({ enum: ['1D', '1W', '1M', '1Y', 'ALL'], default: '1W' }),
+    }));
+    // Both directions are separate fields on purpose; a single netted total
+    // would report a period that received and spent the same amount as empty.
+    expect(openApiSpec.components.schemas.ActivitySummary.required).toEqual([
+      'count',
+      'receivedSats',
+      'sentSats',
+      'latestAt',
+    ]);
 
     expect(openApiSpec.components.schemas.UtxoFreezeRequest.required).toEqual(['frozen']);
     expect(openApiSpec.components.schemas.UtxoFreezeResponse.required).toEqual([

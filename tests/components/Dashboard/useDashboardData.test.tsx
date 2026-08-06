@@ -31,8 +31,11 @@ let txLoading = false;
 let recentTxFetching = false;
 let recentTxHasNext = false;
 const recentTxCalls: { pageSize: number; page: number }[] = [];
+const activitySummaryCalls: { timeframe: string }[] = [];
 let pendingTxData: any[] | undefined;
 let balanceHistoryData: Array<{ name: string; value: number }>;
+let activitySummaryData: any;
+let activitySummaryIsError = false;
 
 let feeEstimatesData: any;
 let feesLoading = false;
@@ -126,6 +129,10 @@ vi.mock('../../../src/hooks/queries/useWallets', () => ({
   useInvalidateAllWallets: () => mockInvalidateAllWallets,
   useUpdateWalletSyncStatus: () => mockUpdateWalletSyncStatus,
   useBalanceHistory: () => ({ data: balanceHistoryData }),
+  useActivitySummary: (_ids: string[], timeframe: string) => {
+    activitySummaryCalls.push({ timeframe });
+    return { data: activitySummaryData, isError: activitySummaryIsError };
+  },
 }));
 
 vi.mock('../../../src/hooks/queries/useBitcoin', () => ({
@@ -184,6 +191,9 @@ const resetState = () => {
   recentTxFetching = false;
   recentTxHasNext = false;
   recentTxCalls.length = 0;
+  activitySummaryCalls.length = 0;
+  activitySummaryData = { count: 3, receivedSats: 500, sentSats: 200, latestAt: null };
+  activitySummaryIsError = false;
   mockPreferences.clear();
   walletsData = [
     {
@@ -915,6 +925,39 @@ describe('useDashboardData', () => {
       // An in-flight page is empty because it has not arrived, not because it
       // does not exist — stepping back here would fight the reader's click.
       expect(result.current.activityPage).toBe(2);
+    });
+  });
+
+  describe('activity summary', () => {
+    it('surfaces the summary and its error state to the dashboard', () => {
+      const { result } = renderHook(() => useDashboardData());
+
+      expect(result.current.activitySummary).toMatchObject({ count: 3 });
+      expect(result.current.activitySummaryError).toBe(false);
+    });
+
+    it('passes a failed aggregate through so the bar can say so', () => {
+      activitySummaryIsError = true;
+      activitySummaryData = undefined;
+
+      const { result } = renderHook(() => useDashboardData());
+
+      expect(result.current.activitySummaryError).toBe(true);
+      expect(result.current.activitySummary).toBeUndefined();
+    });
+
+    it('scopes the summary to the selected period', () => {
+      const { result } = renderHook(() => useDashboardData());
+
+      expect(activitySummaryCalls.at(-1)).toEqual({ timeframe: '1W' });
+
+      act(() => {
+        result.current.setTimeframe('1Y');
+      });
+
+      // The same control drives the balance chart; the two must describe the
+      // same window or the page contradicts itself.
+      expect(activitySummaryCalls.at(-1)).toEqual({ timeframe: '1Y' });
     });
   });
 });

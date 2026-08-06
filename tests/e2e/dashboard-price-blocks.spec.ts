@@ -203,6 +203,7 @@ const STATIC_DASHBOARD_API_RESPONSES: Record<string, MockApiResponse> = {
   'GET /bitcoin/status': mockResponse(BITCOIN_STATUS_RESPONSE),
   'GET /bitcoin/fees': mockResponse({ fastest: 18, halfHour: 12, hour: 8, economy: 3 }),
   'GET /transactions/recent': mockResponse([]),
+  'GET /transactions/activity-summary': mockResponse({ count: 0, receivedSats: 0, sentSats: 0, latestAt: null }),
   'GET /transactions/balance-history': mockResponse([
     { name: 'Start', value: 100000000 },
     { name: 'Now', value: 100000000 },

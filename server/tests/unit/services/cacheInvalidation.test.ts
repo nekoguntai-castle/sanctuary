@@ -256,13 +256,17 @@ describe('CacheInvalidation', () => {
       }
 
       await vi.waitFor(() => {
-        expect(mockWalletCache.deletePattern).toHaveBeenCalledTimes(3);
+        // Two patterns per wallet: the wallet-scoped balance history, and the
+        // activity summaries, which are keyed by user and so cannot be reached
+        // by any walletId-scoped pattern.
+        expect(mockWalletCache.deletePattern).toHaveBeenCalledTimes(6);
         expect(mockWalletCache.delete).toHaveBeenCalledTimes(3);
       });
       for (const walletId of walletIds) {
         expect(mockWalletCache.deletePattern).toHaveBeenCalledWith(`balance-history:${walletId}:*`);
         expect(mockWalletCache.delete).toHaveBeenCalledWith(`tx-stats:${walletId}`);
       }
+      expect(mockWalletCache.deletePattern).toHaveBeenCalledWith('activity-summary:*');
     });
 
     it('should handle rapid successive events', async () => {
@@ -279,7 +283,9 @@ describe('CacheInvalidation', () => {
       }
 
       await vi.waitFor(() => {
-        expect(mockWalletCache.deletePattern).toHaveBeenCalledTimes(5);
+        // Two deletePattern calls per event (balance history + activity
+        // summaries), one delete for the wallet's tx stats.
+        expect(mockWalletCache.deletePattern).toHaveBeenCalledTimes(10);
         expect(mockWalletCache.delete).toHaveBeenCalledTimes(5);
       });
     });

@@ -597,6 +597,12 @@ const AUTHENTICATED_API_RESPONSES: Record<string, MockApiResponse> = {
     { name: 'Start', value: 125000000 },
     { name: 'Now', value: 125000000 },
   ]),
+  'GET /transactions/activity-summary': mockResponse({
+    count: 3,
+    receivedSats: 250000,
+    sentSats: 90000,
+    latestAt: '2026-03-10T12:00:00.000Z',
+  }),
   [`GET /wallets/${MAINNET_WALLET_ID}/transactions/pending`]: mockResponse([]),
   [`GET /wallets/${TESTNET_WALLET_ID}/transactions/pending`]: mockResponse([]),
   [`GET /wallets/${MAINNET_WALLET_ID}`]: mockResponse(MAINNET_WALLET),

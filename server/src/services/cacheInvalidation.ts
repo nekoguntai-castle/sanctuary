@@ -22,6 +22,12 @@ async function invalidateWalletCaches(walletId: string): Promise<void> {
   await Promise.all([
     walletCache.deletePattern(`balance-history:${walletId}:*`),
     walletCache.delete(`tx-stats:${walletId}`),
+    // Activity-summary keys lead with the user id and cover a whole wallet set,
+    // so no walletId-scoped pattern can reach them. Clearing the namespace is
+    // the only correct move: leaving them stale would let a newly confirmed
+    // transaction appear in the activity list while the summary above it still
+    // reported the old count, for as long as the dashboard stayed open.
+    walletCache.deletePattern('activity-summary:*'),
   ]);
   log.debug(`Invalidated wallet caches for ${walletId}`);
 }

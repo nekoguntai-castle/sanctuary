@@ -235,6 +235,22 @@ export interface BalanceHistoryPoint {
   value: number;
 }
 
+/**
+ * Confirmed activity over a period, across every wallet in scope.
+ *
+ * Both directions are positive magnitudes and are never netted: a period that
+ * received and spent the same amount saw real transactions, not an empty
+ * period. Unconfirmed rows are excluded, matching the balance-history filter,
+ * so this and the chart beside it always describe the same set.
+ */
+export interface ActivitySummary {
+  count: number;
+  receivedSats: number;
+  sentSats: number;
+  /** ISO timestamp of the most recent confirmed transaction, or null. */
+  latestAt: string | null;
+}
+
 export type Timeframe = "1D" | "1W" | "1M" | "1Y" | "ALL";
 
 // ========================================

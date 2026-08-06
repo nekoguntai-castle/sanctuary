@@ -5,6 +5,17 @@ import { mockPrismaClient, resetPrismaMocks } from '../../mocks/prisma';
 
 const mocks = vi.hoisted(() => ({
   getCachedBlockHeight: vi.fn(),
+  cacheGet: vi.fn(),
+  cacheSet: vi.fn(),
+}));
+
+// The activity summary is cached. Mocked so cases stay independent of one
+// another, and so the caching itself can be asserted rather than assumed.
+vi.mock('../../../src/services/cache', () => ({
+  walletCache: {
+    get: mocks.cacheGet,
+    set: mocks.cacheSet,
+  },
 }));
 
 vi.mock('../../../src/models/prisma', async () => {
@@ -49,6 +60,8 @@ describe('transactions cross-wallet routes', () => {
     resetPrismaMocks();
     vi.clearAllMocks();
     mocks.getCachedBlockHeight.mockReturnValue(850000);
+    mocks.cacheGet.mockResolvedValue(null);
+    mocks.cacheSet.mockResolvedValue(undefined);
     (mockPrismaClient as any).$queryRaw = vi.fn().mockResolvedValue([]);
   });
 
@@ -634,6 +647,262 @@ describe('transactions cross-wallet routes', () => {
     expect(response.status).toBe(500);
     expect(response.body).toMatchObject({
       error: 'Internal',
+    });
+  });
+
+  describe('GET /transactions/activity-summary', () => {
+    const groupByArgs = () => (mockPrismaClient.transaction.groupBy as any).mock.calls[0][0];
+
+    it('returns zeroes when the user has no wallets', async () => {
+      mockPrismaClient.wallet.findMany.mockResolvedValue([]);
+
+      const response = await request(app).get('/api/v1/transactions/activity-summary');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ count: 0, receivedSats: 0, sentSats: 0, latestAt: null });
+      // No wallets means nothing to aggregate — don't touch the database.
+      expect(mockPrismaClient.transaction.groupBy).not.toHaveBeenCalled();
+    });
+
+    it('reports both directions as positive magnitudes without netting them', async () => {
+      mockPrismaClient.wallet.findMany.mockResolvedValue([{ id: 'wallet-1' }] as any);
+      (mockPrismaClient.transaction.groupBy as any).mockResolvedValue([
+        {
+          type: 'received',
+          _count: { id: 3 },
+          _sum: { amount: BigInt(120_000) },
+          _max: { blockTime: new Date('2026-08-01T10:00:00.000Z') },
+        },
+        {
+          // Sends are stored negative; the summary reports the magnitude.
+          type: 'sent',
+          _count: { id: 2 },
+          _sum: { amount: BigInt(-120_000) },
+          _max: { blockTime: new Date('2026-08-03T12:00:00.000Z') },
+        },
+      ]);
+
+      const response = await request(app).get('/api/v1/transactions/activity-summary');
+
+      expect(response.status).toBe(200);
+      // Equal in and out is five real transactions, not an empty period. A
+      // single netted total would render this as zero.
+      expect(response.body).toEqual({
+        count: 5,
+        receivedSats: 120_000,
+        sentSats: 120_000,
+        latestAt: '2026-08-03T12:00:00.000Z',
+      });
+    });
+
+    it('counts types it does not attribute to a direction', async () => {
+      mockPrismaClient.wallet.findMany.mockResolvedValue([{ id: 'wallet-1' }] as any);
+      (mockPrismaClient.transaction.groupBy as any).mockResolvedValue([
+        {
+          type: 'consolidation',
+          _count: { id: 4 },
+          _sum: { amount: BigInt(0) },
+          _max: { blockTime: new Date('2026-08-02T00:00:00.000Z') },
+        },
+      ]);
+
+      const response = await request(app).get('/api/v1/transactions/activity-summary');
+
+      expect(response.body).toMatchObject({ count: 4, receivedSats: 0, sentSats: 0 });
+    });
+
+    it('handles a group with no rows and no block time', async () => {
+      mockPrismaClient.wallet.findMany.mockResolvedValue([{ id: 'wallet-1' }] as any);
+      (mockPrismaClient.transaction.groupBy as any).mockResolvedValue([
+        { type: 'received', _count: { id: 0 }, _sum: { amount: null }, _max: { blockTime: null } },
+      ]);
+
+      const response = await request(app).get('/api/v1/transactions/activity-summary');
+
+      expect(response.body).toEqual({ count: 0, receivedSats: 0, sentSats: 0, latestAt: null });
+    });
+
+    it('excludes unconfirmed transactions, matching the balance-history filter', async () => {
+      mockPrismaClient.wallet.findMany.mockResolvedValue([{ id: 'wallet-1' }] as any);
+      (mockPrismaClient.transaction.groupBy as any).mockResolvedValue([]);
+
+      await request(app).get('/api/v1/transactions/activity-summary').query({ timeframe: '1M' });
+
+      // Without this the summary would describe a different set of
+      // transactions from the chart rendered directly above it.
+      expect(groupByArgs().where.blockTime).toMatchObject({ not: null });
+      expect(groupByArgs().where.blockTime.gte).toBeInstanceOf(Date);
+    });
+
+    it('aggregates only the wallets the user may access, not the ones requested', async () => {
+      // The requested set and the authorized set must DIFFER, or the assertion
+      // cannot tell "used the authorized wallets" from "used the raw query
+      // param" — and the second of those is a total access-control bypass.
+      mockPrismaClient.wallet.findMany.mockResolvedValue([{ id: 'wallet-2' }] as any);
+      (mockPrismaClient.transaction.groupBy as any).mockResolvedValue([]);
+
+      await request(app)
+        .get('/api/v1/transactions/activity-summary')
+        .query({ walletIds: 'wallet-2,wallet-belonging-to-someone-else' });
+
+      expect(groupByArgs().where.walletId).toEqual({ in: ['wallet-2'] });
+
+      // And the repository was asked to intersect the requested ids with the
+      // caller's access clause, rather than trusting the ids outright.
+      const walletQuery = (mockPrismaClient.wallet.findMany as any).mock.calls[0][0];
+      expect(walletQuery.where.id).toEqual({
+        in: ['wallet-2', 'wallet-belonging-to-someone-else'],
+      });
+      expect(walletQuery.where.OR).toBeDefined();
+    });
+
+    it('returns zeroes when every requested wallet belongs to someone else', async () => {
+      // The repository returns nothing because the access clause filtered them
+      // all out. Indistinguishable from "no such wallet", which is correct —
+      // an error here would be an existence oracle.
+      mockPrismaClient.wallet.findMany.mockResolvedValue([]);
+
+      const response = await request(app)
+        .get('/api/v1/transactions/activity-summary')
+        .query({ walletIds: 'someone-elses-wallet' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ count: 0, receivedSats: 0, sentSats: 0, latestAt: null });
+      expect(mockPrismaClient.transaction.groupBy).not.toHaveBeenCalled();
+    });
+
+    it('keys the cache per user so one caller cannot read totals belonging to another', async () => {
+      mockPrismaClient.wallet.findMany.mockResolvedValue([{ id: 'wallet-1' }] as any);
+      (mockPrismaClient.transaction.groupBy as any).mockResolvedValue([]);
+
+      await request(app).get('/api/v1/transactions/activity-summary');
+
+      // The user segment is what makes the shared cache tenant-safe; a
+      // stringContaining check on the suffix alone would not notice it going
+      // missing.
+      expect(mocks.cacheGet).toHaveBeenCalledWith(
+        expect.stringMatching(/^activity-summary:user-1:/)
+      );
+    });
+
+    it('falls back to the default period for an unrecognised timeframe', async () => {
+      mockPrismaClient.wallet.findMany.mockResolvedValue([{ id: 'wallet-1' }] as any);
+      (mockPrismaClient.transaction.groupBy as any).mockResolvedValue([]);
+
+      await request(app)
+        .get('/api/v1/transactions/activity-summary')
+        .query({ timeframe: 'not-a-timeframe' });
+
+      // Unvalidated, this fell through to epoch and returned all-time figures
+      // under a one-week label — and minted a cache key from caller-controlled
+      // input, letting an attacker churn a shared, size-capped cache.
+      expect(mocks.cacheGet).toHaveBeenCalledWith(expect.stringContaining(':1W:'));
+      const start = groupByArgs().where.blockTime.gte as Date;
+      expect(start.getTime()).toBeGreaterThan(new Date(0).getTime());
+    });
+
+    it('still answers when the cache is unavailable', async () => {
+      mockPrismaClient.wallet.findMany.mockResolvedValue([{ id: 'wallet-1' }] as any);
+      (mockPrismaClient.transaction.groupBy as any).mockResolvedValue([]);
+      mocks.cacheGet.mockRejectedValue(new Error('cache down'));
+      mocks.cacheSet.mockRejectedValue(new Error('cache down'));
+
+      const response = await request(app).get('/api/v1/transactions/activity-summary');
+
+      // A cache fault must not take down a read endpoint that does not need
+      // the cache to answer correctly.
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ count: 0, receivedSats: 0, sentSats: 0, latestAt: null });
+    });
+
+    it('narrows the window for a shorter timeframe', async () => {
+      mockPrismaClient.wallet.findMany.mockResolvedValue([{ id: 'wallet-1' }] as any);
+      (mockPrismaClient.transaction.groupBy as any).mockResolvedValue([]);
+
+      await request(app).get('/api/v1/transactions/activity-summary').query({ timeframe: '1D' });
+      const dayStart = groupByArgs().where.blockTime.gte as Date;
+
+      (mockPrismaClient.transaction.groupBy as any).mockClear();
+      await request(app).get('/api/v1/transactions/activity-summary').query({ timeframe: '1Y' });
+      const yearStart = groupByArgs().where.blockTime.gte as Date;
+
+      expect(dayStart.getTime()).toBeGreaterThan(yearStart.getTime());
+    });
+
+    it('serves a cached summary without re-aggregating', async () => {
+      mockPrismaClient.wallet.findMany.mockResolvedValue([{ id: 'wallet-1' }] as any);
+      mocks.cacheGet.mockResolvedValue({
+        count: 7,
+        receivedSats: 1,
+        sentSats: 2,
+        latestAt: null,
+      });
+
+      const response = await request(app).get('/api/v1/transactions/activity-summary');
+
+      expect(response.body).toMatchObject({ count: 7 });
+      expect(mockPrismaClient.transaction.groupBy).not.toHaveBeenCalled();
+    });
+
+    it('caches a freshly computed summary', async () => {
+      mockPrismaClient.wallet.findMany.mockResolvedValue([{ id: 'wallet-1' }] as any);
+      (mockPrismaClient.transaction.groupBy as any).mockResolvedValue([]);
+
+      await request(app).get('/api/v1/transactions/activity-summary');
+
+      expect(mocks.cacheSet).toHaveBeenCalledWith(
+        expect.stringContaining('activity-summary:user-1:1W:'),
+        expect.objectContaining({ count: 0 }),
+        30
+      );
+    });
+
+    it('keys the cache on the wallet set regardless of the order given', async () => {
+      mockPrismaClient.wallet.findMany.mockResolvedValue([
+        { id: 'wallet-b' },
+        { id: 'wallet-a' },
+      ] as any);
+      (mockPrismaClient.transaction.groupBy as any).mockResolvedValue([]);
+
+      await request(app)
+        .get('/api/v1/transactions/activity-summary')
+        .query({ walletIds: 'wallet-b,wallet-a' });
+
+      expect(mocks.cacheGet).toHaveBeenCalledWith(expect.stringContaining('wallet-a,wallet-b'));
+    });
+
+    it('treats an all-empty walletIds list as no filter at all', async () => {
+      mockPrismaClient.wallet.findMany.mockResolvedValue([{ id: 'wallet-1' }] as any);
+      (mockPrismaClient.transaction.groupBy as any).mockResolvedValue([]);
+
+      await request(app).get('/api/v1/transactions/activity-summary').query({ walletIds: ',,,' });
+
+      // Filtering to nothing must mean "every accessible wallet", not "an
+      // empty id filter" — the latter would silently return zeroes.
+      const walletQuery = (mockPrismaClient.wallet.findMany as any).mock.calls[0][0];
+      expect(walletQuery.where.id).toBeUndefined();
+    });
+
+    it('caps how many wallet ids one request may name', async () => {
+      mockPrismaClient.wallet.findMany.mockResolvedValue([{ id: 'wallet-1' }] as any);
+      (mockPrismaClient.transaction.groupBy as any).mockResolvedValue([]);
+
+      const ids = Array.from({ length: 500 }, (_, i) => `w-${i}`).join(',');
+      await request(app).get('/api/v1/transactions/activity-summary').query({ walletIds: ids });
+
+      // Unbounded, this list flows into a Prisma `in` clause and into the
+      // cache key, letting one request build an arbitrarily large query.
+      const walletQuery = (mockPrismaClient.wallet.findMany as any).mock.calls[0][0];
+      expect(walletQuery.where.id.in.length).toBe(200);
+    });
+
+    it('returns 500 when the aggregate fails', async () => {
+      mockPrismaClient.wallet.findMany.mockResolvedValue([{ id: 'wallet-1' }] as any);
+      (mockPrismaClient.transaction.groupBy as any).mockRejectedValue(new Error('database down'));
+
+      const response = await request(app).get('/api/v1/transactions/activity-summary');
+
+      expect(response.status).toBe(500);
     });
   });
 });

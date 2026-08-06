@@ -468,6 +468,28 @@ export const transactionSchemas = {
     },
     required: ['name', 'value'],
   },
+  ActivitySummary: {
+    type: 'object',
+    properties: {
+      count: { type: 'integer', description: 'Confirmed transactions in the period.' },
+      receivedSats: {
+        type: 'number',
+        description: 'Total received in the period, as a positive magnitude.',
+      },
+      sentSats: {
+        type: 'number',
+        description:
+          'Total sent in the period, as a positive magnitude. Never netted against receivedSats — a period that received and spent the same amount is not an empty period.',
+      },
+      latestAt: {
+        type: 'string',
+        format: 'date-time',
+        nullable: true,
+        description: 'Block time of the most recent confirmed transaction, or null.',
+      },
+    },
+    required: ['count', 'receivedSats', 'sentSats', 'latestAt'],
+  },
   WalletPendingTransaction: {
     type: 'object',
     properties: {

@@ -293,6 +293,7 @@ const STATIC_CREATE_WALLET_API_RESPONSES: Record<string, MockApiResponse> = {
   'GET /admin/version': mockResponse({ updateAvailable: false, currentVersion: '0.8.14' }),
   'GET /admin/agents': mockResponse([]),
   'GET /transactions/recent': mockResponse([]),
+  'GET /transactions/activity-summary': mockResponse({ count: 0, receivedSats: 0, sentSats: 0, latestAt: null }),
   'GET /transactions/balance-history': mockResponse([]),
   'GET /ai/status': mockResponse({ available: false, proxyAvailable: false }),
   'GET /intelligence/status': mockResponse({ available: false, ollamaConfigured: false }),

@@ -323,6 +323,28 @@ export async function groupByType(walletId: string) {
   });
 }
 
+/**
+ * Confirmed activity across several wallets since `startDate`, grouped by type.
+ *
+ * `blockTime` non-null is the same filter `getBucketedBalanceDeltas` applies,
+ * so an activity summary and the balance chart drawn beside it always describe
+ * the same set of transactions. Unconfirmed rows are excluded deliberately:
+ * they have no settled position in the period, and the dashboard already
+ * reports mempool exposure separately as pending totals.
+ */
+export async function groupActivityByType(walletIds: string[], startDate: Date) {
+  return prisma.transaction.groupBy({
+    by: ['type'],
+    where: {
+      walletId: { in: walletIds },
+      blockTime: { not: null, gte: startDate },
+    },
+    _count: { id: true },
+    _sum: { amount: true },
+    _max: { blockTime: true },
+  });
+}
+
 export async function aggregateFees(walletId: string) {
   return prisma.transaction.aggregate({
     where: {

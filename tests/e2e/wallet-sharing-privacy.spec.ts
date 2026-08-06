@@ -240,6 +240,8 @@ const getSharedResponse: ShareApiResponder = (
   if (requestKey === "GET /transactions/recent") return mockResponse([]);
   if (requestKey === "GET /transactions/balance-history")
     return mockResponse([]);
+  if (requestKey === "GET /transactions/activity-summary")
+    return mockResponse({ count: 0, receivedSats: 0, sentSats: 0, latestAt: null });
   if (requestKey === "GET /ai/status") {
     return mockResponse({ available: false, proxyAvailable: false });
   }

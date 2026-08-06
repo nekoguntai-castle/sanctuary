@@ -128,6 +128,7 @@ export const STATIC_ADMIN_API_RESPONSES: Record<string, MockApiResponse> = {
   'GET /admin/agents/dashboard': mockResponse([]),
   'GET /admin/agents/options': mockResponse(AGENT_MANAGEMENT_OPTIONS),
   'GET /transactions/recent': mockResponse([]),
+  'GET /transactions/activity-summary': mockResponse({ count: 0, receivedSats: 0, sentSats: 0, latestAt: null }),
   'GET /transactions/balance-history': mockResponse([]),
   'GET /admin/features/audit-log': mockResponse({ entries: [], total: 0, limit: 50, offset: 0 }),
   'GET /admin/electrum-servers': mockResponse([]),

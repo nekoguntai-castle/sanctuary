@@ -39,6 +39,8 @@ export function DashboardContent({ data }: DashboardContentProps) {
     activityHasNextPage,
     activityHasPreviousPage,
     activityFetching,
+    activitySummary,
+    activitySummaryError,
     setActivityPage,
     setActivityPageSize,
     pendingTxs,
@@ -74,6 +76,9 @@ export function DashboardContent({ data }: DashboardContentProps) {
       hasPreviousPage={activityHasPreviousPage}
       hasNextPage={activityHasNextPage}
       isFetching={activityFetching}
+      activitySummary={activitySummary}
+      activitySummaryError={activitySummaryError}
+      timeframe={timeframe}
       onPageChange={setActivityPage}
       onPageSizeChange={setActivityPageSize}
     />

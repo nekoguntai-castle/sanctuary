@@ -13,6 +13,18 @@ import { asyncHandler } from '../../errors/errorHandler';
 import { bigIntToNumber, bigIntToNumberOrZero } from '../../utils/errors';
 import { getCachedBlockHeight, type Network } from '../../services/bitcoin/blockchain';
 import { requireAuthenticatedUser } from '../../middleware/auth';
+import { walletCache } from '../../services/cache';
+
+/**
+ * Both directions are carried separately and both are positive magnitudes.
+ * `latestAt` is an ISO string so the cached shape stays JSON-serialisable.
+ */
+interface ActivitySummaryPayload {
+  count: number;
+  receivedSats: number;
+  sentSats: number;
+  latestAt: string | null;
+}
 
 /** Pagination for recent transactions (max 50, default 10) */
 const RecentTxLimitSchema = z.coerce.number().int().catch(10).transform(v => Math.max(1, Math.min(v, 50)));
@@ -27,6 +39,35 @@ const RecentTxOffsetSchema = z.coerce.number().int().catch(0).transform(v => Mat
 
 /** Total balance param (defaults to 0 for invalid input) */
 const TotalBalanceSchema = z.coerce.number().int().catch(0);
+
+/**
+ * The documented period set. Validated rather than passed through: an
+ * unrecognised value would otherwise fall through `getTimeframeStartDate` to
+ * epoch and silently return all-time figures under a one-week label, and — for
+ * the cached activity summary — mint an unbounded number of cache keys from a
+ * caller-controlled string.
+ */
+const TimeframeSchema = z.enum(['1D', '1W', '1M', '1Y', 'ALL']).catch('1W');
+
+/**
+ * Ceiling on how many wallet ids a caller may name at once.
+ *
+ * Unbounded, the list flows straight into a Prisma `id: { in: [...] }` clause
+ * and — for the cached summary — into the cache key, letting one request build
+ * an arbitrarily large query and a combinatorial number of 30s cache entries.
+ * Well above any real wallet count; the filter is a convenience, not a limit on
+ * what the user owns.
+ */
+const MAX_REQUESTED_WALLET_IDS = 200;
+
+function parseRequestedWalletIds(raw: unknown): string[] | null {
+  if (typeof raw !== 'string' || raw.length === 0) {
+    return null;
+  }
+
+  const ids = raw.split(',').filter(Boolean).slice(0, MAX_REQUESTED_WALLET_IDS);
+  return ids.length > 0 ? ids : null;
+}
 
 const router = Router();
 
@@ -346,6 +387,95 @@ router.get('/transactions/balance-history', asyncHandler(async (req, res) => {
   }
 
   res.json(chartData);
+}));
+
+/**
+ * GET /api/v1/transactions/activity-summary
+ * Headline activity figures across all wallets the user can access, for the
+ * selected dashboard period.
+ *
+ * Exists because /transactions/recent returns a page and never counts the whole
+ * set — the dashboard's collapsed Recent Activity bar needs a real total, and
+ * deriving one from a page would be an invented number.
+ *
+ * Query params:
+ * - timeframe: '1D' | '1W' | '1M' | '1Y' | 'ALL' (default: '1W')
+ * - walletIds: comma-separated list of wallet IDs to filter (optional)
+ */
+router.get('/transactions/activity-summary', asyncHandler(async (req, res) => {
+  const userId = requireAuthenticatedUser(req).userId;
+  /* v8 ignore next -- schema catch provides default for malformed query input */
+  const timeframe = TimeframeSchema.safeParse(req.query.timeframe ?? '1W').data ?? '1W';
+  const requestedWalletIds = parseRequestedWalletIds(req.query.walletIds);
+
+  // Scoped by the repository, which ANDs the caller's id filter with the
+  // user's access clause. Everything below aggregates over the wallets this
+  // query returns, never over `requestedWalletIds` — asking for someone else's
+  // wallet drops it silently rather than leaking or erroring.
+  const accessibleWallets = await walletRepository.findAccessibleWithSelect(
+    userId,
+    { id: true },
+    requestedWalletIds ? { id: { in: requestedWalletIds } } : undefined,
+  );
+
+  if (accessibleWallets.length === 0) {
+    return res.json({ count: 0, receivedSats: 0, sentSats: 0, latestAt: null });
+  }
+
+  const walletIds = accessibleWallets.map(w => w.id);
+  // Sorted so two requests covering the same wallets share a cache entry
+  // regardless of the order the client happened to list them in.
+  const cacheKey = `activity-summary:${userId}:${timeframe}:${[...walletIds].sort().join(',')}`;
+
+  // Best-effort: a cache fault must not take down a read endpoint that does
+  // not need the cache to answer correctly.
+  let summary = await walletCache.get<ActivitySummaryPayload>(cacheKey).catch(() => null);
+
+  if (!summary) {
+    const startDate = getTimeframeStartDate(timeframe);
+    const grouped = await transactionRepository.groupActivityByType(walletIds, startDate);
+
+    let count = 0;
+    let received = BigInt(0);
+    let sent = BigInt(0);
+    let latestAt: Date | null = null;
+
+    for (const group of grouped) {
+      count += group._count.id;
+
+      // Both legs are reported as positive magnitudes and never netted. A
+      // single signed total renders a period that received and spent the same
+      // amount as "nothing happened" — the same reasoning the dashboard's
+      // pending totals already follow.
+      const amount = group._sum.amount ?? BigInt(0);
+      const magnitude = amount < BigInt(0) ? -amount : amount;
+      if (group.type === 'received') {
+        received += magnitude;
+      } else if (group.type === 'sent') {
+        sent += magnitude;
+      }
+
+      const groupLatest = group._max.blockTime;
+      if (groupLatest && (latestAt === null || groupLatest > latestAt)) {
+        latestAt = groupLatest;
+      }
+    }
+
+    summary = {
+      count,
+      receivedSats: bigIntToNumberOrZero(received),
+      sentSats: bigIntToNumberOrZero(sent),
+      latestAt: latestAt ? latestAt.toISOString() : null,
+    };
+
+    // Same 30s TTL as the per-wallet stats endpoint, and cleared outright by
+    // invalidateWalletCaches on any wallet event — the TTL is a backstop, not
+    // the freshness guarantee. Best-effort for the same reason as the read: a
+    // failed write must not discard a correct response.
+    await walletCache.set(cacheKey, summary, 30).catch(() => undefined);
+  }
+
+  res.json(summary);
 }));
 
 export default router;

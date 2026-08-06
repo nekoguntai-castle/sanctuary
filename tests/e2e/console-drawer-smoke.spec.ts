@@ -140,6 +140,7 @@ const STATIC_RESPONSES: Record<string, MockApiResponse> = {
   }),
   [`GET /wallets/${WALLET_ID}/drafts`]: mockResponse([]),
   [`GET /wallets/${WALLET_ID}/transactions/pending`]: mockResponse([]),
+  "GET /transactions/activity-summary": mockResponse({ count: 0, receivedSats: 0, sentSats: 0, latestAt: null }),
   "GET /transactions/balance-history": mockResponse([
     { name: "Start", value: WALLET.balance },
     { name: "Now", value: WALLET.balance },

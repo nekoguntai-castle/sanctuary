@@ -22,6 +22,7 @@ import type {
   RecentTransaction,
   AggregatedPendingTransaction,
   BalanceHistoryPoint,
+  ActivitySummary,
   Timeframe,
   Address,
   GetAddressesParams,
@@ -200,6 +201,23 @@ export async function getBalanceHistory(
     params.walletIds = walletIds.join(',');
   }
   return apiClient.get<BalanceHistoryPoint[]>('/transactions/balance-history', params);
+}
+
+/**
+ * Get confirmed activity totals across all wallets for a period.
+ *
+ * Separate from getRecentTransactions because that endpoint returns a page and
+ * never counts the whole set — a total derived from a page would be invented.
+ */
+export async function getActivitySummary(
+  timeframe: Timeframe,
+  walletIds?: string[]
+): Promise<ActivitySummary> {
+  const params: Record<string, string | number> = { timeframe };
+  if (walletIds && walletIds.length > 0) {
+    params.walletIds = walletIds.join(',');
+  }
+  return apiClient.get<ActivitySummary>('/transactions/activity-summary', params);
 }
 
 // ========================================

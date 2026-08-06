@@ -42,6 +42,10 @@ export const useWebSocketQueryInvalidation = () => {
         queryClient.invalidateQueries({ queryKey: ['pendingTransactions'] });
         // Also invalidate recent transactions query
         queryClient.invalidateQueries({ queryKey: ['recentTransactions'] });
+        // ...and the period totals shown above that list, or a new transaction
+        // would appear in the list under a summary still reporting the old
+        // count for as long as the dashboard stayed open.
+        queryClient.invalidateQueries({ queryKey: ['activitySummary'] });
       }
 
       // Invalidate wallet balance when balance changes
@@ -59,6 +63,9 @@ export const useWebSocketQueryInvalidation = () => {
       // Invalidate pending transactions to show updated confirmations
       queryClient.invalidateQueries({ queryKey: ['pendingTransactions'] });
       queryClient.invalidateQueries({ queryKey: ['recentTransactions'] });
+      // A new block confirms transactions, which changes the confirmed-only
+      // period totals.
+      queryClient.invalidateQueries({ queryKey: ['activitySummary'] });
       // Also refresh wallets since UTXOs may have new confirmations
       queryClient.invalidateQueries({ queryKey: ['wallets'] });
     };
