@@ -827,6 +827,54 @@ EOF
     "an already-parameterised checkout must be left unchanged"
 }
 
+# The upgrade lane cleaned up without ever dumping container health logs, so a
+# container that went unhealthy left no record of WHY. Run 8795 showed the
+# gateway unhealthy for the full 300s window with nothing naming the cause,
+# because the health log lives on the container and cleanup destroys it.
+# fresh-install has captured this on failure all along; the upgrade lane — the
+# longest and most expensive lane — did not.
+#
+# Order matters: the capture must precede cleanup_containers, or there is
+# nothing left to inspect.
+test_upgrade_teardown_captures_diagnostics_before_cleanup() {
+  local lane="$PROJECT_ROOT/tests/install/e2e/upgrade-install.test.sh"
+
+  # Scope to the teardown function: there is also a setup-time
+  # cleanup_containers that clears stale state before the run, and comparing
+  # against that one would compare the wrong pair of lines.
+  local teardown_body capture_line cleanup_line
+  teardown_body="$(awk '/^teardown\(\) \{/{f=1} f{print} f&&/^\}/{exit}' "$lane")"
+
+  capture_line="$(printf '%s\n' "$teardown_body" | grep -n 'capture_compose_failure_diagnostics' | head -1 | cut -d: -f1)"
+  cleanup_line="$(printf '%s\n' "$teardown_body" | grep -n 'cleanup_containers' | head -1 | cut -d: -f1)"
+
+  if [ -z "$capture_line" ]; then
+    echo -e "${RED}ASSERTION FAILED:${NC} upgrade lane must capture compose failure diagnostics"
+    return 1
+  fi
+  if [ -z "$cleanup_line" ]; then
+    echo -e "${RED}ASSERTION FAILED:${NC} could not locate cleanup_containers in the upgrade lane"
+    return 1
+  fi
+  if [ "$capture_line" -ge "$cleanup_line" ]; then
+    echo -e "${RED}ASSERTION FAILED:${NC} diagnostics capture (line $capture_line) must precede cleanup (line $cleanup_line)"
+    return 1
+  fi
+  return 0
+}
+
+# The source (legacy) stack is where upgrade failures have actually landed, so
+# its diagnostics must be captured too, not only the target stack's.
+test_upgrade_teardown_captures_source_checkout_diagnostics() {
+  local lane="$PROJECT_ROOT/tests/install/e2e/upgrade-install.test.sh"
+
+  if ! grep -q 'capture_compose_failure_diagnostics "$UPGRADE_SOURCE_CHECKOUT"' "$lane"; then
+    echo -e "${RED}ASSERTION FAILED:${NC} upgrade teardown must capture the source checkout's diagnostics"
+    return 1
+  fi
+  return 0
+}
+
 test_current_compose_ssl_mount_is_left_unchanged() {
   local source_checkout="$TEST_TMP_DIR/source"
   local compose_file="$source_checkout/docker-compose.yml"
@@ -1632,6 +1680,8 @@ main() {
   run_test "legacy optional profile compose is isolated" test_legacy_optional_profile_compose_is_isolated
   run_test "legacy cgroup v1 keys are stripped" test_legacy_cgroup_v1_keys_are_stripped_from_source_checkout
   run_test "legacy docker socket mounts are parameterised" test_legacy_docker_socket_mounts_are_parameterised
+  run_test "upgrade teardown captures diagnostics before cleanup" test_upgrade_teardown_captures_diagnostics_before_cleanup
+  run_test "upgrade teardown captures source checkout diagnostics" test_upgrade_teardown_captures_source_checkout_diagnostics
   run_test "current checkout socket mounts untouched" test_current_checkout_socket_mounts_untouched
   run_test "current checkout without cgroup v1 keys untouched" test_current_checkout_without_cgroup_v1_keys_is_untouched
   run_test "legacy cgroup v1 keys stripped from overlays" test_legacy_cgroup_v1_keys_are_stripped_from_overlays

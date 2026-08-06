@@ -507,6 +507,23 @@ teardown() {
 
     log_info "Cleaning up upgrade test environment..."
 
+    # Capture container state BEFORE cleanup destroys it. A container's health
+    # log lives on the container, so cleaning up first means an unhealthy
+    # service leaves no record of why it was unhealthy — which is exactly what
+    # happened on run 8795: the gateway sat unhealthy for the full 300s window
+    # and the artifact named neither the failing probe nor its output. The
+    # fresh-install lane has captured this on failure all along; this lane, the
+    # longest and most expensive one, did not.
+    #
+    # Both stacks are dumped: upgrade failures have landed in the source
+    # (legacy) stack more often than the target.
+    if [ "${TESTS_FAILED:-0}" -gt 0 ]; then
+        capture_compose_failure_diagnostics "$TARGET_PROJECT_ROOT" || true
+        if [ "$UPGRADE_SOURCE_CREATED" = "true" ]; then
+            capture_compose_failure_diagnostics "$UPGRADE_SOURCE_CHECKOUT" || true
+        fi
+    fi
+
     if [ "$KEEP_CONTAINERS" = "false" ]; then
         cleanup_containers "$TARGET_PROJECT_ROOT" 2>/dev/null || true
         if [ "$UPGRADE_SOURCE_CREATED" = "true" ]; then
