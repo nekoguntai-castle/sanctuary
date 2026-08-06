@@ -517,6 +517,12 @@ teardown() {
     #
     # Both stacks are dumped: upgrade failures have landed in the source
     # (legacy) stack more often than the target.
+    # Keyed off container state, not a TESTS_FAILED counter: run 8813 showed the
+    # counter reading zero inside teardown while the gateway sat unhealthy, so
+    # the gated capture never fired and cleanup destroyed the evidence. This
+    # variant is self-limiting — a healthy run prints one line.
+    capture_unhealthy_container_diagnostics "$COMPOSE_PROJECT_NAME" || true
+
     if [ "${TESTS_FAILED:-0}" -gt 0 ]; then
         capture_compose_failure_diagnostics "$TARGET_PROJECT_ROOT" || true
         if [ "$UPGRADE_SOURCE_CREATED" = "true" ]; then

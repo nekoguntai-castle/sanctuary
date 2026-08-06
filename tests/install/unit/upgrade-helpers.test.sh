@@ -875,6 +875,62 @@ test_upgrade_teardown_captures_source_checkout_diagnostics() {
   return 0
 }
 
+# Run 8813: teardown executed while TESTS_FAILED read zero, so the gated
+# capture from #691 never fired and cleanup destroyed the gateway's health log.
+# This capture keys off container state instead of a counter, so it cannot be
+# defeated by the counter being wrong.
+test_unhealthy_capture_dumps_unhealthy_container() {
+  local fake_bin="$TEST_TMP_DIR/bin-unhealthy"
+  mkdir -p "$fake_bin"
+  cat > "$fake_bin/docker" <<'EOF'
+#!/bin/sh
+case "$1" in
+  ps) echo "proj-gateway-1"; exit 0 ;;
+  inspect)
+    case "$*" in
+      *Health.Status*) echo "unhealthy"; exit 0 ;;
+      *) echo 'exit=1 output="syntax error: unexpected end of file"'; exit 0 ;;
+    esac ;;
+  logs) echo "gateway boot line"; exit 0 ;;
+esac
+exit 0
+EOF
+  chmod +x "$fake_bin/docker"
+
+  local out
+  out="$(PATH="$fake_bin:$PATH" bash -c 'source "$1"; capture_unhealthy_container_diagnostics proj' _ \
+    "$PROJECT_ROOT/tests/install/utils/helpers.sh" 2>&1)"
+
+  assert_contains "$out" "Unhealthy container: proj-gateway-1" "should name the unhealthy container"
+  assert_contains "$out" "syntax error" "should surface the healthcheck output that explains the failure"
+}
+
+# A healthy project must stay quiet, so this can run unconditionally without
+# drowning successful runs in output.
+test_unhealthy_capture_is_quiet_when_all_healthy() {
+  local fake_bin="$TEST_TMP_DIR/bin-healthy"
+  mkdir -p "$fake_bin"
+  cat > "$fake_bin/docker" <<'EOF'
+#!/bin/sh
+case "$1" in
+  ps) echo "proj-gateway-1"; exit 0 ;;
+  inspect) echo "healthy"; exit 0 ;;
+esac
+exit 0
+EOF
+  chmod +x "$fake_bin/docker"
+
+  local out
+  out="$(PATH="$fake_bin:$PATH" bash -c 'source "$1"; capture_unhealthy_container_diagnostics proj' _ \
+    "$PROJECT_ROOT/tests/install/utils/helpers.sh" 2>&1)"
+
+  assert_contains "$out" "No unhealthy containers" "a healthy project should produce a single line"
+  if echo "$out" | grep -q "Unhealthy container:"; then
+    echo -e "${RED}ASSERTION FAILED:${NC} healthy project must not dump container diagnostics"
+    return 1
+  fi
+}
+
 test_current_compose_ssl_mount_is_left_unchanged() {
   local source_checkout="$TEST_TMP_DIR/source"
   local compose_file="$source_checkout/docker-compose.yml"
@@ -1681,6 +1737,8 @@ main() {
   run_test "legacy cgroup v1 keys are stripped" test_legacy_cgroup_v1_keys_are_stripped_from_source_checkout
   run_test "legacy docker socket mounts are parameterised" test_legacy_docker_socket_mounts_are_parameterised
   run_test "upgrade teardown captures diagnostics before cleanup" test_upgrade_teardown_captures_diagnostics_before_cleanup
+  run_test "unhealthy capture dumps the unhealthy container" test_unhealthy_capture_dumps_unhealthy_container
+  run_test "unhealthy capture is quiet when all healthy" test_unhealthy_capture_is_quiet_when_all_healthy
   run_test "upgrade teardown captures source checkout diagnostics" test_upgrade_teardown_captures_source_checkout_diagnostics
   run_test "current checkout socket mounts untouched" test_current_checkout_socket_mounts_untouched
   run_test "current checkout without cgroup v1 keys untouched" test_current_checkout_without_cgroup_v1_keys_is_untouched

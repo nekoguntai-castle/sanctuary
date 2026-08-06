@@ -150,6 +150,47 @@ compose_logs() {
     fi
 }
 
+# Dump the health log of every container in the project that is not healthy.
+#
+# Unlike capture_compose_failure_diagnostics this takes no view on whether the
+# run failed: it keys off container state, which is the thing we actually want
+# evidence about. That matters because gating on a TESTS_FAILED counter proved
+# unreliable in the upgrade lane — run 8813's teardown executed while the
+# counter read zero, so the capture never fired and the gateway's health log was
+# destroyed by cleanup with nothing recorded.
+#
+# Self-limiting by construction: on a healthy run there are no unhealthy
+# containers and this prints one line. On a failing run it prints exactly the
+# containers that are worth reading.
+capture_unhealthy_container_diagnostics() {
+    local project="${1:-${COMPOSE_PROJECT_NAME:-sanctuary}}"
+    local lines="${2:-${SANCTUARY_INSTALL_DIAGNOSTIC_LOG_LINES:-80}}"
+    local health_template='{{if .State.Health}}{{range .State.Health.Log}}exit={{.ExitCode}} output={{printf "%q" .Output}}{{println}}{{end}}{{else}}no healthcheck{{end}}'
+    local found=0
+    local container state
+
+    while IFS= read -r container; do
+        [ -n "$container" ] || continue
+        state="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' \
+            "$container" 2>/dev/null || echo unknown)"
+        case "$state" in
+            healthy|none) continue ;;
+        esac
+
+        found=$((found + 1))
+        echo ""
+        echo "=== Unhealthy container: $container (state: $state) ==="
+        echo "--- healthcheck log ---"
+        docker inspect -f "$health_template" "$container" 2>&1 | tail -20 || true
+        echo "--- container log (tail $lines) ---"
+        docker logs --tail "$lines" "$container" 2>&1 | tail -"$lines" || true
+    done < <(docker ps -a --filter "label=com.docker.compose.project=$project" --format '{{.Names}}' 2>/dev/null || true)
+
+    if [ "$found" -eq 0 ]; then
+        echo "No unhealthy containers in project '$project'"
+    fi
+}
+
 capture_compose_failure_diagnostics() {
     local project_dir="${1:-.}"
     local lines="${2:-${SANCTUARY_INSTALL_DIAGNOSTIC_LOG_LINES:-200}}"
