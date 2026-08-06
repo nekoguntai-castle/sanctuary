@@ -80,7 +80,7 @@ const ConsoleAccessWarning: React.FC<{
   if (!message.accessWarnings?.includes(ELEVATED_ACCESS_WARNING)) return null;
 
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-warning-200 bg-warning-50 px-2 py-1.5 text-[11px] text-warning-800 dark:border-warning-800 dark:bg-warning-900/20 dark:text-warning-300">
+    <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-warning-200 bg-warning-50 px-2 py-1.5 text-[11px] text-warning-800 dark:border-warning-800 dark:bg-warning-900/20">
       <ShieldAlert className="h-3.5 w-3.5 flex-shrink-0" />
       <span className="font-medium">Elevated access required</span>
       <button

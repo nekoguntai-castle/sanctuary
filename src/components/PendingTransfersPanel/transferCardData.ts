@@ -1,7 +1,7 @@
 import { Check, Clock, Inbox } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { Transfer } from '../../types';
-import { formatTimeAgo } from './transferTimeUtils';
+import { relativeTimeOrUnknown } from '../../utils/relativeTime';
 
 export type TransferCardVariant = 'incoming' | 'awaiting_confirmation' | 'outgoing';
 
@@ -61,14 +61,14 @@ export function getTransferDirectionLabels(
 
 export function getTransferTimestamp(transfer: Transfer, variant: TransferCardVariant): string {
   if (variant === 'incoming') {
-    return formatTimeAgo(transfer.createdAt);
+    return relativeTimeOrUnknown(transfer.createdAt);
   }
 
   if (variant === 'awaiting_confirmation') {
-    return `Accepted ${formatTimeAgo(transfer.acceptedAt || transfer.updatedAt)}`;
+    return `Accepted ${relativeTimeOrUnknown(transfer.acceptedAt || transfer.updatedAt)}`;
   }
 
-  return `Initiated ${formatTimeAgo(transfer.createdAt)}`;
+  return `Initiated ${relativeTimeOrUnknown(transfer.createdAt)}`;
 }
 
 export function shouldShowTransferMessage(

@@ -52,7 +52,7 @@ export const LogControls: React.FC<LogControlsProps> = ({
       <button
         onClick={onFullResync}
         disabled={syncing}
-        className="px-2.5 py-1 text-xs font-medium text-warning-600 dark:text-warning-400 hover:bg-warning-100 dark:hover:bg-warning-900/30 rounded transition-colors disabled:opacity-50 flex items-center space-x-1"
+        className="px-2.5 py-1 text-xs font-medium text-warning-600 hover:bg-warning-100 dark:hover:bg-warning-900/30 rounded transition-colors disabled:opacity-50 flex items-center space-x-1"
         title="Clear all transactions and re-sync from blockchain"
       >
         <RotateCcw className="w-3 h-3" />
@@ -74,7 +74,7 @@ export const LogControls: React.FC<LogControlsProps> = ({
         onClick={onTogglePause}
         className={`p-1.5 rounded transition-colors ${
           isPaused
-            ? 'bg-warning-100 dark:bg-warning-900/30 text-warning-600 dark:text-warning-400'
+            ? 'bg-warning-100 dark:bg-warning-900/30 text-warning-600'
             : 'hover:bg-sanctuary-100 dark:hover:bg-sanctuary-800 text-sanctuary-500'
         }`}
         title={isPaused ? 'Resume' : 'Pause'}

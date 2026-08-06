@@ -19,8 +19,8 @@ export function QrImportDetails({
       {warning && (
         <div className="mb-2 p-2 rounded-lg bg-warning-50 dark:bg-warning-900/20 border border-warning-200 dark:border-warning-700">
           <div className="flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 text-warning-600 dark:text-warning-400 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-warning-700 dark:text-warning-300">
+            <AlertCircle className="w-4 h-4 text-warning-600 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-warning-700">
               {warning}
             </p>
           </div>
@@ -74,7 +74,7 @@ function QrFieldStatus({ label, extracted, missingLabel }: QrFieldStatusProps) {
           <Check className="w-3 h-3" /> From QR
         </span>
       ) : (
-        <span className={missingLabel === 'Manual' ? 'text-sanctuary-400' : 'text-warning-600 dark:text-warning-400'}>
+        <span className={missingLabel === 'Manual' ? 'text-sanctuary-400' : 'text-warning-600'}>
           {missingLabel}
         </span>
       )}

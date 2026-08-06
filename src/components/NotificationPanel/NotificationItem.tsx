@@ -1,10 +1,10 @@
 import { ChevronRight, X } from 'lucide-react';
 import type { AppNotification } from '../../contexts/AppNotificationContext';
 import {
-  formatNotificationTime,
   getNotificationIcon,
   getSeverityColors,
 } from './notificationPanelHelpers';
+import { relativeTimeOrUnknown } from '../../utils/relativeTime';
 
 interface NotificationItemProps {
   notification: AppNotification;
@@ -39,7 +39,7 @@ export const NotificationItem = ({
               <NotificationTitle notification={notification} titleClass={colors.title} />
               <NotificationMessage notification={notification} textClass={colors.text} />
               <p className="text-xs text-sanctuary-400 mt-1">
-                {formatNotificationTime(notification.createdAt)}
+                {relativeTimeOrUnknown(notification.createdAt)}
               </p>
             </div>
             <NotificationItemActions

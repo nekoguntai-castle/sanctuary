@@ -131,8 +131,8 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
     {/* Troubleshooting - show if wallet has issues */}
     {!wallet.descriptor && wallet.userRole === 'owner' && (
       <div className="surface-elevated rounded-xl p-5 border border-warning-200 dark:border-warning-800 bg-warning-50/50 dark:bg-warning-900/20">
-        <h3 className="text-base font-medium mb-2 text-warning-700 dark:text-warning-300">Troubleshooting</h3>
-        <p className="text-xs text-warning-600 dark:text-warning-400 mb-4">
+        <h3 className="text-base font-medium mb-2 text-warning-700">Troubleshooting</h3>
+        <p className="text-xs text-warning-600 mb-4">
           This wallet is missing a descriptor, which is needed to generate addresses.
           If you have hardware devices linked, you can repair the wallet to regenerate the descriptor.
         </p>

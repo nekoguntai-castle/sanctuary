@@ -24,7 +24,7 @@ export const categoryIcons: Record<string, React.ReactNode> = {
 export const categoryColors: Record<string, string> = {
   auth: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
   user: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
-  wallet: 'bg-success-100 text-success-800 dark:bg-success-900/30 dark:text-success-400',
+  wallet: 'bg-success-100 text-success-800 dark:bg-success-900/30',
   device: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400',
   admin: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
   backup: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
@@ -43,21 +43,5 @@ export function formatAction(action: string): string {
     .join(' ');
 }
 
-// Format relative time
-export function formatRelativeTime(dateStr: string): string {
-  const date = new Date(dateStr);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffSec = Math.floor(diffMs / 1000);
-  const diffMin = Math.floor(diffSec / 60);
-  const diffHour = Math.floor(diffMin / 60);
-  const diffDay = Math.floor(diffHour / 24);
-
-  if (diffSec < 60) return 'just now';
-  if (diffMin < 60) return `${diffMin}m ago`;
-  if (diffHour < 24) return `${diffHour}h ago`;
-  if (diffDay < 7) return `${diffDay}d ago`;
-  return date.toLocaleDateString();
-}
 
 export const PAGE_SIZE = 25;

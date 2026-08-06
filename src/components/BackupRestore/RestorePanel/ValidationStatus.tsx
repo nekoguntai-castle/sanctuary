@@ -30,7 +30,7 @@ export function ValidationStatus({ isValidating, validationResult }: ValidationS
 
 function ValidationSuccess() {
   return (
-    <div className="flex items-center space-x-2 p-3 rounded-lg bg-success-50 dark:bg-success-900/20 border border-success-200 dark:border-success-800 text-success-600 dark:text-success-400">
+    <div className="flex items-center space-x-2 p-3 rounded-lg bg-success-50 dark:bg-success-900/20 border border-success-200 dark:border-success-800 text-success-600">
       <Check className="w-4 h-4" />
       <span className="text-sm">Backup is valid and ready to restore</span>
     </div>
@@ -55,7 +55,7 @@ function ValidationIssues({ issues }: { issues: string[] }) {
 
 function ValidationWarnings({ warnings }: { warnings: string[] }) {
   return (
-    <div className="flex items-start space-x-2 p-3 rounded-lg bg-warning-50 dark:bg-warning-900/20 border border-warning-200 dark:border-warning-800 text-warning-700 dark:text-warning-400">
+    <div className="flex items-start space-x-2 p-3 rounded-lg bg-warning-50 dark:bg-warning-900/20 border border-warning-200 dark:border-warning-800 text-warning-700">
       <AlertTriangle className="w-4 h-4 mt-0.5" />
       <div className="text-sm">
         <p className="font-medium">Warnings:</p>

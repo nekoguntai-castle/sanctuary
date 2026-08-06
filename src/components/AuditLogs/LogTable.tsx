@@ -9,7 +9,8 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import type { AuditLogEntry } from '../../api/admin';
-import { categoryIcons, categoryColors, formatAction, formatRelativeTime } from './constants';
+import { categoryIcons, categoryColors, formatAction } from './constants';
+import { relativeTimeOrUnknown } from '../../utils/relativeTime';
 
 function handleRowKeyDown(
   event: KeyboardEvent<HTMLTableRowElement>,
@@ -105,7 +106,7 @@ export const LogTable: React.FC<LogTableProps> = ({
                         className="text-sanctuary-900 dark:text-sanctuary-100"
                         title={new Date(log.createdAt).toLocaleString()}
                       >
-                        {formatRelativeTime(log.createdAt)}
+                        {relativeTimeOrUnknown(log.createdAt)}
                       </span>
                     </div>
                   </td>
@@ -131,7 +132,7 @@ export const LogTable: React.FC<LogTableProps> = ({
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     {log.success ? (
-                      <span className="inline-flex items-center text-success-600 dark:text-success-400">
+                      <span className="inline-flex items-center text-success-600">
                         <CheckCircle className="w-4 h-4 mr-1" />
                         <span className="text-sm">Success</span>
                       </span>

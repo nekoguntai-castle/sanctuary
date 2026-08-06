@@ -230,7 +230,7 @@ function CompactTimeLabel({
   if (!compact) return null;
 
   return (
-    <div className={`text-[10px] font-medium mt-1 ${isPending ? 'text-warning-600 dark:text-warning-400' : 'text-sanctuary-400 dark:text-sanctuary-500'}`}>
+    <div className={`text-[10px] font-medium mt-1 ${isPending ? 'text-warning-600' : 'text-sanctuary-400 dark:text-sanctuary-500'}`}>
       {block.time}
     </div>
   );

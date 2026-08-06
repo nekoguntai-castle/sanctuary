@@ -68,14 +68,14 @@ export const AboutModal: React.FC<AboutModalProps> = ({
               </div>
             ) : versionInfo?.updateAvailable ? (
               <div className="p-3 rounded-lg bg-success-50 dark:bg-success-900/30 border border-success-200 dark:border-success-700">
-                <div className="flex items-center space-x-2 text-success-700 dark:text-success-300">
+                <div className="flex items-center space-x-2 text-success-700">
                   <Zap className="h-4 w-4" />
                   <span className="text-sm font-medium">
                     Update available: v{versionInfo.latestVersion}
                   </span>
                 </div>
                 {versionInfo.releaseName && (
-                  <p className="text-xs text-success-600 dark:text-success-400 mt-1">
+                  <p className="text-xs text-success-600 mt-1">
                     {versionInfo.releaseName}
                   </p>
                 )}
@@ -83,7 +83,7 @@ export const AboutModal: React.FC<AboutModalProps> = ({
                   href={versionInfo.releaseUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center space-x-1 text-xs text-success-700 dark:text-success-300 hover:underline mt-2"
+                  className="inline-flex items-center space-x-1 text-xs text-success-700 hover:underline mt-2"
                 >
                   <span>View release notes</span>
                   <ExternalLink className="h-3 w-3" />
@@ -242,7 +242,7 @@ const DonationSection: React.FC<DonationSectionProps> = ({
         {copiedAddress === copyType ? (
           <>
             <Check className="h-3 w-3 text-success-500 animate-copy-bounce" />
-            <span className="text-success-600 dark:text-success-400">Copied!</span>
+            <span className="text-success-600">Copied!</span>
           </>
         ) : (
           <>

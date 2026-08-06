@@ -25,7 +25,7 @@ function FeatureFlagAuditContent({
               <span className="text-sm font-mono text-sanctuary-900 dark:text-sanctuary-100">{entry.key}</span>
               <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
                 entry.newValue
-                  ? 'bg-success-100 dark:bg-success-900/30 text-success-700 dark:text-success-400'
+                  ? 'bg-success-100 dark:bg-success-900/30 text-success-700'
                   : 'bg-sanctuary-100 dark:bg-sanctuary-800 text-sanctuary-600 dark:text-sanctuary-400'
               }`}>
                 {entry.newValue ? 'enabled' : 'disabled'}

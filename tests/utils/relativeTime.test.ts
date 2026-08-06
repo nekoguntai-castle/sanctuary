@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatRelativeTime } from '../../src/utils/relativeTime';
+import { formatRelativeTime, relativeTimeOrUnknown } from '../../src/utils/relativeTime';
 
 const NOW = new Date('2026-08-05T12:00:00.000Z');
 const ago = (ms: number) => new Date(NOW.getTime() - ms).toISOString();
@@ -52,5 +52,21 @@ describe('formatRelativeTime', () => {
 
   it('defaults to the current time when no reference is given', () => {
     expect(formatRelativeTime(new Date())).toBe('just now');
+  });
+});
+
+describe('relativeTimeOrUnknown', () => {
+  it('passes a formattable value straight through', () => {
+    expect(relativeTimeOrUnknown(ago(HOUR), NOW)).toBe('1h ago');
+  });
+
+  it('reads as "unknown" rather than rendering null into a sentence', () => {
+    // Callers interpolate this ("Accepted <x>"), so a null would surface as
+    // the literal string "null".
+    expect(relativeTimeOrUnknown('not a date', NOW)).toBe('unknown');
+  });
+
+  it('defaults to the current time when no reference is given', () => {
+    expect(relativeTimeOrUnknown(new Date())).toBe('just now');
   });
 });

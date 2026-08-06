@@ -45,7 +45,7 @@ function EncryptionKeysHeader() {
   return (
     <div className="p-6 border-b border-sanctuary-100 dark:border-sanctuary-800 bg-warning-50 dark:bg-warning-900/20">
       <div className="flex items-center space-x-3">
-        <div className="p-2 surface-secondary rounded-lg text-warning-600 dark:text-warning-400">
+        <div className="p-2 surface-secondary rounded-lg text-warning-600">
           <Key className="w-5 h-5" />
         </div>
         <div>
@@ -60,8 +60,8 @@ function EncryptionKeysHeader() {
 function EncryptionKeysWarning() {
   return (
     <div className="flex items-start space-x-3 p-3 rounded-lg bg-warning-50 dark:bg-warning-900/20 border border-warning-200 dark:border-warning-800">
-      <Shield className="w-4 h-4 text-warning-600 dark:text-warning-400 flex-shrink-0 mt-0.5" />
-      <div className="text-sm text-warning-700 dark:text-warning-300">
+      <Shield className="w-4 h-4 text-warning-600 flex-shrink-0 mt-0.5" />
+      <div className="text-sm text-warning-700">
         <strong>Important:</strong> These keys encrypt your node passwords and 2FA secrets.
         Without them, encrypted data cannot be restored on a new Sanctuary instance.
         <strong className="block mt-1">Back up these keys along with your backup file!</strong>

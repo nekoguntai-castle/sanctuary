@@ -22,7 +22,7 @@ export function WalletTelegramSettingsPage({ controller }: WalletTelegramSetting
           </div>
           <h3 className="text-lg font-medium text-sanctuary-900 dark:text-sanctuary-100">Telegram Notifications</h3>
           {controller.success && (
-            <span className="text-xs text-success-600 dark:text-success-400 ml-auto">Saved!</span>
+            <span className="text-xs text-success-600 ml-auto">Saved!</span>
           )}
         </div>
       </div>

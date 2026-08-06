@@ -106,7 +106,7 @@ function WebSocketStatus({ connected, state }: WebSocketStatusProps) {
     return (
       <div className="flex items-center text-xs">
         <Wifi className="w-3.5 h-3.5 text-success-500 mr-1.5" />
-        <span className="text-success-600 dark:text-success-400 font-medium">Live</span>
+        <span className="text-success-600 font-medium">Live</span>
       </div>
     );
   }
@@ -115,7 +115,7 @@ function WebSocketStatus({ connected, state }: WebSocketStatusProps) {
     return (
       <div className="flex items-center text-xs">
         <div className="w-3.5 h-3.5 rounded-full border border-warning-500 border-t-transparent animate-spin mr-1.5"></div>
-        <span className="text-warning-600 dark:text-warning-400 font-medium">Connecting</span>
+        <span className="text-warning-600 font-medium">Connecting</span>
       </div>
     );
   }

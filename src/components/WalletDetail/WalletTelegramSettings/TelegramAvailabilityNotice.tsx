@@ -17,9 +17,9 @@ const NOTICE_COPY: Record<TelegramAvailabilityNoticeProps['availability'], {
     title: 'Telegram not configured',
     body: 'Configure your Telegram bot in Account Settings to receive notifications.',
     className: 'p-4 bg-warning-50 dark:bg-warning-900/20 border border-warning-200 dark:border-warning-800 rounded-lg',
-    iconClassName: 'w-5 h-5 text-warning-600 dark:text-warning-400 mt-0.5 flex-shrink-0',
-    titleClassName: 'text-sm font-medium text-warning-700 dark:text-warning-300',
-    bodyClassName: 'text-xs text-warning-600 dark:text-warning-400 mt-1',
+    iconClassName: 'w-5 h-5 text-warning-600 mt-0.5 flex-shrink-0',
+    titleClassName: 'text-sm font-medium text-warning-700',
+    bodyClassName: 'text-xs text-warning-600 mt-1',
   },
   disabled: {
     title: 'Telegram notifications disabled',

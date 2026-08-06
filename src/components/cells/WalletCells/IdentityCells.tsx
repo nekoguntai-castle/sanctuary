@@ -8,16 +8,16 @@ function getWalletIconDisplay(wallet: WalletWithPending) {
 
   return {
     iconClass: isMultisig
-      ? 'text-warning-600 dark:text-warning-400'
-      : 'text-success-600 dark:text-success-400',
+      ? 'text-warning-600'
+      : 'text-success-600',
     walletTypeForIcon: isMultisig ? WalletType.MULTI_SIG : WalletType.SINGLE_SIG,
   };
 }
 
 function getWalletTypeBadgeClass(isMultisig: boolean) {
   return isMultisig
-    ? 'bg-warning-100 text-warning-800 border border-warning-200 dark:bg-warning-500/10 dark:text-warning-300 dark:border-warning-500/20'
-    : 'bg-success-100 text-success-800 border border-success-200 dark:bg-success-500/10 dark:text-success-300 dark:border-success-500/20';
+    ? 'bg-warning-100 text-warning-800 border border-warning-200 dark:bg-warning-500/10 dark:border-warning-500/20'
+    : 'bg-success-100 text-success-800 border border-success-200 dark:bg-success-500/10 dark:border-success-500/20';
 }
 
 export function NameCell({ item: wallet }: WalletCellProps) {

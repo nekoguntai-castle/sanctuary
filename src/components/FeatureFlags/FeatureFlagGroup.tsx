@@ -39,7 +39,7 @@ function FeatureFlagRow({
                 {flag.key}
               </span>
               {saveSuccess === flag.key && (
-                <span className="flex items-center space-x-1 text-success-600 dark:text-success-400">
+                <span className="flex items-center space-x-1 text-success-600">
                   <Check className="w-3 h-3" />
                   <span className="text-[11px]">Saved</span>
                 </span>
@@ -74,7 +74,7 @@ function FeatureFlagRow({
       </div>
 
       {flag.hasSideEffects && (
-        <div className="mt-2 flex items-start space-x-2 p-2 rounded-lg bg-warning-50 dark:bg-warning-900/20 text-warning-700 dark:text-warning-400">
+        <div className="mt-2 flex items-start space-x-2 p-2 rounded-lg bg-warning-50 dark:bg-warning-900/20 text-warning-700">
           <Info className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
           <span className="text-[11px]">
             {flag.sideEffectDescription || 'Toggling this flag has immediate runtime side effects.'}

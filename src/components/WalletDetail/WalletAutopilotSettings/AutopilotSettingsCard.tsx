@@ -40,7 +40,7 @@ function AutopilotHeader({ success }: { success: boolean }) {
         </div>
         <h3 className="text-lg font-medium text-sanctuary-900 dark:text-sanctuary-100">Autopilot</h3>
         {success && (
-          <span className="text-xs text-success-600 dark:text-success-400 ml-auto">Saved!</span>
+          <span className="text-xs text-success-600 ml-auto">Saved!</span>
         )}
       </div>
     </div>
@@ -51,10 +51,10 @@ function NotificationsRequiredNotice() {
   return (
     <div className="p-4 bg-warning-50 dark:bg-warning-900/20 border border-warning-200 dark:border-warning-800 rounded-lg">
       <div className="flex items-start space-x-3">
-        <AlertCircle className="w-5 h-5 text-warning-600 dark:text-warning-400 mt-0.5 flex-shrink-0" />
+        <AlertCircle className="w-5 h-5 text-warning-600 mt-0.5 flex-shrink-0" />
         <div>
-          <p className="text-sm font-medium text-warning-700 dark:text-warning-300">Notifications required</p>
-          <p className="text-xs text-warning-600 dark:text-warning-400 mt-1">
+          <p className="text-sm font-medium text-warning-700">Notifications required</p>
+          <p className="text-xs text-warning-600 mt-1">
             Configure Telegram or push notifications in Account Settings to use Autopilot.
             Autopilot sends consolidation suggestions via notification channels.
           </p>

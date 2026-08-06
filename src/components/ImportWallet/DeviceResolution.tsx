@@ -95,8 +95,8 @@ export const DeviceResolutionStep: React.FC<DeviceResolutionProps> = ({
                 : 'bg-success-100 dark:bg-success-900/30'
             }`}>
               {validationResult.walletType === WalletType.MULTI_SIG
-                ? <MultiSigIcon className="w-5 h-5 text-warning-600 dark:text-warning-400" />
-                : <SingleSigIcon className="w-5 h-5 text-success-600 dark:text-success-400" />
+                ? <MultiSigIcon className="w-5 h-5 text-warning-600" />
+                : <SingleSigIcon className="w-5 h-5 text-success-600" />
               }
             </div>
             <div>

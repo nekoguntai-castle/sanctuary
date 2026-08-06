@@ -41,7 +41,7 @@ export const BackupCompleteModal: React.FC<BackupCompleteModalProps> = ({
         <div className="p-6 border-b border-sanctuary-100 dark:border-sanctuary-800 bg-warning-50 dark:bg-warning-900/20">
           <div className="flex items-center space-x-3">
             <div className="p-2 bg-warning-100 dark:bg-warning-800/50 rounded-lg">
-              <Key className="w-5 h-5 text-warning-600 dark:text-warning-400" />
+              <Key className="w-5 h-5 text-warning-600" />
             </div>
             <div>
               <h3 className="text-lg font-medium text-sanctuary-900 dark:text-sanctuary-100">
@@ -54,8 +54,8 @@ export const BackupCompleteModal: React.FC<BackupCompleteModalProps> = ({
 
         <div className="p-6 space-y-4">
           <div className="flex items-start space-x-3 p-3 rounded-lg bg-warning-50 dark:bg-warning-900/20 border border-warning-200 dark:border-warning-800">
-            <AlertTriangle className="w-5 h-5 text-warning-600 dark:text-warning-400 flex-shrink-0 mt-0.5" />
-            <div className="text-sm text-warning-700 dark:text-warning-300">
+            <AlertTriangle className="w-5 h-5 text-warning-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-warning-700">
               <strong>To restore this backup on a new instance, you'll need these encryption keys.</strong>
               <p className="mt-1">Without them, node passwords and 2FA settings cannot be restored.</p>
             </div>

@@ -15,7 +15,7 @@ export function AgentHeader({ agent }: { agent: WalletAgentMetadata }) {
 function AgentStatusBadge({ agent }: { agent: WalletAgentMetadata }) {
   if (agent.status === 'active' && !agent.revokedAt) {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-success-100 text-success-700 dark:bg-success-900/30 dark:text-success-400">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-success-100 text-success-700 dark:bg-success-900/30">
         <Check className="w-3 h-3" />
         Active
       </span>
@@ -24,7 +24,7 @@ function AgentStatusBadge({ agent }: { agent: WalletAgentMetadata }) {
 
   if (agent.status === 'paused') {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-warning-100 text-warning-700 dark:bg-warning-900/30 dark:text-warning-400">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-warning-100 text-warning-700 dark:bg-warning-900/30">
         <PauseCircle className="w-3 h-3" />
         Paused
       </span>

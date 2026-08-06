@@ -97,7 +97,7 @@ export const BackupPanel: React.FC<BackupPanelProps> = ({
 
         {/* Success/Error Messages */}
         {backupSuccess && (
-          <div className="flex items-center space-x-2 p-3 rounded-lg bg-success-50 dark:bg-success-900/20 border border-success-200 dark:border-success-800 text-success-600 dark:text-success-400">
+          <div className="flex items-center space-x-2 p-3 rounded-lg bg-success-50 dark:bg-success-900/20 border border-success-200 dark:border-success-800 text-success-600">
             <Check className="w-4 h-4" />
             <span className="text-sm">Backup created and downloaded successfully</span>
           </div>

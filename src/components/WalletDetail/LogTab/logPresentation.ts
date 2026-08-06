@@ -18,11 +18,11 @@ export function getLevelTextClass(level: string): string {
   }
 
   if (level === 'info') {
-    return 'text-success-600 dark:text-success-400';
+    return 'text-success-600';
   }
 
   if (level === 'warn') {
-    return 'text-warning-600 dark:text-warning-400';
+    return 'text-warning-600';
   }
 
   return 'text-rose-600 dark:text-rose-400';

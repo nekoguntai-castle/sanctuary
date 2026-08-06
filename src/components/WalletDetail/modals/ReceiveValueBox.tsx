@@ -34,7 +34,7 @@ export const ReceiveValueBox: React.FC<ReceiveValueBoxProps> = ({
             onClick={onCopy}
             className={`flex-shrink-0 p-2 rounded transition-colors ${
               copied
-                ? 'bg-success-100 dark:bg-success-500/20 text-success-600 dark:text-success-400'
+                ? 'bg-success-100 dark:bg-success-500/20 text-success-600'
                 : 'hover:bg-sanctuary-200 dark:hover:bg-sanctuary-700 text-sanctuary-400'
             }`}
             title={copied ? 'Copied!' : 'Copy'}

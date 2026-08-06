@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { AlertTriangle, Info, Shield, ChevronRight, ChevronDown, XCircle, Check } from 'lucide-react';
 import type { AIInsight } from '../../../api/intelligence';
 import { INSIGHT_TYPE_LABELS } from '../../../api/intelligence';
-import { formatRelativeTime } from '../../AuditLogs/constants';
+import { relativeTimeOrUnknown } from '../../../utils/relativeTime';
 
 interface InsightCardProps {
   insight: AIInsight;
@@ -70,7 +70,7 @@ export const InsightCard: React.FC<InsightCardProps> = ({ insight, onDismiss, on
             {insight.summary}
           </p>
           <span className="mt-1 inline-block text-[9px] text-sanctuary-400 dark:text-sanctuary-500">
-            {formatRelativeTime(insight.createdAt)}
+            {relativeTimeOrUnknown(insight.createdAt)}
           </span>
         </div>
         {expanded ? (

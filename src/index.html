@@ -89,6 +89,23 @@
                 900: 'var(--color-sent-900)',
                 950: 'var(--color-sent-950)',
               },
+              // Shared-wallet accent. Every theme emits the full
+              // --color-shared-* scale and the registry sets it generically,
+              // but this mapping was missing, so every `*-shared-*` utility in
+              // the app produced no CSS at all.
+              shared: {
+                50: 'var(--color-shared-50)',
+                100: 'var(--color-shared-100)',
+                200: 'var(--color-shared-200)',
+                300: 'var(--color-shared-300)',
+                400: 'var(--color-shared-400)',
+                500: 'var(--color-shared-500)',
+                600: 'var(--color-shared-600)',
+                700: 'var(--color-shared-700)',
+                800: 'var(--color-shared-800)',
+                900: 'var(--color-shared-900)',
+                950: 'var(--color-shared-950)',
+              },
               // Network Colors (Mainnet)
               mainnet: {
                 50: 'var(--color-mainnet-50)',

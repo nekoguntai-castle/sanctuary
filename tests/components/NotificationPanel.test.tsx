@@ -574,7 +574,9 @@ describe('NotificationItem time formatting', () => {
       </AppNotificationProvider>
     );
 
-    // Since the notification was just created, it should show "Just now"
-    expect(screen.getByText('Just now')).toBeInTheDocument();
+    // Lower-case since the panel converged on the shared relative-time
+    // formatter. It was the only one of the four capitalising, and it sat
+    // beside "5m ago" rows, so the panel was already inconsistent with itself.
+    expect(screen.getByText('just now')).toBeInTheDocument();
   });
 });

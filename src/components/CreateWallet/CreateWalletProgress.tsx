@@ -55,7 +55,7 @@ function getStepLabelClass(isCompleted: boolean, isCurrent: boolean): string {
   if (isCurrent) {
     classes.push('text-primary-600 dark:text-primary-400');
   } else if (isCompleted) {
-    classes.push('text-success-600 dark:text-success-400');
+    classes.push('text-success-600');
   } else {
     classes.push('text-sanctuary-400');
   }

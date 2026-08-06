@@ -182,7 +182,7 @@ function QueuedCompactLabel({ compact }: { compact: boolean }) {
   if (!compact) return null;
 
   return (
-    <div className="text-[10px] font-medium mt-1 text-warning-600 dark:text-warning-400">
+    <div className="text-[10px] font-medium mt-1 text-warning-600">
       Queued
     </div>
   );

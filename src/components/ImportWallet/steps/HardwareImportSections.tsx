@@ -180,13 +180,13 @@ function ConnectedDeviceSummary({
   return (
     <div className="flex items-center gap-3">
       <div className="w-10 h-10 bg-success-100 dark:bg-success-900/30 rounded-full flex items-center justify-center">
-        <CheckCircle className="w-5 h-5 text-success-600 dark:text-success-400" />
+        <CheckCircle className="w-5 h-5 text-success-600" />
       </div>
       <div className="flex-1">
         <p className="font-medium text-sanctuary-900 dark:text-sanctuary-100">
           {deviceLabel}
         </p>
-        <p className="text-xs text-success-600 dark:text-success-400">Connected</p>
+        <p className="text-xs text-success-600">Connected</p>
       </div>
     </div>
   );
@@ -354,8 +354,8 @@ function XpubResult({
   return (
     <div className="surface-secondary rounded-lg p-4 border border-success-200 dark:border-success-800">
       <div className="flex items-center gap-2 mb-3">
-        <CheckCircle className="w-4 h-4 text-success-600 dark:text-success-400" />
-        <p className="text-sm font-medium text-success-700 dark:text-success-400">
+        <CheckCircle className="w-4 h-4 text-success-600" />
+        <p className="text-sm font-medium text-success-700">
           Xpub Retrieved Successfully
         </p>
       </div>

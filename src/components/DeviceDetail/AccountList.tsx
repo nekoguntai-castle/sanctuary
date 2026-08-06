@@ -42,7 +42,7 @@ export const AccountList: React.FC<AccountListProps> = ({ accounts, className = 
                 <p className="text-xs text-sanctuary-500">{typeInfo.description}</p>
               </div>
               {typeInfo.recommended && (
-                <span className="px-2 py-0.5 text-[10px] font-medium bg-success-100 dark:bg-success-500/10 text-success-700 dark:text-success-300 rounded-full flex items-center gap-1">
+                <span className="px-2 py-0.5 text-[10px] font-medium bg-success-100 dark:bg-success-500/10 text-success-700 rounded-full flex items-center gap-1">
                   <Check className="w-3 h-3" />
                   Recommended
                 </span>

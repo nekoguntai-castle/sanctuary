@@ -38,7 +38,7 @@ export function getConfirmationStatus(
     return {
       icon: 'check',
       label: `${safeConfirmations}/${deepConfirmationThreshold} Confirmations`,
-      className: 'bg-success-100 text-success-800 dark:bg-success-500/20 dark:text-success-300',
+      className: 'bg-success-100 text-success-800 dark:bg-success-500/20',
     };
   }
 
@@ -53,7 +53,7 @@ export function getConfirmationStatus(
   return {
     icon: 'clock',
     label: 'Pending Confirmation',
-    className: 'bg-warning-100 text-warning-800 dark:bg-warning-500/20 dark:text-warning-300',
+    className: 'bg-warning-100 text-warning-800 dark:bg-warning-500/20',
   };
 }
 
@@ -70,7 +70,7 @@ export function getTransactionTypeInfo(tx: Transaction, walletAddresses: string[
   if (tx.amount > 0) {
     return {
       label: 'Received',
-      className: 'text-success-600 dark:text-success-400',
+      className: 'text-success-600',
       isConsolidation: false,
     };
   }

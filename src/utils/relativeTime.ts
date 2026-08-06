@@ -56,3 +56,18 @@ export function formatRelativeTime(value: string | number | Date, now: Date = ne
 
   return date.toLocaleDateString();
 }
+
+/**
+ * Same, for callers that interpolate the result into a sentence or must render
+ * a string.
+ *
+ * Exists so the "what does an unparseable timestamp read as" decision lives in
+ * one place. Spread across call sites it was four identical `?? 'unknown'`
+ * fallbacks, each an untested branch, each free to drift.
+ */
+export function relativeTimeOrUnknown(
+  value: string | number | Date,
+  now: Date = new Date()
+): string {
+  return formatRelativeTime(value, now) ?? 'unknown';
+}

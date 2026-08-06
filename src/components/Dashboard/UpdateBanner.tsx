@@ -8,11 +8,11 @@ interface UpdateBannerProps {
 }
 
 export const UpdateBanner: React.FC<UpdateBannerProps> = ({ versionInfo, onDismiss }) => (
-  <div className="surface-elevated rounded-xl p-4 shadow-sm border border-success-300 dark:border-success-700 bg-success-50 dark:bg-success-900/30">
+  <div className="surface-elevated rounded-xl p-4 shadow-sm border border-success-200 dark:border-success-700 bg-success-50 dark:bg-success-900/30">
     <div className="flex items-center justify-between">
       <div className="flex items-center space-x-3">
         <div className="p-2 bg-success-100 dark:bg-success-800/50 rounded-lg">
-          <Download className="w-5 h-5 text-success-600 dark:text-success-400" />
+          <Download className="w-5 h-5 text-success-600" />
         </div>
         <div>
           <h3 className="text-sm font-semibold text-sanctuary-900 dark:text-sanctuary-50">

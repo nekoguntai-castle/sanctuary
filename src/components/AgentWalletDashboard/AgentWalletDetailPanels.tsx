@@ -90,7 +90,7 @@ function SpendDetail({
         {spend.feeSats ? `${formatSats(spend.feeSats)} fee · ` : ''}{spend.confirmations} conf
       </div>
       {destinationClassification && (
-        <div className="text-warning-700 dark:text-warning-300">Destination: {destinationClassification}</div>
+        <div className="text-warning-700">Destination: {destinationClassification}</div>
       )}
       {spend.counterpartyAddress && (
         <div className="truncate font-mono text-sanctuary-500 dark:text-sanctuary-400">{spend.counterpartyAddress}</div>
@@ -143,7 +143,7 @@ function AlertDetail({ alert }: { alert: AgentWalletDashboardRow['recentAlerts']
   const handlingMode = formatUnknownDestinationHandling(alert.metadata);
 
   return (
-    <div className="rounded-md border border-warning-200 bg-warning-50 p-2 text-xs text-warning-800 dark:border-warning-800 dark:bg-warning-900/20 dark:text-warning-300">
+    <div className="rounded-md border border-warning-200 bg-warning-50 p-2 text-xs text-warning-800 dark:border-warning-800 dark:bg-warning-900/20">
       <div className="font-medium">{alert.type}</div>
       <div>{alert.message}</div>
       {destinationClassification && <div>Destination: {destinationClassification}</div>}

@@ -15,9 +15,9 @@ import { LabelBadges } from "../../LabelSelector";
 import type { ClickableCellProps, TransactionCellProps } from "./types";
 
 const MULTISIG_BADGE_CLASS =
-  "bg-warning-100 text-warning-800 border border-warning-200 dark:bg-warning-500/10 dark:text-warning-300 dark:border-warning-500/20";
+  "bg-warning-100 text-warning-800 border border-warning-200 dark:bg-warning-500/10 dark:border-warning-500/20";
 const SINGLE_SIG_BADGE_CLASS =
-  "bg-success-100 text-success-800 border border-success-200 dark:bg-success-500/10 dark:text-success-300 dark:border-success-500/20";
+  "bg-success-100 text-success-800 border border-success-200 dark:bg-success-500/10 dark:border-success-500/20";
 
 interface TransactionTypeMeta {
   Icon: LucideIcon;
@@ -63,7 +63,7 @@ const getTransactionTypeMeta = (
     return {
       Icon: ArrowDownLeft,
       iconClassName:
-        "bg-success-100 text-success-600 dark:bg-success-500/10 dark:text-success-400",
+        "bg-success-100 text-success-600 dark:bg-success-500/10",
       label: "Received",
     };
   }
@@ -98,8 +98,8 @@ const getAmountClassName = (
   isConsolidation: boolean,
   isReceive: boolean,
 ): string => {
-  if (isConsolidation) return "text-sent-600 dark:text-sent-400";
-  if (isReceive) return "text-success-600 dark:text-success-400";
+  if (isConsolidation) return "text-sent-600";
+  if (isReceive) return "text-success-600";
 
   return "text-sanctuary-900 dark:text-sanctuary-100";
 };
@@ -192,7 +192,7 @@ function ConfirmationStatus({
   }
 
   return (
-    <span className="inline-flex items-center text-warning-600 dark:text-warning-400">
+    <span className="inline-flex items-center text-warning-600">
       <Clock className="w-3.5 h-3.5 mr-1" />
       Pending
     </span>

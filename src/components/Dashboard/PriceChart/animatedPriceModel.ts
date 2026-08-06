@@ -22,7 +22,7 @@ export function getAnimatedPriceClass(isAnimating: boolean, direction: PriceDire
   }
 
   return direction === 'up'
-    ? 'text-success-600 dark:text-success-400'
+    ? 'text-success-600'
     : 'text-rose-600 dark:text-rose-400';
 }
 

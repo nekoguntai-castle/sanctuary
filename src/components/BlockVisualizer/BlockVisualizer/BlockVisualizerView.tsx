@@ -44,7 +44,7 @@ function BlockVisualizerHeader() {
   return (
     <div className="flex items-center space-x-2 mb-2 px-2">
       <div className="flex-1 flex items-center justify-end">
-        <div className="flex items-center text-xs font-medium text-warning-600 dark:text-warning-400 uppercase tracking-wider opacity-90">
+        <div className="flex items-center text-xs font-medium text-warning-600 uppercase tracking-wider opacity-90">
           <span className="w-2 h-2 rounded-full bg-warning-500 animate-pulse mr-2" />
           <span>Mempool (Pending)</span>
         </div>
@@ -53,7 +53,7 @@ function BlockVisualizerHeader() {
         <ArrowRight className="w-4 h-4 text-sanctuary-400" />
       </div>
       <div className="flex-1">
-        <div className="flex items-center text-xs font-medium text-success-600 dark:text-success-400 uppercase tracking-wider">
+        <div className="flex items-center text-xs font-medium text-success-600 uppercase tracking-wider">
           <span className="w-2 h-2 rounded-full bg-success-500 mr-2" />
           <span>Blockchain (Confirmed)</span>
         </div>

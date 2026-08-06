@@ -22,7 +22,7 @@ export function TransactionAmountHero({
 
   return (
     <div className="text-center">
-      <div className={`text-4xl font-bold mb-2 ${selectedTx.amount > 0 ? 'text-success-600 dark:text-success-400' : 'text-sanctuary-900 dark:text-sanctuary-100'}`}>
+      <div className={`text-4xl font-bold mb-2 ${selectedTx.amount > 0 ? 'text-success-600' : 'text-sanctuary-900 dark:text-sanctuary-100'}`}>
         <Amount
           sats={selectedTx.amount}
           showSign={selectedTx.amount > 0}

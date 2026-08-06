@@ -53,8 +53,8 @@ function getRoleLabel(role: WalletUserRole): string {
 function WalletTypeBadge({ wallet }: { wallet: Wallet }) {
   const isMultisig = isMultisigType(wallet.type);
   const className = isMultisig
-    ? 'bg-warning-100 text-warning-800 border-warning-200 dark:bg-warning-500/10 dark:text-warning-300 dark:border-warning-500/20'
-    : 'bg-success-100 text-success-800 border-success-200 dark:bg-success-500/10 dark:text-success-300 dark:border-success-500/20';
+    ? 'bg-warning-100 text-warning-800 border-warning-200 dark:bg-warning-500/10 dark:border-warning-500/20'
+    : 'bg-success-100 text-success-800 border-success-200 dark:bg-success-500/10 dark:border-success-500/20';
   const label = isMultisig
     ? `${getQuorumM(wallet.quorum)}/${getQuorumN(wallet.quorum, wallet.totalSigners)} Multisig`
     : 'Single Sig';

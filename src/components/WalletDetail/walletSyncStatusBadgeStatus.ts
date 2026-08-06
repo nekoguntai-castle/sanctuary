@@ -59,7 +59,7 @@ function successDescriptor(wallet: Wallet): StatusDescriptor | null {
     iconClassName: STATIC_ICON,
     label: "Synced",
     title: lastSyncedTitle(wallet.lastSyncedAt),
-    className: `${BASE_BADGE} bg-success-100 text-success-700 border border-success-200 dark:bg-success-500/10 dark:text-success-300 dark:border-success-500/20`,
+    className: `${BASE_BADGE} bg-success-100 text-success-700 border border-success-200 dark:bg-success-500/10 dark:border-success-500/20`,
   };
 }
 
@@ -91,7 +91,7 @@ function notSyncedDescriptor(): StatusDescriptor {
     iconClassName: STATIC_ICON,
     label: "Not Synced",
     title: "Never synced",
-    className: `${BASE_BADGE} bg-warning-100 text-warning-700 border border-warning-200 dark:bg-warning-500/10 dark:text-warning-300 dark:border-warning-500/20`,
+    className: `${BASE_BADGE} bg-warning-100 text-warning-700 border border-warning-200 dark:bg-warning-500/10 dark:border-warning-500/20`,
   };
 }
 

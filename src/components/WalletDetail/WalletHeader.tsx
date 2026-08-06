@@ -176,13 +176,13 @@ export const WalletHeader: React.FC<WalletHeaderProps> = ({
         <div className="surface-elevated rounded-xl p-4 shadow-sm border border-warning-200 dark:border-warning-800 bg-warning-50 dark:bg-warning-950/30 animate-fade-in">
           <div className="flex items-center gap-3">
             <div className="flex-shrink-0">
-              <AlertCircle className="w-6 h-6 text-warning-600 dark:text-warning-400" />
+              <AlertCircle className="w-6 h-6 text-warning-600" />
             </div>
             <div className="flex-1">
               <h3 className="text-sm font-medium text-warning-900 dark:text-warning-100">
                 Wallet not synced
               </h3>
-              <p className="text-xs text-warning-700 dark:text-warning-300 mt-0.5">
+              <p className="text-xs text-warning-700 mt-0.5">
                 This wallet hasn't been synced with the blockchain yet. Click
                 "Sync" to fetch your transaction history and balance.
               </p>

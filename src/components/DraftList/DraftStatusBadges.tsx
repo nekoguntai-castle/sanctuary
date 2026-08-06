@@ -37,7 +37,7 @@ function DraftStatusBadge({
 
   if (draft.status === 'partial') {
     return (
-      <span className={`${statusBadgeBase} bg-warning-100 text-warning-700 dark:bg-warning-900/30 dark:text-warning-400`}>
+      <span className={`${statusBadgeBase} bg-warning-100 text-warning-700 dark:bg-warning-900/30`}>
         <AlertTriangle className="w-3 h-3" />
         {getSignedDeviceCount(draft)} of {getRequiredSignatureCount(quorum)} signed
       </span>
@@ -46,7 +46,7 @@ function DraftStatusBadge({
 
   if (draft.status === 'signed') {
     return (
-      <span className={`${statusBadgeBase} bg-success-100 text-success-700 dark:bg-success-900/30 dark:text-success-400`}>
+      <span className={`${statusBadgeBase} bg-success-100 text-success-700 dark:bg-success-900/30`}>
         <CheckCircle2 className="w-3 h-3" />
         Ready to broadcast
       </span>

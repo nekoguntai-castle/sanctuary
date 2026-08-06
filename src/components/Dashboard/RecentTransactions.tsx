@@ -32,8 +32,8 @@ export const ACTIVITY_PAGE_SIZES = [5, 10, 20] as const;
  * CSS-variable-backed and each theme already inverts them between light and
  * dark, so `text-success-600` resolves correctly in both — exactly as the chart
  * series do with `var(--color-success-600)`. A `dark:` override would fight
- * that, and `dark:text-success-400` in particular emits no CSS at all: the
- * success and sent scales skip 300 and 400 entirely.
+ * that, and the shades such overrides reach for do not exist: the success and
+ * sent scales skip 300 and 400 entirely. See tests/config/themeClassPolicy.
  */
 function ActivityCollapsedSummary({
   summary,

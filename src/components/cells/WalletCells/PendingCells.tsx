@@ -3,8 +3,8 @@ import type { CurrencyFormatter, WalletCellProps, WalletWithPending } from './ty
 
 function getPendingNetClass(net: number) {
   return net > 0
-    ? 'text-success-600 dark:text-success-400'
-    : 'text-sent-600 dark:text-sent-400';
+    ? 'text-success-600'
+    : 'text-sent-600';
 }
 
 export function PendingCell({ item: wallet }: WalletCellProps) {

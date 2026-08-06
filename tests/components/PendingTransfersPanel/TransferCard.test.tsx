@@ -4,8 +4,11 @@ import { TransferCard } from '../../../src/components/PendingTransfersPanel/Tran
 import type { Transfer } from '../../../src/types';
 
 vi.mock('../../../src/components/PendingTransfersPanel/transferTimeUtils', () => ({
-  formatTimeAgo: (d: string) => `${d} ago`,
   formatExpiry: (d: string) => `expires ${d}`,
+}));
+
+vi.mock('../../../src/utils/relativeTime', () => ({
+  relativeTimeOrUnknown: (d: string) => `${d} ago`,
 }));
 
 const makeTransfer = (overrides: Partial<Transfer> = {}): Transfer => ({

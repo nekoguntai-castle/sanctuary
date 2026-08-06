@@ -105,7 +105,7 @@ function RegistrationControlRow({
 function RegistrationStatusMessage({ registrationEnabled }: { registrationEnabled: boolean }) {
   if (registrationEnabled) {
     return (
-      <div className="flex items-center space-x-2 p-3 rounded-lg bg-success-50 dark:bg-success-900/20 text-success-700 dark:text-success-400">
+      <div className="flex items-center space-x-2 p-3 rounded-lg bg-success-50 dark:bg-success-900/20 text-success-700">
         <Check className="w-4 h-4" />
         <span className="text-sm">Public registration is enabled. Anyone can create an account.</span>
       </div>
@@ -113,7 +113,7 @@ function RegistrationStatusMessage({ registrationEnabled }: { registrationEnable
   }
 
   return (
-    <div className="flex items-center space-x-2 p-3 rounded-lg bg-warning-50 dark:bg-warning-900/20 text-warning-700 dark:text-warning-400">
+    <div className="flex items-center space-x-2 p-3 rounded-lg bg-warning-50 dark:bg-warning-900/20 text-warning-700">
       <AlertCircle className="w-4 h-4" />
       <span className="text-sm">Public registration is disabled. Only admins can create accounts.</span>
     </div>
@@ -130,7 +130,7 @@ function AccessControlSaveFeedback({
   return (
     <>
       {saveSuccess && (
-        <div className="flex items-center space-x-2 p-3 rounded-lg bg-success-50 dark:bg-success-900/20 text-success-700 dark:text-success-400">
+        <div className="flex items-center space-x-2 p-3 rounded-lg bg-success-50 dark:bg-success-900/20 text-success-700">
           <Check className="w-4 h-4" />
           <span className="text-sm">Settings saved successfully</span>
         </div>

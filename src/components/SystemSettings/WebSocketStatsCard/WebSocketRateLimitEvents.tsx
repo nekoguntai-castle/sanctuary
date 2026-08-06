@@ -3,7 +3,7 @@ import type { WebSocketStats } from '../../../api/admin';
 
 function getRateLimitReasonClass(reason: string) {
   if (reason === 'grace_period_exceeded') {
-    return 'bg-warning-100 dark:bg-warning-900/30 text-warning-700 dark:text-warning-400';
+    return 'bg-warning-100 dark:bg-warning-900/30 text-warning-700';
   }
   if (reason === 'per_second_exceeded') {
     return 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400';

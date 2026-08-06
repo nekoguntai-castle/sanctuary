@@ -25,8 +25,8 @@ const getWalletColor = (wallet: ApiWallet, active: boolean) => {
 
   if (active) {
     return isMultisig
-      ? 'text-warning-700 dark:text-warning-400'
-      : 'text-success-700 dark:text-success-400';
+      ? 'text-warning-700'
+      : 'text-success-700';
   }
 
   return isMultisig ? 'text-warning-500' : 'text-success-500';

@@ -14,9 +14,9 @@ type StandardNotificationType = Exclude<NotificationType, 'transaction'>;
 
 const standardIconRenderers: Record<StandardNotificationType, () => ReactNode> = {
   balance: () => <TrendingUp className="w-5 h-5 text-primary-600 dark:text-primary-400" />,
-  confirmation: () => <CheckCircle className="w-5 h-5 text-success-600 dark:text-success-400" />,
+  confirmation: () => <CheckCircle className="w-5 h-5 text-success-600" />,
   block: () => <Activity className="w-5 h-5 text-primary-600 dark:text-primary-400" />,
-  success: () => <CheckCircle className="w-5 h-5 text-success-600 dark:text-success-400" />,
+  success: () => <CheckCircle className="w-5 h-5 text-success-600" />,
   error: () => <X className="w-5 h-5 text-rose-600 dark:text-rose-400" />,
   warning: () => <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400" />,
   info: () => <Activity className="w-5 h-5 text-primary-600 dark:text-primary-400" />,
@@ -44,7 +44,7 @@ export const getNotificationIcon = (notification: Notification) => {
   }
 
   if (isSentLikeTransaction(notification)) {
-    return <ArrowUpRight className="w-5 h-5 text-sent-600 dark:text-sent-400" />;
+    return <ArrowUpRight className="w-5 h-5 text-sent-600" />;
   }
 
   return standardIconRenderers[notification.type as StandardNotificationType]();

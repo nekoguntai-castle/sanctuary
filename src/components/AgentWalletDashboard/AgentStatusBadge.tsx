@@ -14,12 +14,12 @@ const STATUS_BADGE_CONFIGS: Record<AgentStatusBadgeKind, StatusBadgeConfig> = {
   active: {
     Icon: Check,
     label: 'Active',
-    className: 'bg-success-100 text-success-700 dark:bg-success-900/30 dark:text-success-400',
+    className: 'bg-success-100 text-success-700 dark:bg-success-900/30',
   },
   paused: {
     Icon: PauseCircle,
     label: 'Paused',
-    className: 'bg-warning-100 text-warning-700 dark:bg-warning-900/30 dark:text-warning-400',
+    className: 'bg-warning-100 text-warning-700 dark:bg-warning-900/30',
   },
   revoked: {
     Icon: AlertTriangle,

@@ -167,7 +167,7 @@ function TelegramTestResultMessage({
   return (
     <div className={`p-3 rounded-lg flex items-center space-x-2 ${testResultBoxClass(testResult.success)}`}>
       {testResult.success ? (
-        <Check className="w-4 h-4 text-success-600 dark:text-success-400" />
+        <Check className="w-4 h-4 text-success-600" />
       ) : (
         <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400" />
       )}
@@ -187,8 +187,8 @@ function SaveSuccessMessage({
 
   return (
     <div className="p-3 bg-success-50 dark:bg-success-900/20 border border-success-200 dark:border-success-800 rounded-lg flex items-center space-x-2">
-      <Check className="w-4 h-4 text-success-600 dark:text-success-400" />
-      <span className="text-sm text-success-600 dark:text-success-400">Settings saved successfully</span>
+      <Check className="w-4 h-4 text-success-600" />
+      <span className="text-sm text-success-600">Settings saved successfully</span>
     </div>
   );
 }
@@ -273,6 +273,6 @@ function testResultBoxClass(success: boolean): string {
 
 function testResultTextClass(success: boolean): string {
   return success
-    ? 'text-success-600 dark:text-success-400'
+    ? 'text-success-600'
     : 'text-rose-600 dark:text-rose-400';
 }

@@ -78,7 +78,7 @@ export const ImportReview: React.FC<ImportReviewProps> = ({
                 </div>
               )}
               {devicesToCreate.length > 0 && (
-                <div className="flex items-center text-success-600 dark:text-success-400">
+                <div className="flex items-center text-success-600">
                   <PlusCircle className="w-4 h-4 mr-2" />
                   {devicesToCreate.length} new device{devicesToCreate.length > 1 ? 's' : ''} will be created
                 </div>

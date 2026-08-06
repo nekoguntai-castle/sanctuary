@@ -7,7 +7,7 @@ interface NetworkSyncResultProps {
 
 const getResultClassName = (type: NetworkSyncResultValue['type']) => {
   if (type === 'success') {
-    return 'text-sm text-success-600 dark:text-success-400';
+    return 'text-sm text-success-600';
   }
 
   return 'text-sm text-rose-600 dark:text-rose-400';

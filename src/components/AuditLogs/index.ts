@@ -8,4 +8,4 @@ export { LogTable } from './LogTable';
 export { LogDetailModal } from './LogDetailModal';
 
 // Constants and utilities
-export { categoryIcons, categoryColors, formatAction, formatRelativeTime, PAGE_SIZE } from './constants';
+export { categoryIcons, categoryColors, formatAction, PAGE_SIZE } from './constants';

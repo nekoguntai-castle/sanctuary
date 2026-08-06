@@ -221,8 +221,8 @@ function WalletDistributionBar({
 
 function getWalletTypeBadgeClass(isMultisig: boolean) {
   return isMultisig
-    ? 'bg-warning-100 text-warning-800 border border-warning-200 dark:bg-warning-500/10 dark:text-warning-300 dark:border-warning-500/20'
-    : 'bg-success-100 text-success-800 border border-success-200 dark:bg-success-500/10 dark:text-success-300 dark:border-success-500/20';
+    ? 'bg-warning-100 text-warning-800 border border-warning-200 dark:bg-warning-500/10 dark:border-warning-500/20'
+    : 'bg-success-100 text-success-800 border border-success-200 dark:bg-success-500/10 dark:border-success-500/20';
 }
 
 function WalletSyncIcon({ wallet }: { wallet: Wallet }) {
@@ -235,7 +235,7 @@ function WalletSyncIcon({ wallet }: { wallet: Wallet }) {
   }
   if (wallet.lastSyncStatus === 'success') {
     return (
-      <span className="inline-flex items-center text-success-600 dark:text-success-400">
+      <span className="inline-flex items-center text-success-600">
         <Check className="w-4 h-4" />
       </span>
     );
@@ -255,7 +255,7 @@ function WalletSyncIcon({ wallet }: { wallet: Wallet }) {
     );
   }
   return (
-    <span className="inline-flex items-center text-warning-600 dark:text-warning-400">
+    <span className="inline-flex items-center text-warning-600">
       <AlertTriangle className="w-4 h-4" />
     </span>
   );

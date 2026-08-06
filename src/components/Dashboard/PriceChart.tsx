@@ -28,13 +28,13 @@ function PendingTotalsRow({ pendingTotals }: { pendingTotals: PendingTotals }) {
       {incoming > 0 && (
         <span className="inline-flex items-center gap-1">
           <ArrowDownLeft className="w-3.5 h-3.5 text-success-500 shrink-0" />
-          <Amount sats={incoming} size="sm" inline className="text-success-600 dark:text-success-400" />
+          <Amount sats={incoming} size="sm" inline className="text-success-600" />
         </span>
       )}
       {outgoing > 0 && (
         <span className="inline-flex items-center gap-1">
           <ArrowUpRight className="w-3.5 h-3.5 text-sent-500 shrink-0" />
-          <Amount sats={outgoing} size="sm" inline className="text-sent-600 dark:text-sent-400" />
+          <Amount sats={outgoing} size="sm" inline className="text-sent-600" />
         </span>
       )}
       <span className="text-sanctuary-400">pending</span>
@@ -53,7 +53,7 @@ const TREND_PRESENTATION: Record<
   BalanceTrend['direction'],
   { icon: typeof TrendingUp; className: string }
 > = {
-  gain: { icon: TrendingUp, className: 'text-success-600 dark:text-success-400' },
+  gain: { icon: TrendingUp, className: 'text-success-600' },
   loss: { icon: TrendingDown, className: 'text-rose-600 dark:text-rose-400' },
   flat: { icon: Minus, className: 'text-sanctuary-500 dark:text-sanctuary-400' },
 };

@@ -386,7 +386,7 @@ function AgentKeyModal({
     <ModalWrapper title={`Issue key for ${agent.name}`} onClose={onClose} maxWidth="lg" headerBorder>
       {createdKey ? (
         <div className="space-y-4">
-          <div className="rounded-lg border border-success-200 dark:border-success-800 bg-success-50 dark:bg-success-900/20 p-3 text-sm text-success-700 dark:text-success-300">
+          <div className="rounded-lg border border-success-200 dark:border-success-800 bg-success-50 dark:bg-success-900/20 p-3 text-sm text-success-700">
             This token is shown once. Store it in the agent runtime before closing.
           </div>
           <div>

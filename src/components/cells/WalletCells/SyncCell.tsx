@@ -12,7 +12,7 @@ function SyncStatusIndicator({ wallet }: { wallet: WalletWithPending }) {
   }
   if (wallet.lastSyncStatus === 'success') {
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs text-success-600 dark:text-success-400">
+      <span className="inline-flex items-center gap-1.5 text-xs text-success-600">
         <CheckCircle className="w-3.5 h-3.5" />
         Synced
       </span>
@@ -28,7 +28,7 @@ function SyncStatusIndicator({ wallet }: { wallet: WalletWithPending }) {
   }
   if (wallet.lastSyncStatus === 'retrying') {
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs text-warning-600 dark:text-warning-400">
+      <span className="inline-flex items-center gap-1.5 text-xs text-warning-600">
         <RefreshCw className="w-3.5 h-3.5" />
         Retrying
       </span>
@@ -36,7 +36,7 @@ function SyncStatusIndicator({ wallet }: { wallet: WalletWithPending }) {
   }
   if (wallet.lastSyncStatus === 'partial') {
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs text-warning-600 dark:text-warning-400">
+      <span className="inline-flex items-center gap-1.5 text-xs text-warning-600">
         <Clock className="w-3.5 h-3.5" />
         Partial
       </span>

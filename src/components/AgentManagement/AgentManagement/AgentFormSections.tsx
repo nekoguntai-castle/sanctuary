@@ -144,7 +144,7 @@ function AgentSetupProgress({ stepIndex }: { stepIndex: number }) {
             index === stepIndex
               ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/20 dark:text-primary-200'
               : index < stepIndex
-                ? 'border-success-300 bg-success-50 text-success-700 dark:bg-success-900/20 dark:text-success-300'
+                ? 'border-success-200 bg-success-50 text-success-700 dark:bg-success-900/20'
                 : 'border-sanctuary-200 text-sanctuary-500 dark:border-sanctuary-800 dark:text-sanctuary-400'
           }`}
         >

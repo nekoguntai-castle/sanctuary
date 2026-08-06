@@ -102,7 +102,7 @@ export function InlineOperationalWalletImport({
               Paste a descriptor, wallet export, or single-sig xpub/ypub/zpub for public-key-only monitoring.
             </p>
             {lastImportedName && (
-              <div className="mt-2 flex items-center gap-2 text-xs text-success-700 dark:text-success-300">
+              <div className="mt-2 flex items-center gap-2 text-xs text-success-700">
                 <CheckCircle className="h-4 w-4" />
                 Imported and selected {lastImportedName}
               </div>
@@ -169,7 +169,7 @@ export function InlineOperationalWalletImport({
         </p>
       )}
       {rawKeyInput.kind === WalletType.MULTI_SIG && (
-        <div className="flex items-start gap-2 rounded-lg bg-warning-50 dark:bg-warning-900/20 p-3 text-sm text-warning-700 dark:text-warning-300">
+        <div className="flex items-start gap-2 rounded-lg bg-warning-50 dark:bg-warning-900/20 p-3 text-sm text-warning-700">
           <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
           <span>Use this multisig key as funding wallet material, not as the single-sig operational wallet.</span>
         </div>

@@ -54,7 +54,7 @@ function LogCategoryBadge({ category }: { category: string }) {
 function LogStatusBadge({ success }: { success: boolean }) {
   if (success) {
     return (
-      <span className="inline-flex items-center text-success-600 dark:text-success-400">
+      <span className="inline-flex items-center text-success-600">
         <CheckCircle className="w-4 h-4 mr-1" />
         Success
       </span>

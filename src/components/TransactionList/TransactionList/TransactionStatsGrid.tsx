@@ -29,12 +29,12 @@ export function TransactionStatsGrid({ txStats }: { txStats: TransactionListStat
       style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(9rem, 1fr))' }}
     >
       <StatTile label="Total" value={txStats.total} />
-      <StatTile label="Received" value={txStats.received} icon={<ArrowDownLeft className="w-3 h-3 text-success-500" />} valueClassName="text-success-600 dark:text-success-400" />
+      <StatTile label="Received" value={txStats.received} icon={<ArrowDownLeft className="w-3 h-3 text-success-500" />} valueClassName="text-success-600" />
       <StatTile label="Sent" value={txStats.sent} icon={<ArrowUpRight className="w-3 h-3 text-sanctuary-500" />} />
       <StatTile label="Consolidations" value={txStats.consolidations} icon={<RefreshCw className="w-3 h-3 text-primary-500" />} valueClassName="text-primary-600 dark:text-primary-400" />
-      <AmountStatTile label="Total In" sats={txStats.totalReceived} labelClassName="text-success-500" valueClassName="text-success-600 dark:text-success-400" />
+      <AmountStatTile label="Total In" sats={txStats.totalReceived} labelClassName="text-success-500" valueClassName="text-success-600" />
       <AmountStatTile label="Total Out" sats={txStats.totalSent} labelClassName="text-sanctuary-500" valueClassName="text-sanctuary-900 dark:text-sanctuary-100" />
-      <AmountStatTile label="Fees Paid" sats={txStats.totalFees} labelClassName="text-warning-500" valueClassName="text-warning-600 dark:text-warning-400" />
+      <AmountStatTile label="Fees Paid" sats={txStats.totalFees} labelClassName="text-warning-500" valueClassName="text-warning-600" />
     </div>
   );
 }
