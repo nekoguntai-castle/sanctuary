@@ -76,7 +76,11 @@ AGENT_CACHE_DIR="$AGENT_LOG_DIR/agent-cache"
 #      '^```' pattern let lines like '```foo {"x":"BLOCK"}' pose as
 #      fence markers while silently absorbing embedded JSON content as
 #      "inside the fence", bypassing the gate. Strict markers close that.
-PROMPT_VERSION="v11"
+# v12: ui-consistency now also receives shared helpers under src/utils
+#      and src/hooks/*.ts, and is told never to claim a symbol does not
+#      exist — it only ever sees a partial diff, and blocked a correct
+#      commit on that basis (#690).
+PROMPT_VERSION="v12"
 # Per-commit scratch dir for parallel agent outputs and stop markers.
 AGENT_TMP_DIR="${SANCTUARY_AGENT_TMP_DIR:-}"
 if [ -z "$AGENT_TMP_DIR" ]; then
@@ -668,7 +672,11 @@ run_ui_consistency_agent() {
         return 0
     fi
 
-    UI_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^src/(components|hooks|contexts)/.*\.tsx$' || true)
+    # Includes shared helpers under src/utils and src/hooks, not just .tsx
+    # under components/hooks/contexts. Without them the agent sees a component
+    # importing a symbol whose definition is outside its window and reports the
+    # import as broken — it blocked a correct commit that way (#690).
+    UI_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^src/(components|hooks|contexts)/.*\.tsx$|^src/(utils|hooks)/.*\.ts$' || true)
     if [ -z "$UI_FILES" ]; then
         return 0
     fi
@@ -688,6 +696,8 @@ CODEBASE PATTERNS:
 - Tailwind CSS with 'sanctuary' and 'primary' custom palettes, dark mode via dark: prefix
 - IMPORTANT: the 'primary', 'warning', 'success', 'sent', 'shared' palettes have INVERTED dark-mode scales: low numbers (50-200) = dark, high numbers (800-950) = light. Do NOT flag dark:bg-primary-100 as wrong. 'sanctuary', 'emerald', 'rose' use standard Tailwind scales.
 - Custom pixel sizes text-[9px], text-[10px], text-[11px] are INTENTIONAL for compact UI. Do NOT flag them.
+- You see ONLY the staged diff for a subset of files, never the whole repo. Never claim a symbol, export, file or class "does not exist", "is undefined" or "fails to build" — you cannot see enough to know that, and tsc plus the test suite already cover it. Restrict yourself to what the shown lines themselves demonstrate.
+- The themed palettes do NOT all define every shade: success, warning and sent have no 300 or 400, and a utility naming a missing shade emits no CSS. tests/config/themeClassPolicy.test.ts enforces this, so do not re-flag it.
 - Shared components live under src/components/; buttons/cards/modals have established patterns.
 
 RUBRIC CONCERNS:
