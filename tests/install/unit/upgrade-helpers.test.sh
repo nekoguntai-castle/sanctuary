@@ -267,6 +267,44 @@ test_assert_installed_image_matches_checkout_skips_when_unreadable() {
   assert_equals "0" "$rc" "unreadable image version should not fail the install"
 }
 
+# The upgrade fixture files used to define upgrade_fixture_* hooks that nothing
+# ever called -- the harness has no dispatcher, and the files were not even
+# sourced. They also called helpers that no longer exist. Fixture behaviour is
+# driven by flags from apply_upgrade_fixture_defaults instead, so the hooks were
+# removed rather than wired up.
+#
+# Guard the invariant, not the absence: a hook may exist only if something in
+# the harness calls it. That keeps this honest if a dispatcher is ever added.
+test_no_undispatched_fixture_hooks() {
+  local fixture_dir="$PROJECT_ROOT/tests/install/fixtures/upgrade"
+  local defined hook undispatched=""
+
+  [ -d "$fixture_dir" ] || return 0
+
+  defined="$(grep -rhoE '^upgrade_fixture_[a-z_]+\(\)' "$fixture_dir" 2>/dev/null |
+    sed 's/()$//' | sort -u)"
+  [ -n "$defined" ] || return 0
+
+  for hook in $defined; do
+    # Only a real call counts. Matching any mention would let a comment that
+    # merely names the hook satisfy the guard -- which is exactly how the first
+    # version of this test passed while asserting nothing.
+    if ! grep -rqE "^[^#]*\b$hook\b" \
+      "$PROJECT_ROOT/tests/install/e2e" \
+      "$PROJECT_ROOT/tests/install/utils" 2>/dev/null; then
+      undispatched="$undispatched $hook"
+    fi
+  done
+
+  if [ -n "$undispatched" ]; then
+    echo -e "${RED}ASSERTION FAILED:${NC} fixture hooks defined but never dispatched:$undispatched"
+    echo "  Either dispatch them from the harness or delete them."
+    return 1
+  fi
+
+  return 0
+}
+
 make_commit() {
   local repo="$1"
   local content="$2"
@@ -1347,6 +1385,7 @@ main() {
   run_test "upgrade cleanup fails successful fixture on cleanup failure" test_upgrade_finish_fails_successful_fixture_on_cleanup_failure
   run_test "browser refresh smoke sends csrf header" test_browser_refresh_smoke_sends_csrf_header
   run_test "support package smoke confirms shareable aggregate" test_support_package_smoke_confirms_shareable_aggregate
+  run_test "no undispatched upgrade fixture hooks" test_no_undispatched_fixture_hooks
   run_test "installed image matching checkout passes" test_assert_installed_image_matches_checkout_accepts_match
   run_test "installed image from another ref fails" test_assert_installed_image_matches_checkout_rejects_mismatch
   run_test "unreadable image version is not a failure" test_assert_installed_image_matches_checkout_skips_when_unreadable
