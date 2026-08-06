@@ -117,7 +117,15 @@ export function PriceChart({
           </p>
         </div>
         <div className="flex-1 lg:w-2/3 min-w-[200px]">
-          <PriceChartBody chartReady={chartReady} chartData={chartData} direction={trend.direction} />
+          {/* Fed the same trend the annotation is written from, so the
+              reference line and the stated change can never disagree about
+              where the period opened. */}
+          <PriceChartBody
+            chartReady={chartReady}
+            chartData={chartData}
+            direction={trend.direction}
+            openingSats={trend.openingSats}
+          />
         </div>
       </div>
     </Card>

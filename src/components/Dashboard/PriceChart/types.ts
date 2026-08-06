@@ -13,6 +13,14 @@ export interface ChartTooltipProps {
   active?: boolean;
   payload?: ChartTooltipPayload[];
   label?: string;
+  /**
+   * The app-wide sats formatter from `usePriceFreeFormatter`, so the tooltip
+   * renders in the reader's selected unit without keeping a second copy of the
+   * formatting rules. Required — recharts' `cloneElement` merges its own props
+   * over this element and never supplies one, so a default would only mask a
+   * caller that stopped passing it.
+   */
+  format: (sats: number) => string;
 }
 
 export interface PriceChartPoint {

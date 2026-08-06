@@ -1,5 +1,8 @@
-import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { useMemo } from 'react';
+import { Area, AreaChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { ChartTooltip } from './ChartTooltip';
+import { usePriceFreeFormatter } from '../../../contexts/CurrencyContext';
+import { buildBalanceAxis, buildTickFormatter } from './balanceAxisModel';
 import type { PriceChartPoint } from './types';
 import type { TrendDirection } from './balanceTrendModel';
 
@@ -7,6 +10,14 @@ interface PriceChartBodyProps {
   chartReady: boolean;
   chartData: PriceChartPoint[];
   direction?: TrendDirection;
+  /**
+   * Balance at the start of the period, marked with a reference line.
+   *
+   * Required, not defaulted: a missing value would fold 0 into the domain and
+   * re-anchor the axis at zero — silently restoring the flat-line defect this
+   * component exists to fix.
+   */
+  openingSats: number;
 }
 
 /**
@@ -18,21 +29,34 @@ interface PriceChartBodyProps {
  * accent, so "no change" does not read as a highlighted state.
  */
 /**
- * Only shades the theme actually emits. The themed palettes are `bg`,
- * `mainnet`, `primary`, `sent`, `shared`, `signet`, `success`, `testnet` and
- * `warning` — and `success`/`sent` skip 300 and 400 entirely, so those shades
- * would resolve to nothing. There is no `--color-rose-*` or
- * `--color-sanctuary-*`: those exist as Tailwind utility classes only, which is
- * why the annotation text can use them and this cannot.
+ * Series colours use only shades the theme actually emits. The themed palettes
+ * are `bg`, `mainnet`, `primary`, `sent`, `shared`, `signet`, `success`,
+ * `testnet` and `warning` — and `success`/`sent` skip 300 and 400 entirely, so
+ * those shades would resolve to nothing. There is no `--color-rose-*`, which is
+ * why the annotation text can use it and this cannot.
  *
  * `sent` is the established outgoing/negative palette (see the pending totals
  * row); `warning-*` means multisig/caution elsewhere and is not a loss colour.
  *
- * Flat reuses the neutral already hardcoded for the axis ticks below.
+ * Axis ink is `--color-chart-axis`, the token both other recharts consumers in
+ * the repo already use (WalletList/BalanceChart, WalletStats/WalletStatsCharts).
+ * It resolves to `--color-bg-400`, which several themes invert between light
+ * and dark and which the contrast setting adjusts — a hardcoded hex would do
+ * neither. `flat` reuses it so "no change" sits on the same neutral as the axis.
  */
-const NEUTRAL = '#a39e93';
+const AXIS_INK = 'var(--color-chart-axis)';
 
-const X_AXIS_TICK = { fontSize: 10, fill: NEUTRAL };
+const X_AXIS_TICK = { fontSize: 10, fill: AXIS_INK };
+const Y_AXIS_TICK = { fontSize: 10, fill: AXIS_INK };
+const OPEN_LABEL = { value: 'open', position: 'insideBottomLeft' as const, fontSize: 9, fill: AXIS_INK };
+
+/**
+ * Fits the widest label this axis can produce — `1000.0000M`, or a BTC figure
+ * at the eight-decimal cap. At the `min-w-[200px]` floor that is a little over
+ * a quarter of the width, which is the deliberate trade for a readable scale;
+ * above that breakpoint the chart column is far wider and the cost is minor.
+ */
+const Y_AXIS_WIDTH = 56;
 
 const DIRECTION_COLORS: Record<TrendDirection, { stroke: string; fill: string; cursor: string }> = {
   gain: {
@@ -46,14 +70,29 @@ const DIRECTION_COLORS: Record<TrendDirection, { stroke: string; fill: string; c
     cursor: 'var(--color-sent-500)',
   },
   flat: {
-    stroke: NEUTRAL,
-    fill: NEUTRAL,
-    cursor: NEUTRAL,
+    stroke: AXIS_INK,
+    fill: AXIS_INK,
+    cursor: AXIS_INK,
   },
 };
 
-export function PriceChartBody({ chartReady, chartData, direction = 'flat' }: PriceChartBodyProps) {
+export function PriceChartBody({
+  chartReady,
+  chartData,
+  direction = 'flat',
+  openingSats,
+}: PriceChartBodyProps) {
   const colors = DIRECTION_COLORS[direction];
+  const { format, unit } = usePriceFreeFormatter();
+
+  // Memoised because this subtree now subscribes to the currency preferences
+  // context, which republishes on any preference change — including the async
+  // provider-list load that lands mid-way through the Area's entry animation.
+  // Fresh `domain`/`ticks` array identities on each of those renders would
+  // churn the axis for no reason.
+  const axis = useMemo(() => buildBalanceAxis(chartData, openingSats), [chartData, openingSats]);
+  const formatTick = useMemo(() => buildTickFormatter(axis, unit), [axis, unit]);
+
   // Distinct per direction: a single shared id would let one chart's gradient
   // definition win for another rendered on the same page.
   const gradientId = `colorSats-${direction}`;
@@ -71,10 +110,31 @@ export function PriceChartBody({ chartReady, chartData, direction = 'flat' }: Pr
               </linearGradient>
             </defs>
             <XAxis dataKey="name" axisLine={false} tickLine={false} tick={X_AXIS_TICK} />
-            <YAxis hide />
+            {/* Fitted rather than zero-based, and labelled so the reader can
+                see where the scale starts — a truncated axis with no numbers
+                would overstate every movement. */}
+            <YAxis
+              domain={axis.domain}
+              ticks={axis.ticks}
+              tickFormatter={formatTick}
+              width={Y_AXIS_WIDTH}
+              axisLine={false}
+              tickLine={false}
+              tick={Y_AXIS_TICK}
+            />
             <Tooltip
-              content={<ChartTooltip />}
+              content={<ChartTooltip format={format} />}
               cursor={{ stroke: colors.cursor, strokeWidth: 1, strokeDasharray: '4 4' }}
+            />
+            {/* The period's opening balance. Turns the shaded area between it
+                and the line into the gain or loss the annotation states above,
+                which is the thing a fitted axis alone still leaves implicit. */}
+            <ReferenceLine
+              y={openingSats}
+              stroke={AXIS_INK}
+              strokeDasharray="4 4"
+              strokeWidth={1}
+              label={OPEN_LABEL}
             />
             <Area
               type="monotone"

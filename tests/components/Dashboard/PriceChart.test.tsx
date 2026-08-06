@@ -8,6 +8,21 @@ vi.mock('../../../src/components/Amount', () => ({
   Amount: ({ sats }: { sats: number }) => <span data-testid="amount">{sats}</span>,
 }));
 
+// Mutable so a case can switch units without re-mocking. The axis reads `unit`
+// and builds its own compact labels; the tooltip is handed `format`, the
+// app-wide formatter, so it renders exactly as amounts do everywhere else.
+const currencyUnit = { current: 'sats' as 'sats' | 'btc' };
+
+vi.mock('../../../src/contexts/CurrencyContext', () => ({
+  usePriceFreeFormatter: () => ({
+    format: (sats: number) =>
+      currencyUnit.current === 'btc'
+        ? `${(sats / 100_000_000).toFixed(8)} BTC`
+        : `${sats.toLocaleString()} sats`,
+    unit: currencyUnit.current,
+  }),
+}));
+
 vi.mock('recharts', () => ({
   ResponsiveContainer: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="responsive-container">{children}</div>
@@ -26,7 +41,23 @@ vi.mock('recharts', () => ({
   },
   Area: () => <span data-testid="area" />,
   XAxis: () => <span data-testid="x-axis" />,
-  YAxis: () => <span data-testid="y-axis" />,
+  // Surfaces the axis configuration rather than swallowing it: a bare stub
+  // would let the domain, ticks and formatter regress to recharts' zero-based
+  // default — the exact defect the fitted axis exists to fix — without
+  // failing anything.
+  YAxis: ({ domain, ticks, tickFormatter }: {
+    domain?: [number, number];
+    ticks?: number[];
+    tickFormatter?: (value: number) => string;
+  }) => (
+    <span
+      data-testid="y-axis"
+      data-domain={domain ? domain.join(',') : ''}
+      data-ticks={ticks ? ticks.join(',') : ''}
+      data-tick-labels={ticks && tickFormatter ? ticks.map(tickFormatter).join(',') : ''}
+    />
+  ),
+  ReferenceLine: ({ y }: { y?: number }) => <span data-testid="reference-line" data-y={y} />,
   Tooltip: ({ content }: { content: React.ReactElement<Record<string, unknown>> }) => (
     <div data-testid="tooltip">
       <div data-testid="tooltip-inactive">{React.cloneElement(content, { active: false, payload: [], label: '' })}</div>
@@ -333,5 +364,79 @@ describe('PriceChart balance trend', () => {
     // Previously carried by background colour alone.
     expect(screen.getByRole('button', { name: '1M' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: '1W' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  describe('balance axis', () => {
+    it('fits the y axis to the data instead of anchoring it at zero', () => {
+      // The reported defect: 12.4 BTC moving 0.03%. Against recharts' default
+      // [0, 'auto'] domain this draws as a flat line.
+      renderChart([
+        { name: 'a', sats: 1_240_380_000 },
+        { name: 'b', sats: 1_240_810_000 },
+      ]);
+
+      const [low] = screen
+        .getByTestId('y-axis')
+        .getAttribute('data-domain')!
+        .split(',')
+        .map(Number);
+
+      expect(low).toBeGreaterThan(1_000_000_000);
+    });
+
+    it('labels the ticks distinguishably rather than repeating one number', () => {
+      renderChart([
+        { name: 'a', sats: 1_240_380_000 },
+        { name: 'b', sats: 1_240_810_000 },
+      ]);
+
+      const labels = screen.getByTestId('y-axis').getAttribute('data-tick-labels')!.split(',');
+
+      // A truncated axis whose ticks all read "12.40" tells the reader nothing
+      // about where the scale starts.
+      expect(labels).toHaveLength(3);
+      expect(new Set(labels).size).toBe(3);
+    });
+
+    it('marks the period opening balance so the change has a baseline', () => {
+      renderChart([
+        { name: 'a', sats: 900_000 },
+        { name: 'b', sats: 1_000_000 },
+      ]);
+
+      expect(screen.getByTestId('reference-line')).toHaveAttribute('data-y', '900000');
+    });
+
+    it('follows the selected display unit', () => {
+      currencyUnit.current = 'btc';
+      try {
+        renderChart([
+          { name: 'a', sats: 100_000_000 },
+          { name: 'b', sats: 400_000_000 },
+        ]);
+
+        const labels = screen.getByTestId('y-axis').getAttribute('data-tick-labels')!.split(',');
+
+        // BTC labels are decimal fractions; the sats formatter would abbreviate
+        // these to "100M"/"400M".
+        expect(labels.every((label) => label.includes('.'))).toBe(true);
+      } finally {
+        currencyUnit.current = 'sats';
+      }
+    });
+
+    it('renders the tooltip through the app-wide formatter, not a private copy', () => {
+      currencyUnit.current = 'btc';
+      try {
+        renderChart([{ name: 'a', sats: 1000 }]);
+
+        // The mocked Tooltip clones the content with a payload of 42000 sats.
+        // Keeping the tooltip on `format` is what stops it drifting from how
+        // amounts render everywhere else in the app.
+        expect(screen.getByTestId('tooltip-active')).toHaveTextContent('0.00042000 BTC');
+      } finally {
+        currencyUnit.current = 'sats';
+      }
+    });
   });
 });
