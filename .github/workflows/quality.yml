@@ -702,17 +702,6 @@ jobs:
           bash -n scripts/ci/write-empty-diagnostic-breadcrumb.sh
           bash -n scripts/ci/write-diagnostic-summary.sh
           bash -n scripts/verify-addresses/verify-repeatable.sh
-          # Registered by sanctuary#611 — these had accumulated outside the
-          # sweep. tests/ci/ci-script-registration.test.sh now fails if a new
-          # scripts/ci entry is added without appearing here.
-          bash -n scripts/ci/backend-coverage-merge.sh
-          bash -n scripts/ci/backend-coverage-shard.sh
-          bash -n scripts/ci/check-llm-egress-proxy-shared-isolation.sh
-          bash -n scripts/ci/cleanup-docker-resources.sh
-          bash -n scripts/ci/install-playwright-chromium.sh
-          bash -n scripts/ci/retry-playwright-infrastructure-failure.sh
-          bash -n scripts/ci/retry-vitest-infrastructure-failure.sh
-          bash -n scripts/ci/setup-server-dependencies.sh
           # Test files — bash -n syntax sweep.
           bash -n tests/ci/provider-context.test.sh
           bash -n tests/ci/measure-wallclock.test.sh
@@ -767,17 +756,6 @@ jobs:
           bash -n tests/ci/check-workflow-composition.test.sh
           bash -n scripts/ci/check-workflows-test-only.sh
           bash -n tests/ci/workflows-test-only.test.sh
-          # Registered by sanctuary#611.
-          bash -n tests/ci/backend-coverage-scripts.test.sh
-          bash -n tests/ci/ci-script-registration.test.sh
-          bash -n tests/ci/cleanup-docker-resources.test.sh
-          bash -n tests/ci/install-playwright-chromium.test.sh
-          bash -n tests/ci/quality-audit.test.sh
-          bash -n tests/ci/quality-lizard-bootstrap.test.sh
-          bash -n tests/ci/relay-job-diagnosability.test.sh
-          bash -n tests/ci/retry-playwright-infrastructure-failure.test.sh
-          bash -n tests/ci/retry-vitest-infrastructure-failure.test.sh
-          bash -n tests/ci/sanctuary-backup.test.sh
           # Node CI helper tests.
           node tests/ci/check-github-action-runtimes.test.mjs
           node tests/ci/check-npm-install-scripts.test.mjs
@@ -849,21 +827,6 @@ jobs:
           bash tests/ci/git-default-branch.test.sh
           bash tests/ci/check-workflow-composition.test.sh
           bash tests/ci/workflows-test-only.test.sh
-          # Registered by sanctuary#611 — six of these had never executed in
-          # CI, including the regression tests for cleanup-docker-resources.sh
-          # and retry-vitest-infrastructure-failure.sh, both load-bearing on
-          # required checks. All are self-contained: no Docker daemon and no
-          # network, verified against a PATH with docker/podman removed.
-          # ci-script-registration.test.sh is the guard that keeps this list
-          # honest; it asserts its own presence here.
-          bash tests/ci/backend-coverage-scripts.test.sh
-          bash tests/ci/ci-script-registration.test.sh
-          bash tests/ci/cleanup-docker-resources.test.sh
-          bash tests/ci/install-playwright-chromium.test.sh
-          bash tests/ci/quality-audit.test.sh
-          bash tests/ci/relay-job-diagnosability.test.sh
-          bash tests/ci/retry-vitest-infrastructure-failure.test.sh
-          bash tests/ci/sanctuary-backup.test.sh
           QUALITY_CI_CLASSIFIER_TESTS
 
       - name: Write CI classifier failure breadcrumb

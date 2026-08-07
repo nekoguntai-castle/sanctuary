@@ -78,18 +78,21 @@ else
 fi
 
 # ----- 2. every test and script is in the bash -n sweep ---------------------
+# scripts/ci is walked recursively, not globbed. A plain scripts/ci/*.sh misses
+# subdirectories — scripts/ci/vendor/forgejo-artifact-v4/build.sh is registered
+# in the sweep today but was invisible to the glob, so the guard could not have
+# noticed if it were dropped. Paths are made repo-relative so the registration
+# strings match regardless of nesting depth.
 missing_sweep=()
-for path in "$REPO_ROOT"/tests/ci/*.test.sh "$REPO_ROOT"/scripts/ci/*.sh; do
+while IFS= read -r path; do
   [ -f "$path" ] || continue
+  rel="${path#"$REPO_ROOT"/}"
   name="$(basename "$path")"
-  case "$path" in
-    */tests/ci/*) rel="tests/ci/${name}" ;;
-    *)            rel="scripts/ci/${name}" ;;
-  esac
   grep -qF "bash -n ${rel}" "$QUALITY" && continue
   allowed "$name" ${SWEEP_ALLOWLIST+"${SWEEP_ALLOWLIST[@]}"} && continue
   missing_sweep+=("$rel")
-done
+done < <({ find "$REPO_ROOT/tests/ci" -maxdepth 1 -name '*.test.sh' -type f
+           find "$REPO_ROOT/scripts/ci" -name '*.sh' -type f; } | sort)
 
 if [ "${#missing_sweep[@]}" -eq 0 ]; then
   ok 'every tests/ci and scripts/ci file is in the bash -n sweep'
@@ -120,6 +123,23 @@ if grep -rqE "(bash|\./)[[:space:]]*tests/ci/${self}" "$WORKFLOW_DIR"; then
   ok 'the completeness guard is itself executed by CI'
 else
   bad "${self} is not registered — it would not run, which is the bug it checks for"
+fi
+
+# ----- 5. allowlist entries still refer to real files ------------------------
+# An exemption for a file that no longer exists grants nothing and hides that
+# its reason has expired. Left unchecked, the allowlists accumulate exactly the
+# unrecorded intent this guard exists to eliminate.
+stale_alw=()
+for entry in ${EXECUTION_ALLOWLIST+"${EXECUTION_ALLOWLIST[@]}"} \
+             ${SWEEP_ALLOWLIST+"${SWEEP_ALLOWLIST[@]}"}; do
+  [ -f "$REPO_ROOT/tests/ci/$entry" ] || [ -f "$REPO_ROOT/scripts/ci/$entry" ] \
+    || stale_alw+=("$entry")
+done
+
+if [ "${#stale_alw[@]}" -eq 0 ]; then
+  ok 'every allowlist entry refers to a file that exists'
+else
+  bad "allowlisted files that no longer exist:${stale_alw[*]/#/ } — drop the entries"
 fi
 
 echo
