@@ -65,6 +65,23 @@ EOF
   chmod +x "$bin_dir/docker"
 }
 
+write_getent_stub() {
+  # $1 = alias that resolves ("" for none). Mirrors `getent hosts <name>`.
+  local resolves="$1"
+  local bin_dir="$TEST_TEMP_DIR/bin"
+
+  mkdir -p "$bin_dir"
+  cat > "$bin_dir/getent" <<EOF
+#!/usr/bin/env bash
+if [ "\$1" = "hosts" ] && [ -n "$resolves" ] && [ "\$2" = "$resolves" ]; then
+  echo "10.88.0.1       $resolves"
+  exit 0
+fi
+exit 2
+EOF
+  chmod +x "$bin_dir/getent"
+}
+
 main() {
   TEST_TEMP_DIR="$(mktemp -d)"
   trap cleanup EXIT
@@ -94,11 +111,36 @@ EOF
       sanctuary_docker_published_host_for_endpoint 'unix:///var/run/docker.sock'
   )" = "127.0.0.1" ] ||
     fail 'expected Unix Docker socket to publish on local loopback'
+  # Rootless Podman publishes container ports on the host, reachable from a job
+  # container as host.containers.internal. The bridge gateway accepts the
+  # connection and answers nothing, so preferring it strands every published-port
+  # probe -- which is what wedged verify-vectors at the bitcoind RPC wait.
+  write_getent_stub 'host.containers.internal'
   [ "$(
-    SANCTUARY_ASSUME_CONTAINERIZED=1 \
+    PATH="$TEST_TEMP_DIR/bin:$PATH" \
+      SANCTUARY_ASSUME_CONTAINERIZED=1 \
       SANCTUARY_PROC_ROUTE_FILE="$route_file" \
       sanctuary_docker_published_host_for_endpoint 'unix:///var/run/docker.sock'
-  )" = "$gateway_host" ] || fail 'expected containerized Unix socket to publish on the gateway'
+  )" = "10.88.0.1" ] ||
+    fail 'expected containerized Unix socket to publish on host.containers.internal'
+
+  write_getent_stub 'host.docker.internal'
+  [ "$(
+    PATH="$TEST_TEMP_DIR/bin:$PATH" \
+      SANCTUARY_ASSUME_CONTAINERIZED=1 \
+      SANCTUARY_PROC_ROUTE_FILE="$route_file" \
+      sanctuary_docker_published_host_for_endpoint 'unix:///var/run/docker.sock'
+  )" = "10.88.0.1" ] ||
+    fail 'expected the Docker host alias to be used when the Podman one is absent'
+
+  # Neither alias resolves (plain Docker bridge): the gateway is still correct.
+  write_getent_stub ''
+  [ "$(
+    PATH="$TEST_TEMP_DIR/bin:$PATH" \
+      SANCTUARY_ASSUME_CONTAINERIZED=1 \
+      SANCTUARY_PROC_ROUTE_FILE="$route_file" \
+      sanctuary_docker_published_host_for_endpoint 'unix:///var/run/docker.sock'
+  )" = "$gateway_host" ] || fail 'expected containerized Unix socket to fall back to the gateway'
   [ "$(
     SANCTUARY_DOCKER_PUBLISHED_HOST=published-host \
       DOCKER_HOST=tcp://docker-host:2375 \

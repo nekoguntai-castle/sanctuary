@@ -32,9 +32,27 @@ sanctuary_running_in_container() {
 }
 
 sanctuary_default_docker_published_host() {
-  local gateway_ip
+  local gateway_ip host_alias host_internal
 
   if sanctuary_running_in_container; then
+    # Rootless Podman publishes container ports on the host, reachable from a
+    # job container as host.containers.internal; host.docker.internal is the
+    # Docker equivalent. Only one resolves on a given engine, so try both.
+    #
+    # The bridge gateway is not a substitute under rootless Podman: it accepts
+    # the connection and then answers nothing, so a probe hangs rather than
+    # failing. That is what stranded verify-vectors at the bitcoind RPC wait --
+    # bitcoind was up and listening, and nothing was reachable at the gateway.
+    # tests/install/utils/helpers.sh already resolves install-lane hosts this
+    # way; this is the same rule for published ports.
+    for host_alias in host.containers.internal host.docker.internal; do
+      host_internal="$(getent hosts "$host_alias" 2>/dev/null | awk 'NR == 1 { print $1 }')"
+      if [ -n "$host_internal" ]; then
+        printf '%s\n' "$host_internal"
+        return
+      fi
+    done
+
     gateway_ip="$(sanctuary_default_gateway_ip)"
     if [ -n "$gateway_ip" ]; then
       printf '%s\n' "$gateway_ip"

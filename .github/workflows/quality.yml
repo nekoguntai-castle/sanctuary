@@ -715,6 +715,7 @@ jobs:
           bash -n tests/ci/with-runner-lock.test.sh
           bash -n tests/ci/run-extended-upgrade-fixtures.test.sh
           bash -n tests/ci/wait-for-docker.test.sh
+          bash -n tests/ci/verify-repeatable-rpc-wait.test.sh
           bash -n tests/ci/isolated-workspace.test.sh
           bash -n tests/ci/collect-playwright-artifacts.test.sh
           bash -n tests/ci/check-actions-cache-service.test.sh
@@ -777,6 +778,7 @@ jobs:
           bash tests/ci/with-runner-lock.test.sh
           bash tests/ci/run-extended-upgrade-fixtures.test.sh
           bash tests/ci/wait-for-docker.test.sh
+          bash tests/ci/verify-repeatable-rpc-wait.test.sh
           bash tests/ci/isolated-workspace.test.sh
           bash tests/ci/collect-playwright-artifacts.test.sh
           bash tests/ci/check-actions-cache-service.test.sh

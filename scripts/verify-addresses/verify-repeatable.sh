@@ -137,7 +137,13 @@ wait_for_bitcoin_core() {
 
   printf 'Waiting for Bitcoin Core RPC at %s\n' "$rpc_url"
   for attempt in $(seq 1 60); do
+    # Bounded per attempt. Without these the 60-attempt loop is not a 120s
+    # ceiling at all: a port that accepts the connection and never answers --
+    # exactly what a wrong published host gives you -- blocks curl forever, so
+    # the wait dies on the step timeout having made three attempts.
     if curl -fsS \
+      --connect-timeout 3 \
+      --max-time 5 \
       --user "$rpc_user:$rpc_pass" \
       --data-binary '{"jsonrpc":"1.0","method":"getblockchaininfo","params":[]}' \
       "$rpc_url/" >/dev/null 2>&1; then
