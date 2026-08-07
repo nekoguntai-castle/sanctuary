@@ -315,6 +315,11 @@ Expected behavior:
 
 - The disposable PostgreSQL backup/restore drill creates, validates, deletes, restores, and rechecks representative rows.
 - The test database uses `docker/compose/test.yml` and the defaults from `scripts/integration-test-defaults.sh`.
+- Each checkout gets its own Compose project and an ephemeral host port, so two
+  worktrees can run integration tests at the same time without colliding. The
+  chosen port is printed as `Integration database published on localhost:<port>`.
+  Set `TEST_POSTGRES_PORT` to pin it — useful when attaching `psql` to a database
+  kept with `INTEGRATION_KEEP_DB=true` — or `COMPOSE_PROJECT_NAME` to pin the project.
 
 Mitigation:
 
