@@ -182,7 +182,16 @@ function peelBundledCommit(stageDir, tag) {
 }
 
 function writeReleaseNotes(options, commit) {
-  const previous = capture('git', ['-C', options.repoRoot, 'describe', '--tags', '--abbrev=0', `${options.tag}^`], true);
+  // Shared resolver: a stable tag measures from the previous STABLE tag, not
+  // the nearest one (its own RC). These notes are checksummed into SHA256SUMS,
+  // signed, and published as an immutable asset, so a wrong range cannot be
+  // corrected after the fact. Same script backs create-forge-release.sh so the
+  // Release body and this file cannot drift. See #720.
+  const previous = capture(
+    path.join(SCRIPT_DIR, 'previous-release-tag.sh'),
+    [options.tag, options.repoRoot],
+    true,
+  );
   const range = previous ? `${previous}..${options.tag}` : options.tag;
   const log = capture('git', ['-C', options.repoRoot, 'log', '--format=- %s (%h)', range]);
   writeFileSync(path.join(options.outputDir, 'release-notes.md'), `# Sanctuary ${options.tag}\n\nCommit: \`${commit}\`\n\n${log || '- Initial release'}\n`);

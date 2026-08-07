@@ -100,7 +100,10 @@ if [[ "$TAG" =~ -(rc|alpha|beta|dev) ]]; then
   PRERELEASE=true
 fi
 
-PREV_TAG="$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)"
+# Stable releases measure from the previous STABLE tag, not the nearest one
+# (which is their own RC). Shared with prepare-release-assets.mjs so the Release
+# body and the signed release-notes.md asset cannot drift apart. See #720.
+PREV_TAG="$("$SCRIPT_DIR/release/previous-release-tag.sh" "$TAG" "$ROOT_DIR")"
 if [[ -n "$PREV_TAG" ]]; then
   BODY="$(git log --oneline --no-decorate -n 100 "${PREV_TAG}..${TAG}")"
 else

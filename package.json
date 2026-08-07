@@ -111,7 +111,7 @@
     "release:prepare-assets": "node scripts/release/prepare-release-assets.mjs",
     "release:publish-assets": "node scripts/release/publish-release-assets.mjs",
     "release:verify-artifacts": "scripts/release/verify-release-artifacts.sh",
-    "test:release-distribution": "bash tests/release/create-forge-release.test.sh && bash tests/release/publish-release.test.sh && node tests/release/verify-release-artifacts.test.mjs && node tests/release/prepare-release-assets.test.mjs && node tests/release/publish-release-assets.test.mjs",
+    "test:release-distribution": "bash tests/release/previous-release-tag.test.sh && bash tests/release/create-forge-release.test.sh && bash tests/release/publish-release.test.sh && node tests/release/verify-release-artifacts.test.mjs && node tests/release/prepare-release-assets.test.mjs && node tests/release/publish-release-assets.test.mjs",
     "test:release-artifacts": "node tests/release/verify-release-artifacts.test.mjs",
     "test:mutation": "stryker run config/tooling/stryker.config.mjs",
     "test:mutation:backend": "cd server && npx stryker run",

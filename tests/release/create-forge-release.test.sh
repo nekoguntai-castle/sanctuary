@@ -45,9 +45,13 @@ reset_run_state() {
   mkdir -p "$CURL_LOG_DIR" "$RESPONSE_TMP"
 }
 
-mkdir -p "$REPO/scripts" "$BIN_DIR"
+mkdir -p "$REPO/scripts/release" "$BIN_DIR"
 cp "$SOURCE_ROOT/scripts/create-forge-release.sh" "$REPO/scripts/create-forge-release.sh"
 chmod +x "$REPO/scripts/create-forge-release.sh"
+# create-forge-release.sh delegates notes-range resolution to this script, so the
+# fixture must carry it too — without it the release script exits 127. See #720.
+cp "$SOURCE_ROOT/scripts/release/previous-release-tag.sh" "$REPO/scripts/release/previous-release-tag.sh"
+chmod +x "$REPO/scripts/release/previous-release-tag.sh"
 
 git -C "$REPO" init -q
 git -C "$REPO" config user.name "Release Test"
@@ -63,6 +67,18 @@ for commit_number in $(seq 1 105); do
 done
 git -C "$REPO" tag v1.0.0
 git -C "$REPO" tag v1.1.0-rc1
+
+# A second cycle where an RC sits BETWEEN two stable tags. This is the shape
+# that produced v0.8.60's one-line release body: nearest-tag resolution returns
+# v1.2.0-rc1 for v1.2.0, so the notes cover one commit instead of the release.
+printf 'rc commit\n' >> "$REPO/history.txt"
+git -C "$REPO" add history.txt
+git -C "$REPO" commit -qm "release change 106"
+git -C "$REPO" tag v1.2.0-rc1
+printf 'final commit\n' >> "$REPO/history.txt"
+git -C "$REPO" add history.txt
+git -C "$REPO" commit -qm "release change 107"
+git -C "$REPO" tag v1.2.0
 
 cat > "$BIN_DIR/curl" <<'STUB'
 #!/usr/bin/env bash
@@ -167,7 +183,9 @@ run_release() {
   local output_file="$3"
 
   local prev_tag body prerelease=false
-  prev_tag="$(git -C "$REPO" describe --tags --abbrev=0 "${tag}^" 2>/dev/null || true)"
+  # Mirror the production resolver rather than re-deriving it here, so the two
+  # cannot drift and quietly agree on the wrong range.
+  prev_tag="$("$SOURCE_ROOT/scripts/release/previous-release-tag.sh" "$tag" "$REPO")"
   if [[ -n "$prev_tag" ]]; then
     body="$(git -C "$REPO" log --oneline --no-decorate -n 100 "${prev_tag}..${tag}")"
   else
@@ -235,6 +253,30 @@ PY
     || fail "Forgejo and GitHub payloads differ"
   [[ -z "$(find "$RESPONSE_TMP" -type f -print -quit)" ]] \
     || fail "response temporary file was not removed"
+}
+
+test_stable_release_notes_span_previous_stable_tag() {
+  reset_run_state
+  local output="$TEST_ROOT/stable-spans-output"
+  run_release success v1.2.0 "$output"
+
+  # v1.2.0's nearest preceding tag is v1.2.0-rc1, one commit back. The notes
+  # must instead span from the previous STABLE tag, v1.0.0, covering both
+  # commits of the cycle. Regression for #720.
+  python3 - "$CURL_LOG_DIR/payload-2" <<'PY_ASSERT'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as payload_file:
+    payload = json.load(payload_file)
+body = payload["body"]
+lines = [line for line in body.splitlines() if line.strip()]
+assert any("release change 106" in line for line in lines), (
+    "notes stop at the RC — commit 106 missing, so the range was rc1..v1.2.0"
+)
+assert any("release change 107" in line for line in lines), "commit 107 missing"
+assert len(lines) == 2, f"expected exactly the 2 commits since v1.0.0, got {len(lines)}: {lines}"
+PY_ASSERT
 }
 
 test_existing_release_is_idempotent() {
@@ -339,6 +381,7 @@ test_transport_failure_fails_closed() {
 }
 
 test_stable_release_uses_provider_apis_and_bounded_notes
+test_stable_release_notes_span_previous_stable_tag
 test_existing_release_is_idempotent
 test_existing_release_mismatch_fails_closed
 test_prerelease_payload

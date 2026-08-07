@@ -830,6 +830,18 @@ jobs:
           bash tests/ci/git-default-branch.test.sh
           bash tests/ci/check-workflow-composition.test.sh
           bash tests/ci/workflows-test-only.test.sh
+          # Release distribution tests. These live under tests/release/ and were
+          # invoked by nothing until now: `npm run test:release-distribution`
+          # existed in package.json but no workflow, hook or script called it,
+          # so all five suites were silent — the #611 failure mode again, which
+          # ci-registration-completeness.test.sh does not catch because it only
+          # scans tests/ci/*.test.sh.
+          bash tests/release/previous-release-tag.test.sh
+          bash tests/release/create-forge-release.test.sh
+          bash tests/release/publish-release.test.sh
+          node tests/release/verify-release-artifacts.test.mjs
+          node tests/release/prepare-release-assets.test.mjs
+          node tests/release/publish-release-assets.test.mjs
           QUALITY_CI_CLASSIFIER_TESTS
 
       - name: Write CI classifier failure breadcrumb
