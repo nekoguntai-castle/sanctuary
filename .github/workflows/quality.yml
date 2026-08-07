@@ -676,6 +676,8 @@ jobs:
           bash -n scripts/ci/with-runner-lock.sh
           bash -n scripts/ci/run-extended-upgrade-fixtures.sh
           bash -n scripts/ci/wait-for-docker.sh
+          bash -n scripts/ci/ensure-go.sh
+          bash -n scripts/ci/rebuild-go-runner-image.sh
           bash -n scripts/ci/create-isolated-workspace.sh
           bash -n scripts/ci/run-in-isolated-workspace.sh
           bash -n scripts/ci/collect-playwright-artifacts.sh
@@ -716,6 +718,7 @@ jobs:
           bash -n tests/ci/run-extended-upgrade-fixtures.test.sh
           bash -n tests/ci/wait-for-docker.test.sh
           bash -n tests/ci/verify-repeatable-rpc-wait.test.sh
+          bash -n tests/ci/ensure-go.test.sh
           bash -n tests/ci/isolated-workspace.test.sh
           bash -n tests/ci/collect-playwright-artifacts.test.sh
           bash -n tests/ci/check-actions-cache-service.test.sh
@@ -779,6 +782,7 @@ jobs:
           bash tests/ci/run-extended-upgrade-fixtures.test.sh
           bash tests/ci/wait-for-docker.test.sh
           bash tests/ci/verify-repeatable-rpc-wait.test.sh
+          bash tests/ci/ensure-go.test.sh
           bash tests/ci/isolated-workspace.test.sh
           bash tests/ci/collect-playwright-artifacts.test.sh
           bash tests/ci/check-actions-cache-service.test.sh
