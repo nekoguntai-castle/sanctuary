@@ -1,33 +1,35 @@
 name: Podman Socket Canary
 
-# Canary for issue #667: determine empirically whether the Docker-backed
-# install/upgrade lanes can run on a rootless Podman runner.
+# Regression canary for the compose/Podman contract the Docker-backed install and
+# upgrade lanes depend on: a mountable daemon socket, a working docker-proxy
+# against the compat API, reachable published ports, volume uid mapping, and
+# healthchecks that survive compose.
 #
-# The lanes currently pin `runs-on: [ubuntu-22.04, x300-canary]` because
-# `docker-compose.yml` mounts the Docker daemon socket into the `docker-proxy`
-# service. This workflow tests whether that contract can be satisfied by
-# Podman's Docker-compatible API socket instead.
+# Written for #667 to decide whether those lanes could run on rootless Podman at
+# all. They can, and #668 converged the whole fleet — so this now guards against
+# regression rather than answering an open question.
 #
-# Targets the rootless Podman runner via the `docker` label, which only that
-# runner carries (x300 has ubuntu-*, x300-canary, playwright-*). Override with
-# the `runner_label` input to re-run the same probes on the DIND runner for a
-# side-by-side baseline.
+# It runs on whichever runner is free: every runner is rootless Podman and
+# carries both `docker` and `docker-socket`, so there is no engine difference
+# left to select between. Pass `runner_label` to pin a specific host. There is no
+# longer a Docker-in-Docker runner to compare against; the informational
+# cmd-array result in probe 6 is what a Docker baseline used to provide.
 #
 # Manual dispatch only. Every probe is non-fatal and reports its verdict; the
 # summary job decides pass/fail so a single missing API endpoint produces a
 # diagnosis rather than an opaque red.
 #
-# Run 8602 failed probe 2 on the wrong socket path; 8603 passed after both the
-# path fix and a valid_volumes change, which confounded the two. valid_volumes
-# governs mounts the RUNNER makes into job containers, whereas the compose
-# socket mount is issued to the daemon from inside the job and may not be
-# subject to it. Re-running with valid_volumes back at [] isolates that.
+# History worth keeping: run 8602 failed probe 2 on the wrong socket path, and
+# 8603 passed after both the path fix and a valid_volumes change — confounding
+# the two. Run 8605 isolated it with valid_volumes back at []: the allowlist
+# governs mounts the RUNNER makes into job containers, not compose mounts issued
+# to the daemon from inside a job, so it was never the blocker.
 
 on:
   workflow_dispatch:
     inputs:
       runner_label:
-        description: 'Runner label to target (docker = Podman/kumo, x300-canary = DIND/x300)'
+        description: 'Runner label to pin a specific host (default: any Podman runner)'
         required: false
         default: 'docker'
         type: string
