@@ -68,7 +68,7 @@ concurrency:
 
 jobs:
   verify-vectors:
-    runs-on: ubuntu-22.04
+    runs-on: go-1.25.12
     timeout-minutes: 30
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/verify-vectors
@@ -82,6 +82,9 @@ jobs:
 
       - name: Verify Python toolchain
         uses: ./.github/actions/setup-python-toolchain
+
+      - name: Verify Go toolchain
+        uses: ./.github/actions/setup-go-toolchain
 
       - name: Validate Python venv module
         run: python3 -m venv --help >/dev/null
@@ -211,7 +214,7 @@ jobs:
   # This job runs only on manual trigger and requires Docker
   regenerate-vectors:
     if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-22.04
+    runs-on: go-1.25.12
     timeout-minutes: 60
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/regenerate-vectors
@@ -225,6 +228,9 @@ jobs:
 
       - name: Verify Python toolchain
         uses: ./.github/actions/setup-python-toolchain
+
+      - name: Verify Go toolchain
+        uses: ./.github/actions/setup-go-toolchain
 
       - name: Validate Python venv module
         run: python3 -m venv --help >/dev/null

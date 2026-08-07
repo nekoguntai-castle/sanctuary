@@ -9,3 +9,8 @@ self-hosted-runner:
     # Retained while nothing targets it; drop once a release gate has run green
     # through docker-socket. See #668.
     - x300-canary
+    # Capability label: "runner carrying the Go toolchain the address
+    # cross-verification lane needs", pinned by digest to
+    # nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go. Both runners carry
+    # it, so verify-vectors stays schedulable on either. See #709.
+    - go-1.25.12
