@@ -1481,36 +1481,72 @@ jobs:
             printf "Running %s destructive backend integration spec(s) in a final vitest:\n" "${#destructive_specs[@]}"
             printf "  %s\n" "${destructive_specs[@]}"
 
-            # Self-heal a mid-run Postgres wipe (service container OOM-killed and
-            # recreated empty under shared-runner load): each attempt re-establishes
-            # the schema via prepare-integration-db.sh (idempotent: readiness gate +
-            # migrate deploy + schema assertion) before running. The inner
-            # retry-vitest-infrastructure-failure handles native worker crashes.
+            # Retry ONLY when the database vanished underneath the run. Each
+            # attempt re-establishes the schema via prepare-integration-db.sh
+            # (idempotent: readiness gate + migrate deploy + schema assertion)
+            # before running; the inner retry-vitest-infrastructure-failure
+            # handles native worker crashes.
+            #
+            # This used to retry on any non-zero exit, to self-heal a suspected
+            # mid-run Postgres wipe. sanctuary#612 disproved that hypothesis —
+            # the cause was Docker DNS rotating between several containers
+            # sharing the `postgres` alias, fixed in ff05e575 — so the blanket
+            # retry lost its stated reason while the side effect remained: a
+            # spec failing 1-in-5 survives three blind attempts ~124 times in
+            # 125, so real flakiness reads as green (sanctuary#713).
+            #
+            # NOTE: this whole step body is a single-quoted bash -c string, so
+            # no apostrophe may appear anywhere below, comments included.
+            # Shell quoting is resolved before comments are stripped, and one
+            # stray apostrophe closes the string (SC1072).
+            #
+            # classify-integration-failure.sh decides, matching connection- and
+            # schema-level signatures only. Assertion failures now fail fast.
             attempts="${SANCTUARY_INTEGRATION_GROUP_ATTEMPTS:-3}"
+            classify="${{ github.workspace }}/scripts/ci/classify-integration-failure.sh"
             for attempt in $(seq 1 "$attempts"); do
+              attempt_log="$DIAGNOSTIC_DIR/backend-integration-attempt-${attempt}.log"
               printf "\n::group::backend integration (attempt %s/%s)\n" "$attempt" "$attempts"
-              if "${{ github.workspace }}/scripts/ci/prepare-integration-db.sh" \
-                 && "${{ github.workspace }}/scripts/ci/with-runner-lock.sh" node-toolchain \
-                      "${{ github.workspace }}/scripts/ci/retry-vitest-infrastructure-failure.sh" \
-                      "backend integration" \
-                      "${{ github.workspace }}/scripts/ci/time-command.sh" \
-                      "backend integration" \
-                      npm run test:run:ci -- "${specs[@]}" \
-                 && "${{ github.workspace }}/scripts/ci/prepare-integration-db.sh" \
-                 && "${{ github.workspace }}/scripts/ci/with-runner-lock.sh" node-toolchain \
-                      "${{ github.workspace }}/scripts/ci/retry-vitest-infrastructure-failure.sh" \
-                      "backend integration destructive" \
-                      "${{ github.workspace }}/scripts/ci/time-command.sh" \
-                      "backend integration destructive" \
-                      npm run test:run:ci -- "${destructive_specs[@]}"; then
+              if {
+                   "${{ github.workspace }}/scripts/ci/prepare-integration-db.sh" \
+                   && "${{ github.workspace }}/scripts/ci/with-runner-lock.sh" node-toolchain \
+                        "${{ github.workspace }}/scripts/ci/retry-vitest-infrastructure-failure.sh" \
+                        "backend integration" \
+                        "${{ github.workspace }}/scripts/ci/time-command.sh" \
+                        "backend integration" \
+                        npm run test:run:ci -- "${specs[@]}" \
+                   && "${{ github.workspace }}/scripts/ci/prepare-integration-db.sh" \
+                   && "${{ github.workspace }}/scripts/ci/with-runner-lock.sh" node-toolchain \
+                        "${{ github.workspace }}/scripts/ci/retry-vitest-infrastructure-failure.sh" \
+                        "backend integration destructive" \
+                        "${{ github.workspace }}/scripts/ci/time-command.sh" \
+                        "backend integration destructive" \
+                        npm run test:run:ci -- "${destructive_specs[@]}";
+                 } 2>&1 | tee "$attempt_log"; then
+                if [ "$attempt" -eq 1 ]; then
+                  echo "backend integration first-attempt result: pass"
+                else
+                  printf "::warning::backend integration passed only on attempt %s/%s after a database-loss retry; the lane is not first-attempt green\n" "$attempt" "$attempts"
+                fi
                 printf "::endgroup::\n"
                 exit 0
               fi
-              printf "::warning::backend integration attempt %s/%s failed; re-establishing schema and retrying\n" "$attempt" "$attempts"
+
+              if [ "$attempt" -eq 1 ]; then
+                echo "backend integration first-attempt result: fail"
+              fi
+
+              if ! "$classify" "$attempt_log"; then
+                printf "::error::backend integration failed on attempt %s without a database-loss signature; not retrying\n" "$attempt"
+                printf "::endgroup::\n"
+                exit 1
+              fi
+
+              printf "::warning::backend integration attempt %s/%s hit a database-loss signature; re-establishing schema and retrying\n" "$attempt" "$attempts"
               printf "::endgroup::\n"
             done
 
-            echo "::error::backend integration failed after ${attempts} attempt(s)"
+            echo "::error::backend integration failed after ${attempts} attempt(s) with a database-loss signature"
             exit 1
           '
 
