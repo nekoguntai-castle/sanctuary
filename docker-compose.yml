@@ -173,7 +173,7 @@ services:
     build:
       context: .
       dockerfile: server/Dockerfile
-    image: sanctuary-backend:local
+    image: sanctuary-backend:${SANCTUARY_IMAGE_TAG:-local}
     pull_policy: build # Always build locally, never pull
     restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
     depends_on:
@@ -312,7 +312,7 @@ services:
   # Uses the same image as backend with different entry point.
   # ============================================
   worker:
-    image: sanctuary-backend:local
+    image: sanctuary-backend:${SANCTUARY_IMAGE_TAG:-local}
     pull_policy: never # Reuse image built by backend service
     restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
     depends_on:
@@ -400,7 +400,7 @@ services:
   # the `mcp` Compose profile and is published to host loopback by default.
   # ============================================
   mcp:
-    image: sanctuary-backend:local
+    image: sanctuary-backend:${SANCTUARY_IMAGE_TAG:-local}
     pull_policy: never # Reuse image built by backend service
     restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
     profiles:
@@ -474,7 +474,7 @@ services:
   # Uses the same image as backend (no rebuild)
   # ============================================
   migrate:
-    image: sanctuary-backend:local
+    image: sanctuary-backend:${SANCTUARY_IMAGE_TAG:-local}
     pull_policy: never # Reuse image built by backend service
     depends_on:
       postgres:
@@ -506,7 +506,7 @@ services:
       dockerfile: docker/frontend/Dockerfile
       args:
         VITE_API_URL: ${VITE_API_URL:-}
-    image: sanctuary-frontend:local
+    image: sanctuary-frontend:${SANCTUARY_IMAGE_TAG:-local}
     pull_policy: build # Always build locally, never pull
     restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
     depends_on:
@@ -571,7 +571,7 @@ services:
     build:
       context: .
       dockerfile: gateway/Dockerfile
-    image: sanctuary-gateway:local
+    image: sanctuary-gateway:${SANCTUARY_IMAGE_TAG:-local}
     pull_policy: build # Always build locally, never pull
     restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
     depends_on:
@@ -689,7 +689,7 @@ services:
     build:
       context: ./llm-egress-proxy
       dockerfile: Dockerfile
-    image: sanctuary-llm-egress-proxy:local
+    image: sanctuary-llm-egress-proxy:${SANCTUARY_IMAGE_TAG:-local}
     pull_policy: build # Always build locally, never pull
     restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
     depends_on:

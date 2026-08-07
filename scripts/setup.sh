@@ -827,10 +827,10 @@ validate_offline_images() {
     local missing=false
     local image
     local required_images=(
-        "sanctuary-backend:local"
-        "sanctuary-frontend:local"
-        "sanctuary-gateway:local"
-        "sanctuary-llm-egress-proxy:local"
+        "sanctuary-backend:${SANCTUARY_IMAGE_TAG:-local}"
+        "sanctuary-frontend:${SANCTUARY_IMAGE_TAG:-local}"
+        "sanctuary-gateway:${SANCTUARY_IMAGE_TAG:-local}"
+        "sanctuary-llm-egress-proxy:${SANCTUARY_IMAGE_TAG:-local}"
         "postgres:16-alpine"
         "redis:7-alpine"
         "tecnativa/docker-socket-proxy:latest"

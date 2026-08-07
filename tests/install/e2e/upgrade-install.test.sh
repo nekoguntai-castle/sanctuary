@@ -129,6 +129,9 @@ fi
 # Test configuration
 TEST_ID=$(generate_test_run_id)
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-sanctuary-upgrade-${TEST_ID}}"
+# Per-lane image tag, derived from the project name so concurrent lanes on one
+# daemon cannot alias each other's images (#719).
+export_lane_image_tag
 TEST_ROOT=$(default_install_test_root "$TARGET_PROJECT_ROOT")
 
 apply_upgrade_fixture_defaults "$UPGRADE_FIXTURE"

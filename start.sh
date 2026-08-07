@@ -266,13 +266,13 @@ MCP_PROFILE=""
 
 # Check if local images exist - if not, we need to build
 NEED_BUILD="no"
-if ! docker image inspect sanctuary-backend:local &>/dev/null; then
+if ! docker image inspect sanctuary-backend:${SANCTUARY_IMAGE_TAG:-local} &>/dev/null; then
     NEED_BUILD="yes"
 fi
-if ! docker image inspect sanctuary-frontend:local &>/dev/null; then
+if ! docker image inspect sanctuary-frontend:${SANCTUARY_IMAGE_TAG:-local} &>/dev/null; then
     NEED_BUILD="yes"
 fi
-if ! docker image inspect sanctuary-gateway:local &>/dev/null; then
+if ! docker image inspect sanctuary-gateway:${SANCTUARY_IMAGE_TAG:-local} &>/dev/null; then
     NEED_BUILD="yes"
 fi
 

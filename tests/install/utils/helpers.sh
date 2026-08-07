@@ -569,16 +569,53 @@ read_package_version() {
     sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$1" 2>/dev/null | head -1
 }
 
-# The :local image tags carry no ref, so every lane on a runner shares them and
-# `pull_policy: build` skips the build whenever the tag already exists. Drop
-# them before installing a checkout so its build cannot be short-circuited by
-# another lane's image. Layer cache is untouched, so this stays cheap.
+# Give this lane its own image tag, so concurrent lanes on one daemon cannot
+# alias each other's images.
+#
+# The `:local` tags carry no ref. Every lane on a runner shared them, and
+# `pull_policy: build` skips the build whenever the tag already exists, so a
+# lane installing an OLD ref could boot the image a concurrent lane had just
+# built from the NEW one. purge_shared_local_images() below narrowed the window
+# but could not close it: purging is a point-in-time act, and the other workflow
+# rebuilds the same tag whenever it likes. install-test.yml and
+# release-candidate.yml both fire on an RC tag by design, so the race is
+# structural rather than occasional (#719).
+#
+# COMPOSE_PROJECT_NAME is already unique per lane, so reuse it as the tag rather
+# than inventing a second identity that could drift from it. Docker tags allow
+# [A-Za-z0-9_][A-Za-z0-9._-]* up to 128 chars; project names are lowercase
+# alphanumerics and hyphens, but sanitise anyway so a caller-supplied name can
+# never produce an invalid tag and an unreadable compose error.
+#
+# Unset or empty leaves SANCTUARY_IMAGE_TAG alone, so operator installs and the
+# offline bundle keep using `:local` exactly as before.
+export_lane_image_tag() {
+    local project="${COMPOSE_PROJECT_NAME:-}"
+    [ -n "$project" ] || return 0
+
+    local tag
+    tag="$(printf '%s' "$project" | tr -c 'A-Za-z0-9._-' '-' | cut -c1-128)"
+    # A tag may not start with a separator.
+    case "$tag" in
+        [A-Za-z0-9_]*) ;;
+        *) tag="x${tag}" ;;
+    esac
+
+    export SANCTUARY_IMAGE_TAG="$tag"
+}
+
+# Drop this lane's images before installing a checkout so its build cannot be
+# short-circuited by a stale image of the same tag. With per-lane tags this is
+# now belt-and-braces rather than the primary defence, but it still matters when
+# a lane installs two checkouts in sequence (source then target) under one
+# project name. Layer cache is untouched, so this stays cheap.
 purge_shared_local_images() {
+    local tag="${SANCTUARY_IMAGE_TAG:-local}"
     docker image rm -f \
-        sanctuary-backend:local \
-        sanctuary-frontend:local \
-        sanctuary-gateway:local \
-        sanctuary-llm-egress-proxy:local >/dev/null 2>&1 || true
+        "sanctuary-backend:${tag}" \
+        "sanctuary-frontend:${tag}" \
+        "sanctuary-gateway:${tag}" \
+        "sanctuary-llm-egress-proxy:${tag}" >/dev/null 2>&1 || true
 }
 
 # Guard against an install running an image built from a different ref.
@@ -592,7 +629,7 @@ purge_shared_local_images() {
 # Compare the built image against the checkout so the failure names itself.
 assert_installed_image_matches_checkout() {
     local project_dir="$1"
-    local image="${2:-sanctuary-backend:local}"
+    local image="${2:-sanctuary-backend:${SANCTUARY_IMAGE_TAG:-local}}"
     local expected actual
 
     [ -f "$project_dir/package.json" ] || return 0

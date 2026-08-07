@@ -165,7 +165,11 @@ shared_backend_services_with_build() {
       next
     }
 
-    service != "" && /^    image: sanctuary-backend:local([[:space:]]|$)/ {
+    # Matches the legacy literal `sanctuary-backend:local` still found in older
+    # source checkouts as well as the parameterised
+    # `sanctuary-backend:${SANCTUARY_IMAGE_TAG:-local}` current compose uses for
+    # per-lane image isolation (#719).
+    service != "" && /^    image: sanctuary-backend:[^[:space:]]+([[:space:]]|$)/ {
       has_backend_image = 1
     }
 
