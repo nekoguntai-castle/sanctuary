@@ -332,6 +332,11 @@ async function getAvailableImplementations(): Promise<AddressDeriver[]> {
     console.log(`  ${status} ${impl.name} ${impl.version}`);
     if (available) {
       availableImplementations.push(impl);
+    } else {
+      // Say why. An implementation dropping out silently downgrades the
+      // cross-check without anyone noticing -- the Go implementation was absent
+      // from CI for an unknown length of time behind a bare [UNAVAILABLE].
+      console.log(`       reason: ${impl.unavailableReason ?? 'no reason reported'}`);
     }
   }
 

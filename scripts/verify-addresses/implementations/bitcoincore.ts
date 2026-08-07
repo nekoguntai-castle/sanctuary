@@ -218,7 +218,8 @@ export const bitcoinCore: AddressDeriver = {
       this.version = `${major}.${minor}.${patch}`;
 
       return true;
-    } catch {
+    } catch (error) {
+      this.unavailableReason = error instanceof Error ? error.message : String(error);
       return false;
     }
   },

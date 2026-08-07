@@ -134,7 +134,8 @@ export const goImpl: AddressDeriver = {
         this.version = result.version;
       }
       return result.available === true;
-    } catch {
+    } catch (error) {
+      this.unavailableReason = error instanceof Error ? error.message : String(error);
       return false;
     }
   },

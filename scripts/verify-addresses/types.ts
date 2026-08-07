@@ -100,4 +100,11 @@ export interface AddressDeriver {
    * Check if this implementation is available
    */
   isAvailable(): Promise<boolean>;
+
+  /**
+   * Why isAvailable() last returned false. Set by the implementation so the
+   * panel can say *why* it dropped out instead of only that it did -- a bare
+   * [UNAVAILABLE] hid a four-way cross-check masquerading as five-way.
+   */
+  unavailableReason?: string;
 }

@@ -186,7 +186,8 @@ export const caravanImpl: AddressDeriver = {
     try {
       await loadCaravan();
       return true;
-    } catch {
+    } catch (error) {
+      this.unavailableReason = error instanceof Error ? error.message : String(error);
       return false;
     }
   },
