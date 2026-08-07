@@ -77,10 +77,71 @@ assert_support_package_generation() {
     fi
 }
 
+# Prove the upgrade actually crossed the restart-staleness path, and that the
+# worker survived it.
+#
+# assert_worker_health_direct alone is not enough: it passes whether or not the
+# lane ever presented the worker with a stale pre-restart completion, which is
+# exactly the gap in #658 -- a gate that only fires when the rebuild happens to
+# take the right amount of time reports green either way.
+#
+# So this checks BOTH halves:
+#   1. the worker is healthy (the #657 fix works)
+#   2. the completion it booted with was genuinely older than maxAgeMs (the
+#      branch was entered at all)
+#
+# Failing (2) means the lane did not test what it claims to. That is a failure,
+# not a pass -- silent non-coverage is the defect this assertion exists to stop.
+#
+# (2) is established from the timestamp we planted versus worker.startedAt, NOT
+# by re-reading the completion. Ageing the record makes the schedule due, so the
+# worker re-runs it seconds after boot and overwrites the evidence -- run 9136
+# refreshed both schedules within 26s and 37s. Comparing against boot time is
+# immune to that, because both operands are fixed once the worker starts.
+assert_recurring_staleness_path_exercised() {
+    local metrics
+    metrics=$(compose_exec worker wget -q -O - http://localhost:3002/metrics 2>/dev/null || true)
+
+    if [ -z "$metrics" ]; then
+        log_error "Worker /metrics returned nothing; cannot confirm the staleness path was exercised"
+        return 1
+    fi
+
+    local state='' state_file
+    state_file="$(staleness_state_file)"
+    if [ -f "$state_file" ]; then
+        state="$(cat "$state_file")"
+    fi
+
+    # node is the established JSON idiom here; the worker image (node:24-alpine
+    # plus dumb-init/openssl) has no jq, python or curl.
+    local verdict
+    verdict="$(evaluate_staleness_verdict "$state" "$metrics")"
+
+    case "$verdict" in
+        OK*)
+            log_success "Restart-staleness path exercised and survived: ${verdict#OK }"
+            return 0
+            ;;
+        FAIL*)
+            log_error "Restart-staleness assertion failed: ${verdict#FAIL }"
+            log_error "The upgrade lane did not demonstrate the #657 path. Either the completion"
+            log_error "was not aged before the stop, or the worker rejected the aged record."
+            log_error "State file: $state_file"
+            return 1
+            ;;
+        *)
+            log_error "Unrecognised staleness verdict: $verdict"
+            return 1
+            ;;
+    esac
+}
+
 assert_post_upgrade_user_smoke() {
     local browser_base_url="$1"
 
     assert_worker_health_direct || return 1
+    assert_recurring_staleness_path_exercised || return 1
     assert_browser_auth_smoke "$browser_base_url" || return 1
     assert_support_package_generation "$browser_base_url" || return 1
 

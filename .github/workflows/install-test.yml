@@ -204,6 +204,7 @@ jobs:
           ./tests/install/unit/migration-compose-contract.test.sh
           ./tests/install/unit/reset-user-2fa-script.test.sh
           ./tests/install/unit/upgrade-helpers.test.sh
+          ./tests/install/unit/upgrade-staleness.test.sh
           ./tests/install/unit/install-scope.test.sh
           ./tests/install/unit/cleanup-containers-guard.test.sh
           ./tests/install/unit/healthcheck-shell-form.test.sh

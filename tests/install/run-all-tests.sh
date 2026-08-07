@@ -152,6 +152,9 @@ run_unit_suites() {
     if ! run_test_suite "Upgrade Helper Unit Tests" "$SCRIPT_DIR/unit/upgrade-helpers.test.sh"; then
         suite_failed=true
     fi
+    if ! run_test_suite "Upgrade Staleness Unit Tests" "$SCRIPT_DIR/unit/upgrade-staleness.test.sh"; then
+        suite_failed=true
+    fi
     if ! run_test_suite "Install Scope Classifier Unit Tests" "$SCRIPT_DIR/unit/install-scope.test.sh"; then
         suite_failed=true
     fi

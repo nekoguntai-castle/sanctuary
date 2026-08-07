@@ -33,6 +33,7 @@ source "$SCRIPT_DIR/../utils/upgrade-two-factor-auth-helpers.sh"
 source "$SCRIPT_DIR/../utils/upgrade-two-factor-verification-helpers.sh"
 source "$SCRIPT_DIR/../utils/upgrade-notification-helpers.sh"
 source "$SCRIPT_DIR/../utils/upgrade-assertions.sh"
+source "$SCRIPT_DIR/../utils/upgrade-staleness.sh"
 source "$SCRIPT_DIR/../utils/upgrade-transaction-migration-helpers.sh"
 source "$SCRIPT_DIR/../utils/collect-upgrade-artifacts.sh"
 
@@ -1154,6 +1155,12 @@ test_stop_containers_for_upgrade() {
 
     cd "$PROJECT_ROOT"
     load_runtime_env || return 1
+
+    # Age the recurring completions BEFORE the stop, while Redis is still
+    # serving. This is what makes the restart-staleness path deterministic
+    # instead of a function of how long the rebuild happens to take -- see
+    # tests/install/utils/upgrade-staleness.sh for why waiting cannot work.
+    force_recurring_completion_staleness || return 1
 
     run_project_compose "$PROJECT_ROOT" stop 2>&1
 
