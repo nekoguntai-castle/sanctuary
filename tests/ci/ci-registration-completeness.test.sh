@@ -36,6 +36,27 @@ EXECUTION_ALLOWLIST=()
 # Files deliberately excluded from the bash -n sweep. Empty today.
 SWEEP_ALLOWLIST=()
 
+# tests/install files deliberately not executed by CI. Both entries below are
+# dead code kept only until someone decides what to do with them: each calls a
+# helper that no longer exists, so wiring them in would fail immediately rather
+# than add coverage. They are recorded here instead of deleted because
+# upgrade-browser-smoke encodes coverage nothing else has (see the note).
+#
+#   upgrade-worker-smoke.test.sh   calls assert_upgrade_worker_ready and
+#                                  assert_upgrade_support_package_json, neither
+#                                  defined since the assertions were reworked.
+#   upgrade-browser-smoke.test.sh  calls upgrade_authenticated_json_request,
+#                                  also gone. NOTE: its CSRF-protected
+#                                  password-change smoke is not covered by
+#                                  assert_browser_auth_smoke or anything else,
+#                                  so deleting it drops that case entirely.
+#
+# Both have been untouched since #125 (2026-04-24).
+INSTALL_EXECUTION_ALLOWLIST=(
+  'upgrade-worker-smoke.test.sh'
+  'upgrade-browser-smoke.test.sh'
+)
+
 allowed() {
   local needle="$1"; shift
   local entry
@@ -131,8 +152,12 @@ fi
 # unrecorded intent this guard exists to eliminate.
 stale_alw=()
 for entry in ${EXECUTION_ALLOWLIST+"${EXECUTION_ALLOWLIST[@]}"} \
-             ${SWEEP_ALLOWLIST+"${SWEEP_ALLOWLIST[@]}"}; do
-  [ -f "$REPO_ROOT/tests/ci/$entry" ] || [ -f "$REPO_ROOT/scripts/ci/$entry" ] \
+             ${SWEEP_ALLOWLIST+"${SWEEP_ALLOWLIST[@]}"} \
+             ${INSTALL_EXECUTION_ALLOWLIST+"${INSTALL_EXECUTION_ALLOWLIST[@]}"}; do
+  [ -f "$REPO_ROOT/tests/ci/$entry" ] \
+    || [ -f "$REPO_ROOT/scripts/ci/$entry" ] \
+    || [ -f "$REPO_ROOT/tests/install/unit/$entry" ] \
+    || [ -f "$REPO_ROOT/tests/install/e2e/$entry" ] \
     || stale_alw+=("$entry")
 done
 
@@ -140,6 +165,68 @@ if [ "${#stale_alw[@]}" -eq 0 ]; then
   ok 'every allowlist entry refers to a file that exists'
 else
   bad "allowlisted files that no longer exist:${stale_alw[*]/#/ } — drop the entries"
+fi
+
+# ----- 6. tests/install is registered too ------------------------------------
+# Sections 1-5 only look at tests/ci and scripts/ci. tests/install has its own
+# registration problem and a worse one: the unit list is hand-maintained in
+# THREE places (install-test.yml, release-candidate.yml, run-all-tests.sh), and
+# a file present in some but not others is invisible.
+#
+# offline-bundle-script.test.sh (10 assertions) and upgrade-backup-script.test.sh
+# (4) sat in exactly that state — listed only in run-all-tests.sh, which no
+# workflow invokes, so 14 assertions never ran in CI. Both passed the moment
+# they were wired up, which is the tell: they were not failing, they were
+# silent.
+install_missing_exec=()
+count_install=0
+while IFS= read -r path; do
+  [ -f "$path" ] || continue
+  name="$(basename "$path")"
+  rel="${path#"$REPO_ROOT"/}"
+  count_install=$((count_install + 1))
+  if grep -rqE "(bash|\./)[[:space:]]*${rel}" "$WORKFLOW_DIR"; then
+    continue
+  fi
+  allowed "$name" ${INSTALL_EXECUTION_ALLOWLIST+"${INSTALL_EXECUTION_ALLOWLIST[@]}"} && continue
+  install_missing_exec+=("$rel")
+done < <({ find "$REPO_ROOT/tests/install/unit" -maxdepth 1 -name '*.test.sh' -type f
+           find "$REPO_ROOT/tests/install/e2e" -maxdepth 1 -name '*.test.sh' -type f; } | sort)
+
+if [ "$count_install" -lt 10 ]; then
+  bad "only found ${count_install} tests under tests/install — the scan has probably drifted"
+elif [ "${#install_missing_exec[@]}" -eq 0 ]; then
+  ok "all ${count_install} tests under tests/install are executed by a workflow"
+else
+  bad "tests/install tests that no workflow runs:${install_missing_exec[*]/#/ } — wire them in or allowlist them with a reason"
+fi
+
+# ----- 7. the documented local runner matches CI -----------------------------
+# tests/install/README.md tells developers to run run-all-tests.sh. When CI runs
+# a unit test that the local runner does not, the documented command silently
+# provides less coverage than CI, and a developer can be green locally on a test
+# CI is about to fail them for. Five tests were in that state.
+#
+# e2e is deliberately out of scope here: the local runner drives those through
+# its own --e2e-only path rather than a per-file list.
+RUN_ALL="$REPO_ROOT/tests/install/run-all-tests.sh"
+local_missing=()
+if [ ! -f "$RUN_ALL" ]; then
+  bad "no local runner at $RUN_ALL"
+else
+  for path in "$REPO_ROOT"/tests/install/unit/*.test.sh; do
+    [ -f "$path" ] || continue
+    name="$(basename "$path")"
+    grep -qF "unit/${name}" "$RUN_ALL" && continue
+    allowed "$name" ${INSTALL_EXECUTION_ALLOWLIST+"${INSTALL_EXECUTION_ALLOWLIST[@]}"} && continue
+    local_missing+=("$name")
+  done
+
+  if [ "${#local_missing[@]}" -eq 0 ]; then
+    ok 'run-all-tests.sh runs every install unit test CI runs'
+  else
+    bad "run-all-tests.sh omits:${local_missing[*]/#/ } — the documented local command under-covers relative to CI"
+  fi
 fi
 
 echo
