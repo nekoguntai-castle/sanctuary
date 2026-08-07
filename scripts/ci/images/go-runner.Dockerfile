@@ -11,13 +11,20 @@
 # it. Installing Go per run would fix the strength but put a ~150 MB download on
 # the critical path of a lane whose healthy runtime is under two minutes.
 #
-# Rebuild and retag when go.mod's Go directive changes:
+# This Dockerfile lives here, not in runner-infra, on purpose: a clone of this
+# repository should describe its own CI environment, and the Go version belongs
+# next to the go.mod that requires it. runner-infra owns building and publishing
+# it, because that logic is fleet policy shared with counting-cats' image.
 #
-#   scripts/ci/rebuild-go-runner-image.sh
+# Rebuild and retag when the pinned version changes:
 #
-# Then map a runner label to the pushed digest in the runner-infra host profiles
-# (RUNNER_LABELS) and restart the runner, following the same pattern as the
-# playwright-* labels.
+#   cd ~/runner-infra
+#   scripts/ops/build-runner-image.sh --image sanctuary-ci-go --repo ~/sanctuary \
+#     --push --registry nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go
+#
+# That prints the digest-pinned label mapping; add it to runner-infra's
+# config/runner-images.env and re-render each host. See
+# runner-infra/docs/how-to/runner-job-images.md.
 FROM ghcr.io/catthehacker/ubuntu:act-22.04
 
 # Pinned by version and checksum: this image is a supply-chain surface for a

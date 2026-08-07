@@ -677,7 +677,6 @@ jobs:
           bash -n scripts/ci/run-extended-upgrade-fixtures.sh
           bash -n scripts/ci/wait-for-docker.sh
           bash -n scripts/ci/ensure-go.sh
-          bash -n scripts/ci/rebuild-go-runner-image.sh
           bash -n scripts/ci/create-isolated-workspace.sh
           bash -n scripts/ci/run-in-isolated-workspace.sh
           bash -n scripts/ci/collect-playwright-artifacts.sh

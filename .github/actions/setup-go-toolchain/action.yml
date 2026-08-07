@@ -2,7 +2,7 @@ name: 'Setup Go toolchain'
 description: >-
   Verifies the Go toolchain the address cross-verification lane needs, via the
   repo-owned ensure-go helper. Verifies only: the toolchain comes from the CI
-  job image (scripts/ci/rebuild-go-runner-image.sh), so a mismatch is an image
+  job image (built by runner-infra), so a mismatch is an image
   problem reported immediately rather than a download on the critical path.
   Provider-agnostic; works on GitHub Actions and Forgejo Actions.
 runs:

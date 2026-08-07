@@ -4,7 +4,7 @@
 # Verifies; never installs. Every ensure-* helper in this repo asserts that the
 # runner image already carries the toolchain, so a mismatch is an image problem
 # surfaced immediately rather than a download on the critical path. The image is
-# built by scripts/ci/rebuild-go-runner-image.sh.
+# built by runner-infra scripts/ops/build-runner-image.sh.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
