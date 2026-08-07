@@ -414,3 +414,112 @@ test.describe('Block Visualizer Tooltip', () => {
     await expect(page.getByText('100%')).toBeVisible();
   });
 });
+
+// ─── 3. Fee Estimation Tier Alignment ────────────────────────────────
+
+type FeeCardAlignment = {
+  /** Per tier, how far the tier name's centre sits from its rate's centre. */
+  nameOffsets: number[];
+  /** Per separator, how far its line box sits from the first rate's. */
+  separatorOffsets: number[];
+};
+
+const ALIGNMENT_TIMEOUT_MS = 15000;
+
+/**
+ * Measures the fee card's horizontal and vertical alignment. Returns null
+ * until the card has settled into its three-tier shape, so callers can poll.
+ *
+ * Every measurement comes from a single `evaluate` on purpose: these offsets
+ * are only meaningful if they were all read from the same layout, and a rate
+ * flashes when it changes, so per-element `boundingBox()` round-trips could
+ * each land on a different frame.
+ */
+async function readFeeCardAlignment(page: Page): Promise<FeeCardAlignment | null> {
+  return page.getByTestId('telemetry-fees').evaluate((card) => {
+    // Measure the text, not the element. A grid item that is allowed to
+    // stretch fills its whole track, so two stretched boxes share a centre
+    // even when the glyphs inside them do not — the element box would report
+    // a misalignment as aligned.
+    const textRect = (node: Element) => {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      return range.getBoundingClientRect();
+    };
+    const centreX = (node: Element) => {
+      const rect = textRect(node);
+      return rect.x + rect.width / 2;
+    };
+    const topY = (node: Element) => textRect(node).y;
+
+    const separators = [...card.querySelectorAll('[data-testid="fee-tier-separator"]')];
+    // `.number-transition` is AnimatedFeeRate's own class; scoped to one tier
+    // it identifies that tier's rate unambiguously.
+    const tiers = [...card.querySelectorAll('[data-testid="fee-tier"]')].flatMap((tier) => {
+      const rate = tier.querySelector('.number-transition');
+      const name = tier.querySelector('[data-testid="fee-tier-name"]');
+      return rate && name ? [{ rate, name }] : [];
+    });
+
+    const firstRate = tiers[0]?.rate;
+    if (tiers.length !== 3 || separators.length !== 2 || !firstRate) {
+      return null;
+    }
+
+    // Tailwind comes from the Play CDN and applies asynchronously, so there is
+    // a window where a tier is a plain inline span. Every offset measured then
+    // is meaningless — and the separator ones are a false zero, because
+    // unstyled spans share one line box. Wait for the grid to exist.
+    const tierDisplay = firstRate.parentElement
+      ? getComputedStyle(firstRate.parentElement).display
+      : '';
+    if (!tierDisplay.includes('grid')) {
+      return null;
+    }
+
+    // Absolute distances: a signed offset can round to -0, which `toEqual`
+    // treats as different from 0.
+    return {
+      nameOffsets: tiers.map(({ rate, name }) => Math.abs(centreX(name) - centreX(rate))),
+      separatorOffsets: separators.map((separator) => Math.abs(topY(separator) - topY(firstRate))),
+    };
+  });
+}
+
+test.describe('Fee Estimation card alignment', () => {
+  test.beforeEach(async ({ page }) => {
+    await mockDashboardApi(page);
+    await page.goto('/#/');
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByTestId('telemetry-fees')).toBeVisible({ timeout: ALIGNMENT_TIMEOUT_MS });
+
+    // Alignment holds just as well between three '---' placeholders, so pin the
+    // rates first: a broken fees mock must not green these tests.
+    await expect(page.getByTestId('fee-tier').first()).toContainText('18');
+  });
+
+  test('each tier name sits centred under the rate it names', async ({ page }) => {
+    // The rates and the tier names used to be two sibling rows, each sizing
+    // its own tracks, so every name drifted left of the rate it names — 12px,
+    // 17px and 15px at these mocked rates, and worse for wider figures. A tier
+    // is one grid now, so a name and its rate share a track.
+    await expect
+      .poll(
+        async () => (await readFeeCardAlignment(page))?.nameOffsets.map((offset) => Math.round(offset)) ?? null,
+        { timeout: ALIGNMENT_TIMEOUT_MS }
+      )
+      .toEqual([0, 0, 0]);
+  });
+
+  test('the tier separators sit on the same line as the rates', async ({ page }) => {
+    // Baseline-aligning a row whose tiers lead with a dot took each tier's
+    // baseline from that dot rather than from the digits, which floated the
+    // separators 5px above the rates they separate.
+    await expect
+      .poll(
+        async () => (await readFeeCardAlignment(page))?.separatorOffsets.map((offset) => Math.round(offset)) ?? null,
+        { timeout: ALIGNMENT_TIMEOUT_MS }
+      )
+      .toEqual([0, 0]);
+  });
+});

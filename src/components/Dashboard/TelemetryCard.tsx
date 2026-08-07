@@ -2,6 +2,17 @@ import React from 'react';
 import type { ReactNode } from 'react';
 import { Card } from '../ui/Card';
 
+/**
+ * Typography — and only typography — for the line under the headline.
+ *
+ * Exported because FeeEstimationCard cannot use the `support` slot: its tier
+ * names have to share grid tracks with the rates to sit under them, so they
+ * render inside the headline block instead, and still have to read as a
+ * support line. The 8px offset below the headline is not covered here; see the
+ * note on `mt-2` in the render.
+ */
+export const TELEMETRY_SUPPORT_CLASS = 'text-xs text-sanctuary-500 dark:text-sanctuary-400';
+
 interface TelemetryCardProps {
   /** Eyebrow label, e.g. `Bitcoin Price`. */
   title: string;
@@ -28,6 +39,12 @@ interface TelemetryCardProps {
  * The shape is deliberately shallow — eyebrow, one headline, one supporting
  * line, optional detail. Anything that does not fit belongs behind a
  * disclosure rather than making this card taller than its neighbours.
+ *
+ * A card whose supporting line has to column-align with segments of the
+ * headline may render that line inside `headline` and style it with
+ * `TELEMETRY_SUPPORT_CLASS`, leaving `support` unset — separate rows size their
+ * tracks independently and cannot be made to line up. The shape is unchanged;
+ * only the nesting is. FeeEstimationCard is the one such case.
  */
 export const TelemetryCard: React.FC<TelemetryCardProps> = ({
   title,
@@ -51,7 +68,10 @@ export const TelemetryCard: React.FC<TelemetryCardProps> = ({
       {headline}
     </div>
 
-    {support && <div className="mt-2 text-xs text-sanctuary-500 dark:text-sanctuary-400">{support}</div>}
+    {/* `mt-2` — FeeEstimationCard mirrors this as `gap-y-2` inside its headline
+        grid, because its supporting line lives there. Change both together or
+        its tier names fall off the rhythm the other two cards sit on. */}
+    {support && <div className={`mt-2 ${TELEMETRY_SUPPORT_CLASS}`}>{support}</div>}
 
     {/* `mt-auto` keeps the bottom edge flush across the row even when the
         cards carry different amounts of detail. */}
