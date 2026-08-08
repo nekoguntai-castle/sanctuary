@@ -130,8 +130,19 @@ export function toDashboardFeeEstimate(feeEstimates: FeeEstimates | undefined): 
   };
 }
 
+/**
+ * The parameter type is a declaration, not a guarantee. `FeeEstimates` types
+ * these fields as `number`, but the response is never validated at runtime —
+ * `apiClient.get<FeeEstimates>` is an unchecked assertion — so a null from the
+ * node reaches this function as readily as a number, and `null.toFixed(1)`
+ * threw during render and took the dashboard down with it. NaN and Infinity
+ * got through too, and printed themselves.
+ *
+ * Anything that is not a finite number is not a rate, and the card already has
+ * a way to say so. Keep the guard even though the type says it cannot happen.
+ */
 export function formatFeeRate(rate: number | undefined): string {
-  if (rate === undefined) return '---';
+  if (typeof rate !== 'number' || !Number.isFinite(rate)) return '---';
   if (rate >= 10) return Math.round(rate).toString();
   if (Number.isInteger(rate)) return rate.toString();
   return rate.toFixed(1);
