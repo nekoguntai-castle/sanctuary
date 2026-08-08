@@ -138,6 +138,40 @@ for lane in install-script fresh-install upgrade-install; do
   fi
 done
 
+# ----- 6. lanes driven by run-e2e-lane-phases.sh export the tag too ---------
+# Section 5 checks the .test.sh files, which is the wrong place for these lanes:
+# run-e2e-lane-phases.sh builds and starts the stack in phase 1, before the test
+# script runs, so a tag exported inside the test would name images that were
+# never built. For those lanes the export has to happen in the workflow step.
+#
+# container-health and auth-flow were missed for exactly this reason (#740) and
+# stayed on the shared `:local` tag -- the tag a cross-lane purge reaches for
+# (#739), and the two lanes that lost containers in run 9110.
+RC_WORKFLOW="$REPO_ROOT/.github/workflows/release-candidate.yml"
+if [ ! -f "$RC_WORKFLOW" ]; then
+  bad 'release-candidate.yml not found'
+else
+  # Comment lines mentioning the script are not invocations; counting them
+    # made this report four lanes where there are two.
+    lane_invocations="$(grep -v '^[[:space:]]*#' "$RC_WORKFLOW" | grep -c 'run-e2e-lane-phases\.sh' || true)"
+  if [ "${lane_invocations:-0}" -eq 0 ]; then
+    bad 'no run-e2e-lane-phases.sh invocations found — the guard has drifted'
+  else
+    # For each invocation, the enclosing step must export the lane tag first.
+    uncovered="$(awk '
+      /^[[:space:]]*#/ { next }
+      /^        - name:/ { has_export = 0 }
+      /export_lane_image_tag/ { has_export = 1 }
+      /run-e2e-lane-phases\.sh/ { if (!has_export) print NR }
+    ' "$RC_WORKFLOW")"
+    if [ -z "$uncovered" ]; then
+      ok "all ${lane_invocations} run-e2e-lane-phases.sh lanes export a tag first"
+    else
+      bad "lane invocations with no preceding export_lane_image_tag (lines):$(printf ' %s' $uncovered)"
+    fi
+  fi
+fi
+
 echo
 echo "passed: $PASS  failed: $FAIL"
 if [ "$FAIL" -ne 0 ]; then

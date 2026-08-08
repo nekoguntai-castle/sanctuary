@@ -406,6 +406,13 @@ jobs:
           # serves HTTP and the healthcheck on :443 fails.
           # shellcheck disable=SC1091
           source tests/install/utils/helpers.sh
+          # Per-lane image tag, derived from COMPOSE_PROJECT_NAME. Set here
+          # rather than inside the .test.sh because run-e2e-lane-phases.sh builds
+          # and starts the stack in phase 1, before the test script runs -- a tag
+          # exported later would name images that were never built. Without it
+          # these two lanes stay on the shared `:local` tag (#740), which is what
+          # a cross-lane image purge reaches for (#739).
+          export_lane_image_tag
           export SANCTUARY_SSL_DIR="$SANCTUARY_INSTALL_WORKSPACE/docker/nginx/ssl"
           SANCTUARY_COMPOSE_SSL_DIR="$(docker_visible_path "$SANCTUARY_SSL_DIR")"
           export SANCTUARY_COMPOSE_SSL_DIR
@@ -540,6 +547,13 @@ jobs:
           # serves HTTP and the healthcheck on :443 fails.
           # shellcheck disable=SC1091
           source tests/install/utils/helpers.sh
+          # Per-lane image tag, derived from COMPOSE_PROJECT_NAME. Set here
+          # rather than inside the .test.sh because run-e2e-lane-phases.sh builds
+          # and starts the stack in phase 1, before the test script runs -- a tag
+          # exported later would name images that were never built. Without it
+          # these two lanes stay on the shared `:local` tag (#740), which is what
+          # a cross-lane image purge reaches for (#739).
+          export_lane_image_tag
           export SANCTUARY_SSL_DIR="$SANCTUARY_INSTALL_WORKSPACE/docker/nginx/ssl"
           SANCTUARY_COMPOSE_SSL_DIR="$(docker_visible_path "$SANCTUARY_SSL_DIR")"
           export SANCTUARY_COMPOSE_SSL_DIR
