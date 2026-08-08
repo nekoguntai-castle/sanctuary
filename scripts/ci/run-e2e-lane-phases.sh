@@ -43,37 +43,11 @@ mkdir -p "$LOG_DIR"
     bash -c "cd \"$WORKSPACE\" && docker compose build && docker compose up -d"
 
 # Phase 2 — wait for the migration container to finish, then for the backend to
-# answer. Unchanged behaviour; it simply now runs while the lock is still held.
+# answer. Extracted to wait-for-migration.sh so it can be tested: as an inline
+# `bash -c` string it carried a lookup that could never succeed (#741) and a
+# failure branch that could never run.
 "$REPO_ROOT/scripts/ci/run-with-log.sh" "$LOG_DIR/wait-migration.log" \
-    bash -c '
-      cd "$1"
-      echo "Waiting for migration container to finish..."
-      for i in $(seq 1 60); do
-        STATUS=$(docker compose ps migrate --format "{{.Status}}" 2>/dev/null | grep -oE "^[A-Za-z]+" || echo "not_found")
-        if [ "$STATUS" = "Exited" ]; then
-          EXIT_STATUS=$(docker compose ps migrate --format "{{.Status}}" 2>/dev/null)
-          if echo "$EXIT_STATUS" | grep -q "(0)"; then
-            echo "Migration completed successfully"
-            break
-          else
-            echo "Migration failed: $EXIT_STATUS"
-            docker compose logs --tail 50 migrate
-            exit 1
-          fi
-        fi
-        echo "Waiting for migration... (attempt $i/60, status: $STATUS)"
-        sleep 5
-      done
-      echo "Waiting for backend to be healthy..."
-      for i in $(seq 1 30); do
-        if docker compose exec backend wget -q -O - http://localhost:3001/health >/dev/null 2>&1; then
-          echo "Backend is healthy"
-          break
-        fi
-        echo "Waiting for backend... (attempt $i/30)"
-        sleep 2
-      done
-    ' _ "$WORKSPACE"
+    "$REPO_ROOT/scripts/ci/wait-for-migration.sh" "$WORKSPACE"
 
 # Phase 3 — the lane's own test.
 "$REPO_ROOT/scripts/ci/run-with-log.sh" "$LOG_DIR/${LANE}.log" \

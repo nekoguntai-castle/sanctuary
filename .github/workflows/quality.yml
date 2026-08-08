@@ -759,6 +759,8 @@ jobs:
           bash -n tests/ci/check-workflow-composition.test.sh
           bash -n tests/ci/e2e-lane-lock-coverage.test.sh
           bash -n scripts/ci/run-e2e-lane-phases.sh
+          bash -n scripts/ci/wait-for-migration.sh
+          bash -n tests/ci/wait-for-migration.test.sh
           bash -n scripts/ci/check-workflows-test-only.sh
           bash -n tests/ci/workflows-test-only.test.sh
           # Node CI helper tests.
@@ -806,6 +808,7 @@ jobs:
           bash tests/ci/run-extended-upgrade-fixtures.test.sh
           bash tests/ci/wait-for-docker.test.sh
           bash tests/ci/ci-registration-completeness.test.sh
+          bash tests/ci/wait-for-migration.test.sh
           bash tests/ci/backend-coverage-scripts.test.sh
           bash tests/ci/cleanup-docker-resources.test.sh
           bash tests/ci/install-playwright-chromium.test.sh
