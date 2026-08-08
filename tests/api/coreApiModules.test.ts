@@ -426,7 +426,12 @@ describe('Core API Modules', () => {
       await walletsApi.getExportFormats('w1');
       await walletsApi.exportWallet('w1');
 
-      expect(mockGet).toHaveBeenCalledWith('/wallets');
+      expect(mockGet).toHaveBeenCalledWith(
+        '/wallets',
+        undefined,
+        undefined,
+        expect.objectContaining({ schema: expect.anything() }),
+      );
       expect(mockGet).toHaveBeenCalledWith('/wallets/w1');
       expect(mockPost).toHaveBeenCalledWith('/wallets', {
         name: 'W1',

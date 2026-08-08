@@ -76,7 +76,7 @@ const UTXOS = [
   {
     txid: "share1txid0000000000000000000000000000000000000000000000000000",
     vout: 0,
-    value: 50000000,
+    amount: 50000000,
     address: "bc1qshareaddr1xxxxxxxxxxxxxxxxxxxxxxxx",
     confirmations: 200,
     scriptType: "native_segwit",
@@ -88,7 +88,7 @@ const UTXOS = [
   {
     txid: "share2txid0000000000000000000000000000000000000000000000000000",
     vout: 0,
-    value: 25000000,
+    amount: 25000000,
     address: "bc1qshareaddr2xxxxxxxxxxxxxxxxxxxxxxxx",
     confirmations: 10,
     scriptType: "native_segwit",
@@ -277,7 +277,7 @@ const getWalletResponse: ShareApiResponder = (
     return mockResponse({
       utxos: UTXOS,
       count: UTXOS.length,
-      totalBalance: UTXOS.reduce((s, u) => s + u.value, 0),
+      totalBalance: UTXOS.reduce((s, u) => s + u.amount, 0),
     });
   }
   if (requestKey === `GET /wallets/${WALLET_ID}/privacy`) {

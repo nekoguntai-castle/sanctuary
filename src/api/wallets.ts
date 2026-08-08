@@ -107,7 +107,11 @@ export interface ImportWalletResult {
  * Get all wallets for current user
  */
 export async function getWallets(): Promise<Wallet[]> {
-  return apiClient.get<Wallet[]>('/wallets');
+  // The dashboard sums these: one null balance understates the total silently,
+  // one undefined makes the whole figure NaN.
+  return apiClient.get<Wallet[]>('/wallets', undefined, undefined, {
+    schema: WalletsResponseSchema,
+  });
 }
 
 /**
@@ -350,6 +354,7 @@ import type {
   WalletTelegramSettings,
   AutopilotStatus,
 } from '../types';
+import { WalletsResponseSchema } from '@sanctuary/shared/schemas/walletResponses';
 
 /**
  * Get Telegram notification settings for a wallet

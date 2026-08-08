@@ -14,6 +14,7 @@ import type {
   RecommendedStrategyResponse,
   SelectionStrategy,
 } from './types';
+import { GetUtxosResponseSchema } from '@sanctuary/shared/schemas/walletResponses';
 
 // ========================================
 // UTXO LISTING & MANAGEMENT
@@ -28,7 +29,12 @@ export async function getUTXOs(
 ): Promise<GetUTXOsResponse> {
   return apiClient.get<GetUTXOsResponse>(
     `/wallets/${walletId}/utxos`,
-    params as Record<string, string | number | boolean | string[] | undefined | null> | undefined
+    params as Record<string, string | number | boolean | string[] | undefined | null> | undefined,
+    undefined,
+    // `.utxos` is spread straight into `.map` by walletDataLoaders and the send
+    // page, and `Number(amount)` turns a null into 0 — a UTXO dropped from coin
+    // selection with nothing said.
+    { schema: GetUtxosResponseSchema },
   );
 }
 

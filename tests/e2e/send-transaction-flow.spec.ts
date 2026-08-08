@@ -88,7 +88,7 @@ const UTXOS = [
   {
     txid: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
     vout: 0,
-    value: 50000000,
+    amount: 50000000,
     address: "bc1qsendtestaddr1xxxxxxxxxxxxxxxxxx",
     confirmations: 100,
     scriptType: "native_segwit",
@@ -101,7 +101,7 @@ const UTXOS = [
   {
     txid: "b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3",
     vout: 1,
-    value: 50000000,
+    amount: 50000000,
     address: "bc1qsendtestaddr2xxxxxxxxxxxxxxxxxx",
     confirmations: 50,
     scriptType: "native_segwit",
@@ -291,7 +291,7 @@ const getWalletResponse: SendApiResponder = (
     return mockResponse({
       utxos,
       count: utxos.length,
-      totalBalance: utxos.reduce((s, u) => s + u.value, 0),
+      totalBalance: utxos.reduce((s, u) => s + u.amount, 0),
     });
   }
   if (requestKey === `GET /wallets/${wallet.id}/privacy`) {

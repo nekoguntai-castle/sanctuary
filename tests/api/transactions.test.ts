@@ -164,14 +164,26 @@ describe('Transactions API', () => {
       const mockResponse = { utxos: [], count: 0, totalBalance: 0 };
       mockGet.mockResolvedValue(mockResponse);
       const result = await getUTXOs('wallet-1');
-      expect(mockGet).toHaveBeenCalledWith('/wallets/wallet-1/utxos', undefined);
+      // UTXOs now carry a response schema — `.utxos` is spread into `.map`
+      // unguarded and a null amount reads as 0 in coin selection.
+      expect(mockGet).toHaveBeenCalledWith(
+        '/wallets/wallet-1/utxos',
+        undefined,
+        undefined,
+        expect.objectContaining({ schema: expect.anything() }),
+      );
       expect(result).toEqual(mockResponse);
     });
 
     it('should pass pagination params', async () => {
       mockGet.mockResolvedValue({ utxos: [], count: 0, totalBalance: 0 });
       await getUTXOs('wallet-1', { limit: 50, offset: 0 });
-      expect(mockGet).toHaveBeenCalledWith('/wallets/wallet-1/utxos', { limit: 50, offset: 0 });
+      expect(mockGet).toHaveBeenCalledWith(
+        '/wallets/wallet-1/utxos',
+        { limit: 50, offset: 0 },
+        undefined,
+        expect.objectContaining({ schema: expect.anything() }),
+      );
     });
   });
 
