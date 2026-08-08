@@ -9,6 +9,7 @@ import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 import type { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import type { FeeEstimates } from '@sanctuary/shared/types/api';
 import type { BitcoinTransactionDetails, BlockHeader } from '../types';
+import { FeeEstimatesSchema } from '@sanctuary/shared/schemas/bitcoinResponses';
 
 // Re-export types for convenience
 export type { BitcoinTransactionDetails, BlockHeader } from '../types';
@@ -173,10 +174,20 @@ export async function getStatus(network: BitcoinStatusNetwork = 'mainnet'): Prom
 }
 
 /**
- * Get current fee estimates
+ * Get current fee estimates.
+ *
+ * The first endpoint to validate its response. It earns it: a null rate here
+ * crashed the dashboard (#736), and became a silent 1 sat/vB transaction in the
+ * send flow (#738). `FeeEstimates` declares these `number`, but until this
+ * schema nothing checked that.
  */
 export async function getFeeEstimates(network?: BitcoinFeeNetwork): Promise<FeeEstimates> {
-  return apiClient.get<FeeEstimates>('/bitcoin/fees', network ? { network } : undefined);
+  return apiClient.get<FeeEstimates>(
+    '/bitcoin/fees',
+    network ? { network } : undefined,
+    undefined,
+    { schema: FeeEstimatesSchema },
+  );
 }
 
 /**

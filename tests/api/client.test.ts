@@ -12,6 +12,7 @@ import { registerApiClientCookieAuthContracts } from './client/client.cookie-aut
 import { registerApiClientInitializationContracts } from './client/client.initialization.contracts';
 import { registerApiClientRetryContracts } from './client/client.retry.contracts';
 import { registerApiClientTransferContracts } from './client/client.transfer.contracts';
+import { registerApiClientValidationContracts } from './client/client.validation.contracts';
 import { cleanupApiClientTest, setupApiClientTest } from './client/clientTestHarness';
 
 describe('API Client', () => {
@@ -23,4 +24,5 @@ describe('API Client', () => {
   registerApiClientTransferContracts();
   registerApiClientInitializationContracts();
   registerApiClientCookieAuthContracts();
+  registerApiClientValidationContracts();
 });

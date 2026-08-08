@@ -1,6 +1,6 @@
 # Runtime validation of API responses
 
-Status: proposed
+Status: phases 0-1 done; phase 2 begun (`/bitcoin/fees` validated)
 Prompted by: #736 (`formatFeeRate` crashing on a null rate)
 
 ## The problem
@@ -157,10 +157,22 @@ Each phase is independently shippable and independently valuable.
 
 Tier C is explicitly out of scope. A schema for a label string is cost without benefit.
 
-## Open decisions
+## Decisions taken
 
-1. **zod in the frontend bundle** — accept the size, or hand-write guards?
-2. **Coverage** — 100% per schema, or add Tier A schemas to the frozen exclude list with a
-   justification? Recommend paying it.
-3. **Throw vs degrade per tier** — should a bad *label* really reject the whole response?
-   A per-schema severity (reject vs strip-and-warn) may be worth it, at the cost of complexity.
+1. **zod, in the frontend bundle.** Measured at **+46,925 bytes** of raw JS tree-shaken for
+   one schema — 0.5% of the 9.8MB bundle. Declaring it a direct dependency changed **no**
+   resolved versions: it was already in the tree at 4.3.6 via `shared/`.
+2. **Pay the 100% coverage cost per schema.** No entries added to the frozen exclude list.
+3. **Reject, and let callers degrade the smallest unit** — the server's own precedent for
+   untrusted node data (`electrum/types.ts`). Phase 1 made that safe by giving each card an
+   honest failure state.
+4. **Response schemas strip unknown keys; request schemas stay `.strict()`.** A response
+   schema that refused new fields would break the client the moment it lagged a deploy.
+5. **Shape, not range.** Schemas check that a field is the type we claim; whether a value is
+   *usable* (`usableFeeRate`) stays at the point of use. Policing ranges centrally turns an
+   odd-but-readable response into a blanked card.
+
+## Still open
+
+- Whether a bad *label* should reject a whole response. A per-schema severity (reject vs
+  strip-and-warn) may be worth it once Tier A is done and there is evidence either way.

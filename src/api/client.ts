@@ -69,8 +69,22 @@ const FILE_TRANSFER_TIMEOUT_MS = 120_000;
 // Retryable HTTP status codes (server errors)
 const RETRYABLE_STATUS_CODES = [408, 429, 500, 502, 503, 504];
 
+/**
+ * What a response validator has to offer. Structural on purpose — a zod schema
+ * satisfies it without this module importing zod, so the transport layer stays
+ * independent of whichever validator the callers use.
+ */
+export interface ResponseValidator<T> {
+  safeParse(value: unknown): ValidatorResult<T>;
+}
+
+type ValidatorResult<T> =
+  | { success: true; data: T }
+  | { success: false; error: { issues: ReadonlyArray<{ path: ReadonlyArray<PropertyKey>; message: string }> } };
+
 interface ApiRequestOptions extends RequestInit {
   timeoutMs?: number;
+  schema?: ResponseValidator<unknown>;
 }
 
 const createRequestSignal = (
@@ -86,6 +100,12 @@ const createRequestSignal = (
 export interface ApiGetRequestOptions {
   signal?: AbortSignal;
   timeoutMs?: number;
+  /**
+   * Validate the response body before returning it. Without one the generic
+   * `<T>` is an assertion and nothing checks it, which is how a null fee rate
+   * reached a `.toFixed` and took the dashboard down.
+   */
+  schema?: ResponseValidator<unknown>;
 }
 
 type QueryParams = Record<string, string>;
@@ -391,6 +411,44 @@ async function throwApiErrorFromResponse(response: Response): Promise<never> {
   );
 }
 
+/**
+ * Check a parsed body against the caller's schema, or pass it through unchecked
+ * when there is none.
+ *
+ * Rejecting is deliberate, and follows what this repo already does with
+ * untrusted node data in `server/src/services/bitcoin/electrum/types.ts`: warn
+ * with the failing paths, then throw, because invalid data should not be
+ * silently used. A response we cannot read is not a response — and a coerced
+ * number is worse than an absent one, because it renders as fact.
+ *
+ * Callers degrade the smallest unit around it; the dashboard's cards each say
+ * so on their own rather than the page going blank.
+ */
+function validateResponseBody<T>(
+  body: unknown,
+  schema: ResponseValidator<unknown> | undefined,
+  endpoint: string,
+  response: Response,
+): T {
+  if (!schema) return body as T;
+
+  const result = schema.safeParse(body);
+  if (result.success) return result.data as T;
+
+  const issues = result.error.issues
+    .map((issue) => `${issue.path.join(".") || "<root>"}: ${issue.message}`)
+    .join("; ");
+  log.warn(`Response failed validation for ${endpoint}`, {
+    issues,
+    // String() rather than a fallback branch: JSON.stringify(undefined) is
+    // undefined, and an unreachable-in-practice branch would still need a test.
+    bodyPreview: previewBody(String(JSON.stringify(body))),
+  });
+
+  const message = `Invalid response from ${endpoint}: ${issues}`;
+  throw new ApiError(message, response.status, { message, issues });
+}
+
 function unwrapSuccessfulJsonBody<T>(
   parsed: ParsedApiResponse,
   response: Response,
@@ -562,7 +620,8 @@ export class ApiClient {
       }
 
       const data = await parseApiResponse(response);
-      return unwrapSuccessfulJsonBody<T>(data, response);
+      const body = unwrapSuccessfulJsonBody<unknown>(data, response);
+      return validateResponseBody<T>(body, options.schema, endpoint, response);
     };
 
     return this.executeApiOperation<T>({
@@ -610,6 +669,7 @@ export class ApiClient {
         method: "GET",
         signal: requestOptions.signal,
         timeoutMs: requestOptions.timeoutMs,
+        schema: requestOptions.schema,
       },
       retryOptions,
     );

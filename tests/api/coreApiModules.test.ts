@@ -177,8 +177,21 @@ describe('Core API Modules', () => {
       await bitcoinApi.estimateFee({ inputCount: 1, outputCount: 2, feeRate: 10 });
 
       expect(mockGet).toHaveBeenCalledWith('/bitcoin/status', { network: 'mainnet' });
-      expect(mockGet).toHaveBeenCalledWith('/bitcoin/fees', undefined);
-      expect(mockGet).toHaveBeenCalledWith('/bitcoin/fees', { network: 'signet' });
+      // Fees now carry a response schema — the endpoint whose unchecked null
+      // crashed the dashboard. `expect.objectContaining` rather than the schema
+      // itself so this stays about the call, not zod's identity.
+      expect(mockGet).toHaveBeenCalledWith(
+        '/bitcoin/fees',
+        undefined,
+        undefined,
+        expect.objectContaining({ schema: expect.anything() }),
+      );
+      expect(mockGet).toHaveBeenCalledWith(
+        '/bitcoin/fees',
+        { network: 'signet' },
+        undefined,
+        expect.objectContaining({ schema: expect.anything() }),
+      );
       expect(mockPost).toHaveBeenCalledWith('/bitcoin/address/validate', { address: 'bc1qabc' });
       expect(mockGet).toHaveBeenCalledWith('/bitcoin/address/bc1qabc', undefined);
       expect(mockGet).toHaveBeenCalledWith('/bitcoin/address/tb1qabc', { network: 'testnet3' });
