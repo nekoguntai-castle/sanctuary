@@ -687,6 +687,12 @@ export class ApiClient {
     options?: {
       headers?: Record<string, string>;
       timeoutMs?: number;
+      /**
+       * Validate the response body. A POST answer can be as load-bearing as a
+       * GET one — `/transactions/create` returns the numbers a user approves
+       * immediately before signing.
+       */
+      schema?: ResponseValidator<unknown>;
     },
   ): Promise<T> {
     return this.request<T>(
@@ -696,6 +702,7 @@ export class ApiClient {
         body: data ? JSON.stringify(data) : undefined,
         headers: options?.headers,
         timeoutMs: options?.timeoutMs,
+        schema: options?.schema,
       },
     );
   }

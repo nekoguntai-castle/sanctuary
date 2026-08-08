@@ -266,7 +266,13 @@ describe('Transactions API', () => {
 
       const result = await createTransaction('wallet-1', request);
 
-      expect(mockPost).toHaveBeenCalledWith('/wallets/wallet-1/transactions/create', request);
+      // Creation now validates its response — these are the figures a user
+      // approves immediately before signing.
+      expect(mockPost).toHaveBeenCalledWith(
+        '/wallets/wallet-1/transactions/create',
+        request,
+        expect.objectContaining({ schema: expect.anything() }),
+      );
       expect(result.psbtBase64).toBe('cHNidP8B...');
       expect(result.fee).toBe(1130);
     });
@@ -286,7 +292,13 @@ describe('Transactions API', () => {
 
       await createTransaction('wallet-1', request);
 
-      expect(mockPost).toHaveBeenCalledWith('/wallets/wallet-1/transactions/create', request);
+      // Creation now validates its response — these are the figures a user
+      // approves immediately before signing.
+      expect(mockPost).toHaveBeenCalledWith(
+        '/wallets/wallet-1/transactions/create',
+        request,
+        expect.objectContaining({ schema: expect.anything() }),
+      );
     });
   });
 

@@ -28,6 +28,7 @@ import type {
   GetAddressesParams,
   AddressSummary,
 } from './types';
+import { CreateTransactionResponseSchema } from '@sanctuary/shared/schemas/transactionResponses';
 
 // ========================================
 // WALLET-SCOPED TRANSACTION OPERATIONS
@@ -105,7 +106,10 @@ export async function createTransaction(
 ): Promise<CreateTransactionResponse> {
   return apiClient.post<CreateTransactionResponse>(
     `/wallets/${walletId}/transactions/create`,
-    data
+    data,
+    // Every figure here is shown on the review screen and then approved. A
+    // coerced number is a signing decision made against something nobody sent.
+    { schema: CreateTransactionResponseSchema }
   );
 }
 

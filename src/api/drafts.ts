@@ -5,6 +5,7 @@
  */
 
 import apiClient from './client';
+import { DraftTransactionSchema, DraftTransactionsResponseSchema } from '@sanctuary/shared/schemas/transactionResponses';
 
 export type DraftIntegerValue = number | string;
 export type DraftTextValue = string | null;
@@ -128,14 +129,23 @@ export interface UpdateDraftRequest {
  * Get all draft transactions for a wallet
  */
 export async function getDrafts(walletId: string): Promise<DraftTransaction[]> {
-  return apiClient.get<DraftTransaction[]>(`/wallets/${walletId}/drafts`);
+  // `DraftAmountSummary` calls `draft.fee.toLocaleString()`; a null there is
+  // the same crash that took the dashboard down, on the signing queue.
+  return apiClient.get<DraftTransaction[]>(`/wallets/${walletId}/drafts`, undefined, undefined, {
+    schema: DraftTransactionsResponseSchema,
+  });
 }
 
 /**
  * Get a specific draft transaction
  */
 export async function getDraft(walletId: string, draftId: string): Promise<DraftTransaction> {
-  return apiClient.get<DraftTransaction>(`/wallets/${walletId}/drafts/${draftId}`);
+  return apiClient.get<DraftTransaction>(
+    `/wallets/${walletId}/drafts/${draftId}`,
+    undefined,
+    undefined,
+    { schema: DraftTransactionSchema },
+  );
 }
 
 /**

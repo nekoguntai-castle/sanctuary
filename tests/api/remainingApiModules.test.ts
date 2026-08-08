@@ -60,8 +60,8 @@ describe("Remaining API Modules", () => {
       await draftsApi.updateDraft("w1", "d1", { status: "signed", label: null, memo: null });
       await draftsApi.deleteDraft("w1", "d1");
 
-      expect(mockGet).toHaveBeenCalledWith("/wallets/w1/drafts");
-      expect(mockGet).toHaveBeenCalledWith("/wallets/w1/drafts/d1");
+      expect(mockGet).toHaveBeenCalledWith("/wallets/w1/drafts", undefined, undefined, expect.objectContaining({ schema: expect.anything() }));
+      expect(mockGet).toHaveBeenCalledWith("/wallets/w1/drafts/d1", undefined, undefined, expect.objectContaining({ schema: expect.anything() }));
       expect(mockPost).toHaveBeenCalledWith("/wallets/w1/drafts", {
         recipient: "bc1qdest",
         amount: "1000",
