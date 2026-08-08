@@ -3,7 +3,14 @@
 set -euo pipefail
 
 TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/sanctuary-create-release-test.XXXXXX")"
-trap 'find "$TEST_ROOT" -type f -delete; find "$TEST_ROOT" -type l -delete; find "$TEST_ROOT" -depth -type d -empty -delete' EXIT
+# rm -rf, not a find sweep: the fixture builds 107 commits and git's background
+# auto-gc can write into .git/objects while a `find -delete` walks it, producing
+# "Directory not empty". Under `set -euo pipefail` a failing command in an EXIT
+# trap sets the script's status, so a green suite exited 1 (sanctuary#749).
+#
+# An explicit `exit 0` does NOT prevent this — errexit inside the trap overrides
+# it. Measured, not assumed. The only reliable fix is a cleanup that cannot fail.
+trap 'rm -rf "$TEST_ROOT"' EXIT
 
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 REPO="$TEST_ROOT/repo"
@@ -54,6 +61,9 @@ cp "$SOURCE_ROOT/scripts/release/previous-release-tag.sh" "$REPO/scripts/release
 chmod +x "$REPO/scripts/release/previous-release-tag.sh"
 
 git -C "$REPO" init -q
+# No background gc against a 107-commit fixture: it is the thing that races the
+# cleanup above. Removes the cause; the rm -rf trap makes the symptom harmless.
+git -C "$REPO" config gc.auto 0
 git -C "$REPO" config user.name "Release Test"
 git -C "$REPO" config user.email "release-test@example.invalid"
 printf 'base\n' > "$REPO/history.txt"
