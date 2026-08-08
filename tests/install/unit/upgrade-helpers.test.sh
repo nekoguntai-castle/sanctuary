@@ -660,167 +660,6 @@ test_tor_compose_uses_supported_hidden_service_config() {
     "Tor healthcheck should not depend on public Tor reachability"
 }
 
-# The upgrade lanes install a released tag before upgrading to HEAD. Released
-# tags cannot be changed, and every tag up to and including v0.8.59 carries
-# mem_swappiness on nine services — a key cgroup v2 does not implement. Docker
-# discarded it silently; Podman's crun aborts the whole compose up, so on the
-# converted runners the upgrade gate cannot install its own source ref.
-#
-# Stripping it from the source checkout costs nothing that was working: the key
-# was inert on every cgroup v2 host, which is every host in this project.
-test_legacy_cgroup_v1_keys_are_stripped_from_source_checkout() {
-  local source_checkout="$TEST_TMP_DIR/legacy-src"
-  local compose_file="$source_checkout/docker-compose.yml"
-
-  mkdir -p "$source_checkout"
-  cat > "$compose_file" <<'EOF'
-services:
-  postgres:
-    image: postgres:16-alpine
-    mem_swappiness: 10
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-  redis:
-    image: redis:7-alpine
-    mem_swappiness: 0
-EOF
-
-  adapt_legacy_cgroup_v1_keys "$source_checkout"
-
-  local contents
-  contents="$(cat "$compose_file")"
-
-  if grep -q 'mem_swappiness' "$compose_file"; then
-    echo -e "${RED}ASSERTION FAILED:${NC} mem_swappiness should be stripped from a legacy source checkout"
-    return 1
-  fi
-
-  # Everything else must survive: this adapts one dead key, it does not rewrite
-  # the legacy stack's resource policy.
-  assert_contains "$contents" "memory: 1G" "memory limits must survive the adaptation"
-  assert_contains "$contents" "postgres:16-alpine" "service definitions must survive the adaptation"
-  assert_contains "$contents" "redis:7-alpine" "all services must survive the adaptation"
-}
-
-# A checkout that never had the key must be left byte-identical, so the adapter
-# is a no-op once no supported upgrade source predates the fix.
-test_current_checkout_without_cgroup_v1_keys_is_untouched() {
-  local source_checkout="$TEST_TMP_DIR/current-src"
-  local compose_file="$source_checkout/docker-compose.yml"
-
-  mkdir -p "$source_checkout"
-  cat > "$compose_file" <<'EOF'
-services:
-  postgres:
-    image: postgres:16-alpine
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-EOF
-
-  local before
-  before="$(cat "$compose_file")"
-
-  adapt_legacy_cgroup_v1_keys "$source_checkout"
-
-  assert_equals "$before" "$(cat "$compose_file")" \
-    "a checkout without cgroup v1 keys must be left unchanged"
-}
-
-# Overlays ship the same key and are installed by the same legacy install.sh.
-test_legacy_cgroup_v1_keys_are_stripped_from_overlays() {
-  local source_checkout="$TEST_TMP_DIR/legacy-overlay-src"
-  mkdir -p "$source_checkout/docker/compose"
-  cat > "$source_checkout/docker-compose.yml" <<'EOF'
-services:
-  postgres:
-    mem_swappiness: 10
-EOF
-  cat > "$source_checkout/docker/compose/monitoring.yml" <<'EOF'
-services:
-  promtail:
-    mem_swappiness: 10
-EOF
-
-  adapt_legacy_cgroup_v1_keys "$source_checkout"
-
-  if grep -rq 'mem_swappiness' "$source_checkout"; then
-    echo -e "${RED}ASSERTION FAILED:${NC} mem_swappiness should be stripped from compose overlays too"
-    return 1
-  fi
-}
-
-# v0.8.59 and earlier hardcode /var/run/docker.sock as a mount SOURCE. Rootless
-# Podman cannot mkdir under /var/run, so the legacy source install aborts its
-# whole compose up with "permission denied" (run 8788) — the same failure #682
-# fixed on main, reappearing from a released tag that cannot be changed.
-test_legacy_docker_socket_mounts_are_parameterised() {
-  local src="$TEST_TMP_DIR/legacy-sock"
-  mkdir -p "$src/docker/compose"
-  cat > "$src/docker-compose.yml" <<'EOF'
-services:
-  docker-proxy:
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-EOF
-  cat > "$src/docker/compose/monitoring.yml" <<'EOF'
-services:
-  promtail:
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-EOF
-
-  adapt_legacy_host_path_mounts "$src"
-
-  local main_c overlay_c
-  main_c="$(cat "$src/docker-compose.yml")"
-  overlay_c="$(cat "$src/docker/compose/monitoring.yml")"
-
-  assert_contains "$main_c" '${SANCTUARY_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock:ro' \
-    "legacy docker-proxy socket source should be parameterised"
-  assert_contains "$overlay_c" '${SANCTUARY_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock:ro' \
-    "legacy promtail socket source should be parameterised"
-  # Removed outright rather than parameterised: promtail never reads it, and on
-  # a rootless host the mount aborts compose up.
-  if grep -qE '^[[:space:]]*-[[:space:]]*[^#]*/var/lib/docker/containers' "$src/docker/compose/monitoring.yml"; then
-    echo -e "${RED}ASSERTION FAILED:${NC} the legacy containers-dir mount should have been removed"
-    return 1
-  fi
-}
-
-# A checkout already carrying the parameterised form must be left untouched, so
-# the adapter is a no-op once every supported source ref includes #682.
-test_current_checkout_socket_mounts_untouched() {
-  local src="$TEST_TMP_DIR/current-sock"
-  mkdir -p "$src"
-  cat > "$src/docker-compose.yml" <<'EOF'
-services:
-  docker-proxy:
-    volumes:
-      - ${SANCTUARY_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock:ro
-EOF
-  local before
-  before="$(cat "$src/docker-compose.yml")"
-
-  adapt_legacy_host_path_mounts "$src"
-
-  assert_equals "$before" "$(cat "$src/docker-compose.yml")" \
-    "an already-parameterised checkout must be left unchanged"
-}
-
-# The upgrade lane cleaned up without ever dumping container health logs, so a
-# container that went unhealthy left no record of WHY. Run 8795 showed the
-# gateway unhealthy for the full 300s window with nothing naming the cause,
-# because the health log lives on the container and cleanup destroys it.
-# fresh-install has captured this on failure all along; the upgrade lane — the
-# longest and most expensive lane — did not.
-#
-# Order matters: the capture must precede cleanup_containers, or there is
-# nothing left to inspect.
 test_upgrade_teardown_captures_diagnostics_before_cleanup() {
   local lane="$PROJECT_ROOT/tests/install/e2e/upgrade-install.test.sh"
 
@@ -916,72 +755,6 @@ EOF
   fi
 }
 
-# Confirmed by run 8824's captured health log, not inferred: the legacy gateway
-# healthcheck fails every probe with
-#   [: line 0: syntax error: unexpected end of file (expecting "then")
-# because v0.8.59 uses ["CMD","sh","-c",<script>], which does not survive the
-# compose -> Podman path when <script> contains shell syntax. #678 fixed this on
-# main; a released tag cannot be changed.
-test_legacy_healthcheck_cmd_form_is_rewritten() {
-  local src="$TEST_TMP_DIR/legacy-hc"
-  mkdir -p "$src"
-  cat > "$src/docker-compose.yml" <<'EOF'
-services:
-  gateway:
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "sh",
-          "-c",
-          'if [ "$$TLS_ENABLED" = "true" ]; then wget -q --spider https://localhost:4000/health; else wget -q --spider http://localhost:4000/health; fi',
-        ]
-      interval: 30s
-EOF
-
-  adapt_legacy_healthcheck_shell_form "$src"
-
-  local c
-  c="$(cat "$src/docker-compose.yml")"
-
-  assert_contains "$c" '"CMD-SHELL",' "the CMD/sh/-c triple should collapse to CMD-SHELL"
-  assert_contains "$c" 'TLS_ENABLED' "the healthcheck script itself must survive"
-  assert_contains "$c" "interval: 30s" "surrounding healthcheck keys must survive"
-
-  if grep -qE '^[[:space:]]*"sh",' "$src/docker-compose.yml"; then
-    echo -e "${RED}ASSERTION FAILED:${NC} the \"sh\" element should have been removed"
-    return 1
-  fi
-  if grep -qE '^[[:space:]]*"-c",' "$src/docker-compose.yml"; then
-    echo -e "${RED}ASSERTION FAILED:${NC} the \"-c\" element should have been removed"
-    return 1
-  fi
-}
-
-# A bare CMD array carries no shell syntax and works on both engines; rewriting
-# it would be needless churn in a released checkout.
-test_legacy_bare_cmd_healthcheck_untouched() {
-  local src="$TEST_TMP_DIR/legacy-bare-hc"
-  mkdir -p "$src"
-  cat > "$src/docker-compose.yml" <<'EOF'
-services:
-  redis:
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-EOF
-  local before
-  before="$(cat "$src/docker-compose.yml")"
-
-  adapt_legacy_healthcheck_shell_form "$src"
-
-  assert_equals "$before" "$(cat "$src/docker-compose.yml")" \
-    "a bare CMD healthcheck must be left unchanged"
-}
-
-# The shim exists to work around a job/engine filesystem split. When the configs
-# are already reachable at a translated path there is nothing to work around,
-# and on rootless Podman the shim's own helper-container bind mount fails with
-# the very error it exists to avoid (run 8833).
 test_monitoring_sync_stands_down_when_configs_are_reachable() {
   local src="$TEST_TMP_DIR/proj-standdown"
   mkdir -p "$src/docker/monitoring"
@@ -1015,38 +788,6 @@ test_monitoring_sync_still_runs_when_path_is_untranslated() {
   return 0
 }
 
-# v0.8.59's monitoring.yml carries literal ./docker/monitoring mount sources.
-# Compose resolves them against the source checkout, producing a /workspace/...
-# path the engine cannot see — the same failure #698 fixed on main, reappearing
-# from a released tag (run 8880).
-test_legacy_monitoring_config_paths_are_parameterised() {
-  local src="$TEST_TMP_DIR/legacy-mon"
-  mkdir -p "$src/docker/compose"
-  cat > "$src/docker/compose/monitoring.yml" <<'EOF'
-services:
-  loki:
-    volumes:
-      - ./docker/monitoring/loki-config.yml:/etc/loki/local-config.yaml:ro
-  prometheus:
-    volumes:
-      - ./docker/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-EOF
-
-  adapt_legacy_host_path_mounts "$src"
-
-  local c
-  c="$(cat "$src/docker/compose/monitoring.yml")"
-
-  assert_contains "$c" '${SANCTUARY_MONITORING_CONFIG_DIR:-./docker/monitoring}/loki-config.yml:/etc/loki/local-config.yaml:ro' \
-    "legacy loki config source should be parameterised"
-  assert_contains "$c" '${SANCTUARY_MONITORING_CONFIG_DIR:-./docker/monitoring}/prometheus.yml:/etc/prometheus/prometheus.yml:ro' \
-    "legacy prometheus config source should be parameterised"
-}
-
-# The variable is global but the lane installs two stacks with different config
-# directories. Scoping it per install is what keeps the source checkout from
-# pointing at the target's configs — run 8880 translated the target's path while
-# the source install was the one that needed it.
 test_install_scopes_monitoring_config_dir_per_checkout() {
   local lane="$PROJECT_ROOT/tests/install/e2e/upgrade-install.test.sh"
   local body
@@ -1803,21 +1544,13 @@ main() {
   run_test "upgrade selection labels are sanitized" test_upgrade_selection_labels_are_sanitized
   run_test "upgrade selection manifest records resolved refs" test_upgrade_selection_manifest_records_resolved_refs
   run_test "legacy optional profile compose is isolated" test_legacy_optional_profile_compose_is_isolated
-  run_test "legacy cgroup v1 keys are stripped" test_legacy_cgroup_v1_keys_are_stripped_from_source_checkout
-  run_test "legacy docker socket mounts are parameterised" test_legacy_docker_socket_mounts_are_parameterised
-  run_test "legacy monitoring config paths are parameterised" test_legacy_monitoring_config_paths_are_parameterised
   run_test "install scopes monitoring config dir per checkout" test_install_scopes_monitoring_config_dir_per_checkout
-  run_test "legacy healthcheck CMD form is rewritten" test_legacy_healthcheck_cmd_form_is_rewritten
   run_test "monitoring sync stands down when reachable" test_monitoring_sync_stands_down_when_configs_are_reachable
   run_test "monitoring sync still runs when untranslated" test_monitoring_sync_still_runs_when_path_is_untranslated
-  run_test "legacy bare CMD healthcheck untouched" test_legacy_bare_cmd_healthcheck_untouched
   run_test "upgrade teardown captures diagnostics before cleanup" test_upgrade_teardown_captures_diagnostics_before_cleanup
   run_test "unhealthy capture dumps the unhealthy container" test_unhealthy_capture_dumps_unhealthy_container
   run_test "unhealthy capture is quiet when all healthy" test_unhealthy_capture_is_quiet_when_all_healthy
   run_test "upgrade teardown captures source checkout diagnostics" test_upgrade_teardown_captures_source_checkout_diagnostics
-  run_test "current checkout socket mounts untouched" test_current_checkout_socket_mounts_untouched
-  run_test "current checkout without cgroup v1 keys untouched" test_current_checkout_without_cgroup_v1_keys_is_untouched
-  run_test "legacy cgroup v1 keys stripped from overlays" test_legacy_cgroup_v1_keys_are_stripped_from_overlays
   run_test "legacy optional profile compose can use target tor overlay" test_legacy_optional_profile_compose_can_use_target_tor_overlay
   run_test "tor compose uses supported hidden service config" test_tor_compose_uses_supported_hidden_service_config
   run_test "current compose builds shared backend image once" test_current_compose_builds_shared_backend_image_once

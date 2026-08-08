@@ -377,7 +377,7 @@ main() {
 
   # tests/install/unit/* stays excluded: self-contained, cannot alter the lane.
   base_sha="$head_sha"
-  commit_file "$repo_dir" "tests/install/unit/cgroup-v2-compat.test.sh" "echo unit" "unit-only change"
+  commit_file "$repo_dir" "tests/install/unit/upgrade-staleness.test.sh" "echo unit" "unit-only change"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier_for_event "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
   assert_exact_output "$output_file" "run_upgrade_baseline" "false"

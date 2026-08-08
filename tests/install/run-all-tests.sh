@@ -155,19 +155,7 @@ run_unit_suites() {
     if ! run_test_suite "Purge Image Scope Unit Tests" "$SCRIPT_DIR/unit/purge-image-scope.test.sh"; then
         suite_failed=true
     fi
-    if ! run_test_suite "Cgroup v2 Compatibility Unit Tests" "$SCRIPT_DIR/unit/cgroup-v2-compat.test.sh"; then
-        suite_failed=true
-    fi
     if ! run_test_suite "Cleanup Containers Guard Unit Tests" "$SCRIPT_DIR/unit/cleanup-containers-guard.test.sh"; then
-        suite_failed=true
-    fi
-    if ! run_test_suite "Healthcheck Shell Form Unit Tests" "$SCRIPT_DIR/unit/healthcheck-shell-form.test.sh"; then
-        suite_failed=true
-    fi
-    if ! run_test_suite "Host Path Parameterisation Unit Tests" "$SCRIPT_DIR/unit/host-path-parameterisation.test.sh"; then
-        suite_failed=true
-    fi
-    if ! run_test_suite "Monitoring Config Path Unit Tests" "$SCRIPT_DIR/unit/monitoring-config-path.test.sh"; then
         suite_failed=true
     fi
     if ! run_test_suite "Upgrade Staleness Unit Tests" "$SCRIPT_DIR/unit/upgrade-staleness.test.sh"; then

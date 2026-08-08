@@ -370,9 +370,6 @@ run_install_script() {
 
     mkdir -p "$TEST_RUNTIME_DIR"
     isolate_legacy_optional_profile_compose "$project_dir" "$TARGET_PROJECT_ROOT"
-    adapt_legacy_cgroup_v1_keys "$project_dir"
-    adapt_legacy_host_path_mounts "$project_dir"
-    adapt_legacy_healthcheck_shell_form "$project_dir"
 
     # Scope the monitoring config directory to the checkout being installed. The
     # variable is global but the lane installs two stacks with different config
