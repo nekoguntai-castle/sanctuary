@@ -610,12 +610,52 @@ export_lane_image_tag() {
 # a lane installs two checkouts in sequence (source then target) under one
 # project name. Layer cache is untouched, so this stays cheap.
 purge_shared_local_images() {
-    local tag="${SANCTUARY_IMAGE_TAG:-local}"
-    docker image rm -f \
+    local tag="${SANCTUARY_IMAGE_TAG:-}"
+
+    # Fail closed on the tag, because the tag is the entire safety boundary.
+    #
+    # `docker image rm -f` means two different things on the two engines. On
+    # Docker it untags. On rootless Podman -- what the runners actually run since
+    # #668 -- `rmi --force` STOPS AND DELETES every container using the image,
+    # across all projects, not just this lane's. Verified on Podman 5.4.2:
+    #
+    #   podman image rm -f solo-probe:local
+    #     StopSignal SIGTERM failed to stop container ... resorting to SIGKILL
+    #     Deleted: bf0226b4953f...
+    #
+    # So purging the shared `:local` tag destroys any concurrent lane's live
+    # stack. That is what removed backend and migrate from run 9110 while
+    # postgres survived (#739): a lane purged `sanctuary-*:local` at 08:01:33,
+    # inside another lane's unlocked window.
+    #
+    # A lane-scoped tag is by construction used only by this lane, so requiring
+    # one makes the blast radius this lane. `:local` is the legitimate operator
+    # default in docker-compose.yml and must keep working there -- it is purging
+    # it that is unsafe, never using it.
+    if [ -z "$tag" ] || [ "$tag" = "local" ]; then
+        log_error "Refusing to purge images for tag '${tag:-<unset>}'"
+        log_error "purge_shared_local_images force-removes images, and on rootless Podman that"
+        log_error "deletes running containers using them in EVERY project, not just this lane."
+        log_error "Call export_lane_image_tag first so the purge is scoped to this lane."
+        return 1
+    fi
+
+    # Not silenced. The previous version ended in `>/dev/null 2>&1 || true`, so
+    # the single most destructive operation in the harness left no trace in any
+    # diagnostic -- which is why #730 could rule out every other candidate and
+    # still not find it.
+    local output status=0
+    output="$(docker image rm -f \
         "sanctuary-backend:${tag}" \
         "sanctuary-frontend:${tag}" \
         "sanctuary-gateway:${tag}" \
-        "sanctuary-llm-egress-proxy:${tag}" >/dev/null 2>&1 || true
+        "sanctuary-llm-egress-proxy:${tag}" 2>&1)" || status=$?
+
+    log_info "Purged lane images for tag '${tag}' (exit ${status})"
+    [ -n "$output" ] && printf '%s\n' "$output" | sed 's/^/  [purge] /'
+
+    # A missing image is the normal first-run case, not an error.
+    return 0
 }
 
 # Guard against an install running an image built from a different ref.
