@@ -153,7 +153,7 @@ Each phase is independently shippable and independently valuable.
 | **1** | Per-card / per-query error surfacing on the Dashboard, following the `activitySummaryError` precedent | Makes a throw meaningful. Without it, validation converts silent-wrong into silent-empty. |
 | **2** | `schema` option on `apiClient`, zod as a frontend dependency, one Tier A endpoint (`/bitcoin/fees`) end to end | Proves the mechanism on the endpoint whose failure started this. |
 | **3** | Remaining Tier A: utxos, wallets, create-transaction, drafts, price, xpub/import, RBF | The money-and-keys surface. |
-| **4** | Tier B where a guard is not already present | Crash-prevention, lower value once Tier A is done. |
+| **4** | ~~Tier B where a guard is not already present~~ — **declined**, see decision 7 | Crash-prevention. Loud and contained by the per-route `ErrorBoundary`, so not worth ~40 schemas. |
 
 Tier C is explicitly out of scope. A schema for a label string is cost without benefit.
 
@@ -178,6 +178,11 @@ Tier C is explicitly out of scope. A schema for a label string is cost without b
    would trade a small wrong thing for a large missing one. Generalise per field, not per
    schema: no separate severity mechanism was needed.
 
+7. **Validate what corrupts silently, not what crashes loudly.** Tier A's endpoints were
+   worth schemas because their bad values coerce and spread with no error. Tier B's throw,
+   inside a per-route `ErrorBoundary` — loud and contained. Declined as a sweep; see
+   *Tier B: declined, on evidence* below.
+
 ## Tier A, complete
 
 | endpoint | shipped |
@@ -187,9 +192,43 @@ Tier C is explicitly out of scope. A schema for a label string is cost without b
 | `/transactions/create`, drafts | #759 |
 | `/price`, `/wallets/validate-xpub`, RBF | this change |
 
-## Still open
+## Tier B: declined, on evidence
 
-- Tier B (crash-prevention where no guard exists) is unstarted and much lower value now
-  that Tier A is done.
-- `useDashboardData.test.tsx` sits at 994 of its 1000-line cap and wants splitting, with
-  its ~330-line mock harness extracted for sharing.
+Tier B is **not** being done as a sweep, and this is the seventh recorded decision.
+
+Tier A was chosen for one specific property: those responses corrupt *silently*. A `NaN`
+price passes a `=== null` guard and turns every fiat figure in the app into `NaN` with
+nothing in the console. `apiWallets ?? []` renders "you have no wallets". Nothing throws,
+so nothing tells you.
+
+Tier B is the opposite failure. Its endpoints (`/devices`, `/admin/*`, `/auth/*`,
+`/intelligence/*` — roughly 40 calls) are consumed as arrays; a wrong type there throws
+`x.map is not a function`. Three facts make that acceptable:
+
+1. **It is loud.** A throw is a stack trace, not a wrong number that looks right.
+2. **It is contained.** `renderAppRouteElement` wraps *every* route in its own
+   `ErrorBoundary`, so the blast radius is one page showing a fallback — not a white screen.
+3. **Most call sites already default.** `const { data: devices = [] } = useDevices()` and
+   the 24 `?? []` sites across `src/` cover the common `undefined` case.
+
+Against that, the cost is real and permanent: ~40 schemas, each needing its own test file to
+clear the 100% coverage gate, and each becoming a second place the response shape is
+written down and can drift from the server.
+
+So the trade Tier B actually buys is "error-boundary fallback" → "honest empty state", for
+several thousand lines of forever-maintained code. That is a bad trade. If it ever does
+bite, the cheaper structural answer is one array guard in `apiClient`, not forty schemas —
+but building that speculatively would be the same mistake in smaller form.
+
+**The schema mechanism stays available.** `ApiGetRequestOptions.schema` is threaded and
+tested; adding one to a specific endpoint that misbehaves in the field is a few lines. This
+declines the sweep, not the tool.
+
+## Closed out
+
+Tier A shipped across #756, #757, #759 and #760. The test-file split that this work kept
+running into landed in #761 — `useDashboardData.test.tsx` went from 994 lines (six short of
+the `large-files` cap) to 703, with its mock harness extracted to
+`useDashboardDataHarness.ts`.
+
+Nothing in this plan is still open.
