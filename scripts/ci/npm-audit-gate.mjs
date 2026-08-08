@@ -60,7 +60,8 @@ function validateException(entry, index, currentDateMs) {
     'rationale', 'trackingUrl', 'runtimeSurface', 'expiresOn',
   ];
   assertExactKeys(entry, keys, label);
-  for (const key of keys.filter((key) => key !== 'paths')) {
+  // `expiresOn` is opt-in — see the note where it is enforced below.
+  for (const key of keys.filter((key) => key !== 'paths' && key !== 'expiresOn')) {
     requireNonEmptyString(entry[key], `${label}.${key}`);
   }
   if (!GHSA_PATTERN.test(entry.ghsa)) throw new Error(`${label}.ghsa is not a canonical GHSA identifier`);
@@ -73,10 +74,17 @@ function validateException(entry, index, currentDateMs) {
     if (!Array.isArray(path) || path.length < 2) throw new Error(`${label}.paths[${pathIndex}] must contain a root and audited node`);
     path.forEach((part, partIndex) => requireNonEmptyString(part, `${label}.paths[${pathIndex}][${partIndex}]`));
   });
-  const expiresMs = parseUtcDate(entry.expiresOn, `${label}.expiresOn`);
-  const dayMs = 86_400_000;
-  if (currentDateMs > expiresMs) throw new Error(`${label} expired on ${entry.expiresOn}`);
-  if (expiresMs - currentDateMs > 90 * dayMs) throw new Error(`${label} expires more than 90 days from the current UTC date`);
+  // Omit `expiresOn` for a waiver that stands until the advisory itself goes
+  // away. A calendar deadline only buys anything if someone is obliged to
+  // answer it; on a single-maintainer repo it just reddens CI on a date that
+  // has nothing to do with the risk. The guard that carries real weight is the
+  // unused-exception check in `evaluateReports`, which fails the build once the
+  // finding stops appearing — so a waiver still cannot outlive its reason.
+  // Set the date when you genuinely want the waiver reconsidered by then.
+  if (entry.expiresOn !== undefined) {
+    const expiresMs = parseUtcDate(entry.expiresOn, `${label}.expiresOn`);
+    if (currentDateMs > expiresMs) throw new Error(`${label} expired on ${entry.expiresOn}`);
+  }
   return { ...entry, usedPaths: entry.paths.map(() => false) };
 }
 

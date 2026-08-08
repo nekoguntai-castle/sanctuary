@@ -308,7 +308,29 @@ test('expiry is valid through its UTC date and invalid the following day', () =>
     /expired/,
   );
   assert.throws(() => parsedExceptions([exception({ expiresOn: '2026-02-30' })]), /valid calendar date/);
-  assert.throws(() => parsedExceptions([exception({ expiresOn: '2026-10-29' })]), /more than 90 days/);
+});
+
+test('an exception without an expiry stands, at any distance from today', () => {
+  const perpetual = exception();
+  delete perpetual.expiresOn;
+
+  assert.doesNotThrow(() => parsedExceptions([perpetual], NOW));
+  // Far enough ahead that any ceiling on the expiry window would have caught it.
+  assert.doesNotThrow(() => parsedExceptions([perpetual], new Date('2032-01-01T00:00:00Z')));
+});
+
+test('a dated exception may now sit further out than a quarter', () => {
+  assert.doesNotThrow(() => parsedExceptions([exception({ expiresOn: '2027-10-29' })], NOW));
+});
+
+test('an expiry that is present must still be a real, unexpired date', () => {
+  // Opting in to a deadline keeps every guarantee it used to carry.
+  assert.throws(() => parsedExceptions([exception({ expiresOn: '' })]), /strict YYYY-MM-DD date/);
+  assert.throws(() => parsedExceptions([exception({ expiresOn: 'soon' })]), /strict YYYY-MM-DD date/);
+  assert.throws(
+    () => parsedExceptions([exception({ expiresOn: '2026-01-01' })], NOW),
+    /expired on 2026-01-01/,
+  );
 });
 
 test('exception schema rejects malformed, duplicate, and unsupported entries', () => {

@@ -173,6 +173,9 @@ run_unit_suites() {
     if ! run_test_suite "Install Scope Classifier Unit Tests" "$SCRIPT_DIR/unit/install-scope.test.sh"; then
         suite_failed=true
     fi
+    if ! run_test_suite "Image Tag Isolation Unit Tests" "$SCRIPT_DIR/unit/image-tag-isolation.test.sh"; then
+        suite_failed=true
+    fi
 
     [ "$suite_failed" = "false" ]
 }
