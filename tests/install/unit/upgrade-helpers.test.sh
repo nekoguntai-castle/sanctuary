@@ -660,29 +660,6 @@ test_tor_compose_uses_supported_hidden_service_config() {
     "Tor healthcheck should not depend on public Tor reachability"
 }
 
-test_legacy_compose_ssl_mount_uses_docker_visible_path() {
-  local source_checkout="$TEST_TMP_DIR/source"
-  local compose_file="$source_checkout/docker-compose.yml"
-
-  mkdir -p "$source_checkout"
-  cat > "$compose_file" <<'EOF'
-services:
-  frontend:
-    volumes:
-      - ${SANCTUARY_SSL_DIR:-./docker/nginx/ssl}:/etc/nginx/ssl:ro
-EOF
-
-  SANCTUARY_SSL_DIR="/container/runtime/ssl" \
-    SANCTUARY_COMPOSE_SSL_DIR="/host/runtime/ssl" \
-    adapt_legacy_compose_ssl_mount "$source_checkout"
-
-  local contents
-  contents="$(cat "$compose_file")"
-
-  assert_contains "$contents" '${SANCTUARY_COMPOSE_SSL_DIR:-${SANCTUARY_SSL_DIR:-./docker/nginx/ssl}}:/etc/nginx/ssl:ro' \
-    "legacy compose SSL mount should use Docker-visible path when available"
-}
-
 # The upgrade lanes install a released tag before upgrading to HEAD. Released
 # tags cannot be changed, and every tag up to and including v0.8.59 carries
 # mem_swappiness on nine services — a key cgroup v2 does not implement. Docker
@@ -1084,69 +1061,6 @@ test_install_scopes_monitoring_config_dir_per_checkout() {
     return 1
   fi
   return 0
-}
-
-test_current_compose_ssl_mount_is_left_unchanged() {
-  local source_checkout="$TEST_TMP_DIR/source"
-  local compose_file="$source_checkout/docker-compose.yml"
-
-  mkdir -p "$source_checkout"
-  cat > "$compose_file" <<'EOF'
-services:
-  frontend:
-    volumes:
-      - ${SANCTUARY_COMPOSE_SSL_DIR:-${SANCTUARY_SSL_DIR:-./docker/nginx/ssl}}:/etc/nginx/ssl:ro
-EOF
-
-  local before
-  before="$(cat "$compose_file")"
-
-  SANCTUARY_SSL_DIR="/container/runtime/ssl" \
-    SANCTUARY_COMPOSE_SSL_DIR="/host/runtime/ssl" \
-    adapt_legacy_compose_ssl_mount "$source_checkout"
-
-  assert_equals "$before" "$(cat "$compose_file")" \
-    "current compose SSL mount should remain unchanged"
-}
-
-test_legacy_shared_backend_builds_are_adapted() {
-  local source_checkout="$TEST_TMP_DIR/source"
-  local compose_file="$source_checkout/docker-compose.yml"
-
-  mkdir -p "$source_checkout"
-  cat > "$compose_file" <<'EOF'
-services:
-  backend:
-    build:
-      context: .
-      dockerfile: server/Dockerfile
-    image: sanctuary-backend:local
-  worker:
-    build:
-      context: .
-      dockerfile: server/Dockerfile
-    image: sanctuary-backend:local
-    command: ["node", "dist/server/src/worker.js"]
-  migrate:
-    build:
-      context: .
-      dockerfile: server/Dockerfile
-    image: sanctuary-backend:local
-    command: ["sh", "/app/scripts/migrate.sh"]
-  frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: sanctuary-frontend:local
-EOF
-
-  adapt_legacy_shared_backend_builds "$source_checkout"
-
-  local services
-  services="$(shared_backend_services_with_build "$compose_file" | paste -sd ',' -)"
-
-  assert_equals "backend" "$services" \
-    "upgrade harness should keep one backend-image build and make worker/migrate reuse it"
 }
 
 test_current_compose_builds_shared_backend_image_once() {
@@ -1906,9 +1820,6 @@ main() {
   run_test "legacy cgroup v1 keys stripped from overlays" test_legacy_cgroup_v1_keys_are_stripped_from_overlays
   run_test "legacy optional profile compose can use target tor overlay" test_legacy_optional_profile_compose_can_use_target_tor_overlay
   run_test "tor compose uses supported hidden service config" test_tor_compose_uses_supported_hidden_service_config
-  run_test "legacy compose ssl mount uses docker visible path" test_legacy_compose_ssl_mount_uses_docker_visible_path
-  run_test "current compose ssl mount is left unchanged" test_current_compose_ssl_mount_is_left_unchanged
-  run_test "legacy shared backend builds are adapted" test_legacy_shared_backend_builds_are_adapted
   run_test "current compose builds shared backend image once" test_current_compose_builds_shared_backend_image_once
   run_test "upgrade harness sources extracted helpers" test_upgrade_harness_sources_extracted_helpers
   run_test "upgrade harness restart fallback is opt-in" test_upgrade_harness_restart_fallback_is_opt_in

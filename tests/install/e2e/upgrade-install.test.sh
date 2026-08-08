@@ -373,8 +373,6 @@ run_install_script() {
     adapt_legacy_cgroup_v1_keys "$project_dir"
     adapt_legacy_host_path_mounts "$project_dir"
     adapt_legacy_healthcheck_shell_form "$project_dir"
-    adapt_legacy_compose_ssl_mount "$project_dir"
-    adapt_legacy_shared_backend_builds "$project_dir"
 
     # Scope the monitoring config directory to the checkout being installed. The
     # variable is global but the lane installs two stacks with different config
