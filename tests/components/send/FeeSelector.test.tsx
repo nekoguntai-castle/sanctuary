@@ -104,7 +104,7 @@ describe('FeeSelector', () => {
       expect(setFeeRate).toHaveBeenCalledWith(10);
     });
 
-    it('falls back to 1 sat/vB when preset fee is unavailable', async () => {
+    it('offers no rate at all when the preset fee is unavailable', async () => {
       const user = userEvent.setup();
       const setFeeRate = vi.fn();
       render(<FeeSelector {...defaultProps} setFeeRate={setFeeRate} fees={null} />);
@@ -112,7 +112,12 @@ describe('FeeSelector', () => {
       const highPriorityButton = screen.getByText('High Priority').closest('button');
       await user.click(highPriorityButton!);
 
-      expect(setFeeRate).toHaveBeenCalledWith(1);
+      // This previously asserted `toHaveBeenCalledWith(1)`, which pinned the bug
+      // as behaviour: with no estimate the preset set the minimum relay fee while
+      // the button still read "High Priority". There is no rate to substitute for
+      // one we were never given, so it now offers none.
+      expect(setFeeRate).not.toHaveBeenCalled();
+      expect(highPriorityButton).toBeDisabled();
     });
 
     it('calls setFeeRate when changing custom input', async () => {
@@ -220,6 +225,33 @@ describe('FeeSelector', () => {
       fireEvent.change(input, { target: { value: '' } });
 
       expect(setFeeRate).toHaveBeenCalledWith(0);
+    });
+  });
+  describe('when a fee estimate is missing', () => {
+    // `/bitcoin/fees` is fetched through an unchecked `apiClient.get<T>` assertion,
+    // and `fees` is plainly null whenever that request fails. Both used to reach
+    // `setFeeRate(opt.rate || 1)`, so clicking a preset labelled "High Priority"
+    // silently built a 1 sat/vB transaction — the minimum relay fee.
+    it('does not fall back to 1 sat/vB when one estimate is unusable', async () => {
+      const setFeeRate = vi.fn();
+      const partial = { ...mockFees, fastestFee: null as unknown as number };
+      render(<FeeSelector {...defaultProps} fees={partial} setFeeRate={setFeeRate} />);
+
+      const unusable = screen.getByRole('button', { name: /High Priority/i });
+      await userEvent.click(unusable);
+      expect(setFeeRate).not.toHaveBeenCalled();
+
+      // The tiers that did arrive still work.
+      await userEvent.click(screen.getByRole('button', { name: /Standard/i }));
+      expect(setFeeRate).toHaveBeenCalledWith(25);
+    });
+
+    it('shows the tier as unavailable rather than blank', () => {
+      render(<FeeSelector {...defaultProps} fees={null} />);
+
+      const preset = screen.getByRole('button', { name: /High Priority/i });
+      // A blank rate beside "sat/vB" reads as a real, very low number.
+      expect(preset).toHaveTextContent('—');
     });
   });
 });

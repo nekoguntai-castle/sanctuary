@@ -6,6 +6,7 @@
 
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { analyzeSpendPrivacy, getWalletPrivacy, type SpendPrivacyAnalysis, type UtxoPrivacyInfo } from '../../../../../api/transactions';
+import { usableFeeRate } from '../../../../../utils/feeRate';
 import type { UTXO } from '../../../../../types';
 import { createLogger } from '../../../../../utils/logger';
 
@@ -108,8 +109,12 @@ export function useTransactionComposition(input: TransactionCompositionInput) {
     }
 
     // Warning 2: Fee rate is much higher than slow estimate (>2x)
-    if (fees && feeRate > 0) {
-      const slowRate = fees.hourFee || fees.minimumFee || 1;
+    // `|| 1` used to close this chain, which compared the user's rate against a
+    // fabricated 1 sat/vB whenever no economy estimate had arrived — so every
+    // ordinary fee looked like a wild overpayment. With no estimate there is
+    // nothing to compare against, so no comparison is offered.
+    const slowRate = usableFeeRate(fees?.hourFee) ?? usableFeeRate(fees?.minimumFee);
+    if (slowRate !== null && feeRate > 0) {
       if (feeRate > slowRate * 2) {
         warnings.push(`Fee rate (${feeRate} sat/vB) is ${(feeRate / slowRate).toFixed(1)}x the economy rate (${slowRate} sat/vB)`);
       }

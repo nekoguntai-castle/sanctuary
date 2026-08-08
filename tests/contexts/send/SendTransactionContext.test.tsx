@@ -183,10 +183,15 @@ describe('SendTransactionContext', () => {
       expect(screen.getByTestId('fee-rate')).toHaveTextContent('25');
     });
 
-    it('falls back to fee rate 1 when fee estimates are unavailable', () => {
+    it('starts with no fee rate when fee estimates are unavailable', () => {
       renderWithProvider(<TestConsumer />, { fees: null });
 
-      expect(screen.getByTestId('fee-rate')).toHaveTextContent('1');
+      // This previously asserted '1'. That is the minimum relay fee, so a send
+      // flow opened while estimates were down silently started at the slowest
+      // possible rate and never said so. 0 is not a rate either, but
+      // `stepValidation` refuses to advance on it — "Fee rate must be greater
+      // than 0" — which asks the user instead of guessing for them.
+      expect(screen.getByTestId('fee-rate')).toHaveTextContent('0');
     });
 
     it('calculates selected total from spendable UTXOs', () => {

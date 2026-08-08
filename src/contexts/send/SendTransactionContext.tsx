@@ -18,6 +18,7 @@ import type {
   WalletAddress,
 } from './types';
 import type { Wallet, UTXO, FeeEstimate, Device } from '../../types';
+import { usableFeeRate } from '../../utils/feeRate';
 import type { BlockData, QueuedBlocksSummary } from '../../api/bitcoin';
 
 // ============================================================================
@@ -135,7 +136,12 @@ function SendTransactionProviderState({
   // Initialize state (with optional draft data)
   const [state, dispatch] = useReducer(
     transactionReducer,
-    fees?.halfHourFee ?? 1,
+    // `?? 1` used to sit here, so a send flow opened while fee estimates were
+    // unavailable started at the minimum relay fee without saying so. 0 is not a
+    // usable rate either, but `stepValidation` already refuses to advance on it
+    // with "Fee rate must be greater than 0", which puts the choice in front of
+    // the user instead of guessing on their behalf.
+    usableFeeRate(fees?.halfHourFee) ?? 0,
     (defaultFeeRate) => {
       const initial = createInitialState(defaultFeeRate);
       if (initialState) {

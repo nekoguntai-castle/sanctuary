@@ -1,6 +1,7 @@
 import React from 'react';
 import { AnimatedFeeRate } from './AnimatedFeeRate';
 import { TELEMETRY_SUPPORT_CLASS, TelemetryCard } from './TelemetryCard';
+import { usableFeeRate } from '../../utils/feeRate';
 
 interface FeeEstimate {
   fast: number;
@@ -48,7 +49,9 @@ export const FeeEstimationCard: React.FC<FeeEstimationCardProps> = ({ fees, form
       // digits. Both the separators and the rates inherit the same `text-2xl
       // leading-none`, so starting them together lines their line boxes up.
       <span className="flex items-start gap-2">
-        {FEE_TIERS.map((tier, index) => (
+        {FEE_TIERS.map((tier, index) => {
+          const rate = usableFeeRate(fees?.[tier.key]);
+          return (
           <React.Fragment key={tier.key}>
             {index > 0 && (
               <span
@@ -85,15 +88,19 @@ export const FeeEstimationCard: React.FC<FeeEstimationCardProps> = ({ fees, form
               <span className="tooltip-popup bottom-full left-1/2 -translate-x-1/2 mb-2">
                 <span className="tooltip-arrow tooltip-arrow-centered -bottom-1 border-b border-r" />
                 <span className="block">{tier.time}</span>
-                {fees?.[tier.key] !== undefined && (
+                {/* `!== undefined` used to guard this, which null passes — so an
+                    unusable rate produced `Math.round(null * 140)` and the tooltip
+                    stated "~0 sats for a typical tx" with total confidence. */}
+                {rate !== null && (
                   <span className="block text-sanctuary-400 dark:text-sanctuary-500 tabular-nums">
-                    ~{Math.round(fees[tier.key] * TYPICAL_VB).toLocaleString()} sats for a typical tx
+                    ~{Math.round(rate * TYPICAL_VB).toLocaleString()} sats for a typical tx
                   </span>
                 )}
               </span>
             </span>
           </React.Fragment>
-        ))}
+          );
+        })}
       </span>
     }
   />

@@ -134,15 +134,17 @@ describe('useTransactionComposition', () => {
           totalOutputAmount: 1000,
           estimatedFee: 10, // 1%
           feeRate: 3,
-          fees: {}, // hourFee + minimumFee missing -> default 1
+          fees: {}, // hourFee + minimumFee both missing -> nothing to compare against
         })
       )
     );
 
     await waitFor(() => expect(txApi.getWalletPrivacy).toHaveBeenCalledTimes(2));
-    expect(withDefaultSlowRate.current.feeWarnings).toEqual([
-      'Fee rate (3 sat/vB) is 3.0x the economy rate (1 sat/vB)',
-    ]);
+    // This previously expected 'Fee rate (3 sat/vB) is 3.0x the economy rate
+    // (1 sat/vB)'. With no estimate at all, that 1 was invented by `|| 1`, so an
+    // ordinary 3 sat/vB was reported as a 3x overpayment against a rate no one
+    // had quoted. No estimate means no comparison.
+    expect(withDefaultSlowRate.current.feeWarnings).toEqual([]);
 
     const { result: atThreshold } = renderHook(() =>
       useTransactionComposition(

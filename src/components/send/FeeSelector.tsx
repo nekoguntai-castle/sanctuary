@@ -12,6 +12,7 @@
 import { BlockVisualizer } from '../BlockVisualizer';
 import type { FeeEstimate } from '../../types';
 import type { BlockData, QueuedBlocksSummary } from '../../api/bitcoin';
+import { usableFeeRate } from '../../utils/feeRate';
 
 export interface FeeSelectorProps {
   // Fee state
@@ -66,16 +67,26 @@ export function FeeSelector({
 
       <div className="surface-elevated p-3 rounded-lg border border-sanctuary-200 dark:border-sanctuary-800">
         <div className="flex flex-wrap items-center gap-2">
-          {presets.map((opt) => (
-            <button
-              key={opt.label}
-              onClick={() => !disabled && setFeeRate(opt.rate || 1)}
-              className={`px-3 py-2 rounded-lg border transition-all text-left ${feeRate === opt.rate ? 'border-sanctuary-800 dark:border-sanctuary-200 bg-sanctuary-100 dark:bg-sanctuary-800' : 'border-sanctuary-200 dark:border-sanctuary-700 hover:border-sanctuary-400'} ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
-            >
-              <div className="text-xs text-sanctuary-500">{opt.label}</div>
-              <div className="text-sm font-semibold">{opt.rate} <span className="text-[10px] font-normal text-sanctuary-400">sat/vB</span></div>
-            </button>
-          ))}
+          {presets.map((opt) => {
+            // `opt.rate || 1` used to stand here. A tier we have no estimate for
+            // then set the minimum relay fee, so clicking "High Priority" built a
+            // 1 sat/vB transaction and said nothing. Offer the tier as unavailable
+            // instead — there is no rate to substitute.
+            const rate = usableFeeRate(opt.rate);
+            const unavailable = rate === null;
+            return (
+              <button
+                key={opt.label}
+                type="button"
+                disabled={unavailable}
+                onClick={() => { if (rate !== null && !disabled) setFeeRate(rate); }}
+                className={`px-3 py-2 rounded-lg border transition-all text-left ${feeRate === rate ? 'border-sanctuary-800 dark:border-sanctuary-200 bg-sanctuary-100 dark:bg-sanctuary-800' : 'border-sanctuary-200 dark:border-sanctuary-700 hover:border-sanctuary-400'} ${disabled || unavailable ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+              >
+                <div className="text-xs text-sanctuary-500">{opt.label}</div>
+                <div className="text-sm font-semibold">{unavailable ? '—' : rate} <span className="text-[10px] font-normal text-sanctuary-400">sat/vB</span></div>
+              </button>
+            );
+          })}
           <div className="flex items-center gap-2 ml-auto">
             <label className="text-xs text-sanctuary-500">Custom:</label>
             <input
