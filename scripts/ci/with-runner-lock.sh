@@ -91,13 +91,35 @@ main() {
   # `flock LOCKFILE CMD`, so acquisition failure and child failure stay
   # distinguishable. Not fail(): the reserved status has to survive.
   exec 9>"$lock_file"
+
+  # Measure the wait. The line above is printed before flock is attempted, so
+  # it reads identically whether the lock was free or held for an hour -- which
+  # meant no log anywhere could say whether serialising these lanes costs
+  # anything. That question gates sanctuary#664, so report the answer instead of
+  # implying it.
+  #
+  # Stable, greppable prefixes so contention can be aggregated across runs:
+  #   runner-lock: acquired <name> after <n>s
+  #   runner-lock: released <name> held <n>s status=<n>
+  local wait_start wait_end waited
+  wait_start="$(date +%s)"
   if ! flock -w "$timeout" 9; then
+    wait_end="$(date +%s)"
+    echo "runner-lock: timeout ${lock_name} after $((wait_end - wait_start))s" >&2
     echo "with-runner-lock: timed out after ${timeout}s waiting for runner lock: ${lock_name}" >&2
     return "$LOCK_CONFLICT_EXIT_CODE"
+  fi
+  wait_end="$(date +%s)"
+  waited=$((wait_end - wait_start))
+  echo "runner-lock: acquired ${lock_name} after ${waited}s"
+  if [ "$waited" -ge 1 ]; then
+    echo "::notice title=Runner lock contention::${lock_name} was held by another lane; waited ${waited}s"
   fi
 
   local status=0
   "$@" || status="$?"
+
+  echo "runner-lock: released ${lock_name} held $(( $(date +%s) - wait_end ))s status=${status}"
   return "$status"
 }
 

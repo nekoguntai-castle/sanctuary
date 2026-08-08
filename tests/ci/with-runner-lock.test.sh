@@ -62,8 +62,46 @@ main() {
 
   assert_contended_lock_reports_timeout "$lock_dir"
   assert_lock_timeout_fits_inside_every_job
+  assert_lock_reports_wait_duration
 
   echo 'runner lock regression checks passed'
+}
+
+# Serialisation has to be measurable before anyone can argue about removing it.
+#
+# The script printed "Waiting for runner lock: <name>" *before* attempting flock,
+# so the line read identically whether the lock was free or held for an hour. No
+# log anywhere could say whether serialising the e2e lanes costs anything, which
+# is precisely the question gating sanctuary#664.
+assert_lock_reports_wait_duration() {
+  local dir="$TEST_TEMP_DIR/wait-locks"
+  mkdir -p "$dir"
+
+  # Uncontended: acquired immediately, and no contention annotation.
+  local free_out
+  free_out="$(SANCTUARY_RUNNER_LOCK_DIR="$dir" bash "$LOCK_SCRIPT" freelock true 2>&1)"
+  printf '%s' "$free_out" | grep -q 'runner-lock: acquired freelock after 0s' \
+    || fail "expected an immediate acquisition to report 0s, got: ${free_out}"
+  printf '%s' "$free_out" | grep -q 'Runner lock contention' \
+    && fail 'an uncontended lock must not report contention'
+  printf '%s' "$free_out" | grep -q 'runner-lock: released freelock held .*status=0' \
+    || fail "expected a release line with status, got: ${free_out}"
+
+  # Contended: a second caller must report the wait, not just that it waited.
+  ( SANCTUARY_RUNNER_LOCK_DIR="$dir" bash "$LOCK_SCRIPT" busylock sleep 3 >/dev/null 2>&1 ) &
+  local holder=$!
+  sleep 1
+
+  local busy_out
+  busy_out="$(SANCTUARY_RUNNER_LOCK_DIR="$dir" bash "$LOCK_SCRIPT" busylock true 2>&1)"
+  wait "$holder" 2>/dev/null || true
+
+  local waited
+  waited="$(printf '%s' "$busy_out" | sed -n 's/.*runner-lock: acquired busylock after \([0-9]*\)s.*/\1/p')"
+  [ -n "$waited" ] || fail "expected an acquisition line under contention, got: ${busy_out}"
+  [ "$waited" -ge 1 ] || fail "expected a non-zero wait under contention, got ${waited}s"
+  printf '%s' "$busy_out" | grep -q 'Runner lock contention' \
+    || fail "expected a contention annotation, got: ${busy_out}"
 }
 
 # A lock that never becomes available must say so, and with a status the caller
