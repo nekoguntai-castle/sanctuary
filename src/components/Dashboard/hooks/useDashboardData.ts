@@ -26,6 +26,7 @@ import {
   mapApiWalletToDashboardWallet,
   mapRecentTransaction,
   toDashboardFeeEstimate,
+  neverAnswered,
 } from './dashboardDataModel';
 
 const log = createLogger('Dashboard');
@@ -143,7 +144,7 @@ export function useDashboardData() {
   );
 
   // Fetch pending transactions for selected network only
-  const { data: pendingTxsData } = usePendingTransactions(filteredWalletIds);
+  const { data: pendingTxsData, isError: pendingFetchFailed } = usePendingTransactions(filteredWalletIds);
   const pendingTxs = pendingTxsData ?? EMPTY_PENDING;
 
   // Unconfirmed sats, tracked per direction rather than netted. A single signed
@@ -310,8 +311,15 @@ export function useDashboardData() {
   }, [updateWalletSyncStatus]);
 
   // Calculate total balance for filtered wallets (network-specific)
-  const walletsUnavailable = walletsFetchFailed && apiWallets === undefined;
-  const mempoolUnavailable = mempoolFetchFailed && mempoolData === undefined;
+  const walletsUnavailable = neverAnswered(walletsFetchFailed, apiWallets);
+  const mempoolUnavailable = neverAnswered(mempoolFetchFailed, mempoolData);
+  // Pending totals render nothing when both are zero, so a failed request is
+  // indistinguishable from "nothing pending" — and an unconfirmed send the
+  // reader cannot see is the one they most need to know about.
+  const pendingUnavailable = neverAnswered(pendingFetchFailed, pendingTxsData);
+  // The collapsed summary already says "Activity unavailable" on failure; the
+  // expanded table underneath was still asserting "No transactions found".
+  const recentTxUnavailable = neverAnswered(recentActivity.isError, recentActivity.data);
 
   const totalBalance = filteredWallets.reduce((acc, w) => acc + w.balance, 0);
 
@@ -368,6 +376,8 @@ export function useDashboardData() {
     setActivityPageSize,
     pendingTxs,
     pendingTotals,
+    pendingUnavailable,
+    recentTxUnavailable,
     fees,
     feesError,
     formatFeeRate,

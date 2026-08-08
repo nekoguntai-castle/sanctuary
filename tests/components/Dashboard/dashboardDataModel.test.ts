@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatFeeRate } from '../../../src/components/Dashboard/hooks/dashboardDataModel';
+import { formatFeeRate, neverAnswered } from '../../../src/components/Dashboard/hooks/dashboardDataModel';
 
 describe('formatFeeRate', () => {
   it('formats rates by magnitude', () => {
@@ -31,5 +31,26 @@ describe('formatFeeRate', () => {
   it('does not throw on a non-numeric value', () => {
     expect(() => formatFeeRate('12' as unknown as number)).not.toThrow();
     expect(formatFeeRate('12' as unknown as number)).toBe('---');
+  });
+});
+
+describe('neverAnswered', () => {
+  it('is true only when the query failed and delivered nothing', () => {
+    expect(neverAnswered(true, undefined)).toBe(true);
+  });
+
+  it('is false while a failed refetch still holds an answer', () => {
+    // React Query keeps the last good data through a failed refetch. Treating
+    // that as unavailable would blank a card showing perfectly good figures,
+    // and would yank a genuinely new user out of the welcome state.
+    expect(neverAnswered(true, [])).toBe(false);
+    expect(neverAnswered(true, null)).toBe(false);
+    expect(neverAnswered(true, { blocks: [] })).toBe(false);
+  });
+
+  it('is false whenever the query has not failed', () => {
+    expect(neverAnswered(false, undefined)).toBe(false);
+    expect(neverAnswered(undefined, undefined)).toBe(false);
+    expect(neverAnswered(false, [])).toBe(false);
   });
 });

@@ -444,6 +444,30 @@ describe('PriceChart balance trend', () => {
     expect(screen.getByText(/The total above is current/)).toBeInTheDocument();
   });
 
+  // Zero totals render nothing, which reads as "nothing pending". A failed
+  // request has not established that, and an unconfirmed send the reader
+  // cannot see is the one they most need flagged.
+  it('says pending is unavailable rather than silently showing nothing', () => {
+    renderForAvailability({ pendingUnavailable: true });
+
+    expect(screen.getByTestId('pending-unavailable')).toBeInTheDocument();
+  });
+
+  it('stays silent about pending when there genuinely is none', () => {
+    renderForAvailability();
+
+    expect(screen.queryByTestId('pending-unavailable')).not.toBeInTheDocument();
+  });
+
+  it('shows real pending totals rather than the unavailable note', () => {
+    renderForAvailability({
+      pendingUnavailable: true,
+      pendingTotals: { incoming: 50000, outgoing: 0 },
+    });
+
+    expect(screen.queryByTestId('pending-unavailable')).not.toBeInTheDocument();
+  });
+
   it('draws the chart normally when history is available', () => {
     renderForAvailability();
 

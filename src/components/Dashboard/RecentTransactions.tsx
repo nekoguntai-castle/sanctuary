@@ -102,6 +102,8 @@ interface RecentTransactionsProps {
   activitySummary: ActivitySummary | undefined;
   /** True when the aggregate failed, so the bar can say so rather than stay blank. */
   activitySummaryError: boolean;
+  /** The transaction page itself failed, as distinct from the summary above it. */
+  recentTxUnavailable?: boolean;
   timeframe: Timeframe;
   onPageChange: (page: number) => void;
   onPageSizeChange: (pageSize: number) => void;
@@ -119,6 +121,7 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
   isFetching,
   activitySummary,
   activitySummaryError,
+  recentTxUnavailable = false,
   timeframe,
   onPageChange,
   onPageSizeChange,
@@ -176,6 +179,10 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
         onTransactionClick={(tx) => navigate(`/wallets/${tx.walletId}?tx=${encodeURIComponent(tx.txid)}`)}
         confirmationThreshold={confirmationThreshold}
         deepConfirmationThreshold={deepConfirmationThreshold}
+        // Without this the table says "No transactions found" directly beneath
+        // a summary already saying it could not tell — two different answers to
+        // the same question, on the same card.
+        unavailable={recentTxUnavailable}
       />
 
       {showFooter && (

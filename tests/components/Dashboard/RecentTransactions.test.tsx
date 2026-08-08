@@ -231,6 +231,14 @@ describe('RecentTransactions', () => {
 
     const disclosure = () => screen.getByRole('button', { name: /Recent Activity/ });
 
+    it('tells the table when the page itself failed, not just the summary', () => {
+      renderSection([], { recentTxUnavailable: true } as never);
+
+      expect(mockTransactionList).toHaveBeenCalledWith(
+        expect.objectContaining({ unavailable: true })
+      );
+    });
+
     it('starts expanded with the activity body reachable', () => {
       renderSection();
 

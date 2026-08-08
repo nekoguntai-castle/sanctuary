@@ -83,10 +83,10 @@ const transaction = (overrides: Partial<Transaction> = {}): Transaction =>
     ...overrides,
   }) as Transaction;
 
-const renderList = (transactions: Transaction[]) =>
+const renderList = (transactions: Transaction[], props: Record<string, unknown> = {}) =>
   render(
     <MemoryRouter>
-      <TransactionList transactions={transactions} walletId="wallet-1" />
+      <TransactionList transactions={transactions} walletId="wallet-1" {...props} />
     </MemoryRouter>
   );
 
@@ -118,6 +118,16 @@ describe('TransactionList presentation contract', () => {
 
     expect(screen.getByText('No transactions found.')).toBeInTheDocument();
     expect(container.querySelector('.min-h-\\[300px\\]')).not.toBeNull();
+  });
+
+  // An empty list means "there are none" only when we actually got an answer.
+  // On the dashboard this table sits under a summary that already says
+  // "Activity unavailable" — two answers to one question on the same card.
+  it('distinguishes an empty result from a failed one', () => {
+    renderList([], { unavailable: true });
+
+    expect(screen.getByText('Transactions unavailable.')).toBeInTheDocument();
+    expect(screen.queryByText('No transactions found.')).not.toBeInTheDocument();
   });
 
   it('still renders the statistics grid when the list is empty', () => {

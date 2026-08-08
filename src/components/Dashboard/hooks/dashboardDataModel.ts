@@ -141,6 +141,20 @@ export function toDashboardFeeEstimate(feeEstimates: FeeEstimates | undefined): 
  * Anything that is not a finite number is not a rate, and the card already has
  * a way to say so. Keep the guard even though the type says it cannot happen.
  */
+/**
+ * True when a query failed *and* never delivered anything.
+ *
+ * The distinction carries the dashboard's error states. React Query keeps the
+ * last good `data` through a failed refetch, and these queries are invalidated
+ * constantly — visibility change, socket reconnect, every balance event. So
+ * `isError` alone would blank a card that is displaying perfectly good figures,
+ * and would yank a genuinely new user out of the welcome state on the first
+ * transient blip. Only the absence of any answer means we never got one.
+ */
+export function neverAnswered(isError: boolean | undefined, data: unknown): boolean {
+  return Boolean(isError) && data === undefined;
+}
+
 export function formatFeeRate(rate: number | undefined): string {
   if (typeof rate !== 'number' || !Number.isFinite(rate)) return '---';
   if (rate >= 10) return Math.round(rate).toString();

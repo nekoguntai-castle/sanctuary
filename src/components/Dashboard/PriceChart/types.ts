@@ -47,6 +47,8 @@ export interface PriceChartProps {
    * flat placeholder rather than real history.
    */
   historyUnavailable?: boolean;
+  /** The pending request failed and returned nothing — not "nothing pending". */
+  pendingUnavailable?: boolean;
 }
 
 export type PriceDirection = 'up' | 'down' | 'none';

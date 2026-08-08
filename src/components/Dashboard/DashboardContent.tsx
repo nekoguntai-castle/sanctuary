@@ -48,6 +48,8 @@ export function DashboardContent({ data }: DashboardContentProps) {
     setActivityPageSize,
     pendingTxs,
     pendingTotals,
+    pendingUnavailable,
+    recentTxUnavailable,
     fees,
     feesError,
     formatFeeRate,
@@ -84,6 +86,7 @@ export function DashboardContent({ data }: DashboardContentProps) {
       isFetching={activityFetching}
       activitySummary={activitySummary}
       activitySummaryError={activitySummaryError}
+      recentTxUnavailable={recentTxUnavailable}
       timeframe={timeframe}
       onPageChange={setActivityPage}
       onPageSizeChange={setActivityPageSize}
@@ -142,6 +145,7 @@ export function DashboardContent({ data }: DashboardContentProps) {
               timeframe={timeframe}
               chartData={chartData}
               historyUnavailable={balanceHistoryUnavailable}
+              pendingUnavailable={pendingUnavailable}
               pendingTotals={pendingTotals}
               walletCount={filteredWallets.length}
             />

@@ -31,6 +31,12 @@ interface TransactionListProps {
   transactionStats?: TransactionStats; // Pre-computed stats from API (for all transactions, not just displayed)
   walletLabels?: Label[];
   /**
+   * The request failed and returned nothing, so an empty list means "we could
+   * not ask" rather than "there is nothing". Without this the table asserts
+   * "No transactions found" under a header already saying it could not tell.
+   */
+  unavailable?: boolean;
+  /**
    * `'comfortable'` (default) is the wallet-detail presentation: the seven-tile
    * statistics grid, and an empty state that reserves 300px so the viewport
    * doesn't collapse.
@@ -62,6 +68,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   walletBalance,
   transactionStats,
   density = 'comfortable',
+  unavailable = false,
 }) => {
   const { format } = usePriceFreeFormatter();
   const { enabled: aiEnabled } = useAIStatus();
@@ -191,7 +198,9 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                 density === 'comfortable' ? 'min-h-[300px] py-10' : 'py-6'
               }`}
             >
-              <p className="text-sanctuary-400 dark:text-sanctuary-500">No transactions found.</p>
+              <p className="text-sanctuary-400 dark:text-sanctuary-500" data-testid="transactions-empty-state">
+                {unavailable ? 'Transactions unavailable.' : 'No transactions found.'}
+              </p>
             </div>
           ) : (
             <TransactionTable

@@ -16,8 +16,22 @@ import { Card } from '../ui/Card';
  * ArrowDownLeft/success for incoming, ArrowUpRight/sent for outgoing. `sent-*`
  * rather than `warning-*`, which means "multisig/caution" elsewhere.
  */
-function PendingTotalsRow({ pendingTotals }: { pendingTotals: PendingTotals }) {
+function PendingTotalsRow({
+  pendingTotals,
+  unavailable = false,
+}: { pendingTotals: PendingTotals; unavailable?: boolean }) {
   const { incoming, outgoing } = pendingTotals;
+
+  // Zero totals render nothing, which reads as "nothing pending". When the
+  // request failed we have not established that, and an unconfirmed send the
+  // reader cannot see is exactly what they would want flagged.
+  if (unavailable && incoming === 0 && outgoing === 0) {
+    return (
+      <p className="text-xs text-sanctuary-500 dark:text-sanctuary-400" data-testid="pending-unavailable">
+        Pending transactions unavailable
+      </p>
+    );
+  }
 
   if (incoming === 0 && outgoing === 0) {
     return null;
@@ -81,6 +95,7 @@ export function PriceChart({
   pendingTotals,
   walletCount,
   historyUnavailable = false,
+  pendingUnavailable = false,
 }: PriceChartProps) {
   // Same point set the chart draws, so the annotation and the line can never
   // disagree about which way the period went.
@@ -108,7 +123,7 @@ export function PriceChart({
           <BalanceTrendRow trend={trend} />
           {/* Pending is unconfirmed exposure, deliberately kept apart from the
               confirmed period change above it. */}
-          <PendingTotalsRow pendingTotals={pendingTotals} />
+          <PendingTotalsRow pendingTotals={pendingTotals} unavailable={pendingUnavailable} />
           <p className="text-xs text-sanctuary-400">
             across {walletCount} {walletCount === 1 ? 'wallet' : 'wallets'}
           </p>
