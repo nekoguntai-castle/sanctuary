@@ -1,334 +1,43 @@
-import { act,renderHook } from '@testing-library/react';
-import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
+/**
+ * The harness import MUST stay first.
+ *
+ * `vi.mock` is hoisted to the top of the file that calls it, not to the top of
+ * the module graph, so the harness's mocks are registered when the harness is
+ * evaluated. Import anything that pulls in the real contexts ahead of it and
+ * those mocks land too late: every test in this file fails with
+ * "useCurrencyPreferencesContext must be used within CurrencyPreferencesProvider".
+ *
+ * That is a loud failure rather than a silent pass, and `tests/` is outside the
+ * lint config's globs so no import sorter will rearrange it — but if you are
+ * reading this because the suite went red, the order is the reason.
+ */
+import {
+  activitySummaryCalls,
+  mockAddNotification,
+  mockCheckVersion,
+  mockInvalidateAllWallets,
+  mockLoggerWarn,
+  mockPlayEventSound,
+  mockPreferences,
+  mockRefetchMempool,
+  mockSubscribe,
+  mockSubscribeWallets,
+  mockUnsubscribe,
+  mockUnsubscribeWallets,
+  mockUpdateWalletSyncStatus,
+  recentTxCalls,
+  resetState,
+  state,
+  wsEventHandlers,
+} from './useDashboardDataHarness';
+import { act, renderHook } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
 import {
   applyNetworkSearchParam,
   resolveInitialNetwork,
 } from '../../../src/components/Dashboard/hooks/dashboardDataModel';
 import { useDashboardData } from '../../../src/components/Dashboard/hooks/useDashboardData';
-
-const mockNavigate = vi.fn();
-const mockSetSearchParams = vi.fn();
-let mockSearchParams = new URLSearchParams();
-
-const mockCheckVersion = vi.fn();
-const mockLoggerWarn = vi.fn();
-const mockSubscribeWallets = vi.fn();
-const mockUnsubscribeWallets = vi.fn();
-const mockSubscribe = vi.fn();
-const mockUnsubscribe = vi.fn();
-const mockAddNotification = vi.fn();
-const mockPlayEventSound = vi.fn();
-const mockInvalidateAllWallets = vi.fn();
-const mockUpdateWalletSyncStatus = vi.fn();
-const mockRefetchMempool = vi.fn();
-
-const wsEventHandlers: Record<string, ((event: any) => void) | undefined> = {};
-
-let walletsData: any[] | undefined;
-let walletsLoading = false;
-let recentTxData: any[] | undefined;
-let txLoading = false;
-let recentTxFetching = false;
-let recentTxHasNext = false;
-const recentTxCalls: { pageSize: number; page: number }[] = [];
-const activitySummaryCalls: { timeframe: string }[] = [];
-let pendingTxData: any[] | undefined;
-let balanceHistoryData: Array<{ name: string; value: number }>;
-let activitySummaryData: any;
-let activitySummaryIsError = false;
-let walletsIsError = false;
-let balanceHistoryIsUnavailable = false;
-let mempoolIsError = false;
-let feesIsError = false;
-
-let feeEstimatesData: any;
-let feesLoading = false;
-let bitcoinStatusData: any;
-let statusLoading = false;
-let bitcoinStatusNetworks: string[] = [];
-let mempoolNetworks: string[] = [];
-let mempoolDataData: any;
-let mempoolLoading = false;
-let mempoolRefreshing = false;
-
-let wsConnected = false;
-let wsState: 'connecting' | 'connected' | 'disconnected' = 'disconnected';
-let delayedRenderReady = true;
-
-let currencyState: any;
-let userState: any;
-let activeNetworkState: 'mainnet' | 'testnet3' | 'testnet4' | 'signet' = 'mainnet';
-
-vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual('react-router-dom');
-  return {
-    ...actual,
-    useNavigate: () => mockNavigate,
-    useSearchParams: () => [mockSearchParams, mockSetSearchParams] as const,
-  };
-});
-
-vi.mock('../../../src/api/admin', () => ({
-  checkVersion: (...args: any[]) => mockCheckVersion(...args),
-}));
-
-vi.mock('../../../src/utils/logger', () => ({
-  createLogger: () => ({
-    warn: (...args: any[]) => mockLoggerWarn(...args),
-    info: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  }),
-}));
-
-vi.mock('../../../src/hooks/websocket', () => ({
-  useWebSocket: () => ({
-    connected: wsConnected,
-    state: wsState,
-    subscribeWallets: mockSubscribeWallets,
-    unsubscribeWallets: mockUnsubscribeWallets,
-    subscribe: mockSubscribe,
-    unsubscribe: mockUnsubscribe,
-  }),
-  useWebSocketEvent: (eventType: string, callback: (event: any) => void) => {
-    wsEventHandlers[eventType] = callback;
-  },
-}));
-
-vi.mock('../../../src/contexts/NotificationContext', () => ({
-  useNotifications: () => ({
-    addNotification: mockAddNotification,
-  }),
-}));
-
-vi.mock('../../../src/contexts/ActiveNetworkContext', () => ({
-  useActiveNetwork: () => ({
-    selectedNetwork: activeNetworkState,
-    isMainnet: activeNetworkState === 'mainnet',
-    setSelectedNetwork: vi.fn(),
-  }),
-}));
-
-vi.mock('../../../src/hooks/useNotificationSound', () => ({
-  useNotificationSound: () => ({
-    playEventSound: mockPlayEventSound,
-  }),
-}));
-
-vi.mock('../../../src/hooks/queries/useWallets', () => ({
-  useWallets: () => ({ data: walletsData, isLoading: walletsLoading, isError: walletsIsError }),
-  useRecentTransactions: (_ids: string[], pageSize: number, page: number) => {
-    recentTxCalls.push({ pageSize, page });
-    return {
-      data: recentTxData,
-      isLoading: txLoading,
-      isFetching: recentTxFetching,
-      page,
-      pageSize,
-      hasPreviousPage: page > 0,
-      hasNextPage: recentTxHasNext,
-    };
-  },
-  usePendingTransactions: () => ({ data: pendingTxData }),
-  useInvalidateAllWallets: () => mockInvalidateAllWallets,
-  useUpdateWalletSyncStatus: () => mockUpdateWalletSyncStatus,
-  useBalanceHistory: () => ({ data: balanceHistoryData, isUnavailable: balanceHistoryIsUnavailable }),
-  useActivitySummary: (_ids: string[], timeframe: string) => {
-    activitySummaryCalls.push({ timeframe });
-    return { data: activitySummaryData, isError: activitySummaryIsError };
-  },
-}));
-
-vi.mock('../../../src/hooks/queries/useBitcoin', () => ({
-  useFeeEstimates: () => ({ data: feeEstimatesData, isLoading: feesLoading, isError: feesIsError }),
-  useBitcoinStatus: (network: string) => {
-    bitcoinStatusNetworks.push(network);
-    return { data: bitcoinStatusData, isLoading: statusLoading };
-  },
-  useMempoolData: (network: string) => {
-    mempoolNetworks.push(network);
-    return {
-      data: mempoolDataData,
-      isLoading: mempoolLoading,
-      refetch: mockRefetchMempool,
-      isFetching: mempoolRefreshing,
-      isError: mempoolIsError,
-    };
-  },
-}));
-
-vi.mock('../../../src/contexts/CurrencyContext', () => ({
-  useCurrency: () => currencyState,
-}));
-
-vi.mock('../../../src/contexts/UserContext', () => ({
-  useUser: () => userState,
-}));
-
-// Stateful, matching the pattern in WalletSummary.test: the activity page size
-// runs through this hook, and the reset-on-change effect needs a real setter.
-const mockPreferences = new Map<string, unknown>();
-
-vi.mock('../../../src/hooks/useUserPreference', async () => {
-  const { useState } = await import('react');
-  return {
-    useUserPreference: (key: string, defaultValue: unknown) => {
-      const [value, setValue] = useState(
-        mockPreferences.has(key) ? mockPreferences.get(key) : defaultValue
-      );
-      return [
-        value,
-        (newValue: unknown) => {
-          mockPreferences.set(key, newValue);
-          setValue(newValue);
-        },
-      ];
-    },
-  };
-});
-
-vi.mock('../../../src/hooks/useDelayedRender', () => ({
-  useDelayedRender: () => delayedRenderReady,
-}));
-
-const resetState = () => {
-  mockSearchParams = new URLSearchParams();
-  recentTxFetching = false;
-  recentTxHasNext = false;
-  recentTxCalls.length = 0;
-  activitySummaryCalls.length = 0;
-  activitySummaryData = { count: 3, receivedSats: 500, sentSats: 200, latestAt: null };
-  activitySummaryIsError = false;
-  walletsIsError = false;
-  balanceHistoryIsUnavailable = false;
-  mempoolIsError = false;
-  feesIsError = false;
-  mockPreferences.clear();
-  walletsData = [
-    {
-      id: 'w-main-low',
-      name: 'Main Low',
-      type: 'single_sig',
-      balance: 1000,
-      scriptType: 'wpkh',
-      network: 'mainnet',
-      descriptor: 'desc-1',
-      fingerprint: 'fp1',
-      lastSyncStatus: 'success',
-      syncInProgress: false,
-      lastSyncedAt: '2026-02-01T00:00:00.000Z',
-    },
-    {
-      id: 'w-main-high',
-      name: 'Main High',
-      type: 'multi_sig',
-      balance: 4000,
-      scriptType: 'wsh',
-      network: 'mainnet',
-      descriptor: 'desc-2',
-      fingerprint: 'fp2',
-      lastSyncStatus: 'partial',
-      syncInProgress: true,
-      lastSyncedAt: '2026-02-02T00:00:00.000Z',
-    },
-    {
-      id: 'w-test',
-      name: 'Test Wallet',
-      type: 'single_sig',
-      balance: 3000,
-      scriptType: 'wpkh',
-      network: 'testnet3',
-      descriptor: 'desc-3',
-      fingerprint: 'fp3',
-      lastSyncStatus: null,
-      syncInProgress: false,
-      lastSyncedAt: null,
-    },
-    {
-      id: 'w-fallback',
-      name: 'Fallback Network',
-      type: 'single_sig',
-      balance: 2000,
-      scriptType: 'wpkh',
-      network: undefined,
-      descriptor: null,
-      fingerprint: null,
-      lastSyncStatus: null,
-      syncInProgress: false,
-      lastSyncedAt: null,
-    },
-  ];
-  walletsLoading = false;
-
-  recentTxData = [
-    {
-      id: 'tx-received',
-      txid: 'abc',
-      walletId: 'w-main-high',
-      amount: '1500',
-      fee: '100',
-      confirmations: 2,
-      blockHeight: 900001,
-      blockTime: '2026-02-10T00:00:00.000Z',
-      label: 'inbound',
-      type: 'received',
-    },
-    {
-      id: 'tx-sent',
-      txid: 'def',
-      walletId: 'w-main-low',
-      amount: 500,
-      fee: 25,
-      confirmations: 0,
-      blockHeight: undefined,
-      blockTime: undefined,
-      label: '',
-      type: 'sent',
-      isLocked: true,
-      lockedByDraftLabel: 'Draft Payment',
-    },
-  ];
-  txLoading = false;
-  pendingTxData = [{ txid: 'pending-1' }];
-  balanceHistoryData = [
-    { name: 'Start', value: 5000 },
-    { name: 'Now', value: 8000 },
-  ];
-
-  feeEstimatesData = { fastest: 18.6, hour: 9, economy: 3.4 };
-  feesLoading = false;
-  bitcoinStatusData = { connected: true, explorerUrl: 'https://mempool.space' };
-  statusLoading = false;
-  bitcoinStatusNetworks = [];
-  mempoolNetworks = [];
-  mempoolDataData = {
-    mempool: [{ id: 'mp1' }],
-    blocks: [{ id: 'b1' }, { id: 'b2' }],
-    queuedBlocksSummary: { highPriority: 1, mediumPriority: 2, lowPriority: 3 },
-  };
-  mempoolLoading = false;
-  mempoolRefreshing = false;
-
-  wsConnected = true;
-  wsState = 'connected';
-  delayedRenderReady = true;
-  activeNetworkState = 'mainnet';
-
-  currencyState = {
-    format: vi.fn((sats: number) => `${sats}`),
-    btcPrice: 100000,
-    priceChange24h: 1.23,
-    currencySymbol: '$',
-    priceLoading: false,
-    lastPriceUpdate: new Date('2026-02-15T12:00:00.000Z'),
-    showFiat: true,
-  };
-  userState = { user: { id: 'user-1' } };
-
-  Object.keys(wsEventHandlers).forEach(key => {
-    delete wsEventHandlers[key];
-  });
-};
 
 describe('useDashboardData', () => {
   beforeEach(() => {
@@ -389,7 +98,7 @@ describe('useDashboardData', () => {
     expect(result.current.totalBalance).toBe(7000);
     expect(result.current.loading).toBe(false);
     expect(result.current.isMainnet).toBe(true);
-    expect(mempoolNetworks).toContain('mainnet');
+    expect(state.mempoolNetworks).toContain('mainnet');
 
     expect(result.current.recentTx).toHaveLength(2);
     expect(result.current.recentTx[0].amount).toBe(1500);
@@ -399,7 +108,7 @@ describe('useDashboardData', () => {
     expect(result.current.recentTx[1].confirmations).toBe(0);
     expect(result.current.recentTx[1].isLocked).toBe(true);
     expect(result.current.recentTx[1].lockedByDraftLabel).toBe('Draft Payment');
-    expect(result.current.pendingTxs).toEqual(pendingTxData);
+    expect(result.current.pendingTxs).toEqual(state.pendingTxData);
 
     expect(result.current.fees).toEqual({ fast: 18.6, medium: 9, slow: 3.4 });
     expect(result.current.formatFeeRate(undefined)).toBe('---');
@@ -409,7 +118,7 @@ describe('useDashboardData', () => {
 
     expect(result.current.nodeStatus).toBe('connected');
     expect(result.current.mempoolBlocks).toHaveLength(3);
-    expect(result.current.queuedBlocksSummary).toEqual(mempoolDataData.queuedBlocksSummary);
+    expect(result.current.queuedBlocksSummary).toEqual(state.mempoolDataData.queuedBlocksSummary);
     expect(result.current.lastMempoolUpdate).not.toBeNull();
     expect(result.current.chartReady).toBe(true);
     expect(result.current.chartData).toEqual([
@@ -462,7 +171,7 @@ describe('useDashboardData', () => {
   it('splits pending totals by direction instead of netting them', () => {
     // Server sends `amount` already negative for sends. A single signed total
     // would report this pair as "nothing pending".
-    pendingTxData = [
+    state.pendingTxData = [
       { txid: 'p-in', amount: 100000 },
       { txid: 'p-out', amount: -100000 },
       { txid: 'p-out-2', amount: -25000 },
@@ -474,7 +183,7 @@ describe('useDashboardData', () => {
   });
 
   it('uses the active network preference for dashboard data', async () => {
-    activeNetworkState = 'testnet3';
+    state.activeNetworkState = 'testnet3';
 
     const { result, rerender } = renderHook(() => useDashboardData());
     await act(async () => {
@@ -485,33 +194,33 @@ describe('useDashboardData', () => {
     expect(result.current.selectedNetwork).toBe('testnet3');
     expect(result.current.isMainnet).toBe(false);
     expect(result.current.filteredWallets.map(w => w.id)).toEqual(['w-test']);
-    expect(bitcoinStatusNetworks).toContain('testnet3');
-    expect(mempoolNetworks).toContain('testnet3');
+    expect(state.bitcoinStatusNetworks).toContain('testnet3');
+    expect(state.mempoolNetworks).toContain('testnet3');
 
     act(() => {
-      activeNetworkState = 'signet';
+      state.activeNetworkState = 'signet';
     });
     rerender();
     expect(result.current.selectedNetwork).toBe('signet');
-    expect(bitcoinStatusNetworks).toContain('signet');
-    expect(mempoolNetworks).toContain('signet');
+    expect(state.bitcoinStatusNetworks).toContain('signet');
+    expect(state.mempoolNetworks).toContain('signet');
 
     act(() => {
-      activeNetworkState = 'mainnet';
+      state.activeNetworkState = 'mainnet';
     });
     rerender();
     expect(result.current.selectedNetwork).toBe('mainnet');
   });
 
   it('covers loading/unknown/error node status for the active mainnet view', async () => {
-    walletsData = [];
-    walletsLoading = true;
-    feeEstimatesData = undefined;
-    mempoolDataData = undefined;
-    mempoolRefreshing = true;
-    statusLoading = true;
-    bitcoinStatusData = undefined;
-    currencyState.priceChange24h = null;
+    state.walletsData = [];
+    state.walletsLoading = true;
+    state.feeEstimatesData = undefined;
+    state.mempoolDataData = undefined;
+    state.mempoolRefreshing = true;
+    state.statusLoading = true;
+    state.bitcoinStatusData = undefined;
+    state.currencyState.priceChange24h = null;
 
     const { result, rerender } = renderHook(() => useDashboardData());
     await act(async () => {
@@ -529,11 +238,11 @@ describe('useDashboardData', () => {
     expect(result.current.priceChangePositive).toBe(false);
     expect(result.current.mempoolRefreshing).toBe(true);
 
-    statusLoading = false;
+    state.statusLoading = false;
     rerender();
     expect(result.current.nodeStatus).toBe('unknown');
 
-    bitcoinStatusData = { connected: false };
+    state.bitcoinStatusData = { connected: false };
     rerender();
     expect(result.current.nodeStatus).toBe('error');
   });
@@ -554,10 +263,10 @@ describe('useDashboardData', () => {
   });
 
   it('covers nullish query fallbacks, hidden visibility branch, and wsDisconnected reconnect branch', async () => {
-    walletsData = null as any;
-    recentTxData = null as any;
-    pendingTxData = null as any;
-    wsConnected = false;
+    state.walletsData = null as any;
+    state.recentTxData = null as any;
+    state.pendingTxData = null as any;
+    state.wsConnected = false;
 
     const { result } = renderHook(() => useDashboardData());
     await act(async () => {
@@ -729,12 +438,12 @@ describe('useDashboardData', () => {
   });
 
   it('covers websocket/event fallback branches and fee-zero transaction mapping', async () => {
-    mempoolDataData = {
+    state.mempoolDataData = {
       mempool: [],
       blocks: [],
       mempoolInfo: { count: 0, size: 0, totalFees: 0 },
     };
-    recentTxData = [
+    state.recentTxData = [
       {
         id: 'tx-fee-zero',
         txid: 'fee-zero',
@@ -913,7 +622,7 @@ describe('useDashboardData', () => {
 
       // Invalidation shrank the set: this page no longer has rows. Re-render
       // rather than re-setting the page, which React would bail out of.
-      recentTxData = [];
+      state.recentTxData = [];
       await act(async () => {
         rerender();
       });
@@ -922,8 +631,8 @@ describe('useDashboardData', () => {
     });
 
     it('waits for the request to settle before stepping back', () => {
-      recentTxFetching = true;
-      recentTxData = [];
+      state.recentTxFetching = true;
+      state.recentTxData = [];
 
       const { result } = renderHook(() => useDashboardData());
 
@@ -949,27 +658,27 @@ describe('useDashboardData', () => {
     // ask": the empty case renders new-user onboarding.
     // These pin the wiring, which a component test with a mocked hook cannot.
     it('reports wallets unavailable only when no list was ever received', () => {
-      walletsIsError = true;
-      walletsData = undefined;
+      state.walletsIsError = true;
+      state.walletsData = undefined;
       expect(renderHook(() => useDashboardData()).result.current.walletsUnavailable).toBe(true);
 
       // A failed refetch still holding a list must not blank the card.
-      walletsData = [];
+      state.walletsData = [];
       expect(renderHook(() => useDashboardData()).result.current.walletsUnavailable).toBe(false);
     });
 
     it('reports the mempool unavailable only when no snapshot was ever received', () => {
-      mempoolIsError = true;
-      mempoolDataData = undefined;
+      state.mempoolIsError = true;
+      state.mempoolDataData = undefined;
       expect(renderHook(() => useDashboardData()).result.current.mempoolUnavailable).toBe(true);
 
-      mempoolDataData = { mempool: [], blocks: [], mempoolInfo: null, queuedBlocksSummary: null };
+      state.mempoolDataData = { mempool: [], blocks: [], mempoolInfo: null, queuedBlocksSummary: null };
       expect(renderHook(() => useDashboardData()).result.current.mempoolUnavailable).toBe(false);
     });
 
     it('passes a failed aggregate through so the bar can say so', () => {
-      activitySummaryIsError = true;
-      activitySummaryData = undefined;
+      state.activitySummaryIsError = true;
+      state.activitySummaryData = undefined;
 
       const { result } = renderHook(() => useDashboardData());
 
