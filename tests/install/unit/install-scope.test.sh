@@ -334,6 +334,54 @@ main() {
   assert_scope "$output_file" "true" "true" "false" "false" "false" "false" "false" "false" "false" "false"
   assert_upgrade_selection "$output_file" "" ""
 
+  # A pull request that changes the upgrade harness runs the baseline lane.
+  #
+  # defer_automatic_upgrade_e2e used to drop the upgrade scope on every event, so
+  # the lanes were reachable only from a release tag or a manual dispatch: #723
+  # changed tests/install/utils/upgrade-* and went green on all three required
+  # checks without executing any of it. The lane is bounded -- baseline only, one
+  # source ref -- so the release gate stays the exhaustive run.
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "tests/install/utils/upgrade-staleness.sh" "echo staleness" "upgrade harness helper"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier_for_event "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
+  assert_scope "$output_file" "true" "true" "false" "false" "false" "false" "true" "true" "false" "false"
+  assert_upgrade_selection "$output_file" "latest-stable" ""
+
+  # The same change on a push still defers: the carve-out is pull-request only.
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_scope "$output_file" "true" "true" "false" "false" "false" "false" "false" "false" "false" "false"
+  assert_upgrade_selection "$output_file" "" ""
+
+  # An installer change enables the upgrade scope but does not touch the harness,
+  # so it must keep deferring -- the carve-out is for PRs that change the thing
+  # being tested, not every PR that happens to enable upgrade.
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "install.sh" "#!/usr/bin/env bash\n# installer revisited" "installer touched again"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier_for_event "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
+  assert_upgrade_selection "$output_file" "" ""
+  assert_exact_output "$output_file" "run_upgrade_baseline" "false"
+
+  # A PR that changes the classifier itself qualifies. This one caught a real
+  # gap: the first cut keyed only on tests/install/utils/upgrade-*, so #737 --
+  # the change that introduced this whole carve-out -- did not trigger its own
+  # rule and its Upgrade Baseline was skipped. Anything under tests/install/
+  # utils, e2e, or fixtures/upgrade can alter how the lane behaves.
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "tests/install/utils/classify-install-scope.sh" "echo classifier" "classifier change"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier_for_event "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
+  assert_exact_output "$output_file" "run_upgrade_baseline" "true"
+  assert_upgrade_selection "$output_file" "latest-stable" ""
+
+  # tests/install/unit/* stays excluded: self-contained, cannot alter the lane.
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "tests/install/unit/cgroup-v2-compat.test.sh" "echo unit" "unit-only change"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier_for_event "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
+  assert_exact_output "$output_file" "run_upgrade_baseline" "false"
+
   base_sha="$head_sha"
   commit_workflow_variant "$repo_dir" "install workflow base" base
   base_sha="$(git -C "$repo_dir" rev-parse HEAD)"

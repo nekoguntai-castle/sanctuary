@@ -33,6 +33,7 @@ upgrade_baseline_refs=''
 upgrade_extended_fixtures=''
 upgrade_baseline_refs_set=false
 upgrade_extended_fixtures_set=false
+upgrade_harness_touched=false
 scope=none
 reason='No install-relevant files changed'
 
@@ -357,6 +358,34 @@ defer_automatic_upgrade_e2e() {
   reason="${reason}; upgrade E2E reserved for release tags or manual dispatch"
 }
 
+# Baseline sources for the PR-scoped upgrade run. The release gate still uses
+# upgrade_default_baseline_refs (latest-stable,n-2); a PR runs one source, which
+# exercises the same code path for roughly half the wall-clock.
+PR_UPGRADE_BASELINE_REFS='latest-stable'
+
+# Re-enable a bounded upgrade baseline for pull requests that change the upgrade
+# harness. Runs *after* defer_automatic_upgrade_e2e rather than special-casing
+# it, so the deferral stays one rule ("not automatic") and this stays another
+# ("except for PRs that change the thing under test").
+#
+# The lanes used to be unreachable from a PR entirely: the deferral above never
+# looked at event_name, and upgrade-baseline-test carried a hardcoded
+# `github.event_name != 'pull_request'`. So #657's stale-completion protection
+# and the #658 gate guarding it were first exercised during a release. #723
+# changed tests/install/utils/upgrade-* and went green on all three required
+# checks having executed none of it.
+enable_pr_upgrade_baseline_for_harness_changes() {
+  [ "$event_name" = "pull_request" ] || return 0
+  [ "$upgrade_harness_touched" = "true" ] || return 0
+
+  enable_upgrade_baseline
+  set_upgrade_baseline_refs "$PR_UPGRADE_BASELINE_REFS"
+  run_upgrade_extended=false
+  upgrade_extended_fixtures=''
+  add_scope upgrade-baseline-pr
+  reason="${reason}; upgrade baseline runs on this PR because it changes the upgrade harness"
+}
+
 defer_pull_request_docker_e2e() {
   if [ "$event_name" != "pull_request" ]; then
     return 0
@@ -381,6 +410,18 @@ defer_pull_request_docker_e2e() {
 
 while IFS= read -r file; do
   [ -n "$file" ] || continue
+
+  # Anything that can change how the upgrade lane behaves: the shared helpers,
+  # the e2e specs, the upgrade fixtures, and the classifier that gates the lane
+  # itself. tests/install/unit/* is excluded deliberately -- those are
+  # self-contained and cannot alter the lane.
+  case "$file" in
+    *.md|*.mdx)
+      ;;
+    tests/install/utils/*|tests/install/e2e/*|tests/install/fixtures/upgrade/*)
+      upgrade_harness_touched=true
+      ;;
+  esac
 
   case "$file" in
     *.md|*.mdx)
@@ -468,5 +509,6 @@ while IFS= read -r file; do
 done < <(git diff --name-only "$base_sha" "$head_sha")
 
 defer_automatic_upgrade_e2e
+enable_pr_upgrade_baseline_for_harness_changes
 defer_pull_request_docker_e2e
 emit_outputs
