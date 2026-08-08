@@ -471,6 +471,7 @@ assert_runner_parser_rejects_post_comment_drift() {
 
 # --- release-candidate.yml --------------------------------------------------
 RC="$REPO_ROOT/.github/workflows/release-candidate.yml"
+PHASE_RUNNER="$REPO_ROOT/scripts/ci/run-e2e-lane-phases.sh"
 
 assert_occurrence_count "$RC" \
   "release-candidate disables restart for CI-created Compose stacks" \
@@ -489,33 +490,31 @@ assert_contains_in_order "$RC" \
   'scripts/ci/time-command.sh "fresh install e2e"' \
   "fresh-install.test.sh"
 
+# container-health and auth-flow no longer compose these steps inline. Both
+# lanes now take the e2e lock ONCE and hand the whole stack lifetime to
+# run-e2e-lane-phases.sh, because taking the lock per step left a live stack
+# unprotected between locked sections (#719). The run-with-log/time-command
+# composition still exists, but inside the phase runner, so it is asserted
+# there instead.
 assert_contains_in_order "$RC" \
-  "release-candidate container-health start composition" \
-  "scripts/ci/run-with-log.sh" \
+  "release-candidate container-health single-lock composition" \
   "scripts/ci/with-runner-lock.sh e2e" \
-  'scripts/ci/time-command.sh "container-health start"' \
-  "docker compose build"
-
-assert_contains_in_order "$RC" \
-  "release-candidate container-health e2e composition" \
-  "scripts/ci/run-with-log.sh" \
-  "scripts/ci/with-runner-lock.sh e2e" \
-  'scripts/ci/time-command.sh "container-health e2e"' \
+  "scripts/ci/run-e2e-lane-phases.sh" \
+  "container-health" \
   "container-health.test.sh"
 
 assert_contains_in_order "$RC" \
-  "release-candidate auth-flow start composition" \
-  "scripts/ci/run-with-log.sh" \
+  "release-candidate auth-flow single-lock composition" \
   "scripts/ci/with-runner-lock.sh e2e" \
-  'scripts/ci/time-command.sh "auth-flow start"' \
-  "docker compose build"
-
-assert_contains_in_order "$RC" \
-  "release-candidate auth-flow e2e composition" \
-  "scripts/ci/run-with-log.sh" \
-  "scripts/ci/with-runner-lock.sh e2e" \
-  'scripts/ci/time-command.sh "auth-flow e2e"' \
+  "scripts/ci/run-e2e-lane-phases.sh" \
+  "auth-flow" \
   "auth-flow.test.sh"
+
+assert_contains_in_order "$PHASE_RUNNER" \
+  "phase runner logs each stack phase in order" \
+  "start-containers.log" \
+  "wait-migration.log" \
+  '"${LANE} e2e"'
 
 assert_contains_in_order "$RC" \
   "release-candidate tag-scoped workflow concurrency" \

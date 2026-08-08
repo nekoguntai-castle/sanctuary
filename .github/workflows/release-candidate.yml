@@ -412,49 +412,13 @@ jobs:
           ./docker/nginx/ssl/generate-certs.sh localhost
           export JWT_SECRET ENCRYPTION_KEY ENCRYPTION_SALT GATEWAY_SECRET WORKER_DIAGNOSTICS_SECRET POSTGRES_PASSWORD LLM_EGRESS_PROXY_SECRET REDIS_PASSWORD
           cd "${{ github.workspace }}"
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/start-containers.log" \
-            scripts/ci/with-runner-lock.sh e2e \
-            scripts/ci/time-command.sh "container-health start" \
-            bash -c "cd \"$SANCTUARY_INSTALL_WORKSPACE\" && docker compose build && docker compose up -d"
-
-      - name: Wait for migration to complete
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/wait-migration.log" bash -c '
-            cd "$SANCTUARY_INSTALL_WORKSPACE"
-            echo "Waiting for migration container to finish..."
-            for i in {1..60}; do
-              STATUS=$(docker compose ps migrate --format "{{.Status}}" 2>/dev/null | grep -oE "^[A-Za-z]+" || echo "not_found")
-              if [ "$STATUS" = "Exited" ]; then
-                EXIT_STATUS=$(docker compose ps migrate --format "{{.Status}}" 2>/dev/null)
-                if echo "$EXIT_STATUS" | grep -q "(0)"; then
-                  echo "Migration completed successfully"
-                  break
-                else
-                  echo "Migration failed: $EXIT_STATUS"
-                  docker compose logs --tail 50 migrate
-                  exit 1
-                fi
-              fi
-              echo "Waiting for migration... (attempt $i/60, status: $STATUS)"
-              sleep 5
-            done
-            echo "Waiting for backend to be healthy..."
-            for i in {1..30}; do
-              if docker compose exec backend wget -q -O - http://localhost:3001/health >/dev/null 2>&1; then
-                echo "Backend is healthy"
-                break
-              fi
-              echo "Waiting for backend... (attempt $i/30)"
-              sleep 2
-            done
-          '
-
-      - name: Run container health tests
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/container-health.log" \
-            scripts/ci/with-runner-lock.sh e2e \
-            scripts/ci/time-command.sh "container-health e2e" \
-            bash -c "cd \"$SANCTUARY_INSTALL_WORKSPACE\" && ./tests/install/e2e/container-health.test.sh --verbose"
+          # One lock for the whole lifetime of the stack. Taking it per step left
+          # a live stack unprotected between locked sections, which is where
+          # v0.8.60-rc2 lost its backend and migrate containers (#719).
+          scripts/ci/with-runner-lock.sh e2e \
+            scripts/ci/run-e2e-lane-phases.sh \
+              "$SANCTUARY_INSTALL_WORKSPACE" "$JOB_LOG_DIR" container-health \
+              ./tests/install/e2e/container-health.test.sh --verbose
 
       - name: Cleanup
         if: always()
@@ -584,49 +548,13 @@ jobs:
           export JWT_SECRET ENCRYPTION_KEY ENCRYPTION_SALT GATEWAY_SECRET WORKER_DIAGNOSTICS_SECRET POSTGRES_PASSWORD LLM_EGRESS_PROXY_SECRET REDIS_PASSWORD
           export RATE_LIMIT_LOGIN=100 RATE_LIMIT_PASSWORD_CHANGE=100
           cd "${{ github.workspace }}"
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/start-containers.log" \
-            scripts/ci/with-runner-lock.sh e2e \
-            scripts/ci/time-command.sh "auth-flow start" \
-            bash -c "cd \"$SANCTUARY_INSTALL_WORKSPACE\" && docker compose build && docker compose up -d"
-
-      - name: Wait for migration to complete
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/wait-migration.log" bash -c '
-            cd "$SANCTUARY_INSTALL_WORKSPACE"
-            echo "Waiting for migration container to finish..."
-            for i in {1..60}; do
-              STATUS=$(docker compose ps migrate --format "{{.Status}}" 2>/dev/null | grep -oE "^[A-Za-z]+" || echo "not_found")
-              if [ "$STATUS" = "Exited" ]; then
-                EXIT_STATUS=$(docker compose ps migrate --format "{{.Status}}" 2>/dev/null)
-                if echo "$EXIT_STATUS" | grep -q "(0)"; then
-                  echo "Migration completed successfully"
-                  break
-                else
-                  echo "Migration failed: $EXIT_STATUS"
-                  docker compose logs --tail 50 migrate
-                  exit 1
-                fi
-              fi
-              echo "Waiting for migration... (attempt $i/60, status: $STATUS)"
-              sleep 5
-            done
-            echo "Waiting for backend to be healthy..."
-            for i in {1..30}; do
-              if docker compose exec backend wget -q -O - http://localhost:3001/health >/dev/null 2>&1; then
-                echo "Backend is healthy"
-                break
-              fi
-              echo "Waiting for backend... (attempt $i/30)"
-              sleep 2
-            done
-          '
-
-      - name: Run auth flow tests
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/auth-flow.log" \
-            scripts/ci/with-runner-lock.sh e2e \
-            scripts/ci/time-command.sh "auth-flow e2e" \
-            bash -c "cd \"$SANCTUARY_INSTALL_WORKSPACE\" && ./tests/install/e2e/auth-flow.test.sh --verbose"
+          # One lock for the whole lifetime of the stack. Taking it per step left
+          # a live stack unprotected between locked sections, which is where
+          # v0.8.60-rc2 lost its backend and migrate containers (#719).
+          scripts/ci/with-runner-lock.sh e2e \
+            scripts/ci/run-e2e-lane-phases.sh \
+              "$SANCTUARY_INSTALL_WORKSPACE" "$JOB_LOG_DIR" auth-flow \
+              ./tests/install/e2e/auth-flow.test.sh --verbose
 
       - name: Cleanup
         if: always()

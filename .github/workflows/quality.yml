@@ -757,6 +757,8 @@ jobs:
           bash -n tests/ci/write-diagnostic-summary.test.sh
           bash -n tests/ci/git-default-branch.test.sh
           bash -n tests/ci/check-workflow-composition.test.sh
+          bash -n tests/ci/e2e-lane-lock-coverage.test.sh
+          bash -n scripts/ci/run-e2e-lane-phases.sh
           bash -n scripts/ci/check-workflows-test-only.sh
           bash -n tests/ci/workflows-test-only.test.sh
           # Node CI helper tests.
@@ -832,6 +834,7 @@ jobs:
           bash tests/ci/git-default-branch.test.sh
           bash tests/ci/check-workflow-composition.test.sh
           bash tests/ci/workflows-test-only.test.sh
+          bash tests/ci/e2e-lane-lock-coverage.test.sh
           # Release distribution tests. These live under tests/release/ and were
           # invoked by nothing until now: `npm run test:release-distribution`
           # existed in package.json but no workflow, hook or script called it,
