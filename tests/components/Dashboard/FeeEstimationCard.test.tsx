@@ -83,4 +83,25 @@ describe('FeeEstimationCard', () => {
     // No sats estimation should appear
     expect(container.textContent).not.toContain('sats for typical tx');
   });
+  it('says estimates are unavailable when the request failed', () => {
+    render(<FeeEstimationCard fees={null} formatFeeRate={mockFormatFeeRate} isError />);
+
+    // Three '---' tiers alone read as "still loading", which resolves itself in
+    // the reader's head. A failed request never will.
+    // Assert the copy, not just the element: the wording is the contract.
+    expect(screen.getByText('Estimates unavailable')).toBeInTheDocument();
+  });
+
+  it('stays quiet while the estimates are merely still loading', () => {
+    render(<FeeEstimationCard fees={null} formatFeeRate={mockFormatFeeRate} />);
+
+    expect(screen.queryByTestId('fee-estimates-unavailable')).not.toBeInTheDocument();
+  });
+
+  it('shows rates rather than an error once they arrive', () => {
+    const fees = { fast: 20, medium: 10, slow: 3 };
+    render(<FeeEstimationCard fees={fees} formatFeeRate={mockFormatFeeRate} isError />);
+
+    expect(screen.queryByTestId('fee-estimates-unavailable')).not.toBeInTheDocument();
+  });
 });

@@ -80,6 +80,7 @@ export function PriceChart({
   chartData,
   pendingTotals,
   walletCount,
+  historyUnavailable = false,
 }: PriceChartProps) {
   // Same point set the chart draws, so the annotation and the line can never
   // disagree about which way the period went.
@@ -116,12 +117,28 @@ export function PriceChart({
           {/* Fed the same trend the annotation is written from, so the
               reference line and the stated change can never disagree about
               where the period opened. */}
-          <PriceChartBody
-            chartReady={chartReady}
-            chartData={chartData}
-            direction={trend.direction}
-            openingSats={trend.openingSats}
-          />
+          {historyUnavailable ? (
+            // The fallback series is flat from `totalBalance` to
+            // `totalBalance`. Drawn for a failed request it states that the
+            // balance held steady all period — which nobody established.
+            <div
+              className="flex h-full min-h-[120px] items-center justify-center text-center"
+              data-testid="balance-history-unavailable"
+              role="status"
+            >
+              <p className="text-xs text-sanctuary-500 dark:text-sanctuary-400 max-w-xs">
+                Balance history unavailable. The total above is current; the
+                chart cannot show how it changed.
+              </p>
+            </div>
+          ) : (
+            <PriceChartBody
+              chartReady={chartReady}
+              chartData={chartData}
+              direction={trend.direction}
+              openingSats={trend.openingSats}
+            />
+          )}
         </div>
       </div>
     </Card>

@@ -420,4 +420,33 @@ describe('PriceChart balance trend', () => {
       }
     });
   });
+  const renderForAvailability = (props: Record<string, unknown> = {}) =>
+    render(
+      <PriceChart
+        totalBalance={123456}
+        chartReady={true}
+        timeframe="1W"
+        chartData={[{ name: 'Jan', sats: 1000 }]}
+        pendingTotals={{ incoming: 0, outgoing: 0 }}
+        walletCount={1}
+        {...props}
+      />
+    );
+
+  // `useBalanceHistory` substitutes a flat series from totalBalance to
+  // totalBalance when the request returns nothing. Drawn, that line states the
+  // balance held steady for the whole period — a claim about the user's money
+  // that no data supports.
+  it('refuses to draw a flat line when the history request returned nothing', () => {
+    renderForAvailability({ historyUnavailable: true });
+
+    expect(screen.getByTestId('balance-history-unavailable')).toBeInTheDocument();
+    expect(screen.getByText(/The total above is current/)).toBeInTheDocument();
+  });
+
+  it('draws the chart normally when history is available', () => {
+    renderForAvailability();
+
+    expect(screen.queryByTestId('balance-history-unavailable')).not.toBeInTheDocument();
+  });
 });

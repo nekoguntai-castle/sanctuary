@@ -15,6 +15,8 @@ interface MempoolSectionProps {
   selectedNetwork: TabNetwork;
   isMainnet: boolean;
   mempoolBlocks: BlockData[];
+  /** The mempool request failed and returned nothing — not merely pending. */
+  mempoolUnavailable?: boolean;
   queuedBlocksSummary: QueuedBlocksSummary | null;
   pendingTxs: PendingTransaction[];
   explorerUrl: string | undefined;
@@ -290,6 +292,31 @@ function NonMainnetMempoolContent({
   );
 }
 
+/**
+ * The mempool strip failed to load and we have nothing to draw.
+ *
+ * Deliberately not the visualizer's skeleton: that pulses, which promises the
+ * blocks are on their way. They are not, and a promise that never resolves is
+ * worse than a plain statement.
+ */
+function MempoolUnavailableContent() {
+  return (
+    <div
+      className="flex flex-col items-center justify-center py-12 text-center"
+      data-testid="mempool-unavailable"
+      role="status"
+    >
+      <h4 className="text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300 mb-1">
+        Mempool unavailable
+      </h4>
+      <p className="text-xs text-sanctuary-500 dark:text-sanctuary-400 max-w-md">
+        We could not load recent blocks or pending fee levels. Your wallets and
+        balances are shown elsewhere on this page and are not affected by this.
+      </p>
+    </div>
+  );
+}
+
 export const MempoolSection: React.FC<MempoolSectionProps> = ({
   selectedNetwork,
   isMainnet,
@@ -305,8 +332,13 @@ export const MempoolSection: React.FC<MempoolSectionProps> = ({
   nodeStatus,
   bitcoinStatus,
   onConfigureNode,
+  mempoolUnavailable = false,
 }) => {
   const showBlockVisualizer = isMainnet || nodeStatus === 'connected';
+  // With blocks in hand a failed refresh costs nothing — keep showing them.
+  // With none, the visualizer falls back to its animate-pulse skeleton, which
+  // would sit there pulsing for as long as the request keeps failing.
+  const showUnavailable = mempoolUnavailable && mempoolBlocks.length === 0;
 
   return (
     <CollapsibleSection
@@ -332,7 +364,9 @@ export const MempoolSection: React.FC<MempoolSectionProps> = ({
         />
       }
     >
-      {showBlockVisualizer ? (
+      {showUnavailable ? (
+        <MempoolUnavailableContent />
+      ) : showBlockVisualizer ? (
         <BlockVisualizerContent
           mempoolBlocks={mempoolBlocks}
           queuedBlocksSummary={queuedBlocksSummary}

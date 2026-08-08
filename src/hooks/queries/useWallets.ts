@@ -217,6 +217,15 @@ export function useBalanceHistory(
     data: walletIds.length === 0 ? defaultData : (query.data ?? defaultData),
     isLoading: query.isLoading,
     isError: query.isError,
+    // `defaultData` is a flat line from `totalBalance` to `totalBalance`. With
+    // no wallets that is honest — there is no history to draw. Substituted for
+    // a *failed* request it asserts the balance did not move over the period,
+    // which is a claim about the user's money that nobody made. Say when the
+    // series is that placeholder rather than real history.
+    //
+    // React Query keeps the last good `data` through a failed refetch, so only
+    // the absence of any series means we never got one.
+    isUnavailable: walletIds.length > 0 && query.isError && query.data === undefined,
   };
 }
 

@@ -78,10 +78,10 @@ export function useDashboardData() {
   const updateWalletSyncStatus = useUpdateWalletSyncStatus();
 
   // React Query hooks for data fetching
-  const { data: apiWallets, isLoading: walletsLoading } = useWallets();
-  const { data: feeEstimates } = useFeeEstimates(selectedNetwork);
+  const { data: apiWallets, isLoading: walletsLoading, isError: walletsFetchFailed } = useWallets();
+  const { data: feeEstimates, isError: feesError } = useFeeEstimates(selectedNetwork);
   const { data: bitcoinStatus, isLoading: statusLoading } = useBitcoinStatus(selectedNetwork);
-  const { data: mempoolData, refetch: refetchMempool, isFetching: mempoolRefreshing } = useMempoolData(selectedNetwork);
+  const { data: mempoolData, refetch: refetchMempool, isFetching: mempoolRefreshing, isError: mempoolFetchFailed } = useMempoolData(selectedNetwork);
 
   // Use stable empty arrays when data is undefined to prevent re-renders
   const safeApiWallets = apiWallets ?? EMPTY_WALLETS;
@@ -310,10 +310,13 @@ export function useDashboardData() {
   }, [updateWalletSyncStatus]);
 
   // Calculate total balance for filtered wallets (network-specific)
+  const walletsUnavailable = walletsFetchFailed && apiWallets === undefined;
+  const mempoolUnavailable = mempoolFetchFailed && mempoolData === undefined;
+
   const totalBalance = filteredWallets.reduce((acc, w) => acc + w.balance, 0);
 
   // Use the balance history hook for accurate chart data (filtered by network)
-  const { data: balanceHistoryData } = useBalanceHistory(filteredWalletIds, totalBalance, timeframe);
+  const { data: balanceHistoryData, isUnavailable: balanceHistoryUnavailable } = useBalanceHistory(filteredWalletIds, totalBalance, timeframe);
 
   // Convert to chart format (value -> sats for tooltip compatibility)
   const chartData = useMemo(() =>
@@ -343,6 +346,7 @@ export function useDashboardData() {
     timeframe,
     setTimeframe,
     chartData,
+    balanceHistoryUnavailable,
 
     // WebSocket
     wsConnected,
@@ -365,6 +369,7 @@ export function useDashboardData() {
     pendingTxs,
     pendingTotals,
     fees,
+    feesError,
     formatFeeRate,
     nodeStatus,
     bitcoinStatus,
@@ -372,10 +377,21 @@ export function useDashboardData() {
     queuedBlocksSummary,
     lastMempoolUpdate,
     mempoolRefreshing,
+    mempoolUnavailable,
     totalBalance,
 
     // State
     loading,
+    // `apiWallets ?? EMPTY_WALLETS` cannot tell "you have none" from "we could
+    // not ask", and the two must not render the same.
+    //
+    // `isError` alone is the wrong signal: React Query keeps the last good
+    // `data` through a failed refetch, and this list is invalidated constantly
+    // (visibility change, socket reconnect, every balance event). A user who
+    // genuinely has no wallets would flip to an error state on the first
+    // transient failure and lose the onboarding call to action. Only the
+    // absence of any list at all means we never got an answer.
+    walletsUnavailable,
     isMainnet,
 
     // Actions

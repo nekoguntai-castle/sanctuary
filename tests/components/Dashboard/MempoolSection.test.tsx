@@ -206,4 +206,22 @@ describe('MempoolSection', () => {
       expect(screen.queryByText(/pending/)).not.toBeInTheDocument();
     });
   });
+  // BlockVisualizerView renders its animate-pulse skeleton whenever it has no
+  // blocks, so a failed mempool request produced a permanently "loading" strip.
+  // That is exactly what RecentTransactions' design rule forbids: a failure
+  // must not look like a still-loading state, because loading resolves itself
+  // and a failure never will.
+  it('says the mempool is unavailable rather than pulsing forever', () => {
+    render(<MempoolSection {...baseProps} mempoolBlocks={[]} mempoolUnavailable />);
+
+    expect(screen.getByTestId('mempool-unavailable')).toBeInTheDocument();
+    expect(screen.queryByTestId('block-visualizer')).not.toBeInTheDocument();
+  });
+
+  it('keeps showing blocks it already has when a refresh fails', () => {
+    render(<MempoolSection {...baseProps} mempoolUnavailable />);
+
+    expect(screen.getByTestId('block-visualizer')).toBeInTheDocument();
+    expect(screen.queryByTestId('mempool-unavailable')).not.toBeInTheDocument();
+  });
 });

@@ -384,6 +384,36 @@ describe('Dashboard render branches', () => {
     expect(screen.getByText('Create Your First Wallet')).toBeInTheDocument();
   });
 
+  // An empty wallet list means "you have none" only when we actually asked and
+  // were told so. If the request failed, `apiWallets ?? EMPTY_WALLETS` produces
+  // the same empty array, and a funded user was shown the new-user onboarding
+  // screen — which in a self-custody wallet reads as "your wallets are gone".
+  it('does not claim the user has no wallets when the wallet request failed', () => {
+    mocks.dashboardData = makeDashboardState({
+      filteredWallets: [],
+      walletsUnavailable: true,
+    });
+    render(<Dashboard />);
+
+    expect(screen.queryByText('Welcome to Sanctuary')).not.toBeInTheDocument();
+    expect(screen.queryByText('Create Your First Wallet')).not.toBeInTheDocument();
+    expect(screen.getByTestId('wallets-unavailable')).toBeInTheDocument();
+    // No wallet ids means the activity query is disabled, so the card below
+    // would assert "No transactions found" beneath the honest one.
+    expect(screen.queryByTestId('recent-transactions')).not.toBeInTheDocument();
+  });
+
+  it('still welcomes a genuinely new user when the request succeeded', () => {
+    mocks.dashboardData = makeDashboardState({
+      filteredWallets: [],
+      walletsUnavailable: false,
+    });
+    render(<Dashboard />);
+
+    expect(screen.getByText('Welcome to Sanctuary')).toBeInTheDocument();
+    expect(screen.queryByTestId('wallets-unavailable')).not.toBeInTheDocument();
+  });
+
   // The empty-network boundary. Upcoming work changes when the Wallets card
   // appears, so pin the one case that must not move: with no wallets there is
   // no Wallets card at all, and activity still renders below the welcome copy.

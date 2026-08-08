@@ -8,6 +8,7 @@ import { BitcoinPriceCard } from './BitcoinPriceCard';
 import { FeeEstimationCard } from './FeeEstimationCard';
 import { UpdateBanner } from './UpdateBanner';
 import { WelcomeState } from './WelcomeState';
+import { WalletsUnavailable } from './WalletsUnavailable';
 import { TimeframeControls } from './PriceChart/TimeframeControls';
 
 interface DashboardContentProps {
@@ -30,6 +31,7 @@ export function DashboardContent({ data }: DashboardContentProps) {
     timeframe,
     setTimeframe,
     chartData,
+    balanceHistoryUnavailable,
     wsConnected,
     wsState,
     wallets,
@@ -47,6 +49,7 @@ export function DashboardContent({ data }: DashboardContentProps) {
     pendingTxs,
     pendingTotals,
     fees,
+    feesError,
     formatFeeRate,
     nodeStatus,
     bitcoinStatus,
@@ -54,7 +57,9 @@ export function DashboardContent({ data }: DashboardContentProps) {
     queuedBlocksSummary,
     lastMempoolUpdate,
     mempoolRefreshing,
+    mempoolUnavailable,
     totalBalance,
+    walletsUnavailable,
     isMainnet,
     refreshMempoolData,
   } = data;
@@ -107,11 +112,25 @@ export function DashboardContent({ data }: DashboardContentProps) {
         </div>
       )}
 
-      {/* Welcome state, or the user's own money: balance, then wallets beside activity */}
+      {/* Welcome state, or the user's own money: balance, then wallets beside activity.
+
+          An empty list means "you have no wallets" only if the request
+          succeeded. On failure it means "we could not ask", and inviting a
+          funded user to create their first wallet reads as though theirs had
+          vanished. */}
       {filteredWallets.length === 0 ? (
         <>
-          <WelcomeState className="animate-fade-in-up-1" />
-          <div className="animate-fade-in-up-2">{recentActivity}</div>
+          {walletsUnavailable ? (
+            // No wallet list means no wallet ids, so the activity query is
+            // disabled and would render "No transactions found" — a second
+            // false claim directly beneath the honest one. Say nothing instead.
+            <WalletsUnavailable className="animate-fade-in-up-1" />
+          ) : (
+            <>
+              <WelcomeState className="animate-fade-in-up-1" />
+              <div className="animate-fade-in-up-2">{recentActivity}</div>
+            </>
+          )}
         </>
       ) : (
         <>
@@ -122,6 +141,7 @@ export function DashboardContent({ data }: DashboardContentProps) {
               chartReady={chartReady}
               timeframe={timeframe}
               chartData={chartData}
+              historyUnavailable={balanceHistoryUnavailable}
               pendingTotals={pendingTotals}
               walletCount={filteredWallets.length}
             />
@@ -176,7 +196,7 @@ export function DashboardContent({ data }: DashboardContentProps) {
           />
         )}
 
-        <FeeEstimationCard fees={fees} formatFeeRate={formatFeeRate} />
+        <FeeEstimationCard fees={fees} formatFeeRate={formatFeeRate} isError={feesError} />
 
         <NodeStatusCard
           selectedNetwork={selectedNetwork}
@@ -191,6 +211,7 @@ export function DashboardContent({ data }: DashboardContentProps) {
           selectedNetwork={selectedNetwork}
           isMainnet={isMainnet}
           mempoolBlocks={mempoolBlocks}
+          mempoolUnavailable={mempoolUnavailable}
           queuedBlocksSummary={queuedBlocksSummary}
           pendingTxs={pendingTxs}
           explorerUrl={bitcoinStatus?.explorerUrl}

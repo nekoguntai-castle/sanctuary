@@ -12,6 +12,8 @@ interface FeeEstimate {
 interface FeeEstimationCardProps {
   fees: FeeEstimate | null;
   formatFeeRate: (rate: number | undefined) => string;
+  /** The estimate request failed, as distinct from not having answered yet. */
+  isError?: boolean;
 }
 
 const FEE_TIERS = [
@@ -35,10 +37,17 @@ const TYPICAL_VB = 140;
  * a track of its own so the name centres on the number rather than on
  * dot-plus-number.
  */
-export const FeeEstimationCard: React.FC<FeeEstimationCardProps> = ({ fees, formatFeeRate }) => (
+export const FeeEstimationCard: React.FC<FeeEstimationCardProps> = ({ fees, formatFeeRate, isError = false }) => (
   <TelemetryCard
     title="Fee Estimation"
     testId="telemetry-fees"
+    // Three '---' tiers read as "still loading" and resolve themselves in the
+    // reader's head. A failed request never will, so say so.
+    support={
+      isError && !fees ? (
+        <span data-testid="fee-estimates-unavailable">Estimates unavailable</span>
+      ) : undefined
+    }
     titleAdornment={
       <span className="text-[10px] text-sanctuary-400 font-mono">sat/vB</span>
     }

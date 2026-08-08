@@ -42,6 +42,11 @@ export interface PriceChartProps {
   chartData: PriceChartPoint[];
   pendingTotals: PendingTotals;
   walletCount: number;
+  /**
+   * The history request failed and returned nothing, so `chartData` is the
+   * flat placeholder rather than real history.
+   */
+  historyUnavailable?: boolean;
 }
 
 export type PriceDirection = 'up' | 'down' | 'none';

@@ -36,6 +36,10 @@ let pendingTxData: any[] | undefined;
 let balanceHistoryData: Array<{ name: string; value: number }>;
 let activitySummaryData: any;
 let activitySummaryIsError = false;
+let walletsIsError = false;
+let balanceHistoryIsUnavailable = false;
+let mempoolIsError = false;
+let feesIsError = false;
 
 let feeEstimatesData: any;
 let feesLoading = false;
@@ -112,7 +116,7 @@ vi.mock('../../../src/hooks/useNotificationSound', () => ({
 }));
 
 vi.mock('../../../src/hooks/queries/useWallets', () => ({
-  useWallets: () => ({ data: walletsData, isLoading: walletsLoading }),
+  useWallets: () => ({ data: walletsData, isLoading: walletsLoading, isError: walletsIsError }),
   useRecentTransactions: (_ids: string[], pageSize: number, page: number) => {
     recentTxCalls.push({ pageSize, page });
     return {
@@ -128,7 +132,7 @@ vi.mock('../../../src/hooks/queries/useWallets', () => ({
   usePendingTransactions: () => ({ data: pendingTxData }),
   useInvalidateAllWallets: () => mockInvalidateAllWallets,
   useUpdateWalletSyncStatus: () => mockUpdateWalletSyncStatus,
-  useBalanceHistory: () => ({ data: balanceHistoryData }),
+  useBalanceHistory: () => ({ data: balanceHistoryData, isUnavailable: balanceHistoryIsUnavailable }),
   useActivitySummary: (_ids: string[], timeframe: string) => {
     activitySummaryCalls.push({ timeframe });
     return { data: activitySummaryData, isError: activitySummaryIsError };
@@ -136,7 +140,7 @@ vi.mock('../../../src/hooks/queries/useWallets', () => ({
 }));
 
 vi.mock('../../../src/hooks/queries/useBitcoin', () => ({
-  useFeeEstimates: () => ({ data: feeEstimatesData, isLoading: feesLoading }),
+  useFeeEstimates: () => ({ data: feeEstimatesData, isLoading: feesLoading, isError: feesIsError }),
   useBitcoinStatus: (network: string) => {
     bitcoinStatusNetworks.push(network);
     return { data: bitcoinStatusData, isLoading: statusLoading };
@@ -148,6 +152,7 @@ vi.mock('../../../src/hooks/queries/useBitcoin', () => ({
       isLoading: mempoolLoading,
       refetch: mockRefetchMempool,
       isFetching: mempoolRefreshing,
+      isError: mempoolIsError,
     };
   },
 }));
@@ -194,6 +199,10 @@ const resetState = () => {
   activitySummaryCalls.length = 0;
   activitySummaryData = { count: 3, receivedSats: 500, sentSats: 200, latestAt: null };
   activitySummaryIsError = false;
+  walletsIsError = false;
+  balanceHistoryIsUnavailable = false;
+  mempoolIsError = false;
+  feesIsError = false;
   mockPreferences.clear();
   walletsData = [
     {
@@ -934,6 +943,28 @@ describe('useDashboardData', () => {
 
       expect(result.current.activitySummary).toMatchObject({ count: 3 });
       expect(result.current.activitySummaryError).toBe(false);
+    });
+
+    // The dashboard must distinguish "you have no wallets" from "we could not
+    // ask": the empty case renders new-user onboarding.
+    // These pin the wiring, which a component test with a mocked hook cannot.
+    it('reports wallets unavailable only when no list was ever received', () => {
+      walletsIsError = true;
+      walletsData = undefined;
+      expect(renderHook(() => useDashboardData()).result.current.walletsUnavailable).toBe(true);
+
+      // A failed refetch still holding a list must not blank the card.
+      walletsData = [];
+      expect(renderHook(() => useDashboardData()).result.current.walletsUnavailable).toBe(false);
+    });
+
+    it('reports the mempool unavailable only when no snapshot was ever received', () => {
+      mempoolIsError = true;
+      mempoolDataData = undefined;
+      expect(renderHook(() => useDashboardData()).result.current.mempoolUnavailable).toBe(true);
+
+      mempoolDataData = { mempool: [], blocks: [], mempoolInfo: null, queuedBlocksSummary: null };
+      expect(renderHook(() => useDashboardData()).result.current.mempoolUnavailable).toBe(false);
     });
 
     it('passes a failed aggregate through so the bar can say so', () => {
