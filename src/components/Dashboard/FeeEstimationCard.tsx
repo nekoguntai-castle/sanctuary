@@ -83,7 +83,7 @@ export const FeeEstimationCard: React.FC<FeeEstimationCardProps> = ({ fees, form
                   placement — naming a track would make that track, rather than
                   the tier, the containing block its offsets resolve against. */}
               <span className="tooltip-popup bottom-full left-1/2 -translate-x-1/2 mb-2">
-                <span className="tooltip-arrow -bottom-1 left-1/2 -translate-x-1/2 border-b border-r" />
+                <span className="tooltip-arrow tooltip-arrow-centered -bottom-1 border-b border-r" />
                 <span className="block">{tier.time}</span>
                 {fees?.[tier.key] !== undefined && (
                   <span className="block text-sanctuary-400 dark:text-sanctuary-500 tabular-nums">

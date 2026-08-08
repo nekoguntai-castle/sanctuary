@@ -916,7 +916,15 @@
         50% { box-shadow: 0 0 6px 3px rgba(var(--color-warning-500-rgb, 245, 158, 11), 0.3); }
       }
 
-      /* Tooltip utility classes — shared across components */
+      /* Tooltip utility classes — shared across components.
+         `transform` belongs to the markup here: every tooltip centres itself on
+         its trigger with Tailwind's `-translate-x-1/2`, which resolves -50% of a
+         width only the browser knows. So the rules below animate with the
+         `translate` property and rotate with `rotate` — separate properties that
+         compose with that transform instead of overwriting it. Writing
+         `transform` from both places is how the tooltip ended up half its own
+         width to the right of its trigger, with a square where the arrow
+         should be. */
       .tooltip-popup {
         position: absolute;
         z-index: 50;
@@ -931,8 +939,8 @@
         border: 1px solid var(--color-bg-700, #3f3f46);
         white-space: nowrap;
         opacity: 0;
-        transform: translateY(4px);
-        transition: opacity 200ms ease, transform 200ms ease;
+        translate: 0 4px;
+        transition: opacity 200ms ease, translate 200ms ease;
         transition-delay: 150ms;
       }
       html.dark .tooltip-popup {
@@ -944,19 +952,28 @@
       .group\/fee:hover .tooltip-popup,
       .group\/sync:hover .tooltip-popup {
         opacity: 1;
-        transform: translateY(0);
+        translate: 0 0;
       }
       .tooltip-popup.tooltip-visible {
         opacity: 1;
-        transform: translateY(0);
+        translate: 0 0;
       }
       .tooltip-arrow {
+        --tooltip-arrow-size: 0.5rem;
         position: absolute;
-        width: 0.5rem;
-        height: 0.5rem;
+        width: var(--tooltip-arrow-size);
+        height: var(--tooltip-arrow-size);
         transform: rotate(45deg);
         background-color: var(--color-bg-800, #27272a);
         border-color: var(--color-bg-700, #3f3f46);
+      }
+      /* The arrow cannot centre itself with `-translate-x-1/2` — that is the
+         `transform` the rotation above needs, and a translation applied before
+         a 45° rotation lands diagonally. Its width is known here, so centre it
+         with a margin and leave `transform` to the rotation. */
+      .tooltip-arrow-centered {
+        left: 50%;
+        margin-left: calc(var(--tooltip-arrow-size) / -2);
       }
       html.dark .tooltip-arrow {
         background-color: var(--color-bg-100, #f4f4f5);

@@ -87,7 +87,7 @@ function getTooltipPositionClasses(index: number, walletCount: number) {
 
   return {
     positionClasses: 'left-1/2 -translate-x-1/2',
-    arrowPositionClasses: 'left-1/2 -translate-x-1/2',
+    arrowPositionClasses: 'tooltip-arrow-centered',
   };
 }
 
@@ -266,7 +266,7 @@ function WalletSyncStatus({ wallet }: { wallet: Wallet }) {
     <div className="relative group/sync inline-flex items-center justify-center">
       <WalletSyncIcon wallet={wallet} />
       <div className="tooltip-popup bottom-full left-1/2 -translate-x-1/2 mb-2">
-        <div className="tooltip-arrow -bottom-1 left-1/2 -translate-x-1/2 border-b border-r" />
+        <div className="tooltip-arrow tooltip-arrow-centered -bottom-1 border-b border-r" />
         {getSyncTooltipText(wallet)}
       </div>
     </div>

@@ -523,3 +523,85 @@ test.describe('Fee Estimation card alignment', () => {
       .toEqual([0, 0]);
   });
 });
+
+// ─── 4. Fee Tier Tooltip Placement ───────────────────────────────────
+
+type FeeTooltipGeometry = {
+  /** How far the tooltip's centre sits from the centre of the tier it describes. */
+  offsetFromTier: number;
+  /** Rotation baked into the arrow's transform, in degrees. */
+  arrowAngle: number;
+  opacity: number;
+};
+
+/**
+ * Hovers the first fee tier and measures its tooltip. Returns null until the
+ * tooltip has faded in, so callers can poll rather than race the 150ms delay.
+ */
+async function readFeeTooltipGeometry(page: Page): Promise<FeeTooltipGeometry | null> {
+  const tier = page.getByTestId('fee-tier').first();
+  await tier.hover();
+
+  return tier.evaluate((element) => {
+    const popup = element.querySelector('.tooltip-popup');
+    const arrow = element.querySelector('.tooltip-arrow');
+    if (!popup || !arrow) {
+      return null;
+    }
+
+    const opacity = Number.parseFloat(getComputedStyle(popup).opacity);
+    if (!(opacity > 0.9)) {
+      return null;
+    }
+
+    const centreX = (node: Element) => {
+      const rect = node.getBoundingClientRect();
+      return rect.x + rect.width / 2;
+    };
+
+    // `a` and `b` are the first column of the 2D matrix, i.e. where the x axis
+    // points after the transform — atan2 of those is the rotation it carries.
+    const matrix = new DOMMatrix(getComputedStyle(arrow).transform);
+    return {
+      offsetFromTier: Math.abs(centreX(popup) - centreX(element)),
+      arrowAngle: Math.round((Math.atan2(matrix.b, matrix.a) * 180) / Math.PI),
+      opacity,
+    };
+  });
+}
+
+test.describe('Fee tier tooltip', () => {
+  test.beforeEach(async ({ page }) => {
+    await mockDashboardApi(page);
+    await page.goto('/#/');
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByTestId('telemetry-fees')).toBeVisible({ timeout: ALIGNMENT_TIMEOUT_MS });
+    await expect(page.getByTestId('fee-tier').first()).toContainText('18');
+  });
+
+  test('sits centred over the tier it describes', async ({ page }) => {
+    // `.tooltip-popup` is centred with `left-1/2 -translate-x-1/2`, but the
+    // hover rule in src/index.html rewrites the whole `transform` property to
+    // run its fade-in, dropping the -50% and leaving the tooltip a full half
+    // of its own width to the right — 111px at this content.
+    await expect
+      .poll(async () => {
+        const geometry = await readFeeTooltipGeometry(page);
+        return geometry === null ? null : Math.round(geometry.offsetFromTier);
+      }, { timeout: ALIGNMENT_TIMEOUT_MS })
+      .toBe(0);
+  });
+
+  test('points at that tier with a rotated arrow', async ({ page }) => {
+    // The other half of the same collision: `.tooltip-arrow` is rotated 45° in
+    // src/index.html, and the `-translate-x-1/2` that centres it in the markup
+    // overwrites `transform` in turn — so the arrow renders as a square with
+    // two borders instead of a diamond point.
+    await expect
+      .poll(async () => {
+        const geometry = await readFeeTooltipGeometry(page);
+        return geometry === null ? null : geometry.arrowAngle;
+      }, { timeout: ALIGNMENT_TIMEOUT_MS })
+      .toBe(45);
+  });
+});
