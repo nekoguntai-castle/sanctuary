@@ -383,6 +383,96 @@ test_install_rejects_control_characters() {
   assert_file_contains "$TEST_TMP/control-install.log" "control characters"
 }
 
+# --- sanctuary#745: a failing or stale backup must be visible outside the journal ---
+#
+# The service failed 44 consecutive nights and surfaced nothing. The unit is
+# StandardOutput=journal with no OnFailure=, so a non-zero exit went nowhere,
+# and the gap was invisible in the output directory because rotation prunes on
+# write rather than on schedule — June dailies sat beside August ones with
+# nothing marking the 6.5-week hole.
+#
+# These pin the two halves: a failed attempt leaves a record where the operator
+# actually looks, and a run that notices its own snapshots are stale says so.
+
+stage_failing_docker() {
+  local bin_dir="$1"
+  mkdir -p "$bin_dir"
+  cat > "$bin_dir/docker" <<'FAKE'
+#!/usr/bin/env bash
+case "$1" in
+  ps) exit 0 ;;                       # no container name printed => "not running"
+  *)  echo "fake docker: down" >&2; exit 1 ;;
+esac
+FAKE
+  chmod +x "$bin_dir/docker"
+}
+
+test_failed_run_records_status_in_output_dir() {
+  local out="$TEST_TMP/status-fail"
+  mkdir -p "$out"
+  local bad="$TEST_TMP/badbin"
+  stage_failing_docker "$bad"
+  cp "$TEST_TMP/bin/date" "$bad/date" 2>/dev/null || true
+
+  PATH="$bad:$PATH" HOME="$TEST_TMP" "$BACKUP_SCRIPT" --output-dir "$out" \
+      > "$TEST_TMP/status-fail.log" 2>&1 && {
+    echo "expected the backup to fail when postgres is down" >&2; return 1; }
+
+  assert_exists "$out/last-run"
+  assert_file_contains "$out/last-run" "outcome=failed"
+  assert_file_contains "$out/last-run" "not running"
+}
+
+test_successful_run_records_ok_status() {
+  local out="$TEST_TMP/status-ok"
+  run_backup --output-dir "$out" > "$TEST_TMP/status-ok.log" 2>&1 \
+    || { echo "backup should succeed" >&2; return 1; }
+  assert_exists "$out/last-run"
+  assert_file_contains "$out/last-run" "outcome=ok"
+}
+
+test_stale_snapshots_are_reported() {
+  local out="$TEST_TMP/stale"
+  # seed a daily that is far older than any sane interval
+  mkdir -p "$out/daily" "$out/weekly"
+  chmod 700 "$out" "$out/daily" "$out/weekly"
+  printf 'x' | gzip -9 > "$out/daily/sanctuary-20250101-000000.sql.gz"
+  chmod 600 "$out/daily/sanctuary-20250101-000000.sql.gz"
+  touch -d '40 days ago' "$out/daily/sanctuary-20250101-000000.sql.gz"
+
+  run_backup --output-dir "$out" > "$TEST_TMP/stale.log" 2>&1 \
+    || { echo "backup should still run despite staleness" >&2; return 1; }
+
+  assert_file_contains "$TEST_TMP/stale.log" "stale"
+  assert_file_contains "$out/last-run" "stale_before_run=true"
+}
+
+test_fresh_snapshots_are_not_reported_stale() {
+  local out="$TEST_TMP/fresh"
+  run_backup --output-dir "$out" > /dev/null 2>&1
+  # second run: the snapshot just written is fresh
+  run_backup --output-dir "$out" > "$TEST_TMP/fresh2.log" 2>&1 || true
+  if grep -qi "stale" "$TEST_TMP/fresh2.log"; then
+    echo "fresh snapshots must not be reported stale" >&2; return 1
+  fi
+}
+
+test_first_ever_run_is_not_reported_stale() {
+  local out="$TEST_TMP/firstrun"
+  run_backup --output-dir "$out" > "$TEST_TMP/firstrun.log" 2>&1 \
+    || { echo "first run should succeed" >&2; return 1; }
+  if grep -qi "stale" "$TEST_TMP/firstrun.log"; then
+    echo "an empty backup dir is not stale — it has never run" >&2; return 1
+  fi
+}
+
+test_max_age_hours_is_configurable_and_validated() {
+  local out="$TEST_TMP/maxage"
+  run_backup --output-dir "$out" --max-age-hours 0 > "$TEST_TMP/maxage.log" 2>&1 && {
+    echo "--max-age-hours 0 should be rejected" >&2; return 1; }
+  assert_file_contains "$TEST_TMP/maxage.log" "max-age-hours"
+}
+
 main() {
   TEST_TMP="$(mktemp -d)"
   trap cleanup EXIT
@@ -405,6 +495,12 @@ main() {
   test_install_quotes_special_execstart_args
   test_install_rejects_invalid_calendar_arg
   test_install_rejects_control_characters
+  test_failed_run_records_status_in_output_dir
+  test_successful_run_records_ok_status
+  test_stale_snapshots_are_reported
+  test_fresh_snapshots_are_not_reported_stale
+  test_first_ever_run_is_not_reported_stale
+  test_max_age_hours_is_configurable_and_validated
 
   echo -e "${GREEN}sanctuary-backup regression checks passed${NC}"
 }

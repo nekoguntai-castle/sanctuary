@@ -28,6 +28,8 @@ Options:
   --keep-daily N           dailies to retain (default: 7)
   --keep-weekly N          weeklies to retain (default: 4)
   --weekly-day DAY         day-of-week for weekly snapshot, 1=Mon..7=Sun (default: 7)
+  --max-age-hours N        warn if the newest daily is older than N hours
+                           (default: 26 — one daily interval plus slack)
   --dry-run                show what would happen without writing or deleting
   -h, --help               show this help
 EOF
@@ -35,6 +37,11 @@ EOF
 
 fail() {
   echo "sanctuary-backup: $*" >&2
+  # Leave the failure where an operator will actually see it. sanctuary#745:
+  # the unit is StandardOutput=journal with no OnFailure=, so 44 consecutive
+  # failures surfaced nothing, and the output directory looked untouched.
+  # Best-effort only — a status write must never mask the real error.
+  write_status failed "$*" 2>/dev/null || true
   exit 1
 }
 
@@ -57,6 +64,7 @@ db_user="sanctuary"
 keep_daily=7
 keep_weekly=4
 weekly_day=7
+max_age_hours=26
 dry_run=false
 tmp_path=""
 
@@ -90,6 +98,10 @@ while [ "$#" -gt 0 ]; do
       weekly_day="${2:-}"
       shift 2
       ;;
+    --max-age-hours)
+      max_age_hours="${2:-}"
+      shift 2
+      ;;
     --dry-run)
       dry_run=true
       shift
@@ -115,6 +127,7 @@ done
 [ -n "$db_user" ] || fail "--db-user must not be empty"
 is_positive_integer "$keep_daily" || fail "--keep-daily must be a positive integer"
 is_positive_integer "$keep_weekly" || fail "--keep-weekly must be a positive integer"
+is_positive_integer "$max_age_hours" || fail "--max-age-hours must be a positive integer"
 if ! is_positive_integer "$weekly_day" || [ "$weekly_day" -gt 7 ]; then
   fail "--weekly-day must be 1..7 (1=Mon, 7=Sun)"
 fi
@@ -129,6 +142,67 @@ lock_path="$output_dir/.sanctuary-backup.lock"
 
 # %u is 1..7 in GNU date (Mon..Sun). BSD/macOS users will need GNU date.
 today_dow="$(date '+%u')"
+
+
+# Age in whole hours of the newest daily snapshot, or empty when none exist.
+# An empty backup directory is "never run", not "stale" — a first run must not
+# report a gap it cannot have caused.
+newest_daily_age_hours() {
+  [ -d "${daily_dir:-}" ] || return 0
+  local newest_epoch="" f epoch
+  for f in "$daily_dir"/sanctuary-*.sql.gz; do
+    [ -e "$f" ] || continue
+    epoch="$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || echo "")"
+    [ -n "$epoch" ] || continue
+    if [ -z "$newest_epoch" ] || [ "$epoch" -gt "$newest_epoch" ]; then
+      newest_epoch="$epoch"
+    fi
+  done
+  [ -n "$newest_epoch" ] || return 0
+  local now
+  now="$(date +%s)"
+  echo $(( (now - newest_epoch) / 3600 ))
+}
+
+# A single-line-per-key record beside the snapshots. Written on every exit
+# path, so "the directory looks fine" stops being consistent with "backups
+# have not run for six weeks".
+write_status() {
+  local outcome="$1"
+  local detail="${2:-}"
+  [ -n "${output_dir:-}" ] || return 0
+  [ -d "$output_dir" ] || return 0
+  [ "${dry_run:-false}" = true ] && return 0
+
+  local status_tmp
+  status_tmp="$(mktemp "$output_dir/.last-run.tmp.XXXXXX" 2>/dev/null)" || return 0
+  {
+    printf 'timestamp=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    printf 'outcome=%s\n' "$outcome"
+    printf 'detail=%s\n' "$detail"
+    printf 'stale_before_run=%s\n' "${stale_before_run:-false}"
+    printf 'newest_daily_age_hours=%s\n' "${age_before_run:-unknown}"
+    printf 'max_age_hours=%s\n' "${max_age_hours:-unknown}"
+  } > "$status_tmp" 2>/dev/null || { rm -f -- "$status_tmp"; return 0; }
+  chmod 600 "$status_tmp" 2>/dev/null || true
+  mv -f "$status_tmp" "$output_dir/last-run" 2>/dev/null || rm -f -- "$status_tmp"
+}
+
+# Runs before the dump. This catches the sanctuary#745 case exactly: the script
+# fired nightly, failed early, and never noticed its newest snapshot was weeks
+# old. It cannot catch a masked or disabled timer — nothing inside a script
+# that never runs can — which is what the status file above is for.
+check_staleness() {
+  age_before_run="$(newest_daily_age_hours)"
+  stale_before_run=false
+  [ -n "$age_before_run" ] || { age_before_run="none"; return 0; }
+  if [ "$age_before_run" -gt "$max_age_hours" ]; then
+    stale_before_run=true
+    echo "sanctuary-backup: WARNING newest daily snapshot is stale:" \
+         "${age_before_run}h old, expected under ${max_age_hours}h" >&2
+    log "stale: newest daily is ${age_before_run}h old (limit ${max_age_hours}h)"
+  fi
+}
 
 run() {
   if [ "$dry_run" = true ]; then
@@ -265,9 +339,11 @@ trap cleanup_temp EXIT
 
 ensure_dirs
 acquire_lock
+check_staleness
 verify_postgres_running
 dump_database
 copy_to_weekly_if_due
 rotate_dir "$daily_dir" "$keep_daily" "daily"
 rotate_dir "$weekly_dir" "$keep_weekly" "weekly"
+write_status ok ""
 log "done"
