@@ -53,7 +53,14 @@ fi
 # invocation, so it neither needs nor should hold the lock.
 unlocked=0
 while IFS= read -r wf; do
+  # Comments are stripped before counting. A comment naming the script is not
+  # an invocation, and counting one inflates `invocations` with no matching
+  # lock: release-candidate.yml explains the phase split in prose above each
+  # call, so it reported 4 invocations against 2 locks while both real calls
+  # were correctly wrapped. Stripping happens after continuations are joined,
+  # so a commented fragment cannot rejoin a live line.
   joined="$(sed ':a;N;$!ba;s/\\\n[[:space:]]*/ /g' "$wf" \
+    | sed 's/[[:space:]]*#.*$//' \
     | grep -E 'run-e2e-lane-phases\.sh' | grep -v 'bash -n' || true)"
   [ -n "$joined" ] || continue
   invocations="$(printf '%s\n' "$joined" | grep -c . || true)"
