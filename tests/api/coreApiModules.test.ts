@@ -239,10 +239,12 @@ describe('Core API Modules', () => {
       expect(mockGet).toHaveBeenCalledWith('/bitcoin/fees/advanced', { network: 'testnet4' });
       expect(mockPost).toHaveBeenCalledWith('/bitcoin/transaction/txid-2/rbf-check', { walletId: 'w1' });
       expect(mockPost).toHaveBeenCalledWith('/bitcoin/transaction/txid-3/rbf-check', { walletId: 'w2' });
-      expect(mockPost).toHaveBeenCalledWith('/bitcoin/transaction/txid-2/rbf', {
-        walletId: 'w1',
-        newFeeRate: 20,
-      });
+      // RBF now validates its response — it feeds a persisted, signed draft.
+      expect(mockPost).toHaveBeenCalledWith(
+        '/bitcoin/transaction/txid-2/rbf',
+        { walletId: 'w1', newFeeRate: 20 },
+        expect.objectContaining({ schema: expect.anything() }),
+      );
       expect(mockPost).toHaveBeenCalledWith('/bitcoin/transaction/cpfp', {
         walletId: 'w1',
         parentTxid: 'p1',
@@ -445,12 +447,17 @@ describe('Core API Modules', () => {
       expect(mockPost).toHaveBeenCalledWith('/wallets/w1/addresses');
       expect(mockPost).toHaveBeenCalledWith('/wallets/w1/devices', { deviceId: 'd1' });
       expect(mockPost).toHaveBeenCalledWith('/wallets/import/validate', { descriptor: 'wpkh(...)' });
-      expect(mockPost).toHaveBeenCalledWith('/wallets/validate-xpub', {
-        xpub: 'tpub-inline',
-        scriptType: 'native_segwit',
-        network: 'testnet3',
-        fingerprint: '00000000',
-      });
+      // Xpub validation now validates its response — it becomes key material.
+      expect(mockPost).toHaveBeenCalledWith(
+        '/wallets/validate-xpub',
+        {
+          xpub: 'tpub-inline',
+          scriptType: 'native_segwit',
+          network: 'testnet3',
+          fingerprint: '00000000',
+        },
+        expect.objectContaining({ schema: expect.anything() }),
+      );
       expect(mockPost).toHaveBeenCalledWith('/wallets/import', { data: 'wpkh(...)', name: 'Imported' });
       expect(mockPost).toHaveBeenCalledWith('/wallets/w1/share/group', { groupId: 'g1' });
       expect(mockPost).toHaveBeenCalledWith('/wallets/w1/share/user', { targetUserId: 'u1' });

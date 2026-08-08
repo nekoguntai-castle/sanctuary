@@ -35,3 +35,23 @@ export const FeeEstimatesSchema = z.object({
 });
 
 export type FeeEstimatesResponse = z.infer<typeof FeeEstimatesSchema>;
+
+const satoshis = z.number().finite();
+
+/**
+ * Fee-bump replacement, built from an existing transaction.
+ *
+ * `transactionActionsData` reads `result.outputs[0].address` directly and then
+ * reduces over both arrays, so an empty list is a TypeError rather than an
+ * empty render. Requiring at least one of each is not a range check: a
+ * transaction with no inputs, or none out, is not a transaction — and this
+ * result is fed straight into a draft that gets persisted and signed.
+ */
+export const RBFTransactionResponseSchema = z.looseObject({
+  psbtBase64: z.string().min(1),
+  fee: satoshis,
+  feeRate: satoshis,
+  feeDelta: satoshis,
+  inputs: z.array(z.looseObject({ txid: z.string(), vout: z.number().int(), value: satoshis })).min(1),
+  outputs: z.array(z.looseObject({ address: z.string(), value: satoshis })).min(1),
+});

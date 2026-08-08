@@ -9,6 +9,7 @@ import type {
   AggregatedPrice,
   PriceSource,
 } from "@sanctuary/shared/types/api";
+import { AggregatedPriceSchema } from '@sanctuary/shared/schemas/priceResponses';
 
 export type { AggregatedPrice, PriceSource };
 
@@ -79,10 +80,14 @@ export async function getPrice(
   currency: string = "USD",
   useCache: boolean = true,
 ): Promise<AggregatedPrice> {
-  return apiClient.get<AggregatedPrice>("/price", {
-    currency,
-    useCache: String(useCache),
-  });
+  return apiClient.get<AggregatedPrice>(
+    "/price",
+    { currency, useCache: String(useCache) },
+    undefined,
+    // A NaN here passes CurrencyContext's `=== null` guard and turns every
+    // fiat figure in the app into NaN at once, silently.
+    { schema: AggregatedPriceSchema },
+  );
 }
 
 /**

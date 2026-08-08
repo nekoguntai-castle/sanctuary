@@ -14,6 +14,7 @@ import { FeeEstimatesSchema } from '@sanctuary/shared/schemas/bitcoinResponses';
 // Re-export types for convenience
 export type { BitcoinTransactionDetails, BlockHeader } from '../types';
 export type { FeeEstimates } from '@sanctuary/shared/types/api';
+import { RBFTransactionResponseSchema } from '@sanctuary/shared/schemas/bitcoinResponses';
 
 export interface HealthCheckResult {
   timestamp: string;
@@ -384,7 +385,11 @@ export async function createRBFTransaction(
   txid: string,
   data: RBFTransactionRequest
 ): Promise<RBFTransactionResponse> {
-  return apiClient.post<RBFTransactionResponse>(`/bitcoin/transaction/${txid}/rbf`, data);
+  // `transactionActionsData` reads `outputs[0].address` directly, and this
+  // result is fed straight into a draft that gets persisted and signed.
+  return apiClient.post<RBFTransactionResponse>(`/bitcoin/transaction/${txid}/rbf`, data, {
+    schema: RBFTransactionResponseSchema,
+  });
 }
 
 /**

@@ -4,6 +4,7 @@ import {
   GetUtxosResponseSchema,
   UtxoSchema,
   WalletSchema,
+  ValidateXpubResponseSchema,
   WalletsResponseSchema,
 } from '../../shared/schemas/walletResponses';
 
@@ -116,5 +117,41 @@ describe('walletResponses schemas', () => {
       const body = { utxos: [], count: 0, totalBalance: 0 };
       expect(GetUtxosResponseSchema.parse(body)).toEqual(body);
     });
+  });
+});
+
+const xpubResult = {
+  valid: true as const,
+  descriptor: "wpkh([abcd1234/84h/0h/0h]xpubExample/0/*)",
+  firstAddress: 'bc1qfirstaddress',
+  xpub: 'xpubExample',
+  fingerprint: 'abcd1234',
+};
+
+describe('ValidateXpubResponseSchema', () => {
+  it('accepts a well-formed validation result', () => {
+    expect(ValidateXpubResponseSchema.parse(xpubResult)).toEqual(xpubResult);
+  });
+
+  it('rejects empty key material', () => {
+    // These are not display strings: the descriptor is what the wallet watches,
+    // and firstAddress is what a user checks against their device.
+    for (const field of ['descriptor', 'firstAddress', 'xpub', 'fingerprint']) {
+      expect(ValidateXpubResponseSchema.safeParse({ ...xpubResult, [field]: '' }).success).toBe(false);
+      expect(ValidateXpubResponseSchema.safeParse({ ...xpubResult, [field]: null }).success).toBe(false);
+    }
+  });
+
+  it('rejects a response that does not actually claim validity', () => {
+    // The TS type declares `valid: true`, so it cannot express a failure and
+    // every response was read as a pass.
+    expect(ValidateXpubResponseSchema.safeParse({ ...xpubResult, valid: false }).success).toBe(false);
+    const { valid: _valid, ...missing } = xpubResult;
+    expect(ValidateXpubResponseSchema.safeParse(missing).success).toBe(false);
+  });
+
+  it('keeps the fields it does not declare', () => {
+    const full = { ...xpubResult, scriptType: 'native_segwit', accountPath: "m/84'/0'/0'" };
+    expect(ValidateXpubResponseSchema.parse(full)).toEqual(full);
   });
 });

@@ -1,6 +1,7 @@
 import apiClient from './client';
 import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 import type { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
+import { ValidateXpubResponseSchema } from '@sanctuary/shared/schemas/walletResponses';
 
 export type XpubScriptType = WalletScriptType;
 export type XpubValidationNetwork = NetworkType;
@@ -28,5 +29,9 @@ export interface ValidateXpubResponse {
  * The caller supplies the key, network, script type, and optional origin metadata.
  */
 export async function validateXpub(data: ValidateXpubRequest): Promise<ValidateXpubResponse> {
-  return apiClient.post<ValidateXpubResponse>('/wallets/validate-xpub', data);
+  // The declared type is `valid: true` — a literal that cannot express a
+  // failure — and what comes back becomes wallet key material.
+  return apiClient.post<ValidateXpubResponse>('/wallets/validate-xpub', data, {
+    schema: ValidateXpubResponseSchema,
+  });
 }

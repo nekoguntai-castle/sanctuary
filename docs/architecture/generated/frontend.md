@@ -39,1079 +39,1082 @@ F["batchTransactionRequests.ts"]
 G["bitcoinResponses.ts"]
 H["draftRequests.ts"]
 I["mobileApiRequests.ts"]
-J["transactionResponses.ts"]
-K["walletResponses.ts"]
-end
-subgraph L["types"]
-M["ambient-modules.d.ts"]
-N["api.ts"]
-O["domain.ts"]
-P["index.ts"]
-Q["logger.ts"]
-R["websocket.ts"]
-end
-subgraph S["utils"]
-T["bitcoin.ts"]
-U["errors.ts"]
-V["fatalProcessHandlers.ts"]
-W["gatewayAuth.ts"]
-X["priorityRegistry.ts"]
-Y["processExit.ts"]
-Z["redact.ts"]
-10["request.ts"]
-end
-end
-subgraph 11["src"]
-12["App.tsx"]
-subgraph 13["api"]
-subgraph 14["admin"]
-15[" "]
-end
-16["ai.ts"]
-17["auth.ts"]
-18["authPolicy.ts"]
-19["baseUrl.ts"]
-1A["bitcoin.ts"]
-1B["client.ts"]
-1C["console.ts"]
-1D["devices.ts"]
-1E["drafts.ts"]
-1F["health.ts"]
-1G["intelligence.ts"]
-1H["labels.ts"]
-1I["payjoin.ts"]
-1J["price.ts"]
-1K["refresh.ts"]
-1L["retryPolicy.ts"]
-1M["sync.ts"]
-subgraph 1N["transactions"]
-1O[" "]
-end
-1P["transfers.ts"]
-1Q["twoFactor.ts"]
-1R["walletXpub.ts"]
-1S["wallets.ts"]
-end
-subgraph 1T["app"]
-subgraph 1U["AppRoutes"]
-1V[" "]
-end
-1W["appRouteTypes.ts"]
-1X["appRoutes.tsx"]
-1Y["browserNavigation.ts"]
-1Z["capabilities.ts"]
-20["consoleTransactionNavigation.ts"]
-21["networks.ts"]
-22["resolvePageContentWidth.ts"]
-23["routeComponents.tsx"]
-24["routeDefinitions.tsx"]
-25["shortcuts.ts"]
-end
-subgraph 26["components"]
-27["AILabelSuggestion.tsx"]
-subgraph 28["AILabelSuggestion"]
-29[" "]
-end
-2A["AIQueryInput.tsx"]
-subgraph 2B["AIQueryInput"]
-2C[" "]
-end
-subgraph 2D["AISettings"]
-2E[" "]
-end
-subgraph 2F["Account"]
-2G[" "]
-end
-subgraph 2H["AgentManagement"]
-2I[" "]
-end
-subgraph 2J["AgentWalletDashboard"]
-2K[" "]
-end
-2L["Amount.tsx"]
-2M["AnimatedBackground.tsx"]
-subgraph 2N["AnimatedBackground"]
-2O[" "]
-end
-subgraph 2P["AuditLogs"]
-2Q[" "]
-end
-subgraph 2R["BackupRestore"]
-2S[" "]
-end
-subgraph 2T["BlockVisualizer"]
-2U[" "]
+J["priceResponses.ts"]
+K["transactionResponses.ts"]
+L["walletResponses.ts"]
+end
+subgraph M["types"]
+N["ambient-modules.d.ts"]
+O["api.ts"]
+P["domain.ts"]
+Q["index.ts"]
+R["logger.ts"]
+S["websocket.ts"]
+end
+subgraph T["utils"]
+U["bitcoin.ts"]
+V["errors.ts"]
+W["fatalProcessHandlers.ts"]
+X["gatewayAuth.ts"]
+Y["priorityRegistry.ts"]
+Z["processExit.ts"]
+10["redact.ts"]
+11["request.ts"]
+end
+end
+subgraph 12["src"]
+13["App.tsx"]
+subgraph 14["api"]
+subgraph 15["admin"]
+16[" "]
+end
+17["ai.ts"]
+18["auth.ts"]
+19["authPolicy.ts"]
+1A["baseUrl.ts"]
+1B["bitcoin.ts"]
+1C["client.ts"]
+1D["console.ts"]
+1E["devices.ts"]
+1F["drafts.ts"]
+1G["health.ts"]
+1H["intelligence.ts"]
+1I["labels.ts"]
+1J["payjoin.ts"]
+1K["price.ts"]
+1L["refresh.ts"]
+1M["retryPolicy.ts"]
+1N["sync.ts"]
+subgraph 1O["transactions"]
+1P[" "]
+end
+1Q["transfers.ts"]
+1R["twoFactor.ts"]
+1S["walletXpub.ts"]
+1T["wallets.ts"]
+end
+subgraph 1U["app"]
+subgraph 1V["AppRoutes"]
+1W[" "]
+end
+1X["appRouteTypes.ts"]
+1Y["appRoutes.tsx"]
+1Z["browserNavigation.ts"]
+20["capabilities.ts"]
+21["consoleTransactionNavigation.ts"]
+22["networks.ts"]
+23["resolvePageContentWidth.ts"]
+24["routeComponents.tsx"]
+25["routeDefinitions.tsx"]
+26["shortcuts.ts"]
+end
+subgraph 27["components"]
+28["AILabelSuggestion.tsx"]
+subgraph 29["AILabelSuggestion"]
+2A[" "]
+end
+2B["AIQueryInput.tsx"]
+subgraph 2C["AIQueryInput"]
+2D[" "]
+end
+subgraph 2E["AISettings"]
+2F[" "]
+end
+subgraph 2G["Account"]
+2H[" "]
+end
+subgraph 2I["AgentManagement"]
+2J[" "]
+end
+subgraph 2K["AgentWalletDashboard"]
+2L[" "]
+end
+2M["Amount.tsx"]
+2N["AnimatedBackground.tsx"]
+subgraph 2O["AnimatedBackground"]
+2P[" "]
+end
+subgraph 2Q["AuditLogs"]
+2R[" "]
+end
+subgraph 2S["BackupRestore"]
+2T[" "]
+end
+subgraph 2U["BlockVisualizer"]
+2V[" "]
 end
-2V["ChangePasswordModal.tsx"]
-subgraph 2W["ConnectDevice"]
-2X[" "]
+2W["ChangePasswordModal.tsx"]
+subgraph 2X["ConnectDevice"]
+2Y[" "]
 end
-subgraph 2Y["ConsoleDrawer"]
-2Z[" "]
+subgraph 2Z["ConsoleDrawer"]
+30[" "]
 end
-subgraph 30["ConsoleResults"]
-31[" "]
+subgraph 31["ConsoleResults"]
+32[" "]
 end
-subgraph 32["CreateWallet"]
-33[" "]
+subgraph 33["CreateWallet"]
+34[" "]
 end
-subgraph 34["Dashboard"]
-35[" "]
+subgraph 35["Dashboard"]
+36[" "]
 end
-subgraph 36["DeviceDetail"]
-37[" "]
+subgraph 37["DeviceDetail"]
+38[" "]
 end
-subgraph 38["DeviceList"]
-39[" "]
+subgraph 39["DeviceList"]
+3A[" "]
 end
-subgraph 3A["DraftList"]
-3B[" "]
+subgraph 3B["DraftList"]
+3C[" "]
 end
-3C["ErrorBoundary.tsx"]
-subgraph 3D["FeatureFlags"]
-3E[" "]
+3D["ErrorBoundary.tsx"]
+subgraph 3E["FeatureFlags"]
+3F[" "]
 end
-3F["FiatDisplay.tsx"]
-subgraph 3G["ImportWallet"]
-3H[" "]
+3G["FiatDisplay.tsx"]
+subgraph 3H["ImportWallet"]
+3I[" "]
 end
-subgraph 3I["Intelligence"]
-3J[" "]
+subgraph 3J["Intelligence"]
+3K[" "]
 end
-3K["LabelManager.tsx"]
-subgraph 3L["LabelManager"]
-3M[" "]
+3L["LabelManager.tsx"]
+subgraph 3M["LabelManager"]
+3N[" "]
 end
-3N["LabelSelector.tsx"]
-subgraph 3O["LabelSelector"]
-3P[" "]
+3O["LabelSelector.tsx"]
+subgraph 3P["LabelSelector"]
+3Q[" "]
 end
-subgraph 3Q["Layout"]
-3R[" "]
+subgraph 3R["Layout"]
+3S[" "]
 end
-subgraph 3S["Login"]
-3T[" "]
+subgraph 3T["Login"]
+3U[" "]
 end
-subgraph 3U["Monitoring"]
-3V[" "]
+subgraph 3V["Monitoring"]
+3W[" "]
 end
-subgraph 3W["NetworkConnectionCard"]
-3X[" "]
+subgraph 3X["NetworkConnectionCard"]
+3Y[" "]
 end
-3Y["NetworkSyncActions.tsx"]
-subgraph 3Z["NetworkSyncActions"]
-40[" "]
+3Z["NetworkSyncActions.tsx"]
+subgraph 40["NetworkSyncActions"]
+41[" "]
 end
-41["NetworkTabs.tsx"]
-subgraph 42["NodeConfig"]
-43[" "]
+42["NetworkTabs.tsx"]
+subgraph 43["NodeConfig"]
+44[" "]
 end
-44["NotificationBadge.tsx"]
-45["NotificationPanel.tsx"]
-subgraph 46["NotificationPanel"]
-47[" "]
+45["NotificationBadge.tsx"]
+46["NotificationPanel.tsx"]
+subgraph 47["NotificationPanel"]
+48[" "]
 end
-48["NotificationToast.tsx"]
-subgraph 49["NotificationToast"]
-4A[" "]
+49["NotificationToast.tsx"]
+subgraph 4A["NotificationToast"]
+4B[" "]
 end
-4B["PayjoinEducationModal.tsx"]
-4C["PayjoinSection.tsx"]
-4D["PendingTransfersPanel.tsx"]
-subgraph 4E["PendingTransfersPanel"]
-4F[" "]
+4C["PayjoinEducationModal.tsx"]
+4D["PayjoinSection.tsx"]
+4E["PendingTransfersPanel.tsx"]
+subgraph 4F["PendingTransfersPanel"]
+4G[" "]
 end
-4G["PriceProviderDiagnostics.tsx"]
-4H["PrivacyBadge.tsx"]
-4I["PrivacyDetailPanel.tsx"]
-subgraph 4J["Settings"]
-4K[" "]
+4H["PriceProviderDiagnostics.tsx"]
+4I["PrivacyBadge.tsx"]
+4J["PrivacyDetailPanel.tsx"]
+subgraph 4K["Settings"]
+4L[" "]
 end
-4L["SpendPrivacyCard.tsx"]
-subgraph 4M["SystemSettings"]
-4N[" "]
-end
-4O["TransactionActions.tsx"]
-subgraph 4P["TransactionActions"]
-4Q[" "]
-end
-4R["TransactionExportModal.tsx"]
-4S["TransactionFlowPreview.tsx"]
-4T["TransactionFlowPreviewParts.tsx"]
-subgraph 4U["TransactionList"]
-4V[" "]
-end
-4W["TransferOwnershipModal.tsx"]
-subgraph 4X["TransferOwnershipModal"]
-4Y[" "]
-end
-subgraph 4Z["UTXOList"]
-50[" "]
-end
-subgraph 51["UsersGroups"]
-52[" "]
-end
-53["Variables.tsx"]
-subgraph 54["Variables"]
-55[" "]
-end
-subgraph 56["WalletDetail"]
-57[" "]
-end
-subgraph 58["WalletList"]
-59[" "]
-end
-5A["WalletStats.tsx"]
-subgraph 5B["WalletStats"]
-5C[" "]
-end
-5D["animatedPatterns.ts"]
-subgraph 5E["animations"]
-5F[" "]
-end
-subgraph 5G["cells"]
-5H[" "]
-end
-subgraph 5I["columns"]
-5J[" "]
-end
-5K["privacyScoreUtils.ts"]
-subgraph 5L["qr"]
-5M[" "]
-end
-subgraph 5N["send"]
-5O[" "]
-end
-subgraph 5P["ui"]
-5Q[" "]
-end
-end
-subgraph 5R["contexts"]
-5S["ActiveNetworkContext.tsx"]
-5T["AppNotificationContext.tsx"]
-5U["CurrencyContext.tsx"]
-5V["CurrencyPreferencesContext.tsx"]
-5W["NotificationContext.tsx"]
-5X["PriceContext.tsx"]
-5Y["SidebarContext.tsx"]
-5Z["UserContext.tsx"]
-subgraph 60["send"]
-61[" "]
-end
-62["useUserAuthActions.ts"]
-63["useUserAuthLifecycle.ts"]
-64["useUserPreferenceMutation.ts"]
-65["useUserTheme.ts"]
-66["userContextTypes.ts"]
-67["userModel.ts"]
+4M["SpendPrivacyCard.tsx"]
+subgraph 4N["SystemSettings"]
+4O[" "]
 end
-subgraph 68["hooks"]
-subgraph 69["qr"]
-6A[" "]
+4P["TransactionActions.tsx"]
+subgraph 4Q["TransactionActions"]
+4R[" "]
+end
+4S["TransactionExportModal.tsx"]
+4T["TransactionFlowPreview.tsx"]
+4U["TransactionFlowPreviewParts.tsx"]
+subgraph 4V["TransactionList"]
+4W[" "]
+end
+4X["TransferOwnershipModal.tsx"]
+subgraph 4Y["TransferOwnershipModal"]
+4Z[" "]
+end
+subgraph 50["UTXOList"]
+51[" "]
+end
+subgraph 52["UsersGroups"]
+53[" "]
+end
+54["Variables.tsx"]
+subgraph 55["Variables"]
+56[" "]
+end
+subgraph 57["WalletDetail"]
+58[" "]
+end
+subgraph 59["WalletList"]
+5A[" "]
+end
+5B["WalletStats.tsx"]
+subgraph 5C["WalletStats"]
+5D[" "]
+end
+5E["animatedPatterns.ts"]
+subgraph 5F["animations"]
+5G[" "]
+end
+subgraph 5H["cells"]
+5I[" "]
+end
+subgraph 5J["columns"]
+5K[" "]
 end
-subgraph 6B["queries"]
-6C[" "]
+5L["privacyScoreUtils.ts"]
+subgraph 5M["qr"]
+5N[" "]
 end
-subgraph 6D["send"]
-6E[" "]
+subgraph 5O["send"]
+5P[" "]
 end
-6F["soundPresets.ts"]
-subgraph 6G["soundPresets"]
-6H[" "]
-end
-6I["useAIStatus.ts"]
-6J["useAppCapabilities.ts"]
-6K["useAppShortcuts.ts"]
-6L["useConsoleAvailability.ts"]
-6M["useCopyToClipboard.ts"]
-6N["useDelayedRender.ts"]
-6O["useDeviceConnection.ts"]
-6P["useDeviceModels.ts"]
-6Q["useDeviceSave.ts"]
-6R["useDismissable.ts"]
-6S["useErrorHandler.ts"]
-6T["useHardwareWallet.ts"]
-6U["useIntelligenceStatus.ts"]
-6V["useLoadingState.ts"]
-6W["useModalForm.ts"]
-6X["useNotificationSound.ts"]
-6Y["useNotify.ts"]
-6Z["usePaginatedList.ts"]
-70["useUserPreference.ts"]
-subgraph 71["websocket"]
-72[" "]
-end
-end
-73["main.tsx"]
-subgraph 74["providers"]
-75["AppProviders.tsx"]
-76["QueryProvider.tsx"]
-end
-subgraph 77["services"]
-78["bbqr.ts"]
-subgraph 79["deviceParsers"]
-7A[" "]
-end
-subgraph 7B["hardwareWallet"]
-7C[" "]
-end
-7D["websocket.ts"]
-end
-subgraph 7E["themes"]
-7F["backgroundCategories.ts"]
-subgraph 7G["bamboo"]
-7H[" "]
-end
-subgraph 7I["copper"]
-7J[" "]
-end
-subgraph 7K["cyber"]
-7L[" "]
-end
-subgraph 7M["desert"]
-7N[" "]
-end
-subgraph 7O["forest"]
-7P[" "]
-end
-7Q["index.ts"]
-subgraph 7R["midnight"]
-7S[" "]
-end
-subgraph 7T["ocean"]
-7U[" "]
-end
-7V["patterns.ts"]
-7W["registry.ts"]
-subgraph 7X["sakura-sumie"]
-7Y[" "]
-end
-subgraph 7Z["sakura-yoshino"]
-80[" "]
-end
-subgraph 81["sanctuary"]
-82[" "]
-end
-subgraph 83["seasonal"]
-84[" "]
-end
-subgraph 85["serenity"]
-86[" "]
-end
-subgraph 87["sunrise"]
-88[" "]
-end
-subgraph 89["sunset"]
-8A[" "]
-end
-8B["types.ts"]
-end
-subgraph 8C["types"]
-8D["hardware.ts"]
-8E["index.ts"]
-8F["ui.ts"]
-8G["user.ts"]
-end
-subgraph 8H["utils"]
-8I["bip21Parser.ts"]
-8J["bufferUtils.ts"]
-8K["clipboard.ts"]
-8L["derivationPathGroups.ts"]
-8M["deviceConnection.ts"]
-8N["download.ts"]
-8O["errorHandler.ts"]
-8P["explorer.ts"]
-8Q["feeRate.ts"]
-8R["formatters.ts"]
-8S["logger.ts"]
-8T["networkScopedDevices.ts"]
-8U["nodeGlobals.ts"]
-8V["preferencePaths.ts"]
-8W["psbtFormat.ts"]
-8X["relativeTime.ts"]
-8Y["transaction.ts"]
-8Z["urDeviceDecoder.ts"]
-90["urPsbt.ts"]
-91["utxoAge.ts"]
-92["validateAddress.ts"]
-93["walletCapabilities.ts"]
-end
-end
-D-->U
+subgraph 5Q["ui"]
+5R[" "]
+end
+end
+subgraph 5S["contexts"]
+5T["ActiveNetworkContext.tsx"]
+5U["AppNotificationContext.tsx"]
+5V["CurrencyContext.tsx"]
+5W["CurrencyPreferencesContext.tsx"]
+5X["NotificationContext.tsx"]
+5Y["PriceContext.tsx"]
+5Z["SidebarContext.tsx"]
+60["UserContext.tsx"]
+subgraph 61["send"]
+62[" "]
+end
+63["useUserAuthActions.ts"]
+64["useUserAuthLifecycle.ts"]
+65["useUserPreferenceMutation.ts"]
+66["useUserTheme.ts"]
+67["userContextTypes.ts"]
+68["userModel.ts"]
+end
+subgraph 69["hooks"]
+subgraph 6A["qr"]
+6B[" "]
+end
+subgraph 6C["queries"]
+6D[" "]
+end
+subgraph 6E["send"]
+6F[" "]
+end
+6G["soundPresets.ts"]
+subgraph 6H["soundPresets"]
+6I[" "]
+end
+6J["useAIStatus.ts"]
+6K["useAppCapabilities.ts"]
+6L["useAppShortcuts.ts"]
+6M["useConsoleAvailability.ts"]
+6N["useCopyToClipboard.ts"]
+6O["useDelayedRender.ts"]
+6P["useDeviceConnection.ts"]
+6Q["useDeviceModels.ts"]
+6R["useDeviceSave.ts"]
+6S["useDismissable.ts"]
+6T["useErrorHandler.ts"]
+6U["useHardwareWallet.ts"]
+6V["useIntelligenceStatus.ts"]
+6W["useLoadingState.ts"]
+6X["useModalForm.ts"]
+6Y["useNotificationSound.ts"]
+6Z["useNotify.ts"]
+70["usePaginatedList.ts"]
+71["useUserPreference.ts"]
+subgraph 72["websocket"]
+73[" "]
+end
+end
+74["main.tsx"]
+subgraph 75["providers"]
+76["AppProviders.tsx"]
+77["QueryProvider.tsx"]
+end
+subgraph 78["services"]
+79["bbqr.ts"]
+subgraph 7A["deviceParsers"]
+7B[" "]
+end
+subgraph 7C["hardwareWallet"]
+7D[" "]
+end
+7E["websocket.ts"]
+end
+subgraph 7F["themes"]
+7G["backgroundCategories.ts"]
+subgraph 7H["bamboo"]
+7I[" "]
+end
+subgraph 7J["copper"]
+7K[" "]
+end
+subgraph 7L["cyber"]
+7M[" "]
+end
+subgraph 7N["desert"]
+7O[" "]
+end
+subgraph 7P["forest"]
+7Q[" "]
+end
+7R["index.ts"]
+subgraph 7S["midnight"]
+7T[" "]
+end
+subgraph 7U["ocean"]
+7V[" "]
+end
+7W["patterns.ts"]
+7X["registry.ts"]
+subgraph 7Y["sakura-sumie"]
+7Z[" "]
+end
+subgraph 80["sakura-yoshino"]
+81[" "]
+end
+subgraph 82["sanctuary"]
+83[" "]
+end
+subgraph 84["seasonal"]
+85[" "]
+end
+subgraph 86["serenity"]
+87[" "]
+end
+subgraph 88["sunrise"]
+89[" "]
+end
+subgraph 8A["sunset"]
+8B[" "]
+end
+8C["types.ts"]
+end
+subgraph 8D["types"]
+8E["hardware.ts"]
+8F["index.ts"]
+8G["ui.ts"]
+8H["user.ts"]
+end
+subgraph 8I["utils"]
+8J["bip21Parser.ts"]
+8K["bufferUtils.ts"]
+8L["clipboard.ts"]
+8M["derivationPathGroups.ts"]
+8N["deviceConnection.ts"]
+8O["download.ts"]
+8P["errorHandler.ts"]
+8Q["explorer.ts"]
+8R["feeRate.ts"]
+8S["formatters.ts"]
+8T["logger.ts"]
+8U["networkScopedDevices.ts"]
+8V["nodeGlobals.ts"]
+8W["preferencePaths.ts"]
+8X["psbtFormat.ts"]
+8Y["relativeTime.ts"]
+8Z["transaction.ts"]
+90["urDeviceDecoder.ts"]
+91["urPsbt.ts"]
+92["utxoAge.ts"]
+93["validateAddress.ts"]
+94["walletCapabilities.ts"]
+end
+end
+D-->V
 F-->I
 H-->6
 I-->4
 I-->6
 I-->A
 I-->H
-O-->A
-P-->N
-P-->O
-P-->Q
-P-->R
-T-->4
-T-->A
-V-->U
-Z-->C
-12-->1V
-12-->75
-15-->1B
-15-->8N
-16-->1B
-17-->1B
-17-->8S
-1A-->1B
-1A-->G
-1B-->18
-1B-->19
-1B-->1K
-1B-->1L
-1B-->8N
-1B-->8S
-1B-->U
-1C-->1B
-1D-->1B
-1E-->1B
-1E-->J
-1F-->19
-1G-->1B
-1H-->1B
-1I-->1B
-1J-->1B
-1K-->18
-1K-->19
-1K-->8S
-1M-->1B
-1M-->8
-1O-->1B
-1O-->J
-1O-->K
-1P-->1B
-1Q-->1B
-1R-->1B
-1S-->1B
-1S-->1R
-1S-->C
-1S-->K
-1V-->17
-1V-->1X
-1V-->1Y
-1V-->1Z
-1V-->2M
-1V-->2V
-1V-->3R
-1V-->3T
-1V-->48
-1V-->5Q
-1V-->5W
-1V-->5Z
-1V-->6J
-1V-->72
-1V-->7V
-1V-->8S
-1X-->24
-1X-->3C
-20-->9
-21-->4
-22-->24
-23-->2E
-23-->2G
-23-->2I
-23-->2K
-23-->2Q
-23-->2S
-23-->2X
-23-->31
-23-->33
-23-->35
-23-->37
-23-->39
-23-->3E
-23-->3H
-23-->3J
-23-->3V
-23-->43
-23-->4K
-23-->4N
-23-->52
-23-->53
-23-->57
-23-->59
-23-->5O
-24-->23
-24-->5Q
-27-->29
-29-->16
-29-->8S
-2A-->2C
-2C-->16
-2C-->8S
-2E-->15
-2E-->16
-2E-->1B
-2E-->5Q
-2E-->6I
-2E-->8S
-2G-->17
-2G-->1B
-2G-->1Q
-2G-->5Q
-2G-->5Z
-2G-->8K
-2G-->8S
-2I-->15
-2I-->1S
-2I-->5Q
-2I-->8O
-2I-->A
-2K-->15
-2K-->5Q
-2K-->8O
-2K-->8S
-2K-->A
-2L-->5U
-2M-->2O
-2M-->7V
-2Q-->15
-2Q-->6V
-2Q-->8S
-2Q-->8X
-2S-->15
-2S-->5Q
-2S-->5T
-2S-->8N
-2S-->8S
-2U-->6R
-2U-->7
-2V-->17
-2V-->1B
-2V-->5Q
-2V-->8S
-2X-->5Q
-2X-->6A
-2X-->6O
-2X-->6P
-2X-->6Q
-2X-->7A
-2X-->7C
-2X-->8L
-2X-->8M
-2X-->A
-2Z-->1C
-2Z-->20
-2Z-->21
-31-->1O
-31-->20
-31-->4V
-31-->57
-31-->6C
-33-->1D
-33-->21
-33-->5Q
-33-->5S
-33-->6C
-33-->6S
-33-->8E
-33-->8L
-33-->8O
-33-->8S
-33-->A
-35-->15
-35-->21
-35-->2L
-35-->2U
-35-->4V
-35-->5Q
-35-->5S
-35-->5U
-35-->5W
-35-->6C
-35-->6N
-35-->6X
-35-->70
-35-->72
-35-->8E
-35-->8Q
-35-->8S
-35-->8X
-35-->T
-37-->15
-37-->17
-37-->1D
-37-->21
-37-->4D
-37-->4W
-37-->5M
-37-->5Q
-37-->5S
-37-->5Z
-37-->7A
-37-->7C
-37-->8E
-37-->8L
-37-->8O
-37-->8S
-37-->8Z
-37-->A
-39-->1D
-39-->21
-39-->5H
-39-->5J
-39-->5Q
-39-->5S
-39-->5Z
-39-->6V
-39-->8O
-39-->8S
-39-->8T
-39-->8V
-39-->A
-3B-->1E
-3B-->2L
-3B-->3F
-3B-->4S
-3B-->5Q
-3B-->5U
-3B-->6V
-3B-->8E
-3B-->8N
-3B-->8R
-3B-->8S
-3B-->8W
-3E-->15
-3E-->5Q
-3E-->6V
-3F-->5U
-3H-->1B
-3H-->1S
-3H-->21
-3H-->5M
-3H-->5Q
-3H-->5S
-3H-->6C
-3H-->7C
-3H-->8S
-3H-->A
-3J-->1G
-3J-->21
-3J-->5Q
-3J-->5S
-3J-->6C
-3J-->8S
-3J-->8X
-3K-->3M
-3M-->6C
-3M-->8S
-3M-->U
-3N-->3P
-3P-->6C
-3P-->8S
-3R-->15
-3R-->1A
-3R-->1E
-3R-->1X
-3R-->1Z
-3R-->21
-3R-->22
-3R-->25
-3R-->2Z
-3R-->41
-3R-->44
-3R-->45
-3R-->5Q
-3R-->5S
-3R-->5T
-3R-->5Z
-3R-->6C
-3R-->6J
-3R-->6K
-3R-->8E
-3R-->8O
-3R-->8S
-3R-->8T
-3T-->17
-3T-->1F
-3T-->2M
-3T-->5Q
-3T-->5Z
-3V-->15
-3V-->5Q
-3V-->6V
-3X-->15
-3X-->21
-3X-->5Q
-3X-->7
-3X-->8O
-3X-->8S
-3Y-->40
-40-->1M
-40-->21
-40-->8O
-41-->21
-41-->5Q
-43-->15
-43-->1A
-43-->21
-43-->3X
-43-->4G
-43-->5Q
-43-->7
-43-->8O
-43-->8S
-45-->47
-45-->5T
-47-->5T
-47-->8S
-47-->8X
-48-->4A
-4C-->1I
-4C-->4B
-4D-->4F
-4F-->1B
-4F-->1P
-4F-->5Q
-4F-->5Z
-4F-->6V
-4F-->8X
-4G-->1J
-4G-->5Q
-4H-->5K
-4I-->5K
-4I-->5Q
-4I-->5U
-4K-->17
-4K-->5Q
-4K-->5U
-4K-->5Z
-4K-->6X
-4K-->7F
-4K-->7Q
-4K-->8O
-4K-->8S
-4L-->5K
-4L-->5Q
-4N-->15
-4N-->5Q
-4N-->6C
-4N-->6V
-4O-->4Q
-4Q-->1A
-4Q-->1E
-4Q-->1O
-4Q-->5Q
-4Q-->8S
-4R-->1O
-4R-->5Q
-4R-->8S
-4S-->4T
-4S-->5U
-4T-->8R
-4V-->1A
-4V-->1H
-4V-->1O
-4V-->27
-4V-->2L
-4V-->3N
-4V-->4O
-4V-->4S
-4V-->5U
-4V-->6I
-4V-->7
-4V-->8E
-4V-->8P
-4V-->8S
-4V-->8Y
-4W-->4Y
-4Y-->17
-4Y-->1B
-4Y-->1P
-4Y-->5Q
-4Y-->8S
-50-->1A
-50-->2L
-50-->4H
-50-->4I
-50-->5Q
-50-->5U
-50-->6C
-50-->7
-50-->8P
-50-->8S
-50-->91
-50-->A
-52-->15
-52-->5Q
-52-->6S
-52-->6V
-52-->8S
-53-->55
-55-->15
-55-->6V
-57-->15
-57-->17
-57-->1A
-57-->1B
-57-->1D
-57-->1E
-57-->1H
-57-->1I
-57-->1M
-57-->1O
-57-->1S
-57-->20
-57-->21
-57-->2A
-57-->2L
-57-->3B
-57-->3K
-57-->3N
-57-->4C
-57-->4D
-57-->4R
-57-->4V
-57-->4W
-57-->50
-57-->5A
-57-->5Q
-57-->5S
-57-->5T
-57-->5U
-57-->5W
-57-->5Z
-57-->6C
-57-->6I
-57-->6M
-57-->6S
-57-->6Z
-57-->7
-57-->72
-57-->8E
-57-->8O
-57-->8P
-57-->8R
-57-->8S
-57-->8Y
-57-->93
-57-->A
-57-->B
-57-->C
-57-->T
-59-->21
-59-->2L
-59-->3Y
-59-->5H
-59-->5J
-59-->5Q
-59-->5S
-59-->5U
-59-->5Z
-59-->6C
-59-->6N
-59-->8E
-59-->8V
-59-->A
-5A-->21
-5A-->5C
-5A-->5U
-5A-->6N
-5D-->7V
-5H-->39
-5H-->5Q
-5H-->8E
-5H-->A
-5K-->9
-5M-->8S
-5M-->8W
-5M-->90
-5O-->1A
-5O-->1D
-5O-->1O
-5O-->1S
-5O-->2U
-5O-->3F
-5O-->4H
-5O-->4L
-5O-->4S
-5O-->5M
-5O-->5Q
-5O-->5U
-5O-->5Z
-5O-->61
-5O-->6E
-5O-->6S
-5O-->6T
-5O-->8E
-5O-->8I
-5O-->8Q
-5O-->8S
-5O-->91
-5O-->92
-5O-->93
-5O-->U
-5Q-->6R
-5Q-->70
-5Q-->8E
-5S-->21
-5S-->70
-5T-->8S
-5U-->21
-5U-->5S
-5U-->5V
-5U-->5X
-5U-->T
-5V-->1J
-5V-->5Z
-5V-->8S
-5V-->T
-5W-->48
-5X-->1J
-5X-->5V
-5X-->8S
-5Z-->62
-5Z-->63
-5Z-->64
-5Z-->65
-5Z-->67
-61-->8Q
-62-->17
-62-->1B
-62-->1K
-62-->1Q
-62-->67
-63-->17
-63-->1B
-63-->1K
-63-->67
-63-->8S
-64-->17
-64-->1B
-64-->67
-64-->8V
-65-->67
-65-->7Q
-67-->8V
-6A-->78
-6A-->7A
-6A-->8M
-6A-->8S
-6A-->8Z
-6C-->1A
-6C-->1D
-6C-->1H
-6C-->1O
-6C-->1S
-6E-->1B
-6E-->1E
-6E-->1I
-6E-->1O
-6E-->5U
-6E-->6S
-6E-->6T
-6E-->6X
-6E-->76
-6E-->7C
-6E-->8E
-6E-->8J
-6E-->8N
-6E-->8S
-6E-->8W
-6E-->92
-6E-->U
-6F-->6H
-6I-->16
-6J-->6L
-6J-->6U
-6K-->25
-6L-->6I
-6M-->8K
-6O-->7C
-6O-->8M
-6O-->8S
-6P-->1D
-6P-->8S
-6Q-->1D
-6Q-->5Y
-6Q-->8S
-6S-->1B
-6S-->6Y
-6T-->7C
-6T-->8S
-6U-->1G
-6V-->U
-6W-->8O
-6X-->5Z
-6X-->6F
-6X-->8S
-6Y-->5T
-6Y-->5W
-70-->5Z
-70-->8S
-70-->8V
-72-->1M
-72-->76
-72-->7D
-72-->8S
-72-->R
-73-->12
-73-->7Q
-73-->8U
-75-->5S
-75-->5T
-75-->5U
-75-->5W
-75-->5Y
-75-->5Z
-75-->76
-78-->8S
-7A-->8S
-7A-->A
-7A-->T
-7A-->U
-7A-->X
-7C-->1B
-7C-->8J
-7C-->8S
-7C-->A
-7C-->T
-7D-->8S
-7D-->R
-7F-->7V
-7Q-->7H
-7Q-->7J
-7Q-->7L
-7Q-->7N
-7Q-->7P
-7Q-->7S
-7Q-->7U
-7Q-->7V
-7Q-->7W
-7Q-->7Y
-7Q-->80
-7Q-->82
-7Q-->84
-7Q-->86
-7Q-->88
-7Q-->8A
-7Q-->8S
-7W-->84
-7W-->8S
-8E-->8D
-8E-->O
-8K-->8S
-8L-->21
-8L-->A
-8L-->T
-8M-->T
-8O-->1B
-8O-->U
-8S-->Q
-8T-->21
-8T-->8L
-8Z-->7A
-8Z-->8S
-90-->8S
-90-->8W
-90-->8Z
-92-->T
-93-->B
+P-->A
+Q-->O
+Q-->P
+Q-->R
+Q-->S
+U-->4
+U-->A
+W-->V
+10-->C
+13-->1W
+13-->76
+16-->1C
+16-->8O
+17-->1C
+18-->1C
+18-->8T
+1B-->1C
+1B-->G
+1C-->19
+1C-->1A
+1C-->1L
+1C-->1M
+1C-->8O
+1C-->8T
+1C-->V
+1D-->1C
+1E-->1C
+1F-->1C
+1F-->K
+1G-->1A
+1H-->1C
+1I-->1C
+1J-->1C
+1K-->1C
+1K-->J
+1L-->19
+1L-->1A
+1L-->8T
+1N-->1C
+1N-->8
+1P-->1C
+1P-->K
+1P-->L
+1Q-->1C
+1R-->1C
+1S-->1C
+1S-->L
+1T-->1C
+1T-->1S
+1T-->C
+1T-->L
+1W-->18
+1W-->1Y
+1W-->1Z
+1W-->20
+1W-->2N
+1W-->2W
+1W-->3S
+1W-->3U
+1W-->49
+1W-->5R
+1W-->5X
+1W-->60
+1W-->6K
+1W-->73
+1W-->7W
+1W-->8T
+1Y-->25
+1Y-->3D
+21-->9
+22-->4
+23-->25
+24-->2F
+24-->2H
+24-->2J
+24-->2L
+24-->2R
+24-->2T
+24-->2Y
+24-->32
+24-->34
+24-->36
+24-->38
+24-->3A
+24-->3F
+24-->3I
+24-->3K
+24-->3W
+24-->44
+24-->4L
+24-->4O
+24-->53
+24-->54
+24-->58
+24-->5A
+24-->5P
+25-->24
+25-->5R
+28-->2A
+2A-->17
+2A-->8T
+2B-->2D
+2D-->17
+2D-->8T
+2F-->16
+2F-->17
+2F-->1C
+2F-->5R
+2F-->6J
+2F-->8T
+2H-->18
+2H-->1C
+2H-->1R
+2H-->5R
+2H-->60
+2H-->8L
+2H-->8T
+2J-->16
+2J-->1T
+2J-->5R
+2J-->8P
+2J-->A
+2L-->16
+2L-->5R
+2L-->8P
+2L-->8T
+2L-->A
+2M-->5V
+2N-->2P
+2N-->7W
+2R-->16
+2R-->6W
+2R-->8T
+2R-->8Y
+2T-->16
+2T-->5R
+2T-->5U
+2T-->8O
+2T-->8T
+2V-->6S
+2V-->7
+2W-->18
+2W-->1C
+2W-->5R
+2W-->8T
+2Y-->5R
+2Y-->6B
+2Y-->6P
+2Y-->6Q
+2Y-->6R
+2Y-->7B
+2Y-->7D
+2Y-->8M
+2Y-->8N
+2Y-->A
+30-->1D
+30-->21
+30-->22
+32-->1P
+32-->21
+32-->4W
+32-->58
+32-->6D
+34-->1E
+34-->22
+34-->5R
+34-->5T
+34-->6D
+34-->6T
+34-->8F
+34-->8M
+34-->8P
+34-->8T
+34-->A
+36-->16
+36-->22
+36-->2M
+36-->2V
+36-->4W
+36-->5R
+36-->5T
+36-->5V
+36-->5X
+36-->6D
+36-->6O
+36-->6Y
+36-->71
+36-->73
+36-->8F
+36-->8R
+36-->8T
+36-->8Y
+36-->U
+38-->16
+38-->18
+38-->1E
+38-->22
+38-->4E
+38-->4X
+38-->5N
+38-->5R
+38-->5T
+38-->60
+38-->7B
+38-->7D
+38-->8F
+38-->8M
+38-->8P
+38-->8T
+38-->90
+38-->A
+3A-->1E
+3A-->22
+3A-->5I
+3A-->5K
+3A-->5R
+3A-->5T
+3A-->60
+3A-->6W
+3A-->8P
+3A-->8T
+3A-->8U
+3A-->8W
+3A-->A
+3C-->1F
+3C-->2M
+3C-->3G
+3C-->4T
+3C-->5R
+3C-->5V
+3C-->6W
+3C-->8F
+3C-->8O
+3C-->8S
+3C-->8T
+3C-->8X
+3F-->16
+3F-->5R
+3F-->6W
+3G-->5V
+3I-->1C
+3I-->1T
+3I-->22
+3I-->5N
+3I-->5R
+3I-->5T
+3I-->6D
+3I-->7D
+3I-->8T
+3I-->A
+3K-->1H
+3K-->22
+3K-->5R
+3K-->5T
+3K-->6D
+3K-->8T
+3K-->8Y
+3L-->3N
+3N-->6D
+3N-->8T
+3N-->V
+3O-->3Q
+3Q-->6D
+3Q-->8T
+3S-->16
+3S-->1B
+3S-->1F
+3S-->1Y
+3S-->20
+3S-->22
+3S-->23
+3S-->26
+3S-->30
+3S-->42
+3S-->45
+3S-->46
+3S-->5R
+3S-->5T
+3S-->5U
+3S-->60
+3S-->6D
+3S-->6K
+3S-->6L
+3S-->8F
+3S-->8P
+3S-->8T
+3S-->8U
+3U-->18
+3U-->1G
+3U-->2N
+3U-->5R
+3U-->60
+3W-->16
+3W-->5R
+3W-->6W
+3Y-->16
+3Y-->22
+3Y-->5R
+3Y-->7
+3Y-->8P
+3Y-->8T
+3Z-->41
+41-->1N
+41-->22
+41-->8P
+42-->22
+42-->5R
+44-->16
+44-->1B
+44-->22
+44-->3Y
+44-->4H
+44-->5R
+44-->7
+44-->8P
+44-->8T
+46-->48
+46-->5U
+48-->5U
+48-->8T
+48-->8Y
+49-->4B
+4D-->1J
+4D-->4C
+4E-->4G
+4G-->1C
+4G-->1Q
+4G-->5R
+4G-->60
+4G-->6W
+4G-->8Y
+4H-->1K
+4H-->5R
+4I-->5L
+4J-->5L
+4J-->5R
+4J-->5V
+4L-->18
+4L-->5R
+4L-->5V
+4L-->60
+4L-->6Y
+4L-->7G
+4L-->7R
+4L-->8P
+4L-->8T
+4M-->5L
+4M-->5R
+4O-->16
+4O-->5R
+4O-->6D
+4O-->6W
+4P-->4R
+4R-->1B
+4R-->1F
+4R-->1P
+4R-->5R
+4R-->8T
+4S-->1P
+4S-->5R
+4S-->8T
+4T-->4U
+4T-->5V
+4U-->8S
+4W-->1B
+4W-->1I
+4W-->1P
+4W-->28
+4W-->2M
+4W-->3O
+4W-->4P
+4W-->4T
+4W-->5V
+4W-->6J
+4W-->7
+4W-->8F
+4W-->8Q
+4W-->8T
+4W-->8Z
+4X-->4Z
+4Z-->18
+4Z-->1C
+4Z-->1Q
+4Z-->5R
+4Z-->8T
+51-->1B
+51-->2M
+51-->4I
+51-->4J
+51-->5R
+51-->5V
+51-->6D
+51-->7
+51-->8Q
+51-->8T
+51-->92
+51-->A
+53-->16
+53-->5R
+53-->6T
+53-->6W
+53-->8T
+54-->56
+56-->16
+56-->6W
+58-->16
+58-->18
+58-->1B
+58-->1C
+58-->1E
+58-->1F
+58-->1I
+58-->1J
+58-->1N
+58-->1P
+58-->1T
+58-->21
+58-->22
+58-->2B
+58-->2M
+58-->3C
+58-->3L
+58-->3O
+58-->4D
+58-->4E
+58-->4S
+58-->4W
+58-->4X
+58-->51
+58-->5B
+58-->5R
+58-->5T
+58-->5U
+58-->5V
+58-->5X
+58-->60
+58-->6D
+58-->6J
+58-->6N
+58-->6T
+58-->7
+58-->70
+58-->73
+58-->8F
+58-->8P
+58-->8Q
+58-->8S
+58-->8T
+58-->8Z
+58-->94
+58-->A
+58-->B
+58-->C
+58-->U
+5A-->22
+5A-->2M
+5A-->3Z
+5A-->5I
+5A-->5K
+5A-->5R
+5A-->5T
+5A-->5V
+5A-->60
+5A-->6D
+5A-->6O
+5A-->8F
+5A-->8W
+5A-->A
+5B-->22
+5B-->5D
+5B-->5V
+5B-->6O
+5E-->7W
+5I-->3A
+5I-->5R
+5I-->8F
+5I-->A
+5L-->9
+5N-->8T
+5N-->8X
+5N-->91
+5P-->1B
+5P-->1E
+5P-->1P
+5P-->1T
+5P-->2V
+5P-->3G
+5P-->4I
+5P-->4M
+5P-->4T
+5P-->5N
+5P-->5R
+5P-->5V
+5P-->60
+5P-->62
+5P-->6F
+5P-->6T
+5P-->6U
+5P-->8F
+5P-->8J
+5P-->8R
+5P-->8T
+5P-->92
+5P-->93
+5P-->94
+5P-->V
+5R-->6S
+5R-->71
+5R-->8F
+5T-->22
+5T-->71
+5U-->8T
+5V-->22
+5V-->5T
+5V-->5W
+5V-->5Y
+5V-->U
+5W-->1K
+5W-->60
+5W-->8T
+5W-->U
+5X-->49
+5Y-->1K
+5Y-->5W
+5Y-->8T
+60-->63
+60-->64
+60-->65
+60-->66
+60-->68
+62-->8R
+63-->18
+63-->1C
+63-->1L
+63-->1R
+63-->68
+64-->18
+64-->1C
+64-->1L
+64-->68
+64-->8T
+65-->18
+65-->1C
+65-->68
+65-->8W
+66-->68
+66-->7R
+68-->8W
+6B-->79
+6B-->7B
+6B-->8N
+6B-->8T
+6B-->90
+6D-->1B
+6D-->1E
+6D-->1I
+6D-->1P
+6D-->1T
+6F-->1C
+6F-->1F
+6F-->1J
+6F-->1P
+6F-->5V
+6F-->6T
+6F-->6U
+6F-->6Y
+6F-->77
+6F-->7D
+6F-->8F
+6F-->8K
+6F-->8O
+6F-->8T
+6F-->8X
+6F-->93
+6F-->V
+6G-->6I
+6J-->17
+6K-->6M
+6K-->6V
+6L-->26
+6M-->6J
+6N-->8L
+6P-->7D
+6P-->8N
+6P-->8T
+6Q-->1E
+6Q-->8T
+6R-->1E
+6R-->5Z
+6R-->8T
+6T-->1C
+6T-->6Z
+6U-->7D
+6U-->8T
+6V-->1H
+6W-->V
+6X-->8P
+6Y-->60
+6Y-->6G
+6Y-->8T
+6Z-->5U
+6Z-->5X
+71-->60
+71-->8T
+71-->8W
+73-->1N
+73-->77
+73-->7E
+73-->8T
+73-->S
+74-->13
+74-->7R
+74-->8V
+76-->5T
+76-->5U
+76-->5V
+76-->5X
+76-->5Z
+76-->60
+76-->77
+79-->8T
+7B-->8T
+7B-->A
+7B-->U
+7B-->V
+7B-->Y
+7D-->1C
+7D-->8K
+7D-->8T
+7D-->A
+7D-->U
+7E-->8T
+7E-->S
+7G-->7W
+7R-->7I
+7R-->7K
+7R-->7M
+7R-->7O
+7R-->7Q
+7R-->7T
+7R-->7V
+7R-->7W
+7R-->7X
+7R-->7Z
+7R-->81
+7R-->83
+7R-->85
+7R-->87
+7R-->89
+7R-->8B
+7R-->8T
+7X-->85
+7X-->8T
+8F-->8E
+8F-->P
+8L-->8T
+8M-->22
+8M-->A
+8M-->U
+8N-->U
+8P-->1C
+8P-->V
+8T-->R
+8U-->22
+8U-->8M
+90-->7B
+90-->8T
+91-->8T
+91-->8X
+91-->90
+93-->U
+94-->B
 ```

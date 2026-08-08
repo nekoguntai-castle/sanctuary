@@ -66,3 +66,20 @@ export const WalletsResponseSchema = z.array(WalletSchema);
 
 export type ValidatedUtxo = z.infer<typeof UtxoSchema>;
 export type ValidatedWallet = z.infer<typeof WalletSchema>;
+
+/**
+ * Xpub validation, whose output becomes wallet key material.
+ *
+ * The TypeScript type declares `valid: true` — a literal, so it cannot express
+ * a failure and every response is read as a pass. The strings here are not
+ * display text: a wrong or empty `descriptor` is what the wallet will watch,
+ * and a wrong `firstAddress` is what a user checks against their device before
+ * trusting the import. Empty is not a descriptor, so `.min(1)` is shape.
+ */
+export const ValidateXpubResponseSchema = z.looseObject({
+  valid: z.literal(true),
+  descriptor: z.string().min(1),
+  firstAddress: z.string().min(1),
+  xpub: z.string().min(1),
+  fingerprint: z.string().min(1),
+});

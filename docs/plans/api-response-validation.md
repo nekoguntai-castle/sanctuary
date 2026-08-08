@@ -1,6 +1,6 @@
 # Runtime validation of API responses
 
-Status: phases 0-1 done; phase 2 begun (`/bitcoin/fees` validated)
+Status: phases 0-2 done; phase 3 Tier A complete
 Prompted by: #736 (`formatFeeRate` crashing on a null rate)
 
 ## The problem
@@ -172,7 +172,24 @@ Tier C is explicitly out of scope. A schema for a label string is cost without b
    *usable* (`usableFeeRate`) stays at the point of use. Policing ranges centrally turns an
    odd-but-readable response into a blanked card.
 
+6. **A cosmetic field may not veto a load-bearing one.** Answered concretely on `/price`:
+   `change24h` is a percentage badge and accepts number/null/absent, while `price` — which
+   every fiat figure derives from — stays strict. Letting the badge reject the response
+   would trade a small wrong thing for a large missing one. Generalise per field, not per
+   schema: no separate severity mechanism was needed.
+
+## Tier A, complete
+
+| endpoint | shipped |
+| --- | --- |
+| `/bitcoin/fees` | #756 |
+| `/wallets`, `/wallets/:id/utxos` | #757 |
+| `/transactions/create`, drafts | #759 |
+| `/price`, `/wallets/validate-xpub`, RBF | this change |
+
 ## Still open
 
-- Whether a bad *label* should reject a whole response. A per-schema severity (reject vs
-  strip-and-warn) may be worth it once Tier A is done and there is evidence either way.
+- Tier B (crash-prevention where no guard exists) is unstarted and much lower value now
+  that Tier A is done.
+- `useDashboardData.test.tsx` sits at 994 of its 1000-line cap and wants splitting, with
+  its ~330-line mock harness extracted for sharing.

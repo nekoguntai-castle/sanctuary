@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { FeeEstimatesSchema } from '../../shared/schemas/bitcoinResponses';
+import { FeeEstimatesSchema, RBFTransactionResponseSchema } from '../../shared/schemas/bitcoinResponses';
 
 const valid = { fastest: 18, halfHour: 12, hour: 8, economy: 3 };
 
@@ -56,5 +56,44 @@ describe('FeeEstimatesSchema', () => {
     if (!result.success) {
       expect(result.error.issues[0].path).toEqual(['economy']);
     }
+  });
+});
+
+const rbf = {
+  psbtBase64: 'cHNidP8BAHECAAAAAf',
+  fee: 5000,
+  feeRate: 24,
+  feeDelta: 2500,
+  inputs: [{ txid: 'a'.repeat(64), vout: 0, value: 500000 }],
+  outputs: [{ address: 'bc1qexample', value: 495000 }],
+};
+
+describe('RBFTransactionResponseSchema', () => {
+  it('accepts a well-formed replacement', () => {
+    expect(RBFTransactionResponseSchema.parse(rbf)).toEqual(rbf);
+  });
+
+  it('rejects empty input or output lists', () => {
+    // `transactionActionsData` reads `outputs[0].address` directly, so an empty
+    // list is a TypeError; and a transaction with none of either is not one.
+    expect(RBFTransactionResponseSchema.safeParse({ ...rbf, outputs: [] }).success).toBe(false);
+    expect(RBFTransactionResponseSchema.safeParse({ ...rbf, inputs: [] }).success).toBe(false);
+  });
+
+  it('rejects a missing list rather than letting reduce throw', () => {
+    expect(RBFTransactionResponseSchema.safeParse({ ...rbf, outputs: null }).success).toBe(false);
+  });
+
+  it('rejects fee figures that are not numbers', () => {
+    for (const field of ['fee', 'feeRate', 'feeDelta']) {
+      expect(RBFTransactionResponseSchema.safeParse({ ...rbf, [field]: null }).success).toBe(false);
+    }
+    // This result is fed straight into a persisted draft.
+    expect(RBFTransactionResponseSchema.safeParse({ ...rbf, psbtBase64: '' }).success).toBe(false);
+  });
+
+  it('rejects an output value that is not a number', () => {
+    const bad = { ...rbf, outputs: [{ address: 'bc1qexample', value: null }] };
+    expect(RBFTransactionResponseSchema.safeParse(bad).success).toBe(false);
   });
 });

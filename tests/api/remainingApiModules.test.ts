@@ -202,14 +202,18 @@ describe("Remaining API Modules", () => {
       await priceApi.clearCache();
       await priceApi.setCacheDuration(120);
 
-      expect(mockGet).toHaveBeenCalledWith("/price", {
-        currency: "USD",
-        useCache: "true",
-      });
-      expect(mockGet).toHaveBeenCalledWith("/price", {
-        currency: "EUR",
-        useCache: "false",
-      });
+      expect(mockGet).toHaveBeenCalledWith(
+        "/price",
+        { currency: "USD", useCache: "true" },
+        undefined,
+        expect.objectContaining({ schema: expect.anything() }),
+      );
+      expect(mockGet).toHaveBeenCalledWith(
+        "/price",
+        { currency: "EUR", useCache: "false" },
+        undefined,
+        expect.objectContaining({ schema: expect.anything() }),
+      );
       expect(mockGet).toHaveBeenCalledWith("/price/multiple", {
         currencies: "USD,EUR",
       });
