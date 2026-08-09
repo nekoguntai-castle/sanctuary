@@ -7,8 +7,28 @@
 import prisma from '../models/prisma';
 import { Prisma } from '../generated/prisma/client';
 import type { User } from '../generated/prisma/client';
+import { ConflictError, NotFoundError } from '../errors';
 import { normalizeEmail } from '../utils/email';
 import { normalizeUsername } from '../utils/username';
+import { isSerializableTransactionConflict } from '../utils/prismaSerializableConflict';
+
+const MAX_PREFERENCE_UPDATE_ATTEMPTS = 3;
+const PREFERENCE_USER_SELECT = {
+  id: true,
+  username: true,
+  email: true,
+  isAdmin: true,
+  preferences: true,
+  twoFactorEnabled: true,
+  createdAt: true,
+} as const;
+
+export interface PreferenceUpdate<T> {
+  preferences: Prisma.InputJsonValue;
+  result: T;
+}
+
+export type PreferenceUpdater<T> = (current: unknown) => PreferenceUpdate<T>;
 
 /**
  * Find user by ID
@@ -209,26 +229,48 @@ export async function updatePassword(
   });
 }
 
-/**
- * Update user preferences (merges with existing)
- */
-export async function updatePreferences(
+async function attemptPreferenceUpdate<T>(
   id: string,
-  preferences: Prisma.InputJsonValue
+  updater: PreferenceUpdater<T>,
 ) {
-  return prisma.user.update({
-    where: { id },
-    data: { preferences },
-    select: {
-      id: true,
-      username: true,
-      email: true,
-      isAdmin: true,
-      preferences: true,
-      twoFactorEnabled: true,
-      createdAt: true,
-    },
-  });
+  return prisma.$transaction(async (tx) => {
+    const current = await tx.user.findUnique({
+      where: { id },
+      select: { preferences: true },
+    });
+    if (!current) throw new NotFoundError('User not found');
+
+    const update = updater(current.preferences);
+    const user = await tx.user.update({
+      where: { id },
+      data: { preferences: update.preferences },
+      select: PREFERENCE_USER_SELECT,
+    });
+    return { user, result: update.result };
+  }, { isolationLevel: 'Serializable' });
+}
+
+/**
+ * Atomically reread and replace a user's preference document. The updater is
+ * pure and reruns against a fresh document after serialization conflicts.
+ */
+export async function updatePreferencesAtomically<T>(
+  id: string,
+  updater: PreferenceUpdater<T>,
+) {
+  for (let attempt = 1; attempt <= MAX_PREFERENCE_UPDATE_ATTEMPTS; attempt += 1) {
+    try {
+      return await attemptPreferenceUpdate(id, updater);
+    } catch (error) {
+      if (!isSerializableTransactionConflict(error)) throw error;
+      if (attempt === MAX_PREFERENCE_UPDATE_ATTEMPTS) {
+        throw new ConflictError('Preferences changed concurrently; please retry');
+      }
+    }
+  }
+
+  /* v8 ignore next -- every loop path returns or throws */
+  throw new ConflictError('Preferences changed concurrently; please retry');
 }
 
 /**
@@ -347,6 +389,15 @@ export async function findAllWithWalletAssociations() {
           wallet: { select: { id: true, name: true } },
         },
       },
+      groupMemberships: {
+        select: {
+          group: {
+            select: {
+              wallets: { select: { id: true, name: true } },
+            },
+          },
+        },
+      },
     },
   });
 }
@@ -412,7 +463,7 @@ export const userRepository = {
   updateEmailVerification,
   updateEmail,
   updatePassword,
-  updatePreferences,
+  updatePreferencesAtomically,
   searchByUsername,
   update2FA,
   consumeBackupCodesIfUnchanged,

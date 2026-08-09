@@ -51,11 +51,11 @@ target-SHA CI verification.
 
 ## Phase 2: Intelligence authorization and atomic preferences
 
-- [ ] Put GET and PATCH wallet Intelligence settings behind the canonical
+- [x] Put GET and PATCH wallet Intelligence settings behind the canonical
   `requireWalletAccess('view')` boundary, using the route parameter shape that
   middleware actually resolves. Add inaccessible-wallet proofs for both routes
   and assert PATCH performs zero preference writes.
-- [ ] Replace the direct-only recurring selection with one canonical effective
+- [x] Replace the direct-only recurring selection with one canonical effective
   wallet association query that includes direct and group-derived access,
   deduplicates by `(userId, walletId)` when a wallet is reachable through both
   paths, and retains wallet name, user ID, and that user's enabled settings.
@@ -64,7 +64,7 @@ target-SHA CI verification.
   direct-only sharing query. Cover group-only, direct-only, duplicate,
   revoked/no-longer-accessible entries, group-only notification delivery, and
   two users on one wallet with disjoint filters.
-- [ ] Replace the shared full-document unlocked preferences write with a
+- [x] Replace the shared full-document unlocked preferences write with a
   database-backed cross-process concurrency boundary. Introduce one canonical
   transactional updater callback that rereads inside every attempt, uses
   serializable isolation plus the existing bounded conflict retry pattern, and
@@ -75,7 +75,7 @@ target-SHA CI verification.
   writers—profile, Telegram, Autopilot, and Intelligence—to it; serializing only
   Intelligence cannot protect unrelated namespaces. Exhausted conflicts must
   return the repository's normal conflict envelope, not report false success.
-- [ ] Add deterministic concurrency tests in which two requests capture one
+- [x] Add deterministic concurrency tests in which two requests capture one
   baseline before either writes, then both return success and a reload contains
   both changes. Also cover same-wallet different-field updates, different
   wallets, and Intelligence racing profile, Telegram, and Autopilot updates.

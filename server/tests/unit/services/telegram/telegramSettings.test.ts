@@ -5,6 +5,7 @@ const { mockUserRepo, mockWalletRepo, mockNodeConfigRepo, mockLogger } = vi.hois
     findByWalletAccess: vi.fn(),
     findByIdWithSelect: vi.fn(),
     updatePreferences: vi.fn(),
+    updatePreferencesAtomically: vi.fn(),
   },
   mockWalletRepo: {
     findNameById: vi.fn(),
@@ -44,6 +45,15 @@ describe('telegram wallet settings', () => {
     (mockUserRepo.findByWalletAccess as Mock).mockResolvedValue([]);
     (mockUserRepo.findByIdWithSelect as Mock).mockResolvedValue({ username: 'alice', preferences: {} });
     (mockUserRepo.updatePreferences as Mock).mockResolvedValue({});
+    (mockUserRepo.updatePreferencesAtomically as Mock).mockImplementation(
+      async (userId: string, updater: (preferences: unknown) => { preferences: unknown; result: unknown }) => {
+        const user = await mockUserRepo.findByIdWithSelect(userId, { preferences: true });
+        if (!user) throw new Error('User not found');
+        const update = updater(user.preferences);
+        await mockUserRepo.updatePreferences(userId, update.preferences);
+        return { user: {}, result: update.result };
+      },
+    );
     (mockWalletRepo.findNameById as Mock).mockResolvedValue({ id: 'w1', name: 'Treasury' });
     (mockNodeConfigRepo.findDefault as Mock).mockResolvedValue(null);
   });

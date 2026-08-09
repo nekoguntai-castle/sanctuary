@@ -5,11 +5,13 @@
  */
 
 import { vi, Mock } from 'vitest';
+import { Prisma } from '../../../src/generated/prisma/client';
 
 // Mock Prisma before importing repository
 vi.mock('../../../src/models/prisma', () => ({
   __esModule: true,
   default: {
+    $transaction: vi.fn(),
     user: {
       findUnique: vi.fn(),
       findMany: vi.fn(),
@@ -343,6 +345,207 @@ describe('User Repository', () => {
               wallet: { select: { id: true, name: true } },
             },
           },
+          groupMemberships: {
+            select: {
+              group: {
+                select: {
+                  wallets: { select: { id: true, name: true } },
+                },
+              },
+            },
+          },
+        },
+      });
+    });
+  });
+
+  describe('updatePreferencesAtomically', () => {
+    const p2034 = () => new Prisma.PrismaClientKnownRequestError('write conflict', {
+      code: 'P2034',
+      clientVersion: 'test',
+    });
+    const wrappedP2010 = () => new Prisma.PrismaClientKnownRequestError('write conflict', {
+      code: 'P2010',
+      clientVersion: 'test',
+      meta: { driverAdapterError: { cause: { kind: 'TransactionWriteConflict' } } },
+    });
+
+    function mockTransactionWithPreferences(preferences: unknown) {
+      const tx = {
+        user: {
+          findUnique: vi.fn().mockResolvedValue({ preferences }),
+          update: vi.fn().mockImplementation(async ({ data }) => ({
+            id: 'u1',
+            preferences: data.preferences,
+          })),
+        },
+      };
+      (prisma.$transaction as Mock).mockImplementation(
+        async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
+      );
+      return tx;
+    }
+
+    it.each([
+      ['P2034', p2034],
+      ['wrapped P2010', wrappedP2010],
+    ])('retries %s against a fresh preference document', async (_label, conflictFactory) => {
+      const tx = mockTransactionWithPreferences({ theme: 'dark' });
+      (prisma.$transaction as Mock)
+        .mockImplementationOnce(async (callback: (client: typeof tx) => Promise<unknown>) => {
+          await callback(tx);
+          throw conflictFactory();
+        })
+        .mockImplementationOnce(async (callback: (client: typeof tx) => Promise<unknown>) => {
+          tx.user.findUnique.mockResolvedValueOnce({ preferences: { theme: 'dark', telegram: { enabled: true } } });
+          return callback(tx);
+        });
+
+      const updater = vi.fn((current: any) => ({
+        preferences: { ...current, intelligence: { enabled: true } },
+        result: 'committed',
+      }));
+      const result = await userRepository.updatePreferencesAtomically('u1', updater);
+
+      expect(result.result).toBe('committed');
+      expect(updater).toHaveBeenCalledTimes(2);
+      expect(tx.user.update).toHaveBeenLastCalledWith(expect.objectContaining({
+        data: {
+          preferences: {
+            theme: 'dark',
+            telegram: { enabled: true },
+            intelligence: { enabled: true },
+          },
+        },
+      }));
+      expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+      expect(prisma.$transaction).toHaveBeenLastCalledWith(
+        expect.any(Function),
+        { isolationLevel: 'Serializable' },
+      );
+    });
+
+    it('maps bounded conflict exhaustion to the normal 409 conflict error', async () => {
+      (prisma.$transaction as Mock).mockRejectedValue(p2034());
+
+      await expect(userRepository.updatePreferencesAtomically('u1', () => ({
+        preferences: {},
+        result: undefined,
+      }))).rejects.toMatchObject({ statusCode: 409, code: 'CONFLICT' });
+      expect(prisma.$transaction).toHaveBeenCalledTimes(3);
+    });
+
+    it('propagates non-conflict failures without retrying', async () => {
+      const failure = new Prisma.PrismaClientKnownRequestError('unique conflict', {
+        code: 'P2002',
+        clientVersion: 'test',
+      });
+      (prisma.$transaction as Mock).mockRejectedValueOnce(failure);
+
+      await expect(userRepository.updatePreferencesAtomically('u1', () => ({
+        preferences: {},
+        result: undefined,
+      }))).rejects.toBe(failure);
+      expect(prisma.$transaction).toHaveBeenCalledOnce();
+    });
+
+    it.each([
+      ['ordinary error', new Error('database unavailable')],
+      ['unclassified P2010', new Prisma.PrismaClientKnownRequestError('raw query failed', {
+        code: 'P2010',
+        clientVersion: 'test',
+        meta: { driverAdapterError: { cause: { kind: 'Other' } } },
+      })],
+    ])('does not retry an %s', async (_label, failure) => {
+      (prisma.$transaction as Mock).mockRejectedValueOnce(failure);
+
+      await expect(userRepository.updatePreferencesAtomically('u1', () => ({
+        preferences: {},
+        result: undefined,
+      }))).rejects.toBe(failure);
+      expect(prisma.$transaction).toHaveBeenCalledOnce();
+    });
+
+    it('preserves two concurrent cross-namespace updates after one transaction retries', async () => {
+      let stored: Record<string, unknown> = { theme: 'dark' };
+      let version = 0;
+      (prisma.$transaction as Mock).mockImplementation(async (
+        callback: (client: any) => Promise<unknown>,
+      ) => {
+        const startVersion = version;
+        let pending = stored;
+        const tx = {
+          user: {
+            findUnique: vi.fn().mockResolvedValue({ preferences: { ...stored } }),
+            update: vi.fn().mockImplementation(async ({ data }) => {
+              pending = data.preferences;
+              return { id: 'u1', preferences: pending };
+            }),
+          },
+        };
+        const result = await callback(tx);
+        if (startVersion !== version) throw p2034();
+        stored = pending;
+        version += 1;
+        return result;
+      });
+
+      const intelligence = userRepository.updatePreferencesAtomically('u1', (current: any) => ({
+        preferences: { ...current, intelligence: { enabled: true } },
+        result: 'intelligence',
+      }));
+      const telegram = userRepository.updatePreferencesAtomically('u1', (current: any) => ({
+        preferences: { ...current, telegram: { enabled: true } },
+        result: 'telegram',
+      }));
+
+      await expect(Promise.all([intelligence, telegram])).resolves.toEqual([
+        expect.objectContaining({ result: 'intelligence' }),
+        expect.objectContaining({ result: 'telegram' }),
+      ]);
+      expect(stored).toEqual({
+        theme: 'dark',
+        intelligence: { enabled: true },
+        telegram: { enabled: true },
+      });
+      expect(prisma.$transaction).toHaveBeenCalledTimes(3);
+    });
+
+    it('does not call the updater when the user no longer exists', async () => {
+      const tx = mockTransactionWithPreferences(null);
+      tx.user.findUnique.mockResolvedValueOnce(null);
+      const updater = vi.fn();
+
+      await expect(userRepository.updatePreferencesAtomically('missing', updater))
+        .rejects.toMatchObject({ statusCode: 404 });
+      expect(updater).not.toHaveBeenCalled();
+      expect(tx.user.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('findByWalletAccess', () => {
+    it('returns each user through direct or group-derived wallet access', async () => {
+      const users = [{ id: 'direct' }, { id: 'group' }];
+      (prisma.user.findMany as Mock).mockResolvedValueOnce(users);
+
+      await expect(userRepository.findByWalletAccess('wallet-1')).resolves.toEqual(users);
+      expect(prisma.user.findMany).toHaveBeenCalledWith({
+        where: {
+          OR: [
+            { wallets: { some: { walletId: 'wallet-1' } } },
+            {
+              groupMemberships: {
+                some: {
+                  group: { wallets: { some: { id: 'wallet-1' } } },
+                },
+              },
+            },
+          ],
+        },
+        select: {
+          id: true,
+          username: true,
+          preferences: true,
         },
       });
     });

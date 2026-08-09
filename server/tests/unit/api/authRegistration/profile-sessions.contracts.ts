@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { app } from './authRegistrationTestHarness';
 import request from 'supertest';
 import { mockPrismaClient } from '../../../mocks/prisma';
+import { Prisma } from '../../../../src/generated/prisma/client';
 
 export function registerAuthProfileSessionsTests(): void {
   describe('GET /auth/me - Get Current User', () => {
@@ -76,6 +77,26 @@ export function registerAuthProfileSessionsTests(): void {
   });
 
   describe('PATCH /auth/me/preferences - Update Preferences', () => {
+    it('returns the normal 409 envelope after bounded serialization conflicts', async () => {
+      const conflict = new Prisma.PrismaClientKnownRequestError('write conflict', {
+        code: 'P2034',
+        clientVersion: 'test',
+      });
+      mockPrismaClient.$transaction.mockRejectedValue(conflict);
+
+      const response = await request(app)
+        .patch('/api/v1/auth/me/preferences')
+        .send({ darkMode: false });
+
+      expect(response.status).toBe(409);
+      expect(response.body).toEqual(expect.objectContaining({
+        error: 'Conflict',
+        code: 'CONFLICT',
+      }));
+      expect(mockPrismaClient.$transaction).toHaveBeenCalledTimes(3);
+      expect(mockPrismaClient.user.update).not.toHaveBeenCalled();
+    });
+
     it('should update user preferences', async () => {
       const currentUser = {
         preferences: { darkMode: true, theme: 'sanctuary' },

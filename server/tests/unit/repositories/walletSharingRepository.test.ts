@@ -36,7 +36,6 @@ import {
   addUserToWallet,
   findWalletIdsByUserRole,
   findWalletUserByCompositeKey,
-  findWalletUsersWithPreferences,
   findWalletUsersWithUsername,
   findWalletUser,
   getGroupMember,
@@ -211,7 +210,6 @@ describe('walletSharingRepository', () => {
   it('queries wallet-user list helpers with the expected selectors', async () => {
     (prisma.walletUser.findMany as Mock)
       .mockResolvedValueOnce([{ walletId: 'wallet-1' }, { walletId: 'wallet-2' }])
-      .mockResolvedValueOnce([{ id: 'wu-pref' }])
       .mockResolvedValueOnce([{ id: 'wu-name' }]);
     (prisma.walletUser.findUnique as Mock).mockResolvedValueOnce({ role: 'signer' });
 
@@ -224,18 +222,8 @@ describe('walletSharingRepository', () => {
       select: { walletId: true },
     });
 
-    await expect(findWalletUsersWithPreferences('wallet-1')).resolves.toEqual([{ id: 'wu-pref' }]);
-    expect(prisma.walletUser.findMany).toHaveBeenNthCalledWith(2, {
-      where: { walletId: 'wallet-1' },
-      include: {
-        user: {
-          select: { id: true, preferences: true },
-        },
-      },
-    });
-
     await expect(findWalletUsersWithUsername('wallet-1')).resolves.toEqual([{ id: 'wu-name' }]);
-    expect(prisma.walletUser.findMany).toHaveBeenNthCalledWith(3, {
+    expect(prisma.walletUser.findMany).toHaveBeenNthCalledWith(2, {
       where: { walletId: 'wallet-1' },
       include: {
         user: {

@@ -88,12 +88,14 @@ router.get('/me', asyncHandler(async (req, res) => {
  * Update user preferences
  */
 router.patch('/me/preferences', validate({ body: PreferencesSchema }), asyncHandler(async (req, res) => {
-  // First get current preferences to merge with
-  const currentUser = await userRepository.findById(requireAuthenticatedUser(req).userId);
-
-  const mergedPreferences = mergePreferences(currentUser?.preferences, req.body as PreferencesInput);
-
-  const user = await userRepository.updatePreferences(requireAuthenticatedUser(req).userId, mergedPreferences);
+  const userId = requireAuthenticatedUser(req).userId;
+  const { user } = await userRepository.updatePreferencesAtomically(
+    userId,
+    (currentPreferences) => ({
+      preferences: mergePreferences(currentPreferences, req.body as PreferencesInput),
+      result: undefined,
+    }),
+  );
 
   res.json(user);
 }));

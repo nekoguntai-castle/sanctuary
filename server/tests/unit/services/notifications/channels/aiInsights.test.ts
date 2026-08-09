@@ -22,13 +22,13 @@ vi.mock('../../../../../src/utils/errors', () => ({
   getErrorMessage: (err: unknown) => (err instanceof Error ? err.message : String(err)),
 }));
 
-// Mock walletSharingRepository
-const { mockFindWalletUsersWithPreferences } = vi.hoisted(() => ({
-  mockFindWalletUsersWithPreferences: vi.fn(),
+// Mock the canonical direct-or-group wallet access query.
+const { mockFindByWalletAccess } = vi.hoisted(() => ({
+  mockFindByWalletAccess: vi.fn(),
 }));
 vi.mock('../../../../../src/repositories', () => ({
-  walletSharingRepository: {
-    findWalletUsersWithPreferences: mockFindWalletUsersWithPreferences,
+  userRepository: {
+    findByWalletAccess: mockFindByWalletAccess,
   },
 }));
 
@@ -41,7 +41,7 @@ import { aiInsightsChannelHandler } from '../../../../../src/services/notificati
 import * as telegramApi from '../../../../../src/services/telegram/api';
 import type { AIInsightNotification } from '../../../../../src/services/notifications/channels/types';
 
-const mockFindMany = mockFindWalletUsersWithPreferences;
+const mockFindMany = mockFindByWalletAccess;
 const mockSendTelegram = vi.mocked(telegramApi.sendTelegramMessage);
 const acceptedTelegramResult = {
   success: true,
@@ -91,12 +91,7 @@ function makeWalletUser(overrides?: {
     preferences.telegram = telegram;
   }
 
-  return {
-    user: {
-      id: userId,
-      preferences,
-    },
-  };
+  return { id: userId, preferences };
 }
 
 describe('aiInsightsChannelHandler', () => {
@@ -150,6 +145,7 @@ describe('aiInsightsChannelHandler', () => {
       expect(result.success).toBe(true);
       expect(result.channelId).toBe('ai-insights');
       expect(result.usersNotified).toBe(1);
+      expect(mockFindMany).toHaveBeenCalledWith('wallet-1');
 
       expect(mockSendTelegram).toHaveBeenCalledOnce();
       expect(mockSendTelegram).toHaveBeenCalledWith(
@@ -159,10 +155,23 @@ describe('aiInsightsChannelHandler', () => {
       );
     });
 
+    it('delivers to a group-only recipient returned by effective wallet access', async () => {
+      mockFindMany.mockResolvedValueOnce([
+        makeWalletUser({ userId: 'group-member' }),
+      ] as any);
+      mockSendTelegram.mockResolvedValueOnce(acceptedTelegramResult);
+
+      const result = await aiInsightsChannelHandler.notifyAIInsight!('wallet-1', makeInsight());
+
+      expect(result.usersNotified).toBe(1);
+      expect(mockFindMany).toHaveBeenCalledWith('wallet-1');
+      expect(mockSendTelegram).toHaveBeenCalledOnce();
+    });
+
     it('skips users without intelligence settings', async () => {
-      mockFindMany.mockResolvedValueOnce([{
-        user: { id: 'user-no-prefs', preferences: null },
-      }] as any);
+      mockFindMany.mockResolvedValueOnce([
+        { id: 'user-no-prefs', preferences: null },
+      ] as any);
 
       const result = await aiInsightsChannelHandler.notifyAIInsight!('wallet-1', makeInsight());
 

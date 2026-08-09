@@ -1,7 +1,7 @@
 import { ConflictError } from '../../errors';
 import { transferRepository } from '../../repositories';
-import { isPrismaError } from '../../utils/errors';
 import { createLogger } from '../../utils/logger';
+import { isSerializableTransactionConflict } from '../../utils/prismaSerializableConflict';
 import type { PrismaTx } from './types';
 
 const log = createLogger('TRANSFER:SVC');
@@ -38,16 +38,4 @@ export async function withSerializableRetry<T>(
 
   /* v8 ignore next -- every loop path returns or throws */
   throw new ConflictError(options.exhaustedMessage);
-}
-
-function isSerializableTransactionConflict(error: unknown): boolean {
-  if (!isPrismaError(error)) return false;
-  if (error.code === 'P2034') return true;
-  // The driver adapter currently wraps PostgreSQL serialization failures in
-  // Prisma's generic raw-query error while preserving the conflict kind.
-  const driverAdapterError = error.meta?.driverAdapterError as
-    | { cause?: { kind?: unknown } }
-    | undefined;
-  return error.code === 'P2010'
-    && driverAdapterError?.cause?.kind === 'TransactionWriteConflict';
 }

@@ -45,28 +45,24 @@ export async function updateWalletTelegramSettings(
   walletId: string,
   settings: WalletTelegramSettings
 ): Promise<void> {
-  const user = await userRepository.findByIdWithSelect(userId, { preferences: true });
+  await userRepository.updatePreferencesAtomically(userId, (currentPreferences) => {
+    const prefs = asRecord(currentPreferences);
+    const telegram = asRecord(prefs.telegram) as TelegramPreferenceRecord;
 
-  if (!user) {
-    throw new Error('User not found');
-  }
-
-  const prefs = (user.preferences as Record<string, unknown>) || {};
-  const telegram = asRecord(prefs.telegram) as TelegramPreferenceRecord;
-
-  // Save updated preferences
-  const updatedPrefs = {
-    ...prefs,
-    telegram: {
-      ...telegram,
-      botToken: typeof telegram.botToken === 'string' ? telegram.botToken : '',
-      chatId: typeof telegram.chatId === 'string' ? telegram.chatId : '',
-      enabled: typeof telegram.enabled === 'boolean' ? telegram.enabled : false,
-      wallets: setWalletSettings(telegram, walletId, settings),
-    },
-  };
-
-  await userRepository.updatePreferences(userId, updatedPrefs as unknown as Prisma.InputJsonValue);
+    return {
+      preferences: {
+        ...prefs,
+        telegram: {
+          ...telegram,
+          botToken: typeof telegram.botToken === 'string' ? telegram.botToken : '',
+          chatId: typeof telegram.chatId === 'string' ? telegram.chatId : '',
+          enabled: typeof telegram.enabled === 'boolean' ? telegram.enabled : false,
+          wallets: setWalletSettings(telegram, walletId, settings),
+        },
+      } as unknown as Prisma.InputJsonValue,
+      result: undefined,
+    };
+  });
 }
 
 /**

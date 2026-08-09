@@ -7,7 +7,7 @@
 
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
-import { walletSharingRepository } from '../../../repositories';
+import { userRepository } from '../../../repositories';
 import * as telegramApi from '../../telegram/api';
 import type {
   NotificationChannelHandler,
@@ -67,10 +67,10 @@ export const aiInsightsChannelHandler: NotificationChannelHandler = {
 
     try {
       // Get all users with access to this wallet
-      const walletUsers = await walletSharingRepository.findWalletUsersWithPreferences(walletId);
+      const walletUsers = await userRepository.findByWalletAccess(walletId);
 
-      for (const wu of walletUsers) {
-        const prefs = wu.user.preferences as Record<string, any> | null;
+      for (const user of walletUsers) {
+        const prefs = user.preferences as Record<string, any> | null;
         const intelligence = prefs?.intelligence;
         const walletSettings = intelligence?.wallets?.[walletId];
 
@@ -96,7 +96,7 @@ export const aiInsightsChannelHandler: NotificationChannelHandler = {
               usersNotified++;
             } catch (error) {
               log.error('Failed to send AI insight via Telegram', {
-                userId: wu.user.id,
+                userId: user.id,
                 error: getErrorMessage(error),
               });
             }

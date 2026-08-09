@@ -26,10 +26,15 @@ interface UserWalletAssociation {
   wallet: { id: string; name: string };
 }
 
+interface UserGroupAssociation {
+  group: { wallets: Array<{ id: string; name: string }> };
+}
+
 interface IntelligenceUser {
   id: string;
   preferences: unknown;
-  wallets: UserWalletAssociation[];
+  wallets?: UserWalletAssociation[];
+  groupMemberships?: UserGroupAssociation[];
 }
 
 /**
@@ -88,23 +93,23 @@ export async function updateWalletIntelligenceSettings(
   walletId: string,
   settings: Partial<WalletIntelligenceSettings>,
 ): Promise<WalletIntelligenceSettings> {
-  const user = await userRepository.findByIdWithSelect(userId, {
-    preferences: true,
-  });
-
-  const prefs = getPreferenceRecord(user?.preferences);
-  const intelligence = getIntelligenceConfig(prefs);
-  const existing = getExistingWalletSettings(intelligence, walletId);
-  const updated = mergeWalletSettings(existing, settings);
-
-  setWalletSettings(prefs, intelligence, walletId, updated);
-
-  await userRepository.updatePreferences(
+  const { result } = await userRepository.updatePreferencesAtomically(
     userId,
-    prefs as Prisma.InputJsonValue,
+    (currentPreferences) => {
+      const prefs = getPreferenceRecord(currentPreferences);
+      const intelligence = getIntelligenceConfig(prefs);
+      const existing = getExistingWalletSettings(intelligence, walletId);
+      const updated = mergeWalletSettings(existing, settings);
+
+      setWalletSettings(prefs, intelligence, walletId, updated);
+      return {
+        preferences: prefs as Prisma.InputJsonValue,
+        result: updated,
+      };
+    },
   );
 
-  return updated;
+  return result;
 }
 
 const getPreferenceRecord = (preferences: unknown): PreferenceRecord =>
@@ -187,20 +192,34 @@ const getUserIntelligenceWallets = (
 
 const toEnabledIntelligenceWallet = (
   user: IntelligenceUser,
+  accessibleWallets: ReadonlyMap<string, string>,
   walletId: string,
   settings: WalletIntelligenceSettings,
 ): EnabledIntelligenceWallet | null => {
   if (!settings?.enabled) return null;
 
-  const walletUser = user.wallets.find((wu) => wu.wallet.id === walletId);
-  if (!walletUser) return null;
+  if (!accessibleWallets.has(walletId)) return null;
+  const walletName = accessibleWallets.get(walletId)!;
 
   return {
     walletId,
-    walletName: walletUser.wallet.name,
+    walletName,
     userId: user.id,
     settings: normalizeEnabledWalletSettings(settings),
   };
+};
+
+const getAccessibleWallets = (user: IntelligenceUser): Map<string, string> => {
+  const wallets = new Map<string, string>();
+  for (const association of user.wallets ?? []) {
+    wallets.set(association.wallet.id, association.wallet.name);
+  }
+  for (const membership of user.groupMemberships ?? []) {
+    for (const wallet of membership.group.wallets) {
+      wallets.set(wallet.id, wallet.name);
+    }
+  }
+  return wallets;
 };
 
 const collectEnabledIntelligenceWallets = (
@@ -208,9 +227,15 @@ const collectEnabledIntelligenceWallets = (
 ): EnabledIntelligenceWallet[] => {
   const wallets = getUserIntelligenceWallets(user);
   if (!wallets) return [];
+  const accessibleWallets = getAccessibleWallets(user);
 
   return Object.entries(wallets).flatMap(([walletId, settings]) => {
-    const enabledWallet = toEnabledIntelligenceWallet(user, walletId, settings);
+    const enabledWallet = toEnabledIntelligenceWallet(
+      user,
+      accessibleWallets,
+      walletId,
+      settings,
+    );
     return enabledWallet ? [enabledWallet] : [];
   });
 };

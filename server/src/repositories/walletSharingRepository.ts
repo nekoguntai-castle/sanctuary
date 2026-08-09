@@ -183,21 +183,6 @@ export async function findWalletIdsByUserRole(
 }
 
 /**
- * Find all wallet users with their user preferences
- * Used by notification services (AI insights, etc.)
- */
-export async function findWalletUsersWithPreferences(walletId: string) {
-  return prisma.walletUser.findMany({
-    where: { walletId },
-    include: {
-      user: {
-        select: { id: true, preferences: true },
-      },
-    },
-  });
-}
-
-/**
  * Find all wallet users with username info
  * Used by mobile permission service
  */
@@ -240,7 +225,6 @@ export const walletSharingRepository = {
   updateWalletGroupWithResult,
   getWalletSharingInfo,
   findWalletIdsByUserRole,
-  findWalletUsersWithPreferences,
   findWalletUsersWithUsername,
   findWalletUserByCompositeKey,
 };

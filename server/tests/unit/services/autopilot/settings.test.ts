@@ -4,6 +4,7 @@ const { mockUserRepo } = vi.hoisted(() => ({
   mockUserRepo: {
     findByIdWithSelect: vi.fn(),
     updatePreferences: vi.fn(),
+    updatePreferencesAtomically: vi.fn(),
     findWithAutopilotPreferences: vi.fn(),
   },
 }));
@@ -23,7 +24,17 @@ describe('autopilot settings service', () => {
     vi.clearAllMocks();
     (mockUserRepo.findByIdWithSelect as Mock).mockReset();
     (mockUserRepo.updatePreferences as Mock).mockReset();
+    (mockUserRepo.updatePreferencesAtomically as Mock).mockReset();
     (mockUserRepo.findWithAutopilotPreferences as Mock).mockReset();
+    (mockUserRepo.updatePreferencesAtomically as Mock).mockImplementation(
+      async (userId: string, updater: (preferences: unknown) => { preferences: unknown; result: unknown }) => {
+        const user = await mockUserRepo.findByIdWithSelect(userId, { preferences: true });
+        if (!user) throw new Error('User not found');
+        const update = updater(user.preferences);
+        await mockUserRepo.updatePreferences(userId, update.preferences);
+        return { user: {}, result: update.result };
+      },
+    );
   });
 
   describe('getWalletAutopilotSettings', () => {

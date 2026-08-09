@@ -64,24 +64,21 @@ export async function updateWalletAutopilotSettings(
   walletId: string,
   settings: WalletAutopilotSettings
 ): Promise<void> {
-  const user = await userRepository.findByIdWithSelect(userId, { preferences: true });
+  await userRepository.updatePreferencesAtomically(userId, (currentPreferences) => {
+    const prefs = asRecord(currentPreferences);
+    const autopilot = asRecord(prefs.autopilot) as AutopilotPreferenceRecord;
 
-  if (!user) {
-    throw new Error('User not found');
-  }
-
-  const prefs = (user.preferences as Record<string, unknown>) || {};
-  const autopilot = asRecord(prefs.autopilot) as AutopilotPreferenceRecord;
-
-  const updatedPrefs = {
-    ...prefs,
-    autopilot: {
-      ...autopilot,
-      wallets: setWalletSettings(autopilot, walletId, settings),
-    },
-  };
-
-  await userRepository.updatePreferences(userId, updatedPrefs as unknown as Prisma.InputJsonValue);
+    return {
+      preferences: {
+        ...prefs,
+        autopilot: {
+          ...autopilot,
+          wallets: setWalletSettings(autopilot, walletId, settings),
+        },
+      } as unknown as Prisma.InputJsonValue,
+      result: undefined,
+    };
+  });
 }
 
 /**

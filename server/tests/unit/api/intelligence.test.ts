@@ -99,6 +99,11 @@ vi.mock('../../../src/repositories/walletRepository', () => ({
   findByIdWithAccess: (...args: unknown[]) => mockFindByIdWithAccess(...args),
 }));
 
+const mockGetUserWalletRole = vi.fn();
+vi.mock('../../../src/services/wallet', () => ({
+  getUserWalletRole: (...args: unknown[]) => mockGetUserWalletRole(...args),
+}));
+
 // We need to import the router to get the route handlers.
 // Since asyncHandler is pass-through, we can extract the handlers from Express router.
 // But it's simpler to test via the route handlers directly through Express.
@@ -605,6 +610,23 @@ describe('Intelligence API Routes', () => {
   });
 
   describe('GET /settings/:walletId', () => {
+    it('rejects inaccessible wallets before reading settings', async () => {
+      mockGetUserWalletRole.mockResolvedValueOnce(null);
+      const req = createMockRequest({
+        user: { userId: 'test-user-123', username: 'testuser', isAdmin: false },
+        params: { walletId: 'wallet-denied' },
+      });
+      const { res, getResponse } = createMockResponse();
+      const next = vi.fn();
+
+      const middleware = getRouteMiddleware(intelligenceRoutes, 'get', '/settings/:walletId');
+      await middleware(req as any, res as any, next);
+
+      expect(getResponse().statusCode).toBe(403);
+      expect(next).not.toHaveBeenCalled();
+      expect(mockIntelligenceSettings.getWalletIntelligenceSettings).not.toHaveBeenCalled();
+    });
+
     it('returns per-wallet intelligence settings', async () => {
       const settings = { enabled: true, severityFilter: 'warning', typeFilter: ['utxo_health'] };
       mockIntelligenceSettings.getWalletIntelligenceSettings.mockResolvedValueOnce(settings);
@@ -627,6 +649,24 @@ describe('Intelligence API Routes', () => {
   });
 
   describe('PATCH /settings/:walletId', () => {
+    it('rejects inaccessible wallets with zero preference writes', async () => {
+      mockGetUserWalletRole.mockResolvedValueOnce(null);
+      const req = createMockRequest({
+        user: { userId: 'test-user-123', username: 'testuser', isAdmin: false },
+        params: { walletId: 'wallet-denied' },
+        body: { enabled: true },
+      });
+      const { res, getResponse } = createMockResponse();
+      const next = vi.fn();
+
+      const middleware = getRouteMiddleware(intelligenceRoutes, 'patch', '/settings/:walletId');
+      await middleware(req as any, res as any, next);
+
+      expect(getResponse().statusCode).toBe(403);
+      expect(next).not.toHaveBeenCalled();
+      expect(mockIntelligenceSettings.updateWalletIntelligenceSettings).not.toHaveBeenCalled();
+    });
+
     it('updates per-wallet intelligence settings', async () => {
       const updated = { enabled: false, severityFilter: 'critical', typeFilter: ['anomaly'] };
       mockIntelligenceSettings.updateWalletIntelligenceSettings.mockResolvedValueOnce(updated);
@@ -685,7 +725,7 @@ function getRouteHandler(router: any, method: string, path: string): (...args: a
       const routeStack = layer.route.stack;
 
       if (routePath === path) {
-        for (const routeLayer of routeStack) {
+        for (const routeLayer of [...routeStack].reverse()) {
           if (routeLayer.method === method) {
             return routeLayer.handle;
           }
@@ -695,4 +735,13 @@ function getRouteHandler(router: any, method: string, path: string): (...args: a
   }
 
   throw new Error(`Route handler not found: ${method.toUpperCase()} ${path}`);
+}
+
+function getRouteMiddleware(router: any, method: string, path: string): (...args: any[]) => Promise<any> {
+  const route = router.stack.find((layer: any) => layer.route?.path === path)?.route;
+  const handlers = route?.stack ?? [];
+  if (handlers.length < 2) {
+    throw new Error(`Route middleware not found: ${method.toUpperCase()} ${path}`);
+  }
+  return handlers[0].handle;
 }

@@ -12,6 +12,7 @@ const { mockUserRepo } = vi.hoisted(() => ({
     findByIdWithSelect: vi.fn(),
     findAllWithWalletAssociations: vi.fn(),
     updatePreferences: vi.fn(),
+    updatePreferencesAtomically: vi.fn(),
   },
 }));
 
@@ -44,7 +45,16 @@ describe('Treasury Intelligence Settings', () => {
     vi.clearAllMocks();
     (mockUserRepo.findByIdWithSelect as Mock).mockReset();
     (mockUserRepo.updatePreferences as Mock).mockReset();
+    (mockUserRepo.updatePreferencesAtomically as Mock).mockReset();
     (mockUserRepo.findAllWithWalletAssociations as Mock).mockReset();
+    (mockUserRepo.updatePreferencesAtomically as Mock).mockImplementation(
+      async (userId: string, updater: (preferences: unknown) => { preferences: unknown; result: unknown }) => {
+        const user = await mockUserRepo.findByIdWithSelect(userId, { preferences: true });
+        const update = updater(user?.preferences);
+        await mockUserRepo.updatePreferences(userId, update.preferences);
+        return { user: {}, result: update.result };
+      },
+    );
   });
 
   // ========================================
@@ -478,6 +488,72 @@ describe('Treasury Intelligence Settings', () => {
       const result = await getEnabledIntelligenceWallets();
 
       expect(result).toEqual([]);
+    });
+
+    it('includes group-only access and deduplicates the same direct and group wallet', async () => {
+      (mockUserRepo.findAllWithWalletAssociations as Mock).mockResolvedValue([
+        {
+          id: 'user-1',
+          preferences: {
+            intelligence: {
+              wallets: {
+                'wallet-shared': { enabled: true, typeFilter: ['tax'] },
+                'wallet-revoked': { enabled: true, typeFilter: ['anomaly'] },
+              },
+            },
+          },
+          wallets: [
+            { wallet: { id: 'wallet-shared', name: 'Direct Name' } },
+          ],
+          groupMemberships: [
+            {
+              group: {
+                wallets: [
+                  { id: 'wallet-shared', name: 'Group Name' },
+                  { id: 'wallet-group-only', name: 'Group Only' },
+                ],
+              },
+            },
+          ],
+        },
+      ]);
+
+      const result = await getEnabledIntelligenceWallets();
+
+      expect(result).toEqual([
+        expect.objectContaining({
+          userId: 'user-1',
+          walletId: 'wallet-shared',
+          walletName: 'Group Name',
+          settings: expect.objectContaining({ typeFilter: ['tax'] }),
+        }),
+      ]);
+    });
+
+    it('retains each user settings row for one wallet with disjoint filters', async () => {
+      (mockUserRepo.findAllWithWalletAssociations as Mock).mockResolvedValue([
+        {
+          id: 'user-1',
+          preferences: { intelligence: { wallets: {
+            shared: { enabled: true, typeFilter: ['tax'] },
+          } } },
+          wallets: [{ wallet: { id: 'shared', name: 'Shared' } }],
+        },
+        {
+          id: 'user-2',
+          preferences: { intelligence: { wallets: {
+            shared: { enabled: true, typeFilter: ['anomaly'] },
+          } } },
+          groupMemberships: [{ group: { wallets: [{ id: 'shared', name: 'Shared' }] } }],
+        },
+      ]);
+
+      const result = await getEnabledIntelligenceWallets();
+
+      expect(result.map(({ userId, settings }) => [userId, settings.typeFilter])).toEqual([
+        ['user-1', ['tax']],
+        ['user-2', ['anomaly']],
+      ]);
     });
 
     it('should skip users without intelligence preferences', async () => {

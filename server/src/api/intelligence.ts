@@ -24,6 +24,7 @@ import {
 } from '../services/intelligence/types';
 import { findByIdWithAccess } from '../repositories/walletRepository';
 import { CHAT_MESSAGE_MAX_LENGTH } from '../services/intelligence/messageContent';
+import { requireWalletAccess } from '../middleware/walletAccess';
 
 const router = Router();
 
@@ -268,7 +269,7 @@ router.delete('/conversations/:id', asyncHandler(async (req, res) => {
  * GET /api/v1/intelligence/settings/:walletId
  * Get per-wallet intelligence settings
  */
-router.get('/settings/:walletId', asyncHandler(async (req, res) => {
+router.get('/settings/:walletId', requireWalletAccess('view'), asyncHandler(async (req, res) => {
   const userId = requireAuthenticatedUser(req).userId;
   const { walletId } = req.params;
 
@@ -280,7 +281,7 @@ router.get('/settings/:walletId', asyncHandler(async (req, res) => {
  * PATCH /api/v1/intelligence/settings/:walletId
  * Update per-wallet intelligence settings
  */
-router.patch('/settings/:walletId', asyncHandler(async (req, res) => {
+router.patch('/settings/:walletId', requireWalletAccess('view'), asyncHandler(async (req, res) => {
   const userId = requireAuthenticatedUser(req).userId;
   const { walletId } = req.params;
   const body = IntelligenceSettingsUpdateBodySchema.safeParse(req.body);
