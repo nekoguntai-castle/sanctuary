@@ -14,6 +14,9 @@
 
 import { sessionRepository } from '../repositories';
 import { generateRefreshToken, decodeToken } from '../utils/jwt';
+import type { TokenLineage } from '../utils/jwt';
+import { randomUUID } from 'crypto';
+import { publishRevokedToken } from './tokenRevocation';
 import { createLogger } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
 
@@ -37,11 +40,16 @@ export interface Session {
   isCurrent: boolean;
 }
 
+export type RefreshRotationResult =
+  | { status: 'rotated'; refreshToken: string }
+  | { status: 'superseded' | 'terminal' };
+
 function getRefreshTokenExpiry(refreshToken: string): Date {
   const decoded = decodeToken(refreshToken);
-  return decoded?.exp
-    ? new Date(decoded.exp * 1000)
-    : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  if (!decoded?.exp) {
+    throw new Error('Generated refresh token is missing expiry');
+  }
+  return new Date(decoded.exp * 1000);
 }
 
 /**
@@ -49,11 +57,13 @@ function getRefreshTokenExpiry(refreshToken: string): Date {
  */
 export async function createRefreshToken(
   userId: string,
-  deviceInfo?: DeviceInfo,
-  sessionVersion = 0
+  deviceInfo: DeviceInfo | undefined,
+  sessionVersion: number | undefined,
+  accessToken: TokenLineage
 ): Promise<string> {
   // Generate the actual refresh token
-  const refreshToken = generateRefreshToken(userId, sessionVersion);
+  const sessionFamilyId = randomUUID();
+  const refreshToken = generateRefreshToken(userId, sessionVersion ?? 0, sessionFamilyId);
   const expiresAt = getRefreshTokenExpiry(refreshToken);
 
   try {
@@ -61,6 +71,9 @@ export async function createRefreshToken(
       userId,
       token: refreshToken,
       expiresAt,
+      accessTokenJti: accessToken.jti,
+      accessTokenExpiresAt: accessToken.expiresAt,
+      sessionFamilyId,
       deviceId: deviceInfo?.deviceId,
       deviceName: deviceInfo?.deviceName,
       userAgent: deviceInfo?.userAgent,
@@ -114,39 +127,54 @@ export async function verifyRefreshTokenExists(token: string): Promise<boolean> 
  */
 export async function rotateRefreshToken(
   oldToken: string,
-  deviceInfo?: DeviceInfo,
-  sessionVersion?: number,
-  expectedUserId?: string
-): Promise<string | null> {
+  deviceInfo: DeviceInfo | undefined,
+  sessionVersion: number | undefined,
+  expectedUserId: string | undefined,
+  accessToken: TokenLineage
+): Promise<RefreshRotationResult> {
   try {
     const decodedOldToken = decodeToken(oldToken);
     const userId = expectedUserId ?? decodedOldToken?.userId;
     if (!userId) {
       log.warn('Attempted to rotate refresh token without a user id');
-      return null;
+      return { status: 'terminal' };
     }
-
     const newSessionVersion = sessionVersion ?? decodedOldToken?.sessionVersion ?? 0;
-    const newToken = generateRefreshToken(userId, newSessionVersion);
+    const sessionFamilyId = decodedOldToken?.sessionFamilyId;
+    if (!sessionFamilyId) {
+      log.warn('Attempted to rotate refresh token without session-family lineage');
+      return { status: 'terminal' };
+    }
+    const newToken = generateRefreshToken(userId, newSessionVersion, sessionFamilyId);
     const replacement = await sessionRepository.consumeAndReplaceRefreshToken({
       oldToken,
       expectedUserId: userId,
       newToken,
       expiresAt: getRefreshTokenExpiry(newToken),
+      accessTokenJti: accessToken.jti,
+      accessTokenExpiresAt: accessToken.expiresAt,
+      sessionFamilyId,
       deviceId: deviceInfo?.deviceId,
       deviceName: deviceInfo?.deviceName,
       userAgent: deviceInfo?.userAgent,
       ipAddress: deviceInfo?.ipAddress,
     });
 
-    if (!replacement) {
-      log.warn('Attempted to rotate missing, expired, or consumed refresh token');
-      return null;
+    if (replacement.status !== 'rotated') {
+      log.warn('Refresh token rotation did not mint a replacement', {
+        userId,
+        status: replacement.status,
+      });
+      return replacement;
     }
 
-    log.debug('Refresh token rotated', { userId: replacement.userId });
+    await publishRevokedToken(
+      replacement.revokedAccessToken.jti,
+      replacement.revokedAccessToken.expiresAt
+    );
+    log.debug('Refresh token rotated', { userId: replacement.replacement.userId });
 
-    return newToken;
+    return { status: 'rotated', refreshToken: newToken };
   } catch (error) {
     log.error('Failed to rotate refresh token', { error: getErrorMessage(error) });
     throw error;
@@ -162,9 +190,8 @@ export async function revokeRefreshToken(token: string): Promise<boolean> {
     log.debug('Refresh token revoked');
     return true;
   } catch (error) {
-    // Token may not exist (already revoked or expired)
-    log.debug('Refresh token not found for revocation');
-    return false;
+    log.error('Failed to revoke refresh token', { error: getErrorMessage(error) });
+    throw error;
   }
 }
 
@@ -180,20 +207,37 @@ export async function revokeRefreshToken(token: string): Promise<boolean> {
  */
 export async function revokeSession(sessionId: string, userId: string): Promise<boolean> {
   try {
-    // Verify the session belongs to this user before deleting
-    const token = await sessionRepository.findRefreshTokenById(sessionId);
-    if (!token || token.userId !== userId) {
+    const revoked = await sessionRepository.revokeSessionById(sessionId, userId);
+    if (!revoked) {
       log.debug('Session not found or belongs to another user', { sessionId, userId });
       return false;
     }
-
-    await sessionRepository.deleteRefreshTokenById(sessionId);
+    await publishRevokedToken(revoked.jti, revoked.expiresAt);
     log.info('Session revoked', { sessionId, userId });
     return true;
   } catch (error) {
     log.error('Failed to revoke session', { error: getErrorMessage(error), sessionId });
-    return false;
+    throw error;
   }
+}
+
+export async function revokeLogoutCredentials(input: {
+  userId: string;
+  accessToken: TokenLineage;
+  refreshToken?: string;
+  refreshSessionFamilyId?: string;
+  refreshTokenExpiresAt?: Date;
+}): Promise<'not-supplied' | 'revoked' | 'already-revoked' | 'not-found'> {
+  const status = await sessionRepository.revokeLogoutCredentials({
+    userId: input.userId,
+    accessTokenJti: input.accessToken.jti,
+    accessTokenExpiresAt: input.accessToken.expiresAt,
+    refreshToken: input.refreshToken,
+    refreshSessionFamilyId: input.refreshSessionFamilyId,
+    refreshTokenExpiresAt: input.refreshTokenExpiresAt,
+  });
+  await publishRevokedToken(input.accessToken.jti, input.accessToken.expiresAt);
+  return status;
 }
 
 /**

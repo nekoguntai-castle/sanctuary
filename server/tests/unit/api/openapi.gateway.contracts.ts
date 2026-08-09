@@ -31,6 +31,7 @@ import {
 import { registerOpenApiGatewayInternalTests } from './openapi.gateway-internal.contracts';
 import { PASSWORD_POLICY, PASSWORD_POLICY_MESSAGES } from '../../../src/utils/passwordPolicy';
 import { USERNAME_POLICY } from '../../../src/utils/username';
+import { MobileRefreshTokenRequestSchema } from '@sanctuary/shared/schemas/mobileApiRequests';
 
 import type { OpenApiPathKey } from './openapi.helpers';
 
@@ -228,6 +229,9 @@ export function registerOpenApiGatewayTests() {
     }
 
     expect(openApiSpec.components.schemas.RefreshTokenRequest).toBeDefined();
+    expect(openApiSpec.components.schemas.RefreshTokenRequest.required).toBeUndefined();
+    expect(openApiSpec.paths['/auth/refresh'].post.requestBody.required).toBe(false);
+    expect(MobileRefreshTokenRequestSchema.safeParse({}).success).toBe(false);
     expect(openApiSpec.components.schemas.TwoFactorVerifyRequest).toBeDefined();
     expect(openApiSpec.components.schemas.SessionsResponse).toBeDefined();
 

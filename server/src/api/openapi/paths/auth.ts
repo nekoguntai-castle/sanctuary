@@ -33,6 +33,15 @@ const jsonRequestBody = (schemaRef: string) => ({
   },
 });
 
+const optionalJsonRequestBody = (schemaRef: string) => ({
+  required: false,
+  content: {
+    'application/json': {
+      schema: { $ref: schemaRef },
+    },
+  },
+});
+
 const jsonResponse = (description: string, schemaRef: string) => ({
   description,
   content: {
@@ -146,8 +155,8 @@ export const authPaths = {
     post: {
       tags: ['Auth'],
       summary: 'Refresh token',
-      description: 'Get a new access token using refresh token',
-      requestBody: jsonRequestBody('#/components/schemas/RefreshTokenRequest'),
+      description: 'Get a new access token using the sanctuary_refresh cookie or the optional body refreshToken. When both are present, the cookie takes precedence.',
+      requestBody: optionalJsonRequestBody('#/components/schemas/RefreshTokenRequest'),
       responses: {
         200: jsonResponse('Token refreshed', '#/components/schemas/RefreshTokenResponse'),
         400: apiErrorResponse,

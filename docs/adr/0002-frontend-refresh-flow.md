@@ -196,7 +196,7 @@ This work merges into ADR 0001's Phase 4 (frontend), which becomes the largest p
 
 2. **Server-side refresh cookie reading.**
    - `server/src/api/auth/tokens.ts:28-81` — when the request body has no `refreshToken`, read it from the `sanctuary_refresh` cookie.
-   - When a refresh succeeds, set new `sanctuary_access` (path `/`) and `sanctuary_refresh` (path `/api/v1/auth/refresh`) cookies.
+   - When a refresh succeeds, set new `sanctuary_access` (path `/`) and `sanctuary_refresh` (path `/api/v1/auth`) cookies. The auth-scoped refresh cookie reaches both the refresh and logout endpoints, which consume the HttpOnly credential.
    - Add server tests: cookie-only refresh succeeds; body-only refresh still succeeds (mobile path); both present uses the cookie.
 
 3. **Frontend refresh primitive with Web Lock + freshness check.**

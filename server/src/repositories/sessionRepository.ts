@@ -12,6 +12,11 @@ import {
   consumeAndReplaceRefreshTokenWithClient,
   type RotateRefreshTokenInput,
 } from './sessionRefreshTokenRotation';
+import {
+  revokeLogoutCredentialsWithClient,
+  revokeSessionByIdWithClient,
+  type RevokedAccessTokenLineage,
+} from './sessionRevocationTransactions';
 
 const log = createLogger('SESSION:REPO');
 
@@ -22,6 +27,9 @@ export interface CreateRefreshTokenInput {
   userId: string;
   token: string; // Plain token - will be hashed
   expiresAt: Date;
+  accessTokenJti: string;
+  accessTokenExpiresAt: Date;
+  sessionFamilyId: string;
   userAgent?: string | null;
   ipAddress?: string | null;
   deviceId?: string | null;
@@ -133,6 +141,9 @@ export async function createRefreshToken(
       userId: input.userId,
       tokenHash: hashToken(input.token),
       expiresAt: input.expiresAt,
+      accessTokenJti: input.accessTokenJti,
+      accessTokenExpiresAt: input.accessTokenExpiresAt,
+      sessionFamilyId: input.sessionFamilyId,
       userAgent: input.userAgent,
       ipAddress: input.ipAddress,
       deviceId: input.deviceId,
@@ -144,15 +155,14 @@ export async function createRefreshToken(
 /**
  * Atomically consume one unexpired refresh token and replace it.
  *
- * Returns null when the old token is absent, expired, or already consumed by a
- * concurrent request. Database errors, including replacement insert failures,
- * are propagated so the caller does not misclassify storage failures as invalid
- * credentials. Because the delete and create run in the same transaction, an
- * insert failure rolls back the consume step.
+ * Returns a classified result when the old credential was already superseded or
+ * its family is terminal. Database errors are propagated so the caller does not
+ * misclassify storage failures as invalid credentials. The stable-row update and
+ * access-token revocation commit in the same transaction.
  */
 export async function consumeAndReplaceRefreshToken(
   input: RotateRefreshTokenInput
-): Promise<RefreshToken | null> {
+): ReturnType<typeof consumeAndReplaceRefreshTokenWithClient> {
   const oldTokenHash = hashToken(input.oldToken);
   const newTokenHash = hashToken(input.newToken);
   const now = new Date();
@@ -164,6 +174,33 @@ export async function consumeAndReplaceRefreshToken(
       now,
     })
   );
+}
+
+export async function revokeSessionById(
+  sessionId: string,
+  userId: string
+): Promise<RevokedAccessTokenLineage | null> {
+  return prisma.$transaction((tx) =>
+    revokeSessionByIdWithClient(tx, sessionId, userId, new Date())
+  );
+}
+
+export async function revokeLogoutCredentials(input: {
+  userId: string;
+  accessTokenJti: string;
+  accessTokenExpiresAt: Date;
+  refreshToken?: string;
+  refreshSessionFamilyId?: string;
+  refreshTokenExpiresAt?: Date;
+}): ReturnType<typeof revokeLogoutCredentialsWithClient> {
+  return prisma.$transaction((tx) => revokeLogoutCredentialsWithClient(tx, {
+    userId: input.userId,
+    accessTokenJti: input.accessTokenJti,
+    accessTokenExpiresAt: input.accessTokenExpiresAt,
+    refreshTokenHash: input.refreshToken ? hashToken(input.refreshToken) : undefined,
+    refreshSessionFamilyId: input.refreshSessionFamilyId,
+    refreshTokenExpiresAt: input.refreshTokenExpiresAt,
+  }, new Date()));
 }
 
 /**
@@ -192,17 +229,6 @@ export async function revokeAllUserTokens(userId: string): Promise<number> {
     where: { userId },
   });
   return result.count;
-}
-
-/**
- * Delete a refresh token by ID
- */
-export async function deleteRefreshTokenById(id: string): Promise<void> {
-  await prisma.refreshToken.delete({
-    where: { id },
-  }).catch((err) => {
-    log.debug('Token may already be deleted', { error: String(err) });
-  });
 }
 
 /**
@@ -308,11 +334,11 @@ export async function upsertRevokedToken(
  */
 export async function findRevokedTokenByJti(
   jti: string
-): Promise<RevokedToken | null> {
+): Promise<Pick<RevokedToken, 'jti' | 'expiresAt'> | null> {
   return prisma.revokedToken.findUnique({
     where: { jti },
-    select: { jti: true },
-  }) as Promise<RevokedToken | null>;
+    select: { jti: true, expiresAt: true },
+  });
 }
 
 /**
@@ -389,9 +415,10 @@ export const sessionRepository = {
   countActiveSessions,
   createRefreshToken,
   consumeAndReplaceRefreshToken,
+  revokeSessionById,
+  revokeLogoutCredentials,
   revokeRefreshToken,
   revokeAllUserTokens,
-  deleteRefreshTokenById,
   deleteExpiredRefreshTokens,
   updateLastUsed,
   isTokenRevoked,

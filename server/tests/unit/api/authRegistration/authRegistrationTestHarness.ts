@@ -137,8 +137,12 @@ vi.mock('../../../../src/services/refreshTokenService', () => ({
   revokeSession: vi.fn(),
   createRefreshToken: vi.fn().mockResolvedValue('mock-refresh-token'),
   verifyRefreshTokenExists: vi.fn().mockResolvedValue(true),
-  rotateRefreshToken: vi.fn().mockResolvedValue('new-refresh-token'),
+  rotateRefreshToken: vi.fn().mockResolvedValue({
+    status: 'rotated',
+    refreshToken: 'new-refresh-token',
+  }),
   revokeRefreshToken: vi.fn().mockResolvedValue(undefined),
+  revokeLogoutCredentials: vi.fn().mockResolvedValue('not-supplied'),
   revokeAllUserRefreshTokens: vi.fn().mockResolvedValue(5),
 }));
 
@@ -158,8 +162,26 @@ vi.mock('../../../../src/utils/jwt', async (importOriginal) => {
   return {
     ...actual,
     hashToken: vi.fn().mockReturnValue('hashed-token'),
-    verifyRefreshToken: vi.fn().mockResolvedValue({ userId: 'test-user-id', username: 'testuser', sessionVersion: 0 }),
-    decodeToken: vi.fn().mockReturnValue({ jti: 'token-jti', exp: Math.floor(Date.now() / 1000) + 3600, userId: 'test-user-id' }),
+    verifyRefreshToken: vi.fn().mockResolvedValue({
+      userId: 'test-user-id',
+      username: 'testuser',
+      sessionVersion: 0,
+      sessionFamilyId: 'session-family-123',
+    }),
+    decodeToken: vi.fn().mockReturnValue({
+      jti: 'token-jti',
+      exp: Math.floor(Date.now() / 1000) + 3600,
+      userId: 'test-user-id',
+      sessionFamilyId: 'session-family-123',
+    }),
+    getTokenLineage: vi.fn().mockReturnValue({
+      jti: 'token-jti',
+      expiresAt: new Date(Date.now() + 3600 * 1000),
+    }),
+    getRefreshSessionLineage: vi.fn().mockReturnValue({
+      sessionFamilyId: 'session-family-123',
+      expiresAt: new Date(Date.now() + 7 * 24 * 3600 * 1000),
+    }),
     generate2FAToken: vi.fn().mockReturnValue('mock-2fa-token'),
     verify2FAToken: vi.fn().mockResolvedValue({ userId: 'test-user-id', username: 'testuser', isAdmin: false, sessionVersion: 0 }),
   };

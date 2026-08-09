@@ -157,7 +157,6 @@ export const authSchemas = {
       },
       rotate: { type: 'boolean', deprecated: true },
     },
-    required: ['refreshToken'],
   },
   RefreshTokenResponse: {
     type: 'object',

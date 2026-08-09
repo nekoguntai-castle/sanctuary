@@ -1313,6 +1313,14 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "Upload quick gateway diagnostics" \
   "ci-diagnostics-quick-gateway"
 
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "quick gateway rejects corrupt exact cache hit" \
+  "Restore gateway node_modules cache" \
+  "Install dependencies" \
+  'cache-quick-gateway-node-modules.outputs.cache-hit' \
+  '[ -x node_modules/.bin/vitest ]' \
+  'npm ci --strict-allow-scripts'
+
 # Changed filenames must reach vitest as array data, never interpolated into
 # the command string. They additionally go through related-test-args.sh, which
 # re-roots the repo-relative paths for the lane's working-directory — without

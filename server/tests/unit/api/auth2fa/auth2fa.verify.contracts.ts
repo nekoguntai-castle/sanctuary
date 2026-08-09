@@ -304,7 +304,7 @@ export function registerTwoFactorVerifyContracts() {
     const refreshCookie = rawCookies.find((c) => c.startsWith('sanctuary_refresh='));
     expect(refreshCookie).toContain('HttpOnly');
     expect(refreshCookie).toContain('SameSite=Strict');
-    expect(refreshCookie).toContain('Path=/api/v1/auth/refresh');
+    expect(refreshCookie).toContain('Path=/api/v1/auth');
 
     const csrfCookie = rawCookies.find((c) => c.startsWith('sanctuary_csrf='));
     expect(csrfCookie).not.toContain('HttpOnly');

@@ -30,12 +30,14 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
+import jwt from 'jsonwebtoken';
 import {
   doubleCsrfProtection,
   generateCsrfToken,
   SANCTUARY_ACCESS_COOKIE_NAME,
   SANCTUARY_CSRF_COOKIE_NAME,
   SANCTUARY_CSRF_HEADER_NAME,
+  setAuthCookies,
 } from '../../../src/middleware/csrf';
 
 /**
@@ -67,6 +69,20 @@ function buildApp() {
     req.cookies = { ...(req.cookies ?? {}), [SANCTUARY_ACCESS_COOKIE_NAME]: accessValue };
     const csrfToken = generateCsrfToken(req, res);
     res.json({ csrfToken });
+  });
+
+  app.get('/test/issue-auth-cookies', (req, res) => {
+    const accessToken = jwt.sign({ jti: 'access-jti' }, process.env.JWT_SECRET!, { expiresIn: '1h' });
+    const refreshToken = jwt.sign({ jti: 'refresh-jti' }, process.env.JWT_SECRET!, { expiresIn: '2h' });
+    setAuthCookies(req, res, { accessToken, refreshToken });
+    res.json({ ok: true });
+  });
+
+  app.get('/test/issue-auth-cookies-without-refresh-expiry', (req, res) => {
+    const accessToken = jwt.sign({ jti: 'access-jti' }, process.env.JWT_SECRET!, { expiresIn: '1h' });
+    const refreshToken = jwt.sign({ jti: 'refresh-jti' }, process.env.JWT_SECRET!);
+    setAuthCookies(req, res, { accessToken, refreshToken });
+    res.json({ ok: true });
   });
 
   app.use(doubleCsrfProtection);
@@ -123,6 +139,28 @@ describe('csrf middleware (ADR 0001 / 0002 Phase 1)', () => {
 
   beforeEach(() => {
     app = buildApp();
+  });
+
+  it('sets refresh-cookie expiry from a non-default signed JWT expiry', async () => {
+    const before = Date.now();
+    const response = await request(app).get('/test/issue-auth-cookies').expect(200);
+    const cookies = response.headers['set-cookie'] as unknown as string[];
+    const refreshCookie = cookies.find(cookie => cookie.startsWith('sanctuary_refresh='));
+    const expires = refreshCookie?.match(/Expires=([^;]+)/)?.[1];
+
+    expect(expires).toBeDefined();
+    expect(new Date(expires!).getTime() - before).toBeGreaterThan(119 * 60 * 1000);
+    expect(new Date(expires!).getTime() - before).toBeLessThan(121 * 60 * 1000);
+  });
+
+  it('rejects an issued refresh credential without an expiry claim', async () => {
+    const response = await request(app)
+      .get('/test/issue-auth-cookies-without-refresh-expiry')
+      .expect(500);
+
+    expect(response.body).toEqual(expect.objectContaining({
+      message: 'Generated refresh token is missing expiry',
+    }));
   });
 
   describe('skipCsrfProtection: no sanctuary_access cookie (Authorization-header / mobile / gateway path)', () => {

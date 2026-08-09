@@ -92,6 +92,47 @@ describe('proxyConfig', () => {
     expect(setHeader).not.toHaveBeenCalledWith('X-Gateway-User-Id', expect.anything());
   });
 
+  it('strips stale browser auth cookies when forwarding body refresh credentials', () => {
+    const setHeader = vi.fn();
+    const removeHeader = vi.fn();
+    const proxyReq = { setHeader, removeHeader } as unknown;
+    const req = {
+      method: 'POST',
+      url: '/api/v1/auth/refresh',
+      path: '/api/v1/auth/refresh',
+      headers: {
+        cookie: 'sanctuary_refresh=stale-cookie; sanctuary_access=stale-access',
+      },
+      body: { refreshToken: 'trusted-body-token' },
+    } as unknown;
+
+    config.on.proxyReq(proxyReq, req);
+
+    expect(mockFixRequestBody).toHaveBeenCalledWith(proxyReq, req);
+    expect(removeHeader).toHaveBeenCalledWith('cookie');
+    expect(setHeader).not.toHaveBeenCalledWith('cookie', expect.anything());
+  });
+
+  it('preserves unrelated cookies while removing logout auth cookies', () => {
+    const setHeader = vi.fn();
+    const removeHeader = vi.fn();
+    const proxyReq = { setHeader, removeHeader } as unknown;
+    const req = {
+      method: 'POST',
+      url: '/api/v1/auth/logout',
+      path: '/api/v1/auth/logout',
+      headers: {
+        cookie: 'locale=en; sanctuary_refresh=stale-cookie; sanctuary_csrf=stale-csrf',
+      },
+      body: { refreshToken: 'trusted-body-token' },
+    } as unknown;
+
+    config.on.proxyReq(proxyReq, req);
+
+    expect(setHeader).toHaveBeenCalledWith('cookie', 'locale=en');
+    expect(removeHeader).not.toHaveBeenCalledWith('cookie');
+  });
+
   it('logs proxy responses and returns 502 payload on proxy errors', () => {
     config.on.proxyRes({ statusCode: 503 }, { method: 'GET', url: '/api/v1/test' });
     expect(mockLogger.debug).toHaveBeenCalledWith(

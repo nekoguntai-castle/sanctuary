@@ -63,8 +63,42 @@ main() {
   assert_contended_lock_reports_timeout "$lock_dir"
   assert_lock_timeout_fits_inside_every_job
   assert_lock_reports_wait_duration
+  assert_uncontended_lock_ignores_wall_second_boundary
 
   echo 'runner lock regression checks passed'
+}
+
+assert_uncontended_lock_ignores_wall_second_boundary() {
+  local fake_bin="$TEST_TEMP_DIR/fake-clock-bin"
+  local counter="$TEST_TEMP_DIR/fake-clock-counter"
+  mkdir -p "$fake_bin"
+  cat >"$fake_bin/date" <<'EOF'
+#!/usr/bin/env bash
+counter="${SANCTUARY_TEST_CLOCK_COUNTER:?}"
+call=0
+[ ! -f "$counter" ] || call="$(cat "$counter")"
+call=$((call + 1))
+printf '%s' "$call" >"$counter"
+case "$call" in
+  1) printf '1999999999\n' ;;
+  2) printf '2000000001\n' ;;
+  *) printf '2000000002\n' ;;
+esac
+EOF
+  chmod +x "$fake_bin/date"
+
+  local output
+  output="$(
+    PATH="$fake_bin:$PATH" \
+      SANCTUARY_TEST_CLOCK_COUNTER="$counter" \
+      SANCTUARY_RUNNER_LOCK_DIR="$TEST_TEMP_DIR/boundary-locks" \
+      bash "$LOCK_SCRIPT" boundary true 2>&1
+  )"
+  printf '%s' "$output" | grep -Fq 'runner-lock: acquired boundary after 0s' \
+    || fail "a sub-second acquisition spanning a wall second must report 0s, got: ${output}"
+  printf '%s' "$output" | grep -Fq 'Runner lock contention' \
+    && fail 'a sub-second acquisition spanning a wall second must not report contention'
+  return 0
 }
 
 # Serialisation has to be measurable before anyone can argue about removing it.

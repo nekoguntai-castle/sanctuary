@@ -2,7 +2,7 @@ import type { Request, Response } from 'express';
 
 import { setAuthCookies } from '../../middleware/csrf';
 import * as refreshTokenService from '../../services/refreshTokenService';
-import { generateToken } from '../../utils/jwt';
+import { generateToken, getTokenLineage } from '../../utils/jwt';
 
 // Public response hint for the JWT access-token TTL configured in utils/jwt.
 // setAuthCookies derives the authoritative cookie/header expiry from the
@@ -96,6 +96,7 @@ export async function prepareAuthSession(
       ipAddress: options.clientInfo.ipAddress,
     },
     sessionVersion,
+    getTokenLineage(accessToken),
   );
 
   return {

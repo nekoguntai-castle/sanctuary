@@ -296,6 +296,8 @@ export interface CreateAuditLogOptions {
   success?: boolean;
   errorMsg?: string;
   ipAddress?: string;
+  accessTokenJti?: string;
+  accessTokenExpiresAt?: Date;
   userAgent?: string;
 }
 
@@ -328,6 +330,9 @@ export interface CreateSessionOptions {
   deviceName?: string;
   userAgent?: string;
   ipAddress?: string;
+  accessTokenJti?: string;
+  accessTokenExpiresAt?: Date;
+  sessionFamilyId?: string;
 }
 
 export async function createTestSession(
@@ -344,6 +349,9 @@ export async function createTestSession(
       userId,
       tokenHash,
       expiresAt: options.expiresAt ?? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      accessTokenJti: options.accessTokenJti ?? crypto.randomUUID(),
+      accessTokenExpiresAt: options.accessTokenExpiresAt ?? new Date(Date.now() + 60 * 60 * 1000),
+      sessionFamilyId: options.sessionFamilyId ?? crypto.randomUUID(),
       lastUsedAt: options.lastUsedAt,
       deviceId: options.deviceId,
       deviceName: options.deviceName,

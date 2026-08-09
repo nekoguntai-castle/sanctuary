@@ -31,6 +31,7 @@ export function registerAuthRegistrationLoginTests(): void {
         'fallback-user-id',
         { userAgent: undefined, ipAddress: undefined },
         0,
+        expect.objectContaining({ jti: 'token-jti' }),
       );
       expectCanonicalAuthSessionUser(session.responseBody.user, {
         id: 'fallback-user-id',

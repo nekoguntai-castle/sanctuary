@@ -18,6 +18,7 @@ import {
   EPHEMERAL_TABLES,
   getRestoreTables,
   LEGACY_TABLE_ORDER,
+  PRE_TOMBSTONE_COMPLETE_TABLE_POLICY_HASH,
   PREVIOUS_COMPLETE_TABLE_POLICY_HASH,
   TABLE_ORDER,
 } from '../../../../src/services/backupService/constants';
@@ -364,20 +365,24 @@ describe('BackupService', () => {
       return backup;
     };
 
-    it('accepts pre-queue 1.1 backups without requiring the repair table', async () => {
+    it.each([
+      [PREVIOUS_COMPLETE_TABLE_POLICY_HASH, false],
+      [PRE_TOMBSTONE_COMPLETE_TABLE_POLICY_HASH, true],
+    ])('accepts recognized prior complete policy %s', async (hash, includesRepairQueue) => {
       vi.mocked(migrationService.getSchemaVersion).mockResolvedValue(61);
       const backup = createCompleteBackup();
-      backup.meta.tablePolicy!.hash = PREVIOUS_COMPLETE_TABLE_POLICY_HASH;
-      delete backup.data.transactionOwnershipRepair;
-      delete backup.meta.recordCounts.transactionOwnershipRepair;
+      backup.meta.tablePolicy!.hash = hash;
+      if (!includesRepairQueue) {
+        delete backup.data.transactionOwnershipRepair;
+        delete backup.meta.recordCounts.transactionOwnershipRepair;
+      }
 
       const result = await backupService.validateBackupForRestore(backup);
 
       expect(result.valid, result.issues.join('; ')).toBe(true);
-      expect(result.issues).not.toContain(
-        'Missing required restore table: transactionOwnershipRepair'
+      expect(getRestoreTables(backup.meta).includes('transactionOwnershipRepair')).toBe(
+        includesRepairQueue
       );
-      expect(getRestoreTables(backup.meta)).not.toContain('transactionOwnershipRepair');
     });
 
     it('should return structure validation for non-object restore input', async () => {
@@ -798,6 +803,7 @@ describe('BackupService', () => {
       expect(EPHEMERAL_TABLES).toEqual(expect.arrayContaining([
         'pushDevice',
         'refreshToken',
+        'revokedRefreshSessionFamily',
         'revokedToken',
         'emailVerificationToken',
       ]));

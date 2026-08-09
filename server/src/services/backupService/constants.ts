@@ -82,6 +82,7 @@ export const COMPLETE_TABLE_POLICY: readonly BackupTablePolicyEntry[] = [
   { model: 'FeeEstimate', table: 'feeEstimate', classification: 'cache-optional' },
   { model: 'PriceData', table: 'priceData', classification: 'cache-optional' },
   { model: 'RefreshToken', table: 'refreshToken', classification: 'security-ephemeral' },
+  { model: 'RevokedRefreshSessionFamily', table: 'revokedRefreshSessionFamily', classification: 'security-ephemeral' },
   { model: 'RevokedToken', table: 'revokedToken', classification: 'security-ephemeral' },
   { model: 'EmailVerificationToken', table: 'emailVerificationToken', classification: 'security-ephemeral' },
 ] as const;
@@ -100,6 +101,9 @@ export const EPHEMERAL_TABLES = getTablesByClassification('security-ephemeral');
  * contract test recomputes this value so policy edits cannot retain a stale ID.
  */
 export const COMPLETE_TABLE_POLICY_HASH =
+  '2397989d349da19dff9f2385acf0135b073d9494a957bca490cf998f6fdaf5e8';
+/** Policy hash emitted before refresh-session-family tombstones were classified. */
+export const PRE_TOMBSTONE_COMPLETE_TABLE_POLICY_HASH =
   '4bb054ec3a6201df824f6fc717dbbab5939983a63028218e06a20fc0bca8cffe';
 /** Policy hash emitted by 1.1.0 before the ownership-repair queue existed. */
 export const PREVIOUS_COMPLETE_TABLE_POLICY_HASH =

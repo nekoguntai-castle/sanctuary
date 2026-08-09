@@ -117,7 +117,10 @@ vi.mock('../../../../src/services/refreshTokenService', () => ({
   revokeSession: vi.fn(),
   createRefreshToken: vi.fn().mockResolvedValue('mock-refresh-token'),
   verifyRefreshTokenExists: vi.fn().mockResolvedValue(true),
-  rotateRefreshToken: vi.fn().mockResolvedValue('new-refresh-token'),
+  rotateRefreshToken: vi.fn().mockResolvedValue({
+    status: 'rotated',
+    refreshToken: 'new-refresh-token',
+  }),
   revokeRefreshToken: vi.fn().mockResolvedValue(undefined),
   revokeAllUserRefreshTokens: vi.fn().mockResolvedValue(5),
 }));

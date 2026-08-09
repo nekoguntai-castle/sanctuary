@@ -102,15 +102,15 @@ main() {
   #   runner-lock: acquired <name> after <n>s
   #   runner-lock: released <name> held <n>s status=<n>
   local wait_start wait_end waited
-  wait_start="$(date +%s)"
+  wait_start="$(date +%s%N)"
   if ! flock -w "$timeout" 9; then
-    wait_end="$(date +%s)"
-    echo "runner-lock: timeout ${lock_name} after $((wait_end - wait_start))s" >&2
+    wait_end="$(date +%s%N)"
+    echo "runner-lock: timeout ${lock_name} after $(((wait_end - wait_start) / 1000000000))s" >&2
     echo "with-runner-lock: timed out after ${timeout}s waiting for runner lock: ${lock_name}" >&2
     return "$LOCK_CONFLICT_EXIT_CODE"
   fi
-  wait_end="$(date +%s)"
-  waited=$((wait_end - wait_start))
+  wait_end="$(date +%s%N)"
+  waited=$(((wait_end - wait_start) / 1000000000))
   echo "runner-lock: acquired ${lock_name} after ${waited}s"
   if [ "$waited" -ge 1 ]; then
     echo "::notice title=Runner lock contention::${lock_name} was held by another lane; waited ${waited}s"
@@ -119,7 +119,7 @@ main() {
   local status=0
   "$@" || status="$?"
 
-  echo "runner-lock: released ${lock_name} held $(( $(date +%s) - wait_end ))s status=${status}"
+  echo "runner-lock: released ${lock_name} held $((( $(date +%s%N) - wait_end) / 1000000000))s status=${status}"
   return "$status"
 }
 

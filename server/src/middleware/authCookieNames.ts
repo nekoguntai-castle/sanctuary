@@ -20,7 +20,7 @@ export const SANCTUARY_CSRF_HEADER_NAME = 'x-csrf-token';
 export const SANCTUARY_ACCESS_EXPIRES_AT_HEADER = 'X-Access-Expires-At';
 
 /**
- * Path scope for the refresh cookie. Intentionally narrow per ADR 0002 so
- * the refresh token is only sent on the single endpoint that consumes it.
+ * Path scope for the refresh cookie. Both refresh and logout consume this
+ * HttpOnly credential, so browsers must send it to both auth endpoints.
  */
-export const SANCTUARY_REFRESH_COOKIE_PATH = '/api/v1/auth/refresh';
+export const SANCTUARY_REFRESH_COOKIE_PATH = '/api/v1/auth';

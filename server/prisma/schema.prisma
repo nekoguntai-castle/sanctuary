@@ -974,6 +974,9 @@ model RefreshToken {
   userAgent  String? // Browser/app user agent
   ipAddress  String? // IP address at token creation
   expiresAt  DateTime
+  accessTokenJti       String
+  accessTokenExpiresAt DateTime
+  sessionFamilyId      String
   createdAt  DateTime @default(now())
   lastUsedAt DateTime @default(now())
 
@@ -981,7 +984,22 @@ model RefreshToken {
 
   @@index([userId])
   @@index([expiresAt]) // For cleanup of expired tokens
+  @@index([sessionFamilyId])
   @@map("refresh_tokens")
+}
+
+// Durable tombstones serialize refresh rotation with logout for one session
+// family. They expire only after the last credential in that family could.
+model RevokedRefreshSessionFamily {
+  sessionFamilyId String   @id
+  userId          String
+  reason          String
+  revokedAt       DateTime @default(now())
+  expiresAt       DateTime
+
+  @@index([expiresAt])
+  @@index([userId])
+  @@map("revoked_refresh_session_families")
 }
 
 // Revoked access tokens (for logout before expiry)

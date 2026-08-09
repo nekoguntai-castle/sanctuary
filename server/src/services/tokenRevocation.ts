@@ -33,11 +33,6 @@ const log = createLogger('TOKEN_REVOCATION:SVC');
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 
 /**
- * Cache TTL for non-revoked tokens (30 seconds - short for security)
- */
-const CACHE_TTL_SECONDS = 30;
-
-/**
  * Cache entry wrapper to distinguish "not revoked" from "cache miss"
  */
 interface CachedRevocationStatus {
@@ -50,6 +45,23 @@ interface CachedRevocationStatus {
  */
 function getRevocationCache(): ICacheService {
   return getNamespacedCache('token-revocation');
+}
+
+function secondsUntil(expiresAt: Date): number {
+  return Math.max(1, Math.ceil((expiresAt.getTime() - Date.now()) / 1000));
+}
+
+/** Publish a durable revocation after its database transaction commits. */
+export async function publishRevokedToken(jti: string, expiresAt: Date): Promise<void> {
+  try {
+    await getRevocationCache().set<CachedRevocationStatus>(
+      jti,
+      { revoked: true },
+      secondsUntil(expiresAt)
+    );
+  } catch (error) {
+    log.debug('Failed to cache durable revocation', { error: getErrorMessage(error) });
+  }
 }
 
 /**
@@ -72,11 +84,8 @@ export async function revokeToken(
   }
 
   try {
-    // Clear from distributed cache immediately (mark as revoked)
-    const cache = getRevocationCache();
-    await cache.set<CachedRevocationStatus>(jti, { revoked: true }, CACHE_TTL_SECONDS);
-
     await sessionRepository.upsertRevokedToken(jti, expiresAt, userId, reason);
+    await publishRevokedToken(jti, expiresAt);
     log.debug('Token revoked', { jti: jti.substring(0, 8) + '...', reason });
   } catch (error) {
     log.error('Failed to revoke token', { error: getErrorMessage(error), jti: jti.substring(0, 8) + '...' });
@@ -101,8 +110,8 @@ export async function isTokenRevoked(jti: string): Promise<boolean> {
   // Check distributed cache first
   try {
     const cached = await cache.get<CachedRevocationStatus>(jti);
-    if (cached !== null && typeof cached === 'object' && 'revoked' in cached) {
-      return cached.revoked;
+    if (cached !== null && typeof cached === 'object' && cached.revoked === true) {
+      return true;
     }
   } catch (error) {
     log.debug('Revocation cache lookup failed, continuing to DB', { error: getErrorMessage(error) });
@@ -113,11 +122,8 @@ export async function isTokenRevoked(jti: string): Promise<boolean> {
 
     const isRevoked = revoked !== null;
 
-    // Cache the result in distributed cache
-    try {
-      await cache.set<CachedRevocationStatus>(jti, { revoked: isRevoked }, CACHE_TTL_SECONDS);
-    } catch (error) {
-      log.debug('Failed to cache revocation status', { error: getErrorMessage(error) });
+    if (isRevoked) {
+      await publishRevokedToken(jti, revoked.expiresAt);
     }
 
     return isRevoked;

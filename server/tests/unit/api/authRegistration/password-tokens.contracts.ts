@@ -255,9 +255,14 @@ export function registerAuthPasswordTokenTests(): void {
     });
 
     it('should reject revoked refresh token', async () => {
-      const { verifyRefreshTokenExists } = await import('../../../../src/services/refreshTokenService');
-      const mockVerifyExists = vi.mocked(verifyRefreshTokenExists);
-      mockVerifyExists.mockResolvedValueOnce(false);
+      const { rotateRefreshToken } = await import('../../../../src/services/refreshTokenService');
+      vi.mocked(rotateRefreshToken).mockResolvedValueOnce({ status: 'terminal' });
+      mockPrismaClient.user.findUnique.mockResolvedValueOnce({
+        id: 'test-user-id',
+        username: 'testuser',
+        isAdmin: false,
+        sessionVersion: 0,
+      });
 
       const response = await request(app)
         .post('/api/v1/auth/refresh')
@@ -267,9 +272,15 @@ export function registerAuthPasswordTokenTests(): void {
       expect(response.body.message).toContain('Refresh token has been revoked');
     });
 
-    it('should return 500 without clearing cookies when refresh-token existence storage fails', async () => {
-      const { verifyRefreshTokenExists } = await import('../../../../src/services/refreshTokenService');
-      vi.mocked(verifyRefreshTokenExists).mockRejectedValueOnce(new Error('last-used write failed'));
+    it('should return 500 without clearing cookies when rotation storage fails', async () => {
+      const { rotateRefreshToken } = await import('../../../../src/services/refreshTokenService');
+      vi.mocked(rotateRefreshToken).mockRejectedValueOnce(new Error('rotation write failed'));
+      mockPrismaClient.user.findUnique.mockResolvedValueOnce({
+        id: 'test-user-id',
+        username: 'testuser',
+        isAdmin: false,
+        sessionVersion: 0,
+      });
       const csrfToken = await createCsrfTokenForAccessCookie('live-access-cookie');
 
       const response = await request(app)
@@ -364,7 +375,7 @@ export function registerAuthPasswordTokenTests(): void {
       });
 
       const { rotateRefreshToken } = await import('../../../../src/services/refreshTokenService');
-      vi.mocked(rotateRefreshToken).mockResolvedValueOnce(null);
+      vi.mocked(rotateRefreshToken).mockResolvedValueOnce({ status: 'superseded' });
       const csrfToken = await createCsrfTokenForAccessCookie('live-access-cookie');
 
       const response = await request(app)
@@ -490,32 +501,32 @@ export function registerAuthPasswordTokenTests(): void {
       expect(response.body.message).toContain('Logged out successfully');
     });
 
-    it('should logout without revoking access token when no Bearer header', async () => {
+    it('should reject logout when no access credential can be extracted', async () => {
       const response = await request(app)
         .post('/api/v1/auth/logout')
         .set('Authorization', 'Basic some-auth') // Not a Bearer token
         .send({});
 
-      expect(response.status).toBe(200);
-      expect(response.body.success).toBe(true);
+      expect(response.status).toBe(401);
     });
 
-    it('should logout when decoded token is missing jti', async () => {
-      const { decodeToken } = await import('../../../../src/utils/jwt');
-      vi.mocked(decodeToken).mockReturnValueOnce({ userId: 'test-user-id' }); // Missing jti and exp
+    it('should fail closed when the access token is missing revocation lineage', async () => {
+      const { getTokenLineage } = await import('../../../../src/utils/jwt');
+      vi.mocked(getTokenLineage).mockImplementationOnce(() => {
+        throw new Error('Generated token is missing revocation lineage');
+      });
 
       const response = await request(app)
         .post('/api/v1/auth/logout')
         .set('Authorization', 'Bearer valid-token')
         .send({});
 
-      expect(response.status).toBe(200);
-      expect(response.body.success).toBe(true);
+      expect(response.status).toBe(500);
     });
 
     it('should logout and revoke refresh token if provided', async () => {
-      const { revokeRefreshToken } = await import('../../../../src/services/refreshTokenService');
-      const mockRevokeRefreshToken = vi.mocked(revokeRefreshToken);
+      const { revokeLogoutCredentials } = await import('../../../../src/services/refreshTokenService');
+      const mockRevokeRefreshToken = vi.mocked(revokeLogoutCredentials);
 
       const response = await request(app)
         .post('/api/v1/auth/logout')
@@ -524,7 +535,31 @@ export function registerAuthPasswordTokenTests(): void {
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-      expect(mockRevokeRefreshToken).toHaveBeenCalledWith('some-refresh-token');
+      expect(mockRevokeRefreshToken).toHaveBeenCalledWith(expect.objectContaining({
+        refreshToken: 'some-refresh-token',
+      }));
+    });
+
+    it('does not revoke another user session from a mismatched refresh token', async () => {
+      const { verifyRefreshToken } = await import('../../../../src/utils/jwt');
+      const { revokeLogoutCredentials } = await import('../../../../src/services/refreshTokenService');
+      vi.mocked(verifyRefreshToken).mockResolvedValueOnce({
+        userId: 'another-user',
+        username: 'mallory',
+        sessionVersion: 0,
+        sessionFamilyId: 'another-family',
+      });
+
+      const response = await request(app)
+        .post('/api/v1/auth/logout')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ refreshToken: 'another-users-refresh-token' });
+
+      expect(response.status).toBe(401);
+      expect(revokeLogoutCredentials).toHaveBeenCalledWith(expect.objectContaining({
+        refreshToken: undefined,
+        refreshSessionFamilyId: undefined,
+      }));
     });
 
     it('should audit logout with unknown username fallback', async () => {
@@ -546,9 +581,11 @@ export function registerAuthPasswordTokenTests(): void {
     });
 
     it('should handle errors gracefully', async () => {
-      const { revokeToken } = await import('../../../../src/services/tokenRevocation');
-      const mockRevokeToken = vi.mocked(revokeToken);
+      const { revokeLogoutCredentials } = await import('../../../../src/services/refreshTokenService');
+      const { auditService } = await import('../../../../src/services/auditService');
+      const mockRevokeToken = vi.mocked(revokeLogoutCredentials);
       mockRevokeToken.mockRejectedValueOnce(new Error('Revocation error'));
+      vi.mocked(auditService.log).mockClear();
 
       const response = await request(app)
         .post('/api/v1/auth/logout')
@@ -557,6 +594,8 @@ export function registerAuthPasswordTokenTests(): void {
 
       expect(response.status).toBe(500);
       expect(response.body.error).toBe('Internal');
+      expect(response.headers['set-cookie']).toBeUndefined();
+      expect(auditService.log).not.toHaveBeenCalled();
     });
   });
 

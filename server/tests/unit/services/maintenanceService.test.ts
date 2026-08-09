@@ -23,6 +23,9 @@ const {
     refreshToken: {
       deleteMany: vi.fn(),
     },
+    revokedRefreshSessionFamily: {
+      deleteMany: vi.fn(),
+    },
     pushDevice: {
       deleteMany: vi.fn(),
     },
@@ -30,6 +33,7 @@ const {
       count: vi.fn(),
     },
     $executeRaw: vi.fn(),
+    $transaction: vi.fn(),
   },
   mockAuditService: {
     cleanup: vi.fn(),
@@ -138,6 +142,8 @@ describe("maintenanceService", () => {
     mockDb.feeEstimate.deleteMany.mockResolvedValue({ count: 0 });
     mockDb.draftTransaction.deleteMany.mockResolvedValue({ count: 0 });
     mockDb.refreshToken.deleteMany.mockResolvedValue({ count: 0 });
+    mockDb.revokedRefreshSessionFamily.deleteMany.mockResolvedValue({ count: 0 });
+    mockDb.$transaction.mockImplementation(async callback => callback(mockDb));
     mockDb.pushDevice.deleteMany.mockResolvedValue({ count: 0 });
     mockDb.auditLog.count.mockResolvedValue(0);
     mockDb.priceData.count.mockResolvedValue(0);

@@ -23,7 +23,7 @@ import { PrismaClient } from '../../../src/generated/prisma/client';
 import { Express } from 'express';
 import { mockElectrumForAuthIntegration, setAuthIntegrationContext } from './authIntegrationTestHarness';
 import { registerAuthTwoFactorContracts } from './auth/twoFactor.contracts';
-import { generateToken } from '../../../src/utils/jwt';
+import { generateToken, getTokenLineage } from '../../../src/utils/jwt';
 import { createRefreshToken } from '../../../src/services/refreshTokenService';
 
 // Increase timeout for integration tests
@@ -202,6 +202,7 @@ describeWithDb('Authentication Integration', () => {
           pendingUser.id,
           { userAgent: 'integration-test', ipAddress: '127.0.0.1' },
           pendingUser.sessionVersion,
+          getTokenLineage(legacyAccessToken),
         );
         const refreshResponse = await request(app)
           .post('/api/v1/auth/refresh')
@@ -431,6 +432,36 @@ describeWithDb('Authentication Integration', () => {
       expect(refreshResponse.body.token).toBeUndefined();
       expect(refreshResponse.body.refreshToken).toBeUndefined();
     });
+
+    it('revokes only the access token paired with the rotated refresh session', async () => {
+      const testUser = getTestUser();
+      await createTestUser(prisma, testUser);
+
+      const firstLogin = await request(app).post('/api/v1/auth/login').send({
+        username: testUser.username,
+        password: testUser.password,
+      }).expect(200);
+      const secondLogin = await request(app).post('/api/v1/auth/login').send({
+        username: testUser.username,
+        password: testUser.password,
+      }).expect(200);
+      const first = extractAuthTokens(firstLogin);
+      const second = extractAuthTokens(secondLogin);
+
+      await request(app)
+        .post('/api/v1/auth/refresh')
+        .send({ refreshToken: first.refreshToken })
+        .expect(200);
+
+      await request(app)
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${first.token}`)
+        .expect(401);
+      await request(app)
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${second.token}`)
+        .expect(200);
+    });
   });
 
   describe('Logout', () => {
@@ -622,11 +653,22 @@ describeWithDb('Authentication Integration', () => {
         })
         .expect(200);
 
-      const { token: token1 } = extractAuthTokens(login1);
+      const { token: token1, refreshToken: refreshToken1 } = extractAuthTokens(login1);
+      const originalSecond = extractAuthTokens(login2);
+      const rotatedSecondResponse = await request(app)
+        .post('/api/v1/auth/refresh')
+        .send({ refreshToken: originalSecond.refreshToken })
+        .expect(200);
+      const rotatedSecond = extractAuthTokens(rotatedSecondResponse);
+      await request(app)
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${originalSecond.token}`)
+        .expect(401);
       // Get sessions from first login
       const sessionsResponse = await request(app)
         .get('/api/v1/auth/sessions')
         .set('Authorization', `Bearer ${token1}`)
+        .set('X-Refresh-Token', refreshToken1)
         .expect(200);
 
       expect(sessionsResponse.body.sessions.length).toBe(2);
@@ -647,6 +689,18 @@ describeWithDb('Authentication Integration', () => {
         .expect(200);
 
       expect(newSessionsResponse.body.sessions.length).toBe(1);
+      await request(app)
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${rotatedSecond.token}`)
+        .expect(401);
+      await request(app)
+        .post('/api/v1/auth/refresh')
+        .send({ refreshToken: rotatedSecond.refreshToken })
+        .expect(401);
+      await request(app)
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${token1}`)
+        .expect(200);
     });
 
     it('should not allow revoking another user session', async () => {

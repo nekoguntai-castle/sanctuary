@@ -1,4 +1,4 @@
-import { beforeEach,describe,expect,it,vi } from 'vitest';
+import { describe,expect,it,vi } from 'vitest';
 
 const makeMockAdapterClass = (type: 'ledger' | 'trezor' | 'bitbox' | 'jade') => {
   return class {
@@ -75,15 +75,16 @@ vi.mock('../../src/services/hardwareWallet/adapters/jade', () => ({
   JadeAdapter: makeMockAdapterClass('jade'),
 }));
 
-import { getConnectedDevices,hardwareWalletService } from '../../src/services/hardwareWallet/runtime';
-
 describe('hardwareWallet runtime', () => {
-  beforeEach(async () => {
-    vi.clearAllMocks();
-    await hardwareWalletService.disconnect();
-  });
-
   it('lazy-loads each adapter type and exposes connected devices helper', async () => {
+    // Other hardware-wallet tests mock this singleton. Import a fresh runtime
+    // here so sharded coverage cannot inherit an adapter registry populated by
+    // a previous test file and skip the lazy-loader callbacks.
+    vi.resetModules();
+    const { getConnectedDevices,hardwareWalletService } = await import(
+      '../../src/services/hardwareWallet/runtime'
+    );
+
     await expect(hardwareWalletService.connect('ledger')).resolves.toMatchObject({ type: 'ledger' });
     await expect(hardwareWalletService.connect('trezor')).resolves.toMatchObject({ type: 'trezor' });
     await expect(hardwareWalletService.connect('bitbox')).resolves.toMatchObject({ type: 'bitbox' });
@@ -92,5 +93,6 @@ describe('hardwareWallet runtime', () => {
     const devices = await getConnectedDevices();
     const deviceTypes = devices.map((device) => device.type).sort();
     expect(deviceTypes).toEqual(['bitbox', 'jade', 'ledger', 'trezor']);
+    await hardwareWalletService.disconnect();
   });
 });

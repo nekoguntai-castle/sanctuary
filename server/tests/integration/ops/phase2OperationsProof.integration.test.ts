@@ -646,6 +646,9 @@ describeIfDb('Phase 2 operations proof', () => {
         userId: user.id,
         tokenHash: createUniqueId('stale-refresh-hash'),
         expiresAt: new Date(Date.now() + 86_400_000),
+        accessTokenJti: createUniqueId('stale-access-jti'),
+        accessTokenExpiresAt: new Date(Date.now() + 3_600_000),
+        sessionFamilyId: createUniqueId('stale-session-family'),
       },
     });
     await prisma.emailVerificationToken.create({

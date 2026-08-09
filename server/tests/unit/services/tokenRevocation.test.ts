@@ -55,6 +55,7 @@ vi.mock('../../../src/utils/logger', () => ({
 }));
 
 import {
+  publishRevokedToken,
   revokeToken,
   isTokenRevoked,
   getRevokedTokenCount,
@@ -118,6 +119,9 @@ describe('Token Revocation Service', () => {
         { revoked: true },
         expect.any(Number)
       );
+      expect(mockCache.set.mock.invocationCallOrder[0]).toBeGreaterThan(
+        mockPrisma.revokedToken.upsert.mock.invocationCallOrder[0]
+      );
     });
 
     it('should not revoke token with empty jti', async () => {
@@ -130,6 +134,19 @@ describe('Token Revocation Service', () => {
       mockPrisma.revokedToken.upsert.mockRejectedValue(new Error('DB error'));
 
       await expect(revokeToken(testJti, futureDate)).rejects.toThrow('DB error');
+    });
+  });
+
+  describe('publishRevokedToken', () => {
+    it('keeps the durable revocation successful when best-effort cache publication fails', async () => {
+      mockCache.set.mockRejectedValueOnce(new Error('cache unavailable'));
+
+      await expect(publishRevokedToken(testJti, futureDate)).resolves.toBeUndefined();
+
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Failed to cache durable revocation',
+        { error: 'cache unavailable' }
+      );
     });
   });
 
@@ -152,14 +169,14 @@ describe('Token Revocation Service', () => {
 
     it('should check database when cache misses', async () => {
       mockCache.get.mockResolvedValueOnce(null);
-      mockPrisma.revokedToken.findUnique.mockResolvedValue({ jti: testJti });
+      mockPrisma.revokedToken.findUnique.mockResolvedValue({ jti: testJti, expiresAt: futureDate });
 
       const result = await isTokenRevoked(testJti);
 
       expect(result).toBe(true);
       expect(mockPrisma.revokedToken.findUnique).toHaveBeenCalledWith({
         where: { jti: testJti },
-        select: { jti: true },
+        select: { jti: true, expiresAt: true },
       });
     });
 
@@ -172,22 +189,28 @@ describe('Token Revocation Service', () => {
       expect(result).toBe(false);
     });
 
-    it('should cache database result', async () => {
+    it('should not cache a negative database result', async () => {
       mockCache.get.mockResolvedValueOnce(null);
       mockPrisma.revokedToken.findUnique.mockResolvedValue(null);
 
       await isTokenRevoked(testJti);
 
-      expect(mockCache.set).toHaveBeenCalledWith(
-        testJti,
-        { revoked: false },
-        expect.any(Number)
-      );
+      expect(mockCache.set).not.toHaveBeenCalled();
+    });
+
+    it('does not trust a stale cached negative result', async () => {
+      mockCache.get.mockResolvedValueOnce({ revoked: false });
+      mockPrisma.revokedToken.findUnique.mockResolvedValue({
+        jti: testJti,
+        expiresAt: futureDate,
+      });
+
+      await expect(isTokenRevoked(testJti)).resolves.toBe(true);
+      expect(mockPrisma.revokedToken.findUnique).toHaveBeenCalled();
     });
 
     it('continues through database lookup when revocation cache read or write fails', async () => {
       mockCache.get.mockRejectedValueOnce(new Error('cache read failed'));
-      mockCache.set.mockRejectedValueOnce(new Error('cache write failed'));
       mockPrisma.revokedToken.findUnique.mockResolvedValueOnce(null);
 
       const result = await isTokenRevoked(testJti);
@@ -197,10 +220,7 @@ describe('Token Revocation Service', () => {
         'Revocation cache lookup failed, continuing to DB',
         { error: 'cache read failed' }
       );
-      expect(mockLogger.debug).toHaveBeenCalledWith(
-        'Failed to cache revocation status',
-        { error: 'cache write failed' }
-      );
+      expect(mockCache.set).not.toHaveBeenCalled();
     });
 
     it('should fail secure on database error', async () => {

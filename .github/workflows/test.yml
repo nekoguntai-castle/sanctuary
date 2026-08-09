@@ -646,10 +646,13 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-gateway-node-modules-node-${{ hashFiles('.nvmrc') }}-
 
       - name: Install dependencies
-        if: steps.cache-quick-gateway-node-modules.outputs.cache-hit != 'true'
-        run: >
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-dependencies.log"
-          npm ci --strict-allow-scripts
+        run: |
+          if [ "${{ steps.cache-quick-gateway-node-modules.outputs.cache-hit }}" = 'true' ] \
+            && [ -x node_modules/.bin/vitest ]; then
+            exit 0
+          fi
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-dependencies.log" \
+            npm ci --strict-allow-scripts
 
       - name: Run related gateway tests
         env:

@@ -54,10 +54,16 @@ export async function deleteExpiredDrafts(): Promise<number> {
  * Delete expired refresh tokens
  */
 export async function deleteExpiredRefreshTokens(): Promise<number> {
-  const result = await prisma.refreshToken.deleteMany({
-    where: { expiresAt: { lt: new Date() } },
+  const now = new Date();
+  return prisma.$transaction(async tx => {
+    const result = await tx.refreshToken.deleteMany({
+      where: { expiresAt: { lt: now } },
+    });
+    await tx.revokedRefreshSessionFamily.deleteMany({
+      where: { expiresAt: { lt: now } },
+    });
+    return result.count;
   });
-  return result.count;
 }
 
 // ============================================================================

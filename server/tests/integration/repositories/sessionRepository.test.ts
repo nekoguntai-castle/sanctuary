@@ -33,6 +33,9 @@ describeIfDatabase('SessionRepository Integration Tests', () => {
             userId: user.id,
             tokenHash,
             expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+            accessTokenJti: crypto.randomUUID(),
+            accessTokenExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
+            sessionFamilyId: crypto.randomUUID(),
             userAgent: 'Test Browser',
             ipAddress: '127.0.0.1',
             deviceName: 'Test Device',
@@ -73,6 +76,9 @@ describeIfDatabase('SessionRepository Integration Tests', () => {
             userId: user.id,
             tokenHash,
             expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+            accessTokenJti: crypto.randomUUID(),
+            accessTokenExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
+            sessionFamilyId: crypto.randomUUID(),
           },
         });
 
@@ -132,6 +138,9 @@ describeIfDatabase('SessionRepository Integration Tests', () => {
             userId: user.id,
             tokenHash: hashToken(crypto.randomBytes(32).toString('hex')),
             expiresAt: new Date(Date.now() - 1000), // Expired
+            accessTokenJti: crypto.randomUUID(),
+            accessTokenExpiresAt: new Date(Date.now() - 1000),
+            sessionFamilyId: crypto.randomUUID(),
           },
         });
 
@@ -163,6 +172,9 @@ describeIfDatabase('SessionRepository Integration Tests', () => {
             userId: user.id,
             tokenHash: hashToken(crypto.randomBytes(32).toString('hex')),
             expiresAt: new Date(Date.now() - 1000),
+            accessTokenJti: crypto.randomUUID(),
+            accessTokenExpiresAt: new Date(Date.now() - 1000),
+            sessionFamilyId: crypto.randomUUID(),
           },
         });
 
@@ -190,6 +202,9 @@ describeIfDatabase('SessionRepository Integration Tests', () => {
             userId: user.id,
             tokenHash,
             expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+            accessTokenJti: crypto.randomUUID(),
+            accessTokenExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
+            sessionFamilyId: crypto.randomUUID(),
           },
         });
 
@@ -244,6 +259,9 @@ describeIfDatabase('SessionRepository Integration Tests', () => {
               userId: user.id,
               tokenHash: hashToken(crypto.randomBytes(32).toString('hex')),
               expiresAt: new Date(Date.now() - 1000),
+              accessTokenJti: crypto.randomUUID(),
+              accessTokenExpiresAt: new Date(Date.now() - 1000),
+              sessionFamilyId: crypto.randomUUID(),
             },
           });
         }
@@ -278,6 +296,9 @@ describeIfDatabase('SessionRepository Integration Tests', () => {
             userId: user.id,
             tokenHash,
             expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+            accessTokenJti: crypto.randomUUID(),
+            accessTokenExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
+            sessionFamilyId: crypto.randomUUID(),
             lastUsedAt: originalLastUsed,
           },
         });

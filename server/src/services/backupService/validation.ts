@@ -12,6 +12,7 @@ import {
   COMPLETE_TABLE_POLICY_VERSION,
   getRequiredRestoreTables,
   LEGACY_BACKUP_FORMAT_VERSION,
+  PRE_TOMBSTONE_COMPLETE_TABLE_POLICY_HASH,
   PREVIOUS_COMPLETE_TABLE_POLICY_HASH,
   TABLE_ORDER,
 } from './constants';
@@ -186,6 +187,7 @@ const validateTablePolicy = (meta: BackupMeta, issues: string[]): void => {
 
   const { version, hash } = meta.tablePolicy;
   const recognizedHash = hash === COMPLETE_TABLE_POLICY_HASH
+    || hash === PRE_TOMBSTONE_COMPLETE_TABLE_POLICY_HASH
     || hash === PREVIOUS_COMPLETE_TABLE_POLICY_HASH;
   if (version !== COMPLETE_TABLE_POLICY_VERSION || !recognizedHash) {
     issues.push(`Unknown table policy: ${version}/${hash}`);

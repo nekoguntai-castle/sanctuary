@@ -12,12 +12,35 @@
  */
 
 import { Request, Response } from 'express';
+import type { ClientRequest } from 'http';
 import { createProxyMiddleware, fixRequestBody } from 'http-proxy-middleware';
 import { config } from '../../config';
 import { AuthenticatedRequest } from '../../middleware/auth';
 import { createLogger } from '../../utils/logger';
 
 const log = createLogger('PROXY');
+const BODY_AUTH_ROUTES = new Set(['/api/v1/auth/refresh', '/api/v1/auth/logout']);
+const BROWSER_AUTH_COOKIES = new Set([
+  'sanctuary_access',
+  'sanctuary_refresh',
+  'sanctuary_csrf',
+]);
+
+function stripBrowserAuthCookies(proxyReq: ClientRequest, req: Request): void {
+  if (!BODY_AUTH_ROUTES.has(req.path)) {
+    return;
+  }
+  const forwarded = req.headers.cookie
+    ?.split(';')
+    .map(cookie => cookie.trim())
+    .filter(cookie => !BROWSER_AUTH_COOKIES.has(cookie.split('=', 1)[0]!))
+    .join('; ');
+  if (forwarded) {
+    proxyReq.setHeader('cookie', forwarded);
+    return;
+  }
+  proxyReq.removeHeader('cookie');
+}
 
 // Create proxy middleware
 export const proxy = createProxyMiddleware({
@@ -29,6 +52,7 @@ export const proxy = createProxyMiddleware({
       // the raw stream is consumed. This re-attaches the parsed body
       // to the proxy request so it can be forwarded to the backend.
       fixRequestBody(proxyReq, req as Request);
+      stripBrowserAuthCookies(proxyReq, req as Request);
 
       const authReq = req as AuthenticatedRequest;
 

@@ -47,8 +47,8 @@ export function registerAuthCookieExpiryTests(): void {
       // sanctuary_refresh: HttpOnly, SameSite=Strict, scoped path
       expect(cookies.sanctuary_refresh.attrs.HttpOnly).toBe(true);
       expect(cookies.sanctuary_refresh.attrs.SameSite).toBe('Strict');
-      expect(cookies.sanctuary_refresh.attrs.Path).toBe('/api/v1/auth/refresh');
-      expect(cookies.sanctuary_refresh.attrs['Max-Age']).toBeDefined();
+      expect(cookies.sanctuary_refresh.attrs.Path).toBe('/api/v1/auth');
+      expect(cookies.sanctuary_refresh.attrs.Expires).toBeDefined();
 
       // sanctuary_csrf: NOT HttpOnly (frontend needs to read it),
       // SameSite=Strict, path=/
@@ -84,7 +84,7 @@ export function registerAuthCookieExpiryTests(): void {
       expect(cookies.sanctuary_csrf.value).toBe('');
       // Refresh cookie must be cleared on its scoped path or the browser
       // will not expire the right cookie.
-      expect(cookies.sanctuary_refresh.attrs.Path).toBe('/api/v1/auth/refresh');
+      expect(cookies.sanctuary_refresh.attrs.Path).toBe('/api/v1/auth');
     }
 
     function assertNoAuthCookieClears(setCookieHeader: unknown): void {
@@ -259,6 +259,7 @@ export function registerAuthCookieExpiryTests(): void {
         expect.any(Object),
         0,
         'test-user-id',
+        expect.objectContaining({ jti: 'token-jti' }),
       );
       expect(rotateMock).not.toHaveBeenCalledWith(
         'body-refresh-token',
@@ -291,9 +292,15 @@ export function registerAuthCookieExpiryTests(): void {
       assertAuthCookiesCleared(response.headers['set-cookie']);
     });
 
-    it('refresh does not clear browser auth cookies when the refresh token row is missing', async () => {
-      const { verifyRefreshTokenExists } = await import('../../../../src/services/refreshTokenService');
-      vi.mocked(verifyRefreshTokenExists).mockResolvedValueOnce(false);
+    it('a superseded refresh loser does not clear cookies installed by its winner', async () => {
+      const { rotateRefreshToken } = await import('../../../../src/services/refreshTokenService');
+      vi.mocked(rotateRefreshToken).mockResolvedValueOnce({ status: 'superseded' });
+      mockPrismaClient.user.findUnique.mockResolvedValueOnce({
+        id: 'test-user-id',
+        username: 'testuser',
+        isAdmin: false,
+        sessionVersion: 0,
+      });
 
       const response = await request(app)
         .post('/api/v1/auth/refresh')
@@ -303,6 +310,26 @@ export function registerAuthCookieExpiryTests(): void {
       expect(response.status).toBe(401);
       expect(response.body.message).toContain('Refresh token has been revoked');
       assertNoAuthCookieClears(response.headers['set-cookie']);
+    });
+
+    it('a terminal refresh loser clears its stale HttpOnly cookie', async () => {
+      const { rotateRefreshToken } = await import('../../../../src/services/refreshTokenService');
+      vi.mocked(rotateRefreshToken).mockResolvedValueOnce({ status: 'terminal' });
+      mockPrismaClient.user.findUnique.mockResolvedValueOnce({
+        id: 'test-user-id',
+        username: 'testuser',
+        isAdmin: false,
+        sessionVersion: 0,
+      });
+
+      const response = await request(app)
+        .post('/api/v1/auth/refresh')
+        .set('Cookie', ['sanctuary_refresh=revoked-refresh-token'])
+        .send({});
+
+      expect(response.status).toBe(401);
+      expect(response.body.message).toContain('Refresh token has been revoked');
+      assertAuthCookiesCleared(response.headers['set-cookie']);
     });
 
     it('refresh clears browser auth cookies when the user no longer exists', async () => {
@@ -351,8 +378,8 @@ export function registerAuthCookieExpiryTests(): void {
     });
 
     it('logout revokes refresh token supplied via sanctuary_refresh cookie', async () => {
-      const { revokeRefreshToken } = await import('../../../../src/services/refreshTokenService');
-      const mockRevoke = vi.mocked(revokeRefreshToken);
+      const { revokeLogoutCredentials } = await import('../../../../src/services/refreshTokenService');
+      const mockRevoke = vi.mocked(revokeLogoutCredentials);
 
       const response = await request(app)
         .post('/api/v1/auth/logout')
@@ -361,7 +388,61 @@ export function registerAuthCookieExpiryTests(): void {
         .send({});
 
       expect(response.status).toBe(200);
-      expect(mockRevoke).toHaveBeenCalledWith('cookie-refresh-to-revoke');
+      expect(mockRevoke).toHaveBeenCalledWith(expect.objectContaining({
+        refreshToken: 'cookie-refresh-to-revoke',
+        refreshSessionFamilyId: 'session-family-123',
+        refreshTokenExpiresAt: expect.any(Date),
+      }));
+      assertAuthCookiesCleared(response.headers['set-cookie']);
+    });
+
+    it('a browser cookie jar sends the issued HttpOnly refresh cookie to logout', async () => {
+      const correctPassword = 'CorrectPassword123!';
+      const hashedPassword = await hashPassword(correctPassword);
+      mockPrismaClient.user.findUnique.mockResolvedValue({
+        id: 'user-id',
+        username: 'testuser',
+        email: 'test@example.com',
+        emailVerified: true,
+        password: hashedPassword,
+        isAdmin: false,
+        twoFactorEnabled: false,
+        preferences: { darkMode: true },
+      });
+      mockPrismaClient.systemSetting.findUnique.mockResolvedValue(null);
+      const browser = request.agent(app);
+      const login = await browser
+        .post('/api/v1/auth/login')
+        .send({ username: 'testuser', password: correctPassword });
+      const csrfToken = assertAuthCookiesIssued(login.headers['set-cookie'])
+        .sanctuary_csrf.value;
+      const { revokeLogoutCredentials } = await import('../../../../src/services/refreshTokenService');
+      const mockRevoke = vi.mocked(revokeLogoutCredentials);
+      mockRevoke.mockClear();
+
+      const logout = await browser
+        .post('/api/v1/auth/logout')
+        .set('X-CSRF-Token', csrfToken)
+        .send({});
+
+      expect(logout.status).toBe(200);
+      expect(mockRevoke).toHaveBeenCalledWith(expect.objectContaining({
+        refreshToken: 'mock-refresh-token',
+      }));
+    });
+
+    it('logout does not silently succeed when no row belongs to a newly tombstoned family', async () => {
+      const { revokeLogoutCredentials } = await import('../../../../src/services/refreshTokenService');
+      vi.mocked(revokeLogoutCredentials).mockResolvedValueOnce('not-found');
+
+      const response = await request(app)
+        .post('/api/v1/auth/logout')
+        .set('Authorization', 'Bearer valid-token')
+        .set('Cookie', ['sanctuary_refresh=missing-refresh-session'])
+        .send({});
+
+      expect(response.status).toBe(401);
+      expect(response.body.message).toContain('Refresh session not found');
       assertAuthCookiesCleared(response.headers['set-cookie']);
     });
 
@@ -369,8 +450,8 @@ export function registerAuthCookieExpiryTests(): void {
       // Cookie-only browser logout: no Authorization header, just the two
       // HttpOnly cookies. The handler must still revoke the access token's
       // JTI (read from the cookie) and clear the response cookies.
-      const { revokeToken } = await import('../../../../src/services/tokenRevocation');
-      const mockRevokeToken = vi.mocked(revokeToken);
+      const { revokeLogoutCredentials } = await import('../../../../src/services/refreshTokenService');
+      const mockRevokeToken = vi.mocked(revokeLogoutCredentials);
       mockRevokeToken.mockClear();
       const csrfToken = await createCsrfTokenForAccessCookie('cookie-access-token');
 
@@ -385,18 +466,19 @@ export function registerAuthCookieExpiryTests(): void {
         .send({});
 
       expect(response.status).toBe(200);
-      // revokeToken was called with the jti+exp from the decoded cookie token.
-      expect(mockRevokeToken).toHaveBeenCalled();
+      expect(mockRevokeToken).toHaveBeenCalledWith(expect.objectContaining({
+        refreshToken: 'cookie-refresh-token',
+      }));
       assertAuthCookiesCleared(response.headers['set-cookie']);
     });
 
     it.each(['Bearer  malformed', 'Bearer'])(
       'logout revokes the access cookie token when the bearer header is malformed: %s',
       async authorization => {
-        const { revokeToken } = await import('../../../../src/services/tokenRevocation');
-        const { decodeToken } = await import('../../../../src/utils/jwt');
-        const mockRevokeToken = vi.mocked(revokeToken);
-        const mockDecodeToken = vi.mocked(decodeToken);
+        const { revokeLogoutCredentials } = await import('../../../../src/services/refreshTokenService');
+        const { getTokenLineage } = await import('../../../../src/utils/jwt');
+        const mockRevokeToken = vi.mocked(revokeLogoutCredentials);
+        const mockDecodeToken = vi.mocked(getTokenLineage);
         const accessToken = 'cookie-access-token';
         const csrfToken = await createCsrfTokenForAccessCookie(accessToken);
         mockRevokeToken.mockClear();
@@ -418,6 +500,23 @@ export function registerAuthCookieExpiryTests(): void {
         assertAuthCookiesCleared(response.headers['set-cookie']);
       }
     );
+
+    it('logout prefers the refresh cookie when cookie and body are both present', async () => {
+      const { revokeLogoutCredentials } = await import('../../../../src/services/refreshTokenService');
+      const revokeMock = vi.mocked(revokeLogoutCredentials);
+      revokeMock.mockClear();
+
+      await request(app)
+        .post('/api/v1/auth/logout')
+        .set('Authorization', 'Bearer valid-token')
+        .set('Cookie', ['sanctuary_refresh=cookie-refresh-token'])
+        .send({ refreshToken: 'body-refresh-token' })
+        .expect(200);
+
+      expect(revokeMock).toHaveBeenCalledWith(expect.objectContaining({
+        refreshToken: 'cookie-refresh-token',
+      }));
+    });
 
     it('logout-all clears the browser cookies on the calling tab', async () => {
       const response = await request(app)

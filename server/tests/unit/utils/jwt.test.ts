@@ -34,6 +34,8 @@ import {
   verify2FAToken,
   verifyRefreshToken,
   decodeToken,
+  getTokenLineage,
+  getRefreshSessionLineage,
   extractTokenFromHeader,
   getTokenExpiration,
   hashToken,
@@ -211,6 +213,46 @@ describe('JWT Utilities', () => {
       const decoded = jwt.decode(token) as any;
 
       expect(decoded.sessionVersion).toBe(5);
+    });
+
+    it('should include a generated session family claim', () => {
+      const token = generateRefreshToken('user-123');
+      const decoded = jwt.decode(token) as any;
+
+      expect(decoded.sessionFamilyId).toEqual(expect.any(String));
+      expect(decoded.sessionFamilyId).not.toBe('');
+    });
+
+    it('should preserve an existing session family during rotation', () => {
+      const token = generateRefreshToken('user-123', 5, 'family-123');
+
+      expect(getRefreshSessionLineage(token)).toEqual(expect.objectContaining({
+        sessionFamilyId: 'family-123',
+      }));
+    });
+
+    it('rejects refresh tokens without a session family lineage', () => {
+      const token = jwt.sign(
+        { userId: 'user-123', type: 'refresh', aud: TokenAudience.REFRESH },
+        mockConfig.jwtSecret,
+        { expiresIn: '1h' }
+      );
+
+      expect(() => getRefreshSessionLineage(token)).toThrow(
+        'Refresh token is missing session-family lineage'
+      );
+    });
+
+    it('rejects refresh lineage with a non-positive expiry', () => {
+      const token = jwt.sign(
+        { userId: 'user-123', sessionFamilyId: 'family-123', exp: 0 },
+        mockConfig.jwtSecret,
+        { noTimestamp: true }
+      );
+
+      expect(() => getRefreshSessionLineage(token)).toThrow(
+        'Refresh token is missing session-family lineage'
+      );
     });
 
     it('should include jti claim', () => {
@@ -480,6 +522,22 @@ describe('JWT Utilities', () => {
       await expect(verifyRefreshToken(token)).rejects.toThrow('Invalid refresh token');
     });
 
+    it('should throw for refresh token missing session family lineage', async () => {
+      const token = jwt.sign(
+        {
+          userId: 'user-123',
+          sessionVersion: 0,
+          jti: 'jti-no-session-family',
+          aud: TokenAudience.REFRESH,
+          type: 'refresh',
+        },
+        mockConfig.jwtSecret,
+        { expiresIn: '7d' }
+      );
+
+      await expect(verifyRefreshToken(token)).rejects.toThrow('Invalid refresh token');
+    });
+
     it('should throw specific message for expired refresh token', async () => {
       const token = jwt.sign(
         {
@@ -535,6 +593,37 @@ describe('JWT Utilities', () => {
       expect(decodeToken('forced-error-token')).toBeNull();
 
       decodeSpy.mockRestore();
+    });
+  });
+
+  describe('getTokenLineage', () => {
+    it('extracts the generated access JTI and expiry', () => {
+      const token = generateToken(mockPayload);
+      const decoded = decodeToken(token);
+
+      expect(getTokenLineage(token)).toEqual({
+        jti: decoded?.jti,
+        expiresAt: new Date((decoded?.exp as number) * 1000),
+      });
+    });
+
+    it('rejects tokens without required revocation claims', () => {
+      const missingJti = jwt.sign({ userId: 'user-123' }, mockConfig.jwtSecret);
+      expect(() => getTokenLineage(missingJti)).toThrow(
+        'Generated token is missing revocation lineage'
+      );
+    });
+
+    it('rejects access lineage with a non-positive expiry', () => {
+      const token = jwt.sign(
+        { userId: 'user-123', jti: 'access-jti', exp: 0 },
+        mockConfig.jwtSecret,
+        { noTimestamp: true }
+      );
+
+      expect(() => getTokenLineage(token)).toThrow(
+        'Generated token is missing revocation lineage'
+      );
     });
   });
 

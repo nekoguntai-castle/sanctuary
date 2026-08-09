@@ -10,8 +10,14 @@ import { asyncHandler } from '../../errors/errorHandler';
 import { userRepository } from '../../repositories/userRepository';
 import { InvalidInputError, UnauthorizedError } from '../../errors/ApiError';
 import { createLogger } from '../../utils/logger';
-import { generateToken, verifyRefreshToken, decodeToken } from '../../utils/jwt';
-import { revokeToken, revokeAllUserTokens } from '../../services/tokenRevocation';
+import {
+  generateToken,
+  verifyRefreshToken,
+  getRefreshSessionLineage,
+  getTokenLineage,
+  type RefreshSessionLineage,
+} from '../../utils/jwt';
+import { revokeAllUserTokens } from '../../services/tokenRevocation';
 import { isEmailVerificationBlockingAuth } from '../../services/accessTokenSessionService';
 import * as refreshTokenService from '../../services/refreshTokenService';
 import { auditService, AuditAction, AuditCategory, getClientInfo } from '../../services/auditService';
@@ -57,11 +63,10 @@ const RefreshBodySchema = z.preprocess(
  * cookie ensures a cleanly-rolled-forward browser uses the rotated cookie
  * it already has rather than a stale sessionStorage copy.
  *
- * Invalid/expired refresh JWTs and user/session terminal failures clear the
- * browser auth cookies before the 401 response is sent. A database miss after
- * a valid JWT does not clear cookies, because it is indistinguishable from the
- * losing response in a same-client concurrent rotation; clearing there can
- * delete a newer valid cookie from the winning response.
+ * Invalid/expired refresh JWTs and terminal session failures clear the browser
+ * cookies. Rotation classifies a missing row while holding the stable session-
+ * family lock: a committed successor is `superseded` and must not clear, while
+ * a family with no successor is terminal and can clear without racing a winner.
  *
  * The gateway's own request validation still requires body.refreshToken on
  * mobile routes, so the precedence change does not affect the mobile path
@@ -96,13 +101,6 @@ router.post('/refresh', validate({ body: RefreshBodySchema }), asyncHandler(asyn
     throw new UnauthorizedError('Invalid or expired refresh token');
   }
 
-  // Verify token exists in database (not already revoked)
-  const tokenExists = await refreshTokenService.verifyRefreshTokenExists(refreshTokenStr);
-  if (!tokenExists) {
-    log.warn('Refresh token not found in database', { userId: decoded.userId });
-    throw new UnauthorizedError('Refresh token has been revoked');
-  }
-
   // Get user from database
   const user = await userRepository.findById(decoded.userId);
 
@@ -127,25 +125,6 @@ router.post('/refresh', validate({ body: RefreshBodySchema }), asyncHandler(asyn
   const { ipAddress, userAgent } = getClientInfo(req);
   const deviceInfo = { userAgent, ipAddress };
 
-  // Always rotate refresh token (security: limits window of stolen tokens)
-  const newRefreshToken = await refreshTokenService.rotateRefreshToken(
-    refreshTokenStr,
-    deviceInfo,
-    user.sessionVersion,
-    decoded.userId,
-  );
-
-  if (!newRefreshToken) {
-    // The token was valid when checked but was consumed before rotation
-    // committed here. That is usually a same-client concurrent refresh loser:
-    // do not clear browser cookies because a winning response may have already
-    // installed a valid rotated token. If the client truly only has this stale
-    // token, the next refresh attempt is still rejected without deleting a
-    // potentially newer cookie set by another in-flight response.
-    log.warn('Refresh token could not be consumed during rotation', { userId: user.id });
-    throw new UnauthorizedError('Refresh token has been revoked');
-  }
-
   const newAccessToken = generateToken({
     userId: user.id,
     username: user.username,
@@ -153,12 +132,35 @@ router.post('/refresh', validate({ body: RefreshBodySchema }), asyncHandler(asyn
     sessionVersion: user.sessionVersion,
   });
 
+  // Always rotate refresh token (security: limits window of stolen tokens)
+  const rotation = await refreshTokenService.rotateRefreshToken(
+    refreshTokenStr,
+    deviceInfo,
+    user.sessionVersion,
+    decoded.userId,
+    getTokenLineage(newAccessToken),
+  );
+
+  if (rotation.status !== 'rotated') {
+    if (rotation.status === 'terminal') {
+      clearAuthCookies(res);
+    }
+    log.warn('Refresh token could not be consumed during rotation', {
+      userId: user.id,
+      status: rotation.status,
+    });
+    throw new UnauthorizedError('Refresh token has been revoked');
+  }
+
   log.debug('Token refreshed with rotation', { userId: user.id });
 
   // ADR 0001 / 0002 — Phase 6: rotated tokens are delivered via cookies only.
   // The X-Access-Expires-At header (set by setAuthCookies) lets the client
   // reschedule its proactive refresh timer without reading the token body.
-  setAuthCookies(req, res, { accessToken: newAccessToken, refreshToken: newRefreshToken });
+  setAuthCookies(req, res, {
+    accessToken: newAccessToken,
+    refreshToken: rotation.refreshToken,
+  });
 
   res.json({
     expiresIn: 3600, // 1 hour in seconds
@@ -172,15 +174,15 @@ router.post('/refresh', validate({ body: RefreshBodySchema }), asyncHandler(asyn
  * ADR 0001 / 0002: Clears all three browser auth cookies on success so a
  * cookie-authenticated browser session is immediately de-authenticated.
  * The access token JTI is revoked regardless of source (header or cookie),
- * and the refresh token is revoked from either req.body.refreshToken or
- * the sanctuary_refresh cookie — whichever the caller supplied.
+ * and the refresh token is revoked from the sanctuary_refresh cookie or
+ * req.body.refreshToken, with the cookie taking precedence when both exist.
  */
 router.post('/logout', authenticate, validate({ body: LogoutSchema }), asyncHandler(async (req, res) => {
   const bodyRefresh = typeof req.body?.refreshToken === 'string' ? req.body.refreshToken : null;
   const cookieRefresh = typeof req.cookies?.[SANCTUARY_REFRESH_COOKIE_NAME] === 'string'
     ? req.cookies[SANCTUARY_REFRESH_COOKIE_NAME]
     : null;
-  const refreshTokenStr = bodyRefresh || cookieRefresh;
+  const refreshTokenStr = cookieRefresh || bodyRefresh;
 
   // Revoke access token. Source precedence matches the auth middleware:
   // Authorization header first, then sanctuary_access cookie. Both paths
@@ -188,25 +190,39 @@ router.post('/logout', authenticate, validate({ body: LogoutSchema }), asyncHand
   // uses to authenticate the logout request itself.
   const accessToken = extractAccessToken(req);
 
-  if (accessToken) {
-    const decoded = decodeToken(accessToken);
-
-    if (decoded?.jti && decoded?.exp) {
-      const expiresAt = new Date(decoded.exp * 1000);
-      await revokeToken(decoded.jti, expiresAt, req.user?.userId, 'user_logout');
-      log.debug('Access token revoked on logout', { userId: req.user?.userId });
+  if (!accessToken) {
+    throw new UnauthorizedError('Access token is required');
+  }
+  const userId = requireAuthenticatedUser(req).userId;
+  let refreshLineage: RefreshSessionLineage | undefined;
+  let invalidRefreshCredential = false;
+  if (refreshTokenStr) {
+    try {
+      const decodedRefresh = await verifyRefreshToken(refreshTokenStr);
+      if (decodedRefresh.userId !== userId) {
+        throw new Error('Refresh token user does not match logout user');
+      }
+      refreshLineage = getRefreshSessionLineage(refreshTokenStr);
+    } catch {
+      invalidRefreshCredential = true;
     }
   }
-
-  // Revoke refresh token if provided (body field or cookie).
-  if (refreshTokenStr) {
-    await refreshTokenService.revokeRefreshToken(refreshTokenStr);
-    log.debug('Refresh token revoked on logout', { userId: req.user?.userId });
-  }
+  const refreshStatus = await refreshTokenService.revokeLogoutCredentials({
+    userId,
+    accessToken: getTokenLineage(accessToken),
+    refreshToken: invalidRefreshCredential ? undefined : refreshTokenStr ?? undefined,
+    refreshSessionFamilyId: refreshLineage?.sessionFamilyId,
+    refreshTokenExpiresAt: refreshLineage?.expiresAt,
+  });
+  log.debug('Logout credentials revoked', { userId, refreshStatus });
 
   // Clear the browser auth cookies. No-op for callers that never set them
   // (mobile/gateway via Authorization header).
   clearAuthCookies(res);
+
+  if (invalidRefreshCredential || refreshStatus === 'not-found') {
+    throw new UnauthorizedError('Refresh session not found');
+  }
 
   // Audit logout
   const { ipAddress, userAgent } = getClientInfo(req);

@@ -2,13 +2,14 @@
  * Single-use refresh-token rotation helpers.
  *
  * The repository caller supplies old and new token hashes so this module can
- * enforce the consume-then-replace invariant inside one Prisma transaction. A
- * null result means the old row was absent, expired, owned by another user, or
- * already consumed by a concurrent request; storage errors are allowed to throw.
+ * serialize the session family and update its stable row inside one Prisma
+ * transaction. The result distinguishes a concurrent winner from a terminal
+ * family; storage errors are allowed to throw.
  */
 
 import type { RefreshToken } from '../generated/prisma/client';
 import type { PrismaTxClient } from '../models/prisma';
+import { lockRefreshSessionFamily } from './sessionFamilyLock';
 
 /**
  * Raw rotation inputs. `expectedUserId` is checked against the stored row so a
@@ -19,11 +20,22 @@ export interface RotateRefreshTokenInput {
   expectedUserId: string;
   newToken: string;
   expiresAt: Date;
+  accessTokenJti: string;
+  accessTokenExpiresAt: Date;
+  sessionFamilyId: string;
   userAgent?: string | null;
   ipAddress?: string | null;
   deviceId?: string | null;
   deviceName?: string | null;
 }
+
+export type RotateRefreshTokenResult =
+  | {
+    status: 'rotated';
+    replacement: RefreshToken;
+    revokedAccessToken: { jti: string; expiresAt: Date };
+  }
+  | { status: 'superseded' | 'terminal' };
 
 interface RefreshTokenRotationContext {
   oldTokenHash: string;
@@ -38,25 +50,56 @@ function isConsumableRefreshToken(
 ): token is RefreshToken {
   return token !== null
     && token.userId === input.expectedUserId
+    && token.sessionFamilyId === input.sessionFamilyId
     && token.expiresAt > now;
 }
 
-async function consumeRefreshTokenRow(
+async function classifyMissingToken(
+  tx: PrismaTxClient,
+  input: RotateRefreshTokenInput,
+  now: Date
+): Promise<RotateRefreshTokenResult> {
+  const successor = await tx.refreshToken.findFirst({
+    where: {
+      sessionFamilyId: input.sessionFamilyId,
+      userId: input.expectedUserId,
+      expiresAt: { gt: now },
+    },
+    select: { id: true },
+  });
+  return { status: successor ? 'superseded' : 'terminal' };
+}
+
+async function replaceRefreshTokenRow(
   tx: PrismaTxClient,
   token: RefreshToken,
   input: RotateRefreshTokenInput,
-  oldTokenHash: string,
+  context: RefreshTokenRotationContext,
   now: Date
-): Promise<boolean> {
-  const consumed = await tx.refreshToken.deleteMany({
+): Promise<RefreshToken | null> {
+  const replaced = await tx.refreshToken.updateMany({
     where: {
       id: token.id,
       userId: input.expectedUserId,
-      tokenHash: oldTokenHash,
+      tokenHash: context.oldTokenHash,
       expiresAt: { gt: now },
     },
+    data: {
+      tokenHash: context.newTokenHash,
+      expiresAt: input.expiresAt,
+      accessTokenJti: input.accessTokenJti,
+      accessTokenExpiresAt: input.accessTokenExpiresAt,
+      lastUsedAt: now,
+      userAgent: preferReplacementMetadata(input.userAgent, token.userAgent),
+      ipAddress: preferReplacementMetadata(input.ipAddress, token.ipAddress),
+      deviceId: preferReplacementMetadata(input.deviceId, token.deviceId),
+      deviceName: preferReplacementMetadata(input.deviceName, token.deviceName),
+    },
   });
-  return consumed.count === 1;
+  if (replaced.count !== 1) {
+    return null;
+  }
+  return tx.refreshToken.findUnique({ where: { id: token.id } });
 }
 
 function preferReplacementMetadata(
@@ -72,53 +115,66 @@ function preferReplacementMetadata(
   return undefined;
 }
 
-function createReplacementRefreshToken(
-  tx: PrismaTxClient,
-  oldToken: RefreshToken,
-  input: RotateRefreshTokenInput,
-  newTokenHash: string
-): Promise<RefreshToken> {
-  return tx.refreshToken.create({
-    data: {
-      userId: oldToken.userId,
-      tokenHash: newTokenHash,
-      expiresAt: input.expiresAt,
-      userAgent: preferReplacementMetadata(input.userAgent, oldToken.userAgent),
-      ipAddress: preferReplacementMetadata(input.ipAddress, oldToken.ipAddress),
-      deviceId: preferReplacementMetadata(input.deviceId, oldToken.deviceId),
-      deviceName: preferReplacementMetadata(input.deviceName, oldToken.deviceName),
-    },
-  });
-}
-
 /**
- * Consume the old unexpired row once and create its replacement in the same
- * transaction client. Only the transaction that deletes exactly one matching row
- * may mint a replacement token.
+ * Consume the old unexpired credential once by conditionally updating its stable
+ * session row. Only the transaction that updates exactly one matching row may
+ * return a replacement credential.
  */
 export async function consumeAndReplaceRefreshTokenWithClient(
   tx: PrismaTxClient,
   input: RotateRefreshTokenInput,
   context: RefreshTokenRotationContext
-): Promise<RefreshToken | null> {
+): Promise<RotateRefreshTokenResult> {
+  await lockRefreshSessionFamily(tx, input.sessionFamilyId);
+  const revokedFamily = await tx.revokedRefreshSessionFamily.findUnique({
+    where: { sessionFamilyId: input.sessionFamilyId },
+    select: { sessionFamilyId: true },
+  });
+  if (revokedFamily) {
+    return { status: 'terminal' };
+  }
+
   const oldToken = await tx.refreshToken.findUnique({
     where: { tokenHash: context.oldTokenHash },
   });
 
   if (!isConsumableRefreshToken(oldToken, input, context.now)) {
-    return null;
+    return classifyMissingToken(tx, input, context.now);
   }
 
-  const consumed = await consumeRefreshTokenRow(
+  const replacement = await replaceRefreshTokenRow(
     tx,
     oldToken,
     input,
-    context.oldTokenHash,
+    context,
     context.now
   );
-  if (!consumed) {
-    return null;
+  if (!replacement) {
+    return classifyMissingToken(tx, input, context.now);
   }
 
-  return createReplacementRefreshToken(tx, oldToken, input, context.newTokenHash);
+  await tx.revokedToken.upsert({
+    where: { jti: oldToken.accessTokenJti },
+    update: {
+      userId: oldToken.userId,
+      reason: 'refresh_rotation',
+      revokedAt: context.now,
+      expiresAt: oldToken.accessTokenExpiresAt,
+    },
+    create: {
+      jti: oldToken.accessTokenJti,
+      userId: oldToken.userId,
+      reason: 'refresh_rotation',
+      expiresAt: oldToken.accessTokenExpiresAt,
+    },
+  });
+
+  return {
+    status: 'rotated',
+    replacement,
+    revokedAccessToken: {
+      jti: oldToken.accessTokenJti,
+      expiresAt: oldToken.accessTokenExpiresAt,
+    },
+  };
 }

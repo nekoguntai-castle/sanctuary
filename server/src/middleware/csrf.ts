@@ -58,11 +58,6 @@ export {
   SANCTUARY_REFRESH_COOKIE_PATH,
 };
 
-// Refresh cookie max-age in milliseconds. Must stay in sync with
-// config.jwtRefreshExpiresIn which drives the JWT refresh token expiry in
-// tokenRepository. The default is 7 days per ADR 0002.
-const REFRESH_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-
 type CsrfInstance = ReturnType<typeof doubleCsrf>;
 let cachedCsrfInstance: CsrfInstance | null = null;
 
@@ -160,7 +155,7 @@ export function generateCsrfToken(
  *   - sanctuary_access: HttpOnly, Secure (prod), SameSite=Strict, path=/,
  *     expires at the access token's JWT exp claim.
  *   - sanctuary_refresh: HttpOnly, Secure (prod), SameSite=Strict,
- *     path=/api/v1/auth/refresh, max-age 7 days.
+ *     path=/api/v1/auth, expires with the signed refresh token.
  *   - sanctuary_csrf: non-HttpOnly (readable by the frontend), Secure (prod),
  *     SameSite=Strict, path=/, bound to the access cookie value via HMAC.
  *
@@ -193,6 +188,11 @@ export function setAuthCookies(
   const accessExpiresAt = decoded?.exp
     ? new Date(decoded.exp * 1000)
     : new Date(Date.now() + 60 * 60 * 1000);
+  const decodedRefresh = decodeToken(refreshToken);
+  if (!decodedRefresh?.exp) {
+    throw new Error('Generated refresh token is missing expiry');
+  }
+  const refreshExpiresAt = new Date(decodedRefresh.exp * 1000);
 
   res.cookie(SANCTUARY_ACCESS_COOKIE_NAME, accessToken, {
     httpOnly: true,
@@ -207,7 +207,7 @@ export function setAuthCookies(
     secure: isProd,
     sameSite: 'strict',
     path: SANCTUARY_REFRESH_COOKIE_PATH,
-    maxAge: REFRESH_COOKIE_MAX_AGE_MS,
+    expires: refreshExpiresAt,
   });
 
   // Mutate req.cookies so the CSRF token is bound to the NEW access cookie
