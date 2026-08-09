@@ -6,7 +6,7 @@
 # Provides centralized logging, metrics, alerting, and distributed tracing.
 #
 # Usage:
-#   docker compose --project-directory . -f docker-compose.yml -f docker/compose/monitoring.yml up -d
+#   ./start.sh --with-monitoring
 #
 # Access:
 #   - Monitoring ports bind to 127.0.0.1 by default. Set
@@ -264,9 +264,21 @@ services:
     restart: "no"
     environment:
       GRAFANA_PASSWORD: ${GRAFANA_PASSWORD:?GRAFANA_PASSWORD required}
+      SANCTUARY_GRAFANA_QUIESCENCE_DIR: /var/lib/sanctuary-grafana-quiescence
+      SANCTUARY_GRAFANA_QUIESCENCE_TOKEN: ${SANCTUARY_GRAFANA_QUIESCENCE_TOKEN:-}
+      SANCTUARY_GRAFANA_QUIESCENCE_PROJECT: ${SANCTUARY_GRAFANA_QUIESCENCE_PROJECT:-}
+      SANCTUARY_GRAFANA_QUIESCENCE_CONTAINER_ID: ${SANCTUARY_GRAFANA_QUIESCENCE_CONTAINER_ID:-}
+      SANCTUARY_GRAFANA_QUIESCENCE_GENERATION: ${SANCTUARY_GRAFANA_QUIESCENCE_GENERATION:-}
+      SANCTUARY_GRAFANA_QUIESCENCE_OWNER_PID: ${SANCTUARY_GRAFANA_QUIESCENCE_OWNER_PID:-}
+      SANCTUARY_GRAFANA_QUIESCENCE_OWNER_START_TIME: ${SANCTUARY_GRAFANA_QUIESCENCE_OWNER_START_TIME:-}
+      SANCTUARY_GRAFANA_QUIESCENCE_OWNER_PROC: /var/lib/sanctuary-grafana-quiescence-owner-proc
+      SANCTUARY_GRAFANA_QUIESCENCE_OUTCOME_DIR: /var/lib/sanctuary-grafana-quiescence-outcomes
     entrypoint: ["/bin/sh", "/opt/sanctuary/migrate-grafana-password.sh"]
     volumes:
       - grafana_data:/var/lib/grafana
+      - ${SANCTUARY_GRAFANA_QUIESCENCE_DIR:-${SANCTUARY_RUNTIME_DIR:-/tmp/sanctuary}/grafana-quiescence}:/var/lib/sanctuary-grafana-quiescence
+      - ${SANCTUARY_GRAFANA_QUIESCENCE_OWNER_PROC:-/proc/1}:/var/lib/sanctuary-grafana-quiescence-owner-proc:ro
+      - /tmp/sanctuary-grafana-quiescence-locks/outcomes:/var/lib/sanctuary-grafana-quiescence-outcomes
       - ${SANCTUARY_PROJECT_DIR:-.}/scripts/ops/migrate-grafana-password.sh:/opt/sanctuary/migrate-grafana-password.sh:ro
 
   grafana:

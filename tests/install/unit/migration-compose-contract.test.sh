@@ -74,6 +74,28 @@ if (grafana?.environment?.GF_SECURITY_ADMIN_PASSWORD !== process.env.GRAFANA_PAS
 if (migration?.environment?.GRAFANA_PASSWORD !== process.env.GRAFANA_PASSWORD) {
   throw new Error('credential migration must receive the independent credential');
 }
+for (const key of [
+  'SANCTUARY_GRAFANA_QUIESCENCE_TOKEN',
+  'SANCTUARY_GRAFANA_QUIESCENCE_PROJECT',
+  'SANCTUARY_GRAFANA_QUIESCENCE_CONTAINER_ID',
+  'SANCTUARY_GRAFANA_QUIESCENCE_GENERATION',
+  'SANCTUARY_GRAFANA_QUIESCENCE_OWNER_PID',
+  'SANCTUARY_GRAFANA_QUIESCENCE_OWNER_START_TIME',
+]) {
+  if (!(key in (migration?.environment ?? {}))) {
+    throw new Error(`credential migration must receive scoped quiescence field ${key}`);
+  }
+}
+const migrationMounts = JSON.stringify(migration?.volumes ?? []);
+if (!migrationMounts.includes('/var/lib/sanctuary-grafana-quiescence')) {
+  throw new Error('credential migration must mount the host-owned quiescence lease directory');
+}
+if (!migrationMounts.includes('/var/lib/sanctuary-grafana-quiescence-owner-proc')) {
+  throw new Error('credential migration must mount the live host lease owner process');
+}
+if (!migrationMounts.includes('/var/lib/sanctuary-grafana-quiescence-outcomes')) {
+  throw new Error('credential migration must publish daemon-recovery outcomes to the canonical lock directory');
+}
 if (!JSON.stringify(migration).includes('migrate-grafana-password.sh')) {
   throw new Error('credential migration must invoke the reviewed migration script');
 }
@@ -81,6 +103,21 @@ if (JSON.stringify({ migration, grafana }).includes(process.env.ENCRYPTION_KEY))
   throw new Error('monitoring services must not receive the encryption master key');
 }
 NODE
+
+grep -Fq 'run-grafana-password-migration.sh' "$PROJECT_ROOT/scripts/setup.sh"
+grep -Fq 'run-grafana-password-migration.sh' "$PROJECT_ROOT/start.sh"
+grep -Fq -- '--pull never' "$PROJECT_ROOT/scripts/ops/run-grafana-password-migration.sh"
+if grep -Fq 'SANCTUARY_TEST_GRAFANA_CANONICAL_LOCK_DIR' \
+    "$PROJECT_ROOT/scripts/ops/run-grafana-password-migration.sh" \
+    "$PROJECT_ROOT/docker/compose/monitoring.yml"; then
+    echo "the production canonical Grafana lock path must not be caller-overridable" >&2
+    exit 1
+fi
+if grep -Fq 'stop grafana >/dev/null 2>&1 || true' "$PROJECT_ROOT/scripts/setup.sh" \
+    || grep -Fq 'stop grafana >/dev/null 2>&1 || true' "$PROJECT_ROOT/start.sh"; then
+    echo "Grafana stop failures must abort supported startup" >&2
+    exit 1
+fi
 
 grep -Fq 'COPY --from=builder /repo/server/prisma ./prisma' "$PROJECT_ROOT/server/Dockerfile"
 grep -Fq 'COPY --from=builder /repo/server/scripts ./scripts' "$PROJECT_ROOT/server/Dockerfile"

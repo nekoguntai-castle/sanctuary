@@ -109,7 +109,7 @@ target-SHA CI verification.
 
 ## Phase 4: Grafana migration quiescence
 
-- [ ] Treat Grafana quiescence as a migration precondition. Setup/start must
+- [x] Treat Grafana quiescence as a migration precondition. Setup/start must
   abort if an existing Grafana cannot be stopped. An existing database may be
   read or mutated only after positive proof that the resolved Compose Grafana
   instance is stopped; stop success alone is insufficient. Pass a scoped,
@@ -122,7 +122,7 @@ target-SHA CI verification.
   must refuse before snapshot creation. Do not rely on `depends_on` to stop an
   already-running container, and do not treat unavailable status inspection as
   safe.
-- [ ] Replace direct monitoring `docker compose up ... grafana` instructions and
+- [x] Replace direct monitoring `docker compose up ... grafana` instructions and
   executable proof paths with the supported wrapper, or split the documented
   non-Grafana services from a wrapper-managed Grafana start. Add mocked stop
   failure tests that prove no migration/up command runs; also cover stop returns
@@ -135,19 +135,19 @@ target-SHA CI verification.
 
 ## Phase 5: Integrated verification and delivery
 
-- [ ] Run focused Wallet AI/controller ownership, Intelligence route/settings/
+- [x] Run focused Wallet AI/controller ownership, Intelligence route/settings/
   repository/worker, Tor proxy/rate-limit, Grafana migration, installer, and
   Compose contract suites, including every new deferred/concurrent/failure
   regression.
-- [ ] Run frontend app/tests typechecks, backend typecheck, gateway/egress
+- [x] Run frontend app/tests typechecks, backend typecheck, gateway/egress
   builds, lint and safety checks, architecture/OpenAPI drift checks, shell
   syntax, changed-file complexity (`CCN <= 15`), test hygiene, and
   `git diff --check`.
-- [ ] Run the repository's complete coverage gates and require exact 100%
+- [x] Run the repository's complete coverage gates and require exact 100%
   statements, branches, functions, and lines. Re-read the full diff for route
   identity, access parity, cross-process write ownership, proxy trust, live-data
   rollback, and unrelated scope creep.
-- [ ] Run an independent adversarial implementation review and resolve every
+- [x] Run an independent adversarial implementation review and resolve every
   verified P0-P2 comment.
 - [ ] Deliver the four phases as separate PRs when independently releasable.
   For each: push the exact reviewed head, require every attached PR-head context

@@ -325,7 +325,8 @@ start_compose_stack() {
     fi
 
     if docker compose "${COMPOSE_FILE_ARGS[@]}" config --services | grep -qx grafana; then
-        docker compose "${COMPOSE_FILE_ARGS[@]}" stop grafana >/dev/null 2>&1 || true
+        bash "$SCRIPT_DIR/scripts/ops/run-grafana-password-migration.sh" \
+            "$SCRIPT_DIR" "${COMPOSE_FILE_ARGS[@]}"
     fi
 
     docker compose "${COMPOSE_FILE_ARGS[@]}" $profiles up $postgres_up_flags postgres

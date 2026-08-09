@@ -985,9 +985,11 @@ compose_up_after_build_args() {
     echo "-d --no-build"
 }
 
-stop_grafana_before_credential_migration() {
+run_grafana_credential_migration() {
     if [ "$OPT_ENABLE_MONITORING" = "yes" ]; then
-        docker compose "${COMPOSE_FILE_ARGS[@]}" stop grafana >/dev/null 2>&1 || true
+        SANCTUARY_GRAFANA_OFFLINE="$OPT_OFFLINE" \
+            bash "$PROJECT_DIR/scripts/ops/run-grafana-password-migration.sh" \
+            "$PROJECT_DIR" "${COMPOSE_FILE_ARGS[@]}"
     fi
 }
 
@@ -1032,7 +1034,7 @@ start_services() {
     # Step 2: Start containers
     echo ""
     echo "Starting containers..."
-    stop_grafana_before_credential_migration
+    run_grafana_credential_migration
 
     if [ "$OPT_OFFLINE" = true ]; then
         docker compose "${COMPOSE_FILE_ARGS[@]}" up $(compose_up_no_build_args) postgres

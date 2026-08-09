@@ -27,7 +27,7 @@ The optional monitoring stack in `docker/compose/monitoring.yml` binds host port
 Default local endpoints:
 
 - Grafana: `http://127.0.0.1:3000`, authenticated as `admin` with the independent `GRAFANA_PASSWORD` stored in the Sanctuary runtime environment. Upgrades migrate an existing Grafana database before startup and never reuse `ENCRYPTION_KEY` as a login credential.
-  Use `./scripts/setup.sh --upgrade --enable-monitoring` or `./start.sh --with-monitoring` so an existing Grafana process is stopped before the one-shot database migration runs.
+  Use `./scripts/setup.sh --upgrade --enable-monitoring` or `./start.sh --with-monitoring`. These wrappers exclusively lease the resolved Compose instance, require positive stopped-state proof, and hold that lease through the one-shot database migration. A direct Compose start intentionally refuses legacy Grafana data without that proof.
 - Prometheus: `http://127.0.0.1:9090`, no built-in auth.
 - Alertmanager: `http://127.0.0.1:9093`, no built-in auth.
 - Jaeger UI: `http://127.0.0.1:16686`, no built-in auth.
@@ -70,7 +70,7 @@ Use different controls for different exposures:
 Start the local monitoring stack before running the smoke:
 
 ```bash
-docker compose --project-directory . -f docker-compose.yml -f docker/compose/monitoring.yml up -d prometheus alertmanager grafana loki jaeger promtail
+./start.sh --with-monitoring
 npm run ops:monitoring:phase2
 ```
 
@@ -85,7 +85,7 @@ JAEGER_UI_PORT=16687 \
 JAEGER_OTLP_GRPC_PORT=14317 \
 JAEGER_OTLP_HTTP_PORT=14318 \
 LOKI_PORT=13100 \
-docker compose --project-directory . -f docker-compose.yml -f docker/compose/monitoring.yml up -d prometheus alertmanager grafana loki jaeger promtail
+./start.sh --with-monitoring
 
 MONITORING_BIND_ADDR=127.0.0.1 \
 GRAFANA_PORT=13000 \
