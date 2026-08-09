@@ -4,14 +4,217 @@ import {
   mockUserMessage,
 } from './intelligenceTabsTestHarness';
 import type { AIConversation } from './intelligenceTabsTestHarness';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChatTab } from '../../../src/components/Intelligence/tabs/ChatTab';
+import { useChatTabController } from '../../../src/components/Intelligence/tabs/useChatTabController';
 import * as intelligenceApi from '../../../src/api/intelligence';
 
 describe('ChatTab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(intelligenceApi.getConversations).mockReset().mockResolvedValue({ conversations: [] });
+    vi.mocked(intelligenceApi.deleteConversation).mockReset().mockResolvedValue({ success: true });
+    vi.mocked(intelligenceApi.getConversationMessages).mockReset().mockResolvedValue({ messages: [] });
+    vi.mocked(intelligenceApi.createConversation).mockReset().mockResolvedValue({
+      conversation: { ...mockConversation, id: 'new-conversation' },
+    });
+    vi.mocked(intelligenceApi.sendChatMessage).mockReset().mockResolvedValue({
+      userMessage: mockUserMessage,
+      assistantMessage: mockAssistantMessage,
+    });
+  });
+
+  it('keeps the latest conversation when message loads complete in reverse', async () => {
+    let resolveA!: (value: { messages: (typeof mockUserMessage)[] }) => void;
+    let resolveB!: (value: { messages: (typeof mockUserMessage)[] }) => void;
+    const conversationB = { ...mockConversation, id: 'conv-2', title: 'Conversation B' };
+    vi.mocked(intelligenceApi.getConversations).mockResolvedValue({
+      conversations: [mockConversation, conversationB],
+    });
+    vi.mocked(intelligenceApi.getConversationMessages).mockImplementation((id) => new Promise((resolve) => {
+      if (id === 'conv-1') resolveA = resolve;
+      else resolveB = resolve;
+    }));
+    render(<ChatTab walletId="wallet-1" />);
+    await screen.findByText('UTXO Strategy Discussion');
+
+    fireEvent.click(screen.getByText('UTXO Strategy Discussion'));
+    fireEvent.click(screen.getByText('Conversation B'));
+    await act(async () => resolveB({ messages: [{ ...mockUserMessage, id: 'b', content: 'B message' }] }));
+    expect(await screen.findByText('B message')).toBeInTheDocument();
+    await act(async () => resolveA({ messages: [{ ...mockUserMessage, id: 'a', content: 'A message' }] }));
+
+    expect(screen.queryByText('A message')).not.toBeInTheDocument();
+    expect(screen.getByText('B message')).toBeInTheDocument();
+  });
+
+  it('does not commit an old conversation send after selecting another conversation', async () => {
+    let resolveSend!: (value: { userMessage: typeof mockUserMessage; assistantMessage: typeof mockAssistantMessage }) => void;
+    const conversationB = { ...mockConversation, id: 'conv-2', title: 'Conversation B' };
+    vi.mocked(intelligenceApi.getConversations).mockResolvedValue({ conversations: [mockConversation, conversationB] });
+    vi.mocked(intelligenceApi.getConversationMessages).mockResolvedValue({ messages: [] });
+    vi.mocked(intelligenceApi.sendChatMessage).mockReturnValue(new Promise((resolve) => { resolveSend = resolve; }));
+    render(<ChatTab walletId="wallet-1" />);
+    await screen.findByText('UTXO Strategy Discussion');
+    fireEvent.click(screen.getByText('UTXO Strategy Discussion'));
+    const textarea = await screen.findByPlaceholderText('Ask about your wallet...');
+    fireEvent.change(textarea, { target: { value: 'A question' } });
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    fireEvent.click(screen.getByText('Conversation B'));
+    await act(async () => resolveSend({
+      userMessage: { ...mockUserMessage, content: 'A question' },
+      assistantMessage: { ...mockAssistantMessage, content: 'A answer' },
+    }));
+
+    expect(screen.queryByText('A answer')).not.toBeInTheDocument();
+    expect(await screen.findByText('Ask anything about your wallet')).toBeInTheDocument();
+  });
+
+  it('does not let an in-flight list reinsert a conversation after delete', async () => {
+    let resolveReload!: (value: { conversations: AIConversation[] }) => void;
+    vi.mocked(intelligenceApi.getConversations)
+      .mockResolvedValueOnce({ conversations: [mockConversation] })
+      .mockReturnValueOnce(new Promise((resolve) => { resolveReload = resolve; }))
+      .mockResolvedValueOnce({ conversations: [] });
+    const { result } = renderHook(() => useChatTabController({ walletId: 'wallet-1' }));
+    await waitFor(() => expect(result.current.conversations).toHaveLength(1));
+    act(() => { void result.current.reloadConversations(); });
+    act(() => { void result.current.handleDeleteConversation('conv-1'); });
+    await waitFor(() => expect(intelligenceApi.deleteConversation).toHaveBeenCalledWith('conv-1'));
+    await act(async () => resolveReload({ conversations: [mockConversation] }));
+
+    expect(result.current.conversations).toEqual([]);
+  });
+
+  it('ignores stale list and mutation failures after a newer list generation', async () => {
+    let rejectReload!: (error: Error) => void;
+    vi.mocked(intelligenceApi.getConversations)
+      .mockResolvedValueOnce({ conversations: [mockConversation] })
+      .mockReturnValueOnce(new Promise((_resolve, reject) => { rejectReload = reject; }))
+      .mockResolvedValueOnce({ conversations: [] });
+    const { result } = renderHook(() => useChatTabController({ walletId: 'wallet-1' }));
+    await waitFor(() => expect(result.current.conversations).toHaveLength(1));
+    act(() => { void result.current.reloadConversations(); });
+    act(() => { void result.current.handleDeleteConversation('conv-1'); });
+    await act(async () => rejectReload(new Error('stale list')));
+    await waitFor(() => expect(result.current.loadingConversations).toBe(false));
+  });
+
+  it('settles an initial pending list after create and keeps the authoritative new row', async () => {
+    let resolveInitial!: (value: { conversations: AIConversation[] }) => void;
+    const created = { ...mockConversation, id: 'created', title: 'Created conversation' };
+    vi.mocked(intelligenceApi.getConversations)
+      .mockReturnValueOnce(new Promise((resolve) => { resolveInitial = resolve; }))
+      .mockResolvedValueOnce({ conversations: [created] });
+    vi.mocked(intelligenceApi.createConversation).mockResolvedValue({ conversation: created });
+    const { result } = renderHook(() => useChatTabController({ walletId: 'wallet-1' }));
+
+    act(() => { void result.current.handleNewConversation(); });
+    await waitFor(() => expect(result.current.loadingConversations).toBe(false));
+    expect(result.current.conversations).toEqual([created]);
+    await act(async () => resolveInitial({ conversations: [] }));
+    expect(result.current.conversations).toEqual([created]);
+  });
+
+  it('settles an initial pending list after delete without reinserting the deleted row', async () => {
+    let resolveInitial!: (value: { conversations: AIConversation[] }) => void;
+    vi.mocked(intelligenceApi.getConversations)
+      .mockReturnValueOnce(new Promise((resolve) => { resolveInitial = resolve; }))
+      .mockResolvedValueOnce({ conversations: [] });
+    const { result } = renderHook(() => useChatTabController({ walletId: 'wallet-1' }));
+
+    act(() => { void result.current.handleDeleteConversation('conv-1'); });
+    await waitFor(() => expect(result.current.loadingConversations).toBe(false));
+    expect(result.current.conversations).toEqual([]);
+    await act(async () => resolveInitial({ conversations: [mockConversation] }));
+    expect(result.current.conversations).toEqual([]);
+  });
+
+  it('restores the authoritative list when create rejects during the initial list read', async () => {
+    let resolveInitial!: (value: { conversations: AIConversation[] }) => void;
+    vi.mocked(intelligenceApi.getConversations)
+      .mockReturnValueOnce(new Promise((resolve) => { resolveInitial = resolve; }))
+      .mockResolvedValueOnce({ conversations: [mockConversation] });
+    vi.mocked(intelligenceApi.createConversation).mockRejectedValue(new Error('create failed'));
+    const { result } = renderHook(() => useChatTabController({ walletId: 'wallet-1' }));
+
+    act(() => { void result.current.handleNewConversation(); });
+    await waitFor(() => expect(result.current.loadingConversations).toBe(false));
+    expect(result.current.conversations).toEqual([mockConversation]);
+    await act(async () => resolveInitial({ conversations: [] }));
+    expect(result.current.conversations).toEqual([mockConversation]);
+  });
+
+  it('restores the authoritative list when delete rejects during the initial list read', async () => {
+    let resolveInitial!: (value: { conversations: AIConversation[] }) => void;
+    vi.mocked(intelligenceApi.getConversations)
+      .mockReturnValueOnce(new Promise((resolve) => { resolveInitial = resolve; }))
+      .mockResolvedValueOnce({ conversations: [mockConversation] });
+    vi.mocked(intelligenceApi.deleteConversation).mockRejectedValue(new Error('delete failed'));
+    const { result } = renderHook(() => useChatTabController({ walletId: 'wallet-1' }));
+
+    act(() => { void result.current.handleDeleteConversation('conv-1'); });
+    await waitFor(() => expect(result.current.loadingConversations).toBe(false));
+    expect(result.current.conversations).toEqual([mockConversation]);
+    await act(async () => resolveInitial({ conversations: [] }));
+    expect(result.current.conversations).toEqual([mockConversation]);
+  });
+
+  it('ignores stale create and delete completions superseded by a list reload', async () => {
+    let resolveCreate!: (value: { conversation: AIConversation }) => void;
+    let resolveDelete!: (value: { success: boolean }) => void;
+    vi.mocked(intelligenceApi.getConversations).mockResolvedValue({ conversations: [] });
+    vi.mocked(intelligenceApi.createConversation).mockReturnValue(new Promise((resolve) => { resolveCreate = resolve; }));
+    vi.mocked(intelligenceApi.deleteConversation).mockReturnValue(new Promise((resolve) => { resolveDelete = resolve; }));
+    const { result } = renderHook(() => useChatTabController({ walletId: 'wallet-1' }));
+    await waitFor(() => expect(result.current.loadingConversations).toBe(false));
+
+    act(() => { void result.current.handleNewConversation(); });
+    await act(async () => { await result.current.reloadConversations(); });
+    await act(async () => resolveCreate({ conversation: mockConversation }));
+    expect(result.current.conversations).toEqual([]);
+
+    act(() => { void result.current.handleDeleteConversation('conv-1'); });
+    await act(async () => { await result.current.reloadConversations(); });
+    await act(async () => resolveDelete({ success: true }));
+    expect(result.current.conversations).toEqual([]);
+  });
+
+  it('ignores stale create, delete, message-load, and send rejections', async () => {
+    let rejectCreate!: (error: Error) => void;
+    let rejectDelete!: (error: Error) => void;
+    let rejectLoad!: (error: Error) => void;
+    let rejectSend!: (error: Error) => void;
+    const conversationB = { ...mockConversation, id: 'conv-2', title: 'Conversation B' };
+    vi.mocked(intelligenceApi.getConversations).mockResolvedValue({ conversations: [mockConversation, conversationB] });
+    vi.mocked(intelligenceApi.createConversation).mockReturnValue(new Promise((_resolve, reject) => { rejectCreate = reject; }));
+    vi.mocked(intelligenceApi.deleteConversation).mockReturnValue(new Promise((_resolve, reject) => { rejectDelete = reject; }));
+    vi.mocked(intelligenceApi.getConversationMessages).mockImplementation((id) => id === 'conv-1'
+      ? new Promise((_resolve, reject) => { rejectLoad = reject; })
+      : Promise.resolve({ messages: [] }));
+    vi.mocked(intelligenceApi.sendChatMessage).mockReturnValue(new Promise((_resolve, reject) => { rejectSend = reject; }));
+    const { result } = renderHook(() => useChatTabController({ walletId: 'wallet-1' }));
+    await waitFor(() => expect(result.current.conversations).toHaveLength(2));
+
+    act(() => { void result.current.handleNewConversation(); });
+    await act(async () => { await result.current.reloadConversations(); });
+    await act(async () => rejectCreate(new Error('stale create')));
+    act(() => { void result.current.handleDeleteConversation('conv-1'); });
+    await act(async () => { await result.current.reloadConversations(); });
+    await act(async () => rejectDelete(new Error('stale delete')));
+
+    act(() => result.current.setSelectedConversationId('conv-1'));
+    await waitFor(() => expect(intelligenceApi.getConversationMessages).toHaveBeenCalledWith('conv-1'));
+    act(() => result.current.setSelectedConversationId('conv-2'));
+    await act(async () => rejectLoad(new Error('stale load')));
+
+    act(() => result.current.setSelectedConversationId('conv-1'));
+    act(() => result.current.setInput('Question'));
+    act(() => { void result.current.handleSend(); });
+    act(() => result.current.setSelectedConversationId('conv-2'));
+    await act(async () => rejectSend(new Error('stale send')));
+    expect(result.current.input).toBe('');
   });
 
   it('should show loading spinner while conversations load', () => {
@@ -160,9 +363,7 @@ describe('ChatTab', () => {
     fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false });
 
     await waitFor(() => {
-      expect(intelligenceApi.sendChatMessage).toHaveBeenCalledWith('conv-1', 'How are my UTXOs?', {
-        walletId: 'wallet-1',
-      });
+      expect(intelligenceApi.sendChatMessage).toHaveBeenCalledWith('conv-1', 'How are my UTXOs?');
     });
   });
 
@@ -437,9 +638,7 @@ describe('ChatTab', () => {
     fireEvent.click(sendButton);
 
     await waitFor(() => {
-      expect(intelligenceApi.sendChatMessage).toHaveBeenCalledWith('conv-1', 'Test via button', {
-        walletId: 'wallet-1',
-      });
+      expect(intelligenceApi.sendChatMessage).toHaveBeenCalledWith('conv-1', 'Test via button');
     });
   });
 });

@@ -31,7 +31,11 @@ export const Intelligence: React.FC = () => {
     <div className="flex h-full flex-col gap-4 p-4">
       <IntelligenceHeader wallets={networkWallets} walletSelection={walletSelection} />
       <TabNavigation activeTab={activeTab} onSelectTab={setActiveTab} />
-      <TabPanel activeTab={activeTab} walletId={walletSelection.selectedWalletId} />
+      <TabPanel
+        key={walletSelection.selectedWalletId}
+        activeTab={activeTab}
+        walletId={walletSelection.selectedWalletId}
+      />
     </div>
   );
 };

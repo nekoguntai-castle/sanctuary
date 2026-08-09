@@ -1,5 +1,6 @@
 import type React from 'react';
 import { Send } from 'lucide-react';
+import { CHAT_MESSAGE_MAX_LENGTH } from '../../../api/intelligence';
 
 interface ChatInputComposerProps {
   input: string;
@@ -27,6 +28,7 @@ export const ChatInputComposer: React.FC<ChatInputComposerProps> = ({
         onKeyDown={onKeyDown}
         placeholder="Ask about your wallet..."
         rows={1}
+        maxLength={CHAT_MESSAGE_MAX_LENGTH}
         className="min-h-[32px] max-h-[120px] flex-1 resize-none rounded-lg border border-sanctuary-200 bg-sanctuary-50 px-3 py-1.5 text-[11px] text-sanctuary-800 placeholder:text-sanctuary-400 focus:border-primary-500 focus:outline-none dark:border-sanctuary-700 dark:bg-sanctuary-950 dark:text-sanctuary-200 dark:placeholder:text-sanctuary-500"
       />
       <button

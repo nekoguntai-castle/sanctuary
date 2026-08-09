@@ -9,6 +9,123 @@ describe('SettingsTab', () => {
     vi.clearAllMocks();
   });
 
+  it('does not render wallet A settings after switching to wallet B', async () => {
+    let resolveA!: (value: any) => void;
+    vi.mocked(intelligenceApi.getIntelligenceSettings)
+      .mockReturnValueOnce(new Promise((resolve) => { resolveA = resolve; }))
+      .mockResolvedValueOnce({ settings: {
+        enabled: true, notifyTelegram: false, notifyPush: false,
+        severityFilter: 'critical', typeFilter: [],
+      } });
+    const { rerender } = render(<SettingsTab walletId="wallet-a" />);
+    rerender(<SettingsTab walletId="wallet-b" />);
+    expect(await screen.findByText('Intelligence Settings')).toBeInTheDocument();
+    await act(async () => resolveA({ settings: {
+      enabled: false, notifyTelegram: true, notifyPush: true,
+      severityFilter: 'info', typeFilter: ['utxo_health'],
+    } }));
+    expect(screen.getAllByRole('switch')[0]).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('ignores a stale wallet settings load rejection', async () => {
+    let rejectA!: (error: Error) => void;
+    vi.mocked(intelligenceApi.getIntelligenceSettings)
+      .mockReturnValueOnce(new Promise((_resolve, reject) => { rejectA = reject; }))
+      .mockResolvedValueOnce({ settings: {
+        enabled: true, notifyTelegram: false, notifyPush: false,
+        severityFilter: 'critical', typeFilter: [],
+      } });
+    const { rerender } = render(<SettingsTab walletId="wallet-a" />);
+    rerender(<SettingsTab walletId="wallet-b" />);
+    await screen.findByText('Intelligence Settings');
+    await act(async () => rejectA(new Error('stale wallet load')));
+
+    expect(screen.getAllByRole('switch')[0]).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('serializes same-wallet writes so the latest intent persists', async () => {
+    let resolveFirst!: (value: any) => void;
+    vi.mocked(intelligenceApi.getIntelligenceSettings).mockResolvedValue({ settings: {
+      enabled: true, notifyTelegram: true, notifyPush: false,
+      severityFilter: 'info', typeFilter: ['utxo_health'],
+    } });
+    vi.mocked(intelligenceApi.updateIntelligenceSettings)
+      .mockReturnValueOnce(new Promise((resolve) => { resolveFirst = resolve; }))
+      .mockResolvedValueOnce({ settings: {
+        enabled: true, notifyTelegram: true, notifyPush: true,
+        severityFilter: 'critical', typeFilter: ['utxo_health'],
+      } });
+    render(<SettingsTab walletId="wallet-1" />);
+    await screen.findByText('Intelligence Settings');
+    fireEvent.click(screen.getAllByRole('switch')[2]);
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'critical' } });
+    await waitFor(() => expect(intelligenceApi.updateIntelligenceSettings).toHaveBeenCalledTimes(1));
+    await act(async () => resolveFirst({ settings: {
+      enabled: true, notifyTelegram: true, notifyPush: true,
+      severityFilter: 'info', typeFilter: ['utxo_health'],
+    } }));
+    await waitFor(() => expect(intelligenceApi.updateIntelligenceSettings).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('combobox')).toHaveValue('critical');
+  });
+
+  it('ignores an older same-wallet write failure when a newer intent is queued', async () => {
+    let rejectFirst!: (error: Error) => void;
+    vi.mocked(intelligenceApi.getIntelligenceSettings).mockResolvedValue({ settings: {
+      enabled: true, notifyTelegram: true, notifyPush: false,
+      severityFilter: 'info', typeFilter: ['utxo_health'],
+    } });
+    vi.mocked(intelligenceApi.updateIntelligenceSettings)
+      .mockReturnValueOnce(new Promise((_resolve, reject) => { rejectFirst = reject; }))
+      .mockResolvedValueOnce({ settings: {
+        enabled: true, notifyTelegram: true, notifyPush: true,
+        severityFilter: 'critical', typeFilter: ['utxo_health'],
+      } });
+    render(<SettingsTab walletId="wallet-1" />);
+    await screen.findByText('Intelligence Settings');
+    fireEvent.click(screen.getAllByRole('switch')[2]);
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'critical' } });
+    await waitFor(() => expect(intelligenceApi.updateIntelligenceSettings).toHaveBeenCalledTimes(1));
+    await act(async () => rejectFirst(new Error('older write failed')));
+    await waitFor(() => expect(intelligenceApi.updateIntelligenceSettings).toHaveBeenCalledTimes(2));
+
+    expect(screen.getByRole('combobox')).toHaveValue('critical');
+    expect(screen.getAllByRole('switch')[2]).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('preserves the B baseline when a stale A write resolves before a B write rejects', async () => {
+    let resolveAUpdate!: (value: any) => void;
+    vi.mocked(intelligenceApi.getIntelligenceSettings)
+      .mockResolvedValueOnce({ settings: {
+        enabled: false, notifyTelegram: true, notifyPush: true,
+        severityFilter: 'info', typeFilter: ['utxo_health'],
+      } })
+      .mockResolvedValueOnce({ settings: {
+        enabled: true, notifyTelegram: false, notifyPush: false,
+        severityFilter: 'critical', typeFilter: [],
+      } });
+    vi.mocked(intelligenceApi.updateIntelligenceSettings)
+      .mockReturnValueOnce(new Promise((resolve) => { resolveAUpdate = resolve; }))
+      .mockRejectedValueOnce(new Error('B write failed'));
+    const { rerender } = render(<SettingsTab walletId="wallet-a" />);
+    await screen.findByText('Intelligence Settings');
+    fireEvent.click(screen.getAllByRole('switch')[0]);
+    await waitFor(() => expect(intelligenceApi.updateIntelligenceSettings).toHaveBeenCalledTimes(1));
+
+    rerender(<SettingsTab walletId="wallet-b" />);
+    await waitFor(() => expect(screen.getByRole('combobox')).toHaveValue('critical'));
+    fireEvent.click(screen.getAllByRole('switch')[2]);
+    expect(screen.getAllByRole('switch')[2]).toHaveAttribute('aria-checked', 'true');
+    await act(async () => resolveAUpdate({ settings: {
+      enabled: true, notifyTelegram: true, notifyPush: true,
+      severityFilter: 'info', typeFilter: ['utxo_health'],
+    } }));
+    await waitFor(() => expect(intelligenceApi.updateIntelligenceSettings).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getAllByRole('switch')[2]).toHaveAttribute('aria-checked', 'false'));
+
+    expect(screen.getAllByRole('switch')[0]).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('combobox')).toHaveValue('critical');
+  });
+
   it('should show loading spinner while settings load', () => {
     vi.mocked(intelligenceApi.getIntelligenceSettings).mockReturnValue(new Promise(() => {}));
 

@@ -33,6 +33,7 @@ function formatIssue(issue: ZodIssue): {
 }
 
 const NonEmptyStringSchema = z.string().trim().min(1).max(1024);
+export const CHAT_MESSAGE_MAX_LENGTH = 8000;
 const HttpUrlSchema = z.string().trim().max(2048).refine(isHttpUrl, {
   message: "Must be an HTTP(S) URL",
 });
@@ -109,7 +110,7 @@ export const AnalyzeBodySchema = z
 const ChatMessageSchema = z
   .object({
     role: z.enum(["system", "user", "assistant"]),
-    content: NonEmptyStringSchema.max(8000),
+    content: z.string().trim().min(1).max(CHAT_MESSAGE_MAX_LENGTH),
   })
   .strict();
 

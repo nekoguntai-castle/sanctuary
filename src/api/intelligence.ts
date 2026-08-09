@@ -18,6 +18,8 @@ export const INSIGHT_TYPE_LABELS: Record<string, string> = {
   consolidation: 'Consolidation',
 };
 
+export const CHAT_MESSAGE_MAX_LENGTH = 8000;
+
 // ========================================
 // TYPE DEFINITIONS
 // ========================================
@@ -48,7 +50,7 @@ export interface AIInsight {
 export interface AIConversation {
   id: string;
   userId: string;
-  walletId?: string;
+  walletId: string | null;
   title?: string;
   createdAt: string;
   updatedAt: string;
@@ -113,12 +115,14 @@ export async function updateInsightStatus(
 // ========================================
 
 export async function getConversations(
+  walletId: string,
   limit = 20,
   offset = 0
 ): Promise<{ conversations: AIConversation[] }> {
   return apiClient.get<{ conversations: AIConversation[] }>('/intelligence/conversations', {
     limit,
     offset,
+    walletId,
   });
 }
 
@@ -141,12 +145,11 @@ export async function getConversationMessages(
 
 export async function sendChatMessage(
   conversationId: string,
-  content: string,
-  walletContext?: Record<string, unknown>
+  content: string
 ): Promise<{ userMessage: AIMessage; assistantMessage: AIMessage }> {
   return apiClient.post<{ userMessage: AIMessage; assistantMessage: AIMessage }>(
     `/intelligence/conversations/${conversationId}/messages`,
-    { content, walletContext }
+    { content }
   );
 }
 

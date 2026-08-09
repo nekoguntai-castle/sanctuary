@@ -23,6 +23,7 @@ import {
   INSIGHT_UPDATE_STATUS_VALUES,
 } from '../services/intelligence/types';
 import { findByIdWithAccess } from '../repositories/walletRepository';
+import { CHAT_MESSAGE_MAX_LENGTH } from '../services/intelligence/messageContent';
 
 const router = Router();
 
@@ -50,8 +51,7 @@ const ConversationCreateBodySchema = z.preprocess(
 );
 
 const ConversationMessageBodySchema = z.object({
-  content: z.string().min(1),
-  walletContext: z.record(z.string(), z.unknown()).optional(),
+  content: z.string().trim().min(1).max(CHAT_MESSAGE_MAX_LENGTH),
 });
 
 const IntelligenceSettingsUpdateBodySchema = z.object({
@@ -182,11 +182,15 @@ router.patch('/insights/:id', asyncHandler(async (req, res) => {
  */
 router.get('/conversations', asyncHandler(async (req, res) => {
   const userId = requireAuthenticatedUser(req).userId;
+  const { walletId } = req.query;
+  if (!walletId || typeof walletId !== 'string') {
+    return res.status(400).json({ error: 'walletId query parameter required' });
+  }
   /* v8 ignore next -- pagination schema catch provides defaults for malformed query input */
   const { limit, offset } = ConversationPaginationSchema.safeParse(req.query).data
     ?? { limit: 20, offset: 0 };
 
-  const conversations = await conversationService.getConversations(userId, limit, offset);
+  const conversations = await conversationService.getConversations(userId, walletId, limit, offset);
   res.json({ conversations });
 }));
 
@@ -232,12 +236,11 @@ router.post('/conversations/:id/messages', asyncHandler(async (req, res) => {
   const { id } = req.params;
   const body = ConversationMessageBodySchema.safeParse(req.body);
   if (!body.success) {
-    const hasContentIssue = body.error.issues.some(issue => issue.path[0] === 'content');
-    return res.status(400).json({ error: hasContentIssue ? 'content required' : 'Invalid message request' });
+    return res.status(400).json({ error: 'content required' });
   }
-  const { content, walletContext } = body.data;
+  const { content } = body.data;
 
-  const result = await conversationService.sendMessage(id, userId, content, walletContext);
+  const result = await conversationService.sendMessage(id, userId, content);
   res.json(result);
 }));
 

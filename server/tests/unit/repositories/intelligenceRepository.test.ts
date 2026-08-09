@@ -419,11 +419,11 @@ describe('Intelligence Repository', () => {
     it('should return conversations ordered by updatedAt desc with defaults', async () => {
       (prisma.aIConversation.findMany as Mock).mockResolvedValue([mockConversation]);
 
-      const result = await intelligenceRepository.findConversationsByUser('user-1');
+      const result = await intelligenceRepository.findConversationsByUser('user-1', 'wallet-1');
 
       expect(result).toEqual([mockConversation]);
       expect(prisma.aIConversation.findMany).toHaveBeenCalledWith({
-        where: { userId: 'user-1' },
+        where: { userId: 'user-1', OR: [{ walletId: 'wallet-1' }, { walletId: null }] },
         orderBy: { updatedAt: 'desc' },
         take: 20,
         skip: 0,
@@ -433,10 +433,10 @@ describe('Intelligence Repository', () => {
     it('should accept custom limit and offset', async () => {
       (prisma.aIConversation.findMany as Mock).mockResolvedValue([]);
 
-      await intelligenceRepository.findConversationsByUser('user-1', 5, 10);
+      await intelligenceRepository.findConversationsByUser('user-1', 'wallet-1', 5, 10);
 
       expect(prisma.aIConversation.findMany).toHaveBeenCalledWith({
-        where: { userId: 'user-1' },
+        where: { userId: 'user-1', OR: [{ walletId: 'wallet-1' }, { walletId: null }] },
         orderBy: { updatedAt: 'desc' },
         take: 5,
         skip: 10,
@@ -558,6 +558,25 @@ describe('Intelligence Repository', () => {
       expect(prisma.aIMessage.findMany).toHaveBeenCalledWith({
         where: { conversationId: 'conv-1' },
         orderBy: { createdAt: 'asc' },
+        take: 20,
+      });
+    });
+  });
+
+  describe('getNewestMessages', () => {
+    it('selects the newest deterministic window and returns it chronologically', async () => {
+      const newestFirst = [
+        { ...mockMessage, id: 'msg-21', createdAt: new Date('2026-01-02') },
+        { ...mockMessage, id: 'msg-20', createdAt: new Date('2026-01-01') },
+      ];
+      (prisma.aIMessage.findMany as Mock).mockResolvedValue(newestFirst);
+
+      const result = await intelligenceRepository.getNewestMessages('conv-1', 20);
+
+      expect(result.map((message) => message.id)).toEqual(['msg-20', 'msg-21']);
+      expect(prisma.aIMessage.findMany).toHaveBeenCalledWith({
+        where: { conversationId: 'conv-1' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: 20,
       });
     });

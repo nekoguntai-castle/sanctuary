@@ -2,21 +2,15 @@ import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'reac
 import type { WalletOption, WalletSelectionController } from './types';
 
 export function useWalletSelection(wallets: WalletOption[]): WalletSelectionController {
-  const [selectedWalletId, setSelectedWalletId] = useState('');
+  const [storedWalletId, setStoredWalletId] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const selectedWalletId = wallets.some((wallet) => wallet.id === storedWalletId)
+    ? storedWalletId
+    : (wallets[0]?.id ?? '');
 
   useEffect(() => {
-    if (wallets.length === 0) {
-      if (selectedWalletId) {
-        setSelectedWalletId('');
-      }
-      return;
-    }
-
-    if (!wallets.some((wallet) => wallet.id === selectedWalletId)) {
-      setSelectedWalletId(wallets[0].id);
-    }
-  }, [wallets, selectedWalletId]);
+    if (storedWalletId !== selectedWalletId) setStoredWalletId(selectedWalletId);
+  }, [selectedWalletId, storedWalletId]);
 
   useEffect(() => {
     if (!dropdownOpen) return;
@@ -36,7 +30,7 @@ export function useWalletSelection(wallets: WalletOption[]): WalletSelectionCont
   }, []);
 
   const selectWallet = useCallback((walletId: string) => {
-    setSelectedWalletId(walletId);
+    setStoredWalletId(walletId);
     setDropdownOpen(false);
   }, []);
 

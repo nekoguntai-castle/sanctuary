@@ -165,11 +165,12 @@ export const intelligencePaths = {
     get: {
       tags: ['Intelligence'],
       summary: 'List intelligence conversations',
-      description: 'List Treasury Intelligence conversations for the authenticated user.',
+      description: 'List wallet-scoped and explicitly unscoped Treasury Intelligence conversations accessible to the authenticated user.',
       security: bearerAuth,
-      parameters: [...paginationParameters(20)],
+      parameters: [walletIdQueryParameter, ...paginationParameters(20)],
       responses: {
         200: jsonResponse('Conversations', '#/components/schemas/IntelligenceConversationsResponse'),
+        400: apiErrorResponse,
         401: apiErrorResponse,
         403: apiErrorResponse,
         500: apiErrorResponse,

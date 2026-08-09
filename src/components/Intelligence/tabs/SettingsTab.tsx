@@ -1,13 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { Settings, Shield } from 'lucide-react';
 import { SanctuarySpinner } from '../../ui/CustomIcons';
 import { Toggle } from '../../ui/Toggle';
-import * as intelligenceApi from '../../../api/intelligence';
 import { INSIGHT_TYPE_LABELS } from '../../../api/intelligence';
 import type { WalletIntelligenceSettings } from '../../../api/intelligence';
-import { createLogger } from '../../../utils/logger';
-
-const log = createLogger('IntelligenceSettings');
+import { useIntelligenceSettingsController } from './useIntelligenceSettingsController';
 
 interface SettingsTabProps {
   walletId: string;
@@ -22,48 +19,7 @@ const SEVERITY_OPTIONS: { value: WalletIntelligenceSettings['severityFilter']; l
 const TYPE_FILTER_OPTIONS = Object.entries(INSIGHT_TYPE_LABELS).map(([value, label]) => ({ value, label }));
 
 export const SettingsTab: React.FC<SettingsTabProps> = ({ walletId }) => {
-  const [settings, setSettings] = useState<WalletIntelligenceSettings | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-
-  const loadSettings = useCallback(async () => {
-    try {
-      setLoading(true);
-      const result = await intelligenceApi.getIntelligenceSettings(walletId);
-      setSettings(result.settings);
-    } catch (error) {
-      log.error('Failed to load intelligence settings', { error });
-    } finally {
-      setLoading(false);
-    }
-  }, [walletId]);
-
-  useEffect(() => {
-    loadSettings();
-  }, [loadSettings]);
-
-  const updateSetting = useCallback(
-    async (update: Partial<WalletIntelligenceSettings>) => {
-      // settings is guaranteed non-null here: the JSX that invokes this callback
-      // only renders after the render-time `if (!settings)` guard (line 87).
-      const current = settings!;
-      const newSettings = { ...current, ...update };
-      setSettings(newSettings);
-      setSaving(true);
-
-      try {
-        const result = await intelligenceApi.updateIntelligenceSettings(walletId, update);
-        setSettings(result.settings);
-      } catch (error) {
-        log.error('Failed to update settings', { error });
-        // Revert on failure
-        setSettings(current);
-      } finally {
-        setSaving(false);
-      }
-    },
-    [settings, walletId]
-  );
+  const { settings, loading, saving, updateSetting } = useIntelligenceSettingsController(walletId);
 
   const handleTypeFilterToggle = useCallback(
     (type: string) => {

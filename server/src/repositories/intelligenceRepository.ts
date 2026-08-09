@@ -178,11 +178,12 @@ async function findConversationById(id: string): Promise<AIConversation | null> 
 
 async function findConversationsByUser(
   userId: string,
+  walletId: string,
   limit = 20,
   offset = 0
 ): Promise<AIConversation[]> {
   return prisma.aIConversation.findMany({
-    where: { userId },
+    where: { userId, OR: [{ walletId }, { walletId: null }] },
     orderBy: { updatedAt: 'desc' },
     take: limit,
     skip: offset,
@@ -236,6 +237,15 @@ async function getMessages(conversationId: string, limit = 100): Promise<AIMessa
     orderBy: { createdAt: 'asc' },
     take: limit,
   });
+}
+
+async function getNewestMessages(conversationId: string, limit = 20): Promise<AIMessage[]> {
+  const messages = await prisma.aIMessage.findMany({
+    where: { conversationId },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    take: limit,
+  });
+  return messages.reverse();
 }
 
 // ========================================
@@ -383,6 +393,7 @@ export const intelligenceRepository = {
   // Messages
   addMessage,
   getMessages,
+  getNewestMessages,
 
   // Analytics
   getTransactionVelocity,

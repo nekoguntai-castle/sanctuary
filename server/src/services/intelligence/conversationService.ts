@@ -14,6 +14,9 @@ import {
 import { buildLlmEgressProxyJsonHeaders } from "../ai/llmEgressProxyClient";
 import { intelligenceRepository } from "../../repositories/intelligenceRepository";
 import type { AIConversation, AIMessage } from "../../generated/prisma/client";
+import { findByIdWithAccess } from "../../repositories/walletRepository";
+import { NotFoundError, ValidationError } from "../../errors/ApiError";
+import { boundChatMessage, normalizeChatMessage } from "./messageContent";
 
 const log = createLogger("INTELLIGENCE:SVC_CHAT");
 
@@ -26,6 +29,9 @@ export async function createConversation(
   userId: string,
   walletId?: string,
 ): Promise<AIConversation> {
+  if (walletId && !(await findByIdWithAccess(walletId, userId))) {
+    throw new NotFoundError("Wallet not found");
+  }
   return intelligenceRepository.createConversation({
     userId,
     walletId: walletId ?? null,
@@ -37,10 +43,12 @@ export async function createConversation(
  */
 export async function getConversations(
   userId: string,
+  walletId: string,
   limit = 20,
   offset = 0,
 ): Promise<AIConversation[]> {
-  return intelligenceRepository.findConversationsByUser(userId, limit, offset);
+  if (!(await findByIdWithAccess(walletId, userId))) throw new NotFoundError("Wallet not found");
+  return intelligenceRepository.findConversationsByUser(userId, walletId, limit, offset);
 }
 
 /**
@@ -53,6 +61,9 @@ export async function getConversation(
   const conversation =
     await intelligenceRepository.findConversationById(conversationId);
   if (!conversation || conversation.userId !== userId) return null;
+  if (conversation.walletId && !(await findByIdWithAccess(conversation.walletId, userId))) {
+    return null;
+  }
   return conversation;
 }
 
@@ -73,30 +84,33 @@ export async function sendMessage(
   conversationId: string,
   userId: string,
   content: string,
-  walletContext?: Record<string, unknown>,
 ): Promise<{ userMessage: AIMessage; assistantMessage: AIMessage }> {
   // Verify ownership
   const conversation =
     await intelligenceRepository.findConversationById(conversationId);
   if (!conversation || conversation.userId !== userId) {
-    throw new Error("Conversation not found");
+    throw new NotFoundError("Conversation not found");
   }
+  if (conversation.walletId && !(await findByIdWithAccess(conversation.walletId, userId))) {
+    throw new NotFoundError("Conversation not found");
+  }
+  const normalizedContent = normalizeChatMessage(content);
+  if (!normalizedContent) throw new ValidationError("Invalid message content");
 
   // Save user message
   const userMessage = await intelligenceRepository.addMessage({
     conversationId,
     role: "user",
-    content,
+    content: normalizedContent,
   });
 
   // Get conversation history (last 20 messages for context window)
-  const history = await intelligenceRepository.getMessages(conversationId, 20);
+  const history = await intelligenceRepository.getNewestMessages(conversationId, 20);
 
   // Build messages array for AI
-  const aiMessages = history.map((m) => ({
-    role: m.role,
-    content: m.content,
-  }));
+  const aiMessages = history
+    .map((message) => ({ role: message.role, content: boundChatMessage(message.content) }))
+    .filter((message) => message.content.length > 0);
 
   // Call LLM egress proxy
   const config = await getAIConfig();
@@ -118,7 +132,7 @@ export async function sendMessage(
       headers: buildLlmEgressProxyJsonHeaders(),
       body: JSON.stringify({
         messages: aiMessages,
-        walletContext,
+        walletContext: conversation.walletId ? { walletId: conversation.walletId } : undefined,
       }),
       signal: AbortSignal.timeout(35000),
     });
@@ -134,18 +148,21 @@ export async function sendMessage(
     }
 
     const result = (await response.json()) as { response: string };
+    const assistantContent = boundChatMessage(result.response);
 
     const assistantMessage = await intelligenceRepository.addMessage({
       conversationId,
       role: "assistant",
-      content: result.response,
+      content: assistantContent || "I was unable to process your request. Please try again.",
     });
 
     // Auto-generate title from first message if conversation has no title
     /* v8 ignore next -- title generation is covered through conversation route behavior */
     if (!conversation.title && history.length <= 1) {
       const title =
-        content.length > 60 ? content.substring(0, 57) + "..." : content;
+        normalizedContent.length > 60
+          ? normalizedContent.substring(0, 57) + "..."
+          : normalizedContent;
       await intelligenceRepository.updateConversationTitle(
         conversationId,
         title,

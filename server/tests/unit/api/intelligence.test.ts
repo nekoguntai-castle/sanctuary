@@ -379,13 +379,24 @@ describe('Intelligence API Routes', () => {
   });
 
   describe('GET /conversations', () => {
+    it('requires an explicit wallet scope', async () => {
+      const req = createMockRequest({ query: {} });
+      const { res, getResponse } = createMockResponse();
+
+      const handler = getRouteHandler(intelligenceRoutes, 'get', '/conversations');
+      await handler(req as any, res as any, vi.fn());
+
+      expect(getResponse().statusCode).toBe(400);
+      expect(mockConversationService.getConversations).not.toHaveBeenCalled();
+    });
+
     it('returns conversations for the authenticated user', async () => {
       const convos = [{ id: 'conv-1', title: 'Test convo' }];
       mockConversationService.getConversations.mockResolvedValueOnce(convos);
 
       const req = createMockRequest({
         user: { userId: 'test-user-123', username: 'testuser', isAdmin: false },
-        query: { limit: '5', offset: '10' },
+        query: { walletId: 'wallet-1', limit: '5', offset: '10' },
       });
       const { res, getResponse } = createMockResponse();
 
@@ -393,7 +404,7 @@ describe('Intelligence API Routes', () => {
       await handler(req as any, res as any, vi.fn());
 
       expect(getResponse().body).toEqual({ conversations: convos });
-      expect(mockConversationService.getConversations).toHaveBeenCalledWith('test-user-123', 5, 10);
+      expect(mockConversationService.getConversations).toHaveBeenCalledWith('test-user-123', 'wallet-1', 5, 10);
     });
 
     it('uses default limit and offset', async () => {
@@ -401,14 +412,14 @@ describe('Intelligence API Routes', () => {
 
       const req = createMockRequest({
         user: { userId: 'test-user-123', username: 'testuser', isAdmin: false },
-        query: {},
+        query: { walletId: 'wallet-1' },
       });
       const { res } = createMockResponse();
 
       const handler = getRouteHandler(intelligenceRoutes, 'get', '/conversations');
       await handler(req as any, res as any, vi.fn());
 
-      expect(mockConversationService.getConversations).toHaveBeenCalledWith('test-user-123', 20, 0);
+      expect(mockConversationService.getConversations).toHaveBeenCalledWith('test-user-123', 'wallet-1', 20, 0);
     });
   });
 
@@ -505,7 +516,7 @@ describe('Intelligence API Routes', () => {
       const req = createMockRequest({
         user: { userId: 'test-user-123', username: 'testuser', isAdmin: false },
         params: { id: 'conv-1' },
-        body: { content: 'What is my UTXO health?', walletContext: { walletId: 'w1' } },
+        body: { content: '  What is my UTXO health?  ' },
       });
       const { res, getResponse } = createMockResponse();
 
@@ -517,15 +528,14 @@ describe('Intelligence API Routes', () => {
         'conv-1',
         'test-user-123',
         'What is my UTXO health?',
-        { walletId: 'w1' },
       );
     });
 
-    it('returns 400 when wallet context has an invalid type', async () => {
+    it('returns 400 for whitespace-only content without writing', async () => {
       const req = createMockRequest({
         user: { userId: 'test-user-123', username: 'testuser', isAdmin: false },
         params: { id: 'conv-1' },
-        body: { content: 'What is my UTXO health?', walletContext: 'wallet-1' },
+        body: { content: '   ' },
       });
       const { res, getResponse } = createMockResponse();
 
@@ -533,7 +543,32 @@ describe('Intelligence API Routes', () => {
       await handler(req as any, res as any, vi.fn());
 
       expect(getResponse().statusCode).toBe(400);
-      expect(getResponse().body.error).toContain('Invalid message request');
+      expect(getResponse().body.error).toContain('content required');
+      expect(mockConversationService.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('accepts exactly 8000 trimmed characters', async () => {
+      mockConversationService.sendMessage.mockResolvedValueOnce({});
+      const content = 'x'.repeat(8000);
+      const req = createMockRequest({ params: { id: 'conv-1' }, body: { content } });
+      const { res } = createMockResponse();
+
+      const handler = getRouteHandler(intelligenceRoutes, 'post', '/conversations/:id/messages');
+      await handler(req as any, res as any, vi.fn());
+
+      expect(mockConversationService.sendMessage).toHaveBeenCalledWith(
+        'conv-1', 'test-user-id', content,
+      );
+    });
+
+    it('rejects 8001 characters before service persistence', async () => {
+      const req = createMockRequest({ params: { id: 'conv-1' }, body: { content: 'x'.repeat(8001) } });
+      const { res, getResponse } = createMockResponse();
+
+      const handler = getRouteHandler(intelligenceRoutes, 'post', '/conversations/:id/messages');
+      await handler(req as any, res as any, vi.fn());
+
+      expect(getResponse().statusCode).toBe(400);
       expect(mockConversationService.sendMessage).not.toHaveBeenCalled();
     });
   });

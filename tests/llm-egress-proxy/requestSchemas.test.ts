@@ -1,7 +1,10 @@
+import { readFileSync } from "node:fs";
+import { basename, resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import {
   AnalyzeBodySchema,
+  CHAT_MESSAGE_MAX_LENGTH as EGRESS_CHAT_MESSAGE_MAX_LENGTH,
   ChatBodySchema,
   ConsolePlanBodySchema,
   ConsoleSynthesisBodySchema,
@@ -13,6 +16,20 @@ import {
   parseRequestBody,
 } from "../../llm-egress-proxy/src/requestSchemas";
 import { PROXY_AI_PROVIDER_TYPES } from "../../llm-egress-proxy/src/providerTypes";
+
+function readBackendChatMessageMaxLength(): number {
+  const repositoryRoot =
+    basename(process.cwd()) === "llm-egress-proxy"
+      ? resolve(process.cwd(), "..")
+      : process.cwd();
+  const source = readFileSync(
+    resolve(repositoryRoot, "server/src/services/intelligence/messageContent.ts"),
+    "utf8",
+  );
+  const match = source.match(/CHAT_MESSAGE_MAX_LENGTH\s*=\s*(\d+)/);
+  if (!match) throw new Error("Backend chat message limit constant was not found");
+  return Number(match[1]);
+}
 
 function makeRequest(body: unknown) {
   return { body } as any;
@@ -30,6 +47,10 @@ function makeResponse(): {
 }
 
 describe("LLM egress proxy request schemas", () => {
+  it("keeps the backend and egress chat message limits identical", () => {
+    expect(EGRESS_CHAT_MESSAGE_MAX_LENGTH).toBe(readBackendChatMessageMaxLength());
+  });
+
   it("parses valid configuration bodies", () => {
     const res = makeResponse();
 
@@ -211,6 +232,13 @@ describe("LLM egress proxy request schemas", () => {
     ).toThrow();
     expect(() =>
       ChatBodySchema.parse({ messages: [{ role: "user", content: "" }] }),
+    ).toThrow();
+    expect(
+      ChatBodySchema.parse({ messages: [{ role: "user", content: "x".repeat(8000) }] })
+        .messages[0].content,
+    ).toHaveLength(8000);
+    expect(() =>
+      ChatBodySchema.parse({ messages: [{ role: "user", content: "x".repeat(8001) }] }),
     ).toThrow();
   });
 

@@ -3,7 +3,7 @@ import {
   mockInfoInsight,
   mockInsight,
 } from './intelligenceTabsTestHarness';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { InsightsTab } from '../../../src/components/Intelligence/tabs/InsightsTab';
 import * as intelligenceApi from '../../../src/api/intelligence';
@@ -12,6 +12,78 @@ describe('InsightsTab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
+
+  it('keeps the latest filter when insight loads complete in reverse', async () => {
+    let resolveInitial!: (value: { insights: (typeof mockInsight)[] }) => void;
+    let resolveLatest!: (value: { insights: (typeof mockInsight)[] }) => void;
+    vi.mocked(intelligenceApi.getInsights)
+      .mockReturnValueOnce(new Promise((resolve) => { resolveInitial = resolve; }))
+      .mockReturnValueOnce(new Promise((resolve) => { resolveLatest = resolve; }));
+    render(<InsightsTab walletId="wallet-1" />);
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'anomaly' } });
+    await act(async () => resolveLatest({ insights: [{ ...mockInsight, id: 'latest', title: 'Latest filter' }] }));
+    expect(await screen.findByText('Latest filter')).toBeInTheDocument();
+    await act(async () => resolveInitial({ insights: [{ ...mockInsight, id: 'stale', title: 'Stale filter' }] }));
+    expect(screen.queryByText('Stale filter')).not.toBeInTheDocument();
+  });
+
+  it('ignores a stale filter load rejection', async () => {
+    let rejectInitial!: (error: Error) => void;
+    let resolveLatest!: (value: { insights: (typeof mockInsight)[] }) => void;
+    vi.mocked(intelligenceApi.getInsights)
+      .mockReturnValueOnce(new Promise((_resolve, reject) => { rejectInitial = reject; }))
+      .mockReturnValueOnce(new Promise((resolve) => { resolveLatest = resolve; }));
+    render(<InsightsTab walletId="wallet-1" />);
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'anomaly' } });
+    await act(async () => resolveLatest({ insights: [{ ...mockInsight, title: 'Latest result' }] }));
+    await screen.findByText('Latest result');
+    await act(async () => rejectInitial(new Error('stale filter')));
+
+    expect(screen.getByText('Latest result')).toBeInTheDocument();
+  });
+
+  it('synchronously withholds insights owned by the previous filter', async () => {
+    let resolveLatest!: (value: { insights: (typeof mockInsight)[] }) => void;
+    vi.mocked(intelligenceApi.getInsights)
+      .mockResolvedValueOnce({ insights: [mockInsight] })
+      .mockReturnValueOnce(new Promise((resolve) => { resolveLatest = resolve; }));
+    render(<InsightsTab walletId="wallet-1" />);
+    await screen.findByText('Fragmented UTXOs Detected');
+
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'anomaly' } });
+
+    expect(screen.queryByText('Fragmented UTXOs Detected')).not.toBeInTheDocument();
+    await act(async () => resolveLatest({ insights: [] }));
+    expect(await screen.findByText('No insights found.')).toBeInTheDocument();
+  });
+
+  it.each(['resolve', 'reject'] as const)(
+    'ignores a stale status update that later %s',
+    async (completion) => {
+      let resolveStatus!: (value: any) => void;
+      let rejectStatus!: (error: Error) => void;
+      vi.mocked(intelligenceApi.getInsights)
+        .mockResolvedValueOnce({ insights: [mockInsight] })
+        .mockResolvedValueOnce({ insights: [] });
+      vi.mocked(intelligenceApi.updateInsightStatus).mockReturnValue(new Promise((resolve, reject) => {
+        resolveStatus = resolve;
+        rejectStatus = reject;
+      }));
+      render(<InsightsTab walletId="wallet-1" />);
+      await screen.findByText('Fragmented UTXOs Detected');
+      fireEvent.click(screen.getByText('Fragmented UTXOs Detected'));
+      fireEvent.click(await screen.findByText('Dismiss'));
+      fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'anomaly' } });
+      await screen.findByText('No insights found.');
+
+      if (completion === 'resolve') {
+        await act(async () => resolveStatus({ insight: { ...mockInsight, status: 'dismissed' } }));
+      } else {
+        await act(async () => rejectStatus(new Error('stale status')));
+      }
+      expect(screen.getByText('No insights found.')).toBeInTheDocument();
+    }
+  );
 
   it('should show loading spinner initially', () => {
     vi.mocked(intelligenceApi.getInsights).mockReturnValue(new Promise(() => {}));

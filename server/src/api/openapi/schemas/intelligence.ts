@@ -12,6 +12,7 @@ import {
   INTELLIGENCE_ENDPOINT_TYPE_VALUES,
   INTELLIGENCE_MESSAGE_ROLE_VALUES,
 } from '../../../services/intelligence/types';
+import { CHAT_MESSAGE_MAX_LENGTH } from '../../../services/intelligence/messageContent';
 
 const jsonObject = {
   type: 'object',
@@ -150,8 +151,7 @@ export const intelligenceSchemas = {
   IntelligenceSendMessageRequest: {
     type: 'object',
     properties: {
-      content: { type: 'string', minLength: 1 },
-      walletContext: jsonObject,
+      content: { type: 'string', minLength: 1, maxLength: CHAT_MESSAGE_MAX_LENGTH },
     },
     required: ['content'],
   },

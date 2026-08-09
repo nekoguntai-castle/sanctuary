@@ -2,6 +2,7 @@ import { vi } from 'vitest';
 import type { AIConversation, AIInsight, AIMessage } from '../../../src/api/intelligence';
 
 vi.mock('../../../src/api/intelligence', () => ({
+  CHAT_MESSAGE_MAX_LENGTH: 8000,
   INSIGHT_TYPE_LABELS: {
     utxo_health: 'UTXO Health',
     fee_timing: 'Fee Timing',

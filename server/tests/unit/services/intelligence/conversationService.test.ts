@@ -11,6 +11,7 @@ const {
   mockSyncConfigToLlmEgressProxy,
   mockGetLlmEgressProxyUrl,
   mockRepo,
+  mockFindByIdWithAccess,
   mockLogger,
 } = vi.hoisted(() => ({
   mockGetAIConfig: vi.fn(),
@@ -24,7 +25,9 @@ const {
     deleteConversation: vi.fn(),
     addMessage: vi.fn(),
     getMessages: vi.fn(),
+    getNewestMessages: vi.fn(),
   },
+  mockFindByIdWithAccess: vi.fn(),
   mockLogger: {
     debug: vi.fn(),
     info: vi.fn(),
@@ -41,6 +44,10 @@ vi.mock("../../../../src/services/ai/config", () => ({
 
 vi.mock("../../../../src/repositories/intelligenceRepository", () => ({
   intelligenceRepository: mockRepo,
+}));
+
+vi.mock("../../../../src/repositories/walletRepository", () => ({
+  findByIdWithAccess: mockFindByIdWithAccess,
 }));
 
 vi.mock("../../../../src/utils/logger", () => ({
@@ -95,6 +102,7 @@ describe("Conversation Service", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFindByIdWithAccess.mockResolvedValue({ id: "wallet-1" });
   });
 
   // ========================================
@@ -126,6 +134,13 @@ describe("Conversation Service", () => {
         walletId: null,
       });
     });
+
+    it("rejects a wallet-bound conversation without wallet access", async () => {
+      mockFindByIdWithAccess.mockResolvedValueOnce(null);
+
+      await expect(createConversation("user-1", "wallet-denied")).rejects.toThrow("Wallet not found");
+      expect(mockRepo.createConversation).not.toHaveBeenCalled();
+    });
   });
 
   // ========================================
@@ -138,11 +153,12 @@ describe("Conversation Service", () => {
         mockConversation,
       ]);
 
-      const result = await getConversations("user-1");
+      const result = await getConversations("user-1", "wallet-1");
 
       expect(result).toEqual([mockConversation]);
       expect(mockRepo.findConversationsByUser).toHaveBeenCalledWith(
         "user-1",
+        "wallet-1",
         20,
         0,
       );
@@ -151,13 +167,21 @@ describe("Conversation Service", () => {
     it("should pass custom limit and offset", async () => {
       (mockRepo.findConversationsByUser as Mock).mockResolvedValue([]);
 
-      await getConversations("user-1", 5, 10);
+      await getConversations("user-1", "wallet-1", 5, 10);
 
       expect(mockRepo.findConversationsByUser).toHaveBeenCalledWith(
         "user-1",
+        "wallet-1",
         5,
         10,
       );
+    });
+
+    it("rejects a wallet-scoped list without wallet access", async () => {
+      mockFindByIdWithAccess.mockResolvedValueOnce(null);
+
+      await expect(getConversations("user-1", "wallet-denied")).rejects.toThrow("Wallet not found");
+      expect(mockRepo.findConversationsByUser).not.toHaveBeenCalled();
     });
   });
 
@@ -193,6 +217,24 @@ describe("Conversation Service", () => {
 
       expect(result).toBeNull();
     });
+
+    it("returns null when wallet access was revoked from an owned conversation", async () => {
+      (mockRepo.findConversationById as Mock).mockResolvedValue(mockConversation);
+      mockFindByIdWithAccess.mockResolvedValueOnce(null);
+
+      const result = await getConversation("conv-1", "user-1");
+
+      expect(result).toBeNull();
+      expect(mockFindByIdWithAccess).toHaveBeenCalledWith("wallet-1", "user-1");
+    });
+
+    it("keeps explicitly unscoped owned conversations accessible", async () => {
+      const unscoped = { ...mockConversation, walletId: null };
+      (mockRepo.findConversationById as Mock).mockResolvedValue(unscoped);
+
+      await expect(getConversation("conv-1", "user-1")).resolves.toEqual(unscoped);
+      expect(mockFindByIdWithAccess).not.toHaveBeenCalled();
+    });
   });
 
   // ========================================
@@ -226,6 +268,25 @@ describe("Conversation Service", () => {
   // ========================================
 
   describe("sendMessage", () => {
+    it("rejects invalid content before persistence", async () => {
+      (mockRepo.findConversationById as Mock).mockResolvedValue(mockConversation);
+
+      await expect(sendMessage("conv-1", "user-1", "x".repeat(8001))).rejects.toThrow(
+        "Invalid message content",
+      );
+      expect(mockRepo.addMessage).not.toHaveBeenCalled();
+    });
+
+    it("rejects a bound conversation when stored wallet access was revoked", async () => {
+      (mockRepo.findConversationById as Mock).mockResolvedValue(mockConversation);
+      mockFindByIdWithAccess.mockResolvedValueOnce(null);
+
+      await expect(sendMessage("conv-1", "user-1", "Question")).rejects.toThrow(
+        "Conversation not found",
+      );
+      expect(mockRepo.addMessage).not.toHaveBeenCalled();
+    });
+
     it("should send message and get AI response on happy path", async () => {
       // Ownership check
       (mockRepo.findConversationById as Mock).mockResolvedValue(
@@ -238,7 +299,7 @@ describe("Conversation Service", () => {
         .mockResolvedValueOnce(mockAssistantMessage); // assistant message
 
       // Get conversation history
-      (mockRepo.getMessages as Mock).mockResolvedValue([mockUserMessage]);
+      (mockRepo.getNewestMessages as Mock).mockResolvedValue([mockUserMessage]);
 
       // AI config
       (mockGetAIConfig as Mock).mockResolvedValue({
@@ -279,6 +340,60 @@ describe("Conversation Service", () => {
           }),
         }),
       );
+      const request = mockFetch.mock.calls[0][1] as { body: string };
+      expect(JSON.parse(request.body).walletContext).toEqual({ walletId: "wallet-1" });
+    });
+
+    it("keeps legacy null conversations explicitly unscoped", async () => {
+      (mockRepo.findConversationById as Mock).mockResolvedValue({ ...mockConversation, walletId: null });
+      (mockRepo.addMessage as Mock)
+        .mockResolvedValueOnce(mockUserMessage)
+        .mockResolvedValueOnce(mockAssistantMessage);
+      (mockRepo.getNewestMessages as Mock).mockResolvedValue([mockUserMessage]);
+      mockGetAIConfig.mockResolvedValue({ enabled: true, endpoint: "http://ai", model: "model" });
+      mockFetch.mockResolvedValue({ ok: true, json: async () => ({ response: "Answer" }) });
+
+      await sendMessage("conv-1", "user-1", "Question");
+
+      const request = mockFetch.mock.calls[0][1] as { body: string };
+      expect(JSON.parse(request.body).walletContext).toBeUndefined();
+    });
+
+    it("bounds legacy history and oversized provider responses before persistence", async () => {
+      (mockRepo.findConversationById as Mock).mockResolvedValue(mockConversation);
+      (mockRepo.addMessage as Mock)
+        .mockResolvedValueOnce(mockUserMessage)
+        .mockResolvedValueOnce({ ...mockAssistantMessage, content: "r".repeat(8000) });
+      (mockRepo.getNewestMessages as Mock).mockResolvedValue([
+        { ...mockUserMessage, content: `  ${"h".repeat(8001)}  ` },
+      ]);
+      mockGetAIConfig.mockResolvedValue({ enabled: true, endpoint: "http://ai", model: "model" });
+      mockFetch.mockResolvedValue({ ok: true, json: async () => ({ response: ` ${"r".repeat(8001)} ` }) });
+
+      await sendMessage("conv-1", "user-1", "Question");
+
+      const request = mockFetch.mock.calls[0][1] as { body: string };
+      expect(JSON.parse(request.body).messages[0].content).toHaveLength(8000);
+      expect(mockRepo.addMessage).toHaveBeenLastCalledWith(expect.objectContaining({
+        role: "assistant",
+        content: "r".repeat(8000),
+      }));
+    });
+
+    it("persists a bounded fallback for a malformed provider response", async () => {
+      (mockRepo.findConversationById as Mock).mockResolvedValue(mockConversation);
+      (mockRepo.addMessage as Mock)
+        .mockResolvedValueOnce(mockUserMessage)
+        .mockResolvedValueOnce(mockAssistantMessage);
+      (mockRepo.getNewestMessages as Mock).mockResolvedValue([mockUserMessage]);
+      mockGetAIConfig.mockResolvedValue({ enabled: true, endpoint: "http://ai", model: "model" });
+      mockFetch.mockResolvedValue({ ok: true, json: async () => ({ response: null }) });
+
+      await sendMessage("conv-1", "user-1", "Question");
+
+      expect(mockRepo.addMessage).toHaveBeenLastCalledWith(expect.objectContaining({
+        content: "I was unable to process your request. Please try again.",
+      }));
     });
 
     it("should return error message when AI is not configured", async () => {
@@ -293,7 +408,7 @@ describe("Conversation Service", () => {
             "AI is not currently configured. Please set up an AI provider endpoint and model in the AI settings.",
         }); // error message
 
-      (mockRepo.getMessages as Mock).mockResolvedValue([mockUserMessage]);
+      (mockRepo.getNewestMessages as Mock).mockResolvedValue([mockUserMessage]);
 
       (mockGetAIConfig as Mock).mockResolvedValue({
         enabled: false,
@@ -339,7 +454,7 @@ describe("Conversation Service", () => {
           content: "I was unable to process your request. Please try again.",
         }); // error message
 
-      (mockRepo.getMessages as Mock).mockResolvedValue([mockUserMessage]);
+      (mockRepo.getNewestMessages as Mock).mockResolvedValue([mockUserMessage]);
 
       (mockGetAIConfig as Mock).mockResolvedValue({
         enabled: true,
@@ -370,7 +485,7 @@ describe("Conversation Service", () => {
             "An error occurred while communicating with the AI. Please try again.",
         }); // error message
 
-      (mockRepo.getMessages as Mock).mockResolvedValue([mockUserMessage]);
+      (mockRepo.getNewestMessages as Mock).mockResolvedValue([mockUserMessage]);
 
       (mockGetAIConfig as Mock).mockResolvedValue({
         enabled: true,
@@ -394,7 +509,7 @@ describe("Conversation Service", () => {
         .mockResolvedValueOnce(mockAssistantMessage);
 
       // Only 1 message in history (the one we just added)
-      (mockRepo.getMessages as Mock).mockResolvedValue([mockUserMessage]);
+      (mockRepo.getNewestMessages as Mock).mockResolvedValue([mockUserMessage]);
 
       (mockGetAIConfig as Mock).mockResolvedValue({
         enabled: true,
@@ -428,7 +543,7 @@ describe("Conversation Service", () => {
         .mockResolvedValueOnce(userMsg)
         .mockResolvedValueOnce(mockAssistantMessage);
 
-      (mockRepo.getMessages as Mock).mockResolvedValue([userMsg]);
+      (mockRepo.getNewestMessages as Mock).mockResolvedValue([userMsg]);
 
       (mockGetAIConfig as Mock).mockResolvedValue({
         enabled: true,

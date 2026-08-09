@@ -2,15 +2,12 @@ import type React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as intelligenceApi from '../../../api/intelligence';
 import type { AIConversation, AIMessage } from '../../../api/intelligence';
+import { createRequestOwnership } from '../../../hooks/requestOwnership';
 import { createLogger } from '../../../utils/logger';
 
 const log = createLogger('ChatTab');
 
-interface UseChatTabControllerOptions {
-  walletId: string;
-}
-
-export const useChatTabController = ({ walletId }: UseChatTabControllerOptions) => {
+export const useChatTabController = ({ walletId }: { walletId: string }) => {
   const [conversations, setConversations] = useState<AIConversation[]>([]);
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<AIMessage[]>([]);
@@ -20,82 +17,94 @@ export const useChatTabController = ({ walletId }: UseChatTabControllerOptions) 
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const conversationRequests = useRef(createRequestOwnership(`${walletId}:none`));
+  const listRequests = useRef(createRequestOwnership(walletId));
+  const selectionKey = `${walletId}:${selectedConversationId ?? 'none'}`;
+  conversationRequests.current.setRoute(selectionKey);
+  listRequests.current.setRoute(walletId);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   const loadConversations = useCallback(async () => {
+    const token = listRequests.current.beginFetch(walletId);
+    setLoadingConversations(true);
     try {
-      setLoadingConversations(true);
-      const result = await intelligenceApi.getConversations();
-      setConversations(result.conversations);
+      const result = await intelligenceApi.getConversations(walletId);
+      if (listRequests.current.isFetchOwner(token)) setConversations(result.conversations);
     } catch (error) {
-      log.error('Failed to load conversations', { error });
+      if (listRequests.current.isFetchOwner(token)) log.error('Failed to load conversations', { error });
     } finally {
-      setLoadingConversations(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadConversations();
-  }, [loadConversations]);
-
-  const loadMessages = useCallback(async (conversationId: string) => {
-    try {
-      setLoadingMessages(true);
-      const result = await intelligenceApi.getConversationMessages(conversationId);
-      setMessages(result.messages);
-    } catch (error) {
-      log.error('Failed to load messages', { error });
-    } finally {
-      setLoadingMessages(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (selectedConversationId) {
-      loadMessages(selectedConversationId);
-    } else {
-      setMessages([]);
-    }
-  }, [selectedConversationId, loadMessages]);
-
-  const handleNewConversation = useCallback(async () => {
-    try {
-      const result = await intelligenceApi.createConversation(walletId);
-      setConversations((prev) => [result.conversation, ...prev]);
-      setSelectedConversationId(result.conversation.id);
-      setMessages([]);
-      inputRef.current?.focus();
-    } catch (error) {
-      log.error('Failed to create conversation', { error });
+      if (listRequests.current.isFetchOwner(token)) setLoadingConversations(false);
     }
   }, [walletId]);
 
-  const handleDeleteConversation = useCallback(
-    async (id: string) => {
+  useEffect(() => { void loadConversations(); }, [loadConversations]);
+
+  const selectConversation = useCallback((conversationId: string | null) => {
+    conversationRequests.current.setRoute(`${walletId}:${conversationId ?? 'none'}`);
+    setSelectedConversationId(conversationId);
+    setMessages([]);
+    setInput('');
+    setLoadingMessages(Boolean(conversationId));
+    setSending(false);
+  }, [walletId]);
+
+  useEffect(() => {
+    if (!selectedConversationId) return;
+    const token = conversationRequests.current.beginFetch(selectionKey);
+    void (async () => {
       try {
-        await intelligenceApi.deleteConversation(id);
-        setConversations((prev) => prev.filter((c) => c.id !== id));
-        if (selectedConversationId === id) {
-          setSelectedConversationId(null);
-          setMessages([]);
-        }
+        const result = await intelligenceApi.getConversationMessages(selectedConversationId);
+        if (conversationRequests.current.isFetchOwner(token)) setMessages(result.messages);
       } catch (error) {
-        log.error('Failed to delete conversation', { error });
+        if (conversationRequests.current.isFetchOwner(token)) log.error('Failed to load messages', { error });
+      } finally {
+        if (conversationRequests.current.isFetchOwner(token)) setLoadingMessages(false);
       }
-    },
-    [selectedConversationId]
-  );
+    })();
+  }, [selectedConversationId, selectionKey]);
+
+  const handleNewConversation = useCallback(async () => {
+    const token = listRequests.current.beginFetch(walletId);
+    setLoadingConversations(true);
+    try {
+      const result = await intelligenceApi.createConversation(walletId);
+      if (!listRequests.current.isFetchOwner(token)) return;
+      setConversations((prev) => [result.conversation, ...prev]);
+      selectConversation(result.conversation.id);
+      inputRef.current?.focus();
+      await loadConversations();
+    } catch (error) {
+      if (listRequests.current.isFetchOwner(token)) {
+        log.error('Failed to create conversation', { error });
+        await loadConversations();
+      }
+    }
+  }, [loadConversations, selectConversation, walletId]);
+
+  const handleDeleteConversation = useCallback(async (id: string) => {
+    const token = listRequests.current.beginFetch(walletId);
+    setLoadingConversations(true);
+    try {
+      await intelligenceApi.deleteConversation(id);
+      if (!listRequests.current.isFetchOwner(token)) return;
+      setConversations((prev) => prev.filter((conversation) => conversation.id !== id));
+      if (selectedConversationId === id) selectConversation(null);
+      await loadConversations();
+    } catch (error) {
+      if (listRequests.current.isFetchOwner(token)) {
+        log.error('Failed to delete conversation', { error });
+        await loadConversations();
+      }
+    }
+  }, [loadConversations, selectConversation, selectedConversationId, walletId]);
 
   const handleSend = useCallback(async () => {
-    if (!input.trim() || !selectedConversationId || sending) return;
-
     const content = input.trim();
-    setInput('');
-    setSending(true);
-
+    if (!content || !selectedConversationId || sending) return;
+    const token = conversationRequests.current.captureRoute(selectionKey);
     const tempUserMsg: AIMessage = {
       id: `temp-${Date.now()}`,
       conversationId: selectedConversationId,
@@ -103,54 +112,35 @@ export const useChatTabController = ({ walletId }: UseChatTabControllerOptions) 
       content,
       createdAt: new Date().toISOString(),
     };
+    setInput('');
+    setSending(true);
     setMessages((prev) => [...prev, tempUserMsg]);
-
     try {
-      const result = await intelligenceApi.sendChatMessage(
-        selectedConversationId,
-        content,
-        { walletId }
-      );
-      setMessages((prev) => [
-        ...prev.filter((m) => m.id !== tempUserMsg.id),
-        result.userMessage,
-        result.assistantMessage,
-      ]);
+      const result = await intelligenceApi.sendChatMessage(selectedConversationId, content);
+      if (!conversationRequests.current.isRouteOwner(token)) return;
+      setMessages((prev) => [...prev.filter((message) => message.id !== tempUserMsg.id), result.userMessage, result.assistantMessage]);
     } catch (error) {
+      if (!conversationRequests.current.isRouteOwner(token)) return;
       log.error('Failed to send message', { error });
-      setMessages((prev) => prev.filter((m) => m.id !== tempUserMsg.id));
+      setMessages((prev) => prev.filter((message) => message.id !== tempUserMsg.id));
       setInput(content);
     } finally {
-      setSending(false);
+      if (conversationRequests.current.isRouteOwner(token)) setSending(false);
     }
-  }, [input, selectedConversationId, sending, walletId]);
+  }, [input, selectedConversationId, selectionKey, sending]);
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        handleSend();
-      }
-    },
-    [handleSend]
-  );
+  const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      void handleSend();
+    }
+  }, [handleSend]);
 
   return {
-    conversations,
-    selectedConversationId,
-    messages,
-    input,
-    loadingConversations,
-    loadingMessages,
-    sending,
-    messagesEndRef,
-    inputRef,
-    setInput,
-    setSelectedConversationId,
-    handleNewConversation,
-    handleDeleteConversation,
-    handleSend,
-    handleKeyDown,
+    conversations, selectedConversationId, messages, input, loadingConversations,
+    loadingMessages, sending, messagesEndRef, inputRef, setInput,
+    setSelectedConversationId: selectConversation, handleNewConversation,
+    handleDeleteConversation, handleSend, handleKeyDown, reloadConversations: loadConversations,
   };
 };
 

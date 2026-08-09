@@ -852,6 +852,13 @@ export function registerOpenApiGatewayTests() {
         schema: expect.objectContaining({ default: 20 }),
       })
     );
+    expect(openApiSpec.paths['/intelligence/conversations'].get.parameters).toContainEqual(
+      expect.objectContaining({
+        name: 'walletId',
+        in: 'query',
+        required: true,
+      })
+    );
 
     expect(
       openApiSpec.paths['/intelligence/conversations/{id}/messages'].post.requestBody.content['application/json'].schema
@@ -859,6 +866,9 @@ export function registerOpenApiGatewayTests() {
       $ref: '#/components/schemas/IntelligenceSendMessageRequest',
     });
     expect(openApiSpec.components.schemas.IntelligenceSendMessageRequest.required).toEqual(['content']);
+    expect(openApiSpec.components.schemas.IntelligenceSendMessageRequest.properties).toEqual({
+      content: { type: 'string', minLength: 1, maxLength: 8000 },
+    });
   });
 
   it('documents public AI assistant routes', () => {

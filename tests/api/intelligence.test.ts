@@ -244,11 +244,12 @@ describe('Intelligence API', () => {
     it('should GET conversations with default limit and offset', async () => {
       mockGet.mockResolvedValue({ conversations: [] });
 
-      const result = await getConversations();
+      const result = await getConversations('wallet-1');
 
       expect(mockGet).toHaveBeenCalledWith('/intelligence/conversations', {
         limit: 20,
         offset: 0,
+        walletId: 'wallet-1',
       });
       expect(result.conversations).toEqual([]);
     });
@@ -256,11 +257,12 @@ describe('Intelligence API', () => {
     it('should GET conversations with custom limit and offset', async () => {
       mockGet.mockResolvedValue({ conversations: [] });
 
-      await getConversations(10, 5);
+      await getConversations('wallet-1', 10, 5);
 
       expect(mockGet).toHaveBeenCalledWith('/intelligence/conversations', {
         limit: 10,
         offset: 5,
+        walletId: 'wallet-1',
       });
     });
   });
@@ -320,25 +322,24 @@ describe('Intelligence API', () => {
 
       expect(mockPost).toHaveBeenCalledWith(
         '/intelligence/conversations/conv-1/messages',
-        { content: 'test', walletContext: undefined }
+        { content: 'test' }
       );
       expect(result.userMessage.content).toBe('test');
       expect(result.assistantMessage.content).toBe('response');
     });
 
-    it('should POST message with wallet context', async () => {
+    it('should not allow callers to replace stored wallet context', async () => {
       mockPost.mockResolvedValue({
         userMessage: { id: 'msg-1' },
         assistantMessage: { id: 'msg-2' },
       });
 
-      await sendChatMessage('conv-1', 'analyze', { walletId: 'w1', balance: 50000 });
+      await sendChatMessage('conv-1', 'analyze');
 
       expect(mockPost).toHaveBeenCalledWith(
         '/intelligence/conversations/conv-1/messages',
         {
           content: 'analyze',
-          walletContext: { walletId: 'w1', balance: 50000 },
         }
       );
     });

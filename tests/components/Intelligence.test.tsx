@@ -31,6 +31,7 @@ vi.mock('../../src/contexts/ActiveNetworkContext', () => ({
 }));
 
 vi.mock('../../src/api/intelligence', () => ({
+  CHAT_MESSAGE_MAX_LENGTH: 8000,
   INSIGHT_TYPE_LABELS: {
     utxo_health: 'UTXO Health',
     fee_timing: 'Fee Timing',
@@ -219,6 +220,22 @@ describe('Intelligence', () => {
     });
     expect(screen.queryByText('My Bitcoin Wallet')).not.toBeInTheDocument();
     expect(screen.queryByText('Savings Vault')).not.toBeInTheDocument();
+  });
+
+  it('synchronously withholds the previous network wallet during a network switch', async () => {
+    mockUseWallets.mockReturnValue({ data: mockWallets, isLoading: false });
+    const intelligenceApi = await import('../../src/api/intelligence');
+    vi.mocked(intelligenceApi.getInsights).mockReturnValue(new Promise(() => {}));
+    const { rerender } = render(<Intelligence />);
+    await screen.findByText('My Bitcoin Wallet');
+
+    act(() => {
+      activeNetworkState.selectedNetwork = 'testnet3';
+      rerender(<Intelligence />);
+    });
+
+    expect(screen.queryByText('My Bitcoin Wallet')).not.toBeInTheDocument();
+    expect(screen.getByText('Testnet Treasury')).toBeInTheDocument();
   });
 
   it('should switch wallet when dropdown item is clicked', async () => {
