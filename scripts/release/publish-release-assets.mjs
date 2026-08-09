@@ -25,6 +25,48 @@ import { verifyReleaseArtifacts } from './release-artifact-verifier.mjs';
 
 const MAX_GITHUB_ASSET_BYTES = 2 * 1024 * 1024 * 1024;
 
+/**
+ * The provider values that have a safe default, and what it is.
+ *
+ * These must stay identical to the defaults `publish-release.sh` applies to the
+ * same names. The two commands are halves of one publication flow --
+ * `release:publish` creates the Release objects, `release:publish-assets`
+ * attaches the bytes -- so an operator who can run the first from a clean
+ * checkout has to be able to run the second the same way. Only the shell half
+ * had them, and cutting v0.8.62 needed three inline `export`s for no reason
+ * beyond that gap. `tests/release/publish-release-assets.test.mjs` reads the
+ * shell source and fails if the pair drifts apart again.
+ */
+export const PROVIDER_CONFIG_DEFAULTS = Object.freeze({
+  FORGEJO_OWNER: 'nekoguntai-castle',
+  FORGEJO_REPO: 'sanctuary',
+  GITHUB_API_URL: 'https://api.github.com',
+  GITHUB_OWNER: 'nekoguntai-castle',
+  GITHUB_REPO: 'sanctuary',
+});
+
+/** Ordered as `publish-release.sh` lists them, so both report a gap the same way. */
+export const PROVIDER_VALUES = Object.freeze([
+  'FORGEJO_URL',
+  'FORGEJO_OWNER',
+  'FORGEJO_REPO',
+  'FORGEJO_TOKEN',
+  'GITHUB_API_URL',
+  'GITHUB_OWNER',
+  'GITHUB_REPO',
+  'GITHUB_RELEASE_TOKEN',
+]);
+
+/**
+ * The two values that reach an `Authorization` header, and the characters
+ * `publish-release.sh`'s `reject_unsafe_tokens` refuses in them. Quote and
+ * backslash are legal header bytes, so nothing downstream would catch a token
+ * mangled by a stray shell quote -- it would surface as an authentication
+ * failure against the wrong string.
+ */
+const CREDENTIAL_VALUES = Object.freeze(['FORGEJO_TOKEN', 'GITHUB_RELEASE_TOKEN']);
+const UNSAFE_CREDENTIAL_CHARACTERS = /["\\\r\n]/;
+
 export async function publishReleaseAssets(input) {
   const options = normalizeOptions(input);
   bindManifestToAssetDirectory(options);
@@ -87,10 +129,7 @@ function writeReceiptAtomically(receiptPath, receipt) {
 function normalizeOptions(input) {
   const required = ['tag', 'commit', 'assetDir', 'manifestPath', 'publicKey'];
   for (const name of required) if (!input[name]) throw new Error(`${name} is required`);
-  const config = { ...readConfig(input.configPath), ...process.env, ...(input.config ?? {}) };
-  const providerValues = ['FORGEJO_URL', 'FORGEJO_OWNER', 'FORGEJO_REPO', 'FORGEJO_TOKEN', 'GITHUB_API_URL', 'GITHUB_OWNER', 'GITHUB_REPO', 'GITHUB_RELEASE_TOKEN'];
-  const missing = providerValues.filter((name) => !config[name]);
-  if (missing.length > 0) throw new Error(`missing required configuration: ${missing.join(' ')}`);
+  const config = resolveProviderConfig({ configPath: input.configPath, config: input.config });
   const normalized = {
     ...input,
     config,
@@ -107,6 +146,47 @@ function normalizeOptions(input) {
     }
   }
   return normalized;
+}
+
+/**
+ * Resolve the eight provider values the way `publish-release.sh` does.
+ *
+ * Precedence is defaults, then the environment, then the config file, then
+ * explicit overrides. The file outranking the environment looks backwards for a
+ * CLI, but it is what the shell half does -- it inherits the environment and
+ * then `source`s the file over it -- and the two commands publishing under
+ * different owners is a worse outcome than either ordering. A file named with
+ * `--config` is a deliberate act; a variable still exported in the operator's
+ * shell usually is not.
+ *
+ * A blank never wins, because `${VAR:-default}` falls back when a variable is
+ * unset *or* empty. A non-string is refused outright rather than skipped: it
+ * would otherwise fall through to a default and publish somewhere the caller
+ * never named.
+ *
+ * Only these eight names are carried forward. The previous spread copied the
+ * whole process environment into the options object; nothing ever read the
+ * rest, and a release credential should travel no further than the request that
+ * needs it.
+ */
+export function resolveProviderConfig({ configPath = '', config: overrides, env = process.env } = {}) {
+  const layers = [PROVIDER_CONFIG_DEFAULTS, env, readConfig(configPath), overrides ?? {}];
+  const config = {};
+  for (const name of PROVIDER_VALUES) {
+    for (const layer of layers) {
+      if (!layer || !Object.hasOwn(layer, name)) continue;
+      const value = layer[name];
+      if (value === undefined || value === '') continue;
+      if (typeof value !== 'string') throw new Error(`invalid ${name}: expected a string, received ${typeof value}`);
+      config[name] = value;
+    }
+  }
+  const missing = PROVIDER_VALUES.filter((name) => !config[name]);
+  if (missing.length > 0) throw new Error(`missing required configuration: ${missing.join(' ')}`);
+  for (const name of CREDENTIAL_VALUES) {
+    if (UNSAFE_CREDENTIAL_CHARACTERS.test(config[name])) throw new Error(`unsafe value for ${name}`);
+  }
+  return config;
 }
 
 function readConfig(configPath) {

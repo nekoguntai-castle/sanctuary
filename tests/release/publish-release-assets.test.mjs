@@ -5,7 +5,12 @@ import { copyFileSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { publishReleaseAssets } from '../../scripts/release/publish-release-assets.mjs';
+import {
+  PROVIDER_CONFIG_DEFAULTS,
+  PROVIDER_VALUES,
+  publishReleaseAssets,
+  resolveProviderConfig,
+} from '../../scripts/release/publish-release-assets.mjs';
 
 const TAG = 'v1.2.3';
 const COMMIT = 'a'.repeat(40);
@@ -86,6 +91,70 @@ try {
   state.github.find((asset) => asset.name === 'install.sh').bytes = Buffer.from('different');
   state.github.find((asset) => asset.name === 'install.sh').size = 9;
   await assert.rejects(() => publishReleaseAssets(options), /asset size differs|checksum differs/);
+  // Provider-config resolution. This half of the publication flow has to accept
+  // the same bare environment the shell half already does: cutting v0.8.62
+  // needed three inline exports purely because these defaults lived in only one
+  // of the two commands.
+  const credentials = { FORGEJO_URL: base, FORGEJO_TOKEN: 'forge-secret', GITHUB_RELEASE_TOKEN: 'github-secret' };
+  const resolved = resolveProviderConfig({ config: credentials, env: {} });
+  for (const [name, value] of Object.entries(PROVIDER_CONFIG_DEFAULTS)) {
+    assert.equal(resolved[name], value, `${name} must fall back to its default`);
+  }
+
+  // publish-release.sh declares the same defaults in bash, and nothing but this
+  // assertion ties the two together. Extract them from the shell source and
+  // compare both directions -- a one-way `includes` check would stay green if
+  // the shell grew a default this object lacks, which is the likelier drift.
+  // The backreference keeps it to genuine `NAME="${NAME:-value}"` self-defaults,
+  // so unrelated indirections like SANCTUARY_CREATE_RELEASE_SCRIPT are ignored.
+  const shellSource = readFileSync(new URL('../../scripts/release/publish-release.sh', import.meta.url), 'utf8');
+  const shellDefaults = Object.fromEntries(
+    [...shellSource.matchAll(/^\s*([A-Z][A-Z0-9_]*)="\$\{\1:-(.*)\}"$/gm)]
+      .filter(([, , value]) => value !== '')
+      .map(([, name, value]) => [name, value]),
+  );
+  assert.deepEqual(shellDefaults, { ...PROVIDER_CONFIG_DEFAULTS }, 'publish-release.sh and PROVIDER_CONFIG_DEFAULTS must declare identical defaults');
+
+  // The order the two halves report a gap in must match too.
+  const shellRequired = shellSource
+    .match(/^\s*require_values\s+((?:.*\\\n)*.*)$/m)[1]
+    .replace(/\\\n/g, ' ')
+    .trim()
+    .split(/\s+/);
+  assert.deepEqual(shellRequired, [...PROVIDER_VALUES], 'require_values must list the same names in the same order');
+
+  // A blank must not beat a default, matching bash ${VAR:-} semantics.
+  assert.equal(resolveProviderConfig({ config: { ...credentials, GITHUB_OWNER: '' }, env: {} }).GITHUB_OWNER, PROVIDER_CONFIG_DEFAULTS.GITHUB_OWNER);
+  assert.equal(resolveProviderConfig({ config: credentials, env: { GITHUB_REPO: '' } }).GITHUB_REPO, PROVIDER_CONFIG_DEFAULTS.GITHUB_REPO);
+
+  // Precedence: env beats the default, an explicitly named config file beats a
+  // variable left over in the shell, and an explicit override beats both.
+  assert.equal(resolveProviderConfig({ config: credentials, env: { GITHUB_OWNER: 'from-env' } }).GITHUB_OWNER, 'from-env');
+  const configFile = path.join(root, 'provider.env');
+  writeFileSync(configFile, 'GITHUB_OWNER=from-file\n');
+  assert.equal(resolveProviderConfig({ configPath: configFile, config: credentials, env: { GITHUB_OWNER: 'from-env' } }).GITHUB_OWNER, 'from-file');
+  assert.equal(resolveProviderConfig({ config: { ...credentials, GITHUB_OWNER: 'from-override' }, env: { GITHUB_OWNER: 'from-env' } }).GITHUB_OWNER, 'from-override');
+
+  // Credentials and the Forgejo endpoint have no default and must fail closed,
+  // whether they are absent or merely blank.
+  assert.throws(() => resolveProviderConfig({ config: {}, env: {} }), /missing required configuration: FORGEJO_URL FORGEJO_TOKEN GITHUB_RELEASE_TOKEN/);
+  assert.throws(() => resolveProviderConfig({ config: { ...credentials, FORGEJO_TOKEN: '' }, env: {} }), /missing required configuration: FORGEJO_TOKEN/);
+
+  // A non-string must be refused, not quietly swapped for the default -- that
+  // would publish to this project's own coordinates instead of the caller's.
+  assert.throws(() => resolveProviderConfig({ config: { ...credentials, GITHUB_OWNER: 12345 }, env: {} }), /invalid GITHUB_OWNER: expected a string, received number/);
+
+  // Token characters the shell half rejects must not reach an Authorization header.
+  for (const bad of ['tok"en', 'tok\\en', 'tok\nen']) {
+    assert.throws(() => resolveProviderConfig({ config: { ...credentials, GITHUB_RELEASE_TOKEN: bad }, env: {} }), /unsafe value for GITHUB_RELEASE_TOKEN/);
+  }
+
+  // Nothing beyond the eight provider names travels in the resolved config.
+  assert.deepEqual(
+    Object.keys(resolveProviderConfig({ config: credentials, env: { UNRELATED_SECRET: 'x' } })).sort(),
+    ['FORGEJO_OWNER', 'FORGEJO_REPO', 'FORGEJO_TOKEN', 'FORGEJO_URL', 'GITHUB_API_URL', 'GITHUB_OWNER', 'GITHUB_RELEASE_TOKEN', 'GITHUB_REPO'],
+  );
+
   console.log('release asset publication tests passed');
 } finally {
   await new Promise((resolve) => server.close(resolve));

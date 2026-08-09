@@ -21,19 +21,40 @@ Store release credentials outside the repository. By default the operator
 command reads `~/.config/sanctuary/forge-tokens.env`; set
 `SANCTUARY_RELEASE_CONFIG` to use a different secret-store projection.
 
-Required values:
+Required values — the one endpoint and the two credentials that no default can
+stand in for:
 
 ```dotenv
 FORGEJO_URL=https://forgejo.example.invalid
+FORGEJO_TOKEN=...
+GITHUB_RELEASE_TOKEN=...
+```
+
+The remaining names already default to this project's coordinates in both
+`release:publish` and `release:publish-assets`, so a clean checkout needs none
+of them. Set one only to publish somewhere else — a fork, or an instance under a
+different owner:
+
+```dotenv
 FORGEJO_OWNER=nekoguntai-castle
 FORGEJO_REPO=sanctuary
-FORGEJO_TOKEN=...
-
 GITHUB_API_URL=https://api.github.com
 GITHUB_OWNER=nekoguntai-castle
 GITHUB_REPO=sanctuary
-GITHUB_RELEASE_TOKEN=...
 ```
+
+An empty assignment counts as unset and falls back to the default, matching
+`${VAR:-default}` in the shell half, and a config file named with `--config`
+outranks a variable left exported in the shell. Both commands apply the same
+five defaults in the same precedence order;
+`tests/release/publish-release-assets.test.mjs` fails if the two sets, or the
+order they report a missing value in, ever drift apart.
+
+Two differences remain, both in how the config file itself is located rather
+than in how these names resolve: `release:publish` falls back to
+`SANCTUARY_RELEASE_CONFIG` (else `~/.config/sanctuary/forge-tokens.env`) and
+tolerates the file being absent, whereas `release:publish-assets` requires an
+explicit `--config` and reports `ENOENT` if that path does not exist.
 
 Use separate credentials:
 
