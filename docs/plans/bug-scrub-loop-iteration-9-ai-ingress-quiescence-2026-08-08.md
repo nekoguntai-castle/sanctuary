@@ -149,7 +149,7 @@ target-SHA CI verification.
   rollback, and unrelated scope creep.
 - [x] Run an independent adversarial implementation review and resolve every
   verified P0-P2 comment.
-- [ ] Deliver the four phases as separate PRs when independently releasable.
+- [x] Deliver the four phases as separate PRs when independently releasable.
   For each: push the exact reviewed head, require every attached PR-head context
   terminal success/skip, squash-merge, verify head/merge tree identity, and
   require every exact target-SHA context terminal success/skip before rebasing
