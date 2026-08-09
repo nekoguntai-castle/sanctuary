@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useRef } from 'react';
+import { WebSocketChannels } from '@sanctuary/shared/types/websocket';
 import { websocketClient, WebSocketEvent } from '../../services/websocket';
 import { useWebSocket } from './useWebSocket';
 import type {
@@ -14,6 +15,24 @@ import type {
   WebSocketConfirmationData,
   WebSocketSyncData,
 } from '../../types';
+
+function isOwnedWalletEvent(event: WebSocketEvent, walletId: string): boolean {
+  // Wallet events are broadcast through the client emitter, so the exact
+  // server envelope channel is the resource identity boundary.
+  if (event.event === 'transaction') {
+    return event.channel === WebSocketChannels.walletEvent(walletId, 'transaction');
+  }
+  if (event.event === 'balance') {
+    return event.channel === WebSocketChannels.walletEvent(walletId, 'balance');
+  }
+  if (event.event === 'confirmation') {
+    return event.channel === WebSocketChannels.walletEvent(walletId, 'confirmation');
+  }
+  if (event.event === 'sync') {
+    return event.channel === WebSocketChannels.walletEvent(walletId, 'sync');
+  }
+  return false;
+}
 
 export const useWalletEvents = (
   walletId: string | undefined,
@@ -40,6 +59,7 @@ export const useWalletEvents = (
 
     // Setup event handlers - use ref to get latest callbacks
     const handleEvent = (event: WebSocketEvent) => {
+      if (!isOwnedWalletEvent(event, walletId)) return;
       const cbs = callbacksRef.current;
       if (event.event === 'transaction' && cbs.onTransaction) {
         cbs.onTransaction(event.data as WebSocketTransactionData);

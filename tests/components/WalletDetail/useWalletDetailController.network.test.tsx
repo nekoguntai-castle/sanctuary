@@ -7,13 +7,16 @@ const controllerState = vi.hoisted(() => ({
   walletNetwork: 'signet' as string | undefined,
   setSelectedNetwork: vi.fn(),
   bitcoinStatusNetworks: [] as Array<string | undefined>,
+  routeId: 'wallet-1' as string | undefined,
+  user: { id: 'user-1', isAdmin: false } as { id: string; isAdmin: boolean } | null,
+  fetchData: vi.fn(),
 }));
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom');
   return {
     ...actual,
-    useParams: () => ({ id: 'wallet-1' }),
+    useParams: () => ({ id: controllerState.routeId }),
     useNavigate: () => vi.fn(),
     useLocation: () => ({ state: null }),
   };
@@ -35,7 +38,7 @@ vi.mock('../../../src/contexts/ActiveNetworkContext', () => ({
 }));
 
 vi.mock('../../../src/contexts/UserContext', () => ({
-  useUser: () => ({ user: { id: 'user-1', isAdmin: false } }),
+  useUser: () => ({ user: controllerState.user }),
 }));
 
 vi.mock('../../../src/hooks/queries/useBitcoin', () => ({
@@ -115,7 +118,7 @@ vi.mock('../../../src/components/WalletDetail/hooks/useWalletData', () => ({
     groups: [],
     walletShareInfo: null,
     setWalletShareInfo: vi.fn(),
-    fetchData: vi.fn(),
+    fetchData: controllerState.fetchData,
   }),
 }));
 
@@ -246,6 +249,9 @@ describe('useWalletDetailController network preference alignment', () => {
     controllerState.walletNetwork = 'signet';
     controllerState.setSelectedNetwork.mockClear();
     controllerState.bitcoinStatusNetworks = [];
+    controllerState.routeId = 'wallet-1';
+    controllerState.user = { id: 'user-1', isAdmin: false };
+    controllerState.fetchData.mockClear();
   });
 
   it('updates the active network preference to match the loaded wallet', async () => {
@@ -286,5 +292,19 @@ describe('useWalletDetailController network preference alignment', () => {
     const { result } = renderHook(() => useWalletDetailController());
 
     expect(result.current.pendingFreezeIds).toEqual(new Set(['pending-controller-utxo']));
+  });
+
+  it('builds an anonymous empty-route owner and guards route-bound label refreshes', () => {
+    controllerState.routeId = undefined;
+    controllerState.user = null;
+    const { result } = renderHook(() => useWalletDetailController());
+
+    result.current.handleLabelsChange();
+    expect(controllerState.fetchData).not.toHaveBeenCalled();
+
+    controllerState.routeId = 'wallet-1';
+    const current = renderHook(() => useWalletDetailController());
+    current.result.current.handleLabelsChange();
+    expect(controllerState.fetchData).toHaveBeenCalledWith(true);
   });
 });

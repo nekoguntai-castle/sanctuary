@@ -5,10 +5,11 @@
  * descriptor). Extracted from WalletDetail.tsx to isolate mutation concerns.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useLayoutEffect } from 'react';
 import * as walletsApi from '../../../api/wallets';
 import { createLogger } from '../../../utils/logger';
 import type { Wallet } from '../../../types';
+import { useWalletRouteOwnership } from './useWalletRouteOwnership';
 
 const log = createLogger('useWalletMutations');
 
@@ -21,8 +22,9 @@ export interface UseWalletMutationsParams {
   wallet: Wallet | null;
   /** Wallet ID */
   walletId: string | undefined;
+  ownershipKey?: string;
   /** Setter to optimistically update the wallet object */
-  setWallet: (wallet: Wallet) => void;
+  setWallet: React.Dispatch<React.SetStateAction<Wallet | null>>;
   /** Unified error handler (from useErrorHandler) */
   handleError: (error: unknown, title: string) => void;
 }
@@ -47,14 +49,24 @@ export interface UseWalletMutationsReturn {
 export function useWalletMutations({
   wallet,
   walletId,
+  ownershipKey = walletId ?? '',
   setWallet,
   handleError,
 }: UseWalletMutationsParams): UseWalletMutationsReturn {
+  const ownership = useWalletRouteOwnership(ownershipKey);
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState('');
 
+  useLayoutEffect(() => {
+    setIsEditingName(false);
+    setEditedName('');
+  }, [ownershipKey]);
+
   const handleUpdateWallet = useCallback(async (updatedData: Partial<Wallet>) => {
-    if (!wallet || !walletId) return;
+    if (!wallet || !walletId || wallet.id !== walletId) return;
+    const id = walletId;
+    const token = ownership.captureRoute(ownershipKey);
+    if (!ownership.isRouteOwner(token)) return;
 
     try {
       // Optimistic update
@@ -62,17 +74,18 @@ export function useWalletMutations({
       setWallet(updatedWallet);
 
       // Update via API (only name and descriptor are updateable)
-      await walletsApi.updateWallet(walletId, {
+      await walletsApi.updateWallet(id, {
         name: updatedData.name,
         descriptor: updatedData.descriptor,
       });
     } catch (err) {
       log.error('Failed to update wallet', { error: err });
+      if (!ownership.isRouteOwner(token) || id !== walletId) return;
       // Revert optimistic update on error
-      setWallet(wallet);
+      setWallet(current => current?.id === id ? wallet : current);
       handleError(err, 'Update Failed');
     }
-  }, [wallet, walletId, setWallet, handleError]);
+  }, [handleError, ownership, ownershipKey, setWallet, wallet, walletId]);
 
   return {
     isEditingName,

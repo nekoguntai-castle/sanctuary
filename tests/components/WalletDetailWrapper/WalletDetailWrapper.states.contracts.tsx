@@ -163,6 +163,10 @@ export const registerWalletDetailWrapperStateContracts = () => {
 
       mocks.getWalletAgents.mockRejectedValueOnce(new Error('agent lookup failed'));
       mocks.routeId = 'wallet-2';
+      mocks.walletDataState = {
+        ...mocks.walletDataState,
+        wallet: { ...mocks.walletDataState.wallet, id: 'wallet-2' },
+      };
       rerender(<WalletDetail />);
 
       await waitFor(() => {

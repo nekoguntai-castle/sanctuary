@@ -287,5 +287,37 @@ describe('useWalletWebSocket', () => {
     );
 
     expect(vi.mocked(useWalletEvents).mock.calls.at(-1)?.[0]).toBeUndefined();
+    handlers.onBalance({ walletId: 'wallet-1', balance: 1 });
+    expect(setWallet).not.toHaveBeenCalled();
+  });
+
+  it('rejects a stale wallet A event after wallet B becomes current', () => {
+    const view = renderHook(
+      ({ walletId }) => useWalletWebSocket({
+        walletId,
+        ownershipKey: `${walletId}:user:mainnet`,
+        wallet: { id: walletId, name: walletId, balance: 10_000 } as any,
+        setWallet,
+        setTransactions,
+        setSyncing,
+        setSyncRetryInfo,
+        fetchData,
+      }),
+      { initialProps: { walletId: 'wallet-A' } },
+    );
+    const staleHandlers = handlers;
+
+    view.rerender({ walletId: 'wallet-B' });
+    vi.clearAllMocks();
+    handlers.onBalance({ walletId: 'wallet-A', balance: 88_000 });
+    staleHandlers.onBalance({ walletId: 'wallet-A', balance: 99_000 });
+    staleHandlers.onTransaction({ walletId: 'wallet-A', txid: 'stale-A', type: 'received' });
+    staleHandlers.onConfirmation({ walletId: 'wallet-A', txid: 'stale-A', confirmations: 6 });
+    staleHandlers.onSync({ walletId: 'wallet-A', inProgress: false, status: 'success' });
+
+    expect(setWallet).not.toHaveBeenCalled();
+    expect(addNotification).not.toHaveBeenCalled();
+    expect(setSyncing).not.toHaveBeenCalled();
+    expect(fetchData).not.toHaveBeenCalled();
   });
 });

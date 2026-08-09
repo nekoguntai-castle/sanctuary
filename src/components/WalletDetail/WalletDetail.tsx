@@ -17,7 +17,7 @@ export const WalletDetail: React.FC = () => {
     );
   }
 
-  if (!controller.wallet) return <LoadingState />;
+  if (!controller.wallet || controller.wallet.id !== controller.id) return <LoadingState />;
 
   return (
     <WalletDetailLoadedView

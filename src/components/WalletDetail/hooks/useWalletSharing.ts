@@ -6,7 +6,7 @@
  * Extracted from WalletDetail.tsx to isolate sharing concerns.
  */
 
-import { useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
 import * as walletsApi from '../../../api/wallets';
 import * as devicesApi from '../../../api/devices';
 import * as authApi from '../../../api/auth';
@@ -17,6 +17,8 @@ import { logError } from '../../../utils/errorHandler';
 import type { Wallet, Device } from '../../../types';
 import type { DeviceSharePromptState } from '../types';
 import type { WalletShareRole } from '@sanctuary/shared/constants/walletRoles';
+import type { RouteToken } from '../../../hooks/requestOwnership';
+import { useWalletRouteOwnership } from './useWalletRouteOwnership';
 
 const log = createLogger('useWalletSharing');
 
@@ -27,6 +29,7 @@ const log = createLogger('useWalletSharing');
 export interface UseWalletSharingParams {
   /** Wallet ID */
   walletId: string | undefined;
+  ownershipKey?: string;
   /** Current wallet object (needed for guard checks) */
   wallet: Wallet | null;
   /** Devices associated with this wallet (used for device sharing) */
@@ -48,7 +51,7 @@ export interface UseWalletSharingReturn {
   userSearchQuery: string;
   userSearchResults: authApi.SearchUser[];
   searchingUsers: boolean;
-  handleSearchUsers: (query: string) => void;
+  handleSearchUsers: (query: string) => Promise<void>;
 
   // Group sharing
   selectedGroupToAdd: string;
@@ -84,6 +87,7 @@ const EMPTY_DEVICE_SHARE: DeviceSharePromptState = {
 
 export function useWalletSharing({
   walletId,
+  ownershipKey = walletId ?? '',
   wallet,
   walletShareInfo,
   setWalletShareInfo,
@@ -91,6 +95,7 @@ export function useWalletSharing({
 }: UseWalletSharingParams): UseWalletSharingReturn {
   const { handleError } = useErrorHandler();
   const { addNotification: addAppNotification } = useAppNotifications();
+  const ownership = useWalletRouteOwnership(ownershipKey);
 
   // User search state
   const [userSearchQuery, setUserSearchQuery] = useState('');
@@ -106,13 +111,27 @@ export function useWalletSharing({
   // Device share prompt state
   const [deviceSharePrompt, setDeviceSharePrompt] = useState<DeviceSharePromptState>(EMPTY_DEVICE_SHARE);
 
+  useLayoutEffect(() => {
+    setUserSearchQuery('');
+    setUserSearchResults([]);
+    setSearchingUsers(false);
+    setSelectedGroupToAdd('');
+    setSharingLoading(false);
+    setDeviceSharePrompt(EMPTY_DEVICE_SHARE);
+  }, [ownershipKey]);
+
   // -----------------------------------------------------------------------
   // Helpers
   // -----------------------------------------------------------------------
 
-  const refreshShareInfo = async (id: string) => {
+  const owns = (token: RouteToken, id: string) => (
+    id === walletId && ownership.isRouteOwner(token)
+  );
+
+  const refreshShareInfo = async (id: string, token: RouteToken) => {
     const shareInfo = await walletsApi.getWalletShareInfo(id);
-    setWalletShareInfo(shareInfo);
+    if (owns(token, id)) setWalletShareInfo(shareInfo);
+    return shareInfo;
   };
 
   // -----------------------------------------------------------------------
@@ -121,45 +140,56 @@ export function useWalletSharing({
 
   const addGroup = async (role: WalletShareRole = 'viewer') => {
     if (!wallet || !selectedGroupToAdd || !walletId) return;
+    const id = walletId;
+    const groupId = selectedGroupToAdd;
+    const token = ownership.captureRoute(ownershipKey);
+    if (!owns(token, id)) return;
     try {
       setSharingLoading(true);
-      await walletsApi.shareWalletWithGroup(walletId, { groupId: selectedGroupToAdd, role });
-      await refreshShareInfo(walletId);
-      setSelectedGroupToAdd('');
+      await walletsApi.shareWalletWithGroup(id, { groupId, role });
+      await refreshShareInfo(id, token);
+      if (owns(token, id)) setSelectedGroupToAdd('');
     } catch (err) {
       log.error('Failed to share with group', { error: err });
-      handleError(err, 'Share Failed');
+      if (owns(token, id)) handleError(err, 'Share Failed');
     } finally {
-      setSharingLoading(false);
+      if (owns(token, id)) setSharingLoading(false);
     }
   };
 
   const updateGroupRole = async (role: WalletShareRole) => {
     if (!wallet || !walletShareInfo?.group || !walletId) return;
+    const id = walletId;
+    const groupId = walletShareInfo.group.id;
+    const token = ownership.captureRoute(ownershipKey);
+    if (!owns(token, id)) return;
     try {
       setSharingLoading(true);
-      await walletsApi.shareWalletWithGroup(walletId, { groupId: walletShareInfo.group.id, role });
-      await refreshShareInfo(walletId);
+      await walletsApi.shareWalletWithGroup(id, { groupId, role });
+      await refreshShareInfo(id, token);
     } catch (err) {
       log.error('Failed to update group role', { error: err });
-      handleError(err, 'Update Role Failed');
+      if (owns(token, id)) handleError(err, 'Update Role Failed');
     } finally {
-      setSharingLoading(false);
+      if (owns(token, id)) setSharingLoading(false);
     }
   };
 
   const removeGroup = async () => {
     if (!wallet || !walletId) return;
+    const id = walletId;
+    const token = ownership.captureRoute(ownershipKey);
+    if (!owns(token, id)) return;
     try {
       setSharingLoading(true);
       // Setting groupId to null removes group access
-      await walletsApi.shareWalletWithGroup(walletId, { groupId: null });
-      await refreshShareInfo(walletId);
+      await walletsApi.shareWalletWithGroup(id, { groupId: null });
+      await refreshShareInfo(id, token);
     } catch (err) {
       log.error('Failed to remove group', { error: err });
-      handleError(err, 'Remove Group Failed');
+      if (owns(token, id)) handleError(err, 'Remove Group Failed');
     } finally {
-      setSharingLoading(false);
+      if (owns(token, id)) setSharingLoading(false);
     }
   };
 
@@ -169,13 +199,16 @@ export function useWalletSharing({
 
   const handleShareWithUser = async (targetUserId: string, role: WalletShareRole = 'viewer') => {
     if (!walletId) return;
+    const id = walletId;
+    const token = ownership.captureRoute(ownershipKey);
+    if (!owns(token, id)) return;
     try {
       setSharingLoading(true);
-      const result = await walletsApi.shareWalletWithUser(walletId, { targetUserId, role });
+      const result = await walletsApi.shareWalletWithUser(id, { targetUserId, role });
 
       // Refresh share info
-      const shareInfo = await walletsApi.getWalletShareInfo(walletId);
-      setWalletShareInfo(shareInfo);
+      const shareInfo = await refreshShareInfo(id, token);
+      if (!owns(token, id)) return;
 
       // If there are devices to share, show the prompt
       if (result.devicesToShare && result.devicesToShare.length > 0) {
@@ -195,24 +228,28 @@ export function useWalletSharing({
       setUserSearchResults([]);
     } catch (err) {
       log.error('Failed to share with user', { error: err });
-      handleError(err, 'Share Failed');
+      if (owns(token, id)) handleError(err, 'Share Failed');
     } finally {
-      setSharingLoading(false);
+      if (owns(token, id)) setSharingLoading(false);
     }
   };
 
   const handleShareDevicesWithUser = async () => {
-    if (!deviceSharePrompt.show) return;
+    if (!deviceSharePrompt.show || !walletId) return;
+    const id = walletId;
+    const prompt = deviceSharePrompt;
+    const token = ownership.captureRoute(ownershipKey);
+    if (!owns(token, id)) return;
+    setSharingLoading(true);
     try {
-      setSharingLoading(true);
-      // Share all devices with the user using allSettled to handle partial failures
+      // allSettled turns per-device failures into data; no request rejection escapes.
       const results = await Promise.allSettled(
-        deviceSharePrompt.devices.map(device =>
-          devicesApi.shareDeviceWithUser(device.id, { targetUserId: deviceSharePrompt.targetUserId })
-        )
+        prompt.devices.map(device => Promise.resolve().then(() =>
+          devicesApi.shareDeviceWithUser(device.id, { targetUserId: prompt.targetUserId })
+        ))
       );
 
-      // Check for failures
+      if (!owns(token, id)) return;
       const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
       const successes = results.filter(r => r.status === 'fulfilled');
 
@@ -225,7 +262,6 @@ export function useWalletSharing({
         });
 
         if (successes.length > 0) {
-          // Partial success - show warning
           addAppNotification({
             type: 'warning',
             scope: 'global',
@@ -234,17 +270,13 @@ export function useWalletSharing({
             message: `Shared ${successes.length} of ${results.length} devices. ${failures.length} failed.`,
           });
         } else {
-          // Complete failure
           handleError(failures[0].reason, 'Device Share Failed');
         }
       }
 
       setDeviceSharePrompt(EMPTY_DEVICE_SHARE);
-    } catch (err) {
-      log.error('Failed to share devices', { error: err });
-      handleError(err, 'Device Share Failed');
     } finally {
-      setSharingLoading(false);
+      if (owns(token, id)) setSharingLoading(false);
     }
   };
 
@@ -254,45 +286,58 @@ export function useWalletSharing({
 
   const handleRemoveUserAccess = async (targetUserId: string) => {
     if (!walletId) return;
+    const id = walletId;
+    const token = ownership.captureRoute(ownershipKey);
+    if (!owns(token, id)) return;
     try {
       setSharingLoading(true);
-      await walletsApi.removeUserFromWallet(walletId, targetUserId);
-      await refreshShareInfo(walletId);
+      await walletsApi.removeUserFromWallet(id, targetUserId);
+      await refreshShareInfo(id, token);
     } catch (err) {
       log.error('Failed to remove user', { error: err });
-      handleError(err, 'Remove User Failed');
+      if (owns(token, id)) handleError(err, 'Remove User Failed');
     } finally {
-      setSharingLoading(false);
+      if (owns(token, id)) setSharingLoading(false);
     }
   };
 
   const handleSearchUsers = async (query: string) => {
+    const id = walletId;
+    const token = ownership.beginFetch(ownershipKey);
+    if (!ownership.isFetchOwner(token) || id !== walletId) return;
     setUserSearchQuery(query);
     if (query.length < 2) {
       setUserSearchResults([]);
+      setSearchingUsers(false);
       return;
     }
     try {
       setSearchingUsers(true);
       const results = await authApi.searchUsers(query);
+      if (!ownership.isFetchOwner(token) || id !== walletId) return;
       // Filter out users who already have access
       const existingUserIds = walletShareInfo?.users.map(u => u.id) || [];
       setUserSearchResults(results.filter(u => !existingUserIds.includes(u.id)));
     } catch (err) {
       logError(log, err, 'Failed to search users');
-      handleError(err, 'Failed to Search Users');
+      if (ownership.isFetchOwner(token) && id === walletId) {
+        handleError(err, 'Failed to Search Users');
+      }
     } finally {
-      setSearchingUsers(false);
+      if (ownership.isFetchOwner(token) && id === walletId) setSearchingUsers(false);
     }
   };
 
   // Reload wallet data after transfer actions
   const handleTransferComplete = async () => {
     if (!walletId) return;
+    const id = walletId;
+    const token = ownership.captureRoute(ownershipKey);
+    if (!owns(token, id)) return;
     try {
-      const walletData = await walletsApi.getWallet(walletId);
-      setWallet(walletData);
-      await refreshShareInfo(walletId);
+      const walletData = await walletsApi.getWallet(id);
+      if (owns(token, id)) setWallet(walletData);
+      await refreshShareInfo(id, token);
     } catch (err) {
       log.error('Failed to reload wallet after transfer', { error: err });
     }

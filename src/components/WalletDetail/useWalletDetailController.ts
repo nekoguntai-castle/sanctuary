@@ -40,6 +40,7 @@ export const useWalletDetailController = () => {
   const { handleError } = useErrorHandler();
   const { addNotification: addAppNotification, removeNotificationsByType } = useAppNotifications();
   const { selectedNetwork, setSelectedNetwork } = useActiveNetwork();
+  const ownershipKey = `${id ?? ''}:${user?.id ?? ''}:${selectedNetwork}`;
   const locationState = location.state as WalletDetailLocationState | null;
   const highlightTxId = locationState?.highlightTxId;
   const alignedWalletIdRef = useRef<string | null>(null);
@@ -95,6 +96,7 @@ export const useWalletDetailController = () => {
     handleSync, handleFullResync, handleRepairWallet,
   } = useWalletSync({
     walletId: id,
+    ownershipKey,
     onDataRefresh: () => fetchData(true),
   });
 
@@ -157,6 +159,7 @@ export const useWalletDetailController = () => {
     handleTransferComplete,
   } = useWalletSharing({
     walletId: id,
+    ownershipKey,
     wallet,
     devices,
     walletShareInfo,
@@ -208,6 +211,7 @@ export const useWalletDetailController = () => {
   } = useWalletMutations({
     wallet,
     walletId: id,
+    ownershipKey,
     setWallet,
     handleError,
   });
@@ -230,6 +234,7 @@ export const useWalletDetailController = () => {
 
   useWalletWebSocket({
     walletId: id,
+    ownershipKey,
     wallet,
     setWallet,
     setTransactions,
@@ -274,6 +279,7 @@ export const useWalletDetailController = () => {
 
   const modalState = useWalletDetailModalState({
     walletId: id,
+    ownershipKey,
     navigate,
     handleError,
     handleTransferComplete,

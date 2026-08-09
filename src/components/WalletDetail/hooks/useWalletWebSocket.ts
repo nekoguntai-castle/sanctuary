@@ -4,11 +4,13 @@ import { useWalletEvents } from '../../../hooks/websocket';
 import { useNotifications } from '../../../contexts/NotificationContext';
 import { createLogger } from '../../../utils/logger';
 import type { SyncRetryInfo } from '../types';
+import { useWalletRouteOwnership } from './useWalletRouteOwnership';
 
 const log = createLogger('WalletDetail:WebSocket');
 
 interface UseWalletWebSocketOptions {
   walletId: string | undefined;
+  ownershipKey?: string;
   wallet: Wallet | null;
   setWallet: React.Dispatch<React.SetStateAction<Wallet | null>>;
   setTransactions: React.Dispatch<React.SetStateAction<Transaction[]>>;
@@ -19,6 +21,7 @@ interface UseWalletWebSocketOptions {
 
 export function useWalletWebSocket({
   walletId,
+  ownershipKey = walletId ?? '',
   wallet,
   setWallet,
   setTransactions,
@@ -27,9 +30,16 @@ export function useWalletWebSocket({
   fetchData,
 }: UseWalletWebSocketOptions) {
   const { addNotification } = useNotifications();
+  const ownership = useWalletRouteOwnership(ownershipKey);
+  const ownsEvent = (eventWalletId?: string) => (
+    Boolean(walletId)
+    && ownership.isRouteOwner(ownership.captureRoute(ownershipKey))
+    && (eventWalletId === undefined || eventWalletId === walletId)
+  );
 
   useWalletEvents(walletId, {
     onTransaction: (data) => {
+      if (!ownsEvent(data.walletId)) return;
       log.debug('Real-time transaction received', { txid: data?.txid });
 
       // Determine title based on transaction type
@@ -52,10 +62,11 @@ export function useWalletWebSocket({
       fetchData(true);
     },
     onBalance: (data) => {
+      if (!ownsEvent(data.walletId)) return;
       log.debug('Real-time balance update', { balance: data?.confirmed });
 
       // Update wallet balance immediately
-      if (wallet && data.balance !== undefined) {
+      if (wallet && wallet.id === walletId && data.balance !== undefined) {
         setWallet({ ...wallet, balance: data.balance });
       }
 
@@ -63,6 +74,7 @@ export function useWalletWebSocket({
       // to avoid duplicate notifications when this page is open
     },
     onConfirmation: (data) => {
+      if (!ownsEvent(data.walletId)) return;
       log.debug('Transaction confirmation', { txid: data?.txid, confirmations: data?.confirmations });
 
       // Update transaction confirmations
@@ -87,11 +99,12 @@ export function useWalletWebSocket({
       }
     },
     onSync: (data) => {
+      if (!ownsEvent(data.walletId)) return;
       log.debug('Sync status update', { status: data?.status });
 
       // Update wallet sync status (use functional form to avoid stale closure)
       setWallet(prevWallet => {
-        if (!prevWallet) return prevWallet;
+        if (!prevWallet || prevWallet.id !== walletId) return prevWallet;
         return {
           ...prevWallet,
           syncInProgress: data.inProgress,

@@ -98,6 +98,7 @@ const registerWalletEventCallbackTests = (): void => {
 
       const transactionEvent = {
         event: 'transaction',
+        channel: 'wallet:wallet-789:transaction',
         data: { txid: 'tx123', amount: 1000 },
       };
 
@@ -118,6 +119,7 @@ const registerWalletEventCallbackTests = (): void => {
 
       const balanceEvent = {
         event: 'balance',
+        channel: 'wallet:wallet-abc:balance',
         data: { balance: 5000, confirmed: 5000 },
       };
 
@@ -138,6 +140,7 @@ const registerWalletEventCallbackTests = (): void => {
 
       const confirmationEvent = {
         event: 'confirmation',
+        channel: 'wallet:wallet-def:confirmation',
         data: { txid: 'tx456', confirmations: 3 },
       };
 
@@ -158,6 +161,7 @@ const registerWalletEventCallbackTests = (): void => {
 
       const syncEvent = {
         event: 'sync',
+        channel: 'wallet:wallet-ghi:sync',
         data: { progress: 0.75, status: 'syncing' },
       };
 
@@ -170,6 +174,34 @@ const registerWalletEventCallbackTests = (): void => {
       });
     });
 
+    it('rejects foreign and base-channel envelopes whose payload has no walletId', () => {
+      const onBalance = vi.fn();
+      renderHook(() => useWalletEvents('wallet-current', { onBalance }));
+
+      act(() => {
+        eventCallbacks.get('balance')?.forEach(cb => cb({
+          type: 'event',
+          event: 'balance',
+          channel: 'wallet:wallet-foreign:balance',
+          data: { balance: 99_000 },
+        }));
+        eventCallbacks.get('balance')?.forEach(cb => cb({
+          type: 'event',
+          event: 'balance',
+          channel: 'wallet:wallet-current',
+          data: { balance: 88_000 },
+        }));
+        eventCallbacks.get('balance')?.forEach(cb => cb({
+          type: 'event',
+          event: 'block',
+          channel: 'global:blocks',
+          data: { height: 900_000 },
+        }));
+      });
+
+      expect(onBalance).not.toHaveBeenCalled();
+    });
+
     it('should ignore sync events when onSync callback is missing', async () => {
       const onTransaction = vi.fn();
       const callbacks = { onTransaction };
@@ -178,6 +210,7 @@ const registerWalletEventCallbackTests = (): void => {
 
       const syncEvent = {
         event: 'sync',
+        channel: 'wallet:wallet-no-sync:sync',
         data: { progress: 0.25, status: 'syncing' },
       };
 
@@ -212,6 +245,7 @@ const registerWalletEventUpdateTests = (): void => {
 
       const transactionEvent = {
         event: 'transaction',
+        channel: 'wallet:wallet-jkl:transaction',
         data: { txid: 'tx789' },
       };
 

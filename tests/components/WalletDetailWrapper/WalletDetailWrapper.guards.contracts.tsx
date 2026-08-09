@@ -55,17 +55,12 @@ export const registerWalletDetailWrapperGuardContracts = () => {
     });
 
     it('skips id-gated actions when wallet id is absent', async () => {
-      const user = userEvent.setup();
       mocks.routeId = undefined;
 
       render(<WalletDetail />);
 
-      await user.click(screen.getByRole('tab', { name: /addresses/i }));
-      await user.click(screen.getByRole('button', { name: 'addr-generate' }));
+      expect(screen.getByText('Loading wallet...')).toBeInTheDocument();
       expect(mocks.generateAddresses).not.toHaveBeenCalled();
-
-      await user.click(screen.getByRole('tab', { name: /settings/i }));
-      await user.click(screen.getByRole('button', { name: 'settings-update' }));
       expect(mocks.updateWallet).not.toHaveBeenCalled();
     });
 
@@ -149,13 +144,11 @@ export const registerWalletDetailWrapperGuardContracts = () => {
       mocks.routeId = undefined;
       mocks.locationState = { activeTab: 'tx' };
       rerender(<WalletDetail />);
-      await user.click(screen.getByRole('button', { name: 'tx-labels-change' }));
+      expect(screen.getByText('Loading wallet...')).toBeInTheDocument();
       expect(mocks.fetchData).not.toHaveBeenCalled();
 
       mocks.locationState = { activeTab: 'settings' };
       rerender(<WalletDetail />);
-      await user.click(screen.getByRole('button', { name: 'settings-delete' }));
-      await user.click(screen.getByRole('button', { name: 'delete-confirm' }));
       expect(mocks.deleteWallet).not.toHaveBeenCalled();
     });
   });
