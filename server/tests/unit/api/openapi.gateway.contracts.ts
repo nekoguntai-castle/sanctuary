@@ -350,6 +350,7 @@ export function registerOpenApiGatewayTests() {
       maxLength: PASSWORD_POLICY.maxUtf8Bytes,
       description: expect.stringContaining(PASSWORD_POLICY_MESSAGES.maxUtf8Bytes),
     });
+    expect(openApiSpec.paths['/auth/me/change-password'].post.responses).toHaveProperty('409');
     expect(openApiSpec.paths['/auth/users/search'].get.parameters).toContainEqual(
       expect.objectContaining({
         name: 'q',

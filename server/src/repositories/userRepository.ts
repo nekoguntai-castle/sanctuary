@@ -216,19 +216,6 @@ export async function updateEmail(
   });
 }
 
-/**
- * Update user password
- */
-export async function updatePassword(
-  id: string,
-  hashedPassword: string
-): Promise<User> {
-  return prisma.user.update({
-    where: { id },
-    data: { password: hashedPassword },
-  });
-}
-
 async function attemptPreferenceUpdate<T>(
   id: string,
   updater: PreferenceUpdater<T>,
@@ -462,7 +449,6 @@ export const userRepository = {
   deleteById,
   updateEmailVerification,
   updateEmail,
-  updatePassword,
   updatePreferencesAtomically,
   searchByUsername,
   update2FA,

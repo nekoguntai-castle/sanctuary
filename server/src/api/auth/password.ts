@@ -6,13 +6,16 @@
 
 import { Router } from 'express';
 import type { RequestHandler } from 'express';
-import { userRepository, systemSettingRepository } from '../../repositories';
+import {
+  passwordSecurityRepository,
+  systemSettingRepository,
+  userRepository,
+} from '../../repositories';
 import { asyncHandler } from '../../errors/errorHandler';
 import { InvalidInputError, NotFoundError, UnauthorizedError } from '../../errors/ApiError';
 import { createLogger } from '../../utils/logger';
 import { hashPassword, verifyPassword, validatePasswordStrength } from '../../utils/password';
 import { auditService, AuditAction, AuditCategory } from '../../services/auditService';
-import { revokeAllUserTokens } from '../../services/tokenRevocation';
 import { getErrorMessage } from '../../utils/errors';
 import { validate } from '../../middleware/validate';
 import { ChangePasswordPresenceSchema } from '../schemas/auth';
@@ -98,14 +101,21 @@ export function createPasswordRouter(passwordChangeLimiter: RequestHandler): Rou
     // Hash new password
     const hashedPassword = await hashPassword(newPassword);
 
-    // Update password
-    await userRepository.updatePassword(user.id, hashedPassword);
+    // Replace the password and invalidate all existing sessions atomically.
+    const mutation = await passwordSecurityRepository.changePasswordAndRevokeSessions(
+      user.id,
+      user.password,
+      hashedPassword,
+    );
 
     // Clear the initial password marker since user has changed their password
     await clearInitialPasswordMarker(user.id);
 
-    // Invalidate all existing sessions (security: prevent stolen tokens from persisting)
-    await revokeAllUserTokens(user.id, 'password_change');
+    log.info('Password changed and sessions revoked', {
+      userId: user.id,
+      sessionVersion: mutation.sessionVersion,
+      revokedRefreshTokenCount: mutation.revokedRefreshTokenCount,
+    });
 
     // Audit password change
     await auditService.logFromRequest(req, AuditAction.PASSWORD_CHANGE, AuditCategory.AUTH, {

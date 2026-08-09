@@ -81,16 +81,18 @@ export function registerAuthPasswordTokenTests(): void {
       const correctPassword = 'CorrectOldPassword123!';
       const hashedPassword = await hashPassword(correctPassword);
 
-      mockPrismaClient.user.findUnique.mockResolvedValue({
-        id: 'test-user-id',
-        username: 'testuser',
-        password: hashedPassword,
+      mockPrismaClient.user.findUnique
+        .mockResolvedValueOnce({
+          id: 'test-user-id',
+          username: 'testuser',
+          password: hashedPassword,
+        })
+        .mockResolvedValueOnce({ sessionVersion: 1 });
+      mockPrismaClient.user.updateMany.mockResolvedValue({ count: 1 });
+      mockPrismaClient.refreshToken.deleteMany.mockResolvedValue({ count: 2 });
+      mockPrismaClient.systemSetting.delete.mockResolvedValue({
+        key: 'initialPassword_test-user-id',
       });
-      mockPrismaClient.user.update.mockResolvedValue({
-        id: 'test-user-id',
-        username: 'testuser',
-      });
-      mockPrismaClient.systemSetting.deleteMany.mockResolvedValue({ count: 0 });
 
       const response = await request(app)
         .post('/api/v1/auth/me/change-password')
@@ -98,7 +100,18 @@ export function registerAuthPasswordTokenTests(): void {
 
       expect(response.status).toBe(200);
       expect(response.body.message).toBe('Password changed successfully');
-      expect(mockPrismaClient.user.update).toHaveBeenCalled();
+      expect(mockPrismaClient.user.updateMany).toHaveBeenCalledWith({
+        where: { id: 'test-user-id', password: hashedPassword },
+        data: {
+          password: expect.any(String),
+          sessionVersion: { increment: 1 },
+        },
+      });
+      expect(mockPrismaClient.refreshToken.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 'test-user-id' },
+      });
+      const { revokeAllUserTokens } = await import('../../../../src/services/tokenRevocation');
+      expect(revokeAllUserTokens).not.toHaveBeenCalled();
     });
 
     // Skip this test because it hits the rate limiter threshold from previous tests

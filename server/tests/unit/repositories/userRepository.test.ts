@@ -19,11 +19,15 @@ vi.mock('../../../src/models/prisma', () => ({
       update: vi.fn(),
       updateMany: vi.fn(),
     },
+    refreshToken: {
+      deleteMany: vi.fn(),
+    },
   },
 }));
 
 import prisma from '../../../src/models/prisma';
 import { userRepository } from '../../../src/repositories/userRepository';
+import { passwordSecurityRepository } from '../../../src/repositories/passwordSecurityRepository';
 
 describe('User Repository', () => {
   beforeEach(() => {
@@ -644,6 +648,162 @@ describe('User Repository', () => {
         '[{"hash":"old","used":false}]',
         '[{"hash":"old","used":true}]',
       )).resolves.toBe(false);
+    });
+  });
+
+  describe('changePasswordAndRevokeSessions', () => {
+    function installTransaction(options: {
+      updateCount?: number;
+      sessionVersion?: number | null;
+      revokedTokenCount?: number;
+      deletionError?: Error;
+    } = {}) {
+      const tx = {
+        user: {
+          updateMany: vi.fn().mockResolvedValue({ count: options.updateCount ?? 1 }),
+          findUnique: vi.fn().mockResolvedValue(
+            options.sessionVersion === null
+              ? null
+              : { sessionVersion: options.sessionVersion ?? 5 },
+          ),
+        },
+        refreshToken: {
+          deleteMany: options.deletionError
+            ? vi.fn().mockRejectedValue(options.deletionError)
+            : vi.fn().mockResolvedValue({ count: options.revokedTokenCount ?? 3 }),
+        },
+      };
+      (prisma.$transaction as Mock).mockImplementation(
+        async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
+      );
+      return tx;
+    }
+
+    it('uses one transaction for the password CAS, version advance, and refresh deletion', async () => {
+      const tx = installTransaction({ sessionVersion: 9, revokedTokenCount: 4 });
+
+      await expect(passwordSecurityRepository.changePasswordAndRevokeSessions(
+        'user-123',
+        'verified-old-hash',
+        'new-hash',
+      )).resolves.toEqual({
+        sessionVersion: 9,
+        revokedRefreshTokenCount: 4,
+      });
+
+      expect(tx.user.updateMany).toHaveBeenCalledWith({
+        where: { id: 'user-123', password: 'verified-old-hash' },
+        data: {
+          password: 'new-hash',
+          sessionVersion: { increment: 1 },
+        },
+      });
+      expect(tx.user.findUnique).toHaveBeenCalledWith({
+        where: { id: 'user-123' },
+        select: { sessionVersion: true },
+      });
+      expect(tx.refreshToken.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 'user-123' },
+      });
+      expect(tx.user.updateMany).toHaveBeenCalledBefore(tx.refreshToken.deleteMany);
+      expect(prisma.$transaction).toHaveBeenCalledOnce();
+      expect(prisma.user.updateMany).not.toHaveBeenCalled();
+      expect(prisma.user.findUnique).not.toHaveBeenCalled();
+      expect(prisma.refreshToken.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('rejects refresh deletion failure from the atomic transaction', async () => {
+      const failure = new Error('refresh delete failed');
+      const tx = installTransaction({ deletionError: failure });
+
+      await expect(passwordSecurityRepository.changePasswordAndRevokeSessions(
+        'user-123',
+        'verified-old-hash',
+        'new-hash',
+      )).rejects.toBe(failure);
+
+      expect(tx.user.updateMany).toHaveBeenCalledOnce();
+      expect(tx.refreshToken.deleteMany).toHaveBeenCalledOnce();
+      expect(prisma.$transaction).toHaveBeenCalledOnce();
+    });
+
+    it('rejects a stale hash before reading session state or deleting tokens', async () => {
+      const tx = installTransaction({ updateCount: 0 });
+
+      await expect(passwordSecurityRepository.changePasswordAndRevokeSessions(
+        'user-123',
+        'stale-hash',
+        'new-hash',
+      )).rejects.toMatchObject({ statusCode: 409, code: 'CONFLICT' });
+
+      expect(tx.user.findUnique).not.toHaveBeenCalled();
+      expect(tx.refreshToken.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('fails closed if the conditionally updated user cannot be reread', async () => {
+      const tx = installTransaction({ sessionVersion: null });
+
+      await expect(passwordSecurityRepository.changePasswordAndRevokeSessions(
+        'user-123',
+        'verified-old-hash',
+        'new-hash',
+      )).rejects.toMatchObject({ statusCode: 404, code: 'NOT_FOUND' });
+
+      expect(tx.refreshToken.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('allows only one concurrent compare-and-swap against the same old hash', async () => {
+      let storedPassword = 'verified-old-hash';
+      let sessionVersion = 11;
+      let refreshTokenCount = 6;
+      let transactionCount = 0;
+      let releaseTransactions!: () => void;
+      const bothTransactionsStarted = new Promise<void>((resolve) => {
+        releaseTransactions = resolve;
+      });
+
+      (prisma.$transaction as Mock).mockImplementation(async (
+        callback: (client: any) => Promise<unknown>,
+      ) => {
+        transactionCount += 1;
+        if (transactionCount === 2) releaseTransactions();
+        await bothTransactionsStarted;
+        const tx = {
+          user: {
+            updateMany: vi.fn().mockImplementation(async ({ where, data }) => {
+              if (where.password !== storedPassword) return { count: 0 };
+              storedPassword = data.password;
+              sessionVersion += 1;
+              return { count: 1 };
+            }),
+            findUnique: vi.fn().mockImplementation(async () => ({ sessionVersion })),
+          },
+          refreshToken: {
+            deleteMany: vi.fn().mockImplementation(async () => {
+              const count = refreshTokenCount;
+              refreshTokenCount = 0;
+              return { count };
+            }),
+          },
+        };
+        return callback(tx);
+      });
+
+      const results = await Promise.allSettled([
+        passwordSecurityRepository.changePasswordAndRevokeSessions(
+          'user-123', 'verified-old-hash', 'first-new-hash',
+        ),
+        passwordSecurityRepository.changePasswordAndRevokeSessions(
+          'user-123', 'verified-old-hash', 'second-new-hash',
+        ),
+      ]);
+
+      expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+      expect(results.filter(result => result.status === 'rejected')).toHaveLength(1);
+      expect(sessionVersion).toBe(12);
+      expect(refreshTokenCount).toBe(0);
+      expect(['first-new-hash', 'second-new-hash']).toContain(storedPassword);
+      expect(prisma.$transaction).toHaveBeenCalledTimes(2);
     });
   });
 });

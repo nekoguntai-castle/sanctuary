@@ -324,6 +324,7 @@ export const authPaths = {
         400: apiErrorResponse,
         401: apiErrorResponse,
         404: apiErrorResponse,
+        409: apiErrorResponse,
       },
     },
   },
