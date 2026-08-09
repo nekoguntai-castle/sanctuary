@@ -10,12 +10,14 @@ interface UseDeviceDeletionInput {
   deviceId: string;
   attachedWalletCount: number;
   isOwner: boolean;
+  ownsCurrentRoute: () => boolean;
 }
 
 export function useDeviceDeletion({
   deviceId,
   attachedWalletCount,
   isOwner,
+  ownsCurrentRoute,
 }: UseDeviceDeletionInput) {
   const navigate = useNavigate();
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -25,12 +27,15 @@ export function useDeviceDeletion({
   const canDelete = isOwner && attachedWalletCount === 0;
 
   const confirmDelete = async () => {
+    if (!ownsCurrentRoute()) return;
     try {
       setDeletePending(true);
       setDeleteError(null);
       await deleteDevice(deviceId);
+      if (!ownsCurrentRoute()) return;
       navigate('/devices', { replace: true });
     } catch (error) {
+      if (!ownsCurrentRoute()) return;
       log.error('Failed to delete device', { error });
       setDeleteError(extractErrorMessage(error, 'Failed to delete device'));
       setDeletePending(false);
@@ -38,11 +43,13 @@ export function useDeviceDeletion({
   };
 
   const requestDelete = () => {
+    if (!ownsCurrentRoute()) return;
     setDeleteConfirmOpen(true);
     setDeleteError(null);
   };
 
   const cancelDelete = () => {
+    if (!ownsCurrentRoute()) return;
     setDeleteConfirmOpen(false);
     setDeleteError(null);
   };

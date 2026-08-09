@@ -32,9 +32,9 @@ import {
 import type { AuxiliaryData } from './walletDataLoaders';
 import { formatWalletFromApi } from './walletDataFormatters';
 import {
-  createWalletRequestOwnership,
-  type WalletRouteToken,
-} from './walletRequestOwnership';
+  createRequestOwnership,
+  type RouteToken,
+} from '../../../hooks/requestOwnership';
 
 export type { UseWalletDataParams, UseWalletDataReturn } from './walletDataTypes';
 
@@ -48,9 +48,9 @@ export function useWalletData({
   const { handleError } = useErrorHandler();
   const { addNotification: addAppNotification, removeNotificationsByType } = useAppNotifications();
   const routeKey = `${id ?? ''}:${user?.id ?? ''}`;
-  const ownershipRef = useRef<ReturnType<typeof createWalletRequestOwnership> | null>(null);
+  const ownershipRef = useRef<ReturnType<typeof createRequestOwnership> | null>(null);
   if (!ownershipRef.current) {
-    ownershipRef.current = createWalletRequestOwnership(routeKey);
+    ownershipRef.current = createRequestOwnership(routeKey);
   }
   const ownership = ownershipRef.current;
 
@@ -121,7 +121,7 @@ export function useWalletData({
 
   useEffect(() => () => ownership.invalidate(), [ownership]);
 
-  const ownsRoute = (token: WalletRouteToken, walletId: string): boolean => (
+  const ownsRoute = (token: RouteToken, walletId: string): boolean => (
     ownership.isRouteOwner(token) && walletId === id
   );
 

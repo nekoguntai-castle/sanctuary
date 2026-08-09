@@ -25,6 +25,7 @@ export function DeviceDetailContent({ id, data }: DeviceDetailContentProps) {
   const {
     device,
     setDevice,
+    ownsCurrentRoute,
     wallets,
     user,
     isEditing,
@@ -71,6 +72,7 @@ export function DeviceDetailContent({ id, data }: DeviceDetailContentProps) {
     deviceId: device.id,
     attachedWalletCount,
     isOwner,
+    ownsCurrentRoute,
   });
 
   return (

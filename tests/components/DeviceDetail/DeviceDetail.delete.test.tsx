@@ -56,6 +56,8 @@ const createDeviceData = (overrides: Record<string, unknown> = {}) => {
   const { device: deviceOverrides, ...resultOverrides } = overrides;
 
   return {
+    ownershipKey: '["dev-1","user-1","mainnet"]',
+    ownsCurrentRoute: () => true,
     device: {
       id: 'dev-1',
       label: 'TestNet NanoSPlus',
@@ -135,6 +137,17 @@ describe('DeviceDetail delete action', () => {
     render(<DeviceDetail />);
 
     expect(screen.queryByRole('button', { name: 'Delete device' })).not.toBeInTheDocument();
+  });
+
+  it('never renders controls for a device that does not match the route', () => {
+    useDeviceDataMock.mockReturnValue(
+      createDeviceData({ device: { id: 'stale-device' } }),
+    );
+
+    render(<DeviceDetail />);
+
+    expect(screen.queryByRole('button', { name: 'Delete device' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('device-tab-content')).not.toBeInTheDocument();
   });
 
   it('closes the delete confirmation when cancellation is selected', async () => {

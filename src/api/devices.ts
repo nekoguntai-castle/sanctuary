@@ -98,8 +98,8 @@ export async function getDevices(): Promise<Device[]> {
 /**
  * Get a specific device by ID
  */
-export async function getDevice(deviceId: string): Promise<Device> {
-  return apiClient.get<Device>(`/devices/${deviceId}`);
+export async function getDevice(deviceId: string, signal?: AbortSignal): Promise<Device> {
+  return apiClient.get<Device>(`/devices/${deviceId}`, undefined, undefined, { signal });
 }
 
 /**
@@ -201,15 +201,20 @@ export interface DeviceModelFilters {
 /**
  * Get all available hardware device models
  */
-export async function getDeviceModels(filters?: DeviceModelFilters): Promise<HardwareDeviceModel[]> {
-  if (!filters) return apiClient.get<HardwareDeviceModel[]>('/devices/models');
+export async function getDeviceModels(
+  filters?: DeviceModelFilters,
+  signal?: AbortSignal,
+): Promise<HardwareDeviceModel[]> {
+  if (!filters) {
+    return apiClient.get<HardwareDeviceModel[]>('/devices/models', undefined, undefined, { signal });
+  }
 
   return apiClient.get<HardwareDeviceModel[]>('/devices/models', {
     manufacturer: filters.manufacturer || undefined,
     airGapped: filters.airGapped,
     connectivity: filters.connectivity || undefined,
     showDiscontinued: filters.showDiscontinued ? true : undefined,
-  });
+  }, undefined, { signal });
 }
 
 /**
@@ -247,8 +252,16 @@ export interface ShareDeviceResponse {
 /**
  * Get sharing info for a device
  */
-export async function getDeviceShareInfo(deviceId: string): Promise<DeviceShareInfo> {
-  return apiClient.get<DeviceShareInfo>(`/devices/${deviceId}/share`);
+export async function getDeviceShareInfo(
+  deviceId: string,
+  signal?: AbortSignal,
+): Promise<DeviceShareInfo> {
+  return apiClient.get<DeviceShareInfo>(
+    `/devices/${deviceId}/share`,
+    undefined,
+    undefined,
+    { signal },
+  );
 }
 
 /**

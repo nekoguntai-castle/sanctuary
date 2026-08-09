@@ -12,7 +12,14 @@ export const DeviceDetail: React.FC = () => {
   const data = useDeviceData(id);
 
   if (data.loading) return <DeviceDetailLoadingState />;
+  if (data.device && data.device.id !== id) return <DeviceDetailLoadingState />;
   if (!data.device) return <DeviceDetailNotFoundState />;
 
-  return <DeviceDetailContent id={id!} data={{ ...data, device: data.device }} />;
+  return (
+    <DeviceDetailContent
+      key={data.ownershipKey}
+      id={id!}
+      data={{ ...data, device: data.device }}
+    />
+  );
 };

@@ -1,22 +1,22 @@
-export interface WalletRouteToken {
+export interface RouteToken {
   routeEpoch: number;
   routeKey: string;
 }
 
-export interface WalletFetchToken extends WalletRouteToken {
+export interface FetchToken extends RouteToken {
   fetchGeneration: number;
 }
 
-export interface WalletRequestOwnership {
-  beginFetch: (routeKey: string) => WalletFetchToken;
-  captureRoute: (routeKey: string) => WalletRouteToken;
+export interface RequestOwnership {
+  beginFetch: (routeKey: string) => FetchToken;
+  captureRoute: (routeKey: string) => RouteToken;
   invalidate: () => void;
-  isFetchOwner: (token: WalletFetchToken) => boolean;
-  isRouteOwner: (token: WalletRouteToken) => boolean;
+  isFetchOwner: (token: FetchToken) => boolean;
+  isRouteOwner: (token: RouteToken) => boolean;
   setRoute: (routeKey: string) => void;
 }
 
-export function createWalletRequestOwnership(initialRouteKey: string): WalletRequestOwnership {
+export function createRequestOwnership(initialRouteKey: string): RequestOwnership {
   let routeKey = initialRouteKey;
   let routeEpoch = 0;
   let fetchGeneration = 0;
@@ -33,11 +33,11 @@ export function createWalletRequestOwnership(initialRouteKey: string): WalletReq
     fetchGeneration += 1;
   };
 
-  const captureRoute = (expectedRouteKey: string): WalletRouteToken => ({
+  const captureRoute = (expectedRouteKey: string): RouteToken => ({
     routeEpoch,
     routeKey: expectedRouteKey,
   });
-  const beginFetch = (expectedRouteKey: string): WalletFetchToken => {
+  const beginFetch = (expectedRouteKey: string): FetchToken => {
     if (expectedRouteKey === routeKey) fetchGeneration += 1;
     return { ...captureRoute(expectedRouteKey), fetchGeneration };
   };
@@ -46,14 +46,12 @@ export function createWalletRequestOwnership(initialRouteKey: string): WalletReq
     beginFetch,
     captureRoute,
     invalidate,
-    isFetchOwner: (token) => (
+    isFetchOwner: token => (
       token.routeEpoch === routeEpoch
       && token.routeKey === routeKey
       && token.fetchGeneration === fetchGeneration
     ),
-    isRouteOwner: (token) => (
-      token.routeEpoch === routeEpoch && token.routeKey === routeKey
-    ),
+    isRouteOwner: token => token.routeEpoch === routeEpoch && token.routeKey === routeKey,
     setRoute,
   };
 }

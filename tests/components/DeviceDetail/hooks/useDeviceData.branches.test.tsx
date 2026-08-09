@@ -109,7 +109,10 @@ describe('useDeviceData branch coverage', () => {
     const { result } = renderHook(() => useDeviceData('dev-1'));
 
     await waitFor(() => expect(result.current.loading).toBe(false));
-    await waitFor(() => expect(devicesApi.getDeviceShareInfo).toHaveBeenCalledWith('dev-1'));
+    await waitFor(() => expect(devicesApi.getDeviceShareInfo).toHaveBeenCalledWith(
+      'dev-1',
+      expect.any(AbortSignal),
+    ));
 
     expect(loggerSpies.warn).toHaveBeenCalledWith(
       'Device ownership fields missing from API response',

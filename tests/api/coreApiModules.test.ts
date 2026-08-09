@@ -294,7 +294,9 @@ describe('Core API Modules', () => {
       });
 
       expect(mockGet).toHaveBeenCalledWith('/devices');
-      expect(mockGet).toHaveBeenCalledWith('/devices/d1');
+      expect(mockGet).toHaveBeenCalledWith('/devices/d1', undefined, undefined, {
+        signal: undefined,
+      });
       expect(mockPost).toHaveBeenCalledWith('/devices', {
         type: 'ledger',
         label: 'Ledger',
@@ -304,7 +306,9 @@ describe('Core API Modules', () => {
       expect(mockDelete).toHaveBeenCalledWith('/devices/d1');
       expect(mockGet).toHaveBeenCalledWith('/devices/models/ledger-nano-x');
       expect(mockGet).toHaveBeenCalledWith('/devices/manufacturers');
-      expect(mockGet).toHaveBeenCalledWith('/devices/d1/share');
+      expect(mockGet).toHaveBeenCalledWith('/devices/d1/share', undefined, undefined, {
+        signal: undefined,
+      });
       expect(mockPost).toHaveBeenCalledWith('/devices/d1/share/user', { targetUserId: 'u2' });
       expect(mockDelete).toHaveBeenCalledWith('/devices/d1/share/user/u2');
       expect(mockPost).toHaveBeenCalledWith('/devices/d1/share/group', { groupId: 'g1' });
@@ -375,24 +379,45 @@ describe('Core API Modules', () => {
       });
       await devicesApi.mergeDeviceAccounts({ type: 'ledger', label: 'L', fingerprint: 'fp2' });
 
-      expect(mockGet).toHaveBeenCalledWith('/devices/models');
+      expect(mockGet).toHaveBeenCalledWith('/devices/models', undefined, undefined, {
+        signal: undefined,
+      });
       expect(mockGet).toHaveBeenCalledWith('/devices/models', {
         manufacturer: 'Ledger',
         airGapped: true,
         connectivity: 'usb',
         showDiscontinued: true,
-      });
+      }, undefined, { signal: undefined });
       expect(mockGet).toHaveBeenCalledWith('/devices/models', {
         manufacturer: undefined,
         airGapped: false,
         connectivity: undefined,
         showDiscontinued: undefined,
-      });
+      }, undefined, { signal: undefined });
       expect(mockPost).toHaveBeenCalledWith('/devices', {
         type: 'ledger',
         label: 'L',
         fingerprint: 'fp2',
         merge: true,
+      });
+    });
+
+    it('forwards cancellation signals for device detail reads', async () => {
+      mockGet.mockResolvedValue({});
+      const controller = new AbortController();
+
+      await devicesApi.getDevice('d1', controller.signal);
+      await devicesApi.getDeviceModels(undefined, controller.signal);
+      await devicesApi.getDeviceShareInfo('d1', controller.signal);
+
+      expect(mockGet).toHaveBeenCalledWith('/devices/d1', undefined, undefined, {
+        signal: controller.signal,
+      });
+      expect(mockGet).toHaveBeenCalledWith('/devices/models', undefined, undefined, {
+        signal: controller.signal,
+      });
+      expect(mockGet).toHaveBeenCalledWith('/devices/d1/share', undefined, undefined, {
+        signal: controller.signal,
       });
     });
   });
