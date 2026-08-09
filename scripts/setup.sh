@@ -846,6 +846,7 @@ validate_offline_images() {
 
     if [ "$OPT_ENABLE_MONITORING" = "yes" ]; then
         required_images+=(
+            "sanctuary-grafana-migration:${SANCTUARY_IMAGE_TAG:-local}"
             "jaegertracing/all-in-one:1.53"
             "grafana/loki:2.9.0"
             "grafana/promtail:3.5.0"

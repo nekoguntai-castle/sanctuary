@@ -169,16 +169,37 @@ build_sanctuary_images() {
     LLM_EGRESS_PROXY_SECRET="0000000000000000000000000000000000000000000000000000000000000000" \
     docker compose -f "$OFFLINE_REPO_ROOT/docker-compose.yml" build \
       backend frontend gateway llm-egress-proxy
+
+  if [ "$CORE_ONLY" != "true" ]; then
+    DOCKER_DEFAULT_PLATFORM="$PLATFORM" \
+      POSTGRES_PASSWORD="offline-build-postgres-password" \
+      REDIS_PASSWORD="offline-build-redis-password" \
+      JWT_SECRET="offline-build-jwt-secret-not-for-runtime" \
+      ENCRYPTION_KEY="offline-build-encryption-key-not-for-runtime" \
+      ENCRYPTION_SALT="offline-build-encryption-salt" \
+      GRAFANA_PASSWORD="offline-build-grafana-password" \
+      WORKER_DIAGNOSTICS_SECRET="0000000000000000000000000000000000000000000000000000000000000000" \
+      LLM_EGRESS_PROXY_SECRET="0000000000000000000000000000000000000000000000000000000000000000" \
+      docker compose -f "$OFFLINE_REPO_ROOT/docker-compose.yml" \
+        -f "$OFFLINE_REPO_ROOT/docker/compose/monitoring.yml" build \
+        grafana-password-migration
+  fi
 }
 
 external_images() {
+  local image
   printf '%s\n' \
     "postgres:16-alpine" \
     "redis:7-alpine" \
     "tecnativa/docker-socket-proxy:latest"
 
   if [ "$CORE_ONLY" != "true" ]; then
-    printf '%s\n' "${MONITORING_IMAGES[@]}" "${TOR_IMAGES[@]}"
+    for image in "${MONITORING_IMAGES[@]}" "${TOR_IMAGES[@]}"; do
+      case "$image" in
+        sanctuary-*) continue ;;
+      esac
+      printf '%s\n' "$image"
+    done
   fi
 }
 
@@ -212,6 +233,9 @@ save_images() {
 
     bucket="core"
     case "$image" in
+      sanctuary-grafana-migration:*)
+        bucket="monitoring"
+        ;;
       jaegertracing/*|grafana/*|prom/*)
         bucket="monitoring"
         ;;

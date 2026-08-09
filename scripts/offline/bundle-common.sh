@@ -19,6 +19,7 @@ CORE_IMAGES=(
 )
 
 MONITORING_IMAGES=(
+  "sanctuary-grafana-migration:local"
   "jaegertracing/all-in-one:1.53"
   "grafana/loki:2.9.0"
   "grafana/promtail:3.5.0"

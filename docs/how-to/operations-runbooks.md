@@ -27,7 +27,7 @@ The optional monitoring stack in `docker/compose/monitoring.yml` binds host port
 Default local endpoints:
 
 - Grafana: `http://127.0.0.1:3000`, authenticated as `admin` with the independent `GRAFANA_PASSWORD` stored in the Sanctuary runtime environment. Upgrades migrate an existing Grafana database before startup and never reuse `ENCRYPTION_KEY` as a login credential.
-  Use `./scripts/setup.sh --upgrade --enable-monitoring` or `./start.sh --with-monitoring`. These wrappers exclusively lease the resolved Compose instance, require positive stopped-state proof, and hold that lease through the one-shot database migration. A direct Compose start intentionally refuses legacy Grafana data without that proof.
+  Use `./scripts/setup.sh --upgrade --enable-monitoring` or `./start.sh --with-monitoring`. These wrappers resolve the physical `grafana_data` and `grafana_quiescence` Docker volumes, require positive stopped-state proof, and run the digest-verified packaged migration image under a fixed daemon-side container name. The control volume holds single-use leases and scoped terminal outcomes, so migration safety does not depend on client host paths, PID namespaces, or `flock`. A running or indeterminate sentinel blocks startup; a terminal sentinel is removed only after its exact `success` or `rolled-back` outcome is verified. A direct Compose start intentionally refuses unmarked legacy Grafana data without that proof.
 - Prometheus: `http://127.0.0.1:9090`, no built-in auth.
 - Alertmanager: `http://127.0.0.1:9093`, no built-in auth.
 - Jaeger UI: `http://127.0.0.1:16686`, no built-in auth.

@@ -662,6 +662,11 @@ assert_occurrence_count "$IT" \
   "SANCTUARY_RESTART_POLICY: 'no'" \
   1
 
+assert_occurrence_count "$IT" \
+  "install unit lane covers daemon-visible Grafana quiescence" \
+  './tests/install/unit/grafana-quiescence.test.sh' \
+  1
+
 # Production retains `unless-stopped` by default, while CI can atomically
 # override every long-running Sanctuary service to `no`. This prevents an
 # interrupted terminal-run stack from being resurrected with the shared DIND

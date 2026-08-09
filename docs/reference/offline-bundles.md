@@ -29,7 +29,8 @@ openssl dgst -sha256 \
 ```
 
 Official release bundles are full bundles: core Sanctuary images plus
-monitoring and Tor profile images. This lets an existing optional-profile
+monitoring and Tor profile images, including Sanctuary's packaged Grafana
+credential-migration image. This lets an existing optional-profile
 installation upgrade from one artifact.
 
 On the installation machine:

@@ -315,6 +315,18 @@ configure_compose_files() {
     return 0
 }
 
+ensure_grafana_migration_image() {
+    local image="sanctuary-grafana-migration:${SANCTUARY_IMAGE_TAG:-local}"
+    docker image inspect "$image" >/dev/null 2>&1 && return 0
+    if [ "$IS_OFFLINE_INSTALL" = true ]; then
+        echo "Error: packaged Grafana migration image is missing on an offline install." >&2
+        echo "Apply the official full offline bundle before starting monitoring." >&2
+        exit 1
+    fi
+    echo "Packaged Grafana migration image not found - building..."
+    docker compose "${COMPOSE_FILE_ARGS[@]}" build grafana-password-migration
+}
+
 start_compose_stack() {
     local profiles="$1"
     local up_flags="$2"
@@ -325,6 +337,7 @@ start_compose_stack() {
     fi
 
     if docker compose "${COMPOSE_FILE_ARGS[@]}" config --services | grep -qx grafana; then
+        ensure_grafana_migration_image
         bash "$SCRIPT_DIR/scripts/ops/run-grafana-password-migration.sh" \
             "$SCRIPT_DIR" "${COMPOSE_FILE_ARGS[@]}"
     fi

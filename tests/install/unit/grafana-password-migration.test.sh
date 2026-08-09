@@ -6,8 +6,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 MIGRATION_SCRIPT="$PROJECT_ROOT/scripts/ops/migrate-grafana-password.sh"
 TEST_ROOT="$(mktemp -d)"
-TEST_OWNER_PID="$$"
-TEST_OWNER_START_TIME="$(sed 's/.*) //' "/proc/$TEST_OWNER_PID/stat" | awk '{print $20}')"
 
 cleanup() {
     find "$TEST_ROOT" -type f -delete
@@ -33,16 +31,16 @@ make_lease() {
     local root="$1"
     local token="$2"
     local expires_at="${3:-$(( $(date +%s) + 300 ))}"
-    mkdir -p "$root/claims"
+    mkdir -p "$root/leases" "$root/claims" "$root/outcomes"
     chmod 777 "$root/claims"
-    cat > "$root/lease-$token" <<EOF
-version=1
+    cat > "$root/leases/lease-$token" <<EOF
+version=2
 token=$token
 project=test-project
+data_volume=test-data-volume
+control_volume=test-control-volume
 container_id=test-container
 generation=test-generation
-owner_pid=$TEST_OWNER_PID
-owner_start_time=$TEST_OWNER_START_TIME
 expires_at=$expires_at
 EOF
 }
@@ -55,15 +53,13 @@ run_with_lease() {
     shift 4
     GRAFANA_DATA_DIR="$data" GRAFANA_CLI_BIN="$cli" \
         GRAFANA_PASSWORD="independent-password" \
-        SANCTUARY_GRAFANA_QUIESCENCE_DIR="$lease_root" \
+        SANCTUARY_GRAFANA_CONTROL_DIR="$lease_root" \
         SANCTUARY_GRAFANA_QUIESCENCE_TOKEN="$token" \
         SANCTUARY_GRAFANA_QUIESCENCE_PROJECT="test-project" \
+        SANCTUARY_GRAFANA_DATA_VOLUME="test-data-volume" \
+        SANCTUARY_GRAFANA_CONTROL_VOLUME="test-control-volume" \
         SANCTUARY_GRAFANA_QUIESCENCE_CONTAINER_ID="test-container" \
         SANCTUARY_GRAFANA_QUIESCENCE_GENERATION="test-generation" \
-        SANCTUARY_GRAFANA_QUIESCENCE_OWNER_PID="$TEST_OWNER_PID" \
-        SANCTUARY_GRAFANA_QUIESCENCE_OWNER_START_TIME="$TEST_OWNER_START_TIME" \
-        SANCTUARY_GRAFANA_QUIESCENCE_OWNER_PROC="/proc/$TEST_OWNER_PID" \
-        SANCTUARY_GRAFANA_QUIESCENCE_OUTCOME_DIR="$lease_root" \
         env "$@" sh "$MIGRATION_SCRIPT"
 }
 
@@ -103,6 +99,8 @@ test_existing_volume_migration() {
     grep -Fqx 'admin:independent-password' "$data/grafana.db"
     ! grep -Fq 'legacy-encryption-key' "$data/grafana.db"
     test -f "$data/.sanctuary-independent-password-v1"
+    grep -Fqx 'status=success' "$lease_root/outcomes/outcome-$token"
+    grep -Fqx 'control_volume=test-control-volume' "$lease_root/outcomes/outcome-$token"
     assert_secret_absent "$output" "independent-password"
     assert_secret_absent "$output" "legacy-encryption-key"
 }
@@ -146,6 +144,7 @@ test_failed_migration_rolls_back() {
     cmp "$TEST_ROOT/original.db" "$data/grafana.db"
     cmp "$TEST_ROOT/original.db-journal" "$data/grafana.db-journal"
     test ! -f "$data/.sanctuary-independent-password-v1"
+    grep -Fqx 'status=rolled-back' "$lease_root/outcomes/outcome-$token"
     assert_secret_absent "$output" "independent-password"
     assert_secret_absent "$output" "legacy-encryption-key"
 }
@@ -213,7 +212,7 @@ test_mismatched_lease_identity_refuses_before_mutation() {
     local token="dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
     prepare_existing_sidecars "$data" "$originals"
     make_lease "$lease_root" "$token"
-    sed -i 's/^project=.*/project=other-project/' "$lease_root/lease-$token"
+    sed -i 's/^project=.*/project=other-project/' "$lease_root/leases/lease-$token"
 
     if run_with_lease "$data" "$TEST_ROOT/missing-cli" "$lease_root" "$token" >/dev/null 2>&1; then
         echo "mismatched lease identity unexpectedly succeeded" >&2
@@ -222,32 +221,62 @@ test_mismatched_lease_identity_refuses_before_mutation() {
     assert_existing_files_unchanged "$data" "$originals"
 }
 
-test_dead_lease_owner_refuses_before_mutation() {
-    local data="$TEST_ROOT/dead-owner"
-    local originals="$TEST_ROOT/dead-owner-originals"
-    local lease_root="$TEST_ROOT/dead-owner-lease"
-    local token="eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+test_post_claim_pre_snapshot_failure_publishes_no_mutation_rollback() {
+    local data="$TEST_ROOT/pre-snapshot-failure"
+    local originals="$TEST_ROOT/pre-snapshot-failure-originals"
+    local lease_root="$TEST_ROOT/pre-snapshot-failure-lease"
+    local token="abababababababababababababababababababababababababababababababab"
     prepare_existing_sidecars "$data" "$originals"
     make_lease "$lease_root" "$token"
-    sed -i 's/^owner_pid=.*/owner_pid=999999999/' "$lease_root/lease-$token"
-    sed -i 's/^owner_start_time=.*/owner_start_time=1/' "$lease_root/lease-$token"
 
-    if GRAFANA_DATA_DIR="$data" GRAFANA_CLI_BIN="$TEST_ROOT/missing-cli" \
-        GRAFANA_PASSWORD="independent-password" \
-        SANCTUARY_GRAFANA_QUIESCENCE_DIR="$lease_root" \
-        SANCTUARY_GRAFANA_QUIESCENCE_TOKEN="$token" \
-        SANCTUARY_GRAFANA_QUIESCENCE_PROJECT="test-project" \
-        SANCTUARY_GRAFANA_QUIESCENCE_CONTAINER_ID="test-container" \
-        SANCTUARY_GRAFANA_QUIESCENCE_GENERATION="test-generation" \
-        SANCTUARY_GRAFANA_QUIESCENCE_OWNER_PID="999999999" \
-        SANCTUARY_GRAFANA_QUIESCENCE_OWNER_START_TIME="1" \
-        SANCTUARY_GRAFANA_QUIESCENCE_OWNER_PROC="$TEST_ROOT/missing-owner-proc" \
-        SANCTUARY_GRAFANA_QUIESCENCE_OUTCOME_DIR="$lease_root" \
-        sh "$MIGRATION_SCRIPT" >/dev/null 2>&1; then
-        echo "dead lease owner unexpectedly authorized migration" >&2
+    if run_with_lease "$data" "$TEST_ROOT/missing-cli" "$lease_root" "$token" \
+        SANCTUARY_TEST_GRAFANA_MIGRATION_FAIL_AFTER_CLAIM=true >/dev/null 2>&1; then
+        echo "forced post-claim pre-snapshot failure unexpectedly succeeded" >&2
         exit 1
     fi
+
     assert_existing_files_unchanged "$data" "$originals"
+    grep -Fqx 'status=rolled-back' "$lease_root/outcomes/outcome-$token"
+    grep -Fqx 'token='$token "$lease_root/outcomes/outcome-$token"
+}
+
+test_scoped_fresh_and_marked_paths_publish_success() {
+    local data="$TEST_ROOT/scoped-fresh"
+    local lease_root="$TEST_ROOT/scoped-fresh-lease"
+    local token="eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    local observer_bin="$TEST_ROOT/outcome-observer-bin"
+    local ordering_log="$TEST_ROOT/outcome-ordering.log"
+    mkdir "$data"
+    mkdir "$observer_bin"
+    cat > "$observer_bin/mv" <<'SCRIPT'
+#!/bin/sh
+set -eu
+for argument in "$@"; do destination="$argument"; done
+case "$destination" in
+    */outcomes/outcome-*)
+        [ -f "$GRAFANA_DATA_DIR/.sanctuary-independent-password-v1" ]
+        printf 'marker-before-outcome\n' >> "$SANCTUARY_TEST_ORDERING_LOG"
+        ;;
+esac
+exec /bin/mv "$@"
+SCRIPT
+    chmod +x "$observer_bin/mv"
+    make_lease "$lease_root" "$token"
+    run_with_lease "$data" "$TEST_ROOT/missing-cli" "$lease_root" "$token" \
+        PATH="$observer_bin:$PATH" SANCTUARY_TEST_ORDERING_LOG="$ordering_log" >/dev/null
+    test -f "$data/.sanctuary-independent-password-v1"
+    grep -Fqx 'status=success' "$lease_root/outcomes/outcome-$token"
+
+    local marked_token="ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    rmdir "$lease_root/claims/$token"
+    make_lease "$lease_root" "$marked_token"
+    printf 'preserved\n' > "$data/grafana.db"
+    cp "$data/grafana.db" "$TEST_ROOT/scoped-marked-original"
+    run_with_lease "$data" "$TEST_ROOT/missing-cli" "$lease_root" "$marked_token" \
+        PATH="$observer_bin:$PATH" SANCTUARY_TEST_ORDERING_LOG="$ordering_log" >/dev/null
+    cmp "$TEST_ROOT/scoped-marked-original" "$data/grafana.db"
+    grep -Fqx 'status=success' "$lease_root/outcomes/outcome-$marked_token"
+    test "$(grep -Fc 'marker-before-outcome' "$ordering_log")" -eq 2
 }
 
 test_setup_generates_and_preserves_password() {
@@ -281,7 +310,8 @@ test_failed_migration_rolls_back
 test_existing_volume_requires_current_lease
 test_stale_and_replayed_leases_refuse_before_mutation
 test_mismatched_lease_identity_refuses_before_mutation
-test_dead_lease_owner_refuses_before_mutation
+test_post_claim_pre_snapshot_failure_publishes_no_mutation_rollback
+test_scoped_fresh_and_marked_paths_publish_success
 test_setup_generates_and_preserves_password
 
 echo "Grafana password migration tests passed"

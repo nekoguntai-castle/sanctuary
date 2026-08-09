@@ -228,6 +228,13 @@ test_bundle_bootstrap_includes_backup_helper() {
     && grep -q -- "--verify-only" "$CREATE_SCRIPT"
 }
 
+test_full_bundle_packages_grafana_migration_image() {
+  grep -Fq 'sanctuary-grafana-migration:local' \
+    "$PROJECT_ROOT/scripts/offline/bundle-common.sh" \
+    && grep -Fq 'grafana-password-migration' "$CREATE_SCRIPT" \
+    && grep -Fq 'docker/compose/monitoring.yml' "$CREATE_SCRIPT"
+}
+
 test_unsigned_bundle_requires_override() {
   setup_bundle_workspace
   archive_bundle
@@ -301,6 +308,45 @@ test_create_bundle_unsigned_core_dev_archive_shape() {
     manifest="$(tar -xOf "$output" ./manifest.env)" || failures=1
     assert_contains "$manifest" "SANCTUARY_BUNDLE_FLAVOR=core-dev" "dev core-only bundle should be marked" || failures=1
   fi
+
+  teardown_bundle_workspace
+  return "$failures"
+}
+
+test_create_full_bundle_builds_and_saves_migration_without_pull() {
+  TEST_TMP_DIR="$(mktemp -d)"
+  setup_fake_docker
+
+  local tag output docker_log failures=0
+  tag="$(git -C "$PROJECT_ROOT" tag --list 'v*' | LC_ALL=C sort -V | tail -n 1)"
+  if [ -z "$tag" ]; then
+    teardown_bundle_workspace
+    return 0
+  fi
+
+  output="$TEST_TMP_DIR/sanctuary-offline-full-test.tar.gz"
+  PATH="$FAKE_BIN:$PATH" \
+    SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
+    "$CREATE_SCRIPT" --tag "$tag" --output "$output" --unsigned-for-dev >/dev/null \
+    || failures=1
+  docker_log="$(cat "$DOCKER_LOG")"
+
+  assert_contains "$docker_log" \
+    "docker/compose/monitoring.yml build grafana-password-migration" \
+    "full bundle must build the packaged Grafana migration image" || failures=1
+  assert_contains "$docker_log" \
+    "sanctuary-grafana-migration:local" \
+    "full bundle must inspect and save the packaged Grafana migration image" || failures=1
+  if ! grep -F 'save -o ' "$DOCKER_LOG" | grep -Fq 'sanctuary-grafana-migration:local'; then
+    echo "packaged Grafana migration image was not saved" >&2
+    failures=1
+  fi
+  if grep -Eq '^pull .* sanctuary-grafana-migration:local$' "$DOCKER_LOG"; then
+    echo "packaged Grafana migration image was incorrectly pulled as external" >&2
+    failures=1
+  fi
+  tar -tzf "$output" | grep -Fq './images/monitoring/sanctuary-grafana-migration-local.tar' \
+    || failures=1
 
   teardown_bundle_workspace
   return "$failures"
@@ -517,10 +563,12 @@ main() {
 
   run_test "script has valid syntax" test_script_has_valid_syntax
   run_test "bundle bootstrap includes backup helper" test_bundle_bootstrap_includes_backup_helper
+  run_test "full bundle packages Grafana migration image" test_full_bundle_packages_grafana_migration_image
   run_test "unsigned bundle requires override" test_unsigned_bundle_requires_override
   run_test "signed bundle verifies" test_signed_bundle_verifies
   run_test "tampered signed bundle fails checksum" test_tampered_signed_bundle_fails_checksum
   run_test "create bundle emits dev archive shape" test_create_bundle_unsigned_core_dev_archive_shape
+  run_test "full bundle builds and saves local Grafana migration image" test_create_full_bundle_builds_and_saves_migration_without_pull
   run_test "create bundle signs outer archive" test_create_bundle_signs_outer_archive
   run_test "fresh bootstrap ignores unrelated database volume" test_fresh_bootstrap_ignores_unrelated_database_volume
   run_test "upgrade bootstrap resolves current and legacy project names" test_upgrade_bootstrap_resolves_current_and_legacy_project_names
