@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash, generateKeyPairSync } from 'node:crypto';
 import { createServer } from 'node:http';
-import { copyFileSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -101,19 +101,40 @@ try {
     assert.equal(resolved[name], value, `${name} must fall back to its default`);
   }
 
-  // publish-release.sh declares the same defaults in bash, and nothing but this
+  // The shell half declares the same defaults in bash, and nothing but this
   // assertion ties the two together. Extract them from the shell source and
   // compare both directions -- a one-way `includes` check would stay green if
   // the shell grew a default this object lacks, which is the likelier drift.
   // The backreference keeps it to genuine `NAME="${NAME:-value}"` self-defaults,
   // so unrelated indirections like SANCTUARY_CREATE_RELEASE_SCRIPT are ignored.
-  const shellSource = readFileSync(new URL('../../scripts/release/publish-release.sh', import.meta.url), 'utf8');
-  const shellDefaults = Object.fromEntries(
-    [...shellSource.matchAll(/^\s*([A-Z][A-Z0-9_]*)="\$\{\1:-(.*)\}"$/gm)]
-      .filter(([, , value]) => value !== '')
+  const repoRoot = new URL('../../', import.meta.url);
+  const providerDefaultsIn = (relativePath) => Object.fromEntries(
+    [...readFileSync(new URL(relativePath, repoRoot), 'utf8').matchAll(/^\s*([A-Z][A-Z0-9_]*)="\$\{\1:-(.*)\}"$/gm)]
+      .filter(([, name, value]) => value !== '' && PROVIDER_VALUES.includes(name))
       .map(([, name, value]) => [name, value]),
   );
-  assert.deepEqual(shellDefaults, { ...PROVIDER_CONFIG_DEFAULTS }, 'publish-release.sh and PROVIDER_CONFIG_DEFAULTS must declare identical defaults');
+  const shellSource = readFileSync(new URL('scripts/release/publish-release.sh', repoRoot), 'utf8');
+  assert.deepEqual(providerDefaultsIn('scripts/release/publish-release.sh'), { ...PROVIDER_CONFIG_DEFAULTS }, 'publish-release.sh and PROVIDER_CONFIG_DEFAULTS must declare identical defaults');
+
+  // Any other release script that defaults one of these names has to agree.
+  // create-forge-release.sh is a third declaration site for GITHUB_API_URL, and
+  // discovering the scripts rather than listing them means a fourth is covered
+  // the day it appears. Declaring none of them is fine; declaring one with a
+  // different value is the drift this catches.
+  const otherShellScripts = [
+    ...readdirSync(new URL('scripts/release/', repoRoot))
+      .filter((entry) => entry.endsWith('.sh') && entry !== 'publish-release.sh')
+      .map((entry) => `scripts/release/${entry}`),
+    'scripts/create-forge-release.sh',
+  ];
+  let checkedElsewhere = 0;
+  for (const relativePath of otherShellScripts) {
+    for (const [name, value] of Object.entries(providerDefaultsIn(relativePath))) {
+      assert.equal(value, PROVIDER_CONFIG_DEFAULTS[name], `${relativePath} defaults ${name} to a value PROVIDER_CONFIG_DEFAULTS does not declare`);
+      checkedElsewhere += 1;
+    }
+  }
+  assert(checkedElsewhere > 0, 'expected at least one provider default outside publish-release.sh (create-forge-release.sh declares GITHUB_API_URL) -- zero means the pattern stopped matching');
 
   // The order the two halves report a gap in must match too.
   const shellRequired = shellSource

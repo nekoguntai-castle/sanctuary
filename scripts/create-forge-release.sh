@@ -12,7 +12,7 @@
 # The following values are required:
 #
 #   FORGEJO_URL=https://forgejo.example.invalid
-#   FORGEJO_OWNER=nekoguntai
+#   FORGEJO_OWNER=nekoguntai-castle
 #   FORGEJO_REPO=sanctuary
 #   FORGEJO_TOKEN=...
 #
