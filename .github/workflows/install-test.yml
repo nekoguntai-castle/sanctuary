@@ -902,9 +902,6 @@ jobs:
   upgrade-baseline-test:
     name: Upgrade Baseline
     runs-on: [ubuntu-22.04, docker-socket]
-    concurrency:
-      group: sanctuary-runner-e2e
-      cancel-in-progress: false
     needs: [determine-scope, fresh-install-test, install-script-test, install-stack-smoke, auth-flow-test]
     if: |
       always() &&
@@ -1090,18 +1087,20 @@ jobs:
   upgrade-extended-fixture-test:
     name: Upgrade Extended Fixtures
     runs-on: [ubuntu-22.04, docker-socket]
-    concurrency:
-      group: sanctuary-runner-e2e
-      cancel-in-progress: false
-    needs: [determine-scope, upgrade-baseline-test]
+    needs: [determine-scope, fresh-install-test, install-script-test, install-stack-smoke, auth-flow-test]
     if: |
       always() &&
       github.event_name != 'pull_request' &&
       needs.determine-scope.outputs.should_run == 'true' &&
       needs.determine-scope.outputs.run_upgrade_extended == 'true' &&
-      (needs.upgrade-baseline-test.result == 'success' ||
-       (needs.upgrade-baseline-test.result == 'skipped' &&
-        needs.determine-scope.outputs.run_upgrade_baseline != 'true'))
+      (needs.fresh-install-test.result == 'success' ||
+       (needs.fresh-install-test.result == 'skipped' &&
+        needs.determine-scope.outputs.run_fresh_install != 'true')) &&
+      (needs.install-script-test.result == 'success' ||
+       (needs.install-script-test.result == 'skipped' &&
+        needs.determine-scope.outputs.run_install_script != 'true')) &&
+      (needs.install-stack-smoke.result == 'success' || needs.install-stack-smoke.result == 'skipped' || needs.install-stack-smoke.result == 'failure') &&
+      (needs.auth-flow-test.result == 'success' || needs.auth-flow-test.result == 'skipped')
     timeout-minutes: 120
     env:
       JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/upgrade-extended-fixtures

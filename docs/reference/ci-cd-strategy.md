@@ -299,7 +299,7 @@ As of the 2026-04-30 review, recent `main` Test Suite push runs show browser-flo
 
 Backend integration jobs are currently not the merge-gate tail on recent `main` runs. The workflow now times dependency install, shared schema linking, Prisma generation, migrations, and the grouped Vitest command separately so another integration split can be justified from setup/runtime evidence rather than group duration alone.
 
-Install workflow push runs currently tail on `Install Stack Smoke` or baseline upgrade lanes, depending on the path scope. Fresh install, install-script E2E, stack startup, stack subtests, and upgrade lanes now emit timing notices. Keep the release/install lanes isolated unless timing data shows fixture scoping saves more than it costs in lost isolation.
+Install workflow push runs currently tail on `Install Stack Smoke` or baseline upgrade lanes, depending on the path scope. Fresh install, install-script E2E, stack startup, stack subtests, and upgrade lanes now emit timing notices. The baseline and extended-fixture upgrade jobs become eligible together after their shared install prerequisites complete. Two `docker-socket` hosts can therefore run them concurrently, while the host-local `e2e` lock still limits each host to one active fixture and the `Upgrade Extended` relay still waits for both suites. Use the runner-lock wait/hold notices to measure whether this cross-host overlap lowers wall time before widening concurrency elsewhere.
 
 ### CI Timing Review Checkpoint
 

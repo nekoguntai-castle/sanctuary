@@ -188,6 +188,61 @@ extract_named_job_step() {
     ' "$file"
 }
 
+extract_named_job() {
+  local file="$1"
+  local job_name="$2"
+
+  awk -v job="$job_name" '
+      !in_job && $0 == "  " job ":" {
+        in_job = 1
+      }
+      in_job && $0 ~ /^  [[:alnum:]_-]+:$/ && $0 != "  " job ":" {
+        exit
+      }
+      in_job { print }
+    ' "$file"
+}
+
+assert_named_job_contains() {
+  local file="$1"
+  local job_name="$2"
+  local label="$3"
+  local needle="$4"
+  local job
+
+  job="$(extract_named_job "$file" "$job_name")"
+  if [ -n "$job" ] && printf '%s\n' "$job" | grep -Fq "$needle"; then
+    PASS=$((PASS + 1))
+    echo "PASS: $label"
+  else
+    FAIL=$((FAIL + 1))
+    FAILURES+=("$label: $job_name does not contain: $needle")
+    echo "FAIL: $label" >&2
+  fi
+}
+
+assert_named_job_not_contains() {
+  local file="$1"
+  local job_name="$2"
+  local label="$3"
+  local needle="$4"
+  local job
+
+  job="$(extract_named_job "$file" "$job_name")"
+  if [ -z "$job" ]; then
+    FAIL=$((FAIL + 1))
+    FAILURES+=("$label: job not found: $job_name")
+    echo "FAIL: $label" >&2
+  elif printf '%s\n' "$job" | grep -Fq "$needle"; then
+    FAIL=$((FAIL + 1))
+    FAILURES+=("$label: $job_name contains forbidden text: $needle")
+    echo "FAIL: $label" >&2
+  else
+    PASS=$((PASS + 1))
+    echo "PASS: $label"
+  fi
+}
+
 assert_named_job_step_contains() {
   local file="$1"
   local job_name="$2"
@@ -679,6 +734,30 @@ assert_named_job_step_contains "$IT" "upgrade-baseline-test" "Run baseline upgra
 assert_named_job_step_not_contains "$IT" "upgrade-baseline-test" "Run baseline upgrades sequentially" \
   "install-test baseline wrapper leaves graceful teardown to the test" \
   'docker compose down'
+
+# The baseline and extended-fixture suites do not exchange artifacts or runtime
+# state. They must become runnable from the same completed prerequisite set so
+# the two docker-socket hosts can execute them concurrently. A host-local e2e
+# lock remains the per-runner capacity bound; a shared job-level concurrency
+# group would silently restore global serialization on providers that implement
+# GitHub job concurrency.
+assert_named_job_contains "$IT" "upgrade-baseline-test" \
+  "install-test baseline waits for the common upgrade prerequisites" \
+  'needs: [determine-scope, fresh-install-test, install-script-test, install-stack-smoke, auth-flow-test]'
+assert_named_job_contains "$IT" "upgrade-extended-fixture-test" \
+  "install-test extended fixtures wait for the common upgrade prerequisites" \
+  'needs: [determine-scope, fresh-install-test, install-script-test, install-stack-smoke, auth-flow-test]'
+assert_named_job_not_contains "$IT" "upgrade-extended-fixture-test" \
+  "install-test extended fixtures do not wait for baseline" \
+  'needs.upgrade-baseline-test'
+for parallel_upgrade_job in upgrade-baseline-test upgrade-extended-fixture-test; do
+  assert_named_job_not_contains "$IT" "$parallel_upgrade_job" \
+    "install-test $parallel_upgrade_job is not globally serialized" \
+    'group: sanctuary-runner-e2e'
+done
+assert_named_job_contains "$IT" "upgrade-extended-test" \
+  "install-test extended aggregate still waits for both upgrade suites" \
+  'needs: [determine-scope, upgrade-baseline-test, upgrade-extended-fixture-test]'
 
 assert_contains_in_order "$IT" \
   "install-test release-tag workflow concurrency" \
