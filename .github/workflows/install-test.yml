@@ -202,6 +202,7 @@ jobs:
           scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-unit-tests.log" scripts/ci/run-in-isolated-workspace.sh install-unit bash <<'INNER'
           ./tests/install/unit/install-script.test.sh
           ./tests/install/unit/migration-compose-contract.test.sh
+          ./tests/install/unit/grafana-password-migration.test.sh
           ./tests/install/unit/reset-user-2fa-script.test.sh
           ./tests/install/unit/upgrade-helpers.test.sh
           ./tests/install/unit/purge-image-scope.test.sh

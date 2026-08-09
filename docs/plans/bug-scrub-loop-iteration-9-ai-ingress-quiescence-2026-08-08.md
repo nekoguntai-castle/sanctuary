@@ -86,13 +86,13 @@ target-SHA CI verification.
 
 ## Phase 3: Trusted Tor ingress
 
-- [ ] Stop exposing the complete backend directly through the hidden service.
+- [x] Stop exposing the complete backend directly through the hidden service.
   Route Tor through a narrowly scoped internal HTTP ingress that accepts only
   supported Payjoin receive paths, rejects other API/auth routes, overwrites
   rather than appends forwarded identity headers, and then proxies to backend.
   Keep the existing onion address volume and outbound SOCKS behavior. Preserve
   ordinary Nginx client-IP behavior and do not trust a variable hop count.
-- [ ] Make the ingress allowlist exact: only `POST
+- [x] Make the ingress allowlist exact: only `POST
   /api/v1/payjoin/{addressId}` is accepted, with query strings preserved and the
   existing `text/plain` request/response and 100-KiB body contract intact.
   Explicitly reject other methods, `/status`, `/attempt`, `/parse-uri`, prefix/
@@ -100,7 +100,7 @@ target-SHA CI verification.
   authentication routes. Remove or overwrite every client-supplied forwarding
   identity header before proxying, including `Forwarded`, `X-Forwarded-For`,
   `X-Real-IP`, `X-Forwarded-Host`, and `X-Forwarded-Proto`.
-- [ ] Add executable Compose/ingress contracts proving an attacker-supplied
+- [x] Add executable Compose/ingress contracts proving an attacker-supplied
   `X-Forwarded-For` cannot affect `req.ip`/rate-limit keys through the Tor path,
   authentication endpoints are unreachable through the onion ingress, valid
   Payjoin paths remain reachable, and normal frontend proxy behavior is

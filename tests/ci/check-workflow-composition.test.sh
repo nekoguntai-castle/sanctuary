@@ -687,7 +687,7 @@ assert_occurrence_count "$COMPOSE_MONITORING" \
 assert_occurrence_count "$COMPOSE_TOR" \
   "Tor Compose makes its restart policy CI-overridable" \
   'restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"' \
-  1
+  2
 
 assert_contains_in_order "$REPO_ROOT/tests/install/e2e/upgrade-install.test.sh" \
   "upgrade source disables historical restart policies before install" \

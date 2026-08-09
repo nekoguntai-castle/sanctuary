@@ -147,7 +147,7 @@ test('allows missing optional installs but rejects missing required packages', (
   assert.throws(() => verifyInstalledPackages(parsed(), root), /unable to read installed/);
 });
 
-test('strict npm policy rejects an unknown lifecycle script before execution', () => {
+test('strict npm policy prevents an unknown lifecycle script from executing', () => {
   const root = mkdtempSync(join(tmpdir(), 'sanctuary-strict-install-script-'));
   const dependency = join(root, 'dependency');
   const marker = join(root, 'unexpected-script-ran');
@@ -175,7 +175,11 @@ test('strict npm policy rejects an unknown lifecycle script before execution', (
     cwd: root,
     encoding: 'utf8',
   });
-  assert.notEqual(install.status, 0, 'unknown lifecycle script must make npm ci fail closed');
-  assert.match(`${install.stdout}\n${install.stderr}`, /ESTRICTALLOWSCRIPTS/);
-  assert.equal(existsSync(marker), false, 'unknown lifecycle script must not execute before rejection');
+  // npm ci --strict-allow-scripts may reject with ESTRICTALLOWSCRIPTS or complete the
+  // install while suppressing every lifecycle script that is absent from
+  // allowScripts. Both behaviors fail closed; arbitrary install failures do not.
+  if (install.status !== 0) {
+    assert.match(`${install.stdout}\n${install.stderr}`, /ESTRICTALLOWSCRIPTS/);
+  }
+  assert.equal(existsSync(marker), false, 'unknown lifecycle script must not execute');
 });

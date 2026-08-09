@@ -606,22 +606,31 @@ test_legacy_optional_profile_compose_can_use_target_tor_overlay() {
   local target_checkout="$TEST_TMP_DIR/target"
   local source_tor_compose="$source_checkout/docker-compose.tor.yml"
   local target_tor_compose="$target_checkout/docker/compose/tor.yml"
+  local source_tor_ingress="$source_checkout/docker/tor/payjoin-ingress.conf"
+  local target_tor_ingress="$target_checkout/docker/tor/payjoin-ingress.conf"
 
-  mkdir -p "$source_checkout" "$target_checkout/docker/compose"
+  mkdir -p "$source_checkout" "$target_checkout/docker/compose" "$target_checkout/docker/tor"
   cat > "$source_tor_compose" <<'EOF'
 services:
   tor:
     container_name: sanctuary-tor
     command: -l "sanctuary_payjoin:80:backend:3001"
 EOF
+  cat > "$target_tor_ingress" <<'EOF'
+server {
+  listen 8080;
+}
+EOF
   cat > "$target_tor_compose" <<'EOF'
 services:
+  tor-ingress:
+    image: sanctuary-frontend:local
   tor:
     container_name: ${TOR_CONTAINER_NAME:-sanctuary-tor}
     command:
       - sh
       - -c
-      - /usr/bin/torproxy.sh -s "80;$${backend_ip}:3001"
+      - /usr/bin/torproxy.sh -s "80;$${ingress_ip}:8080"
 EOF
 
   UPGRADE_EXPECT_OPTIONAL_PROFILES="true"
@@ -632,10 +641,42 @@ EOF
   local contents
   contents="$(cat "$source_tor_compose")"
 
-  assert_contains "$contents" '/usr/bin/torproxy.sh -s "80;$${backend_ip}:3001"' \
-    "legacy Tor compose should be replaced with the target fixed overlay"
+  assert_contains "$contents" '/usr/bin/torproxy.sh -s "80;$${ingress_ip}:8080"' \
+    "legacy Tor compose should be replaced with the target trusted-ingress overlay"
   assert_not_contains "$contents" 'command: -l ' \
     "legacy Tor compose should not keep the invalid hidden service command"
+  assert_contains "$(cat "$source_tor_ingress")" 'listen 8080;' \
+    "legacy Tor fixture should copy the target ingress configuration with its overlay"
+}
+
+test_legacy_optional_profile_compose_requires_target_tor_ingress() {
+  local source_checkout="$TEST_TMP_DIR/source-missing-ingress"
+  local target_checkout="$TEST_TMP_DIR/target-missing-ingress"
+
+  mkdir -p "$source_checkout" "$target_checkout/docker/compose"
+  cat > "$source_checkout/docker-compose.tor.yml" <<'EOF'
+services:
+  tor:
+    command: -l "sanctuary_payjoin:80:backend:3001"
+EOF
+  cat > "$target_checkout/docker/compose/tor.yml" <<'EOF'
+services:
+  tor-ingress:
+    image: sanctuary-frontend:local
+EOF
+
+  UPGRADE_EXPECT_OPTIONAL_PROFILES="true"
+  if isolate_legacy_optional_profile_compose "$source_checkout" "$target_checkout" >/dev/null 2>&1; then
+    UPGRADE_EXPECT_OPTIONAL_PROFILES="false"
+    echo -e "${RED}ASSERTION FAILED:${NC} missing target Tor ingress config must fail closed"
+    return 1
+  fi
+  UPGRADE_EXPECT_OPTIONAL_PROFILES="false"
+
+  if [ -e "$source_checkout/docker/tor/payjoin-ingress.conf" ]; then
+    echo -e "${RED}ASSERTION FAILED:${NC} failed isolation must not fabricate an ingress config"
+    return 1
+  fi
 }
 
 test_tor_compose_uses_supported_hidden_service_config() {
@@ -648,10 +689,12 @@ test_tor_compose_uses_supported_hidden_service_config() {
     "Tor compose should create the hidden-service directory before startup"
   assert_contains "$contents" "chmod 700 /var/lib/tor/hidden_service" \
     "Tor compose should apply Tor-compatible hidden-service directory permissions"
-  assert_contains "$contents" 'getent hosts backend' \
-    "Tor compose should resolve the backend service before configuring the hidden service"
-  assert_contains "$contents" '/usr/bin/torproxy.sh -s "80;$${backend_ip}:3001"' \
-    "Tor compose should use torproxy hidden-service option with a resolved backend IP"
+  assert_contains "$contents" 'getent hosts tor-ingress' \
+    "Tor compose should resolve the trusted ingress before configuring the hidden service"
+  assert_contains "$contents" '/usr/bin/torproxy.sh -s "80;$${ingress_ip}:8080"' \
+    "Tor compose should use torproxy hidden-service option with the trusted ingress"
+  assert_not_contains "$contents" 'getent hosts backend' \
+    "Tor compose should never expose the backend directly"
   assert_contains "$contents" 'nc -z 127.0.0.1 9050' \
     "Tor healthcheck should validate the local IPv4 SOCKS port"
   assert_not_contains "$contents" 'command: -l ' \
@@ -1552,6 +1595,7 @@ main() {
   run_test "unhealthy capture is quiet when all healthy" test_unhealthy_capture_is_quiet_when_all_healthy
   run_test "upgrade teardown captures source checkout diagnostics" test_upgrade_teardown_captures_source_checkout_diagnostics
   run_test "legacy optional profile compose can use target tor overlay" test_legacy_optional_profile_compose_can_use_target_tor_overlay
+  run_test "legacy optional profile compose requires target tor ingress" test_legacy_optional_profile_compose_requires_target_tor_ingress
   run_test "tor compose uses supported hidden service config" test_tor_compose_uses_supported_hidden_service_config
   run_test "current compose builds shared backend image once" test_current_compose_builds_shared_backend_image_once
   run_test "upgrade harness sources extracted helpers" test_upgrade_harness_sources_extracted_helpers

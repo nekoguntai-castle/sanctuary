@@ -67,10 +67,12 @@ isolate_legacy_optional_profile_compose() {
     local target_project_dir="${2:-}"
     local tor_compose
     local target_tor_compose=""
+    local target_tor_ingress=""
 
     tor_compose="$(resolve_compose_overlay "$project_dir" tor 2>/dev/null || true)"
     if [ -n "$target_project_dir" ]; then
         target_tor_compose="$(resolve_compose_overlay "$target_project_dir" tor 2>/dev/null || true)"
+        target_tor_ingress="$target_project_dir/docker/tor/payjoin-ingress.conf"
     fi
 
     if [ "$UPGRADE_EXPECT_OPTIONAL_PROFILES" != "true" ] || [ -z "$tor_compose" ]; then
@@ -80,7 +82,13 @@ isolate_legacy_optional_profile_compose() {
     if grep -q '^    command: -l "sanctuary_payjoin:80:backend:3001"$' "$tor_compose" \
         && [ -n "$target_project_dir" ] \
         && [ -n "$target_tor_compose" ]; then
+        if [ ! -f "$target_tor_ingress" ]; then
+            echo "Target Tor ingress configuration is unavailable: $target_tor_ingress" >&2
+            return 1
+        fi
         cp "$target_tor_compose" "$tor_compose"
+        mkdir -p "$project_dir/docker/tor"
+        cp "$target_tor_ingress" "$project_dir/docker/tor/payjoin-ingress.conf"
         return 0
     fi
 

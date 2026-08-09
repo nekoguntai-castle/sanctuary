@@ -36,18 +36,46 @@ services:
   # 1. A Tor SOCKS5 proxy for outbound connections (port 9050)
   #    Routes Electrum server connections through Tor.
   # 2. A Tor hidden service for inbound connections
-  #    Maps .onion:80 -> backend:3001 for BIP78 Payjoin.
+  #    Maps .onion:80 -> a Payjoin-only ingress for BIP78 receives.
   # ============================================
+  tor-ingress:
+    image: sanctuary-frontend:${SANCTUARY_IMAGE_TAG:-local}
+    pull_policy: never
+    restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
+    entrypoint: ["nginx", "-g", "daemon off;"]
+    command: []
+    depends_on:
+      backend:
+        condition: service_healthy
+    volumes:
+      - ./docker/tor/payjoin-ingress.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - sanctuary-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   tor:
     image: dperson/torproxy:latest
     container_name: ${TOR_CONTAINER_NAME:-sanctuary-tor}
     restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
     networks:
       - sanctuary-network
+    depends_on:
+      tor-ingress:
+        condition: service_healthy
     environment:
       # Disable exit node functionality - we only need SOCKS proxy + hidden service
       LOCATION: ""
-    # Hidden service: map port 80 on the .onion address to backend port 3001
+    # Hidden service: map onion port 80 to the Payjoin-only ingress.
     command:
       - sh
       - -c
@@ -58,13 +86,13 @@ services:
         chmod 700 /var/lib/tor/hidden_service
         sed -i '/^StrictNodes /d; /^ExitNodes /d' /etc/tor/torrc
         for _ in 1 2 3 4 5 6 7 8 9 10; do
-          backend_ip="$$(getent hosts backend 2>/dev/null | awk '{print $$1; exit}' || true)"
-          if [ -n "$$backend_ip" ]; then
-            exec /usr/bin/torproxy.sh -s "80;$${backend_ip}:3001"
+          ingress_ip="$$(getent hosts tor-ingress 2>/dev/null | awk '{print $$1; exit}' || true)"
+          if [ -n "$$ingress_ip" ]; then
+            exec /usr/bin/torproxy.sh -s "80;$${ingress_ip}:8080"
           fi
           sleep 2
         done
-        echo "backend service did not resolve" >&2
+        echo "Payjoin ingress service did not resolve" >&2
         exit 1
     volumes:
       # Persist hidden service keys so the .onion address stays the same across restarts
