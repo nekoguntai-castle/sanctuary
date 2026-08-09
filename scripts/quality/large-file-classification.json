@@ -51,6 +51,13 @@
       "reason": "End-to-end destructive operations proof harness sharing one migrated database, backup archive, restore, SMTP, and cache boundary across the operational drill.",
       "reviewWhenTouched": true,
       "lastReviewed": "2026-07-31"
+    },
+    "tests/components/WalletDetail/hooks/useWalletData.test.ts": {
+      "category": "proof-harness",
+      "owner": "wallet-detail-state",
+      "reason": "Stateful Wallet Detail hook proof harness sharing one API mock and route lifecycle boundary across replacement, pagination, metadata, and mutation ownership races.",
+      "reviewWhenTouched": true,
+      "lastReviewed": "2026-08-09"
     }
   }
 }

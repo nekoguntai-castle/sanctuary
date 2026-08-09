@@ -15,6 +15,10 @@ import { createLogger } from '../../utils/logger';
 import type { OutputEntry, TransactionState } from '../../contexts/send/types';
 import type { CreateDraftRequest } from '../../api/drafts';
 import type { TransactionData } from './types';
+import {
+  requirePositiveSatoshiAmount,
+  requirePositiveSatoshiNumber,
+} from '../../utils/sendAmount';
 
 const log = createLogger('DraftMgmt');
 
@@ -23,15 +27,25 @@ type DraftApiOutput = { address: string; amount: number; sendMax?: boolean };
 const toDraftApiOutput = (output: OutputEntry): DraftApiOutput => {
   return {
     address: output.address,
-    amount: output.sendMax ? 0 : parseInt(output.amount, 10),
+    amount: output.sendMax ? 0 : requirePositiveSatoshiAmount(output.amount),
     sendMax: output.sendMax,
   };
 };
 
 const getEffectiveDraftAmount = (currentTxData: TransactionData, state: TransactionState): number => {
-  return currentTxData.effectiveAmount ||
-    currentTxData.outputs?.reduce((sum, output) => sum + output.amount, 0) ||
-    parseInt(state.outputs[0].amount, 10);
+  if (currentTxData.effectiveAmount !== undefined) {
+    return requirePositiveSatoshiNumber(currentTxData.effectiveAmount, 'effective amount');
+  }
+
+  if (currentTxData.outputs?.length) {
+    const total = currentTxData.outputs.reduce(
+      (sum, output) => sum + requirePositiveSatoshiNumber(output.amount, 'draft output amount'),
+      0,
+    );
+    return requirePositiveSatoshiNumber(total, 'effective amount');
+  }
+
+  return requirePositiveSatoshiAmount(state.outputs[0].amount);
 };
 
 const getUsedUtxoIds = (currentTxData: TransactionData): string[] => {
@@ -50,11 +64,13 @@ const getDraftInputs = (currentTxData: TransactionData): CreateDraftRequest['inp
 };
 
 const getDraftOutputs = (currentTxData: TransactionData, apiOutputs: DraftApiOutput[]): DraftApiOutput[] => {
-  return currentTxData.outputs
+  return currentTxData.outputs?.length
     ? currentTxData.outputs.map((txOutput, index) => ({
         address: txOutput.address,
-        amount: txOutput.amount,
-        sendMax: apiOutputs[index]?.sendMax || false,
+        amount: txOutput.sendMax
+          ? 0
+          : requirePositiveSatoshiNumber(txOutput.amount, 'draft output amount'),
+        sendMax: txOutput.sendMax ?? apiOutputs[index]?.sendMax ?? false,
       }))
     : apiOutputs;
 };
@@ -62,9 +78,9 @@ const getDraftOutputs = (currentTxData: TransactionData, apiOutputs: DraftApiOut
 const buildDraftRequest = (
   state: TransactionState,
   currentTxData: TransactionData,
+  apiOutputs: DraftApiOutput[],
   label?: string
 ): CreateDraftRequest => {
-  const apiOutputs = state.outputs.map(toDraftApiOutput);
   const usedUtxoIds = getUsedUtxoIds(currentTxData);
 
   return {
@@ -225,12 +241,13 @@ export function useDraftManagement({
 
     try {
       let draftId: string;
+      const apiOutputs = state.outputs.map(toDraftApiOutput);
 
       if (state.draftId) {
         draftId = await updateExistingDraft(walletId, state.draftId, unsignedPsbt, currentTxData, signedDevices);
         showSuccess('Draft updated successfully', 'Draft Saved');
       } else {
-        const draftRequest = buildDraftRequest(state, currentTxData, label);
+        const draftRequest = buildDraftRequest(state, currentTxData, apiOutputs, label);
         draftId = await createNewDraft(walletId, draftRequest, unsignedPsbt, currentTxData, signedDevices);
         showSuccess('Transaction saved as draft', 'Draft Saved');
       }

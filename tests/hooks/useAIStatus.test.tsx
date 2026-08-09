@@ -5,7 +5,7 @@
  * Covers loading states, successful fetches, error handling, and cache behavior.
  */
 
-import { renderHook,waitFor } from '@testing-library/react';
+import { act,renderHook,waitFor } from '@testing-library/react';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
 
 // Mock the AI API
@@ -26,9 +26,8 @@ describe('useAIStatus', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
-    // Clear the cache after each test to prevent interference
-    invalidateAIStatusCache();
   });
 
   describe('Initial Loading State', () => {
@@ -291,14 +290,14 @@ describe('useAIStatus', () => {
 
       expect(mockGetAIStatus).toHaveBeenCalledTimes(1);
 
-      // Invalidate the cache
-      invalidateAIStatusCache();
-
       // Mock a different response for the second fetch
       mockGetAIStatus.mockResolvedValue({
         available: false,
         proxyAvailable: false,
       });
+
+      // Invalidate the cache
+      act(() => invalidateAIStatusCache());
 
       // Second hook instance after invalidation
       const { result: result2 } = renderHook(() => useAIStatus());
@@ -509,6 +508,129 @@ describe('useAIStatus', () => {
       await waitFor(() => {
         expect(result2.current.loading).toBe(false);
       });
+    });
+  });
+
+  describe('Observable refresh ownership', () => {
+    it('publishes invalidation and refreshed status to an already-mounted consumer', async () => {
+      mockGetAIStatus.mockResolvedValueOnce({ available: true, proxyAvailable: true });
+      const { result } = renderHook(() => useAIStatus());
+      await waitFor(() => expect(result.current.available).toBe(true));
+
+      mockGetAIStatus.mockResolvedValueOnce({ available: false, proxyAvailable: false });
+      act(() => invalidateAIStatusCache());
+      expect(result.current.loading).toBe(true);
+      await waitFor(() => expect(result.current).toEqual({
+        enabled: false,
+        loading: false,
+        available: false,
+      }));
+      expect(mockGetAIStatus).toHaveBeenCalledTimes(2);
+    });
+
+    it('recovers once after a transient failure without starting duplicate requests', async () => {
+      vi.useFakeTimers();
+      mockGetAIStatus
+        .mockRejectedValueOnce(new Error('temporary'))
+        .mockResolvedValueOnce({ available: true, proxyAvailable: true });
+      const { result } = renderHook(() => useAIStatus());
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(result.current.loading).toBe(false);
+      expect(mockGetAIStatus).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+      expect(result.current.available).toBe(true);
+      expect(mockGetAIStatus).toHaveBeenCalledTimes(2);
+    });
+
+    it('cancels retry without subscribers and bounds a subscribed retry to one attempt', async () => {
+      vi.useFakeTimers();
+      mockGetAIStatus.mockRejectedValue(new Error('offline'));
+      const first = renderHook(() => useAIStatus());
+      await act(async () => {
+        await Promise.resolve();
+      });
+      first.unmount();
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(mockGetAIStatus).toHaveBeenCalledTimes(1);
+
+      act(() => invalidateAIStatusCache());
+      const second = renderHook(() => useAIStatus());
+      await act(async () => {
+        await Promise.resolve();
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+      expect(mockGetAIStatus).toHaveBeenCalledTimes(3);
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(mockGetAIStatus).toHaveBeenCalledTimes(3);
+      second.unmount();
+    });
+
+    it('does not schedule recovery when the request fails after the last subscriber leaves', async () => {
+      vi.useFakeTimers();
+      let rejectRequest!: (error: unknown) => void;
+      mockGetAIStatus.mockImplementationOnce(() => new Promise((_resolve, reject) => {
+        rejectRequest = reject;
+      }));
+      const view = renderHook(() => useAIStatus());
+      view.unmount();
+      await act(async () => {
+        rejectRequest(new Error('offline after unmount'));
+        await Promise.resolve();
+      });
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(mockGetAIStatus).toHaveBeenCalledTimes(1);
+
+      mockGetAIStatus.mockResolvedValueOnce({ available: true, proxyAvailable: true });
+      const recovered = renderHook(() => useAIStatus());
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(recovered.result.current.available).toBe(true);
+      expect(mockGetAIStatus).toHaveBeenCalledTimes(2);
+      recovered.unmount();
+    });
+
+    it('ignores an older request completion after invalidation', async () => {
+      let resolveOlder!: (value: { available: boolean; proxyAvailable: boolean }) => void;
+      mockGetAIStatus.mockImplementationOnce(() => new Promise(resolve => {
+        resolveOlder = resolve;
+      }));
+      const { result } = renderHook(() => useAIStatus());
+      expect(mockGetAIStatus).toHaveBeenCalledTimes(1);
+
+      mockGetAIStatus.mockResolvedValueOnce({ available: false, proxyAvailable: false });
+      act(() => invalidateAIStatusCache());
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        resolveOlder({ available: true, proxyAvailable: true });
+        await Promise.resolve();
+      });
+      expect(result.current.available).toBe(false);
+      expect(result.current.enabled).toBe(false);
+    });
+
+    it('ignores an older request rejection after invalidation', async () => {
+      let rejectOlder!: (error: unknown) => void;
+      mockGetAIStatus.mockImplementationOnce(() => new Promise((_resolve, reject) => {
+        rejectOlder = reject;
+      }));
+      const { result } = renderHook(() => useAIStatus());
+      mockGetAIStatus.mockResolvedValueOnce({ available: true, proxyAvailable: true });
+      act(() => invalidateAIStatusCache());
+      await waitFor(() => expect(result.current.available).toBe(true));
+
+      await act(async () => {
+        rejectOlder(new Error('stale failure'));
+        await Promise.resolve();
+      });
+      expect(result.current.available).toBe(true);
     });
   });
 });

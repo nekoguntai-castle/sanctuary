@@ -190,14 +190,14 @@ function buildDraftOutputs(draftData: DraftTransaction): SerializableTransaction
     return draftData.outputs.map((output) => ({
       address: output.address,
       amount: output.amount.toString(),
-      sendMax: false,
+      sendMax: Boolean(output.sendMax),
     }));
   }
 
   return [{
     address: draftData.recipient,
     amount: draftData.amount.toString(),
-    sendMax: false,
+    sendMax: Boolean(draftData.sendMax),
   }];
 }
 

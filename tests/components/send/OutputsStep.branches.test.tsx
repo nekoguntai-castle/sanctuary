@@ -402,10 +402,23 @@ describe('OutputsStep branch coverage', () => {
     expect(mockUpdateOutputAmount).toHaveBeenCalledWith(0, '2', '0.00000002');
 
     row.onAmountChange(0, 'abc', '123');
-    expect(mockUpdateOutputAmount).toHaveBeenCalledWith(0, '123', 'abc');
+    expect(mockUpdateOutputAmount).toHaveBeenCalledWith(0, '', 'abc');
 
     row.onAmountChange(0, '', '77');
-    expect(mockUpdateOutputAmount).toHaveBeenCalledWith(0, '77', '');
+    expect(mockUpdateOutputAmount).toHaveBeenCalledWith(0, '', '');
+
+    row.onAmountChange(0, '.', '.');
+    expect(mockUpdateOutputAmount).toHaveBeenCalledWith(0, '', '.');
+
+    row.onAmountChange(0, '0.000000006', '0.000000006');
+    expect(mockUpdateOutputAmount).toHaveBeenCalledWith(0, '', '0.000000006');
+
+    row.onAmountChange(0, '90071992.54740991', '');
+    expect(mockUpdateOutputAmount).toHaveBeenCalledWith(
+      0,
+      Number.MAX_SAFE_INTEGER.toString(),
+      '90071992.54740991',
+    );
 
     row.onAmountBlur(0);
     expect(mockDispatch).toHaveBeenCalledWith({
@@ -434,6 +447,21 @@ describe('OutputsStep branch coverage', () => {
     mockDispatch.mockClear();
     capture.outputRows[0].onAmountBlur(0);
     expect(mockDispatch).not.toHaveBeenCalled();
+  });
+
+  it('normalizes satoshi-unit input before storing it', async () => {
+    vi.mocked(CurrencyContext.useCurrency).mockReturnValue({
+      unit: 'sats',
+      format: (sats: number) => `${sats} sats`,
+      formatFiat: () => null,
+    } as never);
+    render(<OutputsStep />);
+    await waitFor(() => expect(capture.outputRows[0]?.onAmountChange).toEqual(expect.any(Function)));
+
+    capture.outputRows[0].onAmountChange(0, '000123', '000123');
+    expect(mockUpdateOutputAmount).toHaveBeenCalledWith(0, '123', '000123');
+    capture.outputRows[0].onAmountChange(0, '9007199254740992', '9007199254740992');
+    expect(mockUpdateOutputAmount).toHaveBeenCalledWith(0, '', '9007199254740992');
   });
 
   it('builds privacy map keys and toggles coin-control expansion with side effects', async () => {

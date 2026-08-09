@@ -10,6 +10,7 @@ import { WizardNavigation } from '../../WizardNavigation';
 import { useSendTransaction } from '../../../../contexts/send';
 import { useCurrency } from '../../../../contexts/CurrencyContext';
 import { parseBip21Uri } from '../../../../utils/bip21Parser';
+import { btcAmountToSatoshiString, parsePositiveSatoshiAmount } from '../../../../utils/sendAmount';
 import { validateAddress, addressMatchesNetwork } from '../../../../utils/validateAddress';
 import { createLogger } from '../../../../utils/logger';
 import { CoinControlPanel } from './CoinControlPanel';
@@ -217,13 +218,10 @@ export function OutputsStep() {
 
   // Handle amount change
   const handleAmountChange = useCallback((index: number, displayValue: string, satsValue: string) => {
-    let finalSats = satsValue;
-    if (unit === 'btc' && displayValue) {
-      const btcValue = parseFloat(displayValue);
-      if (!isNaN(btcValue)) {
-        finalSats = Math.round(btcValue * 100_000_000).toString();
-      }
-    }
+    const normalizedAmount = unit === 'btc'
+      ? btcAmountToSatoshiString(displayValue)
+      : parsePositiveSatoshiAmount(satsValue)?.toString() ?? null;
+    const finalSats = normalizedAmount ?? '';
     updateOutputAmount(index, finalSats, displayValue);
   }, [unit, updateOutputAmount]);
 

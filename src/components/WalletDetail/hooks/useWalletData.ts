@@ -35,6 +35,7 @@ import {
   createRequestOwnership,
   type RouteToken,
 } from '../../../hooks/requestOwnership';
+import type { ListEpochToken } from '../../../hooks/usePaginatedList';
 
 export type { UseWalletDataParams, UseWalletDataReturn } from './walletDataTypes';
 
@@ -73,6 +74,7 @@ export function useWalletData({
 
   const addrList = usePaginatedList<Address>();
   const [addressSummary, setAddressSummary] = useState<transactionsApi.AddressSummary | null>(null);
+  const addressSummaryRef = useRef<transactionsApi.AddressSummary | null>(null);
 
   // Memoize wallet addresses to prevent infinite re-renders in TransactionList
   const walletAddressStrings = useMemo(() => addrList.items.map(a => a.address), [addrList.items]);
@@ -84,18 +86,6 @@ export function useWalletData({
   const [users] = useState<User[]>([]);
   const [groups, setGroups] = useState<authApi.UserGroup[]>([]);
   const [walletShareInfo, setWalletShareInfo] = useState<walletsApi.WalletShareInfo | null>(null);
-
-  useEffect(() => {
-    if (addressSummary) {
-      addrList.setHasMore(addrList.offset < addressSummary.totalAddresses);
-    }
-  }, [addressSummary, addrList.offset]);
-
-  useEffect(() => {
-    if (utxoSummary) {
-      utxoList.setHasMore(utxoList.offset < utxoSummary.count);
-    }
-  }, [utxoSummary, utxoList.offset]);
 
   useLayoutEffect(() => {
     ownership.setRoute(routeKey);
@@ -112,6 +102,7 @@ export function useWalletData({
     setPrivacyData([]);
     setPrivacySummary(null);
     addrList.reset();
+    addressSummaryRef.current = null;
     setAddressSummary(null);
     setDraftsCount(0);
     setExplorerUrl(getDefaultNodeExternalServiceUrl('mainnet'));
@@ -127,48 +118,82 @@ export function useWalletData({
 
   const loadAddressSummaryFn = async (walletId: string) => {
     const routeToken = ownership.captureRoute(routeKey);
+    const listToken = addrList.captureEpoch();
     if (!ownsRoute(routeToken, walletId)) return;
     const summary = await loadAddressSummaryLoader(walletId);
-    if (summary && ownsRoute(routeToken, walletId)) setAddressSummary(summary);
-  };
-
-  const loadAddressesFn = async (walletId: string, limit: number, offset: number, reset = false) => {
-    const routeToken = ownership.captureRoute(routeKey);
-    if (!ownsRoute(routeToken, walletId)) return;
-    try {
-      addrList.setLoading(true);
-      if (reset) addrList.setOffset(0);
-
-      const formattedAddrs = await loadAddressPage(walletId, offset, limit);
-      if (!ownsRoute(routeToken, walletId)) return;
-
-      if (reset) {
-        addrList.replaceItems(formattedAddrs, formattedAddrs.length,
-          addressSummary ? formattedAddrs.length < addressSummary.totalAddresses : formattedAddrs.length === limit);
-      } else {
-        addrList.appendItems(formattedAddrs,
-          addressSummary ? addressSummary.totalAddresses : limit,
-          addressSummary ? 'total' : 'pageSize');
-      }
-    } catch (err) {
-      logError(log, err, 'Failed to load addresses');
-      if (ownsRoute(routeToken, walletId)) addrList.setLoading(false);
+    if (summary && ownsRoute(routeToken, walletId) && addrList.isEpochOwner(listToken)) {
+      addressSummaryRef.current = summary;
+      setAddressSummary(summary);
+      addrList.setHasMoreForEpoch(listToken, summary.totalAddresses);
     }
   };
 
-  const loadUtxos = async (walletId: string, limit: number, offset: number) => {
+  const loadAddressReplacement = async (walletId: string, limit: number) => {
     const routeToken = ownership.captureRoute(routeKey);
     if (!ownsRoute(routeToken, walletId)) return;
-    utxoList.setLoading(true);
+    const replacement = addrList.beginReplacement();
 
     try {
-      const page = await loadUtxoPage(walletId, offset, limit);
+      const [formattedAddrs, replacementSummary] = await Promise.all([
+        loadAddressPage(walletId, 0, limit),
+        loadAddressSummaryLoader(walletId),
+      ]);
+      const hasMore = replacementSummary
+        ? formattedAddrs.length < replacementSummary.totalAddresses
+        : formattedAddrs.length === limit;
       if (!ownsRoute(routeToken, walletId)) return;
-      setUtxoSummary({ count: page.count, totalBalance: page.totalBalance });
-      utxoList.appendItems(page.utxos, page.count, 'total');
+      if (addrList.commitReplacement(replacement, formattedAddrs, formattedAddrs.length, hasMore)) {
+        addressSummaryRef.current = replacementSummary;
+        setAddressSummary(replacementSummary);
+      }
+    } catch (err) {
+      logError(log, err, 'Failed to load addresses');
+      if (ownsRoute(routeToken, walletId)) addrList.failReplacement(replacement);
+    }
+  };
+
+  const loadAddressContinuation = async (walletId: string, limit: number) => {
+    const routeToken = ownership.captureRoute(routeKey);
+    if (!ownsRoute(routeToken, walletId)) return;
+    const continuation = addrList.claimContinuation();
+    if (!continuation) return;
+
+    try {
+      const formattedAddrs = await loadAddressPage(walletId, continuation.offset, limit);
+      if (!ownsRoute(routeToken, walletId)) return;
+      const summary = addressSummaryRef.current;
+      addrList.commitContinuation(
+        continuation,
+        formattedAddrs,
+        summary?.totalAddresses ?? limit,
+        summary ? 'total' : 'pageSize',
+      );
+    } catch (err) {
+      logError(log, err, 'Failed to load addresses');
+      if (ownsRoute(routeToken, walletId)) addrList.failContinuation(continuation);
+    }
+  };
+
+  const loadAddressesFn = async (walletId: string, limit: number, _offset: number, reset = false) => {
+    if (reset) return loadAddressReplacement(walletId, limit);
+    return loadAddressContinuation(walletId, limit);
+  };
+
+  const loadUtxos = async (walletId: string, limit: number, _offset: number) => {
+    const routeToken = ownership.captureRoute(routeKey);
+    if (!ownsRoute(routeToken, walletId)) return;
+    const continuation = utxoList.claimContinuation();
+    if (!continuation) return;
+
+    try {
+      const page = await loadUtxoPage(walletId, continuation.offset, limit);
+      if (!ownsRoute(routeToken, walletId)) return;
+      if (utxoList.commitContinuation(continuation, page.utxos, page.count, 'total')) {
+        setUtxoSummary({ count: page.count, totalBalance: page.totalBalance });
+      }
     } catch (err) {
       logError(log, err, 'Failed to load UTXOs');
-      if (ownsRoute(routeToken, walletId)) utxoList.setLoading(false);
+      if (ownsRoute(routeToken, walletId)) utxoList.failContinuation(continuation);
     }
   };
 
@@ -187,50 +212,80 @@ export function useWalletData({
   };
 
   const loadMoreTransactions = async () => {
-    if (!id || txList.loading || !txList.hasMore) return;
+    if (!id) return;
     const walletId = id;
     const routeToken = ownership.captureRoute(routeKey);
     if (!ownsRoute(routeToken, walletId)) return;
+    const continuation = txList.claimContinuation();
+    if (!continuation) return;
 
     try {
-      txList.setLoading(true);
-      const formattedTxs = await loadTransactionPage(walletId, txList.offset, TX_PAGE_SIZE);
+      const formattedTxs = await loadTransactionPage(walletId, continuation.offset, TX_PAGE_SIZE);
       if (!ownsRoute(routeToken, walletId)) return;
-      txList.appendItems(formattedTxs, TX_PAGE_SIZE);
+      txList.commitContinuation(continuation, formattedTxs, TX_PAGE_SIZE);
     } catch (err) {
       logError(log, err, 'Failed to load more transactions');
-      if (ownsRoute(routeToken, walletId)) {
+      if (ownsRoute(routeToken, walletId) && txList.failContinuation(continuation)) {
         handleError(err, 'Failed to Load More Transactions');
-        txList.setLoading(false);
       }
     }
   };
 
   const loadMoreUtxos = async () => {
-    if (!id || utxoList.loading || !utxoList.hasMore) return;
+    if (!id) return;
     await loadUtxos(id, UTXO_PAGE_SIZE, utxoList.offset);
   };
 
-  const applyAuxiliaryData = useCallback((aux: AuxiliaryData, walletId: string) => {
+  const applyAuxiliaryData = useCallback((
+    aux: AuxiliaryData,
+    walletId: string,
+    replacements: {
+      addresses: ListEpochToken;
+      transactions: ListEpochToken;
+      utxos: ListEpochToken;
+    },
+  ) => {
     if (aux.explorerUrl) setExplorerUrl(aux.explorerUrl);
     setDevices(aux.devices);
     if (aux.transactions !== null) {
-      txList.replaceItems(aux.transactions, TX_PAGE_SIZE, aux.transactions.length === TX_PAGE_SIZE);
+      txList.commitReplacement(
+        replacements.transactions,
+        aux.transactions,
+        aux.transactions.length,
+        aux.transactions.length === TX_PAGE_SIZE,
+      );
+      if (aux.transactionStats) setTransactionStats(aux.transactionStats);
+    } else {
+      txList.failReplacement(replacements.transactions);
     }
-    if (aux.transactionStats) setTransactionStats(aux.transactionStats);
     if (aux.utxoPage) {
+      utxoList.commitReplacement(
+        replacements.utxos,
+        aux.utxoPage.utxos,
+        aux.utxoPage.utxos.length,
+        aux.utxoPage.utxos.length < aux.utxoPage.count,
+      );
       setUtxoSummary({ count: aux.utxoPage.count, totalBalance: aux.utxoPage.totalBalance });
-      utxoList.replaceItems(aux.utxoPage.utxos, aux.utxoPage.utxos.length,
-        aux.utxoPage.utxos.length < aux.utxoPage.count);
+    } else {
+      utxoList.failReplacement(replacements.utxos);
     }
     setPrivacyData(aux.privacyData);
     setPrivacySummary(aux.privacySummary);
-    if (aux.addressSummary) setAddressSummary(aux.addressSummary);
     if (aux.addresses !== null) {
-      addrList.replaceItems(aux.addresses, aux.addresses.length,
+      const committed = addrList.commitReplacement(
+        replacements.addresses,
+        aux.addresses,
+        aux.addresses.length,
         aux.addressSummary
           ? aux.addresses.length < aux.addressSummary.totalAddresses
-          : aux.addresses.length === ADDRESS_PAGE_SIZE);
+          : aux.addresses.length === ADDRESS_PAGE_SIZE,
+      );
+      if (committed) {
+        addressSummaryRef.current = aux.addressSummary;
+        setAddressSummary(aux.addressSummary);
+      }
+    } else {
+      addrList.failReplacement(replacements.addresses);
     }
     setDraftsCount(aux.drafts.length);
     if (aux.drafts.length > 0) {
@@ -250,6 +305,16 @@ export function useWalletData({
     const request = ownership.beginFetch(routeKey);
     const ownsRequest = () => ownership.isFetchOwner(request);
     if (!id || !user || !ownsRequest()) return;
+    const replacements = {
+      addresses: addrList.beginReplacement(),
+      transactions: txList.beginReplacement(),
+      utxos: utxoList.beginReplacement(),
+    };
+    const failReplacements = () => {
+      addrList.failReplacement(replacements.addresses);
+      txList.failReplacement(replacements.transactions);
+      utxoList.failReplacement(replacements.utxos);
+    };
 
     if (!isRefresh) setLoading(true);
     setError(null);
@@ -261,6 +326,7 @@ export function useWalletData({
     } catch (err) {
       log.error('Failed to fetch wallet', { error: err });
       if (!ownsRequest()) return;
+      failReplacements();
       if (err instanceof ApiError) {
         if (err.status === 404) { navigate('/wallets'); return; }
         setError(err.message);
@@ -277,14 +343,14 @@ export function useWalletData({
     setLoading(false);
 
     // 2. Fetch auxiliary data in parallel (non-critical)
-    const aux = await fetchAuxiliaryData(id, apiWallet, user.id, {
+    const aux: AuxiliaryData = await fetchAuxiliaryData(id, apiWallet, user.id, {
       tx: TX_PAGE_SIZE,
       utxo: UTXO_PAGE_SIZE,
       address: ADDRESS_PAGE_SIZE,
     });
     if (!ownsRequest()) return;
 
-    applyAuxiliaryData(aux, id);
+    applyAuxiliaryData(aux, id, replacements);
 
     // 3. Groups & share info (sequential, after main parallel batch)
     const fetchedGroups = await loadGroups(user);
@@ -332,7 +398,7 @@ export function useWalletData({
 
     // Transactions
     transactions: txList.items,
-    setTransactions: txList.setItems,
+    setTransactions: txList.mutateItems,
     transactionStats,
     txOffset: txList.offset,
     hasMoreTx: txList.hasMore,
@@ -341,7 +407,7 @@ export function useWalletData({
 
     // UTXOs
     utxos: utxoList.items,
-    setUTXOs: utxoList.setItems,
+    setUTXOs: utxoList.mutateItems,
     utxoSummary,
     hasMoreUtxos: utxoList.hasMore,
     loadingMoreUtxos: utxoList.loading,
@@ -360,7 +426,7 @@ export function useWalletData({
 
     // Addresses
     addresses: addrList.items,
-    setAddresses: addrList.setItems,
+    setAddresses: addrList.mutateItems,
     walletAddressStrings,
     addressSummary,
     hasMoreAddresses: addrList.hasMore,

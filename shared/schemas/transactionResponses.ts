@@ -18,6 +18,15 @@ import { z } from 'zod';
  */
 
 const satoshis = z.number().finite();
+const positiveSafeSatoshis = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
+const batchOutputs = z.array(z.looseObject({
+  address: z.string().min(1),
+  amount: positiveSafeSatoshis,
+  sendMax: z.boolean().optional(),
+})).min(1).refine(
+  outputs => outputs.reduce((sum, output) => sum + BigInt(output.amount), 0n) <= BigInt(Number.MAX_SAFE_INTEGER),
+  { message: 'batch output total must be a safe integer' },
+);
 
 /**
  * Not a range check: a PSBT is the thing being signed, and an empty string is
@@ -35,6 +44,17 @@ export const CreateTransactionResponseSchema = z.looseObject({
   changeAmount: satoshis,
   // `reviewStepData` calls `.map` on this with no guard.
   utxos: z.array(z.looseObject({ txid: z.string(), vout: z.number().int() })),
+});
+
+export const CreateBatchTransactionResponseSchema = z.looseObject({
+  psbtBase64: psbt,
+  fee: satoshis,
+  totalInput: satoshis,
+  totalOutput: satoshis,
+  changeAmount: satoshis,
+  effectiveAmount: positiveSafeSatoshis.optional(),
+  utxos: z.array(z.looseObject({ txid: z.string(), vout: z.number().int() })),
+  outputs: batchOutputs,
 });
 
 /**

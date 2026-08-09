@@ -28,7 +28,10 @@ import type {
   GetAddressesParams,
   AddressSummary,
 } from './types';
-import { CreateTransactionResponseSchema } from '@sanctuary/shared/schemas/transactionResponses';
+import {
+  CreateBatchTransactionResponseSchema,
+  CreateTransactionResponseSchema,
+} from '@sanctuary/shared/schemas/transactionResponses';
 
 // ========================================
 // WALLET-SCOPED TRANSACTION OPERATIONS
@@ -148,7 +151,8 @@ export async function createBatchTransaction(
 ): Promise<CreateBatchTransactionResponse> {
   return apiClient.post<CreateBatchTransactionResponse>(
     `/wallets/${walletId}/transactions/batch`,
-    data
+    data,
+    { schema: CreateBatchTransactionResponseSchema },
   );
 }
 

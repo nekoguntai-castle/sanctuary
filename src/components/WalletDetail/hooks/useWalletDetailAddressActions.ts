@@ -10,7 +10,6 @@ export function useWalletDetailAddressActions({
   loadingAddresses,
   hasMoreAddresses,
   loadAddresses,
-  loadAddressSummary,
   addressOffset,
   addressPageSize,
   handleError,
@@ -19,7 +18,6 @@ export function useWalletDetailAddressActions({
   loadingAddresses: boolean;
   hasMoreAddresses: boolean;
   loadAddresses: (walletId: string, limit: number, offset: number, reset: boolean) => Promise<void>;
-  loadAddressSummary: (walletId: string) => Promise<void>;
   addressOffset: number;
   addressPageSize: number;
   handleError: (error: unknown, title?: string) => void;
@@ -34,13 +32,12 @@ export function useWalletDetailAddressActions({
 
     try {
       await transactionsApi.generateAddresses(walletId, 10);
-      await loadAddressSummary(walletId);
       await loadAddresses(walletId, addressPageSize, 0, true);
     } catch (err) {
       logError(log, err, 'Failed to generate more addresses');
       handleError(err, 'Failed to Generate Addresses');
     }
-  }, [walletId, loadAddressSummary, loadAddresses, addressPageSize, handleError]);
+  }, [walletId, loadAddresses, addressPageSize, handleError]);
 
   const handleFetchUnusedAddresses = useCallback(async (wId: string) => {
     const unusedReceive = await transactionsApi.getAddresses(wId, { used: false, change: false, limit: 10 });

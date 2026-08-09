@@ -26,7 +26,7 @@ export interface TransactionData {
     address?: string;
     amount?: number;
   }>;
-  outputs?: Array<{ address: string; amount: number }>;
+  outputs?: Array<{ address: string; amount: number; sendMax?: boolean }>;
   inputPaths?: string[];
   decoyOutputs?: Array<{ address: string; amount: number }>;
 }

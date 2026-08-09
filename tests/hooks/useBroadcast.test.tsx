@@ -305,7 +305,7 @@ describe('useBroadcast', () => {
       txData: {
         ...baseTxData,
         effectiveAmount: undefined,
-        outputs: undefined,
+        outputs: [{ address: 'bc1qrecipient', amount: 10_000 }],
       } as any,
     });
     const { result } = renderHook(() => useBroadcast(deps));
@@ -319,13 +319,40 @@ describe('useBroadcast', () => {
     expect(mocks.broadcastTransaction).toHaveBeenCalledWith('wallet-1', {
       signedPsbtBase64: 'signed-psbt',
       recipient: 'bc1qrecipient',
-      amount: 0,
+      amount: 10_000,
       fee: 123,
       utxos: baseTxData.utxos,
     });
     expect(
       mocks.logger.info.mock.calls.some(([message]) => message === 'BROADCAST PSBT SIGNATURES')
     ).toBe(false);
+  });
+
+  it.each([
+    { effectiveAmount: -1 },
+    { effectiveAmount: 1.5 },
+    { effectiveAmount: Number.MAX_SAFE_INTEGER + 1 },
+    { effectiveAmount: undefined, outputs: undefined },
+    { effectiveAmount: undefined, outputs: [{ address: 'bc1qrecipient', amount: 0 }] },
+    {
+      effectiveAmount: undefined,
+      outputs: [
+        { address: 'bc1qone', amount: Number.MAX_SAFE_INTEGER },
+        { address: 'bc1qtwo', amount: 1 },
+      ],
+    },
+  ])('refuses malformed transaction amount metadata before the broadcast API %#', async (amounts) => {
+    const deps = createDeps({ txData: { ...baseTxData, ...amounts } as any });
+    const { result } = renderHook(() => useBroadcast(deps));
+
+    let ok = true;
+    await act(async () => {
+      ok = await result.current.broadcastTransaction();
+    });
+
+    expect(ok).toBe(false);
+    expect(mocks.broadcastTransaction).not.toHaveBeenCalled();
+    expect(deps.setError).toHaveBeenCalledWith(expect.stringContaining('Invalid'));
   });
 
   it('passes draftId to broadcast and leaves draft cleanup to the server', async () => {

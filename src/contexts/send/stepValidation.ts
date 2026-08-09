@@ -6,6 +6,7 @@
  */
 
 import type { TransactionState, WizardStep } from './types';
+import { parsePositiveSatoshiAmount } from '../../utils/sendAmount';
 
 // ============================================================================
 // VALIDATION FUNCTIONS
@@ -37,7 +38,7 @@ export function validateOutputsStep(state: TransactionState): boolean {
 
   // Check that all non-sendMax outputs have amounts
   for (const output of state.outputs) {
-    if (!output.sendMax && (!output.amount || parseInt(output.amount, 10) <= 0)) {
+    if (!output.sendMax && parsePositiveSatoshiAmount(output.amount) === null) {
       return false;
     }
   }
@@ -111,7 +112,7 @@ export function getStepErrors(step: WizardStep, state: TransactionState): string
         if (state.outputsValid[i] === false) {
           errors.push(`Output ${i + 1}: Invalid Bitcoin address`);
         }
-        if (!output.sendMax && (!output.amount || parseInt(output.amount, 10) <= 0)) {
+        if (!output.sendMax && parsePositiveSatoshiAmount(output.amount) === null) {
           errors.push(`Output ${i + 1}: Amount is required`);
         }
       });

@@ -22,6 +22,11 @@ import { useBroadcast } from './useBroadcast';
 import type { TransactionData, UseSendTransactionActionsProps, UseSendTransactionActionsResult } from './types';
 import type { OutputEntry, PayjoinAttemptStatus, TransactionState } from '../../contexts/send/types';
 import type { Wallet } from '../../types';
+import {
+  parsePositiveSatoshiAmount,
+  requirePositiveSatoshiAmount,
+  requirePositiveSatoshiNumber,
+} from '../../utils/sendAmount';
 
 export type { TransactionData, UseSendTransactionActionsProps, UseSendTransactionActionsResult };
 
@@ -43,7 +48,7 @@ function getOutputValidationError(outputs: OutputEntry[], walletNetwork: Wallet[
     if (validateAddress(address) && !addressMatchesNetwork(address, validationNetwork)) {
       return `Output ${i + 1}: Recipient address is for a different Bitcoin network`;
     }
-    if (!output.sendMax && (!output.amount || parseInt(output.amount, 10) <= 0)) {
+    if (!output.sendMax && parsePositiveSatoshiAmount(output.amount) === null) {
       return `Output ${i + 1}: Please enter a valid amount`;
     }
   }
@@ -58,7 +63,7 @@ function getSelectedUtxoIds(state: TransactionState): string[] | undefined {
 function toApiOutput(output: OutputEntry): { address: string; amount: number; sendMax?: boolean } {
   return {
     address: output.address,
-    amount: output.sendMax ? 0 : parseInt(output.amount, 10),
+    amount: output.sendMax ? 0 : requirePositiveSatoshiAmount(output.amount),
     sendMax: output.sendMax,
   };
 }
@@ -68,12 +73,15 @@ function shouldCreateBatchTransaction(state: TransactionState): boolean {
 }
 
 function addMainOutput(singleResult: TransactionData, output: OutputEntry): TransactionData {
-  const parsedAmount = parseInt(output.amount, 10);
+  const parsedAmount = requirePositiveSatoshiAmount(output.amount);
+  const effectiveAmount = singleResult.effectiveAmount == null || singleResult.effectiveAmount === 0
+    ? parsedAmount
+    : requirePositiveSatoshiNumber(singleResult.effectiveAmount, 'effective amount');
   return {
     ...singleResult,
     outputs: [{
       address: output.address,
-      amount: singleResult.effectiveAmount || parsedAmount,
+      amount: effectiveAmount,
     }],
   };
 }
@@ -97,7 +105,7 @@ async function createSingleTransactionData(
   const output = state.outputs[0];
   const singleResult = await transactionsApi.createTransaction(walletId, {
     recipient: output.address,
-    amount: parseInt(output.amount, 10),
+    amount: requirePositiveSatoshiAmount(output.amount),
     feeRate: state.feeRate,
     selectedUtxoIds: getSelectedUtxoIds(state),
     enableRBF: state.rbfEnabled,

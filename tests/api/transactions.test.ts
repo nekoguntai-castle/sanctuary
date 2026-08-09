@@ -53,6 +53,7 @@ getUTXOs,
 getWalletPrivacy,
 selectUtxos,
 } from '../../src/api/transactions';
+import { CreateBatchTransactionResponseSchema } from '../../shared/schemas/transactionResponses';
 
 describe('Transactions API', () => {
   beforeEach(() => {
@@ -406,7 +407,11 @@ describe('Transactions API', () => {
 
       const result = await createBatchTransaction('wallet-1', request);
 
-      expect(mockPost).toHaveBeenCalledWith('/wallets/wallet-1/transactions/batch', request);
+      expect(mockPost).toHaveBeenCalledWith(
+        '/wallets/wallet-1/transactions/batch',
+        request,
+        { schema: CreateBatchTransactionResponseSchema },
+      );
       expect(result.psbtBase64).toBe('batch...');
     });
   });

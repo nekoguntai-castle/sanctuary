@@ -148,6 +148,50 @@ describe('useDraftManagement', () => {
     expect(mocks.navigate).toHaveBeenCalledWith('/wallets/wallet-1');
   });
 
+  it('preserves structured transaction sendMax metadata in a saved draft', async () => {
+    const deps = createDeps({
+      state: createState({
+        outputs: [{ address: 'bc1qmax', amount: '', sendMax: true }],
+      }),
+      txData: {
+        ...baseTxData,
+        effectiveAmount: 10_000,
+        outputs: [{ address: 'bc1qmax', amount: 0, sendMax: true }],
+      } as any,
+    });
+    const { result } = renderHook(() => useDraftManagement(deps));
+
+    await act(async () => {
+      await result.current.saveDraft();
+    });
+
+    expect(mocks.createDraft).toHaveBeenCalledWith(
+      'wallet-1',
+      expect.objectContaining({
+        sendMax: true,
+        outputs: [{ address: 'bc1qmax', amount: 0, sendMax: true }],
+      }),
+    );
+  });
+
+  it('defaults omitted sendMax metadata to false when saving transaction outputs', async () => {
+    const deps = createDeps({
+      state: createState({ outputs: [{ address: 'bc1qrecipient', amount: '10000' }] }),
+    });
+    const { result } = renderHook(() => useDraftManagement(deps));
+
+    await act(async () => {
+      await result.current.saveDraft();
+    });
+
+    expect(mocks.createDraft).toHaveBeenCalledWith(
+      'wallet-1',
+      expect.objectContaining({
+        outputs: [{ address: 'bc1qrecipient', amount: 10_000, sendMax: false }],
+      }),
+    );
+  });
+
   it('updates an existing draft without signature fields when no signing occurred', async () => {
     const deps = createDeps({
       state: createState({ draftId: 'draft-existing' }),
@@ -255,5 +299,54 @@ describe('useDraftManagement', () => {
       signedPsbtBase64: 'new-psbt',
       signedDeviceId: undefined,
     });
+  });
+
+  it.each(['.', '1.5', '9007199254740992'])(
+    'refuses invalid normalized draft amount %j before the draft API',
+    async (amount) => {
+      const deps = createDeps({
+        state: createState({ outputs: [{ address: 'bc1qrecipient', amount, sendMax: false }] }),
+      });
+      const { result } = renderHook(() => useDraftManagement(deps));
+
+      await act(async () => {
+        expect(await result.current.saveDraft()).toBeNull();
+      });
+
+      expect(mocks.createDraft).not.toHaveBeenCalled();
+      expect(deps.setError).toHaveBeenCalledWith('Failed to save draft');
+    },
+  );
+
+  it('refuses an invalid resumed-draft amount before the update API', async () => {
+    const deps = createDeps({
+      state: createState({
+        draftId: 'draft-existing',
+        outputs: [{ address: 'bc1qrecipient', amount: '.', sendMax: false }],
+      }),
+    });
+    const { result } = renderHook(() => useDraftManagement(deps));
+    await act(async () => {
+      expect(await result.current.saveDraft()).toBeNull();
+    });
+    expect(mocks.updateDraft).not.toHaveBeenCalled();
+  });
+
+  it('refuses unsafe effective and output amounts returned during draft construction', async () => {
+    const unsafeValues = [
+      { effectiveAmount: Number.MAX_SAFE_INTEGER + 1 },
+      { effectiveAmount: undefined, outputs: [{ address: 'bc1qrecipient', amount: 1.5 }] },
+    ];
+
+    for (const override of unsafeValues) {
+      vi.clearAllMocks();
+      const deps = createDeps({ txData: { ...baseTxData, ...override } as any });
+      const { result, unmount } = renderHook(() => useDraftManagement(deps));
+      await act(async () => {
+        expect(await result.current.saveDraft()).toBeNull();
+      });
+      expect(mocks.createDraft).not.toHaveBeenCalled();
+      unmount();
+    }
   });
 });

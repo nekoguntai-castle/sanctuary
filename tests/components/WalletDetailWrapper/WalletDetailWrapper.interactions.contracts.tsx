@@ -79,7 +79,7 @@ export const registerWalletDetailWrapperInteractionContracts = () => {
       await waitFor(() => {
         expect(mocks.generateAddresses).toHaveBeenCalledWith('wallet-1', 10);
       });
-      expect(mocks.loadAddressSummary).toHaveBeenCalledWith('wallet-1');
+      expect(mocks.loadAddressSummary).not.toHaveBeenCalled();
       expect(mocks.loadAddresses).toHaveBeenCalledWith('wallet-1', 25, 0, true);
 
       await user.click(screen.getByRole('button', { name: 'addr-edit-labels' }));

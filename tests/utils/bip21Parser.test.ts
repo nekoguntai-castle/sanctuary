@@ -92,11 +92,20 @@ describe('BIP21 Parser', () => {
         expect(result?.amount).toBe(2100000000);
       });
 
-      it('should handle zero amount', () => {
+      it('should reject zero amount', () => {
         const result = parseBip21Uri('bitcoin:1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa?amount=0');
 
-        expect(result?.amount).toBe(0);
+        expect(result).toBeNull();
       });
+
+      it.each(['0.000000006', '90071992.54740992'])(
+        'should reject inexact or unsafe amount %s',
+        (amount) => {
+          expect(parseBip21Uri(
+            `bitcoin:1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa?amount=${amount}`,
+          )).toBeNull();
+        },
+      );
 
       it('should handle whitespace in amount', () => {
         const result = parseBip21Uri('bitcoin:1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa?amount= 0.5 ');

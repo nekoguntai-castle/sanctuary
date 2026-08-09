@@ -170,12 +170,7 @@ describe('SendTransactionWizard branch coverage', () => {
     });
 
     const hookArgs = useSendTransactionActionsMock.mock.calls[0][0];
-    expect(hookArgs.initialTxData.utxos).toEqual([
-      { txid: 'known', vout: 1, address: '', amount: 0 },
-    ]);
-    expect(hookArgs.initialTxData.outputs).toEqual([
-      { address: 'bc1q-draft', amount: 0 },
-    ]);
+    expect(hookArgs.initialTxData).toBeUndefined();
   });
 
   it('keeps draft initial tx data undefined when draftData is missing', () => {

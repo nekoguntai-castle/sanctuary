@@ -48,6 +48,43 @@ export const registerUseSendTransactionActionsCreationContracts = () => {
       });
     });
 
+    it.each(['.', '', '-1', '1.5', 'NaN', 'Infinity', '9007199254740992'])(
+      'refuses invalid normalized amount %j before any transaction API call',
+      async (amount) => {
+        const state = createState({
+          outputs: [{ address: 'bc1qvalid', amount, sendMax: false }],
+        });
+        const { result } = renderSendTransactionActions({ state });
+
+        await act(async () => {
+          expect(await result.current.createTransaction()).toBeNull();
+        });
+
+        expect(mocks.createTransaction).not.toHaveBeenCalled();
+        expect(mocks.createBatchTransaction).not.toHaveBeenCalled();
+      },
+    );
+
+    it('preserves the maximum safe satoshi amount in the API payload', async () => {
+      const state = createState({
+        outputs: [{
+          address: 'bc1qrecipient',
+          amount: Number.MAX_SAFE_INTEGER.toString(),
+          sendMax: false,
+        }],
+      });
+      const { result } = renderSendTransactionActions({ state });
+
+      await act(async () => {
+        await result.current.createTransaction();
+      });
+
+      expect(mocks.createTransaction).toHaveBeenCalledWith(
+        'wallet-1',
+        expect.objectContaining({ amount: Number.MAX_SAFE_INTEGER }),
+      );
+    });
+
     it('validates recipient network before creating a transaction', async () => {
       const state = createState({
         outputs: [{ address: `tb1q${'b'.repeat(38)}`, amount: '1000', sendMax: false }],

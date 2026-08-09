@@ -130,6 +130,19 @@ describe('stepValidation', () => {
       expect(validateOutputsStep(state)).toBe(false);
     });
 
+    it.each(['.', '1.5', 'NaN', 'Infinity', '9007199254740992'])(
+      'returns false for malformed or unsafe satoshi amount %j',
+      (amount) => {
+        const state = createMockState({
+          outputs: [{ address: 'bc1q...', amount }],
+          outputsValid: [true],
+          feeRate: 1,
+        });
+        expect(validateOutputsStep(state)).toBe(false);
+        expect(getStepErrors('outputs', state)).toContain('Output 1: Amount is required');
+      },
+    );
+
     it('returns true when sendMax output has no amount', () => {
       const state = createMockState({
         outputs: [{ address: 'bc1q...', amount: '', sendMax: true }],

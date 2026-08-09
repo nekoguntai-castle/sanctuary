@@ -16,6 +16,7 @@ import { queryClient } from '../../providers/QueryProvider';
 import { isMultisigType } from '../../types';
 import { createLogger } from '../../utils/logger';
 import { toHex } from '../../utils/bufferUtils';
+import { requirePositiveSatoshiNumber } from '../../utils/sendAmount';
 import type { Wallet } from '../../types';
 import type { TransactionState } from '../../contexts/send/types';
 import type { TransactionData } from './types';
@@ -149,7 +150,15 @@ const logMultisigPsbtSignatures = (psbtToUse: string | null, isMultisig: boolean
 };
 
 const getEffectiveAmount = (txData: TransactionData): number => {
-  return txData.effectiveAmount || txData.outputs?.reduce((sum, output) => sum + output.amount, 0) || 0;
+  if (txData.effectiveAmount !== undefined && txData.effectiveAmount !== 0) {
+    return requirePositiveSatoshiNumber(txData.effectiveAmount, 'effective amount');
+  }
+  if (!txData.outputs?.length) throw new Error('Invalid effective amount');
+  const total = txData.outputs.reduce(
+    (sum, output) => sum + requirePositiveSatoshiNumber(output.amount, 'output amount'),
+    0,
+  );
+  return requirePositiveSatoshiNumber(total, 'effective amount');
 };
 
 const getOutputsMessage = (

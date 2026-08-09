@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  CreateBatchTransactionResponseSchema,
   CreateTransactionResponseSchema,
   DraftTransactionSchema,
   DraftTransactionsResponseSchema,
@@ -13,6 +14,11 @@ const created = {
   totalOutput: 497500,
   changeAmount: 0,
   utxos: [{ txid: 'a'.repeat(64), vout: 0 }],
+};
+
+const batchCreated = {
+  ...created,
+  outputs: [{ address: 'bc1qrecipient', amount: 100_000, sendMax: false }],
 };
 
 const draft = {
@@ -69,6 +75,44 @@ describe('CreateTransactionResponseSchema', () => {
     const { utxos: _utxos, ...missing } = created;
     expect(CreateTransactionResponseSchema.safeParse(missing).success).toBe(false);
     expect(CreateTransactionResponseSchema.safeParse({ ...created, utxos: null }).success).toBe(false);
+  });
+});
+
+describe('CreateBatchTransactionResponseSchema', () => {
+  it('accepts safe positive output and effective amounts', () => {
+    expect(CreateBatchTransactionResponseSchema.parse({
+      ...batchCreated,
+      effectiveAmount: Number.MAX_SAFE_INTEGER,
+    })).toEqual({ ...batchCreated, effectiveAmount: Number.MAX_SAFE_INTEGER });
+  });
+
+  it.each([null, Number.NaN, Number.POSITIVE_INFINITY, -1, 0, 1.5, Number.MAX_SAFE_INTEGER + 1])(
+    'rejects malformed batch output amount %s',
+    (amount) => {
+      expect(CreateBatchTransactionResponseSchema.safeParse({
+        ...batchCreated,
+        outputs: [{ address: 'bc1qrecipient', amount }],
+      }).success).toBe(false);
+    },
+  );
+
+  it('rejects malformed effective amounts before broadcast metadata can use them', () => {
+    for (const effectiveAmount of [-1, 0, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(CreateBatchTransactionResponseSchema.safeParse({
+        ...batchCreated,
+        effectiveAmount,
+      }).success).toBe(false);
+    }
+  });
+
+  it('rejects a batch output total that exceeds the safe integer boundary', () => {
+    expect(CreateBatchTransactionResponseSchema.safeParse({
+      ...batchCreated,
+      outputs: [
+        { address: 'bc1qone', amount: Number.MAX_SAFE_INTEGER },
+        { address: 'bc1qtwo', amount: 1 },
+      ],
+    }).success).toBe(false);
   });
 });
 

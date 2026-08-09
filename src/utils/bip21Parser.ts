@@ -10,6 +10,8 @@
  * Extracted from SendTransaction.tsx for reusability.
  */
 
+import { btcAmountToSatoshiString, requirePositiveSatoshiAmount } from './sendAmount';
+
 export interface Bip21ParseResult {
   address: string;
   amount?: number;      // Amount in satoshis
@@ -42,16 +44,10 @@ export function parseBip21Uri(uri: string): Bip21ParseResult | null {
       const params = new URLSearchParams(paramsPart);
 
       if (params.has('amount')) {
-        // BIP21 amount is in BTC, convert to satoshis with precision safety
-        // parseFloat * 100000000 can cause floating-point errors (e.g., 0.1 * 100000000 = 10000000.000000001)
-        // Use string manipulation to avoid precision loss
         const amountStr = params.get('amount')!.trim();
-        const [integerPart, decimalPart = ''] = amountStr.split('.');
-        // Pad decimal to 8 places (satoshi precision), then parse
-        const paddedDecimal = (decimalPart + '00000000').slice(0, 8);
-        const satoshiStr = integerPart + paddedDecimal;
-        // Remove leading zeros to avoid octal interpretation
-        result.amount = parseInt(satoshiStr.replace(/^0+/, '') || '0', 10);
+        const satoshiString = btcAmountToSatoshiString(amountStr);
+        if (satoshiString === null) return null;
+        result.amount = requirePositiveSatoshiAmount(satoshiString);
       }
 
       if (params.has('pj')) {

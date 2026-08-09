@@ -207,7 +207,8 @@ export interface CreateBatchTransactionResponse {
   changeAddress?: string;
   utxos: Array<{ txid: string; vout: number }>;
   inputPaths?: string[];
-  outputs: Array<{ address: string; amount: number }>;
+  effectiveAmount?: number;
+  outputs: Array<{ address: string; amount: number; sendMax?: boolean }>;
 }
 
 // ========================================
