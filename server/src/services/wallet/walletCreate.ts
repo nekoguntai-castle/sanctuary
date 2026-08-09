@@ -20,6 +20,7 @@ import type { CreateWalletInput, WalletNetwork, WalletWithBalance } from "./type
 import { buildDeviceInfo } from "./walletAccountSelection";
 import { isBitcoinNetwork } from "../bitcoin/networks";
 import { WalletType } from "@sanctuary/shared/constants/walletIdentity";
+import { assertHardwareWalletCapability } from "../hardwareWalletCapabilities";
 
 const log = createLogger("WALLET:SVC_CREATE");
 
@@ -179,6 +180,9 @@ export async function createWallet(
 ): Promise<WalletWithBalance> {
   validateWalletInput(input);
   const devices = await loadWalletDevices(userId, input);
+  for (const device of devices) {
+    assertHardwareWalletCapability(device, "import");
+  }
   const { descriptor, fingerprint } = buildDescriptorFromDevices(
     devices,
     input,

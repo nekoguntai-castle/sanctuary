@@ -19,6 +19,10 @@ import {
 import * as advancedTx from '../../services/bitcoin/advancedTx';
 import { isBitcoinNetwork, type BitcoinNetwork } from '../../services/bitcoin/networks';
 import { resolveBitcoinNetworkParam } from './networkParam';
+import {
+  assertUnscopedRawTransactionBroadcastDisabled,
+  assertWalletHardwareCapabilityById,
+} from '../../services/hardwareWalletCapabilities';
 
 const router = Router();
 
@@ -112,12 +116,8 @@ router.post('/broadcast', authenticate, validate(
   { body: BroadcastBodySchema },
   { message: 'rawTx is required' }
 ), asyncHandler(async (req, res) => {
-  const { rawTx } = req.body;
-  const network = resolveBitcoinNetworkParam(req.body.network);
-
-  const result = await blockchain.broadcastTransaction(rawTx, network);
-
-  res.json(result);
+  resolveBitcoinNetworkParam(req.body.network);
+  assertUnscopedRawTransactionBroadcastDisabled();
 }));
 
 /**
@@ -161,6 +161,7 @@ router.post('/transaction/:txid/rbf', authenticate, validate(
     throw new ForbiddenError('Insufficient permissions for this wallet');
   }
   await requireWalletTransaction(txid, walletId);
+  await assertWalletHardwareCapabilityById(walletId, 'sign');
   const network = resolveAdvancedTransactionWalletNetwork(wallet);
 
   const result = await advancedTx.createRBFTransaction(
@@ -204,6 +205,7 @@ router.post('/transaction/cpfp', authenticate, validate(
   if (!wallet) {
     throw new ForbiddenError('Insufficient permissions for this wallet');
   }
+  await assertWalletHardwareCapabilityById(walletId, 'sign');
   const network = resolveAdvancedTransactionWalletNetwork(wallet);
 
   const result = await advancedTx.createCPFPTransaction(
@@ -246,6 +248,7 @@ router.post('/transaction/batch', authenticate, validate(
   if (!wallet) {
     throw new ForbiddenError('Insufficient permissions for this wallet');
   }
+  await assertWalletHardwareCapabilityById(walletId, 'sign');
   const network = resolveAdvancedTransactionWalletNetwork(wallet);
 
   const result = await advancedTx.createBatchTransaction(

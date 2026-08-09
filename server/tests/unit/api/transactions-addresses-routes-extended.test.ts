@@ -60,6 +60,7 @@ describe("Transactions Addresses Routes (Extended)", () => {
       id: "wallet-1",
       descriptor: "wpkh(xpub...)",
       network: "testnet",
+      devices: [{ device: { type: 'coldcard', model: null } }],
     } as any);
 
     mockPrismaClient.address.findMany.mockResolvedValue([]);
@@ -88,6 +89,40 @@ describe("Transactions Addresses Routes (Extended)", () => {
     expect(response.status).toBe(404);
     expect(response.body.message).toBe("Wallet not found");
   });
+
+  it.each(["ledger", "jade", "trezor"])(
+    "does not return or auto-generate deposit addresses for %s wallets",
+    async (type) => {
+      mockPrismaClient.wallet.findUnique.mockResolvedValue({
+        id: "wallet-1",
+        descriptor: "wpkh(xpub...)",
+        network: "testnet3",
+        devices: [{ device: { type, model: null } }],
+      } as any);
+      mockPrismaClient.address.findMany.mockResolvedValue([{
+        id: "existing-address",
+        walletId: "wallet-1",
+        address: "tb1qunverified",
+        derivationPath: "m/84'/1'/0'/0/0",
+        index: 0,
+        used: false,
+        addressLabels: [],
+      }] as any);
+
+      const response = await request(app).get(
+        "/api/v1/wallets/wallet-1/addresses",
+      );
+
+      expect(response.status).toBe(403);
+      expect(response.body.details).toMatchObject({
+        vendor: type,
+        capability: "display",
+      });
+      expect(mockDeriveAddressFromDescriptor).not.toHaveBeenCalled();
+      expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
+      expect(JSON.stringify(response.body)).not.toContain("tb1qunverified");
+    },
+  );
 
   it("lists addresses with used filter and explicit pagination", async () => {
     mockPrismaClient.address.findMany.mockResolvedValue([

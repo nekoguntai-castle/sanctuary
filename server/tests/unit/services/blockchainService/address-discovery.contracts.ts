@@ -9,6 +9,40 @@ export function registerBlockchainAddressDiscoveryContracts(): void {
     });
 
     describe("ensureGapLimit", () => {
+      it.each(["ledger", "jade", "trezor"])(
+        "skips %s gap expansion without failing wallet sync",
+        async (type) => {
+          const { ensureGapLimit } =
+            await import("../../../../src/services/bitcoin/sync/addressDiscovery");
+          mockPrisma.wallet.findUnique.mockResolvedValue({
+            id: "wallet-1",
+            descriptor: "wpkh([abc123/84h/0h/0h]xpub.../0/*)",
+            network: "mainnet",
+            devices: [{ device: { type } }],
+          });
+
+          await expect(ensureGapLimit("wallet-1")).resolves.toEqual([]);
+          expect(mockPrisma.address.findMany).not.toHaveBeenCalled();
+          expect(mockPrisma.address.createMany).not.toHaveBeenCalled();
+          expect(mockDeriveAddress).not.toHaveBeenCalled();
+        },
+      );
+
+      it("propagates unexpected signer-provenance lookup failures", async () => {
+        const { ensureGapLimit } =
+          await import("../../../../src/services/bitcoin/sync/addressDiscovery");
+        mockPrisma.wallet.findUnique
+          .mockResolvedValueOnce({
+            id: "wallet-1",
+            descriptor: "wpkh([abc123/84h/0h/0h]xpub.../0/*)",
+            network: "mainnet",
+          })
+          .mockRejectedValueOnce(new Error("database unavailable"));
+
+        await expect(ensureGapLimit("wallet-1")).rejects.toThrow("database unavailable");
+        expect(mockPrisma.address.findMany).not.toHaveBeenCalled();
+      });
+
       it("should generate addresses when gap is below limit", async () => {
         const { ensureGapLimit } =
           await import("../../../../src/services/bitcoin/sync/addressDiscovery");
@@ -17,6 +51,7 @@ export function registerBlockchainAddressDiscoveryContracts(): void {
           id: "wallet-1",
           descriptor: "wpkh([abc123/84h/0h/0h]xpub.../0/*)",
           network: "mainnet",
+          devices: [{ device: { type: 'coldcard', model: null } }],
         };
 
         // 15 receive addresses, last 10 unused (gap = 10, below 20)
@@ -57,6 +92,7 @@ export function registerBlockchainAddressDiscoveryContracts(): void {
           id: "wallet-1",
           descriptor: "wpkh([abc123/84h/0h/0h]xpub.../0/*)",
           network: "mainnet",
+          devices: [{ device: { type: 'coldcard', model: null } }],
         };
 
         // 25 receive addresses, last 20 unused (gap = 20, meets limit)
@@ -95,6 +131,7 @@ export function registerBlockchainAddressDiscoveryContracts(): void {
           id: "wallet-1",
           descriptor: "wpkh([abc123/84h/0h/0h]xpub.../0/*)",
           network: "mainnet",
+          devices: [{ device: { type: 'coldcard', model: null } }],
         };
 
         // Receive chain: 25 addresses, 20 unused (OK)
@@ -147,6 +184,7 @@ export function registerBlockchainAddressDiscoveryContracts(): void {
           id: "wallet-1",
           descriptor: "wpkh([abc123/84h/0h/0h]xpub.../0/*)",
           network: "mainnet",
+          devices: [{ device: { type: 'coldcard', model: null } }],
         };
 
         const addresses = [];
@@ -205,6 +243,7 @@ export function registerBlockchainAddressDiscoveryContracts(): void {
           id: "wallet-1",
           descriptor: "wpkh([abc123/84h/0h/0h]xpub.../0/*)",
           network: "mainnet",
+          devices: [{ device: { type: 'coldcard', model: null } }],
         };
         const receiveAddresses = Array.from({ length: 20 }, (_, i) => ({
           derivationPath: `m/84'/0'/0'/0/${i}`,
@@ -250,6 +289,7 @@ export function registerBlockchainAddressDiscoveryContracts(): void {
           id: "wallet-1",
           descriptor: "wpkh([abc123/84h/0h/0h]xpub.../0/*)",
           network: "mainnet",
+          devices: [{ device: { type: 'coldcard', model: null } }],
         };
         const receiveAddresses = Array.from({ length: 20 }, (_, i) => ({
           derivationPath: `m/84'/0'/0'/0/${i}`,

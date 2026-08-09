@@ -66,6 +66,10 @@ export function registerWalletAccessQueryTests(): void {
 
     it('maps wallet summaries with balances, sharing, and permissions', async () => {
       const now = new Date('2025-01-01T00:00:00.000Z');
+      mockPrismaClient.wallet.findUnique.mockResolvedValue({
+        id: 'wallet-signer',
+        devices: [{ device: { type: 'coldcard', model: null } }],
+      });
       mockPrismaClient.wallet.findMany.mockResolvedValueOnce([
         {
           id: 'wallet-owner',
@@ -264,6 +268,10 @@ export function registerWalletAccessQueryTests(): void {
         lastSyncStatus: 'success',
         syncInProgress: false,
       });
+      mockPrismaClient.wallet.findUnique.mockResolvedValueOnce({
+        id: 'wallet-1',
+        devices: [{ device: { type: 'coldcard', model: null } }],
+      });
       mockPrismaClient.uTXO.aggregate.mockResolvedValueOnce({ _sum: { amount: BigInt(4321) } });
 
       const wallet = await getWalletById('wallet-1', 'user-1');
@@ -275,6 +283,71 @@ export function registerWalletAccessQueryTests(): void {
         canEdit: true,
         isShared: true,
       }));
+    });
+
+    it.each(['ledger', 'jade', 'trezor', 'watch_only'])(
+      'redacts descriptor and fingerprint from %s wallet detail',
+      async type => {
+        mockPrismaClient.wallet.findFirst.mockResolvedValueOnce({
+          id: 'wallet-redacted',
+          name: 'Redacted Wallet',
+          type: 'single_sig',
+          scriptType: 'native_segwit',
+          network: 'mainnet',
+          quorum: null,
+          totalSigners: null,
+          descriptor: 'wpkh(secret-xpub)',
+          fingerprint: 'aabbccdd',
+          createdAt: new Date('2025-01-01T00:00:00.000Z'),
+          devices: [{ device: { type } }],
+          addresses: [{ id: 'a1', index: 0 }],
+          users: [{ userId: 'user-1', role: 'owner', user: { id: 'user-1', username: 'alice' } }],
+          group: null,
+          groupRole: 'viewer',
+          lastSyncedAt: null,
+          lastSyncStatus: null,
+          lastSyncError: null,
+          syncInProgress: false,
+        });
+        mockPrismaClient.wallet.findUnique.mockResolvedValueOnce({
+          id: 'wallet-redacted',
+          devices: [{ device: { type, model: null } }],
+        });
+        mockPrismaClient.uTXO.aggregate.mockResolvedValueOnce({ _sum: { amount: 0n } });
+
+        const wallet = await getWalletById('wallet-redacted', 'user-1');
+
+        expect(wallet).toMatchObject({ descriptor: null, fingerprint: null });
+      },
+    );
+
+    it('propagates unexpected display-provenance lookup failures', async () => {
+      mockPrismaClient.wallet.findFirst.mockResolvedValueOnce({
+        id: 'wallet-error',
+        name: 'Error Wallet',
+        type: 'single_sig',
+        scriptType: 'native_segwit',
+        network: 'mainnet',
+        quorum: null,
+        totalSigners: null,
+        descriptor: 'desc',
+        fingerprint: 'abcd',
+        createdAt: new Date('2025-01-01T00:00:00.000Z'),
+        devices: [],
+        addresses: [],
+        users: [{ userId: 'user-1', role: 'owner', user: { id: 'user-1', username: 'alice' } }],
+        group: null,
+        groupRole: 'viewer',
+        lastSyncedAt: null,
+        lastSyncStatus: null,
+        lastSyncError: null,
+        syncInProgress: false,
+      });
+      mockPrismaClient.wallet.findUnique.mockRejectedValueOnce(new Error('database unavailable'));
+      mockPrismaClient.uTXO.aggregate.mockResolvedValueOnce({ _sum: { amount: 0n } });
+
+      await expect(getWalletById('wallet-error', 'user-1'))
+        .rejects.toThrow('database unavailable');
     });
 
     it('uses group role when wallet access is only via group membership', async () => {

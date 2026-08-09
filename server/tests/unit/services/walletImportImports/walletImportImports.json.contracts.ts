@@ -21,7 +21,7 @@ export const registerWalletImportJsonContracts = () => {
         network: 'mainnet',
         devices: [
           {
-            type: 'ledger',
+            type: 'coldcard',
             label: 'My Ledger',
             fingerprint: 'abcd1234',
             derivationPath: "m/84'/0'/0'",
@@ -44,7 +44,7 @@ export const registerWalletImportJsonContracts = () => {
       const device = {
         id: 'device-json-001',
         userId,
-        type: 'ledger',
+        type: 'coldcard',
         label: 'My Ledger',
         fingerprint: 'abcd1234',
         derivationPath: "m/84'/0'/0'",
@@ -76,7 +76,7 @@ export const registerWalletImportJsonContracts = () => {
       expect(mockPrismaClient.device.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            type: 'ledger',
+            type: 'coldcard',
             label: 'My Ledger',
           }),
         })
@@ -91,14 +91,14 @@ export const registerWalletImportJsonContracts = () => {
         network: 'mainnet',
         devices: [
           {
-            type: 'trezor',
+            type: 'coldcard',
             label: 'Trezor 1',
             fingerprint: 'aaaa1111',
             derivationPath: "m/48'/0'/0'/2'",
             xpub: 'xpub6E1...',
           },
           {
-            type: 'ledger',
+            type: 'coldcard',
             label: 'Ledger 1',
             fingerprint: 'bbbb2222',
             derivationPath: "m/48'/0'/0'/2'",
@@ -125,7 +125,7 @@ export const registerWalletImportJsonContracts = () => {
         {
           id: 'device-trezor',
           userId,
-          type: 'trezor',
+          type: 'coldcard',
           label: 'Trezor 1',
           fingerprint: 'aaaa1111',
           derivationPath: "m/48'/0'/0'/2'",
@@ -134,7 +134,7 @@ export const registerWalletImportJsonContracts = () => {
         {
           id: 'device-ledger',
           userId,
-          type: 'ledger',
+          type: 'coldcard',
           label: 'Ledger 1',
           fingerprint: 'bbbb2222',
           derivationPath: "m/48'/0'/0'/2'",
@@ -192,7 +192,7 @@ export const registerWalletImportJsonContracts = () => {
         network: 'mainnet',
         devices: [
           {
-            type: 'ledger',
+            type: 'coldcard',
             label: 'Existing Ledger',
             fingerprint: 'abcd1234',
             derivationPath: "m/84'/0'/0'",
@@ -215,7 +215,7 @@ export const registerWalletImportJsonContracts = () => {
         {
           id: 'device-existing-json',
           userId,
-          type: 'ledger',
+          type: 'coldcard',
           label: 'Existing Ledger',
           fingerprint: 'abcd1234',
           derivationPath: "m/84'/1'/0'",
@@ -269,7 +269,7 @@ export const registerWalletImportJsonContracts = () => {
         network: 'mainnet',
         devices: [
           {
-            type: 'ledger',
+            type: 'coldcard',
             label: 'Existing Ledger',
             fingerprint: 'abcd1234',
             derivationPath: "m/84'/0'/0'",
@@ -292,7 +292,7 @@ export const registerWalletImportJsonContracts = () => {
         {
           id: 'device-existing-json',
           userId,
-          type: 'ledger',
+          type: 'coldcard',
           label: 'Existing Ledger',
           fingerprint: 'abcd1234',
           derivationPath: "m/84'/0'/0'",
@@ -339,7 +339,7 @@ export const registerWalletImportJsonContracts = () => {
         network: 'mainnet',
         devices: [
           {
-            type: 'ledger',
+            type: 'coldcard',
             label: 'My Ledger',
             fingerprint: 'abcd1234',
             derivationPath: "m/84'/0'/0'",
@@ -361,7 +361,7 @@ export const registerWalletImportJsonContracts = () => {
       const device = {
         id: 'device-json-fail',
         userId,
-        type: 'ledger',
+        type: 'coldcard',
         label: 'My Ledger',
         fingerprint: 'abcd1234',
         derivationPath: "m/84'/0'/0'",

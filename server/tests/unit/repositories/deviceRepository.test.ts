@@ -167,6 +167,25 @@ describe('Device Repository', () => {
     });
   });
 
+  describe('findByUserIdWithModel', () => {
+    it('loads canonical model identity for import safety checks', async () => {
+      const devices = [{ ...mockDevice, model: { slug: 'coldcard-q' } }];
+      (prisma.device.findMany as Mock).mockResolvedValue(devices);
+
+      await expect(deviceRepository.findByUserIdWithModel('user-456')).resolves.toEqual(devices);
+      expect(prisma.device.findMany).toHaveBeenCalledWith({
+        where: {
+          OR: [
+            { userId: 'user-456' },
+            { users: { some: { userId: 'user-456' } } },
+          ],
+        },
+        include: { model: true },
+        orderBy: { createdAt: 'desc' },
+      });
+    });
+  });
+
   describe('findByUserIdWithAssociations', () => {
     it('should return devices with full associations', async () => {
       const devicesWithAssociations = [
@@ -432,6 +451,7 @@ describe('Device Repository', () => {
       expect(result).toEqual(mockDevice);
       expect(prisma.device.findFirst).toHaveBeenCalledWith({
         where: { id: 'device-123', userId: 'user-456' },
+        include: { model: true },
       });
     });
 
@@ -462,7 +482,7 @@ describe('Device Repository', () => {
           id: { in: ['device-123', 'device-456'] },
           userId: 'user-456',
         },
-        include: { accounts: true },
+        include: { accounts: true, model: true },
       });
     });
 

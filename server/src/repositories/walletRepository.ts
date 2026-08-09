@@ -516,7 +516,11 @@ export async function findByIdWithAccessAndDevices(walletId: string, userId: str
     },
     include: {
       devices: {
-        include: { device: true },
+        include: {
+          device: {
+            include: { model: { select: { slug: true, name: true } } },
+          },
+        },
       },
     },
   });
@@ -534,7 +538,11 @@ export async function findByIdWithOwnerAndDevices(walletId: string, userId: stri
     },
     include: {
       devices: {
-        include: { device: true },
+        include: {
+          device: {
+            include: { model: { select: { slug: true, name: true } } },
+          },
+        },
       },
     },
   });

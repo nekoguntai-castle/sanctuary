@@ -93,11 +93,11 @@ function buildWallet(overrides: Record<string, any> = {}) {
       {
         device: {
           label: 'Device Purpose',
-          type: 'ledger_nano_x',
+          type: 'bitbox',
           fingerprint: 'FPB',
           xpub: 'legacy-xpub-b',
           derivationPath: "m/48'/0'/1'/2'",
-          model: { slug: 'ledger-nano-x', name: 'Ledger Nano X' },
+          model: { slug: 'bitbox02', name: 'BitBox02' },
           accounts: [
             {
               purpose: 'multisig',
@@ -111,7 +111,7 @@ function buildWallet(overrides: Record<string, any> = {}) {
       {
         device: {
           label: 'Device Fallback',
-          type: 'trezor',
+          type: 'passport',
           fingerprint: 'FPC',
           xpub: 'legacy-xpub-c',
           derivationPath: "m/48'/0'/2'/2'",
@@ -189,6 +189,28 @@ describe('Wallets Export Routes', () => {
       content: '{"wallet":"data"}',
     });
   });
+
+  it.each(['ledger', 'jade', 'trezor', 'watch_only'])(
+    'blocks %s descriptor, device-path, and address-label exports',
+    async type => {
+      mockWalletFindByIdWithDevices.mockResolvedValue(buildWallet({
+        devices: [{ device: { type, model: null, accounts: [] } }],
+      }));
+
+      for (const path of [
+        '/api/v1/wallets/wallet-1/export/labels',
+        '/api/v1/wallets/wallet-1/export/formats',
+        '/api/v1/wallets/wallet-1/export',
+      ]) {
+        const response = await request(app).get(path);
+        expect(response.status).toBe(403);
+      }
+
+      expect(mockAddressFindWithLabels).not.toHaveBeenCalled();
+      expect(mockGetAvailableFormats).not.toHaveBeenCalled();
+      expect(mockExportFormat).not.toHaveBeenCalled();
+    },
+  );
 
   it('exports labels in BIP329 format', async () => {
     const response = await request(app).get('/api/v1/wallets/wallet-1/export/labels');
@@ -295,8 +317,8 @@ describe('Wallets Export Routes', () => {
       expect.objectContaining({
         xpub: 'account-xpub-b',
         derivationPath: "m/48'/0'/1'/2'",
-        modelSlug: 'ledger-nano-x',
-        modelName: 'Ledger Nano X',
+        modelSlug: 'bitbox02',
+        modelName: 'BitBox02',
       }),
       expect.objectContaining({ xpub: 'legacy-xpub-c', derivationPath: "m/48'/0'/2'/2'" }),
     ]);
@@ -310,7 +332,7 @@ describe('Wallets Export Routes', () => {
         {
           device: {
             label: 'No Accounts',
-            type: 'jade',
+            type: 'bitbox',
             fingerprint: 'FP1',
             xpub: 'legacy-single-xpub',
             // accounts intentionally missing to cover [] fallback
@@ -319,7 +341,7 @@ describe('Wallets Export Routes', () => {
         {
           device: {
             label: 'Purpose Match',
-            type: 'ledger',
+            type: 'bitbox',
             fingerprint: 'FP2',
             xpub: 'legacy-single-xpub-2',
             derivationPath: "m/86'/0'/0'",
@@ -361,7 +383,7 @@ describe('Wallets Export Routes', () => {
         {
           device: {
             label: 'Network Scoped',
-            type: 'ledger',
+            type: 'bitbox',
             fingerprint: 'FPS',
             xpub: 'legacy-xpub',
             derivationPath: "m/84'/0'/0'",
@@ -406,7 +428,7 @@ describe('Wallets Export Routes', () => {
         {
           device: {
             label: 'Unknown Path',
-            type: 'trezor',
+            type: 'passport',
             fingerprint: 'FPU',
             xpub: 'legacy-xpub',
             derivationPath: "m/84'/0'/0'",

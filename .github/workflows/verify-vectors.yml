@@ -14,40 +14,17 @@ on:
         default: false
         type: boolean
 
-  # Run on PRs that touch address derivation or PSBT code
+  # Funds-safety evidence must be present for every proposed or landed change.
+  # Do not add path filters here: a filter can silently omit a newly introduced
+  # address, wallet-policy, or hardware integration boundary.
   pull_request:
-    paths:
-      - 'server/src/services/bitcoin/addressDerivation.ts'
-      - 'server/src/services/bitcoin/addressDerivation/**'
-      - 'server/src/services/bitcoin/descriptorParser.ts'
-      - 'server/src/services/bitcoin/descriptorParser/**'
-      - 'server/src/services/bitcoin/transactions/**'
-      - 'server/src/services/bitcoin/psbtBuilder/**'
-      - 'src/services/hardwareWallet/**'
-      - 'tests/services/hardwareWallet**'
-      - 'tests/services/hardwareWallet/**'
-      - 'tests/services/hardwareWalletBitbox/**'
-      - 'src/hooks/send/useQrSigning.ts'
-      - 'src/hooks/send/useUsbSigning.ts'
-      - 'src/hooks/send/useSendTransactionActions.ts'
-      - 'tests/hooks/useQrSigning.test.tsx'
-      - 'tests/hooks/useUsbSigning.test.tsx'
-      - 'tests/hooks/useSendTransactionActions.test.tsx'
-      - 'tests/hooks/useSendTransactionActions/**'
-      - 'server/src/services/scriptTypes/**'
-      - 'server/tests/fixtures/verified-address-vectors.ts'
-      - 'server/tests/fixtures/bip174-test-vectors.ts'
-      - 'scripts/verify-addresses/**'
-      - 'scripts/verify-psbt/**'
-      - 'scripts/ci/docker-endpoint-lib.sh'
-      - 'scripts/ci/ensure-node.sh'
-      - 'scripts/ci/ensure-python.sh'
-      - 'scripts/ci/provider-context.sh'
-      - 'scripts/ci/redactor.sh'
-      - 'scripts/ci/run-with-log.sh'
-      - 'scripts/ci/wait-for-docker.sh'
-      - 'scripts/ci/write-diagnostic-summary.sh'
-      - '.github/workflows/verify-vectors.yml'
+    branches: [main]
+
+  merge_group:
+    types: [checks_requested]
+
+  push:
+    branches: [main]
 
 env:
   GIT_CONFIG_COUNT: '1'
@@ -79,6 +56,9 @@ jobs:
 
       - name: Verify Node.js toolchain
         uses: ./.github/actions/setup-node-toolchain
+
+      - name: Verify wallet-safety classifier completeness
+        run: node scripts/ci/check-wallet-safety-classifier.mjs
 
       - name: Verify Python toolchain
         uses: ./.github/actions/setup-python-toolchain
@@ -146,6 +126,16 @@ jobs:
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/xpub-validation-tests.log"
           ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
           npm run test:run:ci -- tests/unit/services/bitcoin/xpubValidation.test.ts
+
+      - name: Run hardware capability truthfulness tests
+        timeout-minutes: 5
+        working-directory: server
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/hardware-capability-tests.log"
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
+          npm run test:run:ci --
+          tests/unit/services/bitcoin/hardwareWalletCompatibility.test.ts
+          tests/unit/services/hardwareWalletCapabilities.test.ts
 
       - name: Run property-based tests
         timeout-minutes: 5

@@ -107,6 +107,10 @@ export const registerWalletImportExportContracts = () => {
   describe('GET /wallets/:id/export/labels', () => {
     it('should export labels in BIP 329 format', async () => {
       mockWalletRepository.getName.mockResolvedValue('Test Wallet');
+      mockWalletRepository.findByIdWithDevices.mockResolvedValue({
+        id: 'wallet-123',
+        devices: [{ device: { type: 'coldcard', model: null } }],
+      });
       mockTransactionRepository.findWithLabels.mockResolvedValue([
         { txid: 'txabc123', label: 'Payment', memo: 'Coffee shop', transactionLabels: [] },
       ]);
@@ -138,7 +142,7 @@ export const registerWalletImportExportContracts = () => {
         type: 'single_sig',
         scriptType: 'native_segwit',
         network: 'mainnet',
-        devices: [],
+        devices: [{ device: { type: 'coldcard', model: null, accounts: [] } }],
         createdAt: new Date(),
       });
 
@@ -166,7 +170,7 @@ export const registerWalletImportExportContracts = () => {
         scriptType: 'native_segwit',
         network: 'mainnet',
         descriptor: 'wpkh(...)',
-        devices: [],
+        devices: [{ device: { type: 'coldcard', model: null, accounts: [] } }],
         createdAt: new Date(),
       });
 
@@ -191,7 +195,7 @@ export const registerWalletImportExportContracts = () => {
         type: 'single_sig',
         scriptType: 'native_segwit',
         network: 'mainnet',
-        devices: [],
+        devices: [{ device: { type: 'coldcard', model: null, accounts: [] } }],
         createdAt: new Date(),
       });
 

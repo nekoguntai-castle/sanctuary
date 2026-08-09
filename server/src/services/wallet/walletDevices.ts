@@ -16,6 +16,10 @@ import { ConflictError, WalletNotFoundError, DeviceNotFoundError } from '../../e
 import { getErrorMessage } from '../../utils/errors';
 import { generateInitialAddresses } from './addressGeneration';
 import type { WalletNetwork } from './types';
+import {
+  assertHardwareWalletCapability,
+  assertWalletHardwareCapability,
+} from '../hardwareWalletCapabilities';
 
 const log = createLogger('WALLET:SVC_DEVICE');
 
@@ -41,6 +45,9 @@ export async function addDeviceToWallet(
   if (!device) {
     throw new DeviceNotFoundError(deviceId);
   }
+
+  assertWalletHardwareCapability(wallet, 'account_add');
+  assertHardwareWalletCapability(device, 'account_add');
 
   // Check if device is already attached to this wallet
   const existingLink = wallet.devices.find(wd => wd.deviceId === deviceId);
@@ -129,6 +136,8 @@ export async function repairWalletDescriptor(
   if (ownerWallet.descriptor) {
     return { success: true, message: 'Wallet already has a descriptor' };
   }
+
+  assertWalletHardwareCapability(ownerWallet, 'import');
 
   const devices = ownerWallet.devices.map(wd => wd.device);
 

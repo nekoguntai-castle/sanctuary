@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   app,
+  attachNonTargetTestSigner,
   authHeader,
   createAndLoginUser,
   createTestUser,
@@ -35,7 +36,6 @@ export function registerWalletAccessStatsImportTests(): void {
           },
         },
       });
-
       const response = await request(app)
         .get(`/api/v1/wallets/${wallet.id}`)
         .set(authHeader(viewerToken))
@@ -105,6 +105,7 @@ export function registerWalletAccessStatsImportTests(): void {
           },
         },
       });
+      await attachNonTargetTestSigner(wallet.id, owner.id);
 
       const response = await request(app)
         .post(`/api/v1/wallets/${wallet.id}/addresses`)
@@ -134,6 +135,7 @@ export function registerWalletAccessStatsImportTests(): void {
           },
         },
       });
+      await attachNonTargetTestSigner(wallet.id, userId);
 
       const response = await request(app)
         .post(`/api/v1/wallets/${wallet.id}/addresses`)
@@ -161,7 +163,6 @@ export function registerWalletAccessStatsImportTests(): void {
           },
         },
       });
-
       const response = await request(app)
         .get(`/api/v1/wallets/${wallet.id}/stats`)
         .set(authHeader(token))
@@ -220,7 +221,6 @@ export function registerWalletAccessStatsImportTests(): void {
           },
         },
       });
-
       const response = await request(app)
         .get(`/api/v1/wallets/${wallet.id}/balance-history`)
         .set(authHeader(token))
@@ -276,6 +276,7 @@ export function registerWalletAccessStatsImportTests(): void {
           name: 'Test Wallet',
           type: 'single_sig',
           scriptType: 'native_segwit',
+          network: 'testnet3',
           users: {
             create: {
               userId,
@@ -284,6 +285,7 @@ export function registerWalletAccessStatsImportTests(): void {
           },
         },
       });
+      await attachNonTargetTestSigner(wallet.id, userId);
 
       const response = await request(app)
         .get(`/api/v1/wallets/${wallet.id}/export/formats`)
@@ -302,6 +304,7 @@ export function registerWalletAccessStatsImportTests(): void {
           name: 'Test Wallet',
           type: 'single_sig',
           scriptType: 'native_segwit',
+          network: 'testnet3',
           users: {
             create: {
               userId,
@@ -310,6 +313,7 @@ export function registerWalletAccessStatsImportTests(): void {
           },
         },
       });
+      await attachNonTargetTestSigner(wallet.id, userId);
 
       const response = await request(app)
         .get(`/api/v1/wallets/${wallet.id}/export/labels`)
@@ -328,6 +332,7 @@ export function registerWalletAccessStatsImportTests(): void {
           name: 'Test Wallet',
           type: 'single_sig',
           scriptType: 'native_segwit',
+          network: 'testnet3',
           descriptor: "wpkh([aabbccdd/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*)",
           users: {
             create: {
@@ -337,6 +342,7 @@ export function registerWalletAccessStatsImportTests(): void {
           },
         },
       });
+      await attachNonTargetTestSigner(wallet.id, userId);
 
       const response = await request(app)
         .get(`/api/v1/wallets/${wallet.id}/export`)
@@ -448,6 +454,7 @@ export function registerWalletAccessStatsImportTests(): void {
           name: 'Test Wallet',
           type: 'single_sig',
           scriptType: 'native_segwit',
+          network: 'testnet3',
           users: {
             create: {
               userId,
@@ -456,6 +463,7 @@ export function registerWalletAccessStatsImportTests(): void {
           },
         },
       });
+      await attachNonTargetTestSigner(wallet.id, userId);
 
       const response = await request(app)
         .post(`/api/v1/wallets/${wallet.id}/repair`)

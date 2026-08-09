@@ -175,10 +175,35 @@ vi.mock('../../../../src/repositories', () => ({
       mockPrismaClient.wallet.findUnique({ where: { id }, include: { devices: { include: { device: true } } } }),
     hasAccess: vi.fn().mockResolvedValue(true),
     findById: (id: string) => mockPrismaClient.wallet.findUnique({ where: { id } }),
+    findByIdWithDevices: (id: string) =>
+      mockPrismaClient.wallet.findUnique({
+        where: { id },
+        include: { devices: { include: { device: true } } },
+      }).then((wallet: any) => ({
+        ...(wallet ?? { id }),
+        devices: (wallet?.devices ?? []).map((link: any) => ({
+          ...link,
+          device: { type: 'coldcard', ...link.device },
+        })),
+      })),
     findByIdWithAccessAndDevices: (walletId: string, userId: string) =>
-      mockPrismaClient.wallet.findFirst({ where: { id: walletId, users: { some: { userId } } }, include: { devices: { include: { device: true } } } }),
+      mockPrismaClient.wallet.findFirst({ where: { id: walletId, users: { some: { userId } } }, include: { devices: { include: { device: true } } } })
+        .then((wallet: any) => wallet && ({
+          ...wallet,
+          devices: (wallet.devices ?? []).map((link: any) => ({
+            ...link,
+            device: { type: 'coldcard', ...link.device },
+          })),
+        })),
     findByIdWithOwnerAndDevices: (walletId: string, userId: string) =>
-      mockPrismaClient.wallet.findFirst({ where: { id: walletId, users: { some: { userId, role: 'owner' } } }, include: { devices: { include: { device: true } } } }),
+      mockPrismaClient.wallet.findFirst({ where: { id: walletId, users: { some: { userId, role: 'owner' } } }, include: { devices: { include: { device: true } } } })
+        .then((wallet: any) => wallet && ({
+          ...wallet,
+          devices: (wallet.devices ?? []).map((link: any) => ({
+            ...link,
+            device: { type: 'coldcard', ...link.device },
+          })),
+        })),
     linkDevice: vi.fn().mockResolvedValue(undefined),
     createWithDeviceLinks: vi.fn(async (data: any, deviceIds?: string[]) => {
       const wallet = await mockPrismaClient.wallet.create({ data });
@@ -217,7 +242,8 @@ vi.mock('../../../../src/repositories', () => ({
     findByIdsAndUserWithAccounts: (ids: string[], userId: string) =>
       mockPrismaClient.device.findMany({ where: { id: { in: ids }, userId }, include: { accounts: true } }),
     findByIdAndUser: (deviceId: string, userId: string) =>
-      mockPrismaClient.device.findFirst({ where: { id: deviceId, userId } }),
+      mockPrismaClient.device.findFirst({ where: { id: deviceId, userId } })
+        .then((device: any) => device && ({ type: 'coldcard', ...device })),
     findByUserId: (userId: string) =>
       mockPrismaClient.device.findMany({ where: { userId } }),
   },

@@ -39,7 +39,7 @@ vi.mock('../../../src/middleware/rateLimit', () => ({
 
 // Mock Prisma
 vi.mock('../../../src/models/prisma', () => {
-  const mockWallet = { findFirst: vi.fn() };
+  const mockWallet = { findFirst: vi.fn(), findUnique: vi.fn() };
   const mockUTXO = { count: vi.fn() };
   const mockAddress = { findFirst: vi.fn() };
 
@@ -111,7 +111,10 @@ import { registerPayjoinSecurityContracts } from './payjoin.security.contracts';
 
 // Get typed references to mocked functions
 const mockPrisma = prisma as unknown as {
-  wallet: { findFirst: ReturnType<typeof vi.fn> };
+  wallet: {
+    findFirst: ReturnType<typeof vi.fn>;
+    findUnique: ReturnType<typeof vi.fn>;
+  };
   uTXO: { count: ReturnType<typeof vi.fn> };
   address: { findFirst: ReturnType<typeof vi.fn> };
 };
@@ -142,6 +145,10 @@ describe('Payjoin API Routes', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPrisma.wallet.findUnique.mockResolvedValue({
+      id: TEST_WALLET_ID,
+      devices: [{ device: { type: 'coldcard', model: null } }],
+    });
     mockParseBip21Uri.mockImplementation(realParseBip21Uri);
     mockGenerateBip21Uri.mockImplementation(realGenerateBip21Uri);
   });
@@ -579,9 +586,41 @@ describe('Payjoin API Routes', () => {
       expect(res.status).toBe(500);
       expect(res.body.error).toBe('Internal');
     });
+
   });
 
   describe('GET /address/:addressId/uri', () => {
+    it.each([
+      ['Ledger', 'ledger', 'ledger-nano-x'],
+      ['Jade Plus', 'jade', 'jade-plus'],
+      ['Trezor', 'trezor', 'trezor-safe-5'],
+      ['descriptor-only recovery', 'watch_only', null],
+    ])('does not disclose an address or URI for %s signer provenance', async (_name, type, modelSlug) => {
+      mockPrisma.address.findFirst.mockResolvedValue({
+        id: TEST_ADDRESS_ID,
+        address: TEST_ADDRESS,
+        walletId: TEST_WALLET_ID,
+      });
+      mockPrisma.wallet.findUnique.mockResolvedValue({
+        id: TEST_WALLET_ID,
+        devices: [{
+          device: {
+            type,
+            model: modelSlug ? { slug: modelSlug, name: modelSlug } : null,
+          },
+        }],
+      });
+
+      const res = await request(app)
+        .get(`/api/v1/payjoin/address/${TEST_ADDRESS_ID}/uri`)
+        .set('Authorization', 'Bearer test-token');
+
+      expect(res.status).toBe(403);
+      expect(res.body).not.toHaveProperty('address');
+      expect(res.body).not.toHaveProperty('uri');
+      expect(mockGenerateBip21Uri).not.toHaveBeenCalled();
+    });
+
     it('should generate BIP21 URI with Payjoin endpoint', async () => {
       mockPrisma.address.findFirst.mockResolvedValue({
         id: TEST_ADDRESS_ID,

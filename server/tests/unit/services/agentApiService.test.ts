@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   requireAgentFundingDraftAccess: vi.fn(),
   runDraftCreatedSideEffects: vi.fn(),
   verifyOperationalReceiveAddress: vi.fn(),
+  findWalletByIdWithDevices: vi.fn(),
   withAgentFundingLock: vi.fn(),
   withAgentFundingTransaction: vi.fn(),
 }));
@@ -35,7 +36,9 @@ vi.mock('../../../src/repositories', () => ({
     withAgentFundingTransaction: mocks.withAgentFundingTransaction,
   },
   utxoRepository: {},
-  walletRepository: {},
+  walletRepository: {
+    findByIdWithDevices: mocks.findWalletByIdWithDevices,
+  },
 }));
 
 vi.mock('../../../src/services/agentFundingPolicy', () => ({
@@ -133,6 +136,10 @@ describe('agentApiService', () => {
     mocks.requireAgentFundingDraftAccess.mockReturnValue(undefined);
     mocks.runDraftCreatedSideEffects.mockResolvedValue(undefined);
     mocks.verifyOperationalReceiveAddress.mockResolvedValue({ verified: true });
+    mocks.findWalletByIdWithDevices.mockResolvedValue({
+      id: 'funding-wallet',
+      devices: [{ device: { type: 'coldcard', model: null } }],
+    });
     mocks.withAgentFundingLock.mockImplementation(async (_agentId, fn) => fn());
     mocks.withAgentFundingTransaction.mockImplementation(async (_agentId, fn) => fn({ tx: true }));
   });
@@ -273,6 +280,34 @@ describe('agentApiService', () => {
         amount: null,
       }),
     );
+  });
+
+  it.each([
+    ['Ledger', 'ledger', 'ledger-nano-x'],
+    ['Jade Plus', 'jade', 'jade-plus'],
+    ['Trezor', 'trezor', 'trezor-safe-5'],
+    ['descriptor-only recovery', 'watch_only', null],
+  ])('blocks %s agent funding before transaction construction', async (_name, type, modelSlug) => {
+    mocks.findWalletByIdWithDevices.mockResolvedValue({
+      id: 'funding-wallet',
+      devices: [{
+        device: {
+          type,
+          model: modelSlug ? { slug: modelSlug, name: modelSlug } : null,
+        },
+      }],
+    });
+
+    await expect(
+      submitAgentFundingDraft({
+        context: agentContext as any,
+        fundingWalletId: 'funding-wallet',
+        body: baseFundingDraftBody,
+      }),
+    ).rejects.toThrow(ForbiddenError);
+
+    expect(mocks.createTransaction).not.toHaveBeenCalled();
+    expect(mocks.createDraft).not.toHaveBeenCalled();
   });
 
   it('rejects unsafe effective transaction amounts before draft creation', async () => {

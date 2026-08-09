@@ -63,29 +63,61 @@ describe('HardwareWalletService', () => {
     vi.clearAllMocks();
   });
 
+  it.each(['ledger', 'jade', 'trezor'] as const)(
+    'blocks %s before loading or connecting an adapter',
+    async type => {
+      const service = new HardwareWalletService();
+      const { adapter } = createMockAdapter(type);
+      service.registerAdapter(adapter);
+
+      await expect(service.connect(type)).rejects.toThrow(
+        'Hardware wallet connection is temporarily unavailable'
+      );
+      expect(adapter.connect).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(['ledger', 'jade', 'trezor'] as const)(
+    'rechecks every funds-controlling %s operation for an in-flight connection',
+    async type => {
+      const service = new HardwareWalletService();
+      const { adapter } = createMockAdapter(type);
+      (service as unknown as { activeAdapter: DeviceAdapter }).activeAdapter = adapter;
+
+      await expect(service.getXpub("m/84'/0'/0'")).rejects.toThrow('temporarily unavailable');
+      await expect(service.getAllXpubs()).rejects.toThrow('temporarily unavailable');
+      await expect(service.signPSBT({ psbt: 'psbt', inputPaths: [] })).rejects.toThrow('temporarily unavailable');
+      await expect(service.verifyAddress("m/84'/0'/0'/0/0", 'bc1qtest')).rejects.toThrow('temporarily unavailable');
+
+      expect(adapter.getXpub).not.toHaveBeenCalled();
+      expect(adapter.signPSBT).not.toHaveBeenCalled();
+      expect(adapter.verifyAddress).not.toHaveBeenCalled();
+    }
+  );
+
   it('registers adapters and exposes adapter lookups', () => {
     const service = new HardwareWalletService();
-    const { adapter: ledger } = createMockAdapter('ledger');
-    const { adapter: trezor } = createMockAdapter('trezor');
+    const { adapter: ledger } = createMockAdapter('coldcard');
+    const { adapter: trezor } = createMockAdapter('bitbox');
 
     service.registerAdapter(ledger);
     service.registerAdapter(trezor);
 
     expect(service.getRegisteredAdapters()).toHaveLength(2);
-    expect(service.getAdapter('ledger')).toBe(ledger);
-    expect(service.getAdapter('trezor')).toBe(trezor);
+    expect(service.getAdapter('coldcard')).toBe(ledger);
+    expect(service.getAdapter('bitbox')).toBe(trezor);
   });
 
   it('checks support by type and across all adapters', () => {
     const service = new HardwareWalletService();
-    const { adapter: supported } = createMockAdapter('ledger', { isSupported: vi.fn(() => true) });
-    const { adapter: unsupported } = createMockAdapter('trezor', { isSupported: vi.fn(() => false) });
+    const { adapter: supported } = createMockAdapter('coldcard', { isSupported: vi.fn(() => true) });
+    const { adapter: unsupported } = createMockAdapter('bitbox', { isSupported: vi.fn(() => false) });
     service.registerAdapter(supported);
     service.registerAdapter(unsupported);
 
-    expect(service.isSupported('ledger')).toBe(true);
-    expect(service.isSupported('trezor')).toBe(false);
-    expect(service.isSupported('coldcard')).toBe(false);
+    expect(service.isSupported('coldcard')).toBe(true);
+    expect(service.isSupported('bitbox')).toBe(false);
+    expect(service.isSupported('passport')).toBe(false);
     expect(service.isSupported()).toBe(true);
   });
 
@@ -97,8 +129,8 @@ describe('HardwareWalletService', () => {
 
   it('aggregates authorized devices and skips adapter failures', async () => {
     const service = new HardwareWalletService();
-    const { adapter: okAdapter, device } = createMockAdapter('ledger');
-    const { adapter: badAdapter } = createMockAdapter('trezor', {
+    const { adapter: okAdapter, device } = createMockAdapter('coldcard');
+    const { adapter: badAdapter } = createMockAdapter('bitbox', {
       getAuthorizedDevices: vi.fn(async () => {
         throw new Error('device list error');
       }),
@@ -113,8 +145,8 @@ describe('HardwareWalletService', () => {
 
   it('skips adapters that do not implement getAuthorizedDevices', async () => {
     const service = new HardwareWalletService();
-    const { adapter, device } = createMockAdapter('ledger');
-    const { adapter: noListAdapter } = createMockAdapter('trezor');
+    const { adapter, device } = createMockAdapter('coldcard');
+    const { adapter: noListAdapter } = createMockAdapter('bitbox');
     noListAdapter.getAuthorizedDevices = undefined;
     service.registerAdapter(adapter);
     service.registerAdapter(noListAdapter);
@@ -125,15 +157,15 @@ describe('HardwareWalletService', () => {
 
   it('throws when connect() has no type and multiple adapters', async () => {
     const service = new HardwareWalletService();
-    service.registerAdapter(createMockAdapter('ledger').adapter);
-    service.registerAdapter(createMockAdapter('trezor').adapter);
+    service.registerAdapter(createMockAdapter('coldcard').adapter);
+    service.registerAdapter(createMockAdapter('bitbox').adapter);
 
     await expect(service.connect()).rejects.toThrow('Device type must be specified');
   });
 
   it('connects to the only registered adapter when no type is provided', async () => {
     const service = new HardwareWalletService();
-    const { adapter, device } = createMockAdapter('ledger');
+    const { adapter, device } = createMockAdapter('coldcard');
     service.registerAdapter(adapter);
 
     await expect(service.connect()).resolves.toEqual(device);
@@ -142,11 +174,11 @@ describe('HardwareWalletService', () => {
 
   it('throws when connecting to missing or unsupported adapter', async () => {
     const service = new HardwareWalletService();
-    await expect(service.connect('ledger')).rejects.toThrow('No adapter registered for device type: ledger');
+    await expect(service.connect('coldcard')).rejects.toThrow('No adapter registered for device type: coldcard');
 
-    const { adapter } = createMockAdapter('ledger', { isSupported: vi.fn(() => false) });
+    const { adapter } = createMockAdapter('coldcard', { isSupported: vi.fn(() => false) });
     service.registerAdapter(adapter);
-    await expect(service.connect('ledger')).rejects.toThrow('is not supported in this environment');
+    await expect(service.connect('coldcard')).rejects.toThrow('is not supported in this environment');
   });
 
   it('handles lazy adapter loader failures and surfaces missing adapter error', async () => {
@@ -155,15 +187,15 @@ describe('HardwareWalletService', () => {
       throw new Error('lazy load failed');
     });
 
-    service.registerAdapterLoader('ledger', failingLoader);
+    service.registerAdapterLoader('coldcard', failingLoader);
 
-    await expect(service.connect('ledger')).rejects.toThrow('No adapter registered for device type: ledger');
+    await expect(service.connect('coldcard')).rejects.toThrow('No adapter registered for device type: coldcard');
     expect(failingLoader).toHaveBeenCalledTimes(1);
   });
 
   it('reuses in-flight lazy adapter load for concurrent connects', async () => {
     const service = new HardwareWalletService();
-    const { adapter, device } = createMockAdapter('ledger');
+    const { adapter, device } = createMockAdapter('coldcard');
     let resolveLoader: ((value: DeviceAdapter) => void) | undefined;
     const loader = vi.fn(
       () =>
@@ -172,10 +204,10 @@ describe('HardwareWalletService', () => {
         })
     );
 
-    service.registerAdapterLoader('ledger', loader);
+    service.registerAdapterLoader('coldcard', loader);
 
-    const connectOne = service.connect('ledger');
-    const connectTwo = service.connect('ledger');
+    const connectOne = service.connect('coldcard');
+    const connectTwo = service.connect('coldcard');
 
     expect(loader).toHaveBeenCalledTimes(1);
     resolveLoader?.(adapter);
@@ -186,40 +218,40 @@ describe('HardwareWalletService', () => {
 
   it('connects and switches adapters, disconnecting previous adapter', async () => {
     const service = new HardwareWalletService();
-    const { adapter: ledger } = createMockAdapter('ledger');
-    const { adapter: trezor } = createMockAdapter('trezor');
+    const { adapter: ledger } = createMockAdapter('coldcard');
+    const { adapter: trezor } = createMockAdapter('bitbox');
     service.registerAdapter(ledger);
     service.registerAdapter(trezor);
 
-    await service.connect('ledger');
+    await service.connect('coldcard');
     expect(ledger.connect).toHaveBeenCalled();
 
-    await service.connect('trezor');
+    await service.connect('bitbox');
     expect(ledger.disconnect).toHaveBeenCalled();
     expect(trezor.connect).toHaveBeenCalled();
   });
 
   it('continues connecting even if previous disconnect fails', async () => {
     const service = new HardwareWalletService();
-    const { adapter: ledger } = createMockAdapter('ledger', {
+    const { adapter: ledger } = createMockAdapter('coldcard', {
       disconnect: vi.fn(async () => {
         throw new Error('disconnect failed');
       }),
     });
-    const { adapter: trezor, device: trezorDevice } = createMockAdapter('trezor');
+    const { adapter: trezor, device: trezorDevice } = createMockAdapter('bitbox');
     service.registerAdapter(ledger);
     service.registerAdapter(trezor);
 
-    await service.connect('ledger');
-    await expect(service.connect('trezor')).resolves.toEqual(trezorDevice);
+    await service.connect('coldcard');
+    await expect(service.connect('bitbox')).resolves.toEqual(trezorDevice);
     expect(trezor.connect).toHaveBeenCalled();
   });
 
   it('disconnects active adapter and clears active state', async () => {
     const service = new HardwareWalletService();
-    const { adapter } = createMockAdapter('ledger');
+    const { adapter } = createMockAdapter('coldcard');
     service.registerAdapter(adapter);
-    await service.connect('ledger');
+    await service.connect('coldcard');
 
     await service.disconnect();
     expect(adapter.disconnect).toHaveBeenCalled();
@@ -240,13 +272,13 @@ describe('HardwareWalletService', () => {
 
   it('delegates getXpub to active adapter when connected', async () => {
     const service = new HardwareWalletService();
-    const { adapter } = createMockAdapter('ledger');
+    const { adapter } = createMockAdapter('coldcard');
     service.registerAdapter(adapter);
-    await service.connect('ledger');
+    await service.connect('coldcard');
 
     const result = await service.getXpub("m/84'/0'/0'");
     expect(result).toEqual({
-      xpub: 'xpub-ledger',
+      xpub: 'xpub-coldcard',
       fingerprint: 'f1f1f1f1',
       path: "m/84'/0'/0'",
     });
@@ -255,21 +287,21 @@ describe('HardwareWalletService', () => {
 
   it('throws verifyAddress error when adapter does not support verification', async () => {
     const service = new HardwareWalletService();
-    const { adapter } = createMockAdapter('ledger');
+    const { adapter } = createMockAdapter('coldcard');
     adapter.verifyAddress = undefined;
     service.registerAdapter(adapter);
-    await service.connect('ledger');
+    await service.connect('coldcard');
 
     await expect(service.verifyAddress("m/84'/0'/0'/0/0", 'bc1q...')).rejects.toThrow('does not support address verification');
   });
 
   it('delegates verifyAddress when adapter supports verification', async () => {
     const service = new HardwareWalletService();
-    const { adapter } = createMockAdapter('ledger', {
+    const { adapter } = createMockAdapter('coldcard', {
       verifyAddress: vi.fn(async () => true),
     });
     service.registerAdapter(adapter);
-    await service.connect('ledger');
+    await service.connect('coldcard');
 
     await expect(service.verifyAddress("m/84'/0'/0'/0/1", 'bc1qxyz')).resolves.toBe(true);
     expect(adapter.verifyAddress).toHaveBeenCalledWith("m/84'/0'/0'/0/1", 'bc1qxyz');
@@ -283,7 +315,7 @@ describe('HardwareWalletService', () => {
   it('fetches all xpubs with progress and skips unsupported paths', async () => {
     const service = new HardwareWalletService();
     const progress = vi.fn();
-    const { adapter } = createMockAdapter('ledger', {
+    const { adapter } = createMockAdapter('coldcard', {
       getXpub: vi.fn(async (path: string) => {
         if (path === "m/49'/0'/0'") {
           throw new Error('path unsupported');
@@ -292,7 +324,7 @@ describe('HardwareWalletService', () => {
       }),
     });
     service.registerAdapter(adapter);
-    await service.connect('ledger');
+    await service.connect('coldcard');
 
     const results = await service.getAllXpubs(progress);
 
@@ -303,7 +335,7 @@ describe('HardwareWalletService', () => {
 
   it('returns skipped xpub path failures with partial batch results', async () => {
     const service = new HardwareWalletService();
-    const { adapter } = createMockAdapter('ledger', {
+    const { adapter } = createMockAdapter('coldcard', {
       getXpub: vi.fn(async (path: string) => {
         if (path.includes("/1'/")) {
           throw new Error('Bitcoin Test app not open');
@@ -312,7 +344,7 @@ describe('HardwareWalletService', () => {
       }),
     });
     service.registerAdapter(adapter);
-    await service.connect('ledger');
+    await service.connect('coldcard');
 
     const batch = await service.getAllXpubsWithFailures();
 
@@ -330,11 +362,11 @@ describe('HardwareWalletService', () => {
 
   it('fetches all standard xpubs when every path succeeds', async () => {
     const service = new HardwareWalletService();
-    const { adapter } = createMockAdapter('ledger', {
+    const { adapter } = createMockAdapter('coldcard', {
       getXpub: vi.fn(async (path: string) => ({ xpub: `xpub-${path}`, fingerprint: 'f1f1f1f1', path })),
     });
     service.registerAdapter(adapter);
-    await service.connect('ledger');
+    await service.connect('coldcard');
 
     const results = await service.getAllXpubs();
 
@@ -365,7 +397,7 @@ describe('HardwareWalletService', () => {
 
   it('throws an actionable aggregated error if all standard xpub paths fail', async () => {
     const service = new HardwareWalletService();
-    const { adapter } = createMockAdapter('ledger', {
+    const { adapter } = createMockAdapter('coldcard', {
       getXpub: vi.fn(async (path: string) => {
         if (path === "m/86'/0'/0'") {
           throw new Error('taproot unsupported');
@@ -374,7 +406,7 @@ describe('HardwareWalletService', () => {
       }),
     });
     service.registerAdapter(adapter);
-    await service.connect('ledger');
+    await service.connect('coldcard');
 
     await expect(service.getAllXpubs()).rejects.toThrow(
       /Failed to fetch any xpubs from device after trying 12\/12 standard account paths.*Most common error: Bitcoin app not open on Ledger.*Native SegWit/
@@ -387,9 +419,9 @@ describe('HardwareWalletService', () => {
 
     try {
       const service = new HardwareWalletService();
-      const { adapter } = createMockAdapter('ledger');
+      const { adapter } = createMockAdapter('coldcard');
       service.registerAdapter(adapter);
-      await service.connect('ledger');
+      await service.connect('coldcard');
 
       await expect(service.getAllXpubs()).rejects.toThrow(
         'Failed to fetch any xpubs from device after trying 0/0 standard account paths. Most common error: Unknown error.'
@@ -401,7 +433,7 @@ describe('HardwareWalletService', () => {
 
   it('normalizes string and unknown standard xpub failures in the aggregated error', async () => {
     const service = new HardwareWalletService();
-    const { adapter } = createMockAdapter('ledger', {
+    const { adapter } = createMockAdapter('coldcard', {
       getXpub: vi.fn(async (path: string) => {
         if (path === "m/84'/0'/0'") {
           throw 'usb session busy';
@@ -410,7 +442,7 @@ describe('HardwareWalletService', () => {
       }),
     });
     service.registerAdapter(adapter);
-    await service.connect('ledger');
+    await service.connect('coldcard');
 
     await expect(service.getAllXpubs()).rejects.toThrow(
       /Most common error: Unknown error.*Native SegWit/
@@ -419,9 +451,9 @@ describe('HardwareWalletService', () => {
 
   it('executes full signTransaction flow via backend and adapter', async () => {
     const service = new HardwareWalletService();
-    const { adapter } = createMockAdapter('ledger');
+    const { adapter } = createMockAdapter('coldcard');
     service.registerAdapter(adapter);
-    await service.connect('ledger');
+    await service.connect('coldcard');
 
     mockPost
       .mockResolvedValueOnce({
@@ -453,18 +485,18 @@ describe('HardwareWalletService', () => {
       inputPaths: ["m/84'/0'/0'/0/0"],
     });
     expect(mockPost).toHaveBeenNthCalledWith(2, '/wallets/w1/psbt/broadcast', {
-      signedPsbt: 'signed-ledger',
+      signedPsbt: 'signed-coldcard',
       rawTxHex: undefined,
     });
   });
 
   it('passes rawTx from adapter to broadcast step', async () => {
     const service = new HardwareWalletService();
-    const { adapter } = createMockAdapter('trezor', {
+    const { adapter } = createMockAdapter('bitbox', {
       signPSBT: vi.fn(async () => ({ psbt: 'signed-trezor', signatures: 1, rawTx: '020000...' })),
     });
     service.registerAdapter(adapter);
-    await service.connect('trezor');
+    await service.connect('bitbox');
 
     mockPost
       .mockResolvedValueOnce({ psbt: 'unsigned-psbt', fee: 300, inputPaths: [] })

@@ -11,6 +11,7 @@ import { hookRegistry, Operations } from '../hooks';
 import { ForbiddenError } from '../../errors';
 import type { WalletWithBalance } from './types';
 import { checkWalletOwnerAccess } from '../accessControl';
+import { assertWalletHardwareCapabilityById } from '../hardwareWalletCapabilities';
 
 const log = createLogger('WALLET:SVC');
 
@@ -29,6 +30,10 @@ export async function updateWallet(
     throw new ForbiddenError('Only wallet owners can update wallet');
   }
 
+  if (updates.descriptor !== undefined) {
+    await assertWalletHardwareCapabilityById(walletId, 'import');
+  }
+
   const wallet = await walletRepository.update(walletId, updates);
 
   // Re-fetch with includes
@@ -44,6 +49,19 @@ export async function updateWallet(
     throw new ForbiddenError('Only wallet owners can update wallet');
   }
 
+  let responseWallet = walletFull;
+  try {
+    await assertWalletHardwareCapabilityById(walletId, 'display');
+  } catch (error) {
+    if (!(error instanceof ForbiddenError)) throw error;
+    responseWallet = {
+      ...walletFull,
+      addresses: [],
+      descriptor: null,
+      fingerprint: null,
+    };
+  }
+
   // Use aggregate query for balance (efficient for wallets with many UTXOs)
   const balanceBigint = await utxoRepository.getUnspentBalance(walletId);
   const balance = Number(balanceBigint);
@@ -54,7 +72,7 @@ export async function updateWallet(
   const isShared = hasGroup || userCount > 1;
 
   return {
-    ...walletFull,
+    ...responseWallet,
     balance,
     deviceCount: walletFull.devices.length,
     addressCount: walletFull.addresses.length,

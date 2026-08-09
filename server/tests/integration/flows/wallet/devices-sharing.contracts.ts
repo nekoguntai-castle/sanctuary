@@ -132,8 +132,8 @@ export function registerWalletDevicesSharingTests(): void {
       const device = await prisma.device.create({
         data: {
           userId: signerId,
-          type: 'ledger',
-          label: 'Signer Ledger',
+          type: 'bitbox',
+          label: 'Signer BitBox',
           fingerprint: uniqueFingerprint(),
           xpub: 'tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M',
         },

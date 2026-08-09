@@ -50,6 +50,7 @@ import {
   resolveSignedPsbtForBroadcast,
   type TransactionBroadcastBody,
 } from './broadcastIntent';
+import { assertWalletHardwareCapabilityById } from '../../services/hardwareWalletCapabilities';
 
 const router = Router();
 const log = createLogger('TX_BROADCAST:ROUTE');
@@ -513,6 +514,10 @@ const handleTransactionBroadcast = async (
   walletId: string,
   body: TransactionBroadcastBody
 ) => {
+  await assertWalletHardwareCapabilityById(walletId, 'broadcast');
+  if (!body.rawTxHex) {
+    await assertWalletHardwareCapabilityById(walletId, 'finalize');
+  }
   const network = await resolveWalletNetwork(walletId);
   const draft = await loadBroadcastDraft(walletId, body.draftId);
   const signedPsbtBase64 = resolveSignedPsbtForBroadcast(body, draft);
@@ -536,6 +541,8 @@ const handlePsbtBroadcast = async (
   walletId: string,
   body: PsbtBroadcastBody
 ) => {
+  await assertWalletHardwareCapabilityById(walletId, 'broadcast');
+  await assertWalletHardwareCapabilityById(walletId, 'finalize');
   const network = await resolveWalletNetwork(walletId);
   const intent = await buildSignedPsbtBroadcastIntent(walletId, body.signedPsbt, network, 'signedPsbt');
 

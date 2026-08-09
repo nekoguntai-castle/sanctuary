@@ -1641,11 +1641,22 @@ for retired_frontend_input in \
 done
 
 assert_contains_in_order "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
-  "verify-vectors canonical frontend triggers" \
-  "'src/services/hardwareWallet/**'" \
-  "'src/hooks/send/useQrSigning.ts'" \
-  "'src/hooks/send/useUsbSigning.ts'" \
-  "'src/hooks/send/useSendTransactionActions.ts'"
+  "verify-vectors broad funds-safety triggers" \
+  "pull_request:" \
+  "merge_group:" \
+  "types: [checks_requested]" \
+  "push:" \
+  "branches: [main]"
+
+assert_not_contains "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
+  "verify-vectors has no path-filter blind spots" \
+  "paths:"
+
+assert_contains_in_order "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
+  "verify-vectors executes hardware truthfulness contracts" \
+  "Run hardware capability truthfulness tests" \
+  "tests/unit/services/bitcoin/hardwareWalletCompatibility.test.ts" \
+  "tests/unit/services/hardwareWalletCapabilities.test.ts"
 
 assert_contains_in_order "$DOCKER_BUILD_WORKFLOW" \
   "docker-build image-scope diagnostics" \

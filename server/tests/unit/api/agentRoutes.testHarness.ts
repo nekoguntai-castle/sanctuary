@@ -31,6 +31,7 @@ const mockState = vi.hoisted(() => {
     },
     mockWalletRepository: {
       findById: vi.fn(),
+      findByIdWithDevices: vi.fn(),
     },
     mockAgentRateLimitKeys,
     mockRateLimitByKey: vi.fn(
@@ -308,6 +309,10 @@ export const resetAgentRouteMocks = () => {
       return null;
     },
   );
+  (walletRepository.findByIdWithDevices as any).mockResolvedValue({
+    id: "funding-wallet",
+    devices: [{ device: { type: "coldcard", model: null } }],
+  });
   (utxoRepository.getUnspentBalance as any)
     .mockResolvedValueOnce(20000n)
     .mockResolvedValueOnce(5000n);

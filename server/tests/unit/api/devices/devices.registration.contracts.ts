@@ -7,7 +7,7 @@ import { app } from './devicesTestHarness';
 export function registerDeviceRegistrationTests(): void {
   describe('POST /devices - Device Registration', () => {
     const validDevice = {
-      type: 'trezor',
+      type: 'coldcard',
       label: 'My Trezor',
       fingerprint: 'abc12345',
       xpub: 'xpub6CUGRUonZSQ4TWtTMmzXdrXDtyPWV...',
@@ -59,7 +59,7 @@ export function registerDeviceRegistrationTests(): void {
 
     it('should register device with multiple accounts', async () => {
       const deviceWithAccounts = {
-        type: 'trezor',
+        type: 'coldcard',
         label: 'My Trezor',
         fingerprint: 'abc12345',
         accounts: [
@@ -99,7 +99,7 @@ export function registerDeviceRegistrationTests(): void {
 
     it('should reject registration without xpub or accounts', async () => {
       const invalidDevice = {
-        type: 'trezor',
+        type: 'coldcard',
         label: 'My Trezor',
         fingerprint: 'abc12345',
       };
@@ -115,7 +115,7 @@ export function registerDeviceRegistrationTests(): void {
     it('should reject registration when required top-level fields are missing', async () => {
       const response = await request(app)
         .post('/api/v1/devices')
-        .send({ type: 'trezor', label: 'Missing Fingerprint', xpub: 'xpub...' });
+        .send({ type: 'coldcard', label: 'Missing Fingerprint', xpub: 'xpub...' });
 
       expect(response.status).toBe(400);
       expect(response.body.message).toContain('type, label, and fingerprint are required');
@@ -125,7 +125,7 @@ export function registerDeviceRegistrationTests(): void {
       const response = await request(app)
         .post('/api/v1/devices')
         .send({
-          type: 'trezor',
+          type: 'coldcard',
           label: 'Invalid Account',
           fingerprint: 'abc12345',
           accounts: [
@@ -142,7 +142,7 @@ export function registerDeviceRegistrationTests(): void {
 
     it('should reject registration with invalid purpose in accounts', async () => {
       const invalidDevice = {
-        type: 'trezor',
+        type: 'coldcard',
         label: 'My Trezor',
         fingerprint: 'abc12345',
         accounts: [
@@ -165,7 +165,7 @@ export function registerDeviceRegistrationTests(): void {
 
     it('should reject registration with invalid scriptType in accounts', async () => {
       const invalidDevice = {
-        type: 'trezor',
+        type: 'coldcard',
         label: 'My Trezor',
         fingerprint: 'abc12345',
         accounts: [
@@ -191,7 +191,7 @@ export function registerDeviceRegistrationTests(): void {
         id: 'existing-device',
         fingerprint: 'abc12345',
         label: 'Existing Trezor',
-        type: 'trezor',
+        type: 'coldcard',
         userId: 'test-user-id',
         model: null,
         accounts: [
@@ -227,7 +227,7 @@ export function registerDeviceRegistrationTests(): void {
         id: 'existing-device',
         fingerprint: 'abc12345',
         label: 'Existing Trezor',
-        type: 'trezor',
+        type: 'coldcard',
         userId: 'test-user-id',
         accounts: [
           {
@@ -241,7 +241,7 @@ export function registerDeviceRegistrationTests(): void {
       };
 
       const deviceWithMerge = {
-        type: 'trezor',
+        type: 'coldcard',
         label: 'My Trezor',
         fingerprint: 'abc12345',
         merge: true,
@@ -293,7 +293,7 @@ export function registerDeviceRegistrationTests(): void {
         id: 'existing-device',
         fingerprint: 'abc12345',
         label: 'Existing Trezor',
-        type: 'trezor',
+        type: 'coldcard',
         userId: 'test-user-id',
         accounts: [
           {
@@ -307,7 +307,7 @@ export function registerDeviceRegistrationTests(): void {
       };
 
       const deviceWithMerge = {
-        type: 'trezor',
+        type: 'coldcard',
         label: 'My Trezor',
         fingerprint: 'abc12345',
         merge: true,
@@ -338,7 +338,7 @@ export function registerDeviceRegistrationTests(): void {
         id: 'existing-device',
         fingerprint: 'abc12345',
         label: 'Existing Trezor',
-        type: 'trezor',
+        type: 'coldcard',
         userId: 'test-user-id',
         accounts: [
           {
@@ -352,7 +352,7 @@ export function registerDeviceRegistrationTests(): void {
       };
 
       const deviceWithConflict = {
-        type: 'trezor',
+        type: 'coldcard',
         label: 'My Trezor',
         fingerprint: 'abc12345',
         merge: true,
@@ -389,7 +389,7 @@ export function registerDeviceRegistrationTests(): void {
         id: 'existing-device',
         fingerprint: 'abc12345', // lowercase in database
         label: 'Existing Device',
-        type: 'trezor',
+        type: 'coldcard',
         userId: 'test-user-id',
         model: null,
         accounts: [
@@ -407,7 +407,7 @@ export function registerDeviceRegistrationTests(): void {
 
       // Incoming request has UPPERCASE fingerprint
       const deviceWithUpperCase = {
-        type: 'trezor',
+        type: 'coldcard',
         label: 'My Trezor',
         fingerprint: 'ABC12345', // UPPERCASE in request
         xpub: 'xpub_new...',
@@ -431,7 +431,7 @@ export function registerDeviceRegistrationTests(): void {
 
     it('should detect legacy script type from BIP-44 path in legacy mode', async () => {
       const legacyDevice = {
-        type: 'ledger',
+        type: 'coldcard',
         label: 'Legacy Ledger',
         fingerprint: 'LEGACY123',
         xpub: 'xpub_legacy...',
@@ -489,7 +489,7 @@ export function registerDeviceRegistrationTests(): void {
 
     it('should detect taproot script type from BIP-86 path in legacy mode', async () => {
       const taprootDevice = {
-        type: 'ledger',
+        type: 'coldcard',
         label: 'Taproot Ledger',
         fingerprint: 'taproot123',
         xpub: 'xpub_taproot...',
@@ -517,7 +517,7 @@ export function registerDeviceRegistrationTests(): void {
 
     it('should detect nested segwit script type from BIP-49 path in legacy mode', async () => {
       const nestedDevice = {
-        type: 'ledger',
+        type: 'coldcard',
         label: 'Nested Ledger',
         fingerprint: 'nested123',
         xpub: 'xpub_nested...',
@@ -545,18 +545,18 @@ export function registerDeviceRegistrationTests(): void {
 
     it('should assign modelId when modelSlug is provided for registration', async () => {
       const deviceWithModel = {
-        type: 'trezor',
+        type: 'coldcard',
         label: 'Model Device',
         fingerprint: 'abcde123',
         xpub: 'xpub_model...',
         derivationPath: "m/84'/0'/0'",
-        modelSlug: 'trezor-model-t',
+        modelSlug: 'coldcard-q',
       };
 
       mockPrismaClient.device.findUnique.mockResolvedValue(null);
       mockPrismaClient.hardwareDeviceModel.findUnique.mockResolvedValue({
         id: 'model-1',
-        slug: 'trezor-model-t',
+        slug: 'coldcard-q',
       });
       mockPrismaClient.device.create.mockResolvedValue({
         id: 'device-model',
@@ -579,9 +579,9 @@ export function registerDeviceRegistrationTests(): void {
       });
     });
 
-    it('should continue registration without modelId when modelSlug is unknown', async () => {
+    it('should reject registration when modelSlug is unknown', async () => {
       const deviceWithUnknownModel = {
-        type: 'trezor',
+        type: 'coldcard',
         label: 'Unknown Model Device',
         fingerprint: 'unknownmodel1',
         xpub: 'xpub_unknown_model...',
@@ -591,28 +591,18 @@ export function registerDeviceRegistrationTests(): void {
 
       mockPrismaClient.device.findUnique.mockResolvedValue(null);
       mockPrismaClient.hardwareDeviceModel.findUnique.mockResolvedValue(null);
-      mockPrismaClient.device.create.mockResolvedValue({
-        id: 'device-unknown-model',
-        ...deviceWithUnknownModel,
-        userId: 'test-user-id',
-      });
-
       const response = await request(app)
         .post('/api/v1/devices')
         .send(deviceWithUnknownModel);
 
-      expect(response.status).toBe(201);
-      expect(mockPrismaClient.device.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          modelId: undefined,
-        }),
-        include: { model: true },
-      });
+      expect(response.status).toBe(400);
+      expect(response.body.message).toContain('Unknown hardware wallet model');
+      expect(mockPrismaClient.device.create).not.toHaveBeenCalled();
     });
 
     it('handles legacy xpub payload without derivationPath by creating device with no derived accounts', async () => {
       const xpubOnlyDevice = {
-        type: 'trezor',
+        type: 'coldcard',
         label: 'Xpub Only',
         fingerprint: 'xpubonly12',
         xpub: 'xpub_only...',
@@ -636,7 +626,7 @@ export function registerDeviceRegistrationTests(): void {
         data: expect.objectContaining({
           fingerprint: 'xpubonly12',
           label: 'Xpub Only',
-          type: 'trezor',
+          type: 'coldcard',
         }),
         include: { model: true },
       });

@@ -10,6 +10,7 @@ import { deriveAddressFromDescriptor } from "./bitcoin/addressDerivation";
 import { parseAddressDerivationPath } from "@sanctuary/shared/utils/bitcoin";
 import { isBitcoinNetwork, type BitcoinNetwork } from "./bitcoin/networks";
 import { WalletType } from "@sanctuary/shared/constants/walletIdentity";
+import { assertWalletHardwareCapabilityById } from "./hardwareWalletCapabilities";
 
 type SupportedNetwork = BitcoinNetwork;
 
@@ -90,6 +91,10 @@ export async function getOrCreateOperationalReceiveAddress(input: {
   operationalWalletId: string;
 }): Promise<AgentOperationalReceiveAddress> {
   return agentRepository.withAgentFundingLock(input.agentId, async () => {
+    await assertWalletHardwareCapabilityById(
+      input.operationalWalletId,
+      "display",
+    );
     const existingAddress = await addressRepository.findNextUnusedReceive(
       input.operationalWalletId,
     );

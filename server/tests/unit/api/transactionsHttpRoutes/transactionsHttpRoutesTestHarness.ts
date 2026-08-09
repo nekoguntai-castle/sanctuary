@@ -19,6 +19,7 @@ const {
   mockEvaluatePolicies,
   mockRecordUsage,
   mockWalletFindById,
+  mockWalletFindByIdWithDevices,
   mockWalletFindNetwork,
   mockDraftFindByIdInWallet,
   mockFindAddressStrings,
@@ -40,6 +41,7 @@ const {
   mockEvaluatePolicies: vi.fn(),
   mockRecordUsage: vi.fn(),
   mockWalletFindById: vi.fn(),
+  mockWalletFindByIdWithDevices: vi.fn(),
   mockWalletFindNetwork: vi.fn(),
   mockDraftFindByIdInWallet: vi.fn(),
   mockFindAddressStrings: vi.fn(),
@@ -61,6 +63,7 @@ vi.mock('../../../../src/repositories/walletRepository', async (importOriginal) 
     walletRepository: {
       ...actual.walletRepository,
       findById: mockWalletFindById,
+      findByIdWithDevices: mockWalletFindByIdWithDevices,
       findNetwork: mockWalletFindNetwork,
     },
   };
@@ -186,6 +189,10 @@ export function setupTransactionHttpRouteHooks(): void {
     mockEvaluatePolicies.mockResolvedValue({ allowed: true, triggered: [] });
     mockRecordUsage.mockResolvedValue(undefined);
     mockWalletFindNetwork.mockResolvedValue('testnet4');
+    mockWalletFindByIdWithDevices.mockImplementation(async (walletId: string) => ({
+      id: walletId,
+      devices: [{ device: { type: 'coldcard', model: null } }],
+    }));
     mockDraftFindByIdInWallet.mockResolvedValue(null);
     mockFindAddressStrings.mockResolvedValue(['tb1qchange']);
     mockFindUtxosByOutpointsForWallet.mockResolvedValue([]);
@@ -254,6 +261,7 @@ export {
   mockEvaluatePolicies,
   mockRecordUsage,
   mockWalletFindById,
+  mockWalletFindByIdWithDevices,
   mockWalletFindNetwork,
   mockDraftFindByIdInWallet,
   mockFindAddressStrings,

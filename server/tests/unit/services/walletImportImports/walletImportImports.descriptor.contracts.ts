@@ -243,6 +243,7 @@ export const registerWalletImportDescriptorContracts = () => {
       mockPrismaClient.device.findMany.mockResolvedValue([
         {
           id: 'device-existing-001',
+          type: 'coldcard',
           userId,
           fingerprint: 'abcd1234',
           label: 'Existing Ledger',

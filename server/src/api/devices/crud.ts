@@ -18,6 +18,7 @@ import {
   MobileUpdateDeviceRequestSchema,
 } from '@sanctuary/shared/schemas/mobileApiRequests';
 import { requireAuthenticatedUser } from '../../middleware/auth';
+import { assertHardwareWalletCapability } from '../../services/hardwareWalletCapabilities';
 
 const router = Router();
 const log = createLogger('DEVICE:ROUTE:CRUD');
@@ -138,6 +139,20 @@ router.patch('/:id', requireDeviceAccess('owner'), asyncHandler(async (req, res)
     MobileUpdateDeviceRequestSchema,
     req.body
   );
+
+  if (derivationPath !== undefined || type !== undefined || modelSlug !== undefined) {
+    const existingDevice = await deviceRepository.findByIdWithModelAndAccounts(id);
+    if (!existingDevice) {
+      throw new NotFoundError('Device not found');
+    }
+    assertHardwareWalletCapability(existingDevice, 'account_add');
+    if (type !== undefined || modelSlug !== undefined) {
+      assertHardwareWalletCapability({
+        type: type ?? existingDevice.type,
+        model: modelSlug ?? existingDevice.model,
+      }, 'account_add');
+    }
+  }
 
   // Build update data
   const updateData: Record<string, unknown> = {};

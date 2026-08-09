@@ -33,6 +33,10 @@ export function registerWalletAddressDescriptorStatsTests(): void {
     });
 
     it('generates the next receive address from descriptor', async () => {
+      mockPrismaClient.wallet.findUnique.mockResolvedValueOnce({
+        id: 'wallet-1',
+        devices: [{ device: { type: 'coldcard', model: null } }],
+      });
       mockPrismaClient.wallet.findFirst.mockResolvedValueOnce({
         id: 'wallet-1',
         network: 'mainnet',
@@ -55,6 +59,10 @@ export function registerWalletAddressDescriptorStatsTests(): void {
     });
 
     it('swallows hook failures after address generation', async () => {
+      mockPrismaClient.wallet.findUnique.mockResolvedValueOnce({
+        id: 'wallet-1',
+        devices: [{ device: { type: 'coldcard', model: null } }],
+      });
       mockPrismaClient.wallet.findFirst.mockResolvedValueOnce({
         id: 'wallet-1',
         network: 'mainnet',
@@ -73,6 +81,10 @@ export function registerWalletAddressDescriptorStatsTests(): void {
     });
 
     it('rejects address generation when descriptor is missing', async () => {
+      mockPrismaClient.wallet.findUnique.mockResolvedValueOnce({
+        id: 'wallet-1',
+        devices: [{ device: { type: 'coldcard', model: null } }],
+      });
       mockPrismaClient.wallet.findFirst.mockResolvedValueOnce({
         id: 'wallet-1',
         network: 'mainnet',

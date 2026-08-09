@@ -50,7 +50,7 @@ export const registerBitcoinTransactionRouteTests = () => {
     });
 
     describe('POST /bitcoin/broadcast', () => {
-      it('should broadcast raw transaction', async () => {
+      it('blocks unscoped raw transaction broadcast before the network boundary', async () => {
         mockBlockchain.broadcastTransaction.mockResolvedValue({
           txid: 'newtxid123',
           success: true,
@@ -60,12 +60,15 @@ export const registerBitcoinTransactionRouteTests = () => {
           .post('/bitcoin/broadcast')
           .send({ rawTx: '0200000001...' });
 
-        expect(response.status).toBe(200);
-        expect(response.body).toHaveProperty('txid', 'newtxid123');
-        expect(mockBlockchain.broadcastTransaction).toHaveBeenCalledWith('0200000001...', 'mainnet');
+        expect(response.status).toBe(403);
+        expect(response.body.details).toMatchObject({
+          capability: 'broadcast',
+          source: 'unscoped_raw_transaction',
+        });
+        expect(mockBlockchain.broadcastTransaction).not.toHaveBeenCalled();
       });
 
-      it('should broadcast raw transaction on requested network', async () => {
+      it('blocks unscoped raw transaction broadcast on an explicit network', async () => {
         mockBlockchain.broadcastTransaction.mockResolvedValue({
           txid: 'newtxid123',
           success: true,
@@ -75,8 +78,8 @@ export const registerBitcoinTransactionRouteTests = () => {
           .post('/bitcoin/broadcast')
           .send({ rawTx: '0200000001...', network: 'signet' });
 
-        expect(response.status).toBe(200);
-        expect(mockBlockchain.broadcastTransaction).toHaveBeenCalledWith('0200000001...', 'signet');
+        expect(response.status).toBe(403);
+        expect(mockBlockchain.broadcastTransaction).not.toHaveBeenCalled();
       });
 
       it('should return 400 when broadcast network is invalid', async () => {
@@ -97,14 +100,15 @@ export const registerBitcoinTransactionRouteTests = () => {
         expect(response.body).toHaveProperty('message', 'rawTx is required');
       });
 
-      it('should return 500 on broadcast error', async () => {
+      it('does not reach a failing broadcaster while the kill switch is active', async () => {
         mockBlockchain.broadcastTransaction.mockRejectedValue(new Error('Invalid transaction'));
 
         const response = await request(app)
           .post('/bitcoin/broadcast')
           .send({ rawTx: 'invalid' });
 
-        expect(response.status).toBe(500);
+        expect(response.status).toBe(403);
+        expect(mockBlockchain.broadcastTransaction).not.toHaveBeenCalled();
       });
     });
 
@@ -490,6 +494,55 @@ export const registerBitcoinTransactionRouteTests = () => {
         expect(response.status).toBe(500);
         expect(response.body.code).toBe('INTERNAL_ERROR');
       });
+    });
+
+    it.each([
+      ['Ledger', 'ledger', 'ledger-nano-x'],
+      ['Jade Plus', 'jade', 'jade-plus'],
+      ['Trezor', 'trezor', 'trezor-safe-5'],
+      ['descriptor-only recovery', 'watch_only', null],
+    ])('blocks advanced PSBT construction for %s signer provenance', async (_name, type, modelSlug) => {
+      mockPrismaClient.wallet.findFirst.mockResolvedValue({
+        id: 'wallet-1',
+        network: 'mainnet',
+      });
+      mockPrismaClient.wallet.findUnique.mockResolvedValue({
+        id: 'wallet-1',
+        devices: [{
+          device: {
+            type,
+            model: modelSlug ? { slug: modelSlug, name: modelSlug } : null,
+          },
+        }],
+      });
+      mockPrismaClient.transaction.findUnique.mockResolvedValue({ id: 'tx-1' });
+
+      const responses = await Promise.all([
+        request(app)
+          .post('/bitcoin/transaction/abc123/rbf')
+          .send({ newFeeRate: 24, walletId: 'wallet-1' }),
+        request(app)
+          .post('/bitcoin/transaction/cpfp')
+          .send({
+            parentTxid: 'abc123',
+            parentVout: 0,
+            targetFeeRate: 20,
+            recipientAddress: 'bc1qtest',
+            walletId: 'wallet-1',
+          }),
+        request(app)
+          .post('/bitcoin/transaction/batch')
+          .send({
+            recipients: [{ address: 'bc1qtest', amount: 250000 }],
+            feeRate: 20,
+            walletId: 'wallet-1',
+          }),
+      ]);
+
+      expect(responses.map(({ status }) => status)).toEqual([403, 403, 403]);
+      expect(mockAdvancedTx.createRBFTransaction).not.toHaveBeenCalled();
+      expect(mockAdvancedTx.createCPFPTransaction).not.toHaveBeenCalled();
+      expect(mockAdvancedTx.createBatchTransaction).not.toHaveBeenCalled();
     });
   });
 };

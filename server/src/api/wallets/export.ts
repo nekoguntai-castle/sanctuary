@@ -17,6 +17,10 @@ import {
   accountPurposeForWalletType,
   parseWalletType,
 } from '@sanctuary/shared/constants/walletIdentity';
+import {
+  assertWalletHardwareCapability,
+  assertWalletHardwareCapabilityById,
+} from '../../services/hardwareWalletCapabilities';
 
 const router = Router();
 
@@ -98,6 +102,7 @@ router.get('/:id/export/labels', requireWalletAccess('view'), asyncHandler(async
   if (!walletName) {
     throw new NotFoundError('Wallet not found');
   }
+  await assertWalletHardwareCapabilityById(walletId, 'display');
 
   // Get all transactions with labels
   const transactions = await transactionRepository.findWithLabels(walletId);
@@ -166,6 +171,7 @@ router.get('/:id/export/formats', requireWalletAccess('view'), asyncHandler(asyn
   if (!wallet) {
     throw new NotFoundError('Wallet not found');
   }
+  assertWalletHardwareCapability(wallet, 'display');
 
   // Build wallet export data to check format availability
   const walletData = buildWalletExportData(wallet);
@@ -198,6 +204,7 @@ router.get('/:id/export', requireWalletAccess('view'), asyncHandler(async (req, 
   if (!wallet) {
     throw new NotFoundError('Wallet not found');
   }
+  assertWalletHardwareCapability(wallet, 'display');
 
   // Build wallet export data (uses device accounts for correct derivation paths)
   const walletData = buildWalletExportData(wallet);

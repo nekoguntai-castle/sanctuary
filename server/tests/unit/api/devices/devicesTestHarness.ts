@@ -1,6 +1,6 @@
 import { beforeAll, beforeEach, vi } from 'vitest';
 
-import { resetPrismaMocks } from '../../../mocks/prisma';
+import { mockPrismaClient, resetPrismaMocks } from '../../../mocks/prisma';
 
 // Mock Prisma BEFORE other imports
 vi.mock('../../../../src/models/prisma', async () => {
@@ -90,5 +90,11 @@ export function setupDevicesApiTestHooks(): void {
   beforeEach(() => {
     resetPrismaMocks();
     vi.clearAllMocks();
+    mockPrismaClient.device.findUnique.mockResolvedValue({
+      id: 'device-1',
+      type: 'coldcard',
+      model: null,
+      accounts: [],
+    });
   });
 }

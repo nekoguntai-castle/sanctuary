@@ -19,10 +19,38 @@ import {
   mockWalletCacheGet,
   mockWalletCacheSet,
   mockWalletFindById,
+  mockWalletFindByIdWithDevices,
   walletId,
 } from './transactionsHttpRoutesTestHarness';
 
 export function registerTransactionHttpCreationTests(): void {
+  it.each(['ledger', 'jade', 'trezor'])('blocks %s at every PSBT drafting boundary', async type => {
+    mockWalletFindById.mockResolvedValue({ id: walletId, network: 'testnet' });
+    mockWalletFindByIdWithDevices.mockResolvedValue({
+      id: walletId,
+      devices: [{ device: { type, model: null } }],
+    });
+
+    const requests = [
+      request(app).post(`/api/v1/wallets/${walletId}/transactions/create`).send({
+        recipient: 'tb1qrecipient', amount: 10000, feeRate: 1,
+      }),
+      request(app).post(`/api/v1/wallets/${walletId}/transactions/batch`).send({
+        outputs: [{ address: 'tb1qrecipient', amount: 10000 }], feeRate: 1,
+      }),
+      request(app).post(`/api/v1/wallets/${walletId}/psbt/create`).send({
+        recipients: [{ address: 'tb1qrecipient', amount: 10000 }], feeRate: 1,
+      }),
+    ];
+
+    for (const response of await Promise.all(requests)) {
+      expect(response.status).toBe(403);
+      expect(response.body.details).toMatchObject({ vendor: type, capability: 'sign' });
+    }
+    expect(mockCreateTransaction).not.toHaveBeenCalled();
+    expect(mockCreateBatchTransaction).not.toHaveBeenCalled();
+  });
+
   it('recalculates wallet balances and returns final amount', async () => {
     mockPrismaClient.transaction.findFirst.mockResolvedValue({
       balanceAfter: BigInt(123456),

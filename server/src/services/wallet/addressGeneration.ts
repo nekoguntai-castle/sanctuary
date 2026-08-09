@@ -12,6 +12,7 @@ import { INITIAL_ADDRESS_COUNT } from '../../constants';
 import { hookRegistry, Operations } from '../hooks';
 import { InvalidInputError, WalletNotFoundError } from '../../errors';
 import type { WalletNetwork } from './types';
+import { assertWalletHardwareCapabilityById } from '../hardwareWalletCapabilities';
 
 const log = createLogger('WALLET:SVC_ADDRESS');
 
@@ -55,6 +56,8 @@ export async function generateAddress(
   if (!wallet) {
     throw new WalletNotFoundError(walletId);
   }
+
+  await assertWalletHardwareCapabilityById(walletId, 'display');
 
   // Get next index
   const nextIndex = wallet.addresses.length > 0 ? wallet.addresses[0].index + 1 : 0;

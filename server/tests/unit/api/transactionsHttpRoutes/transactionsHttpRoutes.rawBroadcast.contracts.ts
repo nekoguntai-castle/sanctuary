@@ -1,7 +1,6 @@
 import { expect, it } from 'vitest';
 import request from 'supertest';
 import * as bitcoin from 'bitcoinjs-lib';
-
 import {
   app,
   mockAuditLogFromRequest,
@@ -10,6 +9,7 @@ import {
   mockEvaluatePolicies,
   mockFindAddressStrings,
   mockFindUtxosByOutpointsForWallet,
+  mockWalletFindByIdWithDevices,
   walletId,
 } from './transactionsHttpRoutesTestHarness';
 
@@ -117,6 +117,28 @@ const makeBroadcastDraft = (overrides: Record<string, unknown> = {}) => ({
 });
 
 export function registerTransactionHttpRawBroadcastTests(): void {
+  it.each(['ledger', 'jade', 'trezor'])(
+    'blocks %s wallet raw broadcast before intent resolution or node submission',
+    async type => {
+      mockWalletFindByIdWithDevices.mockResolvedValue({
+        id: walletId,
+        devices: [{ device: { type, model: null } }],
+      });
+
+      const response = await request(app)
+        .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+        .send({ rawTxHex: makeRawBroadcastHex() });
+
+      expect(response.status).toBe(403);
+      expect(response.body.details).toMatchObject({
+        vendor: type,
+        capability: 'broadcast',
+      });
+      expect(mockFindUtxosByOutpointsForWallet).not.toHaveBeenCalled();
+      expect(mockBroadcastAndSave).not.toHaveBeenCalled();
+    },
+  );
+
   it('broadcasts raw transaction and writes audit event', async () => {
     const rawTxHex = makeRawBroadcastHex();
     mockRawBroadcastWalletState();

@@ -45,6 +45,7 @@ export function registerBlockchainGapLimitTests(): void {
         id: walletId,
         descriptor: mockDescriptor,
         network: "mainnet",
+        devices: [{ device: { type: 'coldcard', model: null } }],
       });
 
       // Create 25 receive addresses with the last 20 unused (gap limit = 20)
@@ -77,6 +78,7 @@ export function registerBlockchainGapLimitTests(): void {
         id: walletId,
         descriptor: mockDescriptor,
         network: "mainnet",
+        devices: [{ device: { type: 'coldcard', model: null } }],
       });
 
       // Create receive addresses with gap of 10 (need 10 more)
@@ -112,6 +114,7 @@ export function registerBlockchainGapLimitTests(): void {
         id: walletId,
         descriptor: mockDescriptor,
         network: "mainnet",
+        devices: [{ device: { type: 'coldcard', model: null } }],
       });
 
       // Receive addresses with gap of 20 (satisfied)
@@ -149,6 +152,7 @@ export function registerBlockchainGapLimitTests(): void {
         id: walletId,
         descriptor: null,
         network: "mainnet",
+        devices: [{ device: { type: 'coldcard', model: null } }],
       });
 
       const result = await getBlockchainService().ensureGapLimit(walletId);
@@ -162,6 +166,7 @@ export function registerBlockchainGapLimitTests(): void {
         id: walletId,
         descriptor: mockDescriptor,
         network: "mainnet",
+        devices: [{ device: { type: 'coldcard', model: null } }],
       });
 
       mockPrismaClient.address.findMany.mockResolvedValue([]);
@@ -179,6 +184,7 @@ export function registerBlockchainGapLimitTests(): void {
         id: walletId,
         descriptor: mockDescriptor,
         network: "mainnet",
+        devices: [{ device: { type: 'coldcard', model: null } }],
       });
 
       // All 10 receive addresses are used
@@ -212,6 +218,7 @@ export function registerBlockchainGapLimitTests(): void {
         id: walletId,
         descriptor: mockDescriptor,
         network: "mainnet",
+        devices: [{ device: { type: 'coldcard', model: null } }],
       });
 
       const receiveAddresses = Array.from({ length: 20 }, (_, i) => ({
@@ -246,6 +253,7 @@ export function registerBlockchainGapLimitTests(): void {
         id: walletId,
         descriptor: mockDescriptor,
         network: "mainnet",
+        devices: [{ device: { type: 'coldcard', model: null } }],
       });
 
       const receiveAddresses = Array.from({ length: 25 }, (_, i) => ({
@@ -287,6 +295,7 @@ export function registerBlockchainGapLimitTests(): void {
         id: walletId,
         descriptor: mockDescriptor,
         network: "mainnet",
+        devices: [{ device: { type: 'coldcard', model: null } }],
       });
 
       const receiveAddresses = Array.from({ length: 20 }, (_, i) => ({

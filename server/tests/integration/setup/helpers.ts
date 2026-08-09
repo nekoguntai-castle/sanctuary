@@ -161,13 +161,7 @@ export async function createAndLoginUser(
 export async function createTestWallet(
   app: Express,
   token: string,
-  walletData?: Partial<{
-    name: string;
-    type: string;
-    scriptType: string;
-    network: string;
-    descriptor: string;
-  }>
+  walletData?: { name?: string }
 ): Promise<{ id: string; name: string }> {
   const defaultDescriptor = "wpkh([aabbccdd/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*)";
 
@@ -176,11 +170,30 @@ export async function createTestWallet(
     .set('Authorization', `Bearer ${token}`)
     .send({
       name: walletData?.name ?? 'Test Wallet',
-      type: walletData?.type ?? 'single_sig',
-      scriptType: walletData?.scriptType ?? 'native_segwit',
-      network: walletData?.network ?? 'testnet3',
-      descriptor: walletData?.descriptor ?? defaultDescriptor,
+      type: 'single_sig',
+      scriptType: 'native_segwit',
+      network: 'testnet3',
+      descriptor: defaultDescriptor,
     })
+    .expect(201);
+
+  const fingerprint = Math.random().toString(16).slice(2, 10).padEnd(8, '0');
+  const deviceResponse = await request(app)
+    .post('/api/v1/devices')
+    .set('Authorization', `Bearer ${token}`)
+    .send({
+      type: 'bitbox',
+      label: `Integration signer ${fingerprint}`,
+      fingerprint,
+      xpub: 'tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M',
+      derivationPath: "m/84'/1'/0'",
+    })
+    .expect(201);
+
+  await request(app)
+    .post(`/api/v1/wallets/${response.body.id}/devices`)
+    .set('Authorization', `Bearer ${token}`)
+    .send({ deviceId: deviceResponse.body.id })
     .expect(201);
 
   return { id: response.body.id, name: response.body.name };

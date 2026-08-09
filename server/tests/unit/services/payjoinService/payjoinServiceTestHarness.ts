@@ -88,6 +88,10 @@ export const TEST_PAYJOIN_URL = 'https://example.com/payjoin';
 export const setupPayjoinServiceTest = () => {
   resetPrismaMocks();
   vi.clearAllMocks();
+  mockPrismaClient.wallet.findUnique.mockResolvedValue({
+    id: 'wallet-456',
+    devices: [{ device: { type: 'coldcard', model: null } }],
+  });
   (global.fetch as Mock).mockReset();
   mockDnsLookup.mockReset();
   mockPinnedRequest.mockReset();

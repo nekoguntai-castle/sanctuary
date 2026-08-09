@@ -38,6 +38,7 @@ import type {
   ImportWalletResult,
   ImportedDeviceInfo,
 } from './types';
+import { assertHardwareWalletCapability } from '../hardwareWalletCapabilities';
 
 const log = createLogger('WALLET_IMPORT:SVC');
 
@@ -63,6 +64,18 @@ export async function createWalletTransaction(
 ): Promise<ImportWalletResult> {
   const { parsed, resolutions, name, network, deviceLabels, jsonConfig } = input;
 
+  for (const resolution of resolutions) {
+    if (resolution.originalType) {
+      assertHardwareWalletCapability({ type: resolution.originalType }, 'import');
+    }
+    if (!resolution.willCreate) {
+      assertHardwareWalletCapability({
+        type: resolution.existingType,
+        model: resolution.existingModel,
+      }, 'import');
+    }
+  }
+
   // Determine account purpose from wallet type
   const accountPurpose = accountPurposeForWalletType(parsed.type);
 
@@ -87,9 +100,10 @@ export async function createWalletTransaction(
           `Device ${resolution.fingerprint.slice(0, 8)}`;
         /* v8 ignore stop */
 
-        // originalType may be absent when importing from descriptor-only formats (no device metadata)
-        /* v8 ignore next -- original device metadata is optional for descriptor-only imports */
-        const deviceType = originalDevice?.type || resolution.originalType || 'hardware';
+        // Descriptor-only keys are watch-only unless source metadata proves a
+        // specific signer. A generic hardware label would bypass identity gates.
+        /* v8 ignore next -- resolution supplies the watch-only fallback */
+        const deviceType = originalDevice?.type || resolution.originalType || 'watch_only';
 
         const newDevice = await tx.device.create({
           data: {

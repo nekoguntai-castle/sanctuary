@@ -54,6 +54,7 @@ describe('Address Routes', () => {
       id: walletId,
       descriptor: 'descriptor',
       network: 'testnet',
+      devices: [{ device: { type: 'coldcard', model: null } }],
     });
 
     mockPrismaClient.address.findMany.mockResolvedValue([

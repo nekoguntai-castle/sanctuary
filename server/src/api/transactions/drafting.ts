@@ -26,6 +26,7 @@ import {
 } from '@sanctuary/shared/schemas/batchTransactionRequests';
 import { parseTransactionRequestBody } from './requestValidation';
 import { requireAuthenticatedUser } from '../../middleware/auth';
+import { assertWalletHardwareCapabilityById } from '../../services/hardwareWalletCapabilities';
 
 const router = Router();
 const log = createLogger('TX_DRAFT:ROUTE');
@@ -87,6 +88,7 @@ router.post('/wallets/:walletId/transactions/create', requireWalletAccess('edit'
   if (!wallet) {
     throw new NotFoundError('Wallet not found');
   }
+  await assertWalletHardwareCapabilityById(walletId, 'sign');
 
   // Validate Bitcoin address for the wallet's network
   const network = normalizeLegacyBitcoinNetwork(wallet.network, 'mainnet') as WalletNetwork;
@@ -168,6 +170,7 @@ router.post('/wallets/:walletId/transactions/batch', requireWalletAccess('edit')
   if (!wallet) {
     throw new NotFoundError('Wallet not found');
   }
+  await assertWalletHardwareCapabilityById(walletId, 'sign');
 
   const network = normalizeLegacyBitcoinNetwork(wallet.network, 'mainnet') as WalletNetwork;
   const validatedOutputs = resolveBatchOutputs(outputs, network);
@@ -252,6 +255,8 @@ router.post('/wallets/:walletId/psbt/create', requireWalletAccess('edit'), async
 
   // For now, only support single recipient (can be extended later)
   const { address, amount } = recipients[0];
+
+  await assertWalletHardwareCapabilityById(walletId, 'sign');
 
   // Evaluate vault policies BEFORE creating the PSBT
   const policyResult = await policyEvaluationEngine.evaluatePolicies({

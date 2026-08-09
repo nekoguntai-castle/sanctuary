@@ -35,7 +35,7 @@ describe('deviceRegistration', () => {
 
   it('rejects missing required device identity fields', async () => {
     await expect(registerDevice('user-1', {
-      label: 'Ledger',
+      label: 'Coldcard',
       fingerprint: 'AABBCCDD',
       xpub: 'xpub',
     })).rejects.toThrow(InvalidInputError);
@@ -43,16 +43,71 @@ describe('deviceRegistration', () => {
 
   it('rejects input without any xpub or accounts', async () => {
     await expect(registerDevice('user-1', {
-      type: 'hardware',
-      label: 'Ledger',
+      type: 'coldcard',
+      label: 'Coldcard',
       fingerprint: 'AABBCCDD',
     })).rejects.toThrow('Either xpub or accounts array is required');
   });
 
+  it.each(['ledger', 'jade', 'trezor'])(
+    'blocks %s registration before duplicate lookup or writes',
+    async (type) => {
+      await expect(registerDevice('user-1', {
+        type,
+        label: `${type} device`,
+        fingerprint: 'AABBCCDD',
+        xpub: 'xpub',
+      })).rejects.toMatchObject({
+        statusCode: 403,
+        details: { vendor: type, capability: 'import' },
+      });
+
+      expect(mockDeviceRepository.findByFingerprintWithAccounts).not.toHaveBeenCalled();
+      expect(mockDeviceRepository.createWithOwnerAndAccounts).not.toHaveBeenCalled();
+      expect(mockDeviceRepository.mergeAccounts).not.toHaveBeenCalled();
+    },
+  );
+
+  it('blocks a spoofed non-target merge into an existing target device', async () => {
+    mockDeviceRepository.findByFingerprintWithAccounts.mockResolvedValue({
+      id: 'ledger-1',
+      type: 'ledger',
+      model: { slug: 'ledger-nano-x' },
+      label: 'Ledger',
+      fingerprint: 'aabbccdd',
+      accounts: [],
+    });
+
+    await expect(registerDevice('user-1', {
+      type: 'coldcard',
+      label: 'Spoofed device',
+      fingerprint: 'AABBCCDD',
+      xpub: 'xpub',
+      merge: true,
+    })).rejects.toMatchObject({
+      statusCode: 403,
+      details: { vendor: 'ledger', capability: 'import' },
+    });
+    expect(mockDeviceRepository.mergeAccounts).not.toHaveBeenCalled();
+  });
+
+  it.each(['unknown', 'hardware'])(
+    'blocks generic %s registration before writes',
+    async type => {
+      await expect(registerDevice('user-1', {
+        type,
+        label: 'Unidentified hardware',
+        fingerprint: 'AABBCCDD',
+        xpub: 'xpub',
+      })).rejects.toMatchObject({ statusCode: 403 });
+      expect(mockDeviceRepository.findByFingerprintWithAccounts).not.toHaveBeenCalled();
+    },
+  );
+
   it('rejects malformed multi-account input', async () => {
     await expect(registerDevice('user-1', {
-      type: 'hardware',
-      label: 'Ledger',
+      type: 'coldcard',
+      label: 'Coldcard',
       fingerprint: 'AABBCCDD',
       accounts: [{
         purpose: 'bad-purpose' as any,
@@ -65,12 +120,12 @@ describe('deviceRegistration', () => {
 
   it('creates a new device with normalized legacy account metadata', async () => {
     await expect(registerDevice('user-1', {
-      type: 'hardware',
-      label: 'Ledger',
+      type: 'coldcard',
+      label: 'Coldcard',
       fingerprint: 'AABBCCDD',
       derivationPath: "m/84'/1'/0'",
       xpub: 'xpub',
-      modelSlug: 'ledger-nano',
+      modelSlug: 'coldcard-q',
     })).resolves.toEqual({
       kind: 'created',
       device: { id: 'device-1', accounts: [] },
@@ -80,8 +135,8 @@ describe('deviceRegistration', () => {
     expect(mockDeviceRepository.createWithOwnerAndAccounts).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: 'user-1',
-        type: 'hardware',
-        label: 'Ledger',
+        type: 'coldcard',
+        label: 'Coldcard',
         fingerprint: 'aabbccdd',
         derivationPath: "m/84'/1'/0'",
         xpub: 'xpub',
@@ -94,5 +149,19 @@ describe('deviceRegistration', () => {
         xpub: 'xpub',
       }],
     );
+  });
+
+  it('rejects an unrecognized canonical model before device creation', async () => {
+    mockDeviceRepository.findHardwareModel.mockResolvedValue(null);
+
+    await expect(registerDevice('user-1', {
+      type: 'coldcard',
+      label: 'Coldcard',
+      fingerprint: 'AABBCCDD',
+      xpub: 'xpub',
+      modelSlug: 'not-a-real-model',
+    })).rejects.toThrow('Unknown hardware wallet model');
+
+    expect(mockDeviceRepository.createWithOwnerAndAccounts).not.toHaveBeenCalled();
   });
 });

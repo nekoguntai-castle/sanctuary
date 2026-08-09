@@ -118,7 +118,13 @@ export const registerWalletRepositoryAccessContracts = () => {
       expect(result).toBeTruthy();
       expect(prisma.wallet.findFirst).toHaveBeenCalledWith(expect.objectContaining({
         where: expect.objectContaining({ id: 'wallet-123' }),
-        include: { devices: { include: { device: true } } },
+        include: {
+          devices: {
+            include: {
+              device: { include: { model: { select: { slug: true, name: true } } } },
+            },
+          },
+        },
       }));
     });
   });
@@ -133,7 +139,13 @@ export const registerWalletRepositoryAccessContracts = () => {
           id: 'wallet-123',
           users: { some: { userId: mockUserId, role: 'owner' } },
         }),
-        include: { devices: { include: { device: true } } },
+        include: {
+          devices: {
+            include: {
+              device: { include: { model: { select: { slug: true, name: true } } } },
+            },
+          },
+        },
       }));
     });
   });

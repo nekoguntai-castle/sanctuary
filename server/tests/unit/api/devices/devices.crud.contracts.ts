@@ -123,6 +123,41 @@ export function registerDeviceCrudTests(): void {
   });
 
   describe('PATCH /devices/:id - Update Device', () => {
+    it.each(['ledger', 'jade', 'trezor'])(
+      'prevents %s identity relabeling from bypassing containment',
+      async type => {
+        mockPrismaClient.device.findUnique.mockResolvedValue({
+          id: 'device-1',
+          type,
+          model: null,
+          accounts: [],
+        });
+
+        const response = await request(app)
+          .patch('/api/v1/devices/device-1')
+          .send({ type: 'coldcard' });
+
+        expect(response.status).toBe(403);
+        expect(response.body.details).toMatchObject({
+          vendor: type,
+          capability: 'account_add',
+        });
+        expect(mockPrismaClient.device.update).not.toHaveBeenCalled();
+      },
+    );
+
+    it('returns 404 when an identity update races with device removal', async () => {
+      mockPrismaClient.device.findUnique.mockResolvedValue(null);
+
+      const response = await request(app)
+        .patch('/api/v1/devices/missing')
+        .send({ type: 'coldcard' });
+
+      expect(response.status).toBe(404);
+      expect(response.body.message).toBe('Device not found');
+      expect(mockPrismaClient.device.update).not.toHaveBeenCalled();
+    });
+
     it('should update device label', async () => {
       mockPrismaClient.device.update.mockResolvedValue({
         id: 'device-1',
@@ -146,21 +181,21 @@ export function registerDeviceCrudTests(): void {
     it('should update device derivationPath and type when provided', async () => {
       mockPrismaClient.device.update.mockResolvedValue({
         id: 'device-1',
-        type: 'ledger',
+        type: 'coldcard',
         label: 'My Trezor',
         derivationPath: "m/84'/0'/1'",
       });
 
       const response = await request(app)
         .patch('/api/v1/devices/device-1')
-        .send({ derivationPath: "m/84'/0'/1'", type: 'ledger' });
+        .send({ derivationPath: "m/84'/0'/1'", type: 'coldcard' });
 
       expect(response.status).toBe(200);
       expect(mockPrismaClient.device.update).toHaveBeenCalledWith({
         where: { id: 'device-1' },
         data: {
           derivationPath: "m/84'/0'/1'",
-          type: 'ledger',
+          type: 'coldcard',
         },
         include: { model: true },
       });
@@ -169,26 +204,26 @@ export function registerDeviceCrudTests(): void {
     it('should update device with model slug', async () => {
       mockPrismaClient.hardwareDeviceModel.findUnique.mockResolvedValue({
         id: 'model-1',
-        slug: 'trezor-model-t',
-        name: 'Model T',
+        slug: 'coldcard-q',
+        name: 'Coldcard Q',
       });
       mockPrismaClient.device.update.mockResolvedValue({
         id: 'device-1',
-        type: 'trezor-model-t',
-        label: 'My Trezor',
+        type: 'coldcard-q',
+        label: 'My Coldcard',
         modelId: 'model-1',
       });
 
       const response = await request(app)
         .patch('/api/v1/devices/device-1')
-        .send({ modelSlug: 'trezor-model-t' });
+        .send({ modelSlug: 'coldcard-q' });
 
       expect(response.status).toBe(200);
       expect(mockPrismaClient.device.update).toHaveBeenCalledWith({
         where: { id: 'device-1' },
         data: expect.objectContaining({
           modelId: 'model-1',
-          type: 'trezor-model-t',
+          type: 'coldcard-q',
         }),
         include: { model: true },
       });

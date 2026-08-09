@@ -20,6 +20,7 @@ import { getNetwork } from '../bitcoin/utils';
 import { normalizeLegacyBitcoinNetwork } from '../bitcoin/networks';
 import { PayjoinErrors } from './types';
 import type { PayjoinResult } from './types';
+import { assertWalletHardwareCapabilityById } from '../hardwareWalletCapabilities';
 
 const log = createLogger('PAYJOIN:SVC_RECV');
 
@@ -52,6 +53,8 @@ export async function processPayjoinRequest(
         errorMessage: 'Address not found',
       };
     }
+
+    await assertWalletHardwareCapabilityById(address.wallet.id, 'sign');
 
     const network = getNetwork(normalizeLegacyBitcoinNetwork(address.wallet.network, 'mainnet'));
 

@@ -25,7 +25,7 @@ export function registerWalletCreateAccountSelectionTests(): void {
       id,
       userId,
       fingerprint,
-      type: "trezor",
+      type: "coldcard",
       label: `Device ${id}`,
       xpub: accounts[0]?.xpub || "legacy_xpub",
       derivationPath: accounts[0]?.derivationPath || "m/84'/0'/0'",
@@ -33,6 +33,36 @@ export function registerWalletCreateAccountSelectionTests(): void {
     });
 
     describe("Single-sig wallet creation", () => {
+      it.each(["ledger", "jade", "trezor"])(
+        "blocks %s before descriptor construction or wallet writes",
+        async (type) => {
+          const device = {
+            ...createMockDevice("device-1", "abc12345", [{
+              purpose: "single_sig",
+              scriptType: "native_segwit",
+              derivationPath: "m/84'/0'/0'",
+              xpub: "xpub",
+            }]),
+            type,
+          };
+          mockPrismaClient.device.findMany.mockResolvedValue([device]);
+
+          await expect(createWallet(userId, {
+            name: "Blocked Wallet",
+            type: "single_sig",
+            scriptType: "native_segwit",
+            deviceIds: ["device-1"],
+          })).rejects.toMatchObject({
+            statusCode: 403,
+            details: { vendor: type, capability: "import" },
+          });
+
+          expect(mockBuildDescriptorFromDevices).not.toHaveBeenCalled();
+          expect(mockPrismaClient.wallet.create).not.toHaveBeenCalled();
+          expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
+        },
+      );
+
       it("rejects legacy or unknown wallet network values before loading devices", async () => {
         await expect(
           createWallet(userId, {
@@ -592,7 +622,7 @@ export function registerWalletCreateAccountSelectionTests(): void {
           id: "device-1",
           userId,
           fingerprint: "abc12345",
-          type: "trezor",
+          type: "coldcard",
           label: "Legacy Device",
           xpub: "legacy_xpub",
           derivationPath: "m/84'/0'/0'",
@@ -641,7 +671,7 @@ export function registerWalletCreateAccountSelectionTests(): void {
           id: "device-1",
           userId,
           fingerprint: "abc12345",
-          type: "ledger",
+          type: "coldcard",
           label: "Legacy Ledger",
           xpub: "legacy_xpub",
           derivationPath: "m/84'/0'/0'",
@@ -671,7 +701,7 @@ export function registerWalletCreateAccountSelectionTests(): void {
           id: "device-1",
           userId,
           fingerprint: "abc12345",
-          type: "trezor",
+          type: "coldcard",
           label: "No Path Device",
           xpub: "xpub_fallback_no_path",
           derivationPath: "",

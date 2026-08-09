@@ -76,7 +76,7 @@ vi.mock('../../src/services/hardwareWallet/adapters/jade', () => ({
 }));
 
 describe('hardwareWallet runtime', () => {
-  it('lazy-loads each adapter type and exposes connected devices helper', async () => {
+  it('blocks unverified adapters before lazy loading while preserving approved adapters', async () => {
     // Other hardware-wallet tests mock this singleton. Import a fresh runtime
     // here so sharded coverage cannot inherit an adapter registry populated by
     // a previous test file and skip the lazy-loader callbacks.
@@ -85,14 +85,14 @@ describe('hardwareWallet runtime', () => {
       '../../src/services/hardwareWallet/runtime'
     );
 
-    await expect(hardwareWalletService.connect('ledger')).resolves.toMatchObject({ type: 'ledger' });
-    await expect(hardwareWalletService.connect('trezor')).resolves.toMatchObject({ type: 'trezor' });
+    await expect(hardwareWalletService.connect('ledger')).rejects.toThrow('temporarily unavailable');
+    await expect(hardwareWalletService.connect('trezor')).rejects.toThrow('temporarily unavailable');
     await expect(hardwareWalletService.connect('bitbox')).resolves.toMatchObject({ type: 'bitbox' });
-    await expect(hardwareWalletService.connect('jade')).resolves.toMatchObject({ type: 'jade' });
+    await expect(hardwareWalletService.connect('jade')).rejects.toThrow('temporarily unavailable');
 
     const devices = await getConnectedDevices();
     const deviceTypes = devices.map((device) => device.type).sort();
-    expect(deviceTypes).toEqual(['bitbox', 'jade', 'ledger', 'trezor']);
+    expect(deviceTypes).toEqual(['bitbox']);
     await hardwareWalletService.disconnect();
   });
 });

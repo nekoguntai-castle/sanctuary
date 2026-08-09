@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   app,
+  attachNonTargetTestSigner,
   authHeader,
   createAndLoginUser,
   createTestUser,
@@ -296,6 +297,7 @@ export function registerWalletCoreCrudTests(): void {
           name: 'Test Wallet',
           type: 'single_sig',
           scriptType: 'native_segwit',
+          network: 'testnet3',
           descriptor: "wpkh([old]tpubOld/0/*)",
           users: {
             create: {
@@ -305,6 +307,7 @@ export function registerWalletCoreCrudTests(): void {
           },
         },
       });
+      await attachNonTargetTestSigner(wallet.id, userId);
 
       const newDescriptor = "wpkh([aabbccdd/84'/1'/0']tpubNew/0/*)";
       const response = await request(app)

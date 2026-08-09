@@ -40,7 +40,7 @@ export async function resolveDevices(
   originalDevices?: JsonImportDevice[]
 ): Promise<DeviceResolution[]> {
   // Fetch all user's existing devices
-  const existingDevices = await deviceRepository.findByUserId(userId);
+  const existingDevices = await deviceRepository.findByUserIdWithModel(userId);
 
   // Create maps for quick lookup
   const deviceByFingerprint = new Map(
@@ -67,6 +67,9 @@ export async function resolveDevices(
       existingDeviceId: existing?.id || null,
       existingDeviceLabel: existing?.label || null,
       willCreate: !existing,
+      existingType: existing?.type,
+      existingModel: existing?.model,
+      originalType: originalDevice?.type,
     };
 
     if (!existing) {
@@ -78,7 +81,9 @@ export async function resolveDevices(
       const uniqueLabel = generateUniqueLabel(baseLabel, allUsedLabels);
 
       resolution.suggestedLabel = uniqueLabel;
-      resolution.originalType = originalDevice?.type || 'unknown';
+      // Descriptor-only imports are watch-only unless the source carries
+      // explicit hardware provenance. Do not invent a generic hardware signer.
+      resolution.originalType = originalDevice?.type || 'watch_only';
 
       // Track this label as assigned
       assignedLabels.add(uniqueLabel.toLowerCase());

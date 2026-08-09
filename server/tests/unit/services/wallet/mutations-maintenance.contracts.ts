@@ -27,6 +27,21 @@ import {
 
 export function registerWalletMutationMaintenanceTests(): void {
   describe('wallet mutation and maintenance operations', () => {
+    it.each(['ledger', 'jade', 'trezor'])(
+      'blocks descriptor replacement for %s wallets before persistence',
+      async type => {
+        mockPrismaClient.walletUser.findFirst.mockResolvedValue({ role: 'owner' });
+        mockPrismaClient.wallet.findUnique.mockResolvedValue({
+          id: 'wallet-1',
+          devices: [{ device: { type } }],
+        });
+
+        await expect(updateWallet('wallet-1', 'owner-1', { descriptor: 'replacement' }))
+          .rejects.toMatchObject({ statusCode: 403 });
+        expect(mockPrismaClient.wallet.update).not.toHaveBeenCalled();
+      },
+    );
+
     it('updates wallet metadata for owners and returns computed fields', async () => {
       const walletData = {
         id: 'wallet-1',
@@ -55,6 +70,61 @@ export function registerWalletMutationMaintenanceTests(): void {
       expect(updated.deviceCount).toBe(1);
       expect(updated.addressCount).toBe(2);
       expect(updated.isShared).toBe(true);
+    });
+
+    it('updates safe metadata but strips derivation material when display is disabled', async () => {
+      const walletData = {
+        id: 'wallet-ledger',
+        name: 'Renamed Ledger Wallet',
+        type: 'single_sig',
+        scriptType: 'native_segwit',
+        network: 'mainnet',
+        quorum: null,
+        totalSigners: null,
+        descriptor: 'desc',
+        fingerprint: 'abcd1234',
+        createdAt: new Date('2025-01-01T00:00:00.000Z'),
+        devices: [{ id: 'd1' }],
+        addresses: [{ id: 'a1', address: 'bc1qsecret' }],
+        group: null,
+        users: [{ userId: 'owner-1' }],
+      };
+      mockPrismaClient.walletUser.findFirst.mockResolvedValueOnce({ role: 'owner' });
+      mockPrismaClient.wallet.update.mockResolvedValueOnce(walletData);
+      mockPrismaClient.wallet.findFirst.mockResolvedValueOnce(walletData);
+      mockPrismaClient.wallet.findUnique.mockResolvedValueOnce({
+        id: 'wallet-ledger',
+        devices: [{ device: { type: 'ledger' } }],
+      });
+      mockPrismaClient.uTXO.aggregate.mockResolvedValueOnce({ _sum: { amount: 0n } });
+
+      const updated = await updateWallet(
+        'wallet-ledger',
+        'owner-1',
+        { name: 'Renamed Ledger Wallet' },
+      );
+
+      expect(updated.addresses).toEqual([]);
+      expect(updated.descriptor).toBeNull();
+      expect(updated.fingerprint).toBeNull();
+      expect(updated.addressCount).toBe(1);
+    });
+
+    it('propagates unexpected signer-provenance lookup failures', async () => {
+      const walletData = {
+        id: 'wallet-1',
+        devices: [],
+        addresses: [],
+        group: null,
+        users: [{ userId: 'owner-1' }],
+      };
+      mockPrismaClient.walletUser.findFirst.mockResolvedValueOnce({ role: 'owner' });
+      mockPrismaClient.wallet.update.mockResolvedValueOnce(walletData);
+      mockPrismaClient.wallet.findFirst.mockResolvedValueOnce(walletData);
+      mockPrismaClient.wallet.findUnique.mockRejectedValueOnce(new Error('database unavailable'));
+
+      await expect(updateWallet('wallet-1', 'owner-1', { name: 'Name' }))
+        .rejects.toThrow('database unavailable');
     });
 
     it('falls back to zero balance and private sharing metadata for owner updates', async () => {
@@ -180,6 +250,7 @@ export function registerWalletMutationMaintenanceTests(): void {
       mockPrismaClient.device.findFirst.mockResolvedValueOnce({
         id: 'device-1',
         userId: 'user-1',
+        type: 'coldcard',
         fingerprint: 'aabbccdd',
         xpub: 'xpub-device-1',
         derivationPath: "m/84'/0'/0'",
@@ -215,6 +286,7 @@ export function registerWalletMutationMaintenanceTests(): void {
       mockPrismaClient.device.findFirst.mockResolvedValueOnce({
         id: 'device-1',
         userId: 'user-1',
+        type: 'coldcard',
         fingerprint: 'aabbccdd',
         xpub: 'xpub-device-1',
         derivationPath: "m/84'/0'/0'",
@@ -240,6 +312,7 @@ export function registerWalletMutationMaintenanceTests(): void {
             device: {
               id: 'device-existing',
               userId: 'user-1',
+              type: 'coldcard',
               fingerprint: 'eeeeffff',
               xpub: 'xpub-existing',
               derivationPath: "m/48'/0'/0'/2'",
@@ -250,6 +323,7 @@ export function registerWalletMutationMaintenanceTests(): void {
       mockPrismaClient.device.findFirst.mockResolvedValueOnce({
         id: 'device-new',
         userId: 'user-1',
+        type: 'coldcard',
         fingerprint: 'aaaabbbb',
         xpub: 'xpub-new',
         derivationPath: "m/48'/0'/0'/2'",
@@ -278,6 +352,7 @@ export function registerWalletMutationMaintenanceTests(): void {
             device: {
               id: 'device-existing',
               userId: 'user-1',
+              type: 'coldcard',
               fingerprint: '11112222',
               xpub: 'xpub-existing',
               derivationPath: "m/48'/0'/0'/2'",
@@ -288,6 +363,7 @@ export function registerWalletMutationMaintenanceTests(): void {
       mockPrismaClient.device.findFirst.mockResolvedValueOnce({
         id: 'device-new',
         userId: 'user-1',
+        type: 'coldcard',
         fingerprint: '33334444',
         xpub: 'xpub-new',
         derivationPath: '',
@@ -344,6 +420,7 @@ export function registerWalletMutationMaintenanceTests(): void {
             device: {
               id: 'device-1',
               userId: 'user-1',
+              type: 'coldcard',
               fingerprint: 'aabbccdd',
               xpub: 'xpub-device-1',
               derivationPath: "m/84'/0'/0'",
@@ -354,6 +431,7 @@ export function registerWalletMutationMaintenanceTests(): void {
       mockPrismaClient.device.findFirst.mockResolvedValueOnce({
         id: 'device-1',
         userId: 'user-1',
+        type: 'coldcard',
         fingerprint: 'aabbccdd',
         xpub: 'xpub-device-1',
         derivationPath: "m/84'/0'/0'",

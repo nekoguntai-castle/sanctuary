@@ -99,6 +99,20 @@ export async function findByUserId(userId: string): Promise<Device[]> {
   });
 }
 
+/** Find all accessible devices with canonical model identity for safety checks. */
+export async function findByUserIdWithModel(userId: string) {
+  return prisma.device.findMany({
+    where: {
+      OR: [
+        { userId },
+        { users: { some: { userId } } },
+      ],
+    },
+    include: { model: true },
+    orderBy: { createdAt: 'desc' },
+  });
+}
+
 /**
  * Find all devices for a user with associations
  */
@@ -715,7 +729,7 @@ export async function findByIdsAndUserWithAccounts(ids: string[], userId: string
       id: { in: ids },
       userId,
     },
-    include: { accounts: true },
+    include: { accounts: true, model: true },
   });
 }
 
@@ -728,6 +742,7 @@ export async function findByIdAndUser(
 ): Promise<Device | null> {
   return prisma.device.findFirst({
     where: { id: deviceId, userId },
+    include: { model: true },
   });
 }
 
@@ -737,6 +752,7 @@ export const deviceRepository = {
   findByIdWithAssociations,
   findByFingerprint,
   findByUserId,
+  findByUserIdWithModel,
   findByUserIdWithAssociations,
   findByWalletId,
   hasUserAccess,

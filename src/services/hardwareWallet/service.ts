@@ -26,8 +26,28 @@ import type {
   TransactionForSigning,
   XpubResult,
 } from './types';
+import {
+  HARDWARE_WALLET_CAPABILITY_MANIFEST_ID,
+  HARDWARE_WALLET_CAPABILITY_ROWS,
+  type HardwareWalletVendor,
+} from '@sanctuary/shared/constants/hardwareWalletCapabilities';
 
 const log = createLogger('HardwareWalletService');
+
+function assertHardwareActionEnabled(
+  type: DeviceType,
+  capability: 'import' | 'account_add' | 'display' | 'sign'
+): void {
+  const vendor = type as HardwareWalletVendor;
+  const blockedRow = HARDWARE_WALLET_CAPABILITY_ROWS.find(
+    row => row.vendor === vendor && row.capability === capability
+  );
+  if (!blockedRow) return;
+
+  throw new Error(
+    `Hardware wallet connection is temporarily unavailable (${HARDWARE_WALLET_CAPABILITY_MANIFEST_ID}): ${blockedRow.reason}`
+  );
+}
 type AdapterLoader = () => Promise<DeviceAdapter>;
 export type StandardXpubResult = XpubResult & {
   purpose: DeviceAccountPurposeValue;
@@ -214,6 +234,8 @@ export class HardwareWalletService {
       }
     }
 
+    assertHardwareActionEnabled(resolvedType, 'import');
+
     await this.ensureAdapter(resolvedType);
     const adapter = this.adapters.get(resolvedType);
     if (!adapter) {
@@ -264,6 +286,7 @@ export class HardwareWalletService {
     if (!this.activeAdapter) {
       throw new Error('No device connected');
     }
+    assertHardwareActionEnabled(this.activeAdapter.type, 'account_add');
     return this.activeAdapter.getXpub(path);
   }
 
@@ -310,6 +333,7 @@ export class HardwareWalletService {
     if (!this.activeAdapter) {
       throw new Error('No device connected');
     }
+    assertHardwareActionEnabled(this.activeAdapter.type, 'account_add');
 
     const results: StandardXpubResult[] = [];
     const failures: XpubFetchFailure[] = [];
@@ -362,6 +386,7 @@ export class HardwareWalletService {
     if (!this.activeAdapter) {
       throw new Error('No device connected');
     }
+    assertHardwareActionEnabled(this.activeAdapter.type, 'sign');
     return this.activeAdapter.signPSBT(request);
   }
 
@@ -377,6 +402,7 @@ export class HardwareWalletService {
     if (!this.activeAdapter.verifyAddress) {
       throw new Error(`${this.activeAdapter.displayName} does not support address verification`);
     }
+    assertHardwareActionEnabled(this.activeAdapter.type, 'display');
     return this.activeAdapter.verifyAddress(path, address);
   }
 

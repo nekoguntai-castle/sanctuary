@@ -16,6 +16,7 @@ import { asyncHandler } from '../../errors/errorHandler';
 import { ConflictError, ErrorCodes, InvalidInputError, NotFoundError } from '../../errors/ApiError';
 import { deviceRepository } from '../../repositories';
 import { createLogger } from '../../utils/logger';
+import { assertHardwareWalletCapability } from '../../services/hardwareWalletCapabilities';
 
 const router = Router();
 const log = createLogger('DEVICE:ROUTE:ACCOUNTS');
@@ -59,6 +60,12 @@ router.post(
   asyncHandler(async (req, res) => {
     const { id } = req.params;
     const { purpose, scriptType, derivationPath, xpub } = req.body;
+
+    const device = await deviceRepository.findByIdWithModelAndAccounts(id);
+    if (!device) {
+      throw new NotFoundError('Device not found');
+    }
+    assertHardwareWalletCapability(device, 'account_add');
 
     // Same purpose/script accounts are allowed when the coin-type path differs
     // (for example mainnet m/84'/0'/0' and testnet/signet m/84'/1'/0').

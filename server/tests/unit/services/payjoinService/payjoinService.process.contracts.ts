@@ -99,6 +99,23 @@ export const registerPayjoinProcessContracts = () => {
       expect(result.errorMessage).toContain('Address not found');
     });
 
+    it.each(['ledger', 'jade', 'trezor', 'watch_only'])(
+      'blocks %s receiver proposal construction before UTXO selection',
+      async type => {
+        mockPrismaClient.address.findUnique.mockResolvedValue(mockAddress);
+        mockPrismaClient.wallet.findUnique.mockResolvedValue({
+          id: walletId,
+          devices: [{ device: { type, model: null } }],
+        });
+
+        const result = await processPayjoinRequest(addressId, 'cHNidP8=', 1);
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe(PayjoinErrors.RECEIVER_ERROR);
+        expect(mockPrismaClient.uTXO.findMany).not.toHaveBeenCalled();
+      },
+    );
+
     it('falls back to mainnet when address wallet network is missing', async () => {
       mockPrismaClient.address.findUnique.mockResolvedValue({
         ...mockAddress,

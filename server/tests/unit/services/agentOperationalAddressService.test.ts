@@ -7,6 +7,7 @@ const {
   mockFindByWalletIdAndAddressWithWallet,
   mockCreateMany,
   mockFindWalletById,
+  mockFindWalletWithDevices,
   mockWithAgentFundingLock,
   mockDeriveAddressFromDescriptor,
 } = vi.hoisted(() => ({
@@ -15,6 +16,7 @@ const {
   mockFindByWalletIdAndAddressWithWallet: vi.fn(),
   mockCreateMany: vi.fn(),
   mockFindWalletById: vi.fn(),
+  mockFindWalletWithDevices: vi.fn(),
   mockWithAgentFundingLock: vi.fn(),
   mockDeriveAddressFromDescriptor: vi.fn(),
 }));
@@ -31,6 +33,7 @@ vi.mock("../../../src/repositories", () => ({
   },
   walletRepository: {
     findById: mockFindWalletById,
+    findByIdWithDevices: mockFindWalletWithDevices,
   },
 }));
 
@@ -72,6 +75,10 @@ describe("agentOperationalAddressService", () => {
     mockWithAgentFundingLock.mockImplementation(
       async (_agentId: string, fn: () => Promise<unknown>) => fn(),
     );
+    mockFindWalletWithDevices.mockResolvedValue({
+      id: "operational-wallet",
+      devices: [{ device: { type: 'coldcard', model: null } }],
+    });
     mockCreateMany.mockResolvedValue({ count: INITIAL_ADDRESS_COUNT });
     mockDeriveAddressFromDescriptor.mockImplementation(
       (_descriptor: string, index: number, options: { change?: boolean }) => ({

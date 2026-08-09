@@ -19,6 +19,7 @@ import type {
   AccountComparisonResult,
   DeviceAccountInput,
 } from './deviceAccountConflicts';
+import { assertHardwareWalletCapability } from './hardwareWalletCapabilities';
 
 const log = createLogger('DEVICE:SVC_REGISTRATION');
 
@@ -86,6 +87,8 @@ export async function registerDevice(
     throw new InvalidInputError('Either xpub or accounts array is required');
   }
 
+  assertHardwareWalletCapability({ type, model: modelSlug }, 'import');
+
   const normalized = normalizeIncomingAccounts(accounts, xpub, derivationPath);
   if ('error' in normalized) {
     throw new InvalidInputError(normalized.error);
@@ -95,6 +98,7 @@ export async function registerDevice(
   const existingDevice = await deviceRepository.findByFingerprintWithAccounts(fingerprint);
 
   if (existingDevice) {
+    assertHardwareWalletCapability(existingDevice, 'import');
     return handleExistingDevice(existingDevice, incomingAccounts, fingerprint, merge);
   }
 
@@ -183,9 +187,13 @@ async function createNewDevice(
   let modelId: string | undefined;
   if (input.modelSlug) {
     const model = await deviceRepository.findHardwareModel(input.modelSlug);
-    if (model) {
-      modelId = model.id;
+    if (!model) {
+      throw new InvalidInputError(
+        `Unknown hardware wallet model: ${input.modelSlug}`,
+        'modelSlug',
+      );
     }
+    modelId = model.id;
   }
 
   const primaryAccount = input.incomingAccounts.find(

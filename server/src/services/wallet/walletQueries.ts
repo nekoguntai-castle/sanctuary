@@ -11,12 +11,23 @@ import {
   transactionRepository,
   addressRepository,
 } from "../../repositories";
-import { WalletNotFoundError } from "../../errors";
+import { ForbiddenError, WalletNotFoundError } from "../../errors";
 import type { WalletRole, WalletWithBalance } from "./types";
 import {
   canWalletRoleEdit,
   parseWalletRole,
 } from "@sanctuary/shared/constants/walletRoles";
+import { assertWalletHardwareCapabilityById } from "../hardwareWalletCapabilities";
+
+async function canDisplayWalletDerivationMaterial(walletId: string): Promise<boolean> {
+  try {
+    await assertWalletHardwareCapabilityById(walletId, "display");
+    return true;
+  } catch (error) {
+    if (error instanceof ForbiddenError) return false;
+    throw error;
+  }
+}
 
 /**
  * Get all wallets for a user
@@ -51,7 +62,7 @@ export async function getUserWallets(
     [...balanceMapBigint.entries()].map(([id, val]) => [id, Number(val)]),
   );
 
-  return wallets.map((wallet) => {
+  return Promise.all(wallets.map(async (wallet) => {
     // Get balance from aggregate query
     const balance = balanceMap.get(wallet.id) || 0;
 
@@ -74,6 +85,7 @@ export async function getUserWallets(
     }
 
     const canEdit = canWalletRoleEdit(userRole);
+    const canDisplay = await canDisplayWalletDerivationMaterial(wallet.id);
 
     return {
       id: wallet.id,
@@ -83,8 +95,8 @@ export async function getUserWallets(
       network: wallet.network,
       quorum: wallet.quorum,
       totalSigners: wallet.totalSigners,
-      descriptor: wallet.descriptor,
-      fingerprint: wallet.fingerprint,
+      descriptor: canDisplay ? wallet.descriptor : null,
+      fingerprint: canDisplay ? wallet.fingerprint : null,
       createdAt: wallet.createdAt,
       balance,
       deviceCount: wallet.devices.length,
@@ -106,7 +118,7 @@ export async function getUserWallets(
       userRole,
       canEdit,
     };
-  });
+  }));
 }
 
 /**
@@ -168,6 +180,7 @@ export async function getWalletById(
   }
 
   const canEdit = canWalletRoleEdit(userRole);
+  const canDisplay = await canDisplayWalletDerivationMaterial(wallet.id);
 
   return {
     id: wallet.id,
@@ -177,8 +190,8 @@ export async function getWalletById(
     network: wallet.network,
     quorum: wallet.quorum,
     totalSigners: wallet.totalSigners,
-    descriptor: wallet.descriptor,
-    fingerprint: wallet.fingerprint,
+    descriptor: canDisplay ? wallet.descriptor : null,
+    fingerprint: canDisplay ? wallet.fingerprint : null,
     createdAt: wallet.createdAt,
     balance,
     deviceCount: wallet.devices.length,

@@ -765,6 +765,7 @@ jobs:
           bash -n tests/ci/workflows-test-only.test.sh
           # Node CI helper tests.
           node tests/ci/check-github-action-runtimes.test.mjs
+          node tests/ci/check-wallet-safety-classifier.test.mjs
           node tests/ci/check-npm-install-scripts.test.mjs
           # Also runs the call-site gate against the real checkout, so an
           # unprotected or unreviewed `npm ci` fails here.

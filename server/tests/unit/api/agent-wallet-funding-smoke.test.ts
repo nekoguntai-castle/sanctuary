@@ -52,6 +52,7 @@ const smoke = vi.hoisted(() => {
     },
     walletRepository: {
       findById: vi.fn(),
+      findByIdWithDevices: vi.fn(),
       findByIdWithSigningDevices: vi.fn(),
       hasAccess: vi.fn(),
     },
@@ -311,6 +312,10 @@ describe('agent wallet funding route smoke', () => {
     smoke.walletRepository.findByIdWithSigningDevices.mockResolvedValue({
       id: smoke.ids.fundingWalletId,
       devices: [{ deviceId: smoke.ids.signerDeviceId }],
+    });
+    smoke.walletRepository.findByIdWithDevices.mockResolvedValue({
+      id: smoke.ids.fundingWalletId,
+      devices: [{ device: { type: 'coldcard', model: null } }],
     });
     smoke.walletRepository.hasAccess.mockResolvedValue(true);
 

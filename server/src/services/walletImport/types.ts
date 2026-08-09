@@ -33,6 +33,8 @@ export interface DeviceResolution {
   willCreate: boolean;
   suggestedLabel?: string;
   originalType?: string;
+  existingType?: string;
+  existingModel?: { slug?: string | null; name?: string | null } | null;
 }
 
 export interface ImportValidationResult {

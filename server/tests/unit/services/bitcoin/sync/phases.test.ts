@@ -682,6 +682,7 @@ describe('Sync Phases', () => {
         id: 'test-wallet',
         descriptor: mockDescriptor,
         network: 'mainnet',
+        devices: [{ device: { type: 'coldcard', model: null } }],
       });
     });
 

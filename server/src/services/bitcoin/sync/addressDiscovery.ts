@@ -13,6 +13,8 @@ import { ADDRESS_GAP_LIMIT } from "../../../constants";
 import * as addressDerivation from "../addressDerivation";
 import { parseAddressDerivationPath } from "@sanctuary/shared/utils/bitcoin";
 import type { WalletNetwork } from "../../wallet/types";
+import { assertWalletHardwareCapabilityById } from "../../hardwareWalletCapabilities";
+import { ForbiddenError } from "../../../errors";
 
 const log = createLogger("BITCOIN:SVC_ADDR_DISCOVERY");
 
@@ -108,6 +110,18 @@ export async function ensureGapLimit(
   if (!wallet?.descriptor) {
     log.debug(`Wallet ${walletId} has no descriptor, skipping gap limit check`);
     return [];
+  }
+
+  try {
+    await assertWalletHardwareCapabilityById(walletId, "display");
+  } catch (error) {
+    if (error instanceof ForbiddenError) {
+      log.warn("Skipping gap expansion while wallet address display is disabled", {
+        walletId,
+      });
+      return [];
+    }
+    throw error;
   }
 
   // Get all addresses with their used status

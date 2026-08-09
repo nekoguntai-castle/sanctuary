@@ -24,6 +24,7 @@ import {
   type DerivationAddressChain,
 } from "@sanctuary/shared/utils/bitcoin";
 import type { WalletNetwork } from "../../services/wallet/types";
+import { assertWalletHardwareCapabilityById } from "../../services/hardwareWalletCapabilities";
 
 const router = Router();
 const log = createLogger("ADDRESS:ROUTE");
@@ -85,6 +86,12 @@ router.get(
 
     if (!wallet) {
       throw new NotFoundError("Wallet not found");
+    }
+
+    // Used-address history remains viewable for recovery/audit. Any response
+    // that can surface a fresh deposit destination requires display evidence.
+    if (used !== "true") {
+      await assertWalletHardwareCapabilityById(walletId, "display");
     }
 
     const chain = chainFromQueryValue(change);
@@ -251,6 +258,8 @@ router.post(
     if (!wallet.descriptor) {
       throw new ValidationError("Wallet does not have a descriptor");
     }
+
+    await assertWalletHardwareCapabilityById(walletId, "display");
 
     // Get current max index for receive and change addresses
     const existingAddresses =

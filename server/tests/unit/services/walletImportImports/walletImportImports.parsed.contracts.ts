@@ -93,7 +93,7 @@ export const registerWalletImportParsedContracts = () => {
         {
           id: 'device-existing-parsed',
           userId,
-          type: 'ledger',
+          type: 'coldcard',
           label: 'Existing Parsed',
           fingerprint: 'abcd1234',
           derivationPath: "m/84'/1'/0'",
@@ -146,7 +146,7 @@ export const registerWalletImportParsedContracts = () => {
         {
           id: 'device-existing-parsed',
           userId,
-          type: 'ledger',
+          type: 'coldcard',
           label: 'Existing Parsed',
           fingerprint: 'abcd1234',
           derivationPath: "m/84'/0'/0'",

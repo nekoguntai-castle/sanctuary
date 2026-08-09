@@ -56,6 +56,42 @@ export function registerDeviceAccountTests(): void {
       xpub: 'xpub_multisig...',
     };
 
+    it.each(['ledger', 'jade', 'trezor'])(
+      'blocks account addition for %s before duplicate lookup or write',
+      async (type) => {
+        mockPrismaClient.device.findUnique.mockResolvedValue({
+          id: 'device-1',
+          type,
+          model: null,
+          accounts: [],
+        });
+
+        const response = await request(app)
+          .post('/api/v1/devices/device-1/accounts')
+          .send(newAccount);
+
+        expect(response.status).toBe(403);
+        expect(response.body.details).toMatchObject({
+          vendor: type,
+          capability: 'account_add',
+        });
+        expect(mockPrismaClient.deviceAccount.findFirst).not.toHaveBeenCalled();
+        expect(mockPrismaClient.deviceAccount.create).not.toHaveBeenCalled();
+      },
+    );
+
+    it('returns 404 before account lookup when the device no longer exists', async () => {
+      mockPrismaClient.device.findUnique.mockResolvedValue(null);
+
+      const response = await request(app)
+        .post('/api/v1/devices/missing/accounts')
+        .send(newAccount);
+
+      expect(response.status).toBe(404);
+      expect(response.body.message).toBe('Device not found');
+      expect(mockPrismaClient.deviceAccount.findFirst).not.toHaveBeenCalled();
+    });
+
     it('should add a new account to existing device', async () => {
       mockPrismaClient.deviceAccount.findFirst.mockResolvedValue(null); // No existing account
       mockPrismaClient.deviceAccount.create.mockResolvedValue({

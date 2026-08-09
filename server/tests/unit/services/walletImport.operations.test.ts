@@ -42,8 +42,8 @@ describe('Wallet Import Service - Operations', () => {
       mockPrismaClient.wallet.findMany.mockResolvedValue([]);
 
       const devices = [
-        { id: 'dev1', userId, type: 'unknown', label: 'Device 1', fingerprint: 'aaaa1111', derivationPath: "m/48'/0'/0'/2'", xpub: 'xpub6E1...' },
-        { id: 'dev2', userId, type: 'unknown', label: 'Device 2', fingerprint: 'bbbb2222', derivationPath: "m/48'/0'/0'/2'", xpub: 'xpub6E2...' },
+        { id: 'dev1', userId, type: 'coldcard', label: 'Device 1', fingerprint: 'aaaa1111', derivationPath: "m/48'/0'/0'/2'", xpub: 'xpub6E1...' },
+        { id: 'dev2', userId, type: 'coldcard', label: 'Device 2', fingerprint: 'bbbb2222', derivationPath: "m/48'/0'/0'/2'", xpub: 'xpub6E2...' },
       ];
       setupDeviceMocks(devices);
       //;
@@ -63,6 +63,10 @@ describe('Wallet Import Service - Operations', () => {
       await walletImport.importFromDescriptor(userId, {
         descriptor,
         name: 'Multisig',
+      });
+
+      expect(mockPrismaClient.device.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ type: 'watch_only' }),
       });
 
       expect(mockPrismaClient.walletDevice.createMany).toHaveBeenCalledWith(
@@ -104,7 +108,7 @@ describe('Wallet Import Service - Operations', () => {
       const device = {
         id: 'device-addr',
         userId,
-        type: 'unknown',
+        type: 'coldcard',
         label: 'Device',
         fingerprint: 'abcd1234',
         derivationPath: "m/84'/0'/0'",
@@ -167,7 +171,7 @@ describe('Wallet Import Service - Operations', () => {
       const device = {
         id: 'device-fail',
         userId,
-        type: 'unknown',
+        type: 'coldcard',
         label: 'Device',
         fingerprint: 'abcd1234',
         derivationPath: "m/84'/0'/0'",
@@ -223,7 +227,7 @@ describe('Wallet Import Service - Operations', () => {
       const device = {
         id: 'device-tx',
         userId,
-        type: 'unknown',
+        type: 'coldcard',
         label: 'Device',
         fingerprint: 'abcd1234',
         derivationPath: "m/84'/0'/0'",
@@ -254,6 +258,59 @@ describe('Wallet Import Service - Operations', () => {
   });
 
   describe('Edge Cases', () => {
+    it.each(['ledger', 'jade', 'trezor'])(
+      'blocks %s import before opening a transaction or writing wallet state',
+      async type => {
+        await expect(createWalletTransaction(userId, {
+          name: 'Blocked hardware import',
+          network: 'mainnet',
+          parsed: {
+            type: 'single_sig',
+            scriptType: 'native_segwit',
+            devices: [],
+            network: 'mainnet',
+            isChange: false,
+          },
+          resolutions: [{
+            fingerprint: 'abcd1234',
+            xpub: 'xpub6Dz...',
+            derivationPath: "m/84'/0'/0'",
+            existingDeviceId: null,
+            existingDeviceLabel: null,
+            willCreate: true,
+            originalType: type,
+          }],
+        })).rejects.toMatchObject({
+          statusCode: 403,
+          details: { vendor: type, capability: 'import' },
+        });
+
+        expect(mockPrismaClient.$transaction).not.toHaveBeenCalled();
+        expect(mockPrismaClient.wallet.create).not.toHaveBeenCalled();
+        expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(['unknown', 'hardware'])(
+      'blocks explicit generic %s hardware provenance before writes',
+      async originalType => {
+        await expect(createWalletTransaction(userId, {
+          name: 'Ambiguous hardware import',
+          network: 'mainnet',
+          parsed: {
+            type: 'single_sig', scriptType: 'native_segwit', devices: [],
+            network: 'mainnet', isChange: false,
+          },
+          resolutions: [{
+            fingerprint: 'abcd1234', xpub: 'xpub6Dz...',
+            derivationPath: "m/84'/0'/0'", existingDeviceId: null,
+            existingDeviceLabel: null, willCreate: true, originalType,
+          }],
+        })).rejects.toMatchObject({ statusCode: 403 });
+        expect(mockPrismaClient.$transaction).not.toHaveBeenCalled();
+      },
+    );
+
     it('throws when reuse resolution is missing an existing device id', async () => {
       await expect(createWalletTransaction(userId, {
         name: 'Broken import',
@@ -270,7 +327,7 @@ describe('Wallet Import Service - Operations', () => {
           xpub: 'xpub6Dz...',
           derivationPath: "m/84'/0'/0'",
           willCreate: false,
-          originalType: 'hardware',
+          existingType: 'coldcard',
         } as any],
       })).rejects.toThrow('missing device id');
     });
@@ -307,6 +364,7 @@ describe('Wallet Import Service - Operations', () => {
       mockPrismaClient.device.findMany.mockResolvedValue([
         {
           id: 'device-upper',
+          type: 'coldcard',
           fingerprint: 'ABCD1234',
           label: 'Existing',
           xpub: 'xpub6Dz...',
@@ -358,7 +416,7 @@ describe('Wallet Import Service - Operations', () => {
       const device = {
         id: 'device-testnet',
         userId,
-        type: 'unknown',
+        type: 'coldcard',
         label: 'Device',
         fingerprint: 'abcd1234',
         derivationPath: "m/84'/1'/0'",
@@ -413,7 +471,7 @@ describe('Wallet Import Service - Operations', () => {
       const device = {
         id: 'device-new-001',
         userId,
-        type: 'unknown',
+        type: 'coldcard',
         label: 'Imported Device 1',
         fingerprint: 'abcd1234',
         derivationPath: "m/84'/0'/0'",
@@ -477,7 +535,7 @@ describe('Wallet Import Service - Operations', () => {
         {
           id: 'device-001',
           userId,
-          type: 'unknown',
+          type: 'coldcard',
           label: 'Device 1',
           fingerprint: 'aaaa1111',
           derivationPath: "m/48'/0'/0'/2'",
@@ -486,7 +544,7 @@ describe('Wallet Import Service - Operations', () => {
         {
           id: 'device-002',
           userId,
-          type: 'unknown',
+          type: 'coldcard',
           label: 'Device 2',
           fingerprint: 'bbbb2222',
           derivationPath: "m/48'/0'/0'/2'",
@@ -547,6 +605,7 @@ describe('Wallet Import Service - Operations', () => {
       // Existing device with single-sig account only
       const existingDevice = {
         id: 'device-existing',
+        type: 'coldcard',
         userId,
         fingerprint: 'abcd1234',
         label: 'Existing Ledger',
@@ -575,7 +634,7 @@ describe('Wallet Import Service - Operations', () => {
       mockPrismaClient.device.create.mockResolvedValue({
         id: 'device-new',
         userId,
-        type: 'unknown',
+        type: 'coldcard',
         label: 'Imported Device 2',
         fingerprint: 'efef5678',
         derivationPath: "m/48'/0'/0'/2'",
@@ -631,6 +690,7 @@ describe('Wallet Import Service - Operations', () => {
       // Existing device
       const existingDevice = {
         id: 'device-existing',
+        type: 'coldcard',
         userId,
         fingerprint: 'abcd1234',
         label: 'Existing Ledger',
@@ -707,6 +767,7 @@ describe('Wallet Import Service - Operations', () => {
       mockPrismaClient.device.findMany.mockResolvedValue([
         {
           id: 'device-1',
+          type: 'coldcard',
           userId,
           fingerprint: 'abcd1234',
           label: 'Device 1',
@@ -715,6 +776,7 @@ describe('Wallet Import Service - Operations', () => {
         },
         {
           id: 'device-2',
+          type: 'coldcard',
           userId,
           fingerprint: 'efef5678',
           label: 'Device 2',

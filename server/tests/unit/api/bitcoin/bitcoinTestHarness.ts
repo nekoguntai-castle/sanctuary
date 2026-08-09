@@ -244,6 +244,10 @@ export const setupBitcoinApiMocks = () => {
   });
 
   // Default prisma mocks
+  mockPrismaClient.wallet.findUnique.mockResolvedValue({
+    id: 'wallet-123',
+    devices: [{ device: { type: 'coldcard', model: null } }],
+  });
   mockPrismaClient.nodeConfig.findFirst.mockResolvedValue({
     id: 'default',
     type: 'electrum',

@@ -10,6 +10,7 @@ import { enforceAgentFundingPolicy } from './agentFundingPolicy';
 import * as txService from './bitcoin/transactionService';
 import { draftService } from './draftService';
 import { policyEvaluationEngine } from './vaultPolicy';
+import { assertWalletHardwareCapabilityById } from './hardwareWalletCapabilities';
 
 const log = createLogger('AGENT:API_SVC');
 
@@ -332,6 +333,7 @@ export async function submitAgentFundingDraft(
 
     const amountNumber = parseDraftAmount(amount);
     await assertOperationalRecipient(operationalWalletId, recipient);
+    await assertWalletHardwareCapabilityById(fundingWalletId, 'sign');
     const draftLabel =
       typeof label === 'string' && label.trim() ? label.trim() : `Agent funding request: ${context.agentName}`;
 
