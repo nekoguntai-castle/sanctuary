@@ -58,31 +58,31 @@ head CI, byte-identical squash merge, and exact target-SHA CI.
 
 ## Phase 1 — Atomic Password Security Mutation
 
-- [ ] Add one repository operation that accepts the exact verified old hash and
+- [x] Add one repository operation that accepts the exact verified old hash and
   uses a single Prisma transaction to conditionally update `WHERE id +
   password`, replace the hash, increment `sessionVersion`, and delete all
   refresh tokens for the user. Require exactly one updated row before deletion;
   reject a stale comparison and roll back every session mutation. Return the
   new version and deleted-token count for structured logging.
-- [ ] Make the password route call only that atomic operation after current
+- [x] Make the password route call only that atomic operation after current
   password verification and hashing. Keep initial-password marker cleanup and
   audit logging after the committed security mutation; neither may weaken the
   transaction or reintroduce a second revocation write.
-- [ ] Preserve `revokeAllUserTokens` for logout-all/admin callers, but do not
+- [x] Preserve `revokeAllUserTokens` for logout-all/admin callers, but do not
   compose it with the password write.
-- [ ] Add repository tests proving all three writes use the same transaction,
+- [x] Add repository tests proving all three writes use the same transaction,
   refresh deletion failure rejects the operation, stale-hash comparison stops
   before token deletion, and no outside-client write is issued. Add route tests
   for success, atomic-operation failure, marker/audit ordering, and absence of
   the legacy split revocation call. Add a two-deferred concurrent regression in
   which both requests verify one old credential but only one compare-and-swap
   commits; the loser cannot change the password or session state.
-- [ ] Run focused auth/repository/session tests, server typecheck/lint, coverage
+- [x] Run focused auth/repository/session tests, server typecheck/lint, coverage
   for the changed repository/route boundary, and an adversarial review.
 
 ## Phase 2 — Frontend Ownership and Numeric Boundary
 
-- [ ] Add explicit per-collection replacement ownership for transactions,
+- [x] Add explicit per-collection replacement ownership for transactions,
   UTXOs, and addresses. Starting any page-1/reset replacement advances that
   collection epoch and marks replacement pending before asynchronous work;
   continuations are refused while replacement is pending and may commit only
@@ -92,16 +92,16 @@ head CI, byte-identical squash merge, and exact target-SHA CI.
   clear loading. Finish/cancel replacement and continuation ownership on every
   success, error, route-change, and unmount path without clearing newer loading
   state.
-- [ ] Apply the collection contract to base `fetchData`, WebSocket/sync refresh,
+- [x] Apply the collection contract to base `fetchData`, WebSocket/sync refresh,
   address reset actions, and every transaction/UTXO/address continuation. A
   same-wallet replacement, route change, or unmount must invalidate success,
   error, offset, `hasMore`, and loading commits from older pages.
-- [ ] Fence every list-coupled metadata read with the same collection epoch,
+- [x] Fence every list-coupled metadata read with the same collection epoch,
   including address summary totals used to derive address `hasMore`, or return
   that metadata as part of the owned replacement result. An older summary may
   not recompute metadata for a newer address list or mutate its loading/error
   state.
-- [ ] Add reversed-completion tests in which page 2 is pending, a shifted page 1
+- [x] Add reversed-completion tests in which page 2 is pending, a shifted page 1
   refresh replaces state, and the old page resolves or rejects last. Also
   attempt a continuation after replacement starts but before page 1 commits,
   and race an address reset against an old address continuation. Cover all
@@ -109,49 +109,49 @@ head CI, byte-identical squash merge, and exact target-SHA CI.
   double-invocation tests for transactions, UTXOs, and addresses proving one
   request and one append, plus delayed pre-replacement address-summary resolve
   and reject tests proving stale metadata cannot affect the new list.
-- [ ] Replace the AI status globals with a small `useSyncExternalStore`-backed
+- [x] Replace the AI status globals with a small `useSyncExternalStore`-backed
   store (or equivalent subscription contract) that deduplicates requests,
   publishes immutable snapshots to current subscribers, and makes
   `invalidateAIStatusCache` synchronously publish loading and begin a new shared
   request. Fence old completions by generation.
-- [ ] Do not terminal-cache status failures. Schedule one bounded retry while
+- [x] Do not terminal-cache status failures. Schedule one bounded retry while
   subscribers remain, cancel it on success/no subscribers/invalidation, and
   prove fake-timer recovery without duplicate concurrent requests. Preserve the
   public `useAIStatus` and invalidation API.
-- [ ] Introduce exact decimal-string BTC-to-satoshi conversion before state is
+- [x] Introduce exact decimal-string BTC-to-satoshi conversion before state is
   populated: no `parseFloat` or rounding, at most eight meaningful decimals,
   and a safe-integer result. Pair it with one strict positive-integer satoshi
   parser for already-normalized output state.
-- [ ] Use the canonical boundary in step validation, error generation, action
+- [x] Use the canonical boundary in step validation, error generation, action
   preflight, batch mapping, single-output creation, displayed result fallback,
   and draft/effective-amount mapping. Preserve `sendMax` semantics and refuse an
   API call if any invariant is violated even after UI validation.
-- [ ] Add behavioral tests for `.`, empty, zero, negative, fractional sats,
+- [x] Add behavioral tests for `.`, empty, zero, negative, fractional sats,
   `0.000000006`, non-finite, unsafe, maximum-valid BTC/satoshi strings, and the
   adjacent overflow. Assert transaction and draft APIs receive no invalid,
   rounded, or `null` amount.
-- [ ] Run focused Wallet/AI/Send suites, app and test typechecks, app lint,
+- [x] Run focused Wallet/AI/Send suites, app and test typechecks, app lint,
   targeted exact coverage, complexity checks, and an adversarial review.
 
 ## Phase 3 — Daemon-Visible Grafana Quiescence
 
-- [ ] Remove host PID/start-time and `/proc` ownership from the wrapper, lease,
+- [x] Remove host PID/start-time and `/proc` ownership from the wrapper, lease,
   migration script, environment, and Compose mounts. Do not replace it with a
   caller-selectable host path.
-- [ ] Add a project-scoped named Grafana quiescence volume. Resolve its physical
+- [x] Add a project-scoped named Grafana quiescence volume. Resolve its physical
   Docker volume name alongside `grafana_data`; use short-lived, exactly scoped
   daemon-side helper containers to write/read lease and outcome files without a
   host bind mount. Bootstrap restrictive ownership/modes through the daemon,
   label and verify helper containers, and clean only the exact token artifacts.
   Validate project, data-volume, control-volume, Grafana container
   ID/generation, token, and expiry before mutation.
-- [ ] Package the reviewed migration script in a versioned Sanctuary migration
+- [x] Package the reviewed migration script in a versioned Sanctuary migration
   image (or an equivalently digest-verified daemon-side artifact). Remove the
   `${SANCTUARY_PROJECT_DIR}` script bind entirely, include the image in normal
   build and offline bundle/image-loading flows, and require `--pull never` in
   offline helper/migration calls. No daemon-side operation may require the
   client checkout path to exist.
-- [ ] Keep the fixed canonical migration container name and labels as the
+- [x] Keep the fixed canonical migration container name and labels as the
   daemon-side mutex. Feature-detect host `flock`: when present, retain the
   project/physical-volume lock as an optimization and fail closed on a genuine
   acquisition error; when absent (including stock macOS), enter the daemon
@@ -159,7 +159,7 @@ head CI, byte-identical squash merge, and exact target-SHA CI.
   must survive wrapper/Compose-client death: a running sentinel blocks recovery,
   while an exited sentinel is reconciled only from a daemon-visible `success`
   or `rolled-back` outcome.
-- [ ] Preserve the single-use atomic claim inside the control volume, exact
+- [x] Preserve the single-use atomic claim inside the control volume, exact
   stopped-Grafana identity checks, private SQLite/database-journal/WAL/SHM
   snapshot, forced-failure byte rollback, marker-last publication, offline
   behavior, and direct legacy migration refusal. Make already-marked,
@@ -168,43 +168,71 @@ head CI, byte-identical squash merge, and exact target-SHA CI.
   zero-exit path, after marker/no-mutation durability. Preserve tokenless direct
   Compose behavior for fresh/already-marked volumes without creating canonical
   recovery artifacts, and keep tokenless existing-unmarked databases refused.
-- [ ] Add native-mac/no-`/proc`, Docker Desktop/remote-daemon namespace,
+- [x] Add native-mac/no-`/proc`, Docker Desktop/remote-daemon namespace,
   wrapper-death, running-sentinel, terminal-success, terminal-rollback,
   stale/replayed/mismatched lease, and helper-container failure regressions.
   Refusal cases must prove database sidecars and marker remain byte-identical.
-- [ ] Run the wrapper under a controlled PATH with its required shell utilities
+- [x] Run the wrapper under a controlled PATH with its required shell utilities
   and fake Docker but no `flock`; prove a migration succeeds and concurrent
   wrappers are serialized or refused by the canonical daemon container. Keep a
   separate regression proving an available `flock` that cannot acquire its lock
   fails closed before Docker mutation.
-- [ ] Add client-disconnect terminal-reconciliation regressions for fresh and
+- [x] Add client-disconnect terminal-reconciliation regressions for fresh and
   already-marked volumes. Verify marker-before-outcome ordering, exact
   token/project/data-volume/control-volume/container identity in the outcome,
   successful subsequent reconciliation, and byte-identical database sidecars.
-- [ ] Add a rendered/run contract with a client project path that is absent on
+- [x] Add a rendered/run contract with a client project path that is absent on
   the daemon; assert no host source bind remains, the packaged script digest is
   the expected artifact, and the daemon control-volume helper works with both
   online and already-loaded offline images.
-- [ ] Update monitoring Compose and operations docs to describe the named
+- [x] Update monitoring Compose and operations docs to describe the named
   control volume and daemon-visible recovery contract. Validate rendered
   Compose on supported profiles without starting the live Sanctuary stack.
-- [ ] Run shell syntax, Grafana migration/quiescence/Compose/install tests,
+- [x] Run shell syntax, Grafana migration/quiescence/Compose/install tests,
   workflow composition, diff checks, and an adversarial portability review.
 
 ## Phase 4 — Integrated Verification and Delivery
 
-- [ ] Run complete frontend, backend, gateway, and LLM egress test suites.
-- [ ] Run exact frontend and backend coverage gates, app/test/server typechecks,
+- [x] Run complete frontend, backend, gateway, and LLM egress test suites.
+- [x] Run exact frontend and backend coverage gates, app/test/server typechecks,
   lint/safety/architecture/OpenAPI gates, test hygiene, shell syntax, diff
   checks, and changed-production complexity review.
-- [ ] Re-read the full diff for correctness, reuse, simplification, rollback,
+- [x] Re-read the full diff for correctness, reuse, simplification, rollback,
   and unrelated scope creep. Resolve every verified adversarial P0-P2 comment.
-- [ ] Deliver the three implementation phases as separate PRs. For each, push
+- [x] Deliver the three implementation phases as separate PRs. For each, push
   the exact reviewed head, require every attached head context terminal
   success/skip, squash-merge, verify head/merge tree identity, and require every
   exact target-SHA context terminal success/skip before rebasing the next phase.
-- [ ] Mark this plan complete only after all three phase deliveries are verified
+- [x] Mark this plan complete only after all three phase deliveries are verified
   and loop-owned branches are cleaned.
+
+## Delivery Evidence
+
+- Phase 1 shipped in PR #776 from reviewed head
+  `7e97fec94b0a28e37ec04512f0b0cff28c3b986e`; squash merge
+  `c2dead5da5a3805f66e605f0f5bfd7479c98d8a9` has the identical tree and its
+  exact target-SHA CI completed with 14 success and 30 skipped contexts.
+- Phase 2 shipped in PR #777 from reviewed head
+  `42fb73a436462b6b195ed7a0adef5ee1e8179d05`; squash merge
+  `d669f8ad23d3fac596703e37d30db0901db946d2` has the identical tree and its
+  exact target-SHA CI completed with 17 success and 27 skipped contexts.
+- Phase 3 shipped in PR #778 from reviewed head
+  `24f4de898e0637a0eab3a88a936ffecd9c66e3fb`; squash merge
+  `a175121b4d96b5088d965939a5e8b8a5a44292ca` has the identical tree and its
+  exact target-SHA CI completed with 37 success and 19 skipped contexts.
+- Focused and broad verification covered the atomic password transaction,
+  Wallet/AI/Send ownership and numeric boundaries, Grafana migration and
+  quiescence shell contracts, full frontend tests and exact coverage, package
+  typechecks/lint/complexity, install helpers, workflow composition, PR CI, and
+  exact target-SHA CI. Every adversarial P0-P2 implementation comment was
+  resolved before its phase merged.
+- Nested deployment was deferred under the loop's `--deploy final` policy. The
+  outer loop will rebuild the previously running stack only after a fresh
+  whole-repository scrub reaches the zero-P0/P1/P2 termination gate.
+
+**Plan status:** Complete. All implementation PRs are merged and verified, and
+their owned implementation branches/worktrees are cleaned. The fresh rescrub
+and final deployment gate remain outer bug-scrub-loop closeout work.
 
 ## Rollback
 
