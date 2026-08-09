@@ -5,10 +5,12 @@
  * Extracted from WalletDetail.tsx to isolate AI query filter concerns.
  */
 
-import { useState, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { Transaction } from '../../../types';
 import { parseTransactionDateMillis } from '../../../app/consoleTransactionNavigation';
 import type { NaturalQueryResult } from '../../../api/ai';
+import type { RouteToken } from '../../../hooks/requestOwnership';
+import { useWalletRouteOwnership } from './useWalletRouteOwnership';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -17,6 +19,8 @@ import type { NaturalQueryResult } from '../../../api/ai';
 export interface UseAITransactionFilterParams {
   /** Full (unfiltered) transaction list for this wallet */
   transactions: Transaction[];
+  /** Wallet route, authenticated user, and selected network identity */
+  ownershipKey: string;
 }
 
 export interface UseAITransactionFilterReturn {
@@ -250,8 +254,21 @@ const computeAIAggregationResult = (
 
 export function useAITransactionFilter({
   transactions,
+  ownershipKey,
 }: UseAITransactionFilterParams): UseAITransactionFilterReturn {
-  const [aiQueryFilter, setAiQueryFilter] = useState<NaturalQueryResult | null>(null);
+  const ownership = useWalletRouteOwnership(ownershipKey);
+  const routeToken = ownership.captureRoute(ownershipKey);
+  const [ownedFilter, setOwnedFilter] = useState<{
+    owner: RouteToken;
+    filter: NaturalQueryResult | null;
+  }>(() => ({ owner: routeToken, filter: null }));
+  const aiQueryFilter = ownership.isRouteOwner(ownedFilter.owner)
+    ? ownedFilter.filter
+    : null;
+  const setAiQueryFilter = useCallback((filter: NaturalQueryResult | null) => {
+    if (!ownership.isRouteOwner(routeToken)) return;
+    setOwnedFilter({ owner: routeToken, filter });
+  }, [ownership, routeToken]);
 
   // Apply AI query filter to transactions
   const filteredTransactions = useMemo(() => {

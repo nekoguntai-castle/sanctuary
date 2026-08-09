@@ -18,6 +18,7 @@ import { Card } from '../../ui/Card';
 
 export const TransactionsTab: React.FC<TransactionsTabProps> = ({
   walletId,
+  ownershipKey,
   transactions,
   filteredTransactions,
   walletAddressStrings,
@@ -52,6 +53,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
     <Card padding="lg" className="animate-fade-in">
       <TransactionsTabHeader
         walletId={walletId}
+        ownershipKey={ownershipKey}
         aiEnabled={aiEnabled}
         transactionsCount={transactionsCount}
         onAiQueryChange={onAiQueryChange}

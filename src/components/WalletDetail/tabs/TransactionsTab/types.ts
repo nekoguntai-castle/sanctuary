@@ -5,6 +5,7 @@ import type { ConfirmationFilter, DatePreset, TransactionFilters, TxTypeFilter }
 
 export interface TransactionsTabProps {
   walletId: string;
+  ownershipKey: string;
   transactions: Transaction[];
   filteredTransactions: Transaction[];
   walletAddressStrings: string[];

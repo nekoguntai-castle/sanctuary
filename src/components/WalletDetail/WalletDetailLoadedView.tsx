@@ -69,6 +69,7 @@ function buildTransactionsTabProps({
 }: LoadedWalletDetailArgs): TabContentProps['transactionsTabProps'] {
   return {
     walletId: wallet.id,
+    ownershipKey: controller.ownershipKey,
     transactions: controller.transactions,
     filteredTransactions: controller.filteredTransactions,
     walletAddressStrings: controller.walletAddressStrings,

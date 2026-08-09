@@ -1,6 +1,16 @@
 import { act,renderHook } from '@testing-library/react';
 import { describe,expect,it } from 'vitest';
-import { useAITransactionFilter } from '../../../../src/components/WalletDetail/hooks/useAITransactionFilter';
+import {
+  useAITransactionFilter as useOwnedAITransactionFilter,
+  type UseAITransactionFilterParams,
+} from '../../../../src/components/WalletDetail/hooks/useAITransactionFilter';
+
+const useAITransactionFilter = (
+  params: Omit<UseAITransactionFilterParams, 'ownershipKey'>
+) => useOwnedAITransactionFilter({
+  ...params,
+  ownershipKey: 'wallet-test:user-test:mainnet',
+});
 
 const transactions = [
   {
@@ -33,6 +43,47 @@ const transactions = [
 ];
 
 describe('useAITransactionFilter', () => {
+  it('synchronously hides a retained filter and rejects its captured setter after ownership changes', () => {
+    const { result, rerender } = renderHook(
+      ({ ownershipKey }) => useOwnedAITransactionFilter({
+        transactions: transactions as any,
+        ownershipKey,
+      }),
+      { initialProps: { ownershipKey: 'wallet-a:user-1:mainnet' } }
+    );
+
+    const walletASetter = result.current.setAiQueryFilter;
+    act(() => {
+      walletASetter({
+        type: 'transactions',
+        filter: { type: 'receive' },
+      });
+    });
+    expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual(['txid-1']);
+
+    rerender({ ownershipKey: 'wallet-b:user-1:mainnet' });
+
+    expect(result.current.aiQueryFilter).toBeNull();
+    expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual([
+      'txid-1',
+      'txid-2',
+      'txid-3',
+    ]);
+
+    act(() => {
+      walletASetter({
+        type: 'transactions',
+        filter: { type: 'send' },
+      });
+    });
+    expect(result.current.aiQueryFilter).toBeNull();
+    expect(result.current.filteredTransactions).toHaveLength(3);
+
+    rerender({ ownershipKey: 'wallet-a:user-1:mainnet' });
+    expect(result.current.aiQueryFilter).toBeNull();
+    expect(result.current.filteredTransactions).toHaveLength(3);
+  });
+
   it('returns original transactions when no active transaction filter exists', () => {
     const { result } = renderHook(() => useAITransactionFilter({ transactions: transactions as any }));
     expect(result.current.filteredTransactions).toHaveLength(3);

@@ -117,7 +117,10 @@ export const useWalletDetailController = () => {
     aiQueryFilter, setAiQueryFilter,
     filteredTransactions,
     aiAggregationResult,
-  } = useAITransactionFilter({ transactions: manuallyFiltered });
+  } = useAITransactionFilter({
+    transactions: manuallyFiltered,
+    ownershipKey,
+  });
 
   useEffect(() => {
     if (!id || !consoleTransactionFilter) return;
@@ -290,6 +293,7 @@ export const useWalletDetailController = () => {
     id,
     navigate,
     user,
+    ownershipKey,
     highlightTxId,
     bitcoinStatus,
     aiEnabled,

@@ -4,6 +4,7 @@ import { TransactionsTab } from '../../../../src/components/WalletDetail/tabs/Tr
 
 const mockRefs = vi.hoisted(() => ({
   txListProps: null as any,
+  aiOwnershipKey: null as string | null,
 }));
 
 vi.mock('../../../../src/components/TransactionList', () => ({
@@ -14,11 +15,20 @@ vi.mock('../../../../src/components/TransactionList', () => ({
 }));
 
 vi.mock('../../../../src/components/AIQueryInput', () => ({
-  AIQueryInput: ({ onQueryResult }: { onQueryResult: (result: any) => void }) => (
-    <button type="button" onClick={() => onQueryResult({ type: 'summary', aggregation: null })}>
-      Run AI Query
-    </button>
-  ),
+  AIQueryInput: ({
+    onQueryResult,
+    ownershipKey,
+  }: {
+    onQueryResult: (result: any) => void;
+    ownershipKey: string;
+  }) => {
+    mockRefs.aiOwnershipKey = ownershipKey;
+    return (
+      <button type="button" onClick={() => onQueryResult({ type: 'summary', aggregation: null })}>
+        Run AI Query
+      </button>
+    );
+  },
 }));
 
 vi.mock('../../../../src/hooks/queries/useWalletLabels', () => ({
@@ -32,6 +42,7 @@ vi.mock('../../../../src/components/WalletDetail/tabs/TransactionFilterBar', () 
 describe('TransactionsTab', () => {
   const baseProps = {
     walletId: 'wallet-1',
+    ownershipKey: 'wallet-1:user-1:mainnet',
     transactions: [
       { id: 'tx-1', txid: 'abc', walletId: 'wallet-1', amount: 123, timestamp: Date.now(), type: 'receive' },
       { id: 'tx-2', txid: 'def', walletId: 'wallet-1', amount: -50, timestamp: Date.now(), type: 'sent' },
@@ -102,6 +113,7 @@ describe('TransactionsTab', () => {
 
     fireEvent.click(screen.getByText('Run AI Query'));
     expect(onAiQueryChange).toHaveBeenCalledWith({ type: 'summary', aggregation: null });
+    expect(mockRefs.aiOwnershipKey).toBe(baseProps.ownershipKey);
 
     expect(mockRefs.txListProps.transactionStats).toBeUndefined();
   });

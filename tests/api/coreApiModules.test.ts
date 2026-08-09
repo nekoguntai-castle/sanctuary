@@ -57,16 +57,23 @@ describe('Core API Modules', () => {
     it('calls status and query endpoints', async () => {
       mockGet.mockResolvedValue({ available: true });
       mockPost.mockResolvedValue({ success: true });
+      const queryController = new AbortController();
 
       await aiApi.getAIStatus();
       await aiApi.testAIConnection();
       await aiApi.suggestLabel({ transactionId: 'tx-1' });
-      await aiApi.executeNaturalQuery({ query: 'recent tx', walletId: 'w1' });
+      await aiApi.executeNaturalQuery(
+        { query: 'recent tx', walletId: 'w1' },
+        queryController.signal,
+      );
 
       expect(mockGet).toHaveBeenCalledWith('/ai/status');
       expect(mockPost).toHaveBeenCalledWith('/ai/test-connection', {}, { timeoutMs: 20000 });
       expect(mockPost).toHaveBeenCalledWith('/ai/suggest-label', { transactionId: 'tx-1' });
-      expect(mockPost).toHaveBeenCalledWith('/ai/query', { query: 'recent tx', walletId: 'w1' }, { timeoutMs: 120000 });
+      expect(mockPost).toHaveBeenCalledWith('/ai/query', { query: 'recent tx', walletId: 'w1' }, {
+        timeoutMs: 120000,
+        signal: queryController.signal,
+      });
     });
 
     it('calls provider discovery and model listing endpoints', async () => {

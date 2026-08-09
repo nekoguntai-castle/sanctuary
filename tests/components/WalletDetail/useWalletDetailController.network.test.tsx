@@ -7,6 +7,7 @@ const controllerState = vi.hoisted(() => ({
   walletNetwork: 'signet' as string | undefined,
   setSelectedNetwork: vi.fn(),
   bitcoinStatusNetworks: [] as Array<string | undefined>,
+  aiOwnershipKeys: [] as string[],
   routeId: 'wallet-1' as string | undefined,
   user: { id: 'user-1', isAdmin: false } as { id: string; isAdmin: boolean } | null,
   fetchData: vi.fn(),
@@ -150,12 +151,15 @@ vi.mock('../../../src/components/WalletDetail/hooks/useTransactionFilters', () =
 }));
 
 vi.mock('../../../src/components/WalletDetail/hooks/useAITransactionFilter', () => ({
-  useAITransactionFilter: () => ({
-    aiQueryFilter: null,
-    setAiQueryFilter: vi.fn(),
-    filteredTransactions: [],
-    aiAggregationResult: null,
-  }),
+  useAITransactionFilter: ({ ownershipKey }: { ownershipKey: string }) => {
+    controllerState.aiOwnershipKeys.push(ownershipKey);
+    return {
+      aiQueryFilter: null,
+      setAiQueryFilter: vi.fn(),
+      filteredTransactions: [],
+      aiAggregationResult: null,
+    };
+  },
 }));
 
 vi.mock('../../../src/components/WalletDetail/hooks/useWalletSharing', () => ({
@@ -249,6 +253,7 @@ describe('useWalletDetailController network preference alignment', () => {
     controllerState.walletNetwork = 'signet';
     controllerState.setSelectedNetwork.mockClear();
     controllerState.bitcoinStatusNetworks = [];
+    controllerState.aiOwnershipKeys = [];
     controllerState.routeId = 'wallet-1';
     controllerState.user = { id: 'user-1', isAdmin: false };
     controllerState.fetchData.mockClear();
@@ -286,6 +291,19 @@ describe('useWalletDetailController network preference alignment', () => {
 
     expect(controllerState.bitcoinStatusNetworks).toContain('testnet3');
     expect(controllerState.setSelectedNetwork).not.toHaveBeenCalled();
+  });
+
+  it('passes route, user, and selected network ownership to the AI filter', () => {
+    const view = renderHook(() => useWalletDetailController());
+    expect(controllerState.aiOwnershipKeys.at(-1)).toBe('wallet-1:user-1:mainnet');
+
+    controllerState.routeId = 'wallet-2';
+    controllerState.user = { id: 'user-2', isAdmin: false };
+    controllerState.activeNetwork = 'testnet4';
+    view.rerender();
+
+    expect(controllerState.aiOwnershipKeys.at(-1)).toBe('wallet-2:user-2:testnet4');
+    expect(view.result.current.ownershipKey).toBe('wallet-2:user-2:testnet4');
   });
 
   it('exposes pending freeze IDs from the UTXO actions controller', () => {

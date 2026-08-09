@@ -687,6 +687,7 @@ export class ApiClient {
     options?: {
       headers?: Record<string, string>;
       timeoutMs?: number;
+      signal?: AbortSignal;
       /**
        * Validate the response body. A POST answer can be as load-bearing as a
        * GET one — `/transactions/create` returns the numbers a user approves
@@ -702,6 +703,7 @@ export class ApiClient {
         body: data ? JSON.stringify(data) : undefined,
         headers: options?.headers,
         timeoutMs: options?.timeoutMs,
+        signal: options?.signal,
         schema: options?.schema,
       },
     );

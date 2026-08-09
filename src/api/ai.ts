@@ -83,9 +83,11 @@ export async function suggestLabel(
  */
 export async function executeNaturalQuery(
   request: NaturalQueryRequest,
+  signal?: AbortSignal,
 ): Promise<NaturalQueryResult> {
   return apiClient.post<NaturalQueryResult>("/ai/query", request, {
     timeoutMs: AI_NATURAL_QUERY_TIMEOUT_MS,
+    signal,
   });
 }
 

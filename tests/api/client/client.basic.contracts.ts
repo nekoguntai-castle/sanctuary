@@ -177,6 +177,22 @@ export const registerApiClientBasicContracts = () => {
       expect(timeoutSpy).toHaveBeenCalledWith(120000);
       timeoutSpy.mockRestore();
     });
+
+    it("should propagate a caller abort signal through POST requests", async () => {
+      const controller = new AbortController();
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({}),
+      });
+
+      await apiClient.post("/slow-action", {}, { signal: controller.signal });
+
+      const requestSignal = mockFetch.mock.calls[0][1].signal as AbortSignal;
+      expect(requestSignal.aborted).toBe(false);
+      controller.abort();
+      expect(requestSignal.aborted).toBe(true);
+    });
   });
 
   // ========================================

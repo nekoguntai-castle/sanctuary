@@ -5,7 +5,8 @@
  * Covers rendering, user interactions, query execution, and error handling.
  */
 
-import { act,fireEvent,render,screen,waitFor } from '@testing-library/react';
+import { act,fireEvent,render,renderHook,screen,waitFor } from '@testing-library/react';
+import type { ComponentProps } from 'react';
 import userEvent from '@testing-library/user-event';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
 
@@ -13,7 +14,8 @@ import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
 const mockExecuteNaturalQuery = vi.fn();
 
 vi.mock('../../src/api/ai', () => ({
-  executeNaturalQuery: (req: { query: string; walletId: string }) => mockExecuteNaturalQuery(req),
+  executeNaturalQuery: (req: { query: string; walletId: string }, signal?: AbortSignal) =>
+    mockExecuteNaturalQuery(req, signal),
 }));
 
 // Mock the logger
@@ -27,16 +29,37 @@ vi.mock('../../src/utils/logger', () => ({
 }));
 
 // Import component after mocks
-import { AIQueryInput,default as AIQueryInputDefault } from '../../src/components/AIQueryInput';
+import {
+  AIQueryInput as OwnedAIQueryInput,
+  default as AIQueryInputDefault,
+} from '../../src/components/AIQueryInput';
+import { useAIQueryInputController } from '../../src/components/AIQueryInput/useAIQueryInputController';
 
 // Test data
 const testWalletId = 'wallet-test-001';
+type AIQueryInputProps = ComponentProps<typeof OwnedAIQueryInput>;
+const AIQueryInput = ({
+  ownershipKey = `${testWalletId}:user-test:mainnet`,
+  ...props
+}: Omit<AIQueryInputProps, 'ownershipKey'> & Partial<Pick<AIQueryInputProps, 'ownershipKey'>>) => (
+  <OwnedAIQueryInput {...props} ownershipKey={ownershipKey} />
+);
 
 const mockQueryResult = {
   type: 'transactions' as const,
   filter: { type: 'receive' },
   sort: { field: 'amount', order: 'desc' as const },
   limit: 10,
+};
+
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
 };
 
 describe('AIQueryInput', () => {
@@ -191,7 +214,7 @@ describe('AIQueryInput', () => {
         expect(mockExecuteNaturalQuery).toHaveBeenCalledWith({
           query: 'Show my transactions',
           walletId: testWalletId,
-        });
+        }, expect.anything());
       });
     });
 
@@ -229,7 +252,7 @@ describe('AIQueryInput', () => {
         expect(mockExecuteNaturalQuery).toHaveBeenCalledWith({
           query: 'Show transactions',
           walletId: testWalletId,
-        });
+        }, expect.anything());
       });
     });
 
@@ -247,7 +270,7 @@ describe('AIQueryInput', () => {
         expect(mockExecuteNaturalQuery).toHaveBeenCalledWith({
           query: 'Test query',
           walletId: customWalletId,
-        });
+        }, expect.anything());
       });
     });
   });
@@ -609,6 +632,204 @@ describe('AIQueryInput', () => {
     });
   });
 
+  describe('Request ownership', () => {
+    it('rejects captured A field and clear handlers after ownership changes', () => {
+      const onQueryResult = vi.fn();
+      const view = renderHook(
+        ({ ownershipKey }) => useAIQueryInputController({
+          walletId: ownershipKey.startsWith('wallet-a') ? 'wallet-a' : 'wallet-b',
+          ownershipKey,
+          onQueryResult,
+        }),
+        { initialProps: { ownershipKey: 'wallet-a:user-1:mainnet' } }
+      );
+      const setAQuery = view.result.current.setQuery;
+      const clearAQuery = view.result.current.clearQuery;
+
+      view.rerender({ ownershipKey: 'wallet-b:user-1:testnet' });
+      act(() => {
+        setAQuery('stale A query');
+        clearAQuery();
+      });
+
+      expect(view.result.current.query).toBe('');
+      expect(onQueryResult).not.toHaveBeenCalled();
+    });
+
+    it('renders empty B state immediately and rejects A completion after an ownership change', async () => {
+      const pending = deferred<typeof mockQueryResult>();
+      const onQueryResult = vi.fn();
+      mockExecuteNaturalQuery.mockReturnValue(pending.promise);
+      const view = render(
+        <AIQueryInput
+          walletId="wallet-a"
+          ownershipKey="wallet-a:user-1:mainnet"
+          onQueryResult={onQueryResult}
+        />
+      );
+
+      const inputA = screen.getByPlaceholderText('Filter transactions with AI...');
+      await userEvent.type(inputA, 'wallet A query');
+      fireEvent.submit(inputA.closest('form')!);
+      await waitFor(() => expect(inputA).toBeDisabled());
+      const signal = mockExecuteNaturalQuery.mock.calls[0][1] as AbortSignal;
+
+      view.rerender(
+        <AIQueryInput
+          walletId="wallet-b"
+          ownershipKey="wallet-b:user-1:testnet"
+          onQueryResult={onQueryResult}
+        />
+      );
+
+      const inputB = screen.getByPlaceholderText('Filter transactions with AI...') as HTMLInputElement;
+      expect(inputB.value).toBe('');
+      expect(inputB).toBeEnabled();
+      expect(screen.queryByText('AI transaction filter:')).not.toBeInTheDocument();
+      expect(screen.queryByText(/Failed to process query/)).not.toBeInTheDocument();
+      expect(screen.queryByText('Try asking...')).not.toBeInTheDocument();
+      expect(signal.aborted).toBe(true);
+
+      await act(async () => {
+        pending.reject(new Error('wallet A failed'));
+        await pending.promise.catch(() => undefined);
+      });
+      expect(onQueryResult).not.toHaveBeenCalled();
+      expect(screen.queryByText(/Failed to process query/)).not.toBeInTheDocument();
+
+      view.rerender(
+        <AIQueryInput
+          walletId="wallet-a"
+          ownershipKey="wallet-a:user-1:mainnet"
+          onQueryResult={onQueryResult}
+        />
+      );
+      const revisitedA = screen.getByPlaceholderText('Filter transactions with AI...') as HTMLInputElement;
+      expect(revisitedA.value).toBe('');
+      expect(revisitedA).toBeEnabled();
+    });
+
+    it('does not deliver a deferred result after the input unmounts', async () => {
+      const pending = deferred<typeof mockQueryResult>();
+      const onQueryResult = vi.fn();
+      mockExecuteNaturalQuery.mockReturnValue(pending.promise);
+      const view = render(
+        <AIQueryInput
+          walletId="wallet-a"
+          ownershipKey="wallet-a:user-1:mainnet"
+          onQueryResult={onQueryResult}
+        />
+      );
+
+      const input = screen.getByPlaceholderText('Filter transactions with AI...');
+      await userEvent.type(input, 'wallet A query');
+      fireEvent.submit(input.closest('form')!);
+      const signal = mockExecuteNaturalQuery.mock.calls[0][1] as AbortSignal;
+
+      view.unmount();
+      expect(signal.aborted).toBe(true);
+      await act(async () => {
+        pending.resolve(mockQueryResult);
+        await pending.promise;
+      });
+
+      expect(onQueryResult).not.toHaveBeenCalled();
+    });
+
+    it('invalidates and aborts a pending query when clear is clicked', async () => {
+      const pending = deferred<typeof mockQueryResult>();
+      const onQueryResult = vi.fn();
+      mockExecuteNaturalQuery.mockReturnValue(pending.promise);
+      render(
+        <AIQueryInput
+          walletId={testWalletId}
+          ownershipKey={`${testWalletId}:user-1:mainnet`}
+          onQueryResult={onQueryResult}
+        />
+      );
+
+      const input = screen.getByPlaceholderText('Filter transactions with AI...') as HTMLInputElement;
+      await userEvent.type(input, 'pending query');
+      fireEvent.submit(input.closest('form')!);
+      await waitFor(() => expect(input).toBeDisabled());
+      const signal = mockExecuteNaturalQuery.mock.calls[0][1] as AbortSignal;
+
+      fireEvent.click(screen.getByLabelText('Clear AI transaction filter'));
+      expect(signal.aborted).toBe(true);
+      expect(input.value).toBe('');
+      expect(input).toBeEnabled();
+
+      await act(async () => {
+        pending.resolve(mockQueryResult);
+        await pending.promise;
+      });
+      expect(onQueryResult).toHaveBeenCalledTimes(1);
+      expect(onQueryResult).toHaveBeenCalledWith(null);
+      expect(screen.queryByText('AI transaction filter:')).not.toBeInTheDocument();
+    });
+
+    it('keeps the newer request loading and result when requests settle in reverse order', async () => {
+      const first = deferred<typeof mockQueryResult>();
+      const second = deferred<typeof mockQueryResult>();
+      const newerResult = { ...mockQueryResult, filter: { type: 'send' } };
+      mockExecuteNaturalQuery
+        .mockReturnValueOnce(first.promise)
+        .mockReturnValueOnce(second.promise);
+      render(
+        <AIQueryInput
+          walletId={testWalletId}
+          ownershipKey={`${testWalletId}:user-1:mainnet`}
+        />
+      );
+
+      const input = screen.getByPlaceholderText('Filter transactions with AI...') as HTMLInputElement;
+      await userEvent.type(input, 'first query');
+      fireEvent.submit(input.closest('form')!);
+      await waitFor(() => expect(input).toBeDisabled());
+      fireEvent.click(screen.getByLabelText('Clear AI transaction filter'));
+      await userEvent.type(input, 'second query');
+      fireEvent.submit(input.closest('form')!);
+      await waitFor(() => expect(mockExecuteNaturalQuery).toHaveBeenCalledTimes(2));
+
+      await act(async () => {
+        first.resolve(mockQueryResult);
+        await first.promise;
+      });
+      expect(input).toBeDisabled();
+      expect(screen.queryByText(/Filter:.*receive/)).not.toBeInTheDocument();
+
+      await act(async () => {
+        second.resolve(newerResult);
+        await second.promise;
+      });
+      expect(input).toBeEnabled();
+      expect(screen.getByText(/Filter:.*send/)).toBeInTheDocument();
+    });
+
+    it('does not paint A examples or a completed result under B', async () => {
+      const view = render(
+        <AIQueryInput walletId="wallet-a" ownershipKey="wallet-a:user-1:mainnet" />
+      );
+      const input = screen.getByPlaceholderText('Filter transactions with AI...');
+      fireEvent.focus(input);
+      expect(screen.getByText('Try asking...')).toBeInTheDocument();
+
+      view.rerender(
+        <AIQueryInput walletId="wallet-b" ownershipKey="wallet-b:user-2:signet" />
+      );
+      expect(screen.queryByText('Try asking...')).not.toBeInTheDocument();
+
+      await userEvent.type(screen.getByPlaceholderText('Filter transactions with AI...'), 'B query');
+      fireEvent.submit(screen.getByPlaceholderText('Filter transactions with AI...').closest('form')!);
+      await waitFor(() => expect(screen.getByText('AI transaction filter:')).toBeInTheDocument());
+
+      view.rerender(
+        <AIQueryInput walletId="wallet-c" ownershipKey="wallet-c:user-2:signet" />
+      );
+      expect(screen.queryByText('AI transaction filter:')).not.toBeInTheDocument();
+    });
+  });
+
   describe('Query Types', () => {
     it('should handle transactions query type', async () => {
       mockExecuteNaturalQuery.mockResolvedValue({
@@ -702,7 +923,7 @@ describe('AIQueryInput', () => {
 
   describe('Default Export', () => {
     it('should export default component', () => {
-      expect(AIQueryInputDefault).toBe(AIQueryInput);
+      expect(AIQueryInputDefault).toBe(OwnedAIQueryInput);
     });
   });
 

@@ -1,13 +1,37 @@
-import { useCallback, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import * as aiApi from '../../api/ai';
+import {
+  createRequestOwnership,
+  type RequestOwnership,
+  type RouteToken,
+} from '../../hooks/requestOwnership';
 import { createLogger } from '../../utils/logger';
 
 const log = createLogger('AIQueryInput');
 
 interface UseAIQueryInputControllerArgs {
   walletId: string;
+  ownershipKey: string;
   onQueryResult?: (result: aiApi.NaturalQueryResult | null) => void;
 }
+
+interface OwnedAIQueryState {
+  owner: RouteToken;
+  query: string;
+  loading: boolean;
+  error: string | null;
+  result: aiApi.NaturalQueryResult | null;
+  showExamples: boolean;
+}
+
+const createEmptyState = (owner: RouteToken): OwnedAIQueryState => ({
+  owner,
+  query: '',
+  loading: false,
+  error: null,
+  result: null,
+  showExamples: false,
+});
 
 const getAIQueryErrorMessage = (error: unknown): string => {
   const message = error instanceof Error ? error.message : '';
@@ -47,62 +71,127 @@ export const formatNaturalQueryResult = (result: aiApi.NaturalQueryResult): stri
 
 export const useAIQueryInputController = ({
   walletId,
+  ownershipKey,
   onQueryResult,
 }: UseAIQueryInputControllerArgs) => {
-  const [query, setQuery] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<aiApi.NaturalQueryResult | null>(null);
-  const [showExamples, setShowExamples] = useState(false);
+  const ownershipRef = useRef<RequestOwnership | null>(null);
+  if (!ownershipRef.current) {
+    ownershipRef.current = createRequestOwnership(ownershipKey);
+  }
+  const ownership = ownershipRef.current;
+  const activeRequest = useRef<AbortController | null>(null);
+  ownership.setRoute(ownershipKey);
+  const routeToken = ownership.captureRoute(ownershipKey);
+  const [state, setState] = useState<OwnedAIQueryState>(() => createEmptyState(routeToken));
+
+  const renderedState = ownership.isRouteOwner(state.owner)
+    ? state
+    : createEmptyState(routeToken);
+
+  const updateOwnedState = useCallback((
+    update: (current: OwnedAIQueryState) => OwnedAIQueryState
+  ) => {
+    if (!ownership.isRouteOwner(routeToken)) return;
+    setState(current => update(
+      ownership.isRouteOwner(current.owner) ? current : createEmptyState(routeToken)
+    ));
+  }, [ownership, routeToken]);
+
+  const abortActiveRequest = useCallback(() => {
+    activeRequest.current?.abort();
+    activeRequest.current = null;
+  }, []);
+
+  useEffect(() => {
+    abortActiveRequest();
+  }, [abortActiveRequest, ownershipKey]);
+
+  useEffect(() => () => {
+    ownership.invalidate();
+    abortActiveRequest();
+  }, [abortActiveRequest, ownership]);
+
+  const setQuery = useCallback((query: string) => {
+    updateOwnedState(current => ({ ...current, query }));
+  }, [updateOwnedState]);
+
+  const setShowExamples = useCallback((showExamples: boolean) => {
+    updateOwnedState(current => ({ ...current, showExamples }));
+  }, [updateOwnedState]);
 
   const handleSubmit = useCallback(async (event?: FormEvent) => {
     event?.preventDefault();
 
-    const trimmedQuery = query.trim();
+    const trimmedQuery = renderedState.query.trim();
     if (!trimmedQuery) return;
 
-    setLoading(true);
-    setError(null);
-    setResult(null);
+    abortActiveRequest();
+    const token = ownership.beginFetch(ownershipKey);
+    const requestController = new AbortController();
+    activeRequest.current = requestController;
+    updateOwnedState(current => ({
+      ...current,
+      loading: true,
+      error: null,
+      result: null,
+    }));
 
     try {
       const response = await aiApi.executeNaturalQuery({
         query: trimmedQuery,
         walletId,
-      });
+      }, requestController.signal);
 
-      setResult(response);
+      if (!ownership.isFetchOwner(token)) return;
+      updateOwnedState(current => ({ ...current, result: response }));
       onQueryResult?.(response);
     } catch (caughtError) {
+      if (!ownership.isFetchOwner(token)) return;
       log.error('AI query failed', { error: caughtError });
-      setError(getAIQueryErrorMessage(caughtError));
+      updateOwnedState(current => ({
+        ...current,
+        error: getAIQueryErrorMessage(caughtError),
+      }));
     } finally {
-      setLoading(false);
+      if (ownership.isFetchOwner(token)) {
+        updateOwnedState(current => ({ ...current, loading: false }));
+      }
+      if (activeRequest.current === requestController) {
+        activeRequest.current = null;
+      }
     }
-  }, [query, walletId, onQueryResult]);
+  }, [
+    abortActiveRequest,
+    onQueryResult,
+    ownership,
+    ownershipKey,
+    renderedState.query,
+    updateOwnedState,
+    walletId,
+  ]);
 
   const handleExampleClick = useCallback((example: string) => {
-    setQuery(example);
-    setShowExamples(false);
-  }, []);
+    updateOwnedState(current => ({ ...current, query: example, showExamples: false }));
+  }, [updateOwnedState]);
 
   const clearQuery = useCallback(() => {
-    setQuery('');
-    setResult(null);
-    setError(null);
+    if (!ownership.isRouteOwner(routeToken)) return;
+    ownership.invalidate();
+    abortActiveRequest();
+    setState(createEmptyState(ownership.captureRoute(ownershipKey)));
     onQueryResult?.(null);
-  }, [onQueryResult]);
+  }, [abortActiveRequest, onQueryResult, ownership, ownershipKey, routeToken]);
 
   const dismissError = useCallback(() => {
-    setError(null);
-  }, []);
+    updateOwnedState(current => ({ ...current, error: null }));
+  }, [updateOwnedState]);
 
   return {
-    query,
-    loading,
-    error,
-    result,
-    showExamples,
+    query: renderedState.query,
+    loading: renderedState.loading,
+    error: renderedState.error,
+    result: renderedState.result,
+    showExamples: renderedState.showExamples,
     setQuery,
     setShowExamples,
     handleSubmit,

@@ -5,6 +5,7 @@ import type { NaturalQueryResult } from '../../../../api/ai';
 
 interface TransactionsTabHeaderProps {
   walletId: string;
+  ownershipKey: string;
   aiEnabled: boolean;
   transactionsCount: number;
   onAiQueryChange: (result: NaturalQueryResult | null) => void;
@@ -13,6 +14,7 @@ interface TransactionsTabHeaderProps {
 
 export const TransactionsTabHeader: React.FC<TransactionsTabHeaderProps> = ({
   walletId,
+  ownershipKey,
   aiEnabled,
   transactionsCount,
   onAiQueryChange,
@@ -23,6 +25,7 @@ export const TransactionsTabHeader: React.FC<TransactionsTabHeaderProps> = ({
       <div className="flex-1 max-w-xl">
         <AIQueryInput
           walletId={walletId}
+          ownershipKey={ownershipKey}
           onQueryResult={onAiQueryChange}
         />
       </div>

@@ -14,6 +14,7 @@ import { useAIQueryInputController } from './AIQueryInput/useAIQueryInputControl
 
 interface AIQueryInputProps {
   walletId: string;
+  ownershipKey: string;
   onQueryResult?: (result: NaturalQueryResult | null) => void;
   className?: string;
 }
@@ -27,10 +28,11 @@ const EXAMPLE_QUERIES = [
 
 export const AIQueryInput: React.FC<AIQueryInputProps> = ({
   walletId,
+  ownershipKey,
   onQueryResult,
   className = '',
 }) => {
-  const controller = useAIQueryInputController({ walletId, onQueryResult });
+  const controller = useAIQueryInputController({ walletId, ownershipKey, onQueryResult });
 
   return (
     <div className={`space-y-3 ${className}`}>
