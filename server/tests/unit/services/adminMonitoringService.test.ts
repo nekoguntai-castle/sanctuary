@@ -122,7 +122,7 @@ describe('adminMonitoringService', () => {
     expect(mocks.deleteSetting).not.toHaveBeenCalled();
   });
 
-  it('returns Grafana password source and persists anonymous access changes', async () => {
+  it('returns only the independent Grafana password and persists anonymous access changes', async () => {
     process.env.GRAFANA_PASSWORD = 'grafana-secret';
     process.env.ENCRYPTION_KEY = 'fallback-secret';
     mocks.getBoolean.mockResolvedValue(true);
@@ -132,6 +132,7 @@ describe('adminMonitoringService', () => {
       username: 'admin',
       passwordSource: 'GRAFANA_PASSWORD',
       password: 'grafana-secret',
+      passwordConfigured: true,
       anonymousAccess: true,
     });
 
@@ -141,6 +142,18 @@ describe('adminMonitoringService', () => {
       message: 'Anonymous access disabled. Restart Grafana container to apply.',
     });
     expect(mocks.setBoolean).toHaveBeenCalledWith('grafana.anonymousAccess', false);
+  });
+
+  it('never falls back to the encryption master key', async () => {
+    delete process.env.GRAFANA_PASSWORD;
+    process.env.ENCRYPTION_KEY = 'sentinel-master-key';
+    const { getGrafanaConfig } = await loadService();
+
+    await expect(getGrafanaConfig()).resolves.toMatchObject({
+      passwordSource: null,
+      password: null,
+      passwordConfigured: false,
+    });
   });
 });
 

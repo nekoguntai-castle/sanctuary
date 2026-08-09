@@ -352,7 +352,7 @@ describe('Admin Monitoring Routes', () => {
     expect(response.body.code).toBe('INTERNAL_ERROR');
   });
 
-  it('returns grafana credentials and anonymous setting with explicit password source', async () => {
+  it('returns the independent grafana credential and anonymous setting', async () => {
     process.env.GRAFANA_PASSWORD = 'grafana-secret';
     process.env.ENCRYPTION_KEY = 'enc-key';
     mockGetBoolean.mockResolvedValue(true);
@@ -364,12 +364,13 @@ describe('Admin Monitoring Routes', () => {
       username: 'admin',
       passwordSource: 'GRAFANA_PASSWORD',
       password: 'grafana-secret',
+      passwordConfigured: true,
       anonymousAccess: true,
     });
     expect(response.body.anonymousAccessNote).toContain('restarting the Grafana container');
   });
 
-  it('falls back to encryption key when grafana password is not configured', async () => {
+  it('never returns the encryption key when grafana password is not configured', async () => {
     delete process.env.GRAFANA_PASSWORD;
     process.env.ENCRYPTION_KEY = 'fallback-key';
     mockGetBoolean.mockResolvedValue(false);
@@ -377,8 +378,12 @@ describe('Admin Monitoring Routes', () => {
     const response = await request(app).get('/api/v1/admin/monitoring/grafana');
 
     expect(response.status).toBe(200);
-    expect(response.body.passwordSource).toBe('ENCRYPTION_KEY');
-    expect(response.body.password).toBe('fallback-key');
+    expect(response.body).toMatchObject({
+      passwordSource: null,
+      password: null,
+      passwordConfigured: false,
+    });
+    expect(JSON.stringify(response.body)).not.toContain('fallback-key');
   });
 
   it('returns empty grafana password when no related environment variables are configured', async () => {
@@ -390,8 +395,9 @@ describe('Admin Monitoring Routes', () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
-      passwordSource: 'ENCRYPTION_KEY',
-      password: '',
+      passwordSource: null,
+      password: null,
+      passwordConfigured: false,
       anonymousAccess: false,
     });
   });

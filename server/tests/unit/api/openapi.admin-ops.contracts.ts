@@ -246,16 +246,20 @@ export function registerOpenApiAdminOpsTests() {
       'username',
       'passwordSource',
       'password',
+      'passwordConfigured',
       'anonymousAccess',
       'anonymousAccessNote',
     ]);
-    expect(openApiSpec.components.schemas.AdminGrafanaConfigResponse.properties.passwordSource.enum).toEqual([
-      'GRAFANA_PASSWORD',
-      'ENCRYPTION_KEY',
-    ]);
+    expect(openApiSpec.components.schemas.AdminGrafanaConfigResponse.properties.passwordSource).toMatchObject({
+      enum: ['GRAFANA_PASSWORD'],
+      nullable: true,
+    });
     expect(openApiSpec.components.schemas.AdminGrafanaConfigResponse.properties.password).toMatchObject({
       format: 'password',
+      nullable: true,
     });
+    expect(openApiSpec.components.schemas.AdminGrafanaConfigResponse.properties.passwordConfigured)
+      .toEqual({ type: 'boolean' });
 
     expect(openApiSpec.paths['/admin/monitoring/grafana'].put.requestBody.content['application/json'].schema)
       .toEqual({

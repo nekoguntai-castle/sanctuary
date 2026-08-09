@@ -137,7 +137,7 @@ Open **https://localhost:8443** and accept the certificate warning.
 3. Clones the repository and checks out the release
 4. Delegates to `scripts/setup.sh` for configuration and startup
 5. Generates self-signed SSL certificates (for hardware wallet support)
-6. Generates secure random secrets (JWT_SECRET, ENCRYPTION_KEY, ENCRYPTION_SALT, GATEWAY_SECRET, POSTGRES_PASSWORD)
+6. Generates secure random secrets (JWT_SECRET, ENCRYPTION_KEY, ENCRYPTION_SALT, GATEWAY_SECRET, POSTGRES_PASSWORD, GRAFANA_PASSWORD)
 7. Builds and starts the Docker containers
 8. Creates a default `admin` user with password `sanctuary` (must be changed on first login)
 9. Saves your configuration to `.env` for future restarts
@@ -589,6 +589,7 @@ JWT_SECRET=your-secret-key-here
 
 # Encryption key for sensitive data like node passwords (generate a random string, min 32 chars)
 ENCRYPTION_KEY=your-encryption-key-here
+GRAFANA_PASSWORD=your-independent-grafana-password
 
 # Encryption salt for key derivation (generate with: openssl rand -base64 16)
 # Required in production - used with ENCRYPTION_KEY to derive encryption keys

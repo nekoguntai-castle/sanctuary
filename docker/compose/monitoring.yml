@@ -11,7 +11,7 @@
 # Access:
 #   - Monitoring ports bind to 127.0.0.1 by default. Set
 #     MONITORING_BIND_ADDR=0.0.0.0 only behind a firewall or authenticated proxy.
-#   - Grafana: http://127.0.0.1:3000 (admin / ENCRYPTION_KEY)
+#   - Grafana: http://127.0.0.1:3000 (admin / GRAFANA_PASSWORD)
 #   - Prometheus: http://127.0.0.1:9090 (no auth)
 #   - Jaeger UI: http://127.0.0.1:16686 (no auth)
 #   - Loki: http://127.0.0.1:3100 (internal, no auth)
@@ -19,7 +19,7 @@
 #
 # Environment Variables:
 #   - MONITORING_BIND_ADDR: Host interface for monitoring ports (default: 127.0.0.1)
-#   - GRAFANA_PASSWORD: Override Grafana admin password (defaults to ENCRYPTION_KEY)
+#   - GRAFANA_PASSWORD: Required independent Grafana admin password
 #   - GRAFANA_ANONYMOUS_ENABLED: Set to "true" to allow viewing dashboards without login
 #   - GRAFANA_PORT, PROMETHEUS_PORT, ALERTMANAGER_PORT, JAEGER_UI_PORT, LOKI_PORT:
 #     Override host ports when defaults are already allocated.
@@ -259,19 +259,32 @@ services:
       jaeger:
         condition: service_healthy
 
+  grafana-password-migration:
+    image: grafana/grafana:10.2.0
+    restart: "no"
+    environment:
+      GRAFANA_PASSWORD: ${GRAFANA_PASSWORD:?GRAFANA_PASSWORD required}
+    entrypoint: ["/bin/sh", "/opt/sanctuary/migrate-grafana-password.sh"]
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ${SANCTUARY_PROJECT_DIR:-.}/scripts/ops/migrate-grafana-password.sh:/opt/sanctuary/migrate-grafana-password.sh:ro
+
   grafana:
     image: grafana/grafana:10.2.0
     container_name: ${GRAFANA_CONTAINER_NAME:-sanctuary-grafana}
     restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
     depends_on:
-      - loki
-      - prometheus
-      - jaeger
+      loki:
+        condition: service_started
+      prometheus:
+        condition: service_started
+      jaeger:
+        condition: service_started
+      grafana-password-migration:
+        condition: service_completed_successfully
     environment:
       GF_SECURITY_ADMIN_USER: admin
-      # Uses GRAFANA_PASSWORD if set, otherwise falls back to ENCRYPTION_KEY
-      # This means the password is recoverable from your existing secrets
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-${ENCRYPTION_KEY:?ENCRYPTION_KEY required}}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?GRAFANA_PASSWORD required}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_USERS_ALLOW_ORG_CREATE: "false"
       # Anonymous access - allows viewing dashboards without login

@@ -52,31 +52,31 @@ next whole-repository rescrub.
 
 ## Phase 1: Wallet Detail route ownership
 
-- [ ] Introduce one Wallet Detail ownership key covering route ID and any user
+- [x] Introduce one Wallet Detail ownership key covering route ID and any user
   or network identity that changes wallet projection ownership.
-- [ ] Require `wallet.id === route id` before rendering the loaded view or any
+- [x] Require `wallet.id === route id` before rendering the loaded view or any
   wallet-bound control. Test the immediate A-to-B render before layout cleanup
   or B fetch completion and assert no A content is paired with B handlers.
-- [ ] Make modal state wallet-owned. On ownership change synchronously dismiss
+- [x] Make modal state wallet-owned. On ownership change synchronously dismiss
   export, transaction export, receive, QR, transfer, and delete intent; require
   the captured wallet ID to still be current before destructive confirmation or
   wallet-specific completion callbacks can affect the view.
-- [ ] Fence `useWalletSharing` reads, searches, share/group operations,
+- [x] Fence `useWalletSharing` reads, searches, share/group operations,
   device-share prompts, transfer refreshes, errors, and loading finalizers with
   current route ownership. Give user search an independent latest-query
   generation.
-- [ ] Fence `useWalletMutations` optimistic success/revert and error reporting
+- [x] Fence `useWalletMutations` optimistic success/revert and error reporting
   by captured wallet identity so a failed A update cannot restore A over B.
   Reset `isEditingName` and its draft on ownership change so an editor opened
   for A cannot remain active with A's text and rename B.
-- [ ] Extend the same ownership contract to `useWalletSync` and
+- [x] Extend the same ownership contract to `useWalletSync` and
   `useWalletWebSocket`: reset sync/repair state on route changes, fence every
   awaited success/error/finally write and refresh callback, and reject events
   whose event `walletId` is not current.
-- [ ] Prefer guarded setters/callbacks over exporting raw parent setters into
+- [x] Prefer guarded setters/callbacks over exporting raw parent setters into
   route-owned subhooks. Preserve `useWalletData`'s existing owned base-fetch
   semantics.
-- [ ] Add regressions for A-to-B route rerender with an open delete modal,
+- [x] Add regressions for A-to-B route rerender with an open delete modal,
   deferred share/search/transfer refreshes, rejected optimistic mutation,
   deferred sync/repair, and a stale A WebSocket event after B is current.
   Assert B never displays or commits A state and an A-owned modal cannot invoke
@@ -84,22 +84,22 @@ next whole-repository rescrub.
 
 ## Phase 2: Intelligence UI ownership
 
-- [ ] Key/reset the Intelligence tab content by selected wallet so conversation
+- [x] Key/reset the Intelligence tab content by selected wallet so conversation
   selection, pending input, filters, settings, and local mutation state do not
   silently migrate from wallet A to wallet B.
-- [ ] Derive the effective selected wallet synchronously from the current
+- [x] Derive the effective selected wallet synchronously from the current
   network-filtered wallet set, or withhold the tab panel when the stored
   selection is absent. Add an immediate network A-to-B rerender regression that
   asserts no A tab content renders before selection-repair effects run.
-- [ ] Give conversation message loads a latest-selection generation. Only the
+- [x] Give conversation message loads a latest-selection generation. Only the
   current conversation may replace messages or clear its loading state.
   Synchronously clear or owner-tag rendered history, optimistic messages,
   conversation draft, and send/loading state when selection changes so B never
   renders A content or inherits A's busy state before B's load resolves.
-- [ ] Snapshot conversation and wallet identity for sends. An A completion may
+- [x] Snapshot conversation and wallet identity for sends. An A completion may
   update A remotely but must not append, remove optimistic messages, restore
   input, or clear B/current send state.
-- [ ] Reset or fence conversation-list/create/delete completions where wallet
+- [x] Reset or fence conversation-list/create/delete completions where wallet
   changes or later operations would otherwise adopt stale state. Make the
   conversation list wallet-scoped at the repository/API boundary (not by
   client-filtering one paginated user-wide page), while defining explicit
@@ -111,14 +111,14 @@ next whole-repository rescrub.
   when creating or using a wallet-bound conversation, scope list queries by
   both user and wallet, and derive the active wallet binding from the stored
   conversation rather than trusting a caller-supplied replacement ID.
-- [ ] Give Insights reads a wallet-plus-filter generation and fence success,
+- [x] Give Insights reads a wallet-plus-filter generation and fence success,
   catch, and finally. Fence status-update removal by the owning wallet/filter
   view where needed.
-- [ ] Give Settings reads and writes wallet ownership plus latest-mutation
+- [x] Give Settings reads and writes wallet ownership plus latest-mutation
   ownership. A response or failed optimistic write must not replace B settings
   or clear B saving/loading state. Serialize or coalesce same-wallet writes so
   reverse server completion cannot persist an older intent after a newer one.
-- [ ] Add deferred reverse-completion regressions for conversation A/B loads,
+- [x] Add deferred reverse-completion regressions for conversation A/B loads,
   send A then select B, wallet A-to-B tab changes, insight filter A-to-B, and
   settings load/update A-to-B. Assert latest ownership wins and loading state is
   not cleared early. Add repository/API coverage that A excludes B-bound
@@ -129,7 +129,7 @@ next whole-repository rescrub.
 
 ## Phase 3: Monitoring and chat backend contracts
 
-- [ ] Remove `ENCRYPTION_KEY` as Grafana's credential, not only from the JSON
+- [x] Remove `ENCRYPTION_KEY` as Grafana's credential, not only from the JSON
   response: generate and preserve an independent `GRAFANA_PASSWORD` in the
   supported setup/upgrade path, make monitoring Compose require that credential,
   and update install templates/runbooks/tests. For an existing `grafana_data`
@@ -139,48 +139,48 @@ next whole-repository rescrub.
   fresh volumes skip the reset and initialize normally. Grafana must start only
   after that migration succeeds. Keep master-key disclosure solely behind the
   existing password-confirmed, audited endpoint.
-- [ ] Update monitoring response types/UI/tests so absence is explicit and no
+- [x] Update monitoring response types/UI/tests so absence is explicit and no
   test encodes the secret leak. Add a route regression using a sentinel
   encryption key and assert it is absent from the normal admin response.
-- [ ] Add a repository method (or bounded query option) that selects the newest
+- [x] Add a repository method (or bounded query option) that selects the newest
   20 conversation messages and returns them chronologically. Do not change the
   public full-history listing contract if it legitimately requires ascending
   order. Make newest selection deterministic for equal timestamps (for example
   `createdAt` plus `id`) and cover the tie case.
-- [ ] Enforce the proxy's 8,000-character content maximum in the backend route
+- [x] Enforce the proxy's 8,000-character content maximum in the backend route
   schema before `sendMessage` persists anything, including the proxy's trim and
   non-empty semantics. Centralize the limit where the package graph permits;
   otherwise add a contract test that fails if backend and proxy limits drift.
   Keep frontend max-length/API error handling aligned with the backend
   validation response.
-- [ ] Apply the same canonical content contract at the service's outbound
+- [x] Apply the same canonical content contract at the service's outbound
   history and provider-response boundaries. Preserve full persisted legacy
   history for user retrieval while deterministically bounding legacy oversized
   rows in model context; bound or reject an oversized assistant response before
   persistence so no newly stored message can poison a later send.
-- [ ] Add service/repository proof that message 21 is present and message 1 is
+- [x] Add service/repository proof that message 21 is present and message 1 is
   absent from a 20-message model context, plus a route/service proof that 8,001
   characters and whitespace-only input return 400 with zero message writes and
   exactly 8,000 characters remains accepted. Add legacy 8,001-character history
   and 8,001-character provider-response cases proving every outbound context and
   newly persisted message satisfies the limit without rewriting old history.
-- [ ] Add a persistent-volume upgrade proof that starts from the legacy
+- [x] Add a persistent-volume upgrade proof that starts from the legacy
   encryption-key-derived Grafana login, applies the migration, accepts the new
   independent password, rejects `ENCRYPTION_KEY`, and proves the volume survives
   a forced migration failure unchanged.
 
 ## Phase 4: Integrated verification and delivery
 
-- [ ] Run focused Wallet Detail, Intelligence tabs, monitoring route,
+- [x] Run focused Wallet Detail, Intelligence tabs, monitoring route,
   intelligence service/repository, gateway/egress contract, and ownership
   regression suites.
-- [ ] Run frontend app/tests typechecks, backend typecheck, lint, architecture
+- [x] Run frontend app/tests typechecks, backend typecheck, lint, architecture
   drift checks, changed-file complexity, and test-hygiene checks.
-- [ ] Run the repository's complete coverage command and require exact 100%
+- [x] Run the repository's complete coverage command and require exact 100%
   statements, branches, functions, and lines.
-- [ ] Re-read the full diff for scope, stale-success/error/finally gaps,
+- [x] Re-read the full diff for scope, stale-success/error/finally gaps,
   destructive-control identity, and duplicated ownership helpers.
-- [ ] Run an independent adversarial implementation review and resolve every
+- [x] Run an independent adversarial implementation review and resolve every
   verified P0-P2 comment.
 - [ ] Deliver Phase 1, Phase 2 plus the chat backend contracts, and the
   independent monitoring-credential phase as separate PRs when their diffs are
@@ -193,10 +193,10 @@ next whole-repository rescrub.
 
 ## Completion evidence
 
-- [ ] Every locked finding has a failing-before/passing-after behavioral test.
-- [ ] No old route, wallet, conversation, filter, search, or mutation generation
+- [x] Every locked finding has a failing-before/passing-after behavioral test.
+- [x] No old route, wallet, conversation, filter, search, or mutation generation
   can commit success, revert/error, or finally state into the current view.
-- [ ] A normal monitoring-config response never contains `ENCRYPTION_KEY`.
-- [ ] The LLM context contains the newest bounded chronological history, and
+- [x] A normal monitoring-config response never contains `ENCRYPTION_KEY`.
+- [x] The LLM context contains the newest bounded chronological history, and
   oversized messages are rejected before persistence.
 - [ ] Reviewed head, merge tree, and exact target CI are durably recorded.

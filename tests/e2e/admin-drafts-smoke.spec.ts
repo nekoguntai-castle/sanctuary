@@ -159,6 +159,7 @@ const MOCK_API_RESPONSES: Record<string, MockApiResponse> = {
   'GET /admin/monitoring/grafana': mockResponse({
     username: 'admin',
     passwordSource: 'GRAFANA_PASSWORD',
+    passwordConfigured: true,
     password: 'grafana-secret',
     anonymousAccess: false,
     anonymousAccessNote: 'Anonymous access disabled',

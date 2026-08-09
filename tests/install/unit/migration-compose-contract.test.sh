@@ -13,6 +13,7 @@ export ENCRYPTION_SALT="${ENCRYPTION_SALT:-contract-encryption-salt}"
 export GATEWAY_SECRET="${GATEWAY_SECRET:-contract-gateway-secret}"
 export WORKER_DIAGNOSTICS_SECRET="${WORKER_DIAGNOSTICS_SECRET:-contract-worker-diagnostics-secret-with-enough-length}"
 export LLM_EGRESS_PROXY_SECRET="${LLM_EGRESS_PROXY_SECRET:-contract-llm-secret}"
+export GRAFANA_PASSWORD="${GRAFANA_PASSWORD:-contract-grafana-secret}"
 
 assert_compose_contract() {
     local compose_file="$1"
@@ -53,6 +54,33 @@ NODE
 }
 
 assert_compose_contract "$PROJECT_ROOT/docker-compose.yml"
+
+rendered_monitoring="$(docker compose \
+    -f "$PROJECT_ROOT/docker-compose.yml" \
+    -f "$PROJECT_ROOT/docker/compose/monitoring.yml" \
+    config --format json)"
+
+COMPOSE_JSON="$rendered_monitoring" node <<'NODE'
+const config = JSON.parse(process.env.COMPOSE_JSON);
+const services = config.services;
+const migration = services['grafana-password-migration'];
+const grafana = services.grafana;
+if (grafana?.depends_on?.['grafana-password-migration']?.condition !== 'service_completed_successfully') {
+  throw new Error('grafana must wait for successful credential migration');
+}
+if (grafana?.environment?.GF_SECURITY_ADMIN_PASSWORD !== process.env.GRAFANA_PASSWORD) {
+  throw new Error('grafana must require the independent credential');
+}
+if (migration?.environment?.GRAFANA_PASSWORD !== process.env.GRAFANA_PASSWORD) {
+  throw new Error('credential migration must receive the independent credential');
+}
+if (!JSON.stringify(migration).includes('migrate-grafana-password.sh')) {
+  throw new Error('credential migration must invoke the reviewed migration script');
+}
+if (JSON.stringify({ migration, grafana }).includes(process.env.ENCRYPTION_KEY)) {
+  throw new Error('monitoring services must not receive the encryption master key');
+}
+NODE
 
 grep -Fq 'COPY --from=builder /repo/server/prisma ./prisma' "$PROJECT_ROOT/server/Dockerfile"
 grep -Fq 'COPY --from=builder /repo/server/scripts ./scripts' "$PROJECT_ROOT/server/Dockerfile"

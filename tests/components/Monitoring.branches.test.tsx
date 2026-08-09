@@ -94,7 +94,8 @@ describe('Monitoring branch coverage', () => {
   const grafanaConfig = {
     username: 'admin',
     password: 'secret',
-    passwordSource: 'GF_SECURITY_ADMIN_PASSWORD',
+    passwordSource: 'GRAFANA_PASSWORD',
+    passwordConfigured: true,
     anonymousAccess: false,
   };
 

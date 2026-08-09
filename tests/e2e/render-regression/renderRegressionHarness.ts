@@ -353,6 +353,7 @@ export const MONITORING_SERVICES = {
 export const GRAFANA_CONFIG = {
   username: 'admin',
   passwordSource: 'GRAFANA_PASSWORD',
+  passwordConfigured: true,
   password: 'render-grafana-password',
   anonymousAccess: false,
   anonymousAccessNote: 'Disabled by default',

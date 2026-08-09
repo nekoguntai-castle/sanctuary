@@ -113,26 +113,34 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
                 </div>
                 <div className="flex items-center space-x-1">
                   <span className="font-mono text-sanctuary-900 dark:text-sanctuary-100 max-w-[120px] truncate">
-                    {showPassword ? credentials.password : '••••••••'}
+                    {credentials.passwordConfigured
+                      ? (showPassword ? credentials.password : '••••••••')
+                      : 'Not configured'}
                   </span>
-                  <button
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="p-1 text-sanctuary-400 hover:text-sanctuary-600 dark:hover:text-sanctuary-300"
-                    title={showPassword ? 'Hide password' : 'Show password'}
-                  >
-                    {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                  </button>
-                  <button
-                    onClick={handleCopyPassword}
-                    className="p-1 text-sanctuary-400 hover:text-sanctuary-600 dark:hover:text-sanctuary-300"
-                    title={copied ? 'Copied!' : 'Copy password'}
-                  >
-                    {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                  </button>
+                  {credentials.passwordConfigured && (
+                    <>
+                      <button
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="p-1 text-sanctuary-400 hover:text-sanctuary-600 dark:hover:text-sanctuary-300"
+                        title={showPassword ? 'Hide password' : 'Show password'}
+                      >
+                        {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                      <button
+                        onClick={handleCopyPassword}
+                        className="p-1 text-sanctuary-400 hover:text-sanctuary-600 dark:hover:text-sanctuary-300"
+                        title={copied ? 'Copied!' : 'Copy password'}
+                      >
+                        {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
               <p className="text-[10px] text-sanctuary-400 mt-1">
-                From {credentials.passwordSource} environment variable
+                {credentials.passwordConfigured
+                  ? `From ${credentials.passwordSource} environment variable`
+                  : 'Set GRAFANA_PASSWORD in the Sanctuary runtime environment'}
               </p>
 
               {/* Anonymous access toggle for Grafana */}

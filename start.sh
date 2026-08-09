@@ -116,8 +116,13 @@ if [ -z "$WORKER_DIAGNOSTICS_SECRET" ]; then
     persist_runtime_env_value "WORKER_DIAGNOSTICS_SECRET" "$WORKER_DIAGNOSTICS_SECRET"
 fi
 
+if [ -z "$GRAFANA_PASSWORD" ]; then
+    export GRAFANA_PASSWORD=$(openssl rand -hex 24)
+    persist_runtime_env_value "GRAFANA_PASSWORD" "$GRAFANA_PASSWORD"
+fi
+
 # Export for docker compose
-export JWT_SECRET ENCRYPTION_KEY GATEWAY_SECRET WORKER_DIAGNOSTICS_SECRET POSTGRES_PASSWORD LLM_EGRESS_PROXY_SECRET REDIS_PASSWORD
+export JWT_SECRET ENCRYPTION_KEY GATEWAY_SECRET WORKER_DIAGNOSTICS_SECRET POSTGRES_PASSWORD GRAFANA_PASSWORD LLM_EGRESS_PROXY_SECRET REDIS_PASSWORD
 export LLM_EGRESS_PROXY_ALLOWED_HOSTS LLM_EGRESS_PROXY_ALLOWED_CIDRS LLM_EGRESS_PROXY_ALLOW_PUBLIC_HTTPS
 export RATE_LIMIT_LOGIN RATE_LIMIT_2FA RATE_LIMIT_PASSWORD_CHANGE
 export HTTPS_PORT HTTP_PORT ENABLE_MONITORING ENABLE_TOR ENABLE_MCP SANCTUARY_ENV_FILE SANCTUARY_SSL_DIR SANCTUARY_COMPOSE_SSL_DIR
@@ -319,6 +324,10 @@ start_compose_stack() {
         postgres_up_flags="$postgres_up_flags --pull never"
     fi
 
+    if docker compose "${COMPOSE_FILE_ARGS[@]}" config --services | grep -qx grafana; then
+        docker compose "${COMPOSE_FILE_ARGS[@]}" stop grafana >/dev/null 2>&1 || true
+    fi
+
     docker compose "${COMPOSE_FILE_ARGS[@]}" $profiles up $postgres_up_flags postgres
     SANCTUARY_PROJECT_DIR="$SCRIPT_DIR" bash "$SCRIPT_DIR/scripts/reconcile-postgres-password.sh"
     docker compose "${COMPOSE_FILE_ARGS[@]}" $profiles up $up_flags
@@ -386,7 +395,7 @@ case "${1:-}" in
         echo "Monitoring:"
         echo "  Grafana: http://localhost:${GRAFANA_PORT:-3000}"
         echo "    Username: admin"
-        echo "    Password: (your GRAFANA_PASSWORD or ENCRYPTION_KEY)"
+        echo "    Password: (your GRAFANA_PASSWORD)"
         echo ""
         echo "  Dashboards are pre-configured with Sanctuary logs."
         ;;
@@ -491,7 +500,7 @@ case "${1:-}" in
         echo ""
         echo "Monitoring:"
         echo "  Run './start.sh --with-monitoring' to enable monitoring."
-        echo "  Access Grafana at http://localhost:3000 (admin / your ENCRYPTION_KEY)"
+        echo "  Access Grafana at http://localhost:3000 (admin / your GRAFANA_PASSWORD)"
         echo ""
         echo "Tor Privacy:"
         echo "  Run './start.sh --with-tor' to enable Tor proxy."

@@ -294,6 +294,10 @@ test_env_file_has_secrets() {
         missing_vars+=("POSTGRES_PASSWORD")
     fi
 
+    if ! grep -q "^GRAFANA_PASSWORD=" "$TEST_ENV_FILE"; then
+        missing_vars+=("GRAFANA_PASSWORD")
+    fi
+
     # Check for REDIS_PASSWORD
     if ! grep -q "^REDIS_PASSWORD=" "$TEST_ENV_FILE"; then
         missing_vars+=("REDIS_PASSWORD")
@@ -316,6 +320,11 @@ test_env_file_has_secrets() {
 
     if [ -z "$POSTGRES_PASSWORD" ]; then
         log_error "POSTGRES_PASSWORD is empty"
+        return 1
+    fi
+
+    if [ -z "$GRAFANA_PASSWORD" ]; then
+        log_error "GRAFANA_PASSWORD is empty"
         return 1
     fi
 

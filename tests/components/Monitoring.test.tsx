@@ -67,7 +67,8 @@ describe('Monitoring', () => {
   const mockGrafanaConfig = {
     username: 'admin',
     password: 'sanctuary-admin',
-    passwordSource: 'GF_SECURITY_ADMIN_PASSWORD',
+    passwordSource: 'GRAFANA_PASSWORD',
+    passwordConfigured: true,
     anonymousAccess: false,
   };
 
@@ -277,7 +278,7 @@ describe('Monitoring', () => {
       render(<Monitoring />);
 
       await waitFor(() => {
-        expect(screen.getByText(/GF_SECURITY_ADMIN_PASSWORD/)).toBeInTheDocument();
+        expect(screen.getByText(/GRAFANA_PASSWORD/)).toBeInTheDocument();
       });
     });
 

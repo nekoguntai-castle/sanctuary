@@ -59,6 +59,7 @@ export const useMonitoringController = () => {
         username: grafanaConfig.username,
         password: grafanaConfig.password,
         passwordSource: grafanaConfig.passwordSource,
+        passwordConfigured: grafanaConfig.passwordConfigured,
         hasAuth: true,
       };
     }
@@ -68,6 +69,7 @@ export const useMonitoringController = () => {
         username: '',
         password: '',
         passwordSource: '',
+        passwordConfigured: false,
         hasAuth: false,
       };
     }

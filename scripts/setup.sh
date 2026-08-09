@@ -29,7 +29,7 @@
 # Environment Variables:
 #   Existing secrets (for upgrades - will be preserved):
 #     JWT_SECRET, ENCRYPTION_KEY, ENCRYPTION_SALT, GATEWAY_SECRET,
-#     WORKER_DIAGNOSTICS_SECRET, POSTGRES_PASSWORD
+#     WORKER_DIAGNOSTICS_SECRET, POSTGRES_PASSWORD, GRAFANA_PASSWORD
 #
 #   Configuration:
 #     SANCTUARY_RUNTIME_DIR (default: ~/.config/sanctuary)
@@ -701,6 +701,13 @@ load_or_generate_secrets() {
         echo "  - POSTGRES_PASSWORD: generated"
     fi
 
+    if [ -n "$GRAFANA_PASSWORD" ]; then
+        echo "  - GRAFANA_PASSWORD: using existing"
+    else
+        GRAFANA_PASSWORD=$(generate_password)
+        echo "  - GRAFANA_PASSWORD: generated"
+    fi
+
     if [ -n "$LLM_EGRESS_PROXY_SECRET" ]; then
         echo "  - LLM_EGRESS_PROXY_SECRET: using existing"
     else
@@ -753,6 +760,7 @@ ENCRYPTION_SALT=$ENCRYPTION_SALT
 GATEWAY_SECRET=$GATEWAY_SECRET
 WORKER_DIAGNOSTICS_SECRET=$WORKER_DIAGNOSTICS_SECRET
 POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+GRAFANA_PASSWORD=$GRAFANA_PASSWORD
 LLM_EGRESS_PROXY_SECRET=$LLM_EGRESS_PROXY_SECRET
 REDIS_PASSWORD=$REDIS_PASSWORD
 
@@ -815,7 +823,7 @@ export_runtime_environment() {
     export SANCTUARY_ENV_FILE="$ENV_FILE"
     export SANCTUARY_SSL_DIR="$SSL_DIR"
     export SANCTUARY_COMPOSE_SSL_DIR="$COMPOSE_SSL_DIR"
-    export JWT_SECRET ENCRYPTION_KEY ENCRYPTION_SALT GATEWAY_SECRET WORKER_DIAGNOSTICS_SECRET POSTGRES_PASSWORD LLM_EGRESS_PROXY_SECRET REDIS_PASSWORD
+    export JWT_SECRET ENCRYPTION_KEY ENCRYPTION_SALT GATEWAY_SECRET WORKER_DIAGNOSTICS_SECRET POSTGRES_PASSWORD GRAFANA_PASSWORD LLM_EGRESS_PROXY_SECRET REDIS_PASSWORD
     export LLM_EGRESS_PROXY_ALLOWED_HOSTS LLM_EGRESS_PROXY_ALLOWED_CIDRS LLM_EGRESS_PROXY_ALLOW_PUBLIC_HTTPS
     export HTTPS_PORT HTTP_PORT GATEWAY_PORT ENABLE_MONITORING ENABLE_TOR SANCTUARY_INSTALL_MODE SANCTUARY_OFFLINE_VERSION
 }
@@ -977,6 +985,12 @@ compose_up_after_build_args() {
     echo "-d --no-build"
 }
 
+stop_grafana_before_credential_migration() {
+    if [ "$OPT_ENABLE_MONITORING" = "yes" ]; then
+        docker compose "${COMPOSE_FILE_ARGS[@]}" stop grafana >/dev/null 2>&1 || true
+    fi
+}
+
 start_services() {
     echo "Starting Sanctuary..."
     if [ "$OPT_OFFLINE" = true ]; then
@@ -1018,6 +1032,7 @@ start_services() {
     # Step 2: Start containers
     echo ""
     echo "Starting containers..."
+    stop_grafana_before_credential_migration
 
     if [ "$OPT_OFFLINE" = true ]; then
         docker compose "${COMPOSE_FILE_ARGS[@]}" up $(compose_up_no_build_args) postgres
@@ -1167,7 +1182,7 @@ show_completion_banner() {
         echo -e "${BLUE}║${NC}  Monitoring (Grafana):                                    ${BLUE}║${NC}"
         echo -e "${BLUE}║${NC}    ${GREEN}http://localhost:3000${NC}                                 ${BLUE}║${NC}"
         echo -e "${BLUE}║${NC}    Username: ${GREEN}admin${NC}                                        ${BLUE}║${NC}"
-        echo -e "${BLUE}║${NC}    Password: ${GREEN}(your ENCRYPTION_KEY from config)${NC}           ${BLUE}║${NC}"
+        echo -e "${BLUE}║${NC}    Password: ${GREEN}(your GRAFANA_PASSWORD from config)${NC}          ${BLUE}║${NC}"
         echo -e "${BLUE}║${NC}                                                           ${BLUE}║${NC}"
     fi
 

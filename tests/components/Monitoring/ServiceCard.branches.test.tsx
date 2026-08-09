@@ -47,6 +47,7 @@ describe('Monitoring ServiceCard branch coverage', () => {
           username: 'admin',
           password: 'secret',
           passwordSource: 'GRAFANA_PASSWORD',
+          passwordConfigured: true,
           hasAuth: true,
         }}
       />
@@ -89,6 +90,7 @@ describe('Monitoring ServiceCard branch coverage', () => {
           username: 'admin',
           password: '',
           passwordSource: 'GRAFANA_PASSWORD',
+          passwordConfigured: true,
           hasAuth: true,
         }}
       />
@@ -96,5 +98,26 @@ describe('Monitoring ServiceCard branch coverage', () => {
 
     fireEvent.click(screen.getByTitle('Copy password'));
     expect(navigator.clipboard.writeText).not.toHaveBeenCalled();
+  });
+
+  it('renders an explicit missing-password state without secret controls', () => {
+    render(
+      <ServiceCard
+        service={serviceBase}
+        onEditUrl={vi.fn()}
+        hostname="node.local"
+        credentials={{
+          username: 'admin',
+          password: null,
+          passwordSource: null,
+          passwordConfigured: false,
+          hasAuth: true,
+        }}
+      />
+    );
+
+    expect(screen.getByText('Not configured')).toBeInTheDocument();
+    expect(screen.getByText(/Set GRAFANA_PASSWORD/)).toBeInTheDocument();
+    expect(screen.queryByTitle('Copy password')).not.toBeInTheDocument();
   });
 });

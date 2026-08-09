@@ -26,7 +26,8 @@ The optional monitoring stack in `docker/compose/monitoring.yml` binds host port
 
 Default local endpoints:
 
-- Grafana: `http://127.0.0.1:3000`, authenticated as `admin` with `GRAFANA_PASSWORD` or `ENCRYPTION_KEY`.
+- Grafana: `http://127.0.0.1:3000`, authenticated as `admin` with the independent `GRAFANA_PASSWORD` stored in the Sanctuary runtime environment. Upgrades migrate an existing Grafana database before startup and never reuse `ENCRYPTION_KEY` as a login credential.
+  Use `./scripts/setup.sh --upgrade --enable-monitoring` or `./start.sh --with-monitoring` so an existing Grafana process is stopped before the one-shot database migration runs.
 - Prometheus: `http://127.0.0.1:9090`, no built-in auth.
 - Alertmanager: `http://127.0.0.1:9093`, no built-in auth.
 - Jaeger UI: `http://127.0.0.1:16686`, no built-in auth.

@@ -303,8 +303,9 @@ export interface MonitoringServicesResponse {
 
 export interface GrafanaConfig {
   username: string;
-  passwordSource: 'GRAFANA_PASSWORD' | 'ENCRYPTION_KEY';
-  password: string;
+  passwordSource: 'GRAFANA_PASSWORD' | null;
+  password: string | null;
+  passwordConfigured: boolean;
   anonymousAccess: boolean;
   anonymousAccessNote: string;
 }

@@ -3,7 +3,8 @@
  */
 export interface ServiceCredentials {
   username: string;
-  password: string;
-  passwordSource: string;
+  password: string | null;
+  passwordSource: string | null;
+  passwordConfigured: boolean;
   hasAuth: boolean;
 }

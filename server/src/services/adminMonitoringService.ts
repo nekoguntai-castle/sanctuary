@@ -32,8 +32,9 @@ export type MonitoringServiceUrlUpdate = {
 
 export type GrafanaConfigResponse = {
   username: 'admin';
-  passwordSource: 'GRAFANA_PASSWORD' | 'ENCRYPTION_KEY';
-  password: string;
+  passwordSource: 'GRAFANA_PASSWORD' | null;
+  password: string | null;
+  passwordConfigured: boolean;
   anonymousAccess: boolean;
   anonymousAccessNote: string;
 };
@@ -123,15 +124,13 @@ export async function getGrafanaConfig(): Promise<GrafanaConfigResponse> {
     false,
   );
 
-  const encryptionKey = process.env.ENCRYPTION_KEY || '';
-  const grafanaPassword = process.env.GRAFANA_PASSWORD;
-  const passwordSource = grafanaPassword ? 'GRAFANA_PASSWORD' : 'ENCRYPTION_KEY';
-  const password = grafanaPassword || encryptionKey || '';
+  const grafanaPassword = process.env.GRAFANA_PASSWORD || null;
 
   return {
     username: 'admin',
-    passwordSource,
-    password,
+    passwordSource: grafanaPassword ? 'GRAFANA_PASSWORD' : null,
+    password: grafanaPassword,
+    passwordConfigured: grafanaPassword !== null,
     anonymousAccess,
     anonymousAccessNote: 'Changing anonymous access requires restarting the Grafana container',
   };
