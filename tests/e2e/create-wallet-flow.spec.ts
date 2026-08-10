@@ -50,6 +50,20 @@ const DEVICE_1 = {
       xpub: 'xpub-create-coldcard',
     },
     {
+      id: 'acct-create-1-testnet',
+      purpose: 'single_sig',
+      scriptType: 'native_segwit',
+      derivationPath: "m/84'/1'/0'",
+      xpub: 'tpub-create-coldcard-testnet',
+    },
+    {
+      id: 'acct-create-1-taproot',
+      purpose: 'single_sig',
+      scriptType: 'taproot',
+      derivationPath: "m/86'/0'/0'",
+      xpub: 'xpub-create-coldcard-taproot',
+    },
+    {
       id: 'acct-create-1-ms',
       purpose: 'multisig',
       scriptType: 'native_segwit',
@@ -534,6 +548,11 @@ test.describe('Create wallet flow', () => {
 
     await networkTabs.getByRole('tab', { name: 'Testnet3' }).click();
 
+    // Network changes invalidate signers chosen for a different coin type.
+    await expect(main.getByText('Select Signers')).toBeVisible();
+    await main.getByText('Create Coldcard').click();
+    await main.getByRole('button', { name: 'Next Step' }).click();
+
     await expect(main.getByText('Testnet3', { exact: true })).toBeVisible();
     await expect(main.getByText('Testnet coins have no real-world value.')).toBeVisible();
 
@@ -571,6 +590,12 @@ test.describe('Create wallet flow', () => {
 
     await main.locator('input[type="text"]').first().fill('Taproot Wallet');
     await main.getByRole('button', { name: /Taproot/i }).click();
+
+    // Script changes invalidate the signer until an exact Taproot account is selected.
+    await expect(main.getByText('Select Signers')).toBeVisible();
+    await main.getByText('Create Coldcard').click();
+    await main.getByRole('button', { name: 'Next Step' }).click();
+    await expect(main.getByText('Configuration')).toBeVisible();
     await main.getByRole('button', { name: 'Next Step' }).click();
 
     // Review should show taproot as text in the details

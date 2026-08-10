@@ -11,12 +11,13 @@ import { asyncHandler } from '../../errors/errorHandler';
 import { InvalidInputError, NotFoundError } from '../../errors/ApiError';
 import { exportFormatRegistry, type WalletExportData } from '../../services/export';
 import type { ScriptType, Network } from '../../services/bitcoin/descriptorParser';
-import { parseDerivationPath } from '@sanctuary/shared/utils/bitcoin';
 import {
   WalletType,
-  accountPurposeForWalletType,
+  parseWalletScriptType,
   parseWalletType,
 } from '@sanctuary/shared/constants/walletIdentity';
+import { assertSignerBindingMatchesWallet } from '../../services/wallet/walletAccountSelection';
+import type { WalletNetwork } from '../../services/wallet/types';
 import {
   assertWalletHardwareCapability,
   assertWalletHardwareCapabilityById,
@@ -24,66 +25,130 @@ import {
 
 const router = Router();
 
-function walletCoinType(network: string | null | undefined): number {
-  return network && network !== 'mainnet' ? 1 : 0;
+type ExportWallet = NonNullable<Awaited<ReturnType<typeof walletRepository.findByIdWithDevices>>>;
+type ExportWalletDevice = ExportWallet['devices'][number];
+
+function requiredSnapshotValue(
+  value: string | null,
+  field: string,
+  signerIndex: number,
+): string {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new InvalidInputError(`Wallet signer ${signerIndex} has an incomplete ${field} snapshot`);
+  }
+  return value;
 }
 
-function accountCoinType(account: { derivationPath: string | null | undefined }): number | null {
-  const parsed = parseDerivationPath(account.derivationPath);
-  return parsed.valid ? parsed.coinType : null;
+function assertUniqueSnapshotValue(
+  seen: Set<string>,
+  value: string,
+  field: string,
+): void {
+  if (seen.has(value)) {
+    throw new InvalidInputError(`Wallet has duplicate signer ${field}: ${value}`);
+  }
+  seen.add(value);
 }
 
-function scopeAccountsToWalletNetwork<T extends { derivationPath: string | null | undefined }>(
-  accounts: T[],
-  network: string | null | undefined,
-): T[] {
-  const requestedCoinType = walletCoinType(network);
-  const networkMatches = accounts.filter((account) => accountCoinType(account) === requestedCoinType);
-  if (networkMatches.length > 0) return networkMatches;
+function validateSignerCount(wallet: ExportWallet): void {
+  if (wallet.type === WalletType.SINGLE_SIG && wallet.devices.length !== 1) {
+    throw new InvalidInputError('Single-signature wallet must have exactly one signer snapshot');
+  }
+  if (
+    wallet.type === WalletType.MULTI_SIG
+    && (!Number.isSafeInteger(wallet.totalSigners) || (wallet.totalSigners ?? 0) <= 0)
+  ) {
+    throw new InvalidInputError('Multisignature wallet has an invalid signer count');
+  }
+  if (wallet.type === WalletType.MULTI_SIG && wallet.devices.length !== wallet.totalSigners) {
+    throw new InvalidInputError('Multisignature wallet signer snapshots are incomplete');
+  }
+}
 
-  const unknownNetworkAccounts = accounts.filter((account) => accountCoinType(account) === null);
-  return unknownNetworkAccounts.length > 0 ? unknownNetworkAccounts : accounts;
+function signerSnapshotDevice(
+  link: ExportWalletDevice,
+  position: number,
+  walletType: WalletType,
+  walletScriptType: ScriptType,
+  network: WalletNetwork,
+  seenDeviceIds: Set<string>,
+  seenAccountIds: Set<string>,
+): WalletExportData['devices'][number] {
+  if (link.signerIndex !== position) {
+    throw new InvalidInputError('Wallet signer snapshots must be ordered and contiguous');
+  }
+  if (link.signerBindingVersion !== 1) {
+    throw new InvalidInputError(`Wallet signer ${position} has an unsupported snapshot version`);
+  }
+
+  const fingerprint = requiredSnapshotValue(link.signerFingerprint, 'fingerprint', position);
+  const xpub = requiredSnapshotValue(link.signerXpub, 'xpub', position);
+  const derivationPath = requiredSnapshotValue(link.signerDerivationPath, 'derivation path', position);
+  const purpose = requiredSnapshotValue(link.signerPurpose, 'purpose', position);
+  const scriptType = requiredSnapshotValue(link.signerScriptType, 'script type', position);
+
+  assertUniqueSnapshotValue(seenDeviceIds, link.deviceId, 'device');
+  if (link.deviceAccountId) {
+    assertUniqueSnapshotValue(seenAccountIds, link.deviceAccountId, 'account');
+  }
+  assertSignerBindingMatchesWallet({
+    deviceId: link.deviceId,
+    deviceAccountId: link.deviceAccountId ?? `snapshot:${link.deviceId}`,
+    signerFingerprint: fingerprint,
+    signerXpub: xpub,
+    signerDerivationPath: derivationPath,
+    signerPurpose: purpose,
+    signerScriptType: scriptType,
+  }, {
+    type: walletType,
+    scriptType: walletScriptType,
+    network,
+  });
+
+  return {
+    label: link.device.label,
+    type: link.device.type,
+    fingerprint,
+    xpub,
+    derivationPath,
+    modelSlug: link.device.model?.slug || undefined,
+    modelName: link.device.model?.name || undefined,
+  };
 }
 
 /**
  * Build wallet export data from wallet with devices
- * Selects the appropriate device account based on wallet type
+ * Uses only the immutable signer snapshot captured when the wallet was linked.
  */
-function buildWalletExportData(wallet: NonNullable<Awaited<ReturnType<typeof walletRepository.findByIdWithDevices>>>): WalletExportData {
-  // Determine expected purpose based on wallet type
-  const walletType = parseWalletType(wallet.type) ?? WalletType.SINGLE_SIG;
-  const expectedPurpose = accountPurposeForWalletType(walletType);
+function buildWalletExportData(wallet: ExportWallet): WalletExportData {
+  const walletType = parseWalletType(wallet.type);
+  const scriptType = parseWalletScriptType(wallet.scriptType);
+  if (!walletType || !scriptType) {
+    throw new InvalidInputError('Wallet policy is invalid for export');
+  }
+  validateSignerCount(wallet);
+
+  const seenDeviceIds = new Set<string>();
+  const seenAccountIds = new Set<string>();
 
   return {
     id: wallet.id,
     name: wallet.name,
     type: walletType,
-    scriptType: wallet.scriptType as ScriptType,
+    scriptType: scriptType as ScriptType,
     network: wallet.network as Network,
     descriptor: wallet.descriptor || '',
     quorum: wallet.quorum || undefined,
     totalSigners: wallet.totalSigners || undefined,
-    devices: wallet.devices.map((wd) => {
-      // Find the appropriate account based on wallet type
-      // Priority: exact match (purpose + scriptType) > purpose match > legacy fields
-      const accounts = scopeAccountsToWalletNetwork(wd.device.accounts || [], wallet.network);
-      const exactMatch = accounts.find(
-        (a) => a.purpose === expectedPurpose && a.scriptType === wallet.scriptType
-      );
-      const purposeMatch = accounts.find((a) => a.purpose === expectedPurpose);
-      const account = exactMatch || purposeMatch;
-
-      return {
-        label: wd.device.label,
-        type: wd.device.type,
-        fingerprint: wd.device.fingerprint,
-        // Use account-specific xpub and derivation path if available
-        xpub: account?.xpub || wd.device.xpub,
-        derivationPath: account?.derivationPath || wd.device.derivationPath || undefined,
-        modelSlug: wd.device.model?.slug || undefined,
-        modelName: wd.device.model?.name || undefined,
-      };
-    }),
+    devices: wallet.devices.map((link, position) => signerSnapshotDevice(
+      link,
+      position,
+      walletType,
+      scriptType,
+      wallet.network as WalletNetwork,
+      seenDeviceIds,
+      seenAccountIds,
+    )),
     createdAt: wallet.createdAt,
   };
 }

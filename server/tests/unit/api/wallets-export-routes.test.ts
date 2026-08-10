@@ -74,6 +74,15 @@ function buildWallet(overrides: Record<string, any> = {}) {
     createdAt: new Date('2025-01-01T00:00:00.000Z'),
     devices: [
       {
+        deviceId: 'device-a',
+        deviceAccountId: 'account-a',
+        signerIndex: 0,
+        signerBindingVersion: 1,
+        signerFingerprint: 'FPA',
+        signerXpub: 'account-xpub-a',
+        signerDerivationPath: "m/48'/0'/0'/2'",
+        signerPurpose: 'multisig',
+        signerScriptType: 'native_segwit',
         device: {
           label: 'Device Exact',
           type: 'coldcard',
@@ -91,6 +100,15 @@ function buildWallet(overrides: Record<string, any> = {}) {
         },
       },
       {
+        deviceId: 'device-b',
+        deviceAccountId: 'account-b',
+        signerIndex: 1,
+        signerBindingVersion: 1,
+        signerFingerprint: 'FPB',
+        signerXpub: 'account-xpub-b',
+        signerDerivationPath: "m/48'/0'/1'/2'",
+        signerPurpose: 'multisig',
+        signerScriptType: 'native_segwit',
         device: {
           label: 'Device Purpose',
           type: 'bitbox',
@@ -109,6 +127,15 @@ function buildWallet(overrides: Record<string, any> = {}) {
         },
       },
       {
+        deviceId: 'device-c',
+        deviceAccountId: 'account-c',
+        signerIndex: 2,
+        signerBindingVersion: 1,
+        signerFingerprint: 'FPC',
+        signerXpub: 'legacy-xpub-c',
+        signerDerivationPath: "m/48'/0'/2'/2'",
+        signerPurpose: 'multisig',
+        signerScriptType: 'native_segwit',
         device: {
           label: 'Device Fallback',
           type: 'passport',
@@ -296,7 +323,7 @@ describe('Wallets Export Routes', () => {
     expect(lines[1]).not.toHaveProperty('origin');
   });
 
-  it('returns available export formats and uses account selection priority', async () => {
+  it('returns available export formats using immutable signer snapshot order', async () => {
     const response = await request(app).get('/api/v1/wallets/wallet-1/export/formats');
 
     expect(response.status).toBe(200);
@@ -324,7 +351,7 @@ describe('Wallets Export Routes', () => {
     ]);
   });
 
-  it('builds single-sig export data with account/purpose and legacy fallbacks', async () => {
+  it('rejects single-sig export data without immutable signer snapshots', async () => {
     mockWalletFindByIdWithDevices.mockResolvedValue(buildWallet({
       type: 'single_sig',
       scriptType: 'taproot',
@@ -358,23 +385,11 @@ describe('Wallets Export Routes', () => {
     }));
 
     const response = await request(app).get('/api/v1/wallets/wallet-1/export/formats');
-    expect(response.status).toBe(200);
-
-    const walletDataArg = mockGetAvailableFormats.mock.calls[0][0];
-    expect(walletDataArg.type).toBe('single_sig');
-    expect(walletDataArg.devices).toEqual([
-      expect.objectContaining({
-        xpub: 'legacy-single-xpub',
-        derivationPath: undefined,
-      }),
-      expect.objectContaining({
-        xpub: 'purpose-only-xpub',
-        derivationPath: "m/86'/0'/0'",
-      }),
-    ]);
+    expect(response.status).toBe(400);
+    expect(mockGetAvailableFormats).not.toHaveBeenCalled();
   });
 
-  it('scopes exported device accounts to signet coin-type paths', async () => {
+  it('rejects signet export accounts without immutable signer snapshots', async () => {
     mockWalletFindByIdWithDevices.mockResolvedValue(buildWallet({
       type: 'single_sig',
       scriptType: 'native_segwit',
@@ -407,19 +422,11 @@ describe('Wallets Export Routes', () => {
     }));
 
     const response = await request(app).get('/api/v1/wallets/wallet-1/export/formats');
-    expect(response.status).toBe(200);
-
-    const walletDataArg = mockGetAvailableFormats.mock.calls[0][0];
-    expect(walletDataArg.network).toBe('signet');
-    expect(walletDataArg.devices).toEqual([
-      expect.objectContaining({
-        xpub: 'tpub-signet',
-        derivationPath: "m/84'/1'/0'",
-      }),
-    ]);
+    expect(response.status).toBe(400);
+    expect(mockGetAvailableFormats).not.toHaveBeenCalled();
   });
 
-  it('falls back to unknown-coin account paths when no network-specific export account exists', async () => {
+  it('rejects unknown-coin account fallback when no signer snapshot exists', async () => {
     mockWalletFindByIdWithDevices.mockResolvedValue(buildWallet({
       type: 'single_sig',
       scriptType: 'native_segwit',
@@ -452,18 +459,11 @@ describe('Wallets Export Routes', () => {
     }));
 
     const response = await request(app).get('/api/v1/wallets/wallet-1/export/formats');
-    expect(response.status).toBe(200);
-
-    const walletDataArg = mockGetAvailableFormats.mock.calls[0][0];
-    expect(walletDataArg.devices).toEqual([
-      expect.objectContaining({
-        xpub: 'unknown-path-xpub',
-        derivationPath: 'custom-path',
-      }),
-    ]);
+    expect(response.status).toBe(400);
+    expect(mockGetAvailableFormats).not.toHaveBeenCalled();
   });
 
-  it('normalizes empty descriptor/quorum signer fields in export data', async () => {
+  it('rejects an invalid multisig signer count', async () => {
     mockWalletFindByIdWithDevices.mockResolvedValue(buildWallet({
       descriptor: null,
       quorum: 0,
@@ -471,28 +471,18 @@ describe('Wallets Export Routes', () => {
     }));
 
     const response = await request(app).get('/api/v1/wallets/wallet-1/export/formats');
-    expect(response.status).toBe(200);
-
-    const walletDataArg = mockGetAvailableFormats.mock.calls[0][0];
-    expect(walletDataArg.descriptor).toBe('');
-    expect(walletDataArg.quorum).toBeUndefined();
-    expect(walletDataArg.totalSigners).toBeUndefined();
+    expect(response.status).toBe(400);
+    expect(mockGetAvailableFormats).not.toHaveBeenCalled();
   });
 
-  it('falls back closed when exported wallet type is unsupported', async () => {
+  it('fails closed when exported wallet type is unsupported', async () => {
     mockWalletFindByIdWithDevices.mockResolvedValue(buildWallet({
       type: 'unsupported_wallet_type',
     }));
 
     const response = await request(app).get('/api/v1/wallets/wallet-1/export/formats');
-    expect(response.status).toBe(200);
-
-    const walletDataArg = mockGetAvailableFormats.mock.calls[0][0];
-    expect(walletDataArg.type).toBe('single_sig');
-    expect(walletDataArg.devices[0]).toEqual(expect.objectContaining({
-      xpub: 'legacy-xpub-a',
-      derivationPath: "m/48'/0'/0'/2'",
-    }));
+    expect(response.status).toBe(400);
+    expect(mockGetAvailableFormats).not.toHaveBeenCalled();
   });
 
   it('returns 404 when wallet is missing for export format listing', async () => {

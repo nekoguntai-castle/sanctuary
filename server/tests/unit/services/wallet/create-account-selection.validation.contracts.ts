@@ -28,6 +28,15 @@ export function registerWalletCreateAccountSelectionValidationTests({
   userId: string;
 }): void {
   describe("Validation", () => {
+    it("rejects unsupported Bitcoin networks", async () => {
+      await expect(createWallet(userId, {
+        name: "Wrong Network",
+        type: "single_sig",
+        scriptType: "native_segwit",
+        network: "testnet" as never,
+      })).rejects.toThrow("Invalid network");
+    });
+
     it("requires quorum and totalSigners for multi-sig wallets", async () => {
       await expect(
         createWallet(userId, {
@@ -77,7 +86,10 @@ export function registerWalletCreateAccountSelectionValidationTests({
           name: "Test Wallet",
           type: "single_sig",
           scriptType: "native_segwit",
-          deviceIds: ["device-1", "device-2"],
+          signers: [
+            { deviceId: "device-1", deviceAccountId: "device-1-account-0", signerIndex: 0 },
+            { deviceId: "device-2", deviceAccountId: "device-2-account-0", signerIndex: 1 },
+          ],
         }),
       ).rejects.toThrow("Single-sig wallet requires exactly 1 device");
     });
@@ -101,9 +113,75 @@ export function registerWalletCreateAccountSelectionValidationTests({
           scriptType: "native_segwit",
           quorum: 2,
           totalSigners: 2,
-          deviceIds: ["device-1"],
+          signers: [
+            { deviceId: "device-1", deviceAccountId: "device-1-account-0", signerIndex: 0 },
+          ],
         }),
       ).rejects.toThrow("Multi-sig wallet requires at least 2 devices");
+    });
+
+    it("requires the exact configured multisig signer count", async () => {
+      await expect(createWallet(userId, {
+        name: "Mismatched MultiSig Wallet",
+        type: "multi_sig",
+        scriptType: "native_segwit",
+        quorum: 2,
+        totalSigners: 2,
+        signers: [
+          { deviceId: "device-1", deviceAccountId: "account-1", signerIndex: 0 },
+          { deviceId: "device-2", deviceAccountId: "account-2", signerIndex: 1 },
+          { deviceId: "device-3", deviceAccountId: "account-3", signerIndex: 2 },
+        ],
+      })).rejects.toThrow("Multisig signer count must equal totalSigners");
+    });
+
+    it("builds a mainnet descriptor from the exact requested account", async () => {
+      const device = createMockDevice("device-1", "abc12345", [{
+        purpose: "single_sig",
+        scriptType: "native_segwit",
+        derivationPath: "m/84'/0'/0'",
+        xpub: "xpub1",
+      }]);
+      mockPrismaClient.device.findMany.mockResolvedValueOnce([device]);
+      mockPrismaClient.$transaction.mockResolvedValueOnce({
+        id: "wallet-exact",
+        name: "Exact Wallet",
+        type: "single_sig",
+        scriptType: "native_segwit",
+        network: "mainnet",
+        devices: [],
+        addresses: [],
+      });
+      mockPrismaClient.wallet.findUnique.mockResolvedValueOnce({
+        id: "wallet-exact",
+        name: "Exact Wallet",
+        type: "single_sig",
+        scriptType: "native_segwit",
+        network: "mainnet",
+        devices: [],
+        addresses: [],
+      });
+
+      await expect(createWallet(userId, {
+        name: "Exact Wallet",
+        type: "single_sig",
+        scriptType: "native_segwit",
+        signers: [{
+          deviceId: "device-1",
+          deviceAccountId: "device-1-account-0",
+          signerIndex: 0,
+        }],
+      })).resolves.toEqual(expect.objectContaining({ id: "wallet-exact" }));
+      const { walletRepository: walletRepo } = await import(
+        "../../../../src/repositories"
+      );
+      expect(walletRepo.createWithDeviceLinks).toHaveBeenCalledWith(
+        expect.objectContaining({ network: "mainnet" }),
+        [expect.objectContaining({
+          deviceAccountId: "device-1-account-0",
+          signerDerivationPath: "m/84'/0'/0'",
+        })],
+      );
     });
 
     it("should reject when device not found", async () => {
@@ -114,7 +192,9 @@ export function registerWalletCreateAccountSelectionValidationTests({
           name: "Test Wallet",
           type: "single_sig",
           scriptType: "native_segwit",
-          deviceIds: ["non-existent-device"],
+          signers: [
+            { deviceId: "non-existent-device", deviceAccountId: "missing-account", signerIndex: 0 },
+          ],
         }),
       ).rejects.toThrow("Device not found");
     });
@@ -136,7 +216,7 @@ export function registerWalletCreateAccountSelectionValidationTests({
       ).rejects.toThrow("Failed to create wallet");
     });
 
-    it("creates wallet without device links when deviceIds are omitted", async () => {
+    it("creates wallet without device links when signers are omitted", async () => {
       mockPrismaClient.wallet.findUnique.mockResolvedValueOnce({
         id: "wallet-no-devices",
         name: "No Devices",

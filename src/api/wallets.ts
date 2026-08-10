@@ -18,6 +18,12 @@ export { validateXpub } from './walletXpub';
 // Re-export types for backward compatibility
 export type { Wallet, WalletRole } from '../types';
 
+export interface CreateWalletSignerRequest {
+  deviceId: string;
+  deviceAccountId: string;
+  signerIndex: number;
+}
+
 export interface CreateWalletRequest {
   name: string;
   type: WalletType;
@@ -28,7 +34,7 @@ export interface CreateWalletRequest {
   descriptor?: string;
   fingerprint?: string;
   groupId?: string;
-  deviceIds?: string[];
+  signers?: CreateWalletSignerRequest[];
 }
 
 export interface UpdateWalletRequest {

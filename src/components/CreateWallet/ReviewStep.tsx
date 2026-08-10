@@ -8,7 +8,7 @@ import React from 'react';
 import { Shield } from 'lucide-react';
 import { WalletType, Device } from '../../types';
 import { formatNetworkTitle, getNetworkColorClass } from '../../app/networks';
-import type { ScriptType, Network } from './types';
+import type { ScriptType, Network, SelectedSigner } from './types';
 
 interface ReviewStepProps {
   walletName: string;
@@ -16,7 +16,7 @@ interface ReviewStepProps {
   network: Network;
   scriptType: ScriptType;
   quorumM: number;
-  selectedDeviceIds: Set<string>;
+  selectedSigners: SelectedSigner[];
   availableDevices: Device[];
 }
 
@@ -26,7 +26,7 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({
   network,
   scriptType,
   quorumM,
-  selectedDeviceIds,
+  selectedSigners,
   availableDevices,
 }) => (
   <div className="space-y-6 animate-fade-in max-w-lg mx-auto text-center">
@@ -52,26 +52,31 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({
                       </span>
                   </dd>
               </div>
-              {walletType === WalletType.SINGLE_SIG ? (
-                  <div className="px-6 py-4 grid grid-cols-2 gap-4">
-                     <dt className="text-sm text-sanctuary-500">Script</dt>
-                     <dd className="text-sm font-medium capitalize">{scriptType.replace('_', ' ')}</dd>
-                  </div>
-              ) : (
+              <div className="px-6 py-4 grid grid-cols-2 gap-4">
+                 <dt className="text-sm text-sanctuary-500">Script</dt>
+                 <dd className="text-sm font-medium capitalize">{scriptType.replace('_', ' ')}</dd>
+              </div>
+              {walletType === WalletType.MULTI_SIG && (
                   <div className="px-6 py-4 grid grid-cols-2 gap-4">
                      <dt className="text-sm text-sanctuary-500">Quorum</dt>
-                     <dd className="text-sm font-medium">{quorumM} of {selectedDeviceIds.size}</dd>
+                     <dd className="text-sm font-medium">{quorumM} of {selectedSigners.length}</dd>
                   </div>
               )}
               <div className="px-6 py-4">
                   <dt className="text-sm text-sanctuary-500 mb-2">Signers</dt>
                   <dd className="text-sm font-medium space-y-1">
-                      {Array.from(selectedDeviceIds).map(id => {
-                          const dev = availableDevices.find(d => d.id === id);
+                      {selectedSigners.map((signer, signerIndex) => {
+                          const dev = availableDevices.find(d => d.id === signer.deviceId);
+                          const account = dev?.accounts?.find(candidate => candidate.id === signer.deviceAccountId);
                           return (
-                              <div key={id} className="flex items-center">
+                              <div key={signer.deviceId} className="flex items-start">
                                   <span className="w-1.5 h-1.5 rounded-full bg-success-500 mr-2"></span>
-                                  {dev?.label} ({dev?.type})
+                                  <span>
+                                    {signerIndex + 1}. {dev?.label} ({dev?.type})
+                                    <span className="block text-xs text-sanctuary-400 font-mono">
+                                      {account?.derivationPath}
+                                    </span>
+                                  </span>
                               </div>
                           );
                       })}

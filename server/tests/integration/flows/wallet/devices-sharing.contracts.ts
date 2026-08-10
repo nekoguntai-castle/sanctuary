@@ -20,6 +20,7 @@ export function registerWalletDevicesSharingTests(): void {
           name: 'Test Wallet',
           type: 'single_sig',
           scriptType: 'native_segwit',
+          network: 'testnet3',
           users: {
             create: {
               userId,
@@ -39,11 +40,20 @@ export function registerWalletDevicesSharingTests(): void {
           derivationPath: "m/84'/1'/0'",
         },
       });
+      const account = await prisma.deviceAccount.create({
+        data: {
+          deviceId: device.id,
+          purpose: 'single_sig',
+          scriptType: 'native_segwit',
+          derivationPath: "m/84'/1'/0'",
+          xpub: device.xpub!,
+        },
+      });
 
       const response = await request(app)
         .post(`/api/v1/wallets/${wallet.id}/devices`)
         .set(authHeader(token))
-        .send({ deviceId: device.id })
+        .send({ deviceId: device.id, deviceAccountId: account.id, signerIndex: 0 })
         .expect(201);
 
       expect(response.body.message).toBeDefined();
@@ -66,6 +76,7 @@ export function registerWalletDevicesSharingTests(): void {
           name: 'Multi-Sig Wallet',
           type: 'multi_sig',
           scriptType: 'native_segwit',
+          network: 'testnet3',
           quorum: 2,
           totalSigners: 3,
           users: {
@@ -87,11 +98,20 @@ export function registerWalletDevicesSharingTests(): void {
           derivationPath: "m/48'/1'/0'/2'",
         },
       });
+      const account = await prisma.deviceAccount.create({
+        data: {
+          deviceId: device.id,
+          purpose: 'multisig',
+          scriptType: 'native_segwit',
+          derivationPath: "m/48'/1'/0'/2'",
+          xpub: device.xpub!,
+        },
+      });
 
       await request(app)
         .post(`/api/v1/wallets/${wallet.id}/devices`)
         .set(authHeader(token))
-        .send({ deviceId: device.id, signerIndex: 0 })
+        .send({ deviceId: device.id, deviceAccountId: account.id, signerIndex: 0 })
         .expect(201);
 
       // Verify signer index is set
@@ -120,6 +140,7 @@ export function registerWalletDevicesSharingTests(): void {
           name: 'Test Wallet',
           type: 'single_sig',
           scriptType: 'native_segwit',
+          network: 'testnet3',
           users: {
             create: [
               { userId: owner.id, role: 'owner' },
@@ -136,13 +157,23 @@ export function registerWalletDevicesSharingTests(): void {
           label: 'Signer BitBox',
           fingerprint: uniqueFingerprint(),
           xpub: 'tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M',
+          derivationPath: "m/84'/1'/0'",
+        },
+      });
+      const account = await prisma.deviceAccount.create({
+        data: {
+          deviceId: device.id,
+          purpose: 'single_sig',
+          scriptType: 'native_segwit',
+          derivationPath: "m/84'/1'/0'",
+          xpub: device.xpub!,
         },
       });
 
       await request(app)
         .post(`/api/v1/wallets/${wallet.id}/devices`)
         .set(authHeader(signerToken))
-        .send({ deviceId: device.id })
+        .send({ deviceId: device.id, deviceAccountId: account.id, signerIndex: 0 })
         .expect(201);
     });
 

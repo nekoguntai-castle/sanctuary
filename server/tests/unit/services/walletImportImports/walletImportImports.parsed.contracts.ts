@@ -184,6 +184,156 @@ export const registerWalletImportParsedContracts = () => {
       expect(result.devicesCreated).toBe(0);
       expect(result.devicesReused).toBe(1);
       expect(mockPrismaClient.deviceAccount.create).not.toHaveBeenCalled();
+      expect(mockPrismaClient.walletDevice.createMany).toHaveBeenCalledWith({
+        data: [expect.objectContaining({
+          walletId: 'wallet-parsed-match',
+          deviceId: 'device-existing-parsed',
+          deviceAccountId: 'acct-match',
+          signerIndex: 0,
+          signerBindingVersion: 1,
+          signerFingerprint: 'abcd1234',
+          signerXpub: 'xpub6Dz...',
+          signerDerivationPath: "m/84'/0'/0'",
+          signerPurpose: 'single_sig',
+          signerScriptType: 'native_segwit',
+        })],
+      });
+    });
+
+    it('rejects a reused account path whose identity differs from the import', async () => {
+      mockPrismaClient.wallet.findMany.mockResolvedValue([]);
+      mockPrismaClient.device.findMany.mockResolvedValue([{
+        id: 'device-existing-parsed',
+        userId,
+        type: 'coldcard',
+        label: 'Existing Parsed',
+        fingerprint: 'abcd1234',
+      }]);
+      mockPrismaClient.deviceAccount.findMany.mockResolvedValue([{
+        id: 'acct-conflict',
+        deviceId: 'device-existing-parsed',
+        purpose: 'single_sig',
+        scriptType: 'native_segwit',
+        derivationPath: "m/84'/0'/0'",
+        xpub: 'xpub-different',
+      }]);
+
+      await expect(walletImport.importFromParsedData(userId, {
+        parsed: parsedSingleSig,
+        name: 'Parsed Conflict',
+      })).rejects.toThrow('does not exactly match the imported signer');
+
+      expect(mockPrismaClient.wallet.create).not.toHaveBeenCalled();
+      expect(mockPrismaClient.walletDevice.createMany).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [
+        'one exact and one conflicting normalized alias',
+        [
+          { id: 'acct-exact', purpose: 'single_sig', scriptType: 'native_segwit', derivationPath: "m/84'/0'/0'", xpub: 'xpub6Dz...' },
+          { id: 'acct-conflict', purpose: 'single_sig', scriptType: 'native_segwit', derivationPath: 'm/84h/0h/0h', xpub: 'xpub-other' },
+        ],
+      ],
+      [
+        'two exact normalized aliases',
+        [
+          { id: 'acct-prime', purpose: 'single_sig', scriptType: 'native_segwit', derivationPath: "m/84'/0'/0'", xpub: 'xpub6Dz...' },
+          { id: 'acct-h', purpose: 'single_sig', scriptType: 'native_segwit', derivationPath: 'm/84h/0h/0h', xpub: 'xpub6Dz...' },
+        ],
+      ],
+    ])('rejects %s instead of selecting by query order', async (_case, accounts) => {
+      mockPrismaClient.wallet.findMany.mockResolvedValue([]);
+      mockPrismaClient.device.findMany.mockResolvedValue([{
+        id: 'device-existing-parsed',
+        userId,
+        type: 'coldcard',
+        label: 'Existing Parsed',
+        fingerprint: 'abcd1234',
+      }]);
+      mockPrismaClient.deviceAccount.findMany.mockResolvedValue(accounts.map((account) => ({
+        ...account,
+        deviceId: 'device-existing-parsed',
+      })));
+
+      await expect(walletImport.importFromParsedData(userId, {
+        parsed: parsedSingleSig,
+        name: 'Ambiguous Parsed Account',
+      })).rejects.toThrow("account path m/84'/0'/0' is ambiguous");
+      expect(mockPrismaClient.wallet.create).not.toHaveBeenCalled();
+      expect(mockPrismaClient.walletDevice.createMany).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['BIP48 suffix inconsistent with native multisig', {
+        type: 'multi_sig' as const,
+        scriptType: 'native_segwit' as const,
+        derivationPath: "m/48'/0'/0'/1'",
+      }],
+      ['script metadata inconsistent with the derivation purpose', {
+        type: 'single_sig' as const,
+        scriptType: 'taproot' as const,
+        derivationPath: "m/84'/0'/0'",
+      }],
+    ])('rejects imported %s', async (_case, policy) => {
+      mockPrismaClient.wallet.findMany.mockResolvedValue([]);
+      setupDeviceMocks([{
+        id: 'device-invalid-policy',
+        userId,
+        type: 'unknown',
+        label: 'Invalid Policy Device',
+        fingerprint: 'abcd1234',
+        derivationPath: policy.derivationPath,
+        xpub: 'xpub6Dz...',
+      }]);
+
+      await expect(walletImport.importFromParsedData(userId, {
+        parsed: {
+          type: policy.type,
+          scriptType: policy.scriptType,
+          devices: [{
+            fingerprint: 'abcd1234',
+            xpub: 'xpub6Dz...',
+            derivationPath: policy.derivationPath,
+          }],
+          network: 'mainnet',
+          isChange: false,
+          quorum: policy.type === 'multi_sig' ? 1 : undefined,
+          totalSigners: policy.type === 'multi_sig' ? 1 : undefined,
+        },
+        name: 'Invalid Policy Import',
+      })).rejects.toThrow();
+      expect(mockPrismaClient.wallet.create).not.toHaveBeenCalled();
+      expect(mockPrismaClient.walletDevice.createMany).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['wrong single-sig purpose', "m/49'/0'/0'"],
+      ['wrong mainnet coin type', "m/84'/1'/0'"],
+      ['account index above the BIP32 maximum', "m/84'/0'/2147483648'"],
+      ['non-account-level path', "m/84'/0'/0'/0"],
+      ['multisig path in single-sig policy', "m/48'/0'/0'/2'"],
+    ])('rejects immutable signer snapshots with %s', async (_case, derivationPath) => {
+      mockPrismaClient.wallet.findMany.mockResolvedValue([]);
+      setupDeviceMocks([{
+        id: 'device-invalid-path',
+        userId,
+        type: 'unknown',
+        label: 'Invalid Path Device',
+        fingerprint: 'abcd1234',
+        derivationPath,
+        xpub: 'xpub6Dz...',
+      }]);
+
+      await expect(walletImport.importFromParsedData(userId, {
+        parsed: {
+          ...parsedSingleSig,
+          devices: [{ ...parsedSingleSig.devices[0], derivationPath }],
+        },
+        name: 'Invalid Path Import',
+      })).rejects.toThrow();
+      expect(mockPrismaClient.wallet.create).not.toHaveBeenCalled();
+      expect(mockPrismaClient.walletDevice.createMany).not.toHaveBeenCalled();
     });
 
     it('should continue parsed import when address generation fails', async () => {

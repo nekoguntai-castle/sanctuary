@@ -205,10 +205,14 @@ vi.mock('../../../../src/repositories', () => ({
           })),
         })),
     linkDevice: vi.fn().mockResolvedValue(undefined),
-    createWithDeviceLinks: vi.fn(async (data: any, deviceIds?: string[]) => {
+    linkDeviceWithDescriptor: vi.fn().mockResolvedValue(undefined),
+    assignDescriptorWithAddresses: vi.fn().mockResolvedValue(undefined),
+    createWithDeviceLinks: vi.fn(async (data: any, signers?: any[]) => {
       const wallet = await mockPrismaClient.wallet.create({ data });
-      if (deviceIds) {
-        await mockPrismaClient.walletDevice.createMany({ data: deviceIds.map((did: string, i: number) => ({ walletId: wallet.id, deviceId: did, signerIndex: i })) });
+      if (signers?.length) {
+        await mockPrismaClient.walletDevice.createMany({
+          data: signers.map((signer: any) => ({ walletId: wallet.id, ...signer })),
+        });
       }
       return mockPrismaClient.wallet.findUnique({ where: { id: wallet.id }, include: { devices: true, addresses: true } });
     }),

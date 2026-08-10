@@ -69,7 +69,11 @@ export interface ImportWalletResult {
 
 /** Info tracked per device during import for building the descriptor */
 export interface ImportedDeviceInfo {
+  deviceId: string;
+  deviceAccountId: string;
   fingerprint: string;
   xpub: string;
   derivationPath: string;
+  purpose: string;
+  scriptType: string;
 }

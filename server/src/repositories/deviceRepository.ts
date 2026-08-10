@@ -490,6 +490,14 @@ export async function countAccountsByDeviceId(deviceId: string): Promise<number>
   });
 }
 
+export async function isAccountLinked(accountId: string): Promise<boolean> {
+  const link = await prisma.walletDevice.findFirst({
+    where: { deviceAccountId: accountId },
+    select: { id: true },
+  });
+  return link !== null;
+}
+
 /**
  * Delete a device account
  */
@@ -775,6 +783,7 @@ export const deviceRepository = {
   findDuplicateAccount,
   createAccount,
   countAccountsByDeviceId,
+  isAccountLinked,
   deleteAccount,
   findHardwareModel,
   findHardwareModels,

@@ -19,5 +19,5 @@ export function getHiddenDeviceSummary(count: number): string {
 export function getHiddenDeviceDescription(devices: Device[], accountTypeLabel: string): string {
   const names = devices.map(device => device.label).join(', ');
   const verb = devices.length === 1 ? "doesn't" : "don't";
-  return `${names} ${verb} have a ${accountTypeLabel} derivation path.`;
+  return `${names} ${verb} have exactly one matching ${accountTypeLabel} account for this network and script type.`;
 }

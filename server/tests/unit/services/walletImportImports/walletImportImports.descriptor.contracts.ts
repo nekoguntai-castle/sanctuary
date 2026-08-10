@@ -503,7 +503,7 @@ export const registerWalletImportDescriptorContracts = () => {
     });
 
     it('should override network if specified', async () => {
-      const descriptor = "wpkh([abcd1234/84'/0'/0']xpub6Dz...)#checksum";
+      const descriptor = "wpkh([abcd1234/84'/1'/0']tpub6Dz...)#checksum";
 
       mockParseImportInput.mockReturnValue({
         format: 'descriptor',
@@ -511,9 +511,9 @@ export const registerWalletImportDescriptorContracts = () => {
           type: 'single_sig',
           scriptType: 'native_segwit',
           devices: [
-            { fingerprint: 'abcd1234', xpub: 'xpub6Dz...', derivationPath: "m/84'/0'/0'" },
+            { fingerprint: 'abcd1234', xpub: 'tpub6Dz...', derivationPath: "m/84'/1'/0'" },
           ],
-          network: 'mainnet' as Network,
+          network: 'testnet',
           isChange: false,
         },
       });
@@ -526,8 +526,8 @@ export const registerWalletImportDescriptorContracts = () => {
         type: 'unknown',
         label: 'Imported Device 1',
         fingerprint: 'abcd1234',
-        derivationPath: "m/84'/0'/0'",
-        xpub: 'xpub6Dz...',
+        derivationPath: "m/84'/1'/0'",
+        xpub: 'tpub6Dz...',
       };
       setupDeviceMocks([device]);
 
@@ -536,7 +536,7 @@ export const registerWalletImportDescriptorContracts = () => {
         name: 'Testnet Wallet',
         type: 'single_sig',
         scriptType: 'native_segwit',
-        network: 'testnet',
+        network: 'testnet3',
         quorum: null,
         totalSigners: null,
         descriptor: 'wpkh([abcd1234/84h/1h/0h]xpub6Dz...)',
@@ -546,13 +546,13 @@ export const registerWalletImportDescriptorContracts = () => {
       const result = await walletImport.importFromDescriptor(userId, {
         descriptor,
         name: 'Testnet Wallet',
-        network: 'testnet',
+        network: 'testnet3',
       });
 
       expect(mockPrismaClient.wallet.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            network: 'testnet',
+            network: 'testnet3',
           }),
         })
       );

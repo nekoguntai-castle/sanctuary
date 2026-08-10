@@ -1,14 +1,16 @@
-import { render,screen,waitFor } from '@testing-library/react';
+import { act,render,renderHook,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { CreateWallet } from '../../../src/components/CreateWallet';
+import { useCreateWalletController } from '../../../src/components/CreateWallet/useCreateWalletController';
 
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   getDevices: vi.fn(),
   mutateAsync: vi.fn(),
   handleError: vi.fn(),
+  selectedNetwork: 'mainnet',
 }));
 
 vi.mock('react-router-dom', async () => {
@@ -37,8 +39,8 @@ vi.mock('../../../src/hooks/useErrorHandler', () => ({
 
 vi.mock('../../../src/contexts/ActiveNetworkContext', () => ({
   useActiveNetwork: () => ({
-    selectedNetwork: 'mainnet',
-    isMainnet: true,
+    selectedNetwork: mocks.selectedNetwork,
+    isMainnet: mocks.selectedNetwork === 'mainnet',
     setSelectedNetwork: vi.fn(),
   }),
 }));
@@ -82,27 +84,30 @@ vi.mock('../../../src/components/CreateWallet/SignerSelectionStep', () => ({
     getDisplayAccount,
   }: any) => {
     const all = [...compatibleDevices, ...incompatibleDevices];
-    const legacy = all.find(d => d.id === 'legacy-no-path');
-    const mismatch = all.find(d => d.id === 'multi-only');
+    const exact = compatibleDevices[0];
+    const mismatch = all.find(d => d.id === 'ambiguous-single');
 
     return (
       <div data-testid="signer-step">
         <span data-testid="compatible-count">{compatibleDevices.length}</span>
         <span data-testid="incompatible-count">{incompatibleDevices.length}</span>
-        <span data-testid="legacy-display">{String(getDisplayAccount(legacy, walletType))}</span>
-        <span data-testid="mismatch-display">{String(getDisplayAccount(mismatch, 'single_sig'))}</span>
-        <button onClick={() => toggleDevice('legacy-multi')}>toggle-legacy</button>
-        <button onClick={() => toggleDevice('legacy-multi')}>toggle-legacy-again</button>
-        <button onClick={() => toggleDevice('multi-only')}>toggle-multi-only</button>
+        <span data-testid="exact-display">{exact ? getDisplayAccount(exact, walletType)?.id ?? 'null' : 'null'}</span>
+        <span data-testid="mismatch-display">{mismatch ? String(getDisplayAccount(mismatch, 'single_sig')) : 'null'}</span>
+        <button onClick={() => toggleDevice('multi-one')}>toggle-multi-one</button>
+        <button onClick={() => toggleDevice('multi-one')}>toggle-multi-one-again</button>
+        <button onClick={() => toggleDevice('multi-two')}>toggle-multi-two</button>
+        <button onClick={() => toggleDevice('single-only')}>toggle-single</button>
+        <button onClick={() => toggleDevice('ambiguous-single')}>toggle-ambiguous</button>
       </div>
     );
   },
 }));
 
 vi.mock('../../../src/components/CreateWallet/ConfigurationStep', () => ({
-  ConfigurationStep: ({ setWalletName }: any) => (
+  ConfigurationStep: ({ setWalletName, setScriptType }: any) => (
     <div data-testid="config-step">
       <button onClick={() => setWalletName('Branch Wallet')}>set-name</button>
+      <button onClick={() => setScriptType('nested_segwit')}>change-script</button>
     </div>
   ),
 }));
@@ -114,24 +119,37 @@ vi.mock('../../../src/components/CreateWallet/ReviewStep', () => ({
 describe('CreateWallet branch coverage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.selectedNetwork = 'mainnet';
     mocks.getDevices.mockResolvedValue([
       { id: 'legacy-no-path', label: 'Legacy No Path' },
-      { id: 'legacy-multi', label: 'Legacy Multi Path', derivationPath: "m/48'/0'/0'/2'" },
       {
         id: 'single-only',
         label: 'Single Only',
-        accounts: [{ id: 'a1', purpose: 'single_sig' }],
+        accounts: [{ id: 'a1', purpose: 'single_sig', scriptType: 'native_segwit', derivationPath: "m/84'/0'/7'" }],
       },
       {
-        id: 'multi-only',
-        label: 'Multi Only',
-        accounts: [{ id: 'a2', purpose: 'multisig' }],
+        id: 'multi-one',
+        label: 'Multi One',
+        accounts: [{ id: 'a2', purpose: 'multisig', scriptType: 'native_segwit', derivationPath: "m/48'/0'/0'/2'" }],
+      },
+      {
+        id: 'multi-two',
+        label: 'Multi Two',
+        accounts: [{ id: 'a3', purpose: 'multisig', scriptType: 'native_segwit', derivationPath: "m/48'/0'/1'/2'" }],
+      },
+      {
+        id: 'ambiguous-single',
+        label: 'Ambiguous Single',
+        accounts: [
+          { id: 'a4', purpose: 'single_sig', scriptType: 'native_segwit', derivationPath: "m/84'/0'/0'" },
+          { id: 'a5', purpose: 'single_sig', scriptType: 'native_segwit', derivationPath: "m/84'/0'/1'" },
+        ],
       },
     ]);
     mocks.mutateAsync.mockResolvedValue({ id: 'created-wallet-id' });
   });
 
-  it('covers legacy compatibility and step-2 no-selection guard', async () => {
+  it('fails closed for legacy and ambiguous devices and keeps the step-2 no-selection guard', async () => {
     const user = userEvent.setup();
     render(
       <MemoryRouter>
@@ -143,10 +161,12 @@ describe('CreateWallet branch coverage', () => {
     await user.click(screen.getByRole('button', { name: /next step/i }));
 
     expect(screen.getByTestId('signer-step')).toBeInTheDocument();
-    expect(screen.getByTestId('compatible-count')).toHaveTextContent('2');
-    expect(screen.getByTestId('incompatible-count')).toHaveTextContent('2');
-    expect(screen.getByTestId('legacy-display')).toHaveTextContent('null');
+    expect(screen.getByTestId('compatible-count')).toHaveTextContent('1');
+    expect(screen.getByTestId('incompatible-count')).toHaveTextContent('4');
+    expect(screen.getByTestId('exact-display')).toHaveTextContent('a1');
     expect(screen.getByTestId('mismatch-display')).toHaveTextContent('null');
+
+    await user.click(screen.getByRole('button', { name: 'toggle-ambiguous' }));
 
     // No selected devices in step 2 should keep the wizard on signer selection.
     await user.click(screen.getByRole('button', { name: /next step/i }));
@@ -167,7 +187,7 @@ describe('CreateWallet branch coverage', () => {
     await user.click(screen.getByRole('button', { name: 'pick-multi' }));
     await user.click(screen.getByRole('button', { name: /next step/i }));
 
-    await user.click(screen.getByRole('button', { name: 'toggle-legacy' }));
+    await user.click(screen.getByRole('button', { name: 'toggle-multi-one' }));
     await user.click(screen.getByRole('button', { name: /next step/i }));
     expect(mocks.handleError).toHaveBeenCalledWith(
       'Multisig requires at least 2 devices.',
@@ -175,9 +195,9 @@ describe('CreateWallet branch coverage', () => {
     );
 
     // Toggle same ID twice to hit the remove branch before adding it again.
-    await user.click(screen.getByRole('button', { name: 'toggle-legacy-again' }));
-    await user.click(screen.getByRole('button', { name: 'toggle-legacy' }));
-    await user.click(screen.getByRole('button', { name: 'toggle-multi-only' }));
+    await user.click(screen.getByRole('button', { name: 'toggle-multi-one-again' }));
+    await user.click(screen.getByRole('button', { name: 'toggle-multi-one' }));
+    await user.click(screen.getByRole('button', { name: 'toggle-multi-two' }));
     await user.click(screen.getByRole('button', { name: /next step/i }));
 
     expect(screen.getByTestId('config-step')).toBeInTheDocument();
@@ -194,7 +214,10 @@ describe('CreateWallet branch coverage', () => {
           type: 'multi_sig',
           quorum: 2,
           totalSigners: 2,
-          deviceIds: expect.arrayContaining(['legacy-multi', 'multi-only']),
+          signers: [
+            { deviceId: 'multi-one', deviceAccountId: 'a2', signerIndex: 0 },
+            { deviceId: 'multi-two', deviceAccountId: 'a3', signerIndex: 1 },
+          ],
         })
       );
     });
@@ -212,7 +235,7 @@ describe('CreateWallet branch coverage', () => {
     await user.click(screen.getByRole('button', { name: 'pick-single' }));
     await user.click(screen.getByRole('button', { name: /next step/i }));
 
-    await user.click(screen.getByRole('button', { name: 'toggle-legacy' }));
+    await user.click(screen.getByRole('button', { name: 'toggle-single' }));
     await user.click(screen.getByRole('button', { name: /next step/i }));
 
     expect(screen.getByTestId('config-step')).toBeInTheDocument();
@@ -249,7 +272,7 @@ describe('CreateWallet branch coverage', () => {
 
     await user.click(screen.getByRole('button', { name: 'pick-single' }));
     await user.click(screen.getByRole('button', { name: /next step/i }));
-    await user.click(screen.getByRole('button', { name: 'toggle-legacy' }));
+    await user.click(screen.getByRole('button', { name: 'toggle-single' }));
     await user.click(screen.getByRole('button', { name: /next step/i }));
     await user.click(screen.getByRole('button', { name: 'set-name' }));
     await user.click(screen.getByRole('button', { name: /next step/i }));
@@ -258,5 +281,99 @@ describe('CreateWallet branch coverage', () => {
     await waitFor(() => {
       expect(mocks.handleError).toHaveBeenCalledWith(expect.any(Error), 'Failed to Create Wallet');
     });
+  });
+
+  it('clears exact signer bindings when script type changes', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <CreateWallet />
+      </MemoryRouter>
+    );
+
+    await user.click(screen.getByRole('button', { name: 'pick-single' }));
+    await user.click(screen.getByRole('button', { name: /next step/i }));
+    await user.click(screen.getByRole('button', { name: 'toggle-single' }));
+    await user.click(screen.getByRole('button', { name: /next step/i }));
+    await user.click(screen.getByRole('button', { name: 'change-script' }));
+
+    expect(screen.getByTestId('signer-step')).toBeInTheDocument();
+    expect(screen.getByTestId('compatible-count')).toHaveTextContent('0');
+  });
+
+  it('clears exact signer bindings and hidden script state when wallet type changes', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <CreateWallet />
+      </MemoryRouter>
+    );
+
+    await user.click(screen.getByRole('button', { name: 'pick-single' }));
+    await user.click(screen.getByRole('button', { name: /next step/i }));
+    await user.click(screen.getByRole('button', { name: 'toggle-single' }));
+    await user.click(screen.getByRole('button', { name: /next step/i }));
+    await user.click(screen.getByRole('button', { name: 'change-script' }));
+    await user.click(screen.getByRole('button', { name: /back/i }));
+    await user.click(screen.getByRole('button', { name: 'pick-multi' }));
+    await user.click(screen.getByRole('button', { name: /next step/i }));
+
+    expect(screen.getByTestId('compatible-count')).toHaveTextContent('2');
+    await user.click(screen.getByRole('button', { name: /next step/i }));
+
+    expect(screen.getByTestId('signer-step')).toBeInTheDocument();
+  });
+
+  it('clears exact signer bindings when the active network changes', async () => {
+    const user = userEvent.setup();
+    const view = render(
+      <MemoryRouter>
+        <CreateWallet />
+      </MemoryRouter>
+    );
+
+    await user.click(screen.getByRole('button', { name: 'pick-single' }));
+    await user.click(screen.getByRole('button', { name: /next step/i }));
+    await user.click(screen.getByRole('button', { name: 'toggle-single' }));
+    await user.click(screen.getByRole('button', { name: /next step/i }));
+    expect(screen.getByTestId('config-step')).toBeInTheDocument();
+
+    mocks.selectedNetwork = 'testnet3';
+    view.rerender(
+      <MemoryRouter>
+        <CreateWallet />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getByTestId('signer-step')).toBeInTheDocument());
+    expect(screen.getByTestId('compatible-count')).toHaveTextContent('0');
+  });
+
+  it('keeps controller identity changes fail-closed on no-op and unavailable selections', async () => {
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <MemoryRouter>{children}</MemoryRouter>
+    );
+    const view = renderHook(() => useCreateWalletController(), { wrapper });
+
+    await waitFor(() => expect(view.result.current.availableDevices).toHaveLength(5));
+
+    act(() => view.result.current.toggleDevice('single-only'));
+    expect(view.result.current.selectedSigners).toEqual([]);
+
+    act(() => view.result.current.setWalletType('single_sig'));
+    act(() => view.result.current.setWalletType('single_sig'));
+    act(() => view.result.current.setScriptType('native_segwit'));
+    act(() => view.result.current.toggleDevice('missing-device'));
+    act(() => view.result.current.toggleDevice('ambiguous-single'));
+    expect(view.result.current.selectedSigners).toEqual([]);
+
+    act(() => view.result.current.setScriptType('nested_segwit'));
+    expect(view.result.current.step).toBe(1);
+
+    mocks.selectedNetwork = 'testnet3';
+    view.rerender();
+    await waitFor(() => expect(view.result.current.network).toBe('testnet3'));
+    expect(view.result.current.step).toBe(1);
+    expect(view.result.current.selectedSigners).toEqual([]);
   });
 });

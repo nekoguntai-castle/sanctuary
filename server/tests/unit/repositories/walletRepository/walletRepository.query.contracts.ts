@@ -115,7 +115,7 @@ export const registerWalletRepositoryQueryContracts = () => {
     it('should return empty array for network with no wallets', async () => {
       (prisma.wallet.findMany as Mock).mockResolvedValue([]);
 
-      const result = await walletRepository.findByNetwork(mockUserId, 'testnet');
+      const result = await walletRepository.findByNetwork(mockUserId, 'testnet3');
 
       expect(result).toEqual([]);
     });

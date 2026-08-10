@@ -84,9 +84,22 @@ export const walletSchemas = {
       descriptor: { type: 'string' },
       fingerprint: { type: 'string' },
       groupId: { type: 'string' },
-      deviceIds: { type: 'array', items: { type: 'string' } },
+      signers: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/WalletSignerInput' },
+      },
     },
     required: ['name', 'type', 'scriptType'],
+  },
+  WalletSignerInput: {
+    type: 'object',
+    properties: {
+      deviceId: { type: 'string' },
+      deviceAccountId: { type: 'string' },
+      signerIndex: { type: 'integer', minimum: 0 },
+    },
+    required: ['deviceId', 'deviceAccountId', 'signerIndex'],
+    additionalProperties: false,
   },
   UpdateWalletRequest: {
     type: 'object',
@@ -368,9 +381,10 @@ export const walletSchemas = {
     type: 'object',
     properties: {
       deviceId: { type: 'string' },
+      deviceAccountId: { type: 'string' },
       signerIndex: { type: 'integer', minimum: 0 },
     },
-    required: ['deviceId'],
+    required: ['deviceId', 'deviceAccountId', 'signerIndex'],
     additionalProperties: false,
   },
   WalletMessageResponse: {

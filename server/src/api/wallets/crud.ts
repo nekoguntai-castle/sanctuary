@@ -48,6 +48,12 @@ const positiveSafeIntegerSchema = (field: string) => z.unknown().transform((valu
   return parsed;
 });
 
+const WalletSignerSchema = z.object({
+  deviceId: z.string().trim().min(1),
+  deviceAccountId: z.string().trim().min(1),
+  signerIndex: z.number().int().min(0),
+}).strict();
+
 const CreateWalletBodySchema = z.object({
   name: z.string().min(1),
   type: z.enum(WALLET_TYPE_VALUES),
@@ -58,8 +64,8 @@ const CreateWalletBodySchema = z.object({
   descriptor: z.string().optional(),
   fingerprint: z.string().optional(),
   groupId: z.string().optional(),
-  deviceIds: z.array(z.string()).optional(),
-}).superRefine((data, ctx) => {
+  signers: z.array(WalletSignerSchema).optional(),
+}).strict().superRefine((data, ctx) => {
   if (data.type !== WalletType.MULTI_SIG) {
     return;
   }
@@ -144,7 +150,7 @@ router.post('/', validate(
     descriptor,
     fingerprint,
     groupId,
-    deviceIds,
+    signers,
   } = req.body;
 
   const wallet = await walletService.createWallet(userId, {
@@ -157,7 +163,7 @@ router.post('/', validate(
     descriptor,
     fingerprint,
     groupId,
-    deviceIds,
+    signers,
   });
 
   res.status(201).json(wallet);

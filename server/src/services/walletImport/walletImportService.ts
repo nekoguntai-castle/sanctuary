@@ -5,7 +5,7 @@
  * the top-level auto-detect import orchestrator.
  */
 
-import { withTransaction } from '../../models/prisma';
+import { withTransaction, type PrismaTxClient } from '../../models/prisma';
 import {
   WalletScriptType,
   WalletType,
@@ -39,6 +39,10 @@ import type {
   ImportedDeviceInfo,
 } from './types';
 import { assertHardwareWalletCapability } from '../hardwareWalletCapabilities';
+import { normalizeDerivationPath } from '@sanctuary/shared/utils/bitcoin';
+import type { WalletSignerLinkData } from '../../repositories/walletRepository';
+import { assertSignerBindingMatchesWallet } from '../wallet/walletAccountSelection';
+import type { WalletNetwork } from '../wallet/types';
 
 const log = createLogger('WALLET_IMPORT:SVC');
 
@@ -50,6 +54,139 @@ interface CreateWalletTransactionInput {
   network: Network;
   deviceLabels?: Record<string, string>;
   jsonConfig?: JsonImportConfig;
+}
+
+type OriginalImportedDevice = NonNullable<JsonImportConfig['devices']>[number];
+type AccountPurpose = ReturnType<typeof accountPurposeForWalletType>;
+
+interface MaterializeDeviceContext {
+  userId: string;
+  accountPurpose: AccountPurpose;
+  scriptType: WalletScriptType;
+  deviceLabels?: Record<string, string>;
+}
+
+interface MaterializedDevice {
+  info: ImportedDeviceInfo;
+  created: boolean;
+}
+
+async function createImportedDevice(
+  tx: PrismaTxClient,
+  resolution: DeviceResolution,
+  originalDevice: OriginalImportedDevice | undefined,
+  context: MaterializeDeviceContext,
+): Promise<MaterializedDevice> {
+  /* v8 ignore start -- explicit per-fingerprint labels are optional import metadata */
+  const label = context.deviceLabels?.[resolution.fingerprint]
+    || resolution.suggestedLabel
+    || `Device ${resolution.fingerprint.slice(0, 8)}`;
+  /* v8 ignore stop */
+  /* v8 ignore next -- resolution supplies the watch-only fallback */
+  const deviceType = originalDevice?.type || resolution.originalType || 'watch_only';
+  const newDevice = await tx.device.create({
+    data: {
+      userId: context.userId,
+      type: deviceType,
+      label,
+      fingerprint: resolution.fingerprint,
+      derivationPath: resolution.derivationPath,
+      xpub: resolution.xpub,
+    },
+  });
+  const account = await tx.deviceAccount.create({
+    data: {
+      deviceId: newDevice.id,
+      purpose: context.accountPurpose,
+      scriptType: context.scriptType,
+      derivationPath: normalizeDerivationPath(resolution.derivationPath),
+      xpub: resolution.xpub,
+    },
+  });
+  await tx.deviceUser.create({
+    data: { deviceId: newDevice.id, userId: context.userId, role: 'owner' },
+  });
+  return {
+    created: true,
+    info: {
+      deviceId: newDevice.id,
+      deviceAccountId: account.id,
+      fingerprint: resolution.fingerprint,
+      xpub: resolution.xpub,
+      derivationPath: account.derivationPath,
+      purpose: context.accountPurpose,
+      scriptType: context.scriptType,
+    },
+  };
+}
+
+async function reuseImportedDevice(
+  tx: PrismaTxClient,
+  resolution: DeviceResolution,
+  context: MaterializeDeviceContext,
+): Promise<MaterializedDevice> {
+  const deviceId = resolution.existingDeviceId;
+  if (!deviceId) throw new Error('Existing device resolution is missing device id');
+  const existingAccounts = await tx.deviceAccount.findMany({ where: { deviceId } });
+  const derivationPath = normalizeDerivationPath(resolution.derivationPath);
+  const accountsAtPath = existingAccounts.filter(
+    (account) => normalizeDerivationPath(account.derivationPath) === derivationPath,
+  );
+  if (accountsAtPath.length > 1) {
+    throw new Error(`Existing device account path ${derivationPath} is ambiguous`);
+  }
+  const [accountAtPath] = accountsAtPath;
+  const matches = accountAtPath !== undefined
+    && accountAtPath.purpose === context.accountPurpose
+    && accountAtPath.scriptType === context.scriptType
+    && accountAtPath.xpub === resolution.xpub;
+  if (accountAtPath && !matches) {
+    throw new Error(
+      `Existing device account at ${derivationPath} does not exactly match the imported signer`,
+    );
+  }
+  const account = matches && accountAtPath
+    ? accountAtPath
+    : await tx.deviceAccount.create({
+      data: {
+        deviceId,
+        purpose: context.accountPurpose,
+        scriptType: context.scriptType,
+        derivationPath,
+        xpub: resolution.xpub,
+      },
+    });
+  /* v8 ignore next -- account creation and exact reuse are asserted by contracts */
+  if (!matches) {
+    log.info('Added new device account for import', {
+      deviceId,
+      purpose: context.accountPurpose,
+      derivationPath,
+    });
+  }
+  return {
+    created: false,
+    info: {
+      deviceId,
+      deviceAccountId: account.id,
+      fingerprint: resolution.fingerprint,
+      xpub: resolution.xpub,
+      derivationPath,
+      purpose: context.accountPurpose,
+      scriptType: context.scriptType,
+    },
+  };
+}
+
+function materializeImportedDevice(
+  tx: PrismaTxClient,
+  resolution: DeviceResolution,
+  originalDevice: OriginalImportedDevice | undefined,
+  context: MaterializeDeviceContext,
+): Promise<MaterializedDevice> {
+  return resolution.willCreate
+    ? createImportedDevice(tx, resolution, originalDevice, context)
+    : reuseImportedDevice(tx, resolution, context);
 }
 
 /**
@@ -82,104 +219,40 @@ export async function createWalletTransaction(
   return await withTransaction(async (tx) => {
     const createdDeviceIds: string[] = [];
     const reusedDeviceIds: string[] = [];
-    const deviceIdsForWallet: string[] = [];
     // Track imported device info for building descriptor
     const importedDeviceInfos: ImportedDeviceInfo[] = [];
 
-    // Create or reuse devices
+    const context: MaterializeDeviceContext = {
+      userId,
+      accountPurpose,
+      scriptType: parsed.scriptType,
+      deviceLabels,
+    };
     for (let i = 0; i < resolutions.length; i++) {
       const resolution = resolutions[i];
-      const originalDevice = jsonConfig?.devices[i];
-
-      if (resolution.willCreate) {
-        // Determine label: from explicit deviceLabels, from JSON config, or from suggestion
-        /* v8 ignore start -- explicit per-fingerprint labels are optional import metadata */
-        const label =
-          deviceLabels?.[resolution.fingerprint] ||
-          resolution.suggestedLabel ||
-          `Device ${resolution.fingerprint.slice(0, 8)}`;
-        /* v8 ignore stop */
-
-        // Descriptor-only keys are watch-only unless source metadata proves a
-        // specific signer. A generic hardware label would bypass identity gates.
-        /* v8 ignore next -- resolution supplies the watch-only fallback */
-        const deviceType = originalDevice?.type || resolution.originalType || 'watch_only';
-
-        const newDevice = await tx.device.create({
-          data: {
-            userId,
-            type: deviceType,
-            label,
-            fingerprint: resolution.fingerprint,
-            derivationPath: resolution.derivationPath,
-            xpub: resolution.xpub,
-          },
-        });
-
-        // Create DeviceAccount for this wallet's purpose
-        await tx.deviceAccount.create({
-          data: {
-            deviceId: newDevice.id,
-            purpose: accountPurpose,
-            scriptType: parsed.scriptType,
-            derivationPath: resolution.derivationPath,
-            xpub: resolution.xpub,
-          },
-        });
-
-        // Create DeviceUser record for access control
-        await tx.deviceUser.create({
-          data: {
-            deviceId: newDevice.id,
-            userId,
-            role: 'owner',
-          },
-        });
-
-        createdDeviceIds.push(newDevice.id);
-        deviceIdsForWallet.push(newDevice.id);
-      } else {
-        const existingDeviceId = resolution.existingDeviceId;
-        if (!existingDeviceId) {
-          throw new Error('Existing device resolution is missing device id');
-        }
-
-        // Device exists - check if we need to add the account with imported derivation path
-        const existingAccounts = await tx.deviceAccount.findMany({
-          where: { deviceId: existingDeviceId },
-        });
-
-        const hasMatchingAccount = existingAccounts.some(
-          (a) => a.purpose === accountPurpose && a.derivationPath === resolution.derivationPath
-        );
-
-        if (!hasMatchingAccount) {
-          await tx.deviceAccount.create({
-            data: {
-              deviceId: existingDeviceId,
-              purpose: accountPurpose,
-              scriptType: parsed.scriptType,
-              derivationPath: resolution.derivationPath,
-              xpub: resolution.xpub,
-            },
-          });
-          log.info('Added new device account for import', {
-            deviceId: existingDeviceId,
-            purpose: accountPurpose,
-            derivationPath: resolution.derivationPath,
-          });
-        }
-
-        reusedDeviceIds.push(existingDeviceId);
-        deviceIdsForWallet.push(existingDeviceId);
-      }
-
-      // Always use the IMPORTED derivation path/xpub for building the descriptor
-      importedDeviceInfos.push({
-        fingerprint: resolution.fingerprint,
-        xpub: resolution.xpub,
-        derivationPath: resolution.derivationPath,
+      const materialized = await materializeImportedDevice(
+        tx,
+        resolution,
+        jsonConfig?.devices[i],
+        context,
+      );
+      assertSignerBindingMatchesWallet({
+        deviceId: materialized.info.deviceId,
+        deviceAccountId: materialized.info.deviceAccountId,
+        signerFingerprint: materialized.info.fingerprint,
+        signerXpub: materialized.info.xpub,
+        signerDerivationPath: materialized.info.derivationPath,
+        signerPurpose: materialized.info.purpose,
+        signerScriptType: materialized.info.scriptType,
+      }, {
+        type: parsed.type,
+        scriptType: parsed.scriptType,
+        network: network as WalletNetwork,
       });
+      (materialized.created ? createdDeviceIds : reusedDeviceIds).push(
+        materialized.info.deviceId,
+      );
+      importedDeviceInfos.push(materialized.info);
     }
 
     // Build descriptor using IMPORTED device info (not stored device paths)
@@ -215,10 +288,17 @@ export async function createWalletTransaction(
 
     // Link devices to wallet
     await tx.walletDevice.createMany({
-      data: deviceIdsForWallet.map((deviceId, index) => ({
+      data: importedDeviceInfos.map((device, index): WalletSignerLinkData & { walletId: string } => ({
         walletId: wallet.id,
-        deviceId,
+        deviceId: device.deviceId,
+        deviceAccountId: device.deviceAccountId,
         signerIndex: index,
+        signerBindingVersion: 1,
+        signerFingerprint: device.fingerprint,
+        signerXpub: device.xpub,
+        signerDerivationPath: device.derivationPath,
+        signerPurpose: device.purpose,
+        signerScriptType: device.scriptType,
       })),
     });
 

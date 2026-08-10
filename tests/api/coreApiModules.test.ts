@@ -438,7 +438,12 @@ describe('Core API Modules', () => {
 
       await walletsApi.getWallets();
       await walletsApi.getWallet('w1');
-      await walletsApi.createWallet({ name: 'W1', type: 'single_sig', scriptType: 'native_segwit' });
+      await walletsApi.createWallet({
+        name: 'W1',
+        type: 'single_sig',
+        scriptType: 'native_segwit',
+        signers: [{ deviceId: 'd1', deviceAccountId: 'a1', signerIndex: 0 }],
+      });
       await walletsApi.updateWallet('w1', { name: 'W2' });
       await walletsApi.deleteWallet('w1');
       await walletsApi.repairWallet('w1');
@@ -471,6 +476,7 @@ describe('Core API Modules', () => {
         name: 'W1',
         type: 'single_sig',
         scriptType: 'native_segwit',
+        signers: [{ deviceId: 'd1', deviceAccountId: 'a1', signerIndex: 0 }],
       });
       expect(mockPatch).toHaveBeenCalledWith('/wallets/w1', { name: 'W2' });
       expect(mockDelete).toHaveBeenCalledWith('/wallets/w1');

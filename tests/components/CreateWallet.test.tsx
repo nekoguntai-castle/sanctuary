@@ -348,7 +348,7 @@ describe('CreateWallet Component - Multi-step Navigation', () => {
         expect.objectContaining({
           name: 'My Test Wallet',
           type: 'single_sig',
-          deviceIds: ['device-1'],
+          signers: [{ deviceId: 'device-1', deviceAccountId: 'acc-1', signerIndex: 0 }],
         })
       );
     });

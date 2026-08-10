@@ -30,13 +30,18 @@ export const registerWalletDeviceXpubContracts = () => {
 
       const response = await request(walletRouter)
         .post('/api/v1/wallets/wallet-123/devices')
-        .send({ deviceId: 'device-1', signerIndex: 0 });
+        .send({ deviceId: 'device-1', deviceAccountId: 'account-1', signerIndex: 0 });
 
       expect(response.status).toBe(201);
       expect(response.body.message).toContain('added');
+      expect(mockAddDeviceToWallet).toHaveBeenCalledWith(
+        'wallet-123',
+        { deviceId: 'device-1', deviceAccountId: 'account-1', signerIndex: 0 },
+        'test-user-id',
+      );
     });
 
-    it('should reject without deviceId', async () => {
+    it('should reject without exact signer identity', async () => {
       const response = await request(walletRouter)
         .post('/api/v1/wallets/wallet-123/devices')
         .send({});
@@ -50,7 +55,7 @@ export const registerWalletDeviceXpubContracts = () => {
 
       const response = await request(walletRouter)
         .post('/api/v1/wallets/wallet-123/devices')
-        .send({ deviceId: 'device-1', signerIndex: 0 });
+        .send({ deviceId: 'device-1', deviceAccountId: 'account-1', signerIndex: 0 });
 
       expect(response.status).toBe(500);
       expect(response.body.code).toBe('INTERNAL_ERROR');

@@ -76,19 +76,112 @@ export const registerWalletRepositoryMutationContracts = () => {
 
   describe('linkDevice', () => {
     it('creates a walletDevice record', async () => {
-      prisma.walletDevice.create.mockResolvedValueOnce({ walletId: 'w1', deviceId: 'd1', signerIndex: 0 });
-      await walletRepository.linkDevice('w1', 'd1', 0);
+      const signer = {
+        deviceId: 'd1',
+        deviceAccountId: 'a1',
+        signerIndex: 0,
+        signerBindingVersion: 1 as const,
+        signerFingerprint: '12345678',
+        signerXpub: 'xpub-1',
+        signerDerivationPath: "m/84'/0'/0'",
+        signerPurpose: 'single_sig',
+        signerScriptType: 'native_segwit',
+      };
+      prisma.walletDevice.create.mockResolvedValueOnce({ walletId: 'w1', ...signer });
+      await walletRepository.linkDevice('w1', signer);
       expect(prisma.walletDevice.create).toHaveBeenCalledWith({
-        data: { walletId: 'w1', deviceId: 'd1', signerIndex: 0 },
+        data: { walletId: 'w1', ...signer },
+      });
+    });
+  });
+
+  describe('linkDeviceWithDescriptor', () => {
+    const signer = {
+      deviceId: 'd1',
+      deviceAccountId: 'a1',
+      signerIndex: 0,
+      signerBindingVersion: 1 as const,
+      signerFingerprint: '12345678',
+      signerXpub: 'xpub-1',
+      signerDerivationPath: "m/84'/0'/0'",
+      signerPurpose: 'single_sig',
+      signerScriptType: 'native_segwit',
+    };
+    const assignment = {
+      descriptor: 'wpkh(test)',
+      fingerprint: '12345678',
+      addresses: [{
+        walletId: 'w1',
+        address: 'bc1qtest',
+        derivationPath: "m/84'/0'/0'/0/0",
+        index: 0,
+        used: false,
+      }],
+    };
+
+    it('writes the signer, descriptor, and addresses in one transaction', async () => {
+      prisma.wallet.updateMany.mockResolvedValueOnce({ count: 1 });
+
+      await walletRepository.linkDeviceWithDescriptor('w1', signer, assignment);
+
+      expect(prisma.walletDevice.create).toHaveBeenCalledWith({
+        data: { walletId: 'w1', ...signer },
+      });
+      expect(prisma.wallet.updateMany).toHaveBeenCalledWith({
+        where: { id: 'w1', descriptor: null },
+        data: { descriptor: 'wpkh(test)', fingerprint: '12345678' },
+      });
+      expect(prisma.address.createMany).toHaveBeenCalledWith({
+        data: assignment.addresses,
       });
     });
 
-    it('allows omitting signerIndex', async () => {
-      prisma.walletDevice.create.mockResolvedValueOnce({ walletId: 'w1', deviceId: 'd1' });
-      await walletRepository.linkDevice('w1', 'd1');
-      expect(prisma.walletDevice.create).toHaveBeenCalledWith({
-        data: { walletId: 'w1', deviceId: 'd1', signerIndex: undefined },
+    it('fails closed when a concurrent descriptor assignment wins', async () => {
+      prisma.wallet.updateMany.mockResolvedValueOnce({ count: 0 });
+
+      await expect(
+        walletRepository.linkDeviceWithDescriptor('w1', signer, assignment),
+      ).rejects.toThrow('Wallet descriptor changed');
+      expect(prisma.address.createMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('assignDescriptorWithAddresses', () => {
+    const assignment = {
+      descriptor: 'wpkh(repair-test)',
+      fingerprint: '87654321',
+      addresses: [{
+        walletId: 'w1',
+        address: 'bc1qrepair',
+        derivationPath: "m/84'/0'/0'/0/0",
+        index: 0,
+        used: false,
+      }],
+    };
+
+    it('assigns a missing descriptor and its derived addresses in one transaction', async () => {
+      prisma.wallet.updateMany.mockResolvedValueOnce({ count: 1 });
+
+      await walletRepository.assignDescriptorWithAddresses('w1', assignment);
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.wallet.updateMany).toHaveBeenCalledWith({
+        where: { id: 'w1', descriptor: null },
+        data: { descriptor: assignment.descriptor, fingerprint: assignment.fingerprint },
       });
+      expect(prisma.address.createMany).toHaveBeenCalledWith({
+        data: assignment.addresses,
+      });
+    });
+
+    it('does not create addresses when a concurrent descriptor assignment wins', async () => {
+      prisma.wallet.updateMany.mockResolvedValueOnce({ count: 0 });
+
+      await expect(
+        walletRepository.assignDescriptorWithAddresses('w1', assignment),
+      ).rejects.toThrow('Wallet descriptor changed before signer binding completed');
+
+      expect(prisma.address.createMany).not.toHaveBeenCalled();
     });
   });
 
@@ -105,13 +198,23 @@ export const registerWalletRepositoryMutationContracts = () => {
 
       const result = await walletRepository.createWithDeviceLinks(
         { name: 'Test', type: 'single_sig', scriptType: 'native_segwit', network: 'mainnet' } as any,
-        ['d1'],
+        [{
+          deviceId: 'd1',
+          deviceAccountId: 'a1',
+          signerIndex: 0,
+          signerBindingVersion: 1,
+          signerFingerprint: '12345678',
+          signerXpub: 'xpub-1',
+          signerDerivationPath: "m/84'/0'/0'",
+          signerPurpose: 'single_sig',
+          signerScriptType: 'native_segwit',
+        }],
       );
 
       expect(result.id).toBe('new-wallet');
     });
 
-    it('creates wallet without device links when deviceIds omitted', async () => {
+    it('creates wallet without device links when signers are omitted', async () => {
       const created = { id: 'new-wallet', devices: [], addresses: [] };
       prisma.$transaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => {
         const tx = {

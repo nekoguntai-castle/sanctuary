@@ -236,7 +236,41 @@ export function registerWalletMutationMaintenanceTests(): void {
       expect(mockNotificationUnsubscribeWalletAddresses).not.toHaveBeenCalled();
     });
 
-    it('links a device and regenerates descriptor when requirements are met', async () => {
+    const account = (deviceId: string, id: string, path = "m/84'/0'/0'") => ({
+      id,
+      deviceId,
+      purpose: path.startsWith("m/48'") ? 'multisig' : 'single_sig',
+      scriptType: 'native_segwit',
+      derivationPath: path,
+      xpub: `xpub-${id}`,
+    });
+    const device = (id: string, accountId: string, path = "m/84'/0'/0'") => ({
+      id,
+      label: id,
+      userId: 'user-1',
+      type: 'coldcard',
+      fingerprint: id === 'device-1' ? 'aabbccdd' : 'eeeeffff',
+      accounts: [account(id, accountId, path)],
+    });
+    const storedLink = (index: number, id: string, path = "m/48'/0'/0'/2'") => ({
+      deviceId: id,
+      deviceAccountId: `${id}-account`,
+      signerIndex: index,
+      signerBindingVersion: 1,
+      signerFingerprint: '11112222',
+      signerXpub: `xpub-${id}`,
+      signerDerivationPath: path,
+      signerPurpose: 'multisig',
+      signerScriptType: 'native_segwit',
+      device: { id, type: 'coldcard', accounts: [] },
+      deviceAccount: null,
+    });
+    const storedSingleLink = (index: number, id: string) => ({
+      ...storedLink(index, id, "m/84'/0'/0'"),
+      signerPurpose: 'single_sig',
+    });
+
+    it('atomically links an exact account and assigns the descriptor when requirements are met', async () => {
       mockPrismaClient.wallet.findFirst.mockResolvedValueOnce({
         id: 'wallet-1',
         type: 'single_sig',
@@ -247,29 +281,26 @@ export function registerWalletMutationMaintenanceTests(): void {
         descriptor: null,
         devices: [],
       });
-      mockPrismaClient.device.findFirst.mockResolvedValueOnce({
-        id: 'device-1',
-        userId: 'user-1',
-        type: 'coldcard',
-        fingerprint: 'aabbccdd',
-        xpub: 'xpub-device-1',
-        derivationPath: "m/84'/0'/0'",
-      });
+      mockPrismaClient.device.findMany.mockResolvedValueOnce([
+        device('device-1', 'account-1'),
+      ]);
 
-      await addDeviceToWallet('wallet-1', 'device-1', 'user-1', 0);
+      await addDeviceToWallet(
+        'wallet-1',
+        { deviceId: 'device-1', deviceAccountId: 'account-1', signerIndex: 0 },
+        'user-1',
+      );
 
       const { walletRepository: walletRepo } = await import('../../../../src/repositories');
-      expect(walletRepo.linkDevice).toHaveBeenCalledWith('wallet-1', 'device-1', 0);
-      expect(mockPrismaClient.wallet.update).toHaveBeenCalledWith({
-        where: { id: 'wallet-1' },
-        data: {
-          descriptor: 'wpkh([abc12345/84h/0h/0h]xpub...)',
-          fingerprint: 'abc12345',
-        },
-      });
+      expect(walletRepo.linkDeviceWithDescriptor).toHaveBeenCalledWith(
+        'wallet-1',
+        expect.objectContaining({ deviceAccountId: 'account-1', signerIndex: 0 }),
+        expect.objectContaining({ descriptor: expect.any(String), addresses: expect.any(Array) }),
+      );
+      expect(walletRepo.linkDevice).not.toHaveBeenCalled();
     });
 
-    it('still links device when descriptor generation fails', async () => {
+    it('leaves no signer link when descriptor generation fails', async () => {
       mockBuildDescriptorFromDevices.mockImplementationOnce(() => {
         throw new Error('descriptor failed');
       });
@@ -283,18 +314,18 @@ export function registerWalletMutationMaintenanceTests(): void {
         descriptor: null,
         devices: [],
       });
-      mockPrismaClient.device.findFirst.mockResolvedValueOnce({
-        id: 'device-1',
-        userId: 'user-1',
-        type: 'coldcard',
-        fingerprint: 'aabbccdd',
-        xpub: 'xpub-device-1',
-        derivationPath: "m/84'/0'/0'",
-      });
+      mockPrismaClient.device.findMany.mockResolvedValueOnce([
+        device('device-1', 'account-1'),
+      ]);
 
-      await expect(addDeviceToWallet('wallet-1', 'device-1', 'user-1')).resolves.toBeUndefined();
+      await expect(addDeviceToWallet(
+        'wallet-1',
+        { deviceId: 'device-1', deviceAccountId: 'account-1', signerIndex: 0 },
+        'user-1',
+      )).rejects.toThrow('descriptor failed');
       const { walletRepository: walletRepo3 } = await import('../../../../src/repositories');
-      expect(walletRepo3.linkDevice).toHaveBeenCalled();
+      expect(walletRepo3.linkDevice).not.toHaveBeenCalled();
+      expect(walletRepo3.linkDeviceWithDescriptor).not.toHaveBeenCalled();
     });
 
     it('defers multisig descriptor generation until required signer threshold is met', async () => {
@@ -306,30 +337,17 @@ export function registerWalletMutationMaintenanceTests(): void {
         quorum: 2,
         totalSigners: 3,
         descriptor: null,
-        devices: [
-          {
-            deviceId: 'device-existing',
-            device: {
-              id: 'device-existing',
-              userId: 'user-1',
-              type: 'coldcard',
-              fingerprint: 'eeeeffff',
-              xpub: 'xpub-existing',
-              derivationPath: "m/48'/0'/0'/2'",
-            },
-          },
-        ],
+        devices: [storedLink(0, 'device-existing')],
       });
-      mockPrismaClient.device.findFirst.mockResolvedValueOnce({
-        id: 'device-new',
-        userId: 'user-1',
-        type: 'coldcard',
-        fingerprint: 'aaaabbbb',
-        xpub: 'xpub-new',
-        derivationPath: "m/48'/0'/0'/2'",
-      });
+      mockPrismaClient.device.findMany.mockResolvedValueOnce([
+        device('device-new', 'account-new', "m/48'/0'/0'/2'"),
+      ]);
 
-      await addDeviceToWallet('wallet-multi', 'device-new', 'user-1', 1);
+      await addDeviceToWallet(
+        'wallet-multi',
+        { deviceId: 'device-new', deviceAccountId: 'account-new', signerIndex: 1 },
+        'user-1',
+      );
 
       const { walletRepository: walletRepo2 } = await import('../../../../src/repositories');
       expect(walletRepo2.linkDevice).toHaveBeenCalled();
@@ -337,7 +355,7 @@ export function registerWalletMutationMaintenanceTests(): void {
       expect(mockPrismaClient.wallet.update).not.toHaveBeenCalled();
     });
 
-    it('generates multisig descriptor when signer threshold is met and normalizes missing derivation paths', async () => {
+    it('generates multisig descriptor from immutable snapshots when signer threshold is met', async () => {
       mockPrismaClient.wallet.findFirst.mockResolvedValueOnce({
         id: 'wallet-multi-ready',
         type: 'multi_sig',
@@ -346,47 +364,38 @@ export function registerWalletMutationMaintenanceTests(): void {
         quorum: 2,
         totalSigners: 2,
         descriptor: null,
-        devices: [
-          {
-            deviceId: 'device-existing',
-            device: {
-              id: 'device-existing',
-              userId: 'user-1',
-              type: 'coldcard',
-              fingerprint: '11112222',
-              xpub: 'xpub-existing',
-              derivationPath: "m/48'/0'/0'/2'",
-            },
-          },
-        ],
+        devices: [storedLink(0, 'device-existing')],
       });
-      mockPrismaClient.device.findFirst.mockResolvedValueOnce({
-        id: 'device-new',
-        userId: 'user-1',
-        type: 'coldcard',
-        fingerprint: '33334444',
-        xpub: 'xpub-new',
-        derivationPath: '',
-      });
+      mockPrismaClient.device.findMany.mockResolvedValueOnce([
+        device('device-new', 'account-new', "m/48'/0'/1'/2'"),
+      ]);
 
-      await addDeviceToWallet('wallet-multi-ready', 'device-new', 'user-1', 1);
+      await addDeviceToWallet(
+        'wallet-multi-ready',
+        { deviceId: 'device-new', deviceAccountId: 'account-new', signerIndex: 1 },
+        'user-1',
+      );
 
       expect(mockBuildDescriptorFromDevices).toHaveBeenCalledWith(
         expect.arrayContaining([
           expect.objectContaining({
-            fingerprint: '33334444',
-            derivationPath: undefined,
+            derivationPath: "m/48'/0'/1'/2'",
           }),
         ]),
         expect.any(Object)
       );
-      expect(mockPrismaClient.wallet.update).toHaveBeenCalled();
+      const { walletRepository: walletRepo } = await import('../../../../src/repositories');
+      expect(walletRepo.linkDeviceWithDescriptor).toHaveBeenCalled();
     });
 
     it('rejects addDeviceToWallet when wallet is missing', async () => {
       mockPrismaClient.wallet.findFirst.mockResolvedValueOnce(null);
 
-      await expect(addDeviceToWallet('wallet-missing', 'device-1', 'user-1')).rejects.toThrow('Wallet not found');
+      await expect(addDeviceToWallet(
+        'wallet-missing',
+        { deviceId: 'device-1', deviceAccountId: 'account-1', signerIndex: 0 },
+        'user-1',
+      )).rejects.toThrow('Wallet not found');
     });
 
     it('rejects addDeviceToWallet when device is missing', async () => {
@@ -400,9 +409,13 @@ export function registerWalletMutationMaintenanceTests(): void {
         descriptor: null,
         devices: [],
       });
-      mockPrismaClient.device.findFirst.mockResolvedValueOnce(null);
+      mockPrismaClient.device.findMany.mockResolvedValueOnce([]);
 
-      await expect(addDeviceToWallet('wallet-1', 'device-missing', 'user-1')).rejects.toThrow('Device not found');
+      await expect(addDeviceToWallet(
+        'wallet-1',
+        { deviceId: 'device-missing', deviceAccountId: 'account-missing', signerIndex: 0 },
+        'user-1',
+      )).rejects.toThrow('Device not found');
     });
 
     it('rejects addDeviceToWallet when device is already linked', async () => {
@@ -437,9 +450,135 @@ export function registerWalletMutationMaintenanceTests(): void {
         derivationPath: "m/84'/0'/0'",
       });
 
-      await expect(addDeviceToWallet('wallet-1', 'device-1', 'user-1')).rejects.toThrow(
+      await expect(addDeviceToWallet(
+        'wallet-1',
+        { deviceId: 'device-1', deviceAccountId: 'account-1', signerIndex: 1 },
+        'user-1',
+      )).rejects.toThrow(
         'Device is already linked to this wallet'
       );
+    });
+
+    it('rejects signer changes after descriptor materialization', async () => {
+      mockPrismaClient.wallet.findFirst.mockResolvedValueOnce({
+        id: 'wallet-materialized',
+        type: 'single_sig',
+        scriptType: 'native_segwit',
+        network: 'mainnet',
+        descriptor: 'wpkh(materialized)',
+        devices: [],
+      });
+
+      await expect(addDeviceToWallet(
+        'wallet-materialized',
+        { deviceId: 'device-1', deviceAccountId: 'account-1', signerIndex: 0 },
+        'user-1',
+      )).rejects.toThrow('Cannot add a signer after the wallet descriptor is assigned');
+    });
+
+    it('rejects a noncontiguous requested signer index', async () => {
+      mockPrismaClient.wallet.findFirst.mockResolvedValueOnce({
+        id: 'wallet-gap',
+        type: 'multi_sig',
+        scriptType: 'native_segwit',
+        network: 'mainnet',
+        quorum: 2,
+        totalSigners: 3,
+        descriptor: null,
+        devices: [storedLink(0, 'device-existing')],
+      });
+
+      await expect(addDeviceToWallet(
+        'wallet-gap',
+        { deviceId: 'device-new', deviceAccountId: 'account-new', signerIndex: 2 },
+        'user-1',
+      )).rejects.toThrow('next contiguous wallet signer index');
+    });
+
+    it.each([
+      ['unsupported wallet type', 'unsupported', 'native_segwit'],
+      ['unsupported script type', 'single_sig', 'unsupported'],
+    ])('rejects %s before signer resolution', async (_case, type, scriptType) => {
+      mockPrismaClient.wallet.findFirst.mockResolvedValueOnce({
+        id: 'wallet-unsupported',
+        type,
+        scriptType,
+        network: 'mainnet',
+        descriptor: null,
+        devices: [],
+      });
+
+      await expect(addDeviceToWallet(
+        'wallet-unsupported',
+        { deviceId: 'device-new', deviceAccountId: 'account-new', signerIndex: 0 },
+        'user-1',
+      )).rejects.toThrow('Wallet type or script type is unsupported');
+    });
+
+    it('rejects multisig without a configured total signer count', async () => {
+      mockPrismaClient.wallet.findFirst.mockResolvedValueOnce({
+        id: 'wallet-no-count',
+        type: 'multi_sig',
+        scriptType: 'native_segwit',
+        network: 'mainnet',
+        quorum: 1,
+        totalSigners: null,
+        descriptor: null,
+        devices: [],
+      });
+      mockPrismaClient.device.findMany.mockResolvedValueOnce([
+        device('device-new', 'account-new', "m/48'/0'/0'/2'"),
+      ]);
+
+      await expect(addDeviceToWallet(
+        'wallet-no-count',
+        { deviceId: 'device-new', deviceAccountId: 'account-new', signerIndex: 0 },
+        'user-1',
+      )).rejects.toThrow('Wallet signer count is not configured');
+    });
+
+    it('rejects a signer beyond the configured single-sig count', async () => {
+      mockPrismaClient.wallet.findFirst.mockResolvedValueOnce({
+        id: 'wallet-over-count',
+        type: 'single_sig',
+        scriptType: 'native_segwit',
+        network: 'mainnet',
+        quorum: null,
+        totalSigners: null,
+        descriptor: null,
+        devices: [storedSingleLink(0, 'device-existing')],
+      });
+      mockPrismaClient.device.findMany.mockResolvedValueOnce([
+        device('device-new', 'account-new'),
+      ]);
+
+      await expect(addDeviceToWallet(
+        'wallet-over-count',
+        { deviceId: 'device-new', deviceAccountId: 'account-new', signerIndex: 1 },
+        'user-1',
+      )).rejects.toThrow('already has its configured number of signers');
+    });
+
+    it('fails closed when sorting multiple legacy links without signer indexes', async () => {
+      mockPrismaClient.wallet.findFirst.mockResolvedValueOnce({
+        id: 'wallet-legacy-links',
+        type: 'multi_sig',
+        scriptType: 'native_segwit',
+        network: 'mainnet',
+        quorum: 2,
+        totalSigners: 3,
+        descriptor: null,
+        devices: [
+          { deviceId: 'legacy-a' },
+          { deviceId: 'legacy-b' },
+        ],
+      });
+
+      await expect(addDeviceToWallet(
+        'wallet-legacy-links',
+        { deviceId: 'device-new', deviceAccountId: 'account-new', signerIndex: 2 },
+        'user-1',
+      )).rejects.toThrow('unproven legacy signer link');
     });
   });
 }

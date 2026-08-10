@@ -20,19 +20,42 @@ export function uniqueFingerprint(): string {
 }
 
 export async function attachNonTargetTestSigner(walletId: string, userId: string): Promise<void> {
+  const fingerprint = uniqueFingerprint();
+  const xpub = 'tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M';
+  const derivationPath = "m/84'/1'/0'";
   const device = await prisma.device.create({
     data: {
       userId,
       type: 'bitbox',
       label: 'Integration BitBox signer',
-      fingerprint: uniqueFingerprint(),
-      xpub: 'tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M',
-      derivationPath: "m/84'/1'/0'",
+      fingerprint,
+      xpub,
+      derivationPath,
+    },
+  });
+  const account = await prisma.deviceAccount.create({
+    data: {
+      deviceId: device.id,
+      purpose: 'single_sig',
+      scriptType: 'native_segwit',
+      derivationPath,
+      xpub,
     },
   });
 
   await prisma.walletDevice.create({
-    data: { walletId, deviceId: device.id },
+    data: {
+      walletId,
+      deviceId: device.id,
+      deviceAccountId: account.id,
+      signerIndex: 0,
+      signerBindingVersion: 1,
+      signerFingerprint: fingerprint,
+      signerXpub: xpub,
+      signerDerivationPath: derivationPath,
+      signerPurpose: 'single_sig',
+      signerScriptType: 'native_segwit',
+    },
   });
 }
 

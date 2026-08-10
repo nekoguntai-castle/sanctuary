@@ -34,7 +34,7 @@ export const SignerCompatibilityWarning: React.FC<SignerCompatibilityWarningProp
             onClick={() => firstDeviceId && navigate(`/devices/${firstDeviceId}`)}
             className="underline hover:no-underline ml-1"
           >
-            Add derivation path
+            Review accounts
           </button>
         </p>
       </div>

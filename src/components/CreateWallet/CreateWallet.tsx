@@ -20,6 +20,7 @@ export const CreateWallet: React.FC = () => {
                   compatibleDevices={wallet.compatibleDevices}
                   incompatibleDevices={wallet.incompatibleDevices}
                   selectedDeviceIds={wallet.selectedDeviceIds}
+                  selectedSigners={wallet.selectedSigners}
                   toggleDevice={wallet.toggleDevice}
                   getDisplayAccount={wallet.getDisplayAccount}
                   walletName={wallet.walletName}

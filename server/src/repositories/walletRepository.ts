@@ -517,8 +517,12 @@ export async function findByIdWithAccessAndDevices(walletId: string, userId: str
     include: {
       devices: {
         include: {
+          deviceAccount: true,
           device: {
-            include: { model: { select: { slug: true, name: true } } },
+            include: {
+              accounts: true,
+              model: { select: { slug: true, name: true } },
+            },
           },
         },
       },
@@ -539,8 +543,12 @@ export async function findByIdWithOwnerAndDevices(walletId: string, userId: stri
     include: {
       devices: {
         include: {
+          deviceAccount: true,
           device: {
-            include: { model: { select: { slug: true, name: true } } },
+            include: {
+              accounts: true,
+              model: { select: { slug: true, name: true } },
+            },
           },
         },
       },
@@ -551,13 +559,68 @@ export async function findByIdWithOwnerAndDevices(walletId: string, userId: stri
 /**
  * Link a device to a wallet.
  */
+export interface WalletSignerLinkData {
+  deviceId: string;
+  deviceAccountId: string;
+  signerIndex: number;
+  signerBindingVersion: 1;
+  signerFingerprint: string;
+  signerXpub: string;
+  signerDerivationPath: string;
+  signerPurpose: string;
+  signerScriptType: string;
+}
+
 export async function linkDevice(
   walletId: string,
-  deviceId: string,
-  signerIndex?: number,
+  signer: WalletSignerLinkData,
 ): Promise<void> {
   await prisma.walletDevice.create({
-    data: { walletId, deviceId, signerIndex },
+    data: { walletId, ...signer },
+  });
+}
+
+export interface WalletDescriptorAssignment {
+  descriptor: string;
+  fingerprint: string;
+  addresses: Prisma.AddressCreateManyInput[];
+}
+
+async function assignMissingDescriptor(
+  tx: Pick<typeof prisma, 'wallet' | 'address'>,
+  walletId: string,
+  assignment: WalletDescriptorAssignment,
+): Promise<void> {
+  const updated = await tx.wallet.updateMany({
+    where: { id: walletId, descriptor: null },
+    data: {
+      descriptor: assignment.descriptor,
+      fingerprint: assignment.fingerprint,
+    },
+  });
+  if (updated.count !== 1) {
+    throw new Error('Wallet descriptor changed before signer binding completed');
+  }
+  await tx.address.createMany({ data: assignment.addresses });
+}
+
+export async function linkDeviceWithDescriptor(
+  walletId: string,
+  signer: WalletSignerLinkData,
+  assignment: WalletDescriptorAssignment,
+): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    await tx.walletDevice.create({ data: { walletId, ...signer } });
+    await assignMissingDescriptor(tx, walletId, assignment);
+  });
+}
+
+export async function assignDescriptorWithAddresses(
+  walletId: string,
+  assignment: WalletDescriptorAssignment,
+): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    await assignMissingDescriptor(tx, walletId, assignment);
   });
 }
 
@@ -567,17 +630,16 @@ export async function linkDevice(
  */
 export async function createWithDeviceLinks(
   data: Prisma.WalletCreateInput,
-  deviceIds?: string[],
+  signers?: WalletSignerLinkData[],
 ): Promise<Wallet & { devices: Array<{ deviceId: string }>; addresses: Array<{ id: string }> }> {
   return prisma.$transaction(async (tx) => {
     const wallet = await tx.wallet.create({ data });
 
-    if (deviceIds && deviceIds.length > 0) {
+    if (signers && signers.length > 0) {
       await tx.walletDevice.createMany({
-        data: deviceIds.map((deviceId, index) => ({
+        data: signers.map((signer) => ({
           walletId: wallet.id,
-          deviceId,
-          signerIndex: index,
+          ...signer,
         })),
       });
     }
@@ -628,6 +690,8 @@ export const walletRepository = {
   findByIdWithAccessAndDevices,
   findByIdWithOwnerAndDevices,
   linkDevice,
+  linkDeviceWithDescriptor,
+  assignDescriptorWithAddresses,
   createWithDeviceLinks,
 };
 

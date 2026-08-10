@@ -54,7 +54,7 @@ export async function renderCreateWalletRouteShowsNoCompatibleDeviceMessageForMu
   await main.getByRole('button', { name: 'Next Step' }).click();
 
   await expect(main.getByRole('heading', { name: 'Select Signers' })).toBeVisible();
-  await expect(main.getByText('No devices with multisig accounts found.')).toBeVisible();
+  await expect(main.getByText('No devices with exactly one matching multisig account found.')).toBeVisible();
   await expect(main.getByRole('button', { name: 'Connect New Device' })).toBeVisible();
 
   expect(unhandledRequests).toEqual([]);
@@ -67,6 +67,10 @@ export async function renderCreateWalletRouteConfigurationShowsNetworkWarningFor
   await page.goto('/#/wallets/create');
 
   await main.getByRole('button', { name: 'Single Signature' }).click();
+  await page
+    .getByRole('tablist', { name: 'Network tabs' })
+    .getByRole('tab', { name: 'Testnet3' })
+    .click();
   await main.getByRole('button', { name: 'Next Step' }).click();
 
   await main.getByText('Render Ledger', { exact: true }).click();
@@ -74,10 +78,6 @@ export async function renderCreateWalletRouteConfigurationShowsNetworkWarningFor
 
   await expect(main.getByRole('heading', { name: 'Configuration' })).toBeVisible();
   await expect(main.getByText('Script Type')).toBeVisible();
-  await page
-    .getByRole('tablist', { name: 'Network tabs' })
-    .getByRole('tab', { name: 'Testnet3' })
-    .click();
   await expect(main.getByText('Testnet coins have no real-world value.')).toBeVisible();
 
   expect(unhandledRequests).toEqual([]);

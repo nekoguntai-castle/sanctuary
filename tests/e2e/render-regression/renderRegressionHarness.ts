@@ -183,6 +183,13 @@ export const RENDER_DEVICE = {
       derivationPath: "m/84'/0'/0'",
       xpub: 'xpub-render-account',
     },
+    {
+      id: 'acct-testnet-1',
+      purpose: 'single_sig',
+      scriptType: 'native_segwit',
+      derivationPath: "m/84'/1'/0'",
+      xpub: 'tpub-render-account',
+    },
   ],
   model: {
     slug: 'ledger',

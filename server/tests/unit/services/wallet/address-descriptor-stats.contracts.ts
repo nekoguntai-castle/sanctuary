@@ -27,6 +27,26 @@ import {
 
 export function registerWalletAddressDescriptorStatsTests(): void {
   describe('address generation and descriptor repair', () => {
+    const storedSigner = (
+      index: number,
+      fingerprint: string,
+      xpub: string,
+      derivationPath: string,
+      purpose = 'single_sig',
+      scriptType = 'native_segwit',
+    ) => ({
+      deviceId: `device-${index}`,
+      deviceAccountId: `account-${index}`,
+      signerIndex: index,
+      signerBindingVersion: 1,
+      signerFingerprint: fingerprint,
+      signerXpub: xpub,
+      signerDerivationPath: derivationPath,
+      signerPurpose: purpose,
+      signerScriptType: scriptType,
+      device: { id: `device-${index}`, type: 'coldcard', accounts: [] },
+      deviceAccount: null,
+    });
     it('throws when generating address for inaccessible wallet', async () => {
       mockPrismaClient.wallet.findFirst.mockResolvedValueOnce(null);
       await expect(generateAddress('wallet-missing', 'user-1')).rejects.toThrow('Wallet not found');
@@ -153,7 +173,7 @@ export function registerWalletAddressDescriptorStatsTests(): void {
 
       const result = await repairWalletDescriptor('wallet-1', 'owner-1');
       expect(result.success).toBe(false);
-      expect(result.message).toContain('exactly 1 device');
+      expect(result.message).toContain('needs 1 device');
     });
 
     it('returns validation failure when multisig lacks required devices', async () => {
@@ -173,7 +193,7 @@ export function registerWalletAddressDescriptorStatsTests(): void {
       expect(result.message).toContain('needs 3 devices');
     });
 
-    it('uses default required device count for multisig repair when totalSigners is missing', async () => {
+    it('fails closed when multisig repair lacks an explicit total signer count', async () => {
       mockPrismaClient.wallet.findFirst.mockResolvedValueOnce({
         id: 'wallet-1',
         type: 'multi_sig',
@@ -187,7 +207,7 @@ export function registerWalletAddressDescriptorStatsTests(): void {
 
       const result = await repairWalletDescriptor('wallet-1', 'owner-1');
       expect(result.success).toBe(false);
-      expect(result.message).toContain('needs 2 devices');
+      expect(result.message).toContain('missing its configured signer count');
     });
 
     it('repairs descriptor and bulk-creates initial addresses', async () => {
@@ -199,19 +219,20 @@ export function registerWalletAddressDescriptorStatsTests(): void {
         quorum: null,
         totalSigners: null,
         descriptor: null,
-        devices: [{ device: { fingerprint: 'aabbccdd', xpub: 'xpub-a', derivationPath: "m/84'/0'/0'" } }],
+        devices: [{
+          ...storedSigner(0, 'aabbccdd', 'xpub-a', "m/84'/0'/0'"),
+          deviceAccountId: null,
+        }],
       });
 
       const result = await repairWalletDescriptor('wallet-1', 'owner-1');
 
       expect(result.success).toBe(true);
       expect(result.message).toContain('Generated descriptor');
-      expect(mockPrismaClient.wallet.update).toHaveBeenCalled();
-      expect(mockPrismaClient.address.createMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.any(Array),
-          skipDuplicates: true,
-        })
+      const { walletRepository } = await import('../../../../src/repositories');
+      expect(walletRepository.assignDescriptorWithAddresses).toHaveBeenCalledWith(
+        'wallet-1',
+        expect.objectContaining({ addresses: expect.any(Array) }),
       );
     });
 
@@ -227,7 +248,7 @@ export function registerWalletAddressDescriptorStatsTests(): void {
         quorum: null,
         totalSigners: null,
         descriptor: null,
-        devices: [{ device: { fingerprint: 'aabbccdd', xpub: 'xpub-a', derivationPath: "m/84'/0'/0'" } }],
+        devices: [storedSigner(0, 'aabbccdd', 'xpub-a', "m/84'/0'/0'")],
       });
 
       await expect(repairWalletDescriptor('wallet-1', 'owner-1')).rejects.toThrow(
@@ -242,7 +263,7 @@ export function registerWalletAddressDescriptorStatsTests(): void {
       );
     });
 
-    it('normalizes missing derivationPath when repairing descriptor', async () => {
+    it('rejects a legacy signer without an immutable derivation snapshot', async () => {
       mockPrismaClient.wallet.findFirst.mockResolvedValueOnce({
         id: 'wallet-2',
         type: 'single_sig',
@@ -254,38 +275,60 @@ export function registerWalletAddressDescriptorStatsTests(): void {
         devices: [{ device: { fingerprint: '11223344', xpub: 'xpub-no-path', derivationPath: '' } }],
       });
 
-      await repairWalletDescriptor('wallet-2', 'owner-1');
-
-      expect(mockBuildDescriptorFromDevices).toHaveBeenCalledWith(
-        expect.arrayContaining([
-          expect.objectContaining({
-            fingerprint: '11223344',
-            derivationPath: undefined,
-          }),
-        ]),
-        expect.any(Object)
+      await expect(repairWalletDescriptor('wallet-2', 'owner-1')).rejects.toThrow(
+        'unproven legacy signer link',
       );
+      const { walletRepository } = await import('../../../../src/repositories');
+      expect(walletRepository.assignDescriptorWithAddresses).not.toHaveBeenCalled();
     });
 
-    it('repairs multisig descriptor when default required signer count is satisfied', async () => {
+    it.each([
+      ['wrong purpose', { signerPurpose: 'multisig' }],
+      ['wrong script type', { signerScriptType: 'taproot' }],
+      ['wrong coin type', { signerDerivationPath: "m/84'/1'/0'" }],
+      ['account index above the BIP32 maximum', { signerDerivationPath: "m/84'/0'/2147483648'" }],
+    ])('rejects a stored signer snapshot with %s', async (_case, override) => {
+      mockPrismaClient.wallet.findFirst.mockResolvedValueOnce({
+        id: 'wallet-invalid-snapshot',
+        type: 'single_sig',
+        scriptType: 'native_segwit',
+        network: 'mainnet',
+        quorum: null,
+        totalSigners: null,
+        descriptor: null,
+        devices: [{
+          ...storedSigner(0, 'aabbccdd', 'xpub-a', "m/84'/0'/0'"),
+          ...override,
+        }],
+      });
+
+      await expect(
+        repairWalletDescriptor('wallet-invalid-snapshot', 'owner-1'),
+      ).rejects.toThrow();
+      const { walletRepository } = await import('../../../../src/repositories');
+      expect(walletRepository.assignDescriptorWithAddresses).not.toHaveBeenCalled();
+    });
+
+    it('repairs multisig descriptor when the explicit signer count is satisfied', async () => {
       mockPrismaClient.wallet.findFirst.mockResolvedValueOnce({
         id: 'wallet-multi-default-ready',
         type: 'multi_sig',
         scriptType: 'native_segwit',
         network: 'mainnet',
         quorum: 2,
-        totalSigners: null,
+        totalSigners: 2,
         descriptor: null,
         devices: [
-          { device: { fingerprint: 'a1', xpub: 'xpub-a1', derivationPath: "m/48'/0'/0'/2'" } },
-          { device: { fingerprint: 'b2', xpub: 'xpub-b2', derivationPath: "m/48'/0'/0'/2'" } },
+          storedSigner(0, 'a1a1a1a1', 'xpub-a1', "m/48'/0'/0'/2'", 'multisig'),
+          storedSigner(1, 'b2b2b2b2', 'xpub-b2', "m/48'/0'/0'/2'", 'multisig'),
         ],
       });
 
       const result = await repairWalletDescriptor('wallet-multi-default-ready', 'owner-1');
 
       expect(result.success).toBe(true);
-      expect(mockPrismaClient.wallet.update).toHaveBeenCalled();
+      const { walletRepository } = await import('../../../../src/repositories');
+      expect(walletRepository.assignDescriptorWithAddresses).toHaveBeenCalled();
     });
   });
 

@@ -17,8 +17,9 @@ const router = Router();
 
 const WalletAddDeviceBodySchema = z.object({
   deviceId: z.string().trim().min(1),
-  signerIndex: z.number().int().min(0).optional(),
-});
+  deviceAccountId: z.string().trim().min(1),
+  signerIndex: z.number().int().min(0),
+}).strict();
 
 /**
  * POST /api/v1/wallets/:id/addresses
@@ -42,14 +43,18 @@ router.post(
   requireWalletAccess('edit'),
   validate(
     { body: WalletAddDeviceBodySchema },
-    { message: 'deviceId is required', code: ErrorCodes.INVALID_INPUT }
+    { message: 'deviceId and deviceAccountId are required', code: ErrorCodes.INVALID_INPUT }
   ),
   asyncHandler(async (req, res) => {
     const userId = requireAuthenticatedUser(req).userId;
     const walletId = req.walletId!;
-    const { deviceId, signerIndex } = req.body;
+    const { deviceId, deviceAccountId, signerIndex } = req.body;
 
-    await walletService.addDeviceToWallet(walletId, deviceId, userId, signerIndex);
+    await walletService.addDeviceToWallet(
+      walletId,
+      { deviceId, deviceAccountId, signerIndex },
+      userId,
+    );
 
     res.status(201).json({ message: 'Device added to wallet' });
   })

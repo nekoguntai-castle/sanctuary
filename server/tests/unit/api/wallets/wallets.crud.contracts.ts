@@ -60,6 +60,36 @@ export const registerWalletCrudContracts = () => {
       expect(mockCreateWallet).toHaveBeenCalled();
     });
 
+    it('forwards exact signer account identity without rewriting order', async () => {
+      const signers = [
+        { deviceId: 'device-1', deviceAccountId: 'account-1', signerIndex: 0 },
+        { deviceId: 'device-2', deviceAccountId: 'account-2', signerIndex: 1 },
+      ];
+      const walletData = {
+        name: 'Exact Multisig',
+        type: 'multi_sig',
+        scriptType: 'native_segwit',
+        quorum: 2,
+        totalSigners: 2,
+        signers,
+      };
+      mockCreateWallet.mockResolvedValue({
+        id: 'wallet-exact',
+        ...walletData,
+        createdAt: new Date(),
+      });
+
+      const response = await request(walletRouter)
+        .post('/api/v1/wallets')
+        .send(walletData);
+
+      expect(response.status).toBe(201);
+      expect(mockCreateWallet).toHaveBeenCalledWith(
+        'test-user-id',
+        expect.objectContaining({ signers }),
+      );
+    });
+
     it('should create a multi-sig wallet', async () => {
       const walletData = {
         name: 'Multisig Vault',
@@ -185,11 +215,25 @@ export const registerWalletCrudContracts = () => {
           name: 'Bad Wallet',
           type: 'single_sig',
           scriptType: 'native_segwit',
-          deviceIds: [123],
+          signers: [{ deviceId: 'device-1', deviceAccountId: 123, signerIndex: 0 }],
         });
 
       expect(response.status).toBe(400);
       expect(response.body.message).toBe('Invalid wallet request');
+      expect(mockCreateWallet).not.toHaveBeenCalled();
+    });
+
+    it('rejects legacy deviceIds instead of silently selecting a hardware account', async () => {
+      const response = await request(walletRouter)
+        .post('/api/v1/wallets')
+        .send({
+          name: 'Ambiguous Wallet',
+          type: 'single_sig',
+          scriptType: 'native_segwit',
+          deviceIds: ['device-1'],
+        });
+
+      expect(response.status).toBe(400);
       expect(mockCreateWallet).not.toHaveBeenCalled();
     });
 

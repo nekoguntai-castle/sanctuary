@@ -163,20 +163,6 @@ export async function createTestWallet(
   token: string,
   walletData?: { name?: string }
 ): Promise<{ id: string; name: string }> {
-  const defaultDescriptor = "wpkh([aabbccdd/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*)";
-
-  const response = await request(app)
-    .post('/api/v1/wallets')
-    .set('Authorization', `Bearer ${token}`)
-    .send({
-      name: walletData?.name ?? 'Test Wallet',
-      type: 'single_sig',
-      scriptType: 'native_segwit',
-      network: 'testnet3',
-      descriptor: defaultDescriptor,
-    })
-    .expect(201);
-
   const fingerprint = Math.random().toString(16).slice(2, 10).padEnd(8, '0');
   const deviceResponse = await request(app)
     .post('/api/v1/devices')
@@ -190,10 +176,35 @@ export async function createTestWallet(
     })
     .expect(201);
 
-  await request(app)
-    .post(`/api/v1/wallets/${response.body.id}/devices`)
+  const exactAccount = deviceResponse.body.accounts?.find((account: {
+    id?: unknown;
+    purpose?: unknown;
+    scriptType?: unknown;
+    derivationPath?: unknown;
+  }) => (
+    account.purpose === 'single_sig'
+    && account.scriptType === 'native_segwit'
+    && account.derivationPath === "m/84'/1'/0'"
+  ));
+  const deviceAccountId = exactAccount?.id;
+  if (typeof deviceAccountId !== 'string') {
+    throw new Error('Integration signer registration did not return an exact account');
+  }
+
+  const response = await request(app)
+    .post('/api/v1/wallets')
     .set('Authorization', `Bearer ${token}`)
-    .send({ deviceId: deviceResponse.body.id })
+    .send({
+      name: walletData?.name ?? 'Test Wallet',
+      type: 'single_sig',
+      scriptType: 'native_segwit',
+      network: 'testnet3',
+      signers: [{
+        deviceId: deviceResponse.body.id,
+        deviceAccountId,
+        signerIndex: 0,
+      }],
+    })
     .expect(201);
 
   return { id: response.body.id, name: response.body.name };

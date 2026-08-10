@@ -9,13 +9,23 @@ import {
   parseWalletScriptType,
   parseWalletType,
 } from '@sanctuary/shared/constants/walletIdentity';
-import { walletRepository, deviceRepository, addressRepository } from '../../repositories';
+import { walletRepository, deviceRepository } from '../../repositories';
 import * as descriptorBuilder from '../bitcoin/descriptorBuilder';
 import { createLogger } from '../../utils/logger';
-import { ConflictError, WalletNotFoundError, DeviceNotFoundError } from '../../errors';
+import {
+  ConflictError,
+  InvalidInputError,
+  WalletNotFoundError,
+  DeviceNotFoundError,
+} from '../../errors';
 import { getErrorMessage } from '../../utils/errors';
 import { generateInitialAddresses } from './addressGeneration';
-import type { WalletNetwork } from './types';
+import type { WalletNetwork, WalletSignerBinding, WalletSignerInput } from './types';
+import {
+  assertSignerBindingMatchesWallet,
+  descriptorDeviceInfo,
+  resolveWalletSignerBindings,
+} from './walletAccountSelection';
 import {
   assertHardwareWalletCapability,
   assertWalletHardwareCapability,
@@ -23,14 +33,123 @@ import {
 
 const log = createLogger('WALLET:SVC_DEVICE');
 
+type WalletWithSignerDevices = NonNullable<Awaited<
+  ReturnType<typeof walletRepository.findByIdWithAccessAndDevices>
+>>;
+type StoredSignerLink = WalletWithSignerDevices['devices'][number];
+
+function walletPolicy(wallet: WalletWithSignerDevices) {
+  const type = parseWalletType(wallet.type);
+  const scriptType = parseWalletScriptType(wallet.scriptType);
+  if (!type || !scriptType) {
+    throw new InvalidInputError('Wallet type or script type is unsupported');
+  }
+  return { type, scriptType };
+}
+
+function orderedStoredSignerInfo(wallet: WalletWithSignerDevices) {
+  const policy = walletPolicy(wallet);
+  const links = wallet.devices;
+  const ordered = [...links].sort((left, right) =>
+    (left.signerIndex ?? Number.MAX_SAFE_INTEGER) -
+    (right.signerIndex ?? Number.MAX_SAFE_INTEGER)
+  );
+  return ordered.map((link, index) => {
+    if (
+      link.signerBindingVersion !== 1
+      || link.signerIndex !== index
+      || !link.signerFingerprint
+      || !link.signerXpub
+      || !link.signerDerivationPath
+      || !link.signerPurpose
+      || !link.signerScriptType
+    ) {
+      throw new InvalidInputError(
+        'Wallet has an unproven legacy signer link and cannot change its descriptor',
+      );
+    }
+    assertSignerBindingMatchesWallet({
+      deviceId: link.deviceId,
+      deviceAccountId: link.deviceAccountId ?? `snapshot:${link.deviceId}`,
+      signerFingerprint: link.signerFingerprint,
+      signerXpub: link.signerXpub,
+      signerDerivationPath: link.signerDerivationPath,
+      signerPurpose: link.signerPurpose,
+      signerScriptType: link.signerScriptType,
+    }, {
+      type: policy.type,
+      scriptType: policy.scriptType,
+      network: wallet.network as WalletNetwork,
+    });
+    return {
+      fingerprint: link.signerFingerprint,
+      xpub: link.signerXpub,
+      derivationPath: link.signerDerivationPath,
+    };
+  });
+}
+
+function buildDescriptorAssignment(
+  walletId: string,
+  wallet: WalletWithSignerDevices,
+  deviceInfos: ReturnType<typeof orderedStoredSignerInfo>,
+) {
+  const policy = walletPolicy(wallet);
+  const descriptorResult = descriptorBuilder.buildDescriptorFromDevices(deviceInfos, {
+    type: policy.type,
+    scriptType: policy.scriptType,
+    network: wallet.network as WalletNetwork,
+    quorum: wallet.quorum || undefined,
+  });
+  return {
+    descriptor: descriptorResult.descriptor,
+    fingerprint: descriptorResult.fingerprint,
+    addresses: generateInitialAddresses(
+      walletId,
+      descriptorResult.descriptor,
+      wallet.network as WalletNetwork,
+    ),
+  };
+}
+
+function expectedSignerCount(wallet: WalletWithSignerDevices): number {
+  const walletType = parseWalletType(wallet.type);
+  if (walletType === WalletType.SINGLE_SIG) return 1;
+  if (walletType === WalletType.MULTI_SIG && wallet.totalSigners) {
+    return wallet.totalSigners;
+  }
+  throw new InvalidInputError('Wallet signer count is not configured');
+}
+
+async function resolveNewSignerBinding(
+  userId: string,
+  wallet: WalletWithSignerDevices,
+  signer: WalletSignerInput,
+): Promise<WalletSignerBinding> {
+  const devices = await deviceRepository.findByIdsAndUserWithAccounts(
+    [signer.deviceId],
+    userId,
+  );
+  if (devices.length !== 1) throw new DeviceNotFoundError(signer.deviceId);
+  assertHardwareWalletCapability(devices[0], 'account_add');
+
+  const policy = walletPolicy(wallet);
+  const [binding] = resolveWalletSignerBindings(devices, {
+    type: policy.type,
+    scriptType: policy.scriptType,
+    network: wallet.network as WalletNetwork,
+    signers: [{ ...signer, signerIndex: 0 }],
+  });
+  return { ...binding, signerIndex: signer.signerIndex };
+}
+
 /**
  * Add device to wallet
  */
 export async function addDeviceToWallet(
   walletId: string,
-  deviceId: string,
+  signer: WalletSignerInput,
   userId: string,
-  signerIndex?: number
 ): Promise<void> {
   // Check user has access to wallet
   const wallet = await walletRepository.findByIdWithAccessAndDevices(walletId, userId);
@@ -39,70 +158,44 @@ export async function addDeviceToWallet(
     throw new WalletNotFoundError(walletId);
   }
 
-  // Check device belongs to user
-  const device = await deviceRepository.findByIdAndUser(deviceId, userId);
+  assertWalletHardwareCapability(wallet, 'account_add');
 
-  if (!device) {
-    throw new DeviceNotFoundError(deviceId);
+  if (wallet.descriptor) {
+    throw new ConflictError('Cannot add a signer after the wallet descriptor is assigned');
   }
 
-  assertWalletHardwareCapability(wallet, 'account_add');
-  assertHardwareWalletCapability(device, 'account_add');
-
   // Check if device is already attached to this wallet
-  const existingLink = wallet.devices.find(wd => wd.deviceId === deviceId);
+  const existingLink = wallet.devices.find(wd => wd.deviceId === signer.deviceId);
   if (existingLink) {
     throw new ConflictError('Device is already linked to this wallet');
   }
 
-  // Add device to wallet
-  await walletRepository.linkDevice(walletId, deviceId, signerIndex);
-
-  // Regenerate descriptor if wallet now has enough devices
-  const allDevices = [...wallet.devices.map(wd => wd.device), device];
-  const walletType = parseWalletType(wallet.type);
-  const walletScriptType = parseWalletScriptType(wallet.scriptType);
-  const shouldGenerateDescriptor =
-    (walletType === WalletType.SINGLE_SIG && allDevices.length === 1) ||
-    (walletType === WalletType.MULTI_SIG && allDevices.length >= (wallet.totalSigners || 2));
-
-  if (shouldGenerateDescriptor && !wallet.descriptor && walletType && walletScriptType) {
-    // Build descriptor from all linked devices
-    const deviceInfos = allDevices.map(d => ({
-      fingerprint: d.fingerprint,
-      xpub: d.xpub,
-      derivationPath: d.derivationPath || undefined,
-    }));
-
-    try {
-      const descriptorResult = descriptorBuilder.buildDescriptorFromDevices(
-        deviceInfos,
-        {
-          type: walletType,
-          scriptType: walletScriptType,
-          network: wallet.network as WalletNetwork,
-          quorum: wallet.quorum || undefined,
-        }
-      );
-
-      // Update wallet with new descriptor
-      await walletRepository.update(walletId, {
-        descriptor: descriptorResult.descriptor,
-        fingerprint: descriptorResult.fingerprint,
-      });
-
-      log.info('Generated descriptor for wallet after device link', {
-        walletId,
-        deviceCount: allDevices.length,
-      });
-    } catch (err) {
-      // Log but don't fail - device was still added
-      log.warn('Failed to generate descriptor after device link', {
-        walletId,
-        error: getErrorMessage(err),
-      });
-    }
+  const existingInfos = orderedStoredSignerInfo(wallet);
+  if (signer.signerIndex !== existingInfos.length) {
+    throw new InvalidInputError('Signer index must be the next contiguous wallet signer index');
   }
+  const binding = await resolveNewSignerBinding(userId, wallet, signer);
+  const signerCount = wallet.devices.length + 1;
+  const requiredSigners = expectedSignerCount(wallet);
+  if (signerCount > requiredSigners) {
+    throw new InvalidInputError('Wallet already has its configured number of signers');
+  }
+
+  if (signerCount < requiredSigners) {
+    await walletRepository.linkDevice(walletId, binding);
+    return;
+  }
+
+  const assignment = buildDescriptorAssignment(
+    walletId,
+    wallet,
+    [...existingInfos, descriptorDeviceInfo(binding)],
+  );
+  await walletRepository.linkDeviceWithDescriptor(walletId, binding, assignment);
+  log.info('Generated descriptor for wallet after exact signer binding', {
+    walletId,
+    deviceCount: signerCount,
+  });
 }
 
 /**
@@ -139,76 +232,43 @@ export async function repairWalletDescriptor(
 
   assertWalletHardwareCapability(ownerWallet, 'import');
 
-  const devices = ownerWallet.devices.map(wd => wd.device);
-
-  // Check device count requirements
   const walletType = parseWalletType(ownerWallet.type);
-  const walletScriptType = parseWalletScriptType(ownerWallet.scriptType);
-  if (!walletType || !walletScriptType) {
+  if (!walletType) {
     return {
       success: false,
       message: 'Wallet type or script type is unsupported',
     };
   }
 
-  if (walletType === WalletType.SINGLE_SIG && devices.length !== 1) {
+  const requiredDevices = walletType === WalletType.SINGLE_SIG
+    ? 1
+    : ownerWallet.totalSigners;
+  if (!requiredDevices || ownerWallet.devices.length !== requiredDevices) {
     return {
       success: false,
-      message: `Single-sig wallet needs exactly 1 device, but has ${devices.length}`
+      message: requiredDevices
+        ? `Wallet needs ${requiredDevices} ${requiredDevices === 1 ? 'device' : 'devices'}, but has ${ownerWallet.devices.length}`
+        : 'Wallet is missing its configured signer count',
     };
   }
 
-  if (walletType === WalletType.MULTI_SIG) {
-    const requiredDevices = ownerWallet.totalSigners || 2;
-    if (devices.length < requiredDevices) {
-      return {
-        success: false,
-        message: `Multi-sig wallet needs ${requiredDevices} devices, but only has ${devices.length}`
-      };
-    }
-  }
-
-  // Build descriptor from devices
-  const deviceInfos = devices.map(d => ({
-    fingerprint: d.fingerprint,
-    xpub: d.xpub,
-    derivationPath: d.derivationPath || undefined,
-  }));
-
   try {
-    const descriptorResult = descriptorBuilder.buildDescriptorFromDevices(
-      deviceInfos,
-      {
-        type: walletType,
-        scriptType: walletScriptType,
-        network: ownerWallet.network as WalletNetwork,
-        quorum: ownerWallet.quorum || undefined,
-      }
+    const assignment = buildDescriptorAssignment(
+      walletId,
+      ownerWallet,
+      orderedStoredSignerInfo(ownerWallet),
     );
-
-    // Update wallet with descriptor
-    await walletRepository.update(walletId, {
-      descriptor: descriptorResult.descriptor,
-      fingerprint: descriptorResult.fingerprint,
-    });
-
-    // Generate initial addresses
-    const network = ownerWallet.network as WalletNetwork;
-    const addressesToCreate = generateInitialAddresses(walletId, descriptorResult.descriptor, network);
-
-    // skipDuplicates ensures idempotency - if repair is called multiple times
-    // or addresses already exist from a partial repair, they won't cause errors
-    await addressRepository.createMany(addressesToCreate, { skipDuplicates: true });
+    await walletRepository.assignDescriptorWithAddresses(walletId, assignment);
 
     log.info('Repaired wallet descriptor', {
       walletId,
-      deviceCount: devices.length,
-      addressesGenerated: addressesToCreate.length,
+      deviceCount: ownerWallet.devices.length,
+      addressesGenerated: assignment.addresses.length,
     });
 
     return {
       success: true,
-      message: `Generated descriptor and ${addressesToCreate.length} addresses`
+      message: `Generated descriptor and ${assignment.addresses.length} addresses`
     };
   } catch (err) {
     log.error('Failed to repair wallet descriptor', {

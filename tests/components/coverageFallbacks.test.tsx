@@ -89,6 +89,7 @@ describe('coverage fallback branches', () => {
         compatibleDevices={[]}
         incompatibleDevices={[]}
         selectedDeviceIds={new Set()}
+        selectedSigners={[]}
         toggleDevice={vi.fn()}
         getDisplayAccount={vi.fn()}
         walletName=""

@@ -37,10 +37,10 @@ describe('SignerSelectionStep', () => {
     );
 
     expect(screen.getByText('1 device hidden')).toBeInTheDocument();
-    expect(screen.getByText(/Ledger doesn't have a single-sig derivation path/i)).toBeInTheDocument();
-    expect(screen.getByText(/No devices with single-sig accounts found/i)).toBeInTheDocument();
+    expect(screen.getByText(/Ledger doesn't have exactly one matching single-sig account/i)).toBeInTheDocument();
+    expect(screen.getByText(/No devices with exactly one matching single-sig account found/i)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /add derivation path/i }));
+    fireEvent.click(screen.getByRole('button', { name: /review accounts/i }));
     expect(navigateMock).toHaveBeenCalledWith('/devices/device-1');
   });
 
@@ -67,9 +67,9 @@ describe('SignerSelectionStep', () => {
     );
 
     expect(screen.getByText('2 devices hidden')).toBeInTheDocument();
-    expect(screen.getByText(/Jade, Trezor don't have a multisig derivation path/i)).toBeInTheDocument();
-    expect(screen.getByText(/Don't see your device\? It may need a multisig derivation path added\./i)).toBeInTheDocument();
-    expect(screen.queryByText(/No devices with multisig accounts found/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Jade, Trezor don't have exactly one matching multisig account/i)).toBeInTheDocument();
+    expect(screen.getByText(/Don't see your device\? It needs exactly one matching multisig account\./i)).toBeInTheDocument();
+    expect(screen.queryByText(/No devices with exactly one matching multisig account found/i)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /connect new device/i }));
     expect(navigateMock).toHaveBeenCalledWith('/devices/connect');

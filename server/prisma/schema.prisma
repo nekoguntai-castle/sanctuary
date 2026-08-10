@@ -280,9 +280,11 @@ model DeviceAccount {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  device         Device         @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  walletBindings WalletDevice[]
 
   @@unique([deviceId, derivationPath]) // One account per path per device
+  @@unique([id, deviceId]) // Supports wallet bindings that prove the account belongs to the linked device
   @@index([deviceId, purpose, scriptType]) // Fast account lookup while allowing mainnet and testnet/signet variants
   @@index([deviceId])
   @@index([purpose, scriptType]) // For finding accounts by wallet type
@@ -308,17 +310,26 @@ model DeviceUser {
 }
 
 model WalletDevice {
-  id          String   @id @default(uuid())
-  walletId    String
-  deviceId    String
-  signerIndex Int? // For multi-sig wallets
-  createdAt   DateTime @default(now())
+  id                   String   @id @default(uuid())
+  walletId             String
+  deviceId             String
+  deviceAccountId      String?
+  signerIndex          Int? // For multi-sig wallets
+  signerBindingVersion Int?
+  signerFingerprint    String?
+  signerXpub           String?
+  signerDerivationPath String?
+  signerPurpose        String?
+  signerScriptType     String?
+  createdAt            DateTime @default(now())
 
-  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
-  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  wallet        Wallet         @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  device        Device         @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  deviceAccount DeviceAccount? @relation(fields: [deviceAccountId, deviceId], references: [id, deviceId], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([walletId, deviceId])
   @@index([deviceId])
+  @@index([deviceAccountId])
   @@map("wallet_devices")
 }
 

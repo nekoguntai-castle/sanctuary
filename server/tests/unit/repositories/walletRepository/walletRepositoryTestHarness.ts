@@ -17,6 +17,9 @@ const walletRepositoryMocks = vi.hoisted(() => {
       create: vi.fn(),
       createMany: vi.fn(),
     },
+    address: {
+      createMany: vi.fn(),
+    },
     $transaction: vi.fn(),
   };
 
@@ -24,9 +27,14 @@ const walletRepositoryMocks = vi.hoisted(() => {
     wallet: {
       create: prisma.wallet.create,
       findUnique: prisma.wallet.findUnique,
+      updateMany: prisma.wallet.updateMany,
     },
     walletDevice: {
+      create: prisma.walletDevice.create,
       createMany: prisma.walletDevice.createMany,
+    },
+    address: {
+      createMany: prisma.address.createMany,
     },
   }));
 

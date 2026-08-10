@@ -44,6 +44,21 @@ export {
 export type { WalletRole, WalletShareRole };
 export type WalletNetwork = NetworkType;
 
+export interface WalletSignerInput {
+  deviceId: string;
+  deviceAccountId: string;
+  signerIndex: number;
+}
+
+export interface WalletSignerBinding extends WalletSignerInput {
+  signerBindingVersion: 1;
+  signerFingerprint: string;
+  signerXpub: string;
+  signerDerivationPath: string;
+  signerPurpose: string;
+  signerScriptType: string;
+}
+
 /**
  * Result of checking wallet access with edit permission
  */
@@ -63,7 +78,7 @@ export interface CreateWalletInput {
   descriptor?: string;
   fingerprint?: string;
   groupId?: string;
-  deviceIds?: string[]; // New: array of device IDs to include
+  signers?: WalletSignerInput[];
 }
 
 /** Roles that can edit wallet data (labels, etc.) */

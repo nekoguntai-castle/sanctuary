@@ -121,7 +121,13 @@ export const registerWalletRepositoryAccessContracts = () => {
         include: {
           devices: {
             include: {
-              device: { include: { model: { select: { slug: true, name: true } } } },
+              deviceAccount: true,
+              device: {
+                include: {
+                  accounts: true,
+                  model: { select: { slug: true, name: true } },
+                },
+              },
             },
           },
         },
@@ -142,7 +148,13 @@ export const registerWalletRepositoryAccessContracts = () => {
         include: {
           devices: {
             include: {
-              device: { include: { model: { select: { slug: true, name: true } } } },
+              deviceAccount: true,
+              device: {
+                include: {
+                  accounts: true,
+                  model: { select: { slug: true, name: true } },
+                },
+              },
             },
           },
         },

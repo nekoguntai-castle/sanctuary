@@ -1,6 +1,6 @@
 import React from 'react';
 import { WalletType, type Device, type DeviceAccount } from '../../types';
-import type { CreateWalletStep, Network, ScriptType } from './types';
+import type { CreateWalletStep, Network, ScriptType, SelectedSigner } from './types';
 import { WalletTypeStep } from './WalletTypeStep';
 import { SignerSelectionStep } from './SignerSelectionStep';
 import { ConfigurationStep } from './ConfigurationStep';
@@ -13,6 +13,7 @@ interface CreateWalletStepContentProps {
   compatibleDevices: Device[];
   incompatibleDevices: Device[];
   selectedDeviceIds: Set<string>;
+  selectedSigners: SelectedSigner[];
   toggleDevice: (id: string) => void;
   getDisplayAccount: (device: Device, walletType: WalletType) => DeviceAccount | null;
   walletName: string;
@@ -32,6 +33,7 @@ export const CreateWalletStepContent: React.FC<CreateWalletStepContentProps> = (
   compatibleDevices,
   incompatibleDevices,
   selectedDeviceIds,
+  selectedSigners,
   toggleDevice,
   getDisplayAccount,
   walletName,
@@ -82,7 +84,7 @@ export const CreateWalletStepContent: React.FC<CreateWalletStepContentProps> = (
         network={network}
         scriptType={scriptType}
         quorumM={quorumM}
-        selectedDeviceIds={selectedDeviceIds}
+        selectedSigners={selectedSigners}
         availableDevices={availableDevices}
       />
     );

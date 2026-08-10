@@ -5,8 +5,8 @@ import { ReviewStep } from '../../../src/components/CreateWallet/ReviewStep';
 import { WalletType } from '../../../src/types';
 
 const devices = [
-  { id: 'd1', label: 'Ledger One', type: 'ledger' },
-  { id: 'd2', label: 'Coldcard Two', type: 'coldcard' },
+  { id: 'd1', label: 'Ledger One', type: 'ledger', accounts: [{ id: 'a1', derivationPath: "m/84'/0'/0'" }] },
+  { id: 'd2', label: 'Coldcard Two', type: 'coldcard', accounts: [{ id: 'a2', derivationPath: "m/48'/0'/0'/2'" }] },
 ] as any;
 
 const renderStep = (overrides: Partial<React.ComponentProps<typeof ReviewStep>> = {}) =>
@@ -17,7 +17,7 @@ const renderStep = (overrides: Partial<React.ComponentProps<typeof ReviewStep>> 
       network="mainnet"
       scriptType="native_segwit"
       quorumM={1}
-      selectedDeviceIds={new Set(['d1'])}
+      selectedSigners={[{ deviceId: 'd1', deviceAccountId: 'a1' }]}
       availableDevices={devices}
       {...overrides}
     />
@@ -43,14 +43,20 @@ describe('CreateWallet ReviewStep branch coverage', () => {
       network: 'testnet3',
       walletType: WalletType.MULTI_SIG,
       quorumM: 2,
-      selectedDeviceIds: new Set(['d1', 'd2']),
+      selectedSigners: [
+        { deviceId: 'd2', deviceAccountId: 'a2' },
+        { deviceId: 'd1', deviceAccountId: 'a1' },
+      ],
     });
 
     expect(screen.getByText('Testnet3')).toBeInTheDocument();
     expect(container.querySelector('.text-testnet-700')).toBeInTheDocument();
     expect(screen.getByText('Quorum')).toBeInTheDocument();
     expect(screen.getByText('2 of 2')).toBeInTheDocument();
-    expect(screen.queryByText('Script')).not.toBeInTheDocument();
+    expect(screen.getByText('native segwit')).toBeInTheDocument();
+    expect(screen.getByText(/1\. Coldcard Two/)).toBeInTheDocument();
+    expect(screen.getByText("m/48'/0'/0'/2'")).toBeInTheDocument();
+    expect(screen.getByText('Script')).toBeInTheDocument();
   });
 
   it('renders distinct testnet4 badge styling', () => {

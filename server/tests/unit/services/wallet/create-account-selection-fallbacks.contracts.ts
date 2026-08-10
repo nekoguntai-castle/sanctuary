@@ -1,101 +1,98 @@
 import { describe, expect, it } from "vitest";
-import {
-  mockBuildDescriptorFromDevices,
-  mockPrismaClient,
-} from "./walletTestHarness";
-import { createWallet } from "../../../../src/services/wallet";
+import { buildDeviceInfo } from "../../../../src/services/wallet/walletAccountSelection";
+
+const walletInput = {
+  name: "Fail Closed Wallet",
+  type: "single_sig",
+  scriptType: "native_segwit",
+  network: "testnet3",
+} as const;
 
 export function registerWalletCreateAccountSelectionFallbackTests(): void {
-  describe("createWallet - Account Selection Fallbacks", () => {
-    const userId = "test-user-id";
-
-    function mockWalletPersistence(name: string) {
-      const wallet = {
-        id: "wallet-1",
-        name,
-        type: "single_sig",
-        scriptType: "native_segwit",
-        network: "testnet3",
-        devices: [],
-        addresses: [],
-      };
-      mockPrismaClient.wallet.create.mockResolvedValue(wallet);
-      mockPrismaClient.wallet.findUnique.mockResolvedValue(wallet);
-    }
-
-    it("uses an invalid account path as an unknown-network fallback", async () => {
+  describe("createWallet - removed account selection fallbacks", () => {
+    it("rejects an invalid account path instead of treating its network as unknown", () => {
       const device = {
         id: "device-1",
-        userId,
+        userId: "test-user-id",
         fingerprint: "abc12345",
         type: "coldcard",
         label: "Unknown Path Device",
-        xpub: "legacy_xpub",
-        derivationPath: "not-a-valid-path",
-        accounts: [
-          {
-            purpose: "single_sig",
-            scriptType: "native_segwit",
-            derivationPath: "not-a-valid-path",
-            xpub: "xpub_unknown_network",
-          },
-        ],
+        xpub: "legacy-xpub",
+        derivationPath: "m/84'/1'/0'",
+        accounts: [{
+          id: "account-1",
+          deviceId: "device-1",
+          purpose: "single_sig",
+          scriptType: "native_segwit",
+          derivationPath: "not-a-valid-path",
+          xpub: "xpub-unknown-network",
+        }],
       };
 
-      mockPrismaClient.device.findMany.mockResolvedValue([device]);
-      mockWalletPersistence("Unknown Network Wallet");
-
-      await createWallet(userId, {
-        name: "Unknown Network Wallet",
-        type: "single_sig",
-        scriptType: "native_segwit",
-        network: "testnet3",
-        deviceIds: ["device-1"],
-      });
-
-      expect(mockBuildDescriptorFromDevices).toHaveBeenCalledWith(
-        expect.arrayContaining([
-          expect.objectContaining({
-            xpub: "xpub_unknown_network",
-            derivationPath: "not-a-valid-path",
-          }),
-        ]),
-        expect.objectContaining({ network: "testnet3" }),
-      );
+      expect(() => buildDeviceInfo(device as never, walletInput))
+        .toThrow("must have exactly one matching testnet3 single_sig native_segwit account; found 0");
     });
 
-    it("allows a legacy device with an invalid path when network scope is unknown", async () => {
-      const legacyDevice = {
+    it("rejects a legacy-only device instead of using legacy xpub/path", () => {
+      const device = {
         id: "device-1",
-        userId,
+        userId: "test-user-id",
         fingerprint: "abc12345",
         type: "coldcard",
-        label: "Unknown Legacy Ledger",
-        xpub: "legacy_unknown_xpub",
-        derivationPath: "not-a-valid-path",
+        label: "Legacy Device",
+        xpub: "legacy-xpub",
+        derivationPath: "m/84'/1'/0'",
         accounts: [],
       };
 
-      mockPrismaClient.device.findMany.mockResolvedValue([legacyDevice]);
-      mockWalletPersistence("Legacy Unknown Network Wallet");
+      expect(() => buildDeviceInfo(device as never, walletInput))
+        .toThrow("must have exactly one matching testnet3 single_sig native_segwit account; found 0");
+    });
 
-      await createWallet(userId, {
-        name: "Legacy Unknown Network Wallet",
-        type: "single_sig",
-        scriptType: "native_segwit",
-        network: "testnet3",
-        deviceIds: ["device-1"],
-      });
+    it("rejects purpose-only fallback when script policy differs", () => {
+      const device = {
+        id: "device-1",
+        userId: "test-user-id",
+        fingerprint: "abc12345",
+        type: "coldcard",
+        label: "Wrong Script Device",
+        xpub: "legacy-xpub",
+        derivationPath: "m/84'/1'/0'",
+        accounts: [{
+          id: "account-1",
+          deviceId: "device-1",
+          purpose: "single_sig",
+          scriptType: "legacy",
+          derivationPath: "m/44'/1'/0'",
+          xpub: "tpub-legacy",
+        }],
+      };
 
-      expect(mockBuildDescriptorFromDevices).toHaveBeenCalledWith(
-        expect.arrayContaining([
-          expect.objectContaining({
-            xpub: "legacy_unknown_xpub",
-            derivationPath: "not-a-valid-path",
-          }),
-        ]),
-        expect.objectContaining({ network: "testnet3" }),
-      );
+      expect(() => buildDeviceInfo(device as never, walletInput))
+        .toThrow("must have exactly one matching testnet3 single_sig native_segwit account; found 0");
+    });
+
+    it("rejects arbitrary first-account fallback when purpose differs", () => {
+      const device = {
+        id: "device-1",
+        userId: "test-user-id",
+        fingerprint: "abc12345",
+        type: "coldcard",
+        label: "Wrong Purpose Device",
+        xpub: "legacy-xpub",
+        derivationPath: "m/84'/1'/0'",
+        accounts: [{
+          id: "account-1",
+          deviceId: "device-1",
+          purpose: "multisig",
+          scriptType: "native_segwit",
+          derivationPath: "m/48'/1'/0'/2'",
+          xpub: "tpub-multisig",
+        }],
+      };
+
+      expect(() => buildDeviceInfo(device as never, walletInput))
+        .toThrow("must have exactly one matching testnet3 single_sig native_segwit account; found 0");
     });
   });
 }

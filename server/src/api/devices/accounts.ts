@@ -111,6 +111,16 @@ router.delete('/:id/accounts/:accountId', requireDeviceAccess('owner'), asyncHan
     throw new NotFoundError('Account not found');
   }
 
+  const device = await deviceRepository.findByIdWithModelAndAccounts(id);
+  if (!device) {
+    throw new NotFoundError('Device not found');
+  }
+  assertHardwareWalletCapability(device, 'account_add');
+
+  if (await deviceRepository.isAccountLinked(accountId)) {
+    throw new ConflictError('Cannot delete an account that is bound to a wallet');
+  }
+
   // Check if this is the last account
   const accountCount = await deviceRepository.countAccountsByDeviceId(id);
 

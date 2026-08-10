@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as devicesApi from '../../api/devices';
 import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
@@ -12,11 +12,11 @@ import type { CreateWalletState, CreateWalletStep, ScriptType } from './types';
 import {
   buildCreateWalletPayload,
   canAdvanceCreateWalletStep,
+  getExactAccount,
   getCompatibleDevices,
-  getDisplayAccount,
   getIncompatibleDevices,
   getNextCreateWalletStep,
-  getNextSelectedDeviceIds,
+  getNextSelectedSigners,
 } from './createWalletData';
 
 const log = createLogger('CreateWallet');
@@ -29,11 +29,12 @@ export function useCreateWalletController() {
   const [step, setStep] = useState<CreateWalletStep>(1);
   const [availableDevices, setAvailableDevices] = useState<Device[]>([]);
   const [walletType, setWalletType] = useState<WalletType | null>(null);
-  const [selectedDeviceIds, setSelectedDeviceIds] = useState<Set<string>>(new Set());
+  const [selectedSigners, setSelectedSigners] = useState<CreateWalletState['selectedSigners']>([]);
   const [walletName, setWalletName] = useState('');
   const [scriptType, setScriptType] = useState<ScriptType>(WalletScriptType.NATIVE_SEGWIT);
   const [quorumM, setQuorumM] = useState(2);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const previousNetwork = useRef(selectedNetwork);
 
   useEffect(() => {
     let isMounted = true;
@@ -57,9 +58,16 @@ export function useCreateWalletController() {
     };
   }, []);
 
+  useEffect(() => {
+    if (previousNetwork.current === selectedNetwork) return;
+    previousNetwork.current = selectedNetwork;
+    setSelectedSigners([]);
+    setStep(current => current === 1 ? current : 2);
+  }, [selectedNetwork]);
+
   const createWalletState: CreateWalletState = {
     walletType,
-    selectedDeviceIds,
+    selectedSigners,
     walletName,
     scriptType,
     network: selectedNetwork,
@@ -67,24 +75,50 @@ export function useCreateWalletController() {
   };
 
   const compatibleDevices = useMemo(
-    () => getCompatibleDevices(availableDevices, walletType, selectedNetwork),
-    [availableDevices, selectedNetwork, walletType]
+    () => getCompatibleDevices(availableDevices, walletType, scriptType, selectedNetwork),
+    [availableDevices, scriptType, selectedNetwork, walletType]
   );
   const incompatibleDevices = useMemo(
-    () => getIncompatibleDevices(availableDevices, walletType, selectedNetwork),
-    [availableDevices, selectedNetwork, walletType]
+    () => getIncompatibleDevices(availableDevices, walletType, scriptType, selectedNetwork),
+    [availableDevices, scriptType, selectedNetwork, walletType]
+  );
+  const selectedDeviceIds = useMemo(
+    () => new Set(selectedSigners.map(signer => signer.deviceId)),
+    [selectedSigners]
   );
   const canContinue = canAdvanceCreateWalletStep(step, createWalletState);
 
+  const selectWalletType = useCallback((nextWalletType: WalletType) => {
+    if (walletType !== nextWalletType) {
+      setSelectedSigners([]);
+      setScriptType(WalletScriptType.NATIVE_SEGWIT);
+    }
+    setWalletType(nextWalletType);
+  }, [walletType]);
+  const selectScriptType = useCallback((nextScriptType: ScriptType) => {
+    if (scriptType !== nextScriptType) {
+      setSelectedSigners([]);
+      setStep(currentStep => currentStep === 1 ? currentStep : 2);
+    }
+    setScriptType(nextScriptType);
+  }, [scriptType]);
   const toggleDevice = useCallback(
     (deviceId: string) => {
-      setSelectedDeviceIds(current => getNextSelectedDeviceIds(current, walletType, deviceId));
+      if (!walletType) return;
+      const device = availableDevices.find(candidate => candidate.id === deviceId);
+      if (!device) return;
+      const account = getExactAccount(device, walletType, scriptType, selectedNetwork);
+      if (!account) return;
+      setSelectedSigners(current => getNextSelectedSigners(current, walletType, {
+        deviceId,
+        deviceAccountId: account.id,
+      }));
     },
-    [walletType]
+    [availableDevices, scriptType, selectedNetwork, walletType]
   );
   const getDisplayAccountForNetwork = useCallback(
-    (device: Device, type: WalletType) => getDisplayAccount(device, type, selectedNetwork),
-    [selectedNetwork]
+    (device: Device, type: WalletType) => getExactAccount(device, type, scriptType, selectedNetwork),
+    [scriptType, selectedNetwork]
   );
 
   const handleBack = useCallback(() => {
@@ -128,12 +162,13 @@ export function useCreateWalletController() {
     step,
     availableDevices,
     walletType,
-    setWalletType,
+    setWalletType: selectWalletType,
+    selectedSigners,
     selectedDeviceIds,
     walletName,
     setWalletName,
     scriptType,
-    setScriptType,
+    setScriptType: selectScriptType,
     network: selectedNetwork,
     quorumM,
     setQuorumM,

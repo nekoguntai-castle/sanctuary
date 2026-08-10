@@ -431,7 +431,11 @@ export function registerOpenApiWalletTests() {
       .toEqual({
         $ref: '#/components/schemas/WalletGeneratedAddressResponse',
       });
-    expect(openApiSpec.components.schemas.WalletAddDeviceRequest.required).toEqual(['deviceId']);
+    expect(openApiSpec.components.schemas.WalletAddDeviceRequest.required).toEqual([
+      'deviceId',
+      'deviceAccountId',
+      'signerIndex',
+    ]);
     expect(openApiSpec.paths['/wallets/{walletId}/devices'].post.requestBody.content['application/json'].schema)
       .toEqual({
         $ref: '#/components/schemas/WalletAddDeviceRequest',

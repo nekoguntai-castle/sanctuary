@@ -16,8 +16,16 @@ import { getErrorMessage } from "../../utils/errors";
 import { hookRegistry, Operations } from "../hooks";
 import { InvalidInputError, DeviceNotFoundError } from "../../errors";
 import { generateInitialAddresses } from "./addressGeneration";
-import type { CreateWalletInput, WalletNetwork, WalletWithBalance } from "./types";
-import { buildDeviceInfo } from "./walletAccountSelection";
+import type {
+  CreateWalletInput,
+  WalletNetwork,
+  WalletSignerBinding,
+  WalletWithBalance,
+} from "./types";
+import {
+  descriptorDeviceInfo,
+  resolveWalletSignerBindings,
+} from "./walletAccountSelection";
 import { isBitcoinNetwork } from "../bitcoin/networks";
 import { WalletType } from "@sanctuary/shared/constants/walletIdentity";
 import { assertHardwareWalletCapability } from "../hardwareWalletCapabilities";
@@ -50,45 +58,50 @@ function validateWalletInput(input: CreateWalletInput): void {
   }
 }
 
-function validateDeviceCount(
+const validateDeviceCount = (
   input: CreateWalletInput,
-  devices: WalletDevice[],
-): void {
-  if (input.type === WalletType.SINGLE_SIG && devices.length !== 1) {
+  signerCount: number,
+): void => {
+  if (input.type === WalletType.SINGLE_SIG && signerCount !== 1) {
     throw new InvalidInputError("Single-sig wallet requires exactly 1 device");
   }
 
-  if (input.type === WalletType.MULTI_SIG && devices.length < 2) {
+  if (input.type === WalletType.MULTI_SIG && signerCount < 2) {
     throw new InvalidInputError("Multi-sig wallet requires at least 2 devices");
   }
-}
 
-async function loadWalletDevices(
+  if (input.type === WalletType.MULTI_SIG && signerCount !== input.totalSigners) {
+    throw new InvalidInputError("Multisig signer count must equal totalSigners");
+  }
+};
+
+const loadWalletDevices = async (
   userId: string,
   input: CreateWalletInput,
-): Promise<WalletDevice[]> {
-  if (!input.deviceIds || input.deviceIds.length === 0) {
+): Promise<WalletDevice[]> => {
+  if (!input.signers || input.signers.length === 0) {
     return [];
   }
 
+  validateDeviceCount(input, input.signers.length);
+  const deviceIds = input.signers.map((signer) => signer.deviceId);
+
   const devices = await deviceRepository.findByIdsAndUserWithAccounts(
-    input.deviceIds,
+    deviceIds,
     userId,
   );
 
-  if (devices.length !== input.deviceIds.length) {
+  if (devices.length !== new Set(deviceIds).size) {
     throw new DeviceNotFoundError();
   }
-
-  validateDeviceCount(input, devices);
   return devices;
-}
+};
 
 function buildDescriptorFromDevices(
-  devices: WalletDevice[],
+  bindings: readonly WalletSignerBinding[],
   input: CreateWalletInput,
 ) {
-  if (devices.length === 0) {
+  if (bindings.length === 0) {
     return {
       descriptor: input.descriptor,
       fingerprint: input.fingerprint,
@@ -96,7 +109,7 @@ function buildDescriptorFromDevices(
   }
 
   const descriptorResult = descriptorBuilder.buildDescriptorFromDevices(
-    devices.map((device) => buildDeviceInfo(device, input)),
+    bindings.map(descriptorDeviceInfo),
     {
       type: input.type,
       scriptType: input.scriptType,
@@ -183,8 +196,11 @@ export async function createWallet(
   for (const device of devices) {
     assertHardwareWalletCapability(device, "import");
   }
+  const bindings = input.signers
+    ? resolveWalletSignerBindings(devices, { ...input, signers: input.signers })
+    : [];
   const { descriptor, fingerprint } = buildDescriptorFromDevices(
-    devices,
+    bindings,
     input,
   );
 
@@ -209,7 +225,7 @@ export async function createWallet(
         },
       },
     },
-    input.deviceIds,
+    [...bindings],
   );
 
   await generateAddressesForWallet(wallet.id, descriptor, input.network);
