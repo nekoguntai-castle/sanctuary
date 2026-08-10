@@ -18,7 +18,7 @@ describe('electrum methods getTransactionsBatch', () => {
 
   it('returns an empty map for empty txid input', async () => {
     const batchRequest = vi.fn();
-    const result = await getTransactionsBatch(batchRequest, [], 'testnet', 1000);
+    const result = await getTransactionsBatch(batchRequest, [], 'testnet3', 1000);
 
     expect(result.size).toBe(0);
     expect(batchRequest).not.toHaveBeenCalled();
@@ -30,7 +30,7 @@ describe('electrum methods getTransactionsBatch', () => {
     const result = await getTransactionsBatch(
       batchRequest,
       ['a'.repeat(64)],
-      'testnet',
+      'testnet3',
       1000
     );
 
@@ -50,7 +50,7 @@ describe('electrum methods getTransactionsBatch', () => {
     const pending = getTransactionsBatch(
       batchRequest,
       ['c'.repeat(64)],
-      'testnet',
+      'testnet3',
       1000
     );
 
@@ -68,7 +68,7 @@ describe('electrum methods getTransactionsBatch', () => {
     const result = await getTransactionsBatch(
       batchRequest,
       ['a'.repeat(64), 'b'.repeat(64)],
-      'testnet',
+      'testnet3',
       1000
     );
 
@@ -82,7 +82,7 @@ describe('electrum methods getTransactionsBatch', () => {
     const batchRequest = vi.fn().mockRejectedValueOnce(new Error('permission denied'));
 
     await expect(
-      getTransactionsBatch(batchRequest, ['d'.repeat(64)], 'testnet', 1000)
+      getTransactionsBatch(batchRequest, ['d'.repeat(64)], 'testnet3', 1000)
     ).rejects.toThrow('permission denied');
     expect(batchRequest).toHaveBeenCalledTimes(1);
   });
@@ -94,7 +94,7 @@ describe('electrum methods getTransactionsBatch', () => {
     const pending = getTransactionsBatch(
       batchRequest,
       ['e'.repeat(64)],
-      'testnet',
+      'testnet3',
       1000
     );
     const rejection = expect(pending).rejects.toThrow('timeout while querying electrum');

@@ -6,7 +6,7 @@ import {
 import { expect, it, vi, type Mock } from 'vitest';
 import { createRawTxHex, flushPromises, mockEmitTransactionReceived, mockEmitTransactionSent, mockNotifyNewTransactions } from './transactionServiceBroadcastTestHarness';
 import * as bitcoin from 'bitcoinjs-lib';
-import { Prisma } from '../../../../../src/generated/prisma/client';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client';
 import { broadcastAndSave } from '../../../../../src/services/bitcoin/transactionService';
 import { broadcastTransaction, recalculateWalletBalances } from '../../../../../src/services/bitcoin/blockchain';
 import { mockPrismaClient } from '../../../../mocks/prisma';
@@ -515,7 +515,7 @@ export const registerBroadcastAndSaveNotificationContracts = () => {
   });
 
   it('retries known transaction conflicts in fresh transactions without rebroadcasting', async () => {
-    const writeConflict = new Prisma.PrismaClientKnownRequestError('Write conflict', {
+    const writeConflict = new PrismaClientKnownRequestError('Write conflict', {
       code: 'P2034',
       clientVersion: 'test-client',
     });
@@ -556,7 +556,7 @@ export const registerBroadcastAndSaveNotificationContracts = () => {
   });
 
   it('retries driver-adapter transaction conflicts', async () => {
-    const writeConflict = new Prisma.PrismaClientKnownRequestError('Write conflict', {
+    const writeConflict = new PrismaClientKnownRequestError('Write conflict', {
       code: 'P2010',
       clientVersion: 'test-client',
       meta: { driverAdapterError: { cause: { kind: 'TransactionWriteConflict' } } },
@@ -578,7 +578,7 @@ export const registerBroadcastAndSaveNotificationContracts = () => {
   });
 
   it('does not retry generic Prisma raw-query failures', async () => {
-    const rawQueryFailure = new Prisma.PrismaClientKnownRequestError('Raw query failed', {
+    const rawQueryFailure = new PrismaClientKnownRequestError('Raw query failed', {
       code: 'P2010',
       clientVersion: 'test-client',
     });

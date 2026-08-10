@@ -84,6 +84,9 @@ export function registerElectrumConnectionProxyContracts(): void {
 
     const error = await rejected;
     expect(error).toBeInstanceOf(Error);
+    if (!(error instanceof Error)) {
+      throw new Error('Expected the proxy timeout to reject with an Error');
+    }
     expect(error.message).toContain('via proxy');
   });
 

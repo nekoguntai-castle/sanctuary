@@ -28,6 +28,7 @@ vi.mock('../../../../src/services/bitcoin/utils/balanceCalculation', () => ({
 
 import { syncAddress, checkAddress } from '../../../../src/services/bitcoin/blockchain';
 import {
+  type AddressSyncTransactionInput,
   persistAddressSyncIORows,
   markClassificationRepairAttempts,
   markOwnershipRepairNeeded,
@@ -38,6 +39,18 @@ import {
 import { storeTransactionIO } from '../../../../src/services/bitcoin/blockchain/transactionIO';
 import { validateAddress } from '../../../../src/services/bitcoin/utils';
 import { recalculateWalletBalances } from '../../../../src/services/bitcoin/utils/balanceCalculation';
+import type { NodeClientInterface } from '../../../../src/services/bitcoin/nodeClient';
+
+const transactionIoClient = {
+  ...mockElectrumClient,
+  getServerFeatures: vi.fn().mockResolvedValue({}),
+} satisfies NodeClientInterface;
+
+interface BatchedTransactionDetails {
+  txid: string;
+  vin: Array<{ txid: string; vout: number }>;
+  vout: Array<{ value: number; scriptPubKey: { address: string } }>;
+}
 
 describe('Blockchain syncAddress branch coverage', () => {
   beforeEach(() => {
@@ -237,7 +250,7 @@ describe('Blockchain syncAddress branch coverage', () => {
     );
     mockElectrumClient.getAddressUTXOs.mockResolvedValue([]);
     mockElectrumClient.getTransactionsBatch.mockImplementation(async (txids: string[]) => {
-      return new Map(txids.map(txid => {
+      return new Map<string, BatchedTransactionDetails>(txids.map(txid => {
         const currentIndex = currentTxids.indexOf(txid);
         if (currentTxidSet.has(txid)) {
           return [txid, {
@@ -1320,7 +1333,7 @@ describe('Blockchain syncAddress branch coverage', () => {
       classificationVersion: 1,
     }]);
 
-    const outcome = await reconcileAddressSyncTransaction({
+    const legacyCandidate = {
       txid: '6'.repeat(64),
       walletId: 'wallet-consolidation',
       type: 'consolidation',
@@ -1330,7 +1343,11 @@ describe('Blockchain syncAddress branch coverage', () => {
       rbfStatus: 'confirmed',
       classificationInputsComplete: true,
       classificationVersion: 2,
-    });
+      classificationAddressCount: 1,
+    } satisfies AddressSyncTransactionInput;
+    Reflect.deleteProperty(legacyCandidate, 'classificationAddressCount');
+
+    const outcome = await reconcileAddressSyncTransaction(legacyCandidate);
 
     expect(outcome).toBe('repaired');
     expect(mockPrismaClient.transactionOutput.updateMany).toHaveBeenCalledWith({
@@ -1364,6 +1381,7 @@ describe('Blockchain syncAddress branch coverage', () => {
         rbfStatus: 'active',
         classificationInputsComplete: true,
         classificationVersion: 2,
+        classificationAddressCount: 1,
       },
       {
         txid: repairedTxid,
@@ -1375,6 +1393,7 @@ describe('Blockchain syncAddress branch coverage', () => {
         rbfStatus: 'confirmed',
         classificationInputsComplete: true,
         classificationVersion: 2,
+        classificationAddressCount: 1,
       },
     ]);
 
@@ -1504,6 +1523,7 @@ describe('Blockchain syncAddress branch coverage', () => {
       rbfStatus: 'confirmed',
       classificationInputsComplete: true,
       classificationVersion: 2,
+      classificationAddressCount: 1,
     });
 
     expect(outcome).toBe('repaired');
@@ -1671,6 +1691,8 @@ describe('Blockchain syncAddress branch coverage', () => {
       confirmations: 1,
       rbfStatus: 'confirmed',
       classificationInputsComplete: false,
+      classificationVersion: 2,
+      classificationAddressCount: 1,
     })).resolves.toBe('unchanged');
     expect(mockPrismaClient.$executeRaw).toHaveBeenCalledTimes(1);
     const advisoryStatement = mockPrismaClient.$executeRaw.mock.calls[0][0] as {
@@ -1697,6 +1719,7 @@ describe('Blockchain syncAddress branch coverage', () => {
       rbfStatus: 'confirmed',
       classificationInputsComplete: true,
       classificationVersion: 2,
+      classificationAddressCount: 1,
     });
 
     expect(outcome).toBe('repaired');
@@ -1777,7 +1800,7 @@ describe('Blockchain syncAddress branch coverage', () => {
     mockPrismaClient.transaction.findMany.mockResolvedValue([]);
 
     await storeTransactionIO(
-      mockElectrumClient,
+      transactionIoClient,
       'wallet-batched-io',
       history,
       new Set()
@@ -1802,7 +1825,7 @@ describe('Blockchain syncAddress branch coverage', () => {
     }]]));
 
     await storeTransactionIO(
-      mockElectrumClient,
+      transactionIoClient,
       'wallet-live-coinbase',
       [{ tx_hash: txid, height: 1 }],
       new Set()
@@ -1829,7 +1852,7 @@ describe('Blockchain syncAddress branch coverage', () => {
     }]]));
 
     await storeTransactionIO(
-      mockElectrumClient,
+      transactionIoClient,
       'wallet-live-partial',
       [{ tx_hash: txid, height: 1 }],
       new Set(['wallet-output'])
@@ -1872,7 +1895,7 @@ describe('Blockchain syncAddress branch coverage', () => {
       }]]));
 
     await storeTransactionIO(
-      mockElectrumClient,
+      transactionIoClient,
       'wallet-live-resolved',
       [{ tx_hash: txid, height: 1 }],
       new Set(['wallet-input'])
@@ -1907,18 +1930,26 @@ describe('Blockchain syncAddress branch coverage', () => {
     const existingDetails = new Map([
       [txid, {
         txid,
-        vin: [{ txid: previousTxid, vout: 0 }],
+        vin: [{ txid: previousTxid, vout: 0, sequence: 0xffffffff }],
         vout: [],
       }],
       [previousTxid, {
         txid: previousTxid,
         vin: [],
-        vout: [{ value: 0.5, n: 0, scriptPubKey: { address: 'cached-wallet-input' } }],
+        vout: [{
+          value: 0.5,
+          n: 0,
+          scriptPubKey: {
+            hex: '0014' + '11'.repeat(20),
+            address: 'cached-wallet-input',
+            addresses: ['cached-wallet-input'],
+          },
+        }],
       }],
     ]);
 
     await storeTransactionIO(
-      mockElectrumClient,
+      transactionIoClient,
       'wallet-live-cached',
       [{ tx_hash: txid, height: 1 }],
       new Set(['cached-wallet-input']),

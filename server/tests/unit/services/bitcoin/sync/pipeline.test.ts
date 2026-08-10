@@ -98,12 +98,12 @@ describe("Sync Pipeline", () => {
     it("should allow overriding default values", () => {
       const ctx = createTestContext({
         walletId: "custom-wallet-id",
-        network: "testnet",
+        network: "testnet3",
         currentBlockHeight: 900000,
       });
 
       expect(ctx.walletId).toBe("custom-wallet-id");
-      expect(ctx.network).toBe("testnet");
+      expect(ctx.network).toBe("testnet3");
       expect(ctx.currentBlockHeight).toBe(900000);
     });
   });
@@ -124,7 +124,7 @@ describe("Sync Pipeline", () => {
     beforeEach(() => {
       mockPrismaClient.wallet.findUnique.mockResolvedValue({
         id: walletId,
-        network: "testnet",
+        network: "testnet3",
         descriptor: "wpkh([12345678/84'/1'/0']tpub...)",
       });
 

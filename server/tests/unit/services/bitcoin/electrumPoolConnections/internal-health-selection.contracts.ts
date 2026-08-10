@@ -1,4 +1,5 @@
 import { expect, it, vi } from 'vitest';
+import type { ElectrumClient } from '../../../../../src/services/bitcoin/electrum';
 import {
   createPool,
   makeConn,
@@ -356,7 +357,7 @@ export function registerElectrumPoolInternalHealthSelectionTests(context: Electr
       (context.pool as any).connections.set(conn.id, conn);
 
       const handle = await (context.pool as any).acquireInternal();
-      const result = await handle.withClient(async (client) => {
+      const result = await handle.withClient(async (client: ElectrumClient) => {
         expect(client).toBe(conn.client);
         return 'ok';
       });

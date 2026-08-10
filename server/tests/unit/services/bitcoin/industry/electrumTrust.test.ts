@@ -36,8 +36,8 @@ describe('Electrum Server Trust & Response Validation', () => {
   describe('Address to scripthash conversion', () => {
     it('should produce consistent scripthash for same address', () => {
       // The Electrum protocol uses SHA256(scriptPubKey) as the address identifier
-      const hash1 = addressToScriptHash('tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx', 'testnet');
-      const hash2 = addressToScriptHash('tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx', 'testnet');
+      const hash1 = addressToScriptHash('tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx', 'testnet3');
+      const hash2 = addressToScriptHash('tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx', 'testnet3');
       expect(hash1).toBe(hash2);
     });
 
@@ -52,13 +52,13 @@ describe('Electrum Server Trust & Response Validation', () => {
         network: TESTNET,
       }).address!;
 
-      const hash1 = addressToScriptHash(addr1, 'testnet');
-      const hash2 = addressToScriptHash(addr2, 'testnet');
+      const hash1 = addressToScriptHash(addr1, 'testnet3');
+      const hash2 = addressToScriptHash(addr2, 'testnet3');
       expect(hash1).not.toBe(hash2);
     });
 
     it('should produce 64-character hex scripthash (SHA256)', () => {
-      const hash = addressToScriptHash('tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx', 'testnet');
+      const hash = addressToScriptHash('tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx', 'testnet3');
       expect(hash).toMatch(/^[0-9a-f]{64}$/);
     });
   });
@@ -151,20 +151,20 @@ describe('Electrum Server Trust & Response Validation', () => {
     it('should handle malformed transaction hex gracefully', () => {
       // Malicious server could return invalid hex
       expect(() => {
-        decodeRawTransaction('not-hex-at-all', 'testnet');
+        decodeRawTransaction('not-hex-at-all', 'testnet3');
       }).toThrow();
     });
 
     it('should handle empty transaction hex', () => {
       expect(() => {
-        decodeRawTransaction('', 'testnet');
+        decodeRawTransaction('', 'testnet3');
       }).toThrow();
     });
 
     it('should handle truncated transaction hex', () => {
       // A transaction hex that's been cut short
       expect(() => {
-        decodeRawTransaction('0100000001', 'testnet');
+        decodeRawTransaction('0100000001', 'testnet3');
       }).toThrow();
     });
   });

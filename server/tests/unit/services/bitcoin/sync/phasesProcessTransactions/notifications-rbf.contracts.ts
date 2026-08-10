@@ -76,7 +76,7 @@ export function registerProcessTransactionNotificationsRbfTests(walletId: string
       await processTransactionsPhase(ctx);
 
       const pendingLookupIndex = mockPrismaClient.transaction.findMany.mock.calls.findIndex(
-        ([args]: [any]) => args?.where?.confirmations === 0 && args?.where?.rbfStatus === 'active'
+        ([args]) => args?.where?.confirmations === 0 && args?.where?.rbfStatus === 'active'
       );
       expect(pendingLookupIndex).toBeGreaterThanOrEqual(0);
       expect(mockPrismaClient.transactionInput.createMany.mock.invocationCallOrder[0]).toBeLessThan(

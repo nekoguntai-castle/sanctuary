@@ -25,7 +25,7 @@ vi.mock("../../../../src/models/prisma", async () => {
   };
 });
 
-const mockSaveAsDefault = vi.fn<any>().mockResolvedValue(undefined);
+const mockSaveAsDefault = vi.fn<(config: unknown) => Promise<void>>().mockResolvedValue(undefined);
 
 vi.mock("../../../../src/repositories", async () => {
   const { mockPrismaClient: prisma } = await import("../../../mocks/prisma");
@@ -36,7 +36,7 @@ vi.mock("../../../../src/repositories", async () => {
         prisma.nodeConfig.findFirst(...args),
       findOrCreateDefault: vi.fn(),
       update: vi.fn(),
-      saveAsDefault: (...args: unknown[]) => mockSaveAsDefault(...args),
+      saveAsDefault: (config: unknown) => mockSaveAsDefault(config),
       electrumServer: {
         updateHealth: vi.fn().mockResolvedValue(undefined),
       },

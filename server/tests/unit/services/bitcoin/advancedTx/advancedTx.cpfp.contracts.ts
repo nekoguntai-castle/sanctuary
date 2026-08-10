@@ -73,7 +73,7 @@ export function registerCpfpContracts() {
       mockPrismaClient.uTXO.findUnique.mockResolvedValue(null);
 
       await expect(
-        createCPFPTransaction(parentTxid, parentVout, 30, recipientAddress, walletId, 'testnet')
+        createCPFPTransaction(parentTxid, parentVout, 30, recipientAddress, walletId, 'testnet3')
       ).rejects.toThrow('UTXO not found');
     });
 
@@ -89,7 +89,7 @@ export function registerCpfpContracts() {
       });
 
       await expect(
-        createCPFPTransaction(parentTxid, parentVout, 30, recipientAddress, walletId, 'testnet')
+        createCPFPTransaction(parentTxid, parentVout, 30, recipientAddress, walletId, 'testnet3')
       ).rejects.toThrow('already spent');
     });
 
@@ -112,7 +112,7 @@ export function registerCpfpContracts() {
         .mockResolvedValueOnce({ vout: [{ value: 0.0001, scriptPubKey: { hex: '0014cc' } }] });
 
       await expect(
-        createCPFPTransaction(parentTxid, parentVout, 100, recipientAddress, walletId, 'testnet')
+        createCPFPTransaction(parentTxid, parentVout, 100, recipientAddress, walletId, 'testnet3')
       ).rejects.toThrow('insufficient');
     });
 
@@ -139,7 +139,7 @@ export function registerCpfpContracts() {
         5,
         recipientAddress,
         walletId,
-        'testnet'
+        'testnet3'
       );
 
       expect(result.psbt).toBeDefined();
@@ -169,7 +169,7 @@ export function registerCpfpContracts() {
         .mockResolvedValueOnce({ vout: [{ value: 0.001, scriptPubKey: { hex: '0014cc' } }] });
 
       await expect(
-        createCPFPTransaction(parentTxid, parentVout, 5, recipientAddress, walletId, 'testnet')
+        createCPFPTransaction(parentTxid, parentVout, 5, recipientAddress, walletId, 'testnet3')
       ).rejects.toThrow('Output would be dust');
     });
   });

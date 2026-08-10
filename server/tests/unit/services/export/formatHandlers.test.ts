@@ -10,7 +10,7 @@ describe('export format handlers', () => {
     name: 'My Wallet',
     type: 'single_sig',
     scriptType: 'native_segwit',
-    network: 'testnet',
+    network: 'testnet3',
     descriptor: 'wpkh([abcd1234/84h/1h/0h]tpub.../0/*)',
     devices: [
       {

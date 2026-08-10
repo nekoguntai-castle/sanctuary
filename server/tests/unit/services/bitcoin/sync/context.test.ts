@@ -4,13 +4,46 @@ import {
   createSyncStats,
   createTestContext,
 } from '../../../../../src/services/bitcoin/sync/context';
+import type { Wallet } from '../../../../../src/generated/prisma/client';
+
+const testWallet = {
+  id: 'wallet-ctx',
+  name: 'Context Test Wallet',
+  type: 'single_sig',
+  scriptType: 'native_segwit',
+  network: 'testnet3',
+  quorum: null,
+  totalSigners: null,
+  descriptor: null,
+  changeDescriptor: null,
+  descriptorPolicyVersion: null,
+  descriptorSourceKind: null,
+  sourceDescriptor: null,
+  sourceChangeDescriptor: null,
+  sourceDescriptorChecksum: null,
+  sourceChangeDescriptorChecksum: null,
+  canonicalPolicyId: null,
+  canonicalPolicyVersion: null,
+  fingerprint: null,
+  groupId: null,
+  groupRole: 'viewer',
+  lastSyncedAt: null,
+  lastSyncedBlockHeight: null,
+  lastSyncStatus: null,
+  lastSyncError: null,
+  syncInProgress: false,
+  requestedFullResyncGeneration: 0,
+  processedFullResyncGeneration: 0,
+  createdAt: new Date('2026-01-01T00:00:00.000Z'),
+  updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+} satisfies Wallet;
 
 describe('Sync context factory', () => {
   it('builds lookup structures and skips missing derivation paths', () => {
     const ctx = createSyncContext({
       walletId: 'wallet-ctx',
-      wallet: { id: 'wallet-ctx', network: 'testnet' } as any,
-      network: 'testnet',
+      wallet: testWallet,
+      network: 'testnet3',
       client: {} as any,
       addresses: [
         {

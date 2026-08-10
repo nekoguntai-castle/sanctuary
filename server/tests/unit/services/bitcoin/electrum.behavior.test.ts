@@ -75,7 +75,7 @@ function makeClient() {
     host: 'localhost',
     port: 50001,
     protocol: 'tcp',
-    network: 'testnet',
+    network: 'testnet3',
     requestTimeoutMs: 30,
     batchRequestTimeoutMs: 50,
   });
@@ -94,7 +94,7 @@ describe('ElectrumClient behavior', () => {
 
   it('supports network getter/setter', () => {
     const client = makeClient();
-    expect(client.getNetwork()).toBe('testnet');
+    expect(client.getNetwork()).toBe('testnet3');
     client.setNetwork('mainnet');
     expect(client.getNetwork()).toBe('mainnet');
   });
@@ -472,7 +472,7 @@ describe('Electrum client registry helpers', () => {
   it('returns network-keyed singleton instances and closes them', () => {
     const main = getElectrumClient();
     const main2 = getElectrumClientForNetwork('mainnet');
-    const test = getElectrumClientForNetwork('testnet');
+    const test = getElectrumClientForNetwork('testnet3');
 
     expect(main).toBe(main2);
     expect(main).not.toBe(test);
@@ -480,7 +480,7 @@ describe('Electrum client registry helpers', () => {
     const disconnectSpyMain = vi.spyOn(main, 'disconnect');
     const disconnectSpyTest = vi.spyOn(test, 'disconnect');
 
-    closeElectrumClientForNetwork('testnet');
+    closeElectrumClientForNetwork('testnet3');
     expect(disconnectSpyTest).toHaveBeenCalledTimes(1);
 
     closeElectrumClient();

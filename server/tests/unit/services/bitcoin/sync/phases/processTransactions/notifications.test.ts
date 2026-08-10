@@ -28,14 +28,21 @@ vi.mock('../../../../../../../src/utils/logger', () => ({
 }));
 
 import { sendNotifications } from '../../../../../../../src/services/bitcoin/sync/phases/processTransactions/notifications';
+import type { TransactionCreateData } from '../../../../../../../src/services/bitcoin/sync/types';
 
-const makeTx = (overrides = {}) => ({
+const makeTx = (overrides: Partial<TransactionCreateData> = {}): TransactionCreateData => ({
   txid: 'tx1',
+  walletId: 'w1',
+  addressId: 'address-1',
   type: 'received',
+  classificationInputsComplete: true,
+  classificationVersion: 2,
+  classificationAddressCount: 1,
   amount: BigInt(50000),
   confirmations: 1,
   blockHeight: 800000,
   blockTime: new Date('2024-01-01'),
+  rbfStatus: 'confirmed',
   ...overrides,
 });
 

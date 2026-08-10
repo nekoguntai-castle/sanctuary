@@ -321,7 +321,7 @@ describe('Coldcard Export Handler', () => {
 
     it('round-trips testnet exports without rewriting tpubs to mainnet', () => {
       const wallet = createMockMultisigWallet({
-        network: 'testnet',
+        network: 'testnet3',
         devices: TESTNET_BIP48_XPUBS.map((xpub, index) => ({
           label: `Device ${index + 1}`,
           type: 'coldcard',

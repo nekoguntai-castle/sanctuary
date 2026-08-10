@@ -345,9 +345,10 @@ describe('PSBT Property-Based Tests', () => {
           const psbt = bitcoin.Psbt.fromBase64(psbtBase64);
 
           psbt.txInputs.forEach((input) => {
+            const sequence = input.sequence ?? 0xffffffff;
             // Verify RBF-enabled sequence if < 0xFFFFFFFE
-            if (input.sequence < 0xfffffffe) {
-              expect(input.sequence).toBeLessThanOrEqual(RBF_MAX_SEQUENCE);
+            if (sequence < 0xfffffffe) {
+              expect(sequence).toBeLessThanOrEqual(RBF_MAX_SEQUENCE);
             }
           });
         }),

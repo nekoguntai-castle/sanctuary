@@ -96,6 +96,9 @@ export function registerElectrumConnectionEdgeDataContracts(): void {
 
     const error = await rejected;
     expect(error).toBeInstanceOf(Error);
+    if (!(error instanceof Error)) {
+      throw new Error('Expected the connection timeout to reject with an Error');
+    }
     expect(error.message).toContain('Connection timeout after 10ms');
 
     // Now emit a socket error after the connection is already settled (handleError #2 → early return)

@@ -44,10 +44,11 @@ import {
   getBlocksAndMempool,
 } from '../../../../src/services/bitcoin/mempool';
 import { formatConfirmedBlocks } from '../../../../src/services/bitcoin/mempool/formatting';
+import type { MempoolBlock } from '../../../../src/services/bitcoin/mempool/types';
 import { DEFAULT_NODE_MEMPOOL_ESTIMATOR } from '@sanctuary/shared/constants/nodeConfig';
 import { registerMempoolDashboardFormattingTests } from './mempool.dashboard-formatting.contracts';
 
-const mockBlocks = (timestamp: number) => ([
+const mockBlocks = (timestamp: number): MempoolBlock[] => ([
   {
     id: 'b1',
     height: 100,
@@ -467,7 +468,9 @@ describe('mempool service', () => {
 
     expect(result.mempool).toHaveLength(3);
     expect(result.mempool[result.mempool.length - 1].medianFee).toBe(0.5);
-    expect(result.mempool[result.mempool.length - 1].avgFeeRate).toBe(0);
+    expect(result.mempool[result.mempool.length - 1]).toEqual(
+      expect.objectContaining({ avgFeeRate: 0 })
+    );
     expect(result.mempool[result.mempool.length - 1].feeRange).toBe('0.50 sat/vB');
     expect(result.queuedBlocksSummary?.averageFee).toBe(0.4);
 

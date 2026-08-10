@@ -6,6 +6,8 @@ import {
 } from './electrumPoolConnectionsTestHarness';
 import { recordHealthCheckResult } from '../../../../../src/services/bitcoin/electrumPool/healthChecker';
 import { handleConnectionError } from '../../../../../src/services/bitcoin/electrumPool/connectionManager';
+import { ElectrumClient } from '../../../../../src/services/bitcoin/electrum';
+import type { PooledConnection } from '../../../../../src/services/bitcoin/electrumPool';
 
 export function registerElectrumPoolInternalReconnectMetricsTests(context: ElectrumPoolTestContext): void {
     it('handleConnectionError covers dedicated and non-dedicated branches', async () => {
@@ -55,21 +57,15 @@ export function registerElectrumPoolInternalReconnectMetricsTests(context: Elect
     it('module handleConnectionError reconnects dedicated connections and creates default replacements', async () => {
       context.pool = createPool({ maxReconnectAttempts: 1, connectionTimeoutMs: 100 });
       const config = (context.pool as any).config;
-      const connections = new Map<string, any>();
+      const connections = new Map<string, PooledConnection>();
       const subscriptionConnectionId = { value: 'dedicated' };
       const emitSubscriptionReconnected = vi.fn();
 
-      const dedicated = makeConn({
-        id: 'dedicated',
-        isDedicated: true,
-        client: {
-          connect: vi.fn().mockResolvedValue(undefined),
-          getServerVersion: vi.fn().mockResolvedValue({ server: 'ok', protocol: '1.4' }),
-          disconnect: vi.fn(),
-          isConnected: vi.fn().mockReturnValue(true),
-          on: vi.fn(),
-        },
-      });
+      const dedicated = {
+        ...makeConn({ id: 'dedicated', isDedicated: true }),
+        client: new ElectrumClient(),
+        state: 'active',
+      } satisfies PooledConnection;
       connections.set(dedicated.id, dedicated);
 
       await handleConnectionError(
@@ -88,14 +84,12 @@ export function registerElectrumPoolInternalReconnectMetricsTests(context: Elect
       expect(dedicated.state).toBe('idle');
       expect(emitSubscriptionReconnected).toHaveBeenCalledWith(dedicated.client);
 
-      const regular = makeConn({
-        id: 'regular',
-        isDedicated: false,
-        client: {
-          disconnect: vi.fn(),
-          isConnected: vi.fn().mockReturnValue(false),
-        },
-      });
+      const regular = {
+        ...makeConn({ id: 'regular', isDedicated: false }),
+        client: new ElectrumClient(),
+        state: 'active',
+      } satisfies PooledConnection;
+      vi.spyOn(regular.client, 'isConnected').mockReturnValue(false);
       connections.set(regular.id, regular);
 
       await handleConnectionError(

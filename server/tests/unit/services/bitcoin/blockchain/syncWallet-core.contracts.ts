@@ -49,7 +49,7 @@ export function registerBlockchainSyncWalletCoreTests(): void {
       // Mock wallet lookup for network-aware sync
       mockPrismaClient.wallet.findUnique.mockResolvedValue({
         id: walletId,
-        network: 'testnet',
+        network: 'testnet3',
       });
     });
 
@@ -406,7 +406,7 @@ export function registerBlockchainSyncWalletCoreTests(): void {
       // Mock testnet wallet
       mockPrismaClient.wallet.findUnique.mockResolvedValue({
         id: walletId,
-        network: 'testnet',
+        network: 'testnet3',
       });
 
       mockPrismaClient.systemSetting.findUnique.mockResolvedValue({
@@ -442,7 +442,7 @@ export function registerBlockchainSyncWalletCoreTests(): void {
         { tx_hash: 'l'.repeat(64), height: 800000 },
       ]);
 
-      const result = await getBlockchainService().checkAddress(address, 'testnet');
+      const result = await getBlockchainService().checkAddress(address, 'testnet3');
 
       expect(result.valid).toBe(true);
       expect(result.balance).toBe(100000);
@@ -455,7 +455,7 @@ export function registerBlockchainSyncWalletCoreTests(): void {
       mockElectrumClient.isConnected.mockReturnValue(false);
       mockElectrumClient.connect.mockRejectedValue(new Error('Connection failed'));
 
-      const result = await getBlockchainService().checkAddress(address, 'testnet');
+      const result = await getBlockchainService().checkAddress(address, 'testnet3');
 
       expect(result.valid).toBe(true);
       expect(result.error).toContain('Could not check');
@@ -467,7 +467,7 @@ export function registerBlockchainSyncWalletCoreTests(): void {
         error: 'Invalid address format',
       } as any);
 
-      const result = await getBlockchainService().checkAddress('not-a-valid-address', 'testnet');
+      const result = await getBlockchainService().checkAddress('not-a-valid-address', 'testnet3');
 
       expect(result.valid).toBe(false);
       expect(result.error).toContain('Invalid address');

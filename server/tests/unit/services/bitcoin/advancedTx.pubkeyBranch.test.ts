@@ -102,7 +102,7 @@ describe('advancedTx bip32 derivation branch coverage', () => {
 
     mockFromBase58.mockReturnValue(fakeNode as any);
 
-    const result = await createRBFTransaction(originalTxid, 50, walletId, 'testnet');
+    const result = await createRBFTransaction(originalTxid, 50, walletId, 'testnet3');
 
     expect(result.psbt).toBeDefined();
     expect(result.inputPaths).toEqual(["m/84'/1'/0'/0/0"]);

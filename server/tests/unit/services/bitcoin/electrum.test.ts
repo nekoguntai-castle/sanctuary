@@ -51,7 +51,7 @@ describe('ElectrumClient Network Support', () => {
   describe('Network-specific client instances', () => {
     it('should create separate client instances for different networks', () => {
       const mainnetClient = getElectrumClientForNetwork('mainnet');
-      const testnetClient = getElectrumClientForNetwork('testnet');
+      const testnetClient = getElectrumClientForNetwork('testnet3');
       const signetClient = getElectrumClientForNetwork('signet');
       const regtestClient = getElectrumClientForNetwork('regtest');
 
@@ -75,17 +75,16 @@ describe('ElectrumClient Network Support', () => {
 
     it('should have correct network property set', () => {
       const mainnetClient = getElectrumClientForNetwork('mainnet');
-      const testnetClient = getElectrumClientForNetwork('testnet');
+      const testnetClient = getElectrumClientForNetwork('testnet3');
 
-      // Access private property for testing
-      expect((mainnetClient as any).network).toBe('mainnet');
-      expect((testnetClient as any).network).toBe('testnet');
+      expect(mainnetClient.getNetwork()).toBe('mainnet');
+      expect(testnetClient.getNetwork()).toBe('testnet3');
     });
   });
 
   describe('Address handling with different networks', () => {
     // Helper to create test client config
-    const createTestConfig = (network: 'mainnet' | 'testnet' | 'signet' | 'regtest') => ({
+    const createTestConfig = (network: 'mainnet' | 'testnet3' | 'signet' | 'regtest') => ({
       host: 'localhost',
       port: 50001,
       protocol: 'tcp' as const,
@@ -106,7 +105,7 @@ describe('ElectrumClient Network Support', () => {
     });
 
     it('should handle testnet native segwit addresses correctly', () => {
-      const client = new ElectrumClient(createTestConfig('testnet'));
+      const client = new ElectrumClient(createTestConfig('testnet3'));
       const address = 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx';
 
       expect(() => {
@@ -130,7 +129,7 @@ describe('ElectrumClient Network Support', () => {
     });
 
     it('should handle testnet legacy addresses correctly', () => {
-      const client = new ElectrumClient(createTestConfig('testnet'));
+      const client = new ElectrumClient(createTestConfig('testnet3'));
       const address = 'mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn';
 
       expect(() => {
@@ -147,7 +146,7 @@ describe('ElectrumClient Network Support', () => {
 
   describe('Network library selection', () => {
     // Helper to create test client config
-    const createTestConfig = (network: 'mainnet' | 'testnet' | 'signet' | 'regtest') => ({
+    const createTestConfig = (network: 'mainnet' | 'testnet3' | 'signet' | 'regtest') => ({
       host: 'localhost',
       port: 50001,
       protocol: 'tcp' as const,
@@ -163,7 +162,7 @@ describe('ElectrumClient Network Support', () => {
     });
 
     it('should use testnet network library for testnet client', () => {
-      const client = new ElectrumClient(createTestConfig('testnet'));
+      const client = new ElectrumClient(createTestConfig('testnet3'));
       const networkLib = getNetworkLib(client.getNetwork()) as { bech32: string };
 
       expect(networkLib).toBeDefined();
@@ -184,7 +183,7 @@ describe('ElectrumClient Network Support', () => {
 
   describe('Cross-network address validation', () => {
     // Helper to create test client config
-    const createTestConfig = (network: 'mainnet' | 'testnet' | 'signet' | 'regtest') => ({
+    const createTestConfig = (network: 'mainnet' | 'testnet3' | 'signet' | 'regtest') => ({
       host: 'localhost',
       port: 50001,
       protocol: 'tcp' as const,
@@ -201,7 +200,7 @@ describe('ElectrumClient Network Support', () => {
     });
 
     it('should correctly identify testnet address with testnet client', () => {
-      const client = new ElectrumClient(createTestConfig('testnet'));
+      const client = new ElectrumClient(createTestConfig('testnet3'));
       const testnetAddress = 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx';
 
       expect(() => {
@@ -222,7 +221,7 @@ describe('ElectrumClient Network Support', () => {
 
   describe('Transaction decoding with network context', () => {
     // Helper to create test client config
-    const createTestConfig = (network: 'mainnet' | 'testnet' | 'signet' | 'regtest') => ({
+    const createTestConfig = (network: 'mainnet' | 'testnet3' | 'signet' | 'regtest') => ({
       host: 'localhost',
       port: 50001,
       protocol: 'tcp' as const,
@@ -242,7 +241,7 @@ describe('ElectrumClient Network Support', () => {
     });
 
     it('should decode transaction with testnet context', () => {
-      const client = new ElectrumClient(createTestConfig('testnet'));
+      const client = new ElectrumClient(createTestConfig('testnet3'));
       // Same transaction hex, but decoded with testnet context
       const rawTxHex = '01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff4d04ffff001d0104455468652054696d65732030332f4a616e2f32303039204368616e63656c6c6f72206f6e206272696e6b206f66207365636f6e64206261696c6f757420666f722062616e6b73ffffffff0100f2052a01000000434104678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5fac00000000';
 

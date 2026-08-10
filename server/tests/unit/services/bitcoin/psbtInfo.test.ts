@@ -53,7 +53,7 @@ describe('psbtInfo', () => {
 
   it('parses network-aware output addresses on testnet and handles OP_RETURN output', () => {
     const psbtBase64 = makePsbtBase64(bitcoin.networks.testnet, testnetAddresses.nativeSegwit[0], true);
-    const info = getPSBTInfoWithNetwork(psbtBase64, 'testnet');
+    const info = getPSBTInfoWithNetwork(psbtBase64, 'testnet3');
 
     expect(info.inputs[0].txid).toHaveLength(64);
     expect(info.outputs[0].address).toBe(testnetAddresses.nativeSegwit[0]);

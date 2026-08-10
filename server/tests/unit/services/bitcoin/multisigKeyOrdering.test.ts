@@ -210,8 +210,14 @@ describe('Multisig Key Ordering (BIP-67)', () => {
 
       // Addresses should be deterministic
       const descriptor = buildMultisigDescriptor(xpubs, 2, 'p2wsh');
-      const addr1 = deriveAddressFromDescriptor(descriptor, 0, { network: 'testnet' }).address;
-      const addr2 = deriveAddressFromDescriptor(descriptor, 0, { network: 'testnet' }).address;
+      const addr1 = deriveAddressFromDescriptor(descriptor, 0, {
+        network: 'testnet',
+        change: false,
+      }).address;
+      const addr2 = deriveAddressFromDescriptor(descriptor, 0, {
+        network: 'testnet',
+        change: false,
+      }).address;
       expect(addr1).toBe(addr2);
     });
   });

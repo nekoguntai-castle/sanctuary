@@ -49,7 +49,7 @@ describe('Bitcoin Core key_io Address Verification', () => {
   describe('Valid mainnet addresses', () => {
     KEY_IO_MAINNET_ADDRESSES.forEach((vector) => {
       it(`should decode ${vector.address} to correct scriptPubKey`, () => {
-        let output: Buffer;
+        let output: Uint8Array;
         try {
           output = bitcoin.address.toOutputScript(vector.address, bitcoin.networks.bitcoin);
         } catch (error) {
@@ -76,7 +76,7 @@ describe('Bitcoin Core key_io Address Verification', () => {
         it(`should decode uppercase ${vector.address} to same scriptPubKey`, () => {
           const uppercaseAddress = vector.address.toUpperCase();
 
-          let output: Buffer;
+          let output: Uint8Array;
           try {
             output = bitcoin.address.toOutputScript(uppercaseAddress, bitcoin.networks.bitcoin);
           } catch (error) {

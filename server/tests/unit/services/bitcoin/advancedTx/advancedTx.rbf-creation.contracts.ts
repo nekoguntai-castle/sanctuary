@@ -40,7 +40,7 @@ export function registerRbfTransactionCreationContracts() {
       mockElectrumClient.getTransaction.mockResolvedValue(mockTx);
 
       await expect(
-        createRBFTransaction(originalTxid, 50, walletId, 'testnet')
+        createRBFTransaction(originalTxid, 50, walletId, 'testnet3')
       ).rejects.toThrow('confirmed');
     });
 
@@ -48,7 +48,7 @@ export function registerRbfTransactionCreationContracts() {
       mockElectrumClient.getTransaction.mockRejectedValueOnce(new Error(''));
 
       await expect(
-        createRBFTransaction(originalTxid, 50, walletId, 'testnet')
+        createRBFTransaction(originalTxid, 50, walletId, 'testnet3')
       ).rejects.toThrow('Transaction cannot be replaced');
     });
 
@@ -59,7 +59,7 @@ export function registerRbfTransactionCreationContracts() {
       mockElectrumClient.getTransaction.mockResolvedValue(mockTx);
 
       await expect(
-        createRBFTransaction(originalTxid, 50, walletId, 'testnet')
+        createRBFTransaction(originalTxid, 50, walletId, 'testnet3')
       ).rejects.toThrow('RBF');
     });
 
@@ -78,7 +78,7 @@ export function registerRbfTransactionCreationContracts() {
 
       // Try to create with same or lower fee rate
       await expect(
-        createRBFTransaction(originalTxid, 1, walletId, 'testnet')
+        createRBFTransaction(originalTxid, 1, walletId, 'testnet3')
       ).rejects.toThrow('must be higher');
     });
 
@@ -86,7 +86,7 @@ export function registerRbfTransactionCreationContracts() {
       mockPrismaClient.wallet.findUnique.mockResolvedValueOnce(null);
 
       await expect(
-        createRBFTransaction(originalTxid, 50, walletId, 'testnet')
+        createRBFTransaction(originalTxid, 50, walletId, 'testnet3')
       ).rejects.toThrow('Wallet not found');
     });
 
@@ -131,7 +131,7 @@ export function registerRbfTransactionCreationContracts() {
         return { txid, confirmations: 0, hex: txHex, vin: [], vout: [] } as any;
       });
 
-      const result = await createRBFTransaction(originalTxid, 55, walletId, 'testnet');
+      const result = await createRBFTransaction(originalTxid, 55, walletId, 'testnet3');
 
       expect(result.psbt).toBeDefined();
       expect(result.inputPaths[0]).toBe("m/84'/1'/0'/0/0");
@@ -178,7 +178,7 @@ export function registerRbfTransactionCreationContracts() {
         return { txid, confirmations: 0, hex: txHex, vin: [], vout: [] } as any;
       });
 
-      const result = await createRBFTransaction(originalTxid, 1, walletId, 'testnet');
+      const result = await createRBFTransaction(originalTxid, 1, walletId, 'testnet3');
 
       expect(result.psbt).toBeDefined();
       expect(result.feeRate).toBe(1);
@@ -242,7 +242,7 @@ export function registerRbfTransactionCreationContracts() {
         return { txid, confirmations: 0, hex: txHex, vin: [], vout: [] } as any;
       });
 
-      const result = await createRBFTransaction(originalTxid, 55, walletId, 'testnet');
+      const result = await createRBFTransaction(originalTxid, 55, walletId, 'testnet3');
 
       expect(result.psbt).toBeDefined();
       expect(result.fee).toBeGreaterThan(0);
@@ -287,7 +287,7 @@ export function registerRbfTransactionCreationContracts() {
       });
 
       await expect(
-        createRBFTransaction(originalTxid, 90, walletId, 'testnet')
+        createRBFTransaction(originalTxid, 90, walletId, 'testnet3')
       ).rejects.toThrow('No change output found');
     });
 
@@ -332,7 +332,7 @@ export function registerRbfTransactionCreationContracts() {
       });
 
       await expect(
-        createRBFTransaction(originalTxid, 30, walletId, 'testnet')
+        createRBFTransaction(originalTxid, 30, walletId, 'testnet3')
       ).rejects.toThrow('change would be dust');
     });
 
@@ -377,7 +377,7 @@ export function registerRbfTransactionCreationContracts() {
         return { txid, confirmations: 0, hex: txHex, vin: [], vout: [] } as any;
       });
 
-      const result = await createRBFTransaction(originalTxid, 80, walletId, 'testnet');
+      const result = await createRBFTransaction(originalTxid, 80, walletId, 'testnet3');
       expect(result.psbt).toBeDefined();
       expect(parseSpy).toHaveBeenCalled();
       parseSpy.mockRestore();
@@ -417,7 +417,7 @@ export function registerRbfTransactionCreationContracts() {
         return { txid, confirmations: 0, hex: txHex, vin: [], vout: [] } as any;
       });
 
-      const result = await createRBFTransaction(originalTxid, 50, walletId, 'testnet');
+      const result = await createRBFTransaction(originalTxid, 50, walletId, 'testnet3');
       expect(result.psbt).toBeDefined();
       expect(result.inputPaths[0]).toBe('');
     });
@@ -461,7 +461,7 @@ export function registerRbfTransactionCreationContracts() {
         return { txid, confirmations: 0, hex: txHex, vin: [], vout: [] } as any;
       });
 
-      const result = await createRBFTransaction(originalTxid, 50, walletId, 'testnet');
+      const result = await createRBFTransaction(originalTxid, 50, walletId, 'testnet3');
       expect(result.psbt).toBeDefined();
       expect(result.inputPaths[0]).toBe("m/84'/1'/0'/bad/0");
     });
@@ -505,7 +505,7 @@ export function registerRbfTransactionCreationContracts() {
         return { txid, confirmations: 0, hex: txHex, vin: [], vout: [] } as any;
       });
 
-      const result = await createRBFTransaction(originalTxid, 50, walletId, 'testnet');
+      const result = await createRBFTransaction(originalTxid, 50, walletId, 'testnet3');
 
       expect(result.psbt).toBeDefined();
       expect(result.inputPaths[0]).toBe('m/84/1/0/0/0');
@@ -570,7 +570,7 @@ export function registerRbfTransactionCreationContracts() {
         return { txid, confirmations: 0, hex: txHex, vin: [], vout: [] } as any;
       });
 
-      const result = await createRBFTransaction(originalTxid, 10.001, walletId, 'testnet');
+      const result = await createRBFTransaction(originalTxid, 10.001, walletId, 'testnet3');
 
       expect(result.feeDelta).toBeLessThanOrEqual(0);
       expect(result.outputs.find((output) => output.address === changeAddress)?.value).toBe(originalChangeValue);

@@ -31,7 +31,7 @@ describe('Bitcoin validation evidence contracts', () => {
 
   it('prevents lab evidence from also being declared as a runtime requirement', () => {
     for (const scope of BITCOIN_VALIDATION_EVIDENCE_SCOPES) {
-      const runtimeRequirements = new Set(scope.runtimeRequirements);
+      const runtimeRequirements = new Set<string>(scope.runtimeRequirements);
       expect(
         scope.labEvidenceOnly.filter(evidence => runtimeRequirements.has(evidence)),
       ).toEqual([]);

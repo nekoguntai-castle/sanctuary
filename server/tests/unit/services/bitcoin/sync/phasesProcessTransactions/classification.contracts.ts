@@ -189,7 +189,7 @@ export function registerProcessTransactionClassificationTests(walletId: string):
         inputs: [{ txid: previousTxid, vout: 0, value: 0.001, address: walletAddress }],
         outputs: [{ value: 0.0009, address: externalAddress }],
       });
-      delete transaction.vin[0].prevout!.value;
+      Reflect.deleteProperty(transaction.vin[0].prevout!, 'value');
       mockElectrumClient.getTransactionsBatch.mockResolvedValue(new Map([[txid, transaction]]));
       mockElectrumClient.getTransaction.mockResolvedValue({
         txid: previousTxid,

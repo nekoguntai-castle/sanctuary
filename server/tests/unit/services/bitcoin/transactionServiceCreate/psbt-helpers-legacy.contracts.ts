@@ -153,7 +153,7 @@ export function registerTransactionServicePsbtHelpersLegacyTests(): void {
       let i = 1; // Skip OP_2
       while (witnessScript![i] === 0x21) {
         // 0x21 = push 33 bytes
-        pubkeys.push(witnessScript!.slice(i + 1, i + 34));
+        pubkeys.push(Buffer.from(witnessScript!.slice(i + 1, i + 34)));
         i += 34;
       }
 

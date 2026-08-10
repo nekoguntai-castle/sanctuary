@@ -24,10 +24,12 @@ type PayjoinOutputSpec = {
 
 const testTxid = (seed: number) => Buffer.alloc(32, seed);
 
-const p2wpkhScript = (seed: number) => bitcoin.payments.p2wpkh({
-  hash: Buffer.alloc(20, seed),
-  network: TESTNET,
-}).output!;
+const p2wpkhScript = (seed: number): Buffer => Buffer.from(
+  bitcoin.payments.p2wpkh({
+    hash: Buffer.alloc(20, seed),
+    network: TESTNET,
+  }).output!
+);
 
 const opReturnScript = (seed: number) => Buffer.from([0x6a, 0x01, seed]);
 

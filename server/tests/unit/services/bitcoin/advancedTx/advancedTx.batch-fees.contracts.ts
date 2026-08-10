@@ -25,7 +25,7 @@ export function registerBatchFeeAndConstantContracts() {
 
     it("requires at least one recipient", async () => {
       await expect(
-        createBatchTransaction([], 5, walletId, undefined, "testnet"),
+        createBatchTransaction([], 5, walletId, undefined, "testnet3"),
       ).rejects.toThrow("At least one recipient is required");
     });
 
@@ -40,7 +40,7 @@ export function registerBatchFeeAndConstantContracts() {
           5,
           walletId,
           ["other-tx:1"],
-          "testnet",
+          "testnet3",
         ),
       ).rejects.toThrow("No spendable UTXOs available");
     });
@@ -66,7 +66,7 @@ export function registerBatchFeeAndConstantContracts() {
         5,
         walletId,
         undefined,
-        "testnet",
+        "testnet3",
       );
 
       expect(result.psbt).toBeDefined();
@@ -93,7 +93,7 @@ export function registerBatchFeeAndConstantContracts() {
         5,
         walletId,
         undefined,
-        "testnet",
+        "testnet3",
       )).rejects.toThrow("change drift");
     });
 
@@ -109,7 +109,7 @@ export function registerBatchFeeAndConstantContracts() {
           5,
           walletId,
           undefined,
-          "testnet",
+          "testnet3",
         ),
       ).rejects.toThrow("No change address available");
     });
@@ -132,7 +132,7 @@ export function registerBatchFeeAndConstantContracts() {
           5,
           walletId,
           undefined,
-          "testnet",
+          "testnet3",
         ),
       ).rejects.toThrow("No change address available");
     });
@@ -148,7 +148,7 @@ export function registerBatchFeeAndConstantContracts() {
           10,
           walletId,
           undefined,
-          "testnet",
+          "testnet3",
         ),
       ).rejects.toThrow("Insufficient funds");
     });
@@ -169,7 +169,7 @@ export function registerBatchFeeAndConstantContracts() {
         1,
         walletId,
         undefined,
-        "testnet",
+        "testnet3",
       );
 
       expect(result.changeAmount).toBeLessThan(546);
