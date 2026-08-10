@@ -17,6 +17,156 @@ import {
   TABLE_ORDER,
 } from './constants';
 import type { BackupRecord, BackupMeta, ValidationResult } from './types';
+import {
+  descriptorPolicyFingerprint,
+  prepareDescriptorPolicy,
+} from '../wallet/descriptorPolicy';
+import { parseDescriptorForImport } from '../bitcoin/descriptorParser';
+import { isBitcoinNetwork } from '../bitcoin/networks';
+import { getErrorMessage } from '../../utils/errors';
+
+const DESCRIPTOR_POLICY_FIELDS = [
+  'changeDescriptor',
+  'descriptorSourceKind',
+  'sourceDescriptor',
+  'sourceChangeDescriptor',
+  'sourceDescriptorChecksum',
+  'sourceChangeDescriptorChecksum',
+] as const;
+
+const descriptorNetworkMatchesWallet = (
+  descriptorNetwork: ReturnType<typeof parseDescriptorForImport>['network'],
+  walletNetwork: unknown,
+): boolean => (
+  typeof walletNetwork === 'string'
+  && isBitcoinNetwork(walletNetwork)
+  && (descriptorNetwork === 'mainnet') === (walletNetwork === 'mainnet')
+);
+
+const descriptorMetadataMatchesWallet = (
+  descriptor: string,
+  wallet: BackupRecord,
+): boolean => {
+  const parsed = parseDescriptorForImport(descriptor);
+  return (
+    parsed.type === wallet.type
+    && parsed.scriptType === wallet.scriptType
+    && descriptorNetworkMatchesWallet(parsed.network, wallet.network)
+    && (parsed.quorum ?? null) === (wallet.quorum ?? null)
+    && (parsed.totalSigners ?? null) === (wallet.totalSigners ?? null)
+  );
+};
+
+interface CompleteVersionedWalletPolicy extends BackupRecord {
+  descriptor: string;
+  fingerprint: string;
+  changeDescriptor: string;
+  sourceDescriptor: string;
+  descriptorSourceKind: string;
+}
+
+const isCompleteVersionedWalletPolicy = (
+  wallet: BackupRecord,
+): wallet is CompleteVersionedWalletPolicy => (
+  typeof wallet.descriptor === 'string'
+  && typeof wallet.fingerprint === 'string'
+  && typeof wallet.changeDescriptor === 'string'
+  && typeof wallet.sourceDescriptor === 'string'
+  && typeof wallet.descriptorSourceKind === 'string'
+);
+
+const hasPartialDescriptorPolicy = (wallet: BackupRecord): boolean =>
+  DESCRIPTOR_POLICY_FIELDS.some(
+    (field) => wallet[field] !== null && wallet[field] !== undefined,
+  );
+
+const validateLegacyDescriptorPolicy = (
+  wallet: BackupRecord,
+  walletId: string,
+): { issue?: string; hasDescriptor: boolean } => {
+  if (hasPartialDescriptorPolicy(wallet)) {
+    return {
+      issue: `Wallet ${walletId} has descriptor policy fields without a policy version`,
+      hasDescriptor: false,
+    };
+  }
+  return {
+    hasDescriptor: wallet.descriptor !== null && wallet.descriptor !== undefined,
+  };
+};
+
+const preparedPolicyMatchesWallet = (
+  prepared: ReturnType<typeof prepareDescriptorPolicy>,
+  wallet: CompleteVersionedWalletPolicy,
+): boolean => (
+  prepared.descriptor === wallet.descriptor
+  && prepared.changeDescriptor === wallet.changeDescriptor
+  && descriptorPolicyFingerprint(prepared.descriptor) === wallet.fingerprint
+  && prepared.descriptorSourceKind === wallet.descriptorSourceKind
+  && prepared.sourceDescriptor === wallet.sourceDescriptor
+  && prepared.sourceChangeDescriptor === (wallet.sourceChangeDescriptor ?? null)
+  && prepared.sourceDescriptorChecksum === (wallet.sourceDescriptorChecksum ?? null)
+  && prepared.sourceChangeDescriptorChecksum === (wallet.sourceChangeDescriptorChecksum ?? null)
+  && descriptorMetadataMatchesWallet(prepared.descriptor, wallet)
+);
+
+const validateVersionedDescriptorPolicy = (
+  wallet: BackupRecord,
+  walletId: string,
+): string | undefined => {
+  if (wallet.descriptorPolicyVersion !== 1) {
+    return `Wallet ${walletId} uses unsupported descriptor policy version ${String(wallet.descriptorPolicyVersion)}`;
+  }
+  if (!isCompleteVersionedWalletPolicy(wallet)) {
+    return `Wallet ${walletId} has an incomplete versioned descriptor policy`;
+  }
+  try {
+    const sourceKind = wallet.descriptorSourceKind;
+    const prepared = prepareDescriptorPolicy({
+      receiveDescriptor: wallet.sourceDescriptor,
+      changeDescriptor: sourceKind === 'imported_multipath'
+        ? undefined
+        : typeof wallet.sourceChangeDescriptor === 'string'
+          ? wallet.sourceChangeDescriptor
+          : undefined,
+      sourceKind: sourceKind === 'generated_pair' ? 'generated_pair' : 'imported',
+    });
+    return preparedPolicyMatchesWallet(prepared, wallet)
+      ? undefined
+      : `Wallet ${walletId} descriptor policy does not match its exact source evidence`;
+  } catch (error) {
+    return `Wallet ${walletId} has invalid descriptor policy evidence: ${getErrorMessage(error)}`;
+  }
+};
+
+/**
+ * Rebuilds every versioned wallet policy from its exact source evidence before
+ * a restore may mutate the database. Legacy descriptors remain quarantined and
+ * produce a warning; malformed versioned evidence blocks the restore.
+ */
+export function validateDescriptorPoliciesForRestore(
+  data: Record<string, BackupRecord[]>,
+): { issues: string[]; warnings: string[] } {
+  const issues: string[] = [];
+  let legacyWalletCount = 0;
+  for (const wallet of data.wallet ?? []) {
+    const walletId = typeof wallet.id === 'string' ? wallet.id : '<unknown>';
+    if (wallet.descriptorPolicyVersion === null || wallet.descriptorPolicyVersion === undefined) {
+      const legacy = validateLegacyDescriptorPolicy(wallet, walletId);
+      if (legacy.issue) issues.push(legacy.issue);
+      if (legacy.hasDescriptor) legacyWalletCount += 1;
+      continue;
+    }
+    const issue = validateVersionedDescriptorPolicy(wallet, walletId);
+    if (issue) issues.push(issue);
+  }
+  return {
+    issues,
+    warnings: legacyWalletCount > 0
+      ? [`${legacyWalletCount} restored wallet(s) remain legacy-unverified and require remediation before funds-controlling use`]
+      : [],
+  };
+}
 
 /**
  * Validate a backup file before restore
@@ -90,6 +240,9 @@ export async function validateBackupForRestore(backup: unknown): Promise<Validat
     getRequiredRestoreTables(meta),
     issues
   );
+  const descriptorPolicies = validateDescriptorPoliciesForRestore(data);
+  issues.push(...descriptorPolicies.issues);
+  warnings.push(...descriptorPolicies.warnings);
 
   return createValidationResult(issues.length === 0, issues, warnings, meta, Object.keys(data), data);
 }

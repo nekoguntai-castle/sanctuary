@@ -21,7 +21,7 @@ interface SettingsTabProps {
   editedName: string;
   onSetIsEditingName: (editing: boolean) => void;
   onSetEditedName: (name: string) => void;
-  onUpdateWallet: (data: Partial<Wallet>) => void;
+  onUpdateWallet: (data: { name: string }) => void;
   onLabelsChange: () => void;
   syncing: boolean;
   onSync: () => void;

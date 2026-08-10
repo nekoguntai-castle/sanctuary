@@ -234,11 +234,11 @@ describe('AgentManagement', () => {
     });
     vi.mocked(walletsApi.validateXpub).mockResolvedValue({
       valid: true,
-      descriptor: 'wpkh([00000000/84h/1h/0h]tpub-inline/0/*)',
+      descriptor: 'wpkh([aabbccdd/84h/1h/0h]tpub-inline/<0;1>/*)',
       scriptType: 'native_segwit',
       firstAddress: 'tb1qagent',
       xpub: 'tpub-inline',
-      fingerprint: '00000000',
+      fingerprint: 'aabbccdd',
       accountPath: "84'/1'/0'",
     });
     vi.stubGlobal(
@@ -397,9 +397,8 @@ describe('AgentManagement', () => {
     );
   });
 
-  it('imports a raw extended public key by validating it into a descriptor first', async () => {
+  it('rejects a raw extended public key without verified origin evidence', async () => {
     const user = userEvent.setup();
-    const descriptor = 'tr([00000000/86h/1h/0h]tpub-inline/0/*)';
     const initialOptions = {
       ...options,
       wallets: [options.wallets[0]],
@@ -412,16 +411,6 @@ describe('AgentManagement', () => {
       .mockResolvedValue(optionsWithImported)
       .mockResolvedValueOnce(initialOptions)
       .mockResolvedValueOnce(optionsWithImported);
-    vi.mocked(walletsApi.validateXpub).mockResolvedValueOnce({
-      valid: true,
-      descriptor,
-      scriptType: 'taproot',
-      firstAddress: 'tb1pagent',
-      xpub: 'tpub-inline',
-      fingerprint: '00000000',
-      accountPath: "86'/1'/0'",
-    });
-
     renderAgentManagement();
 
     await screen.findByText('Treasury Agent');
@@ -435,25 +424,13 @@ describe('AgentManagement', () => {
     await user.selectOptions(selects[0], 'funding-1');
     await user.click(screen.getByRole('button', { name: 'Import' }));
     await user.type(screen.getByPlaceholderText('Agent operational wallet'), 'Imported Ops');
-    await user.type(screen.getByPlaceholderText(/xpub/), 'tpub-inline');
-    await user.selectOptions(screen.getByLabelText('Extended public key type'), 'taproot');
+    await user.type(screen.getByPlaceholderText(/wpkh/), 'tpub-inline');
     await user.click(screen.getByRole('button', { name: 'Import and select' }));
 
-    await waitFor(() => expect(walletsApi.validateXpub).toHaveBeenCalled());
-    expect(walletsApi.validateXpub).toHaveBeenCalledWith(
-      expect.objectContaining({
-        xpub: 'tpub-inline',
-        scriptType: 'taproot',
-        network: 'testnet3',
-        fingerprint: expect.stringMatching(/^[0-9a-f]{8}$/),
-      })
-    );
-    expect(walletsApi.validateImport).toHaveBeenCalledWith({ descriptor });
-    expect(walletsApi.importWallet).toHaveBeenCalledWith({
-      data: descriptor,
-      name: 'Imported Ops',
-      network: 'testnet3',
-    });
+    expect(await screen.findByText(/verified master fingerprint and account-path evidence/)).toBeInTheDocument();
+    expect(walletsApi.validateXpub).not.toHaveBeenCalled();
+    expect(walletsApi.validateImport).not.toHaveBeenCalled();
+    expect(walletsApi.importWallet).not.toHaveBeenCalled();
   });
 
   it('rejects raw multisig extended keys in the operational wallet import', async () => {
@@ -470,7 +447,7 @@ describe('AgentManagement', () => {
     selects = screen.getAllByRole('combobox');
     await user.selectOptions(selects[0], 'funding-1');
     await user.click(screen.getByRole('button', { name: 'Import' }));
-    await user.type(screen.getByPlaceholderText(/xpub/), 'Zpub-agent');
+    await user.type(screen.getByPlaceholderText(/wpkh/), 'Zpub-agent');
     await user.click(screen.getByRole('button', { name: 'Import and select' }));
 
     expect(

@@ -32,14 +32,14 @@ export interface CreateWalletRequest {
   quorum?: number;
   totalSigners?: number;
   descriptor?: string;
+  changeDescriptor?: string;
   fingerprint?: string;
   groupId?: string;
   signers?: CreateWalletSignerRequest[];
 }
 
 export interface UpdateWalletRequest {
-  name?: string;
-  descriptor?: string;
+  name: string;
 }
 
 export interface WalletStats {
@@ -190,6 +190,7 @@ export async function addDeviceToWallet(
  */
 export async function validateImport(input: {
   descriptor?: string;
+  changeDescriptor?: string;
   json?: string;
   network?: WalletNetwork;
 }): Promise<ImportValidationResult> {

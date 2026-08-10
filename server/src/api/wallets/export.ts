@@ -27,6 +27,10 @@ const router = Router();
 
 type ExportWallet = NonNullable<Awaited<ReturnType<typeof walletRepository.findByIdWithDevices>>>;
 type ExportWalletDevice = ExportWallet['devices'][number];
+interface RecoveryDescriptorSet {
+  descriptor: string;
+  changeDescriptor?: string;
+}
 
 function requiredSnapshotValue(
   value: string | null,
@@ -63,6 +67,16 @@ function validateSignerCount(wallet: ExportWallet): void {
   if (wallet.type === WalletType.MULTI_SIG && wallet.devices.length !== wallet.totalSigners) {
     throw new InvalidInputError('Multisignature wallet signer snapshots are incomplete');
   }
+}
+
+function recoveryDescriptorSet(wallet: ExportWallet): RecoveryDescriptorSet {
+  if (wallet.descriptorSourceKind === 'imported_multipath' && wallet.sourceDescriptor) {
+    return { descriptor: wallet.sourceDescriptor };
+  }
+  return {
+    descriptor: wallet.sourceDescriptor || wallet.descriptor || '',
+    changeDescriptor: wallet.sourceChangeDescriptor || wallet.changeDescriptor || undefined,
+  };
 }
 
 function signerSnapshotDevice(
@@ -130,6 +144,7 @@ function buildWalletExportData(wallet: ExportWallet): WalletExportData {
 
   const seenDeviceIds = new Set<string>();
   const seenAccountIds = new Set<string>();
+  const descriptors = recoveryDescriptorSet(wallet);
 
   return {
     id: wallet.id,
@@ -137,7 +152,7 @@ function buildWalletExportData(wallet: ExportWallet): WalletExportData {
     type: walletType,
     scriptType: scriptType as ScriptType,
     network: wallet.network as Network,
-    descriptor: wallet.descriptor || '',
+    ...descriptors,
     quorum: wallet.quorum || undefined,
     totalSigners: wallet.totalSigners || undefined,
     devices: wallet.devices.map((link, position) => signerSnapshotDevice(

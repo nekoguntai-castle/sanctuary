@@ -582,7 +582,14 @@ export async function linkDevice(
 
 export interface WalletDescriptorAssignment {
   descriptor: string;
+  changeDescriptor: string;
   fingerprint: string;
+  descriptorPolicyVersion: 1;
+  descriptorSourceKind: 'generated_pair' | 'imported_pair' | 'imported_multipath';
+  sourceDescriptor: string;
+  sourceChangeDescriptor: string | null;
+  sourceDescriptorChecksum: string | null;
+  sourceChangeDescriptorChecksum: string | null;
   addresses: Prisma.AddressCreateManyInput[];
 }
 
@@ -591,11 +598,25 @@ async function assignMissingDescriptor(
   walletId: string,
   assignment: WalletDescriptorAssignment,
 ): Promise<void> {
+  // This CAS permits only the first policy assignment. Existing policy metadata
+  // or addresses mean another writer/history already controls the wallet.
   const updated = await tx.wallet.updateMany({
-    where: { id: walletId, descriptor: null },
+    where: {
+      id: walletId,
+      descriptor: null,
+      descriptorPolicyVersion: null,
+      addresses: { none: {} },
+    },
     data: {
       descriptor: assignment.descriptor,
+      changeDescriptor: assignment.changeDescriptor,
       fingerprint: assignment.fingerprint,
+      descriptorPolicyVersion: assignment.descriptorPolicyVersion,
+      descriptorSourceKind: assignment.descriptorSourceKind,
+      sourceDescriptor: assignment.sourceDescriptor,
+      sourceChangeDescriptor: assignment.sourceChangeDescriptor,
+      sourceDescriptorChecksum: assignment.sourceDescriptorChecksum,
+      sourceChangeDescriptorChecksum: assignment.sourceChangeDescriptorChecksum,
     },
   });
   if (updated.count !== 1) {
@@ -631,6 +652,7 @@ export async function assignDescriptorWithAddresses(
 export async function createWithDeviceLinks(
   data: Prisma.WalletCreateInput,
   signers?: WalletSignerLinkData[],
+  initialAddresses: Array<Omit<Prisma.AddressCreateManyInput, 'walletId'>> = [],
 ): Promise<Wallet & { devices: Array<{ deviceId: string }>; addresses: Array<{ id: string }> }> {
   return prisma.$transaction(async (tx) => {
     const wallet = await tx.wallet.create({ data });
@@ -640,6 +662,15 @@ export async function createWithDeviceLinks(
         data: signers.map((signer) => ({
           walletId: wallet.id,
           ...signer,
+        })),
+      });
+    }
+
+    if (initialAddresses.length > 0) {
+      await tx.address.createMany({
+        data: initialAddresses.map((address) => ({
+          ...address,
+          walletId: wallet.id,
         })),
       });
     }

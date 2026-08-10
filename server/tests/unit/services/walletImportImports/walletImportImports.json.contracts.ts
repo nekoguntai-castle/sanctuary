@@ -332,7 +332,7 @@ export const registerWalletImportJsonContracts = () => {
       expect(mockPrismaClient.deviceAccount.create).not.toHaveBeenCalled();
     });
 
-    it('should continue importFromJson when initial address generation fails', async () => {
+    it('rejects importFromJson before persistence when initial address generation fails', async () => {
       const jsonConfig = {
         type: 'single_sig',
         scriptType: 'native_segwit',
@@ -383,12 +383,12 @@ export const registerWalletImportJsonContracts = () => {
         throw new Error('Address derivation failed for json import');
       });
 
-      const result = await walletImport.importFromJson(userId, {
+      await expect(walletImport.importFromJson(userId, {
         json: JSON.stringify(jsonConfig),
         name: 'JSON Wallet Fail',
-      });
+      })).rejects.toThrow('Address derivation failed for json import');
 
-      expect(result.wallet.id).toBe('wallet-json-fail');
+      expect(mockPrismaClient.wallet.create).not.toHaveBeenCalled();
       expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
     });
   });

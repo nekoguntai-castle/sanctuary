@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   mockBuildDescriptorFromDevices,
   mockHookExecuteAfter,
@@ -25,19 +25,36 @@ import {
   updateWallet,
 } from '../../../../src/services/wallet';
 
+const VALID_RECEIVE_DESCRIPTOR = "wpkh([d34db33f/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/0/*)";
+const VALID_CHANGE_DESCRIPTOR = "wpkh([d34db33f/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/1/*)";
+
 export function registerWalletMutationMaintenanceTests(): void {
   describe('wallet mutation and maintenance operations', () => {
-    it.each(['ledger', 'jade', 'trezor'])(
-      'blocks descriptor replacement for %s wallets before persistence',
-      async type => {
-        mockPrismaClient.walletUser.findFirst.mockResolvedValue({ role: 'owner' });
-        mockPrismaClient.wallet.findUnique.mockResolvedValue({
-          id: 'wallet-1',
-          devices: [{ device: { type } }],
-        });
+    beforeEach(() => {
+      mockBuildDescriptorFromDevices.mockReturnValue({
+        descriptor: VALID_RECEIVE_DESCRIPTOR,
+        changeDescriptor: VALID_CHANGE_DESCRIPTOR,
+        fingerprint: 'abc12345',
+      });
+    });
 
-        await expect(updateWallet('wallet-1', 'owner-1', { descriptor: 'replacement' }))
-          .rejects.toMatchObject({ statusCode: 403 });
+    it.each([
+      ['empty update', {}],
+      ['undefined name', { name: undefined }],
+      ['descriptor', { descriptor: 'replacement' }],
+      ['fingerprint', { fingerprint: 'deadbeef' }],
+      ['unknown field', { scriptType: 'taproot' }],
+      ['multiple fields', { descriptor: 'replacement', fingerprint: 'deadbeef' }],
+    ])(
+      'blocks a direct service %s mutation before persistence',
+      async (_case, updates) => {
+        mockPrismaClient.walletUser.findFirst.mockResolvedValue({ role: 'owner' });
+
+        await expect(updateWallet('wallet-1', 'owner-1', updates as never))
+          .rejects.toMatchObject({
+            statusCode: 400,
+            code: 'INVALID_INPUT',
+          });
         expect(mockPrismaClient.wallet.update).not.toHaveBeenCalled();
       },
     );
@@ -297,6 +314,40 @@ export function registerWalletMutationMaintenanceTests(): void {
         expect.objectContaining({ deviceAccountId: 'account-1', signerIndex: 0 }),
         expect.objectContaining({ descriptor: expect.any(String), addresses: expect.any(Array) }),
       );
+      expect(walletRepo.linkDevice).not.toHaveBeenCalled();
+    });
+
+    it('propagates atomic signer assignment persistence failures', async () => {
+      mockBuildDescriptorFromDevices.mockReturnValueOnce({
+        descriptor: VALID_RECEIVE_DESCRIPTOR,
+        changeDescriptor: VALID_CHANGE_DESCRIPTOR,
+        fingerprint: 'abc12345',
+      });
+      mockPrismaClient.wallet.findFirst.mockResolvedValueOnce({
+        id: 'wallet-atomic-link-fail',
+        type: 'single_sig',
+        scriptType: 'native_segwit',
+        network: 'mainnet',
+        quorum: null,
+        totalSigners: null,
+        descriptor: null,
+        devices: [],
+      });
+      mockPrismaClient.device.findMany.mockResolvedValueOnce([
+        device('device-1', 'account-1'),
+      ]);
+      const { walletRepository: walletRepo } = await import('../../../../src/repositories');
+      vi.mocked(walletRepo.linkDeviceWithDescriptor).mockRejectedValueOnce(
+        new Error('atomic signer address insertion failed'),
+      );
+
+      await expect(addDeviceToWallet(
+        'wallet-atomic-link-fail',
+        { deviceId: 'device-1', deviceAccountId: 'account-1', signerIndex: 0 },
+        'user-1',
+      )).rejects.toThrow('atomic signer address insertion failed');
+
+      expect(walletRepo.linkDeviceWithDescriptor).toHaveBeenCalledTimes(1);
       expect(walletRepo.linkDevice).not.toHaveBeenCalled();
     });
 

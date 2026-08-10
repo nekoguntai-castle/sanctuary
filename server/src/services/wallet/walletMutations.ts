@@ -8,12 +8,28 @@ import { walletRepository, utxoRepository } from '../../repositories';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { hookRegistry, Operations } from '../hooks';
-import { ForbiddenError } from '../../errors';
+import { ForbiddenError, InvalidInputError } from '../../errors';
 import type { WalletWithBalance } from './types';
 import { checkWalletOwnerAccess } from '../accessControl';
 import { assertWalletHardwareCapabilityById } from '../hardwareWalletCapabilities';
 
 const log = createLogger('WALLET:SVC');
+
+interface WalletMetadataUpdate {
+  name: string;
+}
+
+function assertWalletMetadataUpdate(updates: WalletMetadataUpdate): void {
+  const unsupportedFields = Object.keys(updates).filter(field => field !== 'name');
+  if (unsupportedFields.length > 0) {
+    throw new InvalidInputError(
+      `Unsupported wallet update field${unsupportedFields.length === 1 ? '' : 's'}: ${unsupportedFields.join(', ')}`,
+    );
+  }
+  if (typeof updates.name !== 'string' || updates.name.length === 0) {
+    throw new InvalidInputError('Wallet name is required', 'name');
+  }
+}
 
 /**
  * Update wallet
@@ -21,7 +37,7 @@ const log = createLogger('WALLET:SVC');
 export async function updateWallet(
   walletId: string,
   userId: string,
-  updates: Partial<{ name: string; descriptor: string }>
+  updates: WalletMetadataUpdate
 ): Promise<WalletWithBalance> {
   // Check user has owner role
   const hasOwnerAccess = await checkWalletOwnerAccess(walletId, userId);
@@ -30,11 +46,11 @@ export async function updateWallet(
     throw new ForbiddenError('Only wallet owners can update wallet');
   }
 
-  if (updates.descriptor !== undefined) {
-    await assertWalletHardwareCapabilityById(walletId, 'import');
-  }
+  // Descriptor identity is immutable here: changing it without replacing every
+  // derived address would silently corrupt wallet ownership and change tracking.
+  assertWalletMetadataUpdate(updates);
 
-  const wallet = await walletRepository.update(walletId, updates);
+  await walletRepository.update(walletId, { name: updates.name });
 
   // Re-fetch with includes
   const walletFull = await walletRepository.findByIdWithFullAccess(walletId, userId, {

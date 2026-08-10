@@ -13,6 +13,10 @@ const log = createLogger('BITCOIN:SVC_DESCRIPTOR');
  * Uses same charset as bech32 but different polynomial
  */
 const CHECKSUM_CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+// Exact BIP380 reference ordering: character positions are inputs to the
+// polymod, so changing this string changes every checksum. The final space is
+// intentional and is itself a valid descriptor character.
+const INPUT_CHARSET = "0123456789()[],'/*abcdefgh@:$%{}IJKLMNOPQRSTUVWXYZ&+-.;<=>?!^_|~ijklmnopqrstuvwxyzABCDEFGH`#\"\\ ";
 
 /**
  * Polymod function for descriptor checksum (BIP-380)
@@ -31,13 +35,13 @@ function descriptorPolymod(c: bigint, val: number): bigint {
 /**
  * Compute descriptor checksum
  */
-function computeDescriptorChecksum(descriptor: string): string {
+export function computeDescriptorChecksum(descriptor: string): string {
   let c = 1n;
   let cls = 0;
   let clsCount = 0;
 
   for (const ch of descriptor) {
-    const pos = 'qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM0123456789_\'()[]{}*,\\/#'.indexOf(ch);
+    const pos = INPUT_CHARSET.indexOf(ch);
     if (pos === -1) {
       // Invalid character for checksum computation
       return '';
@@ -76,22 +80,31 @@ function computeDescriptorChecksum(descriptor: string): string {
  * Logs warning if checksum is invalid
  */
 export function validateAndRemoveChecksum(descriptor: string): { descriptor: string; valid: boolean } {
-  const checksumMatch = descriptor.match(/#([a-zA-Z0-9]{8})$/);
-
-  if (!checksumMatch) {
+  const separatorIndex = descriptor.lastIndexOf('#');
+  if (separatorIndex === -1) {
     // No checksum present, that's fine
     return { descriptor: descriptor.trim(), valid: true };
   }
 
-  const providedChecksum = checksumMatch[1].toLowerCase();
-  const descriptorWithoutChecksum = descriptor.slice(0, -9).trim(); // Remove #xxxxxxxx
+  const descriptorWithoutChecksum = descriptor.slice(0, separatorIndex).trim();
+  const providedChecksum = descriptor.slice(separatorIndex + 1);
+  const checksumHasValidShape = (
+    descriptor.indexOf('#') === separatorIndex
+    && providedChecksum.length === 8
+    && [...providedChecksum].every((character) => CHECKSUM_CHARSET.includes(character))
+  );
+  // A present checksum is recovery evidence. Malformed or uncomputable
+  // evidence must fail closed; it is never equivalent to omitting a checksum.
+  if (!checksumHasValidShape) {
+    return { descriptor: descriptorWithoutChecksum, valid: false };
+  }
 
   const computedChecksum = computeDescriptorChecksum(descriptorWithoutChecksum);
 
-  if (computedChecksum && computedChecksum !== providedChecksum) {
+  if (!computedChecksum || computedChecksum !== providedChecksum) {
     log.warn('Descriptor checksum mismatch', {
       provided: providedChecksum,
-      computed: computedChecksum,
+      computed: computedChecksum || '<uncomputable>',
       descriptor: descriptorWithoutChecksum.substring(0, 50) + '...',
     });
     // Still accept the descriptor but log warning
@@ -99,7 +112,7 @@ export function validateAndRemoveChecksum(descriptor: string): { descriptor: str
 
   return {
     descriptor: descriptorWithoutChecksum,
-    valid: !computedChecksum || computedChecksum === providedChecksum,
+    valid: computedChecksum.length > 0 && computedChecksum === providedChecksum,
   };
 }
 

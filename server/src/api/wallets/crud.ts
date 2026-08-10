@@ -62,6 +62,7 @@ const CreateWalletBodySchema = z.object({
   quorum: positiveSafeIntegerSchema('quorum').optional(),
   totalSigners: positiveSafeIntegerSchema('totalSigners').optional(),
   descriptor: z.string().optional(),
+  changeDescriptor: z.string().optional(),
   fingerprint: z.string().optional(),
   groupId: z.string().optional(),
   signers: z.array(WalletSignerSchema).optional(),
@@ -100,10 +101,10 @@ const CreateWalletBodySchema = z.object({
     : { ...data, quorum: undefined, totalSigners: undefined }
 ));
 
+// Reject identity-material and unknown mutations instead of silently stripping them.
 const UpdateWalletBodySchema = z.object({
-  name: z.string().optional(),
-  descriptor: z.string().optional(),
-});
+  name: z.string().min(1),
+}).strict();
 
 const createWalletValidationMessage = (issues: Array<{ path: string; message: string }>) => {
   if (issues.some(issue => ['name', 'scriptType'].includes(issue.path))) {
@@ -148,6 +149,7 @@ router.post('/', validate(
     quorum,
     totalSigners,
     descriptor,
+    changeDescriptor,
     fingerprint,
     groupId,
     signers,
@@ -161,6 +163,7 @@ router.post('/', validate(
     quorum,
     totalSigners,
     descriptor,
+    changeDescriptor,
     fingerprint,
     groupId,
     signers,
@@ -193,11 +196,10 @@ router.get('/:id', requireWalletAccess('view'), asyncHandler(async (req, res) =>
 router.patch('/:id', requireWalletAccess('owner'), validate({ body: UpdateWalletBodySchema }), asyncHandler(async (req, res) => {
   const userId = requireAuthenticatedUser(req).userId;
   const walletId = req.walletId!;
-  const { name, descriptor } = req.body;
+  const { name } = req.body;
 
   const wallet = await walletService.updateWallet(walletId, userId, {
     name,
-    descriptor,
   });
 
   res.json(wallet);

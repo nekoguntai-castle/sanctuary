@@ -16,27 +16,53 @@ import { assertWalletHardwareCapabilityById } from '../hardwareWalletCapabilitie
 
 const log = createLogger('WALLET:SVC_ADDRESS');
 
+export interface InitialAddressTemplate {
+  address: string;
+  derivationPath: string;
+  index: number;
+  used: false;
+}
+
 /**
- * Generate initial receive and change addresses for a wallet descriptor.
- * Returns address records ready for bulk insert.
+ * Derive the initial receive and change windows before any wallet data is
+ * written, allowing callers to fail the enclosing operation atomically.
  */
-export function generateInitialAddresses(
-  walletId: string,
-  descriptor: string,
-  network: WalletNetwork
-): Array<{ walletId: string; address: string; derivationPath: string; index: number; used: boolean }> {
-  const addresses = [];
-  for (const change of [false, true]) {
-    for (let i = 0; i < INITIAL_ADDRESS_COUNT; i++) {
+export function buildInitialAddressTemplates(
+  receiveDescriptor: string,
+  changeDescriptor: string,
+  network: WalletNetwork,
+): InitialAddressTemplate[] {
+  const addresses: InitialAddressTemplate[] = [];
+  for (const policy of [
+    { descriptor: receiveDescriptor, change: false },
+    { descriptor: changeDescriptor, change: true },
+  ]) {
+    for (let index = 0; index < INITIAL_ADDRESS_COUNT; index++) {
       const { address, derivationPath } = addressDerivation.deriveAddressFromDescriptor(
-        descriptor,
-        i,
-        { network, change }
+        policy.descriptor,
+        index,
+        { network, change: policy.change },
       );
-      addresses.push({ walletId, address, derivationPath, index: i, used: false });
+      addresses.push({ address, derivationPath, index, used: false });
     }
   }
   return addresses;
+}
+
+/**
+ * Generate initial receive and change addresses for a wallet descriptor.
+ * Returns address records ready for bulk insert. The optional change fallback
+ * preserves the legacy public helper contract; policy-boundary callers always
+ * provide the independently validated change descriptor.
+ */
+export function generateInitialAddresses(
+  walletId: string,
+  receiveDescriptor: string,
+  network: WalletNetwork,
+  changeDescriptor = receiveDescriptor,
+): Array<{ walletId: string; address: string; derivationPath: string; index: number; used: boolean }> {
+  return buildInitialAddressTemplates(receiveDescriptor, changeDescriptor, network)
+    .map((address) => ({ walletId, ...address }));
 }
 
 /**

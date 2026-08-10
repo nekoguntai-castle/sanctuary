@@ -479,15 +479,6 @@
       "targetRemovalSlice": "fail-closed-safety-follow-up"
     },
     {
-      "file": "server/src/services/walletImport/walletImportService.ts",
-      "functionName": "createWalletTransaction",
-      "issue": "non-terminal-catch",
-      "count": 1,
-      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
-      "owner": "fund-safety",
-      "targetRemovalSlice": "fail-closed-safety-follow-up"
-    },
-    {
       "file": "server/src/middleware/agentAuth.ts",
       "functionName": "authenticateAgent",
       "issue": "non-terminal-catch",

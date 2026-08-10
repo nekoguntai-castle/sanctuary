@@ -336,7 +336,7 @@ export const registerWalletImportParsedContracts = () => {
       expect(mockPrismaClient.walletDevice.createMany).not.toHaveBeenCalled();
     });
 
-    it('should continue parsed import when address generation fails', async () => {
+    it('rejects parsed import before persistence when address generation fails', async () => {
       mockPrismaClient.wallet.findMany.mockResolvedValue([]);
       setupDeviceMocks([
         {
@@ -364,12 +364,12 @@ export const registerWalletImportParsedContracts = () => {
         throw new Error('Address derivation failed for parsed import');
       });
 
-      const result = await walletImport.importFromParsedData(userId, {
+      await expect(walletImport.importFromParsedData(userId, {
         parsed: parsedSingleSig,
         name: 'Parsed Fail',
-      });
+      })).rejects.toThrow('Address derivation failed for parsed import');
 
-      expect(result.wallet.id).toBe('wallet-parsed-fail');
+      expect(mockPrismaClient.wallet.create).not.toHaveBeenCalled();
       expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
     });
   });

@@ -411,6 +411,8 @@ export function registerWalletAccessStatsImportTests(): void {
         .set(authHeader(token))
         .send({
           xpub: 'tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M',
+          fingerprint: 'aabbccdd',
+          accountPath: "84'/1'/0'",
         });
 
       // Should return either valid response or error
@@ -428,6 +430,8 @@ export function registerWalletAccessStatsImportTests(): void {
         .set(authHeader(token))
         .send({
           xpub: 'invalid-xpub-format',
+          fingerprint: 'aabbccdd',
+          accountPath: "84'/0'/0'",
         });
 
       // Should return 200 with valid=false or 400 error

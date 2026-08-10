@@ -82,6 +82,10 @@ export const walletSchemas = {
       quorum: POSITIVE_SAFE_INTEGER_INPUT,
       totalSigners: POSITIVE_SAFE_INTEGER_INPUT,
       descriptor: { type: 'string' },
+      changeDescriptor: {
+        type: 'string',
+        description: 'Change-chain output descriptor paired with the receive descriptor.',
+      },
       fingerprint: { type: 'string' },
       groupId: { type: 'string' },
       signers: {
@@ -105,8 +109,9 @@ export const walletSchemas = {
     type: 'object',
     properties: {
       name: { type: 'string' },
-      descriptor: { type: 'string' },
     },
+    required: ['name'],
+    additionalProperties: false,
   },
   WalletStats: {
     type: 'object',
@@ -230,12 +235,9 @@ export const walletSchemas = {
     type: 'object',
     properties: {
       descriptor: { type: 'string' },
-      json: {
-        oneOf: [
-          { type: 'string' },
-          { type: 'object', additionalProperties: true },
-        ],
-      },
+      changeDescriptor: { type: 'string' },
+      json: { type: 'string' },
+      network: { type: 'string', enum: [...WALLET_NETWORK_VALUES] },
     },
     minProperties: 1,
     additionalProperties: false,
@@ -331,10 +333,18 @@ export const walletSchemas = {
       xpub: { type: 'string' },
       scriptType: { type: 'string', enum: [...WALLET_IMPORT_SCRIPT_TYPE_VALUES] },
       network: { type: 'string', enum: [...WALLET_IMPORT_NETWORK_VALUES], default: 'mainnet' },
-      fingerprint: { type: 'string' },
-      accountPath: { type: 'string' },
+      fingerprint: {
+        type: 'string',
+        pattern: '^(?!00000000$)[a-fA-F0-9]{8}$',
+        description: 'Verified nonzero BIP32 master fingerprint.',
+      },
+      accountPath: {
+        type: 'string',
+        pattern: "^(44|49|84|86)'/[01]'/[0-9]+'$",
+        description: 'Exact hardened account path matching the script type and network.',
+      },
     },
-    required: ['xpub'],
+    required: ['xpub', 'fingerprint', 'accountPath'],
     additionalProperties: false,
   },
   ValidateXpubResponse: {

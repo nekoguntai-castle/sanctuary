@@ -7,15 +7,15 @@
 
 import {
   deviceRepository,
-  addressRepository,
   walletRepository,
 } from "../../repositories";
 import * as descriptorBuilder from "../bitcoin/descriptorBuilder";
+import { parseDescriptorForImport } from "../bitcoin/descriptorParser";
 import { createLogger } from "../../utils/logger";
 import { getErrorMessage } from "../../utils/errors";
 import { hookRegistry, Operations } from "../hooks";
 import { InvalidInputError, DeviceNotFoundError } from "../../errors";
-import { generateInitialAddresses } from "./addressGeneration";
+import { buildInitialAddressTemplates } from "./addressGeneration";
 import type {
   CreateWalletInput,
   WalletNetwork,
@@ -29,6 +29,10 @@ import {
 import { isBitcoinNetwork } from "../bitcoin/networks";
 import { WalletType } from "@sanctuary/shared/constants/walletIdentity";
 import { assertHardwareWalletCapability } from "../hardwareWalletCapabilities";
+import {
+  descriptorPolicyFingerprint,
+  prepareDescriptorPolicy,
+} from "./descriptorPolicy";
 
 const log = createLogger("WALLET:SVC_CREATE");
 
@@ -41,6 +45,10 @@ function validateWalletInput(input: CreateWalletInput): void {
     throw new InvalidInputError(
       "Invalid network. Must be mainnet, testnet3, testnet4, signet, or regtest.",
     );
+  }
+
+  if (input.changeDescriptor && !input.descriptor) {
+    throw new InvalidInputError('Change descriptor requires a receive descriptor');
   }
 
   if (input.type !== WalletType.MULTI_SIG) {
@@ -97,14 +105,30 @@ const loadWalletDevices = async (
   return devices;
 };
 
-function buildDescriptorFromDevices(
+function buildWalletDescriptorPolicy(
   bindings: readonly WalletSignerBinding[],
   input: CreateWalletInput,
 ) {
   if (bindings.length === 0) {
+    if (!input.descriptor) {
+      return {
+        policy: undefined,
+        fingerprint: input.fingerprint,
+      };
+    }
+    const policy = prepareDescriptorPolicy({
+      receiveDescriptor: input.descriptor,
+      changeDescriptor: input.changeDescriptor,
+      sourceKind: "imported",
+    });
+    assertDescriptorMatchesWalletInput(input, policy.descriptor);
+    const fingerprint = descriptorPolicyFingerprint(policy.descriptor);
+    if (input.fingerprint && input.fingerprint.toLowerCase() !== fingerprint.toLowerCase()) {
+      throw new InvalidInputError("Wallet fingerprint does not match descriptor origins");
+    }
     return {
-      descriptor: input.descriptor,
-      fingerprint: input.fingerprint,
+      policy,
+      fingerprint,
     };
   }
 
@@ -119,51 +143,57 @@ function buildDescriptorFromDevices(
   );
 
   return {
-    descriptor: descriptorResult.descriptor,
+    policy: prepareDescriptorPolicy({
+      receiveDescriptor: descriptorResult.descriptor,
+      changeDescriptor: descriptorResult.changeDescriptor,
+      sourceKind: "generated_pair",
+    }),
     fingerprint: descriptorResult.fingerprint,
   };
 }
 
-async function generateAddressesForWallet(
-  walletId: string,
-  descriptor: string | undefined,
-  network: CreateWalletInput["network"],
-): Promise<void> {
-  if (!descriptor) {
-    return;
-  }
+function descriptorNetworkMatchesWallet(
+  descriptorNetwork: ReturnType<typeof parseDescriptorForImport>["network"],
+  walletNetwork: WalletNetwork,
+): boolean {
+  // Extended keys distinguish mainnet from the coin-type-1 family, but cannot
+  // distinguish testnet3, testnet4, signet, and regtest from one another.
+  return descriptorNetwork === "mainnet"
+    ? walletNetwork === "mainnet"
+    : walletNetwork !== "mainnet";
+}
 
-  try {
-    const walletNetwork: WalletNetwork = network || "mainnet";
-    const addressesToCreate = generateInitialAddresses(
-      walletId,
-      descriptor,
-      walletNetwork,
-    );
-    await addressRepository.createMany(addressesToCreate);
-  } catch (err) {
-    log.error("Failed to generate initial addresses", {
-      error: getErrorMessage(err),
-    });
+function assertDescriptorMatchesWalletInput(
+  input: CreateWalletInput,
+  descriptor: string,
+): void {
+  const parsed = parseDescriptorForImport(descriptor);
+  const walletNetwork: WalletNetwork = input.network || "mainnet";
+  if (parsed.type !== input.type) {
+    throw new InvalidInputError("Descriptor wallet type does not match requested wallet type");
+  }
+  if (parsed.scriptType !== input.scriptType) {
+    throw new InvalidInputError("Descriptor script type does not match requested script type");
+  }
+  if (!descriptorNetworkMatchesWallet(parsed.network, walletNetwork)) {
+    throw new InvalidInputError("Descriptor network family does not match requested network");
+  }
+  if (
+    parsed.type === WalletType.MULTI_SIG
+    && (parsed.quorum !== input.quorum || parsed.totalSigners !== input.totalSigners)
+  ) {
+    throw new InvalidInputError("Descriptor quorum does not match requested multisig policy");
   }
 }
 
-async function buildWalletResult(
+function buildWalletResult(
   wallet: Awaited<ReturnType<typeof walletRepository.createWithDeviceLinks>>,
 ) {
-  const walletWithAddresses = await walletRepository.findByIdWithSelect(
-    wallet.id,
-    {
-      id: true,
-      addresses: true,
-    },
-  );
-
   return {
     ...wallet,
     balance: 0,
     deviceCount: wallet.devices.length,
-    addressCount: walletWithAddresses?.addresses.length || 0,
+    addressCount: wallet.addresses.length,
     isShared: false,
   };
 }
@@ -199,10 +229,18 @@ export async function createWallet(
   const bindings = input.signers
     ? resolveWalletSignerBindings(devices, { ...input, signers: input.signers })
     : [];
-  const { descriptor, fingerprint } = buildDescriptorFromDevices(
+  const { policy, fingerprint } = buildWalletDescriptorPolicy(
     bindings,
     input,
   );
+  const walletNetwork: WalletNetwork = input.network || "mainnet";
+  const initialAddresses = policy
+    ? buildInitialAddressTemplates(
+      policy.descriptor,
+      policy.changeDescriptor,
+      walletNetwork,
+    )
+    : [];
 
   // Create wallet in database with atomic device linking
   const wallet = await walletRepository.createWithDeviceLinks(
@@ -213,7 +251,7 @@ export async function createWallet(
       network: input.network || "mainnet",
       quorum: input.quorum,
       totalSigners: input.totalSigners,
-      descriptor,
+      ...policy,
       fingerprint,
       /* v8 ignore start -- group association is optional and covered by admin group flows */
       group: input.groupId ? { connect: { id: input.groupId } } : undefined,
@@ -226,10 +264,10 @@ export async function createWallet(
       },
     },
     [...bindings],
+    initialAddresses,
   );
 
-  await generateAddressesForWallet(wallet.id, descriptor, input.network);
-  const result = await buildWalletResult(wallet);
+  const result = buildWalletResult(wallet);
 
   executeWalletCreateHooks(userId, input, result);
 

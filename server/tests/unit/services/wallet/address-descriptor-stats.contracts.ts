@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   mockBuildDescriptorFromDevices,
   mockHookExecuteAfter,
@@ -25,8 +25,19 @@ import {
   updateWallet,
 } from '../../../../src/services/wallet';
 
+const VALID_RECEIVE_DESCRIPTOR = "wpkh([d34db33f/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/0/*)";
+const VALID_CHANGE_DESCRIPTOR = "wpkh([d34db33f/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/1/*)";
+
 export function registerWalletAddressDescriptorStatsTests(): void {
   describe('address generation and descriptor repair', () => {
+    beforeEach(() => {
+      mockBuildDescriptorFromDevices.mockReturnValue({
+        descriptor: VALID_RECEIVE_DESCRIPTOR,
+        changeDescriptor: VALID_CHANGE_DESCRIPTOR,
+        fingerprint: 'abc12345',
+      });
+    });
+
     const storedSigner = (
       index: number,
       fingerprint: string,
@@ -233,6 +244,44 @@ export function registerWalletAddressDescriptorStatsTests(): void {
       expect(walletRepository.assignDescriptorWithAddresses).toHaveBeenCalledWith(
         'wallet-1',
         expect.objectContaining({ addresses: expect.any(Array) }),
+      );
+    });
+
+    it('propagates atomic repair persistence failures without reporting success', async () => {
+      mockBuildDescriptorFromDevices.mockReturnValueOnce({
+        descriptor: VALID_RECEIVE_DESCRIPTOR,
+        changeDescriptor: VALID_CHANGE_DESCRIPTOR,
+        fingerprint: 'abc12345',
+      });
+      mockPrismaClient.wallet.findFirst.mockResolvedValueOnce({
+        id: 'wallet-repair-write-fail',
+        type: 'single_sig',
+        scriptType: 'native_segwit',
+        network: 'mainnet',
+        quorum: null,
+        totalSigners: null,
+        descriptor: null,
+        devices: [{
+          ...storedSigner(0, 'aabbccdd', 'xpub-a', "m/84'/0'/0'"),
+          deviceAccountId: null,
+        }],
+      });
+      const { walletRepository } = await import('../../../../src/repositories');
+      vi.mocked(walletRepository.assignDescriptorWithAddresses).mockRejectedValueOnce(
+        new Error('repair address insertion failed'),
+      );
+
+      await expect(
+        repairWalletDescriptor('wallet-repair-write-fail', 'owner-1'),
+      ).rejects.toThrow('Failed to generate descriptor: repair address insertion failed');
+
+      expect(walletRepository.assignDescriptorWithAddresses).toHaveBeenCalledTimes(1);
+      expect(mockLogError).toHaveBeenCalledWith(
+        'Failed to repair wallet descriptor',
+        expect.objectContaining({
+          walletId: 'wallet-repair-write-fail',
+          error: 'repair address insertion failed',
+        }),
       );
     });
 

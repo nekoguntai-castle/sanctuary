@@ -10,6 +10,10 @@ import {
   uniqueUsername,
 } from './walletIntegrationTestHarness';
 
+const TESTNET_XPUB = 'tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M';
+const RECEIVE_DESCRIPTOR = `wpkh([aabbccdd/84'/1'/0']${TESTNET_XPUB}/0/*)`;
+const CHANGE_DESCRIPTOR = `wpkh([aabbccdd/84'/1'/0']${TESTNET_XPUB}/1/*)`;
+
 export function registerWalletGroupsTelegramTests(): void {
   describe('Create Wallet with Group', () => {
     it('should create wallet with groupId and assign default viewer role', async () => {
@@ -25,7 +29,8 @@ export function registerWalletGroupsTelegramTests(): void {
         type: 'single_sig',
         scriptType: 'native_segwit',
         network: 'testnet3',
-        descriptor: "wpkh([aabbccdd/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*)",
+        descriptor: RECEIVE_DESCRIPTOR,
+        changeDescriptor: CHANGE_DESCRIPTOR,
         groupId: group.id,
       };
 
@@ -44,6 +49,7 @@ export function registerWalletGroupsTelegramTests(): void {
       });
       expect(wallet?.groupId).toBe(group.id);
       expect(wallet?.groupRole).toBe('viewer');
+      expect(wallet?.changeDescriptor).toBe(CHANGE_DESCRIPTOR);
 
       // Creator should be owner
       const walletUser = await prisma.walletUser.findFirst({
@@ -91,7 +97,8 @@ export function registerWalletGroupsTelegramTests(): void {
           type: 'single_sig',
           scriptType: 'native_segwit',
           network: 'testnet3',
-          descriptor: "wpkh([aabbccdd/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*)",
+          descriptor: RECEIVE_DESCRIPTOR,
+          changeDescriptor: CHANGE_DESCRIPTOR,
           groupId: group.id,
         })
         .expect(201);
@@ -114,7 +121,8 @@ export function registerWalletGroupsTelegramTests(): void {
           type: 'single_sig',
           scriptType: 'native_segwit',
           network: 'testnet3',
-          descriptor: "wpkh([aabbccdd/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*)",
+          descriptor: RECEIVE_DESCRIPTOR,
+          changeDescriptor: CHANGE_DESCRIPTOR,
         })
         .expect(201);
 

@@ -79,10 +79,19 @@ export const registerWalletImportExportContracts = () => {
 
       const response = await request(walletRouter)
         .post('/api/v1/wallets/import/validate')
-        .send({ descriptor: 'wpkh([aabbccdd/84h/0h/0h]xpub.../0/*)' });
+        .send({
+          descriptor: 'wpkh([aabbccdd/84h/0h/0h]xpub.../0/*)',
+          changeDescriptor: 'wpkh([aabbccdd/84h/0h/0h]xpub.../1/*)',
+        });
 
       expect(response.status).toBe(200);
       expect(response.body.valid).toBe(true);
+      expect(mockValidateImport).toHaveBeenCalledWith(
+        'test-user-id',
+        expect.objectContaining({
+          changeDescriptor: 'wpkh([aabbccdd/84h/0h/0h]xpub.../1/*)',
+        }),
+      );
     });
 
     it('should validate import JSON', async () => {
@@ -108,6 +117,25 @@ export const registerWalletImportExportContracts = () => {
 
       expect(response.status).toBe(400);
       expect(response.body.message).toContain('descriptor or json');
+    });
+
+    it('rejects a change descriptor without its receive descriptor', async () => {
+      const response = await request(walletRouter)
+        .post('/api/v1/wallets/import/validate')
+        .send({ changeDescriptor: 'wpkh(xpub/1/*)' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toContain('descriptor or json');
+      expect(mockValidateImport).not.toHaveBeenCalled();
+    });
+
+    it('rejects unknown import validation fields', async () => {
+      const response = await request(walletRouter)
+        .post('/api/v1/wallets/import/validate')
+        .send({ descriptor: 'wpkh(xpub/<0;1>/*)', unsafe: true });
+
+      expect(response.status).toBe(400);
+      expect(mockValidateImport).not.toHaveBeenCalled();
     });
   });
 
@@ -226,6 +254,50 @@ export const registerWalletImportExportContracts = () => {
         }),
         expect.any(Object),
       );
+    });
+
+    it.each([
+      [
+        'an exact imported pair',
+        {
+          descriptorSourceKind: 'imported_pair',
+          sourceDescriptor: 'wpkh(imported-receive)#recvsum1',
+          sourceChangeDescriptor: 'wpkh(imported-change)#chngsum1',
+        },
+        'wpkh(imported-receive)#recvsum1',
+        'wpkh(imported-change)#chngsum1',
+      ],
+      [
+        'an exact imported multipath source',
+        {
+          descriptorSourceKind: 'imported_multipath',
+          sourceDescriptor: 'wpkh(imported/<0;1>/*)#multsum1',
+          sourceChangeDescriptor: null,
+          changeDescriptor: 'wpkh(canonical-change)',
+        },
+        'wpkh(imported/<0;1>/*)#multsum1',
+        undefined,
+      ],
+    ])('exports %s as recovery evidence', async (
+      _case,
+      overrides,
+      descriptor,
+      changeDescriptor,
+    ) => {
+      mockWalletRepository.findByIdWithDevices.mockResolvedValue(exportWallet(overrides));
+
+      const response = await request(walletRouter).get('/api/v1/wallets/wallet-123/export');
+
+      expect(response.status).toBe(200);
+      const exportCall = mockExportFormatRegistry.export.mock.calls[0];
+      expect(exportCall[0]).toBe('sparrow');
+      expect(exportCall[1].descriptor).toBe(descriptor);
+      if (changeDescriptor === undefined) {
+        expect(exportCall[1]).not.toHaveProperty('changeDescriptor');
+      } else {
+        expect(exportCall[1].changeDescriptor).toBe(changeDescriptor);
+      }
+      expect(exportCall[2]).toEqual(expect.objectContaining({ includeChangeDescriptor: true }));
     });
 
     it('should preserve multisig snapshot order and exact nonzero-account signer data', async () => {

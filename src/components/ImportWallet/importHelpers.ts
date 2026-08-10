@@ -43,17 +43,18 @@ export const buildDescriptorFromXpub = (
   xpub: string
 ): string => {
   const pathParts = path.replace("m/", "").replace(/'/g, "h");
+  const key = `[${fingerprint}/${pathParts}]${xpub}/<0;1>/*`;
   switch (scriptType) {
     case WalletScriptType.NATIVE_SEGWIT:
-      return `wpkh([${fingerprint}/${pathParts}]${xpub}/0/*)`;
+      return `wpkh(${key})`;
     case WalletScriptType.NESTED_SEGWIT:
-      return `sh(wpkh([${fingerprint}/${pathParts}]${xpub}/0/*))`;
+      return `sh(wpkh(${key}))`;
     case WalletScriptType.TAPROOT:
-      return `tr([${fingerprint}/${pathParts}]${xpub}/0/*)`;
+      return `tr(${key})`;
     case WalletScriptType.LEGACY:
-      return `pkh([${fingerprint}/${pathParts}]${xpub}/0/*)`;
+      return `pkh(${key})`;
     default:
-      return `wpkh([${fingerprint}/${pathParts}]${xpub}/0/*)`;
+      throw new Error('Unsupported wallet script type');
   }
 };
 

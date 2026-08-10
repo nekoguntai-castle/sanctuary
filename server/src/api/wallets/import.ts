@@ -18,10 +18,12 @@ const router = Router();
 
 const WalletImportValidateBodySchema = z
   .object({
-    descriptor: z.unknown().optional(),
-    json: z.unknown().optional(),
+    descriptor: z.string().min(1).optional(),
+    changeDescriptor: z.string().min(1).optional(),
+    json: z.string().min(1).optional(),
     network: z.enum(BITCOIN_NETWORKS).optional(),
   })
+  .strict()
   .superRefine((data, ctx) => {
     if (!data.descriptor && !data.json) {
       ctx.addIssue({
@@ -30,15 +32,23 @@ const WalletImportValidateBodySchema = z
         path: ['descriptor'],
       });
     }
+    if (data.changeDescriptor && !data.descriptor) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'changeDescriptor requires descriptor',
+        path: ['changeDescriptor'],
+      });
+    }
   });
 
 const WalletImportBodySchema = z
   .object({
-    data: z.unknown().optional(),
+    data: z.string().min(1).optional(),
     name: z.string().trim().min(1, 'name is required').optional(),
     network: z.enum(BITCOIN_NETWORKS).optional(),
-    deviceLabels: z.unknown().optional(),
+    deviceLabels: z.record(z.string(), z.string()).optional(),
   })
+  .strict()
   .superRefine((data, ctx) => {
     if (!data.data) {
       ctx.addIssue({
@@ -88,10 +98,11 @@ router.post('/import/validate', validate(
   { message: walletImportValidationMessage, code: ErrorCodes.INVALID_INPUT }
 ), asyncHandler(async (req, res) => {
   const userId = requireAuthenticatedUser(req).userId;
-  const { descriptor, json, network } = req.body;
+  const { descriptor, changeDescriptor, json, network } = req.body;
 
   const result = await walletImport.validateImport(userId, {
     descriptor,
+    changeDescriptor,
     json,
     network,
   });

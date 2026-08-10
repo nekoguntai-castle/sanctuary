@@ -148,7 +148,7 @@ describe('ImportWallet logic branches', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockValidateImportData.mockResolvedValue(true);
-    mockBuildDescriptorFromXpub.mockReturnValue('wpkh([abcd]xpub/0/*)');
+    mockBuildDescriptorFromXpub.mockReturnValue('wpkh([abcd]xpub/<0;1>/*)');
   });
 
   it('moves from step 1 to step 2 when format is selected', async () => {
@@ -189,7 +189,7 @@ describe('ImportWallet logic branches', () => {
         'xpub123',
       );
     });
-    expect(state.setImportData).toHaveBeenCalledWith('wpkh([abcd]xpub/0/*)');
+    expect(state.setImportData).toHaveBeenCalledWith('wpkh([abcd]xpub/<0;1>/*)');
     expect(mockValidateImportData).toHaveBeenCalledWith(
       'hardware',
       '',
@@ -198,7 +198,7 @@ describe('ImportWallet logic branches', () => {
       state.setValidationError,
       state.setWalletName,
       'mainnet',
-      'wpkh([abcd]xpub/0/*)',
+      'wpkh([abcd]xpub/<0;1>/*)',
     );
     expect(state.setIsValidating).toHaveBeenNthCalledWith(1, true);
     expect(state.setStep).toHaveBeenCalledWith(3);

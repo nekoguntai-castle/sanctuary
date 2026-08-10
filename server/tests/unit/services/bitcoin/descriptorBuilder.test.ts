@@ -516,13 +516,11 @@ describe('Descriptor Builder Service', () => {
     });
 
     it('should convert multisig receive descriptor to change descriptor', () => {
-      // The regex replaces all /0/*) patterns (with closing parenthesis) globally
       const receiveDescriptor = 'wsh(sortedmulti(2,[aabbccdd/48h/0h/0h/2h]xpub1/0/*),[11223344/48h/0h/0h/2h]xpub2/0/*))';
 
       const changeDescriptor = buildChangeDescriptor(receiveDescriptor);
 
       expect(changeDescriptor).toContain('/1/*)');
-      // All /0/*) patterns get replaced with /1/*)
       expect(changeDescriptor).toBe('wsh(sortedmulti(2,[aabbccdd/48h/0h/0h/2h]xpub1/1/*),[11223344/48h/0h/0h/2h]xpub2/1/*))');
     });
 
@@ -732,10 +730,8 @@ describe('Descriptor Builder Service', () => {
         const changeCount = (result.changeDescriptor.match(/\/1\/\*/g) || []).length;
 
         expect(receiveCount).toBe(2);
-        // The regex in buildChangeDescriptor only replaces /0/*) patterns with closing paren
-        // So only the last occurrence gets replaced
-        expect(changeCount).toBeGreaterThanOrEqual(1);
-        expect(result.changeDescriptor).toContain('/1/*)');
+        expect(changeCount).toBe(2);
+        expect(result.changeDescriptor).not.toContain('/0/*');
       });
     });
   });

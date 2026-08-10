@@ -16,7 +16,7 @@ import { BIP380_VALID_CHECKSUM, BIP380_INVALID_VECTORS } from '@fixtures/bip380-
 
 describe('BIP-380 Descriptor Checksum Verification', () => {
   describe('Valid checksum (official vector)', () => {
-    it('should validate raw(deadbeef)#zyusn96d and strip checksum', () => {
+    it('should validate raw(deadbeef)#89f8spxm and strip checksum', () => {
       const input = `${BIP380_VALID_CHECKSUM.descriptor}#${BIP380_VALID_CHECKSUM.expectedChecksum}`;
       const result = validateAndRemoveChecksum(input);
 
@@ -43,12 +43,10 @@ describe('BIP-380 Descriptor Checksum Verification', () => {
     )!;
 
     it(`should not match checksum pattern: ${missingAfterSeparator.reason}`, () => {
-      // '#' alone does not match the /#([a-zA-Z0-9]{8})$/ regex
       const result = validateAndRemoveChecksum(missingAfterSeparator.input);
 
-      // No 8-char checksum found, treated as no checksum
-      expect(result.valid).toBe(true);
-      expect(result.descriptor).toBe('raw(deadbeef)#');
+      expect(result.valid).toBe(false);
+      expect(result.descriptor).toBe('raw(deadbeef)');
     });
 
     const tooLong = BIP380_INVALID_VECTORS.find(
@@ -56,14 +54,10 @@ describe('BIP-380 Descriptor Checksum Verification', () => {
     )!;
 
     it(`should not match checksum pattern: ${tooLong.reason}`, () => {
-      // 'zyusn96dx' is 9 chars, regex requires exactly 8
       const result = validateAndRemoveChecksum(tooLong.input);
 
-      // The regex /#([a-zA-Z0-9]{8})$/ will match the last 8 chars 'yusn96dx'
-      // but since this is not the correct checksum, validation fails.
-      // The key point: the original valid checksum is NOT what gets extracted.
-      expect(result).toHaveProperty('valid');
-      expect(result).toHaveProperty('descriptor');
+      expect(result.valid).toBe(false);
+      expect(result.descriptor).toBe('raw(deadbeef)');
     });
 
     const tooShort = BIP380_INVALID_VECTORS.find(
@@ -74,9 +68,15 @@ describe('BIP-380 Descriptor Checksum Verification', () => {
       // '89f8spx' is 7 chars, regex requires exactly 8
       const result = validateAndRemoveChecksum(tooShort.input);
 
-      // No valid 8-char checksum found, treated as no checksum
-      expect(result.valid).toBe(true);
-      expect(result.descriptor).toBe('raw(deadbeef)#89f8spx');
+      expect(result.valid).toBe(false);
+      expect(result.descriptor).toBe('raw(deadbeef)');
+    });
+
+    it('rejects eight checksum characters outside the BIP-380 charset', () => {
+      const result = validateAndRemoveChecksum('raw(deadbeef)#bbbbbbbb');
+
+      expect(result.valid).toBe(false);
+      expect(result.descriptor).toBe('raw(deadbeef)');
     });
 
     const corruptedPayload = BIP380_INVALID_VECTORS.find(
@@ -84,7 +84,7 @@ describe('BIP-380 Descriptor Checksum Verification', () => {
     )!;
 
     it(`should detect checksum mismatch: ${corruptedPayload.reason}`, () => {
-      // Checksum 'zyusn96d' is valid for 'raw(deadbeef)' but NOT for 'raw(deedbeef)'
+      // Checksum '89f8spxm' is valid for 'raw(deadbeef)' but NOT for 'raw(deedbeef)'
       const result = validateAndRemoveChecksum(corruptedPayload.input);
 
       expect(result.valid).toBe(false);
@@ -96,8 +96,6 @@ describe('BIP-380 Descriptor Checksum Verification', () => {
     )!;
 
     it(`should handle gracefully: ${doubleSeparator.reason}`, () => {
-      // 'raw(deadbeef)##zyusn96d' — regex matches the last #zyusn96d
-      // but the descriptor becomes 'raw(deadbeef)#' which has a different checksum
       const result = validateAndRemoveChecksum(doubleSeparator.input);
 
       expect(result.valid).toBe(false);

@@ -94,7 +94,9 @@ const { address, derivationPath } = deriveAddressFromDescriptor(
 
 **POST `/api/v1/wallets/validate-xpub`**
 
-Validates xpub and generates descriptor:
+Validates an xpub plus complete, verified key-origin evidence and generates an
+importable receive/change descriptor. The master fingerprint and exact account
+path are required; the endpoint never fabricates either value.
 
 Request:
 ```json
@@ -111,7 +113,7 @@ Response:
 ```json
 {
   "valid": true,
-  "descriptor": "wpkh([f57ec65d/84'/0'/0']zpub.../0/*)",
+  "descriptor": "wpkh([f57ec65d/84'/0'/0']zpub.../<0;1>/*)",
   "scriptType": "native_segwit",
   "firstAddress": "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
   "xpub": "zpub...",
@@ -193,7 +195,8 @@ const validation = await apiClient.post('/wallets/validate-xpub', {
   xpub: 'zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs',
   scriptType: 'native_segwit',
   network: 'mainnet',
-  fingerprint: 'f57ec65d'
+  fingerprint: 'f57ec65d',
+  accountPath: "84'/0'/0'"
 });
 
 // 2. Create wallet with descriptor
@@ -328,8 +331,11 @@ for (let i = 0; i < 3; i++) {
 
 **Solution:**
 1. Export xpub from hardware wallet
-2. Validate xpub: `POST /api/v1/wallets/validate-xpub`
-3. Update wallet with descriptor: `PATCH /api/v1/wallets/:id`
+2. Obtain its real master fingerprint and exact account path from the device or
+   a trusted wallet export.
+3. Validate the complete evidence with `POST /api/v1/wallets/validate-xpub`.
+4. Import it as a new wallet and verify the first receive address on the device;
+   descriptor policy cannot be replaced through `PATCH /api/v1/wallets/:id`.
 
 ### Invalid Xpub Format
 

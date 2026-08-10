@@ -26,6 +26,10 @@ vi.mock('../../../src/utils/logger', () => ({
 
 import { errorHandler } from '../../../src/errors/errorHandler';
 import xpubValidationRouter from '../../../src/api/wallets/xpubValidation';
+import { prepareDescriptorPolicy } from '../../../src/services/wallet/descriptorPolicy';
+
+const VALID_XPUB = 'xpub6BosfCnifzxcFwrSzQiqu2DBVTshkCXacvNsWGYJVVhhawA7d4R5WSWGFNbi8Aw6ZRc1brxMyWMzG3DSSSSoekkudhUd9yLb6qx39T9nMdj';
+const NATIVE_ORIGIN = { fingerprint: 'aabbccdd', accountPath: "84'/0'/0'" };
 
 describe('Wallets XPUB Validation Routes', () => {
   let app: Express;
@@ -58,7 +62,7 @@ describe('Wallets XPUB Validation Routes', () => {
 
     const response = await request(app)
       .post('/api/v1/wallets/validate-xpub')
-      .send({ xpub: 'xpubbad', network: 'mainnet' });
+      .send({ xpub: 'xpubbad', network: 'mainnet', ...NATIVE_ORIGIN });
 
     expect(response.status).toBe(400);
     expect(response.body.message).toBe('Invalid checksum');
@@ -69,7 +73,7 @@ describe('Wallets XPUB Validation Routes', () => {
 
     const response = await request(app)
       .post('/api/v1/wallets/validate-xpub')
-      .send({ xpub: 'xpubbad', network: 'mainnet' });
+      .send({ xpub: 'xpubbad', network: 'mainnet', ...NATIVE_ORIGIN });
 
     expect(response.status).toBe(400);
     expect(response.body.message).toBe('Invalid xpub');
@@ -81,15 +85,20 @@ describe('Wallets XPUB Validation Routes', () => {
 
     const response = await request(app)
       .post('/api/v1/wallets/validate-xpub')
-      .send({ xpub: 'xpub123', network: 'mainnet' });
+      .send({
+        xpub: 'xpub123',
+        network: 'mainnet',
+        fingerprint: 'aabbccdd',
+        accountPath: "49'/0'/0'",
+      });
 
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       valid: true,
       scriptType: 'nested_segwit',
-      descriptor: "sh(wpkh([00000000/49'/0'/0']xpub123/0/*))",
+      descriptor: "sh(wpkh([aabbccdd/49'/0'/0']xpub123/<0;1>/*))",
       firstAddress: '3exampleaddress',
-      fingerprint: '00000000',
+      fingerprint: 'aabbccdd',
       accountPath: "49'/0'/0'",
     });
     expect(mockDeriveAddress).toHaveBeenCalledWith('xpub123', 0, {
@@ -104,12 +113,17 @@ describe('Wallets XPUB Validation Routes', () => {
 
     const response = await request(app)
       .post('/api/v1/wallets/validate-xpub')
-      .send({ xpub: 'tpub123', network: 'testnet3' });
+      .send({
+        xpub: 'tpub123',
+        network: 'testnet3',
+        fingerprint: 'aabbccdd',
+        accountPath: "84'/1'/0'",
+      });
 
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       scriptType: 'native_segwit',
-      descriptor: "wpkh([00000000/84'/1'/0']tpub123/0/*)",
+      descriptor: "wpkh([aabbccdd/84'/1'/0']tpub123/<0;1>/*)",
       accountPath: "84'/1'/0'",
     });
   });
@@ -126,33 +140,71 @@ describe('Wallets XPUB Validation Routes', () => {
       });
 
     expect(response.status).toBe(200);
-    expect(response.body.descriptor).toBe("wpkh([F00DBABE/84'/0'/7']xpub-native/0/*)");
-    expect(response.body.fingerprint).toBe('F00DBABE');
+    expect(response.body.descriptor).toBe("wpkh([f00dbabe/84'/0'/7']xpub-native/<0;1>/*)");
+    expect(response.body.fingerprint).toBe('f00dbabe');
     expect(response.body.accountPath).toBe("84'/0'/7'");
+  });
+
+  it('composes exact multipath provenance accepted as a complete import policy', async () => {
+    const response = await request(app)
+      .post('/api/v1/wallets/validate-xpub')
+      .send({
+        xpub: VALID_XPUB,
+        scriptType: 'native_segwit',
+        network: 'mainnet',
+        fingerprint: 'aabbccdd',
+        accountPath: "84'/0'/0'",
+      });
+
+    expect(response.status).toBe(200);
+    const sourceDescriptor = `wpkh([aabbccdd/84'/0'/0']${VALID_XPUB}/<0;1>/*)`;
+    expect(response.body.descriptor).toBe(sourceDescriptor);
+    expect(prepareDescriptorPolicy({
+      receiveDescriptor: response.body.descriptor,
+      sourceKind: 'imported',
+    })).toMatchObject({
+      descriptor: `wpkh([aabbccdd/84'/0'/0']${VALID_XPUB}/0/*)`,
+      changeDescriptor: `wpkh([aabbccdd/84'/0'/0']${VALID_XPUB}/1/*)`,
+      descriptorSourceKind: 'imported_multipath',
+      sourceDescriptor,
+      sourceChangeDescriptor: null,
+    });
   });
 
   it('supports taproot descriptors', async () => {
     const response = await request(app)
       .post('/api/v1/wallets/validate-xpub')
-      .send({ xpub: 'xpub-tap', scriptType: 'taproot', network: 'mainnet' });
+      .send({
+        xpub: 'xpub-tap',
+        scriptType: 'taproot',
+        network: 'mainnet',
+        fingerprint: 'aabbccdd',
+        accountPath: "86'/0'/0'",
+      });
 
     expect(response.status).toBe(200);
-    expect(response.body.descriptor).toBe("tr([00000000/86'/0'/0']xpub-tap/0/*)");
+    expect(response.body.descriptor).toBe("tr([aabbccdd/86'/0'/0']xpub-tap/<0;1>/*)");
   });
 
   it('supports legacy descriptors', async () => {
     const response = await request(app)
       .post('/api/v1/wallets/validate-xpub')
-      .send({ xpub: 'xpub-legacy', scriptType: 'legacy', network: 'mainnet' });
+      .send({
+        xpub: 'xpub-legacy',
+        scriptType: 'legacy',
+        network: 'mainnet',
+        fingerprint: 'aabbccdd',
+        accountPath: "44'/0'/0'",
+      });
 
     expect(response.status).toBe(200);
-    expect(response.body.descriptor).toBe("pkh([00000000/44'/0'/0']xpub-legacy/0/*)");
+    expect(response.body.descriptor).toBe("pkh([aabbccdd/44'/0'/0']xpub-legacy/<0;1>/*)");
   });
 
   it('rejects unsupported script types after xpub validation succeeds', async () => {
     const response = await request(app)
       .post('/api/v1/wallets/validate-xpub')
-      .send({ xpub: 'xpub-123', scriptType: 'unsupported', network: 'mainnet' });
+      .send({ xpub: 'xpub-123', scriptType: 'unsupported', network: 'mainnet', ...NATIVE_ORIGIN });
 
     expect(response.status).toBe(400);
     expect(response.body.message).toBe('Invalid script type');
@@ -165,9 +217,39 @@ describe('Wallets XPUB Validation Routes', () => {
 
     const response = await request(app)
       .post('/api/v1/wallets/validate-xpub')
-      .send({ xpub: 'xpub-err', scriptType: 'native_segwit', network: 'mainnet' });
+      .send({ xpub: 'xpub-err', scriptType: 'native_segwit', network: 'mainnet', ...NATIVE_ORIGIN });
 
     expect(response.status).toBe(500);
     expect(response.body.code).toBe('INTERNAL_ERROR');
+  });
+
+  it.each([
+    [{ xpub: 'xpub123', accountPath: "84'/0'/0'" }, 'received undefined'],
+    [{ xpub: 'xpub123', fingerprint: '00000000', accountPath: "84'/0'/0'" }, 'cannot be 00000000'],
+    [{ xpub: 'xpub123', fingerprint: 'not-real', accountPath: "84'/0'/0'" }, 'exactly 8 hexadecimal'],
+    [{ xpub: 'xpub123', fingerprint: 'aabbccdd' }, 'received undefined'],
+  ])('rejects incomplete or fabricated origin metadata', async (body, message) => {
+    const response = await request(app)
+      .post('/api/v1/wallets/validate-xpub')
+      .send(body);
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toContain(message);
+    expect(mockDeriveAddress).not.toHaveBeenCalled();
+  });
+
+  it('rejects an account path that contradicts script type or network', async () => {
+    const response = await request(app)
+      .post('/api/v1/wallets/validate-xpub')
+      .send({
+        xpub: 'xpub123',
+        scriptType: 'taproot',
+        network: 'mainnet',
+        fingerprint: 'aabbccdd',
+        accountPath: "84'/0'/0'",
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toContain('does not match');
   });
 });

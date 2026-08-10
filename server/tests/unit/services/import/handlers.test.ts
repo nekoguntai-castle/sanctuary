@@ -7,7 +7,7 @@ const {
   mockParseColdcardExport,
   mockParseDescriptorForImport,
   mockIsDescriptorTextFormat,
-  mockExtractDescriptorFromText,
+  mockResolveDescriptorTextPair,
   mockParseJsonImport,
   mockColdcardSafeParse,
   mockJsonConfigSafeParse,
@@ -20,7 +20,7 @@ const {
   mockParseColdcardExport: vi.fn(),
   mockParseDescriptorForImport: vi.fn(),
   mockIsDescriptorTextFormat: vi.fn(),
-  mockExtractDescriptorFromText: vi.fn(),
+  mockResolveDescriptorTextPair: vi.fn(),
   mockParseJsonImport: vi.fn(),
   mockColdcardSafeParse: vi.fn(),
   mockJsonConfigSafeParse: vi.fn(),
@@ -35,7 +35,7 @@ vi.mock('../../../../src/services/bitcoin/descriptorParser', () => ({
   parseColdcardExport: mockParseColdcardExport,
   parseDescriptorForImport: mockParseDescriptorForImport,
   isDescriptorTextFormat: mockIsDescriptorTextFormat,
-  extractDescriptorFromText: mockExtractDescriptorFromText,
+  resolveDescriptorTextPair: mockResolveDescriptorTextPair,
   parseJsonImport: mockParseJsonImport,
 }));
 
@@ -179,20 +179,16 @@ describe('import format handlers', () => {
       expect(descriptorHandler.canHandle('{"descriptor":"x"}')).toEqual({ detected: false, confidence: 0 });
     });
 
-    it('parses extracted descriptor text when available and falls back otherwise', () => {
+    it('parses the receive token from labelled descriptor recovery text', () => {
       mockIsDescriptorTextFormat.mockReturnValueOnce(true);
-      mockExtractDescriptorFromText.mockReturnValueOnce('wsh(sortedmulti(...))');
+      mockResolveDescriptorTextPair.mockReturnValueOnce({
+        receiveDescriptor: 'wsh(sortedmulti(...))',
+        changeDescriptor: 'wsh(sortedmulti(...change...))',
+      });
       mockParseDescriptorForImport.mockReturnValueOnce({ descriptor: 'wsh(sortedmulti(...))' });
 
       const extracted = descriptorHandler.parse('wrapper');
       expect(extracted).toEqual({ parsed: { descriptor: 'wsh(sortedmulti(...))' } });
-
-      mockIsDescriptorTextFormat.mockReturnValueOnce(true);
-      mockExtractDescriptorFromText.mockReturnValueOnce(undefined);
-      mockParseDescriptorForImport.mockReturnValueOnce({ descriptor: 'trimmed' });
-
-      const fallback = descriptorHandler.parse(' trimmed ');
-      expect(fallback).toEqual({ parsed: { descriptor: 'trimmed' } });
     });
 
     it('parses plain descriptor text directly when wrapper format is not detected', () => {

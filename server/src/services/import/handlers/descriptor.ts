@@ -6,7 +6,11 @@
  */
 
 import type { ImportFormatHandler, FormatDetectionResult, ImportParseResult } from '../types';
-import { parseDescriptorForImport, isDescriptorTextFormat, extractDescriptorFromText } from '../../bitcoin/descriptorParser';
+import {
+  parseDescriptorForImport,
+  isDescriptorTextFormat,
+  resolveDescriptorTextPair,
+} from '../../bitcoin/descriptorParser';
 
 /**
  * Regex patterns for descriptor detection
@@ -53,12 +57,10 @@ export const descriptorHandler: ImportFormatHandler = {
 
     // Try to extract descriptor from text format
     if (isDescriptorTextFormat(trimmed)) {
-      const extracted = extractDescriptorFromText(trimmed);
-      if (extracted) {
-        return {
-          parsed: parseDescriptorForImport(extracted),
-        };
-      }
+      const pair = resolveDescriptorTextPair(trimmed);
+      return {
+        parsed: parseDescriptorForImport(pair.receiveDescriptor),
+      };
     }
 
     // Parse as plain descriptor

@@ -457,7 +457,8 @@ describe('Core API Modules', () => {
         xpub: 'tpub-inline',
         scriptType: 'native_segwit',
         network: 'testnet3',
-        fingerprint: '00000000',
+        fingerprint: 'aabbccdd',
+        accountPath: "84'/1'/0'",
       });
       await walletsApi.importWallet({ data: 'wpkh(...)', name: 'Imported' });
       await walletsApi.shareWalletWithGroup('w1', { groupId: 'g1' });
@@ -494,7 +495,8 @@ describe('Core API Modules', () => {
           xpub: 'tpub-inline',
           scriptType: 'native_segwit',
           network: 'testnet3',
-          fingerprint: '00000000',
+          fingerprint: 'aabbccdd',
+          accountPath: "84'/1'/0'",
         },
         expect.objectContaining({ schema: expect.anything() }),
       );

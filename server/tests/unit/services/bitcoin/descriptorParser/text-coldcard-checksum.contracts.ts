@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  computeDescriptorChecksum,
   extractDescriptorFromText,
+  extractDescriptorPairFromText,
   isDescriptorTextFormat,
   parseBlueWalletTextImport,
   parseColdcardExport,
   parseDescriptorForImport,
+  resolveDescriptorTextPair,
   testXpubs,
   type ScriptType,
 } from './descriptorParserTestHarness';
@@ -196,6 +199,94 @@ aabbccdd: xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4ko
   });
 
   describe('Descriptor text helpers', () => {
+    const descriptorXpub = 'xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL';
+    const receiveDescriptor = `wpkh([aabbccdd/84h/0h/0h]${descriptorXpub}/0/*)`;
+    const changeDescriptor = `wpkh([aabbccdd/84h/0h/0h]${descriptorXpub}/1/*)`;
+
+    it('extracts an exact checksummed receive/change pair from a Sanctuary recovery export', () => {
+      const receiveToken = `${receiveDescriptor}#${computeDescriptorChecksum(receiveDescriptor)}`;
+      const changeToken = `${changeDescriptor}#${computeDescriptorChecksum(changeDescriptor)}`;
+      const input = [
+        '# Wallet: Recovery',
+        '# Receive Descriptor (external chain)',
+        receiveToken,
+        '',
+        '# Change Descriptor (internal chain)',
+        changeToken,
+        '',
+        '# Exported: 2026-08-09T00:00:00.000Z',
+      ].join('\n');
+
+      expect(extractDescriptorPairFromText(input)).toEqual({
+        receiveDescriptor: receiveToken,
+        changeDescriptor: changeToken,
+      });
+    });
+
+    it('preserves a single multipath recovery descriptor without inventing a pair', () => {
+      const multipath = receiveDescriptor.replace('/0/*', '/<0;1>/*');
+      const token = `${multipath}#${computeDescriptorChecksum(multipath)}`;
+
+      expect(extractDescriptorPairFromText([
+        '# Receive Descriptor (external chain)',
+        token,
+      ].join('\n'))).toEqual({ receiveDescriptor: token });
+    });
+
+    it('rejects a separately supplied change token that differs from the embedded token', () => {
+      const input = [
+        '# Receive Descriptor (external chain)',
+        receiveDescriptor,
+        '# Change Descriptor (internal chain)',
+        changeDescriptor,
+      ].join('\n');
+
+      expect(() => resolveDescriptorTextPair(
+        input,
+        changeDescriptor.replace('aabbccdd', '11223344'),
+      )).toThrow('do not match exactly');
+    });
+
+    it.each([
+      [
+        'an unlabeled second descriptor',
+        `${receiveDescriptor}\n${changeDescriptor}`,
+        'multiple descriptors without receive/change labels',
+      ],
+      [
+        'a missing labeled change descriptor',
+        `# Receive Descriptor (external chain)\n${receiveDescriptor}\n# Change Descriptor (internal chain)`,
+        'Change descriptor section is missing a descriptor',
+      ],
+      [
+        'a duplicate receive descriptor',
+        `# Receive Descriptor (external chain)\n${receiveDescriptor}\n${receiveDescriptor}`,
+        'Receive descriptor section contains multiple descriptors',
+      ],
+      [
+        'a descriptor outside a labeled section',
+        `${receiveDescriptor}\n# Receive Descriptor (external chain)\n${receiveDescriptor}`,
+        'descriptor outside its receive/change section',
+      ],
+      [
+        'a labeled receive section without a descriptor',
+        '# Receive Descriptor (external chain)\n# metadata only',
+        'Receive descriptor section is missing a descriptor',
+      ],
+      [
+        'a duplicate labeled section',
+        `# Receive Descriptor (external chain)\n${receiveDescriptor}\n# Receive Descriptor (external chain)`,
+        'Receive descriptor section appears more than once',
+      ],
+      [
+        'a duplicate labeled change section',
+        `# Receive Descriptor (external chain)\n${receiveDescriptor}\n# Change Descriptor (internal chain)\n${changeDescriptor}\n# Change Descriptor (internal chain)`,
+        'Change descriptor section appears more than once',
+      ],
+    ])('fails closed on %s', (_case, input, message) => {
+      expect(() => extractDescriptorPairFromText(input)).toThrow(message);
+    });
+
     it('extracts first descriptor line from mixed text', () => {
       const input = [
         '# Export created by Wallet',
@@ -225,13 +316,13 @@ aabbccdd: xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4ko
 
   describe('Checksum Validation', () => {
     it('should reject descriptors with unsupported key expression suffixes', () => {
-      const descriptor = 'wpkh([d34db33f/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/0/*:foo)#abcd1234';
+      const descriptor = 'wpkh([d34db33f/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/0/*:foo)#kl9qqtqk';
 
       expect(() => parseDescriptorForImport(descriptor)).toThrow('No valid key expressions found in descriptor');
     });
 
     it('should accept descriptors whose payload length leaves checksum class remainder', () => {
-      const descriptor = 'wpkh([d34db33f/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/0/*)_#kse08g72';
+      const descriptor = 'wpkh([d34db33f/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/0/*)_#2af7m5u6';
 
       const result = parseDescriptorForImport(descriptor);
 
@@ -240,7 +331,7 @@ aabbccdd: xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4ko
     });
 
     it('should accept descriptor with valid checksum', () => {
-      const descriptor = 'wpkh([d34db33f/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/0/*)#3cscn8hk';
+      const descriptor = 'wpkh([d34db33f/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/0/*)#h36s06su';
 
       const result = parseDescriptorForImport(descriptor);
 
@@ -258,7 +349,7 @@ aabbccdd: xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4ko
     });
 
     it('should strip checksum and parse descriptor correctly', () => {
-      const descriptor = 'wsh(sortedmulti(2,[aabbccdd/48h/1h/0h/2h]tpubDFH9dgzveyD8zTbPUFuLrGmCydNvxehyNdUXKJAQN8x4aZ4j6UZqGfnqFrD4NqyaTVGKbvEW54tsvPTK2UoSbCC1PJY8iCNiwTL3RWZEheQ/0/*,[11223344/48h/1h/0h/2h]tpubDFH9dgzveyD8zTbPUFuLrGmCydNvxehyNdUXKJAQN8x4aZ4j6UZqGfnqFrD4NqyaTVGKbvEW54tsvPTK2UoSbCC1PJY8iCNiwTL3RWZEheR/0/*))#apxqyzwh';
+      const descriptor = 'wsh(sortedmulti(2,[aabbccdd/48h/1h/0h/2h]tpubDFH9dgzveyD8zTbPUFuLrGmCydNvxehyNdUXKJAQN8x4aZ4j6UZqGfnqFrD4NqyaTVGKbvEW54tsvPTK2UoSbCC1PJY8iCNiwTL3RWZEheQ/0/*,[11223344/48h/1h/0h/2h]tpubDFH9dgzveyD8zTbPUFuLrGmCydNvxehyNdUXKJAQN8x4aZ4j6UZqGfnqFrD4NqyaTVGKbvEW54tsvPTK2UoSbCC1PJY8iCNiwTL3RWZEheR/0/*))#6r92hhlq';
 
       const result = parseDescriptorForImport(descriptor);
 

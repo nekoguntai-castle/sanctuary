@@ -19,7 +19,10 @@ import {
   EPHEMERAL_TABLES,
   getRestoreTables,
 } from './constants';
-import { validateBackupForRestore } from './validation';
+import {
+  validateBackupForRestore,
+  validateDescriptorPoliciesForRestore,
+} from './validation';
 import { deserializeRecordForTable } from './restoreDeserialization';
 import {
   processAgentApiKeyRecords,
@@ -61,6 +64,10 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
       error: `Backup validation failed: ${validation.issues.join('; ')}`,
     };
   }
+  // Preserve restore's established warning contract: generic preview warnings
+  // (for example, optional legacy tables) are not emitted during a successful
+  // restore, but funds-safety policy quarantine warnings must be surfaced.
+  warnings.push(...validateDescriptorPoliciesForRestore(backup.data).warnings);
 
   // Get current schema version
   const currentSchemaVersion = await migrationService.getSchemaVersion();
@@ -79,6 +86,23 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
       to: currentSchemaVersion,
     });
     migratedBackup = migrateBackup(backup, currentSchemaVersion);
+    const migratedPolicyValidation = validateDescriptorPoliciesForRestore(
+      migratedBackup.data,
+    );
+    warnings.push(...migratedPolicyValidation.warnings);
+    if (migratedPolicyValidation.issues.length > 0) {
+      return {
+        success: false,
+        tablesRestored: 0,
+        recordsRestored: 0,
+        warnings,
+        committed: false,
+        cacheInvalidated: false,
+        accessCacheReconciled: false,
+        featureRuntimeReconciled: false,
+        error: `Restore preflight failed: ${migratedPolicyValidation.issues.join('; ')}`,
+      };
+    }
   }
 
   // Get list of tables that actually exist in the database

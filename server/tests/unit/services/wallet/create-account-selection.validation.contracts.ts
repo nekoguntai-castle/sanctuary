@@ -1,11 +1,21 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  mockBuildDescriptorFromDevices,
   mockHookExecuteAfter,
-  mockLogError,
   mockLogWarn,
   mockPrismaClient,
 } from "./walletTestHarness";
 import { createWallet } from "../../../../src/services/wallet";
+import * as addressDerivation from "../../../../src/services/bitcoin/addressDerivation";
+
+const VALID_RECEIVE_DESCRIPTOR = "wpkh([d34db33f/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/0/*)";
+const VALID_CHANGE_DESCRIPTOR = "wpkh([d34db33f/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/1/*)";
+const SECOND_XPUB = "xpub6D4BDPcP2GT577Vvch3R8wDkScZWzQzMMUm3PWbmWvVJrZwQY4VUNgqFJPMM3No2dFDFGTsxxpG5uJh7n7epu4trkrX7x7DogT5Uv6fcLW5";
+const MULTISIG_RECEIVE_DESCRIPTOR = `wsh(sortedmulti(2,[d34db33f/48h/0h/0h/2h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/0/*,[11223344/48h/0h/0h/2h]${SECOND_XPUB}/0/*))`;
+const MULTISIG_CHANGE_DESCRIPTOR = MULTISIG_RECEIVE_DESCRIPTOR.replaceAll('/0/*', '/1/*');
+const TESTNET_XPUB = "tpubDC5FSnBiZDMmhiuCmWAYsLwgLYrrT9rAqvTySfuCCrgsWz8wxMXUS9Tb9iVMvcRbvFcAHGkMD5Kx8koh4GquNGNTfohfk7pgjhaPCdXpoba";
+const TESTNET_RECEIVE_DESCRIPTOR = `wpkh([d34db33f/84h/1h/0h]${TESTNET_XPUB}/0/*)`;
+const TESTNET_CHANGE_DESCRIPTOR = `wpkh([d34db33f/84h/1h/0h]${TESTNET_XPUB}/1/*)`;
 
 type MockDeviceAccount = {
   purpose: string;
@@ -35,6 +45,15 @@ export function registerWalletCreateAccountSelectionValidationTests({
         scriptType: "native_segwit",
         network: "testnet" as never,
       })).rejects.toThrow("Invalid network");
+    });
+
+    it("rejects a change descriptor without its receive descriptor", async () => {
+      await expect(createWallet(userId, {
+        name: "Incomplete descriptor pair",
+        type: "single_sig",
+        scriptType: "native_segwit",
+        changeDescriptor: VALID_CHANGE_DESCRIPTOR,
+      })).rejects.toThrow("Change descriptor requires a receive descriptor");
     });
 
     it("requires quorum and totalSigners for multi-sig wallets", async () => {
@@ -136,6 +155,11 @@ export function registerWalletCreateAccountSelectionValidationTests({
     });
 
     it("builds a mainnet descriptor from the exact requested account", async () => {
+      mockBuildDescriptorFromDevices.mockReturnValueOnce({
+        descriptor: VALID_RECEIVE_DESCRIPTOR,
+        changeDescriptor: VALID_CHANGE_DESCRIPTOR,
+        fingerprint: "abc12345",
+      });
       const device = createMockDevice("device-1", "abc12345", [{
         purpose: "single_sig",
         scriptType: "native_segwit",
@@ -181,7 +205,19 @@ export function registerWalletCreateAccountSelectionValidationTests({
           deviceAccountId: "device-1-account-0",
           signerDerivationPath: "m/84'/0'/0'",
         })],
+        expect.any(Array),
       );
+      const atomicCreateCall = vi.mocked(walletRepo.createWithDeviceLinks).mock.calls[0] as unknown as [
+        unknown,
+        unknown,
+        Array<Record<string, unknown>>,
+      ];
+      expect(atomicCreateCall[2]).toHaveLength(40);
+      expect(atomicCreateCall[2]).toEqual(expect.arrayContaining([
+        expect.objectContaining({ index: 0, used: false }),
+      ]));
+      expect(atomicCreateCall[2].every(address => !("walletId" in address))).toBe(true);
+      expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
     });
 
     it("should reject when device not found", async () => {
@@ -199,21 +235,125 @@ export function registerWalletCreateAccountSelectionValidationTests({
       ).rejects.toThrow("Device not found");
     });
 
-    it("throws if wallet transaction result is unexpectedly null", async () => {
+    it("propagates atomic wallet policy persistence failures", async () => {
       const { walletRepository: walletRepo } = await import(
         "../../../../src/repositories"
       );
       vi.mocked(walletRepo.createWithDeviceLinks).mockRejectedValueOnce(
-        new Error("Failed to create wallet"),
+        new Error("address insertion failed"),
       );
 
       await expect(
         createWallet(userId, {
-          name: "Broken Wallet",
+          name: "Atomic Wallet",
           type: "single_sig",
           scriptType: "native_segwit",
+          descriptor: VALID_RECEIVE_DESCRIPTOR,
+          changeDescriptor: VALID_CHANGE_DESCRIPTOR,
         }),
-      ).rejects.toThrow("Failed to create wallet");
+      ).rejects.toThrow("address insertion failed");
+      expect(mockHookExecuteAfter).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [
+        "wallet type",
+        {
+          type: "multi_sig",
+          scriptType: "native_segwit",
+          quorum: 1,
+          totalSigners: 1,
+          descriptor: VALID_RECEIVE_DESCRIPTOR,
+          changeDescriptor: VALID_CHANGE_DESCRIPTOR,
+        },
+        "Descriptor wallet type does not match requested wallet type",
+      ],
+      [
+        "script type",
+        {
+          type: "single_sig",
+          scriptType: "nested_segwit",
+          descriptor: VALID_RECEIVE_DESCRIPTOR,
+          changeDescriptor: VALID_CHANGE_DESCRIPTOR,
+        },
+        "Descriptor script type does not match requested script type",
+      ],
+      [
+        "network family",
+        {
+          type: "single_sig",
+          scriptType: "native_segwit",
+          network: "testnet3",
+          descriptor: VALID_RECEIVE_DESCRIPTOR,
+          changeDescriptor: VALID_CHANGE_DESCRIPTOR,
+        },
+        "Descriptor network family does not match requested network",
+      ],
+      [
+        "testnet descriptor on mainnet",
+        {
+          type: "single_sig",
+          scriptType: "native_segwit",
+          network: "mainnet",
+          descriptor: TESTNET_RECEIVE_DESCRIPTOR,
+          changeDescriptor: TESTNET_CHANGE_DESCRIPTOR,
+        },
+        "Descriptor network family does not match requested network",
+      ],
+      [
+        "multisig quorum",
+        {
+          type: "multi_sig",
+          scriptType: "native_segwit",
+          quorum: 1,
+          totalSigners: 2,
+          descriptor: MULTISIG_RECEIVE_DESCRIPTOR,
+          changeDescriptor: MULTISIG_CHANGE_DESCRIPTOR,
+        },
+        "Descriptor quorum does not match requested multisig policy",
+      ],
+      [
+        "multisig signer count",
+        {
+          type: "multi_sig",
+          scriptType: "native_segwit",
+          quorum: 2,
+          totalSigners: 3,
+          descriptor: MULTISIG_RECEIVE_DESCRIPTOR,
+          changeDescriptor: MULTISIG_CHANGE_DESCRIPTOR,
+        },
+        "Descriptor quorum does not match requested multisig policy",
+      ],
+    ] as const)("rejects descriptor identity that contradicts the requested %s", async (
+      _field,
+      descriptorInput,
+      expectedError,
+    ) => {
+      const { walletRepository: walletRepo } = await import(
+        "../../../../src/repositories"
+      );
+
+      await expect(createWallet(userId, {
+        name: "Contradictory Descriptor",
+        ...descriptorInput,
+      })).rejects.toThrow(expectedError);
+      expect(walletRepo.createWithDeviceLinks).not.toHaveBeenCalled();
+    });
+
+    it("rejects a caller fingerprint that contradicts descriptor origins", async () => {
+      const { walletRepository: walletRepo } = await import(
+        "../../../../src/repositories"
+      );
+
+      await expect(createWallet(userId, {
+        name: "Wrong Fingerprint",
+        type: "single_sig",
+        scriptType: "native_segwit",
+        fingerprint: "00000000",
+        descriptor: VALID_RECEIVE_DESCRIPTOR,
+        changeDescriptor: VALID_CHANGE_DESCRIPTOR,
+      })).rejects.toThrow("Wallet fingerprint does not match descriptor origins");
+      expect(walletRepo.createWithDeviceLinks).not.toHaveBeenCalled();
     });
 
     it("creates wallet without device links when signers are omitted", async () => {
@@ -237,41 +377,34 @@ export function registerWalletCreateAccountSelectionValidationTests({
       expect(mockPrismaClient.walletDevice.createMany).not.toHaveBeenCalled();
     });
 
-    it("logs and continues when initial address generation fails after create", async () => {
-      mockPrismaClient.$transaction.mockResolvedValueOnce({
-        id: "wallet-1",
-        name: "Descriptor Wallet",
-        type: "single_sig",
-        scriptType: "native_segwit",
-        network: "mainnet",
-        devices: [],
-        addresses: [],
+    it("fails address derivation before opening the atomic create transaction", async () => {
+      const deriveAddress = vi.mocked(addressDerivation.deriveAddressFromDescriptor);
+      const priorImplementation = deriveAddress.getMockImplementation();
+      if (!priorImplementation) {
+        throw new Error("Expected the wallet test harness to install address derivation");
+      }
+      deriveAddress.mockImplementationOnce(() => {
+        throw new Error("address generation failed");
       });
-      mockPrismaClient.address.createMany.mockRejectedValueOnce(
-        new Error("address generation failed"),
+      const { walletRepository: walletRepo } = await import(
+        "../../../../src/repositories"
       );
-      mockPrismaClient.wallet.findUnique.mockResolvedValueOnce({
-        id: "wallet-1",
-        name: "Descriptor Wallet",
-        type: "single_sig",
-        scriptType: "native_segwit",
-        network: "mainnet",
-        devices: [],
-        addresses: [],
-      });
 
-      const created = await createWallet(userId, {
-        name: "Descriptor Wallet",
-        type: "single_sig",
-        scriptType: "native_segwit",
-        descriptor: "wpkh([abcd1234/84h/0h/0h]xpub...)",
-      });
+      try {
+        await expect(createWallet(userId, {
+          name: "Descriptor Wallet",
+          type: "single_sig",
+          scriptType: "native_segwit",
+          descriptor: VALID_RECEIVE_DESCRIPTOR,
+          changeDescriptor: VALID_CHANGE_DESCRIPTOR,
+        })).rejects.toThrow("address generation failed");
+      } finally {
+        deriveAddress.mockReset();
+        deriveAddress.mockImplementation(priorImplementation);
+      }
 
-      expect(created.id).toBe("wallet-1");
-      expect(mockLogError).toHaveBeenCalledWith(
-        "Failed to generate initial addresses",
-        expect.objectContaining({ error: expect.any(String) }),
-      );
+      expect(walletRepo.createWithDeviceLinks).not.toHaveBeenCalled();
+      expect(mockHookExecuteAfter).not.toHaveBeenCalled();
     });
 
     it("swallows hook failures after successful wallet creation", async () => {

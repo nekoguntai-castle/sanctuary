@@ -13,6 +13,7 @@ export type {
   DetectedNetwork,
   ParsedDescriptor,
   DescriptorParseError,
+  DescriptorTextPair,
   JsonImportDevice,
   JsonImportConfig,
   WalletExportFormat,
@@ -21,7 +22,14 @@ export type {
 } from './types';
 
 // Descriptor parsing
-export { parseDescriptorForImport, validateDescriptor, extractDescriptorFromText, isDescriptorTextFormat } from './descriptorParser';
+export {
+  parseDescriptorForImport,
+  validateDescriptor,
+  extractDescriptorFromText,
+  extractDescriptorPairFromText,
+  resolveDescriptorTextPair,
+  isDescriptorTextFormat,
+} from './descriptorParser';
 
 // JSON import parsing
 export { validateJsonImport, parseJsonImport, isWalletExportFormat } from './jsonParser';

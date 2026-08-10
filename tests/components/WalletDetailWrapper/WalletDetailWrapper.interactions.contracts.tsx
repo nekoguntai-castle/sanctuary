@@ -139,7 +139,6 @@ export const registerWalletDetailWrapperInteractionContracts = () => {
       await user.click(screen.getByRole('button', { name: 'settings-update' }));
       expect(mocks.updateWallet).toHaveBeenCalledWith('wallet-1', {
         name: 'Renamed Wallet',
-        descriptor: 'desc-new',
       });
 
       await user.click(screen.getByRole('button', { name: 'settings-repair' }));

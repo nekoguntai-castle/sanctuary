@@ -121,8 +121,15 @@ model Wallet {
   totalSigners Int? // e.g., 3 for 2-of-3
 
   // Wallet descriptors
-  descriptor  String? // Output descriptor
-  fingerprint String? // Master key fingerprint
+  descriptor                     String? // Output descriptor
+  changeDescriptor               String? // Change output descriptor
+  descriptorPolicyVersion        Int?    // Null until descriptor policy is explicitly verified
+  descriptorSourceKind           String? // generated_pair, imported_pair, imported_multipath
+  sourceDescriptor               String? // Exact source descriptor before any canonicalization
+  sourceChangeDescriptor         String? // Exact paired change source; null for multipath sources
+  sourceDescriptorChecksum       String? // Exact checksum supplied with sourceDescriptor
+  sourceChangeDescriptorChecksum String? // Exact checksum supplied with sourceChangeDescriptor
+  fingerprint                    String? // Master key fingerprint
 
   // Optional group ownership
   groupId   String?

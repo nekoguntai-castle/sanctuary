@@ -20,6 +20,7 @@ import {
 } from '../../errors';
 import { getErrorMessage } from '../../utils/errors';
 import { generateInitialAddresses } from './addressGeneration';
+import { prepareDescriptorPolicy } from './descriptorPolicy';
 import type { WalletNetwork, WalletSignerBinding, WalletSignerInput } from './types';
 import {
   assertSignerBindingMatchesWallet,
@@ -101,13 +102,19 @@ function buildDescriptorAssignment(
     network: wallet.network as WalletNetwork,
     quorum: wallet.quorum || undefined,
   });
+  const descriptorPolicy = prepareDescriptorPolicy({
+    receiveDescriptor: descriptorResult.descriptor,
+    changeDescriptor: descriptorResult.changeDescriptor,
+    sourceKind: 'generated_pair',
+  });
   return {
-    descriptor: descriptorResult.descriptor,
+    ...descriptorPolicy,
     fingerprint: descriptorResult.fingerprint,
     addresses: generateInitialAddresses(
       walletId,
-      descriptorResult.descriptor,
+      descriptorPolicy.descriptor,
       wallet.network as WalletNetwork,
+      descriptorPolicy.changeDescriptor,
     ),
   };
 }

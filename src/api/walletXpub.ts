@@ -10,12 +10,13 @@ export interface ValidateXpubRequest {
   xpub: string;
   scriptType?: XpubScriptType;
   network?: XpubValidationNetwork;
-  fingerprint?: string;
-  accountPath?: string;
+  fingerprint: string;
+  accountPath: string;
 }
 
 export interface ValidateXpubResponse {
   valid: true;
+  /** Exact BIP389 receive/change multipath descriptor accepted by wallet import. */
   descriptor: string;
   scriptType: XpubScriptType;
   firstAddress: string;

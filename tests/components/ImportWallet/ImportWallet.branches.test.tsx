@@ -159,7 +159,7 @@ describe('ImportWallet guard branches', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockValidateImportData.mockResolvedValue(true);
-    mockBuildDescriptorFromXpub.mockReturnValue('wpkh([abcd]xpub/0/*)');
+    mockBuildDescriptorFromXpub.mockReturnValue('wpkh([abcd]xpub/<0;1>/*)');
   });
 
   it('returns early for hardware flow when xpub data is missing', async () => {

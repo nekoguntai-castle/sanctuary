@@ -254,6 +254,22 @@ export function registerOpenApiWalletTests() {
     expect(createWalletSchema.properties.totalSigners).toEqual(createWalletSchema.properties.quorum);
   });
 
+  it('documents descriptor pairs only on create and keeps generic updates name-only', () => {
+    const createWalletSchema = openApiSpec.components.schemas.CreateWalletRequest;
+    const updateWalletSchema = openApiSpec.components.schemas.UpdateWalletRequest;
+
+    expect(createWalletSchema.properties).toMatchObject({
+      descriptor: { type: 'string' },
+      changeDescriptor: {
+        type: 'string',
+        description: 'Change-chain output descriptor paired with the receive descriptor.',
+      },
+    });
+    expect(updateWalletSchema.properties).toEqual({ name: { type: 'string' } });
+    expect(updateWalletSchema.required).toEqual(['name']);
+    expect(updateWalletSchema.additionalProperties).toBe(false);
+  });
+
   it('documents wallet webhook routes including replay', () => {
     const routes: Array<[OpenApiPathKey, string]> = [
       ['/wallets/{walletId}/webhooks', 'get'],
@@ -376,7 +392,14 @@ export function registerOpenApiWalletTests() {
     ]);
     expect(openApiSpec.components.schemas.WalletImportValidateRequest).toHaveProperty('minProperties', 1);
     expect(openApiSpec.components.schemas.WalletImportRequest.required).toEqual(['data', 'name']);
-    expect(openApiSpec.components.schemas.ValidateXpubRequest.required).toEqual(['xpub']);
+    expect(openApiSpec.components.schemas.ValidateXpubRequest.required).toEqual([
+      'xpub',
+      'fingerprint',
+      'accountPath',
+    ]);
+    expect(openApiSpec.components.schemas.ValidateXpubRequest.properties.fingerprint).toMatchObject({
+      pattern: '^(?!00000000$)[a-fA-F0-9]{8}$',
+    });
     expect(openApiSpec.components.schemas.ValidateXpubRequest.properties.network).toMatchObject({
       enum: [...WALLET_IMPORT_NETWORK_VALUES],
       default: 'mainnet',

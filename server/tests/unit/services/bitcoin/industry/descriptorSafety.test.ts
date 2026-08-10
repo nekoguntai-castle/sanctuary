@@ -60,7 +60,7 @@ describe('Descriptor & Wallet Import Safety', () => {
     });
 
     it('removeChecksum helper should strip valid checksums', () => {
-      const descriptor = "raw(deadbeef)#zyusn96d";
+      const descriptor = "raw(deadbeef)#89f8spxm";
       const stripped = removeChecksum(descriptor);
       expect(stripped).not.toContain('#');
       expect(stripped).toBe('raw(deadbeef)');

@@ -34,21 +34,21 @@ describe('importHelpers', () => {
     const xpub = 'xpub123';
 
     expect(buildDescriptorFromXpub('native_segwit', fingerprint, path, xpub)).toBe(
-      'wpkh([a1b2c3d4/84h/0h/7h]xpub123/0/*)',
+      'wpkh([a1b2c3d4/84h/0h/7h]xpub123/<0;1>/*)',
     );
     expect(buildDescriptorFromXpub('nested_segwit', fingerprint, path, xpub)).toBe(
-      'sh(wpkh([a1b2c3d4/84h/0h/7h]xpub123/0/*))',
+      'sh(wpkh([a1b2c3d4/84h/0h/7h]xpub123/<0;1>/*))',
     );
     expect(buildDescriptorFromXpub('taproot', fingerprint, path, xpub)).toBe(
-      'tr([a1b2c3d4/84h/0h/7h]xpub123/0/*)',
+      'tr([a1b2c3d4/84h/0h/7h]xpub123/<0;1>/*)',
     );
     expect(buildDescriptorFromXpub('legacy', fingerprint, path, xpub)).toBe(
-      'pkh([a1b2c3d4/84h/0h/7h]xpub123/0/*)',
+      'pkh([a1b2c3d4/84h/0h/7h]xpub123/<0;1>/*)',
     );
 
-    // Type coercion validates defensive default branch.
-    expect(buildDescriptorFromXpub('unknown' as any, fingerprint, path, xpub)).toBe(
-      'wpkh([a1b2c3d4/84h/0h/7h]xpub123/0/*)',
+    // Invalid runtime state must fail closed instead of silently changing policy.
+    expect(() => buildDescriptorFromXpub('unknown' as any, fingerprint, path, xpub)).toThrow(
+      'Unsupported wallet script type',
     );
   });
 

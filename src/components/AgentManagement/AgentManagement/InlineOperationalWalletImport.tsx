@@ -1,20 +1,17 @@
 import { useState } from 'react';
 import { AlertCircle, CheckCircle, Upload } from 'lucide-react';
-import { WalletScriptType, WalletType } from '@sanctuary/shared/constants/walletIdentity';
+import { WalletType } from '@sanctuary/shared/constants/walletIdentity';
 import * as walletsApi from '../../../api/wallets';
 import type { AgentOptionWallet } from '../../../api/admin';
 import type { ImportValidationResult } from '../../../api/wallets';
 import { extractErrorMessage } from '../../../utils/errorHandler';
 import { Button } from '../../ui/Button';
 import { Input } from '../../ui/Input';
-import { SelectField } from './AgentFormControls';
 import {
-  RAW_KEY_SCRIPT_TYPE_OPTIONS,
   detectRawOperationalKeyInput,
   getRawKeyDescription,
   normalizeOperationalImportData,
 } from './inlineOperationalWalletImportModel';
-import type { XpubScriptType } from '../../../api/wallets';
 
 type InlineOperationalWalletImportProps = {
   selectedFundingWallet?: AgentOptionWallet;
@@ -30,9 +27,6 @@ export function InlineOperationalWalletImport({
   const [isOpen, setIsOpen] = useState(false);
   const [walletName, setWalletName] = useState('');
   const [importData, setImportData] = useState('');
-  const [rawKeyScriptType, setRawKeyScriptType] = useState<XpubScriptType>(
-    WalletScriptType.NATIVE_SEGWIT,
-  );
   const [importError, setImportError] = useState<string | null>(null);
   const [lastImportedName, setLastImportedName] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
@@ -55,9 +49,6 @@ export function InlineOperationalWalletImport({
     try {
       const normalizedImport = await normalizeOperationalImportData({
         importData,
-        rawKeyScriptType,
-        selectedFundingWallet,
-        validateXpub: walletsApi.validateXpub,
       });
       if (!normalizedImport.ok) {
         setImportError(normalizedImport.error);
@@ -99,7 +90,7 @@ export function InlineOperationalWalletImport({
               Import watch-only operational wallet
             </div>
             <p className="mt-1 text-xs text-sanctuary-500 dark:text-sanctuary-400">
-              Paste a descriptor, wallet export, or single-sig xpub/ypub/zpub for public-key-only monitoring.
+              Paste a descriptor or wallet export with complete key-origin metadata for public-key-only monitoring.
             </p>
             {lastImportedName && (
               <div className="mt-2 flex items-center gap-2 text-xs text-success-700">
@@ -144,26 +135,17 @@ export function InlineOperationalWalletImport({
       </div>
       <div>
         <label className="block text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300 mb-1">
-          Descriptor, wallet export, or xpub *
+          Descriptor or wallet export *
         </label>
         <textarea
           value={importData}
           onChange={event => setImportData(event.target.value)}
-          placeholder="xpub... or wpkh([a1b2c3d4/84h/1h/0h]tpub.../0/*)"
+          placeholder="wpkh([a1b2c3d4/84h/1h/0h]tpub.../<0;1>/*)"
           rows={4}
           className="w-full px-3 py-2 surface-muted border border-sanctuary-200 dark:border-sanctuary-700 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 font-mono text-sm"
         />
       </div>
-      {rawKeyInput.kind === WalletType.SINGLE_SIG && rawKeyInput.requiresScriptTypeSelection && (
-        <SelectField
-          id="agent-operational-raw-key-script-type"
-          label="Extended public key type"
-          value={rawKeyScriptType}
-          options={RAW_KEY_SCRIPT_TYPE_OPTIONS}
-          onChange={value => setRawKeyScriptType(value as XpubScriptType)}
-        />
-      )}
-      {rawKeyDescription && (
+      {rawKeyDescription && rawKeyDescription !== importError && (
         <p className="text-xs text-sanctuary-500 dark:text-sanctuary-400">
           {rawKeyDescription}
         </p>

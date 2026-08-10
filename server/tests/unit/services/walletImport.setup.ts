@@ -6,6 +6,7 @@
 
 import { vi } from 'vitest';
 import { mockPrismaClient, resetPrismaMocks } from '../../mocks/prisma';
+import { resolveDescriptorTextPair as actualResolveDescriptorTextPair } from '../../../src/services/bitcoin/descriptorParser/descriptorParser';
 
 // Mock Prisma
 vi.mock('../../../src/models/prisma', () => ({
@@ -27,12 +28,14 @@ vi.mock('../../../src/utils/logger', () => ({
 // Mock descriptor parser
 export const mockParseImportInput = vi.fn();
 export const mockParseDescriptorForImport = vi.fn();
+export const mockResolveDescriptorTextPair = vi.fn();
 export const mockParseJsonImport = vi.fn();
 export const mockValidateDescriptor = vi.fn();
 export const mockValidateJsonImport = vi.fn();
 
 vi.mock('../../../src/services/bitcoin/descriptorParser', () => ({
   parseDescriptorForImport: (...args: any[]) => mockParseDescriptorForImport(...args),
+  resolveDescriptorTextPair: (...args: any[]) => mockResolveDescriptorTextPair(...args),
   parseJsonImport: (...args: any[]) => mockParseJsonImport(...args),
   validateDescriptor: (...args: any[]) => mockValidateDescriptor(...args),
   validateJsonImport: (...args: any[]) => mockValidateJsonImport(...args),
@@ -79,9 +82,22 @@ export function setupBeforeEach() {
 
   // Default mock implementations
   mockBuildDescriptorFromDevices.mockReturnValue({
-    descriptor: 'wpkh([abcd1234/84h/0h/0h]xpub6Dz...)',
-    fingerprint: 'wallet-fp',
+    descriptor: "wpkh([abcd1234/84'/0'/0']xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8/0/*)",
+    changeDescriptor: "wpkh([abcd1234/84'/0'/0']xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8/1/*)",
+    fingerprint: 'abcd1234',
   });
+  mockResolveDescriptorTextPair.mockImplementation(actualResolveDescriptorTextPair);
+  mockParseDescriptorForImport.mockImplementation((descriptor: string) => ({
+    type: 'single_sig',
+    scriptType: 'native_segwit',
+    devices: [{
+      fingerprint: 'abcd1234',
+      derivationPath: "m/84'/0'/0'",
+      xpub: 'xpub-test',
+    }],
+    network: 'mainnet',
+    isChange: descriptor.includes('/1/*'),
+  }));
 
   mockDeriveAddressFromDescriptor.mockImplementation((descriptor, index, opts) => ({
     address: `bc1q${index}address${opts.change ? 'change' : 'receive'}`,

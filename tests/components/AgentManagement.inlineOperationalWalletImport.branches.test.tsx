@@ -41,7 +41,7 @@ async function openImportPanel(user: ReturnType<typeof userEvent.setup>) {
 }
 
 async function enterDescriptorAndImport(user: ReturnType<typeof userEvent.setup>, descriptor = 'wpkh(tpub-inline/0/*)') {
-  await user.type(screen.getByPlaceholderText(/xpub/), descriptor);
+  await user.type(screen.getByPlaceholderText(/wpkh/), descriptor);
   await user.click(screen.getByRole('button', { name: 'Import and select' }));
 }
 
@@ -98,14 +98,14 @@ describe('InlineOperationalWalletImport branch coverage', () => {
     expect(screen.getByText(/on the funding wallet/)).toBeInTheDocument();
   });
 
-  it('shows inferred raw key descriptions', async () => {
+  it('warns that raw keys lack verified origin evidence', async () => {
     const user = userEvent.setup();
     renderImport();
 
     await openImportPanel(user);
-    await user.type(screen.getByPlaceholderText(/xpub/), 'ypub-inline');
+    await user.type(screen.getByPlaceholderText(/wpkh/), 'ypub-inline');
 
-    expect(screen.getByText('Nested SegWit extended public key detected.')).toBeInTheDocument();
+    expect(screen.getByText(/verified master fingerprint and account-path evidence/)).toBeInTheDocument();
   });
 
   it('shows the default validation error for invalid imports', async () => {

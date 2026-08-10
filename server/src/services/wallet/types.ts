@@ -76,6 +76,7 @@ export interface CreateWalletInput {
   quorum?: number;
   totalSigners?: number;
   descriptor?: string;
+  changeDescriptor?: string;
   fingerprint?: string;
   groupId?: string;
   signers?: WalletSignerInput[];

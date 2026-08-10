@@ -1,8 +1,5 @@
-import type { AgentOptionWallet } from '../../../api/admin';
-import type { ValidateXpubRequest, ValidateXpubResponse, XpubScriptType } from '../../../api/wallets';
+import type { XpubScriptType } from '../../../api/wallets';
 import { WalletScriptType, WalletType } from '@sanctuary/shared/constants/walletIdentity';
-
-type SupportedXpubNetwork = NonNullable<ValidateXpubRequest['network']>;
 
 type RawOperationalKeyInput =
   | { kind: 'none' }
@@ -16,9 +13,6 @@ type RawOperationalKeyInput =
 
 type NormalizeOperationalImportDataInput = {
   importData: string;
-  rawKeyScriptType: XpubScriptType;
-  selectedFundingWallet?: AgentOptionWallet;
-  validateXpub: (request: ValidateXpubRequest) => Promise<ValidateXpubResponse>;
 };
 
 type NormalizedOperationalImportData =
@@ -34,23 +28,10 @@ const SCRIPTED_SINGLE_SIG_PREFIXES: Record<string, XpubScriptType> = {
   upub: WalletScriptType.NESTED_SEGWIT,
   vpub: WalletScriptType.NATIVE_SEGWIT,
 };
-const SUPPORTED_XPUB_NETWORKS: SupportedXpubNetwork[] = [
-  'mainnet',
-  'testnet3',
-  'testnet4',
-  'signet',
-  'regtest',
-];
-
-export const RAW_KEY_SCRIPT_TYPE_OPTIONS: Array<{ value: XpubScriptType; label: string }> = [
-  { value: WalletScriptType.NATIVE_SEGWIT, label: 'Native SegWit' },
-  { value: WalletScriptType.NESTED_SEGWIT, label: 'Nested SegWit' },
-  { value: WalletScriptType.TAPROOT, label: 'Taproot' },
-  { value: WalletScriptType.LEGACY, label: 'Legacy' },
-];
-
 export const RAW_MULTISIG_OPERATIONAL_KEY_ERROR =
   'Operational agent wallets must use a single-sig xpub/ypub/zpub. Use the multisig wallet as the funding wallet instead.';
+export const RAW_KEY_ORIGIN_REQUIRED_ERROR =
+  'Raw extended public keys do not include verified master fingerprint and account-path evidence. Use a descriptor or wallet export with complete key-origin metadata.';
 
 export function detectRawOperationalKeyInput(importData: string): RawOperationalKeyInput {
   const key = importData.trim();
@@ -87,9 +68,6 @@ export function detectRawOperationalKeyInput(importData: string): RawOperational
 
 export async function normalizeOperationalImportData({
   importData,
-  rawKeyScriptType,
-  selectedFundingWallet,
-  validateXpub,
 }: NormalizeOperationalImportDataInput): Promise<NormalizedOperationalImportData> {
   const trimmedData = importData.trim();
   const rawKey = detectRawOperationalKeyInput(trimmedData);
@@ -102,55 +80,14 @@ export async function normalizeOperationalImportData({
     return { ok: false, error: RAW_MULTISIG_OPERATIONAL_KEY_ERROR };
   }
 
-  const network = getXpubValidationNetwork(selectedFundingWallet);
-  if (!network) {
-    return {
-      ok: false,
-      error: 'Raw extended public key import supports mainnet, testnet-family, signet, and regtest funding wallets. Use a descriptor or wallet export for this network.',
-    };
-  }
-
-  const validation = await validateXpub({
-    xpub: rawKey.key,
-    scriptType: getRawKeyScriptType(rawKey, rawKeyScriptType),
-    network,
-    fingerprint: getRawKeyFallbackFingerprint(rawKey.key),
-  });
-
-  return { ok: true, data: validation.descriptor };
-}
-
-// FNV-1a is only a deterministic origin marker for raw-key imports, not a security boundary.
-export function getRawKeyFallbackFingerprint(key: string): string {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < key.length; index++) {
-    hash = Math.imul(hash ^ key.charCodeAt(index), 0x01000193);
-  }
-  return (hash >>> 0).toString(16).padStart(8, '0');
+  return { ok: false, error: RAW_KEY_ORIGIN_REQUIRED_ERROR };
 }
 
 export function getRawKeyDescription(rawKey: RawOperationalKeyInput): string | null {
-  if (rawKey.kind !== WalletType.SINGLE_SIG || rawKey.requiresScriptTypeSelection) {
+  if (rawKey.kind !== WalletType.SINGLE_SIG) {
     return null;
   }
-
-  const option = RAW_KEY_SCRIPT_TYPE_OPTIONS.find(({ value }) => value === rawKey.scriptType);
-  return option ? `${option.label} extended public key detected.` : null;
-}
-
-function getRawKeyScriptType(
-  rawKey: Extract<RawOperationalKeyInput, { kind: typeof WalletType.SINGLE_SIG }>,
-  selectedScriptType: XpubScriptType
-): XpubScriptType {
-  return rawKey.requiresScriptTypeSelection ? selectedScriptType : rawKey.scriptType;
-}
-
-function getXpubValidationNetwork(selectedFundingWallet?: AgentOptionWallet): SupportedXpubNetwork | null {
-  if (SUPPORTED_XPUB_NETWORKS.includes(selectedFundingWallet?.network as SupportedXpubNetwork)) {
-    return selectedFundingWallet?.network as SupportedXpubNetwork;
-  }
-
-  return null;
+  return RAW_KEY_ORIGIN_REQUIRED_ERROR;
 }
 
 function hasWhitespace(value: string): boolean {

@@ -2,6 +2,7 @@ import { vi } from 'vitest';
 import './walletImport.setup';  // side effects: vi.mock calls
 import {
   mockParseImportInput,
+  mockResolveDescriptorTextPair,
   setupBeforeEach,
 } from './walletImport.setup';
 import { mockPrismaClient } from '../../mocks/prisma';
@@ -24,8 +25,40 @@ describe('Wallet Import Service - Validation', () => {
     });
 
     describe('Descriptor Import Validation', () => {
+      it('validates both members of a labelled plain-text recovery export', async () => {
+        const receiveDescriptor = "wpkh([abcd1234/84'/0'/0']xpub6Dz8PGZuAKKWdmNnKVVR3fFKPxPNaPXpNLhU6fKwC3Qh9U8jv7r5w2ZQRX1tYkGdBN35p1HsLPZxwUJp9L8yN4tVd4rPqvKtJ5mFYA9VqG6/0/*)";
+        const changeDescriptor = receiveDescriptor.replace('/0/*', '/1/*');
+        const recoveryText = `# Receive Descriptor (external chain)\n${receiveDescriptor}\n# Change Descriptor (internal chain)\n${changeDescriptor}`;
+        mockResolveDescriptorTextPair.mockReturnValueOnce({
+          receiveDescriptor,
+          changeDescriptor,
+        });
+        mockParseImportInput.mockReturnValue({
+          format: 'descriptor',
+          parsed: {
+            type: 'single_sig',
+            scriptType: 'native_segwit',
+            devices: [{
+              fingerprint: 'abcd1234',
+              xpub: 'xpub-test',
+              derivationPath: "m/84'/0'/0'",
+            }],
+            network: 'mainnet' as Network,
+            isChange: false,
+          },
+        });
+
+        const result = await walletImport.validateImport(userId, {
+          descriptor: recoveryText,
+        });
+
+        expect(result.valid).toBe(true);
+        expect(mockResolveDescriptorTextPair).toHaveBeenCalledWith(recoveryText, undefined);
+        expect(mockParseImportInput).toHaveBeenCalledWith(receiveDescriptor);
+      });
+
       it('should validate wpkh (native segwit) descriptor', async () => {
-        const descriptor = "wpkh([abcd1234/84'/0'/0']xpub6Dz8PGZuAKKWdmNnKVVR3fFKPxPNaPXpNLhU6fKwC3Qh9U8jv7r5w2ZQRX1tYkGdBN35p1HsLPZxwUJp9L8yN4tVd4rPqvKtJ5mFYA9VqG6/0/*)#checksum";
+        const descriptor = "wpkh([abcd1234/84'/0'/0']xpub6Dz8PGZuAKKWdmNnKVVR3fFKPxPNaPXpNLhU6fKwC3Qh9U8jv7r5w2ZQRX1tYkGdBN35p1HsLPZxwUJp9L8yN4tVd4rPqvKtJ5mFYA9VqG6/0/*)";
 
         mockParseImportInput.mockReturnValue({
           format: 'descriptor',
@@ -45,7 +78,10 @@ describe('Wallet Import Service - Validation', () => {
         });
 
 
-        const result = await walletImport.validateImport(userId, { descriptor });
+        const result = await walletImport.validateImport(userId, {
+          descriptor,
+          changeDescriptor: descriptor.replace('/0/*', '/1/*'),
+        });
 
         expect(result.valid).toBe(true);
         expect(result.format).toBe('descriptor');
@@ -58,7 +94,7 @@ describe('Wallet Import Service - Validation', () => {
       });
 
       it('resolves ambiguous testnet descriptor imports from the requested network', async () => {
-        const descriptor = "wpkh([abcd1234/84'/1'/0']tpub...)#checksum";
+        const descriptor = "wpkh([abcd1234/84'/1'/0']tpub.../0/*)";
 
         mockParseImportInput.mockReturnValue({
           format: 'descriptor',
@@ -79,6 +115,7 @@ describe('Wallet Import Service - Validation', () => {
 
         const result = await walletImport.validateImport(userId, {
           descriptor,
+          changeDescriptor: descriptor.replace('/0/*', '/1/*'),
           network: 'testnet4',
         });
 
@@ -87,7 +124,7 @@ describe('Wallet Import Service - Validation', () => {
       });
 
       it('defaults ambiguous testnet descriptor imports to testnet3 for compatibility', async () => {
-        const descriptor = "wpkh([abcd1234/84'/1'/0']tpub...)#checksum";
+        const descriptor = "wpkh([abcd1234/84'/1'/0']tpub.../0/*)";
 
         mockParseImportInput.mockReturnValue({
           format: 'descriptor',
@@ -106,14 +143,17 @@ describe('Wallet Import Service - Validation', () => {
           },
         });
 
-        const result = await walletImport.validateImport(userId, { descriptor });
+        const result = await walletImport.validateImport(userId, {
+          descriptor,
+          changeDescriptor: descriptor.replace('/0/*', '/1/*'),
+        });
 
         expect(result.valid).toBe(true);
         expect(result.network).toBe('testnet3');
       });
 
       it('should validate wsh multisig descriptor', async () => {
-        const descriptor = "wsh(sortedmulti(2,[aaaa1111/48'/0'/0'/2']xpub6E1..., [bbbb2222/48'/0'/0'/2']xpub6E2...))#checksum";
+        const descriptor = "wsh(sortedmulti(2,[aaaa1111/48'/0'/0'/2']xpub6E1.../0/*,[bbbb2222/48'/0'/0'/2']xpub6E2.../0/*))";
 
         mockParseImportInput.mockReturnValue({
           format: 'descriptor',
@@ -140,7 +180,10 @@ describe('Wallet Import Service - Validation', () => {
         });
 
 
-        const result = await walletImport.validateImport(userId, { descriptor });
+        const result = await walletImport.validateImport(userId, {
+          descriptor,
+          changeDescriptor: descriptor.replaceAll('/0/*', '/1/*'),
+        });
 
         expect(result.valid).toBe(true);
         expect(result.walletType).toBe('multi_sig');
@@ -150,7 +193,7 @@ describe('Wallet Import Service - Validation', () => {
       });
 
       it('should validate taproot (tr) descriptor', async () => {
-        const descriptor = "tr([abcd1234/86'/0'/0']xpub6T...)#checksum";
+        const descriptor = "tr([abcd1234/86'/0'/0']xpub6T.../0/*)";
 
         mockParseImportInput.mockReturnValue({
           format: 'descriptor',
@@ -170,14 +213,17 @@ describe('Wallet Import Service - Validation', () => {
         });
 
 
-        const result = await walletImport.validateImport(userId, { descriptor });
+        const result = await walletImport.validateImport(userId, {
+          descriptor,
+          changeDescriptor: descriptor.replace('/0/*', '/1/*'),
+        });
 
         expect(result.valid).toBe(true);
         expect(result.scriptType).toBe('taproot');
       });
 
       it('should validate nested segwit (sh(wpkh)) descriptor', async () => {
-        const descriptor = "sh(wpkh([abcd1234/49'/0'/0']xpub6N...))#checksum";
+        const descriptor = "sh(wpkh([abcd1234/49'/0'/0']xpub6N.../0/*))";
 
         mockParseImportInput.mockReturnValue({
           format: 'descriptor',
@@ -197,14 +243,17 @@ describe('Wallet Import Service - Validation', () => {
         });
 
 
-        const result = await walletImport.validateImport(userId, { descriptor });
+        const result = await walletImport.validateImport(userId, {
+          descriptor,
+          changeDescriptor: descriptor.replace('/0/*', '/1/*'),
+        });
 
         expect(result.valid).toBe(true);
         expect(result.scriptType).toBe('nested_segwit');
       });
 
       it('should detect existing devices by fingerprint', async () => {
-        const descriptor = "wpkh([abcd1234/84'/0'/0']xpub6Dz...)#checksum";
+        const descriptor = "wpkh([abcd1234/84'/0'/0']xpub6Dz.../0/*)";
 
         mockParseImportInput.mockReturnValue({
           format: 'descriptor',
@@ -233,7 +282,10 @@ describe('Wallet Import Service - Validation', () => {
           },
         ]);
 
-        const result = await walletImport.validateImport(userId, { descriptor });
+        const result = await walletImport.validateImport(userId, {
+          descriptor,
+          changeDescriptor: descriptor.replace('/0/*', '/1/*'),
+        });
 
         expect(result.valid).toBe(true);
         expect(result.devices).toHaveLength(1);
@@ -249,7 +301,10 @@ describe('Wallet Import Service - Validation', () => {
           throw new Error('Unable to detect script type from descriptor');
         });
 
-        const result = await walletImport.validateImport(userId, { descriptor });
+        const result = await walletImport.validateImport(userId, {
+          descriptor,
+          changeDescriptor: `${descriptor}/1/*`,
+        });
 
         expect(result.valid).toBe(false);
         expect(result.error).toBe('Unable to detect script type from descriptor');
@@ -376,7 +431,7 @@ cccc3333: xpub6E3...`;
       it('should validate Sanctuary wallet export format', async () => {
         const sanctuaryExport = JSON.stringify({
           label: 'My Wallet',
-          descriptor: "wpkh([abcd1234/84'/0'/0']xpub6Dz...)#checksum",
+          descriptor: "wpkh([abcd1234/84'/0'/0']xpub6Dz...)",
           blockheight: 800000,
         });
 

@@ -10,6 +10,12 @@ import {
   uniqueUsername,
 } from './walletIntegrationTestHarness';
 
+const TESTNET_XPUB = 'tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M';
+const SINGLE_SIG_RECEIVE = `wpkh([aabbccdd/84'/1'/0']${TESTNET_XPUB}/0/*)`;
+const SINGLE_SIG_CHANGE = `wpkh([aabbccdd/84'/1'/0']${TESTNET_XPUB}/1/*)`;
+const MULTISIG_RECEIVE = `wsh(sortedmulti(2,[aabbccdd/48'/1'/0'/2']${TESTNET_XPUB}/0/*,[11223344/48'/1'/0'/2']${TESTNET_XPUB}/0/*,[55667788/48'/1'/0'/2']${TESTNET_XPUB}/0/*))`;
+const TAPROOT_RECEIVE = `tr([aabbccdd/86'/1'/0']${TESTNET_XPUB}/0/*)`;
+
 export function registerWalletCoreCrudTests(): void {
   describe('Create Wallet', () => {
     it('should create a single-sig native segwit wallet', async () => {
@@ -20,7 +26,8 @@ export function registerWalletCoreCrudTests(): void {
         type: 'single_sig',
         scriptType: 'native_segwit',
         network: 'testnet3',
-        descriptor: "wpkh([aabbccdd/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*)",
+        descriptor: SINGLE_SIG_RECEIVE,
+        changeDescriptor: SINGLE_SIG_CHANGE,
       };
 
       const response = await request(app)
@@ -35,6 +42,7 @@ export function registerWalletCoreCrudTests(): void {
       expect(response.body.scriptType).toBe(walletData.scriptType);
       expect(response.body.network).toBe(walletData.network);
       expect(response.body.descriptor).toBe(walletData.descriptor);
+      expect(response.body.changeDescriptor).toBe(walletData.changeDescriptor);
     });
 
     it('should create a multi-sig wallet', async () => {
@@ -47,7 +55,8 @@ export function registerWalletCoreCrudTests(): void {
         network: 'testnet3',
         quorum: 2,
         totalSigners: 3,
-        descriptor: "wsh(sortedmulti(2,[aabbccdd/48'/1'/0'/2']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*,[11223344/48'/1'/0'/2']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*,[55667788/48'/1'/0'/2']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*))",
+        descriptor: MULTISIG_RECEIVE,
+        changeDescriptor: MULTISIG_RECEIVE.replaceAll('/0/*', '/1/*'),
       };
 
       const response = await request(app)
@@ -61,6 +70,7 @@ export function registerWalletCoreCrudTests(): void {
       expect(response.body.type).toBe(walletData.type);
       expect(response.body.quorum).toBe(walletData.quorum);
       expect(response.body.totalSigners).toBe(walletData.totalSigners);
+      expect(response.body.changeDescriptor).toBe(walletData.changeDescriptor);
     });
 
     it('should create a taproot wallet', async () => {
@@ -71,7 +81,8 @@ export function registerWalletCoreCrudTests(): void {
         type: 'single_sig',
         scriptType: 'taproot',
         network: 'testnet3',
-        descriptor: "tr([aabbccdd/86'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*)",
+        descriptor: TAPROOT_RECEIVE,
+        changeDescriptor: TAPROOT_RECEIVE.replace('/0/*', '/1/*'),
       };
 
       const response = await request(app)
@@ -81,6 +92,7 @@ export function registerWalletCoreCrudTests(): void {
         .expect(201);
 
       expect(response.body.scriptType).toBe('taproot');
+      expect(response.body.changeDescriptor).toBe(walletData.changeDescriptor);
     });
 
     it('should reject wallet creation with missing required fields', async () => {
@@ -289,7 +301,7 @@ export function registerWalletCoreCrudTests(): void {
       expect(updated?.name).toBe('Updated Name');
     });
 
-    it('should update wallet descriptor (owner only)', async () => {
+    it('should reject direct descriptor mutation even for an owner', async () => {
       const { userId, token } = await createAndLoginUser(app, prisma);
 
       const wallet = await prisma.wallet.create({
@@ -310,13 +322,14 @@ export function registerWalletCoreCrudTests(): void {
       await attachNonTargetTestSigner(wallet.id, userId);
 
       const newDescriptor = "wpkh([aabbccdd/84'/1'/0']tpubNew/0/*)";
-      const response = await request(app)
+      await request(app)
         .patch(`/api/v1/wallets/${wallet.id}`)
         .set(authHeader(token))
         .send({ descriptor: newDescriptor })
-        .expect(200);
+        .expect(400);
 
-      expect(response.body.descriptor).toBe(newDescriptor);
+      const unchanged = await prisma.wallet.findUnique({ where: { id: wallet.id } });
+      expect(unchanged?.descriptor).toBe("wpkh([old]tpubOld/0/*)");
     });
 
     it('should deny update for non-owner (viewer)', async () => {

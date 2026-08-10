@@ -1,8 +1,8 @@
 /**
  * useWalletMutations Hook
  *
- * Manages wallet name editing state and the wallet update handler (name,
- * descriptor). Extracted from WalletDetail.tsx to isolate mutation concerns.
+ * Manages wallet name editing state and the wallet update handler.
+ * Extracted from WalletDetail.tsx to isolate mutation concerns.
  */
 
 import { useState, useCallback, useLayoutEffect } from 'react';
@@ -38,8 +38,8 @@ export interface UseWalletMutationsReturn {
   editedName: string;
   /** Setter for the edited name value */
   setEditedName: (name: string) => void;
-  /** Persist partial wallet updates (name, descriptor) */
-  handleUpdateWallet: (updatedData: Partial<Wallet>) => Promise<void>;
+  /** Persist a wallet name update. */
+  handleUpdateWallet: (updatedData: { name: string }) => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -62,7 +62,7 @@ export function useWalletMutations({
     setEditedName('');
   }, [ownershipKey]);
 
-  const handleUpdateWallet = useCallback(async (updatedData: Partial<Wallet>) => {
+  const handleUpdateWallet = useCallback(async (updatedData: { name: string }) => {
     if (!wallet || !walletId || wallet.id !== walletId) return;
     const id = walletId;
     const token = ownership.captureRoute(ownershipKey);
@@ -73,10 +73,9 @@ export function useWalletMutations({
       const updatedWallet = { ...wallet, ...updatedData };
       setWallet(updatedWallet);
 
-      // Update via API (only name and descriptor are updateable)
+      // Wallet identity material is immutable through the generic update API.
       await walletsApi.updateWallet(id, {
         name: updatedData.name,
-        descriptor: updatedData.descriptor,
       });
     } catch (err) {
       log.error('Failed to update wallet', { error: err });

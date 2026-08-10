@@ -1,5 +1,7 @@
 export {
   extractDescriptorFromText,
+  extractDescriptorPairFromText,
+  resolveDescriptorTextPair,
   isDescriptorTextFormat,
   parseBlueWalletTextImport,
   parseColdcardExport,
@@ -14,4 +16,5 @@ export {
   type ParsedDevice,
   type ScriptType,
 } from '../../../../../src/services/bitcoin/descriptorParser';
+export { computeDescriptorChecksum } from '../../../../../src/services/bitcoin/descriptorParser/checksum';
 export { testXpubs } from '../../../../fixtures/bitcoin';

@@ -6,7 +6,11 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
-import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
+import {
+  WalletScriptType,
+  type WalletScriptType as WalletScriptTypeValue,
+} from '@sanctuary/shared/constants/walletIdentity';
+import { MasterFingerprintSchema } from '@sanctuary/shared/schemas/deviceIdentity';
 import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
 import { ErrorCodes, InvalidInputError } from '../../errors/ApiError';
@@ -18,8 +22,11 @@ const ValidateXpubBodySchema = z.object({
   xpub: z.string().min(1, 'xpub is required'),
   scriptType: z.string().optional(),
   network: z.string().optional().default('mainnet'),
-  fingerprint: z.string().optional(),
-  accountPath: z.string().optional(),
+  fingerprint: MasterFingerprintSchema,
+  accountPath: z.string().regex(
+    /^(44|49|84|86)'\/[01]'\/\d+'$/,
+    'Account path must be an exact hardened BIP44/49/84/86 account path',
+  ),
 });
 
 const xpubValidationMessage = (issues: Array<{ path: string; message: string }>) => {
@@ -31,23 +38,54 @@ const xpubValidationMessage = (issues: Array<{ path: string; message: string }>)
   return issues[0]?.message ?? 'Invalid xpub request';
 };
 
-/**
- * Helper to get default account path based on script type and network
- */
-function getDefaultAccountPath(scriptType: string, network: string): string {
+function parseSupportedScriptType(scriptType: string): WalletScriptTypeValue {
+  if (Object.values(WalletScriptType).includes(scriptType as WalletScriptTypeValue)) {
+    return scriptType as WalletScriptTypeValue;
+  }
+  throw new InvalidInputError('Invalid script type');
+}
+
+function expectedAccountPathPrefix(scriptType: WalletScriptTypeValue, network: string): string {
   const coinType = network === 'mainnet' ? "0'" : "1'";
 
   switch (scriptType) {
     case WalletScriptType.LEGACY:
-      return `44'/${coinType}/0'`;
+      return `44'/${coinType}/`;
     case WalletScriptType.NESTED_SEGWIT:
-      return `49'/${coinType}/0'`;
+      return `49'/${coinType}/`;
     case WalletScriptType.NATIVE_SEGWIT:
-      return `84'/${coinType}/0'`;
+      return `84'/${coinType}/`;
     case WalletScriptType.TAPROOT:
-      return `86'/${coinType}/0'`;
-    default:
-      return `84'/${coinType}/0'`;
+      return `86'/${coinType}/`;
+  }
+}
+
+function assertAccountPathMatchesPolicy(
+  accountPath: string,
+  scriptType: WalletScriptTypeValue,
+  network: string,
+): void {
+  if (!accountPath.startsWith(expectedAccountPathPrefix(scriptType, network))) {
+    throw new InvalidInputError('Account path does not match the selected script type and network');
+  }
+}
+
+function buildMultipathDescriptor(
+  scriptType: WalletScriptTypeValue,
+  fingerprint: string,
+  accountPath: string,
+  xpub: string,
+): string {
+  const key = `[${fingerprint}/${accountPath}]${xpub}/<0;1>/*`;
+  switch (scriptType) {
+    case WalletScriptType.NATIVE_SEGWIT:
+      return `wpkh(${key})`;
+    case WalletScriptType.NESTED_SEGWIT:
+      return `sh(wpkh(${key}))`;
+    case WalletScriptType.TAPROOT:
+      return `tr(${key})`;
+    case WalletScriptType.LEGACY:
+      return `pkh(${key})`;
   }
 }
 
@@ -69,29 +107,20 @@ router.post('/validate-xpub', validate(
   }
 
   // Determine script type
-  const detectedScriptType = scriptType || validation.scriptType || WalletScriptType.NATIVE_SEGWIT;
+  const detectedScriptType = parseSupportedScriptType(
+    scriptType || validation.scriptType || WalletScriptType.NATIVE_SEGWIT,
+  );
 
-  // Generate descriptor
-  let descriptor: string;
-  const fingerprintStr = fingerprint || '00000000';
-  const accountPathStr = accountPath || getDefaultAccountPath(detectedScriptType, network);
-
-  switch (detectedScriptType) {
-    case WalletScriptType.NATIVE_SEGWIT:
-      descriptor = `wpkh([${fingerprintStr}/${accountPathStr}]${xpub}/0/*)`;
-      break;
-    case WalletScriptType.NESTED_SEGWIT:
-      descriptor = `sh(wpkh([${fingerprintStr}/${accountPathStr}]${xpub}/0/*))`;
-      break;
-    case WalletScriptType.TAPROOT:
-      descriptor = `tr([${fingerprintStr}/${accountPathStr}]${xpub}/0/*)`;
-      break;
-    case WalletScriptType.LEGACY:
-      descriptor = `pkh([${fingerprintStr}/${accountPathStr}]${xpub}/0/*)`;
-      break;
-    default:
-      throw new InvalidInputError('Invalid script type');
-  }
+  // A single receive-only descriptor cannot be imported as a complete policy.
+  // BIP389 multipath preserves the exact raw-key provenance in one token while
+  // allowing import validation to expand receive branch 0 and change branch 1.
+  assertAccountPathMatchesPolicy(accountPath, detectedScriptType, network);
+  const descriptor = buildMultipathDescriptor(
+    detectedScriptType,
+    fingerprint,
+    accountPath,
+    xpub,
+  );
 
   // Derive first address as example
   const { address } = addressDerivation.deriveAddress(xpub, 0, {
@@ -106,8 +135,8 @@ router.post('/validate-xpub', validate(
     scriptType: detectedScriptType,
     firstAddress: address,
     xpub,
-    fingerprint: fingerprintStr,
-    accountPath: accountPathStr,
+    fingerprint,
+    accountPath,
   });
 }));
 

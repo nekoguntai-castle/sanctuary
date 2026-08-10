@@ -17,13 +17,12 @@ import type {
   Network,
   DetectedNetwork,
 } from '../bitcoin/descriptorParser';
+import { resolveDescriptorTextPair } from '../bitcoin/descriptorParser';
 import { parseImportInput } from '../import';
 import { getErrorMessage } from '../../utils/errors';
 import { safeJsonParseUntyped } from '../../utils/safeJson';
 import * as descriptorBuilder from '../bitcoin/descriptorBuilder';
-import * as addressDerivation from '../bitcoin/addressDerivation';
 import { createLogger } from '../../utils/logger';
-import { INITIAL_ADDRESS_COUNT } from '../../constants';
 import { resolveDevices } from './deviceResolution';
 import { importFromDescriptor, importFromParsedData } from './descriptorImport';
 import { importFromJson } from './jsonImport';
@@ -43,6 +42,12 @@ import { normalizeDerivationPath } from '@sanctuary/shared/utils/bitcoin';
 import type { WalletSignerLinkData } from '../../repositories/walletRepository';
 import { assertSignerBindingMatchesWallet } from '../wallet/walletAccountSelection';
 import type { WalletNetwork } from '../wallet/types';
+import { buildInitialAddressTemplates } from '../wallet/addressGeneration';
+import {
+  descriptorPolicyFingerprint,
+  prepareDescriptorPolicy,
+  type PreparedDescriptorPolicy,
+} from '../wallet/descriptorPolicy';
 
 const log = createLogger('WALLET_IMPORT:SVC');
 
@@ -54,6 +59,7 @@ interface CreateWalletTransactionInput {
   network: Network;
   deviceLabels?: Record<string, string>;
   jsonConfig?: JsonImportConfig;
+  descriptorPolicy?: PreparedDescriptorPolicy;
 }
 
 type OriginalImportedDevice = NonNullable<JsonImportConfig['devices']>[number];
@@ -215,6 +221,26 @@ export async function createWalletTransaction(
 
   // Determine account purpose from wallet type
   const accountPurpose = accountPurposeForWalletType(parsed.type);
+  const descriptorResult = descriptorBuilder.buildDescriptorFromDevices(
+    parsed.devices,
+    {
+      type: parsed.type,
+      scriptType: parsed.scriptType,
+      network,
+      quorum: parsed.quorum,
+    },
+  );
+  const descriptorPolicy = input.descriptorPolicy ?? prepareDescriptorPolicy({
+    receiveDescriptor: descriptorResult.descriptor,
+    changeDescriptor: descriptorResult.changeDescriptor,
+    sourceKind: 'generated_pair',
+  });
+  const policyFingerprint = descriptorPolicyFingerprint(descriptorPolicy.descriptor);
+  const initialAddresses = buildInitialAddressTemplates(
+    descriptorPolicy.descriptor,
+    descriptorPolicy.changeDescriptor,
+    network as WalletNetwork,
+  );
 
   return await withTransaction(async (tx) => {
     const createdDeviceIds: string[] = [];
@@ -255,17 +281,6 @@ export async function createWalletTransaction(
       importedDeviceInfos.push(materialized.info);
     }
 
-    // Build descriptor using IMPORTED device info (not stored device paths)
-    const descriptorResult = descriptorBuilder.buildDescriptorFromDevices(
-      importedDeviceInfos,
-      {
-        type: parsed.type,
-        scriptType: parsed.scriptType,
-        network,
-        quorum: parsed.quorum,
-      }
-    );
-
     // Create wallet
     const wallet = await tx.wallet.create({
       data: {
@@ -275,8 +290,8 @@ export async function createWalletTransaction(
         network,
         quorum: parsed.quorum,
         totalSigners: parsed.totalSigners,
-        descriptor: descriptorResult.descriptor,
-        fingerprint: descriptorResult.fingerprint,
+        ...descriptorPolicy,
+        fingerprint: policyFingerprint,
         users: {
           create: {
             userId,
@@ -302,50 +317,9 @@ export async function createWalletTransaction(
       })),
     });
 
-    // Generate initial addresses (both receive and change)
-    try {
-      const addressesToCreate = [];
-
-      // Generate receive addresses (change = false)
-      for (let i = 0; i < INITIAL_ADDRESS_COUNT; i++) {
-        const { address, derivationPath } =
-          addressDerivation.deriveAddressFromDescriptor(
-            descriptorResult.descriptor,
-            i,
-            { network, change: false }
-          );
-        addressesToCreate.push({
-          walletId: wallet.id,
-          address,
-          derivationPath,
-          index: i,
-          used: false,
-        });
-      }
-
-      // Generate change addresses (change = true)
-      for (let i = 0; i < INITIAL_ADDRESS_COUNT; i++) {
-        const { address, derivationPath } =
-          addressDerivation.deriveAddressFromDescriptor(
-            descriptorResult.descriptor,
-            i,
-            { network, change: true }
-          );
-        addressesToCreate.push({
-          walletId: wallet.id,
-          address,
-          derivationPath,
-          index: i,
-          used: false,
-        });
-      }
-
-      await tx.address.createMany({
-        data: addressesToCreate,
-      });
-    } catch (err) {
-      log.error('Failed to generate initial addresses', { error: getErrorMessage(err) });
-    }
+    await tx.address.createMany({
+      data: initialAddresses.map((address) => ({ walletId: wallet.id, ...address })),
+    });
 
     return {
       wallet: {
@@ -372,7 +346,12 @@ export async function createWalletTransaction(
  */
 export async function validateImport(
   userId: string,
-  input: { descriptor?: string; json?: string; network?: Network }
+  input: {
+    descriptor?: string;
+    changeDescriptor?: string;
+    json?: string;
+    network?: Network;
+  }
 ): Promise<ImportValidationResult> {
   const rawInput = input.descriptor || input.json;
 
@@ -389,8 +368,21 @@ export async function validateImport(
   }
 
   try {
-    // Use unified parser that handles all formats
-    const parseResult = parseImportInput(rawInput);
+    let parseResult: ReturnType<typeof parseImportInput>;
+    if (input.descriptor) {
+      const source = resolveDescriptorTextPair(input.descriptor, input.changeDescriptor);
+      const policy = prepareDescriptorPolicy({
+        receiveDescriptor: source.receiveDescriptor,
+        changeDescriptor: source.changeDescriptor,
+        sourceKind: 'imported',
+      });
+      parseResult = {
+        format: 'descriptor',
+        parsed: parseImportInput(policy.descriptor).parsed,
+      };
+    } else {
+      parseResult = parseImportInput(rawInput);
+    }
     const network = resolveImportNetwork(parseResult.parsed.network, input.network);
 
     // Resolve devices
@@ -438,22 +430,41 @@ export async function importWallet(
 ): Promise<ImportWalletResult> {
   const trimmed = input.data.trim();
 
+  // Preserve descriptor pairs embedded in wallet-export JSON before the
+  // general parser collapses the export to its receive-side parsed model.
+  if (trimmed.startsWith('{')) {
+    const walletExport = safeJsonParseUntyped<{
+      descriptor?: string;
+      changeDescriptor?: string;
+    } | null>(trimmed, null, 'wallet export parse');
+    if (walletExport && typeof walletExport.descriptor === 'string') {
+      return importFromDescriptor(userId, {
+        descriptor: walletExport.descriptor,
+        changeDescriptor: walletExport.changeDescriptor,
+        name: input.name,
+        network: input.network,
+        deviceLabels: input.deviceLabels,
+      });
+    }
+  }
+
+  if (trimmed.includes('<0;1>/*')) {
+    // Route the only supported BIP389 policy through the exact-source path.
+    return importFromDescriptor(userId, {
+      descriptor: trimmed,
+      name: input.name,
+      network: input.network,
+      deviceLabels: input.deviceLabels,
+    });
+  }
+
   // Use unified parser to detect format
   const parseResult = parseImportInput(trimmed);
 
   // For wallet_export format (JSON with descriptor field), extract and use the descriptor
   if (parseResult.format === 'wallet_export') {
     // Parse the JSON to get the descriptor
-    const walletExport = safeJsonParseUntyped<{ descriptor?: string } | null>(trimmed, null, 'wallet export parse');
-    if (!walletExport || typeof walletExport.descriptor !== 'string') {
-      throw new Error('Invalid JSON in wallet export data');
-    }
-    return importFromDescriptor(userId, {
-      descriptor: walletExport.descriptor,
-      name: input.name,
-      network: input.network,
-      deviceLabels: input.deviceLabels,
-    });
+    throw new Error('Invalid JSON in wallet export data');
   }
 
   // For our custom JSON config format

@@ -35,6 +35,11 @@ export interface DescriptorParseError {
   position?: number;
 }
 
+export interface DescriptorTextPair {
+  receiveDescriptor: string;
+  changeDescriptor?: string;
+}
+
 /**
  * JSON import format interface
  */
@@ -63,6 +68,7 @@ export interface WalletExportFormat {
   label?: string;
   name?: string;
   descriptor: string;
+  changeDescriptor?: string;
   blockheight?: number;
 }
 

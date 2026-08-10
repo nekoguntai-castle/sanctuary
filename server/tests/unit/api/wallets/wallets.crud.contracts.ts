@@ -315,6 +315,27 @@ export const registerWalletCrudContracts = () => {
 
       expect(response.status).toBe(200);
       expect(response.body.name).toBe('Renamed Wallet');
+      expect(mockUpdateWallet).toHaveBeenCalledWith(
+        'wallet-123',
+        'test-user-id',
+        { name: 'Renamed Wallet' },
+      );
+    });
+
+    it.each([
+      ['empty body', {}],
+      ['descriptor', { descriptor: 'wpkh(replacement)' }],
+      ['fingerprint', { fingerprint: 'deadbeef' }],
+      ['unknown field', { scriptType: 'taproot' }],
+      ['descriptor alongside a valid name', { name: 'Renamed Wallet', descriptor: 'wpkh(replacement)' }],
+    ])('rejects a %s mutation instead of silently stripping it', async (_case, update) => {
+      const response = await request(walletRouter)
+        .patch('/api/v1/wallets/wallet-123')
+        .send(update);
+
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+      expect(mockUpdateWallet).not.toHaveBeenCalled();
     });
 
     it('should handle update error', async () => {

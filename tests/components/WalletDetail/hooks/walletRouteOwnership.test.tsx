@@ -226,6 +226,7 @@ describe('Wallet Detail route ownership', () => {
       view.result.current.setEditedName('A draft');
       pending = view.result.current.handleUpdateWallet({ name: 'Renamed A' });
     });
+    expect(walletsApi.updateWallet).toHaveBeenCalledWith('A', { name: 'Renamed A' });
     view.rerender({ walletId: 'B', currentWallet: wallet('B'), ownershipKey: 'B:user:mainnet' });
     expect(view.result.current.isEditingName).toBe(false);
     expect(view.result.current.editedName).toBe('');

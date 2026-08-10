@@ -163,7 +163,7 @@ describe('Wallets Import Routes', () => {
   it('validates import descriptor/json successfully', async () => {
     const payload = {
       descriptor: 'wpkh(xpub...)',
-      json: { devices: [] },
+      json: JSON.stringify({ devices: [] }),
     };
 
     const response = await request(app)

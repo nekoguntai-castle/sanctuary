@@ -6,10 +6,14 @@
  */
 
 import type { ParsedDescriptor, Network } from '../bitcoin/descriptorParser';
+import {
+  resolveDescriptorTextPair,
+} from '../bitcoin/descriptorParser';
 import { parseImportInput } from '../import';
 import { resolveDevices, checkDuplicateWallet } from './deviceResolution';
 import { createWalletTransaction, resolveImportNetwork } from './walletImportService';
 import type { ImportWalletResult } from './types';
+import { prepareDescriptorPolicy } from '../wallet/descriptorPolicy';
 
 /**
  * Import wallet from descriptor string
@@ -18,14 +22,19 @@ export async function importFromDescriptor(
   userId: string,
   input: {
     descriptor: string;
+    changeDescriptor?: string;
     name: string;
     network?: Network;
     deviceLabels?: Record<string, string>; // fingerprint -> label
   }
 ): Promise<ImportWalletResult> {
-  // Parse descriptor (use parseImportInput to handle text with comments)
-  const parseResult = parseImportInput(input.descriptor);
-  const parsed = parseResult.parsed;
+  const source = resolveDescriptorTextPair(input.descriptor, input.changeDescriptor);
+  const descriptorPolicy = prepareDescriptorPolicy({
+    receiveDescriptor: source.receiveDescriptor,
+    changeDescriptor: source.changeDescriptor,
+    sourceKind: 'imported',
+  });
+  const parsed = parseImportInput(descriptorPolicy.descriptor).parsed;
   const network = resolveImportNetwork(parsed.network, input.network);
 
   // Check for duplicate wallet
@@ -42,6 +51,7 @@ export async function importFromDescriptor(
     name: input.name,
     network,
     deviceLabels: input.deviceLabels,
+    descriptorPolicy,
   });
 }
 

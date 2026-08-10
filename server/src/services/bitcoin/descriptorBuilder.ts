@@ -168,8 +168,9 @@ export function buildMultiSigDescriptor(
  * Build change descriptor (internal chain) from receive descriptor
  */
 export function buildChangeDescriptor(receiveDescriptor: string): string {
-  // Replace /0/* (external chain) with /1/* (internal chain)
-  return receiveDescriptor.replace(/\/0\/\*\)/g, '/1/*)');
+  // Every signer in a multisig policy must move to the internal branch; matching
+  // only a closing parenthesis previously rewrote the final cosigner alone.
+  return receiveDescriptor.replace(/\/0\/\*/g, '/1/*');
 }
 
 /**

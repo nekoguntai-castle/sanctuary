@@ -91,7 +91,12 @@ export const registerWalletDeviceXpubContracts = () => {
     it('should validate xpub and generate descriptor', async () => {
       const response = await request(walletRouter)
         .post('/api/v1/wallets/validate-xpub')
-        .send({ xpub: 'xpub6CUG...', scriptType: 'native_segwit' });
+        .send({
+          xpub: 'xpub6CUG...',
+          scriptType: 'native_segwit',
+          fingerprint: 'aabbccdd',
+          accountPath: "84'/0'/0'",
+        });
 
       expect(response.status).toBe(200);
       expect(response.body.valid).toBe(true);
@@ -114,7 +119,11 @@ export const registerWalletDeviceXpubContracts = () => {
 
       const response = await request(walletRouter)
         .post('/api/v1/wallets/validate-xpub')
-        .send({ xpub: 'invalid-xpub' });
+        .send({
+          xpub: 'invalid-xpub',
+          fingerprint: 'aabbccdd',
+          accountPath: "84'/0'/0'",
+        });
 
       expect(response.status).toBe(400);
       expect(response.body.message).toContain('Invalid xpub');

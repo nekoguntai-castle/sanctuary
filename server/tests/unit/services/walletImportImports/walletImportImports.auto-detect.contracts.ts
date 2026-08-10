@@ -15,7 +15,7 @@ export const registerWalletImportAutoDetectContracts = () => {
 
   describe('importWallet (auto-detect)', () => {
     it('should auto-detect and import from descriptor', async () => {
-      const descriptor = "wpkh([abcd1234/84'/0'/0']xpub6Dz...)#checksum";
+      const descriptor = "wpkh([abcd1234/84'/0'/0']xpub6Dz.../<0;1>/*)";
 
       mockParseImportInput.mockReturnValue({
         format: 'descriptor',
@@ -182,7 +182,8 @@ cccc3333: xpub6E3...`;
     it('should auto-detect and import from wallet export format', async () => {
       const walletExport = JSON.stringify({
         label: 'Exported Wallet',
-        descriptor: "wpkh([abcd1234/84'/0'/0']xpub6Dz...)",
+        descriptor: "wpkh([abcd1234/84'/0'/0']xpub6Dz.../0/*)",
+        changeDescriptor: "wpkh([abcd1234/84'/0'/0']xpub6Dz.../1/*)",
         blockheight: 800000,
       });
 
