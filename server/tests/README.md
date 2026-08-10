@@ -175,7 +175,8 @@ Run the enforced server test typecheck with:
 npm run typecheck:tests
 ```
 
-`npm run typecheck:tests:full` tracks the broader historical test fixture and DTO drift; use it when cleaning up shared test harnesses.
+This gate typechecks the complete server test suite. `npm run typecheck:tests:full`
+is retained as a compatibility alias for existing local and automation workflows.
 
 ## Writing Tests
 

@@ -21,7 +21,7 @@ This document records the checks that should protect the A-grade engineering goa
 | Frontend correctness | Strict app/test typechecks plus catch-all workspace coverage | `npm run typecheck:app`, `npm run typecheck:tests`, and `npm run typecheck:all`; the Test Suite quick/full frontend lanes run all three before frontend tests | Required |
 | Frontend tests | Threshold-enforced coverage | `npm run test:coverage` or the `full-frontend-tests` CI job | Required for main/release |
 | Backend build | TypeScript build and Prisma generation | `cd server && npm run build` | Required |
-| Backend test typing | Server test-infrastructure typecheck | `cd server && npm run typecheck:tests`; `cd server && npm run typecheck:tests:full` tracks the broader historical test fixture debt until that full suite can become the required gate | Required for backend changes |
+| Backend test typing | Complete server test-suite typecheck | `cd server && npm run typecheck:tests`; `cd server && npm run typecheck:tests:full` is a compatibility alias for the same required gate | Required for backend changes |
 | Backend tests | Unit and integration coverage | `cd server && npm run test:unit -- --coverage` and `cd server && npm run test:integration`, or the `full-backend-tests` CI job | Required for main/release |
 | Gateway build | TypeScript build | `cd gateway && npm run build` | Required |
 | Gateway tests | Threshold-enforced coverage | `cd gateway && npm run test:coverage` or the `full-gateway-tests` CI job | Required for main/release |
@@ -128,14 +128,14 @@ The main backend coverage command is:
 cd server && npm run test:unit -- --coverage
 ```
 
-The server test type gate is intentionally split while historical fixture drift is paid down:
+The required server test type gate covers the complete server test suite:
 
 ```bash
 cd server && npm run typecheck:tests
-cd server && npm run typecheck:tests:full
 ```
 
-The first command is the required CI gate for server test infrastructure and representative typed tests. The second command is the expansion target for the full server test suite and should be run during cleanup work that touches shared test fixtures, mocks, route harnesses, or DTO-heavy tests.
+The compatibility command `cd server && npm run typecheck:tests:full` runs the same
+gate for existing local and automation workflows.
 
 ## Phase 4 Browser Auth Gate
 
