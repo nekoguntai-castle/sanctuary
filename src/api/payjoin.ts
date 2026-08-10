@@ -90,13 +90,17 @@ export async function parsePayjoinUri(uri: string): Promise<ParsedUri> {
 export async function attemptPayjoin(
   psbt: string,
   payjoinUrl: string,
-  network: NetworkType
+  network: NetworkType,
+  signal?: AbortSignal,
 ): Promise<PayjoinAttemptResult> {
-  return apiClient.post<PayjoinAttemptResult>('/payjoin/attempt', {
+  const request = {
     psbt,
     payjoinUrl,
     network,
-  });
+  };
+  return signal
+    ? apiClient.post<PayjoinAttemptResult>('/payjoin/attempt', request, { signal })
+    : apiClient.post<PayjoinAttemptResult>('/payjoin/attempt', request);
 }
 
 /**

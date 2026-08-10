@@ -56,12 +56,13 @@ export interface UseSendTransactionActionsResult {
   // Actions
   createTransaction: () => Promise<TransactionData | null>;
   signWithHardwareWallet: () => Promise<string | null>;
+  signWithHardwareWalletResult: (transaction?: TransactionData) => Promise<{ psbt?: string; rawTx?: string } | null>;
   signWithDevice: (device: Device) => Promise<boolean>;
   broadcastTransaction: (signedPsbt?: string, rawTxHex?: string) => Promise<boolean>;
   saveDraft: (label?: string) => Promise<string | null>;
   downloadPsbt: () => void;
   uploadSignedPsbt: (file: File, deviceId?: string, deviceFingerprint?: string) => Promise<void>;
-  processQrSignedPsbt: (signedPsbt: string, deviceId: string) => void;
+  processQrSignedPsbt: (signedPsbt: string, deviceId: string) => Promise<void>;
   markDeviceSigned: (deviceId: string) => void;
   clearError: () => void;
   reset: () => void;

@@ -51,7 +51,7 @@ export interface ReviewStepProps {
   onUploadSignedPsbt?: (file: File, deviceId?: string, deviceFingerprint?: string) => Promise<void>;
   onSignWithDevice?: (device: Device) => Promise<boolean>;
   onMarkDeviceSigned?: (deviceId: string) => void;
-  onProcessQrSignedPsbt?: (signedPsbt: string, deviceId: string) => void;
+  onProcessQrSignedPsbt?: (signedPsbt: string, deviceId: string) => Promise<void>;
   onBroadcastSigned?: () => Promise<boolean>;
   hardwareWallet?: { isConnected: boolean; device: unknown };
   // Draft mode - locks editing, shows draft info
@@ -186,6 +186,7 @@ export function ReviewStep({
         isDraftMode={isDraftMode}
         format={format}
         goToStep={goToStep}
+        interactionLocked={signing || broadcasting || savingDraft}
       />
 
       {/* Multi-sig Signing Panel */}

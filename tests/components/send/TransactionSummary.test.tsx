@@ -46,6 +46,7 @@ function buildProps(overrides: Record<string, unknown> = {}) {
     isDraftMode: false,
     format: (sats: number) => `${sats} sats`,
     goToStep,
+    interactionLocked: false,
     ...overrides,
   };
 }
@@ -111,6 +112,14 @@ describe('TransactionSummary', () => {
     expect(screen.queryByText('Edit')).not.toBeInTheDocument();
     expect(screen.queryByText('Decoy Outputs')).not.toBeInTheDocument();
     expect(screen.queryByText('Coin Control')).not.toBeInTheDocument();
+  });
+
+  it('disables every edit transition while signing or broadcasting owns the review', () => {
+    const props = buildProps({ interactionLocked: true });
+    render(<TransactionSummary {...props} />);
+
+    expect(screen.getByRole('button', { name: 'Change' })).toBeDisabled();
+    screen.getAllByRole('button', { name: 'Edit' }).forEach(button => expect(button).toBeDisabled());
   });
 
   it('hides flow preview when inputs or outputs are empty and handles singular UTXO label', () => {

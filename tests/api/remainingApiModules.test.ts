@@ -89,6 +89,25 @@ describe("Remaining API Modules", () => {
         memo: null,
       });
       expect(mockDelete).toHaveBeenCalledWith("/wallets/w1/drafts/d1");
+
+      const controller = new AbortController();
+      await draftsApi.createDraft("w1", {
+        recipient: "bc1qdest",
+        amount: 1000,
+        feeRate: 5,
+        psbtBase64: "psbt",
+      }, controller.signal);
+      expect(mockPost).toHaveBeenCalledWith(
+        "/wallets/w1/drafts",
+        expect.objectContaining({ recipient: "bc1qdest" }),
+        { signal: controller.signal },
+      );
+      await draftsApi.updateDraft("w1", "d1", { status: "signed" }, controller.signal);
+      expect(mockPatch).toHaveBeenCalledWith(
+        "/wallets/w1/drafts/d1",
+        { status: "signed" },
+        { signal: controller.signal },
+      );
     });
   });
 
@@ -177,6 +196,14 @@ describe("Remaining API Modules", () => {
         network: "mainnet",
       });
       expect(mockGet).toHaveBeenCalledWith("/payjoin/eligibility/w1");
+
+      const controller = new AbortController();
+      await payjoinApi.attemptPayjoin("psbt2", "https://pj.example", "testnet3", controller.signal);
+      expect(mockPost).toHaveBeenCalledWith("/payjoin/attempt", {
+        psbt: "psbt2",
+        payjoinUrl: "https://pj.example",
+        network: "testnet3",
+      }, { signal: controller.signal });
     });
   });
 

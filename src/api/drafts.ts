@@ -151,8 +151,14 @@ export async function getDraft(walletId: string, draftId: string): Promise<Draft
 /**
  * Create a new draft transaction
  */
-export async function createDraft(walletId: string, data: CreateDraftRequest): Promise<DraftTransaction> {
-  return apiClient.post<DraftTransaction>(`/wallets/${walletId}/drafts`, data);
+export async function createDraft(
+  walletId: string,
+  data: CreateDraftRequest,
+  signal?: AbortSignal,
+): Promise<DraftTransaction> {
+  return signal
+    ? apiClient.post<DraftTransaction>(`/wallets/${walletId}/drafts`, data, { signal })
+    : apiClient.post<DraftTransaction>(`/wallets/${walletId}/drafts`, data);
 }
 
 /**
@@ -161,9 +167,12 @@ export async function createDraft(walletId: string, data: CreateDraftRequest): P
 export async function updateDraft(
   walletId: string,
   draftId: string,
-  data: UpdateDraftRequest
+  data: UpdateDraftRequest,
+  signal?: AbortSignal,
 ): Promise<DraftTransaction> {
-  return apiClient.patch<DraftTransaction>(`/wallets/${walletId}/drafts/${draftId}`, data);
+  return signal
+    ? apiClient.patch<DraftTransaction>(`/wallets/${walletId}/drafts/${draftId}`, data, { signal })
+    : apiClient.patch<DraftTransaction>(`/wallets/${walletId}/drafts/${draftId}`, data);
 }
 
 /**

@@ -83,6 +83,7 @@ function WizardContent({
       onCancel={onCancel}
       onClearError={actions.clearError}
       walletName={wallet.name}
+      navigationLocked={actions.isSigning || actions.isBroadcasting || actions.isSavingDraft}
     >
       <WizardStepContent
         actions={actions}

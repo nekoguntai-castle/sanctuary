@@ -15,6 +15,7 @@ import { createLogger } from '../../utils/logger';
 import type { OutputEntry, TransactionState } from '../../contexts/send/types';
 import type { CreateDraftRequest } from '../../api/drafts';
 import type { TransactionData } from './types';
+import type { SendOperationLease } from './useSendOperationOwner';
 import {
   requirePositiveSatoshiAmount,
   requirePositiveSatoshiNumber,
@@ -138,12 +139,14 @@ const updateExistingDraft = async (
   draftId: string,
   unsignedPsbt: string | null,
   currentTxData: TransactionData,
-  signedDevices: Set<string>
+  signedDevices: Set<string>,
+  signal: AbortSignal,
 ): Promise<string> => {
   await draftsApi.updateDraft(
     walletId,
     draftId,
-    buildSignedDraftUpdate(unsignedPsbt, currentTxData, signedDevices)
+    buildSignedDraftUpdate(unsignedPsbt, currentTxData, signedDevices),
+    signal,
   );
   return draftId;
 };
@@ -161,7 +164,8 @@ const saveSignedStateForNewDraft = async (
   draftId: string,
   unsignedPsbt: string,
   currentTxData: TransactionData,
-  signedDevices: Set<string>
+  signedDevices: Set<string>,
+  signal: AbortSignal,
 ): Promise<void> => {
   log.info('Saving signed PSBT to newly created draft', {
     draftId,
@@ -171,7 +175,7 @@ const saveSignedStateForNewDraft = async (
   await draftsApi.updateDraft(walletId, draftId, {
     signedPsbtBase64: unsignedPsbt,
     signedDeviceId: getFirstSignedDeviceId(signedDevices),
-  });
+  }, signal);
 };
 
 const createNewDraft = async (
@@ -179,12 +183,22 @@ const createNewDraft = async (
   draftRequest: CreateDraftRequest,
   unsignedPsbt: string | null,
   currentTxData: TransactionData,
-  signedDevices: Set<string>
-): Promise<string> => {
-  const result = await draftsApi.createDraft(walletId, draftRequest);
+  signedDevices: Set<string>,
+  lease: SendOperationLease,
+): Promise<string | null> => {
+  const result = await draftsApi.createDraft(walletId, draftRequest, lease.signal);
+  if (!lease.isCurrent()) return null;
 
   if (shouldSaveSignedStateForNewDraft(unsignedPsbt, currentTxData, signedDevices)) {
-    await saveSignedStateForNewDraft(walletId, result.id, unsignedPsbt as string, currentTxData, signedDevices);
+    await saveSignedStateForNewDraft(
+      walletId,
+      result.id,
+      unsignedPsbt as string,
+      currentTxData,
+      signedDevices,
+      lease.signal,
+    );
+    if (!lease.isCurrent()) return null;
   }
 
   return result.id;
@@ -201,6 +215,9 @@ const getSaveDraftError = (err: unknown): string => {
   return err instanceof ApiError ? err.message : 'Failed to save draft';
 };
 
+const isAbortError = (error: unknown): boolean =>
+  error instanceof DOMException && error.name === 'AbortError';
+
 export interface UseDraftManagementDeps {
   walletId: string;
   state: TransactionState;
@@ -208,6 +225,7 @@ export interface UseDraftManagementDeps {
   unsignedPsbt: string | null;
   signedDevices: Set<string>;
   createTransaction: () => Promise<TransactionData | null>;
+  beginDraftSave: () => SendOperationLease | null;
   setIsSavingDraft: (v: boolean) => void;
   setError: (v: string | null) => void;
 }
@@ -223,6 +241,7 @@ export function useDraftManagement({
   unsignedPsbt,
   signedDevices,
   createTransaction,
+  beginDraftSave,
   setIsSavingDraft,
   setError,
 }: UseDraftManagementDeps): UseDraftManagementResult {
@@ -236,32 +255,57 @@ export function useDraftManagement({
       return null;
     }
 
+    const lease = beginDraftSave();
+    if (!lease) return null;
+    const stateSnapshot = structuredClone(state) as TransactionState;
+    const unsignedPsbtSnapshot = unsignedPsbt;
+    const signedDevicesSnapshot = new Set(signedDevices);
+
     setIsSavingDraft(true);
     setError(null);
 
     try {
       let draftId: string;
-      const apiOutputs = state.outputs.map(toDraftApiOutput);
+      const apiOutputs = stateSnapshot.outputs.map(toDraftApiOutput);
 
-      if (state.draftId) {
-        draftId = await updateExistingDraft(walletId, state.draftId, unsignedPsbt, currentTxData, signedDevices);
+      if (stateSnapshot.draftId) {
+        draftId = await updateExistingDraft(
+          walletId,
+          stateSnapshot.draftId,
+          unsignedPsbtSnapshot,
+          currentTxData,
+          signedDevicesSnapshot,
+          lease.signal,
+        );
+        if (!lease.isCurrent()) return null;
         showSuccess('Draft updated successfully', 'Draft Saved');
       } else {
-        const draftRequest = buildDraftRequest(state, currentTxData, apiOutputs, label);
-        draftId = await createNewDraft(walletId, draftRequest, unsignedPsbt, currentTxData, signedDevices);
+        const draftRequest = buildDraftRequest(stateSnapshot, currentTxData, apiOutputs, label);
+        const createdDraftId = await createNewDraft(
+          walletId,
+          draftRequest,
+          unsignedPsbtSnapshot,
+          currentTxData,
+          signedDevicesSnapshot,
+          lease,
+        );
+        if (!createdDraftId) return null;
+        draftId = createdDraftId;
         showSuccess('Transaction saved as draft', 'Draft Saved');
       }
 
+      if (!lease.isCurrent()) return null;
       navigate(`/wallets/${walletId}`);
       return draftId;
     } catch (err) {
+      if (!lease.isCurrent() || isAbortError(err)) return null;
       log.error('Failed to save draft', { error: err });
       setError(getSaveDraftError(err));
       return null;
     } finally {
-      setIsSavingDraft(false);
+      if (lease.isCurrent()) setIsSavingDraft(false);
     }
-  }, [walletId, txData, unsignedPsbt, signedDevices, state, createTransaction, showSuccess, navigate, setIsSavingDraft, setError]);
+  }, [walletId, txData, unsignedPsbt, signedDevices, state, createTransaction, beginDraftSave, showSuccess, navigate, setIsSavingDraft, setError]);
 
   return { saveDraft };
 }

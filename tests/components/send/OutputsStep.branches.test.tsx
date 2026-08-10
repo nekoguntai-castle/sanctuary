@@ -329,8 +329,9 @@ describe('OutputsStep branch coverage', () => {
     );
 
     vi.mocked(bip21.parseBip21Uri).mockReturnValueOnce(null);
+    mockUpdateOutputAddress.mockClear();
     capture.outputRows[0].onAddressChange(0, 'bitcoin:not-parseable');
-    expect(mockUpdateOutputAddress).toHaveBeenCalledWith(0, 'bitcoin:not-parseable');
+    expect(mockUpdateOutputAddress).not.toHaveBeenCalled();
 
     mockDispatch.mockClear();
     mockUpdateOutputAmount.mockClear();
@@ -340,13 +341,14 @@ describe('OutputsStep branch coverage', () => {
     capture.outputRows[0].onAddressChange(0, 'bitcoin:bc1qaddressonly');
     expect(mockUpdateOutputAddress).toHaveBeenCalledWith(0, 'bc1qaddressonly');
     expect(mockUpdateOutputAmount).not.toHaveBeenCalled();
-    expect(mockDispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'SET_PAYJOIN_URL' }));
+    expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_PAYJOIN_URL', url: null });
 
     vi.mocked(bip21.parseBip21Uri).mockImplementationOnce(() => {
       throw new Error('parse failed');
     });
+    mockUpdateOutputAddress.mockClear();
     capture.outputRows[0].onAddressChange(0, 'bitcoin:throws');
-    expect(mockUpdateOutputAddress).toHaveBeenCalledWith(0, 'bitcoin:throws');
+    expect(mockUpdateOutputAddress).not.toHaveBeenCalled();
 
     capture.outputRows[0].onAddressChange(0, 'bc1qplain');
     expect(mockUpdateOutputAddress).toHaveBeenCalledWith(0, 'bc1qplain');

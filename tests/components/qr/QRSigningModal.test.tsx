@@ -169,6 +169,34 @@ describe('QRSigningModal', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it('keeps the scanner open and shows processing failures from raw QR imports', async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    renderModal(onClose, vi.fn().mockRejectedValue(new Error('Signed PSBT was rejected')));
+    mockIsUrFormat.mockReturnValueOnce(false);
+    scannerScanPayload = [{ rawValue: 'cHNidA==' }];
+
+    await user.click(screen.getByText("I've Signed It"));
+    await user.click(screen.getByRole('button', { name: /emit scan/i }));
+
+    expect(await screen.findByText('Signed PSBT was rejected')).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('uses an actionable fallback when signed PSBT processing rejects a non-Error', async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    renderModal(onClose, vi.fn().mockRejectedValue('rejected'));
+    mockIsUrFormat.mockReturnValueOnce(false);
+    scannerScanPayload = [{ rawValue: 'cHNidA==' }];
+
+    await user.click(screen.getByText("I've Signed It"));
+    await user.click(screen.getByRole('button', { name: /emit scan/i }));
+
+    expect(await screen.findByText('Failed to process signed PSBT')).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it('shows an invalid-format error for non-UR/non-base64 scans', async () => {
     const user = userEvent.setup();
     renderModal();

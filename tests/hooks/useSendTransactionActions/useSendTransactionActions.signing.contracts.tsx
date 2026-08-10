@@ -10,6 +10,37 @@ import {
 
 export const registerUseSendTransactionActionsSigningContracts = () => {
   describe('signing and broadcast', () => {
+    it('does not mark a signer before a current transaction has been created', () => {
+      const { result } = renderSendTransactionActions();
+
+      act(() => result.current.markDeviceSigned('device-without-transaction'));
+
+      expect(result.current.signedDevices.size).toBe(0);
+    });
+
+    it('ignores a device signing completion after reset', async () => {
+      let resolveSigning!: (value: { psbt: string; rawTx: string }) => void;
+      mocks.hardwareWallet.signPSBT.mockReturnValueOnce(new Promise(resolve => { resolveSigning = resolve; }));
+      const { result } = renderSendTransactionActions({
+        initialPsbt: 'unsigned-psbt',
+        initialTxData: baseTxData as any,
+      });
+      let signingRequest!: Promise<boolean>;
+      act(() => {
+        signingRequest = result.current.signWithDevice({ id: 'dev-trezor', type: 'Trezor Safe 3' } as any);
+      });
+      await waitFor(() => expect(mocks.hardwareWallet.signPSBT).toHaveBeenCalledTimes(1));
+      act(() => result.current.reset());
+
+      await act(async () => {
+        resolveSigning({ psbt: 'stale-signed-psbt', rawTx: 'stale-raw-tx' });
+        await signingRequest;
+      });
+      expect(result.current.unsignedPsbt).toBeNull();
+      expect(result.current.signedRawTx).toBeNull();
+      expect(result.current.signedDevices.size).toBe(0);
+      expect(mocks.updateDraft).not.toHaveBeenCalled();
+    });
     it('returns an error when hardware signing is attempted without connection', async () => {
       const { result } = renderSendTransactionActions({
         initialTxData: baseTxData as any,
@@ -117,7 +148,7 @@ export const registerUseSendTransactionActionsSigningContracts = () => {
       expect(mocks.updateDraft).toHaveBeenCalledWith('wallet-1', 'draft-123', {
         signedPsbtBase64: 'signed-psbt-from-device',
         signedDeviceId: 'dev-trezor',
-      });
+      }, expect.any(AbortSignal));
     });
 
     it('fails broadcast when no transaction exists', async () => {

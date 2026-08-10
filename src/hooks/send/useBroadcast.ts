@@ -21,6 +21,7 @@ import type { Wallet } from '../../types';
 import type { TransactionState } from '../../contexts/send/types';
 import type { TransactionData } from './types';
 import type { BroadcastTransactionRequest } from '../../api/transactions';
+import type { SendOperationLease } from './useSendOperationOwner';
 
 const log = createLogger('Broadcast');
 
@@ -59,6 +60,7 @@ export interface UseBroadcastDeps {
   signedRawTx: string | null;
   setIsBroadcasting: (v: boolean) => void;
   setError: (v: string | null) => void;
+  beginSigning: () => SendOperationLease | null;
 }
 
 export interface UseBroadcastResult {
@@ -242,6 +244,7 @@ export function useBroadcast({
   signedRawTx,
   setIsBroadcasting,
   setError,
+  beginSigning,
 }: UseBroadcastDeps): UseBroadcastResult {
   const navigate = useNavigate();
   const { format } = usePriceFreeFormatter();
@@ -265,6 +268,12 @@ export function useBroadcast({
       return false;
     }
 
+    const lease = beginSigning();
+    if (!lease) {
+      setError('Transaction changed; review it again before broadcasting');
+      return false;
+    }
+
     logBroadcastStart(payload);
     logMultisigPsbtSignatures(payload.psbtToUse, payload.isMultisig);
 
@@ -282,6 +291,8 @@ export function useBroadcast({
         utxos: txData.utxos,
       }));
 
+      if (!lease.isCurrent()) return false;
+
       if (broadcastResult.persistenceStatus === 'pending_reconciliation') {
         showBroadcastReconciliationWarning(showWarning, broadcastResult.txid);
       } else {
@@ -289,16 +300,18 @@ export function useBroadcast({
         playEventSound('send');
       }
       await refetchBroadcastCaches(walletId);
+      if (!lease.isCurrent()) return false;
       navigate(`/wallets/${walletId}`);
       return true;
     } catch (err) {
+      if (!lease.isCurrent()) return false;
       log.error('Transaction broadcast failed', { error: err });
       setError(getBroadcastErrorMessage(err));
       return false;
     } finally {
-      setIsBroadcasting(false);
+      if (lease.isCurrent()) setIsBroadcasting(false);
     }
-  }, [walletId, txData, unsignedPsbt, signedRawTx, state, format, showSuccess, showWarning, playEventSound, navigate, wallet.type, setIsBroadcasting, setError]);
+  }, [walletId, txData, unsignedPsbt, signedRawTx, state, format, showSuccess, showWarning, playEventSound, navigate, wallet.type, setIsBroadcasting, setError, beginSigning]);
 
   return { broadcastTransaction };
 }

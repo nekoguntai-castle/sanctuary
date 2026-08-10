@@ -46,7 +46,8 @@ const baseTxData = {
   inputPaths: ["m/84'/0'/0'/0/0"],
 } as any;
 
-function createDeps(overrides: Partial<Parameters<typeof useUsbSigning>[0]> = {}) {
+function createDeps(overrides: Partial<Parameters<typeof useUsbSigning>[0]> = {}): Parameters<typeof useUsbSigning>[0] {
+  const controller = new AbortController();
   return {
     walletId: 'wallet-1',
     wallet: { id: 'wallet-1', type: 'single_sig', name: 'Primary Wallet' } as any,
@@ -58,6 +59,7 @@ function createDeps(overrides: Partial<Parameters<typeof useUsbSigning>[0]> = {}
     setUnsignedPsbt: vi.fn(),
     setSignedRawTx: vi.fn(),
     setSignedDevices: vi.fn(),
+    beginSigning: () => ({ signal: controller.signal, isCurrent: () => true }),
     ...overrides,
   };
 }
@@ -103,6 +105,53 @@ describe('useUsbSigning', () => {
       }),
       'wallet-1'
     );
+  });
+
+  it('signs an explicitly supplied just-created transaction through the signing owner', async () => {
+    const deps = createDeps({ txData: null });
+    const { result } = renderHook(() => useUsbSigning(deps));
+    const justCreated = {
+      ...baseTxData,
+      psbtBase64: 'just-created-psbt',
+      inputPaths: ["m/84'/0'/0'/1/0"],
+    } as any;
+
+    await expect(result.current.signWithHardwareWalletResult(justCreated)).resolves.toEqual({
+      psbt: 'signed-psbt',
+    });
+
+    expect(mocks.hardwareWallet.signPSBT).toHaveBeenCalledWith(
+      'just-created-psbt',
+      ["m/84'/0'/0'/1/0"],
+      undefined,
+      'wallet-1',
+    );
+    expect(deps.setIsSigning).toHaveBeenNthCalledWith(1, true);
+    expect(deps.setIsSigning).toHaveBeenLastCalledWith(false);
+  });
+
+  it('signWithHardwareWallet reports missing connection state', async () => {
+    mocks.hardwareWallet.isConnected = false;
+    mocks.hardwareWallet.device = null;
+    const deps = createDeps();
+    const { result } = renderHook(() => useUsbSigning(deps));
+
+    await expect(result.current.signWithHardwareWallet()).resolves.toBeNull();
+
+    expect(deps.setError).toHaveBeenCalledWith(
+      'Hardware wallet not connected or no transaction to sign'
+    );
+  });
+
+  it('reports a missing transaction when the connected-wallet wrapper has no current data', async () => {
+    const deps = createDeps({ txData: null });
+    const { result } = renderHook(() => useUsbSigning(deps));
+
+    await expect(result.current.signWithHardwareWallet()).resolves.toBeNull();
+    expect(deps.setError).toHaveBeenCalledWith(
+      'Hardware wallet not connected or no transaction to sign'
+    );
+    expect(mocks.hardwareWallet.signPSBT).not.toHaveBeenCalled();
   });
 
   it('signWithHardwareWallet blocks Ledger multisig USB signing before signer calls', async () => {
@@ -168,6 +217,45 @@ describe('useUsbSigning', () => {
     });
 
     expect(signed).toBeNull();
+  });
+
+  it('signWithHardwareWallet refuses signing without current transaction ownership', async () => {
+    const deps = createDeps({ beginSigning: () => null });
+    const { result } = renderHook(() => useUsbSigning(deps));
+
+    await expect(result.current.signWithHardwareWallet()).resolves.toBeNull();
+
+    expect(deps.setError).toHaveBeenCalledWith(
+      'Transaction changed; review it again before signing'
+    );
+    expect(mocks.hardwareWallet.signPSBT).not.toHaveBeenCalled();
+  });
+
+  it('signWithHardwareWallet ignores stale success and stale failure completions', async () => {
+    let current = true;
+    const controller = new AbortController();
+    const deps = createDeps({
+      beginSigning: () => ({ signal: controller.signal, isCurrent: () => current }),
+    });
+    const { result } = renderHook(() => useUsbSigning(deps));
+
+    mocks.hardwareWallet.signPSBT.mockImplementationOnce(async () => {
+      current = false;
+      return { psbt: 'stale-psbt' };
+    });
+    await expect(result.current.signWithHardwareWallet()).resolves.toBeNull();
+
+    current = true;
+    mocks.hardwareWallet.signPSBT.mockImplementationOnce(async () => {
+      current = false;
+      throw new Error('stale failure');
+    });
+    await expect(result.current.signWithHardwareWallet()).resolves.toBeNull();
+
+    expect(deps.setError).toHaveBeenCalledTimes(2);
+    expect(deps.setError).toHaveBeenNthCalledWith(1, null);
+    expect(deps.setError).toHaveBeenNthCalledWith(2, null);
+    expect(deps.setIsSigning).toHaveBeenCalledTimes(2);
   });
 
   it('signWithDevice fails when no PSBT is available', async () => {
@@ -345,6 +433,24 @@ describe('useUsbSigning', () => {
     expect(mocks.updateDraft).not.toHaveBeenCalled();
   });
 
+  it('signWithDevice persists a successful signature to a draft', async () => {
+    const deps = createDeps({ draftId: 'draft-success' });
+    const { result } = renderHook(() => useUsbSigning(deps));
+
+    await expect(
+      result.current.signWithDevice({ id: 'dev-success', type: 'Trezor Safe 3' } as any)
+    ).resolves.toBe(true);
+
+    expect(mocks.updateDraft).toHaveBeenCalledWith('wallet-1', 'draft-success', {
+      signedPsbtBase64: 'signed-psbt',
+      signedDeviceId: 'dev-success',
+    }, expect.any(AbortSignal));
+    expect(mocks.logger.info).toHaveBeenCalledWith('Signature persisted to draft', {
+      draftId: 'draft-success',
+      deviceId: 'dev-success',
+    });
+  });
+
   it('signWithDevice reports missing signing result when device returns neither psbt nor rawTx', async () => {
     mocks.hardwareWallet.signPSBT.mockResolvedValueOnce({});
     const deps = createDeps();
@@ -358,6 +464,61 @@ describe('useUsbSigning', () => {
     expect(ok).toBe(false);
     expect(deps.setError).toHaveBeenCalledWith('Signing did not produce a result');
     expect(mocks.hardwareWallet.disconnect).toHaveBeenCalled();
+  });
+
+  it('signWithDevice refuses signing without current transaction ownership', async () => {
+    const deps = createDeps({ beginSigning: () => null });
+    const { result } = renderHook(() => useUsbSigning(deps));
+
+    await expect(
+      result.current.signWithDevice({ id: 'dev-ownership', type: 'Trezor Safe 3' } as any)
+    ).resolves.toBe(false);
+
+    expect(deps.setError).toHaveBeenCalledWith(
+      'Transaction changed; review it again before signing'
+    );
+    expect(mocks.hardwareWallet.signPSBT).not.toHaveBeenCalled();
+  });
+
+  it('does not send a PSBT to the device when ownership is lost during connection', async () => {
+    let resolveConnect!: () => void;
+    let current = true;
+    mocks.hardwareWallet.connect.mockReturnValueOnce(new Promise<void>(resolve => { resolveConnect = resolve; }));
+    const controller = new AbortController();
+    const deps = createDeps({
+      beginSigning: () => ({ signal: controller.signal, isCurrent: () => current }),
+    });
+    const { result } = renderHook(() => useUsbSigning(deps));
+
+    const signing = result.current.signWithDevice({ id: 'dev-stale', type: 'Trezor Safe 3' } as any);
+    current = false;
+    controller.abort();
+    resolveConnect();
+
+    await expect(signing).resolves.toBe(false);
+    expect(mocks.hardwareWallet.signPSBT).not.toHaveBeenCalled();
+    expect(mocks.hardwareWallet.disconnect).not.toHaveBeenCalled();
+  });
+
+  it('signWithDevice ignores a missing result after ownership is lost', async () => {
+    let current = true;
+    mocks.hardwareWallet.signPSBT.mockImplementationOnce(async () => {
+      current = false;
+      return {};
+    });
+    const controller = new AbortController();
+    const deps = createDeps({
+      beginSigning: () => ({ signal: controller.signal, isCurrent: () => current }),
+    });
+    const { result } = renderHook(() => useUsbSigning(deps));
+
+    await expect(
+      result.current.signWithDevice({ id: 'dev-stale', type: 'Trezor Safe 3' } as any)
+    ).resolves.toBe(false);
+
+    expect(deps.setError).toHaveBeenCalledOnce();
+    expect(deps.setError).toHaveBeenCalledWith(null);
+    expect(mocks.hardwareWallet.disconnect).not.toHaveBeenCalled();
   });
 
   it('signWithDevice surfaces Error message when signing throws Error', async () => {
@@ -386,5 +547,26 @@ describe('useUsbSigning', () => {
 
     expect(ok).toBe(false);
     expect(deps.setError).toHaveBeenCalledWith('Failed to sign with device');
+  });
+
+  it('signWithDevice ignores failures after ownership is lost', async () => {
+    let current = true;
+    mocks.hardwareWallet.signPSBT.mockImplementationOnce(async () => {
+      current = false;
+      throw new Error('stale failure');
+    });
+    const controller = new AbortController();
+    const deps = createDeps({
+      beginSigning: () => ({ signal: controller.signal, isCurrent: () => current }),
+    });
+    const { result } = renderHook(() => useUsbSigning(deps));
+
+    await expect(
+      result.current.signWithDevice({ id: 'dev-stale', type: 'Trezor Safe 3' } as any)
+    ).resolves.toBe(false);
+
+    expect(deps.setError).toHaveBeenCalledOnce();
+    expect(deps.setError).toHaveBeenCalledWith(null);
+    expect(mocks.hardwareWallet.disconnect).not.toHaveBeenCalled();
   });
 });

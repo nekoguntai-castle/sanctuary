@@ -100,6 +100,7 @@ describe('SendTransactionWizard branch coverage', () => {
     broadcastTransaction: vi.fn(),
     saveDraft: vi.fn(),
     signWithDevice: vi.fn(),
+    signWithHardwareWalletResult: vi.fn(),
     markDeviceSigned: vi.fn(),
     uploadSignedPsbt: vi.fn(),
     downloadPsbt: vi.fn(),
@@ -252,7 +253,8 @@ describe('SendTransactionWizard branch coverage', () => {
   it('does not broadcast when hardware signing returns no PSBT/rawTx', async () => {
     const user = userEvent.setup();
     const broadcastTransaction = vi.fn();
-    const signPSBT = vi.fn().mockResolvedValue({});
+    const signPSBT = vi.fn();
+    const signWithHardwareWalletResult = vi.fn().mockResolvedValue({});
 
     useSendTransactionMock.mockReturnValue(
       makeContext({
@@ -263,6 +265,7 @@ describe('SendTransactionWizard branch coverage', () => {
     useSendTransactionActionsMock.mockReturnValue(
       makeActions({
         txData: { psbtBase64: 'unsigned-psbt' },
+        signWithHardwareWalletResult,
         broadcastTransaction,
       })
     );
@@ -277,7 +280,30 @@ describe('SendTransactionWizard branch coverage', () => {
     renderWizard();
     await user.click(screen.getByRole('button', { name: 'broadcast' }));
 
-    expect(signPSBT).toHaveBeenCalledWith('unsigned-psbt', [], undefined, 'wallet-1');
+    expect(signWithHardwareWalletResult).toHaveBeenCalledWith({ psbtBase64: 'unsigned-psbt' });
+    expect(signPSBT).not.toHaveBeenCalled();
+    expect(broadcastTransaction).not.toHaveBeenCalled();
+  });
+
+  it('stops after an owned hardware signing attempt returns no result', async () => {
+    const user = userEvent.setup();
+    const broadcastTransaction = vi.fn();
+    const signWithHardwareWalletResult = vi.fn().mockResolvedValue(null);
+    useSendTransactionMock.mockReturnValue(makeContext({ currentStep: 'review', isReadyToSign: true }));
+    useSendTransactionActionsMock.mockReturnValue(makeActions({
+      txData: { psbtBase64: 'unsigned-psbt' },
+      signWithHardwareWalletResult,
+      broadcastTransaction,
+    }));
+    useHardwareWalletMock.mockReturnValue(makeHardware({
+      isConnected: true,
+      device: { id: 'hw-1' },
+    }));
+
+    renderWizard();
+    await user.click(screen.getByRole('button', { name: 'broadcast' }));
+
+    expect(signWithHardwareWalletResult).toHaveBeenCalled();
     expect(broadcastTransaction).not.toHaveBeenCalled();
   });
 

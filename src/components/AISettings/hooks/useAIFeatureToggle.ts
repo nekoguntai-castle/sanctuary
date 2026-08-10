@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import * as adminApi from "../../../api/admin";
 import { createLogger } from "../../../utils/logger";
 import { invalidateAIStatusCache } from "../../../hooks/useAIStatus";
+import { invalidateIntelligenceStatus } from "../../../hooks/useIntelligenceStatus";
 
 const log = createLogger("AISettings:useAIFeatureToggle");
 
@@ -71,6 +72,7 @@ export function useAIFeatureToggle({
       await adminApi.updateSystemSettings({ aiEnabled: newValue });
       setAiEnabled(newValue);
       invalidateAIStatusCache();
+      invalidateIntelligenceStatus();
 
       setSaveSuccess(true);
       if (saveSuccessTimeoutRef.current) {

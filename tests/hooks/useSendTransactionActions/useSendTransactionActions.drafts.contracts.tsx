@@ -1,4 +1,4 @@
-import { act } from '@testing-library/react';
+import { act, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -7,6 +7,7 @@ import {
   mocks,
   queryClient,
   renderSendTransactionActions,
+  renderRerenderableSendTransactionActions,
 } from './useSendTransactionActionsTestHarness';
 
 export const registerUseSendTransactionActionsDraftContracts = () => {
@@ -50,11 +51,42 @@ export const registerUseSendTransactionActionsDraftContracts = () => {
         draftId = await result.current.saveDraft();
       });
       expect(draftId).toBe('draft-existing');
-      expect(mocks.updateDraft).toHaveBeenCalledWith('wallet-1', 'draft-existing', {
-        signedPsbtBase64: 'signed-psbt-v2',
-        signedDeviceId: 'dev-1',
-      });
+      expect(mocks.updateDraft).toHaveBeenCalledWith(
+        'wallet-1',
+        'draft-existing',
+        { signedPsbtBase64: 'signed-psbt-v2', signedDeviceId: 'dev-1' },
+        expect.any(AbortSignal),
+      );
       expect(mocks.showSuccess).toHaveBeenCalledWith('Draft updated successfully', 'Draft Saved');
+    });
+
+    it('aborts a deferred draft save when the form changes and suppresses stale completion effects', async () => {
+      let resolveUpdate!: () => void;
+      mocks.updateDraft.mockReturnValueOnce(new Promise<void>(resolve => { resolveUpdate = resolve; }));
+      const initialState = createState({
+        draftId: 'draft-existing',
+        outputs: [{ address: 'bc1qrecipient', amount: '10000', sendMax: false }],
+      });
+      const { result, rerender } = renderRerenderableSendTransactionActions(initialState);
+
+      let savePromise!: Promise<string | null>;
+      act(() => { savePromise = result.current.saveDraft(); });
+      await waitFor(() => expect(mocks.updateDraft).toHaveBeenCalledTimes(1));
+      const signal = mocks.updateDraft.mock.calls[0][3] as AbortSignal;
+
+      rerender({
+        state: createState({
+          draftId: 'draft-existing',
+          outputs: [{ address: 'bc1qreplacement', amount: '20000', sendMax: false }],
+        }),
+      });
+      expect(signal.aborted).toBe(true);
+      resolveUpdate();
+
+      await act(async () => expect(await savePromise).toBeNull());
+      expect(mocks.showSuccess).not.toHaveBeenCalled();
+      expect(mocks.navigate).not.toHaveBeenCalled();
+      expect(result.current.isSavingDraft).toBe(false);
     });
 
     it('sets error when downloading PSBT without transaction data', () => {
@@ -82,7 +114,10 @@ export const registerUseSendTransactionActionsDraftContracts = () => {
     it('uploads a signed PSBT file and tracks the signing device', async () => {
       const file = new File(['cHNidP8BAA=='], 'signed.psbt', { type: 'text/plain' });
 
-      const { result } = renderSendTransactionActions();
+      const { result } = renderSendTransactionActions({
+        initialPsbt: 'cHNidP8BAA==',
+        initialTxData: baseTxData as any,
+      });
 
       await act(async () => {
         await result.current.uploadSignedPsbt(file, 'device-upload');
@@ -97,7 +132,11 @@ export const registerUseSendTransactionActionsDraftContracts = () => {
         draftId: 'draft-qr',
       });
 
-      const { result } = renderSendTransactionActions({ state });
+      const { result } = renderSendTransactionActions({
+        state,
+        initialPsbt: 'unsigned-psbt',
+        initialTxData: baseTxData as any,
+      });
 
       await act(async () => {
         await result.current.processQrSignedPsbt('qr-signed-psbt', 'dev-qr');
@@ -108,7 +147,7 @@ export const registerUseSendTransactionActionsDraftContracts = () => {
       expect(mocks.updateDraft).toHaveBeenCalledWith('wallet-1', 'draft-qr', {
         signedPsbtBase64: 'qr-signed-psbt',
         signedDeviceId: 'dev-qr',
-      });
+      }, expect.any(AbortSignal));
     });
 
     it('clears errors and fully resets local state', async () => {

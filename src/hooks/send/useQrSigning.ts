@@ -17,6 +17,7 @@ import { base64ToBytes, bytesToBase64, hasPsbtMagicBytes } from '../../utils/psb
 import { extractErrorMessage } from '@sanctuary/shared/utils/errors';
 import type { Wallet } from '../../types';
 import type { TransactionData } from './types';
+import type { SendOperationLease } from './useSendOperationOwner';
 
 const log = createLogger('QrSigning');
 
@@ -29,12 +30,14 @@ export interface UseQrSigningDeps {
   setError: (v: string | null) => void;
   setUnsignedPsbt: (v: string | null) => void;
   setSignedDevices: (fn: (prev: Set<string>) => Set<string>) => void;
+  beginSigning: () => SendOperationLease | null;
+  setIsSigning: (v: boolean) => void;
 }
 
 export interface UseQrSigningResult {
   downloadPsbt: () => void;
   uploadSignedPsbt: (file: File, deviceId?: string, deviceFingerprint?: string) => Promise<void>;
-  processQrSignedPsbt: (signedPsbt: string, deviceId: string) => void;
+  processQrSignedPsbt: (signedPsbt: string, deviceId: string) => Promise<void>;
 }
 
 type WalletTypeValue = Wallet['type'];
@@ -52,6 +55,7 @@ interface UploadedSignedPsbtParams {
   walletType: WalletTypeValue;
   setUnsignedPsbt: (v: string | null) => void;
   setSignedDevices: SetSignedDevices;
+  lease: SendOperationLease;
 }
 
 const isBinaryPsbt = (bytes: Uint8Array): boolean => {
@@ -231,7 +235,8 @@ const persistUploadedSignatureToDraft = async (
   walletId: string,
   draftId: string | null,
   combinedPsbt: string,
-  effectiveDeviceId: string
+  effectiveDeviceId: string,
+  lease: SendOperationLease,
 ): Promise<void> => {
   if (!draftId) return;
 
@@ -239,7 +244,7 @@ const persistUploadedSignatureToDraft = async (
     await draftsApi.updateDraft(walletId, draftId, {
       signedPsbtBase64: combinedPsbt,
       signedDeviceId: effectiveDeviceId,
-    });
+    }, lease.signal);
     log.info('Uploaded PSBT signature persisted to draft', { draftId, deviceId: effectiveDeviceId });
   } catch (persistErr) {
     log.warn('Failed to persist uploaded PSBT to draft', { error: persistErr });
@@ -250,7 +255,8 @@ const persistQrSignatureToDraft = async (
   walletId: string,
   draftId: string | null,
   combinedPsbt: string,
-  deviceId: string
+  deviceId: string,
+  lease: SendOperationLease,
 ): Promise<void> => {
   if (!draftId) return;
 
@@ -258,7 +264,7 @@ const persistQrSignatureToDraft = async (
     await draftsApi.updateDraft(walletId, draftId, {
       signedPsbtBase64: combinedPsbt,
       signedDeviceId: deviceId,
-    });
+    }, lease.signal);
     log.info('QR signature persisted to draft', { draftId, deviceId });
   } catch (persistErr) {
     log.warn('Failed to persist QR signature to draft', { error: persistErr });
@@ -275,6 +281,7 @@ const processUploadedSignedPsbt = async ({
   walletType,
   setUnsignedPsbt,
   setSignedDevices,
+  lease,
 }: UploadedSignedPsbtParams): Promise<void> => {
   const base64Psbt = getUploadedPsbtBase64(bytes);
   const effectiveDeviceId = getEffectiveDeviceId(deviceId);
@@ -286,9 +293,10 @@ const processUploadedSignedPsbt = async ({
   }
 
   const combinedPsbt = combineUploadedPsbt(unsignedPsbt, walletType, base64Psbt);
+  if (!lease.isCurrent()) return;
   setUnsignedPsbt(combinedPsbt);
   markSignedDevice(setSignedDevices, effectiveDeviceId);
-  await persistUploadedSignatureToDraft(walletId, draftId, combinedPsbt, effectiveDeviceId);
+  await persistUploadedSignatureToDraft(walletId, draftId, combinedPsbt, effectiveDeviceId, lease);
 };
 
 const readFileAsArrayBuffer = (file: File): Promise<ArrayBuffer> => {
@@ -338,6 +346,8 @@ export function useQrSigning({
   setError,
   setUnsignedPsbt,
   setSignedDevices,
+  beginSigning,
+  setIsSigning,
 }: UseQrSigningDeps): UseQrSigningResult {
 
   // Download PSBT file (binary format - required by most hardware wallets)
@@ -354,29 +364,55 @@ export function useQrSigning({
   // Upload signed PSBT (supports both binary and base64 formats)
   // deviceId is optional - for multisig, pass the device ID to track which device signed
   const uploadSignedPsbt = useCallback(async (file: File, deviceId?: string, deviceFingerprint?: string): Promise<void> => {
-    const arrayBuffer = await readFileAsArrayBuffer(file);
-    await processUploadedSignedPsbt({
-      bytes: new Uint8Array(arrayBuffer),
-      deviceId,
-      deviceFingerprint,
-      draftId,
-      walletId,
-      unsignedPsbt,
-      walletType: wallet.type,
-      setUnsignedPsbt,
-      setSignedDevices,
-    });
-  }, [draftId, walletId, unsignedPsbt, wallet.type, setUnsignedPsbt, setSignedDevices]);
+    const lease = beginSigning();
+    if (!lease) throw new Error('Transaction changed; review it again before signing');
+    setIsSigning(true);
+    try {
+      const arrayBuffer = await readFileAsArrayBuffer(file);
+      if (!lease.isCurrent()) return;
+      await processUploadedSignedPsbt({
+        bytes: new Uint8Array(arrayBuffer),
+        deviceId,
+        deviceFingerprint,
+        draftId,
+        walletId,
+        unsignedPsbt,
+        walletType: wallet.type,
+        setUnsignedPsbt,
+        setSignedDevices,
+        lease,
+      });
+    } catch (error) {
+      if (lease.isCurrent()) {
+        setError(extractErrorMessage(error, 'Failed to process signed PSBT'));
+      }
+      throw error;
+    } finally {
+      if (lease.isCurrent()) setIsSigning(false);
+    }
+  }, [draftId, walletId, unsignedPsbt, wallet.type, setError, setUnsignedPsbt, setSignedDevices, beginSigning, setIsSigning]);
 
   // Process QR-scanned signed PSBT
   const processQrSignedPsbt = useCallback(async (signedPsbt: string, deviceId: string) => {
+    const lease = beginSigning();
+    if (!lease) throw new Error('Transaction changed; review it again before signing');
+    setIsSigning(true);
     log.info('Processing QR-signed PSBT', { deviceId, psbtLength: signedPsbt.length });
-
-    const combinedPsbt = combineQrSignedPsbt(unsignedPsbt, wallet.type, signedPsbt);
-    setUnsignedPsbt(combinedPsbt);
-    markSignedDevice(setSignedDevices, deviceId);
-    await persistQrSignatureToDraft(walletId, draftId, combinedPsbt, deviceId);
-  }, [draftId, walletId, unsignedPsbt, wallet.type, setUnsignedPsbt, setSignedDevices]);
+    try {
+      const combinedPsbt = combineQrSignedPsbt(unsignedPsbt, wallet.type, signedPsbt);
+      if (!lease.isCurrent()) return;
+      setUnsignedPsbt(combinedPsbt);
+      markSignedDevice(setSignedDevices, deviceId);
+      await persistQrSignatureToDraft(walletId, draftId, combinedPsbt, deviceId, lease);
+    } catch (error) {
+      if (lease.isCurrent()) {
+        setError(extractErrorMessage(error, 'Failed to process signed PSBT'));
+      }
+      throw error;
+    } finally {
+      if (lease.isCurrent()) setIsSigning(false);
+    }
+  }, [draftId, walletId, unsignedPsbt, wallet.type, setError, setUnsignedPsbt, setSignedDevices, beginSigning, setIsSigning]);
 
   return { downloadPsbt, uploadSignedPsbt, processQrSignedPsbt };
 }

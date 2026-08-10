@@ -11,6 +11,7 @@ interface WizardShellProps {
   onCancel: () => void;
   onClearError: () => void;
   walletName: string;
+  navigationLocked: boolean;
 }
 
 function WizardError({
@@ -36,13 +37,15 @@ function WizardError({
 function WizardHeader({
   onCancel,
   walletName,
+  navigationLocked,
 }: {
   onCancel: () => void;
   walletName: string;
+  navigationLocked: boolean;
 }) {
   return (
     <div className="flex items-center justify-between mb-6">
-      <Button variant="ghost" size="sm" onClick={onCancel}>
+      <Button variant="ghost" size="sm" onClick={onCancel} disabled={navigationLocked}>
         <ArrowLeft className="w-4 h-4 mr-2" />
         Cancel
       </Button>
@@ -61,10 +64,11 @@ export function WizardShell({
   onCancel,
   onClearError,
   walletName,
+  navigationLocked,
 }: WizardShellProps) {
   return (
     <div className="max-w-2xl tablet:max-w-3xl lg:max-w-4xl mx-auto">
-      <WizardHeader onCancel={onCancel} walletName={walletName} />
+      <WizardHeader onCancel={onCancel} walletName={walletName} navigationLocked={navigationLocked} />
 
       {error && <WizardError error={error} onClearError={onClearError} />}
 

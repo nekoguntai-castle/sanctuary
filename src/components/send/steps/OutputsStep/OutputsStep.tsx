@@ -134,7 +134,7 @@ export function OutputsStep() {
       try {
         const parsed = parseBip21Uri(value);
         if (!parsed) {
-          updateOutputAddress(index, value);
+          log.debug('Rejected invalid BIP21 URI');
           return;
         }
 
@@ -155,11 +155,13 @@ export function OutputsStep() {
               message: 'Payjoin requires sender and receiver to be on the same network',
             });
           }
+        } else {
+          dispatch({ type: 'SET_PAYJOIN_URL', url: null });
         }
         return;
       } catch (error) {
-        log.debug('Address input is not a BIP21 URI', { error });
-        // Not a valid BIP21
+        log.debug('Rejected invalid BIP21 URI', { error });
+        return;
       }
     }
 

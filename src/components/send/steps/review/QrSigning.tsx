@@ -4,7 +4,7 @@ import type { Device } from '../../../../types';
 interface QrSigningProps {
   qrSigningDevice: Device | null;
   unsignedPsbt?: string | null;
-  onProcessQrSignedPsbt?: (signedPsbt: string, deviceId: string) => void;
+  onProcessQrSignedPsbt?: (signedPsbt: string, deviceId: string) => Promise<void>;
   setQrSigningDevice: (device: Device | null) => void;
 }
 
@@ -24,9 +24,8 @@ export function QrSigning({
       onClose={() => setQrSigningDevice(null)}
       psbtBase64={unsignedPsbt}
       deviceLabel={qrSigningDevice.label}
-      onSignedPsbt={(signedPsbt) => {
-        onProcessQrSignedPsbt?.(signedPsbt, qrSigningDevice.id);
-        setQrSigningDevice(null);
+      onSignedPsbt={async (signedPsbt) => {
+        await onProcessQrSignedPsbt?.(signedPsbt, qrSigningDevice.id);
       }}
     />
   );

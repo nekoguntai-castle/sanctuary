@@ -20,7 +20,7 @@ interface QRSigningModalProps {
   /** Device label for display */
   deviceLabel: string;
   /** Callback when signed PSBT is received */
-  onSignedPsbt: (signedPsbt: string) => void;
+  onSignedPsbt: (signedPsbt: string) => Promise<void> | void;
 }
 
 export const QRSigningModal: React.FC<QRSigningModalProps> = ({

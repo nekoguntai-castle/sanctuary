@@ -1,4 +1,4 @@
-import { fireEvent,render,screen } from '@testing-library/react';
+import { fireEvent,render,screen,waitFor } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
 import { QrSigning } from '../../../src/components/send/steps/review/QrSigning';
 
@@ -8,7 +8,9 @@ vi.mock('../../../src/components/qr', () => ({
       <div>{props.psbtBase64}</div>
       <div>{props.deviceLabel}</div>
       <button onClick={props.onClose}>close-modal</button>
-      <button onClick={() => props.onSignedPsbt('signed-psbt')}>submit-signed</button>
+      <button onClick={() => {
+        void Promise.resolve(props.onSignedPsbt('signed-psbt')).then(props.onClose).catch(() => undefined);
+      }}>submit-signed</button>
     </div>
   ),
 }));
@@ -55,7 +57,7 @@ describe('QrSigning', () => {
     expect(setQrSigningDevice).toHaveBeenCalledWith(null);
   });
 
-  it('processes signed PSBT with device id and clears session', () => {
+  it('processes signed PSBT with device id and clears session after processing', async () => {
     const setQrSigningDevice = vi.fn();
     const onProcessQrSignedPsbt = vi.fn();
     render(
@@ -69,10 +71,10 @@ describe('QrSigning', () => {
 
     fireEvent.click(screen.getByText('submit-signed'));
     expect(onProcessQrSignedPsbt).toHaveBeenCalledWith('signed-psbt', 'dev-1');
-    expect(setQrSigningDevice).toHaveBeenCalledWith(null);
+    await waitFor(() => expect(setQrSigningDevice).toHaveBeenCalledWith(null));
   });
 
-  it('still clears session when signed callback is omitted', () => {
+  it('still clears session when signed callback is omitted', async () => {
     const setQrSigningDevice = vi.fn();
     render(
       <QrSigning
@@ -83,6 +85,23 @@ describe('QrSigning', () => {
     );
 
     fireEvent.click(screen.getByText('submit-signed'));
-    expect(setQrSigningDevice).toHaveBeenCalledWith(null);
+    await waitFor(() => expect(setQrSigningDevice).toHaveBeenCalledWith(null));
+  });
+
+  it('keeps the signing session open when signed PSBT processing fails', async () => {
+    const setQrSigningDevice = vi.fn();
+    const onProcessQrSignedPsbt = vi.fn().mockRejectedValue(new Error('signature rejected'));
+    render(
+      <QrSigning
+        qrSigningDevice={device}
+        unsignedPsbt="unsigned-psbt"
+        onProcessQrSignedPsbt={onProcessQrSignedPsbt}
+        setQrSigningDevice={setQrSigningDevice}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('submit-signed'));
+    await waitFor(() => expect(onProcessQrSignedPsbt).toHaveBeenCalled());
+    expect(setQrSigningDevice).not.toHaveBeenCalled();
   });
 });

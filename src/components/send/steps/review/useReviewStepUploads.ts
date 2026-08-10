@@ -35,7 +35,12 @@ export function useReviewStepUploads({
     const file = getInputFile(event);
 
     if (file && onUploadSignedPsbt) {
-      await onUploadSignedPsbt(file);
+      try {
+        await onUploadSignedPsbt(file);
+      } catch (error) {
+        // The owning send hook publishes the actionable error into the review UI.
+        log.error('onUploadSignedPsbt failed', { error });
+      }
     }
 
     resetInput(fileInputRef.current);

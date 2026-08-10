@@ -63,6 +63,7 @@ function createState(overrides: Record<string, unknown> = {}) {
 }
 
 function createDeps(overrides: Partial<Parameters<typeof useDraftManagement>[0]> = {}) {
+  const controller = new AbortController();
   return {
     walletId: 'wallet-1',
     state: createState(),
@@ -70,6 +71,7 @@ function createDeps(overrides: Partial<Parameters<typeof useDraftManagement>[0]>
     unsignedPsbt: 'unsigned-psbt',
     signedDevices: new Set<string>(),
     createTransaction: vi.fn(),
+    beginDraftSave: () => ({ signal: controller.signal, isCurrent: () => true }),
     setIsSavingDraft: vi.fn(),
     setError: vi.fn(),
     ...overrides,
@@ -98,6 +100,124 @@ describe('useDraftManagement', () => {
     expect(draftId).toBeNull();
     expect(deps.setIsSavingDraft).not.toHaveBeenCalled();
     expect(mocks.createDraft).not.toHaveBeenCalled();
+  });
+
+  it('refuses to save when the reviewed transaction no longer has an owner', async () => {
+    const deps = createDeps({ beginDraftSave: () => null });
+    const { result } = renderHook(() => useDraftManagement(deps));
+
+    await act(async () => {
+      expect(await result.current.saveDraft()).toBeNull();
+    });
+
+    expect(deps.setIsSavingDraft).not.toHaveBeenCalled();
+    expect(mocks.createDraft).not.toHaveBeenCalled();
+  });
+
+  it('does not publish or navigate after draft-save ownership is lost', async () => {
+    let resolveUpdate!: () => void;
+    let current = true;
+    mocks.updateDraft.mockReturnValueOnce(new Promise<void>(resolve => { resolveUpdate = resolve; }));
+    const controller = new AbortController();
+    const deps = createDeps({
+      state: createState({ draftId: 'draft-existing' }),
+      beginDraftSave: () => ({ signal: controller.signal, isCurrent: () => current }),
+    });
+    const { result } = renderHook(() => useDraftManagement(deps));
+
+    let savePromise!: Promise<string | null>;
+    act(() => { savePromise = result.current.saveDraft(); });
+    current = false;
+    controller.abort();
+    resolveUpdate();
+
+    await act(async () => expect(await savePromise).toBeNull());
+    expect(mocks.showSuccess).not.toHaveBeenCalled();
+    expect(mocks.navigate).not.toHaveBeenCalled();
+    expect(deps.setError).not.toHaveBeenCalledWith(expect.any(String));
+    expect(deps.setIsSavingDraft).not.toHaveBeenLastCalledWith(false);
+  });
+
+  it('drops a newly created draft id when ownership is lost during creation', async () => {
+    let current = true;
+    mocks.createDraft.mockImplementationOnce(async () => {
+      current = false;
+      return { id: 'stale-draft' };
+    });
+    const controller = new AbortController();
+    const deps = createDeps({
+      beginDraftSave: () => ({ signal: controller.signal, isCurrent: () => current }),
+    });
+    const { result } = renderHook(() => useDraftManagement(deps));
+
+    await expect(result.current.saveDraft()).resolves.toBeNull();
+    expect(mocks.showSuccess).not.toHaveBeenCalled();
+    expect(mocks.navigate).not.toHaveBeenCalled();
+  });
+
+  it('drops a new signed draft when ownership is lost during signed-state persistence', async () => {
+    let current = true;
+    mocks.updateDraft.mockImplementationOnce(async () => { current = false; });
+    const controller = new AbortController();
+    const deps = createDeps({
+      unsignedPsbt: 'signed-psbt',
+      signedDevices: new Set(['device-1']),
+      beginDraftSave: () => ({ signal: controller.signal, isCurrent: () => current }),
+    });
+    const { result } = renderHook(() => useDraftManagement(deps));
+
+    await expect(result.current.saveDraft()).resolves.toBeNull();
+    expect(mocks.updateDraft).toHaveBeenCalled();
+    expect(mocks.showSuccess).not.toHaveBeenCalled();
+    expect(mocks.navigate).not.toHaveBeenCalled();
+  });
+
+  it('rechecks ownership after success notification before navigating', async () => {
+    let current = true;
+    mocks.showSuccess.mockImplementationOnce(() => { current = false; });
+    const controller = new AbortController();
+    const deps = createDeps({
+      state: createState({ draftId: 'draft-existing' }),
+      beginDraftSave: () => ({ signal: controller.signal, isCurrent: () => current }),
+    });
+    const { result } = renderHook(() => useDraftManagement(deps));
+
+    await expect(result.current.saveDraft()).resolves.toBeNull();
+    expect(mocks.showSuccess).toHaveBeenCalled();
+    expect(mocks.navigate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['an abort', new DOMException('cancelled', 'AbortError')],
+    ['a non-abort DOM failure', new DOMException('network failed', 'NetworkError')],
+  ])('handles %s without publishing stale navigation', async (_label, error) => {
+    mocks.createDraft.mockRejectedValueOnce(error);
+    const deps = createDeps();
+    const { result } = renderHook(() => useDraftManagement(deps));
+
+    await expect(result.current.saveDraft()).resolves.toBeNull();
+    expect(mocks.navigate).not.toHaveBeenCalled();
+    if (error.name === 'AbortError') {
+      expect(deps.setError).not.toHaveBeenCalledWith(expect.any(String));
+    } else {
+      expect(deps.setError).toHaveBeenCalledWith('Failed to save draft');
+    }
+  });
+
+  it('ignores a rejection that settles after draft ownership is lost', async () => {
+    let current = true;
+    mocks.createDraft.mockImplementationOnce(async () => {
+      current = false;
+      throw new Error('stale write failure');
+    });
+    const controller = new AbortController();
+    const deps = createDeps({
+      beginDraftSave: () => ({ signal: controller.signal, isCurrent: () => current }),
+    });
+    const { result } = renderHook(() => useDraftManagement(deps));
+
+    await expect(result.current.saveDraft()).resolves.toBeNull();
+    expect(deps.setError).not.toHaveBeenCalledWith(expect.any(String));
   });
 
   it('creates a new draft and persists signed state when signatures exist', async () => {
@@ -131,7 +251,8 @@ describe('useDraftManagement', () => {
         outputs: [{ address: 'bc1qmax', amount: 0, sendMax: true }],
         inputs: undefined,
         label: 'Payroll',
-      })
+      }),
+      expect.any(AbortSignal),
     );
     expect(mocks.logger.info).toHaveBeenCalledWith(
       'Saving signed PSBT to newly created draft',
@@ -140,10 +261,12 @@ describe('useDraftManagement', () => {
         signedDevices: ['dev-1'],
       })
     );
-    expect(mocks.updateDraft).toHaveBeenCalledWith('wallet-1', 'draft-1', {
-      signedPsbtBase64: 'signed-psbt',
-      signedDeviceId: 'dev-1',
-    });
+    expect(mocks.updateDraft).toHaveBeenCalledWith(
+      'wallet-1',
+      'draft-1',
+      { signedPsbtBase64: 'signed-psbt', signedDeviceId: 'dev-1' },
+      expect.any(AbortSignal),
+    );
     expect(mocks.showSuccess).toHaveBeenCalledWith('Transaction saved as draft', 'Draft Saved');
     expect(mocks.navigate).toHaveBeenCalledWith('/wallets/wallet-1');
   });
@@ -171,6 +294,7 @@ describe('useDraftManagement', () => {
         sendMax: true,
         outputs: [{ address: 'bc1qmax', amount: 0, sendMax: true }],
       }),
+      expect.any(AbortSignal),
     );
   });
 
@@ -189,6 +313,7 @@ describe('useDraftManagement', () => {
       expect.objectContaining({
         outputs: [{ address: 'bc1qrecipient', amount: 10_000, sendMax: false }],
       }),
+      expect.any(AbortSignal),
     );
   });
 
@@ -206,10 +331,12 @@ describe('useDraftManagement', () => {
     });
 
     expect(draftId).toBe('draft-existing');
-    expect(mocks.updateDraft).toHaveBeenCalledWith('wallet-1', 'draft-existing', {
-      signedPsbtBase64: undefined,
-      signedDeviceId: undefined,
-    });
+    expect(mocks.updateDraft).toHaveBeenCalledWith(
+      'wallet-1',
+      'draft-existing',
+      { signedPsbtBase64: undefined, signedDeviceId: undefined },
+      expect.any(AbortSignal),
+    );
     expect(mocks.showSuccess).toHaveBeenCalledWith('Draft updated successfully', 'Draft Saved');
   });
 
@@ -273,7 +400,8 @@ describe('useDraftManagement', () => {
         selectedUtxoIds: undefined,
         inputs: undefined,
         inputPaths: [],
-      })
+      }),
+      expect.any(AbortSignal),
     );
     expect(mocks.updateDraft).not.toHaveBeenCalled();
   });
@@ -295,10 +423,12 @@ describe('useDraftManagement', () => {
     });
 
     expect(draftId).toBe('draft-1');
-    expect(mocks.updateDraft).toHaveBeenCalledWith('wallet-1', 'draft-1', {
-      signedPsbtBase64: 'new-psbt',
-      signedDeviceId: undefined,
-    });
+    expect(mocks.updateDraft).toHaveBeenCalledWith(
+      'wallet-1',
+      'draft-1',
+      { signedPsbtBase64: 'new-psbt', signedDeviceId: undefined },
+      expect.any(AbortSignal),
+    );
   });
 
   it.each(['.', '1.5', '9007199254740992'])(

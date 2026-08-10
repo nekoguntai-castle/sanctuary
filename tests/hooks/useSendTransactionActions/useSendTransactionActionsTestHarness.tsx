@@ -168,6 +168,16 @@ export const renderSendTransactionActions = (override: Partial<SendTransactionAc
     })
   );
 
+export const renderRerenderableSendTransactionActions = (initialState: TransactionState) =>
+  renderHook(
+    ({ state }: { state: TransactionState }) => useSendTransactionActions({
+      walletId: 'wallet-1',
+      wallet: baseWallet,
+      state,
+    }),
+    { initialProps: { state: initialState } },
+  );
+
 export const setupUseSendTransactionActionsHarness = () => {
   beforeEach(() => {
     vi.clearAllMocks();

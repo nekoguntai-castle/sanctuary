@@ -334,6 +334,20 @@ describe('ReviewStep branch coverage', () => {
     expect(capture.usbRefValueAfterUpload).toBe('');
   });
 
+  it('contains a rejected single-sig upload after the owning hook publishes its error', async () => {
+    const user = userEvent.setup();
+    const onUploadSignedPsbt = vi.fn().mockRejectedValue(new Error('invalid signed PSBT'));
+
+    render(<ReviewStep txData={{ fee: 100 } as any} onUploadSignedPsbt={onUploadSignedPsbt} />);
+    await user.click(screen.getByTestId('usb-upload'));
+
+    await waitFor(() => expect(onUploadSignedPsbt).toHaveBeenCalledTimes(1));
+    expect(loggerSpies.error).toHaveBeenCalledWith(
+      'onUploadSignedPsbt failed',
+      expect.objectContaining({ error: expect.any(Error) }),
+    );
+  });
+
   it('skips single-sig upload when file/callback is missing and ref is null', async () => {
     const user = userEvent.setup();
 

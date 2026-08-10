@@ -60,6 +60,7 @@ export function DraftActions({
             <Button
               variant="secondary"
               onClick={prevStep}
+              disabled={signing || broadcasting || savingDraft}
               className="flex-shrink-0"
             >
               <ChevronLeft className="w-4 h-4 mr-1" />
@@ -73,7 +74,7 @@ export function DraftActions({
               <Button
                 variant="primary"
                 onClick={onBroadcastSigned}
-                disabled={!canBroadcast}
+                disabled={!canBroadcast || savingDraft}
                 isLoading={broadcasting}
                 className="flex-1"
               >
@@ -84,7 +85,7 @@ export function DraftActions({
               <Button
                 variant="primary"
                 onClick={onSign}
-                disabled={!isReadyToSign || !txData}
+                disabled={!isReadyToSign || !txData || savingDraft}
                 isLoading={signing || broadcasting}
                 className="flex-1"
               >
@@ -106,7 +107,7 @@ export function DraftActions({
             <Button
               variant="primary"
               onClick={onBroadcast}
-              disabled={!isReadyToSign}
+              disabled={!isReadyToSign || savingDraft}
               isLoading={signing || broadcasting}
               className="flex-1"
             >
@@ -130,6 +131,7 @@ export function DraftActions({
           <Button
             variant="secondary"
             onClick={onSaveDraft}
+            disabled={signing || broadcasting}
             isLoading={savingDraft}
             className="w-full"
           >

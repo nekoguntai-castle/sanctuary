@@ -116,6 +116,7 @@ describe('SendTransactionWizard', () => {
     broadcastTransaction: vi.fn(),
     saveDraft: vi.fn(),
     signWithDevice: vi.fn(),
+    signWithHardwareWalletResult: vi.fn(),
     markDeviceSigned: vi.fn(),
     uploadSignedPsbt: vi.fn(),
     downloadPsbt: vi.fn(),
@@ -423,7 +424,8 @@ describe('SendTransactionWizard', () => {
   describe('hardware wallet signing', () => {
     it('signs with hardware wallet when connected', async () => {
       const user = userEvent.setup();
-      const signPSBT = vi.fn().mockResolvedValue({ psbt: 'signed...' });
+      const signPSBT = vi.fn();
+      const signWithHardwareWalletResult = vi.fn().mockResolvedValue({ psbt: 'signed...' });
       const broadcastTransaction = vi.fn();
 
       vi.mocked(useHardwareWalletHook.useHardwareWallet).mockReturnValue({
@@ -435,6 +437,7 @@ describe('SendTransactionWizard', () => {
       vi.mocked(useSendTransactionActionsHook.useSendTransactionActions).mockReturnValue({
         ...defaultActionsValue,
         txData: { psbtBase64: 'unsigned...' },
+        signWithHardwareWalletResult,
         broadcastTransaction,
       } as any);
 
@@ -449,8 +452,10 @@ describe('SendTransactionWizard', () => {
       await user.click(screen.getByTestId('broadcast-btn'));
 
       await waitFor(() => {
-        expect(signPSBT).toHaveBeenCalled();
+        expect(signWithHardwareWalletResult).toHaveBeenCalledWith({ psbtBase64: 'unsigned...' });
       });
+      expect(signPSBT).not.toHaveBeenCalled();
+      expect(broadcastTransaction).toHaveBeenCalledWith('signed...', undefined);
     });
 
     it('broadcasts signed raw transaction directly when available', async () => {

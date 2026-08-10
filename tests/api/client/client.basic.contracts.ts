@@ -237,6 +237,22 @@ export const registerApiClientBasicContracts = () => {
       expect(mockFetch.mock.calls[0][1].method).toBe("PATCH");
     });
 
+    it("should forward a PATCH cancellation signal", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ patched: true }),
+      });
+      const controller = new AbortController();
+
+      await apiClient.patch("/resource/1", { field: "value" }, { signal: controller.signal });
+
+      const requestSignal = mockFetch.mock.calls[0][1].signal as AbortSignal;
+      expect(requestSignal.aborted).toBe(false);
+      controller.abort();
+      expect(requestSignal.aborted).toBe(true);
+    });
+
     it("should make PATCH request without body when no data is provided", async () => {
       mockFetch.mockResolvedValue({
         ok: true,

@@ -301,6 +301,20 @@ describe('Transactions API', () => {
         expect.objectContaining({ schema: expect.anything() }),
       );
     });
+
+    it('forwards caller cancellation to PSBT creation', async () => {
+      const controller = new AbortController();
+      const request = { recipient: 'tb1qtest', amount: 1, feeRate: 1 };
+      mockPost.mockResolvedValue({});
+
+      await createTransaction('wallet-1', request, controller.signal);
+
+      expect(mockPost).toHaveBeenCalledWith(
+        '/wallets/wallet-1/transactions/create',
+        request,
+        expect.objectContaining({ signal: controller.signal }),
+      );
+    });
   });
 
   describe('broadcastTransaction', () => {
@@ -413,6 +427,20 @@ describe('Transactions API', () => {
         { schema: CreateBatchTransactionResponseSchema },
       );
       expect(result.psbtBase64).toBe('batch...');
+    });
+
+    it('forwards caller cancellation to batch creation', async () => {
+      const controller = new AbortController();
+      const request = { outputs: [{ address: 'tb1q1', amount: 1 }], feeRate: 1 };
+      mockPost.mockResolvedValue({});
+
+      await createBatchTransaction('wallet-1', request, controller.signal);
+
+      expect(mockPost).toHaveBeenCalledWith(
+        '/wallets/wallet-1/transactions/batch',
+        request,
+        expect.objectContaining({ signal: controller.signal }),
+      );
     });
   });
 

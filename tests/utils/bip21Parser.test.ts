@@ -131,6 +131,14 @@ describe('BIP21 Parser', () => {
         expect(result?.payjoinUrl).toBe('https://payjoin.example.com/pj');
       });
 
+      it('decodes an outer-encoded nested URL exactly once', () => {
+        const result = parseBip21Uri(
+          'bitcoin:bc1qrecipient?pj=https%3A%2F%2Fexample.com%2Fpj%3Fnext%3D%252Fcallback'
+        );
+
+        expect(result?.payjoinUrl).toBe('https://example.com/pj?next=%2Fcallback');
+      });
+
       it('should parse amount with payjoin', () => {
         const result = parseBip21Uri(
           'bitcoin:bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh?amount=0.1&pj=https://example.com/pj'
@@ -178,6 +186,15 @@ describe('BIP21 Parser', () => {
         expect(result?.message).toBe('Order 456');
         expect(result?.payjoinUrl).toBe('https://shop.com/pj');
       });
+
+      it('preserves an encoded literal percent and decodes UTF-8 once', () => {
+        const result = parseBip21Uri(
+          'bitcoin:bc1qrecipient?label=Save%2520%25&message=%E2%98%95%20invoice'
+        );
+
+        expect(result?.label).toBe('Save%20%');
+        expect(result?.message).toBe('☕ invoice');
+      });
     });
 
     describe('edge cases and invalid input', () => {
@@ -212,6 +229,27 @@ describe('BIP21 Parser', () => {
         expect(result?.amount).toBe(100000000);
         // Unknown params should be ignored, not cause errors
       });
+
+      it.each(['req-extra=value', '%72eq-extra=value'])(
+        'rejects unsupported required parameter %s',
+        (parameter) => {
+          expect(parseBip21Uri(`bitcoin:bc1qrecipient?amount=1&${parameter}`)).toBeNull();
+        },
+      );
+
+      it.each(['amount=1&amount=2', 'pj=a&pj=b', 'label=a&label=b', 'message=a&message=b'])(
+        'rejects duplicate singleton parameters %s',
+        (parameters) => {
+          expect(parseBip21Uri(`bitcoin:bc1qrecipient?${parameters}`)).toBeNull();
+        },
+      );
+
+      it.each(['label=100%', 'message=%2', 'pj=%GG'])(
+        'rejects malformed percent escape %s',
+        (parameter) => {
+          expect(parseBip21Uri(`bitcoin:bc1qrecipient?${parameter}`)).toBeNull();
+        },
+      );
 
       it('should handle malformed amount gracefully', () => {
         // Leading zeros should be handled

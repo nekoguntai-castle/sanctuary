@@ -75,7 +75,8 @@ function mockFileReader({
   globalThis.FileReader = MockFileReader as unknown as typeof FileReader;
 }
 
-function createDeps(overrides: Partial<Parameters<typeof useQrSigning>[0]> = {}) {
+function createDeps(overrides: Partial<Parameters<typeof useQrSigning>[0]> = {}): Parameters<typeof useQrSigning>[0] {
+  const controller = new AbortController();
   return {
     walletId: 'wallet-1',
     wallet: {
@@ -91,6 +92,8 @@ function createDeps(overrides: Partial<Parameters<typeof useQrSigning>[0]> = {})
     setError: vi.fn(),
     setUnsignedPsbt: vi.fn(),
     setSignedDevices: vi.fn(),
+    setIsSigning: vi.fn(),
+    beginSigning: () => ({ signal: controller.signal, isCurrent: () => true }),
     ...overrides,
   };
 }
@@ -143,6 +146,20 @@ describe('useQrSigning', () => {
     expect(mocks.downloadBinary).toHaveBeenCalledWith(expect.any(Uint8Array), 'transaction_unsigned.psbt');
   });
 
+  it('downloads binary PSBT magic bytes without a format warning', () => {
+    const binaryPsbt = btoa(String.fromCharCode(0x70, 0x73, 0x62, 0x74, 0xff));
+    const deps = createDeps({
+      wallet: { id: 'wallet-1', name: 'Vault', type: 'single_sig' } as any,
+      unsignedPsbt: binaryPsbt,
+    });
+    const { result } = renderHook(() => useQrSigning(deps));
+
+    act(() => result.current.downloadPsbt());
+
+    expect(mocks.logger.warn).not.toHaveBeenCalled();
+    expect(mocks.downloadBinary).toHaveBeenCalledWith(expect.any(Uint8Array), 'Vault_unsigned.psbt');
+  });
+
   it('rejects uploads when FileReader fails', async () => {
     mockFileReader({ fail: true });
     const deps = createDeps();
@@ -150,6 +167,92 @@ describe('useQrSigning', () => {
     const file = new File(['dummy'], 'signed.psbt');
 
     await expect(result.current.uploadSignedPsbt(file)).rejects.toThrow('Failed to read file');
+    expect(deps.setError).toHaveBeenCalledWith('Failed to read file');
+  });
+
+  it('does not publish a file-read failure after upload ownership is lost', async () => {
+    let current = true;
+    class StaleFailureFileReader {
+      onload: ((event: ProgressEvent<FileReader>) => void) | null = null;
+      onerror: ((event: ProgressEvent<FileReader>) => void) | null = null;
+      readAsArrayBuffer() {
+        current = false;
+        this.onerror?.({} as ProgressEvent<FileReader>);
+      }
+    }
+    globalThis.FileReader = StaleFailureFileReader as unknown as typeof FileReader;
+    const controller = new AbortController();
+    const deps = createDeps({
+      beginSigning: () => ({ signal: controller.signal, isCurrent: () => current }),
+    });
+    const { result } = renderHook(() => useQrSigning(deps));
+
+    await expect(result.current.uploadSignedPsbt(new File(['x'], 'signed.psbt')))
+      .rejects.toThrow('Failed to read file');
+    expect(deps.setError).not.toHaveBeenCalled();
+  });
+
+  it('refuses file and QR signing without a current reviewed transaction', async () => {
+    const deps = createDeps({ beginSigning: () => null });
+    const { result } = renderHook(() => useQrSigning(deps));
+    const file = new File(['dummy'], 'signed.psbt');
+
+    await expect(result.current.uploadSignedPsbt(file)).rejects.toThrow(
+      'Transaction changed; review it again before signing'
+    );
+    await expect(result.current.processQrSignedPsbt('signed', 'device-1')).rejects.toThrow(
+      'Transaction changed; review it again before signing'
+    );
+    expect(deps.setIsSigning).not.toHaveBeenCalled();
+  });
+
+  it('does not commit a file result after signing ownership is invalidated', async () => {
+    let finishRead!: () => void;
+    class DeferredFileReader {
+      onload: ((event: ProgressEvent<FileReader>) => void) | null = null;
+      onerror: ((event: ProgressEvent<FileReader>) => void) | null = null;
+      readAsArrayBuffer() {
+        finishRead = () => this.onload?.({
+          target: { result: toArrayBuffer(new TextEncoder().encode('stale-psbt')) },
+        } as unknown as ProgressEvent<FileReader>);
+      }
+    }
+    globalThis.FileReader = DeferredFileReader as unknown as typeof FileReader;
+    let current = true;
+    const controller = new AbortController();
+    const deps = createDeps({
+      unsignedPsbt: 'unsigned-psbt',
+      beginSigning: () => ({ signal: controller.signal, isCurrent: () => current }),
+    });
+    const { result } = renderHook(() => useQrSigning(deps));
+    let request!: Promise<void>;
+    act(() => { request = result.current.uploadSignedPsbt(new File(['x'], 'signed.psbt')); });
+    current = false;
+    controller.abort();
+    await act(async () => {
+      finishRead();
+      await request;
+    });
+
+    expect(deps.setUnsignedPsbt).not.toHaveBeenCalled();
+    expect(deps.setSignedDevices).not.toHaveBeenCalled();
+    expect(mocks.updateDraft).not.toHaveBeenCalled();
+  });
+
+  it('does not commit an upload invalidated during PSBT processing', async () => {
+    mockFileReader({ bytes: new TextEncoder().encode('signed-psbt') });
+    const isCurrent = vi.fn().mockReturnValueOnce(true).mockReturnValue(false);
+    const controller = new AbortController();
+    const deps = createDeps({
+      unsignedPsbt: 'unsigned-psbt',
+      beginSigning: () => ({ signal: controller.signal, isCurrent }),
+    });
+    const { result } = renderHook(() => useQrSigning(deps));
+
+    await result.current.uploadSignedPsbt(new File(['x'], 'signed.psbt'));
+
+    expect(deps.setUnsignedPsbt).not.toHaveBeenCalled();
+    expect(deps.setSignedDevices).not.toHaveBeenCalled();
   });
 
   it('falls back to an empty ArrayBuffer when FileReader delivers a null result', async () => {
@@ -187,7 +290,7 @@ describe('useQrSigning', () => {
     expect(mocks.updateDraft).toHaveBeenCalledWith('wallet-1', 'draft-1', {
       signedPsbtBase64: expectedBase64,
       signedDeviceId: 'psbt-signed',
-    });
+    }, expect.any(AbortSignal));
   });
 
   it('rejects multisig upload when signature does not match selected fingerprint', async () => {
@@ -427,6 +530,7 @@ describe('useQrSigning', () => {
     const file = new File(['dummy'], 'signed.psbt');
 
     await expect(result.current.uploadSignedPsbt(file, 'device-4')).rejects.toThrow('state update failed');
+    expect(deps.setError).toHaveBeenCalledWith('state update failed');
   });
 
   it('combines QR-signed PSBT for multisig and persists to draft', async () => {
@@ -461,7 +565,68 @@ describe('useQrSigning', () => {
     expect(mocks.updateDraft).toHaveBeenCalledWith('wallet-1', 'draft-qr', {
       signedPsbtBase64: 'qr-combined-psbt',
       signedDeviceId: 'device-qr',
+    }, expect.any(AbortSignal));
+  });
+
+  it('does not commit QR results after ownership is lost', async () => {
+    const controller = new AbortController();
+    const deps = createDeps({
+      unsignedPsbt: 'unsigned-psbt',
+      beginSigning: () => ({ signal: controller.signal, isCurrent: () => false }),
     });
+    const { result } = renderHook(() => useQrSigning(deps));
+
+    await result.current.processQrSignedPsbt('signed-psbt', 'device-1');
+
+    expect(deps.setUnsignedPsbt).not.toHaveBeenCalled();
+    expect(deps.setSignedDevices).not.toHaveBeenCalled();
+  });
+
+  it('surfaces QR processing failures and releases the current signing owner', async () => {
+    const deps = createDeps({
+      setUnsignedPsbt: vi.fn(() => { throw new Error('state update failed'); }),
+    });
+    const { result } = renderHook(() => useQrSigning(deps));
+
+    await expect(result.current.processQrSignedPsbt('signed-psbt', 'device-1'))
+      .rejects.toThrow('state update failed');
+
+    expect(deps.setError).toHaveBeenCalledWith('state update failed');
+    expect(deps.setIsSigning).toHaveBeenLastCalledWith(false);
+  });
+
+  it('does not publish a QR processing failure after signing ownership is lost', async () => {
+    let current = true;
+    const controller = new AbortController();
+    const deps = createDeps({
+      beginSigning: () => ({ signal: controller.signal, isCurrent: () => current }),
+      setUnsignedPsbt: vi.fn(() => {
+        current = false;
+        throw new Error('stale state failure');
+      }),
+    });
+    const { result } = renderHook(() => useQrSigning(deps));
+
+    await expect(result.current.processQrSignedPsbt('signed-psbt', 'device-1'))
+      .rejects.toThrow('stale state failure');
+    expect(deps.setError).not.toHaveBeenCalled();
+    expect(deps.setIsSigning).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not clear a newer signing operation after stale QR persistence settles', async () => {
+    let current = true;
+    mocks.updateDraft.mockImplementationOnce(async () => { current = false; });
+    const controller = new AbortController();
+    const deps = createDeps({
+      draftId: 'draft-1',
+      beginSigning: () => ({ signal: controller.signal, isCurrent: () => current }),
+    });
+    const { result } = renderHook(() => useQrSigning(deps));
+
+    await result.current.processQrSignedPsbt('signed-psbt', 'device-1');
+
+    expect(deps.setIsSigning).toHaveBeenCalledTimes(1);
+    expect(deps.setIsSigning).toHaveBeenCalledWith(true);
   });
 
   it('combines QR-signed PSBT when some inputs do not contain partial signatures', async () => {

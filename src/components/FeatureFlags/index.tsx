@@ -5,10 +5,21 @@ import type { FeatureFlagInfo, FeatureFlagAuditEntry } from '../../api/admin';
 import { useLoadingState } from '../../hooks/useLoadingState';
 import { FeatureFlagAuditHistory } from './FeatureFlagAuditHistory';
 import { FeatureFlagGroup } from './FeatureFlagGroup';
+import { invalidateAIStatusCache } from '../../hooks/useAIStatus';
+import { invalidateIntelligenceStatus } from '../../hooks/useIntelligenceStatus';
 
 const CATEGORY_LABELS: Record<string, string> = {
   general: 'General',
   experimental: 'Experimental',
+};
+
+const invalidateCapabilityStatus = (key: string): void => {
+  if (key === 'aiAssistant') {
+    invalidateAIStatusCache();
+    invalidateIntelligenceStatus();
+  } else if (key === 'treasuryIntelligence') {
+    invalidateIntelligenceStatus();
+  }
 };
 
 export function FeatureFlags() {
@@ -58,6 +69,7 @@ export function FeatureFlags() {
     const result = await runAction(async () => {
       const updated = await action();
       setFlags(prev => prev.map(f => f.key === flag.key ? { ...f, ...updated } : f));
+      invalidateCapabilityStatus(flag.key);
     });
 
     if (result !== null) {

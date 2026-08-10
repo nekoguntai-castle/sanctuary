@@ -8,7 +8,7 @@
  * Extracted from SendTransaction.tsx for use with the wizard-based flow.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import * as transactionsApi from '../../api/transactions';
 import * as payjoinApi from '../../api/payjoin';
 import { ApiError } from '../../api/client';
@@ -27,6 +27,7 @@ import {
   requirePositiveSatoshiAmount,
   requirePositiveSatoshiNumber,
 } from '../../utils/sendAmount';
+import { useSendOperationOwner, type SendOperationLease } from './useSendOperationOwner';
 
 export type { TransactionData, UseSendTransactionActionsProps, UseSendTransactionActionsResult };
 
@@ -88,19 +89,21 @@ function addMainOutput(singleResult: TransactionData, output: OutputEntry): Tran
 
 async function createBatchTransactionData(
   walletId: string,
-  state: TransactionState
+  state: TransactionState,
+  signal: AbortSignal,
 ): Promise<TransactionData> {
   return transactionsApi.createBatchTransaction(walletId, {
     outputs: state.outputs.map(toApiOutput),
     feeRate: state.feeRate,
     selectedUtxoIds: getSelectedUtxoIds(state),
     enableRBF: state.rbfEnabled,
-  });
+  }, signal);
 }
 
 async function createSingleTransactionData(
   walletId: string,
-  state: TransactionState
+  state: TransactionState,
+  signal: AbortSignal,
 ): Promise<TransactionData> {
   const output = state.outputs[0];
   const singleResult = await transactionsApi.createTransaction(walletId, {
@@ -112,18 +115,19 @@ async function createSingleTransactionData(
     sendMax: false,
     subtractFees: state.subtractFees,
     decoyOutputs: state.useDecoys ? { enabled: true, count: state.decoyCount } : undefined,
-  });
+  }, signal);
 
   return addMainOutput(singleResult, output);
 }
 
 async function createApiTransactionData(
   walletId: string,
-  state: TransactionState
+  state: TransactionState,
+  signal: AbortSignal,
 ): Promise<TransactionData> {
   return shouldCreateBatchTransaction(state)
-    ? createBatchTransactionData(walletId, state)
-    : createSingleTransactionData(walletId, state);
+    ? createBatchTransactionData(walletId, state, signal)
+    : createSingleTransactionData(walletId, state, signal);
 }
 
 function shouldAttemptPayjoin(state: TransactionState, payjoinAttempted: PayjoinAttemptRef): boolean {
@@ -135,13 +139,16 @@ async function applyPayjoinIfNeeded(
   state: TransactionState,
   walletNetwork: Wallet['network'],
   payjoinAttempted: PayjoinAttemptRef,
-  setPayjoinStatus: SetPayjoinStatus
+  setPayjoinStatus: SetPayjoinStatus,
+  lease: SendOperationLease,
 ): Promise<TransactionData> {
   // BIP 78 Payjoin is opportunistic: failure falls back to the original transaction.
   if (!shouldAttemptPayjoin(state, payjoinAttempted)) {
     return result;
   }
 
+  /* c8 ignore next -- no asynchronous boundary exists between the caller's ownership check and this guard */
+  if (!lease.isCurrent()) return result;
   setPayjoinStatus('attempting');
   payjoinAttempted.current = true;
   log.info('Attempting Payjoin', { payjoinUrl: state.payjoinUrl, network: walletNetwork });
@@ -153,7 +160,9 @@ async function applyPayjoinIfNeeded(
     // The `?? ''` fallback is defensive and unreachable at runtime.
     /* c8 ignore next */
     const payjoinUrl = state.payjoinUrl ?? '';
-    const payjoinResult = await payjoinApi.attemptPayjoin(result.psbtBase64, payjoinUrl, network);
+    const payjoinResult = await payjoinApi.attemptPayjoin(result.psbtBase64, payjoinUrl, network, lease.signal);
+
+    if (!lease.isCurrent()) return result;
 
     if (payjoinResult.success && payjoinResult.proposalPsbt) {
       setPayjoinStatus('success');
@@ -164,12 +173,30 @@ async function applyPayjoinIfNeeded(
     setPayjoinStatus('failed');
     log.warn('Payjoin failed, using regular transaction', { error: payjoinResult.error });
   } catch (pjError) {
+    if (!lease.isCurrent()) return result;
     setPayjoinStatus('failed');
     log.warn('Payjoin error', { error: pjError });
   }
 
   return result;
 }
+
+const getSendIdentity = (walletId: string, wallet: Wallet, state: TransactionState): string => JSON.stringify({
+  walletId,
+  network: wallet.network,
+  draftId: state.draftId,
+  outputs: state.outputs,
+  feeRate: state.feeRate,
+  selectedUTXOs: Array.from(state.selectedUTXOs).sort(),
+  rbfEnabled: state.rbfEnabled,
+  subtractFees: state.subtractFees,
+  useDecoys: state.useDecoys,
+  decoyCount: state.decoyCount,
+  payjoinUrl: state.payjoinUrl,
+});
+
+const isAbortError = (error: unknown): boolean =>
+  error instanceof DOMException && error.name === 'AbortError';
 
 function getCreateTransactionError(err: unknown): string {
   return err instanceof ApiError ? err.message : 'Failed to create transaction';
@@ -193,45 +220,56 @@ export function useSendTransactionActions({
   const [signedRawTx, setSignedRawTx] = useState<string | null>(null);
   // Initialize signedDevices from state for draft resume (state.signedDevices is loaded from draft)
   const [signedDevices, setSignedDevices] = useState<Set<string>>(() => new Set(state.signedDevices));
+  const identity = useMemo(() => getSendIdentity(walletId, wallet, state), [walletId, wallet, state]);
+  const owner = useSendOperationOwner(Boolean(initialTxData || initialPsbt));
+  const previousIdentity = useRef(identity);
 
   // Payjoin state
   const { payjoinStatus, payjoinAttempted, setPayjoinStatus, resetPayjoin } = usePayjoin();
 
   // Create transaction PSBT
   const createTransaction = useCallback(async (): Promise<TransactionData | null> => {
+    const lease = owner.beginCreation();
+    const stateSnapshot = structuredClone({
+      ...state,
+      selectedUTXOs: new Set(state.selectedUTXOs),
+    }) as TransactionState;
     setIsCreating(true);
     setError(null);
 
     try {
-      const validationError = getOutputValidationError(state.outputs, wallet.network);
+      const validationError = getOutputValidationError(stateSnapshot.outputs, wallet.network);
       if (validationError) {
         setError(validationError);
         return null;
       }
 
-      const createdTransaction = await createApiTransactionData(walletId, state);
+      const createdTransaction = await createApiTransactionData(walletId, stateSnapshot, lease.signal);
       const result = await applyPayjoinIfNeeded(
         createdTransaction,
-        state,
+        stateSnapshot,
         wallet.network,
         payjoinAttempted,
-        setPayjoinStatus
+        setPayjoinStatus,
+        lease,
       );
 
+      if (!owner.acceptTransaction(lease)) return null;
       setTxData(result);
       setUnsignedPsbt(result.psbtBase64);
       return result;
     } catch (err) {
+      if (!lease.isCurrent() || isAbortError(err)) return null;
       log.error('Failed to create transaction', { error: err });
       setError(getCreateTransactionError(err));
       return null;
     } finally {
-      setIsCreating(false);
+      if (lease.isCurrent()) setIsCreating(false);
     }
-  }, [walletId, state, wallet.network, payjoinAttempted, setPayjoinStatus]);
+  }, [walletId, state, wallet.network, payjoinAttempted, setPayjoinStatus, owner]);
 
   // USB signing (signWithHardwareWallet, signWithDevice)
-  const { signWithHardwareWallet, signWithDevice } = useUsbSigning({
+  const { signWithHardwareWallet, signWithHardwareWalletResult, signWithDevice } = useUsbSigning({
     walletId,
     wallet,
     draftId: state.draftId,
@@ -242,6 +280,7 @@ export function useSendTransactionActions({
     setUnsignedPsbt,
     setSignedRawTx,
     setSignedDevices,
+    beginSigning: owner.beginSigning,
   });
 
   // QR/airgap signing (downloadPsbt, uploadSignedPsbt, processQrSignedPsbt)
@@ -254,6 +293,8 @@ export function useSendTransactionActions({
     setError,
     setUnsignedPsbt,
     setSignedDevices,
+    beginSigning: owner.beginSigning,
+    setIsSigning,
   });
 
   // Draft management (saveDraft)
@@ -264,6 +305,7 @@ export function useSendTransactionActions({
     unsignedPsbt,
     signedDevices,
     createTransaction,
+    beginDraftSave: owner.beginDraftSave,
     setIsSavingDraft,
     setError,
   });
@@ -278,18 +320,21 @@ export function useSendTransactionActions({
     signedRawTx,
     setIsBroadcasting,
     setError,
+    beginSigning: owner.beginSigning,
   });
 
   // Mark device as signed
   const markDeviceSigned = useCallback((deviceId: string) => {
+    if (!owner.hasCurrentTransaction()) return;
     setSignedDevices(prev => new Set([...prev, deviceId]));
-  }, []);
+  }, [owner]);
 
   // Clear error
   const clearError = useCallback(() => setError(null), []);
 
   // Reset state
   const reset = useCallback(() => {
+    owner.invalidate();
     setIsCreating(false);
     setIsSigning(false);
     setIsBroadcasting(false);
@@ -300,7 +345,20 @@ export function useSendTransactionActions({
     setSignedRawTx(null);
     setSignedDevices(new Set());
     resetPayjoin();
-  }, [resetPayjoin]);
+  }, [owner, resetPayjoin]);
+
+  useLayoutEffect(() => {
+    if (previousIdentity.current === identity) return;
+    previousIdentity.current = identity;
+    reset();
+  }, [identity, reset]);
+
+  useEffect(() => () => {
+    // Ensure StrictMode's effect replay can start replacement work immediately.
+    setIsCreating(false);
+    setIsSigning(false);
+    setIsBroadcasting(false);
+  }, []);
 
   return {
     isCreating,
@@ -315,6 +373,7 @@ export function useSendTransactionActions({
     payjoinStatus,
     createTransaction,
     signWithHardwareWallet,
+    signWithHardwareWalletResult,
     signWithDevice,
     broadcastTransaction,
     saveDraft,

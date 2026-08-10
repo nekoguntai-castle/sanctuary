@@ -105,14 +105,15 @@ export async function exportTransactions(
  */
 export async function createTransaction(
   walletId: string,
-  data: CreateTransactionRequest
+  data: CreateTransactionRequest,
+  signal?: AbortSignal,
 ): Promise<CreateTransactionResponse> {
   return apiClient.post<CreateTransactionResponse>(
     `/wallets/${walletId}/transactions/create`,
     data,
     // Every figure here is shown on the review screen and then approved. A
     // coerced number is a signing decision made against something nobody sent.
-    { schema: CreateTransactionResponseSchema }
+    { schema: CreateTransactionResponseSchema, ...(signal ? { signal } : {}) }
   );
 }
 
@@ -147,12 +148,13 @@ export async function estimateTransaction(
  */
 export async function createBatchTransaction(
   walletId: string,
-  data: CreateBatchTransactionRequest
+  data: CreateBatchTransactionRequest,
+  signal?: AbortSignal,
 ): Promise<CreateBatchTransactionResponse> {
   return apiClient.post<CreateBatchTransactionResponse>(
     `/wallets/${walletId}/transactions/batch`,
     data,
-    { schema: CreateBatchTransactionResponseSchema },
+    { schema: CreateBatchTransactionResponseSchema, ...(signal ? { signal } : {}) },
   );
 }
 

@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAIFeatureToggle } from '../../../../src/components/AISettings/hooks/useAIFeatureToggle';
 import { invalidateAIStatusCache } from '../../../../src/hooks/useAIStatus';
+import { invalidateIntelligenceStatus } from '../../../../src/hooks/useIntelligenceStatus';
 import * as adminApi from '../../../../src/api/admin';
 
 vi.mock('../../../../src/api/admin', () => ({
@@ -10,6 +11,10 @@ vi.mock('../../../../src/api/admin', () => ({
 
 vi.mock('../../../../src/hooks/useAIStatus', () => ({
   invalidateAIStatusCache: vi.fn(),
+}));
+
+vi.mock('../../../../src/hooks/useIntelligenceStatus', () => ({
+  invalidateIntelligenceStatus: vi.fn(),
 }));
 
 vi.mock('../../../../src/utils/logger', () => ({
@@ -68,6 +73,7 @@ describe('useAIFeatureToggle', () => {
     expect(adminApi.updateSystemSettings).toHaveBeenCalledWith({ aiEnabled: true });
     expect(props.setAiEnabled).toHaveBeenCalledWith(true);
     expect(invalidateAIStatusCache).toHaveBeenCalled();
+    expect(invalidateIntelligenceStatus).toHaveBeenCalled();
     expect(result.current.saveSuccess).toBe(false);
   });
 
@@ -113,5 +119,6 @@ describe('useAIFeatureToggle', () => {
     });
 
     expect(result.current.saveError).toBe('Failed to update AI settings');
+    expect(invalidateIntelligenceStatus).not.toHaveBeenCalled();
   });
 });

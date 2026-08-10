@@ -7,11 +7,76 @@ import {
   baseWallet,
   createState,
   mocks,
+  renderRerenderableSendTransactionActions,
   renderSendTransactionActions,
 } from './useSendTransactionActionsTestHarness';
 
 export const registerUseSendTransactionActionsCreationContracts = () => {
   describe('transaction creation', () => {
+    it('aborts and ignores a creation result after form identity changes', async () => {
+      let resolveOld!: (value: typeof baseTxData) => void;
+      mocks.createTransaction.mockReturnValueOnce(new Promise(resolve => { resolveOld = resolve; }));
+      const oldState = createState({
+        outputs: [{ address: 'bc1qold', amount: '10000', sendMax: false }],
+      });
+      const view = renderRerenderableSendTransactionActions(oldState);
+
+      let oldRequest!: Promise<unknown>;
+      act(() => { oldRequest = view.result.current.createTransaction(); });
+      const oldSignal = mocks.createTransaction.mock.calls[0][2] as AbortSignal;
+      view.rerender({ state: createState({
+        outputs: [{ address: 'bc1qnew', amount: '20000', sendMax: false }],
+      }) });
+      expect(oldSignal.aborted).toBe(true);
+
+      await act(async () => {
+        resolveOld({ ...baseTxData, psbtBase64: 'old-psbt' });
+        await oldRequest;
+      });
+      expect(view.result.current.txData).toBeNull();
+      expect(view.result.current.unsignedPsbt).toBeNull();
+      expect(view.result.current.error).toBeNull();
+    });
+
+    it('aborts an in-flight creation when the owner unmounts', () => {
+      mocks.createTransaction.mockReturnValueOnce(new Promise(() => undefined));
+      const view = renderRerenderableSendTransactionActions(createState({
+        outputs: [{ address: 'bc1qunmount', amount: '10000', sendMax: false }],
+      }));
+      act(() => { void view.result.current.createTransaction(); });
+      const signal = mocks.createTransaction.mock.calls[0][2] as AbortSignal;
+      view.unmount();
+      expect(signal.aborted).toBe(true);
+    });
+
+    it('keeps the newer transaction when completions arrive in reverse order', async () => {
+      let resolveOld!: (value: typeof baseTxData) => void;
+      let resolveNew!: (value: typeof baseTxData) => void;
+      mocks.createTransaction
+        .mockReturnValueOnce(new Promise(resolve => { resolveOld = resolve; }))
+        .mockReturnValueOnce(new Promise(resolve => { resolveNew = resolve; }));
+      const view = renderRerenderableSendTransactionActions(createState({
+        outputs: [{ address: 'bc1qold', amount: '10000', sendMax: false }],
+      }));
+      let oldRequest!: Promise<unknown>;
+      act(() => { oldRequest = view.result.current.createTransaction(); });
+      view.rerender({ state: createState({
+        outputs: [{ address: 'bc1qnew', amount: '20000', sendMax: false }],
+      }) });
+      let newRequest!: Promise<unknown>;
+      act(() => { newRequest = view.result.current.createTransaction(); });
+
+      await act(async () => {
+        resolveNew({ ...baseTxData, psbtBase64: 'new-psbt' });
+        await newRequest;
+      });
+      await act(async () => {
+        resolveOld({ ...baseTxData, psbtBase64: 'old-psbt' });
+        await oldRequest;
+      });
+      expect(view.result.current.unsignedPsbt).toBe('new-psbt');
+      expect(view.result.current.isCreating).toBe(false);
+    });
     it('validates missing address', async () => {
       const state = createState({
         outputs: [{ address: '', amount: '1000', sendMax: false }],
@@ -82,6 +147,7 @@ export const registerUseSendTransactionActionsCreationContracts = () => {
       expect(mocks.createTransaction).toHaveBeenCalledWith(
         'wallet-1',
         expect.objectContaining({ amount: Number.MAX_SAFE_INTEGER }),
+        expect.any(AbortSignal),
       );
     });
 
@@ -133,7 +199,7 @@ export const registerUseSendTransactionActionsCreationContracts = () => {
         sendMax: false,
         subtractFees: true,
         decoyOutputs: { enabled: true, count: 2 },
-      });
+      }, expect.any(AbortSignal));
       expect(result.current.txData?.psbtBase64).toBe('cHNidP8BAA==');
       expect(result.current.unsignedPsbt).toBe('cHNidP8BAA==');
     });
@@ -161,7 +227,7 @@ export const registerUseSendTransactionActionsCreationContracts = () => {
         feeRate: 2,
         selectedUtxoIds: undefined,
         enableRBF: false,
-      });
+      }, expect.any(AbortSignal));
     });
 
     it('maps sendMax outputs to amount=0 and includes selected UTXO ids in batch payload', async () => {
@@ -189,7 +255,7 @@ export const registerUseSendTransactionActionsCreationContracts = () => {
         feeRate: 3,
         selectedUtxoIds: ['u1', 'u2'],
         enableRBF: true,
-      });
+      }, expect.any(AbortSignal));
     });
 
     it('falls back to parsed output amount when effectiveAmount is missing in single-output response', async () => {
@@ -237,6 +303,29 @@ export const registerUseSendTransactionActionsCreationContracts = () => {
       expect(result.current.unsignedPsbt).toBe('payjoin-proposal-psbt');
     });
 
+    it('ignores a Payjoin completion after the form changes', async () => {
+      let resolvePayjoin!: (value: { success: boolean; proposalPsbt: string }) => void;
+      mocks.attemptPayjoin.mockReturnValueOnce(new Promise(resolve => { resolvePayjoin = resolve; }));
+      const view = renderRerenderableSendTransactionActions(createState({
+        outputs: [{ address: 'bc1qold', amount: '10000', sendMax: false }],
+        payjoinUrl: 'https://merchant.example/payjoin',
+      }));
+      let request!: Promise<unknown>;
+      act(() => { request = view.result.current.createTransaction(); });
+      await waitFor(() => expect(mocks.attemptPayjoin).toHaveBeenCalledTimes(1));
+
+      view.rerender({ state: createState({
+        outputs: [{ address: 'bc1qnew', amount: '20000', sendMax: false }],
+      }) });
+      await act(async () => {
+        resolvePayjoin({ success: true, proposalPsbt: 'stale-payjoin' });
+        await request;
+      });
+
+      expect(view.result.current.unsignedPsbt).toBeNull();
+      expect(view.result.current.payjoinStatus).toBe('idle');
+    });
+
     it('marks payjoin as failed when payjoin errors', async () => {
       mocks.attemptPayjoin.mockRejectedValue(new Error('payjoin failed'));
 
@@ -253,6 +342,29 @@ export const registerUseSendTransactionActionsCreationContracts = () => {
 
       expect(result.current.payjoinStatus).toBe('failed');
       expect(result.current.unsignedPsbt).toBe('cHNidP8BAA==');
+    });
+
+    it('ignores a Payjoin rejection after the form changes', async () => {
+      let rejectPayjoin!: (reason: Error) => void;
+      mocks.attemptPayjoin.mockReturnValueOnce(new Promise((_, reject) => { rejectPayjoin = reject; }));
+      const view = renderRerenderableSendTransactionActions(createState({
+        outputs: [{ address: 'bc1qold', amount: '10000', sendMax: false }],
+        payjoinUrl: 'https://merchant.example/payjoin',
+      }));
+      let request!: Promise<unknown>;
+      act(() => { request = view.result.current.createTransaction(); });
+      await waitFor(() => expect(mocks.attemptPayjoin).toHaveBeenCalledTimes(1));
+
+      view.rerender({ state: createState({
+        outputs: [{ address: 'bc1qnew', amount: '20000', sendMax: false }],
+      }) });
+      await act(async () => {
+        rejectPayjoin(new Error('stale payjoin failure'));
+        await request;
+      });
+
+      expect(view.result.current.payjoinStatus).toBe('idle');
+      expect(view.result.current.error).toBeNull();
     });
 
     it('uses mainnet fallback when wallet network is missing for payjoin attempts', async () => {
@@ -278,6 +390,7 @@ export const registerUseSendTransactionActionsCreationContracts = () => {
         'cHNidP8BAA==',
         'https://merchant.example/payjoin',
         'mainnet',
+        expect.any(AbortSignal),
       );
     });
 
@@ -340,6 +453,21 @@ export const registerUseSendTransactionActionsCreationContracts = () => {
       await waitFor(() => {
         expect(result.current.error).toBe('Failed to create transaction');
       });
+    });
+
+    it('silently handles an AbortError from the current creation request', async () => {
+      mocks.createTransaction.mockRejectedValueOnce(new DOMException('aborted', 'AbortError'));
+      const state = createState({
+        outputs: [{ address: 'bc1qrecipient', amount: '10000', sendMax: false }],
+      });
+      const { result } = renderSendTransactionActions({ state });
+
+      await act(async () => {
+        expect(await result.current.createTransaction()).toBeNull();
+      });
+
+      expect(result.current.error).toBeNull();
+      expect(result.current.isCreating).toBe(false);
     });
   });
 };

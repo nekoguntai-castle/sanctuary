@@ -22,13 +22,13 @@ async function broadcastSignedRawTx(actions: UseSendTransactionActionsResult): P
 async function broadcastWithConnectedHardwareWallet({
   actions,
   hardwareWallet,
-  walletId,
 }: SendWizardActionHandlerProps, txData: TransactionData): Promise<boolean> {
   if (!hardwareWallet.isConnected || !hardwareWallet.device) {
     return false;
   }
 
-  const signResult = await hardwareWallet.signPSBT(txData.psbtBase64, [], undefined, walletId);
+  const signResult = await actions.signWithHardwareWalletResult(txData);
+  if (!signResult) return true;
   if (signResult.psbt || signResult.rawTx) {
     await actions.broadcastTransaction(signResult.psbt, signResult.rawTx);
   }

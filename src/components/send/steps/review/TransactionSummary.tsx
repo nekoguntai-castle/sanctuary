@@ -37,6 +37,7 @@ interface TransactionSummaryProps {
   isDraftMode: boolean;
   format: (sats: number) => string;
   goToStep: (step: WizardStep) => void;
+  interactionLocked: boolean;
 }
 
 export function TransactionSummary({
@@ -52,6 +53,7 @@ export function TransactionSummary({
   isDraftMode,
   format,
   goToStep,
+  interactionLocked,
 }: TransactionSummaryProps) {
   const handleEdit = (step: WizardStep) => {
     goToStep(step);
@@ -123,6 +125,7 @@ export function TransactionSummary({
           {!isDraftMode && (
             <button
               onClick={() => handleEdit('type')}
+              disabled={interactionLocked}
               className="text-xs text-primary-600 hover:text-primary-700"
             >
               Change
@@ -139,6 +142,7 @@ export function TransactionSummary({
             {!isDraftMode && (
               <button
                 onClick={() => handleEdit('outputs')}
+                disabled={interactionLocked}
                 className="text-xs text-primary-600 hover:text-primary-700"
               >
                 Edit
@@ -205,6 +209,7 @@ export function TransactionSummary({
               {!isDraftMode && (
                 <button
                   onClick={() => handleEdit('outputs')}
+                  disabled={interactionLocked}
                   className="text-xs text-primary-600 hover:text-primary-700"
                 >
                   Edit

@@ -731,12 +731,14 @@ export class ApiClient {
   async patch<T>(
     endpoint: string,
     data?: unknown,
+    options?: { signal?: AbortSignal },
   ): Promise<T> {
     return this.request<T>(
       endpoint,
       {
         method: "PATCH",
         body: data ? JSON.stringify(data) : undefined,
+        signal: options?.signal,
       },
     );
   }

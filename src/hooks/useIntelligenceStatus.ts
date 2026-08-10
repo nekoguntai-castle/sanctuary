@@ -6,11 +6,11 @@
  * - LLM egress proxy reachable
  * - External provider endpoint configured
  *
- * Returns { available: false } silently if any condition fails.
- * Caches result for 5 minutes.
+ * Returns { available: false } silently if any condition fails and publishes
+ * one immutable status snapshot to every mounted consumer.
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useSyncExternalStore } from 'react';
 import * as intelligenceApi from '../api/intelligence';
 
 interface IntelligenceStatusResult {
@@ -19,66 +19,80 @@ interface IntelligenceStatusResult {
   endpointType?: 'host' | 'remote';
 }
 
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const LOADING_STATUS: IntelligenceStatusResult = Object.freeze({ available: false, loading: true });
+const UNAVAILABLE_STATUS: IntelligenceStatusResult = Object.freeze({ available: false, loading: false });
+const RETRY_DELAY_MS = 1_000;
+type Listener = () => void;
 
-let cachedResult: IntelligenceStatusResult | null = null;
-let cachedAt = 0;
+let snapshot = LOADING_STATUS;
+let generation = 0;
+let activeGeneration: number | null = null;
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+let failedSnapshot = false;
+const listeners = new Set<Listener>();
+
+const publish = (next: IntelligenceStatusResult): void => {
+  snapshot = Object.freeze(next);
+  listeners.forEach(listener => listener());
+};
+
+const clearRetry = (): void => {
+  if (retryTimer) clearTimeout(retryTimer);
+  retryTimer = null;
+};
+
+const scheduleRetry = (): void => {
+  if (listeners.size === 0) return;
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    void startStatusRequest();
+  }, RETRY_DELAY_MS);
+};
+
+const startStatusRequest = async (): Promise<void> => {
+  const requestGeneration = generation;
+  activeGeneration = requestGeneration;
+  try {
+    const result = await intelligenceApi.getIntelligenceStatus();
+    if (requestGeneration !== generation) return;
+    activeGeneration = null;
+    clearRetry();
+    failedSnapshot = false;
+    publish({ available: result.available, loading: false, endpointType: result.endpointType });
+  } catch {
+    if (requestGeneration !== generation) return;
+    activeGeneration = null;
+    failedSnapshot = true;
+    publish(UNAVAILABLE_STATUS);
+    scheduleRetry();
+  }
+};
+
+const subscribe = (listener: Listener): (() => void) => {
+  listeners.add(listener);
+  if ((snapshot.loading || failedSnapshot) && !retryTimer && activeGeneration !== generation) {
+    void startStatusRequest();
+  }
+  return () => {
+    listeners.delete(listener);
+    if (listeners.size === 0) clearRetry();
+  };
+};
+
+const getSnapshot = (): IntelligenceStatusResult => snapshot;
 
 export function useIntelligenceStatus(): IntelligenceStatusResult {
-  const [status, setStatus] = useState<IntelligenceStatusResult>(
-    cachedResult ?? { available: false, loading: true }
-  );
-  const mountedRef = useRef(true);
-
-  const checkStatus = useCallback(async () => {
-    // Use cache if fresh
-    if (cachedResult && Date.now() - cachedAt < CACHE_TTL_MS) {
-      setStatus(cachedResult);
-      return;
-    }
-
-    try {
-      const result = await intelligenceApi.getIntelligenceStatus();
-      const newStatus: IntelligenceStatusResult = {
-        available: result.available,
-        loading: false,
-        endpointType: result.endpointType,
-      };
-
-      cachedResult = newStatus;
-      cachedAt = Date.now();
-
-      if (mountedRef.current) {
-        setStatus(newStatus);
-      }
-    } catch {
-      // Silently fail — feature flags not enabled or 403
-      const newStatus: IntelligenceStatusResult = { available: false, loading: false };
-      cachedResult = newStatus;
-      cachedAt = Date.now();
-
-      if (mountedRef.current) {
-        setStatus(newStatus);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    checkStatus();
-
-    return () => {
-      mountedRef.current = false;
-    };
-  }, [checkStatus]);
-
-  return status;
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
 /**
  * Invalidate the cached status (call after changing settings)
  */
 export function invalidateIntelligenceStatus(): void {
-  cachedResult = null;
-  cachedAt = 0;
+  generation += 1;
+  activeGeneration = null;
+  failedSnapshot = false;
+  clearRetry();
+  publish(LOADING_STATUS);
+  if (listeners.size > 0) void startStatusRequest();
 }

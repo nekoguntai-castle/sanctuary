@@ -8,11 +8,24 @@ import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { FeatureFlags } from '../../src/components/FeatureFlags';
 import * as adminApi from '../../src/api/admin';
 
+const capabilityMocks = vi.hoisted(() => ({
+  invalidateAI: vi.fn(),
+  invalidateIntelligence: vi.fn(),
+}));
+
 vi.mock('../../src/api/admin', () => ({
   getFeatureFlags: vi.fn(),
   updateFeatureFlag: vi.fn(),
   resetFeatureFlag: vi.fn(),
   getFeatureFlagAuditLog: vi.fn(),
+}));
+
+vi.mock('../../src/hooks/useAIStatus', () => ({
+  invalidateAIStatusCache: capabilityMocks.invalidateAI,
+}));
+
+vi.mock('../../src/hooks/useIntelligenceStatus', () => ({
+  invalidateIntelligenceStatus: capabilityMocks.invalidateIntelligence,
 }));
 
 describe('FeatureFlags', () => {
@@ -223,6 +236,28 @@ describe('FeatureFlags', () => {
       await waitFor(() => {
         expect(adminApi.updateFeatureFlag).toHaveBeenCalledWith('aiAssistant', false);
       });
+      expect(capabilityMocks.invalidateAI).toHaveBeenCalledTimes(1);
+      expect(capabilityMocks.invalidateIntelligence).toHaveBeenCalledTimes(1);
+    });
+
+    it('invalidates only Treasury Intelligence for its successful toggle', async () => {
+      vi.mocked(adminApi.getFeatureFlags).mockResolvedValue([{ ...mockFlags[0], key: 'treasuryIntelligence' }]);
+      vi.mocked(adminApi.updateFeatureFlag).mockResolvedValue({ ...mockFlags[0], key: 'treasuryIntelligence' });
+      const user = userEvent.setup();
+      render(<FeatureFlags />);
+      await user.click(await screen.findByRole('switch'));
+      await waitFor(() => expect(capabilityMocks.invalidateIntelligence).toHaveBeenCalledTimes(1));
+      expect(capabilityMocks.invalidateAI).not.toHaveBeenCalled();
+    });
+
+    it('does not invalidate capability stores when an update is rejected', async () => {
+      vi.mocked(adminApi.updateFeatureFlag).mockRejectedValue(new Error('Rejected'));
+      const user = userEvent.setup();
+      render(<FeatureFlags />);
+      await user.click((await screen.findAllByRole('switch'))[0]);
+      await screen.findByText('Rejected');
+      expect(capabilityMocks.invalidateAI).not.toHaveBeenCalled();
+      expect(capabilityMocks.invalidateIntelligence).not.toHaveBeenCalled();
     });
 
     it('replaces prior success timeout and clears Saved after delay', async () => {

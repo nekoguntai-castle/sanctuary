@@ -22,8 +22,10 @@ const log = createLogger('QRSigningModal');
 
 type ControllerOptions = {
   onClose: () => void;
-  onSignedPsbt: (signedPsbt: string) => void;
+  onSignedPsbt: (signedPsbt: string) => Promise<void> | void;
 };
+
+type SignedPsbtHandler = ControllerOptions['onSignedPsbt'];
 
 /**
  * Orchestrates QR signing: display the unsigned PSBT to the hardware wallet,
@@ -113,6 +115,7 @@ export function useQRSigningModalController({ onClose, onSignedPsbt }: Controlle
       file,
       onSignedPsbt,
       handleClose,
+      setProcessing,
       setScanError,
     });
     event.target.value = '';
@@ -137,7 +140,7 @@ export function useQRSigningModalController({ onClose, onSignedPsbt }: Controlle
 
 type RawPsbtScanHandlers = {
   content: string;
-  onSignedPsbt: (signedPsbt: string) => void;
+  onSignedPsbt: SignedPsbtHandler;
   handleClose: () => void;
   setProcessing: (processing: boolean) => void;
   setScanError: (error: string) => void;
@@ -153,10 +156,13 @@ function handleRawPsbtScan({
   const result = parseRawBase64PsbtScan(content);
 
   if (result.kind === 'psbt') {
-    setProcessing(true);
     log.info('Received raw base64 PSBT');
-    onSignedPsbt(result.base64);
-    handleClose();
+    void finishSignedPsbt(result.base64, {
+      onSignedPsbt,
+      handleClose,
+      setProcessing,
+      setScanError,
+    });
     return;
   }
 
@@ -176,7 +182,7 @@ function handleRawPsbtScan({
 type UrPsbtScanHandlers = {
   decoder: ReturnType<typeof createPsbtDecoder>;
   content: string;
-  onSignedPsbt: (signedPsbt: string) => void;
+  onSignedPsbt: SignedPsbtHandler;
   handleClose: () => void;
   setProcessing: (processing: boolean) => void;
   setScanProgress: (progress: number) => void;
@@ -202,12 +208,15 @@ function handleUrPsbtScan({
   setScanProgress(result.progress);
   if (!result.complete) return;
 
-  setProcessing(true);
   try {
     const signedPsbt = getDecodedPsbt(decoder);
     log.info('Successfully decoded signed PSBT');
-    onSignedPsbt(signedPsbt);
-    handleClose();
+    void finishSignedPsbt(signedPsbt, {
+      onSignedPsbt,
+      handleClose,
+      setProcessing,
+      setScanError,
+    });
   } catch (error) {
     log.error('Failed to decode PSBT', { error });
     setScanError(error instanceof Error ? error.message : 'Failed to decode PSBT');
@@ -217,8 +226,9 @@ function handleUrPsbtScan({
 
 type ImportSignedPsbtFileOptions = {
   file: File;
-  onSignedPsbt: (signedPsbt: string) => void;
+  onSignedPsbt: SignedPsbtHandler;
   handleClose: () => void;
+  setProcessing: (processing: boolean) => void;
   setScanError: (error: string) => void;
 };
 
@@ -226,18 +236,45 @@ async function importSignedPsbtFile({
   file,
   onSignedPsbt,
   handleClose,
+  setProcessing,
   setScanError,
 }: ImportSignedPsbtFileOptions) {
   try {
     const signedPsbt = await readSignedPsbtFile(file);
     logSignedPsbtImport(signedPsbt);
-    onSignedPsbt(signedPsbt.base64);
-    handleClose();
+    await finishSignedPsbt(signedPsbt.base64, {
+      onSignedPsbt,
+      handleClose,
+      setProcessing,
+      setScanError,
+    });
   } catch (error) {
     if (!isInvalidPsbtFileFormatError(error)) {
       log.error('Failed to parse PSBT file', { error });
     }
     setScanError((error as Error).message);
+  }
+}
+
+type FinishSignedPsbtOptions = {
+  onSignedPsbt: SignedPsbtHandler;
+  handleClose: () => void;
+  setProcessing: (processing: boolean) => void;
+  setScanError: (error: string) => void;
+};
+
+async function finishSignedPsbt(
+  signedPsbt: string,
+  { onSignedPsbt, handleClose, setProcessing, setScanError }: FinishSignedPsbtOptions,
+): Promise<void> {
+  setProcessing(true);
+  try {
+    await onSignedPsbt(signedPsbt);
+    handleClose();
+  } catch (error) {
+    log.error('Failed to process signed PSBT', { error });
+    setScanError(error instanceof Error ? error.message : 'Failed to process signed PSBT');
+    setProcessing(false);
   }
 }
 
