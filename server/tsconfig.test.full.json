@@ -4,7 +4,12 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      "@/*": ["src/*"],
+      "@fixtures/*": ["tests/fixtures/*"],
+      "@sanctuary/shared/*": ["../shared/dist/*"]
+    }
   },
   "files": [],
   "include": ["src/**/*", "tests/**/*", "../shared/**/*"]
