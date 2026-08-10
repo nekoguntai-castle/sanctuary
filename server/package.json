@@ -51,6 +51,7 @@
     "typecheck:tests:full": "tsc --noEmit -p tsconfig.test.full.json --pretty false",
     "lint": "cd .. && npm run lint:server",
     "check:prisma-imports": "tsx scripts/check-prisma-imports.ts",
+    "audit:wallet-safety": "tsx scripts/audit-wallet-safety.ts",
     "prepare": "cd .. && husky server/.husky",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",

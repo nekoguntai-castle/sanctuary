@@ -852,6 +852,7 @@ jobs:
           bash tests/release/create-forge-release.test.sh
           bash tests/release/cleanup-trap-exit-status.test.sh
           bash tests/release/publish-release.test.sh
+          node --test tests/release/wallet-safety-audit-review.test.mjs
           node tests/release/verify-release-artifacts.test.mjs
           node tests/release/prepare-release-assets.test.mjs
           node tests/release/publish-release-assets.test.mjs

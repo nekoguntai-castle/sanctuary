@@ -27,7 +27,11 @@ export function parseImportInput(input: string): {
   availablePaths?: Array<{ scriptType: ScriptType; path: string }>;
 } {
   const trimmed = input.trim();
-  log.debug('parseImportInput called', { inputLength: trimmed.length, startsWithHash: trimmed.startsWith('#'), first50: trimmed.substring(0, 50) });
+  log.debug('parseImportInput called', {
+    inputLength: trimmed.length,
+    startsWithHash: trimmed.startsWith('#'),
+    startsWithJson: trimmed.startsWith('{'),
+  });
 
   // Try to detect if it's JSON
   if (trimmed.startsWith('{')) {
@@ -80,7 +84,10 @@ export function parseImportInput(input: string): {
   log.debug('Checking text format', { isTextFormat });
   if (isTextFormat) {
     const descriptor = extractDescriptorFromText(trimmed);
-    log.debug('Extracted descriptor from text', { descriptor: descriptor?.substring(0, 100) });
+    log.debug('Extracted descriptor from text', {
+      descriptorFound: descriptor !== null,
+      descriptorLength: descriptor?.length ?? 0,
+    });
     return {
       format: 'descriptor',
       parsed: parseDescriptorForImport(descriptor!),
@@ -88,7 +95,7 @@ export function parseImportInput(input: string): {
   }
 
   // Try as plain descriptor
-  log.debug('Trying as plain descriptor', { first100: trimmed.substring(0, 100) });
+  log.debug('Trying as plain descriptor', { inputLength: trimmed.length });
   return {
     format: 'descriptor',
     parsed: parseDescriptorForImport(trimmed),

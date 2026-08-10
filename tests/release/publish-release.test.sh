@@ -120,15 +120,25 @@ new_fixture() {
   local name="$1"
   local tag="$2"
   local fixture="$TEST_ROOT/$name"
-  mkdir -p "$fixture/scripts/release" "$fixture/bin" "$fixture/state" "$fixture/tmp"
+  mkdir -p "$fixture/config" "$fixture/scripts/ci" "$fixture/scripts/release" \
+    "$fixture/bin" "$fixture/state" "$fixture/tmp"
   cp "$SCRIPT_UNDER_TEST" "$fixture/scripts/release/publish-release.sh"
   cp "$REPO_ROOT/scripts/release/release-operator-api.sh" \
     "$fixture/scripts/release/release-operator-api.sh"
-  printf '%s\n' 'trace.log' 'output.log' 'state/' 'tmp/' > "$fixture/.gitignore"
+  cp "$REPO_ROOT/scripts/release/previous-release-tag.sh" \
+    "$fixture/scripts/release/previous-release-tag.sh"
+  cp "$REPO_ROOT/scripts/release/verify-wallet-safety-audit-review.mjs" \
+    "$fixture/scripts/release/verify-wallet-safety-audit-review.mjs"
+  cp "$REPO_ROOT/scripts/ci/check-wallet-safety-classifier.mjs" \
+    "$fixture/scripts/ci/check-wallet-safety-classifier.mjs"
+  cp "$REPO_ROOT/config/wallet-safety-critical-paths.json" \
+    "$fixture/config/wallet-safety-critical-paths.json"
+  printf '%s\n' 'trace.log' 'output.log' 'review.json' 'state/' 'tmp/' > "$fixture/.gitignore"
   write_curl_stub "$fixture/bin/curl"
   write_forbidden_docker_stub "$fixture/bin/docker"
   write_release_stub "$fixture/scripts/create-forge-release.sh"
   chmod +x "$fixture/scripts/release/publish-release.sh" \
+    "$fixture/scripts/release/previous-release-tag.sh" \
     "$fixture/scripts/create-forge-release.sh" \
     "$fixture/bin/curl" "$fixture/bin/docker"
   git -C "$fixture" init -q
@@ -146,6 +156,34 @@ run_publish() {
   shift 2
   local sha
   sha="$(git -C "$fixture" rev-parse HEAD)"
+  local evidence_path=""
+  if [[ "${RELEASE_TEST_WITHOUT_REVIEW:-false}" != "true" ]]; then
+    local reviewed_at
+    reviewed_at="$(date -u '+%Y-%m-%dT%H:%M:%S.000Z')"
+    evidence_path="$fixture/review.json"
+    jq -n \
+      --arg source_commit "$sha" \
+      --arg reviewed_at "$reviewed_at" \
+      '{
+        schemaVersion: "sanctuary.wallet-safety-release-review.v1",
+        sourceCommit: $source_commit,
+        audit: {
+          schemaVersion: "sanctuary.wallet-safety-audit.v1",
+          generatedAt: $reviewed_at,
+          result: "clean",
+          exitCode: 0,
+          findingCount: 0,
+          reportSha256: ("b" * 64),
+          operatorId: "release-test-operator"
+        },
+        review: {
+          decision: "approved",
+          reviewedAt: $reviewed_at,
+          reviewerId: "release-test-reviewer",
+          reference: "release-test-review"
+        }
+      }' > "$evidence_path"
+  fi
   (
     cd "$fixture"
     PATH="$fixture/bin:$PATH" \
@@ -167,6 +205,7 @@ run_publish() {
     UMBREL_DISPATCH_TOKEN="retired-dispatch-token" \
     UMBREL_OWNER="retired-owner" \
     UMBREL_REPO="retired-repo" \
+    SANCTUARY_WALLET_SAFETY_AUDIT_REVIEW="$evidence_path" \
     TMPDIR="$fixture/tmp" \
     "$fixture/scripts/release/publish-release.sh" "$tag" "$@"
   )
@@ -244,6 +283,69 @@ test_failed_gate_blocks_all_publication() {
   assert_not_contains "$fixture/trace.log" "docker "
 }
 
+test_wallet_safety_change_requires_review_evidence() {
+  local tag="v1.2.3"
+  local fixture
+  fixture="$(new_fixture wallet-safety-review "$tag")"
+  git -C "$fixture" tag -d "$tag" >/dev/null
+  git -C "$fixture" tag v1.2.2
+  mkdir -p "$fixture/server/src/services"
+  printf 'device account registration change\n' \
+    > "$fixture/server/src/services/deviceAccountRegistration.ts"
+  git -C "$fixture" add server/src/services/deviceAccountRegistration.ts
+  git -C "$fixture" commit -qm "device account registration change"
+  git -C "$fixture" tag "$tag"
+
+  if RELEASE_TEST_WITHOUT_REVIEW=true run_publish "$fixture" "$tag" \
+    > "$fixture/output.log" 2>&1; then
+    fail "wallet-safety release unexpectedly passed without reviewed audit evidence"
+  fi
+  assert_contains "$fixture/output.log" "wallet-safety audit review evidence is required"
+  [[ ! -f "$fixture/trace.log" ]] || fail "wallet-safety evidence failure reached the network"
+}
+
+test_jade_qr_change_requires_review_evidence() {
+  local tag="v1.2.3"
+  local fixture
+  fixture="$(new_fixture jade-qr-review "$tag")"
+  git -C "$fixture" tag -d "$tag" >/dev/null
+  git -C "$fixture" tag v1.2.2
+  mkdir -p "$fixture/src/components/qr/QRSigningModal"
+  printf 'Jade QR signing change\n' \
+    > "$fixture/src/components/qr/QRSigningModal/useQRSigningModalController.ts"
+  git -C "$fixture" add src/components/qr/QRSigningModal/useQRSigningModalController.ts
+  git -C "$fixture" commit -qm "Jade QR signing change"
+  git -C "$fixture" tag "$tag"
+
+  if RELEASE_TEST_WITHOUT_REVIEW=true run_publish "$fixture" "$tag" \
+    > "$fixture/output.log" 2>&1; then
+    fail "Jade QR release unexpectedly passed without reviewed audit evidence"
+  fi
+  assert_contains "$fixture/output.log" "wallet-safety audit review evidence is required"
+  [[ ! -f "$fixture/trace.log" ]] || fail "Jade QR evidence failure reached the network"
+}
+
+test_ledger_parser_change_requires_review_evidence() {
+  local tag="v1.2.3"
+  local fixture
+  fixture="$(new_fixture ledger-parser-review "$tag")"
+  git -C "$fixture" tag -d "$tag" >/dev/null
+  git -C "$fixture" tag v1.2.2
+  mkdir -p "$fixture/src/services/deviceParsers/parsers"
+  printf 'Ledger parser change\n' \
+    > "$fixture/src/services/deviceParsers/parsers/ledger.ts"
+  git -C "$fixture" add src/services/deviceParsers/parsers/ledger.ts
+  git -C "$fixture" commit -qm "Ledger parser change"
+  git -C "$fixture" tag "$tag"
+
+  if RELEASE_TEST_WITHOUT_REVIEW=true run_publish "$fixture" "$tag" \
+    > "$fixture/output.log" 2>&1; then
+    fail "Ledger parser release unexpectedly passed without reviewed audit evidence"
+  fi
+  assert_contains "$fixture/output.log" "wallet-safety audit review evidence is required"
+  [[ ! -f "$fixture/trace.log" ]] || fail "Ledger parser evidence failure reached the network"
+}
+
 test_github_actions_drift_blocks_tag_creation() {
   local tag="v1.2.3"
   local fixture
@@ -299,6 +401,9 @@ test_real_publish_orders_release_gates
 test_existing_github_tag_is_idempotent
 test_dirty_checkout_fails_before_network
 test_failed_gate_blocks_all_publication
+test_wallet_safety_change_requires_review_evidence
+test_jade_qr_change_requires_review_evidence
+test_ledger_parser_change_requires_review_evidence
 test_github_actions_drift_blocks_tag_creation
 test_mismatched_github_tag_blocks_release
 test_dry_run_requires_existing_github_tag

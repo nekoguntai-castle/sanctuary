@@ -103,16 +103,14 @@ export function validateAndRemoveChecksum(descriptor: string): { descriptor: str
 
   if (!computedChecksum || computedChecksum !== providedChecksum) {
     log.warn('Descriptor checksum mismatch', {
-      provided: providedChecksum,
-      computed: computedChecksum || '<uncomputable>',
-      descriptor: descriptorWithoutChecksum.substring(0, 50) + '...',
+      checksumComputable: computedChecksum !== '',
     });
-    // Still accept the descriptor but log warning
+    // Report invalidity without including the sensitive descriptor token.
   }
 
   return {
     descriptor: descriptorWithoutChecksum,
-    valid: computedChecksum.length > 0 && computedChecksum === providedChecksum,
+    valid: computedChecksum !== '' && computedChecksum === providedChecksum,
   };
 }
 

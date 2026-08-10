@@ -8,7 +8,7 @@ import { promisify } from "node:util";
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const execFileAsync = promisify(execFile);
 
-function matchesClassifierPath(file, pattern) {
+export function matchesClassifierPath(file, pattern) {
   const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
   const expression = escaped
     .replaceAll("**", "\0")
@@ -17,7 +17,7 @@ function matchesClassifierPath(file, pattern) {
   return new RegExp(`^${expression}$`).test(file);
 }
 
-export function validateClassifier(manifest, workflowText, repositoryFiles) {
+function validateManifestPaths(manifest, repositoryFiles) {
   if (manifest.schemaVersion !== 1 || !Array.isArray(manifest.paths) || manifest.paths.length === 0) {
     throw new Error("wallet-safety classifier manifest has an unsupported shape");
   }
@@ -32,6 +32,9 @@ export function validateClassifier(manifest, workflowText, repositoryFiles) {
       throw new Error(`wallet-safety classifier path does not resolve: ${path}`);
     }
   }
+}
+
+function validateWorkflow(workflowText) {
   for (const event of ["pull_request", "merge_group", "push", "schedule"]) {
     const eventPattern = new RegExp(`^  ${event}:`, "m");
     if (!eventPattern.test(workflowText)) {
@@ -45,6 +48,11 @@ export function validateClassifier(manifest, workflowText, repositoryFiles) {
   if (!workflowText.includes("node scripts/ci/check-wallet-safety-classifier.mjs")) {
     throw new Error("verify-vectors workflow must execute the wallet-safety classifier");
   }
+}
+
+export function validateClassifier(manifest, workflowText, repositoryFiles) {
+  validateManifestPaths(manifest, repositoryFiles);
+  validateWorkflow(workflowText);
 }
 
 export async function checkWalletSafetyClassifier(root = repoRoot) {

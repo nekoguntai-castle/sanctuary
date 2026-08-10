@@ -37,7 +37,10 @@ const log = createLogger('BITCOIN:SVC_DESCRIPTOR');
 export function parseDescriptorForImport(descriptor: string): ParsedDescriptor {
   // Clean up descriptor
   let cleanDescriptor = removeChecksum(descriptor.trim());
-  log.debug('parseDescriptorForImport', { cleanDescriptor: cleanDescriptor.substring(0, 100), startsWithWsh: cleanDescriptor.toLowerCase().startsWith('wsh(') });
+  log.debug('parseDescriptorForImport', {
+    descriptorLength: cleanDescriptor.length,
+    startsWithWsh: cleanDescriptor.toLowerCase().startsWith('wsh('),
+  });
   validateRawDescriptorDomain(cleanDescriptor, 0);
 
   // Detect script type

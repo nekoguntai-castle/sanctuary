@@ -41,7 +41,9 @@ list_group_specs() {
         tests/integration/flows/transactions.integration.test.ts \
         tests/integration/flows/transactionsCreationCrossWallet.integration.test.ts \
         tests/integration/flows/webhookHeaderPatch.integration.test.ts \
-        tests/integration/flows/wallet.integration.test.ts
+        tests/integration/flows/wallet.integration.test.ts \
+        tests/integration/flows/walletDescriptorAtomicity.integration.test.ts \
+        tests/integration/flows/walletSafetyAudit.integration.test.ts
       ;;
     "$GROUP_REPOSITORIES_CORE")
       printf '%s\n' \

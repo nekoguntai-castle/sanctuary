@@ -29,6 +29,7 @@ This document records the checks that should protect the A-grade engineering goa
 | Safety fail-closed catch guard | New non-terminal `catch` blocks in safety modules must throw, return, call an approved fail-closed helper, or be added to the accountable baseline; stale baseline entries fail so cleanup is visible | `npm run check:safety-catch-guards`; included in `npm run lint:server`; baseline debt is tracked in `scripts/quality/safety-catch-allowlist.json` | Required when safety modules change |
 | Broadcast canonicality and Electrum preflight | Transaction broadcast routes derive recipient, amount, fee, and input set from decoded PSBT/raw payload data before policy, audit success, persistence, or node submission; production propagation fails closed when the configured Electrum backend cannot witness each final input prevout as fetchable, standard-address, and still unspent | `cd server && npm run test:mutation:critical:gate`; `cd server && npx vitest run tests/unit/api/transactions-http-routes.test.ts tests/unit/services/bitcoin/transactionServiceBroadcast/broadcastContracts.test.ts tests/unit/services/bitcoin/blockchain/broadcastPreflight.test.ts tests/unit/services/bitcoin/industry/broadcastSafety.test.ts tests/unit/services/bitcoin/validationEvidenceContracts.test.ts`; full backend integration `flows` matrix | Required when broadcast paths change; Bitcoin Core `testmempoolaccept` remains release-lab fixture evidence, not a production runtime requirement while Sanctuary is Electrum-only |
 | Descriptor/xpub import safety | Raw descriptors and parsed JSON, BlueWallet, and Coldcard imports fail closed on private extended keys, wrong-network key/path/declaration combinations, mixed-network cosigners, unsupported receive/change branches, quorum overflow, duplicate multisig cosigners, malformed cosigner suffixes, and raw descriptor script/path mismatches | `cd server && npx vitest run tests/unit/services/bitcoin/descriptorParser.test.ts`; no Bitcoin Core, hardware device, or new runtime dependency is required for this parser gate | Required when wallet import, descriptor parser, or hardware account import surfaces change |
+| Wallet-safety audit review | A versioned, read-only wallet audit report for the exact release commit is independently reviewed; clean audits and explicitly reviewed findings are accepted, while missing, stale, mismatched, or internally inconsistent evidence blocks release | `npm run audit:wallet-safety -- --output <private-path>`; hash the private report, create the redacted review receipt described below, and provide it to release-candidate CI through the `WALLET_SAFETY_AUDIT_REVIEW_JSON` repository variable and to `release:publish` through `SANCTUARY_WALLET_SAFETY_AUDIT_REVIEW` | Required when wallet identity, descriptor/address derivation, wallet import, schema, or hardware integration paths changed since the previous stable release |
 | Physical hardware signing | Ledger, Trezor, and BitBox signing claims require executable fixture intake plus replayable sanitized artifacts; unsupported Ledger/BitBox multisig rows must be blocked before USB signing | `REQUIRE_HARDWARE_SIGNED_FIXTURES=1 npm --prefix server run test -- --run tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts`; fixture rows must satisfy `server/tests/helpers/hardwareSignedFixtureIntake.ts`; product-block proof: `npm run test:run -- tests/services/hardwareWallet.signingSupport.test.ts tests/hooks/useUsbSigning.test.tsx tests/services/hardwareWallet.ledgerAdapter.test.ts tests/services/hardwareWallet.bitboxAdapter.test.ts` | Intake schema and unsupported-row product blocks required when fixture rows or hardware signing paths change; full gate pending until 11 required physical artifacts are captured or product-blocked |
 | Threat model and external review package | Public trust claims must map assets, actors, boundaries, non-goals, release evidence, and limitations without overstating hardware, AI/MCP, release, broadcast, or node-trust guarantees | `docs/reference/wallet-threat-model.md`, `docs/reference/trust-and-verification.md`, `docs/reference/external-review-package.md`, docs link/Mermaid tests, and docs build | Required before public high-trust, audited-software, or funds-loss-grade claims; update when trust boundaries or release gates change |
 | Browser auth and CSP | API-client cookie auth, CSRF double-submit, refresh flow, and route-scoped Swagger CSP | `npm run test:run -- tests/api/client.test.ts tests/api/refresh.test.ts tests/services/websocket.test.ts tests/contexts/UserContext.test.tsx`; `cd server && npx vitest run tests/unit/middleware/csrf.test.ts tests/unit/middleware/auth.test.ts tests/unit/api/auth.test.ts tests/unit/api/openapi.test.ts tests/unit/websocket/auth.test.ts` when backend auth/CSP/docs routing changes | Required when touched |
@@ -42,6 +43,38 @@ This document records the checks that should protect the A-grade engineering goa
 | Performance and scale | Phase 3 benchmark harness in strict mode | `npm run perf:phase3:compose-smoke` for disposable local authenticated generated-data capacity proof; `SANCTUARY_BENCHMARK_STRICT=true npm run perf:phase3` with operator-owned testnet/regtest or approved non-production scenario inputs for target-environment calibration | Generated proof complete; target-environment rerun required when topology/hardware differs |
 
 Upgrade-path policy: upgrade regressions can lock operators out of existing nodes, so the ref-to-ref upgrade matrix is now a release-blocking gate. The core lane preserves encrypted admin 2FA, encrypted secondary-user 2FA, legacy plaintext 2FA, backup-code state, representative app data, runtime secrets, legacy `.env` compatibility, browser/proxy login and refresh, CSRF-protected support-package generation, worker health, notification worker DLQ diagnostics, optional monitoring/Tor profile enablement, and migration completion. The script's `--mode full` path is available as a deliberate release-candidate recovery lane that extends the baseline upgrade with password-drift recovery, rebuild, and volume-persistence checks.
+
+## Wallet-Safety Audit Review Evidence
+
+The full audit report contains recovery-sensitive wallet evidence and must remain in an operator-controlled private location. Release automation consumes only a strict redacted receipt. The receipt is valid for seven days, must name the exact release commit, and must record an approving reviewer who is different from the audit operator. Do not add descriptors, addresses, xpubs, fingerprints, derivation paths, wallet names, or device labels to the receipt.
+
+```json
+{
+  "schemaVersion": "sanctuary.wallet-safety-release-review.v1",
+  "sourceCommit": "<40-character release commit>",
+  "audit": {
+    "schemaVersion": "sanctuary.wallet-safety-audit.v1",
+    "generatedAt": "2026-08-09T10:00:00.000Z",
+    "result": "clean",
+    "exitCode": 0,
+    "findingCount": 0,
+    "reportSha256": "<64-character SHA-256 of the private report>",
+    "operatorId": "<accountable operator identifier>"
+  },
+  "review": {
+    "decision": "approved",
+    "reviewedAt": "2026-08-09T11:00:00.000Z",
+    "reviewerId": "<independent reviewer identifier>",
+    "reference": "<ticket or signed review reference>"
+  }
+}
+```
+
+An audit with findings may use `"result": "findings_reviewed"`, exit code `2`, and a positive `findingCount`; approval then attests that every finding was resolved or explicitly accepted in the referenced review. Release-candidate validation reads the redacted JSON from the protected `WALLET_SAFETY_AUDIT_REVIEW_JSON` repository variable. The trusted publication command reads a receipt file from `SANCTUARY_WALLET_SAFETY_AUDIT_REVIEW`. Both gates compare the receipt to the checked-out commit and activate only when their git range matches the canonical `config/wallet-safety-critical-paths.json` inventory, using the same glob semantics as verify-vectors CI. Gate behavior, classifier drift, and negative cases are covered by `node --test tests/release/wallet-safety-audit-review.test.mjs` and `bash tests/release/publish-release.test.sh`.
+
+The canonical inventory deliberately owns the complete send component/context and QR component surfaces, rather than selecting individual signing files. Transaction construction, signing-method selection, animated QR transport, signed-PSBT intake, and Jade QR behavior cross those module boundaries, so narrowing the gate to current entrypoints would create a silent release blind spot as files move.
+
+The same ownership rule covers device parsers, operational wallet import, wallet/device/xpub client APIs, descriptor-bearing backup/import services, descriptor-policy database schema, and the shared device identity contract. `tests/fixtures/wallet-safety-required-files.json` independently pins the funds-safety files identified from PR2A and representative current hardware/address/import/signing boundaries; release tests fail when any pinned file falls outside the canonical inventory.
 
 ## Phase 3 Target-Environment Evidence
 

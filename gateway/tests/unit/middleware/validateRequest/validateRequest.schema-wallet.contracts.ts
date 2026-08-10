@@ -120,6 +120,7 @@ export function registerDeviceSchemaContracts() {
       label: 'My Trezor',
       fingerprint: 'abc12345',
       xpub: 'xpub-single',
+      derivationPath: "m/84'/0'/0'",
     }).success).toBe(true);
     expect(updateDeviceSchema.safeParse({
       label: 'Updated Label',
