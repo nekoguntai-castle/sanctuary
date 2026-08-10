@@ -1705,15 +1705,65 @@ assert_named_job_step_config "$DOCKER_BUILD_WORKFLOW" \
   "cache-from: type=gha,scope=backend" \
   "cache-to: type=gha,mode=max,scope=backend,ignore-error=true"
 
+assert_named_job_step_config "$DOCKER_BUILD_WORKFLOW" \
+  "docker-build Grafana migration cache-only output" \
+  "build-grafana-migration" \
+  "Build Grafana migration helper" \
+  "uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f" \
+  "file: ./docker/grafana-migration/Dockerfile" \
+  "push: false" \
+  "outputs: type=cacheonly" \
+  "cache-from: type=gha,scope=grafana-migration" \
+  "cache-to: type=gha,mode=max,scope=grafana-migration,ignore-error=true"
+
+assert_contains_in_order "$DOCKER_BUILD_WORKFLOW" \
+  "docker-build summary hard-fails invalid scope and results" \
+  'DETECT_RESULT: ${{ needs.detect-image-scope.result }}' \
+  'GRAFANA_MIGRATION_REQUESTED: ${{ needs.detect-image-scope.outputs.grafana_migration_image }}' \
+  'scripts/ci/validate-docker-build-results.sh' \
+  '"$FRONTEND_REQUESTED" "$FRONTEND_RESULT"' \
+  '"$BACKEND_REQUESTED" "$BACKEND_RESULT"' \
+  '"$GRAFANA_MIGRATION_REQUESTED" "$GRAFANA_MIGRATION_RESULT"'
+
+assert_named_job_step_contains "$DOCKER_BUILD_WORKFLOW" \
+  "summary" \
+  "Checkout repository" \
+  "docker-build summary checks out its executable validator" \
+  "uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
+
 assert_active_yaml_line_count "$DOCKER_BUILD_WORKFLOW" \
   "docker-build validation action count" \
   "uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f" \
-  2
+  3
 
 assert_active_yaml_line_count "$DOCKER_BUILD_WORKFLOW" \
   "docker-build cache-only validation outputs" \
   "outputs: type=cacheonly" \
-  2
+  3
+
+for grafana_image_path in \
+  "'scripts/ops/migrate-grafana-password.sh'" \
+  "'scripts/ops/run-grafana-password-migration.sh'" \
+  "'scripts/ops/grafana-quiescence-records.sh'" \
+  "'scripts/offline/bundle-common.sh'" \
+  "'scripts/offline/create-bundle.sh'"; do
+  assert_occurrence_count "$DOCKER_BUILD_WORKFLOW" \
+    "docker-build triggers for $grafana_image_path" \
+    "$grafana_image_path" \
+    2
+done
+
+for grafana_owned_path in \
+  "'start.sh'" \
+  "'scripts/ops/migrate-grafana-password.sh'" \
+  "'scripts/ops/run-grafana-password-migration.sh'" \
+  "'scripts/ops/grafana-quiescence-records.sh'" \
+  "'scripts/offline/**'"; do
+  assert_occurrence_count "$REPO_ROOT/.github/workflows/install-test.yml" \
+    "install-test triggers for $grafana_owned_path" \
+    "$grafana_owned_path" \
+    2
+done
 
 assert_not_contains "$DOCKER_BUILD_WORKFLOW" \
   "docker-build validation does not load images" \

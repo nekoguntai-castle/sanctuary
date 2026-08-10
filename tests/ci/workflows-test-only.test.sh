@@ -14,8 +14,8 @@ fail() {
 
 bash "$checker" "$repo_root/.github/workflows" >/dev/null
 
-[ "$(grep -c '^[[:space:]]*push: false$' "$docker_workflow")" -eq 2 ] ||
-  fail "Docker validation must retain exactly two explicit push:false settings"
+[ "$(grep -c '^[[:space:]]*push: false$' "$docker_workflow")" -eq 3 ] ||
+  fail "Docker validation must retain exactly three explicit push:false settings"
 if grep -Eq 'github\.server_url|packages:[[:space:]]+write|docker/login-action' "$docker_workflow"; then
   fail "Docker validation still contains a provider gate or registry authority"
 fi

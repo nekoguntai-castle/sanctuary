@@ -132,6 +132,9 @@ grep -Fq 'run-grafana-password-migration.sh' "$PROJECT_ROOT/scripts/setup.sh"
 grep -Fq 'run-grafana-password-migration.sh' "$PROJECT_ROOT/start.sh"
 grep -Fq -- '--pull never' "$PROJECT_ROOT/scripts/ops/run-grafana-password-migration.sh"
 grep -Fq 'grafana_quiescence' "$PROJECT_ROOT/scripts/ops/run-grafana-password-migration.sh"
+test -r "$PROJECT_ROOT/scripts/ops/grafana-quiescence-records.sh"
+grep -Fq 'source "$script_dir/grafana-quiescence-records.sh"' \
+    "$PROJECT_ROOT/scripts/ops/run-grafana-password-migration.sh"
 grep -Fq 'org.sanctuary.grafana-migration.script-sha256' \
     "$PROJECT_ROOT/docker/grafana-migration/Dockerfile"
 script_digest="$(sha256sum "$PROJECT_ROOT/scripts/ops/migrate-grafana-password.sh" | awk '{print $1}')"

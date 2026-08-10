@@ -20,7 +20,13 @@ resolved_control_volume=""
 resolved_image="sanctuary-grafana-migration:${SANCTUARY_IMAGE_TAG:-local}"
 migration_image_id=""
 migration_container=""
-control_helper=""
+readonly helper_stale_after_seconds=300
+readonly wrapper_owner_token="$(openssl rand -hex 32)"
+# shellcheck source=scripts/ops/grafana-quiescence-records.sh
+script_path="${BASH_SOURCE[0]}"
+script_dir="${script_path%/*}"
+[ "$script_dir" != "$script_path" ] || script_dir="."
+source "$script_dir/grafana-quiescence-records.sh"
 
 fail() {
     echo "Grafana credential migration refused: $1" >&2
@@ -72,7 +78,6 @@ resolve_compose_identity() {
     printf '%s\n' "$images" | grep -Fxq "$resolved_image" \
         || fail "the packaged Grafana migration image is not in the Compose project."
     migration_container="${resolved_project}-sanctuary-grafana-password-migration"
-    control_helper="${resolved_project}-sanctuary-grafana-control-helper"
 }
 
 resolve_migration_image() {
@@ -84,80 +89,6 @@ resolve_migration_image() {
     [ -n "$image_id" ] && [ "$image_digest" = "$migration_script_sha256" ] \
         || fail "the packaged Grafana migration artifact digest is invalid."
     migration_image_id="$image_id"
-}
-
-container_listing() {
-    docker container ls -a --filter "name=^/$1$" --format '{{.ID}}'
-}
-
-container_is_absent() {
-    local name="$1" listed
-    if docker container inspect "$name" >/dev/null 2>&1; then
-        return 1
-    fi
-    listed="$(container_listing "$name")" || fail "container status is unavailable for $name."
-    [ -z "$listed" ]
-}
-
-inspect_control_helper() {
-    docker container inspect --format \
-        '{{.Id}}|{{.State.Status}}|{{.State.ExitCode}}|{{.Image}}|{{index .Config.Labels "sanctuary.grafana.role"}}|{{index .Config.Labels "sanctuary.grafana.project"}}|{{index .Config.Labels "sanctuary.grafana.data-volume"}}|{{index .Config.Labels "sanctuary.grafana.control-volume"}}' \
-        "$control_helper"
-}
-
-reconcile_control_helper() {
-    local identity id state exit_code image role project data_volume control_volume
-    container_is_absent "$control_helper" && return 0
-    identity="$(inspect_control_helper)" || fail "Grafana control helper identity is unavailable."
-    IFS='|' read -r id state exit_code image role project data_volume control_volume <<< "$identity"
-    [ "$image" = "$migration_image_id" ] && [ "$role" = "control-helper" ] \
-        && [ "$project" = "$resolved_project" ] \
-        && [ "$data_volume" = "$resolved_data_volume" ] \
-        && [ "$control_volume" = "$resolved_control_volume" ] \
-        || fail "the reserved Grafana control helper has an unexpected identity."
-    case "$state" in
-        exited|dead|created) ;;
-        *) fail "a Grafana control helper is still active or indeterminate." ;;
-    esac
-    docker container rm "$id" >/dev/null \
-        || fail "the terminal Grafana control helper could not be removed."
-    container_is_absent "$control_helper" \
-        || fail "Grafana control helper removal could not be verified."
-}
-
-run_control_helper() {
-    local command="$1"
-    shift
-    local id identity state exit_code image role project data_volume control_volume status output
-    reconcile_control_helper
-    id="$(docker container create --pull never --name "$control_helper" \
-        --label sanctuary.grafana.role=control-helper \
-        --label "sanctuary.grafana.project=$resolved_project" \
-        --label "sanctuary.grafana.data-volume=$resolved_data_volume" \
-        --label "sanctuary.grafana.control-volume=$resolved_control_volume" \
-        --user 0 --entrypoint /bin/sh \
-        --mount "type=volume,src=$resolved_control_volume,dst=/control" \
-        "$@" "$migration_image_id" -c "$command")" \
-        || fail "Grafana control helper creation failed."
-    identity="$(inspect_control_helper)" || fail "created Grafana control helper identity is unavailable."
-    IFS='|' read -r _ state exit_code image role project data_volume control_volume <<< "$identity"
-    [ "$image" = "$migration_image_id" ] && [ "$role" = "control-helper" ] \
-        && [ "$project" = "$resolved_project" ] \
-        && [ "$data_volume" = "$resolved_data_volume" ] \
-        && [ "$control_volume" = "$resolved_control_volume" ] \
-        || fail "created Grafana control helper identity is invalid."
-    set +e
-    output="$(docker container start -a "$id")"
-    status=$?
-    set -e
-    identity="$(inspect_control_helper)" || fail "completed Grafana control helper identity is unavailable."
-    IFS='|' read -r _ state exit_code _ <<< "$identity"
-    [ "$state" = "exited" ] && [ "$exit_code" = "$status" ] \
-        || fail "Grafana control helper terminal state is inconsistent."
-    docker container rm "$id" >/dev/null \
-        || fail "completed Grafana control helper could not be removed."
-    [ "$status" -eq 0 ] || fail "Grafana control helper failed with exit code $status."
-    CONTROL_HELPER_OUTPUT="$output"
 }
 
 ensure_compose_volume() {
@@ -177,66 +108,33 @@ ensure_compose_volume() {
 }
 
 ensure_control_volume() {
-    run_control_helper \
-        'set -eu; mkdir -p /control/leases /control/claims /control/outcomes; chown -R 472:472 /control; chmod 0700 /control /control/leases /control/claims /control/outcomes'
-}
-
-write_lease() {
-    local token="$1" container_id="$2" generation="$3" expires_at="$4"
-    run_control_helper \
-        'set -eu; umask 077; tmp="/control/leases/lease-$TOKEN.tmp.$$"; { printf "version=2\n"; printf "token=%s\n" "$TOKEN"; printf "project=%s\n" "$PROJECT"; printf "data_volume=%s\n" "$DATA_VOLUME"; printf "control_volume=%s\n" "$CONTROL_VOLUME"; printf "container_id=%s\n" "$CONTAINER_ID"; printf "generation=%s\n" "$GENERATION"; printf "expires_at=%s\n" "$EXPIRES_AT"; } > "$tmp"; chown 472:472 "$tmp"; mv "$tmp" "/control/leases/lease-$TOKEN"' \
-        -e "TOKEN=$token" -e "PROJECT=$resolved_project" \
-        -e "DATA_VOLUME=$resolved_data_volume" -e "CONTROL_VOLUME=$resolved_control_volume" \
-        -e "CONTAINER_ID=$container_id" -e "GENERATION=$generation" \
-        -e "EXPIRES_AT=$expires_at"
-}
-
-read_outcome() {
-    local token="$1"
-    run_control_helper 'cat "/control/outcomes/outcome-$TOKEN"' -e "TOKEN=$token"
-    printf '%s\n' "$CONTROL_HELPER_OUTPUT"
-}
-
-cleanup_control_artifacts() {
-    local token="$1"
-    run_control_helper \
-        'rm -f "/control/leases/lease-$TOKEN" "/control/outcomes/outcome-$TOKEN"; rmdir "/control/claims/$TOKEN" 2>/dev/null || true' \
-        -e "TOKEN=$token"
-}
-
-record_value() {
-    local record="$1" key="$2"
-    printf '%s\n' "$record" | sed -n "s/^${key}=//p"
-}
-
-validate_outcome() {
-    local token="$1" expected_status="$2" expected_container="$3" expected_generation="$4"
-    local outcome status
-    outcome="$(read_outcome "$token")" || return 1
-    status="$(record_value "$outcome" status)"
-    [ "$(record_value "$outcome" version)" = "1" ] \
-        && [ "$status" = "$expected_status" ] \
-        && [ "$(record_value "$outcome" token)" = "$token" ] \
-        && [ "$(record_value "$outcome" project)" = "$resolved_project" ] \
-        && [ "$(record_value "$outcome" data_volume)" = "$resolved_data_volume" ] \
-        && [ "$(record_value "$outcome" control_volume)" = "$resolved_control_volume" ] \
-        && [ "$(record_value "$outcome" container_id)" = "$expected_container" ] \
-        && [ "$(record_value "$outcome" generation)" = "$expected_generation" ]
+    run_control_helper control-init \
+        'set -eu; mkdir -p /control/leases /control/claims /control/outcomes /control/abandonments; chown -R 472:472 /control; chmod 0700 /control /control/leases /control/claims /control/outcomes /control/abandonments'
+    reconcile_abandoned_control_helpers
 }
 
 inspect_migration_container() {
     docker container inspect --format \
-        '{{.Id}}|{{.State.Status}}|{{.State.ExitCode}}|{{.Image}}|{{index .Config.Labels "sanctuary.grafana.project"}}|{{index .Config.Labels "sanctuary.grafana.data-volume"}}|{{index .Config.Labels "sanctuary.grafana.control-volume"}}|{{index .Config.Labels "sanctuary.grafana.token"}}|{{index .Config.Labels "sanctuary.grafana.container-id"}}|{{index .Config.Labels "sanctuary.grafana.generation"}}' \
+        '{{.Id}}|{{.State.Status}}|{{.State.ExitCode}}|{{.Image}}|{{index .Config.Labels "sanctuary.grafana.role"}}|{{index .Config.Labels "sanctuary.grafana.project"}}|{{index .Config.Labels "sanctuary.grafana.data-volume"}}|{{index .Config.Labels "sanctuary.grafana.control-volume"}}|{{index .Config.Labels "sanctuary.grafana.token"}}|{{index .Config.Labels "sanctuary.grafana.container-id"}}|{{index .Config.Labels "sanctuary.grafana.generation"}}' \
         "$migration_container"
+}
+
+validate_migration_identity() {
+    local identity="$1"
+    local id state exit_code image role project data_volume control_volume token container_id generation
+    IFS='|' read -r id state exit_code image role project data_volume control_volume token container_id generation <<< "$identity"
+    [ "$image" = "$migration_image_id" ] && [ "$role" = "password-migration" ] \
+        && [ "$project" = "$resolved_project" ] \
+        && [ "$data_volume" = "$resolved_data_volume" ] \
+        && [ "$control_volume" = "$resolved_control_volume" ] \
+        && [ -n "$token" ] && [ -n "$container_id" ] && [ -n "$generation" ]
 }
 
 remove_terminal_migration_container() {
     local identity="$1"
-    local id state exit_code image project data_volume control_volume token container_id generation outcome_status
-    IFS='|' read -r id state exit_code image project data_volume control_volume token container_id generation <<< "$identity"
-    [ "$image" = "$migration_image_id" ] && [ "$project" = "$resolved_project" ] \
-        && [ "$data_volume" = "$resolved_data_volume" ] \
-        && [ "$control_volume" = "$resolved_control_volume" ] \
+    local id state exit_code image role project data_volume control_volume token container_id generation outcome_status
+    IFS='|' read -r id state exit_code image role project data_volume control_volume token container_id generation <<< "$identity"
+    validate_migration_identity "$identity" \
         || fail "the reserved migration container has an unexpected identity."
     [ "$state" = "exited" ] || fail "a prior Grafana credential migration is still active or indeterminate."
     outcome_status=success
@@ -250,12 +148,73 @@ remove_terminal_migration_container() {
         || fail "migration container removal could not be verified."
 }
 
+acquire_created_reclamation() {
+    local id="$1" token="$2" container_id="$3" generation="$4"
+    local expires_at now
+    validate_lease "$token" "$container_id" "$generation" \
+        || fail "the created migration container has no valid lease."
+    if ! validate_abandonment "$token" "$id" "$container_id" "$generation"; then
+        expires_at="$(lease_expiry "$token")" \
+            || fail "the created migration container lease expiry is unavailable."
+        case "$expires_at" in
+            ''|*[!0-9]*) fail "the created migration container lease expiry is invalid." ;;
+        esac
+        now="$(daemon_epoch)"
+        [ "$now" -ge "$expires_at" ] \
+            || fail "a prior Grafana credential migration owner is still active."
+    fi
+    claim_reclamation "$token" "$id" "$container_id" "$generation" \
+        || fail "the created migration container is already claimed by its entrypoint."
+    write_abandonment "$token" "$id" "$container_id" "$generation"
+    validate_abandonment "$token" "$id" "$container_id" "$generation" \
+        || fail "the created migration abandonment record is invalid."
+}
+
+remove_reclaimed_migration() {
+    local expected_id="$1" token="$2" container_id="$3" generation="$4"
+    local identity id state exit_code image role project data_volume control_volume inspected_token inspected_container inspected_generation
+    identity="$(inspect_migration_container)" \
+        || fail "the reclaiming migration container identity is unavailable."
+    assert_reclamation_identity "$identity" "$expected_id" "$token" "$container_id" "$generation" \
+        || fail "the reclaiming migration container identity changed."
+    IFS='|' read -r id state exit_code image role project data_volume control_volume inspected_token inspected_container inspected_generation <<< "$identity"
+    case "$state" in
+        created|exited)
+            docker container rm "$id" >/dev/null \
+                || recover_reclaimed_removal_failure "$expected_id" "$token" "$container_id" "$generation"
+            ;;
+        running) wait_and_remove_reclaimed_migration "$expected_id" "$token" "$container_id" "$generation" ;;
+        *) fail "the reclaimed migration container entered an unsafe state." ;;
+    esac
+    cleanup_control_artifacts "$token"
+    container_is_absent "$migration_container" \
+        || fail "created migration container removal could not be verified."
+}
+
+remove_created_migration_container() {
+    local identity="$1"
+    local id state exit_code image role project data_volume control_volume token container_id generation
+    IFS='|' read -r id state exit_code image role project data_volume control_volume token container_id generation <<< "$identity"
+    validate_migration_identity "$identity" \
+        || fail "the created migration container has an unexpected identity."
+    [ "$state" = "created" ] || fail "the migration container is not safely reclaimable."
+    acquire_created_reclamation "$id" "$token" "$container_id" "$generation"
+    remove_reclaimed_migration "$id" "$token" "$container_id" "$generation"
+}
+
 reconcile_migration_container() {
-    local identity
+    local identity state
     container_is_absent "$migration_container" && return 0
     identity="$(inspect_migration_container)" \
         || fail "migration container identity is unavailable."
-    remove_terminal_migration_container "$identity"
+    validate_migration_identity "$identity" \
+        || fail "the reserved migration container has an unexpected identity."
+    IFS='|' read -r _ state _ <<< "$identity"
+    case "$state" in
+        created) remove_created_migration_container "$identity" ;;
+        exited) remove_terminal_migration_container "$identity" ;;
+        *) fail "a prior Grafana credential migration is still active or indeterminate." ;;
+    esac
 }
 
 inspect_generation() {
@@ -300,24 +259,63 @@ create_migration_container() {
         "$migration_image_id"
 }
 
-run_migration() {
-    local token="$1" grafana_container_id="$2" generation="$3"
-    local id identity inspected_id state exit_code image project data_volume control_volume inspected_token inspected_container inspected_generation wait_code
-    id="$(create_migration_container "$token" "$grafana_container_id" "$generation")" \
-        || fail "migration container launch failed; reserved state requires reconciliation."
-    identity="$(inspect_migration_container)" \
-        || fail "launched migration container identity is unavailable."
-    IFS='|' read -r inspected_id state exit_code image project data_volume control_volume inspected_token inspected_container inspected_generation <<< "$identity"
-    [ "$inspected_id" = "$id" ] && [ "$state" = "created" ] \
-        && [ "$image" = "$migration_image_id" ] && [ "$project" = "$resolved_project" ] \
+assert_launched_migration() {
+    local identity="$1" expected_id="$2" token="$3" grafana_container_id="$4" generation="$5"
+    local inspected_id state exit_code image role project data_volume control_volume inspected_token inspected_container inspected_generation
+    IFS='|' read -r inspected_id state exit_code image role project data_volume control_volume inspected_token inspected_container inspected_generation <<< "$identity"
+    [ "$inspected_id" = "$expected_id" ] && [ "$state" = "created" ] \
+        && [ "$image" = "$migration_image_id" ] && [ "$role" = "password-migration" ] \
+        && [ "$project" = "$resolved_project" ] \
         && [ "$data_volume" = "$resolved_data_volume" ] \
         && [ "$control_volume" = "$resolved_control_volume" ] \
         && [ "$inspected_token" = "$token" ] \
         && [ "$inspected_container" = "$grafana_container_id" ] \
+        && [ "$inspected_generation" = "$generation" ]
+}
+
+record_abandoned_start() {
+    local id="$1" token="$2" grafana_container_id="$3" generation="$4"
+    local identity confirmed_identity inspected_id state inspected_token inspected_container inspected_generation
+    identity="$(inspect_migration_container)" \
+        || fail "migration container start failed and state is unavailable."
+    confirmed_identity="$(inspect_migration_container)" \
+        || fail "migration container start failed and confirmation is unavailable."
+    [ "$identity" = "$confirmed_identity" ] || return 0
+    IFS='|' read -r inspected_id state _ _ _ _ _ _ inspected_token inspected_container inspected_generation <<< "$identity"
+    [ "$inspected_id" = "$id" ] && [ "$state" = "created" ] \
+        && [ "$inspected_token" = "$token" ] \
+        && [ "$inspected_container" = "$grafana_container_id" ] \
         && [ "$inspected_generation" = "$generation" ] \
+        && validate_migration_identity "$identity" \
+        || return 0
+    write_abandonment "$token" "$id" "$grafana_container_id" "$generation"
+}
+
+validate_migration_outcome() {
+    local token="$1" exit_code="$2" grafana_container_id="$3" generation="$4"
+    if [ "$exit_code" = "0" ]; then
+        validate_outcome "$token" success "$grafana_container_id" "$generation" \
+            || fail "Grafana credential migration did not publish a valid success outcome."
+        return 0
+    fi
+    validate_outcome "$token" rolled-back "$grafana_container_id" "$generation" \
+        || fail "Grafana credential migration failed without a valid rollback outcome."
+    fail "Grafana credential migration failed with exit code $exit_code."
+}
+
+run_migration() {
+    local token="$1" grafana_container_id="$2" generation="$3"
+    local id identity state exit_code wait_code
+    id="$(create_migration_container "$token" "$grafana_container_id" "$generation")" \
+        || fail "migration container launch failed; reserved state requires reconciliation."
+    identity="$(inspect_migration_container)" \
+        || fail "launched migration container identity is unavailable."
+    assert_launched_migration "$identity" "$id" "$token" "$grafana_container_id" "$generation" \
         || fail "launched migration container identity does not match its lease."
-    docker container start "$id" >/dev/null \
-        || fail "migration container start failed; reserved state requires reconciliation."
+    if ! docker container start "$id" >/dev/null; then
+        record_abandoned_start "$id" "$token" "$grafana_container_id" "$generation"
+        fail "migration container start failed; reserved state requires reconciliation."
+    fi
     wait_code="$(docker wait "$id")" \
         || fail "migration container completion is unavailable."
     identity="$(inspect_migration_container)" \
@@ -325,14 +323,7 @@ run_migration() {
     IFS='|' read -r _ state exit_code _ <<< "$identity"
     [ "$state" = "exited" ] && [ "$exit_code" = "$wait_code" ] \
         || fail "migration container terminal state is inconsistent."
-    if [ "$exit_code" = "0" ]; then
-        validate_outcome "$token" success "$grafana_container_id" "$generation" \
-            || fail "Grafana credential migration did not publish a valid success outcome."
-    else
-        validate_outcome "$token" rolled-back "$grafana_container_id" "$generation" \
-            || fail "Grafana credential migration failed without a valid rollback outcome."
-        fail "Grafana credential migration failed with exit code $exit_code."
-    fi
+    validate_migration_outcome "$token" "$exit_code" "$grafana_container_id" "$generation"
     docker container rm "$id" >/dev/null \
         || fail "completed migration container could not be removed."
     cleanup_control_artifacts "$token"
@@ -342,7 +333,6 @@ run_migration() {
 
 run_locked_workflow() {
     local container_id identity inspected_id generation inspected_project token expires_at
-    reconcile_control_helper
     ensure_compose_volume "$resolved_data_volume" grafana_data
     ensure_compose_volume "$resolved_control_volume" grafana_quiescence
     ensure_control_volume
@@ -362,7 +352,7 @@ run_locked_workflow() {
     compose_output stop grafana || fail "Grafana stop failed."
     assert_stopped_identity "$([ "$container_id" = absent ] && printf '' || printf '%s' "$container_id")"
     token="$(openssl rand -hex 32)"
-    expires_at="$(( $(date +%s) + 300 ))"
+    expires_at="$(( $(daemon_epoch) + 300 ))"
     write_lease "$token" "$container_id" "$generation" "$expires_at"
     run_migration "$token" "$container_id" "$generation"
 }

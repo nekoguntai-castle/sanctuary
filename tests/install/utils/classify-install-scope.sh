@@ -434,6 +434,17 @@ while IFS= read -r file; do
       add_scope unit-only
       reason="Install unit/docs scope changed"
       ;;
+    start.sh)
+      enable_unit
+      enable_standard_stack
+      add_scope runtime-entrypoint
+      reason="Runtime entrypoint changed"
+      ;;
+    scripts/ops/migrate-grafana-password.sh|scripts/ops/run-grafana-password-migration.sh|scripts/ops/grafana-quiescence-records.sh)
+      enable_unit
+      add_scope grafana-migration
+      reason="Grafana migration helper changed"
+      ;;
     install.sh|scripts/setup.sh|scripts/reset-user-2fa.sh|scripts/create-upgrade-backup.sh|scripts/offline/*|scripts/offline/**/*|tests/install/e2e/install-script.test.sh)
       enable_unit
       enable_install_script

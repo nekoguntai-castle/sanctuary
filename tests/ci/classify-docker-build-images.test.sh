@@ -63,9 +63,11 @@ assert_images() {
   local output_file="$1"
   local frontend="$2"
   local backend="$3"
+  local grafana_migration="${4:-false}"
 
   assert_exact_output "$output_file" "frontend_image" "$frontend"
   assert_exact_output "$output_file" "backend_image" "$backend"
+  assert_exact_output "$output_file" "grafana_migration_image" "$grafana_migration"
 }
 
 main() {
@@ -98,6 +100,48 @@ main() {
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_images "$output_file" "true" "true"
+
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "docker/grafana-migration/Dockerfile" "FROM grafana/grafana:10.2.0" "Grafana migration dockerfile"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_images "$output_file" "false" "false" "true"
+
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "scripts/ops/grafana-quiescence-records.sh" "#!/bin/bash" "Grafana control records"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_images "$output_file" "false" "false" "true"
+
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "scripts/ci/validate-docker-build-results.sh" "#!/bin/bash" "Docker result validator"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_images "$output_file" "true" "true" "true"
+
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "scripts/ops/migrate-grafana-password.sh" "#!/bin/sh" "Grafana migration payload"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_images "$output_file" "false" "false" "true"
+
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "scripts/ops/run-grafana-password-migration.sh" "#!/bin/bash" "Grafana migration wrapper"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_images "$output_file" "false" "false" "true"
+
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "docker/compose/monitoring.yml" "services: {}" "monitoring compose"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_images "$output_file" "true" "true" "true"
+
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "scripts/offline/bundle-common.sh" "MIGRATION_IMAGE=local" "offline migration inventory"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_images "$output_file" "false" "false" "true"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "docker/nginx/nginx.conf" "events {}" "nginx config"
@@ -187,7 +231,7 @@ main() {
   commit_file "$repo_dir" ".dockerignore" "node_modules" "dockerignore"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_images "$output_file" "true" "true"
+  assert_images "$output_file" "true" "true" "true"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "docker/monitoring/prometheus.yml" "global: {}" "monitoring config"
@@ -221,7 +265,7 @@ main() {
     export WORKFLOW_SHA="$head_sha"
     bash "$CLASSIFIER_SCRIPT"
   )
-  assert_images "$output_file" "true" "true"
+  assert_images "$output_file" "true" "true" "true"
 
   echo "docker image scope classifier regression checks passed"
 }

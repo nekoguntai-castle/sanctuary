@@ -1,6 +1,6 @@
 name: Validate Docker Images
 
-# Builds the selected frontend and backend images without publishing them.
+# Builds the selected frontend, backend, and Grafana migration images without publishing them.
 # Versioned release images are published only by the trusted operator command.
 
 on:
@@ -22,12 +22,18 @@ on:
       - 'package*.json'
       - 'config/tooling/**'
       - 'scripts/ci/classify-docker-build-images.sh'
+      - 'scripts/ci/validate-docker-build-results.sh'
       - 'scripts/ci/docker-endpoint-lib.sh'
       - 'scripts/ci/provider-context.sh'
       - 'scripts/ci/run-with-log.sh'
       - 'scripts/ci/wait-for-docker.sh'
       - 'scripts/ci/redactor.sh'
       - 'scripts/ci/write-diagnostic-summary.sh'
+      - 'scripts/ops/migrate-grafana-password.sh'
+      - 'scripts/ops/run-grafana-password-migration.sh'
+      - 'scripts/ops/grafana-quiescence-records.sh'
+      - 'scripts/offline/bundle-common.sh'
+      - 'scripts/offline/create-bundle.sh'
       - '.github/workflows/docker-build.yml'
   pull_request:
     branches:
@@ -47,12 +53,18 @@ on:
       - 'package*.json'
       - 'config/tooling/**'
       - 'scripts/ci/classify-docker-build-images.sh'
+      - 'scripts/ci/validate-docker-build-results.sh'
       - 'scripts/ci/docker-endpoint-lib.sh'
       - 'scripts/ci/provider-context.sh'
       - 'scripts/ci/run-with-log.sh'
       - 'scripts/ci/wait-for-docker.sh'
       - 'scripts/ci/redactor.sh'
       - 'scripts/ci/write-diagnostic-summary.sh'
+      - 'scripts/ops/migrate-grafana-password.sh'
+      - 'scripts/ops/run-grafana-password-migration.sh'
+      - 'scripts/ops/grafana-quiescence-records.sh'
+      - 'scripts/offline/bundle-common.sh'
+      - 'scripts/offline/create-bundle.sh'
       - '.github/workflows/docker-build.yml'
   workflow_dispatch:  # Allow manual trigger
 
@@ -74,6 +86,7 @@ jobs:
     outputs:
       frontend_image: ${{ steps.classify.outputs.frontend_image }}
       backend_image: ${{ steps.classify.outputs.backend_image }}
+      grafana_migration_image: ${{ steps.classify.outputs.grafana_migration_image }}
       reason: ${{ steps.classify.outputs.reason }}
     steps:
       - name: Checkout repository
@@ -182,13 +195,58 @@ jobs:
           cache-from: type=gha,scope=backend
           cache-to: type=gha,mode=max,scope=backend,ignore-error=true
 
+  build-grafana-migration:
+    name: Validate Grafana migration image
+    if: |
+      always() &&
+      needs.detect-image-scope.result == 'success' &&
+      needs.detect-image-scope.outputs.grafana_migration_image == 'true'
+    runs-on: ubuntu-22.04
+    needs: [detect-image-scope]
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/docker-build-grafana-migration
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Resolve Docker host
+        run: >
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/wait-for-docker.log"
+          scripts/ci/wait-for-docker.sh
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+
+      - name: Build Grafana migration helper
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
+        with:
+          context: .
+          file: ./docker/grafana-migration/Dockerfile
+          push: false
+          outputs: type=cacheonly
+          tags: sanctuary-ci/grafana-migration:${{ github.sha }}
+          cache-from: type=gha,scope=grafana-migration
+          cache-to: type=gha,mode=max,scope=grafana-migration,ignore-error=true
+
   summary:
     name: Docker image validation summary
     runs-on: ubuntu-22.04
-    needs: [detect-image-scope, build-frontend, build-backend]
+    needs: [detect-image-scope, build-frontend, build-backend, build-grafana-migration]
     if: always()
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
       - name: Summary
+        env:
+          DETECT_RESULT: ${{ needs.detect-image-scope.result }}
+          FRONTEND_REQUESTED: ${{ needs.detect-image-scope.outputs.frontend_image }}
+          BACKEND_REQUESTED: ${{ needs.detect-image-scope.outputs.backend_image }}
+          GRAFANA_MIGRATION_REQUESTED: ${{ needs.detect-image-scope.outputs.grafana_migration_image }}
+          FRONTEND_RESULT: ${{ needs.build-frontend.result }}
+          BACKEND_RESULT: ${{ needs.build-backend.result }}
+          GRAFANA_MIGRATION_RESULT: ${{ needs.build-grafana-migration.result }}
         run: |
           echo "## Docker Image Validation" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -197,3 +255,10 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- Frontend image: ${{ needs.build-frontend.result }}" >> $GITHUB_STEP_SUMMARY
           echo "- Backend image: ${{ needs.build-backend.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Grafana migration image: ${{ needs.build-grafana-migration.result }}" >> "$GITHUB_STEP_SUMMARY"
+
+          scripts/ci/validate-docker-build-results.sh \
+            "$DETECT_RESULT" \
+            "$FRONTEND_REQUESTED" "$FRONTEND_RESULT" \
+            "$BACKEND_REQUESTED" "$BACKEND_RESULT" \
+            "$GRAFANA_MIGRATION_REQUESTED" "$GRAFANA_MIGRATION_RESULT"

@@ -11,22 +11,25 @@ origin_main_ref="${ORIGIN_MAIN_REF:-origin/main}"
 
 frontend_image=false
 backend_image=false
+grafana_migration_image=false
 reason='No image-impacting files changed'
 
 emit_outputs() {
   ci_emit_output \
     "frontend_image=$frontend_image" \
     "backend_image=$backend_image" \
+    "grafana_migration_image=$grafana_migration_image" \
     "reason=$reason"
 }
 
-mark_both_images() {
+mark_all_images() {
   frontend_image=true
   backend_image=true
+  grafana_migration_image=true
 }
 
 if [ "$event_name" = "workflow_dispatch" ]; then
-  mark_both_images
+  mark_all_images
   reason='Manual dispatch builds all dev images'
   emit_outputs
   exit 0
@@ -49,7 +52,7 @@ case "$event_name" in
     fi
     ;;
   *)
-    mark_both_images
+    mark_all_images
     reason="Unrecognized event builds all dev images: $event_name"
     emit_outputs
     exit 0
@@ -88,7 +91,25 @@ is_docs_only_file() {
 
 is_both_image_file() {
   case "$1" in
-    .github/workflows/docker-build.yml|.dockerignore|package.json|package-lock.json|shared/*|docker-compose.yml|docker/compose/*)
+    .github/workflows/docker-build.yml|.dockerignore|package.json|package-lock.json|shared/*|docker-compose.yml|docker/compose/*|scripts/ci/validate-docker-build-results.sh)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+is_grafana_migration_image_file() {
+  case "$1" in
+    .github/workflows/docker-build.yml|.dockerignore|scripts/ci/classify-docker-build-images.sh|scripts/ci/validate-docker-build-results.sh)
+      return 0
+      ;;
+    docker/grafana-migration/*|docker/compose/monitoring.yml)
+      return 0
+      ;;
+    scripts/ops/migrate-grafana-password.sh|scripts/ops/run-grafana-password-migration.sh|scripts/ops/grafana-quiescence-records.sh)
+      return 0
+      ;;
+    scripts/offline/bundle-common.sh|scripts/offline/create-bundle.sh)
       return 0
       ;;
   esac
@@ -127,9 +148,9 @@ while IFS= read -r file; do
   fi
 
   if is_both_image_file "$file"; then
-    mark_both_images
+    frontend_image=true
+    backend_image=true
     reason="Shared image input changed: $file"
-    continue
   fi
 
   if is_frontend_image_file "$file"; then
@@ -140,6 +161,11 @@ while IFS= read -r file; do
   if is_backend_image_file "$file"; then
     backend_image=true
     reason="Image input changed"
+  fi
+
+  if is_grafana_migration_image_file "$file"; then
+    grafana_migration_image=true
+    reason="Grafana migration image input changed: $file"
   fi
 done < <(git diff --name-only "$base_sha" "$head_sha")
 

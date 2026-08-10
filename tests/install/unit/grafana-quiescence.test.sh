@@ -35,8 +35,11 @@ grafana_data="${FAKE_GRAFANA_DATA_DIR:?}"
 event_log="${FAKE_EVENT_LOG:?}"
 started_signal="${FAKE_MIGRATION_STARTED_SIGNAL:?}"
 release_signal="${FAKE_MIGRATION_RELEASE_SIGNAL:?}"
+helper_created_signal="${FAKE_HELPER_CREATED_SIGNAL:?}"
+helper_exited_signal="${FAKE_HELPER_EXITED_SIGNAL:?}"
+helper_release_signal="${FAKE_HELPER_RELEASE_SIGNAL:?}"
 printf '%s\n' "$*" >> "$log"
-mkdir -p "$control/leases" "$control/claims" "$control/outcomes"
+mkdir -p "$control/leases" "$control/claims" "$control/outcomes" "$control/abandonments"
 mkdir -p "$grafana_data"
 
 read_migration() {
@@ -98,13 +101,15 @@ fi
 
 if [ "${1:-}" = container ] && [ "${2:-}" = inspect ]; then
     name="${@: -1}"
-    if [ "$name" = "${FAKE_CONTROL_NAME:?}" ]; then
-        [ -f "$helper_state" ] || exit 1
-        IFS='|' read -r action state exit_code _token _container _generation < "$helper_state"
+    if [[ "$name" == helper-* ]]; then
+        helper_file="$helper_state.$name"
+        [ -f "$helper_file" ] || exit 1
+        IFS='|' read -r action state exit_code _token _container _generation operation created _migration_ref _created_input owner nonce < "$helper_file"
         if [[ "$*" == *'--format'* ]]; then
-            printf 'helper-id|%s|%s|sha256:migration-image|control-helper|%s|%s|%s\n' \
-                "$state" "$exit_code" "${FAKE_PROJECT_NAME:?}" \
-                "${FAKE_DATA_VOLUME:?}" "${FAKE_CONTROL_VOLUME:?}"
+            printf '%s|/%s|%s|%s|sha256:migration-image|%s|control-helper|%s|%s|%s|%s|%s|%s\n' \
+                "$name" "${FAKE_PROJECT_NAME:?}-sanctuary-grafana-control-$nonce" \
+                "$state" "$exit_code" "$created" "${FAKE_PROJECT_NAME:?}" \
+                "${FAKE_DATA_VOLUME:?}" "${FAKE_CONTROL_VOLUME:?}" "$owner" "$operation" "$nonce"
         else
             printf '{}\n'
         fi
@@ -114,7 +119,7 @@ if [ "${1:-}" = container ] && [ "${2:-}" = inspect ]; then
         [ -f "$migration_state" ] || exit 1
         read_migration
         if [[ "$*" == *'--format'* ]]; then
-            printf 'migration-id|%s|%s|sha256:migration-image|%s|%s|%s|%s|%s|%s\n' \
+            printf 'migration-id|%s|%s|sha256:migration-image|password-migration|%s|%s|%s|%s|%s|%s\n' \
                 "$state" "$exit_code" "${FAKE_PROJECT_NAME:?}" \
                 "${FAKE_DATA_VOLUME:?}" "${FAKE_CONTROL_VOLUME:?}" \
                 "$token" "$container" "$generation"
@@ -138,7 +143,12 @@ case "$*" in
     *'config --images') printf 'sanctuary-grafana-migration:local\n' ;;
     'container ls -a '*'--format {{.ID}}')
         case "$*" in
-            *"${FAKE_CONTROL_NAME:?}"*) [ ! -f "$helper_state" ] || printf 'helper-id\n' ;;
+            *'sanctuary.grafana.role=control-helper'*)
+                for helper_file in "$helper_state".helper-*; do
+                    [ -f "$helper_file" ] || continue
+                    basename "$helper_file" | sed 's/^helper.state\.//'
+                done
+                ;;
             *"${FAKE_MIGRATION_NAME:?}"*) [ ! -f "$migration_state" ] || printf 'migration-id\n' ;;
         esac
         ;;
@@ -146,13 +156,33 @@ case "$*" in
         token="$(env_arg TOKEN "$@")"
         container="$(env_arg CONTAINER_ID "$@")"
         generation="$(env_arg GENERATION "$@")"
+        migration_ref="$(env_arg MIGRATION_ID "$@")"
+        created_input="$(env_arg CREATED "$@")"
         command="${@: -1}"
+        operation="$(printf '%s\n' "$*" | sed -n 's/.*sanctuary.grafana.operation=\([^ ]*\).*/\1/p')"
+        owner="$(printf '%s\n' "$*" | sed -n 's/.*sanctuary.grafana.owner=\([^ ]*\).*/\1/p')"
+        nonce="$(printf '%s\n' "$*" | sed -n 's/.*sanctuary.grafana.nonce=\([^ ]*\).*/\1/p')"
+        helper_id="helper-$nonce"
+        helper_file="$helper_state.$helper_id"
         action=bootstrap
+        [ "$command" != 'date +%s' ] || action=daemon-time
+        [[ "$command" != *'date -u -d "$value" +%s'* ]] || action=created-time
         [[ "$command" != *'/control/leases/lease-'* ]] || action=lease
-        [[ "$command" != cat* ]] || action=read
+        [[ "$command" != *'/control/abandonments/abandonment-'* ]] || action=abandonment
+        [[ "$command" != cat*'/control/outcomes/'* ]] || action=read-outcome
+        [[ "$command" != cat*'/control/leases/'* ]] || action=read-lease
+        [[ "$command" != cat*'/control/abandonments/'* ]] || action=read-abandonment
+        [[ "$command" != cat*'/control/claims/'* ]] || action=read-reclamation
+        [[ "$command" != *'result=claimed'* ]] || action=claim-reclamation
         [[ "$command" != rm\ -f* ]] || action=cleanup
-        printf '%s|created|0|%s|%s|%s\n' "$action" "$token" "$container" "$generation" > "$helper_state"
-        printf 'helper-id\n'
+        printf '%s|created|0|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' \
+            "$action" "$token" "$container" "$generation" "$operation" \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$migration_ref" "$created_input" "$owner" "$nonce" > "$helper_file"
+        if [ "${FAKE_DOCKER_MODE:-success}" = hold-helper-created ]; then
+            : > "$helper_created_signal"
+            while [ ! -f "$helper_release_signal" ]; do sleep 0.01; done
+        fi
+        printf '%s\n' "$helper_id"
         ;;
     'container create '*'sanctuary.grafana.role=password-migration'*)
         [ "${FAKE_DOCKER_MODE:-success}" != create-failure ] || exit 12
@@ -162,13 +192,17 @@ case "$*" in
         printf 'created|0|%s|%s|%s\n' "$token" "$container" "$generation" > "$migration_state"
         printf 'migration-id\n'
         ;;
-    'container start -a helper-id')
-        IFS='|' read -r action _state _exit token container generation < "$helper_state"
+    'container start -a helper-'*)
+        helper_id="$4"
+        helper_file="$helper_state.$helper_id"
+        IFS='|' read -r action _state _exit token container generation operation created migration_ref created_input owner nonce < "$helper_file"
         if [ "${FAKE_DOCKER_MODE:-success}" = helper-failure ]; then
-            sed -i 's/|created|0|/|exited|13|/' "$helper_state"
+            sed -i 's/|created|0|/|exited|13|/' "$helper_file"
             exit 13
         fi
         case "$action" in
+            daemon-time) printf '%s\n' "$(date +%s)" ;;
+            created-time) printf '%s\n' "$(date -d "$created_input" +%s)" ;;
             lease)
                 cat > "$control/leases/lease-$token" <<EOF
 version=2
@@ -181,16 +215,76 @@ generation=$generation
 expires_at=$(( $(date +%s) + 300 ))
 EOF
                 ;;
-            read) cat "$control/outcomes/outcome-$token" ;;
+            read-outcome) cat "$control/outcomes/outcome-$token" ;;
+            read-lease) cat "$control/leases/lease-$token" ;;
+            read-abandonment) cat "$control/abandonments/abandonment-$token" ;;
+            read-reclamation) cat "$control/claims/$token" ;;
+            claim-reclamation)
+                if [ -e "$control/claims/$token" ]; then
+                    printf 'exists\n'
+                else
+                    cat > "$control/claims/$token" <<EOF
+version=1
+status=reclaiming-before-start
+token=$token
+project=${FAKE_PROJECT_NAME:?}
+data_volume=${FAKE_DATA_VOLUME:?}
+control_volume=${FAKE_CONTROL_VOLUME:?}
+migration_id=$migration_ref
+container_id=$container
+generation=$generation
+EOF
+                    printf 'claimed\n'
+                fi
+                if [ "${FAKE_DOCKER_MODE:-success}" = reclaim-race-running ]; then
+                    printf 'running|17|%s|%s|%s\n' "$token" "$container" "$generation" > "$migration_state"
+                elif [ "${FAKE_DOCKER_MODE:-success}" = reclaim-race-exited ]; then
+                    printf 'exited|17|%s|%s|%s\n' "$token" "$container" "$generation" > "$migration_state"
+                fi
+                ;;
+            abandonment)
+                cat > "$control/abandonments/abandonment-$token" <<EOF
+version=1
+status=abandoned-before-start
+token=$token
+project=${FAKE_PROJECT_NAME:?}
+data_volume=${FAKE_DATA_VOLUME:?}
+control_volume=${FAKE_CONTROL_VOLUME:?}
+migration_id=$migration_ref
+container_id=$container
+generation=$generation
+EOF
+                ;;
             cleanup)
-                rm -f "$control/leases/lease-$token" "$control/outcomes/outcome-$token"
-                rmdir "$control/claims/$token" 2>/dev/null || true
+                rm -f "$control/leases/lease-$token" "$control/outcomes/outcome-$token" \
+                    "$control/abandonments/abandonment-$token"
+                if [ -f "$control/claims/$token" ]; then
+                    rm -f "$control/claims/$token"
+                else
+                    rmdir "$control/claims/$token" 2>/dev/null || true
+                fi
                 ;;
         esac
-        sed -i 's/|created|/|exited|/' "$helper_state"
+        sed -i 's/|created|/|exited|/' "$helper_file"
+        if [ "${FAKE_DOCKER_MODE:-success}" = hold-helper-exited ]; then
+            : > "$helper_exited_signal"
+            while [ ! -f "$helper_release_signal" ]; do sleep 0.01; done
+        fi
         ;;
     'container start migration-id')
         read_migration
+        if [ "${FAKE_DOCKER_MODE:-success}" = start-failure-created ]; then
+            exit 12
+        fi
+        if [ "${FAKE_DOCKER_MODE:-success}" = start-failure-running ]; then
+            printf 'running|0|%s|%s|%s\n' "$token" "$container" "$generation" > "$migration_state"
+            exit 12
+        fi
+        if [ "${FAKE_DOCKER_MODE:-success}" = start-failure-exited ]; then
+            write_outcome success
+            printf 'exited|0|%s|%s|%s\n' "$token" "$container" "$generation" > "$migration_state"
+            exit 12
+        fi
         if [ "${FAKE_DOCKER_MODE:-success}" = concurrent-hold ]; then
             printf 'running|0|%s|%s|%s\n' "$token" "$container" "$generation" > "$migration_state"
             : > "$started_signal"
@@ -230,9 +324,25 @@ EOF
         fi
         printf 'migration-id\n'
         ;;
-    'wait migration-id') read_migration; printf '%s\n' "$exit_code" ;;
-    'container rm helper-id') rm -f "$helper_state"; printf 'helper-id\n' ;;
-    'container rm migration-id') rm -f "$migration_state"; printf 'migration-id\n' ;;
+    'wait migration-id')
+        read_migration
+        if [ "${FAKE_DOCKER_MODE:-success}" = reclaim-race-running ] && [ "$state" = running ]; then
+            state=exited
+            printf '%s|%s|%s|%s|%s\n' "$state" "$exit_code" "$token" "$container" "$generation" > "$migration_state"
+        fi
+        printf '%s\n' "$exit_code"
+        ;;
+    'container rm helper-'*)
+        helper_id="$3"
+        rm -f "$helper_state.$helper_id"
+        printf '%s\n' "$helper_id"
+        ;;
+    'container rm migration-id')
+        read_migration
+        [ "$state" != running ] || exit 18
+        rm -f "$migration_state"
+        printf 'migration-id\n'
+        ;;
     *'ps -aq grafana') printf 'grafana-id\n' ;;
     *'stop grafana') [ "${FAKE_DOCKER_MODE:-success}" != stop-failure ] || exit 7 ;;
     *'ps -q --status running grafana')
@@ -248,8 +358,9 @@ SCRIPT
 reset_case() {
     find "$TEST_ROOT/control" -type f -delete 2>/dev/null || true
     find "$TEST_ROOT/control" -depth -type d -empty -delete 2>/dev/null || true
-    rm -f "$TEST_ROOT/migration.state" "$TEST_ROOT/helper.state" "$TEST_ROOT/data-volume.state" \
+    rm -f "$TEST_ROOT/migration.state" "$TEST_ROOT/helper.state" "$TEST_ROOT/helper.state".helper-* "$TEST_ROOT/data-volume.state" \
         "$TEST_ROOT/migration-started" "$TEST_ROOT/migration-release" "$TEST_ROOT/events.log"
+    rm -f "$TEST_ROOT/helper-created" "$TEST_ROOT/helper-exited" "$TEST_ROOT/helper-release"
     find "$TEST_ROOT/grafana-data" -type f -delete 2>/dev/null || true
     mkdir -p "$TEST_ROOT/control" "$TEST_ROOT/grafana-data"
     : > "$TEST_ROOT/docker.log"
@@ -265,6 +376,9 @@ run_helper() {
         FAKE_EVENT_LOG="$TEST_ROOT/events.log" \
         FAKE_MIGRATION_STARTED_SIGNAL="$TEST_ROOT/migration-started" \
         FAKE_MIGRATION_RELEASE_SIGNAL="$TEST_ROOT/migration-release" \
+        FAKE_HELPER_CREATED_SIGNAL="$TEST_ROOT/helper-created" \
+        FAKE_HELPER_EXITED_SIGNAL="$TEST_ROOT/helper-exited" \
+        FAKE_HELPER_RELEASE_SIGNAL="$TEST_ROOT/helper-release" \
         FAKE_PROJECT_NAME="$TEST_PROJECT" FAKE_DATA_VOLUME="$TEST_DATA_VOLUME" \
         FAKE_CONTROL_VOLUME="$TEST_CONTROL_VOLUME" FAKE_MIGRATION_NAME="$MIGRATION_NAME" \
         FAKE_CONTROL_NAME="$CONTROL_NAME" FAKE_SCRIPT_DIGEST="$SCRIPT_DIGEST" \
@@ -279,6 +393,9 @@ test_success_uses_daemon_control_volume() {
     reset_case
     run_helper success >/dev/null
     grep -Fq -- '--pull never --name' "$TEST_ROOT/docker.log"
+    grep -Eq -- '--label sanctuary\.grafana\.owner=[0-9a-f]{64}' "$TEST_ROOT/docker.log"
+    grep -Fq -- '--label sanctuary.grafana.operation=control-init' "$TEST_ROOT/docker.log"
+    grep -Eq -- '--label sanctuary\.grafana\.nonce=[0-9a-f]{32}' "$TEST_ROOT/docker.log"
     grep -Fq "src=$TEST_CONTROL_VOLUME,dst=/control" "$TEST_ROOT/docker.log"
     grep -Fq "src=$TEST_DATA_VOLUME,dst=/var/lib/grafana" "$TEST_ROOT/docker.log"
     grep -Fq "volume inspect $TEST_DATA_VOLUME" "$TEST_ROOT/docker.log"
@@ -511,6 +628,166 @@ EOF
     grep -Fq 'container rm migration-id' "$TEST_ROOT/docker.log"
 }
 
+test_created_sentinel_start_failure_reconciles_from_abandonment() {
+    reset_case
+    local originals="$TEST_ROOT/start-failure-originals" suffix
+    mkdir -p "$originals"
+    for suffix in '' '-journal' '-wal' '-shm'; do
+        printf 'never-started-%s\n' "${suffix:-database}" > "$TEST_ROOT/grafana-data/grafana.db$suffix"
+        cp "$TEST_ROOT/grafana-data/grafana.db$suffix" "$originals/grafana.db$suffix"
+    done
+
+    if run_helper start-failure-created >/dev/null 2>&1; then
+        echo "created-state start failure unexpectedly succeeded" >&2
+        return 1
+    fi
+    IFS='|' read -r state _ < "$TEST_ROOT/migration.state"
+    test "$state" = created
+    grep -Fqx 'status=abandoned-before-start' "$TEST_ROOT/control/abandonments/"abandonment-*
+    for suffix in '' '-journal' '-wal' '-shm'; do
+        cmp "$originals/grafana.db$suffix" "$TEST_ROOT/grafana-data/grafana.db$suffix"
+    done
+    test ! -f "$TEST_ROOT/grafana-data/.sanctuary-independent-password-v1"
+
+    : > "$TEST_ROOT/docker.log"
+    run_helper success >/dev/null
+    grep -Fq 'container rm migration-id' "$TEST_ROOT/docker.log"
+    test ! -f "$TEST_ROOT/migration.state"
+    test -z "$(find "$TEST_ROOT/control" -type f -print -quit)"
+}
+
+test_created_reclaim_fences_delayed_start_transitions() {
+    local mode suffix originals
+    for mode in reclaim-race-running reclaim-race-exited; do
+        reset_case
+        originals="$TEST_ROOT/$mode-originals"
+        mkdir -p "$originals"
+        for suffix in '' '-journal' '-wal' '-shm'; do
+            printf '%s-%s\n' "$mode" "${suffix:-database}" > "$TEST_ROOT/grafana-data/grafana.db$suffix"
+            cp "$TEST_ROOT/grafana-data/grafana.db$suffix" "$originals/grafana.db$suffix"
+        done
+        if run_helper start-failure-created >/dev/null 2>&1; then
+            echo "$mode setup unexpectedly succeeded" >&2
+            return 1
+        fi
+        : > "$TEST_ROOT/docker.log"
+        run_helper "$mode" >/dev/null
+        grep -Fq 'status=reclaiming-before-start' "$TEST_ROOT/docker.log" \
+            || grep -Fq 'result=claimed' "$TEST_ROOT/docker.log"
+        if [ "$mode" = reclaim-race-running ]; then
+            grep -Fq 'wait migration-id' "$TEST_ROOT/docker.log"
+        fi
+        for suffix in '' '-journal' '-wal' '-shm'; do
+            cmp "$originals/grafana.db$suffix" "$TEST_ROOT/grafana-data/grafana.db$suffix"
+        done
+        test ! -f "$TEST_ROOT/migration.state"
+        test -z "$(find "$TEST_ROOT/control" -type f -print -quit)"
+    done
+}
+
+test_entrypoint_claim_directory_wins_without_nested_reclaim_artifact() {
+    reset_case
+    if run_helper start-failure-created >/dev/null 2>&1; then
+        echo "entrypoint-claim setup unexpectedly succeeded" >&2
+        return 1
+    fi
+    IFS='|' read -r state exit_code token container generation < "$TEST_ROOT/migration.state"
+    mkdir "$TEST_ROOT/control/claims/$token"
+    if run_helper success >/dev/null 2>&1; then
+        echo "entrypoint-owned claim unexpectedly allowed created reclamation" >&2
+        return 1
+    fi
+    test -z "$(find "$TEST_ROOT/control/claims/$token" -mindepth 1 -print -quit)"
+
+    cat > "$TEST_ROOT/control/outcomes/outcome-$token" <<EOF
+version=1
+status=rolled-back
+token=$token
+project=$TEST_PROJECT
+data_volume=$TEST_DATA_VOLUME
+control_volume=$TEST_CONTROL_VOLUME
+container_id=$container
+generation=$generation
+EOF
+    printf 'exited|1|%s|%s|%s\n' "$token" "$container" "$generation" > "$TEST_ROOT/migration.state"
+    run_helper success >/dev/null
+    test ! -e "$TEST_ROOT/control/claims/$token"
+    test -z "$(find "$TEST_ROOT/control" -type f -print -quit)"
+}
+
+test_start_failure_running_and_exited_states_keep_existing_rules() {
+    reset_case
+    if run_helper start-failure-running >/dev/null 2>&1; then
+        echo "running-state start failure unexpectedly succeeded" >&2
+        return 1
+    fi
+    if run_helper success >/dev/null 2>&1; then
+        echo "running start-failure sentinel unexpectedly reconciled" >&2
+        return 1
+    fi
+    ! find "$TEST_ROOT/control/abandonments" -type f -print -quit | grep -q .
+
+    reset_case
+    if run_helper start-failure-exited >/dev/null 2>&1; then
+        echo "exited-state start failure unexpectedly succeeded" >&2
+        return 1
+    fi
+    grep -Fqx 'status=success' "$TEST_ROOT/control/outcomes/"outcome-*
+    : > "$TEST_ROOT/docker.log"
+    run_helper success >/dev/null
+    grep -Fq 'container rm migration-id' "$TEST_ROOT/docker.log"
+}
+
+test_live_unique_control_helpers_are_not_cross_removed() {
+    local mode signal owner_pid restricted second_status
+    restricted="$(no_flock_path)"
+    for mode in hold-helper-created hold-helper-exited; do
+        reset_case
+        signal="$TEST_ROOT/helper-created"
+        [ "$mode" != hold-helper-exited ] || signal="$TEST_ROOT/helper-exited"
+        run_helper "$mode" "$restricted" >"$TEST_ROOT/helper-owner.out" 2>&1 &
+        owner_pid=$!
+        for _attempt in {1..200}; do
+            [ -f "$signal" ] && break
+            sleep 0.01
+        done
+        [ -f "$signal" ] || {
+            touch "$TEST_ROOT/helper-release"
+            wait "$owner_pid" || true
+            echo "$mode never reached its barrier" >&2
+            return 1
+        }
+
+        second_status=0
+        run_helper success "$restricted" >"$TEST_ROOT/helper-contender.out" 2>&1 \
+            || second_status=$?
+        [ "$second_status" -eq 0 ] || {
+            touch "$TEST_ROOT/helper-release"
+            wait "$owner_pid" || true
+            return "$second_status"
+        }
+        find "$TEST_ROOT" -maxdepth 1 -name 'helper.state.helper-*' -type f | grep -q .
+        touch "$TEST_ROOT/helper-release"
+        wait "$owner_pid"
+        test -z "$(find "$TEST_ROOT" -maxdepth 1 -name 'helper.state.helper-*' -type f -print -quit)"
+    done
+}
+
+test_stale_owned_control_helpers_are_reclaimed() {
+    local state nonce owner helper_file
+    for state in created exited; do
+        reset_case
+        nonce="$(printf '%032d' 7)"
+        owner="$(printf '%064d' 8)"
+        helper_file="$TEST_ROOT/helper.state.helper-$nonce"
+        printf 'daemon-time|%s|0||||daemon-time|2020-01-01T00:00:00Z|||%s|%s\n' \
+            "$state" "$owner" "$nonce" > "$helper_file"
+        run_helper success >/dev/null
+        test ! -f "$helper_file"
+        grep -Fq "container rm helper-$nonce" "$TEST_ROOT/docker.log"
+    done
+}
+
 make_fake_docker "$TEST_ROOT/bin"
 test_success_uses_daemon_control_volume
 test_precondition_refusals_happen_before_migration
@@ -521,6 +798,12 @@ test_control_helper_failure_precedes_grafana_stop
 test_rolled_back_terminal_reconciles_before_retry
 test_post_claim_pre_snapshot_failure_reconciles_without_data_mutation
 test_concurrent_no_flock_wrapper_is_refused_by_running_sentinel
+test_live_unique_control_helpers_are_not_cross_removed
+test_stale_owned_control_helpers_are_reclaimed
+test_created_sentinel_start_failure_reconciles_from_abandonment
+test_created_reclaim_fences_delayed_start_transitions
+test_entrypoint_claim_directory_wins_without_nested_reclaim_artifact
+test_start_failure_running_and_exited_states_keep_existing_rules
 test_client_disconnect_requires_scoped_terminal_outcome
 test_terminal_disconnect_reconciles_fresh_and_marked_paths
 test_remote_daemon_never_receives_client_checkout_path
