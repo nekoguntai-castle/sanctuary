@@ -13,6 +13,7 @@ import {
   clearAccessCache,
   getAccessCache,
   invalidateUserAccessCache,
+  invalidateUserAccessCacheStrict,
   invalidateWalletAccessCache,
 } from '../infrastructure/accessCache';
 import {
@@ -25,7 +26,9 @@ import {
 
 export {
   clearAccessCache,
+  clearAccessCacheStrict,
   invalidateUserAccessCache,
+  invalidateUserAccessCacheStrict,
   invalidateWalletAccessCache,
 } from '../infrastructure/accessCache';
 
@@ -347,6 +350,7 @@ export const accessControlService = {
   // Cache management
   invalidateWalletAccessCache,
   invalidateUserAccessCache,
+  invalidateUserAccessCacheStrict,
   clearAccessCache,
 };
 

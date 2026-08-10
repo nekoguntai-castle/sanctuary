@@ -47,6 +47,7 @@ const mockPrisma = {
     findFirst: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
     delete: vi.fn(),
   },
   groupMember: {
@@ -149,7 +150,8 @@ vi.mock('../../../../src/config', () => ({
 
 // Mock access control
 vi.mock('../../../../src/services/accessControl', () => ({
-  invalidateUserAccessCache: vi.fn(),
+  clearAccessCacheStrict: vi.fn().mockResolvedValue(undefined),
+  invalidateUserAccessCacheStrict: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Mock token revocation (called on admin password reset)
@@ -203,6 +205,10 @@ export function setupAdminRoutesTestHooks(): void {
   beforeEach(() => {
     vi.resetAllMocks();
     // Reset to default resolved values after clearing
+    mockPrisma.$transaction.mockImplementation(
+      (fn: (tx: typeof mockPrisma) => Promise<unknown>) => fn(mockPrisma),
+    );
+    mockPrisma.user.findMany.mockResolvedValue([]);
     mockAuditService.log.mockResolvedValue(undefined);
     mockAuditService.logFromRequest.mockResolvedValue(undefined);
     mockAuditService.query.mockResolvedValue({ logs: [], total: 0 });

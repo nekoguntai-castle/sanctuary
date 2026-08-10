@@ -24,6 +24,7 @@ import {
   sanitizeAIProviderProfileSettingsUpdate,
 } from './ai/providerProfileSettings';
 import { AI_PROVIDER_CREDENTIALS_KEY } from './ai/providerCredentials';
+import { isOperationalSystemSettingKey } from '../repositories/operationalSystemSettings';
 
 type StoredSetting = {
   key: string;
@@ -83,6 +84,10 @@ export async function getAdminSettings(): Promise<AdminSettings> {
 }
 
 export async function updateAdminSettings(updates: AdminSettingsUpdate): Promise<AdminSettings> {
+  const operationalKey = Object.keys(updates).find(isOperationalSystemSettingKey);
+  if (operationalKey) {
+    throw new InvalidInputError(`System setting '${operationalKey}' is managed by the runtime`);
+  }
   await validateConfirmationThresholds(updates);
 
   const normalizedUpdates = await normalizeAdminSettingsUpdates(updates);

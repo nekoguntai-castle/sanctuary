@@ -45,12 +45,26 @@
       "reviewWhenTouched": true,
       "lastReviewed": "2026-07-30"
     },
+    "server/tests/unit/services/featureFlagService.test.ts": {
+      "category": "proof-harness",
+      "owner": "feature-runtime",
+      "reason": "Feature runtime convergence proof harness sharing one singleton service and hoisted cache, repository, event bus, Redis, timer, and participant mock boundary.",
+      "reviewWhenTouched": true,
+      "lastReviewed": "2026-08-09"
+    },
     "server/tests/integration/ops/phase2OperationsProof.integration.test.ts": {
       "category": "proof-harness",
       "owner": "ops-backup-restore",
       "reason": "End-to-end destructive operations proof harness sharing one migrated database, backup archive, restore, SMTP, and cache boundary across the operational drill.",
       "reviewWhenTouched": true,
       "lastReviewed": "2026-07-31"
+    },
+    "server/tests/unit/worker/worker.entry.test.ts": {
+      "category": "proof-harness",
+      "owner": "worker-runtime",
+      "reason": "Worker entrypoint lifecycle proof harness sharing one hoisted module-mock boundary across initialization ordering, recurring reconciliation, readiness, and shutdown behavior.",
+      "reviewWhenTouched": true,
+      "lastReviewed": "2026-08-09"
     },
     "tests/components/WalletDetail/hooks/useWalletData.test.ts": {
       "category": "proof-harness",

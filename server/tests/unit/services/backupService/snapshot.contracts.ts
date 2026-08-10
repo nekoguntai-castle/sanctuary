@@ -12,6 +12,8 @@ import {
   TABLE_ORDER,
 } from '../../../../src/services/backupService/constants';
 import { migrationService } from '../../../../src/services/migrationService';
+import { FEATURE_RUNTIME_GENERATION_KEY } from '../../../../src/repositories/operationalSystemSettings';
+import { processSystemSettingRecords } from '../../../../src/services/backupService/restoreTransforms';
 
 export function registerBackupSnapshotTests(): void {
   describe('BackupService snapshot creation', () => {
@@ -84,6 +86,27 @@ export function registerBackupSnapshotTests(): void {
 
       await expect(backupService.createBackup('admin'))
         .rejects.toThrow('snapshot query failed');
+    });
+
+    it('excludes operational feature generation metadata from backup payloads and counts', async () => {
+      mockPrismaClient.systemSetting.findMany.mockResolvedValue([
+        { id: 'op', key: FEATURE_RUNTIME_GENERATION_KEY, value: '99' },
+        { id: 'durable', key: 'registrationEnabled', value: 'true' },
+      ]);
+
+      const backup = await backupService.createBackup('admin');
+
+      expect(backup.data.systemSetting).toEqual([
+        expect.objectContaining({ key: 'registrationEnabled' }),
+      ]);
+      expect(backup.meta.recordCounts.systemSetting).toBe(1);
+    });
+
+    it('drops injected operational generation records during restore transforms', () => {
+      expect(processSystemSettingRecords([
+        { key: FEATURE_RUNTIME_GENERATION_KEY, value: '999999' },
+        { key: 'registrationEnabled', value: 'true' },
+      ], [])).toEqual([{ key: 'registrationEnabled', value: 'true' }]);
     });
   });
 }

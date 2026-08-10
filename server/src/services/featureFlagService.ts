@@ -1,47 +1,9 @@
 /**
- * Feature Flag Service
- *
- * Persistent feature flags with database storage and audit trail.
- * Supports runtime toggling while respecting environment defaults.
- *
- * ## Architecture
- *
- * ```
- * ┌─────────────────────────────────────────────────────────┐
- * │                   Feature Flag Service                   │
- * ├─────────────────────────────────────────────────────────┤
- * │  1. Environment defaults (config)                       │
- * │  2. Database overrides (persistent)                     │
- * │  3. Runtime cache (fast lookups)                        │
- * └─────────────────────────────────────────────────────────┘
- *                           │
- *                           ▼
- * ┌─────────────────────────────────────────────────────────┐
- * │                    Audit Trail                           │
- * │  - Who changed what                                      │
- * │  - Previous/new values                                   │
- * │  - Timestamps & IP addresses                             │
- * └─────────────────────────────────────────────────────────┘
- * ```
- *
- * ## Usage
- *
- * ```typescript
- * // Check if feature is enabled
- * const enabled = await featureFlagService.isEnabled('aiAssistant');
- *
- * // Toggle a feature (admin only)
- * await featureFlagService.setFlag('aiAssistant', true, {
- *   userId: 'admin-123',
- *   reason: 'Enabling AI for beta testing',
- *   ipAddress: req.ip,
- * });
- *
- * // Get audit history
- * const history = await featureFlagService.getAuditLog('aiAssistant');
- * ```
+ * Persistent feature flags with atomic durable generations, complete-snapshot
+ * caches, cross-process convergence, and an audit trail.
  */
 
+import { createHash } from 'node:crypto';
 import { getConfig, type FeatureFlags, type FeatureFlagKey } from '../config';
 import { flattenFeatureFlags, getFeatureFlagValue } from '../config/features';
 import { featureFlagRepository } from '../repositories';
@@ -50,6 +12,14 @@ import { createLogger } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
 import { getFeatureFlagDefinition } from './featureFlags/definitions';
 import { FEATURE_FLAG_CACHE_TTL_SECONDS } from '../constants';
+import type { FeatureRuntimeState } from '../repositories/featureFlagRepository';
+import {
+  FEATURE_RUNTIME_HEARTBEAT_INTERVAL_MS,
+  FEATURE_RUNTIME_POLL_INTERVAL_MS,
+  FeatureRuntimeParticipants,
+  type FeatureRuntimeRole,
+  type FeatureRuntimeSnapshot,
+} from './featureFlagRuntime';
 
 const log = createLogger('FEATURE_FLAG:SVC');
 
@@ -105,92 +75,75 @@ class FeatureFlagService {
   private initialized = false;
   private localCache: Map<string, boolean> = new Map();
   private eventListenerRegistered = false;
+  private snapshot: FeatureRuntimeSnapshot | null = null;
+  private runtimeRole: FeatureRuntimeRole = 'backend';
+  private runtimeParticipant: FeatureRuntimeParticipants | null = null;
+  private reconcileAfterInstall: (() => Promise<void>) | null = null;
+  private heartbeatTimer: NodeJS.Timeout | null = null;
+  private pollTimer: NodeJS.Timeout | null = null;
 
-  /**
-   * Initialize the service - sync environment defaults to database
-   */
+  configureRuntime(
+    role: FeatureRuntimeRole,
+    reconcileAfterInstall?: () => Promise<void>,
+  ): void {
+    if (this.initialized) throw new Error('Feature runtime must be configured before initialization');
+    this.runtimeRole = role;
+    this.reconcileAfterInstall = reconcileAfterInstall ?? null;
+  }
+
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
     log.info('Initializing feature flag service');
 
-    try {
-      const config = getConfig();
-
-      // Get all environment-defined flags
-      const envFlags = this.getEnvironmentFlags(config.features);
-
-      // Sync to database (insert if not exists)
-      for (const [key, enabled] of Object.entries(envFlags)) {
-        const existing = await featureFlagRepository.findByKey(key);
-
-        if (!existing) {
-          const meta = getFeatureFlagDefinition(key);
-          await featureFlagRepository.create({
-            key,
-            enabled,
-            description: meta?.description ?? null,
-            category: meta?.category ?? 'general',
-            modifiedBy: 'system',
-          });
-          log.debug(`Created feature flag: ${key} = ${enabled}`);
-        }
-      }
-
-      // Subscribe to cross-process flag change events (idempotent)
-      if (!this.eventListenerRegistered) {
-        const bus = getDistributedEventBus();
-        bus.on('system:featureFlag.changed', ({ key, enabled }) => {
-          log.debug('Received feature flag change event', { key, enabled });
-          this.localCache.set(key, enabled);
-        });
-        this.eventListenerRegistered = true;
-      }
-
-      // Load all flags into local cache
-      await this.refreshCache();
-
-      this.initialized = true;
-      log.info('Feature flag service initialized', {
-        flagCount: this.localCache.size,
-      });
-    } catch (error) {
-      log.error('Failed to initialize feature flag service', { error: getErrorMessage(error) });
-      // Fall back to environment-only mode
-      this.initialized = true;
-    }
+    const envFlags = this.getEnvironmentFlags(getConfig().features);
+    const defaults = Object.entries(envFlags).map(([key, enabled]) => {
+      const meta = getFeatureFlagDefinition(key);
+      return {
+        key,
+        enabled,
+        description: meta?.description ?? null,
+        category: meta?.category ?? 'general',
+        modifiedBy: 'system',
+      };
+    });
+    const state = await featureFlagRepository.ensureDefaults(defaults);
+    this.runtimeParticipant = new FeatureRuntimeParticipants(this.runtimeRole);
+    await this.installStateStrict(state);
+    await this.runtimeParticipant.heartbeat();
+    await this.runtimeParticipant.acknowledge(this.snapshot!);
+    this.registerEventListener();
+    this.startRuntimeTimers();
+    this.initialized = true;
+    log.info('Feature flag service initialized', {
+      flagCount: this.localCache.size,
+      generation: this.snapshot?.generation,
+      participantId: this.runtimeParticipant.participantId,
+    });
   }
 
-  /**
-   * Get environment-defined flags as flat key-value pairs
-   */
   private getEnvironmentFlags(features: FeatureFlags): Record<string, boolean> {
     return flattenFeatureFlags(features);
   }
 
-  /**
-   * Refresh the local cache from database
-   */
-  private async refreshCache(): Promise<void> {
-    try {
-      const flags = await featureFlagRepository.findAll();
-
-      this.localCache.clear();
-      for (const flag of flags) {
-        this.localCache.set(flag.key, flag.enabled);
-      }
-
-      // Also update distributed cache
-      const cache = getDistributedCache();
-      await cache.set(CACHE_KEY, Object.fromEntries(this.localCache), CACHE_TTL);
-    } catch (error) {
-      log.error('Failed to refresh feature flag cache', { error: getErrorMessage(error) });
+  private async installStateStrict(state: FeatureRuntimeState): Promise<FeatureRuntimeSnapshot> {
+    const next = this.createSnapshot(state);
+    if (this.snapshot && BigInt(next.generation) < BigInt(this.snapshot.generation)) {
+      return this.snapshot;
     }
+    if (this.snapshot?.generation === next.generation && this.snapshot.digest !== next.digest) {
+      throw new Error(`Feature runtime digest mismatch at generation ${next.generation}`);
+    }
+    if (this.snapshot?.digest === next.digest && this.snapshot.generation === next.generation) {
+      return this.snapshot;
+    }
+    this.localCache = new Map(Object.entries(next.flags));
+    await getDistributedCache().set(CACHE_KEY, next, CACHE_TTL);
+    if (this.reconcileAfterInstall) await this.reconcileAfterInstall();
+    this.snapshot = next;
+    return next;
   }
 
-  /**
-   * Check if a feature is enabled
-   */
   async isEnabled(key: FeatureFlagKey): Promise<boolean> {
     // Try local cache first
     if (this.localCache.has(key)) {
@@ -200,10 +153,10 @@ class FeatureFlagService {
     // Try distributed cache
     try {
       const cache = getDistributedCache();
-      const cached = await cache.get<Record<string, boolean>>(CACHE_KEY);
-      if (cached && key in cached) {
-        this.localCache.set(key, cached[key]);
-        return cached[key];
+      const cached = await cache.get<FeatureRuntimeSnapshot>(CACHE_KEY);
+      if (cached && key in cached.flags) {
+        await this.installSnapshotStrict(cached);
+        return cached.flags[key];
       }
     } catch (error) {
       log.debug('Cache lookup failed, continuing to database', { error: getErrorMessage(error) });
@@ -225,48 +178,135 @@ class FeatureFlagService {
     return getFeatureFlagValue(config.features, key);
   }
 
-  /**
-   * Set a feature flag value
-   */
   async setFlag(key: FeatureFlagKey, enabled: boolean, options: SetFlagOptions): Promise<void> {
     // Use repository's atomic set+audit method to avoid TOCTOU race
-    const previousValue = await featureFlagRepository.setFlagWithAudit(key, enabled, {
+    const result = await featureFlagRepository.setFlagWithAudit(key, enabled, {
       userId: options.userId,
       reason: options.reason,
       ipAddress: options.ipAddress,
     });
 
-    if (previousValue === null) {
+    if (result.previousValue === null) {
       log.debug(`Feature flag ${key} already set to ${enabled}`);
       return;
     }
 
-    // Invalidate caches
-    this.localCache.set(key, enabled);
-    const cache = getDistributedCache();
-    await cache.delete(CACHE_KEY);
+    const snapshot = await this.installStateStrict(result);
+    await this.runtimeParticipant?.acknowledge(snapshot);
 
     // Emit cross-process event for cache coherence and worker reactions
     const bus = getDistributedEventBus();
-    bus.emit('system:featureFlag.changed', {
+    await bus.emitAsync('system:featureFlag.changed', {
       key,
       enabled,
-      previousValue,
+      previousValue: result.previousValue,
       changedBy: options.userId,
+      generation: snapshot.generation,
+      digest: snapshot.digest,
+      snapshot: snapshot.flags,
     });
 
     log.info('Feature flag updated', {
       key,
-      previousValue,
+      previousValue: result.previousValue,
       newValue: enabled,
       changedBy: options.userId,
       reason: options.reason,
     });
   }
 
-  /**
-   * Get all feature flags with metadata
-   */
+  async reconcileAfterRestore(state: FeatureRuntimeState): Promise<void> {
+    if (!this.runtimeParticipant) throw new Error('Feature runtime is not initialized');
+    const roster = await this.runtimeParticipant.freezeLiveRoster();
+    const snapshot = await this.installStateStrict(state);
+    await this.runtimeParticipant.heartbeat();
+    await this.runtimeParticipant.acknowledge(snapshot);
+    await getDistributedEventBus().emitAsync('system:featureFlag.changed', {
+      key: '*',
+      enabled: false,
+      previousValue: false,
+      changedBy: 'backup-restore',
+      generation: snapshot.generation,
+      digest: snapshot.digest,
+      snapshot: snapshot.flags,
+    });
+    await this.runtimeParticipant.waitForAcknowledgements(snapshot, roster);
+  }
+
+  shutdownRuntime(): void {
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+    if (this.pollTimer) clearInterval(this.pollTimer);
+    this.heartbeatTimer = null;
+    this.pollTimer = null;
+  }
+
+  private createSnapshot(state: FeatureRuntimeState): FeatureRuntimeSnapshot {
+    const flags: Record<string, boolean> = {
+      ...this.getEnvironmentFlags(getConfig().features),
+    };
+    for (const flag of state.flags) flags[flag.key] = flag.enabled;
+    const canonicalFlags = Object.fromEntries(
+      Object.entries(flags).sort(([left], [right]) => compareFlagKeys(left, right)),
+    );
+    const digest = createHash('sha256').update(JSON.stringify(canonicalFlags)).digest('hex');
+    return { generation: state.generation, digest, flags: canonicalFlags };
+  }
+
+  private async installSnapshotStrict(snapshot: FeatureRuntimeSnapshot): Promise<void> {
+    const digest = createHash('sha256').update(JSON.stringify(snapshot.flags)).digest('hex');
+    if (digest !== snapshot.digest) throw new Error('Feature runtime snapshot digest is invalid');
+    const state = {
+      generation: snapshot.generation,
+      flags: Object.entries(snapshot.flags).map(([key, enabled]) => ({ key, enabled })),
+    } as FeatureRuntimeState;
+    const installed = await this.installStateStrict(state);
+    await this.runtimeParticipant?.heartbeat();
+    await this.runtimeParticipant?.acknowledge(installed);
+  }
+
+  private registerEventListener(): void {
+    if (this.eventListenerRegistered) return;
+    getDistributedEventBus().on('system:featureFlag.changed', (event) => {
+      if (!event.snapshot) return;
+      void this.installSnapshotStrict({
+        generation: event.generation,
+        digest: event.digest,
+        flags: event.snapshot,
+      }).catch((error) => {
+        log.error('Failed to install feature runtime event snapshot', {
+          error: getErrorMessage(error),
+        });
+      });
+    });
+    this.eventListenerRegistered = true;
+  }
+
+  private startRuntimeTimers(): void {
+    this.heartbeatTimer = setInterval(() => {
+      void this.runtimeParticipant?.heartbeat().catch((error) => {
+        log.error('Feature runtime heartbeat failed', { error: getErrorMessage(error) });
+      });
+    }, FEATURE_RUNTIME_HEARTBEAT_INTERVAL_MS);
+    this.pollTimer = setInterval(() => {
+      void this.pollRuntimeState().catch((error) => {
+        log.error('Feature runtime polling failed', { error: getErrorMessage(error) });
+      });
+    }, FEATURE_RUNTIME_POLL_INTERVAL_MS);
+    this.heartbeatTimer.unref();
+    this.pollTimer.unref();
+  }
+
+  private async pollRuntimeState(): Promise<void> {
+    const state = await featureFlagRepository.loadRuntimeState();
+    if (!this.snapshot || BigInt(state.generation) > BigInt(this.snapshot.generation)) {
+      await this.installStateStrict(state);
+    }
+    // The branch above either retained an existing snapshot or installed one.
+    const snapshot = this.snapshot!;
+    await this.runtimeParticipant?.heartbeat();
+    await this.runtimeParticipant?.acknowledge(snapshot);
+  }
+
   async getAllFlags(): Promise<FeatureFlagInfo[]> {
     const flags = await featureFlagRepository.findAll();
 
@@ -287,9 +327,6 @@ class FeatureFlagService {
     });
   }
 
-  /**
-   * Get audit log for a specific flag or all flags
-   */
   async getAuditLog(key?: string, limit = 50, offset = 0): Promise<AuditEntry[]> {
     const entries = await featureFlagRepository.getAuditLog(key, limit, offset);
 
@@ -305,9 +342,6 @@ class FeatureFlagService {
     }));
   }
 
-  /**
-   * Get flag info by key
-   */
   async getFlag(key: FeatureFlagKey): Promise<FeatureFlagInfo | null> {
     const flag = await featureFlagRepository.findByKey(key);
 
@@ -328,9 +362,6 @@ class FeatureFlagService {
     };
   }
 
-  /**
-   * Reset a flag to its environment default
-   */
   async resetToDefault(key: FeatureFlagKey, options: SetFlagOptions): Promise<void> {
     const config = getConfig();
     const defaultValue = getFeatureFlagValue(config.features, key);
@@ -341,9 +372,6 @@ class FeatureFlagService {
     });
   }
 
-  /**
-   * Bulk update multiple flags
-   */
   async bulkUpdate(
     updates: Array<{ key: FeatureFlagKey; enabled: boolean }>,
     options: SetFlagOptions
@@ -352,6 +380,12 @@ class FeatureFlagService {
       await this.setFlag(update.key, update.enabled, options);
     }
   }
+}
+
+function compareFlagKeys(left: string, right: string): number {
+  /* v8 ignore next -- createSnapshot derives unique object keys. */
+  if (left === right) return 0;
+  return left < right ? -1 : 1;
 }
 
 // =============================================================================

@@ -6,6 +6,10 @@
 
 import prisma from '../models/prisma';
 import type { SystemSetting } from '../generated/prisma/client';
+import {
+  isOperationalSystemSettingKey,
+  OPERATIONAL_SYSTEM_SETTING_PREFIX,
+} from './operationalSystemSettings';
 import { safeJsonParse, safeJsonParseUntyped } from '../utils/safeJson';
 import { createLogger } from '../utils/logger';
 import type { z } from 'zod';
@@ -149,6 +153,7 @@ export async function getParsed<T>(
  */
 export async function getAll(): Promise<SystemSetting[]> {
   return prisma.systemSetting.findMany({
+    where: { key: { not: { startsWith: OPERATIONAL_SYSTEM_SETTING_PREFIX } } },
     orderBy: { key: 'asc' },
   });
 }
@@ -190,6 +195,7 @@ export async function getAllAsMap(): Promise<Record<string, string>> {
  * Set a system setting (upsert)
  */
 export async function set(key: string, value: string): Promise<SystemSetting> {
+  assertGenericMutationAllowed(key);
   return prisma.systemSetting.upsert({
     where: { key },
     update: { value },
@@ -233,6 +239,7 @@ export async function setJson(
 export async function setMany(
   settings: Array<{ key: string; value: string }>
 ): Promise<void> {
+  for (const { key } of settings) assertGenericMutationAllowed(key);
   await prisma.$transaction(
     settings.map(s =>
       prisma.systemSetting.upsert({
@@ -248,6 +255,7 @@ export async function setMany(
  * Delete a system setting
  */
 export async function deleteSetting(key: string): Promise<void> {
+  assertGenericMutationAllowed(key);
   await prisma.systemSetting.delete({
     where: { key },
   }).catch((err) => {
@@ -259,12 +267,24 @@ export async function deleteSetting(key: string): Promise<void> {
  * Delete settings by prefix
  */
 export async function deleteByPrefix(prefix: string): Promise<number> {
+  if (
+    isOperationalSystemSettingKey(prefix)
+    || OPERATIONAL_SYSTEM_SETTING_PREFIX.startsWith(prefix)
+  ) {
+    throw new Error(`Operational system settings cannot be deleted through prefix '${prefix}'`);
+  }
   const result = await prisma.systemSetting.deleteMany({
     where: {
       key: { startsWith: prefix },
     },
   });
   return result.count;
+}
+
+function assertGenericMutationAllowed(key: string): void {
+  if (isOperationalSystemSettingKey(key)) {
+    throw new Error(`Operational system setting '${key}' cannot be changed through generic settings`);
+  }
 }
 
 /**

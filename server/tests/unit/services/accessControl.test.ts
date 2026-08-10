@@ -66,6 +66,7 @@ import {
   requireWalletOwnerAccess,
   invalidateWalletAccessCache,
   invalidateUserAccessCache,
+  invalidateUserAccessCacheStrict,
   clearAccessCache,
   checkTransactionAccess,
   requireTransactionAccess,
@@ -610,6 +611,22 @@ describe('Access Control Service', () => {
         mockCache.deletePattern.mockRejectedValueOnce(new Error('cache down'));
 
         await expect(invalidateUserAccessCache(userId)).resolves.toBeUndefined();
+      });
+
+      it('should propagate cache errors from strict user invalidation', async () => {
+        mockCache.deletePattern.mockRejectedValueOnce(new Error('cache down'));
+
+        await expect(invalidateUserAccessCacheStrict(userId)).rejects.toThrow('cache down');
+      });
+
+      it('should strictly invalidate a user cache and record completion', async () => {
+        await invalidateUserAccessCacheStrict(userId);
+
+        expect(mockCache.deletePattern).toHaveBeenCalledWith(`${userId}:*`);
+        expect(mockLog.debug).toHaveBeenCalledWith(
+          'Invalidated access cache for user',
+          { userId: userId.substring(0, 8) },
+        );
       });
     });
 

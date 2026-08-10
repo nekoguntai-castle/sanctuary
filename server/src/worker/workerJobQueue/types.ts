@@ -14,6 +14,8 @@ export interface WorkerJobQueueConfig {
   prefix?: string;
   /** Default job options */
   defaultJobOptions?: JobsOptions;
+  /** Whether BullMQ consumers start as soon as they are constructed (default: true). */
+  autorun?: boolean;
 }
 
 export interface QueueInstance {

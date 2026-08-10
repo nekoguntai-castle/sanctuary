@@ -24,6 +24,14 @@ import {
   teardownTestDatabase,
 } from '../setup/testDatabase';
 
+const mockReconcileFeatureRuntime = vi.hoisted(() => vi.fn());
+
+vi.mock('../../../src/services/featureFlagService', () => ({
+  featureFlagService: {
+    reconcileAfterRestore: mockReconcileFeatureRuntime,
+  },
+}));
+
 const describeIfDb = canRunIntegrationTests() ? describe : describe.skip;
 
 const JWT_SECRET = 'phase2-ops-proof-jwt-secret-32-characters';
@@ -130,6 +138,7 @@ describeIfDb('Phase 2 operations proof', () => {
   });
 
   beforeEach(async () => {
+    mockReconcileFeatureRuntime.mockReset().mockResolvedValue(undefined);
     await cleanupTestData();
     await cleanupProofSmtpSettings(prisma);
   });

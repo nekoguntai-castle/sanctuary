@@ -180,6 +180,8 @@ router.post('/restore', largeBodyParser, authenticate, requireAdmin, asyncHandle
       warnings: result.warnings,
       committed: result.committed,
       cacheInvalidated: result.cacheInvalidated,
+      accessCacheReconciled: result.accessCacheReconciled,
+      featureRuntimeReconciled: result.featureRuntimeReconciled,
     });
   }
 
@@ -205,6 +207,8 @@ router.post('/restore', largeBodyParser, authenticate, requireAdmin, asyncHandle
     tablesRestored: result.tablesRestored,
     recordsRestored: result.recordsRestored,
     warnings: result.warnings,
+    accessCacheReconciled: result.accessCacheReconciled,
+    featureRuntimeReconciled: result.featureRuntimeReconciled,
   });
 }));
 

@@ -13,6 +13,7 @@ import {
 } from '../ai/providerCredentials';
 import type { BackupRecord } from './types';
 import { redactWebhookDiagnosticHeaders } from '../webhooks/diagnostics';
+import { FEATURE_RUNTIME_GENERATION_KEY } from '../../repositories/operationalSystemSettings';
 
 export function processNodeConfigRecords(
   records: BackupRecord[],
@@ -58,16 +59,18 @@ export function processSystemSettingRecords(
     warnings.push('SMTP settings restored disabled. Re-enter SMTP credentials before enabling email delivery.');
   }
 
-  return records.map(record => {
-    const aiRecord = disableAIProviderCredentialRecord(record, warnings);
-    if (typeof aiRecord.key !== 'string' || !aiRecord.key.startsWith('smtp.')) {
+  return records
+    .filter(record => record.key !== FEATURE_RUNTIME_GENERATION_KEY)
+    .map(record => {
+      const aiRecord = disableAIProviderCredentialRecord(record, warnings);
+      if (typeof aiRecord.key !== 'string' || !aiRecord.key.startsWith('smtp.')) {
+        return aiRecord;
+      }
+      if (['smtp.host', 'smtp.user', 'smtp.password', 'smtp.fromAddress'].includes(aiRecord.key)) {
+        return { ...aiRecord, value: JSON.stringify('') };
+      }
       return aiRecord;
-    }
-    if (['smtp.host', 'smtp.user', 'smtp.password', 'smtp.fromAddress'].includes(aiRecord.key)) {
-      return { ...aiRecord, value: JSON.stringify('') };
-    }
-    return aiRecord;
-  });
+    });
 }
 
 export function processMcpApiKeyRecords(

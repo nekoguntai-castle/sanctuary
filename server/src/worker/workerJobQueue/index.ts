@@ -86,6 +86,7 @@ interface QueueFactoryOptions {
   connection: ConnectionOptions;
   prefix: string | undefined;
   concurrency: number;
+  autorun: boolean;
   defaultJobOptions: JobsOptions | undefined;
   processJob: (queueName: string, job: Job) => Promise<unknown>;
   onRecurringCompleted: (job: Job) => Promise<void>;
@@ -112,15 +113,17 @@ function createBullWorker({
   connection,
   prefix,
   concurrency,
+  autorun,
   processJob,
 }: Pick<
   QueueFactoryOptions,
-  "queueName" | "connection" | "prefix" | "concurrency" | "processJob"
+  "queueName" | "connection" | "prefix" | "concurrency" | "autorun" | "processJob"
 >): Worker {
   return new Worker(queueName, async (job) => processJob(queueName, job), {
     connection,
     prefix,
     concurrency,
+    autorun,
   });
 }
 
@@ -167,6 +170,7 @@ export class WorkerJobQueue {
     this.config = {
       prefix: config.prefix ?? "sanctuary:worker",
       concurrency: config.concurrency,
+      autorun: config.autorun ?? true,
       queues: config.queues,
       defaultJobOptions: config.defaultJobOptions ?? {
         attempts: 3,
@@ -215,8 +219,30 @@ export class WorkerJobQueue {
     log.info("Worker job queue initialized", {
       queues: this.config.queues,
       concurrency: this.config.concurrency,
+      autorun: this.config.autorun!,
       prefix: this.config.prefix,
     });
+  }
+
+  /**
+   * Start consumers created with autorun disabled.
+   *
+   * BullMQ's run promise remains pending for the lifetime of the consumer, so
+   * startup is intentionally initiated rather than awaited. BullMQ marks the
+   * worker running synchronously before the first asynchronous connection step.
+   */
+  startConsumers(): void {
+    if (!this.initialized) {
+      throw new Error("Worker job queue must be initialized before consumers start");
+    }
+    for (const [queueName, instance] of this.queues) {
+      if (instance.worker.isRunning()) continue;
+      void instance.worker.run().catch((error) => {
+        log.error(`Worker consumer stopped unexpectedly: ${queueName}`, {
+          error: getErrorMessage(error),
+        });
+      });
+    }
   }
 
   private startDeadLetterReconciliation(): void {
@@ -264,6 +290,7 @@ export class WorkerJobQueue {
       prefix: this.config.prefix,
       defaultJobOptions: this.config.defaultJobOptions,
       concurrency: this.config.concurrency,
+      autorun: this.config.autorun!,
       processJob: (name, job) => this.processJob(name, job),
       onRecurringCompleted: (job) =>
         this.recordRecurringCompletion(queueName, job),

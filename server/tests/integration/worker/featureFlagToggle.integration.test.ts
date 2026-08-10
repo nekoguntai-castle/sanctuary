@@ -90,8 +90,13 @@ describe('feature flag admin + worker integration', () => {
       reconcileSubscriptions: vi.fn(async () => undefined),
     };
 
+    let reconcileFeatureRuntime: (() => Promise<void>) | undefined;
     const featureFlagService = {
       initialize: vi.fn(async () => undefined),
+      configureRuntime: vi.fn((_role: string, reconcile: () => Promise<void>) => {
+        reconcileFeatureRuntime = reconcile;
+      }),
+      shutdownRuntime: vi.fn(),
       isEnabled: vi.fn(async (key: string) => {
         if (key === 'treasuryAutopilot') return state.treasuryAutopilot;
         if (key === 'aiAssistant') return state.aiAssistant;
@@ -170,7 +175,14 @@ describe('feature flag admin + worker integration', () => {
           enabled,
           previousValue,
           changedBy: options.userId,
+          generation: '1',
+          digest: 'test-digest',
+          snapshot: {
+            treasuryAutopilot: state.treasuryAutopilot,
+            aiAssistant: state.aiAssistant,
+          },
         });
+        await reconcileFeatureRuntime?.();
       }),
       resetToDefault: vi.fn(async () => undefined),
     };
@@ -339,8 +351,17 @@ describe('feature flag admin + worker integration', () => {
 
       expect(nonAutopilotResponse.status).toBe(200);
       expect(nonAutopilotResponse.body.enabled).toBe(true);
-      expect(jobQueueInstance.scheduleRecurring).not.toHaveBeenCalled();
-      expect(jobQueueInstance.removeRecurring).not.toHaveBeenCalled();
+      expect(jobQueueInstance.scheduleRecurring).not.toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'autopilot:record-fees' }),
+      );
+      expect(jobQueueInstance.scheduleRecurring).not.toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'autopilot:evaluate' }),
+      );
+      expect(jobQueueInstance.removeRecurring).toHaveBeenCalledWith(
+        'maintenance',
+        'autopilot:record-fees',
+        { purgeQueued: true },
+      );
 
       jobQueueInstance.scheduleRecurring.mockClear();
       jobQueueInstance.removeRecurring.mockClear();

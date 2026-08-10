@@ -154,6 +154,8 @@ describe('Admin Backup Routes', () => {
       tablesRestored: 2,
       recordsRestored: 5,
       warnings: [],
+      accessCacheReconciled: true,
+      featureRuntimeReconciled: true,
     });
   });
 
@@ -383,6 +385,8 @@ describe('Admin Backup Routes', () => {
       warnings: ['Some records skipped'],
       committed: false,
       cacheInvalidated: false,
+      accessCacheReconciled: false,
+      featureRuntimeReconciled: false,
       error: 'constraint violation',
     });
 
@@ -397,6 +401,8 @@ describe('Admin Backup Routes', () => {
       warnings: ['Some records skipped'],
       committed: false,
       cacheInvalidated: false,
+      accessCacheReconciled: false,
+      featureRuntimeReconciled: false,
     });
     expect(mockAuditLogFromRequest).not.toHaveBeenCalledWith(
       expect.any(Object),
@@ -414,6 +420,8 @@ describe('Admin Backup Routes', () => {
       warnings: [],
       committed: true,
       cacheInvalidated: false,
+      accessCacheReconciled: false,
+      featureRuntimeReconciled: true,
       error: 'Restore committed but access cache invalidation failed: cache down',
     });
 
@@ -426,6 +434,8 @@ describe('Admin Backup Routes', () => {
       error: 'Restore Failed',
       message: 'Restore committed but access cache invalidation failed: cache down',
       warnings: [],
+      accessCacheReconciled: false,
+      featureRuntimeReconciled: true,
       committed: true,
       cacheInvalidated: false,
     });
@@ -446,6 +456,8 @@ describe('Admin Backup Routes', () => {
       tablesRestored: 2,
       recordsRestored: 5,
       warnings: [],
+      accessCacheReconciled: true,
+      featureRuntimeReconciled: true,
     });
     expect(mockAuditLogFromRequest).toHaveBeenCalledWith(
       expect.any(Object),

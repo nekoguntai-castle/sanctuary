@@ -414,6 +414,7 @@ const handleShutdown = async (signal: string, exitCode: 0 | 1 = 0) => {
   shutdownNotificationDeadLetterAggregateWriter();
 
   // Shutdown Redis infrastructure
+  featureFlagService.shutdownRuntime();
   await shutdownRedis();
 
   // Close database connection

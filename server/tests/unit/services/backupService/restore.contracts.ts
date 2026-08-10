@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   getMockBackupLogger,
   getMockClearAccessCacheStrict,
+  getMockFeatureRuntimeReconcile,
   mockAllBackupTablesExist,
 } from './backupServiceTestHarness';
 import { mockPrismaClient, resetPrismaMocks } from '../../../mocks/prisma';
@@ -23,6 +24,7 @@ describe('restoreFromBackup', () => {
   let backupService: BackupService;
   const mockClearAccessCacheStrict = getMockClearAccessCacheStrict();
   const mockBackupLogger = getMockBackupLogger();
+  const mockFeatureRuntimeReconcile = getMockFeatureRuntimeReconcile();
 
   const createValidBackup = (): SanctuaryBackup => ({
     meta: {
@@ -100,6 +102,8 @@ describe('restoreFromBackup', () => {
     resetPrismaMocks();
     mockClearAccessCacheStrict.mockReset();
     mockClearAccessCacheStrict.mockResolvedValue(undefined);
+    mockFeatureRuntimeReconcile.mockReset();
+    mockFeatureRuntimeReconcile.mockResolvedValue(undefined);
     Object.values(mockBackupLogger).forEach((loggerMethod) => loggerMethod.mockClear());
 
     // Mock getExistingTables to return common tables
@@ -159,6 +163,8 @@ describe('restoreFromBackup', () => {
       expect(result.error).toBeUndefined();
       expect(result.committed).toBe(true);
       expect(result.cacheInvalidated).toBe(true);
+      expect(result.accessCacheReconciled).toBe(true);
+      expect(result.featureRuntimeReconciled).toBe(true);
     });
 
     it('should clear access cache only after the restore transaction commits', async () => {
@@ -174,13 +180,25 @@ describe('restoreFromBackup', () => {
       mockClearAccessCacheStrict.mockImplementation(async () => {
         events.push('access-cache-clear');
       });
+      mockFeatureRuntimeReconcile.mockImplementation(async () => {
+        events.push('feature-runtime-reconcile');
+      });
       mockAllTableWrites();
 
       const result = await backupService.restoreFromBackup(backup);
 
       expect(result.success).toBe(true);
       expect(mockClearAccessCacheStrict).toHaveBeenCalledTimes(1);
-      expect(events).toEqual(['transaction-start', 'transaction-commit', 'access-cache-clear']);
+      expect(events).toEqual([
+        'transaction-start',
+        'transaction-commit',
+        'access-cache-clear',
+        'feature-runtime-reconcile',
+      ]);
+      expect(mockFeatureRuntimeReconcile).toHaveBeenCalledWith({
+        generation: '1',
+        flags: [],
+      });
     });
 
     it('should not clear access cache when validation fails before the transaction', async () => {
@@ -224,6 +242,28 @@ describe('restoreFromBackup', () => {
       expect(result.tablesRestored).toBeGreaterThan(0);
       expect(result.recordsRestored).toBeGreaterThan(0);
       expect(result.error).toContain('Restore committed but access cache invalidation failed: cache down');
+      expect(result.featureRuntimeReconciled).toBe(true);
+      expect(mockFeatureRuntimeReconcile).toHaveBeenCalledTimes(1);
+    });
+
+    it('should report committed recovery pending when feature runtime reconciliation fails', async () => {
+      const backup = createValidBackup();
+      mockPrismaClient.$transaction.mockImplementation(async (fn: any) => fn(mockPrismaClient));
+      mockAllTableWrites();
+      mockFeatureRuntimeReconcile.mockRejectedValueOnce(new Error('worker acknowledgement missing'));
+
+      const result = await backupService.restoreFromBackup(backup);
+
+      expect(result).toMatchObject({
+        success: false,
+        committed: true,
+        cacheInvalidated: true,
+        accessCacheReconciled: true,
+        featureRuntimeReconciled: false,
+      });
+      expect(result.error).toContain('worker acknowledgement missing');
+      expect(result.error).toContain('Restore committed but feature runtime reconciliation failed');
+      expect(mockClearAccessCacheStrict).toHaveBeenCalledTimes(1);
     });
 
     it('should time out hung post-commit access cache invalidation', async () => {

@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => {
 
   const queueInstance = {
     initialize: vi.fn(),
+    startConsumers: vi.fn(),
     getRegisteredJobs: vi.fn(),
     isHealthy: vi.fn(),
     isQueueWorkerRunning: vi.fn(),
@@ -130,6 +131,8 @@ const mocks = vi.hoisted(() => {
     },
     mockFeatureFlagService: {
       initialize: vi.fn(),
+      configureRuntime: vi.fn(),
+      shutdownRuntime: vi.fn(),
       isEnabled: vi.fn(),
     },
     getElectrumCallbacks: () => electrumCallbacks,
@@ -241,6 +244,7 @@ describe('worker entrypoint', () => {
     mocks.startCaptureParticipant.mockResolvedValue(undefined); mocks.stopCaptureParticipant.mockResolvedValue(undefined);
 
     mocks.queueInstance.initialize.mockResolvedValue(undefined);
+    mocks.queueInstance.startConsumers.mockReturnValue(undefined);
     mocks.queueInstance.getRegisteredJobs.mockReturnValue(['check-stale-wallets']);
     mocks.queueInstance.isHealthy.mockReturnValue(true);
     mocks.queueInstance.isQueueWorkerRunning.mockReturnValue(true);
@@ -294,7 +298,11 @@ describe('worker entrypoint', () => {
     mocks.heartbeatInstance.start.mockReturnValue(undefined);
     mocks.heartbeatInstance.stop.mockResolvedValue(undefined);
 
-    mocks.mockFeatureFlagService.initialize.mockResolvedValue(undefined);
+    mocks.mockFeatureFlagService.initialize.mockImplementation(async () => {
+      const reconcileInstalledSnapshot = mocks.mockFeatureFlagService.configureRuntime
+        .mock.calls.at(-1)?.[1];
+      await reconcileInstalledSnapshot?.();
+    });
     mocks.mockFeatureFlagService.isEnabled.mockResolvedValue(false);
   });
 
@@ -381,7 +389,72 @@ describe('worker entrypoint', () => {
       }),
     );
     expect(mocks.startHealthServer).not.toHaveBeenCalled();
+    expect(mocks.queueInstance.startConsumers).not.toHaveBeenCalled();
     expect(processExitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('makes strict feature reconciliation reject when a recurring schedule is unhealthy', async () => {
+    vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
+      void event;
+      void handler;
+      return process;
+    }) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+    const reconcileInstalledSnapshot = mocks.mockFeatureFlagService.configureRuntime
+      .mock.calls[0]?.[1];
+    mocks.queueInstance.scheduleRecurring.mockResolvedValueOnce({
+      status: 'failed',
+      error: 'Redis unavailable',
+    });
+
+    await expect(reconcileInstalledSnapshot()).rejects.toThrow(
+      'Required recurring schedule reconciliation failed',
+    );
+  });
+
+  it('does not execute retained disabled-feature jobs before convergence', async () => {
+    vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
+      void event;
+      void handler;
+      return process;
+    }) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+    let releaseRemoval!: () => void;
+    const removalPending = new Promise<void>((resolve) => {
+      releaseRemoval = resolve;
+    });
+    mocks.queueInstance.removeRecurring.mockImplementationOnce(async () => {
+      await removalPending;
+      return { status: 'removed' };
+    });
+    mocks.mockFeatureFlagService.initialize.mockImplementationOnce(async () => {
+      const reconcileInstalledSnapshot = mocks.mockFeatureFlagService.configureRuntime
+        .mock.calls[0]?.[1];
+      await reconcileInstalledSnapshot();
+    });
+
+    await import('../../../src/worker.ts');
+    for (let index = 0; index < 100 && !mocks.queueInstance.removeRecurring.mock.calls.length; index += 1) {
+      await Promise.resolve();
+    }
+
+    expect(mocks.queueInstance.removeRecurring).toHaveBeenCalledWith(
+      'maintenance',
+      'autopilot:record-fees',
+      { purgeQueued: true },
+    );
+    expect(mocks.queueInstance.startConsumers).not.toHaveBeenCalled();
+
+    releaseRemoval();
+    await vi.dynamicImportSettled();
+
+    expect(mocks.queueInstance.startConsumers).toHaveBeenCalledOnce();
+    expect(mocks.queueInstance.removeRecurring.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.queueInstance.startConsumers.mock.invocationCallOrder[0],
+    );
   });
 
   it('returns early when recurring scheduling is invoked before queue initialization', async () => {
@@ -471,21 +544,24 @@ describe('worker entrypoint', () => {
     await import('../../../src/worker.ts');
     await vi.dynamicImportSettled();
 
-    const workerListener = mocks.mockEventBus.on.mock.calls.find(
-      (call: any) => call[0] === 'system:featureFlag.changed'
-    )?.[1];
-    expect(workerListener).toBeDefined();
+    const reconcileInstalledSnapshot = mocks.mockFeatureFlagService.configureRuntime
+      .mock.calls[0]?.[1];
+    expect(reconcileInstalledSnapshot).toBeDefined();
 
     mocks.queueInstance.scheduleRecurring.mockClear();
     mocks.queueInstance.removeRecurring.mockClear();
 
-    await workerListener({ key: 'aiAssistant', enabled: true });
-
-    expect(mocks.queueInstance.scheduleRecurring).not.toHaveBeenCalled();
-    expect(mocks.queueInstance.removeRecurring).not.toHaveBeenCalled();
+    await reconcileInstalledSnapshot();
+    expect(mocks.queueInstance.removeRecurring).toHaveBeenCalledWith(
+      'maintenance',
+      'autopilot:record-fees',
+      expect.anything(),
+    );
+    mocks.queueInstance.scheduleRecurring.mockClear();
+    mocks.queueInstance.removeRecurring.mockClear();
 
     autopilotEnabled = true;
-    await workerListener({ key: 'treasuryAutopilot', enabled: true });
+    await reconcileInstalledSnapshot();
 
     expect(mocks.queueInstance.scheduleRecurring).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -505,7 +581,7 @@ describe('worker entrypoint', () => {
 
     mocks.queueInstance.removeRecurring.mockClear();
     autopilotEnabled = false;
-    await workerListener({ key: 'treasuryAutopilot', enabled: false });
+    await reconcileInstalledSnapshot();
 
     expect(mocks.queueInstance.removeRecurring).toHaveBeenCalledWith(
       'maintenance',
@@ -666,6 +742,7 @@ describe('worker entrypoint', () => {
     expect(mocks.WorkerJobQueue).toHaveBeenCalledWith({
       concurrency: 5,
       queues: ['sync', 'notifications', 'confirmations', 'maintenance'],
+      autorun: false,
     });
     expect(mocks.startDatabaseHealthCheck).toHaveBeenCalledOnce();
 

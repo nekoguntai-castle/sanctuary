@@ -118,6 +118,7 @@ describe('systemSettingRepository', () => {
     await expect(getAllAsMap()).resolves.toEqual({ x: '10', y: '20' });
 
     expect(prisma.systemSetting.findMany).toHaveBeenNthCalledWith(1, {
+      where: { key: { not: { startsWith: 'operational.' } } },
       orderBy: { key: 'asc' },
     });
     expect(prisma.systemSetting.findMany).toHaveBeenNthCalledWith(2, {
@@ -154,6 +155,21 @@ describe('systemSettingRepository', () => {
       update: { value: '{"a":1}' },
       create: { key: 'json.k', value: '{"a":1}' },
     });
+  });
+
+  it('rejects generic writes and deletes of operational runtime metadata', async () => {
+    await expect(set('operational.feature-runtime.generation', '0'))
+      .rejects.toThrow('cannot be changed through generic settings');
+    await expect(setMany([
+      { key: 'normal', value: 'ok' },
+      { key: 'operational.feature-runtime.generation', value: '0' },
+    ])).rejects.toThrow('cannot be changed through generic settings');
+    await expect(deleteSetting('operational.feature-runtime.generation'))
+      .rejects.toThrow('cannot be changed through generic settings');
+    await expect(deleteByPrefix('operational.'))
+      .rejects.toThrow('cannot be deleted');
+    expect(prisma.systemSetting.upsert).not.toHaveBeenCalled();
+    expect(prisma.systemSetting.deleteMany).not.toHaveBeenCalled();
   });
 
   it('setBoolean persists false values as the string "false"', async () => {

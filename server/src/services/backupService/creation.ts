@@ -20,6 +20,7 @@ import {
   BACKUP_PAGE_SIZE,
 } from './constants';
 import type { BackupRecord, SanctuaryBackup, BackupOptions } from './types';
+import { FEATURE_RUNTIME_GENERATION_KEY } from '../../repositories/operationalSystemSettings';
 
 const log = createLogger('BACKUP:SVC');
 export const BACKUP_TRANSACTION_MAX_WAIT_MS = 10_000;
@@ -70,7 +71,9 @@ export async function createBackupSnapshot(
       // Small tables: single query is fine
       // @ts-expect-error - Dynamic Prisma table access; table name validated by the canonical policy
       const records = await client[table].findMany();
-      data[table] = records.map((record: BackupRecord) => serializeRecord(record));
+      data[table] = records
+        .filter((record: BackupRecord) => !isOperationalRecord(table, record))
+        .map((record: BackupRecord) => serializeRecord(record));
     }
     recordCounts[table] = data[table].length;
     signal?.throwIfAborted();
@@ -104,6 +107,10 @@ export async function createBackupSnapshot(
   log.info('[BACKUP] Backup created', { totalRecords, tables: Object.keys(data).length });
 
   return backup;
+}
+
+function isOperationalRecord(table: string, record: BackupRecord): boolean {
+  return table === 'systemSetting' && record.key === FEATURE_RUNTIME_GENERATION_KEY;
 }
 
 /**

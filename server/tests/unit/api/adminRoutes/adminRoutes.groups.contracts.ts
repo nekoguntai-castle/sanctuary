@@ -58,10 +58,6 @@ export function registerAdminRoutesGroupContracts(): void {
         purpose: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-      });
-      mockPrisma.group.findUnique.mockResolvedValue({
-        id: 'new-group',
-        name: 'New Group',
         members: [],
       });
 
@@ -90,17 +86,12 @@ export function registerAdminRoutesGroupContracts(): void {
         purpose: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-      });
-      mockPrisma.user.findMany.mockResolvedValue([{ id: 'user-1' }, { id: 'user-2' }]);
-      mockPrisma.groupMember.createMany.mockResolvedValue({ count: 2 });
-      mockPrisma.group.findUnique.mockResolvedValue({
-        id: 'new-group',
-        name: 'Team',
         members: [
           { userId: 'user-1', user: { id: 'user-1', username: 'user1' }, role: 'member' },
           { userId: 'user-2', user: { id: 'user-2', username: 'user2' }, role: 'member' },
         ],
       });
+      mockPrisma.user.findMany.mockResolvedValue([{ id: 'user-1' }, { id: 'user-2' }]);
 
       const response = await adminRoutesRequest()
         .post('/api/v1/admin/groups')

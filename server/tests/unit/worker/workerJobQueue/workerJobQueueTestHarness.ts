@@ -1,7 +1,11 @@
 import { vi } from 'vitest';
 
 // Define mock objects that will be shared
-export const createdWorkers: Array<{ processFn?: (job: any) => Promise<any> }> = [];
+export const createdWorkers: Array<{
+  processFn?: (job: any) => Promise<any>;
+  options?: { autorun?: boolean };
+  run: ReturnType<typeof vi.fn>;
+}> = [];
 const hoistedMocks = vi.hoisted(() => ({
   mockDlqAdd: vi.fn().mockResolvedValue(undefined),
   mockRecordNotificationTelemetry: vi.fn(),
@@ -59,12 +63,23 @@ vi.mock('bullmq', () => {
 
   class MockWorker {
     processFn?: (job: any) => Promise<any>;
-    constructor(_queueName?: string, processor?: (job: any) => Promise<any>) {
+    options?: { autorun?: boolean };
+    private running: boolean;
+    run = vi.fn(async () => {
+      this.running = true;
+    });
+    constructor(
+      _queueName?: string,
+      processor?: (job: any) => Promise<any>,
+      options?: { autorun?: boolean },
+    ) {
       this.processFn = processor;
+      this.options = options;
+      this.running = options?.autorun !== false;
       createdWorkers.push(this);
     }
     on = vi.fn();
-    isRunning = vi.fn().mockReturnValue(true);
+    isRunning = vi.fn(() => this.running);
     close = vi.fn().mockResolvedValue(undefined);
   }
 

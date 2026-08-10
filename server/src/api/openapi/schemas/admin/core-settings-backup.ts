@@ -177,8 +177,10 @@ export const adminCoreSettingsBackupSchemas = {
         type: 'array',
         items: { type: 'string' },
       },
+      accessCacheReconciled: { type: 'boolean' },
+      featureRuntimeReconciled: { type: 'boolean' },
     },
-    required: ['success', 'message', 'tablesRestored', 'recordsRestored', 'warnings'],
+    required: ['success', 'message', 'tablesRestored', 'recordsRestored', 'warnings', 'accessCacheReconciled', 'featureRuntimeReconciled'],
   },
   AdminRestoreInvalidBackupResponse: {
     type: 'object',
@@ -203,7 +205,9 @@ export const adminCoreSettingsBackupSchemas = {
       },
       committed: { type: 'boolean' },
       cacheInvalidated: { type: 'boolean' },
+      accessCacheReconciled: { type: 'boolean' },
+      featureRuntimeReconciled: { type: 'boolean' },
     },
-    required: ['error', 'message', 'warnings', 'committed', 'cacheInvalidated'],
+    required: ['error', 'message', 'warnings', 'committed', 'cacheInvalidated', 'accessCacheReconciled', 'featureRuntimeReconciled'],
   },
 } as const;

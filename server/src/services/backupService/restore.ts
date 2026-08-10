@@ -31,6 +31,9 @@ import {
   processWebhookEndpointRecords,
 } from './restoreTransforms';
 import type { SanctuaryBackup, RestoreResult } from './types';
+import { featureFlagRepository } from '../../repositories/featureFlagRepository';
+import { featureFlagService } from '../featureFlagService';
+import type { FeatureRuntimeState } from '../../repositories/featureFlagRepository';
 
 const log = createLogger('BACKUP:SVC');
 const RESTORE_ACCESS_CACHE_CLEAR_TIMEOUT_MS = 5_000;
@@ -53,6 +56,8 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
       warnings: validation.warnings,
       committed: false,
       cacheInvalidated: false,
+      accessCacheReconciled: false,
+      featureRuntimeReconciled: false,
       error: `Backup validation failed: ${validation.issues.join('; ')}`,
     };
   }
@@ -93,13 +98,17 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
       warnings,
       committed: false,
       cacheInvalidated: false,
+      accessCacheReconciled: false,
+      featureRuntimeReconciled: false,
       error: `Restore preflight failed: missing live database tables: ${missingTables.join(', ')}`,
     };
   }
 
+  let restoredRuntimeState: FeatureRuntimeState;
   try {
-    await prisma.$transaction(async (tx) => {
+    restoredRuntimeState = await prisma.$transaction(async (tx) => {
       const currentSessionVersions = await getCurrentSessionVersions(tx);
+      const currentFeatureGeneration = await featureFlagRepository.readGeneration(tx);
       // Delete all tables in REVERSE order (to handle foreign key constraints)
       log.debug('[BACKUP] Deleting existing data in reverse order');
       for (const table of [...tablesToDelete].reverse()) {
@@ -171,15 +180,22 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
           });
 
           tablesRestored++;
-          recordsRestored += records.length;
-          log.debug(`[BACKUP] Restored ${records.length} records to ${table}`);
+          recordsRestored += processedRecords.length;
+          log.debug(`[BACKUP] Restored ${processedRecords.length} records to ${table}`);
         } catch (error) {
           const errorMsg = `Failed to restore table ${table}: ${getErrorMessage(error)}`;
           log.error('[BACKUP] ' + errorMsg);
           throw new Error(errorMsg);
         }
       }
+      const generation = await featureFlagRepository.advanceGeneration(
+        tx,
+        currentFeatureGeneration,
+      );
+      const state = await featureFlagRepository.loadRuntimeStateInTransaction(tx);
+      return { ...state, generation };
     }, {
+      isolationLevel: 'Serializable',
       maxWait: 10_000,
       timeout: 120000, // 2 minute timeout for large restores
     });
@@ -193,20 +209,30 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
       warnings,
       committed: false,
       cacheInvalidated: false,
+      accessCacheReconciled: false,
+      featureRuntimeReconciled: false,
       error: getErrorMessage(error),
     };
   }
 
-  const cacheError = await clearAccessCacheAfterCommittedRestore();
-  if (cacheError) {
+  const [cacheError, featureRuntimeError] = await Promise.all([
+    clearAccessCacheAfterCommittedRestore(),
+    featureFlagService.reconcileAfterRestore(restoredRuntimeState).then(
+      () => null,
+      (error) => `Restore committed but feature runtime reconciliation failed: ${getErrorMessage(error)}`,
+    ),
+  ]);
+  if (cacheError || featureRuntimeError) {
     return {
       success: false,
       tablesRestored,
       recordsRestored,
       warnings,
       committed: true,
-      cacheInvalidated: false,
-      error: cacheError,
+      cacheInvalidated: !cacheError,
+      accessCacheReconciled: !cacheError,
+      featureRuntimeReconciled: !featureRuntimeError,
+      error: [cacheError, featureRuntimeError].filter(Boolean).join('; '),
     };
   }
 
@@ -219,6 +245,8 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
     warnings,
     committed: true,
     cacheInvalidated: true,
+    accessCacheReconciled: true,
+    featureRuntimeReconciled: true,
   };
 }
 

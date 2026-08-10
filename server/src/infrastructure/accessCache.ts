@@ -46,6 +46,13 @@ export async function invalidateUserAccessCache(userId: string): Promise<void> {
   }
 }
 
+/** Clear one user's access decisions and propagate cache-layer failures. */
+export async function invalidateUserAccessCacheStrict(userId: string): Promise<void> {
+  const cache = getAccessCache();
+  await cache.deletePattern(`${userId}:*`);
+  log.debug('Invalidated access cache for user', { userId: userId.substring(0, 8) });
+}
+
 /**
  * Clear the entire access cache and propagate cache-layer failures.
  *

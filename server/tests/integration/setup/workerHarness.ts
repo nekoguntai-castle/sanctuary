@@ -35,9 +35,11 @@ export const createWorkerTestHarness = async (
   process.removeAllListeners('SIGINT');
 
   const redisConnected = options.redisConnected ?? true;
+  let reconcileInstalledFeatureSnapshot: (() => Promise<void>) | undefined;
 
   const jobQueueInstance = {
     initialize: vi.fn(async () => undefined),
+    startConsumers: vi.fn(),
     addJob: vi.fn(async () => undefined),
     addBulkJobs: vi.fn(async () => []),
     scheduleRecurring: vi.fn(async () => ({ status: 'created' })),
@@ -151,7 +153,11 @@ export const createWorkerTestHarness = async (
 
   vi.doMock('../../../src/services/featureFlagService', () => ({
     featureFlagService: {
-      initialize: vi.fn(async () => undefined),
+      initialize: vi.fn(async () => reconcileInstalledFeatureSnapshot?.()),
+      configureRuntime: vi.fn((_role: string, reconcile: () => Promise<void>) => {
+        reconcileInstalledFeatureSnapshot = reconcile;
+      }),
+      shutdownRuntime: vi.fn(),
       isEnabled: vi.fn(async () => false),
     },
   }));

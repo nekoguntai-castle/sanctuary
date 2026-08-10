@@ -73,6 +73,10 @@ export interface RestoreResult {
   committed: boolean;
   /** Required on every return path; true only when post-commit access-cache invalidation completed. */
   cacheInvalidated: boolean;
+  /** Access-control cache reconciliation outcome, independent from feature runtime recovery. */
+  accessCacheReconciled: boolean;
+  /** Feature snapshot installation, publication, and live-participant acknowledgement outcome. */
+  featureRuntimeReconciled: boolean;
   error?: string;
 }
 

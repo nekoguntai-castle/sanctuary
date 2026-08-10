@@ -6,9 +6,11 @@ import { mockPrismaClient, resetPrismaMocks } from '../../mocks/prisma';
 
 const {
   mockAuditLogFromRequest,
+  mockClearAccessCache,
   mockInvalidateUserAccessCache,
 } = vi.hoisted(() => ({
   mockAuditLogFromRequest: vi.fn(),
+  mockClearAccessCache: vi.fn(),
   mockInvalidateUserAccessCache: vi.fn(),
 }));
 
@@ -45,7 +47,8 @@ vi.mock('../../../src/services/auditService', () => ({
 }));
 
 vi.mock('../../../src/services/accessControl', () => ({
-  invalidateUserAccessCache: mockInvalidateUserAccessCache,
+  clearAccessCacheStrict: mockClearAccessCache,
+  invalidateUserAccessCacheStrict: mockInvalidateUserAccessCache,
 }));
 
 vi.mock('../../../src/utils/logger', () => ({
@@ -74,7 +77,9 @@ describe('Admin Groups Routes', () => {
     vi.clearAllMocks();
 
     mockAuditLogFromRequest.mockResolvedValue(undefined);
+    mockClearAccessCache.mockResolvedValue(undefined);
     mockInvalidateUserAccessCache.mockResolvedValue(undefined);
+    mockPrismaClient.group.updateMany.mockResolvedValue({ count: 1 });
   });
 
   it('lists groups with transformed member structure', async () => {
@@ -142,13 +147,13 @@ describe('Admin Groups Routes', () => {
   });
 
   it('creates a group without members', async () => {
-    mockPrismaClient.group.create.mockResolvedValue({ id: 'group-1', name: 'Team A' } as any);
-    mockPrismaClient.group.findUnique.mockResolvedValue({
+    mockPrismaClient.group.create.mockResolvedValue({
       id: 'group-1',
       name: 'Team A',
       description: null,
       purpose: null,
       createdAt: new Date('2025-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2025-01-01T00:00:00.000Z'),
       members: [],
     } as any);
 
@@ -162,7 +167,9 @@ describe('Admin Groups Routes', () => {
         name: 'Team A',
         description: null,
         purpose: null,
+        members: { create: [] },
       },
+      include: expect.any(Object),
     });
     expect(mockPrismaClient.groupMember.createMany).not.toHaveBeenCalled();
     expect(mockAuditLogFromRequest).toHaveBeenCalledWith(
@@ -176,9 +183,8 @@ describe('Admin Groups Routes', () => {
   });
 
   it('creates a group with valid members only', async () => {
-    mockPrismaClient.group.create.mockResolvedValue({ id: 'group-2', name: 'Team B' } as any);
     mockPrismaClient.user.findMany.mockResolvedValue([{ id: 'u1' }, { id: 'u3' }] as any);
-    mockPrismaClient.group.findUnique.mockResolvedValue({
+    mockPrismaClient.group.create.mockResolvedValue({
       id: 'group-2',
       name: 'Team B',
       description: 'desc',
@@ -195,13 +201,16 @@ describe('Admin Groups Routes', () => {
       .send({ name: 'Team B', description: 'desc', purpose: 'purpose', memberIds: ['u1', 'u2', 'u3'] });
 
     expect(response.status).toBe(201);
-    expect(mockPrismaClient.groupMember.createMany).toHaveBeenCalledWith({
-      data: [
-        { groupId: 'group-2', userId: 'u1', role: 'member' },
-        { groupId: 'group-2', userId: 'u3', role: 'member' },
-      ],
-      skipDuplicates: true,
-    });
+    expect(mockPrismaClient.group.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        members: {
+          create: [
+            { userId: 'u1', role: 'member' },
+            { userId: 'u3', role: 'member' },
+          ],
+        },
+      }),
+    }));
     expect(response.body.members).toHaveLength(2);
   });
 
@@ -228,15 +237,14 @@ describe('Admin Groups Routes', () => {
   });
 
   it('updates group fields without member update when memberIds omitted', async () => {
-    mockPrismaClient.group.findUnique
-      .mockResolvedValueOnce({
+    mockPrismaClient.group.findUnique.mockResolvedValue({
         id: 'group-1',
         name: 'Old',
         description: 'old desc',
         purpose: 'old purpose',
         members: [{ userId: 'u1' }],
-      } as any)
-      .mockResolvedValueOnce({
+      } as any);
+    mockPrismaClient.group.update.mockResolvedValue({
         id: 'group-1',
         name: 'Renamed',
         description: 'old desc',
@@ -253,31 +261,22 @@ describe('Admin Groups Routes', () => {
     expect(response.status).toBe(200);
     expect(mockPrismaClient.group.update).toHaveBeenCalledWith({
       where: { id: 'group-1' },
-      data: {
-        name: 'Renamed',
-        description: 'old desc',
-        purpose: 'old purpose',
-      },
+      data: { name: 'Renamed' },
+      include: expect.any(Object),
     });
     expect(mockPrismaClient.groupMember.deleteMany).not.toHaveBeenCalled();
     expect(mockPrismaClient.groupMember.createMany).not.toHaveBeenCalled();
   });
 
   it('updates group members with add/remove behavior and user validation', async () => {
-    mockPrismaClient.group.findUnique
-      .mockResolvedValueOnce({
+    mockPrismaClient.group.findUnique.mockResolvedValue({
         id: 'group-1',
         name: 'Group',
         description: null,
         purpose: null,
         members: [{ userId: 'u1' }, { userId: 'u2' }],
-      } as any)
-      // setMembers internal fetch
-      .mockResolvedValueOnce({
-        id: 'group-1',
-        members: [{ userId: 'u1' }, { userId: 'u2' }],
-      } as any)
-      .mockResolvedValueOnce({
+      } as any);
+    mockPrismaClient.group.update.mockResolvedValue({
         id: 'group-1',
         name: 'Group',
         description: null,
@@ -290,7 +289,7 @@ describe('Admin Groups Routes', () => {
         ],
       } as any);
 
-    mockPrismaClient.user.findMany.mockResolvedValue([{ id: 'u3' }] as any);
+    mockPrismaClient.user.findMany.mockResolvedValue([{ id: 'u2' }, { id: 'u3' }] as any);
 
     const response = await request(app)
       .put('/api/v1/admin/groups/group-1')
@@ -302,30 +301,21 @@ describe('Admin Groups Routes', () => {
     });
     expect(mockPrismaClient.groupMember.createMany).toHaveBeenCalledWith({
       data: [{ groupId: 'group-1', userId: 'u3', role: 'member' }],
-      skipDuplicates: true,
+      skipDuplicates: false,
     });
-    expect(mockInvalidateUserAccessCache).toHaveBeenCalledTimes(2);
-    expect(mockInvalidateUserAccessCache).toHaveBeenCalledWith('u1');
-    expect(mockInvalidateUserAccessCache).toHaveBeenCalledWith('u3');
-    expect(mockInvalidateUserAccessCache).not.toHaveBeenCalledWith('u2');
-    expect(mockInvalidateUserAccessCache).not.toHaveBeenCalledWith('u4');
+    expect(mockClearAccessCache).toHaveBeenCalledTimes(1);
   });
 
   it('updates explicit description/purpose and skips member mutations when memberIds unchanged', async () => {
-    mockPrismaClient.group.findUnique
-      .mockResolvedValueOnce({
+    mockPrismaClient.user.findMany.mockResolvedValue([{ id: 'u1' }] as any);
+    mockPrismaClient.group.findUnique.mockResolvedValue({
         id: 'group-1',
         name: 'Existing Name',
         description: 'old description',
         purpose: 'old purpose',
         members: [{ userId: 'u1' }],
-      } as any)
-      // setMembers internal fetch
-      .mockResolvedValueOnce({
-        id: 'group-1',
-        members: [{ userId: 'u1' }],
-      } as any)
-      .mockResolvedValueOnce({
+      } as any);
+    mockPrismaClient.group.update.mockResolvedValue({
         id: 'group-1',
         name: 'Existing Name',
         description: 'new description',
@@ -347,31 +337,25 @@ describe('Admin Groups Routes', () => {
     expect(mockPrismaClient.group.update).toHaveBeenCalledWith({
       where: { id: 'group-1' },
       data: {
-        name: 'Existing Name',
         description: 'new description',
         purpose: null,
       },
+      include: expect.any(Object),
     });
     expect(mockPrismaClient.groupMember.deleteMany).not.toHaveBeenCalled();
     expect(mockPrismaClient.groupMember.createMany).not.toHaveBeenCalled();
-    expect(mockInvalidateUserAccessCache).not.toHaveBeenCalled();
+    expect(mockClearAccessCache).toHaveBeenCalledTimes(1);
   });
 
   it('updates with empty memberIds removes all members', async () => {
-    mockPrismaClient.group.findUnique
-      .mockResolvedValueOnce({
+    mockPrismaClient.group.findUnique.mockResolvedValue({
         id: 'group-1',
         name: 'Group',
         description: null,
         purpose: null,
         members: [{ userId: 'u1' }, { userId: 'u2' }],
-      } as any)
-      // setMembers internal fetch
-      .mockResolvedValueOnce({
-        id: 'group-1',
-        members: [{ userId: 'u1' }, { userId: 'u2' }],
-      } as any)
-      .mockResolvedValueOnce({
+      } as any);
+    mockPrismaClient.group.update.mockResolvedValue({
         id: 'group-1',
         name: 'Group',
         description: null,
@@ -390,27 +374,20 @@ describe('Admin Groups Routes', () => {
       where: { groupId: 'group-1', userId: { in: ['u1', 'u2'] } },
     });
     expect(mockPrismaClient.groupMember.createMany).not.toHaveBeenCalled();
-    expect(mockInvalidateUserAccessCache).toHaveBeenCalledTimes(2);
-    expect(mockInvalidateUserAccessCache).toHaveBeenCalledWith('u1');
-    expect(mockInvalidateUserAccessCache).toHaveBeenCalledWith('u2');
+    expect(mockClearAccessCache).toHaveBeenCalledTimes(1);
     expect(response.body.members).toHaveLength(0);
   });
 
   it('updates with identical memberIds makes no member mutations (idempotent)', async () => {
-    mockPrismaClient.group.findUnique
-      .mockResolvedValueOnce({
+    mockPrismaClient.user.findMany.mockResolvedValue([{ id: 'u1' }, { id: 'u2' }] as any);
+    mockPrismaClient.group.findUnique.mockResolvedValue({
         id: 'group-1',
         name: 'Group',
         description: null,
         purpose: null,
         members: [{ userId: 'u1' }, { userId: 'u2' }],
-      } as any)
-      // setMembers internal fetch
-      .mockResolvedValueOnce({
-        id: 'group-1',
-        members: [{ userId: 'u1' }, { userId: 'u2' }],
-      } as any)
-      .mockResolvedValueOnce({
+      } as any);
+    mockPrismaClient.group.update.mockResolvedValue({
         id: 'group-1',
         name: 'Group',
         description: null,
@@ -430,25 +407,19 @@ describe('Admin Groups Routes', () => {
     expect(response.status).toBe(200);
     expect(mockPrismaClient.groupMember.deleteMany).not.toHaveBeenCalled();
     expect(mockPrismaClient.groupMember.createMany).not.toHaveBeenCalled();
-    expect(mockInvalidateUserAccessCache).not.toHaveBeenCalled();
+    expect(mockClearAccessCache).toHaveBeenCalledTimes(1);
     expect(response.body.members).toHaveLength(2);
   });
 
   it('updates with mix of valid and invalid userIds adds only valid ones', async () => {
-    mockPrismaClient.group.findUnique
-      .mockResolvedValueOnce({
+    mockPrismaClient.group.findUnique.mockResolvedValue({
         id: 'group-1',
         name: 'Group',
         description: null,
         purpose: null,
         members: [],
-      } as any)
-      // setMembers internal fetch
-      .mockResolvedValueOnce({
-        id: 'group-1',
-        members: [],
-      } as any)
-      .mockResolvedValueOnce({
+      } as any);
+    mockPrismaClient.group.update.mockResolvedValue({
         id: 'group-1',
         name: 'Group',
         description: null,
@@ -470,11 +441,9 @@ describe('Admin Groups Routes', () => {
     expect(response.status).toBe(200);
     expect(mockPrismaClient.groupMember.createMany).toHaveBeenCalledWith({
       data: [{ groupId: 'group-1', userId: 'u1', role: 'member' }],
-      skipDuplicates: true,
+      skipDuplicates: false,
     });
-    expect(mockInvalidateUserAccessCache).toHaveBeenCalledTimes(1);
-    expect(mockInvalidateUserAccessCache).toHaveBeenCalledWith('u1');
-    expect(mockInvalidateUserAccessCache).not.toHaveBeenCalledWith('u99');
+    expect(mockClearAccessCache).toHaveBeenCalledTimes(1);
     expect(response.body.members).toHaveLength(1);
   });
 

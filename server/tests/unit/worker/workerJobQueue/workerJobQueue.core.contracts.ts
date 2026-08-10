@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   WorkerJobQueue,
+  createdWorkers,
   type WorkerJobHandler,
   type WorkerJobQueueAccessor,
 } from "./workerJobQueueTestHarness";
@@ -39,6 +40,34 @@ export const registerWorkerJobQueueCoreContracts = (
 
       // Should have initialized successfully (no errors)
       expect(queue.isHealthy()).toBe(true);
+    });
+
+    it("keeps consumers stopped until explicitly started when autorun is disabled", async () => {
+      const gatedQueue = new WorkerJobQueue({
+        concurrency: 1,
+        queues: ["maintenance"],
+        autorun: false,
+      });
+
+      await gatedQueue.initialize();
+
+      expect(createdWorkers).toHaveLength(1);
+      expect(createdWorkers[0].options?.autorun).toBe(false);
+      expect(gatedQueue.isHealthy()).toBe(false);
+      expect(createdWorkers[0].run).not.toHaveBeenCalled();
+
+      gatedQueue.startConsumers();
+
+      expect(createdWorkers[0].run).toHaveBeenCalledOnce();
+      expect(gatedQueue.isHealthy()).toBe(true);
+      gatedQueue.startConsumers();
+      expect(createdWorkers[0].run).toHaveBeenCalledOnce();
+    });
+
+    it("rejects consumer startup before queue initialization", () => {
+      expect(() => queue.startConsumers()).toThrow(
+        "Worker job queue must be initialized before consumers start",
+      );
     });
 
     it("should not reinitialize if already initialized", async () => {

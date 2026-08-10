@@ -165,6 +165,9 @@ export interface SystemEvents {
     enabled: boolean;
     previousValue: boolean;
     changedBy: string;
+    generation: string;
+    digest: string;
+    snapshot: Record<string, boolean>;
   };
 }
 

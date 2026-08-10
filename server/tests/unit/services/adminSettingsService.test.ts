@@ -250,4 +250,16 @@ describe('adminSettingsService', () => {
 
     expect(mocks.set).not.toHaveBeenCalled();
   });
+
+  it('rejects attempts to overwrite operational runtime metadata', async () => {
+    const { updateAdminSettings } = await loadService();
+
+    await expect(updateAdminSettings({
+      'operational.feature-runtime.generation': 0,
+    })).rejects.toMatchObject({
+      statusCode: 400,
+      message: "System setting 'operational.feature-runtime.generation' is managed by the runtime",
+    });
+    expect(mocks.set).not.toHaveBeenCalled();
+  });
 });

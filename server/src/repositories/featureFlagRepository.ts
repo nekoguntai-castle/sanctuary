@@ -4,8 +4,20 @@
  * Abstracts database operations for feature flags and their audit trail.
  */
 
-import prisma from '../models/prisma';
+import prisma, { type PrismaTxClient } from '../models/prisma';
 import type { FeatureFlag, FeatureFlagAudit, Prisma } from '../generated/prisma/client';
+import { FEATURE_RUNTIME_GENERATION_KEY } from './operationalSystemSettings';
+
+export { FEATURE_RUNTIME_GENERATION_KEY } from './operationalSystemSettings';
+
+export interface FeatureRuntimeState {
+  generation: string;
+  flags: FeatureFlag[];
+}
+
+export interface SetFlagResult extends FeatureRuntimeState {
+  previousValue: boolean | null;
+}
 
 /**
  * Find a feature flag by key
@@ -55,7 +67,7 @@ export async function setFlagWithAudit(
   key: string,
   enabled: boolean,
   options: { userId: string; reason?: string; ipAddress?: string }
-): Promise<boolean | null> {
+): Promise<SetFlagResult> {
   return prisma.$transaction(async (tx) => {
     const current = await tx.featureFlag.findUnique({ where: { key } });
     if (!current) {
@@ -63,7 +75,10 @@ export async function setFlagWithAudit(
     }
 
     if (current.enabled === enabled) {
-      return null; // No change needed
+      return {
+        previousValue: null,
+        ...(await loadRuntimeStateInTransaction(tx)),
+      };
     }
 
     await tx.featureFlag.update({
@@ -86,8 +101,88 @@ export async function setFlagWithAudit(
       },
     });
 
-    return current.enabled;
+    const generation = await advanceGeneration(tx);
+    const flags = await findAllInTransaction(tx);
+    return { previousValue: current.enabled, generation, flags };
+  }, { isolationLevel: 'Serializable' });
+}
+
+export async function ensureDefaults(defaults: Array<{
+  key: string;
+  enabled: boolean;
+  description: string | null;
+  category: string;
+  modifiedBy: string;
+}>): Promise<FeatureRuntimeState> {
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.featureFlag.findMany({ select: { key: true } });
+    const existingKeys = new Set(existing.map(({ key }) => key));
+    const missing = defaults.filter(({ key }) => !existingKeys.has(key));
+    if (missing.length > 0) {
+      await tx.featureFlag.createMany({ data: missing, skipDuplicates: true });
+      const generation = await advanceGeneration(tx);
+      return { generation, flags: await findAllInTransaction(tx) };
+    }
+    return loadRuntimeStateInTransaction(tx);
+  }, { isolationLevel: 'Serializable' });
+}
+
+export async function loadRuntimeState(): Promise<FeatureRuntimeState> {
+  return prisma.$transaction(
+    (tx) => loadRuntimeStateInTransaction(tx),
+    { isolationLevel: 'RepeatableRead' },
+  );
+}
+
+export async function readGeneration(tx: PrismaTxClient): Promise<string> {
+  const setting = await tx.systemSetting.findUnique({
+    where: { key: FEATURE_RUNTIME_GENERATION_KEY },
+    select: { value: true },
   });
+  return normalizeGeneration(setting?.value);
+}
+
+export async function advanceGeneration(
+  tx: PrismaTxClient,
+  minimumGeneration = '0',
+): Promise<string> {
+  await tx.systemSetting.upsert({
+    where: { key: FEATURE_RUNTIME_GENERATION_KEY },
+    create: { key: FEATURE_RUNTIME_GENERATION_KEY, value: normalizeGeneration(minimumGeneration) },
+    update: {},
+  });
+  const current = await readGeneration(tx);
+  const next = (maxGeneration(current, minimumGeneration) + 1n).toString();
+  await tx.systemSetting.update({
+    where: { key: FEATURE_RUNTIME_GENERATION_KEY },
+    data: { value: next },
+  });
+  return next;
+}
+
+export async function loadRuntimeStateInTransaction(
+  tx: PrismaTxClient,
+): Promise<FeatureRuntimeState> {
+  const generation = await readGeneration(tx);
+  return { generation, flags: await findAllInTransaction(tx) };
+}
+
+async function findAllInTransaction(tx: PrismaTxClient): Promise<FeatureFlag[]> {
+  return tx.featureFlag.findMany({ orderBy: [{ category: 'asc' }, { key: 'asc' }] });
+}
+
+function normalizeGeneration(value: string | undefined): string {
+  if (value === undefined) return '0';
+  if (!/^\d+$/.test(value)) {
+    throw new Error(`Invalid feature runtime generation '${value}'`);
+  }
+  return BigInt(value).toString();
+}
+
+function maxGeneration(left: string, right: string): bigint {
+  const leftValue = BigInt(normalizeGeneration(left));
+  const rightValue = BigInt(normalizeGeneration(right));
+  return leftValue > rightValue ? leftValue : rightValue;
 }
 
 /**
@@ -112,6 +207,11 @@ export const featureFlagRepository = {
   findAll,
   create,
   setFlagWithAudit,
+  ensureDefaults,
+  loadRuntimeState,
+  readGeneration,
+  advanceGeneration,
+  loadRuntimeStateInTransaction,
   getAuditLog,
 };
 

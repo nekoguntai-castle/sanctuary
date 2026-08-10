@@ -14,6 +14,7 @@ vi.mock('../../../src/models/prisma', () => ({
       findUnique: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
       delete: vi.fn(),
     },
     groupMember: {
@@ -26,11 +27,13 @@ vi.mock('../../../src/models/prisma', () => ({
     user: {
       findMany: vi.fn(),
     },
+    $transaction: vi.fn(),
   },
 }));
 
 import prisma from '../../../src/models/prisma';
 import groupRepository from '../../../src/repositories/groupRepository';
+import { Prisma } from '../../../src/generated/prisma/client';
 
 describe('Group Repository', () => {
   const mockGroup = {
@@ -63,6 +66,97 @@ describe('Group Repository', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    (prisma.$transaction as Mock).mockImplementation(async (operation) => operation(prisma));
+  });
+
+  describe('atomic metadata and memberships', () => {
+    it('creates with normalized existing members in one serializable transaction', async () => {
+      (prisma.user.findMany as Mock).mockResolvedValue([{ id: 'user-1' }]);
+      (prisma.group.create as Mock).mockResolvedValue(mockGroupWithMembers);
+
+      const result = await groupRepository.createWithMembers({
+        name: 'Test Group',
+        memberIds: ['user-1', 'missing', 'user-1'],
+      });
+
+      expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+        isolationLevel: 'Serializable',
+      });
+      expect(prisma.user.findMany).toHaveBeenCalledWith({
+        where: { id: { in: ['user-1', 'missing'] } },
+        select: { id: true },
+      });
+      expect(prisma.group.create).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({
+          members: { create: [{ userId: 'user-1', role: 'member' }] },
+        }),
+      }));
+      expect(result.membershipChanges.addedUserIds).toEqual(['user-1']);
+    });
+
+    it('replaces members as an exact diff while preserving retained roles', async () => {
+      (prisma.group.updateMany as Mock).mockResolvedValue({ count: 1 });
+      (prisma.group.findUnique as Mock).mockResolvedValue({
+        ...mockGroup,
+        members: [
+          { ...mockMember, userId: 'user-1', role: 'admin' },
+          { ...mockMember, userId: 'user-2' },
+        ],
+      });
+      (prisma.user.findMany as Mock).mockResolvedValue([
+        { id: 'user-1' },
+        { id: 'user-3' },
+      ]);
+      (prisma.group.update as Mock).mockResolvedValue(mockGroupWithMembers);
+      (prisma.groupMember.deleteMany as Mock).mockResolvedValue({ count: 1 });
+      (prisma.groupMember.createMany as Mock).mockResolvedValue({ count: 1 });
+
+      const result = await groupRepository.updateWithMembers(
+        'group-1',
+        { name: 'Winner' },
+        ['user-1', 'user-3'],
+      );
+
+      expect(result?.membershipChanges).toEqual({
+        addedUserIds: ['user-3'],
+        removedUserIds: ['user-2'],
+      });
+      expect(prisma.groupMember.deleteMany).toHaveBeenCalledWith({
+        where: { groupId: 'group-1', userId: { in: ['user-2'] } },
+      });
+      expect(prisma.groupMember.createMany).toHaveBeenCalledWith({
+        data: [{ groupId: 'group-1', userId: 'user-3', role: 'member' }],
+        skipDuplicates: false,
+      });
+    });
+
+    it('returns not found without membership writes after the group lock loses deletion', async () => {
+      (prisma.group.updateMany as Mock).mockResolvedValue({ count: 0 });
+
+      await expect(groupRepository.updateWithMembers(
+        'deleted',
+        { name: 'Nope' },
+        ['user-1'],
+      )).resolves.toBeNull();
+
+      expect(prisma.groupMember.deleteMany).not.toHaveBeenCalled();
+      expect(prisma.groupMember.createMany).not.toHaveBeenCalled();
+    });
+
+    it('retries serialization conflicts and exposes normal conflict after exhaustion', async () => {
+      const conflict = new Prisma.PrismaClientKnownRequestError('write conflict', {
+        code: 'P2034',
+        clientVersion: 'test',
+      });
+      (prisma.$transaction as Mock).mockRejectedValue(conflict);
+
+      await expect(groupRepository.createWithMembers({
+        name: 'Contended',
+        memberIds: [],
+      })).rejects.toMatchObject({ statusCode: 409 });
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(3);
+    });
   });
 
   describe('findAllWithMembers', () => {

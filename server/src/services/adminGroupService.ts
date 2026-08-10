@@ -1,10 +1,10 @@
 import { NotFoundError, ConflictError } from '../errors/ApiError';
-import { invalidateUserAccessCache } from './accessControl';
+import { clearAccessCacheStrict, invalidateUserAccessCacheStrict } from './accessControl';
 import * as groupRepo from '../repositories/groupRepository';
 import { findById as findUserById } from '../repositories/userRepository';
 
 type GroupWithMembers = NonNullable<Awaited<ReturnType<typeof groupRepo.findByIdWithMembers>>>;
-type SetMembersResult = NonNullable<Awaited<ReturnType<typeof groupRepo.setMembers>>>;
+type SetMembersResult = groupRepo.SetMembersResult;
 
 export type AdminGroupInput = {
   name?: string;
@@ -50,44 +50,35 @@ export async function listAdminGroups(): Promise<AdminGroupResponse[]> {
 }
 
 export async function createAdminGroup(input: CreateAdminGroupInput): Promise<AdminGroupResponse> {
-  const group = await groupRepo.create({
+  const result = await groupRepo.createWithMembers({
     name: input.name,
     description: input.description || null,
     purpose: input.purpose || null,
+    memberIds: input.memberIds ?? [],
   });
-
-  if (input.memberIds?.length) {
-    await groupRepo.addMembers(group.id, input.memberIds);
-  }
-
-  return getExistingGroupWithMembers(group.id);
+  await invalidateChangedGroupMemberAccessCaches(result.membershipChanges);
+  return formatGroup(result.group);
 }
 
 export async function updateAdminGroup(
   groupId: string,
   input: AdminGroupInput,
 ): Promise<AdminGroupResponse> {
-  const existingGroup = await groupRepo.findById(groupId);
-  if (!existingGroup) {
+  const result = await groupRepo.updateWithMembers(groupId, {
+    ...(input.name !== undefined ? { name: input.name } : {}),
+    ...(input.description !== undefined ? { description: input.description } : {}),
+    ...(input.purpose !== undefined ? { purpose: input.purpose } : {}),
+  }, input.memberIds);
+  if (!result) {
     throw new NotFoundError('Group not found');
   }
-
-  await groupRepo.update(groupId, {
-    name: input.name || existingGroup.name,
-    description: input.description !== undefined ? input.description : existingGroup.description,
-    purpose: input.purpose !== undefined ? input.purpose : existingGroup.purpose,
-  });
-
   if (input.memberIds !== undefined) {
-    const membershipChanges = await groupRepo.setMembers(groupId, input.memberIds);
-    /* v8 ignore next -- group existence is checked before update; null requires a concurrent delete. */
-    if (!membershipChanges) {
-      throw new NotFoundError('Group not found');
-    }
-    await invalidateChangedGroupMemberAccessCaches(membershipChanges);
+    // The transaction may already have committed when cache invalidation fails.
+    // Clear the complete cache even for an idempotent retry so a retry can repair
+    // stale decisions for users removed by the first committed attempt.
+    await clearAccessCacheStrict();
   }
-
-  return getExistingGroupWithMembers(groupId);
+  return formatGroup(result.group);
 }
 
 export async function deleteAdminGroup(groupId: string): Promise<DeletedAdminGroup> {
@@ -97,7 +88,7 @@ export async function deleteAdminGroup(groupId: string): Promise<DeletedAdminGro
   }
 
   await Promise.all(
-    deletedGroup.members.map((member) => invalidateUserAccessCache(member.userId)),
+    deletedGroup.members.map((member) => invalidateUserAccessCacheStrict(member.userId)),
   );
 
   return {
@@ -127,7 +118,7 @@ export async function addAdminGroupMember(
   }
 
   const membership = await groupRepo.addMember(groupId, userId, role);
-  await invalidateUserAccessCache(userId);
+  await invalidateUserAccessCacheStrict(userId);
 
   return {
     userId,
@@ -143,7 +134,7 @@ export async function removeAdminGroupMember(groupId: string, userId: string): P
   }
 
   await groupRepo.removeMember(groupId, userId);
-  await invalidateUserAccessCache(userId);
+  await invalidateUserAccessCacheStrict(userId);
 }
 
 function formatGroup(group: GroupWithMembers): AdminGroupResponse {
@@ -162,16 +153,6 @@ function formatGroup(group: GroupWithMembers): AdminGroupResponse {
   };
 }
 
-async function getExistingGroupWithMembers(groupId: string): Promise<AdminGroupResponse> {
-  const group = await groupRepo.findByIdWithMembers(groupId);
-  /* v8 ignore next -- not-found behavior is covered at admin route boundary */
-  if (!group) {
-    throw new NotFoundError('Group not found');
-  }
-
-  return formatGroup(group);
-}
-
 async function invalidateChangedGroupMemberAccessCaches(
   membershipChanges: SetMembersResult,
 ): Promise<void> {
@@ -181,6 +162,6 @@ async function invalidateChangedGroupMemberAccessCaches(
   ]);
 
   await Promise.all(
-    [...affectedUserIds].map((userId) => invalidateUserAccessCache(userId)),
+    [...affectedUserIds].map((userId) => invalidateUserAccessCacheStrict(userId)),
   );
 }

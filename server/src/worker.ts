@@ -41,7 +41,6 @@ import {
   stopDatabaseHealthCheck,
 } from './models/prisma';
 import {
-  getDistributedEventBus,
   initializeDistributedLock,
   initializeRedis,
   isRedisConnected,
@@ -170,6 +169,7 @@ async function startWorker(): Promise<void> {
   jobQueue = new WorkerJobQueue({
     concurrency: workerConcurrency,
     queues: ['sync', 'notifications', 'confirmations', 'maintenance'],
+    autorun: false,
   });
 
   // Register handlers before BullMQ workers start consuming retained jobs.
@@ -179,8 +179,6 @@ async function startWorker(): Promise<void> {
     jobs: jobQueue.getRegisteredJobs(),
   });
 
-  // Initialize feature flag service (requires Redis + Prisma, both ready at this point)
-  await featureFlagService.initialize();
   recurringScheduleCoordinator = new RecurringScheduleCoordinator(
     jobQueue,
     config,
@@ -191,19 +189,15 @@ async function startWorker(): Promise<void> {
       ),
     }),
   );
-
-  // Subscribe to feature flag changes for dynamic job scheduling
-  const bus = getDistributedEventBus();
-  bus.on('system:featureFlag.changed', async ({ key }) => {
-    if (!jobQueue) return;
-
-    if (
-      key === 'treasuryAutopilot' ||
-      key === 'treasuryIntelligence'
-    ) {
-      await reconcileApplicableRecurringSchedules(false);
-    }
-  });
+  // Worker acknowledgement follows snapshot installation and schedule convergence.
+  featureFlagService.configureRuntime(
+    'worker',
+    reconcileApplicableRecurringSchedules,
+  );
+  await featureFlagService.initialize();
+  // Retained jobs can execute only after the durable feature snapshot is
+  // installed, conditional schedules converge, and the worker acknowledges it.
+  jobQueue.startConsumers();
 
   // Initialize Electrum subscription manager
   log.info('Starting Electrum subscription manager...');
@@ -215,7 +209,6 @@ async function startWorker(): Promise<void> {
 
   workerStartedAt = Date.now();
   setupStaleWalletHandler();
-  await reconcileApplicableRecurringSchedules(true);
 
   // Start health server only after required schedules are present.
   const healthPort = parseInt(process.env.WORKER_HEALTH_PORT || '3002', 10);
@@ -393,7 +386,7 @@ function handleAddressActivity(network: BitcoinNetwork, walletId: string, addres
 // =============================================================================
 
 async function scheduleRecurringJobs(): Promise<void> {
-  await reconcileApplicableRecurringSchedules(false);
+  await reconcileApplicableRecurringSchedules();
 }
 
 // Test-only hook to exercise recurring job scheduling guard branches.
@@ -401,9 +394,7 @@ export async function __testOnlyScheduleRecurringJobs(): Promise<void> {
   await scheduleRecurringJobs();
 }
 
-async function reconcileApplicableRecurringSchedules(
-  failStartup: boolean,
-): Promise<void> {
+async function reconcileApplicableRecurringSchedules(): Promise<void> {
   if (!recurringScheduleCoordinator) return;
   const result = await recurringScheduleCoordinator.reconcile();
   if (result.healthy) return;
@@ -412,10 +403,9 @@ async function reconcileApplicableRecurringSchedules(
     ...failedScheduleIds(result.results),
     ...failedScheduleIds(result.removals),
   ];
-  if (failStartup) {
-    throw new Error(`Required recurring schedule reconciliation failed: ${failed.join(', ')}`);
-  }
-  log.error('Recurring schedule reconciliation failed', { failed });
+  throw new Error(
+    `Required recurring schedule reconciliation failed: ${failed.join(', ') || 'unknown schedule'}`,
+  );
 }
 
 function failedScheduleIds(
@@ -454,7 +444,7 @@ async function getRecurringScheduleHealth(): Promise<RecurringScheduleHealth> {
 function startScheduleReconciliationTimer(): void {
   scheduleReconciliationTimer = setInterval(() => {
     if (isShuttingDown) return;
-    void reconcileApplicableRecurringSchedules(false).catch((error) => {
+    void reconcileApplicableRecurringSchedules().catch((error) => {
       log.error('Recurring schedule reconciliation failed', {
         error: getErrorMessage(error),
       });
@@ -585,6 +575,7 @@ async function shutdown(signal: string, exitCode: 0 | 1 = 0): Promise<void> {
 
   // Close Redis
   try {
+    featureFlagService.shutdownRuntime();
     await shutdownRedis();
   } catch (err) {
     log.error('Error shutting down Redis', { error: getErrorMessage(err) });

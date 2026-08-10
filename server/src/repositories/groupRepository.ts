@@ -1,10 +1,19 @@
-import prisma from '../models/prisma';
+import prisma, { type PrismaTxClient } from '../models/prisma';
 import type { Group, GroupMember } from '../generated/prisma/client';
+import { ConflictError } from '../errors/ApiError';
+import { isSerializableTransactionConflict } from '../utils/prismaSerializableConflict';
 
 export interface SetMembersResult {
   addedUserIds: string[];
   removedUserIds: string[];
 }
+
+export interface AtomicGroupResult {
+  group: NonNullable<Awaited<ReturnType<typeof findByIdWithMembers>>>;
+  membershipChanges: SetMembersResult;
+}
+
+const MAX_GROUP_TRANSACTION_ATTEMPTS = 3;
 
 const membersInclude = {
   members: {
@@ -42,6 +51,118 @@ export async function create(data: {
   purpose?: string | null;
 }) {
   return prisma.group.create({ data });
+}
+
+export async function createWithMembers(data: {
+  name: string;
+  description?: string | null;
+  purpose?: string | null;
+  memberIds: string[];
+}): Promise<AtomicGroupResult> {
+  return withGroupTransactionRetry(async () => {
+    return prisma.$transaction(async (tx) => {
+      const normalizedMemberIds = [...new Set(data.memberIds)];
+      const users = await tx.user.findMany({
+        where: { id: { in: normalizedMemberIds } },
+        select: { id: true },
+      });
+      const validUserIds = users.map(({ id }) => id);
+      const group = await tx.group.create({
+        data: {
+          name: data.name,
+          description: data.description ?? null,
+          purpose: data.purpose ?? null,
+          members: {
+            create: validUserIds.map((userId) => ({ userId, role: 'member' })),
+          },
+        },
+        include: membersInclude,
+      });
+      return {
+        group,
+        membershipChanges: { addedUserIds: validUserIds, removedUserIds: [] },
+      };
+    }, { isolationLevel: 'Serializable' });
+  });
+}
+
+export async function updateWithMembers(
+  groupId: string,
+  data: { name?: string; description?: string | null; purpose?: string | null },
+  memberIds?: string[],
+): Promise<AtomicGroupResult | null> {
+  return withGroupTransactionRetry(async () => {
+    return prisma.$transaction(async (tx) => {
+      const locked = await tx.group.updateMany({
+        where: { id: groupId },
+        data: { updatedAt: new Date() },
+      });
+      if (locked.count === 0) return null;
+
+      const current = await tx.group.findUnique({
+        where: { id: groupId },
+        include: { members: true },
+      });
+      /* v8 ignore next -- the transaction-owned update above proves existence. */
+      if (!current) return null;
+
+      const changes = memberIds === undefined
+        ? { addedUserIds: [], removedUserIds: [] }
+        : await replaceMembersInTransaction(tx, groupId, current.members, memberIds);
+      const group = await tx.group.update({
+        where: { id: groupId },
+        data,
+        include: membersInclude,
+      });
+      return { group, membershipChanges: changes };
+    }, { isolationLevel: 'Serializable' });
+  });
+}
+
+async function replaceMembersInTransaction(
+  tx: PrismaTxClient,
+  groupId: string,
+  currentMembers: GroupMember[],
+  requestedIds: string[],
+): Promise<SetMembersResult> {
+  const normalizedIds = [...new Set(requestedIds)];
+  const users = await tx.user.findMany({
+    where: { id: { in: normalizedIds } },
+    select: { id: true },
+  });
+  const validIds = users.map(({ id }) => id);
+  const currentIds = new Set(currentMembers.map(({ userId }) => userId));
+  const requested = new Set(validIds);
+  const addedUserIds = validIds.filter((id) => !currentIds.has(id));
+  const removedUserIds = [...currentIds].filter((id) => !requested.has(id));
+
+  if (removedUserIds.length > 0) {
+    await tx.groupMember.deleteMany({
+      where: { groupId, userId: { in: removedUserIds } },
+    });
+  }
+  if (addedUserIds.length > 0) {
+    await tx.groupMember.createMany({
+      data: addedUserIds.map((userId) => ({ groupId, userId, role: 'member' })),
+      skipDuplicates: false,
+    });
+  }
+  return { addedUserIds, removedUserIds };
+}
+
+async function withGroupTransactionRetry<T>(operation: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; attempt <= MAX_GROUP_TRANSACTION_ATTEMPTS; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (!isSerializableTransactionConflict(error)) throw error;
+      if (attempt === MAX_GROUP_TRANSACTION_ATTEMPTS) {
+        throw new ConflictError('Group changed concurrently; please retry');
+      }
+    }
+  }
+  /* v8 ignore next -- every loop path returns or throws. */
+  throw new ConflictError('Group changed concurrently; please retry');
 }
 
 export async function update(
@@ -180,7 +301,9 @@ const groupRepository = {
   findByIdWithMembers,
   findById,
   create,
+  createWithMembers,
   update,
+  updateWithMembers,
   deleteById,
   addMembers,
   setMembers,

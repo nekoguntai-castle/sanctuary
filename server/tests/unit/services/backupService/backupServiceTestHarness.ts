@@ -28,12 +28,20 @@ const loggerMocks = vi.hoisted(() => ({
   },
 }));
 
+const featureRuntimeMocks = vi.hoisted(() => ({
+  reconcileAfterRestore: vi.fn().mockResolvedValue(undefined),
+}));
+
 export function getMockClearAccessCacheStrict() {
   return accessCacheMocks.mockClearAccessCacheStrict;
 }
 
 export function getMockBackupLogger() {
   return loggerMocks.mockLogger;
+}
+
+export function getMockFeatureRuntimeReconcile() {
+  return featureRuntimeMocks.reconcileAfterRestore;
 }
 
 const createBackupModelMock = () => ({
@@ -99,6 +107,12 @@ vi.mock('../../../../src/services/migrationService', () => ({
     getSchemaVersion: vi.fn().mockResolvedValue(1),
   },
   getExpectedSchemaVersion: vi.fn().mockReturnValue(1),
+}));
+
+vi.mock('../../../../src/services/featureFlagService', () => ({
+  featureFlagService: {
+    reconcileAfterRestore: featureRuntimeMocks.reconcileAfterRestore,
+  },
 }));
 
 vi.mock('../../../../src/utils/encryption', () => ({
