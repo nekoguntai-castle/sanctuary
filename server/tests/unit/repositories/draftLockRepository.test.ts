@@ -7,6 +7,9 @@ const mocks = vi.hoisted(() => ({
     findMany: vi.fn(),
     createMany: vi.fn(),
   },
+  prismaUTXO: {
+    findMany: vi.fn(),
+  },
 }));
 
 vi.mock('../../../src/models/prisma', () => ({
@@ -14,11 +17,12 @@ vi.mock('../../../src/models/prisma', () => ({
   default: {
     $transaction: mocks.transaction,
     draftUtxoLock: mocks.prismaDraftUtxoLock,
-    uTXO: {},
+    uTXO: mocks.prismaUTXO,
   },
 }));
 
 import { lockUtxos } from '../../../src/repositories/draftLockRepository';
+import prisma from '../../../src/models/prisma';
 
 describe('draftLockRepository', () => {
   beforeEach(() => {
@@ -31,13 +35,12 @@ describe('draftLockRepository', () => {
 
   it('locks UTXOs with a provided transaction client without opening a new transaction', async () => {
     const client = {
-      draftUtxoLock: {
-        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
-        findMany: vi.fn().mockResolvedValue([]),
-        createMany: vi.fn().mockResolvedValue({ count: 2 }),
-      },
-      uTXO: {},
+      draftUtxoLock: prisma.draftUtxoLock,
+      uTXO: prisma.uTXO,
     };
+    vi.mocked(client.draftUtxoLock.deleteMany).mockResolvedValue({ count: 0 });
+    vi.mocked(client.draftUtxoLock.findMany).mockResolvedValue([]);
+    vi.mocked(client.draftUtxoLock.createMany).mockResolvedValue({ count: 2 });
 
     const result = await lockUtxos('draft-1', ['utxo-1', 'utxo-2'], client);
 

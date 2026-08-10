@@ -5,6 +5,24 @@ import {
 import prisma from '../../../../src/models/prisma';
 import { getAddressSubscriptionKey } from '../../../../src/worker/electrumManager/types';
 
+function addressRecord(id: string, address: string, walletId: string, network?: string) {
+  return {
+    id,
+    address,
+    walletId,
+    derivationPath: "m/84'/0'/0'/0/0",
+    index: 0,
+    branch: 0,
+    coordinateVersion: 1,
+    canonicalPolicyId: 'single-sig-native-segwit-bip84-v1',
+    canonicalPolicyVersion: 1,
+    scriptPubKey: null,
+    used: false,
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    wallet: network === undefined ? {} : { network },
+  };
+}
+
 export function registerElectrumManagerReconcileContracts() {
   describe('reconcileSubscriptions', () => {
     it('should remove addresses that no longer exist in database', async () => {
@@ -16,7 +34,7 @@ export function registerElectrumManagerReconcileContracts() {
 
       // Database only has addr1 (addr2 and addr3 were deleted)
       vi.mocked(prisma.address.findMany).mockResolvedValueOnce([
-        { id: '1', address: 'addr1', walletId: 'wallet1', wallet: { network: 'mainnet' } },
+        addressRecord('1', 'addr1', 'wallet1', 'mainnet'),
       ]);
 
       const result = await manager.reconcileSubscriptions();
@@ -36,8 +54,8 @@ export function registerElectrumManagerReconcileContracts() {
 
       // Database has new addresses
       vi.mocked(prisma.address.findMany).mockResolvedValueOnce([
-        { id: '1', address: 'addr1', walletId: 'wallet1', wallet: { network: 'mainnet' } },
-        { id: '2', address: 'addr2', walletId: 'wallet1', wallet: { network: 'mainnet' } },
+        addressRecord('1', 'addr1', 'wallet1', 'mainnet'),
+        addressRecord('2', 'addr2', 'wallet1', 'mainnet'),
       ]);
 
       const result = await manager.reconcileSubscriptions();
@@ -53,8 +71,8 @@ export function registerElectrumManagerReconcileContracts() {
       const addressToWallet = (manager as unknown as { addressToWallet: Map<string, unknown> }).addressToWallet;
 
       vi.mocked(prisma.address.findMany).mockResolvedValueOnce([
-        { id: '1', address: 'tb1qshared', walletId: 'wallet-testnet3', wallet: { network: 'testnet3' } },
-        { id: '2', address: 'tb1qshared', walletId: 'wallet-testnet4', wallet: { network: 'testnet4' } },
+        addressRecord('1', 'tb1qshared', 'wallet-testnet3', 'testnet3'),
+        addressRecord('2', 'tb1qshared', 'wallet-testnet4', 'testnet4'),
       ]);
 
       const result = await manager.reconcileSubscriptions();
@@ -77,8 +95,8 @@ export function registerElectrumManagerReconcileContracts() {
         .addressToWallet;
 
       vi.mocked(prisma.address.findMany).mockResolvedValueOnce([
-        { id: '1', address: 'addr-fallback', walletId: 'wallet-fallback', wallet: {} },
-      ] as any);
+        addressRecord('1', 'addr-fallback', 'wallet-fallback'),
+      ]);
 
       const result = await manager.reconcileSubscriptions();
 
@@ -99,8 +117,8 @@ export function registerElectrumManagerReconcileContracts() {
 
       // Database has one existing and one new
       vi.mocked(prisma.address.findMany).mockResolvedValueOnce([
-        { id: '1', address: 'keep', walletId: 'wallet1', wallet: { network: 'mainnet' } },
-        { id: '2', address: 'new1', walletId: 'wallet1', wallet: { network: 'mainnet' } },
+        addressRecord('1', 'keep', 'wallet1', 'mainnet'),
+        addressRecord('2', 'new1', 'wallet1', 'mainnet'),
       ]);
 
       const result = await manager.reconcileSubscriptions();
@@ -134,20 +152,12 @@ export function registerElectrumManagerReconcileContracts() {
       const addressToWallet = (manager as unknown as { addressToWallet: Map<string, unknown> }).addressToWallet;
 
       // First page returns 2000 addresses (full page)
-      const firstPage = Array.from({ length: 2000 }, (_, i) => ({
-        id: `id-${i}`,
-        address: `addr-${i}`,
-        walletId: 'wallet1',
-        wallet: { network: 'mainnet' },
-      }));
+      const firstPage = Array.from({ length: 2000 }, (_, i) =>
+        addressRecord(`id-${i}`, `addr-${i}`, 'wallet1', 'mainnet'));
 
       // Second page returns 500 addresses (partial page, ends pagination)
-      const secondPage = Array.from({ length: 500 }, (_, i) => ({
-        id: `id-${2000 + i}`,
-        address: `addr-${2000 + i}`,
-        walletId: 'wallet1',
-        wallet: { network: 'mainnet' },
-      }));
+      const secondPage = Array.from({ length: 500 }, (_, i) =>
+        addressRecord(`id-${2000 + i}`, `addr-${2000 + i}`, 'wallet1', 'mainnet'));
 
       vi.mocked(prisma.address.findMany)
         .mockResolvedValueOnce(firstPage)
@@ -169,8 +179,8 @@ export function registerElectrumManagerReconcileContracts() {
 
       // Database has the same addresses
       vi.mocked(prisma.address.findMany).mockResolvedValueOnce([
-        { id: '1', address: 'addr1', walletId: 'wallet1', wallet: { network: 'mainnet' } },
-        { id: '2', address: 'addr2', walletId: 'wallet1', wallet: { network: 'mainnet' } },
+        addressRecord('1', 'addr1', 'wallet1', 'mainnet'),
+        addressRecord('2', 'addr2', 'wallet1', 'mainnet'),
       ]);
 
       const result = await manager.reconcileSubscriptions();

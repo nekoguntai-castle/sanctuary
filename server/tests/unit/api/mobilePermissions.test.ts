@@ -63,6 +63,8 @@ vi.mock('../../../src/services/mobilePermissions', () => ({
     'manageDevices',
     'shareWallet',
     'deleteWallet',
+    'approveTransaction',
+    'managePolicies',
   ],
 }));
 
@@ -80,6 +82,7 @@ vi.mock('../../../src/utils/logger', () => ({
 import request from 'supertest';
 import express from 'express';
 import { mobilePermissionService } from '../../../src/services/mobilePermissions';
+import type { EffectivePermissions } from '../../../src/services/mobilePermissions';
 import { errorHandler } from '../../../src/errors/errorHandler';
 
 // Create test app - must import router AFTER mocks are set up
@@ -116,6 +119,8 @@ describe('Mobile Permissions API', () => {
     canManageDevices: false,
     canShareWallet: false,
     canDeleteWallet: false,
+    canApproveTransaction: false,
+    canManagePolicies: false,
     ownerMaxPermissions: null,
     lastModifiedBy: null,
     createdAt: new Date(),
@@ -123,12 +128,13 @@ describe('Mobile Permissions API', () => {
     wallet: {
       id: 'wallet-123',
       name: 'Test Wallet',
+      type: 'single_sig',
       network: 'mainnet',
       walletUsers: [{ role: 'signer' }],
     },
   };
 
-  const mockEffectivePermissions = {
+  const mockEffectivePermissions: EffectivePermissions = {
     walletId: 'wallet-123',
     userId: 'test-user-id',
     role: 'signer',
@@ -144,6 +150,8 @@ describe('Mobile Permissions API', () => {
       manageDevices: false,
       shareWallet: false,
       deleteWallet: false,
+      approveTransaction: false,
+      managePolicies: false,
     },
     hasCustomRestrictions: true,
     hasOwnerRestrictions: false,
@@ -208,6 +216,8 @@ describe('Mobile Permissions API', () => {
           canManageDevices: true,
           canShareWallet: true,
           canDeleteWallet: true,
+          canApproveTransaction: true,
+          canManagePolicies: true,
           effectivePermissions: {
             viewBalance: true,
             viewTransactions: true,
@@ -220,14 +230,55 @@ describe('Mobile Permissions API', () => {
             manageDevices: true,
             shareWallet: true,
             deleteWallet: true,
+            approveTransaction: true,
+            managePolicies: true,
           },
         },
-      ] as any);
+      ]);
 
       const response = await request(app).get('/api/v1/mobile-permissions');
 
       expect(response.status).toBe(200);
       expect(response.body.permissions[0].hasCustomRestrictions).toBe(false);
+    });
+
+    it.each([
+      'canApproveTransaction',
+      'canManagePolicies',
+    ] as const)('marks %s=false as a custom restriction', async (permission) => {
+      vi.mocked(mobilePermissionService.getUserMobilePermissions).mockResolvedValue([
+        {
+          ...mockPermission,
+          role: 'owner',
+          canBroadcast: true,
+          canManageDevices: true,
+          canShareWallet: true,
+          canDeleteWallet: true,
+          canApproveTransaction: true,
+          canManagePolicies: true,
+          [permission]: false,
+          effectivePermissions: {
+            viewBalance: true,
+            viewTransactions: true,
+            viewUtxos: true,
+            createTransaction: true,
+            broadcast: true,
+            signPsbt: true,
+            generateAddress: true,
+            manageLabels: true,
+            manageDevices: true,
+            shareWallet: true,
+            deleteWallet: true,
+            approveTransaction: permission !== 'canApproveTransaction',
+            managePolicies: permission !== 'canManagePolicies',
+          },
+        },
+      ]);
+
+      const response = await request(app).get('/api/v1/mobile-permissions');
+
+      expect(response.status).toBe(200);
+      expect(response.body.permissions[0].hasCustomRestrictions).toBe(true);
     });
 
     it('should return 500 on service error', async () => {
@@ -258,10 +309,18 @@ describe('Mobile Permissions API', () => {
     });
 
     it('should include walletUsers when requester is owner', async () => {
-      const ownerPermissions = { ...mockEffectivePermissions, role: 'owner' };
-      const walletUsersList = [
-        { userId: 'user-1', username: 'alice', role: 'owner', effectivePermissions: {} },
-        { userId: 'user-2', username: 'bob', role: 'signer', effectivePermissions: {} },
+      const ownerPermissions: EffectivePermissions = { ...mockEffectivePermissions, role: 'owner' };
+      const walletUsersList: Awaited<ReturnType<typeof mobilePermissionService.getWalletPermissions>> = [
+        {
+          userId: 'user-1', username: 'alice', role: 'owner',
+          effectivePermissions: { ...mockEffectivePermissions.permissions },
+          hasCustomRestrictions: false, hasOwnerRestrictions: false,
+        },
+        {
+          userId: 'user-2', username: 'bob', role: 'signer',
+          effectivePermissions: { ...mockEffectivePermissions.permissions },
+          hasCustomRestrictions: true, hasOwnerRestrictions: false,
+        },
       ];
 
       vi.mocked(mobilePermissionService.getEffectivePermissions).mockResolvedValue(ownerPermissions);

@@ -117,6 +117,8 @@ export const registerWalletRepositoryMutationContracts = () => {
       sourceDescriptorChecksum: null,
       sourceChangeDescriptorChecksum: null,
       fingerprint: '12345678',
+      canonicalPolicyId: 'single-sig-native-segwit-bip84-v1',
+      canonicalPolicyVersion: 1,
       addresses: [{
         walletId: 'w1',
         address: 'bc1qtest',
@@ -186,6 +188,8 @@ export const registerWalletRepositoryMutationContracts = () => {
       sourceDescriptorChecksum: null,
       sourceChangeDescriptorChecksum: null,
       fingerprint: '87654321',
+      canonicalPolicyId: 'single-sig-native-segwit-bip84-v1',
+      canonicalPolicyVersion: 1,
       addresses: [{
         walletId: 'w1',
         address: 'bc1qrepair',

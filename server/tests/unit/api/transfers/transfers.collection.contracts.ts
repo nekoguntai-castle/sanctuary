@@ -150,7 +150,7 @@ export function registerTransferCollectionTests(): void {
     });
 
     it('should return 404 when resource not found', async () => {
-      mockInitiateTransfer.mockRejectedValue(new NotFoundError('Resource', 'non-existent'));
+      mockInitiateTransfer.mockRejectedValue(new NotFoundError('Resource not found'));
 
       const res = await request(getTransfersApp())
         .post('/api/v1/transfers')

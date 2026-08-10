@@ -72,7 +72,7 @@ type HandlerResponse = {
 };
 
 let app: Express;
-let transfersRouter: { handle: (req: unknown, res: unknown, next: (err?: unknown) => void) => void };
+let transfersRouter: ReturnType<typeof express.Router>;
 
 export const authHeader = 'Bearer valid-token';
 export const userId = 'user-123';
@@ -100,7 +100,7 @@ export function setupTransfersApiTestHarness(): void {
     transfersRouter = routerModule.default;
     app = express();
     app.use(express.json());
-    app.use('/api/v1/transfers', transfersRouter as any);
+    app.use('/api/v1/transfers', transfersRouter);
     app.use(errorsModule.errorHandler);
   });
 
@@ -181,7 +181,7 @@ class RequestBuilder {
         },
       };
 
-      transfersRouter.handle(req, res, (err?: any) => {
+      transfersRouter(req, res, (err?: any) => {
         if (err) {
           const statusCode = err.statusCode || 500;
           const body = err.toResponse

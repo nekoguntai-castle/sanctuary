@@ -122,6 +122,7 @@ describeWithDatabase('address sync transaction reconciliation', () => {
     fee: type === 'received' ? undefined : BigInt(1_000),
     confirmations: type === 'sent' ? 2 : 0,
     blockHeight: type === 'sent' ? 100 : null,
+    blockTime: type === 'sent' ? new Date('2026-01-01T00:00:00.000Z') : null,
     rbfStatus: type === 'sent' ? 'confirmed' as const : 'active' as const,
   });
 

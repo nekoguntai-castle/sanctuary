@@ -7,7 +7,6 @@ import {
   randomTxid,
 } from '../../../helpers/testUtils';
 import * as blockchain from '../../../../src/services/bitcoin/blockchain';
-import * as addressDerivation from '../../../../src/services/bitcoin/addressDerivation';
 
 export function registerTransactionMutationTests(): void {
   describe('Input Validation', () => {
@@ -436,7 +435,7 @@ export function registerTransactionMutationTests(): void {
         network: 'testnet',
       });
 
-      vi.mocked(blockchain.broadcastTransaction).mockResolvedValue(txid);
+      vi.mocked(blockchain.broadcastTransaction).mockResolvedValue({ txid, broadcasted: true });
 
       mockPrismaClient.transaction.create.mockResolvedValue({
         id: 'tx-new',
@@ -450,10 +449,10 @@ export function registerTransactionMutationTests(): void {
       const { res, getResponse } = createMockResponse();
 
       // Simulate successful broadcast
-      const broadcastedTxid = await vi.mocked(blockchain.broadcastTransaction)('signed-hex');
+      const broadcastResult = await vi.mocked(blockchain.broadcastTransaction)('signed-hex', 'testnet3');
       res.json!({
         success: true,
-        txid: broadcastedTxid,
+        txid: broadcastResult.txid,
       });
 
       const response = getResponse();
@@ -466,14 +465,14 @@ export function registerTransactionMutationTests(): void {
       const rawTxHex = '0200000001abc...';
       const txid = randomTxid();
 
-      vi.mocked(blockchain.broadcastTransaction).mockResolvedValue(txid);
+      vi.mocked(blockchain.broadcastTransaction).mockResolvedValue({ txid, broadcasted: true });
 
       const { res, getResponse } = createMockResponse();
 
-      const broadcastedTxid = await vi.mocked(blockchain.broadcastTransaction)(rawTxHex);
+      const broadcastResult = await vi.mocked(blockchain.broadcastTransaction)(rawTxHex, 'testnet3');
       res.json!({
         success: true,
-        txid: broadcastedTxid,
+        txid: broadcastResult.txid,
       });
 
       const response = getResponse();
@@ -506,7 +505,7 @@ export function registerTransactionMutationTests(): void {
       const { res, getResponse } = createMockResponse();
 
       try {
-        await vi.mocked(blockchain.broadcastTransaction)('invalid-hex');
+        await vi.mocked(blockchain.broadcastTransaction)('invalid-hex', 'testnet3');
         res.json!({ success: true });
       } catch (error) {
         res.status!(400).json!({
@@ -525,7 +524,7 @@ export function registerTransactionMutationTests(): void {
       const txid = randomTxid();
       const recipient = randomAddress();
 
-      vi.mocked(blockchain.broadcastTransaction).mockResolvedValue(txid);
+      vi.mocked(blockchain.broadcastTransaction).mockResolvedValue({ txid, broadcasted: true });
       mockPrismaClient.transaction.create.mockResolvedValue({
         id: 'tx-new',
         txid,

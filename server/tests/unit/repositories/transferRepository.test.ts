@@ -477,6 +477,7 @@ describe('Transfer Repository', () => {
         resourceType: 'wallet',
         resourceId: 'wallet-1',
         status: 'pending',
+        expiresAt: new Date('2026-01-08T00:00:00.000Z'),
       });
 
       expect(result).toEqual(mockTransferWithUsers);
@@ -506,6 +507,7 @@ describe('Transfer Repository', () => {
           resourceType: 'wallet',
           resourceId: 'wallet-1',
           status: 'pending',
+          expiresAt: new Date('2026-01-08T00:00:00.000Z'),
         },
         mockTx as any
       );

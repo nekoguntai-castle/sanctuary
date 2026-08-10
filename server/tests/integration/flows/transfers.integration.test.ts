@@ -198,7 +198,9 @@ describeIntegration('ownership transfer consistency', () => {
     const releaseHandoff = createDeferred<void>();
 
     const handoff = prisma.$transaction(async tx => {
-      await transferRepository.lockResourceOwnership('wallet', wallet.id, tx);
+      await tx.$executeRaw`
+        UPDATE "wallets" SET "updatedAt" = "updatedAt" WHERE "id" = ${wallet.id}
+      `;
       await tx.walletUser.updateMany({
         where: { walletId: wallet.id, userId: owner.id, role: 'owner' },
         data: { role: 'viewer' },

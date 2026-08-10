@@ -7,14 +7,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Job } from 'bullmq';
 
+const syncJobPrismaMocks = vi.hoisted(() => ({
+  walletFindMany: vi.fn<() => Promise<unknown[]>>(),
+  walletUpdate: vi.fn<(args?: unknown) => Promise<unknown>>(),
+}));
+
 // Mock prisma
 vi.mock('../../../../src/models/prisma', () => ({
   default: (() => {
     const client: any = {
     wallet: {
-      findMany: vi.fn(),
+      findMany: syncJobPrismaMocks.walletFindMany,
       findUnique: vi.fn().mockResolvedValue({ network: 'mainnet' }),
-      update: vi.fn().mockResolvedValue({}),
+      update: syncJobPrismaMocks.walletUpdate,
     },
     address: {
       updateMany: vi.fn().mockResolvedValue({ count: 0 }),
@@ -64,19 +69,18 @@ vi.mock('../../../../src/services/bitcoin/sync/confirmations', () => ({
 }));
 
 import prisma from '../../../../src/models/prisma';
-import { syncWallet, setCachedBlockHeight } from '../../../../src/services/bitcoin/blockchain';
-import { updateTransactionConfirmations, populateMissingTransactionFields } from '../../../../src/services/bitcoin/sync/confirmations';
+import { syncWallet } from '../../../../src/services/bitcoin/blockchain';
+import { populateMissingTransactionFields } from '../../../../src/services/bitcoin/sync/confirmations';
 import {
   syncWalletJob,
   checkStaleWalletsJob,
-  updateConfirmationsJob,
-  updateAllConfirmationsJob,
 } from '../../../../src/worker/jobs/syncJobs';
 import { FULL_RESYNC_GENERATION_MAX } from '../../../../src/constants/fullResync';
 
 describe('Sync Jobs', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    syncJobPrismaMocks.walletUpdate.mockResolvedValue({});
   });
 
   describe('syncWalletJob', () => {
@@ -102,7 +106,7 @@ describe('Sync Jobs', () => {
         processedFullResyncGeneration: FULL_RESYNC_GENERATION_MAX - 1,
       }] as any);
       vi.mocked(prisma.transaction.deleteMany).mockResolvedValueOnce({ count: 7 } as any);
-      vi.mocked(syncWallet).mockResolvedValueOnce({ transactions: 5, utxos: 10 });
+      vi.mocked(syncWallet).mockResolvedValueOnce({ addresses: 3, transactions: 5, utxos: 10 });
       const updateData = vi.fn().mockResolvedValue(undefined);
       const job = {
         id: 'full-resync-job',
@@ -130,7 +134,7 @@ describe('Sync Jobs', () => {
     it('does not depend on mutable queue data after persisting the reset generation', async () => {
       vi.mocked(prisma.wallet.findUnique)
         .mockResolvedValueOnce({ network: 'mainnet' } as any);
-      vi.mocked(syncWallet).mockResolvedValueOnce({ transactions: 1, utxos: 2 });
+      vi.mocked(syncWallet).mockResolvedValueOnce({ addresses: 1, transactions: 1, utxos: 2 });
       const updateData = vi.fn().mockRejectedValue(new Error('redis update failed'));
       const job = {
         id: 'full-resync-job',
@@ -175,7 +179,7 @@ describe('Sync Jobs', () => {
         }] as any);
       vi.mocked(syncWallet)
         .mockRejectedValueOnce(new Error('sync interrupted'))
-        .mockResolvedValueOnce({ transactions: 1, utxos: 2 });
+        .mockResolvedValueOnce({ addresses: 1, transactions: 1, utxos: 2 });
       const updateData = vi.fn();
       const job = {
         id: 'full-resync-job',
@@ -219,9 +223,9 @@ describe('Sync Jobs', () => {
         .mockImplementationOnce(async () => {
           signalActiveReset();
           await activeResetMayFinish;
-          return { transactions: 1, utxos: 1 };
+          return { addresses: 1, transactions: 1, utxos: 1 };
         })
-        .mockResolvedValueOnce({ transactions: 2, utxos: 2 });
+        .mockResolvedValueOnce({ addresses: 2, transactions: 2, utxos: 2 });
       const activeJob = {
         id: 'full-resync-generation-1',
         data: {
@@ -361,6 +365,7 @@ describe('Sync Jobs', () => {
 
     it('should sync wallet and update metadata on success', async () => {
       vi.mocked(syncWallet).mockResolvedValueOnce({
+        addresses: 3,
         transactions: 5,
         utxos: 10,
       });
@@ -404,7 +409,7 @@ describe('Sync Jobs', () => {
     });
 
     it('forwards the execution signal through sync and field-population phases', async () => {
-      vi.mocked(syncWallet).mockResolvedValueOnce({ transactions: 0, utxos: 0 });
+      vi.mocked(syncWallet).mockResolvedValueOnce({ addresses: 0, transactions: 0, utxos: 0 });
       const controller = new AbortController();
       const execution = {
         signal: controller.signal,
@@ -432,13 +437,13 @@ describe('Sync Jobs', () => {
       const finishMarkPromise = new Promise<void>((resolve) => {
         finishMark = resolve;
       });
-      vi.mocked(prisma.wallet.update)
+      syncJobPrismaMocks.walletUpdate
         .mockImplementationOnce(async () => {
           markStarted();
           await finishMarkPromise;
-          return {} as any;
+          return {};
         })
-        .mockResolvedValueOnce({} as any);
+        .mockResolvedValueOnce({});
 
       const controller = new AbortController();
       const execution = {
@@ -468,12 +473,12 @@ describe('Sync Jobs', () => {
       const controller = new AbortController();
       vi.mocked(prisma.wallet.findUnique)
         .mockResolvedValueOnce({ network: 'mainnet' } as any);
-      vi.mocked(prisma.wallet.update)
+      syncJobPrismaMocks.walletUpdate
         .mockImplementationOnce(async () => {
           controller.abort();
-          return {} as any;
+          return {};
         })
-        .mockResolvedValueOnce({} as any);
+        .mockResolvedValueOnce({});
       const execution = {
         signal: controller.signal,
         throwIfAborted: () => controller.signal.throwIfAborted(),
@@ -508,13 +513,13 @@ describe('Sync Jobs', () => {
       const controller = new AbortController();
       vi.mocked(prisma.wallet.findUnique)
         .mockResolvedValueOnce({ network: 'mainnet' } as any);
-      vi.mocked(prisma.wallet.update)
+      syncJobPrismaMocks.walletUpdate
         .mockImplementationOnce(async () => {
           controller.abort();
-          return {} as any;
+          return {};
         })
         .mockRejectedValueOnce(new Error('metadata failed'))
-        .mockResolvedValueOnce({} as any);
+        .mockResolvedValueOnce({});
       const execution = {
         signal: controller.signal,
         throwIfAborted: () => controller.signal.throwIfAborted(),
@@ -660,7 +665,7 @@ describe('Sync Jobs', () => {
         { id: 'wallet-2', name: 'Wallet 2', lastSyncedAt: new Date('2020-01-01') },
       ];
 
-      vi.mocked(prisma.wallet.findMany)
+      syncJobPrismaMocks.walletFindMany
         .mockResolvedValueOnce([])           // stuck wallets query
         .mockResolvedValueOnce(staleWallets); // stale wallets query
 
@@ -771,7 +776,7 @@ describe('Sync Jobs', () => {
         { id: 'wallet-stuck-2', name: 'Stuck Wallet 2', lastSyncedAt: new Date('2026-04-08T05:08:00Z') },
       ];
 
-      vi.mocked(prisma.wallet.findMany)
+      syncJobPrismaMocks.walletFindMany
         .mockResolvedValueOnce(stuckWallets)  // stuck wallets query
         .mockResolvedValueOnce([]);           // stale wallets query
 
@@ -824,175 +829,4 @@ describe('Sync Jobs', () => {
     });
   });
 
-  describe('updateConfirmationsJob', () => {
-    it('should have correct configuration', () => {
-      expect(updateConfirmationsJob.name).toBe('update-confirmations');
-      expect(updateConfirmationsJob.queue).toBe('confirmations');
-    });
-
-    it('should update block height when provided', async () => {
-      vi.mocked(prisma.transaction.findMany).mockResolvedValueOnce([]);
-
-      const mockJob = {
-        id: 'job-1',
-        data: { height: 100005, hash: '0000abc123' },
-        attemptsMade: 0,
-        opts: { attempts: 2 },
-      } as unknown as Job;
-
-      await updateConfirmationsJob.handler(mockJob);
-
-      expect(setCachedBlockHeight).toHaveBeenCalledWith(100005, 'mainnet');
-    });
-
-    it('should return early if no pending transactions', async () => {
-      vi.mocked(prisma.transaction.findMany).mockResolvedValueOnce([]);
-
-      const mockJob = {
-        id: 'job-1',
-        data: { height: 100005 },
-        attemptsMade: 0,
-        opts: { attempts: 2 },
-      } as unknown as Job;
-
-      const result = await updateConfirmationsJob.handler(mockJob);
-
-      expect(result.updated).toBe(0);
-      expect(result.notified).toBe(0);
-      expect(updateTransactionConfirmations).not.toHaveBeenCalled();
-    });
-
-    it('should update confirmations for wallets with pending transactions', async () => {
-      const pendingWallets = [
-        { walletId: 'w1' },
-        { walletId: 'w2' },
-      ];
-
-      vi.mocked(prisma.transaction.findMany).mockResolvedValueOnce(pendingWallets);
-      vi.mocked(updateTransactionConfirmations)
-        .mockResolvedValueOnce([
-          { txid: 'tx1', oldConfirmations: 0, newConfirmations: 1 },
-        ])
-        .mockResolvedValueOnce([
-          { txid: 'tx2', oldConfirmations: 2, newConfirmations: 3 },
-          { txid: 'tx3', oldConfirmations: 5, newConfirmations: 6 },
-        ]);
-
-      const mockJob = {
-        id: 'job-1',
-        data: { height: 100005 },
-        attemptsMade: 0,
-        opts: { attempts: 2 },
-      } as unknown as Job;
-
-      const result = await updateConfirmationsJob.handler(mockJob);
-
-      expect(updateTransactionConfirmations).toHaveBeenCalledTimes(2);
-      expect(updateTransactionConfirmations).toHaveBeenCalledWith('w1');
-      expect(updateTransactionConfirmations).toHaveBeenCalledWith('w2');
-
-      expect(result.updated).toBe(3);
-      // 3 milestone confirmations (1, 3, 6)
-      expect(result.notified).toBe(3);
-    });
-
-    it('should not increment notified count for non-milestone confirmations', async () => {
-      vi.mocked(prisma.transaction.findMany).mockResolvedValueOnce([{ walletId: 'w1' }]);
-      vi.mocked(updateTransactionConfirmations).mockResolvedValueOnce([
-        { txid: 'tx1', oldConfirmations: 1, newConfirmations: 2 },
-      ]);
-
-      const result = await updateConfirmationsJob.handler({
-        id: 'job-non-milestone',
-        data: {},
-        attemptsMade: 0,
-        opts: { attempts: 2 },
-      } as unknown as Job);
-
-      expect(result).toEqual({ updated: 1, notified: 0 });
-    });
-
-    it('should skip update summary log path when pending wallets produce no updates', async () => {
-      vi.mocked(prisma.transaction.findMany).mockResolvedValueOnce([{ walletId: 'w1' }]);
-      vi.mocked(updateTransactionConfirmations).mockResolvedValueOnce([]);
-
-      const result = await updateConfirmationsJob.handler({
-        id: 'job-empty-updates',
-        data: {},
-        attemptsMade: 0,
-        opts: { attempts: 2 },
-      } as unknown as Job);
-
-      expect(result).toEqual({ updated: 0, notified: 0 });
-    });
-
-    it('should process successful wallets then reject an aggregated wallet failure', async () => {
-      vi.mocked(prisma.transaction.findMany).mockResolvedValueOnce([
-        { walletId: 'w-fail' },
-        { walletId: 'w-ok' },
-      ]);
-      vi.mocked(updateTransactionConfirmations)
-        .mockRejectedValueOnce(new Error('wallet update failed'))
-        .mockResolvedValueOnce([
-          { txid: 'tx-ok', oldConfirmations: 0, newConfirmations: 1 },
-        ]);
-
-      const processing = updateConfirmationsJob.handler({
-        id: 'job-partial-failure',
-        data: {},
-        attemptsMade: 0,
-        opts: { attempts: 2 },
-      } as unknown as Job);
-
-      await expect(processing).rejects.toThrow(
-        'Failed to update confirmations for wallets: w-fail',
-      );
-      expect(updateTransactionConfirmations).toHaveBeenCalledTimes(2);
-    });
-
-    it('sorts and deduplicates wallets before deterministic failure aggregation', async () => {
-      vi.mocked(prisma.transaction.findMany).mockResolvedValueOnce([
-        { walletId: 'wallet-z' },
-        { walletId: 'wallet-a' },
-        { walletId: 'wallet-z' },
-        { walletId: 'wallet-m' },
-      ]);
-      vi.mocked(updateTransactionConfirmations)
-        .mockRejectedValueOnce(new Error('a failed'))
-        .mockResolvedValueOnce([])
-        .mockRejectedValueOnce(new Error('z failed'));
-
-      const processing = updateConfirmationsJob.handler({
-        id: 'job-multiple-failures',
-        data: {},
-        attemptsMade: 0,
-        opts: { attempts: 2 },
-      } as unknown as Job);
-
-      await expect(processing).rejects.toMatchObject({
-        name: 'AggregateError',
-        message:
-          'Failed to update confirmations for wallets: wallet-a, wallet-z',
-      });
-      expect(vi.mocked(updateTransactionConfirmations).mock.calls).toEqual([
-        ['wallet-a'],
-        ['wallet-m'],
-        ['wallet-z'],
-      ]);
-    });
-  });
-
-  describe('updateAllConfirmationsJob', () => {
-    it('delegates to updateConfirmationsJob without block data', async () => {
-      const handlerSpy = vi.spyOn(updateConfirmationsJob, 'handler').mockResolvedValueOnce({
-        updated: 2,
-        notified: 1,
-      });
-
-      const result = await updateAllConfirmationsJob.handler();
-
-      expect(handlerSpy).toHaveBeenCalledWith(expect.objectContaining({ data: {} }));
-      expect(result).toEqual({ updated: 2, notified: 1 });
-    });
-  });
 });

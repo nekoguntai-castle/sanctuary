@@ -161,7 +161,9 @@ export function registerElectrumManagerStartContracts() {
     });
 
     it('connects to primary network and subscribes to headers', async () => {
-      vi.mocked(acquireLock).mockResolvedValueOnce({ key: 'lock', token: 'token' });
+      vi.mocked(acquireLock).mockResolvedValueOnce({
+        key: 'lock', token: 'token', expiresAt: Date.now() + 30_000, isLocal: false,
+      });
       vi.mocked(prisma.address.findMany).mockResolvedValueOnce([]);
 
       await manager.start();

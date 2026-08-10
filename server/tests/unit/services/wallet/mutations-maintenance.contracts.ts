@@ -129,7 +129,7 @@ export function registerWalletMutationMaintenanceTests(): void {
         { name: 'Renamed Ledger Wallet' },
       );
 
-      expect(updated.addresses).toEqual([]);
+      expect(Reflect.get(updated, 'addresses')).toEqual([]);
       expect(updated.descriptor).toBeNull();
       expect(updated.fingerprint).toBeNull();
       expect(updated.addressCount).toBe(1);

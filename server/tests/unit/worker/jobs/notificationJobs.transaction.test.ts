@@ -254,9 +254,10 @@ describe('transactionNotifyJob', () => {
     mockNotificationChannelRegistry.notifyTransactions.mockResolvedValueOnce([
       { success: false, usersNotified: 0, errors: ['retry poison'] },
     ]);
-    const job = createMockJob({
+    const jobData: TransactionNotifyJobData = {
       walletId: 'wallet-retry', txid: 'txid-retry', type: 'sent', amount: '1',
-    }, { attemptsMade: 1 });
+    };
+    const job = createMockJob(jobData, { attemptsMade: 1 });
 
     await expect(transactionNotifyJob.handler(job))
       .rejects.toThrow('NOTIFICATION_DELIVERY_FAILED');
@@ -275,12 +276,13 @@ describe('transactionNotifyJob', () => {
       attemptOrdinal: 1,
       notification: { outcome: 'rejected', failureClass: 'authentication', channels: [] },
     };
-    const job = createMockJob({
+    const jobData: TransactionNotifyJobData = {
       walletId: 'wallet-progress-write',
       txid: 'txid-progress-write',
       type: 'received',
       amount: '1',
-    }, {
+    };
+    const job = createMockJob(jobData, {
       attemptsMade: 1,
       progress: staleProgress,
       updateProgress: vi.fn().mockRejectedValue(new Error('redis write poison')),

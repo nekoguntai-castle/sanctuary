@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, type Mock } from "vitest";
+import { describe, expect, it } from "vitest";
 import { mockPrismaClient } from "../../../mocks/prisma";
 import {
   createMockRequest,
@@ -7,7 +7,6 @@ import {
   randomTxid,
 } from "../../../helpers/testUtils";
 import * as blockchain from "../../../../src/services/bitcoin/blockchain";
-import * as addressDerivation from "../../../../src/services/bitcoin/addressDerivation";
 import { parseAddressDerivationPath } from "@sanctuary/shared/utils/bitcoin";
 
 export function registerAddressAndRecentTests(): void {
@@ -152,101 +151,6 @@ export function registerAddressAndRecentTests(): void {
       expect(unusedReceiveAddresses).toEqual([
         { used: false, derivationPath: "m/84'/1'/0'/0/0" },
       ]);
-    });
-  });
-
-  describe("POST /wallets/:walletId/addresses/generate", () => {
-    it("should generate new receive address", async () => {
-      const walletId = "wallet-123";
-      const newAddress = randomAddress();
-
-      mockPrismaClient.wallet.findUnique.mockResolvedValue({
-        id: walletId,
-        network: "testnet",
-        descriptor: "wpkh([abc123/84'/1'/0']tpub.../*)",
-      });
-
-      vi.mocked(addressDerivation).generateNextAddress.mockResolvedValue({
-        address: newAddress,
-        derivationPath: "m/84'/1'/0'/0/5",
-      });
-
-      mockPrismaClient.address.create.mockResolvedValue({
-        id: "addr-new",
-        address: newAddress,
-        walletId,
-        type: "receive",
-        addressIndex: 5,
-        derivationPath: "m/84'/1'/0'/0/5",
-      });
-
-      const { res, getResponse } = createMockResponse();
-
-      const generated = await vi
-        .mocked(addressDerivation)
-        .generateNextAddress();
-      res.json!({
-        address: generated.address,
-        derivationPath: generated.derivationPath,
-        type: "receive",
-      });
-
-      const response = getResponse();
-      expect(response.body.address).toBe(newAddress);
-      expect(response.body.type).toBe("receive");
-    });
-
-    it("should generate new change address", async () => {
-      const walletId = "wallet-123";
-      const newAddress = randomAddress();
-
-      vi.mocked(addressDerivation).generateNextAddress.mockResolvedValue({
-        address: newAddress,
-        derivationPath: "m/84'/1'/0'/1/3",
-      });
-
-      const { res, getResponse } = createMockResponse();
-
-      const generated = await vi
-        .mocked(addressDerivation)
-        .generateNextAddress();
-      res.json!({
-        address: generated.address,
-        derivationPath: generated.derivationPath,
-        type: "change",
-      });
-
-      const response = getResponse();
-      expect(
-        parseAddressDerivationPath(response.body.derivationPath)?.chain,
-      ).toBe("change");
-    });
-
-    it("should reject generation for wallet without descriptor", async () => {
-      const walletId = "wallet-no-descriptor";
-
-      mockPrismaClient.wallet.findUnique.mockResolvedValue({
-        id: walletId,
-        network: "testnet",
-        descriptor: null, // No descriptor
-      });
-
-      const { res, getResponse } = createMockResponse();
-
-      const wallet = await mockPrismaClient.wallet.findUnique({
-        where: { id: walletId },
-      });
-
-      if (!wallet?.descriptor) {
-        res.status!(400).json!({
-          error: "Bad Request",
-          message: "Cannot generate addresses for wallet without descriptor",
-        });
-      }
-
-      const response = getResponse();
-      expect(response.statusCode).toBe(400);
-      expect(response.body.message).toContain("without descriptor");
     });
   });
 

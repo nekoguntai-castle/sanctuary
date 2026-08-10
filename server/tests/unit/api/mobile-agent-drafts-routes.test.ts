@@ -38,6 +38,7 @@ vi.mock('../../../src/services/auditService', () => ({
 }));
 
 import { mobileAgentDraftService } from '../../../src/services/mobileAgentDraftService';
+import type { MobileAgentDraftReview } from '../../../src/services/mobileAgentDraftService';
 import { auditService } from '../../../src/services/auditService';
 
 async function createApp() {
@@ -49,7 +50,7 @@ async function createApp() {
   return app;
 }
 
-const reviewDraft = {
+const reviewDraft: MobileAgentDraftReview = {
   id: 'draft-1',
   walletId: 'wallet-1',
   wallet: {

@@ -44,7 +44,7 @@ export function registerTransferActionTests(): void {
     });
 
     it('should return 404 when transfer not found', async () => {
-      mockAcceptTransfer.mockRejectedValue(new NotFoundError('Transfer', 'non-existent'));
+      mockAcceptTransfer.mockRejectedValue(new NotFoundError('Transfer not found'));
 
       const res = await request(getTransfersApp())
         .post('/api/v1/transfers/non-existent/accept')
@@ -141,7 +141,7 @@ export function registerTransferActionTests(): void {
     });
 
     it('should return 404 when transfer not found', async () => {
-      mockDeclineTransfer.mockRejectedValue(new NotFoundError('Transfer', 'non-existent'));
+      mockDeclineTransfer.mockRejectedValue(new NotFoundError('Transfer not found'));
 
       const res = await request(getTransfersApp())
         .post('/api/v1/transfers/non-existent/decline')
@@ -191,7 +191,7 @@ export function registerTransferActionTests(): void {
     });
 
     it('should return 404 when transfer not found', async () => {
-      mockCancelTransfer.mockRejectedValue(new NotFoundError('Transfer', 'non-existent'));
+      mockCancelTransfer.mockRejectedValue(new NotFoundError('Transfer not found'));
 
       const res = await request(getTransfersApp())
         .post('/api/v1/transfers/non-existent/cancel')
@@ -243,7 +243,7 @@ export function registerTransferActionTests(): void {
     });
 
     it('should return 404 when transfer not found', async () => {
-      mockConfirmTransfer.mockRejectedValue(new NotFoundError('Transfer', 'non-existent'));
+      mockConfirmTransfer.mockRejectedValue(new NotFoundError('Transfer not found'));
 
       const res = await request(getTransfersApp())
         .post('/api/v1/transfers/non-existent/confirm')

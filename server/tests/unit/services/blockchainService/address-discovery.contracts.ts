@@ -38,6 +38,7 @@ function mockCanonicalDerivation(): void {
       address: `bc1qnew${coordinate.branch}${coordinate.index}`,
       derivationPath: `m/84'/0'/0'/${coordinate.branch}/${coordinate.index}`,
       scriptPubKey: `0014${"00".repeat(20)}`,
+      publicKey: Buffer.alloc(33, 2),
       branch: coordinate.branch,
       index: coordinate.index,
       signerOrigins: [],

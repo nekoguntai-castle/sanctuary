@@ -1,4 +1,5 @@
 import { vi } from 'vitest';
+import type { deriveCanonicalAddress } from '../../../../src/services/bitcoin/addressDerivation';
 
 export const mockPrisma = {
   wallet: {
@@ -18,7 +19,7 @@ export const mockPrisma = {
     findMany: vi.fn<any>(),
     create: vi.fn<any>(),
     createMany: vi.fn<any>().mockResolvedValue({ count: 1 }),
-    createManyAndReturn: vi.fn<any>().mockImplementation(({ data }) => (
+    createManyAndReturn: vi.fn<(args: { data: object[] }) => Promise<object[]>>().mockImplementation(({ data }) => (
       Promise.resolve(data.map((row: object, index: number) => ({
         ...row,
         id: `transaction-${index}`,
@@ -81,9 +82,9 @@ export const mockNodeClient = {
   getTransactionsBatch: vi.fn<any>(),
   getAddressUTXOs: vi.fn<any>(),
   getAddressUTXOsBatch: vi.fn<any>(),
-  getAddressBalance: vi.fn<any>(),
+  getAddressBalance: vi.fn<(address: string) => Promise<{ confirmed: number; unconfirmed: number }>>(),
   broadcastTransaction: vi.fn<any>(),
-  estimateFee: vi.fn<any>(),
+  estimateFee: vi.fn<(blocks: number) => Promise<number>>(),
   subscribeAddress: vi.fn<any>(),
   isConnected: vi.fn<any>(() => true),
   connect: vi.fn<any>(),
@@ -108,7 +109,7 @@ vi.mock('../../../../src/services/bitcoin/utils/blockHeight', () => ({
   getBlockTimestamp: vi.fn(() => Promise.resolve(new Date('2024-01-01T00:00:00Z'))),
 }));
 
-export const mockDeriveAddress = vi.fn<any>();
+export const mockDeriveAddress = vi.fn<typeof deriveCanonicalAddress>();
 vi.mock('../../../../src/services/bitcoin/addressDerivation', () => ({
   deriveCanonicalAddress: mockDeriveAddress,
   deriveAddressFromDescriptor: mockDeriveAddress,

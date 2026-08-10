@@ -53,6 +53,9 @@ describe("hardware wallet capability containment", () => {
           capability,
         );
         expect(decision).toMatchObject({ allowed: false, vendor, capability });
+        if (decision.allowed) {
+          throw new Error(`Expected ${vendor} ${capability} to remain blocked`);
+        }
         expect(decision.reason).not.toBe("");
         expect(decision.manifestId).toBe("wallet-safety-v1-2026-08-09");
       }

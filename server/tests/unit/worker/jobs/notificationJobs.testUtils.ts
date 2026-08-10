@@ -1,5 +1,5 @@
 import { beforeEach, vi } from 'vitest';
-import type { Job } from 'bullmq';
+export { createMockJob } from '../../../helpers/workerJob';
 import type {
   TransactionNotifyJobData,
   DraftNotifyJobData,
@@ -80,17 +80,6 @@ export {
   mockNotificationJobResultsTotal,
   mockRecordNotificationTelemetry,
 };
-
-export function createMockJob<T>(data: T, opts?: Partial<Job<T>>): Job<T> {
-  return {
-    id: 'test-job-id',
-    data,
-    attemptsMade: 0,
-    opts: { attempts: 5 },
-    updateProgress: vi.fn().mockResolvedValue(undefined),
-    ...opts,
-  } as Job<T>;
-}
 
 export function registerNotificationJobBeforeEach(): void {
   beforeEach(() => {

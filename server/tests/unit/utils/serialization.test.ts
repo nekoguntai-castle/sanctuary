@@ -18,8 +18,9 @@ describe('Serialization Utilities', () => {
     id: 'draft-123',
     walletId: 'wallet-456',
     userId: 'user-789',
-    txHex: null,
-    psbt: 'cHNidP8B...',
+    recipient: 'bc1qrecipient...',
+    psbtBase64: 'cHNidP8B...',
+    signedPsbtBase64: null,
     status: 'pending',
     amount: BigInt(100000),
     fee: BigInt(500),
@@ -28,18 +29,27 @@ describe('Serialization Utilities', () => {
     totalOutput: BigInt(100500),
     changeAmount: BigInt(49500),
     effectiveAmount: BigInt(99500),
-    type: 'send',
-    strategy: 'efficiency',
-    recipients: JSON.stringify([{ address: 'bc1q...', amount: 100000 }]),
-    selectedUtxos: JSON.stringify(['txid:0']),
+    selectedUtxoIds: ['txid:0'],
+    enableRBF: true,
+    subtractFees: false,
+    sendMax: false,
+    outputs: [{ address: 'bc1q...', amount: 100000 }],
+    inputs: null,
+    decoyOutputs: null,
+    payjoinUrl: null,
+    isRBF: false,
+    label: null,
+    memo: null,
     changeAddress: 'bc1qchange...',
-    enableRbf: true,
-    subtractFeeFromAmount: false,
-    maxFee: null,
+    inputPaths: ["m/84'/0'/0'/0/0"],
+    signedDeviceIds: [],
+    agentId: null,
+    agentOperationalWalletId: null,
     expiresAt: new Date('2026-01-12T00:00:00Z'),
-    lockId: null,
-    lockedBy: null,
-    lockedAt: null,
+    approvalStatus: 'not_required',
+    policySnapshot: null,
+    approvedAt: null,
+    approvedBy: null,
     createdAt: new Date('2026-01-11T00:00:00Z'),
     updatedAt: new Date('2026-01-11T00:00:00Z'),
     ...overrides,
@@ -98,19 +108,17 @@ describe('Serialization Utilities', () => {
       const draft = createMockDraft({
         id: 'test-id',
         walletId: 'test-wallet',
-        type: 'send',
         status: 'pending',
         feeRate: 5.5,
-        enableRbf: true,
+        enableRBF: true,
       });
       const result = serializeDraftTransaction(draft);
 
       expect(result.id).toBe('test-id');
       expect(result.walletId).toBe('test-wallet');
-      expect(result.type).toBe('send');
       expect(result.status).toBe('pending');
       expect(result.feeRate).toBe(5.5);
-      expect(result.enableRbf).toBe(true);
+      expect(result.enableRBF).toBe(true);
     });
 
     it('should preserve Date objects', () => {
@@ -154,15 +162,15 @@ describe('Serialization Utilities', () => {
 
     it('should preserve null optional fields', () => {
       const draft = createMockDraft({
-        txHex: null,
-        lockId: null,
-        maxFee: null,
+        signedPsbtBase64: null,
+        payjoinUrl: null,
+        expiresAt: null,
       });
       const result = serializeDraftTransaction(draft);
 
-      expect(result.txHex).toBeNull();
-      expect(result.lockId).toBeNull();
-      expect(result.maxFee).toBeNull();
+      expect(result.signedPsbtBase64).toBeNull();
+      expect(result.payjoinUrl).toBeNull();
+      expect(result.expiresAt).toBeNull();
     });
   });
 

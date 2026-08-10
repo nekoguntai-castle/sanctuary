@@ -58,12 +58,12 @@ const createSignedMultisigPayment = () => {
   psbt.addOutput({ address: payment.address!, value: 90_000n });
   psbt.signInput(0, signerA);
   psbt.signInput(0, signerB);
-  const finalized = bitcoin.Psbt.fromBase64(psbt.toBase64(), { network });
+  const finalized = bitcoin.Psbt.fromBase64(psbt.toBase64());
   finalized.finalizeAllInputs();
 
   return {
     address: payment.address!,
-    inputScript: payment.output!.toString('hex'),
+    inputScript: Buffer.from(payment.output!).toString('hex'),
     inputTxid: Buffer.from(inputHash).reverse().toString('hex'),
     rawTx: finalized.extractTransaction().toHex(),
     signedPsbt: psbt.toBase64(),

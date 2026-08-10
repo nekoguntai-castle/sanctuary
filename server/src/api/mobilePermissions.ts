@@ -132,7 +132,9 @@ publicRouter.get('/mobile-permissions', authenticate, asyncHandler(async (req, r
         p.canManageLabels !== true ||
         p.canManageDevices !== true ||
         p.canShareWallet !== true ||
-        p.canDeleteWallet !== true,
+        p.canDeleteWallet !== true ||
+        p.canApproveTransaction !== true ||
+        p.canManagePolicies !== true,
       hasOwnerRestrictions: p.ownerMaxPermissions !== null,
       updatedAt: p.updatedAt.toISOString(),
     })),
