@@ -243,7 +243,7 @@ describe('tracer', () => {
       shutdown: vi.fn(async () => undefined),
     };
 
-    tracer.setTracerProvider(fakeProvider);
+    Reflect.apply(tracer.setTracerProvider, tracer, [fakeProvider]);
 
     expect(tracer.getTracerProvider()).toBe(fakeProvider);
     expect(tracer.getTracer('component')).toBe(fakeTracer);

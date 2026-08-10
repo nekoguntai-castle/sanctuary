@@ -66,10 +66,19 @@ function createServer() {
 
 function extraWithContext(context: McpRequestContext): McpHandlerExtra {
   return {
+    signal: new AbortController().signal,
+    requestId: 'test-tool-request',
     authInfo: {
+      token: 'test-token',
+      clientId: 'test-client',
+      scopes: [],
       extra: { mcp: context },
     },
-  } as McpHandlerExtra;
+    sendNotification: async () => undefined,
+    sendRequest: async () => {
+      throw new Error('Unexpected nested MCP request');
+    },
+  } satisfies McpHandlerExtra;
 }
 
 describe('MCP read-tool adapter', () => {

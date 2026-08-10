@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { faker } from '@faker-js/faker';
+import type { WalletUser } from '../../../src/generated/prisma/client';
 
 import prisma from '../../../src/models/prisma';
 import { ForbiddenError, NotFoundError } from '../../../src/errors';
@@ -8,6 +9,16 @@ type ResourceAccessContractContext = {
   userId: string;
   walletId: string;
 };
+
+function makeWalletUser(walletId: string, userId: string, role: string): WalletUser {
+  return {
+    id: faker.string.uuid(),
+    walletId,
+    userId,
+    role,
+    createdAt: new Date(),
+  } satisfies WalletUser;
+}
 
 export function registerResourceAccessContracts({
   userId,
@@ -21,13 +32,9 @@ export function registerResourceAccessContracts({
         vi.mocked(prisma.address.findFirst).mockResolvedValue({
           walletId,
         } as never);
-        vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-          id: faker.string.uuid(),
-          walletId,
-          userId,
-          role: 'owner',
-          addedAt: new Date(),
-        });
+        vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+          makeWalletUser(walletId, userId, 'owner')
+        );
 
         const { checkAddressAccess } = await import('../../../src/services/accessControl');
         const access = await checkAddressAccess(addressId, userId);
@@ -51,13 +58,9 @@ export function registerResourceAccessContracts({
         vi.mocked(prisma.address.findFirst).mockResolvedValue({
           walletId,
         } as never);
-        vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-          id: faker.string.uuid(),
-          walletId,
-          userId,
-          role: 'viewer',
-          addedAt: new Date(),
-        });
+        vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+          makeWalletUser(walletId, userId, 'viewer')
+        );
 
         const { checkAddressAccess } = await import('../../../src/services/accessControl');
         const access = await checkAddressAccess(addressId, userId);
@@ -72,13 +75,9 @@ export function registerResourceAccessContracts({
         vi.mocked(prisma.address.findFirst).mockResolvedValue({
           walletId,
         } as never);
-        vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-          id: faker.string.uuid(),
-          walletId,
-          userId,
-          role: 'signer',
-          addedAt: new Date(),
-        });
+        vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+          makeWalletUser(walletId, userId, 'signer')
+        );
 
         const { requireAddressAccess } = await import('../../../src/services/accessControl');
         const result = await requireAddressAccess(addressId, userId);
@@ -100,13 +99,9 @@ export function registerResourceAccessContracts({
         vi.mocked(prisma.address.findFirst).mockResolvedValue({
           walletId,
         } as never);
-        vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-          id: faker.string.uuid(),
-          walletId,
-          userId,
-          role: 'owner',
-          addedAt: new Date(),
-        });
+        vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+          makeWalletUser(walletId, userId, 'owner')
+        );
 
         const { requireAddressEditAccess } = await import('../../../src/services/accessControl');
         const result = await requireAddressEditAccess(addressId, userId);
@@ -118,13 +113,9 @@ export function registerResourceAccessContracts({
         vi.mocked(prisma.address.findFirst).mockResolvedValue({
           walletId,
         } as never);
-        vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-          id: faker.string.uuid(),
-          walletId,
-          userId,
-          role: 'viewer',
-          addedAt: new Date(),
-        });
+        vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+          makeWalletUser(walletId, userId, 'viewer')
+        );
 
         const { requireAddressEditAccess } = await import('../../../src/services/accessControl');
         await expect(requireAddressEditAccess(addressId, userId)).rejects.toThrow(ForbiddenError);
@@ -147,13 +138,9 @@ export function registerResourceAccessContracts({
         vi.mocked(prisma.transaction.findFirst).mockResolvedValue({
           walletId,
         } as never);
-        vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-          id: faker.string.uuid(),
-          walletId,
-          userId,
-          role: 'signer',
-          addedAt: new Date(),
-        });
+        vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+          makeWalletUser(walletId, userId, 'signer')
+        );
 
         const { requireTransactionEditAccess } = await import('../../../src/services/accessControl');
         const result = await requireTransactionEditAccess(transactionId, userId);
@@ -165,13 +152,9 @@ export function registerResourceAccessContracts({
         vi.mocked(prisma.transaction.findFirst).mockResolvedValue({
           walletId,
         } as never);
-        vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-          id: faker.string.uuid(),
-          walletId,
-          userId,
-          role: 'viewer',
-          addedAt: new Date(),
-        });
+        vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+          makeWalletUser(walletId, userId, 'viewer')
+        );
 
         const { requireTransactionEditAccess } = await import('../../../src/services/accessControl');
         await expect(requireTransactionEditAccess(transactionId, userId)).rejects.toThrow(ForbiddenError);

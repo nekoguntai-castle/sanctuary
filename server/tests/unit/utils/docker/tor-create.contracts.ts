@@ -153,9 +153,10 @@ export function registerDockerTorCreateContracts(): void {
         const result = await createTorContainer();
 
         expect(result.success).toBe(true);
-        const createCall = mockFetch.mock.calls.find(
+      const createCall = mockFetch.mock.calls.find(
           call => typeof call[0] === 'string' && call[0].includes('containers/create')
       );
+      if (!createCall) throw new Error('Tor create request was not issued');
       expect(createCall[0]).toContain('myproj-tor');
     });
 
@@ -201,6 +202,7 @@ export function registerDockerTorCreateContracts(): void {
       const createCall = mockFetch.mock.calls.find(
         call => typeof call[0] === 'string' && call[0].includes('containers/create')
       );
+      if (!createCall) throw new Error('Tor create request was not issued');
       expect(createCall[0]).toContain('sanctuary-tor');
     });
 

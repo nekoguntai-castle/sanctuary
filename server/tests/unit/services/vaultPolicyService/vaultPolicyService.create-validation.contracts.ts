@@ -136,14 +136,14 @@ export function registerVaultPolicyCreateValidationContracts(): void {
     });
 
     it('rejects invalid policy type', async () => {
-      const input: CreatePolicyInput = {
+      const input = {
         walletId,
         name: 'Bad Policy',
-        type: 'invalid_type' as any,
+        type: 'invalid_type',
         config: {},
       };
 
-      await expect(vaultPolicyService.createPolicy(userId, input))
+      await expect(Reflect.apply(vaultPolicyService.createPolicy, vaultPolicyService, [userId, input]))
         .rejects.toThrow('Invalid policy type');
     });
 

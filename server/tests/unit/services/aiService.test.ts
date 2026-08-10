@@ -7,6 +7,7 @@ import {
   setting,
   setupAiServiceTest,
 } from "./aiServiceTestHarness";
+import type { AIConfig } from "../../../src/services/ai/types";
 
 const mocks = getAiServiceMocks();
 
@@ -216,7 +217,7 @@ describe("aiService", () => {
 
     const { syncConfigToLlmEgressProxy } =
       await import("../../../src/services/ai/config");
-    const config = {
+    const config: AIConfig = {
       enabled: true,
       endpoint: "https://llm.example.local/v1",
       model: "qwen3",

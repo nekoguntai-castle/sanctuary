@@ -52,6 +52,14 @@ import { descriptorHandler } from '../../../../src/services/import/handlers/desc
 import { jsonConfigHandler } from '../../../../src/services/import/handlers/jsonConfig';
 import { walletExportHandler } from '../../../../src/services/import/handlers/walletExport';
 
+function requireHandlerCallback<T extends (...args: never[]) => unknown>(
+  callback: T | undefined,
+  name: string
+): T {
+  if (!callback) throw new Error(`${name} callback is not registered`);
+  return callback;
+}
+
 describe('import format handlers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -91,19 +99,19 @@ describe('import format handlers', () => {
       mockParseBlueWalletText.mockReturnValueOnce({ name: 'Blue Wallet' });
       mockParseBlueWalletTextImport.mockReturnValueOnce({ descriptor: 'wsh(...)' });
 
-      const parsed = bluewalletHandler.parse('Name: Blue Wallet');
+      const parsed = requireHandlerCallback(bluewalletHandler.parse, 'bluewalletHandler.parse')('Name: Blue Wallet');
       expect(parsed).toEqual({
         parsed: { descriptor: 'wsh(...)' },
         suggestedName: 'Blue Wallet',
       });
 
       mockParseBlueWalletText.mockReturnValueOnce({ name: 'Blue Wallet' });
-      expect(bluewalletHandler.extractName('Name: Blue Wallet')).toBe('Blue Wallet');
+      expect(requireHandlerCallback(bluewalletHandler.extractName, 'bluewalletHandler.extractName')('Name: Blue Wallet')).toBe('Blue Wallet');
 
       mockParseBlueWalletText.mockImplementationOnce(() => {
         throw new Error('bad');
       });
-      expect(bluewalletHandler.extractName('bad')).toBeUndefined();
+      expect(requireHandlerCallback(bluewalletHandler.extractName, 'bluewalletHandler.extractName')('bad')).toBeUndefined();
     });
   });
 
@@ -123,7 +131,7 @@ describe('import format handlers', () => {
       expect(coldcardHandler.canHandle('{"x":1}')).toEqual({ detected: false, confidence: 0 });
 
       expect(coldcardHandler.canHandle('{')).toEqual({ detected: false, confidence: 0 });
-      expect(() => coldcardHandler.parse('{')).toThrow('Invalid JSON in Coldcard export input');
+      expect(() => requireHandlerCallback(coldcardHandler.parse, 'coldcardHandler.parse')('{')).toThrow('Invalid JSON in Coldcard export input');
     });
 
     it('parses and extracts names with fallback to label', () => {
@@ -132,15 +140,15 @@ describe('import format handlers', () => {
         availablePaths: ['bip84'],
       });
 
-      const parsed = coldcardHandler.parse('{"name":"Coldcard","bip84":{}}');
+      const parsed = requireHandlerCallback(coldcardHandler.parse, 'coldcardHandler.parse')('{"name":"Coldcard","bip84":{}}');
       expect(parsed).toEqual({
         parsed: { descriptor: 'wpkh(...)' },
         availablePaths: ['bip84'],
         suggestedName: 'Coldcard',
       });
 
-      expect(coldcardHandler.extractName('{"label":"Fallback"}')).toBe('Fallback');
-      expect(coldcardHandler.extractName('{')).toBeUndefined();
+      expect(requireHandlerCallback(coldcardHandler.extractName, 'coldcardHandler.extractName')('{"label":"Fallback"}')).toBe('Fallback');
+      expect(requireHandlerCallback(coldcardHandler.extractName, 'coldcardHandler.extractName')('{')).toBeUndefined();
     });
 
     it('uses label as parse suggestedName when name is absent', () => {
@@ -149,7 +157,7 @@ describe('import format handlers', () => {
         availablePaths: ['bip84'],
       });
 
-      const parsed = coldcardHandler.parse('{"label":"Coldcard Label","bip84":{}}');
+      const parsed = requireHandlerCallback(coldcardHandler.parse, 'coldcardHandler.parse')('{"label":"Coldcard Label","bip84":{}}');
       expect(parsed.suggestedName).toBe('Coldcard Label');
     });
   });
@@ -187,7 +195,7 @@ describe('import format handlers', () => {
       });
       mockParseDescriptorForImport.mockReturnValueOnce({ descriptor: 'wsh(sortedmulti(...))' });
 
-      const extracted = descriptorHandler.parse('wrapper');
+      const extracted = requireHandlerCallback(descriptorHandler.parse, 'descriptorHandler.parse')('wrapper');
       expect(extracted).toEqual({ parsed: { descriptor: 'wsh(sortedmulti(...))' } });
     });
 
@@ -195,7 +203,7 @@ describe('import format handlers', () => {
       mockIsDescriptorTextFormat.mockReturnValueOnce(false);
       mockParseDescriptorForImport.mockReturnValueOnce({ descriptor: 'direct' });
 
-      const parsed = descriptorHandler.parse(' direct ');
+      const parsed = requireHandlerCallback(descriptorHandler.parse, 'descriptorHandler.parse')(' direct ');
       expect(parsed).toEqual({ parsed: { descriptor: 'direct' } });
     });
   });
@@ -218,7 +226,7 @@ describe('import format handlers', () => {
       expect(jsonConfigHandler.canHandle('{"x":1}')).toEqual({ detected: false, confidence: 0 });
 
       expect(jsonConfigHandler.canHandle('{')).toEqual({ detected: false, confidence: 0 });
-      expect(() => jsonConfigHandler.parse('{')).toThrow('Invalid JSON in configuration input');
+      expect(() => requireHandlerCallback(jsonConfigHandler.parse, 'jsonConfigHandler.parse')('{')).toThrow('Invalid JSON in configuration input');
     });
 
     it('parses, validates, and extracts names', () => {
@@ -233,29 +241,30 @@ describe('import format handlers', () => {
       mockJsonImportConfigParse.mockReturnValueOnce(validated);
       mockParseJsonImport.mockReturnValueOnce({ descriptor: 'wpkh(...)', devices: validated.devices, type: 'single_sig' });
 
-      const parsed = jsonConfigHandler.parse('{"name":"Config Wallet"}');
+      const parsed = requireHandlerCallback(jsonConfigHandler.parse, 'jsonConfigHandler.parse')('{"name":"Config Wallet"}');
       expect(parsed).toEqual({
         parsed: { descriptor: 'wpkh(...)', devices: validated.devices, type: 'single_sig' },
         originalDevices: validated.devices,
         suggestedName: 'Config Wallet',
       });
 
-      expect(jsonConfigHandler.validate({ devices: [] } as any)).toEqual({
+      const validate = requireHandlerCallback(jsonConfigHandler.validate, 'jsonConfigHandler.validate');
+      expect(Reflect.apply(validate, jsonConfigHandler, [{ devices: [] }])).toEqual({
         valid: false,
         errors: ['No devices found in configuration'],
       });
-      expect(jsonConfigHandler.validate({ devices: [{}], type: 'multi_sig' } as any)).toEqual({
+      expect(Reflect.apply(validate, jsonConfigHandler, [{ devices: [{}], type: 'multi_sig' }])).toEqual({
         valid: false,
         errors: ['Multi-sig wallet requires quorum and totalSigners'],
       });
-      expect(jsonConfigHandler.validate({ devices: [{}], type: 'multi_sig', quorum: 2 } as any)).toEqual({
+      expect(Reflect.apply(validate, jsonConfigHandler, [{ devices: [{}], type: 'multi_sig', quorum: 2 }])).toEqual({
         valid: false,
         errors: ['Multi-sig wallet requires quorum and totalSigners'],
       });
-      expect(jsonConfigHandler.validate({ devices: [{}], type: 'single_sig' } as any)).toEqual({ valid: true });
+      expect(Reflect.apply(validate, jsonConfigHandler, [{ devices: [{}], type: 'single_sig' }])).toEqual({ valid: true });
 
-      expect(jsonConfigHandler.extractName('{"name":"Config Wallet"}')).toBe('Config Wallet');
-      expect(jsonConfigHandler.extractName('{')).toBeUndefined();
+      expect(requireHandlerCallback(jsonConfigHandler.extractName, 'jsonConfigHandler.extractName')('{"name":"Config Wallet"}')).toBe('Config Wallet');
+      expect(requireHandlerCallback(jsonConfigHandler.extractName, 'jsonConfigHandler.extractName')('{')).toBeUndefined();
     });
   });
 
@@ -281,26 +290,26 @@ describe('import format handlers', () => {
       expect(walletExportHandler.canHandle('{"x":1}')).toEqual({ detected: false, confidence: 0 });
 
       expect(walletExportHandler.canHandle('{')).toEqual({ detected: false, confidence: 0 });
-      expect(() => walletExportHandler.parse('{')).toThrow('Invalid JSON in wallet export input');
+      expect(() => requireHandlerCallback(walletExportHandler.parse, 'walletExportHandler.parse')('{')).toThrow('Invalid JSON in wallet export input');
     });
 
     it('parses descriptor exports and extracts names', () => {
       mockParseDescriptorForImport.mockReturnValueOnce({ descriptor: 'wpkh(...)' });
 
-      const parsed = walletExportHandler.parse('{"descriptor":"wpkh(...)","label":"Export Name"}');
+      const parsed = requireHandlerCallback(walletExportHandler.parse, 'walletExportHandler.parse')('{"descriptor":"wpkh(...)","label":"Export Name"}');
       expect(parsed).toEqual({
         parsed: { descriptor: 'wpkh(...)' },
         suggestedName: 'Export Name',
       });
 
-      expect(walletExportHandler.extractName('{"name":"ByName"}')).toBe('ByName');
-      expect(walletExportHandler.extractName('{')).toBeUndefined();
+      expect(requireHandlerCallback(walletExportHandler.extractName, 'walletExportHandler.extractName')('{"name":"ByName"}')).toBe('ByName');
+      expect(requireHandlerCallback(walletExportHandler.extractName, 'walletExportHandler.extractName')('{')).toBeUndefined();
     });
 
     it('uses name as parse suggestedName when label is absent', () => {
       mockParseDescriptorForImport.mockReturnValueOnce({ descriptor: 'wpkh(...)' });
 
-      const parsed = walletExportHandler.parse('{"descriptor":"wpkh(...)","name":"ByName"}');
+      const parsed = requireHandlerCallback(walletExportHandler.parse, 'walletExportHandler.parse')('{"descriptor":"wpkh(...)","name":"ByName"}');
       expect(parsed.suggestedName).toBe('ByName');
     });
   });

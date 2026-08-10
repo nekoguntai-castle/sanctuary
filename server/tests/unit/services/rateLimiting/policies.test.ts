@@ -449,6 +449,7 @@ describe('Rate Limit Policies', () => {
 
       for (const [name, policy] of Object.entries(policies)) {
         expect(policy.message, `Policy ${name} should have a message`).toBeDefined();
+        if (!policy.message) throw new Error(`Policy ${name} is missing its message`);
         expect(policy.message.length, `Policy ${name} message should be non-empty`).toBeGreaterThan(0);
       }
     });
@@ -457,6 +458,7 @@ describe('Rate Limit Policies', () => {
       const policies = getRateLimitPolicies();
 
       for (const policy of Object.values(policies)) {
+        if (!policy.message) throw new Error('Rate-limit policy is missing its message');
         const messageLower = policy.message.toLowerCase();
         const hasRateLimitIndicator =
           messageLower.includes('too many') ||

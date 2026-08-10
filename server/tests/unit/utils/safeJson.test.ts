@@ -230,7 +230,7 @@ describe('Safe JSON Utilities', () => {
     it('should parse valid JSON object', () => {
       const result = safeJsonParseUntyped<{ key: string }>(
         '{"key":"value"}',
-        {},
+        { key: '' },
         'test'
       );
       expect(result).toEqual({ key: 'value' });

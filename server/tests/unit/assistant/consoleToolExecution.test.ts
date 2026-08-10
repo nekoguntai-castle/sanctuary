@@ -481,7 +481,7 @@ describe("console tool execution", () => {
     const storedTrace = await executePlannedTool({
       call: { name: "get_market_status", input: {} },
       turnId,
-      scope: { kind: "authenticated" },
+      scope: { kind: "general" },
       maxSensitivity: "public",
       actor: actor(),
     });

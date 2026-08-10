@@ -42,6 +42,12 @@ function maintenanceJobsByName() {
   return new Map(maintenanceJobs.map(job => [job.name, job]));
 }
 
+function readLockKey(job: (typeof maintenanceJobs)[number]): string {
+  const lockKey = job.lockOptions?.lockKey;
+  if (!lockKey) throw new Error(`Missing lock key for ${job.name}`);
+  return Reflect.apply(lockKey, job.lockOptions, [{ data: {} }]);
+}
+
 function expectForwardedMaintenanceJob(
   byName: ReturnType<typeof maintenanceJobsByName>,
   name: string,
@@ -83,20 +89,20 @@ describe('worker maintenanceJobs', () => {
       'persist:price-fees',
     ]) {
       const job = byName.get(name)!;
-      expect(job.lockOptions?.lockKey()).toBe(`maintenance:${name}`);
+      expect(readLockKey(job)).toBe(`maintenance:${name}`);
       expect(job.lockOptions?.lockTtlMs).toBe(90_000);
     }
 
     const weekly = byName.get('weeklyVacuum')!;
-    expect(weekly.lockOptions?.lockKey()).toBe('maintenance:weeklyVacuum');
+    expect(readLockKey(weekly)).toBe('maintenance:weeklyVacuum');
     expect(weekly.lockOptions?.lockTtlMs).toBe(6 * 60_000);
 
     const monthly = byName.get('monthlyCleanup')!;
-    expect(monthly.lockOptions?.lockKey()).toBe('maintenance:monthlyCleanup');
+    expect(readLockKey(monthly)).toBe('maintenance:monthlyCleanup');
     expect(monthly.lockOptions?.lockTtlMs).toBe(2 * 60_000);
 
     const backup = byName.get('backup:scheduled')!;
-    expect(backup.lockOptions?.lockKey()).toBe('maintenance:backup:scheduled');
+    expect(readLockKey(backup)).toBe('maintenance:backup:scheduled');
     expect(backup.lockOptions?.lockTtlMs).toBe(30 * 60_000);
   });
 

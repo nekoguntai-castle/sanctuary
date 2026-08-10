@@ -166,8 +166,8 @@ describe('Maintenance job definitions behavior', () => {
     mockDeleteDrafts.mockResolvedValueOnce(4);
     mockDeleteDrafts.mockResolvedValueOnce(0);
 
-    const first = await cleanupExpiredDraftsJob.handler();
-    const second = await cleanupExpiredDraftsJob.handler();
+    const first = await Reflect.apply(cleanupExpiredDraftsJob.handler, cleanupExpiredDraftsJob, [{ data: {} }]);
+    const second = await Reflect.apply(cleanupExpiredDraftsJob.handler, cleanupExpiredDraftsJob, [{ data: {} }]);
 
     expect(first).toBe(4);
     expect(second).toBe(0);
@@ -185,8 +185,8 @@ describe('Maintenance job definitions behavior', () => {
     mockExpireOldTransfers.mockResolvedValueOnce(2);
     mockExpireOldTransfers.mockResolvedValueOnce(0);
 
-    const first = await cleanupExpiredTransfersJob.handler();
-    const second = await cleanupExpiredTransfersJob.handler();
+    const first = await Reflect.apply(cleanupExpiredTransfersJob.handler, cleanupExpiredTransfersJob, [{ data: {} }]);
+    const second = await Reflect.apply(cleanupExpiredTransfersJob.handler, cleanupExpiredTransfersJob, [{ data: {} }]);
 
     expect(first).toBe(2);
     expect(second).toBe(0);
@@ -203,7 +203,7 @@ describe('Maintenance job definitions behavior', () => {
   it('cleans up expired refresh tokens and returns deleted count', async () => {
     mockDeleteRefreshTokens.mockResolvedValueOnce(7);
 
-    const deleted = await cleanupExpiredTokensJob.handler();
+    const deleted = await Reflect.apply(cleanupExpiredTokensJob.handler, cleanupExpiredTokensJob, [{ data: {} }]);
 
     expect(deleted).toBe(7);
     expect(mockDeleteRefreshTokens).toHaveBeenCalled();
@@ -213,7 +213,7 @@ describe('Maintenance job definitions behavior', () => {
     const auditDeleted = await cleanupAuditLogsJob.handler({ data: {} } as any);
     const priceDeleted = await cleanupPriceDataJob.handler({ data: {} } as any);
     const feeDeleted = await cleanupFeeEstimatesJob.handler({ data: {} } as any);
-    const tokenDeleted = await cleanupExpiredTokensJob.handler();
+    const tokenDeleted = await Reflect.apply(cleanupExpiredTokensJob.handler, cleanupExpiredTokensJob, [{ data: {} }]);
 
     expect(auditDeleted).toBe(0);
     expect(priceDeleted).toBe(0);

@@ -63,7 +63,20 @@ function extraWithContext(): McpHandlerExtra {
     isAdmin: false,
     scope: { walletIds: [walletId] },
   };
-  return { authInfo: { extra: { mcp: context } } } as McpHandlerExtra;
+  return {
+    signal: new AbortController().signal,
+    requestId: 'test-resource-request',
+    authInfo: {
+      token: 'test-token',
+      clientId: 'test-client',
+      scopes: [],
+      extra: { mcp: context },
+    },
+    sendNotification: async () => undefined,
+    sendRequest: async () => {
+      throw new Error('Unexpected nested MCP request');
+    },
+  } satisfies McpHandlerExtra;
 }
 
 function addressHandler(): ResourceHandler {

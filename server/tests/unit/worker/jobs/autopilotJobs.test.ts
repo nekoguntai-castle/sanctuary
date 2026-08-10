@@ -19,6 +19,12 @@ import {
   recordFeesJob,
 } from '../../../../src/worker/jobs/autopilotJobs';
 
+function readEvaluateLockKey(): string {
+  const lockKey = evaluateJob.lockOptions?.lockKey;
+  if (!lockKey) throw new Error('Autopilot evaluate lock key is missing');
+  return Reflect.apply(lockKey, evaluateJob.lockOptions, [{ data: {} }]);
+}
+
 describe('worker autopilotJobs', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -36,7 +42,9 @@ describe('worker autopilotJobs', () => {
   it('executes record-fees handler by delegating to fee monitor', async () => {
     mockRecordFeeSnapshot.mockResolvedValueOnce(undefined);
 
-    await expect(recordFeesJob.handler(undefined as never)).resolves.toBeUndefined();
+    await expect(
+      Reflect.apply(recordFeesJob.handler, recordFeesJob, [{ data: {} }])
+    ).resolves.toBeUndefined();
     expect(mockRecordFeeSnapshot).toHaveBeenCalledTimes(1);
     expect(recordFeesJob.options).toEqual({ attempts: 2 });
   });
@@ -44,11 +52,13 @@ describe('worker autopilotJobs', () => {
   it('executes evaluate handler and exposes lock configuration', async () => {
     mockEvaluateAllWallets.mockResolvedValueOnce(undefined);
 
-    await expect(evaluateJob.handler(undefined as never)).resolves.toBeUndefined();
+    await expect(
+      Reflect.apply(evaluateJob.handler, evaluateJob, [{ data: {} }])
+    ).resolves.toBeUndefined();
     expect(mockEvaluateAllWallets).toHaveBeenCalledTimes(1);
 
     expect(evaluateJob.options).toEqual({ attempts: 1 });
-    expect(evaluateJob.lockOptions?.lockKey()).toBe('autopilot:evaluate');
+    expect(readEvaluateLockKey()).toBe('autopilot:evaluate');
     expect(evaluateJob.lockOptions?.lockTtlMs).toBe(120_000);
   });
 
@@ -60,7 +70,7 @@ describe('worker autopilotJobs', () => {
     };
     mockEvaluateAllWallets.mockResolvedValueOnce(undefined);
 
-    await evaluateJob.handler(undefined as never, execution);
+    await Reflect.apply(evaluateJob.handler, evaluateJob, [{ data: {} }, execution]);
 
     expect(mockEvaluateAllWallets).toHaveBeenCalledWith(controller.signal);
   });

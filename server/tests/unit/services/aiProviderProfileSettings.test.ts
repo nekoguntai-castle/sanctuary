@@ -13,6 +13,7 @@ vi.mock('../../../src/utils/encryption', () => ({
 import {
   applyAIProviderProfileSettings,
   normalizeAIProviderProfileSettingsUpdate,
+  type AIProviderSettingsRecord,
 } from '../../../src/services/ai/providerProfileSettings';
 
 const lanOllamaProfile = {
@@ -26,7 +27,7 @@ const lanOllamaProfile = {
 
 describe('AI provider profile settings adapter', () => {
   it('derives a default typed provider profile from legacy endpoint settings', () => {
-    const response = {
+    const response: AIProviderSettingsRecord = {
       aiEndpoint: 'http://host.docker.internal:11434',
       aiModel: 'llama3.2:3b',
     };
@@ -47,7 +48,7 @@ describe('AI provider profile settings adapter', () => {
   });
 
   it('returns redacted credential state without exposing stored provider credentials', () => {
-    const response = {
+    const response: AIProviderSettingsRecord = {
       aiProviderProfiles: [lanOllamaProfile],
       aiActiveProviderProfileId: 'lan-ollama',
       aiProviderCredentials: {
