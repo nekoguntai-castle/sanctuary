@@ -343,7 +343,6 @@ describe("privacy-safe worker heartbeat registry", () => {
     const result = await new WorkerHeartbeatReader(
       () => client as unknown as Redis,
     ).read(now);
-
     expect(result).toEqual(
       expect.objectContaining({
         observation: "observed",
@@ -392,6 +391,9 @@ describe("privacy-safe worker heartbeat registry", () => {
     const result = await new WorkerHeartbeatReader(
       () => client as unknown as Redis,
     ).read(now);
+    if (result.observation !== "observed") {
+      throw new Error("expected observed worker heartbeat snapshot");
+    }
 
     expect(result.coverage).toBe("degraded");
     expect(result.retentionContract).toBe("unknown");
@@ -772,6 +774,9 @@ describe("privacy-safe worker heartbeat registry", () => {
     const result = await new WorkerHeartbeatReader(
       () => client as unknown as Redis,
     ).read(now);
+    if (result.observation !== "observed") {
+      throw new Error("expected observed worker heartbeat snapshot");
+    }
 
     expect(result.telegramCircuit).toBe("mixed_or_unknown");
   });

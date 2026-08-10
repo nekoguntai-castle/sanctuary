@@ -6,6 +6,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { faker } from '@faker-js/faker';
+import type { WalletUser } from '../../../src/generated/prisma/client';
 
 const { mockGetNamespacedCache, mockCache, mockLog } = vi.hoisted(() => ({
   mockGetNamespacedCache: vi.fn(),
@@ -75,6 +76,16 @@ import {
 import { NotFoundError, ForbiddenError } from '../../../src/errors';
 import { registerResourceAccessContracts } from './accessControl.resource-access.contracts';
 
+function makeWalletUser(walletId: string, userId: string, role: string): WalletUser {
+  return {
+    id: faker.string.uuid(),
+    walletId,
+    userId,
+    role,
+    createdAt: new Date(),
+  } satisfies WalletUser;
+}
+
 describe('Access Control Service', () => {
   const userId = faker.string.uuid();
   const walletId = faker.string.uuid();
@@ -103,13 +114,9 @@ describe('Access Control Service', () => {
 
   describe('getUserWalletRole', () => {
     it('should return owner role for direct owner access', async () => {
-      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-        id: faker.string.uuid(),
-        walletId,
-        userId,
-        role: 'owner',
-        addedAt: new Date(),
-      });
+      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+        makeWalletUser(walletId, userId, 'owner')
+      );
 
       const role = await getUserWalletRole(walletId, userId);
 
@@ -120,13 +127,9 @@ describe('Access Control Service', () => {
     });
 
     it('should return signer role for direct signer access', async () => {
-      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-        id: faker.string.uuid(),
-        walletId,
-        userId,
-        role: 'signer',
-        addedAt: new Date(),
-      });
+      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+        makeWalletUser(walletId, userId, 'signer')
+      );
 
       const role = await getUserWalletRole(walletId, userId);
 
@@ -134,13 +137,9 @@ describe('Access Control Service', () => {
     });
 
     it('should return viewer role for direct viewer access', async () => {
-      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-        id: faker.string.uuid(),
-        walletId,
-        userId,
-        role: 'viewer',
-        addedAt: new Date(),
-      });
+      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+        makeWalletUser(walletId, userId, 'viewer')
+      );
 
       const role = await getUserWalletRole(walletId, userId);
 
@@ -148,13 +147,9 @@ describe('Access Control Service', () => {
     });
 
     it('should fail closed for malformed direct wallet roles', async () => {
-      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-        id: faker.string.uuid(),
-        walletId,
-        userId,
-        role: 'admin',
-        addedAt: new Date(),
-      });
+      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+        makeWalletUser(walletId, userId, 'admin')
+      );
 
       const role = await getUserWalletRole(walletId, userId);
 
@@ -206,13 +201,9 @@ describe('Access Control Service', () => {
     it('continues through database lookup when access cache read or write fails', async () => {
       mockCache.get.mockRejectedValueOnce(new Error('cache read failed'));
       mockCache.set.mockRejectedValueOnce(new Error('cache write failed'));
-      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-        id: faker.string.uuid(),
-        walletId,
-        userId,
-        role: 'owner',
-        addedAt: new Date(),
-      });
+      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+        makeWalletUser(walletId, userId, 'owner')
+      );
 
       const role = await getUserWalletRole(walletId, userId);
 
@@ -230,13 +221,9 @@ describe('Access Control Service', () => {
 
   describe('checkWalletAccess', () => {
     it('should return full access for owner', async () => {
-      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-        id: faker.string.uuid(),
-        walletId,
-        userId,
-        role: 'owner',
-        addedAt: new Date(),
-      });
+      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+        makeWalletUser(walletId, userId, 'owner')
+      );
 
       const access = await checkWalletAccess(walletId, userId);
 
@@ -246,13 +233,9 @@ describe('Access Control Service', () => {
     });
 
     it('should return edit access for signer', async () => {
-      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-        id: faker.string.uuid(),
-        walletId,
-        userId,
-        role: 'signer',
-        addedAt: new Date(),
-      });
+      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+        makeWalletUser(walletId, userId, 'signer')
+      );
 
       const access = await checkWalletAccess(walletId, userId);
 
@@ -262,13 +245,9 @@ describe('Access Control Service', () => {
     });
 
     it('should return view-only access for viewer', async () => {
-      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-        id: faker.string.uuid(),
-        walletId,
-        userId,
-        role: 'viewer',
-        addedAt: new Date(),
-      });
+      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+        makeWalletUser(walletId, userId, 'viewer')
+      );
 
       const access = await checkWalletAccess(walletId, userId);
 
@@ -291,13 +270,9 @@ describe('Access Control Service', () => {
 
   describe('requireWalletAccess', () => {
     it('should return context when user has access', async () => {
-      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-        id: faker.string.uuid(),
-        walletId,
-        userId,
-        role: 'viewer',
-        addedAt: new Date(),
-      });
+      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+        makeWalletUser(walletId, userId, 'viewer')
+      );
 
       const context = await requireWalletAccess(walletId, userId);
 
@@ -316,13 +291,9 @@ describe('Access Control Service', () => {
 
   describe('requireWalletEditAccess', () => {
     it('should return context when user can edit', async () => {
-      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-        id: faker.string.uuid(),
-        walletId,
-        userId,
-        role: 'signer',
-        addedAt: new Date(),
-      });
+      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+        makeWalletUser(walletId, userId, 'signer')
+      );
 
       const context = await requireWalletEditAccess(walletId, userId);
 
@@ -331,13 +302,9 @@ describe('Access Control Service', () => {
     });
 
     it('should throw ForbiddenError when user cannot edit', async () => {
-      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-        id: faker.string.uuid(),
-        walletId,
-        userId,
-        role: 'viewer',
-        addedAt: new Date(),
-      });
+      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+        makeWalletUser(walletId, userId, 'viewer')
+      );
 
       await expect(requireWalletEditAccess(walletId, userId)).rejects.toThrow(ForbiddenError);
     });
@@ -352,13 +319,9 @@ describe('Access Control Service', () => {
 
   describe('requireWalletOwnerAccess', () => {
     it('should return context when user is owner', async () => {
-      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-        id: faker.string.uuid(),
-        walletId,
-        userId,
-        role: 'owner',
-        addedAt: new Date(),
-      });
+      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+        makeWalletUser(walletId, userId, 'owner')
+      );
 
       const context = await requireWalletOwnerAccess(walletId, userId);
 
@@ -367,13 +330,9 @@ describe('Access Control Service', () => {
     });
 
     it('should throw ForbiddenError when user is signer not owner', async () => {
-      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-        id: faker.string.uuid(),
-        walletId,
-        userId,
-        role: 'signer',
-        addedAt: new Date(),
-      });
+      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+        makeWalletUser(walletId, userId, 'signer')
+      );
 
       await expect(requireWalletOwnerAccess(walletId, userId)).rejects.toThrow(ForbiddenError);
     });
@@ -393,13 +352,9 @@ describe('Access Control Service', () => {
       vi.mocked(prisma.transaction.findFirst).mockResolvedValue({
         walletId,
       } as never);
-      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-        id: faker.string.uuid(),
-        walletId,
-        userId,
-        role: 'owner',
-        addedAt: new Date(),
-      });
+      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+        makeWalletUser(walletId, userId, 'owner')
+      );
 
       const access = await checkTransactionAccess(transactionId, userId);
 
@@ -425,13 +380,9 @@ describe('Access Control Service', () => {
       vi.mocked(prisma.transaction.findFirst).mockResolvedValue({
         walletId,
       } as never);
-      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-        id: faker.string.uuid(),
-        walletId,
-        userId,
-        role: 'viewer',
-        addedAt: new Date(),
-      });
+      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+        makeWalletUser(walletId, userId, 'viewer')
+      );
 
       const result = await requireTransactionAccess(transactionId, userId);
 
@@ -450,13 +401,9 @@ describe('Access Control Service', () => {
 
   describe('hasWalletAccess', () => {
     it('should return true when user has any role', async () => {
-      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-        id: faker.string.uuid(),
-        walletId,
-        userId,
-        role: 'viewer',
-        addedAt: new Date(),
-      });
+      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+        makeWalletUser(walletId, userId, 'viewer')
+      );
 
       expect(await hasWalletAccess(walletId, userId)).toBe(true);
     });
@@ -471,23 +418,23 @@ describe('Access Control Service', () => {
 
   describe('checkWalletEditAccess', () => {
     it('should return true for owner', async () => {
-      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-        id: faker.string.uuid(), walletId, userId, role: 'owner', addedAt: new Date(),
-      });
+      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+        makeWalletUser(walletId, userId, 'owner')
+      );
       expect(await checkWalletEditAccess(walletId, userId)).toBe(true);
     });
 
     it('should return true for signer', async () => {
-      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-        id: faker.string.uuid(), walletId, userId, role: 'signer', addedAt: new Date(),
-      });
+      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+        makeWalletUser(walletId, userId, 'signer')
+      );
       expect(await checkWalletEditAccess(walletId, userId)).toBe(true);
     });
 
     it('should return false for viewer', async () => {
-      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-        id: faker.string.uuid(), walletId, userId, role: 'viewer', addedAt: new Date(),
-      });
+      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+        makeWalletUser(walletId, userId, 'viewer')
+      );
       expect(await checkWalletEditAccess(walletId, userId)).toBe(false);
     });
 
@@ -500,16 +447,16 @@ describe('Access Control Service', () => {
 
   describe('checkWalletOwnerAccess', () => {
     it('should return true for owner', async () => {
-      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-        id: faker.string.uuid(), walletId, userId, role: 'owner', addedAt: new Date(),
-      });
+      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+        makeWalletUser(walletId, userId, 'owner')
+      );
       expect(await checkWalletOwnerAccess(walletId, userId)).toBe(true);
     });
 
     it('should return false for signer', async () => {
-      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-        id: faker.string.uuid(), walletId, userId, role: 'signer', addedAt: new Date(),
-      });
+      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+        makeWalletUser(walletId, userId, 'signer')
+      );
       expect(await checkWalletOwnerAccess(walletId, userId)).toBe(false);
     });
 
@@ -522,13 +469,9 @@ describe('Access Control Service', () => {
 
   describe('checkWalletApproveAccess', () => {
     it('should return true for owner role', async () => {
-      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-        id: faker.string.uuid(),
-        walletId,
-        userId,
-        role: 'owner',
-        addedAt: new Date(),
-      });
+      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+        makeWalletUser(walletId, userId, 'owner')
+      );
 
       const result = await checkWalletApproveAccess(walletId, userId);
 
@@ -536,13 +479,9 @@ describe('Access Control Service', () => {
     });
 
     it('should return true for approver role', async () => {
-      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-        id: faker.string.uuid(),
-        walletId,
-        userId,
-        role: 'approver',
-        addedAt: new Date(),
-      });
+      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+        makeWalletUser(walletId, userId, 'approver')
+      );
 
       const result = await checkWalletApproveAccess(walletId, userId);
 
@@ -550,13 +489,9 @@ describe('Access Control Service', () => {
     });
 
     it('should return false for signer role', async () => {
-      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-        id: faker.string.uuid(),
-        walletId,
-        userId,
-        role: 'signer',
-        addedAt: new Date(),
-      });
+      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+        makeWalletUser(walletId, userId, 'signer')
+      );
 
       const result = await checkWalletApproveAccess(walletId, userId);
 
@@ -564,13 +499,9 @@ describe('Access Control Service', () => {
     });
 
     it('should return false for viewer role', async () => {
-      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-        id: faker.string.uuid(),
-        walletId,
-        userId,
-        role: 'viewer',
-        addedAt: new Date(),
-      });
+      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+        makeWalletUser(walletId, userId, 'viewer')
+      );
 
       const result = await checkWalletApproveAccess(walletId, userId);
 
@@ -670,13 +601,9 @@ describe('Access Control Service', () => {
 
       it('should query DB after cache returns null (cache miss)', async () => {
         mockCache.get.mockResolvedValueOnce(null);
-        vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-          id: faker.string.uuid(),
-          walletId,
-          userId,
-          role: 'signer',
-          addedAt: new Date(),
-        });
+        vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+        makeWalletUser(walletId, userId, 'signer')
+      );
 
         const role = await getUserWalletRole(walletId, userId);
 
@@ -700,13 +627,9 @@ describe('Access Control Service', () => {
 
         // Second call: cache miss, should query DB
         mockCache.get.mockResolvedValueOnce(null);
-        vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
-          id: faker.string.uuid(),
-          walletId,
-          userId,
-          role: 'owner',
-          addedAt: new Date(),
-        });
+        vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
+        makeWalletUser(walletId, userId, 'owner')
+      );
 
         const role2 = await getUserWalletRole(walletId, userId);
         expect(role2).toBe('owner');

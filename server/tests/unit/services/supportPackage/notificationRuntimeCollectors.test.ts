@@ -178,7 +178,9 @@ describe("notification runtime support collectors", () => {
     });
     expect(
       workerFleetSnapshotSchema.safeParse({
-        ...result,
+        version: 1,
+        observation: "unavailable",
+        coverage: "unavailable",
         workerCount: "0",
       }).success,
     ).toBe(false);

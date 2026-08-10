@@ -97,7 +97,7 @@ describe('User 2FA Secret Handling', () => {
 
     // Reset mocks
     vi.mocked(encryption.isEncrypted).mockReturnValue(false);
-    vi.mocked(encryption.decrypt).mockImplementation((v: any) => v);
+    vi.mocked(encryption.decrypt).mockImplementation((v: string) => v);
   });
 
   it('should preserve 2FA when secret can be decrypted', async () => {
@@ -172,8 +172,8 @@ describe('User 2FA Secret Handling', () => {
     expect(capturedUserData[0].twoFactorSecret).toBe('enc:v1:validencryptedsecret');
 
     // Reset mocks
-    encryption.isEncrypted.mockReturnValue(false);
-    encryption.decrypt.mockImplementation((v: any) => v);
+    vi.mocked(encryption.isEncrypted).mockReturnValue(false);
+    vi.mocked(encryption.decrypt).mockImplementation((v: string) => v);
   });
 });
 }

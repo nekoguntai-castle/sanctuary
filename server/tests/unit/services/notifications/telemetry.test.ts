@@ -21,14 +21,21 @@ import {
   type NotificationTelemetryInput,
 } from '../../../../src/services/notifications/telemetry';
 
-const event: NotificationTelemetryInput = {
-  family: 'transaction',
-  stage: 'enqueue_resolved',
-  path: 'queued',
-  channel: 'none',
-  outcome: 'none',
-  failureClass: 'none',
-};
+function makeTelemetryInput(
+  overrides: Partial<NotificationTelemetryInput> = {}
+): NotificationTelemetryInput {
+  return {
+    family: 'transaction',
+    stage: 'enqueue_resolved',
+    path: 'queued',
+    channel: 'none',
+    outcome: 'none',
+    failureClass: 'none',
+    ...overrides,
+  } satisfies NotificationTelemetryInput;
+}
+
+const event = makeTelemetryInput();
 
 describe('notification telemetry writer', () => {
   const evalMock = vi.fn();
@@ -78,7 +85,7 @@ describe('notification telemetry writer', () => {
     const factory = vi.fn(() => client);
     const writer = new NotificationTelemetryWriter('api', factory);
 
-    writer.record({ ...event, channel: 'wallet-poison' } as NotificationTelemetryInput);
+    Reflect.apply(writer.record, writer, [{ ...event, channel: 'wallet-poison' }]);
 
     expect(factory).not.toHaveBeenCalled();
     expect(writer.getLocalHealth().dropped).toBe(1);
@@ -238,13 +245,13 @@ describe('notification telemetry writer', () => {
 
   it('buckets local drop counts without exposing exact values', () => {
     const writer = new NotificationTelemetryWriter('api', () => client);
-    expect(writer.getShareableLocalHealth().droppedEvents).toBe('zero');
+    expect(writer.getShareableLocalHealth()).toMatchObject({ droppedEvents: 'zero' });
     for (let index = 0; index < 21; index += 1) {
-      writer.record({ ...event, channel: 'invalid' } as NotificationTelemetryInput);
+      Reflect.apply(writer.record, writer, [{ ...event, channel: 'invalid' }]);
       const expected = index === 0 ? 'one'
         : index < 5 ? 'two_to_five'
           : index < 20 ? 'six_to_twenty' : 'over_twenty';
-      expect(writer.getShareableLocalHealth().droppedEvents).toBe(expected);
+      expect(writer.getShareableLocalHealth()).toMatchObject({ droppedEvents: expected });
     }
   });
 

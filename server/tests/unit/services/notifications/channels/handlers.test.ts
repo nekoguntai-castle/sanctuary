@@ -20,6 +20,33 @@ vi.mock('../../../../../src/services/push/pushService', () => mockPushService);
 import { telegramChannelHandler } from '../../../../../src/services/notifications/channels/telegram';
 import { pushChannelHandler } from '../../../../../src/services/notifications/channels/push';
 
+type ConsolidationSuggestion = Parameters<
+  NonNullable<typeof telegramChannelHandler.notifyConsolidationSuggestion>
+>[1];
+
+function makeConsolidationSuggestion(
+  overrides: Partial<Omit<ConsolidationSuggestion, 'utxoHealth'>> & {
+    utxoHealth?: Partial<ConsolidationSuggestion['utxoHealth']>;
+  } = {}
+): ConsolidationSuggestion {
+  const { utxoHealth, ...suggestionOverrides } = overrides;
+  return {
+    walletId: 'wallet-1',
+    walletName: 'Treasury',
+    feeRate: 5,
+    utxoHealth: {
+      totalUtxos: 12,
+      dustCount: 0,
+      dustValue: 0n,
+      totalValue: 120_000n,
+      ...utxoHealth,
+    },
+    estimatedSavings: 'minimal savings',
+    reason: 'Fees are low',
+    ...suggestionOverrides,
+  } satisfies ConsolidationSuggestion;
+}
+
 describe('notification channel handlers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -200,22 +227,16 @@ describe('notification channel handlers', () => {
 
       const result = await telegramChannelHandler.notifyConsolidationSuggestion!(
         'wallet-1',
-        {
-          walletId: 'wallet-1',
+        makeConsolidationSuggestion({
           walletName: 'Treasury <Main>',
-          feeRate: 5,
           utxoHealth: {
             totalUtxos: 21,
             dustCount: 3,
             dustValue: 12000n,
             totalValue: 900000n,
-            avgUtxoSize: 42_857n,
-            smallestUtxo: 1000n,
-            largestUtxo: 300000n,
           },
           estimatedSavings: '~12,000 sats in potential fee savings',
-          reason: 'Fees are low',
-        }
+        })
       );
 
       expect(mockTelegramService.sendTelegramMessage).toHaveBeenCalledTimes(1);
@@ -249,22 +270,13 @@ describe('notification channel handlers', () => {
 
       const result = await telegramChannelHandler.notifyConsolidationSuggestion!(
         'wallet-1',
-        {
-          walletId: 'wallet-1',
-          walletName: 'Treasury',
+        makeConsolidationSuggestion({
           feeRate: 6,
           utxoHealth: {
             totalUtxos: 14,
-            dustCount: 0,
-            dustValue: 0n,
             totalValue: 700000n,
-            avgUtxoSize: 50_000n,
-            smallestUtxo: 5000n,
-            largestUtxo: 250000n,
           },
-          estimatedSavings: 'minimal savings',
-          reason: 'Fees are low',
-        }
+        })
       );
 
       expect(mockTelegramService.sendTelegramMessage).toHaveBeenCalledTimes(2);
@@ -289,22 +301,13 @@ describe('notification channel handlers', () => {
 
       const result = await telegramChannelHandler.notifyConsolidationSuggestion!(
         'wallet-1',
-        {
-          walletId: 'wallet-1',
-          walletName: 'Treasury',
+        makeConsolidationSuggestion({
           feeRate: 6,
           utxoHealth: {
             totalUtxos: 14,
-            dustCount: 0,
-            dustValue: 0n,
             totalValue: 700000n,
-            avgUtxoSize: 50_000n,
-            smallestUtxo: 5000n,
-            largestUtxo: 250000n,
           },
-          estimatedSavings: 'minimal savings',
-          reason: 'Fees are low',
-        }
+        })
       );
 
       expect(result).toEqual({
@@ -320,22 +323,13 @@ describe('notification channel handlers', () => {
 
       const result = await telegramChannelHandler.notifyConsolidationSuggestion!(
         'wallet-1',
-        {
-          walletId: 'wallet-1',
-          walletName: 'Treasury',
-          feeRate: 5,
+        makeConsolidationSuggestion({
           utxoHealth: {
-            totalUtxos: 12,
             dustCount: 1,
             dustValue: 500n,
-            totalValue: 120000n,
-            avgUtxoSize: 10000n,
-            smallestUtxo: 500n,
-            largestUtxo: 50000n,
           },
           estimatedSavings: '~5,000 sats in potential fee savings',
-          reason: 'Fees are low',
-        }
+        })
       );
 
       expect(result.success).toBe(false);

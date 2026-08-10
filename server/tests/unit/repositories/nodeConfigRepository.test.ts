@@ -5,6 +5,7 @@
  */
 
 import { vi, Mock } from 'vitest';
+import type { Prisma } from '../../../src/generated/prisma/client';
 
 vi.mock('../../../src/models/prisma', () => ({
   __esModule: true,
@@ -38,6 +39,36 @@ vi.mock('../../../src/utils/logger', () => ({
 
 import prisma from '../../../src/models/prisma';
 import { nodeConfigRepository } from '../../../src/repositories/nodeConfigRepository';
+
+function makeNodeConfigCreateInput(
+  overrides: Partial<Prisma.NodeConfigCreateInput> = {}
+): Prisma.NodeConfigCreateInput {
+  return {
+    type: 'electrum',
+    isDefault: true,
+    ...overrides,
+  } satisfies Prisma.NodeConfigCreateInput;
+}
+
+function makeNodeConfigUpdateInput(
+  overrides: Prisma.NodeConfigUpdateInput = {}
+): Prisma.NodeConfigUpdateInput {
+  return { ...overrides } satisfies Prisma.NodeConfigUpdateInput;
+}
+
+function makeElectrumServerCreateInput(
+  overrides: Partial<Prisma.ElectrumServerCreateInput> = {}
+): Prisma.ElectrumServerCreateInput {
+  return {
+    label: 'Test Electrum',
+    host: 'electrum.example.com',
+    port: 50002,
+    useSsl: true,
+    network: 'mainnet',
+    nodeConfig: { connect: { id: 'default' } },
+    ...overrides,
+  } satisfies Prisma.ElectrumServerCreateInput;
+}
 
 describe('Node Config Repository', () => {
   const mockNodeConfig = {
@@ -122,10 +153,9 @@ describe('Node Config Repository', () => {
     it('should return existing default config', async () => {
       (prisma.nodeConfig.findFirst as Mock).mockResolvedValue(mockNodeConfig);
 
-      const result = await nodeConfigRepository.findOrCreateDefault({
-        name: 'New Config',
-        isDefault: true,
-      });
+      const result = await nodeConfigRepository.findOrCreateDefault(
+        makeNodeConfigCreateInput()
+      );
 
       expect(result).toEqual(mockNodeConfig);
       expect(prisma.nodeConfig.create).not.toHaveBeenCalled();
@@ -135,15 +165,14 @@ describe('Node Config Repository', () => {
       (prisma.nodeConfig.findFirst as Mock).mockResolvedValue(null);
       (prisma.nodeConfig.create as Mock).mockResolvedValue(mockNodeConfig);
 
-      const result = await nodeConfigRepository.findOrCreateDefault({
-        name: 'New Config',
-        isDefault: true,
-      });
+      const result = await nodeConfigRepository.findOrCreateDefault(
+        makeNodeConfigCreateInput()
+      );
 
       expect(result).toEqual(mockNodeConfig);
       expect(prisma.nodeConfig.create).toHaveBeenCalledWith({
         data: {
-          name: 'New Config',
+          type: 'electrum',
           isDefault: true,
           id: 'default',
         },
@@ -154,11 +183,9 @@ describe('Node Config Repository', () => {
       (prisma.nodeConfig.findFirst as Mock).mockResolvedValue(null);
       (prisma.nodeConfig.create as Mock).mockResolvedValue(mockNodeConfig);
 
-      await nodeConfigRepository.findOrCreateDefault({
-        id: 'custom-id',
-        name: 'New Config',
-        isDefault: true,
-      });
+      await nodeConfigRepository.findOrCreateDefault(
+        makeNodeConfigCreateInput({ id: 'custom-id' })
+      );
 
       expect(prisma.nodeConfig.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ id: 'custom-id' }),
@@ -168,17 +195,18 @@ describe('Node Config Repository', () => {
 
   describe('update', () => {
     it('should update node config by id', async () => {
-      const updated = { ...mockNodeConfig, name: 'Updated' };
+      const updated = { ...mockNodeConfig, explorerUrl: 'https://mempool.space' };
       (prisma.nodeConfig.update as Mock).mockResolvedValue(updated);
 
-      const result = await nodeConfigRepository.update('default', {
-        name: 'Updated',
-      });
+      const result = await nodeConfigRepository.update(
+        'default',
+        makeNodeConfigUpdateInput({ explorerUrl: 'https://mempool.space' })
+      );
 
       expect(result).toEqual(updated);
       expect(prisma.nodeConfig.update).toHaveBeenCalledWith({
         where: { id: 'default' },
-        data: { name: 'Updated' },
+        data: { explorerUrl: 'https://mempool.space' },
       });
     });
   });
@@ -338,13 +366,9 @@ describe('Node Config Repository', () => {
     it('should create a new electrum server', async () => {
       (prisma.electrumServer.create as Mock).mockResolvedValue(mockElectrumServer);
 
-      const result = await nodeConfigRepository.electrumServer.create({
-        host: 'electrum.example.com',
-        port: 50002,
-        protocol: 'ssl',
-        network: 'mainnet',
-        nodeConfig: { connect: { id: 'default' } },
-      });
+      const result = await nodeConfigRepository.electrumServer.create(
+        makeElectrumServerCreateInput()
+      );
 
       expect(result).toEqual(mockElectrumServer);
     });

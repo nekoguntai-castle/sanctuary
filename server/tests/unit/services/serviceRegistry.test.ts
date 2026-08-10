@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ManagedService } from '../../../src/services/serviceRegistry';
 
 const { mockStartAllServices, mockLogger } = vi.hoisted(() => ({
   mockStartAllServices: vi.fn(),
@@ -27,6 +28,18 @@ const loadRegistry = async () => {
   return import('../../../src/services/serviceRegistry');
 };
 
+function makeManagedService(
+  name: string,
+  overrides: Partial<Omit<ManagedService, 'name'>> = {}
+): ManagedService {
+  return {
+    name,
+    critical: false,
+    start: vi.fn(async () => undefined),
+    ...overrides,
+  } satisfies ManagedService;
+}
+
 describe('serviceRegistry', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -34,22 +47,16 @@ describe('serviceRegistry', () => {
 
   it('registers and returns services', async () => {
     const registry = await loadRegistry();
-    registry.registerService({
-      name: 'svc-a',
-      start: vi.fn(),
-    });
-    registry.registerService({
-      name: 'svc-b',
-      start: vi.fn(),
-    });
+    registry.registerService(makeManagedService('svc-a'));
+    registry.registerService(makeManagedService('svc-b'));
 
     expect(registry.getRegisteredServices().map(s => s.name)).toEqual(['svc-a', 'svc-b']);
   });
 
   it('warns when overwriting an existing service name', async () => {
     const registry = await loadRegistry();
-    registry.registerService({ name: 'svc-a', start: vi.fn() });
-    registry.registerService({ name: 'svc-a', start: vi.fn() });
+    registry.registerService(makeManagedService('svc-a'));
+    registry.registerService(makeManagedService('svc-a'));
 
     expect(mockLogger.warn).toHaveBeenCalledWith('Overwriting registered service', { name: 'svc-a' });
     expect(registry.getRegisteredServices()).toHaveLength(1);
@@ -58,8 +65,8 @@ describe('serviceRegistry', () => {
   it('starts registered services through startupManager', async () => {
     mockStartAllServices.mockResolvedValueOnce([{ name: 'svc-a', success: true }]);
     const registry = await loadRegistry();
-    const svcA = { name: 'svc-a', start: vi.fn() };
-    const svcB = { name: 'svc-b', start: vi.fn() };
+    const svcA = makeManagedService('svc-a');
+    const svcB = makeManagedService('svc-b');
     registry.registerService(svcA);
     registry.registerService(svcB);
 
@@ -72,25 +79,18 @@ describe('serviceRegistry', () => {
   it('stops services in reverse order and tolerates stop errors', async () => {
     const stopOrder: string[] = [];
     const registry = await loadRegistry();
-    registry.registerService({
-      name: 'first',
-      start: vi.fn(),
+    registry.registerService(makeManagedService('first', {
       stop: vi.fn(async () => {
         stopOrder.push('first');
       }),
-    });
-    registry.registerService({
-      name: 'second',
-      start: vi.fn(),
+    }));
+    registry.registerService(makeManagedService('second', {
       stop: vi.fn(async () => {
         stopOrder.push('second');
         throw new Error('fail-stop');
       }),
-    });
-    registry.registerService({
-      name: 'third',
-      start: vi.fn(),
-    });
+    }));
+    registry.registerService(makeManagedService('third'));
 
     await registry.stopRegisteredServices();
 
@@ -104,29 +104,23 @@ describe('serviceRegistry', () => {
   it('stops services in reverse dependency order', async () => {
     const stopOrder: string[] = [];
     const registry = await loadRegistry();
-    registry.registerService({
-      name: 'api',
+    registry.registerService(makeManagedService('api', {
       dependsOn: ['cache'],
-      start: vi.fn(),
       stop: vi.fn(() => {
         stopOrder.push('api');
       }),
-    });
-    registry.registerService({
-      name: 'database',
-      start: vi.fn(),
+    }));
+    registry.registerService(makeManagedService('database', {
       stop: vi.fn(() => {
         stopOrder.push('database');
       }),
-    });
-    registry.registerService({
-      name: 'cache',
+    }));
+    registry.registerService(makeManagedService('cache', {
       dependsOn: ['database'],
-      start: vi.fn(),
       stop: vi.fn(() => {
         stopOrder.push('cache');
       }),
-    });
+    }));
 
     await registry.stopRegisteredServices();
 
@@ -136,21 +130,17 @@ describe('serviceRegistry', () => {
   it('falls back to reverse registration order when the shutdown graph is invalid', async () => {
     const stopOrder: string[] = [];
     const registry = await loadRegistry();
-    registry.registerService({
-      name: 'api',
+    registry.registerService(makeManagedService('api', {
       dependsOn: ['missing-cache'],
-      start: vi.fn(),
       stop: vi.fn(() => {
         stopOrder.push('api');
       }),
-    });
-    registry.registerService({
-      name: 'database',
-      start: vi.fn(),
+    }));
+    registry.registerService(makeManagedService('database', {
       stop: vi.fn(() => {
         stopOrder.push('database');
       }),
-    });
+    }));
 
     await registry.stopRegisteredServices();
 

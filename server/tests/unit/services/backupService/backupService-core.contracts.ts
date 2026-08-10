@@ -976,25 +976,5 @@ describe('BackupService', () => {
     });
   });
 
-  describe('serialization helpers', () => {
-    it('should correctly handle nested objects with BigInt', async () => {
-      mockPrismaClient.transaction.findMany.mockResolvedValue([
-        {
-          id: 'tx-1',
-          amount: BigInt(500000),
-          fee: BigInt(1000),
-          nested: {
-            value: BigInt(100),
-          },
-        },
-      ]);
-
-      const backup = await backupService.createBackup('admin');
-
-      expect(backup.data.transaction[0].amount).toBe('__bigint__500000');
-      expect(backup.data.transaction[0].fee).toBe('__bigint__1000');
-      expect(backup.data.transaction[0].nested.value).toBe('__bigint__100');
-    });
-  });
 });
 }

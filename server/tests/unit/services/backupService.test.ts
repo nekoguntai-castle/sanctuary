@@ -15,6 +15,7 @@ import { registerBackupNodeConfigPasswordTests } from './backupService/node-conf
 import { registerBackupRestoreErrorTests } from './backupService/restore-errors.contracts';
 import { registerBackupRestoreTests } from './backupService/restore.contracts';
 import { registerBackupSchemaMigrationTests } from './backupService/schema-migration.contracts';
+import { registerBackupSerializationTests } from './backupService/serialization.contracts';
 import { registerBackupSnapshotTests } from './backupService/snapshot.contracts';
 import { registerBackupUser2faSecretTests } from './backupService/user-2fa-secret.contracts';
 import { registerBackupValidationEdgeCaseTests } from './backupService/validation-edge-cases.contracts';
@@ -25,6 +26,7 @@ registerBackupDataStructureTests();
 registerBackupRestoreTests();
 registerBackupRestoreErrorTests();
 registerBackupSchemaMigrationTests();
+registerBackupSerializationTests();
 registerBackupSnapshotTests();
 registerBackupEdgeCaseTests();
 registerBackupNodeConfigPasswordTests();

@@ -33,6 +33,7 @@ function fakeReaderClient(options: {
     status: 'ready',
     time: vi.fn(() => options.time ?? Promise.resolve(['720000', '0'])),
     pipeline: vi.fn(() => pipeline),
+    connect: vi.fn(async () => undefined),
     disconnect: vi.fn(),
     keys,
   };
@@ -242,7 +243,7 @@ describe('notification dead-letter aggregates', () => {
   });
 
   it('coalesces connection startup for concurrent aggregate writes', async () => {
-    let releaseConnection = () => undefined;
+    let releaseConnection!: () => void;
     const connectionGate = new Promise<void>((resolve) => {
       releaseConnection = resolve;
     });
@@ -266,7 +267,7 @@ describe('notification dead-letter aggregates', () => {
   });
 
   it('contains a connection failure that settles after shutdown', async () => {
-    let rejectConnection = (_error: Error) => undefined;
+    let rejectConnection!: (error: Error) => void;
     const connectionGate = new Promise<void>((_resolve, reject) => {
       rejectConnection = reject;
     });

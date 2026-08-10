@@ -26,10 +26,13 @@ import { createAnonymizer } from '../../../../src/services/supportPackage/anonym
 import type { CollectorContext } from '../../../../src/services/supportPackage/types';
 
 function makeContext(): CollectorContext {
+  const generatedAt = new Date('2026-05-22T00:00:00.000Z');
   return {
     anonymize: createAnonymizer('test-salt'),
-    generatedAt: new Date('2026-05-22T00:00:00.000Z'),
-  };
+    generatedAt,
+    signal: new AbortController().signal,
+    deadlineMs: Date.now() + 30_000,
+  } satisfies CollectorContext;
 }
 
 describe('webhooks collector', () => {

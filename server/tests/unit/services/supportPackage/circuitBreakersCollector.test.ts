@@ -24,7 +24,13 @@ import { createAnonymizer } from '../../../../src/services/supportPackage/anonym
 import type { CollectorContext } from '../../../../src/services/supportPackage/types';
 
 function makeContext(): CollectorContext {
-  return { anonymize: createAnonymizer('test-salt'), generatedAt: new Date() };
+  const generatedAt = new Date();
+  return {
+    anonymize: createAnonymizer('test-salt'),
+    generatedAt,
+    signal: new AbortController().signal,
+    deadlineMs: Date.now() + 30_000,
+  } satisfies CollectorContext;
 }
 
 describe('circuitBreakers collector', () => {

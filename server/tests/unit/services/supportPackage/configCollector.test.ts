@@ -33,12 +33,13 @@ import { safeConfigProfileSchema } from '../../../../src/services/supportPackage
 import type { CollectorContext } from '../../../../src/services/supportPackage/types';
 
 function makeContext(): CollectorContext {
+  const generatedAt = new Date();
   return {
     anonymize: createAnonymizer('test-salt'),
-    generatedAt: new Date(),
+    generatedAt,
     signal: new AbortController().signal,
-    deadlineMs: Date.now() + 1000,
-  };
+    deadlineMs: Date.now() + 30_000,
+  } satisfies CollectorContext;
 }
 
 function makeConfig() {

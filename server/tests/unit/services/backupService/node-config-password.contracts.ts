@@ -95,8 +95,8 @@ describe('Node Config Password Handling', () => {
     expect(capturedData[0]).toMatchObject({ proxyEnabled: false, proxyPassword: null });
 
     // Reset mocks
-    encryption.isEncrypted.mockReturnValue(false);
-    encryption.decrypt.mockImplementation((v: any) => v);
+    vi.mocked(encryption.isEncrypted).mockReturnValue(false);
+    vi.mocked(encryption.decrypt).mockImplementation((v: string) => v);
   });
 
   it('should fail closed even when the proxy password uses the current key', async () => {
@@ -168,8 +168,8 @@ describe('Node Config Password Handling', () => {
     expect(result.warnings.some((w) => w.includes('proxy configuration'))).toBe(true);
     expect(capturedData[0]).toMatchObject({ proxyEnabled: false, proxyPassword: null });
 
-    encryption.isEncrypted.mockReturnValue(false);
-    encryption.decrypt.mockImplementation((v: any) => v);
+    vi.mocked(encryption.isEncrypted).mockReturnValue(false);
+    vi.mocked(encryption.decrypt).mockImplementation((v: string) => v);
   });
 
   it('should clear plaintext proxy credentials', async () => {
@@ -311,8 +311,8 @@ describe('Node Config Password Handling', () => {
     expect(result.warnings.some((w) => w.includes('proxy configuration'))).toBe(true);
     expect(capturedData[0]).toMatchObject({ proxyEnabled: false, proxyPassword: null });
 
-    encryption.isEncrypted.mockReturnValue(false);
-    encryption.decrypt.mockImplementation((v: any) => v);
+    vi.mocked(encryption.isEncrypted).mockReturnValue(false);
+    vi.mocked(encryption.decrypt).mockImplementation((v: string) => v);
   });
 });
 }
