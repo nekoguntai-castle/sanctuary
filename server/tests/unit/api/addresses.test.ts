@@ -49,11 +49,19 @@ describe('Address Routes', () => {
 
   it('should apply pagination and return balances', async () => {
     const walletId = 'wallet-123';
+    const xpub = 'tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M';
+    const descriptor = `wpkh([73c5da0a/84'/1'/0']${xpub}/0/*)`;
+    const changeDescriptor = `wpkh([73c5da0a/84'/1'/0']${xpub}/1/*)`;
 
     mockPrismaClient.wallet.findUnique.mockResolvedValue({
       id: walletId,
-      descriptor: 'descriptor',
-      network: 'testnet',
+      type: 'single_sig',
+      scriptType: 'native_segwit',
+      descriptor,
+      changeDescriptor,
+      canonicalPolicyId: 'single-sig-native-segwit-bip84-v1',
+      canonicalPolicyVersion: 1,
+      network: 'testnet3',
       devices: [{ device: { type: 'coldcard', model: null } }],
     });
 
@@ -61,10 +69,15 @@ describe('Address Routes', () => {
       {
         id: 'addr-1',
         walletId,
-        address: 'tb1qaddress1',
+        address: 'tb1qd7spv5q28348xl4myc8zmh983w5jx32cjhkn97',
         derivationPath: "m/84'/1'/0'/0/1",
         index: 1,
         used: false,
+        branch: 0,
+        coordinateVersion: 1,
+        canonicalPolicyId: 'single-sig-native-segwit-bip84-v1',
+        canonicalPolicyVersion: 1,
+        scriptPubKey: '00146fa016500a3c6a737ebb260e2ddca78ba9234558',
         addressLabels: [
           { label: { id: 'label-1', name: 'Savings', color: '#00FFAA' } },
         ],
@@ -74,7 +87,7 @@ describe('Address Routes', () => {
 
     mockPrismaClient.uTXO.findMany.mockResolvedValue([
       {
-        address: 'tb1qaddress1',
+        address: 'tb1qd7spv5q28348xl4myc8zmh983w5jx32cjhkn97',
         amount: BigInt(1200),
       },
     ]);
@@ -92,7 +105,7 @@ describe('Address Routes', () => {
     );
     expect(response.body).toHaveLength(1);
     expect(response.body[0]).toMatchObject({
-      address: 'tb1qaddress1',
+      address: 'tb1qd7spv5q28348xl4myc8zmh983w5jx32cjhkn97',
       balance: 1200,
       isChange: false,
     });

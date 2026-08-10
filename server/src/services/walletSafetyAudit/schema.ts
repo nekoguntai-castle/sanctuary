@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
-export const WALLET_SAFETY_AUDIT_SCHEMA_VERSION = 'sanctuary.wallet-safety-audit.v1' as const;
+// V2 adds canonical policy/coordinate/script evidence. Readers must keep V1
+// records immutable and treat absent V2 evidence as unproven, never backfilled.
+export const WALLET_SAFETY_AUDIT_SCHEMA_VERSION = 'sanctuary.wallet-safety-audit.v2' as const;
 
 export const walletAuditClassificationSchema = z.enum([
   'proven_safe',
@@ -11,6 +13,8 @@ export const walletAuditClassificationSchema = z.enum([
 export const walletAuditFindingIdSchema = z.enum([
   'address.path_inconsistent',
   'address.policy_mismatch',
+  'address.coordinate_missing',
+  'address.script_pubkey_mismatch',
   'address.zero_addresses',
   'descriptor.mixed_change_branches',
   'descriptor.policy_inconsistent',
@@ -50,6 +54,8 @@ export const rawAuditWalletSchema = z.strictObject({
   sourceDescriptorChecksum: nullableString,
   sourceChangeDescriptorChecksum: nullableString,
   fingerprint: nullableString,
+  canonicalPolicyId: nullableString,
+  canonicalPolicyVersion: z.number().int().nullable(),
 });
 
 export const rawAuditAddressSchema = z.strictObject({
@@ -58,6 +64,11 @@ export const rawAuditAddressSchema = z.strictObject({
   address: z.string(),
   derivationPath: z.string(),
   index: z.number().int(),
+  branch: z.number().int().nullable(),
+  coordinateVersion: z.number().int().nullable(),
+  canonicalPolicyId: nullableString,
+  canonicalPolicyVersion: z.number().int().nullable(),
+  scriptPubKey: nullableString,
 });
 
 export const rawAuditSignerSchema = z.strictObject({

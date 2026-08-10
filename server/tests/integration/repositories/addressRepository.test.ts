@@ -14,8 +14,66 @@ import {
   TestScenarioBuilder,
   generateTestnetAddress,
   assertCount,
+  getTestPrisma,
 } from "./setup";
 import { parseAddressDerivationPath } from "@sanctuary/shared/utils/bitcoin";
+import type { PrismaClient } from "../../../src/generated/prisma/client";
+import { provenAuditSnapshot } from "../../fixtures/walletSafetyAuditFixture";
+import { addressRepository } from "../../../src/repositories/addressRepository";
+
+const CANONICAL_POLICY_ID = "single-sig-native-segwit-bip84-v1";
+
+async function createCanonicalWallet(tx: PrismaClient) {
+  const evidence = provenAuditSnapshot().wallets[0];
+  return tx.wallet.create({
+    data: {
+      name: `canonical-wallet-${Date.now()}`,
+      type: evidence.type,
+      scriptType: evidence.scriptType,
+      network: evidence.network,
+      quorum: evidence.quorum,
+      totalSigners: evidence.totalSigners,
+      descriptor: evidence.descriptor,
+      changeDescriptor: evidence.changeDescriptor,
+      descriptorPolicyVersion: evidence.descriptorPolicyVersion,
+      descriptorSourceKind: evidence.descriptorSourceKind,
+      sourceDescriptor: evidence.sourceDescriptor,
+      sourceChangeDescriptor: evidence.sourceChangeDescriptor,
+      sourceDescriptorChecksum: evidence.sourceDescriptorChecksum,
+      sourceChangeDescriptorChecksum: evidence.sourceChangeDescriptorChecksum,
+      fingerprint: evidence.fingerprint,
+      canonicalPolicyId: CANONICAL_POLICY_ID,
+      canonicalPolicyVersion: 1,
+    },
+  });
+}
+
+function canonicalAddressData(walletId: string, index = 0) {
+  return {
+    walletId,
+    address: `tb1qcanonical${index.toString().padStart(28, "0")}`,
+    derivationPath: `m/84'/1'/0'/0/${index}`,
+    index,
+    branch: 0,
+    coordinateVersion: 1,
+    canonicalPolicyId: CANONICAL_POLICY_ID,
+    canonicalPolicyVersion: 1,
+    scriptPubKey: '00140000000000000000000000000000000000000000',
+    used: false,
+  } as const;
+}
+
+function allocatedAddress(index: number) {
+  return {
+    address: `tb1qallocated${index.toString().padStart(28, "0")}`,
+    derivationPath: `m/84'/1'/0'/0/${index}`,
+    coordinateVersion: 1 as const,
+    canonicalPolicyId: CANONICAL_POLICY_ID,
+    canonicalPolicyVersion: 1,
+    scriptPubKey: '00140000000000000000000000000000000000000000',
+    used: false,
+  };
+}
 
 describeIfDatabase("AddressRepository Integration Tests", () => {
   setupRepositoryTests();
@@ -87,6 +145,175 @@ describeIfDatabase("AddressRepository Integration Tests", () => {
           address: addressString,
         });
       });
+    });
+
+    it("leaves legacy address evidence wholly coordinate-null", async () => {
+      await withTestTransaction(async (tx) => {
+        const user = await createTestUser(tx);
+        const wallet = await createTestWallet(tx, user.id);
+
+        const address = await createTestAddress(tx, wallet.id, { index: 0 });
+
+        expect(address).toMatchObject({
+          branch: null,
+          coordinateVersion: null,
+          canonicalPolicyId: null,
+          canonicalPolicyVersion: null,
+        });
+      });
+    });
+
+    it("rejects incomplete canonical coordinate evidence at the database boundary", async () => {
+      await expect(withTestTransaction(async (tx) => {
+        const wallet = await createCanonicalWallet(tx);
+        await tx.address.create({
+          data: {
+            ...canonicalAddressData(wallet.id),
+            coordinateVersion: null,
+          },
+        });
+      })).rejects.toThrow();
+    });
+
+    it("rejects out-of-domain canonical branches at the database boundary", async () => {
+      await expect(withTestTransaction(async (tx) => {
+        const wallet = await createCanonicalWallet(tx);
+        await tx.address.create({
+          data: {
+            ...canonicalAddressData(wallet.id),
+            branch: 2,
+          },
+        });
+      })).rejects.toThrow();
+    });
+
+    it("rejects duplicate canonical wallet-relative coordinates", async () => {
+      await expect(withTestTransaction(async (tx) => {
+        const wallet = await createCanonicalWallet(tx);
+        await tx.address.create({ data: canonicalAddressData(wallet.id) });
+        await tx.address.create({
+          data: {
+            ...canonicalAddressData(wallet.id),
+            address: "tb1qcanonicalduplicate000000000000000",
+          },
+        });
+      })).rejects.toThrow();
+    });
+
+    it("rejects an address policy snapshot that differs from its wallet", async () => {
+      await expect(withTestTransaction(async (tx) => {
+        const wallet = await createCanonicalWallet(tx);
+        await tx.address.create({
+          data: {
+            ...canonicalAddressData(wallet.id),
+            canonicalPolicyId: "single_sig.taproot",
+          },
+        });
+      })).rejects.toThrow();
+    });
+
+    it("makes canonical coordinate and policy evidence immutable", async () => {
+      await expect(withTestTransaction(async (tx) => {
+        const wallet = await createCanonicalWallet(tx);
+        const address = await tx.address.create({ data: canonicalAddressData(wallet.id) });
+        await tx.address.update({
+          where: { id: address.id },
+          data: { branch: 1 },
+        });
+      })).rejects.toThrow();
+    });
+
+    it("serializes concurrent next-address allocation into unique contiguous coordinates", async () => {
+      const client = await getTestPrisma();
+      const wallet = await createCanonicalWallet(client);
+      try {
+        await Promise.all([
+          addressRepository.createNextCanonical(wallet.id, 0, allocatedAddress),
+          addressRepository.createNextCanonical(wallet.id, 0, allocatedAddress),
+        ]);
+        const rows = await client.address.findMany({
+          where: { walletId: wallet.id, branch: 0 },
+          orderBy: { index: 'asc' },
+        });
+        expect(rows.map(({ index }) => index)).toEqual([0, 1]);
+      } finally {
+        await client.address.deleteMany({ where: { walletId: wallet.id } });
+        await client.wallet.delete({ where: { id: wallet.id } });
+      }
+    });
+
+    it("rejects next-address allocation for a legacy wallet before derivation", async () => {
+      const client = await getTestPrisma();
+      const user = await createTestUser(client);
+      const wallet = await createTestWallet(client, user.id);
+      const build = vi.fn(allocatedAddress);
+      try {
+        await expect(addressRepository.createNextCanonical(wallet.id, 0, build))
+          .rejects.toThrow("missing or lacks canonical policy");
+        expect(build).not.toHaveBeenCalled();
+        await expect(client.address.count({ where: { walletId: wallet.id } })).resolves.toBe(0);
+      } finally {
+        await client.wallet.delete({ where: { id: wallet.id } });
+        await client.user.delete({ where: { id: user.id } });
+      }
+    });
+
+    it("serializes concurrent batches into unique contiguous branch coordinates", async () => {
+      const client = await getTestPrisma();
+      const wallet = await createCanonicalWallet(client);
+      try {
+        await Promise.all([
+          addressRepository.createCanonicalBatch(
+            wallet.id,
+            { receive: 2, change: 0 },
+            (_branch, index) => allocatedAddress(index),
+          ),
+          addressRepository.createCanonicalBatch(
+            wallet.id,
+            { receive: 2, change: 0 },
+            (_branch, index) => allocatedAddress(index),
+          ),
+        ]);
+        const rows = await client.address.findMany({
+          where: { walletId: wallet.id, branch: 0 },
+          orderBy: { index: 'asc' },
+        });
+        expect(rows.map(({ index }) => index)).toEqual([0, 1, 2, 3]);
+      } finally {
+        await client.address.deleteMany({ where: { walletId: wallet.id } });
+        await client.wallet.delete({ where: { id: wallet.id } });
+      }
+    });
+
+    it("summarizes each canonical branch under the allocation lock", async () => {
+      const client = await getTestPrisma();
+      const wallet = await createCanonicalWallet(client);
+      try {
+        await client.address.createMany({
+          data: [
+            { ...canonicalAddressData(wallet.id, 0), used: true },
+            canonicalAddressData(wallet.id, 1),
+            canonicalAddressData(wallet.id, 2),
+            {
+              ...canonicalAddressData(wallet.id, 0),
+              address: "tb1qcanonicalchange00000000000000000",
+              derivationPath: "m/84'/1'/0'/1/0",
+              branch: 1,
+            },
+          ],
+        });
+        const resolveCounts = vi.fn(() => ({ receive: 0, change: 0 }));
+
+        await addressRepository.createCanonicalBatch(wallet.id, resolveCounts, allocatedAddress);
+
+        expect(resolveCounts).toHaveBeenCalledWith({
+          receive: { nextIndex: 3, unusedTail: 2 },
+          change: { nextIndex: 1, unusedTail: 1 },
+        });
+      } finally {
+        await client.address.deleteMany({ where: { walletId: wallet.id } });
+        await client.wallet.delete({ where: { id: wallet.id } });
+      }
     });
   });
 

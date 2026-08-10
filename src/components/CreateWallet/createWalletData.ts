@@ -4,12 +4,8 @@ import {
   type DeviceAccountPurpose,
 } from '@sanctuary/shared/constants/walletIdentity';
 import {
-  derivationPathMatchesNetwork,
-} from '../../utils/derivationPathGroups';
-import {
-  normalizeDerivationPath,
-  parseDerivationPath,
-} from '@sanctuary/shared/utils/bitcoin';
+  accountPathMatchesWalletPolicy,
+} from '@sanctuary/shared/constants/walletPolicy';
 import type { TabNetwork } from '../../app/networks';
 import type {
   CreateWalletPayload,
@@ -27,8 +23,6 @@ export interface NextStepResult {
   };
 }
 
-const MAX_BIP32_INDEX = 0x7fffffff;
-
 export function getRequiredAccountPurpose(walletType: WalletType): DeviceAccountPurpose {
   return accountPurposeForWalletType(walletType);
 }
@@ -39,19 +33,13 @@ function accountMatchesSelection(
   scriptType: ScriptType,
   network: TabNetwork
 ): boolean {
-  const parsed = parseDerivationPath(account.derivationPath);
-  const pattern = parsed.purpose === 48
-    ? /^m\/48'\/(?:0|1)'\/\d+'\/(?:1|2)'$/
-    : /^m\/(?:44|49|84|86)'\/(?:0|1)'\/\d+'$/;
-  return parsed.valid
-    && parsed.accountPath !== null
-    && (parsed.accountIndex as number) <= MAX_BIP32_INDEX
-    && pattern.test(normalizeDerivationPath(account.derivationPath))
-    && account.purpose === requiredPurpose
+  return account.purpose === requiredPurpose
     && account.scriptType === scriptType
-    && parsed.accountPurpose === requiredPurpose
-    && parsed.scriptType === scriptType
-    && derivationPathMatchesNetwork(account.derivationPath, network);
+    && accountPathMatchesWalletPolicy(account.derivationPath, {
+      walletType: requiredPurpose === 'multisig' ? WalletType.MULTI_SIG : WalletType.SINGLE_SIG,
+      scriptType,
+      chainEnvironment: network,
+    });
 }
 
 export function getExactAccount(

@@ -16,6 +16,8 @@ import { createTestUser, getTestUser } from '../setup/helpers';
 
 const XPUB = 'tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M';
 const SECOND_XPUB = 'tpubDC5FSnBiZDMmhiuCmWAYsLwgLYrrT9rAqvTySfuCCrgsWz8wxMXUS9Tb9iVMvcRbvFcAHGkMD5Kx8koh4GquNGNTfohfk7pgjhaPCdXpoba';
+const BIP48_XPUB = 'tpubDFH9dgzveyD8zTbPUFuLrGmCydNvxehyNdUXKJAQN8x4aZ4j6UZqGfnqFrD4NqyaTVGKbvEW54tsvPTK2UoSbCC1PJY8iCNiwTL3RWZEheQ';
+const SECOND_BIP48_XPUB = 'tpubDFPtPArj4GzBEFHohegg1Xatrc1Fi9oSox5LzuSRX91miwQxuUrEpBxpvDRsmZYJKYFhgdK3UStsjC8JKXfUbMinjFqiEM4uNwzVaCaHpys';
 const RECEIVE_DESCRIPTOR = `wpkh([aabbccdd/84'/1'/0']${XPUB}/0/*)`;
 const CHANGE_DESCRIPTOR = `wpkh([aabbccdd/84'/1'/0']${XPUB}/1/*)`;
 const TEST_WALLET_PREFIX = 'atomicity-';
@@ -298,13 +300,13 @@ describeWithDatabase('wallet descriptor persistence atomicity', () => {
     const derivationPath = "m/48'/1'/0'/2'";
     const firstSigner = await createSignerFixture(prisma, user.id, {
       fingerprint: '11111111',
-      xpub: XPUB,
+      xpub: BIP48_XPUB,
       purpose: 'multisig',
       derivationPath,
     });
     const thresholdSigner = await createSignerFixture(prisma, user.id, {
       fingerprint: '22222222',
-      xpub: SECOND_XPUB,
+      xpub: SECOND_BIP48_XPUB,
       purpose: 'multisig',
       derivationPath,
     });

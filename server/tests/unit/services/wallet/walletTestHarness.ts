@@ -238,9 +238,11 @@ vi.mock('../../../../src/repositories', () => ({
   addressRepository: {
     countByWalletId: (walletId: string) =>
       mockPrismaClient.address.count({ where: { walletId } }),
-    createMany: (data: unknown, opts?: { skipDuplicates?: boolean }) =>
-      mockPrismaClient.address.createMany({ data, ...(opts?.skipDuplicates ? { skipDuplicates: true } : {}) }),
-    create: (data: unknown) => mockPrismaClient.address.create({ data }),
+    createNextCanonical: vi.fn(async (
+      walletId: string,
+      branch: 0 | 1,
+      build: (index: number) => Record<string, unknown>,
+    ) => ({ walletId, branch, index: 5, ...build(5) })),
   },
   deviceRepository: {
     findByIdsAndUserWithAccounts: (ids: string[], userId: string) =>
@@ -296,10 +298,18 @@ vi.mock('../../../../src/services/bitcoin/descriptorBuilder', () => ({
 
 // Mock address derivation
 vi.mock('../../../../src/services/bitcoin/addressDerivation', () => ({
-  deriveAddressFromDescriptor: vi.fn().mockReturnValue({
+  deriveCanonicalAddress: vi.fn().mockImplementation((
+    _descriptors: unknown,
+    coordinate: { branch: 0 | 1; index: number },
+  ) => ({
     address: 'bc1qmockaddress',
-    derivationPath: "m/84'/0'/0'/0/0",
-  }),
+    derivationPath: `m/84'/0'/0'/${coordinate.branch}/${coordinate.index}`,
+    scriptPubKey: '0014mockscriptpubkey',
+    publicKey: Buffer.alloc(33),
+    branch: coordinate.branch,
+    index: coordinate.index,
+    signerOrigins: [],
+  })),
 }));
 
 // Mock Redis cache (access control uses cached getUserWalletRole)

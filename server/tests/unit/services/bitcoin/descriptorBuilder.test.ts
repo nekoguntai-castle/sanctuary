@@ -104,14 +104,24 @@ describe('Descriptor Builder Service', () => {
           getDerivationPath('unknown' as any);
         }).toThrow('Unknown script type');
       });
+
+      it('should fail closed for an unknown network instead of deriving mainnet', () => {
+        expect(() => getDerivationPath('native_segwit', 'unknown' as never))
+          .toThrow('Unknown Bitcoin network: unknown');
+      });
+
+      it('preserves canonical path validation errors', () => {
+        expect(() => getDerivationPath('native_segwit', 'mainnet', -1))
+          .toThrow('Invalid BIP32 account index');
+      });
     });
   });
 
   describe('getMultisigDerivationPath', () => {
     describe('Mainnet multisig paths', () => {
-      it('should generate BIP45 path for legacy multisig', () => {
-        const path = getMultisigDerivationPath('legacy', 'mainnet', 0);
-        expect(path).toBe("m/45'/0'");
+      it('should reject legacy multisig', () => {
+        expect(() => getMultisigDerivationPath('legacy', 'mainnet', 0))
+          .toThrow('Unsupported multi-sig script type: legacy');
       });
 
       it('should generate BIP48/1 path for nested_segwit multisig', () => {
@@ -124,9 +134,9 @@ describe('Descriptor Builder Service', () => {
         expect(path).toBe("m/48'/0'/0'/2'");
       });
 
-      it('should generate BIP48/3 path for taproot multisig', () => {
-        const path = getMultisigDerivationPath('taproot', 'mainnet', 0);
-        expect(path).toBe("m/48'/0'/0'/3'");
+      it('should reject proposed BIP48/3 taproot multisig', () => {
+        expect(() => getMultisigDerivationPath('taproot', 'mainnet', 0))
+          .toThrow('Unsupported multi-sig script type: taproot');
       });
     });
 
@@ -408,17 +418,14 @@ describe('Descriptor Builder Service', () => {
     });
 
     describe('Legacy Multisig', () => {
-      it('should build sh(sortedmulti) descriptor', () => {
+      it('should reject legacy multisig', () => {
         const legacyDevices = devices.map((d) => ({
           ...d,
           derivationPath: "m/45'/0'",
         }));
 
-        const descriptor = buildMultiSigDescriptor(legacyDevices, 2, 'legacy', 'mainnet');
-
-        expect(descriptor).toContain('sh(sortedmulti(2,');
-        expect(descriptor).toContain('[aabbccdd/45h/0h]');
-        expect(descriptor).not.toContain('wsh');
+        expect(() => buildMultiSigDescriptor(legacyDevices, 2, 'legacy', 'mainnet'))
+          .toThrow('Unsupported multi-sig script type: legacy');
       });
     });
 
@@ -426,7 +433,7 @@ describe('Descriptor Builder Service', () => {
       it('should throw for taproot multisig (not yet supported)', () => {
         expect(() => {
           buildMultiSigDescriptor(devices, 2, 'taproot', 'mainnet');
-        }).toThrow('Taproot multisig is not yet supported');
+        }).toThrow('Unsupported multi-sig script type: taproot');
       });
     });
 

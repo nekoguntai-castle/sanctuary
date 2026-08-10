@@ -1,4 +1,4 @@
-import { parseDerivationPath } from "@sanctuary/shared/utils/bitcoin";
+import { parseCanonicalAccountPath } from "@sanctuary/shared/constants/walletPolicy";
 import {
   DeviceAccountPurpose,
   type DeviceAccountPurpose as DeviceAccountPurposeValue,
@@ -33,8 +33,7 @@ export type PurposeGroupedAccounts<T extends { purpose: DeviceAccountPurposeValu
 >;
 
 export function derivationPathCoinType(path: string): number | null {
-  const parsed = parseDerivationPath(path);
-  return parsed.valid ? parsed.coinType : null;
+  return parseCanonicalAccountPath(path)?.coinType ?? null;
 }
 
 export function isTestnetSignetDerivationPath(path: string): boolean {
@@ -44,8 +43,7 @@ export function isTestnetSignetDerivationPath(path: string): boolean {
 
 export function derivationPathMatchesNetwork(path: string, network: TabNetwork): boolean {
   const coinType = derivationPathCoinType(path);
-  // Preserve unparseable paths in all network views so imported account data remains visible for audit.
-  return coinType === null || coinType === coinTypeForNetwork(network);
+  return coinType !== null && coinType === coinTypeForNetwork(network);
 }
 
 export function derivationNetworkGroup(path: string): DerivationNetworkGroup {

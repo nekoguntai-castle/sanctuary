@@ -3,6 +3,7 @@ import {
   app,
   attachNonTargetTestSigner,
   authHeader,
+  canonicalSingleSigDescriptorFields,
   createAndLoginUser,
   createTestUser,
   prisma,
@@ -61,7 +62,7 @@ export function registerWalletAccessStatsImportTests(): void {
           type: 'single_sig',
           scriptType: 'native_segwit',
           network: 'testnet3',
-          descriptor: "wpkh([aabbccdd/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*)",
+          ...canonicalSingleSigDescriptorFields(),
           users: {
             create: [
               { userId: owner.id, role: 'owner' },
@@ -96,7 +97,7 @@ export function registerWalletAccessStatsImportTests(): void {
           type: 'single_sig',
           scriptType: 'native_segwit',
           network: 'testnet3',
-          descriptor: "wpkh([aabbccdd/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*)",
+          ...canonicalSingleSigDescriptorFields(),
           users: {
             create: [
               { userId: owner.id, role: 'owner' },
@@ -126,7 +127,7 @@ export function registerWalletAccessStatsImportTests(): void {
           type: 'single_sig',
           scriptType: 'native_segwit',
           network: 'testnet3',
-          descriptor: "wpkh([aabbccdd/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*)",
+          ...canonicalSingleSigDescriptorFields(),
           users: {
             create: {
               userId,

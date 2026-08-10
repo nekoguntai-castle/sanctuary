@@ -122,12 +122,19 @@ router.post('/validate-xpub', validate(
     xpub,
   );
 
-  // Derive first address as example
-  const { address } = addressDerivation.deriveAddress(xpub, 0, {
-    scriptType: detectedScriptType,
-    network,
-    change: false,
-  });
+  // Derive through the canonical descriptor path so the serialized extended
+  // key depth and hardened child number are bound to the declared origin.
+  let address: string;
+  try {
+    ({ address } = addressDerivation.deriveCanonicalAddress({
+      receiveDescriptor: descriptor.replace('<0;1>', '0'),
+      changeDescriptor: descriptor.replace('<0;1>', '1'),
+    }, { branch: 0, index: 0, network }));
+  } catch (error) {
+    throw new InvalidInputError(
+      error instanceof Error ? error.message : 'Extended key origin is invalid',
+    );
+  }
 
   res.json({
     valid: true,

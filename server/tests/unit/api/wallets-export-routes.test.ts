@@ -10,6 +10,8 @@ const {
   mockGetAvailableFormats,
   mockHasFormat,
   mockExportFormat,
+  mockAssertUnusedAddressesSafeForDisplay,
+  mockAssertCanonicalAddressesForWallet,
 } = vi.hoisted(() => ({
   mockWalletGetName: vi.fn(),
   mockWalletFindByIdWithDevices: vi.fn(),
@@ -18,6 +20,8 @@ const {
   mockGetAvailableFormats: vi.fn(),
   mockHasFormat: vi.fn(),
   mockExportFormat: vi.fn(),
+  mockAssertUnusedAddressesSafeForDisplay: vi.fn(),
+  mockAssertCanonicalAddressesForWallet: vi.fn(),
 }));
 
 vi.mock('../../../src/middleware/walletAccess', () => ({
@@ -46,6 +50,14 @@ vi.mock('../../../src/services/export', () => ({
     has: mockHasFormat,
     export: mockExportFormat,
   },
+}));
+
+vi.mock('../../../src/services/addressDisplaySafety', () => ({
+  assertUnusedAddressesSafeForDisplay: mockAssertUnusedAddressesSafeForDisplay,
+}));
+
+vi.mock('../../../src/services/wallet/canonicalAddressValidation', () => ({
+  assertCanonicalAddressesForWallet: mockAssertCanonicalAddressesForWallet,
 }));
 
 vi.mock('../../../src/utils/logger', () => ({
@@ -165,6 +177,8 @@ describe('Wallets Export Routes', () => {
 
     mockWalletGetName.mockResolvedValue('My Wallet! 2025');
     mockWalletFindByIdWithDevices.mockResolvedValue(buildWallet());
+    mockAssertUnusedAddressesSafeForDisplay.mockResolvedValue(undefined);
+    mockAssertCanonicalAddressesForWallet.mockResolvedValue(undefined);
 
     mockTxFindWithLabels.mockResolvedValue([
       {
@@ -186,15 +200,28 @@ describe('Wallets Export Routes', () => {
 
     mockAddressFindWithLabels.mockResolvedValue([
       {
+        id: 'addr-1',
+        walletId: 'wallet-1',
         address: 'bc1qaddr1',
         derivationPath: "m/84'/0'/0'/0/1",
+        index: 1,
+        used: false,
+        branch: 0,
+        coordinateVersion: 1,
+        canonicalPolicyId: 'single-sig-native-segwit-bip84-v1',
+        canonicalPolicyVersion: 1,
+        scriptPubKey: '00140000000000000000000000000000000000000000',
         addressLabels: [
           { label: { name: 'Savings' } },
         ],
       },
       {
+        id: 'addr-2',
+        walletId: 'wallet-1',
         address: 'bc1qaddr2',
         derivationPath: null,
+        index: 2,
+        used: true,
         addressLabels: [],
       },
     ]);
@@ -262,6 +289,44 @@ describe('Wallets Export Routes', () => {
     ]);
   });
 
+  it('fails closed for unsafe unused or claimed-canonical label evidence', async () => {
+    mockAssertUnusedAddressesSafeForDisplay.mockRejectedValueOnce(
+      new Error('legacy unused address'),
+    );
+    const legacy = await request(app).get('/api/v1/wallets/wallet-1/export/labels');
+    expect(legacy.status).toBe(500);
+
+    mockAddressFindWithLabels.mockResolvedValueOnce([{
+      id: 'addr-used-canonical',
+      walletId: 'wallet-1',
+      address: 'bc1qusedcanonical',
+      derivationPath: "m/84'/0'/0'/0/2",
+      index: 2,
+      used: true,
+      branch: 0,
+      coordinateVersion: 1,
+      canonicalPolicyId: 'single-sig-native-segwit-bip84-v1',
+      canonicalPolicyVersion: 1,
+      scriptPubKey: '00140000000000000000000000000000000000000000',
+      addressLabels: [{ label: { name: 'Used canonical' } }],
+    }]);
+    mockAssertCanonicalAddressesForWallet.mockRejectedValueOnce(
+      new Error('canonical address drift'),
+    );
+    const drifted = await request(app).get('/api/v1/wallets/wallet-1/export/labels');
+    expect(drifted.status).toBe(500);
+    expect(drifted.text).not.toContain('bc1qusedcanonical');
+  });
+
+  it('does not re-derive an unused canonical label row twice', async () => {
+    const response = await request(app).get('/api/v1/wallets/wallet-1/export/labels');
+
+    expect(response.status).toBe(200);
+    expect(mockAssertUnusedAddressesSafeForDisplay).toHaveBeenCalledTimes(1);
+    expect(mockAssertCanonicalAddressesForWallet).toHaveBeenCalledWith('wallet-1', []);
+    expect(response.text).toContain("m/84'/0'/0'/0/1");
+  });
+
   it('returns 404 when wallet does not exist for label export', async () => {
     mockWalletGetName.mockResolvedValue(null);
 
@@ -295,8 +360,12 @@ describe('Wallets Export Routes', () => {
 
     mockAddressFindWithLabels.mockResolvedValue([
       {
+        id: 'addr-blank',
+        walletId: 'wallet-1',
         address: 'bc1qblank',
         derivationPath: null,
+        index: 0,
+        used: true,
         addressLabels: [
           { label: { name: '' } },
           { label: { name: 'AddressTag' } },
@@ -321,6 +390,61 @@ describe('Wallets Export Routes', () => {
       },
     ]);
     expect(lines[1]).not.toHaveProperty('origin');
+  });
+
+  it('omits an unverified legacy path while retaining a verified change origin', async () => {
+    const legacyAddress = {
+      id: 'addr-legacy',
+      walletId: 'wallet-1',
+      address: 'bc1qlegacy',
+      derivationPath: "m/84'/0'/0'/0/9",
+      index: 9,
+      used: true,
+      branch: null,
+      coordinateVersion: null,
+      canonicalPolicyId: null,
+      canonicalPolicyVersion: null,
+      scriptPubKey: null,
+      addressLabels: [{ label: { name: 'Legacy history' } }],
+    };
+    const canonicalChange = {
+      id: 'addr-change',
+      walletId: 'wallet-1',
+      address: 'bc1qchange',
+      derivationPath: "m/84'/0'/0'/1/4",
+      index: 4,
+      used: true,
+      branch: 1,
+      coordinateVersion: 1,
+      canonicalPolicyId: 'single-sig-native-segwit-bip84-v1',
+      canonicalPolicyVersion: 1,
+      scriptPubKey: '00140000000000000000000000000000000000000000',
+      addressLabels: [{ label: { name: 'Verified change' } }],
+    };
+    mockAddressFindWithLabels.mockResolvedValueOnce([legacyAddress, canonicalChange]);
+
+    const response = await request(app).get('/api/v1/wallets/wallet-1/export/labels');
+    expect(response.status).toBe(200);
+
+    const lines = response.text.trim().split('\n').map(line => JSON.parse(line));
+    expect(lines).toEqual(expect.arrayContaining([
+      {
+        type: 'addr',
+        ref: legacyAddress.address,
+        label: 'Legacy history',
+      },
+      {
+        type: 'addr',
+        ref: canonicalChange.address,
+        label: 'Verified change',
+        origin: canonicalChange.derivationPath,
+      },
+    ]));
+    expect(lines.find(line => line.ref === legacyAddress.address)).not.toHaveProperty('origin');
+    expect(mockAssertCanonicalAddressesForWallet).toHaveBeenCalledWith(
+      'wallet-1',
+      [canonicalChange],
+    );
   });
 
   it('returns available export formats using immutable signer snapshot order', async () => {

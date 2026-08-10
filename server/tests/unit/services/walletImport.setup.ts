@@ -52,9 +52,12 @@ vi.mock('../../../src/services/bitcoin/descriptorBuilder', () => ({
   buildDescriptorFromDevices: (...args: any[]) => mockBuildDescriptorFromDevices(...args),
 }));
 
-// Mock address derivation
-export const mockDeriveAddressFromDescriptor = vi.fn();
+// Mock canonical address derivation. Keep the compatibility export for older
+// wallet-import suites until they migrate independently.
+export const mockDeriveCanonicalAddress = vi.fn();
+export const mockDeriveAddressFromDescriptor = mockDeriveCanonicalAddress;
 vi.mock('../../../src/services/bitcoin/addressDerivation', () => ({
+  deriveCanonicalAddress: (...args: any[]) => mockDeriveCanonicalAddress(...args),
   deriveAddressFromDescriptor: (...args: any[]) => mockDeriveAddressFromDescriptor(...args),
 }));
 
@@ -99,8 +102,13 @@ export function setupBeforeEach() {
     isChange: descriptor.includes('/1/*'),
   }));
 
-  mockDeriveAddressFromDescriptor.mockImplementation((descriptor, index, opts) => ({
-    address: `bc1q${index}address${opts.change ? 'change' : 'receive'}`,
-    derivationPath: `m/84'/0'/0'/${opts.change ? 1 : 0}/${index}`,
+  mockDeriveCanonicalAddress.mockImplementation((_descriptors, coordinate) => ({
+    address: `bc1q${coordinate.index}address${coordinate.branch === 1 ? 'change' : 'receive'}`,
+    derivationPath: `m/84'/0'/0'/${coordinate.branch}/${coordinate.index}`,
+    scriptPubKey: `0014${coordinate.index.toString(16).padStart(40, '0')}`,
+    branch: coordinate.branch,
+    index: coordinate.index,
+    signerOrigins: [],
+    publicKey: Buffer.alloc(33),
   }));
 }

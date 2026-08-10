@@ -17,7 +17,7 @@
  * - BIP-48: m/48'/coin'/account'/script'/change/index (Multisig)
  *   - Script type 1: P2SH-P2WSH (nested segwit multisig)
  *   - Script type 2: P2WSH (native segwit multisig)
- *   - Script type 3: P2TR (taproot multisig, proposed)
+ * Unsupported policies (legacy and Taproot multisig) must fail closed.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -146,18 +146,14 @@ describe('Script Type Derivation Paths', () => {
         expect(path).toMatch(/^m\/86'/);
       });
 
-      it('should use BIP-48 script type 3 for multisig mainnet', () => {
-        const path = taprootHandler.getMultisigDerivationPath('mainnet', 0);
-        expect(path).toBe("m/48'/0'/0'/3'");
-        expect(path).toMatch(/^m\/48'/);
-        expect(path).toMatch(/\/3'$/); // Script type 3 for taproot
+      it('should reject proposed BIP-48 script type 3 on mainnet', () => {
+        expect(() => taprootHandler.getMultisigDerivationPath('mainnet', 0))
+          .toThrow('Taproot multisig is not supported');
       });
 
-      it('should use BIP-48 script type 3 for multisig testnet', () => {
-        const path = taprootHandler.getMultisigDerivationPath('testnet', 0);
-        expect(path).toBe("m/48'/1'/0'/3'");
-        expect(path).toMatch(/^m\/48'/);
-        expect(path).toMatch(/\/3'$/); // Script type 3
+      it('should reject proposed BIP-48 script type 3 on testnet', () => {
+        expect(() => taprootHandler.getMultisigDerivationPath('testnet', 0))
+          .toThrow('Taproot multisig is not supported');
       });
     });
   });
@@ -176,10 +172,9 @@ describe('Script Type Derivation Paths', () => {
       expect(multisigPath).toMatch(/^m\/48'/);
     });
 
-    it('should never use BIP-86 path for taproot multisig', () => {
-      const multisigPath = taprootHandler.getMultisigDerivationPath('mainnet', 0);
-      expect(multisigPath).not.toMatch(/^m\/86'/);
-      expect(multisigPath).toMatch(/^m\/48'/);
+    it('should never derive a path for unsupported taproot multisig', () => {
+      expect(() => taprootHandler.getMultisigDerivationPath('mainnet', 0))
+        .toThrow('Taproot multisig is not supported');
     });
 
     it('should use correct BIP-48 script type numbers', () => {
@@ -189,8 +184,7 @@ describe('Script Type Derivation Paths', () => {
       // Script type 2 = P2WSH (native segwit multisig)
       expect(nativeSegwitHandler.getMultisigDerivationPath('mainnet', 0)).toMatch(/\/2'$/);
 
-      // Script type 3 = P2TR (taproot multisig)
-      expect(taprootHandler.getMultisigDerivationPath('mainnet', 0)).toMatch(/\/3'$/);
+      expect(() => taprootHandler.getMultisigDerivationPath('mainnet', 0)).toThrow();
     });
 
     it('should always use testnet coin type (1) for testnet', () => {
@@ -201,7 +195,7 @@ describe('Script Type Derivation Paths', () => {
       };
 
       // BIP-48 handlers (nested segwit, native segwit, taproot) use coin type
-      const bip48Handlers = [nestedSegwitHandler, nativeSegwitHandler, taprootHandler];
+      const bip48Handlers = [nestedSegwitHandler, nativeSegwitHandler];
 
       for (const handler of bip48Handlers) {
         const singleSig = handler.getDerivationPath('testnet', 0);
@@ -218,8 +212,8 @@ describe('Script Type Derivation Paths', () => {
 
       // Legacy multisig uses BIP-45 which doesn't have coin type (m/45'/account')
       // This is by design - BIP-45 predates BIP-48 and uses a simpler path structure
-      const legacyMultisig = legacyHandler.getMultisigDerivationPath('testnet', 0);
-      expect(legacyMultisig).toMatch(/^m\/45'/);
+      expect(() => legacyHandler.getMultisigDerivationPath('testnet', 0))
+        .toThrow('Legacy multisig is not supported');
     });
 
     it('should always use mainnet coin type (0) for mainnet', () => {
@@ -230,7 +224,7 @@ describe('Script Type Derivation Paths', () => {
       };
 
       // BIP-48 handlers (nested segwit, native segwit, taproot) use coin type
-      const bip48Handlers = [nestedSegwitHandler, nativeSegwitHandler, taprootHandler];
+      const bip48Handlers = [nestedSegwitHandler, nativeSegwitHandler];
 
       for (const handler of bip48Handlers) {
         const singleSig = handler.getDerivationPath('mainnet', 0);
@@ -246,8 +240,8 @@ describe('Script Type Derivation Paths', () => {
       expect(getCoinType(legacySingleSig)).toBe("0'");
 
       // Legacy multisig uses BIP-45 which doesn't have coin type (m/45'/account')
-      const legacyMultisig = legacyHandler.getMultisigDerivationPath('mainnet', 0);
-      expect(legacyMultisig).toMatch(/^m\/45'/);
+      expect(() => legacyHandler.getMultisigDerivationPath('mainnet', 0))
+        .toThrow('Legacy multisig is not supported');
     });
   });
 
@@ -269,9 +263,9 @@ describe('Script Type Derivation Paths', () => {
         expect(nestedSegwitHandler.getMultisigDerivationPath('testnet', 0)).toBe("m/48'/1'/0'/1'");
       });
 
-      it('should use exact standard paths for taproot multisig', () => {
-        expect(taprootHandler.getMultisigDerivationPath('mainnet', 0)).toBe("m/48'/0'/0'/3'");
-        expect(taprootHandler.getMultisigDerivationPath('testnet', 0)).toBe("m/48'/1'/0'/3'");
+      it('should reject nonstandard taproot multisig paths', () => {
+        expect(() => taprootHandler.getMultisigDerivationPath('mainnet', 0)).toThrow();
+        expect(() => taprootHandler.getMultisigDerivationPath('testnet', 0)).toThrow();
       });
     });
 
@@ -317,7 +311,7 @@ describe('Script Type Derivation Paths', () => {
       });
 
       it('should have exactly 4 levels for BIP-48 multisig (purpose/coin/account/script)', () => {
-        const handlers = [nestedSegwitHandler, nativeSegwitHandler, taprootHandler];
+        const handlers = [nestedSegwitHandler, nativeSegwitHandler];
 
         for (const handler of handlers) {
           const path = handler.getMultisigDerivationPath('mainnet', 0);
@@ -331,12 +325,8 @@ describe('Script Type Derivation Paths', () => {
         }
       });
 
-      it('should have exactly 2 levels for BIP-45 legacy multisig (purpose/account)', () => {
-        const path = legacyHandler.getMultisigDerivationPath('mainnet', 0);
-        // BIP-45 is m/45'/account' (2 hardened levels)
-        const levels = path.split('/').slice(1);
-        expect(levels).toHaveLength(2);
-        expect(levels[0]).toBe("45'");
+      it('should reject BIP-45 legacy multisig', () => {
+        expect(() => legacyHandler.getMultisigDerivationPath('mainnet', 0)).toThrow();
       });
     });
 
@@ -351,15 +341,14 @@ describe('Script Type Derivation Paths', () => {
 
         const nativeMultisig = nativeSegwitHandler.getMultisigDerivationPath('mainnet', 0);
         const nestedMultisig = nestedSegwitHandler.getMultisigDerivationPath('mainnet', 0);
-        const taprootMultisig = taprootHandler.getMultisigDerivationPath('mainnet', 0);
 
         // None should start with single-sig BIP numbers
         const singleSigBips = ['44', '49', '84', '86'];
         for (const bip of singleSigBips) {
           expect(nativeMultisig).not.toMatch(new RegExp(`^m/${bip}'`));
           expect(nestedMultisig).not.toMatch(new RegExp(`^m/${bip}'`));
-          expect(taprootMultisig).not.toMatch(new RegExp(`^m/${bip}'`));
         }
+        expect(() => taprootHandler.getMultisigDerivationPath('mainnet', 0)).toThrow();
       });
 
       it('should never derive single-sig from multisig path structure', () => {
@@ -387,8 +376,7 @@ describe('Script Type Derivation Paths', () => {
         // Nested segwit multisig must use script type 1
         expect(nestedSegwitHandler.getMultisigDerivationPath('mainnet', 0)).toMatch(/\/1'$/);
 
-        // Taproot multisig must use script type 3
-        expect(taprootHandler.getMultisigDerivationPath('mainnet', 0)).toMatch(/\/3'$/);
+        expect(() => taprootHandler.getMultisigDerivationPath('mainnet', 0)).toThrow();
       });
     });
 

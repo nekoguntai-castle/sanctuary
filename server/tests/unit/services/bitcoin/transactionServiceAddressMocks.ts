@@ -8,6 +8,8 @@ type AddressMockRow = {
   walletId?: string;
   used?: boolean;
   index?: number;
+  branch?: 0 | 1 | null;
+  coordinateVersion?: number | null;
   [key: string]: unknown;
 };
 
@@ -15,6 +17,8 @@ type AddressFindManyQuery = {
   where?: {
     walletId?: string;
     used?: boolean;
+    branch?: 0 | 1;
+    coordinateVersion?: number;
     address?: {
       in?: string[];
       notIn?: string[];
@@ -55,6 +59,8 @@ export function changeAddressRow(
     walletId,
     used: false,
     index,
+    branch: 1,
+    coordinateVersion: 1,
     ...overrides,
   };
 }
@@ -71,6 +77,8 @@ export function receiveAddressRow(
     walletId,
     used: false,
     index,
+    branch: 0,
+    coordinateVersion: 1,
     ...overrides,
   };
 }
@@ -107,6 +115,17 @@ function matchesWhere(
     return false;
   }
 
+  if (where.branch !== undefined && row.branch !== where.branch) {
+    return false;
+  }
+
+  if (
+    where.coordinateVersion !== undefined &&
+    row.coordinateVersion !== where.coordinateVersion
+  ) {
+    return false;
+  }
+
   if (where.address?.in && !where.address.in.includes(row.address)) {
     return false;
   }
@@ -132,6 +151,13 @@ export function mockAddressFindManyByQuery(
     (query: AddressFindManyQuery = {}) => {
       const rows = selectAddressRows(query, metadataRows, availableRows);
       return Promise.resolve(limitRows(rows, query.take));
+    },
+  );
+
+  mockPrismaClient.address.findFirst.mockImplementation(
+    (query: AddressFindManyQuery = {}) => {
+      const rows = selectAddressRows(query, metadataRows, availableRows);
+      return Promise.resolve(rows[0] ?? null);
     },
   );
 }

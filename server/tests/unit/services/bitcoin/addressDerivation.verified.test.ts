@@ -14,6 +14,7 @@
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import {
+  deriveCanonicalAddress,
   deriveAddress,
   deriveAddressFromDescriptor,
   deriveAddressFromParsedDescriptor,
@@ -43,6 +44,32 @@ function descriptorForSingleSigVector(vector: VerifiedSingleSigVector): string {
   const receiveWildcardPath = ['0', '*'].join('/');
   const keyExpression = `[00000000/${accountPath}]${vector.xpub}/${receiveWildcardPath}`;
   return descriptorTemplateByScriptType[vector.scriptType](keyExpression);
+}
+
+function canonicalDescriptorForSingleSigVector(
+  vector: VerifiedSingleSigVector,
+  branch: 0 | 1
+): string {
+  const accountPath = vector.path.startsWith('m/') ? vector.path.slice(2) : vector.path;
+  const keyExpression = `[aabbccdd/${accountPath}]${vector.xpub}/${branch}/*`;
+  return descriptorTemplateByScriptType[vector.scriptType](keyExpression);
+}
+
+function canonicalDescriptorsForMultisigVector(vector: VerifiedMultisigVector): {
+  receiveDescriptor: string;
+  changeDescriptor: string;
+} {
+  const coinType = vector.network === 'mainnet' ? 0 : 1;
+  const scriptPath = vector.scriptType === 'p2wsh' ? 2 : 1;
+  const fingerprints = ['11111111', '22222222', '33333333', '44444444', '55555555'];
+  const descriptor = (branch: 0 | 1): string => {
+    const keys = vector.xpubs.map((xpub, signerIndex) =>
+      `[${fingerprints[signerIndex]}/48'/${coinType}'/0'/${scriptPath}']${xpub}/${branch}/*`
+    );
+    const multi = `sortedmulti(${vector.threshold},${keys.join(',')})`;
+    return vector.scriptType === 'p2wsh' ? `wsh(${multi})` : `sh(wsh(${multi}))`;
+  };
+  return { receiveDescriptor: descriptor(0), changeDescriptor: descriptor(1) };
 }
 
 function getRequiredSingleSigVector(
@@ -230,6 +257,59 @@ describe('Address Derivation - Cross-Implementation Verification', () => {
           { network: 'testnet' }
         )
       ).toThrow('No xpub found in descriptor');
+    });
+  });
+
+  describe('Canonical descriptor-pair verification', () => {
+    it.each(VERIFIED_SINGLESIG_VECTORS.map(v => [v.description, v]))(
+      'matches independently verified single-sig vector: %s',
+      (_description: string, vector: VerifiedSingleSigVector) => {
+        const descriptors = {
+          receiveDescriptor: canonicalDescriptorForSingleSigVector(vector, 0),
+          changeDescriptor: canonicalDescriptorForSingleSigVector(vector, 1),
+        };
+        const branch = vector.change ? 1 : 0;
+        const result = deriveCanonicalAddress(descriptors, {
+          branch,
+          index: vector.index,
+          network: vector.network,
+        });
+
+        expect(result.address).toBe(vector.expectedAddress);
+        expect(result.derivationPath).toBe(`${vector.path}/${branch}/${vector.index}`);
+      }
+    );
+
+    // The checked-in nested vectors use keys exported at BIP48 /2' even though
+    // their wrapper is P2SH-P2WSH. They remain valid address vectors below, but
+    // cannot serve as canonical BIP48 /1' descriptor-origin evidence.
+    const supportedMultisigVectors = VERIFIED_MULTISIG_VECTORS.filter(
+      ({ scriptType }) => scriptType === 'p2wsh'
+    );
+
+    it.each(supportedMultisigVectors.map(v => [v.description, v]))(
+      'matches independently verified multisig vector: %s',
+      (_description: string, vector: VerifiedMultisigVector) => {
+        const branch = vector.change ? 1 : 0;
+        const result = deriveCanonicalAddress(
+          canonicalDescriptorsForMultisigVector(vector),
+          { branch, index: vector.index, network: vector.network }
+        );
+
+        expect(result.address).toBe(vector.expectedAddress);
+        expect(result.signerOrigins).toHaveLength(vector.totalKeys);
+      }
+    );
+
+    it('rejects a nested vector whose declared BIP48 /1 origin contradicts its /2 xpub', () => {
+      const vector = VERIFIED_MULTISIG_VECTORS.find(
+        ({ scriptType }) => scriptType === 'p2sh_p2wsh'
+      )!;
+
+      expect(() => deriveCanonicalAddress(
+        canonicalDescriptorsForMultisigVector(vector),
+        { branch: 0, index: vector.index, network: vector.network },
+      )).toThrow('Canonical descriptor extended key child number does not match account origin');
     });
   });
 

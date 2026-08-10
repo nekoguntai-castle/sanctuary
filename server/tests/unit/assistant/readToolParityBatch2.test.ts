@@ -60,6 +60,7 @@ const mocks = vi.hoisted(() => ({
   deviceRepository: {
     findHardwareModels: vi.fn(),
   },
+  assertUnusedAddressesSafeForDisplay: vi.fn(),
 }));
 
 vi.mock('../../../src/repositories', () => ({
@@ -73,6 +74,10 @@ vi.mock('../../../src/repositories', () => ({
   intelligenceRepository: mocks.intelligenceRepository,
   draftRepository: mocks.draftRepository,
   deviceRepository: mocks.deviceRepository,
+}));
+
+vi.mock('../../../src/services/addressDisplaySafety', () => ({
+  assertUnusedAddressesSafeForDisplay: mocks.assertUnusedAddressesSafeForDisplay,
 }));
 
 import { assistantReadToolRegistry, type AssistantToolContext } from '../../../src/assistant/tools';
@@ -206,6 +211,7 @@ function insightRow(id = insightId) {
 describe('read-tool parity batch 2', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.assertUnusedAddressesSafeForDisplay.mockResolvedValue(undefined);
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-04-26T12:00:00.000Z'));
   });
@@ -267,6 +273,10 @@ describe('read-tool parity batch 2', () => {
     expect(label.addresses[0]).toMatchObject({ address: 'bc1qraw', used: true });
     expect(label.addresses[0]).not.toHaveProperty('derivationPath');
     expect(envelope.redactions).toContain('address_derivation_paths');
+    expect(mocks.assertUnusedAddressesSafeForDisplay).toHaveBeenCalledWith(
+      walletId,
+      [expect.objectContaining({ address: 'bc1qraw', used: true })],
+    );
 
     mocks.assistantReadRepository.findWalletLabelDetailForAssistant.mockResolvedValueOnce({
       ...labelRow(),
@@ -300,6 +310,26 @@ describe('read-tool parity batch 2', () => {
       rowLimit: 100,
       returnedRows: 2,
     });
+  });
+
+  it('fails closed when label-associated unused hardware or legacy evidence is unsafe', async () => {
+    const context = createContext();
+    mocks.assistantReadRepository.findWalletLabelDetailForAssistant.mockResolvedValue({
+      ...labelRow(),
+      _count: { transactionLabels: 0, addressLabels: 1 },
+      transactionLabels: [],
+      addressLabels: [{ address: { id: 'addr-1', address: 'bc1qunused', index: 0, used: false } }],
+    });
+    mocks.assertUnusedAddressesSafeForDisplay
+      .mockRejectedValueOnce(new Error('display disabled'))
+      .mockRejectedValueOnce(new Error('canonical evidence missing'));
+
+    await expect(assistantReadToolRegistry.execute(
+      'get_label_detail', { walletId, labelId }, context
+    )).rejects.toThrow('display disabled');
+    await expect(assistantReadToolRegistry.execute(
+      'get_label_detail', { walletId, labelId }, context
+    )).rejects.toThrow('canonical evidence missing');
   });
 
   it('sanitizes policy configs and policy event details', async () => {

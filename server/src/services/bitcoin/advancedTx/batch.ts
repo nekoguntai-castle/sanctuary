@@ -12,6 +12,7 @@ import type { BitcoinNetwork } from "../networks";
 import { utxoRepository, addressRepository } from "../../../repositories";
 import { RBF_SEQUENCE, getDustThreshold } from "./shared";
 import { WalletScriptType } from "@sanctuary/shared/constants/walletIdentity";
+import { assertCanonicalAddressesForWallet } from "../../wallet/canonicalAddressValidation";
 
 /**
  * Create a batch transaction sending to multiple recipients
@@ -131,6 +132,7 @@ export async function createBatchTransaction(
     if (!changeAddress) {
       throw new Error("No change address available");
     }
+    await assertCanonicalAddressesForWallet(walletId, [changeAddress], 1);
 
     psbt.addOutput({
       address: changeAddress.address,

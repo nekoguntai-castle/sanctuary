@@ -3,9 +3,56 @@ import express, { type Express } from "express";
 import request from "supertest";
 import { mockPrismaClient, resetPrismaMocks } from "../../mocks/prisma";
 
-const { mockDeriveAddressFromDescriptor } = vi.hoisted(() => ({
-  mockDeriveAddressFromDescriptor: vi.fn(),
+const { mockDeriveCanonicalAddress } = vi.hoisted(() => ({
+  mockDeriveCanonicalAddress: vi.fn(),
 }));
+
+const RECEIVE_DESCRIPTOR = "wpkh([abcd1234/84h/1h/0h]tpub-test/0/*)";
+const CHANGE_DESCRIPTOR = "wpkh([abcd1234/84h/1h/0h]tpub-test/1/*)";
+const CANONICAL_POLICY_ID = "single-sig-native-segwit-bip84-v1";
+
+function canonicalBranchSummary(receiveMax: number | null, changeMax: number | null) {
+  return [
+    { branch: 0, maxIndex: receiveMax, unusedTail: 0n },
+    { branch: 1, maxIndex: changeMax, unusedTail: 0n },
+  ];
+}
+
+function mockCanonicalAllocationSummary(
+  receiveMax: number | null = null,
+  changeMax: number | null = null,
+) {
+  mockPrismaClient.$queryRaw.mockImplementation((query: { strings?: readonly string[] }) => {
+    const sql = query.strings?.join(" ") ?? "";
+    if (sql.includes("FOR UPDATE")) return Promise.resolve([{ id: "wallet-1" }]);
+    if (sql.includes("WITH canonical")) {
+      return Promise.resolve(canonicalBranchSummary(receiveMax, changeMax));
+    }
+    return Promise.resolve([]);
+  });
+}
+
+function canonicalAddressFixture(
+  branch: 0 | 1,
+  index: number,
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    id: `addr-${branch}-${index}`,
+    walletId: "wallet-1",
+    address: branch === 1 ? `tb1qchange${index}` : `tb1qreceive${index}`,
+    derivationPath: `m/84'/1'/0'/${branch}/${index}`,
+    branch,
+    index,
+    coordinateVersion: 1,
+    canonicalPolicyId: CANONICAL_POLICY_ID,
+    canonicalPolicyVersion: 1,
+    scriptPubKey: `0014${index.toString(16).padStart(40, "0")}`,
+    used: false,
+    addressLabels: [],
+    ...overrides,
+  };
+}
 
 vi.mock("../../../src/models/prisma", async () => {
   const { mockPrismaClient: prisma } = await import("../../mocks/prisma");
@@ -23,7 +70,7 @@ vi.mock("../../../src/middleware/walletAccess", () => ({
 }));
 
 vi.mock("../../../src/services/bitcoin/addressDerivation", () => ({
-  deriveAddressFromDescriptor: mockDeriveAddressFromDescriptor,
+  deriveCanonicalAddress: mockDeriveCanonicalAddress,
 }));
 
 vi.mock("../../../src/constants", () => ({
@@ -58,25 +105,37 @@ describe("Transactions Addresses Routes (Extended)", () => {
 
     mockPrismaClient.wallet.findUnique.mockResolvedValue({
       id: "wallet-1",
-      descriptor: "wpkh(xpub...)",
-      network: "testnet",
+      type: "single_sig",
+      scriptType: "native_segwit",
+      descriptor: RECEIVE_DESCRIPTOR,
+      changeDescriptor: CHANGE_DESCRIPTOR,
+      canonicalPolicyId: CANONICAL_POLICY_ID,
+      canonicalPolicyVersion: 1,
+      network: "testnet3",
       devices: [{ device: { type: 'coldcard', model: null } }],
     } as any);
 
     mockPrismaClient.address.findMany.mockResolvedValue([]);
     mockPrismaClient.uTXO.findMany.mockResolvedValue([]);
 
-    mockDeriveAddressFromDescriptor.mockImplementation(
-      (_descriptor: string, index: number, opts: any) => ({
-        address: opts.change ? `tb1qchange${index}` : `tb1qreceive${index}`,
-        derivationPath: `m/84'/1'/0'/${opts.change ? 1 : 0}/${index}`,
+    mockDeriveCanonicalAddress.mockImplementation(
+      (_descriptors: unknown, coordinate: { branch: 0 | 1; index: number }) => ({
+        address: coordinate.branch === 1
+          ? `tb1qchange${coordinate.index}`
+          : `tb1qreceive${coordinate.index}`,
+        derivationPath: `m/84'/1'/0'/${coordinate.branch}/${coordinate.index}`,
+        branch: coordinate.branch,
+        index: coordinate.index,
+        scriptPubKey: `0014${coordinate.index.toString(16).padStart(40, "0")}`,
+        signerOrigins: [],
+        publicKey: Buffer.alloc(33),
       }),
     );
 
     mockPrismaClient.uTXO.aggregate.mockResolvedValue({
       _sum: { amount: BigInt(0) },
     });
-    mockPrismaClient.$queryRaw.mockResolvedValue([]);
+    mockCanonicalAllocationSummary();
   });
 
   it("returns 404 when wallet is not found during address listing", async () => {
@@ -118,7 +177,7 @@ describe("Transactions Addresses Routes (Extended)", () => {
         vendor: type,
         capability: "display",
       });
-      expect(mockDeriveAddressFromDescriptor).not.toHaveBeenCalled();
+      expect(mockDeriveCanonicalAddress).not.toHaveBeenCalled();
       expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
       expect(JSON.stringify(response.body)).not.toContain("tb1qunverified");
     },
@@ -165,15 +224,7 @@ describe("Transactions Addresses Routes (Extended)", () => {
 
   it("sets unpaged headers and non-truncated flag for short address list", async () => {
     mockPrismaClient.address.findMany.mockResolvedValue([
-      {
-        id: "addr-1",
-        walletId: "wallet-1",
-        address: "tb1qreceive0",
-        derivationPath: "m/84'/1'/0'/0/0",
-        index: 0,
-        used: false,
-        addressLabels: [],
-      },
+      canonicalAddressFixture(0, 0),
     ] as any);
 
     const response = await request(app).get(
@@ -186,26 +237,38 @@ describe("Transactions Addresses Routes (Extended)", () => {
     expect(response.body[0].isChange).toBe(false);
   });
 
+  it("excludes legacy-null rows from any listing that can display a fresh address", async () => {
+    await request(app).get("/api/v1/wallets/wallet-1/addresses").expect(200);
+
+    expect(mockPrismaClient.address.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          walletId: "wallet-1",
+          branch: { in: [0, 1] },
+          coordinateVersion: 1,
+        }),
+      }),
+    );
+  });
+
+  it("rejects a complete-looking fresh row bound to a stale wallet policy", async () => {
+    mockPrismaClient.address.findMany.mockResolvedValue([
+      canonicalAddressFixture(0, 0, {
+        canonicalPolicyId: "single-sig-taproot-bip86-v1",
+      }),
+    ] as any);
+
+    const response = await request(app).get("/api/v1/wallets/wallet-1/addresses");
+    expect(response.status).toBe(400);
+    expect(response.body).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ address: "tb1qreceive0" }),
+    ]));
+  });
+
   it("filters listed addresses by parsed change chain metadata", async () => {
     mockPrismaClient.address.findMany.mockResolvedValue([
-      {
-        id: "addr-1",
-        walletId: "wallet-1",
-        address: "tb1qreceive0",
-        derivationPath: "m/84'/1'/0'/0/0",
-        index: 0,
-        used: false,
-        addressLabels: [],
-      },
-      {
-        id: "addr-2",
-        walletId: "wallet-1",
-        address: "tb1qchange0",
-        derivationPath: "m/84'/1'/0'/1/0",
-        index: 0,
-        used: false,
-        addressLabels: [],
-      },
+      canonicalAddressFixture(0, 0),
+      canonicalAddressFixture(1, 0),
       {
         id: "addr-3",
         walletId: "wallet-1",
@@ -229,7 +292,7 @@ describe("Transactions Addresses Routes (Extended)", () => {
     });
     expect(mockPrismaClient.address.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { walletId: "wallet-1" },
+        where: expect.objectContaining({ walletId: "wallet-1" }),
       }),
     );
     expect(mockPrismaClient.address.findMany).not.toHaveBeenCalledWith(
@@ -243,24 +306,8 @@ describe("Transactions Addresses Routes (Extended)", () => {
 
   it("filters listed addresses by parsed receive chain metadata", async () => {
     mockPrismaClient.address.findMany.mockResolvedValue([
-      {
-        id: "addr-1",
-        walletId: "wallet-1",
-        address: "tb1qreceive0",
-        derivationPath: "m/84'/1'/0'/0/0",
-        index: 0,
-        used: false,
-        addressLabels: [],
-      },
-      {
-        id: "addr-2",
-        walletId: "wallet-1",
-        address: "tb1qchange0",
-        derivationPath: "m/84'/1'/0'/1/0",
-        index: 0,
-        used: false,
-        addressLabels: [],
-      },
+      canonicalAddressFixture(0, 0),
+      canonicalAddressFixture(1, 0),
     ] as any);
 
     const response = await request(app)
@@ -276,15 +323,7 @@ describe("Transactions Addresses Routes (Extended)", () => {
   });
 
   it("sets unpaged truncated flag when default limit is reached", async () => {
-    const rows = Array.from({ length: 1000 }, (_, i) => ({
-      id: `addr-${i}`,
-      walletId: "wallet-1",
-      address: `tb1qreceive${i}`,
-      derivationPath: `m/84'/1'/0'/0/${i}`,
-      index: i,
-      used: false,
-      addressLabels: [],
-    }));
+    const rows = Array.from({ length: 1000 }, (_, i) => canonicalAddressFixture(0, i));
     mockPrismaClient.address.findMany.mockResolvedValue(rows as any);
 
     const response = await request(app).get(
@@ -296,70 +335,17 @@ describe("Transactions Addresses Routes (Extended)", () => {
     expect(response.body).toHaveLength(1000);
   });
 
-  it("auto-generates initial addresses when wallet has descriptor and no addresses", async () => {
-    mockPrismaClient.address.findMany
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([
-        {
-          id: "addr-1",
-          walletId: "wallet-1",
-          address: "tb1qreceive0",
-          derivationPath: "m/84'/1'/0'/0/0",
-          index: 0,
-          used: false,
-          addressLabels: [],
-        },
-        {
-          id: "addr-2",
-          walletId: "wallet-1",
-          address: "tb1qchange0",
-          derivationPath: "m/84'/1'/0'/1/0",
-          index: 0,
-          used: false,
-          addressLabels: [],
-        },
-      ] as any);
-
-    const response = await request(app).get(
-      "/api/v1/wallets/wallet-1/addresses",
-    );
-
-    expect(response.status).toBe(200);
-    expect(mockDeriveAddressFromDescriptor).toHaveBeenCalledTimes(4);
-    expect(mockPrismaClient.address.createMany).toHaveBeenCalledWith({
-      data: expect.arrayContaining([
-        expect.objectContaining({ address: "tb1qreceive0", index: 0 }),
-        expect.objectContaining({ address: "tb1qreceive1", index: 1 }),
-        expect.objectContaining({ address: "tb1qchange0", index: 0 }),
-        expect.objectContaining({ address: "tb1qchange1", index: 1 }),
-      ]),
-    });
-    expect(response.body).toHaveLength(2);
-  });
-
-  it("continues gracefully when auto-generation fails", async () => {
+  it("never mutates address state when a filtered or high-offset GET page is empty", async () => {
     mockPrismaClient.address.findMany.mockResolvedValue([]);
-    mockDeriveAddressFromDescriptor.mockImplementation(() => {
-      throw new Error("invalid descriptor");
-    });
 
-    const response = await request(app).get(
-      "/api/v1/wallets/wallet-1/addresses",
-    );
+    const response = await request(app)
+      .get("/api/v1/wallets/wallet-1/addresses")
+      .query({ offset: "999999", change: "true" });
 
     expect(response.status).toBe(200);
-    expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
-    expect(mockPrismaClient.uTXO.findMany).toHaveBeenCalledWith({
-      where: {
-        walletId: "wallet-1",
-        spent: false,
-      },
-      select: {
-        address: true,
-        amount: true,
-      },
-    });
     expect(response.body).toEqual([]);
+    expect(mockDeriveCanonicalAddress).not.toHaveBeenCalled();
+    expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
   });
 
   it("returns 500 when address listing fails unexpectedly", async () => {
@@ -458,40 +444,121 @@ describe("Transactions Addresses Routes (Extended)", () => {
     expect(response.body.message).toBe("Wallet does not have a descriptor");
   });
 
-  it("generates additional receive and change addresses with skipDuplicates", async () => {
-    mockPrismaClient.address.findMany.mockResolvedValue([
-      { derivationPath: "m/84'/1'/0'/0/3", index: 3 },
-      { derivationPath: "m/84'/1'/0'/1/4", index: 4 },
-      { derivationPath: "m/84'/1'/0'/1/2", index: 2 },
-    ] as any);
+  it("rejects generation without an authoritative change descriptor", async () => {
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({
+      id: "wallet-1",
+      type: "single_sig",
+      scriptType: "native_segwit",
+      descriptor: RECEIVE_DESCRIPTOR,
+      changeDescriptor: null,
+      canonicalPolicyId: CANONICAL_POLICY_ID,
+      canonicalPolicyVersion: 1,
+      network: "testnet3",
+    } as any);
+
+    const response = await request(app)
+      .post("/api/v1/wallets/wallet-1/addresses/generate")
+      .send({ count: 2 });
+
+    expect(response.status).toBe(400);
+    expect(mockDeriveCanonicalAddress).not.toHaveBeenCalled();
+  });
+
+  it("fails closed if descriptor evidence disappears during canonical batch derivation", async () => {
+    let descriptorReads = 0;
+    const wallet = {
+      id: "wallet-1",
+      type: "single_sig",
+      scriptType: "native_segwit",
+      get descriptor() {
+        descriptorReads++;
+        return descriptorReads === 1 ? RECEIVE_DESCRIPTOR : null;
+      },
+      changeDescriptor: CHANGE_DESCRIPTOR,
+      canonicalPolicyId: CANONICAL_POLICY_ID,
+      canonicalPolicyVersion: 1,
+      network: "testnet3",
+    };
+    mockPrismaClient.wallet.findUnique
+      .mockResolvedValueOnce(wallet as any)
+      .mockResolvedValueOnce({
+        id: "wallet-1",
+        devices: [{ device: { type: "coldcard", model: null } }],
+      } as any);
+
+    const response = await request(app)
+      .post("/api/v1/wallets/wallet-1/addresses/generate")
+      .send({ count: 2 });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe(
+      "Wallet requires authoritative receive and change descriptors",
+    );
+    expect(mockDeriveCanonicalAddress).not.toHaveBeenCalled();
+    expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects generation with contradictory canonical policy evidence", async () => {
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({
+      id: "wallet-1",
+      type: "single_sig",
+      scriptType: "native_segwit",
+      descriptor: RECEIVE_DESCRIPTOR,
+      changeDescriptor: CHANGE_DESCRIPTOR,
+      canonicalPolicyId: "single-sig-taproot-bip86-v1",
+      canonicalPolicyVersion: 1,
+      network: "testnet3",
+      devices: [{ device: { type: "coldcard", model: null } }],
+    } as any);
+
+    const response = await request(app)
+      .post("/api/v1/wallets/wallet-1/addresses/generate")
+      .send({ count: 2 });
+
+    expect(response.status).toBe(400);
+    expect(mockDeriveCanonicalAddress).not.toHaveBeenCalled();
+    expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
+  });
+
+  it("generates canonical receive and change addresses without duplicate skipping", async () => {
+    mockCanonicalAllocationSummary(3, 4);
 
     const response = await request(app)
       .post("/api/v1/wallets/wallet-1/addresses/generate")
       .send({ count: 2 });
 
     expect(response.status).toBe(200);
-    expect(mockDeriveAddressFromDescriptor).toHaveBeenCalledTimes(4);
+    expect(mockDeriveCanonicalAddress).toHaveBeenCalledTimes(4);
     expect(mockPrismaClient.address.createMany).toHaveBeenCalledWith({
       data: expect.arrayContaining([
         expect.objectContaining({
           derivationPath: "m/84'/1'/0'/0/4",
+          branch: 0,
           index: 4,
+          scriptPubKey: expect.stringMatching(/^[0-9a-f]+$/),
+          canonicalPolicyId: CANONICAL_POLICY_ID,
+          canonicalPolicyVersion: 1,
         }),
         expect.objectContaining({
           derivationPath: "m/84'/1'/0'/0/5",
+          branch: 0,
           index: 5,
         }),
         expect.objectContaining({
           derivationPath: "m/84'/1'/0'/1/5",
+          branch: 1,
           index: 5,
         }),
         expect.objectContaining({
           derivationPath: "m/84'/1'/0'/1/6",
+          branch: 1,
           index: 6,
         }),
       ]),
-      skipDuplicates: true,
     });
+    expect(mockPrismaClient.address.createMany.mock.calls[0][0]).not.toHaveProperty(
+      "skipDuplicates",
+    );
     expect(response.body).toEqual({
       generated: 4,
       receiveAddresses: 2,
@@ -500,10 +567,7 @@ describe("Transactions Addresses Routes (Extended)", () => {
   });
 
   it("generates change indexes independently when receive index is ahead", async () => {
-    mockPrismaClient.address.findMany.mockResolvedValue([
-      { derivationPath: "m/84'/1'/0'/0/9", index: 9 },
-      { derivationPath: "m/84'/1'/0'/1/2", index: 2 },
-    ] as any);
+    mockCanonicalAllocationSummary(9, 2);
 
     const response = await request(app)
       .post("/api/v1/wallets/wallet-1/addresses/generate")
@@ -529,22 +593,21 @@ describe("Transactions Addresses Routes (Extended)", () => {
           index: 4,
         }),
       ]),
-      skipDuplicates: true,
     });
   });
 
-  it("ignores malformed and unsupported derivation paths when computing max indexes", async () => {
-    mockPrismaClient.address.findMany.mockResolvedValue([
-      { derivationPath: "malformed", index: 10 },
-      { derivationPath: "m/84'/1'/0'/2/9", index: 9 },
-    ] as any);
+  it("does not let malformed legacy paths drive canonical high-water indexes", async () => {
+    // The compact aggregate intentionally reports no canonical coordinates;
+    // legacy/null and invalid branches are filtered inside the SQL query.
+    mockCanonicalAllocationSummary(null, null);
 
     const response = await request(app)
       .post("/api/v1/wallets/wallet-1/addresses/generate")
       .send({ count: 2 });
 
     expect(response.status).toBe(200);
-    expect(mockDeriveAddressFromDescriptor).toHaveBeenCalledTimes(4);
+    expect(mockDeriveCanonicalAddress).toHaveBeenCalledTimes(4);
+    expect(mockPrismaClient.address.findMany).not.toHaveBeenCalled();
     expect(mockPrismaClient.address.createMany).toHaveBeenCalledWith({
       data: expect.arrayContaining([
         expect.objectContaining({
@@ -564,7 +627,6 @@ describe("Transactions Addresses Routes (Extended)", () => {
           index: 1,
         }),
       ]),
-      skipDuplicates: true,
     });
     expect(response.body).toEqual({
       generated: 4,
@@ -573,9 +635,9 @@ describe("Transactions Addresses Routes (Extended)", () => {
     });
   });
 
-  it("returns generated zero when derivation fails for all addresses", async () => {
-    mockPrismaClient.address.findMany.mockResolvedValue([]);
-    mockDeriveAddressFromDescriptor.mockImplementation(() => {
+  it("fails closed when canonical derivation fails", async () => {
+    mockCanonicalAllocationSummary();
+    mockDeriveCanonicalAddress.mockImplementation(() => {
       throw new Error("derive failed");
     });
 
@@ -583,15 +645,17 @@ describe("Transactions Addresses Routes (Extended)", () => {
       .post("/api/v1/wallets/wallet-1/addresses/generate")
       .send({ count: 2 });
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(500);
+    expect(response.body.code).toBe("INTERNAL_ERROR");
     expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
-    expect(response.body.generated).toBe(0);
   });
 
   it("returns 500 when address generation fails unexpectedly", async () => {
-    mockPrismaClient.address.findMany.mockRejectedValue(
-      new Error("select failed"),
-    );
+    mockPrismaClient.$queryRaw.mockImplementation((query: { strings?: readonly string[] }) => {
+      const sql = query.strings?.join(" ") ?? "";
+      if (sql.includes("FOR UPDATE")) return Promise.resolve([{ id: "wallet-1" }]);
+      return Promise.reject(new Error("summary failed"));
+    });
 
     const response = await request(app)
       .post("/api/v1/wallets/wallet-1/addresses/generate")
@@ -607,7 +671,7 @@ describe("Transactions Addresses Routes (Extended)", () => {
       .send({ count: 1_000_001 });
 
     expect(response.status).toBe(400);
-    expect(mockDeriveAddressFromDescriptor).not.toHaveBeenCalled();
+    expect(mockDeriveCanonicalAddress).not.toHaveBeenCalled();
     expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
   });
 
@@ -617,7 +681,7 @@ describe("Transactions Addresses Routes (Extended)", () => {
       .send({ count: "5" });
 
     expect(response.status).toBe(400);
-    expect(mockDeriveAddressFromDescriptor).not.toHaveBeenCalled();
+    expect(mockDeriveCanonicalAddress).not.toHaveBeenCalled();
     expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
   });
 
@@ -627,11 +691,11 @@ describe("Transactions Addresses Routes (Extended)", () => {
       .send({ count: -5 });
 
     expect(response.status).toBe(400);
-    expect(mockDeriveAddressFromDescriptor).not.toHaveBeenCalled();
+    expect(mockDeriveCanonicalAddress).not.toHaveBeenCalled();
   });
 
   it("applies default count=10 when body is empty", async () => {
-    mockPrismaClient.address.findMany.mockResolvedValue([]);
+    mockCanonicalAllocationSummary();
     mockPrismaClient.address.createMany.mockResolvedValue({ count: 20 } as any);
 
     const response = await request(app)
@@ -639,7 +703,7 @@ describe("Transactions Addresses Routes (Extended)", () => {
       .send({});
 
     expect(response.status).toBe(200);
-    expect(mockDeriveAddressFromDescriptor).toHaveBeenCalledTimes(20);
+    expect(mockDeriveCanonicalAddress).toHaveBeenCalledTimes(20);
     expect(response.body).toEqual({
       generated: 20,
       receiveAddresses: 10,
@@ -648,7 +712,7 @@ describe("Transactions Addresses Routes (Extended)", () => {
   });
 
   it("accepts count at the upper bound", async () => {
-    mockPrismaClient.address.findMany.mockResolvedValue([]);
+    mockCanonicalAllocationSummary();
     mockPrismaClient.address.createMany.mockResolvedValue({
       count: 2000,
     } as any);
@@ -658,6 +722,6 @@ describe("Transactions Addresses Routes (Extended)", () => {
       .send({ count: 1000 });
 
     expect(response.status).toBe(200);
-    expect(mockDeriveAddressFromDescriptor).toHaveBeenCalledTimes(2000);
+    expect(mockDeriveCanonicalAddress).toHaveBeenCalledTimes(2000);
   });
 });

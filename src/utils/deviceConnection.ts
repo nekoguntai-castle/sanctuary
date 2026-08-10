@@ -53,15 +53,14 @@ export function isDeviceConnectivityMethod(value: string): value is DeviceConnec
 }
 
 /**
- * Normalize a derivation path to standard format with auto-hardening for BIP paths
+ * Normalize derivation path notation without repairing policy evidence.
  *
  * - Ensures 'm/' prefix (case-insensitive)
  * - Converts 'h' notation to apostrophes (84h -> 84')
- * - For standard BIP paths (44/49/84/86/48), ensures first 3 levels are hardened
  *
  * @example
  * normalizeDerivationPath("M/84'/0'/0'") // => "m/84'/0'/0'"
- * normalizeDerivationPath("84/0/0") // => "m/84'/0'/0'" (auto-hardened)
+ * normalizeDerivationPath("84/0/0") // => "m/84/0/0" (still invalid policy evidence)
  */
 export function normalizeDerivationPath(path: string): string {
   if (!path) return '';
@@ -72,25 +71,6 @@ export function normalizeDerivationPath(path: string): string {
   // Handle uppercase 'M/' prefix (shared util only handles lowercase)
   if (path.trim().startsWith('M/')) {
     normalized = sharedNormalizePath('m/' + path.trim().slice(2));
-  }
-
-  // Split into components for auto-hardening
-  const parts = normalized.split('/');
-  if (parts.length < 2) return normalized;
-
-  // Check if this looks like a standard BIP path (44, 49, 84, 86, 48)
-  const purposePart = parts[1]?.replace(/'/g, '');
-  const standardPurposes = ['44', '49', '84', '86', '48'];
-
-  if (standardPurposes.includes(purposePart)) {
-    // For standard BIP paths, ensure first 3 levels after 'm' are hardened
-    // m / purpose' / coin_type' / account'
-    for (let i = 1; i <= 3 && i < parts.length; i++) {
-      if (parts[i] && !parts[i].endsWith("'")) {
-        parts[i] = parts[i] + "'";
-      }
-    }
-    normalized = parts.join('/');
   }
 
   return normalized;

@@ -22,6 +22,9 @@ import {
   assertWalletHardwareCapability,
   assertWalletHardwareCapabilityById,
 } from '../../services/hardwareWalletCapabilities';
+import { assertUnusedAddressesSafeForDisplay } from '../../services/addressDisplaySafety';
+import { assertCanonicalAddressesForWallet } from '../../services/wallet/canonicalAddressValidation';
+import { hasCompleteCanonicalAddressEvidence } from '../../services/wallet/canonicalPolicy';
 
 const router = Router();
 
@@ -183,12 +186,19 @@ router.get('/:id/export/labels', requireWalletAccess('view'), asyncHandler(async
     throw new NotFoundError('Wallet not found');
   }
   await assertWalletHardwareCapabilityById(walletId, 'display');
-
   // Get all transactions with labels
   const transactions = await transactionRepository.findWithLabels(walletId);
 
   // Get all addresses with labels
   const addresses = await addressRepository.findWithLabels(walletId);
+  await assertUnusedAddressesSafeForDisplay(walletId, addresses);
+  const canonicalAddresses = addresses.filter(hasCompleteCanonicalAddressEvidence);
+  // Unused canonical rows were re-derived by the display assertion above.
+  // Validate the disjoint used-history set before granting it an origin claim,
+  // avoiding a second potentially large derivation pass over unused rows.
+  const canonicalUsedAddresses = canonicalAddresses.filter(address => address.used === true);
+  await assertCanonicalAddressesForWallet(walletId, canonicalUsedAddresses);
+  const canonicalAddressIds = new Set(canonicalAddresses.map(address => address.id));
 
   // Build BIP 329 JSON Lines
   const lines: string[] = [];
@@ -224,7 +234,7 @@ router.get('/:id/export/labels', requireWalletAccess('view'), asyncHandler(async
         type: 'addr',
         ref: addr.address,
         label: labelParts.join(', '),
-        origin: addr.derivationPath || undefined,
+        origin: canonicalAddressIds.has(addr.id) ? addr.derivationPath : undefined,
       }));
     }
   }

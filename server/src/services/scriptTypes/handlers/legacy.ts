@@ -5,20 +5,18 @@
  * Original Bitcoin script types - less efficient but universally supported.
  */
 
-import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
+import { WalletScriptType, WalletType } from '@sanctuary/shared/constants/walletIdentity';
 import type {
   ScriptTypeHandler,
   DeviceKeyInfo,
   DescriptorBuildOptions,
-  MultiSigBuildOptions,
   Network,
 } from '../types';
 import {
-  buildCoinTypeDerivationPath,
-  buildMultiSigKeyExpressions,
+  buildWalletPolicyDerivationPath,
   buildRangedKeyExpression,
-  buildSortedMulti,
   supportsAnyScriptType,
+  wrapWalletPolicyDescriptor,
 } from './descriptorHelpers';
 
 export const legacyHandler: ScriptTypeHandler = {
@@ -27,27 +25,24 @@ export const legacyHandler: ScriptTypeHandler = {
   description: 'BIP-44 legacy addresses starting with 1',
   bip: 44,
   multisigBip: 45,
-  supportsMultisig: true,
+  supportsMultisig: false,
   aliases: ['p2pkh', 'pkh'],
 
   getDerivationPath(network: Network, account: number = 0): string {
-    return buildCoinTypeDerivationPath(44, network, account);
+    return buildWalletPolicyDerivationPath(WalletType.SINGLE_SIG, WalletScriptType.LEGACY, network, account);
   },
 
-  getMultisigDerivationPath(_network: Network, account: number = 0): string {
-    // BIP45 doesn't use coin type
-    return `m/45'/${account}'`;
+  getMultisigDerivationPath(_network: Network, _account: number = 0): string {
+    throw new Error('Legacy multisig is not supported');
   },
 
   buildSingleSigDescriptor(device: DeviceKeyInfo, options: DescriptorBuildOptions): string {
     const derivationPath = device.derivationPath || this.getDerivationPath(options.network);
-    return `pkh(${buildRangedKeyExpression(device, derivationPath, options)})`;
-  },
-
-  buildMultiSigDescriptor(devices: DeviceKeyInfo[], options: MultiSigBuildOptions): string {
-    const fallbackPath = this.getMultisigDerivationPath(options.network);
-    const keyExpressions = buildMultiSigKeyExpressions(devices, fallbackPath, options);
-    return `sh(${buildSortedMulti(keyExpressions, options)})`;
+    return wrapWalletPolicyDescriptor(
+      WalletType.SINGLE_SIG,
+      WalletScriptType.LEGACY,
+      buildRangedKeyExpression(device, derivationPath, options),
+    );
   },
 
   validateDevice(deviceScriptTypes: string[]): boolean {

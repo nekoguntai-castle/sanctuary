@@ -110,6 +110,7 @@ vi.mock('../../../../src/services/bitcoin/utils/blockHeight', () => ({
 
 export const mockDeriveAddress = vi.fn<any>();
 vi.mock('../../../../src/services/bitcoin/addressDerivation', () => ({
+  deriveCanonicalAddress: mockDeriveAddress,
   deriveAddressFromDescriptor: mockDeriveAddress,
 }));
 

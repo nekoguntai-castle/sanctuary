@@ -21,6 +21,10 @@ vi.mock('../../../../../src/services/bitcoin/nodeClient', () => ({
   getNodeClient: vi.fn().mockResolvedValue(mockElectrumClient),
 }));
 
+vi.mock('../../../../../src/services/wallet/canonicalAddressValidation', () => ({
+  assertCanonicalAddressesForWallet: vi.fn().mockResolvedValue(undefined),
+}));
+
 export function registerAdvancedTxTestSetup() {
   beforeEach(() => {
     resetPrismaMocks();

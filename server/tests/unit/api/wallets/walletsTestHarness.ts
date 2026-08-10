@@ -23,6 +23,7 @@ const walletsApiMocks = vi.hoisted(() => ({
     getUnspentBalance: vi.fn(),
   },
   mockWalletRepository: {
+    findById: vi.fn(),
     findByIdWithDevices: vi.fn(),
     getName: vi.fn(),
   },
@@ -129,7 +130,13 @@ vi.mock('../../../../src/services/import', () => ({
   importFormatRegistry: walletsApiMocks.mockImportFormatRegistry,
 }));
 
-vi.mock('../../../../src/services/bitcoin/addressDerivation', () => walletsApiMocks.mockAddressDerivation);
+vi.mock('../../../../src/services/bitcoin/addressDerivation', async () => {
+  const actual = await vi.importActual<typeof import('../../../../src/services/bitcoin/addressDerivation')>(
+    '../../../../src/services/bitcoin/addressDerivation',
+  );
+  walletsApiMocks.mockAddressDerivation.validateXpub.mockImplementation(actual.validateXpub);
+  return { ...actual, ...walletsApiMocks.mockAddressDerivation };
+});
 vi.mock('../../../../src/services/scriptTypes', () => walletsApiMocks.mockScriptTypes);
 vi.mock('../../../../src/services/cache', () => ({
   walletCache: walletsApiMocks.mockWalletCache,
@@ -292,7 +299,6 @@ export const setupWalletsApiMocks = () => {
     { id: 'descriptor', name: 'Descriptor', description: 'Bitcoin descriptor', fileExtensions: ['.txt'], priority: 5 },
   ]);
 
-  mockAddressDerivation.validateXpub.mockReturnValue({ valid: true, scriptType: 'native_segwit' });
   mockAddressDerivation.deriveAddress.mockReturnValue({ address: 'bc1qtest123' });
   mockScriptTypes.isValidScriptType.mockReturnValue(true);
   mockScriptTypes.scriptTypeRegistry.getIds.mockReturnValue([...WALLET_SCRIPT_TYPE_VALUES]);

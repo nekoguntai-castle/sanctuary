@@ -2,10 +2,77 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
 import { mockDeriveAddress, mockPrisma } from "./blockchainServiceTestHarness";
 import { parseAddressDerivationPath } from "@sanctuary/shared/utils/bitcoin";
 
+const RECEIVE_DESCRIPTOR = "wpkh([abc12345/84'/0'/0']xpub.../0/*)";
+const CHANGE_DESCRIPTOR = "wpkh([abc12345/84'/0'/0']xpub.../1/*)";
+const CANONICAL_POLICY_ID = "single-sig-native-segwit-bip84-v1";
+
+function canonicalWallet(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "wallet-1",
+    descriptor: RECEIVE_DESCRIPTOR,
+    changeDescriptor: CHANGE_DESCRIPTOR,
+    network: "mainnet",
+    type: "single_sig",
+    scriptType: "native_segwit",
+    canonicalPolicyId: CANONICAL_POLICY_ID,
+    canonicalPolicyVersion: 1,
+    devices: [{ device: { type: "coldcard", model: null } }],
+    ...overrides,
+  };
+}
+
+function canonicalAddress(branch: 0 | 1, index: number, used: boolean) {
+  return {
+    derivationPath: `m/84'/0'/0'/${branch}/${index}`,
+    branch,
+    coordinateVersion: 1,
+    index,
+    used,
+  };
+}
+
+function mockCanonicalDerivation(): void {
+  mockDeriveAddress.mockReset();
+  mockDeriveAddress.mockImplementation(
+    (_descriptors: unknown, coordinate: { branch: 0 | 1; index: number }) => ({
+      address: `bc1qnew${coordinate.branch}${coordinate.index}`,
+      derivationPath: `m/84'/0'/0'/${coordinate.branch}/${coordinate.index}`,
+      scriptPubKey: `0014${"00".repeat(20)}`,
+      branch: coordinate.branch,
+      index: coordinate.index,
+      signerOrigins: [],
+    }),
+  );
+}
+
+function mockLockedCoordinates(
+  addresses: Array<{ branch: number | null; index: number; used: boolean }>,
+): void {
+  const summarize = (branch: 0 | 1) => {
+    const branchRows = addresses.filter((address) => address.branch === branch);
+    const maxIndex = branchRows.length === 0
+      ? null
+      : Math.max(...branchRows.map((address) => address.index));
+    const lastUsedIndex = Math.max(-1, ...branchRows
+      .filter((address) => address.used)
+      .map((address) => address.index));
+    const unusedTail = branchRows.filter(
+      (address) => !address.used && address.index > lastUsedIndex,
+    ).length;
+    return { branch, maxIndex, unusedTail: BigInt(unusedTail) };
+  };
+  mockPrisma.$queryRaw
+    .mockReset()
+    .mockResolvedValueOnce([{ id: "wallet-1" }])
+    .mockResolvedValueOnce([summarize(0), summarize(1)]);
+}
+
 export function registerBlockchainAddressDiscoveryContracts(): void {
   describe("Blockchain Service - Address Discovery (Gap Limit)", () => {
     beforeEach(() => {
       vi.clearAllMocks();
+      mockPrisma.$queryRaw.mockResolvedValue([{ id: "wallet-1" }]);
+      mockCanonicalDerivation();
     });
 
     describe("ensureGapLimit", () => {
@@ -14,12 +81,9 @@ export function registerBlockchainAddressDiscoveryContracts(): void {
         async (type) => {
           const { ensureGapLimit } =
             await import("../../../../src/services/bitcoin/sync/addressDiscovery");
-          mockPrisma.wallet.findUnique.mockResolvedValue({
-            id: "wallet-1",
-            descriptor: "wpkh([abc123/84h/0h/0h]xpub.../0/*)",
-            network: "mainnet",
-            devices: [{ device: { type } }],
-          });
+          mockPrisma.wallet.findUnique.mockResolvedValue(
+            canonicalWallet({ devices: [{ device: { type } }] }),
+          );
 
           await expect(ensureGapLimit("wallet-1")).resolves.toEqual([]);
           expect(mockPrisma.address.findMany).not.toHaveBeenCalled();
@@ -32,11 +96,7 @@ export function registerBlockchainAddressDiscoveryContracts(): void {
         const { ensureGapLimit } =
           await import("../../../../src/services/bitcoin/sync/addressDiscovery");
         mockPrisma.wallet.findUnique
-          .mockResolvedValueOnce({
-            id: "wallet-1",
-            descriptor: "wpkh([abc123/84h/0h/0h]xpub.../0/*)",
-            network: "mainnet",
-          })
+          .mockResolvedValueOnce(canonicalWallet())
           .mockRejectedValueOnce(new Error("database unavailable"));
 
         await expect(ensureGapLimit("wallet-1")).rejects.toThrow("database unavailable");
@@ -47,35 +107,17 @@ export function registerBlockchainAddressDiscoveryContracts(): void {
         const { ensureGapLimit } =
           await import("../../../../src/services/bitcoin/sync/addressDiscovery");
 
-        const testWallet = {
-          id: "wallet-1",
-          descriptor: "wpkh([abc123/84h/0h/0h]xpub.../0/*)",
-          network: "mainnet",
-          devices: [{ device: { type: 'coldcard', model: null } }],
-        };
+        const testWallet = canonicalWallet();
 
         // 15 receive addresses, last 10 unused (gap = 10, below 20)
         const addresses = [];
         for (let i = 0; i < 15; i++) {
-          addresses.push({
-            derivationPath: `m/84'/0'/0'/0/${i}`,
-            index: i,
-            used: i < 5, // First 5 used
-          });
+          addresses.push(canonicalAddress(0, i, i < 5));
         }
 
         mockPrisma.wallet.findUnique.mockResolvedValue(testWallet);
-        mockPrisma.address.findMany.mockResolvedValue(addresses);
+        mockLockedCoordinates(addresses);
         mockPrisma.address.createMany.mockResolvedValue({ count: 10 });
-
-        mockDeriveAddress.mockImplementation(
-          (descriptor: string, index: number, opts: any) => ({
-            address: `bc1qnew${index}`,
-            derivationPath: opts.change
-              ? `m/84'/0'/0'/1/${index}`
-              : `m/84'/0'/0'/0/${index}`,
-          }),
-        );
 
         const newAddresses = await ensureGapLimit("wallet-1");
 
@@ -88,33 +130,20 @@ export function registerBlockchainAddressDiscoveryContracts(): void {
         const { ensureGapLimit } =
           await import("../../../../src/services/bitcoin/sync/addressDiscovery");
 
-        const testWallet = {
-          id: "wallet-1",
-          descriptor: "wpkh([abc123/84h/0h/0h]xpub.../0/*)",
-          network: "mainnet",
-          devices: [{ device: { type: 'coldcard', model: null } }],
-        };
+        const testWallet = canonicalWallet();
 
         // 25 receive addresses, last 20 unused (gap = 20, meets limit)
         const addresses = [];
         for (let i = 0; i < 25; i++) {
-          addresses.push({
-            derivationPath: `m/84'/0'/0'/0/${i}`,
-            index: i,
-            used: i < 5, // First 5 used, 20 unused
-          });
+          addresses.push(canonicalAddress(0, i, i < 5));
         }
         // Also add sufficient change addresses
         for (let i = 0; i < 20; i++) {
-          addresses.push({
-            derivationPath: `m/84'/0'/0'/1/${i}`,
-            index: i,
-            used: false,
-          });
+          addresses.push(canonicalAddress(1, i, false));
         }
 
         mockPrisma.wallet.findUnique.mockResolvedValue(testWallet);
-        mockPrisma.address.findMany.mockResolvedValue(addresses);
+        mockLockedCoordinates(addresses);
 
         const newAddresses = await ensureGapLimit("wallet-1");
 
@@ -127,43 +156,21 @@ export function registerBlockchainAddressDiscoveryContracts(): void {
         const { ensureGapLimit } =
           await import("../../../../src/services/bitcoin/sync/addressDiscovery");
 
-        const testWallet = {
-          id: "wallet-1",
-          descriptor: "wpkh([abc123/84h/0h/0h]xpub.../0/*)",
-          network: "mainnet",
-          devices: [{ device: { type: 'coldcard', model: null } }],
-        };
+        const testWallet = canonicalWallet();
 
         // Receive chain: 25 addresses, 20 unused (OK)
         // Change chain: 10 addresses, 5 unused (needs expansion)
         const addresses = [];
         for (let i = 0; i < 25; i++) {
-          addresses.push({
-            derivationPath: `m/84'/0'/0'/0/${i}`,
-            index: i,
-            used: i < 5,
-          });
+          addresses.push(canonicalAddress(0, i, i < 5));
         }
         for (let i = 0; i < 10; i++) {
-          addresses.push({
-            derivationPath: `m/84'/0'/0'/1/${i}`,
-            index: i,
-            used: i < 5, // 5 used, 5 unused
-          });
+          addresses.push(canonicalAddress(1, i, i < 5));
         }
 
         mockPrisma.wallet.findUnique.mockResolvedValue(testWallet);
-        mockPrisma.address.findMany.mockResolvedValue(addresses);
+        mockLockedCoordinates(addresses);
         mockPrisma.address.createMany.mockResolvedValue({ count: 15 });
-
-        mockDeriveAddress.mockImplementation(
-          (descriptor: string, index: number, opts: any) => ({
-            address: `bc1qnew${index}`,
-            derivationPath: opts.change
-              ? `m/84'/0'/0'/1/${index}`
-              : `m/84'/0'/0'/0/${index}`,
-          }),
-        );
 
         const newAddresses = await ensureGapLimit("wallet-1");
 
@@ -176,43 +183,27 @@ export function registerBlockchainAddressDiscoveryContracts(): void {
         expect(changeAddresses.length).toBeGreaterThan(0);
       });
 
-      it("skips malformed stored paths when calculating chain gaps", async () => {
+      it("excludes legacy rows without canonical coordinates from chain gaps", async () => {
         const { ensureGapLimit } =
           await import("../../../../src/services/bitcoin/sync/addressDiscovery");
 
-        const testWallet = {
-          id: "wallet-1",
-          descriptor: "wpkh([abc123/84h/0h/0h]xpub.../0/*)",
-          network: "mainnet",
-          devices: [{ device: { type: 'coldcard', model: null } }],
-        };
+        const testWallet = canonicalWallet();
 
         const addresses = [];
         for (let i = 0; i < 20; i++) {
-          addresses.push({
-            derivationPath: `m/84'/0'/0'/0/${i}`,
-            index: i,
-            used: false,
-          });
+          addresses.push(canonicalAddress(0, i, false));
           addresses.push({
             derivationPath: `m/84'/0'/0'/1/bad${i}`,
+            branch: null,
+            coordinateVersion: null,
             index: i,
             used: false,
           });
         }
 
         mockPrisma.wallet.findUnique.mockResolvedValue(testWallet);
-        mockPrisma.address.findMany.mockResolvedValue(addresses);
+        mockLockedCoordinates(addresses);
         mockPrisma.address.createMany.mockResolvedValue({ count: 20 });
-
-        mockDeriveAddress.mockImplementation(
-          (_descriptor: string, index: number, opts: any) => ({
-            address: `bc1qnew${index}`,
-            derivationPath: opts.change
-              ? `m/84'/0'/0'/1/${index}`
-              : `m/84'/0'/0'/0/${index}`,
-          }),
-        );
 
         const newAddresses = await ensureGapLimit("wallet-1");
 
@@ -228,85 +219,57 @@ export function registerBlockchainAddressDiscoveryContracts(): void {
           data: expect.arrayContaining([
             expect.objectContaining({
               derivationPath: "m/84'/0'/0'/1/0",
+              branch: 1,
+              coordinateVersion: 1,
+              canonicalPolicyId: CANONICAL_POLICY_ID,
+              canonicalPolicyVersion: 1,
               index: 0,
             }),
           ]),
-          skipDuplicates: true,
         });
       });
 
-      it("skips generated addresses with malformed derivation paths before persistence", async () => {
+      it("fails closed when canonical derivation rejects a coordinate", async () => {
         const { ensureGapLimit } =
           await import("../../../../src/services/bitcoin/sync/addressDiscovery");
 
-        const testWallet = {
-          id: "wallet-1",
-          descriptor: "wpkh([abc123/84h/0h/0h]xpub.../0/*)",
-          network: "mainnet",
-          devices: [{ device: { type: 'coldcard', model: null } }],
-        };
+        const testWallet = canonicalWallet();
         const receiveAddresses = Array.from({ length: 20 }, (_, i) => ({
-          derivationPath: `m/84'/0'/0'/0/${i}`,
-          index: i,
-          used: false,
+          ...canonicalAddress(0, i, false),
         }));
 
         mockPrisma.wallet.findUnique.mockResolvedValue(testWallet);
-        mockPrisma.address.findMany.mockResolvedValue(receiveAddresses);
-        mockPrisma.address.createMany.mockResolvedValue({ count: 19 });
-
+        mockLockedCoordinates(receiveAddresses);
         mockDeriveAddress.mockImplementation(
-          (_descriptor: string, index: number, opts: any) => ({
-            address: `bc1qnew${index}`,
-            derivationPath:
-              opts.change && index === 0
-                ? "not-a-path"
-                : `m/84'/0'/0'/${opts.change ? 1 : 0}/${index}`,
-          }),
+          (_descriptors: unknown, coordinate: { branch: number; index: number }) => {
+            throw new Error(`canonical derivation failed at ${coordinate.branch}/${coordinate.index}`);
+          },
         );
 
-        const newAddresses = await ensureGapLimit("wallet-1");
-
-        expect(newAddresses).toHaveLength(19);
-        expect(
-          newAddresses.some(
-            (address) => address.derivationPath === "not-a-path",
-          ),
-        ).toBe(false);
-        expect(mockPrisma.address.createMany).toHaveBeenCalledWith({
-          data: expect.not.arrayContaining([
-            expect.objectContaining({ derivationPath: "not-a-path" }),
-          ]),
-          skipDuplicates: true,
-        });
+        await expect(ensureGapLimit("wallet-1")).rejects.toThrow(
+          "canonical derivation failed at 1/0",
+        );
+        expect(mockPrisma.address.createMany).not.toHaveBeenCalled();
       });
 
-      it("does not persist when every generated derivation path is malformed", async () => {
+      it("does not persist a partial batch when canonical derivation fails", async () => {
         const { ensureGapLimit } =
           await import("../../../../src/services/bitcoin/sync/addressDiscovery");
 
-        const testWallet = {
-          id: "wallet-1",
-          descriptor: "wpkh([abc123/84h/0h/0h]xpub.../0/*)",
-          network: "mainnet",
-          devices: [{ device: { type: 'coldcard', model: null } }],
-        };
+        const testWallet = canonicalWallet();
         const receiveAddresses = Array.from({ length: 20 }, (_, i) => ({
-          derivationPath: `m/84'/0'/0'/0/${i}`,
-          index: i,
-          used: false,
+          ...canonicalAddress(0, i, false),
         }));
 
         mockPrisma.wallet.findUnique.mockResolvedValue(testWallet);
-        mockPrisma.address.findMany.mockResolvedValue(receiveAddresses);
-        mockDeriveAddress.mockReturnValue({
-          address: "bc1qinvalid",
-          derivationPath: "not-a-path",
+        mockLockedCoordinates(receiveAddresses);
+        mockDeriveAddress.mockImplementation(() => {
+          throw new Error("canonical derivation failed");
         });
 
-        const newAddresses = await ensureGapLimit("wallet-1");
-
-        expect(newAddresses).toEqual([]);
+        await expect(ensureGapLimit("wallet-1")).rejects.toThrow(
+          "canonical derivation failed",
+        );
         expect(mockPrisma.address.createMany).not.toHaveBeenCalled();
       });
 
@@ -314,11 +277,9 @@ export function registerBlockchainAddressDiscoveryContracts(): void {
         const { ensureGapLimit } =
           await import("../../../../src/services/bitcoin/sync/addressDiscovery");
 
-        mockPrisma.wallet.findUnique.mockResolvedValue({
-          id: "wallet-1",
-          descriptor: null, // No descriptor
-          network: "mainnet",
-        });
+        mockPrisma.wallet.findUnique.mockResolvedValue(
+          canonicalWallet({ descriptor: null }),
+        );
 
         const result = await ensureGapLimit("wallet-1");
 

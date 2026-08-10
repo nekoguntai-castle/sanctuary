@@ -1,6 +1,15 @@
-import { deriveAddressFromDescriptor } from '../bitcoin/addressDerivation';
+import { deriveCanonicalAddress } from '../bitcoin/addressDerivation';
 import type { AddressDerivationNetwork } from '../bitcoin/addressDerivation/types';
 import type { ParsedDescriptor } from '../bitcoin/descriptorParser/types';
+import {
+  CANONICAL_ADDRESS_COORDINATE_VERSION,
+  findWalletPolicy,
+  WALLET_POLICY_REGISTRY_VERSION,
+} from '@sanctuary/shared/constants/walletPolicy';
+import {
+  isWalletScriptType,
+  isWalletType,
+} from '@sanctuary/shared/constants/walletIdentity';
 import type {
   RawAuditAddress,
   RawAuditWallet,
@@ -8,64 +17,53 @@ import type {
 } from './schema';
 
 const AUDIT_NETWORKS = new Set<AddressDerivationNetwork>([
-  'mainnet',
-  'testnet',
-  'testnet3',
-  'testnet4',
-  'signet',
-  'regtest',
+  'mainnet', 'testnet', 'testnet3', 'testnet4', 'signet', 'regtest',
 ]);
 
-function auditNetwork(network: string): AddressDerivationNetwork | null {
-  return AUDIT_NETWORKS.has(network as AddressDerivationNetwork)
+type CanonicalAuditAddress = RawAuditAddress & { branch: 0 | 1 };
+
+const auditNetwork = (network: string): AddressDerivationNetwork | null => (
+  AUDIT_NETWORKS.has(network as AddressDerivationNetwork)
     ? network as AddressDerivationNetwork
-    : null;
-}
+    : null
+);
 
-function addressBranch(address: RawAuditAddress): 0 | 1 | null {
-  const match = address.derivationPath.match(/\/([01])\/(\d+)$/);
-  if (!match || Number.parseInt(match[2], 10) !== address.index) return null;
-  return match[1] === '0' ? 0 : 1;
-}
+const hasCanonicalCoordinate = (address: RawAuditAddress): address is CanonicalAuditAddress => (
+  address.coordinateVersion === CANONICAL_ADDRESS_COORDINATE_VERSION
+    && (address.branch === 0 || address.branch === 1)
+);
 
-function expectedPath(parsed: ParsedDescriptor, branch: 0 | 1, index: number): string | null {
-  const origins = new Set(parsed.devices.map((device) => device.derivationPath));
-  if (origins.size !== 1) return null;
-  const origin = parsed.devices[0]?.derivationPath;
-  return origin ? `${origin}/${branch}/${index}` : null;
-}
-
-interface AddressMatchResult {
-  addressMatches: boolean;
-  pathMatches: boolean;
-}
-
-function inspectAddress(
+function inspectCanonicalAddress(
   wallet: RawAuditWallet,
-  address: RawAuditAddress,
-  receive: ParsedDescriptor,
-  change: ParsedDescriptor,
-): AddressMatchResult {
-  const branch = addressBranch(address);
+  address: CanonicalAuditAddress,
+): WalletAuditFindingId[] {
   const network = auditNetwork(wallet.network);
-  if (branch === null || network === null) return { addressMatches: false, pathMatches: false };
+  if (!network || !wallet.descriptor || !wallet.changeDescriptor) return ['address.policy_mismatch'];
 
-  const descriptor = branch === 0 ? wallet.descriptor : wallet.changeDescriptor;
-  const parsed = branch === 0 ? receive : change;
-  if (!descriptor) return { addressMatches: false, pathMatches: false };
+  const findings = new Set<WalletAuditFindingId>();
+  const expectedPolicy = isWalletType(wallet.type) && isWalletScriptType(wallet.scriptType)
+    ? findWalletPolicy(wallet.type, wallet.scriptType)
+    : null;
+  if (!expectedPolicy
+    || wallet.canonicalPolicyId !== expectedPolicy.id
+    || wallet.canonicalPolicyVersion !== WALLET_POLICY_REGISTRY_VERSION
+    || address.canonicalPolicyId !== wallet.canonicalPolicyId
+    || address.canonicalPolicyVersion !== wallet.canonicalPolicyVersion) {
+    findings.add('address.policy_mismatch');
+  }
 
   try {
-    const derived = deriveAddressFromDescriptor(descriptor, address.index, {
-      network,
-      change: branch === 1,
-    });
-    return {
-      addressMatches: derived.address === address.address,
-      pathMatches: expectedPath(parsed, branch, address.index) === address.derivationPath,
-    };
+    const derived = deriveCanonicalAddress(
+      { receiveDescriptor: wallet.descriptor, changeDescriptor: wallet.changeDescriptor },
+      { branch: address.branch, index: address.index, network },
+    );
+    if (derived.address !== address.address) findings.add('address.policy_mismatch');
+    if (derived.derivationPath !== address.derivationPath) findings.add('address.path_inconsistent');
+    if (derived.scriptPubKey !== address.scriptPubKey) findings.add('address.script_pubkey_mismatch');
   } catch {
-    return { addressMatches: false, pathMatches: false };
+    findings.add('address.policy_mismatch');
   }
+  return [...findings];
 }
 
 export function inspectAddressEvidence(
@@ -78,13 +76,16 @@ export function inspectAddressEvidence(
   if (!receive || !change) return ['address.policy_mismatch'];
 
   const findings = new Set<WalletAuditFindingId>();
-  const paths = new Set<string>();
+  const coordinates = new Set<string>();
   for (const address of addresses) {
-    if (paths.has(address.derivationPath)) findings.add('address.path_inconsistent');
-    paths.add(address.derivationPath);
-    const result = inspectAddress(wallet, address, receive, change);
-    if (!result.addressMatches) findings.add('address.policy_mismatch');
-    if (!result.pathMatches) findings.add('address.path_inconsistent');
+    if (!hasCanonicalCoordinate(address)) {
+      findings.add('address.coordinate_missing');
+      continue;
+    }
+    const coordinate = `${address.branch}:${address.index}`;
+    if (coordinates.has(coordinate)) findings.add('address.path_inconsistent');
+    coordinates.add(coordinate);
+    for (const finding of inspectCanonicalAddress(wallet, address)) findings.add(finding);
   }
   return [...findings];
 }

@@ -8,10 +8,11 @@
  */
 
 import { InvalidInputError } from "../../errors/ApiError";
+import { normalizeDerivationPath, parseDerivationPath } from "@sanctuary/shared/utils/bitcoin";
 import {
-  normalizeDerivationPath,
-  parseDerivationPath,
-} from "@sanctuary/shared/utils/bitcoin";
+  accountPathMatchesWalletPolicy,
+  parseCanonicalAccountPath,
+} from '@sanctuary/shared/constants/walletPolicy';
 import {
   accountPurposeForWalletType,
   type DeviceAccountPurpose,
@@ -66,14 +67,6 @@ export interface SignerBindingPolicySnapshot {
   signerScriptType: string;
 }
 
-const COIN_TYPE_BY_NETWORK: Record<WalletNetwork, number> = {
-  mainnet: 0,
-  regtest: 1,
-  signet: 1,
-  testnet3: 1,
-  testnet4: 1,
-};
-
 const MAX_BIP32_INDEX = 0x7fffffff;
 
 const walletNetwork = (input: { network?: WalletNetwork }): WalletNetwork => {
@@ -84,40 +77,36 @@ const accountError = (device: WalletSignerDevice, detail: string): InvalidInputE
   return new InvalidInputError(`Device "${device.label}" account is invalid: ${detail}`);
 };
 
-const isCanonicalAccountPath = (path: string, purpose: number | null): boolean => {
-  const normalized = normalizeDerivationPath(path);
-  // normalizeDerivationPath and parseDerivationPath guarantee the path begins
-  // at the master key; these expressions enforce the exact account suffix.
-  const singleSig = /m\/(?:44|49|84|86)'\/(?:0|1)'\/\d+'$/;
-  const multisig = /m\/48'\/(?:0|1)'\/\d+'\/(?:1|2)'$/;
-  return (purpose === 48 ? multisig : singleSig).test(normalized);
-};
-
 const validateAccountPath = (
   device: WalletSignerDevice,
   account: WalletSignerAccount,
   input: Pick<WalletSignerResolutionInput, "type" | "scriptType" | "network">,
 ): void => {
-  const parsed = parseDerivationPath(account.derivationPath);
-  if (!parsed.accountPath) {
+  const normalized = normalizeDerivationPath(account.derivationPath);
+  if (!parseDerivationPath(normalized).accountPath) {
     throw accountError(device, "derivation path is malformed");
   }
-  // A non-null accountPath guarantees an accountIndex in parseDerivationPath.
-  if ((parsed.accountIndex as number) > MAX_BIP32_INDEX) {
+  const accountIndex = /^m\/\d+'\/\d+'\/(\d+)'(?:\/\d+')?$/.exec(normalized)?.[1];
+  if (accountIndex && Number(accountIndex) > MAX_BIP32_INDEX) {
     throw accountError(device, "account index exceeds the BIP32 range");
   }
-  if (!isCanonicalAccountPath(account.derivationPath, parsed.purpose)) {
+  const parsed = parseCanonicalAccountPath(normalized);
+  if (!parsed) {
     throw accountError(device, "derivation path must be a hardened account-level path");
   }
 
   const expectedPurpose = accountPurposeForWalletType(input.type);
-  if (parsed.accountPurpose !== expectedPurpose || account.purpose !== expectedPurpose) {
+  if (parsed.policy.accountPurpose !== expectedPurpose || account.purpose !== expectedPurpose) {
     throw accountError(device, `purpose must be ${expectedPurpose}`);
   }
-  if (parsed.scriptType !== input.scriptType || account.scriptType !== input.scriptType) {
+  if (parsed.policy.scriptType !== input.scriptType || account.scriptType !== input.scriptType) {
     throw accountError(device, `script type must be ${input.scriptType}`);
   }
-  if (parsed.coinType !== COIN_TYPE_BY_NETWORK[walletNetwork(input)]) {
+  if (!accountPathMatchesWalletPolicy(normalized, {
+    walletType: input.type,
+    scriptType: input.scriptType,
+    chainEnvironment: walletNetwork(input),
+  })) {
     throw accountError(device, `coin type does not match ${walletNetwork(input)}`);
   }
 };

@@ -18,6 +18,7 @@ import { labelService } from '../services/labelService';
 import { asyncHandler } from '../errors/errorHandler';
 import { ErrorCodes } from '../errors';
 import { serializeForJson } from '../utils/serialization';
+import { assertUnusedAddressesSafeForDisplay } from '../services/addressDisplaySafety';
 
 const router = Router();
 
@@ -72,6 +73,7 @@ router.get('/wallets/:walletId/labels/:labelId', requireWalletAccess('view'), as
   const { walletId, labelId } = req.params;
 
   const label = await labelService.getLabel(walletId, labelId);
+  await assertUnusedAddressesSafeForDisplay(walletId, label.addresses);
   res.json(serializeForJson(label));
 }));
 

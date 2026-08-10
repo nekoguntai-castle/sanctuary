@@ -16,6 +16,7 @@ const MULTISIG_CHANGE_DESCRIPTOR = MULTISIG_RECEIVE_DESCRIPTOR.replaceAll('/0/*'
 const TESTNET_XPUB = "tpubDC5FSnBiZDMmhiuCmWAYsLwgLYrrT9rAqvTySfuCCrgsWz8wxMXUS9Tb9iVMvcRbvFcAHGkMD5Kx8koh4GquNGNTfohfk7pgjhaPCdXpoba";
 const TESTNET_RECEIVE_DESCRIPTOR = `wpkh([d34db33f/84h/1h/0h]${TESTNET_XPUB}/0/*)`;
 const TESTNET_CHANGE_DESCRIPTOR = `wpkh([d34db33f/84h/1h/0h]${TESTNET_XPUB}/1/*)`;
+const NATIVE_SEGWIT_POLICY_ID = "single-sig-native-segwit-bip84-v1";
 
 type MockDeviceAccount = {
   purpose: string;
@@ -200,7 +201,13 @@ export function registerWalletCreateAccountSelectionValidationTests({
         "../../../../src/repositories"
       );
       expect(walletRepo.createWithDeviceLinks).toHaveBeenCalledWith(
-        expect.objectContaining({ network: "mainnet" }),
+        expect.objectContaining({
+          network: "mainnet",
+          descriptor: VALID_RECEIVE_DESCRIPTOR,
+          changeDescriptor: VALID_CHANGE_DESCRIPTOR,
+          canonicalPolicyId: NATIVE_SEGWIT_POLICY_ID,
+          canonicalPolicyVersion: 1,
+        }),
         [expect.objectContaining({
           deviceAccountId: "device-1-account-0",
           signerDerivationPath: "m/84'/0'/0'",
@@ -214,10 +221,43 @@ export function registerWalletCreateAccountSelectionValidationTests({
       ];
       expect(atomicCreateCall[2]).toHaveLength(40);
       expect(atomicCreateCall[2]).toEqual(expect.arrayContaining([
-        expect.objectContaining({ index: 0, used: false }),
+        expect.objectContaining({
+          branch: 0,
+          index: 0,
+          coordinateVersion: 1,
+          canonicalPolicyId: NATIVE_SEGWIT_POLICY_ID,
+          canonicalPolicyVersion: 1,
+          scriptPubKey: "0014mockscriptpubkey",
+          used: false,
+        }),
+        expect.objectContaining({
+          branch: 1,
+          index: 0,
+          coordinateVersion: 1,
+          canonicalPolicyId: NATIVE_SEGWIT_POLICY_ID,
+          canonicalPolicyVersion: 1,
+          scriptPubKey: "0014mockscriptpubkey",
+          used: false,
+        }),
       ]));
+      expect(atomicCreateCall[2].filter(address => address.branch === 0)).toHaveLength(20);
+      expect(atomicCreateCall[2].filter(address => address.branch === 1)).toHaveLength(20);
       expect(atomicCreateCall[2].every(address => !("walletId" in address))).toBe(true);
       expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
+      expect(addressDerivation.deriveCanonicalAddress).toHaveBeenCalledWith(
+        {
+          receiveDescriptor: VALID_RECEIVE_DESCRIPTOR,
+          changeDescriptor: VALID_CHANGE_DESCRIPTOR,
+        },
+        { branch: 0, index: 0, network: "mainnet" },
+      );
+      expect(addressDerivation.deriveCanonicalAddress).toHaveBeenCalledWith(
+        {
+          receiveDescriptor: VALID_RECEIVE_DESCRIPTOR,
+          changeDescriptor: VALID_CHANGE_DESCRIPTOR,
+        },
+        { branch: 1, index: 0, network: "mainnet" },
+      );
     });
 
     it("should reject when device not found", async () => {
@@ -377,8 +417,66 @@ export function registerWalletCreateAccountSelectionValidationTests({
       expect(mockPrismaClient.walletDevice.createMany).not.toHaveBeenCalled();
     });
 
+    it("persists an imported descriptor pair with canonical identity and initial rows", async () => {
+      mockPrismaClient.wallet.findUnique.mockResolvedValueOnce({
+        id: "wallet-imported",
+        name: "Imported Descriptor",
+        type: "single_sig",
+        scriptType: "native_segwit",
+        network: "mainnet",
+        devices: [],
+        addresses: [],
+      });
+
+      await createWallet(userId, {
+        name: "Imported Descriptor",
+        type: "single_sig",
+        scriptType: "native_segwit",
+        descriptor: VALID_RECEIVE_DESCRIPTOR,
+        changeDescriptor: VALID_CHANGE_DESCRIPTOR,
+      });
+
+      const { walletRepository: walletRepo } = await import(
+        "../../../../src/repositories"
+      );
+      const [walletData, signers, addresses] = vi.mocked(
+        walletRepo.createWithDeviceLinks,
+      ).mock.calls[0] as unknown as [
+        Record<string, unknown>,
+        unknown[],
+        Array<Record<string, unknown>>,
+      ];
+      expect(walletData).toMatchObject({
+        descriptor: VALID_RECEIVE_DESCRIPTOR,
+        changeDescriptor: VALID_CHANGE_DESCRIPTOR,
+        descriptorSourceKind: "imported_pair",
+        canonicalPolicyId: NATIVE_SEGWIT_POLICY_ID,
+        canonicalPolicyVersion: 1,
+      });
+      expect(signers).toEqual([]);
+      expect(addresses).toHaveLength(40);
+      expect(addresses).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          branch: 0,
+          index: 0,
+          coordinateVersion: 1,
+          canonicalPolicyId: NATIVE_SEGWIT_POLICY_ID,
+          canonicalPolicyVersion: 1,
+          scriptPubKey: "0014mockscriptpubkey",
+        }),
+        expect.objectContaining({
+          branch: 1,
+          index: 0,
+          coordinateVersion: 1,
+          canonicalPolicyId: NATIVE_SEGWIT_POLICY_ID,
+          canonicalPolicyVersion: 1,
+          scriptPubKey: "0014mockscriptpubkey",
+        }),
+      ]));
+    });
+
     it("fails address derivation before opening the atomic create transaction", async () => {
-      const deriveAddress = vi.mocked(addressDerivation.deriveAddressFromDescriptor);
+      const deriveAddress = vi.mocked(addressDerivation.deriveCanonicalAddress);
       const priorImplementation = deriveAddress.getMockImplementation();
       if (!priorImplementation) {
         throw new Error("Expected the wallet test harness to install address derivation");

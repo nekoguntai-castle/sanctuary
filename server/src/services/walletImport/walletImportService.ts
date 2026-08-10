@@ -48,6 +48,10 @@ import {
   prepareDescriptorPolicy,
   type PreparedDescriptorPolicy,
 } from '../wallet/descriptorPolicy';
+import {
+  canonicalPolicyIdentity,
+  requireCanonicalWalletPolicy,
+} from '../wallet/canonicalPolicy';
 
 const log = createLogger('WALLET_IMPORT:SVC');
 
@@ -236,10 +240,14 @@ export async function createWalletTransaction(
     sourceKind: 'generated_pair',
   });
   const policyFingerprint = descriptorPolicyFingerprint(descriptorPolicy.descriptor);
+  const canonicalIdentity = canonicalPolicyIdentity(
+    requireCanonicalWalletPolicy(parsed.type, parsed.scriptType),
+  );
   const initialAddresses = buildInitialAddressTemplates(
     descriptorPolicy.descriptor,
     descriptorPolicy.changeDescriptor,
     network as WalletNetwork,
+    canonicalIdentity,
   );
 
   return await withTransaction(async (tx) => {
@@ -291,6 +299,7 @@ export async function createWalletTransaction(
         quorum: parsed.quorum,
         totalSigners: parsed.totalSigners,
         ...descriptorPolicy,
+        ...canonicalIdentity,
         fingerprint: policyFingerprint,
         users: {
           create: {

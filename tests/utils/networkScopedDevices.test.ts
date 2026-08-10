@@ -29,7 +29,7 @@ describe('networkScopedDevices', () => {
     ]);
   });
 
-  it('uses legacy device derivation paths and treats unknown paths as available for audit visibility', () => {
+  it('uses canonical legacy-device paths and excludes malformed path evidence', () => {
     const devices = [
       {
         id: 'legacy-mainnet',
@@ -53,11 +53,9 @@ describe('networkScopedDevices', () => {
 
     expect(filterDevicesByNetwork(devices, 'mainnet').map((device) => device.id)).toEqual([
       'legacy-mainnet',
-      'legacy-unknown',
     ]);
     expect(filterDevicesByNetwork(devices, 'signet').map((device) => device.id)).toEqual([
       'legacy-testnet-family',
-      'legacy-unknown',
     ]);
   });
 

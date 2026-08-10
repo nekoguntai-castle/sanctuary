@@ -32,11 +32,14 @@ describe('wallet safety audit analyzer', () => {
     expect(walletSafetyAuditReportSchema.parse(report)).toEqual(report);
   });
 
-  it('classifies preserved ordered multisig as unsupported but recoverable', () => {
+  it('requires manual investigation for legacy ordered multisig without canonical coordinates', () => {
     const report = buildWalletSafetyAuditReport(recoverableOrderedMultisigSnapshot(), GENERATED_AT);
     expect(report.wallets[0]).toMatchObject({
-      classification: 'unsupported_but_recoverable',
-      findings: [{ id: 'policy.ordered_multisig_unsupported' }],
+      classification: 'manual_investigation',
+      findings: [
+        { id: 'address.coordinate_missing' },
+        { id: 'policy.ordered_multisig_unsupported' },
+      ],
     });
   });
 
@@ -46,6 +49,7 @@ describe('wallet safety audit analyzer', () => {
     const report = buildWalletSafetyAuditReport(snapshot, GENERATED_AT);
     expect(report.wallets[0].classification).toBe('manual_investigation');
     expect(report.wallets[0].findings).toEqual([
+      { id: 'address.coordinate_missing' },
       { id: 'descriptor.provenance_unproven' },
       { id: 'policy.ordered_multisig_unsupported' },
     ]);

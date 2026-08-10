@@ -4,15 +4,15 @@ import request from 'supertest';
 
 const {
   mockValidateXpub,
-  mockDeriveAddress,
+  mockDeriveCanonicalAddress,
 } = vi.hoisted(() => ({
   mockValidateXpub: vi.fn(),
-  mockDeriveAddress: vi.fn(),
+  mockDeriveCanonicalAddress: vi.fn(),
 }));
 
 vi.mock('../../../src/services/bitcoin/addressDerivation', () => ({
   validateXpub: mockValidateXpub,
-  deriveAddress: mockDeriveAddress,
+  deriveCanonicalAddress: mockDeriveCanonicalAddress,
 }));
 
 vi.mock('../../../src/utils/logger', () => ({
@@ -45,7 +45,7 @@ describe('Wallets XPUB Validation Routes', () => {
     vi.clearAllMocks();
 
     mockValidateXpub.mockReturnValue({ valid: true, scriptType: 'native_segwit' });
-    mockDeriveAddress.mockReturnValue({ address: 'bc1qexample0' });
+    mockDeriveCanonicalAddress.mockReturnValue({ address: 'bc1qexample0' });
   });
 
   it('requires xpub in request body', async () => {
@@ -81,7 +81,7 @@ describe('Wallets XPUB Validation Routes', () => {
 
   it('uses detected script type when scriptType is not provided', async () => {
     mockValidateXpub.mockReturnValue({ valid: true, scriptType: 'nested_segwit' });
-    mockDeriveAddress.mockReturnValue({ address: '3exampleaddress' });
+    mockDeriveCanonicalAddress.mockReturnValue({ address: '3exampleaddress' });
 
     const response = await request(app)
       .post('/api/v1/wallets/validate-xpub')
@@ -101,11 +101,10 @@ describe('Wallets XPUB Validation Routes', () => {
       fingerprint: 'aabbccdd',
       accountPath: "49'/0'/0'",
     });
-    expect(mockDeriveAddress).toHaveBeenCalledWith('xpub123', 0, {
-      scriptType: 'nested_segwit',
-      network: 'mainnet',
-      change: false,
-    });
+    expect(mockDeriveCanonicalAddress).toHaveBeenCalledWith({
+      receiveDescriptor: "sh(wpkh([aabbccdd/49'/0'/0']xpub123/0/*))",
+      changeDescriptor: "sh(wpkh([aabbccdd/49'/0'/0']xpub123/1/*))",
+    }, { branch: 0, index: 0, network: 'mainnet' });
   });
 
   it('falls back to native segwit defaults when script type cannot be detected', async () => {
@@ -210,8 +209,8 @@ describe('Wallets XPUB Validation Routes', () => {
     expect(response.body.message).toBe('Invalid script type');
   });
 
-  it('returns 400 when validation flow throws unexpectedly', async () => {
-    mockDeriveAddress.mockImplementation(() => {
+  it('returns 400 when canonical origin validation fails', async () => {
+    mockDeriveCanonicalAddress.mockImplementation(() => {
       throw new Error('derive failed');
     });
 
@@ -219,8 +218,17 @@ describe('Wallets XPUB Validation Routes', () => {
       .post('/api/v1/wallets/validate-xpub')
       .send({ xpub: 'xpub-err', scriptType: 'native_segwit', network: 'mainnet', ...NATIVE_ORIGIN });
 
-    expect(response.status).toBe(500);
-    expect(response.body.code).toBe('INTERNAL_ERROR');
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe('derive failed');
+  });
+
+  it('uses a stable message for non-Error canonical origin failures', async () => {
+    mockDeriveCanonicalAddress.mockImplementationOnce(() => { throw Object.create(null); });
+    const response = await request(app)
+      .post('/api/v1/wallets/validate-xpub')
+      .send({ xpub: 'xpub-err', scriptType: 'native_segwit', network: 'mainnet', ...NATIVE_ORIGIN });
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe('Extended key origin is invalid');
   });
 
   it.each([
@@ -235,7 +243,7 @@ describe('Wallets XPUB Validation Routes', () => {
 
     expect(response.status).toBe(400);
     expect(response.body.message).toContain(message);
-    expect(mockDeriveAddress).not.toHaveBeenCalled();
+    expect(mockDeriveCanonicalAddress).not.toHaveBeenCalled();
   });
 
   it('rejects an account path that contradicts script type or network', async () => {

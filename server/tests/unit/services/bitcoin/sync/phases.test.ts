@@ -54,6 +54,14 @@ vi.mock('../../../../../src/services/bitcoin/utils/balanceCalculation', () => ({
 
 // Mock address derivation
 vi.mock('../../../../../src/services/bitcoin/addressDerivation', () => ({
+  deriveCanonicalAddress: vi.fn().mockImplementation((_descriptors, coordinate) => ({
+    address: `tb1q_test_${coordinate.branch}_${coordinate.index}`,
+    derivationPath: `m/84'/0'/0'/${coordinate.branch}/${coordinate.index}`,
+    scriptPubKey: `0014${'00'.repeat(20)}`,
+    branch: coordinate.branch,
+    index: coordinate.index,
+    signerOrigins: [],
+  })),
   deriveAddressFromDescriptor: vi.fn().mockImplementation((descriptor, index, options) => {
     const change = options?.change ? 1 : 0;
     return {
@@ -677,11 +685,37 @@ describe('Sync Phases', () => {
   describe('gapLimitPhase', () => {
     const mockDescriptor = "wpkh([12345678/84'/0'/0']xpub6CatWdiZiodmUeTDp...)";
 
+    const mockLockedCoordinates = (
+      addresses: Array<{ branch: number; index: number; used: boolean }>,
+    ) => {
+      const summarize = (branch: 0 | 1) => {
+        const rows = addresses.filter((address) => address.branch === branch);
+        const maxIndex = rows.length === 0 ? null : Math.max(...rows.map(({ index }) => index));
+        const lastUsedIndex = Math.max(-1, ...rows
+          .filter(({ used }) => used)
+          .map(({ index }) => index));
+        const unusedTail = rows.filter(
+          ({ index, used }) => !used && index > lastUsedIndex,
+        ).length;
+        return { branch, maxIndex, unusedTail: BigInt(unusedTail) };
+      };
+      mockPrismaClient.$queryRaw
+        .mockReset()
+        .mockResolvedValueOnce([{ id: 'test-wallet' }])
+        .mockResolvedValueOnce([summarize(0), summarize(1)]);
+    };
+
     beforeEach(() => {
+      mockPrismaClient.$queryRaw.mockResolvedValue([{ id: 'test-wallet' }]);
       mockPrismaClient.wallet.findUnique.mockResolvedValue({
         id: 'test-wallet',
         descriptor: mockDescriptor,
+        changeDescriptor: mockDescriptor.replace('/0/*', '/1/*'),
         network: 'mainnet',
+        type: 'single_sig',
+        scriptType: 'native_segwit',
+        canonicalPolicyId: 'single-sig-native-segwit-bip84-v1',
+        canonicalPolicyVersion: 1,
         devices: [{ device: { type: 'coldcard', model: null } }],
       });
     });
@@ -690,17 +724,21 @@ describe('Sync Phases', () => {
       // Create 25 receive addresses with last 20 unused (gap = 20)
       const receiveAddresses = Array.from({ length: 25 }, (_, i) => ({
         derivationPath: `m/84'/0'/0'/0/${i}`,
+        branch: 0,
+        coordinateVersion: 1,
         index: i,
         used: i < 5,
       }));
       // Create 25 change addresses with last 20 unused (gap = 20)
       const changeAddresses = Array.from({ length: 25 }, (_, i) => ({
         derivationPath: `m/84'/0'/0'/1/${i}`,
+        branch: 1,
+        coordinateVersion: 1,
         index: i,
         used: i < 5,
       }));
 
-      mockPrismaClient.address.findMany.mockResolvedValue([...receiveAddresses, ...changeAddresses]);
+      mockLockedCoordinates([...receiveAddresses, ...changeAddresses]);
 
       const ctx = createTestContext({
         walletId: 'test-wallet',
@@ -716,11 +754,13 @@ describe('Sync Phases', () => {
       // Only 10 addresses with last 5 unused (gap = 5, need 15 more)
       const addresses = Array.from({ length: 10 }, (_, i) => ({
         derivationPath: `m/84'/0'/0'/0/${i}`,
+        branch: 0,
+        coordinateVersion: 1,
         index: i,
         used: i < 5,
       }));
 
-      mockPrismaClient.address.findMany.mockResolvedValue(addresses);
+      mockLockedCoordinates(addresses);
       mockPrismaClient.address.createMany.mockResolvedValue({ count: 15 });
 
       const ctx = createTestContext({ walletId: 'test-wallet' });

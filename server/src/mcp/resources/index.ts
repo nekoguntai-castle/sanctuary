@@ -24,6 +24,8 @@ import {
   toWalletDto,
 } from '../dto';
 import { requireMcpAuditAccess, requireMcpWalletAccess } from '../auth';
+import { assertWalletHardwareCapabilityById } from '../../services/hardwareWalletCapabilities';
+import { assertCanonicalAddressesForWallet } from '../../services/wallet/canonicalAddressValidation';
 import {
   getMcpContext,
   getTemplateValue,
@@ -241,12 +243,20 @@ export function registerMcpResources(server: McpServer): void {
       await requireMcpWalletAccess(walletId, context);
       const { limit, offset } = getPaging(uri);
       const used = uri.searchParams.has('used') ? uri.searchParams.get('used') === 'true' : undefined;
+      const canExposeFreshAddress = used !== true;
+      if (canExposeFreshAddress) {
+        await assertWalletHardwareCapabilityById(walletId, 'display');
+      }
 
       const addresses = await addressRepository.findByWalletIdWithLabels(walletId, {
         used,
         take: limit,
         skip: offset,
+        canonicalOnly: canExposeFreshAddress,
       });
+      if (canExposeFreshAddress) {
+        await assertCanonicalAddressesForWallet(walletId, addresses);
+      }
 
       return jsonResource(uri.href, {
         walletId,

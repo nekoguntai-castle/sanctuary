@@ -39,6 +39,7 @@ const mockGetAddressLabels = vi.fn();
 const mockAddAddressLabels = vi.fn();
 const mockReplaceAddressLabels = vi.fn();
 const mockRemoveAddressLabel = vi.fn();
+const mockAssertUnusedAddressesSafeForDisplay = vi.fn();
 
 vi.mock('../../../src/services/labelService', () => ({
   labelService: {
@@ -56,6 +57,11 @@ vi.mock('../../../src/services/labelService', () => ({
     replaceAddressLabels: (...args: unknown[]) => mockReplaceAddressLabels(...args),
     removeAddressLabel: (...args: unknown[]) => mockRemoveAddressLabel(...args),
   },
+}));
+
+vi.mock('../../../src/services/addressDisplaySafety', () => ({
+  assertUnusedAddressesSafeForDisplay: (...args: unknown[]) =>
+    mockAssertUnusedAddressesSafeForDisplay(...args),
 }));
 
 // Mock logger
@@ -110,6 +116,7 @@ describe('Labels API Routes', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockAssertUnusedAddressesSafeForDisplay.mockResolvedValue(undefined);
   });
 
   // ========================================
@@ -160,6 +167,25 @@ describe('Labels API Routes', () => {
       expect(response.body.transactions).toHaveLength(1);
       expect(response.body.transactions[0].amount).toBe(100000);
       expect(mockGetLabel).toHaveBeenCalledWith('wallet-1', 'label-1');
+      expect(mockAssertUnusedAddressesSafeForDisplay).toHaveBeenCalledWith(
+        'wallet-1',
+        mockLabelWithRelations.addresses,
+      );
+    });
+
+    it('fails closed when associated unused hardware or legacy address evidence is unsafe', async () => {
+      mockGetLabel.mockResolvedValue(mockLabelWithRelations);
+      mockAssertUnusedAddressesSafeForDisplay
+        .mockRejectedValueOnce(new ForbiddenError('display disabled'))
+        .mockRejectedValueOnce(new ForbiddenError('canonical evidence missing'));
+
+      const hardwareResponse = await request(app)
+        .get('/api/v1/wallets/wallet-1/labels/label-1');
+      const legacyResponse = await request(app)
+        .get('/api/v1/wallets/wallet-1/labels/label-1');
+
+      expect(hardwareResponse.status).toBe(403);
+      expect(legacyResponse.status).toBe(403);
     });
 
     it('should return 404 when label not found', async () => {

@@ -5,7 +5,7 @@
  * Most modern and efficient on-chain script type.
  */
 
-import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
+import { WalletScriptType, WalletType } from '@sanctuary/shared/constants/walletIdentity';
 import type {
   ScriptTypeHandler,
   DeviceKeyInfo,
@@ -14,12 +14,12 @@ import type {
   Network,
 } from '../types';
 import {
-  buildBip48DerivationPath,
-  buildCoinTypeDerivationPath,
+  buildWalletPolicyDerivationPath,
   buildMultiSigKeyExpressions,
   buildRangedKeyExpression,
   buildSortedMulti,
   supportsAnyScriptType,
+  wrapWalletPolicyDescriptor,
 } from './descriptorHelpers';
 
 export const nativeSegwitHandler: ScriptTypeHandler = {
@@ -33,22 +33,30 @@ export const nativeSegwitHandler: ScriptTypeHandler = {
   aliases: ['p2wpkh', 'bech32', 'segwit', 'wpkh'],
 
   getDerivationPath(network: Network, account: number = 0): string {
-    return buildCoinTypeDerivationPath(84, network, account);
+    return buildWalletPolicyDerivationPath(WalletType.SINGLE_SIG, WalletScriptType.NATIVE_SEGWIT, network, account);
   },
 
   getMultisigDerivationPath(network: Network, account: number = 0): string {
-    return buildBip48DerivationPath(network, 2, account);
+    return buildWalletPolicyDerivationPath(WalletType.MULTI_SIG, WalletScriptType.NATIVE_SEGWIT, network, account);
   },
 
   buildSingleSigDescriptor(device: DeviceKeyInfo, options: DescriptorBuildOptions): string {
     const derivationPath = device.derivationPath || this.getDerivationPath(options.network);
-    return `wpkh(${buildRangedKeyExpression(device, derivationPath, options)})`;
+    return wrapWalletPolicyDescriptor(
+      WalletType.SINGLE_SIG,
+      WalletScriptType.NATIVE_SEGWIT,
+      buildRangedKeyExpression(device, derivationPath, options),
+    );
   },
 
   buildMultiSigDescriptor(devices: DeviceKeyInfo[], options: MultiSigBuildOptions): string {
     const fallbackPath = this.getMultisigDerivationPath(options.network);
     const keyExpressions = buildMultiSigKeyExpressions(devices, fallbackPath, options);
-    return `wsh(${buildSortedMulti(keyExpressions, options)})`;
+    return wrapWalletPolicyDescriptor(
+      WalletType.MULTI_SIG,
+      WalletScriptType.NATIVE_SEGWIT,
+      buildSortedMulti(keyExpressions, options),
+    );
   },
 
   validateDevice(deviceScriptTypes: string[]): boolean {

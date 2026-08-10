@@ -3,6 +3,7 @@ import { assistantReadRepository } from '../../repositories';
 import { toLabelDetailDto, toLabelSummaryDto } from './dto';
 import { AssistantToolError, createToolEnvelope, type AssistantReadToolDefinition } from './types';
 import { parseToolLimit, truncateRows } from './utils';
+import { assertUnusedAddressesSafeForDisplay } from '../../services/addressDisplaySafety';
 
 const genericOutputSchema = z.object({}).passthrough();
 const labelListBudget = { maxRows: 200, maxBytes: 96_000 };
@@ -74,6 +75,10 @@ export const labelDetailTool: AssistantReadToolDefinition<typeof labelDetailInpu
     if (!label) {
       throw new AssistantToolError(404, 'Label not found');
     }
+    await assertUnusedAddressesSafeForDisplay(
+      input.walletId,
+      label.addressLabels.map(item => item.address),
+    );
 
     const detail = toLabelDetailDto(label);
     const returnedRows = detail.transactions.length + detail.addresses.length;

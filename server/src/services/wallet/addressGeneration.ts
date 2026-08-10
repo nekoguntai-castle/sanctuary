@@ -13,14 +13,54 @@ import { hookRegistry, Operations } from '../hooks';
 import { InvalidInputError, WalletNotFoundError } from '../../errors';
 import type { WalletNetwork } from './types';
 import { assertWalletHardwareCapabilityById } from '../hardwareWalletCapabilities';
+import {
+  assertPersistedCanonicalPolicy,
+  type CanonicalPolicyIdentity,
+} from './canonicalPolicy';
+import type { NextCanonicalAddressData } from '../../repositories/addressRepository';
+import { CANONICAL_ADDRESS_COORDINATE_VERSION } from '@sanctuary/shared/constants/walletPolicy';
+
+type CanonicalAddressEvidence = NextCanonicalAddressData & { used: false };
 
 const log = createLogger('WALLET:SVC_ADDRESS');
 
 export interface InitialAddressTemplate {
   address: string;
   derivationPath: string;
+  scriptPubKey: string;
+  branch: 0 | 1;
+  coordinateVersion: typeof CANONICAL_ADDRESS_COORDINATE_VERSION;
+  canonicalPolicyId: string;
+  canonicalPolicyVersion: number;
   index: number;
   used: false;
+}
+
+/**
+ * Derives the exact address/path/script tuple persisted as canonical evidence.
+ * Callers must pass the owning wallet's descriptor pair and persisted policy
+ * identity; this function does not infer or repair either trust anchor.
+ */
+export function buildCanonicalAddressEvidence(
+  receiveDescriptor: string,
+  changeDescriptor: string,
+  network: WalletNetwork,
+  policyIdentity: CanonicalPolicyIdentity,
+  branch: 0 | 1,
+  index: number,
+): CanonicalAddressEvidence {
+  const derived = addressDerivation.deriveCanonicalAddress(
+    { receiveDescriptor, changeDescriptor },
+    { branch, index, network },
+  );
+  return {
+    address: derived.address,
+    derivationPath: derived.derivationPath,
+    scriptPubKey: derived.scriptPubKey,
+    coordinateVersion: CANONICAL_ADDRESS_COORDINATE_VERSION,
+    ...policyIdentity,
+    used: false,
+  };
 }
 
 /**
@@ -31,19 +71,18 @@ export function buildInitialAddressTemplates(
   receiveDescriptor: string,
   changeDescriptor: string,
   network: WalletNetwork,
+  policyIdentity: CanonicalPolicyIdentity,
 ): InitialAddressTemplate[] {
   const addresses: InitialAddressTemplate[] = [];
-  for (const policy of [
-    { descriptor: receiveDescriptor, change: false },
-    { descriptor: changeDescriptor, change: true },
-  ]) {
+  for (const branch of [0, 1] as const) {
     for (let index = 0; index < INITIAL_ADDRESS_COUNT; index++) {
-      const { address, derivationPath } = addressDerivation.deriveAddressFromDescriptor(
-        policy.descriptor,
+      addresses.push({
+        ...buildCanonicalAddressEvidence(
+          receiveDescriptor, changeDescriptor, network, policyIdentity, branch, index,
+        ),
+        branch,
         index,
-        { network, change: policy.change },
-      );
-      addresses.push({ address, derivationPath, index, used: false });
+      });
     }
   }
   return addresses;
@@ -51,17 +90,22 @@ export function buildInitialAddressTemplates(
 
 /**
  * Generate initial receive and change addresses for a wallet descriptor.
- * Returns address records ready for bulk insert. The optional change fallback
- * preserves the legacy public helper contract; policy-boundary callers always
- * provide the independently validated change descriptor.
+ * Returns address records ready for bulk insert from the independently
+ * validated receive and change descriptor pair.
  */
 export function generateInitialAddresses(
   walletId: string,
   receiveDescriptor: string,
   network: WalletNetwork,
-  changeDescriptor = receiveDescriptor,
-): Array<{ walletId: string; address: string; derivationPath: string; index: number; used: boolean }> {
-  return buildInitialAddressTemplates(receiveDescriptor, changeDescriptor, network)
+  changeDescriptor: string,
+  policyIdentity: CanonicalPolicyIdentity,
+): Array<InitialAddressTemplate & { walletId: string }> {
+  return buildInitialAddressTemplates(
+    receiveDescriptor,
+    changeDescriptor,
+    network,
+    policyIdentity,
+  )
     .map((address) => ({ walletId, ...address }));
 }
 
@@ -73,10 +117,7 @@ export async function generateAddress(
   userId: string
 ): Promise<string> {
   const wallet = await walletRepository.findByIdWithAccessAndInclude(walletId, userId, {
-    addresses: {
-      orderBy: { index: 'desc' },
-      take: 1,
-    },
+    addresses: false,
   });
 
   if (!wallet) {
@@ -85,35 +126,25 @@ export async function generateAddress(
 
   await assertWalletHardwareCapabilityById(walletId, 'display');
 
-  // Get next index
-  const nextIndex = wallet.addresses.length > 0 ? wallet.addresses[0].index + 1 : 0;
-
-  // Check if wallet has descriptor or xpub
-  if (!wallet.descriptor) {
+  if (!wallet.descriptor || !wallet.changeDescriptor) {
     throw new InvalidInputError(
       'Wallet does not have a descriptor. Cannot derive addresses. ' +
       'Please import wallet with xpub or descriptor.'
     );
   }
 
-  // Derive address from descriptor
-  const { address, derivationPath } = addressDerivation.deriveAddressFromDescriptor(
-    wallet.descriptor,
-    nextIndex,
-    {
-      network: wallet.network as WalletNetwork,
-      change: false, // External/receive address
-    }
-  );
-
-  // Save to database
-  await addressRepository.create({
-    walletId,
-    address,
-    derivationPath,
-    index: nextIndex,
-    used: false,
+  const policy = assertPersistedCanonicalPolicy(wallet);
+  const created = await addressRepository.createNextCanonical(walletId, 0, (index) => {
+    return buildCanonicalAddressEvidence(
+      wallet.descriptor as string,
+      wallet.changeDescriptor as string,
+      wallet.network as WalletNetwork,
+      { canonicalPolicyId: policy.id, canonicalPolicyVersion: policy.version },
+      0,
+      index,
+    );
   });
+  const { address } = created;
 
   // Execute after hooks for audit logging
   hookRegistry.executeAfter(Operations.ADDRESS_GENERATE, { walletId }, {

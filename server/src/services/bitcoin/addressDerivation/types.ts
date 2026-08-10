@@ -63,6 +63,20 @@ export interface DerivedAddress {
   publicKey: Buffer;
 }
 
+export interface CanonicalSignerOrigin {
+  fingerprint: string;
+  accountPath: string;
+  branch: 0 | 1;
+  index: number;
+}
+
+export interface CanonicalDerivedAddress extends DerivedAddress {
+  branch: 0 | 1;
+  index: number;
+  scriptPubKey: string;
+  signerOrigins: CanonicalSignerOrigin[];
+}
+
 /**
  * Result of a batch address derivation
  */

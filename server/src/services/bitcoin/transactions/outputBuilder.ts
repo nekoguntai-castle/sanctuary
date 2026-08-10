@@ -11,6 +11,7 @@ import { createLogger } from "../../../utils/logger";
 import { generateDecoyAmounts } from "../psbtBuilder";
 import { shuffleInPlace } from "../secureRandom";
 import type { PendingOutput, UtxoSelection } from "./types";
+import { assertCanonicalAddressesForWallet } from "../../wallet/canonicalAddressValidation";
 
 const log = createLogger("BITCOIN:SVC_TX_OUTPUT");
 
@@ -185,6 +186,7 @@ async function buildDecoyChangeOutputs(
     walletId,
     numChangeOutputs,
   );
+  await assertCanonicalAddressesForWallet(walletId, changeAddresses, 1);
 
   if (changeAddresses.length < numChangeOutputs) {
     throw new Error(
@@ -242,6 +244,7 @@ export async function findChangeAddress(walletId: string): Promise<string> {
     await addressRepository.findNextUnusedChange(walletId);
 
   if (existingChangeAddress) {
+    await assertCanonicalAddressesForWallet(walletId, [existingChangeAddress], 1);
     return existingChangeAddress.address;
   }
 

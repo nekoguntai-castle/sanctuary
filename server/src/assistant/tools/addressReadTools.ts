@@ -3,6 +3,7 @@ import { assistantReadRepository } from '../../repositories';
 import { toAddressDetailDto } from './dto';
 import { buildAddressSummary } from './summary';
 import { AssistantToolError, createToolEnvelope, type AssistantReadToolDefinition } from './types';
+import { assertUnusedAddressesSafeForDisplay } from '../../services/addressDisplaySafety';
 
 const genericOutputSchema = z.object({}).passthrough();
 const addressBudget = { maxRows: 100, maxBytes: 96_000 };
@@ -81,6 +82,7 @@ export const addressDetailTool: AssistantReadToolDefinition<typeof addressDetail
     if (!found) {
       throw new AssistantToolError(404, 'Address not found');
     }
+    await assertUnusedAddressesSafeForDisplay(input.walletId, [found.address]);
     const address = toAddressDetailDto(found);
 
     return createToolEnvelope({

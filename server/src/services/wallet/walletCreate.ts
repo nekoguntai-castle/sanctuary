@@ -33,6 +33,10 @@ import {
   descriptorPolicyFingerprint,
   prepareDescriptorPolicy,
 } from "./descriptorPolicy";
+import {
+  canonicalPolicyIdentity,
+  requireCanonicalWalletPolicy,
+} from './canonicalPolicy';
 
 const log = createLogger("WALLET:SVC_CREATE");
 
@@ -234,11 +238,14 @@ export async function createWallet(
     input,
   );
   const walletNetwork: WalletNetwork = input.network || "mainnet";
+  const canonicalPolicy = requireCanonicalWalletPolicy(input.type, input.scriptType);
+  const canonicalIdentity = canonicalPolicyIdentity(canonicalPolicy);
   const initialAddresses = policy
     ? buildInitialAddressTemplates(
       policy.descriptor,
       policy.changeDescriptor,
       walletNetwork,
+      canonicalIdentity,
     )
     : [];
 
@@ -252,6 +259,7 @@ export async function createWallet(
       quorum: input.quorum,
       totalSigners: input.totalSigners,
       ...policy,
+      ...(policy ? canonicalIdentity : {}),
       fingerprint,
       /* v8 ignore start -- group association is optional and covered by admin group flows */
       group: input.groupId ? { connect: { id: input.groupId } } : undefined,

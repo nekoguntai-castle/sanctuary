@@ -129,6 +129,8 @@ model Wallet {
   sourceChangeDescriptor         String? // Exact paired change source; null for multipath sources
   sourceDescriptorChecksum       String? // Exact checksum supplied with sourceDescriptor
   sourceChangeDescriptorChecksum String? // Exact checksum supplied with sourceChangeDescriptor
+  canonicalPolicyId              String? // Stable shared-policy registry identity; null for legacy wallets
+  canonicalPolicyVersion         Int?    // Immutable shared-policy registry version; null for legacy wallets
   fingerprint                    String? // Master key fingerprint
 
   // Optional group ownership
@@ -345,13 +347,18 @@ model WalletDevice {
 // ========================================
 
 model Address {
-  id             String   @id @default(uuid())
-  walletId       String
-  address        String
-  derivationPath String // e.g., m/84'/0'/0'/0/0
-  index          Int
-  used           Boolean  @default(false)
-  createdAt      DateTime @default(now())
+  id                     String   @id @default(uuid())
+  walletId               String
+  address                String
+  derivationPath         String // Legacy compatibility evidence; canonical coordinates are authoritative
+  index                  Int
+  branch                 Int? // 0 = receive, 1 = change; null only for legacy evidence
+  coordinateVersion      Int? // Version 1 is the canonical {branch,index} contract
+  canonicalPolicyId      String? // Snapshot of the wallet's stable shared-policy identity
+  canonicalPolicyVersion Int? // Snapshot of the wallet's shared-policy registry version
+  scriptPubKey           String? // Exact locking script independently reconstructed for canonical rows
+  used                   Boolean  @default(false)
+  createdAt              DateTime @default(now())
 
   wallet        Wallet         @relation(fields: [walletId], references: [id], onDelete: Cascade)
   transactions  Transaction[]
@@ -361,6 +368,7 @@ model Address {
   @@index([address]) // For cross-wallet ownership and monitoring lookups
   @@index([walletId, used])
   @@index([walletId, used, index]) // For unused address lookup (gap limit)
+  @@index([walletId, branch, used, index])
   @@unique([walletId, address])
   @@map("addresses")
 }

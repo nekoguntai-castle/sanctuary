@@ -31,6 +31,10 @@ import {
   assertHardwareWalletCapability,
   assertWalletHardwareCapability,
 } from '../hardwareWalletCapabilities';
+import {
+  canonicalPolicyIdentity,
+  requireCanonicalWalletPolicy,
+} from './canonicalPolicy';
 
 const log = createLogger('WALLET:SVC_DEVICE');
 
@@ -107,14 +111,19 @@ function buildDescriptorAssignment(
     changeDescriptor: descriptorResult.changeDescriptor,
     sourceKind: 'generated_pair',
   });
+  const canonicalIdentity = canonicalPolicyIdentity(
+    requireCanonicalWalletPolicy(policy.type, policy.scriptType),
+  );
   return {
     ...descriptorPolicy,
+    ...canonicalIdentity,
     fingerprint: descriptorResult.fingerprint,
     addresses: generateInitialAddresses(
       walletId,
       descriptorPolicy.descriptor,
       wallet.network as WalletNetwork,
       descriptorPolicy.changeDescriptor,
+      canonicalIdentity,
     ),
   };
 }

@@ -14,6 +14,8 @@ export {
   type DerivationNode,
   type DescriptorDerivationDeps,
   type DerivedAddress,
+  type CanonicalDerivedAddress,
+  type CanonicalSignerOrigin,
   type DerivedAddressWithIndex,
   type XpubValidationResult,
   // Xpub conversion
@@ -27,6 +29,7 @@ export {
   // Multisig derivation
   deriveMultisigAddress,
   // Descriptor-based derivation
+  deriveCanonicalAddress,
   deriveAddressFromDescriptor,
   deriveAddressFromParsedDescriptor,
   deriveAddressesFromDescriptor,

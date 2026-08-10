@@ -139,4 +139,9 @@ describe("hardware wallet capability containment", () => {
     expect(() => assertWalletHardwareCapability({ devices: [] }, "account_add"))
       .not.toThrow();
   });
+
+  it("fails closed when the signer provenance collection is malformed", () => {
+    expect(() => assertWalletHardwareCapability({ devices: null as never }, "display"))
+      .toThrow("signer provenance is missing");
+  });
 });

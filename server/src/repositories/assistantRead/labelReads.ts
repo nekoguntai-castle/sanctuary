@@ -63,9 +63,16 @@ export async function findWalletLabelDetailForAssistant(
           address: {
             select: {
               id: true,
+              walletId: true,
               address: true,
+              derivationPath: true,
               index: true,
               used: true,
+              branch: true,
+              coordinateVersion: true,
+              canonicalPolicyId: true,
+              canonicalPolicyVersion: true,
+              scriptPubKey: true,
               createdAt: true,
             },
           },

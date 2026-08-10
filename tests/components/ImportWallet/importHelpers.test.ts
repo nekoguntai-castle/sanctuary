@@ -26,29 +26,35 @@ describe('importHelpers', () => {
     expect(getDerivationPath('legacy', 3)).toBe("m/44'/0'/3'");
     expect(getDerivationPath('native_segwit', 0, 'testnet3')).toBe("m/84'/1'/0'");
     expect(getDerivationPath('taproot', 4, 'signet')).toBe("m/86'/1'/4'");
+    expect(getDerivationPath('legacy', 5, 'testnet4')).toBe("m/44'/1'/5'");
+    expect(() => getDerivationPath('native_segwit', -1)).toThrow(/account/i);
+    expect(() => getDerivationPath('native_segwit', 0x80000000)).toThrow(/account/i);
   });
 
   it('builds descriptors for all script types and path normalization', () => {
     const fingerprint = 'a1b2c3d4';
-    const path = "m/84'/0'/7'";
     const xpub = 'xpub123';
 
-    expect(buildDescriptorFromXpub('native_segwit', fingerprint, path, xpub)).toBe(
+    expect(buildDescriptorFromXpub('native_segwit', fingerprint, "m/84'/0'/7'", xpub)).toBe(
       'wpkh([a1b2c3d4/84h/0h/7h]xpub123/<0;1>/*)',
     );
-    expect(buildDescriptorFromXpub('nested_segwit', fingerprint, path, xpub)).toBe(
-      'sh(wpkh([a1b2c3d4/84h/0h/7h]xpub123/<0;1>/*))',
+    expect(buildDescriptorFromXpub('nested_segwit', fingerprint, "m/49'/0'/7'", xpub)).toBe(
+      'sh(wpkh([a1b2c3d4/49h/0h/7h]xpub123/<0;1>/*))',
     );
-    expect(buildDescriptorFromXpub('taproot', fingerprint, path, xpub)).toBe(
-      'tr([a1b2c3d4/84h/0h/7h]xpub123/<0;1>/*)',
+    expect(buildDescriptorFromXpub('taproot', fingerprint, "m/86'/0'/7'", xpub)).toBe(
+      'tr([a1b2c3d4/86h/0h/7h]xpub123/<0;1>/*)',
     );
-    expect(buildDescriptorFromXpub('legacy', fingerprint, path, xpub)).toBe(
-      'pkh([a1b2c3d4/84h/0h/7h]xpub123/<0;1>/*)',
+    expect(buildDescriptorFromXpub('legacy', fingerprint, "m/44'/0'/7'", xpub)).toBe(
+      'pkh([a1b2c3d4/44h/0h/7h]xpub123/<0;1>/*)',
     );
 
-    // Invalid runtime state must fail closed instead of silently changing policy.
-    expect(() => buildDescriptorFromXpub('unknown' as any, fingerprint, path, xpub)).toThrow(
-      'Unsupported wallet script type',
+    expect(() => buildDescriptorFromXpub(
+      'taproot', fingerprint, "m/84'/0'/7'", xpub,
+    )).toThrow(/does not match wallet script policy/i);
+    expect(() => buildDescriptorFromXpub(
+      'unknown' as any, fingerprint, "m/84'/0'/7'", xpub,
+    )).toThrow(
+      /does not match wallet script policy/i,
     );
   });
 
@@ -230,6 +236,29 @@ describe('importHelpers', () => {
     expect(setValidationError).toHaveBeenLastCalledWith(
       'Imported wallet appears to be mainnet, but the sidebar network is Testnet3. Switch networks in the sidebar and validate again.'
     );
+  });
+
+  it('does not treat shared testnet coin type as exact chain identity', async () => {
+    vi.mocked(walletsApi.validateImport).mockResolvedValueOnce({
+      valid: true,
+      network: 'testnet3',
+    } as never);
+    const setValidationResult = vi.fn();
+    const setValidationError = vi.fn();
+
+    const ok = await validateImportData(
+      'descriptor',
+      'wpkh([abcd]tpub/0/*)',
+      '',
+      setValidationResult,
+      setValidationError,
+      vi.fn(),
+      'signet',
+    );
+
+    expect(ok).toBe(false);
+    expect(setValidationResult).toHaveBeenCalledWith(null);
+    expect(setValidationError).toHaveBeenLastCalledWith(expect.stringContaining('Signet'));
   });
 
   it('maps ApiError and unknown failures to user-facing validation errors', async () => {

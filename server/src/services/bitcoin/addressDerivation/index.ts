@@ -12,6 +12,8 @@ export type {
   DerivationNode,
   DescriptorDerivationDeps,
   DerivedAddress,
+  CanonicalDerivedAddress,
+  CanonicalSignerOrigin,
   DerivedAddressWithIndex,
   XpubValidationResult,
   AddressDerivationNetwork,
@@ -31,6 +33,7 @@ export { deriveMultisigAddress } from './multisigDerivation';
 
 // Descriptor-based derivation (routes to single-sig or multisig)
 export {
+  deriveCanonicalAddress,
   deriveAddressFromDescriptor,
   deriveAddressFromParsedDescriptor,
   deriveAddressesFromDescriptor,

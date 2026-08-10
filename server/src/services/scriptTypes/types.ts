@@ -5,10 +5,10 @@
  * New script types can be added by implementing ScriptTypeHandler.
  */
 
-import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
+import type { LegacyNetworkType } from '@sanctuary/shared/constants/bitcoin';
 import type { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 
-export type Network = NetworkType;
+export type Network = LegacyNetworkType;
 
 /**
  * Device key information for descriptor building

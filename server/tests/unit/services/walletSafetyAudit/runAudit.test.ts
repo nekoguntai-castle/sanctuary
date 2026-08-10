@@ -34,7 +34,7 @@ describe('runWalletSafetyAudit', () => {
     })).resolves.toMatchObject({ exitCode: 0 });
 
     await expect(readFile(outputPath, 'utf8')).resolves.toContain(
-      'sanctuary.wallet-safety-audit.v1',
+      'sanctuary.wallet-safety-audit.v2',
     );
   });
 

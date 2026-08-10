@@ -89,10 +89,11 @@ export const registerWalletDeviceXpubContracts = () => {
 
   describe('POST /wallets/validate-xpub', () => {
     it('should validate xpub and generate descriptor', async () => {
+      const xpub = 'xpub6CatWdiZiodmUeTDp8LT5or8nmbKNcuyvz7WyksVFkKB4RHwCD3XyuvPEbvqAQY3rAPshWcMLoP2fMFMKHPJ4ZeZXYVUhLv1VMrjPC7PW6V';
       const response = await request(walletRouter)
         .post('/api/v1/wallets/validate-xpub')
         .send({
-          xpub: 'xpub6CUG...',
+          xpub,
           scriptType: 'native_segwit',
           fingerprint: 'aabbccdd',
           accountPath: "84'/0'/0'",
@@ -100,8 +101,10 @@ export const registerWalletDeviceXpubContracts = () => {
 
       expect(response.status).toBe(200);
       expect(response.body.valid).toBe(true);
-      expect(response.body.descriptor).toBeDefined();
-      expect(response.body.firstAddress).toBeDefined();
+      expect(response.body.descriptor).toBe(
+        `wpkh([aabbccdd/84'/0'/0']${xpub}/<0;1>/*)`,
+      );
+      expect(response.body.firstAddress).toBe('bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu');
     });
 
     it('should reject without xpub', async () => {

@@ -23,6 +23,8 @@ export function provenAuditSnapshot(): WalletSafetyRawSnapshot {
       sourceDescriptorChecksum: null,
       sourceChangeDescriptorChecksum: null,
       fingerprint: 'aabbccdd',
+      canonicalPolicyId: 'single-sig-native-segwit-bip84-v1',
+      canonicalPolicyVersion: 1,
     }],
     addresses: [
       {
@@ -31,6 +33,11 @@ export function provenAuditSnapshot(): WalletSafetyRawSnapshot {
         address: 'tb1q6rz28mcfaxtmd6v789l9rrlrusdprr9pqcpvkl',
         derivationPath: "m/84'/1'/0'/0/0",
         index: 0,
+        branch: 0,
+        coordinateVersion: 1,
+        canonicalPolicyId: 'single-sig-native-segwit-bip84-v1',
+        canonicalPolicyVersion: 1,
+        scriptPubKey: '0014d0c4a3ef09e997b6e99e397e518fe3e41a118ca1',
       },
       {
         id: 'audit-address-change',
@@ -38,6 +45,11 @@ export function provenAuditSnapshot(): WalletSafetyRawSnapshot {
         address: 'tb1q9u62588spffmq4dzjxsr5l297znf3z6j5p2688',
         derivationPath: "m/84'/1'/0'/1/0",
         index: 0,
+        branch: 1,
+        coordinateVersion: 1,
+        canonicalPolicyId: 'single-sig-native-segwit-bip84-v1',
+        canonicalPolicyVersion: 1,
+        scriptPubKey: '00142f34aa1cf00a53b055a291a03a7d45f0a6988b52',
       },
     ],
     signers: [{
@@ -97,6 +109,8 @@ export function recoverableOrderedMultisigSnapshot(): WalletSafetyRawSnapshot {
       sourceDescriptorChecksum: null,
       sourceChangeDescriptorChecksum: null,
       fingerprint: 'aabbccdd-eeff0011-22334455',
+      canonicalPolicyId: null,
+      canonicalPolicyVersion: null,
     }],
     addresses: [
       {
@@ -105,6 +119,11 @@ export function recoverableOrderedMultisigSnapshot(): WalletSafetyRawSnapshot {
         address: 'tb1qmv9kucx4tjtyfwddc3698p2flxqvts89n8kllr0hvdv7qs4z476s70nuf5',
         derivationPath: "m/48'/1'/0'/2'/0/0",
         index: 0,
+        branch: null,
+        coordinateVersion: null,
+        canonicalPolicyId: null,
+        canonicalPolicyVersion: null,
+        scriptPubKey: null,
       },
       {
         id: 'audit-ordered-change',
@@ -112,6 +131,11 @@ export function recoverableOrderedMultisigSnapshot(): WalletSafetyRawSnapshot {
         address: 'tb1qp58f8l2cmpl8wx5ms7gcr7zfamsspr47rn45j4z3v6drakeffk6q6ezllu',
         derivationPath: "m/48'/1'/0'/2'/1/0",
         index: 0,
+        branch: null,
+        coordinateVersion: null,
+        canonicalPolicyId: null,
+        canonicalPolicyVersion: null,
+        scriptPubKey: null,
       },
     ],
     signers: [],

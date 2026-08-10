@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
     getLatestPrice: vi.fn(),
   },
   walletRepository: {
+    findById: vi.fn(),
     findByIdWithAccess: vi.fn(),
   },
   userRepository: {
@@ -51,6 +52,7 @@ const mocks = vi.hoisted(() => ({
   deviceRepository: {
     findHardwareModels: vi.fn(),
   },
+  assertWalletHardwareCapabilityById: vi.fn(),
 }));
 
 vi.mock('../../../src/repositories', () => ({
@@ -66,11 +68,18 @@ vi.mock('../../../src/repositories', () => ({
   deviceRepository: mocks.deviceRepository,
 }));
 
+vi.mock('../../../src/services/hardwareWalletCapabilities', () => ({
+  assertWalletHardwareCapabilityById: mocks.assertWalletHardwareCapabilityById,
+}));
+
 import { assistantReadToolRegistry, type AssistantToolContext } from '../../../src/assistant/tools';
 
 const walletId = '11111111-1111-4111-8111-111111111111';
 const secondWalletId = '22222222-2222-4222-8222-222222222222';
 const txid = 'abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd';
+const nativeSegwitXpub = 'xpub6CatWdiZiodmUeTDp8LT5or8nmbKNcuyvz7WyksVFkKB4RHwCD3XyuvPEbvqAQY3rAPshWcMLoP2fMFMKHPJ4ZeZXYVUhLv1VMrjPC7PW6V';
+const receiveDescriptor = `wpkh([73c5da0a/84'/0'/0']${nativeSegwitXpub}/0/*)`;
+const changeDescriptor = `wpkh([73c5da0a/84'/0'/0']${nativeSegwitXpub}/1/*)`;
 
 function createContext(walletScopeIds?: string[]): AssistantToolContext & {
   authorizeWalletAccess: ReturnType<typeof vi.fn>;
@@ -166,6 +175,17 @@ function pendingTransaction(id: string, createdAt = new Date('2026-04-26T11:59:0
 describe('read-tool parity batch 1', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.assertWalletHardwareCapabilityById.mockResolvedValue(undefined);
+    mocks.walletRepository.findById.mockResolvedValue({
+      id: walletId,
+      type: 'single_sig',
+      scriptType: 'native_segwit',
+      network: 'mainnet',
+      descriptor: receiveDescriptor,
+      changeDescriptor,
+      canonicalPolicyId: 'single-sig-native-segwit-bip84-v1',
+      canonicalPolicyVersion: 1,
+    });
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-04-26T12:00:00.000Z'));
   });
@@ -487,10 +507,15 @@ describe('read-tool parity batch 1', () => {
       address: {
         id: 'addr-2',
         walletId,
-        address: 'bc1qreceive',
+        address: 'bc1qncdts3qm2guw3hjstun7dd6t3689qg4230jh2n',
         derivationPath: "m/84'/0'/0'/0/8",
         index: 8,
         used: false,
+        branch: 0,
+        coordinateVersion: 1,
+        canonicalPolicyId: 'single-sig-native-segwit-bip84-v1',
+        canonicalPolicyVersion: 1,
+        scriptPubKey: '00149e1ab8441b5238e8de505f27e6b74b8e8e5022aa',
         addressLabels: [],
         _count: {},
         createdAt: null,
@@ -514,6 +539,52 @@ describe('read-tool parity batch 1', () => {
       transactionCount: 0,
       balance: { unspentSats: '0', unspentUtxoCount: 0 },
     });
+    expect(mocks.assertWalletHardwareCapabilityById).toHaveBeenCalledWith(walletId, 'display');
+  });
+
+  it('rejects disabled-hardware and legacy-null unused address detail but preserves used history', async () => {
+    const context = createContext();
+    const unusedAddress = {
+      address: {
+        id: 'addr-unused', walletId, address: 'bc1qunused', derivationPath: "m/84'/0'/0'/0/1",
+        index: 1, used: false, branch: 0, coordinateVersion: 1,
+        canonicalPolicyId: 'single-sig-native-segwit-bip84-v1', canonicalPolicyVersion: 1,
+        scriptPubKey: '00140000000000000000000000000000000000000000', addressLabels: [], _count: {},
+        createdAt: null,
+      },
+      balance: { _count: {}, _sum: {} },
+    };
+    mocks.assistantReadRepository.findAddressDetail.mockResolvedValue(unusedAddress);
+    mocks.assertWalletHardwareCapabilityById.mockRejectedValueOnce(new Error('display disabled'));
+    await expect(assistantReadToolRegistry.execute(
+      'get_address_detail', { walletId, addressId: '33333333-3333-4333-8333-333333333333' }, context
+    )).rejects.toThrow('display disabled');
+
+    mocks.assistantReadRepository.findAddressDetail.mockResolvedValue({
+      ...unusedAddress,
+      address: {
+        ...unusedAddress.address,
+        branch: null,
+        coordinateVersion: null,
+        canonicalPolicyId: null,
+        canonicalPolicyVersion: null,
+        scriptPubKey: null,
+      },
+    });
+    await expect(assistantReadToolRegistry.execute(
+      'get_address_detail', { walletId, address: 'bc1qunused' }, context
+    )).rejects.toMatchObject({ statusCode: 403 });
+
+    mocks.assistantReadRepository.findAddressDetail.mockResolvedValue({
+      ...unusedAddress,
+      address: { ...unusedAddress.address, used: true, branch: null, coordinateVersion: null,
+        canonicalPolicyId: null, canonicalPolicyVersion: null, scriptPubKey: null },
+    });
+    const history = await assistantReadToolRegistry.execute(
+      'get_address_detail', { walletId, address: 'bc1qused' }, context
+    );
+    expect(history.data.address).toMatchObject({ id: 'addr-unused', used: true });
+    expect(mocks.assertWalletHardwareCapabilityById).toHaveBeenCalledTimes(2);
   });
 
   it('fails closed for invalid detail lookups and not-found records', async () => {

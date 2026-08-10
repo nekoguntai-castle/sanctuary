@@ -5,6 +5,7 @@
     "shared/constants/hardwareWalletCapabilities.ts",
     "shared/constants/bitcoin.ts",
     "shared/constants/walletIdentity.ts",
+    "shared/constants/walletPolicy.ts",
     "server/src/services/hardwareWalletCapabilities.ts",
     "server/src/services/bitcoin/**",
     "server/src/services/scriptTypes/**",

@@ -68,6 +68,10 @@ vi.mock('../../../src/services/payjoinService', () => ({
   },
 }));
 
+vi.mock('../../../src/services/addressDisplaySafety', () => ({
+  assertFreshReceiveAddressSafeForDisplay: vi.fn(),
+}));
+
 // Mock authenticate middleware
 vi.mock('../../../src/middleware/auth', () => ({
   requireAuthenticatedUser: (req: any) => req.user ?? { userId: 'test-user-id', username: 'testuser', isAdmin: false },
@@ -94,6 +98,7 @@ vi.mock('../../../src/utils/logger', () => ({
 
 // Import router and mocked modules after mocks
 import { errorHandler } from '../../../src/errors/errorHandler';
+import { ForbiddenError } from '../../../src/errors';
 import payjoinRouter, { PAYJOIN_RECEIVER_BODY_LIMIT_BYTES } from '../../../src/api/payjoin';
 import prisma from '../../../src/models/prisma';
 import {
@@ -102,6 +107,7 @@ import {
   generateBip21Uri,
   attemptPayjoinSend,
 } from '../../../src/services/payjoinService';
+import { assertFreshReceiveAddressSafeForDisplay } from '../../../src/services/addressDisplaySafety';
 import {
   generateBip21Uri as realGenerateBip21Uri,
   parseBip21Uri as realParseBip21Uri,
@@ -121,6 +127,9 @@ const mockPrisma = prisma as unknown as {
 const mockProcessPayjoinRequest = processPayjoinRequest as ReturnType<typeof vi.fn>;
 const mockParseBip21Uri = parseBip21Uri as ReturnType<typeof vi.fn>;
 const mockGenerateBip21Uri = generateBip21Uri as ReturnType<typeof vi.fn>;
+const mockAssertFreshReceiveAddressSafeForDisplay = vi.mocked(
+  assertFreshReceiveAddressSafeForDisplay,
+);
 const mockAttemptPayjoinSend = attemptPayjoinSend as ReturnType<typeof vi.fn>;
 
 // Test constants
@@ -151,6 +160,7 @@ describe('Payjoin API Routes', () => {
     });
     mockParseBip21Uri.mockImplementation(realParseBip21Uri);
     mockGenerateBip21Uri.mockImplementation(realGenerateBip21Uri);
+    mockAssertFreshReceiveAddressSafeForDisplay.mockResolvedValue(undefined);
   });
 
   describe('POST /:addressId (BIP78 Receiver Endpoint)', () => {
@@ -610,6 +620,9 @@ describe('Payjoin API Routes', () => {
           },
         }],
       });
+      mockAssertFreshReceiveAddressSafeForDisplay.mockRejectedValueOnce(
+        new ForbiddenError('display disabled'),
+      );
 
       const res = await request(app)
         .get(`/api/v1/payjoin/address/${TEST_ADDRESS_ID}/uri`)
@@ -618,6 +631,30 @@ describe('Payjoin API Routes', () => {
       expect(res.status).toBe(403);
       expect(res.body).not.toHaveProperty('address');
       expect(res.body).not.toHaveProperty('uri');
+      expect(mockGenerateBip21Uri).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      'legacy-null evidence',
+      'change branch',
+      'used address reuse',
+      'stale policy identity',
+      'address/path/script drift',
+    ])('does not build a URI when %s fails fresh receive verification', async reason => {
+      const row = { id: TEST_ADDRESS_ID, address: TEST_ADDRESS, walletId: TEST_WALLET_ID };
+      mockPrisma.address.findFirst.mockResolvedValue(row);
+      mockAssertFreshReceiveAddressSafeForDisplay.mockRejectedValueOnce(
+        new ForbiddenError(reason),
+      );
+
+      const res = await request(app)
+        .get(`/api/v1/payjoin/address/${TEST_ADDRESS_ID}/uri`)
+        .set('Authorization', 'Bearer test-token');
+
+      expect(res.status).toBe(403);
+      expect(mockAssertFreshReceiveAddressSafeForDisplay).toHaveBeenCalledWith(
+        TEST_WALLET_ID, row,
+      );
       expect(mockGenerateBip21Uri).not.toHaveBeenCalled();
     });
 
@@ -638,6 +675,10 @@ describe('Payjoin API Routes', () => {
       expect(res.body.uri).toContain('pj=');
       expect(res.body.address).toBe(TEST_ADDRESS);
       expect(res.body.payjoinUrl).toContain('/api/v1/payjoin/');
+      expect(mockAssertFreshReceiveAddressSafeForDisplay).toHaveBeenCalledWith(
+        TEST_WALLET_ID,
+        expect.objectContaining({ id: TEST_ADDRESS_ID, address: TEST_ADDRESS }),
+      );
     });
 
     it('should include amount when provided', async () => {

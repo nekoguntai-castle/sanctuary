@@ -30,10 +30,16 @@ export interface LabelWithAssociations extends Label {
   }>;
   addresses: Array<{
     id: string;
+    walletId: string;
     address: string;
     derivationPath: string;
     index: number;
     used: boolean;
+    branch: number | null;
+    coordinateVersion: number | null;
+    canonicalPolicyId: string | null;
+    canonicalPolicyVersion: number | null;
+    scriptPubKey: string | null;
   }>;
 }
 
@@ -136,10 +142,16 @@ export async function findByIdWithAssociations(
           address: {
             select: {
               id: true,
+              walletId: true,
               address: true,
               derivationPath: true,
               index: true,
               used: true,
+              branch: true,
+              coordinateVersion: true,
+              canonicalPolicyId: true,
+              canonicalPolicyVersion: true,
+              scriptPubKey: true,
             },
           },
         },

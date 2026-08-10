@@ -71,6 +71,10 @@ vi.mock('../../../../../src/services/bitcoin/addressDerivation', () => ({
   }),
 }));
 
+vi.mock('../../../../../src/services/wallet/canonicalAddressValidation', () => ({
+  assertCanonicalAddressesForWallet: vi.fn().mockResolvedValue(undefined),
+}));
+
 
 export function setupTransactionServiceCreateTestHooks(): void {
   beforeEach(() => {

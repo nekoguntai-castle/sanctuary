@@ -62,6 +62,10 @@ vi.mock('../../../../../src/services/bitcoin/addressDerivation', () => ({
   convertToStandardXpub: vi.fn().mockImplementation((xpub: string) => xpub),
 }));
 
+vi.mock('../../../../../src/services/wallet/canonicalAddressValidation', () => ({
+  assertCanonicalAddressesForWallet: vi.fn().mockResolvedValue(undefined),
+}));
+
 export function registerBatchTransactionTestSetup() {
   beforeEach(() => {
     resetPrismaMocks();

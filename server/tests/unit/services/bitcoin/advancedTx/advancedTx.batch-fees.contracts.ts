@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { mockPrismaClient } from "../../../../mocks/prisma";
 import { mockElectrumClient } from "../../../../mocks/electrum";
@@ -12,6 +12,7 @@ import {
   RBF_SEQUENCE,
 } from "../../../../../src/services/bitcoin/advancedTx";
 import { getNodeClient } from "../../../../../src/services/bitcoin/nodeClient";
+import { assertCanonicalAddressesForWallet } from "../../../../../src/services/wallet/canonicalAddressValidation";
 import {
   changeAddressRow,
   mockAddressFindManyByQuery,
@@ -72,6 +73,28 @@ export function registerBatchFeeAndConstantContracts() {
       expect(result.totalInput).toBeGreaterThan(result.totalOutput);
       expect(result.fee).toBeGreaterThan(0);
       expect(result.changeAmount).toBeGreaterThan(0);
+      expect(vi.mocked(assertCanonicalAddressesForWallet)).toHaveBeenCalledWith(
+        walletId,
+        [expect.objectContaining({ branch: 1 })],
+        1,
+      );
+    });
+
+    it("rejects batch change when wallet-bound re-derivation fails", async () => {
+      mockPrismaClient.uTXO.findMany.mockResolvedValueOnce([
+        { ...sampleUtxos[0], walletId, spent: false },
+        { ...sampleUtxos[1], walletId, spent: false },
+      ]);
+      mockAddressFindManyByQuery({ unusedRows: [changeAddressRow(walletId, 0)] });
+      vi.mocked(assertCanonicalAddressesForWallet).mockRejectedValueOnce(new Error("change drift"));
+
+      await expect(createBatchTransaction(
+        [{ address: testnetAddresses.nativeSegwit[0], amount: 20_000 }],
+        5,
+        walletId,
+        undefined,
+        "testnet",
+      )).rejects.toThrow("change drift");
     });
 
     it("throws if change output is needed but unavailable", async () => {

@@ -40,7 +40,7 @@ describe("derivationPathGroups", () => {
     ];
 
     expect(derivationNetworkGroup("m/84'/1'/0'")).toBe("testnet-signet");
-    expect(derivationPathMatchesNetwork("not-a-path", "signet")).toBe(true);
+    expect(derivationPathMatchesNetwork("not-a-path", "signet")).toBe(false);
     expect(networkGroupMatchesNetwork("mainnet", "mainnet")).toBe(true);
     expect(networkGroupMatchesNetwork("testnet-signet", "signet")).toBe(true);
     expect(networkGroupMatchesNetwork("testnet-signet", "mainnet")).toBe(false);

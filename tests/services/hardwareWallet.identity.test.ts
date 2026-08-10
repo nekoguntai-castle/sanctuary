@@ -46,7 +46,11 @@ describe('hardware wallet identity evidence', () => {
 
   it('accepts recognized account paths and rejects missing, malformed, or child paths', () => {
     expect(validateAccountDerivationPath("m/84'/0'/0'")).toBe("m/84'/0'/0'");
-    for (const path of ['', ' bad/path', "m/99'/0'/0'", "m/84'/0'/0'/0"]) {
+    expect(validateAccountDerivationPath("m/48'/1'/7'/1'")).toBe("m/48'/1'/7'/1'");
+    for (const path of [
+      '', ' bad/path', "m/99'/0'/0'", "m/45'/0'/0'", "m/48'/0'/0'/3'",
+      "m/84'/0'/0'/0", "m/84/0'/0'", "m/84'/0'/2147483648'",
+    ]) {
       expect(() => validateAccountDerivationPath(path)).toThrow(/derivation path/i);
     }
   });

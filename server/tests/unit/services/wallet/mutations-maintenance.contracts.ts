@@ -27,6 +27,8 @@ import {
 
 const VALID_RECEIVE_DESCRIPTOR = "wpkh([d34db33f/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/0/*)";
 const VALID_CHANGE_DESCRIPTOR = "wpkh([d34db33f/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/1/*)";
+const NATIVE_SEGWIT_POLICY_ID = 'single-sig-native-segwit-bip84-v1';
+const MULTISIG_NATIVE_SEGWIT_POLICY_ID = 'multisig-native-segwit-bip48-2-v1';
 
 export function registerWalletMutationMaintenanceTests(): void {
   describe('wallet mutation and maintenance operations', () => {
@@ -312,8 +314,36 @@ export function registerWalletMutationMaintenanceTests(): void {
       expect(walletRepo.linkDeviceWithDescriptor).toHaveBeenCalledWith(
         'wallet-1',
         expect.objectContaining({ deviceAccountId: 'account-1', signerIndex: 0 }),
-        expect.objectContaining({ descriptor: expect.any(String), addresses: expect.any(Array) }),
+        expect.objectContaining({
+          descriptor: VALID_RECEIVE_DESCRIPTOR,
+          changeDescriptor: VALID_CHANGE_DESCRIPTOR,
+          canonicalPolicyId: NATIVE_SEGWIT_POLICY_ID,
+          canonicalPolicyVersion: 1,
+          addresses: expect.any(Array),
+        }),
       );
+      const assignment = vi.mocked(walletRepo.linkDeviceWithDescriptor).mock.calls[0][2];
+      expect(assignment.addresses).toHaveLength(40);
+      expect(assignment.addresses).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          walletId: 'wallet-1',
+          branch: 0,
+          index: 0,
+          coordinateVersion: 1,
+          canonicalPolicyId: NATIVE_SEGWIT_POLICY_ID,
+          canonicalPolicyVersion: 1,
+          scriptPubKey: '0014mockscriptpubkey',
+        }),
+        expect.objectContaining({
+          walletId: 'wallet-1',
+          branch: 1,
+          index: 0,
+          coordinateVersion: 1,
+          canonicalPolicyId: NATIVE_SEGWIT_POLICY_ID,
+          canonicalPolicyVersion: 1,
+          scriptPubKey: '0014mockscriptpubkey',
+        }),
+      ]));
       expect(walletRepo.linkDevice).not.toHaveBeenCalled();
     });
 
@@ -436,7 +466,36 @@ export function registerWalletMutationMaintenanceTests(): void {
         expect.any(Object)
       );
       const { walletRepository: walletRepo } = await import('../../../../src/repositories');
-      expect(walletRepo.linkDeviceWithDescriptor).toHaveBeenCalled();
+      expect(walletRepo.linkDeviceWithDescriptor).toHaveBeenCalledWith(
+        'wallet-multi-ready',
+        expect.objectContaining({ signerIndex: 1 }),
+        expect.objectContaining({
+          descriptor: VALID_RECEIVE_DESCRIPTOR,
+          changeDescriptor: VALID_CHANGE_DESCRIPTOR,
+          canonicalPolicyId: MULTISIG_NATIVE_SEGWIT_POLICY_ID,
+          canonicalPolicyVersion: 1,
+          addresses: expect.arrayContaining([
+            expect.objectContaining({
+              walletId: 'wallet-multi-ready',
+              branch: 0,
+              index: 0,
+              coordinateVersion: 1,
+              canonicalPolicyId: MULTISIG_NATIVE_SEGWIT_POLICY_ID,
+              canonicalPolicyVersion: 1,
+              scriptPubKey: '0014mockscriptpubkey',
+            }),
+            expect.objectContaining({
+              walletId: 'wallet-multi-ready',
+              branch: 1,
+              index: 0,
+              coordinateVersion: 1,
+              canonicalPolicyId: MULTISIG_NATIVE_SEGWIT_POLICY_ID,
+              canonicalPolicyVersion: 1,
+              scriptPubKey: '0014mockscriptpubkey',
+            }),
+          ]),
+        }),
+      );
     });
 
     it('rejects addDeviceToWallet when wallet is missing', async () => {

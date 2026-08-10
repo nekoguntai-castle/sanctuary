@@ -3,7 +3,7 @@ import {
   ExactDeviceEvidenceStringSchema,
   MasterFingerprintSchema,
 } from '@sanctuary/shared/schemas/deviceIdentity';
-import { parseDerivationPath } from '@sanctuary/shared/utils/bitcoin';
+import { parseCanonicalAccountPath } from '@sanctuary/shared/constants/walletPolicy';
 
 export class HardwareWalletIdentityError extends Error {
   constructor(message: string) {
@@ -49,13 +49,7 @@ export function validateAccountDerivationPath(path: unknown): string {
     throw new HardwareWalletIdentityError('Hardware wallet returned an invalid derivation path');
   }
 
-  const parsed = parseDerivationPath(exactPath.data);
-  if (
-    !parsed.valid
-    || parsed.accountPath !== parsed.normalizedPath
-    || parsed.accountPurpose === 'unknown'
-    || parsed.scriptType === 'unknown'
-  ) {
+  if (!parseCanonicalAccountPath(exactPath.data)) {
     throw new HardwareWalletIdentityError(
       `Hardware wallet returned an invalid account derivation path: ${exactPath.data}`
     );

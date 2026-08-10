@@ -188,16 +188,42 @@ export const registerWalletImportExportContracts = () => {
 
   describe('GET /wallets/:id/export/labels', () => {
     it('should export labels in BIP 329 format', async () => {
+      const xpub = 'xpub6CatWdiZiodmUeTDp8LT5or8nmbKNcuyvz7WyksVFkKB4RHwCD3XyuvPEbvqAQY3rAPshWcMLoP2fMFMKHPJ4ZeZXYVUhLv1VMrjPC7PW6V';
+      const descriptor = `wpkh([73c5da0a/84'/0'/0']${xpub}/0/*)`;
+      const changeDescriptor = `wpkh([73c5da0a/84'/0'/0']${xpub}/1/*)`;
       mockWalletRepository.getName.mockResolvedValue('Test Wallet');
       mockWalletRepository.findByIdWithDevices.mockResolvedValue({
         id: 'wallet-123',
         devices: [{ device: { type: 'coldcard', model: null } }],
       });
+      mockWalletRepository.findById.mockResolvedValue({
+        id: 'wallet-123',
+        type: 'single_sig',
+        scriptType: 'native_segwit',
+        network: 'mainnet',
+        descriptor,
+        changeDescriptor,
+        canonicalPolicyId: 'single-sig-native-segwit-bip84-v1',
+        canonicalPolicyVersion: 1,
+      });
       mockTransactionRepository.findWithLabels.mockResolvedValue([
         { txid: 'txabc123', label: 'Payment', memo: 'Coffee shop', transactionLabels: [] },
       ]);
       mockAddressRepository.findWithLabels.mockResolvedValue([
-        { address: 'bc1qtest', derivationPath: "m/84'/0'/0'/0/0", addressLabels: [{ label: { name: 'Deposit' } }] },
+        {
+          id: 'addr-1',
+          walletId: 'wallet-123',
+          address: 'bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu',
+          derivationPath: "m/84'/0'/0'/0/0",
+          index: 0,
+          used: false,
+          branch: 0,
+          coordinateVersion: 1,
+          canonicalPolicyId: 'single-sig-native-segwit-bip84-v1',
+          canonicalPolicyVersion: 1,
+          scriptPubKey: '0014c0cebcd6c3d3ca8c75dc5ec62ebe55330ef910e2',
+          addressLabels: [{ label: { name: 'Deposit' } }],
+        },
       ]);
 
       const response = await request(walletRouter).get('/api/v1/wallets/wallet-123/export/labels');
@@ -205,6 +231,8 @@ export const registerWalletImportExportContracts = () => {
       expect(response.status).toBe(200);
       expect(response.headers['content-type']).toContain('jsonl');
       expect(response.text).toContain('txabc123');
+      expect(response.text).toContain('bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu');
+      expect(response.text).toContain("m/84'/0'/0'/0/0");
     });
 
     it('should return 404 if wallet not found', async () => {

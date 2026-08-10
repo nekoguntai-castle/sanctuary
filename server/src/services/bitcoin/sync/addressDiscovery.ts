@@ -7,85 +7,44 @@
 
 import { walletRepository, addressRepository } from "../../../repositories";
 import { createLogger } from "../../../utils/logger";
-import { getErrorMessage } from "../../../utils/errors";
 import { walletLog } from "../../../websocket/notifications";
 import { ADDRESS_GAP_LIMIT } from "../../../constants";
-import * as addressDerivation from "../addressDerivation";
-import { parseAddressDerivationPath } from "@sanctuary/shared/utils/bitcoin";
 import type { WalletNetwork } from "../../wallet/types";
 import { assertWalletHardwareCapabilityById } from "../../hardwareWalletCapabilities";
 import { ForbiddenError } from "../../../errors";
+import { assertPersistedCanonicalPolicy } from '../../wallet/canonicalPolicy';
+import type {
+  CanonicalBatchCounts,
+  CanonicalBatchState,
+  NextCanonicalAddressData,
+} from '../../../repositories/addressRepository';
+import { buildCanonicalAddressEvidence } from '../../wallet/addressGeneration';
 
 const log = createLogger("BITCOIN:SVC_ADDR_DISCOVERY");
 
-interface DiscoveredAddressRecord {
-  derivationPath: string | null;
-  index: number;
-  used: boolean;
-}
-
-interface ChainGapAddress {
-  index: number;
-  used: boolean;
-}
-
-interface ChainGapGroups {
-  receive: ChainGapAddress[];
-  change: ChainGapAddress[];
-  skipped: number;
-}
-
-function groupAddressesByChain(
-  addresses: DiscoveredAddressRecord[],
-): ChainGapGroups {
-  const groups: ChainGapGroups = { receive: [], change: [], skipped: 0 };
-
-  for (const address of addresses) {
-    const parsed = parseAddressDerivationPath(address.derivationPath);
-    if (!parsed) {
-      groups.skipped++;
-      continue;
-    }
-    groups[parsed.chain].push({
-      index: parsed.addressIndex,
-      used: address.used,
-    });
-  }
-
-  return groups;
-}
-
-function logSkippedAddressPaths(walletId: string, skipped: number): void {
-  if (skipped === 0) return;
-  log.warn(
-    "Skipped addresses with unparseable derivation paths during gap limit check",
-    {
-      walletId,
-      skipped,
-    },
-  );
-}
-
-function toAddressCreateRecord(
-  walletId: string,
-  address: { address: string; derivationPath: string },
-) {
-  const parsed = parseAddressDerivationPath(address.derivationPath);
-  if (!parsed) {
-    log.warn("Skipping generated address with unparseable derivation path", {
-      walletId,
-      derivationPath: address.derivationPath,
-    });
-    return null;
-  }
-
+function requiredGapCounts(state: CanonicalBatchState): CanonicalBatchCounts {
   return {
-    walletId,
-    address: address.address,
-    derivationPath: address.derivationPath,
-    index: parsed.addressIndex,
-    used: false,
+    receive: Math.max(0, ADDRESS_GAP_LIMIT - state.receive.unusedTail),
+    change: Math.max(0, ADDRESS_GAP_LIMIT - state.change.unusedTail),
   };
+}
+
+function logBranchExpansion(
+  walletId: string,
+  branch: 'receive' | 'change',
+  state: CanonicalBatchState,
+  counts: CanonicalBatchCounts,
+): void {
+  const allocation = state[branch];
+  const count = counts[branch];
+  if (count === 0) return;
+  walletLog(
+    walletId,
+    "info",
+    "ADDRESS",
+    `Expanding ${branch} addresses (gap: ${allocation.unusedTail}/${ADDRESS_GAP_LIMIT})`,
+    { currentMax: allocation.nextIndex - 1, generating: count },
+  );
 }
 
 /**
@@ -104,10 +63,15 @@ export async function ensureGapLimit(
   const wallet = await walletRepository.findByIdWithSelect(walletId, {
     id: true,
     descriptor: true,
+    changeDescriptor: true,
     network: true,
+    type: true,
+    scriptType: true,
+    canonicalPolicyId: true,
+    canonicalPolicyVersion: true,
   });
 
-  if (!wallet?.descriptor) {
+  if (!wallet?.descriptor || !wallet.changeDescriptor) {
     log.debug(`Wallet ${walletId} has no descriptor, skipping gap limit check`);
     return [];
   }
@@ -124,100 +88,31 @@ export async function ensureGapLimit(
     throw error;
   }
 
-  // Get all addresses with their used status
-  const addresses = await addressRepository.findByWalletId(walletId);
+  const policy = assertPersistedCanonicalPolicy(wallet);
 
-  const chainGroups = groupAddressesByChain(addresses);
-  logSkippedAddressPaths(walletId, chainGroups.skipped);
-  const receiveAddrs = chainGroups.receive;
-  const changeAddrs = chainGroups.change;
-
-  const newAddresses: Array<{ address: string; derivationPath: string }> = [];
-
-  // Check receive addresses gap limit
-  const receiveGap = countUnusedGap(receiveAddrs);
-  if (receiveGap < ADDRESS_GAP_LIMIT) {
-    const maxReceiveIndex = Math.max(-1, ...receiveAddrs.map((a) => a.index));
-    const toGenerate = ADDRESS_GAP_LIMIT - receiveGap;
-
-    walletLog(
-      walletId,
-      "info",
-      "ADDRESS",
-      `Expanding receive addresses (gap: ${receiveGap}/${ADDRESS_GAP_LIMIT})`,
-      {
-        currentMax: maxReceiveIndex,
-        generating: toGenerate,
-      },
+  const derive = (branch: 0 | 1, index: number): NextCanonicalAddressData => {
+    return buildCanonicalAddressEvidence(
+      wallet.descriptor as string,
+      wallet.changeDescriptor as string,
+      wallet.network as WalletNetwork,
+      { canonicalPolicyId: policy.id, canonicalPolicyVersion: policy.version },
+      branch,
+      index,
     );
+  };
 
-    for (let i = maxReceiveIndex + 1; i <= maxReceiveIndex + toGenerate; i++) {
-      try {
-        const { address, derivationPath } =
-          addressDerivation.deriveAddressFromDescriptor(wallet.descriptor, i, {
-            network: wallet.network as WalletNetwork,
-            change: false,
-          });
-        newAddresses.push({ address, derivationPath });
-      } catch (err) {
-        log.error(`Failed to derive receive address ${i}`, {
-          error: getErrorMessage(err),
-        });
-      }
-    }
-  }
+  const addressesToCreate = await addressRepository.createCanonicalBatch(
+    walletId,
+    (state) => {
+      const counts = requiredGapCounts(state);
+      logBranchExpansion(walletId, 'receive', state, counts);
+      logBranchExpansion(walletId, 'change', state, counts);
+      return counts;
+    },
+    derive,
+  );
 
-  // Check change addresses gap limit
-  const changeGap = countUnusedGap(changeAddrs);
-  if (changeGap < ADDRESS_GAP_LIMIT) {
-    const maxChangeIndex = Math.max(-1, ...changeAddrs.map((a) => a.index));
-    const toGenerate = ADDRESS_GAP_LIMIT - changeGap;
-
-    walletLog(
-      walletId,
-      "info",
-      "ADDRESS",
-      `Expanding change addresses (gap: ${changeGap}/${ADDRESS_GAP_LIMIT})`,
-      {
-        currentMax: maxChangeIndex,
-        generating: toGenerate,
-      },
-    );
-
-    for (let i = maxChangeIndex + 1; i <= maxChangeIndex + toGenerate; i++) {
-      try {
-        const { address, derivationPath } =
-          addressDerivation.deriveAddressFromDescriptor(wallet.descriptor, i, {
-            network: wallet.network as WalletNetwork,
-            change: true,
-          });
-        newAddresses.push({ address, derivationPath });
-      } catch (err) {
-        log.error(`Failed to derive change address ${i}`, {
-          error: getErrorMessage(err),
-        });
-      }
-    }
-  }
-
-  // Bulk insert new addresses
-  let addressesToScan = newAddresses;
-  if (newAddresses.length > 0) {
-    const addressesToCreate = newAddresses.flatMap((address) => {
-      const record = toAddressCreateRecord(walletId, address);
-      return record ? [record] : [];
-    });
-
-    if (addressesToCreate.length > 0) {
-      await addressRepository.createMany(addressesToCreate, {
-        skipDuplicates: true,
-      });
-    }
-
-    addressesToScan = addressesToCreate.map(({ address, derivationPath }) => ({
-      address,
-      derivationPath,
-    }));
+  if (addressesToCreate.length > 0) {
     walletLog(
       walletId,
       "info",
@@ -226,28 +121,8 @@ export async function ensureGapLimit(
     );
   }
 
-  return addressesToScan;
-}
-
-/**
- * Count consecutive unused addresses at the end of an address list
- */
-function countUnusedGap(
-  addresses: Array<{ index: number; used: boolean }>,
-): number {
-  if (addresses.length === 0) return 0;
-
-  // Sort by index descending to count from the end
-  const sorted = [...addresses].sort((a, b) => b.index - a.index);
-
-  let gap = 0;
-  for (const addr of sorted) {
-    if (!addr.used) {
-      gap++;
-    } else {
-      break; // Stop counting when we hit a used address
-    }
-  }
-
-  return gap;
+  return addressesToCreate.map(({ address, derivationPath }) => ({
+    address,
+    derivationPath,
+  }));
 }

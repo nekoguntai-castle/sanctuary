@@ -10,7 +10,8 @@ import { vi, Mock } from "vitest";
 // Mock Prisma before importing repository
 vi.mock("../../../src/models/prisma", () => ({
   __esModule: true,
-  default: {
+  default: (() => {
+    const client = {
     address: {
       updateMany: vi.fn(),
       findMany: vi.fn(),
@@ -18,8 +19,15 @@ vi.mock("../../../src/models/prisma", () => ({
       update: vi.fn(),
       count: vi.fn(),
       create: vi.fn(),
+      createMany: vi.fn(),
     },
-  },
+      $queryRaw: vi.fn(),
+      $transaction: vi.fn(),
+    };
+    client.$transaction.mockImplementation(async (callback: (tx: typeof client) => unknown) =>
+      callback(client));
+    return client;
+  })(),
 }));
 
 import prisma from "../../../src/models/prisma";
@@ -35,6 +43,18 @@ describe("Address Repository", () => {
     used: false,
     createdAt: new Date(),
     updatedAt: new Date(),
+  };
+
+  const mockCanonicalBatchState = (
+    receive: { maxIndex: number | null; unusedTail?: number },
+    change: { maxIndex: number | null; unusedTail?: number } = { maxIndex: null },
+  ) => {
+    (prisma.$queryRaw as Mock)
+      .mockResolvedValueOnce([{ id: "w1" }])
+      .mockResolvedValueOnce([
+        { branch: 0, maxIndex: receive.maxIndex, unusedTail: BigInt(receive.unusedTail ?? 0) },
+        { branch: 1, maxIndex: change.maxIndex, unusedTail: BigInt(change.unusedTail ?? 0) },
+      ]);
   };
 
   beforeEach(() => {
@@ -230,48 +250,22 @@ describe("Address Repository", () => {
 
   describe("findNextUnusedReceive", () => {
     it("should find next unused receive address", async () => {
-      const changeAddress = {
-        ...mockAddress,
-        id: "addr-change",
-        derivationPath: "m/84'/0'/0'/1/0",
-      };
-      const unsupportedBranch = {
-        ...mockAddress,
-        id: "addr-unsupported",
-        derivationPath: "m/84'/0'/0'/2/0",
-      };
-      (prisma.address.findMany as Mock).mockResolvedValue([
-        changeAddress,
-        unsupportedBranch,
-        mockAddress,
-      ]);
+      (prisma.address.findFirst as Mock).mockResolvedValue(mockAddress);
 
       const result =
         await addressRepository.findNextUnusedReceive("wallet-456");
 
       expect(result).toEqual(mockAddress);
-      expect(prisma.address.findMany).toHaveBeenCalledWith({
-        where: {
-          walletId: "wallet-456",
-          used: false,
-        },
+      expect(prisma.address.findFirst).toHaveBeenCalledWith({
+        where: { walletId: "wallet-456", branch: 0, coordinateVersion: 1, used: false,
+          canonicalPolicyId: { not: null }, canonicalPolicyVersion: 1,
+          scriptPubKey: { not: null } },
         orderBy: { index: "asc" },
-        skip: 0,
-        take: 200,
       });
     });
 
     it("should return null when no unused receive address exists", async () => {
-      (prisma.address.findMany as Mock).mockResolvedValue([
-        {
-          ...mockAddress,
-          derivationPath: "m/84'/0'/0'/1/0",
-        },
-        {
-          ...mockAddress,
-          derivationPath: "not-a-path",
-        },
-      ]);
+      (prisma.address.findFirst as Mock).mockResolvedValue(null);
 
       const result =
         await addressRepository.findNextUnusedReceive("wallet-456");
@@ -279,46 +273,6 @@ describe("Address Repository", () => {
       expect(result).toBeNull();
     });
 
-    it("should scan unused addresses in chunks until a receive address is found", async () => {
-      const changeOnlyPage = Array.from({ length: 200 }, (_, index) => ({
-        ...mockAddress,
-        id: `addr-change-${index}`,
-        derivationPath: `m/84'/0'/0'/1/${index}`,
-        index,
-      }));
-      const receiveAddress = {
-        ...mockAddress,
-        id: "addr-receive-late",
-        derivationPath: "m/84'/0'/0'/0/200",
-        index: 200,
-      };
-      (prisma.address.findMany as Mock)
-        .mockResolvedValueOnce(changeOnlyPage)
-        .mockResolvedValueOnce([receiveAddress]);
-
-      const result =
-        await addressRepository.findNextUnusedReceive("wallet-456");
-
-      expect(result).toEqual(receiveAddress);
-      expect(prisma.address.findMany).toHaveBeenNthCalledWith(1, {
-        where: {
-          walletId: "wallet-456",
-          used: false,
-        },
-        orderBy: { index: "asc" },
-        skip: 0,
-        take: 200,
-      });
-      expect(prisma.address.findMany).toHaveBeenNthCalledWith(2, {
-        where: {
-          walletId: "wallet-456",
-          used: false,
-        },
-        orderBy: { index: "asc" },
-        skip: 200,
-        take: 200,
-      });
-    });
   });
 
   describe("findNextUnusedChange", () => {
@@ -329,22 +283,16 @@ describe("Address Repository", () => {
         derivationPath: "m/48'/0'/0'/2'/1/7",
         index: 7,
       };
-      (prisma.address.findMany as Mock).mockResolvedValue([
-        mockAddress,
-        changeAddress,
-      ]);
+      (prisma.address.findFirst as Mock).mockResolvedValue(changeAddress);
 
       const result = await addressRepository.findNextUnusedChange("wallet-456");
 
       expect(result).toEqual(changeAddress);
-      expect(prisma.address.findMany).toHaveBeenCalledWith({
-        where: {
-          walletId: "wallet-456",
-          used: false,
-        },
+      expect(prisma.address.findFirst).toHaveBeenCalledWith({
+        where: { walletId: "wallet-456", branch: 1, coordinateVersion: 1, used: false,
+          canonicalPolicyId: { not: null }, canonicalPolicyVersion: 1,
+          scriptPubKey: { not: null } },
         orderBy: { index: "asc" },
-        skip: 0,
-        take: 200,
       });
     });
   });
@@ -366,17 +314,7 @@ describe("Address Repository", () => {
         id: "addr-change-1",
         derivationPath: "m/84'/0'/0'/1/0",
       };
-      const secondChange = {
-        ...mockAddress,
-        id: "addr-change-2",
-        derivationPath: "m/84'/0'/0'/1/1",
-      };
-      (prisma.address.findMany as Mock).mockResolvedValue([
-        mockAddress,
-        firstChange,
-        { ...mockAddress, id: "addr-invalid", derivationPath: "not-a-path" },
-        secondChange,
-      ]);
+      (prisma.address.findMany as Mock).mockResolvedValue([firstChange]);
 
       const result = await addressRepository.findUnusedChangeAddresses(
         "wallet-456",
@@ -387,11 +325,15 @@ describe("Address Repository", () => {
       expect(prisma.address.findMany).toHaveBeenCalledWith({
         where: {
           walletId: "wallet-456",
+          branch: 1,
+          coordinateVersion: 1,
           used: false,
+          canonicalPolicyId: { not: null },
+          canonicalPolicyVersion: 1,
+          scriptPubKey: { not: null },
         },
         orderBy: { index: "asc" },
-        skip: 0,
-        take: 200,
+        take: 1,
       });
     });
   });
@@ -641,24 +583,354 @@ describe("Address Repository", () => {
     });
   });
 
-  describe("create", () => {
-    it("should create a single address", async () => {
-      const newAddr = {
-        walletId: "w1",
-        address: "bc1qnew...",
-        derivationPath: "m/84'/0'/0'/0/5",
-        index: 5,
-        used: false,
-      };
+  describe("canonical writes", () => {
+    const canonicalAddress = {
+      walletId: "w1",
+      address: "bc1qnew...",
+      derivationPath: "m/84'/0'/0'/0/5",
+      index: 5,
+      branch: 0 as const,
+      coordinateVersion: 1 as const,
+      canonicalPolicyId: "single_sig.native_segwit",
+      canonicalPolicyVersion: 1,
+      scriptPubKey: "00140000000000000000000000000000000000000000",
+      used: false,
+    };
+
+    it("creates a complete canonical address without duplicate skipping", async () => {
       (prisma.address.create as Mock).mockResolvedValue({
         id: "new-id",
-        ...newAddr,
+        ...canonicalAddress,
       });
 
-      const result = await addressRepository.create(newAddr);
+      const result = await addressRepository.create(canonicalAddress);
 
       expect(result.id).toBe("new-id");
-      expect(prisma.address.create).toHaveBeenCalledWith({ data: newAddr });
+      expect(prisma.address.create).toHaveBeenCalledWith({ data: canonicalAddress });
+    });
+
+    it.each([
+      ["invalid branch", { branch: 2 }],
+      ["negative index", { index: -1 }],
+      ["oversized index", { index: 2147483648 }],
+      ["invalid coordinate version", { coordinateVersion: 2 }],
+      ["blank policy id", { canonicalPolicyId: " " }],
+      ["invalid policy version", { canonicalPolicyVersion: 0 }],
+      ["blank address", { address: " " }],
+      ["blank scriptPubKey", { scriptPubKey: " " }],
+    ])("rejects %s before Prisma", async (_name, override) => {
+      await expect(addressRepository.create({
+        ...canonicalAddress,
+        ...override,
+      } as typeof canonicalAddress)).rejects.toThrow();
+      expect(prisma.address.create).not.toHaveBeenCalled();
+    });
+
+    it("creates canonical batches without skipDuplicates", async () => {
+      (prisma.address.createMany as Mock).mockResolvedValue({ count: 1 });
+
+      await expect(addressRepository.createMany([canonicalAddress])).resolves.toEqual({ count: 1 });
+
+      expect(prisma.address.createMany).toHaveBeenCalledWith({
+        data: [canonicalAddress],
+      });
+    });
+
+    it("keeps legacy evidence writes explicit and wholly coordinate-null", async () => {
+      const legacy = {
+        walletId: "w1",
+        address: "bc1qlegacy...",
+        derivationPath: "m/84'/0'/0'/0/4",
+        index: 4,
+        used: false,
+      };
+      (prisma.address.create as Mock).mockResolvedValue({ id: "legacy-id", ...legacy });
+
+      await addressRepository.createLegacyEvidence(legacy);
+
+      expect(prisma.address.create).toHaveBeenCalledWith({
+        data: {
+          ...legacy,
+          branch: null,
+          coordinateVersion: null,
+          canonicalPolicyId: null,
+          canonicalPolicyVersion: null,
+          scriptPubKey: null,
+        },
+      });
+    });
+
+    it("keeps bulk legacy evidence writes explicit and wholly coordinate-null", async () => {
+      const legacy = {
+        walletId: "w1",
+        address: "bc1qlegacybulk...",
+        derivationPath: "m/84'/0'/0'/0/3",
+        index: 3,
+        used: true,
+      };
+      (prisma.address.createMany as Mock).mockResolvedValue({ count: 1 });
+
+      await expect(
+        addressRepository.createManyLegacyEvidence([legacy]),
+      ).resolves.toEqual({ count: 1 });
+
+      expect(prisma.address.createMany).toHaveBeenCalledWith({
+        data: [{
+          ...legacy,
+          branch: null,
+          coordinateVersion: null,
+          canonicalPolicyId: null,
+          canonicalPolicyVersion: null,
+          scriptPubKey: null,
+        }],
+      });
+    });
+
+    it("serializes branch-scoped next-index allocation before deriving and inserting", async () => {
+      (prisma.$queryRaw as Mock).mockResolvedValue([{ id: "w1" }]);
+      (prisma.address.findFirst as Mock).mockResolvedValue({ index: 6 });
+      (prisma.address.create as Mock).mockImplementation(({ data }) =>
+        Promise.resolve({ id: "allocated", ...data }));
+
+      const result = await addressRepository.createNextCanonical(
+        "w1",
+        1,
+        (index) => ({
+          address: `bc1qchange${index}`,
+          derivationPath: `m/84'/0'/0'/1/${index}`,
+          coordinateVersion: 1,
+          canonicalPolicyId: "single-sig-native-segwit-bip84-v1",
+          canonicalPolicyVersion: 1,
+          scriptPubKey: "00140000000000000000000000000000000000000000",
+          used: false,
+        }),
+      );
+
+      expect(result).toMatchObject({ index: 7, branch: 1 });
+      const lockSql = (prisma.$queryRaw as Mock).mock.calls[0][0].strings.join(" ");
+      expect(lockSql).toContain('"canonicalPolicyId" IS NOT NULL');
+      expect(lockSql).toContain('"canonicalPolicyVersion" =');
+      expect(lockSql).toContain("FOR UPDATE");
+      expect(prisma.address.findFirst).toHaveBeenCalledWith({
+        where: { walletId: "w1", branch: 1 },
+        orderBy: { index: "desc" },
+        select: { index: true },
+      });
+      expect(prisma.address.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ walletId: "w1", branch: 1, index: 7 }),
+      });
+    });
+
+    it("starts next-address allocation at zero when the locked branch is empty", async () => {
+      (prisma.$queryRaw as Mock).mockResolvedValue([{ id: "w1" }]);
+      (prisma.address.findFirst as Mock).mockResolvedValue(null);
+      (prisma.address.create as Mock).mockImplementation(({ data }) =>
+        Promise.resolve({ id: "allocated-zero", ...data }));
+      const result = await addressRepository.createNextCanonical(
+        "w1",
+        0,
+        (index) => ({ ...canonicalAddress, index, branch: 0 }),
+      );
+      expect(result).toMatchObject({ branch: 0, index: 0 });
+    });
+
+    it("serializes multi-branch batch allocation and derives from locked high-water marks", async () => {
+      mockCanonicalBatchState({ maxIndex: 4 }, { maxIndex: 8 });
+      (prisma.address.createMany as Mock).mockResolvedValue({ count: 4 });
+
+      const build = vi.fn((branch: 0 | 1, index: number) => ({
+        address: `bc1q${branch}-${index}`,
+        derivationPath: `m/84'/0'/0'/${branch}/${index}`,
+        coordinateVersion: 1 as const,
+        canonicalPolicyId: "single-sig-native-segwit-bip84-v1",
+        canonicalPolicyVersion: 1,
+        scriptPubKey: "00140000000000000000000000000000000000000000",
+        used: false,
+      }));
+
+      const result = await addressRepository.createCanonicalBatch(
+        "w1",
+        { receive: 2, change: 2 },
+        build,
+      );
+
+      expect(result.map(({ branch, index }) => [branch, index])).toEqual([
+        [0, 5], [0, 6], [1, 9], [1, 10],
+      ]);
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+      const lockSql = (prisma.$queryRaw as Mock).mock.calls[0][0].strings.join(" ");
+      expect(lockSql).toContain('"canonicalPolicyId" IS NOT NULL');
+      expect(lockSql).toContain('"canonicalPolicyVersion" =');
+      const summarySql = (prisma.$queryRaw as Mock).mock.calls[1][0].strings.join(" ");
+      expect(summarySql).toContain('address."canonicalPolicyId" = wallet."canonicalPolicyId"');
+      expect(summarySql).toContain('address."canonicalPolicyVersion" = wallet."canonicalPolicyVersion"');
+      expect(summarySql).toContain('address."scriptPubKey" IS NOT NULL');
+      expect(prisma.address.createMany).toHaveBeenCalledWith({ data: result });
+      expect(prisma.address.findMany).not.toHaveBeenCalled();
+      expect(prisma.$transaction).toHaveBeenCalledWith(
+        expect.any(Function),
+        { isolationLevel: "ReadCommitted", maxWait: 5_000, timeout: 30_000 },
+      );
+    });
+
+    it("resolves gap counts only after locking against the latest coordinate state", async () => {
+      mockCanonicalBatchState({ maxIndex: 6, unusedTail: 1 });
+      const resolveCounts = vi.fn(() => ({ receive: 1, change: 0 }));
+
+      await addressRepository.createCanonicalBatch("w1", resolveCounts, (_branch, index) => ({
+        address: `bc1q${index}`,
+        derivationPath: `m/84'/0'/0'/0/${index}`,
+        coordinateVersion: 1,
+        canonicalPolicyId: "single-sig-native-segwit-bip84-v1",
+        canonicalPolicyVersion: 1,
+        scriptPubKey: "00140000000000000000000000000000000000000000",
+        used: false,
+      }));
+
+      expect(resolveCounts).toHaveBeenCalledWith({
+        receive: { nextIndex: 7, unusedTail: 1 },
+        change: { nextIndex: 0, unusedTail: 0 },
+      });
+      expect(prisma.address.createMany).toHaveBeenCalledWith({
+        data: [expect.objectContaining({ branch: 0, index: 7 })],
+      });
+    });
+
+    it("returns an empty locked batch without issuing an insert", async () => {
+      mockCanonicalBatchState({ maxIndex: null });
+      await expect(addressRepository.createCanonicalBatch(
+        "w1",
+        { receive: 0, change: 0 },
+        vi.fn(),
+      )).resolves.toEqual([]);
+      expect(prisma.address.createMany).not.toHaveBeenCalled();
+    });
+
+    it.each([-1, 1.5, 1001])(
+      "rejects invalid canonical batch count %s before locking",
+      async (receive) => {
+        await expect(addressRepository.createCanonicalBatch(
+          "w1",
+          { receive, change: 0 },
+          vi.fn(),
+        )).rejects.toThrow("batch count exceeds the safe allocation limit");
+        expect(prisma.$transaction).not.toHaveBeenCalled();
+      },
+    );
+
+    it("accepts the exact per-branch safety ceiling", async () => {
+      mockCanonicalBatchState({ maxIndex: null });
+      (prisma.address.createMany as Mock).mockResolvedValue({ count: 1000 });
+
+      const result = await addressRepository.createCanonicalBatch(
+        "w1",
+        { receive: 1000, change: 0 },
+        (_branch, index) => ({ ...canonicalAddress, address: `bc1q${index}`, index }),
+      );
+
+      expect(result).toHaveLength(1000);
+      expect(result.at(-1)).toMatchObject({ branch: 0, index: 999 });
+    });
+
+    it("rejects an oversized locked batch resolver result before derivation", async () => {
+      mockCanonicalBatchState({ maxIndex: 0 });
+      const build = vi.fn();
+
+      await expect(addressRepository.createCanonicalBatch(
+        "w1",
+        () => ({ receive: 1001, change: 0 }),
+        build,
+      )).rejects.toThrow("batch count exceeds the safe allocation limit");
+      expect(build).not.toHaveBeenCalled();
+      expect(prisma.address.createMany).not.toHaveBeenCalled();
+    });
+
+    it("fails a batch when the locked wallet no longer exists", async () => {
+      (prisma.$queryRaw as Mock).mockResolvedValue([]);
+      await expect(addressRepository.createCanonicalBatch(
+        "missing",
+        { receive: 1, change: 0 },
+        vi.fn(),
+      )).rejects.toThrow("Wallet is missing or lacks canonical policy during address allocation");
+      expect(prisma.address.createMany).not.toHaveBeenCalled();
+    });
+
+    it("fails closed when the locked branch summary is incomplete", async () => {
+      (prisma.$queryRaw as Mock)
+        .mockResolvedValueOnce([{ id: "w1" }])
+        .mockResolvedValueOnce([
+          { branch: 0, maxIndex: 0, unusedTail: 1n },
+        ]);
+
+      await expect(addressRepository.createCanonicalBatch(
+        "w1",
+        { receive: 1, change: 0 },
+        (_branch, index) => ({ ...canonicalAddress, index }),
+      )).rejects.toThrow("branch 1 summary is missing");
+      expect(prisma.address.createMany).not.toHaveBeenCalled();
+    });
+
+    it("fails a batch before derivation when the requested range is exhausted", async () => {
+      mockCanonicalBatchState({ maxIndex: 0x7fffffff, unusedTail: 1 });
+      const build = vi.fn();
+      await expect(addressRepository.createCanonicalBatch(
+        "w1",
+        { receive: 1, change: 0 },
+        build,
+      )).rejects.toThrow("Canonical address index space is exhausted");
+      expect(build).not.toHaveBeenCalled();
+      expect(prisma.address.createMany).not.toHaveBeenCalled();
+    });
+
+    it("fails before derivation when the canonical index space is exhausted", async () => {
+      (prisma.$queryRaw as Mock).mockResolvedValue([{ id: "w1" }]);
+      (prisma.address.findFirst as Mock).mockResolvedValue({ index: 0x7fffffff });
+      const build = vi.fn();
+
+      await expect(addressRepository.createNextCanonical("w1", 0, build)).rejects.toThrow(
+        "Canonical address index space is exhausted",
+      );
+      expect(build).not.toHaveBeenCalled();
+      expect(prisma.address.create).not.toHaveBeenCalled();
+    });
+
+    it("rejects an invalid canonical branch before opening a transaction", async () => {
+      const build = vi.fn();
+
+      await expect(
+        addressRepository.createNextCanonical("w1", 2 as never, build),
+      ).rejects.toThrow("Canonical address branch must be 0 or 1");
+
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(build).not.toHaveBeenCalled();
+    });
+
+    it("fails before derivation when the locked wallet no longer exists", async () => {
+      (prisma.$queryRaw as Mock).mockResolvedValue([]);
+      const build = vi.fn();
+
+      await expect(
+        addressRepository.createNextCanonical("missing", 0, build),
+      ).rejects.toThrow("Wallet is missing or lacks canonical policy during address allocation");
+
+      expect(build).not.toHaveBeenCalled();
+      expect(prisma.address.findFirst).not.toHaveBeenCalled();
+      expect(prisma.address.create).not.toHaveBeenCalled();
+    });
+
+    it("finds every derivation path and index for a wallet", async () => {
+      const paths = [
+        { derivationPath: "m/84'/0'/0'/0/0", index: 0 },
+        { derivationPath: "m/84'/0'/0'/1/0", index: 0 },
+      ];
+      (prisma.address.findMany as Mock).mockResolvedValue(paths);
+
+      await expect(addressRepository.findDerivationPaths("w1")).resolves.toEqual(paths);
+
+      expect(prisma.address.findMany).toHaveBeenCalledWith({
+        where: { walletId: "w1" },
+        select: { derivationPath: true, index: true },
+      });
     });
   });
 });

@@ -7,33 +7,24 @@
 import { Router } from "express";
 import { requireWalletAccess } from "../../middleware/walletAccess";
 import { walletRepository, addressRepository } from "../../repositories";
-import * as addressDerivation from "../../services/bitcoin/addressDerivation";
-import { createLogger } from "../../utils/logger";
-import { bigIntToNumberOrZero, getErrorMessage } from "../../utils/errors";
+import { bigIntToNumberOrZero } from "../../utils/errors";
 import {
   extractPagination,
   setTruncationHeaders,
 } from "../../utils/pagination";
 import { asyncHandler } from "../../errors/errorHandler";
 import { NotFoundError, ValidationError } from "../../errors/ApiError";
-import { INITIAL_ADDRESS_COUNT } from "../../constants";
 import { validate } from "../../middleware/validate";
 import { GenerateAddressesBodySchema } from "../schemas/transactions";
-import {
-  parseAddressDerivationPath,
-  type DerivationAddressChain,
-} from "@sanctuary/shared/utils/bitcoin";
+import { parseAddressDerivationPath, type DerivationAddressChain } from "@sanctuary/shared/utils/bitcoin";
 import type { WalletNetwork } from "../../services/wallet/types";
 import { assertWalletHardwareCapabilityById } from "../../services/hardwareWalletCapabilities";
+import { assertPersistedCanonicalPolicy } from '../../services/wallet/canonicalPolicy';
+import type { NextCanonicalAddressData } from '../../repositories/addressRepository';
+import { buildCanonicalAddressEvidence } from '../../services/wallet/addressGeneration';
+import { assertCanonicalAddressesMatchWallet } from '../../services/wallet/canonicalAddressValidation';
 
 const router = Router();
-const log = createLogger("ADDRESS:ROUTE");
-
-interface AddressIndexBounds {
-  receive: number;
-  change: number;
-}
-
 function chainFromQueryValue(
   value: unknown,
 ): DerivationAddressChain | undefined {
@@ -41,34 +32,38 @@ function chainFromQueryValue(
   return value === "true" ? "change" : "receive";
 }
 
-function updateAddressIndexBounds(
-  bounds: AddressIndexBounds,
-  derivationPath: string,
-): void {
-  const parsed = parseAddressDerivationPath(derivationPath);
-  if (!parsed) return;
-
-  if (parsed.chain === "receive" && parsed.addressIndex > bounds.receive) {
-    bounds.receive = parsed.addressIndex;
-  } else if (parsed.chain === "change" && parsed.addressIndex > bounds.change) {
-    bounds.change = parsed.addressIndex;
+function deriveCanonicalRecord(
+  wallet: {
+    id: string;
+    type: string;
+    scriptType: string;
+    network: string;
+    descriptor: string | null;
+    changeDescriptor: string | null;
+    canonicalPolicyId: string | null;
+    canonicalPolicyVersion: number | null;
+  },
+  branch: 0 | 1,
+  index: number,
+): NextCanonicalAddressData {
+  if (!wallet.descriptor || !wallet.changeDescriptor) {
+    throw new ValidationError('Wallet requires authoritative receive and change descriptors');
   }
-}
-
-function findAddressIndexBounds(
-  addresses: Array<{ derivationPath: string }>,
-): AddressIndexBounds {
-  const bounds = { receive: -1, change: -1 };
-  for (const address of addresses) {
-    updateAddressIndexBounds(bounds, address.derivationPath);
-  }
-  return bounds;
+  const policy = assertPersistedCanonicalPolicy(wallet);
+  return buildCanonicalAddressEvidence(
+    wallet.descriptor,
+    wallet.changeDescriptor,
+    wallet.network as WalletNetwork,
+    { canonicalPolicyId: policy.id, canonicalPolicyVersion: policy.version },
+    branch,
+    index,
+  );
 }
 
 /**
  * GET /api/v1/wallets/:walletId/addresses
  * Get all addresses for a wallet
- * Auto-generates addresses if wallet has descriptor but no addresses
+ * This read path never generates addresses; explicit mutations own allocation.
  */
 router.get(
   "/wallets/:walletId/addresses",
@@ -97,72 +92,15 @@ router.get(
     const chain = chainFromQueryValue(change);
 
     // Check if addresses exist
-    let addresses = await addressRepository.findByWalletIdWithLabels(walletId, {
+    const addresses = await addressRepository.findByWalletIdWithLabels(walletId, {
       used: used !== undefined ? used === "true" : undefined,
       chain,
       take: effectiveLimit,
       skip: effectiveOffset,
+      canonicalOnly: used !== "true",
     });
-
-    // Auto-generate addresses if none exist and wallet has a descriptor
-    if (addresses.length === 0 && wallet.descriptor && used === undefined) {
-      try {
-        const addressesToCreate = [];
-
-        // Generate receive addresses (change = 0)
-        for (let i = 0; i < INITIAL_ADDRESS_COUNT; i++) {
-          const { address, derivationPath } =
-            addressDerivation.deriveAddressFromDescriptor(
-              wallet.descriptor,
-              i,
-              {
-                network: wallet.network as WalletNetwork,
-                change: false, // External/receive addresses
-              },
-            );
-          addressesToCreate.push({
-            walletId,
-            address,
-            derivationPath,
-            index: i,
-            used: false,
-          });
-        }
-
-        // Generate change addresses (change = 1)
-        for (let i = 0; i < INITIAL_ADDRESS_COUNT; i++) {
-          const { address, derivationPath } =
-            addressDerivation.deriveAddressFromDescriptor(
-              wallet.descriptor,
-              i,
-              {
-                network: wallet.network as WalletNetwork,
-                change: true, // Internal/change addresses
-              },
-            );
-          addressesToCreate.push({
-            walletId,
-            address,
-            derivationPath,
-            index: i,
-            used: false,
-          });
-        }
-
-        // Bulk insert addresses
-        await addressRepository.createMany(addressesToCreate);
-
-        // Re-fetch the created addresses (respect pagination)
-        addresses = await addressRepository.findByWalletIdWithLabels(walletId, {
-          take: effectiveLimit,
-          skip: effectiveOffset,
-        });
-      } catch (err) {
-        log.error("Failed to auto-generate addresses", {
-          error: getErrorMessage(err),
-        });
-        // Return empty array if generation fails
-      }
+    if (used !== "true") {
+      assertCanonicalAddressesMatchWallet(wallet, addresses);
     }
 
     // Get balances for each address from UTXOs
@@ -255,78 +193,17 @@ router.post(
       throw new NotFoundError("Wallet not found");
     }
 
-    if (!wallet.descriptor) {
+    if (!wallet.descriptor || !wallet.changeDescriptor) {
       throw new ValidationError("Wallet does not have a descriptor");
     }
 
     await assertWalletHardwareCapabilityById(walletId, "display");
 
-    // Get current max index for receive and change addresses
-    const existingAddresses =
-      await addressRepository.findDerivationPaths(walletId);
-
-    const maxIndexes = findAddressIndexBounds(existingAddresses);
-
-    const addressesToCreate = [];
-
-    // Generate more receive addresses
-    for (
-      let i = maxIndexes.receive + 1;
-      i < maxIndexes.receive + 1 + count;
-      i++
-    ) {
-      try {
-        const { address, derivationPath } =
-          addressDerivation.deriveAddressFromDescriptor(wallet.descriptor, i, {
-            network: wallet.network as WalletNetwork,
-            change: false,
-          });
-        addressesToCreate.push({
-          walletId,
-          address,
-          derivationPath,
-          index: i,
-          used: false,
-        });
-      } catch (err) {
-        log.error(`Failed to derive receive address ${i}`, {
-          error: getErrorMessage(err),
-        });
-      }
-    }
-
-    // Generate more change addresses
-    for (
-      let i = maxIndexes.change + 1;
-      i < maxIndexes.change + 1 + count;
-      i++
-    ) {
-      try {
-        const { address, derivationPath } =
-          addressDerivation.deriveAddressFromDescriptor(wallet.descriptor, i, {
-            network: wallet.network as WalletNetwork,
-            change: true,
-          });
-        addressesToCreate.push({
-          walletId,
-          address,
-          derivationPath,
-          index: i,
-          used: false,
-        });
-      } catch (err) {
-        log.error(`Failed to derive change address ${i}`, {
-          error: getErrorMessage(err),
-        });
-      }
-    }
-
-    // Bulk insert addresses (skip duplicates)
-    if (addressesToCreate.length > 0) {
-      await addressRepository.createMany(addressesToCreate, {
-        skipDuplicates: true,
-      });
-    }
+    const addressesToCreate = await addressRepository.createCanonicalBatch(
+      walletId,
+      { receive: count, change: count },
+      (branch, index) => deriveCanonicalRecord(wallet, branch, index),
+    );
 
     res.json({
       generated: addressesToCreate.length,

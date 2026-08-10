@@ -3,6 +3,7 @@ import { legacyHandler } from '../../../../src/services/scriptTypes/handlers/leg
 import { nativeSegwitHandler } from '../../../../src/services/scriptTypes/handlers/nativeSegwit';
 import { nestedSegwitHandler } from '../../../../src/services/scriptTypes/handlers/nestedSegwit';
 import { taprootHandler } from '../../../../src/services/scriptTypes/handlers/taproot';
+import { wrapWalletPolicyDescriptor } from '../../../../src/services/scriptTypes/handlers/descriptorHelpers';
 
 describe('script type handlers', () => {
   const devices = [
@@ -10,15 +11,26 @@ describe('script type handlers', () => {
     { fingerprint: 'eeff0011', xpub: 'xpub-device-2', derivationPath: "m/48'/1'/7'/9'" },
   ];
 
+  it('rejects an unsupported wallet policy at the shared wrapper boundary', () => {
+    expect(() => wrapWalletPolicyDescriptor(
+      'unknown' as never,
+      'unknown' as never,
+      'key',
+    )).toThrow('Unsupported wallet policy');
+  });
+
   describe('legacyHandler', () => {
     it('builds expected derivation paths', () => {
       expect(legacyHandler.getDerivationPath('mainnet')).toBe("m/44'/0'/0'");
       expect(legacyHandler.getDerivationPath('testnet', 2)).toBe("m/44'/1'/2'");
-      expect(legacyHandler.getMultisigDerivationPath('mainnet')).toBe("m/45'/0'");
-      expect(legacyHandler.getMultisigDerivationPath('testnet', 3)).toBe("m/45'/3'");
+      expect(() => legacyHandler.getDerivationPath('unknown' as never)).toThrow(
+        'Unknown Bitcoin network: unknown',
+      );
+      expect(() => legacyHandler.getMultisigDerivationPath('mainnet')).toThrow();
+      expect(legacyHandler.supportsMultisig).toBe(false);
     });
 
-    it('builds single-sig and multi-sig descriptors', () => {
+    it('builds single-sig descriptors and exposes no multisig builder', () => {
       expect(
         legacyHandler.buildSingleSigDescriptor(
           { fingerprint: 'aabbccdd', xpub: 'xpub-single' },
@@ -27,21 +39,13 @@ describe('script type handlers', () => {
       ).toBe('pkh([aabbccdd/44h/1h/0h]xpub-single/1/*)');
 
       expect(
-        legacyHandler.buildMultiSigDescriptor!(devices, { network: 'testnet', quorum: 2, change: false })
-      ).toBe(
-        'sh(sortedmulti(2,[aabbccdd/45h/0h]xpub-device-1/0/*,[eeff0011/48h/1h/7h/9h]xpub-device-2/0/*))'
-      );
-
-      expect(
         legacyHandler.buildSingleSigDescriptor(
           { fingerprint: 'aabbccdd', xpub: 'xpub-single' },
           { network: 'mainnet', change: false }
         )
       ).toContain('/0/*)');
 
-      expect(
-        legacyHandler.buildMultiSigDescriptor!(devices, { network: 'testnet', quorum: 2, change: true })
-      ).toContain('/1/*');
+      expect(legacyHandler.buildMultiSigDescriptor).toBeUndefined();
     });
 
     it('validates aliases case-insensitively', () => {
@@ -134,8 +138,7 @@ describe('script type handlers', () => {
     it('builds expected derivation paths and single-sig descriptor', () => {
       expect(taprootHandler.getDerivationPath('mainnet')).toBe("m/86'/0'/0'");
       expect(taprootHandler.getDerivationPath('testnet', 9)).toBe("m/86'/1'/9'");
-      expect(taprootHandler.getMultisigDerivationPath('mainnet')).toBe("m/48'/0'/0'/3'");
-      expect(taprootHandler.getMultisigDerivationPath('testnet', 2)).toBe("m/48'/1'/2'/3'");
+      expect(() => taprootHandler.getMultisigDerivationPath('mainnet')).toThrow();
 
       expect(
         taprootHandler.buildSingleSigDescriptor(

@@ -54,11 +54,11 @@ describe("deviceConnection utilities", () => {
     ).toBe("unknown");
   });
 
-  it("normalizes derivation paths and auto-hardens standard BIP paths", () => {
+  it("normalizes notation without inventing missing hardening", () => {
     expect(normalizeDerivationPath("M/84h/0h/0h")).toBe("m/84'/0'/0'");
-    expect(normalizeDerivationPath("84/0/0")).toBe("m/84'/0'/0'");
-    expect(normalizeDerivationPath("m/44/1/2/0/0")).toBe("m/44'/1'/2'/0/0");
-    expect(normalizeDerivationPath("m/84''/0/0")).toBe("m/84''/0'/0'");
+    expect(normalizeDerivationPath("84/0/0")).toBe("m/84/0/0");
+    expect(normalizeDerivationPath("m/44/1/2/0/0")).toBe("m/44/1/2/0/0");
+    expect(normalizeDerivationPath("m/84''/0/0")).toBe("m/84''/0/0");
   });
 
   it("does not auto-harden non-standard purpose paths", () => {

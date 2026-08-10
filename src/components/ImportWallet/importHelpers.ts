@@ -3,11 +3,17 @@ import * as walletsApi from '../../api/wallets';
 import { ApiError } from '../../api/client';
 import {
   WalletScriptType,
+  WalletType,
   type WalletScriptType as WalletScriptTypeValue,
 } from '@sanctuary/shared/constants/walletIdentity';
 import {
+  buildCanonicalAccountPath,
+  findWalletPolicy,
+  parseCanonicalAccountPath,
+  renderDescriptorWrapper,
+} from '@sanctuary/shared/constants/walletPolicy';
+import {
   formatNetworkTitle,
-  networksShareCoinType,
   type TabNetwork,
 } from '../../app/networks';
 
@@ -19,20 +25,19 @@ export type ImportFormat = 'descriptor' | 'json' | 'hardware' | 'qr_code';
 export type ScriptType = WalletScriptTypeValue;
 export type HardwareDeviceType = 'ledger' | 'trezor';
 
-// Helper: Compute the BIP-44/49/84/86 account path; signet shares testnet coin type 1.
+// Compute a canonical single-sig account path. Exact chain selection stays
+// separate even where test chains share BIP44 coin type 1.
 export const getDerivationPath = (
   scriptType: ScriptType,
   account: number,
   network: TabNetwork = 'mainnet',
 ): string => {
-  const purpose: Record<ScriptType, number> = {
-    [WalletScriptType.NATIVE_SEGWIT]: 84,
-    [WalletScriptType.NESTED_SEGWIT]: 49,
-    [WalletScriptType.TAPROOT]: 86,
-    [WalletScriptType.LEGACY]: 44,
-  };
-  const coinType = network === 'mainnet' ? 0 : 1;
-  return `m/${purpose[scriptType]}'/${coinType}'/${account}'`;
+  return buildCanonicalAccountPath({
+    walletType: WalletType.SINGLE_SIG,
+    scriptType,
+    chainEnvironment: network,
+    account,
+  });
 };
 
 // Helper: Build descriptor from xpub data
@@ -42,20 +47,14 @@ export const buildDescriptorFromXpub = (
   path: string,
   xpub: string
 ): string => {
+  const accountPath = parseCanonicalAccountPath(path);
+  const policy = findWalletPolicy(WalletType.SINGLE_SIG, scriptType);
+  if (!accountPath || !policy || accountPath.policy.id !== policy.id) {
+    throw new Error('Derivation path does not match wallet script policy');
+  }
   const pathParts = path.replace("m/", "").replace(/'/g, "h");
   const key = `[${fingerprint}/${pathParts}]${xpub}/<0;1>/*`;
-  switch (scriptType) {
-    case WalletScriptType.NATIVE_SEGWIT:
-      return `wpkh(${key})`;
-    case WalletScriptType.NESTED_SEGWIT:
-      return `sh(wpkh(${key}))`;
-    case WalletScriptType.TAPROOT:
-      return `tr(${key})`;
-    case WalletScriptType.LEGACY:
-      return `pkh(${key})`;
-    default:
-      throw new Error('Unsupported wallet script type');
-  }
+  return renderDescriptorWrapper(policy.descriptorWrapper, key);
 };
 
 // Script type options
@@ -129,7 +128,7 @@ export const validateImportData = async (
       return false;
     }
 
-    if (activeNetwork && !networksShareCoinType(result.network, activeNetwork)) {
+    if (activeNetwork && result.network !== activeNetwork) {
       setValidationResult(null);
       setValidationError(
         `Imported wallet appears to be ${result.network}, but the sidebar network is ${formatNetworkTitle(activeNetwork)}. Switch networks in the sidebar and validate again.`

@@ -2,9 +2,8 @@
  * Canonical wallet/account identity values.
  *
  * Keep this module pure: it is imported by frontend, server, gateway,
- * OpenAPI schemas, and tests. Behavior metadata such as labels,
- * derivation paths, descriptor wrappers, and multisig support stays in the
- * runtime modules that own that behavior.
+ * OpenAPI schemas, and tests. Canonical derivation and descriptor behavior
+ * belongs in the versioned walletPolicy registry.
  */
 
 export const WalletType = {

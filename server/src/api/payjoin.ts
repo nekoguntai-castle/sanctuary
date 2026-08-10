@@ -30,7 +30,7 @@ import {
 import { parsePayjoinMinFeeRate } from '../services/payjoin/validation';
 import { getNetwork } from '../services/bitcoin/utils';
 import { normalizeLegacyBitcoinNetwork } from '../services/bitcoin/networks';
-import { assertWalletHardwareCapabilityById } from '../services/hardwareWalletCapabilities';
+import { assertFreshReceiveAddressSafeForDisplay } from '../services/addressDisplaySafety';
 
 const log = createLogger('PAYJOIN:ROUTE');
 
@@ -208,7 +208,7 @@ router.get('/address/:addressId/uri', authenticate, requireFeature('payjoinSuppo
   if (!address) {
     throw new NotFoundError('Address not found or access denied');
   }
-  await assertWalletHardwareCapabilityById(address.walletId, 'display');
+  await assertFreshReceiveAddressSafeForDisplay(address.walletId, address);
 
   // Generate Payjoin URL using configured public URL or fallback to request host
   const config = getConfig();

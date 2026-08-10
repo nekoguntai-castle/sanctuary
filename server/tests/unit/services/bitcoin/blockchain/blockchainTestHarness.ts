@@ -32,6 +32,14 @@ vi.mock('../../../../../src/services/notifications/notificationService', () => (
 }));
 
 vi.mock('../../../../../src/services/bitcoin/addressDerivation', () => ({
+  deriveCanonicalAddress: vi.fn().mockImplementation((_descriptors, coordinate) => ({
+    address: `tb1q_test_${coordinate.branch}_${coordinate.index}`,
+    derivationPath: `m/84'/0'/0'/${coordinate.branch}/${coordinate.index}`,
+    scriptPubKey: `0014${'00'.repeat(20)}`,
+    branch: coordinate.branch,
+    index: coordinate.index,
+    signerOrigins: [],
+  })),
   deriveAddressFromDescriptor: vi.fn().mockImplementation((descriptor, index, options) => {
     const change = options?.change ? 1 : 0;
     return {
@@ -59,4 +67,35 @@ export function setupBlockchainServiceTestHooks(): void {
 
 export function getBlockchainService(): BlockchainServiceModule {
   return blockchainService;
+}
+
+interface LockedBranchSummary {
+  maxIndex: number | null;
+  unusedTail: number;
+}
+
+/**
+ * Model the two SQL reads performed by canonical batch allocation: the wallet
+ * row lock followed by the compact receive/change allocation summary.
+ */
+export function mockLockedCanonicalBranchSummary(options: {
+  walletId: string;
+  receive: LockedBranchSummary;
+  change: LockedBranchSummary;
+}): void {
+  mockPrismaClient.$queryRaw.mockReset();
+  mockPrismaClient.$queryRaw
+    .mockResolvedValueOnce([{ id: options.walletId }])
+    .mockResolvedValueOnce([
+      {
+        branch: 0,
+        maxIndex: options.receive.maxIndex,
+        unusedTail: BigInt(options.receive.unusedTail),
+      },
+      {
+        branch: 1,
+        maxIndex: options.change.maxIndex,
+        unusedTail: BigInt(options.change.unusedTail),
+      },
+    ]);
 }

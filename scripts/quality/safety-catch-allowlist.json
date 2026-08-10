@@ -2,15 +2,6 @@
   "version": 1,
   "entries": [
     {
-      "file": "server/src/api/transactions/addresses.ts",
-      "functionName": "<module>",
-      "issue": "non-terminal-catch",
-      "count": 3,
-      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
-      "owner": "fund-safety",
-      "targetRemovalSlice": "fail-closed-safety-follow-up"
-    },
-    {
       "file": "server/src/api/transactions/walletTransactions/exportTransactions.ts",
       "functionName": "createExportRouter",
       "issue": "non-terminal-catch",
@@ -312,15 +303,6 @@
       "functionName": "validatePayjoinProposal",
       "issue": "non-terminal-catch",
       "count": 1,
-      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
-      "owner": "fund-safety",
-      "targetRemovalSlice": "fail-closed-safety-follow-up"
-    },
-    {
-      "file": "server/src/services/bitcoin/sync/addressDiscovery.ts",
-      "functionName": "ensureGapLimit",
-      "issue": "non-terminal-catch",
-      "count": 2,
       "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
       "owner": "fund-safety",
       "targetRemovalSlice": "fail-closed-safety-follow-up"

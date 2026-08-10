@@ -35,7 +35,9 @@ const WALLET_SNAPSHOT_SQL = `
     "sourceChangeDescriptor",
     "sourceDescriptorChecksum",
     "sourceChangeDescriptorChecksum",
-    "fingerprint"
+    "fingerprint",
+    "canonicalPolicyId",
+    "canonicalPolicyVersion"
   FROM "wallets"
   ORDER BY "id" ASC
 `;
@@ -46,7 +48,12 @@ const ADDRESS_SNAPSHOT_SQL = `
     "walletId",
     "address",
     "derivationPath",
-    "index"
+    "index",
+    "branch",
+    "coordinateVersion",
+    "canonicalPolicyId",
+    "canonicalPolicyVersion",
+    "scriptPubKey"
   FROM "addresses"
   ORDER BY "walletId" ASC, "index" ASC, "derivationPath" ASC, "id" ASC
 `;

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CANONICAL_ADDRESS_COORDINATE_VERSION } from '@sanctuary/shared/constants/walletPolicy';
 
 const mocks = vi.hoisted(() => ({
   assistantReadRepository: {
@@ -61,6 +62,8 @@ const mocks = vi.hoisted(() => ({
     getRecentBlocks: vi.fn(),
   },
   getBitcoinNetworkStatus: vi.fn(),
+  assertWalletHardwareCapabilityById: vi.fn(),
+  assertCanonicalAddressesForWallet: vi.fn(),
 }));
 
 vi.mock('../../../src/repositories', () => ({
@@ -102,6 +105,14 @@ vi.mock('../../../src/services/bitcoin/networkStatusService', () => ({
   getBitcoinNetworkStatus: mocks.getBitcoinNetworkStatus,
 }));
 
+vi.mock('../../../src/services/hardwareWalletCapabilities', () => ({
+  assertWalletHardwareCapabilityById: mocks.assertWalletHardwareCapabilityById,
+}));
+
+vi.mock('../../../src/services/wallet/canonicalAddressValidation', () => ({
+  assertCanonicalAddressesForWallet: mocks.assertCanonicalAddressesForWallet,
+}));
+
 import { assistantReadToolRegistry, type AssistantToolContext } from '../../../src/assistant/tools';
 import { resetMempoolStatusCacheForTests } from '../../../src/assistant/tools/networkReadTools';
 import { registerReadToolScopeTests } from './readToolExecutors.scope.contracts';
@@ -132,6 +143,8 @@ function priceRow(price: number | null, currency = 'USD', createdAt = new Date('
 describe('assistant read-tool executors', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.assertWalletHardwareCapabilityById.mockResolvedValue(undefined);
+    mocks.assertCanonicalAddressesForWallet.mockResolvedValue(undefined);
     resetMempoolStatusCacheForTests();
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-04-26T12:00:00.000Z'));
@@ -256,13 +269,43 @@ describe('assistant read-tool executors', () => {
     );
     expect(mocks.assistantReadRepository.searchAddresses).toHaveBeenNthCalledWith(
       2,
-      { walletId, addressLabels: { none: {} } },
+      {
+        walletId,
+        addressLabels: { none: {} },
+        branch: { in: [0, 1] },
+        coordinateVersion: CANONICAL_ADDRESS_COORDINATE_VERSION,
+      },
       expect.any(Number)
     );
+    expect(mocks.assertWalletHardwareCapabilityById).toHaveBeenCalledTimes(1);
+    expect(mocks.assertWalletHardwareCapabilityById).toHaveBeenCalledWith(walletId, 'display');
     expect(addresses.sensitivity).toBe('high');
     expect(addresses.data.addresses).toEqual([
       expect.objectContaining({ address: 'bc1qone', labels: ['deposit'] }),
     ]);
+  });
+
+  it('fails closed before searching fresh addresses when hardware display is disabled', async () => {
+    const context = createContext();
+    mocks.assertWalletHardwareCapabilityById.mockRejectedValueOnce(new Error('display disabled'));
+
+    await expect(assistantReadToolRegistry.execute(
+      'search_addresses',
+      { walletId, used: false },
+      context
+    )).rejects.toThrow('display disabled');
+
+    expect(mocks.assistantReadRepository.searchAddresses).not.toHaveBeenCalled();
+  });
+
+  it('rejects fresh search results when wallet-bound re-derivation fails', async () => {
+    const context = createContext();
+    mocks.assistantReadRepository.searchAddresses.mockResolvedValueOnce([{ id: 'stale' }]);
+    mocks.assertCanonicalAddressesForWallet.mockRejectedValueOnce(new Error('policy drift'));
+
+    await expect(assistantReadToolRegistry.execute(
+      'search_addresses', { walletId, used: false }, context
+    )).rejects.toThrow('policy drift');
   });
 
   it('builds wallet overview from shared repositories after scoped access', async () => {

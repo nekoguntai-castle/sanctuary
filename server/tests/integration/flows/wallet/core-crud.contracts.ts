@@ -13,7 +13,12 @@ import {
 const TESTNET_XPUB = 'tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M';
 const SINGLE_SIG_RECEIVE = `wpkh([aabbccdd/84'/1'/0']${TESTNET_XPUB}/0/*)`;
 const SINGLE_SIG_CHANGE = `wpkh([aabbccdd/84'/1'/0']${TESTNET_XPUB}/1/*)`;
-const MULTISIG_RECEIVE = `wsh(sortedmulti(2,[aabbccdd/48'/1'/0'/2']${TESTNET_XPUB}/0/*,[11223344/48'/1'/0'/2']${TESTNET_XPUB}/0/*,[55667788/48'/1'/0'/2']${TESTNET_XPUB}/0/*))`;
+const MULTISIG_XPUBS = [
+  'tpubDFH9dgzveyD8zTbPUFuLrGmCydNvxehyNdUXKJAQN8x4aZ4j6UZqGfnqFrD4NqyaTVGKbvEW54tsvPTK2UoSbCC1PJY8iCNiwTL3RWZEheQ',
+  'tpubDFPtPArj4GzBEFHohegg1Xatrc1Fi9oSox5LzuSRX91miwQxuUrEpBxpvDRsmZYJKYFhgdK3UStsjC8JKXfUbMinjFqiEM4uNwzVaCaHpys',
+  'tpubDEfobrrtptRTbKf4gysDhoabneABDTAcdj3Vbn4XwPsLE2pmqpizSPRG6zHsbAMuiSgWmWPsYCLHTKTPpyrGJ5rAoTpKoQNZcxodiPf2tSJ',
+] as const;
+const MULTISIG_RECEIVE = `wsh(sortedmulti(2,[aabbccdd/48'/1'/0'/2']${MULTISIG_XPUBS[0]}/0/*,[eeff0011/48'/1'/0'/2']${MULTISIG_XPUBS[1]}/0/*,[22334455/48'/1'/0'/2']${MULTISIG_XPUBS[2]}/0/*))`;
 const TAPROOT_RECEIVE = `tr([aabbccdd/86'/1'/0']${TESTNET_XPUB}/0/*)`;
 
 export function registerWalletCoreCrudTests(): void {

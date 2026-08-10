@@ -1,14 +1,41 @@
 import { formatPathForDescriptor } from '@sanctuary/shared/utils/bitcoin';
+import { isNetworkType, type NetworkType } from '@sanctuary/shared/constants/bitcoin';
+import {
+  buildCanonicalAccountPath,
+  findWalletPolicy,
+  renderDescriptorWrapper,
+} from '@sanctuary/shared/constants/walletPolicy';
+import type { WalletScriptType, WalletType } from '@sanctuary/shared/constants/walletIdentity';
 import type { DescriptorBuildOptions, DeviceKeyInfo, MultiSigBuildOptions, Network } from '../types';
 
-export function buildCoinTypeDerivationPath(purpose: number, network: Network, account: number = 0): string {
-  const coinType = network === 'mainnet' ? '0' : '1';
-  return `m/${purpose}'/${coinType}'/${account}'`;
+function canonicalNetwork(network: Network): NetworkType {
+  if (network === 'testnet') return 'testnet3';
+  if (!isNetworkType(network)) throw new Error(`Unknown Bitcoin network: ${network}`);
+  return network;
 }
 
-export function buildBip48DerivationPath(network: Network, scriptTypeNumber: number, account: number = 0): string {
-  const coinType = network === 'mainnet' ? '0' : '1';
-  return `m/48'/${coinType}'/${account}'/${scriptTypeNumber}'`;
+export function buildWalletPolicyDerivationPath(
+  walletType: WalletType,
+  scriptType: WalletScriptType,
+  network: Network,
+  account: number = 0,
+): string {
+  return buildCanonicalAccountPath({
+    walletType,
+    scriptType,
+    chainEnvironment: canonicalNetwork(network),
+    account,
+  });
+}
+
+export function wrapWalletPolicyDescriptor(
+  walletType: WalletType,
+  scriptType: WalletScriptType,
+  expression: string,
+): string {
+  const policy = findWalletPolicy(walletType, scriptType);
+  if (!policy) throw new Error('Unsupported wallet policy');
+  return renderDescriptorWrapper(policy.descriptorWrapper, expression);
 }
 
 export function getDescriptorChain(options: DescriptorBuildOptions): '0' | '1' {

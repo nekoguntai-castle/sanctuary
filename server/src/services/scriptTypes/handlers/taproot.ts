@@ -5,7 +5,7 @@
  * Latest Bitcoin script type with enhanced privacy and efficiency.
  */
 
-import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
+import { WalletScriptType, WalletType } from '@sanctuary/shared/constants/walletIdentity';
 import type {
   ScriptTypeHandler,
   DeviceKeyInfo,
@@ -13,10 +13,10 @@ import type {
   Network,
 } from '../types';
 import {
-  buildBip48DerivationPath,
-  buildCoinTypeDerivationPath,
+  buildWalletPolicyDerivationPath,
   buildRangedKeyExpression,
   supportsAnyScriptType,
+  wrapWalletPolicyDescriptor,
 } from './descriptorHelpers';
 
 export const taprootHandler: ScriptTypeHandler = {
@@ -30,16 +30,20 @@ export const taprootHandler: ScriptTypeHandler = {
   aliases: ['p2tr', 'bech32m', 'tr'],
 
   getDerivationPath(network: Network, account: number = 0): string {
-    return buildCoinTypeDerivationPath(86, network, account);
+    return buildWalletPolicyDerivationPath(WalletType.SINGLE_SIG, WalletScriptType.TAPROOT, network, account);
   },
 
-  getMultisigDerivationPath(network: Network, account: number = 0): string {
-    return buildBip48DerivationPath(network, 3, account);
+  getMultisigDerivationPath(_network: Network, _account: number = 0): string {
+    throw new Error('Taproot multisig is not supported');
   },
 
   buildSingleSigDescriptor(device: DeviceKeyInfo, options: DescriptorBuildOptions): string {
     const derivationPath = device.derivationPath || this.getDerivationPath(options.network);
-    return `tr(${buildRangedKeyExpression(device, derivationPath, options)})`;
+    return wrapWalletPolicyDescriptor(
+      WalletType.SINGLE_SIG,
+      WalletScriptType.TAPROOT,
+      buildRangedKeyExpression(device, derivationPath, options),
+    );
   },
 
   // Multisig not implemented - would require MuSig2 or script path spending

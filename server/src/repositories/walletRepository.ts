@@ -590,6 +590,8 @@ export interface WalletDescriptorAssignment {
   sourceChangeDescriptor: string | null;
   sourceDescriptorChecksum: string | null;
   sourceChangeDescriptorChecksum: string | null;
+  canonicalPolicyId: string;
+  canonicalPolicyVersion: number;
   addresses: Prisma.AddressCreateManyInput[];
 }
 
@@ -617,6 +619,8 @@ async function assignMissingDescriptor(
       sourceChangeDescriptor: assignment.sourceChangeDescriptor,
       sourceDescriptorChecksum: assignment.sourceDescriptorChecksum,
       sourceChangeDescriptorChecksum: assignment.sourceChangeDescriptorChecksum,
+      canonicalPolicyId: assignment.canonicalPolicyId,
+      canonicalPolicyVersion: assignment.canonicalPolicyVersion,
     },
   });
   if (updated.count !== 1) {

@@ -5,7 +5,7 @@ import {
   mockParseDescriptorForImport,
   mockResolveDescriptorTextPair,
   mockBuildDescriptorFromDevices,
-  mockDeriveAddressFromDescriptor,
+  mockDeriveCanonicalAddress,
   setupDeviceMocks,
   setupBeforeEach,
 } from './walletImport.setup';
@@ -165,15 +165,43 @@ describe('Wallet Import Service - Operations', () => {
 
       // Verify receive addresses
       const receiveAddresses = addressCreateCall.data.filter((a: any) =>
-        a.address.includes('receive')
+        a.branch === 0
       );
       expect(receiveAddresses).toHaveLength(20);
 
       // Verify change addresses
       const changeAddresses = addressCreateCall.data.filter((a: any) =>
-        a.address.includes('change')
+        a.branch === 1
       );
       expect(changeAddresses).toHaveLength(20);
+      expect(addressCreateCall.data).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          walletId: 'wallet-addr',
+          branch: 0,
+          index: 0,
+          coordinateVersion: 1,
+          canonicalPolicyId: 'single-sig-native-segwit-bip84-v1',
+          canonicalPolicyVersion: 1,
+          scriptPubKey: expect.stringMatching(/^[0-9a-f]+$/),
+        }),
+        expect.objectContaining({
+          walletId: 'wallet-addr',
+          branch: 1,
+          index: 0,
+          coordinateVersion: 1,
+          canonicalPolicyId: 'single-sig-native-segwit-bip84-v1',
+          canonicalPolicyVersion: 1,
+          scriptPubKey: expect.stringMatching(/^[0-9a-f]+$/),
+        }),
+      ]));
+      expect(addressCreateCall).not.toHaveProperty('skipDuplicates');
+      expect(mockDeriveCanonicalAddress).toHaveBeenCalledWith(
+        {
+          receiveDescriptor: VALID_RECEIVE_DESCRIPTOR,
+          changeDescriptor: VALID_CHANGE_DESCRIPTOR,
+        },
+        { branch: 0, index: 0, network: 'mainnet' },
+      );
     });
 
     it('should reject the import when initial address derivation fails', async () => {
@@ -217,7 +245,7 @@ describe('Wallet Import Service - Operations', () => {
         fingerprint: 'wallet-fp',
       });
 
-      mockDeriveAddressFromDescriptor.mockImplementation(() => {
+      mockDeriveCanonicalAddress.mockImplementation(() => {
         throw new Error('Address derivation failed');
       });
 
@@ -548,8 +576,17 @@ describe('Wallet Import Service - Operations', () => {
         expect.objectContaining({
           data: expect.objectContaining({
             network: 'testnet3',
+            canonicalPolicyId: 'single-sig-native-segwit-bip84-v1',
+            canonicalPolicyVersion: 1,
           }),
         })
+      );
+      expect(mockDeriveCanonicalAddress).toHaveBeenCalledWith(
+        expect.objectContaining({
+          receiveDescriptor: VALID_RECEIVE_DESCRIPTOR,
+          changeDescriptor: VALID_CHANGE_DESCRIPTOR,
+        }),
+        { branch: 0, index: 0, network: 'testnet3' },
       );
     });
   });

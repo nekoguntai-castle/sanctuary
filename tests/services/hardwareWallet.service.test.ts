@@ -497,6 +497,20 @@ describe('HardwareWalletService', () => {
     );
   });
 
+  it('derives exactly one mainnet and testnet-family discovery path per canonical policy', async () => {
+    const { WALLET_POLICY_REGISTRY, parseCanonicalAccountPath } = await import(
+      '@sanctuary/shared/constants/walletPolicy'
+    );
+    expect(HardwareWalletService.STANDARD_PATHS).toHaveLength(WALLET_POLICY_REGISTRY.length * 2);
+    for (const standardPath of HardwareWalletService.STANDARD_PATHS) {
+      const parsed = parseCanonicalAccountPath(standardPath.path);
+      expect(parsed).not.toBeNull();
+      expect(standardPath.purpose).toBe(parsed?.policy.accountPurpose);
+      expect(standardPath.scriptType).toBe(parsed?.policy.scriptType);
+      expect(parsed?.account).toBe(0);
+    }
+  });
+
   it('throws an actionable aggregated error if all standard xpub paths fail', async () => {
     const service = new HardwareWalletService();
     const { adapter } = createMockAdapter('coldcard', {

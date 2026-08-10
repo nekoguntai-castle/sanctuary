@@ -38,6 +38,13 @@
       "reviewWhenTouched": true,
       "lastReviewed": "2026-07-30"
     },
+    "server/tests/unit/assistant/readToolExecutors.test.ts": {
+      "category": "proof-harness",
+      "owner": "assistant-read-tools",
+      "reason": "Assistant read-tool contract harness sharing one hoisted repository, service, authorization, and wallet-safety mock boundary across executor behavior.",
+      "reviewWhenTouched": true,
+      "lastReviewed": "2026-08-09"
+    },
     "server/tests/unit/services/bitcoin/blockchain.syncAddress.test.ts": {
       "category": "proof-harness",
       "owner": "bitcoin-sync",

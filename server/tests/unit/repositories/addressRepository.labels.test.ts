@@ -205,6 +205,38 @@ describe("Address Repository label queries", () => {
       });
     });
 
+    it("preserves canonical predicates while scanning a requested chain", async () => {
+      const receiveOne = {
+        ...mockAddress,
+        id: "addr-canonical-receive",
+        derivationPath: "m/84'/0'/0'/0/0",
+        addressLabels: [],
+      };
+      (prisma.address.findMany as Mock)
+        .mockResolvedValueOnce([receiveOne])
+        .mockResolvedValueOnce([receiveOne]);
+
+      await addressRepository.findByWalletIdWithLabels("wallet-456", {
+        chain: "receive",
+        canonicalOnly: true,
+      });
+
+      expect(prisma.address.findMany).toHaveBeenNthCalledWith(1, {
+        where: {
+          walletId: "wallet-456",
+          branch: { in: [0, 1] },
+          coordinateVersion: 1,
+          canonicalPolicyId: { not: null },
+          canonicalPolicyVersion: 1,
+          scriptPubKey: { not: null },
+        },
+        select: { id: true, derivationPath: true },
+        orderBy: { index: "asc" },
+        skip: 0,
+        take: 200,
+      });
+    });
+
     it("does not hydrate labels when no addresses match the requested chain", async () => {
       const changeOne = {
         ...mockAddress,

@@ -12,15 +12,61 @@ interface DeviceInfo {
 }
 
 import { formatPathForDescriptor } from '@sanctuary/shared/utils/bitcoin';
-import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
+import {
+  isNetworkType,
+  type LegacyNetworkType,
+  type NetworkType,
+} from '@sanctuary/shared/constants/bitcoin';
 import {
   WalletScriptType,
   WalletType,
   type WalletScriptType as ScriptType,
   type WalletType as WalletTypeValue,
 } from '@sanctuary/shared/constants/walletIdentity';
+import {
+  buildCanonicalAccountPath,
+  findWalletPolicy,
+  renderDescriptorWrapper,
+} from '@sanctuary/shared/constants/walletPolicy';
 
-type Network = NetworkType;
+type Network = LegacyNetworkType;
+
+function wrapPolicyDescriptor(
+  walletType: WalletTypeValue,
+  scriptType: ScriptType,
+  expression: string,
+): string {
+  // Public builders validate supported wallet/script combinations first.
+  const policy = findWalletPolicy(walletType, scriptType)!;
+  return renderDescriptorWrapper(policy.descriptorWrapper, expression);
+}
+
+function canonicalNetwork(network: Network): NetworkType {
+  if (network === 'testnet') return 'testnet3';
+  if (!isNetworkType(network)) throw new Error(`Unknown Bitcoin network: ${network}`);
+  return network;
+}
+
+function canonicalAccountPath(
+  walletType: WalletTypeValue,
+  scriptType: ScriptType,
+  network: Network,
+  account: number,
+): string {
+  try {
+    return buildCanonicalAccountPath({
+      walletType,
+      scriptType,
+      chainEnvironment: canonicalNetwork(network),
+      account,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Unsupported wallet policy') {
+      throw new Error(`Unknown script type: ${scriptType}`);
+    }
+    throw error;
+  }
+}
 
 /**
  * Get the standard BIP derivation path for a script type
@@ -30,20 +76,7 @@ export function getDerivationPath(
   network: Network = 'mainnet',
   account: number = 0
 ): string {
-  const coinType = network === 'mainnet' ? '0' : '1';
-
-  switch (scriptType) {
-    case WalletScriptType.LEGACY:
-      return `m/44'/${coinType}'/${account}'`;
-    case WalletScriptType.NESTED_SEGWIT:
-      return `m/49'/${coinType}'/${account}'`;
-    case WalletScriptType.NATIVE_SEGWIT:
-      return `m/84'/${coinType}'/${account}'`;
-    case WalletScriptType.TAPROOT:
-      return `m/86'/${coinType}'/${account}'`;
-    default:
-      throw new Error(`Unknown script type: ${scriptType}`);
-  }
+  return canonicalAccountPath(WalletType.SINGLE_SIG, scriptType, network, account);
 }
 
 /**
@@ -54,20 +87,12 @@ export function getMultisigDerivationPath(
   network: Network = 'mainnet',
   account: number = 0
 ): string {
-  const coinType = network === 'mainnet' ? '0' : '1';
-
-  switch (scriptType) {
-    case WalletScriptType.LEGACY:
-      return `m/45'/${account}'`; // BIP45 for legacy multisig
-    case WalletScriptType.NESTED_SEGWIT:
-      return `m/48'/${coinType}'/${account}'/1'`; // BIP48 script type 1
-    case WalletScriptType.NATIVE_SEGWIT:
-      return `m/48'/${coinType}'/${account}'/2'`; // BIP48 script type 2
-    case WalletScriptType.TAPROOT:
-      return `m/48'/${coinType}'/${account}'/3'`; // BIP48 script type 3 (proposed)
-    default:
-      throw new Error(`Unknown script type: ${scriptType}`);
+  // This safety program supports only BIP48 nested/native sorted multisig.
+  // Legacy P2SH and Taproot multisig remain blocked until independently proven.
+  if (scriptType === WalletScriptType.LEGACY || scriptType === WalletScriptType.TAPROOT) {
+    throw new Error(`Unsupported multi-sig script type: ${scriptType}`);
   }
+  return canonicalAccountPath(WalletType.MULTI_SIG, scriptType, network, account);
 }
 
 
@@ -79,33 +104,16 @@ export function buildSingleSigDescriptor(
   scriptType: ScriptType,
   network: Network = 'mainnet'
 ): string {
+  if (!Object.values(WalletScriptType).includes(scriptType)) {
+    throw new Error(`Unsupported script type: ${scriptType}`);
+  }
   const derivationPath = device.derivationPath || getDerivationPath(scriptType, network);
   const formattedPath = formatPathForDescriptor(derivationPath);
 
   // Build key expression: [fingerprint/path]xpub
   const keyExpression = `[${device.fingerprint}/${formattedPath}]${device.xpub}`;
 
-  // Build descriptor based on script type
-  switch (scriptType) {
-    case WalletScriptType.LEGACY:
-      // P2PKH: pkh([fp/44h/0h/0h]xpub/0/*)
-      return `pkh(${keyExpression}/0/*)`;
-
-    case WalletScriptType.NESTED_SEGWIT:
-      // P2SH-P2WPKH: sh(wpkh([fp/49h/0h/0h]xpub/0/*))
-      return `sh(wpkh(${keyExpression}/0/*))`;
-
-    case WalletScriptType.NATIVE_SEGWIT:
-      // P2WPKH: wpkh([fp/84h/0h/0h]xpub/0/*)
-      return `wpkh(${keyExpression}/0/*)`;
-
-    case WalletScriptType.TAPROOT:
-      // P2TR: tr([fp/86h/0h/0h]xpub/0/*)
-      return `tr(${keyExpression}/0/*)`;
-
-    default:
-      throw new Error(`Unsupported script type: ${scriptType}`);
-  }
+  return wrapPolicyDescriptor(WalletType.SINGLE_SIG, scriptType, `${keyExpression}/0/*`);
 }
 
 /**
@@ -118,6 +126,13 @@ export function buildMultiSigDescriptor(
   scriptType: ScriptType,
   network: Network = 'mainnet'
 ): string {
+  if (!Object.values(WalletScriptType).includes(scriptType)) {
+    throw new Error(`Unsupported script type: ${scriptType}`);
+  }
+  if (scriptType !== WalletScriptType.NESTED_SEGWIT
+    && scriptType !== WalletScriptType.NATIVE_SEGWIT) {
+    throw new Error(`Unsupported multi-sig script type: ${scriptType}`);
+  }
   if (devices.length < 2) {
     throw new Error('Multi-sig requires at least 2 devices');
   }
@@ -140,28 +155,7 @@ export function buildMultiSigDescriptor(
   // Use sortedmulti for deterministic key ordering
   const sortedMulti = `sortedmulti(${quorum},${keyExpressions.join(',')})`;
 
-  // Wrap in appropriate script type
-  switch (scriptType) {
-    case WalletScriptType.LEGACY:
-      // P2SH multisig: sh(sortedmulti(m, key1, key2, ...))
-      return `sh(${sortedMulti})`;
-
-    case WalletScriptType.NESTED_SEGWIT:
-      // P2SH-P2WSH multisig: sh(wsh(sortedmulti(m, key1, key2, ...)))
-      return `sh(wsh(${sortedMulti}))`;
-
-    case WalletScriptType.NATIVE_SEGWIT:
-      // P2WSH multisig: wsh(sortedmulti(m, key1, key2, ...))
-      return `wsh(${sortedMulti})`;
-
-    case WalletScriptType.TAPROOT:
-      // Taproot multisig uses different mechanism (MuSig2 or threshold tree)
-      // For now, use basic multi-key taproot (not fully standard yet)
-      throw new Error('Taproot multisig is not yet supported');
-
-    default:
-      throw new Error(`Unsupported script type: ${scriptType}`);
-  }
+  return wrapPolicyDescriptor(WalletType.MULTI_SIG, scriptType, sortedMulti);
 }
 
 /**

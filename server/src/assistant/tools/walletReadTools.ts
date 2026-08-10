@@ -13,6 +13,9 @@ import {
 import { toAddressDto, toPolicyDto, toTransactionDto, toUtxoDto, toWalletDto } from './dto';
 import { AssistantToolError, createToolEnvelope, type AssistantReadToolDefinition } from './types';
 import { amountWhere, dateRangeWhere, parseToolLimit, truncateRows } from './utils';
+import { assertWalletHardwareCapabilityById } from '../../services/hardwareWalletCapabilities';
+import { assertCanonicalAddressesForWallet } from '../../services/wallet/canonicalAddressValidation';
+import { CANONICAL_ADDRESS_COORDINATE_VERSION } from '@sanctuary/shared/constants/walletPolicy';
 
 // Wallet tools expose GUI-readable wallet data only after adapter-owned access checks.
 // Raw address search is marked high-sensitivity; draft tools redact PSBT material.
@@ -161,14 +164,25 @@ export const searchAddressesTool: AssistantReadToolDefinition<typeof searchAddre
   budgets: listBudget,
   async execute(input, context) {
     await context.authorizeWalletAccess(input.walletId);
+    const canExposeFreshAddress = input.used !== true;
+    if (canExposeFreshAddress) {
+      await assertWalletHardwareCapabilityById(input.walletId, 'display');
+    }
     const where: Prisma.AddressWhereInput = { walletId: input.walletId };
     if (input.query) where.address = { contains: input.query };
     if (input.used !== undefined) where.used = input.used;
     if (input.hasLabels === true) where.addressLabels = { some: {} };
     if (input.hasLabels === false) where.addressLabels = { none: {} };
+    if (canExposeFreshAddress) {
+      where.branch = { in: [0, 1] };
+      where.coordinateVersion = CANONICAL_ADDRESS_COORDINATE_VERSION;
+    }
 
     const rowLimit = parseToolLimit(input.limit, searchAddressesTool.budgets);
     const found = await assistantReadRepository.searchAddresses(where, rowLimit + 1);
+    if (canExposeFreshAddress) {
+      await assertCanonicalAddressesForWallet(input.walletId, found);
+    }
     const { rows, truncation } = truncateRows(found, rowLimit);
     const addresses = rows.map(toAddressDto);
 

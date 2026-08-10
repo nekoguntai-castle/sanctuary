@@ -24,9 +24,11 @@ import {
   repairWalletDescriptor,
   updateWallet,
 } from '../../../../src/services/wallet';
+import * as addressDerivation from '../../../../src/services/bitcoin/addressDerivation';
 
 const VALID_RECEIVE_DESCRIPTOR = "wpkh([d34db33f/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/0/*)";
 const VALID_CHANGE_DESCRIPTOR = "wpkh([d34db33f/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/1/*)";
+const NATIVE_SEGWIT_POLICY_ID = 'single-sig-native-segwit-bip84-v1';
 
 export function registerWalletAddressDescriptorStatsTests(): void {
   describe('address generation and descriptor repair', () => {
@@ -70,23 +72,45 @@ export function registerWalletAddressDescriptorStatsTests(): void {
       });
       mockPrismaClient.wallet.findFirst.mockResolvedValueOnce({
         id: 'wallet-1',
+        type: 'single_sig',
+        scriptType: 'native_segwit',
         network: 'mainnet',
-        descriptor: 'wpkh(mock)',
-        addresses: [{ index: 4 }],
+        descriptor: VALID_RECEIVE_DESCRIPTOR,
+        changeDescriptor: VALID_CHANGE_DESCRIPTOR,
+        canonicalPolicyId: NATIVE_SEGWIT_POLICY_ID,
+        canonicalPolicyVersion: 1,
       });
 
       const address = await generateAddress('wallet-1', 'user-1');
 
       expect(address).toBe('bc1qmockaddress');
-      expect(mockPrismaClient.address.create).toHaveBeenCalledWith({
-        data: {
-          walletId: 'wallet-1',
-          address: 'bc1qmockaddress',
-          derivationPath: "m/84'/0'/0'/0/0",
-          index: 5,
-          used: false,
+      const { addressRepository } = await import('../../../../src/repositories');
+      expect(addressRepository.createNextCanonical).toHaveBeenCalledWith(
+        'wallet-1',
+        0,
+        expect.any(Function),
+      );
+      expect(addressDerivation.deriveCanonicalAddress).toHaveBeenCalledWith(
+        {
+          receiveDescriptor: VALID_RECEIVE_DESCRIPTOR,
+          changeDescriptor: VALID_CHANGE_DESCRIPTOR,
         },
+        { branch: 0, index: 5, network: 'mainnet' },
+      );
+      const persisted = await vi.mocked(addressRepository.createNextCanonical).mock.results[0].value;
+      expect(persisted).toMatchObject({
+        walletId: 'wallet-1',
+        address: 'bc1qmockaddress',
+        derivationPath: "m/84'/0'/0'/0/5",
+        scriptPubKey: '0014mockscriptpubkey',
+        branch: 0,
+        index: 5,
+        coordinateVersion: 1,
+        canonicalPolicyId: NATIVE_SEGWIT_POLICY_ID,
+        canonicalPolicyVersion: 1,
+        used: false,
       });
+      expect(mockPrismaClient.address.create).not.toHaveBeenCalled();
     });
 
     it('swallows hook failures after address generation', async () => {
@@ -96,9 +120,13 @@ export function registerWalletAddressDescriptorStatsTests(): void {
       });
       mockPrismaClient.wallet.findFirst.mockResolvedValueOnce({
         id: 'wallet-1',
+        type: 'single_sig',
+        scriptType: 'native_segwit',
         network: 'mainnet',
-        descriptor: 'wpkh(mock)',
-        addresses: [{ index: 0 }],
+        descriptor: VALID_RECEIVE_DESCRIPTOR,
+        changeDescriptor: VALID_CHANGE_DESCRIPTOR,
+        canonicalPolicyId: NATIVE_SEGWIT_POLICY_ID,
+        canonicalPolicyVersion: 1,
       });
       mockHookExecuteAfter.mockReturnValueOnce(Promise.reject(new Error('hook address failed')));
 
@@ -120,10 +148,34 @@ export function registerWalletAddressDescriptorStatsTests(): void {
         id: 'wallet-1',
         network: 'mainnet',
         descriptor: null,
-        addresses: [],
+        changeDescriptor: null,
       });
 
       await expect(generateAddress('wallet-1', 'user-1')).rejects.toThrow('Wallet does not have a descriptor');
+    });
+
+    it('fails closed for a legacy descriptor wallet without persisted canonical policy identity', async () => {
+      mockPrismaClient.wallet.findUnique.mockResolvedValueOnce({
+        id: 'wallet-legacy',
+        devices: [{ device: { type: 'coldcard', model: null } }],
+      });
+      mockPrismaClient.wallet.findFirst.mockResolvedValueOnce({
+        id: 'wallet-legacy',
+        type: 'single_sig',
+        scriptType: 'native_segwit',
+        network: 'mainnet',
+        descriptor: VALID_RECEIVE_DESCRIPTOR,
+        changeDescriptor: VALID_CHANGE_DESCRIPTOR,
+        canonicalPolicyId: null,
+        canonicalPolicyVersion: null,
+      });
+
+      await expect(generateAddress('wallet-legacy', 'user-1')).rejects.toThrow(
+        'Wallet canonical policy identity is missing or inconsistent',
+      );
+      const { addressRepository } = await import('../../../../src/repositories');
+      expect(addressRepository.createNextCanonical).not.toHaveBeenCalled();
+      expect(addressDerivation.deriveCanonicalAddress).not.toHaveBeenCalled();
     });
 
     it('returns already-repaired message when descriptor exists', async () => {
@@ -243,8 +295,36 @@ export function registerWalletAddressDescriptorStatsTests(): void {
       const { walletRepository } = await import('../../../../src/repositories');
       expect(walletRepository.assignDescriptorWithAddresses).toHaveBeenCalledWith(
         'wallet-1',
-        expect.objectContaining({ addresses: expect.any(Array) }),
+        expect.objectContaining({
+          descriptor: VALID_RECEIVE_DESCRIPTOR,
+          changeDescriptor: VALID_CHANGE_DESCRIPTOR,
+          canonicalPolicyId: NATIVE_SEGWIT_POLICY_ID,
+          canonicalPolicyVersion: 1,
+          addresses: expect.any(Array),
+        }),
       );
+      const assignment = vi.mocked(walletRepository.assignDescriptorWithAddresses).mock.calls[0][1];
+      expect(assignment.addresses).toHaveLength(40);
+      expect(assignment.addresses).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          walletId: 'wallet-1',
+          branch: 0,
+          index: 0,
+          coordinateVersion: 1,
+          canonicalPolicyId: NATIVE_SEGWIT_POLICY_ID,
+          canonicalPolicyVersion: 1,
+          scriptPubKey: '0014mockscriptpubkey',
+        }),
+        expect.objectContaining({
+          walletId: 'wallet-1',
+          branch: 1,
+          index: 0,
+          coordinateVersion: 1,
+          canonicalPolicyId: NATIVE_SEGWIT_POLICY_ID,
+          canonicalPolicyVersion: 1,
+          scriptPubKey: '0014mockscriptpubkey',
+        }),
+      ]));
     });
 
     it('propagates atomic repair persistence failures without reporting success', async () => {
