@@ -8,8 +8,10 @@
  * - Custom timeout middleware
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { EventEmitter } from 'events';
+
+type TestNextFunction = (error?: unknown) => void;
 
 // Mock logger
 const mockLogger = vi.hoisted(() => ({
@@ -37,7 +39,7 @@ import { abortRequest } from '../../../src/utils/requestAbort';
 describe('Request Timeout Middleware', () => {
   let req: any;
   let res: any;
-  let next: ReturnType<typeof vi.fn>;
+  let next: Mock<TestNextFunction>;
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -54,7 +56,7 @@ describe('Request Timeout Middleware', () => {
       json: vi.fn().mockReturnThis(),
     });
 
-    next = vi.fn();
+    next = vi.fn<TestNextFunction>();
   });
 
   afterEach(() => {

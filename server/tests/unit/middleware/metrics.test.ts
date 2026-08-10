@@ -9,7 +9,9 @@
  * - Metrics endpoint
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+
+type TestNextFunction = (error?: unknown) => void;
 
 // Hoist all mocks
 const { mockLogger, mockObserve, mockInc, mockGetMetrics, mockGetContentType, mockNormalizePath } = vi.hoisted(() => {
@@ -55,7 +57,7 @@ import { metricsMiddleware, metricsHandler, responseTimeMiddleware } from '../..
 describe('Metrics Middleware', () => {
   let req: any;
   let res: any;
-  let next: ReturnType<typeof vi.fn>;
+  let next: Mock<TestNextFunction>;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -77,7 +79,7 @@ describe('Metrics Middleware', () => {
       },
     };
 
-    next = vi.fn();
+    next = vi.fn<TestNextFunction>();
   });
 
   describe('metricsMiddleware', () => {

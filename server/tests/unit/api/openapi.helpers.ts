@@ -1,5 +1,9 @@
 import { expect } from 'vitest';
+import express from 'express';
 import openApiRouter, { openApiSpec } from '../../../src/api/openapi';
+
+const openApiRouteHandler = express();
+openApiRouteHandler.use(openApiRouter);
 
 export {
   MOBILE_ACTIONS,
@@ -99,7 +103,7 @@ export const invokeRoute = (method: string, url: string) => new Promise<HandlerR
     },
   };
 
-  openApiRouter.handle(req, res, (err?: Error) => {
+  openApiRouteHandler(req, res, (err?: unknown) => {
     if (err) {
       reject(err);
       return;
@@ -110,8 +114,12 @@ export const invokeRoute = (method: string, url: string) => new Promise<HandlerR
 
 export type OpenApiPathKey = keyof typeof openApiSpec.paths;
 
+export function getOptionalProperty(value: object, key: PropertyKey): unknown {
+  return Reflect.has(value, key) ? Reflect.get(value, key) : undefined;
+}
+
 export function expectDocumentedMethod(path: OpenApiPathKey, method: string) {
-  const pathItem = openApiSpec.paths[path] as Record<string, unknown>;
+  const pathItem = openApiSpec.paths[path];
   expect(pathItem).toBeDefined();
-  expect(pathItem[method.toLowerCase()]).toBeDefined();
+  expect(getOptionalProperty(pathItem, method.toLowerCase())).toBeDefined();
 }

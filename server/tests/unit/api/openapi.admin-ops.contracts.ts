@@ -8,6 +8,7 @@ import {
   VALID_POLICY_TYPES,
   AUDIT_DEFAULT_PAGE_SIZE,
   AUDIT_STATS_DAYS,
+  getOptionalProperty,
 } from './openapi.helpers';
 import { PASSWORD_POLICY, PASSWORD_POLICY_MESSAGES } from '../../../src/utils/password';
 import { USERNAME_POLICY } from '../../../src/utils/username';
@@ -325,7 +326,7 @@ export function registerOpenApiAdminOpsTests() {
     expect(openApiSpec.components.schemas.AdminCreateUserRequest.properties.email).toMatchObject({
       format: 'email',
     });
-    expect(openApiSpec.components.schemas.AdminUpdateUserRequest.required).toBeUndefined();
+    expect(getOptionalProperty(openApiSpec.components.schemas.AdminUpdateUserRequest, 'required')).toBeUndefined();
     expect(openApiSpec.components.schemas.AdminUpdateUserRequest.properties.username).toMatchObject({
       minLength: USERNAME_POLICY.minLength,
       maxLength: USERNAME_POLICY.maxLength,
@@ -421,7 +422,7 @@ export function registerOpenApiAdminOpsTests() {
       'additionalProperties',
       false,
     );
-    expect(openApiSpec.components.schemas.AdminUpdateGroupRequest.required).toBeUndefined();
+    expect(getOptionalProperty(openApiSpec.components.schemas.AdminUpdateGroupRequest, 'required')).toBeUndefined();
     expect(openApiSpec.components.schemas.AdminUpdateGroupRequest.properties.description).toMatchObject({
       nullable: true,
     });

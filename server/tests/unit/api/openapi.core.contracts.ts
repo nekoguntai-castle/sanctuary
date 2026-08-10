@@ -6,6 +6,7 @@ import {
   browserOrBearerAuthSecurity,
   invokeRoute,
   expectDocumentedMethod,
+  getOptionalProperty,
 } from "./openapi.helpers";
 
 import type { OpenApiPathKey } from "./openapi.helpers";
@@ -653,7 +654,7 @@ export function registerOpenApiHealthTests() {
 
     for (const [path, method] of routes) {
       expectDocumentedMethod(path, method);
-      expect(openApiSpec.paths[path][method]).not.toHaveProperty("security");
+      expect(getOptionalProperty(openApiSpec.paths[path], method)).not.toHaveProperty("security");
     }
 
     expect(openApiSpec.components.schemas.HealthStatus.enum).toEqual([

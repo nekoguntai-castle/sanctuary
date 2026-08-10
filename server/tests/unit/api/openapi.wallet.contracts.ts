@@ -7,6 +7,7 @@ import {
 import {
   openApiSpec,
   expectDocumentedMethod,
+  getOptionalProperty,
   WALLET_ROLE_VALUES,
   WALLET_SHARE_ROLE_VALUES,
   WALLET_IMPORT_FORMAT_VALUES,
@@ -298,7 +299,7 @@ export function registerOpenApiWalletTests() {
     expect(createSchema.properties.secret.writeOnly).toBe(true);
     expect(createSchema.properties.headerConfig.properties.headers.additionalProperties)
       .toMatchObject({ type: 'string', not: { enum: ['[REDACTED]'] } });
-    expect(updateSchema.required).toBeUndefined();
+    expect(getOptionalProperty(updateSchema, 'required')).toBeUndefined();
     expect(updateSchema.properties.headerConfig.properties.headers.additionalProperties)
       .toMatchObject({
         type: 'string',

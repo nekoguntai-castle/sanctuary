@@ -108,6 +108,9 @@ vi.mock('../../../../src/utils/requestContext', () => ({
 import bitcoinRouter from '../../../../src/api/bitcoin';
 import { errorHandler } from '../../../../src/errors/errorHandler';
 
+const bitcoinRouteHandler = express();
+bitcoinRouteHandler.use(bitcoinRouter);
+
 type HandlerResponse = {
   status: number;
   headers: Record<string, string>;
@@ -181,7 +184,7 @@ class RequestBuilder {
         },
       };
 
-      bitcoinRouter.handle(req, res, (err?: any) => {
+      bitcoinRouteHandler(req, res, (err?: any) => {
         if (err) {
           const statusCode = err.statusCode || 500;
           const body = err.toResponse

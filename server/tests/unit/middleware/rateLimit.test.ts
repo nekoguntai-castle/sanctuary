@@ -134,7 +134,7 @@ describe('Rate Limit Middleware', () => {
         resetAt: Date.now() + 60000,
       });
       mockReq.headers = { 'x-forwarded-for': '203.0.113.1, 198.51.100.2' };
-      mockReq.ip = '198.51.100.2';
+      mockReq = { ...mockReq, ip: '198.51.100.2' };
 
       const middleware = rateLimit('test-policy');
       await middleware(mockReq as Request, mockRes as Response, mockNext);
@@ -150,7 +150,7 @@ describe('Rate Limit Middleware', () => {
         resetAt: Date.now() + 60000,
       });
       mockReq.headers = { 'x-forwarded-for': [' 198.51.100.10 ', '203.0.113.9'] as any };
-      mockReq.ip = '203.0.113.9';
+      mockReq = { ...mockReq, ip: '203.0.113.9' };
 
       const middleware = rateLimit('test-policy');
       await middleware(mockReq as Request, mockRes as Response, mockNext);
@@ -165,7 +165,7 @@ describe('Rate Limit Middleware', () => {
         remaining: 99,
         resetAt: Date.now() + 60000,
       });
-      mockReq.ip = undefined;
+      mockReq = { ...mockReq, ip: undefined };
       mockReq.socket = { remoteAddress: '10.0.0.15' } as any;
 
       const middleware = rateLimit('test-policy');
@@ -181,7 +181,7 @@ describe('Rate Limit Middleware', () => {
         remaining: 99,
         resetAt: Date.now() + 60000,
       });
-      mockReq.ip = undefined;
+      mockReq = { ...mockReq, ip: undefined };
       mockReq.socket = {} as any;
 
       const middleware = rateLimit('test-policy');

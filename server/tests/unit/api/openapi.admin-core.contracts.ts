@@ -17,6 +17,7 @@ import {
   DEFAULT_SMTP_FROM_NAME,
   DEFAULT_SMTP_PORT,
   FEATURE_FLAG_KEYS,
+  getOptionalProperty,
 } from './openapi.helpers';
 
 import type {
@@ -834,7 +835,7 @@ export function registerOpenApiAdminCoreTests() {
       .toEqual({
         $ref: '#/components/schemas/AdminUpdateElectrumServerRequest',
       });
-    expect(openApiSpec.components.schemas.AdminUpdateElectrumServerRequest.required).toBeUndefined();
+    expect(getOptionalProperty(openApiSpec.components.schemas.AdminUpdateElectrumServerRequest, 'required')).toBeUndefined();
     expect(openApiSpec.components.schemas.AdminUpdateElectrumServerRequest.properties.network.enum).toEqual([
       'mainnet',
       'testnet3',

@@ -6,6 +6,7 @@ import {
   agentBearerAuthSecurity,
   browserOrBearerAuthSecurity,
   expectDocumentedMethod,
+  getOptionalProperty,
   MOBILE_ACTIONS,
   MOBILE_API_REQUEST_LIMITS,
   MOBILE_DEVICE_ACCOUNT_PURPOSES,
@@ -243,7 +244,7 @@ export function registerOpenApiGatewayTests() {
     }
 
     expect(openApiSpec.components.schemas.RefreshTokenRequest).toBeDefined();
-    expect(openApiSpec.components.schemas.RefreshTokenRequest.required).toBeUndefined();
+    expect(getOptionalProperty(openApiSpec.components.schemas.RefreshTokenRequest, 'required')).toBeUndefined();
     expect(openApiSpec.paths['/auth/refresh'].post.requestBody.required).toBe(false);
     expect(MobileRefreshTokenRequestSchema.safeParse({}).success).toBe(false);
     expect(openApiSpec.components.schemas.TwoFactorVerifyRequest).toBeDefined();
@@ -439,7 +440,7 @@ export function registerOpenApiGatewayTests() {
       type: 'string',
       minLength: 1,
     });
-    expect(openApiSpec.components.schemas.TransactionBroadcastRequest.required).toBeUndefined();
+    expect(getOptionalProperty(openApiSpec.components.schemas.TransactionBroadcastRequest, 'required')).toBeUndefined();
     expect(openApiSpec.components.schemas.TransactionBroadcastRequest.anyOf).toEqual([
       { required: ['signedPsbtBase64'] },
       { required: ['rawTxHex'] },

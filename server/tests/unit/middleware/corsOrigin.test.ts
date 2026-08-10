@@ -34,10 +34,16 @@ function createRequestLike(options: {
     headers.host = options.host;
   }
 
+  function getHeader(name: 'set-cookie'): string[] | undefined;
+  function getHeader(name: string): string | undefined;
+  function getHeader(name: string): string | string[] | undefined {
+    return name.toLowerCase() === 'host' ? options.host : undefined;
+  }
+
   return {
     headers,
     protocol: options.protocol ?? 'http',
-    get: (name: string) => name.toLowerCase() === 'host' ? options.host : undefined,
+    get: getHeader,
   };
 }
 

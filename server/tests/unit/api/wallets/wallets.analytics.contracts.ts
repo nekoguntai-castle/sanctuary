@@ -80,7 +80,12 @@ export const registerWalletAnalyticsContracts = () => {
       expect(response.body.dataPoints.some((point: any) => point.balance === 0)).toBe(true);
       expect(response.body.dataPoints.at(-1).balance).toBe(999999);
 
-      const [, startDateArg] = mockTransactionRepository.findForBalanceHistory.mock.calls.at(-1);
+      const latestHistoryCall = mockTransactionRepository.findForBalanceHistory.mock.calls.at(-1);
+      expect(latestHistoryCall).toBeDefined();
+      if (!latestHistoryCall) {
+        throw new Error('Expected balance history repository to be called');
+      }
+      const [, startDateArg] = latestHistoryCall;
       const startDateMs = new Date(startDateArg).getTime();
       const ageMs = Date.now() - startDateMs;
       const twentyEightDays = 28 * 86400000;

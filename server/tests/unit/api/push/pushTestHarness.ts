@@ -62,6 +62,9 @@ import pushRouter from '../../../../src/api/push';
 import { errorHandler } from '../../../../src/errors/errorHandler';
 import { pushDeviceRepository, auditLogRepository } from '../../../../src/repositories';
 
+const pushRouteHandler = express();
+pushRouteHandler.use(pushRouter);
+
 export const mockUpsert = pushDeviceRepository.upsert as ReturnType<typeof vi.fn>;
 export const mockFindByToken = pushDeviceRepository.findByToken as ReturnType<typeof vi.fn>;
 export const mockFindByUserId = pushDeviceRepository.findByUserId as ReturnType<typeof vi.fn>;
@@ -160,7 +163,7 @@ class RequestBuilder {
         },
       };
 
-      pushRouter.handle(req, res, (err?: any) => {
+      pushRouteHandler(req, res, (err?: any) => {
         if (err) {
           const statusCode = err.statusCode || 500;
           const body = err.toResponse

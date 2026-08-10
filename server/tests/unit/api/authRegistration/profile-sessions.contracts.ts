@@ -455,6 +455,7 @@ export function registerAuthProfileSessionsTests(): void {
       const mockSessions = [
         {
           id: 'session-1',
+          deviceId: null,
           deviceName: 'Chrome on Mac',
           userAgent: 'Mozilla/5.0...',
           ipAddress: '192.168.1.1',
@@ -464,6 +465,7 @@ export function registerAuthProfileSessionsTests(): void {
         },
         {
           id: 'session-2',
+          deviceId: null,
           deviceName: 'Firefox on Windows',
           userAgent: 'Mozilla/5.0...',
           ipAddress: '192.168.1.2',
@@ -505,6 +507,7 @@ export function registerAuthProfileSessionsTests(): void {
       const mockSessions = [
         {
           id: 'session-1',
+          deviceId: null,
           deviceName: null, // No device name
           userAgent: 'Mozilla/5.0...',
           ipAddress: '192.168.1.1',

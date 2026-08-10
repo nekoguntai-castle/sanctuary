@@ -178,7 +178,7 @@ class RequestBuilder {
   private headers: Record<string, string> = {};
   private body: unknown;
 
-  constructor(private method: string, private url: string, private router: express.Router) {}
+  constructor(private method: string, private url: string, private routeHandler: express.Express) {}
 
   set(key: string, value: string): this {
     this.headers[key] = value;
@@ -240,7 +240,7 @@ class RequestBuilder {
         },
       };
 
-      this.router.handle(req, res, (err?: any) => {
+      this.routeHandler(req, res, (err?: any) => {
         if (err) {
           const statusCode = err.statusCode || 500;
           const body = err.toResponse
@@ -257,12 +257,16 @@ class RequestBuilder {
   }
 }
 
-export const request = (router: express.Router) => ({
-  get: (url: string) => new RequestBuilder('GET', url, router),
-  post: (url: string) => new RequestBuilder('POST', url, router),
-  patch: (url: string) => new RequestBuilder('PATCH', url, router),
-  delete: (url: string) => new RequestBuilder('DELETE', url, router),
-});
+export const request = (router: express.Router) => {
+  const routeHandler = express();
+  routeHandler.use(router);
+  return {
+    get: (url: string) => new RequestBuilder('GET', url, routeHandler),
+    post: (url: string) => new RequestBuilder('POST', url, routeHandler),
+    patch: (url: string) => new RequestBuilder('PATCH', url, routeHandler),
+    delete: (url: string) => new RequestBuilder('DELETE', url, routeHandler),
+  };
+};
 
 export let walletRouter: express.Router;
 export let app: express.Application;

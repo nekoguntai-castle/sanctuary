@@ -8,7 +8,9 @@
  * - Locale helper function
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+
+type TestNextFunction = (error?: unknown) => void;
 
 // Mock i18n service
 const mockI18nService = vi.hoisted(() => ({
@@ -36,7 +38,7 @@ import { i18nMiddleware, getRequestLocale } from '../../../src/middleware/i18n';
 describe('i18n Middleware', () => {
   let req: any;
   let res: any;
-  let next: ReturnType<typeof vi.fn>;
+  let next: Mock<TestNextFunction>;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -46,7 +48,7 @@ describe('i18n Middleware', () => {
     };
 
     res = {};
-    next = vi.fn();
+    next = vi.fn<TestNextFunction>();
   });
 
   describe('i18nMiddleware', () => {

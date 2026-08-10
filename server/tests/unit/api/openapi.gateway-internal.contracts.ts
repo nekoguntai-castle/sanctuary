@@ -3,6 +3,7 @@ import { expect, it } from 'vitest';
 import {
   bearerOnlyAuthSecurity,
   expectDocumentedMethod,
+  getOptionalProperty,
   MOBILE_ACTIONS,
   openApiSpec,
 } from './openapi.helpers';
@@ -24,13 +25,13 @@ export function registerOpenApiGatewayInternalTests() {
 
     for (const [path, method] of routes) {
       expectDocumentedMethod(path, method);
-      expect(openApiSpec.paths[path].servers).toEqual([
+      expect(getOptionalProperty(openApiSpec.paths[path], 'servers')).toEqual([
         {
           url: '/',
           description: 'Application root for internal and gateway-only routes',
         },
       ]);
-      expect(openApiSpec.paths[path]['x-internal']).toBe(true);
+      expect(getOptionalProperty(openApiSpec.paths[path], 'x-internal')).toBe(true);
     }
 
     for (const path of [

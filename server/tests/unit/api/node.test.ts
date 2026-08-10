@@ -20,13 +20,10 @@ vi.mock('jsonwebtoken', () => ({
 }));
 
 const createMockSocket = () => {
-  const socket = new EventEmitter() as EventEmitter & {
-    write: ReturnType<typeof vi.fn>;
-    destroy: ReturnType<typeof vi.fn>;
-  };
-  socket.write = vi.fn();
-  socket.destroy = vi.fn();
-  return socket;
+  return Object.assign(new EventEmitter(), {
+    write: vi.fn(),
+    destroy: vi.fn(),
+  });
 };
 
 // Mock net module
@@ -108,6 +105,9 @@ import { ApiError, InternalError } from '../../../src/errors/ApiError';
 import net from 'net';
 import tls from 'tls';
 
+const nodeRouteHandler = express();
+nodeRouteHandler.use(nodeRouter);
+
 const mockNetConnect = net.connect as ReturnType<typeof vi.fn>;
 const mockTlsConnect = tls.connect as ReturnType<typeof vi.fn>;
 
@@ -121,10 +121,10 @@ const waitForCall = async (mockFn: ReturnType<typeof vi.fn>) => {
   throw new Error('Expected socket connect to be called');
 };
 
-const getLastSocket = async (mockFn: ReturnType<typeof vi.fn>) => {
+const getLastSocket = async (mockFn: ReturnType<typeof vi.fn>): Promise<ReturnType<typeof createMockSocket>> => {
   await waitForCall(mockFn);
   const result = mockFn.mock.results[mockFn.mock.results.length - 1];
-  return result?.value as EventEmitter;
+  return result?.value;
 };
 
 const waitForListener = async (getEmitter: () => EventEmitter, event: string) => {
@@ -206,7 +206,7 @@ class RequestBuilder {
         },
       };
 
-      nodeRouter.handle(req, res, (err?: Error) => {
+      nodeRouteHandler(req, res, (err?: unknown) => {
         if (err) {
           // Simulate errorHandler behavior for ApiError instances
           if (err instanceof ApiError) {

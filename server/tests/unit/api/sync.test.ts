@@ -8,6 +8,7 @@ import { vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 import { DEFAULT_SYNC_PRIORITY } from '@sanctuary/shared/constants/sync';
+import type { WalletLogEntry } from '../../../src/websocket/notifications';
 
 // Hoist mock variables for use in vi.mock() factories
 const {
@@ -38,7 +39,7 @@ const {
     getSyncStatus: vi.fn(),
     queueUserWallets: vi.fn(),
   },
-  mockWalletLogBufferGet: vi.fn(() => []),
+  mockWalletLogBufferGet: vi.fn<() => WalletLogEntry[]>(() => []),
   mockEnqueueWalletSyncBatch: vi.fn(),
   mockEnqueueFullResyncBatch: vi.fn(),
 }));
@@ -308,7 +309,13 @@ describe('Sync API - Network Endpoints', () => {
     it('GET /sync/logs/:walletId returns buffered logs', async () => {
       mockWalletRepository.findByIdWithAccess.mockResolvedValue({ id: 'wallet-1' });
       mockWalletLogBufferGet.mockReturnValueOnce([
-        { level: 'info', message: 'sync started' },
+        {
+          id: 'log-1',
+          timestamp: '2024-01-01T00:00:00.000Z',
+          level: 'info',
+          module: 'sync',
+          message: 'sync started',
+        },
       ]);
 
       const response = await request(app)
@@ -316,7 +323,13 @@ describe('Sync API - Network Endpoints', () => {
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({
-        logs: [{ level: 'info', message: 'sync started' }],
+        logs: [{
+          id: 'log-1',
+          timestamp: '2024-01-01T00:00:00.000Z',
+          level: 'info',
+          module: 'sync',
+          message: 'sync started',
+        }],
       });
       expect(mockWalletLogBufferGet).toHaveBeenCalledWith('wallet-1');
     });

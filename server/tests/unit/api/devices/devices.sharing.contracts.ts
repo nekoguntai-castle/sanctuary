@@ -15,9 +15,7 @@ export function registerDeviceSharingTests(): void {
       const mockGetDeviceShareInfo = vi.mocked(getDeviceShareInfo);
 
       mockGetDeviceShareInfo.mockResolvedValue({
-        deviceId: 'device-1',
-        owner: { id: 'test-user-id', username: 'testuser' },
-        sharedUsers: [
+        users: [
           { id: 'user-2', username: 'otheruser', role: 'viewer' },
         ],
         group: null,
@@ -27,9 +25,8 @@ export function registerDeviceSharingTests(): void {
         .get('/api/v1/devices/device-1/share');
 
       expect(response.status).toBe(200);
-      expect(response.body.deviceId).toBe('device-1');
-      expect(response.body.owner.username).toBe('testuser');
-      expect(response.body.sharedUsers).toHaveLength(1);
+      expect(response.body.users).toHaveLength(1);
+      expect(response.body.users[0].username).toBe('otheruser');
       expect(mockGetDeviceShareInfo).toHaveBeenCalledWith('device-1');
     });
 
@@ -38,9 +35,7 @@ export function registerDeviceSharingTests(): void {
       const mockGetDeviceShareInfo = vi.mocked(getDeviceShareInfo);
 
       mockGetDeviceShareInfo.mockResolvedValue({
-        deviceId: 'device-1',
-        owner: { id: 'test-user-id', username: 'testuser' },
-        sharedUsers: [],
+        users: [],
         group: { id: 'group-1', name: 'Family Group' },
       });
 
@@ -183,6 +178,7 @@ export function registerDeviceSharingTests(): void {
       mockShareDeviceWithGroup.mockResolvedValue({
         success: true,
         message: 'Device shared with group',
+        groupName: 'Family Group',
       });
 
       const response = await request(app)
@@ -201,6 +197,7 @@ export function registerDeviceSharingTests(): void {
       mockShareDeviceWithGroup.mockResolvedValue({
         success: true,
         message: 'Group access removed',
+        groupName: null,
       });
 
       const response = await request(app)
@@ -218,6 +215,7 @@ export function registerDeviceSharingTests(): void {
       mockShareDeviceWithGroup.mockResolvedValue({
         success: false,
         message: 'Group not found',
+        groupName: null,
       });
 
       const response = await request(app)

@@ -75,7 +75,10 @@ export function registerTwoFactorDisableContracts() {
 
     const { verifyToken, verifyBackupCode } = await import('../../../../src/services/twoFactorService');
     vi.mocked(verifyToken).mockReturnValueOnce(false);
-    vi.mocked(verifyBackupCode).mockResolvedValueOnce({ valid: false });
+    vi.mocked(verifyBackupCode).mockResolvedValueOnce({
+      valid: false,
+      updatedCodesJson: null,
+    });
 
     const response = await request(app)
       .post('/api/v1/auth/2fa/disable')

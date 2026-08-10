@@ -8,8 +8,10 @@
  * - Duration tracking
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { EventEmitter } from 'events';
+
+type TestNextFunction = (error?: unknown) => void;
 
 // Mock logger
 const mockLogger = vi.hoisted(() => ({
@@ -53,7 +55,7 @@ import { requestLogger, getRequestId } from '../../../src/middleware/requestLogg
 describe('Request Logger Middleware', () => {
   let req: any;
   let res: any;
-  let next: ReturnType<typeof vi.fn>;
+  let next: Mock<TestNextFunction>;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -75,7 +77,7 @@ describe('Request Logger Middleware', () => {
       setHeader: vi.fn(),
     });
 
-    next = vi.fn();
+    next = vi.fn<TestNextFunction>();
   });
 
   describe('request ID handling', () => {

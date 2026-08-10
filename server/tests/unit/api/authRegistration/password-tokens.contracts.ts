@@ -136,7 +136,7 @@ export function registerAuthPasswordTokenTests(): void {
       mockPrismaClient.systemSetting.findUnique.mockResolvedValue(null);
 
       const { isUsingInitialPassword } = await import('../../../../src/api/auth/password');
-      const result = await isUsingInitialPassword('user-id', 'password');
+      const result = await isUsingInitialPassword('user-id');
 
       expect(result).toBe(false);
     });
@@ -149,7 +149,7 @@ export function registerAuthPasswordTokenTests(): void {
       mockPrismaClient.user.findUnique.mockResolvedValue(null);
 
       const { isUsingInitialPassword } = await import('../../../../src/api/auth/password');
-      const result = await isUsingInitialPassword('user-id', 'password');
+      const result = await isUsingInitialPassword('user-id');
 
       expect(result).toBe(false);
     });
@@ -166,7 +166,7 @@ export function registerAuthPasswordTokenTests(): void {
       });
 
       const { isUsingInitialPassword } = await import('../../../../src/api/auth/password');
-      const result = await isUsingInitialPassword('user-id', 'password');
+      const result = await isUsingInitialPassword('user-id');
 
       expect(result).toBe(true);
     });
@@ -182,7 +182,7 @@ export function registerAuthPasswordTokenTests(): void {
       });
 
       const { isUsingInitialPassword } = await import('../../../../src/api/auth/password');
-      const result = await isUsingInitialPassword('user-id', 'password');
+      const result = await isUsingInitialPassword('user-id');
 
       expect(result).toBe(false);
     });
@@ -191,7 +191,7 @@ export function registerAuthPasswordTokenTests(): void {
       mockPrismaClient.systemSetting.findUnique.mockRejectedValue(new Error('Database error'));
 
       const { isUsingInitialPassword } = await import('../../../../src/api/auth/password');
-      const result = await isUsingInitialPassword('user-id', 'password');
+      const result = await isUsingInitialPassword('user-id');
 
       expect(result).toBe(false);
     });
@@ -456,6 +456,7 @@ export function registerAuthPasswordTokenTests(): void {
         aud: 'sanctuary:refresh',
         type: 'refresh',
         sessionVersion: 1,
+        sessionFamilyId: 'session-family-123',
       });
       mockPrismaClient.user.findUnique.mockResolvedValue({
         id: 'test-user-id',
@@ -545,9 +546,11 @@ export function registerAuthPasswordTokenTests(): void {
       const { revokeLogoutCredentials } = await import('../../../../src/services/refreshTokenService');
       vi.mocked(verifyRefreshToken).mockResolvedValueOnce({
         userId: 'another-user',
-        username: 'mallory',
         sessionVersion: 0,
         sessionFamilyId: 'another-family',
+        jti: 'another-refresh-jti',
+        aud: 'sanctuary:refresh',
+        type: 'refresh',
       });
 
       const response = await request(app)

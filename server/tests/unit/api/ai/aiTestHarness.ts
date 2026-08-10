@@ -90,6 +90,9 @@ vi.mock('../../../../src/middleware/auth', () => ({
 import aiRouter from '../../../../src/api/ai';
 import { featureFlagService } from '../../../../src/services/featureFlagService';
 
+const aiRouteHandler = express();
+aiRouteHandler.use(aiRouter);
+
 export let app: Express;
 
 type HandlerResponse = {
@@ -160,7 +163,7 @@ class RequestBuilder {
         },
       };
 
-      aiRouter.handle(req, res, (err?: any) => {
+      aiRouteHandler(req, res, (err?: any) => {
         if (err) {
           const statusCode = err.statusCode || 500;
           const body = err.toResponse

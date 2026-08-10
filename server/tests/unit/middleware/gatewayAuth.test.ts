@@ -5,7 +5,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { Request, Response, NextFunction } from 'express';
+import type { Request, Response } from 'express';
+import type { Mock, MockedFunction } from 'vitest';
 import { createHmac, createHash } from 'crypto';
 
 // Mock config
@@ -28,32 +29,37 @@ vi.mock('../../../src/utils/logger', () => ({
 import { verifyGatewayRequest, generateGatewaySignature } from '../../../src/middleware/gatewayAuth';
 import config from '../../../src/config';
 
+function createMockRequest(overrides: Partial<Request> = {}): Request {
+  return Object.assign(Object.create(null), {
+    method: 'GET',
+    path: '/api/v1/test',
+    headers: {},
+    body: {},
+  }, overrides);
+}
+
+type TestNextFunction = (error?: unknown) => void;
+
 describe('Gateway Auth Middleware', () => {
-  let mockReq: Partial<Request>;
-  let mockRes: Partial<Response>;
-  let mockNext: NextFunction;
-  let jsonMock: ReturnType<typeof vi.fn>;
-  let statusMock: ReturnType<typeof vi.fn>;
+  let mockReq: Request;
+  let mockRes: Response;
+  let mockNext: Mock<TestNextFunction>;
+  let jsonMock: MockedFunction<Response['json']>;
+  let statusMock: MockedFunction<Response['status']>;
 
   const secret = 'test-gateway-secret-32-characters-min';
 
   beforeEach(() => {
-    jsonMock = vi.fn();
-    statusMock = vi.fn().mockReturnValue({ json: jsonMock });
-
-    mockReq = {
-      method: 'GET',
-      path: '/api/v1/test',
-      headers: {},
-      body: {},
-    };
-
-    mockRes = {
+    mockReq = createMockRequest();
+    mockRes = Object.create(null);
+    jsonMock = vi.fn<Response['json']>().mockReturnValue(mockRes);
+    statusMock = vi.fn<Response['status']>().mockReturnValue(mockRes);
+    Object.assign(mockRes, {
       status: statusMock,
       json: jsonMock,
-    };
+    });
 
-    mockNext = vi.fn();
+    mockNext = vi.fn<TestNextFunction>();
   });
 
   /**
@@ -76,7 +82,7 @@ describe('Gateway Auth Middleware', () => {
       const originalSecret = config.gatewaySecret;
       (config as { gatewaySecret?: string }).gatewaySecret = undefined;
 
-      verifyGatewayRequest(mockReq as Request, mockRes as Response, mockNext);
+      verifyGatewayRequest(mockReq, mockRes, mockNext);
 
       expect(statusMock).toHaveBeenCalledWith(503);
       expect(jsonMock).toHaveBeenCalledWith(
@@ -93,7 +99,7 @@ describe('Gateway Auth Middleware', () => {
     it('should reject requests without signature header', () => {
       mockReq.headers = { 'x-gateway-timestamp': Date.now().toString() };
 
-      verifyGatewayRequest(mockReq as Request, mockRes as Response, mockNext);
+      verifyGatewayRequest(mockReq, mockRes, mockNext);
 
       expect(statusMock).toHaveBeenCalledWith(403);
       expect(jsonMock).toHaveBeenCalledWith(
@@ -108,7 +114,7 @@ describe('Gateway Auth Middleware', () => {
     it('should reject requests without timestamp header', () => {
       mockReq.headers = { 'x-gateway-signature': 'some-signature' };
 
-      verifyGatewayRequest(mockReq as Request, mockRes as Response, mockNext);
+      verifyGatewayRequest(mockReq, mockRes, mockNext);
 
       expect(statusMock).toHaveBeenCalledWith(403);
       expect(mockNext).not.toHaveBeenCalled();
@@ -121,7 +127,7 @@ describe('Gateway Auth Middleware', () => {
         'x-gateway-timestamp': oldTimestamp,
       };
 
-      verifyGatewayRequest(mockReq as Request, mockRes as Response, mockNext);
+      verifyGatewayRequest(mockReq, mockRes, mockNext);
 
       expect(statusMock).toHaveBeenCalledWith(403);
       expect(jsonMock).toHaveBeenCalledWith(
@@ -139,7 +145,7 @@ describe('Gateway Auth Middleware', () => {
         'x-gateway-timestamp': futureTimestamp,
       };
 
-      verifyGatewayRequest(mockReq as Request, mockRes as Response, mockNext);
+      verifyGatewayRequest(mockReq, mockRes, mockNext);
 
       expect(statusMock).toHaveBeenCalledWith(403);
       expect(mockNext).not.toHaveBeenCalled();
@@ -151,7 +157,7 @@ describe('Gateway Auth Middleware', () => {
         'x-gateway-timestamp': Date.now().toString(),
       };
 
-      verifyGatewayRequest(mockReq as Request, mockRes as Response, mockNext);
+      verifyGatewayRequest(mockReq, mockRes, mockNext);
 
       expect(statusMock).toHaveBeenCalledWith(403);
       expect(jsonMock).toHaveBeenCalledWith(
@@ -164,11 +170,11 @@ describe('Gateway Auth Middleware', () => {
 
     it('should accept requests with valid signature for GET', () => {
       mockReq.method = 'GET';
-      mockReq.path = '/api/v1/test';
+      mockReq = createMockRequest({ ...mockReq, path: '/api/v1/test' });
       mockReq.body = {};
       mockReq.headers = createValidHeaders('GET', '/api/v1/test', {});
 
-      verifyGatewayRequest(mockReq as Request, mockRes as Response, mockNext);
+      verifyGatewayRequest(mockReq, mockRes, mockNext);
 
       expect(mockNext).toHaveBeenCalled();
       expect(statusMock).not.toHaveBeenCalled();
@@ -177,11 +183,11 @@ describe('Gateway Auth Middleware', () => {
     it('should accept requests with valid signature for POST with body', () => {
       const body = { username: 'test', password: 'secret' };
       mockReq.method = 'POST';
-      mockReq.path = '/api/v1/auth/login';
+      mockReq = createMockRequest({ ...mockReq, path: '/api/v1/auth/login' });
       mockReq.body = body;
       mockReq.headers = createValidHeaders('POST', '/api/v1/auth/login', body);
 
-      verifyGatewayRequest(mockReq as Request, mockRes as Response, mockNext);
+      verifyGatewayRequest(mockReq, mockRes, mockNext);
 
       expect(mockNext).toHaveBeenCalled();
       expect(statusMock).not.toHaveBeenCalled();
@@ -190,11 +196,11 @@ describe('Gateway Auth Middleware', () => {
     it('should accept requests with valid signature for POST with string body', () => {
       const body = 'raw-request-body';
       mockReq.method = 'POST';
-      mockReq.path = '/api/v1/raw';
+      mockReq = createMockRequest({ ...mockReq, path: '/api/v1/raw' });
       mockReq.body = body;
       mockReq.headers = createValidHeaders('POST', '/api/v1/raw', body);
 
-      verifyGatewayRequest(mockReq as Request, mockRes as Response, mockNext);
+      verifyGatewayRequest(mockReq, mockRes, mockNext);
 
       expect(mockNext).toHaveBeenCalled();
       expect(statusMock).not.toHaveBeenCalled();
@@ -205,12 +211,12 @@ describe('Gateway Auth Middleware', () => {
       const tamperedBody = { amount: 1000000 };
 
       mockReq.method = 'POST';
-      mockReq.path = '/api/v1/transactions';
+      mockReq = createMockRequest({ ...mockReq, path: '/api/v1/transactions' });
       mockReq.body = tamperedBody; // Attacker changed the body
       // But signature was created for original body
       mockReq.headers = createValidHeaders('POST', '/api/v1/transactions', originalBody);
 
-      verifyGatewayRequest(mockReq as Request, mockRes as Response, mockNext);
+      verifyGatewayRequest(mockReq, mockRes, mockNext);
 
       expect(statusMock).toHaveBeenCalledWith(403);
       expect(mockNext).not.toHaveBeenCalled();
@@ -218,11 +224,11 @@ describe('Gateway Auth Middleware', () => {
 
     it('should reject requests with tampered path', () => {
       mockReq.method = 'GET';
-      mockReq.path = '/api/v1/admin/users'; // Attacker changed path
+      mockReq = createMockRequest({ ...mockReq, path: '/api/v1/admin/users' }); // Attacker changed path
       // But signature was created for different path
       mockReq.headers = createValidHeaders('GET', '/api/v1/users', {});
 
-      verifyGatewayRequest(mockReq as Request, mockRes as Response, mockNext);
+      verifyGatewayRequest(mockReq, mockRes, mockNext);
 
       expect(statusMock).toHaveBeenCalledWith(403);
       expect(mockNext).not.toHaveBeenCalled();
@@ -230,11 +236,11 @@ describe('Gateway Auth Middleware', () => {
 
     it('should reject requests with tampered method', () => {
       mockReq.method = 'DELETE'; // Attacker changed method
-      mockReq.path = '/api/v1/wallets/123';
+      mockReq = createMockRequest({ ...mockReq, path: '/api/v1/wallets/123' });
       // But signature was created for GET
       mockReq.headers = createValidHeaders('GET', '/api/v1/wallets/123', {});
 
-      verifyGatewayRequest(mockReq as Request, mockRes as Response, mockNext);
+      verifyGatewayRequest(mockReq, mockRes, mockNext);
 
       expect(statusMock).toHaveBeenCalledWith(403);
       expect(mockNext).not.toHaveBeenCalled();
@@ -243,12 +249,12 @@ describe('Gateway Auth Middleware', () => {
     it('should verify signatures against originalUrl for mounted routers', () => {
       const body = { walletId: 'wallet-1', userId: 'user-1', action: 'broadcast' };
       mockReq.method = 'POST';
-      mockReq.path = '/mobile-permissions/check';
+      mockReq = createMockRequest({ ...mockReq, path: '/mobile-permissions/check' });
       mockReq.originalUrl = '/internal/mobile-permissions/check';
       mockReq.body = body;
       mockReq.headers = createValidHeaders('POST', '/internal/mobile-permissions/check', body);
 
-      verifyGatewayRequest(mockReq as Request, mockRes as Response, mockNext);
+      verifyGatewayRequest(mockReq, mockRes, mockNext);
 
       expect(mockNext).toHaveBeenCalled();
       expect(statusMock).not.toHaveBeenCalled();
@@ -256,12 +262,12 @@ describe('Gateway Auth Middleware', () => {
 
     it('should reject signatures bound only to mounted req.path when originalUrl is present', () => {
       mockReq.method = 'GET';
-      mockReq.path = '/by-user/user-1';
+      mockReq = createMockRequest({ ...mockReq, path: '/by-user/user-1' });
       mockReq.originalUrl = '/api/v1/push/by-user/user-1';
       mockReq.body = {};
       mockReq.headers = createValidHeaders('GET', '/by-user/user-1', {});
 
-      verifyGatewayRequest(mockReq as Request, mockRes as Response, mockNext);
+      verifyGatewayRequest(mockReq, mockRes, mockNext);
 
       expect(statusMock).toHaveBeenCalledWith(403);
       expect(mockNext).not.toHaveBeenCalled();
@@ -273,7 +279,7 @@ describe('Gateway Auth Middleware', () => {
         'x-gateway-timestamp': Date.now().toString(),
       };
 
-      verifyGatewayRequest(mockReq as Request, mockRes as Response, mockNext);
+      verifyGatewayRequest(mockReq, mockRes, mockNext);
 
       expect(statusMock).toHaveBeenCalledWith(403);
       expect(mockNext).not.toHaveBeenCalled();
@@ -293,7 +299,7 @@ describe('Gateway Auth Middleware', () => {
         return originalFrom(value, arg2, arg3);
       }) as typeof Buffer.from);
 
-      verifyGatewayRequest(mockReq as Request, mockRes as Response, mockNext);
+      verifyGatewayRequest(mockReq, mockRes, mockNext);
 
       expect(statusMock).toHaveBeenCalledWith(403);
       expect(jsonMock).toHaveBeenCalledWith(
@@ -312,7 +318,7 @@ describe('Gateway Auth Middleware', () => {
         'x-gateway-timestamp': 'not-a-number',
       };
 
-      verifyGatewayRequest(mockReq as Request, mockRes as Response, mockNext);
+      verifyGatewayRequest(mockReq, mockRes, mockNext);
 
       expect(statusMock).toHaveBeenCalledWith(403);
       expect(mockNext).not.toHaveBeenCalled();

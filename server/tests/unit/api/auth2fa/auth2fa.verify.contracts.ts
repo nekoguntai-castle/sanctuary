@@ -178,7 +178,10 @@ export function registerTwoFactorVerifyContracts() {
 
     const twoFactorService = await import('../../../../src/services/twoFactorService');
     vi.mocked(twoFactorService.isBackupCode).mockReset().mockReturnValue(true);
-    vi.mocked(twoFactorService.verifyBackupCode).mockReset().mockResolvedValue({ valid: true });
+    vi.mocked(twoFactorService.verifyBackupCode).mockReset().mockResolvedValue({
+      valid: true,
+      updatedCodesJson: null,
+    });
 
     const response = await request(app)
       .post('/api/v1/auth/2fa/verify')
@@ -234,7 +237,10 @@ export function registerTwoFactorVerifyContracts() {
     // Reset and configure mocks for backup code path with invalid code
     const twoFactorService = await import('../../../../src/services/twoFactorService');
     vi.mocked(twoFactorService.isBackupCode).mockReset().mockReturnValue(true);
-    vi.mocked(twoFactorService.verifyBackupCode).mockReset().mockResolvedValue({ valid: false });
+    vi.mocked(twoFactorService.verifyBackupCode).mockReset().mockResolvedValue({
+      valid: false,
+      updatedCodesJson: null,
+    });
 
     const response = await request(app)
       .post('/api/v1/auth/2fa/verify')
