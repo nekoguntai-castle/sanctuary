@@ -19,7 +19,7 @@ is_frontend_file() {
       ;;
   esac
   case "$1" in
-    src/*|shared/*|config/tooling/vitest*.ts|scripts/ci/frontend-coverage-*.sh|package.json|package-lock.json|tests/*.ts|tests/*.tsx|tests/*.mts|tests/*.cts|tests/*.js|tests/*.jsx|tests/*.mjs|tests/*.cjs|tests/*.json)
+    src/*|shared/*|config/tooling/vitest*.ts|scripts/ci/frontend-coverage-*.sh|scripts/ci/setup-verifier-test-dependencies.sh|package.json|package-lock.json|tests/*.ts|tests/*.tsx|tests/*.mts|tests/*.cts|tests/*.js|tests/*.jsx|tests/*.mjs|tests/*.cjs|tests/*.json)
       return 0
       ;;
   esac
@@ -166,7 +166,7 @@ is_test_file() {
 
 is_test_suite_file() {
   case "$1" in
-    .github/workflows/test.yml|scripts/ci/backend-integration-groups.sh|scripts/ci/browser-e2e-groups.sh)
+    .github/workflows/test.yml|scripts/ci/backend-integration-groups.sh|scripts/ci/browser-e2e-groups.sh|scripts/ci/setup-verifier-test-dependencies.sh)
       return 0
       ;;
   esac
@@ -187,7 +187,7 @@ is_docs_only_file() {
 # directory placement alone.
 is_full_scan_trigger_file() {
   case "$1" in
-    package.json|package-lock.json|server/package.json|server/package-lock.json|gateway/package.json|gateway/package-lock.json|llm-egress-proxy/package.json|llm-egress-proxy/package-lock.json)
+    package.json|package-lock.json|server/package.json|server/package-lock.json|gateway/package.json|gateway/package-lock.json|llm-egress-proxy/package.json|llm-egress-proxy/package-lock.json|scripts/verify-addresses/package.json|scripts/verify-addresses/package-lock.json)
       return 0
       ;;
     config/tooling/*|server/vitest.config.*|gateway/vitest.config.*|llm-egress-proxy/vitest.config.*|server/tsconfig*.json|gateway/tsconfig*.json)

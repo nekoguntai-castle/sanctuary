@@ -686,6 +686,7 @@ jobs:
           bash -n scripts/ci/retry-playwright-infrastructure-failure.sh
           bash -n scripts/ci/retry-vitest-infrastructure-failure.sh
           bash -n scripts/ci/setup-server-dependencies.sh
+          bash -n scripts/ci/setup-verifier-test-dependencies.sh
           bash -n scripts/ci/ensure-go.sh
           bash -n scripts/ci/create-isolated-workspace.sh
           bash -n scripts/ci/run-in-isolated-workspace.sh

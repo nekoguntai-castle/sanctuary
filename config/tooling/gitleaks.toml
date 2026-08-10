@@ -32,6 +32,11 @@ paths = [
   # Canonical Bitcoin protocol vectors and test-only placeholders. These files
   # are intentionally committed fixtures, not operational secrets.
   '''server/tests/fixtures/bip340-test-vectors\.ts''',
+  # These two byte-identical address-vector files are generated deterministic
+  # public Bitcoin protocol fixtures. Their SLIP-132/BIP32 payload and chain-code
+  # metadata can resemble API keys; generator and verifier source remain scanned.
+  '''(^|/)scripts/verify-addresses/output/verified-vectors\.ts$''',
+  '''(^|/)server/tests/fixtures/verified-address-vectors\.ts$''',
   '''server/tests/setup\.ts''',
   '''server/tests/integration/ops/phase2OperationsProof\.integration\.test\.ts''',
   '''server/tests/unit/api/auth\.test\.ts''',

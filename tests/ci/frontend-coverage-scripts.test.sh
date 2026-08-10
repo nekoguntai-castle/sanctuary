@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SHARD_SCRIPT="$ROOT_DIR/scripts/ci/frontend-coverage-shard.sh"
 MERGE_SCRIPT="$ROOT_DIR/scripts/ci/frontend-coverage-merge.sh"
+SETUP_VERIFIER_SCRIPT="$ROOT_DIR/scripts/ci/setup-verifier-test-dependencies.sh"
 TEST_TEMP_DIR=''
 
 fail() {
@@ -51,6 +52,32 @@ main() {
 
   bash -n "$SHARD_SCRIPT"
   bash -n "$MERGE_SCRIPT"
+  bash -n "$SETUP_VERIFIER_SCRIPT"
+
+  local setup_fixture="$TEST_TEMP_DIR/setup-repo"
+  local captured_npm_args="$TEST_TEMP_DIR/setup-npm-args"
+  mkdir -p "$setup_fixture/scripts/ci" "$setup_fixture/scripts/verify-addresses" "$setup_fixture/bin"
+  cp "$SETUP_VERIFIER_SCRIPT" "$setup_fixture/scripts/ci/setup-verifier-test-dependencies.sh"
+  : > "$setup_fixture/scripts/verify-addresses/package.json"
+  : > "$setup_fixture/scripts/verify-addresses/package-lock.json"
+  cat > "$setup_fixture/bin/npm" <<'SETUP_NPM'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$@" > "${CAPTURED_NPM_ARGS:?}"
+SETUP_NPM
+  chmod +x "$setup_fixture/bin/npm"
+  PATH="$setup_fixture/bin:$PATH" CAPTURED_NPM_ARGS="$captured_npm_args" \
+    bash "$setup_fixture/scripts/ci/setup-verifier-test-dependencies.sh"
+  assert_file_contains '--prefix' "$captured_npm_args"
+  assert_file_contains "$setup_fixture/scripts/verify-addresses" "$captured_npm_args"
+  assert_file_contains 'ci' "$captured_npm_args"
+  assert_file_contains '--strict-allow-scripts' "$captured_npm_args"
+  assert_file_contains "$setup_fixture/.tmp/npm-cache" "$captured_npm_args"
+  mv "$setup_fixture/scripts/verify-addresses/package-lock.json" \
+    "$setup_fixture/scripts/verify-addresses/package-lock.json.missing"
+  assert_fails_with 'verifier package manifest or lockfile is missing' \
+    env PATH="$setup_fixture/bin:$PATH" CAPTURED_NPM_ARGS="$captured_npm_args" \
+    bash "$setup_fixture/scripts/ci/setup-verifier-test-dependencies.sh"
 
   assert_fails_with 'expected shard index and shard total' bash "$SHARD_SCRIPT"
   assert_fails_with 'shard index must be a positive integer' bash "$SHARD_SCRIPT" 0 2

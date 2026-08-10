@@ -126,7 +126,9 @@ describe('wallet safety audit analyzer', () => {
   it('checks descriptor keys even when no hardware signer link exists', () => {
     const snapshot = provenAuditSnapshot();
     const vector = VERIFIED_MULTISIG_VECTORS.find(candidate => (
-      candidate.scriptType === 'p2sh_p2wsh' && candidate.totalKeys === 3
+      candidate.scriptType === 'p2sh_p2wsh'
+      && candidate.totalKeys === 3
+      && candidate.network === 'testnet3'
     ))!;
     const keys = vector.xpubs.map((xpub, index) => (
       `[${['aabbccdd', 'eeff0011', '22334455'][index]}/48h/1h/0h/1h]${convertXpubToFormat(xpub, 'Upub')}`

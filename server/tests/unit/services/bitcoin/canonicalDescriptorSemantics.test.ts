@@ -18,7 +18,7 @@ const multisigBody = (
   suffixes: readonly string[],
 ): string => {
   const vector = VERIFIED_MULTISIG_VECTORS.find(candidate => (
-    candidate.scriptType === scriptType && candidate.totalKeys === 3
+    candidate.scriptType === scriptType && candidate.totalKeys === 3 && candidate.network === 'testnet3'
   ));
   if (!vector) throw new Error(`Missing ${scriptType} semantic vector`);
   const script = scriptType === 'p2sh_p2wsh' ? 1 : 2;
@@ -93,10 +93,14 @@ describe('canonical descriptor BIP389 and checksum semantics', () => {
       ['signer count', (value: string) => value.replace(/,\[33333333[^,]+(?=\)\)$)/, '')],
       ['xpub identity', (value: string) => {
         const threeKey = VERIFIED_MULTISIG_VECTORS.find(candidate => (
-          candidate.scriptType === 'p2wsh' && candidate.totalKeys === 3
+          candidate.scriptType === 'p2wsh'
+          && candidate.totalKeys === 3
+          && candidate.network === 'testnet3'
         ))!;
         const fiveKey = VERIFIED_MULTISIG_VECTORS.find(candidate => (
-          candidate.scriptType === 'p2wsh' && candidate.totalKeys === 5
+          candidate.scriptType === 'p2wsh'
+          && candidate.totalKeys === 5
+          && candidate.network === 'testnet3'
         ))!;
         return value.replace(threeKey.xpubs[0], fiveKey.xpubs[3]);
       }],
@@ -127,7 +131,7 @@ describe('canonical descriptor BIP389 and checksum semantics', () => {
     });
 
     it('rejects network drift between otherwise valid single-sig policies', () => {
-      const descriptor = (network: 'mainnet' | 'testnet', branch: 0 | 1): string => {
+      const descriptor = (network: 'mainnet' | 'testnet3', branch: 0 | 1): string => {
         const vector = VERIFIED_SINGLESIG_VECTORS.find(candidate => (
           candidate.scriptType === 'native_segwit'
           && candidate.network === network
@@ -140,7 +144,7 @@ describe('canonical descriptor BIP389 and checksum semantics', () => {
 
       expect(() => validateCanonicalDescriptorPair(
         descriptor('mainnet', 0),
-        descriptor('testnet', 1),
+        descriptor('testnet3', 1),
       )).toThrow();
     });
   });

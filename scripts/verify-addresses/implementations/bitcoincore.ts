@@ -1,226 +1,211 @@
-/**
- * Bitcoin Core Implementation Wrapper
- *
- * Uses Bitcoin Core's JSON-RPC interface to derive addresses.
- * This is THE reference implementation for Bitcoin.
- *
- * Requires Bitcoin Core running in regtest mode (see docker-compose.yml)
- */
+import BIP32Factory from 'bip32';
+import * as bip39 from 'bip39';
+import * as bitcoin from 'bitcoinjs-lib';
+import * as ecc from 'tiny-secp256k1';
 
-import bs58check from 'bs58check';
-import type { AddressDeriver, ScriptType, MultisigScriptType, Network } from '../types.js';
+import type {
+  ChainEnvironment,
+  DerivationEvidence,
+  DerivationImplementation,
+  DerivationTestCase,
+  TestSeed,
+} from '../types.js';
+import { CORE_CHAIN_ORACLE, PINNED_CORE_VERSION } from '../standardsOracle.js';
 
-// Default Bitcoin Core RPC settings for regtest (see docker-compose.yml)
-// Can override with environment variables
-const RPC_URL = process.env.BITCOIN_RPC_URL || 'http://127.0.0.1:18443';
-const RPC_USER = process.env.BITCOIN_RPC_USER || 'verify';
-const RPC_PASS = process.env.BITCOIN_RPC_PASS || 'verify';
-const MAINNET_XPUB_VERSION = Buffer.from('0488b21e', 'hex');
-const TESTNET_XPUB_VERSION = Buffer.from('043587cf', 'hex');
+const bip32 = BIP32Factory(ecc);
+const RPC_USER = process.env.BITCOIN_RPC_USER ?? 'verify';
+const RPC_PASS = process.env.BITCOIN_RPC_PASS ?? 'verify';
 
-let activeChain = 'regtest';
+const ENDPOINTS: Record<ChainEnvironment, string> = {
+  mainnet: process.env.BITCOIN_RPC_URL_MAINNET ?? 'http://127.0.0.1:19440',
+  testnet3: process.env.BITCOIN_RPC_URL_TESTNET3 ?? 'http://127.0.0.1:19441',
+  testnet4: process.env.BITCOIN_RPC_URL_TESTNET4 ?? 'http://127.0.0.1:19442',
+  signet: process.env.BITCOIN_RPC_URL_SIGNET ?? 'http://127.0.0.1:19443',
+  regtest: process.env.BITCOIN_RPC_URL_REGTEST ?? 'http://127.0.0.1:19444',
+};
 
-interface RPCResponse<T> {
-  result: T;
-  error: { code: number; message: string } | null;
-  id: string;
+const EXPECTED_CORE_CHAIN = Object.fromEntries(
+  CORE_CHAIN_ORACLE.map(item => [item.environment, item.reportedChain]),
+) as Record<ChainEnvironment, string>;
+
+interface RpcRequest { readonly jsonrpc: '2.0'; readonly id: string; readonly method: string; readonly params: unknown[] }
+interface RpcResponse<T> { readonly id: string; readonly result?: T; readonly error?: { readonly code: number; readonly message: string } | null }
+interface CoreState { readonly chain: string; readonly version: string }
+
+const coreState = new Map<ChainEnvironment, CoreState>();
+
+function request(id: string, method: string, params: unknown[] = []): RpcRequest {
+  return { jsonrpc: '2.0', id, method, params };
 }
 
-async function rpcCall<T>(method: string, params: unknown[] = []): Promise<T> {
-  const response = await fetch(RPC_URL, {
+async function rpcBatch<T>(chain: ChainEnvironment, requests: readonly RpcRequest[]): Promise<Map<string, T>> {
+  const response = await fetch(ENDPOINTS[chain], {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Basic ' + Buffer.from(`${RPC_USER}:${RPC_PASS}`).toString('base64'),
+      'content-type': 'application/json',
+      authorization: `Basic ${Buffer.from(`${RPC_USER}:${RPC_PASS}`).toString('base64')}`,
     },
-    body: JSON.stringify({
-      jsonrpc: '1.0',
-      id: 'verify',
-      method,
-      params,
-    }),
+    body: JSON.stringify(requests),
   });
-
-  const responseBody = await response.text();
-  const data = JSON.parse(responseBody) as RPCResponse<T>;
-
-  if (!response.ok) {
-    const message = data.error?.message ?? `${response.status} ${response.statusText}`;
-    throw new Error(`RPC request failed: ${message}`);
+  if (!response.ok) throw new Error(`${chain} RPC HTTP ${response.status} ${response.statusText}`);
+  const payload = await response.json() as RpcResponse<T>[];
+  if (!Array.isArray(payload) || payload.length !== requests.length) {
+    throw new Error(`${chain} RPC returned an incomplete batch`);
   }
-
-  if (data.error) {
-    throw new Error(`RPC error: ${data.error.message} (code: ${data.error.code})`);
+  const results = new Map<string, T>();
+  for (const item of payload) {
+    if (item.error) throw new Error(`${chain} RPC ${item.id}: ${item.error.message} (${item.error.code})`);
+    if (item.result === undefined) throw new Error(`${chain} RPC ${item.id} omitted result`);
+    results.set(item.id, item.result);
   }
-
-  return data.result;
+  return results;
 }
 
-function getCoreXpubVersion(): Buffer {
-  return activeChain === 'main' ? MAINNET_XPUB_VERSION : TESTNET_XPUB_VERSION;
+async function rpc<T>(chain: ChainEnvironment, method: string): Promise<T> {
+  const id = `${chain}:${method}`;
+  const results = await rpcBatch<T>(chain, [request(id, method)]);
+  return results.get(id)!;
 }
 
-/**
- * Bitcoin Core descriptor imports expect BIP32 extended public keys to use the
- * canonical version bytes for Core's active chain. The payload key material is
- * unchanged; only the 4-byte xpub/tpub prefix is swapped so regtest Core can
- * validate descriptors for vectors declared on mainnet/testnet.
- */
-function convertExtendedPubkeyForCore(xpub: string): string {
-  const decoded = Buffer.from(bs58check.decode(xpub));
-  if (decoded.length !== 78) {
-    throw new Error('Invalid extended public key payload length');
+function versionString(version: number): string {
+  const major = Math.floor(version / 10_000);
+  const minor = Math.floor((version % 10_000) / 100);
+  const patch = version % 100;
+  return `${major}.${minor}.${patch}`;
+}
+
+async function inspectChain(chain: ChainEnvironment): Promise<CoreState> {
+  const [blockchain, network] = await Promise.all([
+    rpc<{ chain: string }>(chain, 'getblockchaininfo'),
+    rpc<{ version: number }>(chain, 'getnetworkinfo'),
+  ]);
+  if (blockchain.chain !== EXPECTED_CORE_CHAIN[chain]) {
+    throw new Error(`${chain} endpoint reports ${blockchain.chain}, expected ${EXPECTED_CORE_CHAIN[chain]}`);
   }
-
-  return bs58check.encode(Buffer.concat([getCoreXpubVersion(), decoded.subarray(4)]));
-}
-
-/**
- * Build a descriptor for single-sig address
- */
-function buildSingleSigDescriptor(
-  xpub: string,
-  index: number,
-  scriptType: ScriptType,
-  change: boolean
-): string {
-  const changeNum = change ? 1 : 0;
-  const path = `${changeNum}/${index}`;
-  const coreXpub = convertExtendedPubkeyForCore(xpub);
-
-  switch (scriptType) {
-    case 'legacy':
-      return `pkh(${coreXpub}/${path})`;
-    case 'nested_segwit':
-      return `sh(wpkh(${coreXpub}/${path}))`;
-    case 'native_segwit':
-      return `wpkh(${coreXpub}/${path})`;
-    case 'taproot':
-      return `tr(${coreXpub}/${path})`;
-    default:
-      throw new Error(`Unknown script type: ${scriptType}`);
+  const version = versionString(network.version);
+  if (version !== PINNED_CORE_VERSION) {
+    throw new Error(`${chain} endpoint reports Core ${version}, expected ${PINNED_CORE_VERSION}`);
   }
+  return { chain: blockchain.chain, version };
 }
 
-/**
- * Build a descriptor for multisig address
- */
-function buildMultisigDescriptor(
-  xpubs: string[],
-  threshold: number,
-  index: number,
-  scriptType: MultisigScriptType,
-  change: boolean
-): string {
-  const changeNum = change ? 1 : 0;
-
-  // Build key expressions with derivation path
-  const keyExprs = xpubs.map(xpub => `${convertExtendedPubkeyForCore(xpub)}/${changeNum}/${index}`);
-
-  // sortedmulti ensures consistent key ordering
-  const multisig = `sortedmulti(${threshold},${keyExprs.join(',')})`;
-
-  switch (scriptType) {
-    case 'p2sh':
-      return `sh(${multisig})`;
-    case 'p2sh_p2wsh':
-      return `sh(wsh(${multisig}))`;
-    case 'p2wsh':
-      return `wsh(${multisig})`;
-    default:
-      throw new Error(`Unknown multisig script type: ${scriptType}`);
+function rootPrivateKeys(testCase: DerivationTestCase, seeds: Map<string, TestSeed>): string[] {
+  if (new Set(testCase.seedIds).size !== testCase.seedIds.length) {
+    throw new Error(`Duplicate seed-derived account key in ${testCase.id}`);
   }
+  const network = testCase.derivationFamily === 'mainnet'
+    ? bitcoin.networks.bitcoin
+    : bitcoin.networks.testnet;
+  const seenAccountKeys = new Set<string>();
+  return testCase.seedIds.map(seedId => {
+    const seed = seeds.get(seedId);
+    if (!seed || !bip39.validateMnemonic(seed.mnemonic)) throw new Error(`Invalid or missing seed: ${seedId}`);
+    const root = bip32.fromSeed(bip39.mnemonicToSeedSync(seed.mnemonic), network);
+    const account = root.derivePath(testCase.accountPath.slice(2));
+    const keyIdentity = `${Buffer.from(account.chainCode).toString('hex')}:${Buffer.from(account.publicKey).toString('hex')}`;
+    if (seenAccountKeys.has(keyIdentity)) {
+      throw new Error(`Duplicate derived account key material in ${testCase.id}`);
+    }
+    seenAccountKeys.add(keyIdentity);
+    return root.toBase58();
+  });
 }
 
-/**
- * Get descriptor info and add checksum if missing
- */
-async function getDescriptorWithChecksum(descriptor: string): Promise<string> {
-  // If descriptor already has checksum, use it
-  if (descriptor.includes('#')) {
-    return descriptor;
+const corePath = (path: string): string => path.slice(2).replaceAll("'", 'h');
+
+function rawDescriptor(testCase: DerivationTestCase, roots: readonly string[]): string {
+  const keys = roots.map(root => `${root}/${corePath(testCase.accountPath)}/${testCase.branch}/${testCase.index}`);
+  if (testCase.kind === 'multisig') {
+    const multisig = `sortedmulti(${testCase.threshold},${keys.join(',')})`;
+    return testCase.scriptType === 'p2sh_p2wsh' ? `sh(wsh(${multisig}))` : `wsh(${multisig})`;
   }
-
-  // Get checksum from Bitcoin Core
-  const info = await rpcCall<{ descriptor: string; checksum: string; isrange: boolean }>(
-    'getdescriptorinfo',
-    [descriptor]
-  );
-
-  return info.descriptor;
+  if (testCase.scriptType === 'legacy') return `pkh(${keys[0]})`;
+  if (testCase.scriptType === 'nested_segwit') return `sh(wpkh(${keys[0]}))`;
+  if (testCase.scriptType === 'native_segwit') return `wpkh(${keys[0]})`;
+  return `tr(${keys[0]})`;
 }
 
-export const bitcoinCore: AddressDeriver = {
+async function deriveChainCases(
+  chain: ChainEnvironment,
+  cases: readonly DerivationTestCase[],
+  seeds: Map<string, TestSeed>,
+): Promise<DerivationEvidence[]> {
+  const state = coreState.get(chain);
+  if (!state) throw new Error(`Bitcoin Core ${chain} endpoint was not inspected`);
+  const raw = new Map(cases.map(testCase => [testCase.id, rawDescriptor(testCase, rootPrivateKeys(testCase, seeds))]));
+  const descriptorInfo = await rpcBatch<{ descriptor: string; checksum: string }>(chain, cases.map(testCase => (
+    request(testCase.id, 'getdescriptorinfo', [raw.get(testCase.id)])
+  )));
+  const addresses = await rpcBatch<string[]>(chain, cases.map(testCase => (
+    request(testCase.id, 'deriveaddresses', [
+      `${raw.get(testCase.id)}#${descriptorInfo.get(testCase.id)!.checksum}`,
+    ])
+  )));
+  const validation = await rpcBatch<{ isvalid: boolean; scriptPubKey: string }>(chain, cases.map(testCase => {
+    const address = addresses.get(testCase.id)?.[0];
+    if (!address) throw new Error(`Bitcoin Core returned no address for ${testCase.id}`);
+    return request(testCase.id, 'validateaddress', [address]);
+  }));
+  return cases.map(testCase => {
+    const address = addresses.get(testCase.id)?.[0];
+    const validated = validation.get(testCase.id);
+    if (!address || !validated?.isvalid || !validated.scriptPubKey) {
+      throw new Error(`Bitcoin Core did not validate ${testCase.id}`);
+    }
+    return {
+      caseId: testCase.id,
+      implementation: bitcoinCore.name,
+      implementationVersion: state.version,
+      evidenceScope: 'root-private-descriptor-to-output',
+      accountKeys: [],
+      address,
+      scriptPubKeyHex: validated.scriptPubKey,
+      descriptor: descriptorInfo.get(testCase.id)!.descriptor,
+      core: state,
+    };
+  });
+}
+
+export const bitcoinCore: DerivationImplementation = {
+  id: 'bitcoin-core',
   name: 'Bitcoin Core',
-  version: '27.0', // Will be updated by isAvailable()
-
-  async deriveSingleSig(
-    xpub: string,
-    index: number,
-    scriptType: ScriptType,
-    change: boolean,
-    _network: Network
-  ): Promise<string> {
-    // Build descriptor
-    const rawDescriptor = buildSingleSigDescriptor(xpub, index, scriptType, change);
-
-    // Get descriptor with checksum
-    const descriptor = await getDescriptorWithChecksum(rawDescriptor);
-
-    // Derive address (returns array, we want index 0)
-    // Note: deriveaddresses takes a range, but we're deriving a specific index
-    // so we just get the first (and only) result
-    const addresses = await rpcCall<string[]>('deriveaddresses', [descriptor]);
-
-    if (!addresses || addresses.length === 0) {
-      throw new Error(`No address derived for descriptor: ${descriptor}`);
-    }
-
-    return addresses[0];
-  },
-
-  async deriveMultisig(
-    xpubs: string[],
-    threshold: number,
-    index: number,
-    scriptType: MultisigScriptType,
-    change: boolean,
-    _network: Network
-  ): Promise<string> {
-    // Build descriptor
-    const rawDescriptor = buildMultisigDescriptor(xpubs, threshold, index, scriptType, change);
-
-    // Get descriptor with checksum
-    const descriptor = await getDescriptorWithChecksum(rawDescriptor);
-
-    // Derive address
-    const addresses = await rpcCall<string[]>('deriveaddresses', [descriptor]);
-
-    if (!addresses || addresses.length === 0) {
-      throw new Error(`No address derived for descriptor: ${descriptor}`);
-    }
-
-    return addresses[0];
-  },
-
-  async isAvailable(): Promise<boolean> {
+  version: 'unknown',
+  async isAvailable() {
     try {
-      const info = await rpcCall<{ version: number; subversion: string }>('getnetworkinfo');
-      const blockchainInfo = await rpcCall<{ chain: string }>('getblockchaininfo');
-      activeChain = blockchainInfo.chain;
-
-      // Update version string
-      // Bitcoin Core version is encoded as MMNNPP (Major Minor Patch)
-      // e.g., 270000 = 27.0.0
-      const major = Math.floor(info.version / 10000);
-      const minor = Math.floor((info.version % 10000) / 100);
-      const patch = info.version % 100;
-      this.version = `${major}.${minor}.${patch}`;
-
+      const inspected = await Promise.all(
+        (Object.keys(ENDPOINTS) as ChainEnvironment[]).map(async chain => [chain, await inspectChain(chain)] as const),
+      );
+      coreState.clear();
+      inspected.forEach(([chain, state]) => coreState.set(chain, state));
+      const versions = new Set(inspected.map(([, state]) => state.version));
+      if (versions.size !== 1) throw new Error('Bitcoin Core endpoints run different versions');
+      this.version = inspected[0][1].version;
       return true;
     } catch (error) {
       this.unavailableReason = error instanceof Error ? error.message : String(error);
       return false;
     }
   },
+  async deriveCases(cases, seeds) {
+    if (coreState.size !== Object.keys(ENDPOINTS).length && !await this.isAvailable()) {
+      throw new Error(this.unavailableReason ?? 'Bitcoin Core is unavailable');
+    }
+    const mappedSeeds = new Map(seeds.map(seed => [seed.id, seed]));
+    const output: DerivationEvidence[] = [];
+    for (const chain of Object.keys(ENDPOINTS) as ChainEnvironment[]) {
+      const chainCases = cases.filter(testCase => testCase.chain === chain);
+      if (chainCases.length > 0) {
+        output.push(...await deriveChainCases(chain, chainCases, mappedSeeds));
+      }
+    }
+    return output;
+  },
 };
+
+export function getCoreProvenance(): { environment: ChainEnvironment; reportedChain: string; version: string }[] {
+  return (Object.keys(ENDPOINTS) as ChainEnvironment[]).map(environment => {
+    const state = coreState.get(environment);
+    if (!state) throw new Error(`Missing Bitcoin Core provenance for ${environment}`);
+    return { environment, reportedChain: state.chain, version: state.version };
+  });
+}

@@ -1,110 +1,89 @@
 import type {
   VerifiedMultisigVector,
   VerifiedSingleSigVector,
-} from "./types.js";
+  VerifierProvenance,
+} from './types.js';
 
-function getVerificationHeader(
-  singleSigVectors: VerifiedSingleSigVector[],
-  multisigVectors: VerifiedMultisigVector[],
-  implementations: string[],
-  date: string,
-): string {
-  return `/**
- * VERIFIED ADDRESS VECTORS
- *
- * These vectors have been verified by multiple independent implementations:
-${implementations.map((i) => ` * - ${i}`).join("\n")}
- *
- * DO NOT MODIFY MANUALLY - regenerate using:
- *   cd scripts/verify-addresses && npm run generate
- *
- * Last verified: ${date}
- * Vectors: ${singleSigVectors.length} single-sig, ${multisigVectors.length} multisig
- */`;
+const TYPES = `export type ChainEnvironment = 'mainnet' | 'testnet3' | 'testnet4' | 'signet' | 'regtest';
+export type SingleSigScriptType = 'legacy' | 'nested_segwit' | 'native_segwit' | 'taproot';
+export type MultisigScriptType = 'p2sh_p2wsh' | 'p2wsh';
+
+export interface AccountKeyEvidence {
+  readonly seedId: string;
+  readonly masterFingerprint: string;
+  readonly originPath: string;
+  readonly encoded: string;
+  readonly versionHex: string;
+  readonly depth: number;
+  readonly parentFingerprint: string;
+  readonly childNumber: number;
+  readonly chainCodeHex: string;
+  readonly publicKeyHex: string;
+  readonly payloadHex: string;
 }
 
-function getOutputTypes(): string {
-  return `export type ScriptType = 'legacy' | 'nested_segwit' | 'native_segwit' | 'taproot';
-export type MultisigScriptType = 'p2sh' | 'p2sh_p2wsh' | 'p2wsh';
-export type Network = 'mainnet' | 'testnet';
-
 export interface VerifiedSingleSigVector {
-  description: string;
-  mnemonic: string;
-  path: string;
-  xpub: string;
-  scriptType: ScriptType;
-  network: Network;
-  index: number;
-  change: boolean;
-  expectedAddress: string;
-  verifiedBy: string[];
+  readonly caseId: string;
+  readonly description: string;
+  readonly seedId: string;
+  readonly mnemonic: string;
+  readonly path: string;
+  readonly xpub: string;
+  readonly scriptType: SingleSigScriptType;
+  readonly network: ChainEnvironment;
+  readonly account: number;
+  readonly index: number;
+  readonly branch: 0 | 1;
+  readonly change: boolean;
+  readonly expectedAddress: string;
+  readonly expectedScriptPubKey: string;
+  readonly expectedDescriptor: string;
+  readonly accountKeys: readonly AccountKeyEvidence[];
+  readonly verifiedBy: readonly string[];
 }
 
 export interface VerifiedMultisigVector {
-  description: string;
-  xpubs: string[];
-  threshold: number;
-  totalKeys: number;
-  scriptType: MultisigScriptType;
-  network: Network;
-  index: number;
-  change: boolean;
-  expectedAddress: string;
-  expectedDescriptor: string;
-  verifiedBy: string[];
+  readonly caseId: string;
+  readonly description: string;
+  readonly seedIds: readonly string[];
+  readonly xpubs: readonly string[];
+  readonly threshold: number;
+  readonly totalKeys: number;
+  readonly scriptType: MultisigScriptType;
+  readonly network: ChainEnvironment;
+  readonly account: number;
+  readonly accountPath: string;
+  readonly index: number;
+  readonly branch: 0 | 1;
+  readonly change: boolean;
+  readonly expectedAddress: string;
+  readonly expectedScriptPubKey: string;
+  readonly expectedDescriptor: string;
+  readonly accountKeys: readonly AccountKeyEvidence[];
+  readonly verifiedBy: readonly string[];
 }`;
-}
 
-function getOutputVectors(
-  singleSigVectors: VerifiedSingleSigVector[],
-  multisigVectors: VerifiedMultisigVector[],
-): string {
-  return `export const VERIFIED_SINGLESIG_VECTORS: VerifiedSingleSigVector[] = ${formatVectorArray(singleSigVectors)};
+const json = (value: unknown): string => JSON.stringify(value, null, 2);
 
-export const VERIFIED_MULTISIG_VECTORS: VerifiedMultisigVector[] = ${formatVectorArray(multisigVectors)};`;
-}
-
-function getOutputMnemonic(testMnemonic: string): string {
-  return `/**
- * Test mnemonic used for all single-sig derivations
- * This is the official BIP-39 test mnemonic
- */
-export const TEST_MNEMONIC = '${testMnemonic}';`;
-}
-
-function formatVectorArray(
-  vectors: Array<VerifiedSingleSigVector | VerifiedMultisigVector>,
-): string {
-  if (vectors.length === 0) {
-    return "[]";
-  }
-
-  const lines = vectors.map((vector) => `  ${JSON.stringify(vector)}`);
-  return `[\n${lines.join(",\n")}\n]`;
-}
-
-/**
- * Generate TypeScript output file with verified vectors.
- */
 export function generateOutputFile(
-  singleSigVectors: VerifiedSingleSigVector[],
-  multisigVectors: VerifiedMultisigVector[],
-  implementations: string[],
-  testMnemonic: string,
+  singleSigVectors: readonly VerifiedSingleSigVector[],
+  multisigVectors: readonly VerifiedMultisigVector[],
+  provenance: VerifierProvenance,
 ): string {
-  const date = new Date().toISOString().split("T")[0];
-  const sections = [
-    getVerificationHeader(
-      singleSigVectors,
-      multisigVectors,
-      implementations,
-      date,
-    ),
-    getOutputTypes(),
-    getOutputVectors(singleSigVectors, multisigVectors),
-    getOutputMnemonic(testMnemonic),
-  ];
+  return `/**
+ * VERIFIED ADDRESS VECTORS — GENERATED FILE
+ *
+ * Seed/root-to-account/address evidence accepted only after exact agreement by
+ * Bitcoin Core, bitcoinjs-lib, bip_utils, and btcd. No address normalization is
+ * permitted. Regenerate with scripts/verify-addresses/verify-repeatable.sh.
+ */
 
-  return `${sections.join("\n\n")}\n`;
+${TYPES}
+
+export const VERIFIER_PROVENANCE = ${json(provenance)} as const;
+
+export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = ${json(singleSigVectors)};
+
+export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = ${json(multisigVectors)};
+`;
 }

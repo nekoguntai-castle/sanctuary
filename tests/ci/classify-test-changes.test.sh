@@ -362,6 +362,27 @@ EOF_DOC
   assert_contains_output "$output_file" "test_files" "tests/components/example.test.tsx"
 
   base_sha="$head_sha"
+  mkdir -p "$repo_dir/scripts/verify-addresses"
+  printf '{}\n' > "$repo_dir/scripts/verify-addresses/package-lock.json"
+  git -C "$repo_dir" add scripts/verify-addresses/package-lock.json
+  git -C "$repo_dir" commit -qm "verifier dependency lock"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "full_scan" "true"
+
+  base_sha="$head_sha"
+  mkdir -p "$repo_dir/scripts/ci"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$repo_dir/scripts/ci/setup-verifier-test-dependencies.sh"
+  git -C "$repo_dir" add scripts/ci/setup-verifier-test-dependencies.sh
+  git -C "$repo_dir" commit -qm "verifier test dependency setup"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "test_suite_changed" "true"
+  assert_exact_output "$output_file" "frontend_changed" "true"
+
+  base_sha="$head_sha"
   mkdir -p "$repo_dir/src/services/hardwareWallet"
   printf 'export const helper = true;\n' > "$repo_dir/src/services/hardwareWallet/service.ts"
   git -C "$repo_dir" add src/services/hardwareWallet/service.ts

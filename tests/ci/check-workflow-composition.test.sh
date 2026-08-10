@@ -1234,6 +1234,7 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/quick-frontend.log"' \
   "scripts/ci/with-runner-lock.sh node-toolchain" \
   'scripts/ci/retry-command.sh "quick frontend isolated checks"' \
+  "bash scripts/ci/setup-verifier-test-dependencies.sh" \
   "npx vitest related --config config/tooling/vitest.config.ts --run --passWithNoTests" \
   "Write quick frontend diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Frontend"' \
@@ -1478,11 +1479,26 @@ assert_contains_in_order "$TEST_WORKFLOW" \
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full frontend coverage shard diagnostics" \
   "full-frontend-coverage-shard-1:" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-verifier-dependencies.log"' \
+  "bash scripts/ci/setup-verifier-test-dependencies.sh" \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/frontend-coverage-shard-1.log"' \
   "scripts/ci/with-runner-lock.sh node-toolchain" \
   'scripts/ci/time-command.sh "frontend coverage shard 1/2"' \
   "npm run test:coverage:shard -- 1 2" \
   "Upload frontend coverage shard 1 diagnostics"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "full frontend coverage shard 2 verifier dependencies" \
+  "full-frontend-coverage-shard-2:" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-verifier-dependencies.log"' \
+  "bash scripts/ci/setup-verifier-test-dependencies.sh" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/frontend-coverage-shard-2.log"' \
+  "npm run test:coverage:shard -- 2 2"
+
+assert_occurrence_count "$TEST_WORKFLOW" \
+  "every frontend verifier-test lane installs nested dependencies" \
+  "bash scripts/ci/setup-verifier-test-dependencies.sh" \
+  "3"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full frontend coverage merge diagnostic upload" \

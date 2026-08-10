@@ -1,239 +1,247 @@
 #!/usr/bin/env python3
-"""
-Python Address Verification Script
+"""Independent bip_utils BIP39/BIP32 batch address verifier."""
 
-Uses bip_utils library for address derivation - completely independent
-from JavaScript implementations.
-
-Usage:
-    python python-verify.py single <xpub> <index> <script_type> <change> <network>
-    python python-verify.py multi <xpubs_json> <threshold> <index> <script_type> <change> <network>
-
-Output:
-    JSON with { "address": "..." } or { "error": "..." }
-"""
-
-import sys
-import json
-from typing import List
 import hashlib
+import importlib.metadata
+import json
 import os
+import platform
+import sys
 
 try:
     import bip_utils
     from bip_utils import (
-        Base58Decoder,
         Base58Encoder,
         Bip32Secp256k1,
+        Bip39SeedGenerator,
         P2TRAddr,
+        P2TRAddrDecoder,
         SegwitBech32Encoder,
     )
-    HAS_BIP_UTILS = True
+    AVAILABLE = True
 except ImportError:
     bip_utils = None
-    HAS_BIP_UTILS = False
-
-try:
-    # Alternative: python-bitcoinlib
-    import bitcoin
-    from bitcoin.core import CScript
-    from bitcoin.core.script import OP_0, OP_CHECKMULTISIG
-    from bitcoin.wallet import P2PKHBitcoinAddress, P2SHBitcoinAddress, P2WPKHBitcoinAddress
-    HAS_PYTHON_BITCOINLIB = True
-except ImportError:
-    HAS_PYTHON_BITCOINLIB = False
+    AVAILABLE = False
 
 
-def hash160(payload: bytes) -> bytes:
-    """Bitcoin HASH160: RIPEMD160(SHA256(payload))."""
+VERSIONS = {
+    "xpub": "0488b21e", "ypub": "049d7cb2", "zpub": "04b24746",
+    "Ypub": "0295b43f", "Zpub": "02aa7ed3", "tpub": "043587cf",
+    "upub": "044a5262", "vpub": "045f1cf6", "Upub": "024289ef",
+    "Vpub": "02575483",
+}
+
+
+def source_sha256():
+    with open(__file__, "rb") as source_file:
+        return hashlib.sha256(source_file.read()).hexdigest()
+
+
+def dependency_fingerprint():
+    excluded = {"pip", "setuptools"}
+    packages = sorted(
+        f"{distribution.metadata['Name'].lower()}=={distribution.version}"
+        for distribution in importlib.metadata.distributions()
+        if distribution.metadata["Name"].lower() not in excluded
+    )
+    return hashlib.sha256("\n".join(packages).encode()).hexdigest()
+
+
+def ripemd160(payload):
+    if os.environ.get("VERIFY_ADDRESSES_FORCE_RIPEMD160_FALLBACK") != "1":
+        try:
+            return hashlib.new("ripemd160", payload).digest()
+        except (ValueError, TypeError):
+            pass
+    if AVAILABLE and hasattr(bip_utils, "Ripemd160"):
+        return bip_utils.Ripemd160.QuickDigest(payload)
+    raise RuntimeError("RIPEMD160 is unavailable from hashlib and bip_utils")
+
+
+def hash160(payload):
     return ripemd160(hashlib.sha256(payload).digest())
 
 
-def ripemd160(payload: bytes) -> bytes:
-    """RIPEMD160 digest with fallbacks for OpenSSL builds that disable it."""
-    try:
-        if not _force_ripemd160_fallback():
-            return hashlib.new('ripemd160', payload).digest()
-    except (ValueError, TypeError):
-        pass
-
-    if HAS_BIP_UTILS and hasattr(bip_utils, 'Ripemd160'):
-        return bip_utils.Ripemd160.QuickDigest(payload)
-
-    try:
-        from Crypto.Hash import RIPEMD160
-    except ImportError as exc:
-        raise RuntimeError('RIPEMD160 is unavailable from hashlib, bip_utils, and pycryptodome') from exc
-
-    digest = RIPEMD160.new()
-    digest.update(payload)
-    return digest.digest()
+def network_params(chain):
+    if chain == "mainnet":
+        return b"\x00", b"\x05", "bc"
+    if chain in ("testnet3", "testnet4", "signet"):
+        return b"\x6f", b"\xc4", "tb"
+    if chain == "regtest":
+        return b"\x6f", b"\xc4", "bcrt"
+    raise ValueError(f"unsupported chain environment: {chain}")
 
 
-def _force_ripemd160_fallback() -> bool:
-    return os.environ.get('VERIFY_ADDRESSES_FORCE_RIPEMD160_FALLBACK') == '1'
+def parse_path(path):
+    if not path.startswith("m/"):
+        raise ValueError(f"invalid absolute BIP32 path: {path}")
+    result = []
+    for component in path[2:].split("/"):
+        hardened = component.endswith(("'", "h", "H"))
+        number = component[:-1] if hardened else component
+        index = int(number)
+        if index < 0 or index >= 0x80000000:
+            raise ValueError(f"invalid BIP32 path component: {component}")
+        result.append(index | (0x80000000 if hardened else 0))
+    return result
 
 
-def network_params(network: str) -> tuple[bytes, bytes, str]:
-    """Return P2PKH version, P2SH version, and SegWit HRP for the network."""
-    if network == 'mainnet':
-        return bytes([0x00]), bytes([0x05]), 'bc'
-    if network == 'testnet':
-        return bytes([0x6F]), bytes([0xC4]), 'tb'
-    raise ValueError(f"Unsupported network: {network}")
+def derive_path(root, path):
+    node = root
+    parent = root
+    for index in parse_path(path):
+        parent = node
+        node = node.ChildKey(index)
+    return node, parent
 
 
-def standard_xpub(xpub: str, network: str) -> str:
-    """Convert extended pubkeys to xpub version bytes accepted by bip_utils."""
-    prefix = xpub[:4]
-    if prefix == 'xpub':
-        return xpub
+def account_evidence(seed_id, root, account, parent, case):
+    public_key = account.PublicKey().RawCompressed().ToBytes()
+    parent_key = parent.PublicKey().RawCompressed().ToBytes()
+    master_key = root.PublicKey().RawCompressed().ToBytes()
+    child_number = parse_path(case["accountPath"])[-1]
+    payload = (
+        bytes([len(parse_path(case["accountPath"]))])
+        + hash160(parent_key)[:4]
+        + child_number.to_bytes(4, "big")
+        + account.ChainCode().ToBytes()
+        + public_key
+    )
+    version = bytes.fromhex(VERSIONS[case["slip132Format"]])
+    return {
+        "seedId": seed_id,
+        "masterFingerprint": hash160(master_key)[:4].hex(),
+        "originPath": case["accountPath"],
+        "encoded": Base58Encoder.CheckEncode(version + payload),
+        "versionHex": version.hex(),
+        "depth": payload[0],
+        "parentFingerprint": payload[1:5].hex(),
+        "childNumber": child_number,
+        "chainCodeHex": payload[9:41].hex(),
+        "publicKeyHex": payload[41:74].hex(),
+        "payloadHex": payload.hex(),
+    }
 
-    decoded = Base58Decoder.CheckDecode(xpub)
-    new_version = bytes([0x04, 0x88, 0xB2, 0x1E])
-    return Base58Encoder.CheckEncode(new_version + decoded[4:])
+
+def multisig_script(pubkeys, threshold):
+    if not 1 <= threshold <= len(pubkeys) <= 16:
+        raise ValueError("invalid multisig quorum")
+    ordered = sorted(pubkeys)
+    return (
+        bytes([0x50 + threshold])
+        + b"".join(bytes([len(key)]) + key for key in ordered)
+        + bytes([0x50 + len(ordered), 0xae])
+    )
 
 
-def derive_pub_key(xpub: str, index: int, change: bool, network: str) -> bytes:
-    """Derive the compressed public key at change/index from an account xpub."""
-    bip32_ctx = Bip32Secp256k1.FromExtendedKey(standard_xpub(xpub, network))
-    change_idx = 1 if change else 0
-    derived = bip32_ctx.DerivePath(f"{change_idx}/{index}")
-    return derived.PublicKey().RawCompressed().ToBytes()
-
-
-def base58check_address(version: bytes, payload: bytes) -> str:
-    return Base58Encoder.CheckEncode(version + payload)
-
-
-def derive_single_sig_bip_utils(xpub: str, index: int, script_type: str, change: bool, network: str) -> str:
-    """Derive single-sig address using bip_utils primitives."""
-    p2pkh_version, p2sh_version, bech32_hrp = network_params(network)
-    pub_key = derive_pub_key(xpub, index, change, network)
-
-    # Generate address based on script type
-    if script_type == 'legacy':
-        return base58check_address(p2pkh_version, hash160(pub_key))
-
-    elif script_type == 'nested_segwit':
-        witness_program = bytes([0x00, 0x14]) + hash160(pub_key)
-        return base58check_address(p2sh_version, hash160(witness_program))
-
-    elif script_type == 'native_segwit':
-        return SegwitBech32Encoder.Encode(bech32_hrp, 0, hash160(pub_key))
-
-    elif script_type == 'taproot':
-        return P2TRAddr.EncodeKey(pub_key, hrp=bech32_hrp)
-
+def single_result(pubkey, script_type, chain):
+    p2pkh, p2sh, hrp = network_params(chain)
+    key_hash = hash160(pubkey)
+    if script_type == "legacy":
+        address = Base58Encoder.CheckEncode(p2pkh + key_hash)
+        script = b"\x76\xa9\x14" + key_hash + b"\x88\xac"
+    elif script_type == "nested_segwit":
+        redeem = b"\x00\x14" + key_hash
+        redeem_hash = hash160(redeem)
+        address = Base58Encoder.CheckEncode(p2sh + redeem_hash)
+        script = b"\xa9\x14" + redeem_hash + b"\x87"
+    elif script_type == "native_segwit":
+        address = SegwitBech32Encoder.Encode(hrp, 0, key_hash)
+        script = b"\x00\x14" + key_hash
+    elif script_type == "taproot":
+        address = P2TRAddr.EncodeKey(pubkey, hrp=hrp)
+        output_key = P2TRAddrDecoder.DecodeAddr(address, hrp=hrp)
+        script = b"\x51\x20" + output_key
     else:
-        raise ValueError(f"Unknown script type: {script_type}")
+        raise ValueError(f"unsupported single-sig script type: {script_type}")
+    return address, script.hex()
 
 
-def derive_multisig_bip_utils(xpubs: List[str], threshold: int, index: int,
-                               script_type: str, change: bool, network: str) -> str:
-    """Derive multisig address using bip_utils primitives."""
-    _, p2sh_version, bech32_hrp = network_params(network)
-
-    # Derive public keys from each xpub
-    pub_keys = []
-    for xpub in xpubs:
-        pub_keys.append(derive_pub_key(xpub, index, change, network))
-
-    # Sort public keys (BIP-67)
-    pub_keys.sort()
-
-    # Build multisig redeem script
-    # OP_M <pubkey1> <pubkey2> ... <pubkeyN> OP_N OP_CHECKMULTISIG
-    redeem_script = bytes([0x50 + threshold])  # OP_M
-    for pk in pub_keys:
-        redeem_script += bytes([len(pk)]) + pk
-    redeem_script += bytes([0x50 + len(pub_keys)])  # OP_N
-    redeem_script += bytes([0xAE])  # OP_CHECKMULTISIG
-
-    # Hash the redeem script
-    script_hash = hashlib.sha256(redeem_script).digest()
-    script_hash_160 = ripemd160(script_hash)
-
-    if script_type == 'p2sh':
-        # P2SH: hash160 of redeem script
-        return base58check_address(p2sh_version, script_hash_160)
-
-    elif script_type == 'p2wsh':
-        # P2WSH: SHA256 of witness script (same as redeem script for multisig)
-        return SegwitBech32Encoder.Encode(bech32_hrp, 0, script_hash)
-
-    elif script_type == 'p2sh_p2wsh':
-        # P2SH-P2WSH: P2SH wrapping P2WSH
-        # Create witness script hash (SHA256)
-        witness_program = bytes([0x00, 0x20]) + script_hash
-        # Hash160 of the witness program
-        wp_hash = hash160(witness_program)
-        return base58check_address(p2sh_version, wp_hash)
-
+def multisig_result(pubkeys, threshold, script_type, chain):
+    _, p2sh, hrp = network_params(chain)
+    witness_script = multisig_script(pubkeys, threshold)
+    witness_hash = hashlib.sha256(witness_script).digest()
+    if script_type == "p2wsh":
+        address = SegwitBech32Encoder.Encode(hrp, 0, witness_hash)
+        output_script = b"\x00\x20" + witness_hash
+    elif script_type == "p2sh_p2wsh":
+        redeem_hash = hash160(b"\x00\x20" + witness_hash)
+        address = Base58Encoder.CheckEncode(p2sh + redeem_hash)
+        output_script = b"\xa9\x14" + redeem_hash + b"\x87"
     else:
-        raise ValueError(f"Unknown multisig script type: {script_type}")
+        raise ValueError(f"unsupported multisig script type: {script_type}")
+    return address, output_script.hex()
+
+
+def derive_case(case, seeds, version):
+    if len(set(case["seedIds"])) != len(case["seedIds"]):
+        raise ValueError(f'duplicate seed-derived account key in {case["id"]}')
+    account_keys = []
+    child_pubkeys = []
+    seen_account_keys = set()
+    for seed_id in case["seedIds"]:
+        mnemonic = seeds[seed_id]
+        seed = Bip39SeedGenerator(mnemonic).Generate()
+        root = Bip32Secp256k1.FromSeed(seed)
+        account, parent = derive_path(root, case["accountPath"])
+        key_evidence = account_evidence(seed_id, root, account, parent, case)
+        key_identity = (key_evidence["chainCodeHex"], key_evidence["publicKeyHex"])
+        if key_identity in seen_account_keys:
+            raise ValueError(f'duplicate derived account key material in {case["id"]}')
+        seen_account_keys.add(key_identity)
+        account_keys.append(key_evidence)
+        child = account.ChildKey(case["branch"]).ChildKey(case["index"])
+        child_pubkeys.append(child.PublicKey().RawCompressed().ToBytes())
+    if case["kind"] == "single_sig":
+        address, script = single_result(child_pubkeys[0], case["scriptType"], case["chain"])
+    else:
+        address, script = multisig_result(
+            child_pubkeys, case["threshold"], case["scriptType"], case["chain"]
+        )
+    return {
+        "caseId": case["id"],
+        "implementation": "bip_utils (Python)",
+        "implementationVersion": version,
+        "evidenceScope": "seed-to-account-and-output",
+        "accountKeys": account_keys,
+        "address": address,
+        "scriptPubKeyHex": script,
+    }
+
+
+def batch():
+    request = json.load(sys.stdin)
+    cases = request.get("cases")
+    seed_rows = request.get("seeds")
+    if not isinstance(cases, list) or not isinstance(seed_rows, list):
+        raise ValueError("batch request requires cases and seeds arrays")
+    seeds = {row["id"]: row["mnemonic"] for row in seed_rows}
+    version = getattr(bip_utils, "__version__", "unknown")
+    return {"evidence": [derive_case(case, seeds, version) for case in cases]}
 
 
 def main():
-    if len(sys.argv) < 2:
-        print(json.dumps({"error": "Usage: python-verify.py <command> <args>"}))
-        sys.exit(1)
-
-    command = sys.argv[1]
-
+    command = sys.argv[1] if len(sys.argv) == 2 else None
     if command == "check":
-        # Check if library is available
         print(json.dumps({
-            "available": HAS_BIP_UTILS,
-            "version": getattr(bip_utils, "__version__", "unknown") if HAS_BIP_UTILS else None,
-            "name": "bip_utils"
+            "available": AVAILABLE,
+            "version": getattr(bip_utils, "__version__", None) if AVAILABLE else None,
+            "pythonVersion": platform.python_version(),
+            "effectiveUid": os.geteuid(),
+            "dependencyFingerprint": dependency_fingerprint(),
+            "sourceSha256": source_sha256(),
         }))
-        sys.exit(0)
-
-    if not HAS_BIP_UTILS:
-        print(json.dumps({"error": "bip_utils library not installed. Run: pip install bip_utils"}))
-        sys.exit(1)
-
-    try:
-        if command == "single":
-            # single <xpub> <index> <script_type> <change> <network>
-            if len(sys.argv) != 7:
-                print(json.dumps({"error": "Usage: single <xpub> <index> <script_type> <change> <network>"}))
-                sys.exit(1)
-
-            xpub = sys.argv[2]
-            index = int(sys.argv[3])
-            script_type = sys.argv[4]
-            change = sys.argv[5].lower() == 'true'
-            network = sys.argv[6]
-
-            address = derive_single_sig_bip_utils(xpub, index, script_type, change, network)
-            print(json.dumps({"address": address}))
-
-        elif command == "multi":
-            # multi <xpubs_json> <threshold> <index> <script_type> <change> <network>
-            if len(sys.argv) != 8:
-                print(json.dumps({"error": "Usage: multi <xpubs_json> <threshold> <index> <script_type> <change> <network>"}))
-                sys.exit(1)
-
-            xpubs = json.loads(sys.argv[2])
-            threshold = int(sys.argv[3])
-            index = int(sys.argv[4])
-            script_type = sys.argv[5]
-            change = sys.argv[6].lower() == 'true'
-            network = sys.argv[7]
-
-            address = derive_multisig_bip_utils(xpubs, threshold, index, script_type, change, network)
-            print(json.dumps({"address": address}))
-
-        else:
-            print(json.dumps({"error": f"Unknown command: {command}"}))
-            sys.exit(1)
-
-    except Exception as e:
-        print(json.dumps({"error": str(e)}))
-        sys.exit(1)
+        return
+    if command != "batch":
+        raise ValueError("usage: python-verify.py check|batch")
+    if not AVAILABLE:
+        raise RuntimeError("bip_utils is not installed")
+    print(json.dumps(batch(), separators=(",", ":")))
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as error:
+        print(json.dumps({"error": str(error)}))
+        sys.exit(1)

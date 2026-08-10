@@ -77,7 +77,7 @@ describe('Address Derivation Service descriptor derivation', () => {
 
     it('preserves every multisig signer origin in descriptor order', () => {
       const vector = VERIFIED_MULTISIG_VECTORS.find(({ network, scriptType, change }) =>
-        network === 'testnet' && scriptType === 'p2wsh' && !change
+        network === 'testnet3' && scriptType === 'p2wsh' && !change
       )!;
       const fingerprints = ['aabbccdd', 'eeff0011', '22334455'];
       const keys = vector.xpubs.slice(0, 3).map((xpub, signerIndex) =>
@@ -101,7 +101,7 @@ describe('Address Derivation Service descriptor derivation', () => {
 
     it('rejects mixed multisig branches instead of overriding one cosigner', () => {
       const vector = VERIFIED_MULTISIG_VECTORS.find(({ network, scriptType, change }) =>
-        network === 'testnet' && scriptType === 'p2wsh' && !change
+        network === 'testnet3' && scriptType === 'p2wsh' && !change
       )!;
       const receive = `wsh(sortedmulti(2,${vector.xpubs.slice(0, 3).map((xpub, signerIndex) =>
         `[${['aabbccdd', 'eeff0011', '22334455'][signerIndex]}/48'/1'/0'/2']${xpub}/0/*`

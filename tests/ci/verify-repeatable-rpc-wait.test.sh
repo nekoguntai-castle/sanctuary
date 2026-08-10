@@ -50,7 +50,35 @@ else
   bad 'RPC probe is missing --connect-timeout/--max-time; the retry loop is unbounded'
 fi
 
-# ----- 2. those flags actually bound a black-hole endpoint ------------------
+# ----- 2. all chain environments are distinct and fail closed ---------------
+EXPECTED_ENDPOINTS=(
+  'BITCOIN_RPC_URL_MAINNET'
+  'BITCOIN_RPC_URL_TESTNET3'
+  'BITCOIN_RPC_URL_TESTNET4'
+  'BITCOIN_RPC_URL_SIGNET'
+  'BITCOIN_RPC_URL_REGTEST'
+)
+for endpoint in "${EXPECTED_ENDPOINTS[@]}"; do
+  if grep -q -- "$endpoint" "$WAIT_SCRIPT"; then
+    ok "$endpoint is wired into the repeatable verifier"
+  else
+    bad "$endpoint is missing from the repeatable verifier"
+  fi
+done
+
+if grep -q -- 'chain' "$WAIT_SCRIPT" && grep -q -- 'expected_chain' "$WAIT_SCRIPT"; then
+  ok 'RPC readiness validates the Core-reported chain'
+else
+  bad 'RPC readiness can accept a node from the wrong chain'
+fi
+
+if grep -q -- 'bitcoin/bitcoin:29.0@sha256:a6aa8a9e349b4108d13c558dbe43064057bd7b6474b858966884f9cb95b7ed78' "$WAIT_SCRIPT"; then
+  ok 'repeatable provenance names the exact Bitcoin Core 29.0 image digest'
+else
+  bad 'repeatable provenance does not pin the required Bitcoin Core 29.0 digest'
+fi
+
+# ----- 3. those flags actually bound a black-hole endpoint ------------------
 # Proves the flags do what the comment claims, rather than trusting curl
 # semantics. A socket that accepts and never writes is the exact failure shape.
 python3 - "$SCRIPT_DIR/.rpc-port" <<'PY' &

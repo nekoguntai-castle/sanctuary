@@ -1,200 +1,160 @@
-import type {
-  MultisigScriptType,
-  MultisigTestCase,
-  Network,
-  ScriptType,
-  SingleSigTestCase,
+import * as walletPolicyModule from '../../shared/constants/walletPolicy.js';
+import type * as WalletPolicyModule from '../../shared/constants/walletPolicy.js';
+import type { WalletPolicyRow } from '../../shared/constants/walletPolicy.js';
+import {
+  EXPECTED_DERIVATION_CASE_COUNT,
+  type ChainEnvironment,
+  type DerivationFamily,
+  type DerivationTestCase,
+  type MultisigScriptType,
+  type SingleSigScriptType,
+  type Slip132Format,
+  type TestSeed,
+  type WalletBranch,
 } from './types.js';
-import { deriveXpub } from './xpub.js';
+import {
+  STANDARD_POLICY_ORACLE,
+  derivationFamilyForChain,
+  expectedAccountPath,
+  expectedSlip132Format,
+} from './standardsOracle.js';
 
-/**
- * Standard BIP-39 test mnemonic - this is THE test mnemonic from the BIP spec.
- */
-export const TEST_MNEMONIC = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
+const walletPolicy = ('default' in walletPolicyModule
+  ? walletPolicyModule.default
+  : walletPolicyModule) as typeof WalletPolicyModule;
+const { WALLET_POLICY_REGISTRY, buildCanonicalAccountPathForFamily } = walletPolicy;
 
-const MULTISIG_MNEMONICS = [
-  TEST_MNEMONIC,
-  'zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong',
-  'legal winner thank year wave sausage worth useful legal winner thank yellow',
-  'letter advice cage absurd amount doctor acoustic avoid letter advice cage above',
-  'ozone drill grab fiber curtain grace pudding thank cruise elder eight picnic',
-];
+export const TEST_SEEDS = Object.freeze([
+  { id: 'bip39-abandon', mnemonic: 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about' },
+  { id: 'bip39-zoo', mnemonic: 'zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong' },
+  { id: 'bip39-legal', mnemonic: 'legal winner thank year wave sausage worth useful legal winner thank yellow' },
+  { id: 'bip39-letter', mnemonic: 'letter advice cage absurd amount doctor acoustic avoid letter advice cage above' },
+  { id: 'bip39-ozone', mnemonic: 'ozone drill grab fiber curtain grace pudding thank cruise elder eight picnic' },
+] as const satisfies readonly TestSeed[]);
 
-const SINGLE_SIG_SCRIPT_TYPES: Array<{ type: ScriptType; bip: number }> = [
-  { type: 'legacy', bip: 44 },
-  { type: 'nested_segwit', bip: 49 },
-  { type: 'native_segwit', bip: 84 },
-  { type: 'taproot', bip: 86 },
-];
+export const TEST_MNEMONIC = TEST_SEEDS[0].mnemonic;
+export const MATRIX_CHAINS = Object.freeze([
+  'mainnet', 'testnet3', 'testnet4', 'signet', 'regtest',
+] as const satisfies readonly ChainEnvironment[]);
+export const MATRIX_ACCOUNTS = Object.freeze([0, 7] as const);
+export const MATRIX_BRANCHES = Object.freeze([0, 1] as const satisfies readonly WalletBranch[]);
+export const MATRIX_INDICES = Object.freeze([0, 1, 0x7fffffff] as const);
 
-const MULTISIG_SCRIPT_TYPES: MultisigScriptType[] = ['p2sh', 'p2sh_p2wsh', 'p2wsh'];
-const NETWORKS: Network[] = ['mainnet', 'testnet'];
-const SINGLE_SIG_INDICES = [0, 1, 2, 19, 99];
-const HIGH_INDICES = [999, 9999, 2147483646];
-const MULTISIG_INDICES = [0, 1, 2];
-const CHANGE_OPTIONS = [false, true];
-const THRESHOLDS = [
-  { m: 2, n: 3 },
-  { m: 3, n: 5 },
-];
-
-function getAccountPath(bip: number, network: Network): string {
-  const coinType = network === 'mainnet' ? 0 : 1;
-  return `m/${bip}'/${coinType}'/0'`;
+export function slip132FormatFor(
+  scriptType: SingleSigScriptType | MultisigScriptType,
+  family: DerivationFamily,
+): Slip132Format {
+  return expectedSlip132Format(scriptType, family);
 }
 
-function buildSingleSigCasesForPath(
-  type: ScriptType,
-  network: Network,
-  path: string,
-  xpub: string
-): SingleSigTestCase[] {
-  const cases: SingleSigTestCase[] = [];
+const singlePolicies = STANDARD_POLICY_ORACLE.filter(policy => policy.kind === 'single_sig');
+const multisigPolicies = STANDARD_POLICY_ORACLE.filter(policy => policy.kind === 'multi_sig');
 
-  for (const change of CHANGE_OPTIONS) {
-    for (const index of SINGLE_SIG_INDICES) {
-      cases.push({
-        description: `${type} ${network} ${change ? 'change' : 'receive'} index ${index}`,
-        mnemonic: TEST_MNEMONIC,
-        path,
-        xpub,
-        scriptType: type,
-        network,
-        index,
-        change,
-      });
+export function assertProductionPolicyOracle(
+  rows: readonly WalletPolicyRow[] = WALLET_POLICY_REGISTRY,
+  buildPath: typeof buildCanonicalAccountPathForFamily = buildCanonicalAccountPathForFamily,
+): void {
+  if (rows.length !== STANDARD_POLICY_ORACLE.length) {
+    throw new Error('Production wallet policy registry differs from the verifier standards oracle');
+  }
+  const productionById = new Map(rows.map(policy => [policy.id, policy]));
+  for (const expected of STANDARD_POLICY_ORACLE) {
+    const actual = productionById.get(expected.id);
+    if (!actual
+      || actual.walletType !== expected.kind
+      || actual.accountPurpose !== expected.accountPurpose
+      || actual.descriptorWrapper !== expected.descriptorWrapper
+      || actual.scriptType !== expected.productionScriptType
+      || actual.purpose !== expected.purpose
+      || actual.bip48ScriptType !== expected.bip48ScriptType) {
+      throw new Error(`Production wallet policy drifted from standards oracle: ${expected.id}`);
+    }
+    for (const family of ['mainnet', 'testnet'] as const) {
+      for (const account of MATRIX_ACCOUNTS) {
+        const actualPath = buildPath({
+          walletType: actual.walletType,
+          scriptType: actual.scriptType,
+          derivationFamily: family,
+          account,
+        });
+        if (actualPath !== expectedAccountPath(expected, family, account)) {
+          throw new Error(`Production account path drifted from standards oracle: ${expected.id}/${family}/${account}`);
+        }
+      }
     }
   }
-
-  return cases;
 }
 
-function generateHighIndexCases(): SingleSigTestCase[] {
-  return HIGH_INDICES.map((index) => ({
-    description: `native_segwit mainnet receive high index ${index}`,
-    mnemonic: TEST_MNEMONIC,
-    path: "m/84'/0'/0'",
-    xpub: deriveXpub(TEST_MNEMONIC, "m/84'/0'/0'", 'mainnet'),
-    scriptType: 'native_segwit',
-    network: 'mainnet',
-    index,
-    change: false,
-  }));
-}
-
-/**
- * Generate single-sig test cases.
- */
-export function generateSingleSigTestCases(): SingleSigTestCase[] {
-  const cases: SingleSigTestCase[] = [];
-
-  for (const { type, bip } of SINGLE_SIG_SCRIPT_TYPES) {
-    for (const network of NETWORKS) {
-      const path = getAccountPath(bip, network);
-      const xpub = deriveXpub(TEST_MNEMONIC, path, network);
-      cases.push(...buildSingleSigCasesForPath(type, network, path, xpub));
-    }
-  }
-
-  cases.push(...generateHighIndexCases());
-  return cases;
-}
-
-function getMultisigAccountPath(scriptType: MultisigScriptType, account: number): string {
-  const script = scriptType === 'p2sh_p2wsh' ? 1 : 2;
-  return `m/48'/1'/${account}'/${script}'`;
-}
-
-function deriveCosignerXpub(
-  index: number,
-  network: Network,
-  scriptType: MultisigScriptType
-): string {
-  const mnemonic = MULTISIG_MNEMONICS[index];
-  if (!mnemonic) {
-    throw new Error(`Missing independent multisig mnemonic for cosigner ${index + 1}`);
-  }
-  return deriveXpub(mnemonic, getMultisigAccountPath(scriptType, 0), network);
-}
-
-function deriveCosignerXpubs(
-  totalKeys: number,
-  network: Network,
-  scriptType: MultisigScriptType
-): string[] {
-  const xpubs: string[] = [];
-
-  for (let index = 0; index < totalKeys; index++) {
-    xpubs.push(deriveCosignerXpub(index, network, scriptType));
-  }
-
-  return xpubs;
-}
-
-function buildMultisigCasesForThreshold(
-  scriptType: MultisigScriptType,
-  threshold: number,
-  totalKeys: number,
-  xpubs: string[],
-  network: Network
-): MultisigTestCase[] {
-  const cases: MultisigTestCase[] = [];
-
-  for (const change of CHANGE_OPTIONS) {
-    for (const index of MULTISIG_INDICES) {
-      cases.push({
-        description: `${scriptType} ${threshold}-of-${totalKeys} ${change ? 'change' : 'receive'} index ${index}`,
-        xpubs: xpubs.slice(0, totalKeys),
-        threshold,
-        totalKeys,
+function singleSigCases(): DerivationTestCase[] {
+  return singlePolicies.flatMap(policy => MATRIX_CHAINS.flatMap(chain => {
+    const family = derivationFamilyForChain(chain);
+    const scriptType = policy.scriptType;
+    return MATRIX_ACCOUNTS.flatMap(account => {
+      const accountPath = expectedAccountPath(policy, family, account);
+      return MATRIX_BRANCHES.flatMap(branch => MATRIX_INDICES.map(index => ({
+        id: `ss:${policy.id}:${chain}:a${account}:b${branch}:i${index}`,
+        description: `${policy.displayName} ${chain} account ${account} branch ${branch} index ${index}`,
+        kind: 'single_sig' as const,
+        chain,
+        derivationFamily: family,
+        policyId: policy.id,
         scriptType,
-        network,
+        account,
+        accountPath,
+        branch,
         index,
-        change,
-      });
-    }
-  }
-
-  return cases;
-}
-
-function generateKeyOrderingCases(): MultisigTestCase[] {
-  const baseXpubs = MULTISIG_MNEMONICS.slice(0, 3).map((mnemonic) =>
-    deriveXpub(mnemonic, "m/48'/1'/0'/2'", 'testnet')
-  );
-  const orderings = [
-    baseXpubs.slice(),
-    [baseXpubs[2], baseXpubs[1], baseXpubs[0]],
-    [baseXpubs[1], baseXpubs[2], baseXpubs[0]],
-  ];
-
-  return orderings.map((xpubs, index) => ({
-    description: `p2wsh 2-of-3 key ordering test ${index + 1}`,
-    xpubs,
-    threshold: 2,
-    totalKeys: 3,
-    scriptType: 'p2wsh',
-    network: 'testnet',
-    index: 0,
-    change: false,
-    keyOrder: index === 0 ? 'sorted' : 'unsorted',
+        seedIds: [TEST_SEEDS[0].id] as const,
+        slip132Format: slip132FormatFor(scriptType, family),
+      })));
+    });
   }));
 }
 
-/**
- * Generate multisig test cases.
- */
-export function generateMultisigTestCases(): MultisigTestCase[] {
-  const cases: MultisigTestCase[] = [];
-  const network: Network = 'testnet';
+function multisigCases(): DerivationTestCase[] {
+  const quorums = [{ threshold: 2 as const, totalKeys: 3 as const }, { threshold: 3 as const, totalKeys: 5 as const }];
+  return multisigPolicies.flatMap(policy => MATRIX_CHAINS.flatMap(chain => {
+    const family = derivationFamilyForChain(chain);
+    const scriptType = policy.scriptType;
+    return MATRIX_ACCOUNTS.flatMap(account => {
+      const accountPath = expectedAccountPath(policy, family, account);
+      return quorums.flatMap(({ threshold, totalKeys }) => MATRIX_BRANCHES.flatMap(branch => (
+        MATRIX_INDICES.map(index => ({
+          id: `ms:${policy.id}:${chain}:a${account}:q${threshold}of${totalKeys}:b${branch}:i${index}`,
+          description: `${policy.displayName} ${threshold}-of-${totalKeys} ${chain} account ${account} branch ${branch} index ${index}`,
+          kind: 'multisig' as const,
+          chain,
+          derivationFamily: family,
+          policyId: policy.id,
+          scriptType,
+          account,
+          accountPath,
+          branch,
+          index,
+          threshold,
+          totalKeys,
+          seedIds: TEST_SEEDS.slice(0, totalKeys).map(seed => seed.id),
+          slip132Format: slip132FormatFor(scriptType, family),
+        }))
+      )));
+    });
+  }));
+}
 
-  for (const scriptType of MULTISIG_SCRIPT_TYPES) {
-    for (const { m, n } of THRESHOLDS) {
-      const xpubs = deriveCosignerXpubs(n, network, scriptType);
-      cases.push(...buildMultisigCasesForThreshold(scriptType, m, n, xpubs, network));
-    }
+export function generateDerivationTestCases(): DerivationTestCase[] {
+  assertProductionPolicyOracle();
+  const cases = [...singleSigCases(), ...multisigCases()];
+  const ids = new Set(cases.map(testCase => testCase.id));
+  if (cases.length !== EXPECTED_DERIVATION_CASE_COUNT || ids.size !== cases.length) {
+    throw new Error(
+      `Derivation matrix must contain exactly ${EXPECTED_DERIVATION_CASE_COUNT} unique cases; received ${cases.length}/${ids.size}`,
+    );
   }
-
-  cases.push(...generateKeyOrderingCases());
   return cases;
 }
+
+export const generateSingleSigTestCases = () => (
+  generateDerivationTestCases().filter(testCase => testCase.kind === 'single_sig')
+);
+export const generateMultisigTestCases = () => (
+  generateDerivationTestCases().filter(testCase => testCase.kind === 'multisig')
+);

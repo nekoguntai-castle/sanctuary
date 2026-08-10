@@ -1,219 +1,161 @@
-/**
- * Python (bip_utils) Implementation Wrapper
- *
- * Calls the Python script for address derivation using bip_utils library.
- * This provides a completely independent implementation in a different language.
- */
+/** Batch wrapper for the independent bip_utils seed-to-address verifier. */
 
-import { spawn } from 'child_process';
+import { spawn } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { AddressDeriver, ScriptType, MultisigScriptType, Network } from '../types.js';
+import type {
+  DerivationEvidence,
+  DerivationImplementation,
+  DerivationTestCase,
+  TestSeed,
+} from '../types.js';
+import { PINNED_PYTHON_EFFECTIVE_UID } from '../standardsOracle.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const PYTHON_SCRIPT = join(__dirname, 'python-verify.py');
-const DEFAULT_PYTHON_RUN_ATTEMPTS = 3;
+const PYTHON_SCRIPT = join(dirname(fileURLToPath(import.meta.url)), 'python-verify.py');
+const DEFAULT_ATTEMPTS = 3;
 
-interface PythonResult {
-  address?: string;
-  error?: string;
+interface PythonResponse {
   available?: boolean;
   version?: string;
-  name?: string;
+  pythonVersion?: string;
+  effectiveUid?: number;
+  dependencyFingerprint?: string;
+  sourceSha256?: string;
+  error?: string;
+  evidence?: DerivationEvidence[];
 }
 
-interface PythonProcessOutcome {
-  stdout: string;
-  stderr: string;
-  code: number | null;
-  signal: NodeJS.Signals | null;
+interface PythonProvenance {
+  readonly pythonVersion: string;
+  readonly effectiveUid: number;
+  readonly dependencyFingerprint: string;
+  readonly sourceSha256: string;
 }
 
-function getPythonRunAttempts(): number {
-  const rawAttempts = process.env.VERIFY_ADDRESSES_PYTHON_RUN_ATTEMPTS;
-  if (!rawAttempts) {
-    return DEFAULT_PYTHON_RUN_ATTEMPTS;
+let runtimeProvenance: PythonProvenance | undefined;
+
+export function getPythonProvenance(): PythonProvenance {
+  if (!runtimeProvenance) throw new Error('Python verifier runtime was not inspected');
+  return runtimeProvenance;
+}
+
+class PythonCalculationError extends Error {}
+
+interface PythonInvocation { readonly command: string; readonly prefixArgs: readonly string[] }
+
+function pythonCommands(): PythonInvocation[] {
+  const configured = process.env.VERIFY_ADDRESSES_PYTHON;
+  if (configured) {
+    if (configured.trim() !== configured || /[\0\r\n\t ]/.test(configured)) {
+      throw new Error('VERIFY_ADDRESSES_PYTHON must be a single executable path or command name');
+    }
+    return [{ command: configured, prefixArgs: [PYTHON_SCRIPT] }];
   }
+  const imageId = process.env.VERIFY_ADDRESSES_PYTHON_IMAGE_ID;
+  // Tags can be retargeted between build and execution; the launcher supplies
+  // Docker's content-addressed ID captured atomically by `docker build`.
+  if (!imageId || !/^sha256:[0-9a-f]{64}$/.test(imageId)) {
+    throw new Error('VERIFY_ADDRESSES_PYTHON_IMAGE_ID must be an immutable sha256 image ID');
+  }
+  // The independent verifier runs offline and is removed after every invocation.
+  return [{ command: 'docker', prefixArgs: ['run', '--rm', '--network', 'none', '-i', imageId] }];
+}
 
-  const parsed = Number(rawAttempts);
+function runAttempts(): number {
+  const raw = process.env.VERIFY_ADDRESSES_PYTHON_RUN_ATTEMPTS;
+  if (!raw) return DEFAULT_ATTEMPTS;
+  const parsed = Number(raw);
   if (!Number.isInteger(parsed) || parsed < 1) {
     throw new Error('VERIFY_ADDRESSES_PYTHON_RUN_ATTEMPTS must be a positive integer');
   }
-
   return parsed;
 }
 
-function configuredPythonCommands(): string[] {
-  const configuredPython = process.env.VERIFY_ADDRESSES_PYTHON;
-  return configuredPython ? [validatePythonCommand(configuredPython)] : ['python3', 'python'];
-}
-
-function validatePythonCommand(command: string): string {
-  if (!command || command.trim() !== command || /[\0\r\n\t ]/.test(command)) {
-    throw new Error('VERIFY_ADDRESSES_PYTHON must be a single executable path or command name');
-  }
-
-  return command;
-}
-
-function runPythonProcess(command: string, args: string[]): Promise<PythonProcessOutcome> {
+function invoke(invocation: PythonInvocation, action: 'check' | 'batch', input?: unknown): Promise<PythonResponse> {
   return new Promise((resolve, reject) => {
-    // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process -- Owner: platform, 2026-05-09. Required independent bip_utils verifier; shell is disabled and command/env inputs are validated.
-    const proc = spawn(command, [PYTHON_SCRIPT, ...args], {
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-
+    // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process -- fixed script; shell disabled; configured executable validated.
+    const child = spawn(invocation.command, [...invocation.prefixArgs, action], { stdio: ['pipe', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
-    let settled = false;
-
-    proc.stdout.on('data', (data) => {
-      stdout += data.toString();
+    child.stdout.on('data', data => { stdout += data.toString(); });
+    child.stderr.on('data', data => { stderr += data.toString(); });
+    child.on('error', reject);
+    child.stdin.on('error', error => {
+      if ((error as NodeJS.ErrnoException).code !== 'EPIPE') reject(error);
     });
-
-    proc.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
-
-    proc.on('error', (err) => {
-      if (!settled) {
-        settled = true;
-        reject(err);
+    child.on('close', (code, signal) => {
+      if (code !== 0 && stdout.trim() === '') {
+        reject(new Error(`Python verifier failed (${signal ?? `exit ${code}`}): ${stderr.trim() || 'no stderr'}`));
+        return;
+      }
+      try {
+        const response = JSON.parse(stdout.trim()) as PythonResponse;
+        if (response.error) reject(new PythonCalculationError(response.error));
+        else resolve(response);
+      } catch (error) {
+        reject(error instanceof SyntaxError
+          ? new Error(`Failed to parse Python verifier output: ${stdout}`)
+          : error);
       }
     });
-
-    proc.on('close', (code, signal) => {
-      if (!settled) {
-        settled = true;
-        resolve({ stdout, stderr, code, signal });
-      }
-    });
+    child.stdin.end(input === undefined ? undefined : JSON.stringify(input));
   });
 }
 
-function parsePythonResult(stdout: string): PythonResult {
-  try {
-    const result = JSON.parse(stdout.trim()) as PythonResult;
-    if (result.error) {
-      throw new Error(result.error);
-    }
-    return result;
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      throw new Error(`Failed to parse Python output: ${stdout}`);
-    }
-    throw error;
-  }
-}
-
-function pythonFailureMessage(outcome: PythonProcessOutcome): string {
-  const status = outcome.signal ? `signal ${outcome.signal}` : `exit code ${outcome.code ?? 'unknown'}`;
-  const detail = outcome.stderr.trim() || 'no stderr';
-  return `Python script failed (${status}): ${detail}`;
-}
-
-function isEmptyProcessFailure(outcome: PythonProcessOutcome): boolean {
-  return outcome.code !== 0 && outcome.stdout.trim() === '';
-}
-
-async function runPythonCommand(command: string, args: string[]): Promise<PythonResult> {
-  const attempts = getPythonRunAttempts();
-  let lastError: Error | null = null;
-
-  for (let attempt = 1; attempt <= attempts; attempt++) {
-    const outcome = await runPythonProcess(command, args);
-    if (isEmptyProcessFailure(outcome)) {
-      lastError = new Error(pythonFailureMessage(outcome));
-      continue;
-    }
-
-    return parsePythonResult(outcome.stdout);
-  }
-
-  throw lastError ?? new Error('Python script failed before producing output');
-}
-
-async function runPython(args: string[]): Promise<PythonResult> {
-  let lastError: Error | null = null;
-
-  for (const command of configuredPythonCommands()) {
-    try {
-      return await runPythonCommand(command, args);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        continue;
+async function run(action: 'check' | 'batch', input?: unknown): Promise<PythonResponse> {
+  let lastError: unknown;
+  for (const invocation of pythonCommands()) {
+    for (let attempt = 0; attempt < runAttempts(); attempt += 1) {
+      try {
+        return await invoke(invocation, action, input);
+      } catch (error) {
+        lastError = error;
+        if (error instanceof PythonCalculationError) throw error;
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') break;
       }
-      throw error;
     }
   }
-
-  throw new Error(`Python not found: ${lastError?.message ?? 'no candidate command worked'}`);
+  throw lastError instanceof Error ? lastError : new Error('No Python interpreter succeeded');
 }
 
-export const pythonImpl: AddressDeriver = {
+export const pythonImpl: DerivationImplementation = {
+  id: 'bip-utils-python',
   name: 'bip_utils (Python)',
-  version: '1.13.0',
-
-  async deriveSingleSig(
-    xpub: string,
-    index: number,
-    scriptType: ScriptType,
-    change: boolean,
-    network: Network
-  ): Promise<string> {
-    const result = await runPython([
-      'single',
-      xpub,
-      String(index),
-      scriptType,
-      String(change),
-      network,
-    ]);
-
-    if (!result.address) {
-      throw new Error('No address returned from Python script');
-    }
-
-    return result.address;
-  },
-
-  async deriveMultisig(
-    xpubs: string[],
-    threshold: number,
-    index: number,
-    scriptType: MultisigScriptType,
-    change: boolean,
-    network: Network
-  ): Promise<string> {
-    const result = await runPython([
-      'multi',
-      JSON.stringify(xpubs),
-      String(threshold),
-      String(index),
-      scriptType,
-      String(change),
-      network,
-    ]);
-
-    if (!result.address) {
-      throw new Error('No address returned from Python script');
-    }
-
-    return result.address;
-  },
+  version: '2.12.1',
 
   async isAvailable(): Promise<boolean> {
     try {
-      const result = await runPython(['check']);
-      if (result.available && result.version) {
-        this.version = result.version;
+      const response = await run('check');
+      if (response.version) this.version = response.version;
+      if (response.available === true
+        && (!response.pythonVersion || !response.dependencyFingerprint || !response.sourceSha256
+          || response.effectiveUid !== PINNED_PYTHON_EFFECTIVE_UID)) {
+        throw new Error('Python verifier omitted required runtime provenance');
       }
-      return result.available === true;
+      if (response.pythonVersion && response.dependencyFingerprint && response.sourceSha256
+        && response.effectiveUid === PINNED_PYTHON_EFFECTIVE_UID) {
+        runtimeProvenance = {
+          pythonVersion: response.pythonVersion,
+          effectiveUid: response.effectiveUid,
+          dependencyFingerprint: response.dependencyFingerprint,
+          sourceSha256: response.sourceSha256,
+        };
+      }
+      return response.available === true;
     } catch (error) {
       this.unavailableReason = error instanceof Error ? error.message : String(error);
       return false;
     }
+  },
+
+  async deriveCases(
+    cases: readonly DerivationTestCase[],
+    seeds: readonly TestSeed[],
+  ): Promise<DerivationEvidence[]> {
+    const response = await run('batch', { cases, seeds });
+    if (!response.evidence || response.evidence.length !== cases.length) {
+      throw new Error(`Python verifier returned ${response.evidence?.length ?? 0}/${cases.length} cases`);
+    }
+    return response.evidence;
   },
 };

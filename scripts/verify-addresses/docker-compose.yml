@@ -1,31 +1,129 @@
-# Bitcoin Core container for address verification
-# Used to generate reference addresses via deriveaddresses RPC
-#
-# See bitcoincore.ts for RPC configuration
+# Five exact Bitcoin Core chain environments used by the address verifier.
+# Keep the digest and VERIFY_ADDRESSES_CORE_IMAGE in verify-repeatable.sh in sync.
+
+x-bitcoin-core: &bitcoin-core
+  image: bitcoin/bitcoin:29.0@sha256:a6aa8a9e349b4108d13c558dbe43064057bd7b6474b858966884f9cb95b7ed78
+  restart: "no"
+  tmpfs:
+    - /home/bitcoin/.bitcoin
 
 services:
-  bitcoind:
-    image: bitcoin/bitcoin:27.0
-    container_name: bitcoin-core-address-verify
+  core-mainnet:
+    <<: *bitcoin-core
     command:
-      - -regtest=1
       - -server=1
-      - -rpcuser=verify
-      - -rpcpassword=verify
+      - -rpcport=18443
+      - -rpcuser=${BITCOIN_RPC_USER:?}
+      - -rpcpassword=${BITCOIN_RPC_PASS:?}
       - -rpcallowip=0.0.0.0/0
       - -rpcbind=0.0.0.0
-      - -fallbackfee=0.0001
-      - -txindex=1
+      - -listen=0
+      - -connect=0
+      - -dnsseed=0
+      - -discover=0
       - -printtoconsole=1
+      - -uacomment=${VERIFY_ADDRESSES_CORE_IDENTITY:?}
+      - -chain=main
     ports:
-      - "18443:18443"  # Regtest RPC
-    volumes:
-      - bitcoind-data:/home/bitcoin/.bitcoin
+      - "${BITCOIN_RPC_PORT_MAINNET:-19440}:18443"
     healthcheck:
-      test: ["CMD", "bitcoin-cli", "-regtest", "-rpcuser=verify", "-rpcpassword=verify", "getblockchaininfo"]
+      test: [CMD, bitcoin-cli, -chain=main, -rpcport=18443, "-rpcuser=${BITCOIN_RPC_USER:?required}", "-rpcpassword=${BITCOIN_RPC_PASS:?required}", getblockchaininfo]
       interval: 5s
       timeout: 10s
-      retries: 5
+      retries: 12
 
-volumes:
-  bitcoind-data:
+  core-testnet3:
+    <<: *bitcoin-core
+    command:
+      - -server=1
+      - -rpcport=18443
+      - -rpcuser=${BITCOIN_RPC_USER:?}
+      - -rpcpassword=${BITCOIN_RPC_PASS:?}
+      - -rpcallowip=0.0.0.0/0
+      - -rpcbind=0.0.0.0
+      - -listen=0
+      - -connect=0
+      - -dnsseed=0
+      - -discover=0
+      - -printtoconsole=1
+      - -uacomment=${VERIFY_ADDRESSES_CORE_IDENTITY:?}
+      - -chain=test
+    ports:
+      - "${BITCOIN_RPC_PORT_TESTNET3:-19441}:18443"
+    healthcheck:
+      test: [CMD, bitcoin-cli, -chain=test, -rpcport=18443, "-rpcuser=${BITCOIN_RPC_USER:?required}", "-rpcpassword=${BITCOIN_RPC_PASS:?required}", getblockchaininfo]
+      interval: 5s
+      timeout: 10s
+      retries: 12
+
+  core-testnet4:
+    <<: *bitcoin-core
+    command:
+      - -server=1
+      - -rpcport=18443
+      - -rpcuser=${BITCOIN_RPC_USER:?}
+      - -rpcpassword=${BITCOIN_RPC_PASS:?}
+      - -rpcallowip=0.0.0.0/0
+      - -rpcbind=0.0.0.0
+      - -listen=0
+      - -connect=0
+      - -dnsseed=0
+      - -discover=0
+      - -printtoconsole=1
+      - -uacomment=${VERIFY_ADDRESSES_CORE_IDENTITY:?}
+      - -chain=testnet4
+    ports:
+      - "${BITCOIN_RPC_PORT_TESTNET4:-19442}:18443"
+    healthcheck:
+      test: [CMD, bitcoin-cli, -chain=testnet4, -rpcport=18443, "-rpcuser=${BITCOIN_RPC_USER:?required}", "-rpcpassword=${BITCOIN_RPC_PASS:?required}", getblockchaininfo]
+      interval: 5s
+      timeout: 10s
+      retries: 12
+
+  core-signet:
+    <<: *bitcoin-core
+    command:
+      - -server=1
+      - -rpcport=18443
+      - -rpcuser=${BITCOIN_RPC_USER:?}
+      - -rpcpassword=${BITCOIN_RPC_PASS:?}
+      - -rpcallowip=0.0.0.0/0
+      - -rpcbind=0.0.0.0
+      - -listen=0
+      - -connect=0
+      - -dnsseed=0
+      - -discover=0
+      - -printtoconsole=1
+      - -uacomment=${VERIFY_ADDRESSES_CORE_IDENTITY:?}
+      - -chain=signet
+    ports:
+      - "${BITCOIN_RPC_PORT_SIGNET:-19443}:18443"
+    healthcheck:
+      test: [CMD, bitcoin-cli, -chain=signet, -rpcport=18443, "-rpcuser=${BITCOIN_RPC_USER:?required}", "-rpcpassword=${BITCOIN_RPC_PASS:?required}", getblockchaininfo]
+      interval: 5s
+      timeout: 10s
+      retries: 12
+
+  core-regtest:
+    <<: *bitcoin-core
+    command:
+      - -server=1
+      - -rpcport=18443
+      - -rpcuser=${BITCOIN_RPC_USER:?}
+      - -rpcpassword=${BITCOIN_RPC_PASS:?}
+      - -rpcallowip=0.0.0.0/0
+      - -rpcbind=0.0.0.0
+      - -listen=0
+      - -connect=0
+      - -dnsseed=0
+      - -discover=0
+      - -printtoconsole=1
+      - -uacomment=${VERIFY_ADDRESSES_CORE_IDENTITY:?}
+      - -chain=regtest
+    ports:
+      - "${BITCOIN_RPC_PORT_REGTEST:-19444}:18443"
+    healthcheck:
+      test: [CMD, bitcoin-cli, -chain=regtest, -rpcport=18443, "-rpcuser=${BITCOIN_RPC_USER:?required}", "-rpcpassword=${BITCOIN_RPC_PASS:?required}", getblockchaininfo]
+      interval: 5s
+      timeout: 10s
+      retries: 12

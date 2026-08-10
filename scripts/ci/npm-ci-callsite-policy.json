@@ -96,6 +96,11 @@
       "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."
     },
     {
+      "file": "scripts/ci/setup-verifier-test-dependencies.sh",
+      "executable": true,
+      "rationale": "Installs the address-verifier package from its exact nested lock before frontend lanes execute verifier tests."
+    },
+    {
       "file": "scripts/quality/check-lockfile-peer-resolution.sh",
       "executable": true,
       "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."

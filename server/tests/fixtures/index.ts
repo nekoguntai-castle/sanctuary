@@ -38,12 +38,13 @@ export {
 export {
   VERIFIED_SINGLESIG_VECTORS,
   VERIFIED_MULTISIG_VECTORS,
-  TEST_MNEMONIC,
+  VERIFIER_PROVENANCE,
   type VerifiedSingleSigVector,
   type VerifiedMultisigVector,
-  type ScriptType,
+  type AccountKeyEvidence,
+  type SingleSigScriptType,
   type MultisigScriptType,
-  type Network,
+  type ChainEnvironment,
 } from './verified-address-vectors';
 
 // ========================================

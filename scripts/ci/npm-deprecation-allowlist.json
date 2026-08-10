@@ -86,46 +86,6 @@
       "rationale": "The latest Trezor Connect release owns the Stellar SDK graph; removing or overriding its internal Stellar package would bypass Trezor's tested hardware-wallet dependency set.",
       "upstreamIssue": "https://github.com/trezor/trezor-suite/issues?q=is%3Aissue+stellar-base",
       "reviewOn": "2026-08-31"
-    },
-    {
-      "id": "caravan-babel-polyfill-7",
-      "package": "@babel/polyfill",
-      "version": "7.12.1",
-      "lockfile": "scripts/verify-addresses/package-lock.json",
-      "locations": [
-        "node_modules/@babel/polyfill"
-      ],
-      "message": "🚨 This package has been deprecated in favor of separate inclusion of a polyfill and regenerator-runtime (when needed). See the @babel/polyfill docs (https://babeljs.io/docs/en/babel-polyfill) for more information.",
-      "owner": "address-vector tooling maintainers",
-      "directOwners": [
-        "scripts/verify-addresses:@caravan/bitcoin@0.4.5"
-      ],
-      "dependencyPaths": [
-        "scripts/verify-addresses > @caravan/bitcoin@0.4.5 > @babel/polyfill@7.12.1"
-      ],
-      "rationale": "The current Caravan Bitcoin release directly depends on the retired Babel polyfill; the isolated vector verifier cannot replace a library-internal runtime dependency safely.",
-      "upstreamIssue": "https://github.com/unchained-capital/caravan/issues?q=is%3Aissue+babel+polyfill",
-      "reviewOn": "2026-08-31"
-    },
-    {
-      "id": "caravan-core-js-2",
-      "package": "core-js",
-      "version": "2.6.12",
-      "lockfile": "scripts/verify-addresses/package-lock.json",
-      "locations": [
-        "node_modules/core-js"
-      ],
-      "message": "core-js@<3.23.3 is no longer maintained and not recommended for usage due to the number of issues. Because of the V8 engine whims, feature detection in old core-js versions could cause a slowdown up to 100x even if nothing is polyfilled. Some versions have web compatibility issues. Please, upgrade your dependencies to the actual version of core-js.",
-      "owner": "address-vector tooling maintainers",
-      "directOwners": [
-        "scripts/verify-addresses:@caravan/bitcoin@0.4.5"
-      ],
-      "dependencyPaths": [
-        "scripts/verify-addresses > @caravan/bitcoin@0.4.5 > core-js@2.6.12"
-      ],
-      "rationale": "The current Caravan Bitcoin release directly depends on core-js 2 inside an isolated verification tool; a forced replacement would not validate Caravan's compiled output contract.",
-      "upstreamIssue": "https://github.com/unchained-capital/caravan/issues?q=is%3Aissue+core-js",
-      "reviewOn": "2026-08-31"
     }
   ]
 }

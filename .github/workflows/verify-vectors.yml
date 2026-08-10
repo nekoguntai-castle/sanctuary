@@ -16,7 +16,9 @@ on:
 
   # Funds-safety evidence must be present for every proposed or landed change.
   # Do not add path filters here: a filter can silently omit a newly introduced
-  # address, wallet-policy, or hardware integration boundary.
+  # address, wallet-policy, or hardware integration boundary. In particular,
+  # shared/constants/walletPolicy.ts is verifier input and must always trigger
+  # this workflow on PRs, merge queues, and landed main-branch commits.
   pull_request:
     branches: [main]
 
@@ -30,9 +32,9 @@ env:
   GIT_CONFIG_COUNT: '1'
   GIT_CONFIG_KEY_0: init.defaultBranch
   GIT_CONFIG_VALUE_0: main
+  # Bootstrap only. verify-repeatable switches to lockfile-pinned Node 24.19.0.
   NODE_VERSION: '24'
   NPM_VERSION: '11.19.0'
-  PYTHON_VERSION: '3'
   SANCTUARY_RUNNER_LOCK_DIR: ${{ github.workspace }}/.tmp/runner-locks-v2
   # Must stay below the smallest timeout-minutes of any step that takes the
   # lock (5m today), or the step kills the wait before with-runner-lock.sh can
@@ -46,7 +48,7 @@ concurrency:
 jobs:
   verify-vectors:
     runs-on: go-1.25.12
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/verify-vectors
 
@@ -60,14 +62,8 @@ jobs:
       - name: Verify wallet-safety classifier completeness
         run: node scripts/ci/check-wallet-safety-classifier.mjs
 
-      - name: Verify Python toolchain
-        uses: ./.github/actions/setup-python-toolchain
-
       - name: Verify Go toolchain
         uses: ./.github/actions/setup-go-toolchain
-
-      - name: Validate Python venv module
-        run: python3 -m venv --help >/dev/null
 
       - name: Wait for Docker
         timeout-minutes: 4
@@ -88,12 +84,21 @@ jobs:
           '
 
       - name: Run cross-implementation address verifier
-        timeout-minutes: 8
+        timeout-minutes: 15
         working-directory: scripts/verify-addresses
         run: >
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/address-verifier.log"
           ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
           npm run verify:repeatable
+
+      - name: Run address verifier contract tests
+        timeout-minutes: 5
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/address-verifier-contract-tests.log"
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
+          npm exec -- vitest run --config config/tooling/vitest.config.ts
+          --pool threads --maxWorkers=1 --no-file-parallelism
+          tests/scripts/verifyAddresses
 
       - name: Run address derivation tests
         timeout-minutes: 5
@@ -101,7 +106,10 @@ jobs:
         run: >
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/address-derivation-tests.log"
           ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
-          npm run test:run:ci -- tests/unit/services/bitcoin/addressDerivation.verified.test.ts
+          npm run test:run:ci --
+          tests/unit/services/bitcoin/addressDerivation.parse.test.ts
+          tests/unit/services/bitcoin/addressDerivation.verified.test.ts
+          tests/unit/services/bitcoin/canonicalDescriptorSemantics.test.ts
 
       - name: Run derivation path tests
         timeout-minutes: 5
@@ -216,14 +224,8 @@ jobs:
       - name: Verify Node.js toolchain
         uses: ./.github/actions/setup-node-toolchain
 
-      - name: Verify Python toolchain
-        uses: ./.github/actions/setup-python-toolchain
-
       - name: Verify Go toolchain
         uses: ./.github/actions/setup-go-toolchain
-
-      - name: Validate Python venv module
-        run: python3 -m venv --help >/dev/null
 
       - name: Wait for Docker
         run: >

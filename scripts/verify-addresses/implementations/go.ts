@@ -1,142 +1,90 @@
-/**
- * Go (btcd/btcutil) Implementation Wrapper
- *
- * Calls the Go script for address derivation using btcd/btcutil libraries.
- * This provides a completely independent implementation used by Lightning Network.
- */
+/** Batch wrapper for the independent btcd/go-bip39 seed-to-address verifier. */
 
-import { spawn } from 'child_process';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-import type { AddressDeriver, ScriptType, MultisigScriptType, Network } from '../types.js';
+import { spawn } from 'node:child_process';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import type {
+  DerivationEvidence,
+  DerivationImplementation,
+  DerivationTestCase,
+  TestSeed,
+} from '../types.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const GO_SCRIPT = join(__dirname, 'go-verify.go');
+const DIRECTORY = dirname(fileURLToPath(import.meta.url));
+const GO_SCRIPT = join(DIRECTORY, 'go-verify.go');
 
-interface GoResult {
-  address?: string;
-  error?: string;
+interface GoResponse {
   available?: boolean;
   version?: string;
-  name?: string;
+  runtimeVersion?: string;
+  error?: string;
+  evidence?: DerivationEvidence[];
 }
 
-async function runGo(args: string[]): Promise<GoResult> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn('go', ['run', GO_SCRIPT, ...args], {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      // go.mod sits beside go-verify.go, not at the repo root. Without an
-      // explicit cwd this inherits the caller's directory (verify-addresses/),
-      // where Go finds no module, cannot resolve btcd, and exits non-zero. The
-      // generator reads that as "btcd/btcutil UNAVAILABLE", drops Go from the
-      // panel, and still prints "All vectors verified successfully" -- five-way
-      // agreement silently degraded to four-way.
-      cwd: __dirname,
-      env: {
-        ...process.env,
-        // Ensure Go modules work
-        GO111MODULE: 'on',
-      },
-    });
+let runtimeVersion: string | undefined;
 
+export function getGoRuntimeVersion(): string {
+  if (!runtimeVersion) throw new Error('Go verifier runtime was not inspected');
+  return runtimeVersion;
+}
+
+function runGo(action: 'check' | 'batch', input?: unknown): Promise<GoResponse> {
+  return new Promise((resolve, reject) => {
+    // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process -- fixed executable/script; shell disabled.
+    const child = spawn('go', ['run', GO_SCRIPT, action], {
+      cwd: DIRECTORY,
+      env: { ...process.env, GO111MODULE: 'on' },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
     let stdout = '';
     let stderr = '';
-
-    proc.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-
-    proc.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
-
-    proc.on('error', (err) => {
-      reject(new Error(`Go not found or failed to run: ${err.message}`));
-    });
-
-    proc.on('close', (code) => {
-      if (code !== 0 && stdout === '') {
-        reject(new Error(`Go script failed: ${stderr || 'Unknown error'}`));
+    child.stdout.on('data', data => { stdout += data.toString(); });
+    child.stderr.on('data', data => { stderr += data.toString(); });
+    child.on('error', error => reject(new Error(`Go verifier could not start: ${error.message}`)));
+    child.on('close', code => {
+      if (code !== 0 && stdout.trim() === '') {
+        reject(new Error(`Go verifier failed (exit ${code}): ${stderr.trim() || 'no stderr'}`));
         return;
       }
-
       try {
-        const result = JSON.parse(stdout.trim()) as GoResult;
-        if (result.error) {
-          reject(new Error(result.error));
-        } else {
-          resolve(result);
-        }
-      } catch (e) {
-        reject(new Error(`Failed to parse Go output: ${stdout}`));
+        const response = JSON.parse(stdout.trim()) as GoResponse;
+        if (response.error) reject(new Error(response.error));
+        else resolve(response);
+      } catch (error) {
+        reject(error instanceof SyntaxError
+          ? new Error(`Failed to parse Go verifier output: ${stdout}`)
+          : error);
       }
     });
+    child.stdin.end(input === undefined ? undefined : JSON.stringify(input));
   });
 }
 
-export const goImpl: AddressDeriver = {
+export const goImpl: DerivationImplementation = {
+  id: 'btcd-go',
   name: 'btcd/btcutil (Go)',
-  version: '0.24.2',
-
-  async deriveSingleSig(
-    xpub: string,
-    index: number,
-    scriptType: ScriptType,
-    change: boolean,
-    network: Network
-  ): Promise<string> {
-    const result = await runGo([
-      'single',
-      xpub,
-      String(index),
-      scriptType,
-      String(change),
-      network,
-    ]);
-
-    if (!result.address) {
-      throw new Error('No address returned from Go script');
-    }
-
-    return result.address;
-  },
-
-  async deriveMultisig(
-    xpubs: string[],
-    threshold: number,
-    index: number,
-    scriptType: MultisigScriptType,
-    change: boolean,
-    network: Network
-  ): Promise<string> {
-    const result = await runGo([
-      'multi',
-      JSON.stringify(xpubs),
-      String(threshold),
-      String(index),
-      scriptType,
-      String(change),
-      network,
-    ]);
-
-    if (!result.address) {
-      throw new Error('No address returned from Go script');
-    }
-
-    return result.address;
-  },
+  version: '0.25.0 + go-bip39 1.1.0',
 
   async isAvailable(): Promise<boolean> {
     try {
-      const result = await runGo(['check']);
-      if (result.available && result.version) {
-        this.version = result.version;
-      }
-      return result.available === true;
+      const response = await runGo('check');
+      if (response.version) this.version = response.version;
+      runtimeVersion = response.runtimeVersion;
+      return response.available === true;
     } catch (error) {
       this.unavailableReason = error instanceof Error ? error.message : String(error);
       return false;
     }
+  },
+
+  async deriveCases(
+    cases: readonly DerivationTestCase[],
+    seeds: readonly TestSeed[],
+  ): Promise<DerivationEvidence[]> {
+    const response = await runGo('batch', { cases, seeds });
+    if (!response.evidence || response.evidence.length !== cases.length) {
+      throw new Error(`Go verifier returned ${response.evidence?.length ?? 0}/${cases.length} cases`);
+    }
+    return response.evidence;
   },
 };

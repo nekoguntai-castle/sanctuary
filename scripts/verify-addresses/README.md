@@ -1,217 +1,108 @@
-# Address Verification Scripts
+# Bitcoin address verification
 
-This directory contains tools for cross-implementation verification of Bitcoin address generation. The goal is to ensure Sanctuary's address derivation is correct by comparing against multiple independent implementations.
+This package produces the checked-in address fixtures used by Sanctuary's
+funds-safety tests. A case is accepted only when all four required
+implementations agree exactly on both the address and output script:
 
-## Overview
+| Implementation | Independent input |
+| --- | --- |
+| Bitcoin Core 29.0 | Root private key plus the complete hardened and unhardened path in a descriptor |
+| bitcoinjs-lib | BIP-39 mnemonic seed |
+| bip_utils (Python) | BIP-39 mnemonic seed |
+| btcd/btcutil (Go) | BIP-39 mnemonic seed |
 
-The verification script derives addresses using the same inputs across multiple implementations:
+An unavailable implementation is a hard failure. Addresses are never rewritten
+between networks to manufacture agreement.
 
-| Implementation | Language | Notes |
-|----------------|----------|-------|
-| Bitcoin Core | C++ | THE reference implementation |
-| bitcoinjs-lib | JavaScript | Same library Sanctuary uses |
-| Caravan | JavaScript | Unchained Capital's multisig tool |
-| bip_utils | Python | Independent Python implementation |
-| btcd/btcutil | Go | Powers Lightning Network |
+## Locked derivation matrix
 
-Only addresses where **all available implementations agree** are considered verified. A vector is rejected unless Bitcoin Core, `bitcoinjs-lib`, and at least one independent non-JavaScript implementation successfully derive the same address payload.
+The schema-v2 matrix contains exactly 480 cases:
 
-## Prerequisites
+- five fixed BIP-39 seeds;
+- mainnet, testnet3, testnet4, signet, and regtest;
+- accounts 0 and 7;
+- receive and change branches;
+- child indices 0, 1, and `0x7fffffff`;
+- BIP-44 legacy, BIP-49 nested SegWit, BIP-84 native SegWit, and BIP-86
+  Taproot single-signature policies;
+- BIP-48 nested and native SegWit multisig policies, each with 2-of-3 and
+  3-of-5 quorums.
 
-### Required
-- Node.js 18+
-- Docker (for Bitcoin Core)
-- Python 3 with bip_utils: `python -m pip install bip_utils`
+Legacy P2SH multisig is intentionally unsupported. The three seed-based
+implementations check account keys at the serialized BIP-32 payload level,
+including strict xpub/ypub/zpub/Ypub/Zpub and test-family
+tpub/upub/vpub/Upub/Vpub version bytes. Bitcoin Core independently proves the
+root-private-key-to-full-descriptor-path-to-output calculation; it deliberately
+does not export account public metadata from its private descriptor. The
+generated evidence records these scopes explicitly and records origin path,
+master fingerprint, parent fingerprint, depth, child number, chain code, public
+key, descriptor, address, and scriptPubKey where the verifier exposes them.
+Core 29's `getdescriptorinfo` was also probed with a ranged account descriptor:
+it canonicalized `root-tprv/84h/1h/0h/<0;1>/*` to a root tpub followed by the
+same hardened suffix, rather than returning an account-level tpub. The literal
+probe shape is locked in the provenance contract tests.
 
-### Optional (for more implementations)
-- Go 1.21+ (for btcd verification)
+The mandatory adversarial corpus distinguishes four-way Core-derived output
+evidence (reversed `sortedmulti` keys) from adapter input validation (duplicate
+keys and invalid mnemonics). It separately rejects a checksum-valid extended
+key containing an invalid, uncompressed public-key prefix at the verifier xpub
+boundary; provenance never describes adapter-only rejection as a Core RPC
+result.
 
-## Quick Start
+## Repeatable verification
 
-### Option A: Repeatable Local/CI Verification
-
-This is the preferred path before committing vector changes. It installs the
-Node verifier dependencies, creates an isolated Python venv with pinned
-`bip_utils`, starts the pinned Bitcoin Core 27.0 container, waits for RPC, and
-fails if regenerated vectors differ from the committed fixtures.
+Prerequisites are a Node.js 24 bootstrap, Go 1.25.12, Docker Compose, and curl.
+The verifier installs its exact Node 24.19.0 runtime from the npm lock and runs
+Python 3.13.5 inside a digest-pinned, network-isolated local image. Run:
 
 ```bash
 npm run verify:repeatable
 ```
 
-Regenerate fixtures with the same pinned stack:
+The helper installs and executes the exact lockfile Node binary, builds the
+Python verifier from the fully hashed transitive `requirements.lock`, executes
+that build by immutable image ID, and checks the image-reported verifier source
+digest against the checkout. It starts five Bitcoin Core services with fresh
+per-run RPC credentials and a separate private identity nonce from this exact
+multi-architecture image:
+
+```text
+bitcoin/bitcoin:29.0@sha256:a6aa8a9e349b4108d13c558dbe43064057bd7b6474b858966884f9cb95b7ed78
+```
+
+It checks that every RPC reports the expected chain before starting the
+verifier. The default endpoints are:
+
+| Environment | RPC URL | Core-reported chain |
+| --- | --- | --- |
+| mainnet | `http://<docker-host>:19440` | `main` |
+| testnet3 | `http://<docker-host>:19441` | `test` |
+| testnet4 | `http://<docker-host>:19442` | `testnet4` |
+| signet | `http://<docker-host>:19443` | `signet` |
+| regtest | `http://<docker-host>:19444` | `regtest` |
+
+Regenerate the two fixtures with the identical stack:
 
 ```bash
 npm run generate:repeatable
 ```
 
-Set `VERIFY_ADDRESSES_KEEP_BITCOIND=1` to leave the container running after the
-script exits, or `VERIFY_ADDRESSES_SKIP_DOCKER=1` when pointing at an already
-running Core node through `BITCOIN_RPC_URL`, `BITCOIN_RPC_USER`, and
-`BITCOIN_RPC_PASS`.
+Generation writes `output/verified-vectors.ts` and
+`../../server/tests/fixtures/verified-address-vectors.ts` with failure rollback
+across both destinations. Verification
+regenerates the complete content and requires a byte-for-byte match, including
+the reproducible provenance block. There is no timestamp exception.
 
-### Option B: Local Bitcoin Core Container
+Use `VERIFY_ADDRESSES_KEEP_BITCOIND=1` only for local troubleshooting.
 
-```bash
-# Install dependencies
-npm ci
+External Core RPC endpoints are deliberately unsupported. Both verification and
+generation attest the exact Compose image digest, so accepting an endpoint whose
+container identity cannot be inspected would create false provenance.
 
-# Install Python verifier
-python -m pip install bip_utils
+## Why exact consensus matters
 
-# Start Bitcoin Core 27.0 on localhost:18443
-docker compose up -d
-
-# Generate verified vectors
-npm run generate
-```
-
-### Option C: Self-built Bitcoin Core (Most Secure)
-
-Build Bitcoin Core from verified official source:
-
-```bash
-# Install dependencies
-npm ci
-
-# Install Python verifier
-python -m pip install bip_utils
-
-# Build Bitcoin Core from verified source
-cd ../bitcoin-core-docker
-./build.sh 27.0
-
-# Start self-built container
-cd ../verify-addresses
-docker compose -f docker-compose.self-built.yml up -d
-
-# docker-compose.self-built.yml exposes RPC on localhost:18553
-export BITCOIN_RPC_URL=http://127.0.0.1:18553
-export BITCOIN_RPC_USER=verify
-export BITCOIN_RPC_PASS=verify
-
-# Generate verified vectors
-npm run generate
-```
-
-### Option D: Verify Existing Fixtures Manually
-
-Use this mode in CI or before committing fixture changes:
-
-```bash
-npm ci
-docker compose up -d
-python -m pip install bip_utils
-npm run verify
-```
-
-## Output
-
-The script generates:
-- `output/verified-vectors.ts` - TypeScript file with all verified vectors
-- `../../server/tests/fixtures/verified-address-vectors.ts` - Same file in test fixtures
-
-## What Gets Tested
-
-### Single-Sig Addresses
-- **Script Types**: P2PKH (legacy), P2SH-P2WPKH (nested segwit), P2WPKH (native segwit), P2TR (taproot)
-- **Networks**: mainnet, testnet
-- **Indices**: 0, 1, 2, 19, 99, 999, 9999, 2147483646 (high index)
-- **Change**: Both receive (0) and change (1) addresses
-
-### Multisig Addresses
-- **Script Types**: P2SH, P2SH-P2WSH, P2WSH
-- **Thresholds**: 2-of-3, 3-of-5
-- **Key Ordering**: Tests that different input orders produce same address (BIP-67)
-
-### Test Mnemonic
-All derivations use the official BIP-39 test mnemonic:
-```
-abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about
-```
-
-## Implementation Details
-
-### Bitcoin Core Integration
-
-Uses Bitcoin Core's `deriveaddresses` RPC which is the canonical implementation:
-
-```bash
-# Example: derive a native segwit address
-bitcoin-cli deriveaddresses "wpkh([fingerprint/84h/0h/0h]xpub.../0/0)"
-```
-
-### Adding New Implementations
-
-1. Create a new file in `implementations/` implementing the `AddressDeriver` interface
-2. Export it from the implementation file
-3. Add it to the `allImplementations` array in `generate-vectors.ts`
-
-### Verifying Specific Addresses
-
-You can also use the implementations directly:
-
-```typescript
-import { bitcoinjsImpl } from './implementations/bitcoinjs.js';
-
-const address = await bitcoinjsImpl.deriveSingleSig(
-  'xpub...', // xpub
-  0,         // index
-  'native_segwit',
-  false,     // change
-  'mainnet'
-);
-```
-
-## Troubleshooting
-
-### Bitcoin Core not available
-```bash
-# Check if container is running
-docker compose ps
-
-# View logs
-docker compose logs bitcoind
-
-# Restart
-docker compose down && docker compose up -d
-```
-
-### Python bip_utils not found
-```bash
-python -m venv /tmp/sanctuary-address-venv
-source /tmp/sanctuary-address-venv/bin/activate
-pip install bip_utils
-```
-
-### Go modules not found
-```bash
-cd implementations
-go mod download
-```
-
-## Regenerating Vectors
-
-If you need to regenerate vectors (e.g., after updating implementations):
-
-```bash
-npm run generate
-```
-
-This will:
-1. Check available implementations
-2. Generate test cases
-3. Verify all cases across implementations
-4. Output only cases with consensus
-5. Write to both output/ and server/tests/fixtures/
-
-`npm run verify` performs the same cross-implementation derivation but does not rewrite files. It fails if the checked-in fixtures differ from freshly generated output, ignoring only the `Last verified` date line.
-
-## Why This Matters
-
-Address generation correctness is critical for Bitcoin wallets:
-- **Wrong address** = lost funds (sent to address no one controls)
-- **Off-by-one errors** = funds sent to wrong person
-- **Key ordering bugs** = multisig funds inaccessible
-
-By verifying against 4+ independent implementations, we achieve very high confidence that our implementation is correct.
+A network substitution, wrong derivation path, wrong SLIP-132 version, Taproot
+tweak error, or multisig key-ordering drift can create an address the intended
+wallet cannot spend. Keeping seed-to-account and account-to-script evidence in
+one locked matrix makes those failures visible before fixture or application
+changes land.
