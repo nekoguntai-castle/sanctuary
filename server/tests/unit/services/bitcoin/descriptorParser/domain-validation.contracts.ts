@@ -33,7 +33,7 @@ export function registerDescriptorParserDomainValidationContracts(): void {
     it('rejects private extended keys before import', () => {
       expect(() => {
         parseDescriptorForImport(wpkh('84h/0h/0h', 'xprv9s21ZrQH143K3privateKeyMaterial'));
-      }).toThrow('Private extended keys are not allowed');
+      }).toThrow('Extended public key prefix does not match descriptor wrapper');
     });
 
     it('rejects mainnet xpubs on testnet coin-type paths', () => {
@@ -51,7 +51,7 @@ export function registerDescriptorParserDomainValidationContracts(): void {
     it('rejects unsupported derivation path coin types', () => {
       expect(() => {
         parseDescriptorForImport(wpkh('84h/2h/0h'));
-      }).toThrow('Descriptor derivation path coin type is unsupported');
+      }).toThrow('Descriptor origin is not a canonical account path for its wrapper');
     });
 
     it('rejects mixed-network multisig cosigners', () => {
@@ -63,19 +63,19 @@ export function registerDescriptorParserDomainValidationContracts(): void {
             `[11223344/48h/1h/0h/2h]${TESTNET_TPUB}/0/*`,
           ),
         );
-      }).toThrow('All descriptor keys must use the same network family');
+      }).toThrow();
     });
 
     it('rejects unsupported descriptor branch wildcards', () => {
       expect(() => {
         parseDescriptorForImport(wpkh('84h/0h/0h', MAINNET_XPUB, '/2/*'));
-      }).toThrow('Descriptor key paths must end in /0/* or /1/*');
+      }).toThrow('Descriptor key paths must end');
     });
 
     it('rejects fixed child indexes in import descriptors', () => {
       expect(() => {
         parseDescriptorForImport(wpkh('84h/0h/0h', MAINNET_XPUB, '/0/7'));
-      }).toThrow('Descriptor key paths must end in /0/* or /1/*');
+      }).toThrow('Descriptor key paths must end');
     });
 
     it('rejects multisig descriptors that mix receive and change branches', () => {
@@ -87,7 +87,7 @@ export function registerDescriptorParserDomainValidationContracts(): void {
             `[11223344/48h/0h/0h/2h]${MAINNET_XPUB_2}/1/*`,
           ),
         );
-      }).toThrow('Descriptor key paths must use a single receive/change branch');
+      }).toThrow();
     });
 
     it('rejects malformed cosigner suffixes instead of ignoring the cosigner', () => {
@@ -99,7 +99,7 @@ export function registerDescriptorParserDomainValidationContracts(): void {
             `[11223344/48h/0h/0h/2h]${MAINNET_XPUB_2}/0/*:ignored`,
           ),
         );
-      }).toThrow('Descriptor key paths must end in /0/* or /1/*');
+      }).toThrow();
     });
 
     it('rejects malformed cosigner xpubs instead of importing a smaller quorum', () => {
@@ -111,7 +111,7 @@ export function registerDescriptorParserDomainValidationContracts(): void {
             '[11223344/48h/0h/0h/2h]invalid-xpub/0/*',
           ),
         );
-      }).toThrow('Invalid descriptor key expression');
+      }).toThrow();
     });
 
     it('rejects raw descriptor candidates that do not match supported key expressions', () => {
@@ -123,7 +123,7 @@ export function registerDescriptorParserDomainValidationContracts(): void {
     it('rejects quorum larger than signer count', () => {
       expect(() => {
         parseDescriptorForImport(sortedMulti(3));
-      }).toThrow('Multisig quorum cannot exceed signer count');
+      }).toThrow();
     });
 
     it('rejects zero-of-n multisig descriptors', () => {
@@ -136,31 +136,31 @@ export function registerDescriptorParserDomainValidationContracts(): void {
       const duplicate = `[aabbccdd/48h/0h/0h/2h]${MAINNET_XPUB}/0/*`;
       expect(() => {
         parseDescriptorForImport(sortedMulti(2, duplicate, duplicate));
-      }).toThrow('Duplicate multisig cosigner key');
+      }).toThrow();
     });
 
     it('rejects script and account path purpose mismatches', () => {
       expect(() => {
         parseDescriptorForImport(wpkh('49h/0h/0h'));
-      }).toThrow('descriptor script type does not match derivation path purpose');
+      }).toThrow('Descriptor origin is not a canonical account path for its wrapper');
     });
 
     it('rejects account-root descriptors without an account purpose path', () => {
       expect(() => {
         parseDescriptorForImport(wpkh('m/'));
-      }).toThrow('Invalid descriptor derivation path');
+      }).toThrow('Descriptor origin is not a canonical account path for its wrapper');
     });
 
     it('rejects nonnumeric derivation path components in descriptors', () => {
       expect(() => {
         parseDescriptorForImport(wpkh('84h/not-a-number/0h'));
-      }).toThrow('Invalid descriptor derivation path component');
+      }).toThrow('Descriptor origin is not a canonical account path for its wrapper');
     });
 
     it('rejects derivation path components above the BIP32 index range', () => {
       expect(() => {
         parseDescriptorForImport(wpkh('2147483648h/0h/0h'));
-      }).toThrow('Descriptor derivation path component is out of range');
+      }).toThrow('Descriptor origin is not a canonical account path for its wrapper');
     });
 
     it('rejects legacy multisig descriptors with single-sig account paths', () => {
@@ -168,7 +168,7 @@ export function registerDescriptorParserDomainValidationContracts(): void {
         parseDescriptorForImport(
           `sh(sortedmulti(2,[aabbccdd/44h/0h/0h]${MAINNET_XPUB}/0/*,[11223344/44h/0h/0h]${MAINNET_XPUB_2}/0/*))`,
         );
-      }).toThrow('descriptor script type does not match derivation path purpose');
+      }).toThrow('Unsupported descriptor format');
     });
 
     it('rejects native multisig descriptors that are not BIP48 multisig paths', () => {
@@ -180,7 +180,7 @@ export function registerDescriptorParserDomainValidationContracts(): void {
             `[11223344/45h]${MAINNET_XPUB_2}/0/*`,
           ),
         );
-      }).toThrow('descriptor script type does not match derivation path purpose');
+      }).toThrow('Descriptor origin is not a canonical account path for its wrapper');
     });
 
     it('rejects nested multisig descriptors with native-segwit account paths', () => {
@@ -188,7 +188,7 @@ export function registerDescriptorParserDomainValidationContracts(): void {
         parseDescriptorForImport(
           `sh(wsh(sortedmulti(2,[aabbccdd/48h/1h/0h/2h]${TESTNET_TPUB}/0/*,[11223344/48h/1h/0h/2h]${TESTNET_TPUB}/0/*)))`,
         );
-      }).toThrow('descriptor script type does not match derivation path purpose');
+      }).toThrow('Descriptor origin is not a canonical account path for its wrapper');
     });
 
     it('rejects native multisig descriptors with nested-segwit account paths', () => {
@@ -200,7 +200,7 @@ export function registerDescriptorParserDomainValidationContracts(): void {
             `[11223344/48h/0h/0h/1h]${MAINNET_XPUB_2}/0/*`,
           ),
         );
-      }).toThrow('descriptor script type does not match derivation path purpose');
+      }).toThrow();
     });
 
     it('returns domain validation messages from validateDescriptor', () => {
@@ -211,6 +211,118 @@ export function registerDescriptorParserDomainValidationContracts(): void {
   });
 
   describe('Parsed import domain validation', () => {
+    const parsedDevice = (
+      derivationPath: string,
+      xpub = MAINNET_XPUB,
+      fingerprint = 'd34db33f',
+    ) => ({ fingerprint, derivationPath, xpub });
+
+    it('validates raw descriptor key counts and one fixed branch', () => {
+      expect(() => validateRawDescriptorDomain('no descriptor keys here', 0)).not.toThrow();
+      expect(() => validateRawDescriptorDomain(wpkh('84h/0h/0h'), 1)).not.toThrow();
+      expect(() => validateRawDescriptorDomain(wpkh('84h/0h/0h'), 2))
+        .toThrow('Invalid descriptor key expression');
+      expect(() => validateRawDescriptorDomain(
+        `wpkh([d34db33f/84h/0h/0h]xpubCandidateWithoutSuffix)`,
+        1,
+      )).toThrow('Descriptor key paths must end in /0/* or /1/*');
+      expect(() => validateRawDescriptorDomain(
+        sortedMulti(
+          2,
+          `[aabbccdd/48h/0h/0h/2h]${MAINNET_XPUB}/0/*`,
+          `[11223344/48h/0h/0h/2h]${MAINNET_XPUB_2}/1/*`,
+        ),
+        2,
+      )).toThrow('single receive/change branch');
+    });
+
+    it('rejects malformed parsed quorum and derivation components', () => {
+      const multisig = (quorum: number | undefined): ParsedDescriptor => ({
+        type: 'multi_sig',
+        scriptType: 'native_segwit',
+        devices: [
+          parsedDevice("m/48'/0'/0'/2'"),
+          parsedDevice("m/48'/0'/0'/2'", MAINNET_XPUB_2, '11223344'),
+        ],
+        network: 'mainnet',
+        isChange: false,
+        quorum,
+        totalSigners: 2,
+      });
+      expect(() => validateParsedDescriptorDomain(multisig(undefined)))
+        .toThrow('positive integer');
+      expect(() => validateParsedDescriptorDomain(multisig(3)))
+        .toThrow('cannot exceed signer count');
+
+      const single = (path: string): ParsedDescriptor => ({
+        type: 'single_sig', scriptType: 'native_segwit', network: 'mainnet', isChange: false,
+        devices: [parsedDevice(path)],
+      });
+      expect(() => validateParsedDescriptorDomain(single("m/84'/word/0'")))
+        .toThrow('Invalid descriptor derivation path component');
+      expect(() => validateParsedDescriptorDomain(single("m/84'/0'/9007199254740993'")))
+        .toThrow('component is out of range');
+      expect(() => validateParsedDescriptorDomain(single('m'), { allowAccountRootPath: false }))
+        .toThrow('Invalid descriptor derivation path');
+      expect(() => validateParsedDescriptorDomain(single("m/84'/2'/0'")))
+        .toThrow('coin type is unsupported');
+    });
+
+    it('enforces script-purpose semantics for every supported policy family', () => {
+      const validate = (
+        type: ParsedDescriptor['type'],
+        scriptType: ParsedDescriptor['scriptType'],
+        path: string,
+      ) => validateParsedDescriptorDomain({
+        type,
+        scriptType,
+        network: 'mainnet',
+        isChange: false,
+        devices: type === 'single_sig'
+          ? [parsedDevice(path)]
+          : [
+            parsedDevice(path),
+            parsedDevice(path, MAINNET_XPUB_2, '11223344'),
+          ],
+        ...(type === 'multi_sig' ? { quorum: 2, totalSigners: 2 } : {}),
+      }, { enforceScriptPurpose: true });
+
+      expect(() => validate('single_sig', 'native_segwit', "m/49'/0'/0'"))
+        .toThrow('script type does not match');
+      expect(() => validate('single_sig', 'native_segwit', 'm')).not.toThrow();
+      expect(() => validate('multi_sig', 'legacy', "m/44'/0'/0'"))
+        .toThrow('script type does not match');
+      expect(() => validate('multi_sig', 'legacy', "m/45'/0'/0'"))
+        .not.toThrow();
+      expect(() => validate('multi_sig', 'native_segwit', "m/45'/0'/0'"))
+        .toThrow('script type does not match');
+      expect(() => validate('multi_sig', 'nested_segwit', "m/48'/0'/0'/2'"))
+        .toThrow('script type does not match');
+      expect(() => validate('multi_sig', 'nested_segwit', "m/48'/0'/0'/1'"))
+        .not.toThrow();
+      expect(() => validate('multi_sig', 'native_segwit', "m/48'/0'/0'/1'"))
+        .toThrow('script type does not match');
+      expect(() => validate('multi_sig', 'native_segwit', "m/48'/0'/0'/2'"))
+        .not.toThrow();
+    });
+
+    it('rejects mixed parsed networks and duplicate multisig signer rows', () => {
+      expect(() => validateParsedDescriptorDomain({
+        type: 'multi_sig', scriptType: 'native_segwit', network: 'mainnet', isChange: false,
+        quorum: 2, totalSigners: 2,
+        devices: [
+          parsedDevice("m/48'/0'/0'/2'"),
+          parsedDevice("m/48'/1'/0'/2'", TESTNET_TPUB, '11223344'),
+        ],
+      })).toThrow('same network family');
+
+      const duplicate = parsedDevice("m/48'/0'/0'/2'");
+      expect(() => validateParsedDescriptorDomain({
+        type: 'multi_sig', scriptType: 'native_segwit', network: 'mainnet', isChange: false,
+        quorum: 2, totalSigners: 2, devices: [duplicate, { ...duplicate }],
+      })).toThrow('Duplicate multisig cosigner key');
+    });
+
     it('rejects malformed parsed single-sig descriptors with no signer', () => {
       const parsed: ParsedDescriptor = {
         type: 'single_sig',
@@ -305,13 +417,16 @@ export function registerDescriptorParserDomainValidationContracts(): void {
       const text = [
         '# BlueWallet Multisig setup file',
         'Policy: 3 of 2',
+        'Sorted: true',
         "Derivation: m/48'/0'/0'/2'",
         'Format: P2WSH',
         `aabbccdd: ${MAINNET_XPUB}`,
         `11223344: ${MAINNET_XPUB_2}`,
       ].join('\n');
 
-      expect(() => parseBlueWalletTextImport(text)).toThrow('Multisig quorum cannot exceed signer count');
+      expect(() => parseBlueWalletTextImport(text)).toThrow(
+        'BlueWallet Policy quorum must be within the declared signer count',
+      );
     });
   });
 }

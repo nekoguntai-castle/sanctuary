@@ -24,9 +24,15 @@ import {
   repairWalletDescriptor,
   updateWallet,
 } from '../../../../src/services/wallet';
+import {
+  MAINNET_BIP48_SIGNERS,
+  MAINNET_BIP84,
+  MAINNET_BIP84_DESCRIPTORS,
+  mainnetBip48Descriptors,
+} from './descriptorTestFixtures';
 
-const VALID_RECEIVE_DESCRIPTOR = "wpkh([d34db33f/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/0/*)";
-const VALID_CHANGE_DESCRIPTOR = "wpkh([d34db33f/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/1/*)";
+const VALID_RECEIVE_DESCRIPTOR = MAINNET_BIP84_DESCRIPTORS.receive;
+const VALID_CHANGE_DESCRIPTOR = MAINNET_BIP84_DESCRIPTORS.change;
 const NATIVE_SEGWIT_POLICY_ID = 'single-sig-native-segwit-bip84-v1';
 const MULTISIG_NATIVE_SEGWIT_POLICY_ID = 'multisig-native-segwit-bip48-2-v1';
 
@@ -255,35 +261,50 @@ export function registerWalletMutationMaintenanceTests(): void {
       expect(mockNotificationUnsubscribeWalletAddresses).not.toHaveBeenCalled();
     });
 
-    const account = (deviceId: string, id: string, path = "m/84'/0'/0'") => ({
-      id,
-      deviceId,
-      purpose: path.startsWith("m/48'") ? 'multisig' : 'single_sig',
-      scriptType: 'native_segwit',
-      derivationPath: path,
-      xpub: `xpub-${id}`,
-    });
-    const device = (id: string, accountId: string, path = "m/84'/0'/0'") => ({
-      id,
-      label: id,
-      userId: 'user-1',
-      type: 'coldcard',
-      fingerprint: id === 'device-1' ? 'aabbccdd' : 'eeeeffff',
-      accounts: [account(id, accountId, path)],
-    });
-    const storedLink = (index: number, id: string, path = "m/48'/0'/0'/2'") => ({
-      deviceId: id,
-      deviceAccountId: `${id}-account`,
-      signerIndex: index,
-      signerBindingVersion: 1,
-      signerFingerprint: '11112222',
-      signerXpub: `xpub-${id}`,
-      signerDerivationPath: path,
-      signerPurpose: 'multisig',
-      signerScriptType: 'native_segwit',
-      device: { id, type: 'coldcard', accounts: [] },
-      deviceAccount: null,
-    });
+    const signerFixture = (path: string) => {
+      if (!path.startsWith("m/48'")) return MAINNET_BIP84;
+      return path === MAINNET_BIP48_SIGNERS[2].path
+        ? MAINNET_BIP48_SIGNERS[2]
+        : MAINNET_BIP48_SIGNERS[0];
+    };
+    const account = (deviceId: string, id: string, path = "m/84'/0'/0'") => {
+      const fixture = signerFixture(path);
+      return {
+        id,
+        deviceId,
+        purpose: path.startsWith("m/48'") ? 'multisig' : 'single_sig',
+        scriptType: 'native_segwit',
+        derivationPath: path,
+        xpub: fixture.xpub,
+      };
+    };
+    const device = (id: string, accountId: string, path = "m/84'/0'/0'") => {
+      const fixture = signerFixture(path);
+      return {
+        id,
+        label: id,
+        userId: 'user-1',
+        type: 'coldcard',
+        fingerprint: fixture.fingerprint,
+        accounts: [account(id, accountId, path)],
+      };
+    };
+    const storedLink = (index: number, id: string, path = "m/48'/0'/0'/2'") => {
+      const fixture = signerFixture(path);
+      return {
+        deviceId: id,
+        deviceAccountId: `${id}-account`,
+        signerIndex: index,
+        signerBindingVersion: 1,
+        signerFingerprint: fixture.fingerprint,
+        signerXpub: fixture.xpub,
+        signerDerivationPath: path,
+        signerPurpose: 'multisig',
+        signerScriptType: 'native_segwit',
+        device: { id, type: 'coldcard', accounts: [] },
+        deviceAccount: null,
+      };
+    };
     const storedSingleLink = (index: number, id: string) => ({
       ...storedLink(index, id, "m/84'/0'/0'"),
       signerPurpose: 'single_sig',
@@ -437,6 +458,17 @@ export function registerWalletMutationMaintenanceTests(): void {
     });
 
     it('generates multisig descriptor from immutable snapshots when signer threshold is met', async () => {
+      const multisigDescriptors = mainnetBip48Descriptors([
+        MAINNET_BIP48_SIGNERS[0],
+        MAINNET_BIP48_SIGNERS[2],
+      ]);
+      mockBuildDescriptorFromDevices.mockReturnValueOnce({
+        descriptor: multisigDescriptors.receive,
+        changeDescriptor: multisigDescriptors.change,
+        fingerprint: [MAINNET_BIP48_SIGNERS[0], MAINNET_BIP48_SIGNERS[2]]
+          .map(signer => signer.fingerprint)
+          .join('-'),
+      });
       mockPrismaClient.wallet.findFirst.mockResolvedValueOnce({
         id: 'wallet-multi-ready',
         type: 'multi_sig',
@@ -470,8 +502,8 @@ export function registerWalletMutationMaintenanceTests(): void {
         'wallet-multi-ready',
         expect.objectContaining({ signerIndex: 1 }),
         expect.objectContaining({
-          descriptor: VALID_RECEIVE_DESCRIPTOR,
-          changeDescriptor: VALID_CHANGE_DESCRIPTOR,
+          descriptor: multisigDescriptors.receive,
+          changeDescriptor: multisigDescriptors.change,
           canonicalPolicyId: MULTISIG_NATIVE_SEGWIT_POLICY_ID,
           canonicalPolicyVersion: 1,
           addresses: expect.arrayContaining([

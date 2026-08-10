@@ -1,4 +1,5 @@
 import { beforeEach, vi } from 'vitest';
+import { MAINNET_BIP84_DESCRIPTORS } from './descriptorTestFixtures';
 /**
  * Wallet Service Tests
  *
@@ -355,8 +356,8 @@ export function setupWalletServiceTestHooks(): void {
     resetPrismaMocks();
     vi.clearAllMocks();
     mockBuildDescriptorFromDevices.mockReturnValue({
-      descriptor: "wpkh([abc12345/84'/0'/0']xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8/0/*)",
-      changeDescriptor: "wpkh([abc12345/84'/0'/0']xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8/1/*)",
+      descriptor: MAINNET_BIP84_DESCRIPTORS.receive,
+      changeDescriptor: MAINNET_BIP84_DESCRIPTORS.change,
       fingerprint: 'abc12345',
     });
     mockHookExecuteAfter.mockResolvedValue(undefined);

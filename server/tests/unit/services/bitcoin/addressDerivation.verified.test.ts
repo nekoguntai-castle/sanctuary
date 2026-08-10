@@ -42,7 +42,7 @@ const descriptorTemplateByScriptType: Record<
 function descriptorForSingleSigVector(vector: VerifiedSingleSigVector): string {
   const accountPath = vector.path.startsWith('m/') ? vector.path.slice(2) : vector.path;
   const receiveWildcardPath = ['0', '*'].join('/');
-  const keyExpression = `[00000000/${accountPath}]${vector.xpub}/${receiveWildcardPath}`;
+  const keyExpression = `[aabbccdd/${accountPath}]${vector.xpub}/${receiveWildcardPath}`;
   return descriptorTemplateByScriptType[vector.scriptType](keyExpression);
 }
 
@@ -219,7 +219,8 @@ describe('Address Derivation - Cross-Implementation Verification', () => {
         network: 'mainnet',
         change: false,
       });
-      const explicitChange = deriveAddressFromDescriptor(descriptor, receiveVector.index, {
+      const changeDescriptor = canonicalDescriptorForSingleSigVector(receiveVector, 1);
+      const explicitChange = deriveAddressFromDescriptor(changeDescriptor, receiveVector.index, {
         network: 'mainnet',
         change: true,
       });
@@ -280,11 +281,8 @@ describe('Address Derivation - Cross-Implementation Verification', () => {
       }
     );
 
-    // The checked-in nested vectors use keys exported at BIP48 /2' even though
-    // their wrapper is P2SH-P2WSH. They remain valid address vectors below, but
-    // cannot serve as canonical BIP48 /1' descriptor-origin evidence.
     const supportedMultisigVectors = VERIFIED_MULTISIG_VECTORS.filter(
-      ({ scriptType }) => scriptType === 'p2wsh'
+      ({ scriptType }) => scriptType === 'p2wsh' || scriptType === 'p2sh_p2wsh'
     );
 
     it.each(supportedMultisigVectors.map(v => [v.description, v]))(
@@ -301,15 +299,15 @@ describe('Address Derivation - Cross-Implementation Verification', () => {
       }
     );
 
-    it('rejects a nested vector whose declared BIP48 /1 origin contradicts its /2 xpub', () => {
-      const vector = VERIFIED_MULTISIG_VECTORS.find(
+    it('keeps nested /1 and native /2 account evidence distinct', () => {
+      const nested = VERIFIED_MULTISIG_VECTORS.find(
         ({ scriptType }) => scriptType === 'p2sh_p2wsh'
       )!;
+      const native = VERIFIED_MULTISIG_VECTORS.find(({ scriptType }) => scriptType === 'p2wsh')!;
 
-      expect(() => deriveCanonicalAddress(
-        canonicalDescriptorsForMultisigVector(vector),
-        { branch: 0, index: vector.index, network: vector.network },
-      )).toThrow('Canonical descriptor extended key child number does not match account origin');
+      expect(new Set(nested.xpubs).size).toBe(nested.totalKeys);
+      expect(new Set(native.xpubs).size).toBe(native.totalKeys);
+      expect(nested.xpubs).not.toEqual(native.xpubs);
     });
   });
 
@@ -330,10 +328,10 @@ describe('Address Derivation - Cross-Implementation Verification', () => {
       it.each(p2wshVectors.map(v => [v.description, v]))(
         '%s',
         (_desc: string, vector: VerifiedMultisigVector) => {
-          // Build descriptor from xpubs using wildcard format
-          // The implementation derives at <0;1>/* where the index is substituted
-          const keyExprs = vector.xpubs.map(xpub => `${xpub}/<0;1>/*`);
-          const descriptor = `wsh(sortedmulti(${vector.threshold},${keyExprs.join(',')}))`;
+          const descriptors = canonicalDescriptorsForMultisigVector(vector);
+          const descriptor = vector.change
+            ? descriptors.changeDescriptor
+            : descriptors.receiveDescriptor;
 
           const result = deriveAddressFromDescriptor(descriptor, vector.index, {
             network: vector.network,
@@ -357,9 +355,10 @@ describe('Address Derivation - Cross-Implementation Verification', () => {
       it.each(p2shP2wshVectors.map(v => [v.description, v]))(
         '%s',
         (_desc: string, vector: VerifiedMultisigVector) => {
-          // Build descriptor from xpubs using wildcard format
-          const keyExprs = vector.xpubs.map(xpub => `${xpub}/<0;1>/*`);
-          const descriptor = `sh(wsh(sortedmulti(${vector.threshold},${keyExprs.join(',')})))`;
+          const descriptors = canonicalDescriptorsForMultisigVector(vector);
+          const descriptor = vector.change
+            ? descriptors.changeDescriptor
+            : descriptors.receiveDescriptor;
 
           const result = deriveAddressFromDescriptor(descriptor, vector.index, {
             network: vector.network,

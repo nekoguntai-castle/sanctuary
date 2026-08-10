@@ -12,6 +12,7 @@ import { convertXpubToFormat } from '../../../../src/services/bitcoin/addressDer
 import bip32 from '../../../../src/services/bitcoin/bip32';
 import * as bitcoin from 'bitcoinjs-lib';
 import type { WalletSafetyRawSnapshot } from '../../../../src/services/walletSafetyAudit';
+import { VERIFIED_MULTISIG_VECTORS } from '../../../fixtures/verified-address-vectors';
 
 const GENERATED_AT = new Date('2026-08-09T12:00:00.000Z');
 
@@ -37,7 +38,8 @@ describe('wallet safety audit analyzer', () => {
     expect(report.wallets[0]).toMatchObject({
       classification: 'manual_investigation',
       findings: [
-        { id: 'address.coordinate_missing' },
+        { id: 'address.policy_mismatch' },
+        { id: 'descriptor.provenance_unproven' },
         { id: 'policy.ordered_multisig_unsupported' },
       ],
     });
@@ -49,7 +51,7 @@ describe('wallet safety audit analyzer', () => {
     const report = buildWalletSafetyAuditReport(snapshot, GENERATED_AT);
     expect(report.wallets[0].classification).toBe('manual_investigation');
     expect(report.wallets[0].findings).toEqual([
-      { id: 'address.coordinate_missing' },
+      { id: 'address.policy_mismatch' },
       { id: 'descriptor.provenance_unproven' },
       { id: 'policy.ordered_multisig_unsupported' },
     ]);
@@ -123,15 +125,22 @@ describe('wallet safety audit analyzer', () => {
 
   it('checks descriptor keys even when no hardware signer link exists', () => {
     const snapshot = provenAuditSnapshot();
-    const incompatibleVersion = convertXpubToFormat(
-      snapshot.signers[0].signerXpub as string,
-      'Vpub',
+    const vector = VERIFIED_MULTISIG_VECTORS.find(candidate => (
+      candidate.scriptType === 'p2sh_p2wsh' && candidate.totalKeys === 3
+    ))!;
+    const keys = vector.xpubs.map((xpub, index) => (
+      `[${['aabbccdd', 'eeff0011', '22334455'][index]}/48h/1h/0h/1h]${convertXpubToFormat(xpub, 'Upub')}`
+    ));
+    const descriptor = (branch: 0 | 1): string => (
+      `sh(wsh(sortedmulti(2,${keys.map(key => `${key}/${branch}/*`).join(',')})))`
     );
     snapshot.signers = [];
     for (const wallet of snapshot.wallets) {
-      wallet.descriptor = wallet.descriptor?.replace(/tpub[A-Za-z0-9]+/, incompatibleVersion) ?? null;
-      wallet.changeDescriptor = wallet.changeDescriptor?.replace(/tpub[A-Za-z0-9]+/, incompatibleVersion) ?? null;
-      wallet.sourceDescriptor = wallet.sourceDescriptor?.replace(/tpub[A-Za-z0-9]+/, incompatibleVersion) ?? null;
+      wallet.descriptor = descriptor(0);
+      wallet.changeDescriptor = descriptor(1);
+      wallet.descriptorSourceKind = 'imported_pair';
+      wallet.sourceDescriptor = descriptor(0);
+      wallet.sourceChangeDescriptor = descriptor(1);
     }
 
     const audited = buildWalletSafetyAuditReport(snapshot, GENERATED_AT).wallets[0];
@@ -143,13 +152,13 @@ describe('wallet safety audit analyzer', () => {
     const snapshot = provenAuditSnapshot();
     snapshot.signers = [];
     for (const wallet of snapshot.wallets) {
-      wallet.descriptor = wallet.descriptor?.replace("84'/1'/0'", "84'/1'/0'/7'") ?? null;
-      wallet.changeDescriptor = wallet.changeDescriptor?.replace("84'/1'/0'", "84'/1'/0'/7'") ?? null;
-      wallet.sourceDescriptor = wallet.sourceDescriptor?.replace("84'/1'/0'", "84'/1'/0'/7'") ?? null;
+      wallet.descriptor = wallet.descriptor?.replace('84h/1h/0h', '84h/1h/0h/7h') ?? null;
+      wallet.changeDescriptor = wallet.changeDescriptor?.replace('84h/1h/0h', '84h/1h/0h/7h') ?? null;
+      wallet.sourceDescriptor = wallet.sourceDescriptor?.replace('84h/1h/0h', '84h/1h/0h/7h') ?? null;
     }
     const audited = buildWalletSafetyAuditReport(snapshot, GENERATED_AT).wallets[0];
     expect(audited.classification).toBe('manual_investigation');
-    expect(audited.findings).toContainEqual({ id: 'signer.xpub_wrong_depth' });
+    expect(audited.findings).toContainEqual({ id: 'descriptor.policy_inconsistent' });
   });
 
   it('does not accept an account-parent fingerprint as master identity evidence', () => {
@@ -171,7 +180,9 @@ describe('wallet safety audit analyzer', () => {
 
   it('never classifies consistently non-hardened single-sig origins as proven safe', () => {
     const snapshot = provenAuditSnapshot();
-    const replaceOrigin = (value: string | null) => value?.replaceAll("84'/1'/0'", '84/1/0') ?? null;
+    const replaceOrigin = (value: string | null) => value
+      ?.replaceAll('84h/1h/0h', '84/1/0')
+      .replaceAll("84'/1'/0'", '84/1/0') ?? null;
     const wallet = snapshot.wallets[0];
     wallet.descriptor = replaceOrigin(wallet.descriptor);
     wallet.changeDescriptor = replaceOrigin(wallet.changeDescriptor);
@@ -191,17 +202,19 @@ describe('wallet safety audit analyzer', () => {
     expect(audited.findings).toContainEqual({ id: 'signer.snapshot_mismatch' });
   });
 
-  it('never calls ordered multisig recoverable with non-hardened BIP48 origins', () => {
+  it('rejects non-hardened BIP48 origins before recovery classification', () => {
     const snapshot = recoverableOrderedMultisigSnapshot();
     const replaceOrigin = (value: string | null) => value?.replaceAll(
       "48'/1'/0'/2'",
       '48/1/0/2',
-    ) ?? null;
+    ).replace('wsh(multi(', 'wsh(sortedmulti(') ?? null;
     const wallet = snapshot.wallets[0];
     wallet.descriptor = replaceOrigin(wallet.descriptor);
     wallet.changeDescriptor = replaceOrigin(wallet.changeDescriptor);
     wallet.sourceDescriptor = replaceOrigin(wallet.sourceDescriptor);
     wallet.sourceChangeDescriptor = replaceOrigin(wallet.sourceChangeDescriptor);
+    wallet.descriptorSourceKind = 'generated_pair';
+    wallet.descriptorPolicyVersion = 1;
     for (const address of snapshot.addresses) {
       address.derivationPath = replaceOrigin(address.derivationPath) as string;
     }
@@ -258,7 +271,7 @@ describe('wallet safety audit analyzer', () => {
         wallet.fingerprint = '00000000';
         return snapshot;
       },
-      expectedFinding: 'signer.fingerprint_missing',
+      expectedFinding: 'descriptor.policy_inconsistent',
     },
     {
       name: 'missing signer fingerprint',

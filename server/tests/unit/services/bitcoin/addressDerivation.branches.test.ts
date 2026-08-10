@@ -27,9 +27,11 @@ vi.mock('bitcoinjs-lib', async (importOriginal) => {
 
 import * as bitcoin from 'bitcoinjs-lib';
 import * as ecc from 'tiny-secp256k1';
+import bip32 from '../../../../src/services/bitcoin/bip32';
 import {
   convertToStandardXpub,
   convertXpubToFormat,
+  deriveMultisigAddress,
   deriveAddress,
   deriveAddressFromDescriptor,
   deriveAddressFromParsedDescriptor,
@@ -39,6 +41,24 @@ import {
 import { testXpubs } from '../../../fixtures/bitcoin';
 
 bitcoin.initEccLib(ecc);
+
+const bip48Descriptor = (
+  scriptComponent: 1 | 2,
+  suffix = '0/*',
+): string => {
+  const keys = [21, 22].map((seedByte, index) => {
+    const xpub = bip32.fromSeed(Buffer.alloc(32, seedByte), bitcoin.networks.testnet)
+      .deriveHardened(48)
+      .deriveHardened(1)
+      .deriveHardened(0)
+      .deriveHardened(scriptComponent)
+      .neutered()
+      .toBase58();
+    return `[${index === 0 ? 'aabbccdd' : '11223344'}/48h/1h/0h/${scriptComponent}h]${xpub}/${suffix}`;
+  });
+  const inner = `sortedmulti(1,${keys.join(',')})`;
+  return scriptComponent === 2 ? `wsh(${inner})` : `sh(wsh(${inner}))`;
+};
 
 describe('Address Derivation Service additional branch coverage', () => {
   afterEach(() => {
@@ -109,8 +129,7 @@ describe('Address Derivation Service additional branch coverage', () => {
   });
 
   it('throws when multisig P2WSH address generation returns no address', () => {
-    const tpub = testXpubs.testnet.bip84;
-    const descriptor = `wsh(sortedmulti(1,[aabbccdd/84h/1h/0h]${tpub}/0/*))`;
+    const descriptor = bip48Descriptor(2);
     paymentMocks.p2wsh = () => ({ address: undefined });
     expect(() =>
       deriveAddressFromDescriptor(descriptor, 0, { network: 'testnet' })
@@ -118,8 +137,7 @@ describe('Address Derivation Service additional branch coverage', () => {
   });
 
   it('throws when nested multisig P2SH-P2WSH address generation returns no address', () => {
-    const tpub = testXpubs.testnet.bip84;
-    const descriptor = `sh(wsh(sortedmulti(1,[aabbccdd/84h/1h/0h]${tpub}/0/*)))`;
+    const descriptor = bip48Descriptor(1);
     paymentMocks.p2sh = () => ({ address: undefined });
     expect(() =>
       deriveAddressFromDescriptor(descriptor, 0, { network: 'testnet' })
@@ -138,53 +156,46 @@ describe('Address Derivation Service additional branch coverage', () => {
   });
 
   it('throws when descriptor wrapper exists but no xpub is present', () => {
-    expect(() => parseDescriptor('wpkh([d34db33f/84h/0h/0h])')).toThrow('Could not parse xpub from descriptor');
+    expect(() => parseDescriptor('wpkh([d34db33f/84h/0h/0h])')).toThrow('Invalid descriptor key expression');
   });
 
-  it('defaults descriptor path to 0/* when derivation suffix is omitted', () => {
+  it('rejects a descriptor whose derivation suffix is omitted', () => {
     const descriptor = `wpkh([d34db33f/84h/0h/0h]${testXpubs.mainnet.bip44})`;
-    const parsed = parseDescriptor(descriptor);
-    expect(parsed.path).toBe('0/*');
+    expect(() => parseDescriptor(descriptor)).toThrow('Invalid descriptor key expression');
   });
 
-  it('defaults descriptor path to 0/* when derivation suffix is empty', () => {
+  it('rejects a descriptor whose derivation suffix is empty', () => {
     const descriptor = `wpkh(${testXpubs.mainnet.bip44}/)`;
-    const parsed = parseDescriptor(descriptor);
-    expect(parsed.path).toBe('0/*');
+    expect(() => parseDescriptor(descriptor)).toThrow('Invalid descriptor key expression');
   });
 
-  it('extracts descriptor path from the matched key when origin text repeats the xpub', () => {
+  it('rejects a noncanonical origin even when it repeats xpub-shaped text', () => {
     const xpub = testXpubs.mainnet.bip44;
     const descriptor = `wpkh([d34db33f/84h/${xpub}/0h]${xpub}/1/*)`;
-    const parsed = parseDescriptor(descriptor);
-    expect(parsed.path).toBe('1/*');
+    expect(() => parseDescriptor(descriptor)).toThrow('canonical account path');
   });
 
-  it('extracts descriptor path from no-origin single-sig descriptors', () => {
+  it('rejects no-origin single-sig descriptors', () => {
     const descriptor = `wpkh(${testXpubs.mainnet.bip44}/1/*)`;
-    const parsed = parseDescriptor(descriptor);
-    expect(parsed.path).toBe('1/*');
+    expect(() => parseDescriptor(descriptor)).toThrow('Invalid descriptor key expression');
   });
 
   it('throws when multisig descriptor has invalid quorum syntax', () => {
     const tpub = testXpubs.testnet.bip84;
     const descriptor = `wsh(sortedmulti(x,[aabbccdd/84h/1h/0h]${tpub}/0/*))`;
-    expect(() => parseDescriptor(descriptor)).toThrow('Could not parse quorum from multisig descriptor');
+    expect(() => parseDescriptor(descriptor)).toThrow('Multisig quorum must be a positive integer');
   });
 
   it('throws when multisig descriptor contains no parseable keys', () => {
     expect(() => parseDescriptor('wsh(sortedmulti(2,notakey,also_not_a_key))')).toThrow(
-      'Could not parse keys from multisig descriptor'
+      'Invalid descriptor key expression'
     );
   });
 
-  it('uses default 0/* path for bare multisig xpubs', () => {
+  it('rejects bare multisig xpubs', () => {
     const tpub = testXpubs.testnet.bip84;
     const descriptor = `wsh(sortedmulti(2,${tpub},${tpub}))`;
-    const parsed = parseDescriptor(descriptor);
-
-    expect(parsed.keys?.[0].derivationPath).toBe('0/*');
-    expect(parsed.keys?.[1].derivationPath).toBe('0/*');
+    expect(() => parseDescriptor(descriptor)).toThrow('Invalid descriptor key expression');
   });
 
   it('throws for unsupported script type at runtime', () => {
@@ -197,34 +208,41 @@ describe('Address Derivation Service additional branch coverage', () => {
     ).toThrow('Unsupported script type');
   });
 
-  it('handles explicit change-index replacement in multisig key derivation path', () => {
-    const tpub = testXpubs.testnet.bip84;
-    const descriptor = `wsh(sortedmulti(1,[aabbccdd/84h/1h/0h]${tpub}/1/*))`;
+  it('requires the requested branch to match the explicit fixed descriptor branch', () => {
+    const receiveDescriptor = bip48Descriptor(2, '0/*');
+    const changeDescriptor = bip48Descriptor(2, '1/*');
 
-    const receive = deriveAddressFromDescriptor(descriptor, 2, { network: 'testnet', change: false });
-    const change = deriveAddressFromDescriptor(descriptor, 2, { network: 'testnet', change: true });
+    expect(() => deriveAddressFromDescriptor(
+      receiveDescriptor,
+      2,
+      { network: 'testnet', change: true },
+    )).toThrow('descriptor branch 0 does not match requested branch 1');
+    expect(() => deriveAddressFromDescriptor(
+      changeDescriptor,
+      2,
+      { network: 'testnet', change: false },
+    )).toThrow('descriptor branch 1 does not match requested branch 0');
+
+    const receive = deriveAddressFromDescriptor(receiveDescriptor, 2, { network: 'testnet', change: false });
+    const change = deriveAddressFromDescriptor(changeDescriptor, 2, { network: 'testnet', change: true });
 
     expect(receive.address).not.toBe(change.address);
     expect(receive.derivationPath).toContain('/0/2');
     expect(change.derivationPath).toContain('/1/2');
   });
 
-  it('handles wildcard-only and sparse multisig derivation path segments', () => {
-    const tpub = testXpubs.testnet.bip84;
-    const wildcardDescriptor = `wsh(sortedmulti(1,[aabbccdd/84h/1h/0h]${tpub}/*))`;
-    const sparseDescriptor = `wsh(sortedmulti(1,[aabbccdd/84h/1h/0h]${tpub}/0//*))`;
-    const nonNumericSegmentDescriptor = `wsh(sortedmulti(1,[aabbccdd/84h/1h/0h]${tpub}/<2;3>/*))`;
+  it.each(['*', '0//*', '<2;3>/*'])(
+    'rejects unsupported multisig derivation suffix %s',
+    suffix => {
+      expect(() => deriveAddressFromDescriptor(
+        bip48Descriptor(2, suffix),
+        1,
+        { network: 'testnet' },
+      )).toThrow('Descriptor key paths must end');
+    },
+  );
 
-    const wildcard = deriveAddressFromDescriptor(wildcardDescriptor, 1, { network: 'testnet', change: true });
-    const sparse = deriveAddressFromDescriptor(sparseDescriptor, 1, { network: 'testnet', change: false });
-    const nonNumeric = deriveAddressFromDescriptor(nonNumericSegmentDescriptor, 1, { network: 'testnet', change: false });
-
-    expect(wildcard.address).toMatch(/^tb1q/);
-    expect(sparse.address).toMatch(/^tb1q/);
-    expect(nonNumeric.address).toMatch(/^tb1q/);
-  });
-
-  it('replaces every wildcard segment in a multisig derivation path', () => {
+  it('rejects a pre-parsed multisig path with multiple wildcards', () => {
     const derivedIndexes: number[] = [];
     const fakeNode: any = {
       publicKey: Buffer.from('0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798', 'hex'),
@@ -234,8 +252,7 @@ describe('Address Derivation Service additional branch coverage', () => {
       }),
     };
 
-    deriveAddressFromParsedDescriptor(
-      {
+    expect(() => deriveAddressFromParsedDescriptor({
         type: 'wsh-sortedmulti',
         quorum: 1,
         keys: [
@@ -250,9 +267,103 @@ describe('Address Derivation Service additional branch coverage', () => {
       4,
       { network: 'testnet', change: true },
       { fromBase58: () => fakeNode }
-    );
+    )).toThrow('Descriptor requires an explicit fixed branch wildcard');
 
-    expect(derivedIndexes).toEqual([1, 4, 4]);
+    expect(derivedIndexes).toEqual([]);
+  });
+
+  it('fails closed on incomplete pre-parsed multisig policy data', () => {
+    const base = {
+      type: 'wsh-sortedmulti' as const,
+      quorum: 1,
+      keys: [{
+        fingerprint: 'aabbccdd',
+        accountPath: "m/48'/1'/0'/2'",
+        xpub: testXpubs.testnet.bip84,
+        derivationPath: '0/*',
+      }],
+    };
+
+    expect(() => deriveMultisigAddress(
+      { ...base, keys: [] },
+      0,
+      { network: 'testnet', change: false },
+    )).toThrow('No keys found in multisig descriptor');
+    expect(() => deriveMultisigAddress(
+      { ...base, quorum: undefined },
+      0,
+      { network: 'testnet', change: false },
+    )).toThrow('No quorum found in multisig descriptor');
+  });
+
+  it('rejects pre-parsed multisig suffix and child-index drift before derivation', () => {
+    const parsed = {
+      type: 'wsh-sortedmulti' as const,
+      quorum: 1,
+      keys: [{
+        fingerprint: 'aabbccdd',
+        accountPath: "m/48'/1'/0'/2'",
+        xpub: testXpubs.testnet.bip84,
+        derivationPath: 'receive/*',
+      }],
+    };
+    const fakeNode: any = {
+      publicKey: Buffer.from('0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798', 'hex'),
+      derive: vi.fn(() => fakeNode),
+    };
+
+    expect(() => deriveMultisigAddress(
+      parsed,
+      0,
+      { network: 'testnet', change: false },
+      { fromBase58: () => fakeNode },
+    )).toThrow('explicit fixed branch wildcard');
+    expect(() => deriveMultisigAddress(
+      { ...parsed, keys: [{ ...parsed.keys[0], derivationPath: '0/*' }] },
+      0,
+      { network: 'testnet', change: true },
+      { fromBase58: () => fakeNode },
+    )).toThrow('descriptor branch 0 does not match requested branch 1');
+    expect(() => deriveMultisigAddress(
+      { ...parsed, keys: [{ ...parsed.keys[0], derivationPath: '0/*' }] },
+      Number.NaN,
+      { network: 'testnet', change: false },
+      { fromBase58: () => fakeNode },
+    )).toThrow('Invalid descriptor child derivation index');
+    expect(() => deriveMultisigAddress(
+      { ...parsed, keys: [{ ...parsed.keys[0], derivationPath: '0/*' }] },
+      0x80000000,
+      { network: 'testnet', change: false },
+      { fromBase58: () => fakeNode },
+    )).toThrow('Invalid descriptor child derivation index');
+    expect(() => deriveMultisigAddress(
+      { ...parsed, keys: [{ ...parsed.keys[0], accountPath: "48'/1'/0'/2'", derivationPath: '0/*' }] },
+      { [Symbol.toPrimitive]: () => '' } as unknown as number,
+      { network: 'testnet', change: false },
+      { fromBase58: () => fakeNode },
+    )).toThrow('Invalid descriptor child derivation index');
+
+    const normalized = deriveMultisigAddress(
+      { ...parsed, keys: [{ ...parsed.keys[0], accountPath: "48'/1'/0'/2'", derivationPath: '0/*' }] },
+      0,
+      { network: 'testnet', change: false },
+      { fromBase58: () => fakeNode },
+    );
+    expect(normalized.derivationPath).toBe("m/48'/1'/0'/2'/0/0");
+  });
+
+  it('parses the canonical multipath suffix in the compatibility descriptor shape', () => {
+    const descriptor = `wpkh([aabbccdd/84h/1h/0h]${testXpubs.testnet.bip84}/<0;1>/*)`;
+    expect(parseDescriptor(descriptor).path).toBe('<0;1>/*');
+  });
+
+  it('rejects a pre-parsed single-sig descriptor with no fixed branch suffix', () => {
+    expect(() => deriveAddressFromParsedDescriptor({
+      type: 'wpkh',
+      xpub: testXpubs.testnet.bip84,
+    }, 0, { network: 'testnet' })).toThrow(
+      'Descriptor requires an explicit fixed branch wildcard',
+    );
   });
 
   it('uses nested segwit account path for Zpub when nested script type is requested', () => {

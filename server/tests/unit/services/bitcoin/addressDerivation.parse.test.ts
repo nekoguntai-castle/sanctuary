@@ -5,101 +5,10 @@ import {
   deriveCanonicalAddress,
   deriveAddressFromDescriptor,
   deriveAddressFromParsedDescriptor,
-  parseDescriptor,
 } from '../../../../src/services/bitcoin/addressDerivation';
 import bip32 from '../../../../src/services/bitcoin/bip32';
 import { testXpubs } from '../../../fixtures/bitcoin';
 import { VERIFIED_MULTISIG_VECTORS } from '../../../fixtures/verified-address-vectors';
-
-describe('Address Derivation Service descriptor parsing', () => {
-  describe('Single-sig Descriptors', () => {
-    it('should parse wpkh (native segwit) descriptor', () => {
-      const descriptor = 'wpkh([d34db33f/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/0/*)';
-
-      const result = parseDescriptor(descriptor);
-
-      expect(result.type).toBe('wpkh');
-      expect(result.fingerprint).toBe('d34db33f');
-      expect(result.xpub).toBeDefined();
-      expect(result.path).toBe('0/*');
-    });
-
-    it('should parse sh-wpkh (nested segwit) descriptor', () => {
-      const descriptor = 'sh(wpkh([aabbccdd/49h/0h/0h]xpub6CUGRUonZSQ4TWtTMmzXdrXDtypWZiD6sBpHwJmENQUMWnrdwJP5EHjDBdJxY8hLhN9P3AyaCANDmrUdDLLY8jSqmqQWmxDPdxiKdE6UkHj/0/*))';
-
-      const result = parseDescriptor(descriptor);
-
-      expect(result.type).toBe('sh-wpkh');
-      expect(result.fingerprint).toBe('aabbccdd');
-    });
-
-    it('should parse tr (taproot) descriptor', () => {
-      const descriptor = 'tr([eeff0011/86h/0h/0h]xpub6BgBgsespWvERF3LHQu6CnqdvfEvtMcQjYrcRzx53QJjSxarj2afYWcLteoGVky7D3UKDP9QyrLprQ3VCECoY49yfdDEHGCtMMj92pReUsQ/0/*)';
-
-      const result = parseDescriptor(descriptor);
-
-      expect(result.type).toBe('tr');
-      expect(result.fingerprint).toBe('eeff0011');
-    });
-
-    it('should parse pkh (legacy) descriptor', () => {
-      const descriptor = 'pkh([11223344/44h/0h/0h]xpub6D4BDPcP2GT577Vvch3R8wDkScZWzQzMMUm3PWbmWvVJrZwQY4VUNgqFJPMM3No2dFDFGTsxxpG5uJh7n7epu4trkrX7x7DogT5Uv6fcLW5/0/*)';
-
-      const result = parseDescriptor(descriptor);
-
-      expect(result.type).toBe('pkh');
-      expect(result.fingerprint).toBe('11223344');
-    });
-  });
-
-  describe('Multisig Descriptors', () => {
-    it('should parse wsh(sortedmulti) descriptor', () => {
-      const descriptor = 'wsh(sortedmulti(2,[aabbccdd/84h/1h/0h]tpubDDXfHr8f3LMxNKxfqvjvxH4vDYSvbJQnxZt3qRxfLPJGXMJJgpvZsGJyaZCVQqCLLAKQvHXPF1GYtTNNVZqpZvjxhRAqB4RLmvpH2xHfvCN/0/*,[eeff0011/84h/1h/0h]tpubDDXfHr8f3LMxNKxfqvjvxH4vDYSvbJQnxZt3qRxfLPJGXMJJgpvZsGJyaZCVQqCLLAKQvHXPF1GYtTNNVZqpZvjxhRAqB4RLmvpH2xHfvDD/0/*))';
-
-      const result = parseDescriptor(descriptor);
-
-      expect(result.type).toBe('wsh-sortedmulti');
-      expect(result.quorum).toBe(2);
-      expect(result.keys?.length).toBe(2);
-      expect(result.keys?.[0].fingerprint).toBe('aabbccdd');
-      expect(result.keys?.[1].fingerprint).toBe('eeff0011');
-    });
-
-    it('should parse sh(wsh(sortedmulti)) descriptor', () => {
-      const descriptor = 'sh(wsh(sortedmulti(2,[aabbccdd/49h/1h/0h]tpubDDXfHr8f3LMxNKxfqvjvxH4vDYSvbJQnxZt3qRxfLPJGXMJJgpvZsGJyaZCVQqCLLAKQvHXPF1GYtTNNVZqpZvjxhRAqB4RLmvpH2xHfvCN/0/*,[eeff0011/49h/1h/0h]tpubDDXfHr8f3LMxNKxfqvjvxH4vDYSvbJQnxZt3qRxfLPJGXMJJgpvZsGJyaZCVQqCLLAKQvHXPF1GYtTNNVZqpZvjxhRAqB4RLmvpH2xHfvDD/0/*)))';
-
-      const result = parseDescriptor(descriptor);
-
-      expect(result.type).toBe('sh-wsh-sortedmulti');
-      expect(result.quorum).toBe(2);
-    });
-
-    it('should parse 3-of-5 multisig', () => {
-      const descriptor = 'wsh(sortedmulti(3,[a1a1a1a1/84h/0h/0h]xpub1.../0/*,[b2b2b2b2/84h/0h/0h]xpub2.../0/*,[c3c3c3c3/84h/0h/0h]xpub3.../0/*,[d4d4d4d4/84h/0h/0h]xpub4.../0/*,[e5e5e5e5/84h/0h/0h]xpub5.../0/*))';
-
-      const result = parseDescriptor(descriptor);
-
-      expect(result.quorum).toBe(3);
-      expect(result.keys?.length).toBe(5);
-    });
-  });
-
-  describe('Error Cases', () => {
-    it('should throw for unsupported descriptor format', () => {
-      expect(() => parseDescriptor('wsh(pk([...]xpub...))')).toThrow('Unsupported descriptor format');
-    });
-
-    it('should handle descriptor without fingerprint', () => {
-      const descriptor = 'wpkh(xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/0/*)';
-
-      const result = parseDescriptor(descriptor);
-
-      expect(result.type).toBe('wpkh');
-      expect(result.xpub).toBeDefined();
-      expect(result.fingerprint).toBeUndefined();
-    });
-  });
-});
 
 describe('Address Derivation Service descriptor derivation', () => {
   describe('canonical descriptor-pair coordinates', () => {
@@ -147,7 +56,7 @@ describe('Address Derivation Service descriptor derivation', () => {
       expect(() => deriveCanonicalAddress(
         { receiveDescriptor: fixedChild, changeDescriptor },
         { branch: 0, index: 0, network: 'testnet' }
-      )).toThrow('Unsupported canonical descriptor suffix: 0/7');
+      )).toThrow('Descriptor key paths must end');
     });
 
     it('rejects missing or zero signer fingerprints for canonical writes', () => {
@@ -156,14 +65,14 @@ describe('Address Derivation Service descriptor derivation', () => {
       expect(() => deriveCanonicalAddress(
         { receiveDescriptor: bareReceive, changeDescriptor: bareChange },
         { branch: 0, index: 0, network: 'testnet' }
-      )).toThrow('Canonical descriptor requires signer fingerprint and account origin');
+      )).toThrow('Invalid descriptor key expression');
 
       const zeroReceive = `wpkh([00000000/84'/1'/7']${tpub}/0/*)`;
       const zeroChange = `wpkh([00000000/84'/1'/7']${tpub}/1/*)`;
       expect(() => deriveCanonicalAddress(
         { receiveDescriptor: zeroReceive, changeDescriptor: zeroChange },
         { branch: 0, index: 0, network: 'testnet' }
-      )).toThrow('Canonical descriptor requires a nonzero signer fingerprint');
+      )).toThrow('Descriptor fingerprint must be nonzero');
     });
 
     it('preserves every multisig signer origin in descriptor order', () => {
@@ -204,7 +113,7 @@ describe('Address Derivation Service descriptor derivation', () => {
       expect(() => deriveCanonicalAddress(
         { receiveDescriptor: receive, changeDescriptor: mixedChange },
         { branch: 1, index: 0, network: 'testnet' }
-      )).toThrow('descriptor branch 0 does not match coordinate branch 1');
+      )).toThrow('Descriptor key paths must use one identical branch policy');
     });
 
     it.each([
@@ -246,14 +155,15 @@ describe('Address Derivation Service descriptor derivation', () => {
 
   it('should derive change address from descriptor', () => {
     const tpub = testXpubs.testnet.bip84;
-    const descriptor = `wpkh([aabbccdd/84'/1'/0']${tpub}/0/*)`;
+    const receiveDescriptor = `wpkh([aabbccdd/84'/1'/0']${tpub}/0/*)`;
+    const changeDescriptor = `wpkh([aabbccdd/84'/1'/0']${tpub}/1/*)`;
 
-    const receive = deriveAddressFromDescriptor(descriptor, 0, {
+    const receive = deriveAddressFromDescriptor(receiveDescriptor, 0, {
       network: 'testnet',
       change: false,
     });
 
-    const change = deriveAddressFromDescriptor(descriptor, 0, {
+    const change = deriveAddressFromDescriptor(changeDescriptor, 0, {
       network: 'testnet',
       change: true,
     });
@@ -271,14 +181,14 @@ describe('Address Derivation Service descriptor derivation', () => {
     ).toThrow('No xpub found in descriptor');
   });
 
-  it('throws when parsed multisig descriptor has no keys', () => {
+  it('rejects a parsed multisig descriptor with no explicit branch evidence', () => {
     expect(() =>
       deriveAddressFromParsedDescriptor(
         { type: 'wsh-sortedmulti', quorum: 1, keys: [] } as any,
         0,
         { network: 'testnet' }
       )
-    ).toThrow('No keys found in multisig descriptor');
+    ).toThrow('Descriptor requires an explicit fixed branch wildcard');
   });
 
   it('throws when parsed multisig descriptor has no quorum', () => {

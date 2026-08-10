@@ -5,6 +5,7 @@ import {
   mockDeriveAddressFromDescriptor,
   mockBuildDescriptorFromDevices,
   mockParseDescriptorForImport,
+  mockValidateCanonicalDescriptorPair,
   setupDeviceMocks,
 } from '../walletImport.setup';
 import { mockPrismaClient } from '../../../mocks/prisma';
@@ -15,7 +16,7 @@ import { parseDescriptorForImport as actualParseDescriptor } from '../../../../s
 import { descriptorHandler as descriptorExportHandler } from '../../../../src/services/export/handlers/descriptor';
 import type { WalletExportData } from '../../../../src/services/export/types';
 
-const RECOVERY_XPUB = 'xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL';
+const RECOVERY_XPUB = 'xpub6CatWdiZiodmUeTDp8LT5or8nmbKNcuyvz7WyksVFkKB4RHwCD3XyuvPEbvqAQY3rAPshWcMLoP2fMFMKHPJ4ZeZXYVUhLv1VMrjPC7PW6V';
 const RECOVERY_RECEIVE = `wpkh([aabbccdd/84h/0h/0h]${RECOVERY_XPUB}/0/*)`;
 const RECOVERY_CHANGE = `wpkh([aabbccdd/84h/0h/0h]${RECOVERY_XPUB}/1/*)`;
 
@@ -115,6 +116,11 @@ export const registerWalletImportDescriptorContracts = () => {
       ],
     ])('rejects %s during validation', async (_case, recoveryText, message) => {
       mockParseDescriptorForImport.mockImplementation(actualParseDescriptor);
+      if (_case === 'a mismatched receive/change policy') {
+        mockValidateCanonicalDescriptorPair.mockImplementationOnce(() => {
+          throw new Error('Receive and change descriptors do not describe the same wallet policy');
+        });
+      }
 
       const validation = await walletImport.validateImport(userId, {
         descriptor: recoveryText,

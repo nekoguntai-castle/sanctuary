@@ -58,7 +58,9 @@ export function validateRawDescriptorDomain(
   if (branches.size > 1) {
     throw new Error('Descriptor key paths must use a single receive/change branch');
   }
-  if (expectedKeyCount > 0 && branches.size === 0) {
+  // The zero-key case returned before descriptor scanning, so reaching this
+  // point already proves at least one key is required.
+  if (branches.size === 0) {
     throw new Error('Descriptor key paths must end in /0/* or /1/*');
   }
 }

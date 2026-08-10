@@ -6,22 +6,10 @@
  */
 
 import { WalletType } from '@sanctuary/shared/constants/walletIdentity';
+import { WALLET_POLICY_REGISTRY } from '@sanctuary/shared/constants/walletPolicy';
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
-import { removeChecksum } from './checksum';
-import {
-  detectScriptType,
-  isMultisigDescriptor,
-  extractKeyExpressions,
-  parseKeyExpression,
-  detectNetwork,
-  isChangeDescriptor,
-  extractQuorum,
-} from './descriptorUtils';
-import {
-  validateParsedDescriptorDomain,
-  validateRawDescriptorDomain,
-} from './domainValidation';
+import { parseCanonicalDescriptor } from './canonicalDescriptor';
 import type {
   ParsedDevice,
   ParsedDescriptor,
@@ -35,58 +23,33 @@ const log = createLogger('BITCOIN:SVC_DESCRIPTOR');
  * Parse a Bitcoin output descriptor and extract all relevant information
  */
 export function parseDescriptorForImport(descriptor: string): ParsedDescriptor {
-  // Clean up descriptor
-  let cleanDescriptor = removeChecksum(descriptor.trim());
+  const canonical = parseCanonicalDescriptor(descriptor);
   log.debug('parseDescriptorForImport', {
-    descriptorLength: cleanDescriptor.length,
-    startsWithWsh: cleanDescriptor.toLowerCase().startsWith('wsh('),
+    descriptorLength: canonical.body.length,
+    wrapper: canonical.wrapper,
   });
-  validateRawDescriptorDomain(cleanDescriptor, 0);
-
-  // Detect script type
-  const scriptType = detectScriptType(cleanDescriptor);
-
-  // Detect if multisig
-  const isMultisig = isMultisigDescriptor(cleanDescriptor);
-
-  // Extract key expressions
-  const keyExpressions = extractKeyExpressions(cleanDescriptor);
-
-  if (keyExpressions.length === 0) {
-    throw new Error('No valid key expressions found in descriptor');
-  }
-  validateRawDescriptorDomain(cleanDescriptor, keyExpressions.length);
-
-  // Parse each key expression into device info
-  const devices: ParsedDevice[] = [];
-  for (const expr of keyExpressions) {
-    devices.push(parseKeyExpression(expr));
-  }
-
-  // Detect network from first device
-  const network = detectNetwork(devices[0].xpub, devices[0].derivationPath);
-
-  // Detect change chain
-  const isChange = isChangeDescriptor(cleanDescriptor);
-
-  // Build result
+  const isMultisig = canonical.threshold !== undefined;
+  const policy = WALLET_POLICY_REGISTRY.find(
+    row => row.descriptorWrapper === canonical.wrapper,
+  );
+  if (!policy) throw new Error('Descriptor wrapper has no canonical wallet policy');
+  const devices: ParsedDevice[] = canonical.keys.map(key => ({
+    fingerprint: key.fingerprint,
+    xpub: key.xpub,
+    derivationPath: key.accountPath,
+  }));
   const result: ParsedDescriptor = {
     type: isMultisig ? WalletType.MULTI_SIG : WalletType.SINGLE_SIG,
-    scriptType,
+    scriptType: policy.scriptType,
     devices,
-    network,
-    isChange,
+    network: canonical.network === 'mainnet' ? 'mainnet' : 'testnet',
+    isChange: canonical.suffix.kind === 'branch' && canonical.suffix.branch === 1,
   };
 
   if (isMultisig) {
-    result.quorum = extractQuorum(cleanDescriptor);
+    result.quorum = canonical.threshold;
     result.totalSigners = devices.length;
   }
-
-  validateParsedDescriptorDomain(result, {
-    allowAccountRootPath: false,
-    enforceScriptPurpose: true,
-  });
   return result;
 }
 
@@ -220,20 +183,24 @@ export function resolveDescriptorTextPair(
   input: string,
   explicitChangeDescriptor?: string,
 ): DescriptorTextPair {
-  const extracted = extractDescriptorPairFromText(input) ?? {
+  // A direct single-token API value is byte-exact evidence. Only invoke the
+  // line-oriented recovery-text extractor for actual multi-line input; using
+  // it for a single padded token would silently trim the submitted evidence.
+  const extracted = isDescriptorTextFormat(input) ? extractDescriptorPairFromText(input) : null;
+  const source = extracted ?? {
     receiveDescriptor: input,
   };
   if (
-    extracted.changeDescriptor
+    source.changeDescriptor
     && explicitChangeDescriptor
-    && extracted.changeDescriptor !== explicitChangeDescriptor
+    && source.changeDescriptor !== explicitChangeDescriptor
   ) {
     throw new Error('Embedded and supplied change descriptors do not match exactly');
   }
   return {
-    receiveDescriptor: extracted.receiveDescriptor,
-    ...(explicitChangeDescriptor || extracted.changeDescriptor
-      ? { changeDescriptor: explicitChangeDescriptor ?? extracted.changeDescriptor }
+    receiveDescriptor: source.receiveDescriptor,
+    ...(explicitChangeDescriptor || source.changeDescriptor
+      ? { changeDescriptor: explicitChangeDescriptor ?? source.changeDescriptor }
       : {}),
   };
 }

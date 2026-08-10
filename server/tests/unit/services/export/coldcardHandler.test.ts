@@ -6,11 +6,17 @@
  */
 
 import { coldcardHandler } from '../../../../src/services/export/handlers/coldcard';
+import { parseBlueWalletTextImport } from '../../../../src/services/bitcoin/descriptorParser';
 import type { WalletExportData } from '../../../../src/services/export/types';
+
+const TESTNET_BIP48_XPUBS = [
+  'tpubDFH9dgzveyD8zTbPUFuLrGmCydNvxehyNdUXKJAQN8x4aZ4j6UZqGfnqFrD4NqyaTVGKbvEW54tsvPTK2UoSbCC1PJY8iCNiwTL3RWZEheQ',
+  'tpubDFPtPArj4GzBEFHohegg1Xatrc1Fi9oSox5LzuSRX91miwQxuUrEpBxpvDRsmZYJKYFhgdK3UStsjC8JKXfUbMinjFqiEM4uNwzVaCaHpys',
+] as const;
 
 // Create mock wallet data for testing
 function createMockMultisigWallet(overrides: Partial<WalletExportData> = {}): WalletExportData {
-  return {
+  const wallet: WalletExportData = {
     id: 'wallet-multisig-123',
     name: 'Test Multisig',
     type: 'multi_sig',
@@ -45,6 +51,13 @@ function createMockMultisigWallet(overrides: Partial<WalletExportData> = {}): Wa
     createdAt: new Date('2024-01-01'),
     ...overrides,
   };
+  if (overrides.devices && overrides.totalSigners === undefined) {
+    wallet.totalSigners = overrides.devices.length;
+  }
+  if (overrides.devices && overrides.quorum === undefined) {
+    wallet.quorum = Math.min(2, overrides.devices.length);
+  }
+  return wallet;
 }
 
 function createMockSingleSigWallet(overrides: Partial<WalletExportData> = {}): WalletExportData {
@@ -86,6 +99,9 @@ describe('Coldcard Export Handler', () => {
     it('should return true for multisig wallets', () => {
       const wallet = createMockMultisigWallet();
       expect(coldcardHandler.canExport?.(wallet)).toBe(true);
+      expect(coldcardHandler.canExport?.(createMockMultisigWallet({
+        scriptType: 'nested_segwit',
+      }))).toBe(true);
     });
 
     it('should return false for single-sig wallets', () => {
@@ -111,19 +127,65 @@ describe('Coldcard Export Handler', () => {
 
     it('should include format based on script type', () => {
       const nativeSegwit = createMockMultisigWallet({ scriptType: 'native_segwit' });
-      const nestedSegwit = createMockMultisigWallet({ scriptType: 'nested_segwit' });
+      const nestedSegwit = createMockMultisigWallet({
+        scriptType: 'nested_segwit',
+        devices: createMockMultisigWallet().devices.map(device => ({
+          ...device,
+          derivationPath: "m/48'/0'/0'/1'",
+        })),
+      });
       const legacy = createMockMultisigWallet({ scriptType: 'legacy' });
 
       expect(coldcardHandler.export(nativeSegwit).content).toContain('Format: P2WSH');
       expect(coldcardHandler.export(nestedSegwit).content).toContain('Format: P2SH-P2WSH');
-      expect(coldcardHandler.export(legacy).content).toContain('Format: P2SH');
+      expect(() => coldcardHandler.export(legacy)).toThrow(
+        'Unsupported Coldcard multisig export policy',
+      );
     });
 
-    it('should default to P2WSH for unknown script types', () => {
+    it('should reject unknown script types instead of defaulting to P2WSH', () => {
       const unknownScript = createMockMultisigWallet({ scriptType: 'unknown_script' as any });
-      const result = coldcardHandler.export(unknownScript);
+      expect(() => coldcardHandler.export(unknownScript)).toThrow(
+        'Unsupported Coldcard multisig export policy',
+      );
+    });
 
-      expect(result.content).toContain('Format: P2WSH');
+    it('rejects direct export of a single-sig wallet', () => {
+      expect(() => coldcardHandler.export(createMockSingleSigWallet())).toThrow(
+        'Coldcard export requires a multisig wallet',
+      );
+    });
+
+    it.each([
+      ['signer count', { totalSigners: 4 }, 'signer count or network is incomplete'],
+      ['fractional quorum', { quorum: 1.5 }, 'quorum does not match'],
+      ['zero quorum', { quorum: 0 }, 'quorum does not match'],
+      ['excess quorum', { quorum: 4 }, 'quorum does not match'],
+      ['duplicate fingerprints', {
+        devices: createMockMultisigWallet().devices.map(device => ({
+          ...device,
+          fingerprint: 'abcd1234',
+        })),
+      }, 'unique signer rows'],
+      ['duplicate xpubs', {
+        devices: createMockMultisigWallet().devices.map(device => ({
+          ...device,
+          xpub: createMockMultisigWallet().devices[0].xpub,
+        })),
+      }, 'unique signer rows'],
+    ])('rejects %s policy drift', (_case, overrides, message) => {
+      expect(() => coldcardHandler.export(createMockMultisigWallet(overrides))).toThrow(message);
+    });
+
+    it('rejects mixed signer account paths after validating each path', () => {
+      const devices = createMockMultisigWallet().devices.map((device, index) => ({
+        ...device,
+        derivationPath: index === 0 ? "m/48'/0'/0'/2'" : "m/48'/0'/1'/2'",
+      }));
+
+      expect(() => coldcardHandler.export(createMockMultisigWallet({ devices }))).toThrow(
+        'signers must use the same account path',
+      );
     });
   });
 
@@ -166,7 +228,7 @@ describe('Coldcard Export Handler', () => {
       expect(result.content).toContain("Derivation: m/48'/0'/0'/2'");
     });
 
-    it('should default to standard BIP-48 path if no derivation path provided', () => {
+    it('should reject a missing derivation path instead of defaulting to BIP48', () => {
       const wallet = createMockMultisigWallet({
         devices: [
           {
@@ -179,9 +241,9 @@ describe('Coldcard Export Handler', () => {
         ],
       });
 
-      const result = coldcardHandler.export(wallet);
-
-      expect(result.content).toContain("Derivation: m/48'/0'/0'/2'");
+      expect(() => coldcardHandler.export(wallet)).toThrow(
+        'Coldcard export signer path does not match wallet policy',
+      );
     });
   });
 
@@ -256,6 +318,26 @@ describe('Coldcard Export Handler', () => {
 
       expect(result.content).toContain(`ABCD1234: ${xpub}`);
     });
+
+    it('round-trips testnet exports without rewriting tpubs to mainnet', () => {
+      const wallet = createMockMultisigWallet({
+        network: 'testnet',
+        devices: TESTNET_BIP48_XPUBS.map((xpub, index) => ({
+          label: `Device ${index + 1}`,
+          type: 'coldcard',
+          fingerprint: index === 0 ? '11111111' : '22222222',
+          xpub,
+          derivationPath: "m/48'/1'/0'/2'",
+        })),
+      });
+
+      const result = coldcardHandler.export(wallet);
+      const parsed = parseBlueWalletTextImport(result.content);
+
+      expect(result.content).not.toContain('xpub');
+      expect(parsed.network).toBe('testnet');
+      expect(parsed.devices.map(device => device.xpub)).toEqual(TESTNET_BIP48_XPUBS);
+    });
   });
 
   describe('filename generation', () => {
@@ -290,7 +372,7 @@ describe('Coldcard Export Handler', () => {
       const wallet = createMockMultisigWallet({
         name: 'TestVault',
         quorum: 2,
-        totalSigners: 3,
+        totalSigners: 2,
         scriptType: 'native_segwit',
         devices: [
           {
@@ -315,12 +397,13 @@ describe('Coldcard Export Handler', () => {
       // Verify the overall structure
       const lines = result.content.split('\n');
       expect(lines[0]).toBe('Name: TestVault');
-      expect(lines[1]).toBe('Policy: 2 of 3');
-      expect(lines[2]).toBe("Derivation: m/48'/0'/0'/2'");
-      expect(lines[3]).toBe('Format: P2WSH');
-      expect(lines[4]).toBe(''); // Empty line before cosigners
-      expect(lines[5]).toMatch(/^AAAAAAAA: xpub/);
-      expect(lines[6]).toMatch(/^BBBBBBBB: xpub/);
+      expect(lines[1]).toBe('Policy: 2 of 2');
+      expect(lines[2]).toBe('Sorted: true');
+      expect(lines[3]).toBe("Derivation: m/48'/0'/0'/2'");
+      expect(lines[4]).toBe('Format: P2WSH');
+      expect(lines[5]).toBe(''); // Empty line before cosigners
+      expect(lines[6]).toMatch(/^AAAAAAAA: xpub/);
+      expect(lines[7]).toMatch(/^BBBBBBBB: xpub/);
     });
   });
 });

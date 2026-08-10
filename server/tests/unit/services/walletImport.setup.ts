@@ -29,6 +29,9 @@ vi.mock('../../../src/utils/logger', () => ({
 export const mockParseImportInput = vi.fn();
 export const mockParseDescriptorForImport = vi.fn();
 export const mockResolveDescriptorTextPair = vi.fn();
+export const mockParseCanonicalDescriptor = vi.fn();
+export const mockValidateCanonicalDescriptorPair = vi.fn();
+export const mockExpandCanonicalMultipathDescriptor = vi.fn();
 export const mockParseJsonImport = vi.fn();
 export const mockValidateDescriptor = vi.fn();
 export const mockValidateJsonImport = vi.fn();
@@ -36,6 +39,9 @@ export const mockValidateJsonImport = vi.fn();
 vi.mock('../../../src/services/bitcoin/descriptorParser', () => ({
   parseDescriptorForImport: (...args: any[]) => mockParseDescriptorForImport(...args),
   resolveDescriptorTextPair: (...args: any[]) => mockResolveDescriptorTextPair(...args),
+  parseCanonicalDescriptor: (...args: any[]) => mockParseCanonicalDescriptor(...args),
+  validateCanonicalDescriptorPair: (...args: any[]) => mockValidateCanonicalDescriptorPair(...args),
+  expandCanonicalMultipathDescriptor: (...args: any[]) => mockExpandCanonicalMultipathDescriptor(...args),
   parseJsonImport: (...args: any[]) => mockParseJsonImport(...args),
   validateDescriptor: (...args: any[]) => mockValidateDescriptor(...args),
   validateJsonImport: (...args: any[]) => mockValidateJsonImport(...args),
@@ -90,6 +96,24 @@ export function setupBeforeEach() {
     fingerprint: 'abcd1234',
   });
   mockResolveDescriptorTextPair.mockImplementation(actualResolveDescriptorTextPair);
+  mockParseCanonicalDescriptor.mockImplementation((descriptor: string) => ({
+    body: descriptor.split('#')[0],
+    checksum: descriptor.includes('#') ? descriptor.split('#')[1] : undefined,
+    keys: [{ fingerprint: 'abcd1234' }],
+  }));
+  mockValidateCanonicalDescriptorPair.mockImplementation((receive: string, change: string) => ({
+    receive: mockParseCanonicalDescriptor(receive),
+    change: mockParseCanonicalDescriptor(change),
+  }));
+  mockExpandCanonicalMultipathDescriptor.mockImplementation((descriptor: string) => {
+    if (!descriptor.includes('<0;1>/*')) {
+      throw new Error('Descriptor import requires an explicit receive/change pair');
+    }
+    return {
+      receiveDescriptor: descriptor.split('#')[0].replace(/<0;1>/g, '0'),
+      changeDescriptor: descriptor.split('#')[0].replace(/<0;1>/g, '1'),
+    };
+  });
   mockParseDescriptorForImport.mockImplementation((descriptor: string) => ({
     type: 'single_sig',
     scriptType: 'native_segwit',

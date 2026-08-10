@@ -444,7 +444,10 @@ describe('Wallet Import Service - Operations', () => {
       })).rejects.toThrow('Invalid JSON in wallet export data');
     });
 
-    it('routes a plain descriptor through the exact descriptor import path', async () => {
+    it('rejects a receive-only plain descriptor instead of inventing a change branch', async () => {
+      mockResolveDescriptorTextPair.mockReturnValueOnce({
+        receiveDescriptor: VALID_RECEIVE_DESCRIPTOR,
+      });
       mockParseImportInput.mockReturnValue({
         format: 'descriptor',
         parsed: {
@@ -455,24 +458,12 @@ describe('Wallet Import Service - Operations', () => {
           isChange: false,
         },
       });
-      mockPrismaClient.wallet.findMany.mockResolvedValue([]);
-      mockPrismaClient.wallet.create.mockResolvedValue({
-        id: 'wallet-plain-descriptor',
-        name: 'Plain descriptor',
-        type: 'single_sig',
-        scriptType: 'native_segwit',
-        network: 'mainnet',
-        descriptor: VALID_RECEIVE_DESCRIPTOR,
-        fingerprint: 'wallet-fp',
-      });
-
-      const result = await walletImport.importWallet(userId, {
+      await expect(walletImport.importWallet(userId, {
         data: VALID_RECEIVE_DESCRIPTOR,
         name: 'Plain descriptor',
-      });
-
-      expect(result.wallet.id).toBe('wallet-plain-descriptor');
+      })).rejects.toThrow('explicit receive/change pair');
       expect(mockParseImportInput).toHaveBeenCalledWith(VALID_RECEIVE_DESCRIPTOR);
+      expect(mockPrismaClient.wallet.create).not.toHaveBeenCalled();
     });
 
     it('should handle case-insensitive fingerprint matching', async () => {

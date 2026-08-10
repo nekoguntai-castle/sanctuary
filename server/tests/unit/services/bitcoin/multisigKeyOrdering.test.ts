@@ -15,7 +15,11 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { deriveAddressFromDescriptor, parseDescriptor } from '@/services/bitcoin/addressDerivation';
+import {
+  deriveAddressFromDescriptor as deriveStrictAddressFromDescriptor,
+  parseDescriptor,
+} from '@/services/bitcoin/addressDerivation';
+import { replaceCanonicalDescriptorBranch } from '@/services/bitcoin/descriptorParser';
 import * as bitcoin from 'bitcoinjs-lib';
 import bip32 from '../../../../src/services/bitcoin/bip32';
 
@@ -34,13 +38,34 @@ const TEST_XPUBS = {
     'tpubDEfobrrtptRTbKf4gysDhoabneABDTAcdj3Vbn4XwPsLE2pmqpizSPRG6zHsbAMuiSgWmWPsYCLHTKTPpyrGJ5rAoTpKoQNZcxodiPf2tSJ',
 };
 
+const TEST_FINGERPRINTS = ['11111111', '22222222', '33333333'] as const;
+const NESTED_XPUB_BY_NATIVE = new Map(
+  Object.values(TEST_XPUBS).map((nativeXpub, index) => {
+    const nestedXpub = bip32.fromSeed(Buffer.alloc(32, index + 31), bitcoin.networks.testnet)
+      .deriveHardened(48)
+      .deriveHardened(1)
+      .deriveHardened(0)
+      .deriveHardened(1)
+      .neutered()
+      .toBase58();
+    return [nativeXpub, nestedXpub];
+  }),
+);
+
 // Build a sortedmulti descriptor with keys in a specific order
 function buildMultisigDescriptor(
   xpubs: string[],
   threshold: number,
   scriptType: 'p2wsh' | 'p2sh_p2wsh',
 ): string {
-  const keysStr = xpubs.map((xpub) => `${xpub}/<0;1>/*`).join(',');
+  const scriptComponent = scriptType === 'p2wsh' ? 2 : 1;
+  const keysStr = xpubs.map((nativeXpub) => {
+    const signerIndex = Object.values(TEST_XPUBS).indexOf(nativeXpub);
+    const xpub = scriptType === 'p2wsh'
+      ? nativeXpub
+      : NESTED_XPUB_BY_NATIVE.get(nativeXpub)!;
+    return `[${TEST_FINGERPRINTS[signerIndex]}/48h/1h/0h/${scriptComponent}h]${xpub}/0/*`;
+  }).join(',');
 
   if (scriptType === 'p2wsh') {
     return `wsh(sortedmulti(${threshold},${keysStr}))`;
@@ -48,6 +73,16 @@ function buildMultisigDescriptor(
     return `sh(wsh(sortedmulti(${threshold},${keysStr})))`;
   }
 }
+
+const deriveAddressFromDescriptor = (
+  descriptor: string,
+  index: number,
+  options: { network: 'testnet'; change: boolean },
+) => deriveStrictAddressFromDescriptor(
+  options.change ? replaceCanonicalDescriptorBranch(descriptor, 0, 1) : descriptor,
+  index,
+  options,
+);
 
 describe('Multisig Key Ordering (BIP-67)', () => {
   describe('Address Determinism Regardless of Input Order', () => {

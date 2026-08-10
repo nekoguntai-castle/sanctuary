@@ -46,7 +46,7 @@ describe('canonical descriptor xpub/account binding', () => {
     expect(() => deriveCanonicalAddress(
       singleSigDescriptors(mainnetXpub),
       { branch: 0, index: 0, network: 'testnet3' },
-    )).toThrow('Canonical descriptor extended key is invalid or does not match wallet network');
+    )).toThrow('xpub network does not match derivation path coin type');
   });
 
   it('rejects an xpub whose decoded depth is shallower than its declared account path', () => {
@@ -59,7 +59,7 @@ describe('canonical descriptor xpub/account binding', () => {
     expect(() => deriveCanonicalAddress(
       singleSigDescriptors(shallowXpub),
       { branch: 0, index: 0, network: 'testnet3' },
-    )).toThrow('Canonical descriptor extended key depth does not match account origin');
+    )).toThrow('Extended public key depth does not match descriptor origin');
   });
 
   it('rejects a single-sig xpub whose child number differs from the declared account', () => {
@@ -72,7 +72,7 @@ describe('canonical descriptor xpub/account binding', () => {
     expect(() => deriveCanonicalAddress(
       singleSigDescriptors(wrongAccountXpub),
       { branch: 0, index: 0, network: 'testnet3' },
-    )).toThrow('Canonical descriptor extended key child number does not match account origin');
+    )).toThrow('Extended public key child number does not match descriptor origin');
   });
 
   it('rejects a descriptor wrapper that contradicts the canonical origin policy', () => {
@@ -89,7 +89,7 @@ describe('canonical descriptor xpub/account binding', () => {
     expect(() => deriveCanonicalAddress(
       descriptors,
       { branch: 0, index: 0, network: 'testnet3' },
-    )).toThrow('descriptor wrapper does not match account origin policy');
+    )).toThrow('Descriptor origin is not a canonical account path for its wrapper');
   });
 
   it('rejects native SegWit wrapping for a BIP86 origin', () => {
@@ -100,7 +100,7 @@ describe('canonical descriptor xpub/account binding', () => {
       receiveDescriptor: `wpkh([aabbccdd/86'/1'/0']${xpub}/0/*)`,
       changeDescriptor: `wpkh([aabbccdd/86'/1'/0']${xpub}/1/*)`,
     }, { branch: 0, index: 0, network: 'testnet3' }))
-      .toThrow('descriptor wrapper does not match account origin policy');
+      .toThrow('Descriptor origin is not a canonical account path for its wrapper');
   });
 
   it.each([
@@ -119,7 +119,7 @@ describe('canonical descriptor xpub/account binding', () => {
       receiveDescriptor,
       changeDescriptor: receiveDescriptor.replaceAll('/0/*', '/1/*'),
     }, { branch: 0, index: 0, network: 'testnet3' }))
-      .toThrow('descriptor wrapper does not match account origin policy');
+      .toThrow('Descriptor origin is not a canonical account path for its wrapper');
   });
 
   it('rejects a canonical origin coin type that contradicts the wallet network', () => {
@@ -133,7 +133,7 @@ describe('canonical descriptor xpub/account binding', () => {
     expect(() => deriveCanonicalAddress(
       descriptors,
       { branch: 0, index: 0, network: 'testnet3' },
-    )).toThrow('account origin coin type does not match wallet network');
+    )).toThrow('xpub network does not match derivation path coin type');
   });
 
   it('rejects a BIP48 xpub whose child number differs from the declared script component', () => {
@@ -152,7 +152,7 @@ describe('canonical descriptor xpub/account binding', () => {
     expect(() => deriveCanonicalAddress(
       { receiveDescriptor, changeDescriptor: receiveDescriptor.replaceAll('/0/*', '/1/*') },
       { branch: 0, index: 0, network: 'testnet3' },
-    )).toThrow('Canonical descriptor extended key child number does not match account origin');
+    )).toThrow('Extended public key child number does not match descriptor origin');
   });
 
   it('accepts BIP48 nested multisig keys exported at the declared /1 script component', () => {

@@ -1,9 +1,9 @@
 import type { WalletSafetyRawSnapshot } from '../../src/services/walletSafetyAudit';
 
 export const AUDIT_FIXTURE_XPUB = 'tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M';
-export const AUDIT_FIXTURE_RECEIVE = `wpkh([aabbccdd/84'/1'/0']${AUDIT_FIXTURE_XPUB}/0/*)`;
-export const AUDIT_FIXTURE_CHANGE = `wpkh([aabbccdd/84'/1'/0']${AUDIT_FIXTURE_XPUB}/1/*)`;
-export const AUDIT_FIXTURE_SOURCE = `wpkh([aabbccdd/84'/1'/0']${AUDIT_FIXTURE_XPUB}/<0;1>/*)`;
+export const AUDIT_FIXTURE_RECEIVE = `wpkh([aabbccdd/84h/1h/0h]${AUDIT_FIXTURE_XPUB}/0/*)`;
+export const AUDIT_FIXTURE_CHANGE = `wpkh([aabbccdd/84h/1h/0h]${AUDIT_FIXTURE_XPUB}/1/*)`;
+export const AUDIT_FIXTURE_SOURCE = `wpkh([aabbccdd/84h/1h/0h]${AUDIT_FIXTURE_XPUB}/<0;1>/*)`;
 
 export function provenAuditSnapshot(): WalletSafetyRawSnapshot {
   return {

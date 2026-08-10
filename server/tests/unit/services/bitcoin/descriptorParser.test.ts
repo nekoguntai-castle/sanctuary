@@ -12,19 +12,17 @@
 
 import { describe } from 'vitest';
 import { registerDescriptorParserAutoDetectionContracts } from './descriptorParser/auto-detection.contracts';
-import { registerDescriptorParserDerivationErrorContracts } from './descriptorParser/derivation-errors.contracts';
 import { registerDescriptorParserDomainValidationContracts } from './descriptorParser/domain-validation.contracts';
 import { registerDescriptorParserJsonImportContracts } from './descriptorParser/json-import.contracts';
-import { registerDescriptorParserMultiSigContracts } from './descriptorParser/multi-sig.contracts';
-import { registerDescriptorParserSingleSigContracts } from './descriptorParser/single-sig.contracts';
 import { registerDescriptorParserTextColdcardChecksumContracts } from './descriptorParser/text-coldcard-checksum.contracts';
 
 describe('Descriptor Parser Service', () => {
-  registerDescriptorParserSingleSigContracts();
-  registerDescriptorParserMultiSigContracts();
-  registerDescriptorParserDerivationErrorContracts();
-  registerDescriptorParserDomainValidationContracts();
+  // Descriptor grammar/domain contracts live in canonicalDescriptor*.test.ts.
+  // The former regex-parser contracts intentionally accepted malformed xpubs,
+  // bare origins, ordered multi, and legacy multisig and must not define the
+  // supported policy surface after convergence.
   registerDescriptorParserJsonImportContracts();
+  registerDescriptorParserDomainValidationContracts();
   registerDescriptorParserAutoDetectionContracts();
   registerDescriptorParserTextColdcardChecksumContracts();
 });

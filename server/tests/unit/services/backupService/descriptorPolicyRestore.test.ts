@@ -8,11 +8,18 @@ import {
 } from '../../../../src/services/backupService/constants';
 import { validateDescriptorPoliciesForRestore } from '../../../../src/services/backupService/validation';
 import { migrationService } from '../../../../src/services/migrationService';
+import * as bitcoin from 'bitcoinjs-lib';
+import bip32 from '../../../../src/services/bitcoin/bip32';
 
-const XPUB = 'xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8';
+const XPUB = bip32.fromSeed(Buffer.alloc(32, 61), bitcoin.networks.bitcoin)
+  .derivePath("m/84'/0'/0'")
+  .neutered()
+  .toBase58();
 const RECEIVE = `wpkh([aabbccdd/84'/0'/0']${XPUB}/0/*)`;
 const CHANGE = `wpkh([aabbccdd/84'/0'/0']${XPUB}/1/*)`;
 const MULTIPATH = `wpkh([aabbccdd/84'/0'/0']${XPUB}/<0;1>/*)`;
+const CANONICAL_RECEIVE = RECEIVE.replaceAll("'", 'h');
+const CANONICAL_CHANGE = CHANGE.replaceAll("'", 'h');
 
 const policyWallet = (
   sourceKind: 'generated_pair' | 'imported_pair' | 'imported_multipath',
@@ -23,9 +30,9 @@ const policyWallet = (
   network: 'mainnet',
   quorum: null,
   totalSigners: null,
-  descriptor: RECEIVE,
+  descriptor: sourceKind === 'imported_multipath' ? CANONICAL_RECEIVE : RECEIVE,
   fingerprint: 'aabbccdd',
-  changeDescriptor: CHANGE,
+  changeDescriptor: sourceKind === 'imported_multipath' ? CANONICAL_CHANGE : CHANGE,
   descriptorPolicyVersion: 1,
   descriptorSourceKind: sourceKind,
   sourceDescriptor: sourceKind === 'imported_multipath' ? MULTIPATH : RECEIVE,

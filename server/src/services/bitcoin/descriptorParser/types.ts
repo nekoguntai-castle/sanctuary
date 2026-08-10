@@ -143,6 +143,7 @@ export interface BlueWalletTextFormat {
   policy?: { quorum: number; total: number };
   derivation?: string;
   format?: string;
+  sorted?: boolean;
   devices: Array<{
     fingerprint: string;
     xpub: string;

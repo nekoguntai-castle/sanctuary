@@ -301,6 +301,16 @@ describe('wallet safety audit evidence boundaries', () => {
     )).toContain('address.path_inconsistent');
   });
 
+  it('marks legacy address rows without canonical coordinates as unproven', () => {
+    const { wallet, address, receive, change } = provenEvidence();
+    expect(findingsForAddress(
+      wallet,
+      { ...address, coordinateVersion: null, branch: null },
+      receive,
+      change,
+    )).toEqual(['address.coordinate_missing']);
+  });
+
   it('fails closed before policy lookup for malformed wallet identity', () => {
     const { wallet, address, receive, change } = provenEvidence();
     expect(findingsForAddress(
@@ -335,7 +345,28 @@ describe('wallet safety audit evidence boundaries', () => {
 
     expect(inspectDescriptorEvidence(wallet).findings).toEqual([
       'policy.ordered_multisig_unsupported',
+      'descriptor.provenance_unproven',
     ]);
+  });
+
+  it('rejects ordered-multisig recovery provenance when the branch policies differ', () => {
+    const mutations = [
+      (descriptor: string) => descriptor.replace('wsh(', 'sh(wsh(') + ')',
+      (descriptor: string) => descriptor.replace('multi(2,', 'multi(1,'),
+      (descriptor: string) => descriptor.replace("/48'/1'/0'/2']", "/48'/1'/1'/2']"),
+      (descriptor: string) => descriptor.replace('eeff0011', 'deadbeef'),
+      (descriptor: string) => descriptor.replace('tpubDFPt', 'tpubDEfob'),
+    ];
+
+    for (const mutate of mutations) {
+      const wallet = recoverableOrderedMultisigSnapshot().wallets[0];
+      const changed = mutate(wallet.changeDescriptor as string);
+      wallet.changeDescriptor = changed;
+      wallet.sourceChangeDescriptor = changed;
+      expect(inspectDescriptorEvidence(wallet).findings).toContain(
+        'descriptor.provenance_unproven',
+      );
+    }
   });
 
   it('accepts a mainnet imported pair with mainnet extended-key evidence', () => {
@@ -343,10 +374,10 @@ describe('wallet safety audit evidence boundaries', () => {
     const mainnetXpub = convertXpubToFormat(AUDIT_FIXTURE_XPUB, 'xpub');
     const receive = AUDIT_FIXTURE_RECEIVE
       .replace(AUDIT_FIXTURE_XPUB, mainnetXpub)
-      .replace("84'/1'/0'", "84'/0'/0'");
+      .replace('84h/1h/0h', '84h/0h/0h');
     const change = AUDIT_FIXTURE_CHANGE
       .replace(AUDIT_FIXTURE_XPUB, mainnetXpub)
-      .replace("84'/1'/0'", "84'/0'/0'");
+      .replace('84h/1h/0h', '84h/0h/0h');
     Object.assign(wallet, {
       network: 'mainnet',
       descriptor: receive,
@@ -449,6 +480,26 @@ describe('wallet safety audit evidence boundaries', () => {
       walletType: 'single_sig',
       scriptType: 'nested_segwit',
     })).toContain('signer.xpub_version_mismatch');
+  });
+
+  it('reports malformed fingerprints and extended keys at the wrong account depth', () => {
+    expect(inspectExtendedKeyEvidence({
+      xpub: AUDIT_FIXTURE_XPUB,
+      fingerprint: 'not-hex',
+      derivationPath: "m/84'/1'/0'",
+      walletNetwork: 'testnet3',
+      walletType: 'single_sig',
+      scriptType: 'native_segwit',
+    })).toContain('signer.fingerprint_missing');
+
+    expect(inspectExtendedKeyEvidence({
+      xpub: AUDIT_FIXTURE_XPUB,
+      fingerprint: 'aabbccdd',
+      derivationPath: "m/84'/1'",
+      walletNetwork: 'testnet3',
+      walletType: 'single_sig',
+      scriptType: 'native_segwit',
+    })).toContain('signer.xpub_wrong_depth');
   });
 
   it('handles signer identity boundary values without treating them as valid bindings', () => {

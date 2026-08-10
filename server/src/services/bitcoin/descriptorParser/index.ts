@@ -30,6 +30,17 @@ export {
   resolveDescriptorTextPair,
   isDescriptorTextFormat,
 } from './descriptorParser';
+export {
+  parseCanonicalDescriptor,
+  renderCanonicalDescriptor,
+  expandCanonicalMultipathDescriptor,
+  replaceCanonicalDescriptorBranch,
+  validateCanonicalDescriptorPair,
+} from './canonicalDescriptor';
+export type {
+  CanonicalDescriptorAst,
+  CanonicalDescriptorKey,
+} from './canonicalDescriptor';
 
 // JSON import parsing
 export { validateJsonImport, parseJsonImport, isWalletExportFormat } from './jsonParser';

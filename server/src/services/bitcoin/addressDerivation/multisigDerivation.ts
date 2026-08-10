@@ -33,6 +33,9 @@ export function deriveMultisigAddress(
   },
   deps: DescriptorDerivationDeps = {}
 ): DerivedAddress {
+  if (!Number.isInteger(index) || index < 0 || index > 0x7fffffff) {
+    throw new Error('Invalid descriptor child derivation index');
+  }
   const { network, change } = options;
   const networkObj = getNetwork(network);
   const fromBase58 = getBase58Reader(deps);
@@ -46,7 +49,10 @@ export function deriveMultisigAddress(
 
   // Build derivation path string (use first key's path as reference)
   const firstKey = keys[0];
-  const derivationPath = `m/${firstKey.accountPath}/${changeIndex}/${index}`;
+  const accountPath = firstKey.accountPath.startsWith('m/')
+    ? firstKey.accountPath
+    : `m/${firstKey.accountPath}`;
+  const derivationPath = `${accountPath}/${changeIndex}/${index}`;
 
   return {
     address,
@@ -96,8 +102,8 @@ const deriveMultisigPublicKey = (
 ): Buffer => {
   const standardXpub = convertToStandardXpub(keyInfo.xpub);
   const node = fromBase58(standardXpub, networkObj);
-  const pathStr = resolveDerivationPath(keyInfo.derivationPath, changeIndex, index);
-  const derived = derivePath(node, pathStr);
+  const descriptorBranch = resolveDescriptorBranch(keyInfo.derivationPath, changeIndex);
+  const derived = node.derive(descriptorBranch).derive(index);
 
   if (!derived.publicKey) {
     throw new Error('Failed to derive public key from xpub');
@@ -106,43 +112,21 @@ const deriveMultisigPublicKey = (
   return derived.publicKey;
 };
 
-const resolveDerivationPath = (
+const resolveDescriptorBranch = (
   derivationPath: string,
   changeIndex: number,
-  index: number
-): string => {
-  let pathStr = derivationPath;
-
-  // Preserve descriptor path forms used by hardware-wallet exports:
-  // multipath `<0;1>/*`, explicit change `0/*` or `1/*`, and bare `*`/`/*`.
-  if (pathStr.includes('<0;1>')) {
-    pathStr = pathStr.replace('<0;1>', String(changeIndex));
-  } else if (pathStr.startsWith('0/') || pathStr.startsWith('1/')) {
-    pathStr = String(changeIndex) + pathStr.slice(1);
-  } else if (pathStr === '*' || pathStr === '/*') {
-    pathStr = `${changeIndex}/${index}`;
+): number => {
+  const match = /^(0|1)\/\*$/.exec(derivationPath);
+  if (!match) {
+    throw new Error('Multisig descriptor requires an explicit fixed branch wildcard');
   }
-
-  return pathStr.replace(/\*/g, String(index));
-};
-
-const derivePath = (node: DerivationNode, pathStr: string): DerivationNode => {
-  let derived = node;
-
-  for (const part of pathStr.split('/')) {
-    derived = derivePathPart(derived, part);
+  const descriptorBranch = Number(match[1]);
+  if (descriptorBranch !== changeIndex) {
+    throw new Error(
+      `descriptor branch ${descriptorBranch} does not match requested branch ${changeIndex}`,
+    );
   }
-
-  return derived;
-};
-
-const derivePathPart = (node: DerivationNode, part: string): DerivationNode => {
-  if (part === '') {
-    return node;
-  }
-
-  const idx = parseInt(part, 10);
-  return Number.isNaN(idx) ? node : node.derive(idx);
+  return descriptorBranch;
 };
 
 const sortPubkeys = (pubkeys: Buffer[]): Buffer[] =>

@@ -47,6 +47,7 @@ describe('export format handlers', () => {
         type: 'mystery-device',
         fingerprint: 'efef5678',
         xpub: 'xpub-unknown',
+        derivationPath: "m/48'/0'/0'/1'",
       },
     ],
     createdAt: new Date('2025-01-01T00:00:00.000Z'),
@@ -70,22 +71,51 @@ describe('export format handlers', () => {
       expect(result.content).toContain('abcd1234: tpub-device-a');
     });
 
-    it('exports multisig wallet content with fallback script and derivation path', () => {
+    it('rejects an unknown multisig script instead of defaulting to P2WSH', () => {
       const unknownScript = { ...baseMultiSig, scriptType: 'unknown_script' as any };
-      const result = bluewalletHandler.export(unknownScript, { filename: 'team-export' });
-
-      expect(result.filename).toBe('team-export.txt');
-      expect(result.content).toContain('Policy: 2 of 2');
-      expect(result.content).toContain('Format: P2WSH');
-      expect(result.content).toContain("Derivation: m/48'/0'/0'/1'");
-      expect(result.content).toContain("Derivation: m/48'/0'/0'/2'");
+      expect(() => bluewalletHandler.export(unknownScript, { filename: 'team-export' })).toThrow(
+        'Unsupported BlueWallet multisig export policy',
+      );
     });
 
-    it('uses single-sig fallback format for unknown script types', () => {
+    it('rejects an unknown single-sig script instead of defaulting to P2WPKH', () => {
       const wallet = { ...baseSingleSig, scriptType: 'unknown_script' as any };
-      const result = bluewalletHandler.export(wallet);
+      expect(() => bluewalletHandler.export(wallet)).toThrow(
+        'Unsupported BlueWallet single-sig export policy',
+      );
+    });
 
-      expect(result.content).toContain('Format: P2WPKH');
+    it('exports the complete multisig policy with a custom filename', () => {
+      const result = bluewalletHandler.export(baseMultiSig, { filename: 'team-backup' });
+
+      expect(result.filename).toBe('team-backup.txt');
+      expect(result.content).toContain('Policy: 2 of 2');
+      expect(result.content).toContain('Sorted: true');
+      expect(result.content).toContain('Format: P2SH-P2WSH');
+    });
+
+    it.each([
+      ['unknown wallet type', { type: 'unknown' as any }, 'Unsupported BlueWallet wallet type'],
+      ['single-sig signer count', { devices: [] }, 'signer count'],
+      ['multisig signer count', { totalSigners: 3 }, 'signer count'],
+      ['fractional quorum', { quorum: 1.5 }, 'quorum'],
+      ['zero quorum', { quorum: 0 }, 'quorum'],
+      ['excess quorum', { quorum: 3 }, 'quorum'],
+      ['duplicate fingerprints', {
+        devices: baseMultiSig.devices.map((device) => ({ ...device, fingerprint: 'abcd1234' })),
+      }, 'unique signer rows'],
+      ['duplicate xpubs', {
+        devices: baseMultiSig.devices.map((device) => ({ ...device, xpub: 'xpub-duplicate' })),
+      }, 'unique signer rows'],
+      ['mainnet signer path', {
+        devices: baseMultiSig.devices.map((device) => ({
+          ...device,
+          derivationPath: "m/48'/1'/0'/1'",
+        })),
+      }, 'signer path'],
+    ])('rejects %s policy drift', (_case, overrides, message) => {
+      const base = _case === 'single-sig signer count' ? baseSingleSig : baseMultiSig;
+      expect(() => bluewalletHandler.export({ ...base, ...overrides })).toThrow(message);
     });
   });
 
@@ -119,6 +149,16 @@ describe('export format handlers', () => {
       expect(result.content).not.toContain('# Change Descriptor (internal chain)');
       expect(result.content).not.toContain('# Device Information');
     });
+
+    it('omits empty device derivation metadata instead of inventing a path', () => {
+      const wallet = {
+        ...baseSingleSig,
+        devices: [{ ...baseSingleSig.devices[0], derivationPath: '' }],
+      };
+
+      expect(descriptorHandler.export(wallet, { includeDevices: true }).content)
+        .not.toContain('#   Derivation:');
+    });
   });
 
   describe('sparrowHandler', () => {
@@ -145,7 +185,7 @@ describe('export format handlers', () => {
       });
       expect(parsed.keystores[1]).toMatchObject({
         walletModel: 'COLDCARD',
-        derivation: '',
+        derivation: "m/48'/0'/0'/1'",
       });
     });
 
@@ -192,6 +232,17 @@ describe('export format handlers', () => {
       expect(parsed.policy).toEqual({ type: 'SINGLE' });
       expect(parsed.scriptType).toBe('P2WPKH');
       expect(parsed.descriptor).toBe(wallet.descriptor);
+    });
+
+    it('serializes a missing device path as an empty Sparrow derivation', () => {
+      const wallet = {
+        ...baseSingleSig,
+        devices: [{ ...baseSingleSig.devices[0], derivationPath: undefined }],
+      } as unknown as WalletExportData;
+
+      const parsed = JSON.parse(sparrowHandler.export(wallet).content);
+      expect(parsed.keystores[0].masterFingerprint).toBe('abcd1234');
+      expect(parsed.keystores[0].derivation).toBe('');
     });
   });
 });

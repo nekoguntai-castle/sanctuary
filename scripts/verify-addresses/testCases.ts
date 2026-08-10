@@ -16,6 +16,8 @@ const MULTISIG_MNEMONICS = [
   TEST_MNEMONIC,
   'zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong',
   'legal winner thank year wave sausage worth useful legal winner thank yellow',
+  'letter advice cage absurd amount doctor acoustic avoid letter advice cage above',
+  'ozone drill grab fiber curtain grace pudding thank cruise elder eight picnic',
 ];
 
 const SINGLE_SIG_SCRIPT_TYPES: Array<{ type: ScriptType; bip: number }> = [
@@ -98,20 +100,32 @@ export function generateSingleSigTestCases(): SingleSigTestCase[] {
   return cases;
 }
 
-function deriveCosignerXpub(index: number, network: Network): string {
-  if (index >= MULTISIG_MNEMONICS.length) {
-    return deriveXpub(TEST_MNEMONIC, `m/48'/1'/${index}'/2'`, network);
-  }
-
-  const mnemonic = MULTISIG_MNEMONICS[index % MULTISIG_MNEMONICS.length];
-  return deriveXpub(mnemonic, "m/48'/1'/0'/2'", network);
+function getMultisigAccountPath(scriptType: MultisigScriptType, account: number): string {
+  const script = scriptType === 'p2sh_p2wsh' ? 1 : 2;
+  return `m/48'/1'/${account}'/${script}'`;
 }
 
-function deriveCosignerXpubs(totalKeys: number, network: Network): string[] {
+function deriveCosignerXpub(
+  index: number,
+  network: Network,
+  scriptType: MultisigScriptType
+): string {
+  const mnemonic = MULTISIG_MNEMONICS[index];
+  if (!mnemonic) {
+    throw new Error(`Missing independent multisig mnemonic for cosigner ${index + 1}`);
+  }
+  return deriveXpub(mnemonic, getMultisigAccountPath(scriptType, 0), network);
+}
+
+function deriveCosignerXpubs(
+  totalKeys: number,
+  network: Network,
+  scriptType: MultisigScriptType
+): string[] {
   const xpubs: string[] = [];
 
   for (let index = 0; index < totalKeys; index++) {
-    xpubs.push(deriveCosignerXpub(index, network));
+    xpubs.push(deriveCosignerXpub(index, network, scriptType));
   }
 
   return xpubs;
@@ -176,7 +190,7 @@ export function generateMultisigTestCases(): MultisigTestCase[] {
 
   for (const scriptType of MULTISIG_SCRIPT_TYPES) {
     for (const { m, n } of THRESHOLDS) {
-      const xpubs = deriveCosignerXpubs(n, network);
+      const xpubs = deriveCosignerXpubs(n, network, scriptType);
       cases.push(...buildMultisigCasesForThreshold(scriptType, m, n, xpubs, network));
     }
   }

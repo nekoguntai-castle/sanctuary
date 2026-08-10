@@ -5,6 +5,10 @@
  */
 
 import { normalizeDerivationPath } from '@sanctuary/shared/utils/bitcoin';
+import {
+  accountPathMatchesWalletPolicy,
+  type DerivationNetworkFamily,
+} from '@sanctuary/shared/constants/walletPolicy';
 import { WalletScriptType, WalletType } from '@sanctuary/shared/constants/walletIdentity';
 import { validateParsedDescriptorDomain } from './domainValidation';
 import { detectNetwork } from './descriptorUtils';
@@ -80,6 +84,12 @@ export function parseBlueWalletText(input: string): BlueWalletTextFormat {
       continue;
     }
 
+    const sortedMatch = trimmed.match(/^Sorted:\s*(true|false)$/i);
+    if (sortedMatch) {
+      result.sorted = sortedMatch[1].toLowerCase() === 'true';
+      continue;
+    }
+
     // Parse comment with derivation path: # derivation: m/48'/0'/0'/2'
     const commentDerivationMatch = trimmed.match(/^#\s*derivation:\s*(.+)$/i);
     if (commentDerivationMatch) {
@@ -109,32 +119,58 @@ export function parseBlueWalletText(input: string): BlueWalletTextFormat {
 /**
  * Convert BlueWallet format string to script type
  */
-function blueWalletFormatToScriptType(format: string | undefined): ScriptType {
-  if (!format) return WalletScriptType.NATIVE_SEGWIT;
+function blueWalletFormatToScriptType(format: string | undefined, isMultisig: boolean): ScriptType {
+  if (!format) throw new Error('BlueWallet import requires an explicit Format field');
 
-  const upper = format.toUpperCase();
-  switch (upper) {
-    case 'P2WSH':
-      return WalletScriptType.NATIVE_SEGWIT;
-    case 'P2SH-P2WSH':
-    case 'P2WSH-P2SH': // Coldcard uses inner-outer notation (P2WSH wrapped in P2SH)
-      return WalletScriptType.NESTED_SEGWIT;
-    case 'P2SH':
-      return WalletScriptType.LEGACY;
-    case 'P2TR':
-      return WalletScriptType.TAPROOT;
-    case 'P2SH-P2TR':
-    case 'P2TR-P2SH': // Nested taproot (rare but possible)
-      return WalletScriptType.TAPROOT; // Note: Actually nested, but we map to taproot as closest match
-    case 'P2WPKH':
-      return WalletScriptType.NATIVE_SEGWIT;
-    case 'P2SH-P2WPKH':
-    case 'P2WPKH-P2SH': // Coldcard uses inner-outer notation
-      return WalletScriptType.NESTED_SEGWIT;
-    case 'P2PKH':
-      return WalletScriptType.LEGACY;
-    default:
-      return WalletScriptType.NATIVE_SEGWIT;
+  const supportedFormats: Record<string, ScriptType> = isMultisig
+    ? {
+      P2WSH: WalletScriptType.NATIVE_SEGWIT,
+      'P2SH-P2WSH': WalletScriptType.NESTED_SEGWIT,
+      'P2WSH-P2SH': WalletScriptType.NESTED_SEGWIT,
+    }
+    : {
+      P2PKH: WalletScriptType.LEGACY,
+      P2WPKH: WalletScriptType.NATIVE_SEGWIT,
+      'P2SH-P2WPKH': WalletScriptType.NESTED_SEGWIT,
+      'P2WPKH-P2SH': WalletScriptType.NESTED_SEGWIT,
+      P2TR: WalletScriptType.TAPROOT,
+    };
+  const scriptType = supportedFormats[format.toUpperCase()];
+  if (!scriptType) throw new Error(`Unsupported BlueWallet Format: ${format}`);
+  return scriptType;
+}
+
+const networkFamily = (network: ParsedDescriptor['network']): DerivationNetworkFamily =>
+  network === 'mainnet' ? 'mainnet' : 'testnet';
+
+function assertExactDeviceSet(
+  parsed: BlueWalletTextFormat,
+): NonNullable<BlueWalletTextFormat['policy']> {
+  if (!parsed.policy) throw new Error('BlueWallet import requires an explicit Policy field');
+  if (parsed.policy.quorum < 1 || parsed.policy.quorum > parsed.policy.total) {
+    throw new Error('BlueWallet Policy quorum must be within the declared signer count');
+  }
+  if (parsed.policy.total !== parsed.devices.length) {
+    throw new Error('BlueWallet Policy signer count must equal the number of device rows');
+  }
+  const fingerprints = new Set(parsed.devices.map(device => device.fingerprint));
+  const xpubs = new Set(parsed.devices.map(device => device.xpub));
+  if (fingerprints.size !== parsed.devices.length || xpubs.size !== parsed.devices.length) {
+    throw new Error('BlueWallet import requires unique fingerprint and extended-key rows');
+  }
+  return parsed.policy;
+}
+
+function assertCanonicalDevicePaths(parsed: ParsedDescriptor): void {
+  const family = networkFamily(parsed.network);
+  for (const device of parsed.devices) {
+    if (!accountPathMatchesWalletPolicy(device.derivationPath, {
+      walletType: parsed.type,
+      scriptType: parsed.scriptType,
+      derivationFamily: family,
+    })) {
+      throw new Error('BlueWallet derivation path does not match the declared wallet policy');
+    }
   }
 }
 
@@ -148,32 +184,36 @@ export function parseBlueWalletTextImport(input: string): ParsedDescriptor {
     throw new Error('No devices found in BlueWallet text file');
   }
 
+  const policy = assertExactDeviceSet(parsed);
+  const isMultisig = policy.total > 1;
+  if (isMultisig && parsed.sorted !== true) {
+    throw new Error('BlueWallet multisig import requires Sorted: true');
+  }
+
   // Map devices to standard format
   const devices: ParsedDevice[] = parsed.devices.map((d) => ({
     fingerprint: d.fingerprint,
     xpub: d.xpub,
-    derivationPath: normalizeDerivationPath(d.derivationPath || parsed.derivation || "m/48'/0'/0'/2'"),
+    derivationPath: normalizeDerivationPath(d.derivationPath || parsed.derivation),
   }));
 
   // Detect network from first device
   const network = detectNetwork(devices[0].xpub, devices[0].derivationPath);
 
-  // Determine wallet type
-  const isMultisig = parsed.policy && parsed.policy.total > 1;
-
   const result: ParsedDescriptor = {
     type: isMultisig ? WalletType.MULTI_SIG : WalletType.SINGLE_SIG,
-    scriptType: blueWalletFormatToScriptType(parsed.format),
+    scriptType: blueWalletFormatToScriptType(parsed.format, isMultisig),
     devices,
     network,
     isChange: false,
   };
 
-  if (isMultisig && parsed.policy) {
-    result.quorum = parsed.policy.quorum;
-    result.totalSigners = parsed.policy.total;
+  if (isMultisig) {
+    result.quorum = policy.quorum;
+    result.totalSigners = policy.total;
   }
 
+  assertCanonicalDevicePaths(result);
   validateParsedDescriptorDomain(result);
   return result;
 }

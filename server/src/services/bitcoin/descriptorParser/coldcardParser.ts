@@ -6,6 +6,10 @@
  */
 
 import { normalizeDerivationPath } from '@sanctuary/shared/utils/bitcoin';
+import {
+  accountPathMatchesWalletPolicy,
+  type DerivationNetworkFamily,
+} from '@sanctuary/shared/constants/walletPolicy';
 import { WalletScriptType, WalletType } from '@sanctuary/shared/constants/walletIdentity';
 import { ColdcardDetectionSchema } from '../../import/schemas';
 import { validateParsedDescriptorDomain } from './domainValidation';
@@ -48,6 +52,7 @@ export function parseColdcardExport(cc: ColdcardJsonExport): { parsed: ParsedDes
   };
 
   const network = detectNetwork(device.xpub, device.derivationPath);
+  assertChainMatchesNetwork(cc.chain, network);
   const parsed: ParsedDescriptor = {
     type: WalletType.SINGLE_SIG,
     scriptType: selectedPath.scriptType,
@@ -55,6 +60,14 @@ export function parseColdcardExport(cc: ColdcardJsonExport): { parsed: ParsedDes
     network,
     isChange: false,
   };
+  const derivationFamily: DerivationNetworkFamily = network === 'mainnet' ? 'mainnet' : 'testnet';
+  if (!accountPathMatchesWalletPolicy(device.derivationPath, {
+    walletType: parsed.type,
+    scriptType: parsed.scriptType,
+    derivationFamily,
+  })) {
+    throw new Error('Coldcard derivation path does not match the selected wallet policy');
+  }
   validateParsedDescriptorDomain(parsed);
 
   return {
@@ -68,7 +81,7 @@ function getColdcardPaths(cc: ColdcardJsonExport): {
   availablePaths: Array<{ scriptType: ScriptType; path: string }>;
 } {
   if (isFlatColdcardFormat(cc)) {
-    return getFlatColdcardPaths(cc);
+    throw new Error('Coldcard multisig key exports do not define a complete wallet policy');
   }
 
   return getNestedColdcardPaths(cc);
@@ -78,43 +91,52 @@ function isFlatColdcardFormat(cc: ColdcardJsonExport): boolean {
   return cc.p2wsh !== undefined || cc.p2sh_p2wsh !== undefined || cc.p2sh !== undefined;
 }
 
-function getFlatColdcardPaths(cc: ColdcardJsonExport): {
-  selectedPath: ColdcardSelectedPath;
-  availablePaths: Array<{ scriptType: ScriptType; path: string }>;
-} {
-  // Candidate order is path-selection priority.
-  const candidates: ColdcardPathCandidate[] = [
-    { xpub: cc.p2wsh, deriv: cc.p2wsh_deriv, scriptType: WalletScriptType.NATIVE_SEGWIT },
-    { xpub: cc.p2sh_p2wsh, deriv: cc.p2sh_p2wsh_deriv, scriptType: WalletScriptType.NESTED_SEGWIT },
-    { xpub: cc.p2sh, deriv: cc.p2sh_deriv, scriptType: WalletScriptType.LEGACY },
-  ];
-
-  return {
-    selectedPath: selectUsablePath(
-      candidates,
-      'Coldcard export does not contain any recognized derivation paths with xpubs'
-    ),
-    availablePaths: getAvailablePaths(candidates),
-  };
-}
-
 function getNestedColdcardPaths(cc: ColdcardJsonExport): {
   selectedPath: ColdcardSelectedPath;
   availablePaths: Array<{ scriptType: ScriptType; path: string }>;
 } {
   const standardCandidates = getNestedStandardPathCandidates(cc);
-  const selectionCandidates = [...standardCandidates];
-  // BIP48 multisig paths are kept as single-sig xpub fallbacks for Coldcard imports.
-  addNestedPathCandidate(selectionCandidates, cc.bip48_2, WalletScriptType.NATIVE_SEGWIT);
-  addNestedPathCandidate(selectionCandidates, cc.bip48_1, WalletScriptType.NESTED_SEGWIT);
-
+  standardCandidates.forEach(assertStandardCandidatePath);
   return {
     selectedPath: selectUsablePath(
-      selectionCandidates,
-      'Coldcard export does not contain any recognized BIP derivation paths'
+      standardCandidates,
+      cc.bip48_1 || cc.bip48_2
+        ? 'Coldcard BIP48 key exports do not define a complete multisig wallet policy'
+        : 'Coldcard export does not contain any recognized BIP derivation paths'
     ),
     availablePaths: getAvailablePaths(standardCandidates),
   };
+}
+
+function assertStandardCandidatePath(candidate: ColdcardPathCandidate): void {
+  if (!candidate.xpub || !candidate.deriv) {
+    throw new Error('Coldcard BIP path requires both an extended public key and derivation');
+  }
+  const path = normalizeDerivationPath(candidate.deriv);
+  const detected = detectNetwork(candidate.xpub, path);
+  const derivationFamily: DerivationNetworkFamily = detected === 'mainnet' ? 'mainnet' : 'testnet';
+  if (!accountPathMatchesWalletPolicy(path, {
+    walletType: WalletType.SINGLE_SIG,
+    scriptType: candidate.scriptType,
+    derivationFamily,
+  })) {
+    throw new Error('Coldcard derivation path does not match the selected wallet policy');
+  }
+}
+
+function assertChainMatchesNetwork(
+  chain: string | undefined,
+  network: ParsedDescriptor['network'],
+): void {
+  if (chain === undefined) return;
+  const normalized = chain.toUpperCase();
+  if (normalized !== 'BTC' && normalized !== 'XTN') {
+    throw new Error('Coldcard export uses an unsupported chain identifier');
+  }
+  const expectedMainnet = normalized === 'BTC';
+  if (expectedMainnet !== (network === 'mainnet')) {
+    throw new Error('Coldcard chain does not match the extended public key network');
+  }
 }
 
 function getNestedStandardPathCandidates(cc: ColdcardJsonExport): ColdcardPathCandidate[] {

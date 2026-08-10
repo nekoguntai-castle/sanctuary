@@ -7,15 +7,20 @@ import {
 } from "./walletTestHarness";
 import { createWallet } from "../../../../src/services/wallet";
 import * as addressDerivation from "../../../../src/services/bitcoin/addressDerivation";
+import {
+  MAINNET_BIP48_SIGNERS,
+  MAINNET_BIP84_DESCRIPTORS,
+  TESTNET_BIP84_DESCRIPTORS,
+  mainnetBip48Descriptors,
+} from "./descriptorTestFixtures";
 
-const VALID_RECEIVE_DESCRIPTOR = "wpkh([d34db33f/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/0/*)";
-const VALID_CHANGE_DESCRIPTOR = "wpkh([d34db33f/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/1/*)";
-const SECOND_XPUB = "xpub6D4BDPcP2GT577Vvch3R8wDkScZWzQzMMUm3PWbmWvVJrZwQY4VUNgqFJPMM3No2dFDFGTsxxpG5uJh7n7epu4trkrX7x7DogT5Uv6fcLW5";
-const MULTISIG_RECEIVE_DESCRIPTOR = `wsh(sortedmulti(2,[d34db33f/48h/0h/0h/2h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/0/*,[11223344/48h/0h/0h/2h]${SECOND_XPUB}/0/*))`;
-const MULTISIG_CHANGE_DESCRIPTOR = MULTISIG_RECEIVE_DESCRIPTOR.replaceAll('/0/*', '/1/*');
-const TESTNET_XPUB = "tpubDC5FSnBiZDMmhiuCmWAYsLwgLYrrT9rAqvTySfuCCrgsWz8wxMXUS9Tb9iVMvcRbvFcAHGkMD5Kx8koh4GquNGNTfohfk7pgjhaPCdXpoba";
-const TESTNET_RECEIVE_DESCRIPTOR = `wpkh([d34db33f/84h/1h/0h]${TESTNET_XPUB}/0/*)`;
-const TESTNET_CHANGE_DESCRIPTOR = `wpkh([d34db33f/84h/1h/0h]${TESTNET_XPUB}/1/*)`;
+const VALID_RECEIVE_DESCRIPTOR = MAINNET_BIP84_DESCRIPTORS.receive;
+const VALID_CHANGE_DESCRIPTOR = MAINNET_BIP84_DESCRIPTORS.change;
+const MULTISIG_DESCRIPTORS = mainnetBip48Descriptors(MAINNET_BIP48_SIGNERS.slice(0, 2));
+const MULTISIG_RECEIVE_DESCRIPTOR = MULTISIG_DESCRIPTORS.receive;
+const MULTISIG_CHANGE_DESCRIPTOR = MULTISIG_DESCRIPTORS.change;
+const TESTNET_RECEIVE_DESCRIPTOR = TESTNET_BIP84_DESCRIPTORS.receive;
+const TESTNET_CHANGE_DESCRIPTOR = TESTNET_BIP84_DESCRIPTORS.change;
 const NATIVE_SEGWIT_POLICY_ID = "single-sig-native-segwit-bip84-v1";
 
 type MockDeviceAccount = {

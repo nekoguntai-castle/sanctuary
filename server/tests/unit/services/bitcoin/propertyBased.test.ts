@@ -13,7 +13,11 @@
 
 import { describe, it, expect } from 'vitest';
 import * as fc from 'fast-check';
-import { deriveAddress, deriveAddressFromDescriptor } from '@/services/bitcoin/addressDerivation';
+import {
+  deriveAddress,
+  deriveAddressFromDescriptor as deriveStrictAddressFromDescriptor,
+} from '@/services/bitcoin/addressDerivation';
+import { replaceCanonicalDescriptorBranch } from '@/services/bitcoin/descriptorParser';
 
 // Test xpubs from verified vectors
 const TEST_XPUBS = {
@@ -300,9 +304,23 @@ describe('Property-Based Tests: Address Derivation', () => {
 describe('Property-Based Tests: Multisig Key Ordering (BIP-67)', () => {
   // Helper to create sortedmulti descriptor
   function buildDescriptor(xpubs: string[], threshold: number): string {
-    const keysStr = xpubs.map((x) => `${x}/<0;1>/*`).join(',');
+    const fingerprints = ['11111111', '22222222', '33333333'];
+    const keysStr = xpubs.map((xpub) => {
+      const signerIndex = TEST_XPUBS.multisig.indexOf(xpub);
+      return `[${fingerprints[signerIndex]}/48h/1h/0h/2h]${xpub}/0/*`;
+    }).join(',');
     return `wsh(sortedmulti(${threshold},${keysStr}))`;
   }
+
+  const deriveAddressFromDescriptor = (
+    descriptor: string,
+    index: number,
+    options: { network: 'testnet'; change: boolean },
+  ) => deriveStrictAddressFromDescriptor(
+    options.change ? replaceCanonicalDescriptorBranch(descriptor, 0, 1) : descriptor,
+    index,
+    options,
+  );
 
   // Helper to generate permutation of array
   function permute<T>(arr: T[], index: number): T[] {

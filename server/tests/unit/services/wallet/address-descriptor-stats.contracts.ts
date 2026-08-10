@@ -25,9 +25,15 @@ import {
   updateWallet,
 } from '../../../../src/services/wallet';
 import * as addressDerivation from '../../../../src/services/bitcoin/addressDerivation';
+import {
+  MAINNET_BIP48_SIGNERS,
+  MAINNET_BIP84,
+  MAINNET_BIP84_DESCRIPTORS,
+  mainnetBip48Descriptors,
+} from './descriptorTestFixtures';
 
-const VALID_RECEIVE_DESCRIPTOR = "wpkh([d34db33f/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/0/*)";
-const VALID_CHANGE_DESCRIPTOR = "wpkh([d34db33f/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/1/*)";
+const VALID_RECEIVE_DESCRIPTOR = MAINNET_BIP84_DESCRIPTORS.receive;
+const VALID_CHANGE_DESCRIPTOR = MAINNET_BIP84_DESCRIPTORS.change;
 const NATIVE_SEGWIT_POLICY_ID = 'single-sig-native-segwit-bip84-v1';
 
 export function registerWalletAddressDescriptorStatsTests(): void {
@@ -283,7 +289,7 @@ export function registerWalletAddressDescriptorStatsTests(): void {
         totalSigners: null,
         descriptor: null,
         devices: [{
-          ...storedSigner(0, 'aabbccdd', 'xpub-a', "m/84'/0'/0'"),
+          ...storedSigner(0, MAINNET_BIP84.fingerprint, MAINNET_BIP84.xpub, "m/84'/0'/0'"),
           deviceAccountId: null,
         }],
       });
@@ -342,7 +348,7 @@ export function registerWalletAddressDescriptorStatsTests(): void {
         totalSigners: null,
         descriptor: null,
         devices: [{
-          ...storedSigner(0, 'aabbccdd', 'xpub-a', "m/84'/0'/0'"),
+          ...storedSigner(0, MAINNET_BIP84.fingerprint, MAINNET_BIP84.xpub, "m/84'/0'/0'"),
           deviceAccountId: null,
         }],
       });
@@ -377,7 +383,7 @@ export function registerWalletAddressDescriptorStatsTests(): void {
         quorum: null,
         totalSigners: null,
         descriptor: null,
-        devices: [storedSigner(0, 'aabbccdd', 'xpub-a', "m/84'/0'/0'")],
+        devices: [storedSigner(0, MAINNET_BIP84.fingerprint, MAINNET_BIP84.xpub, "m/84'/0'/0'")],
       });
 
       await expect(repairWalletDescriptor('wallet-1', 'owner-1')).rejects.toThrow(
@@ -426,7 +432,7 @@ export function registerWalletAddressDescriptorStatsTests(): void {
         totalSigners: null,
         descriptor: null,
         devices: [{
-          ...storedSigner(0, 'aabbccdd', 'xpub-a', "m/84'/0'/0'"),
+          ...storedSigner(0, MAINNET_BIP84.fingerprint, MAINNET_BIP84.xpub, "m/84'/0'/0'"),
           ...override,
         }],
       });
@@ -439,6 +445,14 @@ export function registerWalletAddressDescriptorStatsTests(): void {
     });
 
     it('repairs multisig descriptor when the explicit signer count is satisfied', async () => {
+      const multisigDescriptors = mainnetBip48Descriptors();
+      mockBuildDescriptorFromDevices.mockReturnValueOnce({
+        descriptor: multisigDescriptors.receive,
+        changeDescriptor: multisigDescriptors.change,
+        fingerprint: MAINNET_BIP48_SIGNERS.slice(0, 2)
+          .map(signer => signer.fingerprint)
+          .join('-'),
+      });
       mockPrismaClient.wallet.findFirst.mockResolvedValueOnce({
         id: 'wallet-multi-default-ready',
         type: 'multi_sig',
@@ -448,8 +462,8 @@ export function registerWalletAddressDescriptorStatsTests(): void {
         totalSigners: 2,
         descriptor: null,
         devices: [
-          storedSigner(0, 'a1a1a1a1', 'xpub-a1', "m/48'/0'/0'/2'", 'multisig'),
-          storedSigner(1, 'b2b2b2b2', 'xpub-b2', "m/48'/0'/0'/2'", 'multisig'),
+          storedSigner(0, MAINNET_BIP48_SIGNERS[0].fingerprint, MAINNET_BIP48_SIGNERS[0].xpub, "m/48'/0'/0'/2'", 'multisig'),
+          storedSigner(1, MAINNET_BIP48_SIGNERS[1].fingerprint, MAINNET_BIP48_SIGNERS[1].xpub, "m/48'/0'/0'/2'", 'multisig'),
         ],
       });
 

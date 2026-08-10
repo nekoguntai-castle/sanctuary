@@ -12,27 +12,35 @@ import {
   type ScriptType,
 } from './descriptorParserTestHarness';
 
+const BLUEWALLET_XPUB_1 = 'xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL';
+const BLUEWALLET_XPUB_2 = 'xpub6D4BDPcP2GT577Vvch3R8wDkScZWzQzMMUm3PWbmWvVJrZwQY4VUNgqFJPMM3No2dFDFGTsxxpG5uJh7n7epu4trkrX7x7DogT5Uv6fcLW5';
+
 export function registerDescriptorParserTextColdcardChecksumContracts(): void {
   describe('parseBlueWalletTextImport', () => {
-    it('should default to native_segwit when Format line is missing', () => {
-      const input = `# BlueWallet Multisig setup file
-Policy: 2 of 2
+    it('requires an explicit Policy field even when one signer row is present', () => {
+      const input = `Derivation: m/84'/0'/0'
+Format: P2WPKH
+aabbccdd: ${BLUEWALLET_XPUB_1}`;
+      expect(() => parseBlueWalletTextImport(input)).toThrow(
+        'BlueWallet import requires an explicit Policy field',
+      );
+    });
+    it('rejects a missing Format instead of defaulting to native SegWit', () => {
+      const input = `Policy: 2 of 2
+Sorted: true
 Derivation: m/48'/0'/0'/2'
 
-aabbccdd: xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL
-11223344: xpub6D4BDPcP2GT577Vvch3R8wDkScZWzQzMMUm3PWbmWvVJrZwQY4VUNgqFJPMM3No2dFDFGTsxxpG5uJh7n7epu4trkrX7x7DogT5Uv6fcLW5`;
-
-      const result = parseBlueWalletTextImport(input);
-
-      expect(result.scriptType).toBe('native_segwit');
-      expect(result.type).toBe('multi_sig');
-      expect(result.quorum).toBe(2);
-      expect(result.totalSigners).toBe(2);
+aabbccdd: ${BLUEWALLET_XPUB_1}
+11223344: ${BLUEWALLET_XPUB_2}`;
+      expect(() => parseBlueWalletTextImport(input)).toThrow(
+        'BlueWallet import requires an explicit Format field',
+      );
     });
 
     it('should throw when no device lines are present', () => {
       const input = `# BlueWallet Multisig setup file
 Policy: 2 of 3
+Sorted: true
 Derivation: m/48'/0'/0'/2'
 Format: P2WSH`;
 
@@ -41,57 +49,120 @@ Format: P2WSH`;
       );
     });
 
-    it('should use default derivation when no wallet or per-device derivation is provided', () => {
+    it('rejects a missing derivation instead of defaulting to BIP48', () => {
       const input = `# BlueWallet setup file
 Policy: 1 of 1
 Format: P2WPKH
 
-aabbccdd: xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL`;
-
-      const result = parseBlueWalletTextImport(input);
-
-      expect(result.type).toBe('single_sig');
-      expect(result.quorum).toBeUndefined();
-      expect(result.totalSigners).toBeUndefined();
-      expect(result.devices[0].derivationPath).toBe("m/48'/0'/0'/2'");
+aabbccdd: ${BLUEWALLET_XPUB_1}`;
+      expect(() => parseBlueWalletTextImport(input)).toThrow(
+        'BlueWallet derivation path does not match the declared wallet policy',
+      );
     });
 
-    it('maps BlueWallet format values to expected script types', () => {
-      const cases: Array<{ format: string; expected: ScriptType }> = [
-        { format: 'P2SH', expected: 'legacy' },
-        { format: 'P2TR', expected: 'taproot' },
-        { format: 'P2WPKH', expected: 'native_segwit' },
-        { format: 'P2SH-P2WPKH', expected: 'nested_segwit' },
-        { format: 'P2WPKH-P2SH', expected: 'nested_segwit' },
-        { format: 'P2PKH', expected: 'legacy' },
-        { format: 'SOMETHING-ELSE', expected: 'native_segwit' },
+    it('maps only recognized single-sig formats to matching policies', () => {
+      const cases: Array<{ format: string; path: string; expected: ScriptType }> = [
+        { format: 'P2PKH', path: "m/44'/0'/0'", expected: 'legacy' },
+        { format: 'P2TR', path: "m/86'/0'/0'", expected: 'taproot' },
+        { format: 'P2WPKH', path: "m/84'/0'/0'", expected: 'native_segwit' },
+        { format: 'P2SH-P2WPKH', path: "m/49'/0'/0'", expected: 'nested_segwit' },
+        { format: 'P2WPKH-P2SH', path: "m/49'/0'/0'", expected: 'nested_segwit' },
       ];
 
-      for (const { format, expected } of cases) {
+      for (const { format, path, expected } of cases) {
         const input = `# BlueWallet setup file
-Policy: 2 of 2
-Derivation: m/48'/0'/0'/2'
+Policy: 1 of 1
+Derivation: ${path}
 Format: ${format}
 
-aabbccdd: xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL
-11223344: xpub6D4BDPcP2GT577Vvch3R8wDkScZWzQzMMUm3PWbmWvVJrZwQY4VUNgqFJPMM3No2dFDFGTsxxpG5uJh7n7epu4trkrX7x7DogT5Uv6fcLW5`;
+aabbccdd: ${BLUEWALLET_XPUB_1}`;
 
         expect(parseBlueWalletTextImport(input).scriptType).toBe(expected);
       }
     });
 
+    it.each(['SOMETHING-ELSE', 'P2SH-P2TR', 'P2TR-P2SH'])(
+      'rejects unsupported Format %s instead of relabeling it',
+      (format) => {
+        const input = `Policy: 1 of 1
+Derivation: m/84'/0'/0'
+Format: ${format}
+aabbccdd: ${BLUEWALLET_XPUB_1}`;
+        expect(() => parseBlueWalletTextImport(input)).toThrow(`Unsupported BlueWallet Format: ${format}`);
+      },
+    );
+
+    it.each([undefined, 'false'])('rejects multisig when Sorted is %s', (sorted) => {
+      const sortedLine = sorted === undefined ? '' : `Sorted: ${sorted}\n`;
+      const input = `Policy: 2 of 2
+${sortedLine}Derivation: m/48'/0'/0'/2'
+Format: P2WSH
+aabbccdd: ${BLUEWALLET_XPUB_1}
+11223344: ${BLUEWALLET_XPUB_2}`;
+      expect(() => parseBlueWalletTextImport(input)).toThrow(
+        'BlueWallet multisig import requires Sorted: true',
+      );
+    });
+
+    it('rejects Policy N that differs from the device row count', () => {
+      const input = `Policy: 2 of 3
+Sorted: true
+Derivation: m/48'/0'/0'/2'
+Format: P2WSH
+aabbccdd: ${BLUEWALLET_XPUB_1}
+11223344: ${BLUEWALLET_XPUB_2}`;
+      expect(() => parseBlueWalletTextImport(input)).toThrow(
+        'BlueWallet Policy signer count must equal the number of device rows',
+      );
+    });
+
+    it('rejects an invalid 2-of-1 policy instead of treating it as single-sig', () => {
+      const input = `Policy: 2 of 1
+Derivation: m/84'/0'/0'
+Format: P2WPKH
+aabbccdd: ${BLUEWALLET_XPUB_1}`;
+      expect(() => parseBlueWalletTextImport(input)).toThrow(
+        'BlueWallet Policy quorum must be within the declared signer count',
+      );
+    });
+
+    it('rejects duplicate underlying signer keys', () => {
+      const input = `Policy: 2 of 2
+Sorted: true
+Derivation: m/48'/0'/0'/2'
+Format: P2WSH
+aabbccdd: ${BLUEWALLET_XPUB_1}
+11223344: ${BLUEWALLET_XPUB_1}`;
+      expect(() => parseBlueWalletTextImport(input)).toThrow(
+        'BlueWallet import requires unique fingerprint and extended-key rows',
+      );
+    });
+
     it('should ignore non-device lines that are not recognized metadata', () => {
       const input = `# BlueWallet setup file
 Policy: 1 of 1
+Derivation: m/84'/0'/0'
 Format: P2WPKH
 Unrecognized metadata line
 
-aabbccdd: xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL`;
+aabbccdd: ${BLUEWALLET_XPUB_1}`;
 
       const result = parseBlueWalletTextImport(input);
 
       expect(result.type).toBe('single_sig');
       expect(result.devices).toHaveLength(1);
+    });
+
+    it('validates testnet signer paths against the testnet derivation family', () => {
+      const input = `Policy: 1 of 1
+Derivation: m/84'/1'/0'
+Format: P2WPKH
+aabbccdd: ${testXpubs.testnet.bip84}`;
+
+      expect(parseBlueWalletTextImport(input)).toMatchObject({
+        network: 'testnet',
+        scriptType: 'native_segwit',
+      });
     });
   });
 
@@ -125,70 +196,69 @@ aabbccdd: xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4ko
       expect(result.parsed.devices[0].derivationPath).toBe("m/44'/0'/0'");
     });
 
-    it('should support bip48_2 and bip48_1 derivation fallbacks', () => {
-      const bip48_2 = parseColdcardExport({
+    it('rejects BIP48 key exports that do not define a complete multisig policy', () => {
+      expect(() => parseColdcardExport({
         xfp: 'AABBCCDD',
         bip48_2: {
           xpub: testXpubs.mainnet.bip84,
           deriv: "m/48'/0'/0'/2'",
         },
-      });
-      const bip48_1 = parseColdcardExport({
+      })).toThrow('Coldcard BIP48 key exports do not define a complete multisig wallet policy');
+      expect(() => parseColdcardExport({
         xfp: 'AABBCCDD',
         bip48_1: {
           xpub: testXpubs.mainnet.bip49,
           deriv: "m/48'/0'/0'/1'",
         },
-      });
-
-      expect(bip48_2.parsed.scriptType).toBe('native_segwit');
-      expect(bip48_1.parsed.scriptType).toBe('nested_segwit');
+      })).toThrow('Coldcard BIP48 key exports do not define a complete multisig wallet policy');
     });
 
-    it('should parse flat-format export and choose legacy when only p2sh is present', () => {
-      const result = parseColdcardExport({
+    it.each([
+      { p2sh: testXpubs.mainnet.bip44, p2sh_deriv: "m/45'" },
+      { p2wsh: testXpubs.mainnet.bip84, p2wsh_deriv: "m/48'/0'/0'/2'" },
+      { p2sh_p2wsh: testXpubs.mainnet.bip49, p2sh_p2wsh_deriv: "m/48'/0'/0'/1'" },
+    ])('rejects incomplete flat-format multisig key exports', (fields) => {
+      expect(() => parseColdcardExport({ xfp: 'AABBCCDD', ...fields })).toThrow(
+        'Coldcard multisig key exports do not define a complete wallet policy',
+      );
+    });
+
+    it('rejects a derivation path that contradicts the selected policy', () => {
+      expect(() => parseColdcardExport({
         xfp: 'AABBCCDD',
-        p2sh: testXpubs.mainnet.bip44,
-        p2sh_deriv: "m/45'",
-      });
-
-      expect(result.parsed.scriptType).toBe('legacy');
-      expect(result.availablePaths).toEqual([{ scriptType: 'legacy', path: "m/45'" }]);
+        bip84: { xpub: testXpubs.mainnet.bip84, deriv: "m/86'/0'/0'" },
+      })).toThrow('Coldcard derivation path does not match the selected wallet policy');
     });
 
-    it('should parse flat-format export and prefer native segwit p2wsh path', () => {
-      const result = parseColdcardExport({
+    it('rejects an invalid lower-priority path instead of hiding it behind bip84', () => {
+      expect(() => parseColdcardExport({
         xfp: 'AABBCCDD',
-        p2wsh: testXpubs.mainnet.bip84,
-        p2wsh_deriv: "m/48'/0'/0'/2'",
-      });
-
-      expect(result.parsed.scriptType).toBe('native_segwit');
-      expect(result.availablePaths).toEqual([
-        { scriptType: 'native_segwit', path: "m/48'/0'/0'/2'" },
-      ]);
+        bip84: { xpub: testXpubs.mainnet.bip84, deriv: "m/84'/0'/0'" },
+        bip49: { xpub: testXpubs.mainnet.bip49, deriv: "m/84'/0'/0'" },
+      })).toThrow('Coldcard derivation path does not match the selected wallet policy');
     });
 
-    it('should parse flat-format export and choose nested segwit p2sh_p2wsh path', () => {
-      const result = parseColdcardExport({
+    it('rejects contradictory Coldcard chain metadata', () => {
+      expect(() => parseColdcardExport({
         xfp: 'AABBCCDD',
-        p2sh_p2wsh: testXpubs.mainnet.bip49,
-        p2sh_p2wsh_deriv: "m/48'/0'/0'/1'",
-      });
-
-      expect(result.parsed.scriptType).toBe('nested_segwit');
-      expect(result.availablePaths).toEqual([
-        { scriptType: 'nested_segwit', path: "m/48'/0'/0'/1'" },
-      ]);
+        chain: 'XTN',
+        bip84: { xpub: testXpubs.mainnet.bip84, deriv: "m/84'/0'/0'" },
+      })).toThrow('Coldcard chain does not match the extended public key network');
     });
 
-    it('should throw when flat format contains no usable derivation+xpub pair', () => {
-      expect(() =>
-        parseColdcardExport({
-          xfp: 'AABBCCDD',
-          p2wsh: testXpubs.mainnet.bip84,
-        })
-      ).toThrow('Coldcard export does not contain any recognized derivation paths with xpubs');
+    it('rejects unsupported Coldcard chain identifiers', () => {
+      expect(() => parseColdcardExport({
+        xfp: 'AABBCCDD',
+        chain: 'BCH',
+        bip84: { xpub: testXpubs.mainnet.bip84, deriv: "m/84'/0'/0'" },
+      })).toThrow('Coldcard export uses an unsupported chain identifier');
+    });
+
+    it('rejects partially populated standard Coldcard path records', () => {
+      expect(() => parseColdcardExport({
+        xfp: 'AABBCCDD',
+        bip84: { xpub: testXpubs.mainnet.bip84 },
+      } as any)).toThrow('Coldcard BIP path requires both an extended public key and derivation');
     });
 
     it('should throw when nested format has no recognized BIP paths', () => {
@@ -202,6 +272,16 @@ aabbccdd: xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4ko
     const descriptorXpub = 'xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL';
     const receiveDescriptor = `wpkh([aabbccdd/84h/0h/0h]${descriptorXpub}/0/*)`;
     const changeDescriptor = `wpkh([aabbccdd/84h/0h/0h]${descriptorXpub}/1/*)`;
+
+    it('preserves one unlabelled descriptor token', () => {
+      expect(extractDescriptorPairFromText(receiveDescriptor)).toEqual({
+        receiveDescriptor,
+      });
+    });
+
+    it('returns no pair when unlabelled text has no descriptor token', () => {
+      expect(extractDescriptorPairFromText('ordinary recovery notes')).toBeNull();
+    });
 
     it('extracts an exact checksummed receive/change pair from a Sanctuary recovery export', () => {
       const receiveToken = `${receiveDescriptor}#${computeDescriptorChecksum(receiveDescriptor)}`;
@@ -315,23 +395,23 @@ aabbccdd: xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4ko
   });
 
   describe('Checksum Validation', () => {
-    it('should reject descriptors with unsupported key expression suffixes', () => {
-      const descriptor = 'wpkh([d34db33f/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/0/*:foo)#kl9qqtqk';
+    const validBody = `wpkh([d34db33f/84'/0'/0']${testXpubs.mainnet.bip84}/0/*)`;
 
-      expect(() => parseDescriptorForImport(descriptor)).toThrow('No valid key expressions found in descriptor');
+    it('should reject descriptors with unsupported key expression suffixes', () => {
+      const body = validBody.replace('/0/*)', '/0/*:foo)');
+      const descriptor = `${body}#${computeDescriptorChecksum(body)}`;
+
+      expect(() => parseDescriptorForImport(descriptor)).toThrow('Descriptor key paths must end');
     });
 
-    it('should accept descriptors whose payload length leaves checksum class remainder', () => {
-      const descriptor = 'wpkh([d34db33f/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/0/*)_#2af7m5u6';
-
-      const result = parseDescriptorForImport(descriptor);
-
-      expect(result.type).toBe('single_sig');
-      expect(result.scriptType).toBe('native_segwit');
+    it('rejects checksummed trailing descriptor input rather than prefix parsing it', () => {
+      const body = `${validBody}_`;
+      expect(() => parseDescriptorForImport(`${body}#${computeDescriptorChecksum(body)}`))
+        .toThrow('Unsupported descriptor format');
     });
 
     it('should accept descriptor with valid checksum', () => {
-      const descriptor = 'wpkh([d34db33f/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/0/*)#h36s06su';
+      const descriptor = `${validBody}#${computeDescriptorChecksum(validBody)}`;
 
       const result = parseDescriptorForImport(descriptor);
 
@@ -340,7 +420,7 @@ aabbccdd: xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4ko
     });
 
     it('should accept descriptor without checksum', () => {
-      const descriptor = 'wpkh([d34db33f/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/0/*)';
+      const descriptor = validBody;
 
       const result = parseDescriptorForImport(descriptor);
 
@@ -349,13 +429,12 @@ aabbccdd: xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4ko
     });
 
     it('should strip checksum and parse descriptor correctly', () => {
-      const descriptor = 'wsh(sortedmulti(2,[aabbccdd/48h/1h/0h/2h]tpubDFH9dgzveyD8zTbPUFuLrGmCydNvxehyNdUXKJAQN8x4aZ4j6UZqGfnqFrD4NqyaTVGKbvEW54tsvPTK2UoSbCC1PJY8iCNiwTL3RWZEheQ/0/*,[11223344/48h/1h/0h/2h]tpubDFH9dgzveyD8zTbPUFuLrGmCydNvxehyNdUXKJAQN8x4aZ4j6UZqGfnqFrD4NqyaTVGKbvEW54tsvPTK2UoSbCC1PJY8iCNiwTL3RWZEheR/0/*))#6r92hhlq';
+      const descriptor = `${validBody}#${computeDescriptorChecksum(validBody)}`;
 
       const result = parseDescriptorForImport(descriptor);
 
-      expect(result.type).toBe('multi_sig');
-      expect(result.quorum).toBe(2);
-      expect(result.devices).toHaveLength(2);
+      expect(result.type).toBe('single_sig');
+      expect(result.devices).toHaveLength(1);
     });
   });
 }

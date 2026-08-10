@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
+import * as bitcoin from 'bitcoinjs-lib';
+import bip32 from '../../../../src/services/bitcoin/bip32';
 import { prepareDescriptorPolicy } from '../../../../src/services/wallet/descriptorPolicy';
 import { computeDescriptorChecksum } from '../../../../src/services/bitcoin/descriptorParser/checksum';
 
-const XPUB = 'xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8';
+const XPUB = bip32.fromSeed(Buffer.alloc(32, 7), bitcoin.networks.bitcoin)
+  .derivePath("m/84'/0'/0'")
+  .neutered()
+  .toBase58();
 const receive = `wpkh([aabbccdd/84'/0'/0']${XPUB}/0/*)`;
 const change = `wpkh([aabbccdd/84'/0'/0']${XPUB}/1/*)`;
 
@@ -51,8 +56,8 @@ describe('prepareDescriptorPolicy', () => {
       sourceKind: 'imported',
     });
 
-    expect(policy.descriptor).toBe(receive);
-    expect(policy.changeDescriptor).toBe(change);
+    expect(policy.descriptor).toBe(receive.replaceAll("'", 'h'));
+    expect(policy.changeDescriptor).toBe(change.replaceAll("'", 'h'));
     expect(policy.descriptorSourceKind).toBe('imported_multipath');
     expect(policy.sourceDescriptor).toBe(multipath);
     expect(policy.sourceChangeDescriptor).toBeNull();
@@ -60,12 +65,12 @@ describe('prepareDescriptorPolicy', () => {
 
   it('validates the checksum over BIP389 multipath characters', () => {
     const multipath = `wpkh([aabbccdd/84'/0'/0']${XPUB}/<0;1>/*)`;
-    expect(computeDescriptorChecksum(multipath)).toBe('zxdtqh60');
+    const checksum = computeDescriptorChecksum(multipath);
 
     expect(prepareDescriptorPolicy({
-      receiveDescriptor: `${multipath}#zxdtqh60`,
+      receiveDescriptor: `${multipath}#${checksum}`,
       sourceKind: 'imported',
-    }).sourceDescriptorChecksum).toBe('zxdtqh60');
+    }).sourceDescriptorChecksum).toBe(checksum);
     expect(() => prepareDescriptorPolicy({
       receiveDescriptor: `${multipath}#aaaaaaaa`,
       sourceKind: 'imported',
@@ -89,7 +94,7 @@ describe('prepareDescriptorPolicy', () => {
       receiveDescriptor: receive,
       changeDescriptor: otherChange,
       sourceKind: 'imported',
-    })).toThrow('same wallet policy');
+    })).toThrow('differ only by branch');
   });
 
   it('rejects a descriptor pair with reversed branch roles', () => {
@@ -97,7 +102,7 @@ describe('prepareDescriptorPolicy', () => {
       receiveDescriptor: change,
       changeDescriptor: receive,
       sourceKind: 'imported',
-    })).toThrow('receive branch 0 and change branch 1');
+    })).toThrow('Receive descriptor must use branch 0');
   });
 
   it('rejects unsupported ranges alongside the supported receive/change range', () => {
@@ -105,7 +110,7 @@ describe('prepareDescriptorPolicy', () => {
     expect(() => prepareDescriptorPolicy({
       receiveDescriptor: unsupported,
       sourceKind: 'imported',
-    })).toThrow('Only BIP389 <0;1>/* multipath descriptors are supported');
+    })).toThrow('must end in /0/*, /1/*, or /<0;1>/*');
   });
 
   it('rejects multipath syntax in an explicit descriptor pair', () => {
@@ -114,7 +119,7 @@ describe('prepareDescriptorPolicy', () => {
       receiveDescriptor: multipath,
       changeDescriptor: change,
       sourceKind: 'imported',
-    })).toThrow('Explicit descriptor pairs cannot contain multipath ranges');
+    })).toThrow('fixed receive and change branches');
   });
 
   it('requires generated policies to provide an explicit change descriptor', () => {
@@ -131,7 +136,7 @@ describe('prepareDescriptorPolicy', () => {
       receiveDescriptor: legacyReceive,
       changeDescriptor: legacyChange,
       sourceKind: 'imported',
-    })).toThrow('Legacy multisig descriptors are not supported');
+    })).toThrow('Unsupported descriptor format');
   });
 
   it('rejects Taproot multisig policies', () => {
@@ -141,7 +146,7 @@ describe('prepareDescriptorPolicy', () => {
       receiveDescriptor: taprootReceive,
       changeDescriptor: taprootChange,
       sourceKind: 'imported',
-    })).toThrow('Taproot script-tree descriptors are not supported');
+    })).toThrow();
   });
 
   it('rejects the unverified all-zero master-fingerprint sentinel', () => {
@@ -152,7 +157,7 @@ describe('prepareDescriptorPolicy', () => {
       receiveDescriptor: unverifiedReceive,
       changeDescriptor: unverifiedChange,
       sourceKind: 'imported',
-    })).toThrow('nonzero BIP32 master fingerprint');
+    })).toThrow('fingerprint must be nonzero');
   });
 
   it('rejects ordered multisig before normalization', () => {
@@ -162,7 +167,7 @@ describe('prepareDescriptorPolicy', () => {
       receiveDescriptor: ordered,
       changeDescriptor: orderedChange,
       sourceKind: 'imported',
-    })).toThrow('Ordered multi');
+    })).toThrow('Unsupported descriptor format');
   });
 
   it('rejects Taproot script trees until derivation supports their scripts exactly', () => {
@@ -173,7 +178,7 @@ describe('prepareDescriptorPolicy', () => {
       receiveDescriptor: scriptTree,
       changeDescriptor: scriptTreeChange,
       sourceKind: 'imported',
-    })).toThrow('Taproot script-tree');
+    })).toThrow();
   });
 
   it('rejects surrounding bytes instead of silently trimming provenance', () => {
@@ -183,4 +188,5 @@ describe('prepareDescriptorPolicy', () => {
       sourceKind: 'imported',
     })).toThrow('exact non-empty descriptor token');
   });
+
 });

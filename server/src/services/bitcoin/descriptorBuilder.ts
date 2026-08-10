@@ -28,6 +28,11 @@ import {
   findWalletPolicy,
   renderDescriptorWrapper,
 } from '@sanctuary/shared/constants/walletPolicy';
+import {
+  parseCanonicalDescriptor,
+  renderCanonicalDescriptor,
+  replaceCanonicalDescriptorBranch,
+} from './descriptorParser';
 
 type Network = LegacyNetworkType;
 
@@ -67,6 +72,9 @@ function canonicalAccountPath(
     throw error;
   }
 }
+
+const validateAndRenderDescriptor = (descriptor: string): string =>
+  renderCanonicalDescriptor(parseCanonicalDescriptor(descriptor));
 
 /**
  * Get the standard BIP derivation path for a script type
@@ -113,7 +121,9 @@ export function buildSingleSigDescriptor(
   // Build key expression: [fingerprint/path]xpub
   const keyExpression = `[${device.fingerprint}/${formattedPath}]${device.xpub}`;
 
-  return wrapPolicyDescriptor(WalletType.SINGLE_SIG, scriptType, `${keyExpression}/0/*`);
+  return validateAndRenderDescriptor(
+    wrapPolicyDescriptor(WalletType.SINGLE_SIG, scriptType, `${keyExpression}/0/*`),
+  );
 }
 
 /**
@@ -155,16 +165,16 @@ export function buildMultiSigDescriptor(
   // Use sortedmulti for deterministic key ordering
   const sortedMulti = `sortedmulti(${quorum},${keyExpressions.join(',')})`;
 
-  return wrapPolicyDescriptor(WalletType.MULTI_SIG, scriptType, sortedMulti);
+  return validateAndRenderDescriptor(
+    wrapPolicyDescriptor(WalletType.MULTI_SIG, scriptType, sortedMulti),
+  );
 }
 
 /**
  * Build change descriptor (internal chain) from receive descriptor
  */
 export function buildChangeDescriptor(receiveDescriptor: string): string {
-  // Every signer in a multisig policy must move to the internal branch; matching
-  // only a closing parenthesis previously rewrote the final cosigner alone.
-  return receiveDescriptor.replace(/\/0\/\*/g, '/1/*');
+  return replaceCanonicalDescriptorBranch(receiveDescriptor, 0, 1);
 }
 
 /**

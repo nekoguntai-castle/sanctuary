@@ -256,7 +256,22 @@ export function deriveAddressFromParsedDescriptor(
   } = {},
   deps: DescriptorDerivationDeps = {}
 ): DerivedAddress {
-  const { network = 'mainnet', change = false } = options;
+  const network = options.network ?? 'mainnet';
+  // The persisted descriptor branch is authoritative. A caller flag may check
+  // intent, but must never rewrite receive keys into change keys (or vice versa).
+  const suffixes = parsed.keys?.map(key => key.derivationPath)
+    ?? (parsed.path ? [parsed.path] : []);
+  if (suffixes.length === 0 || suffixes.some(suffix => !/^(0|1)\/\*$/.test(suffix))) {
+    throw new Error('Descriptor requires an explicit fixed branch wildcard');
+  }
+  const branch = Number(suffixes[0][0]) as 0 | 1;
+  if (suffixes.some(suffix => Number(suffix[0]) !== branch)) {
+    throw new Error('Descriptor signers must use one identical fixed branch');
+  }
+  if (options.change !== undefined && options.change !== (branch === 1)) {
+    throw new Error(`descriptor branch ${branch} does not match requested branch ${options.change ? 1 : 0}`);
+  }
+  const change = branch === 1;
 
   // Handle multisig descriptors
   if (parsed.type === 'wsh-sortedmulti' || parsed.type === 'sh-wsh-sortedmulti') {

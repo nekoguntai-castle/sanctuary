@@ -67,6 +67,8 @@ export const registerWalletImportAutoDetectContracts = () => {
       const bluewalletText = `# BlueWallet Multisig setup file
 Name: My Vault
 Policy: 2 of 3
+Sorted: true
+Derivation: m/48'/0'/0'/2'
 Format: P2WSH
 
 aaaa1111: xpub6E1...
@@ -121,6 +123,9 @@ cccc3333: xpub6E3...`;
       expect(result.wallet.type).toBe('multi_sig');
       expect(result.wallet.quorum).toBe(2);
       expect(result.devicesCreated).toBe(3);
+      expect(mockPrismaClient.wallet.create).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ descriptorSourceKind: 'generated_pair' }),
+      }));
     });
 
     it('should auto-detect and import from Coldcard JSON', async () => {
@@ -177,6 +182,9 @@ cccc3333: xpub6E3...`;
       });
 
       expect(result.wallet.id).toBe('wallet-coldcard');
+      expect(mockPrismaClient.wallet.create).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ descriptorSourceKind: 'generated_pair' }),
+      }));
     });
 
     it('should auto-detect and import from wallet export format', async () => {

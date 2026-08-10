@@ -1,6 +1,8 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import express, { type Express } from 'express';
 import request from 'supertest';
+import * as bitcoin from 'bitcoinjs-lib';
+import bip32 from '../../../src/services/bitcoin/bip32';
 
 const {
   mockValidateXpub,
@@ -28,7 +30,10 @@ import { errorHandler } from '../../../src/errors/errorHandler';
 import xpubValidationRouter from '../../../src/api/wallets/xpubValidation';
 import { prepareDescriptorPolicy } from '../../../src/services/wallet/descriptorPolicy';
 
-const VALID_XPUB = 'xpub6BosfCnifzxcFwrSzQiqu2DBVTshkCXacvNsWGYJVVhhawA7d4R5WSWGFNbi8Aw6ZRc1brxMyWMzG3DSSSSoekkudhUd9yLb6qx39T9nMdj';
+const VALID_XPUB = bip32.fromSeed(Buffer.alloc(32, 71), bitcoin.networks.bitcoin)
+  .derivePath("m/84'/0'/0'")
+  .neutered()
+  .toBase58();
 const NATIVE_ORIGIN = { fingerprint: 'aabbccdd', accountPath: "84'/0'/0'" };
 
 describe('Wallets XPUB Validation Routes', () => {
@@ -162,8 +167,8 @@ describe('Wallets XPUB Validation Routes', () => {
       receiveDescriptor: response.body.descriptor,
       sourceKind: 'imported',
     })).toMatchObject({
-      descriptor: `wpkh([aabbccdd/84'/0'/0']${VALID_XPUB}/0/*)`,
-      changeDescriptor: `wpkh([aabbccdd/84'/0'/0']${VALID_XPUB}/1/*)`,
+      descriptor: `wpkh([aabbccdd/84h/0h/0h]${VALID_XPUB}/0/*)`,
+      changeDescriptor: `wpkh([aabbccdd/84h/0h/0h]${VALID_XPUB}/1/*)`,
       descriptorSourceKind: 'imported_multipath',
       sourceDescriptor,
       sourceChangeDescriptor: null,

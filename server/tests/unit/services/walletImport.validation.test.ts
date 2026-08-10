@@ -337,6 +337,7 @@ describe('Wallet Import Service - Validation', () => {
         const bluewalletText = `# BlueWallet Multisig setup file
 Name: My 2-of-3 Vault
 Policy: 2 of 3
+Sorted: true
 Derivation: m/48'/0'/0'/2'
 Format: P2WSH
 
@@ -428,7 +429,7 @@ cccc3333: xpub6E3...`;
     });
 
     describe('Sanctuary Export Import Validation', () => {
-      it('should validate Sanctuary wallet export format', async () => {
+      it('rejects a receive-only Sanctuary export instead of inventing a change branch', async () => {
         const sanctuaryExport = JSON.stringify({
           label: 'My Wallet',
           descriptor: "wpkh([abcd1234/84'/0'/0']xpub6Dz...)",
@@ -456,9 +457,8 @@ cccc3333: xpub6E3...`;
 
         const result = await walletImport.validateImport(userId, { json: sanctuaryExport });
 
-        expect(result.valid).toBe(true);
-        expect(result.format).toBe('wallet_export');
-        expect(result.suggestedName).toBe('My Wallet');
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain('explicit receive/change pair');
       });
     });
 

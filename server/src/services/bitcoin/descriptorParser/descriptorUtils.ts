@@ -5,18 +5,8 @@
  * network detection, key expression parsing, script type detection, etc.
  */
 
-import { normalizeDerivationPath, parseDerivationPath } from '@sanctuary/shared/utils/bitcoin';
-import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
-import { PUBLIC_EXTENDED_KEY_PATTERN } from './domainValidation';
-import type { ParsedDevice, ScriptType, DetectedNetwork } from './types';
-
-const KEY_EXPRESSION_RE = new RegExp(
-  `\\[([a-fA-F0-9]{8})\\/([^\\]]+)\\](${PUBLIC_EXTENDED_KEY_PATTERN}[a-zA-Z0-9]+)(?=\\/|[,\\)])`
-);
-const KEY_EXPRESSION_GLOBAL_RE = new RegExp(
-  `\\[[a-fA-F0-9]{8}\\/[^\\]]+\\]${PUBLIC_EXTENDED_KEY_PATTERN}[a-zA-Z0-9]+(?:\\/[\\d*]+)*(?=[,\\)])`,
-  'g',
-);
+import { parseDerivationPath } from '@sanctuary/shared/utils/bitcoin';
+import type { DetectedNetwork } from './types';
 
 /**
  * Detect network from xpub prefix or derivation path
@@ -28,104 +18,15 @@ export function detectNetwork(xpub: string, derivationPath: string): DetectedNet
   }
 
   // Check xpub prefix for testnet/regtest
-  if (xpub.startsWith('tpub') || xpub.startsWith('upub') || xpub.startsWith('vpub')) {
+  if (
+    xpub.startsWith('tpub')
+    || xpub.startsWith('upub')
+    || xpub.startsWith('vpub')
+    || xpub.startsWith('Upub')
+    || xpub.startsWith('Vpub')
+  ) {
     return 'testnet';
   }
 
   return 'mainnet';
-}
-
-/**
- * Parse a key expression like [fingerprint/path]xpub/chain/*
- * Returns device info with fingerprint, xpub, and derivation path
- */
-export function parseKeyExpression(keyExpr: string): ParsedDevice {
-  const keyMatch = keyExpr.match(KEY_EXPRESSION_RE);
-
-  if (!keyMatch) {
-    throw new Error('Invalid descriptor key expression');
-  }
-
-  const [, fingerprint, pathPart, xpub] = keyMatch;
-  const derivationPath = normalizeDerivationPath(pathPart);
-
-  return {
-    fingerprint: fingerprint.toLowerCase(),
-    xpub,
-    derivationPath,
-  };
-}
-
-/**
- * Extract all key expressions from a descriptor
- */
-export function extractKeyExpressions(descriptor: string): string[] {
-  const expressions: string[] = [];
-
-  let match;
-
-  while ((match = KEY_EXPRESSION_GLOBAL_RE.exec(descriptor)) !== null) {
-    expressions.push(match[0]);
-  }
-
-  return expressions;
-}
-
-/**
- * Detect if descriptor represents a change (internal) chain
- */
-export function isChangeDescriptor(descriptor: string): boolean {
-  // Look for /1/* pattern which indicates internal/change chain
-  return /\/1\/\*/.test(descriptor);
-}
-
-/**
- * Detect script type from descriptor wrapper functions
- */
-export function detectScriptType(descriptor: string): ScriptType {
-  const trimmed = descriptor.trim().toLowerCase();
-
-  if (trimmed.startsWith('sh(wsh(sortedmulti')) {
-    return WalletScriptType.NESTED_SEGWIT; // P2SH-P2WSH multisig
-  }
-  if (trimmed.startsWith('wsh(sortedmulti') || trimmed.startsWith('wsh(multi')) {
-    return WalletScriptType.NATIVE_SEGWIT; // P2WSH multisig
-  }
-  if (trimmed.startsWith('sh(sortedmulti') || trimmed.startsWith('sh(multi')) {
-    return WalletScriptType.LEGACY; // P2SH multisig
-  }
-  if (trimmed.startsWith('sh(wpkh(')) {
-    return WalletScriptType.NESTED_SEGWIT; // P2SH-P2WPKH
-  }
-  if (trimmed.startsWith('wpkh(')) {
-    return WalletScriptType.NATIVE_SEGWIT; // P2WPKH
-  }
-  if (trimmed.startsWith('tr(')) {
-    return WalletScriptType.TAPROOT; // P2TR
-  }
-  if (trimmed.startsWith('pkh(')) {
-    return WalletScriptType.LEGACY; // P2PKH
-  }
-
-  throw new Error('Unable to detect script type from descriptor');
-}
-
-/**
- * Detect if descriptor is multisig
- */
-export function isMultisigDescriptor(descriptor: string): boolean {
-  const lower = descriptor.toLowerCase();
-  return lower.includes('sortedmulti(') || lower.includes('multi(');
-}
-
-/**
- * Extract quorum from multisig descriptor
- * sortedmulti(M, key1, key2, ...) where M is quorum
- */
-export function extractQuorum(descriptor: string): number {
-  const match = descriptor.match(/(?:sorted)?multi\((\d+)/i);
-  if (!match) {
-    throw new Error('Could not extract quorum from multisig descriptor');
-  }
-  return parseInt(match[1], 10);
 }

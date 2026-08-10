@@ -19,7 +19,19 @@ import {
   getMultisigDerivationPath,
   validateDeviceScriptType,
 } from '../../../../src/services/bitcoin/descriptorBuilder';
+import * as bitcoin from 'bitcoinjs-lib';
+import bip32 from '../../../../src/services/bitcoin/bip32';
 import { testXpubs } from '../../../fixtures/bitcoin';
+
+const accountXpub = (
+  path: string,
+  seedByte: number,
+  network: bitcoin.Network = bitcoin.networks.bitcoin,
+): string =>
+  bip32.fromSeed(Buffer.alloc(32, seedByte), network)
+    .derivePath(path)
+    .neutered()
+    .toBase58();
 
 describe('Descriptor Builder Service', () => {
   describe('getDerivationPath', () => {
@@ -183,7 +195,7 @@ describe('Descriptor Builder Service', () => {
   describe('buildSingleSigDescriptor', () => {
     const device = {
       fingerprint: 'd34db33f',
-      xpub: 'xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL',
+      xpub: accountXpub("m/84'/0'/0'", 1),
       derivationPath: "m/84'/0'/0'",
     };
 
@@ -201,6 +213,7 @@ describe('Descriptor Builder Service', () => {
       it('should use provided derivation path', () => {
         const customDevice = {
           ...device,
+          xpub: accountXpub("m/84'/0'/5'", 1),
           derivationPath: "m/84'/0'/5'",
         };
 
@@ -238,7 +251,7 @@ describe('Descriptor Builder Service', () => {
       it('should build pkh descriptor', () => {
         const legacyDevice = {
           fingerprint: '11223344',
-          xpub: device.xpub,
+          xpub: accountXpub("m/44'/0'/0'", 1),
           derivationPath: "m/44'/0'/0'",
         };
 
@@ -255,7 +268,7 @@ describe('Descriptor Builder Service', () => {
       it('should build sh(wpkh) descriptor', () => {
         const nestedDevice = {
           fingerprint: 'aabbccdd',
-          xpub: device.xpub,
+          xpub: accountXpub("m/49'/0'/0'", 1),
           derivationPath: "m/49'/0'/0'",
         };
 
@@ -273,7 +286,7 @@ describe('Descriptor Builder Service', () => {
       it('should build tr descriptor', () => {
         const taprootDevice = {
           fingerprint: 'eeff0011',
-          xpub: device.xpub,
+          xpub: accountXpub("m/86'/0'/0'", 1),
           derivationPath: "m/86'/0'/0'",
         };
 
@@ -332,17 +345,17 @@ describe('Descriptor Builder Service', () => {
     const devices = [
       {
         fingerprint: 'aabbccdd',
-        xpub: 'xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL',
+        xpub: accountXpub("m/48'/0'/0'/2'", 1),
         derivationPath: "m/48'/0'/0'/2'",
       },
       {
         fingerprint: '11223344',
-        xpub: 'xpub6D4BDPcP2GT577Vvch3R8wDkScZWzQzMMUm3PWbmWvVJrZwQY4VUNgqFJPMM3No2dFDFGTsxxpG5uJh7n7epu4trkrX7x7DogT5Uv6fcLW5',
+        xpub: accountXpub("m/48'/0'/0'/2'", 2),
         derivationPath: "m/48'/0'/0'/2'",
       },
       {
         fingerprint: '99887766',
-        xpub: 'xpub6CUGRUonZSQ4TWtTMmzXdrXDtypWZiD6sBpHwJmENQUMWnrdwJP5EHjDBdJxY8hLhN9P3AyaCANDmrUdDLLY8jSqmqQWmxDPdxiKdE6UkHj',
+        xpub: accountXpub("m/48'/0'/0'/2'", 3),
         derivationPath: "m/48'/0'/0'/2'",
       },
     ];
@@ -382,12 +395,12 @@ describe('Descriptor Builder Service', () => {
           ...devices,
           {
             fingerprint: 'deadbeef',
-            xpub: 'xpub6BgBgsespWvERF3LHQu6CnqdvfEvtMcQjYrcRzx53QJjSxarj2afYWcLteoGVky7D3UKDP9QyrLprQ3VCECoY49yfdDEHGCtMMj92pReUsQ',
+            xpub: accountXpub("m/48'/0'/0'/2'", 4),
             derivationPath: "m/48'/0'/0'/2'",
           },
           {
             fingerprint: 'cafebabe',
-            xpub: 'xpub6BosfCnifzxcFwrSzQiqu2DBVTshkCXacvNsWGYJVVhhawA7d4R5WSWGFNbi8Aw6ZRc1brxMyWMzG3DSSSSoekkudhUd9yLb6qx39T9nMdj',
+            xpub: accountXpub("m/48'/0'/0'/2'", 5),
             derivationPath: "m/48'/0'/0'/2'",
           },
         ];
@@ -406,6 +419,7 @@ describe('Descriptor Builder Service', () => {
       it('should build sh(wsh(sortedmulti)) descriptor', () => {
         const nestedDevices = devices.map((d) => ({
           ...d,
+          xpub: accountXpub("m/48'/0'/0'/1'", Number.parseInt(d.fingerprint.slice(0, 2), 16)),
           derivationPath: "m/48'/0'/0'/1'",
         }));
 
@@ -452,9 +466,9 @@ describe('Descriptor Builder Service', () => {
       });
 
       it('should use correct testnet paths when auto-generating', () => {
-        const devicesWithoutPaths = devices.map((d) => ({
+        const devicesWithoutPaths = devices.map((d, index) => ({
           fingerprint: d.fingerprint,
-          xpub: d.xpub,
+          xpub: accountXpub("m/48'/1'/0'/2'", index + 1, bitcoin.networks.testnet),
         }));
 
         const descriptor = buildMultiSigDescriptor(devicesWithoutPaths, 2, 'native_segwit', 'testnet');
@@ -468,12 +482,12 @@ describe('Descriptor Builder Service', () => {
         const testnetDevices = [
           {
             fingerprint: 'aabbccdd',
-            xpub: testXpubs.testnet.bip84,
+            xpub: accountXpub("m/48'/1'/0'/2'", 1, bitcoin.networks.testnet),
             derivationPath: "m/48'/1'/0'/2'",
           },
           {
             fingerprint: '11223344',
-            xpub: testXpubs.testnet.bip84,
+            xpub: accountXpub("m/48'/1'/0'/2'", 2, bitcoin.networks.testnet),
             derivationPath: "m/48'/1'/0'/2'",
           },
         ];
@@ -514,7 +528,7 @@ describe('Descriptor Builder Service', () => {
 
   describe('buildChangeDescriptor', () => {
     it('should convert receive descriptor to change descriptor', () => {
-      const receiveDescriptor = 'wpkh([d34db33f/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/0/*)';
+      const receiveDescriptor = `wpkh([d34db33f/84h/0h/0h]${accountXpub("m/84'/0'/0'", 1)}/0/*)`;
 
       const changeDescriptor = buildChangeDescriptor(receiveDescriptor);
 
@@ -523,47 +537,46 @@ describe('Descriptor Builder Service', () => {
     });
 
     it('should convert multisig receive descriptor to change descriptor', () => {
-      const receiveDescriptor = 'wsh(sortedmulti(2,[aabbccdd/48h/0h/0h/2h]xpub1/0/*),[11223344/48h/0h/0h/2h]xpub2/0/*))';
+      const first = accountXpub("m/48'/0'/0'/2'", 2);
+      const second = accountXpub("m/48'/0'/0'/2'", 3);
+      const receiveDescriptor = `wsh(sortedmulti(2,[aabbccdd/48h/0h/0h/2h]${first}/0/*,[11223344/48h/0h/0h/2h]${second}/0/*))`;
 
       const changeDescriptor = buildChangeDescriptor(receiveDescriptor);
 
       expect(changeDescriptor).toContain('/1/*)');
-      expect(changeDescriptor).toBe('wsh(sortedmulti(2,[aabbccdd/48h/0h/0h/2h]xpub1/1/*),[11223344/48h/0h/0h/2h]xpub2/1/*))');
+      expect(changeDescriptor).toBe(`wsh(sortedmulti(2,[aabbccdd/48h/0h/0h/2h]${first}/1/*,[11223344/48h/0h/0h/2h]${second}/1/*))`);
     });
 
     it('should handle nested segwit descriptors', () => {
-      const receiveDescriptor = 'sh(wpkh([aabbccdd/49h/0h/0h]xpub6CUGRUonZSQ4TWtTMmzXdrXDtypWZiD6sBpHwJmENQUMWnrdwJP5EHjDBdJxY8hLhN9P3AyaCANDmrUdDLLY8jSqmqQWmxDPdxiKdE6UkHj/0/*))';
+      const receiveDescriptor = `sh(wpkh([aabbccdd/49h/0h/0h]${accountXpub("m/49'/0'/0'", 4)}/0/*))`;
 
       const changeDescriptor = buildChangeDescriptor(receiveDescriptor);
 
       expect(changeDescriptor).toContain('/1/*))');
     });
 
-    it('should not modify descriptors without /0/* pattern', () => {
-      const descriptor = 'wpkh([d34db33f/84h/0h/0h]xpub/1/*)';
-
-      const result = buildChangeDescriptor(descriptor);
-
-      expect(result).toBe(descriptor);
+    it('rejects descriptors that are not fixed to receive branch 0', () => {
+      const descriptor = `wpkh([d34db33f/84h/0h/0h]${accountXpub("m/84'/0'/0'", 1)}/1/*)`;
+      expect(() => buildChangeDescriptor(descriptor)).toThrow('expected branch 0');
     });
   });
 
   describe('buildDescriptorFromDevices', () => {
     const singleDevice = {
       fingerprint: 'd34db33f',
-      xpub: 'xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL',
+      xpub: accountXpub("m/84'/0'/0'", 1),
       derivationPath: "m/84'/0'/0'",
     };
 
     const multiDevices = [
       {
         fingerprint: 'aabbccdd',
-        xpub: 'xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL',
+        xpub: accountXpub("m/48'/0'/0'/2'", 2),
         derivationPath: "m/48'/0'/0'/2'",
       },
       {
         fingerprint: '11223344',
-        xpub: 'xpub6D4BDPcP2GT577Vvch3R8wDkScZWzQzMMUm3PWbmWvVJrZwQY4VUNgqFJPMM3No2dFDFGTsxxpG5uJh7n7epu4trkrX7x7DogT5Uv6fcLW5',
+        xpub: accountXpub("m/48'/0'/0'/2'", 3),
         derivationPath: "m/48'/0'/0'/2'",
       },
     ];
@@ -676,6 +689,7 @@ describe('Descriptor Builder Service', () => {
       it('should build legacy descriptor', () => {
         const legacyDevice = {
           ...singleDevice,
+          xpub: accountXpub("m/44'/0'/0'", 1),
           derivationPath: "m/44'/0'/0'",
         };
 
@@ -690,6 +704,7 @@ describe('Descriptor Builder Service', () => {
       it('should build nested segwit descriptor', () => {
         const nestedDevice = {
           ...singleDevice,
+          xpub: accountXpub("m/49'/0'/0'", 1),
           derivationPath: "m/49'/0'/0'",
         };
 
@@ -704,6 +719,7 @@ describe('Descriptor Builder Service', () => {
       it('should build taproot descriptor', () => {
         const taprootDevice = {
           ...singleDevice,
+          xpub: accountXpub("m/86'/0'/0'", 1),
           derivationPath: "m/86'/0'/0'",
         };
 

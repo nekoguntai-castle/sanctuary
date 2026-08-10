@@ -17,14 +17,11 @@ import type {
   Network,
   DetectedNetwork,
 } from '../bitcoin/descriptorParser';
-import { resolveDescriptorTextPair } from '../bitcoin/descriptorParser';
-import { parseImportInput } from '../import';
 import { getErrorMessage } from '../../utils/errors';
-import { safeJsonParseUntyped } from '../../utils/safeJson';
 import * as descriptorBuilder from '../bitcoin/descriptorBuilder';
 import { createLogger } from '../../utils/logger';
 import { resolveDevices } from './deviceResolution';
-import { importFromDescriptor, importFromParsedData } from './descriptorImport';
+import { importFromParsedData } from './descriptorImport';
 import { importFromJson } from './jsonImport';
 import {
   isBitcoinNetwork,
@@ -52,6 +49,7 @@ import {
   canonicalPolicyIdentity,
   requireCanonicalWalletPolicy,
 } from '../wallet/canonicalPolicy';
+import { prepareWalletImport } from './prepareImport';
 
 const log = createLogger('WALLET_IMPORT:SVC');
 
@@ -377,40 +375,30 @@ export async function validateImport(
   }
 
   try {
-    let parseResult: ReturnType<typeof parseImportInput>;
-    if (input.descriptor) {
-      const source = resolveDescriptorTextPair(input.descriptor, input.changeDescriptor);
-      const policy = prepareDescriptorPolicy({
-        receiveDescriptor: source.receiveDescriptor,
-        changeDescriptor: source.changeDescriptor,
-        sourceKind: 'imported',
-      });
-      parseResult = {
-        format: 'descriptor',
-        parsed: parseImportInput(policy.descriptor).parsed,
-      };
-    } else {
-      parseResult = parseImportInput(rawInput);
-    }
-    const network = resolveImportNetwork(parseResult.parsed.network, input.network);
+    const prepared = prepareWalletImport({
+      data: rawInput,
+      changeDescriptor: input.changeDescriptor,
+      network: input.network,
+      descriptorInput: input.descriptor !== undefined,
+    });
 
     // Resolve devices
     const devices = await resolveDevices(
       userId,
-      parseResult.parsed.devices,
-      parseResult.originalDevices
+      prepared.parsed.devices,
+      prepared.originalDevices,
     );
 
     return {
       valid: true,
-      format: parseResult.format,
-      walletType: parseResult.parsed.type,
-      scriptType: parseResult.parsed.scriptType,
-      network,
-      quorum: parseResult.parsed.quorum,
-      totalSigners: parseResult.parsed.totalSigners,
+      format: prepared.format,
+      walletType: prepared.parsed.type,
+      scriptType: prepared.parsed.scriptType,
+      network: prepared.network,
+      quorum: prepared.parsed.quorum,
+      totalSigners: prepared.parsed.totalSigners,
       devices,
-      suggestedName: parseResult.suggestedName,
+      suggestedName: prepared.suggestedName,
     };
   } catch (e) {
     return {
@@ -437,80 +425,37 @@ export async function importWallet(
     deviceLabels?: Record<string, string>;
   }
 ): Promise<ImportWalletResult> {
-  const trimmed = input.data.trim();
-
-  // Preserve descriptor pairs embedded in wallet-export JSON before the
-  // general parser collapses the export to its receive-side parsed model.
-  if (trimmed.startsWith('{')) {
-    const walletExport = safeJsonParseUntyped<{
-      descriptor?: string;
-      changeDescriptor?: string;
-    } | null>(trimmed, null, 'wallet export parse');
-    if (walletExport && typeof walletExport.descriptor === 'string') {
-      return importFromDescriptor(userId, {
-        descriptor: walletExport.descriptor,
-        changeDescriptor: walletExport.changeDescriptor,
-        name: input.name,
-        network: input.network,
-        deviceLabels: input.deviceLabels,
-      });
-    }
-  }
-
-  if (trimmed.includes('<0;1>/*')) {
-    // Route the only supported BIP389 policy through the exact-source path.
-    return importFromDescriptor(userId, {
-      descriptor: trimmed,
-      name: input.name,
-      network: input.network,
-      deviceLabels: input.deviceLabels,
-    });
-  }
-
-  // Use unified parser to detect format
-  const parseResult = parseImportInput(trimmed);
-
-  // For wallet_export format (JSON with descriptor field), extract and use the descriptor
-  if (parseResult.format === 'wallet_export') {
-    // Parse the JSON to get the descriptor
-    throw new Error('Invalid JSON in wallet export data');
-  }
+  const prepared = prepareWalletImport({ data: input.data, network: input.network });
 
   // For our custom JSON config format
-  if (parseResult.format === 'json') {
+  if (prepared.format === 'json') {
     return importFromJson(userId, {
-      json: trimmed,
+      json: input.data.trim(),
       name: input.name,
       network: input.network,
     });
   }
 
   // For BlueWallet text format - import using parsed data
-  if (parseResult.format === 'bluewallet_text') {
+  if (prepared.format === 'bluewallet_text' || prepared.format === 'coldcard') {
     return importFromParsedData(userId, {
-      parsed: parseResult.parsed,
+      parsed: prepared.parsed,
       name: input.name,
-      network: input.network,
+      network: prepared.network,
       deviceLabels: input.deviceLabels,
+      descriptorPolicy: prepared.descriptorPolicy,
     });
   }
 
-  // For Coldcard JSON export - import using parsed data
-  if (parseResult.format === 'coldcard') {
-    return importFromParsedData(userId, {
-      parsed: parseResult.parsed,
-      name: input.name,
-      network: input.network,
-      deviceLabels: input.deviceLabels,
-    });
+  if (!prepared.descriptorPolicy) {
+    throw new Error('Descriptor import did not produce a complete receive/change policy');
   }
-
-  // For plain descriptor format
-  return importFromDescriptor(userId, {
-    descriptor: trimmed,
+  return importFromParsedData(userId, {
+    parsed: prepared.parsed,
     name: input.name,
-    network: input.network,
+    network: prepared.network,
     deviceLabels: input.deviceLabels,
+    descriptorPolicy: prepared.descriptorPolicy,
   });
 }
 

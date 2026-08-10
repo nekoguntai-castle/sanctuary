@@ -13,7 +13,10 @@ import { parseImportInput } from '../import';
 import { resolveDevices, checkDuplicateWallet } from './deviceResolution';
 import { createWalletTransaction, resolveImportNetwork } from './walletImportService';
 import type { ImportWalletResult } from './types';
-import { prepareDescriptorPolicy } from '../wallet/descriptorPolicy';
+import {
+  prepareDescriptorPolicy,
+  type PreparedDescriptorPolicy,
+} from '../wallet/descriptorPolicy';
 
 /**
  * Import wallet from descriptor string
@@ -65,6 +68,7 @@ export async function importFromParsedData(
     name: string;
     network?: Network;
     deviceLabels?: Record<string, string>; // fingerprint -> label
+    descriptorPolicy?: PreparedDescriptorPolicy;
   }
 ): Promise<ImportWalletResult> {
   const { parsed } = input;
@@ -84,5 +88,6 @@ export async function importFromParsedData(
     name: input.name,
     network,
     deviceLabels: input.deviceLabels,
+    descriptorPolicy: input.descriptorPolicy,
   });
 }
