@@ -70,8 +70,8 @@ import {
 } from '../../../src/events/redisEventBus';
 
 describe('RedisEventBus', () => {
-  let publisher: MockRedis;
-  let subscriber: MockRedis;
+  let publisher: InstanceType<typeof MockRedis>;
+  let subscriber: InstanceType<typeof MockRedis>;
   let bus: RedisEventBus;
 
   beforeEach(() => {

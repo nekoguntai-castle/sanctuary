@@ -375,6 +375,7 @@ describe('Broadcast Helpers', () => {
         height: 800010,
         hash: 'blockhash-with-date',
         timestamp: ts,
+        transactionCount: 0,
       });
 
       expect(mockBroadcast).toHaveBeenCalledWith(

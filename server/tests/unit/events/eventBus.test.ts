@@ -156,7 +156,7 @@ describe('EventBus', () => {
         walletId: 'wallet-1',
         txid: 'tx-1',
         confirmations: 1,
-        amount: 1n,
+        blockHeight: 100,
       });
 
       const metrics = testBus.getMetrics();
@@ -256,7 +256,7 @@ describe('EventBus', () => {
 
     it('should queue handlers when concurrency limit reached', async () => {
       const bus = createTestEventBus();
-      let releaseHandlers: (() => void) | null = null;
+      let releaseHandlers!: () => void;
       const blockHandlers = new Promise<void>((resolve) => {
         releaseHandlers = resolve;
       });
@@ -280,7 +280,7 @@ describe('EventBus', () => {
       expect(queued.available).toBe(0);
       expect(queued.queueLength).toBe(1);
 
-      releaseHandlers?.();
+      releaseHandlers();
       await vi.runAllTimersAsync();
 
       const drained = bus.getConcurrencyStatus();

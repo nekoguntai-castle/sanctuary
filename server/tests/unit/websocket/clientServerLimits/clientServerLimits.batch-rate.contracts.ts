@@ -66,9 +66,9 @@ export const registerClientServerLimitBatchRateContracts = () => {
     activeServers.push(server);
     const client = createClient({ userId: 'user-1' });
 
-    mockCheckWalletAccess.mockImplementation(
-      async (walletId: string) => ({ hasAccess: walletId !== 'deadbeef', canEdit: true, role: 'owner' })
-    );
+    mockCheckWalletAccess
+      .mockResolvedValueOnce({ hasAccess: false, canEdit: true, role: 'owner' })
+      .mockResolvedValue({ hasAccess: true, canEdit: true, role: 'owner' });
 
     await (server as any).handleMessage(
       client,

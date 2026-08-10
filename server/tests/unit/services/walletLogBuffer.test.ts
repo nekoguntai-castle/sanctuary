@@ -106,7 +106,7 @@ describe('walletLogBuffer', () => {
   it('runs cleanup when interval callback fires', () => {
     walletLogBuffer.stop();
     const timer = { unref: vi.fn() } as any;
-    let intervalCallback: (() => void) | null = null;
+    let intervalCallback!: () => void;
     vi.spyOn(global, 'setInterval').mockImplementation(((cb: () => void) => {
       intervalCallback = cb;
       return timer;
@@ -114,7 +114,7 @@ describe('walletLogBuffer', () => {
     const cleanupSpy = vi.spyOn(walletLogBuffer as any, 'cleanup');
 
     (walletLogBuffer as any).startCleanupInterval();
-    intervalCallback?.();
+    intervalCallback();
 
     expect(cleanupSpy).toHaveBeenCalledTimes(1);
   });

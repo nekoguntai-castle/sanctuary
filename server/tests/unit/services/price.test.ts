@@ -10,7 +10,7 @@ import axios from 'axios';
 
 // Mock axios before importing the module
 vi.mock('axios');
-const mockedAxios = axios as Mocked<typeof axios>;
+const mockedAxios = vi.mocked(axios);
 
 // Mock the logger
 vi.mock('../../../src/utils/logger', () => ({

@@ -16,8 +16,8 @@ vi.mock('../../../../src/utils/logger', () => ({
 }));
 
 const { mockGetCacheEntry, mockSetCacheEntry } = vi.hoisted(() => ({
-  mockGetCacheEntry: vi.fn<any>(),
-  mockSetCacheEntry: vi.fn<any>(),
+  mockGetCacheEntry: vi.fn<(key: string) => Promise<unknown>>(),
+  mockSetCacheEntry: vi.fn<(key: string, data: unknown, ttlSeconds: number) => Promise<void>>(),
 }));
 
 vi.mock('../../../../src/services/price/priceCacheManager', () => ({
@@ -39,7 +39,12 @@ import {
   getPriceHistory,
 } from '../../../../src/services/price/historicalPriceService';
 import type { ProviderRegistry } from '../../../../src/providers';
-import type { IPriceProvider, IPriceProviderWithHistory } from '../../../../src/services/price/types';
+import type {
+  IPriceProvider,
+  IPriceProviderWithHistory,
+  PriceData,
+  PriceHistoryPoint,
+} from '../../../../src/services/price/types';
 
 function createMockProvider(
   overrides: Partial<IPriceProvider> = {}
@@ -47,10 +52,10 @@ function createMockProvider(
   return {
     name: 'test-provider',
     priority: 1,
-    healthCheck: vi.fn<any>().mockResolvedValue(true),
+    healthCheck: vi.fn<() => Promise<boolean>>().mockResolvedValue(true),
     supportedCurrencies: ['USD'],
-    getPrice: vi.fn<any>(),
-    supportsCurrency: vi.fn<any>(),
+    getPrice: vi.fn<(currency: string) => Promise<PriceData>>(),
+    supportsCurrency: vi.fn<(currency: string) => boolean>(),
     ...overrides,
   };
 }
@@ -60,13 +65,13 @@ function createMockHistoricalProvider(
 ): IPriceProviderWithHistory {
   return {
     ...createMockProvider(),
-    getHistoricalPrice: vi.fn<any>().mockResolvedValue({
+    getHistoricalPrice: vi.fn<(date: Date, currency: string) => Promise<PriceData>>().mockResolvedValue({
       provider: 'test-provider',
       price: 42000,
       currency: 'USD',
       timestamp: new Date('2025-01-15'),
     }),
-    getPriceHistory: vi.fn<any>().mockResolvedValue([
+    getPriceHistory: vi.fn<(days: number, currency: string) => Promise<PriceHistoryPoint[]>>().mockResolvedValue([
       { timestamp: new Date('2025-01-01'), price: 40000 },
       { timestamp: new Date('2025-01-02'), price: 41000 },
     ]),
@@ -122,7 +127,7 @@ describe('Historical Price Service', () => {
 
     it('skips unhealthy providers with historical support', async () => {
       const unhealthyProvider = createMockHistoricalProvider({
-        healthCheck: vi.fn<any>().mockResolvedValue(false),
+        healthCheck: vi.fn<() => Promise<boolean>>().mockResolvedValue(false),
       });
       const registry = createMockRegistry([unhealthyProvider]);
 
@@ -134,7 +139,7 @@ describe('Historical Price Service', () => {
     it('returns first healthy historical provider when multiple exist', async () => {
       const unhealthy = createMockHistoricalProvider({
         name: 'unhealthy',
-        healthCheck: vi.fn<any>().mockResolvedValue(false),
+        healthCheck: vi.fn<() => Promise<boolean>>().mockResolvedValue(false),
       });
       const healthy = createMockHistoricalProvider({ name: 'healthy' });
       const registry = createMockRegistry([unhealthy, healthy]);
@@ -192,7 +197,7 @@ describe('Historical Price Service', () => {
         new Date('2025-01-15T14:30:00Z')
       );
 
-      const callArg = (provider.getHistoricalPrice as ReturnType<typeof vi.fn>).mock.calls[0][0] as Date;
+      const callArg = vi.mocked(provider.getHistoricalPrice).mock.calls[0][0];
       expect(callArg.getHours()).toBe(0);
       expect(callArg.getMinutes()).toBe(0);
     });
@@ -228,7 +233,8 @@ describe('Historical Price Service', () => {
 
     it('wraps provider errors with descriptive message', async () => {
       const provider = createMockHistoricalProvider({
-        getHistoricalPrice: vi.fn<any>().mockRejectedValue(new Error('API down')),
+        getHistoricalPrice: vi.fn<(date: Date, currency: string) => Promise<PriceData>>()
+          .mockRejectedValue(new Error('API down')),
       });
       const registry = createMockRegistry([provider]);
 
@@ -314,7 +320,8 @@ describe('Historical Price Service', () => {
 
     it('wraps provider errors with descriptive message', async () => {
       const provider = createMockHistoricalProvider({
-        getPriceHistory: vi.fn<any>().mockRejectedValue(new Error('timeout')),
+        getPriceHistory: vi.fn<(days: number, currency: string) => Promise<PriceHistoryPoint[]>>()
+          .mockRejectedValue(new Error('timeout')),
       });
       const registry = createMockRegistry([provider]);
 
@@ -325,7 +332,8 @@ describe('Historical Price Service', () => {
 
     it('handles empty price history from provider', async () => {
       const provider = createMockHistoricalProvider({
-        getPriceHistory: vi.fn<any>().mockResolvedValue([]),
+        getPriceHistory: vi.fn<(days: number, currency: string) => Promise<PriceHistoryPoint[]>>()
+          .mockResolvedValue([]),
       });
       const registry = createMockRegistry([provider]);
 

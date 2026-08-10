@@ -14,23 +14,14 @@ import type { IProvider, IProviderLifecycle } from '../../../src/providers/types
 
 type TestProvider = IProvider & Partial<IProviderLifecycle>;
 
-function makeProvider(
-  name: string,
-  priority: number,
-  healthy: boolean = true
-): TestProvider & {
-  healthCheck: ReturnType<typeof vi.fn>;
-  onRegister: ReturnType<typeof vi.fn>;
-  onUnregister: ReturnType<typeof vi.fn>;
-  onHealthChange: ReturnType<typeof vi.fn>;
-} {
+function makeProvider(name: string, priority: number, healthy: boolean = true) {
   return {
     name,
     priority,
-    healthCheck: vi.fn().mockResolvedValue(healthy),
-    onRegister: vi.fn().mockResolvedValue(undefined),
-    onUnregister: vi.fn().mockResolvedValue(undefined),
-    onHealthChange: vi.fn(),
+    healthCheck: vi.fn<() => Promise<boolean>>().mockResolvedValue(healthy),
+    onRegister: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+    onUnregister: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+    onHealthChange: vi.fn<(healthy: boolean) => void>(),
   };
 }
 

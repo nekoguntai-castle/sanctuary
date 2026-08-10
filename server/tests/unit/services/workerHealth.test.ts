@@ -150,7 +150,7 @@ describe('workerHealth monitor', () => {
   });
 
   it('returns existing active check when a periodic check is already in flight', async () => {
-    let resolveInFlight: ((value: unknown) => void) | null = null;
+    let resolveInFlight!: (value: unknown) => void;
     const inFlight = new Promise((resolve) => {
       resolveInFlight = resolve;
     });
@@ -177,7 +177,7 @@ describe('workerHealth monitor', () => {
     await vi.advanceTimersByTimeAsync(25);
     expect(mockFetch).toHaveBeenCalledTimes(2);
 
-    resolveInFlight?.({
+    resolveInFlight({
       ok: true,
       status: 200,
       json: vi.fn().mockResolvedValue({ status: 'healthy' }),
@@ -303,7 +303,7 @@ describe('workerHealth monitor', () => {
   });
 
   it('waits for active check on stop even if in-flight check rejects', async () => {
-    let rejectInFlight: ((error: unknown) => void) | null = null;
+    let rejectInFlight!: (error: unknown) => void;
     const inFlight = new Promise((_, reject) => {
       rejectInFlight = reject;
     });
@@ -328,7 +328,7 @@ describe('workerHealth monitor', () => {
     await mod.startWorkerHealthMonitor();
     await vi.advanceTimersByTimeAsync(12);
 
-    rejectInFlight?.(new Error('late timeout'));
+    rejectInFlight(new Error('late timeout'));
     await expect(mod.stopWorkerHealthMonitor()).resolves.toBeUndefined();
 
     const status = mod.getWorkerHealthStatus();
@@ -336,7 +336,7 @@ describe('workerHealth monitor', () => {
   });
 
   it('catches in-flight check rejection when stop is called before the check settles', async () => {
-    let rejectInFlight: ((error: unknown) => void) | null = null;
+    let rejectInFlight!: (error: unknown) => void;
     const inFlight = new Promise((_, reject) => {
       rejectInFlight = reject;
     });
@@ -362,7 +362,7 @@ describe('workerHealth monitor', () => {
     await vi.advanceTimersByTimeAsync(12);
 
     const stopPromise = mod.stopWorkerHealthMonitor();
-    rejectInFlight?.(new Error('late timeout'));
+    rejectInFlight(new Error('late timeout'));
     await expect(stopPromise).resolves.toBeUndefined();
 
     const status = mod.getWorkerHealthStatus();

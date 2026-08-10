@@ -7,10 +7,10 @@ const {
   mockWalletUpdate,
   mockLogger,
 } = vi.hoisted(() => ({
-  mockResetAllStuckSyncFlags: vi.fn<any>(),
-  mockFindStuckSyncing: vi.fn<any>(),
-  mockFindStale: vi.fn<any>(),
-  mockWalletUpdate: vi.fn<any>(),
+  mockResetAllStuckSyncFlags: vi.fn<() => Promise<number>>(),
+  mockFindStuckSyncing: vi.fn<() => Promise<Array<{ id: string; name: string }>>>(),
+  mockFindStale: vi.fn<(options: unknown) => Promise<Array<{ id: string }>>>(),
+  mockWalletUpdate: vi.fn<(id: string, data: unknown) => Promise<unknown>>(),
   mockLogger: {
     debug: vi.fn(),
     info: vi.fn(),
@@ -25,10 +25,10 @@ vi.mock('../../../../src/models/prisma', () => ({
 
 vi.mock('../../../../src/repositories', () => ({
   walletRepository: {
-    resetAllStuckSyncFlags: (...args: unknown[]) => mockResetAllStuckSyncFlags(...args),
-    findStuckSyncing: (...args: unknown[]) => mockFindStuckSyncing(...args),
-    findStale: (...args: unknown[]) => mockFindStale(...args),
-    update: (id: string, data: unknown) => mockWalletUpdate(id, data),
+    resetAllStuckSyncFlags: mockResetAllStuckSyncFlags,
+    findStuckSyncing: mockFindStuckSyncing,
+    findStale: mockFindStale,
+    update: mockWalletUpdate,
   },
 }));
 

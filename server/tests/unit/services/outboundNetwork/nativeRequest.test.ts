@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import type { IncomingMessage } from 'node:http';
 import https from 'node:https';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -25,7 +26,12 @@ describe('pinned native request', () => {
 
   it('pins the chosen IP while preserving original Host and TLS SNI without redirects', async () => {
     const { request, response } = mockHttpsResponse({ status: 302, chunks: ['redirect'] });
-    const requestSpy = vi.spyOn(https, 'request').mockImplementationOnce(((options, callback) => {
+    const requestSpy = vi.spyOn(https, 'request').mockImplementationOnce(((
+      options: string | URL | https.RequestOptions,
+      optionsOrCallback?: https.RequestOptions | ((response: IncomingMessage) => void),
+      callback?: (response: IncomingMessage) => void
+    ) => {
+      const responseCallback = typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
       expect(options).toMatchObject({
         agent: false,
         hostname: '93.184.216.34',
@@ -35,8 +41,9 @@ describe('pinned native request', () => {
         protocol: 'https:',
         servername: 'merchant.example',
       });
-      expect(options.headers).toMatchObject({ host: 'merchant.example' });
-      callback?.(response as never);
+      expect(typeof options === 'object' && 'headers' in options ? options.headers : undefined)
+        .toMatchObject({ host: 'merchant.example' });
+      responseCallback?.(response as never);
       return request as never;
     }) as typeof https.request);
 
@@ -58,16 +65,21 @@ describe('pinned native request', () => {
 
   it('preserves a bracketed global IPv6 Host while omitting TLS SNI for the literal', async () => {
     const { request, response } = mockHttpsResponse({ status: 200, chunks: [] });
-    vi.spyOn(https, 'request').mockImplementationOnce(((options, callback) => {
+    vi.spyOn(https, 'request').mockImplementationOnce(((
+      options: string | URL | https.RequestOptions,
+      optionsOrCallback?: https.RequestOptions | ((response: IncomingMessage) => void),
+      callback?: (response: IncomingMessage) => void
+    ) => {
+      const responseCallback = typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
       expect(options).toMatchObject({
         hostname: '2606:4700:4700::1111',
         protocol: 'https:',
       });
       expect(options).not.toHaveProperty('servername');
-      expect(options.headers).toMatchObject({
+      expect(typeof options === 'object' && 'headers' in options ? options.headers : undefined).toMatchObject({
         host: '[2606:4700:4700::1111]',
       });
-      callback?.(response as never);
+      responseCallback?.(response as never);
       return request as never;
     }) as typeof https.request);
 
@@ -94,8 +106,13 @@ describe('pinned native request', () => {
       status: 200,
     });
     const destroySpy = vi.spyOn(response, 'destroy');
-    vi.spyOn(https, 'request').mockImplementationOnce(((_options, callback) => {
-      callback?.(response as never);
+    vi.spyOn(https, 'request').mockImplementationOnce(((
+      _options: string | URL | https.RequestOptions,
+      optionsOrCallback?: https.RequestOptions | ((response: IncomingMessage) => void),
+      callback?: (response: IncomingMessage) => void
+    ) => {
+      const responseCallback = typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+      responseCallback?.(response as never);
       return request as never;
     }) as typeof https.request);
 
@@ -164,8 +181,13 @@ function installHttpsResponse(input: {
   status: number;
 }): void {
   const { request, response } = mockHttpsResponse(input);
-  vi.spyOn(https, 'request').mockImplementationOnce(((_options, callback) => {
-    callback?.(response as never);
+  vi.spyOn(https, 'request').mockImplementationOnce(((
+    _options: string | URL | https.RequestOptions,
+    optionsOrCallback?: https.RequestOptions | ((response: IncomingMessage) => void),
+    callback?: (response: IncomingMessage) => void
+  ) => {
+    const responseCallback = typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+    responseCallback?.(response as never);
     return request as never;
   }) as typeof https.request);
 }

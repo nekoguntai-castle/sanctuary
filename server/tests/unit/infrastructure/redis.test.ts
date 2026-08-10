@@ -273,7 +273,7 @@ describe('infrastructure/redis', () => {
     const redisInfra = await loadRedisInfra();
     await redisInfra.initializeRedis();
 
-    let resolveFirstShutdown: (() => void) | null = null;
+    let resolveFirstShutdown!: () => void;
     mockRedisEventBusInstance.shutdown
       .mockImplementationOnce(
         () =>
@@ -288,7 +288,7 @@ describe('infrastructure/redis', () => {
 
     await Promise.resolve();
     await second;
-    resolveFirstShutdown?.();
+    resolveFirstShutdown();
     await first;
 
     expect(redisInstances[0].quit).toHaveBeenCalledTimes(1);

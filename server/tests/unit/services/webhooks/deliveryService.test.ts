@@ -735,7 +735,10 @@ describe('webhook delivery service', () => {
     };
     request.destroy = (error?: Error) => request.emit('error', error ?? new Error('destroyed'));
     request.end = () => undefined;
-    const requestSpy = vi.spyOn(http, 'request').mockImplementationOnce(((_options, callback) => {
+    const requestSpy = vi.spyOn(http, 'request').mockImplementationOnce(((
+      _options: http.RequestOptions,
+      callback?: (response: http.IncomingMessage) => void
+    ) => {
       const response = new EventEmitter() as EventEmitter & {
         setEncoding: (encoding: string) => void;
         statusCode?: number;
@@ -790,7 +793,10 @@ describe('webhook delivery service', () => {
       statusCode?: number;
     };
     response.setEncoding = () => undefined;
-    const requestSpy = vi.spyOn(https, 'request').mockImplementationOnce(((options, callback) => {
+    const requestSpy = vi.spyOn(https, 'request').mockImplementationOnce(((
+      options: https.RequestOptions,
+      callback?: (response: http.IncomingMessage) => void
+    ) => {
       callback?.(response as any);
       expect(options).toMatchObject({
         protocol: 'https:',

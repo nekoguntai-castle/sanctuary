@@ -256,16 +256,17 @@ export function registerSyncServiceExecutionRetryPollingTests(
         transactions: 1,
         utxos: 1,
       });
-      const setTimeoutSpy = vi
-        .spyOn(globalThis, "setTimeout")
-        .mockImplementation((() => {
-          return undefined as unknown as NodeJS.Timeout;
-        }) as typeof setTimeout);
-
-      const result = await context.syncService.syncNow(
-        "wallet-no-timeout-handle",
-      );
-      setTimeoutSpy.mockRestore();
+      const originalSetTimeout = globalThis.setTimeout;
+      Object.defineProperty(globalThis, "setTimeout", {
+        configurable: true,
+        value: () => undefined,
+      });
+      const result = await context.syncService.syncNow("wallet-no-timeout-handle").finally(() => {
+        Object.defineProperty(globalThis, "setTimeout", {
+          configurable: true,
+          value: originalSetTimeout,
+        });
+      });
 
       expect(result.success).toBe(true);
     });
@@ -278,24 +279,36 @@ export function registerSyncServiceExecutionRetryPollingTests(
       });
       mockSyncWallet.mockRejectedValueOnce(new Error("first failure"));
 
-      const originalExecute = context.syncService["executeSyncJob"].bind(
-        context.syncService,
-      ) as (walletId: string, retryCount?: number) => Promise<any>;
-      const executeSpy = vi.spyOn(context.syncService as any, "executeSyncJob");
+      const originalExecute = Reflect.get(context.syncService, "executeSyncJob");
+      if (typeof originalExecute !== "function") {
+        throw new Error("executeSyncJob test boundary is unavailable");
+      }
+      const executeSpy = vi.fn<(walletId: string, retryCount?: number) => Promise<unknown>>();
       executeSpy
         .mockImplementationOnce((walletId: string, retryCount: number = 0) =>
-          originalExecute(walletId, retryCount),
+          Reflect.apply(originalExecute, context.syncService, [walletId, retryCount]),
         )
         .mockImplementationOnce(async () => {
           throw new Error("retry callback failed");
         });
+      Object.defineProperty(context.syncService, "executeSyncJob", {
+        configurable: true,
+        value: executeSpy,
+      });
 
-      const result = await context.syncService.syncNow("wallet-retry");
-      expect(result.success).toBe(false);
-      expect(result.error).toContain("retrying");
+      try {
+        const result = await context.syncService.syncNow("wallet-retry");
+        expect(result.success).toBe(false);
+        expect(result.error).toContain("retrying");
 
-      await vi.advanceTimersByTimeAsync(1000);
-      expect(context.syncService["pendingRetries"].size).toBe(0);
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(context.syncService["pendingRetries"].size).toBe(0);
+      } finally {
+        Object.defineProperty(context.syncService, "executeSyncJob", {
+          configurable: true,
+          value: originalExecute,
+        });
+      }
     });
 
     it("falls back to last retry delay when configured delay is falsy", async () => {

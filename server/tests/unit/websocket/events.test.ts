@@ -242,7 +242,6 @@ describe('EventBuilders', () => {
       const event = EventBuilders.sync('wallet-123', {
         inProgress: true,
         status: 'started',
-        walletId: 'wallet-123',
         timestamp: new Date('2024-01-01T00:00:00Z'),
       });
 
@@ -252,7 +251,6 @@ describe('EventBuilders', () => {
         data: {
           inProgress: true,
           status: 'started',
-          walletId: 'wallet-123',
           timestamp: expect.any(Date),
         },
       });
@@ -262,7 +260,6 @@ describe('EventBuilders', () => {
       const event = EventBuilders.sync('wallet-123', {
         inProgress: false,
         status: 'completed',
-        walletId: 'wallet-123',
         lastSyncedAt: new Date(),
         timestamp: new Date(),
       });
@@ -275,7 +272,6 @@ describe('EventBuilders', () => {
       const event = EventBuilders.sync('wallet-123', {
         inProgress: true,
         status: 'retrying',
-        walletId: 'wallet-123',
         retryCount: 2,
         maxRetries: 5,
         retryingIn: 30000,
@@ -291,7 +287,6 @@ describe('EventBuilders', () => {
       const event = EventBuilders.sync('wallet-123', {
         inProgress: false,
         error: 'Connection timeout',
-        walletId: 'wallet-123',
         timestamp: new Date(),
       });
 

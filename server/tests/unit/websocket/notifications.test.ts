@@ -75,8 +75,8 @@ vi.mock('../../../src/repositories', async () => {
     addressRepository: {
       findAddressStrings: vi.fn().mockResolvedValue([]),
       findByWalletId: vi.fn().mockResolvedValue([]),
-      findByAddressWithWallet: (...args: unknown[]) =>
-        prisma.address.findFirst({ where: { address: args[0] }, include: { wallet: true } }),
+      findByAddressWithWallet: (address: string) =>
+        prisma.address.findFirst({ where: { address }, include: { wallet: true } }),
     },
     walletRepository: {
       findById: vi.fn().mockResolvedValue(null),
@@ -435,6 +435,7 @@ describe('NotificationService', () => {
         walletId: 'wallet-123',
         balance: 500000,
         unconfirmed: 0,
+        previousBalance: 500000,
         change: 0,
       });
       service.broadcastBlockNotification({

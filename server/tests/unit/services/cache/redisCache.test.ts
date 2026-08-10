@@ -6,11 +6,11 @@ const hoisted = vi.hoisted(() => ({
 }));
 
 class MockRedis extends EventEmitter {
-  get = vi.fn(async () => null);
-  setex = vi.fn(async () => 'OK');
-  del = vi.fn(async (..._keys: string[]) => 0);
-  scan = vi.fn(async () => ['0', []] as [string, string[]]);
-  exists = vi.fn(async () => 0);
+  get = vi.fn<(key: string) => Promise<string | null>>(async () => null);
+  setex = vi.fn<(key: string, ttl: number, value: string) => Promise<string>>(async () => 'OK');
+  del = vi.fn<(...keys: string[]) => Promise<number>>(async () => 0);
+  scan = vi.fn<(...args: Array<string | number>) => Promise<[string, string[]]>>(async () => ['0', []]);
+  exists = vi.fn<(key: string) => Promise<number>>(async () => 0);
 
   constructor() {
     super();

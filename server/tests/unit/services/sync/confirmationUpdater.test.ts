@@ -8,11 +8,11 @@ const {
   mockEmitTransactionConfirmed,
   mockLogger,
 } = vi.hoisted(() => ({
-  mockFindMany: vi.fn<any>(),
-  mockUpdateTransactionConfirmations: vi.fn<any>(),
-  mockPopulateMissingTransactionFields: vi.fn<any>(),
-  mockBroadcastConfirmationUpdate: vi.fn<any>(),
-  mockEmitTransactionConfirmed: vi.fn<any>(),
+  mockFindMany: vi.fn<(args: unknown) => Promise<Array<{ walletId: string }>>>(),
+  mockUpdateTransactionConfirmations: vi.fn<(walletId: string) => Promise<Array<{ txid: string; oldConfirmations: number; newConfirmations: number }>>>(),
+  mockPopulateMissingTransactionFields: vi.fn<(walletId: string) => Promise<{ updated: number; confirmationUpdates: Array<{ txid: string; oldConfirmations: number; newConfirmations: number }> }>>(),
+  mockBroadcastConfirmationUpdate: vi.fn<(walletId: string, update: unknown) => void>(),
+  mockEmitTransactionConfirmed: vi.fn<(payload: unknown) => void>(),
   mockLogger: {
     debug: vi.fn(),
     info: vi.fn(),
@@ -24,14 +24,14 @@ const {
 vi.mock('../../../../src/models/prisma', () => ({
   default: {
     transaction: {
-      findMany: (...args: unknown[]) => mockFindMany(...args),
+      findMany: mockFindMany,
     },
   },
 }));
 
 vi.mock('../../../../src/services/bitcoin/blockchain', () => ({
-  updateTransactionConfirmations: (...args: unknown[]) => mockUpdateTransactionConfirmations(...args),
-  populateMissingTransactionFields: (...args: unknown[]) => mockPopulateMissingTransactionFields(...args),
+  updateTransactionConfirmations: mockUpdateTransactionConfirmations,
+  populateMissingTransactionFields: mockPopulateMissingTransactionFields,
 }));
 
 vi.mock('../../../../src/websocket/notifications', () => ({
@@ -50,7 +50,7 @@ vi.mock('../../../../src/utils/errors', () => ({
 
 vi.mock('../../../../src/services/eventService', () => ({
   eventService: {
-    emitTransactionConfirmed: (...args: unknown[]) => mockEmitTransactionConfirmed(...args),
+    emitTransactionConfirmed: mockEmitTransactionConfirmed,
   },
 }));
 

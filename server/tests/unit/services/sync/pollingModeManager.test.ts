@@ -6,13 +6,13 @@ const {
   mockLogger,
   mockMetricsInc,
 } = vi.hoisted(() => ({
-  mockGetConfig: vi.fn<any>().mockReturnValue({
+  mockGetConfig: vi.fn<() => { sync: { intervalMs: number; confirmationUpdateIntervalMs: number } }>().mockReturnValue({
     sync: {
       intervalMs: 60_000,
       confirmationUpdateIntervalMs: 30_000,
     },
   }),
-  mockGetWorkerHealthStatus: vi.fn<any>(),
+  mockGetWorkerHealthStatus: vi.fn<() => { healthy: boolean }>(),
   mockLogger: {
     debug: vi.fn(),
     info: vi.fn(),
