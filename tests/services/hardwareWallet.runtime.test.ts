@@ -21,6 +21,7 @@ const makeMockAdapterClass = (type: 'ledger' | 'trezor' | 'bitbox' | 'jade') => 
         type,
         name: `${type}-device`,
         connected: true,
+        fingerprint: 'f1f1f1f1',
       };
     }
 
@@ -31,6 +32,7 @@ const makeMockAdapterClass = (type: 'ledger' | 'trezor' | 'bitbox' | 'jade') => 
         type,
         name: `${type}-device`,
         connected: true,
+        fingerprint: 'f1f1f1f1',
       };
     }
 

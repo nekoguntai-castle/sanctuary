@@ -31,7 +31,7 @@ describe('ConnectionMethodSelector branch coverage', () => {
       <ConnectionMethodSelector
         selectedModel={baseModel}
         selectedMethod="usb"
-        availableMethods={['usb', 'manual', 'unknown_method' as any]}
+        availableMethods={['usb', 'unknown_method' as any]}
         onSelectMethod={onSelectMethod}
       />,
     );
@@ -43,7 +43,8 @@ describe('ConnectionMethodSelector branch coverage', () => {
     // Unknown method does not render a button because config is missing.
     expect(screen.queryByText('unknown_method')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /Manual Entry/i }));
-    expect(onSelectMethod).toHaveBeenCalledWith('manual');
+    expect(screen.queryByRole('button', { name: /Manual Entry/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^USB/i }));
+    expect(onSelectMethod).toHaveBeenCalledWith('usb');
   });
 });

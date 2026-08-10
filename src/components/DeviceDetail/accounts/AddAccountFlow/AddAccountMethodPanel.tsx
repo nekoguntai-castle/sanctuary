@@ -1,5 +1,4 @@
 import React from 'react';
-import { ManualAccountForm } from '../../ManualAccountForm';
 import { FileImport } from '../FileImport';
 import { ImportReview } from '../ImportReview';
 import { QrImport } from '../QrImport';
@@ -66,15 +65,6 @@ export const AddAccountMethodPanel: React.FC<AddAccountMethodPanelProps> = ({
           onFileUpload={controller.handleFileUpload}
           urDecoderRef={controller.urDecoderRef}
           bytesDecoderRef={controller.bytesDecoderRef}
-        />
-      );
-    case 'manual':
-      return (
-        <ManualAccountForm
-          account={controller.manualAccount}
-          onChange={controller.setManualAccount}
-          onSubmit={controller.handleAddAccountManually}
-          loading={controller.addAccountLoading}
         />
       );
     default:

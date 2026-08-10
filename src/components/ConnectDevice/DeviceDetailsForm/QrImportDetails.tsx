@@ -40,7 +40,7 @@ export function QrImportDetails({
             <QrFieldStatus
               label="Extended Public Key"
               extracted={qrExtractedFields.xpub}
-              missingLabel="Manual"
+              missingLabel="Not in QR"
             />
             <QrFieldStatus
               label="Master Fingerprint"
@@ -50,7 +50,7 @@ export function QrImportDetails({
             <QrFieldStatus
               label="Derivation Path"
               extracted={qrExtractedFields.derivationPath}
-              missingLabel="Using default"
+              missingLabel="Not in QR"
             />
           </div>
         </div>
@@ -74,7 +74,7 @@ function QrFieldStatus({ label, extracted, missingLabel }: QrFieldStatusProps) {
           <Check className="w-3 h-3" /> From QR
         </span>
       ) : (
-        <span className={missingLabel === 'Manual' ? 'text-sanctuary-400' : 'text-warning-600'}>
+        <span className="text-warning-600">
           {missingLabel}
         </span>
       )}

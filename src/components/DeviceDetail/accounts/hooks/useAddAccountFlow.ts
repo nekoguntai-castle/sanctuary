@@ -2,16 +2,13 @@
  * useAddAccountFlow Hook
  *
  * Encapsulates all state management and handlers for the AddAccountFlow component.
- * Manages import methods (USB, QR, file, manual), UR decoder refs, and account processing.
+ * Manages verified USB, QR, and file imports plus UR decoder refs.
  */
 
 import { useState, useRef, useCallback, type MutableRefObject } from "react";
 import { URRegistryDecoder } from "@keystonehq/bc-ur-registry";
 import { URDecoder as BytesURDecoder } from "@ngraveio/bc-ur";
-import {
-  DeviceAccountPurpose,
-  WalletScriptType,
-} from "@sanctuary/shared/constants/walletIdentity";
+import { parseDerivationPath } from "@sanctuary/shared/utils/bitcoin";
 import {
   DeviceAccount as ParsedDeviceAccount,
   parseDeviceJson,
@@ -21,6 +18,10 @@ import {
   buildSkippedXpubWarning,
 } from "../../../../services/hardwareWallet/xpubImportWarnings";
 import { fetchStandardXpubBatch } from "../../../../services/hardwareWallet/xpubBatch";
+import {
+  requireMatchingMasterFingerprint,
+  validateXpubBatch,
+} from "../../../../services/hardwareWallet/identity";
 import type { DeviceType } from "../../../../services/hardwareWallet/types";
 import { getDevice, addDeviceAccount } from "../../../../api/devices";
 import { createLogger } from "../../../../utils/logger";
@@ -30,7 +31,6 @@ import {
   parseFileContent,
   createSingleAccount,
 } from "../accountImportUtils";
-import type { ManualAccountData } from "../../ManualAccountForm";
 import type { AccountConflict } from "../ImportReview";
 import type {
   AddAccountFlowProps,
@@ -122,16 +122,23 @@ const qrImportFromUrExtraction = (
   extracted: ReturnType<typeof extractFromUrResult>,
 ): ParsedQrImport | null => {
   if (!extracted?.xpub) return null;
+  const normalizedPath = normalizeDerivationPath(extracted.path);
+  const parsedPath = parseDerivationPath(normalizedPath);
+  if (
+    !parsedPath.valid
+    || parsedPath.accountPath !== normalizedPath
+    || parsedPath.accountPurpose === "unknown"
+    || parsedPath.scriptType === "unknown"
+  ) {
+    return null;
+  }
 
   return {
     accounts: [
       {
-        purpose: extracted.path.includes("48'")
-          ? DeviceAccountPurpose.MULTISIG
-          : DeviceAccountPurpose.SINGLE_SIG,
-        scriptType: WalletScriptType.NATIVE_SEGWIT,
-        derivationPath:
-          normalizeDerivationPath(extracted.path) || "m/84'/0'/0'",
+        purpose: parsedPath.accountPurpose,
+        scriptType: parsedPath.scriptType,
+        derivationPath: normalizedPath,
         xpub: extracted.xpub,
       },
     ],
@@ -317,12 +324,6 @@ export function useAddAccountFlow({
   const [addAccountLoading, setAddAccountLoading] = useState(false);
   const [addAccountError, setAddAccountError] = useState<string | null>(null);
   const [usbProgress, setUsbProgress] = useState<UsbProgress | null>(null);
-  const [manualAccount, setManualAccount] = useState<ManualAccountData>({
-    purpose: DeviceAccountPurpose.MULTISIG,
-    scriptType: WalletScriptType.NATIVE_SEGWIT,
-    derivationPath: "m/48'/0'/0'/2'",
-    xpub: "",
-  });
 
   // QR scanning state
   const [qrMode, setQrMode] = useState<QrMode>("camera");
@@ -349,7 +350,20 @@ export function useAddAccountFlow({
    */
   const handleProcessImportedAccounts = useCallback(
     (accounts: ParsedDeviceAccount[], fingerprint: string) => {
-      const result = processImportedAccounts(accounts, fingerprint, device);
+      let masterFingerprint: string;
+      try {
+        masterFingerprint = requireMatchingMasterFingerprint(
+          fingerprint,
+          device.fingerprint,
+          "Imported account data",
+        );
+      } catch (error) {
+        setAddAccountError(
+          error instanceof Error ? error.message : "Invalid imported device identity",
+        );
+        return;
+      }
+      const result = processImportedAccounts(accounts, masterFingerprint, device);
 
       if (result.error) {
         setAddAccountError(result.error);
@@ -359,7 +373,7 @@ export function useAddAccountFlow({
       const newAccounts = result.newAccounts!;
       setParsedAccounts(newAccounts);
       setSelectedParsedAccounts(new Set(newAccounts.map((_, i) => i)));
-      setImportFingerprint(fingerprint);
+      setImportFingerprint(masterFingerprint);
       setAccountConflict({
         existingAccounts: device.accounts || [],
         newAccounts,
@@ -499,7 +513,7 @@ export function useAddAccountFlow({
       );
 
       // Connect to the device
-      await hardwareWalletService.connect(deviceType);
+      const connectedDevice = await hardwareWalletService.connect(deviceType);
 
       // Fetch all xpubs
       const xpubBatch = await fetchStandardXpubBatch(
@@ -507,8 +521,17 @@ export function useAddAccountFlow({
         (current, total, name) => {
           setUsbProgress({ current, total, name });
         },
+        {
+          connectedFingerprint: connectedDevice?.fingerprint,
+          storedFingerprint: device.fingerprint,
+        },
       );
-      const allXpubs = xpubBatch.results;
+      const validatedBatch = validateXpubBatch(
+        xpubBatch.results,
+        connectedDevice?.fingerprint,
+        device.fingerprint,
+      );
+      const allXpubs = validatedBatch.results;
 
       // Filter out accounts that already exist on this device
       const existingPaths = new Set(
@@ -530,6 +553,7 @@ export function useAddAccountFlow({
             scriptType: account.scriptType,
             derivationPath: account.path,
             xpub: account.xpub,
+            masterFingerprint: validatedBatch.fingerprint,
           });
           addedCount++;
         } catch (err) {
@@ -573,34 +597,6 @@ export function useAddAccountFlow({
     }
   }, [device, deviceId, onClose, onDeviceUpdated]);
 
-  // Add account manually
-  const handleAddAccountManually = useCallback(async () => {
-    if (!manualAccount.xpub || !manualAccount.derivationPath) return;
-
-    setAddAccountLoading(true);
-    setAddAccountError(null);
-
-    try {
-      await addDeviceAccount(deviceId, manualAccount);
-
-      // Refresh device data
-      const updatedDevice = await getDevice(deviceId);
-      onDeviceUpdated(updatedDevice);
-      onClose();
-
-      log.info("Added account manually", {
-        path: manualAccount.derivationPath,
-      });
-    } catch (err) {
-      log.error("Failed to add account manually", { err });
-      setAddAccountError(
-        err instanceof Error ? err.message : "Failed to add account",
-      );
-    } finally {
-      setAddAccountLoading(false);
-    }
-  }, [deviceId, manualAccount, onClose, onDeviceUpdated]);
-
   /**
    * Add selected parsed accounts to the device
    */
@@ -612,6 +608,15 @@ export function useAddAccountFlow({
     setAddAccountError(null);
 
     try {
+      const validatedImport = validateXpubBatch(
+        parsedAccounts.map(account => ({
+          xpub: account.xpub,
+          path: account.derivationPath,
+          fingerprint: importFingerprint,
+        })),
+        importFingerprint,
+        device.fingerprint,
+      );
       let addedCount = 0;
       for (const [index, account] of parsedAccounts.entries()) {
         if (selectedParsedAccounts.has(index)) {
@@ -621,6 +626,7 @@ export function useAddAccountFlow({
               scriptType: account.scriptType,
               derivationPath: account.derivationPath,
               xpub: account.xpub,
+              masterFingerprint: validatedImport.fingerprint,
             });
             addedCount++;
           } catch (err) {
@@ -648,6 +654,8 @@ export function useAddAccountFlow({
     }
   }, [
     deviceId,
+    device.fingerprint,
+    importFingerprint,
     parsedAccounts,
     selectedParsedAccounts,
     onClose,
@@ -665,11 +673,6 @@ export function useAddAccountFlow({
     // USB
     usbProgress,
     handleAddAccountsViaUsb,
-
-    // Manual
-    manualAccount,
-    setManualAccount,
-    handleAddAccountManually,
 
     // QR
     qrMode,

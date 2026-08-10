@@ -24,6 +24,10 @@ export interface DeviceAccountInput {
   xpub: string;
 }
 
+export interface AddDeviceAccountRequest extends DeviceAccountInput {
+  masterFingerprint: string;
+}
+
 export interface CreateDeviceRequest {
   type: string;
   label: string;
@@ -304,7 +308,7 @@ export async function shareDeviceWithGroup(
  */
 export async function addDeviceAccount(
   deviceId: string,
-  account: DeviceAccountInput
+  account: AddDeviceAccountRequest
 ): Promise<DeviceAccountInput & { id: string }> {
   return apiClient.post<DeviceAccountInput & { id: string }>(`/devices/${deviceId}/accounts`, account);
 }

@@ -1,7 +1,5 @@
 export { DeviceDetail } from './DeviceDetail';
 
-export { ManualAccountForm } from './ManualAccountForm';
-export type { ManualAccountData } from './ManualAccountForm';
 
 export { AccountList } from './AccountList';
 

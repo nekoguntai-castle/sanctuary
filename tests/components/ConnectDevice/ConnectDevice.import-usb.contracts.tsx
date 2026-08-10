@@ -245,7 +245,10 @@ export const registerConnectDeviceImportUsbContracts = () => {
       const user = userEvent.setup();
 
       mocks.isSecureContext.mockReturnValue(true);
-      mocks.hardwareWalletService.connect.mockResolvedValue({ connected: true } as any);
+      mocks.hardwareWalletService.connect.mockResolvedValue({
+        connected: true,
+        fingerprint: 'c0ffeebb',
+      } as any);
       mocks.hardwareWalletService.getAllXpubs.mockResolvedValue([
         {
           purpose: 'single_sig',

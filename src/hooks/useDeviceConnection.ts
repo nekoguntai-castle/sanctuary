@@ -13,6 +13,7 @@ import { DeviceAccount } from '../services/deviceParsers';
 import { loadHardwareWalletRuntime } from '../services/hardwareWallet/loader';
 import { fetchStandardXpubBatch } from '../services/hardwareWallet/xpubBatch';
 import { buildSkippedXpubWarning } from '../services/hardwareWallet/xpubImportWarnings';
+import { validateXpubBatch } from '../services/hardwareWallet/identity';
 import { getDeviceTypeFromModel } from '../utils/deviceConnection';
 import { createLogger } from '../utils/logger';
 
@@ -113,10 +114,15 @@ export function useDeviceConnection(): UseDeviceConnectionState {
 
       // Fetch all standard derivation paths
       log.info('Fetching all derivation paths from device');
-      const xpubBatch = await fetchStandardXpubBatch(hardwareWalletService, (current, total, name) => {
-        setUsbProgress({ current, total, name });
-      });
-      const allXpubs = xpubBatch.results;
+      const xpubBatch = await fetchStandardXpubBatch(
+        hardwareWalletService,
+        (current, total, name) => {
+          setUsbProgress({ current, total, name });
+        },
+        { connectedFingerprint: device.fingerprint }
+      );
+      const validatedBatch = validateXpubBatch(xpubBatch.results, device.fingerprint);
+      const allXpubs = validatedBatch.results;
 
       // Convert to DeviceAccount format
       const accounts: DeviceAccount[] = allXpubs.map((result) => ({
@@ -126,8 +132,7 @@ export function useDeviceConnection(): UseDeviceConnectionState {
         xpub: result.xpub,
       }));
 
-      // Set fingerprint from first result (all should have same fingerprint)
-      const fingerprint = allXpubs.length > 0 ? allXpubs[0].fingerprint : '';
+      const fingerprint = validatedBatch.fingerprint;
 
       setConnectionResult({
         fingerprint,

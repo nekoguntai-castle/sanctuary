@@ -5,7 +5,7 @@
 import type { Device } from '../../../types';
 
 /** Import method selection options */
-export type AddAccountMethod = 'usb' | 'manual' | 'sdcard' | 'qr' | null;
+export type AddAccountMethod = 'usb' | 'sdcard' | 'qr' | null;
 
 /** QR scan mode: live camera or file upload */
 export type QrMode = 'camera' | 'file';

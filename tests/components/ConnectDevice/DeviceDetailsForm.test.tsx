@@ -19,7 +19,7 @@ const selectedModel = {
 function createProps(overrides: Record<string, unknown> = {}) {
   return {
     selectedModel,
-    method: 'manual',
+    method: null,
     scanned: false,
     formData: {
       label: 'My Device',
@@ -48,19 +48,12 @@ describe('DeviceDetailsForm', () => {
     expect(screen.getByText(/Select a device to continue/i)).toBeInTheDocument();
   });
 
-  it('handles manual entry form changes', () => {
+  it('allows editing labels before a connection completes', () => {
     const props = createProps();
     render(<DeviceDetailsForm {...props} />);
 
     fireEvent.change(screen.getByDisplayValue('My Device'), { target: { value: 'Renamed Device' } });
-    fireEvent.change(screen.getByPlaceholderText('00000000'), { target: { value: 'a1b2c3d4' } });
-    fireEvent.change(screen.getByDisplayValue("m/84'/0'/0'"), { target: { value: "m/86'/0'/0'" } });
-    fireEvent.change(screen.getByPlaceholderText('xpub... / ypub... / zpub...'), { target: { value: 'xpub123' } });
-
     expect(props.onFormDataChange).toHaveBeenCalledWith({ label: 'Renamed Device' });
-    expect(props.onFormDataChange).toHaveBeenCalledWith({ fingerprint: 'a1b2c3d4' });
-    expect(props.onFormDataChange).toHaveBeenCalledWith({ derivationPath: "m/86'/0'/0'" });
-    expect(props.onFormDataChange).toHaveBeenCalledWith({ xpub: 'xpub123' });
   });
 
   it('renders parsed account list, toggles accounts, and saves', async () => {

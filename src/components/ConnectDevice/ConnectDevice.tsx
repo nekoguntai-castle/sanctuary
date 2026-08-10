@@ -4,7 +4,7 @@
  * Main component for connecting hardware wallet devices.
  * Orchestrates the multi-step flow:
  * 1. Select device model
- * 2. Choose connection method (USB, SD Card, QR, Manual)
+ * 2. Choose a verified connection method (USB, SD Card, or QR)
  * 3. Enter device details
  * 4. Save device (with conflict handling)
  *

@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as accountImportUtils from "../../../../../src/components/DeviceDetail/accounts/accountImportUtils";
+import * as hardwareIdentity from "../../../../../src/services/hardwareWallet/identity";
 import {
   getDeviceTypeFromDeviceModel,
   useAddAccountFlow,
@@ -181,7 +182,7 @@ describe("useAddAccountFlow branch coverage", () => {
     decoderConfig.bytesQueue = [];
     decoderConfig.urQueue = [];
 
-    connectMock.mockResolvedValue(undefined);
+    connectMock.mockResolvedValue({ connected: true, fingerprint: "abcd1234" });
     getAllXpubsMock.mockResolvedValue([]);
     disconnectMock.mockResolvedValue(undefined);
     getDeviceMock.mockResolvedValue({ ...defaultDevice });
@@ -219,7 +220,86 @@ describe("useAddAccountFlow branch coverage", () => {
     expect(parseDeviceJsonMock).not.toHaveBeenCalled();
   });
 
-  it("reuses bytes decoder after incomplete part and handles parsed accounts without fingerprint", async () => {
+  it("rejects plain account and xpub QR payloads without a fingerprint", async () => {
+    parseDeviceJsonMock.mockReturnValueOnce({
+      accounts: [
+        {
+          purpose: "single_sig",
+          scriptType: "native_segwit",
+          derivationPath: "m/84'/0'/0'",
+          xpub: "xpub-plain-account",
+        },
+      ],
+      format: "generic",
+    });
+    const accountsFlow = renderFlowHook();
+    act(() => {
+      accountsFlow.result.current.handleQrScan([{ rawValue: "plain-accounts-without-fingerprint" }]);
+    });
+    await waitFor(() =>
+      expect(accountsFlow.result.current.addAccountError).toMatch(/master fingerprint/i),
+    );
+    accountsFlow.unmount();
+
+    parseDeviceJsonMock.mockReturnValueOnce({
+      xpub: "xpub-plain",
+      derivationPath: "m/84'/0'/1'",
+      format: "generic",
+    });
+    const xpubFlow = renderFlowHook();
+    act(() => {
+      xpubFlow.result.current.handleQrScan([{ rawValue: "plain-xpub-without-fingerprint" }]);
+    });
+    await waitFor(() =>
+      expect(xpubFlow.result.current.addAccountError).toMatch(/master fingerprint/i),
+    );
+  });
+
+  it("rejects a registry UR account without fingerprint identity evidence", async () => {
+    decoderConfig.urQueue.push({
+      progress: 1,
+      complete: true,
+      success: true,
+      registryType: { kind: "crypto-hdkey" },
+    });
+    extractFromUrResultMock.mockReturnValue({
+      xpub: "xpub-ur",
+      path: "m/84'/0'/2'",
+    });
+
+    const { result } = renderFlowHook();
+    act(() => {
+      result.current.handleQrScan([{ rawValue: "ur:crypto-hdkey/identity" }]);
+    });
+
+    await waitFor(() => expect(result.current.addAccountError).toMatch(/master fingerprint/i));
+  });
+
+  it("uses a safe generic identity error when verification throws a non-Error", async () => {
+    const identitySpy = vi
+      .spyOn(hardwareIdentity, "requireMatchingMasterFingerprint")
+      .mockImplementationOnce(() => {
+        throw "identity-verification-failed";
+      });
+    parseDeviceJsonMock.mockReturnValueOnce({
+      xpub: "xpub-plain",
+      derivationPath: "m/84'/0'/3'",
+      fingerprint: "abcd1234",
+      format: "generic",
+    });
+
+    const { result } = renderFlowHook();
+    act(() => {
+      result.current.handleQrScan([{ rawValue: "plain-identity" }]);
+    });
+
+    await waitFor(() =>
+      expect(result.current.addAccountError).toBe("Invalid imported device identity"),
+    );
+    identitySpy.mockRestore();
+  });
+
+  it("reuses bytes decoder after an incomplete part and rejects accounts without fingerprint", async () => {
     decoderConfig.bytesQueue.push({
       progress: 0.5,
       completeQueue: [false, true],
@@ -248,11 +328,11 @@ describe("useAddAccountFlow branch coverage", () => {
       result.current.handleQrScan([{ rawValue: "ur:bytes/2-2" }]);
     });
 
-    await waitFor(() => expect(result.current.parsedAccounts).toHaveLength(1));
-    expect(result.current.importFingerprint).toBe("");
+    await waitFor(() => expect(result.current.addAccountError).toMatch(/master fingerprint/i));
+    expect(result.current.parsedAccounts).toHaveLength(0);
   });
 
-  it("handles bytes UR with xpub-only payload and fallback fingerprint", async () => {
+  it("rejects bytes UR xpub-only payload without master fingerprint", async () => {
     decoderConfig.bytesQueue.push({
       progress: 1,
       complete: true,
@@ -270,9 +350,8 @@ describe("useAddAccountFlow branch coverage", () => {
       result.current.handleQrScan([{ rawValue: "ur:bytes/single" }]);
     });
 
-    await waitFor(() => expect(result.current.parsedAccounts).toHaveLength(1));
-    expect(result.current.importFingerprint).toBe("");
-    expect(result.current.parsedAccounts[0].xpub).toBe("xpub-b");
+    await waitFor(() => expect(result.current.addAccountError).toMatch(/master fingerprint/i));
+    expect(result.current.parsedAccounts).toHaveLength(0);
   });
 
   it("surfaces bytes UR extraction failure when decoded payload has no accounts or xpub", async () => {
@@ -319,7 +398,7 @@ describe("useAddAccountFlow branch coverage", () => {
     );
   });
 
-  it("reuses UR registry decoder and falls back to default derivation path when normalization returns empty", async () => {
+  it("reuses UR registry decoder and rejects a missing normalized derivation path", async () => {
     decoderConfig.urQueue.push({
       progress: 0.6,
       completeQueue: [false, true],
@@ -329,6 +408,7 @@ describe("useAddAccountFlow branch coverage", () => {
     extractFromUrResultMock.mockReturnValue({
       xpub: "xpub-ur",
       path: "m/48'/0'/0'/2'",
+      fingerprint: "abcd1234",
     });
     normalizeDerivationPathMock.mockReturnValueOnce(undefined as any);
 
@@ -343,10 +423,8 @@ describe("useAddAccountFlow branch coverage", () => {
       result.current.handleQrScan([{ rawValue: "ur:crypto-hdkey/2-2" }]);
     });
 
-    await waitFor(() => expect(result.current.parsedAccounts).toHaveLength(1));
-    expect(result.current.parsedAccounts[0].purpose).toBe("multisig");
-    expect(result.current.parsedAccounts[0].derivationPath).toBe("m/84'/0'/0'");
-    expect(result.current.importFingerprint).toBe("");
+    await waitFor(() => expect(result.current.addAccountError).toBe("Could not extract xpub from UR"));
+    expect(result.current.parsedAccounts).toHaveLength(0);
   });
 
   it("handles UR decode failure and non-Error exceptions in decoder processing", async () => {
@@ -389,6 +467,7 @@ describe("useAddAccountFlow branch coverage", () => {
     parseDeviceJsonMock.mockReturnValueOnce({
       xpub: "xpub-plain",
       derivationPath: "m/84'/0'/3'",
+      fingerprint: "abcd1234",
     });
 
     const { result } = renderFlowHook();
@@ -397,7 +476,7 @@ describe("useAddAccountFlow branch coverage", () => {
       result.current.handleQrScan([{ rawValue: "plain-payload" }]);
     });
     await waitFor(() => expect(result.current.parsedAccounts).toHaveLength(1));
-    expect(result.current.importFingerprint).toBe("");
+    expect(result.current.importFingerprint).toBe("abcd1234");
 
     act(() => {
       result.current.handleCameraError(
@@ -463,6 +542,7 @@ describe("useAddAccountFlow branch coverage", () => {
         scriptType: "native_segwit",
         path: "m/84'/0'/0'",
         xpub: "xpub-new",
+        fingerprint: "abcd1234",
       },
     ]);
     const success = renderFlowHook({ accounts: undefined });
@@ -474,6 +554,7 @@ describe("useAddAccountFlow branch coverage", () => {
       expect.objectContaining({
         derivationPath: "m/84'/0'/0'",
         xpub: "xpub-new",
+        masterFingerprint: "abcd1234",
       }),
     );
     expect(onDeviceUpdatedMock).toHaveBeenCalled();
@@ -499,6 +580,7 @@ describe("useAddAccountFlow branch coverage", () => {
           scriptType: "native_segwit",
           path: "m/84'/0'/0'",
           xpub: "xpub-existing",
+          fingerprint: "abcd1234",
         },
       ],
       failures: [
@@ -533,6 +615,7 @@ describe("useAddAccountFlow branch coverage", () => {
           scriptType: "native_segwit",
           path: "m/84'/0'/9'",
           xpub: "xpub-new-but-rejected",
+          fingerprint: "abcd1234",
         },
       ],
       failures: [],
@@ -562,6 +645,7 @@ describe("useAddAccountFlow branch coverage", () => {
           scriptType: "native_segwit",
           path: "m/84'/0'/9'",
           xpub: "xpub-new-but-rejected",
+          fingerprint: "abcd1234",
         },
       ],
       failures: [
@@ -592,6 +676,71 @@ describe("useAddAccountFlow branch coverage", () => {
     expect(onCloseMock).not.toHaveBeenCalled();
   });
 
+  it("rejects a connected device that does not match the stored fingerprint before writes", async () => {
+    connectMock.mockResolvedValueOnce({ connected: true, fingerprint: "deadbeef" });
+    getAllXpubsMock.mockResolvedValueOnce([
+      {
+        purpose: "single_sig",
+        scriptType: "native_segwit",
+        path: "m/84'/0'/0'",
+        xpub: "xpub-wrong-device",
+        fingerprint: "deadbeef",
+      },
+    ]);
+    const { result } = renderFlowHook({ accounts: [] });
+
+    await act(async () => result.current.handleAddAccountsViaUsb());
+
+    expect(result.current.addAccountError).toMatch(/fingerprint mismatch/i);
+    expect(addDeviceAccountMock).not.toHaveBeenCalled();
+    expect(onDeviceUpdatedMock).not.toHaveBeenCalled();
+    expect(onCloseMock).not.toHaveBeenCalled();
+    expect(disconnectMock).toHaveBeenCalled();
+  });
+
+  it("prevalidates every xpub identity before writing the first account", async () => {
+    getAllXpubsMock.mockResolvedValueOnce([
+      {
+        purpose: "single_sig",
+        scriptType: "native_segwit",
+        path: "m/84'/0'/0'",
+        xpub: "xpub-matching",
+        fingerprint: "abcd1234",
+      },
+      {
+        purpose: "single_sig",
+        scriptType: "taproot",
+        path: "m/86'/0'/0'",
+        xpub: "xpub-wrong-device",
+        fingerprint: "deadbeef",
+      },
+    ]);
+    const { result } = renderFlowHook({ accounts: [] });
+
+    await act(async () => result.current.handleAddAccountsViaUsb());
+
+    expect(result.current.addAccountError).toMatch(/fingerprint mismatch/i);
+    expect(addDeviceAccountMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects missing master fingerprint evidence before account writes", async () => {
+    getAllXpubsMock.mockResolvedValueOnce([
+      {
+        purpose: "single_sig",
+        scriptType: "native_segwit",
+        path: "m/84'/0'/0'",
+        xpub: "xpub-no-identity",
+        fingerprint: "",
+      },
+    ]);
+    const { result } = renderFlowHook({ accounts: [] });
+
+    await act(async () => result.current.handleAddAccountsViaUsb());
+
+    expect(result.current.addAccountError).toMatch(/master fingerprint/i);
+    expect(addDeviceAccountMock).not.toHaveBeenCalled();
+  });
+
   it("skips unselected parsed accounts and handles non-Error refresh failures", async () => {
     parseDeviceJsonMock.mockReturnValueOnce({
       accounts: [
@@ -608,6 +757,7 @@ describe("useAddAccountFlow branch coverage", () => {
           xpub: "xpub-5",
         },
       ],
+      fingerprint: "abcd1234",
     });
 
     const { result } = renderFlowHook();
@@ -632,6 +782,7 @@ describe("useAddAccountFlow branch coverage", () => {
       expect.objectContaining({
         derivationPath: "m/84'/0'/4'",
         xpub: "xpub-4",
+        masterFingerprint: "abcd1234",
       }),
     );
     expect(result.current.addAccountError).toBe("Failed to add accounts");
@@ -647,6 +798,7 @@ describe("useAddAccountFlow branch coverage", () => {
           xpub: "xpub-7",
         },
       ],
+      fingerprint: "abcd1234",
     });
 
     const { result } = renderFlowHook();

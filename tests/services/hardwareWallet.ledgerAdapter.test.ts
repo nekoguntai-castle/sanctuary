@@ -322,7 +322,7 @@ describe("LedgerAdapter", () => {
     expect(device.fingerprint).toBe("f00dbabe");
   });
 
-  it("continues connect when an unknown fingerprint fetch error occurs", async () => {
+  it("fails closed when the master fingerprint cannot be read", async () => {
     const transport = {
       close: (...args: unknown[]) => mockTransportClose(...args),
       device: makeUsbDevice({ productId: 0x0007 }),
@@ -332,12 +332,27 @@ describe("LedgerAdapter", () => {
       new Error("fingerprint read failed"),
     );
 
-    const adapter = new LedgerAdapter();
-    const device = await adapter.connect();
-
-    expect(device.name).toBe("Ledger Flex");
-    expect(device.fingerprint).toBeUndefined();
+    await expect(new LedgerAdapter().connect()).rejects.toThrow(
+      "master fingerprint",
+    );
+    expect(mockTransportClose).toHaveBeenCalled();
   });
+
+  it.each(["", "00000000", "not-hex", "abc123"])(
+    "rejects invalid or sentinel master fingerprint %j",
+    async (fingerprint) => {
+      mockTransportCreate.mockResolvedValueOnce({
+        close: (...args: unknown[]) => mockTransportClose(...args),
+        device: makeUsbDevice(),
+      });
+      mockGetMasterFingerprint.mockResolvedValueOnce(fingerprint);
+
+      await expect(new LedgerAdapter().connect()).rejects.toThrow(
+        "valid master fingerprint",
+      );
+      expect(mockTransportClose).toHaveBeenCalled();
+    },
+  );
 
   it("fails connect with an actionable message when the Bitcoin app is not ready", async () => {
     const transport = {
@@ -412,7 +427,9 @@ describe("LedgerAdapter", () => {
     await expect(
       (adapter as any).getLedgerXpub("m/84'/0'/0'", 0x0488b21e),
     ).rejects.toThrow("No device connected");
-    await expect((adapter as any).getMasterFingerprint()).resolves.toBe("");
+    await expect((adapter as any).getMasterFingerprint()).rejects.toThrow(
+      "No device connected",
+    );
     await expect(
       adapter.verifyAddress("m/84'/0'/0'/0/0", "bc1qxyz"),
     ).rejects.toThrow("No device connected");
@@ -476,7 +493,7 @@ describe("LedgerAdapter", () => {
       name: "Ledger",
       model: "Ledger",
       connected: true,
-      fingerprint: "",
+      fingerprint: "f00dbabe",
     };
 
     mockGetExtendedPubkey.mockResolvedValueOnce("tpub-testnet");
@@ -500,10 +517,12 @@ describe("LedgerAdapter", () => {
       xpubVersion: 0x0488b21e,
     });
 
+    (adapter as any).connectedDevice.fingerprint = undefined;
     mockGetMasterFingerprint.mockRejectedValueOnce(new Error("fp read fail"));
     mockGetExtendedPubkey.mockResolvedValueOnce("xpub-mainnet");
-    const noFpResult = await adapter.getXpub("m/84'/0'/0'");
-    expect(noFpResult.fingerprint).toBe("");
+    await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow(
+      "master fingerprint",
+    );
 
     mockGetExtendedPubkey.mockRejectedValueOnce(new Error("0x6985 denied"));
     await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow(

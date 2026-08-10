@@ -1,5 +1,5 @@
 import React from 'react';
-import { Edit2, HardDrive, QrCode, Usb } from 'lucide-react';
+import { HardDrive, QrCode, Usb } from 'lucide-react';
 import { isSecureContext } from '../../../../services/hardwareWallet/environment';
 import type { AddAccountFlowProps, AddAccountMethod } from '../types';
 import { getDeviceTypeFromDeviceModel } from '../hooks/useAddAccountFlow';
@@ -83,16 +83,6 @@ export const AddAccountMethodPicker: React.FC<AddAccountMethodPickerProps> = ({
         }
       />
 
-      <MethodOption
-        title="Enter Manually"
-        description="Enter derivation path and xpub"
-        onClick={() => onSelectMethod('manual')}
-        icon={
-          <div className="p-2 rounded-lg bg-sanctuary-100 dark:bg-sanctuary-800">
-            <Edit2 className="w-5 h-5 text-sanctuary-600 dark:text-sanctuary-400" />
-          </div>
-        }
-      />
     </div>
   );
 };

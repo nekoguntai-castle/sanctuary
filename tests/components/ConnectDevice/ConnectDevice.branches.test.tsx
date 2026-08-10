@@ -16,7 +16,7 @@ const hookState = vi.hoisted(() => ({
     slug: 'coldcard-mk4',
     name: 'Coldcard MK4',
     manufacturer: 'Coinkite',
-    connectivity: ['usb', 'sd_card', 'qr_code', 'manual'],
+    connectivity: ['usb', 'sd_card', 'qr_code'],
   },
   qr: {
     qrMode: 'camera',
@@ -100,7 +100,7 @@ vi.mock('../../../src/hooks/useDeviceConnection', () => ({
 }));
 
 vi.mock('../../../src/utils/deviceConnection', () => ({
-  getAvailableMethods: () => ['usb', 'sd_card', 'qr_code', 'manual'],
+  getAvailableMethods: () => ['usb', 'sd_card', 'qr_code'],
   normalizeDerivationPath: (path: string) => `norm:${path}`,
 }));
 
@@ -116,7 +116,6 @@ vi.mock('../../../src/components/ConnectDevice/ConnectionMethodSelector', () => 
       <button onClick={() => onSelectMethod('usb')}>method-usb</button>
       <button onClick={() => onSelectMethod('sd_card')}>method-sd</button>
       <button onClick={() => onSelectMethod('qr_code')}>method-qr</button>
-      <button onClick={() => onSelectMethod('manual')}>method-manual</button>
     </div>
   ),
 }));
@@ -187,18 +186,19 @@ vi.mock('../../../src/components/ConnectDevice/DeviceDetailsForm', () => ({
           onFormDataChange({
             label: '',
             fingerprint: '',
-            xpub: 'manual-xpub',
+            xpub: 'typed-xpub',
             derivationPath: "m/84'/0'/9'",
             parsedAccounts: [],
             selectedAccounts: new Set(),
           })
         }
       >
-        set-manual-empty
+        set-invalid-identity
       </button>
       <button
         onClick={() =>
           onFormDataChange({
+            fingerprint: 'abcdef12',
             parsedAccounts: [{
               purpose: 'single_sig',
               scriptType: 'native_segwit',
@@ -215,7 +215,7 @@ vi.mock('../../../src/components/ConnectDevice/DeviceDetailsForm', () => ({
         onClick={() =>
           onFormDataChange({
             label: '',
-            fingerprint: '',
+            fingerprint: 'abcdef12',
             xpub: 'fallback-xpub',
             derivationPath: "m/84'/0'/7'",
             parsedAccounts: [{
@@ -342,16 +342,10 @@ describe('ConnectDevice branch coverage', () => {
       })
     );
 
-    await user.click(screen.getByRole('button', { name: 'set-manual-empty' }));
+    await user.click(screen.getByRole('button', { name: 'set-invalid-identity' }));
     await user.click(screen.getByRole('button', { name: 'save-device' }));
-    expect(saveDeviceMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        label: 'Coldcard MK4 ',
-        fingerprint: '00000000',
-        xpub: 'manual-xpub',
-        derivationPath: "m/84'/0'/9'",
-      })
-    );
+    expect(saveDeviceMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('Device identity requires a non-zero 8-character master fingerprint and complete derivation path/xpub evidence.')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'set-one-account' }));
     await user.click(screen.getByRole('button', { name: 'merge-device' }));
@@ -361,15 +355,9 @@ describe('ConnectDevice branch coverage', () => {
       })
     );
 
-    await user.click(screen.getByRole('button', { name: 'set-manual-empty' }));
+    await user.click(screen.getByRole('button', { name: 'set-invalid-identity' }));
     await user.click(screen.getByRole('button', { name: 'merge-device' }));
-    expect(mergeDeviceMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        label: 'Coldcard MK4 ',
-        fingerprint: '00000000',
-        xpub: 'manual-xpub',
-      })
-    );
+    expect(mergeDeviceMock).toHaveBeenCalledTimes(1);
   });
 
   it('covers file upload branches including no-file, valid parse, and parse-failure warning', async () => {
@@ -400,7 +388,7 @@ describe('ConnectDevice branch coverage', () => {
     expect(screen.getByTestId('form-label')).toHaveTextContent('Imported Label');
     expect(screen.getByTestId('form-fingerprint')).toHaveTextContent('ffff1111');
     expect(screen.getByTestId('form-xpub')).toHaveTextContent('xpub-file');
-    expect(screen.getByTestId('form-derivation')).toHaveTextContent("norm:m/84h/0h/1h");
+    expect(screen.getByTestId('form-derivation')).toHaveTextContent("m/84h/0h/1h");
     expect(screen.getByTestId('form-accounts')).toHaveTextContent('1');
 
     parseDeviceJsonMock.mockReturnValueOnce(null);
@@ -422,7 +410,30 @@ describe('ConnectDevice branch coverage', () => {
     expect(screen.getByText('Failed to read file.')).toBeInTheDocument();
   });
 
-  it('covers QR parse branches when optional fields are missing and label replacement is allowed', async () => {
+  it('rejects USB results without complete connected-device identity evidence', async () => {
+    const user = userEvent.setup();
+    render(<ConnectDevice />);
+
+    await user.click(screen.getByRole('button', { name: 'select-model' }));
+    hookState.usb.connectionResult = {
+      fingerprint: '00000000',
+      accounts: [{
+        purpose: 'single_sig',
+        scriptType: 'native_segwit',
+        derivationPath: "m/84'/0'/0'",
+        xpub: 'xpub-usb',
+      }],
+    };
+
+    await user.click(screen.getByRole('button', { name: 'method-usb' }));
+
+    expect(screen.getByTestId('form-accounts')).toHaveTextContent('0');
+    expect(screen.getByText('Connected device is missing valid device identity evidence.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'save-device' }));
+    expect(saveDeviceMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects QR imports when derivation path evidence is missing', async () => {
     const user = userEvent.setup();
     render(<ConnectDevice />);
 
@@ -444,13 +455,15 @@ describe('ConnectDevice branch coverage', () => {
 
     await user.click(screen.getByRole('button', { name: 'method-qr' }));
 
-    expect(screen.getByTestId('form-label')).toHaveTextContent('QR Imported Label');
-    expect(screen.getByTestId('form-fingerprint')).toHaveTextContent('abcd1234');
-    expect(screen.getByTestId('form-derivation')).toHaveTextContent("m/84'/0'/0'");
+    expect(screen.getByTestId('form-label')).toHaveTextContent('Custom Label');
+    expect(screen.getByTestId('form-fingerprint')).toHaveTextContent('');
+    expect(screen.getByTestId('form-xpub')).toHaveTextContent('');
+    expect(screen.getByTestId('form-derivation')).toBeEmptyDOMElement();
     expect(screen.getByTestId('form-accounts')).toHaveTextContent('0');
+    expect(screen.getByText('QR import is missing valid device identity evidence.')).toBeInTheDocument();
   });
 
-  it('covers file parse branches for missing fingerprint/accounts and truthy-but-empty parse results', async () => {
+  it('rejects file imports with missing fingerprint or empty identity evidence', async () => {
     const user = userEvent.setup();
     render(<ConnectDevice />);
 
@@ -463,17 +476,52 @@ describe('ConnectDevice branch coverage', () => {
     });
     await user.click(screen.getByRole('button', { name: 'upload-valid' }));
 
-    expect(screen.getByTestId('form-xpub')).toHaveTextContent('xpub-only');
+    expect(screen.getByTestId('form-xpub')).toHaveTextContent('');
     expect(screen.getByTestId('form-fingerprint')).toHaveTextContent('');
-    expect(screen.getByTestId('form-derivation')).toHaveTextContent("norm:m/84h/0h/7h");
+    expect(screen.getByTestId('form-derivation')).toBeEmptyDOMElement();
     expect(screen.getByTestId('form-accounts')).toHaveTextContent('0');
+    expect(screen.getByText('Imported file is missing valid device identity evidence.')).toBeInTheDocument();
 
     parseDeviceJsonMock.mockReturnValueOnce({});
     await user.click(screen.getByRole('button', { name: 'upload-valid' }));
-    expect(screen.getByText('Could not parse file. Please check the format.')).toBeInTheDocument();
+    expect(screen.getByText('Imported file is missing valid device identity evidence.')).toBeInTheDocument();
   });
 
-  it('covers save and merge account filtering when selected set does not include parsed account index', async () => {
+  it('rejects malformed and sentinel fingerprints at QR and file import boundaries', async () => {
+    const user = userEvent.setup();
+    render(<ConnectDevice />);
+
+    await user.click(screen.getByRole('button', { name: 'select-model' }));
+    hookState.qr.scanResult = {
+      xpub: 'xpub-qr',
+      fingerprint: 'not-hex',
+      derivationPath: "m/84'/0'/0'",
+      extractedFields: {
+        xpub: true,
+        fingerprint: true,
+        derivationPath: true,
+        label: false,
+      },
+      warning: null,
+    };
+
+    await user.click(screen.getByRole('button', { name: 'method-qr' }));
+    expect(screen.getByTestId('form-xpub')).toHaveTextContent('');
+    expect(screen.getByText('QR import is missing valid device identity evidence.')).toBeInTheDocument();
+
+    parseDeviceJsonMock.mockReturnValueOnce({
+      xpub: 'xpub-file',
+      fingerprint: '00000000',
+      derivationPath: "m/84'/0'/0'",
+    });
+    await user.click(screen.getByRole('button', { name: 'method-sd' }));
+    await user.click(screen.getByRole('button', { name: 'upload-valid' }));
+
+    expect(screen.getByTestId('form-xpub')).toHaveTextContent('');
+    expect(screen.getByText('Imported file is missing valid device identity evidence.')).toBeInTheDocument();
+  });
+
+  it('does not save manually edited identity fields before a verified connection completes', async () => {
     const user = userEvent.setup();
     render(<ConnectDevice />);
 
@@ -481,20 +529,10 @@ describe('ConnectDevice branch coverage', () => {
     await user.click(screen.getByRole('button', { name: 'set-unselected-account' }));
 
     await user.click(screen.getByRole('button', { name: 'save-device' }));
-    expect(saveDeviceMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        xpub: 'fallback-xpub',
-        derivationPath: "m/84'/0'/7'",
-      })
-    );
+    expect(saveDeviceMock).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole('button', { name: 'merge-device' }));
-    expect(mergeDeviceMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        xpub: 'fallback-xpub',
-        derivationPath: "m/84'/0'/7'",
-      })
-    );
+    expect(mergeDeviceMock).not.toHaveBeenCalled();
   });
 });
 

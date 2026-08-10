@@ -101,7 +101,7 @@ export function normalizeIncomingAccounts(
   }
 
   if (xpub) {
-    return { accounts: [] };
+    return { error: "Legacy xpub and derivationPath must be provided together" };
   }
 
   return { error: "Either xpub or accounts array is required" };
@@ -143,6 +143,14 @@ function validateAccount(account: DeviceAccountInput): string | null {
     return `Account scriptType must be one of: ${WALLET_SCRIPT_TYPE_VALUES.join(", ")}`;
   }
 
+  if (
+    account.derivationPath !== account.derivationPath.trim() ||
+    account.xpub !== account.xpub.trim()
+  ) {
+    // Preserve byte-exact hardware evidence; normalization could hide a mismatch.
+    return "Device account evidence must not contain surrounding whitespace";
+  }
+
   return null;
 }
 
@@ -154,6 +162,12 @@ function buildLegacyAccount(
   xpub: string,
   derivationPath: string,
 ): { accounts: DeviceAccountInput[] } | { error: string } {
+  if (xpub !== xpub.trim() || derivationPath !== derivationPath.trim()) {
+    return {
+      error: "Device account evidence must not contain surrounding whitespace",
+    };
+  }
+
   const parsed = parseDerivationPath(derivationPath);
   if (!parsed.valid || parsed.accountPath === null) {
     return {

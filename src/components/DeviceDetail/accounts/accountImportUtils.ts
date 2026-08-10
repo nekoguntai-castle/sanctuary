@@ -118,7 +118,7 @@ export function createSingleAccount(
       : parseResult.derivationPath?.includes("/1'")
       ? WalletScriptType.NESTED_SEGWIT
       : WalletScriptType.NATIVE_SEGWIT,
-    derivationPath: parseResult.derivationPath || "m/84'/0'/0'",
+    derivationPath: parseResult.derivationPath || '',
     xpub: parseResult.xpub || '',
   };
 }

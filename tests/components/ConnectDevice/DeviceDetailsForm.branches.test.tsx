@@ -18,7 +18,7 @@ const selectedModel = {
 
 const createProps = (overrides: Partial<DeviceDetailsFormProps> = {}): DeviceDetailsFormProps => ({
   selectedModel,
-  method: 'manual',
+  method: null,
   scanned: false,
   formData: {
     label: 'My Device',
@@ -41,7 +41,32 @@ const createProps = (overrides: Partial<DeviceDetailsFormProps> = {}): DeviceDet
 });
 
 describe('DeviceDetailsForm branch coverage', () => {
-  it('covers scanned non-manual read-only styling and error rendering branches', () => {
+  it('forwards edits for every manually editable identity field', () => {
+    const onFormDataChange = vi.fn();
+    render(<DeviceDetailsForm {...createProps({ onFormDataChange })} />);
+
+    fireEvent.change(screen.getByPlaceholderText('My Ledger Nano S'), {
+      target: { value: 'Travel Ledger' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('00000000'), {
+      target: { value: 'A1B2C3D4' },
+    });
+    fireEvent.change(screen.getByDisplayValue("m/84'/0'/0'"), {
+      target: { value: "m/84'/0'/7'" },
+    });
+    fireEvent.change(screen.getByPlaceholderText('xpub... / ypub... / zpub...'), {
+      target: { value: 'xpub-manual' },
+    });
+
+    expect(onFormDataChange.mock.calls).toEqual([
+      [{ label: 'Travel Ledger' }],
+      [{ fingerprint: 'A1B2C3D4' }],
+      [{ derivationPath: "m/84'/0'/7'" }],
+      [{ xpub: 'xpub-manual' }],
+    ]);
+  });
+
+  it('covers scanned import read-only styling and error rendering branches', () => {
     render(
       <DeviceDetailsForm
         {...createProps({
@@ -67,6 +92,10 @@ describe('DeviceDetailsForm branch coverage', () => {
     const xpubInput = screen.getByPlaceholderText('xpub... / ypub... / zpub...');
     expect(xpubInput).toHaveAttribute('readonly');
     expect(xpubInput.className).toContain('opacity-70');
+
+    const derivationPathInput = screen.getByDisplayValue("m/84'/0'/0'");
+    expect(derivationPathInput).toHaveAttribute('readonly');
+    expect(derivationPathInput.className).toContain('opacity-70');
 
     expect(screen.getByText('Save failed')).toBeInTheDocument();
   });
@@ -142,8 +171,7 @@ describe('DeviceDetailsForm branch coverage', () => {
     );
 
     expect(screen.getAllByText('Extended Public Key').length).toBeGreaterThanOrEqual(2);
-    expect(screen.getByText('Not in QR')).toBeInTheDocument();
-    expect(screen.getByText('Using default')).toBeInTheDocument();
+    expect(screen.getAllByText('Not in QR')).toHaveLength(2);
     expect(screen.getAllByText('From QR').length).toBeGreaterThanOrEqual(1);
 
     rerender(
@@ -180,6 +208,6 @@ describe('DeviceDetailsForm branch coverage', () => {
       />,
     );
 
-    expect(screen.getByText('Manual')).toBeInTheDocument();
+    expect(screen.getByText('Not in QR')).toBeInTheDocument();
   });
 });

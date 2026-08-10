@@ -138,14 +138,14 @@ describe('urDeviceDecoder', () => {
     expect(extractFingerprintFromHdKey(hdKey as unknown as CryptoHDKey)).toBe('aabbccdd');
   });
 
-  it('falls back to parent fingerprint when source fingerprint is unavailable', () => {
+  it('does not mistake a parent fingerprint for the master fingerprint', () => {
     const hdKey = new MockCryptoHDKey(
       'xpub-2',
       new MockOrigin(undefined),
       Buffer.from([0xde, 0xad, 0xbe, 0xef])
     );
 
-    expect(extractFingerprintFromHdKey(hdKey as unknown as CryptoHDKey)).toBe('deadbeef');
+    expect(extractFingerprintFromHdKey(hdKey as unknown as CryptoHDKey)).toBe('');
   });
 
   it('returns empty fingerprint when no fingerprint data is available', () => {

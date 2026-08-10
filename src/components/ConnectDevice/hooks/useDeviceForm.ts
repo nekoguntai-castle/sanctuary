@@ -14,8 +14,57 @@ import { useState, useEffect, useCallback } from 'react';
 import { HardwareDeviceModel, CreateDeviceRequest, DeviceAccountInput } from '../../../api/devices';
 import { DeviceAccount, parseDeviceJson } from '../../../services/deviceParsers';
 import { QrScanResult } from '../../../hooks/qr/useQrScanner';
-import { normalizeDerivationPath } from '../../../utils/deviceConnection';
+import { DeviceIdentityEvidenceSchema } from '@sanctuary/shared/schemas/deviceIdentity';
 import type { ConnectionMethod, DeviceFormData } from '../types';
+
+const IMPORT_IDENTITY_WARNING = 'Imported file is missing valid device identity evidence.';
+const QR_IDENTITY_WARNING = 'QR import is missing valid device identity evidence.';
+const USB_IDENTITY_WARNING = 'Connected device is missing valid device identity evidence.';
+const FORM_IDENTITY_WARNING = 'Device identity requires a non-zero 8-character master fingerprint and complete derivation path/xpub evidence.';
+
+interface IdentityBearingResult {
+  xpub?: string;
+  fingerprint?: string;
+  derivationPath?: string;
+  accounts?: DeviceAccount[];
+}
+
+const hasValidIdentityEvidence = (
+  fingerprint: string | undefined,
+  derivationPath: string | undefined,
+  xpub: string | undefined,
+): boolean => DeviceIdentityEvidenceSchema.safeParse({
+  masterFingerprint: fingerprint,
+  derivationPath,
+  xpub,
+}).success;
+
+const hasValidImportIdentity = (
+  result: IdentityBearingResult,
+): result is IdentityBearingResult & { fingerprint: string } => {
+  // Every successful path below calls hasValidIdentityEvidence, whose shared
+  // schema requires a non-sentinel master fingerprint alongside path/xpub.
+  const accounts = result.accounts ?? [];
+  const hasTopLevelXpub = Boolean(result.xpub);
+  const hasTopLevelPath = Boolean(result.derivationPath);
+
+  if (hasTopLevelXpub !== hasTopLevelPath) return false;
+  if (hasTopLevelXpub && !hasValidIdentityEvidence(
+    result.fingerprint,
+    result.derivationPath,
+    result.xpub,
+  )) return false;
+
+  if (accounts.length > 0) {
+    return accounts.every(account => hasValidIdentityEvidence(
+      result.fingerprint,
+      account.derivationPath,
+      account.xpub,
+    ));
+  }
+
+  return hasTopLevelXpub;
+};
 
 /** QR extraction tracking for which fields came from QR scan */
 export interface QrExtractedFields {
@@ -96,6 +145,20 @@ export function useDeviceForm(deps: UseDeviceFormDeps): UseDeviceFormReturn {
   const [showQrDetails, setShowQrDetails] = useState(false);
   const [warning, setWarning] = useState<string | null>(null);
 
+  const rejectImport = useCallback((message: string) => {
+    setFormData(prev => ({
+      ...prev,
+      xpub: '',
+      fingerprint: '',
+      derivationPath: '',
+      parsedAccounts: [],
+      selectedAccounts: new Set(),
+    }));
+    setQrExtractedFields(null);
+    setScanned(false);
+    setWarning(message);
+  }, []);
+
   // Reset state when model changes
   useEffect(() => {
     setMethod(null);
@@ -111,13 +174,13 @@ export function useDeviceForm(deps: UseDeviceFormDeps): UseDeviceFormReturn {
   /**
    * Apply parsed device data to form
    */
-  const applyParseResult = useCallback((result: QrScanResult | {
+  const applyParseResult = useCallback((result: (QrScanResult | {
     xpub?: string;
     fingerprint?: string;
     derivationPath?: string;
     label?: string;
     accounts?: DeviceAccount[];
-  }) => {
+  }) & { fingerprint: string }) => {
     setFormData(prev => {
       const updates: Partial<DeviceFormData> = {};
 
@@ -141,10 +204,8 @@ export function useDeviceForm(deps: UseDeviceFormDeps): UseDeviceFormReturn {
       } else {
         // File parse result
         if (result.xpub) updates.xpub = result.xpub;
-        if (result.fingerprint) updates.fingerprint = result.fingerprint;
-        if (result.derivationPath) {
-          updates.derivationPath = normalizeDerivationPath(result.derivationPath);
-        }
+        updates.fingerprint = result.fingerprint;
+        if (result.derivationPath) updates.derivationPath = result.derivationPath;
         if (result.label && !prev.label.startsWith('My ')) {
           updates.label = result.label;
         }
@@ -161,24 +222,32 @@ export function useDeviceForm(deps: UseDeviceFormDeps): UseDeviceFormReturn {
   // Apply QR scan result to form
   useEffect(() => {
     if (scanResult) {
-      applyParseResult(scanResult);
-      setScanned(true);
+      if (hasValidImportIdentity(scanResult)) {
+        applyParseResult(scanResult);
+        setScanned(true);
+      } else {
+        rejectImport(QR_IDENTITY_WARNING);
+      }
     }
-  }, [scanResult, applyParseResult]);
+  }, [scanResult, applyParseResult, rejectImport]);
 
   // Apply USB connection result to form
   useEffect(() => {
     if (connectionResult) {
-      setFormData(prev => ({
-        ...prev,
-        fingerprint: connectionResult.fingerprint,
-        parsedAccounts: connectionResult.accounts,
-        selectedAccounts: new Set(connectionResult.accounts.map((_, i) => i)),
-      }));
-      setWarning(connectionResult.warning ?? null);
-      setScanned(true);
+      if (hasValidImportIdentity(connectionResult)) {
+        setFormData(prev => ({
+          ...prev,
+          fingerprint: connectionResult.fingerprint,
+          parsedAccounts: connectionResult.accounts,
+          selectedAccounts: new Set(connectionResult.accounts.map((_, i) => i)),
+        }));
+        setWarning(connectionResult.warning ?? null);
+        setScanned(true);
+      } else {
+        rejectImport(USB_IDENTITY_WARNING);
+      }
     }
-  }, [connectionResult]);
+  }, [connectionResult, rejectImport]);
 
   /**
    * Handle file upload for SD card / QR file mode
@@ -195,11 +264,11 @@ export function useDeviceForm(deps: UseDeviceFormDeps): UseDeviceFormReturn {
       const content = event.target?.result as string;
       const result = parseDeviceJson(content);
 
-      if (result && (result.xpub || result.fingerprint || result.accounts?.length)) {
+      if (result && hasValidImportIdentity(result)) {
         applyParseResult(result);
         setScanned(true);
       } else {
-        setWarning('Could not parse file. Please check the format.');
+        rejectImport(result ? IMPORT_IDENTITY_WARNING : 'Could not parse file. Please check the format.');
       }
       setFileScanning(false);
     };
@@ -208,7 +277,7 @@ export function useDeviceForm(deps: UseDeviceFormDeps): UseDeviceFormReturn {
       setFileScanning(false);
     };
     reader.readAsText(file);
-  }, [applyParseResult]);
+  }, [applyParseResult, rejectImport]);
 
   /** Update form data */
   const handleFormDataChange = useCallback((updates: Partial<DeviceFormData>) => {
@@ -258,19 +327,34 @@ export function useDeviceForm(deps: UseDeviceFormDeps): UseDeviceFormReturn {
 
   /** Build the save/merge payload */
   const buildPayload = useCallback((): CreateDeviceRequest | null => {
-    if (!selectedModel) return null;
+    if (!selectedModel || !scanned) {
+      if (selectedModel) setWarning(FORM_IDENTITY_WARNING);
+      return null;
+    }
     const accounts = buildAccountsPayload();
+    const identityEvidence = accounts.length > 0
+      ? accounts
+      : [{ xpub: formData.xpub, derivationPath: formData.derivationPath }];
+    if (!identityEvidence.every(account => hasValidIdentityEvidence(
+      formData.fingerprint,
+      account.derivationPath,
+      account.xpub,
+    ))) {
+      setWarning(FORM_IDENTITY_WARNING);
+      return null;
+    }
+
     return {
       type: selectedModel.name,
       label: formData.label || `${selectedModel.name} ${formData.fingerprint}`,
-      fingerprint: formData.fingerprint || '00000000',
+      fingerprint: formData.fingerprint.toLowerCase(),
       ...(accounts.length > 0
         ? { accounts }
         : { xpub: formData.xpub, derivationPath: formData.derivationPath }
       ),
       modelSlug: selectedModel.slug,
     };
-  }, [selectedModel, formData, buildAccountsPayload]);
+  }, [selectedModel, scanned, formData, buildAccountsPayload]);
 
   /** Handle save */
   const handleSave = useCallback(async () => {

@@ -4,7 +4,6 @@ import type { ConnectionMethod, DeviceFormData, QrScannerPanelProps, UsbConnecti
 import { FileUploadPanel } from '../FileUploadPanel';
 import { QrScannerPanel } from '../QrScannerPanel';
 import { UsbConnectionPanel } from '../UsbConnectionPanel';
-import { ManualConnectionWarning } from './ManualConnectionWarning';
 
 interface ConnectionActionPanelProps {
   selectedModel: HardwareDeviceModel;
@@ -146,7 +145,5 @@ const ConnectionActionContent: React.FC<ConnectionActionPanelProps> = ({
           onStopCamera={onStopCamera}
         />
       );
-    case 'manual':
-      return <ManualConnectionWarning />;
   }
 };

@@ -38,7 +38,7 @@ export function getDeviceTypeFromModel(model: HardwareDeviceModel): DeviceType {
   return 'unknown';
 }
 
-export const CONNECTION_METHODS = ['usb', 'sd_card', 'qr_code', 'manual'] as const;
+export const CONNECTION_METHODS = ['usb', 'sd_card', 'qr_code'] as const;
 export type ConnectionMethod = (typeof CONNECTION_METHODS)[number];
 
 export const DEVICE_CONNECTIVITY_METHODS = ['usb', 'sd_card', 'qr_code'] as const;
@@ -159,9 +159,6 @@ export function isMethodAvailable(
   deviceConnectivity: string[],
   isSecure: boolean
 ): boolean {
-  // Manual entry is always available
-  if (method === 'manual') return true;
-
   // Check if device supports this method
   if (!deviceConnectivity.includes(method)) return false;
 
@@ -193,9 +190,6 @@ export function getAvailableMethods(
       methods.push(conn);
     }
   }
-
-  // Always allow manual entry as fallback
-  methods.push('manual');
 
   return methods;
 }

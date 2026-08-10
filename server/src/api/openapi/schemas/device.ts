@@ -86,6 +86,22 @@ export const deviceSchemas = {
     },
     required: ['purpose', 'scriptType', 'derivationPath', 'xpub'],
   },
+  DeviceAccountEvidenceInput: {
+    type: 'object',
+    properties: {
+      purpose: { type: 'string', enum: [...MOBILE_DEVICE_ACCOUNT_PURPOSES] },
+      scriptType: { type: 'string', enum: [...MOBILE_DEVICE_SCRIPT_TYPES] },
+      derivationPath: { type: 'string', minLength: 1 },
+      xpub: { type: 'string', minLength: 1 },
+      masterFingerprint: {
+        type: 'string',
+        pattern: '^[a-fA-F0-9]{8}$',
+        not: { enum: ['00000000'] },
+        description: 'BIP32 master fingerprint; the unverified all-zero sentinel is rejected.',
+      },
+    },
+    required: ['purpose', 'scriptType', 'derivationPath', 'xpub', 'masterFingerprint'],
+  },
   DeviceWalletUsage: {
     type: 'object',
     properties: {
@@ -196,9 +212,13 @@ export const deviceSchemas = {
     properties: {
       type: { type: 'string' },
       label: { type: 'string' },
-      fingerprint: { type: 'string' },
-      xpub: { type: 'string' },
-      derivationPath: { type: 'string' },
+      fingerprint: {
+        type: 'string',
+        pattern: '^[a-fA-F0-9]{8}$',
+        not: { enum: ['00000000'] },
+      },
+      xpub: { type: 'string', minLength: 1 },
+      derivationPath: { type: 'string', minLength: 1 },
       modelSlug: { type: 'string' },
       accounts: {
         type: 'array',
@@ -208,7 +228,7 @@ export const deviceSchemas = {
     },
     required: ['type', 'label', 'fingerprint'],
     anyOf: [
-      { required: ['xpub'] },
+      { required: ['xpub', 'derivationPath'] },
       { required: ['accounts'] },
     ],
   },

@@ -20,6 +20,7 @@ import type {
   DeviceAccountInput,
 } from './deviceAccountConflicts';
 import { assertHardwareWalletCapability } from './hardwareWalletCapabilities';
+import { MasterFingerprintSchema } from '@sanctuary/shared/schemas/deviceIdentity';
 
 const log = createLogger('DEVICE:SVC_REGISTRATION');
 
@@ -81,7 +82,11 @@ export async function registerDevice(
     throw new InvalidInputError('type, label, and fingerprint are required');
   }
 
-  const fingerprint = rawFingerprint.toLowerCase();
+  const parsedFingerprint = MasterFingerprintSchema.safeParse(rawFingerprint);
+  if (!parsedFingerprint.success) {
+    throw new InvalidInputError(parsedFingerprint.error.issues[0].message);
+  }
+  const fingerprint = parsedFingerprint.data;
 
   if (!xpub && (!accounts || accounts.length === 0)) {
     throw new InvalidInputError('Either xpub or accounts array is required');
@@ -196,11 +201,13 @@ async function createNewDevice(
     modelId = model.id;
   }
 
+  // registerDevice constructs at least one account from either accounts[] or the
+  // complete legacy xpub/path pair before this private helper is called.
   const primaryAccount = input.incomingAccounts.find(
     a =>
       a.purpose === DeviceAccountPurpose.SINGLE_SIG &&
       a.scriptType === WalletScriptType.NATIVE_SEGWIT
-  ) || input.incomingAccounts[0];
+  ) ?? input.incomingAccounts[0]!;
 
   const device = await deviceRepository.createWithOwnerAndAccounts(
     {
@@ -208,8 +215,8 @@ async function createNewDevice(
       type: input.type,
       label: input.label,
       fingerprint: input.fingerprint,
-      derivationPath: primaryAccount?.derivationPath,
-      xpub: primaryAccount?.xpub,
+      derivationPath: primaryAccount.derivationPath,
+      xpub: primaryAccount.xpub,
       modelId,
     },
     input.incomingAccounts,

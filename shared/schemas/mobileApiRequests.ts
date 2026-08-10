@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import {
+  ExactDeviceEvidenceStringSchema,
+  MasterFingerprintSchema,
+} from './deviceIdentity';
 import { BITCOIN_NON_REGTEST_NETWORKS } from '../constants/bitcoin';
 import {
   DEVICE_ACCOUNT_PURPOSE_VALUES,
@@ -343,22 +347,25 @@ export const MobilePsbtBroadcastRequestSchema = MobileTransactionMetadataSchema.
 export const MobileDeviceAccountRequestSchema = z.object({
   purpose: z.enum(MOBILE_DEVICE_ACCOUNT_PURPOSES, { message: deviceAccountRequiredMessage }),
   scriptType: z.enum(MOBILE_DEVICE_SCRIPT_TYPES, { message: deviceAccountRequiredMessage }),
-  derivationPath: z.string({ message: deviceAccountRequiredMessage }).min(1, deviceAccountRequiredMessage),
-  xpub: z.string({ message: deviceAccountRequiredMessage }).min(1, deviceAccountRequiredMessage),
+  derivationPath: ExactDeviceEvidenceStringSchema,
+  xpub: ExactDeviceEvidenceStringSchema,
 });
 
 export const MobileCreateDeviceRequestSchema = z.object({
   type: z.string({ message: deviceRequiredMessage }).min(1, deviceRequiredMessage),
   label: z.string({ message: deviceRequiredMessage }).min(1, deviceRequiredMessage),
-  fingerprint: z.string({ message: deviceRequiredMessage }).min(1, deviceRequiredMessage),
-  xpub: z.string().min(1).optional(),
-  derivationPath: z.string().min(1).optional(),
+  fingerprint: z.string({ message: deviceRequiredMessage }).pipe(MasterFingerprintSchema),
+  xpub: ExactDeviceEvidenceStringSchema.optional(),
+  derivationPath: ExactDeviceEvidenceStringSchema.optional(),
   modelSlug: z.string().min(1).optional(),
   accounts: z.array(MobileDeviceAccountRequestSchema).optional(),
   merge: z.boolean().optional(),
 }).refine(
   (request) => Boolean(request.xpub || (request.accounts && request.accounts.length > 0)),
   'Either xpub or accounts array is required'
+).refine(
+  request => Boolean(request.xpub) === Boolean(request.derivationPath),
+  'Legacy xpub and derivationPath must be provided together'
 );
 
 export const MobileUpdateDeviceRequestSchema = z.object({

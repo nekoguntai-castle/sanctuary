@@ -18,7 +18,7 @@ export function DeviceIdentityFields({
   scanned,
   onFormDataChange,
 }: DeviceIdentityFieldsProps) {
-  const isReadOnlyImport = method !== 'manual' && scanned;
+  const isReadOnlyImport = Boolean(method && scanned);
 
   return (
     <>

@@ -331,7 +331,7 @@ export const devicePaths = {
       description: 'Add an xpub account to an owned device.',
       security: bearerAuth,
       parameters: [deviceIdParameter],
-      requestBody: jsonRequestBody('#/components/schemas/DeviceAccountInput'),
+      requestBody: jsonRequestBody('#/components/schemas/DeviceAccountEvidenceInput'),
       responses: {
         201: jsonResponse('Device account created', '#/components/schemas/DeviceAccount'),
         400: apiErrorResponse,

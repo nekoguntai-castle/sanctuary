@@ -16,6 +16,7 @@ import type {
   PSBTSignResponse,
   XpubResult,
 } from '../../types';
+import { normalizeMasterFingerprint } from '../../identity';
 import type { TrezorConnection } from './types';
 import { signPsbtWithTrezor } from './signPsbt';
 import { getTrezorScriptType } from './pathUtils';
@@ -58,6 +59,10 @@ const formatFingerprint = (payload: FingerprintPayload): string | undefined => {
     xpubPrefix: payload.xpub?.substring(0, 20),
   });
   return fingerprint;
+};
+
+const requireMasterFingerprint = (fingerprint: unknown): string => {
+  return normalizeMasterFingerprint(fingerprint, 'Trezor');
 };
 
 const createConnectError = (message: string): Error => {
@@ -192,22 +197,26 @@ export class TrezorAdapter implements DeviceAdapter {
     return result.payload as TrezorFeatures;
   }
 
-  private async getMasterFingerprint(): Promise<string | undefined> {
+  private async getMasterFingerprint(): Promise<string> {
     try {
       const fpResult = await TrezorConnect.getPublicKey({
         path: "m/0'",
         showOnTrezor: false,
       });
-      return fpResult.success ? formatFingerprint(fpResult.payload) : undefined;
+      if (!fpResult.success) {
+        throw new Error('Trezor master fingerprint request failed');
+      }
+      return requireMasterFingerprint(formatFingerprint(fpResult.payload));
     } catch (fpError) {
       log.warn('Could not get fingerprint from Trezor', { error: fpError });
-      return undefined;
+      const message = fpError instanceof Error ? fpError.message : 'Unknown error';
+      throw new Error(`Trezor master fingerprint unavailable: ${message}`);
     }
   }
 
   private setConnectedDevice(
     features: TrezorFeatures,
-    fingerprint: string | undefined,
+    fingerprint: string,
     modelName: string
   ): HardwareWalletDevice {
     this.connection = {
@@ -253,6 +262,7 @@ export class TrezorAdapter implements DeviceAdapter {
     if (!this.connection.connected) {
       throw new Error('Trezor not connected');
     }
+    const masterFingerprint = requireMasterFingerprint(this.connection.fingerprint);
 
     try {
       const result = await TrezorConnect.getPublicKey({
@@ -267,23 +277,25 @@ export class TrezorAdapter implements DeviceAdapter {
       }
 
       const { xpub, fingerprint: parentFingerprint } = result.payload;
+      if (typeof xpub !== 'string' || xpub.length === 0) {
+        throw new Error(`Trezor returned an empty xpub for ${path}`);
+      }
 
       // IMPORTANT: Trezor's getPublicKey returns the PARENT fingerprint of the requested path,
       // not the master fingerprint. For BIP-174 PSBTs and wallet descriptors, we need the
       // MASTER fingerprint. Use the connection fingerprint (obtained from m/0' during connect).
-      const masterFp = this.connection.fingerprint;
       const parentFpHex = parentFingerprint?.toString(16).padStart(8, '0');
 
       log.info('Got Trezor xpub', {
         path,
         xpubPrefix: xpub.substring(0, 15),
-        masterFingerprint: masterFp,
+        masterFingerprint,
         parentFingerprint: parentFpHex,
       });
 
       return {
         xpub,
-        fingerprint: masterFp || parentFpHex || '', // Prefer master fingerprint
+        fingerprint: masterFingerprint,
         path,
       };
     } catch (error) {

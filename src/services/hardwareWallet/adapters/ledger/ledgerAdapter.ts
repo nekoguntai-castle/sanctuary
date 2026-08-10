@@ -17,6 +17,7 @@ import type {
   PSBTSignResponse,
   XpubResult,
 } from '../../types';
+import { normalizeMasterFingerprint } from '../../identity';
 import { LEDGER_VENDOR_ID, XPUB_VERSION, TPUB_VERSION, getLedgerModel, getDeviceId } from './utils';
 import { signPsbt } from './signPsbt';
 
@@ -50,6 +51,9 @@ const LEDGER_TESTNET_PATH_ERROR_PATTERNS = [
   'ins_not_supported',
   'bitcoin app not open',
 ];
+function requireMasterFingerprint(value: unknown): string {
+  return normalizeMasterFingerprint(value, 'Ledger');
+}
 
 const LEDGER_FRIENDLY_ERROR_RULES: LedgerFriendlyErrorRule[] = [
   {
@@ -242,21 +246,19 @@ export class LedgerAdapter implements DeviceAdapter {
       }
 
       // Get master fingerprint
-      let fingerprint: string | undefined;
+      let fingerprint: string;
       try {
-        fingerprint = await appClient.getMasterFingerprint();
+        fingerprint = requireMasterFingerprint(await appClient.getMasterFingerprint());
         log.info('Got master fingerprint from device', { fingerprint });
       } catch (error) {
         const friendlyError = getLedgerFriendlyError(error, 'connect');
-        if (friendlyError) {
-          try {
-            await transport.close();
-          } catch (closeError) {
-            log.debug('Ignoring Ledger transport close error after failed readiness check', { error: closeError });
-          }
-          throw new Error(friendlyError);
+        try {
+          await transport.close();
+        } catch (closeError) {
+          log.debug('Ignoring Ledger transport close error after failed readiness check', { error: closeError });
         }
-        log.warn('Could not get fingerprint - Bitcoin app may not be open', { error });
+        if (friendlyError) throw new Error(friendlyError);
+        throw new Error(`Ledger master fingerprint unavailable: ${getLedgerErrorMessage(error)}`);
       }
 
       this.connection = { transport: transport as any, app, appClient, device, appName, appVersion };
@@ -370,17 +372,17 @@ export class LedgerAdapter implements DeviceAdapter {
   }
 
   private async getMasterFingerprint(): Promise<string> {
-    if (!this.connection) return '';
+    if (!this.connection) throw new Error('No device connected');
 
-    if (this.connectedDevice?.fingerprint) {
-      return this.connectedDevice.fingerprint;
+    if (this.connectedDevice?.fingerprint !== undefined) {
+      return requireMasterFingerprint(this.connectedDevice.fingerprint);
     }
 
     try {
-      return await this.connection.appClient.getMasterFingerprint();
+      return requireMasterFingerprint(await this.connection.appClient.getMasterFingerprint());
     } catch (fpError) {
       log.warn('Could not get fingerprint', { error: fpError });
-      return '';
+      throw new Error(`Ledger master fingerprint unavailable: ${getLedgerErrorMessage(fpError)}`);
     }
   }
 

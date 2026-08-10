@@ -192,40 +192,27 @@ describe('DeviceDetail page', () => {
     });
   });
 
-  it('adds manual account and refreshes device data', async () => {
+  it('does not offer manual account entry without device identity evidence', async () => {
     const user = userEvent.setup();
     render(<DeviceDetail />);
 
     await screen.findByText('Passport One');
     await user.click(screen.getByText('Add Derivation Path'));
-    await user.click(screen.getByText('Enter Manually'));
-    await user.type(screen.getByPlaceholderText('xpub...'), 'xpub-test-value');
-
-    await user.click(screen.getByText('Add Account'));
-
-    await waitFor(() => {
-      expect(mockAddDeviceAccount).toHaveBeenCalledWith(
-        'device-1',
-        expect.objectContaining({
-          xpub: 'xpub-test-value',
-        })
-      );
-    });
+    expect(screen.queryByText('Enter Manually')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('xpub...')).not.toBeInTheDocument();
+    expect(mockAddDeviceAccount).not.toHaveBeenCalled();
   });
 
-  it('shows manual account add errors', async () => {
+  it('offers only identity-bearing account import methods', async () => {
     const user = userEvent.setup();
-    mockAddDeviceAccount.mockRejectedValueOnce(new Error('manual add failed'));
 
     render(<DeviceDetail />);
 
     await screen.findByText('Passport One');
     await user.click(screen.getByText('Add Derivation Path'));
-    await user.click(screen.getByText('Enter Manually'));
-    await user.type(screen.getByPlaceholderText('xpub...'), 'xpub-test-value');
-    await user.click(screen.getByText('Add Account'));
-
-    expect(await screen.findByText('manual add failed')).toBeInTheDocument();
+    expect(screen.getByText('Import from SD Card')).toBeInTheDocument();
+    expect(screen.getByText('Scan QR Code')).toBeInTheDocument();
+    expect(screen.queryByText('Enter Manually')).not.toBeInTheDocument();
   });
 
   it('imports accounts from SD card and adds selected entries', async () => {
@@ -385,7 +372,7 @@ describe('DeviceDetail page', () => {
       ],
     } as any);
 
-    mockHardwareConnect.mockResolvedValue({ connected: true });
+    mockHardwareConnect.mockResolvedValue({ connected: true, fingerprint: 'abcd1234' });
     mockHardwareGetAllXpubs.mockResolvedValue([
       {
         purpose: 'single_sig',
@@ -415,7 +402,7 @@ describe('DeviceDetail page', () => {
     mockIsSecureContext.mockReturnValue(true);
     mockGetDevice.mockResolvedValue({ ...deviceData, type: 'ledger', accounts: [] } as any);
 
-    mockHardwareConnect.mockResolvedValue({ connected: true });
+    mockHardwareConnect.mockResolvedValue({ connected: true, fingerprint: 'abcd1234' });
     mockHardwareGetAllXpubs.mockResolvedValue([
       {
         purpose: 'single_sig',
@@ -616,26 +603,15 @@ describe('DeviceDetail page', () => {
     expect(screen.queryByTestId('scanner')).not.toBeInTheDocument();
   });
 
-  it('updates manual account fields and returns to options', async () => {
+  it('does not render manual account controls in the add-path modal', async () => {
     const user = userEvent.setup();
 
     render(<DeviceDetail />);
 
     await screen.findByText('Passport One');
     await user.click(screen.getByText('Add Derivation Path'));
-    await user.click(screen.getByText('Enter Manually'));
-
-    const [purposeSelect, scriptTypeSelect] = screen.getAllByRole('combobox') as HTMLSelectElement[];
-    fireEvent.change(purposeSelect, { target: { value: 'single_sig' } });
-    fireEvent.change(scriptTypeSelect, { target: { value: 'legacy' } });
-    fireEvent.change(screen.getByPlaceholderText("m/48'/0'/0'/2'"), { target: { value: "m/44'/0'/0'" } });
-
-    expect(purposeSelect.value).toBe('single_sig');
-    expect(scriptTypeSelect.value).toBe('legacy');
-    expect((screen.getByPlaceholderText("m/48'/0'/0'/2'") as HTMLInputElement).value).toBe("m/44'/0'/0'");
-
-    await user.click(screen.getByText('← Back to options'));
-    expect(screen.getByText(/Choose how to add a new derivation path/i)).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("m/48'/0'/0'/2'")).not.toBeInTheDocument();
+    expect(screen.queryByText('Add Account')).not.toBeInTheDocument();
   });
 
   it('closes transfer modal and switches back to details tab', async () => {

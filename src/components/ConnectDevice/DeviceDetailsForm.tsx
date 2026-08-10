@@ -30,7 +30,9 @@ export const DeviceDetailsForm: React.FC<DeviceDetailsFormProps> = ({
 }) => {
   const { label, xpub, fingerprint, derivationPath, parsedAccounts, selectedAccounts } = formData;
   const hasParsedAccounts = parsedAccounts.length > 0;
-  const canSave = Boolean(fingerprint && (hasParsedAccounts ? selectedAccounts.size > 0 : xpub) && method);
+  const canSave = Boolean(
+    scanned && fingerprint && (hasParsedAccounts ? selectedAccounts.size > 0 : xpub) && method,
+  );
 
   if (!selectedModel) {
     return <DeviceDetailsPlaceholder />;

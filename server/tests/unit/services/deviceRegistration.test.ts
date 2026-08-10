@@ -49,6 +49,61 @@ describe('deviceRegistration', () => {
     })).rejects.toThrow('Either xpub or accounts array is required');
   });
 
+  it.each(['', '00000000', 'not-hex', 'abcd123'])(
+    'rejects unsafe master fingerprint %j before repository access',
+    async (fingerprint) => {
+      await expect(registerDevice('user-1', {
+        type: 'coldcard',
+        label: 'Coldcard',
+        fingerprint,
+        derivationPath: "m/84'/0'/0'",
+        xpub: 'xpub',
+      })).rejects.toThrow(InvalidInputError);
+
+      expect(mockDeviceRepository.findByFingerprintWithAccounts).not.toHaveBeenCalled();
+      expect(mockDeviceRepository.createWithOwnerAndAccounts).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects xpub-only legacy registration without exact path evidence', async () => {
+    await expect(registerDevice('user-1', {
+      type: 'coldcard',
+      label: 'Coldcard',
+      fingerprint: 'AABBCCDD',
+      xpub: 'xpub',
+    })).rejects.toThrow('Legacy xpub and derivationPath must be provided together');
+
+    expect(mockDeviceRepository.findByFingerprintWithAccounts).not.toHaveBeenCalled();
+    expect(mockDeviceRepository.createWithOwnerAndAccounts).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { derivationPath: " m/84'/0'/0'", xpub: 'xpub' },
+    { derivationPath: "m/84'/0'/0'", xpub: 'xpub ' },
+  ])('rejects silently normalized legacy evidence %#', async ({ derivationPath, xpub }) => {
+    await expect(registerDevice('user-1', {
+      type: 'coldcard',
+      label: 'Coldcard',
+      fingerprint: 'AABBCCDD',
+      derivationPath,
+      xpub,
+    })).rejects.toThrow('must not contain surrounding whitespace');
+  });
+
+  it('rejects silently normalized multi-account evidence', async () => {
+    await expect(registerDevice('user-1', {
+      type: 'coldcard',
+      label: 'Coldcard',
+      fingerprint: 'AABBCCDD',
+      accounts: [{
+        purpose: 'single_sig',
+        scriptType: 'native_segwit',
+        derivationPath: "m/84'/0'/0' ",
+        xpub: 'xpub',
+      }],
+    })).rejects.toThrow('must not contain surrounding whitespace');
+  });
+
   it.each(['ledger', 'jade', 'trezor'])(
     'blocks %s registration before duplicate lookup or writes',
     async (type) => {
@@ -82,6 +137,7 @@ describe('deviceRegistration', () => {
       type: 'coldcard',
       label: 'Spoofed device',
       fingerprint: 'AABBCCDD',
+      derivationPath: "m/84'/0'/0'",
       xpub: 'xpub',
       merge: true,
     })).rejects.toMatchObject({
@@ -158,6 +214,7 @@ describe('deviceRegistration', () => {
       type: 'coldcard',
       label: 'Coldcard',
       fingerprint: 'AABBCCDD',
+      derivationPath: "m/84'/0'/0'",
       xpub: 'xpub',
       modelSlug: 'not-a-real-model',
     })).rejects.toThrow('Unknown hardware wallet model');

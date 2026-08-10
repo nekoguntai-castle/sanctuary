@@ -134,7 +134,7 @@ export function registerOpenApiGatewayTests() {
     expect(
       openApiSpec.paths['/devices/{deviceId}/accounts'].post.requestBody.content['application/json'].schema
     ).toEqual({
-      $ref: '#/components/schemas/DeviceAccountInput',
+      $ref: '#/components/schemas/DeviceAccountEvidenceInput',
     });
     expect(
       openApiSpec.paths['/devices/{deviceId}/accounts'].get.responses[200].content['application/json'].schema.items
@@ -183,6 +183,11 @@ export function registerOpenApiGatewayTests() {
       $ref: '#/components/schemas/DeviceConflictResponse',
     });
     expect(createSchema.required).toEqual(expect.arrayContaining(['type', 'label', 'fingerprint']));
+    expect(createSchema.properties.fingerprint).toMatchObject({
+      pattern: '^[a-fA-F0-9]{8}$',
+      not: { enum: ['00000000'] },
+    });
+    expect(createSchema.anyOf).toContainEqual({ required: ['xpub', 'derivationPath'] });
     expect(createSchema.properties).toHaveProperty('accounts');
     expect(createSchema.properties).toHaveProperty('merge');
     expect(createSchema.properties).toHaveProperty('modelSlug');
@@ -192,6 +197,15 @@ export function registerOpenApiGatewayTests() {
     expect(openApiSpec.components.schemas.DeviceAccountInput.properties.scriptType.enum).toEqual([
       ...MOBILE_DEVICE_SCRIPT_TYPES,
     ]);
+    expect(openApiSpec.components.schemas.DeviceAccountEvidenceInput.required).toEqual([
+      'purpose',
+      'scriptType',
+      'derivationPath',
+      'xpub',
+      'masterFingerprint',
+    ]);
+    expect(openApiSpec.components.schemas.DeviceAccountEvidenceInput.properties.masterFingerprint)
+      .toMatchObject({ pattern: '^[a-fA-F0-9]{8}$', not: { enum: ['00000000'] } });
   });
 
   it('documents device delete as 204 with not-found and conflict errors', () => {

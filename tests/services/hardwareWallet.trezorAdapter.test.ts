@@ -110,7 +110,10 @@ describe("TrezorAdapter class", () => {
 
     expect(mockInit).toHaveBeenCalledTimes(1);
     expect(mockGetFeatures).toHaveBeenCalledTimes(1);
-    expect(mockGetPublicKey).toHaveBeenCalled();
+    expect(mockGetPublicKey).toHaveBeenCalledWith({
+      path: "m/0'",
+      showOnTrezor: false,
+    });
     expect(device.connected).toBe(true);
     expect(device.needsPin).toBe(true);
     expect(device.needsPassphrase).toBe(true);
@@ -198,7 +201,7 @@ describe("TrezorAdapter class", () => {
     );
   });
 
-  it("uses model fallback values when feature id/label are missing and fp request is unsuccessful", async () => {
+  it("uses model fallback values when feature id and label are missing", async () => {
     mockGetFeatures.mockResolvedValueOnce({
       success: true,
       payload: {
@@ -208,18 +211,13 @@ describe("TrezorAdapter class", () => {
         passphrase_protection: false,
       },
     });
-    mockGetPublicKey.mockResolvedValueOnce({
-      success: false,
-      payload: {},
-    });
-
     const adapter = new TrezorAdapter();
     const device = await adapter.connect();
 
     expect(device.id).toBe("trezor-unknown");
     expect(device.model).toBe("Trezor Safe 5");
     expect(device.name).toBe("Trezor Safe 5");
-    expect(device.fingerprint).toBeUndefined();
+    expect(device.fingerprint).toBe("deadbeef");
   });
 
   it("converts null pin_protection and passphrase_protection to undefined", async () => {
@@ -235,7 +233,7 @@ describe("TrezorAdapter class", () => {
     });
     mockGetPublicKey.mockResolvedValueOnce({
       success: true,
-      payload: { xpub: "xpub..." },
+      payload: { xpub: "xpub...", fingerprint: 0x12345678 },
     });
 
     const adapter = new TrezorAdapter();
@@ -245,17 +243,36 @@ describe("TrezorAdapter class", () => {
     expect(device.needsPassphrase).toBeUndefined();
   });
 
-  it("continues connecting when fingerprint request throws an exception", async () => {
+  it("fails closed when the master fingerprint request throws", async () => {
     mockGetPublicKey.mockImplementationOnce(async () => {
       throw new Error("fingerprint unavailable");
     });
 
     const adapter = new TrezorAdapter();
-    const device = await adapter.connect();
+    await expect(adapter.connect()).rejects.toThrow("master fingerprint");
+    expect(adapter.isConnected()).toBe(false);
+  });
 
-    expect(device.connected).toBe(true);
-    expect(device.fingerprint).toBeUndefined();
-    expect(adapter.isConnected()).toBe(true);
+  it("normalizes a non-Error master fingerprint failure without retaining a connection", async () => {
+    mockGetPublicKey.mockRejectedValueOnce("transport failed");
+
+    const adapter = new TrezorAdapter();
+    await expect(adapter.connect()).rejects.toThrow(
+      "Trezor master fingerprint unavailable: Unknown error",
+    );
+    expect(adapter.isConnected()).toBe(false);
+  });
+
+  it.each([
+    { success: false, payload: {} },
+    { success: true, payload: { xpub: "xpub-root", fingerprint: 0 } },
+    { success: true, payload: { xpub: "xpub-root" } },
+  ])("rejects missing or sentinel master fingerprint payload %#", async (response) => {
+    mockGetPublicKey.mockResolvedValueOnce(response);
+
+    const adapter = new TrezorAdapter();
+    await expect(adapter.connect()).rejects.toThrow("master fingerprint");
+    expect(adapter.isConnected()).toBe(false);
   });
 
   it.each([
@@ -328,43 +345,32 @@ describe("TrezorAdapter class", () => {
     expect(result.fingerprint).toBe("12345678");
   });
 
-  it("uses parent fingerprint fallback and testnet coin for h-notation xpub requests", async () => {
+  it("does not substitute an account-parent fingerprint for missing master identity", async () => {
     const adapter = new TrezorAdapter();
-    mockGetPublicKey.mockResolvedValueOnce({
-      success: true,
-      payload: { xpub: "xpub-master-no-fp" },
-    });
     await adapter.connect();
+    (adapter as any).connection.fingerprint = undefined;
 
     mockGetPublicKey.mockResolvedValueOnce({
       success: true,
       payload: { xpub: "tpub-child", fingerprint: 0x01020304 },
     });
-    const result = await adapter.getXpub("m/84h/1h/0h");
 
-    expect(result.fingerprint).toBe("01020304");
-    expect(mockGetPublicKey).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        path: "m/84h/1h/0h",
-        coin: "Testnet",
-      }),
+    await expect(adapter.getXpub("m/84h/1h/0h")).rejects.toThrow(
+      "master fingerprint",
     );
   });
 
-  it("falls back to empty fingerprint when master and parent fingerprints are unavailable", async () => {
+  it("rejects an empty account xpub instead of returning incomplete evidence", async () => {
     const adapter = new TrezorAdapter();
-    mockGetPublicKey.mockResolvedValueOnce({
-      success: true,
-      payload: { xpub: "xpub-master-no-fp" },
-    });
     await adapter.connect();
 
     mockGetPublicKey.mockResolvedValueOnce({
       success: true,
-      payload: { xpub: "xpub-child-no-fp" },
+      payload: { xpub: "", fingerprint: 0x01020304 },
     });
-    const result = await adapter.getXpub("m/84'/0'/0'");
-    expect(result.fingerprint).toBe("");
+    await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow(
+      "empty xpub",
+    );
   });
 
   it("maps getXpub cancellation errors", async () => {

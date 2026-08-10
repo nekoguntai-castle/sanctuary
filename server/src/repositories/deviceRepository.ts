@@ -328,8 +328,8 @@ export async function createWithOwnerAndAccounts(
     type: string;
     label: string;
     fingerprint: string;
-    derivationPath?: string | null;
-    xpub?: string | null;
+    derivationPath: string;
+    xpub: string;
     modelId?: string | null;
   },
   accounts: Array<{
@@ -346,8 +346,8 @@ export async function createWithOwnerAndAccounts(
         type: data.type,
         label: data.label,
         fingerprint: data.fingerprint,
-        derivationPath: data.derivationPath ?? undefined,
-        xpub: data.xpub ?? '',
+        derivationPath: data.derivationPath,
+        xpub: data.xpub,
         modelId: data.modelId ?? undefined,
       },
       include: {

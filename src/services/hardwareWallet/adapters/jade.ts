@@ -329,39 +329,15 @@ export class JadeAdapter implements DeviceAdapter {
   /**
    * Get extended public key
    */
-  async getXpub(path: string): Promise<XpubResult> {
+  async getXpub(_path: string): Promise<XpubResult> {
     if (!this.connection) {
       throw new Error('No device connected');
     }
-
-    try {
-      const isTestnet = isTestnetPath(path);
-      const network = isTestnet ? 'testnet' : 'mainnet';
-      const pathArray = jadePathToArray(path);
-
-      log.info('Getting xpub', { path, network, pathArray });
-
-      const xpub = await this.sendRpc<string>('get_xpub', {
-        network,
-        path: pathArray,
-      });
-
-      log.info('Got xpub', { xpubPrefix: xpub.substring(0, 20) });
-
-      return {
-        xpub,
-        fingerprint: '', // Jade doesn't return fingerprint with xpub
-        path,
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-
-      if (message.includes('User cancelled') || message.includes('user_cancelled')) {
-        throw new Error('Request cancelled on device');
-      }
-
-      throw new Error(`Failed to get xpub: ${message}`);
-    }
+    // Jade's xpub RPC does not prove the BIP32 master fingerprint. Keep account
+    // export disabled until the adapter can bind every xpub to a verified signer.
+    throw new Error(
+      'Jade master fingerprint is unavailable; account xpub export is disabled',
+    );
   }
 
   /**

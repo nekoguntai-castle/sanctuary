@@ -99,7 +99,7 @@ describe('urHelpers', () => {
     expect(normalizeDerivationPath("m/49h/0h/0h")).toBe("m/49'/0'/0'");
   });
 
-  it('extracts fingerprint from origin, then parent fingerprint, then empty fallback', () => {
+  it('extracts only an origin master fingerprint and never substitutes a parent fingerprint', () => {
     const fromOrigin = new CryptoHDKey({
       origin: makeOrigin('a1b2c3d4'),
       parentFingerprint: Buffer.from('deadbeef', 'hex'),
@@ -110,7 +110,7 @@ describe('urHelpers', () => {
       origin: makeOrigin(undefined),
       parentFingerprint: Buffer.from('00112233', 'hex'),
     });
-    expect(extractFingerprintFromHdKey(fromParent as any)).toBe('00112233');
+    expect(extractFingerprintFromHdKey(fromParent as any)).toBe('');
 
     const noFingerprint = new CryptoHDKey({
       origin: makeOrigin(undefined),
@@ -122,7 +122,7 @@ describe('urHelpers', () => {
       origin: null,
       parentFingerprint: Buffer.from('aabbccdd', 'hex'),
     });
-    expect(extractFingerprintFromHdKey(noOriginWithParent as any)).toBe('aabbccdd');
+    expect(extractFingerprintFromHdKey(noOriginWithParent as any)).toBe('');
   });
 
   it('extracts xpub/fingerprint/path from CryptoHDKey and CryptoOutput across origin/path variants', () => {
@@ -155,7 +155,7 @@ describe('urHelpers', () => {
     });
     expect(extractFromUrResult(hdKeyNoOrigin as any)).toEqual({
       xpub: 'xpub-hd-no-origin',
-      fingerprint: '12345678',
+      fingerprint: '',
       path: '',
     });
 
@@ -170,7 +170,7 @@ describe('urHelpers', () => {
     );
     expect(extractFromUrResult(outputNoOrigin as any)).toEqual({
       xpub: 'xpub-output-no-origin',
-      fingerprint: '87654321',
+      fingerprint: '',
       path: '',
     });
   });

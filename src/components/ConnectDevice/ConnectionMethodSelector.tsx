@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { PenTool, AlertCircle } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import { getDeviceIcon } from '../ui/CustomIcons';
 import { connectivityConfig, isDeviceConnectivityMethod } from '../../utils/deviceConnection';
 import type { ConnectionMethodSelectorProps } from './types';
@@ -32,7 +32,7 @@ export const ConnectionMethodSelector: React.FC<ConnectionMethodSelectorProps> =
                 Untested Device
               </p>
               <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
-                This device has not been fully tested with Sanctuary. Basic functionality (xpub import via SD card, QR, or manual entry) should work, but you may encounter issues. Use at your own risk.
+                This device has not been fully tested with Sanctuary. Supported USB, SD card, or QR imports may still encounter issues. Use at your own risk.
               </p>
             </div>
           </div>
@@ -67,11 +67,7 @@ export const ConnectionMethodSelector: React.FC<ConnectionMethodSelectorProps> =
       {/* Connection Method Selection */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
         {availableMethods.map((m) => {
-          const config = m === 'manual'
-            ? { icon: PenTool, label: 'Manual Entry', description: 'Enter xpub manually' }
-            : isDeviceConnectivityMethod(m)
-              ? connectivityConfig[m]
-              : null;
+          const config = isDeviceConnectivityMethod(m) ? connectivityConfig[m] : null;
           if (!config) return null;
           const Icon = config.icon;
 

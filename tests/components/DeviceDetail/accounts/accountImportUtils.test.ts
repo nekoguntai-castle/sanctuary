@@ -205,7 +205,7 @@ describe('accountImportUtils', () => {
       expect(createSingleAccount({})).toEqual({
         purpose: 'single_sig',
         scriptType: 'native_segwit',
-        derivationPath: "m/84'/0'/0'",
+        derivationPath: '',
         xpub: '',
       });
     });

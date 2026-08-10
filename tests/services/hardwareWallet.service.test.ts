@@ -48,7 +48,7 @@ function createMockAdapter(
     getDevice: vi.fn(() => device),
     connect: vi.fn(async () => device),
     disconnect: vi.fn(async () => undefined),
-    getXpub: vi.fn(async (path: string) => ({ xpub: `xpub-${type}`, fingerprint: 'f1f1f1f1', path })),
+    getXpub: vi.fn(async (path: string) => ({ xpub: `xpub-${type}`, fingerprint: 'abcd1234', path })),
     signPSBT: vi.fn(async () => ({ psbt: `signed-${type}`, signatures: 1 })),
     verifyAddress: vi.fn(async () => true),
     getAuthorizedDevices: vi.fn(async () => [device]),
@@ -76,6 +76,50 @@ describe('HardwareWalletService', () => {
       expect(adapter.connect).not.toHaveBeenCalled();
     }
   );
+
+  it('rejects and disconnects an adapter that connects without a master fingerprint', async () => {
+    const service = new HardwareWalletService();
+    const { adapter, device } = createMockAdapter('coldcard');
+    vi.mocked(adapter.connect).mockResolvedValueOnce({
+      ...device,
+      fingerprint: undefined,
+    });
+    service.registerAdapter(adapter);
+
+    await expect(service.connect('coldcard')).rejects.toThrow(/master fingerprint/i);
+    expect(adapter.disconnect).toHaveBeenCalled();
+    expect(service.isConnected()).toBe(false);
+  });
+
+  it('preserves the identity failure when cleanup disconnect also fails', async () => {
+    const service = new HardwareWalletService();
+    const { adapter, device } = createMockAdapter('coldcard', {
+      disconnect: vi.fn(async () => {
+        throw new Error('cleanup failed');
+      }),
+    });
+    vi.mocked(adapter.connect).mockResolvedValueOnce({
+      ...device,
+      fingerprint: '00000000',
+    });
+    service.registerAdapter(adapter);
+
+    await expect(service.connect('coldcard')).rejects.toThrow(/master fingerprint/i);
+    expect(adapter.disconnect).toHaveBeenCalledTimes(1);
+    expect(service.getDevice()).toBeNull();
+  });
+
+  it('does not retain a stale active adapter after a failed reconnect', async () => {
+    const service = new HardwareWalletService();
+    const { adapter } = createMockAdapter('coldcard');
+    service.registerAdapter(adapter);
+    await service.connect('coldcard');
+    vi.mocked(adapter.connect).mockRejectedValueOnce(new Error('reconnect failed'));
+
+    await expect(service.connect('coldcard')).rejects.toThrow('reconnect failed');
+    expect(service.getDevice()).toBeNull();
+    await expect(service.getXpub("m/84'/0'/0'")).rejects.toThrow('No device connected');
+  });
 
   it.each(['ledger', 'jade', 'trezor'] as const)(
     'rechecks every funds-controlling %s operation for an in-flight connection',
@@ -279,7 +323,7 @@ describe('HardwareWalletService', () => {
     const result = await service.getXpub("m/84'/0'/0'");
     expect(result).toEqual({
       xpub: 'xpub-coldcard',
-      fingerprint: 'f1f1f1f1',
+      fingerprint: 'abcd1234',
       path: "m/84'/0'/0'",
     });
     expect(adapter.getXpub).toHaveBeenCalledWith("m/84'/0'/0'");
@@ -320,7 +364,7 @@ describe('HardwareWalletService', () => {
         if (path === "m/49'/0'/0'") {
           throw new Error('path unsupported');
         }
-        return { xpub: `xpub-${path}`, fingerprint: 'f1f1f1f1', path };
+        return { xpub: `xpub-${path}`, fingerprint: 'abcd1234', path };
       }),
     });
     service.registerAdapter(adapter);
@@ -340,7 +384,7 @@ describe('HardwareWalletService', () => {
         if (path.includes("/1'/")) {
           throw new Error('Bitcoin Test app not open');
         }
-        return { xpub: `xpub-${path}`, fingerprint: 'f1f1f1f1', path };
+        return { xpub: `xpub-${path}`, fingerprint: 'abcd1234', path };
       }),
     });
     service.registerAdapter(adapter);
@@ -363,7 +407,7 @@ describe('HardwareWalletService', () => {
   it('fetches all standard xpubs when every path succeeds', async () => {
     const service = new HardwareWalletService();
     const { adapter } = createMockAdapter('coldcard', {
-      getXpub: vi.fn(async (path: string) => ({ xpub: `xpub-${path}`, fingerprint: 'f1f1f1f1', path })),
+      getXpub: vi.fn(async (path: string) => ({ xpub: `xpub-${path}`, fingerprint: 'abcd1234', path })),
     });
     service.registerAdapter(adapter);
     await service.connect('coldcard');
@@ -374,6 +418,64 @@ describe('HardwareWalletService', () => {
     expect(results.map(result => result.path)).toEqual(
       HardwareWalletService.STANDARD_PATHS.map(standardPath => standardPath.path)
     );
+  });
+
+  it.each([
+    { fingerprint: '', label: 'missing' },
+    { fingerprint: 'abcd123', label: 'short' },
+    { fingerprint: 'not-hex!', label: 'non-hex' },
+    { fingerprint: '00000000', label: 'zero' },
+  ])('rejects a $label master fingerprint without treating it as a skipped path', async ({ fingerprint }) => {
+    const service = new HardwareWalletService();
+    const { adapter } = createMockAdapter('coldcard', {
+      getXpub: vi.fn(async (path: string) => ({ xpub: `xpub-${path}`, fingerprint, path })),
+    });
+    service.registerAdapter(adapter);
+    await service.connect('coldcard');
+
+    await expect(service.getAllXpubsWithFailures()).rejects.toThrow(/master fingerprint/i);
+  });
+
+  it('rejects a changed master fingerprint before returning any partial batch', async () => {
+    const service = new HardwareWalletService();
+    let requestCount = 0;
+    const { adapter } = createMockAdapter('coldcard', {
+      getXpub: vi.fn(async (path: string) => ({
+        xpub: `xpub-${path}`,
+        fingerprint: requestCount++ === 0 ? 'abcd1234' : 'deadbeef',
+        path,
+      })),
+    });
+    service.registerAdapter(adapter);
+    await service.connect('coldcard');
+
+    await expect(service.getAllXpubsWithFailures()).rejects.toThrow(/fingerprint mismatch/i);
+  });
+
+  it('rejects an xpub response whose path does not exactly match the request', async () => {
+    const service = new HardwareWalletService();
+    const { adapter } = createMockAdapter('coldcard', {
+      getXpub: vi.fn(async () => ({
+        xpub: 'xpub-wrong-path',
+        fingerprint: 'abcd1234',
+        path: "m/84'/0'/1'",
+      })),
+    });
+    service.registerAdapter(adapter);
+    await service.connect('coldcard');
+
+    await expect(service.getAllXpubsWithFailures()).rejects.toThrow(/path mismatch/i);
+  });
+
+  it('rejects an empty xpub response', async () => {
+    const service = new HardwareWalletService();
+    const { adapter } = createMockAdapter('coldcard', {
+      getXpub: vi.fn(async (path: string) => ({ xpub: '', fingerprint: 'abcd1234', path })),
+    });
+    service.registerAdapter(adapter);
+    await service.connect('coldcard');
+
+    await expect(service.getAllXpubsWithFailures()).rejects.toThrow(/xpub/i);
   });
 
   it('includes testnet account paths in standard USB discovery', () => {

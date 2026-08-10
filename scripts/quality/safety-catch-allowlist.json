@@ -617,7 +617,7 @@
       "file": "src/services/hardwareWallet/adapters/ledger/ledgerAdapter.ts",
       "functionName": "connect",
       "issue": "non-terminal-catch",
-      "count": 4,
+      "count": 3,
       "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
       "owner": "fund-safety",
       "targetRemovalSlice": "fail-closed-safety-follow-up"

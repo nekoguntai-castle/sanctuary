@@ -1,4 +1,5 @@
 import type { StandardXpubResult, XpubBatchResult } from "./service";
+import { validateXpubBatch } from "./identity";
 
 type ProgressCallback = (current: number, total: number, name: string) => void;
 
@@ -9,18 +10,32 @@ export interface StandardXpubBatchService {
   ): Promise<XpubBatchResult>;
 }
 
+export interface XpubBatchIdentityEvidence {
+  connectedFingerprint: unknown;
+  storedFingerprint?: unknown;
+}
+
 /**
  * Fetch standard xpubs while preserving partial failures when the adapter can
  * report them. Older adapters still return an all-success batch.
  */
 export async function fetchStandardXpubBatch(
   service: StandardXpubBatchService,
-  onProgress?: ProgressCallback,
+  onProgress: ProgressCallback | undefined,
+  identity: XpubBatchIdentityEvidence,
 ): Promise<XpubBatchResult> {
+  let batch: XpubBatchResult;
   if (service.getAllXpubsWithFailures) {
-    return service.getAllXpubsWithFailures(onProgress);
+    batch = await service.getAllXpubsWithFailures(onProgress);
+  } else {
+    const results = await service.getAllXpubs(onProgress);
+    batch = { results, failures: [], totalPaths: results.length };
   }
 
-  const results = await service.getAllXpubs(onProgress);
-  return { results, failures: [], totalPaths: results.length };
+  const validated = validateXpubBatch(
+    batch.results,
+    identity.connectedFingerprint,
+    identity.storedFingerprint,
+  );
+  return { ...batch, results: validated.results };
 }

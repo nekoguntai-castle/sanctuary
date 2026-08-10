@@ -91,7 +91,6 @@ describe("deviceConnection utilities", () => {
   });
 
   it("checks method availability based on connectivity and security context", () => {
-    expect(isMethodAvailable("manual", ["usb"], false)).toBe(true);
     expect(isMethodAvailable("usb", ["usb"], true)).toBe(true);
     expect(isMethodAvailable("usb", ["usb"], false)).toBe(false);
     expect(isMethodAvailable("qr_code", ["qr_code"], false)).toBe(false);
@@ -100,23 +99,22 @@ describe("deviceConnection utilities", () => {
   });
 
   it("owns connection method values and guards model connectivity values", () => {
-    expect(CONNECTION_METHODS).toEqual(["usb", "sd_card", "qr_code", "manual"]);
+    expect(CONNECTION_METHODS).toEqual(["usb", "sd_card", "qr_code"]);
     expect(DEVICE_CONNECTIVITY_METHODS).toEqual(["usb", "sd_card", "qr_code"]);
 
-    expect(isConnectionMethod("manual")).toBe(true);
+    expect(isConnectionMethod("manual")).toBe(false);
     expect(isConnectionMethod("airgap")).toBe(false);
     expect(isDeviceConnectivityMethod("usb")).toBe(true);
     expect(isDeviceConnectivityMethod("manual")).toBe(false);
     expect(isDeviceConnectivityMethod("bluetooth")).toBe(false);
   });
 
-  it("returns available methods and always includes manual fallback", () => {
+  it("returns only device-supported secure import methods", () => {
     expect(getAvailableMethods(["usb", "qr_code", "bluetooth"], true)).toEqual([
       "usb",
       "qr_code",
-      "manual",
     ]);
-    expect(getAvailableMethods(["usb", "qr_code"], false)).toEqual(["manual"]);
-    expect(getAvailableMethods([], true)).toEqual(["manual"]);
+    expect(getAvailableMethods(["usb", "qr_code"], false)).toEqual([]);
+    expect(getAvailableMethods([], true)).toEqual([]);
   });
 });

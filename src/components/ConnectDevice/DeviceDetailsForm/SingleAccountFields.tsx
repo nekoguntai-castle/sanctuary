@@ -16,7 +16,7 @@ export function SingleAccountFields({
   scanned,
   onFormDataChange,
 }: SingleAccountFieldsProps) {
-  const isReadOnlyImport = method !== 'manual' && scanned;
+  const isReadOnlyImport = Boolean(method && scanned);
 
   return (
     <>
@@ -26,9 +26,10 @@ export function SingleAccountFields({
           type="text"
           value={derivationPath}
           onChange={(e) => onFormDataChange({ derivationPath: e.target.value })}
-          className="text-sm font-mono focus:ring-sanctuary-500"
+          readOnly={isReadOnlyImport}
+          className={`text-sm font-mono focus:ring-sanctuary-500 ${isReadOnlyImport ? 'opacity-70' : ''}`}
         />
-        <p className="text-[10px] text-sanctuary-400 mt-1">BIP84 Native SegWit default</p>
+        <p className="text-[10px] text-sanctuary-400 mt-1">Imported account derivation path</p>
       </div>
 
       <div>

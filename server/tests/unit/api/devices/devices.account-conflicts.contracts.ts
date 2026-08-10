@@ -145,13 +145,15 @@ export function registerNormalizeIncomingAccountsTests(): void {
       });
     });
 
-    it("returns empty accounts for xpub-only legacy input", async () => {
+    it("rejects xpub-only legacy input without exact path evidence", async () => {
       const { normalizeIncomingAccounts } =
         await import("../../../../src/api/devices/accountConflicts");
 
       expect(
         normalizeIncomingAccounts(undefined, "xpub-only", undefined),
-      ).toEqual({ accounts: [] });
+      ).toEqual({
+        error: "Legacy xpub and derivationPath must be provided together",
+      });
     });
   });
 }

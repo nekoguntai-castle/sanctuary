@@ -314,34 +314,15 @@ describe('JadeAdapter', () => {
     await expect((adapter as any).signPSBT(undefined)).rejects.toThrow('No device connected');
   });
 
-  it('gets xpub and maps cancellation/default errors', async () => {
+  it('fails closed before xpub export while master identity is unavailable', async () => {
     const adapter = new JadeAdapter();
     (adapter as any).connection = makeConnection();
     const sendRpcSpy = vi.spyOn(adapter as any, 'sendRpc');
 
-    sendRpcSpy.mockResolvedValueOnce('tpub-jade');
-    const result = await adapter.getXpub('m/84h/1h/0h');
-    expect(result).toEqual({
-      xpub: 'tpub-jade',
-      fingerprint: '',
-      path: 'm/84h/1h/0h',
-    });
-    expect(sendRpcSpy).toHaveBeenCalledWith(
-      'get_xpub',
-      expect.objectContaining({
-        network: 'testnet',
-        path: expect.any(Array),
-      })
+    await expect(adapter.getXpub('m/84h/1h/0h')).rejects.toThrow(
+      'master fingerprint is unavailable',
     );
-
-    sendRpcSpy.mockRejectedValueOnce(new Error('user_cancelled'));
-    await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow('Request cancelled on device');
-
-    sendRpcSpy.mockRejectedValueOnce(new Error('rpc failure'));
-    await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow('Failed to get xpub: rpc failure');
-
-    sendRpcSpy.mockRejectedValueOnce({ code: 'rpc-failure' });
-    await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow('Failed to get xpub: Unknown error');
+    expect(sendRpcSpy).not.toHaveBeenCalled();
   });
 
   it('verifies address variants and handles user cancel', async () => {

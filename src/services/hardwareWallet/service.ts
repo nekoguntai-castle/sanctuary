@@ -31,6 +31,11 @@ import {
   HARDWARE_WALLET_CAPABILITY_ROWS,
   type HardwareWalletVendor,
 } from '@sanctuary/shared/constants/hardwareWalletCapabilities';
+import {
+  HardwareWalletIdentityError,
+  normalizeMasterFingerprint,
+  validateXpubResult,
+} from './identity';
 
 const log = createLogger('HardwareWalletService');
 
@@ -246,10 +251,13 @@ export class HardwareWalletService {
       throw new Error(`${adapter.displayName} is not supported in this environment`);
     }
 
-    // Disconnect any active adapter
-    if (this.activeAdapter && this.activeAdapter !== adapter) {
+    // Clear the active identity before reconnecting so a failed same-adapter
+    // attempt cannot leave a stale device session addressable through the service.
+    const previousAdapter = this.activeAdapter;
+    this.activeAdapter = null;
+    if (previousAdapter && previousAdapter !== adapter) {
       try {
-        await this.activeAdapter.disconnect();
+        await previousAdapter.disconnect();
       } catch (error) {
         log.warn('Error disconnecting previous adapter', { error });
       }
@@ -257,14 +265,24 @@ export class HardwareWalletService {
 
     // Connect with the new adapter
     const device = await adapter.connect();
+    let fingerprint: string;
+    try {
+      fingerprint = normalizeMasterFingerprint(device.fingerprint, `Connected ${adapter.displayName}`);
+    } catch (error) {
+      await adapter.disconnect().catch(disconnectError => {
+        log.warn('Error disconnecting device with invalid identity evidence', { disconnectError });
+      });
+      throw error;
+    }
     this.activeAdapter = adapter;
+    const validatedDevice = { ...device, fingerprint };
 
     log.info(`Connected to ${adapter.displayName}`, {
       deviceId: device.id,
       model: device.model,
     });
 
-    return device;
+    return validatedDevice;
   }
 
   /**
@@ -287,7 +305,12 @@ export class HardwareWalletService {
       throw new Error('No device connected');
     }
     assertHardwareActionEnabled(this.activeAdapter.type, 'account_add');
-    return this.activeAdapter.getXpub(path);
+    const connectedFingerprint = normalizeMasterFingerprint(
+      this.activeAdapter.getDevice()?.fingerprint,
+      'Connected hardware wallet'
+    );
+    const result = await this.activeAdapter.getXpub(path);
+    return validateXpubResult(result, path, connectedFingerprint);
   }
 
   /**
@@ -338,6 +361,10 @@ export class HardwareWalletService {
     const results: StandardXpubResult[] = [];
     const failures: XpubFetchFailure[] = [];
     const paths = HardwareWalletService.STANDARD_PATHS;
+    const connectedFingerprint = normalizeMasterFingerprint(
+      this.activeAdapter.getDevice()?.fingerprint,
+      'Connected hardware wallet'
+    );
 
     for (let i = 0; i < paths.length; i++) {
       const { path, purpose, scriptType, name } = paths[i];
@@ -349,13 +376,13 @@ export class HardwareWalletService {
       try {
         log.info(`Fetching xpub for ${name}`, { path });
         const xpubResult = await this.activeAdapter.getXpub(path);
-        results.push({
-          ...xpubResult,
-          purpose,
-          scriptType,
-        });
-        log.info(`Successfully fetched ${name}`, { fingerprint: xpubResult.fingerprint });
+        const validated = validateXpubResult(xpubResult, path, connectedFingerprint);
+        results.push({ ...validated, purpose, scriptType });
+        log.info(`Successfully fetched ${name}`, { fingerprint: validated.fingerprint });
       } catch (error) {
+        if (error instanceof HardwareWalletIdentityError) {
+          throw error;
+        }
         const message = getXpubFetchErrorMessage(error);
         // Log but continue - some paths may not be supported by all devices
         failures.push({ name, path, message });

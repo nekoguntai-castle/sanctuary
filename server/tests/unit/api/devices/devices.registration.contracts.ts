@@ -433,7 +433,7 @@ export function registerDeviceRegistrationTests(): void {
       const legacyDevice = {
         type: 'coldcard',
         label: 'Legacy Ledger',
-        fingerprint: 'LEGACY123',
+        fingerprint: '1e6ac123',
         xpub: 'xpub_legacy...',
         derivationPath: "m/44'/0'/0'",
       };
@@ -491,7 +491,7 @@ export function registerDeviceRegistrationTests(): void {
       const taprootDevice = {
         type: 'coldcard',
         label: 'Taproot Ledger',
-        fingerprint: 'taproot123',
+        fingerprint: '86aa0123',
         xpub: 'xpub_taproot...',
         derivationPath: "m/86'/0'/0'",
       };
@@ -519,7 +519,7 @@ export function registerDeviceRegistrationTests(): void {
       const nestedDevice = {
         type: 'coldcard',
         label: 'Nested Ledger',
-        fingerprint: 'nested123',
+        fingerprint: '49aa0123',
         xpub: 'xpub_nested...',
         derivationPath: "m/49'/0'/0'",
       };
@@ -583,7 +583,7 @@ export function registerDeviceRegistrationTests(): void {
       const deviceWithUnknownModel = {
         type: 'coldcard',
         label: 'Unknown Model Device',
-        fingerprint: 'unknownmodel1',
+        fingerprint: 'badc0ffe',
         xpub: 'xpub_unknown_model...',
         derivationPath: "m/84'/0'/0'",
         modelSlug: 'does-not-exist',
@@ -600,11 +600,11 @@ export function registerDeviceRegistrationTests(): void {
       expect(mockPrismaClient.device.create).not.toHaveBeenCalled();
     });
 
-    it('handles legacy xpub payload without derivationPath by creating device with no derived accounts', async () => {
+    it('rejects legacy xpub payload without derivationPath before device creation', async () => {
       const xpubOnlyDevice = {
         type: 'coldcard',
         label: 'Xpub Only',
-        fingerprint: 'xpubonly12',
+        fingerprint: 'ab12cd34',
         xpub: 'xpub_only...',
       };
 
@@ -619,17 +619,11 @@ export function registerDeviceRegistrationTests(): void {
         .post('/api/v1/devices')
         .send(xpubOnlyDevice);
 
-      expect(response.status).toBe(201);
-      // With repository layer, device creation goes through createWithOwnerAndAccounts
-      // which creates accounts in a transaction. Legacy xpub is stored on the device itself.
-      expect(mockPrismaClient.device.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          fingerprint: 'xpubonly12',
-          label: 'Xpub Only',
-          type: 'coldcard',
-        }),
-        include: { model: true },
-      });
+      expect(response.status).toBe(400);
+      expect(response.body.message).toContain(
+        'Legacy xpub and derivationPath must be provided together',
+      );
+      expect(mockPrismaClient.device.create).not.toHaveBeenCalled();
     });
 
     it('should return 500 when registration transaction fails', async () => {

@@ -298,6 +298,7 @@ describe('Core API Modules', () => {
         scriptType: 'native_segwit',
         derivationPath: "m/84'/0'/0'",
         xpub: 'xpub...',
+        masterFingerprint: 'abcd1234',
       });
 
       expect(mockGet).toHaveBeenCalledWith('/devices');
@@ -324,6 +325,7 @@ describe('Core API Modules', () => {
         scriptType: 'native_segwit',
         derivationPath: "m/84'/0'/0'",
         xpub: 'xpub...',
+        masterFingerprint: 'abcd1234',
       });
     });
 

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 
 import { mockPrismaClient } from '../../../mocks/prisma';
@@ -54,6 +54,7 @@ export function registerDeviceAccountTests(): void {
       scriptType: 'native_segwit',
       derivationPath: "m/48'/0'/0'/2'",
       xpub: 'xpub_multisig...',
+      masterFingerprint: 'aabbccdd',
     };
 
     it.each(['ledger', 'jade', 'trezor'])(
@@ -119,6 +120,60 @@ export function registerDeviceAccountTests(): void {
           scriptType: 'native_segwit',
         }),
       });
+    });
+
+    it('accepts an uppercase master fingerprint after exact normalized comparison', async () => {
+      mockPrismaClient.deviceAccount.findFirst.mockResolvedValue(null);
+      mockPrismaClient.deviceAccount.create.mockResolvedValue({
+        id: 'account-new',
+        deviceId: 'device-1',
+        ...newAccount,
+      });
+
+      const response = await request(app)
+        .post('/api/v1/devices/device-1/accounts')
+        .send({ ...newAccount, masterFingerprint: 'AABBCCDD' });
+
+      expect(response.status).toBe(201);
+      expect(mockPrismaClient.deviceAccount.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects missing or sentinel master-fingerprint evidence before any lookup or write', async () => {
+      for (const masterFingerprint of [undefined, '', '00000000']) {
+        vi.clearAllMocks();
+        const response = await request(app)
+          .post('/api/v1/devices/device-1/accounts')
+          .send({ ...newAccount, masterFingerprint });
+
+        expect(response.status).toBe(400);
+        expect(mockPrismaClient.device.findUnique).not.toHaveBeenCalled();
+        expect(mockPrismaClient.deviceAccount.findFirst).not.toHaveBeenCalled();
+        expect(mockPrismaClient.deviceAccount.create).not.toHaveBeenCalled();
+      }
+    });
+
+    it('rejects a connected master fingerprint that does not match the stored device', async () => {
+      const response = await request(app)
+        .post('/api/v1/devices/device-1/accounts')
+        .send({ ...newAccount, masterFingerprint: 'deadbeef' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toContain('does not match');
+      expect(mockPrismaClient.deviceAccount.findFirst).not.toHaveBeenCalled();
+      expect(mockPrismaClient.deviceAccount.create).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      { derivationPath: " m/48'/0'/0'/2'" },
+      { xpub: 'xpub_multisig... ' },
+    ])('rejects silently normalized account evidence %#', async (override) => {
+      const response = await request(app)
+        .post('/api/v1/devices/device-1/accounts')
+        .send({ ...newAccount, ...override });
+
+      expect(response.status).toBe(400);
+      expect(mockPrismaClient.device.findUnique).not.toHaveBeenCalled();
+      expect(mockPrismaClient.deviceAccount.create).not.toHaveBeenCalled();
     });
 
     it('should reject duplicate derivation path', async () => {

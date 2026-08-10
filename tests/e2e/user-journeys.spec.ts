@@ -355,7 +355,9 @@ test.describe('User journey flows', () => {
     await page.getByRole('button', { name: 'Add Derivation Path' }).click();
     await expect(page.getByRole('heading', { name: 'Add Derivation Path' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Connect via USB' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Enter Manually' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Import from SD Card' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Scan QR Code' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Enter Manually' })).toHaveCount(0);
 
     expect(unhandledRequests).toEqual([]);
   });

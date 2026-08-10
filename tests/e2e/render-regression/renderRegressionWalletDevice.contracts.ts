@@ -179,7 +179,7 @@ export async function renderConnectDeviceRouteRendersSelectorAndMethodShells({ p
   await expect(main.getByRole('heading', { name: '2. Connection Method' })).toBeVisible();
   await expect(main.getByRole('button', { name: 'USB' })).toBeVisible();
   await expect(main.getByRole('button', { name: 'SD Card' })).toBeVisible();
-  await expect(main.getByRole('button', { name: 'Manual Entry' })).toBeVisible();
+  await expect(main.getByRole('button', { name: 'Manual Entry' })).toHaveCount(0);
 
   expect(unhandledRequests).toEqual([]);
 }
@@ -214,7 +214,7 @@ export async function renderConnectDeviceRouteHidesUsbAndQrOptionsWhenContextIsN
 
   await expect(main.getByRole('heading', { name: '2. Connection Method' })).toBeVisible();
   await expect(main.getByRole('button', { name: 'SD Card' })).toBeVisible();
-  await expect(main.getByRole('button', { name: 'Manual Entry' })).toBeVisible();
+  await expect(main.getByRole('button', { name: 'Manual Entry' })).toHaveCount(0);
   await expect(main.getByRole('button', { name: 'USB' })).toHaveCount(0);
   await expect(main.getByRole('button', { name: 'QR Code' })).toHaveCount(0);
 
@@ -235,9 +235,17 @@ export async function renderConnectDeviceRouteRendersSaveFailureFeedbackWhenAPIR
   await page.goto('/#/devices/connect');
 
   await main.getByRole('button', { name: /Nano X/i }).first().click();
-  await main.getByRole('button', { name: 'Manual Entry' }).click();
-  await main.getByPlaceholder('00000000').fill('deadbeef');
-  await main.getByPlaceholder('xpub... / ypub... / zpub...').fill('xpub-render-test');
+  await main.getByRole('button', { name: 'SD Card' }).click();
+  await main.locator('input[type="file"]').setInputFiles({
+    name: 'ledger-account.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({
+      xfp: 'deadbeef',
+      deriv: "m/84'/0'/0'",
+      xpub: `xpub${'a'.repeat(108)}`,
+    })),
+  });
+  await expect(main.getByText('File Imported Successfully')).toBeVisible();
   await main.getByRole('button', { name: 'Save Device' }).click();
 
   await expect(main.getByText('Device save failed in test')).toBeVisible({ timeout: 20000 });

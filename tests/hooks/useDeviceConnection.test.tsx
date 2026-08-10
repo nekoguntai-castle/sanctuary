@@ -97,7 +97,7 @@ const mockXpubResults = [
 describe('useDeviceConnection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockConnect.mockResolvedValue({ connected: true });
+    mockConnect.mockResolvedValue({ connected: true, fingerprint: 'abcd1234' });
     mockGetAllXpubs.mockResolvedValue(mockXpubResults);
   });
 
@@ -149,7 +149,7 @@ describe('useDeviceConnection', () => {
       });
 
       await act(async () => {
-        resolveConnect!({ connected: true });
+        resolveConnect!({ connected: true, fingerprint: 'abcd1234' });
       });
 
       await waitFor(() => {
@@ -185,7 +185,7 @@ describe('useDeviceConnection', () => {
       });
 
       expect(result.current.connectionResult).toEqual({
-        fingerprint: 'ABCD1234',
+        fingerprint: 'abcd1234',
         warning: null,
         accounts: [
           {
@@ -246,7 +246,7 @@ describe('useDeviceConnection', () => {
       expect(result.current.error).toBe('First error');
 
       // Then succeed
-      mockConnect.mockResolvedValueOnce({ connected: true });
+      mockConnect.mockResolvedValueOnce({ connected: true, fingerprint: 'abcd1234' });
 
       await act(async () => {
         await result.current.connectUsb(mockModel);
@@ -284,7 +284,7 @@ describe('useDeviceConnection', () => {
       });
 
       await act(async () => {
-        resolveConnect!({ connected: true });
+        resolveConnect!({ connected: true, fingerprint: 'abcd1234' });
       });
     });
   });
@@ -422,7 +422,7 @@ describe('useDeviceConnection', () => {
   });
 
   describe('Empty Xpubs', () => {
-    it('should handle empty xpubs array', async () => {
+    it('should reject an empty xpub batch', async () => {
       mockGetAllXpubs.mockResolvedValue([]);
 
       const { result } = renderHook(() => useDeviceConnection());
@@ -431,11 +431,42 @@ describe('useDeviceConnection', () => {
         await result.current.connectUsb(mockModel);
       });
 
-      expect(result.current.connectionResult).toEqual({
-        fingerprint: '',
-        warning: null,
-        accounts: [],
-      });
+      expect(result.current.connectionResult).toBeNull();
+      expect(result.current.error).toMatch(/xpub/i);
+    });
+  });
+
+  describe('Device identity evidence', () => {
+    it.each(['', 'abcd123', 'not-hex!', '00000000'])('rejects invalid fingerprint %j', async (fingerprint) => {
+      mockGetAllXpubs.mockResolvedValueOnce([{ ...mockXpubResults[0], fingerprint }]);
+      const { result } = renderHook(() => useDeviceConnection());
+
+      await act(async () => result.current.connectUsb(mockModel));
+
+      expect(result.current.connectionResult).toBeNull();
+      expect(result.current.error).toMatch(/master fingerprint/i);
+    });
+
+    it('rejects a batch whose fingerprint differs from the connected device', async () => {
+      mockGetAllXpubs.mockResolvedValueOnce([
+        { ...mockXpubResults[0], fingerprint: 'deadbeef' },
+      ]);
+      const { result } = renderHook(() => useDeviceConnection());
+
+      await act(async () => result.current.connectUsb(mockModel));
+
+      expect(result.current.connectionResult).toBeNull();
+      expect(result.current.error).toMatch(/fingerprint mismatch/i);
+    });
+
+    it('accepts case differences and returns a canonical fingerprint', async () => {
+      mockConnect.mockResolvedValueOnce({ connected: true, fingerprint: 'ABCD1234' });
+      const { result } = renderHook(() => useDeviceConnection());
+
+      await act(async () => result.current.connectUsb(mockModel));
+
+      expect(result.current.error).toBeNull();
+      expect(result.current.connectionResult?.fingerprint).toBe('abcd1234');
     });
   });
 

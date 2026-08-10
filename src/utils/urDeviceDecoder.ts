@@ -26,33 +26,18 @@ export interface UrExtractResult {
 }
 
 /**
- * Extract fingerprint from CryptoHDKey with fallbacks
+ * Extract the master fingerprint from CryptoHDKey origin metadata.
  *
- * Attempts to get fingerprint in order of preference:
- * 1. Source fingerprint from origin (master fingerprint)
- * 2. Parent fingerprint (fallback, not ideal but better than nothing)
+ * A parent fingerprint identifies the immediate parent of this key, not the
+ * wallet master. It must never be substituted for missing source metadata.
  */
 export const extractFingerprintFromHdKey = (hdKey: CryptoHDKey): string => {
-  // Try 1: Get from origin's source fingerprint (master fingerprint)
   const origin = hdKey.getOrigin();
   if (origin) {
     const sourceFingerprint = origin.getSourceFingerprint();
     if (sourceFingerprint && sourceFingerprint.length > 0) {
       return sourceFingerprint.toString('hex');
     }
-  }
-
-  // Try 2: Get parent fingerprint (not ideal, but better than nothing)
-  // This is the fingerprint of the key one level up in derivation
-  try {
-    const parentFp = hdKey.getParentFingerprint();
-    if (parentFp && parentFp.length > 0) {
-      log.debug('Using parent fingerprint as fallback');
-      return parentFp.toString('hex');
-    }
-  } catch (error) {
-    log.debug('Parent fingerprint fallback failed', { error });
-    // getParentFingerprint might not exist or fail
   }
 
   return '';

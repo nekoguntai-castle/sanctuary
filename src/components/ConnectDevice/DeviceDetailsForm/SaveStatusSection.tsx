@@ -84,9 +84,7 @@ export function SaveStatusSection({
         <p className="text-center text-xs text-sanctuary-400 mt-2">
           {parsedAccountsCount > 0 && selectedAccountsCount === 0
             ? 'Select at least one account to import.'
-            : method === 'manual'
-              ? 'Enter fingerprint and xpub to save.'
-              : 'Complete the connection step to enable saving.'
+            : 'Complete the connection step to enable saving.'
           }
         </p>
       )}

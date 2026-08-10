@@ -144,20 +144,6 @@ vi.mock('../../../../src/utils/logger', () => ({
   createLogger: () => loggerSpies,
 }));
 
-vi.mock('../../../../src/components/DeviceDetail/ManualAccountForm', () => ({
-  ManualAccountForm: ({ account, onChange, onSubmit }: any) => (
-    <div data-testid="manual-form">
-      <button
-        type="button"
-        onClick={() => onChange({ ...account, xpub: 'xpub-manual', derivationPath: "m/84'/0'/0'" })}
-      >
-        Set Manual
-      </button>
-      <button type="button" onClick={onSubmit}>Submit Manual</button>
-    </div>
-  ),
-}));
-
 vi.mock('../../../../src/components/DeviceDetail/accounts/ImportReview', () => ({
   ImportReview: ({ parsedAccounts, setSelectedParsedAccounts, onAddParsedAccounts }: any) => (
     <div data-testid="import-review">
@@ -266,7 +252,7 @@ describe('AddAccountFlow branch coverage', () => {
     decoderConfig.urQueue = [];
     isSecureContextMock.mockReturnValue(true);
     disconnectMock.mockResolvedValue(undefined);
-    connectMock.mockResolvedValue(undefined);
+    connectMock.mockResolvedValue({ connected: true, fingerprint: 'abcd1234' });
     getAllXpubsMock.mockResolvedValue([]);
     getDeviceMock.mockResolvedValue({ ...defaultDevice });
     addDeviceAccountMock.mockResolvedValue(undefined);
@@ -479,8 +465,8 @@ describe('AddAccountFlow branch coverage', () => {
     getAllXpubsMock.mockImplementationOnce(async (progressCb: (current: number, total: number, name: string) => void) => {
       progressCb(1, 2, 'first');
       return [
-        { purpose: 'single_sig', scriptType: 'native_segwit', path: "m/84'/0'/0'", xpub: 'xpub-existing' },
-        { purpose: 'single_sig', scriptType: 'taproot', path: "m/86'/0'/0'", xpub: 'xpub-new' },
+        { purpose: 'single_sig', scriptType: 'native_segwit', path: "m/84'/0'/0'", xpub: 'xpub-existing', fingerprint: 'abcd1234' },
+        { purpose: 'single_sig', scriptType: 'taproot', path: "m/86'/0'/0'", xpub: 'xpub-new', fingerprint: 'abcd1234' },
       ];
     });
     addDeviceAccountMock.mockResolvedValueOnce(undefined);
@@ -498,7 +484,7 @@ describe('AddAccountFlow branch coverage', () => {
     view1.unmount();
 
     getAllXpubsMock.mockResolvedValueOnce([
-      { purpose: 'single_sig', scriptType: 'native_segwit', path: "m/84'/0'/0'", xpub: 'xpub-existing' },
+      { purpose: 'single_sig', scriptType: 'native_segwit', path: "m/84'/0'/0'", xpub: 'xpub-existing', fingerprint: 'abcd1234' },
     ]);
     const view2 = renderFlow({ type: 'ledger', accounts: [{ derivationPath: "m/84'/0'/0'", xpub: 'xpub-existing' }] });
     await user.click(screen.getByText('Connect via USB'));
@@ -516,22 +502,15 @@ describe('AddAccountFlow branch coverage', () => {
     view3.unmount();
   });
 
-  it('covers manual add guard, manual failure fallback, and modal close/back reset behavior', async () => {
+  it('does not offer unverifiable manual account entry and resets modal close/back state', async () => {
     const user = userEvent.setup();
 
     const view = renderFlow();
-    await user.click(screen.getByText('Enter Manually'));
-    await user.click(screen.getByText('Submit Manual'));
-    expect(addDeviceAccountMock).not.toHaveBeenCalled();
+    expect(screen.queryByText('Enter Manually')).not.toBeInTheDocument();
 
-    addDeviceAccountMock.mockRejectedValueOnce('manual-failed-non-error');
-    await user.click(screen.getByText('Set Manual'));
-    await user.click(screen.getByText('Submit Manual'));
-    expect(await screen.findByText('Failed to add account')).toBeInTheDocument();
-
+    await user.click(screen.getByText('Scan QR Code'));
     await user.click(screen.getByText('← Back to options'));
     expect(screen.getByText(/Choose how to add a new derivation path/i)).toBeInTheDocument();
-
     await user.click(screen.getByText('Scan QR Code'));
     const closeButtons = screen.getAllByRole('button');
     await user.click(closeButtons[0]);

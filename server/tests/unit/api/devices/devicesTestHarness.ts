@@ -93,6 +93,7 @@ export function setupDevicesApiTestHooks(): void {
     mockPrismaClient.device.findUnique.mockResolvedValue({
       id: 'device-1',
       type: 'coldcard',
+      fingerprint: 'aabbccdd',
       model: null,
       accounts: [],
     });

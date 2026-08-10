@@ -56,7 +56,6 @@ vi.mock('../../../src/components/DeviceDetail/index', async (importOriginal) => 
   const actual = await importOriginal<typeof import('../../../src/components/DeviceDetail/index')>();
   return {
     ...actual,
-    ManualAccountForm: () => <div data-testid="manual-account-form" />,
     AccountList: () => <div data-testid="account-list" />,
     getAccountTypeInfo: deviceDetailMocks.getAccountTypeInfo,
   };

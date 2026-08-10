@@ -7,6 +7,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import {
+  ExactDeviceEvidenceStringSchema,
+  MasterFingerprintSchema,
+} from '@sanctuary/shared/schemas/deviceIdentity';
+import {
   DEVICE_ACCOUNT_PURPOSE_VALUES,
   WALLET_SCRIPT_TYPE_VALUES,
 } from '@sanctuary/shared/constants/walletIdentity';
@@ -17,6 +21,7 @@ import { ConflictError, ErrorCodes, InvalidInputError, NotFoundError } from '../
 import { deviceRepository } from '../../repositories';
 import { createLogger } from '../../utils/logger';
 import { assertHardwareWalletCapability } from '../../services/hardwareWalletCapabilities';
+import { addDeviceAccountWithEvidence } from '../../services/deviceAccountRegistration';
 
 const router = Router();
 const log = createLogger('DEVICE:ROUTE:ACCOUNTS');
@@ -24,12 +29,13 @@ const log = createLogger('DEVICE:ROUTE:ACCOUNTS');
 const DeviceAccountBodySchema = z.object({
   purpose: z.enum(DEVICE_ACCOUNT_PURPOSE_VALUES),
   scriptType: z.enum(WALLET_SCRIPT_TYPE_VALUES),
-  derivationPath: z.string().trim().min(1),
-  xpub: z.string().trim().min(1),
+  derivationPath: ExactDeviceEvidenceStringSchema,
+  xpub: ExactDeviceEvidenceStringSchema,
+  masterFingerprint: MasterFingerprintSchema,
 });
 
 const deviceAccountValidationMessage =
-  `purpose, scriptType, derivationPath, and xpub are required; purpose must be one of: ${DEVICE_ACCOUNT_PURPOSE_VALUES.join(', ')}; scriptType must be one of: ${WALLET_SCRIPT_TYPE_VALUES.join(', ')}`;
+  `purpose, scriptType, derivationPath, xpub, and masterFingerprint are required; purpose must be one of: ${DEVICE_ACCOUNT_PURPOSE_VALUES.join(', ')}; scriptType must be one of: ${WALLET_SCRIPT_TYPE_VALUES.join(', ')}`;
 
 /**
  * GET /api/v1/devices/:id/accounts
@@ -59,28 +65,13 @@ router.post(
   ),
   asyncHandler(async (req, res) => {
     const { id } = req.params;
-    const { purpose, scriptType, derivationPath, xpub } = req.body;
-
-    const device = await deviceRepository.findByIdWithModelAndAccounts(id);
-    if (!device) {
-      throw new NotFoundError('Device not found');
-    }
-    assertHardwareWalletCapability(device, 'account_add');
-
-    // Same purpose/script accounts are allowed when the coin-type path differs
-    // (for example mainnet m/84'/0'/0' and testnet/signet m/84'/1'/0').
-    const existingAccount = await deviceRepository.findDuplicateAccount(id, derivationPath, purpose, scriptType);
-
-    if (existingAccount) {
-      throw new ConflictError('An account with this derivation path already exists');
-    }
-
-    const account = await deviceRepository.createAccount({
-      deviceId: id,
+    const { purpose, scriptType, derivationPath, xpub, masterFingerprint } = req.body;
+    const account = await addDeviceAccountWithEvidence(id, {
       purpose,
       scriptType,
       derivationPath,
       xpub,
+      masterFingerprint,
     });
 
     log.info('Device account added', {

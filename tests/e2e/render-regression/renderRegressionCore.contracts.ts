@@ -176,7 +176,7 @@ export async function renderDeviceDetailRendersAddAccountFlowOptionsWithoutCrash
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Enter Manually" }),
-  ).toBeVisible();
+  ).toHaveCount(0);
 
   await page.getByRole("button", { name: "Connect via USB" }).click();
   await expect(
