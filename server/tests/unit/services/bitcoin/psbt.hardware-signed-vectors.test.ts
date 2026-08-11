@@ -1,42 +1,142 @@
-import * as bitcoin from 'bitcoinjs-lib';
-import * as ecc from 'tiny-secp256k1';
-import { describe, expect, it } from 'vitest';
-import { GENERATED_SIGNED_PSBT_VECTORS } from '@fixtures/generated-signed-psbt-vectors';
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
+import { BIP32Factory } from "bip32";
+import { entropyToMnemonic, wordlists } from "bip39";
+import * as bitcoin from "bitcoinjs-lib";
+import * as ecc from "tiny-secp256k1";
+import { describe, expect, it } from "vitest";
 import {
+  BLOCKED_HARDWARE_SIGNED_ROWS,
   COMMON_HARDWARE_SIGNED_NEGATIVE_CONTROLS,
   HARDWARE_SIGNED_PSBT_VECTORS,
   MULTISIG_HARDWARE_SIGNED_NEGATIVE_CONTROLS,
   REQUIRED_HARDWARE_SIGNED_ADDRESS_PATH_SUFFIXES,
   REQUIRED_HARDWARE_SIGNED_ROWS,
   REQUIRED_HARDWARE_SIGNED_SOFTWARE_GATES,
+  TREZOR_HARDWARE_SIGNED_SOFTWARE_GATES,
   UNSUPPORTED_HARDWARE_SIGNED_ROWS,
   type HardwareSignedAddressEvidence,
+  type HardwareSignedArtifact,
   type HardwareSignedExpectedOutput,
   type HardwareSignedNegativeControlEvidence,
   type HardwareSignedPsbtVector,
   type HardwareSignedSoftwareGateEvidence,
-} from '@fixtures/hardware-signed-psbt-vectors';
+  type TrezorConnectTransactionArtifact,
+} from "@fixtures/hardware-signed-psbt-vectors";
 import {
-  assertHardwareSignedFixtureIntake,
-  validateHardwareSignedFixtureSet,
-} from '../../../helpers/hardwareSignedFixtureIntake';
+  assertHardwareSignedFixtureIntake as assertHardwareSignedFixtureIntakeRaw,
+  validateHardwareSignedFixtureSet as validateHardwareSignedFixtureSetRaw,
+} from "../../../helpers/hardwareSignedFixtureIntake";
 import {
   missingHardwareSignedRows,
-  replayHardwareSignedVector,
-} from '../../../helpers/hardwareSignedPsbtReplay';
+  replayHardwareSignedVector as replayHardwareSignedVectorRaw,
+  unaccountedHardwareSignedRows,
+} from "../../../helpers/hardwareSignedPsbtReplay";
+import {
+  coreReceiptPayload,
+  currentHardwareEvidenceSourceManifest,
+  type HardwareEvidenceVerificationContext,
+} from "../../../helpers/hardwareSignedEvidenceProvenance";
+import {
+  validateHardwareAddressDerivation,
+  validateHardwarePsbtPolicyBinding,
+} from "../../../helpers/hardwareSignedPolicyBinding";
 
 bitcoin.initEccLib(ecc);
+const bip32 = BIP32Factory(ecc);
 
 const NETWORK = bitcoin.networks.regtest;
+const ACCOUNT_PATH = "m/84'/1'/0'";
+const ROOT = bip32.fromSeed(Buffer.alloc(32, 7), NETWORK);
+const ACCOUNT = ROOT.derivePath(ACCOUNT_PATH);
+const INPUT = ACCOUNT.derive(0).derive(0);
+const CORE_RECEIPT_KEY_ID = "unit-test-core-receipt";
+const CORE_RECEIPT_KEYS = generateKeyPairSync("ed25519");
+const TEST_CONTEXT: HardwareEvidenceVerificationContext = {
+  trustedCoreReceiptKeys: {
+    [CORE_RECEIPT_KEY_ID]: CORE_RECEIPT_KEYS.publicKey
+      .export({ type: "spki", format: "pem" })
+      .toString(),
+  },
+  isTestedCommitReachable: () => true,
+  now: Date.parse("2026-08-11T00:00:00.000Z"),
+};
 
-function generatedSignedVector(scriptType: 'p2wpkh') {
-  for (const vector of GENERATED_SIGNED_PSBT_VECTORS) {
-    if (vector.scriptType === scriptType) return vector;
-  }
-  throw new Error(`Missing generated signed ${scriptType} test vector`);
+const assertHardwareSignedFixtureIntake = (
+  vector: HardwareSignedPsbtVector,
+): void => assertHardwareSignedFixtureIntakeRaw(vector, TEST_CONTEXT);
+const validateHardwareSignedFixtureSet = (
+  fixtures: HardwareSignedPsbtVector[],
+  unsupported: typeof UNSUPPORTED_HARDWARE_SIGNED_ROWS,
+) => validateHardwareSignedFixtureSetRaw(fixtures, unsupported, TEST_CONTEXT);
+const replayHardwareSignedVector = (vector: HardwareSignedPsbtVector) =>
+  replayHardwareSignedVectorRaw(vector, TEST_CONTEXT);
+const SIGNER = {
+  fingerprint: Buffer.from(ROOT.fingerprint).toString("hex"),
+  derivationPath: `${ACCOUNT_PATH}/0/0`,
+  pubkey: Buffer.from(INPUT.publicKey).toString("hex"),
+};
+
+function generatedSignedVector(_scriptType: "p2wpkh") {
+  const payment = bitcoin.payments.p2wpkh({
+    pubkey: Uint8Array.from(INPUT.publicKey),
+    network: NETWORK,
+  });
+  const change = ACCOUNT.derive(1).derive(0);
+  const changePayment = bitcoin.payments.p2wpkh({
+    pubkey: Uint8Array.from(change.publicKey),
+    network: NETWORK,
+  });
+  const recipient = bitcoin.payments.p2wpkh({
+    pubkey: Uint8Array.from(
+      bip32.fromSeed(Buffer.alloc(32, 8), NETWORK).publicKey,
+    ),
+    network: NETWORK,
+  });
+  const previous = new bitcoin.Transaction();
+  previous.addInput(Buffer.alloc(32), 0xffffffff);
+  previous.addOutput(payment.output!, 100_000n);
+  const psbt = new bitcoin.Psbt({ network: NETWORK });
+  psbt.addInput({
+    hash: previous.getId(),
+    index: 0,
+    nonWitnessUtxo: previous.toBuffer(),
+    witnessUtxo: { script: payment.output!, value: 100_000n },
+    bip32Derivation: [
+      {
+        masterFingerprint: Uint8Array.from(ROOT.fingerprint),
+        path: SIGNER.derivationPath,
+        pubkey: Uint8Array.from(INPUT.publicKey),
+      },
+    ],
+  });
+  psbt.addOutput({ address: recipient.address!, value: 50_000n });
+  psbt.addOutput({
+    address: changePayment.address!,
+    value: 49_000n,
+    bip32Derivation: [
+      {
+        masterFingerprint: Uint8Array.from(ROOT.fingerprint),
+        path: `${ACCOUNT_PATH}/1/0`,
+        pubkey: Uint8Array.from(change.publicKey),
+      },
+    ],
+  });
+  const signed = psbt.clone();
+  signed.signInput(0, INPUT);
+  const finalized = signed.clone();
+  finalized.finalizeAllInputs();
+  const tx = finalized.extractTransaction();
+  return {
+    unsignedPsbtBase64: psbt.toBase64(),
+    signedPsbtBase64: signed.toBase64(),
+    finalTxHex: tx.toHex(),
+    expectedFee: 1_000,
+    expectedVsize: tx.virtualSize(),
+    expectedTxid: tx.getId(),
+  };
 }
 
-function outputAddress(output: bitcoin.Transaction['outs'][number]): string {
+function outputAddress(output: bitcoin.Transaction["outs"][number]): string {
   return bitcoin.address.fromOutputScript(output.script, NETWORK);
 }
 
@@ -52,301 +152,1046 @@ function expectedOutputs(finalTxHex: string): HardwareSignedExpectedOutput[] {
 }
 
 function inputValueSats(unsignedPsbtBase64: string): number {
-  const psbt = bitcoin.Psbt.fromBase64(unsignedPsbtBase64, { network: NETWORK });
-  return psbt.data.inputs.reduce((total, input) => total + Number(input.witnessUtxo?.value ?? 0n), 0);
+  const psbt = bitcoin.Psbt.fromBase64(unsignedPsbtBase64, {
+    network: NETWORK,
+  });
+  return psbt.data.inputs.reduce(
+    (total, input) => total + Number(input.witnessUtxo?.value ?? 0n),
+    0,
+  );
 }
 
-function syntheticAddressEvidence(accountPath = "m/84'/1'/0'"): HardwareSignedAddressEvidence[] {
-  return REQUIRED_HARDWARE_SIGNED_ADDRESS_PATH_SUFFIXES.map((suffix, index) => ({
-    path: `${accountPath}${suffix}`,
-    sanctuaryAddress: `bcrt1qfixtureaddress${index}`,
-    deviceAddress: `bcrt1qfixtureaddress${index}`,
-    coreAddress: `bcrt1qfixtureaddress${index}`,
-  }));
+function syntheticAddressEvidence(
+  accountPath = ACCOUNT_PATH,
+): HardwareSignedAddressEvidence[] {
+  return REQUIRED_HARDWARE_SIGNED_ADDRESS_PATH_SUFFIXES.map(
+    (suffix, index) => ({
+      path: `${accountPath}${suffix}`,
+      sanctuaryAddress: bitcoin.payments.p2wpkh({
+        pubkey: Uint8Array.from(ACCOUNT.derivePath(suffix.slice(1)).publicKey),
+        network: NETWORK,
+      }).address!,
+      deviceAddress: bitcoin.payments.p2wpkh({
+        pubkey: Uint8Array.from(ACCOUNT.derivePath(suffix.slice(1)).publicKey),
+        network: NETWORK,
+      }).address!,
+      coreAddress: bitcoin.payments.p2wpkh({
+        pubkey: Uint8Array.from(ACCOUNT.derivePath(suffix.slice(1)).publicKey),
+        network: NETWORK,
+      }).address!,
+      displayedOnPhysicalDevice: true,
+    }),
+  );
 }
 
-function syntheticSoftwareGates(): HardwareSignedSoftwareGateEvidence[] {
-  return REQUIRED_HARDWARE_SIGNED_SOFTWARE_GATES.map(command => ({
+function syntheticSoftwareGates(
+  vendor: HardwareSignedPsbtVector["vendor"] = "ledger",
+): HardwareSignedSoftwareGateEvidence[] {
+  const commands =
+    vendor === "trezor"
+      ? [
+          ...REQUIRED_HARDWARE_SIGNED_SOFTWARE_GATES,
+          ...TREZOR_HARDWARE_SIGNED_SOFTWARE_GATES,
+        ]
+      : REQUIRED_HARDWARE_SIGNED_SOFTWARE_GATES;
+  return commands.map((command) => ({
     command,
-    status: 'passed',
-    capturedAt: '2026-05-09T00:00:00.000Z',
+    status: "passed",
+    capturedAt: "2026-08-10T00:00:00.000Z",
   }));
 }
 
-function syntheticNegativeControls(scriptType = 'p2wpkh'): HardwareSignedNegativeControlEvidence[] {
-  const multisigControls = scriptType === 'p2wsh' || scriptType === 'p2sh-p2wsh'
-    ? MULTISIG_HARDWARE_SIGNED_NEGATIVE_CONTROLS
-    : [];
-  return [...COMMON_HARDWARE_SIGNED_NEGATIVE_CONTROLS, ...multisigControls].map(caseName => ({
-    caseName,
-    expectedFailure: 'fixture must fail closed',
-    observedFailure: 'fixture failed before signing or replay',
-    passed: true,
-  }));
+function syntheticNegativeControls(
+  scriptType = "p2wpkh",
+): HardwareSignedNegativeControlEvidence[] {
+  const multisigControls =
+    scriptType === "p2wsh" || scriptType === "p2sh-p2wsh"
+      ? MULTISIG_HARDWARE_SIGNED_NEGATIVE_CONTROLS
+      : [];
+  return [...COMMON_HARDWARE_SIGNED_NEGATIVE_CONTROLS, ...multisigControls].map(
+    (caseName) => ({
+      caseName,
+      expectedFailure: "fixture must fail closed",
+      observedFailure: "fixture failed before signing or replay",
+      passed: true,
+    }),
+  );
 }
 
-function syntheticHardwareVector(overrides: Partial<HardwareSignedPsbtVector> = {}): HardwareSignedPsbtVector {
-  const source = generatedSignedVector('p2wpkh');
-  const scriptType = overrides.scriptType ?? 'p2wpkh';
+function hash(value: Uint8Array | string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function artifactHash(artifact: HardwareSignedArtifact): string {
+  if (artifact.type === "signed-psbt")
+    return hash(Buffer.from(artifact.signedPsbtBase64, "base64"));
+  return hash(
+    [
+      artifact.sourcePsbtBase64,
+      ...artifact.connectSignatures,
+      artifact.serializedTxHex,
+    ].join("\n"),
+  );
+}
+
+function physicalEvidence(
+  unsignedPsbtBase64: string,
+  artifact: HardwareSignedArtifact,
+  finalTxHex: string,
+  vendor: HardwareSignedPsbtVector["vendor"],
+) {
+  const sdk =
+    vendor === "trezor"
+      ? {
+          package: "@trezor/connect-web" as const,
+          version: "9.7.3",
+          integrity:
+            "sha512-oTI/v9sUJMvLZgLa0seSGyPaumXydRYeAT4OVTQxIaEiL1hOA0yH+UvEfT4WKwxbxOtOqWosD8chP3uuWSArcg==",
+        }
+      : vendor === "bitbox"
+        ? {
+            package: "bitbox02-api" as const,
+            version: "0.15.1",
+            integrity:
+              "sha512-zeuHVF3kAQsJsa2q1fCtktVFiJV/G8nMuKonwMMsCx1RY0mzqc33RGlayTrvLrgs3fj30wLkWmXrgPmQCIJxmg==",
+          }
+        : {
+            package: "@ledgerhq/hw-app-btc" as const,
+            version: "10.22.1",
+            integrity:
+              "sha512-DH+E4+Nq7O9zDGhMjRStRQjk2UH4gBM2Pn9vR0OXnajmHpylCVwKRPW/cDLZ4HcNISKUMHq2yNrmRQq7JHHXDg==",
+          };
+  const tx = bitcoin.Transaction.fromHex(finalTxHex);
+  const invocationId = "core-acceptance-physical-capture-001";
   return {
-    id: 'ledger-p2wpkh-synthetic-replay',
-    description: 'Synthetic hardware fixture replay contract using a Core-accepted software-signed PSBT',
-    vendor: 'ledger',
+    capturedAt: "2026-08-10T00:00:00.000Z",
+    expiresAt: "2027-02-05T00:00:00.000Z",
+    operator: "fixture-operator",
+    testedCommitSha: "1".repeat(40),
+    sanctuaryImageDigest: `sha256:${"2".repeat(64)}`,
+    sdkVersion: sdk.version,
+    sdkIntegrity: sdk.integrity,
+    sdkPackage: sdk.package,
+    sourceManifest: currentHardwareEvidenceSourceManifest(vendor),
+    hostOs: "Ubuntu 24.04.3 LTS",
+    browser: "Chromium 140.0.7339.80",
+    captureId: "physical-capture-001",
+    unsignedPsbtSha256: hash(Buffer.from(unsignedPsbtBase64, "base64")),
+    signedArtifactSha256: artifactHash(artifact),
+    changeRecognizedOnDevice: true as const,
+    bitcoinCoreVersion: "/Satoshi:29.0.0/",
+    bitcoinCoreImageDigest:
+      "bitcoin/bitcoin:29.0@sha256:a6aa8a9e349b4108d13c558dbe43064057bd7b6474b858966884f9cb95b7ed78",
+    coreAcceptance: {
+      invocationId,
+      requestJson: JSON.stringify({
+        jsonrpc: "1.0",
+        id: invocationId,
+        method: "testmempoolaccept",
+        params: [[finalTxHex]],
+      }),
+      responseJson: JSON.stringify({
+        result: [
+          {
+            txid: tx.getId(),
+            wtxid: Buffer.from(tx.getHash(true)).reverse().toString("hex"),
+            allowed: true,
+            vsize: tx.virtualSize(),
+            fees: { base: 0.00001 },
+          },
+        ],
+        error: null,
+        id: invocationId,
+      }),
+      receipt: {
+        algorithm: "ed25519" as const,
+        keyId: CORE_RECEIPT_KEY_ID,
+        payloadSha256: "",
+        signatureBase64: "",
+      },
+    },
+  };
+}
+
+function signCoreReceipt(vector: HardwareSignedPsbtVector): void {
+  const payload = coreReceiptPayload(vector);
+  vector.evidence.coreAcceptance.receipt.payloadSha256 = hash(payload);
+  vector.evidence.coreAcceptance.receipt.signatureBase64 = sign(
+    null,
+    payload,
+    CORE_RECEIPT_KEYS.privateKey,
+  ).toString("base64");
+}
+
+function syntheticHardwareVector(
+  overrides: Partial<HardwareSignedPsbtVector> = {},
+): HardwareSignedPsbtVector {
+  const source = generatedSignedVector("p2wpkh");
+  const scriptType = overrides.scriptType ?? "p2wpkh";
+  const vendor = overrides.vendor ?? "ledger";
+  const artifact = overrides.artifact ?? {
+    type: "signed-psbt" as const,
+    signedPsbtBase64: source.signedPsbtBase64,
+  };
+  const unsignedPsbtBase64 =
+    overrides.unsignedPsbtBase64 ?? source.unsignedPsbtBase64;
+  const vector: HardwareSignedPsbtVector = {
+    fixtureSchemaVersion: 3,
+    evidenceTier: "physical-device",
+    id: "ledger-p2wpkh-synthetic-replay",
+    description:
+      "Synthetic unit fixture for the physical artifact replay contract",
+    vendor,
     scriptType,
-    network: 'regtest',
+    network: "regtest",
     device: {
-      model: 'Ledger Nano S Plus',
-      firmwareVersion: 'synthetic',
-      bitcoinAppVersion: 'synthetic',
-      transport: 'webusb',
-      transportVersion: 'test',
+      model: "Ledger Nano S Plus",
+      firmwareVersion: "synthetic",
+      bitcoinAppVersion: "synthetic",
+      transport: "webusb",
+      transportVersion: "test",
+      emulated: false,
     },
     account: {
-      fingerprint: 'f00dbabe',
-      accountPath: "m/84'/1'/0'",
-      xpubPrefix: 'tpub-synthetic',
-      walletPolicy: 'wpkh(@0/**)',
+      fingerprint: SIGNER.fingerprint,
+      accountPath: ACCOUNT_PATH,
+      accountXpub: ACCOUNT.neutered().toBase58(),
+      canonicalPolicyId: "single-sig-native-segwit-bip84-v1",
+      canonicalPolicyVersion: 1,
     },
-    unsignedPsbtBase64: source.unsignedPsbtBase64,
-    signedPsbtBase64: source.signedPsbtBase64,
-    inputValueSats: inputValueSats(source.unsignedPsbtBase64),
+    unsignedPsbtBase64,
+    artifact,
+    inputValueSats: inputValueSats(unsignedPsbtBase64),
     expectedFeeSats: source.expectedFee,
     expectedVsize: source.expectedVsize,
     expectedTxid: source.expectedTxid,
     expectedOutputs: expectedOutputs(source.finalTxHex),
     addressEvidence: syntheticAddressEvidence(),
     negativeControls: syntheticNegativeControls(scriptType),
-    softwareGates: syntheticSoftwareGates(),
+    softwareGates: syntheticSoftwareGates(vendor),
     sanitization: {
-      reviewer: 'fixture-reviewer',
+      reviewer: "fixture-reviewer",
       nonMainnetFunds: true,
       dedicatedOrWipeableDevice: true,
       noSeedsPinsPassphrasesPairingSecrets: true,
       noHostAuthTokens: true,
       sanitizedArtifactsReviewed: true,
     },
-    signedBy: [
-      {
-        fingerprint: 'f00dbabe',
-        derivationPath: "m/84'/1'/0'/0/0",
-      },
-    ],
-    evidence: {
-      capturedAt: '2026-04-30T00:00:00.000Z',
-      operator: 'synthetic-test',
-      bitcoinCoreVersion: 'Bitcoin Core /Satoshi:27.0.0/',
-      mempoolAcceptAllowed: true,
-    },
+    signedBy: [SIGNER],
+    evidence: physicalEvidence(
+      unsignedPsbtBase64,
+      artifact,
+      source.finalTxHex,
+      vendor,
+    ),
     ...overrides,
+  };
+  if (!overrides.evidence) {
+    vector.evidence = physicalEvidence(
+      vector.unsignedPsbtBase64,
+      vector.artifact,
+      source.finalTxHex,
+      vector.vendor,
+    );
+  }
+  signCoreReceipt(vector);
+  return vector;
+}
+
+function trezorArtifact(): TrezorConnectTransactionArtifact {
+  const source = generatedSignedVector("p2wpkh");
+  const signed = bitcoin.Psbt.fromBase64(source.signedPsbtBase64, {
+    network: NETWORK,
+  });
+  const signature = Buffer.from(signed.data.inputs[0].partialSig![0].signature);
+  return {
+    type: "trezor-connect-transaction",
+    sourcePsbtBase64: source.unsignedPsbtBase64,
+    connectSignatures: [signature.subarray(0, -1).toString("hex")],
+    serializedTxHex: source.finalTxHex,
   };
 }
 
-describe('Hardware-signed PSBT fixture replay harness', () => {
-  it('keeps the required hardware signing matrix explicit', () => {
+function mutateOutput(rawTxHex: string): string {
+  const tx = bitcoin.Transaction.fromHex(rawTxHex);
+  tx.outs[0].value -= 1n;
+  return tx.toHex();
+}
+
+function falseChangeMetadata(
+  markAsChange: boolean,
+): Partial<HardwareSignedPsbtVector> {
+  const source = generatedSignedVector("p2wpkh");
+  const unsigned = bitcoin.Psbt.fromBase64(source.unsignedPsbtBase64, {
+    network: NETWORK,
+  });
+  const signed = bitcoin.Psbt.fromBase64(source.signedPsbtBase64, {
+    network: NETWORK,
+  });
+  const inputDerivation = unsigned.data.inputs[0].bip32Derivation![0];
+  const outputDerivation = { ...inputDerivation, path: "m/84'/1'/0'/1/0" };
+  unsigned.updateOutput(0, { bip32Derivation: [outputDerivation] });
+  signed.updateOutput(0, { bip32Derivation: [outputDerivation] });
+  return {
+    unsignedPsbtBase64: unsigned.toBase64(),
+    artifact: { type: "signed-psbt", signedPsbtBase64: signed.toBase64() },
+    expectedOutputs: expectedOutputs(source.finalTxHex).map((output) => ({
+      ...output,
+      isChange: markAsChange,
+      derivationPath: markAsChange ? outputDerivation.path : undefined,
+    })),
+  };
+}
+
+function multisigPolicyVector(): HardwareSignedPsbtVector {
+  const accountPath = "m/48'/1'/0'/2'";
+  const roots = [11, 12].map((seed) =>
+    bip32.fromSeed(Buffer.alloc(32, seed), NETWORK),
+  );
+  const accounts = roots.map((root) => root.derivePath(accountPath));
+  const children = accounts.map((account) => account.derive(0).derive(0));
+  const pubkeys = children
+    .map((child) => Buffer.from(child.publicKey))
+    .sort(Buffer.compare);
+  const witness = bitcoin.payments.p2ms({ m: 2, pubkeys, network: NETWORK });
+  const p2wsh = bitcoin.payments.p2wsh({ redeem: witness, network: NETWORK });
+  const previous = new bitcoin.Transaction();
+  previous.addInput(Buffer.alloc(32), 0xffffffff);
+  previous.addOutput(p2wsh.output!, 100_000n);
+  const psbt = new bitcoin.Psbt({ network: NETWORK });
+  psbt.addInput({
+    hash: previous.getId(),
+    index: 0,
+    witnessUtxo: { script: p2wsh.output!, value: 100_000n },
+    witnessScript: witness.output!,
+    bip32Derivation: children.map((child, index) => ({
+      masterFingerprint: Uint8Array.from(roots[index].fingerprint),
+      path: `${accountPath}/0/0`,
+      pubkey: Uint8Array.from(child.publicKey),
+    })),
+  });
+  psbt.addOutput({
+    address: expectedOutputs(generatedSignedVector("p2wpkh").finalTxHex)[0]
+      .address,
+    value: 99_000n,
+  });
+  const cosigners = accounts.map((account, index) => ({
+    fingerprint: Buffer.from(roots[index].fingerprint).toString("hex"),
+    accountPath,
+    accountXpub: account.neutered().toBase58(),
+  }));
+  return syntheticHardwareVector({
+    scriptType: "p2wsh",
+    unsignedPsbtBase64: psbt.toBase64(),
+    account: {
+      ...cosigners[0],
+      canonicalPolicyId: "multisig-native-segwit-bip48-2-v1",
+      canonicalPolicyVersion: 1,
+      multisig: { threshold: 1, cosigners },
+    },
+    signedBy: [
+      {
+        fingerprint: cosigners[0].fingerprint,
+        derivationPath: `${accountPath}/0/0`,
+        pubkey: Buffer.from(children[0].publicKey).toString("hex"),
+      },
+    ],
+    negativeControls: syntheticNegativeControls("p2wsh"),
+  });
+}
+
+function completeMultisigPolicyVector(
+  scriptType: "p2wsh" | "p2sh-p2wsh" = "p2wsh",
+): { psbt: bitcoin.Psbt; vector: HardwareSignedPsbtVector } {
+  const vector = multisigPolicyVector();
+  vector.scriptType = scriptType;
+  vector.account.multisig!.threshold = 2;
+  const psbt = bitcoin.Psbt.fromBase64(vector.unsignedPsbtBase64, {
+    network: NETWORK,
+  });
+
+  if (scriptType === "p2sh-p2wsh") {
+    const input = psbt.data.inputs[0];
+    const witness = bitcoin.payments.p2wsh({
+      redeem: { output: input.witnessScript },
+      network: NETWORK,
+    });
+    const nested = bitcoin.payments.p2sh({ redeem: witness, network: NETWORK });
+    input.redeemScript = witness.output!;
+    input.witnessUtxo = {
+      script: nested.output!,
+      value: input.witnessUtxo!.value,
+    };
+  }
+
+  return { psbt, vector };
+}
+
+function malformedTaprootVector(): HardwareSignedPsbtVector {
+  const accountPath = "m/86'/1'/0'";
+  const root = bip32.fromSeed(Buffer.alloc(32, 86), NETWORK);
+  const account = root.derivePath(accountPath);
+  const child = account.derive(0).derive(0);
+  const internal = Buffer.from(child.publicKey).subarray(1);
+  const payment = bitcoin.payments.p2tr({
+    internalPubkey: internal,
+    network: NETWORK,
+  });
+  const previous = new bitcoin.Transaction();
+  previous.addInput(Buffer.alloc(32), 0xffffffff);
+  previous.addOutput(payment.output!, 100_000n);
+  const psbt = new bitcoin.Psbt({ network: NETWORK });
+  psbt.addInput({
+    hash: previous.getId(),
+    index: 0,
+    witnessUtxo: { script: payment.output!, value: 100_000n },
+    tapInternalKey: internal,
+    tapBip32Derivation: [
+      {
+        masterFingerprint: Uint8Array.from(root.fingerprint),
+        path: `${accountPath}/0/0`,
+        pubkey: internal,
+        leafHashes: [Buffer.alloc(32, 1)],
+      },
+    ],
+  });
+  psbt.addOutput({
+    address: expectedOutputs(generatedSignedVector("p2wpkh").finalTxHex)[0]
+      .address,
+    value: 99_000n,
+  });
+  return syntheticHardwareVector({
+    scriptType: "p2tr",
+    unsignedPsbtBase64: psbt.toBase64(),
+    account: {
+      fingerprint: Buffer.from(root.fingerprint).toString("hex"),
+      accountPath,
+      accountXpub: account.neutered().toBase58(),
+      canonicalPolicyId: "single-sig-taproot-bip86-v1",
+      canonicalPolicyVersion: 1,
+    },
+    signedBy: [
+      {
+        fingerprint: Buffer.from(root.fingerprint).toString("hex"),
+        derivationPath: `${accountPath}/0/0`,
+        pubkey: internal.toString("hex"),
+      },
+    ],
+  });
+}
+
+describe("Hardware-signed PSBT fixture replay harness", () => {
+  it("keeps required, unsupported, and evidence-blocked rows explicit", () => {
     expect(REQUIRED_HARDWARE_SIGNED_ROWS).toHaveLength(15);
-    expect(REQUIRED_HARDWARE_SIGNED_ROWS).toContainEqual({ vendor: 'ledger', scriptType: 'p2wpkh' });
-    expect(REQUIRED_HARDWARE_SIGNED_ROWS).toContainEqual({ vendor: 'trezor', scriptType: 'p2sh-p2wsh' });
-    expect(REQUIRED_HARDWARE_SIGNED_ROWS).toContainEqual({ vendor: 'bitbox', scriptType: 'p2tr' });
-  });
-
-  it('keeps unsupported product rows explicit and documented', () => {
     expect(UNSUPPORTED_HARDWARE_SIGNED_ROWS).toHaveLength(4);
-    expect(UNSUPPORTED_HARDWARE_SIGNED_ROWS).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ vendor: 'ledger', scriptType: 'p2wsh', productDecision: 'blocked' }),
-        expect.objectContaining({ vendor: 'ledger', scriptType: 'p2sh-p2wsh', productDecision: 'blocked' }),
-        expect.objectContaining({ vendor: 'bitbox', scriptType: 'p2wsh', productDecision: 'blocked' }),
-        expect.objectContaining({ vendor: 'bitbox', scriptType: 'p2sh-p2wsh', productDecision: 'blocked' }),
-      ])
-    );
-    expect(UNSUPPORTED_HARDWARE_SIGNED_ROWS.every((row) => row.reason.length > 20)).toBe(true);
+    expect(BLOCKED_HARDWARE_SIGNED_ROWS).toHaveLength(5);
+    expect(
+      BLOCKED_HARDWARE_SIGNED_ROWS.every((row) => row.vendor === "trezor"),
+    ).toBe(true);
+    expect(
+      BLOCKED_HARDWARE_SIGNED_ROWS.every((row) => row.reason.length > 20),
+    ).toBe(true);
   });
 
-  it('replays every committed hardware-signed fixture when evidence is present', () => {
+  it("replays every committed physical-device fixture without software fallback", () => {
     HARDWARE_SIGNED_PSBT_VECTORS.forEach((vector) => {
-      const result = replayHardwareSignedVector(vector);
-      expect(result.txid).toBe(vector.expectedTxid);
-      expect(result.feeSats).toBe(vector.expectedFeeSats);
-      expect(result.vsize).toBe(vector.expectedVsize);
+      expect(vector.evidenceTier).toBe("physical-device");
+      expect(vector.device.emulated).toBe(false);
+      expect(replayHardwareSignedVector(vector).txid).toBe(vector.expectedTxid);
     });
   });
 
-  it('reports missing hardware rows until fixtures or explicit unsupported decisions exist', () => {
+  it("keeps physical completeness distinct from product blocking", () => {
     const missing = missingHardwareSignedRows(
       REQUIRED_HARDWARE_SIGNED_ROWS,
       HARDWARE_SIGNED_PSBT_VECTORS,
-      UNSUPPORTED_HARDWARE_SIGNED_ROWS
+      UNSUPPORTED_HARDWARE_SIGNED_ROWS,
     );
-    const accountedRows = HARDWARE_SIGNED_PSBT_VECTORS.length + UNSUPPORTED_HARDWARE_SIGNED_ROWS.length + missing.length;
-
-    expect(accountedRows).toBe(REQUIRED_HARDWARE_SIGNED_ROWS.length);
     expect(missing).toHaveLength(11);
-    expect(missing).not.toContainEqual({ vendor: 'ledger', scriptType: 'p2wsh' });
-    expect(missing).not.toContainEqual({ vendor: 'bitbox', scriptType: 'p2sh-p2wsh' });
-    if (process.env.REQUIRE_HARDWARE_SIGNED_FIXTURES === '1') {
+    expect(missing.filter((row) => row.vendor === "trezor")).toHaveLength(5);
+    expect(
+      unaccountedHardwareSignedRows(
+        REQUIRED_HARDWARE_SIGNED_ROWS,
+        HARDWARE_SIGNED_PSBT_VECTORS,
+        UNSUPPORTED_HARDWARE_SIGNED_ROWS,
+        BLOCKED_HARDWARE_SIGNED_ROWS,
+      ),
+    ).toHaveLength(6);
+    if (process.env.REQUIRE_HARDWARE_SIGNED_FIXTURES === "1")
       expect(missing).toEqual([]);
+    if (process.env.REQUIRE_TREZOR_PHYSICAL_FIXTURES === "1") {
+      expect(missing.filter((row) => row.vendor === "trezor")).toEqual([]);
     }
   });
 
-  it('replays a signed PSBT artifact through finalization and transaction invariants', () => {
+  it("replays the adapter-returned signed PSBT with exact outputs and authenticated input values", () => {
     const vector = syntheticHardwareVector();
     const result = replayHardwareSignedVector(vector);
-
     expect(result).toMatchObject({
       txid: vector.expectedTxid,
       feeSats: vector.expectedFeeSats,
       vsize: vector.expectedVsize,
     });
     expect(result.outputs).toEqual(
-      vector.expectedOutputs.map(({ index, address, valueSats }) => ({ index, address, valueSats }))
+      vector.expectedOutputs.map(({ index, address, valueSats }) => ({
+        index,
+        address,
+        valueSats,
+      })),
     );
   });
 
-  it('replays a raw transaction artifact returned by Trezor', () => {
-    const source = generatedSignedVector('p2wpkh');
+  it("cryptographically binds the complete Trezor Connect tuple", () => {
+    const artifact = trezorArtifact();
     const vector = syntheticHardwareVector({
-      id: 'trezor-raw-tx-synthetic-replay',
-      vendor: 'trezor',
-      signedPsbtBase64: undefined,
-      rawTxHex: source.finalTxHex,
+      id: "trezor-p2wpkh-connect-tuple-replay",
+      vendor: "trezor",
+      artifact,
       device: {
-        model: 'Trezor Safe 5',
-        firmwareVersion: 'synthetic',
-        transport: 'trezor-connect',
-        transportVersion: 'test',
+        model: "Trezor Safe 5",
+        firmwareVersion: "2.8.8",
+        transport: "trezor-connect",
+        transportVersion: "9.7.3",
+        emulated: false,
       },
     });
-
-    expect(replayHardwareSignedVector(vector).txid).toBe(source.expectedTxid);
+    expect(replayHardwareSignedVector(vector).txid).toBe(vector.expectedTxid);
   });
 
-  it('accepts complete hardware fixture intake evidence before replay', () => {
-    const vector = syntheticHardwareVector();
-
-    expect(() => assertHardwareSignedFixtureIntake(vector)).not.toThrow();
-    expect(validateHardwareSignedFixtureSet([vector], UNSUPPORTED_HARDWARE_SIGNED_ROWS)).toEqual([]);
-  });
-
-  it('rejects missing or mismatched address evidence before replay', () => {
-    expect(() => assertHardwareSignedFixtureIntake(syntheticHardwareVector({
-      addressEvidence: syntheticAddressEvidence().filter(evidence => !evidence.path.endsWith('/1/19')),
-    }))).toThrow('missing address evidence for /1/19');
-
-    expect(() => assertHardwareSignedFixtureIntake(syntheticHardwareVector({
-      addressEvidence: syntheticAddressEvidence().map((evidence, index) => index === 0
-        ? { ...evidence, deviceAddress: 'bcrt1qmismatch' }
-        : evidence),
-    }))).toThrow('address mismatch');
-  });
-
-  it('rejects missing software gates and secret-shaped notes before replay', () => {
-    expect(() => assertHardwareSignedFixtureIntake(syntheticHardwareVector({
-      softwareGates: syntheticSoftwareGates().slice(1),
-    }))).toThrow('missing passed software gate');
-
-    expect(() => assertHardwareSignedFixtureIntake(syntheticHardwareVector({
-      evidence: {
-        capturedAt: '2026-04-30T00:00:00.000Z',
-        operator: 'synthetic-test',
-        bitcoinCoreVersion: 'Bitcoin Core /Satoshi:27.0.0/',
-        mempoolAcceptAllowed: true,
-        notes: 'operator accidentally pasted seed words here',
-      },
-    }))).toThrow('secret-shaped material');
-  });
-
-  it('rejects missing negative controls and non-test networks before replay', () => {
-    expect(() => assertHardwareSignedFixtureIntake(syntheticHardwareVector({
-      negativeControls: syntheticNegativeControls().filter(control => control.caseName !== 'tampered-recipient'),
-    }))).toThrow('missing passed negative control tampered-recipient');
-
-    expect(() => assertHardwareSignedFixtureIntake(syntheticHardwareVector({
-      network: 'mainnet' as HardwareSignedPsbtVector['network'],
-    }))).toThrow('regtest, signet, or testnet only');
-  });
-
-  it('rejects missing Core replay evidence before replay', () => {
-    expect(() => assertHardwareSignedFixtureIntake(syntheticHardwareVector({
-      evidence: {
-        capturedAt: '2026-04-30T00:00:00.000Z',
-        operator: 'synthetic-test',
-        mempoolAcceptAllowed: true,
-      },
-    }))).toThrow('missing Bitcoin Core replay version');
-
-    expect(() => assertHardwareSignedFixtureIntake(syntheticHardwareVector({
-      evidence: {
-        capturedAt: '2026-04-30T00:00:00.000Z',
-        operator: 'synthetic-test',
-        bitcoinCoreVersion: 'Bitcoin Core /Satoshi:27.0.0/',
-        mempoolAcceptAllowed: false,
-      },
-    }))).toThrow('Core testmempoolaccept must be allowed');
-  });
-
-  it('rejects duplicate fixture rows and rows blocked by product decisions', () => {
-    expect(validateHardwareSignedFixtureSet([
-      syntheticHardwareVector({ id: 'first-ledger-p2wpkh' }),
-      syntheticHardwareVector({ id: 'second-ledger-p2wpkh' }),
-    ], UNSUPPORTED_HARDWARE_SIGNED_ROWS)).toEqual([
-      expect.objectContaining({ field: 'fixtureSet', message: expect.stringContaining('duplicate') }),
-    ]);
-
-    expect(validateHardwareSignedFixtureSet([
-      syntheticHardwareVector({
-        vendor: 'ledger',
-        scriptType: 'p2wsh',
-        negativeControls: syntheticNegativeControls('p2wsh'),
-      }),
-    ], UNSUPPORTED_HARDWARE_SIGNED_ROWS)).toEqual([
-      expect.objectContaining({ field: 'fixtureSet', message: expect.stringContaining('conflicts') }),
-    ]);
-  });
-
-  it('accounts for rows covered by fixtures and unsupported decisions', () => {
-    const missing = missingHardwareSignedRows(
-      [
-        { vendor: 'ledger', scriptType: 'p2wpkh' },
-        { vendor: 'bitbox', scriptType: 'p2tr' },
-        { vendor: 'trezor', scriptType: 'p2wsh' },
-      ],
-      [syntheticHardwareVector()],
-      [{ vendor: 'bitbox', scriptType: 'p2tr', reason: 'firmware unsupported', productDecision: 'blocked' }]
-    );
-
-    expect(missing).toEqual([{ vendor: 'trezor', scriptType: 'p2wsh' }]);
-  });
-
-  it('rejects missing or ambiguous signed artifacts', () => {
-    expect(() => replayHardwareSignedVector(syntheticHardwareVector({ signedPsbtBase64: undefined }))).toThrow(
-      'must include exactly one signed PSBT or raw transaction'
-    );
-    expect(() => replayHardwareSignedVector(syntheticHardwareVector({ rawTxHex: '00' }))).toThrow(
-      'must include exactly one signed PSBT or raw transaction'
-    );
-  });
-
-  it('rejects malformed fixture metadata before replay', () => {
-    expect(() => replayHardwareSignedVector(syntheticHardwareVector({ id: '   ' }))).toThrow('missing id');
-    expect(() => replayHardwareSignedVector(syntheticHardwareVector({ signedBy: [] }))).toThrow(
-      'has no signer evidence'
-    );
-  });
-
-  it('rejects transaction invariant mismatches', () => {
-    expect(() => replayHardwareSignedVector(syntheticHardwareVector({ expectedTxid: '00' }))).toThrow(
-      'txid mismatch'
-    );
-    expect(() => replayHardwareSignedVector(syntheticHardwareVector({ expectedFeeSats: 1 }))).toThrow(
-      'fee mismatch'
-    );
-    expect(() => replayHardwareSignedVector(syntheticHardwareVector({ expectedVsize: 1 }))).toThrow(
-      'vsize mismatch'
+  it("rejects emulator provenance and same-person review", () => {
+    expect(() =>
+      assertHardwareSignedFixtureIntake(
+        syntheticHardwareVector({
+          evidenceTier: "physical-device",
+          device: {
+            ...syntheticHardwareVector().device,
+            emulated: true as false,
+          },
+        }),
+      ),
+    ).toThrow(
+      "emulator evidence cannot satisfy physical-device fixture intake",
     );
     expect(() =>
-      replayHardwareSignedVector(syntheticHardwareVector({
-        expectedOutputs: [{ ...expectedOutputs(generatedSignedVector('p2wpkh').finalTxHex)[0], valueSats: 1 }],
-      }))
-    ).toThrow('output 0 mismatch');
+      assertHardwareSignedFixtureIntake(
+        syntheticHardwareVector({
+          sanitization: {
+            ...syntheticHardwareVector().sanitization,
+            reviewer: "fixture-operator",
+          },
+        }),
+      ),
+    ).toThrow("operator and sanitization reviewer must differ");
+  });
+
+  it("rejects incomplete provenance and evidence hash drift", () => {
+    const vector = syntheticHardwareVector();
+    expect(() =>
+      assertHardwareSignedFixtureIntake({
+        ...vector,
+        evidence: { ...vector.evidence, testedCommitSha: "short" },
+      }),
+    ).toThrow("tested commit must be a full Git SHA");
+    expect(() =>
+      assertHardwareSignedFixtureIntake({
+        ...vector,
+        evidence: { ...vector.evidence, signedArtifactSha256: "0".repeat(64) },
+      }),
+    ).toThrow("signed artifact hash mismatch");
+  });
+
+  it("rejects stale evidence, policy-code drift, and SDK lockfile drift", () => {
+    const vector = syntheticHardwareVector();
+    expect(() =>
+      assertHardwareSignedFixtureIntake({
+        ...vector,
+        evidence: { ...vector.evidence, expiresAt: "2026-08-10T00:00:00.000Z" },
+      }),
+    ).toThrow("physical evidence is expired");
+    expect(() =>
+      assertHardwareSignedFixtureIntake({
+        ...vector,
+        evidence: {
+          ...vector.evidence,
+          sourceManifest: vector.evidence.sourceManifest.map((entry, index) =>
+            index === 0 ? { ...entry, sha256: "0".repeat(64) } : entry,
+          ),
+        },
+      }),
+    ).toThrow("source manifest differs");
+    expect(() =>
+      assertHardwareSignedFixtureIntake({
+        ...vector,
+        evidence: { ...vector.evidence, sdkVersion: "9.7.3" },
+      }),
+    ).toThrow("exactly match the current lockfile");
+  });
+
+  it("rejects canonical policy, account xpub, and address derivation drift", () => {
+    const vector = syntheticHardwareVector();
+    expect(() =>
+      assertHardwareSignedFixtureIntake({
+        ...vector,
+        account: {
+          ...vector.account,
+          canonicalPolicyId: "single-sig-taproot-bip86-v1",
+        },
+      }),
+    ).toThrow("current canonical wallet policy");
+    expect(() =>
+      replayHardwareSignedVector(
+        syntheticHardwareVector({
+          account: {
+            ...vector.account,
+            accountXpub: bip32
+              .fromSeed(Buffer.alloc(32, 99), NETWORK)
+              .neutered()
+              .toBase58(),
+          },
+        }),
+      ),
+    ).toThrow("account xpub derivation mismatch");
+    const addresses = syntheticAddressEvidence();
+    expect(() =>
+      replayHardwareSignedVector(
+        syntheticHardwareVector({
+          addressEvidence: addresses.map((entry, index) =>
+            index === 0
+              ? {
+                  ...entry,
+                  sanctuaryAddress: addresses[1].sanctuaryAddress,
+                  deviceAddress: addresses[1].sanctuaryAddress,
+                  coreAddress: addresses[1].sanctuaryAddress,
+                }
+              : entry,
+          ),
+        }),
+      ),
+    ).toThrow("address evidence does not derive");
+  });
+
+  it("rejects incomplete multisig policy binding and non-key-path BIP371 metadata", () => {
+    expect(() => replayHardwareSignedVector(multisigPolicyVector())).toThrow(
+      "multisig threshold or key order mismatch",
+    );
+    expect(() => replayHardwareSignedVector(malformedTaprootVector())).toThrow(
+      "violates BIP371 key-path metadata",
+    );
+  });
+
+  it("rejects nested P2SH-P2WSH outer and redeem wrapper mismatches", () => {
+    const { psbt, vector } = completeMultisigPolicyVector("p2sh-p2wsh");
+    expect(() => validateHardwarePsbtPolicyBinding(vector, psbt)).not.toThrow();
+
+    const wrongOuter = psbt.clone();
+    wrongOuter.data.inputs[0].witnessUtxo!.script = Buffer.alloc(23, 1);
+    expect(() => validateHardwarePsbtPolicyBinding(vector, wrongOuter)).toThrow(
+      "multisig wrapper mismatch",
+    );
+
+    const wrongRedeem = psbt.clone();
+    wrongRedeem.data.inputs[0].redeemScript = Buffer.alloc(34, 2);
+    expect(() =>
+      validateHardwarePsbtPolicyBinding(vector, wrongRedeem),
+    ).toThrow("nested multisig redeem script mismatch");
+  });
+
+  it("rejects an invalid multisig witness policy", () => {
+    const { psbt, vector } = completeMultisigPolicyVector();
+    psbt.data.inputs[0].witnessScript = Buffer.from([0xff]);
+    expect(() => validateHardwarePsbtPolicyBinding(vector, psbt)).toThrow(
+      "multisig witness policy is invalid",
+    );
+  });
+
+  it("rejects out-of-account and unknown-cosigner derivations", () => {
+    const outsideAccount = completeMultisigPolicyVector();
+    outsideAccount.psbt.data.inputs[0].bip32Derivation![0].path =
+      "m/48'/1'/9'/2'/0/0";
+    expect(() =>
+      validateHardwarePsbtPolicyBinding(
+        outsideAccount.vector,
+        outsideAccount.psbt,
+      ),
+    ).toThrow("derivation is outside its account path");
+
+    const unknownCosigner = completeMultisigPolicyVector();
+    unknownCosigner.psbt.data.inputs[0].bip32Derivation![0].masterFingerprint =
+      Buffer.from("ffffffff", "hex");
+    expect(() =>
+      validateHardwarePsbtPolicyBinding(
+        unknownCosigner.vector,
+        unknownCosigner.psbt,
+      ),
+    ).toThrow("contains an unknown cosigner");
+  });
+
+  it("derives P2SH-P2WSH address evidence from the complete cosigner policy", () => {
+    const { psbt, vector } = completeMultisigPolicyVector("p2sh-p2wsh");
+    const path = `${vector.account.accountPath}/0/0`;
+    const address = bitcoin.address.fromOutputScript(
+      psbt.data.inputs[0].witnessUtxo!.script,
+      NETWORK,
+    );
+    vector.addressEvidence = [
+      {
+        path,
+        sanctuaryAddress: address,
+        deviceAddress: address,
+        coreAddress: address,
+        displayedOnPhysicalDevice: true,
+      },
+    ];
+
+    expect(() => validateHardwareAddressDerivation(vector)).not.toThrow();
+    vector.addressEvidence[0].sanctuaryAddress = bitcoin.payments.p2wsh({
+      redeem: { output: psbt.data.inputs[0].witnessScript },
+      network: NETWORK,
+    }).address!;
+    expect(() => validateHardwareAddressDerivation(vector)).toThrow(
+      "address evidence does not derive from the account policy",
+    );
+  });
+
+  it("rejects Core acceptance records that do not bind the replayed transaction", () => {
+    const vector = syntheticHardwareVector();
+    const response = JSON.parse(
+      vector.evidence.coreAcceptance.responseJson,
+    ) as {
+      result: Array<{ txid: string }>;
+    };
+    response.result[0].txid = "0".repeat(64);
+    vector.evidence.coreAcceptance.responseJson = JSON.stringify(response);
+    signCoreReceipt(vector);
+    expect(() => replayHardwareSignedVector(vector)).toThrow(
+      "Bitcoin Core acceptance evidence mismatch",
+    );
+  });
+
+  it("rejects unsigned Core transcripts, unreachable commits, and source drift", () => {
+    const vector = syntheticHardwareVector();
+    expect(() => replayHardwareSignedVectorRaw(vector)).toThrow(
+      "receipt key is not trusted",
+    );
+    expect(() =>
+      assertHardwareSignedFixtureIntakeRaw(vector, {
+        ...TEST_CONTEXT,
+        isTestedCommitReachable: () => false,
+      }),
+    ).toThrow("not a reachable ancestor");
+    vector.evidence.coreAcceptance.requestJson =
+      vector.evidence.coreAcceptance.requestJson.replace(
+        "testmempoolaccept",
+        "sendrawtransaction",
+      );
+    expect(() => replayHardwareSignedVector(vector)).toThrow(
+      "receipt payload hash mismatch",
+    );
+  });
+
+  it("rejects missing or mismatched physical address display evidence", () => {
+    expect(() =>
+      assertHardwareSignedFixtureIntake(
+        syntheticHardwareVector({
+          addressEvidence: syntheticAddressEvidence().filter(
+            (evidence) => !evidence.path.endsWith("/1/19"),
+          ),
+        }),
+      ),
+    ).toThrow("missing address evidence for /1/19");
+    expect(() =>
+      assertHardwareSignedFixtureIntake(
+        syntheticHardwareVector({
+          addressEvidence: syntheticAddressEvidence().map((evidence, index) =>
+            index === 0
+              ? { ...evidence, deviceAddress: "bcrt1qmismatch" }
+              : evidence,
+          ),
+        }),
+      ),
+    ).toThrow("address mismatch");
+  });
+
+  it("rejects missing software gates, negative controls, and secret-shaped notes", () => {
+    expect(() =>
+      assertHardwareSignedFixtureIntake(
+        syntheticHardwareVector({
+          softwareGates: syntheticSoftwareGates().slice(1),
+        }),
+      ),
+    ).toThrow("missing passed software gate");
+    expect(() =>
+      assertHardwareSignedFixtureIntake(
+        syntheticHardwareVector({
+          negativeControls: syntheticNegativeControls().filter(
+            (control) => control.caseName !== "tampered-recipient",
+          ),
+        }),
+      ),
+    ).toThrow("missing passed negative control tampered-recipient");
+    const vector = syntheticHardwareVector();
+    expect(() =>
+      assertHardwareSignedFixtureIntake({
+        ...vector,
+        evidence: {
+          ...vector.evidence,
+          notes: "operator accidentally pasted seed words here",
+        },
+      }),
+    ).toThrow("secret-shaped material");
+  });
+
+  it.each([
+    [12, 16],
+    [15, 20],
+    [18, 24],
+    [21, 28],
+    [24, 32],
+  ])(
+    "rejects an unlabeled valid %i-word BIP39 mnemonic without disclosing it",
+    (_wordCount, entropyBytes) => {
+      const mnemonic = entropyToMnemonic(
+        Buffer.alloc(entropyBytes, entropyBytes),
+      );
+      const vector = syntheticHardwareVector();
+      let errorMessage = "";
+      try {
+        assertHardwareSignedFixtureIntake({
+          ...vector,
+          evidence: {
+            ...vector.evidence,
+            notes: `capture annotation: ${mnemonic}; reviewed`,
+          },
+        });
+      } catch (error) {
+        errorMessage = error instanceof Error ? error.message : String(error);
+      }
+      expect(errorMessage).toContain("valid BIP39 mnemonic detected");
+      expect(errorMessage).not.toContain(mnemonic);
+    },
+  );
+
+  it.each(
+    Object.entries(wordlists).filter((entry): entry is [string, string[]] =>
+      Array.isArray(entry[1]),
+    ),
+  )(
+    "rejects an unlabeled valid mnemonic from the %s BIP39 wordlist",
+    (_wordlistName, wordlist) => {
+      const mnemonic = entropyToMnemonic(Buffer.alloc(16, 7), wordlist);
+      const vector = syntheticHardwareVector();
+      let errorMessage = "";
+      try {
+        assertHardwareSignedFixtureIntake({
+          ...vector,
+          evidence: {
+            ...vector.evidence,
+            notes: `capture annotation: ${mnemonic}; reviewed`,
+          },
+        });
+      } catch (error) {
+        errorMessage = error instanceof Error ? error.message : String(error);
+      }
+      expect(errorMessage).toContain("valid BIP39 mnemonic detected");
+      expect(errorMessage).not.toContain(mnemonic);
+    },
+  );
+
+  it.each([
+    ["eleven words", "abandon ".repeat(11).trim()],
+    ["invalid checksum", `${"abandon ".repeat(11)}abandon`],
+    ["twenty-five words", "abandon ".repeat(25).trim()],
+    [
+      "non-English invalid checksum",
+      Array(12).fill(wordlists.japanese[0]).join(" "),
+    ],
+  ])("does not classify %s as a valid BIP39 mnemonic", (_caseName, notes) => {
+    const vector = syntheticHardwareVector();
+    expect(() =>
+      assertHardwareSignedFixtureIntake({
+        ...vector,
+        evidence: { ...vector.evidence, notes },
+      }),
+    ).not.toThrow();
+  });
+
+  it.each([
+    "xprv",
+    "yprv",
+    "zprv",
+    "Yprv",
+    "Zprv",
+    "tprv",
+    "uprv",
+    "vprv",
+    "Uprv",
+    "Vprv",
+  ])(
+    "rejects an unlabeled %s private extended key without disclosing it",
+    (prefix) => {
+      const privateExtendedKey = `${prefix}${"A".repeat(24)}`;
+      const vector = syntheticHardwareVector();
+      let errorMessage = "";
+      try {
+        assertHardwareSignedFixtureIntake({
+          ...vector,
+          evidence: { ...vector.evidence, notes: privateExtendedKey },
+        });
+      } catch (error) {
+        errorMessage = error instanceof Error ? error.message : String(error);
+      }
+      expect(errorMessage).toContain("secret-shaped material");
+      expect(errorMessage).not.toContain(privateExtendedKey);
+    },
+  );
+
+  it.each([
+    ["public extended key", `xpub${"A".repeat(24)}`],
+    ["short private prefix", `xprv${"A".repeat(19)}`],
+  ])("does not classify a %s as a private extended key", (_caseName, notes) => {
+    const vector = syntheticHardwareVector();
+    expect(() =>
+      assertHardwareSignedFixtureIntake({
+        ...vector,
+        evidence: { ...vector.evidence, notes },
+      }),
+    ).not.toThrow();
+  });
+
+  it("rejects non-test networks and missing Core acceptance", () => {
+    expect(() =>
+      assertHardwareSignedFixtureIntake(
+        syntheticHardwareVector({
+          network: "mainnet" as HardwareSignedPsbtVector["network"],
+        }),
+      ),
+    ).toThrow("regtest, signet, or testnet only");
+    const vector = syntheticHardwareVector();
+    const response = JSON.parse(
+      vector.evidence.coreAcceptance.responseJson,
+    ) as {
+      result: Array<{ allowed: boolean }>;
+    };
+    response.result[0].allowed = false;
+    vector.evidence.coreAcceptance.responseJson = JSON.stringify(response);
+    signCoreReceipt(vector);
+    expect(() => replayHardwareSignedVector(vector)).toThrow(
+      "Bitcoin Core acceptance evidence mismatch",
+    );
+  });
+
+  it("rejects duplicate fixture rows and rows blocked as unsupported", () => {
+    expect(
+      validateHardwareSignedFixtureSet(
+        [
+          syntheticHardwareVector({ id: "first-ledger-p2wpkh" }),
+          syntheticHardwareVector({ id: "second-ledger-p2wpkh" }),
+        ],
+        UNSUPPORTED_HARDWARE_SIGNED_ROWS,
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        field: "fixtureSet",
+        message: expect.stringContaining("duplicate"),
+      }),
+    ]);
+    expect(
+      validateHardwareSignedFixtureSet(
+        [
+          syntheticHardwareVector({
+            vendor: "ledger",
+            scriptType: "p2wsh",
+            negativeControls: syntheticNegativeControls("p2wsh"),
+          }),
+        ],
+        UNSUPPORTED_HARDWARE_SIGNED_ROWS,
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          field: "fixtureSet",
+          message: expect.stringContaining("conflicts"),
+        }),
+      ]),
+    );
+  });
+
+  it("rejects raw transaction/source intent mismatch and missing output declarations", () => {
+    const artifact = trezorArtifact();
+    expect(() =>
+      replayHardwareSignedVector(
+        syntheticHardwareVector({
+          vendor: "trezor",
+          artifact: {
+            ...artifact,
+            serializedTxHex: mutateOutput(artifact.serializedTxHex),
+          },
+        }),
+      ),
+    ).toThrow("output 0 intent mismatch");
+    const outputs = expectedOutputs(generatedSignedVector("p2wpkh").finalTxHex);
+    expect(() =>
+      replayHardwareSignedVector(
+        syntheticHardwareVector({ expectedOutputs: outputs.slice(0, -1) }),
+      ),
+    ).toThrow("expected outputs must exactly cover");
+  });
+
+  it("rejects duplicate output indices, forged input totals, and signer attribution mismatch", () => {
+    const outputs = expectedOutputs(generatedSignedVector("p2wpkh").finalTxHex);
+    expect(() =>
+      replayHardwareSignedVector(
+        syntheticHardwareVector({
+          expectedOutputs: [outputs[0], { ...outputs[0], index: 0 }],
+        }),
+      ),
+    ).toThrow("expected outputs must exactly cover");
+    expect(() =>
+      replayHardwareSignedVector(
+        syntheticHardwareVector({ inputValueSats: 1 }),
+      ),
+    ).toThrow("declared input value mismatch");
+    expect(() =>
+      replayHardwareSignedVector(
+        syntheticHardwareVector({
+          signedBy: [{ ...SIGNER, fingerprint: "00000000" }],
+        }),
+      ),
+    ).toThrow("signer metadata differs from the selected account");
+  });
+
+  it("rejects false or hidden device-owned change metadata", () => {
+    expect(() =>
+      replayHardwareSignedVector(
+        syntheticHardwareVector(falseChangeMetadata(true)),
+      ),
+    ).toThrow("account xpub derivation mismatch");
+    expect(() =>
+      replayHardwareSignedVector(
+        syntheticHardwareVector(falseChangeMetadata(false)),
+      ),
+    ).toThrow("hides device-owned change");
+  });
+
+  it("rejects malformed metadata and transaction invariants", () => {
+    expect(() =>
+      replayHardwareSignedVector(syntheticHardwareVector({ id: "   " })),
+    ).toThrow("missing id");
+    expect(() =>
+      replayHardwareSignedVector(syntheticHardwareVector({ signedBy: [] })),
+    ).toThrow("no signer evidence");
+    expect(() =>
+      replayHardwareSignedVector(
+        syntheticHardwareVector({ expectedTxid: "00" }),
+      ),
+    ).toThrow("txid mismatch");
+    expect(() =>
+      replayHardwareSignedVector(
+        syntheticHardwareVector({ expectedFeeSats: 1 }),
+      ),
+    ).toThrow("fee mismatch");
+    expect(() =>
+      replayHardwareSignedVector(syntheticHardwareVector({ expectedVsize: 1 })),
+    ).toThrow("vsize mismatch");
   });
 });

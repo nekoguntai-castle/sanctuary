@@ -52,6 +52,13 @@
       "reviewWhenTouched": true,
       "lastReviewed": "2026-07-30"
     },
+    "server/tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts": {
+      "category": "proof-harness",
+      "owner": "hardware-wallet-proof",
+      "reason": "Cohesive end-to-end hardware-wallet proof harness spanning physical evidence intake, policy binding, signed-PSBT replay, transaction intent, and authenticated Bitcoin Core acceptance at one shared fixture boundary.",
+      "reviewWhenTouched": true,
+      "lastReviewed": "2026-08-11"
+    },
     "server/tests/unit/services/featureFlagService.test.ts": {
       "category": "proof-harness",
       "owner": "feature-runtime",

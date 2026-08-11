@@ -5,7 +5,6 @@ import type { PSBTSignRequest } from '../../types';
 import { pathToAddressN, validateSatoshiAmount } from './pathUtils';
 import { buildTrezorMultisig, isMultisigInput } from './multisig';
 import type {
-  TrezorBip32Derivation,
   TrezorPayToScriptType,
   TrezorPsbt,
   TrezorPsbtInput,
@@ -17,17 +16,58 @@ import type {
 
 const log = createLogger('TrezorAdapter');
 
+interface TrezorDerivation {
+  pubkey: Uint8Array;
+  masterFingerprint: Uint8Array;
+  path: string;
+  leafHashes?: Uint8Array[];
+}
+
+const getSigningDerivations = (
+  map: TrezorPsbtInput | TrezorPsbtOutput,
+  scriptType: TrezorSpendScriptType,
+  label: string
+): TrezorDerivation[] => {
+  if (scriptType === 'SPENDTAPROOT') {
+    // BIP371 key-path signing uses a 32-byte x-only key and empty leafHashes.
+    // Script-path data is deliberately unsupported and must not be reinterpreted.
+    if (map.bip32Derivation?.length) {
+      throw new Error(`${label} mixes legacy and Taproot derivation metadata`);
+    }
+    const derivations = map.tapBip32Derivation ?? [];
+    if (derivations.length === 0)
+      throw new Error(`${label} is missing wallet-bound Taproot derivation metadata`);
+    if (
+      derivations.some(
+        (derivation) => derivation.pubkey.length !== 32 || derivation.leafHashes.length !== 0
+      )
+    ) {
+      throw new Error(`${label} contains unsupported Taproot script-path metadata`);
+    }
+    return derivations;
+  }
+  if (map.tapBip32Derivation?.length || map.tapInternalKey) {
+    throw new Error(`${label} contains unexpected Taproot derivation metadata`);
+  }
+  const derivations = map.bip32Derivation ?? [];
+  if (derivations.length === 0)
+    throw new Error(`${label} is missing wallet-bound BIP32 derivation metadata`);
+  return derivations;
+};
+
 const getMatchingDerivation = (
-  derivations: TrezorBip32Derivation[],
+  derivations: TrezorDerivation[],
   deviceFingerprintBuffer: Buffer | null,
   deviceFingerprint: string | undefined,
   inputIdx?: number
-): TrezorBip32Derivation => {
+): TrezorDerivation => {
   if (!deviceFingerprintBuffer) {
     throw new Error('Connected Trezor master fingerprint is unavailable');
   }
 
-  const matching = derivations.find(d => uint8ArrayEquals(d.masterFingerprint, deviceFingerprintBuffer));
+  const matching = derivations.find((d) =>
+    uint8ArrayEquals(d.masterFingerprint, deviceFingerprintBuffer)
+  );
   if (matching) {
     if (inputIdx !== undefined) {
       log.info('Found matching bip32Derivation for device', {
@@ -43,29 +83,13 @@ const getMatchingDerivation = (
     log.warn('No matching bip32Derivation found for device fingerprint', {
       inputIdx,
       deviceFingerprint,
-      availableFingerprints: derivations.map(d => toHex(d.masterFingerprint)),
+      availableFingerprints: derivations.map((d) => toHex(d.masterFingerprint)),
     });
   }
 
-  throw new Error(`No PSBT derivation matches the connected Trezor on input ${inputIdx ?? 'output'}`);
-};
-
-const getInputDerivationPath = (
-  input: TrezorPsbtInput,
-  inputIdx: number,
-  deviceFingerprintBuffer: Buffer | null,
-  deviceFingerprint: string | undefined
-): string | undefined => {
-  if (input.bip32Derivation && input.bip32Derivation.length > 0) {
-    return getMatchingDerivation(
-      input.bip32Derivation,
-      deviceFingerprintBuffer,
-      deviceFingerprint,
-      inputIdx
-    ).path;
-  }
-
-  throw new Error(`Input ${inputIdx} is missing wallet-bound BIP32 derivation metadata`);
+  throw new Error(
+    `No PSBT derivation matches the connected Trezor on input ${inputIdx ?? 'output'}`
+  );
 };
 
 const addTrezorInputMultisig = (
@@ -81,12 +105,12 @@ const addTrezorInputMultisig = (
   const multisig = buildTrezorMultisig(
     input.witnessScript ? Buffer.from(input.witnessScript) : undefined,
     input.bip32Derivation as any,
-    request.multisigXpubs
+    request.multisigXpubs,
+    input.partialSig,
+    input.sighashType
   );
 
-  if (!multisig) {
-    return;
-  }
+  if (!multisig) throw new Error(`Input ${inputIdx} is missing a canonical multisig witnessScript`);
 
   trezorInput.multisig = multisig;
   log.info('Built multisig structure for input', {
@@ -121,14 +145,14 @@ const buildTrezorInput = (
   deviceFingerprintBuffer: Buffer | null,
   deviceFingerprint: string | undefined
 ): any => {
-  const derivationPath = getInputDerivationPath(
-    input,
-    inputIdx,
+  const derivationPath = getMatchingDerivation(
+    getSigningDerivations(input, scriptType, `Input ${inputIdx}`),
     deviceFingerprintBuffer,
-    deviceFingerprint
-  );
+    deviceFingerprint,
+    inputIdx
+  ).path;
   const trezorInput: any = {
-    address_n: derivationPath ? pathToAddressN(derivationPath) : [],
+    address_n: pathToAddressN(derivationPath),
     prev_hash: Buffer.from(txInput.hash).reverse().toString('hex'),
     prev_index: txInput.index,
     sequence: txInput.sequence,
@@ -144,6 +168,7 @@ const buildTrezorInput = (
   return trezorInput;
 };
 
+/** Build inputs only after signer derivations match the selected account. */
 export const buildTrezorInputs = (
   psbt: TrezorPsbt,
   request: PSBTSignRequest,
@@ -171,13 +196,10 @@ const getOutputScriptType = (scriptType: TrezorSpendScriptType): TrezorPayToScri
   return 'PAYTOWITNESS';
 };
 
-const isChangeOutput = (
-  request: PSBTSignRequest,
-  outputIdx: number,
-  output: TrezorPsbtOutput
-): boolean => {
-  return Boolean(request.signingContext?.changeOutputs.some(binding => binding.outputIndex === outputIdx))
-    && Boolean(output.bip32Derivation?.length);
+const isChangeOutput = (request: PSBTSignRequest, outputIdx: number): boolean => {
+  return Boolean(
+    request.signingContext?.changeOutputs.some((binding) => binding.outputIndex === outputIdx)
+  );
 };
 
 const addTrezorOutputMultisig = (
@@ -196,9 +218,8 @@ const addTrezorOutputMultisig = (
     request.multisigXpubs
   );
 
-  if (!multisig) {
-    return;
-  }
+  if (!multisig)
+    throw new Error(`Output ${outputIdx} is missing a canonical multisig witnessScript`);
 
   changeOutput.multisig = multisig;
   log.info('Built multisig structure for change output', {
@@ -218,7 +239,7 @@ const buildTrezorChangeOutput = (
   deviceFingerprint: string | undefined
 ): any => {
   const matchingDerivation = getMatchingDerivation(
-    psbtOutput.bip32Derivation!,
+    getSigningDerivations(psbtOutput, scriptType, `Output ${outputIdx}`),
     deviceFingerprintBuffer,
     deviceFingerprint
   );
@@ -257,7 +278,11 @@ const buildTrezorOutput = (
   deviceFingerprintBuffer: Buffer | null,
   deviceFingerprint: string | undefined
 ): any => {
-  if (isChangeOutput(request, outputIdx, psbtOutput) && psbtOutput.bip32Derivation?.length) {
+  const hasSigningDerivation =
+    scriptType === 'SPENDTAPROOT'
+      ? Boolean(psbtOutput.tapBip32Derivation?.length)
+      : Boolean(psbtOutput.bip32Derivation?.length);
+  if (isChangeOutput(request, outputIdx) && hasSigningDerivation) {
     return buildTrezorChangeOutput(
       output,
       psbtOutput,
@@ -272,6 +297,7 @@ const buildTrezorOutput = (
   return buildTrezorExternalOutput(output, outputIdx, isTestnet);
 };
 
+/** Recompute bound change; encode every other output as explicitly external. */
 export const buildTrezorOutputs = (
   psbt: TrezorPsbt,
   request: PSBTSignRequest,

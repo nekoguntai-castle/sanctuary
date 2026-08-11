@@ -32,8 +32,9 @@ env:
   GIT_CONFIG_COUNT: '1'
   GIT_CONFIG_KEY_0: init.defaultBranch
   GIT_CONFIG_VALUE_0: main
-  # Bootstrap only. verify-repeatable switches to lockfile-pinned Node 24.19.0.
-  NODE_VERSION: '24'
+  # Funds-safety proof runtime. This must match .nvmrc exactly; the runner image
+  # supplies it and setup-node-toolchain fails closed on image drift.
+  NODE_VERSION: '24.19.0'
   NPM_VERSION: '11.19.0'
   VERIFY_PSBT_CORE_IMAGE: bitcoin/bitcoin:29.0@sha256:a6aa8a9e349b4108d13c558dbe43064057bd7b6474b858966884f9cb95b7ed78
   SANCTUARY_RUNNER_LOCK_DIR: ${{ github.workspace }}/.tmp/runner-locks-v2
@@ -41,6 +42,12 @@ env:
   # lock (5m today), or the step kills the wait before with-runner-lock.sh can
   # report the contention. tests/ci/with-runner-lock.test.sh enforces this.
   SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS: '120'
+  # Emulator startup includes an image pull, firmware boot, and Bridge startup.
+  # Give its dedicated device lock a measured wait budget within the step limit.
+  TREZOR_EMULATOR_LOCK_TIMEOUT_SECONDS: '600'
+  # The proof resolver may infer a private daemon-host bind from the runner's
+  # job-container gateway, but a public interface always remains opt-in.
+  SANCTUARY_TREZOR_ALLOW_PUBLIC_BIND: '0'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -48,10 +55,13 @@ concurrency:
 
 jobs:
   verify-vectors:
-    runs-on: go-1.25.12
-    timeout-minutes: 45
+    runs-on: docker-socket
+    container:
+      image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:8b50f6c8ccb016b042c7125a637b068a49c856a76e543365044b36a593edd81e
+    timeout-minutes: 60
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/verify-vectors
+      SANCTUARY_CI_RUN_ATTEMPT_OVERRIDE: ${{ github.run_attempt }}
 
     steps:
       - name: Checkout repository
@@ -59,6 +69,8 @@ jobs:
 
       - name: Verify Node.js toolchain
         uses: ./.github/actions/setup-node-toolchain
+        with:
+          install-npm: 'false'
 
       - name: Verify wallet-safety classifier completeness
         run: node scripts/ci/check-wallet-safety-classifier.mjs
@@ -171,6 +183,15 @@ jobs:
           npm run test:run:ci --
           tests/unit/services/bitcoin/hardwareWalletCompatibility.test.ts
           tests/unit/services/hardwareWalletCapabilities.test.ts
+
+      - name: Replay hardware-signed fixture contracts
+        timeout-minutes: 5
+        working-directory: server
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/hardware-signed-fixture-replay.log"
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
+          npm run test:run:ci --
+          tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts
 
       - name: Run property-based tests
         timeout-minutes: 5
@@ -353,11 +374,113 @@ jobs:
           include-hidden-files: true
           retention-days: 14
 
+  verify-trezor-emulator:
+    # Kumo's rootless Podman archive endpoint is known to wedge while its
+    # runner remains eligible. Keep the proof on the alternate socket-capable
+    # host until the fleet archive-health recovery unit is deployed.
+    runs-on: [docker-socket, playwright-x300-canary]
+    # Do not unpack/start the 3.3 GiB emulator image while this workflow's
+    # Bitcoin Core vector lane is concurrently churning the rootless daemon.
+    needs: [verify-vectors]
+    container:
+      image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:8b50f6c8ccb016b042c7125a637b068a49c856a76e543365044b36a593edd81e
+    # The isolated lane begins as soon as the roughly five-minute vector proof
+    # completes. Its cold-cache fallback remains below the runner deadline.
+    timeout-minutes: 48
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/verify-trezor-emulator
+      SANCTUARY_CI_RUN_ATTEMPT_OVERRIDE: ${{ github.run_attempt }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Verify Node.js toolchain
+        uses: ./.github/actions/setup-node-toolchain
+        with:
+          install-npm: 'false'
+
+      - name: Wait for Docker
+        timeout-minutes: 4
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/wait-for-docker.log"
+          ${{ github.workspace }}/scripts/ci/wait-for-docker.sh
+
+      - name: Install Trezor proof dependencies
+        timeout-minutes: 10
+        run: |
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-trezor-proof-dependencies.log" \
+            ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain bash -c '
+            set -euo pipefail
+            ${{ github.workspace }}/scripts/ci/retry-command.sh "Trezor proof root npm ci" npm ci --strict-allow-scripts --ignore-scripts
+            ${{ github.workspace }}/scripts/ci/retry-command.sh "Trezor proof shared workspace build" npm --workspace shared run build
+          '
+
+      - name: Run pinned Trezor emulator proof
+        # Prefer the exact preloaded image. A cold digest-pinned TUE pull has
+        # taken up to 35 minutes on the rootless runner fleet, so retain enough
+        # bounded fallback time for proof execution after a verified cold pull.
+        timeout-minutes: 40
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/trezor-emulator-proof.log"
+          env SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS="$TREZOR_EMULATOR_LOCK_TIMEOUT_SECONDS"
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh trezor-emulator
+          npm run test:trezor-emulator-proof
+
+      - name: Upload current Trezor emulator proof
+        if: success() && env.TREZOR_EMULATOR_PROOF_DIR != ''
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: trezor-emulator-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.TREZOR_EMULATOR_PROOF_DIR }}
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
+
+      - name: Upload current Trezor emulator diagnostics
+        if: always() && env.TREZOR_EMULATOR_DIAGNOSTICS_DIR != ''
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: trezor-emulator-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.TREZOR_EMULATOR_DIAGNOSTICS_DIR }}
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
+
+      - name: Write Trezor emulator failure breadcrumb
+        if: failure()
+        continue-on-error: true
+        timeout-minutes: 2
+        run: >
+          ${{ github.workspace }}/scripts/ci/write-empty-diagnostic-breadcrumb.sh
+          "$DIAGNOSTIC_DIR"
+          "verify-trezor-emulator-failure.log"
+          "Verify Trezor Emulator"
+
+      - name: Write Trezor emulator diagnostic summary
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 2
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Verify Trezor Emulator"
+
+      - name: Upload Trezor emulator diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-verify-trezor-emulator
+          path: .tmp/ci-diagnostics/verify-trezor-emulator/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
+
   # Optional: Regenerate vectors with Bitcoin Core
   # This job runs only on manual trigger and requires Docker
   regenerate-vectors:
     if: github.event_name == 'workflow_dispatch'
-    runs-on: go-1.25.12
+    runs-on: docker-socket
+    container:
+      image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:8b50f6c8ccb016b042c7125a637b068a49c856a76e543365044b36a593edd81e
     timeout-minutes: 60
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/regenerate-vectors
@@ -368,6 +491,8 @@ jobs:
 
       - name: Verify Node.js toolchain
         uses: ./.github/actions/setup-node-toolchain
+        with:
+          install-npm: 'false'
 
       - name: Verify Go toolchain
         uses: ./.github/actions/setup-go-toolchain
@@ -585,7 +710,7 @@ jobs:
 
   # Summary job
   summary:
-    needs: [verify-vectors]
+    needs: [verify-vectors, verify-trezor-emulator]
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     if: always()
@@ -593,7 +718,8 @@ jobs:
     steps:
       - name: Check results
         run: |
-          if [ "${{ needs.verify-vectors.result }}" == "success" ]; then
+          if [ "${{ needs.verify-vectors.result }}" == "success" ] && \
+             [ "${{ needs.verify-trezor-emulator.result }}" == "success" ]; then
             echo "✅ All address verification tests passed"
           else
             echo "❌ Address verification tests failed"

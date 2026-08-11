@@ -4,6 +4,7 @@ import type {
   HardwareWalletDevice,
   DeviceType,
   TransactionForSigning,
+  TrezorConnectSignedArtifact,
 } from '../services/hardwareWallet/types';
 import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
 import { loadHardwareWalletRuntime } from '../services/hardwareWallet/loader';
@@ -33,8 +34,12 @@ export interface UseHardwareWalletReturn {
     psbtBase64: string,
     signingContextOrLegacyPaths?: PsbtSigningContext | string[],
     multisigXpubs?: Record<string, string>,
-    legacyWalletId?: string,
-  ) => Promise<{ psbt: string; rawTx?: string }>;
+    legacyWalletId?: string
+  ) => Promise<{
+    psbt?: string;
+    rawTx?: string;
+    trezorArtifact?: TrezorConnectSignedArtifact;
+  }>;
   refreshDevices: () => Promise<void>;
   clearError: () => void;
 }
@@ -75,7 +80,8 @@ export const useHardwareWallet = (): UseHardwareWalletReturn => {
   /**
    * Connect to a hardware wallet
    */
-  const connect = useCallback(async (type?: DeviceType) => {
+  const connect = useCallback(
+    async (type?: DeviceType) => {
     try {
       setConnecting(true);
       setError(null);
@@ -93,7 +99,9 @@ export const useHardwareWallet = (): UseHardwareWalletReturn => {
     } finally {
       setConnecting(false);
     }
-  }, [refreshDevices]);
+    },
+    [refreshDevices]
+  );
 
   /**
    * Disconnect from current device
@@ -102,7 +110,7 @@ export const useHardwareWallet = (): UseHardwareWalletReturn => {
     void (async () => {
       const { hardwareWalletService } = await loadHardwareWalletRuntime();
       await hardwareWalletService.disconnect();
-    })().catch(err => {
+    })().catch((err) => {
       log.warn('Failed to disconnect hardware wallet service', { error: err });
     });
     setDevice(null);
@@ -112,7 +120,8 @@ export const useHardwareWallet = (): UseHardwareWalletReturn => {
   /**
    * Sign a transaction with the connected device
    */
-  const signTransaction = useCallback(async (tx: TransactionForSigning): Promise<string> => {
+  const signTransaction = useCallback(
+    async (tx: TransactionForSigning): Promise<string> => {
     try {
       setSigning(true);
       setError(null);
@@ -131,7 +140,9 @@ export const useHardwareWallet = (): UseHardwareWalletReturn => {
     } finally {
       setSigning(false);
     }
-  }, [device]);
+    },
+    [device]
+  );
 
   /**
    * Sign a PSBT with hardware wallet
@@ -140,12 +151,17 @@ export const useHardwareWallet = (): UseHardwareWalletReturn => {
    * @param signingContext Immutable server-issued wallet and PSBT evidence
    * @param multisigXpubs Map of fingerprint to xpub for multisig wallets (required for Trezor)
    */
-  const signPSBT = useCallback(async (
+  const signPSBT = useCallback(
+    async (
     psbtBase64: string,
     signingContextOrLegacyPaths?: PsbtSigningContext | string[],
     multisigXpubs?: Record<string, string>,
-    legacyWalletId?: string,
-  ): Promise<{ psbt: string; rawTx?: string }> => {
+      legacyWalletId?: string
+    ): Promise<{
+      psbt?: string;
+      rawTx?: string;
+      trezorArtifact?: TrezorConnectSignedArtifact;
+    }> => {
     const { hardwareWalletService } = await loadHardwareWalletRuntime();
 
     // Check the service's connection state directly (not React state which updates async)
@@ -171,7 +187,11 @@ export const useHardwareWallet = (): UseHardwareWalletReturn => {
       });
 
       // Return both psbt and rawTx (rawTx is only set for Trezor)
-      return { psbt: result.psbt, rawTx: result.rawTx };
+        return {
+          psbt: result.psbt,
+          rawTx: result.rawTx,
+          trezorArtifact: result.trezorArtifact,
+        };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to sign PSBT';
       setError(message);
@@ -179,7 +199,9 @@ export const useHardwareWallet = (): UseHardwareWalletReturn => {
     } finally {
       setSigning(false);
     }
-  }, []);
+    },
+    []
+  );
 
   /**
    * Clear error state

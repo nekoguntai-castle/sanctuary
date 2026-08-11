@@ -11,7 +11,7 @@ reproduce the main evidence.
 ## What Sanctuary Proves Today
 
 | Claim | Evidence |
-| --- | --- |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Sanctuary is a watch-only coordinator | Private keys, seed phrases, passphrases, and hardware PINs are not stored by Sanctuary; wallet state is built from descriptors, xpubs, and hardware-wallet outputs |
 | Browser or API metadata is not authoritative for broadcast | Broadcast paths decode the signed PSBT or raw transaction server-side, reject metadata conflicts, and run policy before audit success, persistence, or propagation |
 | Production broadcast preflight stays Electrum-only | The configured Electrum backend must witness each final input prevout and unspent state before propagation; Bitcoin Core remains lab evidence, not a runtime requirement |
@@ -26,8 +26,13 @@ reproduce the main evidence.
 
 - Full physical hardware-in-loop funds-loss-grade confidence is pending until the
   required Ledger, Trezor, and BitBox signed artifacts are captured or
-  product-blocked. Until then, the posture is software-vector-grade plus fixture
-  intake readiness.
+  product-blocked. Trezor now has pinned Tier 2 production-adapter emulator proof,
+  but it does not prove physical transport, screen rendering, or confirmation and
+  does not enable any Trezor capability row.
+- Physical fixture intake also remains fail-closed until a reviewed Ed25519 Core
+  evidence key is provisioned. Arbitrary commit SHAs, stale source manifests,
+  unsigned RPC transcripts, emulator evidence, and self-asserted acceptance
+  booleans cannot satisfy Tier 3.
 - Sanctuary has not completed a formal independent security audit.
 - A public responsible-disclosure or bug-bounty process is not yet published.
 - Target-environment performance claims require a benchmark rerun on the
@@ -42,7 +47,7 @@ reproduce the main evidence.
 Run the smallest command set that matches the claim being reviewed.
 
 | Area | Command |
-| --- | --- |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Release artifact manifest | `npm run release:verify-artifacts -- --manifest release-manifest.json --strict-stable --public-key scripts/offline/keys/sanctuary-offline-release-public.pem` |
 | Release verifier tests | `npm run test:release-artifacts` |
 | Broadcast canonicality and Electrum preflight | `npm --prefix server run test -- --run tests/unit/api/transactions-http-routes.test.ts tests/unit/services/bitcoin/transactionServiceBroadcast/broadcastContracts.test.ts tests/unit/services/bitcoin/blockchain/broadcastPreflight.test.ts tests/unit/services/bitcoin/industry/broadcastSafety.test.ts tests/unit/services/bitcoin/validationEvidenceContracts.test.ts` |
@@ -50,6 +55,8 @@ Run the smallest command set that matches the claim being reviewed.
 | Descriptor/xpub import safety | `npm --prefix server run test -- --run tests/unit/services/bitcoin/descriptorParser.test.ts` |
 | Safety catch guard | `npm run check:safety-catch-guards` |
 | Hardware fixture replay | `REQUIRE_HARDWARE_SIGNED_FIXTURES=1 npm --prefix server run test -- --run tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts` |
+| Trezor pinned Connect core/Bridge emulator proof | `npm run test:trezor-emulator-proof`                                                                                                                                                                                                                                                                                                                                      |
+| Trezor physical-fixture completeness          | `REQUIRE_TREZOR_PHYSICAL_FIXTURES=1 npm --prefix server run test -- --run tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts` (expected to fail until reviewed physical artifacts land)                                                                                                                                                                     |
 | Hardware unsupported-row product blocks | `npm run test:run -- tests/services/hardwareWallet.signingSupport.test.ts tests/hooks/useUsbSigning.test.tsx tests/services/hardwareWallet.ledgerAdapter.test.ts tests/services/hardwareWallet.bitboxAdapter.test.ts` |
 | Address vectors | `npm --prefix scripts/verify-addresses run verify` |
 | Docs links and Mermaid rewrite tests | `npm run test:run -- tests/docs/readme-links.test.ts tests/docs/remarkMermaidClickRewrite.test.ts` |

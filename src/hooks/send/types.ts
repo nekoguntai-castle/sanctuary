@@ -9,6 +9,7 @@ import type { Wallet, Device } from '../../types';
 import type { PayjoinAttemptStatus, TransactionState } from '../../contexts/send/types';
 import type { DeviceType } from '../../services/hardwareWallet/types';
 import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
+import type { TrezorConnectSignedArtifact } from '../../services/hardwareWallet/types';
 import { createLogger } from '../../utils/logger';
 
 const log = createLogger('SendTxHelpers');
@@ -60,7 +61,11 @@ export interface UseSendTransactionActionsResult {
   // Actions
   createTransaction: () => Promise<TransactionData | null>;
   signWithHardwareWallet: () => Promise<string | null>;
-  signWithHardwareWalletResult: (transaction?: TransactionData) => Promise<{ psbt?: string; rawTx?: string } | null>;
+  signWithHardwareWalletResult: (transaction?: TransactionData) => Promise<{
+    psbt?: string;
+    rawTx?: string;
+    trezorArtifact?: TrezorConnectSignedArtifact;
+  } | null>;
   signWithDevice: (device: Device) => Promise<boolean>;
   broadcastTransaction: (signedPsbt?: string, rawTxHex?: string) => Promise<boolean>;
   saveDraft: (label?: string) => Promise<string | null>;
@@ -82,7 +87,8 @@ export function getHardwareWalletType(deviceType: string): DeviceType | null {
   if (normalizedType.includes('ledger')) return 'ledger';
   if (normalizedType.includes('coldcard')) return 'coldcard';
   if (normalizedType.includes('bitbox')) return 'bitbox';
-  if (normalizedType.includes('passport') || normalizedType.includes('foundation')) return 'passport';
+  if (normalizedType.includes('passport') || normalizedType.includes('foundation'))
+    return 'passport';
   if (normalizedType.includes('jade') || normalizedType.includes('blockstream')) return 'jade';
   return null;
 }
@@ -91,7 +97,9 @@ export function getHardwareWalletType(deviceType: string): DeviceType | null {
  * Extract xpubs from a multisig descriptor keyed by fingerprint
  * Returns a map of fingerprint (lowercase) -> xpub for Trezor multisig signing
  */
-export function extractXpubsFromDescriptor(descriptor: string | undefined): Record<string, string> | undefined {
+export function extractXpubsFromDescriptor(
+  descriptor: string | undefined
+): Record<string, string> | undefined {
   if (!descriptor) {
     log.warn('extractXpubsFromDescriptor: No descriptor provided');
     return undefined;

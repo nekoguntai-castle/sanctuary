@@ -11,3 +11,8 @@ self-hosted-runner:
     # nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go. Both runners carry
     # it, so verify-vectors stays schedulable on either. See #709.
     - go-1.25.12
+    # Temporary host selector for the Trezor emulator proof. Kumo's rootless
+    # Podman archive endpoint can remain wedged while the runner advertises
+    # itself as healthy; x300 is the alternate socket-capable host. Remove this
+    # selector after runner-infra's archive-health recovery unit is deployed.
+    - playwright-x300-canary

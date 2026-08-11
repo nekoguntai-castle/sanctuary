@@ -1,5 +1,5 @@
 import path from 'path';
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import { nodePolyfillsWithoutDeprecatedEsbuild } from './vite.nodePolyfills';
 
@@ -81,6 +81,10 @@ export default defineConfig({
         statements: 100,
       },
     },
+    exclude: [
+      ...configDefaults.exclude,
+      'tests/integration/trezorEmulator.integration.test.ts',
+    ],
     reporters: ['default', 'junit'],
     outputFile: {
       junit: './junit.xml',

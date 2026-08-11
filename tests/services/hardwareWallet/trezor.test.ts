@@ -6,14 +6,20 @@
  */
 
 import {
-buildTrezorMultisig,
-convertToStandardXpub,
-getAccountPathPrefix,
-getTrezorScriptType,
-isBip48MultisigPath,
-validateSatoshiAmount,
+  buildTrezorMultisig,
+  convertToStandardXpub,
+  getAccountPathPrefix,
+  getTrezorScriptType,
+  isBip48MultisigPath,
+  validateSatoshiAmount,
 } from '@/services/hardwareWallet/adapters/trezor';
+import { BIP32Factory } from 'bip32';
+import bs58check from 'bs58check';
+import * as bitcoin from 'bitcoinjs-lib';
+import * as ecc from '@bitcoinerlab/secp256k1';
 import { vi } from 'vitest';
+
+const testBip32 = BIP32Factory(ecc);
 
 vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
@@ -44,15 +50,6 @@ function createWitnessScript(m: number, pubkeys: Buffer[]): Buffer {
   return Buffer.concat(parts);
 }
 
-function accountXpubsFor(
-  derivations: Array<{ masterFingerprint: Buffer }>,
-): Record<string, string> {
-  return Object.fromEntries(derivations.map(derivation => {
-    const fingerprint = derivation.masterFingerprint.toString('hex').toLowerCase();
-    return [fingerprint, `account-xpub-${fingerprint}`];
-  }));
-}
-
 /**
  * Helper to create mock bip32Derivation entries
  */
@@ -66,6 +63,58 @@ function createBip32Derivation(
     path,
     masterFingerprint: Buffer.from(fingerprintHex, 'hex'),
   };
+}
+
+interface MultisigTestSigner {
+  derivation: ReturnType<typeof createBip32Derivation>;
+  accountXpub: string;
+}
+
+function multisigTestSigners(
+  count: number,
+  branch = 0,
+  index = 0,
+  hardenedNotation: "'" | 'h' = "'"
+): MultisigTestSigner[] {
+  return Array.from({ length: count }, (_, signerIndex) => {
+    const root = testBip32.fromSeed(
+      Uint8Array.from({ length: 32 }, () => signerIndex + 1),
+      bitcoin.networks.bitcoin
+    );
+    const account = root.deriveHardened(48).deriveHardened(0).deriveHardened(0).deriveHardened(2);
+    const child = account.derive(branch).derive(index);
+    const fingerprint = (signerIndex + 1).toString(16).padStart(8, '0');
+    const marker = hardenedNotation;
+    return {
+      derivation: createBip32Derivation(
+        Buffer.from(child.publicKey).toString('hex'),
+        `m/48${marker}/0${marker}/0${marker}/2${marker}/${branch}/${index}`,
+        fingerprint
+      ),
+      accountXpub: account.neutered().toBase58(),
+    };
+  });
+}
+
+function accountXpubsFor(signers: MultisigTestSigner[]): Record<string, string> {
+  return Object.fromEntries(
+    signers.map(({ derivation, accountXpub }) => [
+      derivation.masterFingerprint.toString('hex').toLowerCase(),
+      accountXpub,
+    ])
+  );
+}
+
+function sortedSigners(signers: MultisigTestSigner[]): MultisigTestSigner[] {
+  return [...signers].sort((left, right) =>
+    Buffer.compare(left.derivation.pubkey, right.derivation.pubkey)
+  );
+}
+
+function withExtendedKeyVersion(xpub: string, version: number): string {
+  const payload = Buffer.from(bs58check.decode(xpub));
+  payload.writeUInt32BE(version, 0);
+  return bs58check.encode(payload);
 }
 
 describe('validateSatoshiAmount', () => {
@@ -112,9 +161,7 @@ describe('validateSatoshiAmount', () => {
 
   describe('Invalid amounts', () => {
     it('throws for negative number amount', () => {
-      expect(() => validateSatoshiAmount(-100, 'Input 0')).toThrow(
-        'Input 0: invalid amount -100'
-      );
+      expect(() => validateSatoshiAmount(-100, 'Input 0')).toThrow('Input 0: invalid amount -100');
     });
 
     it('throws for negative BigInt amount', () => {
@@ -136,9 +183,7 @@ describe('validateSatoshiAmount', () => {
     });
 
     it('throws for NaN', () => {
-      expect(() => validateSatoshiAmount(NaN, 'Output 0')).toThrow(
-        'Output 0: invalid amount NaN'
-      );
+      expect(() => validateSatoshiAmount(NaN, 'Output 0')).toThrow('Output 0: invalid amount NaN');
     });
   });
 
@@ -147,9 +192,7 @@ describe('validateSatoshiAmount', () => {
       expect(() => validateSatoshiAmount(undefined, 'Custom Context')).toThrow(
         'Custom Context: amount is missing'
       );
-      expect(() => validateSatoshiAmount(-1, 'UTXO 5')).toThrow(
-        'UTXO 5: invalid amount -1'
-      );
+      expect(() => validateSatoshiAmount(-1, 'UTXO 5')).toThrow('UTXO 5: invalid amount -1');
     });
   });
 
@@ -293,259 +336,164 @@ describe('getAccountPathPrefix', () => {
 });
 
 describe('buildTrezorMultisig', () => {
-  // Sample compressed pubkeys (33 bytes each)
-  const pubkey1 = Buffer.from('02' + '11'.repeat(32), 'hex');
-  const pubkey2 = Buffer.from('02' + '22'.repeat(32), 'hex');
-  const pubkey3 = Buffer.from('02' + '33'.repeat(32), 'hex');
-  const pubkey4 = Buffer.from('02' + '44'.repeat(32), 'hex');
-  const pubkey5 = Buffer.from('02' + '55'.repeat(32), 'hex');
-
   describe('Valid multisig structures', () => {
-    it('parses 2-of-3 multisig correctly', () => {
-      const witnessScript = createWitnessScript(2, [pubkey1, pubkey2, pubkey3]);
-      const derivations = [
-        createBip32Derivation(pubkey1.toString('hex'), "m/48'/0'/0'/2'/0/0", 'aabbccdd'),
-        createBip32Derivation(pubkey2.toString('hex'), "m/48'/0'/0'/2'/0/0", '11223344'),
-        createBip32Derivation(pubkey3.toString('hex'), "m/48'/0'/0'/2'/0/0", '55667788'),
-      ];
+    it.each([
+      [2, 3],
+      [3, 5],
+      [1, 2],
+      [3, 3],
+    ] as const)(
+      'parses %i-of-%i with device-authenticated account xpubs',
+      (threshold, signerCount) => {
+        const signers = multisigTestSigners(signerCount);
+        const ordered = sortedSigners(signers);
+        const witnessScript = createWitnessScript(
+          threshold,
+          ordered.map((signer) => signer.derivation.pubkey)
+        );
+        const result = buildTrezorMultisig(
+          witnessScript,
+          [...signers].reverse().map((signer) => signer.derivation),
+          accountXpubsFor(signers)
+        );
 
-      const result = buildTrezorMultisig(witnessScript, derivations, accountXpubsFor(derivations));
-
-      expect(result).toBeDefined();
-      expect(result!.m).toBe(2);
-      expect(result!.pubkeys).toHaveLength(3);
-      expect(result!.signatures).toHaveLength(3);
-      expect(result!.signatures.every(s => s === '')).toBe(true);
-    });
-
-    it('parses 3-of-5 multisig correctly', () => {
-      const witnessScript = createWitnessScript(3, [pubkey1, pubkey2, pubkey3, pubkey4, pubkey5]);
-      const derivations = [
-        createBip32Derivation(pubkey1.toString('hex'), "m/48'/0'/0'/2'/0/0", 'aabbccdd'),
-        createBip32Derivation(pubkey2.toString('hex'), "m/48'/0'/0'/2'/0/0", '11223344'),
-        createBip32Derivation(pubkey3.toString('hex'), "m/48'/0'/0'/2'/0/0", '55667788'),
-        createBip32Derivation(pubkey4.toString('hex'), "m/48'/0'/0'/2'/0/0", '99aabbcc'),
-        createBip32Derivation(pubkey5.toString('hex'), "m/48'/0'/0'/2'/0/0", 'ddeeff00'),
-      ];
-
-      const result = buildTrezorMultisig(witnessScript, derivations, accountXpubsFor(derivations));
-
-      expect(result).toBeDefined();
-      expect(result!.m).toBe(3);
-      expect(result!.pubkeys).toHaveLength(5);
-      expect(result!.signatures).toHaveLength(5);
-    });
-
-    it('parses 1-of-2 multisig (edge case m=1)', () => {
-      const witnessScript = createWitnessScript(1, [pubkey1, pubkey2]);
-      const derivations = [
-        createBip32Derivation(pubkey1.toString('hex'), "m/48'/0'/0'/2'/0/0", 'aabbccdd'),
-        createBip32Derivation(pubkey2.toString('hex'), "m/48'/0'/0'/2'/0/0", '11223344'),
-      ];
-
-      const result = buildTrezorMultisig(witnessScript, derivations, accountXpubsFor(derivations));
-
-      expect(result).toBeDefined();
-      expect(result!.m).toBe(1);
-      expect(result!.pubkeys).toHaveLength(2);
-    });
-
-    it('parses 3-of-3 multisig (edge case m=n)', () => {
-      const witnessScript = createWitnessScript(3, [pubkey1, pubkey2, pubkey3]);
-      const derivations = [
-        createBip32Derivation(pubkey1.toString('hex'), "m/48'/0'/0'/2'/0/0", 'aabbccdd'),
-        createBip32Derivation(pubkey2.toString('hex'), "m/48'/0'/0'/2'/0/0", '11223344'),
-        createBip32Derivation(pubkey3.toString('hex'), "m/48'/0'/0'/2'/0/0", '55667788'),
-      ];
-
-      const result = buildTrezorMultisig(witnessScript, derivations, accountXpubsFor(derivations));
-
-      expect(result).toBeDefined();
-      expect(result!.m).toBe(3);
-      expect(result!.pubkeys).toHaveLength(3);
-    });
+        expect(result).toMatchObject({
+          m: threshold,
+          pubkeys_order: 'LEXICOGRAPHIC',
+          signatures: Array(signerCount).fill(''),
+        });
+        expect(result!.pubkeys.map((pubkey) => pubkey.node)).toEqual(
+          ordered.map((signer) => signer.accountXpub)
+        );
+      }
+    );
   });
 
   describe('Pubkey sorting (sortedmulti compatibility)', () => {
-    it('sorts pubkeys lexicographically by hex value', () => {
-      // Pubkeys are already defined in ascending order: 02111..., 02222..., 02333...
-      const witnessScript = createWitnessScript(2, [pubkey1, pubkey2, pubkey3]);
-      // Pass derivations in reverse order
-      const derivations = [
-        createBip32Derivation(pubkey3.toString('hex'), "m/48'/0'/0'/2'/0/2", '55667788'),
-        createBip32Derivation(pubkey1.toString('hex'), "m/48'/0'/0'/2'/0/0", 'aabbccdd'),
-        createBip32Derivation(pubkey2.toString('hex'), "m/48'/0'/0'/2'/0/1", '11223344'),
-      ];
-
-      const result = buildTrezorMultisig(witnessScript, derivations, accountXpubsFor(derivations));
-
-      expect(result).toBeDefined();
-      // Should be sorted: pubkey1, pubkey2, pubkey3
-      expect(result!.pubkeys[0].node).toBe('account-xpub-aabbccdd');
-      expect(result!.pubkeys[1].node).toBe('account-xpub-11223344');
-      expect(result!.pubkeys[2].node).toBe('account-xpub-55667788');
+    it('rejects a witnessScript whose pubkeys are not lexicographically ordered', () => {
+      const signers = sortedSigners(multisigTestSigners(3));
+      const reversedPubkeys = [...signers].reverse().map((signer) => signer.derivation.pubkey);
+      const witnessScript = createWitnessScript(2, reversedPubkeys);
+      expect(() =>
+        buildTrezorMultisig(
+          witnessScript,
+          signers.map((signer) => signer.derivation),
+          accountXpubsFor(signers)
+        )
+      ).toThrow('not lexicographically ordered');
     });
   });
 
   describe('Child path extraction', () => {
-    it('extracts child path (change/index) from full derivation path with apostrophe', () => {
-      const witnessScript = createWitnessScript(2, [pubkey1, pubkey2]);
-      const derivations = [
-        createBip32Derivation(pubkey1.toString('hex'), "m/48'/0'/0'/2'/0/5", 'aabbccdd'),
-        createBip32Derivation(pubkey2.toString('hex'), "m/48'/0'/0'/2'/1/10", '11223344'),
-      ];
+    it.each([
+      ["'", 0, 5],
+      ['h', 1, 7],
+    ] as const)(
+      'extracts a shared unhardened branch/index with %s account notation',
+      (notation, branch, index) => {
+        const signers = multisigTestSigners(2, branch, index, notation);
+        const ordered = sortedSigners(signers);
+        const result = buildTrezorMultisig(
+          createWitnessScript(
+            2,
+            ordered.map((signer) => signer.derivation.pubkey)
+          ),
+          signers.map((signer) => signer.derivation),
+          accountXpubsFor(signers)
+        );
+        expect(
+          result!.pubkeys.every(
+            (pubkey) => pubkey.address_n[0] === branch && pubkey.address_n[1] === index
+          )
+        ).toBe(true);
+      }
+    );
 
-      const result = buildTrezorMultisig(witnessScript, derivations, accountXpubsFor(derivations));
-
-      expect(result).toBeDefined();
-      // First pubkey: change=0, index=5
-      expect(result!.pubkeys[0].address_n).toEqual([0, 5]);
-      // Second pubkey: change=1, index=10
-      expect(result!.pubkeys[1].address_n).toEqual([1, 10]);
-    });
-
-    it('extracts child path from paths with h notation', () => {
-      const witnessScript = createWitnessScript(2, [pubkey1, pubkey2]);
-      const derivations = [
-        createBip32Derivation(pubkey1.toString('hex'), "m/48h/0h/0h/2h/0/3", 'aabbccdd'),
-        createBip32Derivation(pubkey2.toString('hex'), "m/48h/0h/0h/2h/1/7", '11223344'),
-      ];
-
-      const result = buildTrezorMultisig(witnessScript, derivations, accountXpubsFor(derivations));
-
-      expect(result).toBeDefined();
-      // Child paths are non-hardened: 0/3 and 1/7
-      expect(result!.pubkeys[0].address_n).toEqual([0, 3]);
-      expect(result!.pubkeys[1].address_n).toEqual([1, 7]);
-    });
-
-    it('handles hardened child paths correctly', () => {
-      const witnessScript = createWitnessScript(2, [pubkey1, pubkey2]);
-      const derivations = [
-        createBip32Derivation(pubkey1.toString('hex'), "m/48'/0'/0'/2'/0'/5'", 'aabbccdd'),
-        createBip32Derivation(pubkey2.toString('hex'), "m/48'/0'/0'/2'/1h/10h", '11223344'),
-      ];
-
-      const result = buildTrezorMultisig(witnessScript, derivations, accountXpubsFor(derivations));
-
-      expect(result).toBeDefined();
-      // Hardened: 0' = 0x80000000, 5' = 0x80000005
-      expect(result!.pubkeys[0].address_n).toEqual([0x80000000, 0x80000005]);
-      // Hardened with h: 1h = 0x80000001, 10h = 0x8000000a
-      expect(result!.pubkeys[1].address_n).toEqual([0x80000001, 0x8000000a]);
+    it('rejects hardened post-account child paths', () => {
+      const signers = multisigTestSigners(2);
+      const derivations = signers.map((signer) => ({
+        ...signer.derivation,
+        path: "m/48'/0'/0'/2'/0'/5'",
+      }));
+      const ordered = sortedSigners(signers);
+      expect(() =>
+        buildTrezorMultisig(
+          createWitnessScript(
+            2,
+            ordered.map((signer) => signer.derivation.pubkey)
+          ),
+          derivations,
+          accountXpubsFor(signers)
+        )
+      ).toThrow('invalid unhardened child path');
     });
   });
 
   describe('Invalid or missing witnessScript', () => {
     it('returns undefined for undefined witnessScript', () => {
-      const derivations = [
-        createBip32Derivation(pubkey1.toString('hex'), "m/48'/0'/0'/2'/0/0", 'aabbccdd'),
-      ];
-
-      const result = buildTrezorMultisig(undefined, derivations);
-
-      expect(result).toBeUndefined();
+      expect(buildTrezorMultisig(undefined, [])).toBeUndefined();
     });
 
     it('returns undefined for empty witnessScript', () => {
-      const derivations = [
-        createBip32Derivation(pubkey1.toString('hex'), "m/48'/0'/0'/2'/0/0", 'aabbccdd'),
-      ];
-
-      const result = buildTrezorMultisig(Buffer.alloc(0), derivations);
-
-      expect(result).toBeUndefined();
+      expect(buildTrezorMultisig(Buffer.alloc(0), [])).toBeUndefined();
     });
 
-    it('returns undefined for invalid m value (m=0)', () => {
-      // Create script with OP_0 (0x00) instead of OP_M
+    it('rejects an invalid zero threshold', () => {
+      const pubkey = multisigTestSigners(1)[0].derivation.pubkey;
       const invalidScript = Buffer.concat([
-        Buffer.from([0x50]), // This would be m=0
-        Buffer.from([0x21]), pubkey1,
-        Buffer.from([0x51]), // n=1
+        Buffer.from([0x50]),
+        Buffer.from([0x21]),
+        pubkey,
+        Buffer.from([0x51]),
         Buffer.from([0xae]),
       ]);
-      const derivations = [
-        createBip32Derivation(pubkey1.toString('hex'), "m/48'/0'/0'/2'/0/0", 'aabbccdd'),
-      ];
-
-      const result = buildTrezorMultisig(invalidScript, derivations, accountXpubsFor(derivations));
-
-      expect(result).toBeUndefined();
+      expect(() => buildTrezorMultisig(invalidScript, [])).toThrow(
+        'threshold or signer count is invalid'
+      );
     });
 
-    it('returns undefined for invalid m > n', () => {
-      // Create script where m=3 but only 2 pubkeys (n=2)
+    it('rejects a threshold greater than the signer count', () => {
+      const signers = multisigTestSigners(2);
       const invalidScript = Buffer.concat([
-        Buffer.from([0x53]), // m=3
-        Buffer.from([0x21]), pubkey1,
-        Buffer.from([0x21]), pubkey2,
-        Buffer.from([0x52]), // n=2
+        Buffer.from([0x53]),
+        ...signers.flatMap((signer) => [Buffer.from([0x21]), signer.derivation.pubkey]),
+        Buffer.from([0x52]),
         Buffer.from([0xae]),
       ]);
-      const derivations = [
-        createBip32Derivation(pubkey1.toString('hex'), "m/48'/0'/0'/2'/0/0", 'aabbccdd'),
-        createBip32Derivation(pubkey2.toString('hex'), "m/48'/0'/0'/2'/0/0", '11223344'),
-      ];
-
-      const result = buildTrezorMultisig(invalidScript, derivations, accountXpubsFor(derivations));
-
-      expect(result).toBeUndefined();
+      expect(() => buildTrezorMultisig(invalidScript, [])).toThrow(
+        'threshold or signer count is invalid'
+      );
     });
 
-    it('returns undefined for m > 16', () => {
-      // Create script with invalid m=17 (0x61 which would decode to 17)
+    it('rejects a threshold opcode outside OP_1 through OP_16', () => {
+      const pubkey = multisigTestSigners(1)[0].derivation.pubkey;
       const invalidScript = Buffer.concat([
-        Buffer.from([0x61]), // Would be m=17
-        Buffer.from([0x21]), pubkey1,
-        Buffer.from([0x61]), // n=17
+        Buffer.from([0x61]),
+        Buffer.from([0x21]),
+        pubkey,
+        Buffer.from([0x61]),
         Buffer.from([0xae]),
       ]);
-      const derivations = [
-        createBip32Derivation(pubkey1.toString('hex'), "m/48'/0'/0'/2'/0/0", 'aabbccdd'),
-      ];
-
-      const result = buildTrezorMultisig(invalidScript, derivations, accountXpubsFor(derivations));
-
-      expect(result).toBeUndefined();
+      expect(() => buildTrezorMultisig(invalidScript, [])).toThrow(
+        'threshold or signer count is invalid'
+      );
     });
   });
 
   describe('Edge cases', () => {
-    it('handles single signer (1-of-1)', () => {
-      const witnessScript = createWitnessScript(1, [pubkey1]);
-      const derivations = [
-        createBip32Derivation(pubkey1.toString('hex'), "m/48'/0'/0'/2'/0/0", 'aabbccdd'),
-      ];
-
-      const result = buildTrezorMultisig(witnessScript, derivations, accountXpubsFor(derivations));
-
-      expect(result).toBeDefined();
-      expect(result!.m).toBe(1);
-      expect(result!.pubkeys).toHaveLength(1);
-    });
-
-    it('handles maximum reasonable multisig (15-of-15)', () => {
-      // Create 15 pubkeys
-      const pubkeys: Buffer[] = [];
-      const derivations: Array<{ pubkey: Buffer; path: string; masterFingerprint: Buffer }> = [];
-      for (let i = 0; i < 15; i++) {
-        const pk = Buffer.from('02' + (i + 10).toString(16).padStart(2, '0').repeat(32), 'hex');
-        pubkeys.push(pk);
-        const fingerprint = (i + 1).toString(16).padStart(8, '0');
-        derivations.push(createBip32Derivation(
-          pk.toString('hex'),
-          `m/48'/0'/0'/2'/0/${i}`,
-          fingerprint,
-        ));
-      }
-
-      const witnessScript = createWitnessScript(15, pubkeys);
-      const result = buildTrezorMultisig(witnessScript, derivations, accountXpubsFor(derivations));
-
-      expect(result).toBeDefined();
-      expect(result!.m).toBe(15);
-      expect(result!.pubkeys).toHaveLength(15);
+    it.each([1, 15])('handles %i-of-same at the canonical signer-count boundary', (signerCount) => {
+      const signers = multisigTestSigners(signerCount);
+      const ordered = sortedSigners(signers);
+      const result = buildTrezorMultisig(
+        createWitnessScript(
+          signerCount,
+          ordered.map((signer) => signer.derivation.pubkey)
+        ),
+        signers.map((signer) => signer.derivation),
+        accountXpubsFor(signers)
+      );
+      expect(result).toMatchObject({ m: signerCount });
+      expect(result!.pubkeys).toHaveLength(signerCount);
     });
   });
 });
@@ -556,14 +504,17 @@ describe('convertToStandardXpub', () => {
   // the most commonly encountered format (Zpub) and standard xpub/tpub
 
   // Standard BIP-32 mainnet xpub (version 0x0488B21E)
-  const standardXpub = 'xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8';
+  const standardXpub =
+    'xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8';
 
   // Standard BIP-32 testnet tpub (version 0x043587CF)
-  const standardTpub = 'tpubD6NzVbkrYhZ4XgiXtGrdW5XDAPFCL9h7we1vwNCpn8tGbBcgfVYjXyhWo4E1xkh56hjod1RhGjxbaTLV3X4FyWuejifB9jusQ46QzG87VKp';
+  const standardTpub =
+    'tpubD6NzVbkrYhZ4XgiXtGrdW5XDAPFCL9h7we1vwNCpn8tGbBcgfVYjXyhWo4E1xkh56hjod1RhGjxbaTLV3X4FyWuejifB9jusQ46QzG87VKp';
 
   // SLIP-132 Zpub - P2WSH mainnet (version 0x02AA7ED3)
   // Real Zpub from a Passport device export
-  const zpubMainnet = 'Zpub74omgM7ehB1aZZsx274C1CrbXjE8MSzKzijgwh4Wvhupc5UaLioFcYRi5pEtfdrJa5kSumat5xbiMWrNZuuKLqN22H72P6DrAqNQLE4dv1m';
+  const zpubMainnet =
+    'Zpub74omgM7ehB1aZZsx274C1CrbXjE8MSzKzijgwh4Wvhupc5UaLioFcYRi5pEtfdrJa5kSumat5xbiMWrNZuuKLqN22H72P6DrAqNQLE4dv1m';
 
   describe('Standard format passthrough', () => {
     it('returns standard xpub unchanged', () => {
@@ -597,10 +548,9 @@ describe('convertToStandardXpub', () => {
 
     it('converted xpub can be decoded with bs58check', () => {
       const result = convertToStandardXpub(zpubMainnet);
-      const bs58check = require('bs58check');
 
       // Should not throw - valid base58check encoding
-      const decoded = bs58check.decode(result);
+      const decoded = Buffer.from(bs58check.decode(result));
 
       // Should have correct xpub version bytes (0x0488b21e)
       const versionHex = decoded.slice(0, 4).toString('hex');
@@ -645,49 +595,23 @@ describe('convertToStandardXpub', () => {
 
   describe('Integration with buildTrezorMultisig', () => {
     it('converts Zpub when used in xpubMap', () => {
-      // This tests the integration: buildTrezorMultisig should use converted xpubs
-      const pubkey1 = Buffer.from('02' + '11'.repeat(32), 'hex');
-      const pubkey2 = Buffer.from('02' + '22'.repeat(32), 'hex');
+      const signers = multisigTestSigners(2);
+      const ordered = sortedSigners(signers);
+      const xpubMap = accountXpubsFor(signers);
+      const firstFingerprint = signers[0].derivation.masterFingerprint.toString('hex');
+      xpubMap[firstFingerprint] = withExtendedKeyVersion(signers[0].accountXpub, 0x02aa7ed3);
+      const result = buildTrezorMultisig(
+        createWitnessScript(
+          2,
+          ordered.map((signer) => signer.derivation.pubkey)
+        ),
+        signers.map((signer) => signer.derivation),
+        xpubMap
+      );
 
-      const witnessScript = Buffer.concat([
-        Buffer.from([0x52]), // OP_2
-        Buffer.from([0x21]), pubkey1,
-        Buffer.from([0x21]), pubkey2,
-        Buffer.from([0x52]), // OP_2
-        Buffer.from([0xae]), // OP_CHECKMULTISIG
-      ]);
-
-      const derivations = [
-        {
-          pubkey: pubkey1,
-          path: "m/48'/0'/0'/2'/0/0",
-          masterFingerprint: Buffer.from('7bf099a0', 'hex'),
-        },
-        {
-          pubkey: pubkey2,
-          path: "m/48'/0'/0'/2'/0/0",
-          masterFingerprint: Buffer.from('61419ad3', 'hex'),
-        },
-      ];
-
-      // Use a Zpub in the xpubMap (like from a Passport device)
-      const xpubMap: Record<string, string> = {
-        '7bf099a0': zpubMainnet,  // Zpub will be converted
-        '61419ad3': standardXpub,  // Already xpub
-      };
-
-      const result = buildTrezorMultisig(witnessScript, derivations, xpubMap);
-
-      expect(result).toBeDefined();
-      expect(result!.m).toBe(2);
-      expect(result!.pubkeys).toHaveLength(2);
-
-      // Both should be converted to xpub format (start with 'xpub')
-      for (const pk of result!.pubkeys) {
-        if (typeof pk.node === 'string' && pk.node.length > 10) {
-          expect(pk.node.startsWith('xpub')).toBe(true);
-        }
-      }
+      expect(result!.pubkeys.map((pubkey) => pubkey.node)).toEqual(
+        ordered.map((signer) => signer.accountXpub)
+      );
     });
   });
 });

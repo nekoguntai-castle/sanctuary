@@ -31,8 +31,15 @@ vi.mock('../../src/api/client', () => ({
   },
 }));
 
-import { HardwareWalletService,createHardwareWalletService } from '../../src/services/hardwareWallet/service';
-import type { DeviceAdapter,DeviceType,HardwareWalletDevice } from '../../src/services/hardwareWallet/types';
+import {
+  HardwareWalletService,
+  createHardwareWalletService,
+} from '../../src/services/hardwareWallet/service';
+import type {
+  DeviceAdapter,
+  DeviceType,
+  HardwareWalletDevice,
+} from '../../src/services/hardwareWallet/types';
 import { testPsbtSigningContext } from '../fixtures/psbtSigningContext';
 
 function createMockAdapter(
@@ -56,7 +63,11 @@ function createMockAdapter(
     getDevice: vi.fn(() => device),
     connect: vi.fn(async () => device),
     disconnect: vi.fn(async () => undefined),
-    getXpub: vi.fn(async (path: string) => ({ xpub: `xpub-${type}`, fingerprint: 'abcd1234', path })),
+    getXpub: vi.fn(async (path: string) => ({
+      xpub: `xpub-${type}`,
+      fingerprint: 'abcd1234',
+      path,
+    })),
     signPSBT: vi.fn(async () => ({ psbt: `signed-${type}`, signatures: 1 })),
     verifyAddress: vi.fn(async () => true),
     getAuthorizedDevices: vi.fn(async () => [device]),
@@ -73,7 +84,7 @@ describe('HardwareWalletService', () => {
 
   it.each(['ledger', 'jade', 'trezor'] as const)(
     'blocks %s before loading or connecting an adapter',
-    async type => {
+    async (type) => {
       const service = new HardwareWalletService();
       const { adapter } = createMockAdapter(type);
       service.registerAdapter(adapter);
@@ -131,15 +142,19 @@ describe('HardwareWalletService', () => {
 
   it.each(['ledger', 'jade', 'trezor'] as const)(
     'rechecks every funds-controlling %s operation for an in-flight connection',
-    async type => {
+    async (type) => {
       const service = new HardwareWalletService();
       const { adapter } = createMockAdapter(type);
       (service as unknown as { activeAdapter: DeviceAdapter }).activeAdapter = adapter;
 
       await expect(service.getXpub("m/84'/0'/0'")).rejects.toThrow('temporarily unavailable');
       await expect(service.getAllXpubs()).rejects.toThrow('temporarily unavailable');
-      await expect(service.signPSBT({ psbt: 'psbt', inputPaths: [] })).rejects.toThrow('temporarily unavailable');
-      await expect(service.verifyAddress("m/84'/0'/0'/0/0", 'bc1qtest')).rejects.toThrow('temporarily unavailable');
+      await expect(service.signPSBT({ psbt: 'psbt', inputPaths: [] })).rejects.toThrow(
+        'temporarily unavailable'
+      );
+      await expect(service.verifyAddress("m/84'/0'/0'/0/0", 'bc1qtest')).rejects.toThrow(
+        'temporarily unavailable'
+      );
 
       expect(adapter.getXpub).not.toHaveBeenCalled();
       expect(adapter.signPSBT).not.toHaveBeenCalled();
@@ -162,8 +177,12 @@ describe('HardwareWalletService', () => {
 
   it('checks support by type and across all adapters', () => {
     const service = new HardwareWalletService();
-    const { adapter: supported } = createMockAdapter('coldcard', { isSupported: vi.fn(() => true) });
-    const { adapter: unsupported } = createMockAdapter('bitbox', { isSupported: vi.fn(() => false) });
+    const { adapter: supported } = createMockAdapter('coldcard', {
+      isSupported: vi.fn(() => true),
+    });
+    const { adapter: unsupported } = createMockAdapter('bitbox', {
+      isSupported: vi.fn(() => false),
+    });
     service.registerAdapter(supported);
     service.registerAdapter(unsupported);
 
@@ -226,11 +245,17 @@ describe('HardwareWalletService', () => {
 
   it('throws when connecting to missing or unsupported adapter', async () => {
     const service = new HardwareWalletService();
-    await expect(service.connect('coldcard')).rejects.toThrow('No adapter registered for device type: coldcard');
+    await expect(service.connect('coldcard')).rejects.toThrow(
+      'No adapter registered for device type: coldcard'
+    );
 
-    const { adapter } = createMockAdapter('coldcard', { isSupported: vi.fn(() => false) });
+    const { adapter } = createMockAdapter('coldcard', {
+      isSupported: vi.fn(() => false),
+    });
     service.registerAdapter(adapter);
-    await expect(service.connect('coldcard')).rejects.toThrow('is not supported in this environment');
+    await expect(service.connect('coldcard')).rejects.toThrow(
+      'is not supported in this environment'
+    );
   });
 
   it('handles lazy adapter loader failures and surfaces missing adapter error', async () => {
@@ -241,7 +266,9 @@ describe('HardwareWalletService', () => {
 
     service.registerAdapterLoader('coldcard', failingLoader);
 
-    await expect(service.connect('coldcard')).rejects.toThrow('No adapter registered for device type: coldcard');
+    await expect(service.connect('coldcard')).rejects.toThrow(
+      'No adapter registered for device type: coldcard'
+    );
     expect(failingLoader).toHaveBeenCalledTimes(1);
   });
 
@@ -318,8 +345,57 @@ describe('HardwareWalletService', () => {
   it('requires a connected device for xpub/sign/verify operations', async () => {
     const service = new HardwareWalletService();
     await expect(service.getXpub("m/84'/0'/0'")).rejects.toThrow('No device connected');
-    await expect(service.signPSBT({ psbt: 'psbt', inputPaths: [] })).rejects.toThrow('No device connected');
-    await expect(service.verifyAddress("m/84'/0'/0'/0/0", 'bc1q...')).rejects.toThrow('No device connected');
+    await expect(service.signPSBT({ psbt: 'psbt', inputPaths: [] })).rejects.toThrow(
+      'No device connected'
+    );
+    await expect(service.verifyAddress("m/84'/0'/0'/0/0", 'bc1q...')).rejects.toThrow(
+      'No device connected'
+    );
+  });
+
+  it('rejects adapter evidence that contains no applicable signed transaction state', async () => {
+    const service = new HardwareWalletService();
+    const { adapter } = createMockAdapter('coldcard', {
+      signPSBT: vi.fn(async () => ({
+        signatures: 1,
+        trezorArtifact: {
+          type: 'trezor-connect-transaction' as const,
+          sourcePsbt: 'unsigned-psbt',
+          connectSignatures: ['300102'],
+          serializedTx: 'raw-tx',
+        },
+      })),
+    });
+    service.registerAdapter(adapter);
+    await service.connect('coldcard');
+
+    await expect(
+      service.signPSBT({
+        psbt: 'unsigned-psbt',
+        signingContext: testPsbtSigningContext,
+      })
+    ).rejects.toThrow('did not produce an applicable signed PSBT or transaction');
+  });
+
+  it('requires an applied PSBT for a multisig adapter response', async () => {
+    const service = new HardwareWalletService();
+    const { adapter } = createMockAdapter('coldcard', {
+      signPSBT: vi.fn(async () => ({ signatures: 1, rawTx: 'raw-tx' })),
+    });
+    service.registerAdapter(adapter);
+    await service.connect('coldcard');
+    const multisigContext = {
+      ...testPsbtSigningContext,
+      walletType: 'multi_sig' as const,
+      scriptType: 'native_segwit' as const,
+    };
+
+    await expect(
+      service.signPSBT({
+        psbt: 'unsigned-psbt',
+        signingContext: multisigContext,
+      })
+    ).rejects.toThrow('Multisig hardware signing did not produce an applicable signed PSBT');
   });
 
   it('delegates getXpub to active adapter when connected', async () => {
@@ -344,7 +420,9 @@ describe('HardwareWalletService', () => {
     service.registerAdapter(adapter);
     await service.connect('coldcard');
 
-    await expect(service.verifyAddress("m/84'/0'/0'/0/0", 'bc1q...')).rejects.toThrow('does not support address verification');
+    await expect(service.verifyAddress("m/84'/0'/0'/0/0", 'bc1q...')).rejects.toThrow(
+      'does not support address verification'
+    );
   });
 
   it('delegates verifyAddress when adapter supports verification', async () => {
@@ -382,7 +460,7 @@ describe('HardwareWalletService', () => {
 
     expect(progress).toHaveBeenCalledTimes(HardwareWalletService.STANDARD_PATHS.length);
     expect(results.length).toBeGreaterThan(0);
-    expect(results.every(r => r.xpub.startsWith('xpub-'))).toBe(true);
+    expect(results.every((r) => r.xpub.startsWith('xpub-'))).toBe(true);
   });
 
   it('returns skipped xpub path failures with partial batch results', async () => {
@@ -415,7 +493,11 @@ describe('HardwareWalletService', () => {
   it('fetches all standard xpubs when every path succeeds', async () => {
     const service = new HardwareWalletService();
     const { adapter } = createMockAdapter('coldcard', {
-      getXpub: vi.fn(async (path: string) => ({ xpub: `xpub-${path}`, fingerprint: 'abcd1234', path })),
+      getXpub: vi.fn(async (path: string) => ({
+        xpub: `xpub-${path}`,
+        fingerprint: 'abcd1234',
+        path,
+      })),
     });
     service.registerAdapter(adapter);
     await service.connect('coldcard');
@@ -423,8 +505,8 @@ describe('HardwareWalletService', () => {
     const results = await service.getAllXpubs();
 
     expect(results).toHaveLength(HardwareWalletService.STANDARD_PATHS.length);
-    expect(results.map(result => result.path)).toEqual(
-      HardwareWalletService.STANDARD_PATHS.map(standardPath => standardPath.path)
+    expect(results.map((result) => result.path)).toEqual(
+      HardwareWalletService.STANDARD_PATHS.map((standardPath) => standardPath.path)
     );
   });
 
@@ -433,16 +515,23 @@ describe('HardwareWalletService', () => {
     { fingerprint: 'abcd123', label: 'short' },
     { fingerprint: 'not-hex!', label: 'non-hex' },
     { fingerprint: '00000000', label: 'zero' },
-  ])('rejects a $label master fingerprint without treating it as a skipped path', async ({ fingerprint }) => {
+  ])(
+    'rejects a $label master fingerprint without treating it as a skipped path',
+    async ({ fingerprint }) => {
     const service = new HardwareWalletService();
     const { adapter } = createMockAdapter('coldcard', {
-      getXpub: vi.fn(async (path: string) => ({ xpub: `xpub-${path}`, fingerprint, path })),
+        getXpub: vi.fn(async (path: string) => ({
+          xpub: `xpub-${path}`,
+          fingerprint,
+          path,
+        })),
     });
     service.registerAdapter(adapter);
     await service.connect('coldcard');
 
     await expect(service.getAllXpubsWithFailures()).rejects.toThrow(/master fingerprint/i);
-  });
+    }
+  );
 
   it('rejects a changed master fingerprint before returning any partial batch', async () => {
     const service = new HardwareWalletService();
@@ -478,7 +567,11 @@ describe('HardwareWalletService', () => {
   it('rejects an empty xpub response', async () => {
     const service = new HardwareWalletService();
     const { adapter } = createMockAdapter('coldcard', {
-      getXpub: vi.fn(async (path: string) => ({ xpub: '', fingerprint: 'abcd1234', path })),
+      getXpub: vi.fn(async (path: string) => ({
+        xpub: '',
+        fingerprint: 'abcd1234',
+        path,
+      })),
     });
     service.registerAdapter(adapter);
     await service.connect('coldcard');
@@ -506,9 +599,8 @@ describe('HardwareWalletService', () => {
   });
 
   it('derives exactly one mainnet and testnet-family discovery path per canonical policy', async () => {
-    const { WALLET_POLICY_REGISTRY, parseCanonicalAccountPath } = await import(
-      '@sanctuary/shared/constants/walletPolicy'
-    );
+    const { WALLET_POLICY_REGISTRY, parseCanonicalAccountPath } =
+      await import('@sanctuary/shared/constants/walletPolicy');
     expect(HardwareWalletService.STANDARD_PATHS).toHaveLength(WALLET_POLICY_REGISTRY.length * 2);
     for (const standardPath of HardwareWalletService.STANDARD_PATHS) {
       const parsed = parseCanonicalAccountPath(standardPath.path);
@@ -609,7 +701,7 @@ describe('HardwareWalletService', () => {
         utxoIds: ['utxo-1'],
         changeAddress: 'bc1qchange',
       },
-      expect.objectContaining({ schema: expect.anything() }),
+      expect.objectContaining({ schema: expect.anything() })
     );
     expect(adapter.signPSBT).toHaveBeenCalledWith({
       walletId: 'w1',
@@ -626,7 +718,11 @@ describe('HardwareWalletService', () => {
   it('blocks raw-only hardware broadcast until adapter proof is available', async () => {
     const service = new HardwareWalletService();
     const { adapter } = createMockAdapter('bitbox', {
-      signPSBT: vi.fn(async () => ({ psbt: 'signed-trezor', signatures: 1, rawTx: '020000...' })),
+      signPSBT: vi.fn(async () => ({
+        psbt: 'signed-trezor',
+        signatures: 1,
+        rawTx: '020000...',
+      })),
     });
     service.registerAdapter(adapter);
     await service.connect('bitbox');
@@ -642,24 +738,54 @@ describe('HardwareWalletService', () => {
       })
       .mockResolvedValueOnce({ txid: 'txid-raw' });
 
-    await expect(service.signTransaction({
+    await expect(
+      service.signTransaction({
       walletId: 'w2',
       recipient: 'bc1qdest2',
       amount: 10000,
       feeRate: 5,
-    })).rejects.toThrow('Raw-only hardware broadcast is disabled');
+      })
+    ).rejects.toThrow('Raw-only hardware broadcast is disabled');
 
+    expect(mockPost).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a full signing flow when the adapter returns no signed PSBT', async () => {
+    const service = new HardwareWalletService();
+    const { adapter } = createMockAdapter('coldcard', {
+      signPSBT: vi.fn(async () => ({ signatures: 1, rawTx: '020000...' })),
+    });
+    service.registerAdapter(adapter);
+    await service.connect('coldcard');
+    mockPost.mockResolvedValueOnce({
+      psbt: 'unsigned-psbt',
+      fee: 300,
+      signingContext: { ...testPsbtSigningContext, walletId: 'w-no-psbt' },
+      intentId: 'intent-no-psbt',
+      intentDigest: 'c'.repeat(64),
+    });
+
+    await expect(
+      service.signTransaction({
+        walletId: 'w-no-psbt',
+        recipient: 'bc1qdest3',
+        amount: 9000,
+        feeRate: 4,
+      })
+    ).rejects.toThrow('Hardware signer did not return a signed PSBT');
     expect(mockPost).toHaveBeenCalledTimes(1);
   });
 
   it('throws in signTransaction when no adapter is connected', async () => {
     const service = new HardwareWalletService();
-    await expect(service.signTransaction({
+    await expect(
+      service.signTransaction({
       walletId: 'w1',
       recipient: 'bc1qdest',
       amount: 1000,
       feeRate: 1,
-    })).rejects.toThrow('No device connected');
+      })
+    ).rejects.toThrow('No device connected');
   });
 
   it('creates an empty service with no registered adapters by default', () => {

@@ -1,3 +1,4 @@
+import type * as bitcoin from 'bitcoinjs-lib';
 import { expect, it } from 'vitest';
 import * as h from './trezorSignPsbtBranchesTestHarness';
 import { signPsbtWithTrezor } from '../../../../src/services/hardwareWallet/adapters/trezor/signPsbt';
@@ -72,10 +73,12 @@ export function registerTrezorSignPsbtMismatchRefContracts() {
       payload: { serializedTx: h.txFromPsbt(psbt).toHex() },
     });
 
-    await expect(signPsbtWithTrezor(
-      { psbt: psbt.toBase64(), inputPaths: ["m/48'/0'/0'/2'/0/0"] },
-      { fingerprint: 'deadbeef' } as any,
-    )).rejects.toThrow('No PSBT derivation matches the connected Trezor on input 1');
+    await expect(
+      signPsbtWithTrezor({ psbt: psbt.toBase64(), inputPaths: ["m/48'/0'/0'/2'/0/0"] }, {
+        fingerprint: 'deadbeef',
+        session: h.TEST_SESSION,
+      } as any)
+    ).rejects.toThrow('No PSBT derivation matches the connected Trezor on input 1');
 
     expect(h.mockLoggerWarn).toHaveBeenCalledWith(
       'No matching bip32Derivation found for device fingerprint',
@@ -84,46 +87,53 @@ export function registerTrezorSignPsbtMismatchRefContracts() {
     expect(h.mockSignTransaction).not.toHaveBeenCalled();
   });
 
-  it('logs transaction mismatches for version, locktime, outputs, and inputs', async () => {
+  it.each([
+    [
+      'transaction version differs',
+      (tx: bitcoin.Transaction) => {
+        tx.version += 1;
+      },
+    ],
+    [
+      'transaction locktime differs',
+      (tx: bitcoin.Transaction) => {
+        tx.locktime += 1;
+      },
+    ],
+    [
+      'output 0 value or script differs',
+      (tx: bitcoin.Transaction) => {
+        tx.outs[0].value += 1n;
+      },
+    ],
+    [
+      'input 0 outpoint or sequence differs',
+      (tx: bitcoin.Transaction) => {
+        tx.ins[0].index += 1;
+      },
+    ],
+  ])('rejects a signed artifact when %s', async (expected, mutate) => {
     const { psbt } = h.createPsbt();
-    const tx = h.txFromPsbt(psbt) as any;
-    tx.version += 1;
-    tx.locktime += 1;
-    tx.outs[0].value = Number(tx.outs[0].value) + 1;
-    tx.ins[0].index += 1;
+    const tx = h.txFromPsbt(psbt);
+    mutate(tx);
 
     h.mockSignTransaction.mockResolvedValueOnce({
       success: true,
       payload: { serializedTx: tx.toHex() },
     });
 
-    await signPsbtWithTrezor(
-      {
-        psbt: psbt.toBase64(),
-        inputPaths: ["m/84'/0'/0'/0/0"],
-      },
-      { fingerprint: 'deadbeef' } as any
-    );
-
-    expect(h.mockLoggerError).toHaveBeenCalledWith(
-      'Transaction version mismatch - Trezor signed different version',
-      expect.any(Object)
-    );
-    expect(h.mockLoggerError).toHaveBeenCalledWith(
-      'Transaction locktime mismatch',
-      expect.any(Object)
-    );
-    expect(h.mockLoggerError).toHaveBeenCalledWith(
-      'Output mismatch between PSBT and Trezor signed transaction',
-      expect.any(Object)
-    );
-    expect(h.mockLoggerError).toHaveBeenCalledWith(
-      'Input mismatch between PSBT and Trezor signed transaction',
-      expect.any(Object)
-    );
+    await expect(
+      signPsbtWithTrezor(
+        {
+          psbt: psbt.toBase64(),
+          inputPaths: ["m/84'/0'/0'/0/0"],
+        },
+        { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any
+      )
+    ).rejects.toThrow(expected);
   });
 
-  it('handles multisig change output when buildTrezorMultisig returns undefined', async () => {
+  it('rejects a multisig change output when the vendor payload cannot be built', async () => {
     const { psbt, signedTxHex } = h.createPsbt();
     const output = psbt.data.outputs[1] as any;
     output.witnessScript = Buffer.from('512102' + '11'.repeat(32) + '51ae', 'hex');
@@ -145,20 +155,20 @@ export function registerTrezorSignPsbtMismatchRefContracts() {
       payload: { serializedTx: signedTxHex },
     });
 
-    await signPsbtWithTrezor(
-      {
-        psbt: psbt.toBase64(),
-        accountPath: "m/86'/0'/0'",
-        inputPaths: [],
-      },
-      { fingerprint: 'deadbeef' } as any
-    );
-
-    const call = h.mockSignTransaction.mock.calls.at(-1)?.[0];
-    expect(call.outputs[1].multisig).toBeUndefined();
+    await expect(
+      signPsbtWithTrezor(
+        {
+          psbt: psbt.toBase64(),
+          accountPath: "m/86'/0'/0'",
+          inputPaths: [],
+        },
+        { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any
+      )
+    ).rejects.toThrow('Output 1 is missing a canonical multisig witnessScript');
+    expect(h.mockSignTransaction).not.toHaveBeenCalled();
   });
 
-  it('skips ref-output mismatch logging when referenced vout is missing', async () => {
+  it('rejects a reference transaction when the selected vout is missing', async () => {
     const { psbt, signedTxHex } = h.createPsbt();
     const txid = Buffer.from(psbt.txInputs[0].hash).reverse().toString('hex');
     h.mockFetchRefTxs.mockResolvedValueOnce([
@@ -172,19 +182,18 @@ export function registerTrezorSignPsbtMismatchRefContracts() {
       payload: { serializedTx: signedTxHex },
     });
 
-    await signPsbtWithTrezor(
-      {
-        walletId: 'wallet-primary',
-        psbt: psbt.toBase64(),
-        inputPaths: [],
-},
-      { fingerprint: 'deadbeef' } as any
-    );
+    await expect(
+      signPsbtWithTrezor(
+        {
+          walletId: 'wallet-primary',
+          psbt: psbt.toBase64(),
+          inputPaths: [],
+        },
+        { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any
+      )
+    ).rejects.toThrow('reference output is missing on input 0');
 
-    expect(h.mockLoggerError).not.toHaveBeenCalledWith(
-      'Input amount mismatch between PSBT and reference transaction',
-      expect.any(Object)
-    );
+    expect(h.mockSignTransaction).not.toHaveBeenCalled();
   });
 
   it('does not log ref-output mismatch when witnessUtxo amount matches', async () => {
@@ -193,7 +202,12 @@ export function registerTrezorSignPsbtMismatchRefContracts() {
     h.mockFetchRefTxs.mockResolvedValueOnce([
       {
         hash: txid,
-        bin_outputs: [{ amount: 50_000 }],
+        bin_outputs: [
+          {
+            amount: '50000',
+            script_pubkey: Buffer.from(psbt.data.inputs[0].witnessUtxo!.script).toString('hex'),
+          },
+        ],
       },
     ]);
     h.mockSignTransaction.mockResolvedValueOnce({
@@ -206,8 +220,8 @@ export function registerTrezorSignPsbtMismatchRefContracts() {
         walletId: 'wallet-primary',
         psbt: psbt.toBase64(),
         inputPaths: [],
-},
-      { fingerprint: 'deadbeef' } as any
+      },
+      { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any
     );
 
     expect(h.mockLoggerError).not.toHaveBeenCalledWith(

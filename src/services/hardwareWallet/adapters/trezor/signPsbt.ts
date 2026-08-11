@@ -15,16 +15,28 @@ import { fetchRefTxs } from './refTxs';
 import { getDeviceFingerprintBuffer } from './signPsbtNetwork';
 import { getTrezorScriptType } from './pathUtils';
 import { buildTrezorInputs, buildTrezorOutputs } from './signPsbtPayloads';
-import { applyTrezorMultisigSignatures } from './signPsbtSignatures';
+import { validateAndApplyTrezorSignatures } from './signPsbtSignatures';
 import {
   getSerializedTrezorTx,
   getUnsignedTransactionFromPsbt,
-  logRefTxAmountMismatches,
-  logSignedTxMismatches,
+  assertRefTxAmountsMatch,
+  assertAuthenticatedTrezorArtifact,
+  assertSignedTransactionIntent,
 } from './signPsbtValidation';
 import { mapTrezorSigningError } from './signPsbtErrors';
+import { assertSessionIdentity, connectDevice } from './sessionIdentity';
 
 const log = createLogger('TrezorAdapter');
+
+const assertEveryInputBound = (
+  inputCount: number,
+  bindings: ReadonlyArray<{ inputIndex: number }>
+): void => {
+  const indexes = bindings.map((binding) => binding.inputIndex).sort((a, b) => a - b);
+  if (indexes.length !== inputCount || indexes.some((index, position) => index !== position)) {
+    throw new Error('Trezor signing requires wallet binding for every transaction input');
+  }
+};
 
 /**
  * Sign a PSBT with Trezor.
@@ -41,8 +53,11 @@ export const signPsbtWithTrezor = async (
 
   try {
     const deviceFingerprint = connection.fingerprint;
+    const session = connection.session;
+    if (!session) throw new Error('Trezor selected session is unavailable');
     const validated = validatePsbtSigningRequest(request, deviceFingerprint);
     const psbt = validated.psbt;
+    assertEveryInputBound(psbt.txInputs.length, validated.context.inputs);
     const boundRequest: PSBTSignRequest = {
       ...request,
       signingContext: validated.context,
@@ -65,7 +80,7 @@ export const signPsbtWithTrezor = async (
       deviceFingerprintBuffer,
       deviceFingerprint
     );
-    const isMultisig = psbt.data.inputs.some(input => isMultisigInput(input));
+    const isMultisig = psbt.data.inputs.some((input) => isMultisigInput(input));
     const outputs = buildTrezorOutputs(
       psbt,
       boundRequest,
@@ -76,7 +91,7 @@ export const signPsbtWithTrezor = async (
     );
 
     const refTxs = await fetchRefTxs(psbt, validated.context.walletId);
-    logRefTxAmountMismatches(psbt, refTxs);
+    assertRefTxAmountsMatch(psbt, refTxs);
     const txFromPsbt = getUnsignedTransactionFromPsbt(psbt);
 
     // Pass version and locktime from PSBT so Trezor signs the same transaction.
@@ -88,21 +103,34 @@ export const signPsbtWithTrezor = async (
       push: false,
       version: txFromPsbt.version,
       locktime: txFromPsbt.locktime,
+      device: connectDevice(session),
     });
+    if (result.success) assertSessionIdentity(result.device, session);
 
     const signedTxHex = getSerializedTrezorTx(result);
-    if (signedTxHex) {
-      logSignedTxMismatches(txFromPsbt, signedTxHex);
-    }
-
-    if (isMultisig && signedTxHex) {
-      applyTrezorMultisigSignatures(psbt, signedTxHex, deviceFingerprintBuffer);
-    }
+    assertSignedTransactionIntent(txFromPsbt, signedTxHex);
+    const connectSignatures =
+      result.success && Array.isArray(result.payload.signatures) ? result.payload.signatures : [];
+    const { validatedPsbt, addedSignatures } = validateAndApplyTrezorSignatures(
+      psbt,
+      connectSignatures,
+      deviceFingerprintBuffer,
+      scriptType === 'SPENDTAPROOT'
+    );
+    assertAuthenticatedTrezorArtifact(validatedPsbt, signedTxHex, !isMultisig);
 
     return {
-      psbt: psbt.toBase64(),
-      rawTx: signedTxHex,
-      signatures: inputs.length,
+      // Connect returns a native tuple rather than a PSBT. For multisig state,
+      // persist the clone containing only the signatures verified above.
+      psbt: isMultisig ? validatedPsbt.toBase64() : undefined,
+      rawTx: isMultisig ? undefined : signedTxHex,
+      signatures: addedSignatures,
+      trezorArtifact: {
+        type: 'trezor-connect-transaction',
+        sourcePsbt: request.psbt,
+        connectSignatures: [...connectSignatures],
+        serializedTx: signedTxHex,
+      },
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';

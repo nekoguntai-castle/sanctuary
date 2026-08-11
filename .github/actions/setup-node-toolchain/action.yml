@@ -3,10 +3,16 @@ description: >-
   Verifies the Node.js toolchain matches the project version via the
   repo-owned ensure-node helper. Provider-agnostic; works on GitHub Actions
   and Forgejo Actions.
+inputs:
+  install-npm:
+    description: Install exact npm when missing; disable for prebuilt proof runners.
+    required: false
+    default: 'true'
 runs:
   using: composite
   steps:
     - name: Install pinned npm toolchain
+      if: inputs.install-npm == 'true'
       shell: bash
       run: |
         set -euo pipefail

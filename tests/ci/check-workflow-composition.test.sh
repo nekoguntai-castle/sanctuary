@@ -1731,7 +1731,62 @@ assert_contains_in_order "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
   "verify-vectors executes hardware truthfulness contracts" \
   "Run hardware capability truthfulness tests" \
   "tests/unit/services/bitcoin/hardwareWalletCompatibility.test.ts" \
-  "tests/unit/services/hardwareWalletCapabilities.test.ts"
+  "tests/unit/services/hardwareWalletCapabilities.test.ts" \
+  "Replay hardware-signed fixture contracts" \
+  "tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts" \
+  "Run pinned Trezor emulator proof" \
+  "npm run test:trezor-emulator-proof"
+
+assert_named_job_step_contains "$VV" \
+  "verify-trezor-emulator" \
+  "Run pinned Trezor emulator proof" \
+  "Trezor emulator proof uses its dedicated measured lock" \
+  "timeout-minutes: 40" \
+  'SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS="$TREZOR_EMULATOR_LOCK_TIMEOUT_SECONDS"' \
+  "scripts/ci/with-runner-lock.sh trezor-emulator"
+
+assert_named_job_contains "$VV" \
+  "verify-trezor-emulator" \
+  "Trezor proof avoids the known wedged Kumo runner" \
+  "runs-on: [docker-socket, playwright-x300-canary]" \
+  "needs: [verify-vectors]"
+
+assert_named_job_step_contains "$VV" \
+  "verify-trezor-emulator" \
+  "Run pinned Trezor emulator proof" \
+  "Trezor emulator proof is captured in diagnostics" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/trezor-emulator-proof.log"'
+
+assert_named_job_step_contains "$VV" \
+  "verify-trezor-emulator" \
+  "Upload current Trezor emulator proof" \
+  "Trezor emulator proof uploads only the successful current attempt" \
+  "if: success() && env.TREZOR_EMULATOR_PROOF_DIR != ''" \
+  '${{ env.TREZOR_EMULATOR_PROOF_DIR }}' \
+  "if-no-files-found: error"
+
+assert_named_job_step_contains "$VV" \
+  "verify-trezor-emulator" \
+  "Upload current Trezor emulator diagnostics" \
+  "Trezor emulator diagnostics are separate and attempt-scoped" \
+  "if: always() && env.TREZOR_EMULATOR_DIAGNOSTICS_DIR != ''" \
+  '${{ env.TREZOR_EMULATOR_DIAGNOSTICS_DIR }}' \
+  "if-no-files-found: error"
+
+assert_contains_in_order "$VV" \
+  "vector summary requires both software and Trezor proofs" \
+  "summary:" \
+  "needs: [verify-vectors, verify-trezor-emulator]" \
+  '${{ needs.verify-vectors.result }}' \
+  '${{ needs.verify-trezor-emulator.result }}'
+
+assert_contains_in_order "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
+  "Trezor emulator lock has a dedicated measured timeout" \
+  "TREZOR_EMULATOR_LOCK_TIMEOUT_SECONDS: '600'"
+
+assert_contains_in_order "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
+  "Trezor emulator public binding remains disabled" \
+  "SANCTUARY_TREZOR_ALLOW_PUBLIC_BIND: '0'"
 
 assert_contains_in_order "$DOCKER_BUILD_WORKFLOW" \
   "docker-build image-scope diagnostics" \
@@ -1871,7 +1926,7 @@ assert_named_job_step_config_rejected \
 # --- quality workflow diagnostic coverage -----------------------------------
 QUALITY_WORKFLOW="$REPO_ROOT/.github/workflows/quality.yml"
 
-for node_workflow in architecture quality test verify-vectors; do
+for node_workflow in architecture quality test; do
   assert_contains_in_order \
     "$REPO_ROOT/.github/workflows/${node_workflow}.yml" \
     "${node_workflow} pins an allowScripts-capable npm" \
@@ -1879,11 +1934,47 @@ for node_workflow in architecture quality test verify-vectors; do
     "NPM_VERSION: '11.19.0'"
 done
 
+assert_contains_in_order \
+  "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
+  "verify-vectors pins its funds-safety Node and npm runtime exactly" \
+  "NODE_VERSION: '24.19.0'" \
+  "NPM_VERSION: '11.19.0'" \
+  "uses: ./.github/actions/setup-node-toolchain" \
+  "install-npm: 'false'"
+assert_occurrence_count \
+  "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
+  "verify-vectors jobs use the immutable checksum-built wallet verifier image" \
+  "nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:8b50f6c8ccb016b042c7125a637b068a49c856a76e543365044b36a593edd81e" 3
+assert_occurrence_count \
+  "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
+  "verify-vectors jobs disable network npm repair" \
+  "install-npm: 'false'" 3
+
+GO_RUNNER_DOCKERFILE="$REPO_ROOT/scripts/ci/images/go-runner.Dockerfile"
+assert_occurrence_count "$GO_RUNNER_DOCKERFILE" \
+  "wallet verifier runner pins Node exactly" \
+  "ARG NODE_VERSION=24.19.0" 1
+assert_occurrence_count "$GO_RUNNER_DOCKERFILE" \
+  "wallet verifier runner pins the official Node archive checksum" \
+  "ARG NODE_SHA256=14b342e71204f811bde6153be8e04b62aef63c236fef92b55f9c83154b409647" 1
+assert_occurrence_count "$GO_RUNNER_DOCKERFILE" \
+  "wallet verifier runner verifies the Node archive checksum" \
+  'echo "${NODE_SHA256}  /tmp/node.tar.xz" | sha256sum -c -' 1
+assert_occurrence_count "$GO_RUNNER_DOCKERFILE" \
+  "wallet verifier runner installs exact npm" \
+  'npm install --global --audit=false --fund=false /tmp/npm.tgz' 1
+assert_occurrence_count "$GO_RUNNER_DOCKERFILE" \
+  "wallet verifier runner pins the npm tarball checksum" \
+  "ARG NPM_SHA512=48377f8478372aa1c4e47b763475b135836da82436a5700f2e5e8eb5084fc840f93c7b117eb3ad3b5f7d3194c81b6710a10d59448f6ddbcb21ac3fb672bdc003" 1
+assert_occurrence_count "$GO_RUNNER_DOCKERFILE" \
+  "wallet verifier runner verifies the npm tarball checksum" \
+  'echo "${NPM_SHA512}  /tmp/npm.tgz" | sha512sum -c -' 1
+
 declare -A strict_install_counts=(
   [architecture.yml]=2
   [quality.yml]=1
   [test.yml]=17
-  [verify-vectors.yml]=5
+  [verify-vectors.yml]=6
 )
 for workflow in "${!strict_install_counts[@]}"; do
   assert_occurrence_count \

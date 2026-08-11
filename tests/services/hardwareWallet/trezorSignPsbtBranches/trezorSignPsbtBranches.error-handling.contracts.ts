@@ -1,9 +1,17 @@
-import * as bitcoin from 'bitcoinjs-lib';
-import { expect, it, vi } from 'vitest';
+import { expect, it } from 'vitest';
 import * as h from './trezorSignPsbtBranchesTestHarness';
 import { signPsbtWithTrezor } from '../../../../src/services/hardwareWallet/adapters/trezor/signPsbt';
 
 export function registerTrezorSignPsbtErrorHandlingContracts() {
+  it('fails closed before parsing when the selected session is unavailable', async () => {
+    await expect(
+      signPsbtWithTrezor({ psbt: 'not-parsed' }, {
+        fingerprint: 'deadbeef',
+      } as any)
+    ).rejects.toThrow('Trezor selected session is unavailable');
+    expect(h.mockValidatePsbtSigningRequest).not.toHaveBeenCalled();
+  });
+
   it('maps known device error messages to user-facing errors', async () => {
     const { psbt } = h.createPsbt({ includeWitnessUtxo: false });
     const scenarios = [
@@ -41,42 +49,10 @@ export function registerTrezorSignPsbtErrorHandlingContracts() {
             psbt: psbt.toBase64(),
             inputPaths: ["m/84'/0'/0'/0/0"],
           },
-          { fingerprint: 'deadbeef' } as any
+          { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any
         )
       ).rejects.toThrow(scenario.expected);
     }
-  });
-
-  it('formats extraction warning with String(...) when nested extraction throws non-Error values', async () => {
-    const { psbt, signedTxHex } = h.createPsbt();
-    (psbt.data.inputs[0] as any).witnessScript = Buffer.from('5221' + '11'.repeat(33) + '51ae', 'hex');
-    h.mockIsMultisigInput.mockReturnValue(true);
-    h.mockSignTransaction.mockResolvedValueOnce({
-      success: true,
-      payload: { serializedTx: signedTxHex },
-    });
-
-    const originalFromHex = bitcoin.Transaction.fromHex.bind(bitcoin.Transaction);
-    const fromHexSpy = vi.spyOn(bitcoin.Transaction, 'fromHex');
-    fromHexSpy.mockImplementationOnce((hex: string) => originalFromHex(hex));
-    fromHexSpy.mockImplementationOnce(() => {
-      throw 'extract-failure-string';
-    });
-
-    await signPsbtWithTrezor(
-      {
-        psbt: psbt.toBase64(),
-        inputPaths: ["m/84'/0'/0'/0/0"],
-      },
-      { fingerprint: 'deadbeef' } as any
-    );
-
-    expect(h.mockLoggerWarn).toHaveBeenCalledWith(
-      'Failed to extract signatures from Trezor rawTx',
-      { error: 'extract-failure-string' }
-    );
-
-    fromHexSpy.mockRestore();
   });
 
   it('wraps non-Error throwables as unknown signing failures', async () => {
@@ -89,7 +65,7 @@ export function registerTrezorSignPsbtErrorHandlingContracts() {
           psbt: psbt.toBase64(),
           inputPaths: ["m/84'/0'/0'/0/0"],
         },
-        { fingerprint: 'deadbeef' } as any
+        { fingerprint: 'deadbeef', session: h.TEST_SESSION } as any
       )
     ).rejects.toThrow('Failed to sign with Trezor: Unknown error');
   });

@@ -1,7 +1,8 @@
 # Hardware Wallet Validation Runbook
 
-This runbook defines the manual hardware phase for wallet address, change-address,
-and signing confidence. Run it only after the deterministic software gates pass.
+This runbook separates repeatable software/emulator proof from manual physical
+hardware proof. Run the physical procedure only after the deterministic gates
+and the applicable pinned emulator gate pass.
 
 ## Scope
 
@@ -15,6 +16,62 @@ Manual hardware validation covers the things mocks cannot prove:
 - Vendor transport flows work through WebUSB, WebHID, Trezor Connect, or bridge
   software with real user approval prompts.
 - Vendor-signed artifacts replay through Sanctuary finalization and Bitcoin Core.
+
+### Proof tiers
+
+| Tier | Execution                                                        | What it proves                                                                                                  | What it cannot prove                                                                      |
+| ---- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| 1    | Immutable vectors and Bitcoin Core replay on every relevant PR   | Path, descriptor, PSBT, signature, and transaction invariants                                                   | Vendor transport, firmware, screen, or confirmation behavior                              |
+| 2    | Pinned vendor emulator/protocol integration                      | Production-adapter payload/session compatibility with exact emulated firmware, Bridge, Connect core protocol, display calls, and signing protocol | Connect-Web iframe/Suite orchestration, physical transport, production device possession, screen rendering, or human confirmation |
+| 3    | Dedicated physical device with operator and independent reviewer | Physical transport, actual screen/confirmation behavior, and sanitized adapter-native artifacts                 | Future firmware/SDK revisions after the evidence expires                                  |
+
+Tier 2 never satisfies a Tier 3 fixture row. Trezor Tier 2 currently pins the
+OCI index, exact `linux/amd64` child and image-config digests in
+`config/trezor-emulator-proof.json`, Model T (`T2T1`) firmware 2.12.2, Bridge
+2.0.33, and Trezor Connect 9.7.3 with the exact `@trezor/connect` and
+`@trezor/connect-web` lockfile integrity values. The firmware and Bridge
+binaries are baked into that content-addressed emulator image. They are not
+downloaded by the proof run. Run it with:
+
+```bash
+npm run test:trezor-emulator-proof
+```
+
+The emulator lane deliberately substitutes the Node `@trezor/connect` entrypoint
+for the production adapter's `@trezor/connect-web` import so it can speak directly
+to the pinned Bridge in a Node runner. A separate contract test loads the real
+Connect-Web entrypoint, locks its version/integrity and `coreMode: auto`
+initialization surface, but Tier 2 does not claim executable coverage of
+Connect-Web iframe or Suite orchestration.
+For both BIP48 `/1'` nested and `/2'` native multisig, the emulator proves two
+distinct states: Trezor can add and persist the first cryptographically valid
+partial signature without making the PSBT finalizable, and it can preserve an
+existing cosigner signature while adding the quorum-completing signature whose
+artifact independently replays to the exact serialized transaction.
+
+The runner atomically claims
+`.tmp/ci-evidence/trezor-emulator/<run-id>-<attempt>/`. Successful, immutable
+derivation/display/signing proof is written only below `proof/`; JUnit and
+mnemonic-redacted runtime logs are written separately below `diagnostics/`.
+CI uploads the exact current attempt paths and never uploads partial proof as a
+successful result.
+The proof provenance records the checked-out commit, CI run and attempt, capture
+time, package-lock hash, and hashes of every proof-critical adapter, fixture,
+test, workflow, and toolchain-control source. Node 24.19.0 and npm 11.19.0 are
+archive-checksum/version-pinned in `scripts/ci/images/go-runner.Dockerfile` and verified
+exactly against `.nvmrc`, `package.json`, and the proof manifest. The proof
+workflow disables the setup action's npm download fallback, so a stale runner
+image fails closed instead of repairing itself over the network. The
+runner OS/architecture and sanitized Docker client/server version, API, OS, and
+architecture fields are attested in the artifact. Docker and the host runner are
+environment-dependent rather than content-pinned, so the manifest declares and
+enforces minimum Docker API and exact supported OS/architecture constraints.
+Hostnames and Docker endpoints are not retained, and the diagnostics scrub the
+runner hostname and the public emulator mnemonic.
+Published controller and Bridge ports bind to loopback by default.
+Remote Docker is rejected unless the operator explicitly supplies a non-wildcard
+daemon bind address, the runner-reachable published host, and
+`SANCTUARY_TREZOR_ALLOW_REMOTE_DOCKER=1`.
 
 ## Rerun Triggers
 
@@ -64,9 +121,9 @@ npm run quality:lizard
 Required release-grade hardware rows:
 
 | Device | Transport | Address display | Signing evidence |
-| --- | --- | --- | --- |
+| ---------------------------- | ------------------------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | Ledger Nano S Plus or Nano X | WebUSB, Bitcoin app | `verifyAddress` must return the exact device-returned address | Signed PSBT plus Ledger wallet policy template/key origin |
-| Trezor Model T/Safe 3/Safe 5 | Trezor Connect and bridge/Suite | `getAddress` with `showOnTrezor` must return the exact expected address | Raw transaction and, for multisig, PSBT with extracted partial signature |
+| Trezor Model T/Safe 3/Safe 5 | Trezor Connect and Bridge | `getAddress` with `showOnTrezor` must return the exact expected address | Exact source PSBT + Connect signature array + serialized transaction tuple |
 | BitBox02 BTC-only or Multi | WebHID | `btcDisplayAddressSimple` must return the exact expected address | Signed PSBT from `btcSignSimple` |
 
 Jade has adapter-level address comparison coverage, but it is not part of the
@@ -75,15 +132,15 @@ payload assertions as Ledger, Trezor, and BitBox.
 
 ### Current Fixture Classification
 
-As of 2026-05-08, no sanitized physical-device signing artifacts are committed
+As of 2026-08-11, no sanitized physical-device signing artifacts are committed
 yet. The executable fixture intake therefore records required rows separately
 from rows that Sanctuary currently blocks at the product level.
 
 | Row | Classification | Evidence |
-| --- | --- | --- |
+| --------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Ledger P2WPKH, P2SH-P2WPKH, P2TR | Required, missing physical fixture | Ledger adapter maps these to single-sig wallet policy templates and still needs vendor-signed artifacts. |
 | Ledger P2WSH, P2SH-P2WSH | Unsupported, product blocked | Ledger adapter currently builds only single-sig `DefaultWalletPolicy` templates; multisig Ledger signing is not exposed. |
-| Trezor P2WPKH, P2SH-P2WPKH, P2TR, P2WSH, P2SH-P2WSH | Required, missing physical fixture | Trezor adapter has raw-transaction and multisig payload/signature extraction paths, but no physical artifacts are committed. |
+| Trezor P2WPKH, P2SH-P2WPKH, P2TR, P2WSH, P2SH-P2WSH | Required, product blocked pending physical fixture | The pinned emulator proves production-adapter BIP49, BIP84, BIP86, and both BIP48 `/1'` and `/2'` conformance, but cannot satisfy physical display/transport evidence. All Trezor capability rows remain disabled. |
 | BitBox02 P2WPKH, P2SH-P2WPKH, P2TR | Required, missing physical fixture | BitBox adapter maps these to `btcSignSimple` single-sig script configs and still needs vendor-signed artifacts. |
 | BitBox02 P2WSH, P2SH-P2WSH | Unsupported, product blocked | BitBox adapter currently uses `btcSignSimple` single-sig script configs only; multisig BitBox signing is not exposed. |
 
@@ -108,7 +165,7 @@ family. If Sanctuary exposes a script family that a device cannot safely sign,
 the feature must be blocked or clearly marked unsupported for that device.
 
 | Script family | Account path | Required checks |
-| --- | --- | --- |
+| ------------------------------------ | ---------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | Native SegWit single-sig P2WPKH | `m/84'/1'/0'` | receive display, change display, one-input spend, wrong-address negative |
 | Nested SegWit single-sig P2SH-P2WPKH | `m/49'/1'/0'` | receive display, change display, one-input spend, wrong-network negative |
 | Taproot single-sig P2TR | `m/86'/1'/0'` | receive display and signing when firmware/app support it; otherwise record unsupported and block Taproot hardware signing |
@@ -159,8 +216,13 @@ For each signing row:
 3. Approve signing on the physical device only if the screen matches the expected
    external recipient and amount. When the device exposes change details, confirm
    the change path/address matches the internal output.
-4. Save the returned signed PSBT or raw transaction. Trezor returns raw
-   transaction hex; Ledger and BitBox return signed PSBTs.
+4. Save the adapter-native artifact. Ledger and BitBox retain the returned signed
+   PSBT. Trezor retains the exact source PSBT, Connect signature array, and
+   serialized transaction as its native evidence tuple. Sanctuary may also
+   persist a locally reconstructed PSBT after every Connect signature has been
+   origin-bound and cryptographically validated; that PSBT is application state,
+   not a claim that Connect returned a PSBT. Evidence-only tuples never advance
+   signer or draft state.
 5. Replay the artifact through Sanctuary finalization/extraction and Bitcoin Core
    decoding. For finalized transactions, `testmempoolaccept` must return
    `allowed=true` on the local Core chain used for the fixture.
@@ -190,13 +252,14 @@ Record one sanitized manifest per run, for example
 `tasks/hardware-wallet-validation-YYYY-MM-DD.md`.
 
 | Field | Required value |
-| --- | --- |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Commit | Git commit under test |
 | Device | Model, firmware, Bitcoin app, transport package version |
-| Wallet | Fingerprint, account path, script family, xpub prefix |
+| Runtime provenance | Reachable tested commit, Sanctuary image digest, exact SDK package/version/lockfile SRI, current funds-safety source manifest, host OS, browser, capture ID, and expiry |
+| Wallet             | Fingerprint, full account xpub/path, canonical policy ID/version, and complete multisig threshold/cosigner set when applicable                                          |
 | Address evidence | Path, Sanctuary address, device-returned address, Core-derived address |
 | Signing evidence | Unsigned PSBT hash, signed PSBT/raw tx hash, decoded outputs, fee, vsize, txid |
-| Core replay | `decodepsbt`, `decoderawtransaction`, and `testmempoolaccept` result |
+| Core replay        | Exact `testmempoolaccept` request/response transcript, current pinned Core image/subversion, and an Ed25519 receipt from a separately provisioned trusted evidence key  |
 | Negative controls | Case name, expected failure, observed failure |
 | Operator notes | Manual observations, screenshots/photos paths if sanitized |
 
@@ -211,6 +274,14 @@ the lab operator and reviewer must satisfy the executable intake schema used by
 
 Each committed row must include:
 
+- `fixtureSchemaVersion: 3`, `evidenceTier: physical-device`, and
+  `device.emulated: false`. Emulator or simulator provenance is rejected.
+- A tested commit that is a reachable ancestor, Sanctuary image digest, exact
+  vendor SDK package/version/lockfile SRI, the current deterministic
+  funds-safety source manifest, host
+  OS/browser/transport, capture ID, capture/expiry times within 180 days, and
+  distinct accountable operator and sanitization reviewer.
+
 - Address evidence for receive paths `/0/0`, `/0/1`, `/0/19`, `/0/999` and
   change paths `/1/0`, `/1/1`, `/1/19`, with exact Sanctuary/device/Core
   agreement for every path.
@@ -223,8 +294,13 @@ Each committed row must include:
 - Sanitization review affirming non-mainnet funds, wipeable or dedicated test
   device/account use, no seed/PIN/passphrase/pairing material, no host auth
   tokens, and reviewer-approved artifacts.
-- Bitcoin Core replay metadata, including Core version and
-  `testmempoolaccept` allowed status.
+- The exact Bitcoin Core JSON-RPC request/response transcript bound to the
+  current pinned proof manifest and replayed raw transaction. Its receipt must
+  verify with a separately provisioned trusted Ed25519 evidence key. The trusted
+  key set is intentionally empty until the PR12 operator ceremony provisions
+  and reviews it, so no physical fixture can pass intake prematurely.
+- Hashes of the unsigned PSBT and complete adapter-native signed artifact, plus
+  explicit proof that the physical device recognized the change output.
 
 The intake schema rejects duplicate device/script rows, rows that conflict with
 an unsupported product decision, missing required paths or controls, failed or
@@ -232,11 +308,25 @@ missing software gates, non-test networks, and secret-shaped text such as
 mnemonics, passphrases, PINs, auth tokens, private keys, or xprv/tprv material.
 
 Committed hardware-signed artifacts go in
-`server/tests/fixtures/hardware-signed-psbt-vectors.ts`. Each row must include
-exactly one signed PSBT or raw transaction, the total input value, expected fee,
-expected vsize, expected txid, expected outputs, signer metadata, and device/app
-versions, plus the intake checklist fields above. The replay harness is
+`server/tests/fixtures/hardware-signed-psbt-vectors.ts`. Each non-Trezor row must
+contain the returned signed PSBT. Each Trezor row must contain the source PSBT,
+Connect signature array, and serialized transaction. Replay authenticates input
+values from PSBT UTXOs, requires exact complete outputs, binds every signer to a
+full account xpub/path and PSBT origin, verifies every signature, enforces
+canonical policy IDs and BIP-371 key-path-only Taproot metadata, reconstructs
+multisig scripts from the exact threshold/cosigner set, derives every recorded
+address, authenticates fetched reference-transaction txids/selected scripts and
+amounts, and rejects any tuple/intent/Core-evidence mismatch. The replay harness is
 `server/tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts`.
+
+To require only the five Trezor physical rows during a Trezor lab capture:
+
+```bash
+REQUIRE_TREZOR_PHYSICAL_FIXTURES=1 npm --prefix server run test -- --run tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts
+```
+
+That command is expected to fail until all current Trezor physical artifacts
+are reviewed. The ordinary CI emulator run does not reduce its missing count.
 
 To turn the harness into a full hardware evidence gate after physical capture:
 
@@ -248,8 +338,9 @@ REQUIRE_HARDWARE_SIGNED_FIXTURES=1 npm --prefix server run test -- --run tests/u
 
 The hardware phase passes only when:
 
-- Every required device/script row either passes or is explicitly blocked in the
-  product for unsupported hardware.
+- Every enabled device/script row has current Tier 3 evidence. Missing Tier 3
+  evidence leaves the corresponding capability explicitly disabled even when
+  Tier 2 passes.
 - Every address row has exact Sanctuary/device/Core agreement.
 - Every signing row produces a Sanctuary-replayable artifact accepted by Bitcoin
   Core policy.

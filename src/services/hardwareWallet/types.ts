@@ -7,7 +7,8 @@
 
 import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
 
-export type DeviceType = 'coldcard' | 'ledger' | 'trezor' | 'bitbox' | 'passport' | 'jade' | 'unknown';
+export type DeviceType =
+  'coldcard' | 'ledger' | 'trezor' | 'bitbox' | 'passport' | 'jade' | 'unknown';
 
 export interface HardwareWalletDevice {
   id: string;
@@ -18,6 +19,8 @@ export interface HardwareWalletDevice {
   fingerprint?: string;
   needsPin?: boolean;
   needsPassphrase?: boolean;
+  firmwareVersion?: string;
+  transportVersion?: string;
 }
 
 export interface PSBTSignRequest {
@@ -36,10 +39,18 @@ export interface PSBTSignRequest {
   multisigXpubs?: Record<string, string>;
 }
 
+export interface TrezorConnectSignedArtifact {
+  type: 'trezor-connect-transaction';
+  sourcePsbt: string;
+  connectSignatures: string[];
+  serializedTx: string;
+}
+
 export interface PSBTSignResponse {
-  psbt: string; // Base64 encoded signed PSBT
+  psbt?: string; // Base64 encoded signed PSBT when the adapter returns one
   signatures: number; // Number of signatures added
   rawTx?: string; // Raw signed transaction hex (for devices that return complete tx)
+  trezorArtifact?: TrezorConnectSignedArtifact;
 }
 
 export interface TransactionForSigning {

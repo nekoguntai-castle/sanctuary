@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 3,
+  "image": "ghcr.io/trezor/trezor-user-env@sha256:de72f49d7db85f27d51c9f7a516363a701a0c4b5e554efa632ac89fe776f8db6",
+  "imageDigest": "sha256:de72f49d7db85f27d51c9f7a516363a701a0c4b5e554efa632ac89fe776f8db6",
+  "imageIndexDigest": "sha256:851b466b22dd7d46c20dc2b4bd6a3ee016f1a492dff7d1d153c85e271e0dff90",
+  "imageConfigDigest": "sha256:563dbece2e5237be00fca219be2ecf4683d3c3ad48676ac951176e42fe399b42",
+  "platform": "linux/amd64",
+  "model": "T2T1",
+  "firmware": "2.12.2",
+  "bridge": "2.0.33",
+  "connect": "9.7.3",
+  "connectIntegrity": "sha512-oAOfvJHT8tPqOXTmCOhn8uTZcoqSDuWAiWXQegx7C46tq+NLg+enkYXxUYEHq/9PmfZAOrUT9VMxZDsXM2thkA==",
+  "connectWebIntegrity": "sha512-oTI/v9sUJMvLZgLa0seSGyPaumXydRYeAT4OVTQxIaEiL1hOA0yH+UvEfT4WKwxbxOtOqWosD8chP3uuWSArcg==",
+  "runtimeCompatibility": {
+    "node": "24.19.0",
+    "npm": "11.19.0",
+    "runnerOs": "Linux",
+    "runnerArchitecture": "x86_64",
+    "dockerClientMinimumApiVersion": "1.40",
+    "dockerServerMinimumApiVersion": "1.40",
+    "dockerServerOs": "linux",
+    "dockerServerArchitecture": "amd64"
+  }
+}

@@ -5,13 +5,11 @@ import { registerTrezorSignPsbtErrorHandlingContracts } from './trezorSignPsbtBr
 import { registerTrezorSignPsbtHelperContracts } from './trezorSignPsbtBranches/trezorSignPsbtBranches.helpers.contracts';
 import { registerTrezorSignPsbtMismatchRefContracts } from './trezorSignPsbtBranches/trezorSignPsbtBranches.mismatch-ref.contracts';
 import { registerTrezorSignPsbtRequestPathContracts } from './trezorSignPsbtBranches/trezorSignPsbtBranches.request-paths.contracts';
-import { registerTrezorSignPsbtSignatureExtractionContracts } from './trezorSignPsbtBranches/trezorSignPsbtBranches.signature-extraction.contracts';
 
 describe('signPsbtWithTrezor branch coverage', () => {
   registerTrezorSignPsbtBranchSetup();
   registerTrezorSignPsbtHelperContracts();
   registerTrezorSignPsbtRequestPathContracts();
   registerTrezorSignPsbtMismatchRefContracts();
-  registerTrezorSignPsbtSignatureExtractionContracts();
   registerTrezorSignPsbtErrorHandlingContracts();
 });

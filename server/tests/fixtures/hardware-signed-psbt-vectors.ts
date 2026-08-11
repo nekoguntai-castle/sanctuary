@@ -9,12 +9,7 @@
 
 export type HardwareWalletVendor = 'ledger' | 'trezor' | 'bitbox';
 
-export type HardwareSignedScriptType =
-  | 'p2wpkh'
-  | 'p2sh-p2wpkh'
-  | 'p2tr'
-  | 'p2wsh'
-  | 'p2sh-p2wsh';
+export type HardwareSignedScriptType = 'p2wpkh' | 'p2sh-p2wpkh' | 'p2tr' | 'p2wsh' | 'p2sh-p2wsh';
 
 export type HardwareSignedNetwork = 'regtest' | 'testnet' | 'signet';
 export type HardwareSignedSoftwareGateStatus = 'passed';
@@ -36,6 +31,11 @@ export interface UnsupportedHardwareSignedRow extends RequiredHardwareSignedRow 
   productDecision: 'blocked' | 'not-supported-by-device';
 }
 
+export interface BlockedHardwareSignedRow extends RequiredHardwareSignedRow {
+  reason: string;
+  productDecision: 'blocked-pending-physical-evidence';
+}
+
 export interface HardwareSignedExpectedOutput {
   index: number;
   address: string;
@@ -49,6 +49,7 @@ export interface HardwareSignedAddressEvidence {
   sanctuaryAddress: string;
   deviceAddress: string;
   coreAddress: string;
+  displayedOnPhysicalDevice: true;
 }
 
 export interface HardwareSignedNegativeControlEvidence {
@@ -73,7 +74,29 @@ export interface HardwareSignedSanitizationReview {
   sanitizedArtifactsReviewed: true;
 }
 
+export interface HardwareSignedCosigner {
+  fingerprint: string;
+  accountPath: string;
+  accountXpub: string;
+}
+
+export interface HardwareSignedPsbtArtifact {
+  type: 'signed-psbt';
+  signedPsbtBase64: string;
+}
+
+export interface TrezorConnectTransactionArtifact {
+  type: 'trezor-connect-transaction';
+  sourcePsbtBase64: string;
+  connectSignatures: string[];
+  serializedTxHex: string;
+}
+
+export type HardwareSignedArtifact = HardwareSignedPsbtArtifact | TrezorConnectTransactionArtifact;
+
 export interface HardwareSignedPsbtVector {
+  fixtureSchemaVersion: 3;
+  evidenceTier: 'physical-device';
   id: string;
   description: string;
   vendor: HardwareWalletVendor;
@@ -85,16 +108,21 @@ export interface HardwareSignedPsbtVector {
     bitcoinAppVersion?: string;
     transport: 'webusb' | 'webhid' | 'trezor-connect';
     transportVersion?: string;
+    emulated: false;
   };
   account: {
     fingerprint: string;
     accountPath: string;
-    xpubPrefix: string;
-    walletPolicy?: string;
+    accountXpub: string;
+    canonicalPolicyId: string;
+    canonicalPolicyVersion: number;
+    multisig?: {
+      threshold: number;
+      cosigners: HardwareSignedCosigner[];
+    };
   };
   unsignedPsbtBase64: string;
-  signedPsbtBase64?: string;
-  rawTxHex?: string;
+  artifact: HardwareSignedArtifact;
   inputValueSats: number;
   expectedFeeSats: number;
   expectedVsize: number;
@@ -107,13 +135,40 @@ export interface HardwareSignedPsbtVector {
   signedBy: Array<{
     fingerprint: string;
     derivationPath: string;
-    pubkey?: string;
+    pubkey: string;
   }>;
   evidence: {
     capturedAt: string;
+    expiresAt: string;
     operator: string;
-    bitcoinCoreVersion?: string;
-    mempoolAcceptAllowed?: boolean;
+    testedCommitSha: string;
+    sanctuaryImageDigest: string;
+    sdkVersion: string;
+    sdkIntegrity: string;
+    sdkPackage: '@ledgerhq/hw-app-btc' | '@trezor/connect-web' | 'bitbox02-api';
+    sourceManifest: Array<{
+      path: string;
+      sha256: string;
+    }>;
+    hostOs: string;
+    browser: string;
+    captureId: string;
+    unsignedPsbtSha256: string;
+    signedArtifactSha256: string;
+    changeRecognizedOnDevice: true;
+    bitcoinCoreVersion: string;
+    bitcoinCoreImageDigest: string;
+    coreAcceptance: {
+      invocationId: string;
+      requestJson: string;
+      responseJson: string;
+      receipt: {
+        algorithm: 'ed25519';
+        keyId: string;
+        payloadSha256: string;
+        signatureBase64: string;
+      };
+    };
     notes?: string;
   };
 }
@@ -151,6 +206,10 @@ export const REQUIRED_HARDWARE_SIGNED_SOFTWARE_GATES = [
   'npm run quality:lizard',
 ] as const;
 
+export const TREZOR_HARDWARE_SIGNED_SOFTWARE_GATES = [
+  'npm run test:trezor-emulator-proof',
+] as const;
+
 export const REQUIRED_HARDWARE_SIGNED_ROWS: RequiredHardwareSignedRow[] = [
   { vendor: 'ledger', scriptType: 'p2wpkh' },
   { vendor: 'ledger', scriptType: 'p2sh-p2wpkh' },
@@ -173,31 +232,55 @@ export const UNSUPPORTED_HARDWARE_SIGNED_ROWS: UnsupportedHardwareSignedRow[] = 
   {
     vendor: 'ledger',
     scriptType: 'p2wsh',
-    reason: 'Current Ledger signing adapter builds single-sig DefaultWalletPolicy templates only; '
-      + 'multisig Ledger signing is not exposed in the product.',
+    reason:
+      'Current Ledger signing adapter builds single-sig DefaultWalletPolicy templates only; ' +
+      'multisig Ledger signing is not exposed in the product.',
     productDecision: 'blocked',
   },
   {
     vendor: 'ledger',
     scriptType: 'p2sh-p2wsh',
-    reason: 'Current Ledger signing adapter builds single-sig DefaultWalletPolicy templates only; '
-      + 'multisig Ledger signing is not exposed in the product.',
+    reason:
+      'Current Ledger signing adapter builds single-sig DefaultWalletPolicy templates only; ' +
+      'multisig Ledger signing is not exposed in the product.',
     productDecision: 'blocked',
   },
   {
     vendor: 'bitbox',
     scriptType: 'p2wsh',
-    reason: 'Current BitBox02 signing adapter uses btcSignSimple single-sig script configs only; '
-      + 'multisig BitBox signing is not exposed in the product.',
+    reason:
+      'Current BitBox02 signing adapter uses btcSignSimple single-sig script configs only; ' +
+      'multisig BitBox signing is not exposed in the product.',
     productDecision: 'blocked',
   },
   {
     vendor: 'bitbox',
     scriptType: 'p2sh-p2wsh',
-    reason: 'Current BitBox02 signing adapter uses btcSignSimple single-sig script configs only; '
-      + 'multisig BitBox signing is not exposed in the product.',
+    reason:
+      'Current BitBox02 signing adapter uses btcSignSimple single-sig script configs only; ' +
+      'multisig BitBox signing is not exposed in the product.',
     productDecision: 'blocked',
   },
 ];
+
+/**
+ * These rows are implemented far enough for software/emulator conformance, but
+ * remain disabled until current, sanitized physical-device evidence is checked
+ * in. A block never counts as physical evidence or satisfies strict fixture
+ * completeness.
+ */
+export const BLOCKED_HARDWARE_SIGNED_ROWS: BlockedHardwareSignedRow[] = [
+  'p2wpkh',
+  'p2sh-p2wpkh',
+  'p2tr',
+  'p2wsh',
+  'p2sh-p2wsh',
+].map((scriptType) => ({
+  vendor: 'trezor' as const,
+  scriptType: scriptType as HardwareSignedScriptType,
+  reason:
+    'Trezor capability remains disabled until a current Tier 3 physical-device artifact is reviewed.',
+  productDecision: 'blocked-pending-physical-evidence' as const,
+}));
 
 export const HARDWARE_SIGNED_PSBT_VECTORS: HardwareSignedPsbtVector[] = [];

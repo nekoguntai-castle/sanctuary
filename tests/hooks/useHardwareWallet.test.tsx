@@ -129,7 +129,10 @@ describe('useHardwareWallet', () => {
     it('should set connecting state during connection', async () => {
       let resolveConnect: (value: MockDevice) => void;
       mockConnect.mockImplementation(
-        () => new Promise((resolve) => { resolveConnect = resolve; })
+          () =>
+            new Promise((resolve) => {
+              resolveConnect = resolve;
+            })
       );
 
       const { result } = renderHook(() => useHardwareWallet());
@@ -280,7 +283,10 @@ describe('useHardwareWallet', () => {
       mockConnect.mockResolvedValue(mockDevice);
       mockGetDevices.mockResolvedValue([mockDevice]);
       mockSignTransaction.mockImplementation(
-        () => new Promise((resolve) => { resolveSign = resolve; })
+          () =>
+            new Promise((resolve) => {
+              resolveSign = resolve;
+            })
       );
 
       const { result } = renderHook(() => useHardwareWallet());
@@ -392,7 +398,7 @@ describe('useHardwareWallet', () => {
         await result.current.connect('ledger');
       });
 
-      let signResult: { psbt: string; rawTx?: string } | undefined;
+        let signResult: Awaited<ReturnType<typeof result.current.signPSBT>> | undefined;
       await act(async () => {
         signResult = await result.current.signPSBT(
           mockPsbt,
@@ -412,7 +418,17 @@ describe('useHardwareWallet', () => {
     });
 
     it('should return rawTx for Trezor devices', async () => {
-      const expectedResult = { psbt: 'signed-psbt', rawTx: 'raw-tx-hex' };
+        const trezorArtifact = {
+          type: 'trezor-connect-transaction' as const,
+          sourcePsbt: mockPsbt,
+          connectSignatures: ['300102'],
+          serializedTx: 'raw-tx-hex',
+        };
+        const expectedResult = {
+          psbt: 'signed-psbt',
+          rawTx: 'raw-tx-hex',
+          trezorArtifact,
+        };
       mockConnect.mockResolvedValue({ ...mockDevice, type: 'trezor' });
       mockGetDevices.mockResolvedValue([{ ...mockDevice, type: 'trezor' }]);
       mockIsConnected.mockReturnValue(true);
@@ -424,12 +440,13 @@ describe('useHardwareWallet', () => {
         await result.current.connect('trezor');
       });
 
-      let signResult: { psbt: string; rawTx?: string } | undefined;
+        let signResult: Awaited<ReturnType<typeof result.current.signPSBT>> | undefined;
       await act(async () => {
         signResult = await result.current.signPSBT(mockPsbt);
       });
 
       expect(signResult?.rawTx).toBe('raw-tx-hex');
+        expect(signResult?.trezorArtifact).toEqual(trezorArtifact);
     });
 
     it('should throw error when no device connected', async () => {
@@ -527,9 +544,7 @@ describe('useHardwareWallet', () => {
   function registerDeviceRefreshTests(): void {
     describe('refreshDevices', () => {
     it('should refresh device list', async () => {
-      mockGetDevices
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([mockDevice]);
+        mockGetDevices.mockResolvedValueOnce([]).mockResolvedValueOnce([mockDevice]);
 
       const { result } = renderHook(() => useHardwareWallet());
 
@@ -547,9 +562,7 @@ describe('useHardwareWallet', () => {
     });
 
     it('should handle refresh error gracefully', async () => {
-      mockGetDevices
-        .mockResolvedValueOnce([])
-        .mockRejectedValueOnce(new Error('USB error'));
+        mockGetDevices.mockResolvedValueOnce([]).mockRejectedValueOnce(new Error('USB error'));
 
       const { result } = renderHook(() => useHardwareWallet());
 

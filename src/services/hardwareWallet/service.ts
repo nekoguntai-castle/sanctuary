@@ -53,7 +53,7 @@ function assertHardwareActionEnabled(
 ): void {
   const vendor = type as HardwareWalletVendor;
   const blockedRow = HARDWARE_WALLET_CAPABILITY_ROWS.find(
-    row => row.vendor === vendor && row.capability === capability
+    (row) => row.vendor === vendor && row.capability === capability
   );
   if (!blockedRow) return;
 
@@ -103,7 +103,7 @@ function getMostCommonFailure(failures: XpubFetchFailure[]): string {
 
 function buildAllXpubsFailedMessage(failures: XpubFetchFailure[], totalPaths: number): string {
   const commonFailure = getMostCommonFailure(failures);
-  const attemptedNames = failures.map(failure => failure.name).join(', ');
+  const attemptedNames = failures.map((failure) => failure.name).join(', ');
 
   return [
     `Failed to fetch any xpubs from device after trying ${failures.length}/${totalPaths} standard account paths.`,
@@ -130,7 +130,9 @@ export class HardwareWalletService {
    */
   registerAdapter(adapter: DeviceAdapter): void {
     this.adapters.set(adapter.type, adapter);
-    log.info(`Registered adapter: ${adapter.displayName}`, { type: adapter.type });
+    log.info(`Registered adapter: ${adapter.displayName}`, {
+      type: adapter.type,
+    });
   }
 
   /**
@@ -193,7 +195,7 @@ export class HardwareWalletService {
       return adapter ? adapter.isSupported() : false;
     }
     // Check if any adapter is supported
-    return Array.from(this.adapters.values()).some(a => a.isSupported());
+    return Array.from(this.adapters.values()).some((a) => a.isSupported());
   }
 
   /**
@@ -222,7 +224,9 @@ export class HardwareWalletService {
           const devices = await adapter.getAuthorizedDevices();
           allDevices.push(...devices);
         } catch (error) {
-          log.warn(`Failed to get devices from ${adapter.displayName}`, { error });
+          log.warn(`Failed to get devices from ${adapter.displayName}`, {
+            error,
+          });
         }
       }
     }
@@ -275,10 +279,15 @@ export class HardwareWalletService {
     const device = await adapter.connect();
     let fingerprint: string;
     try {
-      fingerprint = normalizeMasterFingerprint(device.fingerprint, `Connected ${adapter.displayName}`);
+      fingerprint = normalizeMasterFingerprint(
+        device.fingerprint,
+        `Connected ${adapter.displayName}`
+      );
     } catch (error) {
-      await adapter.disconnect().catch(disconnectError => {
-        log.warn('Error disconnecting device with invalid identity evidence', { disconnectError });
+      await adapter.disconnect().catch((disconnectError) => {
+        log.warn('Error disconnecting device with invalid identity evidence', {
+          disconnectError,
+        });
       });
       throw error;
     }
@@ -326,9 +335,10 @@ export class HardwareWalletService {
    * Coin type 1 is the BIP-44 testnet-family slot used by testnet and signet.
    */
   static readonly STANDARD_PATHS = (['mainnet', 'testnet'] as const).flatMap(
-    (derivationFamily: DerivationNetworkFamily) => [...WALLET_POLICY_REGISTRY]
+    (derivationFamily: DerivationNetworkFamily) =>
+      [...WALLET_POLICY_REGISTRY]
       .sort((first, second) => first.hardwareDiscoveryOrder - second.hardwareDiscoveryOrder)
-      .map(policy => ({
+        .map((policy) => ({
         path: buildCanonicalAccountPathForFamily({
           walletType: policy.walletType,
           scriptType: policy.scriptType,
@@ -337,10 +347,11 @@ export class HardwareWalletService {
         }),
         purpose: policy.accountPurpose,
         scriptType: policy.scriptType,
-        name: derivationFamily === 'mainnet'
+          name:
+            derivationFamily === 'mainnet'
           ? policy.displayName
           : `Testnet-family ${policy.displayName}`,
-      })),
+        }))
   );
 
   /**
@@ -389,7 +400,9 @@ export class HardwareWalletService {
         const xpubResult = await this.activeAdapter.getXpub(path);
         const validated = validateXpubResult(xpubResult, path, connectedFingerprint);
         results.push({ ...validated, purpose, scriptType });
-        log.info(`Successfully fetched ${name}`, { fingerprint: validated.fingerprint });
+        log.info(`Successfully fetched ${name}`, {
+          fingerprint: validated.fingerprint,
+        });
       } catch (error) {
         if (error instanceof HardwareWalletIdentityError) {
           throw error;
@@ -427,7 +440,14 @@ export class HardwareWalletService {
     assertHardwareActionEnabled(this.activeAdapter.type, 'sign');
     const connectedFingerprint = this.activeAdapter.getDevice()?.fingerprint;
     validatePsbtSigningRequest(request, connectedFingerprint);
-    return this.activeAdapter.signPSBT(request);
+    const result = await this.activeAdapter.signPSBT(request);
+    if (!result.psbt && !result.rawTx) {
+      throw new Error('Hardware signing did not produce an applicable signed PSBT or transaction');
+    }
+    if (request.signingContext?.walletType === 'multi_sig' && !result.psbt) {
+      throw new Error('Multisig hardware signing did not produce an applicable signed PSBT');
+    }
+    return result;
   }
 
   /**
@@ -459,7 +479,14 @@ export class HardwareWalletService {
     const { psbt, signingContext, intentId, intentDigest } = await createPSBTForSigning(tx);
 
     // Sign with connected device
-    const signed = await this.signPSBT({ walletId: tx.walletId, psbt, signingContext });
+    const signed = await this.signPSBT({
+      walletId: tx.walletId,
+      psbt,
+      signingContext,
+    });
+    if (!signed.psbt) {
+      throw new Error('Hardware signer did not return a signed PSBT for this broadcast path');
+    }
 
     // Raw-only hardware results are rejected by broadcastSignedTransaction.
     const result = await broadcastSignedTransaction(
@@ -467,7 +494,7 @@ export class HardwareWalletService {
       signed.psbt,
       intentId,
       intentDigest,
-      signed.rawTx,
+      signed.rawTx
     );
 
     return result.txid;
@@ -480,12 +507,16 @@ export class HardwareWalletService {
 async function createPSBTForSigning(
   tx: TransactionForSigning
 ): Promise<HardwarePsbtCreateResponse> {
-  return apiClient.post<HardwarePsbtCreateResponse>(`/wallets/${tx.walletId}/psbt/create`, {
+  return apiClient.post<HardwarePsbtCreateResponse>(
+    `/wallets/${tx.walletId}/psbt/create`,
+    {
     recipients: [{ address: tx.recipient, amount: tx.amount }],
     feeRate: tx.feeRate,
     utxoIds: tx.utxos,
     changeAddress: tx.changeAddress,
-  }, { schema: HardwarePsbtCreateResponseSchema });
+    },
+    { schema: HardwarePsbtCreateResponseSchema }
+  );
 }
 
 /**
@@ -500,12 +531,12 @@ async function broadcastSignedTransaction(
 ): Promise<{ txid: string }> {
   if (rawTx) {
     throw new Error(
-      'Raw-only hardware broadcast is disabled until the adapter provides verifiable signing proof',
+      'Raw-only hardware broadcast is disabled until the adapter provides verifiable signing proof'
     );
   }
   const response = await apiClient.post<{ txid: string }>(
     `/wallets/${walletId}/transactions/broadcast`,
-    { signedPsbtBase64: psbt, intentId, intentDigest },
+    { signedPsbtBase64: psbt, intentId, intentDigest }
   );
 
   return response;

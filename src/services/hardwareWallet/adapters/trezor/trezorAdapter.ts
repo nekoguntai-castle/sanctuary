@@ -20,6 +20,15 @@ import { normalizeMasterFingerprint } from '../../identity';
 import type { TrezorConnection } from './types';
 import { signPsbtWithTrezor } from './signPsbt';
 import { getTrezorScriptType } from './pathUtils';
+import {
+  assertSessionIdentity,
+  connectDevice,
+  connectSelectedDevice,
+  requireResolvedSession,
+  requireSelectedDevice,
+} from './sessionIdentity';
+
+export const TREZOR_CONNECT_VERSION = '9.7.3' as const;
 
 const log = createLogger('TrezorAdapter');
 
@@ -31,10 +40,17 @@ type TrezorFeatures = {
   pin_protection?: boolean | null;
   unlocked?: boolean | null;
   passphrase_protection?: boolean | null;
+  major_version?: number;
+  minor_version?: number;
+  patch_version?: number;
 };
 
 type FingerprintPayload = {
+  childNum?: number;
+  descriptor?: string;
+  depth?: number;
   fingerprint?: number;
+  publicKey?: string;
   xpub?: string;
 };
 
@@ -47,14 +63,17 @@ const getTrezorModelName = (features: TrezorFeatures): string => {
   return 'Trezor';
 };
 
-const formatFingerprint = (payload: FingerprintPayload): string | undefined => {
-  const rawFp = payload.fingerprint;
-  // Handle unsigned 32-bit conversion (fingerprint can be > 2^31)
-  const unsignedFp = rawFp !== undefined ? (rawFp >>> 0) : undefined;
-  const fingerprint = unsignedFp?.toString(16).padStart(8, '0');
+const masterFingerprintFromDescriptor = (payload: FingerprintPayload): string | undefined => {
+  if (payload.depth !== 3 || payload.childNum !== 0x80000000) return undefined;
+  if (!payload.xpub || !payload.descriptor) return undefined;
+  const match = payload.descriptor.match(/^wpkh\(\[([0-9a-f]{8})\/84h\/0h\/0h\]/i);
+  if (
+    !match ||
+    !payload.descriptor.startsWith(`wpkh([${match[1]}/84h/0h/0h]${payload.xpub}/<0;1>/*)`)
+  )
+    return undefined;
+  const fingerprint = match[1].toLowerCase();
   log.info('Trezor fingerprint obtained', {
-    rawFingerprint: rawFp,
-    unsignedFingerprint: unsignedFp,
     hexFingerprint: fingerprint,
     xpubPrefix: payload.xpub?.substring(0, 20),
   });
@@ -70,7 +89,9 @@ const createConnectError = (message: string): Error => {
     return new Error('Connection cancelled by user');
   }
   if (message.includes('Device not found') || message.includes('no device')) {
-    return new Error('No Trezor device found. Please connect your device and ensure Trezor Suite is running.');
+    return new Error(
+      'No Trezor device found. Please connect your device and ensure Trezor Suite is running.'
+    );
   }
   if (message.includes('Bridge not running')) {
     return new Error('Trezor Suite bridge not running. Please open Trezor Suite desktop app.');
@@ -87,6 +108,8 @@ const isUserRejectedAddressDisplay = (message: string): boolean => {
   return /cancelled|denied|rejected/i.test(message);
 };
 
+type TrezorInitSettings = Parameters<typeof TrezorConnect.init>[0];
+
 /**
  * Trezor Device Adapter
  */
@@ -99,6 +122,20 @@ export class TrezorAdapter implements DeviceAdapter {
     connected: false,
   };
   private connectedDevice: HardwareWalletDevice | null = null;
+
+  constructor(private readonly initSettings?: TrezorInitSettings) {}
+
+  private clearSelectedSession(): void {
+    this.connection = {
+      initialized: this.connection.initialized,
+      connected: false,
+    };
+    this.connectedDevice = null;
+  }
+
+  private invalidateStaleSession(message: string): void {
+    if (message.includes('Trezor selected session mismatch')) this.clearSelectedSession();
+  }
 
   /**
    * Check if Trezor is supported in current environment.
@@ -131,7 +168,8 @@ export class TrezorAdapter implements DeviceAdapter {
     }
 
     try {
-      await TrezorConnect.init({
+      await TrezorConnect.init(
+        this.initSettings ?? {
         manifest: {
           email: 'support@sanctuary.bitcoin',
           appUrl: window.location.origin || 'https://sanctuary.bitcoin',
@@ -140,7 +178,8 @@ export class TrezorAdapter implements DeviceAdapter {
         coreMode: 'auto',
         debug: true,
         lazyLoad: false,
-      });
+        }
+      );
 
       this.connection.initialized = true;
       log.info('Trezor Connect initialized');
@@ -159,10 +198,10 @@ export class TrezorAdapter implements DeviceAdapter {
     try {
       log.info('Requesting Trezor device features...');
 
-      const features = await this.getDeviceFeatures();
-      const fingerprint = await this.getMasterFingerprint();
+      const { features, session } = await this.getDeviceFeatures();
+      const fingerprint = await this.getMasterFingerprint(session);
       const modelName = getTrezorModelName(features);
-      const device = this.setConnectedDevice(features, fingerprint, modelName);
+      const device = this.setConnectedDevice(features, fingerprint, modelName, session);
 
       log.info('Trezor connected', {
         model: modelName,
@@ -185,7 +224,10 @@ export class TrezorAdapter implements DeviceAdapter {
     }
   }
 
-  private async getDeviceFeatures(): Promise<TrezorFeatures> {
+  private async getDeviceFeatures(): Promise<{
+    features: TrezorFeatures;
+    session: NonNullable<TrezorConnection['session']>;
+  }> {
     const result = await TrezorConnect.getFeatures();
 
     if (!result.success) {
@@ -194,19 +236,39 @@ export class TrezorAdapter implements DeviceAdapter {
       throw new Error(errorPayload.error || 'Failed to connect to Trezor');
     }
 
-    return result.payload as TrezorFeatures;
+    const selected = requireSelectedDevice(result.device);
+    const stateResult = await TrezorConnect.getDeviceState({
+      device: connectSelectedDevice(selected),
+    });
+    if (!stateResult.success) {
+      const message =
+        'error' in stateResult.payload
+          ? stateResult.payload.error
+          : 'Failed to resolve selected Trezor session';
+      throw new Error(message);
+    }
+    return {
+      features: result.payload as TrezorFeatures,
+      session: requireResolvedSession(selected, stateResult.payload.state, stateResult.device),
+    };
   }
 
-  private async getMasterFingerprint(): Promise<string> {
+  private async getMasterFingerprint(
+    session: NonNullable<TrezorConnection['session']>
+  ): Promise<string> {
     try {
       const fpResult = await TrezorConnect.getPublicKey({
-        path: "m/0'",
+        path: "m/84'/0'/0'",
+        coin: 'Bitcoin',
+        scriptType: 'SPENDWITNESS',
         showOnTrezor: false,
+        device: connectDevice(session),
       });
       if (!fpResult.success) {
         throw new Error('Trezor master fingerprint request failed');
       }
-      return requireMasterFingerprint(formatFingerprint(fpResult.payload));
+      assertSessionIdentity(fpResult.device, session);
+      return requireMasterFingerprint(masterFingerprintFromDescriptor(fpResult.payload));
     } catch (fpError) {
       log.warn('Could not get fingerprint from Trezor', { error: fpError });
       const message = fpError instanceof Error ? fpError.message : 'Unknown error';
@@ -217,15 +279,26 @@ export class TrezorAdapter implements DeviceAdapter {
   private setConnectedDevice(
     features: TrezorFeatures,
     fingerprint: string,
-    modelName: string
+    modelName: string,
+    session: NonNullable<TrezorConnection['session']>
   ): HardwareWalletDevice {
+    const firmwareVersion = [
+      features.major_version,
+      features.minor_version,
+      features.patch_version,
+    ].every((value) => Number.isInteger(value))
+      ? `${features.major_version}.${features.minor_version}.${features.patch_version}`
+      : undefined;
     this.connection = {
       initialized: true,
       connected: true,
+      session,
       deviceId: features.device_id || undefined,
       fingerprint,
       model: modelName,
       label: features.label || undefined,
+      firmwareVersion,
+      connectVersion: TREZOR_CONNECT_VERSION,
     };
 
     const device = {
@@ -237,6 +310,8 @@ export class TrezorAdapter implements DeviceAdapter {
       fingerprint,
       needsPin: (features.pin_protection && !features.unlocked) ?? undefined,
       needsPassphrase: features.passphrase_protection ?? undefined,
+      firmwareVersion,
+      transportVersion: TREZOR_CONNECT_VERSION,
     };
     this.connectedDevice = device;
 
@@ -247,11 +322,7 @@ export class TrezorAdapter implements DeviceAdapter {
    * Disconnect from Trezor
    */
   async disconnect(): Promise<void> {
-    this.connection = {
-      initialized: this.connection.initialized,
-      connected: false,
-    };
-    this.connectedDevice = null;
+    this.clearSelectedSession();
     log.info('Trezor disconnected');
   }
 
@@ -263,18 +334,23 @@ export class TrezorAdapter implements DeviceAdapter {
       throw new Error('Trezor not connected');
     }
     const masterFingerprint = requireMasterFingerprint(this.connection.fingerprint);
+    const session = this.connection.session;
+    if (!session) throw new Error('Trezor selected session is unavailable');
 
     try {
       const result = await TrezorConnect.getPublicKey({
         path,
         showOnTrezor: false,
         coin: getCoinForPath(path),
+        device: connectDevice(session),
       });
 
       if (!result.success) {
-        const errorMsg = 'error' in result.payload ? result.payload.error : 'Failed to get public key';
+        const errorMsg =
+          'error' in result.payload ? result.payload.error : 'Failed to get public key';
         throw new Error(errorMsg);
       }
+      assertSessionIdentity(result.device, session);
 
       const { xpub, fingerprint: parentFingerprint } = result.payload;
       if (typeof xpub !== 'string' || xpub.length === 0) {
@@ -283,7 +359,7 @@ export class TrezorAdapter implements DeviceAdapter {
 
       // IMPORTANT: Trezor's getPublicKey returns the PARENT fingerprint of the requested path,
       // not the master fingerprint. For BIP-174 PSBTs and wallet descriptors, we need the
-      // MASTER fingerprint. Use the connection fingerprint (obtained from m/0' during connect).
+      // MASTER fingerprint. Use the origin embedded in the device-authored account descriptor.
       const parentFpHex = parentFingerprint?.toString(16).padStart(8, '0');
 
       log.info('Got Trezor xpub', {
@@ -300,6 +376,7 @@ export class TrezorAdapter implements DeviceAdapter {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
+      this.invalidateStaleSession(message);
 
       if (message.includes('cancelled') || message.includes('Cancelled')) {
         throw new Error('Request cancelled on device');
@@ -316,6 +393,8 @@ export class TrezorAdapter implements DeviceAdapter {
     if (!this.connection.connected) {
       throw new Error('Trezor not connected');
     }
+    const session = this.connection.session;
+    if (!session) throw new Error('Trezor selected session is unavailable');
 
     try {
       const result = await TrezorConnect.getAddress({
@@ -324,16 +403,20 @@ export class TrezorAdapter implements DeviceAdapter {
         showOnTrezor: true,
         coin: getCoinForPath(path),
         scriptType: getTrezorScriptType(path),
+        device: connectDevice(session),
       });
 
       if (!result.success) {
-        const errorMsg = 'error' in result.payload ? result.payload.error : 'Failed to verify address';
+        const errorMsg =
+          'error' in result.payload ? result.payload.error : 'Failed to verify address';
         throw new Error(errorMsg);
       }
+      assertSessionIdentity(result.device, session);
 
       return result.payload.address === address;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
+      this.invalidateStaleSession(message);
 
       if (isUserRejectedAddressDisplay(message)) {
         return false;
@@ -352,6 +435,12 @@ export class TrezorAdapter implements DeviceAdapter {
       throw new Error('Trezor not connected');
     }
 
-    return signPsbtWithTrezor(request, this.connection);
+    try {
+      return await signPsbtWithTrezor(request, this.connection);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      this.invalidateStaleSession(message);
+      throw error;
+    }
   }
 }
