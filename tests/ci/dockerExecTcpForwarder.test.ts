@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { once } from "node:events";
 import net from "node:net";
 import { tmpdir } from "node:os";
@@ -74,6 +74,12 @@ afterEach(async () => {
 });
 
 describe("Docker-exec TCP forwarder", () => {
+  it("removes the connection timeout before long hardware approval reads", () => {
+    const source = readFileSync(forwarderPath, "utf8");
+    expect(source).toContain('socket.create_connection(("127.0.0.1", remote_port), timeout=10)');
+    expect(source).toContain("upstream.settimeout(None)");
+  });
+
   it.each([
     {
       arguments: ["container", "unsafe"],

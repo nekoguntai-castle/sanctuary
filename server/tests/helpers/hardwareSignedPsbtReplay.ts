@@ -264,10 +264,76 @@ function validateSignedPsbtAttribution(vector: HardwareSignedPsbtVector, psbt: b
   });
 }
 
-function extractHardwareTransaction(vector: HardwareSignedPsbtVector): {
+export const expectedLedgerSignaturePubkey = (
+  scriptType: HardwareSignedScriptType,
+  input: PsbtInput,
+  derivationPubkey: Uint8Array,
+): Uint8Array => {
+  if (scriptType !== 'p2tr') return derivationPubkey;
+  const script = input.witnessUtxo?.script;
+  if (!script || script.length !== 34 || script[0] !== 0x51 || script[1] !== 0x20) {
+    throw new Error('Ledger Taproot evidence is missing its verified output key');
+  }
+  return script.slice(2);
+};
+
+function applyLedgerSignatures(
+  vector: HardwareSignedPsbtVector,
+  sourcePsbt: bitcoin.Psbt,
+): bitcoin.Psbt {
+  if (vector.artifact.type !== 'ledger-signed-psbt') {
+    throw new Error(`Hardware signed fixture ${vector.id} does not contain a Ledger artifact tuple`);
+  }
+  if (vector.artifact.sourcePsbtBase64 !== vector.unsignedPsbtBase64) {
+    throw new Error(`Hardware signed fixture ${vector.id} Ledger source PSBT mismatch`);
+  }
+  const inputIndexes = vector.artifact.signatures.map((signature) => signature.inputIndex);
+  if (new Set(inputIndexes).size !== inputIndexes.length) {
+    throw new Error(`Hardware signed fixture ${vector.id} Ledger signature indexes are duplicated`);
+  }
+  const signed = sourcePsbt.clone();
+  for (const record of vector.artifact.signatures) {
+    const input = signed.data.inputs[record.inputIndex];
+    if (!input) throw new Error(`Hardware signed fixture ${vector.id} Ledger signature input is absent`);
+    const derivation = signerDerivation(vector, input, record.inputIndex);
+    const pubkey = Buffer.from(record.pubkey, 'hex');
+    const signature = Buffer.from(record.signature, 'hex');
+    const expectedPubkey = expectedLedgerSignaturePubkey(
+      vector.scriptType,
+      input,
+      derivation.pubkey,
+    );
+    if (!pubkey.equals(expectedPubkey)) {
+      throw new Error(`Hardware signed fixture ${vector.id} Ledger signature key mismatch`);
+    }
+    if (record.tapleafHash) {
+      throw new Error(`Hardware signed fixture ${vector.id} Ledger Taproot script-path evidence is unsupported`);
+    }
+    if (vector.scriptType === 'p2tr') {
+      if (pubkey.length !== 32 || ![64, 65].includes(signature.length)) {
+        throw new Error(`Hardware signed fixture ${vector.id} Ledger Taproot signature is malformed`);
+      }
+      input.tapKeySig = signature;
+    } else {
+      if (pubkey.length !== 33 || signature.length === 0) {
+        throw new Error(`Hardware signed fixture ${vector.id} Ledger signature is malformed`);
+      }
+      input.partialSig = [{ pubkey, signature }];
+    }
+    if (!signed.validateSignaturesOfInput(record.inputIndex, signatureValidator)) {
+      throw new Error(`Hardware signed fixture ${vector.id} Ledger signature is invalid`);
+    }
+  }
+  if (signed.toBase64() !== vector.artifact.reconstructedPsbtBase64) {
+    throw new Error(`Hardware signed fixture ${vector.id} Ledger reconstructed PSBT mismatch`);
+  }
+  return signed;
+}
+
+const extractHardwareTransaction = (vector: HardwareSignedPsbtVector): {
   transaction: bitcoin.Transaction;
   sourcePsbt: bitcoin.Psbt;
-} {
+} => {
   const network = networkParams(vector.network);
   const sourcePsbt = bitcoin.Psbt.fromBase64(vector.unsignedPsbtBase64, {
     network,
@@ -284,6 +350,17 @@ function extractHardwareTransaction(vector: HardwareSignedPsbtVector): {
     return { transaction: signedPsbt.extractTransaction(true), sourcePsbt };
   }
 
+  if (vector.artifact.type === 'ledger-signed-psbt') {
+    const signedPsbt = applyLedgerSignatures(vector, sourcePsbt);
+    assertTransactionIntent(
+      vector,
+      unsignedTransaction(sourcePsbt),
+      unsignedTransaction(signedPsbt),
+    );
+    finalizeHardwarePsbt(signedPsbt, vector.scriptType);
+    return { transaction: signedPsbt.extractTransaction(true), sourcePsbt };
+  }
+
   const signedPsbt = applyTrezorSignatures(vector, sourcePsbt);
   finalizeHardwarePsbt(signedPsbt, vector.scriptType);
   const reconstructed = signedPsbt.extractTransaction(true);
@@ -295,7 +372,7 @@ function extractHardwareTransaction(vector: HardwareSignedPsbtVector): {
     );
   }
   return { transaction: returned, sourcePsbt };
-}
+};
 
 function previousOutputValue(
   vector: HardwareSignedPsbtVector,
@@ -405,6 +482,7 @@ function expectedSingleSigChangeScript(
   pubkey: Uint8Array
 ): Uint8Array | undefined {
   const network = networkParams(vector.network);
+  if (vector.scriptType === 'p2pkh') return bitcoin.payments.p2pkh({ pubkey, network }).output;
   if (vector.scriptType === 'p2wpkh') return bitcoin.payments.p2wpkh({ pubkey, network }).output;
   if (vector.scriptType === 'p2sh-p2wpkh') {
     return bitcoin.payments.p2sh({

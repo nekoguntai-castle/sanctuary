@@ -47,8 +47,10 @@ describe('Hardware Wallet Compatibility Evidence', () => {
   });
 
   it('does not promote Trezor from emulator proof or evidence-block accounting', () => {
-    expect(BLOCKED_HARDWARE_SIGNED_ROWS).toHaveLength(5);
-    expect(BLOCKED_HARDWARE_SIGNED_ROWS.every((row) => row.vendor === 'trezor')).toBe(true);
+    const blockedTrezorRows = BLOCKED_HARDWARE_SIGNED_ROWS.filter(
+      (row) => row.vendor === 'trezor'
+    );
+    expect(blockedTrezorRows).toHaveLength(5);
     const trezorRows = HARDWARE_WALLET_CAPABILITY_ROWS.filter((row) => row.vendor === 'trezor');
     expect(trezorRows).toHaveLength(6);
     expect(trezorRows.every((row) => !row.enabled && row.evidenceIds.length === 0)).toBe(true);

@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "platform": "linux/amd64",
+  "model": "nanosp",
+  "speculos": {
+    "version": "0.26.9",
+    "image": "ghcr.io/ledgerhq/speculos@sha256:455d81fb8c6143e1413b5ac724887f8ca4cd887d54db5893758b12377df3d46c"
+  },
+  "builder": {
+    "image": "ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder-lite@sha256:7eda772d9ce20d6b575417e333e809950779e097f397bf7a47131166981a7d51"
+  },
+  "bitcoinApp": {
+    "version": "2.4.2",
+    "sourceCommit": "2c7956fe566bd7f6f690288130033441fabc5f10",
+    "sourceTarballSha256": "639773cc318ff608d59c546fcc9f64e540c923b29a4fccc71550e0ddba2d7ae7",
+    "mainnetElfSha256": "159320ca743c6a31b61944d5fddaee866aa169f9e48af11b1395423f1053e6f9",
+    "testnetElfSha256": "dbc7dbc8da1b193e0dd0c26bd1c24f6858680f325a4d58c04ab55f62bdbf839c"
+  },
+  "sdk": {
+    "ledgerBitcoin": "0.3.1",
+    "webUsbTransport": "6.34.4"
+  }
+}

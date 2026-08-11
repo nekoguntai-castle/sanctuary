@@ -6,7 +6,6 @@
  */
 
 import TransportWebUSB from '@ledgerhq/hw-transport-webusb';
-import AppBtc from '@ledgerhq/hw-app-btc';
 import { AppClient } from '@ledgerhq/ledger-bitcoin';
 import { createLogger } from '../../../../utils/logger';
 import type {
@@ -18,8 +17,15 @@ import type {
   XpubResult,
 } from '../../types';
 import { normalizeMasterFingerprint } from '../../identity';
-import { LEDGER_VENDOR_ID, XPUB_VERSION, TPUB_VERSION, getLedgerModel, getDeviceId } from './utils';
+import { LEDGER_VENDOR_ID, getLedgerModel, getDeviceId } from './utils';
 import { signPsbt } from './signPsbt';
+import { isTestnetPath } from '../../pathUtils';
+import { assertLedgerSession, readLedgerAppIdentity } from './session';
+import {
+  buildLedgerDefaultPolicy,
+  requireLedgerAccountPath,
+  requireLedgerAddressPath,
+} from './walletPolicy';
 
 const log = createLogger('LedgerAdapter');
 
@@ -41,16 +47,6 @@ const LEDGER_FRIENDLY_PREFIXES = [
   'Ledger disconnected.',
 ];
 
-const LEDGER_TESTNET_APP_NAMES = new Set(['Bitcoin Test', 'Bitcoin Test Legacy']);
-const LEDGER_TESTNET_PATH_ERROR_PATTERNS = [
-  '0x6a80',
-  'incorrect data',
-  '0x6d00',
-  '0x6e00',
-  'cla_not_supported',
-  'ins_not_supported',
-  'bitcoin app not open',
-];
 function requireMasterFingerprint(value: unknown): string {
   return normalizeMasterFingerprint(value, 'Ledger');
 }
@@ -91,11 +87,17 @@ const LEDGER_FRIENDLY_ERROR_RULES: LedgerFriendlyErrorRule[] = [
 // Connection state
 interface LedgerConnection {
   transport: TransportWebUSB;
-  app: AppBtc;
   appClient: AppClient;
   device: USBDevice;
   appName?: string;
   appVersion?: string;
+}
+
+export interface LedgerAdapterOptions {
+  openTransport?: () => Promise<{
+    transport: TransportWebUSB;
+    device: USBDevice;
+  }>;
 }
 
 function getLedgerErrorMessage(error: unknown): string {
@@ -120,31 +122,6 @@ function getLedgerFriendlyError(error: unknown, context: LedgerErrorContext): st
   return null;
 }
 
-function isTestnetFamilyPath(path: string): boolean {
-  return path.includes("/1'/") || path.includes('/1h/');
-}
-
-function getLedgerTestnetAppError(error: unknown, path: string, appName?: string): string | null {
-  if (!isTestnetFamilyPath(path)) return null;
-
-  const normalized = getLedgerErrorMessage(error).toLowerCase();
-  const appIsKnownTestnet = Boolean(appName && LEDGER_TESTNET_APP_NAMES.has(appName));
-  const appIsKnownWrongNetwork = Boolean(appName && !appIsKnownTestnet);
-  const errorSuggestsWrongApp = !appIsKnownTestnet && matchesAnyPattern(normalized, LEDGER_TESTNET_PATH_ERROR_PATTERNS);
-  if (!appIsKnownWrongNetwork && !errorSuggestsWrongApp) return null;
-
-  const runningApp = appName ? `Ledger is currently running ${appName}.` : '';
-  return [
-    `Bitcoin Test app is required on Ledger to export ${path}.`,
-    'Install or open Bitcoin Test on the Ledger, approve the public-key export prompt, then retry USB import.',
-    runningApp,
-  ].filter(Boolean).join(' ');
-}
-
-function shouldTryLegacyXpubFallback(error: unknown): boolean {
-  return getLedgerFriendlyError(error, 'xpub') === null;
-}
-
 /**
  * Ledger Device Adapter
  */
@@ -155,10 +132,13 @@ export class LedgerAdapter implements DeviceAdapter {
   private connection: LedgerConnection | null = null;
   private connectedDevice: HardwareWalletDevice | null = null;
 
+  constructor(private readonly options: LedgerAdapterOptions = {}) {}
+
   /**
    * Check if WebUSB is supported
    */
   isSupported(): boolean {
+    if (this.options.openTransport) return true;
     const hasWebUSB = typeof navigator !== 'undefined' && 'usb' in navigator;
     const isSecure = typeof window !== 'undefined' && window.isSecureContext;
     return hasWebUSB && isSecure;
@@ -227,22 +207,30 @@ export class LedgerAdapter implements DeviceAdapter {
 
     try {
       // Request device permission and create transport
-      const transport = await TransportWebUSB.create();
-      const device = (transport as any).device as USBDevice;
+      const opened = this.options.openTransport
+        ? await this.options.openTransport()
+        : await TransportWebUSB.create().then((transport) => ({
+            transport,
+            device: (transport as any).device as USBDevice,
+          }));
+      const { transport, device } = opened;
 
-      // Create Bitcoin app instances
-      const app = new AppBtc({ transport });
       const appClient = new AppClient(transport as any);
 
-      let appName: string | undefined;
-      let appVersion: string | undefined;
+      let appName: string;
+      let appVersion: string;
       try {
-        const appInfo = await appClient.getAppAndVersion();
+        const appInfo = await readLedgerAppIdentity(appClient);
         appName = appInfo.name;
         appVersion = appInfo.version;
         log.info('Detected Ledger app', { appName, appVersion });
       } catch (error) {
-        log.debug('Could not read Ledger app info before readiness check', { error });
+        try {
+          await transport.close();
+        } catch (closeError) {
+          log.debug('Ignoring Ledger transport close error after failed app check', { error: closeError });
+        }
+        throw error;
       }
 
       // Get master fingerprint
@@ -261,7 +249,7 @@ export class LedgerAdapter implements DeviceAdapter {
         throw new Error(`Ledger master fingerprint unavailable: ${getLedgerErrorMessage(error)}`);
       }
 
-      this.connection = { transport: transport as any, app, appClient, device, appName, appVersion };
+      this.connection = { transport: transport as any, appClient, device, appName, appVersion };
 
       this.connectedDevice = {
         id: getDeviceId(device),
@@ -307,10 +295,9 @@ export class LedgerAdapter implements DeviceAdapter {
     }
 
     try {
-      const isTestnet = isTestnetFamilyPath(path);
-      const xpubVersion = isTestnet ? TPUB_VERSION : XPUB_VERSION;
-
-      const xpub = await this.getLedgerXpub(path, xpubVersion);
+      requireLedgerAccountPath(path);
+      await assertLedgerSession(this.connection.appClient, isTestnetPath(path) ? 'testnet' : 'mainnet');
+      const xpub = await this.connection.appClient.getExtendedPubkey(path, false);
 
       if (!xpub) {
         throw new Error(`Ledger returned an empty xpub for ${path}`);
@@ -332,54 +319,24 @@ export class LedgerAdapter implements DeviceAdapter {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      const testnetAppError = getLedgerTestnetAppError(error, path, this.connection?.appName);
       const friendlyError = getLedgerFriendlyError(error, 'xpub');
 
-      if (testnetAppError) throw new Error(testnetAppError);
       if (friendlyError) throw new Error(friendlyError);
 
       throw new Error(`Failed to get xpub: ${message}`);
     }
   }
 
-  private async getLedgerXpub(path: string, xpubVersion: number): Promise<string> {
-    if (!this.connection) {
-      throw new Error('No device connected');
-    }
-
-    try {
-      return await this.connection.appClient.getExtendedPubkey(path);
-    } catch (error) {
-      const testnetAppError = getLedgerTestnetAppError(error, path, this.connection.appName);
-      if (testnetAppError) {
-        throw new Error(testnetAppError);
-      }
-
-      if (!shouldTryLegacyXpubFallback(error)) {
-        throw error;
-      }
-
-      log.warn('Ledger AppClient xpub read failed, falling back to legacy BTC API', {
-        path,
-        error: getLedgerErrorMessage(error),
-      });
-
-      return this.connection.app.getWalletXpub({
-        path,
-        xpubVersion,
-      });
-    }
-  }
-
   private async getMasterFingerprint(): Promise<string> {
     if (!this.connection) throw new Error('No device connected');
 
-    if (this.connectedDevice?.fingerprint !== undefined) {
-      return requireMasterFingerprint(this.connectedDevice.fingerprint);
-    }
-
     try {
-      return requireMasterFingerprint(await this.connection.appClient.getMasterFingerprint());
+      const current = requireMasterFingerprint(await this.connection.appClient.getMasterFingerprint());
+      const connected = this.connectedDevice?.fingerprint;
+      if (connected !== undefined && current !== requireMasterFingerprint(connected)) {
+        throw new Error('Ledger session identity changed after connection');
+      }
+      return current;
     } catch (fpError) {
       log.warn('Could not get fingerprint', { error: fpError });
       throw new Error(`Ledger master fingerprint unavailable: ${getLedgerErrorMessage(fpError)}`);
@@ -395,8 +352,24 @@ export class LedgerAdapter implements DeviceAdapter {
     }
 
     try {
-      const result = await this.connection.app.getWalletPublicKey(path, { verify: true });
-      return result.bitcoinAddress === address;
+      const parsed = requireLedgerAddressPath(path);
+      await assertLedgerSession(
+        this.connection.appClient,
+        parsed.derivationFamily === 'mainnet' ? 'mainnet' : 'testnet',
+      );
+      const policy = await buildLedgerDefaultPolicy(
+        this.connection.appClient,
+        parsed.accountPath,
+        this.connectedDevice?.fingerprint,
+      );
+      const displayed = await this.connection.appClient.getWalletAddress(
+        policy.policy,
+        null,
+        parsed.branch,
+        parsed.index,
+        true,
+      );
+      return displayed === address;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
 

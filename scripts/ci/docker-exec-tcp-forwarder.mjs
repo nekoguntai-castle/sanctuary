@@ -12,6 +12,7 @@ import threading
 
 remote_port = int(sys.argv[1])
 upstream = socket.create_connection(("127.0.0.1", remote_port), timeout=10)
+upstream.settimeout(None)
 
 def upload():
     try:

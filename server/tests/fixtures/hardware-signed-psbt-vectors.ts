@@ -9,7 +9,7 @@
 
 export type HardwareWalletVendor = 'ledger' | 'trezor' | 'bitbox';
 
-export type HardwareSignedScriptType = 'p2wpkh' | 'p2sh-p2wpkh' | 'p2tr' | 'p2wsh' | 'p2sh-p2wsh';
+export type HardwareSignedScriptType = 'p2pkh' | 'p2wpkh' | 'p2sh-p2wpkh' | 'p2tr' | 'p2wsh' | 'p2sh-p2wsh';
 
 export type HardwareSignedNetwork = 'regtest' | 'testnet' | 'signet';
 export type HardwareSignedSoftwareGateStatus = 'passed';
@@ -85,6 +85,18 @@ export interface HardwareSignedPsbtArtifact {
   signedPsbtBase64: string;
 }
 
+export interface LedgerSignedPsbtArtifact {
+  type: 'ledger-signed-psbt';
+  sourcePsbtBase64: string;
+  signatures: Array<{
+    inputIndex: number;
+    pubkey: string;
+    signature: string;
+    tapleafHash?: string;
+  }>;
+  reconstructedPsbtBase64: string;
+}
+
 export interface TrezorConnectTransactionArtifact {
   type: 'trezor-connect-transaction';
   sourcePsbtBase64: string;
@@ -92,7 +104,10 @@ export interface TrezorConnectTransactionArtifact {
   serializedTxHex: string;
 }
 
-export type HardwareSignedArtifact = HardwareSignedPsbtArtifact | TrezorConnectTransactionArtifact;
+export type HardwareSignedArtifact =
+  | HardwareSignedPsbtArtifact
+  | LedgerSignedPsbtArtifact
+  | TrezorConnectTransactionArtifact;
 
 export interface HardwareSignedPsbtVector {
   fixtureSchemaVersion: 3;
@@ -145,7 +160,7 @@ export interface HardwareSignedPsbtVector {
     sanctuaryImageDigest: string;
     sdkVersion: string;
     sdkIntegrity: string;
-    sdkPackage: '@ledgerhq/hw-app-btc' | '@trezor/connect-web' | 'bitbox02-api';
+    sdkPackage: '@ledgerhq/ledger-bitcoin' | '@trezor/connect-web' | 'bitbox02-api';
     sourceManifest: Array<{
       path: string;
       sha256: string;
@@ -210,7 +225,12 @@ export const TREZOR_HARDWARE_SIGNED_SOFTWARE_GATES = [
   'npm run test:trezor-emulator-proof',
 ] as const;
 
+export const LEDGER_HARDWARE_SIGNED_SOFTWARE_GATES = [
+  'npm run test:ledger-emulator-proof',
+] as const;
+
 export const REQUIRED_HARDWARE_SIGNED_ROWS: RequiredHardwareSignedRow[] = [
+  { vendor: 'ledger', scriptType: 'p2pkh' },
   { vendor: 'ledger', scriptType: 'p2wpkh' },
   { vendor: 'ledger', scriptType: 'p2sh-p2wpkh' },
   { vendor: 'ledger', scriptType: 'p2tr' },
@@ -270,17 +290,20 @@ export const UNSUPPORTED_HARDWARE_SIGNED_ROWS: UnsupportedHardwareSignedRow[] = 
  * completeness.
  */
 export const BLOCKED_HARDWARE_SIGNED_ROWS: BlockedHardwareSignedRow[] = [
-  'p2wpkh',
-  'p2sh-p2wpkh',
-  'p2tr',
-  'p2wsh',
-  'p2sh-p2wsh',
-].map((scriptType) => ({
-  vendor: 'trezor' as const,
-  scriptType: scriptType as HardwareSignedScriptType,
-  reason:
-    'Trezor capability remains disabled until a current Tier 3 physical-device artifact is reviewed.',
-  productDecision: 'blocked-pending-physical-evidence' as const,
-}));
+  ...['p2pkh', 'p2wpkh', 'p2sh-p2wpkh', 'p2tr'].map((scriptType) => ({
+    vendor: 'ledger' as const,
+    scriptType: scriptType as HardwareSignedScriptType,
+    reason:
+      'Ledger capability remains disabled until a current Tier 3 physical-device artifact is reviewed.',
+    productDecision: 'blocked-pending-physical-evidence' as const,
+  })),
+  ...['p2wpkh', 'p2sh-p2wpkh', 'p2tr', 'p2wsh', 'p2sh-p2wsh'].map((scriptType) => ({
+    vendor: 'trezor' as const,
+    scriptType: scriptType as HardwareSignedScriptType,
+    reason:
+      'Trezor capability remains disabled until a current Tier 3 physical-device artifact is reviewed.',
+    productDecision: 'blocked-pending-physical-evidence' as const,
+  })),
+];
 
 export const HARDWARE_SIGNED_PSBT_VECTORS: HardwareSignedPsbtVector[] = [];

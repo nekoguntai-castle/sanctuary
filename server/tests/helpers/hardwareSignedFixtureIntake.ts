@@ -8,6 +8,7 @@ import {
 } from "@sanctuary/shared/constants/walletPolicy";
 import {
   COMMON_HARDWARE_SIGNED_NEGATIVE_CONTROLS,
+  LEDGER_HARDWARE_SIGNED_SOFTWARE_GATES,
   MULTISIG_HARDWARE_SIGNED_NEGATIVE_CONTROLS,
   REQUIRED_HARDWARE_SIGNED_ADDRESS_PATH_SUFFIXES,
   REQUIRED_HARDWARE_SIGNED_SOFTWARE_GATES,
@@ -70,6 +71,7 @@ const CORE_PROOF = JSON.parse(readFileSync(CORE_PROOF_PATH, "utf8")) as {
 };
 
 const EXPECTED_POLICY_ID: Record<HardwareSignedScriptType, string> = {
+  p2pkh: "single-sig-legacy-bip44-v1",
   p2wpkh: "single-sig-native-segwit-bip84-v1",
   "p2sh-p2wpkh": "single-sig-nested-segwit-bip49-v1",
   p2tr: "single-sig-taproot-bip86-v1",
@@ -79,7 +81,7 @@ const EXPECTED_POLICY_ID: Record<HardwareSignedScriptType, string> = {
 
 const EXPECTED_SDK_PACKAGE: Record<HardwareSignedPsbtVector["vendor"], string> =
   {
-    ledger: "@ledgerhq/hw-app-btc",
+    ledger: "@ledgerhq/ledger-bitcoin",
     trezor: "@trezor/connect-web",
     bitbox: "bitbox02-api",
   };
@@ -200,13 +202,12 @@ const validateSoftwareGates = (
   const passedCommands = vector.softwareGates
     .filter((gate) => gate.status === "passed" && gate.capturedAt.trim() !== "")
     .map((gate) => gate.command);
-  const required =
-    vector.vendor === "trezor"
-      ? [
-          ...REQUIRED_HARDWARE_SIGNED_SOFTWARE_GATES,
-          ...TREZOR_HARDWARE_SIGNED_SOFTWARE_GATES,
-        ]
-      : REQUIRED_HARDWARE_SIGNED_SOFTWARE_GATES;
+  const vendorGates = vector.vendor === "trezor"
+    ? TREZOR_HARDWARE_SIGNED_SOFTWARE_GATES
+    : vector.vendor === "ledger"
+      ? LEDGER_HARDWARE_SIGNED_SOFTWARE_GATES
+      : [];
+  const required = [...REQUIRED_HARDWARE_SIGNED_SOFTWARE_GATES, ...vendorGates];
   return missingValues(required, passedCommands).map((command) =>
     issue(
       vector.id,
@@ -268,6 +269,13 @@ const artifactBytes = (
 ): Uint8Array | string => {
   if (vector.artifact.type === "signed-psbt") {
     return Buffer.from(vector.artifact.signedPsbtBase64, "base64");
+  }
+  if (vector.artifact.type === "ledger-signed-psbt") {
+    return [
+      vector.artifact.sourcePsbtBase64,
+      ...vector.artifact.signatures.map((signature) => JSON.stringify(signature)),
+      vector.artifact.reconstructedPsbtBase64,
+    ].join("\n");
   }
   return [
     vector.artifact.sourcePsbtBase64,
@@ -607,14 +615,37 @@ const validateArtifactContract = (
       ),
     );
   }
-  if (vector.vendor !== "trezor" && vector.artifact.type !== "signed-psbt") {
+  if (vector.vendor === "ledger" && vector.artifact.type !== "ledger-signed-psbt") {
     issues.push(
       issue(
         vector.id,
         "artifact.type",
-        "non-Trezor evidence must retain the adapter-returned signed PSBT",
+        "Ledger evidence must retain its source PSBT, exact signature records, and reconstructed PSBT",
       ),
     );
+  }
+  if (vector.vendor === "bitbox" && vector.artifact.type !== "signed-psbt") {
+    issues.push(issue(
+      vector.id,
+      "artifact.type",
+      "BitBox evidence must retain the adapter-returned signed PSBT",
+    ));
+  }
+  if (vector.artifact.type === "ledger-signed-psbt") {
+    if (vector.artifact.sourcePsbtBase64 !== vector.unsignedPsbtBase64) {
+      issues.push(issue(
+        vector.id,
+        "artifact.sourcePsbtBase64",
+        "Ledger source PSBT differs from fixture unsigned PSBT",
+      ));
+    }
+    if (vector.artifact.signatures.length === 0) {
+      issues.push(issue(
+        vector.id,
+        "artifact.signatures",
+        "Ledger exact signature record list is empty",
+      ));
+    }
   }
   if (vector.artifact.type === "trezor-connect-transaction") {
     if (vector.artifact.sourcePsbtBase64 !== vector.unsignedPsbtBase64) {

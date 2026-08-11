@@ -227,6 +227,8 @@ function paymentForAddress(
   pubkeys: Buffer[],
   network: bitcoin.Network
 ): bitcoin.Payment {
+  if (vector.scriptType === 'p2pkh')
+    return bitcoin.payments.p2pkh({ pubkey: pubkeys[0], network });
   if (vector.scriptType === 'p2wpkh')
     return bitcoin.payments.p2wpkh({ pubkey: pubkeys[0], network });
   if (vector.scriptType === 'p2sh-p2wpkh') {

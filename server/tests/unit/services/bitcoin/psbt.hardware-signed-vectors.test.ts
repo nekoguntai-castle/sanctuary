@@ -8,6 +8,7 @@ import {
   BLOCKED_HARDWARE_SIGNED_ROWS,
   COMMON_HARDWARE_SIGNED_NEGATIVE_CONTROLS,
   HARDWARE_SIGNED_PSBT_VECTORS,
+  LEDGER_HARDWARE_SIGNED_SOFTWARE_GATES,
   MULTISIG_HARDWARE_SIGNED_NEGATIVE_CONTROLS,
   REQUIRED_HARDWARE_SIGNED_ADDRESS_PATH_SUFFIXES,
   REQUIRED_HARDWARE_SIGNED_ROWS,
@@ -28,6 +29,7 @@ import {
 } from "../../../helpers/hardwareSignedFixtureIntake";
 import {
   missingHardwareSignedRows,
+  expectedLedgerSignaturePubkey,
   replayHardwareSignedVector as replayHardwareSignedVectorRaw,
   unaccountedHardwareSignedRows,
 } from "../../../helpers/hardwareSignedPsbtReplay";
@@ -187,13 +189,12 @@ function syntheticAddressEvidence(
 function syntheticSoftwareGates(
   vendor: HardwareSignedPsbtVector["vendor"] = "ledger",
 ): HardwareSignedSoftwareGateEvidence[] {
-  const commands =
-    vendor === "trezor"
-      ? [
-          ...REQUIRED_HARDWARE_SIGNED_SOFTWARE_GATES,
-          ...TREZOR_HARDWARE_SIGNED_SOFTWARE_GATES,
-        ]
-      : REQUIRED_HARDWARE_SIGNED_SOFTWARE_GATES;
+  const vendorGates = vendor === "trezor"
+    ? TREZOR_HARDWARE_SIGNED_SOFTWARE_GATES
+    : vendor === "ledger"
+      ? LEDGER_HARDWARE_SIGNED_SOFTWARE_GATES
+      : [];
+  const commands = [...REQUIRED_HARDWARE_SIGNED_SOFTWARE_GATES, ...vendorGates];
   return commands.map((command) => ({
     command,
     status: "passed",
@@ -225,6 +226,13 @@ function hash(value: Uint8Array | string): string {
 function artifactHash(artifact: HardwareSignedArtifact): string {
   if (artifact.type === "signed-psbt")
     return hash(Buffer.from(artifact.signedPsbtBase64, "base64"));
+  if (artifact.type === "ledger-signed-psbt") {
+    return hash([
+      artifact.sourcePsbtBase64,
+      ...artifact.signatures.map((signature) => JSON.stringify(signature)),
+      artifact.reconstructedPsbtBase64,
+    ].join("\n"));
+  }
   return hash(
     [
       artifact.sourcePsbtBase64,
@@ -256,10 +264,10 @@ function physicalEvidence(
               "sha512-zeuHVF3kAQsJsa2q1fCtktVFiJV/G8nMuKonwMMsCx1RY0mzqc33RGlayTrvLrgs3fj30wLkWmXrgPmQCIJxmg==",
           }
         : {
-            package: "@ledgerhq/hw-app-btc" as const,
-            version: "10.22.1",
+            package: "@ledgerhq/ledger-bitcoin" as const,
+            version: "0.3.1",
             integrity:
-              "sha512-DH+E4+Nq7O9zDGhMjRStRQjk2UH4gBM2Pn9vR0OXnajmHpylCVwKRPW/cDLZ4HcNISKUMHq2yNrmRQq7JHHXDg==",
+              "sha512-rzgU7+rvSsYVSI3cNAIfk9NUaLF1k4aFl3MuU66zV8Pyvy7rikcrbyPaPIAdNIdqYVrOE7evDB0b6aEwTRqLHg==",
           };
   const tx = bitcoin.Transaction.fromHex(finalTxHex);
   const invocationId = "core-acceptance-physical-capture-001";
@@ -323,18 +331,39 @@ function signCoreReceipt(vector: HardwareSignedPsbtVector): void {
   ).toString("base64");
 }
 
+function ledgerArtifact(
+  unsignedPsbtBase64: string,
+  signedPsbtBase64: string,
+): HardwareSignedArtifact {
+  const signed = bitcoin.Psbt.fromBase64(signedPsbtBase64, { network: NETWORK });
+  return {
+    type: "ledger-signed-psbt",
+    sourcePsbtBase64: unsignedPsbtBase64,
+    signatures: signed.data.inputs.flatMap((input, inputIndex) => (
+      input.partialSig ?? []
+    ).map((signature) => ({
+      inputIndex,
+      pubkey: Buffer.from(signature.pubkey).toString("hex"),
+      signature: Buffer.from(signature.signature).toString("hex"),
+    }))),
+    reconstructedPsbtBase64: signedPsbtBase64,
+  };
+}
+
 function syntheticHardwareVector(
   overrides: Partial<HardwareSignedPsbtVector> = {},
 ): HardwareSignedPsbtVector {
   const source = generatedSignedVector("p2wpkh");
   const scriptType = overrides.scriptType ?? "p2wpkh";
   const vendor = overrides.vendor ?? "ledger";
-  const artifact = overrides.artifact ?? {
-    type: "signed-psbt" as const,
-    signedPsbtBase64: source.signedPsbtBase64,
-  };
   const unsignedPsbtBase64 =
     overrides.unsignedPsbtBase64 ?? source.unsignedPsbtBase64;
+  const artifact = overrides.artifact ?? (vendor === "ledger"
+    ? ledgerArtifact(unsignedPsbtBase64, source.signedPsbtBase64)
+    : {
+        type: "signed-psbt" as const,
+        signedPsbtBase64: source.signedPsbtBase64,
+      });
   const vector: HardwareSignedPsbtVector = {
     fixtureSchemaVersion: 3,
     evidenceTier: "physical-device",
@@ -434,7 +463,7 @@ function falseChangeMetadata(
   signed.updateOutput(0, { bip32Derivation: [outputDerivation] });
   return {
     unsignedPsbtBase64: unsigned.toBase64(),
-    artifact: { type: "signed-psbt", signedPsbtBase64: signed.toBase64() },
+    artifact: ledgerArtifact(unsigned.toBase64(), signed.toBase64()),
     expectedOutputs: expectedOutputs(source.finalTxHex).map((output) => ({
       ...output,
       isChange: markAsChange,
@@ -581,12 +610,34 @@ function malformedTaprootVector(): HardwareSignedPsbtVector {
 }
 
 describe("Hardware-signed PSBT fixture replay harness", () => {
+  it("binds Ledger Taproot signatures to the tweaked P2TR output key", () => {
+    const internal = Buffer.alloc(32, 7);
+    const output = Buffer.alloc(32, 8);
+    expect(Buffer.from(expectedLedgerSignaturePubkey("p2tr", {
+      witnessUtxo: {
+        script: Buffer.concat([Buffer.from([0x51, 0x20]), output]),
+        value: 100_000n,
+      },
+    }, internal))).toEqual(output);
+    expect(Buffer.from(expectedLedgerSignaturePubkey("p2wpkh", {}, internal)))
+      .toEqual(internal);
+    expect(() => expectedLedgerSignaturePubkey("p2tr", {
+      witnessUtxo: { script: Buffer.alloc(33), value: 100_000n },
+    }, internal)).toThrow(/verified output key/i);
+  });
+
   it("keeps required, unsupported, and evidence-blocked rows explicit", () => {
-    expect(REQUIRED_HARDWARE_SIGNED_ROWS).toHaveLength(15);
+    expect(REQUIRED_HARDWARE_SIGNED_ROWS).toHaveLength(16);
     expect(UNSUPPORTED_HARDWARE_SIGNED_ROWS).toHaveLength(4);
-    expect(BLOCKED_HARDWARE_SIGNED_ROWS).toHaveLength(5);
+    expect(BLOCKED_HARDWARE_SIGNED_ROWS).toHaveLength(9);
     expect(
-      BLOCKED_HARDWARE_SIGNED_ROWS.every((row) => row.vendor === "trezor"),
+      BLOCKED_HARDWARE_SIGNED_ROWS.filter((row) => row.vendor === "ledger"),
+    ).toHaveLength(4);
+    expect(
+      BLOCKED_HARDWARE_SIGNED_ROWS.filter((row) => row.vendor === "trezor"),
+    ).toHaveLength(5);
+    expect(
+      BLOCKED_HARDWARE_SIGNED_ROWS.every((row) => ["ledger", "trezor"].includes(row.vendor)),
     ).toBe(true);
     expect(
       BLOCKED_HARDWARE_SIGNED_ROWS.every((row) => row.reason.length > 20),
@@ -607,7 +658,8 @@ describe("Hardware-signed PSBT fixture replay harness", () => {
       HARDWARE_SIGNED_PSBT_VECTORS,
       UNSUPPORTED_HARDWARE_SIGNED_ROWS,
     );
-    expect(missing).toHaveLength(11);
+    expect(missing).toHaveLength(12);
+    expect(missing.filter((row) => row.vendor === "ledger")).toHaveLength(4);
     expect(missing.filter((row) => row.vendor === "trezor")).toHaveLength(5);
     expect(
       unaccountedHardwareSignedRows(
@@ -616,11 +668,14 @@ describe("Hardware-signed PSBT fixture replay harness", () => {
         UNSUPPORTED_HARDWARE_SIGNED_ROWS,
         BLOCKED_HARDWARE_SIGNED_ROWS,
       ),
-    ).toHaveLength(6);
+    ).toHaveLength(3);
     if (process.env.REQUIRE_HARDWARE_SIGNED_FIXTURES === "1")
       expect(missing).toEqual([]);
     if (process.env.REQUIRE_TREZOR_PHYSICAL_FIXTURES === "1") {
       expect(missing.filter((row) => row.vendor === "trezor")).toEqual([]);
+    }
+    if (process.env.REQUIRE_LEDGER_PHYSICAL_FIXTURES === "1") {
+      expect(missing.filter((row) => row.vendor === "ledger")).toEqual([]);
     }
   });
 
@@ -639,6 +694,47 @@ describe("Hardware-signed PSBT fixture replay harness", () => {
         valueSats,
       })),
     );
+  });
+
+  it("rejects malformed Ledger artifact intake before replay", () => {
+    const source = generatedSignedVector("p2wpkh");
+    const valid = ledgerArtifact(source.unsignedPsbtBase64, source.signedPsbtBase64);
+    expect(valid.type).toBe("ledger-signed-psbt");
+    if (valid.type !== "ledger-signed-psbt") throw new Error("invalid test fixture");
+
+    expect(() => assertHardwareSignedFixtureIntake(syntheticHardwareVector({
+      artifact: { ...valid, sourcePsbtBase64: source.signedPsbtBase64 },
+    }))).toThrow("Ledger source PSBT differs from fixture unsigned PSBT");
+    expect(() => assertHardwareSignedFixtureIntake(syntheticHardwareVector({
+      artifact: { ...valid, signatures: [] },
+    }))).toThrow("Ledger exact signature record list is empty");
+    expect(() => assertHardwareSignedFixtureIntake(syntheticHardwareVector({
+      artifact: { type: "signed-psbt", signedPsbtBase64: source.signedPsbtBase64 },
+    }))).toThrow("Ledger evidence must retain its source PSBT");
+  });
+
+  it("rejects duplicated, absent, script-path, malformed, and reconstructed Ledger signatures", () => {
+    const source = generatedSignedVector("p2wpkh");
+    const valid = ledgerArtifact(source.unsignedPsbtBase64, source.signedPsbtBase64);
+    expect(valid.type).toBe("ledger-signed-psbt");
+    if (valid.type !== "ledger-signed-psbt") throw new Error("invalid test fixture");
+    const signature = valid.signatures[0];
+
+    expect(() => replayHardwareSignedVector(syntheticHardwareVector({
+      artifact: { ...valid, signatures: [signature, signature] },
+    }))).toThrow("Ledger signature indexes are duplicated");
+    expect(() => replayHardwareSignedVector(syntheticHardwareVector({
+      artifact: { ...valid, signatures: [{ ...signature, inputIndex: 1 }] },
+    }))).toThrow("Ledger signature input is absent");
+    expect(() => replayHardwareSignedVector(syntheticHardwareVector({
+      artifact: { ...valid, signatures: [{ ...signature, tapleafHash: "00".repeat(32) }] },
+    }))).toThrow("Ledger Taproot script-path evidence is unsupported");
+    expect(() => replayHardwareSignedVector(syntheticHardwareVector({
+      artifact: { ...valid, signatures: [{ ...signature, signature: "" }] },
+    }))).toThrow("Ledger signature is malformed");
+    expect(() => replayHardwareSignedVector(syntheticHardwareVector({
+      artifact: { ...valid, reconstructedPsbtBase64: source.unsignedPsbtBase64 },
+    }))).toThrow("Ledger reconstructed PSBT mismatch");
   });
 
   it("cryptographically binds the complete Trezor Connect tuple", () => {

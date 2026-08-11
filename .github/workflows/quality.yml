@@ -675,6 +675,7 @@ jobs:
           bash -n scripts/ci/check-trezor-transport-provenance.sh
           bash -n scripts/ci/resolve-trezor-publish-binding.sh
           bash -n scripts/ci/run-trezor-emulator-proof.sh
+          bash -n scripts/ci/run-ledger-emulator-proof.sh
           bash -n scripts/ci/ensure-python.sh
           bash -n scripts/ci/install-semgrep.sh
           bash -n scripts/ci/time-command.sh

@@ -86,6 +86,9 @@ function validateProofCommands(workflowText) {
     'npm run test:trezor-emulator-proof',
     'TREZOR_EMULATOR_PROOF_DIR',
     'TREZOR_EMULATOR_DIAGNOSTICS_DIR',
+    'npm run test:ledger-emulator-proof',
+    'LEDGER_EMULATOR_PROOF_DIR',
+    'LEDGER_EMULATOR_DIAGNOSTICS_DIR',
   ]) {
     if (!workflowText.includes(command)) {
       throw new Error(

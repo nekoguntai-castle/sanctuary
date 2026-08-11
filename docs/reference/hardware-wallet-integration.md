@@ -193,11 +193,10 @@ Common Trezor errors and their user-friendly messages:
 
 ### Overview
 
-The Ledger adapter uses **WebUSB** to communicate directly with Ledger devices in the browser. This requires HTTPS (secure context). The adapter uses two Ledger libraries:
+The Ledger adapter uses **WebUSB** to communicate directly with Ledger devices in the browser. This requires HTTPS (secure context). The adapter uses the modern Ledger Bitcoin client only:
 
 - `@ledgerhq/hw-transport-webusb` - WebUSB transport layer
-- `@ledgerhq/hw-app-btc` - Legacy Bitcoin app interface
-- `ledger-bitcoin` - Modern Bitcoin app client with wallet policy support
+- `@ledgerhq/ledger-bitcoin` - Modern Bitcoin app client with wallet policy support
 
 ### Supported Devices
 
@@ -215,14 +214,21 @@ All Ledger devices share the USB vendor ID: `0x2c97`
 
 1. **Check WebUSB support** and secure context (HTTPS)
 2. **Request USB permission** via `TransportWebUSB.create()`
-3. **Create app instances** - both `AppBtc` and `AppClient`
-4. **Get master fingerprint** via `appClient.getMasterFingerprint()`
-5. Return `HardwareWalletDevice` with device info
+3. **Read and validate app metadata** - require exactly `Bitcoin` or `Bitcoin Test` at a supported semantic version
+4. **Create the modern `AppClient`**
+5. **Get master fingerprint** via `appClient.getMasterFingerprint()`
+6. Bind the selected app/network family and return the device identity
+
+The session check accepts only the exact three-component numeric version form
+`major.minor.patch` and requires `2.1.0` or newer. Pre-release labels,
+four-component versions, unknown app names, and app/network mismatches fail
+closed; support for a newly formatted vendor version must be reviewed and added
+explicitly rather than inferred.
 
 ```typescript
 const transport = await TransportWebUSB.create();
-const app = new AppBtc({ transport });
 const appClient = new AppClient(transport);
+await assertLedgerSession(appClient, selectedNetwork);
 const fingerprint = await appClient.getMasterFingerprint();
 ```
 
@@ -249,16 +255,18 @@ const signatures = await appClient.signPsbt(psbtBase64, walletPolicy, null);
 
 ### Fingerprint Handling
 
-PSBTs contain fingerprints that must match the connected device. The adapter automatically fixes mismatches:
+PSBTs contain fingerprints, paths, and public keys that must match the connected
+device and the server-issued signing context. A mismatch is rejected before the
+device is asked to sign; the adapter never rewrites identity metadata:
 
 ```typescript
-// If PSBT fingerprint doesn't match connected device, update it
 if (fpHex.toLowerCase() !== masterFpHex.toLowerCase()) {
-  deriv.masterFingerprint = connectedFpBuffer;
+  throw new Error('Connected Ledger does not match the wallet signer');
 }
 ```
 
-This is important when a PSBT was created with a different fingerprint (e.g., from wallet import).
+This prevents a wrong device, account, path, network, or imported identity from
+being silently substituted into a spend.
 
 ### BIP32 Derivation Requirement
 
@@ -292,7 +300,7 @@ Ledger returns APDU status codes. Common codes and their meanings:
 Ledger supports displaying addresses on device for verification:
 
 ```typescript
-await app.getWalletPublicKey(path, { verify: true });
+await appClient.getWalletAddress(walletPolicy, null, branch, index, true);
 // User sees address on device screen and can confirm/reject
 ```
 
@@ -333,14 +341,16 @@ Ledger signing failed silently until we realized PSBTs **must** contain `bip32De
 
 Without this, Ledger cannot determine which key to use for signing.
 
-#### 3. Account Path Must Match PSBT (a2e0658)
+#### 3. Account Path Must Match the Server-Issued Context
 
-Early versions defaulted to BIP84 (`m/84'/0'/0'`), but this broke signing for BIP44/49 wallets. The fix: detect the account path from the PSBT's `bip32Derivation` data:
+Early versions defaulted to BIP84 (`m/84'/0'/0'`), but this broke signing for
+BIP44/49 wallets. The current adapter requires one canonical BIP44/49/84/86
+account path from the authenticated signing context, then proves that every PSBT
+origin and the connected account xpub agree with it.
 
 ```typescript
-// Extract account path from first input's derivation
-const fullPath = input.bip32Derivation[0].path;  // e.g., "m/44'/0'/0'/0/3"
-const accountPath = extractAccountPath(fullPath); // e.g., "m/44'/0'/0'"
+const accountPath = validated.connectedSigner.accountPath;
+await buildLedgerDefaultPolicy(appClient, accountPath, fingerprint, accountXpub);
 ```
 
 #### 4. Legacy Addresses Need Full Previous Tx (43876f2)
@@ -351,18 +361,19 @@ SegWit inputs use `witnessUtxo` (just the output being spent), but legacy P2PKH 
 - Fetches raw transaction hex for each input
 - Uses `nonWitnessUtxo` for legacy, `witnessUtxo` for SegWit
 
-#### 5. Fingerprint Mismatch Auto-Fix (89eb491)
+#### 5. Fingerprint Mismatch Must Fail Closed
 
-Imported wallets often have different fingerprints than the connected device (e.g., wallet was created on a different Ledger, or fingerprint wasn't captured at import). The adapter now auto-corrects:
+Older code rewrote a mismatched PSBT fingerprint to the connected device. That
+could authorize the wrong signer and has been removed. Current code rejects a
+mismatch before policy construction or signing:
 
 ```typescript
-// If PSBT fingerprint doesn't match connected device, update it
 if (fpHex !== masterFpHex) {
-  deriv.masterFingerprint = connectedFpBuffer;
+  throw new Error('Connected Ledger does not match the wallet signer');
 }
 ```
 
-This prevents "path mismatch" errors during signing.
+The pinned Speculos proof and unit negatives keep this behavior from drifting.
 
 #### 6. Already-Finalized PSBT Fix (103470b) - by matt mcp
 

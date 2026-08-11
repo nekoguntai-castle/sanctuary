@@ -46,11 +46,24 @@ export interface TrezorConnectSignedArtifact {
   serializedTx: string;
 }
 
+export interface LedgerSignedPsbtArtifact {
+  type: 'ledger-signed-psbt';
+  sourcePsbt: string;
+  signatures: Array<{
+    inputIndex: number;
+    pubkey: string;
+    signature: string;
+    tapleafHash?: string;
+  }>;
+  reconstructedPsbt: string;
+}
+
 export interface PSBTSignResponse {
   psbt?: string; // Base64 encoded signed PSBT when the adapter returns one
   signatures: number; // Number of signatures added
   rawTx?: string; // Raw signed transaction hex (for devices that return complete tx)
   trezorArtifact?: TrezorConnectSignedArtifact;
+  ledgerArtifact?: LedgerSignedPsbtArtifact;
 }
 
 export interface TransactionForSigning {

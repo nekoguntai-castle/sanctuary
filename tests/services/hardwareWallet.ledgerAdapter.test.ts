@@ -1,788 +1,329 @@
-/**
- * Ledger adapter coverage tests
- */
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-const {
-  mockTransportCreate,
-  mockTransportClose,
-  mockUsbGetDevices,
-  mockGetWalletXpub,
-  mockGetWalletPublicKey,
-  mockGetMasterFingerprint,
-  mockGetAppAndVersion,
-  mockGetExtendedPubkey,
-  MockAppBtc,
-  MockAppClient,
-  mockPsbtFromBase64,
-  mockValidatePsbtSigningRequest,
-} = vi.hoisted(() => {
-  const mockTransportCreate = vi.fn();
-  const mockTransportClose = vi.fn();
-  const mockUsbGetDevices = vi.fn();
-  const mockGetWalletXpub = vi.fn();
-  const mockGetWalletPublicKey = vi.fn();
-  const mockGetMasterFingerprint = vi.fn();
-  const mockGetAppAndVersion = vi.fn();
-  const mockGetExtendedPubkey = vi.fn();
-  const mockPsbtFromBase64 = vi.fn();
-  const mockValidatePsbtSigningRequest = vi.fn();
-
-  const MockAppBtc = vi.fn(function MockAppBtc(this: any) {
-    this.getWalletXpub = (...args: unknown[]) => mockGetWalletXpub(...args);
-    this.getWalletPublicKey = (...args: unknown[]) =>
-      mockGetWalletPublicKey(...args);
-  });
-
-  const MockAppClient = vi.fn(function MockAppClient(this: any) {
-    this.getMasterFingerprint = (...args: unknown[]) =>
-      mockGetMasterFingerprint(...args);
-    this.getAppAndVersion = (...args: unknown[]) =>
-      mockGetAppAndVersion(...args);
-    this.getExtendedPubkey = (...args: unknown[]) =>
-      mockGetExtendedPubkey(...args);
-    this.signPsbt = vi.fn();
-  });
-
-  return {
-    mockTransportCreate,
-    mockTransportClose,
-    mockUsbGetDevices,
-    mockGetWalletXpub,
-    mockGetWalletPublicKey,
-    mockGetMasterFingerprint,
-    mockGetAppAndVersion,
-    mockGetExtendedPubkey,
-    MockAppBtc,
-    MockAppClient,
-    mockPsbtFromBase64,
-    mockValidatePsbtSigningRequest,
-  };
-});
-
-vi.mock("../../src/services/hardwareWallet/psbtAccountBinding", () => ({
-  validatePsbtSigningRequest: mockValidatePsbtSigningRequest,
-}));
-
-vi.mock("@ledgerhq/hw-transport-webusb", () => ({
-  default: {
-    create: (...args: unknown[]) => mockTransportCreate(...args),
-  },
-}));
-
-vi.mock("@ledgerhq/hw-app-btc", () => ({
-  default: MockAppBtc,
-}));
-
-vi.mock("@ledgerhq/ledger-bitcoin", () => ({
-  AppClient: MockAppClient,
-  DefaultWalletPolicy: vi.fn(),
-}));
-
-vi.mock("bitcoinjs-lib", () => ({
-  Psbt: {
-    fromBase64: (...args: unknown[]) => mockPsbtFromBase64(...args),
-  },
-}));
-
-vi.mock("../../src/utils/logger", () => ({
-  createLogger: () => ({
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
+const mocks = vi.hoisted(() => ({
+  transportCreate: vi.fn(),
+  transportClose: vi.fn(),
+  usbGetDevices: vi.fn(),
+  getMasterFingerprint: vi.fn(),
+  getAppAndVersion: vi.fn(),
+  getExtendedPubkey: vi.fn(),
+  getWalletAddress: vi.fn(),
+  signPsbt: vi.fn(),
+  MockAppClient: vi.fn(function MockAppClient(this: Record<string, unknown>) {
+    this.getMasterFingerprint = (...args: unknown[]) => mocks.getMasterFingerprint(...args);
+    this.getAppAndVersion = (...args: unknown[]) => mocks.getAppAndVersion(...args);
+    this.getExtendedPubkey = (...args: unknown[]) => mocks.getExtendedPubkey(...args);
+    this.getWalletAddress = (...args: unknown[]) => mocks.getWalletAddress(...args);
+  }),
+  MockDefaultWalletPolicy: vi.fn(function MockDefaultWalletPolicy(
+    this: Record<string, unknown>, template: string, key: string,
+  ) {
+    this.template = template;
+    this.key = key;
   }),
 }));
 
-vi.mock("@sanctuary/shared/utils/bitcoin", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@sanctuary/shared/utils/bitcoin")>();
-  return {
-    ...actual,
-    normalizeDerivationPath: (path: string) => path,
-  };
-});
+vi.mock('@ledgerhq/hw-transport-webusb', () => ({
+  default: { create: (...args: unknown[]) => mocks.transportCreate(...args) },
+}));
+vi.mock('@ledgerhq/ledger-bitcoin', () => ({
+  AppClient: mocks.MockAppClient,
+  DefaultWalletPolicy: mocks.MockDefaultWalletPolicy,
+}));
+vi.mock('../../src/services/hardwareWallet/adapters/ledger/signPsbt', () => ({
+  signPsbt: (...args: unknown[]) => mocks.signPsbt(...args),
+}));
+vi.mock('../../src/utils/logger', () => ({
+  createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
+}));
 
-import { LedgerAdapter } from "../../src/services/hardwareWallet/adapters/ledger";
+import { LedgerAdapter } from '../../src/services/hardwareWallet/adapters/ledger';
 
 const originalWindow = globalThis.window;
 const originalNavigator = globalThis.navigator;
 
-function setWebUsbEnv(options: { secure?: boolean; withUsb?: boolean } = {}) {
-  const { secure = true, withUsb = true } = options;
-  Object.defineProperty(globalThis, "window", {
-    value: {
-      ...(originalWindow as object),
-      isSecureContext: secure,
-    },
-    configurable: true,
+function setWebUsbEnv(secure = true, withUsb = true): void {
+  Object.defineProperty(globalThis, 'window', {
+    value: { ...(originalWindow as object), isSecureContext: secure }, configurable: true,
   });
-
-  const nav = withUsb
-    ? {
-        usb: { getDevices: (...args: unknown[]) => mockUsbGetDevices(...args) },
-      }
-    : {};
-
-  Object.defineProperty(globalThis, "navigator", {
-    value: nav,
-    configurable: true,
+  Object.defineProperty(globalThis, 'navigator', {
+    value: withUsb ? { usb: { getDevices: mocks.usbGetDevices } } : {}, configurable: true,
   });
 }
 
-function makeUsbDevice(overrides: Record<string, unknown> = {}) {
+function usbDevice(overrides: Record<string, unknown> = {}) {
   return {
     vendorId: 0x2c97,
-    productId: 0x0004,
-    serialNumber: "abc123",
+    productId: 0x0005,
+    serialNumber: 'ledger-test',
     opened: false,
     ...overrides,
   };
 }
 
-describe("LedgerAdapter", () => {
+function transport(device = usbDevice()) {
+  return { device, close: (...args: unknown[]) => mocks.transportClose(...args) };
+}
+
+async function connectedAdapter(options: { appName?: string; xpub?: string } = {}) {
+  mocks.getAppAndVersion.mockResolvedValue({
+    name: options.appName ?? 'Bitcoin', version: '2.4.2', flags: 0,
+  });
+  mocks.getExtendedPubkey.mockResolvedValue(options.xpub ?? 'xpub-account');
+  mocks.transportCreate.mockResolvedValue(transport());
+  const adapter = new LedgerAdapter();
+  await adapter.connect();
+  return adapter;
+}
+
+describe('LedgerAdapter modern policy boundary', () => {
   beforeEach(() => {
-    mockTransportCreate.mockReset();
-    mockTransportClose.mockReset();
-    mockUsbGetDevices.mockReset();
-    mockGetWalletXpub.mockReset();
-    mockGetWalletPublicKey.mockReset();
-    mockGetMasterFingerprint.mockReset();
-    mockGetAppAndVersion.mockReset();
-    mockGetExtendedPubkey.mockReset();
-    mockPsbtFromBase64.mockReset();
-    mockValidatePsbtSigningRequest.mockReset();
-    MockAppBtc.mockClear();
-    MockAppClient.mockClear();
-    setWebUsbEnv({ secure: true, withUsb: true });
-    mockUsbGetDevices.mockResolvedValue([]);
-    mockTransportClose.mockResolvedValue(undefined);
-    mockGetMasterFingerprint.mockResolvedValue("f00dbabe");
-    mockGetAppAndVersion.mockResolvedValue({
-      name: "Bitcoin",
-      version: "2.2.4",
-      flags: 0,
-    });
-    mockGetExtendedPubkey.mockResolvedValue("xpub-mock");
-    mockGetWalletXpub.mockResolvedValue("xpub-mock");
-    mockGetWalletPublicKey.mockResolvedValue({ bitcoinAddress: "bc1qabc" });
-    mockPsbtFromBase64.mockReturnValue({
-      data: { inputs: [] },
-      toBase64: () => "psbt",
-      updateInput: vi.fn(),
-      finalizeAllInputs: vi.fn(),
-    });
-    mockValidatePsbtSigningRequest.mockImplementation((request: any) => {
-      const psbt = mockPsbtFromBase64(request.psbt);
-      const isMultisig = request.inputPaths?.some((path: string) => path.includes("/48'"));
-      return {
-        psbt,
-        context: {
-          walletType: isMultisig ? 'multi_sig' : 'single_sig',
-          scriptType: 'native_segwit',
-          inputs: [],
-        },
-        connectedSigner: {
-          accountPath: "m/84'/0'/0'",
-          accountXpub: 'xpub-mock',
-        },
-        accountPath: "m/84'/0'/0'",
-        changeOutputIndexes: [],
-      };
-    });
+    vi.clearAllMocks();
+    setWebUsbEnv();
+    mocks.usbGetDevices.mockResolvedValue([]);
+    mocks.transportClose.mockResolvedValue(undefined);
+    mocks.getMasterFingerprint.mockResolvedValue('AABBCCDD');
+    mocks.getAppAndVersion.mockResolvedValue({ name: 'Bitcoin', version: '2.4.2', flags: 0 });
+    mocks.getExtendedPubkey.mockResolvedValue('xpub-account');
+    mocks.getWalletAddress.mockResolvedValue('bc1qdevice');
+    mocks.signPsbt.mockResolvedValue({ psbt: 'signed', signatures: 1 });
   });
 
   afterEach(() => {
-    Object.defineProperty(globalThis, "window", {
-      value: originalWindow,
-      configurable: true,
-    });
-    Object.defineProperty(globalThis, "navigator", {
-      value: originalNavigator,
-      configurable: true,
-    });
+    Object.defineProperty(globalThis, 'window', { value: originalWindow, configurable: true });
+    Object.defineProperty(globalThis, 'navigator', { value: originalNavigator, configurable: true });
   });
 
-  it("checks WebUSB support based on browser environment", () => {
+  it('requires secure-context WebUSB support', () => {
     const adapter = new LedgerAdapter();
     expect(adapter.isSupported()).toBe(true);
-
-    setWebUsbEnv({ secure: false, withUsb: true });
+    setWebUsbEnv(false, true);
     expect(adapter.isSupported()).toBe(false);
-
-    setWebUsbEnv({ secure: true, withUsb: false });
+    setWebUsbEnv(true, false);
     expect(adapter.isSupported()).toBe(false);
   });
 
-  it("returns empty authorized devices when unsupported", async () => {
-    setWebUsbEnv({ secure: false, withUsb: true });
-    const adapter = new LedgerAdapter();
-    await expect(adapter.getAuthorizedDevices()).resolves.toEqual([]);
+  it('supports an injected transport without browser WebUSB', async () => {
+    setWebUsbEnv(false, false);
+    const device = usbDevice();
+    const openTransport = vi.fn().mockResolvedValue({ transport: transport(device), device });
+    const adapter = new LedgerAdapter({ openTransport });
+    expect(adapter.isSupported()).toBe(true);
+    await expect(adapter.connect()).resolves.toMatchObject({ fingerprint: 'aabbccdd' });
+    expect(openTransport).toHaveBeenCalledOnce();
+    expect(mocks.transportCreate).not.toHaveBeenCalled();
   });
 
-  it("filters and maps authorized Ledger devices", async () => {
-    const ledger = makeUsbDevice({ productId: 0x0004, opened: true });
-    const nonLedger = makeUsbDevice({
-      vendorId: 0x1234,
-      productId: 0x9999,
-      serialNumber: "zzz",
+  it('rejects connect when browser WebUSB is unavailable', async () => {
+    setWebUsbEnv(false, false);
+    await expect(new LedgerAdapter().connect()).rejects.toThrow(/WebUSB is not supported/);
+  });
+
+  it('filters authorized devices to the Ledger vendor and maps known/unknown models', async () => {
+    mocks.usbGetDevices.mockResolvedValue([
+      usbDevice({ productId: 0x0004, opened: true }),
+      usbDevice({ productId: 0x9999, serialNumber: undefined }),
+      usbDevice({ vendorId: 0x1234 }),
+    ]);
+    const devices = await new LedgerAdapter().getAuthorizedDevices();
+    expect(devices).toHaveLength(2);
+    expect(devices[0]).toMatchObject({ name: 'Ledger Nano X', connected: true });
+    expect(devices[1]).toMatchObject({ name: 'Ledger Device', id: 'ledger-11415-39321-unknown' });
+  });
+
+  it('returns no authorized devices when unsupported or enumeration fails', async () => {
+    setWebUsbEnv(false, true);
+    await expect(new LedgerAdapter().getAuthorizedDevices()).resolves.toEqual([]);
+    setWebUsbEnv();
+    mocks.usbGetDevices.mockRejectedValue(new Error('USB failed'));
+    await expect(new LedgerAdapter().getAuthorizedDevices()).resolves.toEqual([]);
+  });
+
+  it('connects only after exact app identity and fingerprint are available', async () => {
+    mocks.transportCreate.mockResolvedValue(transport());
+    const adapter = new LedgerAdapter();
+    await expect(adapter.connect()).resolves.toMatchObject({
+      type: 'ledger', model: 'Ledger Nano S Plus', fingerprint: 'aabbccdd', connected: true,
     });
-    mockUsbGetDevices.mockResolvedValue([ledger, nonLedger]);
-
-    const adapter = new LedgerAdapter();
-    const devices = await adapter.getAuthorizedDevices();
-
-    expect(devices).toHaveLength(1);
-    expect(devices[0].id).toBe("ledger-11415-4-abc123");
-    expect(devices[0].name).toBe("Ledger Nano X");
-    expect(devices[0].connected).toBe(true);
-  });
-
-  it("maps unknown models, missing serials, and active in-memory connection state", async () => {
-    const unknown = makeUsbDevice({
-      productId: 0x9999,
-      serialNumber: undefined,
-      opened: false,
-    });
-    mockUsbGetDevices.mockResolvedValue([unknown]);
-
-    const adapter = new LedgerAdapter();
-    (adapter as any).connection = { device: unknown };
-    const devices = await adapter.getAuthorizedDevices();
-
-    expect(devices).toHaveLength(1);
-    expect(devices[0].name).toBe("Ledger Device");
-    expect(devices[0].id).toBe("ledger-11415-39321-unknown");
-    expect(devices[0].connected).toBe(true);
-  });
-
-  it("gracefully handles getAuthorizedDevices errors", async () => {
-    mockUsbGetDevices.mockRejectedValue(new Error("usb enumeration failed"));
-    const adapter = new LedgerAdapter();
-    await expect(adapter.getAuthorizedDevices()).resolves.toEqual([]);
-  });
-
-  it("throws friendly errors for unsupported and denied connection", async () => {
-    const unsupported = new LedgerAdapter();
-    setWebUsbEnv({ secure: false, withUsb: true });
-    await expect(unsupported.connect()).rejects.toThrow(
-      "WebUSB is not supported",
-    );
-
-    setWebUsbEnv({ secure: true, withUsb: true });
-    mockTransportCreate.mockRejectedValueOnce(new Error("NotAllowedError"));
-    const denied = new LedgerAdapter();
-    await expect(denied.connect()).rejects.toThrow("Access denied");
-  });
-
-  it("maps common Ledger connect failure reasons", async () => {
-    setWebUsbEnv({ secure: true, withUsb: true });
-
-    mockTransportCreate.mockRejectedValueOnce(new Error("0x6d00"));
-    await expect(new LedgerAdapter().connect()).rejects.toThrow(
-      "open the Bitcoin app",
-    );
-
-    mockTransportCreate.mockRejectedValueOnce(
-      new Error("device locked (0x6982)"),
-    );
-    await expect(new LedgerAdapter().connect()).rejects.toThrow(
-      "Please unlock",
-    );
-  });
-
-  it("closes previous transport before reconnect and maps generic connect errors", async () => {
-    const adapter = new LedgerAdapter();
-    const oldClose = vi.fn(async () => undefined);
-    (adapter as any).connection = { transport: { close: oldClose } };
-
-    const transport = {
-      close: (...args: unknown[]) => mockTransportClose(...args),
-      device: makeUsbDevice({ productId: 0x0001 }),
-    };
-    mockTransportCreate.mockResolvedValueOnce(transport);
-    await adapter.connect();
-    expect(oldClose).toHaveBeenCalled();
-
-    mockTransportCreate.mockRejectedValueOnce(
-      new Error("unexpected connect fail"),
-    );
-    await expect(new LedgerAdapter().connect()).rejects.toThrow(
-      "Failed to connect: unexpected connect fail",
-    );
-  });
-
-  it("connects successfully and exposes connected device state", async () => {
-    const transport = {
-      close: (...args: unknown[]) => mockTransportClose(...args),
-      device: makeUsbDevice({ productId: 0x0005, serialNumber: "xyz" }),
-    };
-    mockTransportCreate.mockResolvedValue(transport);
-
-    const adapter = new LedgerAdapter();
-    const device = await adapter.connect();
-
-    expect(device.name).toBe("Ledger Nano S Plus");
-    expect(device.id).toBe("ledger-11415-5-xyz");
-    expect(device.connected).toBe(true);
-    expect(device.fingerprint).toBe("f00dbabe");
+    expect(mocks.MockAppClient).toHaveBeenCalledOnce();
+    expect(mocks.getAppAndVersion).toHaveBeenCalledBefore(mocks.getMasterFingerprint);
     expect(adapter.isConnected()).toBe(true);
-    expect(adapter.getDevice()?.id).toBe(device.id);
-    expect(MockAppBtc).toHaveBeenCalledTimes(1);
-    expect(MockAppClient).toHaveBeenCalledTimes(1);
   });
 
-  it("continues connect when Ledger app metadata cannot be read", async () => {
-    const transport = {
-      close: (...args: unknown[]) => mockTransportClose(...args),
-      device: makeUsbDevice({ productId: 0x0005 }),
-    };
-    mockTransportCreate.mockResolvedValue(transport);
-    mockGetAppAndVersion.mockRejectedValueOnce(new Error("app info unavailable"));
-
-    const adapter = new LedgerAdapter();
-    const device = await adapter.connect();
-
-    expect(device.connected).toBe(true);
-    expect(device.fingerprint).toBe("f00dbabe");
+  it.each([
+    ['metadata failure', new Error('app metadata unavailable'), /app metadata unavailable/],
+    ['wrong app', { name: 'Ethereum', version: '2.4.2', flags: 0 }, /open the Bitcoin/],
+    ['legacy app', { name: 'Bitcoin Legacy', version: '2.4.2', flags: 0 }, /open the Bitcoin/],
+    ['old app', { name: 'Bitcoin', version: '2.0.9', flags: 0 }, /unsupported/],
+  ])('fails closed and closes transport on %s', async (_label, outcome, expected) => {
+    mocks.transportCreate.mockResolvedValue(transport());
+    outcome instanceof Error
+      ? mocks.getAppAndVersion.mockRejectedValue(outcome)
+      : mocks.getAppAndVersion.mockResolvedValue(outcome);
+    await expect(new LedgerAdapter().connect()).rejects.toThrow(expected);
+    expect(mocks.transportClose).toHaveBeenCalledOnce();
   });
 
-  it("fails closed when the master fingerprint cannot be read", async () => {
-    const transport = {
-      close: (...args: unknown[]) => mockTransportClose(...args),
-      device: makeUsbDevice({ productId: 0x0007 }),
-    };
-    mockTransportCreate.mockResolvedValue(transport);
-    mockGetMasterFingerprint.mockRejectedValueOnce(
-      new Error("fingerprint read failed"),
-    );
-
-    await expect(new LedgerAdapter().connect()).rejects.toThrow(
-      "master fingerprint",
-    );
-    expect(mockTransportClose).toHaveBeenCalled();
+  it.each(['', '00000000', 'not-hex'])('rejects invalid fingerprint %j and closes', async (fingerprint) => {
+    mocks.transportCreate.mockResolvedValue(transport());
+    mocks.getMasterFingerprint.mockResolvedValue(fingerprint);
+    await expect(new LedgerAdapter().connect()).rejects.toThrow(/fingerprint/i);
+    expect(mocks.transportClose).toHaveBeenCalledOnce();
   });
 
-  it.each(["", "00000000", "not-hex", "abc123"])(
-    "rejects invalid or sentinel master fingerprint %j",
-    async (fingerprint) => {
-      mockTransportCreate.mockResolvedValueOnce({
-        close: (...args: unknown[]) => mockTransportClose(...args),
-        device: makeUsbDevice(),
-      });
-      mockGetMasterFingerprint.mockResolvedValueOnce(fingerprint);
+  it('preserves app and fingerprint failures when transport cleanup also fails', async () => {
+    mocks.transportCreate.mockResolvedValue(transport());
+    mocks.getAppAndVersion.mockRejectedValueOnce(new Error('app metadata unavailable'));
+    mocks.transportClose.mockRejectedValueOnce(new Error('close failed'));
+    await expect(new LedgerAdapter().connect()).rejects.toThrow(/app metadata unavailable/);
 
-      await expect(new LedgerAdapter().connect()).rejects.toThrow(
-        "valid master fingerprint",
-      );
-      expect(mockTransportClose).toHaveBeenCalled();
-    },
-  );
-
-  it("fails connect with an actionable message when the Bitcoin app is not ready", async () => {
-    const transport = {
-      close: (...args: unknown[]) => mockTransportClose(...args),
-      device: makeUsbDevice({ productId: 0x0005 }),
-    };
-    mockTransportCreate.mockResolvedValue(transport);
-    mockGetMasterFingerprint.mockRejectedValueOnce(
-      new Error("CLA_NOT_SUPPORTED 0x6e00"),
-    );
-
-    const adapter = new LedgerAdapter();
-
-    await expect(adapter.connect()).rejects.toThrow("open the Bitcoin app");
-    expect(mockTransportClose).toHaveBeenCalled();
+    mocks.transportCreate.mockResolvedValue(transport());
+    mocks.getAppAndVersion.mockResolvedValueOnce({ name: 'Bitcoin', version: '2.4.2', flags: 0 });
+    mocks.getMasterFingerprint.mockRejectedValueOnce(new Error('fingerprint read failed'));
+    mocks.transportClose.mockRejectedValueOnce(new Error('close failed'));
+    await expect(new LedgerAdapter().connect()).rejects.toThrow(/fingerprint read failed/);
   });
 
-  it("keeps the Ledger readiness error if transport close also fails", async () => {
-    const transport = {
-      close: (...args: unknown[]) => mockTransportClose(...args),
-      device: makeUsbDevice({ productId: 0x0005 }),
-    };
-    mockTransportCreate.mockResolvedValue(transport);
-    mockGetMasterFingerprint.mockRejectedValueOnce(
-      new Error("CLA_NOT_SUPPORTED 0x6e00"),
-    );
-    mockTransportClose.mockRejectedValueOnce(new Error("close failed"));
+  it('maps readiness and transport failures without hiding their category', async () => {
+    mocks.transportCreate.mockResolvedValueOnce(transport());
+    mocks.getMasterFingerprint.mockRejectedValueOnce(new Error('0x6982 locked'));
+    await expect(new LedgerAdapter().connect()).rejects.toThrow(/Ledger is locked/);
 
-    await expect(new LedgerAdapter().connect()).rejects.toThrow(
-      "open the Bitcoin app",
-    );
-    expect(mockTransportClose).toHaveBeenCalled();
+    mocks.transportCreate.mockRejectedValueOnce(new Error('permission denied'));
+    await expect(new LedgerAdapter().connect()).rejects.toThrow(/Access denied/);
+
+    mocks.transportCreate.mockRejectedValueOnce({ reason: 'opaque' });
+    await expect(new LedgerAdapter().connect()).rejects.toThrow(/Unknown error/);
   });
 
-  it("disconnects and clears internal device state", async () => {
-    const adapter = new LedgerAdapter();
-    (adapter as any).connection = {
-      transport: { close: (...args: unknown[]) => mockTransportClose(...args) },
-    };
-    (adapter as any).connectedDevice = {
-      id: "ledger-1",
-      type: "ledger",
-      name: "Ledger",
-      model: "Ledger",
-      connected: true,
-      fingerprint: "abcd",
-    };
-
+  it('closes an old connection before reconnecting and disconnect clears state', async () => {
+    const adapter = await connectedAdapter();
+    mocks.transportCreate.mockResolvedValue(transport(usbDevice({ serialNumber: 'second' })));
+    await adapter.connect();
+    expect(mocks.transportClose).toHaveBeenCalledOnce();
     await adapter.disconnect();
+    expect(mocks.transportClose).toHaveBeenCalledTimes(2);
+    expect(adapter.getDevice()).toBeNull();
+  });
 
-    expect(mockTransportClose).toHaveBeenCalled();
+  it('clears connection state when disconnect transport close fails', async () => {
+    const adapter = await connectedAdapter();
+    mocks.transportClose.mockRejectedValueOnce(new Error('close failed'));
+    await expect(adapter.disconnect()).resolves.toBeUndefined();
     expect(adapter.getDevice()).toBeNull();
     expect(adapter.isConnected()).toBe(false);
   });
 
-  it("handles close errors during disconnect", async () => {
-    const adapter = new LedgerAdapter();
-    mockTransportClose.mockRejectedValueOnce(new Error("close failed"));
-    (adapter as any).connection = {
-      transport: { close: (...args: unknown[]) => mockTransportClose(...args) },
-    };
-
-    await expect(adapter.disconnect()).resolves.toBeUndefined();
-    expect(adapter.getDevice()).toBeNull();
-  });
-
-  it("requires connection for xpub/address/sign operations", async () => {
-    const adapter = new LedgerAdapter();
-    await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow(
-      "No device connected",
-    );
-    await expect(
-      (adapter as any).getLedgerXpub("m/84'/0'/0'", 0x0488b21e),
-    ).rejects.toThrow("No device connected");
-    await expect((adapter as any).getMasterFingerprint()).rejects.toThrow(
-      "No device connected",
-    );
-    await expect(
-      adapter.verifyAddress("m/84'/0'/0'/0/0", "bc1qxyz"),
-    ).rejects.toThrow("No device connected");
-    await expect(
-      adapter.signPSBT({ psbt: "not-a-psbt", inputPaths: [] }),
-    ).rejects.toThrow("No device connected");
-  });
-
-  it("uses a cached fingerprint when returning an xpub", async () => {
-    const adapter = new LedgerAdapter();
-    (adapter as any).connection = {
-      app: {
-        getWalletXpub: (...args: unknown[]) => mockGetWalletXpub(...args),
-      },
-      appClient: {
-        getMasterFingerprint: (...args: unknown[]) =>
-          mockGetMasterFingerprint(...args),
-        getExtendedPubkey: (...args: unknown[]) =>
-          mockGetExtendedPubkey(...args),
-      },
-      transport: { close: vi.fn() },
-      device: makeUsbDevice(),
-    };
-    (adapter as any).connectedDevice = {
-      id: "ledger-1",
-      type: "ledger",
-      name: "Ledger",
-      model: "Ledger",
-      connected: true,
-      fingerprint: "cafebabe",
-    };
-
-    mockGetExtendedPubkey.mockResolvedValueOnce("xpub-cached-fingerprint");
-
-    const result = await adapter.getXpub("m/84'/0'/0'");
-
-    expect(result.fingerprint).toBe("cafebabe");
-    expect(mockGetMasterFingerprint).not.toHaveBeenCalled();
-  });
-
-  it("returns xpub and maps getXpub/verify error branches", async () => {
-    const adapter = new LedgerAdapter();
-    (adapter as any).connection = {
-      app: {
-        getWalletXpub: (...args: unknown[]) => mockGetWalletXpub(...args),
-        getWalletPublicKey: (...args: unknown[]) =>
-          mockGetWalletPublicKey(...args),
-      },
-      appClient: {
-        getMasterFingerprint: (...args: unknown[]) =>
-          mockGetMasterFingerprint(...args),
-        getExtendedPubkey: (...args: unknown[]) =>
-          mockGetExtendedPubkey(...args),
-      },
-      transport: { close: vi.fn() },
-      device: makeUsbDevice(),
-    };
-    (adapter as any).connectedDevice = {
-      id: "ledger-1",
-      type: "ledger",
-      name: "Ledger",
-      model: "Ledger",
-      connected: true,
-      fingerprint: "f00dbabe",
-    };
-
-    mockGetExtendedPubkey.mockResolvedValueOnce("tpub-testnet");
-    const result = await adapter.getXpub("m/84'/1'/0'");
-    expect(result).toEqual({
-      xpub: "tpub-testnet",
-      fingerprint: "f00dbabe",
-      path: "m/84'/1'/0'",
-    });
-    expect(mockGetExtendedPubkey).toHaveBeenCalledWith("m/84'/1'/0'");
-    expect(mockGetWalletXpub).not.toHaveBeenCalled();
-
-    mockGetExtendedPubkey.mockRejectedValueOnce(
-      new Error("new API unavailable"),
-    );
-    mockGetWalletXpub.mockResolvedValueOnce("xpub-fallback");
-    const fallbackResult = await adapter.getXpub("m/84'/0'/0'");
-    expect(fallbackResult.xpub).toBe("xpub-fallback");
-    expect(mockGetWalletXpub).toHaveBeenCalledWith({
-      path: "m/84'/0'/0'",
-      xpubVersion: 0x0488b21e,
-    });
-
-    (adapter as any).connectedDevice.fingerprint = undefined;
-    mockGetMasterFingerprint.mockRejectedValueOnce(new Error("fp read fail"));
-    mockGetExtendedPubkey.mockResolvedValueOnce("xpub-mainnet");
-    await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow(
-      "master fingerprint",
-    );
-
-    mockGetExtendedPubkey.mockRejectedValueOnce(new Error("0x6985 denied"));
-    await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow(
-      "Request rejected on Ledger",
-    );
-
-    mockGetExtendedPubkey.mockRejectedValueOnce(new Error("0x6d00"));
-    await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow(
-      "Bitcoin app not open on Ledger",
-    );
-
-    (adapter as any).connection.appName = "Bitcoin";
-    mockGetExtendedPubkey.mockRejectedValueOnce(
-      new Error("incorrect data 0x6a80"),
-    );
-    await expect(adapter.getXpub("m/84'/1'/0'")).rejects.toThrow(
-      "Bitcoin Test app is required",
-    );
-
-    (adapter as any).connection.appName = undefined;
-    mockGetExtendedPubkey.mockRejectedValueOnce(
-      new Error("incorrect data 0x6a80"),
-    );
-    let missingAppMetadataMessage = "";
-    try {
-      await adapter.getXpub("m/84'/1'/1'");
-    } catch (error) {
-      missingAppMetadataMessage =
-        error instanceof Error ? error.message : String(error);
-    }
-    expect(missingAppMetadataMessage).toContain(
-      "Bitcoin Test app is required",
-    );
-    expect(missingAppMetadataMessage).not.toContain("currently running");
-
-    (adapter as any).connection.appName = "Bitcoin Test";
-    mockGetExtendedPubkey.mockRejectedValueOnce(
-      new Error("incorrect data 0x6a80"),
-    );
-    mockGetWalletXpub.mockResolvedValueOnce("tpub-testnet-fallback");
-    const testnetAppFallbackResult = await adapter.getXpub("m/84'/1'/2'");
-    expect(testnetAppFallbackResult.xpub).toBe("tpub-testnet-fallback");
-
-    mockGetExtendedPubkey.mockRejectedValueOnce(
-      new Error("new API unavailable"),
-    );
-    mockGetWalletXpub.mockRejectedValueOnce(new Error("xpub failed"));
-    await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow(
-      "Failed to get xpub: xpub failed",
-    );
-
-    mockGetExtendedPubkey.mockResolvedValueOnce("");
-    await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow(
-      "Ledger returned an empty xpub",
-    );
-
-    await expect(
-      adapter.verifyAddress("m/84'/0'/0'/0/0", "bc1qabc"),
-    ).resolves.toBe(true);
-
-    mockGetWalletPublicKey.mockResolvedValueOnce({
-      bitcoinAddress: "bc1qmismatch",
-    });
-    await expect(
-      adapter.verifyAddress("m/84'/0'/0'/0/0", "bc1qabc"),
-    ).resolves.toBe(false);
-
-    mockGetWalletPublicKey.mockRejectedValueOnce(new Error("denied by user"));
-    await expect(
-      adapter.verifyAddress("m/84'/0'/0'/0/0", "bc1qabc"),
-    ).resolves.toBe(false);
-
-    mockGetWalletPublicKey.mockRejectedValueOnce(new Error("unexpected"));
-    await expect(
-      adapter.verifyAddress("m/84'/0'/0'/0/0", "bc1qabc"),
-    ).rejects.toThrow("Failed to verify address");
-  });
-
-  it("maps signPSBT error categories to user-friendly messages", async () => {
-    const adapter = new LedgerAdapter();
-    (adapter as any).connection = {
-      app: {},
-      appClient: {
-        getMasterFingerprint: (...args: unknown[]) =>
-          mockGetMasterFingerprint(...args),
-        getExtendedPubkey: (...args: unknown[]) =>
-          mockGetExtendedPubkey(...args),
-        signPsbt: vi.fn(),
-      },
-      transport: { close: vi.fn() },
-      device: makeUsbDevice(),
-    };
-    (adapter as any).connectedDevice = {
-      id: "ledger-1",
-      type: "ledger",
-      name: "Ledger",
-      model: "Ledger",
-      connected: true,
-      fingerprint: "",
-    };
-
-    mockPsbtFromBase64.mockImplementationOnce(() => {
-      throw new Error("0x6985 denied");
-    });
-    await expect(
-      adapter.signPSBT({ psbt: "x", inputPaths: [] }),
-    ).rejects.toThrow("Transaction rejected on device");
-
-    mockPsbtFromBase64.mockImplementationOnce(() => {
-      throw new Error("0x6d00");
-    });
-    await expect(
-      adapter.signPSBT({ psbt: "x", inputPaths: [] }),
-    ).rejects.toThrow("Bitcoin app not open on device");
-
-    mockPsbtFromBase64.mockImplementationOnce(() => {
-      throw new Error("device locked");
-    });
-    await expect(
-      adapter.signPSBT({ psbt: "x", inputPaths: [] }),
-    ).rejects.toThrow("Device is locked");
-
-    mockPsbtFromBase64.mockImplementationOnce(() => {
-      throw new Error("No device present");
-    });
-    await expect(
-      adapter.signPSBT({ psbt: "x", inputPaths: [] }),
-    ).rejects.toThrow("Device disconnected");
-
-    mockPsbtFromBase64.mockImplementationOnce(() => {
-      throw new Error("unexpected");
-    });
-    await expect(
-      adapter.signPSBT({ psbt: "x", inputPaths: [] }),
-    ).rejects.toThrow("Failed to sign transaction: unexpected");
-  });
-
-  it("blocks Ledger multisig signing before wallet policy creation", async () => {
-    const adapter = new LedgerAdapter();
-    (adapter as any).connection = {
-      app: {},
-      appClient: {
-        getMasterFingerprint: (...args: unknown[]) =>
-          mockGetMasterFingerprint(...args),
-        getExtendedPubkey: (...args: unknown[]) =>
-          mockGetExtendedPubkey(...args),
-        signPsbt: vi.fn(),
-      },
-      transport: { close: vi.fn() },
-      device: makeUsbDevice(),
-    };
-    (adapter as any).connectedDevice = {
-      id: "ledger-1",
-      type: "ledger",
-      name: "Ledger",
-      model: "Ledger",
-      connected: true,
-      fingerprint: "",
-    };
-
-    mockPsbtFromBase64.mockReturnValueOnce({
-      data: {
-        inputs: [{
-          bip32Derivation: [{ path: "m/48'/0'/0'/2'/0/0" }],
-        }],
-      },
-      toBase64: () => "psbt",
-      updateInput: vi.fn(),
-      finalizeAllInputs: vi.fn(),
-    });
-
-    await expect(
-      adapter.signPSBT({
-        psbt: "multisig-psbt",
-        inputPaths: ["m/48'/0'/0'/2'/0/0"],
-      }),
-    ).rejects.toThrow("Ledger multisig USB signing is blocked in this release.");
-    expect(mockGetMasterFingerprint).toHaveBeenCalled();
-    expect(mockGetExtendedPubkey).not.toHaveBeenCalled();
-  });
-
-  it("handles non-Error failures and no-op disconnect fallback paths", async () => {
-    const connectNonError = new LedgerAdapter();
-    mockTransportCreate.mockRejectedValueOnce({
-      reason: "plain-object",
-    } as any);
-    await expect(connectNonError.connect()).rejects.toThrow(
-      "Failed to connect: Unknown error",
-    );
-
+  it('allows idempotent disconnect and rejects a fingerprint read without a connection', async () => {
     const adapter = new LedgerAdapter();
     await expect(adapter.disconnect()).resolves.toBeUndefined();
+    await expect((adapter as any).getMasterFingerprint()).rejects.toThrow('No device connected');
+  });
 
-    (adapter as any).connection = {
-      app: {
-        getWalletXpub: (...args: unknown[]) => mockGetWalletXpub(...args),
-        getWalletPublicKey: (...args: unknown[]) =>
-          mockGetWalletPublicKey(...args),
-      },
-      appClient: {
-        getMasterFingerprint: (...args: unknown[]) =>
-          mockGetMasterFingerprint(...args),
-        getExtendedPubkey: (...args: unknown[]) =>
-          mockGetExtendedPubkey(...args),
-        signPsbt: vi.fn(),
-      },
-      transport: { close: vi.fn() },
-      device: makeUsbDevice(),
-    };
-    (adapter as any).connectedDevice = {
-      id: "ledger-1",
-      type: "ledger",
-      name: "Ledger",
-      model: "Ledger",
-      connected: true,
-      fingerprint: "",
-    };
-
-    mockGetExtendedPubkey.mockRejectedValueOnce("xpub-non-error" as any);
-    mockGetWalletXpub.mockRejectedValueOnce("fallback-non-error" as any);
-    await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow(
-      "Failed to get xpub: Unknown error",
-    );
-
-    mockGetWalletPublicKey.mockRejectedValueOnce(42 as any);
-    await expect(
-      adapter.verifyAddress("m/84'/0'/0'/0/0", "bc1qabc"),
-    ).rejects.toThrow("Failed to verify address: Unknown error");
-
-    mockPsbtFromBase64.mockImplementationOnce(() => {
-      throw "sign-non-error";
+  it.each([
+    ["m/44'/0'/0'", 'Bitcoin'],
+    ["m/49'/1'/7'", 'Bitcoin Test'],
+    ["m/84'/0'/7'", 'Bitcoin'],
+    ["m/86'/1'/0'", 'Bitcoin Test'],
+  ])('exports canonical account %s only from %s', async (path, appName) => {
+    const xpub = path.includes("/1'/") ? 'tpub-account' : 'xpub-account';
+    const adapter = await connectedAdapter({ appName, xpub });
+    await expect(adapter.getXpub(path)).resolves.toEqual({
+      xpub, fingerprint: 'aabbccdd', path,
     });
-    await expect(
-      adapter.signPSBT({ psbt: "x", inputPaths: [] }),
-    ).rejects.toThrow("Failed to sign transaction: Unknown error");
+    expect(mocks.getExtendedPubkey).toHaveBeenCalledWith(path, false);
+    expect(mocks.getAppAndVersion).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects wrong-network app and empty xpub without legacy fallback', async () => {
+    const adapter = await connectedAdapter({ appName: 'Bitcoin' });
+    await expect(adapter.getXpub("m/84'/1'/0'")).rejects.toThrow(/Bitcoin Test app is required/);
+    mocks.getExtendedPubkey.mockResolvedValue('');
+    await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow(/empty xpub/);
+  });
+
+  it('maps string and unknown xpub failures without substituting account data', async () => {
+    const adapter = await connectedAdapter();
+    mocks.getExtendedPubkey.mockRejectedValueOnce('permission denied');
+    await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow(/Access denied/);
+    mocks.getExtendedPubkey.mockRejectedValueOnce({ reason: 'opaque' });
+    await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow(/Unknown error/);
+  });
+
+  it('rejects export when the current Ledger identity differs from the connected session', async () => {
+    const adapter = await connectedAdapter({ appName: 'Bitcoin' });
+    mocks.getMasterFingerprint.mockResolvedValueOnce('11223344');
+    await expect(adapter.getXpub("m/84'/0'/0'"))
+      .rejects.toThrow(/session identity changed/i);
+  });
+
+  it.each([
+    ["m/44'/0'/0'/0/0", '1legacy', 0, 0],
+    ["m/49'/0'/7'/0/19", '3nested', 0, 19],
+    ["m/84'/0'/7'/1/0", 'bc1qchange', 1, 0],
+    ["m/86'/0'/0'/1/19", 'bc1ptaproot', 1, 19],
+  ])('displays and compares canonical address %s', async (path, address, branch, index) => {
+    const adapter = await connectedAdapter();
+    mocks.getWalletAddress.mockResolvedValue(address);
+    await expect(adapter.verifyAddress(path, address)).resolves.toBe(true);
+    expect(mocks.getWalletAddress).toHaveBeenCalledWith(
+      expect.any(Object), null, branch, index, true,
+    );
+  });
+
+  it('uses the Bitcoin Test session for test-family address display', async () => {
+    const adapter = await connectedAdapter({ appName: 'Bitcoin Test', xpub: 'tpub-account' });
+    mocks.getWalletAddress.mockResolvedValue('tb1qdevice');
+    await expect(adapter.verifyAddress("m/84'/1'/0'/0/0", 'tb1qdevice')).resolves.toBe(true);
+    expect(mocks.getAppAndVersion).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns false for display mismatch or user rejection and throws other failures', async () => {
+    const adapter = await connectedAdapter();
+    const path = "m/84'/0'/0'/0/0";
+    mocks.getWalletAddress.mockResolvedValue('bc1qother');
+    await expect(adapter.verifyAddress(path, 'bc1qexpected')).resolves.toBe(false);
+    mocks.getWalletAddress.mockRejectedValue(new Error('0x6985 denied'));
+    await expect(adapter.verifyAddress(path, 'bc1qexpected')).resolves.toBe(false);
+    mocks.getWalletAddress.mockRejectedValue(new Error('transport corrupt'));
+    await expect(adapter.verifyAddress(path, 'bc1qexpected')).rejects.toThrow(/Failed to verify address/);
+    mocks.getWalletAddress.mockRejectedValue({ reason: 'opaque' });
+    await expect(adapter.verifyAddress(path, 'bc1qexpected')).rejects.toThrow(/Unknown error/);
+  });
+
+  it('rejects noncanonical or multisig address display paths before device display', async () => {
+    const adapter = await connectedAdapter();
+    await expect(adapter.verifyAddress("m/84'/0'/0'/2/0", 'address')).rejects.toThrow(/canonical/);
+    await expect(adapter.verifyAddress("m/48'/0'/0'/2'/0/0", 'address')).rejects.toThrow(/canonical/);
+    expect(mocks.getWalletAddress).not.toHaveBeenCalled();
+  });
+
+  it('requires a connection for xpub, display, and signing operations', async () => {
+    const adapter = new LedgerAdapter();
+    await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow('No device connected');
+    await expect(adapter.verifyAddress("m/84'/0'/0'/0/0", 'address')).rejects.toThrow('No device connected');
+    await expect(adapter.signPSBT({ psbt: 'psbt' })).rejects.toThrow('No device connected');
+  });
+
+  it('delegates signing and preserves fail-closed error categories', async () => {
+    const adapter = await connectedAdapter();
+    const request = { walletId: 'wallet', psbt: 'unsigned' };
+    await expect(adapter.signPSBT(request)).resolves.toEqual({ psbt: 'signed', signatures: 1 });
+    expect(mocks.signPsbt).toHaveBeenCalledWith(expect.any(Object), request);
+
+    mocks.signPsbt.mockRejectedValue(new Error('Ledger multisig USB signing is blocked pending proof'));
+    await expect(adapter.signPSBT(request)).rejects.toThrow(/multisig USB signing is blocked/);
+    mocks.signPsbt.mockRejectedValue(new Error('0x6985 denied'));
+    await expect(adapter.signPSBT(request)).rejects.toThrow(/Transaction rejected/);
+    mocks.signPsbt.mockRejectedValue(new Error('0x6d00'));
+    await expect(adapter.signPSBT(request)).rejects.toThrow(/Bitcoin app not open/);
+    mocks.signPsbt.mockRejectedValue(new Error('0x6982 locked'));
+    await expect(adapter.signPSBT(request)).rejects.toThrow(/Device is locked/);
+    mocks.signPsbt.mockRejectedValue(new Error('No device'));
+    await expect(adapter.signPSBT(request)).rejects.toThrow(/Device disconnected/);
+    mocks.signPsbt.mockRejectedValue(new Error('unexpected signing failure'));
+    await expect(adapter.signPSBT(request)).rejects.toThrow(/Failed to sign transaction/);
+    mocks.signPsbt.mockRejectedValue({ reason: 'opaque' });
+    await expect(adapter.signPSBT(request)).rejects.toThrow(/Unknown error/);
   });
 });

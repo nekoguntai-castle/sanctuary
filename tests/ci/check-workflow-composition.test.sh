@@ -1735,7 +1735,9 @@ assert_contains_in_order "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
   "Replay hardware-signed fixture contracts" \
   "tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts" \
   "Run pinned Trezor emulator proof" \
-  "npm run test:trezor-emulator-proof"
+  "npm run test:trezor-emulator-proof" \
+  "Run pinned Ledger emulator proof" \
+  "npm run test:ledger-emulator-proof"
 
 assert_named_job_step_contains "$VV" \
   "verify-trezor-emulator" \
@@ -1766,6 +1768,30 @@ assert_named_job_step_contains "$VV" \
   "if-no-files-found: error"
 
 assert_named_job_step_contains "$VV" \
+  "verify-ledger-emulator" \
+  "Run pinned Ledger emulator proof" \
+  "Ledger emulator proof uses its dedicated measured lock" \
+  "timeout-minutes: 10" \
+  'SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS="$LEDGER_EMULATOR_LOCK_TIMEOUT_SECONDS"' \
+  "scripts/ci/with-runner-lock.sh ledger-emulator"
+
+assert_named_job_step_contains "$VV" \
+  "verify-ledger-emulator" \
+  "Upload current Ledger emulator proof" \
+  "Ledger emulator proof uploads only the successful current attempt" \
+  "if: success() && env.LEDGER_EMULATOR_PROOF_DIR != ''" \
+  '${{ env.LEDGER_EMULATOR_PROOF_DIR }}' \
+  "if-no-files-found: error"
+
+assert_named_job_step_contains "$VV" \
+  "verify-ledger-emulator" \
+  "Upload current Ledger emulator diagnostics" \
+  "Ledger emulator diagnostics are separate and attempt-scoped" \
+  "if: always() && env.LEDGER_EMULATOR_DIAGNOSTICS_DIR != ''" \
+  '${{ env.LEDGER_EMULATOR_DIAGNOSTICS_DIR }}' \
+  "if-no-files-found: error"
+
+assert_named_job_step_contains "$VV" \
   "verify-trezor-emulator" \
   "Upload current Trezor emulator diagnostics" \
   "Trezor emulator diagnostics are separate and attempt-scoped" \
@@ -1774,15 +1800,20 @@ assert_named_job_step_contains "$VV" \
   "if-no-files-found: error"
 
 assert_contains_in_order "$VV" \
-  "vector summary requires both software and Trezor proofs" \
+  "vector summary requires software, Trezor, and Ledger proofs" \
   "summary:" \
-  "needs: [verify-vectors, verify-trezor-emulator]" \
+  "needs: [verify-vectors, verify-trezor-emulator, verify-ledger-emulator]" \
   '${{ needs.verify-vectors.result }}' \
-  '${{ needs.verify-trezor-emulator.result }}'
+  '${{ needs.verify-trezor-emulator.result }}' \
+  '${{ needs.verify-ledger-emulator.result }}'
 
 assert_contains_in_order "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
   "Trezor emulator lock has a dedicated measured timeout" \
   "TREZOR_EMULATOR_LOCK_TIMEOUT_SECONDS: '600'"
+
+assert_contains_in_order "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
+  "Ledger emulator lock has a dedicated measured timeout" \
+  "LEDGER_EMULATOR_LOCK_TIMEOUT_SECONDS: '300'"
 
 assert_contains_in_order "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
   "Trezor emulator public binding remains disabled" \
@@ -1944,11 +1975,11 @@ assert_contains_in_order \
 assert_occurrence_count \
   "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
   "verify-vectors jobs use the immutable checksum-built wallet verifier image" \
-  "nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:8b50f6c8ccb016b042c7125a637b068a49c856a76e543365044b36a593edd81e" 3
+  "nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:8b50f6c8ccb016b042c7125a637b068a49c856a76e543365044b36a593edd81e" 4
 assert_occurrence_count \
   "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
   "verify-vectors jobs disable network npm repair" \
-  "install-npm: 'false'" 3
+  "install-npm: 'false'" 4
 
 GO_RUNNER_DOCKERFILE="$REPO_ROOT/scripts/ci/images/go-runner.Dockerfile"
 assert_occurrence_count "$GO_RUNNER_DOCKERFILE" \
@@ -1974,7 +2005,7 @@ declare -A strict_install_counts=(
   [architecture.yml]=2
   [quality.yml]=1
   [test.yml]=17
-  [verify-vectors.yml]=6
+  [verify-vectors.yml]=7
 )
 for workflow in "${!strict_install_counts[@]}"; do
   assert_occurrence_count \

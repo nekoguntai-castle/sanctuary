@@ -25,7 +25,26 @@ Manual hardware validation covers the things mocks cannot prove:
 | 2    | Pinned vendor emulator/protocol integration                      | Production-adapter payload/session compatibility with exact emulated firmware, Bridge, Connect core protocol, display calls, and signing protocol | Connect-Web iframe/Suite orchestration, physical transport, production device possession, screen rendering, or human confirmation |
 | 3    | Dedicated physical device with operator and independent reviewer | Physical transport, actual screen/confirmation behavior, and sanitized adapter-native artifacts                 | Future firmware/SDK revisions after the evidence expires                                  |
 
-Tier 2 never satisfies a Tier 3 fixture row. Trezor Tier 2 currently pins the
+Tier 2 never satisfies a Tier 3 fixture row. Ledger Tier 2 builds a dedicated
+`linux/amd64` Speculos image from the exact inputs recorded in
+`config/ledger-emulator/proof.json`: Speculos 0.26.9 and the Ledger app-builder
+base are OCI-digest pinned, and Bitcoin/Bitcoin Test app 2.4.2 is built from an
+exact source commit and verified against separate ELF hashes. The production
+`@ledgerhq/ledger-bitcoin` adapter then proves BIP44/49/84/86 account 0/7 export,
+receive/change display at indexes 0/19, app/network rejection, signing, and
+independent finalization on both coin families. Run it with:
+
+```bash
+npm run test:ledger-emulator-proof
+```
+
+The Ledger app binaries and Speculos runtime are baked into this dedicated proof
+image; CI does not download or repair them after the container starts. The root
+SDK and WebUSB versions are exact lockfile pins checked against the proof
+manifest. Ledger multisig remains product-blocked and Tier 2 does not enable any
+physical capability row.
+
+Trezor Tier 2 currently pins the
 OCI index, exact `linux/amd64` child and image-config digests in
 `config/trezor-emulator-proof.json`, Model T (`T2T1`) firmware 2.12.2, Bridge
 2.0.33, and Trezor Connect 9.7.3 with the exact `@trezor/connect` and
@@ -96,6 +115,7 @@ Run these before connecting hardware:
 ```bash
 npm --prefix scripts/verify-addresses run verify
 npm --prefix scripts/verify-psbt run verify
+npm run test:ledger-emulator-proof
 npm run test:run -- tests/services/hardwareWallet.trezorAdapter.test.ts tests/services/hardwareWallet.ledgerAdapter.test.ts tests/services/hardwareWallet.jadeAdapter.test.ts tests/services/hardwareWallet.bitboxAdapter.test.ts
 npm --prefix server run test -- --run tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts
 npm run typecheck:app
@@ -138,13 +158,13 @@ from rows that Sanctuary currently blocks at the product level.
 
 | Row | Classification | Evidence |
 | --------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Ledger P2WPKH, P2SH-P2WPKH, P2TR | Required, missing physical fixture | Ledger adapter maps these to single-sig wallet policy templates and still needs vendor-signed artifacts. |
+| Ledger P2PKH, P2WPKH, P2SH-P2WPKH, P2TR | Required, product blocked pending physical fixture | The pinned emulator proves production-adapter BIP44, BIP49, BIP84, and BIP86 conformance on both coin families, but cannot satisfy physical display/transport evidence. All Ledger capability rows remain disabled. |
 | Ledger P2WSH, P2SH-P2WSH | Unsupported, product blocked | Ledger adapter currently builds only single-sig `DefaultWalletPolicy` templates; multisig Ledger signing is not exposed. |
 | Trezor P2WPKH, P2SH-P2WPKH, P2TR, P2WSH, P2SH-P2WSH | Required, product blocked pending physical fixture | The pinned emulator proves production-adapter BIP49, BIP84, BIP86, and both BIP48 `/1'` and `/2'` conformance, but cannot satisfy physical display/transport evidence. All Trezor capability rows remain disabled. |
 | BitBox02 P2WPKH, P2SH-P2WPKH, P2TR | Required, missing physical fixture | BitBox adapter maps these to `btcSignSimple` single-sig script configs and still needs vendor-signed artifacts. |
 | BitBox02 P2WSH, P2SH-P2WSH | Unsupported, product blocked | BitBox adapter currently uses `btcSignSimple` single-sig script configs only; multisig BitBox signing is not exposed. |
 
-This leaves 11 required rows awaiting physical evidence and 4 explicitly blocked
+This leaves 12 required rows awaiting physical evidence and 4 explicitly blocked
 unsupported rows. The executable source of truth is
 `server/tests/fixtures/hardware-signed-psbt-vectors.ts`.
 
@@ -327,6 +347,16 @@ REQUIRE_TREZOR_PHYSICAL_FIXTURES=1 npm --prefix server run test -- --run tests/u
 
 That command is expected to fail until all current Trezor physical artifacts
 are reviewed. The ordinary CI emulator run does not reduce its missing count.
+
+To require only the four Ledger physical rows during a Ledger lab capture:
+
+```bash
+REQUIRE_LEDGER_PHYSICAL_FIXTURES=1 npm --prefix server run test -- --run tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts
+```
+
+That command is expected to fail until all current Ledger physical artifacts
+are independently reviewed. The ordinary Speculos proof does not reduce its
+missing count.
 
 To turn the harness into a full hardware evidence gate after physical capture:
 

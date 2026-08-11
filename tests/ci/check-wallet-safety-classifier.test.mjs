@@ -33,6 +33,8 @@ test('checked-in classifier covers every hardware proof helper and emulator modu
     ),
     ...recursiveFiles('tests/integration/trezorEmulator'),
     'tests/integration/trezorEmulator.integration.test.ts',
+    ...recursiveFiles('tests/integration/ledgerEmulator'),
+    'tests/integration/ledgerEmulator.integration.test.ts',
     'server/tests/unit/services/bitcoin/hardwareSignedEvidenceProvenance.test.ts',
   ];
   const uncovered = proofFiles.filter(
@@ -53,7 +55,10 @@ const BROAD_WORKFLOW = `  pull_request:
       - run: psbt.hardware-signed-vectors.test.ts
       - run: npm run test:trezor-emulator-proof
       - path: \${{ env.TREZOR_EMULATOR_PROOF_DIR }}
-      - path: \${{ env.TREZOR_EMULATOR_DIAGNOSTICS_DIR }}`;
+      - path: \${{ env.TREZOR_EMULATOR_DIAGNOSTICS_DIR }}
+      - run: npm run test:ledger-emulator-proof
+      - path: \${{ env.LEDGER_EMULATOR_PROOF_DIR }}
+      - path: \${{ env.LEDGER_EMULATOR_DIAGNOSTICS_DIR }}`;
 const REPOSITORY_FILES = ['server/src/services/wallet/create.ts', 'same'];
 const PROOF_MANIFEST = {
   schemaVersion: 1,
@@ -152,6 +157,9 @@ test('mandatory PSBT and hardware proof commands and exact Core image fail close
     'npm run test:trezor-emulator-proof',
     'TREZOR_EMULATOR_PROOF_DIR',
     'TREZOR_EMULATOR_DIAGNOSTICS_DIR',
+    'npm run test:ledger-emulator-proof',
+    'LEDGER_EMULATOR_PROOF_DIR',
+    'LEDGER_EMULATOR_DIAGNOSTICS_DIR',
   ]) {
     assert.throws(
       () =>
