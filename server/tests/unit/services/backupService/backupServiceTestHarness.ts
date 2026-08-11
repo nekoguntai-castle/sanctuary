@@ -51,6 +51,7 @@ const createBackupModelMock = () => ({
 });
 
 const backupOnlyModelNames = [
+  'transactionSigningIntent',
   'webhookEndpoint',
   'webhookDelivery',
   'refreshToken',

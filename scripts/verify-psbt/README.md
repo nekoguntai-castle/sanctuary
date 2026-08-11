@@ -19,11 +19,20 @@ cd scripts/verify-psbt
 docker compose up -d
 ```
 
+The compose file pins Bitcoin Core 29.0 by image digest. Generation fails unless
+the operator explicitly attests that pinned-container mode and the exact image
+from `proof-manifest.json` are in use:
+
+```bash
+export VERIFY_PSBT_CORE_PROVENANCE_MODE=pinned-container
+export VERIFY_PSBT_CORE_IMAGE="$(node -p 'require("./proof-manifest.json").coreImage')"
+```
+
 ### 2. Generate Extended Vectors
 
 ```bash
 cd scripts/verify-psbt
-npm install
+npm ci --strict-allow-scripts
 npm run generate
 npm run generate:signed
 npm run verify
@@ -37,7 +46,20 @@ Bitcoin Core `decodepsbt` and `analyzepsbt` to accept them before writing
 The signed-vector generator creates real regtest UTXOs with Bitcoin Core,
 spends them with deterministic local software keys, finalizes the PSBTs, and
 requires Core `testmempoolaccept` to accept the extracted transactions before
-writing `server/tests/fixtures/generated-signed-psbt-vectors.ts`.
+writing `server/tests/fixtures/generated-signed-psbt-vectors.ts`. It requires a
+fresh chain at height zero, fixes block time, and mines coinbases directly to
+the deterministic fixture scripts so independent clean Core instances produce
+byte-identical fixtures. If the compose volume has already mined blocks, start
+with a fresh disposable regtest volume before regenerating signed vectors.
+
+Both fixture files embed the expected Core image digest, numeric version, and
+subversion. The generators verify the live `getnetworkinfo` response before
+writing anything. `npm run verify` fails if the fixture provenance, compose
+image, required script-family rows, or signed-vector count drifts. The
+always-running `verify-vectors` CI job executes this verifier and the signed
+vector replay tests on pull requests, merge groups, main pushes, and schedule.
+Its live pinned-Core lane regenerates both fixture files and fails if either
+differs from the committed deterministic output.
 
 ### 3. Run PSBT Verification Tests
 
@@ -51,6 +73,8 @@ npm test -- --run tests/unit/services/bitcoin/psbt.verified.test.ts
 ```
 scripts/verify-psbt/
 ├── docker-compose.yml      # Bitcoin Core container
+├── proof-manifest.json     # Exact Core image digest and runtime identity
+├── provenance.ts           # Fail-closed live runtime attestation
 ├── implementations/
 │   ├── bitcoincore.ts     # Bitcoin Core RPC wrapper
 │   └── sanctuary.ts       # Our bitcoinjs-lib wrapper
@@ -110,6 +134,7 @@ Real-world scenarios verified against Bitcoin Core:
 
 Funded regtest spends verified with Bitcoin Core `testmempoolaccept`:
 
+- Legacy single-sig (P2PKH)
 - Native SegWit single-sig (P2WPKH)
 - Nested SegWit single-sig (P2SH-P2WPKH)
 - Native SegWit sorted multisig (P2WSH)

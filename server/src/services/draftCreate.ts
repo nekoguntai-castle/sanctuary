@@ -13,6 +13,7 @@ import { dispatchDraftNotification } from './notifications/dispatch';
 import { approvalService } from './vaultPolicy/approvalService';
 import { validateInitialSigningState } from './draftSigning';
 import type { CreateDraftInput, InitialSigningState } from './draftTypes';
+import { loadSigningIntent, unsignedPsbtSha256 } from './bitcoin/signingIntent';
 
 const log = createLogger('DRAFT:SVC_CREATE');
 
@@ -70,6 +71,8 @@ const buildDraftRequestValidationInput = (data: CreateDraftInput): Record<string
   inputPaths: data.inputPaths,
   signedPsbtBase64: data.signedPsbtBase64,
   signedDeviceId: data.signedDeviceId,
+  intentId: data.intentId,
+  intentDigest: data.intentDigest,
 });
 
 const assertValidCreateDraftInput = (data: CreateDraftInput): void => {
@@ -150,6 +153,8 @@ const createDraftRecord = async (
     signedDeviceIds: initialSigningState.signedDeviceIds,
     status: initialSigningState.status,
     inputPaths: data.inputPaths || [],
+    signingIntentId: data.intentId,
+    signingIntentDigest: data.intentDigest,
     expiresAt: await calculateExpirationDate(),
   };
 
@@ -263,6 +268,13 @@ export async function createDraft(
   data: CreateDraftInput,
   options: CreateDraftOptions = {}
 ): Promise<DraftTransaction> {
+  const intent = await loadSigningIntent(
+    { intentId: data.intentId, intentDigest: data.intentDigest },
+    walletId,
+  );
+  if (unsignedPsbtSha256(data.psbtBase64) !== intent.unsignedPsbtSha256) {
+    throw new InvalidInputError('Draft PSBT does not match the server-issued signing intent');
+  }
   assertValidCreateDraftInput(data);
 
   const initialSigningState = await validateInitialSigningState(walletId, data);

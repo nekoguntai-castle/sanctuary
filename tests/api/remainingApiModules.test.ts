@@ -51,6 +51,8 @@ describe("Remaining API Modules", () => {
         label: null,
         memo: null,
         psbtBase64: "psbt",
+        intentId: "intent-1",
+        intentDigest: "a".repeat(64),
         fee: "50",
         totalInput: "1250",
         totalOutput: "1200",
@@ -77,6 +79,8 @@ describe("Remaining API Modules", () => {
         label: null,
         memo: null,
         psbtBase64: "psbt",
+        intentId: "intent-1",
+        intentDigest: "a".repeat(64),
         fee: "50",
         totalInput: "1250",
         totalOutput: "1200",
@@ -96,6 +100,8 @@ describe("Remaining API Modules", () => {
         amount: 1000,
         feeRate: 5,
         psbtBase64: "psbt",
+        intentId: "intent-2",
+        intentDigest: "b".repeat(64),
       }, controller.signal);
       expect(mockPost).toHaveBeenCalledWith(
         "/wallets/w1/drafts",
@@ -174,7 +180,9 @@ describe("Remaining API Modules", () => {
       });
       await payjoinApi.getPayjoinUri("addr-id", { amount: 0 });
       await payjoinApi.parsePayjoinUri("bitcoin:bc1q...");
-      await payjoinApi.attemptPayjoin("psbt1", "https://pj.example", "mainnet");
+      await payjoinApi.attemptPayjoin(
+        "w1", "psbt1", "intent-1", "a".repeat(64), "https://pj.example", "mainnet",
+      );
       await payjoinApi.checkPayjoinEligibility("w1");
 
       expect(mockGet).toHaveBeenCalledWith("/payjoin/status");
@@ -191,16 +199,24 @@ describe("Remaining API Modules", () => {
         uri: "bitcoin:bc1q...",
       });
       expect(mockPost).toHaveBeenCalledWith("/payjoin/attempt", {
+        walletId: "w1",
         psbt: "psbt1",
+        intentId: "intent-1",
+        intentDigest: "a".repeat(64),
         payjoinUrl: "https://pj.example",
         network: "mainnet",
       });
       expect(mockGet).toHaveBeenCalledWith("/payjoin/eligibility/w1");
 
       const controller = new AbortController();
-      await payjoinApi.attemptPayjoin("psbt2", "https://pj.example", "testnet3", controller.signal);
+      await payjoinApi.attemptPayjoin(
+        "w1", "psbt2", "intent-2", "b".repeat(64), "https://pj.example", "testnet3", controller.signal,
+      );
       expect(mockPost).toHaveBeenCalledWith("/payjoin/attempt", {
+        walletId: "w1",
         psbt: "psbt2",
+        intentId: "intent-2",
+        intentDigest: "b".repeat(64),
         payjoinUrl: "https://pj.example",
         network: "testnet3",
       }, { signal: controller.signal });

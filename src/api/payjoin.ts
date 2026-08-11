@@ -27,6 +27,8 @@ export interface PayjoinAttemptResult {
   proposalPsbt?: string;
   isPayjoin: boolean;
   error?: string;
+  intentId?: string;
+  intentDigest?: string;
 }
 
 export type PayjoinEligibilityStatus =
@@ -88,13 +90,19 @@ export async function parsePayjoinUri(uri: string): Promise<ParsedUri> {
  * Returns the Payjoin proposal PSBT if successful
  */
 export async function attemptPayjoin(
+  walletId: string,
   psbt: string,
+  intentId: string,
+  intentDigest: string,
   payjoinUrl: string,
   network: NetworkType,
   signal?: AbortSignal,
 ): Promise<PayjoinAttemptResult> {
   const request = {
+    walletId,
     psbt,
+    intentId,
+    intentDigest,
     payjoinUrl,
     network,
   };

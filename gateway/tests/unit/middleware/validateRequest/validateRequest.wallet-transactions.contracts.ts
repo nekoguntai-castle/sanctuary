@@ -4,6 +4,8 @@ import type { Request, Response } from 'express';
 import { validateRequest } from '../../../../src/middleware/validateRequest';
 import { mockNext, mockReq, mockRes, statusMock } from './validateRequestTestHarness';
 
+const signingIntent = { intentId: 'intent-1', intentDigest: 'a'.repeat(64) };
+
 export function registerDraftUpdateValidationContracts() {
   beforeEach(() => {
     mockReq.method = 'PATCH';
@@ -97,6 +99,7 @@ export function registerTransactionRequestValidationContracts() {
       rawTxHex: 'deadbeef',
       recipient: 'tb1qrecipient',
       amount: 10000,
+      ...signingIntent,
     };
 
     validateRequest(mockReq as Request, mockRes as Response, mockNext);
@@ -191,6 +194,7 @@ export function registerPsbtRequestValidationContracts() {
     mockReq.path = '/api/v1/wallets/a1b2c3d4-e5f6-7890-abcd-ef1234567890/psbt/broadcast';
     mockReq.body = {
       signedPsbt: 'cHNi',
+      ...signingIntent,
     };
 
     validateRequest(mockReq as Request, mockRes as Response, mockNext);

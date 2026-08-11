@@ -5,7 +5,7 @@ import {
   type RawAuditSigner,
   type RawAuditWallet,
   type WalletSafetyRawSnapshot,
-} from '../services/walletSafetyAudit/schema';
+} from '../validation/walletSafetyAudit';
 
 export interface RawAuditTransaction {
   $executeRawUnsafe(query: string): Promise<number>;

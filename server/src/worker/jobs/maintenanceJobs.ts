@@ -20,6 +20,7 @@ import {
   monthlyCleanupJob,
   persistPriceFeesJob,
   scheduledBackupJob,
+  reconcileSigningIntentBroadcastsJob,
 } from '../../jobs/definitions/maintenance';
 
 // Type for handlers that accept any job data
@@ -126,6 +127,16 @@ export const maintenanceJobs: WorkerJobHandler<unknown, unknown>[] = [
     options: persistPriceFeesJob.options,
     lockOptions: {
       lockKey: () => `maintenance:${persistPriceFeesJob.name}`,
+      lockTtlMs: CLEANUP_LOCK_TTL_MS,
+    },
+  },
+  {
+    name: reconcileSigningIntentBroadcastsJob.name,
+    queue: 'maintenance',
+    handler: reconcileSigningIntentBroadcastsJob.handler as AnyJobHandler,
+    options: reconcileSigningIntentBroadcastsJob.options,
+    lockOptions: {
+      lockKey: () => `maintenance:${reconcileSigningIntentBroadcastsJob.name}`,
       lockTtlMs: CLEANUP_LOCK_TTL_MS,
     },
   },

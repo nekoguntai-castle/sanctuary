@@ -1,18 +1,33 @@
 import {
+  broadcastAndSave,
   broadcastRecipient as recipient,
   broadcastWalletId as walletId,
   withBroadcastNetwork,
 } from './transactionServiceBroadcast.broadcastAndSave.shared';
 import { expect, it, vi, type Mock } from 'vitest';
-import { createRawTxHex, flushPromises, mockEmitTransactionReceived, mockEmitTransactionSent, mockNotifyNewTransactions } from './transactionServiceBroadcastTestHarness';
+import { createRawTxHex, flushPromises, mockEmitTransactionReceived, mockEmitTransactionSent, mockMarkSigningIntentBroadcastAccepted, mockNotifyNewTransactions } from './transactionServiceBroadcastTestHarness';
 import * as bitcoin from 'bitcoinjs-lib';
-import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client';
-import { broadcastAndSave } from '../../../../../src/services/bitcoin/transactionService';
+import { Prisma } from '../../../../../src/generated/prisma/client';
 import { broadcastTransaction, recalculateWalletBalances } from '../../../../../src/services/bitcoin/blockchain';
 import { mockPrismaClient } from '../../../../mocks/prisma';
 import { sampleUtxos, testnetAddresses } from '../../../../fixtures/bitcoin';
 
 export const registerBroadcastAndSaveNotificationContracts = () => {
+  it('returns reconciliation state when accepted intent consumption fails', async () => {
+    mockMarkSigningIntentBroadcastAccepted.mockRejectedValueOnce(new Error('intent store unavailable'));
+    const result = await broadcastAndSave(walletId, undefined, withBroadcastNetwork({
+      recipient,
+      amount: 30_000,
+      fee: 1_000,
+      utxos: [{ txid: sampleUtxos[0].txid, vout: sampleUtxos[0].vout }],
+      rawTxHex: createRawTxHex([{ address: recipient, value: 30_000 }]),
+    }));
+    expect(result).toMatchObject({
+      broadcasted: true,
+      persistenceStatus: 'pending_reconciliation',
+    });
+  });
+
   it('does not turn an accepted transaction into failure when event emission throws', async () => {
     (mockPrismaClient.$transaction as Mock).mockImplementation(async () => ({
       txType: 'sent',
@@ -467,6 +482,47 @@ export const registerBroadcastAndSaveNotificationContracts = () => {
     );
   });
 
+  it('classifies fallback wallet-owned change and additional external recipients', async () => {
+    const changeAddress = testnetAddresses.legacy[1];
+    const secondRecipient = testnetAddresses.nestedSegwit[0];
+    const rawTxHex = createRawTxHex([
+      { address: recipient, value: 30_000 },
+      { address: changeAddress, value: 7_000 },
+      { address: secondRecipient, value: 2_000 },
+    ]);
+    mockPrismaClient.address.findFirst.mockResolvedValue(null);
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({ network: 'testnet' });
+    mockPrismaClient.address.findMany.mockImplementation((query: any) => {
+      if (query?.where?.walletId === walletId) return Promise.resolve([{ address: changeAddress }]);
+      return Promise.resolve([]);
+    });
+
+    await broadcastAndSave(walletId, undefined, withBroadcastNetwork({
+      recipient,
+      amount: 30_000,
+      fee: 1_000,
+      utxos: [{ txid: sampleUtxos[0].txid, vout: sampleUtxos[0].vout }],
+      rawTxHex,
+    }));
+
+    expect(mockPrismaClient.transactionOutput.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.arrayContaining([
+        expect.objectContaining({ address: changeAddress, outputType: 'change', isOurs: true }),
+        expect.objectContaining({ address: secondRecipient, outputType: 'recipient', isOurs: false }),
+      ]) }),
+    );
+  });
+
+  it('keeps an accepted transaction reconcilable when fallback raw-output parsing fails', async () => {
+    await expect(broadcastAndSave(walletId, undefined, withBroadcastNetwork({
+      recipient,
+      amount: 30_000,
+      fee: 1_000,
+      utxos: [{ txid: sampleUtxos[0].txid, vout: sampleUtxos[0].vout }],
+      rawTxHex: 'not-hex',
+    }))).resolves.toMatchObject({ broadcasted: true });
+  });
+
   it('returns accepted reconciliation state when receiver persistence fails', async () => {
     const internalAddress = testnetAddresses.legacy[1];
     const rawTxHex = createRawTxHex([
@@ -515,7 +571,7 @@ export const registerBroadcastAndSaveNotificationContracts = () => {
   });
 
   it('retries known transaction conflicts in fresh transactions without rebroadcasting', async () => {
-    const writeConflict = new PrismaClientKnownRequestError('Write conflict', {
+    const writeConflict = new Prisma.PrismaClientKnownRequestError('Write conflict', {
       code: 'P2034',
       clientVersion: 'test-client',
     });
@@ -556,7 +612,7 @@ export const registerBroadcastAndSaveNotificationContracts = () => {
   });
 
   it('retries driver-adapter transaction conflicts', async () => {
-    const writeConflict = new PrismaClientKnownRequestError('Write conflict', {
+    const writeConflict = new Prisma.PrismaClientKnownRequestError('Write conflict', {
       code: 'P2010',
       clientVersion: 'test-client',
       meta: { driverAdapterError: { cause: { kind: 'TransactionWriteConflict' } } },
@@ -578,7 +634,7 @@ export const registerBroadcastAndSaveNotificationContracts = () => {
   });
 
   it('does not retry generic Prisma raw-query failures', async () => {
-    const rawQueryFailure = new PrismaClientKnownRequestError('Raw query failed', {
+    const rawQueryFailure = new Prisma.PrismaClientKnownRequestError('Raw query failed', {
       code: 'P2010',
       clientVersion: 'test-client',
     });

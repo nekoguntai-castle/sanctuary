@@ -31,6 +31,14 @@ import { parsePayjoinMinFeeRate } from '../services/payjoin/validation';
 import { getNetwork } from '../services/bitcoin/utils';
 import { normalizeLegacyBitcoinNetwork } from '../services/bitcoin/networks';
 import { assertFreshReceiveAddressSafeForDisplay } from '../services/addressDisplaySafety';
+import {
+  createSigningIntent,
+  loadSigningIntent,
+} from '../services/bitcoin/signingIntent/service';
+import {
+  derivePayjoinInputRoles,
+  unsignedPsbtSha256,
+} from '../services/bitcoin/signingIntent/canonical';
 
 const log = createLogger('PAYJOIN:ROUTE');
 
@@ -55,14 +63,17 @@ const PayjoinUriQuerySchema = z.object({
 });
 
 const AttemptPayjoinBodySchema = z.object({
+  walletId: z.string().min(1, 'walletId is required'),
   psbt: z.string().min(1, 'psbt is required'),
+  intentId: z.string().min(1, 'intentId is required'),
+  intentDigest: z.string().regex(/^[0-9a-f]{64}$/, 'intentDigest is invalid'),
   payjoinUrl: z.string().min(1, 'payjoinUrl is required').url('payjoinUrl must be a valid URL'),
   network: z.enum(BITCOIN_NETWORKS).optional(),
 }).strict();
 
 type AttemptPayjoinBody = z.infer<typeof AttemptPayjoinBodySchema>;
 
-const attemptPayjoinRequiredFields = ['psbt', 'payjoinUrl'];
+const attemptPayjoinRequiredFields = ['walletId', 'psbt', 'intentId', 'intentDigest', 'payjoinUrl'];
 
 const isMissingAttemptPayjoinField = (issue: { path: string; message: string }) => (
   attemptPayjoinRequiredFields.includes(issue.path)
@@ -78,7 +89,7 @@ const attemptPayjoinValidationMessage = (issues: Array<{ path: string; message: 
     return 'Invalid network. Must be mainnet, testnet3, testnet4, signet, or regtest';
   }
   if (issues.some(isMissingAttemptPayjoinField)) {
-    return 'psbt and payjoinUrl are required';
+    return 'walletId, psbt, signing intent, and payjoinUrl are required';
   }
   if (issues.some(issue => issue.path === 'payjoinUrl')) {
     return 'payjoinUrl must be a valid URL';
@@ -264,10 +275,19 @@ router.post('/attempt', authenticate, requireFeature('payjoinSupport'), validate
   { body: AttemptPayjoinBodySchema },
   { message: attemptPayjoinValidationMessage, code: ErrorCodes.INVALID_INPUT }
 ), asyncHandler(async (req, res) => {
-  const { psbt, payjoinUrl, network } = req.body as AttemptPayjoinBody;
+  const { walletId, psbt, intentId, intentDigest, payjoinUrl, network } = req.body as AttemptPayjoinBody;
+  const userId = requireAuthenticatedUser(req).userId;
+  const wallet = await findByIdWithAccess(walletId, userId);
+  if (!wallet) throw new NotFoundError('Wallet not found or access denied');
+  const originalIntent = await loadSigningIntent({ intentId, intentDigest }, walletId);
+  if (unsignedPsbtSha256(psbt) !== originalIntent.unsignedPsbtSha256) {
+    throw new InvalidInputError('Payjoin PSBT does not match its signing intent', 'psbt');
+  }
 
-  // Use provided network or default to mainnet
-  const networkStr = normalizeLegacyBitcoinNetwork(network, 'mainnet');
+  const networkStr = normalizeLegacyBitcoinNetwork(wallet.network, 'mainnet');
+  if (network && normalizeLegacyBitcoinNetwork(network, 'mainnet') !== networkStr) {
+    throw new InvalidInputError('Payjoin network does not match wallet', 'network');
+  }
   const networkObj = getNetwork(networkStr);
 
   const result = await attemptPayjoinSend(
@@ -276,7 +296,21 @@ router.post('/attempt', authenticate, requireFeature('payjoinSupport'), validate
     networkObj
   );
 
-  res.json(result);
+  if (!result.success || !result.proposalPsbt) {
+    res.json(result);
+    return;
+  }
+  const inputRoles = derivePayjoinInputRoles(psbt, result.proposalPsbt);
+  const replacementIntent = await createSigningIntent({
+    walletId,
+    createdByUserId: userId,
+    network: networkStr,
+    source: 'payjoin',
+    unsignedPsbtBase64: result.proposalPsbt,
+    inputRoles,
+    supersedesIntentId: originalIntent.intentId,
+  });
+  res.json({ ...result, ...replacementIntent });
 }));
 
 // ========================================

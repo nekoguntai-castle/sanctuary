@@ -520,7 +520,7 @@ jobs:
         uses: ./.github/actions/cache
         with:
           path: server/.stryker-cache
-          key: stryker-critical-shard-${{ matrix.shard }}-${{ hashFiles('server/src/services/bitcoin/addressDerivation.ts', 'server/src/services/bitcoin/addressDerivation/**', 'server/src/services/bitcoin/psbtValidation.ts', 'server/src/services/bitcoin/psbtInfo.ts', 'server/src/services/bitcoin/validationEvidenceContracts.ts', 'server/src/services/bitcoin/transactions/broadcastContracts.ts', 'server/src/services/bitcoin/blockchain/broadcastPreflight.ts', 'server/src/api/transactions/broadcastIntent.ts', 'server/src/middleware/auth.ts', 'server/src/services/accessControl.ts', 'server/scripts/mutation/shards.mjs', 'server/stryker.critical.config.mjs') }}
+          key: stryker-critical-shard-${{ matrix.shard }}-${{ hashFiles('server/src/services/bitcoin/addressDerivation.ts', 'server/src/services/bitcoin/addressDerivation/**', 'server/src/services/bitcoin/psbtValidation.ts', 'server/src/services/bitcoin/psbtInfo.ts', 'server/src/services/bitcoin/validationEvidenceContracts.ts', 'server/src/services/bitcoin/transactions/broadcastContracts.ts', 'server/src/services/bitcoin/transactions/broadcasting.ts', 'server/src/services/bitcoin/blockchain/broadcastPreflight.ts', 'server/src/services/bitcoin/signingIntent/**', 'server/src/repositories/transactionSigningIntentRepository.ts', 'server/src/api/transactions/broadcasting.ts', 'server/src/middleware/auth.ts', 'server/src/services/accessControl.ts', 'server/scripts/mutation/shards.mjs', 'server/stryker.critical.config.mjs') }}
           restore-keys: |
             stryker-critical-shard-${{ matrix.shard }}-
 
@@ -2202,7 +2202,7 @@ jobs:
         uses: ./.github/actions/cache
         with:
           path: server/.stryker-cache
-          key: stryker-critical-shard-${{ matrix.shard }}-${{ hashFiles('server/src/services/bitcoin/addressDerivation.ts', 'server/src/services/bitcoin/addressDerivation/**', 'server/src/services/bitcoin/psbtValidation.ts', 'server/src/services/bitcoin/psbtInfo.ts', 'server/src/services/bitcoin/validationEvidenceContracts.ts', 'server/src/services/bitcoin/transactions/broadcastContracts.ts', 'server/src/services/bitcoin/blockchain/broadcastPreflight.ts', 'server/src/api/transactions/broadcastIntent.ts', 'server/src/middleware/auth.ts', 'server/src/services/accessControl.ts', 'server/scripts/mutation/shards.mjs', 'server/stryker.critical.config.mjs') }}
+          key: stryker-critical-shard-${{ matrix.shard }}-${{ hashFiles('server/src/services/bitcoin/addressDerivation.ts', 'server/src/services/bitcoin/addressDerivation/**', 'server/src/services/bitcoin/psbtValidation.ts', 'server/src/services/bitcoin/psbtInfo.ts', 'server/src/services/bitcoin/validationEvidenceContracts.ts', 'server/src/services/bitcoin/transactions/broadcastContracts.ts', 'server/src/services/bitcoin/transactions/broadcasting.ts', 'server/src/services/bitcoin/blockchain/broadcastPreflight.ts', 'server/src/services/bitcoin/signingIntent/**', 'server/src/repositories/transactionSigningIntentRepository.ts', 'server/src/api/transactions/broadcasting.ts', 'server/src/middleware/auth.ts', 'server/src/services/accessControl.ts', 'server/scripts/mutation/shards.mjs', 'server/stryker.critical.config.mjs') }}
           restore-keys: |
             stryker-critical-shard-${{ matrix.shard }}-
 

@@ -4,8 +4,8 @@ import { ACTIONABLE_DRAFT_STATUS_VALUES } from '@sanctuary/shared/constants/draf
 import { draftRepository, type DraftStatus } from '../repositories';
 import { ConflictError, InvalidInputError, NotFoundError } from '../errors';
 import { createLogger } from '../utils/logger';
-import { getErrorMessage } from '../utils/errors';
 import { normalizeAndAssertSignedDeviceBelongsToWallet } from './draftSigning';
+import { validatePartialSignedPsbt } from './bitcoin/signingIntent';
 import type { UpdateDraftInput } from './draftTypes';
 
 const log = createLogger('DRAFT:SVC_UPDATE');
@@ -73,12 +73,10 @@ const combineSignedPsbtBase64 = (
     });
 
     return existingPsbtObj.toBase64();
-  } catch (combineError) {
-    log.warn('Failed to combine PSBTs, using new PSBT directly', {
-      draftId,
-      error: getErrorMessage(combineError),
+  } catch {
+    throw new InvalidInputError('Signed PSBT cannot be combined with the authorized draft', 'signedPsbtBase64', {
+      reason: 'intent_mismatch',
     });
-    return signedPsbtBase64;
   }
 };
 
@@ -95,23 +93,43 @@ const addSignedDeviceIfNeeded = (
   }
 };
 
-const buildDraftUpdateData = (
+const buildDraftUpdateData = async (
   draftId: string,
   latestDraft: DraftTransaction,
   data: UpdateDraftInput,
   signedDeviceId: string | null,
   requiresOptimisticRetry: boolean,
   attempt: number
-): DraftUpdateData => {
+): Promise<DraftUpdateData> => {
   const updateData: DraftUpdateData = {};
 
   if (data.signedPsbtBase64 !== undefined) {
-    updateData.signedPsbtBase64 = combineSignedPsbtBase64(
+    if (!latestDraft.signingIntentId || !latestDraft.signingIntentDigest) {
+      throw new InvalidInputError('Draft has no authenticated signing intent', 'signedPsbtBase64', {
+        reason: 'missing_intent',
+      });
+    }
+    await validatePartialSignedPsbt({
+      walletId: latestDraft.walletId,
+      intentId: latestDraft.signingIntentId,
+      intentDigest: latestDraft.signingIntentDigest,
+      signedPsbtBase64: data.signedPsbtBase64,
+      draftId,
+    });
+    const combined = combineSignedPsbtBase64(
       draftId,
       latestDraft,
       data.signedPsbtBase64,
       attempt
     );
+    await validatePartialSignedPsbt({
+      walletId: latestDraft.walletId,
+      intentId: latestDraft.signingIntentId,
+      intentDigest: latestDraft.signingIntentDigest,
+      signedPsbtBase64: combined,
+      draftId,
+    });
+    updateData.signedPsbtBase64 = combined;
   }
 
   addSignedDeviceIfNeeded(latestDraft, signedDeviceId, updateData);
@@ -188,7 +206,7 @@ export async function updateDraft(
     try {
       const draft = await draftRepository.update(
         draftId,
-        buildDraftUpdateData(
+        await buildDraftUpdateData(
           draftId,
           latestDraft,
           data,

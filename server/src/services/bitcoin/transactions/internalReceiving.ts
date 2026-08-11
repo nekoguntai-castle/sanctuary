@@ -61,7 +61,9 @@ const groupOutputsByWallet = (
 
   const outputsByWallet = new Map<string, ParsedOutput[]>();
   for (const owner of owners) {
+    /* v8 ignore next -- owners are queried from the exact parsed output-address set */
     const matches = outputsByAddress.get(owner.address) ?? [];
+    /* v8 ignore next -- repository owners are selected from the exact parsed output-address set */
     if (matches.length === 0) continue;
     const walletOutputs = outputsByWallet.get(owner.walletId) ?? [];
     walletOutputs.push(...matches);

@@ -12,6 +12,7 @@ import { validateAddress } from '../../../../../src/services/bitcoin/utils';
 import * as addressDerivation from '../../../../../src/services/bitcoin/addressDerivation';
 import * as syncModule from '../../../../../src/services/bitcoin/sync';
 import { getBlockchainService } from './blockchainTestHarness';
+import { createValidatedBroadcastArtifactFixture } from '../../../../helpers/validatedBroadcastArtifact';
 
 const TESTNET = bitcoin.networks.testnet;
 const BROADCAST_PREV_TXID = 'd'.repeat(64);
@@ -40,6 +41,17 @@ const setupBroadcastPreflight = (): void => {
     [{ tx_hash: BROADCAST_PREV_TXID, tx_pos: 0, height: 1, value: BROADCAST_PREV_VALUE_SATS }],
   ]]));
 };
+
+const createBroadcastArtifact = (
+  rawTx: string,
+  txid: string,
+)=> createValidatedBroadcastArtifactFixture({
+  rawTx,
+  txid,
+  walletId: 'test-wallet-id',
+  network: 'testnet4',
+  intentId: 'intent-blockchain-test',
+});
 
 export function registerBlockchainSyncWalletCoreTests(): void {
   describe('syncWallet', () => {
@@ -237,7 +249,9 @@ export function registerBlockchainSyncWalletCoreTests(): void {
       setupBroadcastPreflight();
       mockElectrumClient.broadcastTransaction.mockResolvedValue(expectedTxid);
 
-      const result = await getBlockchainService().broadcastTransaction(rawTx, 'testnet4');
+      const result = await getBlockchainService().broadcastTransaction(
+        createBroadcastArtifact(rawTx, expectedTxid),
+      );
 
       expect(result.txid).toBe(expectedTxid);
       expect(result.broadcasted).toBe(true);
@@ -253,8 +267,10 @@ export function registerBlockchainSyncWalletCoreTests(): void {
         new Error('Transaction rejected: insufficient fee')
       );
 
-      await expect(getBlockchainService().broadcastTransaction(rawTx, 'testnet4')).rejects.toThrow(
-        'Failed to broadcast transaction'
+      await expect(getBlockchainService().broadcastTransaction(
+        createBroadcastArtifact(rawTx, 'g'.repeat(64)),
+      )).rejects.toThrow(
+        'Broadcast outcome is unknown'
       );
     });
   });

@@ -13,6 +13,8 @@ import {
   updateDeviceSchema,
 } from '../../../../src/middleware/validateRequest';
 
+const signingIntent = { intentId: 'intent-1', intentDigest: 'a'.repeat(64) };
+
 export function registerMobilePermissionUpdateSchemaContracts() {
   it('should validate mobile permission update payloads', () => {
     const result = mobilePermissionUpdateSchema.safeParse({
@@ -66,6 +68,7 @@ export function registerTransactionAndPsbtSchemaContracts() {
   it('should validate transaction broadcast payloads', () => {
     const result = transactionBroadcastSchema.safeParse({
       signedPsbtBase64: 'cHNi',
+      ...signingIntent,
     });
 
     expect(result.success).toBe(true);
@@ -97,6 +100,7 @@ export function registerTransactionAndPsbtSchemaContracts() {
     }).success).toBe(true);
     expect(psbtBroadcastSchema.safeParse({
       signedPsbt: 'cHNi',
+      ...signingIntent,
     }).success).toBe(true);
   });
 

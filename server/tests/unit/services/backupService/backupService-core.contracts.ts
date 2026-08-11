@@ -15,6 +15,7 @@ import {
   COMPLETE_TABLE_POLICY_HASH,
   COMPLETE_TABLE_POLICY,
   COMPLETE_TABLE_POLICY_VERSION,
+  PRE_SIGNING_INTENT_COMPLETE_TABLE_POLICY_HASH,
   EPHEMERAL_TABLES,
   getRestoreTables,
   LEGACY_TABLE_ORDER,
@@ -368,6 +369,7 @@ describe('BackupService', () => {
     it.each([
       [PREVIOUS_COMPLETE_TABLE_POLICY_HASH, false],
       [PRE_TOMBSTONE_COMPLETE_TABLE_POLICY_HASH, true],
+      [PRE_SIGNING_INTENT_COMPLETE_TABLE_POLICY_HASH, true],
     ])('accepts recognized prior complete policy %s', async (hash, includesRepairQueue) => {
       vi.mocked(migrationService.getSchemaVersion).mockResolvedValue(61);
       const backup = createCompleteBackup();
@@ -802,6 +804,7 @@ describe('BackupService', () => {
       ).toBe(COMPLETE_TABLE_POLICY_HASH);
       expect(EPHEMERAL_TABLES).toEqual(expect.arrayContaining([
         'pushDevice',
+        'transactionSigningIntent',
         'refreshToken',
         'revokedRefreshSessionFamily',
         'revokedToken',

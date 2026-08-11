@@ -297,6 +297,8 @@ export interface RBFTransactionRequest {
 
 export interface RBFTransactionResponse {
   psbtBase64: string;
+  intentId: string;
+  intentDigest: string;
   fee: number;
   feeRate: number;
   feeDelta: number;
@@ -314,6 +316,8 @@ export interface CPFPTransactionRequest {
 
 export interface CPFPTransactionResponse {
   psbtBase64: string;
+  intentId: string;
+  intentDigest: string;
   childFee: number;
   childFeeRate: number;
   parentFeeRate: number;
@@ -335,6 +339,8 @@ export interface BatchTransactionRequest {
 
 export interface BatchTransactionResponse {
   psbtBase64: string;
+  intentId: string;
+  intentDigest: string;
   fee: number;
   totalInput: number;
   totalOutput: number;

@@ -10,6 +10,7 @@ import {
   BACKUP_FORMAT_VERSION,
   COMPLETE_TABLE_POLICY_HASH,
   COMPLETE_TABLE_POLICY_VERSION,
+  PRE_SIGNING_INTENT_COMPLETE_TABLE_POLICY_HASH,
   getRequiredRestoreTables,
   LEGACY_BACKUP_FORMAT_VERSION,
   PRE_TOMBSTONE_COMPLETE_TABLE_POLICY_HASH,
@@ -340,6 +341,7 @@ const validateTablePolicy = (meta: BackupMeta, issues: string[]): void => {
 
   const { version, hash } = meta.tablePolicy;
   const recognizedHash = hash === COMPLETE_TABLE_POLICY_HASH
+    || hash === PRE_SIGNING_INTENT_COMPLETE_TABLE_POLICY_HASH
     || hash === PRE_TOMBSTONE_COMPLETE_TABLE_POLICY_HASH
     || hash === PREVIOUS_COMPLETE_TABLE_POLICY_HASH;
   if (version !== COMPLETE_TABLE_POLICY_VERSION || !recognizedHash) {

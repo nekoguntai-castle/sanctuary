@@ -472,6 +472,7 @@ export async function findByOutpointsForWallet(
       vout: true,
       address: true,
       amount: true,
+      scriptPubKey: true,
       spent: true,
       frozen: true,
       draftLock: {

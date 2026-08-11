@@ -49,6 +49,8 @@ const satoshis = z.number().finite();
  */
 export const RBFTransactionResponseSchema = z.looseObject({
   psbtBase64: z.string().min(1),
+  intentId: z.string().min(1),
+  intentDigest: z.string().regex(/^[0-9a-f]{64}$/),
   fee: satoshis,
   feeRate: satoshis,
   feeDelta: satoshis,

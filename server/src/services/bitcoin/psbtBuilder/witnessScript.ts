@@ -6,7 +6,8 @@
 
 import * as bitcoin from 'bitcoinjs-lib';
 import bip32 from '../bip32';
-import { convertToStandardXpub, MultisigKeyInfo } from '../addressDerivation';
+import { convertToStandardXpub } from '../addressDerivation/xpubConversion';
+import type { MultisigKeyInfo } from '../addressDerivation/types';
 import { createLogger } from '../../../utils/logger';
 import { extractChangeAndAddressIndex } from '@sanctuary/shared/utils/bitcoin';
 

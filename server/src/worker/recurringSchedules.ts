@@ -163,6 +163,12 @@ export function buildBaselineRecurringSchedules(
     ),
     defineSchedule(
       'maintenance',
+      'reconcile:signing-intent-broadcasts',
+      {},
+      utcCron('* * * * *'),
+    ),
+    defineSchedule(
+      'maintenance',
       WEBHOOK_RECOVERY_JOB_NAME,
       {},
       utcCron('* * * * *'),

@@ -321,6 +321,8 @@ describe('Transactions API', () => {
     it('should POST broadcast request with signed PSBT', async () => {
       const request = {
         signedPsbtBase64: 'cHNidP8B...',
+        intentId: 'intent-1',
+        intentDigest: 'a'.repeat(64),
         recipient: 'tb1qtest',
         amount: 50000,
         fee: 1130,
@@ -338,6 +340,8 @@ describe('Transactions API', () => {
     it('should support raw transaction hex (Trezor)', async () => {
       const request = {
         rawTxHex: '020000000001...',
+        intentId: 'intent-2',
+        intentDigest: 'b'.repeat(64),
         recipient: 'tb1qtest',
         amount: 50000,
         fee: 500,
@@ -352,6 +356,8 @@ describe('Transactions API', () => {
     it('should support signed PSBT broadcasts without caller metadata', async () => {
       const request = {
         signedPsbtBase64: 'cHNidP8B...',
+        intentId: 'intent-3',
+        intentDigest: 'c'.repeat(64),
       };
       mockPost.mockResolvedValue({ txid: 'signed-only-txid', broadcasted: true });
 
@@ -362,6 +368,8 @@ describe('Transactions API', () => {
     it('should support raw hex broadcasts without caller metadata', async () => {
       const request = {
         rawTxHex: '020000000001...',
+        intentId: 'intent-4',
+        intentDigest: 'd'.repeat(64),
       };
       mockPost.mockResolvedValue({ txid: 'raw-only-txid', broadcasted: true });
 

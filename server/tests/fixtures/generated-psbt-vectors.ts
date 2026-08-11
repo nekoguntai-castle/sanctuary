@@ -10,6 +10,12 @@
 
 import type { ExtendedPsbtTestVector } from './bip174-test-vectors';
 
+export const GENERATED_PSBT_PROVENANCE = {
+  "coreImage": "bitcoin/bitcoin:29.0@sha256:a6aa8a9e349b4108d13c558dbe43064057bd7b6474b858966884f9cb95b7ed78",
+  "coreVersion": 290000,
+  "coreSubversion": "/Satoshi:29.0.0/"
+} as const;
+
 /**
  * P2WPKH (Native SegWit) Test Vectors
  * Verified by: Bitcoin Core, Sanctuary (bitcoinjs-lib)
@@ -21,7 +27,7 @@ export const GENERATED_P2WPKH_VECTORS: ExtendedPsbtTestVector[] = [
     "network": "testnet",
     "psbtBase64": "cHNidP8BAFICAAAAAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAAAAAAD9////AWi/AAAAAAAAFgAUXrm15EXbZz8O2JNdGM0gWyFOUYcAAAAAAAEBH1DDAAAAAAAAFgAUdR526BmRltRUlBxF0bOjI/FDO9YiBgJ5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmBjZDGpPVAAAgAEAAIAAAACAAAAAAAAAAAAAAA==",
     "verifiedBy": [
-      "Bitcoin Core /Satoshi:27.0.0/",
+      "Bitcoin Core /Satoshi:29.0.0/",
       "Sanctuary (bitcoinjs-lib) 7.0.1"
     ],
     "expectedFee": 1000,
@@ -41,7 +47,7 @@ export const GENERATED_P2SH_P2WPKH_VECTORS: ExtendedPsbtTestVector[] = [
     "network": "testnet",
     "psbtBase64": "cHNidP8BAFICAAAAAQMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAAAAAAD9////ARwfAQAAAAAAFgAUXrm15EXbZz8O2JNdGM0gWyFOUYcAAAAAAAEBIPgkAQAAAAAAF6kUvP63KLWEJT1fP3C8t4Dp7yGKaPSHAQQWABR1HnboGZGW1FSUHEXRs6Mj8UM71iIGAnm+Zn753LusVaBilc6HCwcCm/zbLc4o2VnygVsW+BeYGNkMak8xAACAAQAAgAAAAIAAAAAAAAAAAAAA",
     "verifiedBy": [
-      "Bitcoin Core /Satoshi:27.0.0/",
+      "Bitcoin Core /Satoshi:29.0.0/",
       "Sanctuary (bitcoinjs-lib) 7.0.1"
     ],
     "expectedFee": 1500,
@@ -61,7 +67,7 @@ export const GENERATED_P2TR_VECTORS: ExtendedPsbtTestVector[] = [
     "network": "testnet",
     "psbtBase64": "cHNidP8BAFICAAAAAQQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEAAAAAAD9////AfzKAQAAAAAAFgAUXrm15EXbZz8O2JNdGM0gWyFOUYcAAAAAAAEBK8DUAQAAAAAAIlEg2kcQlk94Umld4toCUpDiSvbYwoHeWguQK3E1/Z/XTSEhFnm+Zn753LusVaBilc6HCwcCm/zbLc4o2VnygVsW+BeYGQDZDGpPVgAAgAEAAIAAAACAAAAAAAAAAAABFyB5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmAAA",
     "verifiedBy": [
-      "Bitcoin Core /Satoshi:27.0.0/",
+      "Bitcoin Core /Satoshi:29.0.0/",
       "Sanctuary (bitcoinjs-lib) 7.0.1"
     ],
     "expectedFee": 2500,
@@ -81,7 +87,7 @@ export const GENERATED_P2WSH_VECTORS: ExtendedPsbtTestVector[] = [
     "network": "testnet",
     "psbtBase64": "cHNidP8BAFICAAAAAQICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAQAAAAD9////AdB+AQAAAAAAFgAUXrm15EXbZz8O2JNdGM0gWyFOUYcAAAAAAAEBK6CGAQAAAAAAIgAgwKmBa87fDEa85mbMLxq/1/jVc56+zX3sXiy1iUiYmV4BBUdSIQJ5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmCED8CiJK61+1X0vtXvzMIHVz89vntPT1/FZwuL/9XncNBpSriIGAnm+Zn753LusVaBilc6HCwcCm/zbLc4o2VnygVsW+BeYHNkMak8wAACAAQAAgAAAAIACAACAAAAAAAAAAAAiBgPwKIkrrX7VfS+1e/MwgdXPz2+e09PX8VnC4v/1edw0GhzCGyw9MAAAgAEAAIAAAACAAgAAgAAAAAAAAAAAAAA=",
     "verifiedBy": [
-      "Bitcoin Core /Satoshi:27.0.0/",
+      "Bitcoin Core /Satoshi:29.0.0/",
       "Sanctuary (bitcoinjs-lib) 7.0.1"
     ],
     "expectedFee": 2000,
@@ -101,7 +107,7 @@ export const GENERATED_P2SH_P2WSH_VECTORS: ExtendedPsbtTestVector[] = [
     "network": "testnet",
     "psbtBase64": "cHNidP8BAFICAAAAAQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFAAAAAAD9////ATg+AgAAAAAAFgAUXrm15EXbZz8O2JNdGM0gWyFOUYcAAAAAAAEBIPBJAgAAAAAAF6kUZVa8B7bwCUHHF2e1X5bkX3P5h6qHAQQiACDAqYFrzt8MRrzmZswvGr/X+NVznr7NfexeLLWJSJiZXgEFR1IhAnm+Zn753LusVaBilc6HCwcCm/zbLc4o2VnygVsW+BeYIQPwKIkrrX7VfS+1e/MwgdXPz2+e09PX8VnC4v/1edw0GlKuIgYCeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5gc2QxqTzAAAIABAACAAAAAgAEAAIAAAAAAAAAAACIGA/AoiSutftV9L7V78zCB1c/Pb57T09fxWcLi//V53DQaHMIbLD0wAACAAQAAgAAAAIABAACAAAAAAAAAAAAAAA==",
     "verifiedBy": [
-      "Bitcoin Core /Satoshi:27.0.0/",
+      "Bitcoin Core /Satoshi:29.0.0/",
       "Sanctuary (bitcoinjs-lib) 7.0.1"
     ],
     "expectedFee": 3000,

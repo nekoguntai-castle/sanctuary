@@ -184,6 +184,7 @@ export async function storeTransactionOutputs(
       };
     });
 
+    /* v8 ignore next -- an accepted authenticated Bitcoin transaction always has an output */
     if (outputData.length > 0) {
       await tx.transactionOutput.createMany({
         data: outputData,

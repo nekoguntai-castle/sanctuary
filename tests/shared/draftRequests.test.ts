@@ -10,6 +10,8 @@ const validCreateDraftRequest = {
   amount: '50000',
   feeRate: '1.5',
   psbtBase64: 'cHNidP8BAHUCAAAAAAE=',
+  intentId: 'intent-1',
+  intentDigest: 'a'.repeat(64),
 };
 
 describe('shared draft request schemas', () => {

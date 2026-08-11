@@ -11,6 +11,8 @@ import * as txService from './bitcoin/transactionService';
 import { draftService } from './draftService';
 import { policyEvaluationEngine } from './vaultPolicy';
 import { assertWalletHardwareCapabilityById } from './hardwareWalletCapabilities';
+import { createSigningIntent } from './bitcoin/signingIntent';
+import { isBitcoinNetwork } from './bitcoin/networks';
 
 const log = createLogger('AGENT:API_SVC');
 
@@ -361,6 +363,18 @@ export async function submitAgentFundingDraft(
         throw new ForbiddenError('Transaction blocked by vault policy');
       }
 
+      const walletNetwork = await walletRepository.findNetwork(fundingWalletId);
+      if (!walletNetwork || !isBitcoinNetwork(walletNetwork)) {
+        throw new NotFoundError('Funding wallet not found');
+      }
+      const intent = await createSigningIntent({
+        walletId: fundingWalletId,
+        createdByUserId: context.userId,
+        network: walletNetwork,
+        source: 'agent',
+        unsignedPsbtBase64: txData.psbtBase64,
+      });
+
       const draftData: AgentDraftCreatePayload = {
         recipient,
         amount: effectiveAmount,
@@ -382,6 +396,8 @@ export async function submitAgentFundingDraft(
         label: effectiveDraftLabel,
         memo: memo ?? undefined,
         psbtBase64: txData.psbtBase64,
+        intentId: intent.intentId,
+        intentDigest: intent.intentDigest,
         fee: txData.fee,
         totalInput: txData.totalInput,
         totalOutput: txData.totalOutput,

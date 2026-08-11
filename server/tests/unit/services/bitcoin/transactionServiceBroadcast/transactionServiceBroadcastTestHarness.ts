@@ -11,12 +11,23 @@ const transactionServiceBroadcastMocks = vi.hoisted(() => ({
   mockNotifyNewTransactions: vi.fn(),
   mockEmitTransactionSent: vi.fn(),
   mockEmitTransactionReceived: vi.fn(),
+  mockMarkSigningIntentBroadcastAccepted: vi.fn(),
+  mockClaimSigningIntentBroadcast: vi.fn(),
+  mockMarkSigningIntentBroadcastComplete: vi.fn(),
+  mockMarkSigningIntentBroadcastUnknown: vi.fn(),
+  mockReleaseRejectedSigningIntentBroadcast: vi.fn(),
 }));
 
 export const mockParseDescriptor = transactionServiceBroadcastMocks.mockParseDescriptor;
 export const mockNotifyNewTransactions = transactionServiceBroadcastMocks.mockNotifyNewTransactions;
 export const mockEmitTransactionSent = transactionServiceBroadcastMocks.mockEmitTransactionSent;
 export const mockEmitTransactionReceived = transactionServiceBroadcastMocks.mockEmitTransactionReceived;
+export const mockMarkSigningIntentBroadcastAccepted =
+  transactionServiceBroadcastMocks.mockMarkSigningIntentBroadcastAccepted;
+export const mockClaimSigningIntentBroadcast = transactionServiceBroadcastMocks.mockClaimSigningIntentBroadcast;
+export const mockMarkSigningIntentBroadcastComplete = transactionServiceBroadcastMocks.mockMarkSigningIntentBroadcastComplete;
+export const mockMarkSigningIntentBroadcastUnknown = transactionServiceBroadcastMocks.mockMarkSigningIntentBroadcastUnknown;
+export const mockReleaseRejectedSigningIntentBroadcast = transactionServiceBroadcastMocks.mockReleaseRejectedSigningIntentBroadcast;
 
 vi.mock('../../../../../src/models/prisma', () => ({
   __esModule: true,
@@ -42,7 +53,18 @@ vi.mock('../../../../../src/services/bitcoin/electrum', () => ({
 
 vi.mock('../../../../../src/services/bitcoin/blockchain', () => ({
   broadcastTransaction: vi.fn().mockResolvedValue({ txid: 'mock-txid', broadcasted: true }),
+  DefiniteBroadcastRejectionError: class extends Error {},
   recalculateWalletBalances: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../../../../../src/services/bitcoin/signingIntent/broadcastLifecycle', () => ({
+  claimSigningIntentBroadcast: transactionServiceBroadcastMocks.mockClaimSigningIntentBroadcast,
+  markSigningIntentBroadcastAccepted:
+    transactionServiceBroadcastMocks.mockMarkSigningIntentBroadcastAccepted,
+  markSigningIntentBroadcastComplete: transactionServiceBroadcastMocks.mockMarkSigningIntentBroadcastComplete,
+  markSigningIntentBroadcastUnknown: transactionServiceBroadcastMocks.mockMarkSigningIntentBroadcastUnknown,
+  releaseRejectedSigningIntentBroadcast:
+    transactionServiceBroadcastMocks.mockReleaseRejectedSigningIntentBroadcast,
 }));
 
 vi.mock('../../../../../src/services/eventService', () => ({
@@ -135,6 +157,18 @@ export const setupTransactionServiceBroadcastMocks = () => {
   mockNotifyNewTransactions.mockResolvedValue(undefined);
   mockEmitTransactionSent.mockReset();
   mockEmitTransactionReceived.mockReset();
+  transactionServiceBroadcastMocks.mockMarkSigningIntentBroadcastAccepted.mockReset();
+  transactionServiceBroadcastMocks.mockMarkSigningIntentBroadcastAccepted.mockResolvedValue(true);
+  transactionServiceBroadcastMocks.mockClaimSigningIntentBroadcast.mockReset();
+  transactionServiceBroadcastMocks.mockClaimSigningIntentBroadcast.mockResolvedValue({
+    status: 'claimed', leaseToken: 'lease-1',
+  });
+  transactionServiceBroadcastMocks.mockMarkSigningIntentBroadcastComplete.mockReset();
+  transactionServiceBroadcastMocks.mockMarkSigningIntentBroadcastComplete.mockResolvedValue(true);
+  transactionServiceBroadcastMocks.mockMarkSigningIntentBroadcastUnknown.mockReset();
+  transactionServiceBroadcastMocks.mockMarkSigningIntentBroadcastUnknown.mockResolvedValue(true);
+  transactionServiceBroadcastMocks.mockReleaseRejectedSigningIntentBroadcast.mockReset();
+  transactionServiceBroadcastMocks.mockReleaseRejectedSigningIntentBroadcast.mockResolvedValue(true);
   // Set up default system settings
   mockPrismaClient.systemSetting.findUnique.mockImplementation((query: any) => {
     if (query.where.key === 'confirmationThreshold') {

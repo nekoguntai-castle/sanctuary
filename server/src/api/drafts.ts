@@ -81,6 +81,8 @@ router.post('/wallets/:walletId/drafts', requireWalletAccess('edit'), validate(
     inputPaths,
     signedPsbtBase64,
     signedDeviceId,
+    intentId,
+    intentDigest,
   } = req.body;
 
   const draft = await draftService.createDraft(walletId, userId, {
@@ -108,6 +110,8 @@ router.post('/wallets/:walletId/drafts', requireWalletAccess('edit'), validate(
     inputPaths,
     signedPsbtBase64,
     signedDeviceId,
+    intentId,
+    intentDigest,
   });
 
   res.status(201).json(serializeDraftTransaction(draft));

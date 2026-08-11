@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createMockJob } from '../../helpers/workerJob';
+import type { JobExecutionContext } from '../../../src/jobs/types';
 
 const {
   mockDeletePriceData,
@@ -83,6 +85,10 @@ vi.mock('../../../src/services/bitcoin/feeService', () => ({
   getCurrentFeeEstimates: mockGetCurrentFeeEstimates,
 }));
 
+vi.mock('../../../src/services/bitcoin/signingIntent/broadcastReconciliation', () => ({
+  reconcileSigningIntentBroadcasts: vi.fn().mockResolvedValue({ examined: 2, completed: 1 }),
+}));
+
 vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     info: mockLogInfo,
@@ -103,8 +109,10 @@ import {
   monthlyCleanupJob,
   persistPriceFeesJob,
   scheduledBackupJob,
+  reconcileSigningIntentBroadcastsJob,
   maintenanceJobs,
 } from '../../../src/jobs/definitions/maintenance';
+import { reconcileSigningIntentBroadcasts } from '../../../src/services/bitcoin/signingIntent/broadcastReconciliation';
 
 function sqlFromCall(call: any[]): string {
   const [template] = call;
@@ -489,7 +497,19 @@ describe('Maintenance job definitions behavior', () => {
       weeklyVacuumJob,
       monthlyCleanupJob,
       persistPriceFeesJob,
+      reconcileSigningIntentBroadcastsJob,
     ]));
-    expect(maintenanceJobs).toHaveLength(10);
+    expect(maintenanceJobs).toHaveLength(11);
+  });
+
+  it('runs signing-intent reconciliation with abort checks around the durable pass', async () => {
+    const execution: JobExecutionContext = {
+      signal: new AbortController().signal,
+      throwIfAborted: vi.fn(),
+    };
+    await expect(reconcileSigningIntentBroadcastsJob.handler(createMockJob({}), execution))
+      .resolves.toEqual({ examined: 2, completed: 1 });
+    expect(reconcileSigningIntentBroadcasts).toHaveBeenCalledOnce();
+    expect(execution.throwIfAborted).toHaveBeenCalledTimes(2);
   });
 });

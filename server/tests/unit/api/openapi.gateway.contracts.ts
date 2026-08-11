@@ -678,7 +678,10 @@ export function registerOpenApiGatewayTests() {
       'regtest',
     ]);
     expect(openApiSpec.components.schemas.PayjoinAttemptRequest.required).toEqual([
+      'walletId',
       'psbt',
+      'intentId',
+      'intentDigest',
       'payjoinUrl',
     ]);
     expect(openApiSpec.components.schemas.PayjoinAttemptRequest).toHaveProperty(

@@ -39,6 +39,7 @@ export const COMPLETE_TABLE_POLICY: readonly BackupTablePolicyEntry[] = [
   { model: 'Device', table: 'device', classification: 'durable-restored' },
   { model: 'GroupMember', table: 'groupMember', classification: 'durable-restored' },
   { model: 'PushDevice', table: 'pushDevice', classification: 'security-ephemeral' },
+  { model: 'TransactionSigningIntent', table: 'transactionSigningIntent', classification: 'security-ephemeral' },
   { model: 'ElectrumServer', table: 'electrumServer', classification: 'durable-restored' },
   { model: 'OwnershipTransfer', table: 'ownershipTransfer', classification: 'durable-restored' },
   { model: 'McpApiKey', table: 'mcpApiKey', classification: 'durable-restored' },
@@ -101,6 +102,9 @@ export const EPHEMERAL_TABLES = getTablesByClassification('security-ephemeral');
  * contract test recomputes this value so policy edits cannot retain a stale ID.
  */
 export const COMPLETE_TABLE_POLICY_HASH =
+  'b0b58ce73c7b90801f46805b962ce926114d093c098b993b5f50c5809b0372d2';
+/** Policy hash emitted before signing intents were classified as ephemeral. */
+export const PRE_SIGNING_INTENT_COMPLETE_TABLE_POLICY_HASH =
   '2397989d349da19dff9f2385acf0135b073d9494a957bca490cf998f6fdaf5e8';
 /** Policy hash emitted before refresh-session-family tombstones were classified. */
 export const PRE_TOMBSTONE_COMPLETE_TABLE_POLICY_HASH =

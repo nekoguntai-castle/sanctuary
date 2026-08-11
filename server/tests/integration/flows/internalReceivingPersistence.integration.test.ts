@@ -4,6 +4,7 @@ import { ECPairFactory } from 'ecpair';
 import type { PrismaClient } from '../../../src/generated/prisma/client';
 import { broadcastAndSave } from '../../../src/services/bitcoin/transactions/broadcasting';
 import { persistTransaction } from '../../../src/services/bitcoin/transactions/persistTransaction';
+import { createValidatedBroadcastArtifactFixture } from '../../helpers/validatedBroadcastArtifact';
 import {
   canRunIntegrationTests,
   cleanupTestData,
@@ -153,14 +154,62 @@ describeWithDb('Internal receiving persistence integration', () => {
       outputs: [{ address, amount, outputType: 'recipient' as const, isOurs: false }],
     };
 
-    const broadcastResult = await broadcastAndSave(sender.id, payment.signedPsbt, {
-      ...metadata,
-      network: 'testnet3',
+    const transaction = bitcoin.Transaction.fromHex(payment.rawTx);
+    const snapshot = {
+      version: 1 as const,
+      walletId: sender.id,
+      network: 'testnet3' as const,
+      transaction: {
+        version: transaction.version,
+        locktime: transaction.locktime,
+        inputs: [{
+          txid: payment.inputTxid,
+          vout: 0,
+          sequence: transaction.ins[0].sequence,
+          prevout: {
+            amountSats: '100000',
+            scriptPubKeyHex: payment.inputScript,
+            role: 'wallet' as const,
+          },
+        }],
+        outputs: [{
+          amountSats: '90000',
+          scriptPubKeyHex: Buffer.from(transaction.outs[0].script).toString('hex'),
+        }],
+      },
+    };
+    await prisma.transactionSigningIntent.create({
+      data: {
+        id: 'integration-intent',
+        walletId: sender.id,
+        createdByUserId: 'integration-user',
+        network: 'testnet3',
+        source: 'standard',
+        snapshotVersion: 1,
+        snapshot,
+        snapshotDigest: 'a'.repeat(64),
+        unsignedPsbtBase64: payment.signedPsbt,
+        unsignedPsbtSha256: 'b'.repeat(64),
+        expiresAt: new Date(Date.now() + 60_000),
+      },
     });
+    const artifact = createValidatedBroadcastArtifactFixture({
+      walletId: sender.id,
+      network: 'testnet3',
+      rawTx: payment.rawTx,
+      txid: transaction.getId(),
+      intentId: 'integration-intent',
+      snapshot,
+    });
+    const broadcastResult = await broadcastAndSave(artifact, metadata);
     const { txid } = broadcastResult;
 
     expect(broadcastResult).toMatchObject({ broadcasted: true, persistenceStatus: 'complete' });
     expect(mocks.broadcastTransaction).toHaveBeenCalledTimes(1);
+    expect(await prisma.transactionSigningIntent.findUnique({
+      where: { id: 'integration-intent' },
+      select: { broadcastState: true, broadcastTxid: true },
+    })).toEqual({ broadcastState: 'complete', broadcastTxid: txid });
     const records = await prisma.transaction.findMany({
       where: { txid },
       orderBy: { walletId: 'asc' },

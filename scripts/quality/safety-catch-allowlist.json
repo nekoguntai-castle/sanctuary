@@ -702,6 +702,33 @@
       "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
       "owner": "fund-safety",
       "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/signingIntent/broadcastReconciliation.ts",
+      "functionName": "reconcileUncertain",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "A missing or unavailable lookup deliberately proceeds only by idempotently resubmitting the exact durable raw transaction; the miss is logged and uncertain state is never released.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "intentional-idempotent-reconciliation-boundary"
+    },
+    {
+      "file": "server/src/services/bitcoin/signingIntent/broadcastReconciliation.ts",
+      "functionName": "reconcileSigningIntentBroadcasts",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "One malformed or temporarily failing durable record is logged and retained while the bounded reconciliation batch continues with independent records.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "intentional-durable-worker-isolation"
+    },
+    {
+      "file": "server/src/services/bitcoin/transactions/broadcasting.ts",
+      "functionName": "broadcastAndSave",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "If outcome-state persistence fails, the original network error is preserved and the durable live claim is intentionally retained for lease-expiry reconciliation.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "intentional-post-boundary-claim-retention"
     }
   ]
 }

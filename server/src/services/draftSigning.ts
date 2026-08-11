@@ -1,6 +1,7 @@
 import { walletRepository } from '../repositories';
 import { InvalidInputError, NotFoundError } from '../errors';
 import type { CreateDraftInput, InitialSigningState } from './draftTypes';
+import { validatePartialSignedPsbt } from './bitcoin/signingIntent';
 
 export async function normalizeAndAssertSignedDeviceBelongsToWallet(
   walletId: string,
@@ -49,6 +50,12 @@ export async function validateInitialSigningState(
     /* v8 ignore next -- validated above; fallback keeps helper strict for internal callers */
     data.signedDeviceId ?? ''
   );
+  await validatePartialSignedPsbt({
+    walletId,
+    intentId: data.intentId,
+    intentDigest: data.intentDigest,
+    signedPsbtBase64: data.signedPsbtBase64,
+  });
 
   return {
     signedPsbtBase64: data.signedPsbtBase64,

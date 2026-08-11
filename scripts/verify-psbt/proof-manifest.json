@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "coreImage": "bitcoin/bitcoin:29.0@sha256:a6aa8a9e349b4108d13c558dbe43064057bd7b6474b858966884f9cb95b7ed78",
+  "coreVersion": 290000,
+  "coreSubversion": "/Satoshi:29.0.0/"
+}

@@ -19,6 +19,7 @@ import {
 import * as advancedTx from '../../services/bitcoin/advancedTx';
 import { isBitcoinNetwork, type BitcoinNetwork } from '../../services/bitcoin/networks';
 import { resolveBitcoinNetworkParam } from './networkParam';
+import { createSigningIntent } from '../../services/bitcoin/signingIntent';
 import {
   assertUnscopedRawTransactionBroadcastDisabled,
   assertWalletHardwareCapabilityById,
@@ -170,15 +171,25 @@ router.post('/transaction/:txid/rbf', authenticate, validate(
     walletId,
     network
   );
+  const psbtBase64 = result.psbt.toBase64();
+  const signingIntent = await createSigningIntent({
+    walletId,
+    createdByUserId: userId,
+    network,
+    source: 'rbf',
+    unsignedPsbtBase64: psbtBase64,
+    replacementTxid: txid,
+  });
 
   res.json({
-    psbtBase64: result.psbt.toBase64(),
+    psbtBase64,
     fee: result.fee,
     feeRate: result.feeRate,
     feeDelta: result.feeDelta,
     inputs: result.inputs,
     outputs: result.outputs,
     inputPaths: result.inputPaths,
+    ...signingIntent,
   });
 }));
 
@@ -216,13 +227,22 @@ router.post('/transaction/cpfp', authenticate, validate(
     walletId,
     network
   );
+  const psbtBase64 = result.psbt.toBase64();
+  const signingIntent = await createSigningIntent({
+    walletId,
+    createdByUserId: userId,
+    network,
+    source: 'cpfp',
+    unsignedPsbtBase64: psbtBase64,
+  });
 
   res.json({
-    psbtBase64: result.psbt.toBase64(),
+    psbtBase64,
     childFee: result.childFee,
     childFeeRate: result.childFeeRate,
     parentFeeRate: result.parentFeeRate,
     effectiveFeeRate: result.effectiveFeeRate,
+    ...signingIntent,
   });
 }));
 
@@ -258,15 +278,24 @@ router.post('/transaction/batch', authenticate, validate(
     selectedUtxoIds,
     network
   );
+  const psbtBase64 = result.psbt.toBase64();
+  const signingIntent = await createSigningIntent({
+    walletId,
+    createdByUserId: userId,
+    network,
+    source: 'advanced_batch',
+    unsignedPsbtBase64: psbtBase64,
+  });
 
   res.json({
-    psbtBase64: result.psbt.toBase64(),
+    psbtBase64,
     fee: result.fee,
     totalInput: result.totalInput,
     totalOutput: result.totalOutput,
     changeAmount: result.changeAmount,
     savedFees: result.savedFees,
     recipientCount: recipients.length,
+    ...signingIntent,
   });
 }));
 

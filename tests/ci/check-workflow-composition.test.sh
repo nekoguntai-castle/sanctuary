@@ -1561,6 +1561,65 @@ assert_contains_in_order "$VV" \
   "Upload vector diagnostics" \
   "ci-diagnostics-verify-vectors"
 
+assert_occurrence_count "$VV" \
+  "verify-vectors pins the live Bitcoin Core proof image by digest" \
+  "bitcoin/bitcoin:29.0@sha256:a6aa8a9e349b4108d13c558dbe43064057bd7b6474b858966884f9cb95b7ed78" \
+  1
+
+assert_named_job_step_contains "$VV" \
+  "verify-vectors" \
+  "Start isolated pinned Bitcoin Core for live PSBT proof" \
+  "live PSBT proof attests the running image ID" \
+  'actual_image_id="$(docker inspect'
+
+assert_named_job_step_contains "$VV" \
+  "verify-vectors" \
+  "Start isolated pinned Bitcoin Core for live PSBT proof" \
+  "live PSBT proof resolves the expected pinned image ID" \
+  'expected_image_id="$(docker image inspect'
+
+assert_named_job_step_contains "$VV" \
+  "verify-vectors" \
+  "Start isolated pinned Bitcoin Core for live PSBT proof" \
+  "live PSBT proof attests the pulled repository digest" \
+  'docker image inspect "$VERIFY_PSBT_CORE_IMAGE"'
+
+assert_named_job_step_contains "$VV" \
+  "regenerate-psbt-vectors" \
+  "Attest Bitcoin Core image" \
+  "manual regeneration attests the running image ID" \
+  'actual_image_id="$(docker inspect'
+
+assert_named_job_step_contains "$VV" \
+  "regenerate-psbt-vectors" \
+  "Attest Bitcoin Core image" \
+  "manual regeneration attests the pulled repository digest" \
+  'RepoDigests'
+
+assert_named_job_step_contains "$VV" \
+  "verify-vectors" \
+  "Regenerate and verify live Bitcoin Core PSBT proof" \
+  "live PSBT proof regenerates signed vectors" \
+  "npm run generate:signed"
+
+assert_named_job_step_contains "$VV" \
+  "verify-vectors" \
+  "Regenerate and verify live Bitcoin Core PSBT proof" \
+  "live PSBT proof rejects deterministic fixture drift" \
+  'git -C "$GITHUB_WORKSPACE" diff --exit-code'
+
+assert_named_job_step_contains "$VV" \
+  "verify-vectors" \
+  "Replay live Bitcoin Core PSBT vectors" \
+  "live PSBT proof replays signed vectors" \
+  "tests/unit/services/bitcoin/psbt.signed-vectors.test.ts"
+
+assert_named_job_step_contains "$VV" \
+  "verify-vectors" \
+  "Stop isolated Bitcoin Core" \
+  "live PSBT proof cleanup runs unconditionally" \
+  "if: always()"
+
 assert_contains_in_order "$VV" \
   "regenerate-vectors diagnostic coverage" \
   "regenerate-vectors:" \
@@ -1824,7 +1883,7 @@ declare -A strict_install_counts=(
   [architecture.yml]=2
   [quality.yml]=1
   [test.yml]=17
-  [verify-vectors.yml]=4
+  [verify-vectors.yml]=5
 )
 for workflow in "${!strict_install_counts[@]}"; do
   assert_occurrence_count \

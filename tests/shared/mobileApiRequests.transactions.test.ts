@@ -7,6 +7,7 @@ import {
 } from '../../shared/schemas/mobileApiRequests';
 
 describe('mobile API transaction request schemas', () => {
+  const signingIntent = { intentId: 'intent-1', intentDigest: 'a'.repeat(64) };
   it('accepts nullable draft metadata updates', () => {
     expect(MobileDraftUpdateRequestSchema.safeParse({
       label: null,
@@ -21,13 +22,24 @@ describe('mobile API transaction request schemas', () => {
   it('accepts each supported transaction broadcast source', () => {
     expect(MobileTransactionBroadcastRequestSchema.safeParse({
       signedPsbtBase64: 'cHNi',
+      ...signingIntent,
     }).success).toBe(true);
     expect(MobileTransactionBroadcastRequestSchema.safeParse({
       rawTxHex: 'deadbeef',
+      ...signingIntent,
     }).success).toBe(true);
     expect(MobileTransactionBroadcastRequestSchema.safeParse({
       draftId: 'draft-1',
     }).success).toBe(true);
+  });
+
+  it('rejects explicit transaction broadcast sources without a signing intent', () => {
+    expect(MobileTransactionBroadcastRequestSchema.safeParse({
+      signedPsbtBase64: 'cHNi',
+    }).success).toBe(false);
+    expect(MobileTransactionBroadcastRequestSchema.safeParse({
+      rawTxHex: 'deadbeef',
+    }).success).toBe(false);
   });
 
   it('accepts draft-bound explicit transaction broadcast payloads', () => {

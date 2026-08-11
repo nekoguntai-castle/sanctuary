@@ -206,9 +206,18 @@ export class BitcoinCoreImplementation implements PsbtImplementation {
    * Get Bitcoin Core version
    */
   async getVersion(): Promise<string> {
-    const info = (await execRpc('getnetworkinfo', [], this.config)) as { subversion: string };
+    const info = await this.getNetworkInfo();
     this.version = info.subversion || 'unknown';
     return this.version;
+  }
+
+  async getNetworkInfo(): Promise<{ version: number; subversion: string }> {
+    const info = (await execRpc('getnetworkinfo', [], this.config)) as {
+      version: number;
+      subversion: string;
+    };
+    this.version = info.subversion || 'unknown';
+    return info;
   }
 
   /**

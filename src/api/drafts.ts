@@ -69,6 +69,8 @@ export interface DraftTransaction {
 
   // PSBT data
   psbtBase64: string;
+  signingIntentId?: string | null;
+  signingIntentDigest?: string | null;
   signedPsbtBase64?: string;
   fee: number;
   totalInput: number;
@@ -106,6 +108,8 @@ export interface CreateDraftRequest {
   label?: DraftTextValue;
   memo?: DraftTextValue;
   psbtBase64: string;
+  intentId: string;
+  intentDigest: string;
   fee?: DraftIntegerValue;
   totalInput?: DraftIntegerValue;
   totalOutput?: DraftIntegerValue;

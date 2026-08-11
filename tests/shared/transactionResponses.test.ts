@@ -9,6 +9,8 @@ import {
 
 const created = {
   psbtBase64: 'cHNidP8BAHECAAAAAf',
+  intentId: 'intent-1',
+  intentDigest: 'a'.repeat(64),
   fee: 2500,
   totalInput: 500000,
   totalOutput: 497500,
@@ -25,6 +27,8 @@ const draft = {
   id: 'd1',
   walletId: 'w1',
   psbtBase64: 'cHNidP8BAHECAAAAAf',
+  signingIntentId: 'intent-1',
+  signingIntentDigest: 'a'.repeat(64),
   amount: 100000,
   feeRate: 12,
   fee: 2500,

@@ -11,6 +11,7 @@ import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { safeJsonParseUntyped } from '../../utils/safeJson';
 import type { FeeSnapshot } from './types';
+import { getConfig } from '../../config';
 
 const log = createLogger('AUTOPILOT:SVC_FEES');
 
@@ -30,7 +31,7 @@ export async function recordFeeSnapshot(): Promise<void> {
   }
 
   try {
-    const fees = await getAdvancedFeeEstimates();
+    const fees = await getAdvancedFeeEstimates(getConfig().bitcoin.network);
     const now = Date.now();
 
     const snapshot: FeeSnapshot = {

@@ -18,6 +18,10 @@ export { walletRepository, default as walletRepo } from './walletRepository';
 export { transactionRepository, default as transactionRepo } from './transactionRepository';
 export { addressRepository, default as addressRepo } from './addressRepository';
 export { utxoRepository, default as utxoRepo } from './utxoRepository';
+export {
+  transactionSigningIntentRepository,
+  default as transactionSigningIntentRepo,
+} from './transactionSigningIntentRepository';
 export { userRepository, default as userRepo } from './userRepository';
 export {
   passwordSecurityRepository,

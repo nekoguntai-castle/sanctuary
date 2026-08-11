@@ -13,6 +13,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { BitcoinCoreImplementation, createRpcBitcoinCore } from './implementations/bitcoincore';
 import { SanctuaryImplementation } from './implementations/sanctuary';
+import { assertPinnedCoreExecution, PSBT_PROOF_MANIFEST } from './provenance';
 import type { ExtendedPsbtTestVector } from '../../server/tests/fixtures/bip174-test-vectors';
 
 bitcoin.initEccLib(ecc);
@@ -388,6 +389,12 @@ function generateOutputFile(vectors: PartitionedVectors): void {
 
 import type { ExtendedPsbtTestVector } from './bip174-test-vectors';
 
+export const GENERATED_PSBT_PROVENANCE = ${JSON.stringify({
+    coreImage: PSBT_PROOF_MANIFEST.coreImage,
+    coreVersion: PSBT_PROOF_MANIFEST.coreVersion,
+    coreSubversion: PSBT_PROOF_MANIFEST.coreSubversion,
+  }, null, 2)} as const;
+
 /**
  * P2WPKH (Native SegWit) Test Vectors
  * Verified by: Bitcoin Core, Sanctuary (bitcoinjs-lib)
@@ -436,12 +443,9 @@ async function main(): Promise<void> {
   );
   const sanctuary = new SanctuaryImplementation();
 
-  console.log('Checking Bitcoin Core availability...');
-  if (!(await bitcoinCore.isAvailable())) {
-    throw new Error(
-      'Bitcoin Core is not available. Start regtest Core on 127.0.0.1:18443 before generating PSBT vectors.'
-    );
-  }
+  console.log('Checking digest-pinned Bitcoin Core availability...');
+  const coreInfo = await bitcoinCore.getNetworkInfo();
+  assertPinnedCoreExecution(coreInfo);
 
   console.log(`Bitcoin Core version: ${bitcoinCore.version}`);
   console.log(`Sanctuary version: ${sanctuary.version}\n`);

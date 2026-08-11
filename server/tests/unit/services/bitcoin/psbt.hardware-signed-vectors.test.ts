@@ -29,6 +29,13 @@ bitcoin.initEccLib(ecc);
 
 const NETWORK = bitcoin.networks.regtest;
 
+function generatedSignedVector(scriptType: 'p2wpkh') {
+  for (const vector of GENERATED_SIGNED_PSBT_VECTORS) {
+    if (vector.scriptType === scriptType) return vector;
+  }
+  throw new Error(`Missing generated signed ${scriptType} test vector`);
+}
+
 function outputAddress(output: bitcoin.Transaction['outs'][number]): string {
   return bitcoin.address.fromOutputScript(output.script, NETWORK);
 }
@@ -79,8 +86,8 @@ function syntheticNegativeControls(scriptType = 'p2wpkh'): HardwareSignedNegativ
 }
 
 function syntheticHardwareVector(overrides: Partial<HardwareSignedPsbtVector> = {}): HardwareSignedPsbtVector {
-  const source = GENERATED_SIGNED_PSBT_VECTORS[0];
-  const scriptType = overrides.scriptType ?? source.scriptType;
+  const source = generatedSignedVector('p2wpkh');
+  const scriptType = overrides.scriptType ?? 'p2wpkh';
   return {
     id: 'ledger-p2wpkh-synthetic-replay',
     description: 'Synthetic hardware fixture replay contract using a Core-accepted software-signed PSBT',
@@ -196,7 +203,7 @@ describe('Hardware-signed PSBT fixture replay harness', () => {
   });
 
   it('replays a raw transaction artifact returned by Trezor', () => {
-    const source = GENERATED_SIGNED_PSBT_VECTORS[0];
+    const source = generatedSignedVector('p2wpkh');
     const vector = syntheticHardwareVector({
       id: 'trezor-raw-tx-synthetic-replay',
       vendor: 'trezor',
@@ -338,7 +345,7 @@ describe('Hardware-signed PSBT fixture replay harness', () => {
     );
     expect(() =>
       replayHardwareSignedVector(syntheticHardwareVector({
-        expectedOutputs: [{ ...expectedOutputs(GENERATED_SIGNED_PSBT_VECTORS[0].finalTxHex)[0], valueSats: 1 }],
+        expectedOutputs: [{ ...expectedOutputs(generatedSignedVector('p2wpkh').finalTxHex)[0], valueSats: 1 }],
       }))
     ).toThrow('output 0 mismatch');
   });

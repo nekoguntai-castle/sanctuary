@@ -4,6 +4,7 @@ import {
   ForbiddenError,
   InvalidInputError,
 } from '../../../src/errors/ApiError';
+import type { AgentRequestContext } from '../../../src/agent/auth';
 
 const mocks = vi.hoisted(() => ({
   createFundingAttempt: vi.fn(),
@@ -19,6 +20,8 @@ const mocks = vi.hoisted(() => ({
   runDraftCreatedSideEffects: vi.fn(),
   verifyOperationalReceiveAddress: vi.fn(),
   findWalletByIdWithDevices: vi.fn(),
+  findNetwork: vi.fn(),
+  createSigningIntent: vi.fn(),
   withAgentFundingLock: vi.fn(),
   withAgentFundingTransaction: vi.fn(),
 }));
@@ -38,6 +41,7 @@ vi.mock('../../../src/repositories', () => ({
   utxoRepository: {},
   walletRepository: {
     findByIdWithDevices: mocks.findWalletByIdWithDevices,
+    findNetwork: mocks.findNetwork,
   },
 }));
 
@@ -56,6 +60,9 @@ vi.mock('../../../src/services/agentOperationalAddressService', () => ({
 
 vi.mock('../../../src/services/bitcoin/transactionService', () => ({
   createTransaction: mocks.createTransaction,
+}));
+vi.mock('../../../src/services/bitcoin/signingIntent', () => ({
+  createSigningIntent: mocks.createSigningIntent,
 }));
 
 vi.mock('../../../src/services/draftService', () => ({
@@ -85,7 +92,7 @@ import {
   submitAgentFundingDraft,
 } from '../../../src/services/agentApiService';
 
-const agentContext = {
+const agentContext: AgentRequestContext = {
   keyId: 'key-1',
   keyPrefix: 'agt_prefix',
   userId: 'user-1',
@@ -128,6 +135,11 @@ describe('agentApiService', () => {
     mocks.createFundingAttempt.mockResolvedValue({ id: 'attempt-1' });
     mocks.createDraft.mockResolvedValue({ id: 'draft-1' });
     mocks.createTransaction.mockResolvedValue(makeTransactionData());
+    mocks.findNetwork.mockResolvedValue('testnet3');
+    mocks.createSigningIntent.mockResolvedValue({
+      intentId: 'intent-1',
+      intentDigest: 'a'.repeat(64),
+    });
     mocks.enforceAgentFundingPolicy.mockResolvedValue({ overrideId: null });
     mocks.evaluateRejectedFundingAttemptAlert.mockResolvedValue(undefined);
     mocks.evaluatePolicies.mockResolvedValue({ allowed: true, triggered: [] });
@@ -263,7 +275,7 @@ describe('agentApiService', () => {
   it('rejects unsafe numeric draft amounts before creating a transaction', async () => {
     await expect(
       submitAgentFundingDraft({
-        context: agentContext as any,
+        context: agentContext,
         fundingWalletId: 'funding-wallet',
         body: {
           ...baseFundingDraftBody,
@@ -300,7 +312,7 @@ describe('agentApiService', () => {
 
     await expect(
       submitAgentFundingDraft({
-        context: agentContext as any,
+        context: agentContext,
         fundingWalletId: 'funding-wallet',
         body: baseFundingDraftBody,
       }),
@@ -317,7 +329,7 @@ describe('agentApiService', () => {
 
     await expect(
       submitAgentFundingDraft({
-        context: agentContext as any,
+        context: agentContext,
         fundingWalletId: 'funding-wallet',
         body: baseFundingDraftBody,
       }),
@@ -349,7 +361,7 @@ describe('agentApiService', () => {
 
     await expect(
       submitAgentFundingDraft({
-        context: agentContext as any,
+        context: agentContext,
         fundingWalletId: 'funding-wallet',
         body: baseFundingDraftBody,
       }),
@@ -405,7 +417,7 @@ describe('agentApiService', () => {
 
     await expect(
       submitAgentFundingDraft({
-        context: agentContext as any,
+        context: agentContext,
         fundingWalletId: 'funding-wallet',
         body: baseFundingDraftBody,
       }),
@@ -435,7 +447,7 @@ describe('agentApiService', () => {
 
     await expect(
       submitAgentFundingDraft({
-        context: agentContext as any,
+        context: agentContext,
         fundingWalletId: 'funding-wallet',
         body: baseFundingDraftBody,
       }),
@@ -455,7 +467,7 @@ describe('agentApiService', () => {
 
     await expect(
       submitAgentFundingDraft({
-        context: agentContext as any,
+        context: agentContext,
         fundingWalletId: 'funding-wallet',
         body: baseFundingDraftBody,
       }),
@@ -469,5 +481,16 @@ describe('agentApiService', () => {
         amount: 1000n,
       }),
     );
+  });
+
+  it('rejects when the funding wallet network cannot be authenticated', async () => {
+    mocks.findNetwork.mockResolvedValueOnce(null);
+    await expect(submitAgentFundingDraft({
+      context: agentContext,
+      fundingWalletId: 'funding-wallet',
+      body: baseFundingDraftBody,
+    })).rejects.toThrow('Funding wallet not found');
+    expect(mocks.createSigningIntent).not.toHaveBeenCalled();
+    expect(mocks.createDraft).not.toHaveBeenCalled();
   });
 });

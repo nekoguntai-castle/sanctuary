@@ -69,6 +69,8 @@ vi.mock('../../../src/utils/requestContext', () => ({
 import draftsRouter from '../../../src/api/drafts';
 import { ApiError, ErrorCodes, errorHandler } from '../../../src/errors';
 
+const signingIntent = { intentId: 'intent-1', intentDigest: 'a'.repeat(64) };
+
 describe('Draft Routes', () => {
   let app: Express;
 
@@ -168,6 +170,7 @@ describe('Draft Routes', () => {
 
   it('creates a draft with full payload mapping', async () => {
     const payload = {
+      ...signingIntent,
       recipient: 'tb1qrecipient',
       amount: 10000,
       feeRate: 5,
@@ -203,6 +206,7 @@ describe('Draft Routes', () => {
 
   it('passes initial signature fields through when creating a draft', async () => {
     const payload = {
+      ...signingIntent,
       recipient: 'tb1qrecipient',
       amount: 10000,
       feeRate: 5,
@@ -263,6 +267,7 @@ describe('Draft Routes', () => {
 
   it('accepts string-encoded numeric draft values', async () => {
     const payload = {
+      ...signingIntent,
       recipient: 'tb1qrecipient',
       amount: '10000',
       feeRate: '5',
@@ -289,7 +294,7 @@ describe('Draft Routes', () => {
 
     const response = await request(app)
       .post('/api/v1/wallets/wallet-1/drafts')
-      .send({ recipient: 'tb1q', amount: 1, feeRate: 1, psbtBase64: 'cHNi' });
+      .send({ recipient: 'tb1q', amount: 1, feeRate: 1, psbtBase64: 'cHNi', ...signingIntent });
 
     expect(response.status).toBe(403);
     expect(response.body).toMatchObject({
@@ -303,7 +308,7 @@ describe('Draft Routes', () => {
 
     const response = await request(app)
       .post('/api/v1/wallets/wallet-1/drafts')
-      .send({ recipient: 'tb1q', amount: 1, feeRate: 1, psbtBase64: 'cHNi' });
+      .send({ recipient: 'tb1q', amount: 1, feeRate: 1, psbtBase64: 'cHNi', ...signingIntent });
 
     expect(response.status).toBe(500);
     expect(response.body.message).toBe('An unexpected error occurred');

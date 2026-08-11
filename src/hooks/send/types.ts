@@ -14,6 +14,8 @@ const log = createLogger('SendTxHelpers');
 
 export interface TransactionData {
   psbtBase64: string;
+  intentId: string;
+  intentDigest: string;
   fee: number;
   totalInput: number;
   totalOutput: number;

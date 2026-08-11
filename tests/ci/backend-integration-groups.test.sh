@@ -48,8 +48,10 @@ main() {
   assert_contains "$TEST_TEMP_DIR/groups" 'ops-destructive'
   "$GROUP_SCRIPT" ops-destructive > "$TEST_TEMP_DIR/ops-destructive"
   "$GROUP_SCRIPT" ops-workers > "$TEST_TEMP_DIR/ops-workers"
+  "$GROUP_SCRIPT" repositories-core > "$TEST_TEMP_DIR/repositories-core"
   assert_contains "$TEST_TEMP_DIR/ops-destructive" 'tests/integration/ops/phase2OperationsProof.integration.test.ts'
   assert_not_contains "$TEST_TEMP_DIR/ops-workers" 'tests/integration/ops/phase2OperationsProof.integration.test.ts'
+  assert_contains "$TEST_TEMP_DIR/repositories-core" 'tests/integration/repositories/transactionSigningIntentRepository.integration.test.ts'
 
   groups_file="$TEST_TEMP_DIR/groups"
   specs_file="$TEST_TEMP_DIR/specs"

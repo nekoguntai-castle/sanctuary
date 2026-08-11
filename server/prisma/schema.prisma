@@ -562,6 +562,8 @@ model DraftTransaction {
   changeAddress    String?
   effectiveAmount  BigInt
   inputPaths       String[] // Derivation paths for signing
+  signingIntentId     String?
+  signingIntentDigest String?
 
   // Signing status (for multisig)
   status          String   @default("unsigned") // unsigned, partial, signed
@@ -594,6 +596,42 @@ model DraftTransaction {
   @@index([userId])
   @@index([expiresAt]) // For hourly maintenance cleanup
   @@map("draft_transactions")
+}
+
+// Immutable authorization snapshot for a transaction that may be signed and
+// broadcast. Existing drafts intentionally remain unbound until explicitly
+// recreated; a missing binding is never inferred from caller metadata.
+model TransactionSigningIntent {
+  id                 String   @id @default(uuid())
+  walletId           String
+  createdByUserId    String
+  network            String
+  source             String
+  snapshotVersion    Int      @default(1)
+  snapshot           Json
+  snapshotDigest     String
+  unsignedPsbtBase64 String
+  unsignedPsbtSha256 String
+  supersededById     String?
+  consumedAt         DateTime?
+  broadcastState          String   @default("ready")
+  broadcastTxid           String?
+  broadcastRawTx          String?
+  broadcastMetadata       Json?
+  broadcastLeaseToken     String?
+  broadcastLeaseExpiresAt DateTime?
+  broadcastAttemptCount   Int      @default(0)
+  broadcastLastAttemptAt  DateTime?
+  broadcastAcceptedAt     DateTime?
+  broadcastCompletedAt    DateTime?
+  broadcastLastError      String?
+  expiresAt          DateTime
+  createdAt          DateTime @default(now())
+
+  @@index([walletId, createdAt])
+  @@index([expiresAt])
+  @@index([broadcastState, broadcastLeaseExpiresAt])
+  @@map("transaction_signing_intents")
 }
 
 // Junction table for locking UTXOs to drafts (prevents double-spend in drafts)

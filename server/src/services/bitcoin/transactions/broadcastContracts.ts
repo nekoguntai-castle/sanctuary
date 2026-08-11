@@ -3,6 +3,7 @@ import { BITCOIN_ELECTRUM_BROADCAST_PREFLIGHT_SCOPE } from '../validationEvidenc
 
 export const BROADCAST_ERROR_REASON_VALUES = [
   'missing_intent',
+  'stale_intent',
   'stale_utxo',
   'frozen_utxo',
   'locked_utxo',

@@ -7,13 +7,18 @@ import { finalizeMultisigInput } from '../../../../src/services/bitcoin/psbtBuil
 bitcoin.initEccLib(ecc);
 
 const NETWORK = bitcoin.networks.regtest;
-const EXPECTED_SCRIPT_TYPES = ['p2wpkh', 'p2sh-p2wpkh', 'p2wsh', 'p2sh-p2wsh'];
+const EXPECTED_SCRIPT_TYPES = ['p2pkh', 'p2wpkh', 'p2sh-p2wpkh', 'p2wsh', 'p2sh-p2wsh'];
 const MULTISIG_SCRIPT_TYPES = ['p2wsh', 'p2sh-p2wsh'];
 type SignedVector = typeof GENERATED_SIGNED_PSBT_VECTORS[number];
 
 function feeFromPsbt(psbt: bitcoin.Psbt): number {
-  const inputTotal = psbt.data.inputs.reduce((total, input) => {
-    return total + Number(input.witnessUtxo?.value ?? 0n);
+  const inputTotal = psbt.data.inputs.reduce((total, input, index) => {
+    if (input.witnessUtxo) return total + Number(input.witnessUtxo.value);
+    if (!input.nonWitnessUtxo) throw new Error(`Missing prevout evidence for input ${index}`);
+    const previous = bitcoin.Transaction.fromBuffer(input.nonWitnessUtxo);
+    const output = previous.outs[psbt.txInputs[index].index];
+    if (!output) throw new Error(`Missing previous output for input ${index}`);
+    return total + Number(output.value);
   }, 0);
   const outputTotal = psbt.txOutputs.reduce((total, output) => total + Number(output.value), 0);
   return inputTotal - outputTotal;

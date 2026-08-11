@@ -60,7 +60,10 @@ export const payjoinSchemas = {
   PayjoinAttemptRequest: {
     type: 'object',
     properties: {
+      walletId: { type: 'string', minLength: 1 },
       psbt: { type: 'string', minLength: 1, description: 'Original PSBT in base64 format' },
+      intentId: { type: 'string', minLength: 1 },
+      intentDigest: { type: 'string', pattern: '^[0-9a-f]{64}$' },
       payjoinUrl: { type: 'string', format: 'uri' },
       network: {
         type: 'string',
@@ -68,7 +71,7 @@ export const payjoinSchemas = {
         default: 'mainnet',
       },
     },
-    required: ['psbt', 'payjoinUrl'],
+    required: ['walletId', 'psbt', 'intentId', 'intentDigest', 'payjoinUrl'],
     additionalProperties: false,
   },
   PayjoinAttemptResponse: {
@@ -78,6 +81,8 @@ export const payjoinSchemas = {
       proposalPsbt: { type: 'string', description: 'Payjoin proposal PSBT in base64 format' },
       isPayjoin: { type: 'boolean' },
       error: { type: 'string' },
+      intentId: { type: 'string' },
+      intentDigest: { type: 'string', pattern: '^[0-9a-f]{64}$' },
     },
     required: ['success', 'isPayjoin'],
   },

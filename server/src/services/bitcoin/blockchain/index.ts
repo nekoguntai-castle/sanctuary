@@ -22,6 +22,8 @@ export { syncWallet } from './syncWallet';
 // Network operations
 export {
   broadcastTransaction,
+  broadcastAuthenticatedRawTransaction,
+  DefiniteBroadcastRejectionError,
   getFeeEstimates,
   getTransactionDetails,
   monitorAddress,

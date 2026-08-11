@@ -24,6 +24,8 @@ const {
   mockDraftFindByIdInWallet,
   mockFindAddressStrings,
   mockFindUtxosByOutpointsForWallet,
+  mockCreateSigningIntent,
+  mockValidateSignedArtifact,
 } = vi.hoisted(() => ({
   mockGetCachedBlockHeight: vi.fn(),
   mockRecalculateWalletBalances: vi.fn(),
@@ -46,6 +48,8 @@ const {
   mockDraftFindByIdInWallet: vi.fn(),
   mockFindAddressStrings: vi.fn(),
   mockFindUtxosByOutpointsForWallet: vi.fn(),
+  mockCreateSigningIntent: vi.fn(),
+  mockValidateSignedArtifact: vi.fn(),
 }));
 
 vi.mock('../../../../src/models/prisma', async () => {
@@ -149,6 +153,15 @@ vi.mock('../../../../src/services/bitcoin/transactionService', () => ({
   getPSBTInfoWithNetwork: mockGetPSBTInfoWithNetwork,
 }));
 
+vi.mock('../../../../src/services/bitcoin/transactions/broadcasting', () => ({
+  broadcastAndSave: mockBroadcastAndSave,
+}));
+
+vi.mock('../../../../src/services/bitcoin/signingIntent', () => ({
+  createSigningIntent: mockCreateSigningIntent,
+  validateSignedArtifact: mockValidateSignedArtifact,
+}));
+
 vi.mock('../../../../src/services/vaultPolicy', () => ({
   policyEvaluationEngine: {
     evaluatePolicies: mockEvaluatePolicies,
@@ -196,6 +209,43 @@ export function setupTransactionHttpRouteHooks(): void {
     mockDraftFindByIdInWallet.mockResolvedValue(null);
     mockFindAddressStrings.mockResolvedValue(['tb1qchange']);
     mockFindUtxosByOutpointsForWallet.mockResolvedValue([]);
+    mockCreateSigningIntent.mockResolvedValue({
+      intentId: 'intent-http',
+      intentDigest: 'a'.repeat(64),
+    });
+    mockValidateSignedArtifact.mockResolvedValue({
+      rawTx: 'deadbeef',
+      txid: 'd'.repeat(64),
+      walletId,
+      network: 'testnet4',
+      intent: {
+        intentId: 'intent-http',
+        intentDigest: 'a'.repeat(64),
+      },
+      snapshot: {
+        version: 1,
+        walletId,
+        network: 'testnet4',
+        transaction: {
+          version: 2,
+          locktime: 0,
+          inputs: [{
+            txid: 'b'.repeat(64),
+            vout: 0,
+            sequence: 0xfffffffd,
+            prevout: {
+              amountSats: '20400',
+              scriptPubKeyHex: `0014${'1'.repeat(40)}`,
+              role: 'wallet',
+            },
+          }],
+          outputs: [{
+            amountSats: '20000',
+            scriptPubKeyHex: `0014${'2'.repeat(40)}`,
+          }],
+        },
+      },
+    });
     mockValidateAddress.mockReturnValue({ valid: true });
     mockAuditLogFromRequest.mockResolvedValue(undefined);
     mockCreateTransaction.mockResolvedValue({
@@ -266,4 +316,6 @@ export {
   mockDraftFindByIdInWallet,
   mockFindAddressStrings,
   mockFindUtxosByOutpointsForWallet,
+  mockCreateSigningIntent,
+  mockValidateSignedArtifact,
 };

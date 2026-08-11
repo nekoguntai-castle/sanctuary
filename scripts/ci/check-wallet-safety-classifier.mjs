@@ -34,30 +34,74 @@ function validateManifestPaths(manifest, repositoryFiles) {
   }
 }
 
-function validateWorkflow(workflowText) {
+function validateWorkflowEvents(workflowText) {
   for (const event of ["pull_request", "merge_group", "push", "schedule"]) {
     const eventPattern = new RegExp(`^  ${event}:`, "m");
     if (!eventPattern.test(workflowText)) {
       throw new Error(`verify-vectors workflow is missing event: ${event}`);
     }
   }
+}
+
+function validateWorkflowPathFilters(workflowText) {
   const inlineEventFilter = /^  (?:pull_request|merge_group|push):[^\n]*(?:paths|paths-ignore)\s*:/m;
   if (/^[ \t]+paths(?:-ignore)?:/m.test(workflowText) || inlineEventFilter.test(workflowText)) {
     throw new Error("verify-vectors workflow must run without path filters");
   }
+}
+
+function validateClassifierCommand(workflowText) {
   if (!workflowText.includes("node scripts/ci/check-wallet-safety-classifier.mjs")) {
     throw new Error("verify-vectors workflow must execute the wallet-safety classifier");
   }
 }
 
-export function validateClassifier(manifest, workflowText, repositoryFiles) {
+function validateProofManifest(proofManifest) {
+  if (!proofManifest
+    || proofManifest.schemaVersion !== 1
+    || typeof proofManifest.coreImage !== "string"
+    || !/^bitcoin\/bitcoin:\d+\.\d+@sha256:[0-9a-f]{64}$/.test(proofManifest.coreImage)
+    || !Number.isSafeInteger(proofManifest.coreVersion)
+    || typeof proofManifest.coreSubversion !== "string") {
+    throw new Error("PSBT proof manifest must pin Bitcoin Core by digest");
+  }
+}
+
+function validateCoreImage(workflowText, proofManifest) {
+  if (!workflowText.includes(`VERIFY_PSBT_CORE_IMAGE: ${proofManifest.coreImage}`)) {
+    throw new Error("verify-vectors workflow Bitcoin Core image must match the proof manifest");
+  }
+}
+
+function validateProofCommands(workflowText) {
+  for (const command of ["scripts/verify-psbt", "npm run verify", "psbt.signed-vectors.test.ts"]) {
+    if (!workflowText.includes(command)) {
+      throw new Error(`verify-vectors workflow is missing mandatory PSBT proof command: ${command}`);
+    }
+  }
+}
+
+function validateWorkflow(workflowText, proofManifest) {
+  validateWorkflowEvents(workflowText);
+  validateWorkflowPathFilters(workflowText);
+  validateClassifierCommand(workflowText);
+  validateProofManifest(proofManifest);
+  validateCoreImage(workflowText, proofManifest);
+  validateProofCommands(workflowText);
+}
+
+export function validateClassifier(manifest, workflowText, repositoryFiles, proofManifest) {
   validateManifestPaths(manifest, repositoryFiles);
-  validateWorkflow(workflowText);
+  validateWorkflow(workflowText, proofManifest);
 }
 
 export async function checkWalletSafetyClassifier(root = repoRoot) {
   const manifestPath = resolve(root, "config/wallet-safety-critical-paths.json");
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  const proofManifest = JSON.parse(await readFile(
+    resolve(root, "scripts/verify-psbt/proof-manifest.json"),
+    "utf8",
+  ));
   const workflowText = await readFile(resolve(root, manifest.workflow), "utf8");
   const { stdout } = await execFileAsync(
     "git",
@@ -65,7 +109,7 @@ export async function checkWalletSafetyClassifier(root = repoRoot) {
     { cwd: root, maxBuffer: 10 * 1024 * 1024 },
   );
   const repositoryFiles = stdout.split("\n").filter(Boolean);
-  validateClassifier(manifest, workflowText, repositoryFiles);
+  validateClassifier(manifest, workflowText, repositoryFiles, proofManifest);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

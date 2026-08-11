@@ -195,6 +195,8 @@ describe('draftRepository', () => {
       changeAmount: BigInt(0),
       effectiveAmount: BigInt(1000),
       inputPaths: ["m/84'/0'/0'/0/0"],
+      signingIntentId: 'intent-1',
+      signingIntentDigest: 'a'.repeat(64),
       expiresAt: new Date('2026-01-01T00:00:00.000Z'),
     });
 
@@ -251,6 +253,8 @@ describe('draftRepository', () => {
       changeAddress: 'tb1qchange',
       effectiveAmount: BigInt(1000),
       inputPaths: ["m/84'/0'/0'/0/0"],
+      signingIntentId: 'intent-1',
+      signingIntentDigest: 'a'.repeat(64),
       expiresAt: new Date('2026-01-01T00:00:00.000Z'),
     });
 

@@ -413,6 +413,8 @@ export const bitcoinSchemas = {
     type: "object",
     properties: {
       psbtBase64: { type: "string" },
+      intentId: { type: "string" },
+      intentDigest: { type: "string", pattern: "^[0-9a-f]{64}$" },
       fee: { type: "integer", minimum: 0 },
       feeRate: { type: "number", minimum: 0 },
       feeDelta: { type: "integer" },
@@ -437,6 +439,8 @@ export const bitcoinSchemas = {
     },
     required: [
       "psbtBase64",
+      "intentId",
+      "intentDigest",
       "fee",
       "feeRate",
       "feeDelta",
@@ -467,6 +471,8 @@ export const bitcoinSchemas = {
     type: "object",
     properties: {
       psbtBase64: { type: "string" },
+      intentId: { type: "string" },
+      intentDigest: { type: "string", pattern: "^[0-9a-f]{64}$" },
       childFee: { type: "integer", minimum: 0 },
       childFeeRate: { type: "number", minimum: 0 },
       parentFeeRate: { type: "number", minimum: 0 },
@@ -474,6 +480,8 @@ export const bitcoinSchemas = {
     },
     required: [
       "psbtBase64",
+      "intentId",
+      "intentDigest",
       "childFee",
       "childFeeRate",
       "parentFeeRate",
@@ -511,6 +519,8 @@ export const bitcoinSchemas = {
     type: "object",
     properties: {
       psbtBase64: { type: "string" },
+      intentId: { type: "string" },
+      intentDigest: { type: "string", pattern: "^[0-9a-f]{64}$" },
       fee: { type: "integer", minimum: 0 },
       totalInput: { type: "integer", minimum: 0 },
       totalOutput: { type: "integer", minimum: 0 },
@@ -520,6 +530,8 @@ export const bitcoinSchemas = {
     },
     required: [
       "psbtBase64",
+      "intentId",
+      "intentDigest",
       "fee",
       "totalInput",
       "totalOutput",

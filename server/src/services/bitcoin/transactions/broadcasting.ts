@@ -2,21 +2,29 @@
  * Transaction Broadcasting Module
  *
  * Handles broadcasting signed transactions and persisting them to the database.
- * Supports two broadcast modes:
- * 1. signedPsbtBase64: Extract and broadcast from signed PSBT (Ledger, file upload)
- * 2. rawTxHex: Broadcast raw transaction hex directly (Trezor)
+ * Accepts only an opaque artifact that has already passed signed-intent,
+ * prevout, signature, and exact-transaction validation.
  */
 
-import * as bitcoin from 'bitcoinjs-lib';
-import { broadcastTransaction, recalculateWalletBalances } from '../blockchain';
+import {
+  broadcastTransaction,
+  DefiniteBroadcastRejectionError,
+  recalculateWalletBalances,
+} from '../blockchain';
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage, isPrismaError } from '../../../utils/errors';
 import { eventService } from '../../eventService';
 import { transactionBroadcastsTotal } from '../../../observability/metrics';
-import { parseMultisigScript, finalizeMultisigInput } from '../psbtBuilder';
 import { persistTransaction } from './persistTransaction';
 import type { TransactionInputMetadata, TransactionOutputMetadata, BroadcastResult } from './types';
-import type { BitcoinNetwork } from '../networks';
+import type { ValidatedBroadcastArtifact } from '../signingIntent/artifactValidation';
+import {
+  claimSigningIntentBroadcast,
+  markSigningIntentBroadcastAccepted,
+  markSigningIntentBroadcastComplete,
+  markSigningIntentBroadcastUnknown,
+  releaseRejectedSigningIntentBroadcast,
+} from '../signingIntent/broadcastLifecycle';
 
 const log = createLogger('BITCOIN:SVC_TX_BROADCAST');
 const MAX_PERSISTENCE_ATTEMPTS = 3;
@@ -75,6 +83,33 @@ const recalculateAcceptedWalletBalance = async (walletId: string, txid: string):
   }
 };
 
+const recordAcceptedIntent = async (
+  artifact: ValidatedBroadcastArtifact,
+  leaseToken: string,
+): Promise<boolean> => {
+  try {
+    return await markSigningIntentBroadcastAccepted(artifact.intent.intentId, leaseToken);
+  } catch (error) {
+    log.error('Accepted transaction claim requires reconciliation', {
+      intentId: artifact.intent.intentId,
+      txid: artifact.txid,
+      error: getErrorMessage(error),
+    });
+    return false;
+  }
+};
+
+const completeAcceptedIntent = async (intentId: string, txid: string): Promise<boolean> => {
+  try {
+    return await markSigningIntentBroadcastComplete(intentId, txid);
+  } catch (error) {
+    log.error('Accepted transaction completion requires reconciliation', {
+      intentId, txid, error: getErrorMessage(error),
+    });
+    return false;
+  }
+};
+
 const emitAcceptedTransactionEvent = (
   eventName: 'sent' | 'received',
   txid: string,
@@ -97,51 +132,91 @@ const emitAcceptedTransactionEvent = (
  * Broadcast a signed transaction and save to database.
  *
  * Supports two modes:
- * 1. signedPsbtBase64: Extract and broadcast from signed PSBT (Ledger, file upload)
- * 2. rawTxHex: Broadcast raw transaction hex directly (Trezor)
+ * The caller must supply an opaque validated artifact. Raw-only hardware
+ * results remain blocked until an adapter can provide independently verifiable
+ * signing proof.
  */
 export async function broadcastAndSave(
-  walletId: string,
-  signedPsbtBase64: string | undefined,
+  artifact: ValidatedBroadcastArtifact,
   metadata: {
     recipient: string;
     amount: number;
     fee: number;
-    network: BitcoinNetwork;
     label?: string;
     memo?: string;
     utxos: Array<{ txid: string; vout: number }>;
-    rawTxHex?: string; // For Trezor: fully signed raw transaction hex
     draftId?: string; // If broadcasting from a draft, release UTXO locks
     // Enhanced metadata for full I/O storage
     inputs?: TransactionInputMetadata[];
     outputs?: TransactionOutputMetadata[];
   }
 ): Promise<BroadcastResult> {
+  const { walletId, rawTx, txid } = artifact;
   // Log which broadcast path we're taking
   log.info('broadcastAndSave called', {
-    hasSignedPsbtBase64: !!signedPsbtBase64,
-    signedPsbtBase64Length: signedPsbtBase64?.length || 0,
-    hasRawTxHex: !!metadata.rawTxHex,
-    rawTxHexLength: metadata.rawTxHex?.length || 0,
+    intentId: artifact.intent.intentId,
     recipient: metadata.recipient,
     draftId: metadata.draftId,
   });
 
-  const { rawTx, txid } = extractRawTransaction(signedPsbtBase64, metadata.rawTxHex);
+  const claim = await claimSigningIntentBroadcast(artifact, metadata);
+  if (claim.status === 'complete') {
+    return { txid, broadcasted: true, persistenceStatus: 'complete' };
+  }
+  if (claim.status === 'accepted') {
+    return {
+      txid,
+      broadcasted: true,
+      persistenceStatus: 'pending_reconciliation',
+      persistenceReason: 'post_acceptance_persistence_race',
+    };
+  }
 
   // Broadcast to network
-  const broadcastResult = await broadcastTransaction(rawTx, metadata.network);
+  let broadcastResult;
+  try {
+    broadcastResult = await broadcastTransaction(artifact);
+  } catch (error) {
+    const transition = error instanceof DefiniteBroadcastRejectionError
+      ? releaseRejectedSigningIntentBroadcast
+      : markSigningIntentBroadcastUnknown;
+    try {
+      await transition(artifact.intent.intentId, claim.leaseToken, getErrorMessage(error));
+    } catch (transitionError) {
+      log.error('Failed to persist broadcast failure outcome; lease expiry will reconcile it', {
+        intentId: artifact.intent.intentId,
+        txid,
+        error: getErrorMessage(transitionError),
+      });
+    }
+    throw error;
+  }
 
   if (!broadcastResult.broadcasted) {
     transactionBroadcastsTotal.inc({ status: 'failure' });
+    await markSigningIntentBroadcastUnknown(
+      artifact.intent.intentId,
+      claim.leaseToken,
+      'Node returned an unaccepted broadcast result',
+    );
     throw new Error('Failed to broadcast transaction');
   }
 
   transactionBroadcastsTotal.inc({ status: 'success' });
+  const intentConsumed = await recordAcceptedIntent(artifact, claim.leaseToken);
 
   const persisted = await persistAcceptedTransaction(walletId, txid, rawTx, metadata);
-  if (!persisted) {
+  if (!persisted || !intentConsumed) {
+    return {
+      txid,
+      broadcasted: true,
+      persistenceStatus: 'pending_reconciliation',
+      persistenceReason: 'post_acceptance_persistence_race',
+    };
+  }
+
+  const completed = await completeAcceptedIntent(artifact.intent.intentId, txid);
+  if (!completed) {
     return {
       txid,
       broadcasted: true,
@@ -227,64 +302,4 @@ export async function broadcastAndSave(
     broadcasted: true,
     persistenceStatus: 'complete',
   };
-}
-
-/**
- * Extract raw transaction hex and txid from either a signed PSBT or raw hex.
- */
-function extractRawTransaction(
-  signedPsbtBase64: string | undefined,
-  rawTxHex: string | undefined
-): { rawTx: string; txid: string } {
-  if (rawTxHex) {
-    // Trezor path: Use raw transaction hex directly
-    const tx = bitcoin.Transaction.fromHex(rawTxHex);
-    return { rawTx: rawTxHex, txid: tx.getId() };
-  }
-
-  if (signedPsbtBase64) {
-    // Ledger/file upload path: Extract from signed PSBT
-    const psbt = bitcoin.Psbt.fromBase64(signedPsbtBase64);
-
-    // Check if all inputs are already finalized (e.g., from hardware wallet signing)
-    const allFinalized = psbt.data.inputs.every(
-      (input) => input.finalScriptSig || input.finalScriptWitness
-    );
-
-    // Only finalize if not already finalized
-    if (!allFinalized) {
-      finalizePsbtInputs(psbt);
-    }
-
-    const tx = psbt.extractTransaction();
-    return { rawTx: tx.toHex(), txid: tx.getId() };
-  }
-
-  throw new Error('Either signedPsbtBase64 or rawTxHex is required');
-}
-
-/**
- * Finalize PSBT inputs, handling both single-sig and multisig.
- */
-function finalizePsbtInputs(psbt: bitcoin.Psbt): void {
-  for (let i = 0; i < psbt.data.inputs.length; i++) {
-    const input = psbt.data.inputs[i];
-
-    // Skip already finalized inputs
-    if (input.finalScriptSig || input.finalScriptWitness) {
-      continue;
-    }
-
-    // Check if this is a multisig input
-    if (input.witnessScript && input.partialSig && input.partialSig.length > 0) {
-      const { isMultisig } = parseMultisigScript(input.witnessScript);
-      if (isMultisig) {
-        finalizeMultisigInput(psbt, i);
-      } else {
-        psbt.finalizeInput(i);
-      }
-    } else {
-      psbt.finalizeInput(i);
-    }
-  }
 }

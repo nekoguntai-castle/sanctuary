@@ -72,6 +72,21 @@ vi.mock('../../../src/services/addressDisplaySafety', () => ({
   assertFreshReceiveAddressSafeForDisplay: vi.fn(),
 }));
 
+vi.mock('../../../src/services/bitcoin/signingIntent/service', () => ({
+  loadSigningIntent: vi.fn().mockResolvedValue({
+    intentId: 'intent-1',
+    unsignedPsbtSha256: 'psbt-hash',
+  }),
+  createSigningIntent: vi.fn().mockResolvedValue({
+    intentId: 'intent-2',
+    intentDigest: 'b'.repeat(64),
+  }),
+}));
+vi.mock('../../../src/services/bitcoin/signingIntent/canonical', () => ({
+  unsignedPsbtSha256: vi.fn().mockReturnValue('psbt-hash'),
+  derivePayjoinInputRoles: vi.fn().mockReturnValue(['wallet']),
+}));
+
 // Mock authenticate middleware
 vi.mock('../../../src/middleware/auth', () => ({
   requireAuthenticatedUser: (req: any) => req.user ?? { userId: 'test-user-id', username: 'testuser', isAdmin: false },
@@ -108,6 +123,8 @@ import {
   attemptPayjoinSend,
 } from '../../../src/services/payjoinService';
 import { assertFreshReceiveAddressSafeForDisplay } from '../../../src/services/addressDisplaySafety';
+import { loadSigningIntent } from '../../../src/services/bitcoin/signingIntent/service';
+import { unsignedPsbtSha256 } from '../../../src/services/bitcoin/signingIntent/canonical';
 import {
   generateBip21Uri as realGenerateBip21Uri,
   parseBip21Uri as realParseBip21Uri,
@@ -131,6 +148,8 @@ const mockAssertFreshReceiveAddressSafeForDisplay = vi.mocked(
   assertFreshReceiveAddressSafeForDisplay,
 );
 const mockAttemptPayjoinSend = attemptPayjoinSend as ReturnType<typeof vi.fn>;
+const mockLoadSigningIntent = vi.mocked(loadSigningIntent);
+const mockUnsignedPsbtSha256 = vi.mocked(unsignedPsbtSha256);
 
 // Test constants
 const TEST_ADDRESS = 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx';
@@ -140,6 +159,11 @@ const VALID_PSBT_BASE64 =
   'cHNidP8BAFICAAAAASaBcTce3/KF6Tig7cez53bDXJKhN6KHaGvkpKt8vp1WAAAAAP3///8BrBIAAAAAAAAWABTYQzl7cYbXYS5N0Wj6eS5qCeM5GgAAAAAAAA==';
 const PROPOSAL_PSBT_BASE64 =
   'cHNidP8BAHECAAAAASaBcTce3/KF6Tig7cez53bDXJKhN6KHaGvkpKt8vp1WAAAAAP3///8CrBIAAAAAAAAWABTYQzl7cYbXYS5N0Wj6eS5qCeM5GhAnAAAAAAAAFgAUdpn98MqGxRdMa7mGg0HhZKSL0BMAAAAAAAAA';
+const ATTEMPT_AUTH = {
+  walletId: TEST_WALLET_ID,
+  intentId: 'intent-1',
+  intentDigest: 'a'.repeat(64),
+};
 
 describe('Payjoin API Routes', () => {
   let app: Express;
@@ -158,6 +182,7 @@ describe('Payjoin API Routes', () => {
       id: TEST_WALLET_ID,
       devices: [{ device: { type: 'coldcard', model: null } }],
     });
+    mockPrisma.wallet.findFirst.mockResolvedValue({ id: TEST_WALLET_ID, network: 'mainnet' });
     mockParseBip21Uri.mockImplementation(realParseBip21Uri);
     mockGenerateBip21Uri.mockImplementation(realGenerateBip21Uri);
     mockAssertFreshReceiveAddressSafeForDisplay.mockResolvedValue(undefined);
@@ -866,6 +891,7 @@ describe('Payjoin API Routes', () => {
         .post('/api/v1/payjoin/attempt')
         .set('Authorization', 'Bearer test-token')
         .send({
+          ...ATTEMPT_AUTH,
           psbt: VALID_PSBT_BASE64,
           payjoinUrl: 'https://example.com/pj',
         });
@@ -887,6 +913,7 @@ describe('Payjoin API Routes', () => {
         .post('/api/v1/payjoin/attempt')
         .set('Authorization', 'Bearer test-token')
         .send({
+          ...ATTEMPT_AUTH,
           psbt: VALID_PSBT_BASE64,
           payjoinUrl: 'https://example.com/pj',
         });
@@ -946,6 +973,7 @@ describe('Payjoin API Routes', () => {
         .post('/api/v1/payjoin/attempt')
         .set('Authorization', 'Bearer test-token')
         .send({
+          ...ATTEMPT_AUTH,
           psbt: VALID_PSBT_BASE64,
           payjoinUrl: 'not-a-valid-url',
         });
@@ -955,11 +983,42 @@ describe('Payjoin API Routes', () => {
       expect(mockAttemptPayjoinSend).not.toHaveBeenCalled();
     });
 
+    it('should reject a missing wallet before contacting the Payjoin endpoint', async () => {
+      mockPrisma.wallet.findFirst.mockResolvedValueOnce(null);
+      const res = await request(app).post('/api/v1/payjoin/attempt')
+        .set('Authorization', 'Bearer test-token')
+        .send({ ...ATTEMPT_AUTH, psbt: VALID_PSBT_BASE64, payjoinUrl: 'https://example.com/pj' });
+      expect(res.status).toBe(404);
+      expect(mockLoadSigningIntent).not.toHaveBeenCalled();
+      expect(mockAttemptPayjoinSend).not.toHaveBeenCalled();
+    });
+
+    it('should reject a PSBT that does not match its signing intent', async () => {
+      mockUnsignedPsbtSha256.mockReturnValueOnce('different-hash');
+      const res = await request(app).post('/api/v1/payjoin/attempt')
+        .set('Authorization', 'Bearer test-token')
+        .send({ ...ATTEMPT_AUTH, psbt: VALID_PSBT_BASE64, payjoinUrl: 'https://example.com/pj' });
+      expect(res.status).toBe(400);
+      expect(mockAttemptPayjoinSend).not.toHaveBeenCalled();
+    });
+
+    it('should reject a requested network that does not match the wallet', async () => {
+      const res = await request(app).post('/api/v1/payjoin/attempt')
+        .set('Authorization', 'Bearer test-token')
+        .send({
+          ...ATTEMPT_AUTH, psbt: VALID_PSBT_BASE64,
+          payjoinUrl: 'https://example.com/pj', network: 'testnet3',
+        });
+      expect(res.status).toBe(400);
+      expect(mockAttemptPayjoinSend).not.toHaveBeenCalled();
+    });
+
     it('should return 400 when extra fields are provided', async () => {
       const res = await request(app)
         .post('/api/v1/payjoin/attempt')
         .set('Authorization', 'Bearer test-token')
         .send({
+          ...ATTEMPT_AUTH,
           psbt: VALID_PSBT_BASE64,
           payjoinUrl: 'https://example.com/pj',
           senderInputIndexes: [0],
@@ -975,6 +1034,7 @@ describe('Payjoin API Routes', () => {
         .post('/api/v1/payjoin/attempt')
         .set('Authorization', 'Bearer test-token')
         .send({
+          ...ATTEMPT_AUTH,
           psbt: VALID_PSBT_BASE64,
           payjoinUrl: 'https://example.com/pj',
           network: 'invalid-network',
@@ -1001,6 +1061,7 @@ describe('Payjoin API Routes', () => {
     });
 
     it('should accept valid network parameter', async () => {
+      mockPrisma.wallet.findFirst.mockResolvedValue({ id: TEST_WALLET_ID, network: 'testnet3' });
       mockAttemptPayjoinSend.mockResolvedValue({
         success: true,
         proposalPsbt: PROPOSAL_PSBT_BASE64,
@@ -1011,6 +1072,7 @@ describe('Payjoin API Routes', () => {
         .post('/api/v1/payjoin/attempt')
         .set('Authorization', 'Bearer test-token')
         .send({
+          ...ATTEMPT_AUTH,
           psbt: VALID_PSBT_BASE64,
           payjoinUrl: 'https://example.com/pj',
           network: 'testnet3',
@@ -1048,6 +1110,7 @@ describe('Payjoin API Routes', () => {
         .post('/api/v1/payjoin/attempt')
         .set('Authorization', 'Bearer test-token')
         .send({
+          ...ATTEMPT_AUTH,
           psbt: VALID_PSBT_BASE64,
           payjoinUrl: 'https://example.com/pj',
         });

@@ -13,6 +13,7 @@ import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
 import type { FeeEstimates, CheckAddressResult } from './types';
 import { BroadcastPreflightError, verifyElectrumBroadcastPreflight } from './broadcastPreflight';
+import type { ValidatedBroadcastArtifact } from '../signingIntent/artifactValidation';
 
 const log = createLogger('BITCOIN:SVC_BLOCKCHAIN');
 
@@ -21,37 +22,62 @@ const log = createLogger('BITCOIN:SVC_BLOCKCHAIN');
  *
  */
 export async function broadcastTransaction(
-  rawTx: string,
-  network: BitcoinNetwork
+  artifact: ValidatedBroadcastArtifact,
 ): Promise<{
   txid: string;
   broadcasted: boolean;
 }> {
+  return broadcastAuthenticatedRawTransaction({
+    rawTx: artifact.rawTx,
+    network: artifact.network,
+    expectedTxid: artifact.txid,
+    replacement: Boolean(artifact.snapshot.transaction.replacementTxid),
+  });
+}
+
+export class DefiniteBroadcastRejectionError extends Error {}
+
+export async function broadcastAuthenticatedRawTransaction(input: {
+  rawTx: string;
+  network: BitcoinNetwork;
+  expectedTxid: string;
+  replacement: boolean;
+}): Promise<{ txid: string; broadcasted: boolean }> {
+  const { rawTx, network, expectedTxid } = input;
   const client = await getNodeClient(network);
 
+  let preflight;
   try {
-    const preflight = await verifyElectrumBroadcastPreflight(client, rawTx);
-    log.debug('[BLOCKCHAIN] Broadcast preflight passed', {
-      network,
-      txid: preflight.txid,
-      inputCount: preflight.inputCount,
-    });
+    preflight = await verifyElectrumBroadcastPreflight(
+      client,
+      rawTx,
+      input.replacement,
+    );
+  } catch (error) {
+    if (error instanceof BroadcastPreflightError) {
+      log.warn('[BLOCKCHAIN] Broadcast preflight failed', {
+        network, reason: error.reason, details: error.details,
+      });
+    }
+    throw new DefiniteBroadcastRejectionError(
+      `Failed to broadcast transaction: ${getErrorMessage(error, 'Unknown error')}`,
+    );
+  }
+  log.debug('[BLOCKCHAIN] Broadcast preflight passed', {
+    network, txid: preflight.txid, inputCount: preflight.inputCount,
+  });
 
+  try {
     const txid = await client.broadcastTransaction(rawTx);
+    if (txid !== expectedTxid) {
+      throw new Error(`Node returned unexpected txid ${txid}; expected ${expectedTxid}`);
+    }
     return {
       txid,
       broadcasted: true,
     };
   } catch (error) {
-    if (error instanceof BroadcastPreflightError) {
-      log.warn('[BLOCKCHAIN] Broadcast preflight failed', {
-        network,
-        reason: error.reason,
-        details: error.details,
-      });
-    }
-
-    throw new Error(`Failed to broadcast transaction: ${getErrorMessage(error, 'Unknown error')}`);
+    throw new Error(`Broadcast outcome is unknown: ${getErrorMessage(error, 'Unknown error')}`);
   }
 }
 

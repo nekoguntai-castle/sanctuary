@@ -75,6 +75,8 @@ export interface CreateTransactionRequest {
 
 export interface CreateTransactionResponse {
   psbtBase64: string;
+  intentId: string;
+  intentDigest: string;
   fee: number;
   totalInput: number;
   totalOutput: number;
@@ -88,20 +90,22 @@ export interface CreateTransactionResponse {
 
 type BroadcastTransactionMetadata = Omit<
   MobileTransactionBroadcastRequest,
-  'signedPsbtBase64' | 'rawTxHex' | 'draftId'
+  'signedPsbtBase64' | 'rawTxHex' | 'draftId' | 'intentId' | 'intentDigest'
 >;
+
+type SigningIntentRequest = { intentId: string; intentDigest: string };
 
 // These source shapes intentionally use `?: never` so browser callers cannot
 // send raw transaction hex and a signed PSBT in the same broadcast request.
 // `draftId` may accompany either explicit payload to bind server draft checks.
-type SignedPsbtBroadcastSource = {
+type SignedPsbtBroadcastSource = SigningIntentRequest & {
   // Signed PSBT from Ledger, multisig signing, or file/QR import.
   signedPsbtBase64: string;
   rawTxHex?: never;
   draftId?: string;
 };
 
-type RawTransactionBroadcastSource = {
+type RawTransactionBroadcastSource = SigningIntentRequest & {
   // Fully signed raw transaction hex from single-sig hardware devices.
   rawTxHex: string;
   signedPsbtBase64?: never;
@@ -200,6 +204,8 @@ export interface CreateBatchTransactionRequest {
 
 export interface CreateBatchTransactionResponse {
   psbtBase64: string;
+  intentId: string;
+  intentDigest: string;
   fee: number;
   totalInput: number;
   totalOutput: number;

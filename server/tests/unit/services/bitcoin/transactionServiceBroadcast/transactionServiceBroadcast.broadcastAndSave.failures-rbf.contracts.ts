@@ -1,10 +1,10 @@
 import {
+  broadcastAndSave,
   broadcastRecipient as recipient,
   broadcastWalletId as walletId,
   withBroadcastNetwork,
 } from './transactionServiceBroadcast.broadcastAndSave.shared';
 import { describe, expect, it, type Mock } from 'vitest';
-import { broadcastAndSave } from '../../../../../src/services/bitcoin/transactionService';
 import { broadcastTransaction, recalculateWalletBalances } from '../../../../../src/services/bitcoin/blockchain';
 import { mockPrismaClient } from '../../../../mocks/prisma';
 import { sampleUtxos } from '../../../../fixtures/bitcoin';

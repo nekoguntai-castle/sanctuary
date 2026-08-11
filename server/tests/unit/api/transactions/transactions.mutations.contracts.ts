@@ -3,10 +3,7 @@ import { mockPrismaClient } from '../../../mocks/prisma';
 import {
   createMockRequest,
   createMockResponse,
-  randomAddress,
-  randomTxid,
 } from '../../../helpers/testUtils';
-import * as blockchain from '../../../../src/services/bitcoin/blockchain';
 
 export function registerTransactionMutationTests(): void {
   describe('Input Validation', () => {
@@ -421,138 +418,6 @@ export function registerTransactionMutationTests(): void {
 
       const sendMaxCount = outputs.filter(o => o.sendMax).length;
       expect(sendMaxCount).toBe(1);
-    });
-  });
-
-  describe('POST /wallets/:walletId/transactions/broadcast', () => {
-    it('should broadcast signed PSBT successfully', async () => {
-      const walletId = 'wallet-123';
-      const signedPsbtBase64 = 'cHNidP8BAHsCAAAAAQ...signed...';
-      const txid = randomTxid();
-
-      mockPrismaClient.wallet.findUnique.mockResolvedValue({
-        id: walletId,
-        network: 'testnet',
-      });
-
-      vi.mocked(blockchain.broadcastTransaction).mockResolvedValue({ txid, broadcasted: true });
-
-      mockPrismaClient.transaction.create.mockResolvedValue({
-        id: 'tx-new',
-        txid,
-        walletId,
-        type: 'sent',
-        amount: BigInt(-50000),
-        fee: BigInt(500),
-      });
-
-      const { res, getResponse } = createMockResponse();
-
-      // Simulate successful broadcast
-      const broadcastResult = await vi.mocked(blockchain.broadcastTransaction)('signed-hex', 'testnet3');
-      res.json!({
-        success: true,
-        txid: broadcastResult.txid,
-      });
-
-      const response = getResponse();
-      expect(response.body.success).toBe(true);
-      expect(response.body.txid).toBe(txid);
-    });
-
-    it('should handle broadcast with raw transaction hex (Trezor)', async () => {
-      const walletId = 'wallet-123';
-      const rawTxHex = '0200000001abc...';
-      const txid = randomTxid();
-
-      vi.mocked(blockchain.broadcastTransaction).mockResolvedValue({ txid, broadcasted: true });
-
-      const { res, getResponse } = createMockResponse();
-
-      const broadcastResult = await vi.mocked(blockchain.broadcastTransaction)(rawTxHex, 'testnet3');
-      res.json!({
-        success: true,
-        txid: broadcastResult.txid,
-      });
-
-      const response = getResponse();
-      expect(response.body.success).toBe(true);
-    });
-
-    it('should reject broadcast without signed data', async () => {
-      const { res, getResponse } = createMockResponse();
-
-      const signedPsbtBase64 = undefined;
-      const rawTxHex = undefined;
-
-      if (!signedPsbtBase64 && !rawTxHex) {
-        res.status!(400).json!({
-          error: 'Bad Request',
-          message: 'Either signedPsbtBase64 or rawTxHex is required',
-        });
-      }
-
-      const response = getResponse();
-      expect(response.statusCode).toBe(400);
-      expect(response.body.message).toContain('signedPsbtBase64 or rawTxHex');
-    });
-
-    it('should handle broadcast failure gracefully', async () => {
-      vi.mocked(blockchain.broadcastTransaction).mockRejectedValue(
-        new Error('Transaction rejected: insufficient fee')
-      );
-
-      const { res, getResponse } = createMockResponse();
-
-      try {
-        await vi.mocked(blockchain.broadcastTransaction)('invalid-hex', 'testnet3');
-        res.json!({ success: true });
-      } catch (error) {
-        res.status!(400).json!({
-          error: 'Broadcast Failed',
-          message: error instanceof Error ? error.message : 'Failed to broadcast transaction',
-        });
-      }
-
-      const response = getResponse();
-      expect(response.statusCode).toBe(400);
-      expect(response.body.message).toContain('insufficient fee');
-    });
-
-    it('should create transaction record after successful broadcast', async () => {
-      const walletId = 'wallet-123';
-      const txid = randomTxid();
-      const recipient = randomAddress();
-
-      vi.mocked(blockchain.broadcastTransaction).mockResolvedValue({ txid, broadcasted: true });
-      mockPrismaClient.transaction.create.mockResolvedValue({
-        id: 'tx-new',
-        txid,
-        walletId,
-      });
-
-      // Simulate creating the transaction record
-      await mockPrismaClient.transaction.create({
-        data: {
-          txid,
-          walletId,
-          type: 'sent',
-          amount: BigInt(-50000),
-          fee: BigInt(500),
-          counterpartyAddress: recipient,
-          confirmations: 0,
-        },
-      });
-
-      expect(mockPrismaClient.transaction.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            txid,
-            walletId,
-            type: 'sent',
-          }),
-        })
-      );
     });
   });
 

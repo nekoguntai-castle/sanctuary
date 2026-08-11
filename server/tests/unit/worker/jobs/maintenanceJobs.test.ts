@@ -11,6 +11,9 @@ const mockJobs = vi.hoisted(() => ({
   monthlyCleanupJob: { name: 'monthlyCleanup', handler: vi.fn(), options: { attempts: 8 } },
   persistPriceFeesJob: { name: 'persist:price-fees', handler: vi.fn(), options: { attempts: 3 } },
   scheduledBackupJob: { name: 'backup:scheduled', handler: vi.fn(), options: { attempts: 2 } },
+  reconcileSigningIntentBroadcastsJob: {
+    name: 'reconcile:signing-intent-broadcasts', handler: vi.fn(), options: { attempts: 3 },
+  },
 }));
 
 vi.mock('../../../../src/jobs/definitions/maintenance', () => mockJobs);
@@ -35,6 +38,7 @@ const FORWARDED_MAINTENANCE_JOBS: Array<{
   { name: 'weeklyVacuum', definition: mockJobs.weeklyVacuumJob },
   { name: 'monthlyCleanup', definition: mockJobs.monthlyCleanupJob },
   { name: 'persist:price-fees', definition: mockJobs.persistPriceFeesJob },
+  { name: 'reconcile:signing-intent-broadcasts', definition: mockJobs.reconcileSigningIntentBroadcastsJob },
   { name: 'backup:scheduled', definition: mockJobs.scheduledBackupJob },
 ];
 
@@ -60,7 +64,7 @@ function expectForwardedMaintenanceJob(
 
 describe('worker maintenanceJobs', () => {
   it('exports all maintenance job handlers with queue and lock configuration', () => {
-    expect(maintenanceJobs).toHaveLength(10);
+    expect(maintenanceJobs).toHaveLength(11);
     expect(maintenanceJobs.map(j => j.name)).toEqual([
       'cleanupAuditLogs',
       'cleanupPriceData',
@@ -71,6 +75,7 @@ describe('worker maintenanceJobs', () => {
       'weeklyVacuum',
       'monthlyCleanup',
       'persist:price-fees',
+      'reconcile:signing-intent-broadcasts',
       'backup:scheduled',
     ]);
     expect(maintenanceJobs.every(j => j.queue === 'maintenance')).toBe(true);
@@ -87,6 +92,7 @@ describe('worker maintenanceJobs', () => {
       'cleanupExpiredTransfers',
       'cleanupExpiredTokens',
       'persist:price-fees',
+      'reconcile:signing-intent-broadcasts',
     ]) {
       const job = byName.get(name)!;
       expect(readLockKey(job)).toBe(`maintenance:${name}`);

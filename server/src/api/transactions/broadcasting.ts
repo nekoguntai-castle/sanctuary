@@ -1,510 +1,292 @@
-/**
- * Transactions - Broadcasting Router
- *
- * Endpoints for broadcasting signed transactions and PSBTs.
- *
- * NOTE: These routes intentionally keep try/catch for audit logging
- * on failed broadcasts before re-throwing to asyncHandler.
- */
-
 import { Router, type Request } from 'express';
-import { requireWalletAccess } from '../../middleware/walletAccess';
-import { createLogger } from '../../utils/logger';
-import { getErrorMessage } from '../../utils/errors';
-import { asyncHandler } from '../../errors/errorHandler';
-import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError } from '../../errors/ApiError';
-import { auditService, AuditCategory, AuditAction } from '../../services/auditService';
-import { policyEvaluationEngine } from '../../services/vaultPolicy';
-import * as txService from '../../services/bitcoin/transactionService';
-import { parseTransaction } from '../../services/bitcoin/utils';
+import * as bitcoin from 'bitcoinjs-lib';
 import { ACTIONABLE_DRAFT_STATUS_VALUES } from '@sanctuary/shared/constants/drafts';
-import { draftRepository } from '../../repositories/draftRepository';
-import { walletRepository } from '../../repositories/walletRepository';
-import { addressRepository } from '../../repositories/addressRepository';
-import { findByOutpointsForWallet } from '../../repositories/utxoRepository';
-import { isBitcoinNetwork, type BitcoinNetwork } from '../../services/bitcoin/networks';
 import {
-  type MobilePsbtBroadcastRequest,
   MobilePsbtBroadcastRequestSchema,
   MobileTransactionBroadcastRequestSchema,
+  type MobilePsbtBroadcastRequest,
+  type MobileTransactionBroadcastRequest,
 } from '@sanctuary/shared/schemas/mobileApiRequests';
-import { parseTransactionRequestBody } from './requestValidation';
+import { addressRepository } from '../../repositories/addressRepository';
+import { draftRepository } from '../../repositories/draftRepository';
+import { walletRepository } from '../../repositories/walletRepository';
+import { requireWalletAccess } from '../../middleware/walletAccess';
 import { requireAuthenticatedUser } from '../../middleware/auth';
+import { asyncHandler } from '../../errors/errorHandler';
+import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError } from '../../errors/ApiError';
+import { auditService, AuditAction, AuditCategory } from '../../services/auditService';
+import { policyEvaluationEngine } from '../../services/vaultPolicy';
+import { getNetwork } from '../../services/bitcoin/utils';
+import {
+  validateSignedArtifact,
+  type SigningIntentHandle,
+  type ValidatedBroadcastArtifact,
+} from '../../services/bitcoin/signingIntent';
+import { broadcastAndSave } from '../../services/bitcoin/transactions/broadcasting';
 import type {
   TransactionInputMetadata,
   TransactionOutputMetadata,
 } from '../../services/bitcoin/transactions/types';
-import {
-  assertBroadcastPayloadAvailable,
-  assertExactOutpointsMatch,
-  assertMetadataFieldMatches,
-  assertSignedPsbtMetadataMatches,
-  buildSignedPsbtBroadcastIntent,
-  type BroadcastDraft,
-  type BroadcastOutpoint,
-  type CanonicalBroadcastRouteIntent,
-  getDraftBroadcastAmount,
-  getDraftBroadcastUtxos,
-  outpointKey,
-  type RawBroadcastIntent,
-  resolveSignedPsbtForBroadcast,
-  type TransactionBroadcastBody,
-} from './broadcastIntent';
-import { assertWalletHardwareCapabilityById } from '../../services/hardwareWalletCapabilities';
+import { parseTransactionRequestBody } from './requestValidation';
+import { createLogger } from '../../utils/logger';
+import { getErrorMessage } from '../../utils/errors';
 
 const router = Router();
 const log = createLogger('TX_BROADCAST:ROUTE');
-
 type WalletRequest = Request & { walletId?: string };
-type PsbtBroadcastBody = MobilePsbtBroadcastRequest;
+type BroadcastDraft = Awaited<ReturnType<typeof draftRepository.findByIdInWallet>>;
+type BroadcastOutpoint = { txid: string; vout: number };
 
-const ACTIONABLE_BROADCAST_DRAFT_STATUSES = new Set<string>(ACTIONABLE_DRAFT_STATUS_VALUES);
-const APPROVED_BROADCAST_APPROVAL_STATUSES = new Set(['not_required', 'approved']);
-const APPROVAL_REJECTION_REASONS: Record<string, string> = {
-  pending: 'pending_approval',
-  rejected: 'approval_rejected',
-  vetoed: 'approval_vetoed',
-  expired: 'approval_expired',
-};
+const ACTIONABLE_STATUSES = new Set<string>(ACTIONABLE_DRAFT_STATUS_VALUES);
+const APPROVED_STATUSES = new Set(['not_required', 'approved']);
 
-/**
- * Resolve the wallet's broadcast network. Older wallet rows may store `testnet`
- * from before Testnet3/Testnet4 were split; those rows map to Testnet3.
- */
-const resolveWalletNetwork = async (walletId: string): Promise<BitcoinNetwork> => {
-  const network = await walletRepository.findNetwork(walletId);
-  if (network === null) {
-    throw new NotFoundError('Wallet not found', undefined, { walletId });
-  }
-  if (network === 'testnet') {
-    return 'testnet3';
-  }
-  if (isBitcoinNetwork(network)) {
-    return network;
-  }
-  throw new InvalidInputError('Wallet has unsupported Bitcoin network', 'network', { walletId, network });
-};
-
-const assertPolicyAllowsBroadcast = async (
-  req: Request,
-  walletId: string,
-  recipient: string | undefined,
-  amount: number | undefined,
-  blockedMessage: string
-): Promise<void> => {
-  if (!recipient || !amount) return;
-
-  const policyResult = await policyEvaluationEngine.evaluatePolicies({
-    walletId,
-    userId: requireAuthenticatedUser(req).userId,
-    recipient,
-    amount: BigInt(amount),
-  });
-
-  if (!policyResult.allowed) {
-    log.warn(blockedMessage, {
-      walletId,
-      triggered: policyResult.triggered.map(t => t.policyName),
+const assertDraftAllowsBroadcast = (draft: NonNullable<BroadcastDraft>): void => {
+  if (!ACTIONABLE_STATUSES.has(draft.status)) {
+    throw new ConflictError('Draft is no longer actionable for broadcast', undefined, {
+      reason: 'duplicate_submission',
+      draftId: draft.id,
     });
-    throw new ForbiddenError('Transaction blocked by vault policy');
+  }
+  if (!APPROVED_STATUSES.has(draft.approvalStatus)) {
+    throw new ForbiddenError('Draft approval is required before broadcast', undefined, {
+      reason: draft.approvalStatus === 'rejected' ? 'approval_rejected' : 'pending_approval',
+      draftId: draft.id,
+    });
   }
 };
 
-const loadBroadcastDraft = async (
-  walletId: string,
-  draftId: string | undefined
-): Promise<BroadcastDraft | null> => {
+const loadDraft = async (walletId: string, draftId?: string): Promise<BroadcastDraft> => {
   if (!draftId) return null;
-
   const draft = await draftRepository.findByIdInWallet(draftId, walletId);
-  if (!draft) {
-    throw new NotFoundError('Draft not found', undefined, { draftId });
-  }
-
-  assertDraftAllowsBroadcast(draft);
+  if (!draft) throw new NotFoundError('Draft not found', undefined, { draftId });
   return draft;
 };
 
-const assertDraftAllowsBroadcast = (draft: BroadcastDraft): void => {
-  // Broadcast is the terminal side effect; approval and lifecycle gates must be
-  // enforced before policy usage, audit success, or node submission can happen.
-  if (!ACTIONABLE_BROADCAST_DRAFT_STATUSES.has(draft.status)) {
-    throw new ConflictError('Draft is no longer actionable for broadcast', undefined, {
-      draftId: draft.id,
-      status: draft.status,
-      reason: 'duplicate_submission',
-    });
-  }
-
-  if (!APPROVED_BROADCAST_APPROVAL_STATUSES.has(draft.approvalStatus)) {
-    const reason = APPROVAL_REJECTION_REASONS[draft.approvalStatus] ?? 'pending_approval';
-    throw new ForbiddenError('Draft approval is required before broadcast', undefined, {
-      draftId: draft.id,
-      approvalStatus: draft.approvalStatus,
-      reason,
-    });
-  }
-};
-
-const recordPolicyUsage = (
-  walletId: string,
-  req: Request,
-  amount: number | undefined
+const assertDraftIntentMatchesRequest = (
+  body: { intentId?: string; intentDigest?: string },
+  draft: BroadcastDraft,
 ): void => {
-  if (!amount) return;
-
-  policyEvaluationEngine.recordUsage(walletId, requireAuthenticatedUser(req).userId, BigInt(amount)).catch(err => {
-    log.warn('Failed to record policy usage', { error: getErrorMessage(err) });
-  });
-};
-
-const auditTransactionBroadcastSuccess = async (
-  req: Request,
-  walletId: string,
-  details: Record<string, unknown>
-): Promise<void> => {
-  await auditService.logFromRequest(req, AuditAction.TRANSACTION_BROADCAST, AuditCategory.WALLET, {
-    success: true,
-    details: {
-      walletId,
-      ...details,
-    },
-  });
-};
-
-const auditTransactionBroadcastFailure = async (
-  req: WalletRequest,
-  error: unknown,
-  details: Record<string, unknown>
-): Promise<void> => {
-  await auditService.logFromRequest(req, AuditAction.TRANSACTION_BROADCAST_FAILED, AuditCategory.WALLET, {
-    success: false,
-    errorMsg: getErrorMessage(error),
-    details: {
-      walletId: req.walletId,
-      ...details,
-    },
-  });
-};
-
-const pickDefinedBroadcastFields = <K extends keyof TransactionBroadcastBody>(
-  body: TransactionBroadcastBody,
-  fields: readonly K[]
-): Partial<Pick<TransactionBroadcastBody, K>> => {
-  return Object.fromEntries(
-    fields.flatMap(field => body[field] === undefined ? [] : [[field, body[field]]])
-  ) as Partial<Pick<TransactionBroadcastBody, K>>;
-};
-
-const pickDefinedMetadata = <T extends Record<string, unknown>>(values: T): Partial<T> => {
-  return Object.fromEntries(
-    Object.entries(values).filter(([, value]) => value !== undefined)
-  ) as Partial<T>;
-};
-
-// Raw-hex broadcasts must derive policy/audit metadata from the decoded
-// transaction so callers cannot understate recipient, amount, fee, or inputs.
-const assertUniqueOutpoints = (outpoints: BroadcastOutpoint[], field: string): void => {
-  const keys = outpoints.map(outpointKey);
-  if (new Set(keys).size === keys.length) return;
-
-  throw new InvalidInputError('Raw transaction contains duplicate inputs', field, {
-    reason: 'duplicate_inputs',
-  });
-};
-
-const findMissingOutpoints = (
-  requested: BroadcastOutpoint[],
-  found: BroadcastOutpoint[]
-): string[] => {
-  const foundKeys = new Set(found.map(outpointKey));
-  return requested.map(outpointKey).filter(key => !foundKeys.has(key));
-};
-
-const assertRawInputsBelongToWallet = (
-  requested: BroadcastOutpoint[],
-  found: BroadcastOutpoint[]
-): void => {
-  const missing = findMissingOutpoints(requested, found);
-  if (missing.length === 0) return;
-
-  throw new InvalidInputError('Raw transaction spends inputs not controlled by wallet', 'rawTxHex', {
-    reason: 'unknown_inputs',
-    missingOutpoints: missing,
-  });
-};
-
-const assertDraftLocksAllowSpend = (
-  draft: BroadcastDraft | null,
-  utxos: Awaited<ReturnType<typeof findByOutpointsForWallet>>
-): void => {
-  const lockedByOtherDraft = utxos.find(utxo =>
-    utxo.draftLock?.draftId && utxo.draftLock.draftId !== draft?.id
-  );
-  if (!lockedByOtherDraft) return;
-
-  throw new ConflictError('Raw transaction spends UTXOs locked by another draft', undefined, {
-    reason: 'utxo_locked',
-    txid: lockedByOtherDraft.txid,
-    vout: lockedByOtherDraft.vout,
-    draftId: lockedByOtherDraft.draftLock?.draftId,
-  });
-};
-
-const resolveRawRecipientAndAmount = (
-  outputs: ReturnType<typeof parseTransaction>['outputs'],
-  walletAddressSet: Set<string>
-): { recipient: string; amount: number } => {
-  const paidUnknownOutput = outputs.find(output => !output.address && output.value > 0);
-  if (paidUnknownOutput) {
-    throw new InvalidInputError('Raw transaction has paid output without a standard address', 'rawTxHex', {
-      reason: 'unknown_paid_output',
-      scriptPubKey: paidUnknownOutput.scriptPubKey,
+  if (draft?.signingIntentId && body.intentId && draft.signingIntentId !== body.intentId) {
+    throw new InvalidInputError('Draft signing intent does not match request', 'intentId', {
+      reason: 'metadata_mismatch',
     });
   }
-
-  const externalOutputs = outputs.filter(output =>
-    output.address && output.value > 0 && !walletAddressSet.has(output.address)
-  );
-  if (externalOutputs.length > 1) {
-    // Policy evaluation currently models one external raw recipient; reject
-    // multi-recipient raw hex until the policy contract can represent batches.
-    throw new InvalidInputError('Raw transaction has multiple external recipients', 'rawTxHex', {
-      reason: 'multiple_external_recipients',
-      recipients: externalOutputs.map(output => output.address),
-    });
-  }
-
-  if (externalOutputs[0]?.address) {
-    return { recipient: externalOutputs[0].address, amount: externalOutputs[0].value };
-  }
-
-  // All-wallet outputs are consolidation/change-only transactions; no external
-  // value leaves the wallet, so policy amount is zero while fees still apply.
-  const ownOutput = outputs.find(output => output.address && walletAddressSet.has(output.address));
-  if (ownOutput?.address) {
-    return { recipient: ownOutput.address, amount: 0 };
-  }
-
-  throw new InvalidInputError('Raw transaction has no standard wallet or recipient outputs', 'rawTxHex', {
-    reason: 'missing_standard_outputs',
-  });
-};
-
-const buildRawInputMetadata = (
-  inputOutpoints: BroadcastOutpoint[],
-  utxos: Awaited<ReturnType<typeof findByOutpointsForWallet>>
-): TransactionInputMetadata[] => {
-  const utxosByOutpoint = new Map(utxos.map(utxo => [outpointKey(utxo), utxo]));
-  return inputOutpoints.map(input => {
-    const utxo = utxosByOutpoint.get(outpointKey(input));
-    /* v8 ignore next 6 -- assertRawInputsBelongToWallet unconditionally validates every input first */
-    if (!utxo) {
-      throw new InvalidInputError('Raw transaction spends inputs not controlled by wallet', 'rawTxHex', {
-        reason: 'unknown_inputs',
-        missingOutpoints: [outpointKey(input)],
-      });
-    }
-    return {
-      txid: input.txid,
-      vout: input.vout,
-      address: utxo.address,
-      amount: Number(utxo.amount),
-    };
-  });
-};
-
-const buildRawOutputMetadata = (
-  outputs: ReturnType<typeof parseTransaction>['outputs'],
-  recipient: string,
-  walletAddressSet: Set<string>
-): TransactionOutputMetadata[] => {
-  // Downstream persistence uses this classification for audit/display. Paid
-  // non-address outputs are rejected before metadata construction.
-  return outputs.map(output => {
-    const address = output.address ?? '';
-    const isOurs = address.length > 0 && walletAddressSet.has(address);
-    return {
-      address,
-      amount: output.value,
-      outputType: address === recipient && !isOurs ? 'recipient' : isOurs ? 'change' : 'unknown',
-      isOurs,
-      scriptPubKey: output.scriptPubKey,
-    };
-  });
-};
-
-const assertNonNegativeFee = (fee: number): void => {
-  if (fee >= 0) return;
-
-  // Fee is inferred only after every decoded input has been matched to a wallet
-  // UTXO, so total input value is known instead of caller supplied.
-  throw new InvalidInputError('Raw transaction spends more than wallet input value', 'rawTxHex', {
-    reason: 'negative_fee',
-    fee,
-  });
-};
-
-const parseRawTransactionForBroadcast = (
-  rawTxHex: string,
-  network: BitcoinNetwork
-): ReturnType<typeof parseTransaction> => {
-  try {
-    return parseTransaction(rawTxHex, network);
-  } catch (error) {
-    throw new InvalidInputError('Invalid raw transaction hex', 'rawTxHex', {
-      reason: 'invalid_raw_transaction',
-      message: getErrorMessage(error),
+  if (draft?.signingIntentDigest && body.intentDigest
+    && draft.signingIntentDigest !== body.intentDigest) {
+    throw new InvalidInputError('Draft signing intent digest does not match request', 'intentDigest', {
+      reason: 'metadata_mismatch',
     });
   }
 };
 
-const assertRawMetadataMatches = (
-  body: TransactionBroadcastBody,
-  draft: BroadcastDraft | null,
-  intent: RawBroadcastIntent
-): void => {
-  assertMetadataFieldMatches('recipient', intent.recipient, body.recipient ?? draft?.recipient);
-  assertMetadataFieldMatches('amount', intent.amount, body.amount ?? getDraftBroadcastAmount(draft));
-  assertMetadataFieldMatches('fee', intent.fee, body.fee ?? (draft ? Number(draft.fee) : undefined));
-  assertExactOutpointsMatch(intent.utxos, body.utxos, 'utxos');
-  if (draft) {
-    assertExactOutpointsMatch(intent.utxos, getDraftBroadcastUtxos(draft), 'draftId');
-  }
-};
-
-const resolveRawBroadcastIntent = async (
-  walletId: string,
-  rawTxHex: string,
-  network: BitcoinNetwork,
-  body: TransactionBroadcastBody,
-  draft: BroadcastDraft | null
-): Promise<RawBroadcastIntent> => {
-  const parsed = parseRawTransactionForBroadcast(rawTxHex, network);
-  const inputOutpoints = parsed.inputs.map(input => ({ txid: input.txid, vout: input.vout }));
-  assertUniqueOutpoints(inputOutpoints, 'rawTxHex');
-
-  const [walletAddresses, walletUtxos] = await Promise.all([
-    addressRepository.findAddressStrings(walletId),
-    findByOutpointsForWallet(walletId, inputOutpoints),
-  ]);
-  assertRawInputsBelongToWallet(inputOutpoints, walletUtxos);
-  assertDraftLocksAllowSpend(draft, walletUtxos);
-
-  const totalInput = walletUtxos.reduce((sum, utxo) => sum + Number(utxo.amount), 0);
-  const totalOutput = parsed.outputs.reduce((sum, output) => sum + output.value, 0);
-  const fee = totalInput - totalOutput;
-  assertNonNegativeFee(fee);
-
-  const walletAddressSet = new Set(walletAddresses);
-  const { recipient, amount } = resolveRawRecipientAndAmount(parsed.outputs, walletAddressSet);
-  const intent = {
-    recipient,
-    amount,
-    fee,
-    utxos: inputOutpoints,
-    inputs: buildRawInputMetadata(inputOutpoints, walletUtxos),
-    outputs: buildRawOutputMetadata(parsed.outputs, recipient, walletAddressSet),
-  };
-  assertRawMetadataMatches(body, draft, intent);
-  return intent;
-};
-
-const buildTransactionBroadcastMetadata = (
-  body: TransactionBroadcastBody,
-  network: BitcoinNetwork,
-  draft: BroadcastDraft | null,
-  canonicalIntent: CanonicalBroadcastRouteIntent
-) => {
-  return {
-    network,
-    recipient: canonicalIntent.recipient,
-    amount: canonicalIntent.amount,
-    fee: canonicalIntent.fee,
-    ...pickDefinedMetadata({
-      label: body.label ?? draft?.label ?? undefined,
-      memo: body.memo ?? draft?.memo ?? undefined,
-    }),
-    utxos: canonicalIntent.utxos,
-    ...(canonicalIntent.inputs && { inputs: canonicalIntent.inputs }),
-    ...(canonicalIntent.outputs && { outputs: canonicalIntent.outputs }),
-    ...(draft && { draftId: draft.id }),
-    ...pickDefinedBroadcastFields(body, ['rawTxHex'] as const),
-  };
-};
-
-const resolveCanonicalTransactionBroadcastIntent = async (
-  walletId: string,
-  body: TransactionBroadcastBody,
-  network: BitcoinNetwork,
-  draft: BroadcastDraft | null,
-  signedPsbtBase64: string | undefined
-): Promise<CanonicalBroadcastRouteIntent> => {
-  if (body.rawTxHex) {
-    return resolveRawBroadcastIntent(walletId, body.rawTxHex, network, body, draft);
-  }
-
-  /* v8 ignore next 5 -- assertBroadcastPayloadAvailable guards this internal invariant */
-  if (!signedPsbtBase64) {
-    throw new InvalidInputError('Broadcast payload could not be resolved', 'signedPsbtBase64', {
+const resolveIntentHandle = (
+  body: { intentId?: string; intentDigest?: string },
+  draft: BroadcastDraft,
+): SigningIntentHandle => {
+  /* v8 ignore next -- request schema requires paired fields; draft fallback is covered below */
+  const intentId = body.intentId ?? draft?.signingIntentId ?? undefined;
+  /* v8 ignore next -- request schema requires paired fields; draft fallback is covered below */
+  const intentDigest = body.intentDigest ?? draft?.signingIntentDigest ?? undefined;
+  if (!intentId || !intentDigest) {
+    throw new InvalidInputError('A server-issued signing intent is required', 'intentId', {
       reason: 'missing_intent',
     });
   }
-
-  const intent = await buildSignedPsbtBroadcastIntent(
-    walletId,
-    signedPsbtBase64,
-    network,
-    'signedPsbtBase64'
-  );
-  assertSignedPsbtMetadataMatches(body, draft, intent);
-  return intent;
+  assertDraftIntentMatchesRequest(body, draft);
+  return { intentId, intentDigest };
 };
 
-const assertTransactionBroadcastPolicyAllows = async (
-  req: WalletRequest,
+const resolveTransactionPayload = (
+  body: MobileTransactionBroadcastRequest,
+  draft: BroadcastDraft,
+): { signedPsbtBase64?: string; rawTxHex?: string } => {
+  if (body.signedPsbtBase64) return { signedPsbtBase64: body.signedPsbtBase64 };
+  if (body.rawTxHex) return { rawTxHex: body.rawTxHex };
+  if (draft?.signedPsbtBase64) return { signedPsbtBase64: draft.signedPsbtBase64 };
+  throw new InvalidInputError('A signed transaction artifact is required', 'signedPsbtBase64', {
+    reason: 'missing_witness_data',
+  });
+};
+
+const decodeAddress = (scriptHex: string, network: ValidatedBroadcastArtifact['network']): string => {
+  try {
+    return bitcoin.address.fromOutputScript(Buffer.from(scriptHex, 'hex'), getNetwork(network));
+  } catch {
+    return '';
+  }
+};
+
+interface CanonicalRouteMetadata {
+  recipient: string;
+  amount: number;
+  fee: number;
+  utxos: BroadcastOutpoint[];
+  inputs: TransactionInputMetadata[];
+  outputs: TransactionOutputMetadata[];
+  externalOutputs: Array<{ address: string; amount: number }>;
+}
+
+const safeSats = (value: string, field: string): number => {
+  const amount = Number(value);
+  if (!Number.isSafeInteger(amount) || amount < 0) {
+    throw new InvalidInputError('Signing intent amount is invalid', field, {
+      reason: 'unknown_input_value',
+    });
+  }
+  return amount;
+};
+
+const buildCanonicalMetadata = async (
+  artifact: ValidatedBroadcastArtifact,
+): Promise<CanonicalRouteMetadata> => {
+  const walletAddresses = new Set(await addressRepository.findAddressStrings(artifact.walletId));
+  const inputs = artifact.snapshot.transaction.inputs.map((input, index) => ({
+    txid: input.txid,
+    vout: input.vout,
+    address: decodeAddress(input.prevout.scriptPubKeyHex, artifact.network),
+    amount: safeSats(input.prevout.amountSats, `inputs.${index}.amountSats`),
+  }));
+  const outputs = artifact.snapshot.transaction.outputs.map((output, index) => {
+    const address = decodeAddress(output.scriptPubKeyHex, artifact.network);
+    const amount = safeSats(output.amountSats, `outputs.${index}.amountSats`);
+    const isOurs = address.length > 0 && walletAddresses.has(address);
+    return {
+      address,
+      amount,
+      outputType: isOurs ? 'change' as const : address ? 'recipient' as const : 'unknown' as const,
+      isOurs,
+      scriptPubKey: output.scriptPubKeyHex,
+    };
+  });
+  const paidUnknown = outputs.find(output => !output.address && output.amount > 0);
+  if (paidUnknown) {
+    throw new InvalidInputError('Paid output uses an unsupported script', 'outputs', {
+      reason: 'unsupported_script',
+      scriptPubKey: paidUnknown.scriptPubKey,
+    });
+  }
+  const externalOutputs = outputs
+    .filter(output => !output.isOurs && output.address && output.amount > 0)
+    .map(output => ({ address: output.address, amount: output.amount }));
+  const totalInput = inputs.reduce((sum, input) => sum + input.amount, 0);
+  const totalOutput = outputs.reduce((sum, output) => sum + output.amount, 0);
+  const fee = totalInput - totalOutput;
+  if (!Number.isSafeInteger(fee) || fee < 0) {
+    throw new InvalidInputError('Signing intent fee is invalid', 'fee', {
+      reason: 'unknown_input_value',
+    });
+  }
+  return {
+    recipient: externalOutputs[0]?.address ?? outputs.find(output => output.address)?.address ?? '',
+    amount: externalOutputs.reduce((sum, output) => sum + output.amount, 0),
+    fee,
+    utxos: inputs.map(({ txid, vout }) => ({ txid, vout })),
+    inputs,
+    outputs,
+    externalOutputs,
+  };
+};
+
+const assertExactOutpoints = (
+  expected: BroadcastOutpoint[],
+  actual: BroadcastOutpoint[] | undefined,
+  field: string,
+): void => {
+  if (actual === undefined) return;
+  const matches = expected.length === actual.length && expected.every((item, index) => (
+    item.txid === actual[index].txid.toLowerCase() && item.vout === actual[index].vout
+  ));
+  if (!matches) {
+    throw new InvalidInputError('Broadcast metadata does not match signing intent', field, {
+      reason: 'metadata_mismatch',
+    });
+  }
+};
+
+const assertOptionalMetadata = (
+  body: MobileTransactionBroadcastRequest,
+  draft: BroadcastDraft,
+  metadata: CanonicalRouteMetadata,
+): void => {
+  const checks: Array<[string, unknown, unknown]> = [
+    ['recipient', metadata.recipient, body.recipient ?? draft?.recipient],
+    ['amount', metadata.amount, body.amount ?? (draft ? Number(draft.effectiveAmount) : undefined)],
+    ['fee', metadata.fee, body.fee ?? (draft ? Number(draft.fee) : undefined)],
+  ];
+  for (const [field, expected, actual] of checks) {
+    if (actual !== undefined && actual !== expected) {
+      throw new InvalidInputError('Broadcast metadata does not match signing intent', field, {
+        reason: 'metadata_mismatch', expected, actual,
+      });
+    }
+  }
+  assertExactOutpoints(metadata.utxos, body.utxos, 'utxos');
+  if (draft) {
+    const outpoints = draft.selectedUtxoIds.map(value => {
+      const [txid, rawVout] = value.split(':');
+      return { txid, vout: Number(rawVout) };
+    });
+    assertExactOutpoints(metadata.utxos, outpoints, 'draftId');
+  }
+};
+
+const assertPolicyAllows = async (
+  req: Request,
   walletId: string,
-  canonicalIntent: CanonicalBroadcastRouteIntent
+  metadata: CanonicalRouteMetadata,
 ): Promise<void> => {
-  await assertPolicyAllowsBroadcast(
-    req,
+  if (metadata.externalOutputs.length === 0) return;
+  const result = await policyEvaluationEngine.evaluatePolicies({
     walletId,
-    canonicalIntent.amount > 0 ? canonicalIntent.recipient : undefined,
-    canonicalIntent.amount > 0 ? canonicalIntent.amount : undefined,
-    'Broadcast blocked by policy'
-  );
+    userId: requireAuthenticatedUser(req).userId,
+    recipient: metadata.externalOutputs[0].address,
+    amount: BigInt(metadata.amount),
+    outputs: metadata.externalOutputs,
+  });
+  if (!result.allowed) throw new ForbiddenError('Transaction blocked by vault policy');
 };
 
-const broadcastTransactionWithAudit = async (
+const auditFailure = async (req: WalletRequest, error: unknown): Promise<void> => {
+  await auditService.logFromRequest(req, AuditAction.TRANSACTION_BROADCAST_FAILED, AuditCategory.WALLET, {
+    success: false,
+    errorMsg: getErrorMessage(error),
+    details: { walletId: req.walletId },
+  });
+};
+
+const broadcastValidated = async (
   req: WalletRequest,
-  walletId: string,
-  body: TransactionBroadcastBody,
-  draft: BroadcastDraft | null,
-  signedPsbtBase64: string | undefined,
-  metadata: ReturnType<typeof buildTransactionBroadcastMetadata>
+  artifact: ValidatedBroadcastArtifact,
+  metadata: CanonicalRouteMetadata,
+  draft: BroadcastDraft,
+  labels: { label?: string | null; memo?: string | null },
 ) => {
   try {
-    const result = await txService.broadcastAndSave(
-      walletId,
-      signedPsbtBase64,
-      metadata
-    );
-
-    recordPolicyUsage(walletId, req, metadata.amount);
-    await auditTransactionBroadcastSuccess(req, walletId, {
-      txid: result.txid,
-      draftId: draft?.id,
+    const result = await broadcastAndSave(artifact, {
       recipient: metadata.recipient,
       amount: metadata.amount,
       fee: metadata.fee,
+      utxos: metadata.utxos,
+      inputs: metadata.inputs,
+      outputs: metadata.outputs,
+      ...(labels.label != null && { label: labels.label }),
+      ...(labels.memo != null && { memo: labels.memo }),
+      ...(draft && { draftId: draft.id }),
     });
+    await auditService.logFromRequest(req, AuditAction.TRANSACTION_BROADCAST, AuditCategory.WALLET, {
+      success: true,
+      details: { walletId: artifact.walletId, txid: result.txid, intentId: artifact.intent.intentId },
+    });
+    if (metadata.amount > 0 && !artifact.broadcastReplay) {
+      policyEvaluationEngine.recordUsage(
+        artifact.walletId,
+        requireAuthenticatedUser(req).userId,
+        BigInt(metadata.amount),
+      ).catch(error => log.warn('Failed to record policy usage', { error: getErrorMessage(error) }));
+    }
     return result;
   } catch (error) {
-    await auditTransactionBroadcastFailure(req, error, {
-      draftId: draft?.id,
-      recipient: body.recipient ?? draft?.recipient,
-      amount: body.amount ?? getDraftBroadcastAmount(draft),
-    });
+    await auditFailure(req, error);
     throw error;
   }
 };
@@ -512,88 +294,48 @@ const broadcastTransactionWithAudit = async (
 const handleTransactionBroadcast = async (
   req: WalletRequest,
   walletId: string,
-  body: TransactionBroadcastBody
+  body: MobileTransactionBroadcastRequest,
 ) => {
-  await assertWalletHardwareCapabilityById(walletId, 'broadcast');
-  if (!body.rawTxHex) {
-    await assertWalletHardwareCapabilityById(walletId, 'finalize');
-  }
-  const network = await resolveWalletNetwork(walletId);
-  const draft = await loadBroadcastDraft(walletId, body.draftId);
-  const signedPsbtBase64 = resolveSignedPsbtForBroadcast(body, draft);
-  assertBroadcastPayloadAvailable(body, signedPsbtBase64, draft);
-
-  const canonicalIntent = await resolveCanonicalTransactionBroadcastIntent(
+  const draft = await loadDraft(walletId, body.draftId);
+  const handle = resolveIntentHandle(body, draft);
+  const artifact = await validateSignedArtifact({
     walletId,
-    body,
-    network,
-    draft,
-    signedPsbtBase64
-  );
-  await assertTransactionBroadcastPolicyAllows(req, walletId, canonicalIntent);
-
-  const metadata = buildTransactionBroadcastMetadata(body, network, draft, canonicalIntent);
-  return broadcastTransactionWithAudit(req, walletId, body, draft, signedPsbtBase64, metadata);
+    ...handle,
+    ...resolveTransactionPayload(body, draft),
+    ...(draft && { draftId: draft.id }),
+  });
+  if (draft && !artifact.broadcastReplay) assertDraftAllowsBroadcast(draft);
+  const walletNetwork = await walletRepository.findNetwork(walletId);
+  if (walletNetwork !== artifact.network && !(walletNetwork === 'testnet' && artifact.network === 'testnet3')) {
+    throw new InvalidInputError('Signing intent network does not match wallet', 'network', {
+      reason: 'wrong_network',
+    });
+  }
+  const metadata = await buildCanonicalMetadata(artifact);
+  assertOptionalMetadata(body, draft, metadata);
+  if (!artifact.broadcastReplay) await assertPolicyAllows(req, walletId, metadata);
+  return broadcastValidated(req, artifact, metadata, draft, {
+    label: body.label ?? draft?.label,
+    memo: body.memo ?? draft?.memo,
+  });
 };
 
 const handlePsbtBroadcast = async (
   req: WalletRequest,
   walletId: string,
-  body: PsbtBroadcastBody
+  body: MobilePsbtBroadcastRequest,
 ) => {
-  await assertWalletHardwareCapabilityById(walletId, 'broadcast');
-  await assertWalletHardwareCapabilityById(walletId, 'finalize');
-  const network = await resolveWalletNetwork(walletId);
-  const intent = await buildSignedPsbtBroadcastIntent(walletId, body.signedPsbt, network, 'signedPsbt');
-
-  await assertPolicyAllowsBroadcast(
-    req,
+  const artifact = await validateSignedArtifact({
     walletId,
-    intent.recipient || undefined,
-    intent.amount > 0 ? intent.amount : undefined,
-    'PSBT broadcast blocked by policy'
-  );
-
-  try {
-    const result = await txService.broadcastAndSave(walletId, body.signedPsbt, {
-      recipient: intent.recipient,
-      amount: intent.amount,
-      fee: intent.fee,
-      label: body.label,
-      memo: body.memo,
-      network,
-      utxos: intent.utxos,
-    });
-
-    recordPolicyUsage(walletId, req, intent.amount > 0 ? intent.amount : undefined);
-    await auditTransactionBroadcastSuccess(req, walletId, {
-      txid: result.txid,
-      recipient: intent.recipient,
-      amount: intent.amount,
-      fee: intent.fee,
-    });
-
-    return {
-      txid: result.txid,
-      broadcasted: result.broadcasted,
-      persistenceStatus: result.persistenceStatus,
-      ...(result.persistenceReason && { persistenceReason: result.persistenceReason }),
-    };
-  } catch (error) {
-    /* v8 ignore start -- broadcast failure audit path is covered at service boundary */
-    await auditTransactionBroadcastFailure(req, error, {});
-    throw error;
-    /* v8 ignore stop */
-  }
+    intentId: body.intentId,
+    intentDigest: body.intentDigest,
+    signedPsbtBase64: body.signedPsbt,
+  });
+  const metadata = await buildCanonicalMetadata(artifact);
+  if (!artifact.broadcastReplay) await assertPolicyAllows(req, walletId, metadata);
+  return broadcastValidated(req, artifact, metadata, null, body);
 };
 
-/**
- * POST /api/v1/wallets/:walletId/transactions/broadcast
- * Broadcast a signed PSBT or raw transaction hex
- * Supports two signing workflows:
- * - signedPsbtBase64: Signed PSBT from Ledger or file upload
- * - rawTxHex: Raw transaction hex from Trezor (fully signed)
- */
 router.post('/wallets/:walletId/transactions/broadcast', requireWalletAccess('edit'), asyncHandler(async (req, res) => {
   const walletId = req.walletId!;
   const body = parseTransactionRequestBody(MobileTransactionBroadcastRequestSchema, req.body);
@@ -601,10 +343,6 @@ router.post('/wallets/:walletId/transactions/broadcast', requireWalletAccess('ed
   res.status(result.persistenceStatus === 'pending_reconciliation' ? 202 : 200).json(result);
 }));
 
-/**
- * POST /api/v1/wallets/:walletId/psbt/broadcast
- * Broadcast a signed PSBT
- */
 router.post('/wallets/:walletId/psbt/broadcast', requireWalletAccess('edit'), asyncHandler(async (req, res) => {
   const walletId = req.walletId!;
   const body = parseTransactionRequestBody(MobilePsbtBroadcastRequestSchema, req.body);

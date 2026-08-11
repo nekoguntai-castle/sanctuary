@@ -54,6 +54,7 @@ const smoke = vi.hoisted(() => {
       findById: vi.fn(),
       findByIdWithDevices: vi.fn(),
       findByIdWithSigningDevices: vi.fn(),
+      findNetwork: vi.fn(),
       hasAccess: vi.fn(),
     },
     utxoRepository: {
@@ -69,6 +70,7 @@ const smoke = vi.hoisted(() => {
     enforceAgentFundingPolicy: vi.fn(),
     verifyOperationalReceiveAddress: vi.fn(),
     createTransaction: vi.fn(),
+    createSigningIntent: vi.fn(),
     evaluatePolicies: vi.fn(),
     createDraft: vi.fn(),
     runDraftCreatedSideEffects: vi.fn(),
@@ -134,6 +136,10 @@ vi.mock('../../../src/services/agentOperationalAddressService', () => ({
 
 vi.mock('../../../src/services/bitcoin/transactionService', () => ({
   createTransaction: smoke.createTransaction,
+}));
+
+vi.mock('../../../src/services/bitcoin/signingIntent', () => ({
+  createSigningIntent: smoke.createSigningIntent,
 }));
 
 vi.mock('../../../src/services/vaultPolicy', () => ({
@@ -318,6 +324,11 @@ describe('agent wallet funding route smoke', () => {
       devices: [{ device: { type: 'coldcard', model: null } }],
     });
     smoke.walletRepository.hasAccess.mockResolvedValue(true);
+    smoke.walletRepository.findNetwork.mockResolvedValue('testnet3');
+    smoke.createSigningIntent.mockResolvedValue({
+      intentId: 'intent-agent',
+      intentDigest: 'digest-agent',
+    });
 
     smoke.agentRepository.createAgent.mockResolvedValue(makeAgent());
     smoke.agentRepository.findAgentById.mockResolvedValue(makeAgent());

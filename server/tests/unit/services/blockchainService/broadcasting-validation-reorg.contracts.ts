@@ -5,6 +5,7 @@ import {
   mockPrisma,
 } from './blockchainServiceTestHarness';
 import { testnetAddresses } from '../../../fixtures/bitcoin';
+import { createValidatedBroadcastArtifactFixture } from '../../../helpers/validatedBroadcastArtifact';
 
 const TESTNET = bitcoin.networks.testnet;
 const PREV_TXID = 'b'.repeat(64);
@@ -48,6 +49,17 @@ const setupBroadcastPreflight = (): void => {
   ]]));
 };
 
+const createBroadcastArtifact = (
+  rawTx: string,
+  txid: string,
+)=> createValidatedBroadcastArtifactFixture({
+  rawTx,
+  txid,
+  walletId: 'wallet-1',
+  network: 'testnet4',
+  intentId: 'intent-blockchain-service-test',
+});
+
 export function registerBlockchainBroadcastingValidationReorgContracts(): void {
 describe('Blockchain Service - Broadcasting', () => {
   beforeEach(() => {
@@ -63,7 +75,9 @@ describe('Blockchain Service - Broadcasting', () => {
       setupBroadcastPreflight();
       mockNodeClient.broadcastTransaction.mockResolvedValue('broadcasted-txid');
 
-      const result = await broadcastTransaction(rawTx, 'testnet4');
+      const result = await broadcastTransaction(
+        createBroadcastArtifact(rawTx, 'broadcasted-txid'),
+      );
 
       expect(result).toEqual({
         txid: 'broadcasted-txid',
@@ -84,8 +98,10 @@ describe('Blockchain Service - Broadcasting', () => {
         new Error('Transaction rejected: insufficient fee')
       );
 
-      await expect(broadcastTransaction(rawTx, 'testnet4')).rejects.toThrow(
-        'Failed to broadcast transaction: Transaction rejected: insufficient fee'
+      await expect(broadcastTransaction(
+        createBroadcastArtifact(rawTx, 'broadcasted-txid'),
+      )).rejects.toThrow(
+        'Broadcast outcome is unknown: Transaction rejected: insufficient fee'
       );
     });
 
@@ -96,7 +112,9 @@ describe('Blockchain Service - Broadcasting', () => {
       setupBroadcastPreflight();
       mockNodeClient.getAddressUTXOsBatch.mockResolvedValue(new Map([[PREV_ADDRESS, []]]));
 
-      await expect(broadcastTransaction(rawTx, 'testnet4')).rejects.toThrow(
+      await expect(broadcastTransaction(
+        createBroadcastArtifact(rawTx, 'broadcasted-txid'),
+      )).rejects.toThrow(
         'Failed to broadcast transaction: Broadcast preflight rejected stale or spent input'
       );
       expect(mockNodeClient.broadcastTransaction).not.toHaveBeenCalled();

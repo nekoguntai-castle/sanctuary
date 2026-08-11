@@ -2,6 +2,8 @@ import type { UseHardwareWalletReturn } from '../../../hooks/useHardwareWallet';
 import type { UseSendTransactionActionsResult } from '../../../hooks/send/useSendTransactionActions';
 
 export interface DraftTransactionData {
+  intentId?: string;
+  intentDigest?: string;
   fee: number;
   totalInput: number;
   totalOutput: number;

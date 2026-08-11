@@ -32,6 +32,8 @@ export interface CreateDraftInput {
   agentOperationalWalletId?: string | null;
   signedPsbtBase64?: string;
   signedDeviceId?: string;
+  intentId: string;
+  intentDigest: string;
   notificationCreatedByUserId?: string | null;
   notificationCreatedByLabel?: string;
   /** Policy evaluation result from transaction creation; used to create approval requests. */

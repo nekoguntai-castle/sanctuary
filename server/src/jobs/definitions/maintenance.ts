@@ -16,8 +16,23 @@ import { expireOldTransfers } from '../../services/transferService';
 import { getErrorMessage } from '../../utils/errors';
 import { createLogger } from '../../utils/logger';
 import { scheduledBackupJob } from './scheduledBackup';
+import { reconcileSigningIntentBroadcasts } from '../../services/bitcoin/signingIntent/broadcastReconciliation';
 
 export { scheduledBackupJob } from './scheduledBackup';
+
+export const reconcileSigningIntentBroadcastsJob: JobDefinition<Record<string, never>, {
+  examined: number;
+  completed: number;
+}> = {
+  name: 'reconcile:signing-intent-broadcasts',
+  handler: async (_job, execution) => {
+    execution?.throwIfAborted();
+    const result = await reconcileSigningIntentBroadcasts();
+    execution?.throwIfAborted();
+    return result;
+  },
+  options: { attempts: 3, backoff: { type: 'exponential', delay: 5000 } },
+};
 
 const log = createLogger('JOB:MAINTENANCE');
 
@@ -430,5 +445,6 @@ export const maintenanceJobs = [
   weeklyVacuumJob,
   monthlyCleanupJob,
   persistPriceFeesJob,
+  reconcileSigningIntentBroadcastsJob,
   scheduledBackupJob,
 ];

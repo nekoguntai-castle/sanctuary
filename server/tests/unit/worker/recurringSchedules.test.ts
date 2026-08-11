@@ -204,6 +204,7 @@ describe('recurring schedule contracts', () => {
       'maintenance:maintenance:weekly-vacuum',
       'maintenance:maintenance:monthly-cleanup',
       'maintenance:backup:scheduled',
+      'maintenance:reconcile:signing-intent-broadcasts',
       'maintenance:webhook:recover-due-deliveries',
     ]);
     expect(

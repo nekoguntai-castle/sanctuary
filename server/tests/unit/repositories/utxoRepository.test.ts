@@ -355,6 +355,7 @@ describe('UTXO Repository', () => {
           amount: true,
           spent: true,
           frozen: true,
+          scriptPubKey: true,
           draftLock: {
             select: {
               draftId: true,

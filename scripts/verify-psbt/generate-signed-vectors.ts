@@ -6,25 +6,47 @@
  * local software keys, finalizes the PSBT, and requires Bitcoin Core
  * testmempoolaccept to accept the extracted transaction.
  *
- * The covered script families exercise SegWit witness program handling
- * (BIP141), SegWit signature hashing (BIP143), and PSBT signing/finalization
- * fields (BIP174).
+ * The covered script families exercise legacy non-witness signing, SegWit
+ * witness program handling (BIP141), SegWit signature hashing (BIP143), and
+ * PSBT signing/finalization fields (BIP174).
  */
 
 import * as bitcoin from 'bitcoinjs-lib';
 import * as ecc from '@bitcoinerlab/secp256k1';
 import { writeFileSync } from 'fs';
+import { createRequire } from 'module';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { finalizeMultisigInput } from '../../server/src/services/bitcoin/psbtBuilder/multisigFinalization';
+import type { finalizeMultisigInput as FinalizeMultisigInput } from '../../server/src/services/bitcoin/psbtBuilder/multisigFinalization';
+import { assertPinnedCoreExecution, PSBT_PROOF_MANIFEST } from './provenance';
+
+const requireUnknown: (id: string) => unknown = createRequire(import.meta.url);
+const multisigFinalization = requireUnknown(
+  '../../server/src/services/bitcoin/psbtBuilder/multisigFinalization',
+);
+const finalizerCandidate = multisigFinalization
+  && typeof multisigFinalization === 'object'
+  && 'finalizeMultisigInput' in multisigFinalization
+  ? multisigFinalization.finalizeMultisigInput
+  : undefined;
+if (!multisigFinalization
+  || typeof multisigFinalization !== 'object'
+  || typeof finalizerCandidate !== 'function') {
+  throw new Error('Sanctuary multisig finalizer module is unavailable');
+}
+const finalizeMultisigInput: typeof FinalizeMultisigInput = (...args) => {
+  Reflect.apply(finalizerCandidate, undefined, args);
+};
 
 bitcoin.initEccLib(ecc);
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUTPUT_FILE = join(__dirname, '../../server/tests/fixtures/generated-signed-psbt-vectors.ts');
 const NETWORK = bitcoin.networks.regtest;
-const WALLET_NAME = process.env.BITCOIN_SIGNED_VECTOR_WALLET ?? 'sanctuary-signed-vectors';
 const SATS_PER_BTC = 100_000_000;
+const COINBASE_VALUE = 50n * BigInt(SATS_PER_BTC);
+const FIXED_BLOCK_TIME = 1_893_456_000;
+const COINBASE_MATURITY_BLOCKS = 100;
 const RPC = {
   host: process.env.BITCOIN_RPC_HOST ?? '127.0.0.1',
   port: Number(process.env.BITCOIN_RPC_PORT ?? '18443'),
@@ -32,7 +54,7 @@ const RPC = {
   password: process.env.BITCOIN_RPC_PASS ?? 'sanctuary-verify',
 };
 
-type SupportedSignedScriptType = 'p2wpkh' | 'p2sh-p2wpkh' | 'p2wsh' | 'p2sh-p2wsh';
+type SupportedSignedScriptType = 'p2pkh' | 'p2wpkh' | 'p2sh-p2wpkh' | 'p2wsh' | 'p2sh-p2wsh';
 
 interface RpcError {
   message: string;
@@ -68,6 +90,7 @@ interface FundedUtxo {
   vout: number;
   scriptPubKey: string;
   value: bigint;
+  transactionHex: string;
 }
 
 interface AcceptedTx {
@@ -98,12 +121,6 @@ interface SignedVector {
   verifiedBy: string[];
 }
 
-function toBtc(sats: bigint): string {
-  const whole = sats / BigInt(SATS_PER_BTC);
-  const fraction = sats % BigInt(SATS_PER_BTC);
-  return `${whole}.${fraction.toString().padStart(8, '0')}`;
-}
-
 async function rpc<T>(method: string, params: unknown[] = [], wallet?: string): Promise<T> {
   const auth = Buffer.from(`${RPC.user}:${RPC.password}`).toString('base64');
   const walletPath = wallet ? `/wallet/${encodeURIComponent(wallet)}` : '';
@@ -131,27 +148,6 @@ async function rpc<T>(method: string, params: unknown[] = [], wallet?: string): 
     throw new Error(`Bitcoin Core RPC ${method} failed: ${payload.error.message}`);
   }
   return payload.result as T;
-}
-
-async function ensureWallet(): Promise<void> {
-  const loaded = await rpc<string[]>('listwallets');
-  if (loaded.includes(WALLET_NAME)) {
-    return;
-  }
-
-  try {
-    await rpc('createwallet', [WALLET_NAME, false, false, '', false, true, true]);
-  } catch (error) {
-    if (!(error instanceof Error) || !error.message.includes('Database already exists')) {
-      throw error;
-    }
-    await rpc('loadwallet', [WALLET_NAME]);
-  }
-}
-
-async function ensureSpendableBalance(): Promise<void> {
-  const miningAddress = await rpc<string>('getnewaddress', ['signed-vector-mining', 'bech32'], WALLET_NAME);
-  await rpc<string[]>('generatetoaddress', [101, miningAddress]);
 }
 
 function createSigner(label: string, privateKeyHex: string): Signer {
@@ -204,6 +200,7 @@ function buildMultisigScript(): Buffer {
 }
 
 function buildTemplates(): SpendTemplate[] {
+  const p2pkh = bitcoin.payments.p2pkh({ pubkey: SIGNER_A.publicKey, network: NETWORK });
   const p2wpkh = bitcoin.payments.p2wpkh({ pubkey: SIGNER_A.publicKey, network: NETWORK });
   const nestedP2wpkh = bitcoin.payments.p2wpkh({ pubkey: SIGNER_A.publicKey, network: NETWORK });
   const p2shP2wpkh = bitcoin.payments.p2sh({ redeem: nestedP2wpkh, network: NETWORK });
@@ -217,12 +214,35 @@ function buildTemplates(): SpendTemplate[] {
 
   return [
     {
+      scriptType: 'p2pkh',
+      description: 'Bitcoin Core accepted regtest P2PKH software-signed spend',
+      fundingAddress: requirePaymentAddress(p2pkh, 'P2PKH'),
+      fundingScript: requirePaymentOutput(p2pkh, 'P2PKH'),
+      inputValue: COINBASE_VALUE,
+      outputValue: COINBASE_VALUE - 1_500n,
+      addInputMetadata: (psbt, utxo) => {
+        psbt.addInput({
+          hash: utxo.txid,
+          index: utxo.vout,
+          sequence: 0xfffffffd,
+          nonWitnessUtxo: Buffer.from(utxo.transactionHex, 'hex'),
+          bip32Derivation: [{
+            masterFingerprint: FINGERPRINT_A,
+            path: "m/44'/1'/0'/0/0",
+            pubkey: SIGNER_A.publicKey,
+          }],
+        });
+      },
+      sign: (psbt) => psbt.signInput(0, SIGNER_A),
+      finalize: (psbt) => psbt.finalizeAllInputs(),
+    },
+    {
       scriptType: 'p2wpkh',
       description: 'Bitcoin Core accepted regtest P2WPKH software-signed spend',
       fundingAddress: requirePaymentAddress(p2wpkh, 'P2WPKH'),
       fundingScript: requirePaymentOutput(p2wpkh, 'P2WPKH'),
-      inputValue: 110_000n,
-      outputValue: 109_000n,
+      inputValue: COINBASE_VALUE,
+      outputValue: COINBASE_VALUE - 1_000n,
       addInputMetadata: (psbt, utxo) => {
         psbt.addInput({
           hash: utxo.txid,
@@ -244,8 +264,8 @@ function buildTemplates(): SpendTemplate[] {
       description: 'Bitcoin Core accepted regtest P2SH-P2WPKH software-signed spend',
       fundingAddress: requirePaymentAddress(p2shP2wpkh, 'P2SH-P2WPKH'),
       fundingScript: requirePaymentOutput(p2shP2wpkh, 'P2SH-P2WPKH'),
-      inputValue: 120_000n,
-      outputValue: 118_500n,
+      inputValue: COINBASE_VALUE,
+      outputValue: COINBASE_VALUE - 1_500n,
       addInputMetadata: (psbt, utxo) => {
         psbt.addInput({
           hash: utxo.txid,
@@ -268,8 +288,8 @@ function buildTemplates(): SpendTemplate[] {
       description: 'Bitcoin Core accepted regtest P2WSH 2-of-2 software-signed spend',
       fundingAddress: requirePaymentAddress(p2wsh, 'P2WSH'),
       fundingScript: requirePaymentOutput(p2wsh, 'P2WSH'),
-      inputValue: 160_000n,
-      outputValue: 158_000n,
+      inputValue: COINBASE_VALUE,
+      outputValue: COINBASE_VALUE - 2_000n,
       addInputMetadata: (psbt, utxo) => addMultisigInput(psbt, utxo, witnessScript, undefined),
       sign: signMultisig,
       finalize: (psbt) => finalizeMultisigInput(psbt, 0),
@@ -279,8 +299,8 @@ function buildTemplates(): SpendTemplate[] {
       description: 'Bitcoin Core accepted regtest P2SH-P2WSH 2-of-2 software-signed spend',
       fundingAddress: requirePaymentAddress(p2shP2wsh, 'P2SH-P2WSH'),
       fundingScript: requirePaymentOutput(p2shP2wsh, 'P2SH-P2WSH'),
-      inputValue: 180_000n,
-      outputValue: 177_500n,
+      inputValue: COINBASE_VALUE,
+      outputValue: COINBASE_VALUE - 2_500n,
       addInputMetadata: (psbt, utxo) => {
         addMultisigInput(psbt, utxo, witnessScript, requirePaymentOutput(nestedP2wsh, 'P2SH-P2WSH redeem'));
       },
@@ -326,22 +346,12 @@ function signMultisig(psbt: bitcoin.Psbt): void {
   psbt.signInput(0, SIGNER_B);
 }
 
-async function fundTemplate(template: SpendTemplate): Promise<FundedUtxo> {
-  const txid = await rpc<string>('sendtoaddress', [
-    template.fundingAddress,
-    toBtc(template.inputValue),
-    `signed-vector ${template.scriptType}`,
-    '',
-    false,
-    true,
-    null,
-    'unset',
-    null,
-    1.0,
-  ], WALLET_NAME);
-  const miningAddress = await rpc<string>('getnewaddress', [`confirm-${template.scriptType}`, 'bech32'], WALLET_NAME);
-  await rpc<string[]>('generatetoaddress', [1, miningAddress]);
-
+async function readCoinbaseUtxo(blockHash: string, template: SpendTemplate): Promise<FundedUtxo> {
+  const block = await rpc<{ tx: string[] }>('getblock', [blockHash, 1]);
+  const [txid] = block.tx;
+  if (!txid) {
+    throw new Error(`Bitcoin Core returned a block without a coinbase for ${template.scriptType}`);
+  }
   const raw = await rpc<{
     vout: Array<{
       n: number;
@@ -352,13 +362,11 @@ async function fundTemplate(template: SpendTemplate): Promise<FundedUtxo> {
         addresses?: string[];
       };
     }>;
-  }>('getrawtransaction', [txid, true]);
-  const output = raw.vout.find((vout) => {
-    const addresses = [vout.scriptPubKey.address, ...(vout.scriptPubKey.addresses ?? [])].filter(Boolean);
-    return addresses.includes(template.fundingAddress);
-  });
+  }>('getrawtransaction', [txid, true, blockHash]);
+  const transactionHex = await rpc<string>('getrawtransaction', [txid, false, blockHash]);
+  const output = raw.vout.find((vout) => vout.scriptPubKey.hex === template.fundingScript.toString('hex'));
   if (!output) {
-    throw new Error(`Could not locate funded output for ${template.scriptType}`);
+    throw new Error(`Could not locate deterministic coinbase output for ${template.scriptType}`);
   }
 
   return {
@@ -366,7 +374,38 @@ async function fundTemplate(template: SpendTemplate): Promise<FundedUtxo> {
     vout: output.n,
     scriptPubKey: output.scriptPubKey.hex,
     value: BigInt(Math.round(output.value * SATS_PER_BTC)),
+    transactionHex,
   };
+}
+
+async function mineDeterministicBlock(address: string, offset: number): Promise<string> {
+  await rpc('setmocktime', [FIXED_BLOCK_TIME + offset]);
+  const hashes = await rpc<string[]>('generatetoaddress', [1, address]);
+  const [blockHash] = hashes;
+  if (!blockHash) {
+    throw new Error(`Bitcoin Core did not return a block hash at deterministic offset ${offset}`);
+  }
+  return blockHash;
+}
+
+async function fundTemplates(templates: SpendTemplate[]): Promise<FundedUtxo[]> {
+  const initialHeight = await rpc<number>('getblockcount');
+  if (initialHeight !== 0) {
+    throw new Error(
+      `Signed-vector generation requires a fresh regtest chain at height 0; received height ${initialHeight}`
+    );
+  }
+
+  const funded: FundedUtxo[] = [];
+  for (const [index, template] of templates.entries()) {
+    const blockHash = await mineDeterministicBlock(template.fundingAddress, index + 1);
+    funded.push(await readCoinbaseUtxo(blockHash, template));
+  }
+
+  for (let index = 0; index < COINBASE_MATURITY_BLOCKS; index += 1) {
+    await mineDeterministicBlock(destinationAddress(), templates.length + index + 1);
+  }
+  return funded;
 }
 
 async function acceptTx(finalTxHex: string): Promise<AcceptedTx> {
@@ -378,8 +417,11 @@ async function acceptTx(finalTxHex: string): Promise<AcceptedTx> {
   return accepted;
 }
 
-async function buildVector(template: SpendTemplate, coreVersion: string): Promise<SignedVector> {
-  const utxo = await fundTemplate(template);
+async function buildVector(
+  template: SpendTemplate,
+  utxo: FundedUtxo,
+  coreVersion: string
+): Promise<SignedVector> {
   if (utxo.scriptPubKey !== template.fundingScript.toString('hex')) {
     throw new Error(`Funding script mismatch for ${template.scriptType}`);
   }
@@ -438,7 +480,7 @@ function generateOutputFile(vectors: SignedVector[]): void {
 
 export interface GeneratedSignedPsbtVector {
   description: string;
-  scriptType: 'p2wpkh' | 'p2sh-p2wpkh' | 'p2wsh' | 'p2sh-p2wsh';
+  scriptType: 'p2pkh' | 'p2wpkh' | 'p2sh-p2wpkh' | 'p2wsh' | 'p2sh-p2wsh';
   network: 'regtest';
   unsignedPsbtBase64: string;
   signedPsbtBase64: string;
@@ -454,6 +496,12 @@ export interface GeneratedSignedPsbtVector {
   verifiedBy: string[];
 }
 
+export const GENERATED_SIGNED_PSBT_PROVENANCE = ${JSON.stringify({
+    coreImage: PSBT_PROOF_MANIFEST.coreImage,
+    coreVersion: PSBT_PROOF_MANIFEST.coreVersion,
+    coreSubversion: PSBT_PROOF_MANIFEST.coreSubversion,
+  }, null, 2)} as const;
+
 export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = ${JSON.stringify(vectors, null, 2)};
 `;
 
@@ -465,13 +513,18 @@ async function main(): Promise<void> {
   console.log('Signed PSBT Vector Generator');
   console.log('============================\n');
 
-  const versionInfo = await rpc<{ subversion: string }>('getnetworkinfo');
-  await ensureWallet();
-  await ensureSpendableBalance();
+  const versionInfo = await rpc<{ version: number; subversion: string }>('getnetworkinfo');
+  assertPinnedCoreExecution(versionInfo);
+  const templates = buildTemplates();
+  const fundedUtxos = await fundTemplates(templates);
 
   const vectors: SignedVector[] = [];
-  for (const template of buildTemplates()) {
-    const vector = await buildVector(template, versionInfo.subversion);
+  for (const [index, template] of templates.entries()) {
+    const utxo = fundedUtxos[index];
+    if (!utxo) {
+      throw new Error(`Missing deterministic coinbase for ${template.scriptType}`);
+    }
+    const vector = await buildVector(template, utxo, versionInfo.subversion);
     vectors.push(vector);
     console.log(`  accepted: ${template.description}`);
   }

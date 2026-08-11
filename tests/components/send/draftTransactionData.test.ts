@@ -6,6 +6,8 @@ import {
 } from '../../../src/components/send/SendTransactionPage/sendTransactionPageHelpers';
 
 const draftTxData = {
+  intentId: 'intent-1',
+  intentDigest: 'a'.repeat(64),
   fee: 100,
   totalInput: 12_000,
   totalOutput: 10_000,
@@ -44,9 +46,19 @@ describe('createDraftInitialTxData', () => {
     expect(createDraftInitialTxData({ ...input, utxos })).toBeNull();
   });
 
+  it('keeps legacy drafts viewable but refuses to resume signing without an intent', () => {
+    expect(createDraftInitialTxData({
+      state,
+      draftTxData: { ...draftTxData, intentId: undefined, intentDigest: undefined },
+      utxos,
+    })).toBeNull();
+  });
+
   it('maps valid outputs and resolves available UTXO details', () => {
     expect(createDraftInitialTxData({ state, draftTxData, utxos })).toEqual({
       psbtBase64: 'draft-psbt',
+      intentId: 'intent-1',
+      intentDigest: 'a'.repeat(64),
       fee: 100,
       totalInput: 12_000,
       totalOutput: 10_000,
@@ -92,6 +104,8 @@ describe('createDraftInitialTxData', () => {
       walletId: 'wallet-1',
       userId: 'user-1',
       psbtBase64: 'draft-max-psbt',
+      signingIntentId: 'intent-max',
+      signingIntentDigest: 'b'.repeat(64),
       feeRate: 5,
       selectedUtxoIds: [],
       enableRBF: true,

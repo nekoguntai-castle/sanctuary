@@ -246,6 +246,8 @@ export const transactionSchemas = {
     type: 'object',
     properties: {
       psbtBase64: { type: 'string' },
+      intentId: { type: 'string' },
+      intentDigest: { type: 'string', pattern: '^[0-9a-f]{64}$' },
       fee: { type: 'number' },
       totalInput: { type: 'number' },
       totalOutput: { type: 'number' },
@@ -270,7 +272,7 @@ export const transactionSchemas = {
       },
       policyEvaluation: { type: 'object' },
     },
-    required: ['psbtBase64', 'fee', 'totalInput', 'totalOutput', 'changeAmount', 'utxos'],
+    required: ['psbtBase64', 'intentId', 'intentDigest', 'fee', 'totalInput', 'totalOutput', 'changeAmount', 'utxos'],
   },
   TransactionBatchOutput: {
     type: 'object',
@@ -303,6 +305,8 @@ export const transactionSchemas = {
     type: 'object',
     properties: {
       psbtBase64: { type: 'string' },
+      intentId: { type: 'string' },
+      intentDigest: { type: 'string', pattern: '^[0-9a-f]{64}$' },
       fee: { type: 'number' },
       totalInput: { type: 'number' },
       totalOutput: { type: 'number' },
@@ -322,7 +326,7 @@ export const transactionSchemas = {
       },
       policyEvaluation: { type: 'object' },
     },
-    required: ['psbtBase64', 'fee', 'totalInput', 'totalOutput', 'changeAmount', 'utxos', 'outputs'],
+    required: ['psbtBase64', 'intentId', 'intentDigest', 'fee', 'totalInput', 'totalOutput', 'changeAmount', 'utxos', 'outputs'],
   },
   TransactionEstimateRequest: {
     type: 'object',
@@ -353,6 +357,8 @@ export const transactionSchemas = {
       signedPsbtBase64: { type: 'string', minLength: 1 },
       rawTxHex: { type: 'string', minLength: 1 },
       draftId: { type: 'string', minLength: 1 },
+      intentId: { type: 'string', minLength: 1 },
+      intentDigest: { type: 'string', pattern: '^[0-9a-f]{64}$' },
       recipient: { type: 'string' },
       amount: { type: 'number' },
       fee: { type: 'number' },
@@ -407,6 +413,8 @@ export const transactionSchemas = {
     type: 'object',
     properties: {
       psbt: { type: 'string' },
+      intentId: { type: 'string' },
+      intentDigest: { type: 'string', pattern: '^[0-9a-f]{64}$' },
       fee: { type: 'number' },
       inputPaths: { type: 'array', items: { type: 'string' } },
       totalInput: { type: 'number' },
@@ -418,16 +426,18 @@ export const transactionSchemas = {
         items: { $ref: '#/components/schemas/UtxoReference' },
       },
     },
-    required: ['psbt', 'fee', 'totalInput', 'totalOutput', 'changeAmount', 'utxos'],
+    required: ['psbt', 'intentId', 'intentDigest', 'fee', 'totalInput', 'totalOutput', 'changeAmount', 'utxos'],
   },
   PsbtBroadcastRequest: {
     type: 'object',
     properties: {
       signedPsbt: { type: 'string', minLength: 1 },
+      intentId: { type: 'string', minLength: 1 },
+      intentDigest: { type: 'string', pattern: '^[0-9a-f]{64}$' },
       label: { type: 'string' },
       memo: { type: 'string' },
     },
-    required: ['signedPsbt'],
+    required: ['signedPsbt', 'intentId', 'intentDigest'],
   },
   PsbtBroadcastResponse: {
     type: 'object',

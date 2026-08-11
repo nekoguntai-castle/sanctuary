@@ -312,6 +312,8 @@ export const MobileTransactionBroadcastRequestSchema = MobileTransactionMetadata
   amount: z.number().optional(),
   fee: z.number().optional(),
   utxos: z.array(MobileUtxoReferenceSchema).optional(),
+  intentId: z.string().min(1).optional(),
+  intentDigest: z.string().regex(/^[0-9a-f]{64}$/).optional(),
 }).refine(
   (request) => Boolean(request.signedPsbtBase64 || request.rawTxHex || request.draftId),
   transactionBroadcastSourceRequiredMessage
@@ -321,6 +323,12 @@ export const MobileTransactionBroadcastRequestSchema = MobileTransactionMetadata
     message: transactionBroadcastExplicitSourceAmbiguousMessage,
     path: ['rawTxHex'],
   }
+).refine(
+  request => Boolean(request.draftId) || Boolean(request.intentId && request.intentDigest),
+  { message: 'A signing intent is required', path: ['intentId'] }
+).refine(
+  request => Boolean(request.intentId) === Boolean(request.intentDigest),
+  { message: 'intentId and intentDigest must be provided together', path: ['intentDigest'] }
 );
 
 const MobilePsbtRecipientSchema = z.object({
@@ -342,6 +350,8 @@ export const MobilePsbtCreateRequestSchema = z.object({
 
 export const MobilePsbtBroadcastRequestSchema = MobileTransactionMetadataSchema.extend({
   signedPsbt: z.string({ message: 'signedPsbt is required' }).min(1, 'signedPsbt is required'),
+  intentId: z.string().min(1),
+  intentDigest: z.string().regex(/^[0-9a-f]{64}$/),
 });
 
 export const MobileDeviceAccountRequestSchema = z.object({

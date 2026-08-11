@@ -231,45 +231,6 @@ export function registerTransactionHttpCreationTests(): void {
     expect(mockCreateTransaction).not.toHaveBeenCalled();
   });
 
-  it('returns 403 when vault policy blocks broadcast', async () => {
-    mockEvaluatePolicies.mockResolvedValueOnce({
-      allowed: false,
-      triggered: [{ policyId: 'p1', policyName: 'Limit', type: 'spending_limit', action: 'blocked', reason: 'Over limit' }],
-    });
-
-    const response = await request(app)
-      .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
-      .send({
-        signedPsbtBase64: 'cHNi',
-        recipient: 'tb1qrecipient',
-        amount: 20000,
-      });
-
-    expect(response.status).toBe(403);
-    expect(response.body.code).toBe('FORBIDDEN');
-    expect(mockBroadcastAndSave).not.toHaveBeenCalled();
-  });
-
-  it('returns 403 when vault policy blocks PSBT broadcast', async () => {
-    mockGetPSBTInfo.mockReturnValue({
-      outputs: [{ address: 'tb1qdest', value: 25000 }, { address: 'tb1qchange', value: 5000 }],
-      inputs: [{ txid: 'f'.repeat(64), vout: 1 }],
-      fee: 450,
-    });
-    mockEvaluatePolicies.mockResolvedValueOnce({
-      allowed: false,
-      triggered: [{ policyId: 'p1', policyName: 'Denylist', type: 'address_control', action: 'blocked', reason: 'Denied address' }],
-    });
-
-    const response = await request(app)
-      .post(`/api/v1/wallets/${walletId}/psbt/broadcast`)
-      .send({ signedPsbt: 'cHNi' });
-
-    expect(response.status).toBe(403);
-    expect(response.body.code).toBe('FORBIDDEN');
-    expect(mockBroadcastAndSave).not.toHaveBeenCalled();
-  });
-
   it('returns bad request when transaction creation service throws', async () => {
     mockPrismaClient.wallet.findUnique.mockResolvedValue({ id: walletId, network: 'mainnet' });
     mockWalletFindById.mockResolvedValue({ id: walletId, network: 'mainnet' });

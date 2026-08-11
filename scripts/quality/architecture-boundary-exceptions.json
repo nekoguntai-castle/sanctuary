@@ -235,15 +235,6 @@
   },
   {
     "rule": "server-api-runtime-repositories",
-    "file": "server/src/api/transactions/broadcastIntent.ts",
-    "target": "server/src/repositories/addressRepository.ts",
-    "specifier": "../../repositories/addressRepository",
-    "owner": "backend-architecture",
-    "reason": "Broadcast intent policy guard currently reads owned addresses in-route until transaction policy checks move behind a service boundary.",
-    "removeWhen": "Route delegates paid-output policy checks through a transaction service module."
-  },
-  {
-    "rule": "server-api-runtime-repositories",
     "file": "server/src/api/transactions/broadcasting.ts",
     "target": "server/src/repositories/draftRepository.ts",
     "specifier": "../../repositories/draftRepository",
@@ -268,15 +259,6 @@
     "owner": "backend-architecture",
     "reason": "Broadcast route ownership and draft-state guards currently read repositories in-route until broadcast orchestration moves behind a service boundary.",
     "removeWhen": "Route delegates address lookup and validation through a transaction broadcast service module."
-  },
-  {
-    "rule": "server-api-runtime-repositories",
-    "file": "server/src/api/transactions/broadcasting.ts",
-    "target": "server/src/repositories/utxoRepository.ts",
-    "specifier": "../../repositories/utxoRepository",
-    "owner": "backend-architecture",
-    "reason": "Broadcast route ownership and draft-state guards currently read repositories in-route until broadcast orchestration moves behind a service boundary.",
-    "removeWhen": "Route delegates UTXO lookup and validation through a transaction broadcast service module."
   },
   {
     "rule": "server-api-runtime-repositories",

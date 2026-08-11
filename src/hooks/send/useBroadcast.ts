@@ -45,6 +45,8 @@ type BroadcastPayloadWithSource =
 
 interface BroadcastMetadata {
   draftId?: string;
+  intentId: string;
+  intentDigest: string;
   recipient: string;
   amount: number;
   fee: number;
@@ -220,6 +222,8 @@ const buildBroadcastRequest = (
     amount: metadata.amount,
     fee: metadata.fee,
     utxos: metadata.utxos,
+    intentId: metadata.intentId,
+    intentDigest: metadata.intentDigest,
   };
 
   if (payload.source === 'rawTx') {
@@ -285,6 +289,8 @@ export function useBroadcast({
 
       const broadcastResult = await transactionsApi.broadcastTransaction(walletId, buildBroadcastRequest(payload, {
         draftId: state.draftId ?? undefined,
+        intentId: txData.intentId,
+        intentDigest: txData.intentDigest,
         recipient: state.outputs[0].address,
         amount: effectiveAmount,
         fee: txData.fee,

@@ -18,6 +18,7 @@ import {
 
 const REQUIRED_REASON_CODES = [
   'missing_intent',
+  'stale_intent',
   'stale_utxo',
   'frozen_utxo',
   'locked_utxo',

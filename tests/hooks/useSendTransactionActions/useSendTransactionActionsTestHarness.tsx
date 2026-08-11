@@ -115,6 +115,8 @@ export const baseWallet = {
 
 export const baseTxData = {
   psbtBase64: 'cHNidP8BAA==',
+  intentId: 'intent-1',
+  intentDigest: 'a'.repeat(64),
   fee: 123,
   totalInput: 10123,
   totalOutput: 10000,

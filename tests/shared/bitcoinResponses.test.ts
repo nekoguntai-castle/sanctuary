@@ -61,6 +61,8 @@ describe('FeeEstimatesSchema', () => {
 
 const rbf = {
   psbtBase64: 'cHNidP8BAHECAAAAAf',
+  intentId: 'intent-rbf',
+  intentDigest: 'a'.repeat(64),
   fee: 5000,
   feeRate: 24,
   feeDelta: 2500,

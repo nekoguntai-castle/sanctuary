@@ -34,9 +34,14 @@ const batchOutputs = z.array(z.looseObject({
  * a user who has been told it is their transaction.
  */
 const psbt = z.string().min(1);
+const signingIntent = {
+  intentId: z.string().min(1),
+  intentDigest: z.string().regex(/^[0-9a-f]{64}$/),
+};
 
 export const CreateTransactionResponseSchema = z.looseObject({
   psbtBase64: psbt,
+  ...signingIntent,
   // Every figure on the review screen, in the order the screen shows them.
   fee: satoshis,
   totalInput: satoshis,
@@ -48,6 +53,7 @@ export const CreateTransactionResponseSchema = z.looseObject({
 
 export const CreateBatchTransactionResponseSchema = z.looseObject({
   psbtBase64: psbt,
+  ...signingIntent,
   fee: satoshis,
   totalInput: satoshis,
   totalOutput: satoshis,
@@ -65,6 +71,8 @@ export const DraftTransactionSchema = z.looseObject({
   id: z.string(),
   walletId: z.string(),
   psbtBase64: psbt,
+  signingIntentId: z.string().min(1).nullable().optional(),
+  signingIntentDigest: z.string().regex(/^[0-9a-f]{64}$/).nullable().optional(),
   amount: satoshis,
   feeRate: satoshis,
   fee: satoshis,

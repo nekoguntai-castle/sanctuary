@@ -11,6 +11,8 @@ export const registerDraftValidationContracts = () => {
       amount: '50000',
       feeRate: '1.5',
       psbtBase64: 'cHNidP8BAHUCAAAAAAE=',
+      intentId: 'intent-1',
+      intentDigest: 'a'.repeat(64),
     };
 
     it('accepts nullable update metadata used to clear labels and memos', () => {

@@ -135,6 +135,7 @@ function shouldAttemptPayjoin(state: TransactionState, payjoinAttempted: Payjoin
 }
 
 async function applyPayjoinIfNeeded(
+  walletId: string,
   result: TransactionData,
   state: TransactionState,
   walletNetwork: Wallet['network'],
@@ -154,20 +155,34 @@ async function applyPayjoinIfNeeded(
   log.info('Attempting Payjoin', { payjoinUrl: state.payjoinUrl, network: walletNetwork });
 
   try {
-    const network = (walletNetwork || 'mainnet') as Parameters<typeof payjoinApi.attemptPayjoin>[2];
+    const network = (walletNetwork || 'mainnet') as Parameters<typeof payjoinApi.attemptPayjoin>[5];
     // `shouldAttemptPayjoin` above already enforces `state.payjoinUrl` is truthy,
     // but TypeScript doesn't narrow that guarantee across the helper boundary.
     // The `?? ''` fallback is defensive and unreachable at runtime.
     /* c8 ignore next */
     const payjoinUrl = state.payjoinUrl ?? '';
-    const payjoinResult = await payjoinApi.attemptPayjoin(result.psbtBase64, payjoinUrl, network, lease.signal);
+    const payjoinResult = await payjoinApi.attemptPayjoin(
+      walletId,
+      result.psbtBase64,
+      result.intentId,
+      result.intentDigest,
+      payjoinUrl,
+      network,
+      lease.signal,
+    );
 
     if (!lease.isCurrent()) return result;
 
-    if (payjoinResult.success && payjoinResult.proposalPsbt) {
+    if (payjoinResult.success && payjoinResult.proposalPsbt
+      && payjoinResult.intentId && payjoinResult.intentDigest) {
       setPayjoinStatus('success');
       log.info('Payjoin successful');
-      return { ...result, psbtBase64: payjoinResult.proposalPsbt };
+      return {
+        ...result,
+        psbtBase64: payjoinResult.proposalPsbt,
+        intentId: payjoinResult.intentId,
+        intentDigest: payjoinResult.intentDigest,
+      };
     }
 
     setPayjoinStatus('failed');
@@ -246,6 +261,7 @@ export function useSendTransactionActions({
 
       const createdTransaction = await createApiTransactionData(walletId, stateSnapshot, lease.signal);
       const result = await applyPayjoinIfNeeded(
+        walletId,
         createdTransaction,
         stateSnapshot,
         wallet.network,

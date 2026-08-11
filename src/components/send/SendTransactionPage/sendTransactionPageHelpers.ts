@@ -146,6 +146,8 @@ export function buildInitialState(params: {
 
 export function buildDraftTxData(draftData: DraftTransaction): DraftTransactionData {
   return {
+    intentId: draftData.signingIntentId ?? undefined,
+    intentDigest: draftData.signingIntentDigest ?? undefined,
     fee: draftData.fee,
     totalInput: draftData.totalInput,
     totalOutput: draftData.totalOutput,

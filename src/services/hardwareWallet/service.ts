@@ -449,13 +449,19 @@ export class HardwareWalletService {
     }
 
     // Create PSBT via backend
-    const { psbt, inputPaths } = await createPSBTForSigning(tx);
+    const { psbt, inputPaths, intentId, intentDigest } = await createPSBTForSigning(tx);
 
     // Sign with connected device
     const signed = await this.signPSBT({ walletId: tx.walletId, psbt, inputPaths });
 
-    // Broadcast - use rawTx if available (Trezor), otherwise use signed PSBT
-    const result = await broadcastSignedTransaction(tx.walletId, signed.psbt, signed.rawTx);
+    // Raw-only hardware results are rejected by broadcastSignedTransaction.
+    const result = await broadcastSignedTransaction(
+      tx.walletId,
+      signed.psbt,
+      intentId,
+      intentDigest,
+      signed.rawTx,
+    );
 
     return result.txid;
   }
@@ -466,11 +472,13 @@ export class HardwareWalletService {
  */
 async function createPSBTForSigning(
   tx: TransactionForSigning
-): Promise<{ psbt: string; fee: number; inputPaths: string[] }> {
+): Promise<{ psbt: string; fee: number; inputPaths: string[]; intentId: string; intentDigest: string }> {
   const response = await apiClient.post<{
     psbt: string;
     fee: number;
     inputPaths: string[];
+    intentId: string;
+    intentDigest: string;
   }>(`/wallets/${tx.walletId}/psbt/create`, {
     recipients: [{ address: tx.recipient, amount: tx.amount }],
     feeRate: tx.feeRate,
@@ -487,14 +495,18 @@ async function createPSBTForSigning(
 async function broadcastSignedTransaction(
   walletId: string,
   psbt: string,
+  intentId: string,
+  intentDigest: string,
   rawTx?: string
 ): Promise<{ txid: string }> {
+  if (rawTx) {
+    throw new Error(
+      'Raw-only hardware broadcast is disabled until the adapter provides verifiable signing proof',
+    );
+  }
   const response = await apiClient.post<{ txid: string }>(
-    `/wallets/${walletId}/psbt/broadcast`,
-    {
-      signedPsbt: psbt,
-      rawTxHex: rawTx, // For Trezor
-    }
+    `/wallets/${walletId}/transactions/broadcast`,
+    { signedPsbtBase64: psbt, intentId, intentDigest },
   );
 
   return response;

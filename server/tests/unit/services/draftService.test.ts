@@ -55,6 +55,12 @@ vi.mock('../../../src/services/vaultPolicy/approvalService', () => ({
   },
 }));
 
+vi.mock('../../../src/services/bitcoin/signingIntent', () => ({
+  loadSigningIntent: vi.fn().mockResolvedValue({ unsignedPsbtSha256: 'psbt-hash' }),
+  unsignedPsbtSha256: vi.fn().mockReturnValue('psbt-hash'),
+  validatePartialSignedPsbt: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
@@ -72,6 +78,7 @@ import prisma from '../../../src/models/prisma';
 import { draftRepository, systemSettingRepository, walletRepository } from '../../../src/repositories';
 import { lockUtxosForDraft, resolveUtxoIds } from '../../../src/services/draftLockService';
 import { dispatchDraftNotification } from '../../../src/services/notifications/dispatch';
+import { unsignedPsbtSha256 } from '../../../src/services/bitcoin/signingIntent';
 import * as bitcoin from 'bitcoinjs-lib';
 import { NotFoundError, InvalidInputError, ConflictError } from '../../../src/errors';
 import {
@@ -97,6 +104,8 @@ describe('DraftService', () => {
     amount: BigInt(100000),
     feeRate: 5,
     psbtBase64: 'cHNidP8...',
+    signingIntentId: 'intent-1',
+    signingIntentDigest: 'a'.repeat(64),
     status: 'unsigned',
     signedDeviceIds: [],
     selectedUtxoIds: ['utxo-1', 'utxo-2'],
@@ -144,6 +153,8 @@ describe('DraftService', () => {
       amount: 100000,
       feeRate: 5,
       psbtBase64: 'cHNidP8...',
+      intentId: 'intent-1',
+      intentDigest: 'a'.repeat(64),
       selectedUtxoIds: ['utxo-1'],
     };
 
@@ -159,6 +170,14 @@ describe('DraftService', () => {
 
       expect(draftRepository.create).toHaveBeenCalled();
       expect(result).toEqual(mockDraft);
+    });
+
+    it('rejects a draft PSBT that differs from its server-issued intent', async () => {
+      vi.mocked(unsignedPsbtSha256).mockReturnValueOnce('different-hash');
+      await expect(createDraft(walletId, userId, validInput)).rejects.toThrow(
+        'Draft PSBT does not match the server-issued signing intent',
+      );
+      expect(draftRepository.create).not.toHaveBeenCalled();
     });
 
     it('normalizes string fee rates and rejects invalid direct create payloads', async () => {
@@ -301,6 +320,8 @@ describe('DraftService', () => {
         amount: validInput.amount,
         feeRate: validInput.feeRate,
         psbtBase64: validInput.psbtBase64,
+        intentId: validInput.intentId,
+        intentDigest: validInput.intentDigest,
       });
 
       expect(draftRepository.create).toHaveBeenCalledWith(
@@ -599,6 +620,15 @@ describe('DraftService', () => {
       await expect(updateDraft(walletId, draftId,{ status: 'invalid' as any })).rejects.toThrow(InvalidInputError);
     });
 
+    it('rejects signed data when a legacy draft has no signing-intent handle', async () => {
+      (draftRepository.findByIdInWallet as Mock).mockResolvedValueOnce({
+        ...mockDraft, signingIntentId: null, signingIntentDigest: null,
+      });
+      await expect(updateDraft(walletId, draftId, { signedPsbtBase64: 'new-psbt' }))
+        .rejects.toThrow('Draft has no authenticated signing intent');
+      expect(draftRepository.update).not.toHaveBeenCalled();
+    });
+
     it('should update label and memo', async () => {
       await updateDraft(walletId, draftId,{ label: 'Test', memo: 'Note' });
 
@@ -697,7 +727,7 @@ describe('DraftService', () => {
       fromBase64Spy.mockRestore();
     });
 
-    it('falls back to new PSBT when combine fails', async () => {
+    it('rejects a signed PSBT when combination fails', async () => {
       const existingPsbtObj = {
         data: { inputs: [] },
         combine: vi.fn(() => {
@@ -712,14 +742,9 @@ describe('DraftService', () => {
         .mockReturnValueOnce(existingPsbtObj as any)
         .mockReturnValueOnce(newPsbtObj as any);
 
-      await updateDraft(walletId, draftId,{ signedPsbtBase64: 'fallback-psbt' });
-
-      expect(draftRepository.update).toHaveBeenCalledWith(
-        draftId,
-        expect.objectContaining({
-          signedPsbtBase64: 'fallback-psbt',
-        })
-      );
+      await expect(updateDraft(walletId, draftId, { signedPsbtBase64: 'fallback-psbt' }))
+        .rejects.toThrow('cannot be combined');
+      expect(draftRepository.update).not.toHaveBeenCalled();
       fromBase64Spy.mockRestore();
     });
 

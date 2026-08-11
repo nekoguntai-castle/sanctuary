@@ -1,4 +1,5 @@
 import { vi } from 'vitest';
+import * as bitcoin from 'bitcoinjs-lib';
 import request from 'supertest';
 import { Express } from 'express';
 import { PrismaClient } from '../../../src/generated/prisma/client';
@@ -16,7 +17,8 @@ const mockCreateTransaction = vi.fn();
 const mockCreateBatchTransaction = vi.fn();
 const mockBroadcastAndSave = vi.fn();
 const mockEstimateTransaction = vi.fn();
-const mockGetPSBTInfoWithNetwork = vi.fn();
+const mockCreateSigningIntent = vi.fn();
+const mockValidateSignedArtifact = vi.fn();
 const mockGetCachedBlockHeight = vi.fn();
 const mockAuditLogFromRequest = vi.fn();
 
@@ -33,9 +35,16 @@ vi.mock('../../../src/services/bitcoin/utils', async () => {
 vi.mock('../../../src/services/bitcoin/transactionService', () => ({
   createTransaction: (...args: unknown[]) => mockCreateTransaction(...args),
   createBatchTransaction: (...args: unknown[]) => mockCreateBatchTransaction(...args),
-  broadcastAndSave: (...args: unknown[]) => mockBroadcastAndSave(...args),
   estimateTransaction: (...args: unknown[]) => mockEstimateTransaction(...args),
-  getPSBTInfoWithNetwork: (...args: unknown[]) => mockGetPSBTInfoWithNetwork(...args),
+}));
+
+vi.mock('../../../src/services/bitcoin/signingIntent', () => ({
+  createSigningIntent: (...args: unknown[]) => mockCreateSigningIntent(...args),
+  validateSignedArtifact: (...args: unknown[]) => mockValidateSignedArtifact(...args),
+}));
+
+vi.mock('../../../src/services/bitcoin/transactions/broadcasting', () => ({
+  broadcastAndSave: (...args: unknown[]) => mockBroadcastAndSave(...args),
 }));
 
 vi.mock('../../../src/services/bitcoin/blockchain', async () => {
@@ -93,6 +102,10 @@ describeWithDb('Transaction Creation and Cross-Wallet Integration', () => {
     mockValidateAddress.mockReturnValue({ valid: true });
     mockGetCachedBlockHeight.mockReturnValue(800000);
     mockAuditLogFromRequest.mockResolvedValue(undefined);
+    mockCreateSigningIntent.mockResolvedValue({
+      intentId: 'intent-1',
+      intentDigest: 'a'.repeat(64),
+    });
     mockEstimateTransaction.mockResolvedValue({
       fee: 500,
       totalInput: 150000,
@@ -140,6 +153,10 @@ describeWithDb('Transaction Creation and Cross-Wallet Integration', () => {
         .expect(200);
 
       expect(response.body.psbtBase64).toBe('cHNidP8BAHECAAAAAQ==');
+      expect(response.body).toMatchObject({
+        intentId: 'intent-1',
+        intentDigest: 'a'.repeat(64),
+      });
       expect(mockCreateTransaction).toHaveBeenCalledWith(
         walletId,
         'tb1qrecipient00000000000000000000000000000000',
@@ -179,32 +196,58 @@ describeWithDb('Transaction Creation and Cross-Wallet Integration', () => {
 
       mockBroadcastAndSave.mockResolvedValue({
         txid: uniqueTxid('broadcast'),
-        saved: true,
+        broadcasted: true,
+        persistenceStatus: 'complete',
       });
-      mockGetPSBTInfoWithNetwork.mockReturnValue({
-        fee: 250,
-        outputs: [{ address: 'tb1qrecipient00000000000000000000000000000000', value: 25000 }],
-        inputs: [{ txid: uniqueTxid('input'), vout: 0 }],
+      const recipientPayment = bitcoin.payments.p2wpkh({
+        hash: Buffer.alloc(20, 1),
+        network: bitcoin.networks.testnet,
       });
+      const recipient = recipientPayment.address!;
+      const scriptPubKeyHex = Buffer.from(recipientPayment.output!).toString('hex');
+      const inputTxid = 'b'.repeat(64);
+      mockValidateSignedArtifact.mockImplementation(async input => ({
+        rawTx: '00',
+        txid: 'c'.repeat(64),
+        walletId: input.walletId,
+        network: 'testnet3',
+        intent: { intentId: input.intentId, intentDigest: input.intentDigest },
+        snapshot: {
+          version: 1,
+          walletId: input.walletId,
+          network: 'testnet3',
+          transaction: {
+            version: 2,
+            locktime: 0,
+            inputs: [{
+              txid: inputTxid,
+              vout: 0,
+              sequence: 0xfffffffd,
+              prevout: { amountSats: '25250', scriptPubKeyHex, role: 'wallet' },
+            }],
+            outputs: [{ amountSats: '25000', scriptPubKeyHex }],
+          },
+        },
+      }));
 
       const response = await request(app)
         .post(`/api/v1/transactions/wallets/${walletId}/transactions/broadcast`)
         .set(authHeader(token))
         .send({
           signedPsbtBase64: 'cHNidP8BAHECAAAAAQ==',
-          recipient: 'tb1qrecipient00000000000000000000000000000000',
+          intentId: 'intent-1',
+          intentDigest: 'a'.repeat(64),
+          recipient,
           amount: 25000,
           fee: 250,
         })
         .expect(200);
 
       expect(response.body).toHaveProperty('txid');
-      expect(mockGetPSBTInfoWithNetwork).toHaveBeenCalledWith('cHNidP8BAHECAAAAAQ==', 'testnet3');
       expect(mockBroadcastAndSave).toHaveBeenCalledWith(
-        walletId,
-        'cHNidP8BAHECAAAAAQ==',
+        expect.objectContaining({ walletId, txid: 'c'.repeat(64) }),
         expect.objectContaining({
-          recipient: 'tb1qrecipient00000000000000000000000000000000',
+          recipient,
           amount: 25000,
           fee: 250,
         })
@@ -240,6 +283,10 @@ describeWithDb('Transaction Creation and Cross-Wallet Integration', () => {
 
       expect(response.body.psbt).toBe('hardware-psbt');
       expect(response.body.fee).toBe(300);
+      expect(response.body).toMatchObject({
+        intentId: 'intent-1',
+        intentDigest: 'a'.repeat(64),
+      });
       expect(mockCreateTransaction).toHaveBeenCalledWith(
         walletId,
         'tb1qrecipient00000000000000000000000000000000',

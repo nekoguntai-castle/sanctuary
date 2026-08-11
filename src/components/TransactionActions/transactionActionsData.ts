@@ -40,6 +40,8 @@ export function rbfDraftRequest({
     label: originalLabel || fallbackRbfLabel(rbfStatus, result),
     memo: `Replacing transaction ${txid}`,
     psbtBase64: result.psbtBase64,
+    intentId: result.intentId,
+    intentDigest: result.intentDigest,
     fee: result.fee,
     totalInput,
     totalOutput,

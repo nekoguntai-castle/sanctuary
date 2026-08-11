@@ -228,6 +228,7 @@ const assertPrevoutsStillUnspent = async (
 export async function verifyElectrumBroadcastPreflight(
   client: PreflightClient,
   rawTx: string,
+  authenticatedReplacement = false,
 ): Promise<ElectrumBroadcastPreflightResult> {
   const parsed = parseRawTransactionInputs(rawTx);
   assertSpendableInputs(parsed.inputs);
@@ -235,7 +236,9 @@ export async function verifyElectrumBroadcastPreflight(
 
   const previousTransactions = await fetchPreviousTransactions(client, parsed.inputs);
   const prevouts = resolvePrevouts(parsed.inputs, previousTransactions);
-  await assertPrevoutsStillUnspent(client, prevouts);
+  if (!authenticatedReplacement) {
+    await assertPrevoutsStillUnspent(client, prevouts);
+  }
 
   return {
     txid: parsed.txid,

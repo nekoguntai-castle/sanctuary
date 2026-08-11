@@ -1,0 +1,161 @@
+import * as bitcoin from 'bitcoinjs-lib';
+import { InvalidInputError } from '../../../errors/ApiError';
+import { transactionSigningIntentRepository } from '../../../repositories/transactionSigningIntentRepository';
+import { isBitcoinNetwork } from '../networks';
+import {
+  buildSigningIntentSnapshot,
+  calculateSnapshotDigest,
+  defaultInputRoles,
+  unsignedPsbtSha256,
+} from './canonical';
+import { authenticateIntentPrevouts } from './prevoutValidation';
+import { toPrismaInputJson } from './json';
+import { SigningIntentSnapshotSchema } from './schema';
+import {
+  SIGNING_INTENT_SNAPSHOT_VERSION,
+  SIGNING_INTENT_SOURCE_VALUES,
+  type CreateSigningIntentInput,
+  type SigningIntentEnvelope,
+  type SigningIntentHandle,
+  type SigningIntentSource,
+} from './types';
+
+const DEFAULT_INTENT_LIFETIME_MS = 24 * 60 * 60 * 1000;
+
+const parsePsbt = (value: string, field: string): bitcoin.Psbt => {
+  try {
+    return bitcoin.Psbt.fromBase64(value);
+  } catch {
+    throw new InvalidInputError('Invalid PSBT', field, { reason: 'invalid_psbt' });
+  }
+};
+
+const parseSource = (value: string): SigningIntentSource => {
+  if (SIGNING_INTENT_SOURCE_VALUES.includes(value as SigningIntentSource)) {
+    return value as SigningIntentSource;
+  }
+  throw new InvalidInputError('Stored signing intent has an unsupported source', 'intentId', {
+    reason: 'missing_intent',
+  });
+};
+
+export const createSigningIntent = async (
+  input: CreateSigningIntentInput,
+): Promise<SigningIntentHandle> => {
+  const psbt = parsePsbt(input.unsignedPsbtBase64, 'psbtBase64');
+  const roles = input.inputRoles ?? defaultInputRoles(psbt.inputCount);
+  const prevouts = await authenticateIntentPrevouts(
+    input.walletId,
+    input.network,
+    psbt,
+    roles,
+    undefined,
+    input.replacementTxid,
+  );
+  const snapshot = buildSigningIntentSnapshot(
+    input.walletId,
+    input.network,
+    psbt,
+    prevouts,
+    input.replacementTxid,
+  );
+  const snapshotDigest = calculateSnapshotDigest(snapshot);
+  const psbtHash = unsignedPsbtSha256(input.unsignedPsbtBase64);
+  const record = await transactionSigningIntentRepository.create({
+    walletId: input.walletId,
+    createdByUserId: input.createdByUserId,
+    network: input.network,
+    source: input.source,
+    snapshotVersion: SIGNING_INTENT_SNAPSHOT_VERSION,
+    snapshot: toPrismaInputJson(snapshot),
+    snapshotDigest,
+    unsignedPsbtBase64: input.unsignedPsbtBase64,
+    unsignedPsbtSha256: psbtHash,
+    expiresAt: input.expiresAt ?? new Date(Date.now() + DEFAULT_INTENT_LIFETIME_MS),
+    supersedesIntentId: input.supersedesIntentId,
+  });
+  return { intentId: record.id, intentDigest: record.snapshotDigest };
+};
+
+const invalidIntent = (message: string, reason = 'missing_intent'): InvalidInputError =>
+  new InvalidInputError(message, 'intentId', { reason });
+
+type StoredSigningIntent = NonNullable<
+  Awaited<ReturnType<typeof transactionSigningIntentRepository.findById>>
+>;
+
+const assertStoredIntentScope = (record: StoredSigningIntent, handle: SigningIntentHandle, walletId: string): void => {
+  if (record.walletId !== walletId) throw invalidIntent('Signing intent was not found');
+  if (record.snapshotDigest !== handle.intentDigest) throw invalidIntent('Signing intent digest does not match');
+  if (record.snapshotVersion !== SIGNING_INTENT_SNAPSHOT_VERSION) {
+    throw invalidIntent('Signing intent version is unsupported');
+  }
+  if (record.supersededById) throw invalidIntent('Signing intent has been superseded', 'stale_intent');
+  if (!isBitcoinNetwork(record.network)) throw invalidIntent('Signing intent network is invalid', 'wrong_network');
+};
+
+const resolveAuthenticatedReplay = (
+  record: StoredSigningIntent,
+  allowReplay: boolean,
+): SigningIntentEnvelope['broadcastReplay'] | undefined => {
+  if (!record.consumedAt) return undefined;
+  const replayState = record.broadcastState === 'accepted' || record.broadcastState === 'complete'
+    ? record.broadcastState
+    : undefined;
+  if (!allowReplay || !replayState || !record.broadcastTxid || !record.broadcastRawTx) {
+    throw invalidIntent('Signing intent has already been consumed', 'duplicate_submission');
+  }
+  return {
+    state: replayState,
+    txid: record.broadcastTxid,
+    rawTx: record.broadcastRawTx,
+  };
+};
+
+const authenticateStoredSnapshot = (record: StoredSigningIntent, walletId: string) => {
+  const parsed = SigningIntentSnapshotSchema.safeParse(record.snapshot);
+  if (!parsed.success) throw invalidIntent('Signing intent snapshot is malformed');
+  if (parsed.data.walletId !== walletId || parsed.data.network !== record.network) {
+    throw invalidIntent('Signing intent identity does not match its stored scope');
+  }
+  if (calculateSnapshotDigest(parsed.data) !== record.snapshotDigest) {
+    throw invalidIntent('Signing intent snapshot authentication failed');
+  }
+  return parsed.data;
+};
+
+const assertStoredPsbtAuthentic = (record: StoredSigningIntent): void => {
+  if (unsignedPsbtSha256(record.unsignedPsbtBase64) !== record.unsignedPsbtSha256) {
+    throw invalidIntent('Signing intent PSBT authentication failed');
+  }
+};
+
+export const loadSigningIntent = async (
+  handle: SigningIntentHandle,
+  walletId: string,
+  options: { allowConsumedBroadcastReplay?: boolean } = {},
+): Promise<SigningIntentEnvelope> => {
+  const record = await transactionSigningIntentRepository.findById(handle.intentId);
+  if (!record) throw invalidIntent('Signing intent was not found');
+  assertStoredIntentScope(record, handle, walletId);
+  const broadcastReplay = resolveAuthenticatedReplay(
+    record,
+    options.allowConsumedBroadcastReplay === true,
+  );
+  if (!broadcastReplay && record.expiresAt.getTime() <= Date.now()) {
+    throw invalidIntent('Signing intent has expired', 'stale_intent');
+  }
+  const snapshot = authenticateStoredSnapshot(record, walletId);
+  assertStoredPsbtAuthentic(record);
+
+  return {
+    intentId: record.id,
+    intentDigest: record.snapshotDigest,
+    snapshot,
+    unsignedPsbtBase64: record.unsignedPsbtBase64,
+    unsignedPsbtSha256: record.unsignedPsbtSha256,
+    source: parseSource(record.source),
+    expiresAt: record.expiresAt,
+    ...(broadcastReplay && { broadcastReplay }),
+  };
+};

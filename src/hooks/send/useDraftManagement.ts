@@ -97,6 +97,8 @@ const buildDraftRequest = (
     decoyOutputs: currentTxData.decoyOutputs,
     payjoinUrl: state.payjoinUrl || undefined,
     psbtBase64: currentTxData.psbtBase64,
+    intentId: currentTxData.intentId,
+    intentDigest: currentTxData.intentDigest,
     fee: currentTxData.fee,
     totalInput: currentTxData.totalInput,
     totalOutput: currentTxData.totalOutput,

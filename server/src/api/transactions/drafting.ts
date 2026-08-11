@@ -14,6 +14,7 @@ import { ValidationError, NotFoundError, ForbiddenError } from '../../errors/Api
 import { validateAddress } from '../../services/bitcoin/utils';
 import { normalizeLegacyBitcoinNetwork, type BitcoinNetwork } from '../../services/bitcoin/networks';
 import { policyEvaluationEngine } from '../../services/vaultPolicy';
+import { createSigningIntent } from '../../services/bitcoin/signingIntent';
 import * as txService from '../../services/bitcoin/transactionService';
 import {
   MobilePsbtCreateRequestSchema,
@@ -125,6 +126,13 @@ router.post('/wallets/:walletId/transactions/create', requireWalletAccess('edit'
       decoyOutputs,
     }
   );
+  const signingIntent = await createSigningIntent({
+    walletId,
+    createdByUserId: requireAuthenticatedUser(req).userId,
+    network,
+    source: 'standard',
+    unsignedPsbtBase64: txData.psbtBase64,
+  });
 
   log.debug('Create transaction response', {
     fee: txData.fee,
@@ -146,6 +154,7 @@ router.post('/wallets/:walletId/transactions/create', requireWalletAccess('edit'
     effectiveAmount: txData.effectiveAmount,
     decoyOutputs: txData.decoyOutputs,
     policyEvaluation: policyResult.triggered.length > 0 ? policyResult : undefined,
+    ...signingIntent,
   });
 }));
 
@@ -202,6 +211,13 @@ router.post('/wallets/:walletId/transactions/batch', requireWalletAccess('edit')
       memo,
     }
   );
+  const signingIntent = await createSigningIntent({
+    walletId,
+    createdByUserId: requireAuthenticatedUser(req).userId,
+    network,
+    source: 'batch',
+    unsignedPsbtBase64: txData.psbtBase64,
+  });
 
   res.json({
     psbtBase64: txData.psbtBase64,
@@ -214,6 +230,7 @@ router.post('/wallets/:walletId/transactions/batch', requireWalletAccess('edit')
     inputPaths: txData.inputPaths,
     outputs: txData.outputs,
     policyEvaluation: policyResult.triggered.length > 0 ? policyResult : undefined,
+    ...signingIntent,
   });
 }));
 
@@ -281,6 +298,16 @@ router.post('/wallets/:walletId/psbt/create', requireWalletAccess('edit'), async
       enableRBF: true,
     }
   );
+  const wallet = await walletRepository.findById(walletId);
+  if (!wallet) throw new NotFoundError('Wallet not found');
+  const network = normalizeLegacyBitcoinNetwork(wallet.network, 'mainnet') as WalletNetwork;
+  const signingIntent = await createSigningIntent({
+    walletId,
+    createdByUserId: requireAuthenticatedUser(req).userId,
+    network,
+    source: 'hardware',
+    unsignedPsbtBase64: txData.psbtBase64,
+  });
 
   res.json({
     psbt: txData.psbtBase64,
@@ -291,6 +318,7 @@ router.post('/wallets/:walletId/psbt/create', requireWalletAccess('edit'), async
     changeAmount: txData.changeAmount,
     changeAddress: txData.changeAddress,
     utxos: txData.utxos,
+    ...signingIntent,
   });
 }));
 

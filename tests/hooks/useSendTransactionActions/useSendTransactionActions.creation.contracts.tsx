@@ -285,6 +285,8 @@ export const registerUseSendTransactionActionsCreationContracts = () => {
       mocks.attemptPayjoin.mockResolvedValue({
         success: true,
         proposalPsbt: 'payjoin-proposal-psbt',
+        intentId: 'intent-2',
+        intentDigest: 'b'.repeat(64),
       } as any);
 
       const state = createState({
@@ -387,7 +389,10 @@ export const registerUseSendTransactionActionsCreationContracts = () => {
       });
 
       expect(mocks.attemptPayjoin).toHaveBeenCalledWith(
+        'wallet-1',
         'cHNidP8BAA==',
+        'intent-1',
+        'a'.repeat(64),
         'https://merchant.example/payjoin',
         'mainnet',
         expect.any(AbortSignal),

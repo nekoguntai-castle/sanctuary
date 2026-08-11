@@ -48,6 +48,9 @@ const bitcoinApiMocks = vi.hoisted(() => ({
   mockSilentPayments: {
     getSilentPaymentReadiness: vi.fn(),
   },
+  mockSigningIntent: {
+    createSigningIntent: vi.fn(),
+  },
 }));
 
 export const mockNodeClient = bitcoinApiMocks.mockNodeClient;
@@ -56,6 +59,7 @@ export const mockMempool = bitcoinApiMocks.mockMempool;
 export const mockUtils = bitcoinApiMocks.mockUtils;
 export const mockAdvancedTx = bitcoinApiMocks.mockAdvancedTx;
 export const mockSilentPayments = bitcoinApiMocks.mockSilentPayments;
+export const mockSigningIntent = bitcoinApiMocks.mockSigningIntent;
 export { createMockTransaction, mockElectrumClient, mockElectrumPool, mockPrismaClient };
 
 vi.mock('../../../../src/models/prisma', () => ({
@@ -69,6 +73,7 @@ vi.mock('../../../../src/services/bitcoin/mempool', () => bitcoinApiMocks.mockMe
 vi.mock('../../../../src/services/bitcoin/utils', () => bitcoinApiMocks.mockUtils);
 vi.mock('../../../../src/services/bitcoin/advancedTx', () => bitcoinApiMocks.mockAdvancedTx);
 vi.mock('../../../../src/services/silentPayments/readiness', () => bitcoinApiMocks.mockSilentPayments);
+vi.mock('../../../../src/services/bitcoin/signingIntent', () => bitcoinApiMocks.mockSigningIntent);
 vi.mock('../../../../src/services/bitcoin/electrum', () => ({
   getElectrumClient: () => mockElectrumClient,
 }));
@@ -244,6 +249,10 @@ export const setupBitcoinApiMocks = () => {
     endpointCount: 1,
     featurePoolHealthy: true,
     servers: [],
+  });
+  mockSigningIntent.createSigningIntent.mockResolvedValue({
+    intentId: 'intent-bitcoin-api',
+    intentDigest: 'digest-bitcoin-api',
   });
 
   // Default prisma mocks

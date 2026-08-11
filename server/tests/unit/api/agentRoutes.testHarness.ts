@@ -22,6 +22,7 @@ const mockState = vi.hoisted(() => {
     mockGetOrCreateOperationalReceiveAddress: vi.fn(),
     mockVerifyOperationalReceiveAddress: vi.fn(),
     mockCreateTransaction: vi.fn(),
+    mockCreateSigningIntent: vi.fn(),
     mockEvaluatePolicies: vi.fn(),
     mockAuditLog: vi.fn(),
     mockGetClientInfo: vi.fn(),
@@ -32,6 +33,7 @@ const mockState = vi.hoisted(() => {
     mockWalletRepository: {
       findById: vi.fn(),
       findByIdWithDevices: vi.fn(),
+      findNetwork: vi.fn(),
     },
     mockAgentRateLimitKeys,
     mockRateLimitByKey: vi.fn(
@@ -77,6 +79,7 @@ const {
   mockGetOrCreateOperationalReceiveAddress,
   mockVerifyOperationalReceiveAddress,
   mockCreateTransaction,
+  mockCreateSigningIntent,
   mockEvaluatePolicies,
   mockAuditLog,
   mockGetClientInfo,
@@ -116,6 +119,9 @@ vi.mock("../../../src/services/agentOperationalAddressService", () => ({
 }));
 vi.mock("../../../src/services/bitcoin/transactionService", () => ({
   createTransaction: mockState.mockCreateTransaction,
+}));
+vi.mock("../../../src/services/bitcoin/signingIntent", () => ({
+  createSigningIntent: mockState.mockCreateSigningIntent,
 }));
 vi.mock("../../../src/services/vaultPolicy", () => ({
   policyEvaluationEngine: {
@@ -190,6 +196,7 @@ export {
   mockCreateDraft,
   mockCreateFundingAttempt,
   mockCreateTransaction,
+  mockCreateSigningIntent,
   mockEnforceAgentFundingPolicy,
   mockEvaluatePolicies,
   mockEvaluateRejectedFundingAttemptAlert,
@@ -312,6 +319,11 @@ export const resetAgentRouteMocks = () => {
   (walletRepository.findByIdWithDevices as any).mockResolvedValue({
     id: "funding-wallet",
     devices: [{ device: { type: "coldcard", model: null } }],
+  });
+  mockWalletRepository.findNetwork.mockResolvedValue("testnet3");
+  mockCreateSigningIntent.mockResolvedValue({
+    intentId: "intent-agent",
+    intentDigest: "digest-agent",
   });
   (utxoRepository.getUnspentBalance as any)
     .mockResolvedValueOnce(20000n)

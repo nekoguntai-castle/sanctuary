@@ -62,6 +62,8 @@ export const CreateDraftRequestSchema = z.object({
   inputPaths: z.array(z.string().min(1)).optional(),
   signedPsbtBase64: z.string().min(1).optional(),
   signedDeviceId: z.string().min(1).optional(),
+  intentId: z.string().min(1),
+  intentDigest: z.string().regex(/^[0-9a-f]{64}$/),
 }).strict();
 
 export const UpdateDraftRequestSchema = z.object({

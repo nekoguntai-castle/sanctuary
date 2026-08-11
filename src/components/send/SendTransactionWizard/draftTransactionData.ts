@@ -42,7 +42,8 @@ export function createDraftInitialTxData({
   state,
   utxos,
 }: DraftTransactionDataInput): TransactionData | null {
-  if (!state.isDraftMode || !draftTxData || !state.unsignedPsbt) {
+  if (!state.isDraftMode || !draftTxData || !state.unsignedPsbt
+    || !draftTxData.intentId || !draftTxData.intentDigest) {
     return null;
   }
 
@@ -56,6 +57,8 @@ export function createDraftInitialTxData({
 
   return {
     psbtBase64: state.unsignedPsbt,
+    intentId: draftTxData.intentId,
+    intentDigest: draftTxData.intentDigest,
     fee: draftTxData.fee,
     totalInput: draftTxData.totalInput,
     totalOutput: draftTxData.totalOutput,

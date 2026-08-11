@@ -13,16 +13,11 @@ const options = {
   json: process.argv.includes('--json'),
 };
 
-const scanRoots = [
-  'server/src/api/bitcoin',
-  'server/src/api/transactions',
-  'server/src/services/bitcoin',
-  'server/src/services/sync',
-];
+const scanRoots = ['server/src'];
 
 const rules = [
   { name: 'getNodeClient', minArgs: 1, memberObjects: [] },
-  { name: 'broadcastTransaction', minArgs: 2, memberObjects: ['blockchain'] },
+  { name: 'broadcastTransaction', minArgs: 2, memberObjects: ['blockchain'], memberOnly: true },
   { name: 'getFeeEstimates', minArgs: 1, memberObjects: ['blockchain'] },
   { name: 'getCurrentFeeEstimates', minArgs: 1, memberObjects: [] },
   { name: 'getAdvancedFeeEstimates', minArgs: 1, memberObjects: ['advancedTx'] },
@@ -111,7 +106,7 @@ function propertyName(node) {
 
 function shouldInspectCall(call, rule) {
   if (!rule) return false;
-  if (call.kind === 'identifier') return true;
+  if (call.kind === 'identifier') return !rule.memberOnly;
   return rule.memberObjects.includes(call.objectText);
 }
 
@@ -182,11 +177,40 @@ function collectFindingsInFile(filePath) {
     ts.ScriptKind.TS,
   );
   const findings = [];
+  const opaqueBroadcastBindings = new Set();
+
+  for (const statement of sourceFile.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+    const modulePath = statement.moduleSpecifier.text;
+    if (!modulePath.endsWith('/blockchain') && modulePath !== '../blockchain') continue;
+    for (const element of statement.importClause?.namedBindings?.elements ?? []) {
+      if ((element.propertyName?.text ?? element.name.text) === 'broadcastTransaction') {
+        opaqueBroadcastBindings.add(element.name.text);
+      }
+    }
+  }
 
   function visit(node) {
     if (ts.isCallExpression(node)) {
       const call = propertyName(node);
-      const rule = call ? rules.find((candidate) => candidate.name === call.name) : null;
+      if (call?.kind === 'identifier' && opaqueBroadcastBindings.has(call.name)) {
+        const canonicalFile = 'server/src/services/bitcoin/transactions/broadcasting.ts';
+        const valid = relativePath === canonicalFile && node.arguments.length === 1;
+        if (!valid) {
+          const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+          findings.push({
+            file: relativePath,
+            line: line + 1,
+            functionName: enclosingFunctionName(node),
+            callee: call.callee,
+            issue: 'opaque-broadcast-boundary-bypass',
+            call: normalizeCallText(node, sourceFile),
+          });
+        }
+      }
+      const rule = call
+        ? rules.find((candidate) => candidate.name === call.name && shouldInspectCall(call, candidate))
+        : null;
       if (call && shouldInspectCall(call, rule)) {
         const issue = detectIssue(node, rule);
         if (issue) {

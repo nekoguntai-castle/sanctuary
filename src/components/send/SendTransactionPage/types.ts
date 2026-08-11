@@ -4,6 +4,8 @@ import type { Device, FeeEstimate, UTXO, Wallet } from '../../../types';
 import type { SerializableTransactionState, WalletAddress } from '../../../contexts/send/types';
 
 export interface DraftTransactionData {
+  intentId?: string;
+  intentDigest?: string;
   fee: number;
   totalInput: number;
   totalOutput: number;

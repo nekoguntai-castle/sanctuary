@@ -42,6 +42,8 @@ describe('Serialization Utilities', () => {
     memo: null,
     changeAddress: 'bc1qchange...',
     inputPaths: ["m/84'/0'/0'/0/0"],
+    signingIntentId: null,
+    signingIntentDigest: null,
     signedDeviceIds: [],
     agentId: null,
     agentOperationalWalletId: null,

@@ -576,6 +576,8 @@ describe('HardwareWalletService', () => {
         psbt: 'unsigned-psbt',
         fee: 500,
         inputPaths: ["m/84'/0'/0'/0/0"],
+        intentId: 'intent-1',
+        intentDigest: 'a'.repeat(64),
       })
       .mockResolvedValueOnce({ txid: 'txid-123' });
 
@@ -600,13 +602,14 @@ describe('HardwareWalletService', () => {
       psbt: 'unsigned-psbt',
       inputPaths: ["m/84'/0'/0'/0/0"],
     });
-    expect(mockPost).toHaveBeenNthCalledWith(2, '/wallets/w1/psbt/broadcast', {
-      signedPsbt: 'signed-coldcard',
-      rawTxHex: undefined,
+    expect(mockPost).toHaveBeenNthCalledWith(2, '/wallets/w1/transactions/broadcast', {
+      signedPsbtBase64: 'signed-coldcard',
+      intentId: 'intent-1',
+      intentDigest: 'a'.repeat(64),
     });
   });
 
-  it('passes rawTx from adapter to broadcast step', async () => {
+  it('blocks raw-only hardware broadcast until adapter proof is available', async () => {
     const service = new HardwareWalletService();
     const { adapter } = createMockAdapter('bitbox', {
       signPSBT: vi.fn(async () => ({ psbt: 'signed-trezor', signatures: 1, rawTx: '020000...' })),
@@ -615,21 +618,23 @@ describe('HardwareWalletService', () => {
     await service.connect('bitbox');
 
     mockPost
-      .mockResolvedValueOnce({ psbt: 'unsigned-psbt', fee: 300, inputPaths: [] })
+      .mockResolvedValueOnce({
+        psbt: 'unsigned-psbt',
+        fee: 300,
+        inputPaths: [],
+        intentId: 'intent-2',
+        intentDigest: 'b'.repeat(64),
+      })
       .mockResolvedValueOnce({ txid: 'txid-raw' });
 
-    const txid = await service.signTransaction({
+    await expect(service.signTransaction({
       walletId: 'w2',
       recipient: 'bc1qdest2',
       amount: 10000,
       feeRate: 5,
-    });
+    })).rejects.toThrow('Raw-only hardware broadcast is disabled');
 
-    expect(txid).toBe('txid-raw');
-    expect(mockPost).toHaveBeenNthCalledWith(2, '/wallets/w2/psbt/broadcast', {
-      signedPsbt: 'signed-trezor',
-      rawTxHex: '020000...',
-    });
+    expect(mockPost).toHaveBeenCalledTimes(1);
   });
 
   it('throws in signTransaction when no adapter is connected', async () => {

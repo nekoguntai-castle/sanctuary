@@ -12,7 +12,7 @@
 
 services:
   bitcoin-core:
-    image: bitcoin/bitcoin:27.0
+    image: bitcoin/bitcoin:29.0@sha256:a6aa8a9e349b4108d13c558dbe43064057bd7b6474b858966884f9cb95b7ed78
     container_name: bitcoin-core
     restart: unless-stopped
     ports:
