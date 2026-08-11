@@ -12,8 +12,8 @@
         {
           "id": "descriptor-pair-identity",
           "productionFile": "src/services/bitcoin/psbtAccountBinding.ts",
-          "lineStart": 41,
-          "lineEnd": 49,
+          "lineStart": 43,
+          "lineEnd": 47,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/psbtAccountBinding.test.ts",
             "name": "bindPsbtAccount bindPsbtAccount commits the exact descriptor pair to descriptorDigest"
@@ -21,8 +21,8 @@
           "canaries": [{
             "id": "descriptor-digest-commits-both-descriptors",
             "location": {
-              "start": { "line": 43, "column": 28 },
-              "end": { "line": 43, "column": 65 }
+              "start": { "line": 45, "column": 28 },
+              "end": { "line": 45, "column": 65 }
             },
             "mutatorName": "ArrayDeclaration",
             "replacement": "[]",
@@ -35,8 +35,8 @@
         {
           "id": "immutable-signer-account-selection",
           "productionFile": "src/services/bitcoin/psbtAccountBinding.ts",
-          "lineStart": 83,
-          "lineEnd": 114,
+          "lineStart": 81,
+          "lineEnd": 113,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/psbtAccountBinding.test.ts",
             "name": "bindPsbtAccount rejects multisig signer snapshot order and account-path drift"
@@ -44,8 +44,8 @@
           "canaries": [{
             "id": "signer-snapshot-completeness",
             "location": {
-              "start": { "line": 90, "column": 9 },
-              "end": { "line": 92, "column": 36 }
+              "start": { "line": 88, "column": 9 },
+              "end": { "line": 90, "column": 36 }
             },
             "mutatorName": "ConditionalExpression",
             "replacement": "true",
@@ -58,8 +58,8 @@
         {
           "id": "server-origin-preservation",
           "productionFile": "src/services/bitcoin/psbtAccountBinding.ts",
-          "lineStart": 202,
-          "lineEnd": 211,
+          "lineStart": 218,
+          "lineEnd": 234,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/psbtAccountBinding.test.ts",
             "name": "bindPsbtAccount bindPsbtAccount rejects one drifted origin in an otherwise complete multisig derivation array"
@@ -67,22 +67,89 @@
           "canaries": [{
             "id": "all-origins-must-match",
             "location": {
-              "start": { "line": 211, "column": 10 },
-              "end": { "line": 211, "column": 87 }
-            },
-            "mutatorName": "MethodExpression",
-            "replacement": "actualIdentities.some((value, index) => value === expectedIdentities[index])",
+                "start": { "line": 232, "column": 9 },
+                "end": { "line": 232, "column": 62 }
+              },
+            "mutatorName": "ConditionalExpression",
+            "replacement": "false",
             "requiredKillingTest": {
               "file": "tests/unit/services/bitcoin/psbtAccountBinding.test.ts",
-              "name": "bindPsbtAccount bindPsbtAccount rejects one drifted origin in an otherwise complete multisig derivation array"
+              "name": "bindPsbtAccount rejects a conflicting derivation on the second input"
+            }
+          }]
+        },
+        {
+          "id": "server-taproot-bip371-metadata",
+          "productionFile": "src/services/bitcoin/psbtAccountBinding.ts",
+          "lineStart": 209,
+          "lineEnd": 316,
+          "requiredTests": [
+            {
+              "file": "tests/unit/services/bitcoin/psbtAccountBinding.taproot.test.ts",
+              "name": "bindPsbtAccount Taproot metadata binds exact Taproot key-path BIP371 input and change metadata"
+            },
+            {
+              "file": "tests/unit/services/bitcoin/psbtAccountBinding.taproot.test.ts",
+              "name": "bindPsbtAccount Taproot metadata rejects Taproot script-path merkle root"
+            }
+          ],
+          "canaries": [
+            {
+              "id": "server-taproot-derivations-have-no-leaf-hashes",
+              "location": {
+                "start": { "line": 214, "column": 17 },
+                "end": { "line": 214, "column": 19 }
+              },
+              "mutatorName": "ArrayDeclaration",
+              "replacement": "[\"Stryker was here\"]",
+              "requiredKillingTest": {
+                "file": "tests/unit/services/bitcoin/psbtAccountBinding.taproot.test.ts",
+                "name": "bindPsbtAccount Taproot metadata binds exact Taproot key-path BIP371 input and change metadata"
+              }
+            },
+            {
+              "id": "server-taproot-script-path-is-rejected",
+              "location": {
+                "start": { "line": 281, "column": 7 },
+                "end": { "line": 281, "column": 84 }
+              },
+              "mutatorName": "ConditionalExpression",
+              "replacement": "false",
+              "requiredKillingTest": {
+                "file": "tests/unit/services/bitcoin/psbtAccountBinding.taproot.test.ts",
+                "name": "bindPsbtAccount Taproot metadata rejects Taproot script-path merkle root"
+              }
+            }
+          ]
+        },
+        {
+          "id": "server-taproot-multisig-fails-closed",
+          "productionFile": "src/services/bitcoin/psbtAccountBinding.ts",
+          "lineStart": 467,
+          "lineEnd": 470,
+          "requiredTests": [{
+            "file": "tests/unit/services/bitcoin/psbtAccountBinding.taproot.test.ts",
+            "name": "bindPsbtAccount Taproot metadata rejects a persisted Taproot multisig wallet before descriptor or account binding"
+          }],
+          "canaries": [{
+            "id": "server-taproot-multisig-block",
+            "location": {
+              "start": { "line": 467, "column": 7 },
+              "end": { "line": 468, "column": 56 }
+            },
+            "mutatorName": "ConditionalExpression",
+            "replacement": "false",
+            "requiredKillingTest": {
+              "file": "tests/unit/services/bitcoin/psbtAccountBinding.taproot.test.ts",
+              "name": "bindPsbtAccount Taproot metadata rejects a persisted Taproot multisig wallet before descriptor or account binding"
             }
           }]
         },
         {
           "id": "authenticated-previous-output",
           "productionFile": "src/services/bitcoin/psbtAccountBinding.ts",
-          "lineStart": 263,
-          "lineEnd": 290,
+          "lineStart": 360,
+          "lineEnd": 387,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/psbtAccountBinding.test.ts",
             "name": "bindPsbtAccount rejects conflicting witnessUtxo and authenticated nonWitnessUtxo evidence"
@@ -90,8 +157,8 @@
           "canaries": [{
             "id": "non-witness-txid-match",
             "location": {
-              "start": { "line": 276, "column": 9 },
-              "end": { "line": 276, "column": 36 }
+              "start": { "line": 373, "column": 9 },
+              "end": { "line": 373, "column": 36 }
             },
             "mutatorName": "ConditionalExpression",
             "replacement": "true",
@@ -104,8 +171,8 @@
         {
           "id": "canonical-utxo-value-and-script",
           "productionFile": "src/services/bitcoin/psbtAccountBinding.ts",
-          "lineStart": 292,
-          "lineEnd": 313,
+          "lineStart": 389,
+          "lineEnd": 426,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/psbtAccountBinding.test.ts",
             "name": "bindPsbtAccount bindPsbtAccount rejects a wallet UTXO amount that differs from the authenticated prevout"
@@ -113,8 +180,8 @@
           "canaries": [{
             "id": "utxo-evidence-match-is-mandatory",
             "location": {
-              "start": { "line": 307, "column": 7 },
-              "end": { "line": 308, "column": 51 }
+              "start": { "line": 404, "column": 43 },
+              "end": { "line": 404, "column": 80 }
             },
             "mutatorName": "ConditionalExpression",
             "replacement": "false",
@@ -127,8 +194,8 @@
         {
           "id": "branch-one-change-classification",
           "productionFile": "src/services/bitcoin/psbtAccountBinding.ts",
-          "lineStart": 326,
-          "lineEnd": 398,
+          "lineStart": 497,
+          "lineEnd": 509,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/psbtAccountBinding.test.ts",
             "name": "bindPsbtAccount does not claim an external output as change"
@@ -136,8 +203,8 @@
           "canaries": [{
             "id": "change-branch-check",
             "location": {
-              "start": { "line": 396, "column": 9 },
-              "end": { "line": 396, "column": 41 }
+              "start": { "line": 507, "column": 9 },
+              "end": { "line": 507, "column": 41 }
             },
             "mutatorName": "ConditionalExpression",
             "replacement": "true",
@@ -150,8 +217,8 @@
         {
           "id": "persisted-context-origin-preservation",
           "productionFile": "src/services/bitcoin/psbtSigningContextValidation.ts",
-          "lineStart": 19,
-          "lineEnd": 32,
+          "lineStart": 26,
+          "lineEnd": 42,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/psbtSigningContextValidation.test.ts",
             "name": "assertPsbtMatchesSigningContext assertPsbtMatchesSigningContext rejects one drifted origin in an otherwise complete multisigner array"
@@ -159,11 +226,11 @@
           "canaries": [{
             "id": "persisted-context-all-origins-match",
             "location": {
-              "start": { "line": 32, "column": 10 },
-              "end": { "line": 32, "column": 87 }
+              "start": { "line": 40, "column": 9 },
+              "end": { "line": 40, "column": 62 }
             },
-            "mutatorName": "MethodExpression",
-            "replacement": "actualIdentities.some((value, index) => value === expectedIdentities[index])",
+            "mutatorName": "ConditionalExpression",
+            "replacement": "false",
             "requiredKillingTest": {
               "file": "tests/unit/services/bitcoin/psbtSigningContextValidation.test.ts",
               "name": "assertPsbtMatchesSigningContext assertPsbtMatchesSigningContext rejects one drifted origin in an otherwise complete multisigner array"
@@ -171,10 +238,54 @@
           }]
         },
         {
+          "id": "persisted-context-taproot-contract",
+          "productionFile": "src/services/bitcoin/psbtSigningContextValidation.ts",
+          "lineStart": 45,
+          "lineEnd": 92,
+          "requiredTests": [
+            {
+              "file": "tests/unit/services/bitcoin/psbtSigningContextValidation.test.ts",
+              "name": "assertPsbtMatchesSigningContext rejects Taproot nonempty leaf hashes context metadata"
+            },
+            {
+              "file": "tests/unit/services/bitcoin/psbtSigningContextValidation.test.ts",
+              "name": "assertPsbtMatchesSigningContext rejects Taproot script-path merkle root context metadata"
+            }
+          ],
+          "canaries": [
+            {
+              "id": "persisted-taproot-leaf-hashes-stay-empty",
+              "location": {
+                "start": { "line": 55, "column": 9 },
+                "end": { "line": 55, "column": 37 }
+              },
+              "mutatorName": "ConditionalExpression",
+              "replacement": "false",
+              "requiredKillingTest": {
+                "file": "tests/unit/services/bitcoin/psbtSigningContextValidation.test.ts",
+                "name": "assertPsbtMatchesSigningContext rejects Taproot nonempty leaf hashes context metadata"
+              }
+            },
+            {
+              "id": "persisted-taproot-script-path-is-rejected",
+              "location": {
+                "start": { "line": 91, "column": 18 },
+                "end": { "line": 91, "column": 98 }
+              },
+              "mutatorName": "ConditionalExpression",
+              "replacement": "false",
+              "requiredKillingTest": {
+                "file": "tests/unit/services/bitcoin/psbtSigningContextValidation.test.ts",
+                "name": "assertPsbtMatchesSigningContext rejects Taproot script-path merkle root context metadata"
+              }
+            }
+          ]
+        },
+        {
           "id": "persisted-context-transaction-identity",
           "productionFile": "src/services/bitcoin/psbtSigningContextValidation.ts",
-          "lineStart": 91,
-          "lineEnd": 100,
+          "lineStart": 166,
+          "lineEnd": 170,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/psbtSigningContextValidation.test.ts",
             "name": "assertPsbtMatchesSigningContext rejects unsigned transaction and input-role drift"
@@ -182,8 +293,8 @@
           "canaries": [{
             "id": "unsigned-transaction-digest-match",
             "location": {
-              "start": { "line": 99, "column": 7 },
-              "end": { "line": 99, "column": 51 }
+              "start": { "line": 168, "column": 7 },
+              "end": { "line": 168, "column": 51 }
             },
             "mutatorName": "ConditionalExpression",
             "replacement": "true",
@@ -196,8 +307,8 @@
         {
           "id": "wallet-input-role-coverage",
           "productionFile": "src/services/bitcoin/psbtSigningContextValidation.ts",
-          "lineStart": 102,
-          "lineEnd": 108,
+          "lineStart": 171,
+          "lineEnd": 177,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/psbtSigningContextValidation.test.ts",
             "name": "assertPsbtMatchesSigningContext assertPsbtMatchesSigningContext rejects partial wallet-role coverage"
@@ -205,8 +316,8 @@
           "canaries": [{
             "id": "every-wallet-role-must-be-covered",
             "location": {
-              "start": { "line": 107, "column": 8 },
-              "end": { "line": 107, "column": 68 }
+              "start": { "line": 176, "column": 8 },
+              "end": { "line": 176, "column": 68 }
             },
             "mutatorName": "MethodExpression",
             "replacement": "walletIndexes.every(index => !contextIndexes.includes(index))",
@@ -229,8 +340,8 @@
         {
           "id": "browser-account-network-policy",
           "productionFile": "src/services/hardwareWallet/psbtAccountBinding.ts",
-          "lineStart": 80,
-          "lineEnd": 100,
+          "lineStart": 98,
+          "lineEnd": 113,
           "requiredTests": [{
             "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
             "name": "hardware PSBT account binding rejects a wrong network binding"
@@ -238,8 +349,8 @@
           "canaries": [{
             "id": "wallet-policy-match",
             "location": {
-              "start": { "line": 86, "column": 7 },
-              "end": { "line": 93, "column": 7 }
+              "start": { "line": 104, "column": 7 },
+              "end": { "line": 111, "column": 7 }
             },
             "mutatorName": "ConditionalExpression",
             "replacement": "true",
@@ -252,8 +363,8 @@
         {
           "id": "browser-origin-preservation",
           "productionFile": "src/services/hardwareWallet/psbtAccountBinding.ts",
-          "lineStart": 66,
-          "lineEnd": 75,
+          "lineStart": 83,
+          "lineEnd": 96,
           "requiredTests": [{
             "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
             "name": "hardware PSBT account binding rejects one drifted origin in an otherwise complete multisig binding"
@@ -261,8 +372,8 @@
           "canaries": [{
             "id": "browser-all-origins-match",
             "location": {
-              "start": { "line": 73, "column": 42 },
-              "end": { "line": 75, "column": 5 }
+              "start": { "line": 91, "column": 42 },
+              "end": { "line": 93, "column": 5 }
             },
             "mutatorName": "MethodExpression",
             "replacement": "actual.every((value, index) => {\n  return value !== wanted[index];\n})",
@@ -275,8 +386,8 @@
         {
           "id": "browser-multisig-key-set",
           "productionFile": "src/services/hardwareWallet/psbtAccountBinding.ts",
-          "lineStart": 123,
-          "lineEnd": 141,
+          "lineStart": 161,
+          "lineEnd": 177,
           "requiredTests": [{
             "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
             "name": "hardware PSBT account binding rejects one drifted witnessScript key in an otherwise complete multisig script"
@@ -284,8 +395,8 @@
           "canaries": [{
             "id": "all-witness-keys-match-origins",
             "location": {
-              "start": { "line": 141, "column": 8 },
-              "end": { "line": 141, "column": 78 }
+              "start": { "line": 175, "column": 8 },
+              "end": { "line": 175, "column": 78 }
             },
             "mutatorName": "MethodExpression",
             "replacement": "sortedScriptPubkeys.every((key, index) => key !== originPubkeys[index])",
@@ -296,10 +407,98 @@
           }]
         },
         {
+          "id": "browser-taproot-account-binding",
+          "productionFile": "src/services/hardwareWallet/psbtAccountBinding.ts",
+          "lineStart": 61,
+          "lineEnd": 205,
+          "requiredTests": [
+            {
+              "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
+              "name": "hardware PSBT account binding rejects Taproot nonempty leaf hashes"
+            },
+            {
+              "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
+              "name": "hardware PSBT account binding rejects non-Taproot browser input field tapBip32Derivation"
+            },
+            {
+              "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
+              "name": "hardware PSBT account binding rejects Taproot script-path merkle root"
+            },
+            {
+              "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
+              "name": "hardware PSBT account binding rejects Taproot script-path leaf"
+            }
+          ],
+          "canaries": [
+            {
+              "id": "browser-taproot-leaf-hashes-stay-empty",
+              "location": {
+              "start": { "line": 67, "column": 9 },
+              "end": { "line": 67, "column": 67 }
+              },
+              "mutatorName": "ConditionalExpression",
+              "replacement": "false",
+              "requiredKillingTest": {
+                "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
+                "name": "hardware PSBT account binding rejects Taproot nonempty leaf hashes"
+              }
+            },
+            {
+              "id": "browser-non-taproot-maps-reject-taproot-fields",
+              "location": {
+              "start": { "line": 146, "column": 3 },
+              "end": { "line": 152, "column": 53 }
+              },
+              "mutatorName": "ConditionalExpression",
+              "replacement": "false",
+              "requiredKillingTest": {
+                "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
+                "name": "hardware PSBT account binding rejects non-Taproot browser input field tapBip32Derivation"
+              }
+            },
+            {
+              "id": "browser-taproot-script-path-is-rejected",
+              "location": {
+              "start": { "line": 198, "column": 7 },
+              "end": { "line": 200, "column": 53 }
+              },
+              "mutatorName": "ConditionalExpression",
+              "replacement": "false",
+              "requiredKillingTest": {
+                "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
+                "name": "hardware PSBT account binding rejects Taproot script-path leaf"
+              }
+            }
+          ]
+        },
+        {
+          "id": "browser-taproot-multisig-fails-closed",
+          "productionFile": "src/services/hardwareWallet/psbtAccountBinding.ts",
+          "lineStart": 421,
+          "lineEnd": 423,
+          "requiredTests": [{
+            "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
+            "name": "hardware PSBT account binding rejects imported Taproot multisig context before consuming its signer evidence"
+          }],
+          "canaries": [{
+            "id": "browser-taproot-multisig-block",
+            "location": {
+              "start": { "line": 421, "column": 7 },
+              "end": { "line": 421, "column": 77 }
+            },
+            "mutatorName": "ConditionalExpression",
+            "replacement": "false",
+            "requiredKillingTest": {
+              "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
+              "name": "hardware PSBT account binding rejects imported Taproot multisig context before consuming its signer evidence"
+            }
+          }]
+        },
+        {
           "id": "browser-previous-output-proof",
           "productionFile": "src/services/hardwareWallet/psbtAccountBinding.ts",
-          "lineStart": 189,
-          "lineEnd": 218,
+          "lineStart": 250,
+          "lineEnd": 280,
           "requiredTests": [{
             "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
             "name": "hardware PSBT account binding rejects conflicting witnessUtxo and authenticated nonWitnessUtxo evidence"
@@ -307,8 +506,8 @@
           "canaries": [{
             "id": "dual-prevout-evidence-must-match",
             "location": {
-              "start": { "line": 209, "column": 7 },
-              "end": { "line": 211, "column": 88 }
+              "start": { "line": 270, "column": 7 },
+              "end": { "line": 272, "column": 88 }
             },
             "mutatorName": "ConditionalExpression",
             "replacement": "true",
@@ -321,8 +520,8 @@
         {
           "id": "browser-exact-change-and-external-output-classification",
           "productionFile": "src/services/hardwareWallet/psbtAccountBinding.ts",
-          "lineStart": 271,
-          "lineEnd": 288,
+          "lineStart": 315,
+          "lineEnd": 375,
           "requiredTests": [{
             "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
             "name": "hardware PSBT account binding rejects forged change metadata on an external output"
@@ -330,8 +529,8 @@
           "canaries": [{
             "id": "external-output-metadata-is-rejected",
             "location": {
-              "start": { "line": 283, "column": 9 },
-              "end": { "line": 284, "column": 91 }
+              "start": { "line": 371, "column": 9 },
+              "end": { "line": 371, "column": 66 }
             },
             "mutatorName": "ConditionalExpression",
             "replacement": "true",
@@ -344,8 +543,8 @@
         {
           "id": "browser-legacy-input-hints",
           "productionFile": "src/services/hardwareWallet/psbtAccountBinding.ts",
-          "lineStart": 290,
-          "lineEnd": 305,
+          "lineStart": 377,
+          "lineEnd": 392,
           "requiredTests": [{
             "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
             "name": "hardware PSBT account binding rejects one mismatched legacy input path among multiple inputs"
@@ -353,8 +552,8 @@
           "canaries": [{
             "id": "every-legacy-input-path-must-match",
             "location": {
-              "start": { "line": 300, "column": 10 },
-              "end": { "line": 300, "column": 83 }
+              "start": { "line": 387, "column": 10 },
+              "end": { "line": 387, "column": 83 }
             },
             "mutatorName": "MethodExpression",
             "replacement": "request.inputPaths.every((path, index) => path !== boundInputPaths[index])",
@@ -367,8 +566,8 @@
         {
           "id": "browser-change-hint-order-and-membership",
           "productionFile": "src/services/hardwareWallet/psbtAccountBinding.ts",
-          "lineStart": 306,
-          "lineEnd": 310,
+          "lineStart": 393,
+          "lineEnd": 399,
           "requiredTests": [
             {
               "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
@@ -383,8 +582,8 @@
             {
               "id": "server-change-indexes-are-canonically-ordered",
               "location": {
-                "start": { "line": 306, "column": 25 },
-                "end": { "line": 306, "column": 104 }
+              "start": { "line": 393, "column": 25 },
+              "end": { "line": 393, "column": 104 }
               },
               "mutatorName": "MethodExpression",
               "replacement": "context.changeOutputs.map(binding => binding.outputIndex)",
@@ -396,8 +595,8 @@
             {
               "id": "every-change-hint-must-match",
               "location": {
-                "start": { "line": 310, "column": 10 },
-                "end": { "line": 310, "column": 77 }
+              "start": { "line": 397, "column": 10 },
+              "end": { "line": 397, "column": 77 }
               },
               "mutatorName": "MethodExpression",
               "replacement": "hintedChange.every((value, index) => value !== changeIndexes[index])",
@@ -411,8 +610,8 @@
         {
           "id": "browser-connected-fingerprint",
           "productionFile": "src/services/hardwareWallet/psbtAccountBinding.ts",
-          "lineStart": 327,
-          "lineEnd": 347,
+          "lineStart": 414,
+          "lineEnd": 437,
           "requiredTests": [{
             "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
             "name": "hardware PSBT account binding rejects an ambiguous connected fingerprint and a missing fingerprint"
@@ -420,8 +619,8 @@
           "canaries": [{
             "id": "exactly-one-connected-wallet-signer",
             "location": {
-              "start": { "line": 342, "column": 7 },
-              "end": { "line": 342, "column": 52 }
+              "start": { "line": 432, "column": 7 },
+              "end": { "line": 432, "column": 52 }
             },
             "mutatorName": "ConditionalExpression",
             "replacement": "true",
@@ -434,8 +633,8 @@
         {
           "id": "browser-unsigned-transaction-identity",
           "productionFile": "src/services/hardwareWallet/psbtAccountBinding.ts",
-          "lineStart": 350,
-          "lineEnd": 359,
+          "lineStart": 440,
+          "lineEnd": 449,
           "requiredTests": [{
             "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
             "name": "hardware PSBT account binding rejects reusing the signing context with a different unsigned transaction"
@@ -443,14 +642,276 @@
           "canaries": [{
             "id": "browser-unsigned-transaction-digest-match",
             "location": {
-              "start": { "line": 357, "column": 7 },
-              "end": { "line": 357, "column": 76 }
+              "start": { "line": 447, "column": 7 },
+              "end": { "line": 447, "column": 76 }
             },
             "mutatorName": "ConditionalExpression",
             "replacement": "true",
             "requiredKillingTest": {
               "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
               "name": "hardware PSBT account binding accepts an exact server-issued account and change binding"
+            }
+          }]
+        }
+      ]
+    },
+    {
+      "id": "serverTaprootConstruction",
+      "reportPath": "server/reports/mutation/taproot-construction.json",
+      "files": [
+        {
+          "path": "src/services/bitcoin/transactions/psbtConstruction.ts",
+          "minScore": 85
+        },
+        {
+          "path": "src/services/bitcoin/transactions/psbtInputConstruction.ts",
+          "minScore": 85
+        }
+      ],
+      "invariants": [
+        {
+          "id": "taproot-multisig-construction-remains-blocked",
+          "productionFile": "src/services/bitcoin/transactions/psbtConstruction.ts",
+          "lineStart": 67,
+          "lineEnd": 74,
+          "requiredTests": [{
+            "file": "tests/unit/services/bitcoin/psbtConstruction.signingInfo.test.ts",
+            "name": "resolveWalletSigningInfo keeps Taproot multisig blocked before descriptor parsing"
+          }],
+          "canaries": [{
+            "id": "taproot-multisig-rejection-is-mandatory",
+            "location": {
+              "start": { "line": 72, "column": 7 },
+              "end": { "line": 72, "column": 60 }
+            },
+            "mutatorName": "ConditionalExpression",
+            "replacement": "false",
+            "requiredKillingTest": {
+              "file": "tests/unit/services/bitcoin/psbtConstruction.signingInfo.test.ts",
+              "name": "resolveWalletSigningInfo keeps Taproot multisig blocked before descriptor parsing"
+            }
+          }]
+        },
+        {
+          "id": "taproot-bip371-construction-metadata",
+          "productionFile": "src/services/bitcoin/transactions/psbtInputConstruction.ts",
+          "lineStart": 206,
+          "lineEnd": 228,
+          "requiredTests": [{
+            "file": "tests/unit/services/bitcoin/psbtInputConstruction.branches.test.ts",
+            "name": "PSBT input construction branch coverage adds exact BIP371 key-path metadata for single-sig Taproot input m/86'/1'/0'/0/5"
+          }],
+          "canaries": [
+            {
+              "id": "taproot-construction-branch-is-mandatory",
+              "location": {
+                "start": { "line": 218, "column": 9 },
+                "end": { "line": 218, "column": 48 }
+              },
+              "mutatorName": "ConditionalExpression",
+              "replacement": "false",
+              "requiredKillingTest": {
+                "file": "tests/unit/services/bitcoin/psbtInputConstruction.branches.test.ts",
+                "name": "PSBT input construction branch coverage adds exact BIP371 key-path metadata for single-sig Taproot input m/86'/1'/0'/0/5"
+              }
+            },
+            {
+              "id": "taproot-origin-tuple-is-complete",
+              "location": {
+                "start": { "line": 222, "column": 30 },
+                "end": { "line": 227, "column": 10 }
+              },
+              "mutatorName": "ObjectLiteral",
+              "replacement": "{}",
+              "requiredKillingTest": {
+                "file": "tests/unit/services/bitcoin/psbtInputConstruction.branches.test.ts",
+                "name": "PSBT input construction branch coverage adds exact BIP371 key-path metadata for single-sig Taproot input m/86'/1'/0'/0/5"
+              }
+            },
+            {
+              "id": "taproot-key-path-leaf-hashes-stay-empty",
+              "location": {
+                "start": { "line": 226, "column": 23 },
+                "end": { "line": 226, "column": 25 }
+              },
+              "mutatorName": "ArrayDeclaration",
+              "replacement": "[\"Stryker was here\"]",
+              "requiredKillingTest": {
+                "file": "tests/unit/services/bitcoin/psbtInputConstruction.branches.test.ts",
+                "name": "PSBT input construction branch coverage adds exact BIP371 key-path metadata for single-sig Taproot input m/86'/1'/0'/0/5"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "serverTaprootArtifactFinalization",
+      "reportPath": "server/reports/mutation/taproot-artifact-finalization.json",
+      "files": [{
+        "path": "src/services/bitcoin/signingIntent/artifactValidation.ts",
+        "minScore": 85
+      }],
+      "invariants": [
+        {
+          "id": "taproot-artifact-key-path-metadata",
+          "productionFile": "src/services/bitcoin/signingIntent/artifactValidation.ts",
+          "lineStart": 187,
+          "lineEnd": 211,
+          "requiredTests": [
+            {
+              "file": "tests/unit/services/bitcoin/signingIntent/artifactValidation.test.ts",
+              "name": "signed artifact authentication boundary rejects Core-backed Taproot signatures with missing internal key"
+            },
+            {
+              "file": "tests/unit/services/bitcoin/signingIntent/artifactValidation.test.ts",
+              "name": "signed artifact authentication boundary rejects Core-backed Taproot signatures with nonempty leaf hashes"
+            },
+            {
+              "file": "tests/unit/services/bitcoin/signingIntent/artifactValidation.test.ts",
+              "name": "signed artifact authentication boundary rejects an invalid-length BIP371 tapInternalKey at the parser boundary"
+            },
+            {
+              "file": "tests/unit/services/bitcoin/signingIntent/artifactValidation.test.ts",
+              "name": "signed artifact authentication boundary rejects an invalid-length BIP371 tapBip32Derivation pubkey at the parser boundary"
+            }
+          ],
+          "canaries": [
+            {
+              "id": "taproot-script-path-and-mixed-metadata-are-rejected",
+              "location": {
+                "start": { "line": 187, "column": 7 },
+                "end": { "line": 188, "column": 88 }
+              },
+              "mutatorName": "ConditionalExpression",
+              "replacement": "false",
+              "requiredKillingTest": {
+                "file": "tests/unit/services/bitcoin/signingIntent/artifactValidation.test.ts",
+                "name": "signed artifact authentication boundary rejects Core-backed Taproot signatures with script-path metadata"
+              }
+            },
+            {
+              "id": "taproot-internal-key-and-single-derivation-are-required",
+              "location": {
+                "start": { "line": 194, "column": 7 },
+                "end": { "line": 194, "column": 57 }
+              },
+              "mutatorName": "ConditionalExpression",
+              "replacement": "false",
+              "requiredKillingTest": {
+                "file": "tests/unit/services/bitcoin/signingIntent/artifactValidation.test.ts",
+                "name": "signed artifact authentication boundary rejects a Taproot signature whose BIP371 key-path metadata is incomplete"
+              }
+            },
+            {
+              "id": "taproot-artifact-leaf-hashes-stay-empty",
+              "location": {
+                "start": { "line": 206, "column": 7 },
+                "end": { "line": 206, "column": 45 }
+              },
+              "mutatorName": "ConditionalExpression",
+              "replacement": "false",
+              "requiredKillingTest": {
+                "file": "tests/unit/services/bitcoin/signingIntent/artifactValidation.test.ts",
+                "name": "signed artifact authentication boundary rejects Core-backed Taproot signatures with nonempty leaf hashes"
+              }
+            }
+          ]
+        },
+        {
+          "id": "non-taproot-artifacts-reject-taproot-fields",
+          "productionFile": "src/services/bitcoin/signingIntent/artifactValidation.ts",
+          "lineStart": 172,
+          "lineEnd": 233,
+          "requiredTests": [{
+            "file": "tests/unit/services/bitcoin/signingIntent/artifactValidation.test.ts",
+            "name": "signed artifact authentication boundary rejects non-Taproot signed artifacts carrying tapBip32Derivation"
+          }],
+          "canaries": [{
+            "id": "non-taproot-inputs-fail-closed-on-taproot-fields",
+            "location": {
+              "start": { "line": 228, "column": 7 },
+              "end": { "line": 228, "column": 35 }
+            },
+            "mutatorName": "ConditionalExpression",
+            "replacement": "false",
+            "requiredKillingTest": {
+              "file": "tests/unit/services/bitcoin/signingIntent/artifactValidation.test.ts",
+              "name": "signed artifact authentication boundary rejects non-Taproot signed artifacts carrying tapBip32Derivation"
+            }
+          }]
+        },
+        {
+          "id": "taproot-signature-family-and-schnorr-validation",
+          "productionFile": "src/services/bitcoin/signingIntent/artifactValidation.ts",
+          "lineStart": 218,
+          "lineEnd": 289,
+          "requiredTests": [{
+            "file": "tests/unit/services/bitcoin/signingIntent/artifactValidation.test.ts",
+            "name": "signed artifact authentication boundary accepts Core-backed signed vector: 'p2tr'"
+          }],
+          "canaries": [
+            {
+              "id": "p2tr-inputs-use-the-taproot-signature-family",
+              "location": {
+                "start": { "line": 219, "column": 7 },
+                "end": { "line": 219, "column": 14 }
+              },
+              "mutatorName": "ConditionalExpression",
+              "replacement": "false",
+              "requiredKillingTest": {
+                "file": "tests/unit/services/bitcoin/signingIntent/artifactValidation.test.ts",
+                "name": "signed artifact authentication boundary accepts Core-backed signed vector: 'p2tr'"
+              }
+            },
+            {
+              "id": "x-only-keys-select-schnorr-validation",
+              "location": {
+                "start": { "line": 269, "column": 9 },
+                "end": { "line": 269, "column": 29 }
+              },
+              "mutatorName": "ConditionalExpression",
+              "replacement": "false",
+              "requiredKillingTest": {
+                "file": "tests/unit/services/bitcoin/signingIntent/artifactValidation.test.ts",
+                "name": "signed artifact authentication boundary accepts Core-backed signed vector: 'p2tr'"
+              }
+            },
+            {
+              "id": "present-signatures-are-cryptographically-validated",
+              "location": {
+                "start": { "line": 289, "column": 9 },
+                "end": { "line": 289, "column": 76 }
+              },
+              "mutatorName": "ConditionalExpression",
+              "replacement": "false",
+              "requiredKillingTest": {
+                "file": "tests/unit/services/bitcoin/signingIntent/artifactValidation.test.ts",
+                "name": "signed artifact authentication boundary rejects a cryptographically invalid partial signature"
+              }
+            }
+          ]
+        },
+        {
+          "id": "taproot-artifact-deterministic-finalization",
+          "productionFile": "src/services/bitcoin/signingIntent/artifactValidation.ts",
+          "lineStart": 297,
+          "lineEnd": 308,
+          "requiredTests": [{
+            "file": "tests/unit/services/bitcoin/signingIntent/artifactValidation.test.ts",
+            "name": "signed artifact authentication boundary validates, finalizes, and extracts an exactly preserved signed PSBT"
+          }],
+          "canaries": [{
+            "id": "non-multisig-inputs-use-library-finalization",
+            "location": {
+              "start": { "line": 304, "column": 14 },
+              "end": { "line": 306, "column": 8 }
+            },
+            "mutatorName": "BlockStatement",
+            "replacement": "{}",
+            "requiredKillingTest": {
+              "file": "tests/unit/services/bitcoin/signingIntent/artifactValidation.test.ts",
+              "name": "signed artifact authentication boundary validates, finalizes, and extracts an exactly preserved signed PSBT"
             }
           }]
         }

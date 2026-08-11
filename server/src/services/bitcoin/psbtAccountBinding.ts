@@ -26,10 +26,12 @@ type BindingWallet = NonNullable<Awaited<ReturnType<typeof walletRepository.find
 type BindingAddress = Awaited<ReturnType<typeof addressRepository.findCanonicalEvidenceForPsbt>>[number];
 type BindingUtxo = Awaited<ReturnType<typeof utxoRepository.findByOutpointsForWallet>>[number];
 type PsbtDerivation = NonNullable<bitcoin.Psbt['data']['inputs'][number]['bip32Derivation']>[number];
+type PsbtTapDerivation = NonNullable<bitcoin.Psbt['data']['inputs'][number]['tapBip32Derivation']>[number];
 interface PaymentEvidence {
   output?: Buffer;
   redeemScript?: Buffer;
   witnessScript?: Buffer;
+  tapInternalKey?: Buffer;
 }
 
 export interface BindPsbtAccountOptions {
@@ -59,15 +61,11 @@ function requireWalletIdentity(wallet: BindingWallet) {
   if (!wallet.canonicalPolicyId || !wallet.canonicalPolicyVersion) {
     throw bindingError('wallet canonical policy identity is incomplete');
   }
-  if (scriptType === WalletScriptType.TAPROOT) {
-    throw bindingError('Taproot/BIP371 binding is not supported');
-  }
   return { walletType, scriptType, network };
 }
 
 function descriptorKeys(descriptor: string) {
   const parsed = parseDescriptor(descriptor);
-  if (parsed.type === 'tr') throw bindingError('Taproot/BIP371 binding is not supported');
   if (parsed.keys) return parsed.keys;
   if (!parsed.xpub || !parsed.fingerprint || !parsed.accountPath) {
     throw bindingError('descriptor signer origin is incomplete');
@@ -131,14 +129,16 @@ function signerOrigins(
   signers: readonly PsbtWalletSigner[],
   addressPath: string,
   networkObj: bitcoin.Network,
+  xOnly: boolean,
 ): PsbtSignerOrigin[] {
   return signers.map(signer => {
     let node = bip32.fromBase58(convertToStandardXpub(signer.accountXpub), networkObj);
     for (const child of relativeAddressPath(addressPath, signer.accountPath)) node = node.derive(child);
+    const publicKey = Buffer.from(node.publicKey);
     return {
       masterFingerprint: signer.masterFingerprint,
       path: normalizeDerivationPath(addressPath),
-      pubkey: Buffer.from(node.publicKey).toString('hex'),
+      pubkey: (xOnly ? publicKey.subarray(1, 33) : publicKey).toString('hex'),
     };
   });
 }
@@ -172,6 +172,13 @@ function expectedPayment(
     };
   }
   const pubkey = pubkeys[0];
+  if (scriptType === WalletScriptType.TAPROOT) {
+    const payment = bitcoin.payments.p2tr({ internalPubkey: pubkey, network: networkObj });
+    return {
+      output: payment.output && Buffer.from(payment.output),
+      tapInternalKey: Buffer.from(pubkey),
+    };
+  }
   if (scriptType === WalletScriptType.LEGACY) {
     const payment = bitcoin.payments.p2pkh({ pubkey, network: networkObj });
     return { output: payment.output && Buffer.from(payment.output) };
@@ -199,21 +206,66 @@ function expectedDerivations(origins: readonly PsbtSignerOrigin[]): PsbtDerivati
   }));
 }
 
-function sameDerivations(actual: readonly PsbtDerivation[] | undefined, expected: readonly PsbtDerivation[]): boolean {
-  if (!actual || actual.length !== expected.length) return false;
-  const identity = (item: PsbtDerivation) => [
-    Buffer.from(item.masterFingerprint).toString('hex'),
-    item.path,
-    Buffer.from(item.pubkey).toString('hex'),
-  ].join(':');
-  const actualIdentities = actual.map(identity).sort();
-  const expectedIdentities = expected.map(identity).sort();
-  return actualIdentities.every((value, index) => value === expectedIdentities[index]);
+function expectedTapDerivations(origins: readonly PsbtSignerOrigin[]): PsbtTapDerivation[] {
+  return origins.map(origin => ({
+    masterFingerprint: Buffer.from(origin.masterFingerprint, 'hex'),
+    path: origin.path,
+    pubkey: Buffer.from(origin.pubkey, 'hex'),
+    leafHashes: [],
+  }));
 }
+
+const derivationIdentity = (item: PsbtDerivation): string => {
+  const fingerprint = Buffer.from(item.masterFingerprint).toString('hex');
+  const pubkey = Buffer.from(item.pubkey).toString('hex');
+  return fingerprint.concat(':', item.path, ':', pubkey);
+};
+
+const sameDerivations = (
+  actual: readonly PsbtDerivation[] | undefined,
+  expected: readonly PsbtDerivation[],
+): boolean => {
+  if (!actual || actual.length !== expected.length) return false;
+  const actualIdentities = actual.map(derivationIdentity).sort();
+  const expectedIdentities = expected.map(derivationIdentity).sort();
+  for (let index = 0; index < actualIdentities.length; index += 1) {
+    if (actualIdentities[index] !== expectedIdentities[index]) return false;
+  }
+  return true;
+};
+
+const sameTapDerivations = (
+  actual: readonly PsbtTapDerivation[],
+  expected: readonly PsbtTapDerivation[],
+): boolean => {
+  for (const item of actual) {
+    if (item.leafHashes.length !== 0) return false;
+  }
+  return sameDerivations(actual, expected);
+};
 
 type OptionalScript = Uint8Array | undefined;
 type ExpectedPayment = ReturnType<typeof expectedPayment>;
 type PsbtMapKind = 'input' | 'output';
+type TaprootMetadataUpdate = {
+  tapBip32Derivation?: PsbtTapDerivation[];
+  tapInternalKey?: Buffer;
+};
+
+function hasTaprootFields(
+  data: bitcoin.Psbt['data']['inputs'][number] | bitcoin.Psbt['data']['outputs'][number],
+  kind: PsbtMapKind,
+): boolean {
+  if (data.tapBip32Derivation !== undefined || data.tapInternalKey !== undefined) return true;
+  if (kind === 'input') {
+    const input = data as bitcoin.Psbt['data']['inputs'][number];
+    return input.tapKeySig !== undefined
+      || input.tapScriptSig !== undefined
+      || input.tapLeafScript !== undefined
+      || input.tapMerkleRoot !== undefined;
+  }
+  return (data as bitcoin.Psbt['data']['outputs'][number]).tapTree !== undefined;
+}
 
 const assertCompatibleScript = (
   actual: OptionalScript,
@@ -225,6 +277,44 @@ const assertCompatibleScript = (
   }
 };
 
+const assertNoTaprootScriptPath = (data: bitcoin.Psbt['data']['inputs'][number]): void => {
+  if (data.tapLeafScript?.length || data.tapScriptSig?.length || data.tapMerkleRoot) {
+    throw bindingError('Taproot script-path metadata is not supported');
+  }
+};
+
+const applyExactTaprootMetadata = (
+  psbt: bitcoin.Psbt,
+  kind: PsbtMapKind,
+  index: number,
+  origins: readonly PsbtSignerOrigin[],
+  tapInternalKey: Buffer,
+): void => {
+  const data = kind === 'input' ? psbt.data.inputs[index] : psbt.data.outputs[index];
+  const expected = expectedTapDerivations(origins);
+  if (data.bip32Derivation?.length || data.redeemScript || data.witnessScript) {
+    throw bindingError(`${kind} ${index} mixes Taproot and legacy PSBT metadata`);
+  }
+  if (kind === 'input') assertNoTaprootScriptPath(psbt.data.inputs[index]);
+  if (kind === 'output' && psbt.data.outputs[index].tapTree) {
+    throw bindingError('Taproot script-path metadata is not supported');
+  }
+  if (data.tapBip32Derivation && !sameTapDerivations(data.tapBip32Derivation, expected)) {
+    throw bindingError(`${kind} ${index} has conflicting Taproot derivation metadata`);
+  }
+  assertCompatibleScript(
+    data.tapInternalKey,
+    tapInternalKey,
+    `${kind} ${index} has a conflicting tapInternalKey`,
+  );
+  const update: TaprootMetadataUpdate = {};
+  if (!data.tapBip32Derivation) update.tapBip32Derivation = expected;
+  if (!data.tapInternalKey) update.tapInternalKey = tapInternalKey;
+  if (Object.keys(update).length === 0) return;
+  if (kind === 'input') psbt.updateInput(index, update);
+  else psbt.updateOutput(index, update);
+};
+
 function applyExactMetadata(
   psbt: bitcoin.Psbt,
   kind: PsbtMapKind,
@@ -233,6 +323,13 @@ function applyExactMetadata(
   payment: ExpectedPayment,
 ): void {
   const data = kind === 'input' ? psbt.data.inputs[index] : psbt.data.outputs[index];
+  if (payment.tapInternalKey) {
+    applyExactTaprootMetadata(psbt, kind, index, origins, payment.tapInternalKey);
+    return;
+  }
+  if (hasTaprootFields(data, kind)) {
+    throw bindingError(`${kind} ${index} mixes non-Taproot and Taproot PSBT metadata`);
+  }
   const expected = expectedDerivations(origins);
   if (data.bip32Derivation && !sameDerivations(data.bip32Derivation, expected)) {
     throw bindingError(`${kind} ${index} has conflicting BIP32 derivation metadata`);
@@ -308,7 +405,12 @@ function bindOwnedInput(
     || !script.equals(Buffer.from(prevout.script)) || address.scriptPubKey !== utxo.scriptPubKey) {
     throw bindingError(`input ${inputIndex} prevout does not match canonical wallet evidence`);
   }
-  const origins = signerOrigins(signers, address.derivationPath, networkObj);
+  const origins = signerOrigins(
+    signers,
+    address.derivationPath,
+    networkObj,
+    parseWalletScriptType(wallet.scriptType) === WalletScriptType.TAPROOT,
+  );
   const payment = expectedPayment(wallet, address, origins, networkObj);
   if (!payment.output?.equals(script)) throw bindingError(`input ${inputIndex} script does not match signer keys`);
   applyExactMetadata(psbt, 'input', inputIndex, origins, payment);
@@ -332,7 +434,12 @@ function bindChangeOutput(
   networkObj: bitcoin.Network,
 ): PsbtChangeBinding {
   const txOutput = psbt.txOutputs[outputIndex];
-  const origins = signerOrigins(signers, address.derivationPath, networkObj);
+  const origins = signerOrigins(
+    signers,
+    address.derivationPath,
+    networkObj,
+    parseWalletScriptType(wallet.scriptType) === WalletScriptType.TAPROOT,
+  );
   const payment = expectedPayment(wallet, address, origins, networkObj);
   if (!payment.output?.equals(Buffer.from(txOutput.script))
     || address.scriptPubKey !== Buffer.from(txOutput.script).toString('hex')) {
@@ -357,6 +464,10 @@ export async function bindPsbtAccount(
   const wallet = await walletRepository.findByIdWithSigningDevices(walletId);
   if (!wallet) throw bindingError('wallet not found');
   const identity = requireWalletIdentity(wallet);
+  if (identity.walletType === WalletType.MULTI_SIG
+    && identity.scriptType === WalletScriptType.TAPROOT) {
+    throw bindingError('Taproot multisig is not supported');
+  }
   if (identity.walletType === WalletType.MULTI_SIG
     && identity.scriptType !== WalletScriptType.NATIVE_SEGWIT
     && identity.scriptType !== WalletScriptType.NESTED_SEGWIT) {

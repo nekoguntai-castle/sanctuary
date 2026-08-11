@@ -40,7 +40,7 @@ describe("PSBT Builder", () => {
           isLegacy: false,
           rawTxCache: new Map(),
           addressPathMap: new Map([[baseUtxo.address, "m/48'/1'/0'/2'/0/0"]]),
-          signingInfo: { isMultisig: true },
+          signingInfo: { isMultisig: true, scriptType: "native_segwit" },
           networkObj: network,
         })
       ).toThrow("missing multisig keys");
@@ -55,6 +55,7 @@ describe("PSBT Builder", () => {
         addressPathMap: new Map([[baseUtxo.address, "m/48'/1'/0'/2'/0/0"]]),
         signingInfo: {
           isMultisig: true,
+          scriptType: "native_segwit",
           multisigKeys: testMultisigKeys,
           multisigQuorum: 2,
           multisigScriptType: "wsh-sortedmulti",

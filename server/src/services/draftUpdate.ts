@@ -34,6 +34,9 @@ const collectPartialSignaturePubkeys = (psbt: bitcoin.Psbt): string[] => {
         signatures.push(Buffer.from(ps.pubkey).toString('hex').substring(0, 16));
       }
     }
+    if (input.tapKeySig && input.tapInternalKey) {
+      signatures.push(Buffer.from(input.tapInternalKey).toString('hex').substring(0, 16));
+    }
   }
   return signatures;
 };

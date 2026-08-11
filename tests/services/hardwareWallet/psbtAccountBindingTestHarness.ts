@@ -243,17 +243,27 @@ export function buildSingleSigFamilyRequest(
   const inputPath = `${accountPath}/0/3`;
   const changePath = `${accountPath}/1/4`;
   const p2wpkh = bitcoin.payments.p2wpkh({ pubkey: PUBKEY, network: NETWORK });
+  const tapInternalKey = PUBKEY.subarray(1, 33);
   const payment = scriptType === 'legacy'
     ? bitcoin.payments.p2pkh({ pubkey: PUBKEY, network: NETWORK })
     : scriptType === 'nested_segwit'
       ? bitcoin.payments.p2sh({ redeem: p2wpkh, network: NETWORK })
-      : p2wpkh;
-  const derivation = (path: string) => [{
+      : bitcoin.payments.p2tr({ internalPubkey: tapInternalKey, network: NETWORK });
+  const bip32Derivation = (path: string) => [{
     masterFingerprint: Uint8Array.from(Buffer.from(FINGERPRINT, 'hex')),
     path,
     pubkey: Uint8Array.from(PUBKEY),
   }];
+  const tapBip32Derivation = (path: string) => [{
+    masterFingerprint: Uint8Array.from(Buffer.from(FINGERPRINT, 'hex')),
+    path,
+    pubkey: Uint8Array.from(tapInternalKey),
+    leafHashes: [],
+  }];
   const scripts = scriptType === 'nested_segwit' ? { redeemScript: p2wpkh.output! } : {};
+  const metadata = (path: string) => scriptType === 'taproot'
+    ? { tapInternalKey, tapBip32Derivation: tapBip32Derivation(path) }
+    : { bip32Derivation: bip32Derivation(path), ...scripts };
   const previous = new bitcoin.Transaction();
   previous.addInput(new Uint8Array(32), 0xffffffff);
   previous.addOutput(payment.output!, 1n);
@@ -267,20 +277,18 @@ export function buildSingleSigFamilyRequest(
     ...(scriptType === 'legacy'
       ? { nonWitnessUtxo: previous.toBuffer() }
       : { witnessUtxo: { script: payment.output!, value: 50_000n } }),
-    bip32Derivation: derivation(inputPath),
-    ...scripts,
+    ...metadata(inputPath),
   });
   psbt.addOutput({ script: p2wpkhScript(), value: 30_000n });
   psbt.addOutput({
     script: payment.output!,
     value: 19_000n,
-    bip32Derivation: derivation(changePath),
-    ...scripts,
+    ...metadata(changePath),
   });
   const origin = (path: string) => ({
     masterFingerprint: FINGERPRINT,
     path,
-    pubkey: Buffer.from(PUBKEY).toString('hex'),
+    pubkey: Buffer.from(scriptType === 'taproot' ? tapInternalKey : PUBKEY).toString('hex'),
   });
   const signingContext: PsbtSigningContext = {
     version: 1,

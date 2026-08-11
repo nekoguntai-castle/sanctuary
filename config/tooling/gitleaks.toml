@@ -32,6 +32,10 @@ paths = [
   # Canonical Bitcoin protocol vectors and test-only placeholders. These files
   # are intentionally committed fixtures, not operational secrets.
   '''server/tests/fixtures/bip340-test-vectors\.ts''',
+  # Generated deterministic public PSBT fixtures. Taproot signature and
+  # internal-key fields intentionally contain high-entropy protocol bytes;
+  # generator/verifier source and every non-generated path remain scanned.
+  '''(^|/)server/tests/fixtures/generated-signed-psbt-vectors\.ts$''',
   # These two byte-identical address-vector files are generated deterministic
   # public Bitcoin protocol fixtures. Their SLIP-132/BIP32 payload and chain-code
   # metadata can resemble API keys; generator and verifier source remain scanned.

@@ -1,4 +1,5 @@
 import * as bitcoin from 'bitcoinjs-lib';
+import * as ecc from '@bitcoinerlab/secp256k1';
 import {
   accountPathMatchesWalletPolicy,
   parseCanonicalAddressPath,
@@ -12,6 +13,8 @@ import type {
   PsbtWalletSigner,
 } from '@sanctuary/shared/schemas/psbtSigningContext';
 import type { PSBTSignRequest } from './types';
+
+bitcoin.initEccLib(ecc);
 
 type PsbtInput = bitcoin.Psbt['data']['inputs'][number];
 type PsbtOutput = bitcoin.Psbt['data']['outputs'][number];
@@ -55,7 +58,21 @@ function canonicalOrigins(origins: readonly PsbtSignerOrigin[]): string[] {
   ].join(':')).sort();
 }
 
-function psbtOrigins(map: BoundMap): PsbtSignerOrigin[] {
+function psbtOrigins(map: BoundMap, taproot = false): PsbtSignerOrigin[] {
+  if (taproot) {
+    const derivations = map.tapBip32Derivation ?? [];
+    if (derivations.some(origin => origin.pubkey.length !== 32)) {
+      throw bindingError('Taproot internal key must be x-only');
+    }
+    if (derivations.some(origin => origin.leafHashes.length !== 0)) {
+      throw bindingError('Taproot key-path derivation contains leaf hashes');
+    }
+    return derivations.map(origin => ({
+      masterFingerprint: bytesHex(origin.masterFingerprint).toLowerCase(),
+      path: origin.path,
+      pubkey: bytesHex(origin.pubkey).toLowerCase(),
+    }));
+  }
   return (map.bip32Derivation ?? []).map(origin => ({
     masterFingerprint: bytesHex(origin.masterFingerprint).toLowerCase(),
     path: origin.path,
@@ -67,8 +84,9 @@ const assertOrigins = (
   map: BoundMap,
   expected: SignerOrigins,
   label: string,
+  taproot: boolean,
 ): void => {
-  const actual = canonicalOrigins(psbtOrigins(map));
+  const actual = canonicalOrigins(psbtOrigins(map, taproot));
   const wanted = canonicalOrigins(expected);
   if (actual.length !== wanted.length || actual.some((value, index) => {
     return value !== wanted[index];
@@ -124,6 +142,22 @@ const assertBytesEqual = (
   }
 };
 
+const hasTaprootFields = (map: BoundMap): boolean => (
+  map.tapBip32Derivation !== undefined
+  || map.tapInternalKey !== undefined
+  || ('tapKeySig' in map && map.tapKeySig !== undefined)
+  || ('tapScriptSig' in map && map.tapScriptSig !== undefined)
+  || ('tapLeafScript' in map && map.tapLeafScript !== undefined)
+  || ('tapMerkleRoot' in map && map.tapMerkleRoot !== undefined)
+  || ('tapTree' in map && map.tapTree !== undefined)
+);
+
+const assertNoTaprootFields = (map: BoundMap): void => {
+  if (hasTaprootFields(map)) {
+    throw bindingError('non-Taproot map contains Taproot metadata');
+  }
+};
+
 const multisigOutputScript = (
   context: PsbtSigningContext,
   map: BoundMap,
@@ -151,25 +185,51 @@ const multisigOutputScript = (
   return p2sh.output;
 };
 
+const taprootSingleSigOutputScript = (
+  map: BoundMap,
+  pubkey: Uint8Array,
+  network: bitcoin.Network,
+): Uint8Array => {
+  if (map.bip32Derivation?.length || map.redeemScript || map.witnessScript) {
+    throw bindingError('Taproot map mixes legacy PSBT metadata');
+  }
+  assertBytesEqual(map.tapInternalKey, pubkey, 'Taproot internal key');
+  if ('tapTree' in map && map.tapTree) throw bindingError('Taproot script-path metadata is not supported');
+  if (('tapLeafScript' in map && map.tapLeafScript?.length)
+    || ('tapScriptSig' in map && map.tapScriptSig?.length)
+    || ('tapMerkleRoot' in map && map.tapMerkleRoot)) {
+    throw bindingError('Taproot script-path metadata is not supported');
+  }
+  const payment = bitcoin.payments.p2tr({ internalPubkey: pubkey, network });
+  if (!payment.output) throw bindingError('Taproot internal key cannot be encoded');
+  return payment.output;
+};
+
 const singleSigOutputScript = (
   context: PsbtSigningContext,
   map: BoundMap,
   network: bitcoin.Network,
 ): Uint8Array => {
-  const origins = psbtOrigins(map);
+  const taproot = context.scriptType === 'taproot';
+  const origins = psbtOrigins(map, taproot);
   if (origins.length !== 1) throw bindingError('single-signature map must contain one origin');
   const pubkey = Uint8Array.from(Buffer.from(origins[0].pubkey, 'hex'));
+  if (context.scriptType === 'taproot') return taprootSingleSigOutputScript(map, pubkey, network);
   if (context.scriptType === 'legacy') {
     return bitcoin.payments.p2pkh({ pubkey, network }).output!;
   }
   const p2wpkh = bitcoin.payments.p2wpkh({ pubkey, network });
   if (!p2wpkh.output) throw bindingError('single-signature pubkey cannot be encoded');
   if (context.scriptType === 'native_segwit') return p2wpkh.output;
+  /* v8 ignore next -- validated schema makes the non-nested edge impossible */
   if (context.scriptType === 'nested_segwit') {
     assertBytesEqual(map.redeemScript, p2wpkh.output, 'single-signature redeemScript');
     return bitcoin.payments.p2sh({ redeem: p2wpkh, network }).output!;
   }
-  throw bindingError('Taproot signing requires the PR7B BIP371 proof contract');
+  /* v8 ignore next -- validated schema plus compile-time exhaustiveness guard */
+  const unsupportedFamily: never = context.scriptType;
+  /* v8 ignore next -- compile-time exhaustive fail-closed fallback */
+  throw bindingError(`unsupported single-signature script family: ${unsupportedFamily}`);
 };
 
 const assertScriptFamily = (
@@ -178,6 +238,7 @@ const assertScriptFamily = (
   expectedScript: string,
   network: bitcoin.Network,
 ): void => {
+  if (context.scriptType !== 'taproot') assertNoTaprootFields(map);
   const derived = context.walletType === 'multi_sig'
     ? multisigOutputScript(context, map, network)
     : singleSigOutputScript(context, map, network);
@@ -241,7 +302,12 @@ const assertInputBinding = (
     || bytesHex(prevout.script) !== binding.scriptPubKey) {
     throw bindingError(`input ${binding.inputIndex} previous output differs`);
   }
-  assertOrigins(map, binding.signerOrigins, `input ${binding.inputIndex}`);
+  assertOrigins(
+    map,
+    binding.signerOrigins,
+    `input ${binding.inputIndex}`,
+    context.scriptType === 'taproot',
+  );
   assertOriginPolicies(context, binding.signerOrigins, binding.addressPath);
   assertScriptFamily(context, map, binding.scriptPubKey, network);
 };
@@ -263,10 +329,32 @@ const assertChangeBinding = (
     || bytesHex(txOutput.script) !== binding.scriptPubKey) {
     throw bindingError(`change output ${binding.outputIndex} transaction data differs`);
   }
-  assertOrigins(map, binding.signerOrigins, `change output ${binding.outputIndex}`);
+  assertOrigins(
+    map,
+    binding.signerOrigins,
+    `change output ${binding.outputIndex}`,
+    context.scriptType === 'taproot',
+  );
   assertOriginPolicies(context, binding.signerOrigins, binding.addressPath);
   assertScriptFamily(context, map, binding.scriptPubKey, network);
 };
+
+const hasWalletInputMetadata = (map: PsbtInput): boolean => Boolean(
+  map.bip32Derivation?.length
+  || map.tapBip32Derivation?.length
+  || map.tapInternalKey
+  || map.tapMerkleRoot
+  || map.tapLeafScript?.length
+);
+
+const hasWalletOutputMetadata = (map: PsbtOutput): boolean => Boolean(
+  map.bip32Derivation?.length
+  || map.tapBip32Derivation?.length
+  || map.tapInternalKey
+  || map.tapTree
+  || map.redeemScript
+  || map.witnessScript
+);
 
 const assertNoForgedWalletMaps = (
   psbt: bitcoin.Psbt,
@@ -274,14 +362,13 @@ const assertNoForgedWalletMaps = (
 ): void => {
   const inputIndexes = new Set(context.inputs.map(binding => binding.inputIndex));
   for (const [index, map] of psbt.data.inputs.entries()) {
-    if (!inputIndexes.has(index) && (map.bip32Derivation?.length ?? 0) > 0) {
+    if (!inputIndexes.has(index) && hasWalletInputMetadata(map)) {
       throw bindingError(`unbound input ${index} contains wallet derivation metadata`);
     }
   }
   const changeIndexes = new Set(context.changeOutputs.map(binding => binding.outputIndex));
   for (const [index, map] of psbt.data.outputs.entries()) {
-    if (!changeIndexes.has(index)
-      && ((map.bip32Derivation?.length ?? 0) > 0 || map.redeemScript || map.witnessScript)) {
+    if (!changeIndexes.has(index) && hasWalletOutputMetadata(map)) {
       throw new Error(`PSBT external output ${index} contains forged change metadata`);
     }
   }
@@ -331,6 +418,9 @@ export function validatePsbtSigningRequest(
   const parsed = PsbtSigningContextSchema.safeParse(request.signingContext);
   if (!parsed.success) throw bindingError('server evidence is missing or malformed');
   const context = parsed.data;
+  if (context.walletType === 'multi_sig' && context.scriptType === 'taproot') {
+    throw bindingError('Taproot multisig is not supported');
+  }
   if (context.walletType === 'multi_sig'
     && context.scriptType !== 'native_segwit'
     && context.scriptType !== 'nested_segwit') {

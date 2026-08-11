@@ -1,7 +1,10 @@
 import { createHash } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as bitcoin from 'bitcoinjs-lib';
+import * as ecc from 'tiny-secp256k1';
 import bip32 from '../../../../src/services/bitcoin/bip32';
+
+bitcoin.initEccLib(ecc);
 
 const mocks = vi.hoisted(() => ({
   findWallet: vi.fn(),
@@ -84,7 +87,8 @@ function parseTestDescriptor(value: string) {
   }
   if (keys.length !== 1) throw new Error('invalid test descriptor');
   return {
-    type: 'wpkh', ...keys[0], path: keys[0].derivationPath,
+    type: value.startsWith('tr(') ? 'tr' : 'wpkh',
+    ...keys[0], path: keys[0].derivationPath,
   };
 }
 
@@ -320,6 +324,58 @@ describe('bindPsbtAccount', () => {
     expect(psbt.data.outputs[0].bip32Derivation).toHaveLength(1);
   });
 
+  it.each([
+    ['tapBip32Derivation', (psbt: bitcoin.Psbt) => {
+      psbt.data.inputs[0].tapBip32Derivation = [{
+        masterFingerprint: Buffer.from(fingerprint, 'hex'), path: `${accountPath}/0/0`,
+        pubkey: Buffer.alloc(32, 1), leafHashes: [],
+      }];
+    }],
+    ['tapInternalKey', (psbt: bitcoin.Psbt) => { psbt.data.inputs[0].tapInternalKey = Buffer.alloc(32, 1); }],
+    ['tapKeySig', (psbt: bitcoin.Psbt) => { psbt.data.inputs[0].tapKeySig = Buffer.alloc(64, 1); }],
+    ['tapScriptSig', (psbt: bitcoin.Psbt) => {
+      psbt.data.inputs[0].tapScriptSig = [{
+        pubkey: Buffer.alloc(32, 1), leafHash: Buffer.alloc(32, 2), signature: Buffer.alloc(64, 3),
+      }];
+    }],
+    ['tapLeafScript', (psbt: bitcoin.Psbt) => {
+      psbt.data.inputs[0].tapLeafScript = [{
+        controlBlock: Buffer.concat([Buffer.of(0xc0), Buffer.alloc(32, 1)]),
+        leafVersion: 0xc0, script: Buffer.of(0x51),
+      }];
+    }],
+    ['tapMerkleRoot', (psbt: bitcoin.Psbt) => { psbt.data.inputs[0].tapMerkleRoot = Buffer.alloc(32, 1); }],
+  ])('rejects non-Taproot input field %s', async (_field, mutate) => {
+    const { psbt, first, second } = fixture();
+    mocks.findUtxos.mockResolvedValue([first, second]);
+    mutate(psbt);
+
+    await expect(bindPsbtAccount('wallet-1', psbt))
+      .rejects.toThrow('mixes non-Taproot and Taproot PSBT metadata');
+  });
+
+  it.each([
+    ['tapBip32Derivation', (psbt: bitcoin.Psbt) => {
+      psbt.data.outputs[0].tapBip32Derivation = [{
+        masterFingerprint: Buffer.from(fingerprint, 'hex'), path: `${accountPath}/1/0`,
+        pubkey: Buffer.alloc(32, 1), leafHashes: [],
+      }];
+    }],
+    ['tapInternalKey', (psbt: bitcoin.Psbt) => { psbt.data.outputs[0].tapInternalKey = Buffer.alloc(32, 1); }],
+    ['tapTree', (psbt: bitcoin.Psbt) => {
+      psbt.data.outputs[0].tapTree = {
+        leaves: [{ depth: 0, leafVersion: 0xc0, script: Buffer.of(0x51) }],
+      };
+    }],
+  ])('rejects non-Taproot output field %s', async (_field, mutate) => {
+    const { psbt, first, second } = fixture();
+    mocks.findUtxos.mockResolvedValue([first, second]);
+    mutate(psbt);
+
+    await expect(bindPsbtAccount('wallet-1', psbt))
+      .rejects.toThrow('mixes non-Taproot and Taproot PSBT metadata');
+  });
+
   it('rejects a conflicting derivation on the second input', async () => {
     const { psbt, first, second } = fixture();
     mocks.findUtxos.mockResolvedValue([first, second]);
@@ -402,14 +458,6 @@ describe('bindPsbtAccount', () => {
     const context = await bindPsbtAccount('wallet-1', psbt, { foreignInputIndexes: [1] });
     expect(context.inputs.map(input => input.inputIndex)).toEqual([0]);
     expect(psbt.data.inputs[1].bip32Derivation).toBeUndefined();
-  });
-
-  it('fails closed for Taproot until BIP371 binding is implemented', async () => {
-    const { psbt } = fixture();
-    mocks.findWallet.mockResolvedValue(wallet({ scriptType: 'taproot' }));
-    await expect(bindPsbtAccount('wallet-1', psbt)).rejects.toThrow(
-      'Taproot/BIP371 binding is not supported',
-    );
   });
 
   it.each([false, true])(
@@ -575,12 +623,12 @@ describe('bindPsbtAccount', () => {
     );
   });
 
-  it('rejects a Taproot descriptor even when the wallet script label is stale', async () => {
+  it('rejects a Taproot descriptor without a complete signer origin', async () => {
     const { psbt } = fixture();
     mocks.parseDescriptor.mockReturnValueOnce({ type: 'tr' });
 
     await expect(bindPsbtAccount('wallet-1', psbt)).rejects.toThrow(
-      'Taproot/BIP371 binding is not supported',
+      'descriptor signer origin is incomplete',
     );
   });
 

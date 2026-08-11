@@ -8,7 +8,8 @@
  *
  * The covered script families exercise legacy non-witness signing, SegWit
  * witness program handling (BIP141), SegWit signature hashing (BIP143), and
- * PSBT signing/finalization fields (BIP174).
+ * PSBT signing/finalization fields (BIP174), and Taproot key-path signing
+ * metadata/finalization (BIP341/BIP371).
  */
 
 import * as bitcoin from 'bitcoinjs-lib';
@@ -54,7 +55,13 @@ const RPC = {
   password: process.env.BITCOIN_RPC_PASS ?? 'sanctuary-verify',
 };
 
-type SupportedSignedScriptType = 'p2pkh' | 'p2wpkh' | 'p2sh-p2wpkh' | 'p2wsh' | 'p2sh-p2wsh';
+type SupportedSignedScriptType =
+  | 'p2pkh'
+  | 'p2wpkh'
+  | 'p2sh-p2wpkh'
+  | 'p2tr'
+  | 'p2wsh'
+  | 'p2sh-p2wsh';
 
 interface RpcError {
   message: string;
@@ -71,6 +78,7 @@ interface Signer {
   privateKey: Buffer;
   publicKey: Buffer;
   sign(hash: Uint8Array): Uint8Array;
+  signSchnorr?(hash: Uint8Array): Uint8Array;
 }
 
 interface SpendTemplate {
@@ -103,6 +111,49 @@ interface AcceptedTx {
   'reject-reason'?: string;
 }
 
+interface CoreDecodedPsbt {
+  [key: string]: unknown;
+  tx: {
+    txid: string;
+    vin: unknown[];
+    vout: unknown[];
+    [key: string]: unknown;
+  };
+  inputs: Array<{
+    taproot_key_path_sig?: string;
+    taproot_bip32_derivs?: Array<{
+      pubkey: string;
+      master_fingerprint: string;
+      path: string;
+      leaf_hashes: string[];
+    }>;
+    taproot_internal_key?: string;
+    [key: string]: unknown;
+  }>;
+  fee?: number;
+}
+
+interface CoreAnalyzedPsbt {
+  inputs: Array<{ has_utxo: boolean; is_final: boolean; next?: string }>;
+  next: string;
+  fee?: number;
+  estimated_vsize?: number;
+  estimated_feerate?: number;
+}
+
+interface CoreFinalizedPsbt {
+  psbt?: string;
+  hex?: string;
+  complete: boolean;
+}
+
+interface CoreDecodedTransaction {
+  [key: string]: unknown;
+  txid: string;
+  vsize: number;
+  vin: Array<{ txinwitness?: string[]; [key: string]: unknown }>;
+}
+
 interface SignedVector {
   description: string;
   scriptType: SupportedSignedScriptType;
@@ -117,6 +168,12 @@ interface SignedVector {
   mempoolAccept: {
     allowed: boolean;
     txid: string;
+  };
+  coreProof: {
+    decodedSignedPsbt: CoreDecodedPsbt;
+    analyzedSignedPsbt: CoreAnalyzedPsbt;
+    finalizedPsbt: CoreFinalizedPsbt;
+    decodedTransaction: CoreDecodedTransaction;
   };
   verifiedBy: string[];
 }
@@ -167,6 +224,33 @@ const DESTINATION = createSigner('destination', '0000000000000000000000000000000
 const FINGERPRINT_A = Buffer.from('d90c6a4f', 'hex');
 const FINGERPRINT_B = Buffer.from('c21b2c3d', 'hex');
 
+function toXOnly(publicKey: Uint8Array): Buffer {
+  return Buffer.from(publicKey.length === 32 ? publicKey : publicKey.slice(1, 33));
+}
+
+function createTaprootSigner(signer: Signer): Signer {
+  const internalKey = toXOnly(signer.publicKey);
+  const normalizedPrivateKey = signer.publicKey[0] === 3
+    ? Buffer.from(ecc.privateNegate(signer.privateKey))
+    : signer.privateKey;
+  const tweak = bitcoin.crypto.taggedHash('TapTweak', internalKey);
+  const tweakedPrivateKey = ecc.privateAdd(normalizedPrivateKey, tweak);
+  if (!tweakedPrivateKey) {
+    throw new Error(`Failed to derive Taproot tweaked key for ${signer.label}`);
+  }
+  const publicKey = ecc.pointFromScalar(tweakedPrivateKey, true);
+  if (!publicKey) {
+    throw new Error(`Failed to derive Taproot output key for ${signer.label}`);
+  }
+  return {
+    label: `${signer.label}-taproot-tweaked`,
+    privateKey: Buffer.from(tweakedPrivateKey),
+    publicKey: Buffer.from(publicKey),
+    sign: (hash: Uint8Array) => ecc.sign(hash, tweakedPrivateKey),
+    signSchnorr: (hash: Uint8Array) => ecc.signSchnorr(hash, tweakedPrivateKey, Buffer.alloc(32)),
+  };
+}
+
 function destinationAddress(): string {
   const payment = bitcoin.payments.p2wpkh({ pubkey: DESTINATION.publicKey, network: NETWORK });
   if (!payment.address) {
@@ -204,6 +288,11 @@ function buildTemplates(): SpendTemplate[] {
   const p2wpkh = bitcoin.payments.p2wpkh({ pubkey: SIGNER_A.publicKey, network: NETWORK });
   const nestedP2wpkh = bitcoin.payments.p2wpkh({ pubkey: SIGNER_A.publicKey, network: NETWORK });
   const p2shP2wpkh = bitcoin.payments.p2sh({ redeem: nestedP2wpkh, network: NETWORK });
+  const p2tr = bitcoin.payments.p2tr({
+    internalPubkey: toXOnly(SIGNER_A.publicKey),
+    network: NETWORK,
+  });
+  const taprootSigner = createTaprootSigner(SIGNER_A);
   const witnessScript = buildMultisigScript();
   const p2wsh = bitcoin.payments.p2wsh({ redeem: { output: witnessScript, network: NETWORK }, network: NETWORK });
   const nestedP2wsh = bitcoin.payments.p2wsh({ redeem: { output: witnessScript, network: NETWORK }, network: NETWORK });
@@ -281,6 +370,31 @@ function buildTemplates(): SpendTemplate[] {
         });
       },
       sign: (psbt) => psbt.signInput(0, SIGNER_A),
+      finalize: (psbt) => psbt.finalizeAllInputs(),
+    },
+    {
+      scriptType: 'p2tr',
+      description: 'Bitcoin Core accepted regtest P2TR BIP371 key-path software-signed spend',
+      fundingAddress: requirePaymentAddress(p2tr, 'P2TR'),
+      fundingScript: requirePaymentOutput(p2tr, 'P2TR'),
+      inputValue: COINBASE_VALUE,
+      outputValue: COINBASE_VALUE - 1_000n,
+      addInputMetadata: (psbt, utxo) => {
+        psbt.addInput({
+          hash: utxo.txid,
+          index: utxo.vout,
+          sequence: 0xfffffffd,
+          witnessUtxo: { script: Buffer.from(utxo.scriptPubKey, 'hex'), value: utxo.value },
+          tapInternalKey: toXOnly(SIGNER_A.publicKey),
+          tapBip32Derivation: [{
+            masterFingerprint: FINGERPRINT_A,
+            path: "m/86'/1'/0'/0/0",
+            pubkey: toXOnly(SIGNER_A.publicKey),
+            leafHashes: [],
+          }],
+        });
+      },
+      sign: (psbt) => psbt.signInput(0, taprootSigner),
       finalize: (psbt) => psbt.finalizeAllInputs(),
     },
     {
@@ -433,15 +547,26 @@ async function buildVector(
 
   template.sign(psbt);
   const signedPsbtBase64 = psbt.toBase64();
+  const decodedSignedPsbt = await rpc<CoreDecodedPsbt>('decodepsbt', [signedPsbtBase64]);
+  const analyzedSignedPsbt = await rpc<CoreAnalyzedPsbt>('analyzepsbt', [signedPsbtBase64]);
+  const coreFinalized = await rpc<CoreFinalizedPsbt>('finalizepsbt', [signedPsbtBase64, true]);
   template.finalize(psbt);
   const finalizedPsbtBase64 = psbt.toBase64();
   const tx = psbt.extractTransaction(true);
   const finalTxHex = tx.toHex();
+  const decodedTransaction = await rpc<CoreDecodedTransaction>('decoderawtransaction', [finalTxHex]);
   const mempoolAccept = await acceptTx(finalTxHex);
   const expectedFee = Number(template.inputValue - template.outputValue);
   const finalizer = template.scriptType === 'p2wsh' || template.scriptType === 'p2sh-p2wsh'
     ? 'Sanctuary multisig finalizer'
     : 'bitcoinjs-lib finalizer';
+
+  if (!coreFinalized.complete || coreFinalized.hex !== finalTxHex) {
+    throw new Error(`Bitcoin Core finalization disagrees with Sanctuary for ${template.scriptType}`);
+  }
+  if (decodedTransaction.txid !== tx.getId()) {
+    throw new Error(`Bitcoin Core decoded transaction identity mismatch for ${template.scriptType}`);
+  }
 
   return {
     description: template.description,
@@ -457,6 +582,12 @@ async function buildVector(
     mempoolAccept: {
       allowed: mempoolAccept.allowed,
       txid: mempoolAccept.txid,
+    },
+    coreProof: {
+      decodedSignedPsbt,
+      analyzedSignedPsbt,
+      finalizedPsbt: coreFinalized,
+      decodedTransaction,
     },
     verifiedBy: [
       `Bitcoin Core ${coreVersion}`,
@@ -474,13 +605,14 @@ function generateOutputFile(vectors: SignedVector[]): void {
  * Generated by: scripts/verify-psbt/generate-signed-vectors.ts
  *
  * These vectors spend real regtest UTXOs, are signed with deterministic local
- * software keys, finalized by Sanctuary/bitcoinjs-lib, and accepted by Bitcoin
- * Core testmempoolaccept before being written.
+ * software keys, finalized identically by Sanctuary/bitcoinjs-lib and Bitcoin
+ * Core, decoded by Core, and accepted by Core testmempoolaccept before being
+ * written.
  */
 
 export interface GeneratedSignedPsbtVector {
   description: string;
-  scriptType: 'p2pkh' | 'p2wpkh' | 'p2sh-p2wpkh' | 'p2wsh' | 'p2sh-p2wsh';
+  scriptType: 'p2pkh' | 'p2wpkh' | 'p2sh-p2wpkh' | 'p2tr' | 'p2wsh' | 'p2sh-p2wsh';
   network: 'regtest';
   unsignedPsbtBase64: string;
   signedPsbtBase64: string;
@@ -492,6 +624,38 @@ export interface GeneratedSignedPsbtVector {
   mempoolAccept: {
     allowed: boolean;
     txid: string;
+  };
+  coreProof: {
+    decodedSignedPsbt: {
+      [key: string]: unknown;
+      tx: { txid: string; vin: unknown[]; vout: unknown[]; [key: string]: unknown };
+      inputs: Array<{
+        taproot_key_path_sig?: string;
+        taproot_bip32_derivs?: Array<{
+          pubkey: string;
+          master_fingerprint: string;
+          path: string;
+          leaf_hashes: string[];
+        }>;
+        taproot_internal_key?: string;
+        [key: string]: unknown;
+      }>;
+      fee?: number;
+    };
+    analyzedSignedPsbt: {
+      inputs: Array<{ has_utxo: boolean; is_final: boolean; next?: string }>;
+      next: string;
+      fee?: number;
+      estimated_vsize?: number;
+      estimated_feerate?: number;
+    };
+    finalizedPsbt: { psbt?: string; hex?: string; complete: boolean };
+    decodedTransaction: {
+      [key: string]: unknown;
+      txid: string;
+      vsize: number;
+      vin: Array<{ txinwitness?: string[]; [key: string]: unknown }>;
+    };
   };
   verifiedBy: string[];
 }

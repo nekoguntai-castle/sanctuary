@@ -130,6 +130,7 @@ export function registerRbfTransactionCreationContracts() {
       mockPrismaClient.wallet.findUnique.mockResolvedValueOnce({
         id: walletId,
         name: 'RBF No Metadata Wallet',
+        scriptType: 'native_segwit',
         descriptor: null,
         fingerprint: null,
         devices: [],
@@ -173,6 +174,7 @@ export function registerRbfTransactionCreationContracts() {
       mockPrismaClient.wallet.findUnique.mockResolvedValueOnce({
         id: walletId,
         name: 'RBF Device Missing Metadata',
+        scriptType: 'native_segwit',
         descriptor: null,
         fingerprint: 'aabbccdd',
         devices: [{ device: { id: 'device-1', fingerprint: null, xpub: null } }],
@@ -499,6 +501,7 @@ export function registerRbfTransactionCreationContracts() {
       mockPrismaClient.wallet.findUnique.mockResolvedValueOnce({
         id: walletId,
         name: 'RBF Descriptor Wallet',
+        scriptType: 'native_segwit',
         descriptor: 'wpkh([aabbccdd/84h/1h/0h]tpub.../0/*)',
         fingerprint: 'aabbccdd',
         devices: [],

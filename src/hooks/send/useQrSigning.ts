@@ -151,13 +151,20 @@ const validateUploadedSignature = (
 };
 
 const countSignatures = (psbt: PsbtInstance): number => {
-  return psbt.data.inputs.reduce((count, input) => count + (input.partialSig?.length || 0), 0);
+  return psbt.data.inputs.reduce(
+    (count, input) => count + (input.partialSig?.length || 0) + Number(Boolean(input.tapKeySig)),
+    0,
+  );
 };
 
 const getSignaturePubkeyPrefixes = (psbt: PsbtInstance): string[] => {
-  return psbt.data.inputs.flatMap(input =>
-    input.partialSig?.map(ps => toHex(ps.pubkey).substring(0, 16)) ?? []
-  );
+  return psbt.data.inputs.flatMap(input => {
+    const partial = input.partialSig?.map(ps => toHex(ps.pubkey).substring(0, 16)) ?? [];
+    const taproot = input.tapKeySig && input.tapInternalKey
+      ? [toHex(input.tapInternalKey).substring(0, 16)]
+      : [];
+    return [...partial, ...taproot];
+  });
 };
 
 const shouldCombinePsbts = (unsignedPsbt: string | null, walletType: WalletTypeValue): unsignedPsbt is string => {

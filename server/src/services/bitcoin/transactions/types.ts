@@ -5,6 +5,7 @@
  */
 
 import * as bitcoin from 'bitcoinjs-lib';
+import type { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
 
 export type { PrismaTxClient } from '../../../models/prisma';
@@ -115,6 +116,7 @@ export interface UtxoSelection {
  * for use in PSBT construction
  */
 export interface WalletSigningInfo {
+  scriptType: WalletScriptType;
   masterFingerprint?: Buffer;
   accountXpub?: string;
   multisigKeys?: import('../addressDerivation').MultisigKeyInfo[];

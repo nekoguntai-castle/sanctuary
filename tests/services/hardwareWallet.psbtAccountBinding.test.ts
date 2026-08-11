@@ -4,7 +4,7 @@ import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningCo
 import type { PSBTSignRequest } from '../../src/services/hardwareWallet/types';
 import { validatePsbtSigningRequest } from '../../src/services/hardwareWallet/psbtAccountBinding';
 
-const encoderFailure = vi.hoisted(() => ({ p2sh: false, p2wpkh: false, p2wsh: false }));
+const encoderFailure = vi.hoisted(() => ({ p2sh: false, p2tr: false, p2wpkh: false, p2wsh: false }));
 
 vi.mock('bitcoinjs-lib', async importOriginal => {
   const actual = await importOriginal<typeof import('bitcoinjs-lib')>();
@@ -18,6 +18,13 @@ vi.mock('bitcoinjs-lib', async importOriginal => {
           return {} as ReturnType<typeof actual.payments.p2sh>;
         }
         return actual.payments.p2sh(...args);
+      },
+      p2tr: (...args: Parameters<typeof actual.payments.p2tr>) => {
+        if (encoderFailure.p2tr) {
+          encoderFailure.p2tr = false;
+          return {} as ReturnType<typeof actual.payments.p2tr>;
+        }
+        return actual.payments.p2tr(...args);
       },
       p2wpkh: (...args: Parameters<typeof actual.payments.p2wpkh>) => {
         if (encoderFailure.p2wpkh) {
@@ -121,11 +128,154 @@ describe('hardware PSBT account binding', () => {
       .toThrow(/legacy input 0 requires an authenticated nonWitnessUtxo/i);
   });
 
-  it('rejects Taproot until the BIP371 proof contract is available', () => {
-    expect(() => validatePsbtSigningRequest(
+  it('accepts exact Taproot key-path BIP371 input and change metadata', () => {
+    const validated = validatePsbtSigningRequest(
       buildSingleSigFamilyRequest('taproot'),
       FINGERPRINT,
-    )).toThrow(/PR7B BIP371 proof contract/i);
+    );
+    expect(validated.context.scriptType).toBe('taproot');
+    expect(validated.psbt.data.inputs[0].bip32Derivation).toBeUndefined();
+    expect(validated.psbt.data.inputs[0].tapBip32Derivation?.[0].leafHashes).toEqual([]);
+    expect(validated.psbt.data.inputs[0].tapInternalKey).toHaveLength(32);
+    expect(validated.psbt.data.outputs[1].tapInternalKey).toHaveLength(32);
+  });
+
+  it('rejects imported Taproot multisig context before consuming its signer evidence', () => {
+    const request = mutateContext(buildSingleSigFamilyRequest('taproot'), context => {
+      context.walletType = 'multi_sig';
+    });
+
+    expect(() => validatePsbtSigningRequest(request, FINGERPRINT))
+      .toThrow('Taproot multisig is not supported');
+  });
+
+  it.each([
+    ['tapBip32Derivation', (psbt: bitcoin.Psbt) => {
+      psbt.data.inputs[0].tapBip32Derivation = [{
+        masterFingerprint: Uint8Array.from(Buffer.from(FINGERPRINT, 'hex')),
+        path: INPUT_PATH, pubkey: Uint8Array.from(Buffer.alloc(32, 1)), leafHashes: [],
+      }];
+    }],
+    ['tapInternalKey', (psbt: bitcoin.Psbt) => {
+      psbt.data.inputs[0].tapInternalKey = Uint8Array.from(Buffer.alloc(32, 1));
+    }],
+    ['tapKeySig', (psbt: bitcoin.Psbt) => {
+      psbt.data.inputs[0].tapKeySig = Uint8Array.from(Buffer.alloc(64, 1));
+    }],
+    ['tapScriptSig', (psbt: bitcoin.Psbt) => {
+      psbt.data.inputs[0].tapScriptSig = [{
+        pubkey: Uint8Array.from(Buffer.alloc(32, 1)),
+        leafHash: Uint8Array.from(Buffer.alloc(32, 2)),
+        signature: Uint8Array.from(Buffer.alloc(64, 3)),
+      }];
+    }],
+    ['tapLeafScript', (psbt: bitcoin.Psbt) => {
+      psbt.data.inputs[0].tapLeafScript = [{
+        controlBlock: Uint8Array.from(Buffer.concat([Buffer.of(0xc0), Buffer.alloc(32, 1)])),
+        leafVersion: 0xc0,
+        script: Uint8Array.from(Buffer.of(0x51)),
+      }];
+    }],
+    ['tapMerkleRoot', (psbt: bitcoin.Psbt) => {
+      psbt.data.inputs[0].tapMerkleRoot = Uint8Array.from(Buffer.alloc(32, 1));
+    }],
+  ])('rejects non-Taproot browser input field %s', (_field, mutate) => {
+    const request = updatePsbt(buildRequest(), mutate);
+    expect(() => validatePsbtSigningRequest(request, FINGERPRINT))
+      .toThrow('non-Taproot map contains Taproot metadata');
+  });
+
+  it.each([
+    ['tapBip32Derivation', (psbt: bitcoin.Psbt) => {
+      psbt.data.outputs[1].tapBip32Derivation = [{
+        masterFingerprint: Uint8Array.from(Buffer.from(FINGERPRINT, 'hex')),
+        path: `${ACCOUNT_PATH}/1/4`, pubkey: Uint8Array.from(Buffer.alloc(32, 1)), leafHashes: [],
+      }];
+    }],
+    ['tapInternalKey', (psbt: bitcoin.Psbt) => {
+      psbt.data.outputs[1].tapInternalKey = Uint8Array.from(Buffer.alloc(32, 1));
+    }],
+    ['tapTree', (psbt: bitcoin.Psbt) => {
+      psbt.data.outputs[1].tapTree = {
+        leaves: [{ depth: 0, leafVersion: 0xc0, script: Uint8Array.from(Buffer.of(0x51)) }],
+      };
+    }],
+  ])('rejects non-Taproot browser output field %s', (_field, mutate) => {
+    const request = updatePsbt(buildRequest(), mutate);
+    expect(() => validatePsbtSigningRequest(request, FINGERPRINT))
+      .toThrow('non-Taproot map contains Taproot metadata');
+  });
+
+  it.each([
+    ['missing BIP371 derivation', (psbt: bitcoin.Psbt) => {
+      delete psbt.data.inputs[0].tapBip32Derivation;
+    }],
+    ['wrong internal key', (psbt: bitcoin.Psbt) => {
+      psbt.data.inputs[0].tapInternalKey = Uint8Array.from(Buffer.alloc(32, 9));
+    }],
+    ['nonempty leaf hashes', (psbt: bitcoin.Psbt) => {
+      psbt.data.inputs[0].tapBip32Derivation![0].leafHashes = [Uint8Array.from(Buffer.alloc(32, 1))];
+    }],
+    ['legacy derivation mixing', (psbt: bitcoin.Psbt) => {
+      const tap = psbt.data.inputs[0].tapBip32Derivation![0];
+      psbt.data.inputs[0].bip32Derivation = [{
+        masterFingerprint: tap.masterFingerprint,
+        path: tap.path,
+        pubkey: Uint8Array.from(Buffer.concat([Buffer.from([2]), Buffer.from(tap.pubkey)])),
+      }];
+    }],
+    ['redeemScript mixing', (psbt: bitcoin.Psbt) => {
+      psbt.data.inputs[0].redeemScript = Uint8Array.from(Buffer.of(0x51));
+    }],
+    ['witnessScript mixing', (psbt: bitcoin.Psbt) => {
+      psbt.data.inputs[0].witnessScript = Uint8Array.from(Buffer.of(0x51));
+    }],
+    ['script-path leaf', (psbt: bitcoin.Psbt) => {
+      psbt.data.inputs[0].tapLeafScript = [{
+        controlBlock: Uint8Array.from(Buffer.concat([Buffer.of(0xc0), Buffer.alloc(32, 1)])),
+        leafVersion: 0xc0,
+        script: Uint8Array.from(Buffer.of(0x51)),
+      }];
+    }],
+    ['script-path signature', (psbt: bitcoin.Psbt) => {
+      psbt.data.inputs[0].tapScriptSig = [{
+        pubkey: Uint8Array.from(Buffer.alloc(32, 1)),
+        leafHash: Uint8Array.from(Buffer.alloc(32, 2)),
+        signature: Uint8Array.from(Buffer.alloc(64, 3)),
+      }];
+    }],
+    ['script-path merkle root', (psbt: bitcoin.Psbt) => {
+      psbt.data.inputs[0].tapMerkleRoot = Uint8Array.from(Buffer.alloc(32, 2));
+    }],
+  ])('rejects Taproot %s', (_label, mutate) => {
+    const request = updatePsbt(buildSingleSigFamilyRequest('taproot'), mutate);
+    expect(() => validatePsbtSigningRequest(request, FINGERPRINT))
+      .toThrow(/Taproot|signer origins/i);
+  });
+
+  it('rejects an in-memory Taproot derivation whose internal key is not x-only', () => {
+    const request = buildSingleSigFamilyRequest('taproot');
+    const malformed = bitcoin.Psbt.fromBase64(request.psbt, { network: NETWORK });
+    malformed.data.inputs[0].tapBip32Derivation![0].pubkey = Uint8Array.from(Buffer.alloc(31, 1));
+    const fromBase64Spy = vi.spyOn(bitcoin.Psbt, 'fromBase64').mockReturnValue(malformed);
+
+    try {
+      expect(() => validatePsbtSigningRequest(request, FINGERPRINT))
+        .toThrow(/internal key must be x-only/i);
+    } finally {
+      fromBase64Spy.mockRestore();
+    }
+  });
+
+  it('rejects Taproot script-path metadata on a change output', () => {
+    const request = updatePsbt(buildSingleSigFamilyRequest('taproot'), psbt => {
+      psbt.data.outputs[1].tapTree = {
+        leaves: [{ depth: 0, leafVersion: 0xc0, script: Uint8Array.from(Buffer.of(0x51)) }],
+      };
+    });
+
+    expect(() => validatePsbtSigningRequest(request, FINGERPRINT))
+      .toThrow(/script-path metadata is not supported/i);
   });
 
   it.each([
@@ -558,6 +708,11 @@ describe('hardware PSBT account binding', () => {
     encoderFailure.p2wpkh = true;
     expect(() => validatePsbtSigningRequest(nativeSingleSig, FINGERPRINT))
       .toThrow(/single-signature pubkey cannot be encoded/i);
+
+    const taprootSingleSig = buildSingleSigFamilyRequest('taproot');
+    encoderFailure.p2tr = true;
+    expect(() => validatePsbtSigningRequest(taprootSingleSig, FINGERPRINT))
+      .toThrow(/Taproot internal key cannot be encoded/i);
   });
 
   it.each([

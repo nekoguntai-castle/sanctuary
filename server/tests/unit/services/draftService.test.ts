@@ -6,6 +6,13 @@ import { vi, Mock } from 'vitest';
  * and UTXO locking.
  */
 
+const loggerMocks = vi.hoisted(() => ({
+  info: vi.fn(),
+  debug: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+}));
+
 // Mock dependencies before imports
 vi.mock('../../../src/models/prisma', () => ({
   __esModule: true,
@@ -65,12 +72,7 @@ vi.mock('../../../src/services/bitcoin/signingIntent', () => ({
 }));
 
 vi.mock('../../../src/utils/logger', () => ({
-  createLogger: () => ({
-    info: vi.fn(),
-    debug: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  }),
+  createLogger: () => loggerMocks,
 }));
 
 vi.mock('../../../src/constants', () => ({
@@ -705,6 +707,45 @@ describe('DraftService', () => {
           expectedUpdatedAt: mockDraft.updatedAt,
         })
       );
+      fromBase64Spy.mockRestore();
+    });
+
+    it('summarizes Taproot key-path signatures by their internal x-only key', async () => {
+      const existingPsbtObj = {
+        data: {
+          inputs: [{
+            tapKeySig: Buffer.alloc(64, 1),
+            tapInternalKey: Buffer.alloc(32, 0xaa),
+          }],
+        },
+        combine: vi.fn(),
+        toBase64: vi.fn().mockReturnValue('combined-taproot-psbt'),
+      };
+      const newPsbtObj = {
+        data: {
+          inputs: [{
+            tapKeySig: Buffer.alloc(64, 2),
+            tapInternalKey: Buffer.alloc(32, 0xbb),
+          }],
+        },
+      };
+      const fromBase64Spy = vi.spyOn(bitcoin.Psbt, 'fromBase64');
+      fromBase64Spy
+        .mockReturnValueOnce(existingPsbtObj as any)
+        .mockReturnValueOnce(newPsbtObj as any);
+
+      await updateDraft(walletId, draftId, { signedPsbtBase64: 'new-taproot-psbt' });
+
+      expect(loggerMocks.info).toHaveBeenCalledWith('PSBT combine - before', expect.objectContaining({
+        existingSigCount: 1,
+        existingSigPubkeys: ['aaaaaaaaaaaaaaaa'],
+        newSigCount: 1,
+        newSigPubkeys: ['bbbbbbbbbbbbbbbb'],
+      }));
+      expect(loggerMocks.info).toHaveBeenCalledWith('PSBT combine - after', expect.objectContaining({
+        totalSignatures: 1,
+        combinedSigPubkeys: ['aaaaaaaaaaaaaaaa'],
+      }));
       fromBase64Spy.mockRestore();
     });
 

@@ -314,7 +314,7 @@ describe('signed artifact authentication boundary', () => {
     },
   );
 
-  it('keeps Taproot signing disabled pending a Core-accepted signed vector', async () => {
+  it('rejects a Taproot signature whose BIP371 key-path metadata is incomplete', async () => {
     bitcoin.initEccLib(ecc);
     const internalPrivateKey = Buffer.from('03'.repeat(32), 'hex');
     const internalPublicKey = Buffer.from(ecc.pointFromScalar(internalPrivateKey, true)!);
@@ -352,10 +352,215 @@ describe('signed artifact authentication boundary', () => {
     await expect(validateSignedArtifact({
       ...signingInput,
       signedPsbtBase64: taproot.toBase64(),
-    })).rejects.toThrow('Taproot signing is disabled');
+    })).rejects.toThrow('Taproot key-path metadata is incomplete');
   });
 
-  it('blocks a mixed-input PSBT when any input is Taproot', async () => {
+  it('rejects a Core-backed Taproot signature when both authorized and signed BIP371 metadata are stripped', async () => {
+    const vector = GENERATED_SIGNED_PSBT_VECTORS.find(({ scriptType }) => scriptType === 'p2tr');
+    if (!vector) throw new Error('Missing Core-backed P2TR signed vector');
+    const authorized = bitcoin.Psbt.fromBase64(vector.unsignedPsbtBase64);
+    const signed = bitcoin.Psbt.fromBase64(vector.signedPsbtBase64);
+    delete authorized.data.inputs[0].tapInternalKey;
+    delete authorized.data.inputs[0].tapBip32Derivation;
+    delete signed.data.inputs[0].tapInternalKey;
+    delete signed.data.inputs[0].tapBip32Derivation;
+    envelope = envelopeFor(authorized, 'regtest');
+    mocks.loadSigningIntent.mockResolvedValue(envelope);
+    mocks.authenticateIntentPrevouts.mockResolvedValue(
+      envelope.snapshot.transaction.inputs.map(input => input.prevout),
+    );
+
+    await expect(validateSignedArtifact({
+      ...signingInput,
+      signedPsbtBase64: signed.toBase64(),
+    })).rejects.toThrow('Taproot key-path metadata is incomplete');
+  });
+
+  it.each([
+    ['missing internal key', (input: bitcoin.Psbt['data']['inputs'][number]) => {
+      delete input.tapInternalKey;
+    }],
+    ['nonempty leaf hashes', (input: bitcoin.Psbt['data']['inputs'][number]) => {
+      input.tapBip32Derivation![0].leafHashes = [Buffer.alloc(32, 3)];
+    }],
+  ] as const)('rejects Core-backed Taproot signatures with %s', async (_name, mutate) => {
+    const vector = GENERATED_SIGNED_PSBT_VECTORS.find(({ scriptType }) => scriptType === 'p2tr');
+    if (!vector) throw new Error('Missing Core-backed P2TR signed vector');
+    const authorized = bitcoin.Psbt.fromBase64(vector.unsignedPsbtBase64);
+    const signed = bitcoin.Psbt.fromBase64(vector.signedPsbtBase64);
+    mutate(authorized.data.inputs[0]);
+    mutate(signed.data.inputs[0]);
+    envelope = envelopeFor(authorized, 'regtest');
+    mocks.loadSigningIntent.mockResolvedValue(envelope);
+    mocks.authenticateIntentPrevouts.mockResolvedValue(
+      envelope.snapshot.transaction.inputs.map(input => input.prevout),
+    );
+
+    await expect(validateSignedArtifact({
+      ...signingInput,
+      signedPsbtBase64: signed.toBase64(),
+    })).rejects.toThrow('Taproot key-path metadata is incomplete');
+  });
+
+  it.each([
+    ['tapInternalKey', (input: bitcoin.Psbt['data']['inputs'][number]) => {
+      input.tapInternalKey = Buffer.alloc(31, 4);
+    }],
+    ['tapBip32Derivation pubkey', (input: bitcoin.Psbt['data']['inputs'][number]) => {
+      input.tapBip32Derivation![0].pubkey = Buffer.alloc(31, 5);
+    }],
+  ] as const)('rejects an invalid-length BIP371 %s at the parser boundary', async (_name, mutate) => {
+    const vector = GENERATED_SIGNED_PSBT_VECTORS.find(({ scriptType }) => scriptType === 'p2tr');
+    if (!vector) throw new Error('Missing Core-backed P2TR signed vector');
+    const authorized = bitcoin.Psbt.fromBase64(vector.unsignedPsbtBase64);
+    mutate(authorized.data.inputs[0]);
+    envelope = envelopeFor(authorized, 'regtest');
+    mocks.loadSigningIntent.mockResolvedValue(envelope);
+
+    await expect(validateSignedArtifact({
+      ...signingInput,
+      signedPsbtBase64: vector.signedPsbtBase64,
+    })).rejects.toThrow('Invalid signed PSBT');
+  });
+
+  it.each([
+    ['tapInternalKey', (input: bitcoin.Psbt['data']['inputs'][number]) => {
+      input.tapInternalKey = Buffer.alloc(31, 4);
+    }],
+    ['tapBip32Derivation pubkey', (input: bitcoin.Psbt['data']['inputs'][number]) => {
+      input.tapBip32Derivation![0].pubkey = Buffer.alloc(31, 5);
+    }],
+  ] as const)('rejects an in-memory invalid-length BIP371 %s', async (_name, mutate) => {
+    const vector = GENERATED_SIGNED_PSBT_VECTORS.find(({ scriptType }) => scriptType === 'p2tr');
+    if (!vector) throw new Error('Missing Core-backed P2TR signed vector');
+    const authorized = bitcoin.Psbt.fromBase64(vector.unsignedPsbtBase64);
+    envelope = envelopeFor(authorized, 'regtest');
+    mocks.loadSigningIntent.mockResolvedValue(envelope);
+    mocks.authenticateIntentPrevouts.mockResolvedValue(
+      envelope.snapshot.transaction.inputs.map(input => input.prevout),
+    );
+    const malformed = bitcoin.Psbt.fromBase64(vector.unsignedPsbtBase64);
+    mutate(malformed.data.inputs[0]);
+    const fromBase64Spy = vi.spyOn(bitcoin.Psbt, 'fromBase64').mockReturnValue(malformed);
+
+    try {
+      await expect(validatePartialSignedPsbt({
+        ...signingInput,
+        signedPsbtBase64: vector.unsignedPsbtBase64,
+      })).rejects.toThrow('Taproot key-path metadata is incomplete');
+    } finally {
+      fromBase64Spy.mockRestore();
+    }
+  });
+
+  it.each([
+    ['script-path metadata', (input: bitcoin.Psbt['data']['inputs'][number]) => {
+      input.tapMerkleRoot = Buffer.alloc(32, 1);
+    }],
+    ['mixed legacy derivation metadata', (input: bitcoin.Psbt['data']['inputs'][number]) => {
+      input.bip32Derivation = [{
+        masterFingerprint: Buffer.from('d90c6a4f', 'hex'),
+        path: "m/86'/1'/0'/0/0",
+        pubkey: Buffer.from(`02${'11'.repeat(32)}`, 'hex'),
+      }];
+    }],
+  ] as const)('rejects Core-backed Taproot signatures with %s', async (_name, addMetadata) => {
+    const vector = GENERATED_SIGNED_PSBT_VECTORS.find(({ scriptType }) => scriptType === 'p2tr');
+    if (!vector) throw new Error('Missing Core-backed P2TR signed vector');
+    const authorized = bitcoin.Psbt.fromBase64(vector.unsignedPsbtBase64);
+    const signed = bitcoin.Psbt.fromBase64(vector.signedPsbtBase64);
+    addMetadata(authorized.data.inputs[0]);
+    addMetadata(signed.data.inputs[0]);
+    envelope = envelopeFor(authorized, 'regtest');
+    mocks.loadSigningIntent.mockResolvedValue(envelope);
+    mocks.authenticateIntentPrevouts.mockResolvedValue(
+      envelope.snapshot.transaction.inputs.map(input => input.prevout),
+    );
+
+    await expect(validateSignedArtifact({
+      ...signingInput,
+      signedPsbtBase64: signed.toBase64(),
+    })).rejects.toThrow('Taproot script-path or mixed metadata is not accepted');
+  });
+
+  it('rejects a Taproot key-path signature carrying a legacy partialSig', async () => {
+    const taprootVector = GENERATED_SIGNED_PSBT_VECTORS.find(({ scriptType }) => scriptType === 'p2tr');
+    const legacyVector = GENERATED_SIGNED_PSBT_VECTORS.find(({ scriptType }) => scriptType === 'p2wpkh');
+    if (!taprootVector || !legacyVector) throw new Error('Missing signed-vector fixtures');
+    const authorized = bitcoin.Psbt.fromBase64(taprootVector.unsignedPsbtBase64);
+    const signed = bitcoin.Psbt.fromBase64(taprootVector.signedPsbtBase64);
+    const legacySigned = bitcoin.Psbt.fromBase64(legacyVector.signedPsbtBase64);
+    signed.data.inputs[0].partialSig = legacySigned.data.inputs[0].partialSig;
+    envelope = envelopeFor(authorized, 'regtest');
+    mocks.loadSigningIntent.mockResolvedValue(envelope);
+    mocks.authenticateIntentPrevouts.mockResolvedValue(
+      envelope.snapshot.transaction.inputs.map(input => input.prevout),
+    );
+
+    await expect(validateSignedArtifact({
+      ...signingInput,
+      signedPsbtBase64: signed.toBase64(),
+    })).rejects.toMatchObject({
+      message: 'Taproot key-path signatures must use tapKeySig',
+      details: { field: 'inputs.0', reason: 'invalid_taproot_signature_field' },
+    });
+  });
+
+  it.each([
+    ['tapBip32Derivation', (input: bitcoin.Psbt['data']['inputs'][number]) => {
+      input.tapBip32Derivation = [{
+        masterFingerprint: Buffer.alloc(4, 1),
+        path: "m/86'/1'/0'/0/0",
+        pubkey: Buffer.alloc(32, 2),
+        leafHashes: [],
+      }];
+    }],
+    ['tapInternalKey', (input: bitcoin.Psbt['data']['inputs'][number]) => {
+      input.tapInternalKey = Buffer.alloc(32, 2);
+    }],
+    ['tapKeySig', (input: bitcoin.Psbt['data']['inputs'][number]) => {
+      input.tapKeySig = Buffer.alloc(64, 3);
+    }],
+    ['tapScriptSig', (input: bitcoin.Psbt['data']['inputs'][number]) => {
+      input.tapScriptSig = [{
+        pubkey: Buffer.alloc(32, 2),
+        leafHash: Buffer.alloc(32, 3),
+        signature: Buffer.alloc(64, 4),
+      }];
+    }],
+    ['tapLeafScript', (input: bitcoin.Psbt['data']['inputs'][number]) => {
+      input.tapLeafScript = [{
+        controlBlock: Buffer.concat([Buffer.from([0xc0]), Buffer.alloc(32, 2)]),
+        script: Buffer.from([0x51]),
+        leafVersion: 0xc0,
+      }];
+    }],
+    ['tapMerkleRoot', (input: bitcoin.Psbt['data']['inputs'][number]) => {
+      input.tapMerkleRoot = Buffer.alloc(32, 2);
+    }],
+  ] as const)('rejects non-Taproot signed artifacts carrying %s', async (_name, mutate) => {
+    const vector = GENERATED_SIGNED_PSBT_VECTORS.find(({ scriptType }) => scriptType === 'p2wpkh');
+    if (!vector) throw new Error('Missing Core-backed P2WPKH signed vector');
+    const authorized = bitcoin.Psbt.fromBase64(vector.unsignedPsbtBase64);
+    const signed = bitcoin.Psbt.fromBase64(vector.signedPsbtBase64);
+    mutate(authorized.data.inputs[0]);
+    mutate(signed.data.inputs[0]);
+    envelope = envelopeFor(authorized, 'regtest');
+    mocks.loadSigningIntent.mockResolvedValue(envelope);
+    mocks.authenticateIntentPrevouts.mockResolvedValue(
+      envelope.snapshot.transaction.inputs.map(input => input.prevout),
+    );
+
+    await expect(validateSignedArtifact({
+      ...signingInput,
+      signedPsbtBase64: signed.toBase64(),
+    })).rejects.toMatchObject({
+      message: 'Non-Taproot input contains Taproot fields',
+      details: { field: 'inputs.0', reason: 'mixed_signature_family' },
+    });
+  });
+
+  it('rejects an unsigned mixed-input PSBT whose Taproot input lacks BIP371 metadata', async () => {
     bitcoin.initEccLib(ecc);
     const internalPublicKey = Buffer.from(ecc.pointFromScalar(Buffer.from('03'.repeat(32), 'hex'), true)!);
     const taprootOutput = bitcoin.payments.p2tr({
@@ -383,7 +588,7 @@ describe('signed artifact authentication boundary', () => {
     await expect(validatePartialSignedPsbt({
       ...signingInput,
       signedPsbtBase64: mixed.toBase64(),
-    })).rejects.toThrow('Taproot signing is disabled');
+    })).rejects.toThrow('Taproot key-path metadata is incomplete');
   });
 
   it('rejects an unsigned PSBT before finalization is attempted', async () => {

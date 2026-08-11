@@ -17,6 +17,11 @@ import type * as GeneratedSignedPsbtFixtures from '../../server/tests/fixtures/g
 
 const requireUnknown: (id: string) => unknown = createRequire(import.meta.url);
 
+const fail = (message: string): never => {
+  console.error(`PSBT verifier failed: ${message}`);
+  process.exit(1);
+};
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
@@ -86,31 +91,42 @@ const REQUIRED_SIGNED_MARKERS = [
   'p2pkh',
   'p2wpkh',
   'p2sh-p2wpkh',
+  'p2tr',
   'p2wsh',
   'p2sh-p2wsh',
   'mempoolAccept',
+  'coreProof',
+  'taproot_key_path_sig',
 ];
-const REQUIRED_SIGNED_VECTOR_COUNT = 5;
+const REQUIRED_SIGNED_VECTOR_COUNT = 6;
+const PROVENANCE_KEYS = ['coreImage', 'coreVersion', 'coreSubversion'] as const;
 const REQUIRED_SIGNED_SCRIPT_TYPES = [
   'p2pkh',
   'p2sh-p2wpkh',
   'p2sh-p2wsh',
+  'p2tr',
   'p2wpkh',
   'p2wsh',
 ] as const;
 
-function assertStructuredProvenance(
-  actual: { coreImage: string; coreVersion: number; coreSubversion: string },
+type StructuredProvenance = {
+  coreImage: string;
+  coreVersion: number;
+  coreSubversion: string;
+};
+
+const assertStructuredProvenance = (
+  actual: StructuredProvenance,
   label: string,
-): void {
-  for (const key of ['coreImage', 'coreVersion', 'coreSubversion'] as const) {
+): void => {
+  for (const key of PROVENANCE_KEYS) {
     if (actual[key] !== PSBT_PROOF_MANIFEST[key]) {
       fail(`${label} ${key} does not match the PSBT proof manifest`);
     }
   }
-}
+};
 
-function verifyPinnedProvenance(content: string, label: string): void {
+const verifyPinnedProvenance = (content: string, label: string): void => {
   for (const value of [
     PSBT_PROOF_MANIFEST.coreImage,
     String(PSBT_PROOF_MANIFEST.coreVersion),
@@ -120,50 +136,53 @@ function verifyPinnedProvenance(content: string, label: string): void {
       fail(`${label} does not attest the pinned Bitcoin Core value: ${value}`);
     }
   }
-}
+};
 
-function verifyPinnedRuntimeDefinition(): void {
+const verifyPinnedRuntimeDefinition = (): void => {
   const compose = readFileSync(COMPOSE_PATH, 'utf8');
   if (!compose.includes(`image: ${PSBT_PROOF_MANIFEST.coreImage}`)) {
     fail('docker-compose.yml does not use the proof manifest Bitcoin Core image');
   }
-}
+};
 
-function fail(message: string): never {
-  console.error(`PSBT verifier failed: ${message}`);
-  process.exit(1);
-}
-
-function countGeneratedVectors(content: string): number {
+const countGeneratedVectors = (content: string): number => {
   const matches = content.match(/"psbtBase64"\s*:/g) ?? [];
   return matches.length;
-}
+};
 
-function countGeneratedSignedVectors(content: string): number {
+const countGeneratedSignedVectors = (content: string): number => {
   const matches = content.match(/"finalTxHex"\s*:/g) ?? [];
   return matches.length;
-}
+};
 
-function verifyGeneratedVectors(): void {
+const readGeneratedVectors = (): string => {
   if (!existsSync(GENERATED_VECTORS_PATH)) {
     fail(
       `missing ${GENERATED_VECTORS_PATH}. Run the Bitcoin Core-backed PSBT vector generator before verifying.`
     );
   }
 
-  const content = readFileSync(GENERATED_VECTORS_PATH, 'utf8');
-  verifyPinnedProvenance(content, 'generated PSBT vectors');
+  return readFileSync(GENERATED_VECTORS_PATH, 'utf8');
+};
+
+const verifyGeneratedVectorMarkers = (content: string): void => {
   for (const marker of REQUIRED_MARKERS) {
     if (!content.includes(marker)) {
       fail(`generated PSBT vectors are missing required marker: ${marker}`);
     }
   }
+};
 
+const verifyGeneratedVectorCount = (content: string): number => {
   const vectorCount = countGeneratedVectors(content);
   if (vectorCount !== REQUIRED_VECTOR_COUNT) {
     fail(`generated PSBT vectors have drifted: found ${vectorCount}, expected exactly ${REQUIRED_VECTOR_COUNT}`);
   }
-  assertStructuredProvenance(GENERATED_PSBT_PROVENANCE, 'generated PSBT vectors');
+
+  return vectorCount;
+};
+
+const verifyGeneratedVectorFamilies = (): void => {
   const groups = [
     GENERATED_P2WPKH_VECTORS,
     GENERATED_P2SH_P2WPKH_VECTORS,
@@ -174,44 +193,96 @@ function verifyGeneratedVectors(): void {
   if (groups.some(group => group.length !== 1)) {
     fail('generated PSBT vectors must contain exactly one vector per required script family');
   }
+};
+
+const verifyGeneratedVectors = (): void => {
+  const content = readGeneratedVectors();
+  verifyPinnedProvenance(content, 'generated PSBT vectors');
+  verifyGeneratedVectorMarkers(content);
+  const vectorCount = verifyGeneratedVectorCount(content);
+  assertStructuredProvenance(GENERATED_PSBT_PROVENANCE, 'generated PSBT vectors');
+  verifyGeneratedVectorFamilies();
 
   console.log(`PSBT verifier passed with ${vectorCount} generated Bitcoin Core-backed vectors.`);
-}
+};
 
-function verifyGeneratedSignedVectors(): void {
+const readGeneratedSignedVectors = (): string => {
   if (!existsSync(GENERATED_SIGNED_VECTORS_PATH)) {
     fail(
       `missing ${GENERATED_SIGNED_VECTORS_PATH}. Run the funded Bitcoin Core-backed signed PSBT vector generator before verifying.`
     );
   }
 
-  const content = readFileSync(GENERATED_SIGNED_VECTORS_PATH, 'utf8');
-  verifyPinnedProvenance(content, 'generated signed PSBT vectors');
+  return readFileSync(GENERATED_SIGNED_VECTORS_PATH, 'utf8');
+};
+
+const verifyGeneratedSignedVectorMarkers = (content: string): void => {
   for (const marker of REQUIRED_SIGNED_MARKERS) {
     if (!content.includes(marker)) {
       fail(`generated signed PSBT vectors are missing required marker: ${marker}`);
     }
   }
+};
 
+const verifyGeneratedSignedVectorCount = (content: string): number => {
   const vectorCount = countGeneratedSignedVectors(content);
   if (vectorCount !== REQUIRED_SIGNED_VECTOR_COUNT) {
     fail(`generated signed PSBT vectors have drifted: found ${vectorCount}, expected exactly ${REQUIRED_SIGNED_VECTOR_COUNT}`);
   }
-  assertStructuredProvenance(GENERATED_SIGNED_PSBT_PROVENANCE, 'generated signed PSBT vectors');
+
+  return vectorCount;
+};
+
+const verifyGeneratedSignedScriptFamilies = (): void => {
   const actualScriptTypes = GENERATED_SIGNED_PSBT_VECTORS
     .map(vector => vector.scriptType)
     .sort();
   if (JSON.stringify(actualScriptTypes) !== JSON.stringify(REQUIRED_SIGNED_SCRIPT_TYPES)) {
     fail(`generated signed PSBT script families have drifted: ${actualScriptTypes.join(', ')}`);
   }
+};
+
+const verifyGeneratedSignedCoreEvidence = (): void => {
   if (GENERATED_SIGNED_PSBT_VECTORS.some(vector => !vector.mempoolAccept.allowed
     || vector.mempoolAccept.txid !== vector.expectedTxid
+    || !vector.coreProof.finalizedPsbt.complete
+    || vector.coreProof.finalizedPsbt.hex !== vector.finalTxHex
+    || vector.coreProof.decodedTransaction.txid !== vector.expectedTxid
+    || vector.coreProof.decodedTransaction.vsize !== vector.expectedVsize
+    || vector.coreProof.analyzedSignedPsbt.next !== 'finalizer'
     || !vector.verifiedBy.includes(`Bitcoin Core ${PSBT_PROOF_MANIFEST.coreSubversion}`))) {
     fail('generated signed PSBT vectors lack exact Bitcoin Core acceptance evidence');
   }
+};
+
+const verifyGeneratedSignedTaprootEvidence = (): void => {
+  const taproot = GENERATED_SIGNED_PSBT_VECTORS.find(vector => vector.scriptType === 'p2tr');
+  const taprootInput = taproot?.coreProof.decodedSignedPsbt.inputs[0];
+  const taprootDerivation = taprootInput?.taproot_bip32_derivs?.[0];
+  if (!taproot
+    || taprootInput?.taproot_key_path_sig?.length !== 128
+    || taprootInput.taproot_internal_key?.length !== 64
+    || taprootDerivation?.pubkey !== taprootInput.taproot_internal_key
+    || taprootDerivation.master_fingerprint !== 'd90c6a4f'
+    || taprootDerivation.path !== 'm/86h/1h/0h/0/0'
+    || taprootDerivation.leaf_hashes.length !== 0
+    || taproot.coreProof.decodedTransaction.vin[0]?.txinwitness?.length !== 1) {
+    fail('generated signed P2TR vector lacks exact BIP371 key-path evidence');
+  }
+};
+
+const verifyGeneratedSignedVectors = (): void => {
+  const content = readGeneratedSignedVectors();
+  verifyPinnedProvenance(content, 'generated signed PSBT vectors');
+  verifyGeneratedSignedVectorMarkers(content);
+  const vectorCount = verifyGeneratedSignedVectorCount(content);
+  assertStructuredProvenance(GENERATED_SIGNED_PSBT_PROVENANCE, 'generated signed PSBT vectors');
+  verifyGeneratedSignedScriptFamilies();
+  verifyGeneratedSignedCoreEvidence();
+  verifyGeneratedSignedTaprootEvidence();
 
   console.log(`Signed PSBT verifier passed with ${vectorCount} generated Bitcoin Core-accepted vectors.`);
-}
+};
 
 verifyPinnedRuntimeDefinition();
 verifyGeneratedVectors();

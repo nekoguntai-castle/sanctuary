@@ -2,6 +2,7 @@ import * as bitcoin from 'bitcoinjs-lib';
 import bip32 from '../bip32';
 import { createLogger } from '../../../utils/logger';
 import { normalizeDerivationPath } from '@sanctuary/shared/utils/bitcoin';
+import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import {
   buildMultisigBip32Derivations,
   buildMultisigWitnessScript,
@@ -202,17 +203,37 @@ const deriveSingleSigPubkeyNode = (
   return pubkeyNode;
 };
 
-const addSingleSigBip32Info = (
+const addSingleSigDerivationInfo = (
   psbt: bitcoin.Psbt,
   inputIndex: number,
   derivationPath: string,
   masterFingerprint: Buffer,
   accountNode: AccountNode,
+  scriptType: WalletSigningInfo['scriptType'],
   logPrefix: string
 ): void => {
   try {
     const pubkeyNode = deriveSingleSigPubkeyNode(accountNode, derivationPath);
     const normalizedPath = normalizeDerivationPath(derivationPath);
+    if (scriptType === WalletScriptType.TAPROOT) {
+      const internalPubkey = Buffer.from(pubkeyNode.publicKey).subarray(1, 33);
+      psbt.updateInput(inputIndex, {
+        tapInternalKey: internalPubkey,
+        tapBip32Derivation: [{
+          masterFingerprint,
+          path: normalizedPath,
+          pubkey: internalPubkey,
+          leafHashes: [],
+        }],
+      });
+      log.info(`${logPrefix}Single-sig Taproot derivation added to input`, {
+        inputIndex,
+        fingerprint: masterFingerprint.toString('hex'),
+        path: normalizedPath,
+        internalPubkeyHex: internalPubkey.toString('hex').substring(0, 20) + '...',
+      });
+      return;
+    }
     psbt.updateInput(inputIndex, {
       bip32Derivation: [{
         masterFingerprint,
@@ -257,7 +278,15 @@ const addBip32Info = (
   }
 
   if (signingInfo.masterFingerprint && derivationPath && accountNode) {
-    addSingleSigBip32Info(psbt, inputIndex, derivationPath, signingInfo.masterFingerprint, accountNode, logPrefix);
+    addSingleSigDerivationInfo(
+      psbt,
+      inputIndex,
+      derivationPath,
+      signingInfo.masterFingerprint,
+      accountNode,
+      signingInfo.scriptType,
+      logPrefix,
+    );
     return;
   }
 

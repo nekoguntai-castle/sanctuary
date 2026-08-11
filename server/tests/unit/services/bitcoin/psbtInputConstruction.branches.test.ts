@@ -59,6 +59,7 @@ describe("PSBT input construction branch coverage", () => {
         addressPathMap: new Map([[baseUtxo.address, "m/48'/1'/0'/2'/0/0"]]),
         signingInfo: {
           isMultisig: true,
+          scriptType: "native_segwit",
           multisigKeys: testMultisigKeys,
           multisigQuorum: 2,
           multisigScriptType: "wsh-sortedmulti",
@@ -80,6 +81,7 @@ describe("PSBT input construction branch coverage", () => {
         addressPathMap: new Map([[baseUtxo.address, "m/48'/1'/0'/2'/0/0"]]),
         signingInfo: {
           isMultisig: true,
+          scriptType: "native_segwit",
           multisigKeys: testMultisigKeys,
           multisigQuorum: 2,
           multisigScriptType: "wsh-sortedmulti",
@@ -104,6 +106,7 @@ describe("PSBT input construction branch coverage", () => {
         addressPathMap: new Map([[baseUtxo.address, derivationPath]]),
         signingInfo: {
           isMultisig: false,
+          scriptType: "native_segwit",
           masterFingerprint: Buffer.from("aabbccdd", "hex"),
         },
         accountNode,
@@ -114,6 +117,40 @@ describe("PSBT input construction branch coverage", () => {
         path: "m/84'/1'/0'/0/5",
         pubkey: accountNode.derive(0).derive(5).publicKey,
       }]);
+    },
+  );
+
+  it.each(["m/86'/1'/0'/0/5", "m/86h/1h/0h/0/5"])(
+    "adds exact BIP371 key-path metadata for single-sig Taproot input %s",
+    derivationPath => {
+      const psbt = new bitcoin.Psbt({ network });
+      const accountNode = bip32.fromSeed(Buffer.alloc(32, 9), network)
+        .deriveHardened(86).deriveHardened(1).deriveHardened(0).neutered();
+      const childPubkey = Buffer.from(accountNode.derive(0).derive(5).publicKey);
+      const internalPubkey = childPubkey.subarray(1, 33);
+
+      expect(addInputsWithBip32(psbt, [baseUtxo], {
+        sequence: 0xfffffffd,
+        isLegacy: false,
+        rawTxCache: new Map(),
+        addressPathMap: new Map([[baseUtxo.address, derivationPath]]),
+        signingInfo: {
+          isMultisig: false,
+          scriptType: "taproot",
+          masterFingerprint: Buffer.from("aabbccdd", "hex"),
+        },
+        accountNode,
+        networkObj: network,
+      })).toEqual([derivationPath]);
+
+      expect(psbt.data.inputs[0].tapInternalKey).toEqual(internalPubkey);
+      expect(psbt.data.inputs[0].tapBip32Derivation).toEqual([{
+        masterFingerprint: Buffer.from("aabbccdd", "hex"),
+        path: "m/86'/1'/0'/0/5",
+        pubkey: internalPubkey,
+        leafHashes: [],
+      }]);
+      expect(psbt.data.inputs[0].bip32Derivation).toBeUndefined();
     },
   );
 
@@ -128,6 +165,7 @@ describe("PSBT input construction branch coverage", () => {
         addressPathMap: new Map(),
         signingInfo: {
           isMultisig: false,
+          scriptType: "native_segwit",
           multisigKeys: [],
         },
         networkObj: network,

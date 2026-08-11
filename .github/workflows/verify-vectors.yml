@@ -92,6 +92,8 @@ jobs:
               set -euo pipefail
               npm run test:mutation:psbt-account-binding:browser
               npm --prefix server run test:mutation:psbt-account-binding
+              npm --prefix server run test:mutation:taproot-construction
+              npm --prefix server run test:mutation:taproot-artifact-finalization
               node scripts/ci/check-wallet-safety-mutation-map.mjs
             '
 
@@ -103,6 +105,8 @@ jobs:
           path: |
             reports/mutation/psbt-account-binding-browser.json
             server/reports/mutation/psbt-account-binding-server.json
+            server/reports/mutation/taproot-construction.json
+            server/reports/mutation/taproot-artifact-finalization.json
           if-no-files-found: error
           retention-days: 14
 

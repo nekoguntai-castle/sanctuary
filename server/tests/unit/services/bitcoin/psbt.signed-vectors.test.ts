@@ -7,7 +7,7 @@ import { finalizeMultisigInput } from '../../../../src/services/bitcoin/psbtBuil
 bitcoin.initEccLib(ecc);
 
 const NETWORK = bitcoin.networks.regtest;
-const EXPECTED_SCRIPT_TYPES = ['p2pkh', 'p2wpkh', 'p2sh-p2wpkh', 'p2wsh', 'p2sh-p2wsh'];
+const EXPECTED_SCRIPT_TYPES = ['p2pkh', 'p2wpkh', 'p2sh-p2wpkh', 'p2tr', 'p2wsh', 'p2sh-p2wsh'];
 const MULTISIG_SCRIPT_TYPES = ['p2wsh', 'p2sh-p2wsh'];
 type SignedVector = typeof GENERATED_SIGNED_PSBT_VECTORS[number];
 
@@ -28,9 +28,33 @@ function finalizeSignedFixture(psbt: bitcoin.Psbt, scriptType: string): bitcoin.
   if (MULTISIG_SCRIPT_TYPES.includes(scriptType)) {
     finalizeMultisigInput(psbt, 0);
   } else {
+    if (scriptType === 'p2tr') {
+      const input = psbt.data.inputs[0];
+      if (input.tapScriptSig?.length || input.tapLeafScript?.length || input.tapMerkleRoot) {
+        throw new Error('Taproot script-path signatures are outside the key-path proof contract');
+      }
+      if (!psbt.validateSignaturesOfInput(0, verifySignature)) {
+        throw new Error('Taproot key-path signature verification failed');
+      }
+    }
     psbt.finalizeAllInputs();
   }
   return psbt;
+}
+
+function verifySignature(publicKey: Uint8Array, hash: Uint8Array, signature: Uint8Array): boolean {
+  if (publicKey.length === 32) {
+    return ecc.verifySchnorr(hash, publicKey, signature);
+  }
+  return ecc.verify(hash, publicKey, signature);
+}
+
+function taprootFixture(): SignedVector {
+  const fixture = GENERATED_SIGNED_PSBT_VECTORS.find((vector) => vector.scriptType === 'p2tr');
+  if (!fixture) {
+    throw new Error('Missing signed fixture: p2tr');
+  }
+  return fixture;
 }
 
 function multisigFixture(scriptType: 'p2wsh' | 'p2sh-p2wsh') {
@@ -67,7 +91,65 @@ describe('Generated Signed PSBT Vectors', () => {
       expect(vector.mempoolAccept.allowed).toBe(true);
       expect(vector.verifiedBy.some((impl) => impl.includes('Bitcoin Core'))).toBe(true);
       expect(vector.verifiedBy.some((impl) => impl.includes('Sanctuary software signer'))).toBe(true);
+      expect(vector.coreProof.decodedSignedPsbt.tx.vin).toHaveLength(1);
+      expect(vector.coreProof.decodedSignedPsbt.tx.vout).toHaveLength(1);
+      expect(vector.coreProof.analyzedSignedPsbt).toMatchObject({
+        next: 'finalizer',
+        inputs: [{ has_utxo: true, is_final: false, next: 'finalizer' }],
+      });
+      expect(vector.coreProof.finalizedPsbt).toEqual({
+        complete: true,
+        hex: vector.finalTxHex,
+      });
+      expect(vector.coreProof.decodedTransaction).toMatchObject({
+        txid: vector.expectedTxid,
+        vsize: vector.expectedVsize,
+      });
     });
+  });
+
+  it('proves exact BIP371 key-path metadata and Core decoding for P2TR', () => {
+    const vector = taprootFixture();
+    const unsigned = bitcoin.Psbt.fromBase64(vector.unsignedPsbtBase64, { network: NETWORK });
+    const signed = bitcoin.Psbt.fromBase64(vector.signedPsbtBase64, { network: NETWORK });
+    const unsignedInput = unsigned.data.inputs[0];
+    const signedInput = signed.data.inputs[0];
+
+    expect(Buffer.from(unsignedInput.tapInternalKey!).toString('hex')).toBe(
+      '79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798',
+    );
+    expect(unsignedInput.tapBip32Derivation).toHaveLength(1);
+    const [tapDerivation] = unsignedInput.tapBip32Derivation!;
+    expect(Buffer.from(tapDerivation.masterFingerprint).toString('hex')).toBe('d90c6a4f');
+    expect(tapDerivation.path).toBe("m/86'/1'/0'/0/0");
+    expect(Buffer.from(tapDerivation.pubkey).toString('hex')).toBe(
+      '79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798',
+    );
+    expect(tapDerivation.leafHashes).toEqual([]);
+    expect(unsignedInput.tapKeySig).toBeUndefined();
+    expect(signedInput.tapKeySig).toHaveLength(64);
+    expect(signedInput.tapScriptSig).toBeUndefined();
+    expect(signedInput.tapLeafScript).toBeUndefined();
+    expect(signedInput.tapMerkleRoot).toBeUndefined();
+    expect(signedInput.partialSig).toBeUndefined();
+    expect(signedInput.witnessUtxo).toEqual(unsignedInput.witnessUtxo);
+    expect(signedInput.tapInternalKey).toEqual(unsignedInput.tapInternalKey);
+    expect(signedInput.tapBip32Derivation).toEqual(unsignedInput.tapBip32Derivation);
+
+    const coreInput = vector.coreProof.decodedSignedPsbt.inputs[0];
+    expect(coreInput).toMatchObject({
+      taproot_key_path_sig: Buffer.from(signedInput.tapKeySig!).toString('hex'),
+      taproot_internal_key: Buffer.from(unsignedInput.tapInternalKey!).toString('hex'),
+      taproot_bip32_derivs: [{
+        pubkey: Buffer.from(unsignedInput.tapInternalKey!).toString('hex'),
+        master_fingerprint: 'd90c6a4f',
+        path: 'm/86h/1h/0h/0/0',
+        leaf_hashes: [],
+      }],
+    });
+    expect(vector.coreProof.decodedTransaction.vin[0].txinwitness).toEqual([
+      Buffer.from(signedInput.tapKeySig!).toString('hex'),
+    ]);
   });
 
   it('finalizes signed PSBT fixtures to the committed Bitcoin Core-accepted transaction hex', () => {
@@ -112,6 +194,34 @@ describe('Generated Signed PSBT Vectors', () => {
       expect(() => finalizeMultisigInput(psbt, 0)).toThrow('signature verification failed');
       expect(psbt.data.inputs[0].finalScriptWitness).toBeUndefined();
     });
+  });
+
+  it('rejects a corrupted P2TR Schnorr signature before final extraction', () => {
+    const vector = taprootFixture();
+    const psbt = bitcoin.Psbt.fromBase64(vector.signedPsbtBase64, { network: NETWORK });
+    const signature = Buffer.from(psbt.data.inputs[0].tapKeySig!);
+    signature[0] ^= 0x01;
+    psbt.data.inputs[0].tapKeySig = signature;
+
+    expect(() => finalizeSignedFixture(psbt, 'p2tr')).toThrow(
+      'Taproot key-path signature verification failed',
+    );
+    expect(psbt.data.inputs[0].finalScriptWitness).toBeUndefined();
+  });
+
+  it('rejects P2TR script-path metadata from the key-path proof contract', () => {
+    const vector = taprootFixture();
+    const psbt = bitcoin.Psbt.fromBase64(vector.signedPsbtBase64, { network: NETWORK });
+    psbt.data.inputs[0].tapScriptSig = [{
+      pubkey: Buffer.alloc(32, 1),
+      leafHash: Buffer.alloc(32, 2),
+      signature: Buffer.alloc(64, 3),
+    }];
+
+    expect(() => finalizeSignedFixture(psbt, 'p2tr')).toThrow(
+      'Taproot script-path signatures are outside the key-path proof contract',
+    );
+    expect(psbt.data.inputs[0].finalScriptWitness).toBeUndefined();
   });
 
   it('rejects below-quorum multisig PSBTs before final extraction', () => {

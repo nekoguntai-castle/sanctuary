@@ -11,6 +11,8 @@ import type {
   SigningIntentSnapshotV1,
 } from './types';
 
+bitcoin.initEccLib(ecc);
+
 const validatedArtifactBrand: unique symbol = Symbol('ValidatedBroadcastArtifact');
 
 export interface ValidatedBroadcastArtifact {
@@ -155,7 +157,6 @@ const SIGNATURE_INPUT_FIELDS = new Set([
   'finalScriptSig',
   'finalScriptWitness',
   'tapKeySig',
-  'tapScriptSig',
 ]);
 
 const immutableInputFields = (input: object): Record<string, unknown> =>
@@ -163,6 +164,74 @@ const immutableInputFields = (input: object): Record<string, unknown> =>
 
 const isFinalized = (input: bitcoin.Psbt['data']['inputs'][number]): boolean =>
   input.finalScriptSig !== undefined || input.finalScriptWitness !== undefined;
+
+const isP2trScript = (script: Uint8Array | undefined): boolean => (
+  Boolean(script && script.length === 34 && script[0] === 0x51 && script[1] === 0x20)
+);
+
+const hasTaprootInputFields = (
+  input: bitcoin.Psbt['data']['inputs'][number],
+): boolean => Boolean(
+  input.tapKeySig
+  || input.tapBip32Derivation?.length
+  || input.tapInternalKey
+  || input.tapLeafScript?.length
+  || input.tapScriptSig?.length
+  || input.tapMerkleRoot
+);
+
+const assertTaprootKeyPathInput = (
+  input: bitcoin.Psbt['data']['inputs'][number],
+  index: number,
+): void => {
+  if (input.bip32Derivation?.length || input.redeemScript || input.witnessScript
+    || input.tapLeafScript?.length || input.tapScriptSig?.length || input.tapMerkleRoot) {
+    throw new InvalidInputError('Taproot script-path or mixed metadata is not accepted', `inputs.${index}`, {
+      reason: 'unsupported_taproot_script_path',
+    });
+  }
+  const derivations = input.tapBip32Derivation;
+  if (!input.tapInternalKey || derivations?.length !== 1) {
+    throw new InvalidInputError('Taproot key-path metadata is incomplete', `inputs.${index}`, {
+      reason: 'invalid_taproot_key_path',
+    });
+  }
+  // bitcoinjs rejects these invalid BIP371 key lengths while parsing. Keep the
+  // explicit check as defense in depth for any future in-memory callers.
+  if (input.tapInternalKey.length !== 32 || derivations[0].pubkey.length !== 32) {
+    throw new InvalidInputError('Taproot key-path metadata is incomplete', `inputs.${index}`, {
+      reason: 'invalid_taproot_key_path',
+    });
+  }
+  if (derivations[0].leafHashes.length !== 0
+    || !Buffer.from(derivations[0].pubkey).equals(Buffer.from(input.tapInternalKey))) {
+    throw new InvalidInputError('Taproot key-path metadata is incomplete', `inputs.${index}`, {
+      reason: 'invalid_taproot_key_path',
+    });
+  }
+};
+
+const assertSignatureFamily = (
+  input: bitcoin.Psbt['data']['inputs'][number],
+  index: number,
+): boolean => {
+  const taproot = isP2trScript(input.witnessUtxo?.script);
+  if (taproot) {
+    assertTaprootKeyPathInput(input, index);
+    if (input.partialSig?.length) {
+      throw new InvalidInputError('Taproot key-path signatures must use tapKeySig', `inputs.${index}`, {
+        reason: 'invalid_taproot_signature_field',
+      });
+    }
+    return Boolean(input.tapKeySig);
+  }
+  if (hasTaprootInputFields(input)) {
+    throw new InvalidInputError('Non-Taproot input contains Taproot fields', `inputs.${index}`, {
+      reason: 'mixed_signature_family',
+    });
+  }
+  return Boolean(input.partialSig?.length);
+};
 
 const assertImmutableInputMap = (
   original: object,
@@ -207,14 +276,17 @@ const validatePresentSignatures = (psbt: bitcoin.Psbt, requireEveryInput = true)
         reason: 'unverifiable_witness',
       });
     }
-    const hasSignature = Boolean(input.partialSig?.length || input.tapKeySig || input.tapScriptSig?.length);
+    const hasSignature = assertSignatureFamily(input, index);
     if (!hasSignature && requireEveryInput) {
       throw new InvalidInputError('Every PSBT input requires verifiable signature evidence', `inputs.${index}`, {
         reason: 'missing_witness_data',
       });
     }
     if (!hasSignature) continue;
-    if (!psbt.validateSignaturesOfInput(index, validator)) {
+    const taprootOutputKey = isP2trScript(input.witnessUtxo?.script)
+      ? input.witnessUtxo!.script.subarray(2, 34)
+      : undefined;
+    if (!psbt.validateSignaturesOfInput(index, validator, taprootOutputKey)) {
       throw new InvalidInputError('PSBT contains an invalid signature', `inputs.${index}`, {
         reason: 'invalid_signature',
       });
@@ -263,19 +335,6 @@ const assertPrevoutsStillMatch = async (
   });
 };
 
-const assertEnabledSigningSurface = (envelope: SigningIntentEnvelope): void => {
-  const hasTaprootInput = envelope.snapshot.transaction.inputs.some(
-    input => /^5120[0-9a-f]{64}$/.test(input.prevout.scriptPubKeyHex),
-  );
-  if (hasTaprootInput) {
-    throw new InvalidInputError(
-      'Taproot signing is disabled until a Bitcoin Core-accepted signed vector is enforced',
-      'signedPsbtBase64',
-      { reason: 'taproot_signing_proof_pending' },
-    );
-  }
-};
-
 const resolveFinalTransaction = (
   input: SignedArtifactInput,
   envelope: SigningIntentEnvelope,
@@ -320,7 +379,6 @@ export const validateSignedArtifact = async (
   if (!envelope.broadcastReplay) {
     await assertPrevoutsStillMatch(envelope, originalPsbt, input.draftId);
   }
-  assertEnabledSigningSurface(envelope);
   const transaction = resolveFinalTransaction(input, envelope, originalPsbt);
   assertTransactionMatchesSnapshot(transaction, envelope.snapshot);
   if (envelope.broadcastReplay
@@ -363,5 +421,4 @@ export const validatePartialSignedPsbt = async (
   assertPsbtMapsPreserved(originalPsbt, candidate);
   validatePresentSignatures(candidate, false);
   await assertPrevoutsStillMatch(envelope, originalPsbt, input.draftId);
-  assertEnabledSigningSurface(envelope);
 };

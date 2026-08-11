@@ -1,8 +1,11 @@
 import { createHash } from 'node:crypto';
 import * as bitcoin from 'bitcoinjs-lib';
+import * as ecc from 'tiny-secp256k1';
 import { describe, expect, it } from 'vitest';
 import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
 import { assertPsbtMatchesSigningContext } from '../../../../src/services/bitcoin/psbtSigningContextValidation';
+
+bitcoin.initEccLib(ecc);
 
 const network = bitcoin.networks.testnet;
 const fingerprint = 'aabbccdd';
@@ -81,6 +84,53 @@ function fixture() {
   return { psbt, context, script, derivation };
 }
 
+function taprootFixture() {
+  const internalKey = pubkey.subarray(1, 33);
+  const script = bitcoin.payments.p2tr({ internalPubkey: internalKey, network }).output!;
+  const txid = '66'.repeat(32);
+  const inputPath = "m/86'/1'/0'/0/0";
+  const changePath = "m/86'/1'/0'/1/0";
+  const derivation = (path: string) => ({
+    masterFingerprint: Buffer.from(fingerprint, 'hex'), path,
+    pubkey: internalKey, leafHashes: [],
+  });
+  const psbt = new bitcoin.Psbt({ network });
+  psbt.addInput({
+    hash: txid, index: 0,
+    witnessUtxo: { script, value: 20_000n },
+    tapInternalKey: internalKey,
+    tapBip32Derivation: [derivation(inputPath)],
+  });
+  psbt.addOutput({
+    script, value: 19_000n,
+    tapInternalKey: internalKey,
+    tapBip32Derivation: [derivation(changePath)],
+  });
+  const origin = (path: string) => ({
+    masterFingerprint: fingerprint, path, pubkey: internalKey.toString('hex'),
+  });
+  const context: PsbtSigningContext = {
+    version: 1, walletId: 'wallet-taproot', network: 'testnet3',
+    walletType: 'single_sig', scriptType: 'taproot',
+    canonicalPolicyId: 'single-sig-taproot-bip86-v1', canonicalPolicyVersion: 1,
+    descriptorDigest: '77'.repeat(32), unsignedTransactionDigest: digest(psbt),
+    signers: [{
+      signerIndex: 0, deviceId: 'device-1', deviceAccountId: 'account-1',
+      masterFingerprint: fingerprint, accountPath: "m/86'/1'/0'", accountXpub: 'tpub-account',
+    }],
+    inputs: [{
+      inputIndex: 0, txid, vout: 0, amountSats: '20000',
+      scriptPubKey: Buffer.from(script).toString('hex'), addressPath: inputPath,
+      signerOrigins: [origin(inputPath)],
+    }],
+    changeOutputs: [{
+      outputIndex: 0, amountSats: '19000', scriptPubKey: Buffer.from(script).toString('hex'),
+      addressPath: changePath, signerOrigins: [origin(changePath)],
+    }],
+  };
+  return { psbt, context };
+}
+
 function contextWith(
   context: PsbtSigningContext,
   mutate: (value: PsbtSigningContext) => void,
@@ -94,6 +144,89 @@ describe('assertPsbtMatchesSigningContext', () => {
   it('accepts an exact wallet input and change output', () => {
     const { psbt, context } = fixture();
     expect(() => assertPsbtMatchesSigningContext(psbt, context, ['wallet'])).not.toThrow();
+  });
+
+  it('accepts exact Taproot key-path BIP371 context metadata', () => {
+    const { psbt, context } = taprootFixture();
+    expect(() => assertPsbtMatchesSigningContext(psbt, context, ['wallet'])).not.toThrow();
+  });
+
+  it.each([
+    ['missing BIP371 derivation', (psbt: bitcoin.Psbt) => {
+      delete psbt.data.inputs[0].tapBip32Derivation;
+    }],
+    ['nonempty leaf hashes', (psbt: bitcoin.Psbt) => {
+      psbt.data.inputs[0].tapBip32Derivation![0].leafHashes = [Buffer.alloc(32, 1)];
+    }],
+    ['missing internal key', (psbt: bitcoin.Psbt) => {
+      delete psbt.data.inputs[0].tapInternalKey;
+    }],
+    ['mixed legacy derivation', (psbt: bitcoin.Psbt) => {
+      const tap = psbt.data.inputs[0].tapBip32Derivation![0];
+      psbt.data.inputs[0].bip32Derivation = [{
+        masterFingerprint: tap.masterFingerprint, path: tap.path,
+        pubkey: Buffer.concat([Buffer.from([2]), Buffer.from(tap.pubkey)]),
+      }];
+    }],
+    ['script-path merkle root', (psbt: bitcoin.Psbt) => {
+      psbt.data.inputs[0].tapMerkleRoot = Buffer.alloc(32, 3);
+    }],
+    ['change tree', (psbt: bitcoin.Psbt) => {
+      psbt.data.outputs[0].tapTree = { leaves: [{ depth: 0, leafVersion: 0xc0, script: Buffer.of(0x51) }] };
+    }],
+  ])('rejects Taproot %s context metadata', (_label, mutate) => {
+    const { psbt, context } = taprootFixture();
+    mutate(psbt);
+    expect(() => assertPsbtMatchesSigningContext(psbt, context, ['wallet']))
+      .toThrow(/context (input|change output) 0 does not match/);
+  });
+
+  it.each([
+    ['tapBip32Derivation', (psbt: bitcoin.Psbt) => {
+      psbt.data.inputs[0].tapBip32Derivation = [{
+        masterFingerprint: Buffer.from(fingerprint, 'hex'), path: inputPath,
+        pubkey: Buffer.alloc(32, 1), leafHashes: [],
+      }];
+    }],
+    ['tapInternalKey', (psbt: bitcoin.Psbt) => { psbt.data.inputs[0].tapInternalKey = Buffer.alloc(32, 1); }],
+    ['tapKeySig', (psbt: bitcoin.Psbt) => { psbt.data.inputs[0].tapKeySig = Buffer.alloc(64, 1); }],
+    ['tapScriptSig', (psbt: bitcoin.Psbt) => {
+      psbt.data.inputs[0].tapScriptSig = [{
+        pubkey: Buffer.alloc(32, 1), leafHash: Buffer.alloc(32, 2), signature: Buffer.alloc(64, 3),
+      }];
+    }],
+    ['tapLeafScript', (psbt: bitcoin.Psbt) => {
+      psbt.data.inputs[0].tapLeafScript = [{
+        controlBlock: Buffer.concat([Buffer.of(0xc0), Buffer.alloc(32, 1)]),
+        leafVersion: 0xc0, script: Buffer.of(0x51),
+      }];
+    }],
+    ['tapMerkleRoot', (psbt: bitcoin.Psbt) => { psbt.data.inputs[0].tapMerkleRoot = Buffer.alloc(32, 1); }],
+  ])('rejects persisted non-Taproot input field %s', (_field, mutate) => {
+    const { psbt, context } = fixture();
+    mutate(psbt);
+    expect(() => assertPsbtMatchesSigningContext(psbt, context, ['wallet']))
+      .toThrow('context input 0 does not match the PSBT');
+  });
+
+  it.each([
+    ['tapBip32Derivation', (psbt: bitcoin.Psbt) => {
+      psbt.data.outputs[0].tapBip32Derivation = [{
+        masterFingerprint: Buffer.from(fingerprint, 'hex'), path: changePath,
+        pubkey: Buffer.alloc(32, 1), leafHashes: [],
+      }];
+    }],
+    ['tapInternalKey', (psbt: bitcoin.Psbt) => { psbt.data.outputs[0].tapInternalKey = Buffer.alloc(32, 1); }],
+    ['tapTree', (psbt: bitcoin.Psbt) => {
+      psbt.data.outputs[0].tapTree = {
+        leaves: [{ depth: 0, leafVersion: 0xc0, script: Buffer.of(0x51) }],
+      };
+    }],
+  ])('rejects persisted non-Taproot output field %s', (_field, mutate) => {
+    const { psbt, context } = fixture();
+    mutate(psbt);
+    expect(() => assertPsbtMatchesSigningContext(psbt, context, ['wallet']))
+      .toThrow('context change output 0 does not match the PSBT');
   });
 
   it('rejects witness-only previous-output evidence for a legacy context', () => {

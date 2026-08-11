@@ -415,6 +415,50 @@ describe('useQrSigning', () => {
     expect(deps.setUnsignedPsbt).toHaveBeenCalledWith('combined-psbt');
   });
 
+  it('reports Taproot key-path signer prefixes while combining an uploaded PSBT', async () => {
+    mockFileReader({ bytes: new TextEncoder().encode('taproot-psbt') });
+    const existingPsbtObj = {
+      data: {
+        inputs: [{
+          tapKeySig: Buffer.alloc(64, 1),
+          tapInternalKey: Buffer.alloc(32, 0xaa),
+        }],
+      },
+      combine: vi.fn(),
+      toBase64: vi.fn(() => 'combined-taproot-psbt'),
+    };
+    const newPsbtObj = {
+      data: {
+        inputs: [{
+          tapKeySig: Buffer.alloc(64, 2),
+          tapInternalKey: Buffer.alloc(32, 0xbb),
+        }],
+      },
+    };
+    mocks.fromBase64
+      .mockReturnValueOnce(existingPsbtObj)
+      .mockReturnValueOnce(newPsbtObj);
+    const deps = createDeps({
+      wallet: { id: 'wallet-1', name: 'Multisig Wallet', type: 'multi_sig' } as any,
+      unsignedPsbt: 'existing-taproot-psbt',
+    });
+    const { result } = renderHook(() => useQrSigning(deps));
+
+    await act(async () => {
+      await result.current.uploadSignedPsbt(new File(['dummy'], 'signed.psbt'), 'device-taproot');
+    });
+
+    expect(mocks.logger.debug).toHaveBeenCalledWith('Combining PSBTs', {
+      existingSigCount: 1,
+      newSigCount: 1,
+      existingPubkeys: ['aaaaaaaaaaaaaaaa'],
+      newPubkeys: ['bbbbbbbbbbbbbbbb'],
+      sameKey: false,
+    });
+    expect(existingPsbtObj.combine).toHaveBeenCalledWith(newPsbtObj);
+    expect(deps.setUnsignedPsbt).toHaveBeenCalledWith('combined-taproot-psbt');
+  });
+
   it('handles mixed validation inputs and combines PSBTs with inputs lacking signatures', async () => {
     const textBytes = new TextEncoder().encode('mixed-branch-psbt');
     mockFileReader({ bytes: textBytes });

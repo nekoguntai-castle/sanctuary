@@ -44,9 +44,11 @@ Bitcoin Core `decodepsbt` and `analyzepsbt` to accept them before writing
 `server/tests/fixtures/generated-psbt-vectors.ts`.
 
 The signed-vector generator creates real regtest UTXOs with Bitcoin Core,
-spends them with deterministic local software keys, finalizes the PSBTs, and
-requires Core `testmempoolaccept` to accept the extracted transactions before
-writing `server/tests/fixtures/generated-signed-psbt-vectors.ts`. It requires a
+spends them with deterministic local software keys, and includes a BIP371
+Taproot key-path spend with x-only origin metadata and a Schnorr `tapKeySig`.
+Every signed PSBT is passed through Core `decodepsbt`, `analyzepsbt`, and
+`finalizepsbt`; the extracted transaction must match Core `decoderawtransaction`
+and pass `testmempoolaccept` before the fixture is written. It requires a
 fresh chain at height zero, fixes block time, and mines coinbases directly to
 the deterministic fixture scripts so independent clean Core instances produce
 byte-identical fixtures. If the compose volume has already mined blocks, start
@@ -137,6 +139,7 @@ Funded regtest spends verified with Bitcoin Core `testmempoolaccept`:
 - Legacy single-sig (P2PKH)
 - Native SegWit single-sig (P2WPKH)
 - Nested SegWit single-sig (P2SH-P2WPKH)
+- Taproot key-path single-sig with BIP371 metadata (P2TR)
 - Native SegWit sorted multisig (P2WSH)
 - Nested SegWit sorted multisig (P2SH-P2WSH)
 
@@ -148,7 +151,8 @@ The verification uses these Bitcoin Core RPC methods:
 |---------|---------|
 | `decodepsbt` | Parse and display PSBT structure |
 | `analyzepsbt` | Get fee, vsize, completion status |
-| `sendtoaddress` | Fund deterministic regtest script templates |
+| `finalizepsbt` | Independently finalize signed PSBTs and require exact transaction hex |
+| `decoderawtransaction` | Confirm final transaction identity, size, and witness structure |
 | `generatetoaddress` | Mature and confirm regtest funding UTXOs |
 | `testmempoolaccept` | Prove finalized signed transactions pass Core policy |
 | `getnetworkinfo` | Confirm Bitcoin Core availability and version |

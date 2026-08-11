@@ -14,6 +14,7 @@ export default {
   ],
   testFiles: [
     'tests/unit/services/bitcoin/psbtAccountBinding.test.ts',
+    'tests/unit/services/bitcoin/psbtAccountBinding.taproot.test.ts',
     'tests/unit/services/bitcoin/psbtSigningContextValidation.test.ts',
   ],
   reporters: ['clear-text', 'progress', 'json'],

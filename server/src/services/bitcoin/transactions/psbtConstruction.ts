@@ -9,7 +9,11 @@
  */
 
 import * as bitcoin from 'bitcoinjs-lib';
-import { WalletType } from '@sanctuary/shared/constants/walletIdentity';
+import {
+  parseWalletScriptType,
+  WalletScriptType,
+  WalletType,
+} from '@sanctuary/shared/constants/walletIdentity';
 import bip32 from '../bip32';
 import { addressRepository } from '../../../repositories';
 import { parseDescriptor, convertToStandardXpub } from '../addressDerivation';
@@ -61,12 +65,20 @@ export function resolveWalletSigningInfo(
   logPrefix = ''
 ): WalletSigningInfo {
   const isMultisig = wallet.type === WalletType.MULTI_SIG;
+  const scriptType = parseWalletScriptType(wallet.scriptType);
+  if (!scriptType) {
+    throw new Error('Cannot create PSBT: wallet script type is missing or unsupported');
+  }
+  if (isMultisig && scriptType === WalletScriptType.TAPROOT) {
+    throw new Error('Cannot create multisig PSBT: Taproot multisig is not supported');
+  }
   const multisigInfo = isMultisig ? resolveMultisigSigningInfo(wallet, logPrefix) : {};
   const singleSigInfo = isMultisig ? {} : resolveSingleSigSigningInfo(wallet, logPrefix);
-  const signingInfo = { ...singleSigInfo, ...multisigInfo, isMultisig };
+  const signingInfo = { ...singleSigInfo, ...multisigInfo, isMultisig, scriptType };
 
   log.info(`${logPrefix}Resolved signing info`, {
     isMultisig,
+    scriptType,
     hasMultisigKeys: !!signingInfo.multisigKeys && signingInfo.multisigKeys.length > 0,
     multisigKeyCount: signingInfo.multisigKeys?.length || 0,
     hasMasterFingerprint: !!signingInfo.masterFingerprint,
