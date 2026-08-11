@@ -3,7 +3,7 @@ import * as h from './trezorSignPsbtBranchesTestHarness';
 import { signPsbtWithTrezor } from '../../../../src/services/hardwareWallet/adapters/trezor/signPsbt';
 
 export function registerTrezorSignPsbtMismatchRefContracts() {
-  it('handles mixed multisig matching: builds for matched inputs and warns on non-matching secondary derivations', async () => {
+  it('rejects mixed multisig inputs when any input lacks a matching device derivation', async () => {
     const { psbt } = h.createPsbt();
     const firstInput = psbt.data.inputs[0] as any;
     firstInput.witnessScript = Buffer.from('5221' + '11'.repeat(33) + '51ae', 'hex');
@@ -72,20 +72,16 @@ export function registerTrezorSignPsbtMismatchRefContracts() {
       payload: { serializedTx: h.txFromPsbt(psbt).toHex() },
     });
 
-    await signPsbtWithTrezor(
-      {
-        psbt: psbt.toBase64(),
-        inputPaths: ["m/48'/0'/0'/2'/0/0"],
-      },
-      { fingerprint: 'deadbeef' } as any
-    );
+    await expect(signPsbtWithTrezor(
+      { psbt: psbt.toBase64(), inputPaths: ["m/48'/0'/0'/2'/0/0"] },
+      { fingerprint: 'deadbeef' } as any,
+    )).rejects.toThrow('No PSBT derivation matches the connected Trezor on input 1');
 
-    const call = h.mockSignTransaction.mock.calls.at(-1)?.[0];
-    expect(call.inputs[0].multisig).toBeDefined();
     expect(h.mockLoggerWarn).toHaveBeenCalledWith(
       'No matching bip32Derivation found for device fingerprint',
       expect.any(Object)
     );
+    expect(h.mockSignTransaction).not.toHaveBeenCalled();
   });
 
   it('logs transaction mismatches for version, locktime, outputs, and inputs', async () => {

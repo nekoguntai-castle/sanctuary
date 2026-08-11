@@ -252,18 +252,26 @@ describe('Core API Modules', () => {
         { walletId: 'w1', newFeeRate: 20 },
         expect.objectContaining({ schema: expect.anything() }),
       );
-      expect(mockPost).toHaveBeenCalledWith('/bitcoin/transaction/cpfp', {
-        walletId: 'w1',
-        parentTxid: 'p1',
-        parentVout: 0,
-        targetFeeRate: 30,
-        recipientAddress: 'bc1qdest',
-      });
-      expect(mockPost).toHaveBeenCalledWith('/bitcoin/transaction/batch', {
-        walletId: 'w1',
-        feeRate: 5,
-        recipients: [{ address: 'bc1q1', amount: 1000 }],
-      });
+      expect(mockPost).toHaveBeenCalledWith(
+        '/bitcoin/transaction/cpfp',
+        {
+          walletId: 'w1',
+          parentTxid: 'p1',
+          parentVout: 0,
+          targetFeeRate: 30,
+          recipientAddress: 'bc1qdest',
+        },
+        expect.objectContaining({ schema: expect.anything() }),
+      );
+      expect(mockPost).toHaveBeenCalledWith(
+        '/bitcoin/transaction/batch',
+        {
+          walletId: 'w1',
+          feeRate: 5,
+          recipients: [{ address: 'bc1q1', amount: 1000 }],
+        },
+        expect.objectContaining({ schema: expect.anything() }),
+      );
       expect(mockPost).toHaveBeenCalledWith('/bitcoin/utils/estimate-optimal-fee', {
         inputCount: 1,
         outputCount: 2,

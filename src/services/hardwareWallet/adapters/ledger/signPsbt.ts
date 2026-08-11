@@ -1,156 +1,70 @@
-/**
- * PSBT Signing
- *
- * Standalone function for signing PSBTs with Ledger.
- * Receives connection state as a parameter instead of using `this`.
- */
+/** Fail-closed Ledger PSBT signing against server-issued wallet evidence. */
 
 import type { AppClient } from '@ledgerhq/ledger-bitcoin';
 import { DefaultWalletPolicy } from '@ledgerhq/ledger-bitcoin';
-import * as bitcoin from 'bitcoinjs-lib';
 import { createLogger } from '../../../../utils/logger';
-import { toHex } from '../../../../utils/bufferUtils';
 import type { PSBTSignRequest, PSBTSignResponse } from '../../types';
-import { extractAccountPath, inferScriptTypeFromPath, getDescriptorTemplate } from './utils';
-import {
-  getUnsupportedMultisigHardwareSigningMessage,
-  isMultisigSigningRequest,
-} from '../../signingSupport';
+import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
+import { validatePsbtSigningRequest } from '../../psbtAccountBinding';
+import { getDescriptorTemplate } from './utils';
+import { getUnsupportedMultisigHardwareSigningMessage } from '../../signingSupport';
 
 const log = createLogger('LedgerAdapter');
 
-/**
- * Sign a PSBT with a Ledger device
- */
+const ledgerScriptType = (
+  scriptType: PsbtSigningContext['scriptType'],
+): NonNullable<PSBTSignRequest['scriptType']> => {
+  switch (scriptType) {
+    case 'legacy': return 'p2pkh';
+    case 'nested_segwit': return 'p2sh-p2wpkh';
+    case 'native_segwit': return 'p2wpkh';
+    case 'taproot': return 'p2tr';
+  }
+};
+
+/** Sign only after the connected Ledger exactly matches the wallet account. */
 export async function signPsbt(
   appClient: AppClient,
-  request: PSBTSignRequest
+  request: PSBTSignRequest,
 ): Promise<PSBTSignResponse> {
-  log.info('signPSBT called', {
-    hasRequest: !!request,
-    psbtLength: request?.psbt?.length || 0,
-    inputPathsCount: request?.inputPaths?.length || 0,
-    accountPath: request?.accountPath,
-    scriptType: request?.scriptType,
-  });
-
-  // Parse PSBT to extract derivation paths
-  const tempPsbt = bitcoin.Psbt.fromBase64(request.psbt);
-  let detectedAccountPath: string | null = null;
-
-  for (const input of tempPsbt.data.inputs) {
-    if (input.bip32Derivation && input.bip32Derivation.length > 0) {
-      const fullPath = input.bip32Derivation[0].path;
-      if (fullPath) {
-        detectedAccountPath = extractAccountPath(fullPath);
-        log.info('Detected account path from PSBT:', { detectedAccountPath });
-        break;
-      }
-    }
-  }
-
-  // Determine account path and script type
-  let accountPath = request.accountPath || detectedAccountPath;
-  let scriptType = request.scriptType;
-
-  if (!accountPath && request.inputPaths && request.inputPaths.length > 0) {
-    accountPath = extractAccountPath(request.inputPaths[0]);
-  }
-  if (!accountPath) {
-    accountPath = "m/84'/0'/0'";
-  }
-
-  if (!scriptType) {
-    scriptType = inferScriptTypeFromPath(accountPath);
-  }
-
-  if (isMultisigSigningRequest(request, tempPsbt)) {
+  const masterFpHex = (await appClient.getMasterFingerprint()).toLowerCase();
+  const validated = validatePsbtSigningRequest(request, masterFpHex);
+  if (validated.context.walletType === 'multi_sig') {
     throw new Error(getUnsupportedMultisigHardwareSigningMessage('Ledger'));
   }
 
-  log.info('Using account path and script type', { accountPath, scriptType });
-
-  // Get master fingerprint
-  const masterFpHex = await appClient.getMasterFingerprint();
-  log.info('Got master fingerprint', { masterFpHex });
-
-  // Get account xpub
+  const accountPath = validated.connectedSigner.accountPath;
   const xpub = await appClient.getExtendedPubkey(accountPath);
-  log.info('Got xpub', { xpubPrefix: xpub.substring(0, 20) });
+  if (xpub !== validated.connectedSigner.accountXpub) {
+    throw new Error('Connected Ledger account xpub does not match the wallet-selected account');
+  }
 
-  // Create wallet policy key string
-  const pathWithoutM = accountPath.replace(/^m\//, '');
-  const keyInfo = `[${masterFpHex}/${pathWithoutM}]${xpub}`;
-
-  // Create DefaultWalletPolicy
+  const scriptType = ledgerScriptType(validated.context.scriptType);
   const descriptorTemplate = getDescriptorTemplate(scriptType);
+  const keyInfo = `[${masterFpHex}/${accountPath.replace(/^m\//, '')}]${xpub}`;
   const walletPolicy = new DefaultWalletPolicy(descriptorTemplate, keyInfo);
 
-  log.info('Created wallet policy', { descriptorTemplate, keyInfo });
-
-  // Parse and fix PSBT fingerprints
-  const psbt = bitcoin.Psbt.fromBase64(request.psbt);
-  const connectedFpBuffer = Buffer.from(masterFpHex, 'hex');
-
-  let fingerprintMismatchFixed = false;
-  let missingBip32Derivation = false;
-
-  psbt.data.inputs.forEach((input, idx) => {
-    if (!input.bip32Derivation || input.bip32Derivation.length === 0) {
-      missingBip32Derivation = true;
-      log.warn(`Input ${idx} is missing bip32Derivation`);
-    }
-
-    if (input.bip32Derivation && input.bip32Derivation.length > 0) {
-      input.bip32Derivation.forEach((deriv) => {
-        const fpHex = toHex(deriv.masterFingerprint);
-        const matches = fpHex.toLowerCase() === masterFpHex.toLowerCase();
-
-        if (!matches) {
-          log.warn(`Updating fingerprint from ${fpHex} to ${masterFpHex} for input ${idx}`);
-          deriv.masterFingerprint = connectedFpBuffer;
-          fingerprintMismatchFixed = true;
-        }
-      });
-    }
+  log.info('Calling Ledger signPsbt with verified wallet policy', {
+    accountPath,
+    descriptorTemplate,
+    inputCount: validated.context.inputs.length,
+    changeOutputCount: validated.changeOutputIndexes.length,
   });
-
-  if (fingerprintMismatchFixed) {
-    log.info('Fixed fingerprint mismatches in PSBT');
-  }
-
-  if (missingBip32Derivation) {
-    throw new Error(
-      'PSBT is missing bip32Derivation data required by Ledger. ' +
-      'Ensure wallet descriptor is properly configured with xpub and fingerprint.'
-    );
-  }
-
-  // Sign the PSBT
-  const updatedPsbtBase64 = psbt.toBase64();
-  log.info('Calling appClient.signPsbt...');
-
-  const signatures = await appClient.signPsbt(updatedPsbtBase64, walletPolicy, null);
-
-  log.info('Got signatures from device', { signatureCount: signatures.length });
-
-  // Apply signatures to PSBT
+  const signatures = await appClient.signPsbt(request.psbt, walletPolicy, null);
   for (const [inputIndex, partialSig] of signatures) {
-    psbt.updateInput(inputIndex, {
+    if (!validated.context.inputs.some(binding => binding.inputIndex === inputIndex)) {
+      throw new Error(`Ledger returned a signature for unbound input ${inputIndex}`);
+    }
+    validated.psbt.updateInput(inputIndex, {
       partialSig: [{
         pubkey: partialSig.pubkey,
         signature: partialSig.signature,
       }],
     });
   }
-
-  // Finalize
-  psbt.finalizeAllInputs();
-
-  log.info('PSBT signed and finalized successfully', { signatureCount: signatures.length });
-
+  validated.psbt.finalizeAllInputs();
   return {
-    psbt: psbt.toBase64(),
+    psbt: validated.psbt.toBase64(),
     signatures: signatures.length,
   };
 }

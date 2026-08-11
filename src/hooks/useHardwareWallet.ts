@@ -5,6 +5,7 @@ import type {
   DeviceType,
   TransactionForSigning,
 } from '../services/hardwareWallet/types';
+import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
 import { loadHardwareWalletRuntime } from '../services/hardwareWallet/loader';
 import { createLogger } from '../utils/logger';
 
@@ -30,9 +31,9 @@ export interface UseHardwareWalletReturn {
   signTransaction: (tx: TransactionForSigning) => Promise<string>;
   signPSBT: (
     psbtBase64: string,
-    inputPaths?: string[],
+    signingContextOrLegacyPaths?: PsbtSigningContext | string[],
     multisigXpubs?: Record<string, string>,
-    walletId?: string
+    legacyWalletId?: string,
   ) => Promise<{ psbt: string; rawTx?: string }>;
   refreshDevices: () => Promise<void>;
   clearError: () => void;
@@ -136,14 +137,14 @@ export const useHardwareWallet = (): UseHardwareWalletReturn => {
    * Sign a PSBT with hardware wallet
    * Returns both the signed PSBT and optionally a raw transaction hex (for Trezor)
    * @param psbtBase64 Base64 encoded PSBT
-   * @param inputPaths Derivation paths for inputs
+   * @param signingContext Immutable server-issued wallet and PSBT evidence
    * @param multisigXpubs Map of fingerprint to xpub for multisig wallets (required for Trezor)
    */
   const signPSBT = useCallback(async (
     psbtBase64: string,
-    inputPaths: string[] = [],
+    signingContextOrLegacyPaths?: PsbtSigningContext | string[],
     multisigXpubs?: Record<string, string>,
-    walletId?: string
+    legacyWalletId?: string,
   ): Promise<{ psbt: string; rawTx?: string }> => {
     const { hardwareWalletService } = await loadHardwareWalletRuntime();
 
@@ -156,10 +157,16 @@ export const useHardwareWallet = (): UseHardwareWalletReturn => {
       setSigning(true);
       setError(null);
 
+      const signingContext = Array.isArray(signingContextOrLegacyPaths)
+        ? undefined
+        : signingContextOrLegacyPaths;
       const result = await hardwareWalletService.signPSBT({
-        ...(walletId ? { walletId } : {}),
+        walletId: signingContext?.walletId ?? legacyWalletId,
         psbt: psbtBase64,
-        inputPaths,
+        signingContext,
+        inputPaths: Array.isArray(signingContextOrLegacyPaths)
+          ? signingContextOrLegacyPaths
+          : undefined,
         multisigXpubs,
       });
 

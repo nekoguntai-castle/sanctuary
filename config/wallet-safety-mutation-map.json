@@ -1,0 +1,460 @@
+{
+  "schemaVersion": 1,
+  "profiles": [
+    {
+      "id": "serverPsbtAccountBinding",
+      "reportPath": "server/reports/mutation/psbt-account-binding-server.json",
+      "files": [
+        { "path": "src/services/bitcoin/psbtAccountBinding.ts", "minScore": 85 },
+        { "path": "src/services/bitcoin/psbtSigningContextValidation.ts", "minScore": 85 }
+      ],
+      "invariants": [
+        {
+          "id": "descriptor-pair-identity",
+          "productionFile": "src/services/bitcoin/psbtAccountBinding.ts",
+          "lineStart": 41,
+          "lineEnd": 49,
+          "requiredTests": [{
+            "file": "tests/unit/services/bitcoin/psbtAccountBinding.test.ts",
+            "name": "bindPsbtAccount bindPsbtAccount commits the exact descriptor pair to descriptorDigest"
+          }],
+          "canaries": [{
+            "id": "descriptor-digest-commits-both-descriptors",
+            "location": {
+              "start": { "line": 43, "column": 28 },
+              "end": { "line": 43, "column": 65 }
+            },
+            "mutatorName": "ArrayDeclaration",
+            "replacement": "[]",
+            "requiredKillingTest": {
+              "file": "tests/unit/services/bitcoin/psbtAccountBinding.test.ts",
+              "name": "bindPsbtAccount bindPsbtAccount commits the exact descriptor pair to descriptorDigest"
+            }
+          }]
+        },
+        {
+          "id": "immutable-signer-account-selection",
+          "productionFile": "src/services/bitcoin/psbtAccountBinding.ts",
+          "lineStart": 83,
+          "lineEnd": 114,
+          "requiredTests": [{
+            "file": "tests/unit/services/bitcoin/psbtAccountBinding.test.ts",
+            "name": "bindPsbtAccount rejects multisig signer snapshot order and account-path drift"
+          }],
+          "canaries": [{
+            "id": "signer-snapshot-completeness",
+            "location": {
+              "start": { "line": 90, "column": 9 },
+              "end": { "line": 92, "column": 36 }
+            },
+            "mutatorName": "ConditionalExpression",
+            "replacement": "true",
+            "requiredKillingTest": {
+              "file": "tests/unit/services/bitcoin/psbtAccountBinding.test.ts",
+              "name": "bindPsbtAccount binds every owned input and exact branch-1 change metadata"
+            }
+          }]
+        },
+        {
+          "id": "server-origin-preservation",
+          "productionFile": "src/services/bitcoin/psbtAccountBinding.ts",
+          "lineStart": 202,
+          "lineEnd": 211,
+          "requiredTests": [{
+            "file": "tests/unit/services/bitcoin/psbtAccountBinding.test.ts",
+            "name": "bindPsbtAccount bindPsbtAccount rejects one drifted origin in an otherwise complete multisig derivation array"
+          }],
+          "canaries": [{
+            "id": "all-origins-must-match",
+            "location": {
+              "start": { "line": 211, "column": 10 },
+              "end": { "line": 211, "column": 87 }
+            },
+            "mutatorName": "MethodExpression",
+            "replacement": "actualIdentities.some((value, index) => value === expectedIdentities[index])",
+            "requiredKillingTest": {
+              "file": "tests/unit/services/bitcoin/psbtAccountBinding.test.ts",
+              "name": "bindPsbtAccount bindPsbtAccount rejects one drifted origin in an otherwise complete multisig derivation array"
+            }
+          }]
+        },
+        {
+          "id": "authenticated-previous-output",
+          "productionFile": "src/services/bitcoin/psbtAccountBinding.ts",
+          "lineStart": 263,
+          "lineEnd": 290,
+          "requiredTests": [{
+            "file": "tests/unit/services/bitcoin/psbtAccountBinding.test.ts",
+            "name": "bindPsbtAccount rejects conflicting witnessUtxo and authenticated nonWitnessUtxo evidence"
+          }],
+          "canaries": [{
+            "id": "non-witness-txid-match",
+            "location": {
+              "start": { "line": 276, "column": 9 },
+              "end": { "line": 276, "column": 36 }
+            },
+            "mutatorName": "ConditionalExpression",
+            "replacement": "true",
+            "requiredKillingTest": {
+              "file": "tests/unit/services/bitcoin/psbtAccountBinding.test.ts",
+              "name": "bindPsbtAccount rejects conflicting witnessUtxo and authenticated nonWitnessUtxo evidence"
+            }
+          }]
+        },
+        {
+          "id": "canonical-utxo-value-and-script",
+          "productionFile": "src/services/bitcoin/psbtAccountBinding.ts",
+          "lineStart": 292,
+          "lineEnd": 313,
+          "requiredTests": [{
+            "file": "tests/unit/services/bitcoin/psbtAccountBinding.test.ts",
+            "name": "bindPsbtAccount bindPsbtAccount rejects a wallet UTXO amount that differs from the authenticated prevout"
+          }],
+          "canaries": [{
+            "id": "utxo-evidence-match-is-mandatory",
+            "location": {
+              "start": { "line": 307, "column": 7 },
+              "end": { "line": 308, "column": 51 }
+            },
+            "mutatorName": "ConditionalExpression",
+            "replacement": "false",
+            "requiredKillingTest": {
+              "file": "tests/unit/services/bitcoin/psbtAccountBinding.test.ts",
+              "name": "bindPsbtAccount bindPsbtAccount rejects a wallet UTXO amount that differs from the authenticated prevout"
+            }
+          }]
+        },
+        {
+          "id": "branch-one-change-classification",
+          "productionFile": "src/services/bitcoin/psbtAccountBinding.ts",
+          "lineStart": 326,
+          "lineEnd": 398,
+          "requiredTests": [{
+            "file": "tests/unit/services/bitcoin/psbtAccountBinding.test.ts",
+            "name": "bindPsbtAccount does not claim an external output as change"
+          }],
+          "canaries": [{
+            "id": "change-branch-check",
+            "location": {
+              "start": { "line": 396, "column": 9 },
+              "end": { "line": 396, "column": 41 }
+            },
+            "mutatorName": "ConditionalExpression",
+            "replacement": "true",
+            "requiredKillingTest": {
+              "file": "tests/unit/services/bitcoin/psbtAccountBinding.test.ts",
+              "name": "bindPsbtAccount binds every owned input and exact branch-1 change metadata"
+            }
+          }]
+        },
+        {
+          "id": "persisted-context-origin-preservation",
+          "productionFile": "src/services/bitcoin/psbtSigningContextValidation.ts",
+          "lineStart": 19,
+          "lineEnd": 32,
+          "requiredTests": [{
+            "file": "tests/unit/services/bitcoin/psbtSigningContextValidation.test.ts",
+            "name": "assertPsbtMatchesSigningContext assertPsbtMatchesSigningContext rejects one drifted origin in an otherwise complete multisigner array"
+          }],
+          "canaries": [{
+            "id": "persisted-context-all-origins-match",
+            "location": {
+              "start": { "line": 32, "column": 10 },
+              "end": { "line": 32, "column": 87 }
+            },
+            "mutatorName": "MethodExpression",
+            "replacement": "actualIdentities.some((value, index) => value === expectedIdentities[index])",
+            "requiredKillingTest": {
+              "file": "tests/unit/services/bitcoin/psbtSigningContextValidation.test.ts",
+              "name": "assertPsbtMatchesSigningContext assertPsbtMatchesSigningContext rejects one drifted origin in an otherwise complete multisigner array"
+            }
+          }]
+        },
+        {
+          "id": "persisted-context-transaction-identity",
+          "productionFile": "src/services/bitcoin/psbtSigningContextValidation.ts",
+          "lineStart": 91,
+          "lineEnd": 100,
+          "requiredTests": [{
+            "file": "tests/unit/services/bitcoin/psbtSigningContextValidation.test.ts",
+            "name": "assertPsbtMatchesSigningContext rejects unsigned transaction and input-role drift"
+          }],
+          "canaries": [{
+            "id": "unsigned-transaction-digest-match",
+            "location": {
+              "start": { "line": 99, "column": 7 },
+              "end": { "line": 99, "column": 51 }
+            },
+            "mutatorName": "ConditionalExpression",
+            "replacement": "true",
+            "requiredKillingTest": {
+              "file": "tests/unit/services/bitcoin/psbtSigningContextValidation.test.ts",
+              "name": "assertPsbtMatchesSigningContext accepts an exact wallet input and change output"
+            }
+          }]
+        },
+        {
+          "id": "wallet-input-role-coverage",
+          "productionFile": "src/services/bitcoin/psbtSigningContextValidation.ts",
+          "lineStart": 102,
+          "lineEnd": 108,
+          "requiredTests": [{
+            "file": "tests/unit/services/bitcoin/psbtSigningContextValidation.test.ts",
+            "name": "assertPsbtMatchesSigningContext assertPsbtMatchesSigningContext rejects partial wallet-role coverage"
+          }],
+          "canaries": [{
+            "id": "every-wallet-role-must-be-covered",
+            "location": {
+              "start": { "line": 107, "column": 8 },
+              "end": { "line": 107, "column": 68 }
+            },
+            "mutatorName": "MethodExpression",
+            "replacement": "walletIndexes.every(index => !contextIndexes.includes(index))",
+            "requiredKillingTest": {
+              "file": "tests/unit/services/bitcoin/psbtSigningContextValidation.test.ts",
+              "name": "assertPsbtMatchesSigningContext assertPsbtMatchesSigningContext rejects partial wallet-role coverage"
+            }
+          }]
+        }
+      ]
+    },
+    {
+      "id": "browserPsbtAccountBinding",
+      "reportPath": "reports/mutation/psbt-account-binding-browser.json",
+      "files": [{
+        "path": "src/services/hardwareWallet/psbtAccountBinding.ts",
+        "minScore": 85
+      }],
+      "invariants": [
+        {
+          "id": "browser-account-network-policy",
+          "productionFile": "src/services/hardwareWallet/psbtAccountBinding.ts",
+          "lineStart": 80,
+          "lineEnd": 100,
+          "requiredTests": [{
+            "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
+            "name": "hardware PSBT account binding rejects a wrong network binding"
+          }],
+          "canaries": [{
+            "id": "wallet-policy-match",
+            "location": {
+              "start": { "line": 86, "column": 7 },
+              "end": { "line": 93, "column": 7 }
+            },
+            "mutatorName": "ConditionalExpression",
+            "replacement": "true",
+            "requiredKillingTest": {
+              "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
+              "name": "hardware PSBT account binding accepts an exact server-issued account and change binding"
+            }
+          }]
+        },
+        {
+          "id": "browser-origin-preservation",
+          "productionFile": "src/services/hardwareWallet/psbtAccountBinding.ts",
+          "lineStart": 66,
+          "lineEnd": 75,
+          "requiredTests": [{
+            "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
+            "name": "hardware PSBT account binding rejects one drifted origin in an otherwise complete multisig binding"
+          }],
+          "canaries": [{
+            "id": "browser-all-origins-match",
+            "location": {
+              "start": { "line": 73, "column": 42 },
+              "end": { "line": 75, "column": 5 }
+            },
+            "mutatorName": "MethodExpression",
+            "replacement": "actual.every((value, index) => {\n  return value !== wanted[index];\n})",
+            "requiredKillingTest": {
+              "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
+              "name": "hardware PSBT account binding rejects one drifted origin in an otherwise complete multisig binding"
+            }
+          }]
+        },
+        {
+          "id": "browser-multisig-key-set",
+          "productionFile": "src/services/hardwareWallet/psbtAccountBinding.ts",
+          "lineStart": 123,
+          "lineEnd": 141,
+          "requiredTests": [{
+            "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
+            "name": "hardware PSBT account binding rejects one drifted witnessScript key in an otherwise complete multisig script"
+          }],
+          "canaries": [{
+            "id": "all-witness-keys-match-origins",
+            "location": {
+              "start": { "line": 141, "column": 8 },
+              "end": { "line": 141, "column": 78 }
+            },
+            "mutatorName": "MethodExpression",
+            "replacement": "sortedScriptPubkeys.every((key, index) => key !== originPubkeys[index])",
+            "requiredKillingTest": {
+              "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
+              "name": "hardware PSBT account binding rejects one drifted witnessScript key in an otherwise complete multisig script"
+            }
+          }]
+        },
+        {
+          "id": "browser-previous-output-proof",
+          "productionFile": "src/services/hardwareWallet/psbtAccountBinding.ts",
+          "lineStart": 189,
+          "lineEnd": 218,
+          "requiredTests": [{
+            "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
+            "name": "hardware PSBT account binding rejects conflicting witnessUtxo and authenticated nonWitnessUtxo evidence"
+          }],
+          "canaries": [{
+            "id": "dual-prevout-evidence-must-match",
+            "location": {
+              "start": { "line": 209, "column": 7 },
+              "end": { "line": 211, "column": 88 }
+            },
+            "mutatorName": "ConditionalExpression",
+            "replacement": "true",
+            "requiredKillingTest": {
+              "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
+              "name": "hardware PSBT account binding accepts an exact server-issued account and change binding"
+            }
+          }]
+        },
+        {
+          "id": "browser-exact-change-and-external-output-classification",
+          "productionFile": "src/services/hardwareWallet/psbtAccountBinding.ts",
+          "lineStart": 271,
+          "lineEnd": 288,
+          "requiredTests": [{
+            "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
+            "name": "hardware PSBT account binding rejects forged change metadata on an external output"
+          }],
+          "canaries": [{
+            "id": "external-output-metadata-is-rejected",
+            "location": {
+              "start": { "line": 283, "column": 9 },
+              "end": { "line": 284, "column": 91 }
+            },
+            "mutatorName": "ConditionalExpression",
+            "replacement": "true",
+            "requiredKillingTest": {
+              "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
+              "name": "hardware PSBT account binding accepts an exact server-issued account and change binding"
+            }
+          }]
+        },
+        {
+          "id": "browser-legacy-input-hints",
+          "productionFile": "src/services/hardwareWallet/psbtAccountBinding.ts",
+          "lineStart": 290,
+          "lineEnd": 305,
+          "requiredTests": [{
+            "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
+            "name": "hardware PSBT account binding rejects one mismatched legacy input path among multiple inputs"
+          }],
+          "canaries": [{
+            "id": "every-legacy-input-path-must-match",
+            "location": {
+              "start": { "line": 300, "column": 10 },
+              "end": { "line": 300, "column": 83 }
+            },
+            "mutatorName": "MethodExpression",
+            "replacement": "request.inputPaths.every((path, index) => path !== boundInputPaths[index])",
+            "requiredKillingTest": {
+              "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
+              "name": "hardware PSBT account binding rejects one mismatched legacy input path among multiple inputs"
+            }
+          }]
+        },
+        {
+          "id": "browser-change-hint-order-and-membership",
+          "productionFile": "src/services/hardwareWallet/psbtAccountBinding.ts",
+          "lineStart": 306,
+          "lineEnd": 310,
+          "requiredTests": [
+            {
+              "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
+              "name": "hardware PSBT account binding accepts reversed server change bindings and matching legacy hints"
+            },
+            {
+              "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
+              "name": "hardware PSBT account binding rejects one mismatched legacy change hint among multiple changes"
+            }
+          ],
+          "canaries": [
+            {
+              "id": "server-change-indexes-are-canonically-ordered",
+              "location": {
+                "start": { "line": 306, "column": 25 },
+                "end": { "line": 306, "column": 104 }
+              },
+              "mutatorName": "MethodExpression",
+              "replacement": "context.changeOutputs.map(binding => binding.outputIndex)",
+              "requiredKillingTest": {
+                "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
+                "name": "hardware PSBT account binding accepts reversed server change bindings and matching legacy hints"
+              }
+            },
+            {
+              "id": "every-change-hint-must-match",
+              "location": {
+                "start": { "line": 310, "column": 10 },
+                "end": { "line": 310, "column": 77 }
+              },
+              "mutatorName": "MethodExpression",
+              "replacement": "hintedChange.every((value, index) => value !== changeIndexes[index])",
+              "requiredKillingTest": {
+                "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
+                "name": "hardware PSBT account binding rejects one mismatched legacy change hint among multiple changes"
+              }
+            }
+          ]
+        },
+        {
+          "id": "browser-connected-fingerprint",
+          "productionFile": "src/services/hardwareWallet/psbtAccountBinding.ts",
+          "lineStart": 327,
+          "lineEnd": 347,
+          "requiredTests": [{
+            "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
+            "name": "hardware PSBT account binding rejects an ambiguous connected fingerprint and a missing fingerprint"
+          }],
+          "canaries": [{
+            "id": "exactly-one-connected-wallet-signer",
+            "location": {
+              "start": { "line": 342, "column": 7 },
+              "end": { "line": 342, "column": 52 }
+            },
+            "mutatorName": "ConditionalExpression",
+            "replacement": "true",
+            "requiredKillingTest": {
+              "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
+              "name": "hardware PSBT account binding accepts an exact server-issued account and change binding"
+            }
+          }]
+        },
+        {
+          "id": "browser-unsigned-transaction-identity",
+          "productionFile": "src/services/hardwareWallet/psbtAccountBinding.ts",
+          "lineStart": 350,
+          "lineEnd": 359,
+          "requiredTests": [{
+            "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
+            "name": "hardware PSBT account binding rejects reusing the signing context with a different unsigned transaction"
+          }],
+          "canaries": [{
+            "id": "browser-unsigned-transaction-digest-match",
+            "location": {
+              "start": { "line": 357, "column": 7 },
+              "end": { "line": 357, "column": 76 }
+            },
+            "mutatorName": "ConditionalExpression",
+            "replacement": "true",
+            "requiredKillingTest": {
+              "file": "tests/services/hardwareWallet.psbtAccountBinding.test.ts",
+              "name": "hardware PSBT account binding accepts an exact server-issued account and change binding"
+            }
+          }]
+        }
+      ]
+    }
+  ]
+}

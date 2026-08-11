@@ -564,6 +564,7 @@ model DraftTransaction {
   inputPaths       String[] // Derivation paths for signing
   signingIntentId     String?
   signingIntentDigest String?
+  signingContext       Json?
 
   // Signing status (for multisig)
   status          String   @default("unsigned") // unsigned, partial, signed
@@ -609,6 +610,7 @@ model TransactionSigningIntent {
   source             String
   snapshotVersion    Int      @default(1)
   snapshot           Json
+  signingContext     Json?
   snapshotDigest     String
   unsignedPsbtBase64 String
   unsignedPsbtSha256 String

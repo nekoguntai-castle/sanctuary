@@ -52,7 +52,6 @@ interface DeviceSigningParams {
   psbtToSign: string;
   txData: TransactionData | null;
   wallet: Wallet;
-  walletId: string;
   lease: SendOperationLease;
 }
 
@@ -194,18 +193,27 @@ async function signPsbtWithDevice({
   psbtToSign,
   txData,
   wallet,
-  walletId,
   lease,
 }: DeviceSigningParams): Promise<UsbSignResult | null> {
   log.info('Connecting to device for signing', { deviceId: device.id, type: device.type, hwType });
   await hardwareWallet.connect(hwType);
   if (!lease.isCurrent()) return null;
 
-  const inputPaths = txData?.inputPaths || [];
   const multisigXpubs = getMultisigXpubs(wallet);
   logDeviceSigningPreparation(device, wallet, multisigXpubs);
 
-  return hardwareWallet.signPSBT(psbtToSign, inputPaths, multisigXpubs, walletId);
+  if (!txData?.signingContext) {
+    throw new Error('This transaction has no server-issued hardware signing context; recreate it before signing');
+  }
+
+  return hardwareWallet.signPSBT(psbtToSign, txData.signingContext, multisigXpubs);
+}
+
+function requireSigningContext(transaction: TransactionData) {
+  if (!transaction.signingContext) {
+    throw new Error('This transaction has no server-issued hardware signing context; recreate it before signing');
+  }
+  return transaction.signingContext;
 }
 
 async function applyDeviceSignResult({
@@ -285,9 +293,8 @@ export function useUsbSigning({
 
       const signResult = await hardwareWallet.signPSBT(
         transaction.psbtBase64,
-        transaction.inputPaths || [],
+        requireSigningContext(transaction),
         multisigXpubs,
-        walletId
       );
       if (!lease.isCurrent()) return null;
       return signResult.psbt || signResult.rawTx ? signResult : null;
@@ -346,7 +353,6 @@ export function useUsbSigning({
         psbtToSign,
         txData,
         wallet,
-        walletId,
         lease,
       });
 

@@ -112,7 +112,7 @@
       "reviewOn": "2026-08-31"
     },
     {
-      "location": "node_modules/tiny-secp256k1",
+      "location": "node_modules/@trezor/utxo-lib/node_modules/tiny-secp256k1",
       "package": "tiny-secp256k1",
       "version": "1.1.7",
       "scripts": { "install": "npm run build || echo \"secp256k1 bindings compilation fail. Pure JS implementation will be used.\"" },

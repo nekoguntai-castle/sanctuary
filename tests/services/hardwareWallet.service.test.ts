@@ -7,7 +7,14 @@
 
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 
-const mockPost = vi.fn();
+const { mockPost, mockValidatePsbtSigningRequest } = vi.hoisted(() => ({
+  mockPost: vi.fn(),
+  mockValidatePsbtSigningRequest: vi.fn(),
+}));
+
+vi.mock('../../src/services/hardwareWallet/psbtAccountBinding', () => ({
+  validatePsbtSigningRequest: mockValidatePsbtSigningRequest,
+}));
 
 vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
@@ -26,6 +33,7 @@ vi.mock('../../src/api/client', () => ({
 
 import { HardwareWalletService,createHardwareWalletService } from '../../src/services/hardwareWallet/service';
 import type { DeviceAdapter,DeviceType,HardwareWalletDevice } from '../../src/services/hardwareWallet/types';
+import { testPsbtSigningContext } from '../fixtures/psbtSigningContext';
 
 function createMockAdapter(
   type: DeviceType,
@@ -571,11 +579,12 @@ describe('HardwareWalletService', () => {
     service.registerAdapter(adapter);
     await service.connect('coldcard');
 
+    const signingContext = { ...testPsbtSigningContext, walletId: 'w1' };
     mockPost
       .mockResolvedValueOnce({
         psbt: 'unsigned-psbt',
         fee: 500,
-        inputPaths: ["m/84'/0'/0'/0/0"],
+        signingContext,
         intentId: 'intent-1',
         intentDigest: 'a'.repeat(64),
       })
@@ -591,16 +600,21 @@ describe('HardwareWalletService', () => {
     });
 
     expect(txid).toBe('txid-123');
-    expect(mockPost).toHaveBeenNthCalledWith(1, '/wallets/w1/psbt/create', {
-      recipients: [{ address: 'bc1qdest', amount: 25000 }],
-      feeRate: 10,
-      utxoIds: ['utxo-1'],
-      changeAddress: 'bc1qchange',
-    });
+    expect(mockPost).toHaveBeenNthCalledWith(
+      1,
+      '/wallets/w1/psbt/create',
+      {
+        recipients: [{ address: 'bc1qdest', amount: 25000 }],
+        feeRate: 10,
+        utxoIds: ['utxo-1'],
+        changeAddress: 'bc1qchange',
+      },
+      expect.objectContaining({ schema: expect.anything() }),
+    );
     expect(adapter.signPSBT).toHaveBeenCalledWith({
       walletId: 'w1',
       psbt: 'unsigned-psbt',
-      inputPaths: ["m/84'/0'/0'/0/0"],
+      signingContext,
     });
     expect(mockPost).toHaveBeenNthCalledWith(2, '/wallets/w1/transactions/broadcast', {
       signedPsbtBase64: 'signed-coldcard',
@@ -622,6 +636,7 @@ describe('HardwareWalletService', () => {
         psbt: 'unsigned-psbt',
         fee: 300,
         inputPaths: [],
+        signingContext: { ...testPsbtSigningContext, walletId: 'w2' },
         intentId: 'intent-2',
         intentDigest: 'b'.repeat(64),
       })

@@ -28,6 +28,7 @@ import {
 import { selectUtxosForMode } from './utxoModes';
 import { buildAndAddOutputs } from './outputBuilder';
 import type { CreateTransactionResult } from './types';
+import { bindPsbtAccount } from '../psbtAccountBinding';
 
 const log = createLogger('BITCOIN:SVC_TX_CREATE');
 
@@ -127,6 +128,7 @@ export async function createTransaction(
 
   // When decoys are used, don't return changeAmount/changeAddress separately
   const hasDecoys = decoyOutputsResult && decoyOutputsResult.length > 0;
+  const signingContext = await bindPsbtAccount(walletId, psbt);
 
   return {
     psbt,
@@ -140,5 +142,6 @@ export async function createTransaction(
     inputPaths,
     effectiveAmount,
     decoyOutputs: decoyOutputsResult,
+    signingContext,
   };
 }

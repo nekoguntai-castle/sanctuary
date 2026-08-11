@@ -74,6 +74,8 @@ describe('hardware wallet signing support guards', () => {
       psbt: 'psbt',
       inputPaths: [],
     })).toBe(false);
+
+    expect(isMultisigSigningRequest({ psbt: 'psbt' })).toBe(false);
   });
 
   it('builds a user-safe product-block message', () => {

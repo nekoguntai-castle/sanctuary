@@ -134,11 +134,13 @@ function shouldAttemptPayjoin(state: TransactionState, payjoinAttempted: Payjoin
   return Boolean(state.payjoinUrl && state.outputs.length === 1 && !payjoinAttempted.current);
 }
 
+type WalletNetwork = Wallet['network'];
+
 async function applyPayjoinIfNeeded(
   walletId: string,
   result: TransactionData,
   state: TransactionState,
-  walletNetwork: Wallet['network'],
+  walletNetwork: WalletNetwork,
   payjoinAttempted: PayjoinAttemptRef,
   setPayjoinStatus: SetPayjoinStatus,
   lease: SendOperationLease,
@@ -174,7 +176,8 @@ async function applyPayjoinIfNeeded(
     if (!lease.isCurrent()) return result;
 
     if (payjoinResult.success && payjoinResult.proposalPsbt
-      && payjoinResult.intentId && payjoinResult.intentDigest) {
+      && payjoinResult.intentId && payjoinResult.intentDigest
+      && payjoinResult.signingContext) {
       setPayjoinStatus('success');
       log.info('Payjoin successful');
       return {
@@ -182,6 +185,7 @@ async function applyPayjoinIfNeeded(
         psbtBase64: payjoinResult.proposalPsbt,
         intentId: payjoinResult.intentId,
         intentDigest: payjoinResult.intentDigest,
+        signingContext: payjoinResult.signingContext,
       };
     }
 

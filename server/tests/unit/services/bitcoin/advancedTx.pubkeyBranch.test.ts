@@ -3,7 +3,16 @@ import * as bitcoin from 'bitcoinjs-lib';
 import { mockPrismaClient, resetPrismaMocks } from '../../../mocks/prisma';
 import { testnetAddresses } from '../../../fixtures/bitcoin';
 
-const { mockElectrumClient, mockFromBase58 } = vi.hoisted(() => ({
+const rawPrevoutHex = (scriptPubKey: string): string => {
+  const transaction = new bitcoin.Transaction();
+  transaction.version = 2;
+  transaction.addInput(Buffer.alloc(32), 0xffffffff);
+  transaction.addOutput(Buffer.from(scriptPubKey, 'hex'), 100_000n);
+  return transaction.toHex();
+};
+
+const { mockBindPsbtAccount, mockElectrumClient, mockFromBase58 } = vi.hoisted(() => ({
+  mockBindPsbtAccount: vi.fn(),
   mockElectrumClient: {
     getTransaction: vi.fn(),
   },
@@ -17,6 +26,14 @@ vi.mock('../../../../src/models/prisma', () => ({
 
 vi.mock('../../../../src/services/bitcoin/nodeClient', () => ({
   getNodeClient: vi.fn().mockResolvedValue(mockElectrumClient),
+}));
+
+vi.mock('../../../../src/services/bitcoin/psbtAccountBinding', () => ({
+  bindPsbtAccount: mockBindPsbtAccount,
+}));
+
+vi.mock('../../../../src/services/wallet/canonicalAddressValidation', () => ({
+  assertCanonicalAddressesMatchWallet: vi.fn(),
 }));
 
 vi.mock('bip32', async () => {
@@ -41,11 +58,16 @@ describe('advancedTx bip32 derivation branch coverage', () => {
       key: 'dustThreshold',
       value: '546',
     });
+    mockBindPsbtAccount.mockRejectedValue(
+      new Error('PSBT account binding failed: input signer origin is missing'),
+    );
   });
 
-  it('skips bip32Derivation update when derived pubkey is missing', async () => {
+  it('rejects the PSBT when a derived input pubkey is missing', async () => {
     const walletId = 'wallet-branch-309';
     const originalTxid = 'f'.repeat(64);
+    const testnetTpub =
+      'tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M';
     const spendAddress = testnetAddresses.nativeSegwit[0];
     const changeAddress = testnetAddresses.nativeSegwit[1];
 
@@ -67,9 +89,24 @@ describe('advancedTx bip32 derivation branch coverage', () => {
     mockPrismaClient.wallet.findUnique.mockResolvedValue({
       id: walletId,
       name: 'Branch Wallet',
-      descriptor: null,
+      type: 'single_sig',
+      network: 'testnet3',
+      scriptType: 'native_segwit',
+      descriptor: `wpkh([aabbccdd/84h/1h/0h]${testnetTpub}/0/*)`,
+      changeDescriptor: `wpkh([aabbccdd/84h/1h/0h]${testnetTpub}/1/*)`,
+      canonicalPolicyId: 'bip84-single-sig',
+      canonicalPolicyVersion: 1,
       fingerprint: 'aabbccdd',
-      devices: [{ device: { id: 'device-1', fingerprint: 'aabbccdd', xpub: 'tpubD6NzVbkrYhZ4WcM8D9vLhM1fCPfQYV9xw4k3vQbH7EUmU5h7svP9m6Xz6q1k2Qxk4j3vWq6W9M2c7Q1t7x6V8z2bQ8h8J9M4P5n6R7a8B9C' } }],
+      devices: [{
+        signerBindingVersion: 1,
+        signerIndex: 0,
+        signerFingerprint: 'aabbccdd',
+        signerXpub: testnetTpub,
+        signerDerivationPath: "m/84'/1'/0'",
+        deviceAccountId: 'account-1',
+        deviceId: 'device-1',
+        device: { id: 'device-1', fingerprint: 'aabbccdd', xpub: testnetTpub },
+      }],
     });
 
     mockPrismaClient.address.findMany
@@ -87,7 +124,13 @@ describe('advancedTx bip32 derivation branch coverage', () => {
       if (txid === inputTxid) {
         return {
           txid: inputTxid,
-          vout: [{ value: 0.001, scriptPubKey: { hex: spendScriptHex, address: spendAddress } }],
+          hex: rawPrevoutHex(spendScriptHex),
+          vin: [],
+          vout: [{
+            value: 0.001,
+            n: 0,
+            scriptPubKey: { hex: spendScriptHex, address: spendAddress },
+          }],
         } as any;
       }
 
@@ -102,11 +145,11 @@ describe('advancedTx bip32 derivation branch coverage', () => {
 
     mockFromBase58.mockReturnValue(fakeNode as any);
 
-    const result = await createRBFTransaction(originalTxid, 50, walletId, 'testnet3');
-
-    expect(result.psbt).toBeDefined();
-    expect(result.inputPaths).toEqual(["m/84'/1'/0'/0/0"]);
+    await expect(
+      createRBFTransaction(originalTxid, 50, walletId, 'testnet3')
+    ).rejects.toThrow('single-sig BIP32 derivation failed');
     expect(mockFromBase58).toHaveBeenCalled();
     expect(fakeNode.derive).toHaveBeenCalled();
+    expect(mockBindPsbtAccount).not.toHaveBeenCalled();
   });
 });

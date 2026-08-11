@@ -444,7 +444,7 @@ describe('useHardwareWallet', () => {
       }).rejects.toThrow('No device connected');
     });
 
-    it('should use empty array for inputPaths when not provided', async () => {
+    it('should forward missing signing evidence for the service to reject fail closed', async () => {
       mockConnect.mockResolvedValue(mockDevice);
       mockGetDevices.mockResolvedValue([mockDevice]);
       mockIsConnected.mockReturnValue(true);
@@ -462,7 +462,10 @@ describe('useHardwareWallet', () => {
 
       expect(mockSignPSBT).toHaveBeenCalledWith({
         psbt: mockPsbt,
-        inputPaths: [],
+        inputPaths: undefined,
+        multisigXpubs: undefined,
+        signingContext: undefined,
+        walletId: undefined,
       });
     });
 

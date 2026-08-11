@@ -35,6 +35,7 @@ vi.mock('../../src/utils/logger', () => ({
 
 import { useDraftManagement } from '../../src/hooks/send/useDraftManagement';
 import { ApiError } from '../../src/api/client';
+import { testPsbtSigningContext } from '../fixtures/psbtSigningContext';
 
 const baseTxData = {
   psbtBase64: 'unsigned-psbt',
@@ -48,6 +49,7 @@ const baseTxData = {
   outputs: [{ address: 'bc1qrecipient', amount: 10000 }],
   inputPaths: ["m/84'/0'/0'/0/0"],
   decoyOutputs: [],
+  signingContext: testPsbtSigningContext,
 } as any;
 
 function createState(overrides: Record<string, unknown> = {}) {
@@ -112,6 +114,18 @@ describe('useDraftManagement', () => {
 
     expect(deps.setIsSavingDraft).not.toHaveBeenCalled();
     expect(mocks.createDraft).not.toHaveBeenCalled();
+  });
+
+  it('refuses to save a transaction without server-issued signing context', async () => {
+    const deps = createDeps({
+      txData: { ...baseTxData, signingContext: undefined } as any,
+    });
+    const { result } = renderHook(() => useDraftManagement(deps));
+
+    await expect(result.current.saveDraft()).resolves.toBeNull();
+
+    expect(mocks.createDraft).not.toHaveBeenCalled();
+    expect(deps.setError).toHaveBeenCalledWith('Failed to save draft');
   });
 
   it('does not publish or navigate after draft-save ownership is lost', async () => {
@@ -254,6 +268,7 @@ describe('useDraftManagement', () => {
       }),
       expect.any(AbortSignal),
     );
+    expect(mocks.createDraft.mock.calls[0][1]).not.toHaveProperty('signingContext');
     expect(mocks.logger.info).toHaveBeenCalledWith(
       'Saving signed PSBT to newly created draft',
       expect.objectContaining({

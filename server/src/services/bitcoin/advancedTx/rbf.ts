@@ -11,7 +11,10 @@ import * as bitcoin from 'bitcoinjs-lib';
 import { getNetwork, calculateFee } from '../utils';
 import { getNodeClient } from '../nodeClient';
 import type { BitcoinNetwork } from '../networks';
+import { normalizeLegacyBitcoinNetwork } from '../networks';
 import { walletRepository, addressRepository } from '../../../repositories';
+import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
+import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import { getErrorMessage } from '../../../utils/errors';
 import { log, RBF_SEQUENCE, MIN_RBF_FEE_BUMP, getDustThreshold } from './shared';
 import {
@@ -20,6 +23,8 @@ import {
   parseAccountNode,
   resolveWalletSigningInfo,
 } from '../transactions/psbtConstruction';
+import { bindPsbtAccount } from '../psbtAccountBinding';
+import { assertCanonicalAddressesMatchWallet } from '../../wallet/canonicalAddressValidation';
 
 /**
  * Check if a transaction signals RBF
@@ -139,6 +144,7 @@ export async function createRBFTransaction(
   inputs: Array<{ txid: string; vout: number; value: number }>;
   outputs: Array<{ address: string; value: number }>;
   inputPaths: string[];
+  signingContext: PsbtSigningContext;
 }> {
   // Use nodeClient which respects poolEnabled setting from node_configs
   const client = await getNodeClient(network);
@@ -174,7 +180,8 @@ export async function createRBFTransaction(
   const psbt = new bitcoin.Psbt({ network: networkObj });
   const signingInfo = resolveWalletSigningInfo(wallet, '[RBF] ');
 
-  const rbfInputs = await collectRbfInputs(tx, client, networkObj);
+  const isLegacy = wallet.scriptType === WalletScriptType.LEGACY;
+  const rbfInputs = await collectRbfInputs(tx, client, networkObj, isLegacy);
   const accountNode = signingInfo.accountXpub
     ? parseAccountNode(signingInfo.accountXpub, networkObj)
     : undefined;
@@ -184,8 +191,8 @@ export async function createRBFTransaction(
   );
   const inputPaths = addInputsWithBip32(psbt, rbfInputs.psbtUtxos, {
     sequence: RBF_SEQUENCE,
-    isLegacy: false,
-    rawTxCache: new Map(),
+    isLegacy,
+    rawTxCache: rbfInputs.rawTxCache,
     addressPathMap,
     signingInfo,
     accountNode,
@@ -198,9 +205,16 @@ export async function createRBFTransaction(
   const newFee = calculateFee(vsize, newFeeRate);
 
   // Get wallet addresses to identify change output
-  const walletAddressStrings = await addressRepository.findAddressStrings(walletId);
-  const walletAddressSet = new Set(walletAddressStrings);
-  const outputs = collectRbfOutputs(tx, networkObj, walletAddressSet);
+  const originalOutputAddresses = tx.outs.map(output =>
+    bitcoin.address.fromOutputScript(output.script, networkObj));
+  const outputEvidence = await addressRepository.findCanonicalEvidenceForPsbt(
+    walletId, originalOutputAddresses, [],
+  );
+  assertCanonicalAddressesMatchWallet(wallet, outputEvidence);
+  const changeAddressSet = new Set(
+    outputEvidence.filter(address => address.branch === 1).map(address => address.address),
+  );
+  const outputs = collectRbfOutputs(tx, networkObj, changeAddressSet);
   const changeOutputIndex = outputs.findIndex(output => output.isChange);
 
   // Calculate fee difference
@@ -212,6 +226,10 @@ export async function createRBFTransaction(
 
   // Add adjusted outputs to PSBT
   addRbfOutputs(psbt, outputs);
+  const signingContext = await bindPsbtAccount(walletId, psbt);
+  if (signingContext.network !== normalizeLegacyBitcoinNetwork(network, 'mainnet')) {
+    throw new Error('PSBT account binding failed: RBF network does not match wallet');
+  }
 
   return {
     psbt,
@@ -221,6 +239,7 @@ export async function createRBFTransaction(
     inputs: rbfInputs.inputs,
     outputs: outputs.map(({ address, value }) => ({ address, value })),
     inputPaths,
+    signingContext,
   };
 }
 
@@ -236,6 +255,7 @@ interface RbfInputCollection {
   inputs: Array<{ txid: string; vout: number; value: number }>;
   psbtUtxos: RbfPsbtUtxo[];
   totalInput: number;
+  rawTxCache: Map<string, Buffer>;
 }
 
 interface RbfOutput {
@@ -247,15 +267,20 @@ interface RbfOutput {
 async function collectRbfInputs(
   tx: bitcoin.Transaction,
   client: Awaited<ReturnType<typeof getNodeClient>>,
-  networkObj: bitcoin.Network
+  networkObj: bitcoin.Network,
+  requiresRawTransaction: boolean,
 ): Promise<RbfInputCollection> {
   const inputs: Array<{ txid: string; vout: number; value: number }> = [];
   const psbtUtxos: RbfPsbtUtxo[] = [];
+  const rawTxCache = new Map<string, Buffer>();
   let totalInput = 0;
 
   for (const input of tx.ins) {
     const inputTxid = Buffer.from(input.hash).reverse().toString('hex');
     const inputTx = await client.getTransaction(inputTxid);
+    if (requiresRawTransaction) {
+      rawTxCache.set(inputTxid, Buffer.from(inputTx.hex, 'hex'));
+    }
     const prevOut = inputTx.vout[input.index];
     const value = Math.round(prevOut.value * 100000000);
     const scriptPubKey = prevOut.scriptPubKey.hex;
@@ -272,7 +297,7 @@ async function collectRbfInputs(
     totalInput += value;
   }
 
-  return { inputs, psbtUtxos, totalInput };
+  return { inputs, psbtUtxos, totalInput, rawTxCache };
 }
 
 function decodeInputAddress(

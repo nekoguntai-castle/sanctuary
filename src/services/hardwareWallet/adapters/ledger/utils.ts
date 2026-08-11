@@ -49,6 +49,6 @@ export const getDescriptorTemplate = (scriptType: string): 'wpkh(@0/**)' | 'sh(w
     case 'p2tr':
       return 'tr(@0/**)';
     default:
-      return 'wpkh(@0/**)';
+      throw new Error(`Unsupported Ledger script type: ${scriptType}`);
   }
 };

@@ -356,6 +356,27 @@ export async function findDerivationPathsByAddresses(
 }
 
 /**
+ * Find complete canonical evidence for wallet-scoped address or script matches.
+ * Transaction signing must use these immutable coordinates instead of a path-only lookup.
+ */
+export async function findCanonicalEvidenceForPsbt(
+  walletId: string,
+  addresses: string[],
+  scriptPubKeys: string[],
+): Promise<Address[]> {
+  if (addresses.length === 0 && scriptPubKeys.length === 0) return [];
+  return prisma.address.findMany({
+    where: {
+      walletId,
+      OR: [
+        ...(addresses.length > 0 ? [{ address: { in: addresses } }] : []),
+        ...(scriptPubKeys.length > 0 ? [{ scriptPubKey: { in: scriptPubKeys } }] : []),
+      ],
+    },
+  });
+}
+
+/**
  * Count addresses by wallet
  */
 export async function countByWalletId(
@@ -922,6 +943,7 @@ export const addressRepository = {
   findUnusedChangeAddresses,
   findUnusedExcluding,
   findDerivationPathsByAddresses,
+  findCanonicalEvidenceForPsbt,
   countByWalletId,
   findWithLabels,
   findByIdWithAccess,

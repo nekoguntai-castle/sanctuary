@@ -179,6 +179,7 @@ router.post('/transaction/:txid/rbf', authenticate, validate(
     source: 'rbf',
     unsignedPsbtBase64: psbtBase64,
     replacementTxid: txid,
+    signingContext: result.signingContext,
   });
 
   res.json({
@@ -234,6 +235,7 @@ router.post('/transaction/cpfp', authenticate, validate(
     network,
     source: 'cpfp',
     unsignedPsbtBase64: psbtBase64,
+    signingContext: result.signingContext,
   });
 
   res.json({
@@ -285,6 +287,7 @@ router.post('/transaction/batch', authenticate, validate(
     network,
     source: 'advanced_batch',
     unsignedPsbtBase64: psbtBase64,
+    signingContext: result.signingContext,
   });
 
   res.json({

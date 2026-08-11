@@ -26,6 +26,7 @@ import { agentSchemas } from './schemas/agent';
 import { adminSchemas } from './schemas/admin';
 import { healthSchemas } from './schemas/health';
 import { internalSchemas } from './schemas/internal';
+import { psbtSigningContextSchemas } from './schemas/psbtSigningContext';
 
 // Paths
 import { authPaths } from './paths/auth';
@@ -170,6 +171,7 @@ export const openApiSpec = {
     },
     schemas: {
       ...commonSchemas,
+      ...psbtSigningContextSchemas,
       ...authSchemas,
       ...walletSchemas,
       ...deviceSchemas,

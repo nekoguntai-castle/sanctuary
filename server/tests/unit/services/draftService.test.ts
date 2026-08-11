@@ -56,7 +56,10 @@ vi.mock('../../../src/services/vaultPolicy/approvalService', () => ({
 }));
 
 vi.mock('../../../src/services/bitcoin/signingIntent', () => ({
-  loadSigningIntent: vi.fn().mockResolvedValue({ unsignedPsbtSha256: 'psbt-hash' }),
+  loadSigningIntent: vi.fn().mockResolvedValue({
+    unsignedPsbtSha256: 'psbt-hash',
+    signingContext: { version: 1 },
+  }),
   unsignedPsbtSha256: vi.fn().mockReturnValue('psbt-hash'),
   validatePartialSignedPsbt: vi.fn().mockResolvedValue(undefined),
 }));
@@ -78,7 +81,7 @@ import prisma from '../../../src/models/prisma';
 import { draftRepository, systemSettingRepository, walletRepository } from '../../../src/repositories';
 import { lockUtxosForDraft, resolveUtxoIds } from '../../../src/services/draftLockService';
 import { dispatchDraftNotification } from '../../../src/services/notifications/dispatch';
-import { unsignedPsbtSha256 } from '../../../src/services/bitcoin/signingIntent';
+import { loadSigningIntent, unsignedPsbtSha256 } from '../../../src/services/bitcoin/signingIntent';
 import * as bitcoin from 'bitcoinjs-lib';
 import { NotFoundError, InvalidInputError, ConflictError } from '../../../src/errors';
 import {
@@ -176,6 +179,18 @@ describe('DraftService', () => {
       vi.mocked(unsignedPsbtSha256).mockReturnValueOnce('different-hash');
       await expect(createDraft(walletId, userId, validInput)).rejects.toThrow(
         'Draft PSBT does not match the server-issued signing intent',
+      );
+      expect(draftRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects a draft when its authenticated intent has no account binding', async () => {
+      vi.mocked(loadSigningIntent).mockResolvedValueOnce({
+        unsignedPsbtSha256: 'psbt-hash',
+        signingContext: undefined,
+      } as never);
+
+      await expect(createDraft(walletId, userId, validInput)).rejects.toThrow(
+        'Draft signing intent has no authenticated account binding',
       );
       expect(draftRepository.create).not.toHaveBeenCalled();
     });

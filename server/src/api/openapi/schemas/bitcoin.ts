@@ -413,6 +413,7 @@ export const bitcoinSchemas = {
     type: "object",
     properties: {
       psbtBase64: { type: "string" },
+      signingContext: { $ref: "#/components/schemas/PsbtSigningContext" },
       intentId: { type: "string" },
       intentDigest: { type: "string", pattern: "^[0-9a-f]{64}$" },
       fee: { type: "integer", minimum: 0 },
@@ -439,6 +440,7 @@ export const bitcoinSchemas = {
     },
     required: [
       "psbtBase64",
+      "signingContext",
       "intentId",
       "intentDigest",
       "fee",
@@ -471,6 +473,7 @@ export const bitcoinSchemas = {
     type: "object",
     properties: {
       psbtBase64: { type: "string" },
+      signingContext: { $ref: "#/components/schemas/PsbtSigningContext" },
       intentId: { type: "string" },
       intentDigest: { type: "string", pattern: "^[0-9a-f]{64}$" },
       childFee: { type: "integer", minimum: 0 },
@@ -480,6 +483,7 @@ export const bitcoinSchemas = {
     },
     required: [
       "psbtBase64",
+      "signingContext",
       "intentId",
       "intentDigest",
       "childFee",
@@ -519,6 +523,7 @@ export const bitcoinSchemas = {
     type: "object",
     properties: {
       psbtBase64: { type: "string" },
+      signingContext: { $ref: "#/components/schemas/PsbtSigningContext" },
       intentId: { type: "string" },
       intentDigest: { type: "string", pattern: "^[0-9a-f]{64}$" },
       fee: { type: "integer", minimum: 0 },
@@ -530,6 +535,7 @@ export const bitcoinSchemas = {
     },
     required: [
       "psbtBase64",
+      "signingContext",
       "intentId",
       "intentDigest",
       "fee",

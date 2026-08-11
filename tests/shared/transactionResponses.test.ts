@@ -6,11 +6,13 @@ import {
   DraftTransactionSchema,
   DraftTransactionsResponseSchema,
 } from '../../shared/schemas/transactionResponses';
+import { testPsbtSigningContext } from '../fixtures/psbtSigningContext';
 
 const created = {
   psbtBase64: 'cHNidP8BAHECAAAAAf',
   intentId: 'intent-1',
   intentDigest: 'a'.repeat(64),
+  signingContext: testPsbtSigningContext,
   fee: 2500,
   totalInput: 500000,
   totalOutput: 497500,
@@ -63,6 +65,12 @@ describe('CreateTransactionResponseSchema', () => {
     // been told it is their transaction is the worst failure available here.
     expect(CreateTransactionResponseSchema.safeParse({ ...created, psbtBase64: '' }).success).toBe(false);
     expect(CreateTransactionResponseSchema.safeParse({ ...created, psbtBase64: null }).success).toBe(false);
+  });
+
+  it('rejects a creation response without server-issued signing context', () => {
+    const { signingContext: _signingContext, ...missing } = created;
+
+    expect(CreateTransactionResponseSchema.safeParse(missing).success).toBe(false);
   });
 
   it('rejects any review figure that is not a number', () => {

@@ -9,6 +9,7 @@ const trezorSignPsbtBranchMocks = vi.hoisted(() => ({
   mockBuildTrezorMultisig: vi.fn(),
   mockIsMultisigInput: vi.fn(),
   mockFetchRefTxs: vi.fn(),
+  mockValidatePsbtSigningRequest: vi.fn(),
   mockLoggerError: vi.fn(),
   mockLoggerWarn: vi.fn(),
 }));
@@ -21,6 +22,7 @@ export const {
   mockBuildTrezorMultisig,
   mockIsMultisigInput,
   mockFetchRefTxs,
+  mockValidatePsbtSigningRequest,
   mockLoggerError,
   mockLoggerWarn,
 } = trezorSignPsbtBranchMocks;
@@ -44,6 +46,10 @@ vi.mock('../../../../src/services/hardwareWallet/adapters/trezor/multisig', () =
 
 vi.mock('../../../../src/services/hardwareWallet/adapters/trezor/refTxs', () => ({
   fetchRefTxs: (...args: unknown[]) => mockFetchRefTxs(...args),
+}));
+
+vi.mock('../../../../src/services/hardwareWallet/psbtAccountBinding', () => ({
+  validatePsbtSigningRequest: (...args: unknown[]) => mockValidatePsbtSigningRequest(...args),
 }));
 
 vi.mock('../../../../src/utils/logger', () => ({
@@ -128,14 +134,70 @@ export function txFromPsbt(psbt: bitcoin.Psbt) {
   return bitcoin.Transaction.fromBuffer(unsignedTx.toBuffer());
 }
 
+function normalizePath(path: string): string {
+  return path.replace(/h/g, "'");
+}
+
+function accountPathFromAddressPath(path: string): string {
+  return normalizePath(path).split('/').slice(0, -2).join('/');
+}
+
+function firstMatchingPath(
+  psbt: bitcoin.Psbt,
+  fingerprint: string | undefined,
+): string | undefined {
+  const normalizedFingerprint = fingerprint?.toLowerCase();
+  for (const input of psbt.data.inputs) {
+    const derivation = input.bip32Derivation?.find(candidate => (
+      !normalizedFingerprint
+      || Buffer.from(candidate.masterFingerprint).toString('hex') === normalizedFingerprint
+    ));
+    if (derivation) return derivation.path;
+  }
+  return undefined;
+}
+
+function validatedRequest(
+  request: { psbt: string; walletId?: string; accountPath?: string; inputPaths?: string[] },
+  fingerprint: string | undefined,
+) {
+  const psbt = bitcoin.Psbt.fromBase64(request.psbt);
+  const addressPath = firstMatchingPath(psbt, fingerprint)
+    ?? request.inputPaths?.[0]
+    ?? request.accountPath
+    ?? "m/84'/0'/0'/0/0";
+  const accountPath = request.accountPath
+    ? normalizePath(request.accountPath)
+    : accountPathFromAddressPath(addressPath);
+  const network = /\/1['h]\//.test(addressPath) ? 'testnet' : 'mainnet';
+  const changeOutputs = psbt.data.outputs.flatMap((output, outputIndex) => (
+    output.bip32Derivation?.length ? [{ outputIndex }] : []
+  ));
+  return {
+    psbt,
+    context: {
+      walletId: request.walletId ?? 'wallet-test',
+      changeOutputs,
+    },
+    connectedSigner: {
+      accountPath,
+      masterFingerprint: fingerprint ?? 'deadbeef',
+    },
+    network,
+    accountPath,
+    changeOutputIndexes: changeOutputs.map(binding => binding.outputIndex),
+  };
+}
+
 export function registerTrezorSignPsbtBranchSetup() {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mockPathToAddressN.mockReturnValue([1, 2, 3]);
     mockValidateSatoshiAmount.mockImplementation((amount: number | bigint) => String(amount));
     mockGetTrezorScriptType.mockReturnValue('SPENDWITNESS');
     mockBuildTrezorMultisig.mockReturnValue(undefined);
     mockIsMultisigInput.mockReturnValue(false);
     mockFetchRefTxs.mockResolvedValue([]);
+    mockValidatePsbtSigningRequest.mockImplementation(validatedRequest);
   });
 }

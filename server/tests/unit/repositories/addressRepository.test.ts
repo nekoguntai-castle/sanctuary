@@ -165,6 +165,46 @@ describe("Address Repository", () => {
     });
   });
 
+  describe("findCanonicalEvidenceForPsbt", () => {
+    it("returns without querying when no address or script evidence is requested", async () => {
+      await expect(addressRepository.findCanonicalEvidenceForPsbt("wallet-456", [], []))
+        .resolves.toEqual([]);
+      expect(prisma.address.findMany).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      {
+        addresses: ["bc1qinput"],
+        scripts: [] as string[],
+        filters: [{ address: { in: ["bc1qinput"] } }],
+      },
+      {
+        addresses: [] as string[],
+        scripts: ["0014aabb"],
+        filters: [{ scriptPubKey: { in: ["0014aabb"] } }],
+      },
+      {
+        addresses: ["bc1qinput"],
+        scripts: ["0014aabb"],
+        filters: [
+          { address: { in: ["bc1qinput"] } },
+          { scriptPubKey: { in: ["0014aabb"] } },
+        ],
+      },
+    ])("queries only the supplied canonical evidence dimensions", async ({
+      addresses, scripts, filters,
+    }) => {
+      (prisma.address.findMany as Mock).mockResolvedValue([mockAddress]);
+
+      await expect(addressRepository.findCanonicalEvidenceForPsbt(
+        "wallet-456", addresses, scripts,
+      )).resolves.toEqual([mockAddress]);
+      expect(prisma.address.findMany).toHaveBeenCalledWith({
+        where: { walletId: "wallet-456", OR: filters },
+      });
+    });
+  });
+
   describe("findWalletSummariesByAddresses", () => {
     it("returns early for empty address lists", async () => {
       const result = await addressRepository.findWalletSummariesByAddresses([

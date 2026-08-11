@@ -20,8 +20,10 @@ function getHardenedPurpose(path: string): string | null {
 }
 
 function getBip48ScriptType(path: string): TrezorScriptType {
-  // BIP-48 script type suffix: /2' or /2h = native P2WSH; default = nested P2SH-P2WSH.
-  return path.includes("/2'") || path.includes("/2h")
+  // BIP-48 script type is the fourth hardened component, after purpose/coin/account.
+  // Searching the entire path confuses an account index of 2 with the script type.
+  const scriptType = path.replace(/^m\//, '').split('/')[3];
+  return scriptType === "2'" || scriptType === '2h'
     ? 'SPENDWITNESS'
     : 'SPENDP2SHWITNESS';
 }

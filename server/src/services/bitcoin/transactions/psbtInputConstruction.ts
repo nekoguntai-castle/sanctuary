@@ -227,10 +227,9 @@ const addSingleSigBip32Info = (
       pubkeyHex: Buffer.from(pubkeyNode.publicKey).toString('hex').substring(0, 20) + '...',
     });
   } catch (e) {
-    log.warn(`${logPrefix}Single-sig BIP32 derivation failed for input`, {
-      inputIndex,
-      error: (e as Error).message,
-    });
+    throw new Error(
+      `${logPrefix}Cannot create PSBT: single-sig BIP32 derivation failed for input ${inputIndex}: ${(e as Error).message}`,
+    );
   }
 };
 
@@ -263,6 +262,7 @@ const addBip32Info = (
   }
 
   logSkippedBip32Info(inputIndex, derivationPath, signingInfo, accountNode, logPrefix);
+  throw new Error(`Cannot create PSBT: missing BIP32 derivation metadata for input ${inputIndex}`);
 };
 
 /**

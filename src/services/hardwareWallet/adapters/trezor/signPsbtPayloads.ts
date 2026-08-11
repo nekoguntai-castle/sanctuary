@@ -23,8 +23,8 @@ const getMatchingDerivation = (
   deviceFingerprint: string | undefined,
   inputIdx?: number
 ): TrezorBip32Derivation => {
-  if (!deviceFingerprintBuffer || derivations.length <= 1) {
-    return derivations[0];
+  if (!deviceFingerprintBuffer) {
+    throw new Error('Connected Trezor master fingerprint is unavailable');
   }
 
   const matching = derivations.find(d => uint8ArrayEquals(d.masterFingerprint, deviceFingerprintBuffer));
@@ -47,12 +47,11 @@ const getMatchingDerivation = (
     });
   }
 
-  return derivations[0];
+  throw new Error(`No PSBT derivation matches the connected Trezor on input ${inputIdx ?? 'output'}`);
 };
 
 const getInputDerivationPath = (
   input: TrezorPsbtInput,
-  request: PSBTSignRequest,
   inputIdx: number,
   deviceFingerprintBuffer: Buffer | null,
   deviceFingerprint: string | undefined
@@ -66,7 +65,7 @@ const getInputDerivationPath = (
     ).path;
   }
 
-  return request.inputPaths?.[inputIdx];
+  throw new Error(`Input ${inputIdx} is missing wallet-bound BIP32 derivation metadata`);
 };
 
 const addTrezorInputMultisig = (
@@ -124,7 +123,6 @@ const buildTrezorInput = (
 ): any => {
   const derivationPath = getInputDerivationPath(
     input,
-    request,
     inputIdx,
     deviceFingerprintBuffer,
     deviceFingerprint
@@ -178,8 +176,8 @@ const isChangeOutput = (
   outputIdx: number,
   output: TrezorPsbtOutput
 ): boolean => {
-  return Boolean(request.changeOutputs?.includes(outputIdx) ||
-    (output.bip32Derivation && output.bip32Derivation.length > 0));
+  return Boolean(request.signingContext?.changeOutputs.some(binding => binding.outputIndex === outputIdx))
+    && Boolean(output.bip32Derivation?.length);
 };
 
 const addTrezorOutputMultisig = (

@@ -2,55 +2,28 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as bitcoin from "bitcoinjs-lib";
 
 import { mockPrismaClient } from "../../../../mocks/prisma";
-import {
-  sampleUtxos,
-  sampleWallets,
-  testnetAddresses,
-} from "../../../../fixtures/bitcoin";
-import { mockParseDescriptor } from "./transactionServiceBatchTestHarness";
+import { testnetAddresses } from "../../../../fixtures/bitcoin";
+import { mockGetTransaction } from "./transactionServiceBatchTestHarness";
 import { createBatchTransaction } from "../../../../../src/services/bitcoin/transactionService";
 import * as nodeClient from "../../../../../src/services/bitcoin/nodeClient";
 import * as asyncUtils from "../../../../../src/utils/async";
 import {
-  changeAddressRow,
   inputAddressRow,
   mockAddressFindManyByQuery,
   receiveAddressRow,
 } from "../transactionServiceAddressMocks";
+import {
+  installBatchBindingFixture,
+  singleSigBatchFixture,
+} from "./transactionServiceBatchBindingFixtures";
 
 export function registerCreateBatchTransactionContracts() {
   describe("createBatchTransaction", () => {
     const walletId = "test-wallet-id";
+    const fixture = singleSigBatchFixture(walletId);
 
     beforeEach(() => {
-      // Set up wallet mock
-      mockPrismaClient.wallet.findUnique.mockResolvedValue({
-        ...sampleWallets.singleSigNativeSegwit,
-        id: walletId,
-        devices: [],
-      });
-
-      // Set up UTXO mocks - need enough for batch
-      mockPrismaClient.uTXO.findMany.mockResolvedValue([
-        {
-          ...sampleUtxos[2], // 200000 sats
-          walletId,
-          scriptPubKey: "0014" + "a".repeat(40),
-        },
-        {
-          ...sampleUtxos[0], // 100000 sats
-          walletId,
-          scriptPubKey: "0014" + "b".repeat(40),
-        },
-      ]);
-
-      mockAddressFindManyByQuery({
-        inputRows: [
-          inputAddressRow(walletId, 0, { address: sampleUtxos[2].address }),
-          inputAddressRow(walletId, 1, { address: sampleUtxos[0].address }),
-        ],
-        unusedRows: [changeAddressRow(walletId)],
-      });
+      installBatchBindingFixture(fixture);
     });
 
     it("should create transaction with multiple outputs", async () => {
@@ -67,6 +40,13 @@ export function registerCreateBatchTransactionContracts() {
       expect(result.outputs[0].amount).toBe(30000);
       expect(result.outputs[1].amount).toBe(20000);
       expect(result.fee).toBeGreaterThan(0);
+      expect(result.signingContext.inputs.map(input => input.inputIndex)).toEqual([0]);
+      expect(result.signingContext.inputs[0]).toMatchObject({
+        txid: fixture.utxos[0].txid,
+        vout: fixture.utxos[0].vout,
+        scriptPubKey: fixture.utxos[0].scriptPubKey,
+      });
+      expect(result.signingContext.changeOutputs).toHaveLength(1);
     });
 
     it("should handle sendMax flag in batch outputs", async () => {
@@ -111,10 +91,8 @@ export function registerCreateBatchTransactionContracts() {
 
     it("should treat non-testnet batch wallets as mainnet during output validation", async () => {
       mockPrismaClient.wallet.findUnique.mockResolvedValue({
-        ...sampleWallets.singleSigNativeSegwit,
-        id: walletId,
+        ...fixture.wallet,
         network: "mainnet",
-        devices: [],
       });
 
       const outputs = [
@@ -185,21 +163,20 @@ export function registerCreateBatchTransactionContracts() {
       const outputs = [
         { address: testnetAddresses.nativeSegwit[0], amount: 10_000 },
       ];
-      const selected = [`${sampleUtxos[2].txid}:${sampleUtxos[2].vout}`];
+      const selected = [`${fixture.utxos[0].txid}:${fixture.utxos[0].vout}`];
 
       const result = await createBatchTransaction(walletId, outputs, 10, {
         selectedUtxoIds: selected,
       });
 
       expect(result.utxos).toHaveLength(1);
-      expect(result.utxos[0].txid).toBe(sampleUtxos[2].txid);
+      expect(result.utxos[0].txid).toBe(fixture.utxos[0].txid);
     });
 
     it("should reject batch transactions containing UTXOs with missing scriptPubKey", async () => {
       mockPrismaClient.uTXO.findMany.mockResolvedValue([
         {
-          ...sampleUtxos[2],
-          walletId,
+          ...fixture.utxos[0],
           scriptPubKey: "",
         },
       ]);
@@ -227,8 +204,8 @@ export function registerCreateBatchTransactionContracts() {
     it("should reject batch change output creation when only receive-chain addresses are unused", async () => {
       mockAddressFindManyByQuery({
         inputRows: [
-          inputAddressRow(walletId, 0, { address: sampleUtxos[2].address }),
-          inputAddressRow(walletId, 1, { address: sampleUtxos[0].address }),
+          fixture.inputAddresses[0],
+          fixture.inputAddresses[1],
         ],
         unusedRows: [receiveAddressRow(walletId, 10)],
       });
@@ -245,8 +222,8 @@ export function registerCreateBatchTransactionContracts() {
     it("should throw when no change address is available for batch", async () => {
       mockAddressFindManyByQuery({
         inputRows: [
-          inputAddressRow(walletId, 0, { address: sampleUtxos[2].address }),
-          inputAddressRow(walletId, 1, { address: sampleUtxos[0].address }),
+          fixture.inputAddresses[0],
+          fixture.inputAddresses[1],
         ],
         unusedRows: [],
       });
@@ -259,23 +236,7 @@ export function registerCreateBatchTransactionContracts() {
       ).rejects.toThrow("No change address available");
     });
 
-    it("should add single-sig bip32 derivation from device data in batch mode", async () => {
-      mockPrismaClient.wallet.findUnique.mockResolvedValue({
-        ...sampleWallets.singleSigNativeSegwit,
-        id: walletId,
-        descriptor: null,
-        fingerprint: null,
-        devices: [
-          {
-            device: {
-              id: "batch-device",
-              fingerprint: "aabbccdd",
-              xpub: "tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M",
-            },
-          },
-        ],
-      });
-
+    it("should add single-sig bip32 derivation from the immutable signer snapshot", async () => {
       const outputs = [
         { address: testnetAddresses.nativeSegwit[0], amount: 50_000 },
       ];
@@ -290,165 +251,92 @@ export function registerCreateBatchTransactionContracts() {
       ).toBe("aabbccdd");
     });
 
-    it("should skip single-sig BIP32 when primary batch device has no fingerprint and xpub", async () => {
+    it("should reject an incomplete immutable single-sig signer snapshot", async () => {
+      const [signer] = fixture.wallet.devices as Array<Record<string, unknown>>;
       mockPrismaClient.wallet.findUnique.mockResolvedValue({
-        ...sampleWallets.singleSigNativeSegwit,
-        id: walletId,
-        descriptor: null,
-        fingerprint: null,
-        devices: [
-          {
-            device: {
-              id: "empty-metadata-device",
-              fingerprint: null,
-              xpub: null,
-            },
-          },
-        ],
+        ...fixture.wallet,
+        devices: [{ ...signer, signerFingerprint: null, signerXpub: null }],
       });
 
       const outputs = [
         { address: testnetAddresses.nativeSegwit[0], amount: 50_000 },
       ];
-      const result = await createBatchTransaction(walletId, outputs, 10);
-      const psbt = bitcoin.Psbt.fromBase64(result.psbtBase64);
-
-      expect(psbt.data.inputs[0].bip32Derivation).toBeUndefined();
+      await expect(createBatchTransaction(walletId, outputs, 10)).rejects.toThrow(
+        "Cannot create PSBT: immutable signer snapshot is incomplete",
+      );
     });
 
-    it("should derive batch BIP32 with non-hardened leading path segments", async () => {
-      mockPrismaClient.wallet.findUnique.mockResolvedValue({
-        ...sampleWallets.singleSigNativeSegwit,
-        id: walletId,
-        descriptor: null,
-        fingerprint: null,
-        devices: [
-          {
-            device: {
-              id: "batch-device",
-              fingerprint: "aabbccdd",
-              xpub: "tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M",
-            },
-          },
-        ],
-      });
+    it("should reject input derivation paths outside the immutable signer account", async () => {
       mockAddressFindManyByQuery({
         inputRows: [
           inputAddressRow(walletId, 0, {
-            address: sampleUtxos[2].address,
+            ...fixture.inputAddresses[0],
             derivationPath: "m/0/1/2/3/4",
           }),
           inputAddressRow(walletId, 1, {
-            address: sampleUtxos[0].address,
+            ...fixture.inputAddresses[1],
             derivationPath: "m/0/1/2/3/5",
           }),
         ],
-        unusedRows: [changeAddressRow(walletId)],
+        unusedRows: [fixture.changeAddress],
       });
 
       const outputs = [
         { address: testnetAddresses.nativeSegwit[0], amount: 50_000 },
       ];
-      const result = await createBatchTransaction(walletId, outputs, 10);
-      const psbt = bitcoin.Psbt.fromBase64(result.psbtBase64);
-
-      expect(psbt.data.inputs[0].bip32Derivation?.[0].path).toBe("m/0/1/2/3/4");
-    });
-
-    it("should continue when batch account xpub parsing fails", async () => {
-      mockPrismaClient.wallet.findUnique.mockResolvedValue({
-        ...sampleWallets.singleSigNativeSegwit,
-        id: walletId,
-        descriptor: null,
-        fingerprint: "aabbccdd",
-        devices: [
-          {
-            device: {
-              id: "bad-xpub-device",
-              fingerprint: "aabbccdd",
-              xpub: "not-a-valid-xpub",
-            },
-          },
-        ],
-      });
-
-      const outputs = [
-        { address: testnetAddresses.nativeSegwit[0], amount: 50_000 },
-      ];
-      const result = await createBatchTransaction(walletId, outputs, 10);
-
-      expect(result.psbtBase64).toBeDefined();
-    });
-
-    it("should continue when batch descriptor parsing does not provide an xpub", async () => {
-      mockPrismaClient.wallet.findUnique.mockResolvedValue({
-        ...sampleWallets.singleSigNativeSegwit,
-        id: walletId,
-        devices: [],
-        fingerprint: null,
-        descriptor:
-          "wpkh([aabbccdd/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*)",
-      });
-      mockParseDescriptor.mockImplementationOnce(
-        () =>
-          ({
-            type: "wpkh",
-            xpub: undefined,
-            fingerprint: "aabbccdd",
-          }) as any,
+      await expect(createBatchTransaction(walletId, outputs, 10)).rejects.toThrow(
+        "outside signer account",
       );
+    });
+
+    it("should reject when the immutable account xpub cannot be parsed", async () => {
+      const [signer] = fixture.wallet.devices as Array<Record<string, unknown>>;
+      mockPrismaClient.wallet.findUnique.mockResolvedValue({
+        ...fixture.wallet,
+        devices: [{ ...signer, signerXpub: "not-a-valid-xpub" }],
+      });
 
       const outputs = [
         { address: testnetAddresses.nativeSegwit[0], amount: 50_000 },
       ];
-      const result = await createBatchTransaction(walletId, outputs, 10);
-      const psbt = bitcoin.Psbt.fromBase64(result.psbtBase64);
-
-      expect(psbt.data.inputs[0].bip32Derivation).toBeUndefined();
+      await expect(createBatchTransaction(walletId, outputs, 10)).rejects.toThrow(
+        "Cannot create PSBT: missing BIP32 derivation metadata for input 0",
+      );
     });
 
-    it("should preserve empty input derivation paths when address metadata is missing", async () => {
+    it("should reject when the immutable signer snapshot is absent", async () => {
+      mockPrismaClient.wallet.findUnique.mockResolvedValue({
+        ...fixture.wallet,
+        devices: [],
+      });
+
+      const outputs = [
+        { address: testnetAddresses.nativeSegwit[0], amount: 50_000 },
+      ];
+      await expect(createBatchTransaction(walletId, outputs, 10)).rejects.toThrow(
+        "Cannot create PSBT: immutable signer snapshot is missing",
+      );
+    });
+
+    it("should reject when input derivation-path evidence is missing", async () => {
       mockAddressFindManyByQuery({
         inputRows: [],
-        unusedRows: [changeAddressRow(walletId)],
+        unusedRows: [fixture.changeAddress],
       });
 
       const outputs = [
         { address: testnetAddresses.nativeSegwit[0], amount: 50_000 },
       ];
-      const result = await createBatchTransaction(walletId, outputs, 10);
-
-      expect(result.inputPaths.length).toBeGreaterThan(0);
-      expect(result.inputPaths.every((path) => path === "")).toBe(true);
+      await expect(createBatchTransaction(walletId, outputs, 10)).rejects.toThrow(
+        "Cannot create PSBT: missing BIP32 derivation metadata for input 0",
+      );
     });
 
     it("should use nonWitnessUtxo for legacy batch wallet inputs", async () => {
-      mockPrismaClient.wallet.findUnique.mockResolvedValue({
-        ...sampleWallets.singleSigLegacy,
-        id: walletId,
-        devices: [],
-      });
-      mockPrismaClient.uTXO.findMany.mockResolvedValue([
-        {
-          ...sampleUtxos[2],
-          walletId,
-          scriptPubKey: "76a914" + "a".repeat(40) + "88ac",
-        },
-      ]);
-      mockAddressFindManyByQuery({
-        inputRows: [
-          inputAddressRow(walletId, 0, {
-            address: sampleUtxos[2].address,
-            derivationPath: "m/44'/1'/0'/0/0",
-          }),
-        ],
-        unusedRows: [
-          changeAddressRow(walletId, 0, {
-            address: testnetAddresses.legacy[1],
-            derivationPath: "m/44'/1'/0'/1/0",
-          }),
-        ],
-      });
+      const legacyFixture = singleSigBatchFixture(walletId, "legacy");
+      legacyFixture.utxos = [legacyFixture.utxos[0]];
+      installBatchBindingFixture(legacyFixture);
+      mockGetTransaction.mockResolvedValue(legacyFixture.rawTransactionHex!);
 
       const outputs = [{ address: testnetAddresses.legacy[0], amount: 50_000 }];
       const result = await createBatchTransaction(walletId, outputs, 10);
@@ -459,32 +347,9 @@ export function registerCreateBatchTransactionContracts() {
     });
 
     it("should throw when legacy batch raw transactions are unavailable in cache", async () => {
-      mockPrismaClient.wallet.findUnique.mockResolvedValue({
-        ...sampleWallets.singleSigLegacy,
-        id: walletId,
-        devices: [],
-      });
-      mockPrismaClient.uTXO.findMany.mockResolvedValue([
-        {
-          ...sampleUtxos[2],
-          walletId,
-          scriptPubKey: "76a914" + "a".repeat(40) + "88ac",
-        },
-      ]);
-      mockAddressFindManyByQuery({
-        inputRows: [
-          inputAddressRow(walletId, 0, {
-            address: sampleUtxos[2].address,
-            derivationPath: "m/44'/1'/0'/0/0",
-          }),
-        ],
-        unusedRows: [
-          changeAddressRow(walletId, 0, {
-            address: testnetAddresses.legacy[1],
-            derivationPath: "m/44'/1'/0'/1/0",
-          }),
-        ],
-      });
+      const legacyFixture = singleSigBatchFixture(walletId, "legacy");
+      legacyFixture.utxos = [legacyFixture.utxos[0]];
+      installBatchBindingFixture(legacyFixture);
 
       const mapWithConcurrencySpy = vi
         .spyOn(asyncUtils, "mapWithConcurrency")
@@ -495,7 +360,7 @@ export function registerCreateBatchTransactionContracts() {
         await expect(
           createBatchTransaction(walletId, outputs, 10),
         ).rejects.toThrow(
-          `Failed to fetch raw transaction for ${sampleUtxos[2].txid}`,
+          `Failed to fetch raw transaction for ${legacyFixture.utxos[0].txid}`,
         );
       } finally {
         mapWithConcurrencySpy.mockRestore();

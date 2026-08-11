@@ -9,6 +9,7 @@ export interface CreateTransactionSigningIntentRecord {
   source: string;
   snapshotVersion: number;
   snapshot: Prisma.InputJsonValue;
+  signingContext?: Prisma.InputJsonValue;
   snapshotDigest: string;
   unsignedPsbtBase64: string;
   unsignedPsbtSha256: string;
@@ -42,6 +43,7 @@ export const create = async (
       source: data.source,
       snapshotVersion: data.snapshotVersion,
       snapshot: data.snapshot,
+      signingContext: data.signingContext ?? Prisma.DbNull,
       snapshotDigest: data.snapshotDigest,
       unsignedPsbtBase64: data.unsignedPsbtBase64,
       unsignedPsbtSha256: data.unsignedPsbtSha256,

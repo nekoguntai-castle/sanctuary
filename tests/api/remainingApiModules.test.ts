@@ -198,14 +198,18 @@ describe("Remaining API Modules", () => {
       expect(mockPost).toHaveBeenCalledWith("/payjoin/parse-uri", {
         uri: "bitcoin:bc1q...",
       });
-      expect(mockPost).toHaveBeenCalledWith("/payjoin/attempt", {
-        walletId: "w1",
-        psbt: "psbt1",
-        intentId: "intent-1",
-        intentDigest: "a".repeat(64),
-        payjoinUrl: "https://pj.example",
-        network: "mainnet",
-      });
+      expect(mockPost).toHaveBeenCalledWith(
+        "/payjoin/attempt",
+        {
+          walletId: "w1",
+          psbt: "psbt1",
+          intentId: "intent-1",
+          intentDigest: "a".repeat(64),
+          payjoinUrl: "https://pj.example",
+          network: "mainnet",
+        },
+        expect.objectContaining({ schema: expect.anything() }),
+      );
       expect(mockGet).toHaveBeenCalledWith("/payjoin/eligibility/w1");
 
       const controller = new AbortController();
@@ -219,7 +223,10 @@ describe("Remaining API Modules", () => {
         intentDigest: "b".repeat(64),
         payjoinUrl: "https://pj.example",
         network: "testnet3",
-      }, { signal: controller.signal });
+      }, expect.objectContaining({
+        schema: expect.anything(),
+        signal: controller.signal,
+      }));
     });
   });
 

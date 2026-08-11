@@ -70,7 +70,7 @@ export function registerTrezorSignPsbtSignatureExtractionContracts() {
     );
   });
 
-  it('warns when multisig signatures cannot be matched to this device fingerprint', async () => {
+  it('rejects multisig signing when no input derivation matches the device fingerprint', async () => {
     const { psbt } = h.createPsbt();
     const witnessScript = Buffer.concat([
       Buffer.from([0x51, 0x21]),
@@ -96,18 +96,16 @@ export function registerTrezorSignPsbtSignatureExtractionContracts() {
       payload: { serializedTx: tx.toHex() },
     });
 
-    await signPsbtWithTrezor(
-      {
-        psbt: psbt.toBase64(),
-        inputPaths: [],
-},
-      { fingerprint: 'deadbeef' } as any
-    );
+    await expect(signPsbtWithTrezor(
+      { psbt: psbt.toBase64(), inputPaths: [] },
+      { fingerprint: 'deadbeef' } as any,
+    )).rejects.toThrow('No PSBT derivation matches the connected Trezor on input 0');
 
     expect(h.mockLoggerWarn).toHaveBeenCalledWith(
-      'Could not match Trezor signature to pubkey',
+      'No matching bip32Derivation found for device fingerprint',
       expect.any(Object)
     );
+    expect(h.mockSignTransaction).not.toHaveBeenCalled();
   });
 
   it('handles OP_N sentinel while parsing witnessScript pubkeys', async () => {
@@ -202,7 +200,7 @@ export function registerTrezorSignPsbtSignatureExtractionContracts() {
     expect(((parsed.data.inputs[0] as any).partialSig || []).length).toBe(2);
   });
 
-  it('warns during extraction when no device fingerprint is provided', async () => {
+  it('rejects signing before extraction when no device fingerprint is provided', async () => {
     const { psbt } = h.createPsbt();
     const witnessScript = Buffer.concat([
       Buffer.from([0x51, 0x21]),
@@ -227,18 +225,12 @@ export function registerTrezorSignPsbtSignatureExtractionContracts() {
       payload: { serializedTx: tx.toHex() },
     });
 
-    await signPsbtWithTrezor(
-      {
-        psbt: psbt.toBase64(),
-        inputPaths: [],
-},
-      { fingerprint: undefined } as any
-    );
+    await expect(signPsbtWithTrezor(
+      { psbt: psbt.toBase64(), inputPaths: [] },
+      { fingerprint: undefined } as any,
+    )).rejects.toThrow('Connected Trezor master fingerprint is unavailable');
 
-    expect(h.mockLoggerWarn).toHaveBeenCalledWith(
-      'Could not match Trezor signature to pubkey',
-      expect.any(Object)
-    );
+    expect(h.mockSignTransaction).not.toHaveBeenCalled();
   });
 
   it('handles unsuccessful Trezor responses and signed payloads without serializedTx', async () => {

@@ -75,16 +75,29 @@ export const payjoinSchemas = {
     additionalProperties: false,
   },
   PayjoinAttemptResponse: {
-    type: 'object',
-    properties: {
-      success: { type: 'boolean' },
-      proposalPsbt: { type: 'string', description: 'Payjoin proposal PSBT in base64 format' },
-      isPayjoin: { type: 'boolean' },
-      error: { type: 'string' },
-      intentId: { type: 'string' },
-      intentDigest: { type: 'string', pattern: '^[0-9a-f]{64}$' },
-    },
-    required: ['success', 'isPayjoin'],
+    oneOf: [
+      {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean', enum: [true] },
+          isPayjoin: { type: 'boolean', enum: [true] },
+          proposalPsbt: { type: 'string', minLength: 1, description: 'Payjoin proposal PSBT in base64 format' },
+          signingContext: { $ref: '#/components/schemas/PsbtSigningContext' },
+          intentId: { type: 'string', minLength: 1 },
+          intentDigest: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+        },
+        required: ['success', 'isPayjoin', 'proposalPsbt', 'signingContext', 'intentId', 'intentDigest'],
+      },
+      {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean', enum: [false] },
+          isPayjoin: { type: 'boolean', enum: [false] },
+          error: { type: 'string' },
+        },
+        required: ['success', 'isPayjoin'],
+      },
+    ],
   },
   PayjoinReceiverError: {
     type: 'string',

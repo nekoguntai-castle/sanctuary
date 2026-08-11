@@ -246,6 +246,7 @@ export const transactionSchemas = {
     type: 'object',
     properties: {
       psbtBase64: { type: 'string' },
+      signingContext: { $ref: '#/components/schemas/PsbtSigningContext' },
       intentId: { type: 'string' },
       intentDigest: { type: 'string', pattern: '^[0-9a-f]{64}$' },
       fee: { type: 'number' },
@@ -272,7 +273,7 @@ export const transactionSchemas = {
       },
       policyEvaluation: { type: 'object' },
     },
-    required: ['psbtBase64', 'intentId', 'intentDigest', 'fee', 'totalInput', 'totalOutput', 'changeAmount', 'utxos'],
+    required: ['psbtBase64', 'signingContext', 'intentId', 'intentDigest', 'fee', 'totalInput', 'totalOutput', 'changeAmount', 'utxos'],
   },
   TransactionBatchOutput: {
     type: 'object',
@@ -305,6 +306,7 @@ export const transactionSchemas = {
     type: 'object',
     properties: {
       psbtBase64: { type: 'string' },
+      signingContext: { $ref: '#/components/schemas/PsbtSigningContext' },
       intentId: { type: 'string' },
       intentDigest: { type: 'string', pattern: '^[0-9a-f]{64}$' },
       fee: { type: 'number' },
@@ -326,7 +328,7 @@ export const transactionSchemas = {
       },
       policyEvaluation: { type: 'object' },
     },
-    required: ['psbtBase64', 'intentId', 'intentDigest', 'fee', 'totalInput', 'totalOutput', 'changeAmount', 'utxos', 'outputs'],
+    required: ['psbtBase64', 'signingContext', 'intentId', 'intentDigest', 'fee', 'totalInput', 'totalOutput', 'changeAmount', 'utxos', 'outputs'],
   },
   TransactionEstimateRequest: {
     type: 'object',
@@ -413,6 +415,7 @@ export const transactionSchemas = {
     type: 'object',
     properties: {
       psbt: { type: 'string' },
+      signingContext: { $ref: '#/components/schemas/PsbtSigningContext' },
       intentId: { type: 'string' },
       intentDigest: { type: 'string', pattern: '^[0-9a-f]{64}$' },
       fee: { type: 'number' },
@@ -426,7 +429,7 @@ export const transactionSchemas = {
         items: { $ref: '#/components/schemas/UtxoReference' },
       },
     },
-    required: ['psbt', 'intentId', 'intentDigest', 'fee', 'totalInput', 'totalOutput', 'changeAmount', 'utxos'],
+    required: ['psbt', 'signingContext', 'intentId', 'intentDigest', 'fee', 'totalInput', 'totalOutput', 'changeAmount', 'utxos'],
   },
   PsbtBroadcastRequest: {
     type: 'object',

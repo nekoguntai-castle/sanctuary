@@ -6,6 +6,10 @@
 
 import apiClient from './client';
 import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
+import {
+  PayjoinAttemptResponseSchema,
+  type PayjoinAttemptResponse,
+} from '@sanctuary/shared/schemas/bitcoinResponses';
 
 export interface PayjoinUriResponse {
   uri: string;
@@ -22,14 +26,7 @@ export interface ParsedUri {
   hasPayjoin: boolean;
 }
 
-export interface PayjoinAttemptResult {
-  success: boolean;
-  proposalPsbt?: string;
-  isPayjoin: boolean;
-  error?: string;
-  intentId?: string;
-  intentDigest?: string;
-}
+export type PayjoinAttemptResult = PayjoinAttemptResponse;
 
 export type PayjoinEligibilityStatus =
   | 'ready'
@@ -106,9 +103,10 @@ export async function attemptPayjoin(
     payjoinUrl,
     network,
   };
-  return signal
-    ? apiClient.post<PayjoinAttemptResult>('/payjoin/attempt', request, { signal })
-    : apiClient.post<PayjoinAttemptResult>('/payjoin/attempt', request);
+  return apiClient.post<PayjoinAttemptResult>('/payjoin/attempt', request, {
+    schema: PayjoinAttemptResponseSchema,
+    ...(signal ? { signal } : {}),
+  });
 }
 
 /**

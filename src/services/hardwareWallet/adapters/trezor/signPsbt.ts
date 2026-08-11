@@ -6,18 +6,14 @@
  */
 
 import TrezorConnect from '@trezor/connect-web';
-import * as bitcoin from 'bitcoinjs-lib';
 import { createLogger } from '../../../../utils/logger';
 import type { PSBTSignRequest, PSBTSignResponse } from '../../types';
+import { validatePsbtSigningRequest } from '../../psbtAccountBinding';
 import type { TrezorConnection } from './types';
 import { isMultisigInput } from './multisig';
 import { fetchRefTxs } from './refTxs';
-import {
-  detectNetwork,
-  getDeviceFingerprintBuffer,
-  getRequestScriptType,
-  verifyDeviceIsCosigner,
-} from './signPsbtNetwork';
+import { getDeviceFingerprintBuffer } from './signPsbtNetwork';
+import { getTrezorScriptType } from './pathUtils';
 import { buildTrezorInputs, buildTrezorOutputs } from './signPsbtPayloads';
 import { applyTrezorMultisigSignatures } from './signPsbtSignatures';
 import {
@@ -44,23 +40,27 @@ export const signPsbtWithTrezor = async (
   });
 
   try {
-    const psbt = bitcoin.Psbt.fromBase64(request.psbt);
-    const scriptType = getRequestScriptType(request);
-    const network = detectNetwork(request, psbt);
+    const deviceFingerprint = connection.fingerprint;
+    const validated = validatePsbtSigningRequest(request, deviceFingerprint);
+    const psbt = validated.psbt;
+    const boundRequest: PSBTSignRequest = {
+      ...request,
+      signingContext: validated.context,
+    };
+    const scriptType = getTrezorScriptType(validated.accountPath);
+    const isTestnet = validated.network !== 'mainnet';
+    const coin = isTestnet ? 'Testnet' : 'Bitcoin';
     log.info('Using coin type for signing', {
-      coin: network.coin,
-      isTestnet: network.isTestnet,
-      networkSource: network.networkSource,
-      pathToCheck: network.pathToCheck || '(empty)',
+      coin,
+      isTestnet,
+      accountPath: validated.accountPath,
     });
 
-    const deviceFingerprint = connection.fingerprint;
     const deviceFingerprintBuffer = getDeviceFingerprintBuffer(connection);
-    verifyDeviceIsCosigner(psbt, deviceFingerprint, deviceFingerprintBuffer);
 
     const inputs = buildTrezorInputs(
       psbt,
-      request,
+      boundRequest,
       scriptType,
       deviceFingerprintBuffer,
       deviceFingerprint
@@ -68,17 +68,14 @@ export const signPsbtWithTrezor = async (
     const isMultisig = psbt.data.inputs.some(input => isMultisigInput(input));
     const outputs = buildTrezorOutputs(
       psbt,
-      request,
+      boundRequest,
       scriptType,
-      network.isTestnet,
+      isTestnet,
       deviceFingerprintBuffer,
       deviceFingerprint
     );
 
-    const refTxs = request.walletId ? await fetchRefTxs(psbt, request.walletId) : [];
-    if (!request.walletId) {
-      log.warn('Skipping reference transaction fetch without wallet scope');
-    }
+    const refTxs = await fetchRefTxs(psbt, validated.context.walletId);
     logRefTxAmountMismatches(psbt, refTxs);
     const txFromPsbt = getUnsignedTransactionFromPsbt(psbt);
 
@@ -87,7 +84,7 @@ export const signPsbtWithTrezor = async (
       inputs,
       outputs,
       refTxs: refTxs.length > 0 ? refTxs : undefined,
-      coin: network.coin,
+      coin,
       push: false,
       version: txFromPsbt.version,
       locktime: txFromPsbt.locktime,

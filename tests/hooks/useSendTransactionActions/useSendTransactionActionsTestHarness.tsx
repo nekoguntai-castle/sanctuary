@@ -4,6 +4,7 @@ import { beforeEach, vi } from 'vitest';
 import type { TransactionState } from '../../../src/contexts/send/types';
 import { useSendTransactionActions } from '../../../src/hooks/send/useSendTransactionActions';
 import { ApiError } from '../../../src/api/client';
+import { testPsbtSigningContext } from '../../fixtures/psbtSigningContext';
 
 const sendTransactionActionMocks = vi.hoisted(() => ({
   navigate: vi.fn(),
@@ -127,6 +128,7 @@ export const baseTxData = {
   outputs: [{ address: 'bc1qrecipient', amount: 10000 }],
   inputPaths: ["m/84'/0'/0'/0/0"],
   decoyOutputs: [],
+  signingContext: testPsbtSigningContext,
 };
 
 export const createState = (override?: Partial<TransactionState>): TransactionState => ({

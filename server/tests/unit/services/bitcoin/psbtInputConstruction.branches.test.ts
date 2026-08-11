@@ -1,4 +1,5 @@
 import * as bitcoin from "bitcoinjs-lib";
+import bip32 from "../../../../src/services/bitcoin/bip32";
 import { addInputsWithBip32 } from "../../../../src/services/bitcoin/transactions/psbtInputConstruction";
 import { testMultisigKeys } from "./psbtBuilderTestFixtures";
 
@@ -67,23 +68,72 @@ describe("PSBT input construction branch coverage", () => {
     ).toThrow("failed to build witnessScript");
   });
 
-  it("logs skipped BIP32 metadata when optional multisig key list is empty on single-sig signing info", () => {
+  it("rejects incomplete multisig BIP32 metadata before adding scripts", () => {
+    const psbt = new bitcoin.Psbt({ network });
+    mockBuildMultisigBip32Derivations.mockReturnValueOnce([]);
+
+    expect(() =>
+      addInputsWithBip32(psbt, [baseUtxo], {
+        sequence: 0xfffffffd,
+        isLegacy: false,
+        rawTxCache: new Map(),
+        addressPathMap: new Map([[baseUtxo.address, "m/48'/1'/0'/2'/0/0"]]),
+        signingInfo: {
+          isMultisig: true,
+          multisigKeys: testMultisigKeys,
+          multisigQuorum: 2,
+          multisigScriptType: "wsh-sortedmulti",
+        },
+        networkObj: network,
+      }),
+    ).toThrow("failed to build complete BIP32 derivation metadata");
+    expect(mockBuildMultisigWitnessScript).not.toHaveBeenCalled();
+  });
+
+  it.each(["m/84'/1'/0'/0/5", "m/84h/1h/0h/0/5"])(
+    "derives exact single-sig metadata from account node for %s",
+    derivationPath => {
+      const psbt = new bitcoin.Psbt({ network });
+      const accountNode = bip32.fromSeed(Buffer.alloc(32, 7), network)
+        .deriveHardened(84).deriveHardened(1).deriveHardened(0).neutered();
+
+      expect(addInputsWithBip32(psbt, [baseUtxo], {
+        sequence: 0xfffffffd,
+        isLegacy: false,
+        rawTxCache: new Map(),
+        addressPathMap: new Map([[baseUtxo.address, derivationPath]]),
+        signingInfo: {
+          isMultisig: false,
+          masterFingerprint: Buffer.from("aabbccdd", "hex"),
+        },
+        accountNode,
+        networkObj: network,
+      })).toEqual([derivationPath]);
+      expect(psbt.data.inputs[0].bip32Derivation).toEqual([{
+        masterFingerprint: Buffer.from("aabbccdd", "hex"),
+        path: "m/84'/1'/0'/0/5",
+        pubkey: accountNode.derive(0).derive(5).publicKey,
+      }]);
+    },
+  );
+
+  it("rejects single-sig inputs when BIP32 derivation metadata is unavailable", () => {
     const psbt = new bitcoin.Psbt({ network });
 
-    const inputPaths = addInputsWithBip32(psbt, [baseUtxo], {
-      sequence: 0xfffffffd,
-      isLegacy: false,
-      rawTxCache: new Map(),
-      addressPathMap: new Map(),
-      signingInfo: {
-        isMultisig: false,
-        multisigKeys: [],
-      },
-      networkObj: network,
-    });
+    expect(() =>
+      addInputsWithBip32(psbt, [baseUtxo], {
+        sequence: 0xfffffffd,
+        isLegacy: false,
+        rawTxCache: new Map(),
+        addressPathMap: new Map(),
+        signingInfo: {
+          isMultisig: false,
+          multisigKeys: [],
+        },
+        networkObj: network,
+      }),
+    ).toThrow("Cannot create PSBT: missing BIP32 derivation metadata for input 0");
 
-    expect(inputPaths).toEqual([""]);
-    expect(psbt.data.inputs[0].bip32Derivation).toBeUndefined();
     expect(mockBuildMultisigBip32Derivations).not.toHaveBeenCalled();
   });
 });

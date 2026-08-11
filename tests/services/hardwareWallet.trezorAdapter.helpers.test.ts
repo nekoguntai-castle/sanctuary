@@ -114,7 +114,11 @@ describe("Trezor helper functions", () => {
       ],
     });
 
-    const request = { psbt: psbt.toBase64(), inputPaths: [] };
+    const request = {
+      walletId: 'wallet-1',
+      psbt: psbt.toBase64(),
+      signingContext: { changeOutputs: [{ outputIndex: 1 }] },
+    } as any;
     const deviceFingerprint = Buffer.from("aabbccdd", "hex");
     const inputs = buildTrezorInputs(
       psbt,
@@ -194,8 +198,25 @@ describe("Trezor helper functions", () => {
     expect(multisig?.pubkeys[1].address_n).toEqual([1, 7]);
     expect(multisig?.pubkeys[0].node.startsWith("xpub")).toBe(true);
 
-    const noXpub = buildTrezorMultisig(script, derivations as any, {});
-    expect(noXpub?.pubkeys[0].node).toMatch(/^[0-9a-f]+$/i);
+    expect(() => buildTrezorMultisig(script, derivations as any, {})).toThrow(
+      /missing account xpub evidence.*aaaaaaaa.*bbbbbbbb/i,
+    );
+    expect(() => buildTrezorMultisig(script, derivations as any)).toThrow(
+      /missing account xpub evidence.*aaaaaaaa.*bbbbbbbb/i,
+    );
+    expect(() => buildTrezorMultisig(script, derivations as any, {
+      aaaaaaaa: xpubMap.aaaaaaaa,
+    })).toThrow(/missing account xpub evidence.*bbbbbbbb/i);
+    expect(() => buildTrezorMultisig(
+      script,
+      derivations.slice(0, 1) as any,
+      { bbbbbbbb: xpubMap.bbbbbbbb },
+    )).toThrow(/requires exactly 2 distinct signer derivations/i);
+    expect(() => buildTrezorMultisig(
+      script,
+      [derivations[0], { ...derivations[1], masterFingerprint: derivations[0].masterFingerprint }] as any,
+      { bbbbbbbb: xpubMap.bbbbbbbb },
+    )).toThrow(/requires exactly 2 distinct signer derivations/i);
 
     expect(
       buildTrezorMultisig(undefined, derivations as any, xpubMap),

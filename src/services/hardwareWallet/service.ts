@@ -29,6 +29,7 @@ import type {
   TransactionForSigning,
   XpubResult,
 } from './types';
+import { validatePsbtSigningRequest } from './psbtAccountBinding';
 import {
   HARDWARE_WALLET_CAPABILITY_MANIFEST_ID,
   HARDWARE_WALLET_CAPABILITY_ROWS,
@@ -39,6 +40,10 @@ import {
   normalizeMasterFingerprint,
   validateXpubResult,
 } from './identity';
+import {
+  HardwarePsbtCreateResponseSchema,
+  type HardwarePsbtCreateResponse,
+} from '@sanctuary/shared/schemas/bitcoinResponses';
 
 const log = createLogger('HardwareWalletService');
 
@@ -420,6 +425,8 @@ export class HardwareWalletService {
       throw new Error('No device connected');
     }
     assertHardwareActionEnabled(this.activeAdapter.type, 'sign');
+    const connectedFingerprint = this.activeAdapter.getDevice()?.fingerprint;
+    validatePsbtSigningRequest(request, connectedFingerprint);
     return this.activeAdapter.signPSBT(request);
   }
 
@@ -449,10 +456,10 @@ export class HardwareWalletService {
     }
 
     // Create PSBT via backend
-    const { psbt, inputPaths, intentId, intentDigest } = await createPSBTForSigning(tx);
+    const { psbt, signingContext, intentId, intentDigest } = await createPSBTForSigning(tx);
 
     // Sign with connected device
-    const signed = await this.signPSBT({ walletId: tx.walletId, psbt, inputPaths });
+    const signed = await this.signPSBT({ walletId: tx.walletId, psbt, signingContext });
 
     // Raw-only hardware results are rejected by broadcastSignedTransaction.
     const result = await broadcastSignedTransaction(
@@ -472,21 +479,13 @@ export class HardwareWalletService {
  */
 async function createPSBTForSigning(
   tx: TransactionForSigning
-): Promise<{ psbt: string; fee: number; inputPaths: string[]; intentId: string; intentDigest: string }> {
-  const response = await apiClient.post<{
-    psbt: string;
-    fee: number;
-    inputPaths: string[];
-    intentId: string;
-    intentDigest: string;
-  }>(`/wallets/${tx.walletId}/psbt/create`, {
+): Promise<HardwarePsbtCreateResponse> {
+  return apiClient.post<HardwarePsbtCreateResponse>(`/wallets/${tx.walletId}/psbt/create`, {
     recipients: [{ address: tx.recipient, amount: tx.amount }],
     feeRate: tx.feeRate,
     utxoIds: tx.utxos,
     changeAddress: tx.changeAddress,
-  });
-
-  return response;
+  }, { schema: HardwarePsbtCreateResponseSchema });
 }
 
 /**

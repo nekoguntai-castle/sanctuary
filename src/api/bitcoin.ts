@@ -5,16 +5,21 @@
  */
 
 import apiClient from './client';
+import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
 import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 import type { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import type { FeeEstimates } from '@sanctuary/shared/types/api';
 import type { BitcoinTransactionDetails, BlockHeader } from '../types';
-import { FeeEstimatesSchema } from '@sanctuary/shared/schemas/bitcoinResponses';
+import {
+  BatchTransactionResponseSchema,
+  CPFPTransactionResponseSchema,
+  FeeEstimatesSchema,
+  RBFTransactionResponseSchema,
+} from '@sanctuary/shared/schemas/bitcoinResponses';
 
 // Re-export types for convenience
 export type { BitcoinTransactionDetails, BlockHeader } from '../types';
 export type { FeeEstimates } from '@sanctuary/shared/types/api';
-import { RBFTransactionResponseSchema } from '@sanctuary/shared/schemas/bitcoinResponses';
 
 export interface HealthCheckResult {
   timestamp: string;
@@ -297,6 +302,7 @@ export interface RBFTransactionRequest {
 
 export interface RBFTransactionResponse {
   psbtBase64: string;
+  signingContext: PsbtSigningContext;
   intentId: string;
   intentDigest: string;
   fee: number;
@@ -316,6 +322,7 @@ export interface CPFPTransactionRequest {
 
 export interface CPFPTransactionResponse {
   psbtBase64: string;
+  signingContext: PsbtSigningContext;
   intentId: string;
   intentDigest: string;
   childFee: number;
@@ -339,6 +346,7 @@ export interface BatchTransactionRequest {
 
 export interface BatchTransactionResponse {
   psbtBase64: string;
+  signingContext: PsbtSigningContext;
   intentId: string;
   intentDigest: string;
   fee: number;
@@ -404,7 +412,9 @@ export async function createRBFTransaction(
 export async function createCPFPTransaction(
   data: CPFPTransactionRequest
 ): Promise<CPFPTransactionResponse> {
-  return apiClient.post<CPFPTransactionResponse>('/bitcoin/transaction/cpfp', data);
+  return apiClient.post<CPFPTransactionResponse>('/bitcoin/transaction/cpfp', data, {
+    schema: CPFPTransactionResponseSchema,
+  });
 }
 
 /**
@@ -413,7 +423,9 @@ export async function createCPFPTransaction(
 export async function createBatchTransaction(
   data: BatchTransactionRequest
 ): Promise<BatchTransactionResponse> {
-  return apiClient.post<BatchTransactionResponse>('/bitcoin/transaction/batch', data);
+  return apiClient.post<BatchTransactionResponse>('/bitcoin/transaction/batch', data, {
+    schema: BatchTransactionResponseSchema,
+  });
 }
 
 /**

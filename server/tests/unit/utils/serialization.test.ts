@@ -44,6 +44,7 @@ describe('Serialization Utilities', () => {
     inputPaths: ["m/84'/0'/0'/0/0"],
     signingIntentId: null,
     signingIntentDigest: null,
+    signingContext: null,
     signedDeviceIds: [],
     agentId: null,
     agentOperationalWalletId: null,

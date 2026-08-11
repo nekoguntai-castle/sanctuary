@@ -111,6 +111,10 @@ export const draftSchemas = {
       label: { type: 'string', nullable: true },
       memo: { type: 'string', nullable: true },
       psbtBase64: { type: 'string' },
+      signingContext: {
+        allOf: [{ $ref: '#/components/schemas/PsbtSigningContext' }],
+        nullable: true,
+      },
       signingIntentId: { type: 'string', nullable: true },
       signingIntentDigest: { type: 'string', pattern: '^[0-9a-f]{64}$', nullable: true },
       signedPsbtBase64: { type: 'string', nullable: true },

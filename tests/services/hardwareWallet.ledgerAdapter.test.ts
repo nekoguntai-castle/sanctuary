@@ -16,6 +16,7 @@ const {
   MockAppBtc,
   MockAppClient,
   mockPsbtFromBase64,
+  mockValidatePsbtSigningRequest,
 } = vi.hoisted(() => {
   const mockTransportCreate = vi.fn();
   const mockTransportClose = vi.fn();
@@ -26,6 +27,7 @@ const {
   const mockGetAppAndVersion = vi.fn();
   const mockGetExtendedPubkey = vi.fn();
   const mockPsbtFromBase64 = vi.fn();
+  const mockValidatePsbtSigningRequest = vi.fn();
 
   const MockAppBtc = vi.fn(function MockAppBtc(this: any) {
     this.getWalletXpub = (...args: unknown[]) => mockGetWalletXpub(...args);
@@ -55,8 +57,13 @@ const {
     MockAppBtc,
     MockAppClient,
     mockPsbtFromBase64,
+    mockValidatePsbtSigningRequest,
   };
 });
+
+vi.mock("../../src/services/hardwareWallet/psbtAccountBinding", () => ({
+  validatePsbtSigningRequest: mockValidatePsbtSigningRequest,
+}));
 
 vi.mock("@ledgerhq/hw-transport-webusb", () => ({
   default: {
@@ -145,6 +152,7 @@ describe("LedgerAdapter", () => {
     mockGetAppAndVersion.mockReset();
     mockGetExtendedPubkey.mockReset();
     mockPsbtFromBase64.mockReset();
+    mockValidatePsbtSigningRequest.mockReset();
     MockAppBtc.mockClear();
     MockAppClient.mockClear();
     setWebUsbEnv({ secure: true, withUsb: true });
@@ -164,6 +172,24 @@ describe("LedgerAdapter", () => {
       toBase64: () => "psbt",
       updateInput: vi.fn(),
       finalizeAllInputs: vi.fn(),
+    });
+    mockValidatePsbtSigningRequest.mockImplementation((request: any) => {
+      const psbt = mockPsbtFromBase64(request.psbt);
+      const isMultisig = request.inputPaths?.some((path: string) => path.includes("/48'"));
+      return {
+        psbt,
+        context: {
+          walletType: isMultisig ? 'multi_sig' : 'single_sig',
+          scriptType: 'native_segwit',
+          inputs: [],
+        },
+        connectedSigner: {
+          accountPath: "m/84'/0'/0'",
+          accountXpub: 'xpub-mock',
+        },
+        accountPath: "m/84'/0'/0'",
+        changeOutputIndexes: [],
+      };
     });
   });
 
@@ -700,7 +726,7 @@ describe("LedgerAdapter", () => {
         inputPaths: ["m/48'/0'/0'/2'/0/0"],
       }),
     ).rejects.toThrow("Ledger multisig USB signing is blocked in this release.");
-    expect(mockGetMasterFingerprint).not.toHaveBeenCalled();
+    expect(mockGetMasterFingerprint).toHaveBeenCalled();
     expect(mockGetExtendedPubkey).not.toHaveBeenCalled();
   });
 

@@ -1,82 +1,28 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import * as bitcoin from "bitcoinjs-lib";
 
-import { mockPrismaClient } from "../../../../mocks/prisma";
 import {
-  sampleUtxos,
-  sampleWallets,
   testnetAddresses,
   multisigKeyInfo,
 } from "../../../../fixtures/bitcoin";
 import { mockParseDescriptor } from "./transactionServiceBatchTestHarness";
 import { createBatchTransaction } from "../../../../../src/services/bitcoin/transactionService";
 import {
-  changeAddressRow,
   inputAddressRow,
   mockAddressFindManyByQuery,
 } from "../transactionServiceAddressMocks";
+import {
+  installBatchBindingFixture,
+  multisigBatchFixture,
+} from "./transactionServiceBatchBindingFixtures";
 
 export function registerCreateBatchTransactionMultisigContracts() {
   describe("createBatchTransaction - Multisig", () => {
     const walletId = "multisig-batch-wallet-id";
+    const fixture = multisigBatchFixture(walletId);
 
     beforeEach(() => {
-      // Set up multisig wallet mock with 2-of-2 configuration (using 2 valid keys)
-      mockPrismaClient.wallet.findUnique.mockResolvedValue({
-        ...sampleWallets.multiSig2of3,
-        id: walletId,
-        quorum: 2,
-        totalSigners: 2,
-        devices: [
-          {
-            device: {
-              id: "device-1",
-              fingerprint: "aabbccdd",
-              xpub: multisigKeyInfo[0].xpub,
-            },
-          },
-          {
-            device: {
-              id: "device-2",
-              fingerprint: "eeff0011",
-              xpub: multisigKeyInfo[1].xpub,
-            },
-          },
-        ],
-      });
-
-      // Set up UTXO mocks with multisig address
-      mockPrismaClient.uTXO.findMany.mockResolvedValue([
-        {
-          ...sampleUtxos[2], // 200000 sats
-          walletId,
-          // P2WSH scriptPubKey (32-byte witness program)
-          scriptPubKey: "0020" + "a".repeat(64),
-        },
-        {
-          ...sampleUtxos[0], // 100000 sats
-          walletId,
-          scriptPubKey: "0020" + "b".repeat(64),
-        },
-      ]);
-
-      mockAddressFindManyByQuery({
-        inputRows: [
-          inputAddressRow(walletId, 0, {
-            address: sampleUtxos[2].address,
-            derivationPath: "m/48'/1'/0'/2'/0/0",
-          }),
-          inputAddressRow(walletId, 1, {
-            address: sampleUtxos[0].address,
-            derivationPath: "m/48'/1'/0'/2'/0/1",
-          }),
-        ],
-        unusedRows: [
-          changeAddressRow(walletId, 0, {
-            derivationPath: "m/48'/1'/0'/2'/1/0",
-          }),
-        ],
-      });
+      installBatchBindingFixture(fixture);
     });
 
     it("should create batch PSBT with bip32Derivation for ALL cosigners", async () => {
@@ -89,6 +35,8 @@ export function registerCreateBatchTransactionMultisigContracts() {
 
       expect(result.psbt).toBeDefined();
       expect(result.psbtBase64).toBeDefined();
+      expect(result.signingContext.signers.map(signer => signer.signerIndex)).toEqual([0, 1]);
+      expect(result.signingContext.inputs[0].signerOrigins).toHaveLength(2);
 
       // Parse the PSBT to check bip32Derivation
       const psbt = bitcoin.Psbt.fromBase64(result.psbtBase64);
@@ -205,28 +153,7 @@ export function registerCreateBatchTransactionMultisigContracts() {
     });
 
     it("should include redeemScript for sh-wsh-sortedmulti batch descriptors", async () => {
-      mockPrismaClient.wallet.findUnique.mockResolvedValue({
-        ...sampleWallets.multiSig2of3,
-        id: walletId,
-        descriptor:
-          "sh(wsh(sortedmulti(2,[aabbccdd/48'/1'/0'/1']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*,[eeff0011/48'/1'/0'/1']tpubDC5FSnBiZDMmhiuCmWAYsLwgLYrrT9rAqvTySfuCCrgsWz8wxMXUS9Tb9iVMvcRbvFcAHGkMD5Kx8koh4GquNGNTfohfk7pgjhaPCdXpoba/0/*)))",
-        devices: [
-          {
-            device: {
-              id: "device-1",
-              fingerprint: "aabbccdd",
-              xpub: multisigKeyInfo[0].xpub,
-            },
-          },
-          {
-            device: {
-              id: "device-2",
-              fingerprint: "eeff0011",
-              xpub: multisigKeyInfo[1].xpub,
-            },
-          },
-        ],
-      });
+      installBatchBindingFixture(multisigBatchFixture(walletId, true));
 
       const outputs = [
         { address: testnetAddresses.nativeSegwit[0], amount: 50_000 },
@@ -242,19 +169,15 @@ export function registerCreateBatchTransactionMultisigContracts() {
       mockAddressFindManyByQuery({
         inputRows: [
           inputAddressRow(walletId, 0, {
-            address: sampleUtxos[2].address,
+            ...fixture.inputAddresses[0],
             derivationPath: "invalid-path",
           }),
           inputAddressRow(walletId, 1, {
-            address: sampleUtxos[0].address,
+            ...fixture.inputAddresses[1],
             derivationPath: "invalid-path",
           }),
         ],
-        unusedRows: [
-          changeAddressRow(walletId, 0, {
-            derivationPath: "m/48'/1'/0'/2'/1/0",
-          }),
-        ],
+        unusedRows: [fixture.changeAddress],
       });
 
       const outputs = [
@@ -269,40 +192,16 @@ export function registerCreateBatchTransactionMultisigContracts() {
     });
 
     it("should reject sh-wsh batch when witness script derivation fails", async () => {
-      mockPrismaClient.wallet.findUnique.mockResolvedValue({
-        ...sampleWallets.multiSig2of3,
-        id: walletId,
-        descriptor:
-          "sh(wsh(sortedmulti(2,[aabbccdd/48'/1'/0'/1']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*,[eeff0011/48'/1'/0'/1']tpubDC5FSnBiZDMmhiuCmWAYsLwgLYrrT9rAqvTySfuCCrgsWz8wxMXUS9Tb9iVMvcRbvFcAHGkMD5Kx8koh4GquNGNTfohfk7pgjhaPCdXpoba/0/*)))",
-        devices: [
-          {
-            device: {
-              id: "device-1",
-              fingerprint: "aabbccdd",
-              xpub: multisigKeyInfo[0].xpub,
-            },
-          },
-          {
-            device: {
-              id: "device-2",
-              fingerprint: "eeff0011",
-              xpub: multisigKeyInfo[1].xpub,
-            },
-          },
-        ],
-      });
+      const nestedFixture = multisigBatchFixture(walletId, true);
+      installBatchBindingFixture(nestedFixture);
       mockAddressFindManyByQuery({
         inputRows: [
           inputAddressRow(walletId, 0, {
-            address: sampleUtxos[2].address,
+            ...nestedFixture.inputAddresses[0],
             derivationPath: "invalid-path",
           }),
         ],
-        unusedRows: [
-          changeAddressRow(walletId, 0, {
-            derivationPath: "m/48'/1'/0'/2'/1/0",
-          }),
-        ],
+        unusedRows: [nestedFixture.changeAddress],
       });
 
       const outputs = [

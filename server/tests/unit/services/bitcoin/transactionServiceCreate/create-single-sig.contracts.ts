@@ -19,7 +19,10 @@ import {
 } from "../../../../../src/services/bitcoin/transactionService";
 import * as asyncUtils from "../../../../../src/utils/async";
 import * as nodeClient from "../../../../../src/services/bitcoin/nodeClient";
-import { mockParseDescriptor } from "./transactionServiceCreateTestHarness";
+import {
+  mockBindPsbtAccount,
+  singleSigSigningWallet,
+} from "./transactionServiceCreateTestHarness";
 import {
   changeAddressRow,
   inputAddressRow,
@@ -34,11 +37,10 @@ export function registerTransactionServiceCreateSingleSigTests(): void {
 
     beforeEach(() => {
       // Set up wallet mock
-      mockPrismaClient.wallet.findUnique.mockResolvedValue({
+      mockPrismaClient.wallet.findUnique.mockResolvedValue(singleSigSigningWallet({
         ...sampleWallets.singleSigNativeSegwit,
         id: walletId,
-        devices: [],
-      });
+      }));
 
       // Set up UTXO mocks
       mockPrismaClient.uTXO.findMany.mockResolvedValue([
@@ -75,6 +77,13 @@ export function registerTransactionServiceCreateSingleSigTests(): void {
       expect(result.totalInput).toBeGreaterThanOrEqual(amount + result.fee);
       expect(result.utxos.length).toBeGreaterThan(0);
       expect(result.inputPaths.length).toBe(result.utxos.length);
+      expect(result.signingContext).toMatchObject({
+        version: 1,
+        walletId,
+        canonicalPolicyId: 'single-sig-native-segwit-bip84-v1',
+      });
+      expect(mockBindPsbtAccount).toHaveBeenCalledOnce();
+      expect(mockBindPsbtAccount).toHaveBeenCalledWith(walletId, result.psbt);
     });
 
     it("should throw error for invalid recipient address", async () => {
@@ -94,12 +103,11 @@ export function registerTransactionServiceCreateSingleSigTests(): void {
     });
 
     it("should treat non-testnet wallets as mainnet during recipient validation", async () => {
-      mockPrismaClient.wallet.findUnique.mockResolvedValue({
+      mockPrismaClient.wallet.findUnique.mockResolvedValue(singleSigSigningWallet({
         ...sampleWallets.singleSigNativeSegwit,
         id: walletId,
         network: "mainnet",
-        devices: [],
-      });
+      }));
 
       await expect(
         createTransaction(walletId, recipient, 50_000, 10),
@@ -226,6 +234,10 @@ export function registerTransactionServiceCreateSingleSigTests(): void {
           scriptPubKey: "0014" + "a".repeat(40),
         },
       ]);
+      mockAddressFindManyByQuery({
+        inputRows: [inputAddressRow(walletId, 0, { address: sampleUtxos[0].address })],
+        unusedRows: [changeAddressRow(walletId)],
+      });
 
       const result = await createTransaction(walletId, recipient, 10_000, 5);
 
@@ -339,6 +351,10 @@ export function registerTransactionServiceCreateSingleSigTests(): void {
           scriptPubKey: "0014" + "a".repeat(40),
         },
       ]);
+      mockAddressFindManyByQuery({
+        inputRows: [inputAddressRow(walletId, 0, { address: sampleUtxos[0].address })],
+        unusedRows: [changeAddressRow(walletId)],
+      });
 
       const result = await createTransaction(walletId, recipient, 8_300, 5, {
         decoyOutputs: { enabled: true, count: 4 },
@@ -350,21 +366,10 @@ export function registerTransactionServiceCreateSingleSigTests(): void {
     });
 
     it("should derive single-sig BIP32 info from primary device xpub", async () => {
-      mockPrismaClient.wallet.findUnique.mockResolvedValue({
+      mockPrismaClient.wallet.findUnique.mockResolvedValue(singleSigSigningWallet({
         ...sampleWallets.singleSigNativeSegwit,
         id: walletId,
-        descriptor: null,
-        fingerprint: null,
-        devices: [
-          {
-            device: {
-              id: "primary-device",
-              fingerprint: "aabbccdd",
-              xpub: "tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M",
-            },
-          },
-        ],
-      });
+      }));
 
       const result = await createTransaction(walletId, recipient, 50_000, 10);
       const psbt = bitcoin.Psbt.fromBase64(result.psbtBase64);
@@ -377,7 +382,7 @@ export function registerTransactionServiceCreateSingleSigTests(): void {
       ).toBe("aabbccdd");
     });
 
-    it("should use descriptor xpub and fingerprint fallback when device metadata is absent", async () => {
+    it("should reject descriptor fallback when immutable device metadata is absent", async () => {
       mockPrismaClient.wallet.findUnique.mockResolvedValue({
         ...sampleWallets.singleSigNativeSegwit,
         id: walletId,
@@ -387,36 +392,26 @@ export function registerTransactionServiceCreateSingleSigTests(): void {
           "wpkh([aabbccdd/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*)",
       });
 
-      const result = await createTransaction(walletId, recipient, 50_000, 10);
-      const psbt = bitcoin.Psbt.fromBase64(result.psbtBase64);
-
-      expect(psbt.data.inputs[0].bip32Derivation?.length).toBe(1);
-      expect(
-        Buffer.from(
-          psbt.data.inputs[0].bip32Derivation?.[0].masterFingerprint!,
-        ).toString("hex"),
-      ).toBe("aabbccdd");
+      await expect(
+        createTransaction(walletId, recipient, 50_000, 10),
+      ).rejects.toThrow("immutable signer snapshot is missing");
     });
 
-    it("should continue when single-sig descriptor parsing fails", async () => {
-      mockPrismaClient.wallet.findUnique.mockResolvedValue({
+    it("should reject when single-sig descriptor binding fails", async () => {
+      mockPrismaClient.wallet.findUnique.mockResolvedValue(singleSigSigningWallet({
         ...sampleWallets.singleSigNativeSegwit,
         id: walletId,
-        devices: [],
-        fingerprint: "aabbccdd",
-        descriptor: "wpkh([aabbccdd/84'/1'/0']invalid/0/*)",
-      });
-      mockParseDescriptor.mockImplementationOnce(() => {
-        throw new Error("descriptor parse failed");
-      });
+      }));
+      mockBindPsbtAccount.mockRejectedValueOnce(
+        new Error("PSBT account binding failed: descriptor parse failed"),
+      );
 
-      const result = await createTransaction(walletId, recipient, 50_000, 10);
-      const psbt = bitcoin.Psbt.fromBase64(result.psbtBase64);
-
-      expect(psbt.data.inputs[0].bip32Derivation).toBeUndefined();
+      await expect(
+        createTransaction(walletId, recipient, 50_000, 10),
+      ).rejects.toThrow("descriptor parse failed");
     });
 
-    it("should skip single-sig BIP32 derivation when device has no fingerprint/xpub and no wallet fallback", async () => {
+    it("should reject incomplete immutable single-sig device metadata", async () => {
       mockPrismaClient.wallet.findUnique.mockResolvedValue({
         ...sampleWallets.singleSigNativeSegwit,
         id: walletId,
@@ -433,10 +428,9 @@ export function registerTransactionServiceCreateSingleSigTests(): void {
         ],
       });
 
-      const result = await createTransaction(walletId, recipient, 50_000, 10);
-      const psbt = bitcoin.Psbt.fromBase64(result.psbtBase64);
-
-      expect(psbt.data.inputs[0].bip32Derivation).toBeUndefined();
+      await expect(
+        createTransaction(walletId, recipient, 50_000, 10),
+      ).rejects.toThrow("immutable signer snapshot is incomplete");
     });
 
     it("should reject change output creation when only receive-chain addresses are unused", async () => {
@@ -452,43 +446,31 @@ export function registerTransactionServiceCreateSingleSigTests(): void {
       ).rejects.toThrow("No change address available");
     });
 
-    it("should continue when single-sig account xpub parsing fails", async () => {
-      mockPrismaClient.wallet.findUnique.mockResolvedValue({
+    it("should reject when the immutable account xpub cannot be parsed", async () => {
+      const validWallet = singleSigSigningWallet({
         ...sampleWallets.singleSigNativeSegwit,
         id: walletId,
-        descriptor: null,
-        fingerprint: "aabbccdd",
-        devices: [
-          {
-            device: {
-              id: "bad-xpub-device",
-              fingerprint: "aabbccdd",
-              xpub: "not-a-valid-xpub",
-            },
-          },
-        ],
+      });
+      const [validLink] = validWallet.devices as Array<Record<string, unknown>>;
+      mockPrismaClient.wallet.findUnique.mockResolvedValue({
+        ...validWallet,
+        devices: [{
+          ...validLink,
+          signerXpub: "not-a-valid-xpub",
+          device: { id: "bad-xpub-device", fingerprint: "aabbccdd", xpub: "not-a-valid-xpub" },
+        }],
       });
 
-      const result = await createTransaction(walletId, recipient, 50_000, 10);
-      expect(result.psbtBase64).toBeDefined();
+      await expect(
+        createTransaction(walletId, recipient, 50_000, 10),
+      ).rejects.toThrow("missing BIP32 derivation metadata");
     });
 
     it("should derive BIP32 with non-hardened leading path segments", async () => {
-      mockPrismaClient.wallet.findUnique.mockResolvedValue({
+      mockPrismaClient.wallet.findUnique.mockResolvedValue(singleSigSigningWallet({
         ...sampleWallets.singleSigNativeSegwit,
         id: walletId,
-        descriptor: null,
-        fingerprint: null,
-        devices: [
-          {
-            device: {
-              id: "primary-device",
-              fingerprint: "aabbccdd",
-              xpub: "tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M",
-            },
-          },
-        ],
-      });
+      }));
       mockAddressFindManyByQuery({
         inputRows: [
           inputAddressRow(walletId, 0, {
@@ -505,22 +487,11 @@ export function registerTransactionServiceCreateSingleSigTests(): void {
       expect(psbt.data.inputs[0].bip32Derivation?.[0].path).toBe("m/0/1/2/3/4");
     });
 
-    it("should continue when single-sig input pubkey derivation fails", async () => {
-      mockPrismaClient.wallet.findUnique.mockResolvedValue({
+    it("should reject when single-sig input pubkey derivation fails", async () => {
+      mockPrismaClient.wallet.findUnique.mockResolvedValue(singleSigSigningWallet({
         ...sampleWallets.singleSigNativeSegwit,
         id: walletId,
-        descriptor: null,
-        fingerprint: "aabbccdd",
-        devices: [
-          {
-            device: {
-              id: "primary-device",
-              fingerprint: "aabbccdd",
-              xpub: "tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M",
-            },
-          },
-        ],
-      });
+      }));
       mockAddressFindManyByQuery({
         inputRows: [
           inputAddressRow(walletId, 0, {
@@ -531,10 +502,9 @@ export function registerTransactionServiceCreateSingleSigTests(): void {
         unusedRows: [changeAddressRow(walletId)],
       });
 
-      const result = await createTransaction(walletId, recipient, 50_000, 10);
-      const psbt = bitcoin.Psbt.fromBase64(result.psbtBase64);
-
-      expect(psbt.data.inputs[0].bip32Derivation).toBeUndefined();
+      await expect(
+        createTransaction(walletId, recipient, 50_000, 10),
+      ).rejects.toThrow("single-sig BIP32 derivation failed");
     });
   });
 }

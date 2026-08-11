@@ -30,6 +30,7 @@ import {
 } from './psbtConstruction';
 import { findChangeAddress } from './outputBuilder';
 import type { TransactionOutput, CreateBatchTransactionResult } from './types';
+import { bindPsbtAccount } from '../psbtAccountBinding';
 
 const log = createLogger('BITCOIN:SVC_TX_BATCH');
 
@@ -133,6 +134,7 @@ export async function createBatchTransaction(
 
   const totalInput = utxos.reduce((sum, u) => sum + Number(u.amount), 0);
   const totalOutput = finalOutputs.reduce((sum, o) => sum + o.amount, 0) + (changeAmount >= dustThreshold ? changeAmount : 0);
+  const signingContext = await bindPsbtAccount(walletId, psbt);
 
   return {
     psbt,
@@ -145,6 +147,7 @@ export async function createBatchTransaction(
     utxos: utxos.map(u => ({ txid: u.txid, vout: u.vout, address: u.address, amount: Number(u.amount) })),
     inputPaths,
     outputs: finalOutputs,
+    signingContext,
   };
 }
 

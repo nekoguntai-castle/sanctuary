@@ -83,6 +83,9 @@ const buildDraftRequest = (
   label?: string
 ): CreateDraftRequest => {
   const usedUtxoIds = getUsedUtxoIds(currentTxData);
+  if (!currentTxData.signingContext) {
+    throw new Error('This transaction has no server-issued signing context and cannot be saved for later signing');
+  }
 
   return {
     recipient: state.outputs[0].address,

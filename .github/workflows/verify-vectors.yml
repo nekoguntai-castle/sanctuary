@@ -84,6 +84,28 @@ jobs:
             ${{ github.workspace }}/scripts/ci/retry-command.sh "vector prisma generate" npx prisma generate
           '
 
+      - name: Prove PSBT account-binding invariants by mutation
+        timeout-minutes: 8
+        run: |
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/psbt-account-binding-mutation.log" \
+            ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain bash -c '
+              set -euo pipefail
+              npm run test:mutation:psbt-account-binding:browser
+              npm --prefix server run test:mutation:psbt-account-binding
+              node scripts/ci/check-wallet-safety-mutation-map.mjs
+            '
+
+      - name: Upload PSBT account-binding mutation reports
+        if: always()
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: psbt-account-binding-mutation-reports
+          path: |
+            reports/mutation/psbt-account-binding-browser.json
+            server/reports/mutation/psbt-account-binding-server.json
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Run cross-implementation address verifier
         timeout-minutes: 15
         working-directory: scripts/verify-addresses

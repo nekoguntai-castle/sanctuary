@@ -373,6 +373,7 @@ export async function submitAgentFundingDraft(
         network: walletNetwork,
         source: 'agent',
         unsignedPsbtBase64: txData.psbtBase64,
+        signingContext: txData.signingContext,
       });
 
       const draftData: AgentDraftCreatePayload = {

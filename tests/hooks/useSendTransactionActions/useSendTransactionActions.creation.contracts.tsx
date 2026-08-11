@@ -282,11 +282,16 @@ export const registerUseSendTransactionActionsCreationContracts = () => {
     });
 
     it('attempts payjoin and updates status on success', async () => {
+      const replacementContext = {
+        ...baseTxData.signingContext,
+        unsignedTransactionDigest: 'c'.repeat(64),
+      };
       mocks.attemptPayjoin.mockResolvedValue({
         success: true,
         proposalPsbt: 'payjoin-proposal-psbt',
         intentId: 'intent-2',
         intentDigest: 'b'.repeat(64),
+        signingContext: replacementContext,
       } as any);
 
       const state = createState({
@@ -303,6 +308,29 @@ export const registerUseSendTransactionActionsCreationContracts = () => {
       expect(mocks.attemptPayjoin).toHaveBeenCalled();
       expect(result.current.payjoinStatus).toBe('success');
       expect(result.current.unsignedPsbt).toBe('payjoin-proposal-psbt');
+      expect(result.current.txData?.signingContext).toEqual(replacementContext);
+    });
+
+    it('rejects a successful Payjoin response without replacement signing context', async () => {
+      mocks.attemptPayjoin.mockResolvedValue({
+        success: true,
+        proposalPsbt: 'unbound-payjoin-psbt',
+        intentId: 'intent-2',
+        intentDigest: 'b'.repeat(64),
+      } as any);
+      const state = createState({
+        outputs: [{ address: 'bc1qrecipient', amount: '10000', sendMax: false }],
+        payjoinUrl: 'https://merchant.example/payjoin',
+      });
+      const { result } = renderSendTransactionActions({ state });
+
+      await act(async () => {
+        await result.current.createTransaction();
+      });
+
+      expect(result.current.payjoinStatus).toBe('failed');
+      expect(result.current.unsignedPsbt).toBe(baseTxData.psbtBase64);
+      expect(result.current.txData?.signingContext).toEqual(baseTxData.signingContext);
     });
 
     it('ignores a Payjoin completion after the form changes', async () => {

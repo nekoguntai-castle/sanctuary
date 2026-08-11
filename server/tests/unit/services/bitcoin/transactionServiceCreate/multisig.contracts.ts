@@ -19,7 +19,11 @@ import {
 } from "../../../../../src/services/bitcoin/transactionService";
 import * as asyncUtils from "../../../../../src/utils/async";
 import * as nodeClient from "../../../../../src/services/bitcoin/nodeClient";
-import { mockParseDescriptor } from "./transactionServiceCreateTestHarness";
+import {
+  mockParseDescriptor,
+  multisigSigningWallet,
+  singleSigSigningWallet,
+} from "./transactionServiceCreateTestHarness";
 import {
   changeAddressRow,
   inputAddressRow,
@@ -32,11 +36,10 @@ export function registerTransactionServiceMultisigTests(): void {
     const recipient = testnetAddresses.nativeSegwit[0];
 
     beforeEach(() => {
-      mockPrismaClient.wallet.findUnique.mockResolvedValue({
+      mockPrismaClient.wallet.findUnique.mockResolvedValue(singleSigSigningWallet({
         ...sampleWallets.singleSigNativeSegwit,
         id: walletId,
-        devices: [],
-      });
+      }));
       mockPrismaClient.uTXO.findMany.mockResolvedValue([
         {
           ...sampleUtxos[2],
@@ -62,36 +65,18 @@ export function registerTransactionServiceMultisigTests(): void {
   describe("createTransaction - Multisig", () => {
     const walletId = "multisig-wallet-id";
     const recipient = testnetAddresses.nativeSegwit[0];
+    const signingKeys = multisigKeyInfo.slice(0, 2);
+    const descriptor =
+      "wsh(sortedmulti(2,[aabbccdd/48'/1'/0'/2']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*,[eeff0011/48'/1'/0'/2']tpubDC5FSnBiZDMmhiuCmWAYsLwgLYrrT9rAqvTySfuCCrgsWz8wxMXUS9Tb9iVMvcRbvFcAHGkMD5Kx8koh4GquNGNTfohfk7pgjhaPCdXpoba/0/*))";
 
     beforeEach(() => {
       // Set up multisig wallet mock
-      mockPrismaClient.wallet.findUnique.mockResolvedValue({
+      mockPrismaClient.wallet.findUnique.mockResolvedValue(multisigSigningWallet({
         ...sampleWallets.multiSig2of3,
         id: walletId,
-        devices: [
-          {
-            device: {
-              id: "device-1",
-              fingerprint: "aabbccdd",
-              xpub: multisigKeyInfo[0].xpub,
-            },
-          },
-          {
-            device: {
-              id: "device-2",
-              fingerprint: "eeff0011",
-              xpub: multisigKeyInfo[1].xpub,
-            },
-          },
-          {
-            device: {
-              id: "device-3",
-              fingerprint: "22334455",
-              xpub: multisigKeyInfo[2].xpub,
-            },
-          },
-        ],
-      });
+        descriptor,
+        totalSigners: 2,
+      }, signingKeys));
 
       // Set up UTXO mocks with multisig address
       mockPrismaClient.uTXO.findMany.mockResolvedValue([
@@ -136,17 +121,17 @@ export function registerTransactionServiceMultisigTests(): void {
       const psbt = bitcoin.Psbt.fromBase64(result.psbtBase64);
       const input = psbt.data.inputs[0];
 
-      // Multisig should have bip32Derivation entries for cosigners (at least 2 for 2-of-3)
+      // Multisig must carry an origin for every signer in the immutable policy.
       expect(input.bip32Derivation).toBeDefined();
-      expect(input.bip32Derivation!.length).toBeGreaterThanOrEqual(2);
+      expect(input.bip32Derivation).toHaveLength(signingKeys.length);
 
       // Verify fingerprints are valid hex strings
       const fingerprints = input.bip32Derivation!.map((d) =>
         Buffer.from(d.masterFingerprint).toString("hex"),
       );
-      // At least the first two keys should be present
-      expect(fingerprints).toContain("aabbccdd");
-      expect(fingerprints).toContain("eeff0011");
+      expect([...fingerprints].sort()).toEqual(
+        signingKeys.map((key) => key.fingerprint).sort(),
+      );
     });
 
     it("should use BIP-48 paths for multisig bip32Derivation", async () => {
@@ -192,28 +177,13 @@ export function registerTransactionServiceMultisigTests(): void {
     });
 
     it("should add redeemScript for sh-wsh-sortedmulti descriptors", async () => {
-      mockPrismaClient.wallet.findUnique.mockResolvedValue({
+      mockPrismaClient.wallet.findUnique.mockResolvedValue(multisigSigningWallet({
         ...sampleWallets.multiSig2of3,
         id: walletId,
+      }, multisigKeyInfo.slice(0, 2), {
         descriptor:
           "sh(wsh(sortedmulti(2,[aabbccdd/48'/1'/0'/1']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*,[eeff0011/48'/1'/0'/1']tpubDC5FSnBiZDMmhiuCmWAYsLwgLYrrT9rAqvTySfuCCrgsWz8wxMXUS9Tb9iVMvcRbvFcAHGkMD5Kx8koh4GquNGNTfohfk7pgjhaPCdXpoba/0/*)))",
-        devices: [
-          {
-            device: {
-              id: "device-1",
-              fingerprint: "aabbccdd",
-              xpub: multisigKeyInfo[0].xpub,
-            },
-          },
-          {
-            device: {
-              id: "device-2",
-              fingerprint: "eeff0011",
-              xpub: multisigKeyInfo[1].xpub,
-            },
-          },
-        ],
-      });
+      }));
 
       const result = await createTransaction(walletId, recipient, 50_000, 10);
       const psbt = bitcoin.Psbt.fromBase64(result.psbtBase64);
@@ -291,28 +261,13 @@ export function registerTransactionServiceMultisigTests(): void {
     });
 
     it("should reject spend creation when sh-wsh witness script derivation fails", async () => {
-      mockPrismaClient.wallet.findUnique.mockResolvedValue({
+      mockPrismaClient.wallet.findUnique.mockResolvedValue(multisigSigningWallet({
         ...sampleWallets.multiSig2of3,
         id: walletId,
+      }, multisigKeyInfo.slice(0, 2), {
         descriptor:
           "sh(wsh(sortedmulti(2,[aabbccdd/48'/1'/0'/1']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*,[eeff0011/48'/1'/0'/1']tpubDC5FSnBiZDMmhiuCmWAYsLwgLYrrT9rAqvTySfuCCrgsWz8wxMXUS9Tb9iVMvcRbvFcAHGkMD5Kx8koh4GquNGNTfohfk7pgjhaPCdXpoba/0/*)))",
-        devices: [
-          {
-            device: {
-              id: "device-1",
-              fingerprint: "aabbccdd",
-              xpub: multisigKeyInfo[0].xpub,
-            },
-          },
-          {
-            device: {
-              id: "device-2",
-              fingerprint: "eeff0011",
-              xpub: multisigKeyInfo[1].xpub,
-            },
-          },
-        ],
-      });
+      }));
       mockAddressFindManyByQuery({
         inputRows: [
           inputAddressRow(walletId, 0, {

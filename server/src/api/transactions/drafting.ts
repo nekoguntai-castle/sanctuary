@@ -132,6 +132,7 @@ router.post('/wallets/:walletId/transactions/create', requireWalletAccess('edit'
     network,
     source: 'standard',
     unsignedPsbtBase64: txData.psbtBase64,
+    signingContext: txData.signingContext,
   });
 
   log.debug('Create transaction response', {
@@ -140,6 +141,7 @@ router.post('/wallets/:walletId/transactions/create', requireWalletAccess('edit'
     effectiveAmount: txData.effectiveAmount,
     decoyOutputsCount: txData.decoyOutputs?.length || 0,
     decoyOutputs: txData.decoyOutputs,
+    signingContext: txData.signingContext,
   });
 
   res.json({
@@ -217,6 +219,7 @@ router.post('/wallets/:walletId/transactions/batch', requireWalletAccess('edit')
     network,
     source: 'batch',
     unsignedPsbtBase64: txData.psbtBase64,
+    signingContext: txData.signingContext,
   });
 
   res.json({
@@ -307,6 +310,7 @@ router.post('/wallets/:walletId/psbt/create', requireWalletAccess('edit'), async
     network,
     source: 'hardware',
     unsignedPsbtBase64: txData.psbtBase64,
+    signingContext: txData.signingContext,
   });
 
   res.json({

@@ -7,12 +7,18 @@
  */
 
 import * as bitcoin from 'bitcoinjs-lib';
-import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
+import {
+  parseWalletScriptType,
+  WalletScriptType,
+} from '@sanctuary/shared/constants/walletIdentity';
 import { getNetwork, estimateTransactionSize } from '../utils';
 import { getNodeClient } from '../nodeClient';
 import type { BitcoinNetwork } from '../networks';
-import { utxoRepository } from '../../../repositories';
+import { normalizeLegacyBitcoinNetwork } from '../networks';
+import { utxoRepository, walletRepository } from '../../../repositories';
 import { getDustThreshold } from './shared';
+import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
+import { bindPsbtAccount } from '../psbtAccountBinding';
 
 /**
  * Calculate CPFP fee to achieve target fee rate
@@ -68,6 +74,7 @@ export async function createCPFPTransaction(
   childFeeRate: number;
   parentFeeRate: number;
   effectiveFeeRate: number;
+  signingContext: PsbtSigningContext;
 }> {
   // Use nodeClient which respects poolEnabled setting from node_configs
   const client = await getNodeClient(network);
@@ -89,6 +96,9 @@ export async function createCPFPTransaction(
   if (utxo.spent) {
     throw new Error('UTXO is already spent');
   }
+  const wallet = await walletRepository.findByIdWithSigningDevices(walletId);
+  const walletScriptType = wallet && parseWalletScriptType(wallet.scriptType);
+  if (!wallet || !walletScriptType) throw new Error('Wallet script identity is unavailable');
 
   // Calculate parent fee rate
   let parentInputValue = 0;
@@ -106,7 +116,7 @@ export async function createCPFPTransaction(
   const parentFeeRate = parentFee / parentVsize;
 
   // Estimate child transaction size (1 input, 1 output)
-  const childTxSize = estimateTransactionSize(1, 1, WalletScriptType.NATIVE_SEGWIT);
+  const childTxSize = estimateTransactionSize(1, 1, walletScriptType);
 
   // Calculate CPFP fees
   const cpfpCalc = calculateCPFPFee(
@@ -135,19 +145,26 @@ export async function createCPFPTransaction(
   const networkObj = getNetwork(network);
   const psbt = new bitcoin.Psbt({ network: networkObj });
 
-  psbt.addInput({
+  const input = {
     hash: parentTxid,
     index: parentVout,
-    witnessUtxo: {
+    ...(walletScriptType === WalletScriptType.LEGACY ? {
+      nonWitnessUtxo: Buffer.from(parentTx.hex, 'hex'),
+    } : { witnessUtxo: {
       script: Buffer.from(utxo.scriptPubKey, 'hex'),
       value: BigInt(utxoValue),
-    },
-  });
+    } }),
+  };
+  psbt.addInput(input);
 
   psbt.addOutput({
     address: recipientAddress,
     value: BigInt(outputValue),
   });
+  const signingContext = await bindPsbtAccount(walletId, psbt);
+  if (signingContext.network !== normalizeLegacyBitcoinNetwork(network, 'mainnet')) {
+    throw new Error('PSBT account binding failed: CPFP network does not match wallet');
+  }
 
   return {
     psbt,
@@ -155,5 +172,6 @@ export async function createCPFPTransaction(
     childFeeRate: cpfpCalc.childFeeRate,
     parentFeeRate,
     effectiveFeeRate: cpfpCalc.effectiveFeeRate,
+    signingContext,
   };
 }

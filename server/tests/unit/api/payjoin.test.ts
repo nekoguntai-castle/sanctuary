@@ -7,6 +7,7 @@
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import express, { Express, Request, Response, NextFunction } from 'express';
 import request from 'supertest';
+import * as bitcoin from 'bitcoinjs-lib';
 
 // Mock config
 vi.mock('../../../src/config', () => ({
@@ -86,6 +87,41 @@ vi.mock('../../../src/services/bitcoin/signingIntent/canonical', () => ({
   unsignedPsbtSha256: vi.fn().mockReturnValue('psbt-hash'),
   derivePayjoinInputRoles: vi.fn().mockReturnValue(['wallet']),
 }));
+vi.mock('../../../src/services/bitcoin/psbtAccountBinding', () => ({
+  bindPsbtAccount: vi.fn().mockResolvedValue({
+    version: 1,
+    walletId: 'wallet-123',
+    network: 'mainnet',
+    walletType: 'single_sig',
+    scriptType: 'native_segwit',
+    canonicalPolicyId: 'single-sig-native-segwit-bip84-v1',
+    canonicalPolicyVersion: 1,
+    descriptorDigest: 'c'.repeat(64),
+    unsignedTransactionDigest: 'd'.repeat(64),
+    signers: [{
+      signerIndex: 0,
+      deviceId: 'device-1',
+      deviceAccountId: 'account-1',
+      masterFingerprint: 'aabbccdd',
+      accountPath: "m/84'/0'/0'",
+      accountXpub: 'xpub-bound-account',
+    }],
+    inputs: [{
+      inputIndex: 0,
+      txid: 'e'.repeat(64),
+      vout: 0,
+      amountSats: '10000',
+      scriptPubKey: `0014${'aa'.repeat(20)}`,
+      addressPath: "m/84'/0'/0'/0/0",
+      signerOrigins: [{
+        masterFingerprint: 'aabbccdd',
+        path: "m/84'/0'/0'/0/0",
+        pubkey: `02${'11'.repeat(32)}`,
+      }],
+    }],
+    changeOutputs: [],
+  }),
+}));
 
 // Mock authenticate middleware
 vi.mock('../../../src/middleware/auth', () => ({
@@ -124,7 +160,11 @@ import {
 } from '../../../src/services/payjoinService';
 import { assertFreshReceiveAddressSafeForDisplay } from '../../../src/services/addressDisplaySafety';
 import { loadSigningIntent } from '../../../src/services/bitcoin/signingIntent/service';
-import { unsignedPsbtSha256 } from '../../../src/services/bitcoin/signingIntent/canonical';
+import {
+  derivePayjoinInputRoles,
+  unsignedPsbtSha256,
+} from '../../../src/services/bitcoin/signingIntent/canonical';
+import { bindPsbtAccount } from '../../../src/services/bitcoin/psbtAccountBinding';
 import {
   generateBip21Uri as realGenerateBip21Uri,
   parseBip21Uri as realParseBip21Uri,
@@ -150,15 +190,29 @@ const mockAssertFreshReceiveAddressSafeForDisplay = vi.mocked(
 const mockAttemptPayjoinSend = attemptPayjoinSend as ReturnType<typeof vi.fn>;
 const mockLoadSigningIntent = vi.mocked(loadSigningIntent);
 const mockUnsignedPsbtSha256 = vi.mocked(unsignedPsbtSha256);
+const mockDerivePayjoinInputRoles = vi.mocked(derivePayjoinInputRoles);
+const mockBindPsbtAccount = vi.mocked(bindPsbtAccount);
 
 // Test constants
 const TEST_ADDRESS = 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx';
 const TEST_ADDRESS_ID = 'addr-123';
 const TEST_WALLET_ID = 'wallet-123';
 const VALID_PSBT_BASE64 =
-  'cHNidP8BAFICAAAAASaBcTce3/KF6Tig7cez53bDXJKhN6KHaGvkpKt8vp1WAAAAAP3///8BrBIAAAAAAAAWABTYQzl7cYbXYS5N0Wj6eS5qCeM5GgAAAAAAAA==';
+  'cHNidP8BAFICAAAAARERERERERERERERERERERERERERERERERERERERERERAAAAAAD/////AYgTAAAAAAAAFgAUIiIiIiIiIiIiIiIiIiIiIiIiIiIAAAAAAAAA';
 const PROPOSAL_PSBT_BASE64 =
-  'cHNidP8BAHECAAAAASaBcTce3/KF6Tig7cez53bDXJKhN6KHaGvkpKt8vp1WAAAAAP3///8CrBIAAAAAAAAWABTYQzl7cYbXYS5N0Wj6eS5qCeM5GhAnAAAAAAAAFgAUdpn98MqGxRdMa7mGg0HhZKSL0BMAAAAAAAAA';
+  'cHNidP8BAHECAAAAARERERERERERERERERERERERERERERERERERERERERERAAAAAAD/////AqAPAAAAAAAAFgAUIiIiIiIiIiIiIiIiIiIiIiIiIiKEAwAAAAAAABYAFCIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAAAAAAA=';
+const payjoinProposalWithPeerInput = (): string => {
+  const proposal = bitcoin.Psbt.fromBase64(PROPOSAL_PSBT_BASE64);
+  proposal.addInput({
+    hash: '55'.repeat(32),
+    index: 1,
+    witnessUtxo: {
+      script: Buffer.from(`0014${'66'.repeat(20)}`, 'hex'),
+      value: 2_000n,
+    },
+  });
+  return proposal.toBase64();
+};
 const ATTEMPT_AUTH = {
   walletId: TEST_WALLET_ID,
   intentId: 'intent-1',
@@ -900,6 +954,32 @@ describe('Payjoin API Routes', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.proposalPsbt).toBe(PROPOSAL_PSBT_BASE64);
       expect(res.body.isPayjoin).toBe(true);
+    });
+
+    it('binds only Payjoin peer inputs as foreign before issuing the replacement intent', async () => {
+      const proposalPsbt = payjoinProposalWithPeerInput();
+      mockAttemptPayjoinSend.mockResolvedValue({
+        success: true,
+        proposalPsbt,
+        isPayjoin: true,
+      });
+      mockDerivePayjoinInputRoles.mockReturnValueOnce(['wallet', 'payjoin_peer']);
+
+      const res = await request(app)
+        .post('/api/v1/payjoin/attempt')
+        .set('Authorization', 'Bearer test-token')
+        .send({
+          ...ATTEMPT_AUTH,
+          psbt: VALID_PSBT_BASE64,
+          payjoinUrl: 'https://example.com/pj',
+        });
+
+      expect(res.status).toBe(200);
+      expect(mockBindPsbtAccount).toHaveBeenCalledWith(
+        TEST_WALLET_ID,
+        expect.objectContaining({ inputCount: 2 }),
+        { foreignInputIndexes: [1] },
+      );
     });
 
     it('should return failure response when Payjoin fails', async () => {

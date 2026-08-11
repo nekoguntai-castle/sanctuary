@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { FeeEstimatesSchema, RBFTransactionResponseSchema } from '../../shared/schemas/bitcoinResponses';
+import {
+  BatchTransactionResponseSchema,
+  CPFPTransactionResponseSchema,
+  FeeEstimatesSchema,
+  HardwarePsbtCreateResponseSchema,
+  PayjoinAttemptResponseSchema,
+  RBFTransactionResponseSchema,
+} from '../../shared/schemas/bitcoinResponses';
+import { testPsbtSigningContext } from '../fixtures/psbtSigningContext';
 
 const valid = { fastest: 18, halfHour: 12, hour: 8, economy: 3 };
 
@@ -61,6 +69,7 @@ describe('FeeEstimatesSchema', () => {
 
 const rbf = {
   psbtBase64: 'cHNidP8BAHECAAAAAf',
+  signingContext: testPsbtSigningContext,
   intentId: 'intent-rbf',
   intentDigest: 'a'.repeat(64),
   fee: 5000,
@@ -97,5 +106,93 @@ describe('RBFTransactionResponseSchema', () => {
   it('rejects an output value that is not a number', () => {
     const bad = { ...rbf, outputs: [{ address: 'bc1qexample', value: null }] };
     expect(RBFTransactionResponseSchema.safeParse(bad).success).toBe(false);
+  });
+});
+
+describe('advanced transaction signing response schemas', () => {
+  const signingIntent = {
+    psbtBase64: 'cHNidP8BAHECAAAAAf',
+    signingContext: testPsbtSigningContext,
+    intentId: 'intent-advanced',
+    intentDigest: 'd'.repeat(64),
+  };
+
+  it('accepts CPFP and batch responses carrying server-issued signing evidence', () => {
+    expect(CPFPTransactionResponseSchema.parse({
+      ...signingIntent,
+      childFee: 1000,
+      childFeeRate: 10,
+      parentFeeRate: 2,
+      effectiveFeeRate: 6,
+    }).signingContext).toEqual(testPsbtSigningContext);
+    expect(BatchTransactionResponseSchema.parse({
+      ...signingIntent,
+      fee: 1000,
+      totalInput: 10_000,
+      totalOutput: 8_500,
+      changeAmount: 500,
+      savedFees: 200,
+      recipientCount: 2,
+    }).signingContext).toEqual(testPsbtSigningContext);
+  });
+
+  it.each([
+    ['RBF', RBFTransactionResponseSchema, rbf],
+    ['CPFP', CPFPTransactionResponseSchema, { ...signingIntent, childFee: 1, childFeeRate: 1, parentFeeRate: 1, effectiveFeeRate: 1 }],
+    ['batch', BatchTransactionResponseSchema, { ...signingIntent, fee: 1, totalInput: 2, totalOutput: 1, changeAmount: 0, savedFees: 0, recipientCount: 1 }],
+  ])('rejects %s responses without valid signing evidence', (_name, schema, response) => {
+    expect(schema.safeParse({ ...response, signingContext: undefined }).success).toBe(false);
+    expect(schema.safeParse({ ...response, signingContext: { ...testPsbtSigningContext, walletId: '' } }).success).toBe(false);
+  });
+});
+
+describe('hardware and Payjoin signing response schemas', () => {
+  const signingEvidence = {
+    signingContext: testPsbtSigningContext,
+    intentId: 'intent-hardware',
+    intentDigest: 'e'.repeat(64),
+  };
+
+  it('requires complete signing evidence from the hardware PSBT endpoint', () => {
+    const response = { psbt: 'cHNidP8BAHECAAAAAf', fee: 500, ...signingEvidence };
+    expect(HardwarePsbtCreateResponseSchema.parse(response)).toEqual(response);
+    expect(HardwarePsbtCreateResponseSchema.safeParse({
+      ...response,
+      signingContext: undefined,
+    }).success).toBe(false);
+  });
+
+  it('accepts either a complete Payjoin replacement or an explicit fallback', () => {
+    const replacement = {
+      success: true as const,
+      isPayjoin: true as const,
+      proposalPsbt: 'cHNidP8BAHECAAAAAf',
+      ...signingEvidence,
+    };
+    expect(PayjoinAttemptResponseSchema.parse(replacement)).toEqual(replacement);
+    expect(PayjoinAttemptResponseSchema.parse({
+      success: false,
+      isPayjoin: false,
+      error: 'receiver unavailable',
+    })).toEqual({ success: false, isPayjoin: false, error: 'receiver unavailable' });
+  });
+
+  it('rejects partial or contradictory successful Payjoin evidence', () => {
+    const replacement = {
+      success: true,
+      isPayjoin: true,
+      proposalPsbt: 'cHNidP8BAHECAAAAAf',
+      ...signingEvidence,
+    };
+    for (const field of ['proposalPsbt', 'signingContext', 'intentId', 'intentDigest']) {
+      expect(PayjoinAttemptResponseSchema.safeParse({
+        ...replacement,
+        [field]: undefined,
+      }).success).toBe(false);
+    }
+    expect(PayjoinAttemptResponseSchema.safeParse({
+      ...replacement,
+      isPayjoin: false,
+    }).success).toBe(false);
   });
 });

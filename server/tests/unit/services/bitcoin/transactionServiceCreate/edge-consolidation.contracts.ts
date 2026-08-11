@@ -19,7 +19,10 @@ import {
 } from "../../../../../src/services/bitcoin/transactionService";
 import * as asyncUtils from "../../../../../src/utils/async";
 import * as nodeClient from "../../../../../src/services/bitcoin/nodeClient";
-import { mockParseDescriptor } from "./transactionServiceCreateTestHarness";
+import {
+  mockBindPsbtAccount,
+  singleSigSigningWallet,
+} from "./transactionServiceCreateTestHarness";
 import {
   changeAddressRow,
   inputAddressRow,
@@ -33,11 +36,10 @@ export function registerTransactionServiceEdgeConsolidationTests(): void {
 
     beforeEach(() => {
       // Set up default wallet mock
-      mockPrismaClient.wallet.findUnique.mockResolvedValue({
+      mockPrismaClient.wallet.findUnique.mockResolvedValue(singleSigSigningWallet({
         ...sampleWallets.singleSigNativeSegwit,
         id: walletId,
-        devices: [],
-      });
+      }));
 
       mockPrismaClient.uTXO.findMany.mockResolvedValue([
         {
@@ -104,17 +106,19 @@ export function registerTransactionServiceEdgeConsolidationTests(): void {
       expect(result.sufficient).toBe(false);
     });
 
-    it("should handle wallet with null descriptor", async () => {
-      mockPrismaClient.wallet.findUnique.mockResolvedValue({
+    it("should reject a wallet with a missing canonical descriptor", async () => {
+      mockPrismaClient.wallet.findUnique.mockResolvedValue(singleSigSigningWallet({
         ...sampleWallets.singleSigNativeSegwit,
         id: walletId,
-        devices: [],
         descriptor: null, // Null descriptor
-      });
+      }));
+      mockBindPsbtAccount.mockRejectedValueOnce(
+        new Error("PSBT account binding failed: wallet descriptor identity is incomplete"),
+      );
 
-      // Should still create transaction (descriptor is optional for some operations)
-      const result = await createTransaction(walletId, recipient, 50000, 10);
-      expect(result.psbt).toBeDefined();
+      await expect(
+        createTransaction(walletId, recipient, 50000, 10),
+      ).rejects.toThrow("wallet descriptor identity is incomplete");
     });
 
     it("should handle UTXOs with different scriptPubKey types", async () => {

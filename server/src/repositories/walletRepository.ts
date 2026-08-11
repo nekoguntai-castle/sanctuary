@@ -244,6 +244,7 @@ export async function findByIdWithSigningDevices(walletId: string) {
         include: {
           device: true,
         },
+        orderBy: { signerIndex: 'asc' },
       },
     },
   });

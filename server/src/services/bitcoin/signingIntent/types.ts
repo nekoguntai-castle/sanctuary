@@ -1,4 +1,5 @@
 import type { BitcoinNetwork } from '../networks';
+import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
 
 export const SIGNING_INTENT_SNAPSHOT_VERSION = 1 as const;
 
@@ -52,7 +53,12 @@ export interface SigningIntentHandle {
   intentDigest: string;
 }
 
+export type IssuedSigningIntentHandle = SigningIntentHandle & {
+  signingContext: PsbtSigningContext;
+};
+
 export interface SigningIntentEnvelope extends SigningIntentHandle {
+  signingContext?: PsbtSigningContext;
   snapshot: SigningIntentSnapshotV1;
   unsignedPsbtBase64: string;
   unsignedPsbtSha256: string;
@@ -75,4 +81,5 @@ export interface CreateSigningIntentInput {
   supersedesIntentId?: string;
   replacementTxid?: string;
   expiresAt?: Date;
+  signingContext: PsbtSigningContext;
 }

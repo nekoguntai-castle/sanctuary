@@ -1,44 +1,21 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { mockPrismaClient } from "../../../../mocks/prisma";
-import {
-  sampleUtxos,
-  sampleWallets,
-  testnetAddresses,
-} from "../../../../fixtures/bitcoin";
+import { testnetAddresses } from "../../../../fixtures/bitcoin";
 import "./transactionServiceBatchTestHarness";
 import { createBatchTransaction } from "../../../../../src/services/bitcoin/transactionService";
 import {
-  changeAddressRow,
-  inputAddressRow,
-  mockAddressFindManyByQuery,
-} from "../transactionServiceAddressMocks";
+  installBatchBindingFixture,
+  singleSigBatchFixture,
+} from "./transactionServiceBatchBindingFixtures";
 
 export function registerBatchTransactionEdgeCaseContracts() {
   describe("Error Handling - Batch Transaction Edge Cases", () => {
     const walletId = "batch-error-wallet";
+    const fixture = singleSigBatchFixture(walletId);
 
     beforeEach(() => {
-      mockPrismaClient.wallet.findUnique.mockResolvedValue({
-        ...sampleWallets.singleSigNativeSegwit,
-        id: walletId,
-        devices: [],
-      });
-
-      mockPrismaClient.uTXO.findMany.mockResolvedValue([
-        {
-          ...sampleUtxos[2], // 200000 sats
-          walletId,
-          scriptPubKey: "0014" + "a".repeat(40),
-        },
-      ]);
-
-      mockAddressFindManyByQuery({
-        inputRows: [
-          inputAddressRow(walletId, 0, { address: sampleUtxos[2].address }),
-        ],
-        unusedRows: [changeAddressRow(walletId)],
-      });
+      installBatchBindingFixture({ ...fixture, utxos: [fixture.utxos[0]] });
     });
 
     it("should throw error for duplicate addresses in outputs", async () => {
@@ -122,10 +99,8 @@ export function registerBatchTransactionEdgeCaseContracts() {
       // Need more UTXOs for this
       mockPrismaClient.uTXO.findMany.mockResolvedValue([
         {
-          ...sampleUtxos[2],
-          walletId,
+          ...fixture.utxos[0],
           amount: BigInt(500000),
-          scriptPubKey: "0014" + "a".repeat(40),
         },
       ]);
 

@@ -57,6 +57,7 @@ export interface CreateDraftInput {
   inputPaths: string[];
   signingIntentId: string;
   signingIntentDigest: string;
+  signingContext?: Prisma.InputJsonValue;
   agentId?: string | null;
   agentOperationalWalletId?: string | null;
   expiresAt: Date;
@@ -286,6 +287,7 @@ function buildDraftCreateData(data: CreateDraftInput): Prisma.DraftTransactionUn
     inputPaths: data.inputPaths,
     signingIntentId: data.signingIntentId,
     signingIntentDigest: data.signingIntentDigest,
+    signingContext: data.signingContext ?? Prisma.DbNull,
     agentId: data.agentId ?? null,
     agentOperationalWalletId: data.agentOperationalWalletId ?? null,
     expiresAt: data.expiresAt,

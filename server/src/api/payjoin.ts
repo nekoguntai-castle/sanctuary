@@ -8,6 +8,7 @@
 
 import express, { Router, type RequestHandler } from 'express';
 import { z } from 'zod';
+import * as bitcoin from 'bitcoinjs-lib';
 import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
 import { authenticate, requireAuthenticatedUser } from '../middleware/auth';
 import { requireFeature, isFeatureEnabledAsync } from '../middleware/featureGate';
@@ -39,6 +40,7 @@ import {
   derivePayjoinInputRoles,
   unsignedPsbtSha256,
 } from '../services/bitcoin/signingIntent/canonical';
+import { bindPsbtAccount } from '../services/bitcoin/psbtAccountBinding';
 
 const log = createLogger('PAYJOIN:ROUTE');
 
@@ -301,16 +303,26 @@ router.post('/attempt', authenticate, requireFeature('payjoinSupport'), validate
     return;
   }
   const inputRoles = derivePayjoinInputRoles(psbt, result.proposalPsbt);
+  const proposal = bitcoin.Psbt.fromBase64(result.proposalPsbt, { network: networkObj });
+  const signingContext = await bindPsbtAccount(walletId, proposal, {
+    foreignInputIndexes: inputRoles.flatMap((role, index) => role === 'payjoin_peer' ? [index] : []),
+  });
+  const boundProposalPsbt = proposal.toBase64();
   const replacementIntent = await createSigningIntent({
     walletId,
     createdByUserId: userId,
     network: networkStr,
     source: 'payjoin',
-    unsignedPsbtBase64: result.proposalPsbt,
+    unsignedPsbtBase64: boundProposalPsbt,
     inputRoles,
     supersedesIntentId: originalIntent.intentId,
+    signingContext,
   });
-  res.json({ ...result, ...replacementIntent });
+  res.json({
+    ...result,
+    proposalPsbt: boundProposalPsbt,
+    ...replacementIntent,
+  });
 }));
 
 // ========================================

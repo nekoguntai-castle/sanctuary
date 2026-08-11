@@ -6,6 +6,7 @@
 
 import apiClient from './client';
 import { DraftTransactionSchema, DraftTransactionsResponseSchema } from '@sanctuary/shared/schemas/transactionResponses';
+import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
 
 export type DraftIntegerValue = number | string;
 export type DraftTextValue = string | null;
@@ -69,6 +70,7 @@ export interface DraftTransaction {
 
   // PSBT data
   psbtBase64: string;
+  signingContext?: PsbtSigningContext | null;
   signingIntentId?: string | null;
   signingIntentDigest?: string | null;
   signedPsbtBase64?: string;

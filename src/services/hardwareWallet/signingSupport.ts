@@ -30,7 +30,7 @@ function requestHasMultisigXpubs(request: PSBTSignRequest): boolean {
 }
 
 function requestHasMultisigPath(request: PSBTSignRequest): boolean {
-  const paths = [request.accountPath, ...request.inputPaths];
+  const paths = [request.accountPath, ...(request.inputPaths ?? [])];
   return paths.some(isMultisigDerivationPath);
 }
 

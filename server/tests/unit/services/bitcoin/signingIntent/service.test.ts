@@ -18,18 +18,72 @@ vi.mock('../../../../../src/services/bitcoin/signingIntent/prevoutValidation', (
 }));
 
 import {
-  createSigningIntent,
+  createSigningIntent as createSigningIntentWithContext,
   loadSigningIntent,
 } from '../../../../../src/services/bitcoin/signingIntent/service';
 
-const psbtBase64 = (): string => {
+const signingContext = {
+  version: 1 as const,
+  walletId: 'wallet-1',
+  network: 'testnet3' as const,
+  walletType: 'single_sig' as const,
+  scriptType: 'native_segwit' as const,
+  canonicalPolicyId: 'single-sig-native-segwit-bip84-v1',
+  canonicalPolicyVersion: 1,
+  descriptorDigest: 'ab'.repeat(32),
+  unsignedTransactionDigest: '',
+  signers: [{
+    signerIndex: 0,
+    deviceId: 'device-1',
+    deviceAccountId: 'account-1',
+    masterFingerprint: 'aabbccdd',
+    accountPath: "m/84'/1'/0'",
+    accountXpub: 'tpub-test',
+  }],
+  inputs: [{
+    inputIndex: 0,
+    txid: '11'.repeat(32),
+    vout: 0,
+    amountSats: '10000',
+    scriptPubKey: '0014' + '22'.repeat(20),
+    addressPath: "m/84'/1'/0'/0/0",
+    signerOrigins: [{
+      masterFingerprint: 'aabbccdd',
+      path: "m/84'/1'/0'/0/0",
+      pubkey: '02' + '44'.repeat(32),
+    }],
+  }],
+  changeOutputs: [],
+};
+
+const createSigningIntent = (
+  input: Omit<Parameters<typeof createSigningIntentWithContext>[0], 'signingContext'>,
+) => createSigningIntentWithContext({ ...input, signingContext });
+
+const psbtBase64 = (includePayjoinPeer = false): string => {
   const psbt = new bitcoin.Psbt({ network: bitcoin.networks.testnet });
   psbt.addInput({
     hash: '11'.repeat(32),
     index: 0,
     witnessUtxo: { script: Buffer.from('0014' + '22'.repeat(20), 'hex'), value: 10_000n },
+    bip32Derivation: [{
+      masterFingerprint: Buffer.from('aabbccdd', 'hex'),
+      path: "m/84'/1'/0'/0/0",
+      pubkey: Buffer.from('02' + '44'.repeat(32), 'hex'),
+    }],
   });
+  if (includePayjoinPeer) {
+    psbt.addInput({
+      hash: '55'.repeat(32),
+      index: 1,
+      witnessUtxo: { script: Buffer.from('0014' + '66'.repeat(20), 'hex'), value: 2_000n },
+    });
+  }
   psbt.addOutput({ script: Buffer.from('0014' + '33'.repeat(20), 'hex'), value: 9_000n });
+  const unsignedTx = psbt.data.globalMap.unsignedTx as unknown as { toBuffer(): Uint8Array };
+  signingContext.unsignedTransactionDigest = Buffer.from(
+    bitcoin.crypto.sha256(unsignedTx.toBuffer()),
+  ).toString('hex');
   return psbt.toBase64();
 };
 
@@ -52,7 +106,11 @@ describe('transaction signing intent lifecycle', () => {
       source: 'standard',
       unsignedPsbtBase64: psbtBase64(),
     });
-    expect(result).toEqual({ intentId: 'intent-1', intentDigest: expect.stringMatching(/^[0-9a-f]{64}$/) });
+    expect(result).toEqual({
+      intentId: 'intent-1',
+      intentDigest: expect.stringMatching(/^[0-9a-f]{64}$/),
+      signingContext,
+    });
     expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({
       snapshotVersion: 1,
       snapshotDigest: result.intentDigest,
@@ -98,6 +156,24 @@ describe('transaction signing intent lifecycle', () => {
     expect(mocks.authenticateIntentPrevouts).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['wallet', { walletId: 'wallet-2' }],
+    ['network', { network: 'mainnet' as const }],
+  ])('rejects a signing context outside the intent %s scope', async (_scope, contextOverride) => {
+    const unsignedPsbtBase64 = psbtBase64();
+
+    await expect(createSigningIntentWithContext({
+      walletId: 'wallet-1',
+      createdByUserId: 'user-1',
+      network: 'testnet3',
+      source: 'standard',
+      unsignedPsbtBase64,
+      signingContext: { ...signingContext, ...contextOverride },
+    })).rejects.toThrow('Signing context does not match signing intent scope');
+    expect(mocks.authenticateIntentPrevouts).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
   it('persists explicit lifecycle, role, and RBF replacement options', async () => {
     const expiresAt = new Date('2030-01-01T00:00:00Z');
     mocks.create.mockImplementation(async data => ({ id: 'intent-2', ...data }));
@@ -124,30 +200,38 @@ describe('transaction signing intent lifecycle', () => {
 
   it('preserves an explicit non-wallet input role instead of substituting the wallet default', async () => {
     mocks.create.mockImplementation(async data => ({ id: 'intent-payjoin', ...data }));
-    mocks.authenticateIntentPrevouts.mockResolvedValueOnce([{
-      amountSats: '10000',
-      scriptPubKeyHex: '0014' + '22'.repeat(20),
-      role: 'payjoin_peer',
-    }]);
+    mocks.authenticateIntentPrevouts.mockResolvedValueOnce([
+      {
+        amountSats: '10000',
+        scriptPubKeyHex: '0014' + '22'.repeat(20),
+        role: 'wallet',
+      },
+      {
+        amountSats: '2000',
+        scriptPubKeyHex: '0014' + '66'.repeat(20),
+        role: 'payjoin_peer',
+      },
+    ]);
 
     await createSigningIntent({
       walletId: 'wallet-1',
       createdByUserId: 'user-1',
       network: 'testnet3',
       source: 'payjoin',
-      unsignedPsbtBase64: psbtBase64(),
-      inputRoles: ['payjoin_peer'],
+      unsignedPsbtBase64: psbtBase64(true),
+      inputRoles: ['wallet', 'payjoin_peer'],
     });
 
     expect(mocks.authenticateIntentPrevouts).toHaveBeenCalledWith(
-      'wallet-1', 'testnet3', expect.any(bitcoin.Psbt), ['payjoin_peer'], undefined, undefined,
+      'wallet-1', 'testnet3', expect.any(bitcoin.Psbt), ['wallet', 'payjoin_peer'], undefined, undefined,
     );
     expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({
       snapshot: expect.objectContaining({
         transaction: expect.objectContaining({
-          inputs: [expect.objectContaining({
-            prevout: expect.objectContaining({ role: 'payjoin_peer' }),
-          })],
+          inputs: [
+            expect.objectContaining({ prevout: expect.objectContaining({ role: 'wallet' }) }),
+            expect.objectContaining({ prevout: expect.objectContaining({ role: 'payjoin_peer' }) }),
+          ],
         }),
       }),
     }));
@@ -267,6 +351,7 @@ describe('transaction signing intent lifecycle', () => {
     ['wrong snapshot wallet', { snapshotWalletId: 'wallet-2' }, 'identity'],
     ['wrong snapshot network', { snapshotNetwork: 'mainnet' }, 'identity'],
     ['altered snapshot digest', { alterSnapshot: true }, 'authentication'],
+    ['altered signing context', { alterContext: true }, 'account binding authentication'],
     ['altered PSBT hash', { unsignedPsbtSha256: '0'.repeat(64) }, 'PSBT authentication'],
     ['unsupported source', { source: 'future-source' }, 'unsupported source'],
   ])('fails closed for %s', async (_name, override, message) => {
@@ -294,10 +379,35 @@ describe('transaction signing intent lifecycle', () => {
       expiresAt: new Date(Date.now() + 60_000),
       ...override,
       snapshot: 'snapshot' in override ? override.snapshot : snapshot,
+      signingContext: 'alterContext' in override
+        ? { ...created.signingContext, canonicalPolicyId: 'altered-policy' }
+        : created.signingContext,
     });
     await expect(loadSigningIntent(
       { intentId: 'intent-1', intentDigest: created.snapshotDigest },
       'wallet-1',
     )).rejects.toThrow(message);
+  });
+
+  it('rejects a stored intent with malformed account-binding data', async () => {
+    mocks.create.mockImplementationOnce(async data => ({ id: 'intent-1', ...data }));
+    await createSigningIntent({
+      walletId: 'wallet-1', createdByUserId: 'user-1', network: 'testnet3',
+      source: 'standard', unsignedPsbtBase64: psbtBase64(),
+    });
+    const created = mocks.create.mock.calls[0][0];
+    mocks.findById.mockResolvedValue({
+      id: 'intent-1',
+      ...created,
+      signingContext: {},
+      supersededById: null,
+      consumedAt: null,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+
+    await expect(loadSigningIntent(
+      { intentId: 'intent-1', intentDigest: created.snapshotDigest },
+      'wallet-1',
+    )).rejects.toThrow('Signing intent account binding is malformed');
   });
 });

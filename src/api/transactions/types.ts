@@ -5,6 +5,7 @@
  */
 
 import type { MobileTransactionBroadcastRequest } from '@sanctuary/shared/schemas/mobileApiRequests';
+import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
 import type {
   PrivacyGrade,
   TransactionFilterType,
@@ -75,6 +76,7 @@ export interface CreateTransactionRequest {
 
 export interface CreateTransactionResponse {
   psbtBase64: string;
+  signingContext: PsbtSigningContext;
   intentId: string;
   intentDigest: string;
   fee: number;
@@ -204,6 +206,7 @@ export interface CreateBatchTransactionRequest {
 
 export interface CreateBatchTransactionResponse {
   psbtBase64: string;
+  signingContext: PsbtSigningContext;
   intentId: string;
   intentDigest: string;
   fee: number;

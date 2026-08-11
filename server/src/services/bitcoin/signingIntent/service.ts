@@ -4,19 +4,22 @@ import { transactionSigningIntentRepository } from '../../../repositories/transa
 import { isBitcoinNetwork } from '../networks';
 import {
   buildSigningIntentSnapshot,
-  calculateSnapshotDigest,
+  calculateSigningIntentDigest,
   defaultInputRoles,
   unsignedPsbtSha256,
 } from './canonical';
 import { authenticateIntentPrevouts } from './prevoutValidation';
 import { toPrismaInputJson } from './json';
 import { SigningIntentSnapshotSchema } from './schema';
+import { PsbtSigningContextSchema } from '@sanctuary/shared/schemas/psbtSigningContext';
+import { assertPsbtMatchesSigningContext } from '../psbtSigningContextValidation';
 import {
   SIGNING_INTENT_SNAPSHOT_VERSION,
   SIGNING_INTENT_SOURCE_VALUES,
   type CreateSigningIntentInput,
   type SigningIntentEnvelope,
   type SigningIntentHandle,
+  type IssuedSigningIntentHandle,
   type SigningIntentSource,
 } from './types';
 
@@ -41,9 +44,14 @@ const parseSource = (value: string): SigningIntentSource => {
 
 export const createSigningIntent = async (
   input: CreateSigningIntentInput,
-): Promise<SigningIntentHandle> => {
+): Promise<IssuedSigningIntentHandle> => {
   const psbt = parsePsbt(input.unsignedPsbtBase64, 'psbtBase64');
+  const signingContext = PsbtSigningContextSchema.parse(input.signingContext);
+  if (signingContext.walletId !== input.walletId || signingContext.network !== input.network) {
+    throw new InvalidInputError('Signing context does not match signing intent scope');
+  }
   const roles = input.inputRoles ?? defaultInputRoles(psbt.inputCount);
+  assertPsbtMatchesSigningContext(psbt, signingContext, roles);
   const prevouts = await authenticateIntentPrevouts(
     input.walletId,
     input.network,
@@ -59,7 +67,7 @@ export const createSigningIntent = async (
     prevouts,
     input.replacementTxid,
   );
-  const snapshotDigest = calculateSnapshotDigest(snapshot);
+  const snapshotDigest = calculateSigningIntentDigest(snapshot, signingContext);
   const psbtHash = unsignedPsbtSha256(input.unsignedPsbtBase64);
   const record = await transactionSigningIntentRepository.create({
     walletId: input.walletId,
@@ -68,13 +76,14 @@ export const createSigningIntent = async (
     source: input.source,
     snapshotVersion: SIGNING_INTENT_SNAPSHOT_VERSION,
     snapshot: toPrismaInputJson(snapshot),
+    signingContext: toPrismaInputJson(signingContext),
     snapshotDigest,
     unsignedPsbtBase64: input.unsignedPsbtBase64,
     unsignedPsbtSha256: psbtHash,
     expiresAt: input.expiresAt ?? new Date(Date.now() + DEFAULT_INTENT_LIFETIME_MS),
     supersedesIntentId: input.supersedesIntentId,
   });
-  return { intentId: record.id, intentDigest: record.snapshotDigest };
+  return { intentId: record.id, intentDigest: record.snapshotDigest, signingContext };
 };
 
 const invalidIntent = (message: string, reason = 'missing_intent'): InvalidInputError =>
@@ -118,9 +127,6 @@ const authenticateStoredSnapshot = (record: StoredSigningIntent, walletId: strin
   if (parsed.data.walletId !== walletId || parsed.data.network !== record.network) {
     throw invalidIntent('Signing intent identity does not match its stored scope');
   }
-  if (calculateSnapshotDigest(parsed.data) !== record.snapshotDigest) {
-    throw invalidIntent('Signing intent snapshot authentication failed');
-  }
   return parsed.data;
 };
 
@@ -146,6 +152,13 @@ export const loadSigningIntent = async (
     throw invalidIntent('Signing intent has expired', 'stale_intent');
   }
   const snapshot = authenticateStoredSnapshot(record, walletId);
+  const signingContext = PsbtSigningContextSchema.safeParse(record.signingContext);
+  if (!signingContext.success || signingContext.data.walletId !== walletId) {
+    throw invalidIntent('Signing intent account binding is malformed');
+  }
+  if (calculateSigningIntentDigest(snapshot, signingContext.data) !== record.snapshotDigest) {
+    throw invalidIntent('Signing intent snapshot or account binding authentication failed');
+  }
   assertStoredPsbtAuthentic(record);
 
   return {
@@ -156,6 +169,7 @@ export const loadSigningIntent = async (
     unsignedPsbtSha256: record.unsignedPsbtSha256,
     source: parseSource(record.source),
     expiresAt: record.expiresAt,
+    signingContext: signingContext.data,
     ...(broadcastReplay && { broadcastReplay }),
   };
 };

@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
+import * as bitcoin from "bitcoinjs-lib";
 
 import { mockPrismaClient } from "../../../../mocks/prisma";
 import { mockElectrumClient } from "../../../../mocks/electrum";
 import { sampleUtxos, testnetAddresses } from "../../../../fixtures/bitcoin";
-import "./advancedTxTestHarness";
 import {
   createBatchTransaction,
   estimateOptimalFee,
@@ -18,6 +18,10 @@ import {
   mockAddressFindManyByQuery,
   receiveAddressRow,
 } from "../transactionServiceAddressMocks";
+import {
+  rawTransactionWithOutput,
+  resolveNextPsbtBindingNetwork,
+} from "./advancedTxTestHarness";
 
 export function registerBatchFeeAndConstantContracts() {
   describe("Batch transactions", () => {
@@ -73,11 +77,93 @@ export function registerBatchFeeAndConstantContracts() {
       expect(result.totalInput).toBeGreaterThan(result.totalOutput);
       expect(result.fee).toBeGreaterThan(0);
       expect(result.changeAmount).toBeGreaterThan(0);
+      expect(result.psbt.data.inputs.every(input => input.witnessUtxo !== undefined)).toBe(true);
+      expect(result.psbt.data.inputs.every(input => input.nonWitnessUtxo === undefined)).toBe(true);
       expect(vi.mocked(assertCanonicalAddressesForWallet)).toHaveBeenCalledWith(
         walletId,
         [expect.objectContaining({ branch: 1 })],
         1,
       );
+    });
+
+    it("authenticates legacy batch inputs with their complete previous transactions", async () => {
+      const legacyScript = Buffer.from(bitcoin.address.toOutputScript(
+        testnetAddresses.legacy[0],
+        bitcoin.networks.testnet,
+      )).toString("hex");
+      const previous = rawTransactionWithOutput(
+        legacyScript,
+        100_000,
+        testnetAddresses.legacy[0],
+      );
+      mockPrismaClient.uTXO.findMany.mockResolvedValueOnce([{
+        txid: previous.response.txid,
+        vout: 0,
+        amount: 100_000n,
+        scriptPubKey: legacyScript,
+        walletId,
+        spent: false,
+      }]);
+      mockPrismaClient.wallet.findUnique.mockResolvedValueOnce({
+        id: walletId,
+        type: "single_sig",
+        network: "testnet3",
+        scriptType: "legacy",
+      });
+      mockAddressFindManyByQuery({
+        unusedRows: [changeAddressRow(walletId, 0, {
+          address: testnetAddresses.legacy[1],
+          derivationPath: "m/44'/1'/0'/1/0",
+        })],
+      });
+      mockElectrumClient.getTransaction.mockResolvedValueOnce(previous.response);
+
+      const result = await createBatchTransaction(
+        [{ address: testnetAddresses.legacy[0], amount: 20_000 }],
+        5,
+        walletId,
+        undefined,
+        "testnet3",
+      );
+      const input = result.psbt.data.inputs[0];
+
+      expect(input.witnessUtxo).toBeUndefined();
+      expect(input.nonWitnessUtxo).toEqual(Buffer.from(previous.response.hex, "hex"));
+      expect(bitcoin.Transaction.fromBuffer(input.nonWitnessUtxo!).getId()).toBe(previous.response.txid);
+    });
+
+    it("fails closed when the batch wallet identity is unavailable", async () => {
+      mockPrismaClient.uTXO.findMany.mockResolvedValueOnce([
+        { ...sampleUtxos[0], walletId, spent: false },
+      ]);
+      mockPrismaClient.wallet.findUnique.mockResolvedValueOnce(null);
+
+      await expect(createBatchTransaction(
+        [{ address: testnetAddresses.nativeSegwit[0], amount: 20_000 }],
+        5,
+        walletId,
+        undefined,
+        "testnet3",
+      )).rejects.toThrow("Wallet script identity is unavailable");
+    });
+
+    it("rejects a batch PSBT when account binding reports another network", async () => {
+      mockPrismaClient.uTXO.findMany.mockResolvedValueOnce([
+        { ...sampleUtxos[0], walletId, spent: false },
+        { ...sampleUtxos[1], walletId, spent: false },
+      ]);
+      mockAddressFindManyByQuery({
+        unusedRows: [changeAddressRow(walletId, 0)],
+      });
+      resolveNextPsbtBindingNetwork("mainnet");
+
+      await expect(createBatchTransaction(
+        [{ address: testnetAddresses.nativeSegwit[0], amount: 20_000 }],
+        5,
+        walletId,
+        undefined,
+        "testnet3",
+      )).rejects.toThrow("batch network does not match wallet");
     });
 
     it("rejects batch change when wallet-bound re-derivation fails", async () => {

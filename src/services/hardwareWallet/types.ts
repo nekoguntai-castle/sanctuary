@@ -5,6 +5,8 @@
  * enabling extensible support for different device vendors.
  */
 
+import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
+
 export type DeviceType = 'coldcard' | 'ledger' | 'trezor' | 'bitbox' | 'passport' | 'jade' | 'unknown';
 
 export interface HardwareWalletDevice {
@@ -19,12 +21,17 @@ export interface HardwareWalletDevice {
 }
 
 export interface PSBTSignRequest {
-  walletId?: string; // Required by adapters that fetch wallet-scoped transaction data
+  walletId?: string;
   psbt: string; // Base64 encoded PSBT
-  inputPaths: string[]; // Derivation paths for inputs to sign
-  changeOutputs?: number[]; // Indices of change outputs
-  accountPath?: string; // Account derivation path (e.g., "m/84'/0'/0'")
-  scriptType?: 'p2wpkh' | 'p2sh-p2wpkh' | 'p2pkh' | 'p2tr'; // Script type for wallet policy
+  signingContext?: PsbtSigningContext;
+  /** @deprecated Compared to signingContext and never used as a fallback. */
+  inputPaths?: string[];
+  /** @deprecated Compared to signingContext and never used as a fallback. */
+  changeOutputs?: number[];
+  /** @deprecated Compared to signingContext and never used as a fallback. */
+  accountPath?: string;
+  /** @deprecated Compared to signingContext and never used as a fallback. */
+  scriptType?: 'p2wpkh' | 'p2sh-p2wpkh' | 'p2pkh' | 'p2tr';
   // Multisig xpubs keyed by fingerprint (lowercase hex) - needed for Trezor multisig signing
   multisigXpubs?: Record<string, string>;
 }

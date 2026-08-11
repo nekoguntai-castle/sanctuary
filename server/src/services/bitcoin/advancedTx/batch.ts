@@ -8,11 +8,18 @@
 
 import * as bitcoin from "bitcoinjs-lib";
 import { getNetwork, estimateTransactionSize, calculateFee } from "../utils";
+import { getNodeClient } from "../nodeClient";
 import type { BitcoinNetwork } from "../networks";
-import { utxoRepository, addressRepository } from "../../../repositories";
+import { normalizeLegacyBitcoinNetwork } from "../networks";
+import { utxoRepository, addressRepository, walletRepository } from "../../../repositories";
 import { RBF_SEQUENCE, getDustThreshold } from "./shared";
-import { WalletScriptType } from "@sanctuary/shared/constants/walletIdentity";
+import {
+  parseWalletScriptType,
+  WalletScriptType,
+} from "@sanctuary/shared/constants/walletIdentity";
 import { assertCanonicalAddressesForWallet } from "../../wallet/canonicalAddressValidation";
+import type { PsbtSigningContext } from "@sanctuary/shared/schemas/psbtSigningContext";
+import { bindPsbtAccount } from "../psbtAccountBinding";
 
 /**
  * Create a batch transaction sending to multiple recipients
@@ -30,6 +37,7 @@ export async function createBatchTransaction(
   totalOutput: number;
   changeAmount: number;
   savedFees: number; // Savings compared to individual transactions
+  signingContext: PsbtSigningContext;
 }> {
   if (recipients.length === 0) {
     throw new Error("At least one recipient is required");
@@ -51,6 +59,9 @@ export async function createBatchTransaction(
   if (utxos.length === 0) {
     throw new Error("No spendable UTXOs available");
   }
+  const wallet = await walletRepository.findByIdWithSigningDevices(walletId);
+  const walletScriptType = wallet && parseWalletScriptType(wallet.scriptType);
+  if (!wallet || !walletScriptType) throw new Error("Wallet script identity is unavailable");
 
   // Calculate total output amount
   const totalOutputAmount = recipients.reduce((sum, r) => sum + r.amount, 0);
@@ -67,7 +78,7 @@ export async function createBatchTransaction(
     const estimatedSize = estimateTransactionSize(
       selectedUtxos.length,
       recipients.length + 1, // +1 for change output
-      WalletScriptType.NATIVE_SEGWIT,
+      walletScriptType,
     );
     const estimatedFee = calculateFee(estimatedSize, feeRate);
 
@@ -80,7 +91,7 @@ export async function createBatchTransaction(
   const txSize = estimateTransactionSize(
     selectedUtxos.length,
     recipients.length + 1,
-    WalletScriptType.NATIVE_SEGWIT,
+    walletScriptType,
   );
   const fee = calculateFee(txSize, feeRate);
 
@@ -94,7 +105,7 @@ export async function createBatchTransaction(
 
   // Calculate savings vs individual transactions
   const individualTxFee = calculateFee(
-    estimateTransactionSize(1, 2, WalletScriptType.NATIVE_SEGWIT), // 1 in, 2 out (recipient + change)
+    estimateTransactionSize(1, 2, walletScriptType), // 1 in, 2 out (recipient + change)
     feeRate,
   );
   const totalIndividualFees = individualTxFee * recipients.length;
@@ -103,17 +114,29 @@ export async function createBatchTransaction(
   // Create PSBT
   const networkObj = getNetwork(network);
   const psbt = new bitcoin.Psbt({ network: networkObj });
+  const rawTransactions = new Map<string, Buffer>();
+  if (walletScriptType === WalletScriptType.LEGACY) {
+    const client = await getNodeClient(network);
+    const rows = await Promise.all(selectedUtxos.map(async utxo => {
+      const transaction = await client.getTransaction(utxo.txid);
+      return [utxo.txid, Buffer.from(transaction.hex, "hex")] as const;
+    }));
+    for (const [txid, transaction] of rows) rawTransactions.set(txid, transaction);
+  }
 
   // Add inputs with RBF enabled
   for (const utxo of selectedUtxos) {
+    const rawTransaction = rawTransactions.get(utxo.txid);
     psbt.addInput({
       hash: utxo.txid,
       index: utxo.vout,
       sequence: RBF_SEQUENCE,
-      witnessUtxo: {
+      ...(walletScriptType === WalletScriptType.LEGACY ? {
+        nonWitnessUtxo: rawTransaction!,
+      } : { witnessUtxo: {
         script: Buffer.from(utxo.scriptPubKey, "hex"),
         value: BigInt(utxo.amount),
-      },
+      } }),
     });
   }
 
@@ -140,6 +163,10 @@ export async function createBatchTransaction(
     });
   }
 
+  const signingContext = await bindPsbtAccount(walletId, psbt);
+  if (signingContext.network !== normalizeLegacyBitcoinNetwork(network, "mainnet")) {
+    throw new Error("PSBT account binding failed: batch network does not match wallet");
+  }
   return {
     psbt,
     fee,
@@ -147,5 +174,6 @@ export async function createBatchTransaction(
     totalOutput: totalOutputAmount,
     changeAmount,
     savedFees,
+    signingContext,
   };
 }

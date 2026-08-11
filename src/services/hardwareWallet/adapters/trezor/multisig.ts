@@ -24,12 +24,16 @@ const log = createLogger('TrezorAdapter');
  *
  * @param witnessScript The witness script from the PSBT input
  * @param bip32Derivations Array of bip32 derivation info from the PSBT
- * @param xpubMap Optional map of fingerprint (lowercase hex) to xpub string for multisig
+ * @param xpubMap Exact map of fingerprint (lowercase hex) to account xpub for every cosigner
  * @internal Exported for testing
  */
 export function buildTrezorMultisig(
   witnessScript: Buffer | undefined,
-  bip32Derivations: Array<{ pubkey: Buffer; path: string; masterFingerprint: Buffer }>,
+  bip32Derivations: Array<{
+    pubkey: Uint8Array;
+    path: string;
+    masterFingerprint: Uint8Array;
+  }>,
   xpubMap?: Record<string, string>
 ): TrezorMultisig | undefined {
   if (!witnessScript || witnessScript.length === 0) {
@@ -37,10 +41,15 @@ export function buildTrezorMultisig(
   }
 
   // Log xpubMap for debugging - show fingerprint comparison to diagnose mismatch
-  const psbtFingerprints = bip32Derivations.map(d => d.masterFingerprint.toString('hex').toLowerCase());
+  const psbtFingerprints = bip32Derivations.map(derivation => (
+    Buffer.from(derivation.masterFingerprint).toString('hex').toLowerCase()
+  ));
   const xpubFingerprints = xpubMap ? Object.keys(xpubMap) : [];
   const matchingFingerprints = psbtFingerprints.filter(fp => xpubFingerprints.includes(fp));
-  const missingInXpubMap = psbtFingerprints.filter(fp => !xpubFingerprints.includes(fp));
+  const missingInXpubMap = [...new Set(psbtFingerprints.filter(fingerprint => {
+    const xpub = xpubMap?.[fingerprint];
+    return typeof xpub !== 'string' || xpub.length === 0 || xpub !== xpub.trim();
+  }))].sort();
 
   log.info('buildTrezorMultisig called', {
     hasXpubMap: !!xpubMap,
@@ -51,24 +60,28 @@ export function buildTrezorMultisig(
     allMatch: missingInXpubMap.length === 0,
   });
 
+  if (missingInXpubMap.length > 0) {
+    throw new Error(
+      `Trezor multisig signing is missing account xpub evidence for fingerprints: ${missingInXpubMap.join(', ')}`,
+    );
+  }
+
+  // Parse m-of-n from the canonical script envelope before building any device payload.
+  const m = witnessScript[0] - 0x50;
+  const n = witnessScript[witnessScript.length - 2] - 0x50;
+  if (m < 1 || m > 16 || n < 1 || n > 16 || m > n) {
+    return undefined;
+  }
+  if (bip32Derivations.length !== n || new Set(psbtFingerprints).size !== n) {
+    throw new Error(
+      `Trezor multisig signing requires exactly ${n} distinct signer derivations`,
+    );
+  }
+
   try {
-    // Parse m-of-n from witnessScript
-    // Format: OP_M <pubkey1> <pubkey2> ... OP_N OP_CHECKMULTISIG
-    // OP_1 through OP_16 are 0x51 through 0x60
-    const firstByte = witnessScript[0];
-    const lastBeforeOpMulti = witnessScript[witnessScript.length - 2];
-
-    const m = firstByte - 0x50;
-    const n = lastBeforeOpMulti - 0x50;
-
-    // Validate m and n are reasonable
-    if (m < 1 || m > 16 || n < 1 || n > 16 || m > n) {
-      return undefined;
-    }
-
     // Sort derivations by pubkey to match sortedmulti order
     const sortedDerivations = [...bip32Derivations].sort((a, b) =>
-      Buffer.compare(a.pubkey, b.pubkey)
+      Buffer.compare(Buffer.from(a.pubkey), Buffer.from(b.pubkey))
     );
 
     // Build pubkeys array
@@ -81,25 +94,18 @@ export function buildTrezorMultisig(
         return hardened ? index + 0x80000000 : index;
       });
 
-      // Try to find xpub by fingerprint - Trezor requires xpub (base58) for multisig, not raw pubkey
-      const fingerprint = deriv.masterFingerprint.toString('hex').toLowerCase();
-      const rawXpub = xpubMap?.[fingerprint];
-
-      if (rawXpub) {
-        // Trezor only accepts standard xpub/tpub format, not SLIP-132 variants (Zpub, ypub, etc.)
-        // Convert any non-standard format to standard xpub
-        const xpub = convertToStandardXpub(rawXpub);
-        log.debug('Using xpub for multisig node', { fingerprint, rawXpubPrefix: rawXpub.substring(0, 15), xpubPrefix: xpub.substring(0, 15) });
-        return {
-          node: xpub,
-          address_n: childPath,
-        };
-      }
-
-      // Fallback to raw pubkey (will fail for Trezor but kept for compatibility)
-      log.warn('No xpub found for fingerprint, using raw pubkey (may fail)', { fingerprint });
+      // The preflight above proves exact account-xpub coverage for every fingerprint.
+      const fingerprint = Buffer.from(deriv.masterFingerprint).toString('hex').toLowerCase();
+      const rawXpub = xpubMap![fingerprint];
+      // Trezor accepts standard xpub/tpub nodes, not SLIP-132 display variants.
+      const xpub = convertToStandardXpub(rawXpub);
+      log.debug('Using xpub for multisig node', {
+        fingerprint,
+        rawXpubPrefix: rawXpub.substring(0, 15),
+        xpubPrefix: xpub.substring(0, 15),
+      });
       return {
-        node: deriv.pubkey.toString('hex'),
+        node: xpub,
         address_n: childPath,
       };
     });

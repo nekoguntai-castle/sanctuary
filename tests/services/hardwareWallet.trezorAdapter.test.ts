@@ -22,6 +22,11 @@ const mockGetPublicKey = vi.fn();
 const mockGetAddress = vi.fn();
 const mockSignTransaction = vi.fn();
 const mockApiGet = vi.fn();
+const mockValidatePsbtSigningRequest = vi.fn();
+
+vi.mock("../../src/services/hardwareWallet/psbtAccountBinding", () => ({
+  validatePsbtSigningRequest: (...args: unknown[]) => mockValidatePsbtSigningRequest(...args),
+}));
 
 vi.mock("@trezor/connect-web", () => ({
   default: {
@@ -85,6 +90,40 @@ describe("TrezorAdapter class", () => {
     mockSignTransaction.mockResolvedValue({
       success: true,
       payload: { serializedTx: "" },
+    });
+    mockValidatePsbtSigningRequest.mockImplementation((request: any, fingerprint: string) => {
+      const psbt = bitcoin.Psbt.fromBase64(request.psbt);
+      const firstPath = request.accountPath
+        || request.inputPaths?.[0]
+        || psbt.data.inputs[0]?.bip32Derivation?.[0]?.path
+        || "m/84'/0'/0'";
+      const normalized = firstPath.replace(/h/gi, "'");
+      const pathParts = normalized.split('/');
+      const isBip48 = pathParts[1] === "48'";
+      const accountPath = pathParts.slice(0, isBip48 ? 5 : 4).join('/');
+      const isMultisig = psbt.data.inputs.some(input => Boolean(input.witnessScript));
+      if (isMultisig && !psbt.data.inputs.every(input => input.bip32Derivation?.some(
+        origin => Buffer.from(origin.masterFingerprint).toString('hex') === fingerprint,
+      ))) {
+        throw new Error('connected device is not a cosigner for this multisig wallet');
+      }
+      const purpose = accountPath.split('/')[1];
+      const changeOutputIndexes = request.changeOutputs
+        ?? psbt.data.outputs.flatMap((output, index) => output.bip32Derivation?.length ? [index] : []);
+      return {
+        psbt,
+        context: {
+          walletType: isMultisig ? 'multi_sig' : 'single_sig',
+          scriptType: purpose === "86'" ? 'taproot' : purpose === "49'" ? 'nested_segwit' : 'native_segwit',
+          inputs: psbt.txInputs.map((_, inputIndex) => ({ inputIndex })),
+          network: accountPath.includes("/1'/") ? 'testnet3' : 'mainnet',
+          changeOutputs: changeOutputIndexes.map((outputIndex: number) => ({ outputIndex })),
+        },
+        connectedSigner: { accountPath },
+        accountPath,
+        network: accountPath.includes("/1'/") ? 'testnet3' : 'mainnet',
+        changeOutputIndexes,
+      };
     });
   });
 
@@ -523,29 +562,16 @@ describe("TrezorAdapter class", () => {
     expect(call.outputs[0].script_type).toBe("PAYTOADDRESS");
   });
 
-  it("uses request.inputPaths fallback and h-notation parsing for signPSBT", async () => {
+  it("rejects a PSBT input that has no bound derivation instead of using request.inputPaths", async () => {
     const adapter = new TrezorAdapter();
     await adapter.connect();
 
     const { psbt } = createSingleSigPsbt({ includeBip32Derivation: false });
-    const signedTxHex = unsignedTxHexFromPsbt(psbt);
-    mockSignTransaction.mockResolvedValueOnce({
-      success: true,
-      payload: { serializedTx: signedTxHex },
-    });
-
-    await adapter.signPSBT({
+    await expect(adapter.signPSBT({
       psbt: psbt.toBase64(),
       inputPaths: ["m/84h/1h/0h/0/0"],
-    });
-
-    const call = mockSignTransaction.mock.calls.at(-1)?.[0];
-    expect(call.coin).toBe("Testnet");
-    expect(call.inputs[0].address_n.slice(0, 3)).toEqual([
-      84 + 0x80000000,
-      1 + 0x80000000,
-      0 + 0x80000000,
-    ]);
+    })).rejects.toThrow(/missing wallet-bound BIP32 derivation/i);
+    expect(mockSignTransaction).not.toHaveBeenCalled();
   });
 
   it("detects testnet from PSBT bip32Derivation when request paths are absent", async () => {
@@ -649,6 +675,21 @@ describe("TrezorAdapter class", () => {
     expect(call.inputs[0].multisig).toBeDefined();
     expect(call.outputs[1].multisig).toBeDefined();
     expect(call.outputs[1].script_type).toBe("PAYTOWITNESS");
+  });
+
+  it("rejects partial multisig account xpub evidence before calling Trezor", async () => {
+    const adapter = new TrezorAdapter();
+    await adapter.connect();
+    const { psbt } = createMultisigPsbt(true);
+
+    await expect(adapter.signPSBT({
+      psbt: psbt.toBase64(),
+      inputPaths: ["m/48'/0'/0'/2'/0/1"],
+      multisigXpubs: {
+        deadbeef: slip132Key("04b24746"),
+      },
+    })).rejects.toThrow(/missing account xpub evidence.*aaaaaaaa/i);
+    expect(mockSignTransaction).not.toHaveBeenCalled();
   });
 
   it.each([

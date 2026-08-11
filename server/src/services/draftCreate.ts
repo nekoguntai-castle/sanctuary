@@ -136,6 +136,7 @@ const createDraftRecord = async (
   userId: string,
   data: CreateDraftInput,
   initialSigningState: InitialSigningState,
+  signingContext: Prisma.InputJsonValue,
   client?: Pick<CreateDraftDbClient, 'draftTransaction'>
 ): Promise<DraftTransaction> => {
   const draftData = {
@@ -155,6 +156,7 @@ const createDraftRecord = async (
     inputPaths: data.inputPaths || [],
     signingIntentId: data.intentId,
     signingIntentDigest: data.intentDigest,
+    signingContext,
     expiresAt: await calculateExpirationDate(),
   };
 
@@ -275,10 +277,20 @@ export async function createDraft(
   if (unsignedPsbtSha256(data.psbtBase64) !== intent.unsignedPsbtSha256) {
     throw new InvalidInputError('Draft PSBT does not match the server-issued signing intent');
   }
+  if (!intent.signingContext) {
+    throw new InvalidInputError('Draft signing intent has no authenticated account binding');
+  }
   assertValidCreateDraftInput(data);
 
   const initialSigningState = await validateInitialSigningState(walletId, data);
-  const draft = await createDraftRecord(walletId, userId, data, initialSigningState, options.client);
+  const draft = await createDraftRecord(
+    walletId,
+    userId,
+    data,
+    initialSigningState,
+    intent.signingContext as Prisma.InputJsonValue,
+    options.client,
+  );
   await lockSelectedUtxos(walletId, draft, data, options.client);
 
   log.info('Created draft', { draftId: draft.id, walletId, userId, isRBF: data.isRBF ?? false });

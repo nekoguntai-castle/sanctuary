@@ -11,14 +11,97 @@ import { mockPrismaClient, resetPrismaMocks } from '../../../../mocks/prisma';
 // Hoist mock variables for use in vi.mock() factories
 const transactionServiceCreateMocks = vi.hoisted(() => ({
   mockParseDescriptor: vi.fn(),
+  mockBindPsbtAccount: vi.fn(),
   mockNotifyNewTransactions: vi.fn(),
   mockEmitTransactionSent: vi.fn(),
   mockEmitTransactionReceived: vi.fn(),
 }));
-const { mockParseDescriptor, mockNotifyNewTransactions, mockEmitTransactionSent, mockEmitTransactionReceived } =
+const { mockParseDescriptor, mockBindPsbtAccount, mockNotifyNewTransactions, mockEmitTransactionSent, mockEmitTransactionReceived } =
   transactionServiceCreateMocks;
 
-export { mockParseDescriptor, mockNotifyNewTransactions, mockEmitTransactionSent, mockEmitTransactionReceived };
+export { mockParseDescriptor, mockBindPsbtAccount, mockNotifyNewTransactions, mockEmitTransactionSent, mockEmitTransactionReceived };
+
+const TEST_ACCOUNT_XPUB =
+  'tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M';
+
+type WalletFixture = Record<string, unknown>;
+
+function singleSigDescriptor(
+  scriptType: unknown,
+  fingerprint: string,
+  accountPath: string,
+  branch: 0 | 1,
+): string {
+  const wrapper = scriptType === 'legacy' ? 'pkh' : scriptType === 'nested_segwit' ? 'sh(wpkh' : 'wpkh';
+  const close = scriptType === 'nested_segwit' ? '))' : ')';
+  return `${wrapper}([${fingerprint}/${accountPath}]${TEST_ACCOUNT_XPUB}/${branch}/*${close}`;
+}
+
+function singleSigPolicyId(scriptType: unknown): string {
+  if (scriptType === 'legacy') return 'single-sig-legacy-bip44-v1';
+  if (scriptType === 'nested_segwit') return 'single-sig-nested-segwit-bip49-v1';
+  return 'single-sig-native-segwit-bip84-v1';
+}
+
+export function singleSigSigningWallet(
+  wallet: WalletFixture,
+  overrides: WalletFixture = {},
+): WalletFixture {
+  const scriptType = overrides.scriptType ?? wallet.scriptType;
+  const fingerprint = String(overrides.fingerprint ?? wallet.fingerprint ?? 'aabbccdd');
+  const accountPath = scriptType === 'legacy' ? "44'/1'/0'" : scriptType === 'nested_segwit' ? "49'/1'/0'" : "84'/1'/0'";
+  const deviceId = 'single-sig-device';
+  return {
+    ...wallet,
+    descriptor: singleSigDescriptor(scriptType, fingerprint, accountPath, 0),
+    changeDescriptor: singleSigDescriptor(scriptType, fingerprint, accountPath, 1),
+    canonicalPolicyId: singleSigPolicyId(scriptType),
+    canonicalPolicyVersion: 1,
+    devices: [{
+      signerBindingVersion: 1,
+      signerIndex: 0,
+      signerFingerprint: fingerprint,
+      signerXpub: TEST_ACCOUNT_XPUB,
+      signerDerivationPath: `m/${accountPath}`,
+      deviceAccountId: 'single-sig-account',
+      deviceId,
+      device: { id: deviceId, fingerprint, xpub: TEST_ACCOUNT_XPUB },
+    }],
+    ...overrides,
+  };
+}
+
+export function multisigSigningWallet(
+  wallet: WalletFixture,
+  keys: ReadonlyArray<{ fingerprint: string; accountPath: string; xpub: string }>,
+  overrides: WalletFixture = {},
+): WalletFixture {
+  const deviceLinks = keys.map((key, signerIndex) => {
+    const deviceId = `multisig-device-${signerIndex}`;
+    return {
+      signerBindingVersion: 1,
+      signerIndex,
+      signerFingerprint: key.fingerprint,
+      signerXpub: key.xpub,
+      signerDerivationPath: `m/${key.accountPath}`,
+      deviceAccountId: `multisig-account-${signerIndex}`,
+      deviceId,
+      device: { id: deviceId, fingerprint: key.fingerprint, xpub: key.xpub },
+    };
+  });
+  const descriptor = String(overrides.descriptor ?? wallet.descriptor);
+  return {
+    ...wallet,
+    descriptor,
+    changeDescriptor: descriptor.replaceAll('/0/*', '/1/*'),
+    canonicalPolicyId: descriptor.startsWith('sh(')
+      ? 'multisig-nested-segwit-bip48-1-v1'
+      : 'multisig-native-segwit-bip48-2-v1',
+    canonicalPolicyVersion: 1,
+    devices: deviceLinks,
+    ...overrides,
+  };
+}
 
 // Mock the Prisma client before importing the service
 vi.mock('../../../../../src/models/prisma', () => ({
@@ -71,6 +154,12 @@ vi.mock('../../../../../src/services/bitcoin/addressDerivation', () => ({
   }),
 }));
 
+// Transaction-creation tests isolate construction from the binder's own exhaustive
+// evidence tests while still asserting that a signing context is returned.
+vi.mock('../../../../../src/services/bitcoin/psbtAccountBinding', () => ({
+  bindPsbtAccount: mockBindPsbtAccount,
+}));
+
 vi.mock('../../../../../src/services/wallet/canonicalAddressValidation', () => ({
   assertCanonicalAddressesForWallet: vi.fn().mockResolvedValue(undefined),
 }));
@@ -83,6 +172,40 @@ export function setupTransactionServiceCreateTestHooks(): void {
     mockNotifyNewTransactions.mockResolvedValue(undefined);
     mockEmitTransactionSent.mockReset();
     mockEmitTransactionReceived.mockReset();
+    mockBindPsbtAccount.mockReset();
+    mockBindPsbtAccount.mockImplementation(async (walletId: string) => ({
+      version: 1,
+      walletId,
+      network: 'testnet3',
+      walletType: 'single_sig',
+      scriptType: 'native_segwit',
+      canonicalPolicyId: 'single-sig-native-segwit-bip84-v1',
+      canonicalPolicyVersion: 1,
+      descriptorDigest: '11'.repeat(32),
+      unsignedTransactionDigest: '22'.repeat(32),
+      signers: [{
+        signerIndex: 0,
+        deviceId: 'single-sig-device',
+        deviceAccountId: 'single-sig-account',
+        masterFingerprint: 'aabbccdd',
+        accountPath: "m/84'/1'/0'",
+        accountXpub: TEST_ACCOUNT_XPUB,
+      }],
+      inputs: [{
+        inputIndex: 0,
+        txid: '33'.repeat(32),
+        vout: 0,
+        amountSats: '200000',
+        scriptPubKey: `0014${'aa'.repeat(20)}`,
+        addressPath: "m/84'/1'/0'/0/0",
+        signerOrigins: [{
+          masterFingerprint: 'aabbccdd',
+          path: "m/84'/1'/0'/0/0",
+          pubkey: `02${'44'.repeat(32)}`,
+        }],
+      }],
+      changeOutputs: [],
+    }));
     // Set up default system settings
     mockPrismaClient.systemSetting.findUnique.mockImplementation((query: any) => {
       if (query.where.key === 'confirmationThreshold') {

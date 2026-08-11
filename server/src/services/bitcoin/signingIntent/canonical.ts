@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import * as bitcoin from 'bitcoinjs-lib';
 import { InvalidInputError } from '../../../errors/ApiError';
 import type { BitcoinNetwork } from '../networks';
+import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
 import {
   SIGNING_INTENT_SNAPSHOT_VERSION,
   type SigningIntentInputRole,
@@ -20,6 +21,11 @@ export const canonicalSnapshotJson = (snapshot: SigningIntentSnapshotV1): string
 
 export const calculateSnapshotDigest = (snapshot: SigningIntentSnapshotV1): string =>
   sha256Hex(canonicalSnapshotJson(snapshot));
+
+export const calculateSigningIntentDigest = (
+  snapshot: SigningIntentSnapshotV1,
+  signingContext: PsbtSigningContext,
+): string => sha256Hex(JSON.stringify({ snapshot, signingContext }));
 
 export const unsignedPsbtSha256 = (psbtBase64: string): string => {
   const bytes = Buffer.from(psbtBase64, 'base64');

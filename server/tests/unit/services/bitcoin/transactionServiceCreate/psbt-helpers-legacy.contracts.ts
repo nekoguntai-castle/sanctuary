@@ -19,7 +19,7 @@ import {
 } from "../../../../../src/services/bitcoin/transactionService";
 import * as asyncUtils from "../../../../../src/utils/async";
 import * as nodeClient from "../../../../../src/services/bitcoin/nodeClient";
-import { mockParseDescriptor } from "./transactionServiceCreateTestHarness";
+import { singleSigSigningWallet } from "./transactionServiceCreateTestHarness";
 import { parseAddressDerivationPath } from "@sanctuary/shared/utils/bitcoin";
 import {
   changeAddressRow,
@@ -253,11 +253,10 @@ export function registerTransactionServicePsbtHelpersLegacyTests(): void {
       const walletId = "test-wallet-id";
 
       // Setup mocks for transaction creation
-      mockPrismaClient.wallet.findUnique.mockResolvedValue({
+      mockPrismaClient.wallet.findUnique.mockResolvedValue(singleSigSigningWallet({
         ...sampleWallets.singleSigNativeSegwit,
         id: walletId,
-        devices: [],
-      });
+      }));
 
       mockPrismaClient.uTXO.findMany.mockResolvedValue([
         {
@@ -314,11 +313,10 @@ export function registerTransactionServicePsbtHelpersLegacyTests(): void {
 
     beforeEach(() => {
       // Set up legacy wallet mock
-      mockPrismaClient.wallet.findUnique.mockResolvedValue({
+      mockPrismaClient.wallet.findUnique.mockResolvedValue(singleSigSigningWallet({
         ...sampleWallets.singleSigLegacy,
         id: walletId,
-        devices: [],
-      });
+      }));
 
       // Set up UTXO mocks for legacy
       mockPrismaClient.uTXO.findMany.mockResolvedValue([

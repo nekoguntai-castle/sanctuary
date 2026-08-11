@@ -36,6 +36,12 @@ interface WalletWithDevices {
   fingerprint: string | null;
   descriptor: string | null;
   devices: Array<{
+    signerBindingVersion: number | null;
+    signerIndex: number | null;
+    signerFingerprint: string | null;
+    signerXpub: string | null;
+    signerDerivationPath: string | null;
+    deviceAccountId: string | null;
     device: {
       id: string;
       fingerprint: string | null;
@@ -114,75 +120,36 @@ function resolveMultisigSigningInfo(
   }
 }
 
-/* v8 ignore start -- single-sig signing-info fallback is exercised through transaction construction paths */
 function resolveSingleSigSigningInfo(
   wallet: WalletWithDevices,
   logPrefix: string
 ): Pick<WalletSigningInfo, 'masterFingerprint' | 'accountXpub'> {
-  const deviceInfo = resolveSingleSigDeviceInfo(wallet, logPrefix);
-  return resolveDescriptorFallbackSigningInfo(wallet, deviceInfo, logPrefix);
+  return resolveSingleSigDeviceInfo(wallet, logPrefix);
 }
-/* v8 ignore stop */
 
 function resolveSingleSigDeviceInfo(
   wallet: WalletWithDevices,
   logPrefix: string
 ): Pick<WalletSigningInfo, 'masterFingerprint' | 'accountXpub'> {
   if (wallet.devices && wallet.devices.length > 0) {
-    const primaryDevice = wallet.devices[0].device;
-    log.info(`${logPrefix}Found primary device`, {
-      deviceId: primaryDevice.id,
-      deviceFingerprint: primaryDevice.fingerprint,
-      hasXpub: !!primaryDevice.xpub,
-      xpubPrefix: primaryDevice.xpub?.substring(0, 4),
-    });
-    return {
-      masterFingerprint: primaryDevice.fingerprint ? Buffer.from(primaryDevice.fingerprint, 'hex') : undefined,
-      accountXpub: primaryDevice.xpub ?? undefined,
-    };
-  }
-
-  if (wallet.fingerprint) {
-    log.info(`${logPrefix}Using wallet fingerprint fallback`, { fingerprint: wallet.fingerprint });
-    return { masterFingerprint: Buffer.from(wallet.fingerprint, 'hex') };
-  }
-
-  return {};
-}
-
-function resolveDescriptorFallbackSigningInfo(
-  wallet: WalletWithDevices,
-  current: Pick<WalletSigningInfo, 'masterFingerprint' | 'accountXpub'>,
-  logPrefix: string
-): Pick<WalletSigningInfo, 'masterFingerprint' | 'accountXpub'> {
-  if (current.accountXpub || !wallet.descriptor) {
-    return current;
-  }
-
-  try {
-    const parsed = parseDescriptor(wallet.descriptor);
-    log.info(`${logPrefix}Parsed descriptor`, {
-      hasXpub: !!parsed.xpub,
-      xpubPrefix: parsed.xpub?.substring(0, 4),
-      fingerprint: parsed.fingerprint,
-      accountPath: parsed.accountPath,
-    });
-
-    /* v8 ignore next -- descriptor fallback handles missing fingerprint defensively */
-    const masterFingerprint = current.masterFingerprint ||
-      (parsed.fingerprint ? Buffer.from(parsed.fingerprint, 'hex') : undefined);
-    if (!current.masterFingerprint && parsed.fingerprint) {
-      log.info(`${logPrefix}Using fingerprint from descriptor`, { fingerprint: parsed.fingerprint });
+    const link = wallet.devices[0];
+    if (link.signerBindingVersion !== 1 || link.signerIndex !== 0
+      || !link.deviceAccountId || !link.signerFingerprint || !link.signerXpub
+      || !link.signerDerivationPath) {
+      throw new Error('Cannot create PSBT: immutable signer snapshot is incomplete');
     }
-
+    log.info(`${logPrefix}Found primary device`, {
+      deviceId: link.device.id,
+      deviceFingerprint: link.signerFingerprint,
+      hasXpub: true,
+      xpubPrefix: link.signerXpub.substring(0, 4),
+    });
     return {
-      masterFingerprint,
-      accountXpub: parsed.xpub ?? current.accountXpub,
+      masterFingerprint: Buffer.from(link.signerFingerprint, 'hex'),
+      accountXpub: link.signerXpub,
     };
-  } catch (e) {
-    log.warn(`${logPrefix}Failed to parse descriptor`, { error: (e as Error).message });
-    return current;
   }
+  throw new Error('Cannot create PSBT: immutable signer snapshot is missing');
 }
 
 /**

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PsbtSigningContextSchema } from './psbtSigningContext';
 
 /**
  * Runtime shapes for the Bitcoin endpoints' *responses*.
@@ -37,6 +38,43 @@ export const FeeEstimatesSchema = z.object({
 export type FeeEstimatesResponse = z.infer<typeof FeeEstimatesSchema>;
 
 const satoshis = z.number().finite();
+const signingEvidence = {
+  signingContext: PsbtSigningContextSchema,
+  intentId: z.string().min(1),
+  intentDigest: z.string().regex(/^[0-9a-f]{64}$/),
+};
+const signingIntent = {
+  psbtBase64: z.string().min(1),
+  ...signingEvidence,
+};
+
+/** Response from the dedicated hardware-wallet PSBT creation endpoint. */
+export const HardwarePsbtCreateResponseSchema = z.looseObject({
+  psbt: z.string().min(1),
+  ...signingEvidence,
+  fee: satoshis,
+});
+
+/**
+ * A successful Payjoin replacement is atomic signing evidence. None of the
+ * PSBT, intent, or account-binding fields may arrive independently.
+ */
+export const PayjoinAttemptResponseSchema = z.discriminatedUnion('success', [
+  z.looseObject({
+    success: z.literal(true),
+    isPayjoin: z.literal(true),
+    proposalPsbt: z.string().min(1),
+    ...signingEvidence,
+  }),
+  z.looseObject({
+    success: z.literal(false),
+    isPayjoin: z.literal(false),
+    error: z.string().optional(),
+  }),
+]);
+
+export type HardwarePsbtCreateResponse = z.infer<typeof HardwarePsbtCreateResponseSchema>;
+export type PayjoinAttemptResponse = z.infer<typeof PayjoinAttemptResponseSchema>;
 
 /**
  * Fee-bump replacement, built from an existing transaction.
@@ -48,12 +86,28 @@ const satoshis = z.number().finite();
  * result is fed straight into a draft that gets persisted and signed.
  */
 export const RBFTransactionResponseSchema = z.looseObject({
-  psbtBase64: z.string().min(1),
-  intentId: z.string().min(1),
-  intentDigest: z.string().regex(/^[0-9a-f]{64}$/),
+  ...signingIntent,
   fee: satoshis,
   feeRate: satoshis,
   feeDelta: satoshis,
   inputs: z.array(z.looseObject({ txid: z.string(), vout: z.number().int(), value: satoshis })).min(1),
   outputs: z.array(z.looseObject({ address: z.string(), value: satoshis })).min(1),
+});
+
+export const CPFPTransactionResponseSchema = z.looseObject({
+  ...signingIntent,
+  childFee: satoshis,
+  childFeeRate: satoshis,
+  parentFeeRate: satoshis,
+  effectiveFeeRate: satoshis,
+});
+
+export const BatchTransactionResponseSchema = z.looseObject({
+  ...signingIntent,
+  fee: satoshis,
+  totalInput: satoshis,
+  totalOutput: satoshis,
+  changeAmount: satoshis,
+  savedFees: satoshis,
+  recipientCount: z.number().int().positive(),
 });

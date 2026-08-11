@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PsbtSigningContextSchema } from './psbtSigningContext';
 
 /**
  * Runtime shapes for the responses a user signs against.
@@ -41,6 +42,7 @@ const signingIntent = {
 
 export const CreateTransactionResponseSchema = z.looseObject({
   psbtBase64: psbt,
+  signingContext: PsbtSigningContextSchema,
   ...signingIntent,
   // Every figure on the review screen, in the order the screen shows them.
   fee: satoshis,
@@ -53,6 +55,7 @@ export const CreateTransactionResponseSchema = z.looseObject({
 
 export const CreateBatchTransactionResponseSchema = z.looseObject({
   psbtBase64: psbt,
+  signingContext: PsbtSigningContextSchema,
   ...signingIntent,
   fee: satoshis,
   totalInput: satoshis,
@@ -71,6 +74,7 @@ export const DraftTransactionSchema = z.looseObject({
   id: z.string(),
   walletId: z.string(),
   psbtBase64: psbt,
+  signingContext: PsbtSigningContextSchema.nullable().optional(),
   signingIntentId: z.string().min(1).nullable().optional(),
   signingIntentDigest: z.string().regex(/^[0-9a-f]{64}$/).nullable().optional(),
   amount: satoshis,

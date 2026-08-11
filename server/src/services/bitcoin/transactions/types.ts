@@ -5,6 +5,7 @@
  */
 
 import * as bitcoin from 'bitcoinjs-lib';
+import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
 
 export type { PrismaTxClient } from '../../../models/prisma';
 
@@ -63,6 +64,7 @@ export interface CreateTransactionResult {
   inputPaths: string[]; // Derivation paths for hardware wallet signing
   effectiveAmount: number; // The actual amount being sent
   decoyOutputs?: Array<{ address: string; amount: number }>; // Decoy change outputs
+  signingContext: PsbtSigningContext;
 }
 
 /**
@@ -79,6 +81,7 @@ export interface CreateBatchTransactionResult {
   utxos: Array<{ txid: string; vout: number; address?: string; amount?: number }>;
   inputPaths: string[];
   outputs: Array<{ address: string; amount: number }>;
+  signingContext: PsbtSigningContext;
 }
 
 /**

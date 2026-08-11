@@ -8,12 +8,14 @@
 import type { Wallet, Device } from '../../types';
 import type { PayjoinAttemptStatus, TransactionState } from '../../contexts/send/types';
 import type { DeviceType } from '../../services/hardwareWallet/types';
+import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
 import { createLogger } from '../../utils/logger';
 
 const log = createLogger('SendTxHelpers');
 
 export interface TransactionData {
   psbtBase64: string;
+  signingContext?: PsbtSigningContext;
   intentId: string;
   intentDigest: string;
   fee: number;

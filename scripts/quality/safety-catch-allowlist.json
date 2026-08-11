@@ -434,15 +434,6 @@
       "targetRemovalSlice": "intentional-post-acceptance-boundary"
     },
     {
-      "file": "server/src/services/bitcoin/transactions/psbtInputConstruction.ts",
-      "functionName": "addSingleSigBip32Info",
-      "issue": "non-terminal-catch",
-      "count": 1,
-      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
-      "owner": "fund-safety",
-      "targetRemovalSlice": "fail-closed-safety-follow-up"
-    },
-    {
       "file": "server/src/services/bitcoin/transactions/storeTransactionIO.ts",
       "functionName": "storeTransactionOutputs",
       "issue": "non-terminal-catch",
