@@ -48,7 +48,8 @@ describe('pinned Ledger emulator proof configuration', () => {
       .toBe(manifest.sdk.webUsbTransport);
     expect(automation).toContain('Sign transaction');
     expect(runner).toContain("readonly manifest='config/ledger-emulator/proof.json'");
-    expect(runner).toContain('docker build');
+    expect(runner).toContain('docker buildx build');
+    expect(runner).toMatch(/docker buildx build \\\n\s+--load \\/);
     expect(runner).toContain('docker rm "$container"');
     expect(runner).not.toMatch(/docker run[^\n]*--publish/);
     expect(runner).toContain('LEDGER_EMULATOR_PROOF=1');

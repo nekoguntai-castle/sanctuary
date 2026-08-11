@@ -84,7 +84,8 @@ if [ "$expected_ledger_version" != "$locked_ledger_version" ] \
   exit 1
 fi
 
-timeout --foreground --kill-after=30s 900s docker build \
+timeout --foreground --kill-after=30s 900s docker buildx build \
+  --load \
   --platform "$(jq -r '.platform' "$manifest")" \
   --tag "$image" config/ledger-emulator
 docker image inspect "$image" > "$diagnostics_dir/image-inspect.json"
