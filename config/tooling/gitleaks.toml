@@ -29,6 +29,12 @@ paths = [
   # The verify-vectors workflow talks to a local regtest Bitcoin Core service
   # with fixed disposable RPC credentials.
   '''\.github/workflows/verify-vectors\.yml''',
+  # The Jade protocol manifest and its exact jq validator contain only pinned
+  # public source/image integrity digests. The `auth_user.c` filename beside a
+  # SHA-256 digest triggers the generic API-key heuristic; mutation tests and
+  # the validator fail closed if any of these public digests drift.
+  '''config/jade-protocol-harness\.json''',
+  '''scripts/ci/validate-jade-protocol-manifest\.jq''',
   # Canonical Bitcoin protocol vectors and test-only placeholders. These files
   # are intentionally committed fixtures, not operational secrets.
   '''server/tests/fixtures/bip340-test-vectors\.ts''',

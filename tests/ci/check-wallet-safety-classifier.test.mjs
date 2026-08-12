@@ -58,7 +58,9 @@ const BROAD_WORKFLOW = `  pull_request:
       - path: \${{ env.TREZOR_EMULATOR_DIAGNOSTICS_DIR }}
       - run: npm run test:ledger-emulator-proof
       - path: \${{ env.LEDGER_EMULATOR_PROOF_DIR }}
-      - path: \${{ env.LEDGER_EMULATOR_DIAGNOSTICS_DIR }}`;
+      - path: \${{ env.LEDGER_EMULATOR_DIAGNOSTICS_DIR }}
+      - run: npm run test:jade-protocol-harness
+      - path: \${{ env.JADE_PROTOCOL_PROOF_DIR }}`;
 const REPOSITORY_FILES = ['server/src/services/wallet/create.ts', 'same'];
 const PROOF_MANIFEST = {
   schemaVersion: 1,
@@ -160,6 +162,8 @@ test('mandatory PSBT and hardware proof commands and exact Core image fail close
     'npm run test:ledger-emulator-proof',
     'LEDGER_EMULATOR_PROOF_DIR',
     'LEDGER_EMULATOR_DIAGNOSTICS_DIR',
+    'npm run test:jade-protocol-harness',
+    'JADE_PROTOCOL_PROOF_DIR',
   ]) {
     assert.throws(
       () =>

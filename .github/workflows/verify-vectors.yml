@@ -85,6 +85,22 @@ jobs:
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/wait-for-docker.log"
           ${{ github.workspace }}/scripts/ci/wait-for-docker.sh
 
+      - name: Run pinned Jade vendor protocol harness
+        timeout-minutes: 5
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/jade-protocol-harness.log"
+          npm run test:jade-protocol-harness
+
+      - name: Upload current Jade protocol proof
+        if: success() && env.JADE_PROTOCOL_PROOF_DIR != ''
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: jade-protocol-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.JADE_PROTOCOL_PROOF_DIR }}
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
+
       - name: Install server dependencies
         timeout-minutes: 10
         run: |

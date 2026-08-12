@@ -108,6 +108,7 @@
     "config/trezor-emulator-proof.json",
     "config/tooling/vitest.ledger-emulator.config.ts",
     "config/ledger-emulator/**",
+    "config/jade-protocol-harness.json",
     "server/stryker.psbt-account-binding.config.mjs",
     "server/stryker.taproot-construction.config.mjs",
     "server/stryker.taproot-artifact-finalization.config.mjs",
@@ -119,9 +120,15 @@
     "scripts/ci/docker-exec-tcp-forwarder.mjs",
     "scripts/ci/run-trezor-emulator-proof.sh",
     "scripts/ci/run-ledger-emulator-proof.sh",
+    "scripts/ci/run-jade-protocol-harness.sh",
+    "scripts/ci/jade-vendor-protocol-harness.py",
+    "scripts/ci/validate-jade-protocol-manifest.jq",
     "tests/ci/check-wallet-safety-mutation-map.test.mjs",
     "tests/ci/check-wallet-safety-classifier.test.mjs",
     "tests/ci/dockerExecTcpForwarder.test.ts",
+    "tests/ci/jade-vendor-protocol-harness.test.py",
+    "tests/config/jadeProtocolHarness.test.ts",
+    "docs/adr/0003-jade-plus-authentication-boundary.md",
     ".github/workflows/verify-vectors.yml"
   ]
 }

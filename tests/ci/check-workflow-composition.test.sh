@@ -1729,6 +1729,8 @@ assert_not_contains "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
 
 assert_contains_in_order "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
   "verify-vectors executes hardware truthfulness contracts" \
+  "Run pinned Jade vendor protocol harness" \
+  "npm run test:jade-protocol-harness" \
   "Run hardware capability truthfulness tests" \
   "tests/unit/services/bitcoin/hardwareWalletCompatibility.test.ts" \
   "tests/unit/services/hardwareWalletCapabilities.test.ts" \
