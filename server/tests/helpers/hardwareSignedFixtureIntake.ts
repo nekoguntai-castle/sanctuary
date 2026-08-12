@@ -8,14 +8,18 @@ import {
 } from "@sanctuary/shared/constants/walletPolicy";
 import {
   COMMON_HARDWARE_SIGNED_NEGATIVE_CONTROLS,
+  BITBOX02_PHYSICAL_MODELS,
   JADE_PLUS_PHYSICAL_MODEL,
   JADE_PLUS_PHYSICAL_TRANSPORT,
+  LEDGER_PHYSICAL_MODELS,
   LEDGER_HARDWARE_SIGNED_SOFTWARE_GATES,
   JADE_HARDWARE_SIGNED_SOFTWARE_GATES,
   MULTISIG_HARDWARE_SIGNED_NEGATIVE_CONTROLS,
   REQUIRED_HARDWARE_SIGNED_ADDRESS_PATH_SUFFIXES,
   REQUIRED_HARDWARE_SIGNED_SOFTWARE_GATES,
   TREZOR_HARDWARE_SIGNED_SOFTWARE_GATES,
+  TREZOR_PHYSICAL_MODELS,
+  type HardwareEvidenceSdkPackage,
   type HardwareSignedNegativeControlCase,
   type HardwareSignedPsbtVector,
   type HardwareSignedScriptType,
@@ -24,8 +28,11 @@ import {
 } from "../fixtures/hardware-signed-psbt-vectors";
 import {
   defaultCommitReachability,
+  currentPackageLockSha256,
   EMPTY_HARDWARE_EVIDENCE_TRUST,
+  hardwareEvidenceSourceManifestSha256,
   sourceManifestMatches,
+  validateApplicationReceipt,
   validateCoreReceipt,
   type HardwareEvidenceVerificationContext,
 } from "./hardwareSignedEvidenceProvenance";
@@ -54,6 +61,7 @@ const SHA256_HEX = /^[0-9a-f]{64}$/;
 const COMMIT_SHA = /^[0-9a-f]{40}$/;
 const IMAGE_DIGEST = /^sha256:[0-9a-f]{64}$/;
 const SRI_SHA512 = /^sha512-[A-Za-z0-9+/]+={0,2}$/;
+const SEMVER = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
 const BIP39_WORD_COUNTS = [12, 15, 18, 21, 24] as const;
 const BIP39_WORDLISTS = [
   ...new Set(Object.values(wordlists as Record<string, string[]>)),
@@ -61,6 +69,9 @@ const BIP39_WORDLISTS = [
 const MAX_EVIDENCE_AGE_MS = 180 * 24 * 60 * 60 * 1000;
 const PACKAGE_LOCK_PATH = fileURLToPath(
   new URL("../../../package-lock.json", import.meta.url),
+);
+const PACKAGE_JSON_PATH = fileURLToPath(
+  new URL("../../../package.json", import.meta.url),
 );
 const CORE_PROOF_PATH = fileURLToPath(
   new URL("../../../scripts/verify-psbt/proof-manifest.json", import.meta.url),
@@ -71,6 +82,11 @@ const JADE_PROOF_PATH = fileURLToPath(
 const PACKAGE_LOCK = JSON.parse(readFileSync(PACKAGE_LOCK_PATH, "utf8")) as {
   packages: Record<string, { version?: string; integrity?: string }>;
 };
+const PACKAGE_VERSION = (
+  JSON.parse(readFileSync(PACKAGE_JSON_PATH, "utf8")) as {
+    version: string;
+  }
+).version;
 const CORE_PROOF = JSON.parse(readFileSync(CORE_PROOF_PATH, "utf8")) as {
   coreImage: string;
   coreSubversion: string;
@@ -88,13 +104,15 @@ const EXPECTED_POLICY_ID: Record<HardwareSignedScriptType, string> = {
   "p2sh-p2wsh": "multisig-nested-segwit-bip48-1-v1",
 };
 
-const EXPECTED_SDK_PACKAGE: Record<HardwareSignedPsbtVector["vendor"], string> =
-  {
-    ledger: "@ledgerhq/ledger-bitcoin",
-    trezor: "@trezor/connect-web",
-    jade: "cbor-x",
-    bitbox: "bitbox02-api",
-  };
+const EXPECTED_SDK_PACKAGES: Record<
+  HardwareSignedPsbtVector["vendor"],
+  readonly HardwareEvidenceSdkPackage[]
+> = {
+  ledger: ["@ledgerhq/ledger-bitcoin", "@ledgerhq/hw-transport-webusb"],
+  trezor: ["@trezor/connect", "@trezor/connect-web"],
+  jade: ["cbor-x"],
+  bitbox: ["bitbox02-api"],
+};
 
 const issue = (
   vectorId: string,
@@ -212,13 +230,14 @@ const validateSoftwareGates = (
   const passedCommands = vector.softwareGates
     .filter((gate) => gate.status === "passed" && gate.capturedAt.trim() !== "")
     .map((gate) => gate.command);
-  const vendorGates = vector.vendor === "trezor"
-    ? TREZOR_HARDWARE_SIGNED_SOFTWARE_GATES
-    : vector.vendor === "ledger"
-      ? LEDGER_HARDWARE_SIGNED_SOFTWARE_GATES
-      : vector.vendor === "jade"
-        ? JADE_HARDWARE_SIGNED_SOFTWARE_GATES
-        : [];
+  const vendorGates =
+    vector.vendor === "trezor"
+      ? TREZOR_HARDWARE_SIGNED_SOFTWARE_GATES
+      : vector.vendor === "ledger"
+        ? LEDGER_HARDWARE_SIGNED_SOFTWARE_GATES
+        : vector.vendor === "jade"
+          ? JADE_HARDWARE_SIGNED_SOFTWARE_GATES
+          : [];
   const required = [...REQUIRED_HARDWARE_SIGNED_SOFTWARE_GATES, ...vendorGates];
   return missingValues(required, passedCommands).map((command) =>
     issue(
@@ -285,7 +304,9 @@ const artifactBytes = (
   if (vector.artifact.type === "ledger-signed-psbt") {
     return [
       vector.artifact.sourcePsbtBase64,
-      ...vector.artifact.signatures.map((signature) => JSON.stringify(signature)),
+      ...vector.artifact.signatures.map((signature) =>
+        JSON.stringify(signature),
+      ),
       vector.artifact.reconstructedPsbtBase64,
     ].join("\n");
   }
@@ -301,7 +322,7 @@ const validateProvenanceIdentity = (
 ): HardwareSignedFixtureIntakeIssue[] => {
   const issues: HardwareSignedFixtureIntakeIssue[] = [];
   const evidence = vector.evidence;
-  if (vector.fixtureSchemaVersion !== 3) {
+  if (vector.fixtureSchemaVersion !== 4) {
     issues.push(
       issue(
         vector.id,
@@ -331,55 +352,306 @@ const validateProvenanceIdentity = (
       ),
     );
   }
-  if (!IMAGE_DIGEST.test(evidence.sanctuaryImageDigest)) {
+  return issues;
+};
+
+const validateApprovedModel = (
+  vector: HardwareSignedPsbtVector,
+  models: readonly string[],
+  label: string,
+): HardwareSignedFixtureIntakeIssue[] => {
+  if (models.includes(vector.device.model)) return [];
+  return [
+    issue(
+      vector.id,
+      "device.model",
+      `${label} model is not an approved physical evidence model`,
+    ),
+  ];
+};
+
+const validateExactSemver = (
+  vector: HardwareSignedPsbtVector,
+  value: string | undefined,
+  field: string,
+  label: string,
+): HardwareSignedFixtureIntakeIssue[] => {
+  if (value && SEMVER.test(value)) return [];
+  return [
+    issue(vector.id, field, `${label} must be an exact semantic version`),
+  ];
+};
+
+const validateLedgerDevice = (
+  vector: HardwareSignedPsbtVector,
+): HardwareSignedFixtureIntakeIssue[] => {
+  const webUsb = vector.evidence.sdkPackages.find(
+    ({ package: name }) => name === "@ledgerhq/hw-transport-webusb",
+  );
+  const issues = [
+    ...validateApprovedModel(vector, LEDGER_PHYSICAL_MODELS, "Ledger"),
+    ...validateExactSemver(
+      vector,
+      vector.device.firmwareVersion,
+      "device.firmwareVersion",
+      "Ledger firmware",
+    ),
+    ...validateExactSemver(
+      vector,
+      vector.device.bitcoinAppVersion,
+      "device.bitcoinAppVersion",
+      "Ledger Bitcoin app",
+    ),
+  ];
+  if (vector.device.transport !== "webusb") {
     issues.push(
       issue(
         vector.id,
-        "evidence.sanctuaryImageDigest",
-        "Sanctuary image must be pinned by SHA-256 digest",
+        "device.transport",
+        "Ledger physical evidence must use webusb",
+      ),
+    );
+  }
+  if (vector.device.transportVersion !== webUsb?.version) {
+    issues.push(
+      issue(
+        vector.id,
+        "device.transportVersion",
+        "Ledger WebUSB transport version must match the locked transport package",
       ),
     );
   }
   return issues;
 };
 
-const validateJadeDeviceBinding = (
+const validateTrezorDevice = (
   vector: HardwareSignedPsbtVector,
 ): HardwareSignedFixtureIntakeIssue[] => {
-  if (vector.vendor !== "jade") return [];
+  const connectWeb = vector.evidence.sdkPackages.find(
+    ({ package: name }) => name === "@trezor/connect-web",
+  );
+  const issues = [
+    ...validateApprovedModel(vector, TREZOR_PHYSICAL_MODELS, "Trezor"),
+    ...validateExactSemver(
+      vector,
+      vector.device.firmwareVersion,
+      "device.firmwareVersion",
+      "Trezor firmware",
+    ),
+    ...validateExactSemver(
+      vector,
+      vector.device.companionVersion,
+      "device.companionVersion",
+      "Trezor Bridge or Suite companion",
+    ),
+  ];
+  if (vector.device.bitcoinAppVersion !== undefined) {
+    issues.push(
+      issue(
+        vector.id,
+        "device.bitcoinAppVersion",
+        "Trezor evidence must not invent a Bitcoin app version",
+      ),
+    );
+  }
+  if (vector.device.transport !== "trezor-connect") {
+    issues.push(
+      issue(
+        vector.id,
+        "device.transport",
+        "Trezor physical evidence must use trezor-connect",
+      ),
+    );
+  }
+  if (vector.device.transportVersion !== connectWeb?.version) {
+    issues.push(
+      issue(
+        vector.id,
+        "device.transportVersion",
+        "Trezor transport version must match the locked Connect-Web package",
+      ),
+    );
+  }
+  return issues;
+};
 
+const validateJadeDevice = (
+  vector: HardwareSignedPsbtVector,
+): HardwareSignedFixtureIntakeIssue[] => {
   const issues: HardwareSignedFixtureIntakeIssue[] = [];
   if (vector.device.model !== JADE_PLUS_PHYSICAL_MODEL) {
-    issues.push(issue(
-      vector.id,
-      "device.model",
-      `Jade evidence must come from a physical ${JADE_PLUS_PHYSICAL_MODEL}`,
-    ));
+    issues.push(
+      issue(
+        vector.id,
+        "device.model",
+        `Jade evidence must come from a physical ${JADE_PLUS_PHYSICAL_MODEL}`,
+      ),
+    );
   }
   if (vector.device.transport !== JADE_PLUS_PHYSICAL_TRANSPORT) {
-    issues.push(issue(
-      vector.id,
-      "device.transport",
-      `Jade Plus evidence must use ${JADE_PLUS_PHYSICAL_TRANSPORT}`,
-    ));
+    issues.push(
+      issue(
+        vector.id,
+        "device.transport",
+        `Jade Plus evidence must use ${JADE_PLUS_PHYSICAL_TRANSPORT}`,
+      ),
+    );
   }
-  const firmwareVersion = vector.device.firmwareVersion.trim();
-  if (
-    firmwareVersion === "" ||
-    firmwareVersion !== JADE_PROOF.firmware.runtimeVersion
-  ) {
-    issues.push(issue(
-      vector.id,
-      "device.firmwareVersion",
-      `Jade Plus firmware must match proven compatible release ${JADE_PROOF.firmware.runtimeVersion}`,
-    ));
+  if (vector.device.firmwareVersion !== JADE_PROOF.firmware.runtimeVersion) {
+    issues.push(
+      issue(
+        vector.id,
+        "device.firmwareVersion",
+        `Jade Plus firmware must match proven compatible release ${JADE_PROOF.firmware.runtimeVersion}`,
+      ),
+    );
   }
   if (!vector.device.transportVersion?.trim()) {
-    issues.push(issue(
-      vector.id,
-      "device.transportVersion",
-      "Jade Plus WebSerial transport metadata is required",
-    ));
+    issues.push(
+      issue(
+        vector.id,
+        "device.transportVersion",
+        "Jade Plus WebSerial transport metadata is required",
+      ),
+    );
+  }
+  return issues;
+};
+
+const validateBitBoxDevice = (
+  vector: HardwareSignedPsbtVector,
+): HardwareSignedFixtureIntakeIssue[] => {
+  const issues = [
+    ...validateApprovedModel(vector, BITBOX02_PHYSICAL_MODELS, "BitBox02"),
+    ...validateExactSemver(
+      vector,
+      vector.device.firmwareVersion,
+      "device.firmwareVersion",
+      "BitBox02 firmware",
+    ),
+  ];
+  if (vector.device.transport !== "webhid") {
+    issues.push(
+      issue(
+        vector.id,
+        "device.transport",
+        "BitBox02 physical evidence must use webhid",
+      ),
+    );
+  }
+  if (!vector.device.transportVersion?.trim()) {
+    issues.push(
+      issue(
+        vector.id,
+        "device.transportVersion",
+        "BitBox02 WebHID transport metadata is required",
+      ),
+    );
+  }
+  return issues;
+};
+
+const validateVendorDevice = (
+  vector: HardwareSignedPsbtVector,
+): HardwareSignedFixtureIntakeIssue[] => {
+  if (vector.vendor === "ledger") return validateLedgerDevice(vector);
+  if (vector.vendor === "trezor") return validateTrezorDevice(vector);
+  if (vector.vendor === "jade") return validateJadeDevice(vector);
+  return validateBitBoxDevice(vector);
+};
+
+const validateDeviceBinding = (
+  vector: HardwareSignedPsbtVector,
+): HardwareSignedFixtureIntakeIssue[] => {
+  const issues = validateVendorDevice(vector);
+
+  if (!vector.device.transportVersion?.trim()) {
+    issues.push(
+      issue(
+        vector.id,
+        "device.transportVersion",
+        "physical transport version metadata is required",
+      ),
+    );
+  }
+  return issues;
+};
+
+const applicationIdentityMatches = (
+  vector: HardwareSignedPsbtVector,
+): boolean => {
+  const { application } = vector.evidence;
+  return (
+    application.appVersion === PACKAGE_VERSION &&
+    application.packageLockSha256 === currentPackageLockSha256() &&
+    application.sourceManifestSha256 ===
+      hardwareEvidenceSourceManifestSha256(vector.vendor)
+  );
+};
+
+const applicationImageRolesMatch = (
+  vector: HardwareSignedPsbtVector,
+): boolean => {
+  const roles = vector.evidence.application.images.map(({ role }) => role);
+  return (
+    roles.length === 2 &&
+    new Set(roles).size === 2 &&
+    roles.includes("frontend") &&
+    roles.includes("backend")
+  );
+};
+
+const applicationImageMatches = (
+  vector: HardwareSignedPsbtVector,
+  image: HardwareSignedPsbtVector["evidence"]["application"]["images"][number],
+): boolean => {
+  const { application } = vector.evidence;
+  return (
+    IMAGE_DIGEST.test(image.manifestDigest) &&
+    IMAGE_DIGEST.test(image.configDigest) &&
+    image.gitRevision === vector.evidence.testedCommitSha &&
+    image.appVersion === application.appVersion &&
+    image.packageLockSha256 === application.packageLockSha256 &&
+    image.sourceManifestSha256 === application.sourceManifestSha256 &&
+    image.image.trim() !== "" &&
+    image.image.toLowerCase().includes(image.role)
+  );
+};
+
+const validateApplicationProvenance = (
+  vector: HardwareSignedPsbtVector,
+): HardwareSignedFixtureIntakeIssue[] => {
+  const issues: HardwareSignedFixtureIntakeIssue[] = [];
+  const { application } = vector.evidence;
+  if (!applicationIdentityMatches(vector)) {
+    issues.push(
+      issue(
+        vector.id,
+        "evidence.application",
+        "Sanctuary application evidence must match the current version, lockfile, and funds-safety source manifest",
+      ),
+    );
+  }
+
+  if (!applicationImageRolesMatch(vector)) {
+    issues.push(
+      issue(
+        vector.id,
+        "evidence.application.images",
+        "exactly one frontend and one backend image subject are required",
+      ),
+    );
+  }
+  for (const image of application.images) {
+    if (!applicationImageMatches(vector, image)) {
+      issues.push(
+        issue(
+          vector.id,
+          "evidence.application.images",
+          `Sanctuary ${image.role} image subject is incomplete or does not match the capture source identity`,
+        ),
+      );
+    }
   }
   return issues;
 };
@@ -389,29 +661,37 @@ const validateSdkAndSourceProvenance = (
 ): HardwareSignedFixtureIntakeIssue[] => {
   const issues: HardwareSignedFixtureIntakeIssue[] = [];
   const evidence = vector.evidence;
-  if (!SRI_SHA512.test(evidence.sdkIntegrity)) {
-    issues.push(
-      issue(
-        vector.id,
-        "evidence.sdkIntegrity",
-        "vendor SDK integrity must be an npm SHA-512 SRI value",
-      ),
-    );
-  }
-  const expectedPackage = EXPECTED_SDK_PACKAGE[vector.vendor];
-  const lockedSdk = PACKAGE_LOCK.packages[`node_modules/${expectedPackage}`];
+  const expectedPackages = EXPECTED_SDK_PACKAGES[vector.vendor];
+  const actualPackages = evidence.sdkPackages.map(({ package: name }) => name);
+  const uniquePackages = new Set(actualPackages);
   if (
-    evidence.sdkPackage !== expectedPackage ||
-    evidence.sdkVersion !== lockedSdk?.version ||
-    evidence.sdkIntegrity !== lockedSdk?.integrity
+    actualPackages.length !== expectedPackages.length ||
+    uniquePackages.size !== actualPackages.length ||
+    expectedPackages.some((name) => !uniquePackages.has(name))
   ) {
     issues.push(
       issue(
         vector.id,
-        "evidence.sdkIntegrity",
-        "vendor SDK evidence must exactly match the current lockfile",
+        "evidence.sdkPackages",
+        "vendor SDK evidence must contain the exact required package tuple",
       ),
     );
+  }
+  for (const sdk of evidence.sdkPackages) {
+    const lockedSdk = PACKAGE_LOCK.packages[`node_modules/${sdk.package}`];
+    if (
+      !SRI_SHA512.test(sdk.integrity) ||
+      sdk.version !== lockedSdk?.version ||
+      sdk.integrity !== lockedSdk?.integrity
+    ) {
+      issues.push(
+        issue(
+          vector.id,
+          "evidence.sdkPackages",
+          `vendor SDK evidence for ${sdk.package} must exactly match the current lockfile`,
+        ),
+      );
+    }
   }
   if (!sourceManifestMatches(vector)) {
     issues.push(
@@ -432,7 +712,6 @@ const validateFreshnessAndOperator = (
   const issues: HardwareSignedFixtureIntakeIssue[] = [];
   const evidence = vector.evidence;
   for (const [field, value] of [
-    ["sdkVersion", evidence.sdkVersion],
     ["hostOs", evidence.hostOs],
     ["browser", evidence.browser],
     ["captureId", evidence.captureId],
@@ -536,6 +815,11 @@ const validateRepositoryAndReceipt = (
     issues.push(
       issue(vector.id, "evidence.coreAcceptance.receipt", receiptError),
     );
+  const applicationReceiptError = validateApplicationReceipt(vector, context);
+  if (applicationReceiptError)
+    issues.push(
+      issue(vector.id, "evidence.application.receipt", applicationReceiptError),
+    );
   return issues;
 };
 
@@ -544,8 +828,9 @@ const validatePhysicalProvenance = (
   context: HardwareEvidenceVerificationContext,
 ): HardwareSignedFixtureIntakeIssue[] => [
   ...validateProvenanceIdentity(vector),
-  ...validateJadeDeviceBinding(vector),
+  ...validateApplicationProvenance(vector),
   ...validateSdkAndSourceProvenance(vector),
+  ...validateDeviceBinding(vector),
   ...validateFreshnessAndOperator(vector, context),
   ...validateEvidenceHashes(vector),
   ...validateRepositoryAndReceipt(vector, context),
@@ -669,7 +954,10 @@ const validateArtifactContract = (
       ),
     );
   }
-  if (vector.vendor === "ledger" && vector.artifact.type !== "ledger-signed-psbt") {
+  if (
+    vector.vendor === "ledger" &&
+    vector.artifact.type !== "ledger-signed-psbt"
+  ) {
     issues.push(
       issue(
         vector.id,
@@ -679,33 +967,41 @@ const validateArtifactContract = (
     );
   }
   if (vector.vendor === "bitbox" && vector.artifact.type !== "signed-psbt") {
-    issues.push(issue(
-      vector.id,
-      "artifact.type",
-      "BitBox evidence must retain the adapter-returned signed PSBT",
-    ));
+    issues.push(
+      issue(
+        vector.id,
+        "artifact.type",
+        "BitBox evidence must retain the adapter-returned signed PSBT",
+      ),
+    );
   }
   if (vector.vendor === "jade" && vector.artifact.type !== "signed-psbt") {
-    issues.push(issue(
-      vector.id,
-      "artifact.type",
-      "Jade evidence must retain the adapter-returned signed PSBT",
-    ));
+    issues.push(
+      issue(
+        vector.id,
+        "artifact.type",
+        "Jade evidence must retain the adapter-returned signed PSBT",
+      ),
+    );
   }
   if (vector.artifact.type === "ledger-signed-psbt") {
     if (vector.artifact.sourcePsbtBase64 !== vector.unsignedPsbtBase64) {
-      issues.push(issue(
-        vector.id,
-        "artifact.sourcePsbtBase64",
-        "Ledger source PSBT differs from fixture unsigned PSBT",
-      ));
+      issues.push(
+        issue(
+          vector.id,
+          "artifact.sourcePsbtBase64",
+          "Ledger source PSBT differs from fixture unsigned PSBT",
+        ),
+      );
     }
     if (vector.artifact.signatures.length === 0) {
-      issues.push(issue(
-        vector.id,
-        "artifact.signatures",
-        "Ledger exact signature record list is empty",
-      ));
+      issues.push(
+        issue(
+          vector.id,
+          "artifact.signatures",
+          "Ledger exact signature record list is empty",
+        ),
+      );
     }
   }
   if (vector.artifact.type === "trezor-connect-transaction") {

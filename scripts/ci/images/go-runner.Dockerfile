@@ -25,7 +25,7 @@
 # That prints the digest-pinned label mapping; add it to runner-infra's
 # config/runner-images.env and re-render each host. See
 # runner-infra/docs/how-to/runner-job-images.md.
-FROM ghcr.io/catthehacker/ubuntu:act-22.04
+FROM ghcr.io/catthehacker/ubuntu:act-22.04@sha256:41e84facdece5f25b0de00cd69969f5f032c54f5bb7313f385727330db9ac40f
 
 # Pinned by version and checksum: this image is a supply-chain surface for a
 # tool whose entire purpose is independent verification, so the toolchain it
@@ -39,7 +39,8 @@ ARG GO_SHA256=234828b7a89e0e303d2556310ee549fbcf253d28de937bac3da13d6294262ac1
 
 # The act base prepends its own toolcache. Put the checksum-pinned toolchain
 # first so both the build verification and every job use the baked binaries.
-ENV PATH="/usr/local/bin:${PATH}"
+ENV PATH="/usr/local/bin:${PATH}" \
+    GOTOOLCHAIN="local"
 
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \

@@ -61,6 +61,7 @@ const STATIC_IMPORT_CACHE = new Map<
 
 export interface HardwareEvidenceVerificationContext {
   trustedCoreReceiptKeys: Readonly<Record<string, string>>;
+  trustedApplicationReceiptKeys: Readonly<Record<string, string>>;
   isTestedCommitReachable?: (sha: string) => boolean;
   now?: number;
 }
@@ -68,6 +69,7 @@ export interface HardwareEvidenceVerificationContext {
 export const EMPTY_HARDWARE_EVIDENCE_TRUST: HardwareEvidenceVerificationContext =
   Object.freeze({
     trustedCoreReceiptKeys: Object.freeze({}),
+    trustedApplicationReceiptKeys: Object.freeze({}),
   });
 
 const sha256 = (value: Uint8Array | string): string =>
@@ -215,7 +217,9 @@ export function currentHardwareEvidenceSourceManifest(
 ) {
   const vendorFiles = VENDOR_SOURCE_ROOTS[vendor].flatMap((source) => {
     const path = resolve(REPO_ROOT, source);
-    return statSync(path).isDirectory() ? recursiveTypeScriptFiles(path) : [path];
+    return statSync(path).isDirectory()
+      ? recursiveTypeScriptFiles(path)
+      : [path];
   });
   const rootFiles = PROOF_SOURCE_ROOTS.map((path) => resolve(REPO_ROOT, path));
   const helperFiles = hardwareSignedHelperFiles();
@@ -230,6 +234,23 @@ export function currentHardwareEvidenceSourceManifest(
       sha256: sha256(canonicalSourceBytes(path)),
     }))
     .sort((left, right) => compareText(left.path, right.path));
+}
+
+export function currentPackageLockSha256(): string {
+  return sha256(readFileSync(resolve(REPO_ROOT, "package-lock.json")));
+}
+
+export function currentApplicationVersion(): string {
+  const packageJson = JSON.parse(
+    readFileSync(resolve(REPO_ROOT, "package.json"), "utf8"),
+  ) as { version: string };
+  return packageJson.version;
+}
+
+export function hardwareEvidenceSourceManifestSha256(
+  vendor: HardwareWalletVendor,
+): string {
+  return sha256(JSON.stringify(currentHardwareEvidenceSourceManifest(vendor)));
 }
 
 export function defaultCommitReachability(sha: string): boolean {
@@ -259,16 +280,49 @@ export function coreReceiptPayload(vector: HardwareSignedPsbtVector): Buffer {
   return Buffer.from(JSON.stringify(payload), "utf8");
 }
 
-export function validateCoreReceipt(
+export function applicationReceiptPayload(
   vector: HardwareSignedPsbtVector,
-  context: HardwareEvidenceVerificationContext,
-): string | null {
-  const receipt = vector.evidence.coreAcceptance.receipt;
-  const trustedKey = context.trustedCoreReceiptKeys[receipt.keyId];
-  if (!trustedKey) return "Core acceptance receipt key is not trusted";
-  const payload = coreReceiptPayload(vector);
+): Buffer {
+  const application = vector.evidence.application;
+  const payload = {
+    schema: "sanctuary-physical-hardware-capture-v1",
+    captureId: vector.evidence.captureId,
+    testedCommitSha: vector.evidence.testedCommitSha,
+    application: {
+      appVersion: application.appVersion,
+      packageLockSha256: application.packageLockSha256,
+      sourceManifestSha256: application.sourceManifestSha256,
+      images: application.images,
+    },
+    device: vector.device,
+    sdkPackages: vector.evidence.sdkPackages,
+    hostOs: vector.evidence.hostOs,
+    browser: vector.evidence.browser,
+    unsignedPsbtSha256: vector.evidence.unsignedPsbtSha256,
+    signedArtifactSha256: vector.evidence.signedArtifactSha256,
+    coreReceiptPayloadSha256:
+      vector.evidence.coreAcceptance.receipt.payloadSha256,
+  };
+  return Buffer.from(JSON.stringify(payload), "utf8");
+}
+
+const validateSignedReceipt = (
+  payload: Buffer,
+  receipt: {
+    algorithm: "ed25519";
+    keyId: string;
+    payloadSha256: string;
+    signatureBase64: string;
+  },
+  trustedKeys: Readonly<Record<string, string>>,
+  label: string,
+): string | null => {
+  if (receipt.algorithm !== "ed25519")
+    return `${label} receipt algorithm is invalid`;
+  const trustedKey = trustedKeys[receipt.keyId];
+  if (!trustedKey) return `${label} receipt key is not trusted`;
   if (receipt.payloadSha256 !== sha256(payload))
-    return "Core acceptance receipt payload hash mismatch";
+    return `${label} receipt payload hash mismatch`;
   try {
     const valid = verify(
       null,
@@ -276,10 +330,35 @@ export function validateCoreReceipt(
       createPublicKey(trustedKey),
       Buffer.from(receipt.signatureBase64, "base64"),
     );
-    return valid ? null : "Core acceptance receipt signature is invalid";
+    return valid ? null : `${label} receipt signature is invalid`;
   } catch {
-    return "Core acceptance receipt signature is invalid";
+    return `${label} receipt signature is invalid`;
   }
+};
+
+export function validateCoreReceipt(
+  vector: HardwareSignedPsbtVector,
+  context: HardwareEvidenceVerificationContext,
+): string | null {
+  const receipt = vector.evidence.coreAcceptance.receipt;
+  return validateSignedReceipt(
+    coreReceiptPayload(vector),
+    receipt,
+    context.trustedCoreReceiptKeys,
+    "Core acceptance",
+  );
+}
+
+export function validateApplicationReceipt(
+  vector: HardwareSignedPsbtVector,
+  context: HardwareEvidenceVerificationContext,
+): string | null {
+  return validateSignedReceipt(
+    applicationReceiptPayload(vector),
+    vector.evidence.application.receipt,
+    context.trustedApplicationReceiptKeys,
+    "Sanctuary application",
+  );
 }
 
 export function sourceManifestMatches(

@@ -1,0 +1,706 @@
+{
+  "schemaVersion": 1,
+  "statementId": "sanctuary-hardware-wallet-compatibility-v1",
+  "generatedAt": "2026-08-11T00:00:00.000Z",
+  "revision": null,
+  "source": {
+    "applicationVersion": "0.8.62",
+    "packageLockSha256": "7087a1274d90231aaf0d40aa76de83beb4397eb281d291aa174ecbcebd3614d9",
+    "capabilityManifestId": "wallet-safety-v1-2026-08-09"
+  },
+  "capabilityRows": [
+    {
+      "id": "ledger.import",
+      "vendor": "ledger",
+      "modelFamily": "*",
+      "firmwareRange": "unverified",
+      "appVersionRange": "unverified",
+      "sdkVersionRange": "unverified",
+      "transport": "any",
+      "derivationNetworkFamily": "any",
+      "chainEnvironment": "any",
+      "policy": "any",
+      "accountRange": "any",
+      "capability": "import",
+      "enabled": false,
+      "evidenceTier": "unverified",
+      "evidenceIds": [],
+      "freshness": {
+        "status": "unverified",
+        "checkedAt": null,
+        "expiresAt": null
+      },
+      "reason": "Blocked pending row-specific derivation, address-display, and physical signing evidence."
+    },
+    {
+      "id": "ledger.account_add",
+      "vendor": "ledger",
+      "modelFamily": "*",
+      "firmwareRange": "unverified",
+      "appVersionRange": "unverified",
+      "sdkVersionRange": "unverified",
+      "transport": "any",
+      "derivationNetworkFamily": "any",
+      "chainEnvironment": "any",
+      "policy": "any",
+      "accountRange": "any",
+      "capability": "account_add",
+      "enabled": false,
+      "evidenceTier": "unverified",
+      "evidenceIds": [],
+      "freshness": {
+        "status": "unverified",
+        "checkedAt": null,
+        "expiresAt": null
+      },
+      "reason": "Blocked pending row-specific derivation, address-display, and physical signing evidence."
+    },
+    {
+      "id": "ledger.display",
+      "vendor": "ledger",
+      "modelFamily": "*",
+      "firmwareRange": "unverified",
+      "appVersionRange": "unverified",
+      "sdkVersionRange": "unverified",
+      "transport": "any",
+      "derivationNetworkFamily": "any",
+      "chainEnvironment": "any",
+      "policy": "any",
+      "accountRange": "any",
+      "capability": "display",
+      "enabled": false,
+      "evidenceTier": "unverified",
+      "evidenceIds": [],
+      "freshness": {
+        "status": "unverified",
+        "checkedAt": null,
+        "expiresAt": null
+      },
+      "reason": "Blocked pending row-specific derivation, address-display, and physical signing evidence."
+    },
+    {
+      "id": "ledger.sign",
+      "vendor": "ledger",
+      "modelFamily": "*",
+      "firmwareRange": "unverified",
+      "appVersionRange": "unverified",
+      "sdkVersionRange": "unverified",
+      "transport": "any",
+      "derivationNetworkFamily": "any",
+      "chainEnvironment": "any",
+      "policy": "any",
+      "accountRange": "any",
+      "capability": "sign",
+      "enabled": false,
+      "evidenceTier": "unverified",
+      "evidenceIds": [],
+      "freshness": {
+        "status": "unverified",
+        "checkedAt": null,
+        "expiresAt": null
+      },
+      "reason": "Blocked pending row-specific derivation, address-display, and physical signing evidence."
+    },
+    {
+      "id": "ledger.finalize",
+      "vendor": "ledger",
+      "modelFamily": "*",
+      "firmwareRange": "unverified",
+      "appVersionRange": "unverified",
+      "sdkVersionRange": "unverified",
+      "transport": "any",
+      "derivationNetworkFamily": "any",
+      "chainEnvironment": "any",
+      "policy": "any",
+      "accountRange": "any",
+      "capability": "finalize",
+      "enabled": false,
+      "evidenceTier": "unverified",
+      "evidenceIds": [],
+      "freshness": {
+        "status": "unverified",
+        "checkedAt": null,
+        "expiresAt": null
+      },
+      "reason": "Blocked pending row-specific derivation, address-display, and physical signing evidence."
+    },
+    {
+      "id": "ledger.broadcast",
+      "vendor": "ledger",
+      "modelFamily": "*",
+      "firmwareRange": "unverified",
+      "appVersionRange": "unverified",
+      "sdkVersionRange": "unverified",
+      "transport": "any",
+      "derivationNetworkFamily": "any",
+      "chainEnvironment": "any",
+      "policy": "any",
+      "accountRange": "any",
+      "capability": "broadcast",
+      "enabled": false,
+      "evidenceTier": "unverified",
+      "evidenceIds": [],
+      "freshness": {
+        "status": "unverified",
+        "checkedAt": null,
+        "expiresAt": null
+      },
+      "reason": "Blocked pending row-specific derivation, address-display, and physical signing evidence."
+    },
+    {
+      "id": "jade.import",
+      "vendor": "jade",
+      "modelFamily": "*",
+      "firmwareRange": "unverified",
+      "appVersionRange": "unverified",
+      "sdkVersionRange": "unverified",
+      "transport": "any",
+      "derivationNetworkFamily": "any",
+      "chainEnvironment": "any",
+      "policy": "any",
+      "accountRange": "any",
+      "capability": "import",
+      "enabled": false,
+      "evidenceTier": "unverified",
+      "evidenceIds": [],
+      "freshness": {
+        "status": "unverified",
+        "checkedAt": null,
+        "expiresAt": null
+      },
+      "reason": "Blocked pending Jade Plus identity, authentication, payload-validation, and physical-device evidence."
+    },
+    {
+      "id": "jade.account_add",
+      "vendor": "jade",
+      "modelFamily": "*",
+      "firmwareRange": "unverified",
+      "appVersionRange": "unverified",
+      "sdkVersionRange": "unverified",
+      "transport": "any",
+      "derivationNetworkFamily": "any",
+      "chainEnvironment": "any",
+      "policy": "any",
+      "accountRange": "any",
+      "capability": "account_add",
+      "enabled": false,
+      "evidenceTier": "unverified",
+      "evidenceIds": [],
+      "freshness": {
+        "status": "unverified",
+        "checkedAt": null,
+        "expiresAt": null
+      },
+      "reason": "Blocked pending Jade Plus identity, authentication, payload-validation, and physical-device evidence."
+    },
+    {
+      "id": "jade.display",
+      "vendor": "jade",
+      "modelFamily": "*",
+      "firmwareRange": "unverified",
+      "appVersionRange": "unverified",
+      "sdkVersionRange": "unverified",
+      "transport": "any",
+      "derivationNetworkFamily": "any",
+      "chainEnvironment": "any",
+      "policy": "any",
+      "accountRange": "any",
+      "capability": "display",
+      "enabled": false,
+      "evidenceTier": "unverified",
+      "evidenceIds": [],
+      "freshness": {
+        "status": "unverified",
+        "checkedAt": null,
+        "expiresAt": null
+      },
+      "reason": "Blocked pending Jade Plus identity, authentication, payload-validation, and physical-device evidence."
+    },
+    {
+      "id": "jade.sign",
+      "vendor": "jade",
+      "modelFamily": "*",
+      "firmwareRange": "unverified",
+      "appVersionRange": "unverified",
+      "sdkVersionRange": "unverified",
+      "transport": "any",
+      "derivationNetworkFamily": "any",
+      "chainEnvironment": "any",
+      "policy": "any",
+      "accountRange": "any",
+      "capability": "sign",
+      "enabled": false,
+      "evidenceTier": "unverified",
+      "evidenceIds": [],
+      "freshness": {
+        "status": "unverified",
+        "checkedAt": null,
+        "expiresAt": null
+      },
+      "reason": "Blocked pending Jade Plus identity, authentication, payload-validation, and physical-device evidence."
+    },
+    {
+      "id": "jade.finalize",
+      "vendor": "jade",
+      "modelFamily": "*",
+      "firmwareRange": "unverified",
+      "appVersionRange": "unverified",
+      "sdkVersionRange": "unverified",
+      "transport": "any",
+      "derivationNetworkFamily": "any",
+      "chainEnvironment": "any",
+      "policy": "any",
+      "accountRange": "any",
+      "capability": "finalize",
+      "enabled": false,
+      "evidenceTier": "unverified",
+      "evidenceIds": [],
+      "freshness": {
+        "status": "unverified",
+        "checkedAt": null,
+        "expiresAt": null
+      },
+      "reason": "Blocked pending Jade Plus identity, authentication, payload-validation, and physical-device evidence."
+    },
+    {
+      "id": "jade.broadcast",
+      "vendor": "jade",
+      "modelFamily": "*",
+      "firmwareRange": "unverified",
+      "appVersionRange": "unverified",
+      "sdkVersionRange": "unverified",
+      "transport": "any",
+      "derivationNetworkFamily": "any",
+      "chainEnvironment": "any",
+      "policy": "any",
+      "accountRange": "any",
+      "capability": "broadcast",
+      "enabled": false,
+      "evidenceTier": "unverified",
+      "evidenceIds": [],
+      "freshness": {
+        "status": "unverified",
+        "checkedAt": null,
+        "expiresAt": null
+      },
+      "reason": "Blocked pending Jade Plus identity, authentication, payload-validation, and physical-device evidence."
+    },
+    {
+      "id": "trezor.import",
+      "vendor": "trezor",
+      "modelFamily": "*",
+      "firmwareRange": "unverified",
+      "appVersionRange": "unverified",
+      "sdkVersionRange": "unverified",
+      "transport": "any",
+      "derivationNetworkFamily": "any",
+      "chainEnvironment": "any",
+      "policy": "any",
+      "accountRange": "any",
+      "capability": "import",
+      "enabled": false,
+      "evidenceTier": "unverified",
+      "evidenceIds": [],
+      "freshness": {
+        "status": "unverified",
+        "checkedAt": null,
+        "expiresAt": null
+      },
+      "reason": "Blocked pending master-fingerprint, selected-session, address-display, and raw-transaction evidence."
+    },
+    {
+      "id": "trezor.account_add",
+      "vendor": "trezor",
+      "modelFamily": "*",
+      "firmwareRange": "unverified",
+      "appVersionRange": "unverified",
+      "sdkVersionRange": "unverified",
+      "transport": "any",
+      "derivationNetworkFamily": "any",
+      "chainEnvironment": "any",
+      "policy": "any",
+      "accountRange": "any",
+      "capability": "account_add",
+      "enabled": false,
+      "evidenceTier": "unverified",
+      "evidenceIds": [],
+      "freshness": {
+        "status": "unverified",
+        "checkedAt": null,
+        "expiresAt": null
+      },
+      "reason": "Blocked pending master-fingerprint, selected-session, address-display, and raw-transaction evidence."
+    },
+    {
+      "id": "trezor.display",
+      "vendor": "trezor",
+      "modelFamily": "*",
+      "firmwareRange": "unverified",
+      "appVersionRange": "unverified",
+      "sdkVersionRange": "unverified",
+      "transport": "any",
+      "derivationNetworkFamily": "any",
+      "chainEnvironment": "any",
+      "policy": "any",
+      "accountRange": "any",
+      "capability": "display",
+      "enabled": false,
+      "evidenceTier": "unverified",
+      "evidenceIds": [],
+      "freshness": {
+        "status": "unverified",
+        "checkedAt": null,
+        "expiresAt": null
+      },
+      "reason": "Blocked pending master-fingerprint, selected-session, address-display, and raw-transaction evidence."
+    },
+    {
+      "id": "trezor.sign",
+      "vendor": "trezor",
+      "modelFamily": "*",
+      "firmwareRange": "unverified",
+      "appVersionRange": "unverified",
+      "sdkVersionRange": "unverified",
+      "transport": "any",
+      "derivationNetworkFamily": "any",
+      "chainEnvironment": "any",
+      "policy": "any",
+      "accountRange": "any",
+      "capability": "sign",
+      "enabled": false,
+      "evidenceTier": "unverified",
+      "evidenceIds": [],
+      "freshness": {
+        "status": "unverified",
+        "checkedAt": null,
+        "expiresAt": null
+      },
+      "reason": "Blocked pending master-fingerprint, selected-session, address-display, and raw-transaction evidence."
+    },
+    {
+      "id": "trezor.finalize",
+      "vendor": "trezor",
+      "modelFamily": "*",
+      "firmwareRange": "unverified",
+      "appVersionRange": "unverified",
+      "sdkVersionRange": "unverified",
+      "transport": "any",
+      "derivationNetworkFamily": "any",
+      "chainEnvironment": "any",
+      "policy": "any",
+      "accountRange": "any",
+      "capability": "finalize",
+      "enabled": false,
+      "evidenceTier": "unverified",
+      "evidenceIds": [],
+      "freshness": {
+        "status": "unverified",
+        "checkedAt": null,
+        "expiresAt": null
+      },
+      "reason": "Blocked pending master-fingerprint, selected-session, address-display, and raw-transaction evidence."
+    },
+    {
+      "id": "trezor.broadcast",
+      "vendor": "trezor",
+      "modelFamily": "*",
+      "firmwareRange": "unverified",
+      "appVersionRange": "unverified",
+      "sdkVersionRange": "unverified",
+      "transport": "any",
+      "derivationNetworkFamily": "any",
+      "chainEnvironment": "any",
+      "policy": "any",
+      "accountRange": "any",
+      "capability": "broadcast",
+      "enabled": false,
+      "evidenceTier": "unverified",
+      "evidenceIds": [],
+      "freshness": {
+        "status": "unverified",
+        "checkedAt": null,
+        "expiresAt": null
+      },
+      "reason": "Blocked pending master-fingerprint, selected-session, address-display, and raw-transaction evidence."
+    }
+  ],
+  "hardwareRows": [
+    {
+      "vendor": "ledger",
+      "scriptType": "p2pkh",
+      "status": "blocked-pending-physical-evidence",
+      "reason": "Ledger capability remains disabled until a current Tier 3 physical-device artifact is reviewed.",
+      "evidenceIds": [],
+      "freshness": "unverified",
+      "expiresAt": null,
+      "deviceTuple": null
+    },
+    {
+      "vendor": "ledger",
+      "scriptType": "p2wpkh",
+      "status": "blocked-pending-physical-evidence",
+      "reason": "Ledger capability remains disabled until a current Tier 3 physical-device artifact is reviewed.",
+      "evidenceIds": [],
+      "freshness": "unverified",
+      "expiresAt": null,
+      "deviceTuple": null
+    },
+    {
+      "vendor": "ledger",
+      "scriptType": "p2sh-p2wpkh",
+      "status": "blocked-pending-physical-evidence",
+      "reason": "Ledger capability remains disabled until a current Tier 3 physical-device artifact is reviewed.",
+      "evidenceIds": [],
+      "freshness": "unverified",
+      "expiresAt": null,
+      "deviceTuple": null
+    },
+    {
+      "vendor": "ledger",
+      "scriptType": "p2tr",
+      "status": "blocked-pending-physical-evidence",
+      "reason": "Ledger capability remains disabled until a current Tier 3 physical-device artifact is reviewed.",
+      "evidenceIds": [],
+      "freshness": "unverified",
+      "expiresAt": null,
+      "deviceTuple": null
+    },
+    {
+      "vendor": "ledger",
+      "scriptType": "p2wsh",
+      "status": "unsupported-product-blocked",
+      "reason": "Current Ledger signing adapter builds single-sig DefaultWalletPolicy templates only; multisig Ledger signing is not exposed in the product.",
+      "evidenceIds": [],
+      "freshness": "unverified",
+      "expiresAt": null,
+      "deviceTuple": null
+    },
+    {
+      "vendor": "ledger",
+      "scriptType": "p2sh-p2wsh",
+      "status": "unsupported-product-blocked",
+      "reason": "Current Ledger signing adapter builds single-sig DefaultWalletPolicy templates only; multisig Ledger signing is not exposed in the product.",
+      "evidenceIds": [],
+      "freshness": "unverified",
+      "expiresAt": null,
+      "deviceTuple": null
+    },
+    {
+      "vendor": "trezor",
+      "scriptType": "p2wpkh",
+      "status": "blocked-pending-physical-evidence",
+      "reason": "Trezor capability remains disabled until a current Tier 3 physical-device artifact is reviewed.",
+      "evidenceIds": [],
+      "freshness": "unverified",
+      "expiresAt": null,
+      "deviceTuple": null
+    },
+    {
+      "vendor": "trezor",
+      "scriptType": "p2sh-p2wpkh",
+      "status": "blocked-pending-physical-evidence",
+      "reason": "Trezor capability remains disabled until a current Tier 3 physical-device artifact is reviewed.",
+      "evidenceIds": [],
+      "freshness": "unverified",
+      "expiresAt": null,
+      "deviceTuple": null
+    },
+    {
+      "vendor": "trezor",
+      "scriptType": "p2tr",
+      "status": "blocked-pending-physical-evidence",
+      "reason": "Trezor capability remains disabled until a current Tier 3 physical-device artifact is reviewed.",
+      "evidenceIds": [],
+      "freshness": "unverified",
+      "expiresAt": null,
+      "deviceTuple": null
+    },
+    {
+      "vendor": "trezor",
+      "scriptType": "p2wsh",
+      "status": "blocked-pending-physical-evidence",
+      "reason": "Trezor capability remains disabled until a current Tier 3 physical-device artifact is reviewed.",
+      "evidenceIds": [],
+      "freshness": "unverified",
+      "expiresAt": null,
+      "deviceTuple": null
+    },
+    {
+      "vendor": "trezor",
+      "scriptType": "p2sh-p2wsh",
+      "status": "blocked-pending-physical-evidence",
+      "reason": "Trezor capability remains disabled until a current Tier 3 physical-device artifact is reviewed.",
+      "evidenceIds": [],
+      "freshness": "unverified",
+      "expiresAt": null,
+      "deviceTuple": null
+    },
+    {
+      "vendor": "jade",
+      "scriptType": "p2pkh",
+      "status": "blocked-pending-physical-evidence",
+      "reason": "Jade capability remains disabled until a current Tier 3 Jade Plus physical-device artifact is reviewed.",
+      "evidenceIds": [],
+      "freshness": "unverified",
+      "expiresAt": null,
+      "deviceTuple": null
+    },
+    {
+      "vendor": "jade",
+      "scriptType": "p2wpkh",
+      "status": "blocked-pending-physical-evidence",
+      "reason": "Jade capability remains disabled until a current Tier 3 Jade Plus physical-device artifact is reviewed.",
+      "evidenceIds": [],
+      "freshness": "unverified",
+      "expiresAt": null,
+      "deviceTuple": null
+    },
+    {
+      "vendor": "jade",
+      "scriptType": "p2sh-p2wpkh",
+      "status": "blocked-pending-physical-evidence",
+      "reason": "Jade capability remains disabled until a current Tier 3 Jade Plus physical-device artifact is reviewed.",
+      "evidenceIds": [],
+      "freshness": "unverified",
+      "expiresAt": null,
+      "deviceTuple": null
+    },
+    {
+      "vendor": "jade",
+      "scriptType": "p2tr",
+      "status": "blocked-pending-physical-evidence",
+      "reason": "Jade capability remains disabled until a current Tier 3 Jade Plus physical-device artifact is reviewed.",
+      "evidenceIds": [],
+      "freshness": "unverified",
+      "expiresAt": null,
+      "deviceTuple": null
+    },
+    {
+      "vendor": "jade",
+      "scriptType": "p2wsh",
+      "status": "unsupported-product-blocked",
+      "reason": "Current Jade adapter explicitly rejects multisig signing; multisig Jade signing is not exposed in the product.",
+      "evidenceIds": [],
+      "freshness": "unverified",
+      "expiresAt": null,
+      "deviceTuple": null
+    },
+    {
+      "vendor": "jade",
+      "scriptType": "p2sh-p2wsh",
+      "status": "unsupported-product-blocked",
+      "reason": "Current Jade adapter explicitly rejects multisig signing; multisig Jade signing is not exposed in the product.",
+      "evidenceIds": [],
+      "freshness": "unverified",
+      "expiresAt": null,
+      "deviceTuple": null
+    },
+    {
+      "vendor": "bitbox",
+      "scriptType": "p2wpkh",
+      "status": "unverified-missing-physical-evidence",
+      "reason": "No current reviewed physical-device fixture is committed.",
+      "evidenceIds": [],
+      "freshness": "unverified",
+      "expiresAt": null,
+      "deviceTuple": null
+    },
+    {
+      "vendor": "bitbox",
+      "scriptType": "p2sh-p2wpkh",
+      "status": "unverified-missing-physical-evidence",
+      "reason": "No current reviewed physical-device fixture is committed.",
+      "evidenceIds": [],
+      "freshness": "unverified",
+      "expiresAt": null,
+      "deviceTuple": null
+    },
+    {
+      "vendor": "bitbox",
+      "scriptType": "p2tr",
+      "status": "unverified-missing-physical-evidence",
+      "reason": "No current reviewed physical-device fixture is committed.",
+      "evidenceIds": [],
+      "freshness": "unverified",
+      "expiresAt": null,
+      "deviceTuple": null
+    },
+    {
+      "vendor": "bitbox",
+      "scriptType": "p2wsh",
+      "status": "unsupported-product-blocked",
+      "reason": "Current BitBox02 signing adapter uses btcSignSimple single-sig script configs only; multisig BitBox signing is not exposed in the product.",
+      "evidenceIds": [],
+      "freshness": "unverified",
+      "expiresAt": null,
+      "deviceTuple": null
+    },
+    {
+      "vendor": "bitbox",
+      "scriptType": "p2sh-p2wsh",
+      "status": "unsupported-product-blocked",
+      "reason": "Current BitBox02 signing adapter uses btcSignSimple single-sig script configs only; multisig BitBox signing is not exposed in the product.",
+      "evidenceIds": [],
+      "freshness": "unverified",
+      "expiresAt": null,
+      "deviceTuple": null
+    }
+  ],
+  "proofTiers": {
+    "tier1": {
+      "status": "configured-and-nonempty",
+      "addressVectorCount": 480,
+      "draftPsbtVectorCount": 5,
+      "signedPsbtVectorCount": 6,
+      "independentImplementations": [
+        "Bitcoin Core 29.0.0",
+        "bitcoinjs-lib 7.0.1",
+        "bip_utils (Python) 2.12.1",
+        "btcd/btcutil (Go) btcd 0.25.0 + go-bip39 1.1.0"
+      ]
+    },
+    "tier2": {
+      "status": "required-ci-proofs",
+      "vendors": [
+        {
+          "vendor": "ledger",
+          "emulator": "Speculos 0.26.9",
+          "firmwareOrApp": "Bitcoin app 2.4.2",
+          "sdk": {
+            "ledgerBitcoin": "0.3.1",
+            "webUsbTransport": "6.34.4"
+          }
+        },
+        {
+          "vendor": "trezor",
+          "emulator": "Trezor User Env T2T1",
+          "firmwareOrApp": "firmware 2.12.2; Bridge 2.0.33",
+          "sdk": {
+            "connect": "9.7.3"
+          }
+        },
+        {
+          "vendor": "jade",
+          "emulator": "Jade QEMU",
+          "firmwareOrApp": "firmware 1.0.40",
+          "sdk": {
+            "cborX": "1.6.4",
+            "cborXIntegrity": "sha512-UGKHjp6RHC6QuZ2yy5LCKm7MojM4716DwoSaqwQpaH4DvZvbBTGcoDNTiG9Y2lByXZYFEs9WRkS5tLl96IrF1Q=="
+          }
+        }
+      ]
+    },
+    "tier3": {
+      "status": "unverified-no-physical-fixtures",
+      "physicalFixtureCount": 0,
+      "freshPhysicalRowCount": 0,
+      "expiredPhysicalRowCount": 0
+    }
+  },
+  "releaseDecision": {
+    "status": "safe-fail-closed",
+    "enabledCapabilityCount": 0,
+    "allFundsControllingCapabilitiesDisabled": true,
+    "skippedRequiredCaseCount": 0
+  }
+}

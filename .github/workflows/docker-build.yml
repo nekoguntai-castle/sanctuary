@@ -1,6 +1,6 @@
 name: Validate Docker Images
 
-# Builds the selected frontend, backend, and Grafana migration images without publishing them.
+# Builds and smoke-tests every selected shipped image without publishing it.
 # Versioned release images are published only by the trusted operator command.
 
 on:
@@ -19,8 +19,13 @@ on:
       - '.dockerignore'
       - 'docker-compose.yml'
       - 'gateway/package.json'
+      - 'gateway/**'
+      - 'llm-egress-proxy/**'
       - 'package*.json'
       - 'config/tooling/**'
+      - 'config/container-image-lock.json'
+      - 'scripts/ci/build-runtime-image.sh'
+      - 'scripts/ci/write-runtime-image-evidence.mjs'
       - 'scripts/ci/classify-docker-build-images.sh'
       - 'scripts/ci/validate-docker-build-results.sh'
       - 'scripts/ci/docker-endpoint-lib.sh'
@@ -50,8 +55,13 @@ on:
       - '.dockerignore'
       - 'docker-compose.yml'
       - 'gateway/package.json'
+      - 'gateway/**'
+      - 'llm-egress-proxy/**'
       - 'package*.json'
       - 'config/tooling/**'
+      - 'config/container-image-lock.json'
+      - 'scripts/ci/build-runtime-image.sh'
+      - 'scripts/ci/write-runtime-image-evidence.mjs'
       - 'scripts/ci/classify-docker-build-images.sh'
       - 'scripts/ci/validate-docker-build-results.sh'
       - 'scripts/ci/docker-endpoint-lib.sh'
@@ -86,6 +96,8 @@ jobs:
     outputs:
       frontend_image: ${{ steps.classify.outputs.frontend_image }}
       backend_image: ${{ steps.classify.outputs.backend_image }}
+      gateway_image: ${{ steps.classify.outputs.gateway_image }}
+      llm_egress_proxy_image: ${{ steps.classify.outputs.llm_egress_proxy_image }}
       grafana_migration_image: ${{ steps.classify.outputs.grafana_migration_image }}
       reason: ${{ steps.classify.outputs.reason }}
     steps:
@@ -145,16 +157,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
 
-      - name: Build frontend
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
+      - name: Build, smoke, and attest frontend
+        run: scripts/ci/build-runtime-image.sh frontend docker/frontend/Dockerfile . sanctuary-ci/frontend:${{ github.sha }}
+
+      - name: Upload frontend image evidence
+        uses: ./.github/actions/upload-artifact
         with:
-          context: .
-          file: ./docker/frontend/Dockerfile
-          push: false
-          outputs: type=cacheonly
-          tags: sanctuary-ci/frontend:${{ github.sha }}
-          cache-from: type=gha,scope=frontend
-          cache-to: type=gha,mode=max,scope=frontend,ignore-error=true
+          name: runtime-image-evidence-frontend
+          path: .tmp/runtime-image-evidence/frontend/
 
   build-backend:
     name: Validate backend image
@@ -184,16 +194,54 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
 
-      - name: Build backend
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
+      - name: Build, smoke, and attest backend
+        run: scripts/ci/build-runtime-image.sh backend server/Dockerfile . sanctuary-ci/backend:${{ github.sha }}
+
+      - name: Upload backend image evidence
+        uses: ./.github/actions/upload-artifact
         with:
-          context: .
-          file: ./server/Dockerfile
-          push: false
-          outputs: type=cacheonly
-          tags: sanctuary-ci/backend:${{ github.sha }}
-          cache-from: type=gha,scope=backend
-          cache-to: type=gha,mode=max,scope=backend,ignore-error=true
+          name: runtime-image-evidence-backend
+          path: .tmp/runtime-image-evidence/backend/
+
+  build-gateway:
+    name: Validate gateway image
+    if: needs.detect-image-scope.outputs.gateway_image == 'true'
+    runs-on: ubuntu-22.04
+    needs: [detect-image-scope]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - name: Resolve Docker host
+        run: scripts/ci/wait-for-docker.sh
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+      - name: Build, smoke, and attest gateway
+        run: scripts/ci/build-runtime-image.sh gateway gateway/Dockerfile . sanctuary-ci/gateway:${{ github.sha }}
+      - name: Upload gateway image evidence
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: runtime-image-evidence-gateway
+          path: .tmp/runtime-image-evidence/gateway/
+
+  build-llm-egress-proxy:
+    name: Validate LLM egress proxy image
+    if: needs.detect-image-scope.outputs.llm_egress_proxy_image == 'true'
+    runs-on: ubuntu-22.04
+    needs: [detect-image-scope]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - name: Resolve Docker host
+        run: scripts/ci/wait-for-docker.sh
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+      - name: Build, smoke, and attest LLM egress proxy
+        run: scripts/ci/build-runtime-image.sh llm-egress-proxy llm-egress-proxy/Dockerfile llm-egress-proxy sanctuary-ci/llm-egress-proxy:${{ github.sha }}
+      - name: Upload LLM egress proxy image evidence
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: runtime-image-evidence-llm-egress-proxy
+          path: .tmp/runtime-image-evidence/llm-egress-proxy/
 
   build-grafana-migration:
     name: Validate Grafana migration image
@@ -218,21 +266,19 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
 
-      - name: Build Grafana migration helper
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
+      - name: Build, smoke, and attest Grafana migration helper
+        run: scripts/ci/build-runtime-image.sh grafana-migration docker/grafana-migration/Dockerfile . sanctuary-ci/grafana-migration:${{ github.sha }}
+
+      - name: Upload Grafana migration image evidence
+        uses: ./.github/actions/upload-artifact
         with:
-          context: .
-          file: ./docker/grafana-migration/Dockerfile
-          push: false
-          outputs: type=cacheonly
-          tags: sanctuary-ci/grafana-migration:${{ github.sha }}
-          cache-from: type=gha,scope=grafana-migration
-          cache-to: type=gha,mode=max,scope=grafana-migration,ignore-error=true
+          name: runtime-image-evidence-grafana-migration
+          path: .tmp/runtime-image-evidence/grafana-migration/
 
   summary:
     name: Docker image validation summary
     runs-on: ubuntu-22.04
-    needs: [detect-image-scope, build-frontend, build-backend, build-grafana-migration]
+    needs: [detect-image-scope, build-frontend, build-backend, build-gateway, build-llm-egress-proxy, build-grafana-migration]
     if: always()
     steps:
       - name: Checkout repository
@@ -246,6 +292,10 @@ jobs:
           GRAFANA_MIGRATION_REQUESTED: ${{ needs.detect-image-scope.outputs.grafana_migration_image }}
           FRONTEND_RESULT: ${{ needs.build-frontend.result }}
           BACKEND_RESULT: ${{ needs.build-backend.result }}
+          GATEWAY_REQUESTED: ${{ needs.detect-image-scope.outputs.gateway_image }}
+          GATEWAY_RESULT: ${{ needs.build-gateway.result }}
+          LLM_EGRESS_PROXY_REQUESTED: ${{ needs.detect-image-scope.outputs.llm_egress_proxy_image }}
+          LLM_EGRESS_PROXY_RESULT: ${{ needs.build-llm-egress-proxy.result }}
           GRAFANA_MIGRATION_RESULT: ${{ needs.build-grafana-migration.result }}
         run: |
           echo "## Docker Image Validation" >> "$GITHUB_STEP_SUMMARY"
@@ -255,10 +305,14 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- Frontend image: ${{ needs.build-frontend.result }}" >> $GITHUB_STEP_SUMMARY
           echo "- Backend image: ${{ needs.build-backend.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Gateway image: ${{ needs.build-gateway.result }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- LLM egress proxy image: ${{ needs.build-llm-egress-proxy.result }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Grafana migration image: ${{ needs.build-grafana-migration.result }}" >> "$GITHUB_STEP_SUMMARY"
 
           scripts/ci/validate-docker-build-results.sh \
             "$DETECT_RESULT" \
             "$FRONTEND_REQUESTED" "$FRONTEND_RESULT" \
             "$BACKEND_REQUESTED" "$BACKEND_RESULT" \
+            "$GATEWAY_REQUESTED" "$GATEWAY_RESULT" \
+            "$LLM_EGRESS_PROXY_REQUESTED" "$LLM_EGRESS_PROXY_RESULT" \
             "$GRAFANA_MIGRATION_REQUESTED" "$GRAFANA_MIGRATION_RESULT"

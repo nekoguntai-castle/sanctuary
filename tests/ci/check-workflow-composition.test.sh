@@ -623,6 +623,18 @@ assert_contains_in_order "$RC" \
   'ref: ${{ needs.validation-info.outputs.candidate_ref }}'
 
 assert_contains_in_order "$RC" \
+  "release-candidate emits revision-bound hardware compatibility evidence" \
+  "hardware-compatibility-evidence:" \
+  "npx --no-install tsx scripts/ci/hardware-compatibility-report.ts" \
+  '--revision "$revision"' \
+  'name: hardware-compatibility-evidence-${{ github.run_id }}'
+
+assert_contains_in_order "$RC" \
+  "release-candidate requires hardware compatibility evidence" \
+  "needs: [validation-info, wallet-safety-audit-review, hardware-compatibility-evidence" \
+  'needs.hardware-compatibility-evidence.result'
+
+assert_contains_in_order "$RC" \
   "release-candidate diagnostic summaries publishable" \
   "Write fresh install diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Release Candidate Fresh Install"' \
@@ -1468,37 +1480,28 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "npm run test:e2e -- --project=chromium tests/e2e/render-regression.spec.ts"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
-  "full frontend coverage merge Vitest retry" \
+  "full frontend coverage single-job chain" \
   "full-frontend-coverage-merge:" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-verifier-dependencies.log"' \
+  "bash scripts/ci/setup-verifier-test-dependencies.sh" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/frontend-coverage-shard-1.log"' \
+  'scripts/ci/time-command.sh "frontend coverage shard 1/2"' \
+  "npm run test:coverage:shard -- 1 2" \
+  "test -s .vitest-reports/blob-1-2.json" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/frontend-coverage-shard-2.log"' \
+  'scripts/ci/time-command.sh "frontend coverage shard 2/2"' \
+  "npm run test:coverage:shard -- 2 2" \
+  "test -s .vitest-reports/blob-2-2.json" \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/frontend-coverage-merge.log"' \
   "scripts/ci/with-runner-lock.sh node-toolchain" \
   'scripts/ci/retry-vitest-infrastructure-failure.sh "frontend coverage merge"' \
   'scripts/ci/time-command.sh "frontend coverage merge"' \
   "npm run test:coverage:merge -- .vitest-reports"
 
-assert_contains_in_order "$TEST_WORKFLOW" \
-  "full frontend coverage shard diagnostics" \
-  "full-frontend-coverage-shard-1:" \
-  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-verifier-dependencies.log"' \
-  "bash scripts/ci/setup-verifier-test-dependencies.sh" \
-  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/frontend-coverage-shard-1.log"' \
-  "scripts/ci/with-runner-lock.sh node-toolchain" \
-  'scripts/ci/time-command.sh "frontend coverage shard 1/2"' \
-  "npm run test:coverage:shard -- 1 2" \
-  "Upload frontend coverage shard 1 diagnostics"
-
-assert_contains_in_order "$TEST_WORKFLOW" \
-  "full frontend coverage shard 2 verifier dependencies" \
-  "full-frontend-coverage-shard-2:" \
-  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-verifier-dependencies.log"' \
-  "bash scripts/ci/setup-verifier-test-dependencies.sh" \
-  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/frontend-coverage-shard-2.log"' \
-  "npm run test:coverage:shard -- 2 2"
-
 assert_occurrence_count "$TEST_WORKFLOW" \
   "every frontend verifier-test lane installs nested dependencies" \
   "bash scripts/ci/setup-verifier-test-dependencies.sh" \
-  "3"
+  "2"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full frontend coverage merge diagnostic upload" \
@@ -1509,18 +1512,34 @@ assert_contains_in_order "$TEST_WORKFLOW" \
 
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full frontend coverage runs on full scan" \
-  "full-frontend-coverage-shard-1:" \
-  "needs.detect-changes.outputs.full_scan == 'true'" \
-  "needs.detect-changes.outputs.test_suite_changed == 'true'" \
-  "needs.detect-changes.outputs.frontend_changed == 'true'" \
-  "full-frontend-coverage-shard-2:" \
-  "needs.detect-changes.outputs.full_scan == 'true'" \
-  "needs.detect-changes.outputs.test_suite_changed == 'true'" \
-  "needs.detect-changes.outputs.frontend_changed == 'true'" \
   "full-frontend-coverage-merge:" \
   "needs.detect-changes.outputs.full_scan == 'true'" \
   "needs.detect-changes.outputs.test_suite_changed == 'true'" \
   "needs.detect-changes.outputs.frontend_changed == 'true'"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "exhaustive PRs skip duplicate quick jobs" \
+  "quick-frontend-tests:" \
+  "needs.detect-changes.outputs.full_scan != 'true'" \
+  "needs.detect-changes.outputs.test_suite_changed != 'true'" \
+  "quick-backend-typecheck:" \
+  "needs.detect-changes.outputs.full_scan != 'true'" \
+  "needs.detect-changes.outputs.test_suite_changed != 'true'" \
+  "quick-critical-mutation-shards:" \
+  "needs.detect-changes.outputs.full_scan != 'true'" \
+  "needs.detect-changes.outputs.test_suite_changed != 'true'" \
+  "quick-gateway-tests:" \
+  "needs.detect-changes.outputs.full_scan != 'true'" \
+  "needs.detect-changes.outputs.test_suite_changed != 'true'" \
+  "quick-llm-egress-proxy-tests:" \
+  "needs.detect-changes.outputs.full_scan != 'true'" \
+  "needs.detect-changes.outputs.test_suite_changed != 'true'" \
+  "quick-browser-smoke:" \
+  "needs.detect-changes.outputs.full_scan != 'true'" \
+  "needs.detect-changes.outputs.test_suite_changed != 'true'" \
+  "quick-render-regression:" \
+  "needs.detect-changes.outputs.full_scan != 'true'" \
+  "needs.detect-changes.outputs.test_suite_changed != 'true'"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full E2E runs on full scan" \
@@ -1866,16 +1885,13 @@ assert_contains_in_order "$DOCKER_BUILD_WORKFLOW" \
   "scripts/ci/wait-for-docker.sh" \
   "Set up Docker Buildx"
 
-assert_named_job_step_config "$DOCKER_BUILD_WORKFLOW" \
-  "docker-build frontend cache-only output" \
-  "build-frontend" \
-  "Build frontend" \
-  "uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f" \
-  "file: ./docker/frontend/Dockerfile" \
-  "push: false" \
-  "outputs: type=cacheonly" \
-  "cache-from: type=gha,scope=frontend" \
-  "cache-to: type=gha,mode=max,scope=frontend,ignore-error=true"
+assert_contains_in_order "$DOCKER_BUILD_WORKFLOW" \
+  "docker-build frontend runnable evidence" \
+  "build-frontend:" \
+  "Build, smoke, and attest frontend" \
+  'scripts/ci/build-runtime-image.sh frontend docker/frontend/Dockerfile . sanctuary-ci/frontend:${{ github.sha }}' \
+  "Upload frontend image evidence" \
+  "runtime-image-evidence-frontend"
 
 assert_contains_in_order "$DOCKER_BUILD_WORKFLOW" \
   "docker-build backend endpoint resolution" \
@@ -1885,26 +1901,22 @@ assert_contains_in_order "$DOCKER_BUILD_WORKFLOW" \
   "scripts/ci/wait-for-docker.sh" \
   "Set up Docker Buildx"
 
-assert_named_job_step_config "$DOCKER_BUILD_WORKFLOW" \
-  "docker-build backend cache-only output" \
-  "build-backend" \
-  "Build backend" \
-  "uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f" \
-  "push: false" \
-  "outputs: type=cacheonly" \
-  "cache-from: type=gha,scope=backend" \
-  "cache-to: type=gha,mode=max,scope=backend,ignore-error=true"
+assert_contains_in_order "$DOCKER_BUILD_WORKFLOW" \
+  "docker-build backend runnable evidence" \
+  "build-backend:" \
+  "Build, smoke, and attest backend" \
+  'scripts/ci/build-runtime-image.sh backend server/Dockerfile . sanctuary-ci/backend:${{ github.sha }}' \
+  "Upload backend image evidence" \
+  "runtime-image-evidence-backend"
 
-assert_named_job_step_config "$DOCKER_BUILD_WORKFLOW" \
-  "docker-build Grafana migration cache-only output" \
-  "build-grafana-migration" \
-  "Build Grafana migration helper" \
-  "uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f" \
-  "file: ./docker/grafana-migration/Dockerfile" \
-  "push: false" \
-  "outputs: type=cacheonly" \
-  "cache-from: type=gha,scope=grafana-migration" \
-  "cache-to: type=gha,mode=max,scope=grafana-migration,ignore-error=true"
+assert_contains_in_order "$DOCKER_BUILD_WORKFLOW" \
+  "docker-build all five shipped images emit evidence" \
+  "build-gateway:" \
+  "runtime-image-evidence-gateway" \
+  "build-llm-egress-proxy:" \
+  "runtime-image-evidence-llm-egress-proxy" \
+  "build-grafana-migration:" \
+  "runtime-image-evidence-grafana-migration"
 
 assert_contains_in_order "$DOCKER_BUILD_WORKFLOW" \
   "docker-build summary hard-fails invalid scope and results" \
@@ -1921,15 +1933,10 @@ assert_named_job_step_contains "$DOCKER_BUILD_WORKFLOW" \
   "docker-build summary checks out its executable validator" \
   "uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
 
-assert_active_yaml_line_count "$DOCKER_BUILD_WORKFLOW" \
-  "docker-build validation action count" \
-  "uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f" \
-  3
-
-assert_active_yaml_line_count "$DOCKER_BUILD_WORKFLOW" \
-  "docker-build cache-only validation outputs" \
-  "outputs: type=cacheonly" \
-  3
+assert_occurrence_count "$DOCKER_BUILD_WORKFLOW" \
+  "docker-build runtime evidence invocation count" \
+  "run: scripts/ci/build-runtime-image.sh " \
+  5
 
 for grafana_image_path in \
   "'scripts/ops/migrate-grafana-password.sh'" \
@@ -1986,11 +1993,11 @@ assert_named_job_step_config_rejected \
 # --- quality workflow diagnostic coverage -----------------------------------
 QUALITY_WORKFLOW="$REPO_ROOT/.github/workflows/quality.yml"
 
-for node_workflow in architecture quality test; do
+for node_workflow in architecture quality release-candidate test; do
   assert_contains_in_order \
     "$REPO_ROOT/.github/workflows/${node_workflow}.yml" \
     "${node_workflow} pins an allowScripts-capable npm" \
-    "NODE_VERSION: '24'" \
+    "NODE_VERSION: '24.19.0'" \
     "NPM_VERSION: '11.19.0'"
 done
 
@@ -2033,7 +2040,7 @@ assert_occurrence_count "$GO_RUNNER_DOCKERFILE" \
 declare -A strict_install_counts=(
   [architecture.yml]=2
   [quality.yml]=1
-  [test.yml]=17
+  [test.yml]=15
   [verify-vectors.yml]=8
 )
 for workflow in "${!strict_install_counts[@]}"; do
@@ -2084,21 +2091,41 @@ fi
 
 assert_contains_in_order \
   "$REPO_ROOT/.github/actions/setup-node-toolchain/action.yml" \
-  "Node toolchain installs and verifies pinned npm" \
-  'expected="${SANCTUARY_NPM_VERSION:-${NPM_VERSION:-}}"' \
-  'npm install --global --audit=false --fund=false "npm@$expected"' \
+  "Node toolchain bootstraps and verifies locked Node/npm" \
+  'scripts/ci/bootstrap-node.sh' \
   'scripts/ci/ensure-node.sh'
 
-for dockerfile in docker/frontend/Dockerfile server/Dockerfile gateway/Dockerfile; do
+assert_contains_in_order \
+  "$REPO_ROOT/scripts/ci/bootstrap-node.sh" \
+  "Node bootstrap checksum-verifies npm before installation" \
+  'sha512sum --check --status' \
+  'install --global --audit=false --fund=false "$archive"'
+
+assert_occurrence_count \
+  "$REPO_ROOT/scripts/ci/bootstrap-node.sh" \
+  "Node bootstrap reads the reviewed npm artifact URL" \
+  'artifacts.npm.url' \
+  1
+
+for dockerfile in docker/frontend/Dockerfile gateway/Dockerfile; do
   assert_contains_in_order \
     "$REPO_ROOT/$dockerfile" \
     "$dockerfile pins an allowScripts-capable npm" \
-    "FROM node:24-alpine AS node-toolchain" \
+    "FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS node-toolchain" \
     "ARG NPM_VERSION=11.19.0" \
     'npm install --global --audit=false --fund=false "npm@$NPM_VERSION"' \
     "FROM node-toolchain AS deps" \
     "FROM node-toolchain AS builder"
 done
+
+assert_contains_in_order \
+  "$REPO_ROOT/server/Dockerfile" \
+  "server/Dockerfile pins an allowScripts-capable npm on a digest-locked Node base" \
+  "FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS node-toolchain" \
+  "ARG NPM_VERSION=11.19.0" \
+  'npm install --global --audit=false --fund=false "npm@$NPM_VERSION"' \
+  "FROM node-toolchain AS deps" \
+  "FROM node-toolchain AS builder"
 
 for install_path in \
   docker/frontend/Dockerfile \
@@ -2281,7 +2308,7 @@ assert_jobs_use_node24_runners \
 assert_jobs_use_node24_runners \
   "$REPO_ROOT/.github/workflows/test.yml" \
   "test jobs select Node 24-capable runners" \
-  32
+  30
 
 assert_runner_parser_rejects_post_comment_drift
 assert_cache_calls_use_wrapper

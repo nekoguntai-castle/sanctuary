@@ -80,6 +80,7 @@ export function inspectStrictFullTestSummaryGate(workflow, relativePath, state) 
   }
 
   inspectFullLaneParallelization(workflow, relativePath, state);
+  inspectExhaustivePrDeduplication(workflow, relativePath, state);
   inspectFalseFullLaneDependencies(workflow, relativePath, state);
 
   const browserJobBody =
@@ -88,6 +89,59 @@ export function inspectStrictFullTestSummaryGate(workflow, relativePath, state) 
     addUniqueError(
       state,
       `${relativePath}: full-browser-e2e-tests must stay sequential; Forgejo matrix children have failed before checkout on the shared runner`,
+    );
+  }
+}
+
+function inspectExhaustivePrDeduplication(workflow, relativePath, state) {
+  const mappings = [
+    ['quick-frontend-tests', 'full-frontend-coverage-merge', 'frontend_changed'],
+    ['quick-backend-typecheck', 'full-backend-typecheck', 'backend_changed'],
+    ['quick-critical-mutation-shards', 'full-critical-mutation-shards', 'critical_mutation_changed'],
+    ['quick-gateway-tests', 'full-gateway-tests', 'gateway_changed'],
+    ['quick-llm-egress-proxy-tests', 'full-llm-egress-proxy-tests', 'llm_egress_proxy_changed'],
+    ['quick-browser-smoke', 'full-browser-e2e-tests', 'browser_smoke_changed'],
+    ['quick-render-regression', 'full-render-e2e-tests', 'render_changed'],
+  ];
+
+  for (const [quickJob, fullJob, relevantOutput] of mappings) {
+    const quickBody = extractWorkflowJobBody(workflow, quickJob);
+    if (!quickBody) {
+      continue;
+    }
+    requireJobText(
+      quickBody,
+      relativePath,
+      state,
+      quickJob,
+      "needs.detect-changes.outputs.full_scan != 'true'",
+      'must skip when the exhaustive full-scan lane is required',
+    );
+    requireJobText(
+      quickBody,
+      relativePath,
+      state,
+      quickJob,
+      "needs.detect-changes.outputs.test_suite_changed != 'true'",
+      'must skip when the exhaustive test-suite lane is required',
+    );
+
+    const fullBody = requireJobBody(workflow, relativePath, state, fullJob);
+    requireJobText(
+      fullBody,
+      relativePath,
+      state,
+      fullJob,
+      "needs.detect-changes.outputs.full_scan == 'true'",
+      `must cover full_scan before ${quickJob} can skip`,
+    );
+    requireJobText(
+      fullBody,
+      relativePath,
+      state,
+      fullJob,
+      `needs.detect-changes.outputs.${relevantOutput} == 'true'`,
+      `must cover ${relevantOutput} before ${quickJob} can skip`,
     );
   }
 }
@@ -102,76 +156,32 @@ function inspectTestSuiteWorkflowName(workflow, relativePath, state) {
 }
 
 function inspectFullLaneParallelization(workflow, relativePath, state) {
-  const coverageShard1Body = requireJobBody(
-    workflow,
-    relativePath,
-    state,
-    'full-frontend-coverage-shard-1',
-  );
-  forbidJobNeeds(
-    coverageShard1Body,
-    relativePath,
-    state,
-    'full-frontend-coverage-shard-1',
-    'full-frontend-coverage-shard-1',
-  );
-  const coverageShard2Body = requireJobBody(
-    workflow,
-    relativePath,
-    state,
-    'full-frontend-coverage-shard-2',
-  );
-  requireJobNeeds(
-    coverageShard2Body,
-    relativePath,
-    state,
-    'full-frontend-coverage-shard-2',
-    'full-frontend-coverage-shard-1',
-  );
-  requireJobText(
-    coverageShard2Body,
-    relativePath,
-    state,
-    'full-frontend-coverage-shard-2',
-    "needs.full-frontend-coverage-shard-1.result == 'success'",
-    'must run shard 2 only after shard 1 succeeds to avoid concurrent V8 coverage cleanup and worker crashes',
-  );
-
   const coverageMergeBody = requireJobBody(
     workflow,
     relativePath,
     state,
     'full-frontend-coverage-merge',
   );
-  requireJobNeeds(
+  forbidJobNeeds(
     coverageMergeBody,
     relativePath,
     state,
     'full-frontend-coverage-merge',
-    'full-frontend-coverage-shard-1',
+    'full-frontend-coverage-merge',
   );
-  requireJobNeeds(
+  requireJobTextInOrder(
     coverageMergeBody,
     relativePath,
     state,
     'full-frontend-coverage-merge',
-    'full-frontend-coverage-shard-2',
-  );
-  requireJobText(
-    coverageMergeBody,
-    relativePath,
-    state,
-    'full-frontend-coverage-merge',
-    "needs.full-frontend-coverage-shard-1.result == 'success'",
-    'must require shard 1 success before merging frontend coverage',
-  );
-  requireJobText(
-    coverageMergeBody,
-    relativePath,
-    state,
-    'full-frontend-coverage-merge',
-    "needs.full-frontend-coverage-shard-2.result == 'success'",
-    'must require shard 2 success before merging frontend coverage',
+    [
+      'npm run test:coverage:shard -- 1 2',
+      'test -s .vitest-reports/blob-1-2.json',
+      'npm run test:coverage:shard -- 2 2',
+      'test -s .vitest-reports/blob-2-2.json',
+      'npm run test:coverage:merge -- .vitest-reports',
+    ],
+    'must run both frontend coverage shards sequentially, verify both blobs, and merge them',
   );
 
   const frontendAggregateBody = requireJobBody(
@@ -249,8 +259,7 @@ function inspectFullLaneParallelization(workflow, relativePath, state) {
 function inspectFalseFullLaneDependencies(workflow, relativePath, state) {
   const forbiddenNeeds = [
     ['full-frontend-typechecks', 'full-backend-tests'],
-    ['full-frontend-coverage-shard-1', 'full-frontend-typechecks'],
-    ['full-frontend-coverage-shard-2', 'full-frontend-typechecks'],
+    ['full-frontend-coverage-merge', 'full-frontend-typechecks'],
     ['full-gateway-tests', 'full-frontend-tests'],
     ['full-llm-egress-proxy-tests', 'full-gateway-tests'],
     ['full-critical-mutation', 'full-llm-egress-proxy-tests'],
@@ -314,6 +323,17 @@ function requireJobText(jobBody, relativePath, state, jobId, text, message) {
     return;
   }
   addUniqueError(state, `${relativePath}: workflow job "${jobId}" ${message}`);
+}
+
+function requireJobTextInOrder(jobBody, relativePath, state, jobId, texts, message) {
+  let position = -1;
+  for (const text of texts) {
+    position = jobBody.indexOf(text, position + 1);
+    if (position === -1) {
+      addUniqueError(state, `${relativePath}: workflow job "${jobId}" ${message}`);
+      return;
+    }
+  }
 }
 
 function escapeRegExp(value) {

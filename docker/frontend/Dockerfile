@@ -5,7 +5,7 @@
 
 # Shared Node/npm toolchain. npm 11.16+ is required for package.json's
 # allowScripts policy; both dependency and build stages inherit this layer.
-FROM node:24-alpine AS node-toolchain
+FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS node-toolchain
 ARG NPM_VERSION=11.19.0
 RUN npm install --global --audit=false --fund=false "npm@$NPM_VERSION"
 
@@ -48,7 +48,11 @@ ENV VITE_API_URL=${VITE_API_URL}
 RUN npm run build
 
 # Stage 3: Production with Nginx
-FROM nginx:alpine AS runner
+FROM nginx:alpine@sha256:4a73073bd557c65b759505da037898b61f1be6cbcc3c2c3aeac22d2a470c1752 AS runner
+ARG SANCTUARY_SOURCE_COMMIT
+ARG SANCTUARY_IMAGE_LOCK_SHA256
+LABEL org.opencontainers.image.revision="$SANCTUARY_SOURCE_COMMIT" \
+      dev.sanctuary.image-lock-sha256="$SANCTUARY_IMAGE_LOCK_SHA256"
 
 # Install envsubst for runtime environment variable substitution
 RUN apk add --no-cache gettext

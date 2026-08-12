@@ -114,7 +114,7 @@ inhibit_rules: []
 function writeComposeFile() {
   writeFileSync(composePath, `services:
   alertmanager:
-    image: prom/alertmanager:v0.26.0
+    image: prom/alertmanager:v0.26.0@sha256:361db356b33041437517f1cd298462055580585f26555c317df1a3caf2868552
     restart: "no"
     extra_hosts:
       - "host.docker.internal:host-gateway"

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "evidence": {
+    "capturedAt": "2026-08-12T07:38:44Z",
+    "successfulPrTestRun": 10439,
+    "successfulMainTestRun": 10458,
+    "walletSafetyPrRun": 10463,
+    "notes": "Budgets measure command execution only. Runner queue time and cache/network setup are reported separately and never hard-fail this gate."
+  },
+  "budgets": {
+    "frontend coverage shard 1/2": { "warnSeconds": 420, "hardSeconds": 600 },
+    "frontend coverage shard 2/2": { "warnSeconds": 420, "hardSeconds": 600 },
+    "frontend coverage merge": { "warnSeconds": 30, "hardSeconds": 60 },
+    "backend integration": { "warnSeconds": 180, "hardSeconds": 360 },
+    "backend integration destructive": { "warnSeconds": 30, "hardSeconds": 60 },
+    "browser-flow E2E admin-auth": { "warnSeconds": 120, "hardSeconds": 240 },
+    "browser-flow E2E wallet-lifecycle": { "warnSeconds": 120, "hardSeconds": 240 },
+    "browser-flow E2E wallet-transactions": { "warnSeconds": 120, "hardSeconds": 240 },
+    "browser-flow E2E wallet-experience": { "warnSeconds": 120, "hardSeconds": 240 },
+    "render regression E2E": { "warnSeconds": 180, "hardSeconds": 360 }
+  }
+}

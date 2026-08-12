@@ -16,12 +16,13 @@ fail() {
   exit 1
 }
 
-# The requirement is the go.mod directive: the toolchain has to be at least what
-# the module declares. Newer is fine, older cannot build it.
+# The funds-safety verifier uses the exact toolchain directive. Accepting a newer
+# compiler would make the proof depend on whichever runner image happened to
+# execute it and could silently change generated evidence.
 read_required_version() {
   local go_mod="${SANCTUARY_GO_MOD:-$SCRIPT_DIR/../verify-addresses/implementations/go.mod}"
   [ -f "$go_mod" ] || fail "go.mod not found at ${go_mod}"
-  awk '$1 == "go" { print $2; exit }' "$go_mod"
+  awk '$1 == "toolchain" { sub(/^go/, "", $2); print $2; exit }' "$go_mod"
 }
 
 main() {
@@ -31,30 +32,22 @@ main() {
 
   local required
   required="$(read_required_version)"
-  [ -n "$required" ] || fail 'could not read the go directive from go.mod'
+  [ -n "$required" ] || fail 'could not read the exact toolchain directive from go.mod'
 
   local go_bin
   go_bin="$(command -v go)" || fail 'go executable not found; the runner image is missing the Go toolchain'
 
-  # Evaluate inside the module. GOTOOLCHAIN=auto reports the *base* toolchain
-  # outside a module and the *effective* one inside it, so checking from
-  # anywhere else reads a number that has nothing to do with what will build
-  # go-verify.go. Reading it here also means a base toolchain too old to satisfy
-  # the directive fails now -- on an image without network egress it could not
-  # fetch the newer one at run time anyway.
+  # Disable Go's automatic toolchain download. The proof must use the binary
+  # baked into the content-addressed job image and fail if that image drifts.
   local module_dir
   module_dir="$(dirname "${SANCTUARY_GO_MOD:-$SCRIPT_DIR/../verify-addresses/implementations/go.mod}")"
 
   local actual
-  actual="$(cd "$module_dir" && "$go_bin" env GOVERSION 2>/dev/null | sed 's/^go//')"
+  actual="$(cd "$module_dir" && GOTOOLCHAIN=local "$go_bin" env GOVERSION 2>/dev/null | sed 's/^go//')"
   [ -n "$actual" ] || fail 'could not determine the effective Go version'
 
-  # sort -V puts the lower version first; if that is not the requirement, the
-  # installed toolchain is older than the module needs.
-  local lowest
-  lowest="$(printf '%s\n%s\n' "$required" "$actual" | sort -V | head -n 1)"
-  if [ "$lowest" != "$required" ] && [ "$actual" != "$required" ]; then
-    fail "expected Go >= ${required}, got ${actual}"
+  if [ "$actual" != "$required" ]; then
+    fail "expected exact Go ${required}, got ${actual}"
   fi
 
   ci_emit_env "SANCTUARY_GO_BIN=$go_bin"

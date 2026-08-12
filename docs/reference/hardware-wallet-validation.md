@@ -19,11 +19,11 @@ Manual hardware validation covers the things mocks cannot prove:
 
 ### Proof tiers
 
-| Tier | Execution                                                        | What it proves                                                                                                  | What it cannot prove                                                                      |
-| ---- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| 1    | Immutable vectors and Bitcoin Core replay on every relevant PR   | Path, descriptor, PSBT, signature, and transaction invariants                                                   | Vendor transport, firmware, screen, or confirmation behavior                              |
+| Tier | Execution                                                        | What it proves                                                                                                                                    | What it cannot prove                                                                                                              |
+| ---- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | Immutable vectors and Bitcoin Core replay on every relevant PR   | Path, descriptor, PSBT, signature, and transaction invariants                                                                                     | Vendor transport, firmware, screen, or confirmation behavior                                                                      |
 | 2    | Pinned vendor emulator/protocol integration                      | Production-adapter payload/session compatibility with exact emulated firmware, Bridge, Connect core protocol, display calls, and signing protocol | Connect-Web iframe/Suite orchestration, physical transport, production device possession, screen rendering, or human confirmation |
-| 3    | Dedicated physical device with operator and independent reviewer | Physical transport, actual screen/confirmation behavior, and sanitized adapter-native artifacts                 | Future firmware/SDK revisions after the evidence expires                                  |
+| 3    | Dedicated physical device with operator and independent reviewer | Physical transport, actual screen/confirmation behavior, and sanitized adapter-native artifacts                                                   | Future firmware/SDK revisions after the evidence expires                                                                          |
 
 Tier 2 never satisfies a Tier 3 fixture row. Ledger Tier 2 builds a dedicated
 `linux/amd64` Speculos image from the exact inputs recorded in
@@ -159,12 +159,12 @@ npm run quality:lizard
 
 Required release-grade hardware rows:
 
-| Device | Transport | Address display | Signing evidence |
+| Device                       | Transport                 | Address display                                                         | Signing evidence                                                           |
 | ---------------------------- | ------------------------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Ledger Nano S Plus or Nano X | WebUSB, Bitcoin app | `verifyAddress` must return the exact device-returned address | Signed PSBT plus Ledger wallet policy template/key origin |
+| Ledger Nano S Plus or Nano X | WebUSB, Bitcoin app       | `verifyAddress` must return the exact device-returned address           | Signed PSBT plus Ledger wallet policy template/key origin                  |
 | Trezor Model T/Safe 3/Safe 5 | Trezor Connect and Bridge | `getAddress` with `showOnTrezor` must return the exact expected address | Exact source PSBT + Connect signature array + serialized transaction tuple |
-| Jade Plus | WebSerial | `get_receive_address` must return the exact address displayed by Jade | Adapter-returned binary signed PSBT plus reconstructed/final transaction |
-| BitBox02 BTC-only or Multi | WebHID | `btcDisplayAddressSimple` must return the exact expected address | Signed PSBT from `btcSignSimple` |
+| Jade Plus                    | WebSerial                 | `get_receive_address` must return the exact address displayed by Jade   | Adapter-returned binary signed PSBT plus reconstructed/final transaction   |
+| BitBox02 BTC-only or Multi   | WebHID                    | `btcDisplayAddressSimple` must return the exact expected address        | Signed PSBT from `btcSignSimple`                                           |
 
 ### Current Fixture Classification
 
@@ -172,15 +172,15 @@ As of 2026-08-11, no sanitized physical-device signing artifacts are committed
 yet. The executable fixture intake therefore records required rows separately
 from rows that Sanctuary currently blocks at the product level.
 
-| Row | Classification | Evidence |
-| --------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Ledger P2PKH, P2WPKH, P2SH-P2WPKH, P2TR | Required, product blocked pending physical fixture | The pinned emulator proves production-adapter BIP44, BIP49, BIP84, and BIP86 conformance on both coin families, but cannot satisfy physical display/transport evidence. All Ledger capability rows remain disabled. |
-| Ledger P2WSH, P2SH-P2WSH | Unsupported, product blocked | Ledger adapter currently builds only single-sig `DefaultWalletPolicy` templates; multisig Ledger signing is not exposed. |
-| Trezor P2WPKH, P2SH-P2WPKH, P2TR, P2WSH, P2SH-P2WSH | Required, product blocked pending physical fixture | The pinned emulator proves production-adapter BIP49, BIP84, BIP86, and both BIP48 `/1'` and `/2'` conformance, but cannot satisfy physical display/transport evidence. All Trezor capability rows remain disabled. |
-| Jade Plus P2PKH, P2WPKH, P2SH-P2WPKH, P2TR | Required, product blocked pending physical fixture | Pinned QEMU proves production-session single-signature protocol conformance, but cannot satisfy physical WebSerial/display evidence. All Jade rows remain disabled. |
-| Jade Plus P2WSH, P2SH-P2WSH | Unsupported, product blocked | The Jade adapter explicitly rejects multisig signing before sending a PSBT. |
-| BitBox02 P2WPKH, P2SH-P2WPKH, P2TR | Required, missing physical fixture | BitBox adapter maps these to `btcSignSimple` single-sig script configs and still needs vendor-signed artifacts. |
-| BitBox02 P2WSH, P2SH-P2WSH | Unsupported, product blocked | BitBox adapter currently uses `btcSignSimple` single-sig script configs only; multisig BitBox signing is not exposed. |
+| Row                                                 | Classification                                     | Evidence                                                                                                                                                                                                            |
+| --------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ledger P2PKH, P2WPKH, P2SH-P2WPKH, P2TR             | Required, product blocked pending physical fixture | The pinned emulator proves production-adapter BIP44, BIP49, BIP84, and BIP86 conformance on both coin families, but cannot satisfy physical display/transport evidence. All Ledger capability rows remain disabled. |
+| Ledger P2WSH, P2SH-P2WSH                            | Unsupported, product blocked                       | Ledger adapter currently builds only single-sig `DefaultWalletPolicy` templates; multisig Ledger signing is not exposed.                                                                                            |
+| Trezor P2WPKH, P2SH-P2WPKH, P2TR, P2WSH, P2SH-P2WSH | Required, product blocked pending physical fixture | The pinned emulator proves production-adapter BIP49, BIP84, BIP86, and both BIP48 `/1'` and `/2'` conformance, but cannot satisfy physical display/transport evidence. All Trezor capability rows remain disabled.  |
+| Jade Plus P2PKH, P2WPKH, P2SH-P2WPKH, P2TR          | Required, product blocked pending physical fixture | Pinned QEMU proves production-session single-signature protocol conformance, but cannot satisfy physical WebSerial/display evidence. All Jade rows remain disabled.                                                 |
+| Jade Plus P2WSH, P2SH-P2WSH                         | Unsupported, product blocked                       | The Jade adapter explicitly rejects multisig signing before sending a PSBT.                                                                                                                                         |
+| BitBox02 P2WPKH, P2SH-P2WPKH, P2TR                  | Required, missing physical fixture                 | BitBox adapter maps these to `btcSignSimple` single-sig script configs and still needs vendor-signed artifacts.                                                                                                     |
+| BitBox02 P2WSH, P2SH-P2WSH                          | Unsupported, product blocked                       | BitBox adapter currently uses `btcSignSimple` single-sig script configs only; multisig BitBox signing is not exposed.                                                                                               |
 
 This leaves 16 required rows awaiting physical evidence and 6 explicitly blocked
 unsupported rows. The executable source of truth is
@@ -202,13 +202,13 @@ Run each required device through these rows when the vendor supports the script
 family. If Sanctuary exposes a script family that a device cannot safely sign,
 the feature must be blocked or clearly marked unsupported for that device.
 
-| Script family | Account path | Required checks |
+| Script family                        | Account path     | Required checks                                                                                                           |
 | ------------------------------------ | ---------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| Native SegWit single-sig P2WPKH | `m/84'/1'/0'` | receive display, change display, one-input spend, wrong-address negative |
-| Nested SegWit single-sig P2SH-P2WPKH | `m/49'/1'/0'` | receive display, change display, one-input spend, wrong-network negative |
-| Taproot single-sig P2TR | `m/86'/1'/0'` | receive display and signing when firmware/app support it; otherwise record unsupported and block Taproot hardware signing |
-| Native sorted multisig P2WSH | `m/48'/1'/0'/2'` | policy/account registration, change recognition, one vendor partial signature, final transaction Core acceptance |
-| Nested sorted multisig P2SH-P2WSH | `m/48'/1'/0'/1'` | policy/account registration, change recognition, one vendor partial signature, final transaction Core acceptance |
+| Native SegWit single-sig P2WPKH      | `m/84'/1'/0'`    | receive display, change display, one-input spend, wrong-address negative                                                  |
+| Nested SegWit single-sig P2SH-P2WPKH | `m/49'/1'/0'`    | receive display, change display, one-input spend, wrong-network negative                                                  |
+| Taproot single-sig P2TR              | `m/86'/1'/0'`    | receive display and signing when firmware/app support it; otherwise record unsupported and block Taproot hardware signing |
+| Native sorted multisig P2WSH         | `m/48'/1'/0'/2'` | policy/account registration, change recognition, one vendor partial signature, final transaction Core acceptance          |
+| Nested sorted multisig P2SH-P2WSH    | `m/48'/1'/0'/1'` | policy/account registration, change recognition, one vendor partial signature, final transaction Core acceptance          |
 
 Legacy P2PKH is required only if it is exposed in the production hardware-wallet
 UI for the release being validated.
@@ -254,13 +254,15 @@ For each signing row:
 3. Approve signing on the physical device only if the screen matches the expected
    external recipient and amount. When the device exposes change details, confirm
    the change path/address matches the internal output.
-4. Save the adapter-native artifact. Ledger and BitBox retain the returned signed
-   PSBT. Trezor retains the exact source PSBT, Connect signature array, and
-   serialized transaction as its native evidence tuple. Sanctuary may also
-   persist a locally reconstructed PSBT after every Connect signature has been
-   origin-bound and cryptographically validated; that PSBT is application state,
-   not a claim that Connect returned a PSBT. Evidence-only tuples never advance
-   signer or draft state.
+4. Save the adapter-native artifact. Ledger retains the exact source PSBT and
+   Ledger-returned per-input signature records; Sanctuary's resulting signed PSBT
+   is stored separately and labeled as reconstructed application state. Jade and
+   BitBox retain the adapter-returned signed PSBT. Trezor retains the exact source
+   PSBT, Connect signature array, and serialized transaction as its native
+   evidence tuple. Sanctuary may also persist a locally reconstructed PSBT after
+   every Connect signature has been origin-bound and cryptographically validated;
+   that PSBT is application state, not a claim that Connect returned a PSBT.
+   Evidence-only tuples never advance signer or draft state.
 5. Replay the artifact through Sanctuary finalization/extraction and Bitcoin Core
    decoding. For finalized transactions, `testmempoolaccept` must return
    `allowed=true` on the local Core chain used for the fixture.
@@ -289,17 +291,17 @@ Run these at least once per device, and once per multisig policy type:
 Record one sanitized manifest per run, for example
 `tasks/hardware-wallet-validation-YYYY-MM-DD.md`.
 
-| Field | Required value |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Commit | Git commit under test |
-| Device | Model, firmware, Bitcoin app, transport package version |
-| Runtime provenance | Reachable tested commit, Sanctuary image digest, exact SDK package/version/lockfile SRI, current funds-safety source manifest, host OS, browser, capture ID, and expiry |
-| Wallet             | Fingerprint, full account xpub/path, canonical policy ID/version, and complete multisig threshold/cosigner set when applicable                                          |
-| Address evidence | Path, Sanctuary address, device-returned address, Core-derived address |
-| Signing evidence | Unsigned PSBT hash, signed PSBT/raw tx hash, decoded outputs, fee, vsize, txid |
-| Core replay        | Exact `testmempoolaccept` request/response transcript, current pinned Core image/subversion, and an Ed25519 receipt from a separately provisioned trusted evidence key  |
-| Negative controls | Case name, expected failure, observed failure |
-| Operator notes | Manual observations, screenshots/photos paths if sanitized |
+| Field              | Required value                                                                                                                                                                                                                                                                                                     |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Commit             | Git commit under test                                                                                                                                                                                                                                                                                              |
+| Device             | Model, firmware, Bitcoin app, transport package version                                                                                                                                                                                                                                                            |
+| Runtime provenance | Reachable tested commit; exact frontend/backend OCI manifest and config subjects; application version; package-lock and funds-safety source-manifest digests; complete vendor SDK tuple with lockfile SRI; host OS, browser, transport/companion versions, capture ID, expiry, and trusted Ed25519 capture receipt |
+| Wallet             | Fingerprint, full account xpub/path, canonical policy ID/version, and complete multisig threshold/cosigner set when applicable                                                                                                                                                                                     |
+| Address evidence   | Path, Sanctuary address, device-returned address, Core-derived address                                                                                                                                                                                                                                             |
+| Signing evidence   | Unsigned PSBT hash, signed PSBT/raw tx hash, decoded outputs, fee, vsize, txid                                                                                                                                                                                                                                     |
+| Core replay        | Exact `testmempoolaccept` request/response transcript, current pinned Core image/subversion, and an Ed25519 receipt from a separately provisioned trusted evidence key                                                                                                                                             |
+| Negative controls  | Case name, expected failure, observed failure                                                                                                                                                                                                                                                                      |
+| Operator notes     | Manual observations, screenshots/photos paths if sanitized                                                                                                                                                                                                                                                         |
 
 Do not commit raw evidence that contains secrets. Testnet/regtest PSBTs, raw
 transactions, xpubs, and decoded summaries may be committed after review.
@@ -312,13 +314,18 @@ the lab operator and reviewer must satisfy the executable intake schema used by
 
 Each committed row must include:
 
-- `fixtureSchemaVersion: 3`, `evidenceTier: physical-device`, and
+- `fixtureSchemaVersion: 4`, `evidenceTier: physical-device`, and
   `device.emulated: false`. Emulator or simulator provenance is rejected.
-- A tested commit that is a reachable ancestor, Sanctuary image digest, exact
-  vendor SDK package/version/lockfile SRI, the current deterministic
-  funds-safety source manifest, host
-  OS/browser/transport, capture ID, capture/expiry times within 180 days, and
-  distinct accountable operator and sanitization reviewer.
+- A tested commit that is a reachable ancestor; exactly one frontend and one
+  backend OCI subject whose revision, application version, package-lock digest,
+  and funds-safety source-manifest digest agree; and a trusted Ed25519 receipt
+  over those subjects plus the device/runtime tuple and artifact hashes.
+- The complete vendor tuple: Ledger model/firmware/Bitcoin app plus locked
+  Ledger Bitcoin and WebUSB packages; Trezor model/firmware/Connect,
+  Connect-Web, and Bridge-or-Suite companion; Jade Plus firmware/browser/
+  WebSerial plus locked `cbor-x`; or BitBox02 model/firmware/WebHID plus its
+  locked SDK. Host OS, browser, capture ID, capture/expiry times within 180 days,
+  and distinct accountable operator and sanitization reviewer are mandatory.
 
 - Address evidence for receive paths `/0/0`, `/0/1`, `/0/19`, `/0/999` and
   change paths `/1/0`, `/1/1`, `/1/19`, with exact Sanctuary/device/Core
@@ -346,9 +353,11 @@ missing software gates, non-test networks, and secret-shaped text such as
 mnemonics, passphrases, PINs, auth tokens, private keys, or xprv/tprv material.
 
 Committed hardware-signed artifacts go in
-`server/tests/fixtures/hardware-signed-psbt-vectors.ts`. Each non-Trezor row must
-contain the returned signed PSBT. Each Trezor row must contain the source PSBT,
-Connect signature array, and serialized transaction. Replay authenticates input
+`server/tests/fixtures/hardware-signed-psbt-vectors.ts`. Ledger rows contain the
+source PSBT, exact Ledger signature records, and an explicitly labeled
+Sanctuary-reconstructed PSBT. Jade and BitBox rows contain the adapter-returned
+signed PSBT. Each Trezor row contains the source PSBT, Connect signature array,
+and serialized transaction. Replay authenticates input
 values from PSBT UTXOs, requires exact complete outputs, binds every signer to a
 full account xpub/path and PSBT origin, verifies every signature, enforces
 canonical policy IDs and BIP-371 key-path-only Taproot metadata, reconstructs
@@ -356,6 +365,31 @@ multisig scripts from the exact threshold/cosigner set, derives every recorded
 address, authenticates fetched reference-transaction txids/selected scripts and
 amounts, and rejects any tuple/intent/Core-evidence mismatch. The replay harness is
 `server/tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts`.
+
+## Machine-Generated Compatibility Statement
+
+`scripts/ci/hardware-compatibility-report.ts` converts the checked-in capability
+manifest, required physical-device matrix, immutable derivation and PSBT vectors,
+emulator manifests, and reviewed physical fixtures into deterministic JSON and
+Markdown. The generated statement is evidence inventory, not a product-support
+override: a row remains disabled or unverified until its full proof chain and
+fresh physical evidence pass the existing fail-closed gates.
+
+Regenerate the checked-in source-state statement with an explicit timestamp and
+revision:
+
+```bash
+npx tsx scripts/ci/hardware-compatibility-report.ts \
+  --as-of 2026-08-11T00:00:00.000Z \
+  --revision "$(git rev-parse HEAD)" \
+  --json docs/reference/generated/hardware-wallet-compatibility.json \
+  --markdown docs/reference/generated/hardware-wallet-compatibility.md
+```
+
+The checked-in artifacts use a fixed generation timestamp so CI can reproduce
+them byte-for-byte. A release operator may additionally generate a revision-bound
+statement for the candidate under review; changing the timestamp or revision does
+not promote a capability or substitute for signed physical evidence.
 
 To require only the five Trezor physical rows during a Trezor lab capture:
 

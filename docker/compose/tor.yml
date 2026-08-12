@@ -64,7 +64,7 @@ services:
         max-file: "3"
 
   tor:
-    image: dperson/torproxy:latest
+    image: dperson/torproxy:latest@sha256:d8b5f1cf24f1b7a0aa334929a264b2606a107223dd0d51eb1cda8aae6fbeec53
     container_name: ${TOR_CONTAINER_NAME:-sanctuary-tor}
     restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
     networks:

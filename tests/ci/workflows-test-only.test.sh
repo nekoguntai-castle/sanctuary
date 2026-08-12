@@ -14,8 +14,10 @@ fail() {
 
 bash "$checker" "$repo_root/.github/workflows" >/dev/null
 
-[ "$(grep -c '^[[:space:]]*push: false$' "$docker_workflow")" -eq 3 ] ||
-  fail "Docker validation must retain exactly three explicit push:false settings"
+[ "$(grep -c '^[[:space:]]*push: false$' "$docker_workflow" || true)" -eq 0 ] ||
+  fail "Docker validation must not retain retired build-push action settings"
+[ "$(grep -c '^[[:space:]]*run: scripts/ci/build-runtime-image.sh' "$docker_workflow")" -eq 5 ] ||
+  fail "Docker validation must locally build, smoke, and attest all five shipped images"
 if grep -Eq 'github\.server_url|packages:[[:space:]]+write|docker/login-action' "$docker_workflow"; then
   fail "Docker validation still contains a provider gate or registry authority"
 fi

@@ -394,7 +394,7 @@ validate_postgres_password() {
     result=$(docker run --rm \
         --network "$network_name" \
         -e "PGPASSWORD=$password" \
-        postgres:16-alpine \
+        postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777 \
         psql -w -h postgres -U "$db_user" -d "$db_name" -tAc "SELECT 1" 2>/dev/null || true)
 
     [ "$result" = "1" ]
@@ -839,25 +839,25 @@ validate_offline_images() {
         "sanctuary-frontend:${SANCTUARY_IMAGE_TAG:-local}"
         "sanctuary-gateway:${SANCTUARY_IMAGE_TAG:-local}"
         "sanctuary-llm-egress-proxy:${SANCTUARY_IMAGE_TAG:-local}"
-        "postgres:16-alpine"
-        "redis:7-alpine"
-        "tecnativa/docker-socket-proxy:latest"
+        "postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777"
+        "redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2"
+        "tecnativa/docker-socket-proxy:latest@sha256:1f5038b54f06c3e18422902cf00ba21803d1c97805aae032e5e6673d532d3459"
     )
 
     if [ "$OPT_ENABLE_MONITORING" = "yes" ]; then
         required_images+=(
             "sanctuary-grafana-migration:${SANCTUARY_IMAGE_TAG:-local}"
-            "jaegertracing/all-in-one:1.53"
-            "grafana/loki:2.9.0"
-            "grafana/promtail:3.5.0"
-            "prom/prometheus:v2.47.0"
-            "prom/alertmanager:v0.26.0"
-            "grafana/grafana:10.2.0"
+            "jaegertracing/all-in-one:1.53@sha256:60e65bfffe1f66aee96d6fc8b6bf65afd42016be5dcc09d2e15d8462f7d9409c"
+            "grafana/loki:2.9.0@sha256:b025a0220f390baaab01578aea2fe0ba677584d9f248c3fe5af15f84dd1de60d"
+            "grafana/promtail:3.5.0@sha256:507dfecd2f0949475d071c124bea1c26fc4f8c1cff0372eee57478d5b1c5fbff"
+            "prom/prometheus:v2.47.0@sha256:c5dd3503828713c4949ae1bccd1d8d69f382c33d441954674a6b78ebe69c3331"
+            "prom/alertmanager:v0.26.0@sha256:361db356b33041437517f1cd298462055580585f26555c317df1a3caf2868552"
+            "grafana/grafana:10.2.0@sha256:1ee0c54286b8ca09a3dd1419ff8653e7780a148a006ac088544203bb0affe550"
         )
     fi
 
     if [ "$OPT_ENABLE_TOR" = "yes" ]; then
-        required_images+=("dperson/torproxy:latest")
+        required_images+=("dperson/torproxy:latest@sha256:d8b5f1cf24f1b7a0aa334929a264b2606a107223dd0d51eb1cda8aae6fbeec53")
     fi
 
     for image in "${required_images[@]}"; do

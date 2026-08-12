@@ -1,4 +1,8 @@
-FROM grafana/grafana:10.2.0
+FROM grafana/grafana:10.2.0@sha256:1ee0c54286b8ca09a3dd1419ff8653e7780a148a006ac088544203bb0affe550
+ARG SANCTUARY_SOURCE_COMMIT
+ARG SANCTUARY_IMAGE_LOCK_SHA256
+LABEL org.opencontainers.image.revision="$SANCTUARY_SOURCE_COMMIT" \
+      dev.sanctuary.image-lock-sha256="$SANCTUARY_IMAGE_LOCK_SHA256"
 
 USER root
 COPY scripts/ops/migrate-grafana-password.sh /opt/sanctuary/migrate-grafana-password.sh

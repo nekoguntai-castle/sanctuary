@@ -139,16 +139,22 @@ describe("hardware evidence source inventory", () => {
   );
 
   it("binds every Jade adapter module without binding another vendor directory", () => {
-    const paths = currentHardwareEvidenceSourceManifest("jade").map((entry) => entry.path);
+    const paths = currentHardwareEvidenceSourceManifest("jade").map(
+      (entry) => entry.path,
+    );
     for (const file of [
       "jade.ts",
       "jadeIdentity.ts",
       "jadePinRelayClient.ts",
       "jadeProtocol.ts",
       "jadeSignedPsbt.ts",
-    ]) expect(paths).toContain(`src/services/hardwareWallet/adapters/${file}`);
-    for (const path of JADE_DEDICATED_PROOF_SOURCES) expect(paths).toContain(path);
-    expect(paths.some((path) => /adapters\/(?:ledger|trezor|bitbox)\//.test(path))).toBe(false);
+    ])
+      expect(paths).toContain(`src/services/hardwareWallet/adapters/${file}`);
+    for (const path of JADE_DEDICATED_PROOF_SOURCES)
+      expect(paths).toContain(path);
+    expect(
+      paths.some((path) => /adapters\/(?:ledger|trezor|bitbox)\//.test(path)),
+    ).toBe(false);
   });
 
   it("expires Jade evidence when a dedicated relay or auth source hash changes", () => {
@@ -163,9 +169,9 @@ describe("hardware evidence source inventory", () => {
       const mutatedVector = {
         ...vector,
         evidence: {
-          sourceManifest: sourceManifest.map((entry) => entry.path === path
-            ? { ...entry, sha256: "0".repeat(64) }
-            : entry),
+          sourceManifest: sourceManifest.map((entry) =>
+            entry.path === path ? { ...entry, sha256: "0".repeat(64) } : entry,
+          ),
         },
       } as HardwareSignedPsbtVector;
       expect(sourceManifestMatches(mutatedVector), path).toBe(false);
@@ -197,7 +203,12 @@ describe("hardware evidence repository and receipt provenance", () => {
         .toString(),
     };
 
-    expect(validateCoreReceipt(vector, { trustedCoreReceiptKeys })).toBeNull();
+    expect(
+      validateCoreReceipt(vector, {
+        trustedCoreReceiptKeys,
+        trustedApplicationReceiptKeys: {},
+      }),
+    ).toBeNull();
     const signature = Buffer.from(
       vector.evidence.coreAcceptance.receipt.signatureBase64,
       "base64",
@@ -205,9 +216,12 @@ describe("hardware evidence repository and receipt provenance", () => {
     signature[0] ^= 1;
     vector.evidence.coreAcceptance.receipt.signatureBase64 =
       signature.toString("base64");
-    expect(validateCoreReceipt(vector, { trustedCoreReceiptKeys })).toBe(
-      "Core acceptance receipt signature is invalid",
-    );
+    expect(
+      validateCoreReceipt(vector, {
+        trustedCoreReceiptKeys,
+        trustedApplicationReceiptKeys: {},
+      }),
+    ).toBe("Core acceptance receipt signature is invalid");
   });
 
   it("fails closed when the trusted receipt key cannot be parsed", () => {
@@ -220,6 +234,7 @@ describe("hardware evidence repository and receipt provenance", () => {
     expect(
       validateCoreReceipt(vector, {
         trustedCoreReceiptKeys: { "test-key": "not-a-public-key" },
+        trustedApplicationReceiptKeys: {},
       }),
     ).toBe("Core acceptance receipt signature is invalid");
   });

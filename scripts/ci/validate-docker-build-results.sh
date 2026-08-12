@@ -1,8 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
-if [ "$#" -ne 7 ]; then
-  echo "Usage: $0 DETECT_RESULT FRONTEND_REQUESTED FRONTEND_RESULT BACKEND_REQUESTED BACKEND_RESULT GRAFANA_REQUESTED GRAFANA_RESULT" >&2
+if [ "$#" -ne 11 ]; then
+  echo "Usage: $0 DETECT_RESULT and five REQUESTED RESULT pairs" >&2
   exit 2
 fi
 
@@ -31,4 +31,6 @@ validate_result() {
   || { echo "Image scope detection failed: $detect_result" >&2; exit 1; }
 validate_result "$1" "$2" "Frontend image"
 validate_result "$3" "$4" "Backend image"
-validate_result "$5" "$6" "Grafana migration image"
+validate_result "$5" "$6" "Gateway image"
+validate_result "$7" "$8" "LLM egress proxy image"
+validate_result "$9" "${10}" "Grafana migration image"

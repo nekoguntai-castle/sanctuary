@@ -4,7 +4,7 @@
 # =============================================
 
 # Shared Node/npm toolchain. npm 11.16+ is required by the root package policy.
-FROM node:24-alpine AS node-toolchain
+FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS node-toolchain
 ARG NPM_VERSION=11.19.0
 RUN npm install --global --audit=false --fund=false "npm@$NPM_VERSION"
 
@@ -62,10 +62,14 @@ RUN npx tsc prisma/seed.ts --outDir dist/prisma --esModuleInterop --skipLibCheck
 
 # Prune dev dependencies for production. Workspace symlinks survive prune.
 WORKDIR /repo
-RUN npm prune --production --include-workspace-root --ignore-scripts
+RUN npm prune --omit=dev --include-workspace-root --ignore-scripts --audit=false --fund=false
 
 # Stage 3: Production
-FROM node:24-alpine AS runner
+FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS runner
+ARG SANCTUARY_SOURCE_COMMIT
+ARG SANCTUARY_IMAGE_LOCK_SHA256
+LABEL org.opencontainers.image.revision="$SANCTUARY_SOURCE_COMMIT" \
+      dev.sanctuary.image-lock-sha256="$SANCTUARY_IMAGE_LOCK_SHA256"
 WORKDIR /app
 
 RUN apk add --no-cache dumb-init openssl
@@ -77,28 +81,28 @@ ENV NODE_ENV=production
 ENV PORT=3001
 
 # Copy server runtime artifacts.
-COPY --from=builder /repo/server/dist ./dist
-COPY --from=builder /repo/server/package.json ./
-COPY --from=builder /repo/server/prisma ./prisma
-COPY --from=builder /repo/server/prisma.config.ts ./
-COPY --from=builder /repo/server/scripts ./scripts
+COPY --chown=sanctuary:nodejs --from=builder /repo/server/dist ./dist
+COPY --chown=sanctuary:nodejs --from=builder /repo/server/package.json ./
+COPY --chown=sanctuary:nodejs --from=builder /repo/server/prisma ./prisma
+COPY --chown=sanctuary:nodejs --from=builder /repo/server/prisma.config.ts ./
+COPY --chown=sanctuary:nodejs --from=builder /repo/server/scripts ./scripts
 
 # Strategy (c) per v3.1 plan: materialize the workspace symlink as a real
 # directory containing only what shared exports (package.json + dist/).
 # Layout matches what shared's `exports` field references:
 #   /app/node_modules/@sanctuary/shared/package.json
 #   /app/node_modules/@sanctuary/shared/dist/utils/errors.js
-COPY --from=builder /repo/node_modules ./node_modules
+COPY --chown=sanctuary:nodejs --from=builder /repo/node_modules ./node_modules
 # Some server dependencies are workspace-local when the root app needs an
 # incompatible version. Overlay them so runtime resolution matches the server
 # workspace instead of falling back to the root package set.
-COPY --from=builder /repo/server/node_modules /tmp/server-node_modules
+COPY --chown=sanctuary:nodejs --from=builder /repo/server/node_modules /tmp/server-node_modules
 RUN if [ -d /tmp/server-node_modules ]; then \
       for package in /tmp/server-node_modules/*; do \
         [ -e "$package" ] || continue; \
         name="$(basename "$package")"; \
         if [ "${name#@}" != "$name" ]; then \
-          mkdir -p "/app/node_modules/$name"; \
+          install -d -o sanctuary -g nodejs "/app/node_modules/$name"; \
           for scoped_package in "$package"/*; do \
             [ -e "$scoped_package" ] || continue; \
             scoped_name="$(basename "$scoped_package")"; \
@@ -112,14 +116,11 @@ RUN if [ -d /tmp/server-node_modules ]; then \
       rm -rf /tmp/server-node_modules; \
     fi
 RUN rm -rf /app/node_modules/@sanctuary/shared && \
-    mkdir -p /app/node_modules/@sanctuary/shared
-COPY --from=builder /repo/shared/package.json /app/node_modules/@sanctuary/shared/package.json
-COPY --from=builder /repo/shared/dist /app/node_modules/@sanctuary/shared/dist
+    install -d -o sanctuary -g nodejs /app/node_modules/@sanctuary/shared
+COPY --chown=sanctuary:nodejs --from=builder /repo/shared/package.json /app/node_modules/@sanctuary/shared/package.json
+COPY --chown=sanctuary:nodejs --from=builder /repo/shared/dist /app/node_modules/@sanctuary/shared/dist
 
-RUN mkdir -p /run/sanctuary-support-capture && \
-    chown sanctuary:nodejs /run/sanctuary-support-capture && \
-    chmod 0700 /run/sanctuary-support-capture && \
-    chown -R sanctuary:nodejs /app
+RUN install -d -m 0700 -o sanctuary -g nodejs /run/sanctuary-support-capture
 
 USER sanctuary
 EXPOSE 3001

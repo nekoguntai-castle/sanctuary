@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "runnerImage": {
+    "reference": "nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go",
+    "digest": "sha256:8b50f6c8ccb016b042c7125a637b068a49c856a76e543365044b36a593edd81e",
+    "parentReference": "ghcr.io/catthehacker/ubuntu:act-22.04",
+    "parentDigest": "sha256:41e84facdece5f25b0de00cd69969f5f032c54f5bb7313f385727330db9ac40f"
+  },
+  "runtimes": {
+    "node": "24.19.0",
+    "npm": "11.19.0",
+    "python": "3.10.12",
+    "go": "1.25.12"
+  },
+  "artifacts": {
+    "nodeLinuxX64": {
+      "url": "https://nodejs.org/dist/v24.19.0/node-v24.19.0-linux-x64.tar.xz",
+      "sha256": "14b342e71204f811bde6153be8e04b62aef63c236fef92b55f9c83154b409647"
+    },
+    "npm": {
+      "url": "https://registry.npmjs.org/npm/-/npm-11.19.0.tgz",
+      "sha512": "48377f8478372aa1c4e47b763475b135836da82436a5700f2e5e8eb5084fc840f93c7b117eb3ad3b5f7d3194c81b6710a10d59448f6ddbcb21ac3fb672bdc003"
+    }
+  },
+  "fundsCriticalPackages": [
+    {
+      "name": "bitcoinjs-lib",
+      "version": "7.0.1",
+      "integrity": "sha512-vwEmpL5Tpj0I0RBdNkcDMXePoaYSTeKY6mL6/l5esbnTs+jGdPDuLp4NY1hSh6Zk5wSgePygZ4Wx5JJao30Pww==",
+      "manifests": ["package.json", "server/package.json", "scripts/verify-addresses/package.json", "scripts/verify-psbt/package.json"],
+      "lockfiles": ["package-lock.json", "scripts/verify-addresses/package-lock.json", "scripts/verify-psbt/package-lock.json"]
+    },
+    {
+      "name": "@ledgerhq/hw-transport-webusb",
+      "version": "6.34.4",
+      "integrity": "sha512-asBy3Uu8Cl/leyEAY5M27S/oAZwCpYuRPi9Sz6fgEgF2clX8Sold0iSI+MD0sne3PqcLK1K8V6H4MxviHH7sVw==",
+      "manifests": ["package.json"],
+      "lockfiles": ["package-lock.json"]
+    },
+    {
+      "name": "@ledgerhq/ledger-bitcoin",
+      "version": "0.3.1",
+      "integrity": "sha512-rzgU7+rvSsYVSI3cNAIfk9NUaLF1k4aFl3MuU66zV8Pyvy7rikcrbyPaPIAdNIdqYVrOE7evDB0b6aEwTRqLHg==",
+      "manifests": ["package.json"],
+      "lockfiles": ["package-lock.json"]
+    },
+    {
+      "name": "@ledgerhq/hw-transport-node-speculos",
+      "version": "6.34.7",
+      "integrity": "sha512-Ij/BOPxylur80ZXCCznEs3P/k9S5TY0ESetMQ4gbMok0G+zG0xDHRpDgGH1XxFPvR3GzZ9OUdQDbe+x2tc28fw==",
+      "manifests": ["package.json"],
+      "lockfiles": ["package-lock.json"]
+    },
+    {
+      "name": "@trezor/connect",
+      "version": "9.7.3",
+      "integrity": "sha512-oAOfvJHT8tPqOXTmCOhn8uTZcoqSDuWAiWXQegx7C46tq+NLg+enkYXxUYEHq/9PmfZAOrUT9VMxZDsXM2thkA==",
+      "manifests": ["package.json"],
+      "lockfiles": ["package-lock.json"]
+    },
+    {
+      "name": "@trezor/connect-web",
+      "version": "9.7.3",
+      "integrity": "sha512-oTI/v9sUJMvLZgLa0seSGyPaumXydRYeAT4OVTQxIaEiL1hOA0yH+UvEfT4WKwxbxOtOqWosD8chP3uuWSArcg==",
+      "manifests": ["package.json"],
+      "lockfiles": ["package-lock.json"]
+    },
+    {
+      "name": "cbor-x",
+      "version": "1.6.4",
+      "integrity": "sha512-UGKHjp6RHC6QuZ2yy5LCKm7MojM4716DwoSaqwQpaH4DvZvbBTGcoDNTiG9Y2lByXZYFEs9WRkS5tLl96IrF1Q==",
+      "manifests": ["package.json"],
+      "lockfiles": ["package-lock.json"]
+    }
+  ]
+}

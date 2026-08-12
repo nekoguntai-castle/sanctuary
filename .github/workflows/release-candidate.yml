@@ -75,6 +75,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  NODE_VERSION: '24.19.0'
+  NPM_VERSION: '11.19.0'
   GIT_CONFIG_COUNT: '1'
   GIT_CONFIG_KEY_0: init.defaultBranch
   GIT_CONFIG_VALUE_0: main
@@ -183,6 +185,43 @@ jobs:
             arguments+=(--evidence "$evidence_file")
           fi
           node scripts/release/verify-wallet-safety-audit-review.mjs "${arguments[@]}"
+
+  hardware-compatibility-evidence:
+    name: Hardware Compatibility Evidence
+    runs-on: ubuntu-22.04
+    needs: validation-info
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ needs.validation-info.outputs.candidate_ref }}
+          fetch-depth: 0
+      - name: Verify Node.js toolchain
+        uses: ./.github/actions/setup-node-toolchain
+      - name: Install locked report dependencies
+        run: npm ci --ignore-scripts
+      - name: Generate revision-bound compatibility evidence
+        run: |
+          mkdir -p release-evidence
+          revision="$(git rev-parse HEAD)"
+          as_of="$(git show -s --format=%cI HEAD)"
+          npx --no-install tsx scripts/ci/hardware-compatibility-report.ts \
+            --as-of "$as_of" \
+            --revision "$revision" \
+            --json release-evidence/hardware-wallet-compatibility.json \
+            --markdown release-evidence/hardware-wallet-compatibility.md
+          node -e '
+            const report = require("./release-evidence/hardware-wallet-compatibility.json");
+            if (report.revision !== process.env.GITHUB_SHA && report.revision !== require("node:child_process").execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim()) process.exit(1);
+            if (report.releaseDecision.status === "blocked-invalid-enabled-row" || report.releaseDecision.skippedRequiredCaseCount !== 0) process.exit(1);
+          '
+      - name: Upload hardware compatibility evidence
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: hardware-compatibility-evidence-${{ github.run_id }}
+          path: release-evidence/
+          if-no-files-found: error
+          retention-days: 90
 
   # ============================================
   # Unit Tests
@@ -662,7 +701,7 @@ jobs:
   validation-summary:
     name: Validation Summary
     runs-on: ubuntu-22.04
-    needs: [validation-info, wallet-safety-audit-review, unit-tests, fresh-install-test, container-health-test, auth-flow-test]
+    needs: [validation-info, wallet-safety-audit-review, hardware-compatibility-evidence, unit-tests, fresh-install-test, container-health-test, auth-flow-test]
     if: always()
 
     steps:
@@ -730,7 +769,8 @@ jobs:
           CORE_PASSED=true
           if [ "${{ needs.unit-tests.result }}" != "success" ] || \
              [ "${{ needs.fresh-install-test.result }}" != "success" ] || \
-             [ "${{ needs.wallet-safety-audit-review.result }}" != "success" ]; then
+             [ "${{ needs.wallet-safety-audit-review.result }}" != "success" ] || \
+             [ "${{ needs.hardware-compatibility-evidence.result }}" != "success" ]; then
             CORE_PASSED=false
           fi
 
@@ -767,7 +807,8 @@ jobs:
           # removed upgrade-test job for rationale.
           if [ "${{ needs.unit-tests.result }}" != "success" ] || \
              [ "${{ needs.fresh-install-test.result }}" != "success" ] || \
-             [ "${{ needs.wallet-safety-audit-review.result }}" != "success" ]; then
+             [ "${{ needs.wallet-safety-audit-review.result }}" != "success" ] || \
+             [ "${{ needs.hardware-compatibility-evidence.result }}" != "success" ]; then
             echo "::error::Release candidate validation FAILED - core tests did not pass."
             exit 1
           fi

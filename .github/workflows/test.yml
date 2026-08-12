@@ -56,7 +56,7 @@ env:
   GIT_CONFIG_COUNT: '1'
   GIT_CONFIG_KEY_0: init.defaultBranch
   GIT_CONFIG_VALUE_0: main
-  NODE_VERSION: '24'
+  NODE_VERSION: '24.19.0'
   NPM_VERSION: '11.19.0'
   SANCTUARY_RUNNER_LOCK_DIR: ${{ github.workspace }}/.tmp/runner-locks-v2
 
@@ -167,6 +167,8 @@ jobs:
     if: |
       always() &&
       github.event_name == 'pull_request' &&
+      needs.detect-changes.outputs.full_scan != 'true' &&
+      needs.detect-changes.outputs.test_suite_changed != 'true' &&
       needs.detect-changes.outputs.frontend_changed == 'true' &&
       (needs.quick-test-hygiene.result == 'success' ||
        needs.quick-test-hygiene.result == 'skipped') &&
@@ -231,7 +233,11 @@ jobs:
 
   quick-backend-typecheck:
     name: Quick Backend Typecheck
-    if: github.event_name == 'pull_request' && needs.detect-changes.outputs.backend_changed == 'true'
+    if: >-
+      github.event_name == 'pull_request' &&
+      needs.detect-changes.outputs.full_scan != 'true' &&
+      needs.detect-changes.outputs.test_suite_changed != 'true' &&
+      needs.detect-changes.outputs.backend_changed == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     needs: [detect-changes]
@@ -404,7 +410,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: sanctuary-ci-${{ github.run_id }}-${{ github.run_attempt }}-quick-smoke
@@ -485,6 +491,8 @@ jobs:
     if: |
       always() &&
       github.event_name == 'pull_request' &&
+      needs.detect-changes.outputs.full_scan != 'true' &&
+      needs.detect-changes.outputs.test_suite_changed != 'true' &&
       needs.detect-changes.outputs.critical_mutation_changed == 'true' &&
       (needs.quick-backend-integration-smoke.result == 'success' ||
        needs.quick-backend-integration-smoke.result == 'skipped')
@@ -617,7 +625,11 @@ jobs:
 
   quick-gateway-tests:
     name: Quick Gateway Tests
-    if: github.event_name == 'pull_request' && needs.detect-changes.outputs.gateway_changed == 'true'
+    if: >-
+      github.event_name == 'pull_request' &&
+      needs.detect-changes.outputs.full_scan != 'true' &&
+      needs.detect-changes.outputs.test_suite_changed != 'true' &&
+      needs.detect-changes.outputs.gateway_changed == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     needs: [detect-changes]
@@ -704,7 +716,11 @@ jobs:
 
   quick-llm-egress-proxy-tests:
     name: Quick LLM Egress Proxy Tests
-    if: github.event_name == 'pull_request' && needs.detect-changes.outputs.llm_egress_proxy_changed == 'true'
+    if: >-
+      github.event_name == 'pull_request' &&
+      needs.detect-changes.outputs.full_scan != 'true' &&
+      needs.detect-changes.outputs.test_suite_changed != 'true' &&
+      needs.detect-changes.outputs.llm_egress_proxy_changed == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     needs: [detect-changes]
@@ -779,6 +795,8 @@ jobs:
     if: |
       always() &&
       github.event_name == 'pull_request' &&
+      needs.detect-changes.outputs.full_scan != 'true' &&
+      needs.detect-changes.outputs.test_suite_changed != 'true' &&
       needs.detect-changes.outputs.browser_smoke_changed == 'true' &&
       (needs.quick-frontend-tests.result == 'success' ||
        needs.quick-frontend-tests.result == 'skipped')
@@ -870,6 +888,8 @@ jobs:
     if: |
       always() &&
       github.event_name == 'pull_request' &&
+      needs.detect-changes.outputs.full_scan != 'true' &&
+      needs.detect-changes.outputs.test_suite_changed != 'true' &&
       needs.detect-changes.outputs.render_changed == 'true' &&
       (needs.quick-browser-smoke.result == 'success' ||
        needs.quick-browser-smoke.result == 'skipped')
@@ -1395,7 +1415,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: sanctuary-ci-${{ github.run_id }}-${{ github.run_attempt }}-full-integration
@@ -1737,160 +1757,17 @@ jobs:
           include-hidden-files: true
           retention-days: 14
 
-  full-frontend-coverage-shard-1:
-    name: Full Frontend Coverage Shard 1/2
-    if: >-
-      always() &&
-      needs.full-lane-ready.result == 'success' &&
-      (needs.detect-changes.outputs.full_scan == 'true' ||
-       needs.detect-changes.outputs.test_suite_changed == 'true' ||
-       needs.detect-changes.outputs.frontend_changed == 'true')
-    runs-on: ubuntu-22.04
-    timeout-minutes: 45
-    needs: [detect-changes, full-lane-ready]
-    env:
-      DIAGNOSTIC_DIR: .tmp/ci-diagnostics/frontend-coverage-shard-1
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-
-      - name: Verify Node.js toolchain
-        uses: ./.github/actions/setup-node-toolchain
-
-      - name: Install dependencies
-        run: >
-          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-dependencies.log"
-          scripts/ci/with-runner-lock.sh node-toolchain
-          scripts/ci/retry-command.sh "frontend coverage npm ci"
-          scripts/ci/time-command.sh "frontend coverage npm ci"
-          npm ci --strict-allow-scripts --audit=false --fund=false --cache .tmp/npm-cache
-
-      - name: Install verifier test dependencies
-        run: >
-          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-verifier-dependencies.log"
-          scripts/ci/with-runner-lock.sh node-toolchain
-          scripts/ci/retry-command.sh "frontend coverage verifier npm ci"
-          scripts/ci/time-command.sh "frontend coverage verifier npm ci"
-          bash scripts/ci/setup-verifier-test-dependencies.sh
-
-      - name: Run frontend coverage shard 1
-        run: >
-          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/frontend-coverage-shard-1.log"
-          scripts/ci/with-runner-lock.sh node-toolchain
-          scripts/ci/time-command.sh "frontend coverage shard 1/2"
-          npm run test:coverage:shard -- 1 2
-
-      - name: Upload frontend coverage blob 1
-        if: always()
-        uses: ./.github/actions/upload-artifact
-        with:
-          name: frontend-coverage-blob-1
-          path: .vitest-reports/blob-1-2.json
-          if-no-files-found: error
-          include-hidden-files: true
-          retention-days: 14
-
-      - name: Write frontend coverage shard 1 diagnostic summary
-        if: always()
-        continue-on-error: true
-        run: scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Frontend Coverage Shard 1/2"
-
-      - name: Upload frontend coverage shard 1 diagnostics
-        if: always()
-        continue-on-error: true
-        uses: ./.github/actions/upload-artifact
-        with:
-          name: ci-diagnostics-frontend-coverage-shard-1
-          path: ${{ env.DIAGNOSTIC_DIR }}/
-          if-no-files-found: ignore
-          include-hidden-files: true
-          retention-days: 14
-
-  full-frontend-coverage-shard-2:
-    name: Full Frontend Coverage Shard 2/2
-    if: >-
-      always() &&
-      needs.full-lane-ready.result == 'success' &&
-      needs.full-frontend-coverage-shard-1.result == 'success' &&
-      (needs.detect-changes.outputs.full_scan == 'true' ||
-       needs.detect-changes.outputs.test_suite_changed == 'true' ||
-       needs.detect-changes.outputs.frontend_changed == 'true')
-    runs-on: ubuntu-22.04
-    timeout-minutes: 45
-    needs: [detect-changes, full-lane-ready, full-frontend-coverage-shard-1]
-    env:
-      DIAGNOSTIC_DIR: .tmp/ci-diagnostics/frontend-coverage-shard-2
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-
-      - name: Verify Node.js toolchain
-        uses: ./.github/actions/setup-node-toolchain
-
-      - name: Install dependencies
-        run: >
-          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-dependencies.log"
-          scripts/ci/with-runner-lock.sh node-toolchain
-          scripts/ci/retry-command.sh "frontend coverage npm ci"
-          scripts/ci/time-command.sh "frontend coverage npm ci"
-          npm ci --strict-allow-scripts --audit=false --fund=false --cache .tmp/npm-cache
-
-      - name: Install verifier test dependencies
-        run: >
-          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-verifier-dependencies.log"
-          scripts/ci/with-runner-lock.sh node-toolchain
-          scripts/ci/retry-command.sh "frontend coverage verifier npm ci"
-          scripts/ci/time-command.sh "frontend coverage verifier npm ci"
-          bash scripts/ci/setup-verifier-test-dependencies.sh
-
-      - name: Run frontend coverage shard 2
-        run: >
-          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/frontend-coverage-shard-2.log"
-          scripts/ci/with-runner-lock.sh node-toolchain
-          scripts/ci/time-command.sh "frontend coverage shard 2/2"
-          npm run test:coverage:shard -- 2 2
-
-      - name: Upload frontend coverage blob 2
-        if: always()
-        uses: ./.github/actions/upload-artifact
-        with:
-          name: frontend-coverage-blob-2
-          path: .vitest-reports/blob-2-2.json
-          if-no-files-found: error
-          include-hidden-files: true
-          retention-days: 14
-
-      - name: Write frontend coverage shard 2 diagnostic summary
-        if: always()
-        continue-on-error: true
-        run: scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Frontend Coverage Shard 2/2"
-
-      - name: Upload frontend coverage shard 2 diagnostics
-        if: always()
-        continue-on-error: true
-        uses: ./.github/actions/upload-artifact
-        with:
-          name: ci-diagnostics-frontend-coverage-shard-2
-          path: ${{ env.DIAGNOSTIC_DIR }}/
-          if-no-files-found: ignore
-          include-hidden-files: true
-          retention-days: 14
-
   full-frontend-coverage-merge:
     name: Full Frontend Coverage Merge
     if: >-
       always() &&
       needs.full-lane-ready.result == 'success' &&
-      needs.full-frontend-coverage-shard-1.result == 'success' &&
-      needs.full-frontend-coverage-shard-2.result == 'success' &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.frontend_changed == 'true')
     runs-on: ubuntu-22.04
-    timeout-minutes: 20
-    needs: [detect-changes, full-lane-ready, full-frontend-coverage-shard-1, full-frontend-coverage-shard-2]
+    timeout-minutes: 30
+    needs: [detect-changes, full-lane-ready]
     env:
       DIAGNOSTIC_DIR: .tmp/ci-diagnostics/frontend-coverage-merge
 
@@ -1905,21 +1782,55 @@ jobs:
         run: >
           scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-dependencies.log"
           scripts/ci/with-runner-lock.sh node-toolchain
-          scripts/ci/retry-command.sh "frontend coverage merge npm ci"
-          scripts/ci/time-command.sh "frontend coverage merge npm ci"
+          scripts/ci/retry-command.sh "frontend coverage npm ci"
+          scripts/ci/time-command.sh "frontend coverage npm ci"
           npm ci --strict-allow-scripts --audit=false --fund=false --cache .tmp/npm-cache
 
-      - name: Download frontend coverage shard 1
-        uses: ./.github/actions/download-artifact
-        with:
-          name: frontend-coverage-blob-1
-          path: .vitest-reports/
+      - name: Install verifier test dependencies
+        run: >
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-verifier-dependencies.log"
+          scripts/ci/with-runner-lock.sh node-toolchain
+          scripts/ci/retry-command.sh "frontend coverage verifier npm ci"
+          scripts/ci/time-command.sh "frontend coverage verifier npm ci"
+          bash scripts/ci/setup-verifier-test-dependencies.sh
 
-      - name: Download frontend coverage shard 2
-        uses: ./.github/actions/download-artifact
+      # The two logical shards remain sequential and independently proven. A
+      # single job avoids repeating checkout/install/artifact round trips; it
+      # does not remove tests or weaken the merged 100% coverage threshold.
+      - name: Run frontend coverage shard 1
+        run: >
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/frontend-coverage-shard-1.log"
+          scripts/ci/with-runner-lock.sh node-toolchain
+          scripts/ci/time-command.sh "frontend coverage shard 1/2"
+          npm run test:coverage:shard -- 1 2
+
+      - name: Verify frontend coverage blob 1
+        run: test -s .vitest-reports/blob-1-2.json
+
+      - name: Run frontend coverage shard 2
+        run: >
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/frontend-coverage-shard-2.log"
+          scripts/ci/with-runner-lock.sh node-toolchain
+          scripts/ci/time-command.sh "frontend coverage shard 2/2"
+          npm run test:coverage:shard -- 2 2
+
+      - name: Verify frontend coverage blob 2
+        run: test -s .vitest-reports/blob-2-2.json
+
+      - name: Upload frontend coverage shard evidence
+        if: always()
+        uses: ./.github/actions/upload-artifact
         with:
-          name: frontend-coverage-blob-2
-          path: .vitest-reports/
+          name: frontend-coverage-blobs
+          path: .vitest-reports/blob-*-2.json
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
+
+      - name: Verify both frontend coverage shards are present
+        run: |
+          test -s .vitest-reports/blob-1-2.json
+          test -s .vitest-reports/blob-2-2.json
 
       - name: Merge frontend coverage (threshold-enforced)
         run: >
@@ -2320,7 +2231,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: sanctuary-ci-${{ github.run_id }}-${{ github.run_attempt }}-browser-e2e
@@ -2337,7 +2248,7 @@ jobs:
           --shm-size 256m
 
       redis:
-        image: redis:7-alpine
+        image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
         ports:
           - 6379/tcp
         options: >-

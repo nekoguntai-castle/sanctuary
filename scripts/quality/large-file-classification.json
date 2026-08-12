@@ -31,6 +31,13 @@
       "reviewWhenTouched": false,
       "lastReviewed": "2026-04-27"
     },
+    "server/tests/helpers/hardwareSignedFixtureIntake.ts": {
+      "category": "proof-harness",
+      "owner": "hardware-wallet-proof",
+      "reason": "Security-critical physical evidence intake and replay boundary spanning exact device, firmware, SDK, transport, image-subject, expiry, and signed-capture validation; review as one cohesive trust contract when touched.",
+      "reviewWhenTouched": true,
+      "lastReviewed": "2026-08-12"
+    },
     "server/tests/unit/api/payjoin.test.ts": {
       "category": "proof-harness",
       "owner": "payjoin-api",

@@ -13,7 +13,7 @@
 ARG BITCOIN_VERSION=27.0
 
 # Stage 1: Build environment
-FROM debian:bookworm-slim AS builder
+FROM debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241 AS builder
 
 ARG BITCOIN_VERSION
 ARG TARGETARCH
@@ -52,7 +52,7 @@ RUN /build/verify-and-build.sh verify ${BITCOIN_VERSION}
 RUN /build/verify-and-build.sh build ${BITCOIN_VERSION}
 
 # Stage 2: Runtime image (minimal)
-FROM debian:bookworm-slim AS runtime
+FROM debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241 AS runtime
 
 # Install only runtime dependencies
 RUN apt-get update && apt-get install -y \

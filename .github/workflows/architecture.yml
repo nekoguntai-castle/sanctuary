@@ -28,7 +28,7 @@ env:
   GIT_CONFIG_COUNT: '1'
   GIT_CONFIG_KEY_0: init.defaultBranch
   GIT_CONFIG_VALUE_0: main
-  NODE_VERSION: '24'
+  NODE_VERSION: '24.19.0'
   NPM_VERSION: '11.19.0'
   SANCTUARY_RUNNER_LOCK_DIR: ${{ github.workspace }}/.tmp/runner-locks-v2
 

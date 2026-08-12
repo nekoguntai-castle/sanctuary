@@ -189,9 +189,9 @@ build_sanctuary_images() {
 external_images() {
   local image
   printf '%s\n' \
-    "postgres:16-alpine" \
-    "redis:7-alpine" \
-    "tecnativa/docker-socket-proxy:latest"
+    "postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777" \
+    "redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2" \
+    "tecnativa/docker-socket-proxy:latest@sha256:1f5038b54f06c3e18422902cf00ba21803d1c97805aae032e5e6673d532d3459"
 
   if [ "$CORE_ONLY" != "true" ]; then
     for image in "${MONITORING_IMAGES[@]}" "${TOR_IMAGES[@]}"; do

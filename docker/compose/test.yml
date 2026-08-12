@@ -29,7 +29,7 @@ services:
   # Test Database
   # ============================================
   test-db:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
     environment:
       POSTGRES_USER: test
       POSTGRES_PASSWORD: test
@@ -150,7 +150,7 @@ services:
   # Run All Tests
   # ============================================
   test-all:
-    image: alpine:latest
+    image: alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
     depends_on:
       backend-test:
         condition: service_completed_successfully

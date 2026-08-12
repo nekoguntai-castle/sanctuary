@@ -41,7 +41,7 @@ services:
   # and WebSocket broadcast coordination for horizontal scaling.
   # ============================================
   redis:
-    image: redis:7-alpine
+    image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
     restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
@@ -92,7 +92,7 @@ services:
   # - Slow query logging enabled (>1s)
   # ============================================
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
     restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-sanctuary}
@@ -173,6 +173,9 @@ services:
     build:
       context: .
       dockerfile: server/Dockerfile
+      args:
+        SANCTUARY_SOURCE_COMMIT: ${SANCTUARY_SOURCE_COMMIT:-unknown}
+        SANCTUARY_IMAGE_LOCK_SHA256: ${SANCTUARY_IMAGE_LOCK_SHA256:-unknown}
     image: sanctuary-backend:${SANCTUARY_IMAGE_TAG:-local}
     pull_policy: build # Always build locally, never pull
     restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
@@ -506,6 +509,8 @@ services:
       dockerfile: docker/frontend/Dockerfile
       args:
         VITE_API_URL: ${VITE_API_URL:-}
+        SANCTUARY_SOURCE_COMMIT: ${SANCTUARY_SOURCE_COMMIT:-unknown}
+        SANCTUARY_IMAGE_LOCK_SHA256: ${SANCTUARY_IMAGE_LOCK_SHA256:-unknown}
     image: sanctuary-frontend:${SANCTUARY_IMAGE_TAG:-local}
     pull_policy: build # Always build locally, never pull
     restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
@@ -571,6 +576,9 @@ services:
     build:
       context: .
       dockerfile: gateway/Dockerfile
+      args:
+        SANCTUARY_SOURCE_COMMIT: ${SANCTUARY_SOURCE_COMMIT:-unknown}
+        SANCTUARY_IMAGE_LOCK_SHA256: ${SANCTUARY_IMAGE_LOCK_SHA256:-unknown}
     image: sanctuary-gateway:${SANCTUARY_IMAGE_TAG:-local}
     pull_policy: build # Always build locally, never pull
     restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
@@ -689,6 +697,9 @@ services:
     build:
       context: ./llm-egress-proxy
       dockerfile: Dockerfile
+      args:
+        SANCTUARY_SOURCE_COMMIT: ${SANCTUARY_SOURCE_COMMIT:-unknown}
+        SANCTUARY_IMAGE_LOCK_SHA256: ${SANCTUARY_IMAGE_LOCK_SHA256:-unknown}
     image: sanctuary-llm-egress-proxy:${SANCTUARY_IMAGE_TAG:-local}
     pull_policy: build # Always build locally, never pull
     restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
@@ -750,7 +761,7 @@ services:
   # Blocks all other Docker API calls (no creating containers, volumes, etc.)
   # ============================================
   docker-proxy:
-    image: tecnativa/docker-socket-proxy:latest
+    image: tecnativa/docker-socket-proxy:latest@sha256:1f5038b54f06c3e18422902cf00ba21803d1c97805aae032e5e6673d532d3459
     restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
     environment:
       # Allow container management and image pulls

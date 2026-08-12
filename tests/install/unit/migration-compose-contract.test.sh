@@ -159,8 +159,19 @@ if grep -Fq 'stop grafana >/dev/null 2>&1 || true' "$PROJECT_ROOT/scripts/setup.
     exit 1
 fi
 
-grep -Fq 'COPY --from=builder /repo/server/prisma ./prisma' "$PROJECT_ROOT/server/Dockerfile"
-grep -Fq 'COPY --from=builder /repo/server/scripts ./scripts' "$PROJECT_ROOT/server/Dockerfile"
+grep -Fq 'COPY --chown=sanctuary:nodejs --from=builder /repo/server/prisma ./prisma' "$PROJECT_ROOT/server/Dockerfile"
+grep -Fq 'COPY --chown=sanctuary:nodejs --from=builder /repo/server/scripts ./scripts' "$PROJECT_ROOT/server/Dockerfile"
+grep -Fq 'npm prune --omit=dev --include-workspace-root --ignore-scripts --audit=false --fund=false' \
+    "$PROJECT_ROOT/server/Dockerfile"
+if grep -Fq 'chown -R sanctuary:nodejs /app' "$PROJECT_ROOT/server/Dockerfile"; then
+    echo "backend image must assign runtime ownership during COPY, not rescan /app" >&2
+    exit 1
+fi
+runtime_owned_copy_count="$(grep -c '^COPY --chown=sanctuary:nodejs --from=builder' "$PROJECT_ROOT/server/Dockerfile")"
+if [ "$runtime_owned_copy_count" -ne 9 ]; then
+    echo "expected all 9 backend runtime copies to set sanctuary ownership, found $runtime_owned_copy_count" >&2
+    exit 1
+fi
 
 if grep -Fq "migrationService" "$PROJECT_ROOT/server/src/index.ts"; then
     echo "backend startup must not own or inspect migrations" >&2

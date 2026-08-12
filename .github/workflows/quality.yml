@@ -36,9 +36,11 @@ env:
   GIT_CONFIG_COUNT: '1'
   GIT_CONFIG_KEY_0: init.defaultBranch
   GIT_CONFIG_VALUE_0: main
-  NODE_VERSION: '24'
+  NODE_VERSION: '24.19.0'
   NPM_VERSION: '11.19.0'
-  PYTHON_VERSION: '3'
+  # Lizard is the only host-Python consumer; pin the runtime baked into the
+  # Ubuntu 22.04 job image instead of claiming a different unavailable patch.
+  PYTHON_VERSION: '3.10.12'
   GITLEAKS_VERSION: '8.30.1'
   SEMGREP_VERSION: '1.161.0'
   ACTIONLINT_VERSION: '1.7.12'
@@ -662,6 +664,8 @@ jobs:
           node --check scripts/ci/check-npm-install-scripts.mjs
           node --check scripts/ci/check-npm-ci-callsites.mjs
           node --check scripts/ci/check-npm-deprecations.mjs
+          node --check scripts/ci/check-supply-chain-locks.mjs
+          node --check scripts/ci/write-runtime-image-evidence.mjs
           node --check scripts/ci/vendor/forgejo-artifact-v4/patch-dependencies.mjs
           node --check scripts/ci/vendor/forgejo-artifact-v4/validate-patched-dependencies.mjs
           node --check scripts/ci/vendor/forgejo-artifact-v4/verify-vendor.mjs
@@ -679,13 +683,16 @@ jobs:
           bash -n scripts/ci/run-jade-protocol-harness.sh
           bash -n scripts/ci/run-jade-emulator-proof.sh
           bash -n scripts/ci/ensure-python.sh
+          bash -n scripts/ci/bootstrap-node.sh
           bash -n scripts/ci/install-semgrep.sh
           bash -n scripts/ci/time-command.sh
+          node --check scripts/ci/record-command-timing.mjs
           bash -n scripts/ci/with-runner-lock.sh
           bash -n scripts/ci/run-extended-upgrade-fixtures.sh
           bash -n scripts/ci/wait-for-docker.sh
           bash -n scripts/ci/backend-coverage-merge.sh
           bash -n scripts/ci/backend-coverage-shard.sh
+          bash -n scripts/ci/build-runtime-image.sh
           bash -n scripts/ci/check-llm-egress-proxy-shared-isolation.sh
           bash -n scripts/ci/cleanup-docker-resources.sh
           bash -n scripts/ci/install-playwright-chromium.sh
@@ -738,6 +745,7 @@ jobs:
           bash -n tests/ci/wait-for-docker.test.sh
           bash -n tests/ci/ci-registration-completeness.test.sh
           bash -n tests/ci/backend-coverage-scripts.test.sh
+          bash -n tests/ci/build-runtime-image.test.sh
           bash -n tests/ci/cleanup-docker-resources.test.sh
           bash -n tests/ci/install-playwright-chromium.test.sh
           bash -n tests/ci/quality-audit.test.sh
@@ -748,11 +756,13 @@ jobs:
           bash -n tests/ci/sanctuary-backup.test.sh
           bash -n tests/ci/verify-repeatable-rpc-wait.test.sh
           bash -n tests/ci/ensure-go.test.sh
+          bash -n tests/ci/bootstrap-node.test.sh
           bash -n tests/ci/isolated-workspace.test.sh
           bash -n tests/ci/collect-playwright-artifacts.test.sh
           bash -n tests/ci/check-actions-cache-service.test.sh
           bash -n tests/ci/report-workflow-trends.test.sh
           bash -n tests/ci/report-timing-notices.test.sh
+          bash -n tests/ci/time-command.test.sh
           bash -n tests/ci/retry-command.test.sh
           bash -n tests/ci/related-test-args.test.sh
           bash -n tests/ci/resolve-postgres-service.test.sh
@@ -780,6 +790,9 @@ jobs:
           # unprotected or unreviewed `npm ci` fails here.
           node tests/ci/check-npm-ci-callsites.test.mjs
           node tests/ci/check-npm-deprecations.test.mjs
+          node --test tests/ci/check-supply-chain-locks.test.mjs
+          node --test tests/ci/runtime-image-evidence.test.mjs
+          npm run check:supply-chain-locks
           node tests/ci/check-root-layout.test.mjs
           node tests/ci/docker-compose-test-contract.test.mjs
           node tests/ci/provider-context-node.test.mjs
@@ -821,6 +834,7 @@ jobs:
           bash tests/ci/ci-registration-completeness.test.sh
           bash tests/ci/wait-for-migration.test.sh
           bash tests/ci/backend-coverage-scripts.test.sh
+          bash tests/ci/build-runtime-image.test.sh
           bash tests/ci/cleanup-docker-resources.test.sh
           bash tests/ci/install-playwright-chromium.test.sh
           bash tests/ci/quality-audit.test.sh
@@ -828,11 +842,13 @@ jobs:
           bash tests/ci/sanctuary-backup.test.sh
           bash tests/ci/verify-repeatable-rpc-wait.test.sh
           bash tests/ci/ensure-go.test.sh
+          bash tests/ci/bootstrap-node.test.sh
           bash tests/ci/isolated-workspace.test.sh
           bash tests/ci/collect-playwright-artifacts.test.sh
           bash tests/ci/check-actions-cache-service.test.sh
           bash tests/ci/report-workflow-trends.test.sh
           bash tests/ci/report-timing-notices.test.sh
+          bash tests/ci/time-command.test.sh
           bash tests/ci/retry-command.test.sh
           bash tests/ci/related-test-args.test.sh
           bash tests/ci/resolve-postgres-service.test.sh

@@ -29,6 +29,11 @@
       "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."
     },
     {
+      "file": ".github/workflows/release-candidate.yml",
+      "executable": true,
+      "rationale": "Installs exact locked dependencies with lifecycle scripts disabled before generating release-bound hardware compatibility evidence."
+    },
+    {
       "file": ".github/workflows/test.yml",
       "executable": true,
       "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."

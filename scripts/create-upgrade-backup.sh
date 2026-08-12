@@ -198,8 +198,9 @@ ensure_postgres_ready() {
     fail "postgres is not ready; start Sanctuary or omit --no-start-postgres"
   fi
 
-  docker image inspect postgres:16-alpine >/dev/null 2>&1 \
-    || fail "postgres:16-alpine image is not available locally; cannot start postgres for backup without pulling"
+  local postgres_image='postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777'
+  docker image inspect "$postgres_image" >/dev/null 2>&1 \
+    || fail "$postgres_image is not available locally; cannot start postgres for backup without pulling"
 
   log "Starting postgres for backup..."
   if docker compose up --help 2>&1 | grep -q -- '--pull'; then

@@ -1,8 +1,7 @@
 name: 'Setup Node.js toolchain'
 description: >-
-  Verifies the Node.js toolchain matches the project version via the
-  repo-owned ensure-node helper. Provider-agnostic; works on GitHub Actions
-  and Forgejo Actions.
+  Selects a checksum-locked Node.js runtime from the shared runner cache,
+  installs exact npm, and verifies both with repo-owned helpers.
 inputs:
   install-npm:
     description: Install exact npm when missing; disable for prebuilt proof runners.
@@ -11,19 +10,12 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Install pinned npm toolchain
+    - name: Select checksum-locked Node.js runtime
       if: inputs.install-npm == 'true'
       shell: bash
-      run: |
-        set -euo pipefail
-        expected="${SANCTUARY_NPM_VERSION:-${NPM_VERSION:-}}"
-        if [[ ! "$expected" =~ ^[0-9]+[.][0-9]+[.][0-9]+$ ]]; then
-          echo "setup-node-toolchain: NPM_VERSION must be an exact numeric version" >&2
-          exit 1
-        fi
-        if [ "$(npm --version)" != "$expected" ]; then
-          npm install --global --audit=false --fund=false "npm@$expected"
-        fi
+      env:
+        SANCTUARY_INSTALL_NPM: ${{ inputs.install-npm }}
+      run: bash ${{ github.workspace }}/scripts/ci/bootstrap-node.sh
     - name: Verify Node.js toolchain
       shell: bash
       run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh

@@ -555,31 +555,17 @@ jobs:
     needs: [detect-changes, full-lane-ready]
     steps:
       - run: echo typecheck
-  full-frontend-coverage-shard-1:
-    name: Full Frontend Coverage Shard 1/2
+  full-frontend-coverage-merge:
+    name: Full Frontend Coverage Merge
     runs-on: ubuntu-latest
     needs: [detect-changes, full-lane-ready]
     steps:
-      - run: echo shard 1
-  full-frontend-coverage-shard-2:
-    name: Full Frontend Coverage Shard 2/2
-    if: >-
-      always() &&
-      needs.full-frontend-coverage-shard-1.result == 'success'
-    runs-on: ubuntu-latest
-    needs: [detect-changes, full-lane-ready, full-frontend-coverage-shard-1]
-    steps:
-      - run: echo shard 2
-  full-frontend-coverage-merge:
-    name: Full Frontend Coverage Merge
-    if: >-
-      always() &&
-      needs.full-frontend-coverage-shard-1.result == 'success' &&
-      needs.full-frontend-coverage-shard-2.result == 'success'
-    runs-on: ubuntu-latest
-    needs: [detect-changes, full-lane-ready, full-frontend-coverage-shard-1, full-frontend-coverage-shard-2]
-    steps:
-      - run: echo merge coverage
+      - run: |
+          npm run test:coverage:shard -- 1 2
+          test -s .vitest-reports/blob-1-2.json
+          npm run test:coverage:shard -- 2 2
+          test -s .vitest-reports/blob-2-2.json
+          npm run test:coverage:merge -- .vitest-reports
   full-frontend-tests:
     name: Full Frontend Tests
     runs-on: ubuntu-latest
@@ -760,10 +746,10 @@ jobs:
   );
 }
 
-async function assertBlocksMissingFrontendCoverageSplit() {
+async function assertBlocksMissingFrontendCoverageShard() {
   const workflow = validTestSuiteWorkflow().replace(
-    /\n  full-frontend-coverage-shard-2:\n[\s\S]*?(?=\n  full-frontend-coverage-merge:\n)/,
-    '\n',
+    '          npm run test:coverage:shard -- 2 2\n',
+    '',
   );
   const result = await runFixture(
     `
@@ -779,14 +765,14 @@ jobs: {}
   assert.equal(result.findings.length, 0);
   assert.match(
     result.errors.join('\n'),
-    /required workflow job "full-frontend-coverage-shard-2" is missing/,
+    /must run both frontend coverage shards sequentially/,
   );
 }
 
 async function assertBlocksCoverageShardSelfDependency() {
   const workflow = validTestSuiteWorkflow().replace(
-    /(  full-frontend-coverage-shard-1:[\s\S]*?    needs: )\[detect-changes, full-lane-ready\]/,
-    '$1[detect-changes, full-lane-ready, full-frontend-coverage-shard-1]',
+    /(  full-frontend-coverage-merge:[\s\S]*?    needs: )\[detect-changes, full-lane-ready\]/,
+    '$1[detect-changes, full-lane-ready, full-frontend-coverage-merge]',
   );
   const result = await runFixture(
     `
@@ -802,7 +788,7 @@ jobs: {}
   assert.equal(result.findings.length, 0);
   assert.match(
     result.errors.join('\n'),
-    /workflow job "full-frontend-coverage-shard-1" must not need "full-frontend-coverage-shard-1"/,
+    /workflow job "full-frontend-coverage-merge" must not need "full-frontend-coverage-merge"/,
   );
 }
 
@@ -906,7 +892,7 @@ await assertAllowsWorkspaceAbsoluteCiHelperCalls();
 await assertBlocksManualFullTestSummaryStatusPost();
 await assertBlocksSkippedAsSuccessfulFullLanePrerequisite();
 await assertBlocksBrowserE2eMatrixFanout();
-await assertBlocksMissingFrontendCoverageSplit();
+await assertBlocksMissingFrontendCoverageShard();
 await assertBlocksCoverageShardSelfDependency();
 await assertBlocksFalseFullLaneDependency();
 await assertBlocksRenamedTestSuiteWorkflow();

@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@bitcoinerlab/secp256k1": "^1.2.0",
-    "bitcoinjs-lib": "^7.0.1"
+    "bitcoinjs-lib": "7.0.1"
   },
   "devDependencies": {
     "@types/node": "^24.12.2",

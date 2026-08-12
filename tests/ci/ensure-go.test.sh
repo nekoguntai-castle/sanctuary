@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
-# Regression: the Go toolchain check must read the *effective* version and fail
-# closed when the toolchain is absent.
-#
-# The effective version matters because GOTOOLCHAIN=auto reports the base
-# toolchain outside a module and the module-selected one inside it. Reading it
-# from the wrong directory compares against a number that has nothing to do with
-# what will build go-verify.go.
+# Regression: the Go toolchain check must require the exact module toolchain,
+# disable automatic downloads, and fail closed when the binary is absent.
 #
 # Failing closed matters because the address verifier treats a missing Go as
 # [UNAVAILABLE] and carries on with a weaker cross-check -- see #708. If the
@@ -32,7 +27,7 @@ bad() { FAIL=$((FAIL + 1)); FAILURES+=("$1"); echo "FAIL: $1" >&2; }
 bash -n "$ENSURE_GO" || bad 'ensure-go.sh does not parse'
 
 # ----- 1. the requirement tracks go.mod, not a hardcoded number --------------
-required="$(awk '$1 == "go" { print $2; exit }' "$GO_MOD")"
+required="$(awk '$1 == "toolchain" { sub(/^go/, "", $2); print $2; exit }' "$GO_MOD")"
 if [ -n "$required" ] && grep -q 'go\.mod' "$ENSURE_GO"; then
   ok "requirement is read from go.mod (currently ${required})"
 else
@@ -43,7 +38,7 @@ fi
 # A PATH with the coreutils the script needs but no `go`.
 stub_bin="$TEST_TEMP_DIR/bin"
 mkdir -p "$stub_bin"
-for tool in bash env dirname awk sed sort head grep printf; do
+for tool in bash env dirname awk sed grep printf; do
   target="$(command -v "$tool" 2>/dev/null)" || continue
   ln -sf "$target" "$stub_bin/$tool"
 done
@@ -62,7 +57,33 @@ else
   fi
 fi
 
-# ----- 3. passes against a real toolchain, when one is present ---------------
+# ----- 3. exact version passes; older and newer versions fail ----------------
+cat > "$stub_bin/go" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+[ "${GOTOOLCHAIN:-}" = local ] || { echo 'automatic toolchain selection was not disabled' >&2; exit 3; }
+[ "${1:-}" = env ] && [ "${2:-}" = GOVERSION ] || exit 4
+printf 'go%s\n' "${STUB_GO_VERSION:?}"
+EOF
+chmod +x "$stub_bin/go"
+
+if PATH="$stub_bin" STUB_GO_VERSION="$required" bash "$ENSURE_GO" >/dev/null; then
+  ok 'exact module toolchain is accepted with automatic downloads disabled'
+else
+  bad 'exact module toolchain was rejected'
+fi
+
+for drift in 1.25.11 1.25.13; do
+  out="$(PATH="$stub_bin" STUB_GO_VERSION="$drift" bash "$ENSURE_GO" 2>&1)"
+  status=$?
+  if [ "$status" -ne 0 ] && printf '%s' "$out" | grep -q "expected exact Go ${required}, got ${drift}"; then
+    ok "Go ${drift} drift is rejected"
+  else
+    bad "Go ${drift} drift did not fail with the exact-version message: ${out}"
+  fi
+done
+
+# ----- 4. a real local toolchain is either exact or rejected clearly --------
 if command -v go >/dev/null 2>&1; then
   if out="$(bash "$ENSURE_GO" 2>&1)"; then
     if printf '%s' "$out" | grep -qE 'Go [0-9]+\.[0-9]+'; then
@@ -71,9 +92,8 @@ if command -v go >/dev/null 2>&1; then
       bad "accepted the toolchain without reporting a version: ${out}"
     fi
   else
-    # Older-than-required is a legitimate local state; only assert the message.
-    if printf '%s' "$out" | grep -q 'expected Go >='; then
-      ok 'too-old toolchain is rejected with the required version named'
+    if printf '%s' "$out" | grep -q 'expected exact Go'; then
+      ok 'non-exact local toolchain is rejected with the required version named'
     else
       bad "rejected the toolchain without a usable message: ${out}"
     fi

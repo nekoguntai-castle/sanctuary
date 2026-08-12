@@ -35,8 +35,12 @@ import {
   unaccountedHardwareSignedRows,
 } from "../../../helpers/hardwareSignedPsbtReplay";
 import {
+  applicationReceiptPayload,
   coreReceiptPayload,
+  currentApplicationVersion,
   currentHardwareEvidenceSourceManifest,
+  currentPackageLockSha256,
+  hardwareEvidenceSourceManifestSha256,
   type HardwareEvidenceVerificationContext,
 } from "../../../helpers/hardwareSignedEvidenceProvenance";
 import {
@@ -54,9 +58,16 @@ const ACCOUNT = ROOT.derivePath(ACCOUNT_PATH);
 const INPUT = ACCOUNT.derive(0).derive(0);
 const CORE_RECEIPT_KEY_ID = "unit-test-core-receipt";
 const CORE_RECEIPT_KEYS = generateKeyPairSync("ed25519");
+const APPLICATION_RECEIPT_KEY_ID = "unit-test-application-receipt";
+const APPLICATION_RECEIPT_KEYS = generateKeyPairSync("ed25519");
 const TEST_CONTEXT: HardwareEvidenceVerificationContext = {
   trustedCoreReceiptKeys: {
     [CORE_RECEIPT_KEY_ID]: CORE_RECEIPT_KEYS.publicKey
+      .export({ type: "spki", format: "pem" })
+      .toString(),
+  },
+  trustedApplicationReceiptKeys: {
+    [APPLICATION_RECEIPT_KEY_ID]: APPLICATION_RECEIPT_KEYS.publicKey
       .export({ type: "spki", format: "pem" })
       .toString(),
   },
@@ -190,13 +201,14 @@ function syntheticAddressEvidence(
 function syntheticSoftwareGates(
   vendor: HardwareSignedPsbtVector["vendor"] = "ledger",
 ): HardwareSignedSoftwareGateEvidence[] {
-  const vendorGates = vendor === "trezor"
-    ? TREZOR_HARDWARE_SIGNED_SOFTWARE_GATES
-    : vendor === "ledger"
-      ? LEDGER_HARDWARE_SIGNED_SOFTWARE_GATES
-      : vendor === "jade"
-        ? JADE_HARDWARE_SIGNED_SOFTWARE_GATES
-        : [];
+  const vendorGates =
+    vendor === "trezor"
+      ? TREZOR_HARDWARE_SIGNED_SOFTWARE_GATES
+      : vendor === "ledger"
+        ? LEDGER_HARDWARE_SIGNED_SOFTWARE_GATES
+        : vendor === "jade"
+          ? JADE_HARDWARE_SIGNED_SOFTWARE_GATES
+          : [];
   const commands = [...REQUIRED_HARDWARE_SIGNED_SOFTWARE_GATES, ...vendorGates];
   return commands.map((command) => ({
     command,
@@ -230,11 +242,13 @@ function artifactHash(artifact: HardwareSignedArtifact): string {
   if (artifact.type === "signed-psbt")
     return hash(Buffer.from(artifact.signedPsbtBase64, "base64"));
   if (artifact.type === "ledger-signed-psbt") {
-    return hash([
-      artifact.sourcePsbtBase64,
-      ...artifact.signatures.map((signature) => JSON.stringify(signature)),
-      artifact.reconstructedPsbtBase64,
-    ].join("\n"));
+    return hash(
+      [
+        artifact.sourcePsbtBase64,
+        ...artifact.signatures.map((signature) => JSON.stringify(signature)),
+        artifact.reconstructedPsbtBase64,
+      ].join("\n"),
+    );
   }
   return hash(
     [
@@ -251,45 +265,89 @@ function physicalEvidence(
   finalTxHex: string,
   vendor: HardwareSignedPsbtVector["vendor"],
 ) {
-  const sdk =
+  const sdkPackages =
     vendor === "trezor"
-      ? {
-          package: "@trezor/connect-web" as const,
-          version: "9.7.3",
-          integrity:
-            "sha512-oTI/v9sUJMvLZgLa0seSGyPaumXydRYeAT4OVTQxIaEiL1hOA0yH+UvEfT4WKwxbxOtOqWosD8chP3uuWSArcg==",
-        }
+      ? [
+          {
+            package: "@trezor/connect" as const,
+            version: "9.7.3",
+            integrity:
+              "sha512-oAOfvJHT8tPqOXTmCOhn8uTZcoqSDuWAiWXQegx7C46tq+NLg+enkYXxUYEHq/9PmfZAOrUT9VMxZDsXM2thkA==",
+          },
+          {
+            package: "@trezor/connect-web" as const,
+            version: "9.7.3",
+            integrity:
+              "sha512-oTI/v9sUJMvLZgLa0seSGyPaumXydRYeAT4OVTQxIaEiL1hOA0yH+UvEfT4WKwxbxOtOqWosD8chP3uuWSArcg==",
+          },
+        ]
       : vendor === "bitbox"
-        ? {
-            package: "bitbox02-api" as const,
-            version: "0.15.1",
-            integrity:
-              "sha512-zeuHVF3kAQsJsa2q1fCtktVFiJV/G8nMuKonwMMsCx1RY0mzqc33RGlayTrvLrgs3fj30wLkWmXrgPmQCIJxmg==",
-          }
-        : vendor === "jade"
-          ? {
-              package: "cbor-x" as const,
-              version: "1.6.4",
+        ? [
+            {
+              package: "bitbox02-api" as const,
+              version: "0.15.1",
               integrity:
-                "sha512-UGKHjp6RHC6QuZ2yy5LCKm7MojM4716DwoSaqwQpaH4DvZvbBTGcoDNTiG9Y2lByXZYFEs9WRkS5tLl96IrF1Q==",
-            }
-          : {
-            package: "@ledgerhq/ledger-bitcoin" as const,
-            version: "0.3.1",
-            integrity:
-              "sha512-rzgU7+rvSsYVSI3cNAIfk9NUaLF1k4aFl3MuU66zV8Pyvy7rikcrbyPaPIAdNIdqYVrOE7evDB0b6aEwTRqLHg==",
-          };
+                "sha512-zeuHVF3kAQsJsa2q1fCtktVFiJV/G8nMuKonwMMsCx1RY0mzqc33RGlayTrvLrgs3fj30wLkWmXrgPmQCIJxmg==",
+            },
+          ]
+        : vendor === "jade"
+          ? [
+              {
+                package: "cbor-x" as const,
+                version: "1.6.4",
+                integrity:
+                  "sha512-UGKHjp6RHC6QuZ2yy5LCKm7MojM4716DwoSaqwQpaH4DvZvbBTGcoDNTiG9Y2lByXZYFEs9WRkS5tLl96IrF1Q==",
+              },
+            ]
+          : [
+              {
+                package: "@ledgerhq/ledger-bitcoin" as const,
+                version: "0.3.1",
+                integrity:
+                  "sha512-rzgU7+rvSsYVSI3cNAIfk9NUaLF1k4aFl3MuU66zV8Pyvy7rikcrbyPaPIAdNIdqYVrOE7evDB0b6aEwTRqLHg==",
+              },
+              {
+                package: "@ledgerhq/hw-transport-webusb" as const,
+                version: "6.34.4",
+                integrity:
+                  "sha512-asBy3Uu8Cl/leyEAY5M27S/oAZwCpYuRPi9Sz6fgEgF2clX8Sold0iSI+MD0sne3PqcLK1K8V6H4MxviHH7sVw==",
+              },
+            ];
   const tx = bitcoin.Transaction.fromHex(finalTxHex);
   const invocationId = "core-acceptance-physical-capture-001";
+  const testedCommitSha = "1".repeat(40);
+  const packageLockSha256 = currentPackageLockSha256();
+  const sourceManifestSha256 = hardwareEvidenceSourceManifestSha256(vendor);
+  const appVersion = currentApplicationVersion();
+  const application = {
+    appVersion,
+    packageLockSha256,
+    sourceManifestSha256,
+    images: (["frontend", "backend"] as const).map((role, index) => ({
+      role,
+      image: `sanctuary-${role}:physical-capture`,
+      platform: "linux/amd64" as const,
+      manifestDigest: `sha256:${String(index + 2).repeat(64)}`,
+      configDigest: `sha256:${String(index + 4).repeat(64)}`,
+      gitRevision: testedCommitSha,
+      appVersion,
+      packageLockSha256,
+      sourceManifestSha256,
+    })),
+    receipt: {
+      algorithm: "ed25519" as const,
+      keyId: APPLICATION_RECEIPT_KEY_ID,
+      payloadSha256: "",
+      signatureBase64: "",
+    },
+  };
   return {
     capturedAt: "2026-08-10T00:00:00.000Z",
     expiresAt: "2027-02-05T00:00:00.000Z",
     operator: "fixture-operator",
-    testedCommitSha: "1".repeat(40),
-    sanctuaryImageDigest: `sha256:${"2".repeat(64)}`,
-    sdkVersion: sdk.version,
-    sdkIntegrity: sdk.integrity,
-    sdkPackage: sdk.package,
+    testedCommitSha,
+    application,
+    sdkPackages,
     sourceManifest: currentHardwareEvidenceSourceManifest(vendor),
     hostOs: "Ubuntu 24.04.3 LTS",
     browser: "Chromium 140.0.7339.80",
@@ -341,22 +399,80 @@ function signCoreReceipt(vector: HardwareSignedPsbtVector): void {
   ).toString("base64");
 }
 
+function signApplicationReceipt(vector: HardwareSignedPsbtVector): void {
+  const payload = applicationReceiptPayload(vector);
+  vector.evidence.application.receipt.payloadSha256 = hash(payload);
+  vector.evidence.application.receipt.signatureBase64 = sign(
+    null,
+    payload,
+    APPLICATION_RECEIPT_KEYS.privateKey,
+  ).toString("base64");
+}
+
+function signEvidenceReceipts(vector: HardwareSignedPsbtVector): void {
+  signCoreReceipt(vector);
+  signApplicationReceipt(vector);
+}
+
 function ledgerArtifact(
   unsignedPsbtBase64: string,
   signedPsbtBase64: string,
 ): HardwareSignedArtifact {
-  const signed = bitcoin.Psbt.fromBase64(signedPsbtBase64, { network: NETWORK });
+  const signed = bitcoin.Psbt.fromBase64(signedPsbtBase64, {
+    network: NETWORK,
+  });
   return {
     type: "ledger-signed-psbt",
     sourcePsbtBase64: unsignedPsbtBase64,
-    signatures: signed.data.inputs.flatMap((input, inputIndex) => (
-      input.partialSig ?? []
-    ).map((signature) => ({
-      inputIndex,
-      pubkey: Buffer.from(signature.pubkey).toString("hex"),
-      signature: Buffer.from(signature.signature).toString("hex"),
-    }))),
+    signatures: signed.data.inputs.flatMap((input, inputIndex) =>
+      (input.partialSig ?? []).map((signature) => ({
+        inputIndex,
+        pubkey: Buffer.from(signature.pubkey).toString("hex"),
+        signature: Buffer.from(signature.signature).toString("hex"),
+      })),
+    ),
     reconstructedPsbtBase64: signedPsbtBase64,
+  };
+}
+
+function physicalDeviceForVendor(
+  vendor: HardwareSignedPsbtVector["vendor"],
+): HardwareSignedPsbtVector["device"] {
+  if (vendor === "trezor") {
+    return {
+      model: "Trezor Safe 5",
+      firmwareVersion: "2.8.8",
+      transport: "trezor-connect",
+      transportVersion: "9.7.3",
+      companionVersion: "2.0.33",
+      emulated: false,
+    };
+  }
+  if (vendor === "jade") {
+    return {
+      model: "Jade Plus",
+      firmwareVersion: "1.0.40",
+      transport: "webserial",
+      transportVersion: "Web Serial API via Chromium 140.0.7339.80",
+      emulated: false,
+    };
+  }
+  if (vendor === "bitbox") {
+    return {
+      model: "BitBox02 BTC-only",
+      firmwareVersion: "9.21.0",
+      transport: "webhid",
+      transportVersion: "WebHID via Chromium 140.0.7339.80",
+      emulated: false,
+    };
+  }
+  return {
+    model: "Ledger Nano S Plus",
+    firmwareVersion: "2.4.1",
+    bitcoinAppVersion: "2.4.2",
+    transport: "webusb",
+    transportVersion: "6.34.4",
+    emulated: false,
   };
 }
 
@@ -368,14 +484,16 @@ function syntheticHardwareVector(
   const vendor = overrides.vendor ?? "ledger";
   const unsignedPsbtBase64 =
     overrides.unsignedPsbtBase64 ?? source.unsignedPsbtBase64;
-  const artifact = overrides.artifact ?? (vendor === "ledger"
-    ? ledgerArtifact(unsignedPsbtBase64, source.signedPsbtBase64)
-    : {
-        type: "signed-psbt" as const,
-        signedPsbtBase64: source.signedPsbtBase64,
-      });
+  const artifact =
+    overrides.artifact ??
+    (vendor === "ledger"
+      ? ledgerArtifact(unsignedPsbtBase64, source.signedPsbtBase64)
+      : {
+          type: "signed-psbt" as const,
+          signedPsbtBase64: source.signedPsbtBase64,
+        });
   const vector: HardwareSignedPsbtVector = {
-    fixtureSchemaVersion: 3,
+    fixtureSchemaVersion: 4,
     evidenceTier: "physical-device",
     id: "ledger-p2wpkh-synthetic-replay",
     description:
@@ -383,14 +501,7 @@ function syntheticHardwareVector(
     vendor,
     scriptType,
     network: "regtest",
-    device: {
-      model: "Ledger Nano S Plus",
-      firmwareVersion: "synthetic",
-      bitcoinAppVersion: "synthetic",
-      transport: "webusb",
-      transportVersion: "test",
-      emulated: false,
-    },
+    device: physicalDeviceForVendor(vendor),
     account: {
       fingerprint: SIGNER.fingerprint,
       accountPath: ACCOUNT_PATH,
@@ -433,7 +544,7 @@ function syntheticHardwareVector(
       vector.vendor,
     );
   }
-  signCoreReceipt(vector);
+  signEvidenceReceipts(vector);
   return vector;
 }
 
@@ -636,17 +747,32 @@ describe("Hardware-signed PSBT fixture replay harness", () => {
   it("binds Ledger Taproot signatures to the tweaked P2TR output key", () => {
     const internal = Buffer.alloc(32, 7);
     const output = Buffer.alloc(32, 8);
-    expect(Buffer.from(expectedLedgerSignaturePubkey("p2tr", {
-      witnessUtxo: {
-        script: Buffer.concat([Buffer.from([0x51, 0x20]), output]),
-        value: 100_000n,
-      },
-    }, internal))).toEqual(output);
-    expect(Buffer.from(expectedLedgerSignaturePubkey("p2wpkh", {}, internal)))
-      .toEqual(internal);
-    expect(() => expectedLedgerSignaturePubkey("p2tr", {
-      witnessUtxo: { script: Buffer.alloc(33), value: 100_000n },
-    }, internal)).toThrow(/verified output key/i);
+    expect(
+      Buffer.from(
+        expectedLedgerSignaturePubkey(
+          "p2tr",
+          {
+            witnessUtxo: {
+              script: Buffer.concat([Buffer.from([0x51, 0x20]), output]),
+              value: 100_000n,
+            },
+          },
+          internal,
+        ),
+      ),
+    ).toEqual(output);
+    expect(
+      Buffer.from(expectedLedgerSignaturePubkey("p2wpkh", {}, internal)),
+    ).toEqual(internal);
+    expect(() =>
+      expectedLedgerSignaturePubkey(
+        "p2tr",
+        {
+          witnessUtxo: { script: Buffer.alloc(33), value: 100_000n },
+        },
+        internal,
+      ),
+    ).toThrow(/verified output key/i);
   });
 
   it("keeps required, unsupported, and evidence-blocked rows explicit", () => {
@@ -663,7 +789,9 @@ describe("Hardware-signed PSBT fixture replay harness", () => {
       BLOCKED_HARDWARE_SIGNED_ROWS.filter((row) => row.vendor === "jade"),
     ).toHaveLength(4);
     expect(
-      BLOCKED_HARDWARE_SIGNED_ROWS.every((row) => ["ledger", "trezor", "jade"].includes(row.vendor)),
+      BLOCKED_HARDWARE_SIGNED_ROWS.every((row) =>
+        ["ledger", "trezor", "jade"].includes(row.vendor),
+      ),
     ).toBe(true);
     expect(
       BLOCKED_HARDWARE_SIGNED_ROWS.every((row) => row.reason.length > 20),
@@ -728,43 +856,92 @@ describe("Hardware-signed PSBT fixture replay harness", () => {
 
   it("rejects malformed Ledger artifact intake before replay", () => {
     const source = generatedSignedVector("p2wpkh");
-    const valid = ledgerArtifact(source.unsignedPsbtBase64, source.signedPsbtBase64);
+    const valid = ledgerArtifact(
+      source.unsignedPsbtBase64,
+      source.signedPsbtBase64,
+    );
     expect(valid.type).toBe("ledger-signed-psbt");
-    if (valid.type !== "ledger-signed-psbt") throw new Error("invalid test fixture");
+    if (valid.type !== "ledger-signed-psbt")
+      throw new Error("invalid test fixture");
 
-    expect(() => assertHardwareSignedFixtureIntake(syntheticHardwareVector({
-      artifact: { ...valid, sourcePsbtBase64: source.signedPsbtBase64 },
-    }))).toThrow("Ledger source PSBT differs from fixture unsigned PSBT");
-    expect(() => assertHardwareSignedFixtureIntake(syntheticHardwareVector({
-      artifact: { ...valid, signatures: [] },
-    }))).toThrow("Ledger exact signature record list is empty");
-    expect(() => assertHardwareSignedFixtureIntake(syntheticHardwareVector({
-      artifact: { type: "signed-psbt", signedPsbtBase64: source.signedPsbtBase64 },
-    }))).toThrow("Ledger evidence must retain its source PSBT");
+    expect(() =>
+      assertHardwareSignedFixtureIntake(
+        syntheticHardwareVector({
+          artifact: { ...valid, sourcePsbtBase64: source.signedPsbtBase64 },
+        }),
+      ),
+    ).toThrow("Ledger source PSBT differs from fixture unsigned PSBT");
+    expect(() =>
+      assertHardwareSignedFixtureIntake(
+        syntheticHardwareVector({
+          artifact: { ...valid, signatures: [] },
+        }),
+      ),
+    ).toThrow("Ledger exact signature record list is empty");
+    expect(() =>
+      assertHardwareSignedFixtureIntake(
+        syntheticHardwareVector({
+          artifact: {
+            type: "signed-psbt",
+            signedPsbtBase64: source.signedPsbtBase64,
+          },
+        }),
+      ),
+    ).toThrow("Ledger evidence must retain its source PSBT");
   });
 
   it("rejects duplicated, absent, script-path, malformed, and reconstructed Ledger signatures", () => {
     const source = generatedSignedVector("p2wpkh");
-    const valid = ledgerArtifact(source.unsignedPsbtBase64, source.signedPsbtBase64);
+    const valid = ledgerArtifact(
+      source.unsignedPsbtBase64,
+      source.signedPsbtBase64,
+    );
     expect(valid.type).toBe("ledger-signed-psbt");
-    if (valid.type !== "ledger-signed-psbt") throw new Error("invalid test fixture");
+    if (valid.type !== "ledger-signed-psbt")
+      throw new Error("invalid test fixture");
     const signature = valid.signatures[0];
 
-    expect(() => replayHardwareSignedVector(syntheticHardwareVector({
-      artifact: { ...valid, signatures: [signature, signature] },
-    }))).toThrow("Ledger signature indexes are duplicated");
-    expect(() => replayHardwareSignedVector(syntheticHardwareVector({
-      artifact: { ...valid, signatures: [{ ...signature, inputIndex: 1 }] },
-    }))).toThrow("Ledger signature input is absent");
-    expect(() => replayHardwareSignedVector(syntheticHardwareVector({
-      artifact: { ...valid, signatures: [{ ...signature, tapleafHash: "00".repeat(32) }] },
-    }))).toThrow("Ledger Taproot script-path evidence is unsupported");
-    expect(() => replayHardwareSignedVector(syntheticHardwareVector({
-      artifact: { ...valid, signatures: [{ ...signature, signature: "" }] },
-    }))).toThrow("Ledger signature is malformed");
-    expect(() => replayHardwareSignedVector(syntheticHardwareVector({
-      artifact: { ...valid, reconstructedPsbtBase64: source.unsignedPsbtBase64 },
-    }))).toThrow("Ledger reconstructed PSBT mismatch");
+    expect(() =>
+      replayHardwareSignedVector(
+        syntheticHardwareVector({
+          artifact: { ...valid, signatures: [signature, signature] },
+        }),
+      ),
+    ).toThrow("Ledger signature indexes are duplicated");
+    expect(() =>
+      replayHardwareSignedVector(
+        syntheticHardwareVector({
+          artifact: { ...valid, signatures: [{ ...signature, inputIndex: 1 }] },
+        }),
+      ),
+    ).toThrow("Ledger signature input is absent");
+    expect(() =>
+      replayHardwareSignedVector(
+        syntheticHardwareVector({
+          artifact: {
+            ...valid,
+            signatures: [{ ...signature, tapleafHash: "00".repeat(32) }],
+          },
+        }),
+      ),
+    ).toThrow("Ledger Taproot script-path evidence is unsupported");
+    expect(() =>
+      replayHardwareSignedVector(
+        syntheticHardwareVector({
+          artifact: { ...valid, signatures: [{ ...signature, signature: "" }] },
+        }),
+      ),
+    ).toThrow("Ledger signature is malformed");
+    expect(() =>
+      replayHardwareSignedVector(
+        syntheticHardwareVector({
+          artifact: {
+            ...valid,
+            reconstructedPsbtBase64: source.unsignedPsbtBase64,
+          },
+        }),
+      ),
+    ).toThrow("Ledger reconstructed PSBT mismatch");
   });
 
   it("cryptographically binds the complete Trezor Connect tuple", () => {
@@ -778,6 +955,7 @@ describe("Hardware-signed PSBT fixture replay harness", () => {
         firmwareVersion: "2.8.8",
         transport: "trezor-connect",
         transportVersion: "9.7.3",
+        companionVersion: "2.0.33",
         emulated: false,
       },
     });
@@ -785,40 +963,75 @@ describe("Hardware-signed PSBT fixture replay harness", () => {
   });
 
   it("accepts only Jade Plus WebSerial physical-device metadata", () => {
-    expect(() => assertHardwareSignedFixtureIntake(syntheticHardwareVector({
-      id: "jade-plus-p2wpkh-physical-binding",
-      vendor: "jade",
-      device: jadePlusDevice(),
-    }))).not.toThrow();
+    expect(() =>
+      assertHardwareSignedFixtureIntake(
+        syntheticHardwareVector({
+          id: "jade-plus-p2wpkh-physical-binding",
+          vendor: "jade",
+          device: jadePlusDevice(),
+        }),
+      ),
+    ).not.toThrow();
 
-    const mislabeled = validateHardwareSignedFixtureSet([
-      syntheticHardwareVector({ vendor: "jade" }),
-    ], []);
-    expect(mislabeled).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        field: "device.model",
-        message: "Jade evidence must come from a physical Jade Plus",
-      }),
-      expect.objectContaining({
-        field: "device.transport",
-        message: "Jade Plus evidence must use webserial",
-      }),
-    ]));
+    const mislabeled = validateHardwareSignedFixtureSet(
+      [
+        syntheticHardwareVector({
+          vendor: "jade",
+          device: physicalDeviceForVendor("ledger"),
+        }),
+      ],
+      [],
+    );
+    expect(mislabeled).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          field: "device.model",
+          message: "Jade evidence must come from a physical Jade Plus",
+        }),
+        expect.objectContaining({
+          field: "device.transport",
+          message: "Jade Plus evidence must use webserial",
+        }),
+      ]),
+    );
   });
 
   it.each([
     ["Ledger model", { model: "Ledger Nano S Plus" }, "physical Jade Plus"],
     ["WebUSB transport", { transport: "webusb" }, "must use webserial"],
-    ["empty firmware", { firmwareVersion: "   " }, "proven compatible release 1.0.40"],
-    ["incompatible firmware", { firmwareVersion: "1.0.39" }, "proven compatible release 1.0.40"],
-    ["missing transport metadata", { transportVersion: undefined }, "transport metadata is required"],
-    ["empty transport metadata", { transportVersion: "   " }, "transport metadata is required"],
-  ] as const)("rejects Jade evidence with %s", (_caseName, deviceOverride, message) => {
-    expect(() => assertHardwareSignedFixtureIntake(syntheticHardwareVector({
-      vendor: "jade",
-      device: jadePlusDevice(deviceOverride),
-    }))).toThrow(message);
-  });
+    [
+      "empty firmware",
+      { firmwareVersion: "   " },
+      "proven compatible release 1.0.40",
+    ],
+    [
+      "incompatible firmware",
+      { firmwareVersion: "1.0.39" },
+      "proven compatible release 1.0.40",
+    ],
+    [
+      "missing transport metadata",
+      { transportVersion: undefined },
+      "transport metadata is required",
+    ],
+    [
+      "empty transport metadata",
+      { transportVersion: "   " },
+      "transport metadata is required",
+    ],
+  ] as const)(
+    "rejects Jade evidence with %s",
+    (_caseName, deviceOverride, message) => {
+      expect(() =>
+        assertHardwareSignedFixtureIntake(
+          syntheticHardwareVector({
+            vendor: "jade",
+            device: jadePlusDevice(deviceOverride),
+          }),
+        ),
+      ).toThrow(message);
+    },
+  );
 
   it("rejects emulator provenance and same-person review", () => {
     expect(() =>
@@ -884,10 +1097,145 @@ describe("Hardware-signed PSBT fixture replay harness", () => {
     expect(() =>
       assertHardwareSignedFixtureIntake({
         ...vector,
-        evidence: { ...vector.evidence, sdkVersion: "9.7.3" },
+        evidence: {
+          ...vector.evidence,
+          sdkPackages: vector.evidence.sdkPackages.map((sdk, index) =>
+            index === 0 ? { ...sdk, version: "9.7.3" } : sdk,
+          ),
+        },
       }),
     ).toThrow("exactly match the current lockfile");
   });
+
+  it("binds the signed capture to exact frontend/backend images and current source inputs", () => {
+    const vector = syntheticHardwareVector();
+    expect(() => assertHardwareSignedFixtureIntake(vector)).not.toThrow();
+
+    expect(() =>
+      assertHardwareSignedFixtureIntake({
+        ...vector,
+        evidence: {
+          ...vector.evidence,
+          application: {
+            ...vector.evidence.application,
+            images: vector.evidence.application.images.slice(0, 1),
+          },
+        },
+      }),
+    ).toThrow("exactly one frontend and one backend image subject");
+
+    expect(() =>
+      assertHardwareSignedFixtureIntake({
+        ...vector,
+        evidence: {
+          ...vector.evidence,
+          application: {
+            ...vector.evidence.application,
+            packageLockSha256: "0".repeat(64),
+          },
+        },
+      }),
+    ).toThrow("current version, lockfile, and funds-safety source manifest");
+
+    const tamperedReceipt = Buffer.from(
+      vector.evidence.application.receipt.signatureBase64,
+      "base64",
+    );
+    tamperedReceipt[0] ^= 1;
+    expect(() =>
+      assertHardwareSignedFixtureIntake({
+        ...vector,
+        evidence: {
+          ...vector.evidence,
+          application: {
+            ...vector.evidence.application,
+            receipt: {
+              ...vector.evidence.application.receipt,
+              signatureBase64: tamperedReceipt.toString("base64"),
+            },
+          },
+        },
+      }),
+    ).toThrow("Sanctuary application receipt signature is invalid");
+
+    expect(() =>
+      assertHardwareSignedFixtureIntake({
+        ...vector,
+        evidence: {
+          ...vector.evidence,
+          application: {
+            ...vector.evidence.application,
+            receipt: {
+              ...vector.evidence.application.receipt,
+              algorithm: "rsa" as never,
+            },
+          },
+        },
+      }),
+    ).toThrow("Sanctuary application receipt algorithm is invalid");
+  });
+
+  it.each([
+    [
+      "Ledger model",
+      { model: "Ledger Nano S" },
+      "approved physical evidence model",
+    ],
+    [
+      "Ledger firmware",
+      { firmwareVersion: "unknown" },
+      "exact semantic version",
+    ],
+    [
+      "Ledger Bitcoin app",
+      { bitcoinAppVersion: undefined },
+      "Ledger Bitcoin app",
+    ],
+    [
+      "Ledger transport",
+      { transportVersion: "6.34.3" },
+      "locked transport package",
+    ],
+  ] as const)(
+    "rejects %s tuple drift",
+    (_caseName, deviceOverride, message) => {
+      expect(() =>
+        assertHardwareSignedFixtureIntake(
+          syntheticHardwareVector({
+            device: { ...physicalDeviceForVendor("ledger"), ...deviceOverride },
+          }),
+        ),
+      ).toThrow(message);
+    },
+  );
+
+  it.each([
+    ["Trezor model", { model: "Trezor" }, "approved physical evidence model"],
+    [
+      "Trezor firmware",
+      { firmwareVersion: "unknown" },
+      "exact semantic version",
+    ],
+    [
+      "Trezor Connect",
+      { transportVersion: "9.7.2" },
+      "locked Connect-Web package",
+    ],
+    ["Trezor companion", { companionVersion: "" }, "Bridge or Suite companion"],
+  ] as const)(
+    "rejects %s tuple drift",
+    (_caseName, deviceOverride, message) => {
+      expect(() =>
+        assertHardwareSignedFixtureIntake(
+          syntheticHardwareVector({
+            vendor: "trezor",
+            artifact: trezorArtifact(),
+            device: { ...physicalDeviceForVendor("trezor"), ...deviceOverride },
+          }),
+        ),
+      ).toThrow(message);
+    },
+  );
 
   it("rejects canonical policy, account xpub, and address derivation drift", () => {
     const vector = syntheticHardwareVector();
@@ -1024,7 +1372,7 @@ describe("Hardware-signed PSBT fixture replay harness", () => {
     };
     response.result[0].txid = "0".repeat(64);
     vector.evidence.coreAcceptance.responseJson = JSON.stringify(response);
-    signCoreReceipt(vector);
+    signEvidenceReceipts(vector);
     expect(() => replayHardwareSignedVector(vector)).toThrow(
       "Bitcoin Core acceptance evidence mismatch",
     );
@@ -1236,7 +1584,7 @@ describe("Hardware-signed PSBT fixture replay harness", () => {
     };
     response.result[0].allowed = false;
     vector.evidence.coreAcceptance.responseJson = JSON.stringify(response);
-    signCoreReceipt(vector);
+    signEvidenceReceipts(vector);
     expect(() => replayHardwareSignedVector(vector)).toThrow(
       "Bitcoin Core acceptance evidence mismatch",
     );

@@ -11,6 +11,8 @@ origin_main_ref="${ORIGIN_MAIN_REF:-origin/main}"
 
 frontend_image=false
 backend_image=false
+gateway_image=false
+llm_egress_proxy_image=false
 grafana_migration_image=false
 reason='No image-impacting files changed'
 
@@ -18,6 +20,8 @@ emit_outputs() {
   ci_emit_output \
     "frontend_image=$frontend_image" \
     "backend_image=$backend_image" \
+    "gateway_image=$gateway_image" \
+    "llm_egress_proxy_image=$llm_egress_proxy_image" \
     "grafana_migration_image=$grafana_migration_image" \
     "reason=$reason"
 }
@@ -25,6 +29,8 @@ emit_outputs() {
 mark_all_images() {
   frontend_image=true
   backend_image=true
+  gateway_image=true
+  llm_egress_proxy_image=true
   grafana_migration_image=true
 }
 
@@ -140,8 +146,34 @@ is_backend_image_file() {
   return 1
 }
 
+is_gateway_image_file() {
+  case "$1" in
+    gateway/*|shared/*|package.json|package-lock.json|.dockerignore|docker-compose.yml|docker/compose/*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+is_llm_egress_proxy_image_file() {
+  case "$1" in
+    llm-egress-proxy/*|docker-compose.yml|docker/compose/*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
 while IFS= read -r file; do
   [ -n "$file" ] || continue
+
+  case "$file" in
+    config/container-image-lock.json|scripts/ci/build-runtime-image.sh|scripts/ci/write-runtime-image-evidence.mjs)
+      mark_all_images
+      reason="Runtime image evidence input changed: $file"
+      continue
+      ;;
+  esac
 
   if is_docs_only_file "$file"; then
     continue
@@ -161,6 +193,16 @@ while IFS= read -r file; do
   if is_backend_image_file "$file"; then
     backend_image=true
     reason="Image input changed"
+  fi
+
+  if is_gateway_image_file "$file"; then
+    gateway_image=true
+    reason="Gateway image input changed: $file"
+  fi
+
+  if is_llm_egress_proxy_image_file "$file"; then
+    llm_egress_proxy_image=true
+    reason="LLM egress proxy image input changed: $file"
   fi
 
   if is_grafana_migration_image_file "$file"; then

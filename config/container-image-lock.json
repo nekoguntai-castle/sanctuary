@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "lockedImages": [
+    { "reference": "ghcr.io/catthehacker/ubuntu:act-22.04", "digest": "sha256:41e84facdece5f25b0de00cd69969f5f032c54f5bb7313f385727330db9ac40f", "scope": "wallet-proof-runner-parent" },
+    { "reference": "nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go", "digest": "sha256:8b50f6c8ccb016b042c7125a637b068a49c856a76e543365044b36a593edd81e", "scope": "wallet-proof-runner" },
+    { "reference": "node:24-alpine", "digest": "sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43", "scope": "production-build-and-runtime" },
+    { "reference": "nginx:alpine", "digest": "sha256:4a73073bd557c65b759505da037898b61f1be6cbcc3c2c3aeac22d2a470c1752", "scope": "production-runtime" },
+    { "reference": "grafana/grafana:10.2.0", "digest": "sha256:1ee0c54286b8ca09a3dd1419ff8653e7780a148a006ac088544203bb0affe550", "scope": "production-monitoring" },
+    { "reference": "debian:bookworm-slim", "digest": "sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241", "scope": "bitcoin-core-build-and-runtime" },
+    { "reference": "postgres:16-alpine", "digest": "sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777", "scope": "production-and-ci-service" },
+    { "reference": "redis:7-alpine", "digest": "sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2", "scope": "production-and-ci-service" },
+    { "reference": "tecnativa/docker-socket-proxy:latest", "digest": "sha256:1f5038b54f06c3e18422902cf00ba21803d1c97805aae032e5e6673d532d3459", "scope": "production-socket-boundary" },
+    { "reference": "alpine:3.24", "digest": "sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b", "scope": "test-runtime" },
+    { "reference": "docker.io/library/alpine:3.20", "digest": "sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc", "scope": "runner-canary" },
+    { "reference": "dperson/torproxy:latest", "digest": "sha256:d8b5f1cf24f1b7a0aa334929a264b2606a107223dd0d51eb1cda8aae6fbeec53", "scope": "production-tor" },
+    { "reference": "jaegertracing/all-in-one:1.53", "digest": "sha256:60e65bfffe1f66aee96d6fc8b6bf65afd42016be5dcc09d2e15d8462f7d9409c", "scope": "production-monitoring" },
+    { "reference": "grafana/loki:2.9.0", "digest": "sha256:b025a0220f390baaab01578aea2fe0ba677584d9f248c3fe5af15f84dd1de60d", "scope": "production-monitoring" },
+    { "reference": "grafana/promtail:3.5.0", "digest": "sha256:507dfecd2f0949475d071c124bea1c26fc4f8c1cff0372eee57478d5b1c5fbff", "scope": "production-monitoring" },
+    { "reference": "prom/prometheus:v2.47.0", "digest": "sha256:c5dd3503828713c4949ae1bccd1d8d69f382c33d441954674a6b78ebe69c3331", "scope": "production-monitoring" },
+    { "reference": "prom/alertmanager:v0.26.0", "digest": "sha256:361db356b33041437517f1cd298462055580585f26555c317df1a3caf2868552", "scope": "production-monitoring" },
+    { "reference": "docker.io/curlimages/curl:8.10.1", "digest": "sha256:d9b4541e214bcd85196d6e92e2753ac6d0ea699f0af5741f8c6cccbfcf00ef4b", "scope": "runner-canary" },
+    { "reference": "docker.io/library/nginx:1.27-alpine", "digest": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10", "scope": "runner-canary" },
+    { "reference": "bitcoin/bitcoin:29.0", "digest": "sha256:a6aa8a9e349b4108d13c558dbe43064057bd7b6474b858966884f9cb95b7ed78", "scope": "wallet-proof-oracle" },
+    { "reference": "python:3.13.5-slim-bookworm", "digest": "sha256:4c2cf9917bd1cbacc5e9b07320025bdb7cdf2df7b0ceaccb55e9dd7e30987419", "scope": "wallet-proof-oracle" },
+    { "reference": "ghcr.io/trezor/trezor-user-env", "digest": "sha256:de72f49d7db85f27d51c9f7a516363a701a0c4b5e554efa632ac89fe776f8db6", "scope": "trezor-emulator" },
+    { "reference": "ghcr.io/ledgerhq/speculos", "digest": "sha256:455d81fb8c6143e1413b5ac724887f8ca4cd887d54db5893758b12377df3d46c", "scope": "ledger-emulator" },
+    { "reference": "ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder-lite", "digest": "sha256:7eda772d9ce20d6b575417e333e809950779e097f397bf7a47131166981a7d51", "scope": "ledger-emulator-builder" },
+    { "reference": "blockstream/jade_builder", "digest": "sha256:5db8e13ca640e6b969d66139d708610c27d39a1c4d78ca096ee98f2b4c89130f", "scope": "jade-emulator-builder" }
+  ],
+  "localImagePrefixes": ["sanctuary-", "sanctuary/verify-addresses-python:"],
+  "reviewedOsPackageAcquisition": [
+    { "file": "docker/frontend/Dockerfile", "sha256": "f8799e57a6c5ccd13a82f7a7f0a55244f674cbbe90a09a7e50c05dc76249bcc7", "review": "apk repositories are transitively fixed by digest-locked Alpine bases; any Dockerfile change requires an explicit lock review" },
+    { "file": "gateway/Dockerfile", "sha256": "07eb38afdcb3e9e67156c6f58633175399d91fddf7161cd8f19976f6819092d9", "review": "apk repositories are transitively fixed by the digest-locked Node Alpine base; any Dockerfile change requires an explicit lock review" },
+    { "file": "scripts/bitcoin-core-docker/Dockerfile", "sha256": "54ee66000aa25a1b76beef6fc522b550b92cfb8054bf2c74441350254d320687", "review": "apt repositories are transitively fixed by the digest-locked Debian base and Core source is separately checksum-verified; any Dockerfile change requires an explicit lock review" },
+    { "file": "server/Dockerfile", "sha256": "b238a623528fdd2de48f7d30287234845667b4ee69fc9ba1a2c5d25e10baab09", "review": "apk repositories are transitively fixed by digest-locked Node Alpine bases; any Dockerfile change requires an explicit lock review" }
+  ]
+}
