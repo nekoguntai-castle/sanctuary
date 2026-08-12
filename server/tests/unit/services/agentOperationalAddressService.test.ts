@@ -1,4 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("../../../src/services/hardwareWalletCapabilities", async importOriginal => ({
+  ...await importOriginal<typeof import("../../../src/services/hardwareWalletCapabilities")>(),
+  assertWalletHardwareCapabilityById: vi.fn(),
+}));
 import { INITIAL_ADDRESS_COUNT } from "../../../src/constants";
 
 const {

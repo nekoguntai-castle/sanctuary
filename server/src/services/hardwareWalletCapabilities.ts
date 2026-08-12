@@ -1,16 +1,13 @@
 import {
   HARDWARE_WALLET_CAPABILITY_MANIFEST_ID,
-  HARDWARE_WALLET_CAPABILITY_ROWS,
+  classifyHardwareWalletVendor,
+  getHardwareWalletCapabilityRow,
   type HardwareWalletCapability,
+  type HardwareWalletIdentity,
   type HardwareWalletVendor,
 } from "@sanctuary/shared/constants/hardwareWalletCapabilities";
 import { ForbiddenError } from "../errors";
 import { walletRepository } from "../repositories";
-
-interface HardwareWalletIdentity {
-  type?: string | null;
-  model?: string | { slug?: string | null; name?: string | null } | null;
-}
 
 export type HardwareWalletCapabilityDecision =
   | {
@@ -28,37 +25,7 @@ export type HardwareWalletCapabilityDecision =
       evidenceIds: readonly [];
     };
 
-function modelIdentity(model: HardwareWalletIdentity["model"]): string {
-  if (typeof model === "string") return model;
-  return `${model?.slug ?? ""} ${model?.name ?? ""}`;
-}
-
-function vendorFromText(value: string): HardwareWalletVendor | null {
-  const normalized = value.toLowerCase();
-  if (normalized.includes("ledger")) return "ledger";
-  if (normalized.includes("jade")) return "jade";
-  if (normalized.includes("trezor")) return "trezor";
-  return null;
-}
-
-const EXPLICIT_NON_TARGET_DEVICE_TYPES = new Set([
-  "bitbox",
-  "bitbox02",
-  "coldcard",
-  "keystone",
-  "passport",
-  "seedsigner",
-  "specter",
-]);
-
-export function classifyHardwareWalletVendor(
-  identity: HardwareWalletIdentity,
-): HardwareWalletVendor | null {
-  return (
-    vendorFromText(modelIdentity(identity.model)) ??
-    vendorFromText(identity.type ?? "")
-  );
-}
+export { classifyHardwareWalletVendor };
 
 export function getHardwareWalletCapabilityDecision(
   identity: HardwareWalletIdentity,
@@ -70,6 +37,7 @@ export function getHardwareWalletCapabilityDecision(
     if (normalizedType === "watch_only" && capability === "import") {
       return { allowed: true, vendor: null, capability };
     }
+    // Unknown and unlisted hardware identities never inherit capability access.
     if (
       !normalizedType ||
       normalizedType === "unknown" ||
@@ -86,9 +54,6 @@ export function getHardwareWalletCapabilityDecision(
         evidenceIds: [],
       };
     }
-    if (EXPLICIT_NON_TARGET_DEVICE_TYPES.has(normalizedType)) {
-      return { allowed: true, vendor: null, capability };
-    }
     return {
       allowed: false,
       vendor: "unidentified",
@@ -100,10 +65,7 @@ export function getHardwareWalletCapabilityDecision(
     };
   }
 
-  const row = HARDWARE_WALLET_CAPABILITY_ROWS.find(
-    (candidate) =>
-      candidate.vendor === vendor && candidate.capability === capability,
-  );
+  const row = getHardwareWalletCapabilityRow(identity, capability);
   /* v8 ignore start -- row completeness is an exhaustive checked-in manifest invariant */
   if (!row) {
     return {

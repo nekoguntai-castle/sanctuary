@@ -25,6 +25,7 @@ import {
   markSigningIntentBroadcastUnknown,
   releaseRejectedSigningIntentBroadcast,
 } from '../signingIntent/broadcastLifecycle';
+import { assertWalletHardwareCapabilityById } from '../../hardwareWalletCapabilities';
 
 const log = createLogger('BITCOIN:SVC_TX_BROADCAST');
 const MAX_PERSISTENCE_ATTEMPTS = 3;
@@ -152,6 +153,9 @@ export async function broadcastAndSave(
   }
 ): Promise<BroadcastResult> {
   const { walletId, rawTx, txid } = artifact;
+  // Cover every network path before a broadcast claim or network side effect,
+  // including replay and reconciliation entry points.
+  await assertWalletHardwareCapabilityById(walletId, 'broadcast');
   // Log which broadcast path we're taking
   log.info('broadcastAndSave called', {
     intentId: artifact.intent.intentId,

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import http.client
 import importlib
 import io
 import json
@@ -11,11 +12,14 @@ import pathlib
 import sys
 import tarfile
 import tempfile
+import time
 import types
+import urllib.error
 import urllib.request
 
 
 MAX_TARBALL_BYTES = 32 * 1024 * 1024
+DOWNLOAD_ATTEMPTS = 4
 
 
 def require(condition: bool, message: str) -> None:
@@ -33,15 +37,49 @@ def load_manifest(path: pathlib.Path) -> dict:
     return manifest
 
 
+def is_retryable_download_error(error: BaseException) -> bool:
+    if isinstance(error, urllib.error.HTTPError):
+        return error.code in {408, 429} or 500 <= error.code <= 599
+    return isinstance(
+        error,
+        (
+            urllib.error.URLError,
+            TimeoutError,
+            ConnectionResetError,
+            http.client.IncompleteRead,
+        ),
+    )
+
+
+def read_source(request: urllib.request.Request) -> bytes:
+    for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                content_length = response.headers.get("Content-Length")
+                if content_length is not None:
+                    require(
+                        int(content_length) <= MAX_TARBALL_BYTES,
+                        "Jade source tarball is oversized",
+                    )
+                return response.read(MAX_TARBALL_BYTES + 1)
+        except (
+            urllib.error.HTTPError,
+            urllib.error.URLError,
+            TimeoutError,
+            ConnectionResetError,
+            http.client.IncompleteRead,
+        ) as error:
+            if not is_retryable_download_error(error) or attempt == DOWNLOAD_ATTEMPTS:
+                raise
+            time.sleep(attempt * 2)
+    raise AssertionError("unreachable Jade download retry state")
+
+
 def download_source(vendor: dict) -> bytes:
     request = urllib.request.Request(
         vendor["sourceTarball"], headers={"User-Agent": "sanctuary-jade-protocol-harness/1"}
     )
-    with urllib.request.urlopen(request, timeout=30) as response:
-        content_length = response.headers.get("Content-Length")
-        if content_length is not None:
-            require(int(content_length) <= MAX_TARBALL_BYTES, "Jade source tarball is oversized")
-        data = response.read(MAX_TARBALL_BYTES + 1)
+    data = read_source(request)
     require(len(data) <= MAX_TARBALL_BYTES, "Jade source tarball exceeded its byte limit")
     require(
         hashlib.sha256(data).hexdigest() == vendor["sourceTarballSha256"],

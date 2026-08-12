@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 
 import { mockPrismaClient } from '../../../mocks/prisma';
-import { app } from './devicesTestHarness';
+import { app, mockAssertHardwareWalletCapability } from './devicesTestHarness';
 
 export function registerDeviceAccountTests(): void {
   describe('GET /devices/:id/accounts', () => {
@@ -60,6 +60,13 @@ export function registerDeviceAccountTests(): void {
     it.each(['ledger', 'jade', 'trezor'])(
       'blocks account addition for %s before duplicate lookup or write',
       async (type) => {
+        const { ForbiddenError } = await import('../../../../src/errors');
+        mockAssertHardwareWalletCapability.mockImplementationOnce(() => {
+          throw new ForbiddenError('blocked', undefined, {
+            vendor: type,
+            capability: 'account_add',
+          });
+        });
         mockPrismaClient.device.findUnique.mockResolvedValue({
           id: 'device-1',
           type,
@@ -297,6 +304,13 @@ export function registerDeviceAccountTests(): void {
     });
 
     it('blocks target-vendor account deletion before count or delete', async () => {
+      const { ForbiddenError } = await import('../../../../src/errors');
+      mockAssertHardwareWalletCapability.mockImplementationOnce(() => {
+        throw new ForbiddenError('blocked', undefined, {
+          vendor: 'ledger',
+          capability: 'account_add',
+        });
+      });
       mockPrismaClient.deviceAccount.findFirst.mockResolvedValue({
         id: 'account-1',
         deviceId: 'device-1',

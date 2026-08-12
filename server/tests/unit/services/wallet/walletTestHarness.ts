@@ -18,6 +18,9 @@ const {
   mockNotificationUnsubscribeWalletAddresses,
   mockHookExecuteAfter,
   mockCache,
+  mockAssertHardwareWalletCapability,
+  mockAssertWalletHardwareCapability,
+  mockAssertWalletHardwareCapabilityById,
 } = vi.hoisted(() => {
   const createModelMock = () => ({
     findMany: vi.fn().mockResolvedValue([]),
@@ -89,6 +92,9 @@ const {
     mockSyncUnsubscribeWalletAddresses: vi.fn(),
     mockNotificationUnsubscribeWalletAddresses: vi.fn(),
     mockHookExecuteAfter: vi.fn(),
+    mockAssertHardwareWalletCapability: vi.fn(),
+    mockAssertWalletHardwareCapability: vi.fn(),
+    mockAssertWalletHardwareCapabilityById: vi.fn(),
     mockCache: {
       get: vi.fn().mockResolvedValue(null),
       set: vi.fn().mockResolvedValue(undefined),
@@ -152,6 +158,13 @@ function resetPrismaMocks(): void {
 vi.mock('../../../../src/models/prisma', () => ({
   __esModule: true,
   default: mockPrismaClient,
+}));
+
+vi.mock('../../../../src/services/hardwareWalletCapabilities', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../../src/services/hardwareWalletCapabilities')>(),
+  assertHardwareWalletCapability: mockAssertHardwareWalletCapability,
+  assertWalletHardwareCapability: mockAssertWalletHardwareCapability,
+  assertWalletHardwareCapabilityById: mockAssertWalletHardwareCapabilityById,
 }));
 
 // Mock repositories used by wallet service modules
@@ -363,11 +376,17 @@ export function setupWalletServiceTestHooks(): void {
     mockHookExecuteAfter.mockResolvedValue(undefined);
     mockSyncUnsubscribeWalletAddresses.mockResolvedValue(undefined);
     mockNotificationUnsubscribeWalletAddresses.mockResolvedValue(undefined);
+    mockAssertHardwareWalletCapability.mockReturnValue(undefined);
+    mockAssertWalletHardwareCapability.mockReturnValue(undefined);
+    mockAssertWalletHardwareCapabilityById.mockResolvedValue(undefined);
   });
 }
 
 export {
   mockBuildDescriptorFromDevices,
+  mockAssertHardwareWalletCapability,
+  mockAssertWalletHardwareCapability,
+  mockAssertWalletHardwareCapabilityById,
   mockHookExecuteAfter,
   mockLogError,
   mockLogWarn,

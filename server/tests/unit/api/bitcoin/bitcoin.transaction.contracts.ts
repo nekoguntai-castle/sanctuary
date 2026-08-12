@@ -8,6 +8,7 @@ import {
   mockMempool,
   mockNodeClient,
   mockUtils,
+  mockAssertWalletHardwareCapabilityById,
   request,
 } from './bitcoinTestHarness';
 
@@ -502,6 +503,10 @@ export const registerBitcoinTransactionRouteTests = () => {
       ['Trezor', 'trezor', 'trezor-safe-5'],
       ['descriptor-only recovery', 'watch_only', null],
     ])('blocks advanced PSBT construction for %s signer provenance', async (_name, type, modelSlug) => {
+      const { ForbiddenError } = await import('../../../../src/errors');
+      mockAssertWalletHardwareCapabilityById.mockRejectedValue(
+        new ForbiddenError('blocked', undefined, { vendor: type, capability: 'sign' }),
+      );
       mockPrismaClient.wallet.findFirst.mockResolvedValue({
         id: 'wallet-1',
         network: 'mainnet',

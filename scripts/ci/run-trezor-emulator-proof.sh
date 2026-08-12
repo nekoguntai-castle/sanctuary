@@ -120,11 +120,13 @@ cleanup() {
     wait "$forwarder_pid" >/dev/null 2>&1 || true
   fi
   if [ "$container_started" -eq 1 ]; then
+    timeout --foreground --kill-after=10s 30s docker inspect "$container_name" \
+      > "$diagnostics_dir/container-terminal-inspect.json" 2>&1 || true
     timeout --foreground --kill-after=10s 30s docker logs "$container_name" 2>&1 \
       | sed 's/all all all all all all all all all all all all/[REDACTED TEST MNEMONIC]/g' \
       > "$diagnostics_dir/trezor-user-env.log" || true
     timeout --foreground --kill-after=10s 30s \
-      docker stop --timeout 10 "$container_name" >/dev/null || true
+      docker rm -f "$container_name" >/dev/null || true
   fi
   return "$status"
 }
@@ -168,6 +170,23 @@ async def main():
 
 asyncio.run(main())
 '
+}
+
+container_running_state() {
+  local state status
+  set +e
+  state="$(timeout --foreground --kill-after=2s 5s \
+    docker inspect --format '{{.State.Running}}' "$container_name" 2>/dev/null)"
+  status=$?
+  set -e
+  if [ "$status" -ne 0 ]; then
+    echo "Unable to inspect Trezor User Env readiness state (exit=$status)" >&2
+    return 1
+  fi
+  case "$state" in
+    true|false) printf '%s\n' "$state" ;;
+    *) echo "Invalid Trezor User Env readiness state: $state" >&2; return 1 ;;
+  esac
 }
 
 trezor_image_is_attested() {
@@ -301,7 +320,7 @@ else
 fi
 printf '%s\n' "$trezor_image_inspect_json" > "$proof_dir/image-inspect.json"
 
-trezor_run_args=(run --rm -d --platform "$TREZOR_PLATFORM")
+trezor_run_args=(run -d --platform "$TREZOR_PLATFORM")
 if [ "$docker_is_podman" = 'true' ]; then
   trezor_transport='docker-exec-loopback'
 else
@@ -314,7 +333,15 @@ else
     -p "${publish_bind_ip}::21326/tcp"
   )
 fi
-trezor_run_args+=(--name "$container_name" "$TREZOR_IMAGE")
+# The attested image already contains its locked virtual environment. Bypass
+# the default `uv run` command so proof startup cannot re-resolve direct URL
+# dependencies from the network and drift or fail before the emulator starts.
+trezor_run_args+=(
+  --name "$container_name"
+  "$TREZOR_IMAGE"
+  .venv/bin/python
+  src/main.py
+)
 
 if run_bounded_docker "start Trezor User Env container" "$docker_start_timeout_seconds" \
   "${trezor_run_args[@]}" >/dev/null; then
@@ -338,6 +365,13 @@ printf '%s\n' "$container_inspect_json" > "$proof_dir/container-inspect.json"
 for attempt in $(seq 1 120); do
   if controller_command '{"type":"ping","id":1}' >/dev/null 2>&1; then
     break
+  fi
+  if ! running_state="$(container_running_state)"; then
+    exit 1
+  fi
+  if [ "$running_state" = 'false' ]; then
+    echo "Trezor User Env exited before readiness" >&2
+    exit 1
   fi
   if [ "$attempt" -eq 120 ]; then
     echo "Trezor User Env controller did not become ready" >&2

@@ -26,6 +26,7 @@ const {
   mockFindUtxosByOutpointsForWallet,
   mockCreateSigningIntent,
   mockValidateSignedArtifact,
+  mockAssertWalletHardwareCapabilityById,
 } = vi.hoisted(() => ({
   mockGetCachedBlockHeight: vi.fn(),
   mockRecalculateWalletBalances: vi.fn(),
@@ -50,6 +51,11 @@ const {
   mockFindUtxosByOutpointsForWallet: vi.fn(),
   mockCreateSigningIntent: vi.fn(),
   mockValidateSignedArtifact: vi.fn(),
+  mockAssertWalletHardwareCapabilityById: vi.fn(),
+}));
+
+vi.mock('../../../../src/services/hardwareWalletCapabilities', () => ({
+  assertWalletHardwareCapabilityById: mockAssertWalletHardwareCapabilityById,
 }));
 
 vi.mock('../../../../src/models/prisma', async () => {
@@ -202,6 +208,7 @@ export function setupTransactionHttpRouteHooks(): void {
     mockEvaluatePolicies.mockResolvedValue({ allowed: true, triggered: [] });
     mockRecordUsage.mockResolvedValue(undefined);
     mockWalletFindNetwork.mockResolvedValue('testnet4');
+    mockAssertWalletHardwareCapabilityById.mockResolvedValue(undefined);
     mockWalletFindByIdWithDevices.mockImplementation(async (walletId: string) => ({
       id: walletId,
       devices: [{ device: { type: 'coldcard', model: null } }],
@@ -318,4 +325,5 @@ export {
   mockFindUtxosByOutpointsForWallet,
   mockCreateSigningIntent,
   mockValidateSignedArtifact,
+  mockAssertWalletHardwareCapabilityById,
 };

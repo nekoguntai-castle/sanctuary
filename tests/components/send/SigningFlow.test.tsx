@@ -5,6 +5,24 @@ import { describe,expect,it,vi } from 'vitest';
 import { SigningFlow } from '../../../src/components/send/steps/review/SigningFlow';
 import type { Device } from '../../../src/types';
 
+vi.mock('../../../src/components/send/steps/review/deviceCapabilities', () => ({
+  getDeviceCapabilities: (type: string) => {
+    if (type === 'blocked') {
+      return { methods: [], labels: {}, blockedReason: 'No reviewed evidence.' };
+    }
+    if (type === 'blocked-without-reason') {
+      return { methods: [], labels: {}, blockedReason: '' };
+    }
+    if (type === 'coldcard') {
+      return { methods: ['airgap'], labels: {}, blockedReason: '' };
+    }
+    if (type === 'passport') {
+      return { methods: ['qr', 'airgap'], labels: {}, blockedReason: '' };
+    }
+    return { methods: ['usb'], labels: {}, blockedReason: '' };
+  },
+}));
+
 const createDevice = (overrides: Partial<Device> = {}): Device => ({
   id: 'device-1',
   type: 'ledger',
@@ -39,6 +57,23 @@ function renderSigningFlow(overrides: Partial<React.ComponentProps<typeof Signin
 }
 
 describe('SigningFlow', () => {
+  it('shows the manifest reason instead of signing controls when blocked', () => {
+    renderSigningFlow({ devices: [createDevice({ type: 'blocked' })] });
+
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Signing unavailable: No reviewed evidence.',
+    );
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('shows a fail-closed fallback when a blocked row has no reason', () => {
+    renderSigningFlow({ devices: [createDevice({ type: 'blocked-without-reason' })] });
+
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Signing unavailable: No reviewed capability evidence is available.',
+    );
+  });
+
   it('renders signature progress and signed state', () => {
     const signedDevice = createDevice({ id: 'ledger-1', label: 'Signed Ledger', type: 'ledger' });
     const unsignedDevice = createDevice({ id: 'coldcard-1', label: 'Coldcard', type: 'coldcard' });

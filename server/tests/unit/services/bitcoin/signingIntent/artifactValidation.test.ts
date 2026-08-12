@@ -5,6 +5,7 @@ import * as ecc from 'tiny-secp256k1';
 const mocks = vi.hoisted(() => ({
   loadSigningIntent: vi.fn(),
   authenticateIntentPrevouts: vi.fn(),
+  assertWalletHardwareCapabilityById: vi.fn(),
 }));
 
 vi.mock('../../../../../src/services/bitcoin/signingIntent/service', () => ({
@@ -12,6 +13,9 @@ vi.mock('../../../../../src/services/bitcoin/signingIntent/service', () => ({
 }));
 vi.mock('../../../../../src/services/bitcoin/signingIntent/prevoutValidation', () => ({
   authenticateIntentPrevouts: mocks.authenticateIntentPrevouts,
+}));
+vi.mock('../../../../../src/services/hardwareWalletCapabilities', () => ({
+  assertWalletHardwareCapabilityById: mocks.assertWalletHardwareCapabilityById,
 }));
 
 import {
@@ -166,12 +170,41 @@ describe('signed artifact authentication boundary', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.assertWalletHardwareCapabilityById.mockResolvedValue(undefined);
     original = buildPsbt();
     envelope = envelopeFor(original);
     mocks.loadSigningIntent.mockResolvedValue(envelope);
     mocks.authenticateIntentPrevouts.mockResolvedValue(
       envelope.snapshot.transaction.inputs.map(input => input.prevout),
     );
+  });
+
+  it('stops before intent loading when finalization capability is denied', async () => {
+    mocks.assertWalletHardwareCapabilityById.mockRejectedValueOnce(
+      new Error('finalization blocked'),
+    );
+
+    await expect(validateSignedArtifact({
+      ...signingInput,
+      signedPsbtBase64: original.toBase64(),
+    })).rejects.toThrow('finalization blocked');
+    expect(mocks.assertWalletHardwareCapabilityById)
+      .toHaveBeenCalledWith('wallet-1', 'finalize');
+    expect(mocks.loadSigningIntent).not.toHaveBeenCalled();
+  });
+
+  it('stops before intent loading when signed-artifact ingestion is denied', async () => {
+    mocks.assertWalletHardwareCapabilityById.mockRejectedValueOnce(
+      new Error('signing blocked'),
+    );
+
+    await expect(validatePartialSignedPsbt({
+      ...signingInput,
+      signedPsbtBase64: original.toBase64(),
+    })).rejects.toThrow('signing blocked');
+    expect(mocks.assertWalletHardwareCapabilityById)
+      .toHaveBeenCalledWith('wallet-1', 'sign');
+    expect(mocks.loadSigningIntent).not.toHaveBeenCalled();
   });
 
   it('keeps the test artifact constructor unavailable outside the test runtime', () => {

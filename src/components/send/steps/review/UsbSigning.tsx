@@ -38,8 +38,13 @@ export function UsbSigning({
   setQrSigningDevice,
   fileInputRef,
 }: UsbSigningProps) {
-  const hasAirgapDevice = devices.some(d => getDeviceCapabilities(d.type).methods.includes('airgap'));
-  const hasQrDevice = devices.some(d => getDeviceCapabilities(d.type).methods.includes('qr'));
+  const signers = devices.map(device => ({
+    device,
+    capabilities: getDeviceCapabilities(device.type),
+  }));
+  const hasAirgapDevice = signers.some(({ capabilities }) => capabilities.methods.includes('airgap'));
+  const hasQrDevice = signers.some(({ capabilities }) => capabilities.methods.includes('qr'));
+  const blockedSigners = signers.filter(({ capabilities }) => capabilities.methods.length === 0);
 
   return (
     <div className="surface-secondary rounded-lg p-4 space-y-3">
@@ -47,16 +52,24 @@ export function UsbSigning({
         Sign Transaction
       </h3>
       <p className="text-xs text-sanctuary-500">
-        {hasAirgapDevice || hasQrDevice
+        {devices.length > 0 && blockedSigners.length === devices.length
+          ? 'Hardware-wallet signing is temporarily unavailable.'
+          : hasAirgapDevice || hasQrDevice
           ? 'Sign with your hardware wallet via USB, QR code, or PSBT file.'
           : 'Sign with your hardware wallet via USB.'}
       </p>
+      {blockedSigners.map(({ device, capabilities }) => (
+        <p
+          className="text-xs text-amber-700 dark:text-amber-300"
+          key={`blocked-${device.id}`}
+          role="status"
+        >
+          {device.label}: {capabilities.blockedReason}
+        </p>
+      ))}
       <div className="flex flex-wrap gap-2">
         {/* USB signing for single-sig - show button for each USB-capable device */}
-        {devices.filter(d => {
-          const caps = getDeviceCapabilities(d.type);
-          return caps.methods.includes('usb');
-        }).map(device => (
+        {signers.filter(({ capabilities }) => capabilities.methods.includes('usb')).map(({ device }) => (
           <Button
             key={device.id}
             variant="primary"
@@ -82,10 +95,7 @@ export function UsbSigning({
           </Button>
         ))}
         {/* QR signing for single-sig - show button for each QR-capable device */}
-        {devices.filter(d => {
-          const caps = getDeviceCapabilities(d.type);
-          return caps.methods.includes('qr');
-        }).map(device => (
+        {signers.filter(({ capabilities }) => capabilities.methods.includes('qr')).map(({ device }) => (
           <Button
             key={`qr-${device.id}`}
             variant="primary"
@@ -98,10 +108,7 @@ export function UsbSigning({
           </Button>
         ))}
         {/* PSBT file download/upload - only show if at least one device supports airgap */}
-        {devices.some(d => {
-          const caps = getDeviceCapabilities(d.type);
-          return caps.methods.includes('airgap');
-        }) && (
+        {hasAirgapDevice && (
           <>
             <Button
               variant="secondary"

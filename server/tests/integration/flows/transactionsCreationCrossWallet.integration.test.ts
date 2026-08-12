@@ -12,6 +12,15 @@ import {
 import { createTestApp, resetTestApp } from '../setup/testServer';
 import { createAndLoginUser, createTestWallet, authHeader } from '../setup/helpers';
 
+// These fixtures exercise downstream wallet behavior with a synthetic enabled signer.
+// The real fail-closed capability manifest is covered by its dedicated contract tests.
+vi.mock('../../../src/services/hardwareWalletCapabilities', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../src/services/hardwareWalletCapabilities')>(),
+  assertHardwareWalletCapability: vi.fn(),
+  assertWalletHardwareCapability: vi.fn(),
+  assertWalletHardwareCapabilityById: vi.fn(),
+}));
+
 const mockValidateAddress = vi.fn();
 const mockCreateTransaction = vi.fn();
 const mockCreateBatchTransaction = vi.fn();

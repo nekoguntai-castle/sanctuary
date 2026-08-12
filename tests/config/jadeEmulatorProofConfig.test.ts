@@ -22,6 +22,7 @@ describe('pinned Jade QEMU proof configuration', () => {
     expect(manifest.firmware.buildVersionTag).toBe(manifest.firmware.release);
     expect(manifest.firmware.runtimeVersion).toBe(manifest.firmware.release);
     expect(manifest.firmware.sourceTarball).toContain(manifest.firmware.sourceCommit);
+    expect(manifest.firmware.sourceTarball).toMatch(/^https:\/\/codeload\.github\.com\//);
     expect(manifest.firmware.sourceTarballSha256).toMatch(/^[0-9a-f]{64}$/);
     expect(manifest.firmware.dockerfileSha256).toMatch(/^[0-9a-f]{64}$/);
     expect(manifest.builder.image).toMatch(/^blockstream\/jade_builder@sha256:[0-9a-f]{64}$/);
@@ -30,6 +31,7 @@ describe('pinned Jade QEMU proof configuration', () => {
       expect(submodule.path).toMatch(/^components\//);
       expect(submodule.sourceCommit).toMatch(/^[0-9a-f]{40}$/);
       expect(submodule.sourceTarball).toContain(submodule.sourceCommit);
+      expect(submodule.sourceTarball).toMatch(/^https:\/\/codeload\.github\.com\//);
       expect(submodule.sourceTarballSha256).toMatch(/^[0-9a-f]{64}$/);
     }
     expect(manifest.qemu).toEqual({
@@ -56,6 +58,7 @@ describe('pinned Jade QEMU proof configuration', () => {
     const runner = read('scripts/ci/run-jade-emulator-proof.sh');
     for (const required of [
       'sourceTarballSha256',
+      'scripts/ci/download-verified-source.sh',
       'dockerfileSha256',
       'FROM $expected_builder',
       'GitHub source archives omit Git metadata',
@@ -78,8 +81,10 @@ describe('pinned Jade QEMU proof configuration', () => {
       'src/services/hardwareWallet/adapters/jadeProtocol.ts',
       'src/services/hardwareWallet/adapters/jadeSignedPsbt.ts',
       'scripts/ci/verify-jade-junit.mjs',
+      'tests/ci/download-verified-source.test.sh',
       'tests/ci/verify-jade-junit.test.mjs',
     ]) expect(runner).toContain(required);
+    expect(runner).not.toContain('curl --fail --location');
     expect(runner).not.toContain('testCount: 3');
     expect(runner).not.toMatch(/docker run[^\n]*(?:-v|--volume|--mount)/);
     expect(runner).not.toContain('docker build -v');

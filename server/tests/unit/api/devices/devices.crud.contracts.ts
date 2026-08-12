@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 
 import { mockPrismaClient } from '../../../mocks/prisma';
-import { app } from './devicesTestHarness';
+import { app, mockAssertHardwareWalletCapability } from './devicesTestHarness';
 
 export function registerDeviceCrudTests(): void {
   // ========================================
@@ -126,6 +126,13 @@ export function registerDeviceCrudTests(): void {
     it.each(['ledger', 'jade', 'trezor'])(
       'prevents %s identity relabeling from bypassing containment',
       async type => {
+        const { ForbiddenError } = await import('../../../../src/errors');
+        mockAssertHardwareWalletCapability.mockImplementationOnce(() => {
+          throw new ForbiddenError('blocked', undefined, {
+            vendor: type,
+            capability: 'account_add',
+          });
+        });
         mockPrismaClient.device.findUnique.mockResolvedValue({
           id: 'device-1',
           type,

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import {
   ConflictError,
   ForbiddenError,
@@ -24,6 +25,12 @@ const mocks = vi.hoisted(() => ({
   createSigningIntent: vi.fn(),
   withAgentFundingLock: vi.fn(),
   withAgentFundingTransaction: vi.fn(),
+  assertWalletHardwareCapabilityById: vi.fn(),
+}));
+
+vi.mock('../../../src/services/hardwareWalletCapabilities', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../src/services/hardwareWalletCapabilities')>(),
+  assertWalletHardwareCapabilityById: mocks.assertWalletHardwareCapabilityById,
 }));
 
 vi.mock('../../../src/agent/auth', () => ({
@@ -154,6 +161,7 @@ describe('agentApiService', () => {
     });
     mocks.withAgentFundingLock.mockImplementation(async (_agentId, fn) => fn());
     mocks.withAgentFundingTransaction.mockImplementation(async (_agentId, fn) => fn({ tx: true }));
+    mocks.assertWalletHardwareCapabilityById.mockResolvedValue(undefined);
   });
 
   it('records rejected attempts with null amount for unsupported amount inputs', async () => {
@@ -300,6 +308,9 @@ describe('agentApiService', () => {
     ['Trezor', 'trezor', 'trezor-safe-5'],
     ['descriptor-only recovery', 'watch_only', null],
   ])('blocks %s agent funding before transaction construction', async (_name, type, modelSlug) => {
+    mocks.assertWalletHardwareCapabilityById.mockRejectedValueOnce(
+      new ForbiddenError('blocked'),
+    );
     mocks.findWalletByIdWithDevices.mockResolvedValue({
       id: 'funding-wallet',
       devices: [{

@@ -3,6 +3,7 @@ import {
   copyFileSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -81,12 +82,27 @@ elif [ "\${1:-}" = 'version' ]; then
     printf '%s\\n' '{"Client":{"Version":"28.0.0","ApiVersion":"1.48","Os":"linux","Arch":"amd64"},"Server":{"Version":"28.0.0","ApiVersion":"1.48","MinAPIVersion":"1.24","Os":"linux","Arch":"amd64"}}'
   fi
 elif [ "\${1:-}" = 'inspect' ]; then
-  exit 1
+  if [ ! -f '${workspace}/mock-container-started' ]; then exit 1; fi
+  if [[ "$*" == *'{{.State.Running}}'* ]]; then
+    exit "\${MOCK_STATE_INSPECT_STATUS:-1}"
+  fi
+  printf '[{"Image":"${expectedConfigDigest}","State":{"Running":true}}]\\n'
 elif [ "\${1:-}" = 'pull' ]; then
   exit 0
 elif [ "\${1:-}" = 'run' ]; then
   printf 'PODMAN_RUN_ARGS:%s\\n' "$*" >&2
+  if [ "\${MOCK_RUN_SUCCEEDS:-0}" = '1' ]; then
+    touch '${workspace}/mock-container-started'
+    printf '%s\\n' 'container-id'
+    exit 0
+  fi
   exit 73
+elif [ "\${1:-}" = 'exec' ]; then
+  exit 1
+elif [ "\${1:-}" = 'logs' ]; then
+  exit 0
+elif [ "\${1:-}" = 'rm' ] && [ "\${2:-}" = '-f' ]; then
+  exit 0
 elif [ "\${1:-}" = 'image' ] && [ "\${2:-}" = 'inspect' ]; then
   case "$*" in
     *'join .RepoDigests'*)
@@ -109,7 +125,8 @@ fi
 const runProof = (
   runId: string,
   overrides: NodeJS.ProcessEnv = {},
-): { status: number | null; stderr: string } => {
+): { status: number | null; stderr: string; durationMs: number } => {
+  const startedAt = Date.now();
   const result = spawnSync(
     "bash",
     [path.join(repoRoot, "scripts/ci/run-trezor-emulator-proof.sh")],
@@ -127,7 +144,11 @@ const runProof = (
       },
     },
   );
-  return { status: result.status, stderr: result.stderr };
+  return {
+    status: result.status,
+    stderr: result.stderr,
+    durationMs: Date.now() - startedAt,
+  };
 };
 
 describe("Trezor emulator proof runner preflight", () => {
@@ -201,9 +222,92 @@ describe("Trezor emulator proof runner preflight", () => {
     });
 
     expect(result.status).toBe(73);
-    expect(result.stderr).toContain("PODMAN_RUN_ARGS:run --rm -d --platform");
+    expect(result.stderr).toContain("PODMAN_RUN_ARGS:run -d --platform");
+    expect(result.stderr).not.toContain("PODMAN_RUN_ARGS:run --rm");
     const runArguments = result.stderr.match(/PODMAN_RUN_ARGS:[^\n]*/)?.[0];
     expect(runArguments).not.toContain(" -p ");
     expect(runArguments).not.toContain("--network");
+    expect(runArguments).toContain(
+      ".venv/bin/python src/main.py",
+    );
+  });
+
+  it("preserves diagnostics and fails fast when the controller container exits", () => {
+    writeExecutable(
+      "docker",
+      `#!/usr/bin/env bash
+set -euo pipefail
+state='${workspace}/container-state'
+config_digest='${expectedConfigDigest}'
+if [ "\${1:-}" = 'context' ]; then
+  printf '%s\n' 'unix:///var/run/docker.sock'
+elif [ "\${1:-}" = 'version' ]; then
+  printf '%s\n' '{"Client":{"Version":"28.0.0","ApiVersion":"1.48","Os":"linux","Arch":"amd64"},"Server":{"Version":"5.4.2","ApiVersion":"1.41","MinAPIVersion":"1.24","Os":"linux","Arch":"amd64","Components":[{"Name":"Podman Engine","Version":"5.4.2"}]}}'
+elif [ "\${1:-}" = 'image' ] && [ "\${2:-}" = 'inspect' ]; then
+  printf '[{"RepoDigests":["ghcr.io/trezor/trezor-user-env@${expectedImageDigest}"],"Id":"%s","Os":"linux","Architecture":"amd64"}]\n' "$config_digest"
+elif [ "\${1:-}" = 'run' ]; then
+  printf 'started' > "$state"
+  printf '%s\n' 'container-id'
+elif [ "\${1:-}" = 'inspect' ]; then
+  if [ ! -f "$state" ]; then exit 1; fi
+  if [[ "$*" == *'{{.State.Running}}'* ]]; then
+    printf '%s\n' 'false'
+  elif [ "$(cat "$state")" = 'started' ]; then
+    printf 'inspected' > "$state"
+    printf '[{"Image":"%s","State":{"Running":true}}]\n' "$config_digest"
+  else
+    printf '[{"Image":"%s","State":{"Running":false,"ExitCode":137,"OOMKilled":true,"Error":""}}]\n' "$config_digest"
+  fi
+elif [ "\${1:-}" = 'exec' ]; then
+  exit 1
+elif [ "\${1:-}" = 'logs' ]; then
+  printf '%s\n' 'controller process exited'
+elif [ "\${1:-}" = 'rm' ] && [ "\${2:-}" = '-f' ]; then
+  printf '%s\n' "$*" > '${workspace}/remove-invocation'
+else
+  echo "Unexpected docker invocation: $*" >&2
+  exit 91
+fi
+`,
+    );
+
+    const result = runProof("early-container-exit", {
+      MOCK_DOCKER_ENGINE: "podman",
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.durationMs).toBeLessThan(10_000);
+    expect(result.stderr).toContain("Trezor User Env exited before readiness");
+    const diagnostics = path.join(
+      workspace,
+      ".tmp/ci-evidence/trezor-emulator/early-container-exit-1/diagnostics",
+    );
+    expect(
+      readFileSync(
+        path.join(diagnostics, "container-terminal-inspect.json"),
+        "utf8",
+      ),
+    ).toContain('"OOMKilled":true');
+    expect(
+      readFileSync(path.join(diagnostics, "trezor-user-env.log"), "utf8"),
+    ).toContain("controller process exited");
+    expect(
+      readFileSync(path.join(workspace, "remove-invocation"), "utf8"),
+    ).toContain("rm -f sanctuary-trezor-proof-early-container-exit-1");
+  });
+
+  it("distinguishes a readiness inspect failure from a container exit", () => {
+    const result = runProof("inspect-failure", {
+      MOCK_DOCKER_ENGINE: "podman",
+      MOCK_RUN_SUCCEEDS: "1",
+      MOCK_STATE_INSPECT_STATUS: "125",
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.durationMs).toBeLessThan(10_000);
+    expect(result.stderr).toContain(
+      "Unable to inspect Trezor User Env readiness state (exit=125)",
+    );
+    expect(result.stderr).not.toContain("exited before readiness");
   });
 });

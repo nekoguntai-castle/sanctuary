@@ -5,6 +5,16 @@ import {
   resetElectrumMocks,
 } from '../../../../mocks/electrum';
 
+const { mockAssertWalletHardwareCapabilityById } = vi.hoisted(() => ({
+  mockAssertWalletHardwareCapabilityById: vi.fn(),
+}));
+export { mockAssertWalletHardwareCapabilityById };
+
+vi.mock('../../../../../src/services/hardwareWalletCapabilities', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../../../src/services/hardwareWalletCapabilities')>(),
+  assertWalletHardwareCapabilityById: mockAssertWalletHardwareCapabilityById,
+}));
+
 vi.mock('../../../../../src/models/prisma', () => ({
   __esModule: true,
   default: mockPrismaClient,
@@ -62,6 +72,7 @@ export function setupBlockchainServiceTestHooks(): void {
   beforeEach(() => {
     resetPrismaMocks();
     resetElectrumMocks();
+    mockAssertWalletHardwareCapabilityById.mockResolvedValue(undefined);
   });
 }
 

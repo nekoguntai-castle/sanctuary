@@ -1,4 +1,9 @@
-import { beforeAll, beforeEach, describe } from 'vitest';
+import { beforeAll, beforeEach, describe, vi } from 'vitest';
+
+vi.mock('../../../src/services/hardwareWalletCapabilities', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../src/services/hardwareWalletCapabilities')>(),
+  assertWalletHardwareCapabilityById: vi.fn(),
+}));
 import { registerWalletAnalyticsContracts } from './wallets/wallets.analytics.contracts';
 import { registerWalletCrudContracts } from './wallets/wallets.crud.contracts';
 import { registerWalletDeviceXpubContracts } from './wallets/wallets.device-xpub.contracts';

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { ForbiddenError } from "../../../src/errors";
 
@@ -9,6 +11,13 @@ vi.mock("../../../src/repositories", () => ({
   walletRepository: mockWalletRepository,
 }));
 
+import {
+  HARDWARE_WALLET_CAPABILITIES,
+  HARDWARE_WALLET_CAPABILITY_MANIFEST_ID,
+  HARDWARE_WALLET_IMPLEMENTATION_INVENTORY,
+  HARDWARE_WALLET_VENDORS,
+  getHardwareWalletCapabilityRow,
+} from "@sanctuary/shared/constants/hardwareWalletCapabilities";
 import {
   assertHardwareWalletCapability,
   assertWalletHardwareCapability,
@@ -38,16 +47,10 @@ describe("hardware wallet capability containment", () => {
     ).toBe("ledger");
   });
 
-  it.each(["ledger", "jade", "trezor"] as const)(
+  it.each(HARDWARE_WALLET_VENDORS)(
     "blocks every funds-controlling capability for %s",
     (vendor) => {
-      for (const capability of [
-        "import",
-        "account_add",
-        "display",
-        "sign",
-        "broadcast",
-      ] as const) {
+      for (const capability of HARDWARE_WALLET_CAPABILITIES) {
         const decision = getHardwareWalletCapabilityDecision(
           { type: vendor },
           capability,
@@ -57,18 +60,68 @@ describe("hardware wallet capability containment", () => {
           throw new Error(`Expected ${vendor} ${capability} to remain blocked`);
         }
         expect(decision.reason).not.toBe("");
-        expect(decision.manifestId).toBe("wallet-safety-v1-2026-08-09");
+        expect(decision.manifestId).toBe(HARDWARE_WALLET_CAPABILITY_MANIFEST_ID);
       }
     },
   );
 
-  it.each(["coldcard", "bitbox", "passport", "keystone", "seedsigner", "specter"])(
-    "allows explicit non-target hardware type %s without claiming it is verified",
+  it.each(["coldcard", "bitbox", "bitbox02", "passport", "keystone", "seedsigner", "specter", "generic"])(
+    "blocks explicit unverified hardware type %s",
     type => {
       expect(getHardwareWalletCapabilityDecision({ type }, "import"))
-        .toEqual({ allowed: true, vendor: null, capability: "import" });
+        .toMatchObject({ allowed: false, capability: "import" });
     },
   );
+
+  it("classifies every baseline catalog model and blocks all capabilities", () => {
+    for (const inventoryRow of HARDWARE_WALLET_IMPLEMENTATION_INVENTORY) {
+      for (const model of [
+        ...inventoryRow.aliases,
+        ...inventoryRow.catalogModelSlugs,
+        ...inventoryRow.catalogModelNames,
+      ]) {
+        expect(classifyHardwareWalletVendor({ model })).toBe(inventoryRow.vendor);
+        expect(getHardwareWalletCapabilityRow({ model }, "sign"))
+          .toMatchObject({ vendor: inventoryRow.vendor, capability: "sign" });
+        for (const capability of HARDWARE_WALLET_CAPABILITIES) {
+          expect(getHardwareWalletCapabilityDecision({ model }, capability))
+            .toMatchObject({ allowed: false, vendor: inventoryRow.vendor, capability });
+        }
+      }
+    }
+  });
+
+  it("covers every independently seeded hardware model slug", () => {
+    const seed = readFileSync(resolve("prisma/seed.ts"), "utf8");
+    const catalogSource = seed.match(
+      /const hardwareDeviceModels = \[([\s\S]*?)\n\];/,
+    )?.[1];
+    expect(catalogSource).toBeDefined();
+    const catalogSlugs = [...catalogSource!.matchAll(/slug: "([^"]+)"/g)]
+      .map((match) => match[1])
+      .sort();
+    const catalogNames = [...catalogSource!.matchAll(/name: "([^"]+)"/g)]
+      .map((match) => match[1])
+      .sort();
+    const inventorySlugs = HARDWARE_WALLET_IMPLEMENTATION_INVENTORY
+      .flatMap((row) => row.catalogModelSlugs)
+      .sort();
+    const inventoryNames = HARDWARE_WALLET_IMPLEMENTATION_INVENTORY
+      .flatMap((row) => row.catalogModelNames)
+      .sort();
+    expect(catalogSlugs).toEqual(inventorySlugs);
+    expect(catalogNames).toEqual(inventoryNames);
+  });
+
+  it("rejects ambiguous or token-spoofed identities", () => {
+    expect(classifyHardwareWalletVendor({ type: "ledger", model: "Trezor Safe 5" })).toBeNull();
+    expect(classifyHardwareWalletVendor({ type: "notledger" })).toBeNull();
+    expect(classifyHardwareWalletVendor({ model: "Ledger Nano X drifted" })).toBeNull();
+    expect(getHardwareWalletCapabilityDecision(
+      { type: "ledger", model: "Trezor Safe 5" },
+      "sign",
+    )).toMatchObject({ allowed: false, vendor: "unidentified" });
+  });
 
   it.each(["ledgr", "custom", "watch-only"])(
     "fails closed for unrecognized nonempty device type %s",
@@ -123,7 +176,7 @@ describe("hardware wallet capability containment", () => {
         details: {
           vendor: "trezor",
           capability: "sign",
-          manifestId: "wallet-safety-v1-2026-08-09",
+          manifestId: HARDWARE_WALLET_CAPABILITY_MANIFEST_ID,
         },
       });
     }
@@ -141,6 +194,18 @@ describe("hardware wallet capability containment", () => {
       .toThrow("no signer provenance is linked");
     expect(() => assertWalletHardwareCapability({ devices: [] }, "account_add"))
       .not.toThrow();
+  });
+
+  it("checks every linked signer when wallet provenance is loaded by id", async () => {
+    mockWalletRepository.findByIdWithDevices.mockResolvedValueOnce({
+      devices: [
+        { device: { type: "watch_only" } },
+        { device: { type: "watch_only" } },
+      ],
+    });
+
+    await expect(assertWalletHardwareCapabilityById("wallet-1", "import"))
+      .resolves.toBeUndefined();
   });
 
   it("fails closed when the signer provenance collection is malformed", () => {

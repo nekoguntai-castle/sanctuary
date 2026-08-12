@@ -6,6 +6,10 @@ import {
   classifyHardwareReleaseDecision,
   renderHardwareCompatibilityMarkdown,
 } from "../../scripts/ci/hardware-compatibility-report";
+import {
+  HARDWARE_WALLET_CAPABILITIES,
+  HARDWARE_WALLET_VENDORS,
+} from "../../shared/constants/hardwareWalletCapabilities";
 
 const AS_OF = "2026-08-11T00:00:00.000Z";
 const build = () =>
@@ -19,15 +23,19 @@ describe("hardware compatibility statement", () => {
     const first = build();
     const second = build();
     expect(first).toEqual(second);
-    expect(first.capabilityRows).toHaveLength(18);
+    expect(first.capabilityRows).toHaveLength(
+      HARDWARE_WALLET_VENDORS.length * HARDWARE_WALLET_CAPABILITIES.length,
+    );
     expect(first.hardwareRows).toHaveLength(22);
-    expect(new Set(first.capabilityRows.map(({ id }) => id)).size).toBe(18);
+    expect(new Set(first.capabilityRows.map(({ id }) => id)).size).toBe(
+      first.capabilityRows.length,
+    );
     expect(
       new Set(
         first.hardwareRows.map(
           ({ vendor, scriptType }) => `${vendor}:${scriptType}`,
         ),
-      ).size,
+    ).size,
     ).toBe(22);
   });
 

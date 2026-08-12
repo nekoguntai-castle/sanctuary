@@ -3,8 +3,13 @@ import express, { type Express } from "express";
 import request from "supertest";
 import { mockPrismaClient, resetPrismaMocks } from "../../mocks/prisma";
 
-const { mockDeriveCanonicalAddress } = vi.hoisted(() => ({
+const { mockDeriveCanonicalAddress, mockAssertWalletHardwareCapabilityById } = vi.hoisted(() => ({
   mockDeriveCanonicalAddress: vi.fn(),
+  mockAssertWalletHardwareCapabilityById: vi.fn(),
+}));
+
+vi.mock("../../../src/services/hardwareWalletCapabilities", () => ({
+  assertWalletHardwareCapabilityById: mockAssertWalletHardwareCapabilityById,
 }));
 
 const RECEIVE_DESCRIPTOR = "wpkh([abcd1234/84h/1h/0h]tpub-test/0/*)";
@@ -102,6 +107,7 @@ describe("Transactions Addresses Routes (Extended)", () => {
   beforeEach(() => {
     resetPrismaMocks();
     vi.clearAllMocks();
+    mockAssertWalletHardwareCapabilityById.mockResolvedValue(undefined);
 
     mockPrismaClient.wallet.findUnique.mockResolvedValue({
       id: "wallet-1",
@@ -152,6 +158,10 @@ describe("Transactions Addresses Routes (Extended)", () => {
   it.each(["ledger", "jade", "trezor"])(
     "does not return or auto-generate deposit addresses for %s wallets",
     async (type) => {
+      const { ForbiddenError } = await import("../../../src/errors");
+      mockAssertWalletHardwareCapabilityById.mockRejectedValueOnce(
+        new ForbiddenError("blocked", undefined, { vendor: type, capability: "display" }),
+      );
       mockPrismaClient.wallet.findUnique.mockResolvedValue({
         id: "wallet-1",
         descriptor: "wpkh(xpub...)",

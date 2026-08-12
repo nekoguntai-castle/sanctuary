@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { InvalidInputError } from '../../../src/errors';
+import { ForbiddenError, InvalidInputError } from '../../../src/errors';
 
 const mockDeviceRepository = vi.hoisted(() => ({
   findByFingerprintWithAccounts: vi.fn(),
@@ -7,6 +7,11 @@ const mockDeviceRepository = vi.hoisted(() => ({
   createWithOwnerAndAccounts: vi.fn(),
   findByIdWithModelAndAccounts: vi.fn(),
   mergeAccounts: vi.fn(),
+}));
+const mockAssertHardwareWalletCapability = vi.hoisted(() => vi.fn());
+
+vi.mock('../../../src/services/hardwareWalletCapabilities', () => ({
+  assertHardwareWalletCapability: mockAssertHardwareWalletCapability,
 }));
 
 vi.mock('../../../src/repositories', () => ({
@@ -27,6 +32,7 @@ import { registerDevice } from '../../../src/services/deviceRegistration';
 describe('deviceRegistration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockAssertHardwareWalletCapability.mockReturnValue(undefined);
     mockDeviceRepository.findByFingerprintWithAccounts.mockResolvedValue(null);
     mockDeviceRepository.findHardwareModel.mockResolvedValue({ id: 'model-1' });
     mockDeviceRepository.createWithOwnerAndAccounts.mockResolvedValue({ id: 'device-1' });
@@ -107,6 +113,11 @@ describe('deviceRegistration', () => {
   it.each(['ledger', 'jade', 'trezor'])(
     'blocks %s registration before duplicate lookup or writes',
     async (type) => {
+      mockAssertHardwareWalletCapability.mockImplementationOnce(() => {
+        throw new ForbiddenError(
+          'blocked', undefined, { vendor: type, capability: 'import' },
+        );
+      });
       await expect(registerDevice('user-1', {
         type,
         label: `${type} device`,
@@ -132,6 +143,13 @@ describe('deviceRegistration', () => {
       fingerprint: 'aabbccdd',
       accounts: [],
     });
+    mockAssertHardwareWalletCapability
+      .mockReturnValueOnce(undefined)
+      .mockImplementationOnce(() => {
+        throw new ForbiddenError(
+          'blocked', undefined, { vendor: 'ledger', capability: 'import' },
+        );
+      });
 
     await expect(registerDevice('user-1', {
       type: 'coldcard',
@@ -150,6 +168,11 @@ describe('deviceRegistration', () => {
   it.each(['unknown', 'hardware'])(
     'blocks generic %s registration before writes',
     async type => {
+      mockAssertHardwareWalletCapability.mockImplementationOnce(() => {
+        throw new ForbiddenError(
+          'blocked', undefined, { vendor: 'unidentified', capability: 'import' },
+        );
+      });
       await expect(registerDevice('user-1', {
         type,
         label: 'Unidentified hardware',

@@ -19,7 +19,6 @@ import {
 import { assertSignerBindingMatchesWallet } from '../../services/wallet/walletAccountSelection';
 import type { WalletNetwork } from '../../services/wallet/types';
 import {
-  assertWalletHardwareCapability,
   assertWalletHardwareCapabilityById,
 } from '../../services/hardwareWalletCapabilities';
 import { assertUnusedAddressesSafeForDisplay } from '../../services/addressDisplaySafety';
@@ -253,6 +252,8 @@ router.get('/:id/export/labels', requireWalletAccess('view'), asyncHandler(async
  * Get available export formats for this wallet
  */
 router.get('/:id/export/formats', requireWalletAccess('view'), asyncHandler(async (req, res) => {
+  // Recovery exports expose the wallet's immutable signer snapshot. They must
+  // remain available when new address display/signing is containment-blocked.
   const walletId = req.walletId!;
 
   // Get wallet to determine which formats are available
@@ -261,8 +262,6 @@ router.get('/:id/export/formats', requireWalletAccess('view'), asyncHandler(asyn
   if (!wallet) {
     throw new NotFoundError('Wallet not found');
   }
-  assertWalletHardwareCapability(wallet, 'display');
-
   // Build wallet export data to check format availability
   const walletData = buildWalletExportData(wallet);
 
@@ -285,6 +284,8 @@ router.get('/:id/export/formats', requireWalletAccess('view'), asyncHandler(asyn
  *   format - Export format ID (sparrow, descriptor, bluewallet, coldcard)
  */
 router.get('/:id/export', requireWalletAccess('view'), asyncHandler(async (req, res) => {
+  // Keep descriptor/device-path recovery available; label export remains
+  // separately display-gated because it can expose fresh address-origin data.
   const walletId = req.walletId!;
   const formatId = (req.query.format as string) || 'sparrow';
 
@@ -294,8 +295,6 @@ router.get('/:id/export', requireWalletAccess('view'), asyncHandler(async (req, 
   if (!wallet) {
     throw new NotFoundError('Wallet not found');
   }
-  assertWalletHardwareCapability(wallet, 'display');
-
   // Build wallet export data (uses device accounts for correct derivation paths)
   const walletData = buildWalletExportData(wallet);
 

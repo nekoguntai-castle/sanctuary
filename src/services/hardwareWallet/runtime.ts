@@ -23,10 +23,13 @@ service.registerAdapterLoader(
   }
 );
 
-service.registerAdapterLoader('bitbox', async () => {
-  const { BitBoxAdapter } = await import('./adapters/bitbox');
-  return new BitBoxAdapter();
-});
+service.registerAdapterLoader(
+  'bitbox',
+  async () => {
+    const { BitBoxAdapter } = await import('./adapters/bitbox');
+    return new BitBoxAdapter();
+  }
+);
 
 service.registerAdapterLoader(
   'jade',

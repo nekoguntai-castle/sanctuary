@@ -61,9 +61,14 @@ cp "$SOURCE_ROOT/scripts/release/previous-release-tag.sh" "$REPO/scripts/release
 chmod +x "$REPO/scripts/release/previous-release-tag.sh"
 
 git -C "$REPO" init -q
-# No background gc against a 107-commit fixture: it is the thing that races the
-# cleanup above. Removes the cause; the rm -rf trap makes the symptom harmless.
+# No background object maintenance against a 107-commit fixture: it is the thing
+# that races the fixture's repeated release runs and cleanup. Newer Git versions
+# invoke `git maintenance run --auto`, so disabling legacy gc.auto alone is not
+# sufficient to keep the temporary tag/object graph stable.
 git -C "$REPO" config gc.auto 0
+git -C "$REPO" config gc.autoDetach false
+git -C "$REPO" config maintenance.auto false
+git -C "$REPO" config maintenance.autoDetach false
 git -C "$REPO" config user.name "Release Test"
 git -C "$REPO" config user.email "release-test@example.invalid"
 printf 'base\n' > "$REPO/history.txt"

@@ -2,7 +2,36 @@ import { fireEvent,render,screen } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
 import { UsbSigning } from '../../../../../src/components/send/steps/review/UsbSigning';
 
+vi.mock('../../../../../src/components/send/steps/review/deviceCapabilities', () => ({
+  getDeviceCapabilities: (type: string) => type === 'blocked'
+    ? { methods: [], labels: {}, blockedReason: 'Physical evidence is missing.' }
+    : type === 'coldcard'
+    ? { methods: ['airgap'], labels: {}, blockedReason: '' }
+    : { methods: ['usb'], labels: {}, blockedReason: '' },
+}));
+
 describe('UsbSigning branch coverage', () => {
+  it('shows the product-visible manifest reason when every signer is blocked', () => {
+    render(
+      <UsbSigning
+        devices={[{ id: 'dev-blocked', type: 'blocked', label: 'Unverified signer' } as any]}
+        signedDevices={new Set()}
+        signingDeviceId={null}
+        signing={false}
+        onFileUpload={vi.fn()}
+        setSigningDeviceId={vi.fn()}
+        setQrSigningDevice={vi.fn()}
+        fileInputRef={{ current: null }}
+      />
+    );
+
+    expect(screen.getByText('Hardware-wallet signing is temporarily unavailable.'))
+      .toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Unverified signer: Physical evidence is missing.',
+    );
+  });
+
   it('does not set signing state when onSignWithDevice is missing', () => {
     const setSigningDeviceId = vi.fn();
     const fileInput = document.createElement('input');

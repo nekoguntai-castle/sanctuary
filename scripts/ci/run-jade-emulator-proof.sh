@@ -65,14 +65,14 @@ jq -e '
   and .firmware.buildVersionTag == .firmware.release
   and .firmware.runtimeVersion == .firmware.release
   and (.firmware.sourceCommit | test("^[0-9a-f]{40}$"))
-  and (.firmware.sourceTarball | startswith("https://github.com/Blockstream/Jade/archive/"))
+  and (.firmware.sourceTarball | startswith("https://codeload.github.com/Blockstream/Jade/tar.gz/"))
   and ([.firmware.sourceTarballSha256, .firmware.dockerfileSha256] | all(test("^[0-9a-f]{64}$")))
   and (.builder.image | test("^blockstream/jade_builder@sha256:[0-9a-f]{64}$"))
   and (.submodules | length == 5)
   and (.submodules | all(
     (.path | test("^[A-Za-z0-9._/-]+$"))
     and (.sourceCommit | test("^[0-9a-f]{40}$"))
-    and (.sourceTarball | test("^https://github.com/"))
+    and (.sourceTarball | test("^https://codeload[.]github[.]com/"))
     and (.sourceTarballSha256 | test("^[0-9a-f]{64}$"))))
   and .qemu.configArgs == "--dev --ci --psram"
   and .qemu.machine == "esp32"
@@ -117,9 +117,9 @@ if [ "$locked_cbor_version" != "$(jq -r '.sdk.cborX' "$manifest")" ] \
 fi
 
 readonly source_url="$(jq -r '.firmware.sourceTarball' "$manifest")"
-timeout --foreground --kill-after=10s 180s curl --fail --location --silent --show-error \
-  --retry 3 --retry-all-errors --output "$source_tarball" "$source_url"
-echo "$(jq -r '.firmware.sourceTarballSha256' "$manifest")  $source_tarball" | sha256sum --check
+scripts/ci/download-verified-source.sh \
+  jade-firmware "$source_url" \
+  "$(jq -r '.firmware.sourceTarballSha256' "$manifest")" "$source_tarball"
 tar -xzf "$source_tarball" --strip-components=1 -C "$source_dir"
 echo "$(jq -r '.firmware.dockerfileSha256' "$manifest")  $source_dir/Dockerfile.qemu" | sha256sum --check
 submodule_index=0
@@ -129,9 +129,8 @@ while IFS=$'\t' read -r submodule_path submodule_url submodule_sha; do
     *) echo "Unsafe Jade submodule path: $submodule_path" >&2; exit 1 ;;
   esac
   submodule_tarball="$attempt_dir/submodule-${submodule_index}.tar.gz"
-  timeout --foreground --kill-after=10s 180s curl --fail --location --silent --show-error \
-    --retry 3 --retry-all-errors --output "$submodule_tarball" "$submodule_url"
-  echo "$submodule_sha  $submodule_tarball" | sha256sum --check
+  scripts/ci/download-verified-source.sh \
+    "jade-submodule-$submodule_index" "$submodule_url" "$submodule_sha" "$submodule_tarball"
   mkdir -p "$source_dir/$submodule_path"
   tar -xzf "$submodule_tarball" --strip-components=1 -C "$source_dir/$submodule_path"
   submodule_index=$((submodule_index + 1))
@@ -258,6 +257,7 @@ readonly -a proof_sources=(
   docs/reference/trust-and-verification.md
   scripts/ci/check-wallet-safety-classifier.mjs
   scripts/ci/docker-exec-tcp-forwarder.mjs
+  scripts/ci/download-verified-source.sh
   scripts/ci/provider-context.sh
   scripts/ci/run-jade-emulator-proof.sh
   scripts/ci/verify-jade-junit.mjs
@@ -272,6 +272,7 @@ readonly -a proof_sources=(
   src/services/hardwareWallet/psbtAccountBinding.ts
   tests/ci/check-wallet-safety-classifier.test.mjs
   tests/ci/check-workflow-composition.test.sh
+  tests/ci/download-verified-source.test.sh
   tests/ci/verify-jade-junit.test.mjs
   tests/config/jadeEmulatorProofConfig.test.ts
   tests/integration/jadeEmulator.integration.test.ts

@@ -1,4 +1,9 @@
 import { vi, Mock } from 'vitest';
+
+vi.mock('../../../../../src/services/hardwareWalletCapabilities', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../../../src/services/hardwareWalletCapabilities')>(),
+  assertWalletHardwareCapabilityById: vi.fn(),
+}));
 /**
  * Sync Phase Tests — Small Phases
  *

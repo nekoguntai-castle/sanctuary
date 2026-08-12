@@ -1,6 +1,16 @@
 import { vi } from 'vitest';
 import type { deriveCanonicalAddress } from '../../../../src/services/bitcoin/addressDerivation';
 
+const { mockAssertWalletHardwareCapabilityById } = vi.hoisted(() => ({
+  mockAssertWalletHardwareCapabilityById: vi.fn(),
+}));
+export { mockAssertWalletHardwareCapabilityById };
+
+vi.mock('../../../../src/services/hardwareWalletCapabilities', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../../src/services/hardwareWalletCapabilities')>(),
+  assertWalletHardwareCapabilityById: mockAssertWalletHardwareCapabilityById,
+}));
+
 export const mockPrisma = {
   wallet: {
     findUnique: vi.fn<any>(),

@@ -29,6 +29,11 @@ async function canDisplayWalletDerivationMaterial(walletId: string): Promise<boo
   }
 }
 
+const redactDerivationMaterial = <T>(value: T, canDisplay: boolean): T | null => {
+  if (!canDisplay) return null;
+  return value;
+};
+
 /**
  * Get all wallets for a user
  * OPTIMIZED: Uses aggregate queries for balance instead of loading all UTXOs
@@ -95,8 +100,8 @@ export async function getUserWallets(
       network: wallet.network,
       quorum: wallet.quorum,
       totalSigners: wallet.totalSigners,
-      descriptor: canDisplay ? wallet.descriptor : null,
-      fingerprint: canDisplay ? wallet.fingerprint : null,
+      descriptor: redactDerivationMaterial(wallet.descriptor, canDisplay),
+      fingerprint: redactDerivationMaterial(wallet.fingerprint, canDisplay),
       createdAt: wallet.createdAt,
       balance,
       deviceCount: wallet.devices.length,
@@ -190,8 +195,8 @@ export async function getWalletById(
     network: wallet.network,
     quorum: wallet.quorum,
     totalSigners: wallet.totalSigners,
-    descriptor: canDisplay ? wallet.descriptor : null,
-    fingerprint: canDisplay ? wallet.fingerprint : null,
+    descriptor: redactDerivationMaterial(wallet.descriptor, canDisplay),
+    fingerprint: redactDerivationMaterial(wallet.fingerprint, canDisplay),
     createdAt: wallet.createdAt,
     balance,
     deviceCount: wallet.devices.length,

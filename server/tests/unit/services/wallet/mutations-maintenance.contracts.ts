@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  mockAssertWalletHardwareCapabilityById,
   mockBuildDescriptorFromDevices,
   mockHookExecuteAfter,
   mockLogError,
@@ -8,6 +9,7 @@ import {
   mockPrismaClient,
   mockSyncUnsubscribeWalletAddresses,
 } from './walletTestHarness';
+import { ForbiddenError } from '../../../../src/errors';
 import {
   addDeviceToWallet,
   checkWalletAccess,
@@ -97,6 +99,9 @@ export function registerWalletMutationMaintenanceTests(): void {
     });
 
     it('updates safe metadata but strips derivation material when display is disabled', async () => {
+      mockAssertWalletHardwareCapabilityById.mockRejectedValueOnce(
+        new ForbiddenError('blocked'),
+      );
       const walletData = {
         id: 'wallet-ledger',
         name: 'Renamed Ledger Wallet',
@@ -135,6 +140,9 @@ export function registerWalletMutationMaintenanceTests(): void {
     });
 
     it('propagates unexpected signer-provenance lookup failures', async () => {
+      mockAssertWalletHardwareCapabilityById.mockRejectedValueOnce(
+        new Error('database unavailable'),
+      );
       const walletData = {
         id: 'wallet-1',
         devices: [],
@@ -145,8 +153,6 @@ export function registerWalletMutationMaintenanceTests(): void {
       mockPrismaClient.walletUser.findFirst.mockResolvedValueOnce({ role: 'owner' });
       mockPrismaClient.wallet.update.mockResolvedValueOnce(walletData);
       mockPrismaClient.wallet.findFirst.mockResolvedValueOnce(walletData);
-      mockPrismaClient.wallet.findUnique.mockRejectedValueOnce(new Error('database unavailable'));
-
       await expect(updateWallet('wallet-1', 'owner-1', { name: 'Name' }))
         .rejects.toThrow('database unavailable');
     });

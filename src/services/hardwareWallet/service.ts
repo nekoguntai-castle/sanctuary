@@ -33,8 +33,8 @@ import type {
 import { validatePsbtSigningRequest } from './psbtAccountBinding';
 import {
   HARDWARE_WALLET_CAPABILITY_MANIFEST_ID,
-  HARDWARE_WALLET_CAPABILITY_ROWS,
-  type HardwareWalletVendor,
+  getHardwareWalletCapabilityRow,
+  type HardwareWalletCapability,
 } from '@sanctuary/shared/constants/hardwareWalletCapabilities';
 import {
   HardwareWalletIdentityError,
@@ -50,16 +50,13 @@ const log = createLogger('HardwareWalletService');
 
 function assertHardwareActionEnabled(
   type: DeviceType,
-  capability: 'import' | 'account_add' | 'display' | 'sign'
+  capability: Extract<HardwareWalletCapability, 'import' | 'account_add' | 'display' | 'sign'>
 ): void {
-  const vendor = type as HardwareWalletVendor;
-  const blockedRow = HARDWARE_WALLET_CAPABILITY_ROWS.find(
-    (row) => row.vendor === vendor && row.capability === capability
-  );
-  if (!blockedRow) return;
+  const row = getHardwareWalletCapabilityRow({ type }, capability);
+  if (row?.enabled) return;
 
   throw new Error(
-    `Hardware wallet connection is temporarily unavailable (${HARDWARE_WALLET_CAPABILITY_MANIFEST_ID}): ${blockedRow.reason}`
+    `Hardware wallet connection is temporarily unavailable (${HARDWARE_WALLET_CAPABILITY_MANIFEST_ID}): ${row?.reason ?? 'No reviewed capability row matches this device identity.'}`
   );
 }
 type AdapterLoader = () => Promise<DeviceAdapter>;

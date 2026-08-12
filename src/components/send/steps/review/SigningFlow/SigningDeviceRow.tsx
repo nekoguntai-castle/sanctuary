@@ -34,6 +34,7 @@ export function SigningDeviceRow({
           <SignedDeviceBadge />
         ) : (
           <SigningMethodControls
+            blockedReason={capabilities.blockedReason}
             device={device}
             deviceFileInputRefs={deviceFileInputRefs}
             isSigningDevice={isSigningDevice}

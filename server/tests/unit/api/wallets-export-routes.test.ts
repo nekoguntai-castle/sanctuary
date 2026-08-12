@@ -12,6 +12,7 @@ const {
   mockExportFormat,
   mockAssertUnusedAddressesSafeForDisplay,
   mockAssertCanonicalAddressesForWallet,
+  mockAssertWalletHardwareCapabilityById,
 } = vi.hoisted(() => ({
   mockWalletGetName: vi.fn(),
   mockWalletFindByIdWithDevices: vi.fn(),
@@ -22,6 +23,7 @@ const {
   mockExportFormat: vi.fn(),
   mockAssertUnusedAddressesSafeForDisplay: vi.fn(),
   mockAssertCanonicalAddressesForWallet: vi.fn(),
+  mockAssertWalletHardwareCapabilityById: vi.fn(),
 }));
 
 vi.mock('../../../src/middleware/walletAccess', () => ({
@@ -60,6 +62,11 @@ vi.mock('../../../src/services/wallet/canonicalAddressValidation', () => ({
   assertCanonicalAddressesForWallet: mockAssertCanonicalAddressesForWallet,
 }));
 
+vi.mock('../../../src/services/hardwareWalletCapabilities', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../src/services/hardwareWalletCapabilities')>(),
+  assertWalletHardwareCapabilityById: mockAssertWalletHardwareCapabilityById,
+}));
+
 vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
@@ -70,6 +77,7 @@ vi.mock('../../../src/utils/logger', () => ({
 }));
 
 import { errorHandler } from '../../../src/errors/errorHandler';
+import { ForbiddenError } from '../../../src/errors';
 import exportRouter from '../../../src/api/wallets/export';
 import { mapDeviceTypeToSparrowWalletModel } from '../../../src/services/export/sparrowWalletModel';
 
@@ -179,6 +187,7 @@ describe('Wallets Export Routes', () => {
     mockWalletFindByIdWithDevices.mockResolvedValue(buildWallet());
     mockAssertUnusedAddressesSafeForDisplay.mockResolvedValue(undefined);
     mockAssertCanonicalAddressesForWallet.mockResolvedValue(undefined);
+    mockAssertWalletHardwareCapabilityById.mockResolvedValue(undefined);
 
     mockTxFindWithLabels.mockResolvedValue([
       {
@@ -244,25 +253,31 @@ describe('Wallets Export Routes', () => {
     });
   });
 
-  it.each(['ledger', 'jade', 'trezor', 'watch_only'])(
-    'blocks %s descriptor, device-path, and address-label exports',
+  it.each(['bitbox', 'coldcard', 'jade', 'keystone', 'ledger', 'passport', 'seedsigner', 'specter', 'trezor', 'watch_only'])(
+    'preserves %s recovery export while blocking mutable address-label export',
     async type => {
-      mockWalletFindByIdWithDevices.mockResolvedValue(buildWallet({
-        devices: [{ device: { type, model: null, accounts: [] } }],
-      }));
+      mockAssertWalletHardwareCapabilityById.mockRejectedValueOnce(
+        new ForbiddenError('blocked', undefined, { vendor: type, capability: 'display' }),
+      );
+      const wallet = buildWallet();
+      wallet.devices[0].device.type = type;
+      mockWalletFindByIdWithDevices.mockResolvedValue(wallet);
 
-      for (const path of [
-        '/api/v1/wallets/wallet-1/export/labels',
-        '/api/v1/wallets/wallet-1/export/formats',
-        '/api/v1/wallets/wallet-1/export',
-      ]) {
-        const response = await request(app).get(path);
-        expect(response.status).toBe(403);
-      }
+      const labels = await request(app).get('/api/v1/wallets/wallet-1/export/labels');
+      const formats = await request(app).get('/api/v1/wallets/wallet-1/export/formats');
+      const recovery = await request(app).get('/api/v1/wallets/wallet-1/export');
 
+      expect(labels.status).toBe(403);
+      expect(formats.status).toBe(200);
+      expect(recovery.status).toBe(200);
+      expect(mockAssertWalletHardwareCapabilityById).toHaveBeenCalledOnce();
+      expect(mockAssertWalletHardwareCapabilityById).toHaveBeenCalledWith(
+        'wallet-1',
+        'display',
+      );
       expect(mockAddressFindWithLabels).not.toHaveBeenCalled();
-      expect(mockGetAvailableFormats).not.toHaveBeenCalled();
-      expect(mockExportFormat).not.toHaveBeenCalled();
+      expect(mockGetAvailableFormats).toHaveBeenCalledOnce();
+      expect(mockExportFormat).toHaveBeenCalledOnce();
     },
   );
 

@@ -5,6 +5,7 @@ import { finalizeMultisigInput } from '../psbtBuilder/multisigFinalization';
 import { parseMultisigScript } from '../psbtBuilder/witnessScript';
 import { authenticateIntentPrevouts } from './prevoutValidation';
 import { loadSigningIntent } from './service';
+import { assertWalletHardwareCapabilityById } from '../../hardwareWalletCapabilities';
 import type {
   SigningIntentEnvelope,
   SigningIntentHandle,
@@ -368,6 +369,9 @@ const resolveFinalTransaction = (
 export const validateSignedArtifact = async (
   input: SignedArtifactInput,
 ): Promise<ValidatedBroadcastArtifact> => {
+  // Reject before parsing externally signed material; finalization is distinct
+  // evidence from producing or importing a partial signature.
+  await assertWalletHardwareCapabilityById(input.walletId, 'finalize');
   const envelope = await loadSigningIntent(input, input.walletId, {
     allowConsumedBroadcastReplay: true,
   });
@@ -411,6 +415,8 @@ export const validatePartialSignedPsbt = async (
     draftId?: string;
   },
 ): Promise<void> => {
+  // Reject before ingesting any partial signature into the intent workflow.
+  await assertWalletHardwareCapabilityById(input.walletId, 'sign');
   const envelope = await loadSigningIntent(input, input.walletId);
   const originalPsbt = parsePsbt(envelope.unsignedPsbtBase64, 'intentId');
   const candidate = parsePsbt(input.signedPsbtBase64, 'signedPsbtBase64');

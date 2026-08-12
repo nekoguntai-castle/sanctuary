@@ -18,6 +18,14 @@ vi.mock('../../../src/utils/logger', () => ({
   }),
 }));
 
+vi.mock('../../../src/components/send/steps/review/deviceCapabilities', () => ({
+  getDeviceCapabilities: (type: string) => type === 'passport'
+    ? { methods: ['qr', 'airgap'], labels: {}, blockedReason: '' }
+    : type === 'coldcard'
+      ? { methods: ['airgap'], labels: {}, blockedReason: '' }
+      : { methods: ['usb'], labels: {}, blockedReason: '' },
+}));
+
 // Mock the contexts
 vi.mock('../../../src/contexts/send', () => ({
   useSendTransaction: vi.fn(),

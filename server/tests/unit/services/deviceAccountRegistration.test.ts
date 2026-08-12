@@ -1,5 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const capabilityMocks = vi.hoisted(() => ({
+  assertHardwareWalletCapability: vi.fn(),
+}));
+
+vi.mock('../../../src/services/hardwareWalletCapabilities', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../src/services/hardwareWalletCapabilities')>(),
+  assertHardwareWalletCapability: capabilityMocks.assertHardwareWalletCapability,
+}));
+
 const mockDeviceRepository = vi.hoisted(() => ({
   findByIdWithModelAndAccounts: vi.fn(),
   findDuplicateAccount: vi.fn(),
@@ -9,6 +18,7 @@ const mockDeviceRepository = vi.hoisted(() => ({
 vi.mock('../../../src/repositories', () => ({ deviceRepository: mockDeviceRepository }));
 
 import { addDeviceAccountWithEvidence } from '../../../src/services/deviceAccountRegistration';
+import { ForbiddenError } from '../../../src/errors';
 
 const input = {
   purpose: 'single_sig' as const,
@@ -30,12 +40,24 @@ describe('deviceAccountRegistration', () => {
     });
     mockDeviceRepository.findDuplicateAccount.mockResolvedValue(null);
     mockDeviceRepository.createAccount.mockResolvedValue({ id: 'account-1' });
+    capabilityMocks.assertHardwareWalletCapability.mockReturnValue(undefined);
   });
 
   it('rejects an unknown device before account lookup', async () => {
     mockDeviceRepository.findByIdWithModelAndAccounts.mockResolvedValue(null);
     await expect(addDeviceAccountWithEvidence('missing', input)).rejects.toThrow('Device not found');
     expect(mockDeviceRepository.findDuplicateAccount).not.toHaveBeenCalled();
+  });
+
+  it('blocks an unverified account-add row before duplicate lookup or creation', async () => {
+    capabilityMocks.assertHardwareWalletCapability.mockImplementationOnce(() => {
+      throw new ForbiddenError('blocked');
+    });
+
+    await expect(addDeviceAccountWithEvidence('device-1', input))
+      .rejects.toThrow(ForbiddenError);
+    expect(mockDeviceRepository.findDuplicateAccount).not.toHaveBeenCalled();
+    expect(mockDeviceRepository.createAccount).not.toHaveBeenCalled();
   });
 
   it.each([

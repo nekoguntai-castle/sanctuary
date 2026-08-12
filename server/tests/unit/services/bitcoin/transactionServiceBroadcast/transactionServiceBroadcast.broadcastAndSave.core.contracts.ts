@@ -9,8 +9,28 @@ import { expect, it, type Mock } from 'vitest';
 import { broadcastTransaction, recalculateWalletBalances } from '../../../../../src/services/bitcoin/blockchain';
 import { mockPrismaClient } from '../../../../mocks/prisma';
 import { sampleUtxos } from '../../../../fixtures/bitcoin';
+import { mockAssertWalletHardwareCapabilityById } from './transactionServiceBroadcastTestHarness';
 
 export const registerBroadcastAndSaveCoreContracts = () => {
+  it('stops before intent claim and network broadcast when capability is denied', async () => {
+    mockAssertWalletHardwareCapabilityById.mockRejectedValueOnce(
+      new Error('broadcast blocked'),
+    );
+    const metadata = {
+      network: broadcastNetwork,
+      recipient,
+      amount: 50_000,
+      fee: 1_000,
+      utxos: [{ txid: sampleUtxos[0].txid, vout: sampleUtxos[0].vout }],
+      rawTxHex: '00',
+    };
+
+    await expect(broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata)))
+      .rejects.toThrow('broadcast blocked');
+    expect(mockAssertWalletHardwareCapabilityById)
+      .toHaveBeenCalledWith(walletId, 'broadcast');
+    expect(broadcastTransaction).not.toHaveBeenCalled();
+  });
   it('should persist an accepted validated transaction', async () => {
     const metadata = {
       network: broadcastNetwork,

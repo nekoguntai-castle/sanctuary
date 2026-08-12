@@ -2,7 +2,7 @@
 and .vendor.repository == "https://github.com/Blockstream/Jade"
 and .vendor.release == "1.0.40"
 and .vendor.sourceCommit == "6f858f39a19f89ff7fd4580c5b2db72cfe1dc0af"
-and .vendor.sourceTarball == "https://github.com/Blockstream/Jade/archive/6f858f39a19f89ff7fd4580c5b2db72cfe1dc0af.tar.gz"
+and .vendor.sourceTarball == "https://codeload.github.com/Blockstream/Jade/tar.gz/6f858f39a19f89ff7fd4580c5b2db72cfe1dc0af"
 and .vendor.sourceTarballSha256 == "7699ab7f0101ec3d0980b002c65f2517bd6a0235eae34e48ea0b89d18d705481"
 and .vendor.sourceFiles == {
   "Dockerfile.qemu": "18e22098de4386700fb002bed3c01c2bc57aa9ab375203ee4ebdab0bc82efc02",

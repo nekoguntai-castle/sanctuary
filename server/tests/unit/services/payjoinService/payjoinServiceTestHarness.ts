@@ -7,6 +7,15 @@ const { mockDnsLookup, mockPinnedRequest } = vi.hoisted(() => ({
   mockDnsLookup: vi.fn(),
   mockPinnedRequest: vi.fn(),
 }));
+const { mockAssertWalletHardwareCapabilityById } = vi.hoisted(() => ({
+  mockAssertWalletHardwareCapabilityById: vi.fn(),
+}));
+export { mockAssertWalletHardwareCapabilityById };
+
+vi.mock('../../../../src/services/hardwareWalletCapabilities', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../../src/services/hardwareWalletCapabilities')>(),
+  assertWalletHardwareCapabilityById: mockAssertWalletHardwareCapabilityById,
+}));
 
 // Mock Prisma
 vi.mock('../../../../src/models/prisma', () => ({
@@ -92,6 +101,7 @@ export const setupPayjoinServiceTest = () => {
     id: 'wallet-456',
     devices: [{ device: { type: 'coldcard', model: null } }],
   });
+  mockAssertWalletHardwareCapabilityById.mockResolvedValue(undefined);
   (global.fetch as Mock).mockReset();
   mockDnsLookup.mockReset();
   mockPinnedRequest.mockReset();

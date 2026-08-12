@@ -7,10 +7,16 @@
 
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 
-const { mockPost, mockValidatePsbtSigningRequest } = vi.hoisted(() => ({
+const { mockPost, mockValidatePsbtSigningRequest, mockCapabilityRow } = vi.hoisted(() => ({
   mockPost: vi.fn(),
   mockValidatePsbtSigningRequest: vi.fn(),
+  mockCapabilityRow: vi.fn(),
 }));
+
+vi.mock('@sanctuary/shared/constants/hardwareWalletCapabilities', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@sanctuary/shared/constants/hardwareWalletCapabilities')>();
+  return { ...actual, getHardwareWalletCapabilityRow: mockCapabilityRow };
+});
 
 vi.mock('../../src/services/hardwareWallet/psbtAccountBinding', () => ({
   validatePsbtSigningRequest: mockValidatePsbtSigningRequest,
@@ -80,11 +86,13 @@ function createMockAdapter(
 describe('HardwareWalletService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockCapabilityRow.mockReturnValue({ enabled: true });
   });
 
   it.each(['ledger', 'jade', 'trezor'] as const)(
     'blocks %s before loading or connecting an adapter',
     async (type) => {
+      mockCapabilityRow.mockReturnValue({ enabled: false, reason: 'unverified' });
       const service = new HardwareWalletService();
       const { adapter } = createMockAdapter(type);
       service.registerAdapter(adapter);
@@ -95,6 +103,15 @@ describe('HardwareWalletService', () => {
       expect(adapter.connect).not.toHaveBeenCalled();
     }
   );
+
+  it('fails closed with a generic reason when no capability row matches', async () => {
+    mockCapabilityRow.mockReturnValue(null);
+    const service = new HardwareWalletService();
+
+    await expect(service.connect('unknown')).rejects.toThrow(
+      'No reviewed capability row matches this device identity.',
+    );
+  });
 
   it('rejects and disconnects an adapter that connects without a master fingerprint', async () => {
     const service = new HardwareWalletService();
@@ -143,6 +160,7 @@ describe('HardwareWalletService', () => {
   it.each(['ledger', 'jade', 'trezor'] as const)(
     'rechecks every funds-controlling %s operation for an in-flight connection',
     async (type) => {
+      mockCapabilityRow.mockReturnValue({ enabled: false, reason: 'unverified' });
       const service = new HardwareWalletService();
       const { adapter } = createMockAdapter(type);
       (service as unknown as { activeAdapter: DeviceAdapter }).activeAdapter = adapter;

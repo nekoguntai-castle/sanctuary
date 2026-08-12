@@ -1,4 +1,17 @@
-import { describe,expect,it,vi } from 'vitest';
+import { beforeEach,describe,expect,it,vi } from 'vitest';
+
+const capabilityState = vi.hoisted(() => ({ enabled: false }));
+
+vi.mock('@sanctuary/shared/constants/hardwareWalletCapabilities', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@sanctuary/shared/constants/hardwareWalletCapabilities')>();
+  return {
+    ...actual,
+    getHardwareWalletCapabilityRow: () => ({
+      enabled: capabilityState.enabled,
+      reason: capabilityState.enabled ? 'verified fixture' : 'unverified fixture',
+    }),
+  };
+});
 
 const makeMockAdapterClass = (type: 'ledger' | 'trezor' | 'bitbox' | 'jade') => {
   return class {
@@ -78,7 +91,11 @@ vi.mock('../../src/services/hardwareWallet/adapters/jade', () => ({
 }));
 
 describe('hardwareWallet runtime', () => {
-  it('blocks unverified adapters before lazy loading while preserving approved adapters', async () => {
+  beforeEach(() => {
+    capabilityState.enabled = false;
+  });
+
+  it('blocks every unverified adapter before lazy loading', async () => {
     // Other hardware-wallet tests mock this singleton. Import a fresh runtime
     // here so sharded coverage cannot inherit an adapter registry populated by
     // a previous test file and skip the lazy-loader callbacks.
@@ -89,12 +106,25 @@ describe('hardwareWallet runtime', () => {
 
     await expect(hardwareWalletService.connect('ledger')).rejects.toThrow('temporarily unavailable');
     await expect(hardwareWalletService.connect('trezor')).rejects.toThrow('temporarily unavailable');
-    await expect(hardwareWalletService.connect('bitbox')).resolves.toMatchObject({ type: 'bitbox' });
+    await expect(hardwareWalletService.connect('bitbox')).rejects.toThrow('temporarily unavailable');
     await expect(hardwareWalletService.connect('jade')).rejects.toThrow('temporarily unavailable');
 
     const devices = await getConnectedDevices();
     const deviceTypes = devices.map((device) => device.type).sort();
-    expect(deviceTypes).toEqual(['bitbox']);
+    expect(deviceTypes).toEqual([]);
+    await hardwareWalletService.disconnect();
+  });
+
+  it('lazy-loads an adapter only after its capability is enabled', async () => {
+    capabilityState.enabled = true;
+    vi.resetModules();
+    const { hardwareWalletService } = await import('../../src/services/hardwareWallet/runtime');
+
+    await expect(hardwareWalletService.connect('bitbox')).resolves.toMatchObject({
+      type: 'bitbox',
+      fingerprint: 'f1f1f1f1',
+    });
+
     await hardwareWalletService.disconnect();
   });
 });

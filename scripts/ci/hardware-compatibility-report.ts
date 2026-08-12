@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import {
   HARDWARE_WALLET_CAPABILITY_MANIFEST_ID,
   HARDWARE_WALLET_CAPABILITY_ROWS,
+  HARDWARE_WALLET_VENDORS,
 } from "../../shared/constants/hardwareWalletCapabilities";
 import {
   GENERATED_P2SH_P2WPKH_VECTORS,
@@ -273,7 +274,7 @@ export function renderHardwareCompatibilityMarkdown(
     `Application: ${report.source.applicationVersion}`,
     `Decision: ${report.releaseDecision.status}`,
     "",
-    "All Ledger, Jade Plus, and Trezor funds-controlling capabilities remain disabled unless a separately reviewed capability row says otherwise.",
+    `All inventoried signer families (${HARDWARE_WALLET_VENDORS.join(", ")}) remain disabled unless a separately reviewed capability row says otherwise.`,
     "",
     ...table,
     "",

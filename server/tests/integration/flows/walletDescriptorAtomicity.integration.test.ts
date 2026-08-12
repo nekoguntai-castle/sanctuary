@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 import type { PrismaClient } from '../../../src/generated/prisma/client';
 import {
   addDeviceToWallet,
@@ -13,6 +14,15 @@ import {
   teardownTestDatabase,
 } from '../setup/testDatabase';
 import { createTestUser, getTestUser } from '../setup/helpers';
+
+// These fixtures exercise downstream wallet behavior with a synthetic enabled signer.
+// The real fail-closed capability manifest is covered by its dedicated contract tests.
+vi.mock('../../../src/services/hardwareWalletCapabilities', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../src/services/hardwareWalletCapabilities')>(),
+  assertHardwareWalletCapability: vi.fn(),
+  assertWalletHardwareCapability: vi.fn(),
+  assertWalletHardwareCapabilityById: vi.fn(),
+}));
 
 const XPUB = 'tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M';
 const SECOND_XPUB = 'tpubDC5FSnBiZDMmhiuCmWAYsLwgLYrrT9rAqvTySfuCCrgsWz8wxMXUS9Tb9iVMvcRbvFcAHGkMD5Kx8koh4GquNGNTfohfk7pgjhaPCdXpoba';

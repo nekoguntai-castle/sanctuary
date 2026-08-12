@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  mockAssertWalletHardwareCapabilityById,
   mockBuildDescriptorFromDevices,
   mockHookExecuteAfter,
   mockLogError,
@@ -8,6 +9,7 @@ import {
   mockPrismaClient,
   mockSyncUnsubscribeWalletAddresses,
 } from './walletTestHarness';
+import { ForbiddenError } from '../../../../src/errors';
 import {
   addDeviceToWallet,
   checkWalletAccess,
@@ -278,6 +280,8 @@ export function registerWalletAccessQueryTests(): void {
       expect(wallet).toEqual(expect.objectContaining({
         id: 'wallet-1',
         balance: 4321,
+        descriptor: 'desc',
+        fingerprint: 'abcd',
         userRole: 'signer',
         canEdit: true,
         isShared: true,
@@ -287,6 +291,9 @@ export function registerWalletAccessQueryTests(): void {
     it.each(['ledger', 'jade', 'trezor', 'watch_only'])(
       'redacts descriptor and fingerprint from %s wallet detail',
       async type => {
+        mockAssertWalletHardwareCapabilityById.mockRejectedValueOnce(
+          new ForbiddenError('blocked'),
+        );
         mockPrismaClient.wallet.findFirst.mockResolvedValueOnce({
           id: 'wallet-redacted',
           name: 'Redacted Wallet',
@@ -321,6 +328,9 @@ export function registerWalletAccessQueryTests(): void {
     );
 
     it('propagates unexpected display-provenance lookup failures', async () => {
+      mockAssertWalletHardwareCapabilityById.mockRejectedValueOnce(
+        new Error('database unavailable'),
+      );
       mockPrismaClient.wallet.findFirst.mockResolvedValueOnce({
         id: 'wallet-error',
         name: 'Error Wallet',
@@ -342,7 +352,6 @@ export function registerWalletAccessQueryTests(): void {
         lastSyncError: null,
         syncInProgress: false,
       });
-      mockPrismaClient.wallet.findUnique.mockRejectedValueOnce(new Error('database unavailable'));
       mockPrismaClient.uTXO.aggregate.mockResolvedValueOnce({ _sum: { amount: 0n } });
 
       await expect(getWalletById('wallet-error', 'user-1'))

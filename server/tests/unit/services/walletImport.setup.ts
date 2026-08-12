@@ -35,6 +35,12 @@ export const mockExpandCanonicalMultipathDescriptor = vi.fn();
 export const mockParseJsonImport = vi.fn();
 export const mockValidateDescriptor = vi.fn();
 export const mockValidateJsonImport = vi.fn();
+export const mockAssertHardwareWalletCapability = vi.fn();
+
+vi.mock('../../../src/services/hardwareWalletCapabilities', () => ({
+  assertHardwareWalletCapability: (...args: unknown[]) =>
+    mockAssertHardwareWalletCapability(...args),
+}));
 
 vi.mock('../../../src/services/bitcoin/descriptorParser', () => ({
   parseDescriptorForImport: (...args: any[]) => mockParseDescriptorForImport(...args),
@@ -88,6 +94,7 @@ export const setupDeviceMocks = (devices: any[], existingDevices: any[] = []) =>
 export function setupBeforeEach() {
   vi.clearAllMocks();
   resetPrismaMocks();
+  mockAssertHardwareWalletCapability.mockReturnValue(undefined);
 
   // Default mock implementations
   mockBuildDescriptorFromDevices.mockReturnValue({

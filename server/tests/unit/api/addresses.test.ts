@@ -3,6 +3,11 @@
  */
 
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
+
+vi.mock('../../../src/services/hardwareWalletCapabilities', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../src/services/hardwareWalletCapabilities')>(),
+  assertWalletHardwareCapabilityById: vi.fn(),
+}));
 import express, { Express } from 'express';
 import request from 'supertest';
 import { mockPrismaClient, resetPrismaMocks } from '../../mocks/prisma';

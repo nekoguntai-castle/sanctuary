@@ -16,6 +16,7 @@ const transactionServiceBroadcastMocks = vi.hoisted(() => ({
   mockMarkSigningIntentBroadcastComplete: vi.fn(),
   mockMarkSigningIntentBroadcastUnknown: vi.fn(),
   mockReleaseRejectedSigningIntentBroadcast: vi.fn(),
+  mockAssertWalletHardwareCapabilityById: vi.fn(),
 }));
 
 export const mockParseDescriptor = transactionServiceBroadcastMocks.mockParseDescriptor;
@@ -28,6 +29,13 @@ export const mockClaimSigningIntentBroadcast = transactionServiceBroadcastMocks.
 export const mockMarkSigningIntentBroadcastComplete = transactionServiceBroadcastMocks.mockMarkSigningIntentBroadcastComplete;
 export const mockMarkSigningIntentBroadcastUnknown = transactionServiceBroadcastMocks.mockMarkSigningIntentBroadcastUnknown;
 export const mockReleaseRejectedSigningIntentBroadcast = transactionServiceBroadcastMocks.mockReleaseRejectedSigningIntentBroadcast;
+export const mockAssertWalletHardwareCapabilityById =
+  transactionServiceBroadcastMocks.mockAssertWalletHardwareCapabilityById;
+
+vi.mock('../../../../../src/services/hardwareWalletCapabilities', () => ({
+  assertWalletHardwareCapabilityById:
+    transactionServiceBroadcastMocks.mockAssertWalletHardwareCapabilityById,
+}));
 
 vi.mock('../../../../../src/models/prisma', () => ({
   __esModule: true,
@@ -153,6 +161,9 @@ export const createSignedMultisigPayment = (
 
 export const setupTransactionServiceBroadcastMocks = () => {
   resetPrismaMocks();
+  transactionServiceBroadcastMocks.mockAssertWalletHardwareCapabilityById
+    .mockReset()
+    .mockResolvedValue(undefined);
   mockNotifyNewTransactions.mockReset();
   mockNotifyNewTransactions.mockResolvedValue(undefined);
   mockEmitTransactionSent.mockReset();

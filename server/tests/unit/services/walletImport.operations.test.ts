@@ -8,6 +8,7 @@ import {
   mockDeriveCanonicalAddress,
   setupDeviceMocks,
   setupBeforeEach,
+  mockAssertHardwareWalletCapability,
 } from './walletImport.setup';
 import { mockPrismaClient } from '../../mocks/prisma';
 import * as walletImport from '../../../src/services/walletImport';
@@ -361,6 +362,13 @@ describe('Wallet Import Service - Operations', () => {
     it.each(['ledger', 'jade', 'trezor'])(
       'blocks %s import before opening a transaction or writing wallet state',
       async type => {
+        const { ForbiddenError } = await import('../../../src/errors');
+        mockAssertHardwareWalletCapability.mockImplementationOnce(() => {
+          throw new ForbiddenError('blocked', undefined, {
+            vendor: type,
+            capability: 'import',
+          });
+        });
         await expect(createWalletTransaction(userId, {
           name: 'Blocked hardware import',
           network: 'mainnet',
@@ -394,6 +402,13 @@ describe('Wallet Import Service - Operations', () => {
     it.each(['unknown', 'hardware'])(
       'blocks explicit generic %s hardware provenance before writes',
       async originalType => {
+        const { ForbiddenError } = await import('../../../src/errors');
+        mockAssertHardwareWalletCapability.mockImplementationOnce(() => {
+          throw new ForbiddenError('blocked', undefined, {
+            vendor: null,
+            capability: 'import',
+          });
+        });
         await expect(createWalletTransaction(userId, {
           name: 'Ambiguous hardware import',
           network: 'mainnet',

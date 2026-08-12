@@ -51,6 +51,7 @@ const bitcoinApiMocks = vi.hoisted(() => ({
   mockSigningIntent: {
     createSigningIntent: vi.fn(),
   },
+  mockAssertWalletHardwareCapabilityById: vi.fn(),
 }));
 
 export const mockNodeClient = bitcoinApiMocks.mockNodeClient;
@@ -60,6 +61,8 @@ export const mockUtils = bitcoinApiMocks.mockUtils;
 export const mockAdvancedTx = bitcoinApiMocks.mockAdvancedTx;
 export const mockSilentPayments = bitcoinApiMocks.mockSilentPayments;
 export const mockSigningIntent = bitcoinApiMocks.mockSigningIntent;
+export const mockAssertWalletHardwareCapabilityById =
+  bitcoinApiMocks.mockAssertWalletHardwareCapabilityById;
 export { createMockTransaction, mockElectrumClient, mockElectrumPool, mockPrismaClient };
 
 vi.mock('../../../../src/models/prisma', () => ({
@@ -74,6 +77,10 @@ vi.mock('../../../../src/services/bitcoin/utils', () => bitcoinApiMocks.mockUtil
 vi.mock('../../../../src/services/bitcoin/advancedTx', () => bitcoinApiMocks.mockAdvancedTx);
 vi.mock('../../../../src/services/silentPayments/readiness', () => bitcoinApiMocks.mockSilentPayments);
 vi.mock('../../../../src/services/bitcoin/signingIntent', () => bitcoinApiMocks.mockSigningIntent);
+vi.mock('../../../../src/services/hardwareWalletCapabilities', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../../../src/services/hardwareWalletCapabilities')>(),
+  assertWalletHardwareCapabilityById: bitcoinApiMocks.mockAssertWalletHardwareCapabilityById,
+}));
 vi.mock('../../../../src/services/bitcoin/electrum', () => ({
   getElectrumClient: () => mockElectrumClient,
 }));
@@ -254,6 +261,7 @@ export const setupBitcoinApiMocks = () => {
     intentId: 'intent-bitcoin-api',
     intentDigest: 'digest-bitcoin-api',
   });
+  mockAssertWalletHardwareCapabilityById.mockResolvedValue(undefined);
 
   // Default prisma mocks
   mockPrismaClient.wallet.findUnique.mockResolvedValue({

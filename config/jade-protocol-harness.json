@@ -4,7 +4,7 @@
     "repository": "https://github.com/Blockstream/Jade",
     "release": "1.0.40",
     "sourceCommit": "6f858f39a19f89ff7fd4580c5b2db72cfe1dc0af",
-    "sourceTarball": "https://github.com/Blockstream/Jade/archive/6f858f39a19f89ff7fd4580c5b2db72cfe1dc0af.tar.gz",
+    "sourceTarball": "https://codeload.github.com/Blockstream/Jade/tar.gz/6f858f39a19f89ff7fd4580c5b2db72cfe1dc0af",
     "sourceTarballSha256": "7699ab7f0101ec3d0980b002c65f2517bd6a0235eae34e48ea0b89d18d705481",
     "sourceFiles": {
       "Dockerfile.qemu": "18e22098de4386700fb002bed3c01c2bc57aa9ab375203ee4ebdab0bc82efc02",

@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 import * as bitcoin from 'bitcoinjs-lib';
 import * as ecc from 'tiny-secp256k1';
 import { ECPairFactory } from 'ecpair';
@@ -11,6 +12,15 @@ import {
   setupTestDatabase,
   teardownTestDatabase,
 } from '../setup/testDatabase';
+
+// These fixtures exercise downstream wallet behavior with a synthetic enabled signer.
+// The real fail-closed capability manifest is covered by its dedicated contract tests.
+vi.mock('../../../src/services/hardwareWalletCapabilities', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../src/services/hardwareWalletCapabilities')>(),
+  assertHardwareWalletCapability: vi.fn(),
+  assertWalletHardwareCapability: vi.fn(),
+  assertWalletHardwareCapabilityById: vi.fn(),
+}));
 
 const mocks = vi.hoisted(() => ({
   broadcastTransaction: vi.fn(),

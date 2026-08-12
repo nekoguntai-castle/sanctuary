@@ -6,6 +6,7 @@ import type { SigningDeviceControlProps } from './types';
 
 interface SigningMethodControlsProps extends SigningDeviceControlProps {
   methods: ConnectionMethod[];
+  blockedReason: string;
 }
 
 export function SigningMethodControls({
@@ -14,6 +15,7 @@ export function SigningMethodControls({
   isSigningDevice,
   isUploading,
   methods,
+  blockedReason,
   onDeviceFileUpload,
   onDownloadPsbt,
   onMarkDeviceSigned,
@@ -25,6 +27,11 @@ export function SigningMethodControls({
 }: SigningMethodControlsProps) {
   return (
     <div className="flex gap-2">
+      {methods.length === 0 && (
+        <span className="text-xs text-amber-700 dark:text-amber-300" role="status">
+          Signing unavailable: {blockedReason || 'No reviewed capability evidence is available.'}
+        </span>
+      )}
       {methods.includes('usb') && (
         <UsbSignButton
           device={device}

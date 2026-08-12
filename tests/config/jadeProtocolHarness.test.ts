@@ -86,6 +86,9 @@ describe("Jade Plus authentication decision and vendor harness", () => {
     expect(manifest.vendor.sourceTarball).toContain(
       manifest.vendor.sourceCommit,
     );
+    expect(manifest.vendor.sourceTarball).toMatch(
+      /^https:\/\/codeload\.github\.com\//,
+    );
     expect(manifest.vendor.sourceTarballSha256).toMatch(/^[0-9a-f]{64}$/);
     expect(Object.keys(manifest.vendor.sourceFiles)).toEqual(
       expect.arrayContaining([

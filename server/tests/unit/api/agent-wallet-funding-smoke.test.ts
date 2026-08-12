@@ -1,4 +1,9 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('../../../src/services/hardwareWalletCapabilities', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../src/services/hardwareWalletCapabilities')>(),
+  assertWalletHardwareCapabilityById: vi.fn(),
+}));
 import express, { type Express } from 'express';
 import request from 'supertest';
 

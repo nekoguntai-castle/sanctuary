@@ -5,7 +5,7 @@ Revision: source-state artifact (release revision not supplied)
 Application: 0.8.62
 Decision: safe-fail-closed
 
-All Ledger, Jade Plus, and Trezor funds-controlling capabilities remain disabled unless a separately reviewed capability row says otherwise.
+All inventoried signer families (bitbox, coldcard, generic, jade, keystone, ledger, passport, seedsigner, specter, trezor) remain disabled unless a separately reviewed capability row says otherwise.
 
 | Vendor | Script      | Status                               | Tier 3 freshness | Evidence |
 | ------ | ----------- | ------------------------------------ | ---------------- | -------- |

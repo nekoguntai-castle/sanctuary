@@ -16,6 +16,7 @@ import * as addressDerivation from "../../../../../src/services/bitcoin/addressD
 import * as syncModule from "../../../../../src/services/bitcoin/sync";
 import {
   getBlockchainService,
+  mockAssertWalletHardwareCapabilityById,
   mockLockedCanonicalBranchSummary,
 } from "./blockchainTestHarness";
 import { parseAddressDerivationPath } from "@sanctuary/shared/utils/bitcoin";
@@ -143,6 +144,7 @@ export function registerBlockchainGapLimitTests(): void {
     });
 
     it("propagates non-capability failures while loading signer provenance", async () => {
+      mockAssertWalletHardwareCapabilityById.mockRejectedValueOnce(new TypeError("malformed signer"));
       mockPrismaClient.wallet.findUnique.mockResolvedValue(
         mockWallet({ devices: [{ device: null }] }),
       );

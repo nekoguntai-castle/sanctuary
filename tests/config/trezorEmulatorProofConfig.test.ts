@@ -196,8 +196,16 @@ describe("Trezor emulator proof test configuration", () => {
     );
     expect(runner).toContain("trezor_image_is_attested");
     expect(runner).toContain("Using preloaded Trezor User Env image");
+    expect(runner).toContain('.venv/bin/python');
+    expect(runner).toContain('src/main.py');
+    expect(runner).not.toContain('trezor_run_args+=(--name "$container_name" "$TREZOR_IMAGE")');
     expect(runner).toContain("run_bounded_docker");
     expect(runner).toContain("start Trezor User Env container");
+    expect(runner).not.toContain("run --rm -d");
+    expect(runner).toContain("Trezor User Env exited before readiness");
+    expect(runner).toContain("Unable to inspect Trezor User Env readiness state");
+    expect(runner).toContain("container-terminal-inspect.json");
+    expect(runner).toContain('docker rm -f "$container_name"');
     expect(runner).toContain("docker_start_timeout_seconds=180");
     expect(runner).toContain("TREZOR_IMAGE_CONFIG_DIGEST");
     expect(runner).toContain("TREZOR_CONNECT_INTEGRITY");

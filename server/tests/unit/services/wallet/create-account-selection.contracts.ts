@@ -8,9 +8,11 @@ import {
   type WalletSignerResolutionInput,
 } from "../../../../src/services/wallet/walletAccountSelection";
 import {
+  mockAssertHardwareWalletCapability,
   mockBuildDescriptorFromDevices,
   mockPrismaClient,
 } from "./walletTestHarness";
+import { ForbiddenError } from "../../../../src/errors";
 import { createWallet } from "../../../../src/services/wallet";
 import { registerWalletCreateAccountSelectionValidationTests } from "./create-account-selection.validation.contracts";
 
@@ -330,6 +332,12 @@ export function registerWalletCreateAccountSelectionTests(): void {
       it.each(["ledger", "jade", "trezor"])(
         "blocks %s before account resolution or persistence",
         async (type) => {
+          mockAssertHardwareWalletCapability.mockImplementationOnce(() => {
+            throw new ForbiddenError("blocked", undefined, {
+              vendor: type,
+              capability: "import",
+            });
+          });
           mockPrismaClient.device.findMany.mockResolvedValue([{
             ...createMockDevice("device-1", "abc12345", [{
               purpose: "single_sig",

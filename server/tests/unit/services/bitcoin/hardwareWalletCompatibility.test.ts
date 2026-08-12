@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   HARDWARE_WALLET_CAPABILITY_ROWS,
+  HARDWARE_WALLET_CAPABILITIES,
   HARDWARE_WALLET_VENDORS,
 } from '@sanctuary/shared/constants/hardwareWalletCapabilities';
 import {
@@ -60,7 +61,7 @@ describe('Hardware Wallet Compatibility Evidence', () => {
   it('has one unique row for every vendor and capability pair', () => {
     const ids = HARDWARE_WALLET_CAPABILITY_ROWS.map((row) => row.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ids).toHaveLength(18);
+    expect(ids).toHaveLength(HARDWARE_WALLET_VENDORS.length * HARDWARE_WALLET_CAPABILITIES.length);
     expect(Object.isFrozen(HARDWARE_WALLET_CAPABILITY_ROWS)).toBe(true);
     expect(HARDWARE_WALLET_CAPABILITY_ROWS.every((row) => Object.isFrozen(row))).toBe(true);
     expect(HARDWARE_WALLET_CAPABILITY_ROWS.every((row) => Object.isFrozen(row.freshness))).toBe(

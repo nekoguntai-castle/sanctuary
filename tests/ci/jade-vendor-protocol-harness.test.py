@@ -6,11 +6,13 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import io
+import http.client
 import json
 import pathlib
 import tarfile
 import tempfile
 import unittest
+import urllib.error
 from unittest import mock
 
 
@@ -45,6 +47,11 @@ class Response:
 
     def read(self, limit: int) -> bytes:
         return self.payload[:limit]
+
+
+class InterruptedResponse(Response):
+    def read(self, limit: int) -> bytes:
+        raise http.client.IncompleteRead(b"partial")
 
 
 class JadeVendorProtocolHarnessTest(unittest.TestCase):
@@ -82,6 +89,55 @@ class JadeVendorProtocolHarnessTest(unittest.TestCase):
         with mock.patch.object(HARNESS.urllib.request, "urlopen", return_value=Response(payload)):
             with self.assertRaisesRegex(RuntimeError, "tarball hash drift"):
                 HARNESS.download_source(vendor)
+
+    def test_download_retries_transient_http_errors_only(self) -> None:
+        payload = b"pinned source"
+        vendor = {
+            "sourceTarball": "https://example.invalid/source",
+            "sourceTarballSha256": hashlib.sha256(payload).hexdigest(),
+        }
+        transient = urllib.error.HTTPError(
+            vendor["sourceTarball"], 503, "unavailable", {}, None
+        )
+        with (
+            mock.patch.object(
+                HARNESS.urllib.request,
+                "urlopen",
+                side_effect=[transient, Response(payload)],
+            ) as urlopen,
+            mock.patch.object(HARNESS.time, "sleep") as sleep,
+        ):
+            self.assertEqual(HARNESS.download_source(vendor), payload)
+            self.assertEqual(urlopen.call_count, 2)
+            sleep.assert_called_once()
+
+        permanent = urllib.error.HTTPError(
+            vendor["sourceTarball"], 404, "missing", {}, None
+        )
+        with mock.patch.object(
+            HARNESS.urllib.request, "urlopen", side_effect=permanent
+        ) as urlopen:
+            with self.assertRaises(urllib.error.HTTPError):
+                HARNESS.download_source(vendor)
+            self.assertEqual(urlopen.call_count, 1)
+
+    def test_download_retries_interrupted_body_reads(self) -> None:
+        payload = b"pinned source"
+        vendor = {
+            "sourceTarball": "https://example.invalid/source",
+            "sourceTarballSha256": hashlib.sha256(payload).hexdigest(),
+        }
+        with (
+            mock.patch.object(
+                HARNESS.urllib.request,
+                "urlopen",
+                side_effect=[InterruptedResponse(b"partial"), Response(payload)],
+            ) as urlopen,
+            mock.patch.object(HARNESS.time, "sleep") as sleep,
+        ):
+            self.assertEqual(HARNESS.download_source(vendor), payload)
+            self.assertEqual(urlopen.call_count, 2)
+            sleep.assert_called_once()
 
     def test_materialization_accepts_exact_hash_and_rejects_drift(self) -> None:
         commit = "a" * 40

@@ -2,6 +2,17 @@ import { beforeAll, beforeEach, vi } from 'vitest';
 
 import { mockPrismaClient, resetPrismaMocks } from '../../../mocks/prisma';
 
+const capabilityMocks = vi.hoisted(() => ({
+  assertHardwareWalletCapability: vi.fn(),
+}));
+export const mockAssertHardwareWalletCapability =
+  capabilityMocks.assertHardwareWalletCapability;
+
+vi.mock('../../../../src/services/hardwareWalletCapabilities', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../../../src/services/hardwareWalletCapabilities')>(),
+  assertHardwareWalletCapability: capabilityMocks.assertHardwareWalletCapability,
+}));
+
 // Mock Prisma BEFORE other imports
 vi.mock('../../../../src/models/prisma', async () => {
   const { mockPrismaClient: prisma } = await import('../../../mocks/prisma');
@@ -90,6 +101,7 @@ export function setupDevicesApiTestHooks(): void {
   beforeEach(() => {
     resetPrismaMocks();
     vi.clearAllMocks();
+    mockAssertHardwareWalletCapability.mockReturnValue(undefined);
     mockPrismaClient.device.findUnique.mockResolvedValue({
       id: 'device-1',
       type: 'coldcard',

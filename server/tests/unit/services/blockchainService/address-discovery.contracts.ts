@@ -1,6 +1,11 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
-import { mockDeriveAddress, mockPrisma } from "./blockchainServiceTestHarness";
+import {
+  mockAssertWalletHardwareCapabilityById,
+  mockDeriveAddress,
+  mockPrisma,
+} from "./blockchainServiceTestHarness";
 import { parseAddressDerivationPath } from "@sanctuary/shared/utils/bitcoin";
+import { ForbiddenError } from "../../../../src/errors";
 
 const RECEIVE_DESCRIPTOR = "wpkh([abc12345/84'/0'/0']xpub.../0/*)";
 const CHANGE_DESCRIPTOR = "wpkh([abc12345/84'/0'/0']xpub.../1/*)";
@@ -80,6 +85,9 @@ export function registerBlockchainAddressDiscoveryContracts(): void {
       it.each(["ledger", "jade", "trezor"])(
         "skips %s gap expansion without failing wallet sync",
         async (type) => {
+          mockAssertWalletHardwareCapabilityById.mockRejectedValueOnce(
+            new ForbiddenError("blocked"),
+          );
           const { ensureGapLimit } =
             await import("../../../../src/services/bitcoin/sync/addressDiscovery");
           mockPrisma.wallet.findUnique.mockResolvedValue(
@@ -93,12 +101,24 @@ export function registerBlockchainAddressDiscoveryContracts(): void {
         },
       );
 
-      it("propagates unexpected signer-provenance lookup failures", async () => {
+      it("propagates unexpected capability lookup failures", async () => {
+        mockAssertWalletHardwareCapabilityById.mockRejectedValueOnce(
+          new Error("database unavailable"),
+        );
         const { ensureGapLimit } =
           await import("../../../../src/services/bitcoin/sync/addressDiscovery");
-        mockPrisma.wallet.findUnique
-          .mockResolvedValueOnce(canonicalWallet())
-          .mockRejectedValueOnce(new Error("database unavailable"));
+        mockPrisma.wallet.findUnique.mockResolvedValueOnce(canonicalWallet());
+
+        await expect(ensureGapLimit("wallet-1")).rejects.toThrow("database unavailable");
+        expect(mockPrisma.address.findMany).not.toHaveBeenCalled();
+      });
+
+      it("propagates unexpected wallet lookup failures", async () => {
+        const { ensureGapLimit } =
+          await import("../../../../src/services/bitcoin/sync/addressDiscovery");
+        mockPrisma.wallet.findUnique.mockRejectedValueOnce(
+          new Error("database unavailable"),
+        );
 
         await expect(ensureGapLimit("wallet-1")).rejects.toThrow("database unavailable");
         expect(mockPrisma.address.findMany).not.toHaveBeenCalled();

@@ -709,6 +709,7 @@ jobs:
           bash -n scripts/ci/report-workflow-trends.sh
           bash -n scripts/ci/report-timing-notices.sh
           bash -n scripts/ci/retry-command.sh
+          bash -n scripts/ci/download-verified-source.sh
           bash -n scripts/ci/related-test-args.sh
           bash -n scripts/ci/resolve-postgres-service.sh
           bash -n scripts/ci/run-quality-lint.sh
@@ -764,6 +765,7 @@ jobs:
           bash -n tests/ci/report-timing-notices.test.sh
           bash -n tests/ci/time-command.test.sh
           bash -n tests/ci/retry-command.test.sh
+          bash -n tests/ci/download-verified-source.test.sh
           bash -n tests/ci/related-test-args.test.sh
           bash -n tests/ci/resolve-postgres-service.test.sh
           bash -n tests/ci/pre-commit-agent-gate.test.sh
@@ -850,6 +852,7 @@ jobs:
           bash tests/ci/report-timing-notices.test.sh
           bash tests/ci/time-command.test.sh
           bash tests/ci/retry-command.test.sh
+          bash tests/ci/download-verified-source.test.sh
           bash tests/ci/related-test-args.test.sh
           bash tests/ci/resolve-postgres-service.test.sh
           bash tests/ci/pre-commit-agent-gate.test.sh

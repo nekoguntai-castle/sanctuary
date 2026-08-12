@@ -4,6 +4,7 @@ import * as bitcoin from 'bitcoinjs-lib';
 import { mockPrismaClient } from '../../../mocks/prisma';
 
 import {
+  mockAssertWalletHardwareCapabilityById,
   calculateFeeRate,
   getNetwork,
   getPsbtOutputs,
@@ -13,6 +14,7 @@ import {
   TEST_ADDRESS_TESTNET,
   validatePsbtStructure,
 } from './payjoinServiceTestHarness';
+import { ForbiddenError } from '../../../../src/errors';
 
 export const registerPayjoinProcessContracts = () => {
   describe('processPayjoinRequest', () => {
@@ -102,6 +104,9 @@ export const registerPayjoinProcessContracts = () => {
     it.each(['ledger', 'jade', 'trezor', 'watch_only'])(
       'blocks %s receiver proposal construction before UTXO selection',
       async type => {
+        mockAssertWalletHardwareCapabilityById.mockRejectedValueOnce(
+          new ForbiddenError('blocked'),
+        );
         mockPrismaClient.address.findUnique.mockResolvedValue(mockAddress);
         mockPrismaClient.wallet.findUnique.mockResolvedValue({
           id: walletId,

@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
 import request from 'supertest';
+import { ForbiddenError } from '../../../../src/errors';
 
 import { mockPrismaClient } from '../../../mocks/prisma';
 import {
@@ -20,11 +21,15 @@ import {
   mockWalletCacheSet,
   mockWalletFindById,
   mockWalletFindByIdWithDevices,
+  mockAssertWalletHardwareCapabilityById,
   walletId,
 } from './transactionsHttpRoutesTestHarness';
 
 export function registerTransactionHttpCreationTests(): void {
   it.each(['ledger', 'jade', 'trezor'])('blocks %s at every PSBT drafting boundary', async type => {
+    mockAssertWalletHardwareCapabilityById.mockRejectedValue(
+      new ForbiddenError('blocked', undefined, { vendor: type, capability: 'sign' }),
+    );
     mockWalletFindById.mockResolvedValue({ id: walletId, network: 'testnet' });
     mockWalletFindByIdWithDevices.mockResolvedValue({
       id: walletId,
