@@ -6,7 +6,7 @@
  */
 
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { json, unmocked, registerApiRoutes } from './helpers';
+import { getFailClosedWalletRemediationResponse, json, unmocked, registerApiRoutes } from './helpers';
 
 const ADMIN_USER = {
   id: 'user-settings-admin',
@@ -140,7 +140,8 @@ function getSettingsApiResponse(
   parsedRoute: ParsedApiRoute,
   state: SettingsApiState
 ): MockApiResponse | null {
-  return getPreferenceResponse(route, parsedRoute, state)
+  return getFailClosedWalletRemediationResponse(parsedRoute.method, parsedRoute.path)
+    ?? getPreferenceResponse(route, parsedRoute, state)
     ?? STATIC_SETTINGS_API_RESPONSES[parsedRoute.requestKey]
     ?? null;
 }

@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
-import { json, registerApiRoutes, unmocked } from "./helpers";
+import { getFailClosedWalletRemediationResponse, json, registerApiRoutes, unmocked } from "./helpers";
 
 const USER = {
   id: "user-console-smoke",
@@ -208,6 +208,15 @@ async function mockConsoleApi(
     if (parsedRoute.requestKey === "DELETE /console/prompts") {
       clearHistoryCount.value += 1;
       await json(route, { success: true, deleted: 2 });
+      return;
+    }
+
+    const remediationResponse = getFailClosedWalletRemediationResponse(
+      parsedRoute.method,
+      parsedRoute.path,
+    );
+    if (remediationResponse) {
+      await json(route, remediationResponse.body, remediationResponse.status);
       return;
     }
 

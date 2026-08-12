@@ -340,46 +340,21 @@ describeWithDatabase('wallet descriptor persistence atomicity', () => {
     await expectDescriptorPolicyUnassigned(prisma, wallet.id);
   });
 
-  it('rolls back descriptor repair when address insertion fails', async () => {
+  it('retires descriptor repair without writing wallet policy state', async () => {
     const user = await createTestUser(prisma, getTestUser());
     const wallet = await prisma.wallet.create({
       data: {
-        name: `${TEST_WALLET_PREFIX}repair`,
+        name: `${TEST_WALLET_PREFIX}repair-retired`,
         type: 'single_sig',
         scriptType: 'native_segwit',
         network: 'testnet3',
         users: { create: { userId: user.id, role: 'owner' } },
       },
     });
-    const derivationPath = "m/84'/1'/0'";
-    const signer = await createSignerFixture(prisma, user.id, {
-      fingerprint: '33333333',
-      xpub: XPUB,
-      purpose: 'single_sig',
-      derivationPath,
-    });
-    await prisma.walletDevice.create({
-      data: {
-        walletId: wallet.id,
-        deviceId: signer.device.id,
-        deviceAccountId: signer.account.id,
-        signerIndex: 0,
-        signerBindingVersion: 1,
-        signerFingerprint: signer.device.fingerprint,
-        signerXpub: signer.account.xpub,
-        signerDerivationPath: derivationPath,
-        signerPurpose: 'single_sig',
-        signerScriptType: 'native_segwit',
-      },
-    });
 
     await expect(repairWalletDescriptor(wallet.id, user.id)).rejects.toThrow(
-      'forced wallet address insert failure',
+      'Direct wallet repair is retired',
     );
-
-    await expect(prisma.walletDevice.count({
-      where: { walletId: wallet.id, deviceId: signer.device.id },
-    })).resolves.toBe(1);
     await expectDescriptorPolicyUnassigned(prisma, wallet.id);
   });
 

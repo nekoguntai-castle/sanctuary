@@ -40,6 +40,8 @@ export const RESTORE_DATE_FIELDS: Record<string, readonly string[]> = {
   transactionLabel: ['createdAt'],
   addressLabel: ['createdAt'],
   auditLog: ['createdAt'],
+  walletRemediationProposal: ['createdAt'],
+  walletRemediationEvent: ['createdAt'],
   webhookEndpoint: ['lastDeliveredAt', 'createdAt', 'updatedAt'],
   webhookDelivery: [
     'nextAttemptAt',

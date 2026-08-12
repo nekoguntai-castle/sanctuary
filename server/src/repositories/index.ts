@@ -134,6 +134,11 @@ export type {
 export { SystemSettingKeys } from './systemSettingRepository';
 export type { SystemSettingKey } from './systemSettingRepository';
 
+export {
+  walletRemediationRepository,
+  default as walletRemediationRepo,
+} from './walletRemediationRepository';
+
 export type {
   InsightType,
   InsightSeverity,

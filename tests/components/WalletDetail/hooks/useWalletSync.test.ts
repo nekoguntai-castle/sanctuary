@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useWalletSync } from "../../../../src/components/WalletDetail/hooks/useWalletSync";
 import { useErrorHandler } from "../../../../src/hooks/useErrorHandler";
 import * as syncApi from "../../../../src/api/sync";
-import * as walletsApi from "../../../../src/api/wallets";
 
 vi.mock("../../../../src/utils/logger", () => ({
   createLogger: () => ({
@@ -18,14 +17,6 @@ vi.mock("../../../../src/api/sync", () => ({
   syncWallet: vi.fn(),
   resyncWallet: vi.fn(),
 }));
-
-vi.mock("../../../../src/api/wallets", async (importOriginal) => {
-  const actual = (await importOriginal()) as Record<string, unknown>;
-  return {
-    ...actual,
-    repairWallet: vi.fn(),
-  };
-});
 
 vi.mock("../../../../src/hooks/useErrorHandler", () => ({
   useErrorHandler: vi.fn(),
@@ -52,10 +43,6 @@ describe("useWalletSync", () => {
     });
     vi.mocked(syncApi.resyncWallet).mockResolvedValue({
       message: "queued",
-    } as never);
-    vi.mocked(walletsApi.repairWallet).mockResolvedValue({
-      success: true,
-      message: "repaired",
     } as never);
     (
       globalThis as typeof globalThis & { confirm: (msg?: string) => boolean }
@@ -232,71 +219,6 @@ describe("useWalletSync", () => {
     expect(result.current.syncing).toBe(false);
   });
 
-  it("repairs wallet and reports success", async () => {
-    const { result } = renderHook(() =>
-      useWalletSync({
-        walletId: "wallet-1",
-        onDataRefresh,
-      }),
-    );
-
-    await act(async () => {
-      await result.current.handleRepairWallet();
-    });
-
-    expect(walletsApi.repairWallet).toHaveBeenCalledWith("wallet-1");
-    expect(showSuccess).toHaveBeenCalledWith("repaired", "Repair Complete");
-    expect(onDataRefresh).toHaveBeenCalled();
-    expect(result.current.repairing).toBe(false);
-  });
-
-  it("reports non-successful repair result as error", async () => {
-    vi.mocked(walletsApi.repairWallet).mockResolvedValue({
-      success: false,
-      message: "bad descriptor",
-    } as never);
-
-    const { result } = renderHook(() =>
-      useWalletSync({
-        walletId: "wallet-1",
-        onDataRefresh,
-      }),
-    );
-
-    await act(async () => {
-      await result.current.handleRepairWallet();
-    });
-
-    expect(handleError).toHaveBeenCalledWith(
-      expect.any(Error),
-      "Repair Failed",
-    );
-    expect(result.current.repairing).toBe(false);
-  });
-
-  it("handles thrown repair failures through error handler", async () => {
-    vi.mocked(walletsApi.repairWallet).mockRejectedValue(
-      new Error("repair exploded"),
-    );
-
-    const { result } = renderHook(() =>
-      useWalletSync({
-        walletId: "wallet-1",
-        onDataRefresh,
-      }),
-    );
-
-    await act(async () => {
-      await result.current.handleRepairWallet();
-    });
-
-    expect(handleError).toHaveBeenCalledWith(
-      expect.any(Error),
-      "Repair Failed",
-    );
-    expect(result.current.repairing).toBe(false);
-  });
-
   it("returns early from sync actions when walletId is missing", async () => {
     const { result } = renderHook(() =>
       useWalletSync({
@@ -308,12 +230,10 @@ describe("useWalletSync", () => {
     await act(async () => {
       await result.current.handleSync();
       await result.current.handleFullResync();
-      await result.current.handleRepairWallet();
     });
 
     expect(syncApi.syncWallet).not.toHaveBeenCalled();
     expect(syncApi.resyncWallet).not.toHaveBeenCalled();
-    expect(walletsApi.repairWallet).not.toHaveBeenCalled();
     expect(onDataRefresh).not.toHaveBeenCalled();
   });
 

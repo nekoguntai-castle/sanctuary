@@ -127,12 +127,10 @@ vi.mock('../../../src/components/WalletDetail/hooks/useWalletSync', () => ({
   useWalletSync: () => ({
     syncing: false,
     setSyncing: vi.fn(),
-    repairing: false,
     syncRetryInfo: null,
     setSyncRetryInfo: vi.fn(),
     handleSync: vi.fn(),
     handleFullResync: vi.fn(),
-    handleRepairWallet: vi.fn(),
   }),
 }));
 

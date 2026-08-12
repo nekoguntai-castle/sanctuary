@@ -12,6 +12,30 @@ type CommonApiResponse = {
   body: unknown;
 };
 
+/**
+ * Explicit fail-closed defaults for wallet-remediation routes in broad E2E
+ * harnesses. A workflow test that exercises remediation must intercept these
+ * routes before this fallback and supply an exact immutable proposal fixture.
+ */
+export function getFailClosedWalletRemediationResponse(
+  method: string,
+  path: string,
+): CommonApiResponse | null {
+  if (method === "POST" && /^\/wallets\/[^/]+\/remediation\/proposals$/.test(path)) {
+    return { status: 409, body: { message: "No wallet remediation preview fixture is configured" } };
+  }
+  if (method === "POST" && /^\/wallets\/[^/]+\/remediation\/proposals\/[^/]+\/approve$/.test(path)) {
+    return { status: 409, body: { message: "Wallet remediation approval is not configured" } };
+  }
+  if (method === "POST" && /^\/wallets\/[^/]+\/remediation\/proposals\/[^/]+\/cancel$/.test(path)) {
+    return { status: 409, body: { message: "Wallet remediation cancellation is not configured" } };
+  }
+  if (method === "GET" && /^\/wallets\/[^/]+\/remediation\/proposals\/[^/]+\/export$/.test(path)) {
+    return { status: 404, body: { message: "Wallet remediation evidence is not configured" } };
+  }
+  return null;
+}
+
 /** Parsed origin of VITE_API_URL, or null when unavailable. */
 const API_ORIGIN = (() => {
   const apiUrl = process.env.VITE_API_URL;

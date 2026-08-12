@@ -27,7 +27,8 @@ list_group_specs() {
     "$GROUP_WALLET_LIFECYCLE")
       printf '%s\n' \
         tests/e2e/create-wallet-flow.spec.ts \
-        tests/e2e/import-wallet-flow.spec.ts
+        tests/e2e/import-wallet-flow.spec.ts \
+        tests/e2e/wallet-remediation.spec.ts
       ;;
     "$GROUP_WALLET_TRANSACTIONS")
       printf '%s\n' \

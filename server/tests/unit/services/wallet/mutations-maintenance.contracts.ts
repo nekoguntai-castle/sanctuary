@@ -21,7 +21,6 @@ import {
   getUserWallets,
   getWalletById,
   getWalletStats,
-  repairWalletDescriptor,
   updateWallet,
 } from '../../../../src/services/wallet';
 import {
@@ -439,7 +438,7 @@ export function registerWalletMutationMaintenanceTests(): void {
         quorum: 2,
         totalSigners: 3,
         descriptor: null,
-        devices: [storedLink(0, 'device-existing')],
+        devices: [{ ...storedLink(0, 'device-existing'), deviceAccountId: null }],
       });
       mockPrismaClient.device.findMany.mockResolvedValueOnce([
         device('device-new', 'account-new', "m/48'/0'/0'/2'"),

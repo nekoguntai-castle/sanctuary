@@ -21,7 +21,6 @@ vi.mock('../../../../src/api/wallets', () => ({
   getWallet: vi.fn(),
   getWalletShareInfo: vi.fn(),
   removeUserFromWallet: vi.fn(),
-  repairWallet: vi.fn(),
   shareWalletWithGroup: vi.fn(),
   shareWalletWithUser: vi.fn(),
   updateWallet: vi.fn(),
@@ -506,13 +505,11 @@ describe('Wallet Detail route ownership', () => {
     expect(handleError).not.toHaveBeenCalled();
   });
 
-  it('does not let deferred A sync and repair completions affect wallet B state', async () => {
+  it('does not let deferred A sync completions affect wallet B state', async () => {
     const sync = deferred<{ success: boolean }>();
     const resync = deferred<{ message: string }>();
-    const repair = deferred<{ success: boolean; message: string }>();
     vi.mocked(syncApi.syncWallet).mockReturnValue(sync.promise as never);
     vi.mocked(syncApi.resyncWallet).mockReturnValue(resync.promise as never);
-    vi.mocked(walletsApi.repairWallet).mockReturnValue(repair.promise as never);
     const originalConfirm = globalThis.confirm;
     globalThis.confirm = vi.fn(() => true);
     const onDataRefresh = vi.fn();
@@ -523,22 +520,18 @@ describe('Wallet Detail route ownership', () => {
 
     let syncPending!: Promise<void>;
     let resyncPending!: Promise<void>;
-    let repairPending!: Promise<void>;
     act(() => {
       syncPending = view.result.current.handleSync();
       resyncPending = view.result.current.handleFullResync();
-      repairPending = view.result.current.handleRepairWallet();
     });
     view.rerender({ walletId: 'B', ownershipKey: 'B:user:mainnet' });
     await act(async () => {
       sync.resolve({ success: true });
       resync.resolve({ message: 'A resync' });
-      repair.resolve({ success: true, message: 'A repaired' });
-      await Promise.all([syncPending, resyncPending, repairPending]);
+      await Promise.all([syncPending, resyncPending]);
     });
 
     expect(view.result.current.syncing).toBe(false);
-    expect(view.result.current.repairing).toBe(false);
     expect(onDataRefresh).not.toHaveBeenCalled();
     expect(showSuccess).not.toHaveBeenCalled();
     globalThis.confirm = originalConfirm;
@@ -549,10 +542,8 @@ describe('Wallet Detail route ownership', () => {
     globalThis.confirm = vi.fn(() => true);
     const syncFailure = deferred<never>();
     const resyncFailure = deferred<never>();
-    const repairFailure = deferred<never>();
     vi.mocked(syncApi.syncWallet).mockReturnValue(syncFailure.promise);
     vi.mocked(syncApi.resyncWallet).mockReturnValue(resyncFailure.promise);
-    vi.mocked(walletsApi.repairWallet).mockReturnValue(repairFailure.promise);
     const onDataRefresh = vi.fn();
     const view = renderHook(
       ({ walletId, ownershipKey }) => useWalletSync({ walletId, ownershipKey, onDataRefresh }),
@@ -561,36 +552,29 @@ describe('Wallet Detail route ownership', () => {
     const stale = {
       sync: view.result.current.handleSync,
       resync: view.result.current.handleFullResync,
-      repair: view.result.current.handleRepairWallet,
     };
     let pending!: Promise<void>[];
     act(() => {
       pending = [
         view.result.current.handleSync(),
         view.result.current.handleFullResync(),
-        view.result.current.handleRepairWallet(),
       ];
     });
     view.rerender({ walletId: 'B', ownershipKey: 'B:user:mainnet' });
     vi.mocked(syncApi.syncWallet).mockClear();
     vi.mocked(syncApi.resyncWallet).mockClear();
-    vi.mocked(walletsApi.repairWallet).mockClear();
     await act(async () => {
       await stale.sync();
       await stale.resync();
-      await stale.repair();
       syncFailure.reject(new Error('stale sync'));
       resyncFailure.reject(new Error('stale resync'));
-      repairFailure.reject(new Error('stale repair'));
       await Promise.all(pending);
     });
 
     expect(syncApi.syncWallet).not.toHaveBeenCalled();
     expect(syncApi.resyncWallet).not.toHaveBeenCalled();
-    expect(walletsApi.repairWallet).not.toHaveBeenCalled();
     expect(handleError).not.toHaveBeenCalled();
     expect(view.result.current.syncing).toBe(false);
-    expect(view.result.current.repairing).toBe(false);
     globalThis.confirm = originalConfirm;
   });
 });

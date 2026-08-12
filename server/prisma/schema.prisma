@@ -919,6 +919,49 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+// Immutable, content-addressed evidence for an explicitly reviewed legacy-wallet
+// metadata remediation. walletId and actor IDs are intentional snapshots rather
+// than foreign keys so recovery evidence survives later wallet/user deletion.
+model WalletRemediationProposal {
+  id                String   @id
+  walletId          String
+  schemaVersion     String
+  proposalDigest    String
+  document          Json
+  createdByUserId   String
+  createdByUsername String
+  createdAt         DateTime @default(now())
+
+  events WalletRemediationEvent[]
+
+  @@unique([walletId, proposalDigest])
+  @@unique([id, proposalDigest])
+  @@index([walletId, createdAt])
+  @@map("wallet_remediation_proposals")
+}
+
+// Proposal state is derived from this append-only, hash-chained event stream;
+// no mutable status column can erase an approval, cancellation, or failure.
+model WalletRemediationEvent {
+  id                  String   @id @default(uuid())
+  proposalId          String
+  sequence            Int
+  proposalDigest      String
+  kind                String
+  actorUserId         String
+  actorUsername       String
+  details             Json?
+  previousEventDigest String?
+  eventDigest         String   @unique
+  createdAt           DateTime @default(now())
+
+  proposal WalletRemediationProposal @relation(fields: [proposalId, proposalDigest], references: [id, proposalDigest], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([proposalId, sequence])
+  @@index([proposalId, createdAt])
+  @@map("wallet_remediation_events")
+}
+
 // ========================================
 // PUSH NOTIFICATIONS
 // ========================================

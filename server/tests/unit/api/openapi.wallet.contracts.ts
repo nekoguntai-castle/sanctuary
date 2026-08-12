@@ -468,10 +468,9 @@ export function registerOpenApiWalletTests() {
       .toEqual({
         $ref: '#/components/schemas/WalletMessageResponse',
       });
-    expect(openApiSpec.paths['/wallets/{walletId}/repair'].post.responses[200].content['application/json'].schema)
-      .toEqual({
-        $ref: '#/components/schemas/WalletRepairResponse',
-      });
+    expect(openApiSpec.paths['/wallets/{walletId}/repair'].post.deprecated).toBe(true);
+    expect(openApiSpec.paths['/wallets/{walletId}/repair'].post.responses[410].content['application/json'].schema)
+      .toEqual({ $ref: '#/components/schemas/ApiError' });
   });
 
   it('documents wallet export routes', () => {

@@ -1,13 +1,12 @@
 /**
  * useWalletSync Hook
  *
- * Manages wallet synchronisation state and actions: sync, full resync, and repair.
+ * Manages wallet synchronisation state and actions.
  * Extracted from WalletDetail.tsx to isolate sync-related concerns.
  */
 
 import { useLayoutEffect, useState } from "react";
 import * as syncApi from "../../../api/sync";
-import * as walletsApi from "../../../api/wallets";
 import { useErrorHandler } from "../../../hooks/useErrorHandler";
 import { createLogger } from "../../../utils/logger";
 import type { SyncRetryInfo } from "../types";
@@ -33,8 +32,6 @@ export interface UseWalletSyncReturn {
   /** Whether a sync or resync is currently in progress */
   syncing: boolean;
   setSyncing: (v: boolean) => void;
-  /** Whether a repair is currently in progress */
-  repairing: boolean;
   /** Retry information shown during sync retries */
   syncRetryInfo: SyncRetryInfo | null;
   setSyncRetryInfo: (info: SyncRetryInfo | null) => void;
@@ -42,8 +39,6 @@ export interface UseWalletSyncReturn {
   handleSync: () => Promise<void>;
   /** Trigger a full resync (clears history and re-syncs) */
   handleFullResync: () => Promise<void>;
-  /** Repair wallet descriptor from linked devices */
-  handleRepairWallet: () => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -59,14 +54,12 @@ export function useWalletSync({
   const ownership = useWalletRouteOwnership(ownershipKey);
 
   const [syncing, setSyncing] = useState(false);
-  const [repairing, setRepairing] = useState(false);
   const [syncRetryInfo, setSyncRetryInfo] = useState<SyncRetryInfo | null>(
     null,
   );
 
   useLayoutEffect(() => {
     setSyncing(false);
-    setRepairing(false);
     setSyncRetryInfo(null);
   }, [ownershipKey]);
 
@@ -131,39 +124,12 @@ export function useWalletSync({
     }
   };
 
-  // Repair wallet descriptor - regenerates from attached devices
-  const handleRepairWallet = async () => {
-    if (!walletId) return;
-    const id = walletId;
-    const token = ownership.captureRoute(ownershipKey);
-    if (!owns(token, id)) return;
-
-    try {
-      setRepairing(true);
-      const result = await walletsApi.repairWallet(id);
-      if (!owns(token, id)) return;
-      if (result.success) {
-        showSuccess(result.message, "Repair Complete");
-        await onDataRefresh();
-      } else {
-        handleError(new Error(result.message), "Repair Failed");
-      }
-    } catch (err) {
-      log.error("Failed to repair wallet", { error: err });
-      if (owns(token, id)) handleError(err, "Repair Failed");
-    } finally {
-      if (owns(token, id)) setRepairing(false);
-    }
-  };
-
   return {
     syncing,
     setSyncing,
-    repairing,
     syncRetryInfo,
     setSyncRetryInfo,
     handleSync,
     handleFullResync,
-    handleRepairWallet,
   };
 }

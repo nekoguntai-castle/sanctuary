@@ -20,8 +20,6 @@ const defaultProps = {
   syncing: false,
   onSync: vi.fn(),
   onFullResync: vi.fn(),
-  repairing: false,
-  onRepairWallet: vi.fn(),
   showDangerZone: false,
   onSetShowDangerZone: vi.fn(),
   onShowDelete: vi.fn(),
@@ -141,38 +139,19 @@ describe('AdvancedSettings', () => {
     expect(onShowDelete).toHaveBeenCalledTimes(1);
   });
 
-  it('shows troubleshooting when wallet has no descriptor and user is owner', () => {
+  it('shows opt-in metadata safety for owners without offering legacy descriptor repair', () => {
     renderComponent({
       wallet: { ...baseWallet, descriptor: undefined },
     });
 
-    expect(screen.getByText('Troubleshooting')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Repair' })).toBeInTheDocument();
+    expect(screen.getByText('Wallet Metadata Safety')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create safety preview' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Repair' })).not.toBeInTheDocument();
   });
 
-  it('hides troubleshooting when wallet has descriptor', () => {
-    renderComponent();
-    expect(screen.queryByText('Troubleshooting')).not.toBeInTheDocument();
-  });
-
-  it('calls onRepairWallet when repair button is clicked', () => {
-    const onRepairWallet = vi.fn();
-    renderComponent({
-      wallet: { ...baseWallet, descriptor: undefined },
-      onRepairWallet,
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Repair' }));
-    expect(onRepairWallet).toHaveBeenCalledTimes(1);
-  });
-
-  it('shows repairing state', () => {
-    renderComponent({
-      wallet: { ...baseWallet, descriptor: undefined },
-      repairing: true,
-    });
-
-    expect(screen.getByRole('button', { name: 'Repairing...' })).toBeDisabled();
+  it('hides metadata remediation controls from non-owners', () => {
+    renderComponent({ wallet: { ...baseWallet, userRole: 'viewer' } });
+    expect(screen.queryByText('Wallet Metadata Safety')).not.toBeInTheDocument();
   });
 
   it('shows quorum info for multisig wallets', () => {

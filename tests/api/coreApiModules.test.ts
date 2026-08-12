@@ -442,7 +442,9 @@ describe('Core API Modules', () => {
   describe('Wallets API', () => {
     it('calls wallet CRUD, sharing, and export endpoints', async () => {
       mockGet.mockResolvedValue({});
-      mockPost.mockResolvedValue({});
+      mockPost.mockImplementation((path: string) => Promise.resolve(
+        path.includes('/remediation/') ? { walletId: 'w1' } : {},
+      ));
       mockPatch.mockResolvedValue({});
       mockDelete.mockResolvedValue({});
 
@@ -456,7 +458,9 @@ describe('Core API Modules', () => {
       });
       await walletsApi.updateWallet('w1', { name: 'W2' });
       await walletsApi.deleteWallet('w1');
-      await walletsApi.repairWallet('w1');
+      await walletsApi.createWalletRemediationProposal('w1');
+      await walletsApi.approveWalletRemediationProposal('w1', 'proposal-1', 'digest-1');
+      await walletsApi.cancelWalletRemediationProposal('w1', 'proposal-1', 'digest-1');
       await walletsApi.getWalletStats('w1');
       await walletsApi.generateAddress('w1');
       await walletsApi.addDeviceToWallet('w1', { deviceId: 'd1' });
@@ -491,7 +495,21 @@ describe('Core API Modules', () => {
       });
       expect(mockPatch).toHaveBeenCalledWith('/wallets/w1', { name: 'W2' });
       expect(mockDelete).toHaveBeenCalledWith('/wallets/w1');
-      expect(mockPost).toHaveBeenCalledWith('/wallets/w1/repair');
+      expect(mockPost).toHaveBeenCalledWith(
+        '/wallets/w1/remediation/proposals',
+        {},
+        expect.objectContaining({ schema: expect.anything() }),
+      );
+      expect(mockPost).toHaveBeenCalledWith(
+        '/wallets/w1/remediation/proposals/proposal-1/approve',
+        { proposalDigest: 'digest-1' },
+        expect.objectContaining({ schema: expect.anything() }),
+      );
+      expect(mockPost).toHaveBeenCalledWith(
+        '/wallets/w1/remediation/proposals/proposal-1/cancel',
+        { proposalDigest: 'digest-1' },
+        expect.objectContaining({ schema: expect.anything() }),
+      );
       expect(mockGet).toHaveBeenCalledWith('/wallets/w1/stats');
       expect(mockPost).toHaveBeenCalledWith('/wallets/w1/addresses');
       expect(mockPost).toHaveBeenCalledWith('/wallets/w1/devices', { deviceId: 'd1' });
@@ -515,6 +533,20 @@ describe('Core API Modules', () => {
       expect(mockGet).toHaveBeenCalledWith('/wallets/w1/share');
       expect(mockGet).toHaveBeenCalledWith('/wallets/w1/export/formats');
       expect(mockGet).toHaveBeenCalledWith('/wallets/w1/export');
+    });
+
+    it('rejects remediation responses for a different wallet', async () => {
+      mockPost.mockResolvedValue({ walletId: 'w2' });
+
+      await expect(walletsApi.createWalletRemediationProposal('w1')).rejects.toThrow(
+        'Remediation response does not belong to the requested wallet',
+      );
+      await expect(walletsApi.approveWalletRemediationProposal('w1', 'proposal-1', 'digest-1')).rejects.toThrow(
+        'Remediation response does not belong to the requested wallet',
+      );
+      await expect(walletsApi.cancelWalletRemediationProposal('w1', 'proposal-1', 'digest-1')).rejects.toThrow(
+        'Remediation response does not belong to the requested wallet',
+      );
     });
 
     it('calls export download helpers with sanitized filenames', async () => {
@@ -651,5 +683,153 @@ describe('Core API Modules', () => {
         .resolves.toEqual(webhook);
       expect(mockPatch).toHaveBeenCalledWith('/wallets/w1/webhooks/webhook-1', input);
     });
+  });
+
+  it('downloads exact wallet remediation evidence', async () => {
+    mockDownload.mockResolvedValue(undefined);
+
+    await walletsApi.exportWalletRemediationProposal('w1', 'proposal-1', 'digest-1', 'My Wallet!');
+
+    expect(mockDownload).toHaveBeenCalledWith(
+      '/wallets/w1/remediation/proposals/proposal-1/export',
+      'My_Wallet__remediation_proposal-1.json',
+      { params: { digest: 'digest-1' } },
+    );
+  });
+
+  it('rejects malformed or incomplete remediation proof responses', () => {
+    const validProposal = {
+      proposalId: `wallet-remediation-v1:${'a'.repeat(64)}`,
+      attemptId: '5cce61d7-0643-4fb3-a70c-312c1d476255',
+      proofDigest: 'd'.repeat(64),
+      walletId: 'w1',
+      schemaVersion: 'sanctuary.wallet-remediation.v1',
+      proposalDigest: 'a'.repeat(64),
+      originalStateDigest: 'c'.repeat(64),
+      originalState: {
+        wallet: {
+          id: 'w1', type: 'single_sig', scriptType: 'native_segwit', network: 'mainnet',
+          quorum: null, totalSigners: null, descriptor: null, changeDescriptor: null,
+          descriptorPolicyVersion: null, descriptorSourceKind: null, sourceDescriptor: null,
+          sourceChangeDescriptor: null, sourceDescriptorChecksum: null, sourceChangeDescriptorChecksum: null,
+          fingerprint: null, canonicalPolicyId: null, canonicalPolicyVersion: null,
+        },
+        signers: [], addresses: [], ownerUserIds: ['user-1'],
+      },
+      createdAt: '2026-08-11T20:00:00.000Z',
+      state: 'pending',
+      eligible: true,
+      changes: [],
+      proof: {
+        preservedPolicyDigest: 'b'.repeat(64),
+        addressCount: 1,
+        unchangedAddressCount: 1,
+        scriptPubKeyCount: 1,
+        unchangedScriptPubKeyCount: 1,
+        recoveryStatus: 'recovery-proven', signingStatus: 'not-tested',
+        recoveryEvidenceDigest: 'e'.repeat(64),
+        evidenceIds: ['evidence-1'],
+      },
+      blockers: [],
+      backout: { state: 'not-applied', message: 'Not applied.' },
+    };
+
+    const result = walletsApi.WalletRemediationProposalSchema.safeParse({
+      ...validProposal,
+      proof: { ...validProposal.proof, unchangedAddressCount: 0 },
+    });
+
+    expect(result.success).toBe(false);
+    expect(walletsApi.WalletRemediationProposalSchema.safeParse({
+      ...validProposal,
+      proof: { ...validProposal.proof, unchangedScriptPubKeyCount: 0 },
+    }).success).toBe(false);
+    expect(walletsApi.WalletRemediationProposalSchema.safeParse({
+      ...validProposal,
+      state: 'blocked',
+    }).success).toBe(false);
+    expect(walletsApi.WalletRemediationProposalSchema.safeParse({
+      ...validProposal,
+      eligible: false,
+      state: 'pending',
+    }).success).toBe(false);
+    expect(walletsApi.WalletRemediationProposalSchema.safeParse({
+      ...validProposal,
+      state: 'applied',
+    }).success).toBe(false);
+    expect(walletsApi.WalletRemediationProposalSchema.safeParse({
+      ...validProposal,
+      appliedAt: '2026-08-11T20:01:00.000Z',
+    }).success).toBe(false);
+    expect(walletsApi.WalletRemediationProposalSchema.safeParse({
+      ...validProposal,
+      changes: [{
+        kind: 'address_coordinate', recordId: 'address-1', proposed: {}, evidenceIds: ['evidence-1'],
+      }],
+    }).success).toBe(false);
+    expect(walletsApi.WalletRemediationProposalSchema.safeParse({
+      ...validProposal,
+      state: 'applied',
+      appliedAt: '2026-08-11T20:01:00.000Z',
+      backout: { state: 'forward-fix-only', message: 'Use a reviewed forward fix.' },
+    }).success).toBe(true);
+    expect(walletsApi.WalletRemediationProposalSchema.safeParse({
+      ...validProposal,
+      proposalId: `wallet-remediation-v1:${'f'.repeat(64)}`,
+    }).success).toBe(false);
+    expect(walletsApi.WalletRemediationProposalSchema.safeParse({
+      ...validProposal,
+      blockers: [{ code: 'unexpected', message: 'Unexpected blocker.' }],
+    }).success).toBe(false);
+    expect(walletsApi.WalletRemediationProposalSchema.safeParse({
+      ...validProposal,
+      proof: { ...validProposal.proof, recoveryStatus: 'blocked' },
+    }).success).toBe(false);
+    expect(walletsApi.WalletRemediationProposalSchema.safeParse({
+      ...validProposal,
+      proof: { ...validProposal.proof, recoveryEvidenceDigest: null },
+    }).success).toBe(false);
+    expect(walletsApi.WalletRemediationProposalSchema.safeParse({
+      ...validProposal,
+      proof: { ...validProposal.proof, evidenceIds: [] },
+    }).success).toBe(false);
+    expect(walletsApi.WalletRemediationProposalSchema.safeParse({
+      ...validProposal,
+      eligible: false,
+      state: 'blocked',
+      blockers: [{ code: 'blocked', message: 'Recovery proof is blocked.' }],
+      proof: { ...validProposal.proof, recoveryStatus: 'blocked' },
+    }).success).toBe(false);
+    expect(walletsApi.WalletRemediationProposalSchema.safeParse({
+      ...validProposal,
+      originalState: {
+        ...validProposal.originalState,
+        wallet: { ...validProposal.originalState.wallet, id: 'w2' },
+      },
+    }).success).toBe(false);
+    expect(walletsApi.WalletRemediationProposalSchema.safeParse({
+      ...validProposal,
+      originalState: {
+        ...validProposal.originalState,
+        signers: [{
+          id: 'link-1', walletId: 'w2', deviceId: 'device-1', deviceAccountId: null,
+          signerIndex: null, signerBindingVersion: null, signerFingerprint: null, signerXpub: null,
+          signerDerivationPath: null, signerPurpose: null, signerScriptType: null,
+          deviceFingerprint: 'aabbccdd', accountId: null, accountPurpose: null,
+          accountScriptType: null, accountDerivationPath: null, accountXpub: null,
+        }],
+      },
+    }).success).toBe(false);
+    expect(walletsApi.WalletRemediationProposalSchema.safeParse({
+      ...validProposal,
+      originalState: {
+        ...validProposal.originalState,
+        addresses: [{
+          id: 'address-1', walletId: 'w2', address: 'bc1qexample', derivationPath: 'm/0/0',
+          index: 0, branch: 0, coordinateVersion: null, canonicalPolicyId: null,
+          canonicalPolicyVersion: null, scriptPubKey: null,
+        }],
+      },
+    }).success).toBe(false);
   });
 });

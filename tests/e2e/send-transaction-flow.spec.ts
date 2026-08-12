@@ -6,7 +6,7 @@
  */
 
 import { expect, test, type Page, type Route } from "@playwright/test";
-import { json, unmocked, registerApiRoutes } from "./helpers";
+import { getFailClosedWalletRemediationResponse, json, unmocked, registerApiRoutes } from "./helpers";
 
 const WALLET_ID = "wallet-send-1";
 const DEVICE_ID = "device-send-1";
@@ -423,7 +423,8 @@ async function mockSendApi(page: Page, options?: SendMockOptions) {
       return;
     }
 
-    const response = getSendApiResponse(parsedRoute, context);
+    const response = getFailClosedWalletRemediationResponse(parsedRoute.method, parsedRoute.path)
+      ?? getSendApiResponse(parsedRoute, context);
     if (response) {
       return json(route, response.body, response.status);
     }

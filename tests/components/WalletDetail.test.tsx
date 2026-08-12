@@ -98,7 +98,6 @@ vi.mock('../../src/api/wallets', async (importOriginal) => {
     getWalletShareInfo: vi.fn(),
     updateWallet: vi.fn(),
     deleteWallet: vi.fn(),
-    repairWallet: vi.fn(),
     shareWalletWithUser: vi.fn(),
     shareWalletWithGroup: vi.fn(),
     removeUserFromWallet: vi.fn(),

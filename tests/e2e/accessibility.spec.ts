@@ -6,7 +6,7 @@
  */
 
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { json, unmocked, registerApiRoutes } from './helpers';
+import { getFailClosedWalletRemediationResponse, json, unmocked, registerApiRoutes } from './helpers';
 
 const WALLET_ID = 'wallet-a11y-1';
 const DEVICE_ID = 'device-a11y-1';
@@ -202,6 +202,8 @@ function getA11yApiResponse(
   if (override) {
     return override;
   }
+  const remediationResponse = getFailClosedWalletRemediationResponse(method, path);
+  if (remediationResponse) return remediationResponse;
   const response = A11Y_API_RESPONSES[`${method} ${path}`];
   if (response) {
     return response;

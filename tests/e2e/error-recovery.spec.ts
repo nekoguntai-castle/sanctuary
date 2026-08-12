@@ -6,7 +6,7 @@
  */
 
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { json, unmocked, registerApiRoutes } from './helpers';
+import { getFailClosedWalletRemediationResponse, json, unmocked, registerApiRoutes } from './helpers';
 
 const WALLET_ID = 'wallet-error-1';
 
@@ -226,6 +226,8 @@ const MOCK_API_RESPONSES: Record<string, MockApiResponse> = {
 };
 
 function getMockApiResponse(method: string, path: string): MockApiResponse | null {
+  const remediationResponse = getFailClosedWalletRemediationResponse(method, path);
+  if (remediationResponse) return remediationResponse;
   const response = MOCK_API_RESPONSES[`${method} ${path}`];
   if (response) {
     return response;

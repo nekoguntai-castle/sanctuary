@@ -90,12 +90,13 @@ export const walletHelperPaths = {
   '/wallets/{walletId}/repair': {
     post: {
       tags: ['Wallets'],
-      summary: 'Repair wallet descriptor',
-      description: 'Regenerate a missing wallet descriptor from attached devices. Owner access is required.',
+      summary: 'Retired direct wallet repair endpoint',
+      deprecated: true,
+      description: 'Returns 410. Direct repair is replaced by immutable remediation preview and exact digest approval.',
       security: bearerAuth,
       parameters: [walletIdParameter],
       responses: {
-        200: jsonResponse('Wallet repair result', '#/components/schemas/WalletRepairResponse'),
+        410: apiErrorResponse,
         401: apiErrorResponse,
         403: apiErrorResponse,
         404: apiErrorResponse,

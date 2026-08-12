@@ -35,6 +35,8 @@ export const COMPLETE_TABLE_POLICY: readonly BackupTablePolicyEntry[] = [
   { model: 'Group', table: 'group', classification: 'durable-restored' },
   { model: 'FeatureFlag', table: 'featureFlag', classification: 'durable-restored' },
   { model: 'AuditLog', table: 'auditLog', classification: 'durable-restored' },
+  { model: 'WalletRemediationProposal', table: 'walletRemediationProposal', classification: 'durable-restored' },
+  { model: 'WalletRemediationEvent', table: 'walletRemediationEvent', classification: 'durable-restored' },
   { model: 'Wallet', table: 'wallet', classification: 'durable-restored' },
   { model: 'Device', table: 'device', classification: 'durable-restored' },
   { model: 'GroupMember', table: 'groupMember', classification: 'durable-restored' },
@@ -102,6 +104,9 @@ export const EPHEMERAL_TABLES = getTablesByClassification('security-ephemeral');
  * contract test recomputes this value so policy edits cannot retain a stale ID.
  */
 export const COMPLETE_TABLE_POLICY_HASH =
+  '266399aca02ff5a79cec4b8c89d7a33fc11d7ade0c1942f682e0098896b4acf0';
+/** Policy hash emitted immediately before immutable remediation evidence. */
+export const PRE_REMEDIATION_COMPLETE_TABLE_POLICY_HASH =
   'b0b58ce73c7b90801f46805b962ce926114d093c098b993b5f50c5809b0372d2';
 /** Policy hash emitted before signing intents were classified as ephemeral. */
 export const PRE_SIGNING_INTENT_COMPLETE_TABLE_POLICY_HASH =
@@ -113,8 +118,38 @@ export const PRE_TOMBSTONE_COMPLETE_TABLE_POLICY_HASH =
 export const PREVIOUS_COMPLETE_TABLE_POLICY_HASH =
   'b68866b707d3835f156c5152686290862f0ccc83e6c165ca5798c8a877ce00aa';
 
-const PREVIOUS_COMPLETE_TABLE_ORDER = TABLE_ORDER.filter(
+export const IMMUTABLE_EVIDENCE_TABLES = [
+  'walletRemediationProposal',
+  'walletRemediationEvent',
+] as const;
+
+const PRE_REMEDIATION_COMPLETE_TABLE_ORDER = TABLE_ORDER.filter(
+  table => !IMMUTABLE_EVIDENCE_TABLES.includes(
+    table as (typeof IMMUTABLE_EVIDENCE_TABLES)[number],
+  )
+);
+
+const PREVIOUS_COMPLETE_TABLE_ORDER = PRE_REMEDIATION_COMPLETE_TABLE_ORDER.filter(
   table => table !== 'transactionOwnershipRepair'
+);
+
+const usesPreRemediationCompletePolicy = (
+  meta: Pick<BackupMeta, 'version' | 'tablePolicy'>
+): boolean => (
+  meta.version === BACKUP_FORMAT_VERSION
+  && meta.tablePolicy?.version === COMPLETE_TABLE_POLICY_VERSION
+  && meta.tablePolicy.hash === PRE_REMEDIATION_COMPLETE_TABLE_POLICY_HASH
+);
+
+const usesOtherPreRemediationCompletePolicy = (
+  meta: Pick<BackupMeta, 'version' | 'tablePolicy'>
+): boolean => (
+  meta.version === BACKUP_FORMAT_VERSION
+  && meta.tablePolicy?.version === COMPLETE_TABLE_POLICY_VERSION
+  && (
+    meta.tablePolicy.hash === PRE_TOMBSTONE_COMPLETE_TABLE_POLICY_HASH
+    || meta.tablePolicy.hash === PRE_SIGNING_INTENT_COMPLETE_TABLE_POLICY_HASH
+  )
 );
 
 const usesPreviousCompletePolicy = (
@@ -216,6 +251,9 @@ export function getRequiredRestoreTables(
     requiredTables = LEGACY_TABLE_ORDER.filter(
       (table) => meta.schemaVersion >= LEGACY_RESTORE_TABLE_MIN_SCHEMA_VERSION[table]
     );
+  } else if (usesPreRemediationCompletePolicy(meta)
+    || usesOtherPreRemediationCompletePolicy(meta)) {
+    requiredTables = PRE_REMEDIATION_COMPLETE_TABLE_ORDER;
   } else if (usesPreviousCompletePolicy(meta)) {
     requiredTables = PREVIOUS_COMPLETE_TABLE_ORDER;
   }
@@ -236,6 +274,9 @@ export function getRestoreTables(
   let durableTables: readonly string[] = TABLE_ORDER;
   if (meta.version === LEGACY_BACKUP_FORMAT_VERSION) {
     durableTables = LEGACY_TABLE_ORDER.filter((table) => !EPHEMERAL_TABLES.includes(table));
+  } else if (usesPreRemediationCompletePolicy(meta)
+    || usesOtherPreRemediationCompletePolicy(meta)) {
+    durableTables = PRE_REMEDIATION_COMPLETE_TABLE_ORDER;
   } else if (usesPreviousCompletePolicy(meta)) {
     durableTables = PREVIOUS_COMPLETE_TABLE_ORDER;
   }

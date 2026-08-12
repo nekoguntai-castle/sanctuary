@@ -13,6 +13,11 @@ const walletsApiMocks = vi.hoisted(() => ({
   mockGenerateAddress: vi.fn(),
   mockAddDeviceToWallet: vi.fn(),
   mockRepairWalletDescriptor: vi.fn(),
+  mockCreateWalletRemediationProposal: vi.fn(),
+  mockApproveWalletRemediationProposal: vi.fn(),
+  mockCancelWalletRemediationProposal: vi.fn(),
+  mockExportWalletRemediationProposal: vi.fn(),
+  mockAuditLogFromRequest: vi.fn().mockResolvedValue(undefined),
   mockValidateImport: vi.fn(),
   mockImportWallet: vi.fn(),
   mockTransactionRepository: {
@@ -101,6 +106,24 @@ vi.mock('../../../../src/services/wallet', () => ({
   generateAddress: walletsApiMocks.mockGenerateAddress,
   addDeviceToWallet: walletsApiMocks.mockAddDeviceToWallet,
   repairWalletDescriptor: walletsApiMocks.mockRepairWalletDescriptor,
+}));
+
+vi.mock('../../../../src/services/walletRemediation', () => ({
+  createWalletRemediationProposal: walletsApiMocks.mockCreateWalletRemediationProposal,
+  approveWalletRemediationProposal: walletsApiMocks.mockApproveWalletRemediationProposal,
+  cancelWalletRemediationProposal: walletsApiMocks.mockCancelWalletRemediationProposal,
+  exportWalletRemediationProposal: walletsApiMocks.mockExportWalletRemediationProposal,
+}));
+
+vi.mock('../../../../src/services/auditService', () => ({
+  auditService: { logFromRequest: walletsApiMocks.mockAuditLogFromRequest },
+  AuditAction: {
+    WALLET_REMEDIATION_PREVIEW: 'wallet.remediation_preview',
+    WALLET_REMEDIATION_APPROVE: 'wallet.remediation_approve',
+    WALLET_REMEDIATION_CANCEL: 'wallet.remediation_cancel',
+    WALLET_REMEDIATION_EXPORT: 'wallet.remediation_export',
+  },
+  AuditCategory: { WALLET: 'wallet' },
 }));
 
 vi.mock('../../../../src/services/walletImport', () => ({
@@ -318,6 +341,11 @@ export const mockGetWalletStats = walletsApiMocks.mockGetWalletStats;
 export const mockGenerateAddress = walletsApiMocks.mockGenerateAddress;
 export const mockAddDeviceToWallet = walletsApiMocks.mockAddDeviceToWallet;
 export const mockRepairWalletDescriptor = walletsApiMocks.mockRepairWalletDescriptor;
+export const mockCreateWalletRemediationProposal = walletsApiMocks.mockCreateWalletRemediationProposal;
+export const mockApproveWalletRemediationProposal = walletsApiMocks.mockApproveWalletRemediationProposal;
+export const mockCancelWalletRemediationProposal = walletsApiMocks.mockCancelWalletRemediationProposal;
+export const mockExportWalletRemediationProposal = walletsApiMocks.mockExportWalletRemediationProposal;
+export const mockAuditLogFromRequest = walletsApiMocks.mockAuditLogFromRequest;
 export const mockValidateImport = walletsApiMocks.mockValidateImport;
 export const mockImportWallet = walletsApiMocks.mockImportWallet;
 export const mockTransactionRepository = walletsApiMocks.mockTransactionRepository;

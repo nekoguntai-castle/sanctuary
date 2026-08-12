@@ -141,9 +141,6 @@ export const registerWalletDetailWrapperInteractionContracts = () => {
         name: 'Renamed Wallet',
       });
 
-      await user.click(screen.getByRole('button', { name: 'settings-repair' }));
-      expect(mocks.repairHandler).toHaveBeenCalled();
-
       await user.click(screen.getByRole('button', { name: 'settings-export' }));
       expect(screen.getByTestId('export-modal')).toBeInTheDocument();
       await user.click(screen.getByRole('button', { name: 'export-close' }));

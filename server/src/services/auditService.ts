@@ -70,6 +70,10 @@ export enum AuditAction {
   WALLET_SHARE = 'wallet.share',
   WALLET_UNSHARE = 'wallet.unshare',
   WALLET_EXPORT = 'wallet.export',
+  WALLET_REMEDIATION_PREVIEW = 'wallet.remediation_preview',
+  WALLET_REMEDIATION_APPROVE = 'wallet.remediation_approve',
+  WALLET_REMEDIATION_CANCEL = 'wallet.remediation_cancel',
+  WALLET_REMEDIATION_EXPORT = 'wallet.remediation_export',
 
   // Device management
   DEVICE_REGISTER = 'device.register',

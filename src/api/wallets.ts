@@ -14,6 +14,14 @@ import type { WalletShareRole } from '@sanctuary/shared/constants/walletRoles';
 import { WEBHOOK_REDACTED_VALUE } from '@sanctuary/shared/constants/webhooks';
 export type { ValidateXpubRequest, ValidateXpubResponse, XpubScriptType, XpubValidationNetwork } from './walletXpub';
 export { validateXpub } from './walletXpub';
+export {
+  approveWalletRemediationProposal,
+  cancelWalletRemediationProposal,
+  createWalletRemediationProposal,
+  exportWalletRemediationProposal,
+  WalletRemediationProposalSchema,
+} from './walletRemediation';
+export type { WalletRemediationProposal } from './walletRemediation';
 
 // Re-export types for backward compatibility
 export type { Wallet, WalletRole } from '../types';
@@ -146,19 +154,6 @@ export async function updateWallet(walletId: string, data: UpdateWalletRequest):
  */
 export async function deleteWallet(walletId: string): Promise<void> {
   return apiClient.delete<void>(`/wallets/${walletId}`);
-}
-
-export interface RepairWalletResult {
-  success: boolean;
-  message: string;
-}
-
-/**
- * Repair wallet descriptor
- * Regenerates descriptor from attached devices for wallets missing a descriptor
- */
-export async function repairWallet(walletId: string): Promise<RepairWalletResult> {
-  return apiClient.post<RepairWalletResult>(`/wallets/${walletId}/repair`);
 }
 
 /**

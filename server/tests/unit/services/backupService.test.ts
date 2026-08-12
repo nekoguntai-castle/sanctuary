@@ -19,6 +19,7 @@ import { registerBackupSerializationTests } from './backupService/serialization.
 import { registerBackupSnapshotTests } from './backupService/snapshot.contracts';
 import { registerBackupUser2faSecretTests } from './backupService/user-2fa-secret.contracts';
 import { registerBackupValidationEdgeCaseTests } from './backupService/validation-edge-cases.contracts';
+import { registerBackupRemediationEvidenceTests } from './backupService/remediation-evidence.contracts';
 
 registerBackupServiceCoreTests();
 registerBackupAgentWalletMetadataTests();
@@ -33,3 +34,4 @@ registerBackupNodeConfigPasswordTests();
 registerBackupUser2faSecretTests();
 registerBackupValidationEdgeCaseTests();
 registerBackupInternalHelperTests();
+registerBackupRemediationEvidenceTests();

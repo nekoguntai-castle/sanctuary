@@ -91,9 +91,8 @@ export const useWalletDetailController = () => {
 
   const {
     syncing, setSyncing,
-    repairing,
     syncRetryInfo, setSyncRetryInfo,
-    handleSync, handleFullResync, handleRepairWallet,
+    handleSync, handleFullResync,
   } = useWalletSync({
     walletId: id,
     ownershipKey,
@@ -327,11 +326,9 @@ export const useWalletDetailController = () => {
     fetchData,
     walletUserRole,
     syncing,
-    repairing,
     syncRetryInfo,
     handleSync,
     handleFullResync,
-    handleRepairWallet,
     txFilters,
     setTypeFilter,
     setConfirmationFilter,

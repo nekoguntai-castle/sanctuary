@@ -5,10 +5,15 @@ import { WalletDetailLoadedView } from '../../../src/components/WalletDetail/Wal
 
 const captured = vi.hoisted(() => ({
   transactionsTabProps: null as null | { ownershipKey: string; walletId: string },
+  settingsTabProps: null as null | { onRemediationApplied: () => void },
+  onSend: null as null | (() => void),
 }));
 
 vi.mock('../../../src/components/WalletDetail/WalletHeader', () => ({
-  WalletHeader: () => null,
+  WalletHeader: (props: { onSend: () => void }) => {
+    captured.onSend = props.onSend;
+    return null;
+  },
 }));
 vi.mock('../../../src/components/WalletDetail/TabBar', () => ({
   TabBar: () => null,
@@ -17,8 +22,12 @@ vi.mock('../../../src/components/WalletDetail/WalletDetailModals', () => ({
   WalletDetailModals: () => null,
 }));
 vi.mock('../../../src/components/WalletDetail/WalletDetailTabContent', () => ({
-  WalletDetailTabContent: (props: { transactionsTabProps: { ownershipKey: string; walletId: string } }) => {
+  WalletDetailTabContent: (props: {
+    transactionsTabProps: { ownershipKey: string; walletId: string };
+    settingsTabProps: { onRemediationApplied: () => void };
+  }) => {
     captured.transactionsTabProps = props.transactionsTabProps;
+    captured.settingsTabProps = props.settingsTabProps;
     return null;
   },
 }));
@@ -66,5 +75,9 @@ describe('WalletDetailLoadedView AI ownership', () => {
       walletId: 'wallet-route',
       ownershipKey: 'wallet-route:user-7:signet',
     });
+    captured.settingsTabProps?.onRemediationApplied();
+    expect(controller.fetchData).toHaveBeenCalledWith(true);
+    captured.onSend?.();
+    expect(controller.navigate).toHaveBeenCalledWith('/wallets/wallet-route/send');
   });
 });

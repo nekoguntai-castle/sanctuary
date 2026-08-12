@@ -10,7 +10,7 @@ import {
   type MockApiFailure,
   type MockApiResponse,
 } from "./adminOperationsApiState";
-import { json, registerApiRoutes, unmocked } from "./helpers";
+import { getFailClosedWalletRemediationResponse, json, registerApiRoutes, unmocked } from "./helpers";
 
 type AgentDashboardRow = (typeof AGENT_WALLET_DASHBOARD_ROWS)[number];
 
@@ -247,6 +247,8 @@ function getAdminApiResponse(
   parsedRoute: ParsedApiRoute,
   state: AdminApiState,
 ): MockApiResponse | null {
+  const remediationResponse = getFailClosedWalletRemediationResponse(parsedRoute.method, parsedRoute.path);
+  if (remediationResponse) return remediationResponse;
   for (const responder of ADMIN_API_RESPONDERS) {
     const response = responder(route, parsedRoute, state);
     if (response) {

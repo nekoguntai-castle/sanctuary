@@ -451,7 +451,7 @@ export function registerWalletAccessStatsImportTests(): void {
   });
 
   describe('Wallet Repair', () => {
-    it('should trigger wallet repair (owner only)', async () => {
+    it('should direct owners to immutable remediation instead of mutating directly', async () => {
       const { userId, token } = await createAndLoginUser(app, prisma);
 
       const wallet = await prisma.wallet.create({
@@ -473,9 +473,9 @@ export function registerWalletAccessStatsImportTests(): void {
       const response = await request(app)
         .post(`/api/v1/wallets/${wallet.id}/repair`)
         .set(authHeader(token))
-        .expect(200);
+        .expect(410);
 
-      expect(response.body.message).toBeDefined();
+      expect(response.body.message).toContain('immutable remediation preview');
     });
 
     it('should deny repair for non-owner', async () => {

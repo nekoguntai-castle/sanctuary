@@ -26,8 +26,7 @@ interface SettingsTabProps {
   syncing: boolean;
   onSync: () => void;
   onFullResync: () => void;
-  repairing: boolean;
-  onRepairWallet: () => void;
+  onRemediationApplied?: () => Promise<void> | void;
   showDangerZone: boolean;
   onSetShowDangerZone: (show: boolean) => void;
   onShowDelete: () => void;
@@ -48,8 +47,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   syncing,
   onSync,
   onFullResync,
-  repairing,
-  onRepairWallet,
+  onRemediationApplied,
   showDangerZone,
   onSetShowDangerZone,
   onShowDelete,
@@ -91,8 +89,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         syncing={syncing}
         onSync={onSync}
         onFullResync={onFullResync}
-        repairing={repairing}
-        onRepairWallet={onRepairWallet}
+        onRemediationApplied={onRemediationApplied}
         showDangerZone={showDangerZone}
         onSetShowDangerZone={onSetShowDangerZone}
         onShowDelete={onShowDelete}

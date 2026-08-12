@@ -5,6 +5,7 @@ import { registerWalletDeviceXpubContracts } from './wallets/wallets.device-xpub
 import { registerWalletExportMappingContracts } from './wallets/wallets.export-mapping.contracts';
 import { registerWalletImportExportContracts } from './wallets/wallets.import-export.contracts';
 import { registerWalletSharingContracts } from './wallets/wallets.sharing.contracts';
+import { registerWalletRemediationContracts } from './wallets/wallets.remediation.contracts';
 import { setupWalletsApiApp, setupWalletsApiMocks } from './wallets/walletsTestHarness';
 
 describe('Wallets API', () => {
@@ -16,5 +17,6 @@ describe('Wallets API', () => {
   registerWalletSharingContracts();
   registerWalletImportExportContracts();
   registerWalletDeviceXpubContracts();
+  registerWalletRemediationContracts();
   registerWalletExportMappingContracts();
 });

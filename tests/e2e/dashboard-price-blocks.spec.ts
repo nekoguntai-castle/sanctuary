@@ -7,7 +7,7 @@
  */
 
 import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
-import { json, unmocked, registerApiRoutes } from './helpers';
+import { getFailClosedWalletRemediationResponse, json, unmocked, registerApiRoutes } from './helpers';
 
 const MAINNET_WALLET_ID = 'wallet-dash-price-1';
 
@@ -232,7 +232,8 @@ function getDashboardApiResponse(
 function createDashboardApiRouteHandler(scenario: DashboardApiScenario) {
   const apiRouteHandler = async (route: Route) => {
     const { method, path, requestKey } = parseApiRoute(route);
-    const response = getDashboardApiResponse(requestKey, scenario);
+    const response = getFailClosedWalletRemediationResponse(method, path)
+      ?? getDashboardApiResponse(requestKey, scenario);
 
     if (response) {
       await json(route, response.body, response.status);

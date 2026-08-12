@@ -17,6 +17,7 @@ import {
   TABLE_ORDER,
   CACHE_TABLES,
   EPHEMERAL_TABLES,
+  IMMUTABLE_EVIDENCE_TABLES,
   getRestoreTables,
 } from './constants';
 import {
@@ -34,6 +35,8 @@ import {
   processWebhookEndpointRecords,
 } from './restoreTransforms';
 import type { SanctuaryBackup, RestoreResult } from './types';
+import type { BackupRecord } from './types';
+import { serializeRecord } from './serialization';
 import { featureFlagRepository } from '../../repositories/featureFlagRepository';
 import { featureFlagService } from '../featureFlagService';
 import type { FeatureRuntimeState } from '../../repositories/featureFlagRepository';
@@ -43,7 +46,8 @@ const RESTORE_ACCESS_CACHE_CLEAR_TIMEOUT_MS = 5_000;
 
 /**
  * Restore database from backup
- * WARNING: This will DELETE ALL existing data
+ * WARNING: This replaces ordinary application data. Immutable remediation
+ * evidence is preserved and merged only after exact-record comparison.
  */
 export async function restoreFromBackup(backup: SanctuaryBackup): Promise<RestoreResult> {
   const warnings: string[] = [];
@@ -108,7 +112,9 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
   // Get list of tables that actually exist in the database
   const existingTables = await getExistingTables();
   const existingTableSet = new Set(existingTables);
-  const tablesToDelete = [...TABLE_ORDER, ...CACHE_TABLES, ...EPHEMERAL_TABLES];
+  const immutableEvidenceTables = new Set<string>(IMMUTABLE_EVIDENCE_TABLES);
+  const tablesToDelete = [...TABLE_ORDER, ...CACHE_TABLES, ...EPHEMERAL_TABLES]
+    .filter(table => !immutableEvidenceTables.has(table));
   const tablesToRestore = getRestoreTables(migratedBackup.meta);
   const missingTables = getMissingLiveTables(
     [...new Set([...tablesToDelete, ...tablesToRestore])],
@@ -196,12 +202,12 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
             processedRecords = processWebhookDeliveryRecords(processedRecords);
           }
 
-          // Use createMany for bulk insert
-          // @ts-expect-error - Dynamic Prisma table access; table name validated against TABLE_ORDER constant
-          await tx[table].createMany({
-            data: processedRecords,
-            skipDuplicates: false,
-          });
+          await persistRestoreRecords(
+            tx,
+            table,
+            processedRecords,
+            immutableEvidenceTables,
+          );
 
           tablesRestored++;
           recordsRestored += processedRecords.length;
@@ -272,6 +278,67 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
     accessCacheReconciled: true,
     featureRuntimeReconciled: true,
   };
+}
+
+type ImmutableEvidenceClient = {
+  findUnique(args: { where: { id: string } }): Promise<BackupRecord | null>;
+  create(args: { data: BackupRecord }): Promise<BackupRecord>;
+};
+
+type BulkRestoreClient = {
+  createMany(args: { data: BackupRecord[]; skipDuplicates: false }): Promise<unknown>;
+};
+
+async function persistRestoreRecords(
+  tx: unknown,
+  table: string,
+  records: BackupRecord[],
+  immutableEvidenceTables: ReadonlySet<string>,
+): Promise<void> {
+  if (immutableEvidenceTables.has(table)) {
+    await mergeImmutableEvidenceRecords(tx, table, records);
+    return;
+  }
+  const client = (tx as Record<string, BulkRestoreClient>)[table];
+  await client.createMany({ data: records, skipDuplicates: false });
+}
+
+function canonicalJson(value: unknown): string {
+  /* v8 ignore next -- serializeRecord removes undefined object properties before this comparator. */
+  if (value === undefined) return '"__undefined__"';
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  const record = value as BackupRecord;
+  return `{${Object.keys(record).sort().map((key) => (
+    `${JSON.stringify(key)}:${canonicalJson(record[key])}`
+  )).join(',')}}`;
+}
+
+function exactEvidenceRecord(record: BackupRecord): string {
+  return canonicalJson(serializeRecord(record));
+}
+
+async function mergeImmutableEvidenceRecords(
+  tx: unknown,
+  table: string,
+  records: BackupRecord[],
+): Promise<void> {
+  const client = (tx as unknown as Record<string, ImmutableEvidenceClient>)[table];
+  for (const record of records) {
+    /* v8 ignore next 2 -- pre-transaction remediation evidence validation rejects absent IDs;
+     * this remains a defense-in-depth guard if another caller is introduced. */
+    if (typeof record.id !== 'string' || record.id.length === 0) {
+      throw new Error(`Immutable evidence record in ${table} has no exact ID`);
+    }
+    const existing = await client.findUnique({ where: { id: record.id } });
+    if (existing) {
+      if (exactEvidenceRecord(existing) !== exactEvidenceRecord(record)) {
+        throw new Error(`Immutable evidence mismatch in ${table} for ID ${record.id}`);
+      }
+      continue;
+    }
+    await client.create({ data: record });
+  }
 }
 
 async function clearAccessCacheAfterCommittedRestore(): Promise<string | null> {

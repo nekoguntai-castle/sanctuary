@@ -21,7 +21,6 @@ import {
   getUserWallets,
   getWalletById,
   getWalletStats,
-  repairWalletDescriptor,
   updateWallet,
 } from '../../../../src/services/wallet';
 

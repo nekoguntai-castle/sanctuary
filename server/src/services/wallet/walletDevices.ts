@@ -1,7 +1,7 @@
 /**
  * Wallet Device Operations
  *
- * Device-to-wallet linking and descriptor generation/repair.
+ * Device-to-wallet linking and descriptor generation.
  */
 
 import {
@@ -18,7 +18,6 @@ import {
   WalletNotFoundError,
   DeviceNotFoundError,
 } from '../../errors';
-import { getErrorMessage } from '../../utils/errors';
 import { generateInitialAddresses } from './addressGeneration';
 import { prepareDescriptorPolicy } from './descriptorPolicy';
 import type { WalletNetwork, WalletSignerBinding, WalletSignerInput } from './types';
@@ -215,82 +214,15 @@ export async function addDeviceToWallet(
 }
 
 /**
- * Repair wallet descriptor
+ * Compatibility symbol for the retired direct-repair boundary.
  *
- * Regenerates the Bitcoin descriptor from attached hardware devices for wallets
- * that have devices linked but are missing a descriptor. This can happen when
- * a multisig wallet is created before all devices are added.
- *
- * Security: Only wallet owners can repair descriptors. This prevents unauthorized
- * users from regenerating descriptors which could theoretically be used to derive
- * addresses. The operation is safe because descriptors are deterministically
- * derived from the immutable device xpubs - the same devices will always
- * produce the same descriptor.
- *
- * @param walletId - The wallet to repair
- * @param userId - The user requesting the repair (must be owner)
- * @returns Success status and message
- * @throws Error if wallet not found or user is not owner
+ * All remediation must go through a content-addressed preview and exact approval.
  */
 export async function repairWalletDescriptor(
-  walletId: string,
-  userId: string
+  _walletId: string,
+  _userId: string,
 ): Promise<{ success: boolean; message: string }> {
-  // Owner-only check: repair requires wallet ownership
-  const ownerWallet = await walletRepository.findByIdWithOwnerAndDevices(walletId, userId);
-  if (!ownerWallet) {
-    throw new WalletNotFoundError(walletId);
-  }
-
-  if (ownerWallet.descriptor) {
-    return { success: true, message: 'Wallet already has a descriptor' };
-  }
-
-  assertWalletHardwareCapability(ownerWallet, 'import');
-
-  const walletType = parseWalletType(ownerWallet.type);
-  if (!walletType) {
-    return {
-      success: false,
-      message: 'Wallet type or script type is unsupported',
-    };
-  }
-
-  const requiredDevices = walletType === WalletType.SINGLE_SIG
-    ? 1
-    : ownerWallet.totalSigners;
-  if (!requiredDevices || ownerWallet.devices.length !== requiredDevices) {
-    return {
-      success: false,
-      message: requiredDevices
-        ? `Wallet needs ${requiredDevices} ${requiredDevices === 1 ? 'device' : 'devices'}, but has ${ownerWallet.devices.length}`
-        : 'Wallet is missing its configured signer count',
-    };
-  }
-
-  try {
-    const assignment = buildDescriptorAssignment(
-      walletId,
-      ownerWallet,
-      orderedStoredSignerInfo(ownerWallet),
-    );
-    await walletRepository.assignDescriptorWithAddresses(walletId, assignment);
-
-    log.info('Repaired wallet descriptor', {
-      walletId,
-      deviceCount: ownerWallet.devices.length,
-      addressesGenerated: assignment.addresses.length,
-    });
-
-    return {
-      success: true,
-      message: `Generated descriptor and ${assignment.addresses.length} addresses`
-    };
-  } catch (err) {
-    log.error('Failed to repair wallet descriptor', {
-      walletId,
-      error: getErrorMessage(err),
-    });
-    throw new Error(`Failed to generate descriptor: ${getErrorMessage(err)}`);
-  }
+  throw new ConflictError(
+    'Direct wallet repair is retired. Create and approve an immutable remediation preview.',
+  );
 }

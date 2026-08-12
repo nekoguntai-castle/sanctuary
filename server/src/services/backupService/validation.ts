@@ -11,6 +11,7 @@ import {
   COMPLETE_TABLE_POLICY_HASH,
   COMPLETE_TABLE_POLICY_VERSION,
   PRE_SIGNING_INTENT_COMPLETE_TABLE_POLICY_HASH,
+  PRE_REMEDIATION_COMPLETE_TABLE_POLICY_HASH,
   getRequiredRestoreTables,
   LEGACY_BACKUP_FORMAT_VERSION,
   PRE_TOMBSTONE_COMPLETE_TABLE_POLICY_HASH,
@@ -25,6 +26,7 @@ import {
 import { parseDescriptorForImport } from '../bitcoin/descriptorParser';
 import { isBitcoinNetwork } from '../bitcoin/networks';
 import { getErrorMessage } from '../../utils/errors';
+import { validateRemediationEvidenceForRestore } from './remediationEvidenceValidation';
 
 const DESCRIPTOR_POLICY_FIELDS = [
   'changeDescriptor',
@@ -244,6 +246,7 @@ export async function validateBackupForRestore(backup: unknown): Promise<Validat
   const descriptorPolicies = validateDescriptorPoliciesForRestore(data);
   issues.push(...descriptorPolicies.issues);
   warnings.push(...descriptorPolicies.warnings);
+  issues.push(...validateRemediationEvidenceForRestore(data));
 
   return createValidationResult(issues.length === 0, issues, warnings, meta, Object.keys(data), data);
 }
@@ -341,6 +344,7 @@ const validateTablePolicy = (meta: BackupMeta, issues: string[]): void => {
 
   const { version, hash } = meta.tablePolicy;
   const recognizedHash = hash === COMPLETE_TABLE_POLICY_HASH
+    || hash === PRE_REMEDIATION_COMPLETE_TABLE_POLICY_HASH
     || hash === PRE_SIGNING_INTENT_COMPLETE_TABLE_POLICY_HASH
     || hash === PRE_TOMBSTONE_COMPLETE_TABLE_POLICY_HASH
     || hash === PREVIOUS_COMPLETE_TABLE_POLICY_HASH;

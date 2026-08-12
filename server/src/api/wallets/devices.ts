@@ -64,13 +64,12 @@ router.post(
  * POST /api/v1/wallets/:id/repair
  * Repair wallet descriptor - regenerate from attached devices
  */
-router.post('/:id/repair', requireWalletAccess('owner'), asyncHandler(async (req, res) => {
-  const userId = requireAuthenticatedUser(req).userId;
-  const walletId = req.walletId!;
-
-  const result = await walletService.repairWalletDescriptor(walletId, userId);
-
-  res.json(result);
-}));
+router.post('/:id/repair', requireWalletAccess('owner'), (_req, res) => {
+  res.status(410).json({
+    error: 'Gone',
+    code: 'CONFLICT',
+    message: 'Direct wallet repair is retired. Create and approve an immutable remediation preview.',
+  });
+});
 
 export default router;

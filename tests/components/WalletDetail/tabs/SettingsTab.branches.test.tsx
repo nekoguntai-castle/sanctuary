@@ -51,8 +51,6 @@ describe('SettingsTab branch coverage', () => {
     syncing: false,
     onSync: vi.fn(),
     onFullResync: vi.fn(),
-    repairing: false,
-    onRepairWallet: vi.fn(),
     showDangerZone: false,
     onSetShowDangerZone: vi.fn(),
     onShowDelete: vi.fn(),
@@ -127,7 +125,6 @@ describe('SettingsTab branch coverage', () => {
       <SettingsTab
         {...baseProps}
         settingsSubTab="advanced"
-        repairing
         wallet={{
           ...baseProps.wallet,
           descriptor: null,
@@ -135,7 +132,7 @@ describe('SettingsTab branch coverage', () => {
         }}
       />
     );
-    expect(screen.getByText('Repairing...')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create safety preview' })).toBeInTheDocument();
   });
 
   it('covers devices tab branches for empty, active, and multisig mismatch devices', () => {

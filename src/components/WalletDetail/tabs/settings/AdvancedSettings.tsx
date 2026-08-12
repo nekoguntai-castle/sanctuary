@@ -12,14 +12,14 @@ import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import { Button } from '../../../ui/Button';
 import { isMultisigType, getQuorumM, getQuorumN } from '../../../../types';
 import type { Wallet } from '../../../../types';
+import { WalletRemediationPanel } from './WalletRemediationPanel';
 
 interface AdvancedSettingsProps {
   wallet: Wallet;
   syncing: boolean;
   onSync: () => void;
   onFullResync: () => void;
-  repairing: boolean;
-  onRepairWallet: () => void;
+  onRemediationApplied?: () => Promise<void> | void;
   showDangerZone: boolean;
   onSetShowDangerZone: (show: boolean) => void;
   onShowDelete: () => void;
@@ -31,8 +31,7 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
   syncing,
   onSync,
   onFullResync,
-  repairing,
-  onRepairWallet,
+  onRemediationApplied,
   showDangerZone,
   onSetShowDangerZone,
   onShowDelete,
@@ -128,29 +127,12 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
       </div>
     </div>
 
-    {/* Troubleshooting - show if wallet has issues */}
-    {!wallet.descriptor && wallet.userRole === 'owner' && (
-      <div className="surface-elevated rounded-xl p-5 border border-warning-200 dark:border-warning-800 bg-warning-50/50 dark:bg-warning-900/20">
-        <h3 className="text-base font-medium mb-2 text-warning-700">Troubleshooting</h3>
-        <p className="text-xs text-warning-600 mb-4">
-          This wallet is missing a descriptor, which is needed to generate addresses.
-          If you have hardware devices linked, you can repair the wallet to regenerate the descriptor.
-        </p>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium text-sanctuary-900 dark:text-sanctuary-100">Repair Wallet</p>
-            <p className="text-xs text-sanctuary-500">Regenerate descriptor from linked devices</p>
-          </div>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={onRepairWallet}
-            disabled={repairing}
-          >
-            {repairing ? 'Repairing...' : 'Repair'}
-          </Button>
-        </div>
-      </div>
+    {wallet.userRole === 'owner' && (
+      <WalletRemediationPanel
+        walletId={wallet.id}
+        walletName={wallet.name}
+        onApplied={onRemediationApplied}
+      />
     )}
 
     {/* Export Wallet */}

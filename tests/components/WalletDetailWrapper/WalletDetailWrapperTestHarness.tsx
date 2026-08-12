@@ -31,7 +31,6 @@ const walletDetailMocks = vi.hoisted(() => ({
   setDraftsCount: vi.fn(),
   syncHandler: vi.fn(),
   fullResyncHandler: vi.fn(),
-  repairHandler: vi.fn(),
   setSyncing: vi.fn(),
   setSyncRetryInfo: vi.fn(),
   transferComplete: vi.fn(),
@@ -244,7 +243,6 @@ vi.mock('../../../src/components/WalletDetail/tabs', () => ({
       <button onClick={() => props.onUpdateWallet({ name: 'Renamed Wallet', descriptor: 'desc-new' })}>
         settings-update
       </button>
-      <button onClick={props.onRepairWallet}>settings-repair</button>
       <button onClick={props.onShowDelete}>settings-delete</button>
       <button onClick={props.onShowExport}>settings-export</button>
     </div>
@@ -410,12 +408,10 @@ export function createSyncState(overrides: Partial<any> = {}) {
   return {
     syncing: false,
     setSyncing: mocks.setSyncing,
-    repairing: false,
     syncRetryInfo: null,
     setSyncRetryInfo: mocks.setSyncRetryInfo,
     handleSync: mocks.syncHandler,
     handleFullResync: mocks.fullResyncHandler,
-    handleRepairWallet: mocks.repairHandler,
     ...overrides,
   };
 }
@@ -469,7 +465,6 @@ export const setupWalletDetailWrapperHarness = () => {
 
     mocks.syncHandler = vi.fn();
     mocks.fullResyncHandler = vi.fn();
-    mocks.repairHandler = vi.fn();
     mocks.setSyncing = vi.fn();
     mocks.setSyncRetryInfo = vi.fn();
 

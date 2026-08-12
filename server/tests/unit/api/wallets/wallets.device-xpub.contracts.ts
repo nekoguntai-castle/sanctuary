@@ -63,25 +63,12 @@ export const registerWalletDeviceXpubContracts = () => {
   });
 
   describe('POST /wallets/:id/repair', () => {
-    it('should repair wallet descriptor', async () => {
-      mockRepairWalletDescriptor.mockResolvedValue({
-        success: true,
-        message: 'Generated descriptor and 40 addresses',
-      });
-
+    it('retires direct mutation in favor of immutable remediation', async () => {
       const response = await request(walletRouter).post('/api/v1/wallets/wallet-123/repair');
 
-      expect(response.status).toBe(200);
-      expect(response.body.success).toBe(true);
-    });
-
-    it('should handle repair error', async () => {
-      mockRepairWalletDescriptor.mockRejectedValue(new Error('Repair failed'));
-
-      const response = await request(walletRouter).post('/api/v1/wallets/wallet-123/repair');
-
-      expect(response.status).toBe(500);
-      expect(response.body.code).toBe('INTERNAL_ERROR');
+      expect(response.status).toBe(410);
+      expect(response.body.message).toContain('immutable remediation preview');
+      expect(mockRepairWalletDescriptor).not.toHaveBeenCalled();
     });
   });
 

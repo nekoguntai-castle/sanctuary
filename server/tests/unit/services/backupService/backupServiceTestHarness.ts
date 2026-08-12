@@ -46,6 +46,8 @@ export function getMockFeatureRuntimeReconcile() {
 
 const createBackupModelMock = () => ({
   findMany: vi.fn().mockResolvedValue([]),
+  findUnique: vi.fn().mockResolvedValue(null),
+  create: vi.fn().mockImplementation(async ({ data }) => data),
   createMany: vi.fn().mockResolvedValue({ count: 0 }),
   deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
 });
@@ -69,6 +71,8 @@ const backupOnlyModelNames = [
   'consoleTurn',
   'consoleToolTrace',
   'consolePromptHistory',
+  'walletRemediationProposal',
+  'walletRemediationEvent',
 ] as const;
 
 const backupPrisma = mockPrismaClient as Record<string, unknown>;

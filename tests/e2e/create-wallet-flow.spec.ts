@@ -7,7 +7,7 @@
 
 import { expect, test, type Page, type Route } from '@playwright/test';
 
-import { json, unmocked, registerApiRoutes } from './helpers';
+import { getFailClosedWalletRemediationResponse, json, unmocked, registerApiRoutes } from './helpers';
 
 const DEVICE_1_ID = 'device-create-1';
 const DEVICE_2_ID = 'device-create-2';
@@ -371,6 +371,8 @@ function getCreateWalletApiResponse(
   parsedRoute: ParsedApiRoute,
   options?: CreateWalletApiOptions
 ): MockApiResponse | null {
+  const remediationResponse = getFailClosedWalletRemediationResponse(parsedRoute.method, parsedRoute.path);
+  if (remediationResponse) return remediationResponse;
   if (parsedRoute.requestKey === 'GET /auth/me') {
     return mockResponse({
       ...ADMIN_USER,

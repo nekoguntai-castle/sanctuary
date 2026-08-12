@@ -6,7 +6,7 @@
  */
 
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { json, unmocked, registerApiRoutes } from './helpers';
+import { getFailClosedWalletRemediationResponse, json, unmocked, registerApiRoutes } from './helpers';
 
 const IMPORTED_WALLET_ID = 'wallet-imported-1';
 
@@ -253,6 +253,8 @@ function getImportApiResponse(
   parsedRoute: ParsedApiRoute,
   options?: ImportApiOptions
 ): MockApiResponse | null {
+  const remediationResponse = getFailClosedWalletRemediationResponse(parsedRoute.method, parsedRoute.path);
+  if (remediationResponse) return remediationResponse;
   if (parsedRoute.requestKey === 'GET /auth/me') {
     return mockResponse({
       ...ADMIN_USER,

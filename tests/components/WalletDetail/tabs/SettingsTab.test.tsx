@@ -58,8 +58,6 @@ describe('SettingsTab', () => {
     syncing: false,
     onSync: vi.fn(),
     onFullResync: vi.fn(),
-    repairing: false,
-    onRepairWallet: vi.fn(),
     showDangerZone: true,
     onSetShowDangerZone: vi.fn(),
     onShowDelete: vi.fn(),
@@ -108,13 +106,12 @@ describe('SettingsTab', () => {
 
     fireEvent.click(screen.getByText('Sync'));
     fireEvent.click(screen.getByText('Resync'));
-    fireEvent.click(screen.getByText('Repair'));
     fireEvent.click(screen.getByText('Export'));
     fireEvent.click(screen.getByText('Delete'));
 
     expect(baseProps.onSync).toHaveBeenCalled();
     expect(baseProps.onFullResync).toHaveBeenCalled();
-    expect(baseProps.onRepairWallet).toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Create safety preview' })).toBeInTheDocument();
     expect(baseProps.onShowExport).toHaveBeenCalled();
     expect(baseProps.onShowDelete).toHaveBeenCalled();
   });

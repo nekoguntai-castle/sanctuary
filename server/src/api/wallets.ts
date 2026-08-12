@@ -32,6 +32,7 @@ import webhooksRouter from './wallets/webhooks';
 import autopilotRouter from './wallets/autopilot';
 import policiesRouter from './wallets/policies';
 import approvalsRouter from './wallets/approvals';
+import remediationRouter from './wallets/remediation';
 
 const router = Router();
 
@@ -53,5 +54,6 @@ router.use('/', webhooksRouter);
 router.use('/', autopilotRouter);
 router.use('/', policiesRouter);
 router.use('/', approvalsRouter);
+router.use('/', remediationRouter);
 
 export default router;

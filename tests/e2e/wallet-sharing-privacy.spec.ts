@@ -6,7 +6,7 @@
  */
 
 import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
-import { json, unmocked, registerApiRoutes } from "./helpers";
+import { getFailClosedWalletRemediationResponse, json, unmocked, registerApiRoutes } from "./helpers";
 
 const WALLET_ID = "wallet-share-1";
 const DEVICE_ID = "device-share-1";
@@ -519,7 +519,8 @@ async function mockShareApi(page: Page) {
 
   const apiRouteHandler = async (route: Route) => {
     const parsedRoute = parseApiRoute(route);
-    const response = getShareApiResponse(route, parsedRoute, context);
+    const response = getFailClosedWalletRemediationResponse(parsedRoute.method, parsedRoute.path)
+      ?? getShareApiResponse(route, parsedRoute, context);
     if (response) {
       return json(route, response.body, response.status);
     }

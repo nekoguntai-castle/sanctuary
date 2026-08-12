@@ -1,5 +1,5 @@
 import type { Page, Route } from '@playwright/test';
-import { json, registerApiRoutes, unmocked } from './helpers';
+import { getFailClosedWalletRemediationResponse, json, registerApiRoutes, unmocked } from './helpers';
 
 export const MAINNET_WALLET_ID = 'wallet-journey-main';
 const TESTNET_WALLET_ID = 'wallet-journey-test';
@@ -459,6 +459,8 @@ function getAuthenticatedApiResponse(
   parsedRoute: ParsedApiRoute,
   state: AuthenticatedApiState
 ): MockApiResponse | null {
+  const remediationResponse = getFailClosedWalletRemediationResponse(parsedRoute.method, parsedRoute.path);
+  if (remediationResponse) return remediationResponse;
   const statefulResponse = getStatefulApiResponse(route, parsedRoute, state);
   if (statefulResponse) {
     return statefulResponse;
