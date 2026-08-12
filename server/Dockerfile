@@ -49,6 +49,9 @@ RUN npm --workspace shared run build
 COPY server/tsconfig.json ./server/
 COPY server/scripts ./server/scripts
 COPY server/src ./server/src
+# jadePinRelay imports this exact reviewed boundary manifest at compile time;
+# TypeScript emits it under dist/config for the runtime-relative require.
+COPY config/jade-protocol-harness.json ./config/
 
 WORKDIR /repo/server
 RUN npm run build

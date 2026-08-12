@@ -566,12 +566,66 @@ describe('useUsbSigning', () => {
       } as any)
     ).resolves.toBe(false);
 
-    expect(mocks.hardwareWallet.connect).toHaveBeenCalledWith('trezor');
+    expect(mocks.hardwareWallet.connect).toHaveBeenCalledWith('trezor', undefined);
     expect(deps.setError).toHaveBeenCalledWith(
       'This transaction has no server-issued hardware signing context; recreate it before signing'
     );
     expect(mocks.hardwareWallet.signPSBT).not.toHaveBeenCalled();
     expect(mocks.hardwareWallet.disconnect).toHaveBeenCalled();
+  });
+
+  it('binds a Jade Plus signing reconnect to the wallet network and stored model', async () => {
+    const deps = createDeps({
+      wallet: {
+        id: 'wallet-1',
+        type: 'single_sig',
+        network: 'signet',
+      } as any,
+    });
+    const { result } = renderHook(() => useUsbSigning(deps));
+
+    await expect(result.current.signWithDevice({
+      id: 'jade-plus-1',
+      type: 'Blockstream Jade Plus',
+      model: { name: 'Blockstream Jade Plus' },
+    } as any)).resolves.toBe(true);
+
+    expect(mocks.hardwareWallet.connect).toHaveBeenCalledWith('jade', {
+      chainEnvironment: 'signet',
+      expectedModel: 'Jade Plus',
+    });
+  });
+
+  it('binds a base Jade signing reconnect without promoting its stored model', async () => {
+    const deps = createDeps({
+      wallet: { id: 'wallet-1', type: 'single_sig', network: 'mainnet' } as any,
+    });
+    const { result } = renderHook(() => useUsbSigning(deps));
+
+    await expect(result.current.signWithDevice({
+      id: 'jade-1',
+      type: 'Blockstream Jade',
+      model: { name: 'Blockstream Jade' },
+    } as any)).resolves.toBe(true);
+
+    expect(mocks.hardwareWallet.connect).toHaveBeenCalledWith('jade', {
+      chainEnvironment: 'mainnet',
+      expectedModel: 'Jade',
+    });
+  });
+
+  it('fails closed before reconnecting Jade when the wallet network is absent', async () => {
+    const deps = createDeps();
+    const { result } = renderHook(() => useUsbSigning(deps));
+
+    await expect(result.current.signWithDevice({
+      id: 'jade-unknown-network',
+      type: 'Blockstream Jade',
+      model: { name: 'Blockstream Jade' },
+    } as any)).resolves.toBe(false);
+
+    expect(mocks.hardwareWallet.connect).not.toHaveBeenCalled();
+    expect(deps.setError).toHaveBeenCalledWith(expect.stringMatching(/explicit wallet network/i));
   });
 
   it('signWithDevice persists a successful signature to a draft', async () => {

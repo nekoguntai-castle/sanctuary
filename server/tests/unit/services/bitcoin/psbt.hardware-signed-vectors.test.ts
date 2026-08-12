@@ -8,6 +8,7 @@ import {
   BLOCKED_HARDWARE_SIGNED_ROWS,
   COMMON_HARDWARE_SIGNED_NEGATIVE_CONTROLS,
   HARDWARE_SIGNED_PSBT_VECTORS,
+  JADE_HARDWARE_SIGNED_SOFTWARE_GATES,
   LEDGER_HARDWARE_SIGNED_SOFTWARE_GATES,
   MULTISIG_HARDWARE_SIGNED_NEGATIVE_CONTROLS,
   REQUIRED_HARDWARE_SIGNED_ADDRESS_PATH_SUFFIXES,
@@ -193,7 +194,9 @@ function syntheticSoftwareGates(
     ? TREZOR_HARDWARE_SIGNED_SOFTWARE_GATES
     : vendor === "ledger"
       ? LEDGER_HARDWARE_SIGNED_SOFTWARE_GATES
-      : [];
+      : vendor === "jade"
+        ? JADE_HARDWARE_SIGNED_SOFTWARE_GATES
+        : [];
   const commands = [...REQUIRED_HARDWARE_SIGNED_SOFTWARE_GATES, ...vendorGates];
   return commands.map((command) => ({
     command,
@@ -263,7 +266,14 @@ function physicalEvidence(
             integrity:
               "sha512-zeuHVF3kAQsJsa2q1fCtktVFiJV/G8nMuKonwMMsCx1RY0mzqc33RGlayTrvLrgs3fj30wLkWmXrgPmQCIJxmg==",
           }
-        : {
+        : vendor === "jade"
+          ? {
+              package: "cbor-x" as const,
+              version: "1.6.4",
+              integrity:
+                "sha512-UGKHjp6RHC6QuZ2yy5LCKm7MojM4716DwoSaqwQpaH4DvZvbBTGcoDNTiG9Y2lByXZYFEs9WRkS5tLl96IrF1Q==",
+            }
+          : {
             package: "@ledgerhq/ledger-bitcoin" as const,
             version: "0.3.1",
             integrity:
@@ -425,6 +435,19 @@ function syntheticHardwareVector(
   }
   signCoreReceipt(vector);
   return vector;
+}
+
+function jadePlusDevice(
+  overrides: Partial<HardwareSignedPsbtVector["device"]> = {},
+): HardwareSignedPsbtVector["device"] {
+  return {
+    model: "Jade Plus",
+    firmwareVersion: "1.0.40",
+    transport: "webserial",
+    transportVersion: "Web Serial API via Chromium 140.0.7339.80",
+    emulated: false,
+    ...overrides,
+  };
 }
 
 function trezorArtifact(): TrezorConnectTransactionArtifact {
@@ -627,9 +650,9 @@ describe("Hardware-signed PSBT fixture replay harness", () => {
   });
 
   it("keeps required, unsupported, and evidence-blocked rows explicit", () => {
-    expect(REQUIRED_HARDWARE_SIGNED_ROWS).toHaveLength(16);
-    expect(UNSUPPORTED_HARDWARE_SIGNED_ROWS).toHaveLength(4);
-    expect(BLOCKED_HARDWARE_SIGNED_ROWS).toHaveLength(9);
+    expect(REQUIRED_HARDWARE_SIGNED_ROWS).toHaveLength(22);
+    expect(UNSUPPORTED_HARDWARE_SIGNED_ROWS).toHaveLength(6);
+    expect(BLOCKED_HARDWARE_SIGNED_ROWS).toHaveLength(13);
     expect(
       BLOCKED_HARDWARE_SIGNED_ROWS.filter((row) => row.vendor === "ledger"),
     ).toHaveLength(4);
@@ -637,7 +660,10 @@ describe("Hardware-signed PSBT fixture replay harness", () => {
       BLOCKED_HARDWARE_SIGNED_ROWS.filter((row) => row.vendor === "trezor"),
     ).toHaveLength(5);
     expect(
-      BLOCKED_HARDWARE_SIGNED_ROWS.every((row) => ["ledger", "trezor"].includes(row.vendor)),
+      BLOCKED_HARDWARE_SIGNED_ROWS.filter((row) => row.vendor === "jade"),
+    ).toHaveLength(4);
+    expect(
+      BLOCKED_HARDWARE_SIGNED_ROWS.every((row) => ["ledger", "trezor", "jade"].includes(row.vendor)),
     ).toBe(true);
     expect(
       BLOCKED_HARDWARE_SIGNED_ROWS.every((row) => row.reason.length > 20),
@@ -658,9 +684,10 @@ describe("Hardware-signed PSBT fixture replay harness", () => {
       HARDWARE_SIGNED_PSBT_VECTORS,
       UNSUPPORTED_HARDWARE_SIGNED_ROWS,
     );
-    expect(missing).toHaveLength(12);
+    expect(missing).toHaveLength(16);
     expect(missing.filter((row) => row.vendor === "ledger")).toHaveLength(4);
     expect(missing.filter((row) => row.vendor === "trezor")).toHaveLength(5);
+    expect(missing.filter((row) => row.vendor === "jade")).toHaveLength(4);
     expect(
       unaccountedHardwareSignedRows(
         REQUIRED_HARDWARE_SIGNED_ROWS,
@@ -676,6 +703,9 @@ describe("Hardware-signed PSBT fixture replay harness", () => {
     }
     if (process.env.REQUIRE_LEDGER_PHYSICAL_FIXTURES === "1") {
       expect(missing.filter((row) => row.vendor === "ledger")).toEqual([]);
+    }
+    if (process.env.REQUIRE_JADE_PHYSICAL_FIXTURES === "1") {
+      expect(missing.filter((row) => row.vendor === "jade")).toEqual([]);
     }
   });
 
@@ -752,6 +782,42 @@ describe("Hardware-signed PSBT fixture replay harness", () => {
       },
     });
     expect(replayHardwareSignedVector(vector).txid).toBe(vector.expectedTxid);
+  });
+
+  it("accepts only Jade Plus WebSerial physical-device metadata", () => {
+    expect(() => assertHardwareSignedFixtureIntake(syntheticHardwareVector({
+      id: "jade-plus-p2wpkh-physical-binding",
+      vendor: "jade",
+      device: jadePlusDevice(),
+    }))).not.toThrow();
+
+    const mislabeled = validateHardwareSignedFixtureSet([
+      syntheticHardwareVector({ vendor: "jade" }),
+    ], []);
+    expect(mislabeled).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        field: "device.model",
+        message: "Jade evidence must come from a physical Jade Plus",
+      }),
+      expect.objectContaining({
+        field: "device.transport",
+        message: "Jade Plus evidence must use webserial",
+      }),
+    ]));
+  });
+
+  it.each([
+    ["Ledger model", { model: "Ledger Nano S Plus" }, "physical Jade Plus"],
+    ["WebUSB transport", { transport: "webusb" }, "must use webserial"],
+    ["empty firmware", { firmwareVersion: "   " }, "proven compatible release 1.0.40"],
+    ["incompatible firmware", { firmwareVersion: "1.0.39" }, "proven compatible release 1.0.40"],
+    ["missing transport metadata", { transportVersion: undefined }, "transport metadata is required"],
+    ["empty transport metadata", { transportVersion: "   " }, "transport metadata is required"],
+  ] as const)("rejects Jade evidence with %s", (_caseName, deviceOverride, message) => {
+    expect(() => assertHardwareSignedFixtureIntake(syntheticHardwareVector({
+      vendor: "jade",
+      device: jadePlusDevice(deviceOverride),
+    }))).toThrow(message);
   });
 
   it("rejects emulator provenance and same-person review", () => {

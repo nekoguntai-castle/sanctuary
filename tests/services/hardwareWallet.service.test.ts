@@ -243,6 +243,16 @@ describe('HardwareWalletService', () => {
     expect(adapter.connect).toHaveBeenCalledTimes(1);
   });
 
+  it('passes the selected chain and model binding to the adapter unchanged', async () => {
+    const service = new HardwareWalletService();
+    const { adapter, device } = createMockAdapter('coldcard');
+    const options = { chainEnvironment: 'signet' as const, expectedModel: 'fixture-model' };
+    service.registerAdapter(adapter);
+
+    await expect(service.connect('coldcard', options)).resolves.toEqual(device);
+    expect(adapter.connect).toHaveBeenCalledWith(options);
+  });
+
   it('throws when connecting to missing or unsupported adapter', async () => {
     const service = new HardwareWalletService();
     await expect(service.connect('coldcard')).rejects.toThrow(

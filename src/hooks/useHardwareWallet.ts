@@ -3,6 +3,7 @@ import { isHardwareWalletSupported } from '../services/hardwareWallet/environmen
 import type {
   HardwareWalletDevice,
   DeviceType,
+  HardwareWalletConnectionOptions,
   TransactionForSigning,
   TrezorConnectSignedArtifact,
 } from '../services/hardwareWallet/types';
@@ -27,7 +28,10 @@ export interface UseHardwareWalletReturn {
   error: string | null;
 
   // Actions
-  connect: (type?: DeviceType) => Promise<void>;
+  connect: (
+    type?: DeviceType,
+    options?: HardwareWalletConnectionOptions,
+  ) => Promise<void>;
   disconnect: () => void;
   signTransaction: (tx: TransactionForSigning) => Promise<string>;
   signPSBT: (
@@ -81,13 +85,13 @@ export const useHardwareWallet = (): UseHardwareWalletReturn => {
    * Connect to a hardware wallet
    */
   const connect = useCallback(
-    async (type?: DeviceType) => {
+    async (type?: DeviceType, options?: HardwareWalletConnectionOptions) => {
     try {
       setConnecting(true);
       setError(null);
 
       const { hardwareWalletService } = await loadHardwareWalletRuntime();
-      const connectedDevice = await hardwareWalletService.connect(type);
+      const connectedDevice = await hardwareWalletService.connect(type, options);
       setDevice(connectedDevice);
 
       // Refresh device list

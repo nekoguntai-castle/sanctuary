@@ -91,6 +91,9 @@ function validateProofCommands(workflowText) {
     'LEDGER_EMULATOR_DIAGNOSTICS_DIR',
     'npm run test:jade-protocol-harness',
     'JADE_PROTOCOL_PROOF_DIR',
+    'npm run test:jade-emulator-proof',
+    'JADE_EMULATOR_PROOF_DIR',
+    'JADE_EMULATOR_DIAGNOSTICS_DIR',
   ]) {
     if (!workflowText.includes(command)) {
       throw new Error(

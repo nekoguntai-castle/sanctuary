@@ -3,6 +3,7 @@
  */
 
 import type { Device } from '../../../types';
+import type { TabNetwork } from '../../../app/networks';
 
 /** Import method selection options */
 export type AddAccountMethod = 'usb' | 'sdcard' | 'qr' | null;
@@ -21,6 +22,7 @@ export interface UsbProgress {
 export interface AddAccountFlowProps {
   deviceId: string;
   device: Device;
+  chainEnvironment: TabNetwork;
   onClose: () => void;
   onDeviceUpdated: (device: Device) => void;
 }

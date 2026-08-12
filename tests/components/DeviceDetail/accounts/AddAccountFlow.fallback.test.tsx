@@ -50,6 +50,7 @@ describe('AddAccountFlow fallback branches', () => {
       <AddAccountFlow
         deviceId="device-1"
         device={{ id: 'device-1', type: 'ledger', label: 'Ledger' } as any}
+        chainEnvironment="mainnet"
         onClose={vi.fn()}
         onDeviceUpdated={vi.fn()}
       />

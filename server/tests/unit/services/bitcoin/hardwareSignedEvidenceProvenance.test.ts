@@ -8,10 +8,22 @@ import {
   coreReceiptPayload,
   currentHardwareEvidenceSourceManifest,
   defaultCommitReachability,
+  sourceManifestMatches,
   validateCoreReceipt,
 } from "../../../helpers/hardwareSignedEvidenceProvenance";
 
 const REPO_ROOT = fileURLToPath(new URL("../../../../../", import.meta.url));
+const JADE_DEDICATED_PROOF_SOURCES = [
+  "config/jade-emulator-proof.json",
+  "config/jade-protocol-harness.json",
+  "server/src/api/hardware.ts",
+  "server/src/api/openapi/paths/hardware.ts",
+  "server/src/middleware/bodyParsing.ts",
+  "server/src/middleware/rateLimit.ts",
+  "server/src/middleware/requestLogger.ts",
+  "server/src/services/jadePinRelay.ts",
+  "src/api/authPolicy.ts",
+] as const;
 
 function receiptVector(): HardwareSignedPsbtVector {
   return {
@@ -125,6 +137,40 @@ describe("hardware evidence source inventory", () => {
       expect(paths).toContain("shared/schemas/deviceIdentity.ts");
     },
   );
+
+  it("binds every Jade adapter module without binding another vendor directory", () => {
+    const paths = currentHardwareEvidenceSourceManifest("jade").map((entry) => entry.path);
+    for (const file of [
+      "jade.ts",
+      "jadeIdentity.ts",
+      "jadePinRelayClient.ts",
+      "jadeProtocol.ts",
+      "jadeSignedPsbt.ts",
+    ]) expect(paths).toContain(`src/services/hardwareWallet/adapters/${file}`);
+    for (const path of JADE_DEDICATED_PROOF_SOURCES) expect(paths).toContain(path);
+    expect(paths.some((path) => /adapters\/(?:ledger|trezor|bitbox)\//.test(path))).toBe(false);
+  });
+
+  it("expires Jade evidence when a dedicated relay or auth source hash changes", () => {
+    const sourceManifest = currentHardwareEvidenceSourceManifest("jade");
+    const vector = {
+      vendor: "jade",
+      evidence: { sourceManifest },
+    } as HardwareSignedPsbtVector;
+    expect(sourceManifestMatches(vector)).toBe(true);
+
+    for (const path of JADE_DEDICATED_PROOF_SOURCES) {
+      const mutatedVector = {
+        ...vector,
+        evidence: {
+          sourceManifest: sourceManifest.map((entry) => entry.path === path
+            ? { ...entry, sha256: "0".repeat(64) }
+            : entry),
+        },
+      } as HardwareSignedPsbtVector;
+      expect(sourceManifestMatches(mutatedVector), path).toBe(false);
+    }
+  });
 });
 
 describe("hardware evidence repository and receipt provenance", () => {

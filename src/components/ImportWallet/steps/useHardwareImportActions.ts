@@ -61,7 +61,10 @@ export function useHardwareImportActions({
 
     try {
       const { hardwareWalletService } = await loadHardwareWalletRuntime();
-      const device = await hardwareWalletService.connect(hardwareDeviceType as DeviceType);
+      const device = await hardwareWalletService.connect(hardwareDeviceType as DeviceType, {
+        chainEnvironment: network,
+        ...(hardwareDeviceType === 'jade' ? { expectedModel: 'Jade Plus' } : {}),
+      });
       setDeviceConnected(true);
       setDeviceLabel(device.name || fallbackDeviceLabel(hardwareDeviceType));
     } catch (error) {
@@ -109,7 +112,9 @@ export function useHardwareImportActions({
 }
 
 function fallbackDeviceLabel(hardwareDeviceType: HardwareDeviceType): string {
-  return hardwareDeviceType === 'trezor' ? 'Trezor Device' : 'Ledger Device';
+  if (hardwareDeviceType === 'trezor') return 'Trezor Device';
+  if (hardwareDeviceType === 'jade') return 'Jade Plus';
+  return 'Ledger Device';
 }
 
 function hardwareErrorMessage(error: unknown, fallback: string): string {

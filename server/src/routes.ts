@@ -9,6 +9,7 @@ import config from './config';
 import authRoutes from './api/auth';
 import walletRoutes from './api/wallets';
 import deviceRoutes from './api/devices';
+import hardwareRoutes from './api/hardware';
 import transactionRoutes from './api/transactions';
 import labelRoutes from './api/labels';
 import bitcoinRoutes from './api/bitcoin';
@@ -58,6 +59,7 @@ const routes: RouteDefinition[] = [
   { method: 'use', path: '/api/v1/auth', handler: authRoutes },
   { method: 'use', path: '/api/v1/wallets', handler: walletRoutes },
   { method: 'use', path: '/api/v1/devices', handler: deviceRoutes },
+  { method: 'use', path: '/api/v1/hardware', handler: hardwareRoutes },
   { method: 'use', path: '/api/v1/bitcoin', handler: bitcoinRoutes },
   { method: 'use', path: '/api/v1/price', handler: priceRoutes },
   { method: 'use', path: '/api/v1/node', handler: nodeRoutes },

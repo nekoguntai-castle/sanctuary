@@ -29,7 +29,7 @@ const mockIsConnected = vi.fn();
 
 vi.mock('../../src/services/hardwareWallet/runtime', () => ({
   hardwareWalletService: {
-    connect: (type?: string) => mockConnect(type),
+    connect: (type?: string, options?: unknown) => mockConnect(type, options),
     disconnect: () => mockDisconnect(),
     signTransaction: (tx: unknown) => mockSignTransaction(tx),
     signPSBT: (request: unknown) => mockSignPSBT(request),
@@ -119,7 +119,7 @@ describe('useHardwareWallet', () => {
         await result.current.connect('ledger');
       });
 
-      expect(mockConnect).toHaveBeenCalledWith('ledger');
+      expect(mockConnect).toHaveBeenCalledWith('ledger', undefined);
       expect(result.current.device).toEqual(mockDevice);
       expect(result.current.isConnected).toBe(true);
       expect(result.current.connecting).toBe(false);

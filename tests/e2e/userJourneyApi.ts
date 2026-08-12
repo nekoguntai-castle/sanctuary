@@ -325,6 +325,7 @@ const AUTHENTICATED_STATIC_API_RESPONSES: Record<string, MockApiResponse> = {
   'POST /auth/logout': mockResponse({ success: true }),
   'GET /auth/registration-status': mockResponse({ enabled: false }),
   'GET /devices': mockResponse([JOURNEY_DEVICE]),
+  'POST /hardware/jade/pin': mockResponse({}),
   'GET /health': mockResponse({ status: 'ok' }),
   'GET /admin/version': mockResponse({ updateAvailable: false, currentVersion: '0.8.14' }),
   'GET /price': mockResponse(PRICE_RESPONSE),

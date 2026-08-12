@@ -18,14 +18,14 @@ reproduce the main evidence.
 | Descriptor and xpub imports fail closed on unsafe domains | Raw descriptors plus parsed JSON, BlueWallet, and Coldcard imports reject private extended keys, wrong-network keys/paths, unsupported branches, malformed multisig suffixes, quorum overflow, duplicates, and script/path mismatches |
 | New safety-module catches cannot silently continue | `npm run check:safety-catch-guards` scans safety paths and fails on new non-terminal catches unless they return, throw, call an approved fail-closed helper, or update the accountable baseline |
 | Stable releases have an operator verification path | Stable release manifests must cover release identity, builder evidence, signed `SHA256SUMS`, local checksums, offline bundle evidence, and subject-bound SBOM/provenance references; registry image digests remain historical evidence only |
-| Unsupported hardware signing rows are product-blocked | Ledger and BitBox multisig USB signing is blocked in the send flow and adapter boundaries until physical fixture coverage exists for those device/script families |
+| Unsupported hardware signing rows are product-blocked | Ledger, Jade, and BitBox multisig signing is blocked in the send flow and adapter boundaries until explicitly supported and proven |
 | AI, Console, and MCP are read-only | Tool execution is authenticated and scoped; DTOs exclude private keys, descriptors, xpubs, PSBTs, bearer tokens, and provider API keys; restored MCP keys are revoked |
 | Browser auth is protected against script-readable token theft | Access and refresh tokens use HttpOnly cookies, CSRF protects mutating cookie-auth requests, and WebSocket auth uses cookies instead of query tokens |
 
 ## What Is Not Yet Proven
 
 - Full physical hardware-in-loop funds-loss-grade confidence is pending until the
-  required Ledger, Trezor, and BitBox signed artifacts are captured or
+  required Ledger, Trezor, Jade Plus, and BitBox signed artifacts are captured or
   product-blocked. Trezor now has pinned Tier 2 production-adapter emulator proof,
   but it does not prove physical transport, screen rendering, or confirmation and
   does not enable any Trezor capability row.
@@ -59,6 +59,8 @@ Run the smallest command set that matches the claim being reviewed.
 | Trezor physical-fixture completeness          | `REQUIRE_TREZOR_PHYSICAL_FIXTURES=1 npm --prefix server run test -- --run tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts` (expected to fail until reviewed physical artifacts land)                                                                                                                                                                     |
 | Ledger pinned Bitcoin-app/Speculos emulator proof | `npm run test:ledger-emulator-proof` |
 | Ledger physical-fixture completeness | `REQUIRE_LEDGER_PHYSICAL_FIXTURES=1 npm --prefix server run test -- --run tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts` (expected to fail until reviewed physical artifacts land) |
+| Jade pinned vendor QEMU protocol proof | `npm run test:jade-emulator-proof` |
+| Jade Plus physical-fixture completeness | `REQUIRE_JADE_PHYSICAL_FIXTURES=1 npm --prefix server run test -- --run tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts` (expected to fail until reviewed physical artifacts land) |
 | Hardware unsupported-row product blocks | `npm run test:run -- tests/services/hardwareWallet.signingSupport.test.ts tests/hooks/useUsbSigning.test.tsx tests/services/hardwareWallet.ledgerAdapter.test.ts tests/services/hardwareWallet.bitboxAdapter.test.ts` |
 | Address vectors | `npm --prefix scripts/verify-addresses run verify` |
 | Docs links and Mermaid rewrite tests | `npm run test:run -- tests/docs/readme-links.test.ts tests/docs/remarkMermaidClickRewrite.test.ts` |

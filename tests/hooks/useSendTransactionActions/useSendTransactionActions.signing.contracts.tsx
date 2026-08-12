@@ -138,7 +138,7 @@ export const registerUseSendTransactionActionsSigningContracts = () => {
       });
 
       expect(ok).toBe(true);
-      expect(mocks.hardwareWallet.connect).toHaveBeenCalledWith('trezor');
+      expect(mocks.hardwareWallet.connect).toHaveBeenCalledWith('trezor', undefined);
       expect(mocks.hardwareWallet.disconnect).toHaveBeenCalled();
       await waitFor(() => {
         expect(result.current.unsignedPsbt).toBe('signed-psbt-from-device');

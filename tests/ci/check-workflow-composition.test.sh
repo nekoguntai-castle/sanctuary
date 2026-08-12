@@ -1739,7 +1739,33 @@ assert_contains_in_order "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
   "Run pinned Trezor emulator proof" \
   "npm run test:trezor-emulator-proof" \
   "Run pinned Ledger emulator proof" \
-  "npm run test:ledger-emulator-proof"
+  "npm run test:ledger-emulator-proof" \
+  "Run pinned Jade QEMU proof" \
+  "npm run test:jade-emulator-proof"
+
+assert_named_job_step_contains "$VV" \
+  "verify-jade-emulator" \
+  "Run pinned Jade QEMU proof" \
+  "Jade QEMU proof uses its dedicated measured lock" \
+  "timeout-minutes: 55" \
+  'SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS="$JADE_EMULATOR_LOCK_TIMEOUT_SECONDS"' \
+  "scripts/ci/with-runner-lock.sh jade-emulator"
+
+assert_named_job_step_contains "$VV" \
+  "verify-jade-emulator" \
+  "Upload current Jade QEMU proof" \
+  "Jade QEMU proof uploads only the successful current attempt" \
+  "if: success() && env.JADE_EMULATOR_PROOF_DIR != ''" \
+  '${{ env.JADE_EMULATOR_PROOF_DIR }}' \
+  "if-no-files-found: error"
+
+assert_named_job_step_contains "$VV" \
+  "verify-jade-emulator" \
+  "Upload current Jade QEMU diagnostics" \
+  "Jade QEMU diagnostics are separate and attempt-scoped" \
+  "if: always() && env.JADE_EMULATOR_DIAGNOSTICS_DIR != ''" \
+  '${{ env.JADE_EMULATOR_DIAGNOSTICS_DIR }}' \
+  "if-no-files-found: error"
 
 assert_named_job_step_contains "$VV" \
   "verify-trezor-emulator" \
@@ -1802,12 +1828,13 @@ assert_named_job_step_contains "$VV" \
   "if-no-files-found: error"
 
 assert_contains_in_order "$VV" \
-  "vector summary requires software, Trezor, and Ledger proofs" \
+  "vector summary requires software, Trezor, Ledger, and Jade proofs" \
   "summary:" \
-  "needs: [verify-vectors, verify-trezor-emulator, verify-ledger-emulator]" \
+  "needs: [verify-vectors, verify-trezor-emulator, verify-ledger-emulator, verify-jade-emulator]" \
   '${{ needs.verify-vectors.result }}' \
   '${{ needs.verify-trezor-emulator.result }}' \
-  '${{ needs.verify-ledger-emulator.result }}'
+  '${{ needs.verify-ledger-emulator.result }}' \
+  '${{ needs.verify-jade-emulator.result }}'
 
 assert_contains_in_order "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
   "Trezor emulator lock has a dedicated measured timeout" \
@@ -1977,11 +2004,11 @@ assert_contains_in_order \
 assert_occurrence_count \
   "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
   "verify-vectors jobs use the immutable checksum-built wallet verifier image" \
-  "nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:8b50f6c8ccb016b042c7125a637b068a49c856a76e543365044b36a593edd81e" 4
+  "nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:8b50f6c8ccb016b042c7125a637b068a49c856a76e543365044b36a593edd81e" 5
 assert_occurrence_count \
   "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
   "verify-vectors jobs disable network npm repair" \
-  "install-npm: 'false'" 4
+  "install-npm: 'false'" 5
 
 GO_RUNNER_DOCKERFILE="$REPO_ROOT/scripts/ci/images/go-runner.Dockerfile"
 assert_occurrence_count "$GO_RUNNER_DOCKERFILE" \
@@ -2007,7 +2034,7 @@ declare -A strict_install_counts=(
   [architecture.yml]=2
   [quality.yml]=1
   [test.yml]=17
-  [verify-vectors.yml]=7
+  [verify-vectors.yml]=8
 )
 for workflow in "${!strict_install_counts[@]}"; do
   assert_occurrence_count \

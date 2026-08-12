@@ -92,6 +92,24 @@ Remote Docker is rejected unless the operator explicitly supplies a non-wildcard
 daemon bind address, the runner-reachable published host, and
 `SANCTUARY_TREZOR_ALLOW_REMOTE_DOCKER=1`.
 
+Jade Tier 2 downloads the exact Blockstream Jade 1.0.40 source commit and
+SHA-256-verified tarball recorded in `config/jade-emulator-proof.json`, verifies
+the vendor `Dockerfile.qemu` and its digest-pinned `jade_builder` parent, then
+builds the `linux/amd64` QEMU image without a host bind mount. The runner attests
+the firmware, ELF, flash image, QEMU runtime, source inventory, Node/npm, and
+locked `cbor-x` integrity. Sanctuary's production `JadeProtocolSession` then
+uses serial-over-TCP to prove authentication, BIP44/49/84/86 account 0/7 xpubs,
+receive/change display, and binary signed-PSBT reconstruction on both Bitcoin
+coin families. Run it with:
+
+```bash
+npm run test:jade-emulator-proof
+```
+
+This debug unattended firmware auto-confirms prompts and uses a public test
+mnemonic. It does not prove WebSerial, Jade Plus hardware, its screen, or human
+approval and therefore cannot enable a capability row.
+
 ## Rerun Triggers
 
 Run the full matrix when any of these change:
@@ -99,7 +117,7 @@ Run the full matrix when any of these change:
 - Hardware-wallet adapter code, signing payload builders, or address display code.
 - Wallet import, descriptor, derivation, change-address, transaction-building, PSBT,
   finalization, or broadcast code.
-- `bitcoinjs-lib`, `@ledgerhq/*`, `@trezor/connect-web`, `bitbox02-api`, or vendor
+- `bitcoinjs-lib`, `@ledgerhq/*`, `@trezor/connect-web`, `cbor-x`, `bitbox02-api`, or vendor
   firmware/app major or minor versions.
 - Supported script families, network handling, multisig policy handling, or wallet
   feature flags.
@@ -116,6 +134,7 @@ Run these before connecting hardware:
 npm --prefix scripts/verify-addresses run verify
 npm --prefix scripts/verify-psbt run verify
 npm run test:ledger-emulator-proof
+npm run test:jade-emulator-proof
 npm run test:run -- tests/services/hardwareWallet.trezorAdapter.test.ts tests/services/hardwareWallet.ledgerAdapter.test.ts tests/services/hardwareWallet.jadeAdapter.test.ts tests/services/hardwareWallet.bitboxAdapter.test.ts
 npm --prefix server run test -- --run tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts
 npm run typecheck:app
@@ -144,11 +163,8 @@ Required release-grade hardware rows:
 | ---------------------------- | ------------------------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | Ledger Nano S Plus or Nano X | WebUSB, Bitcoin app | `verifyAddress` must return the exact device-returned address | Signed PSBT plus Ledger wallet policy template/key origin |
 | Trezor Model T/Safe 3/Safe 5 | Trezor Connect and Bridge | `getAddress` with `showOnTrezor` must return the exact expected address | Exact source PSBT + Connect signature array + serialized transaction tuple |
+| Jade Plus | WebSerial | `get_receive_address` must return the exact address displayed by Jade | Adapter-returned binary signed PSBT plus reconstructed/final transaction |
 | BitBox02 BTC-only or Multi | WebHID | `btcDisplayAddressSimple` must return the exact expected address | Signed PSBT from `btcSignSimple` |
-
-Jade has adapter-level address comparison coverage, but it is not part of the
-required release-grade signing matrix until it has the same no-device signing
-payload assertions as Ledger, Trezor, and BitBox.
 
 ### Current Fixture Classification
 
@@ -161,10 +177,12 @@ from rows that Sanctuary currently blocks at the product level.
 | Ledger P2PKH, P2WPKH, P2SH-P2WPKH, P2TR | Required, product blocked pending physical fixture | The pinned emulator proves production-adapter BIP44, BIP49, BIP84, and BIP86 conformance on both coin families, but cannot satisfy physical display/transport evidence. All Ledger capability rows remain disabled. |
 | Ledger P2WSH, P2SH-P2WSH | Unsupported, product blocked | Ledger adapter currently builds only single-sig `DefaultWalletPolicy` templates; multisig Ledger signing is not exposed. |
 | Trezor P2WPKH, P2SH-P2WPKH, P2TR, P2WSH, P2SH-P2WSH | Required, product blocked pending physical fixture | The pinned emulator proves production-adapter BIP49, BIP84, BIP86, and both BIP48 `/1'` and `/2'` conformance, but cannot satisfy physical display/transport evidence. All Trezor capability rows remain disabled. |
+| Jade Plus P2PKH, P2WPKH, P2SH-P2WPKH, P2TR | Required, product blocked pending physical fixture | Pinned QEMU proves production-session single-signature protocol conformance, but cannot satisfy physical WebSerial/display evidence. All Jade rows remain disabled. |
+| Jade Plus P2WSH, P2SH-P2WSH | Unsupported, product blocked | The Jade adapter explicitly rejects multisig signing before sending a PSBT. |
 | BitBox02 P2WPKH, P2SH-P2WPKH, P2TR | Required, missing physical fixture | BitBox adapter maps these to `btcSignSimple` single-sig script configs and still needs vendor-signed artifacts. |
 | BitBox02 P2WSH, P2SH-P2WSH | Unsupported, product blocked | BitBox adapter currently uses `btcSignSimple` single-sig script configs only; multisig BitBox signing is not exposed. |
 
-This leaves 12 required rows awaiting physical evidence and 4 explicitly blocked
+This leaves 16 required rows awaiting physical evidence and 6 explicitly blocked
 unsupported rows. The executable source of truth is
 `server/tests/fixtures/hardware-signed-psbt-vectors.ts`.
 
@@ -357,6 +375,15 @@ REQUIRE_LEDGER_PHYSICAL_FIXTURES=1 npm --prefix server run test -- --run tests/u
 That command is expected to fail until all current Ledger physical artifacts
 are independently reviewed. The ordinary Speculos proof does not reduce its
 missing count.
+
+To require only the four Jade Plus single-signature physical rows during a lab capture:
+
+```bash
+REQUIRE_JADE_PHYSICAL_FIXTURES=1 npm --prefix server run test -- --run tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts
+```
+
+That command is expected to fail until all current Jade Plus WebSerial/display
+artifacts are independently reviewed. QEMU proof never reduces its missing count.
 
 To turn the harness into a full hardware evidence gate after physical capture:
 

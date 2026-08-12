@@ -341,6 +341,7 @@ describe('Request Logger Middleware', () => {
       '/api/v1/admin/support-package/incident',
       '/api/v1/admin/support-package/incident-capture',
       '/api/v1/admin/support-package/incident-capture/status',
+      '/api/v1/hardware/jade/pin',
     ])('never logs selector-bearing diagnostics bodies for %s', async (path) => {
       const original = process.env.LOG_REQUEST_BODY;
       process.env.LOG_REQUEST_BODY = 'true';

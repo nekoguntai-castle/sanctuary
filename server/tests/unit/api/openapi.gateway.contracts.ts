@@ -170,6 +170,25 @@ export function registerOpenApiGatewayTests() {
     expect(openApiSpec.components.schemas.DeviceShareResult.required).toEqual(['success', 'message']);
   });
 
+  it('documents the fixed Jade PIN relay without a caller-controlled URL', () => {
+    const operation = openApiSpec.paths['/hardware/jade/pin'].post;
+    const requestSchema = operation.requestBody.content['application/json'].schema;
+
+    expect(operation.security).toEqual([
+      { bearerAuth: [] },
+      { cookieAuth: [], csrfToken: [] },
+    ]);
+    expect(requestSchema).toMatchObject({
+      additionalProperties: false,
+      required: ['operation', 'data'],
+      properties: {
+        operation: { enum: ['get_pin', 'set_pin'] },
+      },
+    });
+    expect(requestSchema.properties).not.toHaveProperty('url');
+    expect(operation.responses).toHaveProperty('503');
+  });
+
   it('documents device create merge and conflict statuses', () => {
     const createResponses = openApiSpec.paths['/devices'].post.responses;
     const createSchema = openApiSpec.components.schemas.CreateDeviceRequest;

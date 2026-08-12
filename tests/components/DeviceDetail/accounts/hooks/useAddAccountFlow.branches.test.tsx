@@ -170,6 +170,7 @@ function renderFlowHook(deviceOverrides: Record<string, unknown> = {}) {
     useAddAccountFlow({
       deviceId: "device-1",
       device: { ...defaultDevice, ...deviceOverrides } as any,
+      chainEnvironment: "mainnet",
       onClose: onCloseMock,
       onDeviceUpdated: onDeviceUpdatedMock,
     }),
@@ -605,6 +606,38 @@ describe("useAddAccountFlow branch coverage", () => {
     expect(addDeviceAccountMock).not.toHaveBeenCalled();
     expect(flow.result.current.addAccountError).toContain("Bitcoin Test app");
     expect(flow.result.current.addAccountError).toContain("testnet/signet");
+  });
+
+  it("binds a Jade Plus account-add connection to the selected chain and stored model", async () => {
+    const flow = renderFlowHook({
+      type: "Blockstream Jade Plus",
+      model: { name: "Blockstream Jade Plus" },
+    });
+
+    await act(async () => {
+      await flow.result.current.handleAddAccountsViaUsb();
+    });
+
+    expect(connectMock).toHaveBeenCalledWith("jade", {
+      chainEnvironment: "mainnet",
+      expectedModel: "Jade Plus",
+    });
+  });
+
+  it("binds a base Jade account-add connection without promoting its model", async () => {
+    const flow = renderFlowHook({
+      type: "Blockstream Jade",
+      model: { name: "Blockstream Jade" },
+    });
+
+    await act(async () => {
+      await flow.result.current.handleAddAccountsViaUsb();
+    });
+
+    expect(connectMock).toHaveBeenCalledWith("jade", {
+      chainEnvironment: "mainnet",
+      expectedModel: "Jade",
+    });
   });
 
   it("reports a generic error when every new USB account fails to save without skipped-path warnings", async () => {

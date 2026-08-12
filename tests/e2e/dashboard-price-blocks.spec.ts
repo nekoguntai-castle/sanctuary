@@ -197,6 +197,7 @@ const STATIC_DASHBOARD_API_RESPONSES: Record<string, MockApiResponse> = {
   'GET /auth/registration-status': mockResponse({ enabled: false }),
   'GET /wallets': mockResponse([MAINNET_WALLET]),
   'GET /devices': mockResponse([]),
+  'POST /hardware/jade/pin': mockResponse({}),
   'GET /health': mockResponse({ status: 'ok' }),
   'GET /admin/version': mockResponse({ updateAvailable: false, currentVersion: '0.8.15' }),
   'GET /admin/agents': mockResponse([]),

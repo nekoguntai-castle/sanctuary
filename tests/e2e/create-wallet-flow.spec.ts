@@ -313,6 +313,7 @@ const STATIC_CREATE_WALLET_API_RESPONSES: Record<string, MockApiResponse> = {
   'GET /intelligence/status': mockResponse({ available: false, ollamaConfigured: false }),
   'GET /admin/groups': mockResponse([]),
   'GET /devices/models': mockResponse(DEVICE_MODELS_RESPONSE),
+  'POST /hardware/jade/pin': mockResponse({}),
   [`GET /wallets/${CREATED_WALLET_ID}`]: mockResponse(CREATED_WALLET_DETAIL_RESPONSE),
   [`GET /wallets/${CREATED_WALLET_ID}/transactions`]: mockResponse([]),
   [`GET /wallets/${CREATED_WALLET_ID}/transactions/pending`]: mockResponse([]),

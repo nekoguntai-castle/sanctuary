@@ -7,8 +7,10 @@ import { useDeviceSave } from '../../../hooks/useDeviceSave';
 import { useQrScanner } from '../../../hooks/qr/useQrScanner';
 import { getAvailableMethods } from '../../../utils/deviceConnection';
 import { useDeviceForm } from '../hooks/useDeviceForm';
+import { useOptionalActiveNetwork } from '../../../contexts/ActiveNetworkContext';
 
 export function useConnectDeviceController() {
+  const selectedNetwork = useOptionalActiveNetwork()?.selectedNetwork;
   const [selectedModel, setSelectedModel] = useState<HardwareDeviceModel | null>(null);
   const models = useDeviceModels();
   const save = useDeviceSave();
@@ -42,6 +44,7 @@ export function useConnectDeviceController() {
     selectedModel,
     setSelectedModel,
     usb,
+    connectUsb: (model: HardwareDeviceModel) => usb.connectUsb(model, selectedNetwork),
   };
 }
 

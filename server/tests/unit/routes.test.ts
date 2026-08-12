@@ -7,6 +7,7 @@ const {
   mockAuthRoutes,
   mockWalletRoutes,
   mockDeviceRoutes,
+  mockHardwareRoutes,
   mockTransactionRoutes,
   mockLabelRoutes,
   mockBitcoinRoutes,
@@ -38,6 +39,7 @@ const {
     mockAuthRoutes: makeHandler(),
     mockWalletRoutes: makeHandler(),
     mockDeviceRoutes: makeHandler(),
+    mockHardwareRoutes: makeHandler(),
     mockTransactionRoutes: makeHandler(),
     mockLabelRoutes: makeHandler(),
     mockBitcoinRoutes: makeHandler(),
@@ -70,6 +72,7 @@ vi.mock('../../src/config', () => ({
 vi.mock('../../src/api/auth', () => ({ __esModule: true, default: mockAuthRoutes }));
 vi.mock('../../src/api/wallets', () => ({ __esModule: true, default: mockWalletRoutes }));
 vi.mock('../../src/api/devices', () => ({ __esModule: true, default: mockDeviceRoutes }));
+vi.mock('../../src/api/hardware', () => ({ __esModule: true, default: mockHardwareRoutes }));
 vi.mock('../../src/api/transactions', () => ({ __esModule: true, default: mockTransactionRoutes }));
 vi.mock('../../src/api/labels', () => ({ __esModule: true, default: mockLabelRoutes }));
 vi.mock('../../src/api/bitcoin', () => ({ __esModule: true, default: mockBitcoinRoutes }));
@@ -119,13 +122,14 @@ describe('registerRoutes', () => {
     registerRoutes(app);
 
     expect(app.get).toHaveBeenCalledTimes(2);
-    expect(app.use).toHaveBeenCalledTimes(25);
+    expect(app.use).toHaveBeenCalledTimes(26);
 
     expect(app.get).toHaveBeenCalledWith('/health', expect.any(Function));
     expect(app.get).toHaveBeenCalledWith('/metrics', mockMetricsHandler);
 
     expect(app.use).toHaveBeenCalledWith('/api/v1/auth', mockAuthRoutes);
     expect(app.use).toHaveBeenCalledWith('/api/v1/wallets', mockWalletRoutes);
+    expect(app.use).toHaveBeenCalledWith('/api/v1/hardware', mockHardwareRoutes);
     expect(app.use).toHaveBeenCalledWith('/api/v1/agent', mockAgentRoutes);
     expect(app.use).toHaveBeenCalledWith('/api/v1/intelligence', mockIntelligenceRoutes);
     expect(app.use).toHaveBeenCalledWith('/api/v1/console', mockConsoleRoutes);

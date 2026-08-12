@@ -42,6 +42,10 @@ const workflow = readFileSync(
   path.join(repoRoot, ".github/workflows/verify-vectors.yml"),
   "utf8",
 );
+const backendDockerfile = readFileSync(
+  path.join(repoRoot, "server/Dockerfile"),
+  "utf8",
+);
 const manifestValidator = path.join(
   repoRoot,
   "scripts/ci/validate-jade-protocol-manifest.jq",
@@ -66,6 +70,12 @@ function validationSucceeded(result: {
 }
 
 describe("Jade Plus authentication decision and vendor harness", () => {
+  it("ships the reviewed relay boundary manifest into the backend build", () => {
+    expect(backendDockerfile).toContain(
+      "COPY config/jade-protocol-harness.json ./config/",
+    );
+  });
+
   it("pins the official release, every executed source, and exact Python image", () => {
     expect(manifest.schemaVersion).toBe(1);
     expect(manifest.vendor).toMatchObject({

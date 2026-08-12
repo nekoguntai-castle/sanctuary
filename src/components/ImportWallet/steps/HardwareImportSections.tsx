@@ -31,7 +31,7 @@ export function DeviceTypeSelection({
       <label className="block text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300 mb-3">
         Device Type
       </label>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <HardwareDeviceButton
           type="ledger"
           active={hardwareDeviceType === 'ledger'}
@@ -47,6 +47,15 @@ export function DeviceTypeSelection({
           title="Trezor"
           description="One, Model T, Safe 3/5/7"
           extraDescription="Via Trezor Suite"
+        />
+        <HardwareDeviceButton
+          type="jade"
+          active={hardwareDeviceType === 'jade'}
+          disabled={!ledgerSupported}
+          onClick={() => onDeviceTypeSelect('jade')}
+          title="Jade Plus"
+          description={ledgerSupported ? 'WebSerial over USB' : 'Requires HTTPS connection'}
+          extraDescription="Unverified — safely blocked"
         />
       </div>
     </div>
@@ -159,12 +168,14 @@ function DisconnectedDevicePrompt({
       <p className="text-sm text-sanctuary-500 mb-4">
         {hardwareDeviceType === 'trezor'
           ? 'Make sure Trezor Suite desktop app is running and your device is connected.'
-          : 'Make sure your Ledger is connected and the Bitcoin app is open.'}
+          : hardwareDeviceType === 'jade'
+            ? 'Connect a Jade Plus over USB. Support remains blocked until physical evidence is current.'
+            : 'Make sure your Ledger is connected and the Bitcoin app is open.'}
       </p>
       <Button
         onClick={onConnectDevice}
         isLoading={isConnecting}
-        disabled={isConnecting || (hardwareDeviceType === 'ledger' && !ledgerSupported)}
+        disabled={isConnecting || (hardwareDeviceType !== 'trezor' && !ledgerSupported)}
       >
         {isConnecting ? 'Connecting...' : 'Connect Device'}
       </Button>

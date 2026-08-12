@@ -2,6 +2,7 @@ import express, { Request, RequestHandler } from 'express';
 
 const DEFAULT_BODY_LIMIT = '10mb';
 const INCIDENT_DIAGNOSTICS_BODY_LIMIT = '4kb';
+const JADE_PIN_RELAY_ENVELOPE_LIMIT = '20kb';
 
 const largeJsonBodyRoutes = new Set([
   'POST /api/v1/admin/backup/validate',
@@ -12,6 +13,7 @@ const privacySensitiveJsonBodyRoutes = new Set([
   'POST /api/v1/admin/support-package/incident',
   'POST /api/v1/admin/support-package/incident-capture',
   'DELETE /api/v1/admin/support-package/incident-capture',
+  'POST /api/v1/hardware/jade/pin',
 ]);
 
 export function usesRouteSpecificLargeJsonParser(req: Pick<Request, 'method' | 'path'>): boolean {
@@ -47,4 +49,9 @@ export function defaultUrlencodedParser(): RequestHandler {
 /** Small, JSON-only parser for selector-bearing support diagnostics. */
 export function incidentDiagnosticsJsonParser(): RequestHandler {
   return express.json({ limit: INCIDENT_DIAGNOSTICS_BODY_LIMIT, strict: true });
+}
+
+/** Bounded envelope parser; the relay separately enforces 16 KiB on opaque data bytes. */
+export function jadePinRelayJsonParser(): RequestHandler {
+  return express.json({ limit: JADE_PIN_RELAY_ENVELOPE_LIMIT, strict: true });
 }

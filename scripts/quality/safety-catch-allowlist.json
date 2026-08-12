@@ -561,21 +561,21 @@
     },
     {
       "file": "src/services/hardwareWallet/adapters/jade.ts",
-      "functionName": "readResponse",
+      "functionName": "closeTransport",
       "issue": "non-terminal-catch",
-      "count": 1,
-      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "count": 4,
+      "reason": "Session identity is cleared before best-effort reader cancellation, lock release, and port close; each teardown step must continue independently so one browser transport error cannot retain stale authenticated identity.",
       "owner": "fund-safety",
-      "targetRemovalSlice": "fail-closed-safety-follow-up"
+      "targetRemovalSlice": "intentional-transport-teardown-boundary"
     },
     {
-      "file": "src/services/hardwareWallet/adapters/jade.ts",
-      "functionName": "disconnect",
+      "file": "src/services/hardwareWallet/adapters/jadeProtocol.ts",
+      "functionName": "invalidateSafely",
       "issue": "non-terminal-catch",
       "count": 1,
-      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "reason": "The protocol session is irreversibly invalidated before transport teardown; cleanup failure must not replace the original framing, authentication, or signing error returned to the caller.",
       "owner": "fund-safety",
-      "targetRemovalSlice": "fail-closed-safety-follow-up"
+      "targetRemovalSlice": "intentional-fail-closed-error-preservation"
     },
     {
       "file": "src/services/hardwareWallet/adapters/ledger/ledgerAdapter.ts",

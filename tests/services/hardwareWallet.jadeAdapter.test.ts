@@ -1,103 +1,109 @@
-/**
- * Jade adapter coverage tests
- */
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { decode,encode } from 'cbor-x';
-import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
+const mocks = vi.hoisted(() => ({
+  authenticate: vi.fn(),
+  rpc: vi.fn(),
+  signPsbt: vi.fn(),
+  masterFingerprint: vi.fn(),
+  accountXpubChain: vi.fn(),
+  validateRequest: vi.fn(),
+  validateSigned: vi.fn(),
+  parseAddressPath: undefined as undefined | ((path: unknown) => unknown),
+  protocolTransport: undefined as undefined | { invalidate: () => Promise<void> },
+}));
 
-const mockSerialGetPorts = vi.fn();
-const mockSerialRequestPort = vi.fn();
+vi.mock('@sanctuary/shared/constants/walletPolicy', async importOriginal => {
+  const original = await importOriginal<typeof import('@sanctuary/shared/constants/walletPolicy')>();
+  return {
+    ...original,
+    parseCanonicalAddressPath: (path: unknown) => (
+      mocks.parseAddressPath?.(path) ?? original.parseCanonicalAddressPath(path)
+    ),
+  };
+});
 
-vi.mock('cbor-x', () => ({
-  encode: vi.fn((value: unknown) => value),
-  decode: vi.fn(),
+vi.mock('../../src/services/hardwareWallet/adapters/jadeProtocol', () => ({
+  JadeProtocolSession: class {
+    constructor(transport: { invalidate: () => Promise<void> }) {
+      mocks.protocolTransport = transport;
+    }
+    authenticate = mocks.authenticate;
+    rpc = mocks.rpc;
+    signPsbt = mocks.signPsbt;
+  },
+}));
+
+vi.mock('../../src/services/hardwareWallet/adapters/jadeIdentity', () => ({
+  masterFingerprintFromRootXpub: (...args: unknown[]) => mocks.masterFingerprint(...args),
+  assertJadeAccountXpubChain: (...args: unknown[]) => mocks.accountXpubChain(...args),
+}));
+
+vi.mock('../../src/services/hardwareWallet/psbtAccountBinding', () => ({
+  validatePsbtSigningRequest: (...args: unknown[]) => mocks.validateRequest(...args),
+}));
+
+vi.mock('../../src/services/hardwareWallet/adapters/jadeSignedPsbt', () => ({
+  validateJadeSignedPsbt: (...args: unknown[]) => mocks.validateSigned(...args),
+}));
+
+vi.mock('../../src/services/hardwareWallet/adapters/jadePinRelayClient', () => ({
+  relayJadePinRequest: vi.fn(),
 }));
 
 vi.mock('../../src/utils/logger', () => ({
-  createLogger: () => ({
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  }),
+  createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
 import { JadeAdapter } from '../../src/services/hardwareWallet/adapters/jade';
 
 const originalWindow = globalThis.window;
 const originalNavigator = globalThis.navigator;
+const requestPort = vi.fn();
+const getPorts = vi.fn();
 
-function setWebSerialEnv(options: { secure?: boolean; withSerial?: boolean } = {}) {
-  const { secure = true, withSerial = true } = options;
+function setEnvironment(secure = true, serial = true) {
   Object.defineProperty(globalThis, 'window', {
-    value: {
-      ...(originalWindow as object),
-      isSecureContext: secure,
-    },
+    value: { ...(originalWindow as object), isSecureContext: secure },
     configurable: true,
   });
-
-  const nav = withSerial
-    ? {
-      serial: {
-        getPorts: (...args: unknown[]) => mockSerialGetPorts(...args),
-        requestPort: (...args: unknown[]) => mockSerialRequestPort(...args),
-      },
-    }
-    : {};
-
   Object.defineProperty(globalThis, 'navigator', {
-    value: nav,
+    value: serial ? { serial: { requestPort, getPorts } } : {},
     configurable: true,
   });
 }
 
-function makePort(vendorId: number, productId: number) {
+function port(vendorId = 0x1a86, productId = 0x55d4) {
+  const reader = { read: vi.fn(), cancel: vi.fn(), releaseLock: vi.fn() };
+  const writer = { write: vi.fn(), releaseLock: vi.fn() };
   return {
     getInfo: () => ({ usbVendorId: vendorId, usbProductId: productId }),
-    close: vi.fn(async () => undefined),
-    open: vi.fn(async () => undefined),
-    readable: {
-      getReader: vi.fn(() => ({
-        read: vi.fn(async () => ({ done: false, value: new Uint8Array([]) })),
-        releaseLock: vi.fn(),
-      })),
-    },
-    writable: {
-      getWriter: vi.fn(() => ({
-        write: vi.fn(async () => undefined),
-        releaseLock: vi.fn(),
-      })),
-    },
+    open: vi.fn(),
+    close: vi.fn(),
+    readable: { getReader: () => reader },
+    writable: { getWriter: () => writer },
+    reader,
+    writer,
   };
 }
 
-function makeConnection({
-  read = vi.fn(async () => ({ done: false, value: undefined as Uint8Array | undefined })),
-  write = vi.fn(async () => undefined),
-} = {}) {
-  return {
-    port: { close: vi.fn(async () => undefined) },
-    reader: {
-      read,
-      releaseLock: vi.fn(),
-    },
-    writer: {
-      write,
-      releaseLock: vi.fn(),
-    },
-    messageId: 0,
-  };
+async function connect(adapter: JadeAdapter, selectedPort = port()) {
+  requestPort.mockResolvedValueOnce(selectedPort);
+  mocks.rpc
+    .mockResolvedValueOnce({ id: 'version', result: { JADE_VERSION: '1.0.40', BOARD_TYPE: '' } })
+    .mockResolvedValueOnce({ id: 'root', result: 'root-xpub' });
+  return adapter.connect({ chainEnvironment: 'mainnet', expectedModel: 'Jade Plus' });
 }
 
 describe('JadeAdapter', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(encode).mockImplementation(() => Buffer.from([1, 2, 3]));
-    vi.mocked(decode).mockReset();
-    setWebSerialEnv({ secure: true, withSerial: true });
-    mockSerialGetPorts.mockResolvedValue([]);
-    mockSerialRequestPort.mockResolvedValue(makePort(0x10c4, 0xea60));
+    setEnvironment();
+    getPorts.mockResolvedValue([]);
+    mocks.masterFingerprint.mockReturnValue('deadbeef');
+    mocks.accountXpubChain.mockReturnValue('xpub-account');
+    mocks.authenticate.mockResolvedValue(undefined);
+    mocks.parseAddressPath = undefined;
+    mocks.protocolTransport = undefined;
   });
 
   afterEach(() => {
@@ -105,327 +111,275 @@ describe('JadeAdapter', () => {
     Object.defineProperty(globalThis, 'navigator', { value: originalNavigator, configurable: true });
   });
 
-  it('checks WebSerial support based on secure context and serial availability', () => {
+  it('requires WebSerial in a secure context and explicit network selection', async () => {
     const adapter = new JadeAdapter();
     expect(adapter.isSupported()).toBe(true);
-
-    setWebSerialEnv({ secure: false, withSerial: true });
+    await expect(adapter.connect()).rejects.toThrow(/explicit supported chain environment/i);
+    setEnvironment(false);
     expect(adapter.isSupported()).toBe(false);
-
-    setWebSerialEnv({ secure: true, withSerial: false });
+    await expect(adapter.connect({ chainEnvironment: 'mainnet' })).rejects.toThrow(/WebSerial/i);
+    setEnvironment(true, false);
     expect(adapter.isSupported()).toBe(false);
   });
 
-  it('returns empty authorized devices when unsupported', async () => {
-    setWebSerialEnv({ secure: false, withSerial: true });
+  it('enumerates only exact Jade USB identifiers and labels Jade Plus explicitly', async () => {
+    getPorts.mockResolvedValue([
+      port(0x10c4, 0xea60),
+      port(0x1a86, 0x55d4),
+      port(1, 2),
+    ]);
+    await expect(new JadeAdapter().getAuthorizedDevices()).resolves.toMatchObject([
+      { name: 'Jade', model: 'Jade' },
+      { name: 'Jade Plus', model: 'Jade Plus' },
+    ]);
+    getPorts.mockRejectedValueOnce(new Error('enumeration failed'));
+    await expect(new JadeAdapter().getAuthorizedDevices()).resolves.toEqual([]);
+    setEnvironment(false);
+    await expect(new JadeAdapter().getAuthorizedDevices()).resolves.toEqual([]);
+  });
+
+  it('authenticates one selected network then derives a stable fingerprint from transient root xpub', async () => {
     const adapter = new JadeAdapter();
-    await expect(adapter.getAuthorizedDevices()).resolves.toEqual([]);
-  });
+    const device = await connect(adapter);
 
-  it('filters and maps authorized Jade/Jade Plus devices', async () => {
-    const jade = makePort(0x10c4, 0xea60);
-    const jadePlus = makePort(0x1a86, 0x55d4);
-    const other = makePort(0x1234, 0xabcd);
-    mockSerialGetPorts.mockResolvedValue([jade, jadePlus, other]);
-
-    const adapter = new JadeAdapter();
-    const devices = await adapter.getAuthorizedDevices();
-
-    expect(devices).toHaveLength(2);
-    expect(devices[0].name).toBe('Jade');
-    expect(devices[1].name).toBe('Jade Plus');
-  });
-
-  it('handles errors while enumerating authorized ports', async () => {
-    mockSerialGetPorts.mockRejectedValue(new Error('serial error'));
-    const adapter = new JadeAdapter();
-    await expect(adapter.getAuthorizedDevices()).resolves.toEqual([]);
-  });
-
-  it('executes sendRpc with encoded payloads and maps Jade RPC errors', async () => {
-    const adapter = new JadeAdapter();
-    const write = vi.fn(async () => undefined);
-    (adapter as any).connection = makeConnection({ write });
-
-    const readResponseSpy = vi.spyOn(adapter as any, 'readResponse');
-    readResponseSpy.mockResolvedValueOnce({ id: 'msg1', result: 'ok' });
-
-    const result = await (adapter as any).sendRpc('get_xpub', { network: 'mainnet' });
-    expect(result).toBe('ok');
-    expect(write).toHaveBeenCalledWith(expect.any(Uint8Array));
-    expect(readResponseSpy).toHaveBeenCalledWith(expect.stringMatching(/^msg\d+$/));
-
-    readResponseSpy.mockResolvedValueOnce({
-      id: 'msg2',
-      error: { code: 7, message: 'denied' },
-    });
-    await expect((adapter as any).sendRpc('get_xpub')).rejects.toThrow('Jade error (7): denied');
-  });
-
-  it('requires an active connection for sendRpc and readResponse', async () => {
-    const adapter = new JadeAdapter();
-    await expect((adapter as any).sendRpc('ping')).rejects.toThrow('No device connected');
-    await expect((adapter as any).readResponse('msg', 1)).rejects.toThrow('No device connected');
-  });
-
-  it('reads matching responses from buffer and appends streamed bytes', async () => {
-    const adapter = new JadeAdapter();
-    const read = vi
-      .fn()
-      .mockResolvedValueOnce({ done: false, value: new Uint8Array([2, 3]) });
-    (adapter as any).connection = makeConnection({ read });
-
-    // First decode: unexpected message from existing buffer. Second: expected response after append.
-    vi.mocked(decode)
-      .mockReturnValueOnce({ id: 'other', result: 'skip' } as any)
-      .mockReturnValueOnce({ id: 'msg-expected', result: 'done' } as any);
-
-    (adapter as any).responseBuffer = new Uint8Array([1]);
-    const response = await (adapter as any).readResponse('msg-expected', 100);
-
-    expect(response).toEqual({ id: 'msg-expected', result: 'done' });
-    expect(read).toHaveBeenCalledTimes(1);
-    expect((adapter as any).responseBuffer).toEqual(new Uint8Array(0));
-  });
-
-  it('maps readResponse serial-closed and timeout paths', async () => {
-    const adapterClosed = new JadeAdapter();
-    const readClosed = vi.fn(async () => ({ done: true, value: undefined }));
-    (adapterClosed as any).connection = makeConnection({ read: readClosed });
-    await expect((adapterClosed as any).readResponse('msg', 100)).rejects.toThrow(
-      'Serial port closed unexpectedly'
-    );
-
-    const adapterNoValue = new JadeAdapter();
-    const readNoValueThenClosed = vi
-      .fn()
-      .mockResolvedValueOnce({ done: false, value: undefined })
-      .mockResolvedValueOnce({ done: true, value: undefined });
-    (adapterNoValue as any).connection = makeConnection({ read: readNoValueThenClosed });
-    await expect((adapterNoValue as any).readResponse('msg', 100)).rejects.toThrow(
-      'Serial port closed unexpectedly'
-    );
-
-    const adapterTimeout = new JadeAdapter();
-    (adapterTimeout as any).connection = makeConnection();
-    await expect((adapterTimeout as any).readResponse('msg', 0)).rejects.toThrow(
-      'Timeout waiting for device response'
-    );
-  });
-
-  it('throws friendly errors for unsupported and denied connect', async () => {
-    setWebSerialEnv({ secure: false, withSerial: true });
-    await expect(new JadeAdapter().connect()).rejects.toThrow('WebSerial is not supported');
-
-    setWebSerialEnv({ secure: true, withSerial: true });
-    mockSerialRequestPort.mockRejectedValueOnce(new Error('NotAllowedError'));
-    await expect(new JadeAdapter().connect()).rejects.toThrow('Access denied');
-  });
-
-  it('maps busy errors during connect', async () => {
-    mockSerialRequestPort.mockRejectedValueOnce(new Error('port busy'));
-    await expect(new JadeAdapter().connect()).rejects.toThrow('Device is busy');
-  });
-
-  it('connects successfully and maps Jade Plus metadata', async () => {
-    const adapter = new JadeAdapter();
-    mockSerialRequestPort.mockResolvedValueOnce(makePort(0x1a86, 0x55d4));
-    const sendRpcSpy = vi.spyOn(adapter as any, 'sendRpc').mockResolvedValueOnce({
-      JADE_VERSION: '1.0.0',
-      BOARD_TYPE: '',
-      JADE_FEATURES: 'camera',
-    });
-
-    const device = await adapter.connect();
-    expect(device.name).toBe('Jade Plus');
-    expect(device.model).toBe('Jade Plus');
+    expect(mocks.authenticate).toHaveBeenCalledWith('mainnet', expect.any(Function), expect.any(Number));
+    expect(mocks.rpc).toHaveBeenNthCalledWith(1, 'get_version_info');
+    expect(mocks.rpc).toHaveBeenNthCalledWith(2, 'get_xpub', { network: 'mainnet', path: [] });
+    expect(mocks.masterFingerprint).toHaveBeenCalledWith('root-xpub', 'mainnet');
+    expect(device).toMatchObject({ name: 'Jade Plus', fingerprint: 'deadbeef', firmwareVersion: '1.0.40' });
     expect(adapter.isConnected()).toBe(true);
-    expect(sendRpcSpy).toHaveBeenCalledWith('get_version_info');
+    await expect(mocks.protocolTransport?.invalidate()).resolves.toBeUndefined();
+    expect(adapter.isConnected()).toBe(false);
   });
 
-  it('maps generic connect failures and unreadable port errors', async () => {
-    const badPort = {
-      ...makePort(0x10c4, 0xea60),
-      readable: undefined,
-      writable: undefined,
-    };
-    mockSerialRequestPort.mockResolvedValueOnce(badPort as any);
-    await expect(new JadeAdapter().connect()).rejects.toThrow(
-      'Failed to connect: Serial port not readable/writable'
-    );
-
-    mockSerialRequestPort.mockRejectedValueOnce(new Error('strange failure'));
-    await expect(new JadeAdapter().connect()).rejects.toThrow('Failed to connect: strange failure');
-
-    mockSerialRequestPort.mockRejectedValueOnce({ code: 'unknown' });
-    await expect(new JadeAdapter().connect()).rejects.toThrow('Failed to connect: Unknown error');
-  });
-
-  it('connects to standard Jade and falls back model to Jade when board type is missing', async () => {
+  it('binds a base Jade session to the selected test-family network without a model fallback', async () => {
+    const selectedPort = port(0x10c4, 0xea60);
+    requestPort.mockResolvedValueOnce(selectedPort);
+    mocks.rpc
+      .mockResolvedValueOnce({ id: 'version', result: { JADE_VERSION: '1.0.40' } })
+      .mockResolvedValueOnce({ id: 'root', result: 'test-root-xpub' });
     const adapter = new JadeAdapter();
-    mockSerialRequestPort.mockResolvedValueOnce(makePort(0x10c4, 0xea60));
-    vi.spyOn(adapter as any, 'sendRpc').mockResolvedValueOnce({
-      JADE_VERSION: '1.2.3',
-      BOARD_TYPE: '',
-      JADE_FEATURES: 'camera',
-    });
 
-    const device = await adapter.connect();
-    expect(device.name).toBe('Jade 1.2.3');
-    expect(device.model).toBe('Jade');
+    await expect(adapter.connect({ chainEnvironment: 'testnet3' })).resolves.toMatchObject({ model: 'Jade' });
+    expect(mocks.authenticate).toHaveBeenCalledWith('testnet', expect.any(Function), expect.any(Number));
+    expect(mocks.masterFingerprint).toHaveBeenCalledWith('test-root-xpub', 'testnet');
   });
 
-  it('disconnects and clears state even if close fails', async () => {
-    const adapter = new JadeAdapter();
-    const releaseReader = vi.fn();
-    const releaseWriter = vi.fn();
-    const close = vi.fn(async () => {
-      throw new Error('close failed');
-    });
+  it('rejects a selected-model mismatch before authentication', async () => {
+    requestPort.mockResolvedValueOnce(port(0x10c4, 0xea60));
+    await expect(new JadeAdapter().connect({
+      chainEnvironment: 'mainnet',
+      expectedModel: 'Jade Plus',
+    })).rejects.toThrow(/not the requested Jade Plus/i);
+    expect(mocks.authenticate).not.toHaveBeenCalled();
+  });
 
-    (adapter as any).connection = {
-      port: { close },
-      reader: { releaseLock: releaseReader },
-      writer: { releaseLock: releaseWriter },
-      messageId: 1,
-    };
-    (adapter as any).connectedDevice = {
-      id: 'jade-1',
-      type: 'jade',
-      name: 'Jade',
-      model: 'Jade',
-      connected: true,
-      fingerprint: undefined,
-    };
-    (adapter as any).responseBuffer = new Uint8Array([1, 2, 3]);
+  it.each([
+    [new Error('NotAllowedError'), /Access denied/i],
+    [new Error('port busy'), /Device is busy/i],
+    ['unknown', /Unknown error/i],
+  ])('maps connection failure %p and leaves no live identity', async (failure, expected) => {
+    requestPort.mockRejectedValueOnce(failure);
+    const adapter = new JadeAdapter();
+    await expect(adapter.connect({ chainEnvironment: 'mainnet' })).rejects.toThrow(expected);
+    expect(adapter.getDevice()).toBeNull();
+  });
+
+  it('fails closed for unknown hardware, unusable streams, and malformed identity responses', async () => {
+    requestPort.mockResolvedValueOnce(port(1, 2));
+    await expect(new JadeAdapter().connect({ chainEnvironment: 'mainnet' }))
+      .rejects.toThrow(/requested Jade model/i);
+
+    const unusable = port();
+    Object.assign(unusable, { readable: null });
+    requestPort.mockResolvedValueOnce(unusable);
+    await expect(new JadeAdapter().connect({ chainEnvironment: 'mainnet', expectedModel: 'Jade Plus' }))
+      .rejects.toThrow(/not readable\/writable/i);
+
+    requestPort.mockResolvedValueOnce(port());
+    mocks.rpc.mockResolvedValueOnce({ id: 'version' });
+    await expect(new JadeAdapter().connect({ chainEnvironment: 'mainnet', expectedModel: 'Jade Plus' }))
+      .rejects.toThrow(/did not return version information/i);
+
+    requestPort.mockResolvedValueOnce(port());
+    mocks.rpc.mockResolvedValueOnce({ id: 'version', result: { JADE_VERSION: '' } });
+    await expect(new JadeAdapter().connect({ chainEnvironment: 'mainnet', expectedModel: 'Jade Plus' }))
+      .rejects.toThrow(/malformed version/i);
+
+    requestPort.mockResolvedValueOnce(port());
+    mocks.rpc
+      .mockResolvedValueOnce({ id: 'version', result: { JADE_VERSION: '1.0.40' } })
+      .mockResolvedValueOnce({ id: 'root' });
+    await expect(new JadeAdapter().connect({ chainEnvironment: 'mainnet', expectedModel: 'Jade Plus' }))
+      .rejects.toThrow(/did not return root xpub/i);
+  });
+
+  it('disconnects transport and clears session identity even when close fails', async () => {
+    const selectedPort = port();
+    const adapter = new JadeAdapter();
+    await connect(adapter, selectedPort);
+    selectedPort.close.mockRejectedValueOnce(new Error('close failed'));
+    await expect(adapter.disconnect()).resolves.toBeUndefined();
+    expect(selectedPort.reader.releaseLock).toHaveBeenCalled();
+    expect(selectedPort.reader.cancel).toHaveBeenCalled();
+    expect(selectedPort.writer.releaseLock).toHaveBeenCalled();
+    expect(adapter.getDevice()).toBeNull();
+  });
+
+  it('continues every teardown step when cancellation and lock releases fail', async () => {
+    const selectedPort = port();
+    const adapter = new JadeAdapter();
+    await connect(adapter, selectedPort);
+    selectedPort.reader.cancel.mockRejectedValueOnce(new Error('cancel failed'));
+    selectedPort.reader.releaseLock.mockImplementationOnce(() => { throw new Error('reader release failed'); });
+    selectedPort.writer.releaseLock.mockImplementationOnce(() => { throw new Error('writer release failed'); });
 
     await expect(adapter.disconnect()).resolves.toBeUndefined();
-    expect(releaseReader).toHaveBeenCalled();
-    expect(releaseWriter).toHaveBeenCalled();
+    expect(selectedPort.close).toHaveBeenCalled();
     expect(adapter.getDevice()).toBeNull();
-    expect((adapter as any).responseBuffer).toEqual(new Uint8Array(0));
   });
 
-  it('requires active connection for xpub/verify/sign', async () => {
+  it('bounds stalled reader cancellation and still closes the serial port', async () => {
+    const selectedPort = port();
     const adapter = new JadeAdapter();
-    await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow('No device connected');
-    await expect(adapter.verifyAddress("m/84'/0'/0'/0/0", 'bc1qxyz')).rejects.toThrow('No device connected');
-    await expect(adapter.signPSBT({ psbt: 'abc', inputPaths: [] })).rejects.toThrow('No device connected');
-    await expect((adapter as any).signPSBT(undefined)).rejects.toThrow('No device connected');
+    await connect(adapter, selectedPort);
+    selectedPort.reader.cancel.mockReturnValueOnce(new Promise(() => undefined));
+
+    vi.useFakeTimers();
+    try {
+      const disconnecting = adapter.disconnect();
+      await vi.advanceTimersByTimeAsync(2_000);
+      await expect(disconnecting).resolves.toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(selectedPort.reader.releaseLock).toHaveBeenCalled();
+    expect(selectedPort.writer.releaseLock).toHaveBeenCalled();
+    expect(selectedPort.close).toHaveBeenCalled();
+    expect(adapter.getDevice()).toBeNull();
   });
 
-  it('fails closed before xpub export while master identity is unavailable', async () => {
+  it('exports only an exact canonical single-signature account on the selected family', async () => {
     const adapter = new JadeAdapter();
-    (adapter as any).connection = makeConnection();
-    const sendRpcSpy = vi.spyOn(adapter as any, 'sendRpc');
+    await connect(adapter);
+    mocks.rpc
+      .mockResolvedValueOnce({ id: 'purpose', result: 'purpose-xpub' })
+      .mockResolvedValueOnce({ id: 'coin', result: 'coin-xpub' })
+      .mockResolvedValueOnce({ id: 'account', result: 'account-xpub' });
 
-    await expect(adapter.getXpub('m/84h/1h/0h')).rejects.toThrow(
-      'master fingerprint is unavailable',
-    );
-    expect(sendRpcSpy).not.toHaveBeenCalled();
-  });
-
-  it('verifies address variants and handles user cancel', async () => {
-    const adapter = new JadeAdapter();
-    (adapter as any).connection = makeConnection();
-    const sendRpcSpy = vi.spyOn(adapter as any, 'sendRpc');
-
-    sendRpcSpy.mockResolvedValueOnce('bc1qxyz');
-    await expect(adapter.verifyAddress("m/84'/0'/0'/0/0", 'bc1qxyz')).resolves.toBe(true);
-    expect(sendRpcSpy).toHaveBeenLastCalledWith(
-      'get_receive_address',
-      expect.objectContaining({ variant: 'wpkh(k)' })
-    );
-
-    sendRpcSpy.mockResolvedValueOnce('3abc');
-    await expect(adapter.verifyAddress("m/49'/0'/0'/0/0", '3abc')).resolves.toBe(true);
-    expect(sendRpcSpy).toHaveBeenLastCalledWith(
-      'get_receive_address',
-      expect.objectContaining({ variant: 'sh(wpkh(k))' })
-    );
-
-    sendRpcSpy.mockResolvedValueOnce('bc1pabc');
-    await expect(adapter.verifyAddress("m/86'/0'/0'/0/0", 'bc1pabc')).resolves.toBe(true);
-    expect(sendRpcSpy).toHaveBeenLastCalledWith(
-      'get_receive_address',
-      expect.objectContaining({ variant: 'tr(k)' })
-    );
-
-    sendRpcSpy.mockResolvedValueOnce('1abc');
-    await expect(adapter.verifyAddress("m/44'/0'/0'/0/0", '1abc')).resolves.toBe(true);
-    expect(sendRpcSpy).toHaveBeenLastCalledWith(
-      'get_receive_address',
-      expect.objectContaining({ variant: 'pkh(k)' })
-    );
-
-    sendRpcSpy.mockResolvedValueOnce('tb1qxyz');
-    await expect(adapter.verifyAddress("m/84h/1h/0h/0/0", 'tb1qxyz')).resolves.toBe(true);
-    expect(sendRpcSpy).toHaveBeenLastCalledWith(
-      'get_receive_address',
-      expect.objectContaining({
-        network: 'testnet',
-        variant: 'wpkh(k)',
-      })
-    );
-
-    sendRpcSpy.mockResolvedValueOnce('bc1qmismatch');
-    await expect(adapter.verifyAddress("m/84'/0'/0'/0/0", 'bc1qxyz')).resolves.toBe(false);
-
-    sendRpcSpy.mockRejectedValueOnce(new Error('User cancelled'));
-    await expect(adapter.verifyAddress("m/84'/0'/0'/0/0", 'bc1qxyz')).resolves.toBe(false);
-
-    sendRpcSpy.mockRejectedValueOnce(new Error('device error'));
-    await expect(adapter.verifyAddress("m/84'/0'/0'/0/0", 'bc1qxyz')).rejects.toThrow(
-      'Failed to verify address: device error'
-    );
-
-    sendRpcSpy.mockRejectedValueOnce({ code: 'device-error' });
-    await expect(adapter.verifyAddress("m/84'/0'/0'/0/0", 'bc1qxyz')).rejects.toThrow(
-      'Failed to verify address: Unknown error'
-    );
-  });
-
-  it('signs PSBT and maps cancellation/busy errors', async () => {
-    const adapter = new JadeAdapter();
-    (adapter as any).connection = makeConnection();
-    const sendRpcSpy = vi.spyOn(adapter as any, 'sendRpc');
-
-    sendRpcSpy.mockResolvedValueOnce('signed-psbt');
-    const result = await adapter.signPSBT({
-      psbt: 'base64-psbt',
-      inputPaths: ["m/84'/1'/0'/0/0", "m/84'/1'/0'/0/1"],
+    await expect(adapter.getXpub("m/84'/0'/7'")).resolves.toEqual({
+      xpub: 'xpub-account', fingerprint: 'deadbeef', path: "m/84'/0'/7'",
     });
-    expect(result).toEqual({ psbt: 'signed-psbt', signatures: 2 });
-    expect(sendRpcSpy).toHaveBeenCalledWith('sign_psbt', {
-      network: 'testnet',
-      psbt: 'base64-psbt',
-    });
-
-    sendRpcSpy.mockResolvedValueOnce('signed-mainnet');
-    const defaultPathResult = await adapter.signPSBT({
-      psbt: 'base64-mainnet',
-      inputPaths: [],
-    });
-    expect(defaultPathResult).toEqual({ psbt: 'signed-mainnet', signatures: 1 });
-    expect(sendRpcSpy).toHaveBeenLastCalledWith('sign_psbt', {
+    expect(mocks.rpc).toHaveBeenNthCalledWith(3, 'get_xpub', {
       network: 'mainnet',
-      psbt: 'base64-mainnet',
+      path: [0x80000054],
+    });
+    expect(mocks.rpc).toHaveBeenNthCalledWith(4, 'get_xpub', {
+      network: 'mainnet',
+      path: [0x80000054, 0x80000000],
+    });
+    expect(mocks.rpc).toHaveBeenNthCalledWith(5, 'get_xpub', {
+      network: 'mainnet',
+      path: [0x80000054, 0x80000000, 0x80000007],
+    });
+    expect(mocks.accountXpubChain).toHaveBeenCalledWith(
+      ['purpose-xpub', 'coin-xpub', 'account-xpub'],
+      "m/84'/0'/7'",
+      'mainnet',
+      'deadbeef',
+    );
+    await expect(adapter.getXpub("m/84'/1'/0'")).rejects.toThrow(/selected.*network session/i);
+    await expect(adapter.getXpub("m/48'/0'/0'/2'")).rejects.toThrow(/single-signature/i);
+  });
+
+  it.each([
+    ["m/44'/0'/0'/0/0", 'pkh(k)'],
+    ["m/49'/0'/0'/0/0", 'sh(wpkh(k))'],
+    ["m/84'/0'/0'/1/4", 'wpkh(k)'],
+    ["m/86'/0'/0'/0/9", 'tr(k)'],
+  ])('binds displayed %s address to its canonical variant', async (path, variant) => {
+    const adapter = new JadeAdapter();
+    await connect(adapter);
+    mocks.rpc.mockResolvedValueOnce({ id: 'address', result: 'bc-address' });
+    await expect(adapter.verifyAddress(path, 'bc-address')).resolves.toBe(true);
+    expect(mocks.rpc).toHaveBeenLastCalledWith('get_receive_address', {
+      network: 'mainnet', path: expect.any(Array), variant,
+    }, true);
+  });
+
+  it('rejects cross-network and multisig display and maps user rejection to false', async () => {
+    const adapter = new JadeAdapter();
+    await connect(adapter);
+    await expect(adapter.verifyAddress("m/84'/1'/0'/0/0", 'x')).rejects.toThrow(/network session/i);
+    await expect(adapter.verifyAddress("m/48'/0'/0'/2'/0/0", 'x')).rejects.toThrow(/single-signature/i);
+    mocks.rpc.mockRejectedValueOnce(new Error('user_cancelled'));
+    await expect(adapter.verifyAddress("m/84'/0'/0'/0/0", 'x')).resolves.toBe(false);
+    mocks.rpc.mockRejectedValueOnce(new Error('transport failed'));
+    await expect(adapter.verifyAddress("m/84'/0'/0'/0/0", 'x')).rejects.toThrow('transport failed');
+    mocks.rpc.mockRejectedValueOnce('non-error transport failure');
+    await expect(adapter.verifyAddress("m/84'/0'/0'/0/0", 'x')).rejects.toBe('non-error transport failure');
+  });
+
+  it('fails closed if a future canonical single-signature policy has no Jade address variant', async () => {
+    const adapter = new JadeAdapter();
+    await connect(adapter);
+    mocks.parseAddressPath = () => ({
+      derivationFamily: 'mainnet',
+      policy: { purpose: 48, walletType: 'single_sig' },
     });
 
-    sendRpcSpy.mockRejectedValueOnce(new Error('user_cancelled'));
-    await expect(adapter.signPSBT({ psbt: 'x', inputPaths: [] })).rejects.toThrow('Transaction rejected on device');
+    await expect(adapter.verifyAddress("m/48'/0'/0'/0/0", 'x'))
+      .rejects.toThrow(/multisig address display is not supported/i);
+    expect(mocks.rpc).not.toHaveBeenLastCalledWith('get_receive_address', expect.anything(), true);
+  });
 
-    sendRpcSpy.mockRejectedValueOnce(new Error('device busy'));
-    await expect(adapter.signPSBT({ psbt: 'x', inputPaths: [] })).rejects.toThrow('Jade is busy');
+  it('sends binary PSBT only after exact preflight and validates the returned bytes', async () => {
+    const adapter = new JadeAdapter();
+    await connect(adapter);
+    const validated = {
+      network: 'mainnet', context: { walletType: 'single_sig' },
+    };
+    mocks.validateRequest.mockReturnValue(validated);
+    mocks.signPsbt.mockResolvedValue(Uint8Array.from([9, 8, 7]));
+    mocks.validateSigned.mockReturnValue({ psbt: 'signed', signatures: 1 });
 
-    sendRpcSpy.mockRejectedValueOnce(new Error('unexpected fail'));
-    await expect(adapter.signPSBT({ psbt: 'x', inputPaths: [] })).rejects.toThrow(
-      'Failed to sign transaction: unexpected fail'
-    );
+    const request = { psbt: Buffer.from([1, 2, 3]).toString('base64') };
+    await expect(adapter.signPSBT(request)).resolves.toEqual({ psbt: 'signed', signatures: 1 });
+    expect(mocks.validateRequest).toHaveBeenCalledWith(request, 'deadbeef');
+    expect(mocks.signPsbt).toHaveBeenCalledWith('mainnet', Uint8Array.from([1, 2, 3]));
+    expect(mocks.validateSigned).toHaveBeenCalledWith(validated, Uint8Array.from([9, 8, 7]));
+  });
 
-    sendRpcSpy.mockRejectedValueOnce({ code: 'unknown-error' });
-    await expect(adapter.signPSBT({ psbt: 'x', inputPaths: [] })).rejects.toThrow(
-      'Failed to sign transaction: Unknown error'
-    );
+  it('blocks multisig, cross-network signing, and disconnected calls', async () => {
+    const disconnected = new JadeAdapter();
+    await expect(disconnected.getXpub("m/84'/0'/0'")).rejects.toThrow(/authenticated Jade session/i);
+    await expect(disconnected.verifyAddress("m/84'/0'/0'/0/0", 'x')).rejects.toThrow(/authenticated Jade session/i);
+    await expect(disconnected.signPSBT({ psbt: 'x' })).rejects.toThrow(/authenticated Jade session/i);
+
+    const adapter = new JadeAdapter();
+    await connect(adapter);
+    mocks.validateRequest.mockReturnValueOnce({ network: 'mainnet', context: { walletType: 'multi_sig' } });
+    await expect(adapter.signPSBT({ psbt: 'x' })).rejects.toThrow(/multisig signing is not supported/i);
+    mocks.validateRequest.mockReturnValueOnce({ network: 'testnet3', context: { walletType: 'single_sig' } });
+    await expect(adapter.signPSBT({ psbt: 'x' })).rejects.toThrow(/selected network session/i);
+  });
+
+  it('maps signing rejection explicitly and preserves other protocol failures', async () => {
+    const adapter = new JadeAdapter();
+    await connect(adapter);
+    mocks.validateRequest.mockReturnValue({ network: 'mainnet', context: { walletType: 'single_sig' } });
+    mocks.signPsbt.mockRejectedValueOnce(new Error('user_rejected'));
+    await expect(adapter.signPSBT({ psbt: 'cHNidP8=' })).rejects.toThrow('Transaction rejected on Jade');
+    mocks.signPsbt.mockRejectedValueOnce(new Error('serial failed'));
+    await expect(adapter.signPSBT({ psbt: 'cHNidP8=' })).rejects.toThrow('serial failed');
+  });
+
+  it('returns unsupported when browser globals are absent', () => {
+    Object.defineProperty(globalThis, 'navigator', { value: undefined, configurable: true });
+    expect(new JadeAdapter().isSupported()).toBe(false);
+    Object.defineProperty(globalThis, 'navigator', { value: { serial: {} }, configurable: true });
+    Object.defineProperty(globalThis, 'window', { value: undefined, configurable: true });
+    expect(new JadeAdapter().isSupported()).toBe(false);
   });
 });

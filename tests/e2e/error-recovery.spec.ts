@@ -153,6 +153,7 @@ const MOCK_API_RESPONSES: Record<string, MockApiResponse> = {
   'GET /health': mockResponse({ status: 'ok' }),
   'GET /wallets': mockResponse([WALLET]),
   'GET /devices': mockResponse([]),
+  'POST /hardware/jade/pin': mockResponse({}),
   'GET /price': mockResponse(PRICE_RESPONSE),
   'GET /bitcoin/status': mockResponse(BITCOIN_STATUS_RESPONSE),
   'GET /bitcoin/fees': mockResponse({ fastest: 18, halfHour: 12, hour: 8, economy: 3 }),

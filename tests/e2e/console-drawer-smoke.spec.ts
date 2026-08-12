@@ -145,6 +145,7 @@ const STATIC_RESPONSES: Record<string, MockApiResponse> = {
     { name: "Start", value: WALLET.balance },
     { name: "Now", value: WALLET.balance },
   ]),
+  "POST /hardware/jade/pin": mockResponse({}),
   "GET /console/sessions": mockResponse({ sessions: [] }),
   "GET /console/prompts": mockResponse({ prompts: [PROMPT_HISTORY] }),
   "GET /console/tools": mockResponse({

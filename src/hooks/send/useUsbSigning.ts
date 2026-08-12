@@ -12,6 +12,7 @@ import { isMultisigType } from '../../types';
 import { createLogger } from '../../utils/logger';
 import type { Wallet, Device } from '../../types';
 import type { TrezorConnectSignedArtifact } from '../../services/hardwareWallet/types';
+import type { HardwareWalletConnectionOptions } from '../../services/hardwareWallet/types';
 import type { TransactionData } from './types';
 import type { SendOperationLease } from './useSendOperationOwner';
 import { getHardwareWalletType, extractXpubsFromDescriptor } from './types';
@@ -174,6 +175,19 @@ function markSignedDevice(setSignedDevices: SetSignedDevices, deviceId: string):
   setSignedDevices((prev) => new Set([...prev, deviceId]));
 }
 
+function signingConnectionOptions(
+  hwType: HardwareWalletType,
+  device: Device,
+  wallet: Wallet,
+): HardwareWalletConnectionOptions | undefined {
+  if (hwType !== 'jade') return undefined;
+  if (!wallet.network) throw new Error('Jade signing requires an explicit wallet network');
+  return {
+    chainEnvironment: wallet.network,
+    expectedModel: device.model?.name.includes('Plus') ? 'Jade Plus' : 'Jade',
+  };
+}
+
 async function persistDeviceSignatureToDraft(
   walletId: string,
   draftId: string | null,
@@ -214,7 +228,7 @@ async function signPsbtWithDevice({
     type: device.type,
     hwType,
   });
-  await hardwareWallet.connect(hwType);
+  await hardwareWallet.connect(hwType, signingConnectionOptions(hwType, device, wallet));
   if (!lease.isCurrent()) return null;
 
   const multisigXpubs = getMultisigXpubs(wallet);

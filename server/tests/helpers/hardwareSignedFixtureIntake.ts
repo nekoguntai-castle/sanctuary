@@ -8,7 +8,10 @@ import {
 } from "@sanctuary/shared/constants/walletPolicy";
 import {
   COMMON_HARDWARE_SIGNED_NEGATIVE_CONTROLS,
+  JADE_PLUS_PHYSICAL_MODEL,
+  JADE_PLUS_PHYSICAL_TRANSPORT,
   LEDGER_HARDWARE_SIGNED_SOFTWARE_GATES,
+  JADE_HARDWARE_SIGNED_SOFTWARE_GATES,
   MULTISIG_HARDWARE_SIGNED_NEGATIVE_CONTROLS,
   REQUIRED_HARDWARE_SIGNED_ADDRESS_PATH_SUFFIXES,
   REQUIRED_HARDWARE_SIGNED_SOFTWARE_GATES,
@@ -62,12 +65,18 @@ const PACKAGE_LOCK_PATH = fileURLToPath(
 const CORE_PROOF_PATH = fileURLToPath(
   new URL("../../../scripts/verify-psbt/proof-manifest.json", import.meta.url),
 );
+const JADE_PROOF_PATH = fileURLToPath(
+  new URL("../../../config/jade-emulator-proof.json", import.meta.url),
+);
 const PACKAGE_LOCK = JSON.parse(readFileSync(PACKAGE_LOCK_PATH, "utf8")) as {
   packages: Record<string, { version?: string; integrity?: string }>;
 };
 const CORE_PROOF = JSON.parse(readFileSync(CORE_PROOF_PATH, "utf8")) as {
   coreImage: string;
   coreSubversion: string;
+};
+const JADE_PROOF = JSON.parse(readFileSync(JADE_PROOF_PATH, "utf8")) as {
+  firmware: { runtimeVersion: string };
 };
 
 const EXPECTED_POLICY_ID: Record<HardwareSignedScriptType, string> = {
@@ -83,6 +92,7 @@ const EXPECTED_SDK_PACKAGE: Record<HardwareSignedPsbtVector["vendor"], string> =
   {
     ledger: "@ledgerhq/ledger-bitcoin",
     trezor: "@trezor/connect-web",
+    jade: "cbor-x",
     bitbox: "bitbox02-api",
   };
 
@@ -206,7 +216,9 @@ const validateSoftwareGates = (
     ? TREZOR_HARDWARE_SIGNED_SOFTWARE_GATES
     : vector.vendor === "ledger"
       ? LEDGER_HARDWARE_SIGNED_SOFTWARE_GATES
-      : [];
+      : vector.vendor === "jade"
+        ? JADE_HARDWARE_SIGNED_SOFTWARE_GATES
+        : [];
   const required = [...REQUIRED_HARDWARE_SIGNED_SOFTWARE_GATES, ...vendorGates];
   return missingValues(required, passedCommands).map((command) =>
     issue(
@@ -327,6 +339,47 @@ const validateProvenanceIdentity = (
         "Sanctuary image must be pinned by SHA-256 digest",
       ),
     );
+  }
+  return issues;
+};
+
+const validateJadeDeviceBinding = (
+  vector: HardwareSignedPsbtVector,
+): HardwareSignedFixtureIntakeIssue[] => {
+  if (vector.vendor !== "jade") return [];
+
+  const issues: HardwareSignedFixtureIntakeIssue[] = [];
+  if (vector.device.model !== JADE_PLUS_PHYSICAL_MODEL) {
+    issues.push(issue(
+      vector.id,
+      "device.model",
+      `Jade evidence must come from a physical ${JADE_PLUS_PHYSICAL_MODEL}`,
+    ));
+  }
+  if (vector.device.transport !== JADE_PLUS_PHYSICAL_TRANSPORT) {
+    issues.push(issue(
+      vector.id,
+      "device.transport",
+      `Jade Plus evidence must use ${JADE_PLUS_PHYSICAL_TRANSPORT}`,
+    ));
+  }
+  const firmwareVersion = vector.device.firmwareVersion.trim();
+  if (
+    firmwareVersion === "" ||
+    firmwareVersion !== JADE_PROOF.firmware.runtimeVersion
+  ) {
+    issues.push(issue(
+      vector.id,
+      "device.firmwareVersion",
+      `Jade Plus firmware must match proven compatible release ${JADE_PROOF.firmware.runtimeVersion}`,
+    ));
+  }
+  if (!vector.device.transportVersion?.trim()) {
+    issues.push(issue(
+      vector.id,
+      "device.transportVersion",
+      "Jade Plus WebSerial transport metadata is required",
+    ));
   }
   return issues;
 };
@@ -491,6 +544,7 @@ const validatePhysicalProvenance = (
   context: HardwareEvidenceVerificationContext,
 ): HardwareSignedFixtureIntakeIssue[] => [
   ...validateProvenanceIdentity(vector),
+  ...validateJadeDeviceBinding(vector),
   ...validateSdkAndSourceProvenance(vector),
   ...validateFreshnessAndOperator(vector, context),
   ...validateEvidenceHashes(vector),
@@ -629,6 +683,13 @@ const validateArtifactContract = (
       vector.id,
       "artifact.type",
       "BitBox evidence must retain the adapter-returned signed PSBT",
+    ));
+  }
+  if (vector.vendor === "jade" && vector.artifact.type !== "signed-psbt") {
+    issues.push(issue(
+      vector.id,
+      "artifact.type",
+      "Jade evidence must retain the adapter-returned signed PSBT",
     ));
   }
   if (vector.artifact.type === "ledger-signed-psbt") {

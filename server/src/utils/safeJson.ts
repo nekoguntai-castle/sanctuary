@@ -97,6 +97,23 @@ export function safeJsonParseUntyped<T>(
 }
 
 /**
+ * Parse schema-validated JSON without logging any part of the input. Use this
+ * for secrets or privacy-sensitive protocol payloads where even an error
+ * preview would cross the logging boundary.
+ */
+export function safeJsonParseSensitive<T>(
+  value: string,
+  schema: z.ZodType<T>,
+): T | undefined {
+  try {
+    const result = schema.safeParse(JSON.parse(value));
+    return result.success ? result.data : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Common Zod schemas for system settings
  */
 export const SystemSettingSchemas = {

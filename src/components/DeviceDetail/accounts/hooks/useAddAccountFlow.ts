@@ -315,6 +315,7 @@ export { getDeviceTypeFromDeviceModel };
 export function useAddAccountFlow({
   deviceId,
   device,
+  chainEnvironment,
   onClose,
   onDeviceUpdated,
 }: AddAccountFlowProps) {
@@ -513,7 +514,15 @@ export function useAddAccountFlow({
       );
 
       // Connect to the device
-      const connectedDevice = await hardwareWalletService.connect(deviceType);
+      const connectedDevice = await hardwareWalletService.connect(
+        deviceType,
+        deviceType === 'jade'
+          ? {
+              chainEnvironment,
+              expectedModel: device.model?.name.includes('Plus') ? 'Jade Plus' : 'Jade',
+            }
+          : undefined,
+      );
 
       // Fetch all xpubs
       const xpubBatch = await fetchStandardXpubBatch(
@@ -595,7 +604,7 @@ export function useAddAccountFlow({
         // Ignore disconnect errors
       }
     }
-  }, [device, deviceId, onClose, onDeviceUpdated]);
+  }, [chainEnvironment, device, deviceId, onClose, onDeviceUpdated]);
 
   /**
    * Add selected parsed accounts to the device

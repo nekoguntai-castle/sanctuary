@@ -238,6 +238,7 @@ const getSharedResponse: ShareApiResponder = (
     return mockResponse({ updateAvailable: false, currentVersion: "0.8.14" });
   }
   if (requestKey === "GET /transactions/recent") return mockResponse([]);
+  if (requestKey === "POST /hardware/jade/pin") return mockResponse({});
   if (requestKey === "GET /transactions/balance-history")
     return mockResponse([]);
   if (requestKey === "GET /transactions/activity-summary")

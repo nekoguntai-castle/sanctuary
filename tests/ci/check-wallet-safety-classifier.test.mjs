@@ -35,6 +35,8 @@ test('checked-in classifier covers every hardware proof helper and emulator modu
     'tests/integration/trezorEmulator.integration.test.ts',
     ...recursiveFiles('tests/integration/ledgerEmulator'),
     'tests/integration/ledgerEmulator.integration.test.ts',
+    ...recursiveFiles('tests/integration/jadeEmulator'),
+    'tests/integration/jadeEmulator.integration.test.ts',
     'server/tests/unit/services/bitcoin/hardwareSignedEvidenceProvenance.test.ts',
   ];
   const uncovered = proofFiles.filter(
@@ -60,7 +62,10 @@ const BROAD_WORKFLOW = `  pull_request:
       - path: \${{ env.LEDGER_EMULATOR_PROOF_DIR }}
       - path: \${{ env.LEDGER_EMULATOR_DIAGNOSTICS_DIR }}
       - run: npm run test:jade-protocol-harness
-      - path: \${{ env.JADE_PROTOCOL_PROOF_DIR }}`;
+      - path: \${{ env.JADE_PROTOCOL_PROOF_DIR }}
+      - run: npm run test:jade-emulator-proof
+      - path: \${{ env.JADE_EMULATOR_PROOF_DIR }}
+      - path: \${{ env.JADE_EMULATOR_DIAGNOSTICS_DIR }}`;
 const REPOSITORY_FILES = ['server/src/services/wallet/create.ts', 'same'];
 const PROOF_MANIFEST = {
   schemaVersion: 1,
@@ -164,6 +169,9 @@ test('mandatory PSBT and hardware proof commands and exact Core image fail close
     'LEDGER_EMULATOR_DIAGNOSTICS_DIR',
     'npm run test:jade-protocol-harness',
     'JADE_PROTOCOL_PROOF_DIR',
+    'npm run test:jade-emulator-proof',
+    'JADE_EMULATOR_PROOF_DIR',
+    'JADE_EMULATOR_DIAGNOSTICS_DIR',
   ]) {
     assert.throws(
       () =>

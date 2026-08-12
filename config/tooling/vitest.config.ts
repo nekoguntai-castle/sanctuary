@@ -85,6 +85,7 @@ export default defineConfig({
       ...configDefaults.exclude,
       'tests/integration/ledgerEmulator.integration.test.ts',
       'tests/integration/trezorEmulator.integration.test.ts',
+      'tests/integration/jadeEmulator.integration.test.ts',
     ],
     reporters: ['default', 'junit'],
     outputFile: {

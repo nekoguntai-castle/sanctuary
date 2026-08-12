@@ -5,6 +5,7 @@ import {
   defaultJsonParser,
   defaultUrlencodedParser,
   incidentDiagnosticsJsonParser,
+  jadePinRelayJsonParser,
   usesRouteSpecificLargeJsonParser,
   usesRouteSpecificJsonParser,
 } from '../../../src/middleware/bodyParsing';
@@ -29,6 +30,12 @@ function createTestApp() {
     (req, res) => res.json({ size: req.body.txid.length }),
   );
 
+  app.post(
+    '/api/v1/hardware/jade/pin',
+    jadePinRelayJsonParser(),
+    (req, res) => res.json({ size: req.body.data.length }),
+  );
+
   const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
     res.status(err.status || 500).json({ message: err.message });
   };
@@ -51,6 +58,10 @@ describe('body parsing middleware', () => {
       method: 'POST',
       path: '/api/v1/ordinary',
     })).toBe(false);
+    expect(usesRouteSpecificJsonParser({
+      method: 'POST',
+      path: '/api/v1/hardware/jade/pin',
+    })).toBe(true);
   });
 
   it('routes selector-bearing diagnostics only through their bounded JSON parser', () => {
@@ -76,6 +87,13 @@ describe('body parsing middleware', () => {
     await request(createTestApp())
       .post('/api/v1/admin/support-package/incident')
       .send({ txid: 'x'.repeat(4 * 1024 + 1) })
+      .expect(413);
+  });
+
+  it('bypasses the 10MB parser and rejects oversized Jade relay envelopes at 20KB', async () => {
+    await request(createTestApp())
+      .post('/api/v1/hardware/jade/pin')
+      .send({ operation: 'get_pin', data: 'x'.repeat(20 * 1024 + 1) })
       .expect(413);
   });
 

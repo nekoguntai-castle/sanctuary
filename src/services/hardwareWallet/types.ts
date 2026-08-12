@@ -6,6 +6,7 @@
  */
 
 import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
+import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 
 export type DeviceType =
   'coldcard' | 'ledger' | 'trezor' | 'bitbox' | 'passport' | 'jade' | 'unknown';
@@ -81,6 +82,11 @@ export interface XpubResult {
   path: string;
 }
 
+export interface HardwareWalletConnectionOptions {
+  chainEnvironment: NetworkType;
+  expectedModel?: string;
+}
+
 /**
  * DeviceAdapter Interface
  *
@@ -114,7 +120,7 @@ export interface DeviceAdapter {
    * Connect to a device
    * @returns Device info on successful connection
    */
-  connect(): Promise<HardwareWalletDevice>;
+  connect(options?: HardwareWalletConnectionOptions): Promise<HardwareWalletDevice>;
 
   /**
    * Disconnect from the device

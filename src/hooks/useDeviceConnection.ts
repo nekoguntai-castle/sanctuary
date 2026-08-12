@@ -16,8 +16,23 @@ import { buildSkippedXpubWarning } from '../services/hardwareWallet/xpubImportWa
 import { validateXpubBatch } from '../services/hardwareWallet/identity';
 import { getDeviceTypeFromModel } from '../utils/deviceConnection';
 import { createLogger } from '../utils/logger';
+import type { TabNetwork } from '../app/networks';
+import type { DeviceType, HardwareWalletConnectionOptions } from '../services/hardwareWallet/types';
 
 const log = createLogger('useDeviceConnection');
+
+function connectionOptions(
+  deviceType: DeviceType,
+  model: HardwareDeviceModel,
+  chainEnvironment?: TabNetwork,
+): HardwareWalletConnectionOptions | undefined {
+  if (deviceType !== 'jade') return undefined;
+  if (!chainEnvironment) throw new Error('Jade connection requires an explicit chain environment');
+  return {
+    chainEnvironment,
+    expectedModel: model.name.includes('Plus') ? 'Jade Plus' : 'Jade',
+  };
+}
 
 /** Progress state for USB scanning */
 export interface UsbProgress {
@@ -46,7 +61,7 @@ export interface UseDeviceConnectionState {
   /** Error message from failed connection */
   error: string | null;
   /** Connect to device via USB */
-  connectUsb: (model: HardwareDeviceModel) => Promise<void>;
+  connectUsb: (model: HardwareDeviceModel, chainEnvironment?: TabNetwork) => Promise<void>;
   /** Reset all state */
   reset: () => void;
   /** Clear error only */
@@ -89,7 +104,10 @@ export function useDeviceConnection(): UseDeviceConnectionState {
     setError(null);
   }, []);
 
-  const connectUsb = useCallback(async (model: HardwareDeviceModel) => {
+  const connectUsb = useCallback(async (
+    model: HardwareDeviceModel,
+    chainEnvironment?: TabNetwork,
+  ) => {
     setScanning(true);
     setError(null);
     setUsbProgress(null);
@@ -106,7 +124,10 @@ export function useDeviceConnection(): UseDeviceConnectionState {
       });
 
       // Connect to the hardware wallet
-      const device = await hardwareWalletService.connect(deviceType);
+      const device = await hardwareWalletService.connect(
+        deviceType,
+        connectionOptions(deviceType, model, chainEnvironment),
+      );
 
       if (!device || !device.connected) {
         throw new Error('Failed to connect to device');

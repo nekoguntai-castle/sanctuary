@@ -212,6 +212,7 @@ const renderFlow = (deviceOverrides: Record<string, unknown> = {}) => render(
   <AddAccountFlow
     deviceId="device-1"
     device={{ ...defaultDevice, ...deviceOverrides } as any}
+    chainEnvironment="mainnet"
     onClose={defaultOnClose}
     onDeviceUpdated={defaultOnDeviceUpdated}
   />,

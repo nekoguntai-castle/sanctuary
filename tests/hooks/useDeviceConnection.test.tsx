@@ -15,7 +15,7 @@ const mockGetAllXpubs = vi.fn();
 
 vi.mock('../../src/services/hardwareWallet/runtime', () => ({
   hardwareWalletService: {
-    connect: (type: unknown) => mockConnect(type),
+    connect: (type: unknown, options?: unknown) => mockConnect(type, options),
     getAllXpubs: (callback: unknown) => mockGetAllXpubs(callback),
     getAllXpubsWithFailures: async (callback: unknown) => {
       const value = await mockGetAllXpubs(callback);
@@ -32,6 +32,7 @@ vi.mock('../../src/utils/deviceConnection', () => ({
     if (model.slug.includes('coldcard')) return 'coldcard';
     if (model.slug.includes('ledger')) return 'ledger';
     if (model.slug.includes('trezor')) return 'trezor';
+    if (model.slug.includes('jade')) return 'jade';
     return 'unknown';
   },
 }));
@@ -164,7 +165,47 @@ describe('useDeviceConnection', () => {
         await result.current.connectUsb(mockModel);
       });
 
-      expect(mockConnect).toHaveBeenCalledWith('coldcard');
+      expect(mockConnect).toHaveBeenCalledWith('coldcard', undefined);
+    });
+
+    it('binds Jade Plus connections to the explicit chain environment and model', async () => {
+      const { result } = renderHook(() => useDeviceConnection());
+      const jadePlus = { ...mockModel, name: 'Blockstream Jade Plus', slug: 'blockstream-jade-plus' };
+
+      await act(async () => {
+        await result.current.connectUsb(jadePlus, 'testnet4');
+      });
+
+      expect(mockConnect).toHaveBeenCalledWith('jade', {
+        chainEnvironment: 'testnet4',
+        expectedModel: 'Jade Plus',
+      });
+    });
+
+    it('binds base Jade connections without promoting the selected model', async () => {
+      const { result } = renderHook(() => useDeviceConnection());
+      const jade = { ...mockModel, name: 'Blockstream Jade', slug: 'blockstream-jade' };
+
+      await act(async () => {
+        await result.current.connectUsb(jade, 'mainnet');
+      });
+
+      expect(mockConnect).toHaveBeenCalledWith('jade', {
+        chainEnvironment: 'mainnet',
+        expectedModel: 'Jade',
+      });
+    });
+
+    it('fails closed before connecting Jade without an explicit chain environment', async () => {
+      const { result } = renderHook(() => useDeviceConnection());
+      const jade = { ...mockModel, name: 'Blockstream Jade', slug: 'blockstream-jade' };
+
+      await act(async () => {
+        await result.current.connectUsb(jade);
+      });
+
+      expect(mockConnect).not.toHaveBeenCalled();
+      expect(result.current.error).toMatch(/explicit chain environment/i);
     });
 
     it('should call getAllXpubs after successful connection', async () => {
@@ -547,7 +588,7 @@ describe('useDeviceConnection', () => {
         await result.current.connectUsb(ledgerModel);
       });
 
-      expect(mockConnect).toHaveBeenCalledWith('ledger');
+      expect(mockConnect).toHaveBeenCalledWith('ledger', undefined);
     });
 
     it('should handle Trezor devices', async () => {
@@ -564,7 +605,7 @@ describe('useDeviceConnection', () => {
         await result.current.connectUsb(trezorModel);
       });
 
-      expect(mockConnect).toHaveBeenCalledWith('trezor');
+      expect(mockConnect).toHaveBeenCalledWith('trezor', undefined);
     });
   });
 

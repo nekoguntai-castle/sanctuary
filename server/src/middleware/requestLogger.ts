@@ -32,6 +32,7 @@ const EXCLUDED_PATHS = [
   '/favicon.ico',
   '/api/v1/admin/support-package/incident',
   '/api/v1/admin/support-package/incident-capture',
+  '/api/v1/hardware/jade/pin',
 ];
 
 /** Selector-bearing incident diagnostics must never enter request logs. */

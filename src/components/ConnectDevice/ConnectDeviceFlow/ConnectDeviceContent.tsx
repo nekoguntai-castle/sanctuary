@@ -18,7 +18,7 @@ export const ConnectDeviceContent: React.FC<ConnectDeviceContentProps> = ({
   onBack,
   onViewExistingDevice,
 }) => {
-  const { form, models, qr, save, selectedModel, setSelectedModel, usb } = controller;
+  const { connectUsb, form, models, qr, save, selectedModel, setSelectedModel, usb } = controller;
   const conflictData = save.conflictData;
 
   return (
@@ -64,7 +64,7 @@ export const ConnectDeviceContent: React.FC<ConnectDeviceContentProps> = ({
               urProgress={qr.urProgress}
               qrScanning={qr.scanning}
               isSecure={controller.secureContext}
-              onConnectUsb={usb.connectUsb}
+              onConnectUsb={connectUsb}
               onFileUpload={form.handleFileUpload}
               onQrModeChange={qr.setQrMode}
               onCameraActiveChange={qr.setCameraActive}

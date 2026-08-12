@@ -574,6 +574,7 @@ const AUTHENTICATED_API_RESPONSES: Record<string, MockApiResponse> = {
   'GET /auth/registration-status': mockResponse({ enabled: false }),
   'GET /wallets': mockResponse([MAINNET_WALLET, TESTNET_WALLET]),
   'GET /devices': mockResponse([RENDER_DEVICE]),
+  'POST /hardware/jade/pin': mockResponse({}),
   'GET /health': mockResponse({ status: 'ok' }),
   'GET /admin/version': mockResponse({
     updateAvailable: true,

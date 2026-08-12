@@ -46,6 +46,7 @@ env:
   # Give its dedicated device lock a measured wait budget within the step limit.
   TREZOR_EMULATOR_LOCK_TIMEOUT_SECONDS: '600'
   LEDGER_EMULATOR_LOCK_TIMEOUT_SECONDS: '300'
+  JADE_EMULATOR_LOCK_TIMEOUT_SECONDS: '2700'
   # The proof resolver may infer a private daemon-host bind from the runner's
   # job-container gateway, but a public interface always remains opt-in.
   SANCTUARY_TREZOR_ALLOW_PUBLIC_BIND: '0'
@@ -581,6 +582,96 @@ jobs:
           include-hidden-files: true
           retention-days: 14
 
+  verify-jade-emulator:
+    runs-on: docker-socket
+    needs: [verify-vectors]
+    container:
+      image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:8b50f6c8ccb016b042c7125a637b068a49c856a76e543365044b36a593edd81e
+    timeout-minutes: 70
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/verify-jade-emulator
+      SANCTUARY_CI_RUN_ATTEMPT_OVERRIDE: ${{ github.run_attempt }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Verify Node.js toolchain
+        uses: ./.github/actions/setup-node-toolchain
+        with:
+          install-npm: 'false'
+
+      - name: Wait for Docker
+        timeout-minutes: 4
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/wait-for-docker.log"
+          ${{ github.workspace }}/scripts/ci/wait-for-docker.sh
+
+      - name: Install Jade proof dependencies
+        timeout-minutes: 10
+        run: |
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-jade-proof-dependencies.log" \
+            ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain bash -c '
+            set -euo pipefail
+            ${{ github.workspace }}/scripts/ci/retry-command.sh "Jade proof root npm ci" npm ci --strict-allow-scripts --ignore-scripts
+            ${{ github.workspace }}/scripts/ci/retry-command.sh "Jade proof shared workspace build" npm --workspace shared run build
+          '
+
+      - name: Run pinned Jade QEMU proof
+        timeout-minutes: 55
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/jade-emulator-proof.log"
+          env SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS="$JADE_EMULATOR_LOCK_TIMEOUT_SECONDS"
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh jade-emulator
+          npm run test:jade-emulator-proof
+
+      - name: Upload current Jade QEMU proof
+        if: success() && env.JADE_EMULATOR_PROOF_DIR != ''
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: jade-emulator-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.JADE_EMULATOR_PROOF_DIR }}
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
+
+      - name: Upload current Jade QEMU diagnostics
+        if: always() && env.JADE_EMULATOR_DIAGNOSTICS_DIR != ''
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: jade-emulator-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.JADE_EMULATOR_DIAGNOSTICS_DIR }}
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
+
+      - name: Write Jade QEMU failure breadcrumb
+        if: failure()
+        continue-on-error: true
+        timeout-minutes: 2
+        run: >
+          ${{ github.workspace }}/scripts/ci/write-empty-diagnostic-breadcrumb.sh
+          "$DIAGNOSTIC_DIR"
+          "verify-jade-emulator-failure.log"
+          "Verify Jade QEMU"
+
+      - name: Write Jade QEMU diagnostic summary
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 2
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Verify Jade QEMU"
+
+      - name: Upload Jade QEMU diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-verify-jade-emulator
+          path: .tmp/ci-diagnostics/verify-jade-emulator/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
+
   # Optional: Regenerate vectors with Bitcoin Core
   # This job runs only on manual trigger and requires Docker
   regenerate-vectors:
@@ -817,7 +908,7 @@ jobs:
 
   # Summary job
   summary:
-    needs: [verify-vectors, verify-trezor-emulator, verify-ledger-emulator]
+    needs: [verify-vectors, verify-trezor-emulator, verify-ledger-emulator, verify-jade-emulator]
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     if: always()
@@ -827,7 +918,8 @@ jobs:
         run: |
           if [ "${{ needs.verify-vectors.result }}" == "success" ] && \
              [ "${{ needs.verify-trezor-emulator.result }}" == "success" ] && \
-             [ "${{ needs.verify-ledger-emulator.result }}" == "success" ]; then
+             [ "${{ needs.verify-ledger-emulator.result }}" == "success" ] && \
+             [ "${{ needs.verify-jade-emulator.result }}" == "success" ]; then
             echo "✅ All address verification tests passed"
           else
             echo "❌ Address verification tests failed"

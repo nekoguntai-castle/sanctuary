@@ -20,6 +20,7 @@ vi.mock('../../../src/utils/logger', () => ({
 
 import {
   safeJsonParse,
+  safeJsonParseSensitive,
   safeJsonParseUntyped,
   SystemSettingSchemas,
 } from '../../../src/utils/safeJson';
@@ -282,6 +283,18 @@ describe('Safe JSON Utilities', () => {
       expect(result).toHaveLength(2);
       expect(result[0].id).toBe(1);
       expect(result[1].id).toBe(2);
+    });
+  });
+
+  describe('safeJsonParseSensitive', () => {
+    it('returns schema-validated JSON without logging input content', () => {
+      expect(safeJsonParseSensitive('{"secret":"value"}', z.json()))
+        .toEqual({ secret: 'value' });
+    });
+
+    it('returns undefined for invalid syntax or schema data', () => {
+      expect(safeJsonParseSensitive('{"secret":', z.json())).toBeUndefined();
+      expect(safeJsonParseSensitive('42', z.object({ secret: z.string() }))).toBeUndefined();
     });
   });
 

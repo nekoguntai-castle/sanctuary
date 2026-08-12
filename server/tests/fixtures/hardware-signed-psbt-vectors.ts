@@ -1,18 +1,20 @@
 /**
  * Hardware-signed PSBT fixture intake.
  *
- * This artifact list is intentionally empty until sanitized Ledger, Trezor, and
- * BitBox artifacts are captured from physical devices. Unsupported rows are
+ * This artifact list is intentionally empty until sanitized Ledger, Trezor,
+ * Jade, and BitBox artifacts are captured from physical devices. Unsupported rows are
  * recorded separately so missing evidence is not confused with blocked product
  * behavior.
  */
 
-export type HardwareWalletVendor = 'ledger' | 'trezor' | 'bitbox';
+export type HardwareWalletVendor = 'ledger' | 'trezor' | 'jade' | 'bitbox';
 
 export type HardwareSignedScriptType = 'p2pkh' | 'p2wpkh' | 'p2sh-p2wpkh' | 'p2tr' | 'p2wsh' | 'p2sh-p2wsh';
 
 export type HardwareSignedNetwork = 'regtest' | 'testnet' | 'signet';
 export type HardwareSignedSoftwareGateStatus = 'passed';
+export const JADE_PLUS_PHYSICAL_MODEL = 'Jade Plus' as const;
+export const JADE_PLUS_PHYSICAL_TRANSPORT = 'webserial' as const;
 export type HardwareSignedNegativeControlCase =
   | 'wrong-network-or-account-path'
   | 'tampered-recipient'
@@ -121,7 +123,7 @@ export interface HardwareSignedPsbtVector {
     model: string;
     firmwareVersion: string;
     bitcoinAppVersion?: string;
-    transport: 'webusb' | 'webhid' | 'trezor-connect';
+    transport: 'webusb' | 'webhid' | 'webserial' | 'trezor-connect';
     transportVersion?: string;
     emulated: false;
   };
@@ -160,7 +162,7 @@ export interface HardwareSignedPsbtVector {
     sanctuaryImageDigest: string;
     sdkVersion: string;
     sdkIntegrity: string;
-    sdkPackage: '@ledgerhq/ledger-bitcoin' | '@trezor/connect-web' | 'bitbox02-api';
+    sdkPackage: '@ledgerhq/ledger-bitcoin' | '@trezor/connect-web' | 'cbor-x' | 'bitbox02-api';
     sourceManifest: Array<{
       path: string;
       sha256: string;
@@ -229,6 +231,10 @@ export const LEDGER_HARDWARE_SIGNED_SOFTWARE_GATES = [
   'npm run test:ledger-emulator-proof',
 ] as const;
 
+export const JADE_HARDWARE_SIGNED_SOFTWARE_GATES = [
+  'npm run test:jade-emulator-proof',
+] as const;
+
 export const REQUIRED_HARDWARE_SIGNED_ROWS: RequiredHardwareSignedRow[] = [
   { vendor: 'ledger', scriptType: 'p2pkh' },
   { vendor: 'ledger', scriptType: 'p2wpkh' },
@@ -241,6 +247,12 @@ export const REQUIRED_HARDWARE_SIGNED_ROWS: RequiredHardwareSignedRow[] = [
   { vendor: 'trezor', scriptType: 'p2tr' },
   { vendor: 'trezor', scriptType: 'p2wsh' },
   { vendor: 'trezor', scriptType: 'p2sh-p2wsh' },
+  { vendor: 'jade', scriptType: 'p2pkh' },
+  { vendor: 'jade', scriptType: 'p2wpkh' },
+  { vendor: 'jade', scriptType: 'p2sh-p2wpkh' },
+  { vendor: 'jade', scriptType: 'p2tr' },
+  { vendor: 'jade', scriptType: 'p2wsh' },
+  { vendor: 'jade', scriptType: 'p2sh-p2wsh' },
   { vendor: 'bitbox', scriptType: 'p2wpkh' },
   { vendor: 'bitbox', scriptType: 'p2sh-p2wpkh' },
   { vendor: 'bitbox', scriptType: 'p2tr' },
@@ -263,6 +275,20 @@ export const UNSUPPORTED_HARDWARE_SIGNED_ROWS: UnsupportedHardwareSignedRow[] = 
     reason:
       'Current Ledger signing adapter builds single-sig DefaultWalletPolicy templates only; ' +
       'multisig Ledger signing is not exposed in the product.',
+    productDecision: 'blocked',
+  },
+  {
+    vendor: 'jade',
+    scriptType: 'p2wsh',
+    reason:
+      'Current Jade adapter explicitly rejects multisig signing; multisig Jade signing is not exposed in the product.',
+    productDecision: 'blocked',
+  },
+  {
+    vendor: 'jade',
+    scriptType: 'p2sh-p2wsh',
+    reason:
+      'Current Jade adapter explicitly rejects multisig signing; multisig Jade signing is not exposed in the product.',
     productDecision: 'blocked',
   },
   {
@@ -302,6 +328,13 @@ export const BLOCKED_HARDWARE_SIGNED_ROWS: BlockedHardwareSignedRow[] = [
     scriptType: scriptType as HardwareSignedScriptType,
     reason:
       'Trezor capability remains disabled until a current Tier 3 physical-device artifact is reviewed.',
+    productDecision: 'blocked-pending-physical-evidence' as const,
+  })),
+  ...['p2pkh', 'p2wpkh', 'p2sh-p2wpkh', 'p2tr'].map((scriptType) => ({
+    vendor: 'jade' as const,
+    scriptType: scriptType as HardwareSignedScriptType,
+    reason:
+      'Jade capability remains disabled until a current Tier 3 Jade Plus physical-device artifact is reviewed.',
     productDecision: 'blocked-pending-physical-evidence' as const,
   })),
 ];

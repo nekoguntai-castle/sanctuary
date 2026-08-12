@@ -16,6 +16,7 @@ export const REFRESH_ON_401_EXEMPT_ENDPOINTS = Object.freeze([
   '/auth/register',
   '/auth/2fa/verify',
   '/auth/refresh',
+  '/hardware/jade/pin', // Blind-PIN operations are one-shot and must never replay after refresh.
 ]);
 
 const REFRESH_ON_401_EXEMPT_ENDPOINT_SET = new Set<string>(REFRESH_ON_401_EXEMPT_ENDPOINTS);

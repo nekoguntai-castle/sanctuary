@@ -32,10 +32,26 @@ const PROOF_SOURCE_ROOTS = [
   "server/tests/fixtures/hardware-signed-psbt-vectors.ts",
 ] as const;
 
-const VENDOR_SOURCE_DIRECTORIES: Record<HardwareWalletVendor, string> = {
-  ledger: "src/services/hardwareWallet/adapters/ledger",
-  trezor: "src/services/hardwareWallet/adapters/trezor",
-  bitbox: "src/services/hardwareWallet/adapters/bitbox",
+const VENDOR_SOURCE_ROOTS: Record<HardwareWalletVendor, readonly string[]> = {
+  ledger: ["src/services/hardwareWallet/adapters/ledger"],
+  trezor: ["src/services/hardwareWallet/adapters/trezor"],
+  jade: [
+    "config/jade-emulator-proof.json",
+    "config/jade-protocol-harness.json",
+    "server/src/api/hardware.ts",
+    "server/src/api/openapi/paths/hardware.ts",
+    "server/src/middleware/bodyParsing.ts",
+    "server/src/middleware/rateLimit.ts",
+    "server/src/middleware/requestLogger.ts",
+    "server/src/services/jadePinRelay.ts",
+    "src/api/authPolicy.ts",
+    "src/services/hardwareWallet/adapters/jade.ts",
+    "src/services/hardwareWallet/adapters/jadeIdentity.ts",
+    "src/services/hardwareWallet/adapters/jadePinRelayClient.ts",
+    "src/services/hardwareWallet/adapters/jadeProtocol.ts",
+    "src/services/hardwareWallet/adapters/jadeSignedPsbt.ts",
+  ],
+  bitbox: ["src/services/hardwareWallet/adapters/bitbox"],
 };
 
 const STATIC_IMPORT_CACHE = new Map<
@@ -197,9 +213,10 @@ const canonicalSourceBytes = (path: string): Buffer => {
 export function currentHardwareEvidenceSourceManifest(
   vendor: HardwareWalletVendor,
 ) {
-  const vendorFiles = recursiveTypeScriptFiles(
-    resolve(REPO_ROOT, VENDOR_SOURCE_DIRECTORIES[vendor]),
-  );
+  const vendorFiles = VENDOR_SOURCE_ROOTS[vendor].flatMap((source) => {
+    const path = resolve(REPO_ROOT, source);
+    return statSync(path).isDirectory() ? recursiveTypeScriptFiles(path) : [path];
+  });
   const rootFiles = PROOF_SOURCE_ROOTS.map((path) => resolve(REPO_ROOT, path));
   const helperFiles = hardwareSignedHelperFiles();
   const sourceFiles = repositoryDependencyClosure([

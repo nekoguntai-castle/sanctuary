@@ -83,6 +83,14 @@ describe('browser auth policy', () => {
       }
     });
 
+    it('never replays the non-idempotent Jade PIN relay after a 401', () => {
+      expect(shouldAttemptRefreshAfterUnauthorized({
+        endpoint: '/hardware/jade/pin',
+        status: 401,
+        isRefreshRetry: false,
+      })).toBe(false);
+    });
+
     it('keeps session-continuity endpoints eligible for refresh-on-401', () => {
       expect(isRefreshOn401ExemptEndpoint('/auth/me')).toBe(false);
       expect(isRefreshOn401ExemptEndpoint('/auth/logout')).toBe(false);

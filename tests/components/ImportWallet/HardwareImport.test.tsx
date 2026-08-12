@@ -44,7 +44,7 @@ vi.mock('../../../src/components/ui/Button', () => ({
 }));
 
 interface HardwareImportOverrides {
-  hardwareDeviceType?: 'ledger' | 'trezor';
+  hardwareDeviceType?: 'ledger' | 'trezor' | 'jade';
   network?: 'mainnet' | 'testnet3' | 'signet';
   deviceConnected?: boolean;
   deviceLabel?: string | null;
@@ -97,7 +97,7 @@ describe('HardwareImport', () => {
     const ledgerButton = screen.getByRole('button', { name: /Ledger/i });
     const connectButton = screen.getByRole('button', { name: 'Connect Device' });
 
-    expect(screen.getByText('Requires HTTPS connection')).toBeInTheDocument();
+    expect(screen.getAllByText('Requires HTTPS connection')).toHaveLength(2);
     expect(ledgerButton).toBeDisabled();
     expect(connectButton).toBeDisabled();
 
@@ -114,6 +114,26 @@ describe('HardwareImport', () => {
     expect(props.setHardwareDeviceType).toHaveBeenCalledWith('trezor');
     expect(props.setDeviceConnected).toHaveBeenCalledWith(false);
     expect(props.setXpubData).toHaveBeenCalledWith(null);
+  });
+
+  it('offers first-class Jade Plus import while truthfully showing its blocked status', async () => {
+    const user = userEvent.setup();
+    const props = renderHardwareImport({ hardwareDeviceType: 'ledger' });
+
+    await user.click(screen.getByRole('button', { name: /Jade Plus/i }));
+
+    expect(screen.getByText('Unverified — safely blocked')).toBeInTheDocument();
+    expect(props.setHardwareDeviceType).toHaveBeenCalledWith('jade');
+    expect(props.setDeviceConnected).toHaveBeenCalledWith(false);
+    expect(props.setXpubData).toHaveBeenCalledWith(null);
+  });
+
+  it('disables Jade Plus selection and connection outside a secure context', () => {
+    mockIsSecureContext.mockReturnValue(false);
+    renderHardwareImport({ hardwareDeviceType: 'jade' });
+
+    expect(screen.getByRole('button', { name: /Jade Plus/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Connect Device' })).toBeDisabled();
   });
 
   it('re-selects ledger and clears connection/xpub when secure context is available', async () => {
@@ -144,7 +164,7 @@ describe('HardwareImport', () => {
     await user.click(screen.getByRole('button', { name: 'Connect Device' }));
 
     await waitFor(() => {
-      expect(mockConnect).toHaveBeenCalledWith('ledger');
+      expect(mockConnect).toHaveBeenCalledWith('ledger', { chainEnvironment: 'mainnet' });
     });
     expect(props.setIsConnecting).toHaveBeenNthCalledWith(1, true);
     expect(props.setHardwareError).toHaveBeenNthCalledWith(1, null);
@@ -161,7 +181,7 @@ describe('HardwareImport', () => {
     await user.click(screen.getByRole('button', { name: 'Connect Device' }));
 
     await waitFor(() => {
-      expect(mockConnect).toHaveBeenCalledWith('trezor');
+      expect(mockConnect).toHaveBeenCalledWith('trezor', { chainEnvironment: 'mainnet' });
     });
     expect(props.setDeviceLabel).toHaveBeenCalledWith('Trezor Device');
   });
@@ -174,9 +194,25 @@ describe('HardwareImport', () => {
     await user.click(screen.getByRole('button', { name: 'Connect Device' }));
 
     await waitFor(() => {
-      expect(mockConnect).toHaveBeenCalledWith('trezor');
+      expect(mockConnect).toHaveBeenCalledWith('trezor', { chainEnvironment: 'mainnet' });
     });
     expect(props.setDeviceLabel).toHaveBeenCalledWith('Trezor Safe 5');
+  });
+
+  it('binds a Jade Plus connection attempt to the selected chain and model', async () => {
+    const user = userEvent.setup();
+    mockConnect.mockResolvedValue({});
+    const props = renderHardwareImport({ hardwareDeviceType: 'jade', network: 'signet' });
+
+    await user.click(screen.getByRole('button', { name: 'Connect Device' }));
+
+    await waitFor(() => {
+      expect(mockConnect).toHaveBeenCalledWith('jade', {
+        chainEnvironment: 'signet',
+        expectedModel: 'Jade Plus',
+      });
+    });
+    expect(props.setDeviceLabel).toHaveBeenCalledWith('Jade Plus');
   });
 
   it('shows connect and fetch errors from hardware service', async () => {

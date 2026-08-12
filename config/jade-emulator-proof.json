@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "platform": "linux/amd64",
+  "firmware": {
+    "release": "1.0.40",
+    "buildVersionTag": "1.0.40",
+    "runtimeVersion": "1.0.40",
+    "sourceCommit": "6f858f39a19f89ff7fd4580c5b2db72cfe1dc0af",
+    "sourceTarball": "https://github.com/Blockstream/Jade/archive/6f858f39a19f89ff7fd4580c5b2db72cfe1dc0af.tar.gz",
+    "sourceTarballSha256": "7699ab7f0101ec3d0980b002c65f2517bd6a0235eae34e48ea0b89d18d705481",
+    "dockerfile": "Dockerfile.qemu",
+    "dockerfileSha256": "18e22098de4386700fb002bed3c01c2bc57aa9ab375203ee4ebdab0bc82efc02"
+  },
+  "builder": {
+    "image": "blockstream/jade_builder@sha256:5db8e13ca640e6b969d66139d708610c27d39a1c4d78ca096ee98f2b4c89130f"
+  },
+  "submodules": [
+    {
+      "path": "components/esp32_bc-ur",
+      "sourceCommit": "5a5e0e73130bb5062c11fe48fbd0b209be0e5820",
+      "sourceTarball": "https://github.com/Blockstream/esp32_bc-ur/archive/5a5e0e73130bb5062c11fe48fbd0b209be0e5820.tar.gz",
+      "sourceTarballSha256": "3f6b331fba31a26b96825fa2a35ed4e1eceda9de98f10134c018a16967532664"
+    },
+    {
+      "path": "components/esp32_bsdiff",
+      "sourceCommit": "1134d75183bc037aaddd17c535db5b075b43843e",
+      "sourceTarball": "https://github.com/Blockstream/esp32_bsdiff/archive/1134d75183bc037aaddd17c535db5b075b43843e.tar.gz",
+      "sourceTarballSha256": "3f9de4bc7a04ca04fb32fa80aad5241bb030cdc0a9c8513447bdf4eb8472fa76"
+    },
+    {
+      "path": "components/esp32_deflate",
+      "sourceCommit": "497eb1244751745977991deb69f04c9a31a90f36",
+      "sourceTarball": "https://github.com/Blockstream/esp32_deflate/archive/497eb1244751745977991deb69f04c9a31a90f36.tar.gz",
+      "sourceTarballSha256": "d06aeaf142c6ed9bbedd6483064b89d5ac66278002fb401eaa66fb12bd01ef47"
+    },
+    {
+      "path": "components/libwally-core/upstream",
+      "sourceCommit": "43b97bed2e5b6347a909bfd1113242528826a8a2",
+      "sourceTarball": "https://github.com/ElementsProject/libwally-core/archive/43b97bed2e5b6347a909bfd1113242528826a8a2.tar.gz",
+      "sourceTarballSha256": "ffc423b3621f549782042d8d4d2047855aa83a3434f649056d786430679a5b52"
+    },
+    {
+      "path": "components/libwally-core/upstream/src/secp256k1",
+      "sourceCommit": "6152622613fdf1c5af6f31f74c427c4e9ee120ce",
+      "sourceTarball": "https://github.com/BlockstreamResearch/secp256k1-zkp/archive/6152622613fdf1c5af6f31f74c427c4e9ee120ce.tar.gz",
+      "sourceTarballSha256": "c3d74663d3caad010cecf06cf4ff1cd0084c3c436082bf2b55b2f2b671ec1196"
+    }
+  ],
+  "qemu": {
+    "configArgs": "--dev --ci --psram",
+    "machine": "esp32",
+    "serialPort": 30121,
+    "webDisplayPort": 30122
+  },
+  "sdk": {
+    "cborX": "1.6.4",
+    "cborXIntegrity": "sha512-UGKHjp6RHC6QuZ2yy5LCKm7MojM4716DwoSaqwQpaH4DvZvbBTGcoDNTiG9Y2lByXZYFEs9WRkS5tLl96IrF1Q=="
+  },
+  "runtimeCompatibility": {
+    "node": "24.19.0",
+    "npm": "11.19.0",
+    "runnerOs": "Linux",
+    "runnerArchitecture": "x86_64",
+    "dockerServerOs": "linux",
+    "dockerServerArchitecture": "amd64"
+  }
+}

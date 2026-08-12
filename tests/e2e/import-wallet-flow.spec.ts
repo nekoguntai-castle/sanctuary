@@ -195,6 +195,7 @@ const STATIC_IMPORT_API_RESPONSES: Record<string, MockApiResponse> = {
   'GET /health': mockResponse({ status: 'ok' }),
   'GET /wallets': mockResponse([]),
   'GET /devices': mockResponse([]),
+  'POST /hardware/jade/pin': mockResponse({}),
   'GET /price': mockResponse(PRICE_RESPONSE),
   'GET /bitcoin/status': mockResponse(BITCOIN_STATUS_RESPONSE),
   'GET /bitcoin/fees': mockResponse({ fastest: 18, halfHour: 12, hour: 8, economy: 3 }),
@@ -450,11 +451,12 @@ test.describe('Import wallet flow', () => {
     await main.getByRole('button', { name: 'Hardware Device' }).click();
     await main.getByRole('button', { name: 'Next Step' }).click();
 
-    // Should show hardware import options (Ledger, Trezor, Connect Device)
+    // Should show every first-class hardware import option.
     await expect(main.getByRole('heading', { name: 'Connect Hardware Device' })).toBeVisible();
     await expect(main.getByText('Device Type', { exact: true })).toBeVisible();
     await expect(main.getByRole('button', { name: 'Ledger' })).toBeVisible();
     await expect(main.getByRole('button', { name: 'Trezor' })).toBeVisible();
+    await expect(main.getByRole('button', { name: 'Jade Plus' })).toBeVisible();
     await expect(main.getByRole('button', { name: 'Connect Device' })).toBeVisible();
 
     expect(unhandledRequests).toEqual([]);

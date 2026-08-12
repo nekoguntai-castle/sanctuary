@@ -23,7 +23,7 @@ export const MAX_FILE_SIZE = 1024 * 1024; // 1MB max file size
 
 export type ImportFormat = 'descriptor' | 'json' | 'hardware' | 'qr_code';
 export type ScriptType = WalletScriptTypeValue;
-export type HardwareDeviceType = 'ledger' | 'trezor';
+export type HardwareDeviceType = 'ledger' | 'trezor' | 'jade';
 
 // Compute a canonical single-sig account path. Exact chain selection stays
 // separate even where test chains share BIP44 coin type 1.

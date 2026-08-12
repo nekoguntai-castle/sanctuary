@@ -42,6 +42,7 @@ vi.mock('../../../../src/utils/logger', () => ({
 describe('AddAccountFlow lazy hardware runtime import', () => {
   const props = {
     deviceId: 'device-1',
+    chainEnvironment: 'mainnet' as const,
     device: {
       id: 'device-1',
       type: 'ledger',

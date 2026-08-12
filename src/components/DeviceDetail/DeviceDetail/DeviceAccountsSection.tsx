@@ -45,6 +45,7 @@ export function DeviceAccountsSection({
   onCloseAddAccount,
   onDeviceUpdated,
 }: DeviceAccountsSectionProps) {
+  const { selectedNetwork } = useActiveNetwork();
   const accountCount = device.accounts?.length || 1;
 
   return (
@@ -56,6 +57,7 @@ export function DeviceAccountsSection({
         <AddAccountFlow
           deviceId={deviceId}
           device={device}
+          chainEnvironment={selectedNetwork}
           onClose={onCloseAddAccount}
           onDeviceUpdated={onDeviceUpdated}
         />

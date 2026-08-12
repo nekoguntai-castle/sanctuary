@@ -24,6 +24,7 @@ import type {
   DeviceAdapter,
   DeviceType,
   HardwareWalletDevice,
+  HardwareWalletConnectionOptions,
   PSBTSignRequest,
   PSBTSignResponse,
   TransactionForSigning,
@@ -238,7 +239,10 @@ export class HardwareWalletService {
    * Connect to a device
    * @param type Device type to connect to
    */
-  async connect(type?: DeviceType): Promise<HardwareWalletDevice> {
+  async connect(
+    type?: DeviceType,
+    options?: HardwareWalletConnectionOptions,
+  ): Promise<HardwareWalletDevice> {
     let resolvedType = type;
 
     // If no type specified and only one adapter, use it
@@ -276,7 +280,7 @@ export class HardwareWalletService {
     }
 
     // Connect with the new adapter
-    const device = await adapter.connect();
+    const device = await adapter.connect(options);
     let fingerprint: string;
     try {
       fingerprint = normalizeMasterFingerprint(
