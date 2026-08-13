@@ -48,6 +48,14 @@ const baseTxData = {
   signingContext: testPsbtSigningContext,
 } as any;
 
+function trezorDevice(id: string) {
+  return {
+    id,
+    type: 'Trezor Safe 3',
+    model: { name: 'Trezor Safe 3' },
+  } as any;
+}
+
 function createDeps(
   overrides: Partial<Parameters<typeof useUsbSigning>[0]> = {}
 ): Parameters<typeof useUsbSigning>[0] {
@@ -74,7 +82,7 @@ function createDeps(
 
 describe('useUsbSigning', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mocks.hardwareWallet.isConnected = true;
     mocks.hardwareWallet.device = { id: 'hw-1' };
     mocks.hardwareWallet.connect.mockResolvedValue(undefined);
@@ -264,10 +272,7 @@ describe('useUsbSigning', () => {
     const { result } = renderHook(() => useUsbSigning(deps));
 
     await expect(
-      result.current.signWithDevice({
-        id: 'trezor-1',
-        type: 'Trezor Safe 3',
-      } as any)
+      result.current.signWithDevice(trezorDevice('trezor-1'))
     ).resolves.toBe(false);
 
     expect(deps.setUnsignedPsbt).not.toHaveBeenCalled();
@@ -293,10 +298,7 @@ describe('useUsbSigning', () => {
     const { result } = renderHook(() => useUsbSigning(deps));
 
     await expect(
-      result.current.signWithDevice({
-        id: 'trezor-1',
-        type: 'Trezor Safe 3',
-      } as any)
+      result.current.signWithDevice(trezorDevice('trezor-1'))
     ).resolves.toBe(false);
 
     expect(deps.setUnsignedPsbt).not.toHaveBeenCalled();
@@ -369,10 +371,7 @@ describe('useUsbSigning', () => {
 
     let ok = true;
     await act(async () => {
-      ok = await result.current.signWithDevice({
-        id: 'dev-1',
-        type: 'Trezor Safe 3',
-      } as any);
+      ok = await result.current.signWithDevice(trezorDevice('dev-1'));
     });
 
     expect(ok).toBe(false);
@@ -417,6 +416,22 @@ describe('useUsbSigning', () => {
     );
     expect(mocks.hardwareWallet.connect).not.toHaveBeenCalled();
     expect(mocks.hardwareWallet.disconnect).not.toHaveBeenCalled();
+  });
+
+  it('fails closed before reconnecting a USB signer without an exact stored model', async () => {
+    const deps = createDeps();
+    const { result } = renderHook(() => useUsbSigning(deps));
+
+    await expect(result.current.signWithDevice({
+      id: 'model-less-trezor',
+      type: 'Trezor Safe 3',
+    } as any)).resolves.toBe(false);
+
+    expect(mocks.hardwareWallet.connect).not.toHaveBeenCalled();
+    expect(mocks.hardwareWallet.signPSBT).not.toHaveBeenCalled();
+    expect(deps.setError).toHaveBeenCalledWith(
+      'Hardware signing requires an exact trezor model identity'
+    );
   });
 
   it('signWithDevice blocks BitBox multisig USB signing before connecting', async () => {
@@ -494,10 +509,7 @@ describe('useUsbSigning', () => {
 
     let ok = false;
     await act(async () => {
-      ok = await result.current.signWithDevice({
-        id: 'dev-1',
-        type: 'Trezor Safe 3',
-      } as any);
+      ok = await result.current.signWithDevice(trezorDevice('dev-1'));
     });
 
     expect(ok).toBe(true);
@@ -534,10 +546,7 @@ describe('useUsbSigning', () => {
 
     let ok = false;
     await act(async () => {
-      ok = await result.current.signWithDevice({
-        id: 'dev-multi',
-        type: 'Trezor Safe 3',
-      } as any);
+      ok = await result.current.signWithDevice(trezorDevice('dev-multi'));
     });
 
     expect(ok).toBe(true);
@@ -560,13 +569,12 @@ describe('useUsbSigning', () => {
     const { result } = renderHook(() => useUsbSigning(deps));
 
     await expect(
-      result.current.signWithDevice({
-        id: 'dev-no-context',
-        type: 'Trezor Safe 3',
-      } as any)
+      result.current.signWithDevice(trezorDevice('dev-no-context'))
     ).resolves.toBe(false);
 
-    expect(mocks.hardwareWallet.connect).toHaveBeenCalledWith('trezor', undefined);
+    expect(mocks.hardwareWallet.connect).toHaveBeenCalledWith('trezor', {
+      expectedModel: 'Trezor Safe 3',
+    });
     expect(deps.setError).toHaveBeenCalledWith(
       'This transaction has no server-issued hardware signing context; recreate it before signing'
     );
@@ -592,7 +600,7 @@ describe('useUsbSigning', () => {
 
     expect(mocks.hardwareWallet.connect).toHaveBeenCalledWith('jade', {
       chainEnvironment: 'signet',
-      expectedModel: 'Jade Plus',
+      expectedModel: 'Blockstream Jade Plus',
     });
   });
 
@@ -610,7 +618,7 @@ describe('useUsbSigning', () => {
 
     expect(mocks.hardwareWallet.connect).toHaveBeenCalledWith('jade', {
       chainEnvironment: 'mainnet',
-      expectedModel: 'Jade',
+      expectedModel: 'Blockstream Jade',
     });
   });
 
@@ -633,10 +641,7 @@ describe('useUsbSigning', () => {
     const { result } = renderHook(() => useUsbSigning(deps));
 
     await expect(
-      result.current.signWithDevice({
-        id: 'dev-success',
-        type: 'Trezor Safe 3',
-      } as any)
+      result.current.signWithDevice(trezorDevice('dev-success'))
     ).resolves.toBe(true);
 
     expect(mocks.updateDraft).toHaveBeenCalledWith(
@@ -661,10 +666,7 @@ describe('useUsbSigning', () => {
 
     let ok = true;
     await act(async () => {
-      ok = await result.current.signWithDevice({
-        id: 'dev-2',
-        type: 'Trezor Safe 3',
-      } as any);
+      ok = await result.current.signWithDevice(trezorDevice('dev-2'));
     });
 
     expect(ok).toBe(false);
@@ -679,10 +681,7 @@ describe('useUsbSigning', () => {
     const { result } = renderHook(() => useUsbSigning(deps));
 
     await expect(
-      result.current.signWithDevice({
-        id: 'dev-ownership',
-        type: 'Trezor Safe 3',
-      } as any)
+      result.current.signWithDevice(trezorDevice('dev-ownership'))
     ).resolves.toBe(false);
 
     expect(deps.setError).toHaveBeenCalledWith(
@@ -708,10 +707,7 @@ describe('useUsbSigning', () => {
     });
     const { result } = renderHook(() => useUsbSigning(deps));
 
-    const signing = result.current.signWithDevice({
-      id: 'dev-stale',
-      type: 'Trezor Safe 3',
-    } as any);
+    const signing = result.current.signWithDevice(trezorDevice('dev-stale'));
     current = false;
     controller.abort();
     resolveConnect();
@@ -737,10 +733,7 @@ describe('useUsbSigning', () => {
     const { result } = renderHook(() => useUsbSigning(deps));
 
     await expect(
-      result.current.signWithDevice({
-        id: 'dev-stale',
-        type: 'Trezor Safe 3',
-      } as any)
+      result.current.signWithDevice(trezorDevice('dev-stale'))
     ).resolves.toBe(false);
 
     expect(deps.setError).toHaveBeenCalledOnce();
@@ -764,10 +757,7 @@ describe('useUsbSigning', () => {
     const { result } = renderHook(() => useUsbSigning(deps));
 
     await expect(
-      result.current.signWithDevice({
-        id: 'dev-stale',
-        type: 'Trezor Safe 3',
-      } as any)
+      result.current.signWithDevice(trezorDevice('dev-stale'))
     ).resolves.toBe(false);
 
     expect(deps.setUnsignedPsbt).not.toHaveBeenCalled();
@@ -784,10 +774,7 @@ describe('useUsbSigning', () => {
 
     let ok = true;
     await act(async () => {
-      ok = await result.current.signWithDevice({
-        id: 'dev-3',
-        type: 'Trezor Safe 3',
-      } as any);
+      ok = await result.current.signWithDevice(trezorDevice('dev-3'));
     });
 
     expect(ok).toBe(false);
@@ -801,10 +788,7 @@ describe('useUsbSigning', () => {
 
     let ok = true;
     await act(async () => {
-      ok = await result.current.signWithDevice({
-        id: 'dev-4',
-        type: 'Trezor Safe 3',
-      } as any);
+      ok = await result.current.signWithDevice(trezorDevice('dev-4'));
     });
 
     expect(ok).toBe(false);
@@ -827,10 +811,7 @@ describe('useUsbSigning', () => {
     const { result } = renderHook(() => useUsbSigning(deps));
 
     await expect(
-      result.current.signWithDevice({
-        id: 'dev-stale',
-        type: 'Trezor Safe 3',
-      } as any)
+      result.current.signWithDevice(trezorDevice('dev-stale'))
     ).resolves.toBe(false);
 
     expect(deps.setError).toHaveBeenCalledOnce();

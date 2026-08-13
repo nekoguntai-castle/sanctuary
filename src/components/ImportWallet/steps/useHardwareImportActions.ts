@@ -3,17 +3,24 @@ import { isSecureContext } from '../../../services/hardwareWallet/environment';
 import { loadHardwareWalletRuntime } from '../../../services/hardwareWallet/loader';
 import { createLogger } from '../../../utils/logger';
 import type { TabNetwork } from '../../../app/networks';
-import { getDerivationPath, HardwareDeviceType, ScriptType } from '../importHelpers';
+import {
+  getDefaultHardwareImportModel,
+  getDerivationPath,
+  HardwareDeviceType,
+  ScriptType,
+} from '../importHelpers';
 import { XpubData } from '../hooks/useImportState';
 
 const log = createLogger('ImportWallet');
 
 export function useHardwareImportActions({
   hardwareDeviceType,
+  hardwareDeviceModel,
   scriptType,
   accountIndex,
   network,
   setHardwareDeviceType,
+  setHardwareDeviceModel,
   setDeviceConnected,
   setDeviceLabel,
   setScriptType,
@@ -24,10 +31,12 @@ export function useHardwareImportActions({
   setHardwareError,
 }: {
   hardwareDeviceType: HardwareDeviceType;
+  hardwareDeviceModel: string;
   scriptType: ScriptType;
   accountIndex: number;
   network: TabNetwork;
   setHardwareDeviceType: (type: HardwareDeviceType) => void;
+  setHardwareDeviceModel: (model: string) => void;
   setDeviceConnected: (connected: boolean) => void;
   setDeviceLabel: (label: string | null) => void;
   setScriptType: (type: ScriptType) => void;
@@ -41,6 +50,13 @@ export function useHardwareImportActions({
 
   const handleDeviceTypeSelect = (type: HardwareDeviceType) => {
     setHardwareDeviceType(type);
+    setHardwareDeviceModel(getDefaultHardwareImportModel(type));
+    setDeviceConnected(false);
+    setXpubData(null);
+  };
+
+  const handleDeviceModelSelect = (model: string) => {
+    setHardwareDeviceModel(model);
     setDeviceConnected(false);
     setXpubData(null);
   };
@@ -63,10 +79,10 @@ export function useHardwareImportActions({
       const { hardwareWalletService } = await loadHardwareWalletRuntime();
       const device = await hardwareWalletService.connect(hardwareDeviceType as DeviceType, {
         chainEnvironment: network,
-        ...(hardwareDeviceType === 'jade' ? { expectedModel: 'Jade Plus' } : {}),
+        expectedModel: hardwareDeviceModel,
       });
       setDeviceConnected(true);
-      setDeviceLabel(device.name || fallbackDeviceLabel(hardwareDeviceType));
+      setDeviceLabel(device.name || hardwareDeviceModel);
     } catch (error) {
       log.error('Failed to connect hardware device', { error });
       setHardwareError(hardwareErrorMessage(error, 'Failed to connect device'));
@@ -104,17 +120,12 @@ export function useHardwareImportActions({
   return {
     handleAccountIndexChange,
     handleConnectDevice,
+    handleDeviceModelSelect,
     handleDeviceTypeSelect,
     handleFetchXpub,
     handleScriptTypeSelect,
     ledgerSupported,
   };
-}
-
-function fallbackDeviceLabel(hardwareDeviceType: HardwareDeviceType): string {
-  if (hardwareDeviceType === 'trezor') return 'Trezor Device';
-  if (hardwareDeviceType === 'jade') return 'Jade Plus';
-  return 'Ledger Device';
 }
 
 function hardwareErrorMessage(error: unknown, fallback: string): string {

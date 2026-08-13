@@ -58,6 +58,35 @@ const isAbortError = async (error: unknown): Promise<boolean> => {
   }
 };
 
+const readRootFingerprint = (api: InstanceType<BitBoxApiModule['BitBox02API']>): string => {
+  const result: unknown = api.firmware().RootFingerprint();
+  if (!Array.isArray(result) || result.length < 2 || result[1]) {
+    throw new Error('BitBox02 root fingerprint is unavailable');
+  }
+  const fingerprintBytes = result[0];
+  if (!(fingerprintBytes instanceof Uint8Array) || fingerprintBytes.length !== 4) {
+    throw new Error('BitBox02 root fingerprint is unavailable');
+  }
+  return Buffer.from(fingerprintBytes).toString('hex');
+};
+
+const getConnectError = (error: unknown): Error => {
+  const message = error instanceof Error ? error.message : 'Unknown error';
+  if (message.includes('denied') || message.includes('NotAllowed') || message.includes('User abort')) {
+    return new Error('Access denied. Please allow device access and try again.');
+  }
+  if (message.includes('Pairing rejected')) {
+    return new Error('Pairing was rejected. Please try again and confirm on the device.');
+  }
+  if (message.includes('Firmware upgrade required')) {
+    return new Error('Firmware upgrade required. Please update your BitBox02 firmware.');
+  }
+  if (message.includes('busy')) {
+    return new Error('BitBox02 is busy. Please close other applications using the device.');
+  }
+  return new Error(`Failed to connect: ${message}`);
+};
+
 /**
  * BitBox02 Device Adapter
  */
@@ -67,7 +96,6 @@ export class BitBoxAdapter implements DeviceAdapter {
 
   private connection: BitBoxConnection | null = null;
   private connectedDevice: HardwareWalletDevice | null = null;
-  private pairingResolve: (() => void) | null = null;
 
   /**
    * Check if WebHID is supported
@@ -147,6 +175,7 @@ export class BitBoxAdapter implements DeviceAdapter {
       log.info('Got device path', { devicePath });
 
       const api = new BitBox02API(devicePath);
+      let verifiedAttestation: boolean | undefined;
 
       // Connect with callbacks
       await api.connect(
@@ -156,16 +185,9 @@ export class BitBoxAdapter implements DeviceAdapter {
         },
         // User verify callback - resolve when user confirms pairing
         async () => {
-          return new Promise<void>((resolve) => {
-            log.info('Waiting for user to confirm pairing on device...');
-            this.pairingResolve = resolve;
-            setTimeout(() => {
-              if (this.pairingResolve) {
-                this.pairingResolve();
-                this.pairingResolve = null;
-              }
-            }, 100);
-          });
+          throw new Error(
+            'BitBox02 pairing requires explicit user confirmation, which is unavailable in this release'
+          );
         },
         // Attestation callback
         (attestationResult: boolean) => {
@@ -173,6 +195,7 @@ export class BitBoxAdapter implements DeviceAdapter {
           if (!attestationResult) {
             log.warn('Device attestation failed - this may be a counterfeit device');
           }
+          verifiedAttestation = attestationResult;
         },
         // On close callback
         () => {
@@ -188,44 +211,47 @@ export class BitBoxAdapter implements DeviceAdapter {
         }
       );
 
+      if (verifiedAttestation === false) {
+        api.close();
+        throw new Error('BitBox02 device attestation failed');
+      }
+      if (verifiedAttestation !== true) {
+        api.close();
+        throw new Error('BitBox02 device attestation was not reported');
+      }
+
       // Get product type
       const product = api.firmware().Product();
-      const productName =
-        product === constants.Product.BitBox02Multi
-          ? 'BitBox02 Multi'
-          : 'BitBox02 Bitcoin-only';
+      let productName: string;
+      let model: string;
+      if (product === constants.Product.BitBox02Multi) {
+        productName = 'BitBox02 Multi';
+        model = 'BitBox02';
+      } else if (product === constants.Product.BitBox02BTCOnly) {
+        productName = 'BitBox02 Bitcoin-only';
+        model = 'BitBox02 Bitcoin-only';
+      } else {
+        api.close();
+        throw new Error(`Unsupported BitBox02 product: ${String(product)}`);
+      }
+      const rootFingerprint = readRootFingerprint(api);
 
       log.info('Connected to BitBox02', { product: productName });
 
-      this.connection = { api, devicePath, product };
+      this.connection = { api, devicePath, product, rootFingerprint };
 
       this.connectedDevice = {
         id: `bitbox-${BITBOX_VENDOR_ID}-${BITBOX_PRODUCT_ID}`,
         type: 'bitbox',
         name: productName,
-        model: productName,
+        model,
         connected: true,
-        fingerprint: undefined,
+        fingerprint: rootFingerprint,
       };
 
       return this.connectedDevice;
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-
-      if (message.includes('denied') || message.includes('NotAllowed') || message.includes('User abort')) {
-        throw new Error('Access denied. Please allow device access and try again.');
-      }
-      if (message.includes('Pairing rejected')) {
-        throw new Error('Pairing was rejected. Please try again and confirm on the device.');
-      }
-      if (message.includes('Firmware upgrade required')) {
-        throw new Error('Firmware upgrade required. Please update your BitBox02 firmware.');
-      }
-      if (message.includes('busy')) {
-        throw new Error('BitBox02 is busy. Please close other applications using the device.');
-      }
-
-      throw new Error(`Failed to connect: ${message}`);
+      throw getConnectError(error);
     }
   }
 
@@ -242,7 +268,6 @@ export class BitBoxAdapter implements DeviceAdapter {
       this.connection = null;
     }
     this.connectedDevice = null;
-    this.pairingResolve = null;
   }
 
   /**
@@ -267,12 +292,16 @@ export class BitBoxAdapter implements DeviceAdapter {
       log.info('Getting xpub', { path, coin, xpubType, isTestnet });
 
       const xpub = await this.connection.api.btcXPub(coin, keypathArray, xpubType, false);
+      const fingerprint = this.connection.rootFingerprint;
+      if (!/^[0-9a-f]{8}$/.test(fingerprint)) {
+        throw new Error('BitBox02 root fingerprint is unavailable');
+      }
 
       log.info('Got xpub', { xpubPrefix: xpub.substring(0, 20) });
 
       return {
         xpub,
-        fingerprint: '',
+        fingerprint,
         path,
       };
     } catch (error) {

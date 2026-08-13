@@ -620,7 +620,7 @@ describe("useAddAccountFlow branch coverage", () => {
 
     expect(connectMock).toHaveBeenCalledWith("jade", {
       chainEnvironment: "mainnet",
-      expectedModel: "Jade Plus",
+      expectedModel: "Blockstream Jade Plus",
     });
   });
 
@@ -636,7 +636,7 @@ describe("useAddAccountFlow branch coverage", () => {
 
     expect(connectMock).toHaveBeenCalledWith("jade", {
       chainEnvironment: "mainnet",
-      expectedModel: "Jade",
+      expectedModel: "Blockstream Jade",
     });
   });
 

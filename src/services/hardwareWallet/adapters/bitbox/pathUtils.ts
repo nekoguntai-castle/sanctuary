@@ -6,7 +6,7 @@
 
 import { constants } from 'bitbox02-api';
 import * as bitcoin from 'bitcoinjs-lib';
-import { isTestnetPath } from '../../pathUtils';
+import { parseDerivationPath } from '@sanctuary/shared/utils/bitcoin';
 import { createLogger } from '../../../../utils/logger';
 
 const log = createLogger('BitBoxPathUtils');
@@ -17,38 +17,49 @@ export { extractAccountPath } from '../../pathUtils';
 /**
  * Get script type constant from path or script type string
  */
+const getRequestedSimpleType = (scriptType?: string): number | undefined => {
+  if (!scriptType) return undefined;
+  switch (scriptType) {
+    case 'p2wpkh':
+      return constants.messages.BTCScriptConfig_SimpleType.P2WPKH;
+    case 'p2sh-p2wpkh':
+      return constants.messages.BTCScriptConfig_SimpleType.P2WPKH_P2SH;
+    case 'p2tr':
+      return constants.messages.BTCScriptConfig_SimpleType.P2TR;
+    default:
+      throw new Error(`Unsupported BitBox02 script type: ${scriptType}`);
+  }
+};
+
+const getPathSimpleType = (path?: string): number | undefined => {
+  // The hardened purpose selects the signing policy: BIP84, BIP49, or BIP86.
+  if (path?.includes("/84'") || path?.includes('/84h')) {
+    return constants.messages.BTCScriptConfig_SimpleType.P2WPKH;
+  }
+  if (path?.includes("/49'") || path?.includes('/49h')) {
+    return constants.messages.BTCScriptConfig_SimpleType.P2WPKH_P2SH;
+  }
+  if (path?.includes("/86'") || path?.includes('/86h')) {
+    return constants.messages.BTCScriptConfig_SimpleType.P2TR;
+  }
+  return undefined;
+};
+
 export const getSimpleType = (
   scriptType?: string,
   path?: string
 ): number => {
-  // If scriptType is provided, use it
-  if (scriptType) {
-    switch (scriptType) {
-      case 'p2wpkh':
-        return constants.messages.BTCScriptConfig_SimpleType.P2WPKH;
-      case 'p2sh-p2wpkh':
-        return constants.messages.BTCScriptConfig_SimpleType.P2WPKH_P2SH;
-      case 'p2tr':
-        return constants.messages.BTCScriptConfig_SimpleType.P2TR;
-      default:
-        return constants.messages.BTCScriptConfig_SimpleType.P2WPKH;
+  const requestedType = getRequestedSimpleType(scriptType);
+  const pathType = getPathSimpleType(path);
+  if (pathType !== undefined) {
+    if (requestedType !== undefined && requestedType !== pathType) {
+      throw new Error('BitBox02 script type disagrees with the account path');
     }
+    return pathType;
   }
 
-  // Infer from path
-  if (path) {
-    if (path.includes("/84'") || path.includes("/84h")) {
-      return constants.messages.BTCScriptConfig_SimpleType.P2WPKH;
-    }
-    if (path.includes("/49'") || path.includes("/49h")) {
-      return constants.messages.BTCScriptConfig_SimpleType.P2WPKH_P2SH;
-    }
-    if (path.includes("/86'") || path.includes("/86h")) {
-      return constants.messages.BTCScriptConfig_SimpleType.P2TR;
-    }
-  }
-
-  return constants.messages.BTCScriptConfig_SimpleType.P2WPKH;
+  if (requestedType !== undefined) return requestedType;
+  throw new Error(`Unsupported BitBox02 script type for path: ${path ?? 'missing'}`);
 };
 
 /**
@@ -71,19 +82,17 @@ export const getXpubType = (path: string, isTestnet: boolean): number => {
       ? constants.messages.BTCXPubType.TPUB
       : constants.messages.BTCXPubType.XPUB;
   }
-  // Default to standard xpub/tpub
-  return isTestnet
-    ? constants.messages.BTCXPubType.TPUB
-    : constants.messages.BTCXPubType.XPUB;
+  throw new Error(`Unsupported BitBox02 xpub path: ${path}`);
 };
 
 /**
  * Get coin constant from path
  */
 export const getCoin = (path: string): number => {
-  return isTestnetPath(path)
-    ? constants.messages.BTCCoin.TBTC
-    : constants.messages.BTCCoin.BTC;
+  const coinType = parseDerivationPath(path).coinType;
+  if (coinType === 0) return constants.messages.BTCCoin.BTC;
+  if (coinType === 1) return constants.messages.BTCCoin.TBTC;
+  throw new Error(`Unsupported BitBox02 coin type for path: ${path}`);
 };
 
 /**
@@ -93,12 +102,13 @@ export const getOutputType = (address: string, network: bitcoin.Network): number
   // Try to decode as different address types
   try {
     const decoded = bitcoin.address.fromBech32(address);
+    if (decoded.prefix !== network.bech32) throw new Error('bech32 network mismatch');
     if (decoded.version === 0) {
-      return decoded.data.length === 20
-        ? constants.messages.BTCOutputType.P2WPKH
-        : constants.messages.BTCOutputType.P2WSH;
+      if (decoded.data.length === 20) return constants.messages.BTCOutputType.P2WPKH;
+      if (decoded.data.length === 32) return constants.messages.BTCOutputType.P2WSH;
+      throw new Error('unsupported v0 witness program length');
     }
-    if (decoded.version === 1) {
+    if (decoded.version === 1 && decoded.data.length === 32) {
       return constants.messages.BTCOutputType.P2TR;
     }
   } catch (error) {
@@ -108,6 +118,7 @@ export const getOutputType = (address: string, network: bitcoin.Network): number
 
   try {
     const decoded = bitcoin.address.fromBase58Check(address);
+    if (decoded.hash.length !== 20) throw new Error('unsupported base58 payload length');
     if (decoded.version === network.pubKeyHash) {
       return constants.messages.BTCOutputType.P2PKH;
     }
@@ -119,6 +130,5 @@ export const getOutputType = (address: string, network: bitcoin.Network): number
     // Not base58
   }
 
-  // Default to P2WPKH
-  return constants.messages.BTCOutputType.P2WPKH;
+  throw new Error(`Unsupported or invalid BitBox02 output address: ${address || 'missing'}`);
 };

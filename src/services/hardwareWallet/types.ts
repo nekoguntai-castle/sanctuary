@@ -83,7 +83,7 @@ export interface XpubResult {
 }
 
 export interface HardwareWalletConnectionOptions {
-  chainEnvironment: NetworkType;
+  chainEnvironment?: NetworkType;
   expectedModel?: string;
 }
 

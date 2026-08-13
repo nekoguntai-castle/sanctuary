@@ -7,8 +7,7 @@ import {
   renderHardwareCompatibilityMarkdown,
 } from "../../scripts/ci/hardware-compatibility-report";
 import {
-  HARDWARE_WALLET_CAPABILITIES,
-  HARDWARE_WALLET_VENDORS,
+  HARDWARE_WALLET_CAPABILITY_ROWS,
 } from "../../shared/constants/hardwareWalletCapabilities";
 
 const AS_OF = "2026-08-11T00:00:00.000Z";
@@ -24,7 +23,7 @@ describe("hardware compatibility statement", () => {
     const second = build();
     expect(first).toEqual(second);
     expect(first.capabilityRows).toHaveLength(
-      HARDWARE_WALLET_VENDORS.length * HARDWARE_WALLET_CAPABILITIES.length,
+      HARDWARE_WALLET_CAPABILITY_ROWS.length,
     );
     expect(first.hardwareRows).toHaveLength(22);
     expect(new Set(first.capabilityRows.map(({ id }) => id)).size).toBe(

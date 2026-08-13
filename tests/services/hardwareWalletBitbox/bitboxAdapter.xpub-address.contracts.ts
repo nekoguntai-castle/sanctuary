@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import {
   createBitBoxAdapter,
   makeHidDevice,
-  mockApiConnect,
   mockBtcXPub,
   mockDisplayAddressSimple,
   mockIsErrorAbort,
@@ -20,7 +19,7 @@ export function registerBitBoxXpubAddressTests(): void {
       const result = await adapter.getXpub("m/84'/0'/0'");
       expect(result).toEqual({
         xpub: 'xpub-bitbox',
-        fingerprint: '',
+        fingerprint: 'aabbccdd',
         path: "m/84'/0'/0'",
       });
       expect(mockBtcXPub).toHaveBeenCalledWith(31, expect.any(Array), 21, false);
@@ -33,9 +32,7 @@ export function registerBitBoxXpubAddressTests(): void {
       await adapter.getXpub("m/86'/0'/0'");
       expect(mockBtcXPub).toHaveBeenLastCalledWith(31, expect.any(Array), 25, false);
 
-      mockBtcXPub.mockResolvedValueOnce('tpub-default');
-      await adapter.getXpub("m/44'/1'/0'");
-      expect(mockBtcXPub).toHaveBeenLastCalledWith(30, expect.any(Array), 24, false);
+      await expect(adapter.getXpub("m/44'/1'/0'")).rejects.toThrow('Unsupported BitBox02 xpub path');
 
       const abortErr = new Error('aborted');
       mockBtcXPub.mockRejectedValueOnce(abortErr);
@@ -58,9 +55,7 @@ export function registerBitBoxXpubAddressTests(): void {
       await expect(adapter.verifyAddress("m/86h/0h/0h/0/0", 'bc1pabc')).resolves.toBe(true);
       expect(mockDisplayAddressSimple).toHaveBeenLastCalledWith(31, expect.any(Array), 12, true);
 
-      mockDisplayAddressSimple.mockResolvedValueOnce('1abc');
-      await expect(adapter.verifyAddress("m/44'/0'/0'/0/0", '1abc')).resolves.toBe(true);
-      expect(mockDisplayAddressSimple).toHaveBeenLastCalledWith(31, expect.any(Array), 10, true);
+      await expect(adapter.verifyAddress("m/44'/0'/0'/0/0", '1abc')).rejects.toThrow('Unsupported BitBox02 script type');
 
       mockDisplayAddressSimple.mockResolvedValueOnce('bc1qmismatch');
       await expect(adapter.verifyAddress("m/84'/0'/0'/0/0", 'bc1qxyz')).resolves.toBe(false);
@@ -83,7 +78,6 @@ export function registerBitBoxXpubAddressTests(): void {
     it('treats errors as non-abort when isErrorAbort itself throws', async () => {
       const adapter = createBitBoxAdapter();
       setAuthorizedHidDevices([makeHidDevice()]);
-      mockApiConnect.mockResolvedValue(undefined);
       await adapter.connect();
 
       const deviceErr = new Error('device broke');
@@ -92,6 +86,16 @@ export function registerBitBoxXpubAddressTests(): void {
         throw new Error('module load failed');
       });
       await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow('Failed to get xpub: device broke');
+    });
+
+    it('rejects xpub retrieval when the connected session fingerprint is malformed', async () => {
+      const adapter = createBitBoxAdapter();
+      seedConnectedAdapter(adapter);
+      (adapter as any).connection.rootFingerprint = '';
+
+      await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow(
+        'BitBox02 root fingerprint is unavailable'
+      );
     });
   });
 }

@@ -6,7 +6,7 @@ import { SigningFlow } from '../../../src/components/send/steps/review/SigningFl
 import type { Device } from '../../../src/types';
 
 vi.mock('../../../src/components/send/steps/review/deviceCapabilities', () => ({
-  getDeviceCapabilities: (type: string) => {
+  getDeviceCapabilities: ({ type }: { type?: string }) => {
     if (type === 'blocked') {
       return { methods: [], labels: {}, blockedReason: 'No reviewed evidence.' };
     }

@@ -16,6 +16,7 @@ import {
   formatNetworkTitle,
   type TabNetwork,
 } from '../../app/networks';
+import { HARDWARE_WALLET_IMPLEMENTATION_INVENTORY } from '@sanctuary/shared/constants/hardwareWalletCapabilities';
 
 // Input validation constants
 export const MAX_INPUT_SIZE = 100 * 1024; // 100KB max input size
@@ -24,6 +25,19 @@ export const MAX_FILE_SIZE = 1024 * 1024; // 1MB max file size
 export type ImportFormat = 'descriptor' | 'json' | 'hardware' | 'qr_code';
 export type ScriptType = WalletScriptTypeValue;
 export type HardwareDeviceType = 'ledger' | 'trezor' | 'jade';
+
+export function getHardwareImportModelNames(type: HardwareDeviceType): readonly string[] {
+  const inventory = HARDWARE_WALLET_IMPLEMENTATION_INVENTORY.find((row) => row.vendor === type);
+  /* v8 ignore next -- HardwareDeviceType is generated from vendors with catalog models */
+  if (!inventory || inventory.catalogModelNames.length === 0) {
+    throw new Error(`No exact hardware models are registered for ${type}`);
+  }
+  return inventory.catalogModelNames;
+}
+
+export function getDefaultHardwareImportModel(type: HardwareDeviceType): string {
+  return getHardwareImportModelNames(type)[0];
+}
 
 // Compute a canonical single-sig account path. Exact chain selection stays
 // separate even where test chains share BIP44 coin type 1.

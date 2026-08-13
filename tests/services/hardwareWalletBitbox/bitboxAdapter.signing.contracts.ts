@@ -20,25 +20,25 @@ export function registerBitBoxSigningTests(): void {
         throw abortErr;
       });
       mockIsErrorAbort.mockImplementationOnce((err: unknown) => err === abortErr);
-      await expect(adapter.signPSBT({ psbt: 'x', inputPaths: [] })).rejects.toThrow('Transaction rejected on device');
+      await expect(adapter.signPSBT({ psbt: 'x', inputPaths: [], accountPath: "m/84'/0'/0'" })).rejects.toThrow('Transaction rejected on device');
 
       mockPsbtFromBase64.mockImplementationOnce(() => {
         throw new Error('device busy');
       });
       mockIsErrorAbort.mockReturnValueOnce(false);
-      await expect(adapter.signPSBT({ psbt: 'x', inputPaths: [] })).rejects.toThrow('BitBox02 is busy');
+      await expect(adapter.signPSBT({ psbt: 'x', inputPaths: [], accountPath: "m/84'/0'/0'" })).rejects.toThrow('BitBox02 is busy');
 
       mockPsbtFromBase64.mockImplementationOnce(() => {
         throw new Error('unexpected');
       });
       mockIsErrorAbort.mockReturnValueOnce(false);
-      await expect(adapter.signPSBT({ psbt: 'x', inputPaths: [] })).rejects.toThrow('Failed to sign transaction: unexpected');
+      await expect(adapter.signPSBT({ psbt: 'x', inputPaths: [], accountPath: "m/84'/0'/0'" })).rejects.toThrow('Failed to sign transaction: unexpected');
 
       mockPsbtFromBase64.mockImplementationOnce(() => {
         throw 'unexpected';
       });
       mockIsErrorAbort.mockReturnValueOnce(false);
-      await expect(adapter.signPSBT({ psbt: '', inputPaths: [] })).rejects.toThrow(
+      await expect(adapter.signPSBT({ psbt: '', inputPaths: [], accountPath: "m/84'/0'/0'" })).rejects.toThrow(
         'Failed to sign transaction: Unknown error'
       );
     });
@@ -60,10 +60,10 @@ export function registerBitBoxSigningTests(): void {
             }],
             sighashType: 1,
           }],
-          outputs: [{}],
+          outputs: [],
         },
         txInputs: [{ hash: Buffer.alloc(32, 1), index: 0, sequence: 0xfffffffd }],
-        txOutputs: [{ value: 900, address: 'bc1qexample' }],
+        txOutputs: [],
         version: 2,
         locktime: 0,
         updateInput: vi.fn(),
@@ -103,10 +103,10 @@ export function registerBitBoxSigningTests(): void {
             }],
             sighashType: 1,
           }],
-          outputs: [{}],
+          outputs: [],
         },
         txInputs: [{ hash: Buffer.alloc(32, 5), index: 0 }],
-        txOutputs: [{ value: 400, address: 'bc1qfallback' }],
+        txOutputs: [],
         version: 2,
         locktime: 0,
         updateInput: vi.fn(),
@@ -156,7 +156,7 @@ export function registerBitBoxSigningTests(): void {
       await adapter.signPSBT({
         psbt: 'b',
         inputPaths: [],
-        accountPath: "m/84'/0'/0'",
+        accountPath: "m/49'/0'/0'",
         scriptType: 'p2sh-p2wpkh',
       });
       expect(mockBtcSignSimple).toHaveBeenLastCalledWith(
@@ -170,28 +170,12 @@ export function registerBitBoxSigningTests(): void {
       );
 
       mockPsbtFromBase64.mockReturnValueOnce(makeEmptyPsbt());
-      await adapter.signPSBT({ psbt: 'c', inputPaths: [], accountPath: "m/84'/0'/0'", scriptType: 'p2tr' });
-      expect(mockBtcSignSimple).toHaveBeenLastCalledWith(
-        expect.any(Number),
-        12,
-        expect.any(Array),
-        expect.any(Array),
-        expect.any(Array),
-        2,
-        0
-      );
+      await expect(adapter.signPSBT({ psbt: 'c', inputPaths: [], accountPath: "m/86'/0'/0'", scriptType: 'p2tr' }))
+        .rejects.toThrow('Taproot signing is blocked');
 
       mockPsbtFromBase64.mockReturnValueOnce(makeEmptyPsbt());
-      await adapter.signPSBT({ psbt: 'd', inputPaths: [], accountPath: "m/84'/0'/0'", scriptType: 'unknown' as any });
-      expect(mockBtcSignSimple).toHaveBeenLastCalledWith(
-        expect.any(Number),
-        10,
-        expect.any(Array),
-        expect.any(Array),
-        expect.any(Array),
-        2,
-        0
-      );
+      await expect(adapter.signPSBT({ psbt: 'd', inputPaths: [], accountPath: "m/84'/0'/0'", scriptType: 'unknown' as any }))
+        .rejects.toThrow('Unsupported BitBox02 script type');
     });
 
     it('blocks BitBox multisig signing before simple signing payload creation', async () => {
@@ -226,7 +210,9 @@ export function registerBitBoxSigningTests(): void {
 
     it('derives account path from request inputPaths, PSBT metadata, and default fallback', async () => {
       const adapter = createBitBoxAdapter();
-      const mockBtcSignSimple = vi.fn().mockResolvedValue([]);
+      const mockBtcSignSimple = vi.fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([new Uint8Array(64)]);
       seedSigningAdapter(adapter, mockBtcSignSimple);
 
       mockPsbtFromBase64.mockReturnValueOnce({
@@ -245,7 +231,7 @@ export function registerBitBoxSigningTests(): void {
       mockPsbtFromBase64.mockReturnValueOnce({
         data: {
           globalMap: { unsignedTx: {} },
-          inputs: [{ bip32Derivation: [{ path: "m/49'/1'/0'/1/3", pubkey: Buffer.alloc(33, 2) }] }],
+          inputs: [{ witnessUtxo: { value: 1000 }, bip32Derivation: [{ path: "m/49'/1'/0'/1/3", pubkey: Buffer.alloc(33, 2) }] }],
           outputs: [],
         },
         txInputs: [{ hash: Buffer.alloc(32, 1), index: 0, sequence: 0 }],
@@ -256,16 +242,8 @@ export function registerBitBoxSigningTests(): void {
         finalizeAllInputs: vi.fn(),
         toBase64: vi.fn(() => 'signed-b'),
       });
-      await adapter.signPSBT({ psbt: 'b', inputPaths: [] });
-      expect(mockGetKeypathFromString).toHaveBeenCalledWith("m/49'/1'/0'");
-      expect(mockBtcSignSimple).toHaveBeenLastCalledWith(
-        30,
-        expect.any(Number),
-        expect.any(Array),
-        expect.any(Array),
-        expect.any(Array),
-        2,
-        0
+      await expect(adapter.signPSBT({ psbt: 'b', inputPaths: [] })).rejects.toThrow(
+        'account path is required before PSBT parsing'
       );
 
       mockPsbtFromBase64.mockReturnValueOnce({
@@ -278,8 +256,8 @@ export function registerBitBoxSigningTests(): void {
         finalizeAllInputs: vi.fn(),
         toBase64: vi.fn(() => 'signed-c'),
       });
-      await adapter.signPSBT({ psbt: 'c', inputPaths: [] });
-      expect(mockGetKeypathFromString).toHaveBeenCalledWith("m/84'/0'/0'");
+      await expect(adapter.signPSBT({ psbt: 'c', inputPaths: [] }))
+        .rejects.toThrow('BitBox02 account path is required before PSBT parsing');
     });
 
     it('builds a deterministic no-device BitBox signing payload for inputs, change, and external outputs', async () => {
@@ -346,29 +324,11 @@ export function registerBitBoxSigningTests(): void {
         toBase64: vi.fn(() => 'signed-complex'),
       });
 
-      const result = await adapter.signPSBT({
+      await expect(adapter.signPSBT({
         psbt: 'complex-psbt',
         accountPath: "m/84'/0'/0'",
         inputPaths: ["m/84'/0'/0'/0/0", "m/84'/0'/0'/0/1"],
-        scriptType: 'p2sh-p2wpkh',
-      });
-
-      expect(result).toEqual({ psbt: 'signed-complex', signatures: 3 });
-
-      const [coin, simpleType, keypathAccount, inputs, outputs] = mockBtcSignSimple.mock.calls[0];
-      expect(coin).toBe(31);
-      expect(simpleType).toBe(11);
-      expect(keypathAccount).toEqual([84, 0, 0]);
-
-      expect(inputs[0].prevOutValue).toBe('1234');
-      expect(inputs[1].keypath).toEqual([84, 0, 0, 0, 1]);
-      expect(inputs[2].keypath).toEqual([84, 0, 0, 0, 0]);
-
-      expect(outputs[0]).toMatchObject({ ours: true, keypath: [84, 0, 0, 1, 0], value: '1000' });
-      expect(outputs[1]).toMatchObject({ ours: false, type: 41, value: '2000' });
-      expect(outputs[2]).toMatchObject({ ours: false, type: 42, value: '3000' });
-      expect(outputs[3]).toMatchObject({ ours: false, type: 43, value: '4000' });
-      expect(outputs[4]).toMatchObject({ ours: false, type: 44, value: '5000' });
+      })).rejects.toThrow('non-witness prevout proof is unsupported');
     });
 
     it('uses default address and sighash branches when output address and input sighash are missing', async () => {
@@ -398,25 +358,11 @@ export function registerBitBoxSigningTests(): void {
       };
       mockPsbtFromBase64.mockReturnValue(mockPsbt);
 
-      const result = await adapter.signPSBT({
+      await expect(adapter.signPSBT({
         psbt: 'default-branch-psbt',
         accountPath: "m/84'/0'/0'",
         inputPaths: ["m/84'/0'/0'/0/0"],
-      });
-
-      expect(result).toEqual({ psbt: 'signed-default-branches', signatures: 1 });
-
-      const [, , , , outputs] = mockBtcSignSimple.mock.calls[0];
-      expect(outputs[0]).toMatchObject({
-        ours: false,
-        type: 40,
-        value: '1200',
-        payload: new Uint8Array(0),
-      });
-
-      const [, update] = mockPsbt.updateInput.mock.calls[0];
-      const signature: Buffer = update.partialSig[0].signature;
-      expect(signature[signature.length - 1]).toBe(1);
+      })).rejects.toThrow('BitBox02 external output 0 has no address');
     });
   });
 }

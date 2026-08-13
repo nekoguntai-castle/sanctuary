@@ -179,12 +179,16 @@ function signingConnectionOptions(
   hwType: HardwareWalletType,
   device: Device,
   wallet: Wallet,
-): HardwareWalletConnectionOptions | undefined {
-  if (hwType !== 'jade') return undefined;
-  if (!wallet.network) throw new Error('Jade signing requires an explicit wallet network');
+): HardwareWalletConnectionOptions {
+  if (hwType === 'jade' && !wallet.network) {
+    throw new Error('Jade signing requires an explicit wallet network');
+  }
+  if (!device.model?.name) {
+    throw new Error(`Hardware signing requires an exact ${hwType} model identity`);
+  }
   return {
-    chainEnvironment: wallet.network,
-    expectedModel: device.model?.name.includes('Plus') ? 'Jade Plus' : 'Jade',
+    ...(wallet.network ? { chainEnvironment: wallet.network } : {}),
+    expectedModel: device.model.name,
   };
 }
 

@@ -60,11 +60,32 @@ describe('hardware-wallet implementation inventory', () => {
     expect(classifyHardwareWalletVendor({ model: 'Ledger Nano X' })).toBe('ledger');
     expect(classifyHardwareWalletVendor({ model: { slug: 'trezor-safe-5' } })).toBe('trezor');
     expect(classifyHardwareWalletVendor({ model: { name: 'Blockstream Jade Plus' } })).toBe('jade');
+    expect(getHardwareWalletCapabilityRow(
+      { model: { name: 'Ledger Nano X' } },
+      'sign',
+    )?.id).toBe('ledger.ledger-nano-x.sign');
+    expect(getHardwareWalletCapabilityRow(
+      { type: 'trezor', model: { slug: 'trezor-safe-5' } },
+      'sign',
+    )?.id).toBe('trezor.trezor-safe-5.sign');
+    expect(getHardwareWalletCapabilityRow(
+      { type: 'jade', model: { name: 'Blockstream Jade Plus' } },
+      'display',
+    )?.id).toBe('jade.blockstream-jade-plus.display');
   });
 
   it('fails closed for missing, conflicting, and unmapped capability identities', () => {
     expect(classifyHardwareWalletVendor({})).toBeNull();
     expect(classifyHardwareWalletVendor({ type: 'ledger', model: 'Trezor Safe 5' })).toBeNull();
+    expect(classifyHardwareWalletVendor({
+      type: 'Trezor Safe 3',
+      model: 'Trezor Safe 5',
+    })).toBeNull();
+    expect(classifyHardwareWalletVendor({ type: 'ledger', model: 'Ledger future model' })).toBe('ledger');
+    expect(getHardwareWalletCapabilityRow(
+      { type: 'ledger', model: 'Ledger future model' },
+      'sign',
+    )?.id).toBe('ledger.ledger-unresolved.sign');
     expect(getHardwareWalletCapabilityRow({ type: 'unknown' }, 'sign')).toBeNull();
     expect(
       getHardwareWalletCapabilityRow(

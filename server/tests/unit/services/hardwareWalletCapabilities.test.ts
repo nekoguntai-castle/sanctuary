@@ -91,6 +91,15 @@ describe("hardware wallet capability containment", () => {
     }
   });
 
+  it("selects exact catalog rows and isolates unresolved legacy identities", () => {
+    expect(getHardwareWalletCapabilityRow({ model: "ledger-nano-x" }, "sign"))
+      .toMatchObject({ id: "ledger.ledger-nano-x.sign", modelFamily: "ledger-nano-x" });
+    expect(getHardwareWalletCapabilityRow({ model: "Ledger Nano X" }, "sign"))
+      .toMatchObject({ id: "ledger.ledger-nano-x.sign", modelFamily: "ledger-nano-x" });
+    expect(getHardwareWalletCapabilityRow({ type: "ledger" }, "sign"))
+      .toMatchObject({ id: "ledger.ledger-unresolved.sign", modelFamily: "ledger-unresolved" });
+  });
+
   it("covers every independently seeded hardware model slug", () => {
     const seed = readFileSync(resolve("prisma/seed.ts"), "utf8");
     const catalogSource = seed.match(
@@ -115,8 +124,20 @@ describe("hardware wallet capability containment", () => {
 
   it("rejects ambiguous or token-spoofed identities", () => {
     expect(classifyHardwareWalletVendor({ type: "ledger", model: "Trezor Safe 5" })).toBeNull();
+    expect(classifyHardwareWalletVendor({
+      type: "Trezor Safe 3",
+      model: "Trezor Safe 5",
+    })).toBeNull();
     expect(classifyHardwareWalletVendor({ type: "notledger" })).toBeNull();
     expect(classifyHardwareWalletVendor({ model: "Ledger Nano X drifted" })).toBeNull();
+    expect(classifyHardwareWalletVendor({
+      type: "ledger",
+      model: { slug: "ledger-nano-x", name: "Ledger Stax" },
+    })).toBeNull();
+    expect(getHardwareWalletCapabilityRow({
+      type: "ledger",
+      model: { slug: "ledger-nano-x", name: "Ledger Stax" },
+    }, "sign")).toBeNull();
     expect(getHardwareWalletCapabilityDecision(
       { type: "ledger", model: "Trezor Safe 5" },
       "sign",

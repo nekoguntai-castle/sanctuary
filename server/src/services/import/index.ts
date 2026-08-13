@@ -32,6 +32,19 @@ import { bluewalletHandler } from './handlers/bluewallet';
 import { jsonConfigHandler } from './handlers/jsonConfig';
 import { descriptorHandler } from './handlers/descriptor';
 
+/**
+ * Signer identities accepted by each registered wallet-import handler. The
+ * generated inventory checks this against the registry calls below so a new
+ * handler cannot silently become a funds-controlling path.
+ */
+export const IMPORT_HANDLER_SIGNER_SURFACES = [
+  { registration: 'coldcardHandler', handlerId: 'coldcard', vendors: ['coldcard'] },
+  { registration: 'walletExportHandler', handlerId: 'wallet_export', vendors: ['generic', 'specter'] },
+  { registration: 'bluewalletHandler', handlerId: 'bluewallet_text', vendors: ['coldcard', 'generic'] },
+  { registration: 'jsonConfigHandler', handlerId: 'json', vendors: ['generic'] },
+  { registration: 'descriptorHandler', handlerId: 'descriptor', vendors: ['generic'] },
+] as const;
+
 // Register handlers in priority order (done automatically by priority field)
 // Higher priority = checked first
 importFormatRegistry.register(coldcardHandler); // 85 - Coldcard JSON

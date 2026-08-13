@@ -91,7 +91,7 @@ async function connect(adapter: JadeAdapter, selectedPort = port()) {
   mocks.rpc
     .mockResolvedValueOnce({ id: 'version', result: { JADE_VERSION: '1.0.40', BOARD_TYPE: '' } })
     .mockResolvedValueOnce({ id: 'root', result: 'root-xpub' });
-  return adapter.connect({ chainEnvironment: 'mainnet', expectedModel: 'Jade Plus' });
+  return adapter.connect({ chainEnvironment: 'mainnet', expectedModel: 'Blockstream Jade Plus' });
 }
 
 describe('JadeAdapter', () => {
@@ -129,8 +129,8 @@ describe('JadeAdapter', () => {
       port(1, 2),
     ]);
     await expect(new JadeAdapter().getAuthorizedDevices()).resolves.toMatchObject([
-      { name: 'Jade', model: 'Jade' },
-      { name: 'Jade Plus', model: 'Jade Plus' },
+      { name: 'Blockstream Jade', model: 'Blockstream Jade' },
+      { name: 'Blockstream Jade Plus', model: 'Blockstream Jade Plus' },
     ]);
     getPorts.mockRejectedValueOnce(new Error('enumeration failed'));
     await expect(new JadeAdapter().getAuthorizedDevices()).resolves.toEqual([]);
@@ -146,7 +146,7 @@ describe('JadeAdapter', () => {
     expect(mocks.rpc).toHaveBeenNthCalledWith(1, 'get_version_info');
     expect(mocks.rpc).toHaveBeenNthCalledWith(2, 'get_xpub', { network: 'mainnet', path: [] });
     expect(mocks.masterFingerprint).toHaveBeenCalledWith('root-xpub', 'mainnet');
-    expect(device).toMatchObject({ name: 'Jade Plus', fingerprint: 'deadbeef', firmwareVersion: '1.0.40' });
+    expect(device).toMatchObject({ name: 'Blockstream Jade Plus', fingerprint: 'deadbeef', firmwareVersion: '1.0.40' });
     expect(adapter.isConnected()).toBe(true);
     await expect(mocks.protocolTransport?.invalidate()).resolves.toBeUndefined();
     expect(adapter.isConnected()).toBe(false);
@@ -160,7 +160,7 @@ describe('JadeAdapter', () => {
       .mockResolvedValueOnce({ id: 'root', result: 'test-root-xpub' });
     const adapter = new JadeAdapter();
 
-    await expect(adapter.connect({ chainEnvironment: 'testnet3' })).resolves.toMatchObject({ model: 'Jade' });
+    await expect(adapter.connect({ chainEnvironment: 'testnet3' })).resolves.toMatchObject({ model: 'Blockstream Jade' });
     expect(mocks.authenticate).toHaveBeenCalledWith('testnet', expect.any(Function), expect.any(Number));
     expect(mocks.masterFingerprint).toHaveBeenCalledWith('test-root-xpub', 'testnet');
   });
@@ -169,8 +169,8 @@ describe('JadeAdapter', () => {
     requestPort.mockResolvedValueOnce(port(0x10c4, 0xea60));
     await expect(new JadeAdapter().connect({
       chainEnvironment: 'mainnet',
-      expectedModel: 'Jade Plus',
-    })).rejects.toThrow(/not the requested Jade Plus/i);
+      expectedModel: 'Blockstream Jade Plus',
+    })).rejects.toThrow(/not the requested Blockstream Jade Plus/i);
     expect(mocks.authenticate).not.toHaveBeenCalled();
   });
 
@@ -193,24 +193,24 @@ describe('JadeAdapter', () => {
     const unusable = port();
     Object.assign(unusable, { readable: null });
     requestPort.mockResolvedValueOnce(unusable);
-    await expect(new JadeAdapter().connect({ chainEnvironment: 'mainnet', expectedModel: 'Jade Plus' }))
+    await expect(new JadeAdapter().connect({ chainEnvironment: 'mainnet', expectedModel: 'Blockstream Jade Plus' }))
       .rejects.toThrow(/not readable\/writable/i);
 
     requestPort.mockResolvedValueOnce(port());
     mocks.rpc.mockResolvedValueOnce({ id: 'version' });
-    await expect(new JadeAdapter().connect({ chainEnvironment: 'mainnet', expectedModel: 'Jade Plus' }))
+    await expect(new JadeAdapter().connect({ chainEnvironment: 'mainnet', expectedModel: 'Blockstream Jade Plus' }))
       .rejects.toThrow(/did not return version information/i);
 
     requestPort.mockResolvedValueOnce(port());
     mocks.rpc.mockResolvedValueOnce({ id: 'version', result: { JADE_VERSION: '' } });
-    await expect(new JadeAdapter().connect({ chainEnvironment: 'mainnet', expectedModel: 'Jade Plus' }))
+    await expect(new JadeAdapter().connect({ chainEnvironment: 'mainnet', expectedModel: 'Blockstream Jade Plus' }))
       .rejects.toThrow(/malformed version/i);
 
     requestPort.mockResolvedValueOnce(port());
     mocks.rpc
       .mockResolvedValueOnce({ id: 'version', result: { JADE_VERSION: '1.0.40' } })
       .mockResolvedValueOnce({ id: 'root' });
-    await expect(new JadeAdapter().connect({ chainEnvironment: 'mainnet', expectedModel: 'Jade Plus' }))
+    await expect(new JadeAdapter().connect({ chainEnvironment: 'mainnet', expectedModel: 'Blockstream Jade Plus' }))
       .rejects.toThrow(/did not return root xpub/i);
   });
 

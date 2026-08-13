@@ -49,11 +49,15 @@ interface ActiveJadeSession {
   fingerprint: string;
 }
 
-const portModel = (info: SerialPortInfo): 'Jade' | 'Jade Plus' | null => {
+const portModel = (
+  info: SerialPortInfo,
+): 'Blockstream Jade' | 'Blockstream Jade Plus' | null => {
   if (info.usbVendorId === JADE_PLUS_VENDOR_ID && info.usbProductId === JADE_PLUS_PRODUCT_ID) {
-    return 'Jade Plus';
+    return 'Blockstream Jade Plus';
   }
-  if (info.usbVendorId === JADE_VENDOR_ID && info.usbProductId === JADE_PRODUCT_ID) return 'Jade';
+  if (info.usbVendorId === JADE_VENDOR_ID && info.usbProductId === JADE_PRODUCT_ID) {
+    return 'Blockstream Jade';
+  }
   return null;
 };
 

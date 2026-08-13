@@ -38,6 +38,17 @@ import { UREncoder, URDecoder, UR } from '@ngraveio/bc-ur';
 import { createLogger } from './logger';
 import { hasPsbtMagicBytes } from './psbtFormat';
 
+/**
+ * Exact signer families routed through this generic UR crypto-psbt codec.
+ * The signer inventory consumes this declaration rather than inferring
+ * support from comments, filenames, or package names.
+ */
+export const QR_AIRGAP_SIGNER_SURFACES = [
+  { codec: 'crypto-psbt', vendor: 'keystone', methods: ['qr'] },
+  { codec: 'crypto-psbt', vendor: 'passport', methods: ['qr'] },
+  { codec: 'crypto-psbt', vendor: 'seedsigner', methods: ['qr'] },
+] as const;
+
 const log = createLogger('urPsbt');
 
 // Maximum bytes per QR code fragment (lower = smaller QRs, more frames)

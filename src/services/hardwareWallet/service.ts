@@ -35,6 +35,7 @@ import {
   HARDWARE_WALLET_CAPABILITY_MANIFEST_ID,
   getHardwareWalletCapabilityRow,
   type HardwareWalletCapability,
+  type HardwareWalletIdentity,
 } from '@sanctuary/shared/constants/hardwareWalletCapabilities';
 import {
   HardwareWalletIdentityError,
@@ -47,19 +48,28 @@ import {
 } from '@sanctuary/shared/schemas/bitcoinResponses';
 
 const log = createLogger('HardwareWalletService');
+type CapabilityRow = NonNullable<ReturnType<typeof getHardwareWalletCapabilityRow>>;
 
 function assertHardwareActionEnabled(
-  type: DeviceType,
+  identity: HardwareWalletIdentity,
   capability: Extract<HardwareWalletCapability, 'import' | 'account_add' | 'display' | 'sign'>
-): void {
-  const row = getHardwareWalletCapabilityRow({ type }, capability);
-  if (row?.enabled) return;
+): CapabilityRow {
+  const row = getHardwareWalletCapabilityRow(identity, capability);
+  if (row?.enabled) return row;
 
   throw new Error(
     `Hardware wallet connection is temporarily unavailable (${HARDWARE_WALLET_CAPABILITY_MANIFEST_ID}): ${row?.reason ?? 'No reviewed capability row matches this device identity.'}`
   );
 }
+
 type AdapterLoader = () => Promise<DeviceAdapter>;
+type ApprovedConnection = {
+  type: DeviceType;
+  importRowId: string;
+  vendor: string;
+  modelFamily: string;
+  fingerprint: string;
+};
 export type StandardXpubResult = XpubResult & {
   purpose: DeviceAccountPurposeValue;
   scriptType: WalletScriptTypeValue;
@@ -121,6 +131,7 @@ export class HardwareWalletService {
   private adapterLoaders: Map<DeviceType, AdapterLoader> = new Map();
   private adapterLoadPromises: Map<DeviceType, Promise<DeviceAdapter | undefined>> = new Map();
   private activeAdapter: DeviceAdapter | null = null;
+  private approvedConnection: ApprovedConnection | null = null;
 
   /**
    * Register a device adapter
@@ -210,6 +221,54 @@ export class HardwareWalletService {
     return this.activeAdapter?.getDevice() ?? null;
   }
 
+  private async requireApprovedAdapter(
+    capability: Extract<HardwareWalletCapability, 'account_add' | 'display' | 'sign'>,
+  ): Promise<{ adapter: DeviceAdapter; fingerprint: string }> {
+    if (!this.activeAdapter) throw new Error('No device connected');
+    const adapter = this.activeAdapter;
+    const device = adapter.getDevice();
+    const identity: HardwareWalletIdentity = { type: adapter.type, model: device?.model };
+
+    try {
+      const row = getHardwareWalletCapabilityRow(identity, capability);
+      const importRow = getHardwareWalletCapabilityRow(identity, 'import');
+      const approved = this.approvedConnection;
+      if (!approved) {
+        assertHardwareActionEnabled(identity, capability);
+        throw new HardwareWalletIdentityError(
+          'Connected hardware wallet identity was not approved',
+        );
+      }
+      const fingerprint = normalizeMasterFingerprint(
+        device?.fingerprint,
+        'Connected hardware wallet',
+      );
+      if (
+        adapter.type !== approved.type
+        || importRow?.id !== approved.importRowId
+        || row?.vendor !== approved.vendor
+        || row?.modelFamily !== approved.modelFamily
+        || fingerprint !== approved.fingerprint
+      ) {
+        throw new HardwareWalletIdentityError(
+          'Connected hardware wallet identity changed after approval',
+        );
+      }
+      assertHardwareActionEnabled(identity, capability);
+      return { adapter, fingerprint };
+    } catch (error) {
+      if (!(error instanceof HardwareWalletIdentityError)) throw error;
+      this.activeAdapter = null;
+      this.approvedConnection = null;
+      await adapter.disconnect().catch((disconnectError) => {
+        log.warn('Error disconnecting hardware wallet after identity drift', {
+          disconnectError,
+        });
+      });
+      throw error;
+    }
+  }
+
   /**
    * Get all authorized devices (from all adapters that support it)
    */
@@ -252,7 +311,10 @@ export class HardwareWalletService {
       }
     }
 
-    assertHardwareActionEnabled(resolvedType, 'import');
+    const expectedRow = assertHardwareActionEnabled(
+      { type: resolvedType, model: options?.expectedModel },
+      'import',
+    );
 
     await this.ensureAdapter(resolvedType);
     const adapter = this.adapters.get(resolvedType);
@@ -268,6 +330,7 @@ export class HardwareWalletService {
     // attempt cannot leave a stale device session addressable through the service.
     const previousAdapter = this.activeAdapter;
     this.activeAdapter = null;
+    this.approvedConnection = null;
     if (previousAdapter && previousAdapter !== adapter) {
       try {
         await previousAdapter.disconnect();
@@ -279,11 +342,21 @@ export class HardwareWalletService {
     // Connect with the new adapter
     const device = await adapter.connect(options);
     let fingerprint: string;
+    let connectedRow: CapabilityRow;
     try {
       fingerprint = normalizeMasterFingerprint(
         device.fingerprint,
         `Connected ${adapter.displayName}`
       );
+      connectedRow = assertHardwareActionEnabled(
+        { type: device.type, model: device.model },
+        'import',
+      );
+      if (options?.expectedModel && expectedRow?.id !== connectedRow?.id) {
+        throw new HardwareWalletIdentityError(
+          'Connected hardware wallet model differs from the selected model'
+        );
+      }
     } catch (error) {
       await adapter.disconnect().catch((disconnectError) => {
         log.warn('Error disconnecting device with invalid identity evidence', {
@@ -293,6 +366,13 @@ export class HardwareWalletService {
       throw error;
     }
     this.activeAdapter = adapter;
+    this.approvedConnection = {
+      type: adapter.type,
+      importRowId: connectedRow.id,
+      vendor: connectedRow.vendor,
+      modelFamily: connectedRow.modelFamily,
+      fingerprint,
+    };
     const validatedDevice = { ...device, fingerprint };
 
     log.info(`Connected to ${adapter.displayName}`, {
@@ -307,11 +387,12 @@ export class HardwareWalletService {
    * Disconnect from the current device
    */
   async disconnect(): Promise<void> {
-    if (this.activeAdapter) {
-      await this.activeAdapter.disconnect();
-      log.info(`Disconnected from ${this.activeAdapter.displayName}`);
-      this.activeAdapter = null;
-    }
+    const adapter = this.activeAdapter;
+    this.activeAdapter = null;
+    this.approvedConnection = null;
+    if (!adapter) return;
+    await adapter.disconnect();
+    log.info(`Disconnected from ${adapter.displayName}`);
   }
 
   /**
@@ -319,16 +400,9 @@ export class HardwareWalletService {
    * @param path BIP32 derivation path
    */
   async getXpub(path: string): Promise<XpubResult> {
-    if (!this.activeAdapter) {
-      throw new Error('No device connected');
-    }
-    assertHardwareActionEnabled(this.activeAdapter.type, 'account_add');
-    const connectedFingerprint = normalizeMasterFingerprint(
-      this.activeAdapter.getDevice()?.fingerprint,
-      'Connected hardware wallet'
-    );
-    const result = await this.activeAdapter.getXpub(path);
-    return validateXpubResult(result, path, connectedFingerprint);
+    const { adapter, fingerprint } = await this.requireApprovedAdapter('account_add');
+    const result = await adapter.getXpub(path);
+    return validateXpubResult(result, path, fingerprint);
   }
 
   /**
@@ -376,18 +450,12 @@ export class HardwareWalletService {
   async getAllXpubsWithFailures(
     onProgress?: (current: number, total: number, path: string) => void
   ): Promise<XpubBatchResult> {
-    if (!this.activeAdapter) {
-      throw new Error('No device connected');
-    }
-    assertHardwareActionEnabled(this.activeAdapter.type, 'account_add');
+    const approved = await this.requireApprovedAdapter('account_add');
 
     const results: StandardXpubResult[] = [];
     const failures: XpubFetchFailure[] = [];
     const paths = HardwareWalletService.STANDARD_PATHS;
-    const connectedFingerprint = normalizeMasterFingerprint(
-      this.activeAdapter.getDevice()?.fingerprint,
-      'Connected hardware wallet'
-    );
+    const connectedFingerprint = approved.fingerprint;
 
     for (let i = 0; i < paths.length; i++) {
       const { path, purpose, scriptType, name } = paths[i];
@@ -398,7 +466,8 @@ export class HardwareWalletService {
 
       try {
         log.info(`Fetching xpub for ${name}`, { path });
-        const xpubResult = await this.activeAdapter.getXpub(path);
+        const { adapter } = await this.requireApprovedAdapter('account_add');
+        const xpubResult = await adapter.getXpub(path);
         const validated = validateXpubResult(xpubResult, path, connectedFingerprint);
         results.push({ ...validated, purpose, scriptType });
         log.info(`Successfully fetched ${name}`, {
@@ -435,13 +504,9 @@ export class HardwareWalletService {
    * @param request PSBT signing request
    */
   async signPSBT(request: PSBTSignRequest): Promise<PSBTSignResponse> {
-    if (!this.activeAdapter) {
-      throw new Error('No device connected');
-    }
-    assertHardwareActionEnabled(this.activeAdapter.type, 'sign');
-    const connectedFingerprint = this.activeAdapter.getDevice()?.fingerprint;
-    validatePsbtSigningRequest(request, connectedFingerprint);
-    const result = await this.activeAdapter.signPSBT(request);
+    const { adapter, fingerprint } = await this.requireApprovedAdapter('sign');
+    validatePsbtSigningRequest(request, fingerprint);
+    const result = await adapter.signPSBT(request);
     if (!result.psbt && !result.rawTx) {
       throw new Error('Hardware signing did not produce an applicable signed PSBT or transaction');
     }
@@ -457,14 +522,11 @@ export class HardwareWalletService {
    * @param address Address to verify
    */
   async verifyAddress(path: string, address: string): Promise<boolean> {
-    if (!this.activeAdapter) {
-      throw new Error('No device connected');
+    const { adapter } = await this.requireApprovedAdapter('display');
+    if (!adapter.verifyAddress) {
+      throw new Error(`${adapter.displayName} does not support address verification`);
     }
-    if (!this.activeAdapter.verifyAddress) {
-      throw new Error(`${this.activeAdapter.displayName} does not support address verification`);
-    }
-    assertHardwareActionEnabled(this.activeAdapter.type, 'display');
-    return this.activeAdapter.verifyAddress(path, address);
+    return adapter.verifyAddress(path, address);
   }
 
   /**

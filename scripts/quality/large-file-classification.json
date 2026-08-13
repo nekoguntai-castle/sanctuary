@@ -45,6 +45,13 @@
       "reviewWhenTouched": false,
       "lastReviewed": "2026-08-12"
     },
+    "config/hardware-wallet-implementation-inventory.json": {
+      "category": "generated-output",
+      "owner": "hardware-wallet-proof",
+      "reason": "Deterministic exhaustive projection of signer identities, adapters, parsers, import/export handlers, QR codecs, UI methods, and server enforcement call sites; regenerate rather than manually split or edit.",
+      "reviewWhenTouched": false,
+      "lastReviewed": "2026-08-12"
+    },
     "server/tests/helpers/hardwareSignedFixtureIntake.ts": {
       "category": "proof-harness",
       "owner": "hardware-wallet-proof",

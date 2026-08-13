@@ -40,7 +40,7 @@ export function UsbSigning({
 }: UsbSigningProps) {
   const signers = devices.map(device => ({
     device,
-    capabilities: getDeviceCapabilities(device.type),
+    capabilities: getDeviceCapabilities({ type: device.type, model: device.model }),
   }));
   const hasAirgapDevice = signers.some(({ capabilities }) => capabilities.methods.includes('airgap'));
   const hasQrDevice = signers.some(({ capabilities }) => capabilities.methods.includes('qr'));

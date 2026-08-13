@@ -1,4 +1,5 @@
 import * as bitcoin from "bitcoinjs-lib";
+import * as bip66 from "bip66";
 import { type Mock, afterEach, beforeAll, beforeEach, vi } from "vitest";
 
 const bitBoxMocks = vi.hoisted(() => {
@@ -14,6 +15,7 @@ const bitBoxMocks = vi.hoisted(() => {
   const mockApiConnect = vi.fn();
   const mockApiClose = vi.fn();
   const mockFirmwareProduct = vi.fn();
+  const mockFirmwareRootFingerprint = vi.fn();
   const mockBtcXPub = vi.fn();
   const mockDisplayAddressSimple = vi.fn();
   const mockPsbtFromBase64 = vi.fn();
@@ -57,6 +59,7 @@ const bitBoxMocks = vi.hoisted(() => {
     this.close = (...args: unknown[]) => mockApiClose(...args);
     this.firmware = () => ({
       Product: (...args: unknown[]) => mockFirmwareProduct(...args),
+      RootFingerprint: (...args: unknown[]) => mockFirmwareRootFingerprint(...args),
     });
     this.btcXPub = (...args: unknown[]) => mockBtcXPub(...args);
     this.btcDisplayAddressSimple = (...args: unknown[]) =>
@@ -71,6 +74,7 @@ const bitBoxMocks = vi.hoisted(() => {
     mockApiConnect,
     mockApiClose,
     mockFirmwareProduct,
+    mockFirmwareRootFingerprint,
     mockBtcXPub,
     mockDisplayAddressSimple,
     constants,
@@ -79,6 +83,15 @@ const bitBoxMocks = vi.hoisted(() => {
     mockTransactionFromBuffer,
   };
 });
+
+const derInteger = (value: Uint8Array): Uint8Array => {
+  let first = 0;
+  while (first < value.length - 1 && value[first] === 0) first++;
+  const trimmed = value.slice(first);
+  return trimmed[0] & 0x80
+    ? Uint8Array.from([0, ...trimmed])
+    : trimmed;
+};
 
 vi.mock("bitbox02-api", () => ({
   BitBox02API: bitBoxMocks.MockBitBox02API,
@@ -105,6 +118,17 @@ vi.mock("bitcoinjs-lib", () => ({
     SIGHASH_ALL: 1,
     fromBuffer: (...args: unknown[]) =>
       bitBoxMocks.mockTransactionFromBuffer(...args),
+  },
+  script: {
+    signature: {
+      encode: (compact: Uint8Array, hashType: number) => Buffer.concat([
+        Buffer.from(bip66.encode(
+          derInteger(compact.slice(0, 32)),
+          derInteger(compact.slice(32)),
+        )),
+        Buffer.from([hashType]),
+      ]),
+    },
   },
 }));
 
@@ -141,6 +165,7 @@ export const mockIsErrorAbort = bitBoxMocks.mockIsErrorAbort;
 export const mockApiConnect = bitBoxMocks.mockApiConnect;
 export const mockApiClose = bitBoxMocks.mockApiClose;
 export const mockFirmwareProduct = bitBoxMocks.mockFirmwareProduct;
+export const mockFirmwareRootFingerprint = bitBoxMocks.mockFirmwareRootFingerprint;
 export const mockBtcXPub = bitBoxMocks.mockBtcXPub;
 export const mockDisplayAddressSimple = bitBoxMocks.mockDisplayAddressSimple;
 export const constants = bitBoxMocks.constants;
@@ -163,6 +188,7 @@ export function setupBitBoxAdapterTestHarness(): void {
     mockApiConnect.mockReset();
     mockApiClose.mockReset();
     mockFirmwareProduct.mockReset();
+    mockFirmwareRootFingerprint.mockReset();
     mockBtcXPub.mockReset();
     mockDisplayAddressSimple.mockReset();
     mockPsbtFromBase64.mockReset();
@@ -177,11 +203,17 @@ export function setupBitBoxAdapterTestHarness(): void {
         .map((part: string) => parseInt(part.replace(/['h]$/, ""), 10) || 0),
     );
     mockGetDevicePath.mockResolvedValue("WEBHID");
-    mockApiConnect.mockResolvedValue(undefined);
+    mockApiConnect.mockImplementation(async (_pairing, _userVerify, attestation) => attestation(true));
     mockApiClose.mockReturnValue(undefined);
     mockFirmwareProduct.mockReturnValue(constants.Product.BitBox02Multi);
+    mockFirmwareRootFingerprint.mockReturnValue([new Uint8Array([0xaa, 0xbb, 0xcc, 0xdd]), null]);
     mockBtcXPub.mockResolvedValue("xpub-bitbox");
     mockDisplayAddressSimple.mockResolvedValue(undefined);
+    vi.mocked(bitcoin.address.fromBech32).mockReturnValue({
+      version: 0,
+      prefix: 'bc',
+      data: Buffer.alloc(20),
+    });
     mockIsErrorAbort.mockReturnValue(false);
     mockPsbtFromBase64.mockReturnValue({
       data: { globalMap: { unsignedTx: {} }, inputs: [], outputs: [] },
@@ -269,6 +301,7 @@ export function seedConnectedAdapter(adapter: BitBoxAdapterInstance): void {
     },
     devicePath: "WEBHID",
     product: constants.Product.BitBox02Multi,
+    rootFingerprint: 'aabbccdd',
   };
   (adapter as any).connectedDevice = {
     id: "bitbox-1",

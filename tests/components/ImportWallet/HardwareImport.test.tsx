@@ -132,7 +132,7 @@ describe('HardwareImport', () => {
     mockIsSecureContext.mockReturnValue(false);
     renderHardwareImport({ hardwareDeviceType: 'jade' });
 
-    expect(screen.getByRole('button', { name: /Jade Plus/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^Jade /i })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Connect Device' })).toBeDisabled();
   });
 
@@ -164,12 +164,15 @@ describe('HardwareImport', () => {
     await user.click(screen.getByRole('button', { name: 'Connect Device' }));
 
     await waitFor(() => {
-      expect(mockConnect).toHaveBeenCalledWith('ledger', { chainEnvironment: 'mainnet' });
+      expect(mockConnect).toHaveBeenCalledWith('ledger', {
+        chainEnvironment: 'mainnet',
+        expectedModel: 'Ledger Nano S Plus',
+      });
     });
     expect(props.setIsConnecting).toHaveBeenNthCalledWith(1, true);
     expect(props.setHardwareError).toHaveBeenNthCalledWith(1, null);
     expect(props.setDeviceConnected).toHaveBeenCalledWith(true);
-    expect(props.setDeviceLabel).toHaveBeenCalledWith('Ledger Device');
+    expect(props.setDeviceLabel).toHaveBeenCalledWith('Ledger Nano S Plus');
     expect(props.setIsConnecting).toHaveBeenLastCalledWith(false);
   });
 
@@ -181,9 +184,12 @@ describe('HardwareImport', () => {
     await user.click(screen.getByRole('button', { name: 'Connect Device' }));
 
     await waitFor(() => {
-      expect(mockConnect).toHaveBeenCalledWith('trezor', { chainEnvironment: 'mainnet' });
+      expect(mockConnect).toHaveBeenCalledWith('trezor', {
+        chainEnvironment: 'mainnet',
+        expectedModel: 'Trezor Model One',
+      });
     });
-    expect(props.setDeviceLabel).toHaveBeenCalledWith('Trezor Device');
+    expect(props.setDeviceLabel).toHaveBeenCalledWith('Trezor Model One');
   });
 
   it('uses connected device name when provided', async () => {
@@ -194,7 +200,10 @@ describe('HardwareImport', () => {
     await user.click(screen.getByRole('button', { name: 'Connect Device' }));
 
     await waitFor(() => {
-      expect(mockConnect).toHaveBeenCalledWith('trezor', { chainEnvironment: 'mainnet' });
+      expect(mockConnect).toHaveBeenCalledWith('trezor', {
+        chainEnvironment: 'mainnet',
+        expectedModel: 'Trezor Model One',
+      });
     });
     expect(props.setDeviceLabel).toHaveBeenCalledWith('Trezor Safe 5');
   });
@@ -204,15 +213,34 @@ describe('HardwareImport', () => {
     mockConnect.mockResolvedValue({});
     const props = renderHardwareImport({ hardwareDeviceType: 'jade', network: 'signet' });
 
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'Hardware model' }),
+      'Blockstream Jade Plus',
+    );
+
     await user.click(screen.getByRole('button', { name: 'Connect Device' }));
 
     await waitFor(() => {
       expect(mockConnect).toHaveBeenCalledWith('jade', {
         chainEnvironment: 'signet',
-        expectedModel: 'Jade Plus',
+        expectedModel: 'Blockstream Jade Plus',
       });
     });
-    expect(props.setDeviceLabel).toHaveBeenCalledWith('Jade Plus');
+    expect(props.setDeviceLabel).toHaveBeenCalledWith('Blockstream Jade Plus');
+  });
+
+  it('passes the exact user-selected catalog model for each hardware vendor', async () => {
+    const user = userEvent.setup();
+    mockConnect.mockResolvedValue({});
+    renderHardwareImport({ hardwareDeviceType: 'ledger' });
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Hardware model' }), 'Ledger Nano X');
+    await user.click(screen.getByRole('button', { name: 'Connect Device' }));
+
+    await waitFor(() => expect(mockConnect).toHaveBeenCalledWith('ledger', {
+      chainEnvironment: 'mainnet',
+      expectedModel: 'Ledger Nano X',
+    }));
   });
 
   it('shows connect and fetch errors from hardware service', async () => {

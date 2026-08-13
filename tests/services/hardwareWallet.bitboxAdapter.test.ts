@@ -7,6 +7,7 @@ import { describe } from 'vitest';
 import { registerBitBoxConnectionTests } from './hardwareWalletBitbox/bitboxAdapter.connection.contracts';
 import { registerBitBoxSigningTests } from './hardwareWalletBitbox/bitboxAdapter.signing.contracts';
 import { setupBitBoxAdapterTestHarness } from './hardwareWalletBitbox/bitboxAdapterTestHarness';
+import { registerBitBoxFailClosedTests } from './hardwareWalletBitbox/bitboxAdapter.failClosed.contracts';
 import { registerBitBoxXpubAddressTests } from './hardwareWalletBitbox/bitboxAdapter.xpub-address.contracts';
 
 describe('BitBoxAdapter', () => {
@@ -14,4 +15,5 @@ describe('BitBoxAdapter', () => {
   registerBitBoxConnectionTests();
   registerBitBoxXpubAddressTests();
   registerBitBoxSigningTests();
+  registerBitBoxFailClosedTests();
 });

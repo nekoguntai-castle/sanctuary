@@ -516,12 +516,10 @@ export function useAddAccountFlow({
       // Connect to the device
       const connectedDevice = await hardwareWalletService.connect(
         deviceType,
-        deviceType === 'jade'
-          ? {
-              chainEnvironment,
-              expectedModel: device.model?.name.includes('Plus') ? 'Jade Plus' : 'Jade',
-            }
-          : undefined,
+        {
+          chainEnvironment,
+          expectedModel: device.model?.name,
+        },
       );
 
       // Fetch all xpubs

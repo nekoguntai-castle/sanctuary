@@ -24,7 +24,7 @@ export function SigningDeviceRow({
   signing,
   unsignedPsbt,
 }: SigningDeviceRowProps) {
-  const capabilities = getDeviceCapabilities(device.type);
+  const capabilities = getDeviceCapabilities({ type: device.type, model: device.model });
 
   return (
     <div className={getSigningDeviceCardClass(hasSigned)}>

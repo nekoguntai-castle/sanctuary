@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import {
   HARDWARE_WALLET_CAPABILITY_ROWS,
   HARDWARE_WALLET_CAPABILITIES,
+  HARDWARE_WALLET_IMPLEMENTATION_INVENTORY,
   HARDWARE_WALLET_VENDORS,
 } from '@sanctuary/shared/constants/hardwareWalletCapabilities';
 import {
@@ -29,19 +30,21 @@ describe('Hardware Wallet Compatibility Evidence', () => {
   it('keeps every funds-controlling vendor row blocked without physical evidence', () => {
     for (const vendor of HARDWARE_WALLET_VENDORS) {
       const rows = HARDWARE_WALLET_CAPABILITY_ROWS.filter((row) => row.vendor === vendor);
-      expect(rows).toHaveLength(6);
+      const inventory = HARDWARE_WALLET_IMPLEMENTATION_INVENTORY.find((row) => row.vendor === vendor);
+      expect(inventory).toBeDefined();
+      expect(rows).toHaveLength((inventory!.catalogModelSlugs.length + 1) * 6);
       expect(rows.every((row) => !row.enabled)).toBe(true);
       expect(rows.every((row) => row.evidenceTier === 'unverified')).toBe(true);
       expect(rows.every((row) => row.evidenceIds.length === 0)).toBe(true);
-      expect(rows.every((row) => row.modelFamily === '*')).toBe(true);
+      expect(rows.every((row) => row.modelFamily !== '*' && row.modelFamily.length > 0)).toBe(true);
       expect(rows.every((row) => row.firmwareRange === 'unverified')).toBe(true);
       expect(rows.every((row) => row.appVersionRange === 'unverified')).toBe(true);
       expect(rows.every((row) => row.sdkVersionRange === 'unverified')).toBe(true);
-      expect(rows.every((row) => row.transport === 'any')).toBe(true);
-      expect(rows.every((row) => row.derivationNetworkFamily === 'any')).toBe(true);
-      expect(rows.every((row) => row.chainEnvironment === 'any')).toBe(true);
-      expect(rows.every((row) => row.policy === 'any')).toBe(true);
-      expect(rows.every((row) => row.accountRange === 'any')).toBe(true);
+      expect(rows.every((row) => row.transport === 'unverified')).toBe(true);
+      expect(rows.every((row) => row.derivationNetworkFamily === 'unverified')).toBe(true);
+      expect(rows.every((row) => row.chainEnvironment === 'unverified')).toBe(true);
+      expect(rows.every((row) => row.policy === 'unverified')).toBe(true);
+      expect(rows.every((row) => row.accountRange === 'unverified')).toBe(true);
       expect(rows.every((row) => row.freshness.status === 'unverified')).toBe(true);
       expect(rows.every((row) => row.reason.length > 0)).toBe(true);
     }
@@ -53,15 +56,19 @@ describe('Hardware Wallet Compatibility Evidence', () => {
     );
     expect(blockedTrezorRows).toHaveLength(5);
     const trezorRows = HARDWARE_WALLET_CAPABILITY_ROWS.filter((row) => row.vendor === 'trezor');
-    expect(trezorRows).toHaveLength(6);
+    expect(trezorRows).toHaveLength(36);
     expect(trezorRows.every((row) => !row.enabled && row.evidenceIds.length === 0)).toBe(true);
     expect(trezorRows.every((row) => row.evidenceTier === 'unverified')).toBe(true);
   });
 
-  it('has one unique row for every vendor and capability pair', () => {
+  it('has one unique row for every exact model and capability tuple', () => {
     const ids = HARDWARE_WALLET_CAPABILITY_ROWS.map((row) => row.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ids).toHaveLength(HARDWARE_WALLET_VENDORS.length * HARDWARE_WALLET_CAPABILITIES.length);
+    const expectedIdentities = HARDWARE_WALLET_IMPLEMENTATION_INVENTORY.reduce(
+      (count, row) => count + row.catalogModelSlugs.length + 1,
+      0
+    );
+    expect(ids).toHaveLength(expectedIdentities * HARDWARE_WALLET_CAPABILITIES.length);
     expect(Object.isFrozen(HARDWARE_WALLET_CAPABILITY_ROWS)).toBe(true);
     expect(HARDWARE_WALLET_CAPABILITY_ROWS.every((row) => Object.isFrozen(row))).toBe(true);
     expect(HARDWARE_WALLET_CAPABILITY_ROWS.every((row) => Object.isFrozen(row.freshness))).toBe(

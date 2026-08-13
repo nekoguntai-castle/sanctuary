@@ -1,6 +1,7 @@
 // Device connection capabilities
 import {
   getHardwareWalletCapabilityRow,
+  type HardwareWalletIdentity,
   type HardwareWalletVendor,
 } from '@sanctuary/shared/constants/hardwareWalletCapabilities';
 
@@ -31,8 +32,8 @@ const METHOD_LABELS: Record<ConnectionMethod, string> = {
   qr: 'QR Code',
 };
 
-export const getDeviceCapabilities = (deviceType: string): DeviceCapabilities => {
-  const row = getHardwareWalletCapabilityRow({ type: deviceType }, 'sign');
+export const getDeviceCapabilities = (identity: HardwareWalletIdentity): DeviceCapabilities => {
+  const row = getHardwareWalletCapabilityRow(identity, 'sign');
   // The transport map is inert until its exact manifest row is evidence-enabled.
   const methods = row?.enabled ? SIGNING_METHODS[row.vendor] : [];
   return {

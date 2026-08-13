@@ -7,6 +7,7 @@ import {
   makeHidDevice,
   mockApiConnect,
   mockFirmwareProduct,
+  mockFirmwareRootFingerprint,
   mockGetDevicePath,
   setAuthorizedHidDevices,
   setWebHidEnv,
@@ -64,26 +65,23 @@ export function registerBitBoxConnectionTests(): void {
       await expect(createBitBoxAdapter().getAuthorizedDevices()).resolves.toEqual([]);
     });
 
-    it('throws friendly errors for unsupported and common connect failures', async () => {
+    it('throws a friendly error when WebHID is unsupported', async () => {
       setWebHidEnv({ secure: false, withHid: true });
       await expect(createBitBoxAdapter().connect()).rejects.toThrow('WebHID is not supported');
+    });
 
-      setWebHidEnv({ secure: true, withHid: true });
-      mockGetDevicePath.mockRejectedValueOnce(new Error('NotAllowed'));
-      await expect(createBitBoxAdapter().connect()).rejects.toThrow('Access denied');
+    it.each([
+      ['NotAllowed', 'Access denied. Please allow device access and try again.'],
+      ['Pairing rejected', 'Pairing was rejected. Please try again and confirm on the device.'],
+      ['Firmware upgrade required', 'Firmware upgrade required. Please update your BitBox02 firmware.'],
+      ['device busy', 'BitBox02 is busy. Please close other applications using the device.'],
+      ['strange connect error', 'Failed to connect: strange connect error'],
+    ])('maps connect failure %s', async (deviceError, expectedMessage) => {
+      mockGetDevicePath.mockRejectedValueOnce(new Error(deviceError));
+      await expect(createBitBoxAdapter().connect()).rejects.toThrow(expectedMessage);
+    });
 
-      mockGetDevicePath.mockRejectedValueOnce(new Error('Pairing rejected'));
-      await expect(createBitBoxAdapter().connect()).rejects.toThrow('Pairing was rejected');
-
-      mockGetDevicePath.mockRejectedValueOnce(new Error('Firmware upgrade required'));
-      await expect(createBitBoxAdapter().connect()).rejects.toThrow('Firmware upgrade required');
-
-      mockGetDevicePath.mockRejectedValueOnce(new Error('device busy'));
-      await expect(createBitBoxAdapter().connect()).rejects.toThrow('BitBox02 is busy');
-
-      mockGetDevicePath.mockRejectedValueOnce(new Error('strange connect error'));
-      await expect(createBitBoxAdapter().connect()).rejects.toThrow('Failed to connect: strange connect error');
-
+    it('maps a non-Error connect failure to the unknown fallback', async () => {
       mockGetDevicePath.mockRejectedValueOnce({ code: 'unknown' });
       await expect(createBitBoxAdapter().connect()).rejects.toThrow('Failed to connect: Unknown error');
     });
@@ -91,10 +89,9 @@ export function registerBitBoxConnectionTests(): void {
     it('connects successfully, sets device state, and handles close callback', async () => {
       let onCloseHandler!: () => void;
 
-      mockApiConnect.mockImplementationOnce(async (pairing, userVerify, attestation, onClose, statusCb) => {
+      mockApiConnect.mockImplementationOnce(async (pairing, _userVerify, attestation, onClose, statusCb) => {
         pairing('1234-5678');
-        await userVerify();
-        attestation(false);
+        attestation(true);
         statusCb('connected');
         onCloseHandler = onClose;
       });
@@ -103,13 +100,27 @@ export function registerBitBoxConnectionTests(): void {
       const device = await adapter.connect();
 
       expect(device.name).toBe('BitBox02 Multi');
+      expect(device.model).toBe('BitBox02');
       expect(device.connected).toBe(true);
       expect(adapter.isConnected()).toBe(true);
-      expect(adapter.getDevice()?.id).toBe('bitbox-1003-9219');
+      expect(adapter.getDevice()).toMatchObject({ id: 'bitbox-1003-9219', fingerprint: 'aabbccdd' });
       expect(MockBitBox02API).toHaveBeenCalledWith('WEBHID');
 
       onCloseHandler();
       expect(adapter.getDevice()?.connected).toBe(false);
+    });
+
+    it('rejects failed/missing attestation, unknown products, and missing fingerprints', async () => {
+      mockApiConnect.mockImplementationOnce(async (_pairing, _verify, attestation) => attestation(false));
+      await expect(createBitBoxAdapter().connect()).rejects.toThrow('attestation failed');
+      mockApiConnect.mockResolvedValueOnce(undefined);
+      await expect(createBitBoxAdapter().connect()).rejects.toThrow('attestation was not reported');
+      mockFirmwareProduct.mockReturnValueOnce(999);
+      await expect(createBitBoxAdapter().connect()).rejects.toThrow('Unsupported BitBox02 product');
+      mockFirmwareRootFingerprint.mockReturnValueOnce([new Uint8Array(0), null]);
+      await expect(createBitBoxAdapter().connect()).rejects.toThrow('root fingerprint is unavailable');
+      mockFirmwareRootFingerprint.mockReturnValueOnce([new Uint8Array(4), new Error('device error')]);
+      await expect(createBitBoxAdapter().connect()).rejects.toThrow('root fingerprint is unavailable');
     });
 
     it('supports bitcoin-only product and handles early close/attestation-success branches', async () => {
@@ -126,27 +137,9 @@ export function registerBitBoxConnectionTests(): void {
       expect(adapter.isConnected()).toBe(true);
     });
 
-    it('covers pairing timeout branch when resolve was already cleared', async () => {
-      vi.useFakeTimers();
-      try {
-        const adapter = createBitBoxAdapter();
-        mockApiConnect.mockImplementationOnce(async (_pairing, userVerify) => {
-          const verifyPromise = userVerify();
-          const resolve = (adapter as any).pairingResolve as (() => void) | null;
-          resolve?.();
-          (adapter as any).pairingResolve = null;
-          await verifyPromise;
-        });
-
-        const connectPromise = adapter.connect();
-        await vi.runAllTimersAsync();
-        await expect(connectPromise).resolves.toMatchObject({
-          type: 'bitbox',
-          connected: true,
-        });
-      } finally {
-        vi.useRealTimers();
-      }
+    it('rejects unpaired sessions without explicit UI confirmation', async () => {
+      mockApiConnect.mockImplementationOnce(async (_pairing, userVerify) => userVerify());
+      await expect(createBitBoxAdapter().connect()).rejects.toThrow('explicit user confirmation');
     });
 
     it('closes previous connection before reconnect and ignores close errors', async () => {
@@ -179,7 +172,6 @@ export function registerBitBoxConnectionTests(): void {
 
       await expect(adapter.disconnect()).resolves.toBeUndefined();
       expect(adapter.getDevice()).toBeNull();
-      expect((adapter as any).pairingResolve).toBeNull();
     });
 
     it('disconnects cleanly when no connection exists', async () => {

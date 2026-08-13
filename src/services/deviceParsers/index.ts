@@ -35,6 +35,25 @@ import { ledgerParser } from './parsers/ledger';
 import { bitboxParser } from './parsers/bitbox';
 import { genericJsonParser, plainXpubParser, simpleColdcardParser } from './parsers/generic';
 
+/**
+ * Funds-controlling identities accepted by each registered parser. This
+ * metadata is consumed by the generated signer inventory; registration names,
+ * not parser filenames or display labels, are the stable semantic boundary.
+ */
+export const DEVICE_PARSER_SIGNER_SURFACES = [
+  { registration: 'descriptorJsonParser', parserId: 'descriptor-json', vendors: ['generic'] },
+  { registration: 'coldcardNestedParser', parserId: 'coldcard-nested', vendors: ['coldcard'] },
+  { registration: 'coldcardFlatParser', parserId: 'coldcard-flat', vendors: ['coldcard'] },
+  { registration: 'keystoneMultisigParser', parserId: 'keystone-multisig', vendors: ['keystone'] },
+  { registration: 'keystoneStandardParser', parserId: 'keystone-standard', vendors: ['keystone'] },
+  { registration: 'simpleColdcardParser', parserId: 'simple-coldcard', vendors: ['coldcard'] },
+  { registration: 'bitboxParser', parserId: 'bitbox', vendors: ['bitbox'] },
+  { registration: 'ledgerParser', parserId: 'ledger', vendors: ['ledger'] },
+  { registration: 'genericJsonParser', parserId: 'generic-json', vendors: ['generic'] },
+  { registration: 'descriptorStringParser', parserId: 'descriptor-string', vendors: ['generic'] },
+  { registration: 'plainXpubParser', parserId: 'plain-xpub', vendors: ['generic'] },
+] as const;
+
 // Register all parsers (order doesn't matter - sorted by priority)
 deviceParserRegistry.register(descriptorJsonParser);      // 92 - Output descriptor JSON
 deviceParserRegistry.register(coldcardNestedParser);      // 90 - Coldcard bip44/49/84

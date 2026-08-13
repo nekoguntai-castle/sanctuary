@@ -271,6 +271,143 @@ describe('HardwareWalletService', () => {
     expect(adapter.connect).toHaveBeenCalledWith(options);
   });
 
+  it('uses the exact selected and connected model at every capability gate', async () => {
+    mockCapabilityRow.mockImplementation((identity, capability) => ({
+      id: `ledger.ledger-nano-x.${capability}`,
+      enabled: identity.type === 'ledger' && identity.model === 'ledger-nano-x',
+      reason: 'exact model required',
+    }));
+    const service = new HardwareWalletService();
+    const { adapter, device } = createMockAdapter('ledger');
+    device.model = 'ledger-nano-x';
+    service.registerAdapter(adapter);
+
+    await service.connect('ledger', {
+      chainEnvironment: 'mainnet',
+      expectedModel: 'ledger-nano-x',
+    });
+    await service.getXpub("m/84'/0'/0'");
+    await service.signPSBT({ psbt: 'fixture' });
+    await service.verifyAddress("m/84'/0'/0'/0/0", 'bc1qfixture');
+
+    expect(mockCapabilityRow).toHaveBeenCalledWith(
+      { type: 'ledger', model: 'ledger-nano-x' },
+      'import',
+    );
+    expect(mockCapabilityRow).toHaveBeenCalledWith(
+      { type: 'ledger', model: 'ledger-nano-x' },
+      'account_add',
+    );
+    expect(mockCapabilityRow).toHaveBeenCalledWith(
+      { type: 'ledger', model: 'ledger-nano-x' },
+      'sign',
+    );
+    expect(mockCapabilityRow).toHaveBeenCalledWith(
+      { type: 'ledger', model: 'ledger-nano-x' },
+      'display',
+    );
+  });
+
+  it('disconnects when the connected model differs from the selected capability row', async () => {
+    mockCapabilityRow.mockImplementation((identity, capability) => ({
+      id: `ledger.${identity.model}.${capability}`,
+      enabled: true,
+      reason: 'verified fixture',
+    }));
+    const service = new HardwareWalletService();
+    const { adapter, device } = createMockAdapter('ledger');
+    device.model = 'ledger-stax';
+    service.registerAdapter(adapter);
+
+    await expect(service.connect('ledger', {
+      chainEnvironment: 'mainnet',
+      expectedModel: 'ledger-nano-x',
+    })).rejects.toThrow('model differs from the selected model');
+    expect(adapter.disconnect).toHaveBeenCalledTimes(1);
+    expect(service.getDevice()).toBeNull();
+  });
+
+  it.each([
+    ['model', (device: HardwareWalletDevice) => { device.model = 'ledger-stax'; }],
+    ['fingerprint', (device: HardwareWalletDevice) => { device.fingerprint = 'deadbeef'; }],
+  ] as const)(
+    'disconnects before funds-controlling work when the approved session %s drifts',
+    async (_field, mutateDevice) => {
+      mockCapabilityRow.mockImplementation((identity, capability) => ({
+        id: `ledger.${identity.model}.${capability}`,
+        vendor: 'ledger',
+        modelFamily: String(identity.model),
+        capability,
+        enabled: true,
+        reason: 'verified fixture',
+      }));
+      const service = new HardwareWalletService();
+      const { adapter, device } = createMockAdapter('ledger');
+      device.model = 'ledger-nano-x';
+      service.registerAdapter(adapter);
+      await service.connect('ledger', { expectedModel: 'ledger-nano-x' });
+
+      mutateDevice(device);
+
+      await expect(service.getXpub("m/84'/0'/0'")).rejects.toThrow(/identity changed/i);
+      expect(adapter.getXpub).not.toHaveBeenCalled();
+      expect(adapter.disconnect).toHaveBeenCalledTimes(1);
+      expect(service.getDevice()).toBeNull();
+    },
+  );
+
+  it('preserves the identity-drift failure when defensive disconnect also fails', async () => {
+    mockCapabilityRow.mockImplementation((identity, capability) => ({
+      id: `ledger.${identity.model}.${capability}`,
+      vendor: 'ledger',
+      modelFamily: String(identity.model),
+      capability,
+      enabled: true,
+      reason: 'verified fixture',
+    }));
+    const service = new HardwareWalletService();
+    const { adapter, device } = createMockAdapter('ledger');
+    device.model = 'ledger-nano-x';
+    service.registerAdapter(adapter);
+    await service.connect('ledger', { expectedModel: 'ledger-nano-x' });
+    device.fingerprint = 'deadbeef';
+    vi.mocked(adapter.disconnect).mockRejectedValueOnce(new Error('transport already closed'));
+
+    await expect(service.getXpub("m/84'/0'/0'")).rejects.toThrow(/identity changed/i);
+    expect(service.getDevice()).toBeNull();
+  });
+
+  it.each([
+    ['signing', (service: HardwareWalletService) => service.signPSBT({ psbt: 'fixture' }), 'signPSBT'],
+    [
+      'address display',
+      (service: HardwareWalletService) => service.verifyAddress("m/84'/0'/0'/0/0", 'bc1qfixture'),
+      'verifyAddress',
+    ],
+  ] as const)(
+    'blocks %s when the connected model changes after approval',
+    async (_operation, run, adapterMethod) => {
+      mockCapabilityRow.mockImplementation((identity, capability) => ({
+        id: `ledger.${identity.model}.${capability}`,
+        vendor: 'ledger',
+        modelFamily: String(identity.model),
+        capability,
+        enabled: true,
+        reason: 'verified fixture',
+      }));
+      const service = new HardwareWalletService();
+      const { adapter, device } = createMockAdapter('ledger');
+      device.model = 'ledger-nano-x';
+      service.registerAdapter(adapter);
+      await service.connect('ledger', { expectedModel: 'ledger-nano-x' });
+      device.model = 'ledger-stax';
+
+      await expect(run(service)).rejects.toThrow(/identity changed/i);
+      expect(adapter[adapterMethod]).not.toHaveBeenCalled();
+      expect(adapter.disconnect).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it('throws when connecting to missing or unsupported adapter', async () => {
     const service = new HardwareWalletService();
     await expect(service.connect('coldcard')).rejects.toThrow(

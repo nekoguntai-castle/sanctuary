@@ -27,7 +27,11 @@ export const registerUseSendTransactionActionsSigningContracts = () => {
       });
       let signingRequest!: Promise<boolean>;
       act(() => {
-        signingRequest = result.current.signWithDevice({ id: 'dev-trezor', type: 'Trezor Safe 3' } as any);
+        signingRequest = result.current.signWithDevice({
+          id: 'dev-trezor',
+          type: 'Trezor Safe 3',
+          model: { slug: 'trezor-safe-3', name: 'Trezor Safe 3' },
+        } as any);
       });
       await waitFor(() => expect(mocks.hardwareWallet.signPSBT).toHaveBeenCalledTimes(1));
       act(() => result.current.reset());
@@ -134,11 +138,15 @@ export const registerUseSendTransactionActionsSigningContracts = () => {
         ok = await result.current.signWithDevice({
           id: 'dev-trezor',
           type: 'Trezor Safe 3',
+          model: { slug: 'trezor-safe-3', name: 'Trezor Safe 3' },
         } as any);
       });
 
       expect(ok).toBe(true);
-      expect(mocks.hardwareWallet.connect).toHaveBeenCalledWith('trezor', undefined);
+      expect(mocks.hardwareWallet.connect).toHaveBeenCalledWith('trezor', {
+        chainEnvironment: 'mainnet',
+        expectedModel: 'Trezor Safe 3',
+      });
       expect(mocks.hardwareWallet.disconnect).toHaveBeenCalled();
       await waitFor(() => {
         expect(result.current.unsignedPsbt).toBe('signed-psbt-from-device');

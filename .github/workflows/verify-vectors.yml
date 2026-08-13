@@ -175,6 +175,12 @@ jobs:
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/address-key-corpus.log"
           node scripts/generate-address-key-corpora.mjs --check
 
+      - name: Verify exhaustive signer inventory projection
+        timeout-minutes: 2
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/signer-inventory.log"
+          npm run verify:signer-inventory
+
       - name: Run address derivation tests
         timeout-minutes: 5
         working-directory: server

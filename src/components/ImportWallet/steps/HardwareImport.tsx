@@ -1,12 +1,18 @@
 import React from 'react';
 import type { TabNetwork } from '../../../app/networks';
-import { ScriptType, HardwareDeviceType } from '../importHelpers';
+import {
+  getDefaultHardwareImportModel,
+  getHardwareImportModelNames,
+  ScriptType,
+  HardwareDeviceType,
+} from '../importHelpers';
 import { XpubData } from '../hooks/useImportState';
 import {
   ConnectedHardwareOptions,
   DeviceConnectionPanel,
   DeviceTypeSelection,
   HardwareErrorMessage,
+  HardwareModelSelection,
   HardwareImportHeader,
   TrezorWorkflowNotice,
 } from './HardwareImportSections';
@@ -55,19 +61,25 @@ export const HardwareImport: React.FC<HardwareImportProps> = ({
   hardwareError,
   setHardwareError,
 }) => {
+  const [hardwareDeviceModel, setHardwareDeviceModel] = React.useState(
+    () => getDefaultHardwareImportModel(hardwareDeviceType),
+  );
   const {
     handleAccountIndexChange,
     handleConnectDevice,
     handleDeviceTypeSelect,
+    handleDeviceModelSelect,
     handleFetchXpub,
     handleScriptTypeSelect,
     ledgerSupported,
   } = useHardwareImportActions({
     hardwareDeviceType,
+    hardwareDeviceModel,
     scriptType,
     accountIndex,
     network,
     setHardwareDeviceType,
+    setHardwareDeviceModel,
     setDeviceConnected,
     setDeviceLabel,
     setScriptType,
@@ -87,6 +99,11 @@ export const HardwareImport: React.FC<HardwareImportProps> = ({
           hardwareDeviceType={hardwareDeviceType}
           ledgerSupported={ledgerSupported}
           onDeviceTypeSelect={handleDeviceTypeSelect}
+        />
+        <HardwareModelSelection
+          models={getHardwareImportModelNames(hardwareDeviceType)}
+          selectedModel={hardwareDeviceModel}
+          onModelSelect={handleDeviceModelSelect}
         />
         <TrezorWorkflowNotice hardwareDeviceType={hardwareDeviceType} />
         <DeviceConnectionPanel

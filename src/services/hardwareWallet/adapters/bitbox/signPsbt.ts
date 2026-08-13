@@ -7,6 +7,7 @@
 
 import { getKeypathFromString } from 'bitbox02-api';
 import * as bitcoin from 'bitcoinjs-lib';
+import { normalizeDerivationPath, parseAddressDerivationPath, parseDerivationPath } from '@sanctuary/shared/utils/bitcoin';
 import { createLogger } from '../../../../utils/logger';
 import { isTestnetPath } from '../../pathUtils';
 import { getSimpleType, getCoin, getOutputType, extractAccountPath } from './pathUtils';
@@ -41,8 +42,6 @@ type BitBoxSigningOutput = {
   value: string;
 };
 
-const DEFAULT_ACCOUNT_PATH = "m/84'/0'/0'";
-
 const getAccountPathFromPsbt = (psbt: BitBoxPsbt): string | undefined => {
   for (const input of psbt.data.inputs) {
     const derivation = input.bip32Derivation?.[0];
@@ -54,39 +53,75 @@ const getAccountPathFromPsbt = (psbt: BitBoxPsbt): string | undefined => {
   return undefined;
 };
 
-const getAccountPath = (request: PSBTSignRequest, psbt: BitBoxPsbt): string => {
-  if (request.accountPath) {
-    return request.accountPath;
+const getAccountPathBeforeParsing = (request: PSBTSignRequest): string => {
+  const paths = [
+    request.accountPath,
+    ...(request.inputPaths ?? []).map(extractAccountPath),
+    ...(request.signingContext?.signers.map((signer) => signer.accountPath) ?? []),
+  ].filter((path): path is string => Boolean(path));
+  if (paths.length === 0) {
+    throw new Error('BitBox02 account path is required before PSBT parsing');
   }
-
-  if (request.inputPaths && request.inputPaths.length > 0) {
-    return extractAccountPath(request.inputPaths[0]);
+  const normalized = paths.map(normalizeDerivationPath);
+  if (new Set(normalized).size !== 1) {
+    throw new Error('BitBox02 pre-parse account path evidence disagrees');
   }
-
-  return getAccountPathFromPsbt(psbt) || DEFAULT_ACCOUNT_PATH;
+  const parsed = parseDerivationPath(normalized[0]);
+  if (!parsed.valid || parsed.accountPath !== normalized[0]) {
+    throw new Error('BitBox02 pre-parse account path is not exact');
+  }
+  return normalized[0];
 };
 
-const getInputValue = (input: BitBoxInputData, txInput: BitBoxTxInput): bigint => {
+const getAccountPath = (request: PSBTSignRequest, psbt: BitBoxPsbt): string => {
+  const paths = [
+    request.accountPath,
+    ...(request.inputPaths ?? []).map(extractAccountPath),
+    getAccountPathFromPsbt(psbt),
+  ].filter((path): path is string => Boolean(path));
+  if (paths.length === 0) throw new Error('BitBox02 account path is missing');
+  const normalized = paths.map(normalizeDerivationPath);
+  if (new Set(normalized).size !== 1) throw new Error('BitBox02 account path evidence disagrees');
+  const parsed = parseDerivationPath(normalized[0]);
+  if (!parsed.valid || parsed.accountPath !== normalized[0]) {
+    throw new Error('BitBox02 account path is not an exact account path');
+  }
+  return normalized[0];
+};
+
+const getInputValue = (input: BitBoxInputData, index: number): bigint => {
   if (input.witnessUtxo) {
-    return BigInt(input.witnessUtxo.value);
+    const value = BigInt(input.witnessUtxo.value);
+    if (value < 0n) throw new Error(`BitBox02 input ${index} prevout value is negative`);
+    return value;
   }
 
   if (input.nonWitnessUtxo) {
-    const prevTx = bitcoin.Transaction.fromBuffer(input.nonWitnessUtxo);
-    return BigInt(prevTx.outs[txInput.index].value);
+    throw new Error(`BitBox02 input ${index} non-witness prevout proof is unsupported`);
   }
 
-  return 0n;
+  throw new Error(`BitBox02 input ${index} is missing prevout value evidence`);
 };
 
 const getInputKeypath = (
   input: BitBoxInputData,
   request: PSBTSignRequest,
   inputIndex: number,
-  keypathAccount: number[]
+  accountPath: string
 ): number[] => {
-  const derivationPath = input.bip32Derivation?.[0]?.path || request.inputPaths?.[inputIndex];
-  return derivationPath ? getKeypathFromString(derivationPath) : [...keypathAccount, 0, 0];
+  const derivations = input.bip32Derivation ?? [];
+  if (derivations.length !== 1) {
+    throw new Error(`BitBox02 input ${inputIndex} is missing exactly one BIP32 keypath`);
+  }
+  const parsed = parseAddressDerivationPath(derivations[0].path);
+  if (!parsed || parsed.accountPath !== accountPath) {
+    throw new Error(`BitBox02 input ${inputIndex} keypath is outside the selected account`);
+  }
+  const hint = request.inputPaths?.[inputIndex];
+  if (hint && normalizeDerivationPath(hint) !== parsed.normalizedPath) {
+    throw new Error(`BitBox02 input ${inputIndex} request keypath disagrees with the PSBT`);
+  }
+  return getKeypathFromString(parsed.normalizedPath);
 };
 
 const buildBitBoxInput = (
@@ -94,67 +129,54 @@ const buildBitBoxInput = (
   txInput: BitBoxTxInput,
   request: PSBTSignRequest,
   inputIndex: number,
-  keypathAccount: number[]
+  accountPath: string
 ): BitBoxSigningInput => {
+  if (!txInput) throw new Error(`BitBox02 input ${inputIndex} has no unsigned transaction input`);
   return {
     prevOutHash: new Uint8Array(txInput.hash),
     prevOutIndex: txInput.index,
-    prevOutValue: getInputValue(input, txInput).toString(),
+    prevOutValue: getInputValue(input, inputIndex).toString(),
     sequence: txInput.sequence ?? 0xffffffff,
-    keypath: getInputKeypath(input, request, inputIndex, keypathAccount),
+    keypath: getInputKeypath(input, request, inputIndex, accountPath),
   };
 };
 
 const buildBitBoxInputs = (
   psbt: BitBoxPsbt,
   request: PSBTSignRequest,
-  keypathAccount: number[]
+  accountPath: string
 ): BitBoxSigningInput[] => {
   return psbt.data.inputs.map((input, index) =>
-    buildBitBoxInput(input, psbt.txInputs[index], request, index, keypathAccount)
+    buildBitBoxInput(input, psbt.txInputs[index], request, index, accountPath)
   );
 };
 
-const isChangeOutput = (outputData: BitBoxOutputData | undefined, accountPath: string): boolean => {
-  const derivationPath = outputData?.bip32Derivation?.[0]?.path;
-  if (!derivationPath) {
-    return false;
+const isChangeOutput = (outputData: BitBoxOutputData | undefined, accountPath: string, index: number): boolean => {
+  const derivations = outputData?.bip32Derivation ?? [];
+  if (derivations.length === 0) return false;
+  if (derivations.length !== 1) throw new Error(`BitBox02 output ${index} has ambiguous BIP32 derivations`);
+  const parsed = parseAddressDerivationPath(derivations[0].path);
+  if (!parsed || parsed.accountPath !== accountPath || parsed.chain !== 'change') {
+    throw new Error(`BitBox02 output ${index} derivation is not an exact change path`);
   }
-
-  const normalizedDerivationPath = derivationPath.replace(/^m\//, '');
-  const normalizedAccountPath = accountPath.replace(/^m\//, '');
-  return normalizedDerivationPath.startsWith(`${normalizedAccountPath}/`);
+  throw new Error(`BitBox02 change output ${index} is blocked until exact script proof is implemented`);
 };
 
 const decodeAddressPayload = (address: string): Uint8Array => {
-  try {
-    if (address.startsWith('bc1') || address.startsWith('tb1')) {
-      const decoded = bitcoin.address.fromBech32(address);
-      return new Uint8Array(decoded.data);
-    }
-
-    const decoded = bitcoin.address.fromBase58Check(address);
-    return new Uint8Array(decoded.hash);
-  } catch (e) {
-    log.warn('Could not decode address', { address, error: e });
-    return new Uint8Array(0);
+  if (/^(?:bc1|tb1)/i.test(address)) {
+    return new Uint8Array(bitcoin.address.fromBech32(address).data);
   }
-};
-
-const buildChangeOutput = (outputData: BitBoxOutputData, value: string): BitBoxSigningOutput => {
-  return {
-    ours: true,
-    keypath: getKeypathFromString(outputData.bip32Derivation![0].path),
-    value,
-  };
+  return new Uint8Array(bitcoin.address.fromBase58Check(address).hash);
 };
 
 const buildExternalOutput = (
   output: BitBoxTxOutput,
   value: string,
-  network: bitcoin.Network
+  network: bitcoin.Network,
+  index: number
 ): BitBoxSigningOutput => {
-  const address = output.address || '';
+  const address = output.address;
+  if (!address) throw new Error(`BitBox02 external output ${index} has no address`);
 
   return {
     ours: false,
@@ -168,12 +190,12 @@ const buildBitBoxOutput = (
   output: BitBoxTxOutput,
   outputData: BitBoxOutputData | undefined,
   accountPath: string,
-  network: bitcoin.Network
+  network: bitcoin.Network,
+  index: number
 ): BitBoxSigningOutput => {
   const value = BigInt(output.value).toString();
-  return isChangeOutput(outputData, accountPath) && outputData?.bip32Derivation
-    ? buildChangeOutput(outputData, value)
-    : buildExternalOutput(output, value, network);
+  isChangeOutput(outputData, accountPath, index);
+  return buildExternalOutput(output, value, network, index);
 };
 
 const buildBitBoxOutputs = (
@@ -182,24 +204,29 @@ const buildBitBoxOutputs = (
   network: bitcoin.Network
 ): BitBoxSigningOutput[] => {
   return psbt.txOutputs.map((output, index) =>
-    buildBitBoxOutput(output, psbt.data.outputs[index], accountPath, network)
+    buildBitBoxOutput(output, psbt.data.outputs[index], accountPath, network, index)
   );
 };
 
 const applyBitBoxSignatures = (psbt: BitBoxPsbt, signatures: Uint8Array[]): void => {
+  if (signatures.length !== psbt.data.inputs.length) {
+    throw new Error(`BitBox02 returned ${signatures.length} signatures for ${psbt.data.inputs.length} inputs`);
+  }
   for (let i = 0; i < signatures.length; i++) {
     const input = psbt.data.inputs[i];
     const pubkey = input.bip32Derivation?.[0]?.pubkey;
-    if (!pubkey) {
-      continue;
+    if (!pubkey || input.bip32Derivation?.length !== 1) {
+      throw new Error(`BitBox02 signature ${i} has no unambiguous input public key`);
     }
+    if (signatures[i].length !== 64) throw new Error(`BitBox02 signature ${i} must be exactly 64 bytes`);
 
-    // BitBox02 returns 64-byte signatures (r || s), need to add sighash byte.
-    const sighashType = input.sighashType || bitcoin.Transaction.SIGHASH_ALL;
-    const fullSig = Buffer.concat([
-      Buffer.from(signatures[i]),
-      Buffer.from([sighashType]),
-    ]);
+    // BitBox02 returns compact r||s; PSBT partialSig requires canonical DER
+    // followed by the sighash byte.
+    const sighashType = input.sighashType ?? bitcoin.Transaction.SIGHASH_ALL;
+    if (!Number.isInteger(sighashType) || sighashType < 0 || sighashType > 0xff) {
+      throw new Error(`BitBox02 input ${i} has an unsupported sighash type`);
+    }
+    const fullSig = bitcoin.script.signature.encode(signatures[i], sighashType);
 
     psbt.updateInput(i, {
       partialSig: [
@@ -219,25 +246,30 @@ export const signPsbtWithBitBox = async (
   request: PSBTSignRequest,
   connection: BitBoxConnection
 ): Promise<PSBTSignResponse> => {
-  // Parse PSBT
-  const psbt = bitcoin.Psbt.fromBase64(request.psbt);
+  const preParseAccountPath = getAccountPathBeforeParsing(request);
+  const network = isTestnetPath(preParseAccountPath)
+    ? bitcoin.networks.testnet
+    : bitcoin.networks.bitcoin;
+  const psbt = bitcoin.Psbt.fromBase64(request.psbt, { network });
 
   if (isMultisigSigningRequest(request, psbt)) {
     throw new Error(getUnsupportedMultisigHardwareSigningMessage('BitBox02'));
   }
 
   const accountPath = getAccountPath(request, psbt);
+  if (accountPath !== preParseAccountPath) {
+    throw new Error('BitBox02 parsed PSBT account path disagrees with pre-parse evidence');
+  }
   log.info('Using account path', { accountPath });
 
   const coin = getCoin(accountPath);
   const simpleType = getSimpleType(request.scriptType, accountPath);
+  if (parseDerivationPath(accountPath).scriptType === 'taproot') {
+    throw new Error('BitBox02 Taproot signing is blocked until Schnorr signature mapping is proven');
+  }
   const keypathAccount = getKeypathFromString(accountPath);
 
-  // Determine network
-  const isTestnet = isTestnetPath(accountPath);
-  const network = isTestnet ? bitcoin.networks.testnet : bitcoin.networks.bitcoin;
-
-  const inputs = buildBitBoxInputs(psbt, request, keypathAccount);
+  const inputs = buildBitBoxInputs(psbt, request, accountPath);
   const outputs = buildBitBoxOutputs(psbt, accountPath, network);
 
   log.info('Calling btcSignSimple', {

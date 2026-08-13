@@ -25,12 +25,13 @@ function connectionOptions(
   deviceType: DeviceType,
   model: HardwareDeviceModel,
   chainEnvironment?: TabNetwork,
-): HardwareWalletConnectionOptions | undefined {
-  if (deviceType !== 'jade') return undefined;
-  if (!chainEnvironment) throw new Error('Jade connection requires an explicit chain environment');
+): HardwareWalletConnectionOptions {
+  if (deviceType === 'jade' && !chainEnvironment) {
+    throw new Error(`${deviceType} connection requires an explicit chain environment`);
+  }
   return {
-    chainEnvironment,
-    expectedModel: model.name.includes('Plus') ? 'Jade Plus' : 'Jade',
+    ...(chainEnvironment ? { chainEnvironment } : {}),
+    expectedModel: model.name,
   };
 }
 

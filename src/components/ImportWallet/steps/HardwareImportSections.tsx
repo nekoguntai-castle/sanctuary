@@ -53,11 +53,40 @@ export function DeviceTypeSelection({
           active={hardwareDeviceType === 'jade'}
           disabled={!ledgerSupported}
           onClick={() => onDeviceTypeSelect('jade')}
-          title="Jade Plus"
-          description={ledgerSupported ? 'WebSerial over USB' : 'Requires HTTPS connection'}
+          title="Jade"
+          description={ledgerSupported ? 'Jade and Jade Plus over WebSerial' : 'Requires HTTPS connection'}
           extraDescription="Unverified — safely blocked"
         />
       </div>
+    </div>
+  );
+}
+
+export function HardwareModelSelection({
+  models,
+  selectedModel,
+  onModelSelect,
+}: {
+  models: readonly string[];
+  selectedModel: string;
+  onModelSelect: (model: string) => void;
+}) {
+  return (
+    <div>
+      <label
+        htmlFor="hardware-model"
+        className="block text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300 mb-2"
+      >
+        Hardware model
+      </label>
+      <select
+        id="hardware-model"
+        value={selectedModel}
+        onChange={(event) => onModelSelect(event.target.value)}
+        className="w-full px-3 py-2 rounded-lg border border-sanctuary-300 dark:border-sanctuary-700 bg-white dark:bg-sanctuary-900 text-sanctuary-900 dark:text-sanctuary-100"
+      >
+        {models.map((model) => <option key={model} value={model}>{model}</option>)}
+      </select>
     </div>
   );
 }
@@ -169,7 +198,7 @@ function DisconnectedDevicePrompt({
         {hardwareDeviceType === 'trezor'
           ? 'Make sure Trezor Suite desktop app is running and your device is connected.'
           : hardwareDeviceType === 'jade'
-            ? 'Connect a Jade Plus over USB. Support remains blocked until physical evidence is current.'
+            ? 'Connect the selected Jade model over USB. Support remains blocked until physical evidence is current.'
             : 'Make sure your Ledger is connected and the Bitcoin app is open.'}
       </p>
       <Button

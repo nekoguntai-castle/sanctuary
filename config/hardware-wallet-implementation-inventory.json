@@ -1,0 +1,4989 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "scripts/generate-signer-inventory.mjs",
+  "contract": "Every signer surface is explicit and disabled until an exact evidence-backed capability row enables it.",
+  "sources": [
+    "server/prisma/schema.prisma",
+    "server/prisma/seed.ts",
+    "server/src",
+    "server/src/api/transactions",
+    "server/src/services/bitcoin",
+    "server/src/services/export/index.ts",
+    "server/src/services/import/index.ts",
+    "shared/constants/hardwareWalletCapabilities.ts",
+    "src",
+    "src/components/ImportWallet/importHelpers.ts",
+    "src/components/send/steps/review/deviceCapabilities.ts",
+    "src/services/deviceParsers/index.ts",
+    "src/services/hardwareWallet/runtime.ts",
+    "src/services/hardwareWallet/types.ts",
+    "src/types/hardware.ts",
+    "src/utils/urPsbt.ts"
+  ],
+  "requiredServerCapabilityBoundaries": [
+    {
+      "source": "server/src/api/bitcoin/transactions.ts",
+      "assertion": "assertUnscopedRawTransactionBroadcastDisabled",
+      "capability": "broadcast",
+      "count": 1
+    },
+    {
+      "source": "server/src/api/bitcoin/transactions.ts",
+      "assertion": "assertWalletHardwareCapabilityById",
+      "capability": "sign",
+      "count": 3
+    },
+    {
+      "source": "server/src/api/devices/accounts.ts",
+      "assertion": "assertHardwareWalletCapability",
+      "capability": "account_add",
+      "count": 1
+    },
+    {
+      "source": "server/src/api/devices/crud.ts",
+      "assertion": "assertHardwareWalletCapability",
+      "capability": "account_add",
+      "count": 2
+    },
+    {
+      "source": "server/src/api/transactions/addresses.ts",
+      "assertion": "assertWalletHardwareCapabilityById",
+      "capability": "display",
+      "count": 2
+    },
+    {
+      "source": "server/src/api/transactions/drafting.ts",
+      "assertion": "assertWalletHardwareCapabilityById",
+      "capability": "sign",
+      "count": 3
+    },
+    {
+      "source": "server/src/api/wallets/export.ts",
+      "assertion": "assertWalletHardwareCapabilityById",
+      "capability": "display",
+      "count": 1
+    },
+    {
+      "source": "server/src/assistant/tools/walletReadTools.ts",
+      "assertion": "assertWalletHardwareCapabilityById",
+      "capability": "display",
+      "count": 1
+    },
+    {
+      "source": "server/src/mcp/resources/index.ts",
+      "assertion": "assertWalletHardwareCapabilityById",
+      "capability": "display",
+      "count": 1
+    },
+    {
+      "source": "server/src/services/addressDisplaySafety.ts",
+      "assertion": "assertWalletHardwareCapabilityById",
+      "capability": "display",
+      "count": 2
+    },
+    {
+      "source": "server/src/services/agentApiService.ts",
+      "assertion": "assertWalletHardwareCapabilityById",
+      "capability": "sign",
+      "count": 1
+    },
+    {
+      "source": "server/src/services/agentOperationalAddressService.ts",
+      "assertion": "assertWalletHardwareCapabilityById",
+      "capability": "display",
+      "count": 1
+    },
+    {
+      "source": "server/src/services/bitcoin/signingIntent/artifactValidation.ts",
+      "assertion": "assertWalletHardwareCapabilityById",
+      "capability": "finalize",
+      "count": 1
+    },
+    {
+      "source": "server/src/services/bitcoin/signingIntent/artifactValidation.ts",
+      "assertion": "assertWalletHardwareCapabilityById",
+      "capability": "sign",
+      "count": 1
+    },
+    {
+      "source": "server/src/services/bitcoin/sync/addressDiscovery.ts",
+      "assertion": "assertWalletHardwareCapabilityById",
+      "capability": "display",
+      "count": 1
+    },
+    {
+      "source": "server/src/services/bitcoin/transactions/broadcasting.ts",
+      "assertion": "assertWalletHardwareCapabilityById",
+      "capability": "broadcast",
+      "count": 1
+    },
+    {
+      "source": "server/src/services/deviceAccountRegistration.ts",
+      "assertion": "assertHardwareWalletCapability",
+      "capability": "account_add",
+      "count": 1
+    },
+    {
+      "source": "server/src/services/deviceRegistration.ts",
+      "assertion": "assertHardwareWalletCapability",
+      "capability": "import",
+      "count": 2
+    },
+    {
+      "source": "server/src/services/payjoin/receiver.ts",
+      "assertion": "assertWalletHardwareCapabilityById",
+      "capability": "sign",
+      "count": 1
+    },
+    {
+      "source": "server/src/services/wallet/addressGeneration.ts",
+      "assertion": "assertWalletHardwareCapabilityById",
+      "capability": "display",
+      "count": 1
+    },
+    {
+      "source": "server/src/services/wallet/walletCreate.ts",
+      "assertion": "assertHardwareWalletCapability",
+      "capability": "import",
+      "count": 1
+    },
+    {
+      "source": "server/src/services/wallet/walletDevices.ts",
+      "assertion": "assertHardwareWalletCapability",
+      "capability": "account_add",
+      "count": 1
+    },
+    {
+      "source": "server/src/services/wallet/walletDevices.ts",
+      "assertion": "assertWalletHardwareCapability",
+      "capability": "account_add",
+      "count": 1
+    },
+    {
+      "source": "server/src/services/wallet/walletMutations.ts",
+      "assertion": "assertWalletHardwareCapabilityById",
+      "capability": "display",
+      "count": 1
+    },
+    {
+      "source": "server/src/services/wallet/walletQueries.ts",
+      "assertion": "assertWalletHardwareCapabilityById",
+      "capability": "display",
+      "count": 1
+    },
+    {
+      "source": "server/src/services/walletImport/walletImportService.ts",
+      "assertion": "assertHardwareWalletCapability",
+      "capability": "import",
+      "count": 2
+    }
+  ],
+  "requiredFundsExecutionPoints": [
+    {
+      "source": "server/src/api/transactions/broadcasting.ts",
+      "name": "broadcastValidated",
+      "capability": "broadcast",
+      "kind": "callable",
+      "count": 1
+    },
+    {
+      "source": "server/src/services/bitcoin/blockchain/networkOperations.ts",
+      "name": "broadcastAuthenticatedRawTransaction",
+      "capability": "broadcast",
+      "kind": "callable",
+      "count": 1
+    },
+    {
+      "source": "server/src/services/bitcoin/blockchain/networkOperations.ts",
+      "name": "broadcastTransaction",
+      "capability": "broadcast",
+      "kind": "callable",
+      "count": 1
+    },
+    {
+      "source": "server/src/services/bitcoin/electrum/electrumClient.ts",
+      "name": "broadcastTransaction",
+      "capability": "broadcast",
+      "kind": "callable",
+      "count": 1
+    },
+    {
+      "source": "server/src/services/bitcoin/electrum/methods.ts",
+      "name": "broadcastTransaction",
+      "capability": "broadcast",
+      "kind": "callable",
+      "count": 1
+    },
+    {
+      "source": "server/src/services/bitcoin/electrum/publicApi.ts",
+      "name": "broadcastTransaction",
+      "capability": "broadcast",
+      "kind": "callable",
+      "count": 1
+    },
+    {
+      "source": "server/src/services/bitcoin/psbtBuilder/multisigFinalization.ts",
+      "name": "finalizeMultisigInput",
+      "capability": "finalize",
+      "kind": "callable",
+      "count": 1
+    },
+    {
+      "source": "server/src/services/bitcoin/signingIntent/artifactValidation.ts",
+      "name": "finalizeInput",
+      "capability": "finalize",
+      "kind": "operation",
+      "count": 1
+    },
+    {
+      "source": "server/src/services/bitcoin/signingIntent/artifactValidation.ts",
+      "name": "finalizePsbt",
+      "capability": "finalize",
+      "kind": "callable",
+      "count": 1
+    },
+    {
+      "source": "server/src/services/bitcoin/signingIntent/service.ts",
+      "name": "broadcastReplay",
+      "capability": "broadcast",
+      "kind": "callable",
+      "count": 1
+    },
+    {
+      "source": "server/src/services/bitcoin/transactions/broadcasting.ts",
+      "name": "broadcastAndSave",
+      "capability": "broadcast",
+      "kind": "callable",
+      "count": 1
+    },
+    {
+      "source": "src/api/transactions/transactions.ts",
+      "name": "broadcastTransaction",
+      "capability": "broadcast",
+      "kind": "callable",
+      "count": 1
+    },
+    {
+      "source": "src/api/bitcoin.ts",
+      "name": "broadcastRawNetworkTransaction",
+      "capability": "broadcast",
+      "kind": "callable",
+      "count": 1
+    },
+    {
+      "source": "src/components/send/SendTransactionWizard/useSendWizardActionHandlers.ts",
+      "name": "broadcastSignedRawTx",
+      "capability": "broadcast",
+      "kind": "callable",
+      "count": 1
+    },
+    {
+      "source": "src/components/send/SendTransactionWizard/useSendWizardActionHandlers.ts",
+      "name": "broadcastUploadedSignedPsbt",
+      "capability": "broadcast",
+      "kind": "callable",
+      "count": 1
+    },
+    {
+      "source": "src/components/send/SendTransactionWizard/useSendWizardActionHandlers.ts",
+      "name": "broadcastWithConnectedHardwareWallet",
+      "capability": "broadcast",
+      "kind": "callable",
+      "count": 1
+    },
+    {
+      "source": "src/hooks/send/useBroadcast.ts",
+      "name": "broadcastTransaction",
+      "capability": "broadcast",
+      "kind": "callable",
+      "count": 1
+    },
+    {
+      "source": "src/hooks/send/useQrSigning.ts",
+      "name": "processQrSignedPsbt",
+      "capability": "sign",
+      "kind": "callable",
+      "count": 1
+    },
+    {
+      "source": "src/hooks/send/useQrSigning.ts",
+      "name": "uploadSignedPsbt",
+      "capability": "sign",
+      "kind": "callable",
+      "count": 1
+    },
+    {
+      "source": "src/hooks/send/useUsbSigning.ts",
+      "name": "signPsbtWithDevice",
+      "capability": "sign",
+      "kind": "callable",
+      "count": 1
+    },
+    {
+      "source": "src/hooks/send/useUsbSigning.ts",
+      "name": "signWithDevice",
+      "capability": "sign",
+      "kind": "callable",
+      "count": 1
+    },
+    {
+      "source": "src/hooks/send/useUsbSigning.ts",
+      "name": "signWithHardwareWallet",
+      "capability": "sign",
+      "kind": "callable",
+      "count": 1
+    },
+    {
+      "source": "src/hooks/send/useUsbSigning.ts",
+      "name": "signWithHardwareWalletResult",
+      "capability": "sign",
+      "kind": "callable",
+      "count": 1
+    },
+    {
+      "source": "src/hooks/useHardwareWallet.ts",
+      "name": "signPSBT",
+      "capability": "sign",
+      "kind": "callable",
+      "count": 1
+    },
+    {
+      "source": "src/services/hardwareWallet/adapters/bitbox/bitboxAdapter.ts",
+      "name": "signPSBT",
+      "capability": "sign",
+      "kind": "callable",
+      "count": 1
+    },
+    {
+      "source": "src/services/hardwareWallet/adapters/bitbox/signPsbt.ts",
+      "name": "finalizeAllInputs",
+      "capability": "finalize",
+      "kind": "operation",
+      "count": 1
+    },
+    {
+      "source": "src/services/hardwareWallet/adapters/bitbox/signPsbt.ts",
+      "name": "signPsbtWithBitBox",
+      "capability": "sign",
+      "kind": "callable",
+      "count": 1
+    },
+    {
+      "source": "src/services/hardwareWallet/adapters/jade.ts",
+      "name": "signPSBT",
+      "capability": "sign",
+      "kind": "callable",
+      "count": 1
+    },
+    {
+      "source": "src/services/hardwareWallet/adapters/jadeProtocol.ts",
+      "name": "signPsbt",
+      "capability": "sign",
+      "kind": "callable",
+      "count": 1
+    },
+    {
+      "source": "src/services/hardwareWallet/adapters/ledger/ledgerAdapter.ts",
+      "name": "signPSBT",
+      "capability": "sign",
+      "kind": "callable",
+      "count": 1
+    },
+    {
+      "source": "src/services/hardwareWallet/adapters/ledger/signPsbt.ts",
+      "name": "finalizeAllInputs",
+      "capability": "finalize",
+      "kind": "operation",
+      "count": 1
+    },
+    {
+      "source": "src/services/hardwareWallet/adapters/ledger/signPsbt.ts",
+      "name": "signPsbt",
+      "capability": "sign",
+      "kind": "callable",
+      "count": 1
+    },
+    {
+      "source": "src/services/hardwareWallet/adapters/trezor/signPsbt.ts",
+      "name": "signPsbtWithTrezor",
+      "capability": "sign",
+      "kind": "callable",
+      "count": 1
+    },
+    {
+      "source": "src/services/hardwareWallet/adapters/trezor/signPsbtValidation.ts",
+      "name": "finalizeAllInputs",
+      "capability": "finalize",
+      "kind": "operation",
+      "count": 1
+    },
+    {
+      "source": "src/services/hardwareWallet/adapters/trezor/trezorAdapter.ts",
+      "name": "signPSBT",
+      "capability": "sign",
+      "kind": "callable",
+      "count": 1
+    },
+    {
+      "source": "src/services/hardwareWallet/service.ts",
+      "name": "broadcastSignedTransaction",
+      "capability": "broadcast",
+      "kind": "callable",
+      "count": 1
+    },
+    {
+      "source": "src/services/hardwareWallet/service.ts",
+      "name": "signPSBT",
+      "capability": "sign",
+      "kind": "callable",
+      "count": 1
+    }
+  ],
+  "capabilityRows": [
+    {
+      "id": "bitbox.bitbox02.import",
+      "vendor": "bitbox",
+      "modelFamily": "bitbox02",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "bitbox.bitbox02.account_add",
+      "vendor": "bitbox",
+      "modelFamily": "bitbox02",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "bitbox.bitbox02.display",
+      "vendor": "bitbox",
+      "modelFamily": "bitbox02",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "bitbox.bitbox02.sign",
+      "vendor": "bitbox",
+      "modelFamily": "bitbox02",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "bitbox.bitbox02.finalize",
+      "vendor": "bitbox",
+      "modelFamily": "bitbox02",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "bitbox.bitbox02.broadcast",
+      "vendor": "bitbox",
+      "modelFamily": "bitbox02",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "bitbox.bitbox02-btc-only.import",
+      "vendor": "bitbox",
+      "modelFamily": "bitbox02-btc-only",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "bitbox.bitbox02-btc-only.account_add",
+      "vendor": "bitbox",
+      "modelFamily": "bitbox02-btc-only",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "bitbox.bitbox02-btc-only.display",
+      "vendor": "bitbox",
+      "modelFamily": "bitbox02-btc-only",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "bitbox.bitbox02-btc-only.sign",
+      "vendor": "bitbox",
+      "modelFamily": "bitbox02-btc-only",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "bitbox.bitbox02-btc-only.finalize",
+      "vendor": "bitbox",
+      "modelFamily": "bitbox02-btc-only",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "bitbox.bitbox02-btc-only.broadcast",
+      "vendor": "bitbox",
+      "modelFamily": "bitbox02-btc-only",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "bitbox.bitbox-unresolved.import",
+      "vendor": "bitbox",
+      "modelFamily": "bitbox-unresolved",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "bitbox.bitbox-unresolved.account_add",
+      "vendor": "bitbox",
+      "modelFamily": "bitbox-unresolved",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "bitbox.bitbox-unresolved.display",
+      "vendor": "bitbox",
+      "modelFamily": "bitbox-unresolved",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "bitbox.bitbox-unresolved.sign",
+      "vendor": "bitbox",
+      "modelFamily": "bitbox-unresolved",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "bitbox.bitbox-unresolved.finalize",
+      "vendor": "bitbox",
+      "modelFamily": "bitbox-unresolved",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "bitbox.bitbox-unresolved.broadcast",
+      "vendor": "bitbox",
+      "modelFamily": "bitbox-unresolved",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "coldcard.coldcard-mk4.import",
+      "vendor": "coldcard",
+      "modelFamily": "coldcard-mk4",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "coldcard.coldcard-mk4.account_add",
+      "vendor": "coldcard",
+      "modelFamily": "coldcard-mk4",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "coldcard.coldcard-mk4.display",
+      "vendor": "coldcard",
+      "modelFamily": "coldcard-mk4",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "coldcard.coldcard-mk4.sign",
+      "vendor": "coldcard",
+      "modelFamily": "coldcard-mk4",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "coldcard.coldcard-mk4.finalize",
+      "vendor": "coldcard",
+      "modelFamily": "coldcard-mk4",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "coldcard.coldcard-mk4.broadcast",
+      "vendor": "coldcard",
+      "modelFamily": "coldcard-mk4",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "coldcard.coldcard-q.import",
+      "vendor": "coldcard",
+      "modelFamily": "coldcard-q",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "coldcard.coldcard-q.account_add",
+      "vendor": "coldcard",
+      "modelFamily": "coldcard-q",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "coldcard.coldcard-q.display",
+      "vendor": "coldcard",
+      "modelFamily": "coldcard-q",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "coldcard.coldcard-q.sign",
+      "vendor": "coldcard",
+      "modelFamily": "coldcard-q",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "coldcard.coldcard-q.finalize",
+      "vendor": "coldcard",
+      "modelFamily": "coldcard-q",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "coldcard.coldcard-q.broadcast",
+      "vendor": "coldcard",
+      "modelFamily": "coldcard-q",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "coldcard.coldcard-mk3.import",
+      "vendor": "coldcard",
+      "modelFamily": "coldcard-mk3",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "coldcard.coldcard-mk3.account_add",
+      "vendor": "coldcard",
+      "modelFamily": "coldcard-mk3",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "coldcard.coldcard-mk3.display",
+      "vendor": "coldcard",
+      "modelFamily": "coldcard-mk3",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "coldcard.coldcard-mk3.sign",
+      "vendor": "coldcard",
+      "modelFamily": "coldcard-mk3",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "coldcard.coldcard-mk3.finalize",
+      "vendor": "coldcard",
+      "modelFamily": "coldcard-mk3",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "coldcard.coldcard-mk3.broadcast",
+      "vendor": "coldcard",
+      "modelFamily": "coldcard-mk3",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "coldcard.coldcard-unresolved.import",
+      "vendor": "coldcard",
+      "modelFamily": "coldcard-unresolved",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "coldcard.coldcard-unresolved.account_add",
+      "vendor": "coldcard",
+      "modelFamily": "coldcard-unresolved",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "coldcard.coldcard-unresolved.display",
+      "vendor": "coldcard",
+      "modelFamily": "coldcard-unresolved",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "coldcard.coldcard-unresolved.sign",
+      "vendor": "coldcard",
+      "modelFamily": "coldcard-unresolved",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "coldcard.coldcard-unresolved.finalize",
+      "vendor": "coldcard",
+      "modelFamily": "coldcard-unresolved",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "coldcard.coldcard-unresolved.broadcast",
+      "vendor": "coldcard",
+      "modelFamily": "coldcard-unresolved",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "generic.generic-sd.import",
+      "vendor": "generic",
+      "modelFamily": "generic-sd",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "generic.generic-sd.account_add",
+      "vendor": "generic",
+      "modelFamily": "generic-sd",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "generic.generic-sd.display",
+      "vendor": "generic",
+      "modelFamily": "generic-sd",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "generic.generic-sd.sign",
+      "vendor": "generic",
+      "modelFamily": "generic-sd",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "generic.generic-sd.finalize",
+      "vendor": "generic",
+      "modelFamily": "generic-sd",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "generic.generic-sd.broadcast",
+      "vendor": "generic",
+      "modelFamily": "generic-sd",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "generic.generic-usb.import",
+      "vendor": "generic",
+      "modelFamily": "generic-usb",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "generic.generic-usb.account_add",
+      "vendor": "generic",
+      "modelFamily": "generic-usb",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "generic.generic-usb.display",
+      "vendor": "generic",
+      "modelFamily": "generic-usb",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "generic.generic-usb.sign",
+      "vendor": "generic",
+      "modelFamily": "generic-usb",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "generic.generic-usb.finalize",
+      "vendor": "generic",
+      "modelFamily": "generic-usb",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "generic.generic-usb.broadcast",
+      "vendor": "generic",
+      "modelFamily": "generic-usb",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "generic.generic-unresolved.import",
+      "vendor": "generic",
+      "modelFamily": "generic-unresolved",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "generic.generic-unresolved.account_add",
+      "vendor": "generic",
+      "modelFamily": "generic-unresolved",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "generic.generic-unresolved.display",
+      "vendor": "generic",
+      "modelFamily": "generic-unresolved",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "generic.generic-unresolved.sign",
+      "vendor": "generic",
+      "modelFamily": "generic-unresolved",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "generic.generic-unresolved.finalize",
+      "vendor": "generic",
+      "modelFamily": "generic-unresolved",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "generic.generic-unresolved.broadcast",
+      "vendor": "generic",
+      "modelFamily": "generic-unresolved",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "jade.blockstream-jade.import",
+      "vendor": "jade",
+      "modelFamily": "blockstream-jade",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "jade.blockstream-jade.account_add",
+      "vendor": "jade",
+      "modelFamily": "blockstream-jade",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "jade.blockstream-jade.display",
+      "vendor": "jade",
+      "modelFamily": "blockstream-jade",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "jade.blockstream-jade.sign",
+      "vendor": "jade",
+      "modelFamily": "blockstream-jade",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "jade.blockstream-jade.finalize",
+      "vendor": "jade",
+      "modelFamily": "blockstream-jade",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "jade.blockstream-jade.broadcast",
+      "vendor": "jade",
+      "modelFamily": "blockstream-jade",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "jade.blockstream-jade-plus.import",
+      "vendor": "jade",
+      "modelFamily": "blockstream-jade-plus",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "jade.blockstream-jade-plus.account_add",
+      "vendor": "jade",
+      "modelFamily": "blockstream-jade-plus",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "jade.blockstream-jade-plus.display",
+      "vendor": "jade",
+      "modelFamily": "blockstream-jade-plus",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "jade.blockstream-jade-plus.sign",
+      "vendor": "jade",
+      "modelFamily": "blockstream-jade-plus",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "jade.blockstream-jade-plus.finalize",
+      "vendor": "jade",
+      "modelFamily": "blockstream-jade-plus",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "jade.blockstream-jade-plus.broadcast",
+      "vendor": "jade",
+      "modelFamily": "blockstream-jade-plus",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "jade.jade-unresolved.import",
+      "vendor": "jade",
+      "modelFamily": "jade-unresolved",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "jade.jade-unresolved.account_add",
+      "vendor": "jade",
+      "modelFamily": "jade-unresolved",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "jade.jade-unresolved.display",
+      "vendor": "jade",
+      "modelFamily": "jade-unresolved",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "jade.jade-unresolved.sign",
+      "vendor": "jade",
+      "modelFamily": "jade-unresolved",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "jade.jade-unresolved.finalize",
+      "vendor": "jade",
+      "modelFamily": "jade-unresolved",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "jade.jade-unresolved.broadcast",
+      "vendor": "jade",
+      "modelFamily": "jade-unresolved",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "keystone.keystone-pro.import",
+      "vendor": "keystone",
+      "modelFamily": "keystone-pro",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "keystone.keystone-pro.account_add",
+      "vendor": "keystone",
+      "modelFamily": "keystone-pro",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "keystone.keystone-pro.display",
+      "vendor": "keystone",
+      "modelFamily": "keystone-pro",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "keystone.keystone-pro.sign",
+      "vendor": "keystone",
+      "modelFamily": "keystone-pro",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "keystone.keystone-pro.finalize",
+      "vendor": "keystone",
+      "modelFamily": "keystone-pro",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "keystone.keystone-pro.broadcast",
+      "vendor": "keystone",
+      "modelFamily": "keystone-pro",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "keystone.keystone-3-pro.import",
+      "vendor": "keystone",
+      "modelFamily": "keystone-3-pro",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "keystone.keystone-3-pro.account_add",
+      "vendor": "keystone",
+      "modelFamily": "keystone-3-pro",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "keystone.keystone-3-pro.display",
+      "vendor": "keystone",
+      "modelFamily": "keystone-3-pro",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "keystone.keystone-3-pro.sign",
+      "vendor": "keystone",
+      "modelFamily": "keystone-3-pro",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "keystone.keystone-3-pro.finalize",
+      "vendor": "keystone",
+      "modelFamily": "keystone-3-pro",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "keystone.keystone-3-pro.broadcast",
+      "vendor": "keystone",
+      "modelFamily": "keystone-3-pro",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "keystone.keystone-essential.import",
+      "vendor": "keystone",
+      "modelFamily": "keystone-essential",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "keystone.keystone-essential.account_add",
+      "vendor": "keystone",
+      "modelFamily": "keystone-essential",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "keystone.keystone-essential.display",
+      "vendor": "keystone",
+      "modelFamily": "keystone-essential",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "keystone.keystone-essential.sign",
+      "vendor": "keystone",
+      "modelFamily": "keystone-essential",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "keystone.keystone-essential.finalize",
+      "vendor": "keystone",
+      "modelFamily": "keystone-essential",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "keystone.keystone-essential.broadcast",
+      "vendor": "keystone",
+      "modelFamily": "keystone-essential",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "keystone.keystone-unresolved.import",
+      "vendor": "keystone",
+      "modelFamily": "keystone-unresolved",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "keystone.keystone-unresolved.account_add",
+      "vendor": "keystone",
+      "modelFamily": "keystone-unresolved",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "keystone.keystone-unresolved.display",
+      "vendor": "keystone",
+      "modelFamily": "keystone-unresolved",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "keystone.keystone-unresolved.sign",
+      "vendor": "keystone",
+      "modelFamily": "keystone-unresolved",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "keystone.keystone-unresolved.finalize",
+      "vendor": "keystone",
+      "modelFamily": "keystone-unresolved",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "keystone.keystone-unresolved.broadcast",
+      "vendor": "keystone",
+      "modelFamily": "keystone-unresolved",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-nano-s-plus.import",
+      "vendor": "ledger",
+      "modelFamily": "ledger-nano-s-plus",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-nano-s-plus.account_add",
+      "vendor": "ledger",
+      "modelFamily": "ledger-nano-s-plus",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-nano-s-plus.display",
+      "vendor": "ledger",
+      "modelFamily": "ledger-nano-s-plus",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-nano-s-plus.sign",
+      "vendor": "ledger",
+      "modelFamily": "ledger-nano-s-plus",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-nano-s-plus.finalize",
+      "vendor": "ledger",
+      "modelFamily": "ledger-nano-s-plus",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-nano-s-plus.broadcast",
+      "vendor": "ledger",
+      "modelFamily": "ledger-nano-s-plus",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-nano-x.import",
+      "vendor": "ledger",
+      "modelFamily": "ledger-nano-x",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-nano-x.account_add",
+      "vendor": "ledger",
+      "modelFamily": "ledger-nano-x",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-nano-x.display",
+      "vendor": "ledger",
+      "modelFamily": "ledger-nano-x",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-nano-x.sign",
+      "vendor": "ledger",
+      "modelFamily": "ledger-nano-x",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-nano-x.finalize",
+      "vendor": "ledger",
+      "modelFamily": "ledger-nano-x",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-nano-x.broadcast",
+      "vendor": "ledger",
+      "modelFamily": "ledger-nano-x",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-stax.import",
+      "vendor": "ledger",
+      "modelFamily": "ledger-stax",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-stax.account_add",
+      "vendor": "ledger",
+      "modelFamily": "ledger-stax",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-stax.display",
+      "vendor": "ledger",
+      "modelFamily": "ledger-stax",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-stax.sign",
+      "vendor": "ledger",
+      "modelFamily": "ledger-stax",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-stax.finalize",
+      "vendor": "ledger",
+      "modelFamily": "ledger-stax",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-stax.broadcast",
+      "vendor": "ledger",
+      "modelFamily": "ledger-stax",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-flex.import",
+      "vendor": "ledger",
+      "modelFamily": "ledger-flex",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-flex.account_add",
+      "vendor": "ledger",
+      "modelFamily": "ledger-flex",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-flex.display",
+      "vendor": "ledger",
+      "modelFamily": "ledger-flex",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-flex.sign",
+      "vendor": "ledger",
+      "modelFamily": "ledger-flex",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-flex.finalize",
+      "vendor": "ledger",
+      "modelFamily": "ledger-flex",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-flex.broadcast",
+      "vendor": "ledger",
+      "modelFamily": "ledger-flex",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-gen-5.import",
+      "vendor": "ledger",
+      "modelFamily": "ledger-gen-5",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-gen-5.account_add",
+      "vendor": "ledger",
+      "modelFamily": "ledger-gen-5",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-gen-5.display",
+      "vendor": "ledger",
+      "modelFamily": "ledger-gen-5",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-gen-5.sign",
+      "vendor": "ledger",
+      "modelFamily": "ledger-gen-5",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-gen-5.finalize",
+      "vendor": "ledger",
+      "modelFamily": "ledger-gen-5",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-gen-5.broadcast",
+      "vendor": "ledger",
+      "modelFamily": "ledger-gen-5",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-unresolved.import",
+      "vendor": "ledger",
+      "modelFamily": "ledger-unresolved",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-unresolved.account_add",
+      "vendor": "ledger",
+      "modelFamily": "ledger-unresolved",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-unresolved.display",
+      "vendor": "ledger",
+      "modelFamily": "ledger-unresolved",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-unresolved.sign",
+      "vendor": "ledger",
+      "modelFamily": "ledger-unresolved",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-unresolved.finalize",
+      "vendor": "ledger",
+      "modelFamily": "ledger-unresolved",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "ledger.ledger-unresolved.broadcast",
+      "vendor": "ledger",
+      "modelFamily": "ledger-unresolved",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "passport.foundation-passport.import",
+      "vendor": "passport",
+      "modelFamily": "foundation-passport",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "passport.foundation-passport.account_add",
+      "vendor": "passport",
+      "modelFamily": "foundation-passport",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "passport.foundation-passport.display",
+      "vendor": "passport",
+      "modelFamily": "foundation-passport",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "passport.foundation-passport.sign",
+      "vendor": "passport",
+      "modelFamily": "foundation-passport",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "passport.foundation-passport.finalize",
+      "vendor": "passport",
+      "modelFamily": "foundation-passport",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "passport.foundation-passport.broadcast",
+      "vendor": "passport",
+      "modelFamily": "foundation-passport",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "passport.foundation-passport-batch2.import",
+      "vendor": "passport",
+      "modelFamily": "foundation-passport-batch2",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "passport.foundation-passport-batch2.account_add",
+      "vendor": "passport",
+      "modelFamily": "foundation-passport-batch2",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "passport.foundation-passport-batch2.display",
+      "vendor": "passport",
+      "modelFamily": "foundation-passport-batch2",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "passport.foundation-passport-batch2.sign",
+      "vendor": "passport",
+      "modelFamily": "foundation-passport-batch2",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "passport.foundation-passport-batch2.finalize",
+      "vendor": "passport",
+      "modelFamily": "foundation-passport-batch2",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "passport.foundation-passport-batch2.broadcast",
+      "vendor": "passport",
+      "modelFamily": "foundation-passport-batch2",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "passport.passport-unresolved.import",
+      "vendor": "passport",
+      "modelFamily": "passport-unresolved",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "passport.passport-unresolved.account_add",
+      "vendor": "passport",
+      "modelFamily": "passport-unresolved",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "passport.passport-unresolved.display",
+      "vendor": "passport",
+      "modelFamily": "passport-unresolved",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "passport.passport-unresolved.sign",
+      "vendor": "passport",
+      "modelFamily": "passport-unresolved",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "passport.passport-unresolved.finalize",
+      "vendor": "passport",
+      "modelFamily": "passport-unresolved",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "passport.passport-unresolved.broadcast",
+      "vendor": "passport",
+      "modelFamily": "passport-unresolved",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "seedsigner.seedsigner.import",
+      "vendor": "seedsigner",
+      "modelFamily": "seedsigner",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "seedsigner.seedsigner.account_add",
+      "vendor": "seedsigner",
+      "modelFamily": "seedsigner",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "seedsigner.seedsigner.display",
+      "vendor": "seedsigner",
+      "modelFamily": "seedsigner",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "seedsigner.seedsigner.sign",
+      "vendor": "seedsigner",
+      "modelFamily": "seedsigner",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "seedsigner.seedsigner.finalize",
+      "vendor": "seedsigner",
+      "modelFamily": "seedsigner",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "seedsigner.seedsigner.broadcast",
+      "vendor": "seedsigner",
+      "modelFamily": "seedsigner",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "seedsigner.seedsigner-unresolved.import",
+      "vendor": "seedsigner",
+      "modelFamily": "seedsigner-unresolved",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "seedsigner.seedsigner-unresolved.account_add",
+      "vendor": "seedsigner",
+      "modelFamily": "seedsigner-unresolved",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "seedsigner.seedsigner-unresolved.display",
+      "vendor": "seedsigner",
+      "modelFamily": "seedsigner-unresolved",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "seedsigner.seedsigner-unresolved.sign",
+      "vendor": "seedsigner",
+      "modelFamily": "seedsigner-unresolved",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "seedsigner.seedsigner-unresolved.finalize",
+      "vendor": "seedsigner",
+      "modelFamily": "seedsigner-unresolved",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "seedsigner.seedsigner-unresolved.broadcast",
+      "vendor": "seedsigner",
+      "modelFamily": "seedsigner-unresolved",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "specter.specter-unresolved.import",
+      "vendor": "specter",
+      "modelFamily": "specter-unresolved",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "specter.specter-unresolved.account_add",
+      "vendor": "specter",
+      "modelFamily": "specter-unresolved",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "specter.specter-unresolved.display",
+      "vendor": "specter",
+      "modelFamily": "specter-unresolved",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "specter.specter-unresolved.sign",
+      "vendor": "specter",
+      "modelFamily": "specter-unresolved",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "specter.specter-unresolved.finalize",
+      "vendor": "specter",
+      "modelFamily": "specter-unresolved",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "specter.specter-unresolved.broadcast",
+      "vendor": "specter",
+      "modelFamily": "specter-unresolved",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-model-one.import",
+      "vendor": "trezor",
+      "modelFamily": "trezor-model-one",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-model-one.account_add",
+      "vendor": "trezor",
+      "modelFamily": "trezor-model-one",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-model-one.display",
+      "vendor": "trezor",
+      "modelFamily": "trezor-model-one",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-model-one.sign",
+      "vendor": "trezor",
+      "modelFamily": "trezor-model-one",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-model-one.finalize",
+      "vendor": "trezor",
+      "modelFamily": "trezor-model-one",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-model-one.broadcast",
+      "vendor": "trezor",
+      "modelFamily": "trezor-model-one",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-model-t.import",
+      "vendor": "trezor",
+      "modelFamily": "trezor-model-t",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-model-t.account_add",
+      "vendor": "trezor",
+      "modelFamily": "trezor-model-t",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-model-t.display",
+      "vendor": "trezor",
+      "modelFamily": "trezor-model-t",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-model-t.sign",
+      "vendor": "trezor",
+      "modelFamily": "trezor-model-t",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-model-t.finalize",
+      "vendor": "trezor",
+      "modelFamily": "trezor-model-t",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-model-t.broadcast",
+      "vendor": "trezor",
+      "modelFamily": "trezor-model-t",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-safe-3.import",
+      "vendor": "trezor",
+      "modelFamily": "trezor-safe-3",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-safe-3.account_add",
+      "vendor": "trezor",
+      "modelFamily": "trezor-safe-3",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-safe-3.display",
+      "vendor": "trezor",
+      "modelFamily": "trezor-safe-3",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-safe-3.sign",
+      "vendor": "trezor",
+      "modelFamily": "trezor-safe-3",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-safe-3.finalize",
+      "vendor": "trezor",
+      "modelFamily": "trezor-safe-3",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-safe-3.broadcast",
+      "vendor": "trezor",
+      "modelFamily": "trezor-safe-3",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-safe-5.import",
+      "vendor": "trezor",
+      "modelFamily": "trezor-safe-5",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-safe-5.account_add",
+      "vendor": "trezor",
+      "modelFamily": "trezor-safe-5",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-safe-5.display",
+      "vendor": "trezor",
+      "modelFamily": "trezor-safe-5",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-safe-5.sign",
+      "vendor": "trezor",
+      "modelFamily": "trezor-safe-5",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-safe-5.finalize",
+      "vendor": "trezor",
+      "modelFamily": "trezor-safe-5",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-safe-5.broadcast",
+      "vendor": "trezor",
+      "modelFamily": "trezor-safe-5",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-safe-7.import",
+      "vendor": "trezor",
+      "modelFamily": "trezor-safe-7",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-safe-7.account_add",
+      "vendor": "trezor",
+      "modelFamily": "trezor-safe-7",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-safe-7.display",
+      "vendor": "trezor",
+      "modelFamily": "trezor-safe-7",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-safe-7.sign",
+      "vendor": "trezor",
+      "modelFamily": "trezor-safe-7",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-safe-7.finalize",
+      "vendor": "trezor",
+      "modelFamily": "trezor-safe-7",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-safe-7.broadcast",
+      "vendor": "trezor",
+      "modelFamily": "trezor-safe-7",
+      "capability": "broadcast",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-unresolved.import",
+      "vendor": "trezor",
+      "modelFamily": "trezor-unresolved",
+      "capability": "import",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-unresolved.account_add",
+      "vendor": "trezor",
+      "modelFamily": "trezor-unresolved",
+      "capability": "account_add",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-unresolved.display",
+      "vendor": "trezor",
+      "modelFamily": "trezor-unresolved",
+      "capability": "display",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-unresolved.sign",
+      "vendor": "trezor",
+      "modelFamily": "trezor-unresolved",
+      "capability": "sign",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-unresolved.finalize",
+      "vendor": "trezor",
+      "modelFamily": "trezor-unresolved",
+      "capability": "finalize",
+      "enabled": false
+    },
+    {
+      "id": "trezor.trezor-unresolved.broadcast",
+      "vendor": "trezor",
+      "modelFamily": "trezor-unresolved",
+      "capability": "broadcast",
+      "enabled": false
+    }
+  ],
+  "surfaces": [
+    {
+      "id": "catalog-model:bitbox02",
+      "kind": "catalog-model",
+      "identity": "bitbox02",
+      "vendor": "bitbox",
+      "source": "server/prisma/seed.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign",
+        "finalize",
+        "broadcast"
+      ],
+      "enabled": false,
+      "modelName": "BitBox02",
+      "capabilityRowIds": [
+        "bitbox.bitbox02.import",
+        "bitbox.bitbox02.account_add",
+        "bitbox.bitbox02.display",
+        "bitbox.bitbox02.sign",
+        "bitbox.bitbox02.finalize",
+        "bitbox.bitbox02.broadcast"
+      ]
+    },
+    {
+      "id": "catalog-model:bitbox02-btc-only",
+      "kind": "catalog-model",
+      "identity": "bitbox02-btc-only",
+      "vendor": "bitbox",
+      "source": "server/prisma/seed.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign",
+        "finalize",
+        "broadcast"
+      ],
+      "enabled": false,
+      "modelName": "BitBox02 Bitcoin-only",
+      "capabilityRowIds": [
+        "bitbox.bitbox02-btc-only.import",
+        "bitbox.bitbox02-btc-only.account_add",
+        "bitbox.bitbox02-btc-only.display",
+        "bitbox.bitbox02-btc-only.sign",
+        "bitbox.bitbox02-btc-only.finalize",
+        "bitbox.bitbox02-btc-only.broadcast"
+      ]
+    },
+    {
+      "id": "catalog-model:blockstream-jade",
+      "kind": "catalog-model",
+      "identity": "blockstream-jade",
+      "vendor": "jade",
+      "source": "server/prisma/seed.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign",
+        "finalize",
+        "broadcast"
+      ],
+      "enabled": false,
+      "modelName": "Blockstream Jade",
+      "capabilityRowIds": [
+        "jade.blockstream-jade.import",
+        "jade.blockstream-jade.account_add",
+        "jade.blockstream-jade.display",
+        "jade.blockstream-jade.sign",
+        "jade.blockstream-jade.finalize",
+        "jade.blockstream-jade.broadcast"
+      ]
+    },
+    {
+      "id": "catalog-model:blockstream-jade-plus",
+      "kind": "catalog-model",
+      "identity": "blockstream-jade-plus",
+      "vendor": "jade",
+      "source": "server/prisma/seed.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign",
+        "finalize",
+        "broadcast"
+      ],
+      "enabled": false,
+      "modelName": "Blockstream Jade Plus",
+      "capabilityRowIds": [
+        "jade.blockstream-jade-plus.import",
+        "jade.blockstream-jade-plus.account_add",
+        "jade.blockstream-jade-plus.display",
+        "jade.blockstream-jade-plus.sign",
+        "jade.blockstream-jade-plus.finalize",
+        "jade.blockstream-jade-plus.broadcast"
+      ]
+    },
+    {
+      "id": "catalog-model:coldcard-mk3",
+      "kind": "catalog-model",
+      "identity": "coldcard-mk3",
+      "vendor": "coldcard",
+      "source": "server/prisma/seed.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign",
+        "finalize",
+        "broadcast"
+      ],
+      "enabled": false,
+      "modelName": "ColdCard Mk3",
+      "capabilityRowIds": [
+        "coldcard.coldcard-mk3.import",
+        "coldcard.coldcard-mk3.account_add",
+        "coldcard.coldcard-mk3.display",
+        "coldcard.coldcard-mk3.sign",
+        "coldcard.coldcard-mk3.finalize",
+        "coldcard.coldcard-mk3.broadcast"
+      ]
+    },
+    {
+      "id": "catalog-model:coldcard-mk4",
+      "kind": "catalog-model",
+      "identity": "coldcard-mk4",
+      "vendor": "coldcard",
+      "source": "server/prisma/seed.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign",
+        "finalize",
+        "broadcast"
+      ],
+      "enabled": false,
+      "modelName": "ColdCard Mk4",
+      "capabilityRowIds": [
+        "coldcard.coldcard-mk4.import",
+        "coldcard.coldcard-mk4.account_add",
+        "coldcard.coldcard-mk4.display",
+        "coldcard.coldcard-mk4.sign",
+        "coldcard.coldcard-mk4.finalize",
+        "coldcard.coldcard-mk4.broadcast"
+      ]
+    },
+    {
+      "id": "catalog-model:coldcard-q",
+      "kind": "catalog-model",
+      "identity": "coldcard-q",
+      "vendor": "coldcard",
+      "source": "server/prisma/seed.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign",
+        "finalize",
+        "broadcast"
+      ],
+      "enabled": false,
+      "modelName": "ColdCard Q",
+      "capabilityRowIds": [
+        "coldcard.coldcard-q.import",
+        "coldcard.coldcard-q.account_add",
+        "coldcard.coldcard-q.display",
+        "coldcard.coldcard-q.sign",
+        "coldcard.coldcard-q.finalize",
+        "coldcard.coldcard-q.broadcast"
+      ]
+    },
+    {
+      "id": "catalog-model:foundation-passport",
+      "kind": "catalog-model",
+      "identity": "foundation-passport",
+      "vendor": "passport",
+      "source": "server/prisma/seed.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign",
+        "finalize",
+        "broadcast"
+      ],
+      "enabled": false,
+      "modelName": "Foundation Passport",
+      "capabilityRowIds": [
+        "passport.foundation-passport.import",
+        "passport.foundation-passport.account_add",
+        "passport.foundation-passport.display",
+        "passport.foundation-passport.sign",
+        "passport.foundation-passport.finalize",
+        "passport.foundation-passport.broadcast"
+      ]
+    },
+    {
+      "id": "catalog-model:foundation-passport-batch2",
+      "kind": "catalog-model",
+      "identity": "foundation-passport-batch2",
+      "vendor": "passport",
+      "source": "server/prisma/seed.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign",
+        "finalize",
+        "broadcast"
+      ],
+      "enabled": false,
+      "modelName": "Foundation Passport Batch 2",
+      "capabilityRowIds": [
+        "passport.foundation-passport-batch2.import",
+        "passport.foundation-passport-batch2.account_add",
+        "passport.foundation-passport-batch2.display",
+        "passport.foundation-passport-batch2.sign",
+        "passport.foundation-passport-batch2.finalize",
+        "passport.foundation-passport-batch2.broadcast"
+      ]
+    },
+    {
+      "id": "catalog-model:generic-sd",
+      "kind": "catalog-model",
+      "identity": "generic-sd",
+      "vendor": "generic",
+      "source": "server/prisma/seed.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign",
+        "finalize",
+        "broadcast"
+      ],
+      "enabled": false,
+      "modelName": "Generic SD Card",
+      "capabilityRowIds": [
+        "generic.generic-sd.import",
+        "generic.generic-sd.account_add",
+        "generic.generic-sd.display",
+        "generic.generic-sd.sign",
+        "generic.generic-sd.finalize",
+        "generic.generic-sd.broadcast"
+      ]
+    },
+    {
+      "id": "catalog-model:generic-usb",
+      "kind": "catalog-model",
+      "identity": "generic-usb",
+      "vendor": "generic",
+      "source": "server/prisma/seed.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign",
+        "finalize",
+        "broadcast"
+      ],
+      "enabled": false,
+      "modelName": "Generic USB",
+      "capabilityRowIds": [
+        "generic.generic-usb.import",
+        "generic.generic-usb.account_add",
+        "generic.generic-usb.display",
+        "generic.generic-usb.sign",
+        "generic.generic-usb.finalize",
+        "generic.generic-usb.broadcast"
+      ]
+    },
+    {
+      "id": "catalog-model:keystone-3-pro",
+      "kind": "catalog-model",
+      "identity": "keystone-3-pro",
+      "vendor": "keystone",
+      "source": "server/prisma/seed.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign",
+        "finalize",
+        "broadcast"
+      ],
+      "enabled": false,
+      "modelName": "Keystone 3 Pro",
+      "capabilityRowIds": [
+        "keystone.keystone-3-pro.import",
+        "keystone.keystone-3-pro.account_add",
+        "keystone.keystone-3-pro.display",
+        "keystone.keystone-3-pro.sign",
+        "keystone.keystone-3-pro.finalize",
+        "keystone.keystone-3-pro.broadcast"
+      ]
+    },
+    {
+      "id": "catalog-model:keystone-essential",
+      "kind": "catalog-model",
+      "identity": "keystone-essential",
+      "vendor": "keystone",
+      "source": "server/prisma/seed.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign",
+        "finalize",
+        "broadcast"
+      ],
+      "enabled": false,
+      "modelName": "Keystone Essential",
+      "capabilityRowIds": [
+        "keystone.keystone-essential.import",
+        "keystone.keystone-essential.account_add",
+        "keystone.keystone-essential.display",
+        "keystone.keystone-essential.sign",
+        "keystone.keystone-essential.finalize",
+        "keystone.keystone-essential.broadcast"
+      ]
+    },
+    {
+      "id": "catalog-model:keystone-pro",
+      "kind": "catalog-model",
+      "identity": "keystone-pro",
+      "vendor": "keystone",
+      "source": "server/prisma/seed.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign",
+        "finalize",
+        "broadcast"
+      ],
+      "enabled": false,
+      "modelName": "Keystone Pro",
+      "capabilityRowIds": [
+        "keystone.keystone-pro.import",
+        "keystone.keystone-pro.account_add",
+        "keystone.keystone-pro.display",
+        "keystone.keystone-pro.sign",
+        "keystone.keystone-pro.finalize",
+        "keystone.keystone-pro.broadcast"
+      ]
+    },
+    {
+      "id": "catalog-model:ledger-flex",
+      "kind": "catalog-model",
+      "identity": "ledger-flex",
+      "vendor": "ledger",
+      "source": "server/prisma/seed.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign",
+        "finalize",
+        "broadcast"
+      ],
+      "enabled": false,
+      "modelName": "Ledger Flex",
+      "capabilityRowIds": [
+        "ledger.ledger-flex.import",
+        "ledger.ledger-flex.account_add",
+        "ledger.ledger-flex.display",
+        "ledger.ledger-flex.sign",
+        "ledger.ledger-flex.finalize",
+        "ledger.ledger-flex.broadcast"
+      ]
+    },
+    {
+      "id": "catalog-model:ledger-gen-5",
+      "kind": "catalog-model",
+      "identity": "ledger-gen-5",
+      "vendor": "ledger",
+      "source": "server/prisma/seed.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign",
+        "finalize",
+        "broadcast"
+      ],
+      "enabled": false,
+      "modelName": "Ledger Gen 5",
+      "capabilityRowIds": [
+        "ledger.ledger-gen-5.import",
+        "ledger.ledger-gen-5.account_add",
+        "ledger.ledger-gen-5.display",
+        "ledger.ledger-gen-5.sign",
+        "ledger.ledger-gen-5.finalize",
+        "ledger.ledger-gen-5.broadcast"
+      ]
+    },
+    {
+      "id": "catalog-model:ledger-nano-s-plus",
+      "kind": "catalog-model",
+      "identity": "ledger-nano-s-plus",
+      "vendor": "ledger",
+      "source": "server/prisma/seed.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign",
+        "finalize",
+        "broadcast"
+      ],
+      "enabled": false,
+      "modelName": "Ledger Nano S Plus",
+      "capabilityRowIds": [
+        "ledger.ledger-nano-s-plus.import",
+        "ledger.ledger-nano-s-plus.account_add",
+        "ledger.ledger-nano-s-plus.display",
+        "ledger.ledger-nano-s-plus.sign",
+        "ledger.ledger-nano-s-plus.finalize",
+        "ledger.ledger-nano-s-plus.broadcast"
+      ]
+    },
+    {
+      "id": "catalog-model:ledger-nano-x",
+      "kind": "catalog-model",
+      "identity": "ledger-nano-x",
+      "vendor": "ledger",
+      "source": "server/prisma/seed.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign",
+        "finalize",
+        "broadcast"
+      ],
+      "enabled": false,
+      "modelName": "Ledger Nano X",
+      "capabilityRowIds": [
+        "ledger.ledger-nano-x.import",
+        "ledger.ledger-nano-x.account_add",
+        "ledger.ledger-nano-x.display",
+        "ledger.ledger-nano-x.sign",
+        "ledger.ledger-nano-x.finalize",
+        "ledger.ledger-nano-x.broadcast"
+      ]
+    },
+    {
+      "id": "catalog-model:ledger-stax",
+      "kind": "catalog-model",
+      "identity": "ledger-stax",
+      "vendor": "ledger",
+      "source": "server/prisma/seed.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign",
+        "finalize",
+        "broadcast"
+      ],
+      "enabled": false,
+      "modelName": "Ledger Stax",
+      "capabilityRowIds": [
+        "ledger.ledger-stax.import",
+        "ledger.ledger-stax.account_add",
+        "ledger.ledger-stax.display",
+        "ledger.ledger-stax.sign",
+        "ledger.ledger-stax.finalize",
+        "ledger.ledger-stax.broadcast"
+      ]
+    },
+    {
+      "id": "catalog-model:seedsigner",
+      "kind": "catalog-model",
+      "identity": "seedsigner",
+      "vendor": "seedsigner",
+      "source": "server/prisma/seed.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign",
+        "finalize",
+        "broadcast"
+      ],
+      "enabled": false,
+      "modelName": "SeedSigner",
+      "capabilityRowIds": [
+        "seedsigner.seedsigner.import",
+        "seedsigner.seedsigner.account_add",
+        "seedsigner.seedsigner.display",
+        "seedsigner.seedsigner.sign",
+        "seedsigner.seedsigner.finalize",
+        "seedsigner.seedsigner.broadcast"
+      ]
+    },
+    {
+      "id": "catalog-model:trezor-model-one",
+      "kind": "catalog-model",
+      "identity": "trezor-model-one",
+      "vendor": "trezor",
+      "source": "server/prisma/seed.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign",
+        "finalize",
+        "broadcast"
+      ],
+      "enabled": false,
+      "modelName": "Trezor Model One",
+      "capabilityRowIds": [
+        "trezor.trezor-model-one.import",
+        "trezor.trezor-model-one.account_add",
+        "trezor.trezor-model-one.display",
+        "trezor.trezor-model-one.sign",
+        "trezor.trezor-model-one.finalize",
+        "trezor.trezor-model-one.broadcast"
+      ]
+    },
+    {
+      "id": "catalog-model:trezor-model-t",
+      "kind": "catalog-model",
+      "identity": "trezor-model-t",
+      "vendor": "trezor",
+      "source": "server/prisma/seed.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign",
+        "finalize",
+        "broadcast"
+      ],
+      "enabled": false,
+      "modelName": "Trezor Model T",
+      "capabilityRowIds": [
+        "trezor.trezor-model-t.import",
+        "trezor.trezor-model-t.account_add",
+        "trezor.trezor-model-t.display",
+        "trezor.trezor-model-t.sign",
+        "trezor.trezor-model-t.finalize",
+        "trezor.trezor-model-t.broadcast"
+      ]
+    },
+    {
+      "id": "catalog-model:trezor-safe-3",
+      "kind": "catalog-model",
+      "identity": "trezor-safe-3",
+      "vendor": "trezor",
+      "source": "server/prisma/seed.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign",
+        "finalize",
+        "broadcast"
+      ],
+      "enabled": false,
+      "modelName": "Trezor Safe 3",
+      "capabilityRowIds": [
+        "trezor.trezor-safe-3.import",
+        "trezor.trezor-safe-3.account_add",
+        "trezor.trezor-safe-3.display",
+        "trezor.trezor-safe-3.sign",
+        "trezor.trezor-safe-3.finalize",
+        "trezor.trezor-safe-3.broadcast"
+      ]
+    },
+    {
+      "id": "catalog-model:trezor-safe-5",
+      "kind": "catalog-model",
+      "identity": "trezor-safe-5",
+      "vendor": "trezor",
+      "source": "server/prisma/seed.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign",
+        "finalize",
+        "broadcast"
+      ],
+      "enabled": false,
+      "modelName": "Trezor Safe 5",
+      "capabilityRowIds": [
+        "trezor.trezor-safe-5.import",
+        "trezor.trezor-safe-5.account_add",
+        "trezor.trezor-safe-5.display",
+        "trezor.trezor-safe-5.sign",
+        "trezor.trezor-safe-5.finalize",
+        "trezor.trezor-safe-5.broadcast"
+      ]
+    },
+    {
+      "id": "catalog-model:trezor-safe-7",
+      "kind": "catalog-model",
+      "identity": "trezor-safe-7",
+      "vendor": "trezor",
+      "source": "server/prisma/seed.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign",
+        "finalize",
+        "broadcast"
+      ],
+      "enabled": false,
+      "modelName": "Trezor Safe 7",
+      "capabilityRowIds": [
+        "trezor.trezor-safe-7.import",
+        "trezor.trezor-safe-7.account_add",
+        "trezor.trezor-safe-7.display",
+        "trezor.trezor-safe-7.sign",
+        "trezor.trezor-safe-7.finalize",
+        "trezor.trezor-safe-7.broadcast"
+      ]
+    },
+    {
+      "id": "device-parser:bitbox:bitbox",
+      "kind": "device-parser",
+      "identity": "bitbox:bitbox",
+      "vendor": "bitbox",
+      "source": "src/services/deviceParsers/index.ts",
+      "capabilities": [
+        "import",
+        "account_add"
+      ],
+      "enabled": false,
+      "registration": "bitboxParser",
+      "semanticIdentity": "bitbox",
+      "capabilityRowIds": [
+        "bitbox.bitbox-unresolved.import",
+        "bitbox.bitbox-unresolved.account_add"
+      ]
+    },
+    {
+      "id": "device-parser:coldcard-flat:coldcard",
+      "kind": "device-parser",
+      "identity": "coldcard-flat:coldcard",
+      "vendor": "coldcard",
+      "source": "src/services/deviceParsers/index.ts",
+      "capabilities": [
+        "import",
+        "account_add"
+      ],
+      "enabled": false,
+      "registration": "coldcardFlatParser",
+      "semanticIdentity": "coldcard-flat",
+      "capabilityRowIds": [
+        "coldcard.coldcard-unresolved.import",
+        "coldcard.coldcard-unresolved.account_add"
+      ]
+    },
+    {
+      "id": "device-parser:coldcard-nested:coldcard",
+      "kind": "device-parser",
+      "identity": "coldcard-nested:coldcard",
+      "vendor": "coldcard",
+      "source": "src/services/deviceParsers/index.ts",
+      "capabilities": [
+        "import",
+        "account_add"
+      ],
+      "enabled": false,
+      "registration": "coldcardNestedParser",
+      "semanticIdentity": "coldcard-nested",
+      "capabilityRowIds": [
+        "coldcard.coldcard-unresolved.import",
+        "coldcard.coldcard-unresolved.account_add"
+      ]
+    },
+    {
+      "id": "device-parser:descriptor-json:generic",
+      "kind": "device-parser",
+      "identity": "descriptor-json:generic",
+      "vendor": "generic",
+      "source": "src/services/deviceParsers/index.ts",
+      "capabilities": [
+        "import",
+        "account_add"
+      ],
+      "enabled": false,
+      "registration": "descriptorJsonParser",
+      "semanticIdentity": "descriptor-json",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.import",
+        "generic.generic-unresolved.account_add"
+      ]
+    },
+    {
+      "id": "device-parser:descriptor-string:generic",
+      "kind": "device-parser",
+      "identity": "descriptor-string:generic",
+      "vendor": "generic",
+      "source": "src/services/deviceParsers/index.ts",
+      "capabilities": [
+        "import",
+        "account_add"
+      ],
+      "enabled": false,
+      "registration": "descriptorStringParser",
+      "semanticIdentity": "descriptor-string",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.import",
+        "generic.generic-unresolved.account_add"
+      ]
+    },
+    {
+      "id": "device-parser:generic-json:generic",
+      "kind": "device-parser",
+      "identity": "generic-json:generic",
+      "vendor": "generic",
+      "source": "src/services/deviceParsers/index.ts",
+      "capabilities": [
+        "import",
+        "account_add"
+      ],
+      "enabled": false,
+      "registration": "genericJsonParser",
+      "semanticIdentity": "generic-json",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.import",
+        "generic.generic-unresolved.account_add"
+      ]
+    },
+    {
+      "id": "device-parser:keystone-multisig:keystone",
+      "kind": "device-parser",
+      "identity": "keystone-multisig:keystone",
+      "vendor": "keystone",
+      "source": "src/services/deviceParsers/index.ts",
+      "capabilities": [
+        "import",
+        "account_add"
+      ],
+      "enabled": false,
+      "registration": "keystoneMultisigParser",
+      "semanticIdentity": "keystone-multisig",
+      "capabilityRowIds": [
+        "keystone.keystone-unresolved.import",
+        "keystone.keystone-unresolved.account_add"
+      ]
+    },
+    {
+      "id": "device-parser:keystone-standard:keystone",
+      "kind": "device-parser",
+      "identity": "keystone-standard:keystone",
+      "vendor": "keystone",
+      "source": "src/services/deviceParsers/index.ts",
+      "capabilities": [
+        "import",
+        "account_add"
+      ],
+      "enabled": false,
+      "registration": "keystoneStandardParser",
+      "semanticIdentity": "keystone-standard",
+      "capabilityRowIds": [
+        "keystone.keystone-unresolved.import",
+        "keystone.keystone-unresolved.account_add"
+      ]
+    },
+    {
+      "id": "device-parser:ledger:ledger",
+      "kind": "device-parser",
+      "identity": "ledger:ledger",
+      "vendor": "ledger",
+      "source": "src/services/deviceParsers/index.ts",
+      "capabilities": [
+        "import",
+        "account_add"
+      ],
+      "enabled": false,
+      "registration": "ledgerParser",
+      "semanticIdentity": "ledger",
+      "capabilityRowIds": [
+        "ledger.ledger-unresolved.import",
+        "ledger.ledger-unresolved.account_add"
+      ]
+    },
+    {
+      "id": "device-parser:plain-xpub:generic",
+      "kind": "device-parser",
+      "identity": "plain-xpub:generic",
+      "vendor": "generic",
+      "source": "src/services/deviceParsers/index.ts",
+      "capabilities": [
+        "import",
+        "account_add"
+      ],
+      "enabled": false,
+      "registration": "plainXpubParser",
+      "semanticIdentity": "plain-xpub",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.import",
+        "generic.generic-unresolved.account_add"
+      ]
+    },
+    {
+      "id": "device-parser:simple-coldcard:coldcard",
+      "kind": "device-parser",
+      "identity": "simple-coldcard:coldcard",
+      "vendor": "coldcard",
+      "source": "src/services/deviceParsers/index.ts",
+      "capabilities": [
+        "import",
+        "account_add"
+      ],
+      "enabled": false,
+      "registration": "simpleColdcardParser",
+      "semanticIdentity": "simple-coldcard",
+      "capabilityRowIds": [
+        "coldcard.coldcard-unresolved.import",
+        "coldcard.coldcard-unresolved.account_add"
+      ]
+    },
+    {
+      "id": "device-type:bitbox",
+      "kind": "device-type",
+      "identity": "bitbox",
+      "vendor": "bitbox",
+      "source": "src/services/hardwareWallet/types.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign",
+        "finalize",
+        "broadcast"
+      ],
+      "enabled": false,
+      "capabilityRowIds": [
+        "bitbox.bitbox-unresolved.import",
+        "bitbox.bitbox-unresolved.account_add",
+        "bitbox.bitbox-unresolved.display",
+        "bitbox.bitbox-unresolved.sign",
+        "bitbox.bitbox-unresolved.finalize",
+        "bitbox.bitbox-unresolved.broadcast"
+      ]
+    },
+    {
+      "id": "device-type:coldcard",
+      "kind": "device-type",
+      "identity": "coldcard",
+      "vendor": "coldcard",
+      "source": "src/services/hardwareWallet/types.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign",
+        "finalize",
+        "broadcast"
+      ],
+      "enabled": false,
+      "capabilityRowIds": [
+        "coldcard.coldcard-unresolved.import",
+        "coldcard.coldcard-unresolved.account_add",
+        "coldcard.coldcard-unresolved.display",
+        "coldcard.coldcard-unresolved.sign",
+        "coldcard.coldcard-unresolved.finalize",
+        "coldcard.coldcard-unresolved.broadcast"
+      ]
+    },
+    {
+      "id": "device-type:jade",
+      "kind": "device-type",
+      "identity": "jade",
+      "vendor": "jade",
+      "source": "src/services/hardwareWallet/types.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign",
+        "finalize",
+        "broadcast"
+      ],
+      "enabled": false,
+      "capabilityRowIds": [
+        "jade.jade-unresolved.import",
+        "jade.jade-unresolved.account_add",
+        "jade.jade-unresolved.display",
+        "jade.jade-unresolved.sign",
+        "jade.jade-unresolved.finalize",
+        "jade.jade-unresolved.broadcast"
+      ]
+    },
+    {
+      "id": "device-type:ledger",
+      "kind": "device-type",
+      "identity": "ledger",
+      "vendor": "ledger",
+      "source": "src/services/hardwareWallet/types.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign",
+        "finalize",
+        "broadcast"
+      ],
+      "enabled": false,
+      "capabilityRowIds": [
+        "ledger.ledger-unresolved.import",
+        "ledger.ledger-unresolved.account_add",
+        "ledger.ledger-unresolved.display",
+        "ledger.ledger-unresolved.sign",
+        "ledger.ledger-unresolved.finalize",
+        "ledger.ledger-unresolved.broadcast"
+      ]
+    },
+    {
+      "id": "device-type:passport",
+      "kind": "device-type",
+      "identity": "passport",
+      "vendor": "passport",
+      "source": "src/services/hardwareWallet/types.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign",
+        "finalize",
+        "broadcast"
+      ],
+      "enabled": false,
+      "capabilityRowIds": [
+        "passport.passport-unresolved.import",
+        "passport.passport-unresolved.account_add",
+        "passport.passport-unresolved.display",
+        "passport.passport-unresolved.sign",
+        "passport.passport-unresolved.finalize",
+        "passport.passport-unresolved.broadcast"
+      ]
+    },
+    {
+      "id": "device-type:trezor",
+      "kind": "device-type",
+      "identity": "trezor",
+      "vendor": "trezor",
+      "source": "src/services/hardwareWallet/types.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign",
+        "finalize",
+        "broadcast"
+      ],
+      "enabled": false,
+      "capabilityRowIds": [
+        "trezor.trezor-unresolved.import",
+        "trezor.trezor-unresolved.account_add",
+        "trezor.trezor-unresolved.display",
+        "trezor.trezor-unresolved.sign",
+        "trezor.trezor-unresolved.finalize",
+        "trezor.trezor-unresolved.broadcast"
+      ]
+    },
+    {
+      "id": "export-handler:bluewalletHandler:coldcard",
+      "kind": "export-handler",
+      "identity": "bluewalletHandler:coldcard",
+      "vendor": "coldcard",
+      "source": "server/src/services/export/index.ts",
+      "capabilities": [],
+      "enabled": false,
+      "access": [
+        "view",
+        "export",
+        "recovery"
+      ],
+      "registration": "bluewalletHandler",
+      "capabilityRowIds": []
+    },
+    {
+      "id": "export-handler:bluewalletHandler:generic",
+      "kind": "export-handler",
+      "identity": "bluewalletHandler:generic",
+      "vendor": "generic",
+      "source": "server/src/services/export/index.ts",
+      "capabilities": [],
+      "enabled": false,
+      "access": [
+        "view",
+        "export",
+        "recovery"
+      ],
+      "registration": "bluewalletHandler",
+      "capabilityRowIds": []
+    },
+    {
+      "id": "export-handler:coldcardHandler:coldcard",
+      "kind": "export-handler",
+      "identity": "coldcardHandler:coldcard",
+      "vendor": "coldcard",
+      "source": "server/src/services/export/index.ts",
+      "capabilities": [],
+      "enabled": false,
+      "access": [
+        "view",
+        "export",
+        "recovery"
+      ],
+      "registration": "coldcardHandler",
+      "capabilityRowIds": []
+    },
+    {
+      "id": "export-handler:descriptorHandler:generic",
+      "kind": "export-handler",
+      "identity": "descriptorHandler:generic",
+      "vendor": "generic",
+      "source": "server/src/services/export/index.ts",
+      "capabilities": [],
+      "enabled": false,
+      "access": [
+        "view",
+        "export",
+        "recovery"
+      ],
+      "registration": "descriptorHandler",
+      "capabilityRowIds": []
+    },
+    {
+      "id": "export-handler:sparrowHandler:generic",
+      "kind": "export-handler",
+      "identity": "sparrowHandler:generic",
+      "vendor": "generic",
+      "source": "server/src/services/export/index.ts",
+      "capabilities": [],
+      "enabled": false,
+      "access": [
+        "view",
+        "export",
+        "recovery"
+      ],
+      "registration": "sparrowHandler",
+      "capabilityRowIds": []
+    },
+    {
+      "id": "export-handler:sparrowHandler:specter",
+      "kind": "export-handler",
+      "identity": "sparrowHandler:specter",
+      "vendor": "specter",
+      "source": "server/src/services/export/index.ts",
+      "capabilities": [],
+      "enabled": false,
+      "access": [
+        "view",
+        "export",
+        "recovery"
+      ],
+      "registration": "sparrowHandler",
+      "capabilityRowIds": []
+    },
+    {
+      "id": "funds-execution-point:server/src/api/transactions/broadcasting.ts:broadcastValidated:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "server/src/api/transactions/broadcasting.ts:broadcastValidated:callable:1",
+      "vendor": "generic",
+      "source": "server/src/api/transactions/broadcasting.ts",
+      "capabilities": [
+        "broadcast"
+      ],
+      "enabled": false,
+      "executionName": "broadcastValidated",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.broadcast"
+      ]
+    },
+    {
+      "id": "funds-execution-point:server/src/services/bitcoin/blockchain/networkOperations.ts:broadcastAuthenticatedRawTransaction:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "server/src/services/bitcoin/blockchain/networkOperations.ts:broadcastAuthenticatedRawTransaction:callable:1",
+      "vendor": "generic",
+      "source": "server/src/services/bitcoin/blockchain/networkOperations.ts",
+      "capabilities": [
+        "broadcast"
+      ],
+      "enabled": false,
+      "executionName": "broadcastAuthenticatedRawTransaction",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.broadcast"
+      ]
+    },
+    {
+      "id": "funds-execution-point:server/src/services/bitcoin/blockchain/networkOperations.ts:broadcastTransaction:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "server/src/services/bitcoin/blockchain/networkOperations.ts:broadcastTransaction:callable:1",
+      "vendor": "generic",
+      "source": "server/src/services/bitcoin/blockchain/networkOperations.ts",
+      "capabilities": [
+        "broadcast"
+      ],
+      "enabled": false,
+      "executionName": "broadcastTransaction",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.broadcast"
+      ]
+    },
+    {
+      "id": "funds-execution-point:server/src/services/bitcoin/electrum/electrumClient.ts:broadcastTransaction:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "server/src/services/bitcoin/electrum/electrumClient.ts:broadcastTransaction:callable:1",
+      "vendor": "generic",
+      "source": "server/src/services/bitcoin/electrum/electrumClient.ts",
+      "capabilities": [
+        "broadcast"
+      ],
+      "enabled": false,
+      "executionName": "broadcastTransaction",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.broadcast"
+      ]
+    },
+    {
+      "id": "funds-execution-point:server/src/services/bitcoin/electrum/methods.ts:broadcastTransaction:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "server/src/services/bitcoin/electrum/methods.ts:broadcastTransaction:callable:1",
+      "vendor": "generic",
+      "source": "server/src/services/bitcoin/electrum/methods.ts",
+      "capabilities": [
+        "broadcast"
+      ],
+      "enabled": false,
+      "executionName": "broadcastTransaction",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.broadcast"
+      ]
+    },
+    {
+      "id": "funds-execution-point:server/src/services/bitcoin/electrum/publicApi.ts:broadcastTransaction:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "server/src/services/bitcoin/electrum/publicApi.ts:broadcastTransaction:callable:1",
+      "vendor": "generic",
+      "source": "server/src/services/bitcoin/electrum/publicApi.ts",
+      "capabilities": [
+        "broadcast"
+      ],
+      "enabled": false,
+      "executionName": "broadcastTransaction",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.broadcast"
+      ]
+    },
+    {
+      "id": "funds-execution-point:server/src/services/bitcoin/psbtBuilder/multisigFinalization.ts:finalizeMultisigInput:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "server/src/services/bitcoin/psbtBuilder/multisigFinalization.ts:finalizeMultisigInput:callable:1",
+      "vendor": "generic",
+      "source": "server/src/services/bitcoin/psbtBuilder/multisigFinalization.ts",
+      "capabilities": [
+        "finalize"
+      ],
+      "enabled": false,
+      "executionName": "finalizeMultisigInput",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.finalize"
+      ]
+    },
+    {
+      "id": "funds-execution-point:server/src/services/bitcoin/signingIntent/artifactValidation.ts:finalizeInput:operation:1",
+      "kind": "funds-execution-point",
+      "identity": "server/src/services/bitcoin/signingIntent/artifactValidation.ts:finalizeInput:operation:1",
+      "vendor": "generic",
+      "source": "server/src/services/bitcoin/signingIntent/artifactValidation.ts",
+      "capabilities": [
+        "finalize"
+      ],
+      "enabled": false,
+      "executionName": "finalizeInput",
+      "executionKind": "operation",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.finalize"
+      ]
+    },
+    {
+      "id": "funds-execution-point:server/src/services/bitcoin/signingIntent/artifactValidation.ts:finalizePsbt:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "server/src/services/bitcoin/signingIntent/artifactValidation.ts:finalizePsbt:callable:1",
+      "vendor": "generic",
+      "source": "server/src/services/bitcoin/signingIntent/artifactValidation.ts",
+      "capabilities": [
+        "finalize"
+      ],
+      "enabled": false,
+      "executionName": "finalizePsbt",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.finalize"
+      ]
+    },
+    {
+      "id": "funds-execution-point:server/src/services/bitcoin/signingIntent/service.ts:broadcastReplay:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "server/src/services/bitcoin/signingIntent/service.ts:broadcastReplay:callable:1",
+      "vendor": "generic",
+      "source": "server/src/services/bitcoin/signingIntent/service.ts",
+      "capabilities": [
+        "broadcast"
+      ],
+      "enabled": false,
+      "executionName": "broadcastReplay",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.broadcast"
+      ]
+    },
+    {
+      "id": "funds-execution-point:server/src/services/bitcoin/transactions/broadcasting.ts:broadcastAndSave:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "server/src/services/bitcoin/transactions/broadcasting.ts:broadcastAndSave:callable:1",
+      "vendor": "generic",
+      "source": "server/src/services/bitcoin/transactions/broadcasting.ts",
+      "capabilities": [
+        "broadcast"
+      ],
+      "enabled": false,
+      "executionName": "broadcastAndSave",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.broadcast"
+      ]
+    },
+    {
+      "id": "funds-execution-point:src/api/bitcoin.ts:broadcastRawNetworkTransaction:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "src/api/bitcoin.ts:broadcastRawNetworkTransaction:callable:1",
+      "vendor": "generic",
+      "source": "src/api/bitcoin.ts",
+      "capabilities": [
+        "broadcast"
+      ],
+      "enabled": false,
+      "executionName": "broadcastRawNetworkTransaction",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.broadcast"
+      ]
+    },
+    {
+      "id": "funds-execution-point:src/api/transactions/transactions.ts:broadcastTransaction:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "src/api/transactions/transactions.ts:broadcastTransaction:callable:1",
+      "vendor": "generic",
+      "source": "src/api/transactions/transactions.ts",
+      "capabilities": [
+        "broadcast"
+      ],
+      "enabled": false,
+      "executionName": "broadcastTransaction",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.broadcast"
+      ]
+    },
+    {
+      "id": "funds-execution-point:src/components/send/SendTransactionWizard/useSendWizardActionHandlers.ts:broadcastSignedRawTx:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "src/components/send/SendTransactionWizard/useSendWizardActionHandlers.ts:broadcastSignedRawTx:callable:1",
+      "vendor": "generic",
+      "source": "src/components/send/SendTransactionWizard/useSendWizardActionHandlers.ts",
+      "capabilities": [
+        "broadcast"
+      ],
+      "enabled": false,
+      "executionName": "broadcastSignedRawTx",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.broadcast"
+      ]
+    },
+    {
+      "id": "funds-execution-point:src/components/send/SendTransactionWizard/useSendWizardActionHandlers.ts:broadcastUploadedSignedPsbt:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "src/components/send/SendTransactionWizard/useSendWizardActionHandlers.ts:broadcastUploadedSignedPsbt:callable:1",
+      "vendor": "generic",
+      "source": "src/components/send/SendTransactionWizard/useSendWizardActionHandlers.ts",
+      "capabilities": [
+        "broadcast"
+      ],
+      "enabled": false,
+      "executionName": "broadcastUploadedSignedPsbt",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.broadcast"
+      ]
+    },
+    {
+      "id": "funds-execution-point:src/components/send/SendTransactionWizard/useSendWizardActionHandlers.ts:broadcastWithConnectedHardwareWallet:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "src/components/send/SendTransactionWizard/useSendWizardActionHandlers.ts:broadcastWithConnectedHardwareWallet:callable:1",
+      "vendor": "generic",
+      "source": "src/components/send/SendTransactionWizard/useSendWizardActionHandlers.ts",
+      "capabilities": [
+        "broadcast"
+      ],
+      "enabled": false,
+      "executionName": "broadcastWithConnectedHardwareWallet",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.broadcast"
+      ]
+    },
+    {
+      "id": "funds-execution-point:src/hooks/send/useBroadcast.ts:broadcastTransaction:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "src/hooks/send/useBroadcast.ts:broadcastTransaction:callable:1",
+      "vendor": "generic",
+      "source": "src/hooks/send/useBroadcast.ts",
+      "capabilities": [
+        "broadcast"
+      ],
+      "enabled": false,
+      "executionName": "broadcastTransaction",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.broadcast"
+      ]
+    },
+    {
+      "id": "funds-execution-point:src/hooks/send/useQrSigning.ts:processQrSignedPsbt:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "src/hooks/send/useQrSigning.ts:processQrSignedPsbt:callable:1",
+      "vendor": "generic",
+      "source": "src/hooks/send/useQrSigning.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "executionName": "processQrSignedPsbt",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.sign"
+      ]
+    },
+    {
+      "id": "funds-execution-point:src/hooks/send/useQrSigning.ts:uploadSignedPsbt:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "src/hooks/send/useQrSigning.ts:uploadSignedPsbt:callable:1",
+      "vendor": "generic",
+      "source": "src/hooks/send/useQrSigning.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "executionName": "uploadSignedPsbt",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.sign"
+      ]
+    },
+    {
+      "id": "funds-execution-point:src/hooks/send/useUsbSigning.ts:signPsbtWithDevice:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "src/hooks/send/useUsbSigning.ts:signPsbtWithDevice:callable:1",
+      "vendor": "generic",
+      "source": "src/hooks/send/useUsbSigning.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "executionName": "signPsbtWithDevice",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.sign"
+      ]
+    },
+    {
+      "id": "funds-execution-point:src/hooks/send/useUsbSigning.ts:signWithDevice:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "src/hooks/send/useUsbSigning.ts:signWithDevice:callable:1",
+      "vendor": "generic",
+      "source": "src/hooks/send/useUsbSigning.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "executionName": "signWithDevice",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.sign"
+      ]
+    },
+    {
+      "id": "funds-execution-point:src/hooks/send/useUsbSigning.ts:signWithHardwareWallet:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "src/hooks/send/useUsbSigning.ts:signWithHardwareWallet:callable:1",
+      "vendor": "generic",
+      "source": "src/hooks/send/useUsbSigning.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "executionName": "signWithHardwareWallet",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.sign"
+      ]
+    },
+    {
+      "id": "funds-execution-point:src/hooks/send/useUsbSigning.ts:signWithHardwareWalletResult:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "src/hooks/send/useUsbSigning.ts:signWithHardwareWalletResult:callable:1",
+      "vendor": "generic",
+      "source": "src/hooks/send/useUsbSigning.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "executionName": "signWithHardwareWalletResult",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.sign"
+      ]
+    },
+    {
+      "id": "funds-execution-point:src/hooks/useHardwareWallet.ts:signPSBT:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "src/hooks/useHardwareWallet.ts:signPSBT:callable:1",
+      "vendor": "generic",
+      "source": "src/hooks/useHardwareWallet.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "executionName": "signPSBT",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.sign"
+      ]
+    },
+    {
+      "id": "funds-execution-point:src/services/hardwareWallet/adapters/bitbox/bitboxAdapter.ts:signPSBT:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "src/services/hardwareWallet/adapters/bitbox/bitboxAdapter.ts:signPSBT:callable:1",
+      "vendor": "bitbox",
+      "source": "src/services/hardwareWallet/adapters/bitbox/bitboxAdapter.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "executionName": "signPSBT",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "bitbox.bitbox-unresolved.sign"
+      ]
+    },
+    {
+      "id": "funds-execution-point:src/services/hardwareWallet/adapters/bitbox/signPsbt.ts:finalizeAllInputs:operation:1",
+      "kind": "funds-execution-point",
+      "identity": "src/services/hardwareWallet/adapters/bitbox/signPsbt.ts:finalizeAllInputs:operation:1",
+      "vendor": "bitbox",
+      "source": "src/services/hardwareWallet/adapters/bitbox/signPsbt.ts",
+      "capabilities": [
+        "finalize"
+      ],
+      "enabled": false,
+      "executionName": "finalizeAllInputs",
+      "executionKind": "operation",
+      "capabilityRowIds": [
+        "bitbox.bitbox-unresolved.finalize"
+      ]
+    },
+    {
+      "id": "funds-execution-point:src/services/hardwareWallet/adapters/bitbox/signPsbt.ts:signPsbtWithBitBox:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "src/services/hardwareWallet/adapters/bitbox/signPsbt.ts:signPsbtWithBitBox:callable:1",
+      "vendor": "bitbox",
+      "source": "src/services/hardwareWallet/adapters/bitbox/signPsbt.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "executionName": "signPsbtWithBitBox",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "bitbox.bitbox-unresolved.sign"
+      ]
+    },
+    {
+      "id": "funds-execution-point:src/services/hardwareWallet/adapters/jade.ts:signPSBT:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "src/services/hardwareWallet/adapters/jade.ts:signPSBT:callable:1",
+      "vendor": "generic",
+      "source": "src/services/hardwareWallet/adapters/jade.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "executionName": "signPSBT",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.sign"
+      ]
+    },
+    {
+      "id": "funds-execution-point:src/services/hardwareWallet/adapters/jadeProtocol.ts:signPsbt:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "src/services/hardwareWallet/adapters/jadeProtocol.ts:signPsbt:callable:1",
+      "vendor": "generic",
+      "source": "src/services/hardwareWallet/adapters/jadeProtocol.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "executionName": "signPsbt",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.sign"
+      ]
+    },
+    {
+      "id": "funds-execution-point:src/services/hardwareWallet/adapters/ledger/ledgerAdapter.ts:signPSBT:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "src/services/hardwareWallet/adapters/ledger/ledgerAdapter.ts:signPSBT:callable:1",
+      "vendor": "ledger",
+      "source": "src/services/hardwareWallet/adapters/ledger/ledgerAdapter.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "executionName": "signPSBT",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "ledger.ledger-unresolved.sign"
+      ]
+    },
+    {
+      "id": "funds-execution-point:src/services/hardwareWallet/adapters/ledger/signPsbt.ts:finalizeAllInputs:operation:1",
+      "kind": "funds-execution-point",
+      "identity": "src/services/hardwareWallet/adapters/ledger/signPsbt.ts:finalizeAllInputs:operation:1",
+      "vendor": "ledger",
+      "source": "src/services/hardwareWallet/adapters/ledger/signPsbt.ts",
+      "capabilities": [
+        "finalize"
+      ],
+      "enabled": false,
+      "executionName": "finalizeAllInputs",
+      "executionKind": "operation",
+      "capabilityRowIds": [
+        "ledger.ledger-unresolved.finalize"
+      ]
+    },
+    {
+      "id": "funds-execution-point:src/services/hardwareWallet/adapters/ledger/signPsbt.ts:signPsbt:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "src/services/hardwareWallet/adapters/ledger/signPsbt.ts:signPsbt:callable:1",
+      "vendor": "ledger",
+      "source": "src/services/hardwareWallet/adapters/ledger/signPsbt.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "executionName": "signPsbt",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "ledger.ledger-unresolved.sign"
+      ]
+    },
+    {
+      "id": "funds-execution-point:src/services/hardwareWallet/adapters/trezor/signPsbt.ts:signPsbtWithTrezor:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "src/services/hardwareWallet/adapters/trezor/signPsbt.ts:signPsbtWithTrezor:callable:1",
+      "vendor": "trezor",
+      "source": "src/services/hardwareWallet/adapters/trezor/signPsbt.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "executionName": "signPsbtWithTrezor",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "trezor.trezor-unresolved.sign"
+      ]
+    },
+    {
+      "id": "funds-execution-point:src/services/hardwareWallet/adapters/trezor/signPsbtValidation.ts:finalizeAllInputs:operation:1",
+      "kind": "funds-execution-point",
+      "identity": "src/services/hardwareWallet/adapters/trezor/signPsbtValidation.ts:finalizeAllInputs:operation:1",
+      "vendor": "trezor",
+      "source": "src/services/hardwareWallet/adapters/trezor/signPsbtValidation.ts",
+      "capabilities": [
+        "finalize"
+      ],
+      "enabled": false,
+      "executionName": "finalizeAllInputs",
+      "executionKind": "operation",
+      "capabilityRowIds": [
+        "trezor.trezor-unresolved.finalize"
+      ]
+    },
+    {
+      "id": "funds-execution-point:src/services/hardwareWallet/adapters/trezor/trezorAdapter.ts:signPSBT:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "src/services/hardwareWallet/adapters/trezor/trezorAdapter.ts:signPSBT:callable:1",
+      "vendor": "trezor",
+      "source": "src/services/hardwareWallet/adapters/trezor/trezorAdapter.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "executionName": "signPSBT",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "trezor.trezor-unresolved.sign"
+      ]
+    },
+    {
+      "id": "funds-execution-point:src/services/hardwareWallet/service.ts:broadcastSignedTransaction:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "src/services/hardwareWallet/service.ts:broadcastSignedTransaction:callable:1",
+      "vendor": "generic",
+      "source": "src/services/hardwareWallet/service.ts",
+      "capabilities": [
+        "broadcast"
+      ],
+      "enabled": false,
+      "executionName": "broadcastSignedTransaction",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.broadcast"
+      ]
+    },
+    {
+      "id": "funds-execution-point:src/services/hardwareWallet/service.ts:signPSBT:callable:1",
+      "kind": "funds-execution-point",
+      "identity": "src/services/hardwareWallet/service.ts:signPSBT:callable:1",
+      "vendor": "generic",
+      "source": "src/services/hardwareWallet/service.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "executionName": "signPSBT",
+      "executionKind": "callable",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.sign"
+      ]
+    },
+    {
+      "id": "import-handler:bluewallet_text:coldcard",
+      "kind": "import-handler",
+      "identity": "bluewallet_text:coldcard",
+      "vendor": "coldcard",
+      "source": "server/src/services/import/index.ts",
+      "capabilities": [
+        "import",
+        "account_add"
+      ],
+      "enabled": false,
+      "registration": "bluewalletHandler",
+      "semanticIdentity": "bluewallet_text",
+      "capabilityRowIds": [
+        "coldcard.coldcard-unresolved.import",
+        "coldcard.coldcard-unresolved.account_add"
+      ]
+    },
+    {
+      "id": "import-handler:bluewallet_text:generic",
+      "kind": "import-handler",
+      "identity": "bluewallet_text:generic",
+      "vendor": "generic",
+      "source": "server/src/services/import/index.ts",
+      "capabilities": [
+        "import",
+        "account_add"
+      ],
+      "enabled": false,
+      "registration": "bluewalletHandler",
+      "semanticIdentity": "bluewallet_text",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.import",
+        "generic.generic-unresolved.account_add"
+      ]
+    },
+    {
+      "id": "import-handler:coldcard:coldcard",
+      "kind": "import-handler",
+      "identity": "coldcard:coldcard",
+      "vendor": "coldcard",
+      "source": "server/src/services/import/index.ts",
+      "capabilities": [
+        "import",
+        "account_add"
+      ],
+      "enabled": false,
+      "registration": "coldcardHandler",
+      "semanticIdentity": "coldcard",
+      "capabilityRowIds": [
+        "coldcard.coldcard-unresolved.import",
+        "coldcard.coldcard-unresolved.account_add"
+      ]
+    },
+    {
+      "id": "import-handler:descriptor:generic",
+      "kind": "import-handler",
+      "identity": "descriptor:generic",
+      "vendor": "generic",
+      "source": "server/src/services/import/index.ts",
+      "capabilities": [
+        "import",
+        "account_add"
+      ],
+      "enabled": false,
+      "registration": "descriptorHandler",
+      "semanticIdentity": "descriptor",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.import",
+        "generic.generic-unresolved.account_add"
+      ]
+    },
+    {
+      "id": "import-handler:json:generic",
+      "kind": "import-handler",
+      "identity": "json:generic",
+      "vendor": "generic",
+      "source": "server/src/services/import/index.ts",
+      "capabilities": [
+        "import",
+        "account_add"
+      ],
+      "enabled": false,
+      "registration": "jsonConfigHandler",
+      "semanticIdentity": "json",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.import",
+        "generic.generic-unresolved.account_add"
+      ]
+    },
+    {
+      "id": "import-handler:wallet_export:generic",
+      "kind": "import-handler",
+      "identity": "wallet_export:generic",
+      "vendor": "generic",
+      "source": "server/src/services/import/index.ts",
+      "capabilities": [
+        "import",
+        "account_add"
+      ],
+      "enabled": false,
+      "registration": "walletExportHandler",
+      "semanticIdentity": "wallet_export",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.import",
+        "generic.generic-unresolved.account_add"
+      ]
+    },
+    {
+      "id": "import-handler:wallet_export:specter",
+      "kind": "import-handler",
+      "identity": "wallet_export:specter",
+      "vendor": "specter",
+      "source": "server/src/services/import/index.ts",
+      "capabilities": [
+        "import",
+        "account_add"
+      ],
+      "enabled": false,
+      "registration": "walletExportHandler",
+      "semanticIdentity": "wallet_export",
+      "capabilityRowIds": [
+        "specter.specter-unresolved.import",
+        "specter.specter-unresolved.account_add"
+      ]
+    },
+    {
+      "id": "persisted-device-domain:Device.type:string",
+      "kind": "persisted-device-domain",
+      "identity": "Device.type:string",
+      "vendor": "generic",
+      "source": "server/prisma/schema.prisma",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign",
+        "finalize",
+        "broadcast"
+      ],
+      "enabled": false,
+      "openDomain": true,
+      "capabilityRowIds": [
+        "generic.generic-unresolved.import",
+        "generic.generic-unresolved.account_add",
+        "generic.generic-unresolved.display",
+        "generic.generic-unresolved.sign",
+        "generic.generic-unresolved.finalize",
+        "generic.generic-unresolved.broadcast"
+      ]
+    },
+    {
+      "id": "qr-airgap-codec:keystone:crypto-psbt:qr",
+      "kind": "qr-airgap-codec",
+      "identity": "keystone:crypto-psbt:qr",
+      "vendor": "keystone",
+      "source": "src/utils/urPsbt.ts",
+      "capabilities": [
+        "sign",
+        "finalize"
+      ],
+      "enabled": false,
+      "codec": "crypto-psbt",
+      "method": "qr",
+      "capabilityRowIds": [
+        "keystone.keystone-unresolved.sign",
+        "keystone.keystone-unresolved.finalize"
+      ]
+    },
+    {
+      "id": "qr-airgap-codec:passport:crypto-psbt:qr",
+      "kind": "qr-airgap-codec",
+      "identity": "passport:crypto-psbt:qr",
+      "vendor": "passport",
+      "source": "src/utils/urPsbt.ts",
+      "capabilities": [
+        "sign",
+        "finalize"
+      ],
+      "enabled": false,
+      "codec": "crypto-psbt",
+      "method": "qr",
+      "capabilityRowIds": [
+        "passport.passport-unresolved.sign",
+        "passport.passport-unresolved.finalize"
+      ]
+    },
+    {
+      "id": "qr-airgap-codec:seedsigner:crypto-psbt:qr",
+      "kind": "qr-airgap-codec",
+      "identity": "seedsigner:crypto-psbt:qr",
+      "vendor": "seedsigner",
+      "source": "src/utils/urPsbt.ts",
+      "capabilities": [
+        "sign",
+        "finalize"
+      ],
+      "enabled": false,
+      "codec": "crypto-psbt",
+      "method": "qr",
+      "capabilityRowIds": [
+        "seedsigner.seedsigner-unresolved.sign",
+        "seedsigner.seedsigner-unresolved.finalize"
+      ]
+    },
+    {
+      "id": "runtime-adapter:bitbox",
+      "kind": "runtime-adapter",
+      "identity": "bitbox",
+      "vendor": "bitbox",
+      "source": "src/services/hardwareWallet/runtime.ts",
+      "capabilities": [
+        "account_add",
+        "display",
+        "sign"
+      ],
+      "enabled": false,
+      "capabilityRowIds": [
+        "bitbox.bitbox-unresolved.account_add",
+        "bitbox.bitbox-unresolved.display",
+        "bitbox.bitbox-unresolved.sign"
+      ]
+    },
+    {
+      "id": "runtime-adapter:jade",
+      "kind": "runtime-adapter",
+      "identity": "jade",
+      "vendor": "jade",
+      "source": "src/services/hardwareWallet/runtime.ts",
+      "capabilities": [
+        "account_add",
+        "display",
+        "sign"
+      ],
+      "enabled": false,
+      "capabilityRowIds": [
+        "jade.jade-unresolved.account_add",
+        "jade.jade-unresolved.display",
+        "jade.jade-unresolved.sign"
+      ]
+    },
+    {
+      "id": "runtime-adapter:ledger",
+      "kind": "runtime-adapter",
+      "identity": "ledger",
+      "vendor": "ledger",
+      "source": "src/services/hardwareWallet/runtime.ts",
+      "capabilities": [
+        "account_add",
+        "display",
+        "sign"
+      ],
+      "enabled": false,
+      "capabilityRowIds": [
+        "ledger.ledger-unresolved.account_add",
+        "ledger.ledger-unresolved.display",
+        "ledger.ledger-unresolved.sign"
+      ]
+    },
+    {
+      "id": "runtime-adapter:trezor",
+      "kind": "runtime-adapter",
+      "identity": "trezor",
+      "vendor": "trezor",
+      "source": "src/services/hardwareWallet/runtime.ts",
+      "capabilities": [
+        "account_add",
+        "display",
+        "sign"
+      ],
+      "enabled": false,
+      "capabilityRowIds": [
+        "trezor.trezor-unresolved.account_add",
+        "trezor.trezor-unresolved.display",
+        "trezor.trezor-unresolved.sign"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/api/bitcoin/transactions.ts:assertUnscopedRawTransactionBroadcastDisabled:broadcast:1",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/api/bitcoin/transactions.ts:assertUnscopedRawTransactionBroadcastDisabled:broadcast:1",
+      "vendor": "generic",
+      "source": "server/src/api/bitcoin/transactions.ts",
+      "capabilities": [
+        "broadcast"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertUnscopedRawTransactionBroadcastDisabled",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.broadcast"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/api/bitcoin/transactions.ts:assertWalletHardwareCapabilityById:sign:1",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/api/bitcoin/transactions.ts:assertWalletHardwareCapabilityById:sign:1",
+      "vendor": "generic",
+      "source": "server/src/api/bitcoin/transactions.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertWalletHardwareCapabilityById",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.sign"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/api/bitcoin/transactions.ts:assertWalletHardwareCapabilityById:sign:2",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/api/bitcoin/transactions.ts:assertWalletHardwareCapabilityById:sign:2",
+      "vendor": "generic",
+      "source": "server/src/api/bitcoin/transactions.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertWalletHardwareCapabilityById",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.sign"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/api/bitcoin/transactions.ts:assertWalletHardwareCapabilityById:sign:3",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/api/bitcoin/transactions.ts:assertWalletHardwareCapabilityById:sign:3",
+      "vendor": "generic",
+      "source": "server/src/api/bitcoin/transactions.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertWalletHardwareCapabilityById",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.sign"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/api/devices/accounts.ts:assertHardwareWalletCapability:account_add:1",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/api/devices/accounts.ts:assertHardwareWalletCapability:account_add:1",
+      "vendor": "generic",
+      "source": "server/src/api/devices/accounts.ts",
+      "capabilities": [
+        "account_add"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertHardwareWalletCapability",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.account_add"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/api/devices/crud.ts:assertHardwareWalletCapability:account_add:1",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/api/devices/crud.ts:assertHardwareWalletCapability:account_add:1",
+      "vendor": "generic",
+      "source": "server/src/api/devices/crud.ts",
+      "capabilities": [
+        "account_add"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertHardwareWalletCapability",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.account_add"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/api/devices/crud.ts:assertHardwareWalletCapability:account_add:2",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/api/devices/crud.ts:assertHardwareWalletCapability:account_add:2",
+      "vendor": "generic",
+      "source": "server/src/api/devices/crud.ts",
+      "capabilities": [
+        "account_add"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertHardwareWalletCapability",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.account_add"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/api/transactions/addresses.ts:assertWalletHardwareCapabilityById:display:1",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/api/transactions/addresses.ts:assertWalletHardwareCapabilityById:display:1",
+      "vendor": "generic",
+      "source": "server/src/api/transactions/addresses.ts",
+      "capabilities": [
+        "display"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertWalletHardwareCapabilityById",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.display"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/api/transactions/addresses.ts:assertWalletHardwareCapabilityById:display:2",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/api/transactions/addresses.ts:assertWalletHardwareCapabilityById:display:2",
+      "vendor": "generic",
+      "source": "server/src/api/transactions/addresses.ts",
+      "capabilities": [
+        "display"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertWalletHardwareCapabilityById",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.display"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/api/transactions/drafting.ts:assertWalletHardwareCapabilityById:sign:1",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/api/transactions/drafting.ts:assertWalletHardwareCapabilityById:sign:1",
+      "vendor": "generic",
+      "source": "server/src/api/transactions/drafting.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertWalletHardwareCapabilityById",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.sign"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/api/transactions/drafting.ts:assertWalletHardwareCapabilityById:sign:2",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/api/transactions/drafting.ts:assertWalletHardwareCapabilityById:sign:2",
+      "vendor": "generic",
+      "source": "server/src/api/transactions/drafting.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertWalletHardwareCapabilityById",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.sign"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/api/transactions/drafting.ts:assertWalletHardwareCapabilityById:sign:3",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/api/transactions/drafting.ts:assertWalletHardwareCapabilityById:sign:3",
+      "vendor": "generic",
+      "source": "server/src/api/transactions/drafting.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertWalletHardwareCapabilityById",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.sign"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/api/wallets/export.ts:assertWalletHardwareCapabilityById:display:1",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/api/wallets/export.ts:assertWalletHardwareCapabilityById:display:1",
+      "vendor": "generic",
+      "source": "server/src/api/wallets/export.ts",
+      "capabilities": [
+        "display"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertWalletHardwareCapabilityById",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.display"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/assistant/tools/walletReadTools.ts:assertWalletHardwareCapabilityById:display:1",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/assistant/tools/walletReadTools.ts:assertWalletHardwareCapabilityById:display:1",
+      "vendor": "generic",
+      "source": "server/src/assistant/tools/walletReadTools.ts",
+      "capabilities": [
+        "display"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertWalletHardwareCapabilityById",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.display"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/mcp/resources/index.ts:assertWalletHardwareCapabilityById:display:1",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/mcp/resources/index.ts:assertWalletHardwareCapabilityById:display:1",
+      "vendor": "generic",
+      "source": "server/src/mcp/resources/index.ts",
+      "capabilities": [
+        "display"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertWalletHardwareCapabilityById",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.display"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/services/addressDisplaySafety.ts:assertWalletHardwareCapabilityById:display:1",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/services/addressDisplaySafety.ts:assertWalletHardwareCapabilityById:display:1",
+      "vendor": "generic",
+      "source": "server/src/services/addressDisplaySafety.ts",
+      "capabilities": [
+        "display"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertWalletHardwareCapabilityById",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.display"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/services/addressDisplaySafety.ts:assertWalletHardwareCapabilityById:display:2",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/services/addressDisplaySafety.ts:assertWalletHardwareCapabilityById:display:2",
+      "vendor": "generic",
+      "source": "server/src/services/addressDisplaySafety.ts",
+      "capabilities": [
+        "display"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertWalletHardwareCapabilityById",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.display"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/services/agentApiService.ts:assertWalletHardwareCapabilityById:sign:1",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/services/agentApiService.ts:assertWalletHardwareCapabilityById:sign:1",
+      "vendor": "generic",
+      "source": "server/src/services/agentApiService.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertWalletHardwareCapabilityById",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.sign"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/services/agentOperationalAddressService.ts:assertWalletHardwareCapabilityById:display:1",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/services/agentOperationalAddressService.ts:assertWalletHardwareCapabilityById:display:1",
+      "vendor": "generic",
+      "source": "server/src/services/agentOperationalAddressService.ts",
+      "capabilities": [
+        "display"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertWalletHardwareCapabilityById",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.display"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/services/bitcoin/signingIntent/artifactValidation.ts:assertWalletHardwareCapabilityById:finalize:1",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/services/bitcoin/signingIntent/artifactValidation.ts:assertWalletHardwareCapabilityById:finalize:1",
+      "vendor": "generic",
+      "source": "server/src/services/bitcoin/signingIntent/artifactValidation.ts",
+      "capabilities": [
+        "finalize"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertWalletHardwareCapabilityById",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.finalize"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/services/bitcoin/signingIntent/artifactValidation.ts:assertWalletHardwareCapabilityById:sign:1",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/services/bitcoin/signingIntent/artifactValidation.ts:assertWalletHardwareCapabilityById:sign:1",
+      "vendor": "generic",
+      "source": "server/src/services/bitcoin/signingIntent/artifactValidation.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertWalletHardwareCapabilityById",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.sign"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/services/bitcoin/sync/addressDiscovery.ts:assertWalletHardwareCapabilityById:display:1",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/services/bitcoin/sync/addressDiscovery.ts:assertWalletHardwareCapabilityById:display:1",
+      "vendor": "generic",
+      "source": "server/src/services/bitcoin/sync/addressDiscovery.ts",
+      "capabilities": [
+        "display"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertWalletHardwareCapabilityById",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.display"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/services/bitcoin/transactions/broadcasting.ts:assertWalletHardwareCapabilityById:broadcast:1",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/services/bitcoin/transactions/broadcasting.ts:assertWalletHardwareCapabilityById:broadcast:1",
+      "vendor": "generic",
+      "source": "server/src/services/bitcoin/transactions/broadcasting.ts",
+      "capabilities": [
+        "broadcast"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertWalletHardwareCapabilityById",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.broadcast"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/services/deviceAccountRegistration.ts:assertHardwareWalletCapability:account_add:1",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/services/deviceAccountRegistration.ts:assertHardwareWalletCapability:account_add:1",
+      "vendor": "generic",
+      "source": "server/src/services/deviceAccountRegistration.ts",
+      "capabilities": [
+        "account_add"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertHardwareWalletCapability",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.account_add"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/services/deviceRegistration.ts:assertHardwareWalletCapability:import:1",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/services/deviceRegistration.ts:assertHardwareWalletCapability:import:1",
+      "vendor": "generic",
+      "source": "server/src/services/deviceRegistration.ts",
+      "capabilities": [
+        "import"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertHardwareWalletCapability",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.import"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/services/deviceRegistration.ts:assertHardwareWalletCapability:import:2",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/services/deviceRegistration.ts:assertHardwareWalletCapability:import:2",
+      "vendor": "generic",
+      "source": "server/src/services/deviceRegistration.ts",
+      "capabilities": [
+        "import"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertHardwareWalletCapability",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.import"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/services/payjoin/receiver.ts:assertWalletHardwareCapabilityById:sign:1",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/services/payjoin/receiver.ts:assertWalletHardwareCapabilityById:sign:1",
+      "vendor": "generic",
+      "source": "server/src/services/payjoin/receiver.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertWalletHardwareCapabilityById",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.sign"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/services/wallet/addressGeneration.ts:assertWalletHardwareCapabilityById:display:1",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/services/wallet/addressGeneration.ts:assertWalletHardwareCapabilityById:display:1",
+      "vendor": "generic",
+      "source": "server/src/services/wallet/addressGeneration.ts",
+      "capabilities": [
+        "display"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertWalletHardwareCapabilityById",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.display"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/services/wallet/walletCreate.ts:assertHardwareWalletCapability:import:1",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/services/wallet/walletCreate.ts:assertHardwareWalletCapability:import:1",
+      "vendor": "generic",
+      "source": "server/src/services/wallet/walletCreate.ts",
+      "capabilities": [
+        "import"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertHardwareWalletCapability",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.import"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/services/wallet/walletDevices.ts:assertHardwareWalletCapability:account_add:1",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/services/wallet/walletDevices.ts:assertHardwareWalletCapability:account_add:1",
+      "vendor": "generic",
+      "source": "server/src/services/wallet/walletDevices.ts",
+      "capabilities": [
+        "account_add"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertHardwareWalletCapability",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.account_add"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/services/wallet/walletDevices.ts:assertWalletHardwareCapability:account_add:1",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/services/wallet/walletDevices.ts:assertWalletHardwareCapability:account_add:1",
+      "vendor": "generic",
+      "source": "server/src/services/wallet/walletDevices.ts",
+      "capabilities": [
+        "account_add"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertWalletHardwareCapability",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.account_add"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/services/wallet/walletMutations.ts:assertWalletHardwareCapabilityById:display:1",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/services/wallet/walletMutations.ts:assertWalletHardwareCapabilityById:display:1",
+      "vendor": "generic",
+      "source": "server/src/services/wallet/walletMutations.ts",
+      "capabilities": [
+        "display"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertWalletHardwareCapabilityById",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.display"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/services/wallet/walletQueries.ts:assertWalletHardwareCapabilityById:display:1",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/services/wallet/walletQueries.ts:assertWalletHardwareCapabilityById:display:1",
+      "vendor": "generic",
+      "source": "server/src/services/wallet/walletQueries.ts",
+      "capabilities": [
+        "display"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertWalletHardwareCapabilityById",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.display"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/services/walletImport/walletImportService.ts:assertHardwareWalletCapability:import:1",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/services/walletImport/walletImportService.ts:assertHardwareWalletCapability:import:1",
+      "vendor": "generic",
+      "source": "server/src/services/walletImport/walletImportService.ts",
+      "capabilities": [
+        "import"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertHardwareWalletCapability",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.import"
+      ]
+    },
+    {
+      "id": "server-capability-enforcement:server/src/services/walletImport/walletImportService.ts:assertHardwareWalletCapability:import:2",
+      "kind": "server-capability-enforcement",
+      "identity": "server/src/services/walletImport/walletImportService.ts:assertHardwareWalletCapability:import:2",
+      "vendor": "generic",
+      "source": "server/src/services/walletImport/walletImportService.ts",
+      "capabilities": [
+        "import"
+      ],
+      "enabled": false,
+      "enforcementFunction": "assertHardwareWalletCapability",
+      "capabilityRowIds": [
+        "generic.generic-unresolved.import"
+      ]
+    },
+    {
+      "id": "ui-device-enum:BitBox02",
+      "kind": "ui-device-enum",
+      "identity": "BitBox02",
+      "vendor": "bitbox",
+      "source": "src/types/hardware.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign"
+      ],
+      "enabled": false,
+      "capabilityRowIds": [
+        "bitbox.bitbox-unresolved.import",
+        "bitbox.bitbox-unresolved.account_add",
+        "bitbox.bitbox-unresolved.display",
+        "bitbox.bitbox-unresolved.sign"
+      ]
+    },
+    {
+      "id": "ui-device-enum:Blockstream Jade",
+      "kind": "ui-device-enum",
+      "identity": "Blockstream Jade",
+      "vendor": "jade",
+      "source": "src/types/hardware.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign"
+      ],
+      "enabled": false,
+      "capabilityRowIds": [
+        "jade.jade-unresolved.import",
+        "jade.jade-unresolved.account_add",
+        "jade.jade-unresolved.display",
+        "jade.jade-unresolved.sign"
+      ]
+    },
+    {
+      "id": "ui-device-enum:ColdCard Q",
+      "kind": "ui-device-enum",
+      "identity": "ColdCard Q",
+      "vendor": "coldcard",
+      "source": "src/types/hardware.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign"
+      ],
+      "enabled": false,
+      "capabilityRowIds": [
+        "coldcard.coldcard-unresolved.import",
+        "coldcard.coldcard-unresolved.account_add",
+        "coldcard.coldcard-unresolved.display",
+        "coldcard.coldcard-unresolved.sign"
+      ]
+    },
+    {
+      "id": "ui-device-enum:ColdCardMk4",
+      "kind": "ui-device-enum",
+      "identity": "ColdCardMk4",
+      "vendor": "coldcard",
+      "source": "src/types/hardware.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign"
+      ],
+      "enabled": false,
+      "capabilityRowIds": [
+        "coldcard.coldcard-unresolved.import",
+        "coldcard.coldcard-unresolved.account_add",
+        "coldcard.coldcard-unresolved.display",
+        "coldcard.coldcard-unresolved.sign"
+      ]
+    },
+    {
+      "id": "ui-device-enum:Foundation Passport",
+      "kind": "ui-device-enum",
+      "identity": "Foundation Passport",
+      "vendor": "passport",
+      "source": "src/types/hardware.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign"
+      ],
+      "enabled": false,
+      "capabilityRowIds": [
+        "passport.passport-unresolved.import",
+        "passport.passport-unresolved.account_add",
+        "passport.passport-unresolved.display",
+        "passport.passport-unresolved.sign"
+      ]
+    },
+    {
+      "id": "ui-device-enum:Generic SD",
+      "kind": "ui-device-enum",
+      "identity": "Generic SD",
+      "vendor": "generic",
+      "source": "src/types/hardware.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign"
+      ],
+      "enabled": false,
+      "capabilityRowIds": [
+        "generic.generic-unresolved.import",
+        "generic.generic-unresolved.account_add",
+        "generic.generic-unresolved.display",
+        "generic.generic-unresolved.sign"
+      ]
+    },
+    {
+      "id": "ui-device-enum:Keystone",
+      "kind": "ui-device-enum",
+      "identity": "Keystone",
+      "vendor": "keystone",
+      "source": "src/types/hardware.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign"
+      ],
+      "enabled": false,
+      "capabilityRowIds": [
+        "keystone.keystone-unresolved.import",
+        "keystone.keystone-unresolved.account_add",
+        "keystone.keystone-unresolved.display",
+        "keystone.keystone-unresolved.sign"
+      ]
+    },
+    {
+      "id": "ui-device-enum:Ledger Flex",
+      "kind": "ui-device-enum",
+      "identity": "Ledger Flex",
+      "vendor": "ledger",
+      "source": "src/types/hardware.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign"
+      ],
+      "enabled": false,
+      "capabilityRowIds": [
+        "ledger.ledger-unresolved.import",
+        "ledger.ledger-unresolved.account_add",
+        "ledger.ledger-unresolved.display",
+        "ledger.ledger-unresolved.sign"
+      ]
+    },
+    {
+      "id": "ui-device-enum:Ledger Gen 5",
+      "kind": "ui-device-enum",
+      "identity": "Ledger Gen 5",
+      "vendor": "ledger",
+      "source": "src/types/hardware.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign"
+      ],
+      "enabled": false,
+      "capabilityRowIds": [
+        "ledger.ledger-unresolved.import",
+        "ledger.ledger-unresolved.account_add",
+        "ledger.ledger-unresolved.display",
+        "ledger.ledger-unresolved.sign"
+      ]
+    },
+    {
+      "id": "ui-device-enum:Ledger Nano",
+      "kind": "ui-device-enum",
+      "identity": "Ledger Nano",
+      "vendor": "ledger",
+      "source": "src/types/hardware.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign"
+      ],
+      "enabled": false,
+      "capabilityRowIds": [
+        "ledger.ledger-unresolved.import",
+        "ledger.ledger-unresolved.account_add",
+        "ledger.ledger-unresolved.display",
+        "ledger.ledger-unresolved.sign"
+      ]
+    },
+    {
+      "id": "ui-device-enum:Ledger Stax",
+      "kind": "ui-device-enum",
+      "identity": "Ledger Stax",
+      "vendor": "ledger",
+      "source": "src/types/hardware.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign"
+      ],
+      "enabled": false,
+      "capabilityRowIds": [
+        "ledger.ledger-unresolved.import",
+        "ledger.ledger-unresolved.account_add",
+        "ledger.ledger-unresolved.display",
+        "ledger.ledger-unresolved.sign"
+      ]
+    },
+    {
+      "id": "ui-device-enum:Trezor",
+      "kind": "ui-device-enum",
+      "identity": "Trezor",
+      "vendor": "trezor",
+      "source": "src/types/hardware.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign"
+      ],
+      "enabled": false,
+      "capabilityRowIds": [
+        "trezor.trezor-unresolved.import",
+        "trezor.trezor-unresolved.account_add",
+        "trezor.trezor-unresolved.display",
+        "trezor.trezor-unresolved.sign"
+      ]
+    },
+    {
+      "id": "ui-device-enum:Trezor Safe 7",
+      "kind": "ui-device-enum",
+      "identity": "Trezor Safe 7",
+      "vendor": "trezor",
+      "source": "src/types/hardware.ts",
+      "capabilities": [
+        "import",
+        "account_add",
+        "display",
+        "sign"
+      ],
+      "enabled": false,
+      "capabilityRowIds": [
+        "trezor.trezor-unresolved.import",
+        "trezor.trezor-unresolved.account_add",
+        "trezor.trezor-unresolved.display",
+        "trezor.trezor-unresolved.sign"
+      ]
+    },
+    {
+      "id": "ui-hardware-import:jade",
+      "kind": "ui-hardware-import",
+      "identity": "jade",
+      "vendor": "jade",
+      "source": "src/components/ImportWallet/importHelpers.ts",
+      "capabilities": [
+        "import",
+        "account_add"
+      ],
+      "enabled": false,
+      "capabilityRowIds": [
+        "jade.jade-unresolved.import",
+        "jade.jade-unresolved.account_add"
+      ]
+    },
+    {
+      "id": "ui-hardware-import:ledger",
+      "kind": "ui-hardware-import",
+      "identity": "ledger",
+      "vendor": "ledger",
+      "source": "src/components/ImportWallet/importHelpers.ts",
+      "capabilities": [
+        "import",
+        "account_add"
+      ],
+      "enabled": false,
+      "capabilityRowIds": [
+        "ledger.ledger-unresolved.import",
+        "ledger.ledger-unresolved.account_add"
+      ]
+    },
+    {
+      "id": "ui-hardware-import:trezor",
+      "kind": "ui-hardware-import",
+      "identity": "trezor",
+      "vendor": "trezor",
+      "source": "src/components/ImportWallet/importHelpers.ts",
+      "capabilities": [
+        "import",
+        "account_add"
+      ],
+      "enabled": false,
+      "capabilityRowIds": [
+        "trezor.trezor-unresolved.import",
+        "trezor.trezor-unresolved.account_add"
+      ]
+    },
+    {
+      "id": "ui-signing-method:bitbox:usb",
+      "kind": "ui-signing-method",
+      "identity": "bitbox:usb",
+      "vendor": "bitbox",
+      "source": "src/components/send/steps/review/deviceCapabilities.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "method": "usb",
+      "capabilityProjection": "runtime-exact-model-with-unresolved-denial",
+      "exactModelCapabilityRowIds": [
+        "bitbox.bitbox02.sign",
+        "bitbox.bitbox02-btc-only.sign"
+      ],
+      "unresolvedDenialCapabilityRowId": "bitbox.bitbox-unresolved.sign",
+      "capabilityRowIds": [
+        "bitbox.bitbox02.sign",
+        "bitbox.bitbox02-btc-only.sign",
+        "bitbox.bitbox-unresolved.sign"
+      ]
+    },
+    {
+      "id": "ui-signing-method:coldcard:airgap",
+      "kind": "ui-signing-method",
+      "identity": "coldcard:airgap",
+      "vendor": "coldcard",
+      "source": "src/components/send/steps/review/deviceCapabilities.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "method": "airgap",
+      "capabilityProjection": "runtime-exact-model-with-unresolved-denial",
+      "exactModelCapabilityRowIds": [
+        "coldcard.coldcard-mk4.sign",
+        "coldcard.coldcard-q.sign",
+        "coldcard.coldcard-mk3.sign"
+      ],
+      "unresolvedDenialCapabilityRowId": "coldcard.coldcard-unresolved.sign",
+      "capabilityRowIds": [
+        "coldcard.coldcard-mk4.sign",
+        "coldcard.coldcard-q.sign",
+        "coldcard.coldcard-mk3.sign",
+        "coldcard.coldcard-unresolved.sign"
+      ]
+    },
+    {
+      "id": "ui-signing-method:generic:airgap",
+      "kind": "ui-signing-method",
+      "identity": "generic:airgap",
+      "vendor": "generic",
+      "source": "src/components/send/steps/review/deviceCapabilities.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "method": "airgap",
+      "capabilityProjection": "runtime-exact-model-with-unresolved-denial",
+      "exactModelCapabilityRowIds": [
+        "generic.generic-sd.sign",
+        "generic.generic-usb.sign"
+      ],
+      "unresolvedDenialCapabilityRowId": "generic.generic-unresolved.sign",
+      "capabilityRowIds": [
+        "generic.generic-sd.sign",
+        "generic.generic-usb.sign",
+        "generic.generic-unresolved.sign"
+      ]
+    },
+    {
+      "id": "ui-signing-method:jade:usb",
+      "kind": "ui-signing-method",
+      "identity": "jade:usb",
+      "vendor": "jade",
+      "source": "src/components/send/steps/review/deviceCapabilities.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "method": "usb",
+      "capabilityProjection": "runtime-exact-model-with-unresolved-denial",
+      "exactModelCapabilityRowIds": [
+        "jade.blockstream-jade.sign",
+        "jade.blockstream-jade-plus.sign"
+      ],
+      "unresolvedDenialCapabilityRowId": "jade.jade-unresolved.sign",
+      "capabilityRowIds": [
+        "jade.blockstream-jade.sign",
+        "jade.blockstream-jade-plus.sign",
+        "jade.jade-unresolved.sign"
+      ]
+    },
+    {
+      "id": "ui-signing-method:keystone:airgap",
+      "kind": "ui-signing-method",
+      "identity": "keystone:airgap",
+      "vendor": "keystone",
+      "source": "src/components/send/steps/review/deviceCapabilities.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "method": "airgap",
+      "capabilityProjection": "runtime-exact-model-with-unresolved-denial",
+      "exactModelCapabilityRowIds": [
+        "keystone.keystone-pro.sign",
+        "keystone.keystone-3-pro.sign",
+        "keystone.keystone-essential.sign"
+      ],
+      "unresolvedDenialCapabilityRowId": "keystone.keystone-unresolved.sign",
+      "capabilityRowIds": [
+        "keystone.keystone-pro.sign",
+        "keystone.keystone-3-pro.sign",
+        "keystone.keystone-essential.sign",
+        "keystone.keystone-unresolved.sign"
+      ]
+    },
+    {
+      "id": "ui-signing-method:keystone:qr",
+      "kind": "ui-signing-method",
+      "identity": "keystone:qr",
+      "vendor": "keystone",
+      "source": "src/components/send/steps/review/deviceCapabilities.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "method": "qr",
+      "capabilityProjection": "runtime-exact-model-with-unresolved-denial",
+      "exactModelCapabilityRowIds": [
+        "keystone.keystone-pro.sign",
+        "keystone.keystone-3-pro.sign",
+        "keystone.keystone-essential.sign"
+      ],
+      "unresolvedDenialCapabilityRowId": "keystone.keystone-unresolved.sign",
+      "capabilityRowIds": [
+        "keystone.keystone-pro.sign",
+        "keystone.keystone-3-pro.sign",
+        "keystone.keystone-essential.sign",
+        "keystone.keystone-unresolved.sign"
+      ]
+    },
+    {
+      "id": "ui-signing-method:ledger:usb",
+      "kind": "ui-signing-method",
+      "identity": "ledger:usb",
+      "vendor": "ledger",
+      "source": "src/components/send/steps/review/deviceCapabilities.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "method": "usb",
+      "capabilityProjection": "runtime-exact-model-with-unresolved-denial",
+      "exactModelCapabilityRowIds": [
+        "ledger.ledger-nano-s-plus.sign",
+        "ledger.ledger-nano-x.sign",
+        "ledger.ledger-stax.sign",
+        "ledger.ledger-flex.sign",
+        "ledger.ledger-gen-5.sign"
+      ],
+      "unresolvedDenialCapabilityRowId": "ledger.ledger-unresolved.sign",
+      "capabilityRowIds": [
+        "ledger.ledger-nano-s-plus.sign",
+        "ledger.ledger-nano-x.sign",
+        "ledger.ledger-stax.sign",
+        "ledger.ledger-flex.sign",
+        "ledger.ledger-gen-5.sign",
+        "ledger.ledger-unresolved.sign"
+      ]
+    },
+    {
+      "id": "ui-signing-method:passport:airgap",
+      "kind": "ui-signing-method",
+      "identity": "passport:airgap",
+      "vendor": "passport",
+      "source": "src/components/send/steps/review/deviceCapabilities.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "method": "airgap",
+      "capabilityProjection": "runtime-exact-model-with-unresolved-denial",
+      "exactModelCapabilityRowIds": [
+        "passport.foundation-passport.sign",
+        "passport.foundation-passport-batch2.sign"
+      ],
+      "unresolvedDenialCapabilityRowId": "passport.passport-unresolved.sign",
+      "capabilityRowIds": [
+        "passport.foundation-passport.sign",
+        "passport.foundation-passport-batch2.sign",
+        "passport.passport-unresolved.sign"
+      ]
+    },
+    {
+      "id": "ui-signing-method:passport:qr",
+      "kind": "ui-signing-method",
+      "identity": "passport:qr",
+      "vendor": "passport",
+      "source": "src/components/send/steps/review/deviceCapabilities.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "method": "qr",
+      "capabilityProjection": "runtime-exact-model-with-unresolved-denial",
+      "exactModelCapabilityRowIds": [
+        "passport.foundation-passport.sign",
+        "passport.foundation-passport-batch2.sign"
+      ],
+      "unresolvedDenialCapabilityRowId": "passport.passport-unresolved.sign",
+      "capabilityRowIds": [
+        "passport.foundation-passport.sign",
+        "passport.foundation-passport-batch2.sign",
+        "passport.passport-unresolved.sign"
+      ]
+    },
+    {
+      "id": "ui-signing-method:seedsigner:airgap",
+      "kind": "ui-signing-method",
+      "identity": "seedsigner:airgap",
+      "vendor": "seedsigner",
+      "source": "src/components/send/steps/review/deviceCapabilities.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "method": "airgap",
+      "capabilityProjection": "runtime-exact-model-with-unresolved-denial",
+      "exactModelCapabilityRowIds": [
+        "seedsigner.seedsigner.sign"
+      ],
+      "unresolvedDenialCapabilityRowId": "seedsigner.seedsigner-unresolved.sign",
+      "capabilityRowIds": [
+        "seedsigner.seedsigner.sign",
+        "seedsigner.seedsigner-unresolved.sign"
+      ]
+    },
+    {
+      "id": "ui-signing-method:seedsigner:qr",
+      "kind": "ui-signing-method",
+      "identity": "seedsigner:qr",
+      "vendor": "seedsigner",
+      "source": "src/components/send/steps/review/deviceCapabilities.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "method": "qr",
+      "capabilityProjection": "runtime-exact-model-with-unresolved-denial",
+      "exactModelCapabilityRowIds": [
+        "seedsigner.seedsigner.sign"
+      ],
+      "unresolvedDenialCapabilityRowId": "seedsigner.seedsigner-unresolved.sign",
+      "capabilityRowIds": [
+        "seedsigner.seedsigner.sign",
+        "seedsigner.seedsigner-unresolved.sign"
+      ]
+    },
+    {
+      "id": "ui-signing-method:specter:airgap",
+      "kind": "ui-signing-method",
+      "identity": "specter:airgap",
+      "vendor": "specter",
+      "source": "src/components/send/steps/review/deviceCapabilities.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "method": "airgap",
+      "capabilityProjection": "runtime-exact-model-with-unresolved-denial",
+      "exactModelCapabilityRowIds": [],
+      "unresolvedDenialCapabilityRowId": "specter.specter-unresolved.sign",
+      "capabilityRowIds": [
+        "specter.specter-unresolved.sign"
+      ]
+    },
+    {
+      "id": "ui-signing-method:trezor:usb",
+      "kind": "ui-signing-method",
+      "identity": "trezor:usb",
+      "vendor": "trezor",
+      "source": "src/components/send/steps/review/deviceCapabilities.ts",
+      "capabilities": [
+        "sign"
+      ],
+      "enabled": false,
+      "method": "usb",
+      "capabilityProjection": "runtime-exact-model-with-unresolved-denial",
+      "exactModelCapabilityRowIds": [
+        "trezor.trezor-model-one.sign",
+        "trezor.trezor-model-t.sign",
+        "trezor.trezor-safe-3.sign",
+        "trezor.trezor-safe-5.sign",
+        "trezor.trezor-safe-7.sign"
+      ],
+      "unresolvedDenialCapabilityRowId": "trezor.trezor-unresolved.sign",
+      "capabilityRowIds": [
+        "trezor.trezor-model-one.sign",
+        "trezor.trezor-model-t.sign",
+        "trezor.trezor-safe-3.sign",
+        "trezor.trezor-safe-5.sign",
+        "trezor.trezor-safe-7.sign",
+        "trezor.trezor-unresolved.sign"
+      ]
+    }
+  ]
+}

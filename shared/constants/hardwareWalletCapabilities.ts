@@ -5,7 +5,7 @@
  * enabled in a reviewed change that also adds the row's physical evidence.
  */
 export const HARDWARE_WALLET_CAPABILITY_MANIFEST_ID =
-  "wallet-safety-v2-2026-08-12" as const;
+  "wallet-safety-v3-2026-08-12" as const;
 
 export const HARDWARE_WALLET_VENDORS = [
   "bitbox",
@@ -142,6 +142,25 @@ const vendorForIdentityText = (
   return null;
 };
 
+const exactModelSlugForIdentityText = (
+  value: string | null | undefined,
+): string | null => {
+  if (!value) return null;
+  const normalized = normalizeIdentityText(value);
+  for (const row of HARDWARE_WALLET_IMPLEMENTATION_INVENTORY) {
+    const slugIndex = row.catalogModelSlugs.findIndex(
+      (slug) => normalizeIdentityText(slug) === normalized,
+    );
+    if (slugIndex >= 0) return row.catalogModelSlugs[slugIndex];
+    const nameIndex = row.catalogModelNames.findIndex(
+      (name) => normalizeIdentityText(name) === normalized,
+    );
+    /* v8 ignore next -- catalog names/slugs are generated as aligned pairs */
+    if (nameIndex >= 0) return row.catalogModelSlugs[nameIndex];
+  }
+  return null;
+};
+
 export function classifyHardwareWalletVendor(
   identity: HardwareWalletIdentity,
 ): HardwareWalletVendor | null {
@@ -153,9 +172,14 @@ export function classifyHardwareWalletVendor(
       .map(vendorForIdentityText)
       .filter((vendor): vendor is HardwareWalletVendor => vendor !== null),
   );
+  const exactModels = new Set(
+    [identity.type, ...modelValues]
+      .map(exactModelSlugForIdentityText)
+      .filter((model): model is string => model !== null),
+  );
   // Type/model disagreement is ambiguous, never a precedence rule. Returning
   // null makes every server capability boundary fail closed.
-  return recognized.size === 1 ? [...recognized][0] : null;
+  return recognized.size === 1 && exactModels.size <= 1 ? [...recognized][0] : null;
 }
 
 export function getHardwareWalletCapabilityRow(
@@ -164,23 +188,46 @@ export function getHardwareWalletCapabilityRow(
 ): HardwareWalletCapabilityRow | null {
   const vendor = classifyHardwareWalletVendor(identity);
   if (!vendor) return null;
+  const modelFamily = capabilityModelFamily(identity, vendor);
   return HARDWARE_WALLET_CAPABILITY_ROWS.find(
-    (row) => row.vendor === vendor && row.capability === capability,
+    (row) => row.vendor === vendor
+      && row.modelFamily === modelFamily
+      && row.capability === capability,
   ) ?? null;
+}
+
+function capabilityModelFamily(
+  identity: HardwareWalletIdentity,
+  vendor: HardwareWalletVendor,
+): string {
+  const inventory = HARDWARE_WALLET_IMPLEMENTATION_INVENTORY.find(
+    (row) => row.vendor === vendor,
+  );
+  /* v8 ignore next -- vendor and inventory are exhaustively generated together */
+  if (!inventory) return `${vendor}-unresolved`;
+  const modelValues = typeof identity.model === "string"
+    ? [identity.model]
+    : [identity.model?.slug, identity.model?.name];
+  for (const modelValue of modelValues) {
+    if (!modelValue) continue;
+    const exactModel = exactModelSlugForIdentityText(modelValue);
+    if (exactModel && inventory.catalogModelSlugs.includes(exactModel)) return exactModel;
+  }
+  return `${vendor}-unresolved`;
 }
 
 export interface HardwareWalletCapabilityRow {
   id: string;
   vendor: HardwareWalletVendor;
-  modelFamily: "*";
+  modelFamily: string;
   firmwareRange: "unverified";
   appVersionRange: "unverified";
   sdkVersionRange: "unverified";
-  transport: "any";
-  derivationNetworkFamily: "any";
-  chainEnvironment: "any";
-  policy: "any";
-  accountRange: "any";
+  transport: "unverified";
+  derivationNetworkFamily: "unverified";
+  chainEnvironment: "unverified";
+  policy: "unverified";
+  accountRange: "unverified";
   capability: HardwareWalletCapability;
   enabled: false;
   evidenceTier: "unverified";
@@ -217,28 +264,30 @@ const BLOCK_REASONS: Record<HardwareWalletVendor, string> = {
 };
 
 export const HARDWARE_WALLET_CAPABILITY_ROWS: readonly HardwareWalletCapabilityRow[] =
-  Object.freeze(HARDWARE_WALLET_VENDORS.flatMap((vendor) =>
-    HARDWARE_WALLET_CAPABILITIES.map((capability) => Object.freeze({
-      id: `${vendor}.${capability}`,
-      vendor,
-      modelFamily: "*" as const,
-      firmwareRange: "unverified" as const,
-      appVersionRange: "unverified" as const,
-      sdkVersionRange: "unverified" as const,
-      transport: "any" as const,
-      derivationNetworkFamily: "any" as const,
-      chainEnvironment: "any" as const,
-      policy: "any" as const,
-      accountRange: "any" as const,
-      capability,
-      enabled: false as const,
-      evidenceTier: "unverified" as const,
-      evidenceIds: [] as const,
-      freshness: Object.freeze({
-        status: "unverified" as const,
-        checkedAt: null,
-        expiresAt: null,
-      }),
-      reason: BLOCK_REASONS[vendor],
-    })),
+  Object.freeze(HARDWARE_WALLET_IMPLEMENTATION_INVENTORY.flatMap((inventory) =>
+    [...inventory.catalogModelSlugs, `${inventory.vendor}-unresolved`].flatMap((modelFamily) =>
+      HARDWARE_WALLET_CAPABILITIES.map((capability) => Object.freeze({
+        id: `${inventory.vendor}.${modelFamily}.${capability}`,
+        vendor: inventory.vendor,
+        modelFamily,
+        firmwareRange: "unverified" as const,
+        appVersionRange: "unverified" as const,
+        sdkVersionRange: "unverified" as const,
+        transport: "unverified" as const,
+        derivationNetworkFamily: "unverified" as const,
+        chainEnvironment: "unverified" as const,
+        policy: "unverified" as const,
+        accountRange: "unverified" as const,
+        capability,
+        enabled: false as const,
+        evidenceTier: "unverified" as const,
+        evidenceIds: [] as const,
+        freshness: Object.freeze({
+          status: "unverified" as const,
+          checkedAt: null,
+          expiresAt: null,
+        }),
+        reason: BLOCK_REASONS[inventory.vendor],
+      })),
+    ),
   ));

@@ -165,7 +165,9 @@ describe('useDeviceConnection', () => {
         await result.current.connectUsb(mockModel);
       });
 
-      expect(mockConnect).toHaveBeenCalledWith('coldcard', undefined);
+      expect(mockConnect).toHaveBeenCalledWith('coldcard', {
+        expectedModel: mockModel.name,
+      });
     });
 
     it('binds Jade Plus connections to the explicit chain environment and model', async () => {
@@ -178,7 +180,7 @@ describe('useDeviceConnection', () => {
 
       expect(mockConnect).toHaveBeenCalledWith('jade', {
         chainEnvironment: 'testnet4',
-        expectedModel: 'Jade Plus',
+        expectedModel: 'Blockstream Jade Plus',
       });
     });
 
@@ -192,7 +194,7 @@ describe('useDeviceConnection', () => {
 
       expect(mockConnect).toHaveBeenCalledWith('jade', {
         chainEnvironment: 'mainnet',
-        expectedModel: 'Jade',
+        expectedModel: 'Blockstream Jade',
       });
     });
 
@@ -588,7 +590,9 @@ describe('useDeviceConnection', () => {
         await result.current.connectUsb(ledgerModel);
       });
 
-      expect(mockConnect).toHaveBeenCalledWith('ledger', undefined);
+      expect(mockConnect).toHaveBeenCalledWith('ledger', {
+        expectedModel: 'Ledger Nano X',
+      });
     });
 
     it('should handle Trezor devices', async () => {
@@ -605,7 +609,9 @@ describe('useDeviceConnection', () => {
         await result.current.connectUsb(trezorModel);
       });
 
-      expect(mockConnect).toHaveBeenCalledWith('trezor', undefined);
+      expect(mockConnect).toHaveBeenCalledWith('trezor', {
+        expectedModel: 'Trezor Model T',
+      });
     });
   });
 

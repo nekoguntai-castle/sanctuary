@@ -15,4 +15,5 @@ export interface BitBoxConnection {
   api: any;
   devicePath: string;
   product: number; // constants.Product.BitBox02Multi or BitBox02BTCOnly
+  rootFingerprint: string;
 }

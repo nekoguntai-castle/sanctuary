@@ -3,7 +3,7 @@ import { describe,expect,it,vi } from 'vitest';
 import { UsbSigning } from '../../../../../src/components/send/steps/review/UsbSigning';
 
 vi.mock('../../../../../src/components/send/steps/review/deviceCapabilities', () => ({
-  getDeviceCapabilities: (type: string) => type === 'blocked'
+  getDeviceCapabilities: ({ type }: { type?: string }) => type === 'blocked'
     ? { methods: [], labels: {}, blockedReason: 'Physical evidence is missing.' }
     : type === 'coldcard'
     ? { methods: ['airgap'], labels: {}, blockedReason: '' }

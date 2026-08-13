@@ -144,7 +144,7 @@ export async function renderImportWalletHardwareStepShowsHTTPSRequirementInInsec
   await expect(main.getByRole('heading', { name: 'Connect Hardware Device' })).toBeVisible();
   await expect(main.getByText('Requires HTTPS connection')).toHaveCount(2);
   await expect(main.getByRole('button', { name: /Ledger Requires HTTPS/ })).toBeDisabled();
-  await expect(main.getByRole('button', { name: /Jade Plus Requires HTTPS/ })).toBeDisabled();
+  await expect(main.getByRole('button', { name: /Jade Requires HTTPS/ })).toBeDisabled();
 
   expect(unhandledRequests).toEqual([]);
 }

@@ -128,6 +128,8 @@
     "arch:graphs": "node scripts/architecture/generate-graphs.mjs",
     "arch:calls": "node scripts/architecture/extract-call-graphs.mjs",
     "arch:lint": "node scripts/architecture/lint-diagrams.mjs",
+    "generate:signer-inventory": "node scripts/generate-signer-inventory.mjs",
+    "verify:signer-inventory": "node scripts/generate-signer-inventory.mjs --check",
     "arch:check": "npm run arch:graphs && npm run arch:calls && git diff --exit-code -- docs/architecture/generated && npm run arch:lint",
     "docs:start": "npm --prefix docs/site run start",
     "docs:build": "npm --prefix docs/site run build"
