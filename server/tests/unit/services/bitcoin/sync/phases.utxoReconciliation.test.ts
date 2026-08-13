@@ -92,18 +92,29 @@ describe('Sync Phases', () => {
   });
 
   describe('reconcileUtxosPhase', () => {
-    it('should mark spent UTXOs', async () => {
+    const authenticatedExisting = (txid: string, options?: { spent?: boolean; height?: number }) => ({
+      row: {
+        id: 'utxo-1', txid, vout: 0, spent: options?.spent ?? false,
+        confirmations: 5, blockHeight: options?.height ?? 799995,
+        address: 'addr1', amount: 100000n, scriptPubKey: '0014aa',
+      },
+      details: {
+        txid, vin: [], vout: [{ n: 0, value: 0.001, scriptPubKey: { hex: '0014aa', address: 'addr1' } }],
+      },
+    });
+
+    it('marks a UTXO spent only from an authenticated history input', async () => {
       const spentUtxoTxid = 'spent'.padEnd(64, 'a');
 
       // Existing UTXO in database
       mockPrismaClient.uTXO.findMany.mockResolvedValue([
-        { id: 'utxo-1', txid: spentUtxoTxid, vout: 0, spent: false, address: 'addr1' },
+        authenticatedExisting(spentUtxoTxid).row,
       ]);
 
       const ctx = createTestContext({
         walletId: 'test-wallet',
-        allUtxoKeys: new Set(), // UTXO no longer on chain
-        successfullyFetchedAddresses: new Set(['addr1']),
+        allUtxoKeys: new Set(),
+        authenticatedSpentOutpointKeys: new Set([`${spentUtxoTxid}:0`]),
       });
 
       await reconcileUtxosPhase(ctx);
@@ -120,16 +131,17 @@ describe('Sync Phases', () => {
 
     it('should update confirmations for existing UTXOs', async () => {
       const txid = 'existing'.padEnd(64, 'b');
+      const evidence = authenticatedExisting(txid);
 
       mockPrismaClient.uTXO.findMany.mockResolvedValue([
-        { id: 'utxo-1', txid, vout: 0, spent: false, confirmations: 5, blockHeight: 799995, address: 'addr1' },
+        evidence.row,
       ]);
 
       const ctx = createTestContext({
         walletId: 'test-wallet',
         currentBlockHeight: 800000,
         allUtxoKeys: new Set([`${txid}:0`]),
-        successfullyFetchedAddresses: new Set(['addr1']),
+        txDetailsCache: new Map([[txid, evidence.details]]) as any,
         utxoDataMap: new Map([
           [`${txid}:0`, { address: 'addr1', utxo: { tx_hash: txid, tx_pos: 0, value: 100000, height: 799995 } }],
         ]),
@@ -147,27 +159,26 @@ describe('Sync Phases', () => {
       );
     });
 
-    it('should not mark UTXOs as spent for addresses not fetched', async () => {
+    it('preserves a UTXO when it is merely omitted from listunspent', async () => {
+      const txid = 'a'.repeat(64);
       mockPrismaClient.uTXO.findMany.mockResolvedValue([
-        { id: 'utxo-1', txid: 'a'.repeat(64), vout: 0, spent: false, address: 'unfetched_addr' },
+        authenticatedExisting(txid).row,
       ]);
 
       const ctx = createTestContext({
         walletId: 'test-wallet',
         allUtxoKeys: new Set(),
-        successfullyFetchedAddresses: new Set(['other_addr']), // Different address
       });
 
       await reconcileUtxosPhase(ctx);
 
-      // Should not mark as spent since we didn't fetch that address
       expect(mockPrismaClient.uTXO.updateMany).not.toHaveBeenCalled();
     });
 
     it('should invalidate affected drafts and include labels in log message', async () => {
       const spentUtxoTxid = 'spent-with-draft'.padEnd(64, 'f');
       mockPrismaClient.uTXO.findMany.mockResolvedValue([
-        { id: 'utxo-1', txid: spentUtxoTxid, vout: 0, spent: false, address: 'addr1', confirmations: 1, blockHeight: 799999 },
+        authenticatedExisting(spentUtxoTxid).row,
       ]);
       mockPrismaClient.draftUtxoLock.findMany.mockResolvedValue([
         { draftId: 'draft-1', draft: { id: 'draft-1', label: 'Important Draft', recipient: 'x' } },
@@ -176,7 +187,7 @@ describe('Sync Phases', () => {
       const ctx = createTestContext({
         walletId: 'test-wallet',
         allUtxoKeys: new Set(),
-        successfullyFetchedAddresses: new Set(['addr1']),
+        authenticatedSpentOutpointKeys: new Set([`${spentUtxoTxid}:0`]),
       });
 
       await reconcileUtxosPhase(ctx);
@@ -191,21 +202,22 @@ describe('Sync Phases', () => {
         'test-wallet',
         'info',
         'DRAFT',
-        expect.stringContaining('Important Draft')
+        'Invalidated 1 draft(s) after authenticated UTXO spend evidence'
       );
     });
 
     it('should update confirmations and blockHeight for unconfirmed blockchain UTXOs', async () => {
       const txid = 'unconfirmed-existing'.padEnd(64, 'c');
+      const evidence = authenticatedExisting(txid);
       mockPrismaClient.uTXO.findMany.mockResolvedValue([
-        { id: 'utxo-1', txid, vout: 0, spent: false, confirmations: 5, blockHeight: 799995, address: 'addr1' },
+        evidence.row,
       ]);
 
       const ctx = createTestContext({
         walletId: 'test-wallet',
         currentBlockHeight: 800000,
         allUtxoKeys: new Set([`${txid}:0`]),
-        successfullyFetchedAddresses: new Set(['addr1']),
+        txDetailsCache: new Map([[txid, evidence.details]]) as any,
         utxoDataMap: new Map([
           [`${txid}:0`, { address: 'addr1', utxo: { tx_hash: txid, tx_pos: 0, value: 100000, height: 0 } }],
         ]),
@@ -226,15 +238,16 @@ describe('Sync Phases', () => {
 
     it('should skip confirmation update when blockchain and database state already match', async () => {
       const txid = 'matching-utxo'.padEnd(64, 'd');
+      const evidence = authenticatedExisting(txid);
       mockPrismaClient.uTXO.findMany.mockResolvedValue([
-        { id: 'utxo-1', txid, vout: 0, spent: false, confirmations: 6, blockHeight: 799995, address: 'addr1' },
+        { ...evidence.row, confirmations: 6 },
       ]);
 
       const ctx = createTestContext({
         walletId: 'test-wallet',
         currentBlockHeight: 800000,
         allUtxoKeys: new Set([`${txid}:0`]),
-        successfullyFetchedAddresses: new Set(['addr1']),
+        txDetailsCache: new Map([[txid, evidence.details]]) as any,
         utxoDataMap: new Map([
           [`${txid}:0`, { address: 'addr1', utxo: { tx_hash: txid, tx_pos: 0, value: 100000, height: 799995 } }],
         ]),
@@ -245,10 +258,37 @@ describe('Sync Phases', () => {
       expect(mockPrismaClient.uTXO.update).not.toHaveBeenCalled();
     });
 
-    it('should invalidate drafts without appending labels when none exist', async () => {
+    it('preserves an existing UTXO when authenticated output evidence conflicts', async () => {
+      const txid = 'conflicting-utxo'.padEnd(64, 'e');
+      const evidence = authenticatedExisting(txid);
+      mockPrismaClient.uTXO.findMany.mockResolvedValue([evidence.row]);
+
+      const ctx = createTestContext({
+        walletId: 'test-wallet',
+        currentBlockHeight: 800000,
+        allUtxoKeys: new Set([`${txid}:0`]),
+        txDetailsCache: new Map([[txid, {
+          ...evidence.details,
+          vout: [{
+            ...evidence.details.vout[0],
+            scriptPubKey: { hex: '0014bb', address: 'addr1' },
+          }],
+        }]]) as any,
+        utxoDataMap: new Map([
+          [`${txid}:0`, { address: 'addr1', utxo: { tx_hash: txid, tx_pos: 0, value: 100000, height: 799995 } }],
+        ]),
+      });
+
+      await reconcileUtxosPhase(ctx);
+
+      expect(mockPrismaClient.uTXO.update).not.toHaveBeenCalled();
+      expect(mockPrismaClient.uTXO.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('invalidates only drafts locked to an authenticated spent outpoint', async () => {
       const spentUtxoTxid = 'spent-no-label'.padEnd(64, 'e');
       mockPrismaClient.uTXO.findMany.mockResolvedValue([
-        { id: 'utxo-1', txid: spentUtxoTxid, vout: 0, spent: false, address: 'addr1', confirmations: 1, blockHeight: 799999 },
+        authenticatedExisting(spentUtxoTxid).row,
       ]);
       mockPrismaClient.draftUtxoLock.findMany.mockResolvedValue([
         { draftId: 'draft-2', draft: { id: 'draft-2', label: null, recipient: 'x' } },
@@ -257,7 +297,7 @@ describe('Sync Phases', () => {
       const ctx = createTestContext({
         walletId: 'test-wallet',
         allUtxoKeys: new Set(),
-        successfullyFetchedAddresses: new Set(['addr1']),
+        authenticatedSpentOutpointKeys: new Set([`${spentUtxoTxid}:0`]),
       });
 
       await reconcileUtxosPhase(ctx);
@@ -266,7 +306,7 @@ describe('Sync Phases', () => {
         'test-wallet',
         'info',
         'DRAFT',
-        'Invalidated 1 draft(s) due to spent UTXOs'
+        'Invalidated 1 draft(s) after authenticated UTXO spend evidence'
       );
     });
   });

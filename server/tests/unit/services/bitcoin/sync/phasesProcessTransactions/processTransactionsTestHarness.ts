@@ -47,3 +47,31 @@ vi.mock('../../../../../../src/services/bitcoin/addressDerivation', () => ({
 vi.mock('../../../../../../src/services/bitcoin/utils/blockHeight', () => ({
   getBlockTimestamp: vi.fn().mockResolvedValue(new Date('2024-01-15T12:00:00Z')),
 }));
+
+// Classification contract suites isolate downstream behavior. Raw-byte
+// authentication has dedicated real-transaction tests; preserve the structured
+// fixtures here by making this boundary copy the mocked client response.
+vi.mock('../../../../../../src/services/bitcoin/sync/evidenceAuthentication', () => ({
+  fetchAuthenticatedTransactions: vi.fn(async (ctx, txids) => {
+    const accepted = new Set();
+    let results;
+    try {
+      results = await ctx.client.getTransactionsBatch(txids, false);
+    } catch {
+      results = new Map();
+      for (const txid of txids) {
+        try {
+          results.set(txid, await ctx.client.getTransaction(txid, false));
+        } catch { /* exercised by retry-rotation contracts */ }
+      }
+    }
+    for (const [txid, details] of results) {
+      if (!details) continue;
+      ctx.txDetailsCache.set(txid, details);
+      accepted.add(txid);
+      // Legacy classification contracts use structured address fixtures. The
+      // dedicated evidence suite covers canonical script ownership.
+    }
+    return accepted;
+  }),
+}));

@@ -18,6 +18,7 @@ import { insertUtxosPhase } from './insertUtxos';
 import { updateAddressesPhase } from './updateAddresses';
 import { gapLimitPhase } from './gapLimit';
 import { fixConsolidationsPhase } from './fixConsolidations';
+import { receiveEvidenceGatePhase } from './receiveEvidenceGate';
 
 // Export individual phase functions
 export {
@@ -31,6 +32,7 @@ export {
   updateAddressesPhase,
   gapLimitPhase,
   fixConsolidationsPhase,
+  receiveEvidenceGatePhase,
 };
 
 /**
@@ -57,6 +59,7 @@ export const defaultSyncPhases: SyncPhase[] = [
   createPhase('reconcileUtxos', reconcileUtxosPhase),
   createPhase('insertUtxos', insertUtxosPhase),
   createPhase('updateAddresses', updateAddressesPhase),
+  createPhase('receiveEvidenceGate', receiveEvidenceGatePhase),
   createPhase('gapLimit', gapLimitPhase),
   createPhase('fixConsolidations', fixConsolidationsPhase),
 ];
@@ -74,4 +77,5 @@ export const quickSyncPhases: SyncPhase[] = [
   createPhase('reconcileUtxos', reconcileUtxosPhase),
   createPhase('insertUtxos', insertUtxosPhase),
   createPhase('updateAddresses', updateAddressesPhase),
+  createPhase('receiveEvidenceGate', receiveEvidenceGatePhase),
 ];

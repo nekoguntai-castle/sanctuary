@@ -20,6 +20,7 @@ import { classifyTransactions } from './classification';
 import { repairTransactionIO, storeTransactionIO } from './transactionIO';
 import { applyAddressLabels } from './addressLabels';
 import { sendNotifications } from './notifications';
+import { fetchAuthenticatedTransactions } from '../../evidenceAuthentication';
 
 const log = createLogger('BITCOIN:SVC_SYNC_TX');
 
@@ -88,22 +89,7 @@ export async function processTransactionsPhase(ctx: SyncContext): Promise<SyncCo
     );
 
     // Step 1: Fetch this batch of transactions
-    try {
-      const batchResults = await client.getTransactionsBatch(batchTxids, true);
-      for (const [txid, details] of batchResults) {
-        txDetailsCache.set(txid, details);
-      }
-    } catch (error) {
-      log.warn(`[SYNC] Batch tx fetch failed, falling back to individual requests`, { error: getErrorMessage(error) });
-      for (const txid of batchTxids) {
-        try {
-          const details = await client.getTransaction(txid, true);
-          txDetailsCache.set(txid, details);
-        } catch (e) {
-          log.warn(`[SYNC] Failed to get tx ${txid}`, { error: getErrorMessage(e) });
-        }
-      }
-    }
+    await fetchAuthenticatedTransactions(ctx, batchTxids);
 
     const batchTxidSet = new Set(batchTxids.filter(txid => txDetailsCache.has(txid)));
 
@@ -191,10 +177,7 @@ async function prefetchPreviousTransactions(
     const prevTxidsArray = Array.from(prevTxidsNeeded);
     walletLog(walletId, 'debug', 'SYNC', `Prefetching ${prevTxidsArray.length} previous transactions for input resolution...`);
     try {
-      const prevBatchResults = await client.getTransactionsBatch(prevTxidsArray, true);
-      for (const [txid, details] of prevBatchResults) {
-        txDetailsCache.set(txid, details);
-      }
+      await fetchAuthenticatedTransactions(ctx, prevTxidsArray);
     } catch (error) {
       log.warn(`[SYNC] Batch prev tx fetch failed, will fall back to individual requests`, { error: getErrorMessage(error) });
     }

@@ -24,7 +24,7 @@ export function registerBlockchainTransactionsReconciliationTests(): void {
       });
     });
 
-    it('should mark spent UTXOs correctly', async () => {
+    it('preserves an existing UTXO when listunspent merely omits it', async () => {
       const address = testnetAddresses.nativeSegwit[0];
 
       mockPrismaClient.address.findMany.mockResolvedValue([
@@ -36,22 +36,15 @@ export function registerBlockchainTransactionsReconciliationTests(): void {
         { id: 'utxo-1', txid: 'm'.repeat(64), vout: 0, spent: false, confirmations: 10, blockHeight: 799990, address },
       ]);
 
-      // UTXO no longer on blockchain (was spent)
+      // Empty listunspent is not proof of a spend.
       mockElectrumClient.getAddressHistoryBatch.mockResolvedValue(new Map([[address, []]]));
       mockElectrumClient.getAddressUTXOsBatch.mockResolvedValue(new Map([[address, []]]));
       mockPrismaClient.transaction.findMany.mockResolvedValue([]);
 
       await getBlockchainService().syncWallet(walletId);
 
-      // Should mark UTXO as spent
-      expect(mockPrismaClient.uTXO.updateMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            id: expect.objectContaining({ in: ['utxo-1'] }),
-          }),
-          data: { spent: true },
-        })
-      );
+      expect(mockPrismaClient.uTXO.updateMany).not.toHaveBeenCalled();
+      expect(mockPrismaClient.draftTransaction.deleteMany).not.toHaveBeenCalled();
     });
   });
 
@@ -206,10 +199,11 @@ export function registerBlockchainTransactionsReconciliationTests(): void {
       mockElectrumClient.getTransaction.mockResolvedValue(mockTx);
 
       mockElectrumClient.getAddressUTXOsBatch.mockResolvedValue(
-        new Map([[ourAddress, [{ txid: txHash, vout: 0, value: 100000, height: 800000 }]]])
+        new Map([[ourAddress, [{ tx_hash: txHash, tx_pos: 0, value: 100000, height: 800000 }]]])
       );
       mockPrismaClient.transaction.findMany.mockResolvedValue([]);
       mockPrismaClient.uTXO.findMany.mockResolvedValue([]);
+      mockPrismaClient.transaction.createManyAndReturn.mockResolvedValue([]);
       mockElectrumClient.getBlockHeight.mockResolvedValue(800006);
 
       // Track createMany calls
@@ -381,6 +375,7 @@ export function registerBlockchainTransactionsReconciliationTests(): void {
 
       mockElectrumClient.getAddressUTXOsBatch.mockResolvedValue(new Map([[address, []]]));
       mockPrismaClient.uTXO.findMany.mockResolvedValue([]);
+      mockPrismaClient.transaction.createManyAndReturn.mockResolvedValue([]);
 
       const result = await getBlockchainService().syncWallet(walletId);
 

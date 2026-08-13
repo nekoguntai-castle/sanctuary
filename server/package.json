@@ -47,6 +47,7 @@
     "test:mutation:taproot-construction": "stryker run stryker.taproot-construction.config.mjs",
     "test:mutation:taproot-artifact-finalization": "stryker run stryker.taproot-artifact-finalization.config.mjs",
     "test:mutation:fee-policy": "stryker run stryker.fee-policy.config.mjs",
+    "test:mutation:receive-evidence": "stryker run stryker.receive-evidence.config.mjs",
     "test:mutation:critical": "stryker run stryker.critical.config.mjs",
     "test:mutation:critical:gate": "npm run test:mutation:critical && node scripts/mutation/check-critical-mutation-gate.mjs",
     "test:mutation:critical:shard": "stryker run stryker.critical.config.mjs",

@@ -33,6 +33,7 @@ export type {
   RawTransaction,
   TransactionCreateData,
   UTXOCreateData,
+  ReceiveEvidenceRetryableError,
 } from './types';
 
 // Phases
@@ -49,4 +50,5 @@ export {
   updateAddressesPhase,
   gapLimitPhase,
   fixConsolidationsPhase,
+  receiveEvidenceGatePhase,
 } from './phases';

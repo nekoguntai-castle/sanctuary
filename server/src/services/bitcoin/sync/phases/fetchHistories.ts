@@ -9,8 +9,14 @@ import { createLogger } from '../../../../utils/logger';
 import { getErrorMessage } from '../../../../utils/errors';
 import { walletLog } from '../../../../websocket/notifications';
 import type { SyncContext } from '../types';
+import { authenticateHistoryResults } from '../evidenceAuthentication';
 
 const log = createLogger('BITCOIN:SVC_SYNC_HISTORIES');
+
+const recordHistoryFetchFailure = (ctx: SyncContext, reason: string): void => {
+  ctx.rejectedEvidenceCount += 1;
+  log.warn('[SYNC] Rejected incomplete address-history evidence', { reason, count: 1 });
+};
 
 /** Number of addresses to fetch per batch RPC call */
 const BATCH_SIZE = 50;
@@ -42,9 +48,14 @@ export async function fetchHistoriesPhase(ctx: SyncContext): Promise<SyncContext
 
     try {
       const batchResults = await client.getAddressHistoryBatch(batchAddresses);
-      // Merge results into context
-      for (const [addr, history] of batchResults) {
-        ctx.historyResults.set(addr, history);
+      for (const addr of batchAddresses) {
+        const history = batchResults.get(addr);
+        if (history) {
+          ctx.historyResults.set(addr, history);
+        } else {
+          ctx.historyResults.set(addr, []);
+          recordHistoryFetchFailure(ctx, 'missing_history_result');
+        }
       }
     } catch (error) {
       log.warn(`[SYNC] Batch history failed, falling back to individual requests`, { error: getErrorMessage(error) });
@@ -57,6 +68,7 @@ export async function fetchHistoriesPhase(ctx: SyncContext): Promise<SyncContext
         } catch (e) {
           log.warn(`[SYNC] Failed to get history for ${addr}`, { error: getErrorMessage(e) });
           ctx.historyResults.set(addr, []);
+          recordHistoryFetchFailure(ctx, 'history_fetch_failed');
         }
       }
     }
@@ -73,6 +85,8 @@ export async function fetchHistoriesPhase(ctx: SyncContext): Promise<SyncContext
       ctx.txHeightMap.set(item.tx_hash, item.height);
     }
   }
+
+  await authenticateHistoryResults(ctx);
 
   ctx.stats.historiesFetched = ctx.historyResults.size;
 

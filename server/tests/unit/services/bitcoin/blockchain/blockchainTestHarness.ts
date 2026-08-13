@@ -8,6 +8,9 @@ import {
 const { mockAssertWalletHardwareCapabilityById } = vi.hoisted(() => ({
   mockAssertWalletHardwareCapabilityById: vi.fn(),
 }));
+const legacyReceiveEvidence = vi.hoisted(() => ({
+  transactions: new Map<string, any>(),
+}));
 export { mockAssertWalletHardwareCapabilityById };
 
 vi.mock('../../../../../src/services/hardwareWalletCapabilities', async importOriginal => ({
@@ -23,6 +26,109 @@ vi.mock('../../../../../src/models/prisma', () => ({
 vi.mock('../../../../../src/services/bitcoin/nodeClient', () => ({
   getNodeClient: vi.fn().mockResolvedValue(mockElectrumClient),
 }));
+
+vi.mock('../../../../../src/services/wallet/canonicalAddressValidation', () => ({
+  assertCanonicalAddressesMatchWallet: vi.fn((_wallet, addresses) => {
+    const bitcoin = require('bitcoinjs-lib');
+    for (const address of addresses) {
+      if (address.scriptPubKey) continue;
+      try {
+        address.scriptPubKey = Buffer.from(bitcoin.address.toOutputScript(
+          address.address,
+          bitcoin.networks.testnet,
+        )).toString('hex');
+      } catch {
+        address.scriptPubKey = `0014${'00'.repeat(20)}`;
+      }
+    }
+  }),
+}));
+
+vi.mock('../../../../../src/services/bitcoin/blockchain/receiveEvidenceAuthentication', () => ({
+  authenticateTransactionDetails: vi.fn((expectedTxid, candidate) => {
+    if (!candidate) throw new Error('missing transaction');
+    const bitcoin = require('bitcoinjs-lib');
+    const normalizeScript = (scriptPubKey: any) => {
+      const address = scriptPubKey?.address || scriptPubKey?.addresses?.[0];
+      if (!address) return scriptPubKey;
+      try {
+        return {
+          ...scriptPubKey,
+          hex: Buffer.from(
+            bitcoin.address.toOutputScript(address, bitcoin.networks.testnet),
+          ).toString('hex'),
+        };
+      } catch {
+        return scriptPubKey;
+      }
+    };
+    const normalized = {
+      ...candidate,
+      txid: expectedTxid,
+      hex: expectedTxid,
+      vin: (candidate.vin || []).map((input: any) => ({
+        ...input,
+        ...(input.prevout ? {
+          prevout: {
+            ...input.prevout,
+            scriptPubKey: normalizeScript(input.prevout.scriptPubKey),
+          },
+        } : {}),
+      })),
+      vout: (candidate.vout || []).map((output: any, n: number) => ({
+        ...output,
+        n,
+        scriptPubKey: normalizeScript(output.scriptPubKey),
+      })),
+    };
+    legacyReceiveEvidence.transactions.set(expectedTxid, normalized);
+    return normalized;
+  }),
+}));
+
+vi.mock('../../../../../src/services/bitcoin/sync/evidenceAuthentication', () => ({
+  authenticateHistoryResults: vi.fn(),
+  fetchAuthenticatedTransactions: vi.fn(async (ctx, txids) => {
+    const accepted = new Set<string>();
+    let results: Map<string, any>;
+    try {
+      results = await ctx.client.getTransactionsBatch(txids, false);
+    } catch {
+      results = new Map();
+      for (const txid of txids) {
+        try {
+          const details = await ctx.client.getTransaction(txid, false);
+          if (details) results.set(txid, details);
+        } catch { /* legacy fallback-error contracts */ }
+      }
+    }
+    for (const txid of txids) {
+      const details = results.get(txid)
+        ?? await ctx.client.getTransaction(txid, false).catch(() => undefined);
+      if (!details) continue;
+      ctx.txDetailsCache.set(txid, details);
+      legacyReceiveEvidence.transactions.set(txid, details);
+      accepted.add(txid);
+    }
+    return accepted;
+  }),
+}));
+
+vi.mock('../../../../../src/services/bitcoin/rawTransactionEvidence', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../../../src/services/bitcoin/rawTransactionEvidence')>();
+  return {
+    ...actual,
+    authenticateRawTransactionOutput: vi.fn((input: any) => {
+      const output = legacyReceiveEvidence.transactions.get(input.expectedTxid)?.vout?.[input.vout];
+      if (!output) throw new actual.RawTransactionEvidenceError('missing_output');
+      const valueSats = BigInt(Math.round(output.value * 100_000_000));
+      if (valueSats !== input.expectedValueSats) {
+        throw new actual.RawTransactionEvidenceError('amount_mismatch');
+      }
+      return { valueSats, scriptPubKeyHex: input.expectedScriptPubKeyHex };
+    }),
+  };
+});
 
 vi.mock('../../../../../src/services/bitcoin/utils', () => ({
   validateAddress: vi.fn().mockReturnValue({ valid: true }),
@@ -70,6 +176,7 @@ export function setupBlockchainServiceTestHooks(): void {
   });
 
   beforeEach(() => {
+    legacyReceiveEvidence.transactions.clear();
     resetPrismaMocks();
     resetElectrumMocks();
     mockAssertWalletHardwareCapabilityById.mockResolvedValue(undefined);

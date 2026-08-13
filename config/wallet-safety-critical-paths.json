@@ -143,6 +143,7 @@
     "server/stryker.taproot-construction.config.mjs",
     "server/stryker.taproot-artifact-finalization.config.mjs",
     "server/stryker.fee-policy.config.mjs",
+    "server/stryker.receive-evidence.config.mjs",
     "config/wallet-safety-mutation-map.json",
     "config/wallet-safety-critical-paths.json",
     "scripts/ci/check-wallet-safety-mutation-map.mjs",

@@ -43,9 +43,13 @@ export function createSyncContext(params: {
   const walletAddressSet = new Set(addresses.map(a => a.address));
   const addressMap = new Map(addresses.map(a => [a.address, a]));
   const addressToDerivationPath = new Map<string, string>();
+  const walletScriptToAddress = new Map<string, Address>();
   for (const addr of addresses) {
     if (addr.derivationPath) {
       addressToDerivationPath.set(addr.address, addr.derivationPath);
+    }
+    if (addr.scriptPubKey) {
+      walletScriptToAddress.set(addr.scriptPubKey.toLowerCase(), addr);
     }
   }
 
@@ -63,6 +67,7 @@ export function createSyncContext(params: {
     walletAddressSet,
     addressMap,
     addressToDerivationPath,
+    walletScriptToAddress,
 
     // Phase outputs (initialized empty)
     historyResults: new Map(),
@@ -77,9 +82,9 @@ export function createSyncContext(params: {
 
     // UTXO phase data
     utxoResults: [],
-    successfullyFetchedAddresses: new Set(),
     allUtxoKeys: new Set(),
     utxoDataMap: new Map(),
+    authenticatedSpentOutpointKeys: new Set(),
 
     // Results
     newTransactions: [],
@@ -93,6 +98,7 @@ export function createSyncContext(params: {
 
     // Phase tracking
     completedPhases: [],
+    rejectedEvidenceCount: 0,
   };
 }
 
@@ -109,6 +115,7 @@ export function createTestContext(overrides: Partial<SyncContext>): SyncContext 
     walletAddressSet: new Set(),
     addressMap: new Map(),
     addressToDerivationPath: new Map(),
+    walletScriptToAddress: new Map(),
     historyResults: new Map(),
     allTxids: new Set(),
     existingTxMap: new Map(),
@@ -119,9 +126,9 @@ export function createTestContext(overrides: Partial<SyncContext>): SyncContext 
     txDetailsCache: new Map(),
     txHeightMap: new Map(),
     utxoResults: [],
-    successfullyFetchedAddresses: new Set(),
     allUtxoKeys: new Set(),
     utxoDataMap: new Map(),
+    authenticatedSpentOutpointKeys: new Set(),
     newTransactions: [],
     newAddresses: [],
     stats: createSyncStats(),
@@ -129,6 +136,7 @@ export function createTestContext(overrides: Partial<SyncContext>): SyncContext 
     currentBlockHeight: 800000,
     viaTor: false,
     completedPhases: [],
+    rejectedEvidenceCount: 0,
   };
 
   return { ...defaultContext, ...overrides };

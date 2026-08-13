@@ -670,7 +670,7 @@ export function registerProcessTransactionBatchIoTests(walletId: string): void {
       await processTransactionsPhase(ctx);
 
       // Should have fallen back to individual requests for failed batch
-      expect(mockElectrumClient.getTransaction).toHaveBeenCalledWith(failBatchTxid, true);
+      expect(mockElectrumClient.getTransaction).toHaveBeenCalledWith(failBatchTxid, false);
 
       // Should have created transactions for both successful batch and fallback
       expect(mockPrismaClient.transaction.createManyAndReturn).toHaveBeenCalled();

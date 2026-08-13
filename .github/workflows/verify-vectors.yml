@@ -134,6 +134,7 @@ jobs:
             ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain bash -c '
               set -euo pipefail
               npm --prefix server run test:mutation:fee-policy
+              npm --prefix server run test:mutation:receive-evidence
               node scripts/ci/check-wallet-safety-mutation-map.mjs
             '
 
@@ -149,6 +150,7 @@ jobs:
             server/reports/mutation/taproot-construction.json
             server/reports/mutation/taproot-artifact-finalization.json
             server/reports/mutation/fee-policy.json
+            server/reports/mutation/receive-evidence.json
           if-no-files-found: error
           retention-days: 14
 

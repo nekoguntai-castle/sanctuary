@@ -17,12 +17,14 @@ import type {
   TransactionOutput,
   TxHistoryEntry,
 } from '../../types';
+import { fetchAuthenticatedTransactions } from '../../evidenceAuthentication';
 
 const log = createLogger('BITCOIN:SVC_SYNC_TX');
 
 type InputEvidence = {
   address?: string;
   value?: number;
+  scriptPubKey?: string;
 };
 
 type InputClassification = {
@@ -121,7 +123,7 @@ const classifyHistoryItem = async (
   const outputs = txDetails.vout || [];
   const inputs = txDetails.vin || [];
   const inputClassification = await classifyInputs(ctx, inputs);
-  const outputTotals = calculateOutputTotals(outputs, ctx.walletAddressSet);
+  const outputTotals = calculateOutputTotals(outputs, ctx);
   const fee = calculateFee(inputClassification, outputTotals.totalOutputs);
 
   return createClassifiedTransaction({
@@ -155,7 +157,7 @@ const classifyInputs = async (
     if (evidence.value !== undefined) {
       totalInputs += evidence.value;
     }
-    if (evidence.address && ctx.walletAddressSet.has(evidence.address)) {
+    if (isWalletEvidence(ctx, evidence)) {
       isSent = true;
       if (evidence.value !== undefined) {
         totalFromWallet += evidence.value;
@@ -187,6 +189,7 @@ const resolveInputEvidence = async (
     value: inlineEvidence.address === undefined
       ? previousEvidence.value
       : inlineEvidence.value ?? previousEvidence.value,
+    scriptPubKey: inlineEvidence.scriptPubKey ?? previousEvidence.scriptPubKey,
   };
 };
 
@@ -197,6 +200,7 @@ const getInlineInputEvidence = (input: TransactionInput): InputEvidence => ({
   value: input.prevout?.value === undefined
     ? undefined
     : normalizeInlineInputValue(input.prevout.value),
+  scriptPubKey: (input.prevout?.scriptPubKey as { hex?: string } | undefined)?.hex?.toLowerCase(),
 });
 
 const resolvePreviousOutput = async (
@@ -213,7 +217,14 @@ const getOutputEvidence = (
 ): InputEvidence => ({
   address: output ? getScriptAddress(output.scriptPubKey) : undefined,
   value: output ? Math.round(output.value * 100000000) : undefined,
+  scriptPubKey: output?.scriptPubKey?.hex?.toLowerCase(),
 });
+
+const isWalletEvidence = (ctx: SyncContext, evidence: InputEvidence): boolean => (
+  evidence.scriptPubKey !== undefined && ctx.walletScriptToAddress.size > 0
+    ? ctx.walletScriptToAddress.has(evidence.scriptPubKey)
+    : evidence.address !== undefined && ctx.walletAddressSet.has(evidence.address)
+);
 
 const normalizeInlineInputValue = (value: number): number => (
   value >= 1000000 ? value : Math.round(value * 100000000)
@@ -229,20 +240,8 @@ const fetchPreviousOutput = async (
   }
 
   log.debug(`[SYNC] Cache miss for prev tx ${txid.slice(0, 8)}..., fetching individually`);
-
-  try {
-    const fetchedPrevTx = await ctx.client.getTransaction(txid);
-    const prevOutput = fetchedPrevTx?.vout?.[vout];
-    if (prevOutput) {
-      ctx.txDetailsCache.set(txid, fetchedPrevTx);
-    }
-    return prevOutput;
-  } catch (e) {
-    /* v8 ignore next 2 -- previous-transaction lookup failure is best-effort classification fallback */
-    log.debug(`Failed to fetch prev tx ${txid.slice(0, 8)}...`, { error: String(e) });
-    /* v8 ignore next -- previous-transaction lookup failure is best-effort classification fallback */
-    return undefined;
-  }
+  await fetchAuthenticatedTransactions(ctx, [txid]);
+  return getCachedPreviousOutput(ctx.txDetailsCache, txid, vout);
 };
 
 const getCachedPreviousOutput = (
@@ -253,7 +252,7 @@ const getCachedPreviousOutput = (
 
 const calculateOutputTotals = (
   outputs: TransactionOutput[],
-  walletAddressSet: Set<string>
+  ctx: SyncContext
 ): OutputTotals => {
   const totals: OutputTotals = {
     hasExternalEvidence: false,
@@ -263,7 +262,7 @@ const calculateOutputTotals = (
   };
 
   for (const output of outputs) {
-    addOutputToTotals(totals, output, walletAddressSet);
+    addOutputToTotals(totals, output, ctx);
   }
 
   return totals;
@@ -272,19 +271,21 @@ const calculateOutputTotals = (
 const addOutputToTotals = (
   totals: OutputTotals,
   output: TransactionOutput,
-  walletAddressSet: Set<string>
+  ctx: SyncContext
 ): void => {
   const outputValue = Math.round(output.value * 100000000);
   const outputAddress = getScriptAddress(output.scriptPubKey);
 
   totals.totalOutputs += outputValue;
-  if (outputAddress && !walletAddressSet.has(outputAddress)) {
+  const scriptPubKey = output.scriptPubKey?.hex?.toLowerCase();
+  const isOurs = scriptPubKey !== undefined && ctx.walletScriptToAddress.size > 0
+    ? ctx.walletScriptToAddress.has(scriptPubKey)
+    : outputAddress !== undefined && ctx.walletAddressSet.has(outputAddress);
+  if (!isOurs) {
     totals.hasExternalEvidence = true;
     totals.totalToExternal += outputValue;
-  } else if (outputAddress) {
-    totals.totalToWallet += outputValue;
   } else {
-    totals.hasExternalEvidence = true;
+    totals.totalToWallet += outputValue;
   }
 };
 

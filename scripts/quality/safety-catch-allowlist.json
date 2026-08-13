@@ -20,15 +20,6 @@
       "targetRemovalSlice": "fail-closed-safety-follow-up"
     },
     {
-      "file": "server/src/services/bitcoin/blockchain/syncAddress.ts",
-      "functionName": "storeTransactionIOForHistory",
-      "issue": "non-terminal-catch",
-      "count": 1,
-      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
-      "owner": "fund-safety",
-      "targetRemovalSlice": "fail-closed-safety-follow-up"
-    },
-    {
       "file": "server/src/services/bitcoin/blockchain/syncWallet.ts",
       "functionName": "subscribeGeneratedAddresses",
       "issue": "non-terminal-catch",
@@ -347,7 +338,7 @@
       "file": "server/src/services/bitcoin/sync/phases/fetchUtxos.ts",
       "functionName": "fetchUtxosPhase",
       "issue": "non-terminal-catch",
-      "count": 2,
+      "count": 1,
       "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
       "owner": "fund-safety",
       "targetRemovalSlice": "fail-closed-safety-follow-up"
@@ -384,15 +375,6 @@
       "functionName": "sendNotifications",
       "issue": "non-terminal-catch",
       "count": 1,
-      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
-      "owner": "fund-safety",
-      "targetRemovalSlice": "fail-closed-safety-follow-up"
-    },
-    {
-      "file": "server/src/services/bitcoin/sync/phases/processTransactions/processTransactionsPhase.ts",
-      "functionName": "processTransactionsPhase",
-      "issue": "non-terminal-catch",
-      "count": 2,
       "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
       "owner": "fund-safety",
       "targetRemovalSlice": "fail-closed-safety-follow-up"

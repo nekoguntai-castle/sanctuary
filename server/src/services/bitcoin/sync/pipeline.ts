@@ -13,6 +13,7 @@ import { getErrorMessage } from "../../../utils/errors";
 import { walletLog } from "../../../websocket/notifications";
 import { getBlockHeight } from "../utils/blockHeight";
 import { parseAddressDerivationPath } from "@sanctuary/shared/utils/bitcoin";
+import { assertCanonicalAddressesMatchWallet } from '../../wallet/canonicalAddressValidation';
 
 import { createSyncContext } from "./context";
 import type {
@@ -83,6 +84,11 @@ export async function executeSyncPipeline(
 
   // Load all addresses for the wallet
   const addresses = await addressRepository.findByWalletId(walletId);
+
+  // Remote observations must never confer ownership on stale or drifted rows.
+  if (addresses.length > 0) {
+    assertCanonicalAddressesMatchWallet(wallet, addresses);
+  }
 
   if (addresses.length === 0 && !wallet.descriptor) {
     walletLog(walletId, "info", "BLOCKCHAIN", "No addresses to scan");

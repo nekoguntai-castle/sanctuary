@@ -96,14 +96,14 @@ export function registerBlockchainSyncAddressTests(): void {
       ]);
 
       // Transaction where our address is an input (sending)
-      mockElectrumClient.getTransaction.mockResolvedValue(
+      mockElectrumClient.getTransactionsBatch.mockResolvedValue(new Map([[txHash,
         createMockTransaction({
           txid: txHash,
           blockheight: 800000,
           inputs: [{ txid: 'd'.repeat(64), vout: 0, value: 0.002, address: ourAddress }],
           outputs: [{ value: 0.001, address: externalAddress }],
         })
-      );
+      ]]));
 
       mockPrismaClient.transaction.findFirst.mockResolvedValue(null);
       mockElectrumClient.getAddressUTXOs.mockResolvedValue([]);
@@ -128,9 +128,13 @@ export function registerBlockchainSyncAddressTests(): void {
         { tx_hash: 'e'.repeat(64), height: 800000 },
       ]);
 
-      mockElectrumClient.getTransaction.mockResolvedValue(
-        createMockTransaction({ outputs: [{ value: 0.001, address: testAddress }] })
-      );
+      mockElectrumClient.getTransactionsBatch.mockResolvedValue(new Map([[
+        'e'.repeat(64),
+        createMockTransaction({
+          txid: 'e'.repeat(64),
+          outputs: [{ value: 0.001, address: testAddress }],
+        }),
+      ]]));
 
       mockPrismaClient.transaction.findFirst.mockResolvedValue(null);
       mockElectrumClient.getAddressUTXOs.mockResolvedValue([]);
@@ -215,7 +219,7 @@ export function registerBlockchainSyncAddressTests(): void {
       );
     });
 
-    it('should skip missing tx details and still mark address used when history exists', async () => {
+    it('should reject missing tx details without marking the address used', async () => {
       const txHash = 'r'.repeat(64);
       mockPrismaClient.address.findUnique.mockResolvedValue({
         id: addressId,
@@ -231,16 +235,12 @@ export function registerBlockchainSyncAddressTests(): void {
       mockPrismaClient.transaction.findMany.mockResolvedValue([]);
       mockPrismaClient.uTXO.findMany.mockResolvedValue([]);
 
-      const result = await getBlockchainService().syncAddress(addressId);
-
-      expect(result.transactions).toBe(0);
-      expect(result.utxos).toBe(0);
-      expect(mockPrismaClient.address.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: addressId },
-          data: { used: true },
-        }),
-      );
+      await expect(getBlockchainService().syncAddress(addressId)).rejects.toMatchObject({
+        name: 'ReceiveEvidenceRetryableError',
+      });
+      expect(mockPrismaClient.address.update).not.toHaveBeenCalled();
+      expect(mockPrismaClient.transaction.createMany).not.toHaveBeenCalled();
+      expect(mockPrismaClient.uTXO.createMany).not.toHaveBeenCalled();
     });
 
     it('should classify consolidation with unknown fee as zero amount and null fee', async () => {
@@ -334,7 +334,12 @@ export function registerBlockchainSyncAddressTests(): void {
             expect.objectContaining({
               txid: utxoTxid,
               vout: 0,
-              scriptPubKey: '0014abcd',
+              scriptPubKey: Buffer.from(
+                require('bitcoinjs-lib').address.toOutputScript(
+                  testAddress,
+                  require('bitcoinjs-lib').networks.testnet,
+                ),
+              ).toString('hex'),
             }),
           ]),
           skipDuplicates: true,
@@ -429,6 +434,9 @@ export function registerBlockchainSyncAddressTests(): void {
         ]]),
       );
       mockPrismaClient.transaction.findMany.mockImplementation(async (args: any) => {
+        if (args?.where?.walletId && args?.where?.txid?.in && args?.where?.ioComplete === false) {
+          throw new Error('input insert failed');
+        }
         if (args?.where?.walletId && args?.where?.txid?.in && !args?.where?.OR) return [];
         if (args?.where?.OR) {
           return [{ id: 'tx-io-record', txid: txHash, type: 'received' }];
@@ -436,13 +444,7 @@ export function registerBlockchainSyncAddressTests(): void {
         return [];
       });
       mockPrismaClient.uTXO.findMany.mockResolvedValue([]);
-      mockPrismaClient.transactionInput.createMany.mockRejectedValueOnce(new Error('input insert failed'));
-
-      const result = await getBlockchainService().syncAddress(addressId);
-
-      expect(result.transactions).toBe(1);
-      expect(result.utxos).toBe(0);
-      expect(mockPrismaClient.transaction.createMany).toHaveBeenCalled();
+      await expect(getBlockchainService().syncAddress(addressId)).rejects.toThrow('input insert failed');
     });
 
     it('should return zero confirmations when block height lookup fails', async () => {

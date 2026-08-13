@@ -65,7 +65,7 @@ describe('Blockchain Service - UTXO Management', () => {
   });
 
   describe('UTXO spending detection', () => {
-    it('should mark UTXOs as spent when no longer on blockchain', async () => {
+    it('preserves UTXOs merely omitted from listunspent', async () => {
       const { syncWallet } = await import('../../../../src/services/bitcoin/blockchain');
 
       const testWallet = {
@@ -109,16 +109,10 @@ describe('Blockchain Service - UTXO Management', () => {
 
       await syncWallet('wallet-1');
 
-      // Should mark the UTXO as spent
-      expect(mockPrisma.uTXO.updateMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: { in: ['utxo-1'] } },
-          data: { spent: true },
-        })
-      );
+      expect(mockPrisma.uTXO.updateMany).not.toHaveBeenCalled();
     });
 
-    it('should invalidate draft transactions using spent UTXOs', async () => {
+    it('preserves draft transactions when a UTXO is only omitted', async () => {
       const { syncWallet } = await import('../../../../src/services/bitcoin/blockchain');
 
       const testWallet = {
@@ -169,13 +163,7 @@ describe('Blockchain Service - UTXO Management', () => {
 
       await syncWallet('wallet-1');
 
-      // Should delete the draft that was using the spent UTXO
-      expect(mockPrisma.draftTransaction.deleteMany).toHaveBeenCalledWith({
-        where: {
-          id: { in: ['draft-1'] },
-          status: { in: ['unsigned', 'partial', 'signed'] },
-        },
-      });
+      expect(mockPrisma.draftTransaction.deleteMany).not.toHaveBeenCalled();
     });
   });
 
@@ -203,6 +191,8 @@ describe('Blockchain Service - UTXO Management', () => {
         confirmations: 3, // Old count
         blockHeight: 799997,
         address: 'bc1qwallet',
+        amount: 10000000n,
+        scriptPubKey: `0014${'00'.repeat(20)}`,
       };
 
       mockPrisma.wallet.findUnique.mockResolvedValue(testWallet);
@@ -223,6 +213,16 @@ describe('Blockchain Service - UTXO Management', () => {
           ['bc1qwallet', [{ tx_hash: 'confirmed-tx', tx_pos: 0, height: 799997, value: 10000000 }]],
         ])
       );
+      mockNodeClient.getTransaction.mockResolvedValue({
+        txid: 'confirmed-tx',
+        hex: '00',
+        vin: [],
+        vout: [{
+          n: 0,
+          value: 0.1,
+          scriptPubKey: { hex: `0014${'00'.repeat(20)}`, address: 'bc1qwallet' },
+        }],
+      });
 
       await syncWallet('wallet-1');
 

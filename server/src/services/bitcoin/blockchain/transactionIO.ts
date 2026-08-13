@@ -225,7 +225,8 @@ export async function storeTransactionIO(
   walletId: string,
   history: AddressHistoryItem[],
   walletAddressSet: Set<string>,
-  existingDetails?: TransactionDetailsMap
+  existingDetails?: TransactionDetailsMap,
+  options: { allowNetworkFetch?: boolean } = {},
 ): Promise<void> {
   const historyTxids = [...new Set(history.map(item => item.tx_hash))];
   for (let offset = 0; offset < historyTxids.length; offset += IO_BACKFILL_BATCH_SIZE) {
@@ -237,7 +238,9 @@ export async function storeTransactionIO(
     if (transactionsToPersist.length === 0) continue;
 
     const txidsToFetch = transactionsToPersist.map(tx => tx.txid);
-    const txDetailsMap = await fetchTransactionDetails(client, txidsToFetch, existingDetails);
+    const txDetailsMap = options.allowNetworkFetch === false
+      ? new Map(existingDetails)
+      : await fetchTransactionDetails(client, txidsToFetch, existingDetails);
     const ioRows = collectTransactionIORows(
       transactionsToPersist,
       txDetailsMap,

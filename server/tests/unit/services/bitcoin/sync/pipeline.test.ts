@@ -37,6 +37,10 @@ vi.mock("../../../../../src/services/bitcoin/utils/blockHeight", () => ({
   getBlockHeight: getBlockHeightMock,
 }));
 
+vi.mock("../../../../../src/services/wallet/canonicalAddressValidation", () => ({
+  assertCanonicalAddressesMatchWallet: vi.fn(),
+}));
+
 // Mock notifications
 vi.mock("../../../../../src/websocket/notifications", () => ({
   walletLog: vi.fn(),

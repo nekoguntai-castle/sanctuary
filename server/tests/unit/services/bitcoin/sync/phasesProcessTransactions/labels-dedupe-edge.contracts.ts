@@ -245,8 +245,11 @@ export function registerProcessTransactionLabelsDedupeEdgeTests(walletId: string
         }),
       );
 
-      expect(mockElectrumClient.getTransaction).toHaveBeenCalledWith(prevFetchNullTxid);
-      expect(mockElectrumClient.getTransaction).toHaveBeenCalledWith(prevFetchAddrTxid);
+      expect(mockElectrumClient.getTransactionsBatch).toHaveBeenNthCalledWith(
+        2,
+        expect.arrayContaining([prevFetchNullTxid, prevFetchAddrTxid]),
+        false,
+      );
 
       const inputRows = mockPrismaClient.transactionInput.createMany.mock.calls.at(-1)?.[0]?.data || [];
       expect(inputRows.some((row: any) => row.txid === prevBatchTxid)).toBe(true);

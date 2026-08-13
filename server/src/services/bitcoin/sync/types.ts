@@ -102,6 +102,8 @@ export interface SyncContext {
   walletAddressSet: Set<string>;
   addressMap: Map<string, Address>;
   addressToDerivationPath: Map<string, string>;
+  /** Independently re-derived canonical script ownership, keyed by lowercase script hex. */
+  walletScriptToAddress: Map<string, Address>;
 
   // Phase outputs (accumulated)
   historyResults: Map<string, TxHistoryEntry[]>;
@@ -116,9 +118,10 @@ export interface SyncContext {
 
   // UTXO phase data
   utxoResults: Array<{ address: string; utxos: ElectrumUTXO[] }>;
-  successfullyFetchedAddresses: Set<string>;
   allUtxoKeys: Set<string>;
   utxoDataMap: Map<string, { address: string; utxo: ElectrumUTXO }>;
+  /** Exact wallet-owned outpoints consumed by accepted raw history inputs. */
+  authenticatedSpentOutpointKeys: Set<string>;
 
   // Results
   newTransactions: TransactionCreateData[];
@@ -133,6 +136,8 @@ export interface SyncContext {
 
   // Phase tracking
   completedPhases: string[];
+  /** Rejected remote evidence; checked only after safe accepted siblings persist. */
+  rejectedEvidenceCount: number;
 }
 
 /** Data for creating a new transaction */
@@ -232,5 +237,12 @@ export class SyncPipelineError extends Error {
   ) {
     super(`Sync pipeline failed at phase "${failedPhase}": ${cause.message}`);
     this.name = 'SyncPipelineError';
+  }
+}
+
+export class ReceiveEvidenceRetryableError extends Error {
+  constructor(public readonly rejectedCount: number) {
+    super('Receive evidence authentication was incomplete; retry required');
+    this.name = 'ReceiveEvidenceRetryableError';
   }
 }

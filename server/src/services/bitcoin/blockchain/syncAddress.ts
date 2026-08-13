@@ -15,20 +15,36 @@ import { recalculateWalletBalances } from '../utils/balanceCalculation';
 import type { SyncAddressResult } from './types';
 import { storeTransactionIO } from './transactionIO';
 import { processHistoryTransactions } from './historyTransactions';
+import { assertCanonicalAddressesMatchWallet } from '../../wallet/canonicalAddressValidation';
+import {
+  authenticateRawTransactionOutput,
+  RawTransactionEvidenceError,
+} from '../rawTransactionEvidence';
+import {
+  authenticateTransactionDetails as authenticateRawDetails,
+  type AuthenticatedTransactionDetails,
+  type ReceiveEvidenceFailure,
+  type ReceiveEvidenceFailureReason,
+} from './receiveEvidenceAuthentication';
 
 const log = createLogger('BITCOIN:SVC_SYNC_ADDRESS');
 const TRANSACTION_FETCH_BATCH_SIZE = 100;
 
 type AddressHistoryItem = { tx_hash: string; height: number };
 type AddressRecord = NonNullable<Awaited<ReturnType<typeof addressRepository.findByIdWithWallet>>>;
-type TransactionDetailsLike = {
-  vin?: TransactionInput[];
-  vout?: TransactionOutput[];
-  time?: number;
-};
+type TransactionDetailsLike = AuthenticatedTransactionDetails;
 type TransactionDetailsMap = Map<string, TransactionDetailsLike>;
 type UtxoRecord = { tx_hash: string; tx_pos: number; height: number; value: number };
 type UtxoCreateInput = Parameters<typeof utxoRepository.createMany>[0][number];
+type EvidenceFailureReason = ReceiveEvidenceFailureReason;
+type EvidenceFailure = ReceiveEvidenceFailure;
+
+export class ReceiveEvidenceRetryableError extends Error {
+  constructor(failureCount: number) {
+    super(`Receive evidence authentication failed for ${failureCount} item(s); retry required`);
+    this.name = 'ReceiveEvidenceRetryableError';
+  }
+}
 
 /**
  * Calculate confirmations for a transaction (internal helper)
@@ -49,21 +65,33 @@ function getAddressNetwork(addressRecord: AddressRecord): BitcoinNetwork {
   return (addressRecord.wallet.network as BitcoinNetwork) || 'mainnet';
 }
 
-async function loadWalletAddressSet(walletId: string): Promise<Set<string>> {
-  const walletAddressStrings = await addressRepository.findAddressStrings(walletId);
-  return new Set(walletAddressStrings);
+async function loadWalletAddressSet(addressRecord: AddressRecord): Promise<Set<string>> {
+  const addresses = await addressRepository.findByWalletId(addressRecord.walletId);
+  assertCanonicalAddressesMatchWallet(addressRecord.wallet, addresses);
+  if (!addresses.some(address => address.address === addressRecord.address)) {
+    throw new Error('Canonical wallet address inventory changed during sync');
+  }
+  return new Set(addresses.map(address => address.address));
 }
 
 async function fetchHistoryTransactionDetails(
   client: NodeClientInterface,
-  history: AddressHistoryItem[]
+  history: AddressHistoryItem[],
+  network: BitcoinNetwork,
+  failures: EvidenceFailure[],
 ): Promise<TransactionDetailsMap> {
   const historyTxIds = [...new Set(history.map(h => h.tx_hash))];
-  const txDetailsMap = await fetchTransactionsInBatches(client, historyTxIds);
+  const txDetailsMap = await fetchTransactionsInBatches(client, historyTxIds, network, failures);
   const prevTxIdsNeeded = collectPreviousTxIds(history, txDetailsMap);
 
   if (prevTxIdsNeeded.size > 0) {
-    const prevTxDetails = await fetchTransactionsInBatches(client, [...prevTxIdsNeeded]);
+    const prevTxDetails = await fetchTransactionsInBatches(
+      client,
+      [...prevTxIdsNeeded],
+      network,
+      failures,
+      false,
+    );
     mergeTransactionDetails(txDetailsMap, prevTxDetails);
     log.debug(`[BLOCKCHAIN] Batch fetched ${prevTxIdsNeeded.size} previous transactions for input lookups`);
   }
@@ -73,19 +101,62 @@ async function fetchHistoryTransactionDetails(
 
 async function fetchTransactionsInBatches(
   client: NodeClientInterface,
-  txids: string[]
+  txids: string[],
+  network: BitcoinNetwork,
+  failures: EvidenceFailure[],
+  recordMissing: boolean = true,
 ): Promise<TransactionDetailsMap> {
   const details: TransactionDetailsMap = new Map();
 
   for (let offset = 0; offset < txids.length; offset += TRANSACTION_FETCH_BATCH_SIZE) {
+    const requestedTxids = txids.slice(offset, offset + TRANSACTION_FETCH_BATCH_SIZE);
     const batch = await client.getTransactionsBatch(
-      txids.slice(offset, offset + TRANSACTION_FETCH_BATCH_SIZE),
+      requestedTxids,
       true
     );
-    mergeTransactionDetails(details, batch);
+    for (const txid of requestedTxids) {
+      const candidate = batch.get(txid);
+      if (!candidate && !recordMissing) continue;
+      const authenticated = authenticateTransactionDetails(txid, candidate, network, failures);
+      if (authenticated) details.set(txid, authenticated);
+    }
   }
 
   return details;
+}
+
+function recordEvidenceFailure(
+  failures: EvidenceFailure[],
+  failure: EvidenceFailure,
+): void {
+  failures.push(failure);
+  log.warn('[BLOCKCHAIN] Receive evidence rejected', failure);
+}
+
+function recordFailClosed(
+  failures: EvidenceFailure[],
+  failure: EvidenceFailure,
+): void {
+  recordEvidenceFailure(failures, failure);
+}
+
+function authenticateTransactionDetails(
+  expectedTxid: string,
+  candidate: unknown,
+  network: BitcoinNetwork,
+  failures: EvidenceFailure[],
+): TransactionDetailsLike | null {
+  try {
+    return authenticateRawDetails(expectedTxid, candidate, network);
+  } catch (error) {
+    const reason: EvidenceFailureReason = candidate === undefined
+      ? 'missing_transaction'
+      : error instanceof RawTransactionEvidenceError
+      ? error.reason
+      : 'invalid_transaction_shape';
+    recordEvidenceFailure(failures, { txid: expectedTxid, reason });
+    return null;
+  }
 }
 
 function collectPreviousTxIds(
@@ -108,12 +179,8 @@ function collectPreviousTxIds(
 }
 
 function getPreviousTxIdNeeded(input: TransactionInput, txDetailsMap: TransactionDetailsMap): string | null {
-  const inlineAddress = input.prevout?.scriptPubKey?.address
-    || input.prevout?.scriptPubKey?.addresses?.[0];
-  const inlineValue = input.prevout?.value;
   if (
     input.coinbase
-    || (inlineAddress && inlineValue !== undefined)
     || !input.txid
     || txDetailsMap.has(input.txid)
   ) {
@@ -129,20 +196,39 @@ function mergeTransactionDetails(target: TransactionDetailsMap, source: Transact
   }
 }
 
-async function processUtxos(
+async function fetchAuthenticatedUtxos(
   client: NodeClientInterface,
   txDetailsMap: TransactionDetailsMap,
-  addressRecord: AddressRecord,
-  network: BitcoinNetwork
-): Promise<number> {
-  const utxos = await client.getAddressUTXOs(addressRecord.address);
-  await fetchMissingUtxoTransactions(client, utxos, txDetailsMap);
+  network: BitcoinNetwork,
+  address: string,
+  canonicalScriptPubKey: string,
+  failures: EvidenceFailure[],
+): Promise<AuthenticatedUtxo[]> {
+  const utxos = await client.getAddressUTXOs(address);
+  await fetchMissingUtxoTransactions(client, utxos, txDetailsMap, network, failures);
+  return authenticateUtxos(
+    utxos,
+    txDetailsMap,
+    canonicalScriptPubKey,
+    failures,
+  );
+}
 
+async function persistAuthenticatedUtxos(
+  authenticatedUtxos: AuthenticatedUtxo[],
+  addressRecord: AddressRecord,
+  network: BitcoinNetwork,
+): Promise<number> {
   const existingUtxoSet = await utxoRepository.findExistingByOutpoints(
     addressRecord.walletId,
-    utxos.map(utxo => ({ txid: utxo.tx_hash, vout: utxo.tx_pos }))
+    authenticatedUtxos.map(utxo => ({ txid: utxo.tx_hash, vout: utxo.tx_pos }))
   );
-  const utxosToCreate = await collectNewUtxos(utxos, existingUtxoSet, txDetailsMap, addressRecord, network);
+  const utxosToCreate = await collectNewUtxos(
+    authenticatedUtxos,
+    existingUtxoSet,
+    addressRecord,
+    network,
+  );
 
   if (utxosToCreate.length === 0) {
     return 0;
@@ -155,22 +241,63 @@ async function processUtxos(
 async function fetchMissingUtxoTransactions(
   client: NodeClientInterface,
   utxos: UtxoRecord[],
-  txDetailsMap: TransactionDetailsMap
+  txDetailsMap: TransactionDetailsMap,
+  network: BitcoinNetwork,
+  failures: EvidenceFailure[],
 ): Promise<void> {
   const utxoTxIdsNeeded = utxos
     .filter(utxo => !txDetailsMap.has(utxo.tx_hash))
     .map(utxo => utxo.tx_hash);
 
   if (utxoTxIdsNeeded.length > 0) {
-    const utxoTxDetails: TransactionDetailsMap = await client.getTransactionsBatch([...new Set(utxoTxIdsNeeded)], true);
+    const utxoTxDetails = await fetchTransactionsInBatches(
+      client,
+      [...new Set(utxoTxIdsNeeded)],
+      network,
+      failures,
+    );
     mergeTransactionDetails(txDetailsMap, utxoTxDetails);
   }
 }
 
-async function collectNewUtxos(
+type AuthenticatedUtxo = UtxoRecord & { scriptPubKey: string; amount: bigint };
+
+function authenticateUtxos(
   utxos: UtxoRecord[],
-  existingUtxoSet: Set<string>,
   txDetailsMap: TransactionDetailsMap,
+  canonicalScriptPubKey: string,
+  failures: EvidenceFailure[],
+): AuthenticatedUtxo[] {
+  const authenticated: AuthenticatedUtxo[] = [];
+  for (const utxo of utxos) {
+    const details = txDetailsMap.get(utxo.tx_hash);
+    if (!details) continue;
+    try {
+      const output = authenticateRawTransactionOutput({
+        expectedTxid: utxo.tx_hash,
+        rawHex: details.hex,
+        vout: utxo.tx_pos,
+        expectedValueSats: BigInt(utxo.value),
+        expectedScriptPubKeyHex: canonicalScriptPubKey,
+      });
+      authenticated.push({
+        ...utxo,
+        scriptPubKey: output.scriptPubKeyHex,
+        amount: output.valueSats,
+      });
+    } catch (error) {
+      const reason = error instanceof RawTransactionEvidenceError
+        ? error.reason
+        : 'invalid_transaction_shape';
+      recordFailClosed(failures, { txid: utxo.tx_hash, vout: utxo.tx_pos, reason });
+    }
+  }
+  return authenticated;
+}
+
+async function collectNewUtxos(
+  utxos: AuthenticatedUtxo[],
+  existingUtxoSet: Set<string>,
   addressRecord: AddressRecord,
   network: BitcoinNetwork
 ): Promise<UtxoCreateInput[]> {
@@ -180,16 +307,13 @@ async function collectNewUtxos(
     const key = `${utxo.tx_hash}:${utxo.tx_pos}`;
     if (existingUtxoSet.has(key)) continue;
 
-    const output = txDetailsMap.get(utxo.tx_hash)?.vout?.[utxo.tx_pos];
-    if (!output) continue;
-
     utxosToCreate.push({
       walletId: addressRecord.walletId,
       txid: utxo.tx_hash,
       vout: utxo.tx_pos,
       address: addressRecord.address,
-      amount: BigInt(utxo.value),
-      scriptPubKey: output.scriptPubKey.hex,
+      amount: utxo.amount,
+      scriptPubKey: utxo.scriptPubKey,
       confirmations: utxo.height > 0 ? await getConfirmations(utxo.height, network) : 0,
       blockHeight: utxo.height > 0 ? utxo.height : null,
       spent: false,
@@ -200,11 +324,11 @@ async function collectNewUtxos(
 }
 
 async function markAddressUsedIfNeeded(
-  history: AddressHistoryItem[],
+  hasAuthenticatedActivity: boolean,
   addressRecord: AddressRecord,
   addressId: string
 ): Promise<void> {
-  if (history.length > 0 && !addressRecord.used) {
+  if (hasAuthenticatedActivity && !addressRecord.used) {
     await addressRepository.markAsUsed(addressId);
   }
 }
@@ -225,11 +349,48 @@ async function storeTransactionIOForHistory(context: {
       context.addressRecord.walletId,
       context.history,
       context.walletAddressSet,
-      context.txDetailsMap
+      context.txDetailsMap,
+      { allowNetworkFetch: false }
     );
   } catch (ioError) {
-    log.warn(`[BLOCKCHAIN] Failed to store transaction I/O in address sync: ${ioError}`);
+    log.warn('[BLOCKCHAIN] Failed to store authenticated transaction I/O in address sync', {
+      error: getErrorMessage(ioError),
+    });
+    throw ioError;
   }
+}
+
+function filterAuthenticatedHistory(
+  history: AddressHistoryItem[],
+  txDetailsMap: TransactionDetailsMap,
+  canonicalScriptPubKey: string,
+  failures: EvidenceFailure[],
+): AddressHistoryItem[] {
+  const relevant: AddressHistoryItem[] = [];
+  for (const item of history) {
+    const details = txDetailsMap.get(item.tx_hash);
+    if (!details) continue;
+    const receivesToAddress = details.vout?.some(
+      output => output.scriptPubKey.hex === canonicalScriptPubKey,
+    ) === true;
+    const spendsFromAddress = details.vin?.some(input => {
+      if (input.coinbase) return false;
+      const inlineScript = input.prevout?.scriptPubKey?.hex;
+      if (inlineScript === canonicalScriptPubKey) return true;
+      return input.txid !== undefined
+        && input.vout !== undefined
+        && txDetailsMap.get(input.txid)?.vout?.[input.vout]?.scriptPubKey.hex === canonicalScriptPubKey;
+    }) === true;
+    if (receivesToAddress || spendsFromAddress) {
+      relevant.push(item);
+    } else {
+      recordEvidenceFailure(failures, {
+        txid: item.tx_hash,
+        reason: 'history_not_authenticated_for_address',
+      });
+    }
+  }
+  return relevant;
 }
 
 /**
@@ -243,30 +404,69 @@ export async function syncAddress(addressId: string): Promise<SyncAddressResult>
     throw new Error('Address not found');
   }
 
+  assertCanonicalAddressesMatchWallet(addressRecord.wallet, [addressRecord]);
+  const canonicalScriptPubKey = addressRecord.scriptPubKey;
+  if (!canonicalScriptPubKey) {
+    throw new Error('Canonical address script evidence is missing');
+  }
+
   const network = getAddressNetwork(addressRecord);
   const client = await getNodeClient(network);
 
   try {
+    const evidenceFailures: EvidenceFailure[] = [];
     const history = await client.getAddressHistory(addressRecord.address);
-    const walletAddressSet = await loadWalletAddressSet(addressRecord.walletId);
-    const txDetailsMap = await fetchHistoryTransactionDetails(client, history);
+    const walletAddressSet = await loadWalletAddressSet(addressRecord);
+    const txDetailsMap = await fetchHistoryTransactionDetails(
+      client,
+      history,
+      network,
+      evidenceFailures,
+    );
+    const authenticatedHistory = filterAuthenticatedHistory(
+      history,
+      txDetailsMap,
+      canonicalScriptPubKey,
+      evidenceFailures,
+    );
+    const authenticatedUtxos = await fetchAuthenticatedUtxos(
+      client,
+      txDetailsMap,
+      network,
+      addressRecord.address,
+      canonicalScriptPubKey,
+      evidenceFailures,
+    );
+
+    // A response set with any unauthenticated item is not a coherent snapshot.
+    // Stop before all persistence so a retry cannot expose a partial balance.
+    if (evidenceFailures.length > 0) {
+      throw new ReceiveEvidenceRetryableError(evidenceFailures.length);
+    }
 
     const transactionCount = await processHistoryTransactions({
-      history,
+      history: authenticatedHistory,
       txDetailsMap,
       addressRecord,
       walletAddressSet,
       network,
       getConfirmations,
-      warnMissingTransaction: txid => log.warn(`[BLOCKCHAIN] Transaction ${txid} not found in batch fetch`),
     });
-    const utxoCount = await processUtxos(client, txDetailsMap, addressRecord, network);
+    const utxoCount = await persistAuthenticatedUtxos(
+      authenticatedUtxos,
+      addressRecord,
+      network,
+    );
 
-    await markAddressUsedIfNeeded(history, addressRecord, addressId);
+    await markAddressUsedIfNeeded(
+      authenticatedHistory.length > 0 || authenticatedUtxos.length > 0,
+      addressRecord,
+      addressId,
+    );
     await storeTransactionIOForHistory({
       client,
       addressRecord,
-      history,
+      history: authenticatedHistory,
       walletAddressSet,
       txDetailsMap,
     });

@@ -18,6 +18,7 @@ import {
 import { getBlockTimestamp } from '../../../../../../src/services/bitcoin/utils/blockHeight';
 import { getNotificationService, walletLog } from '../../../../../../src/websocket/notifications';
 import { notifyNewTransactions } from '../../../../../../src/services/notifications/notificationService';
+import { fetchAuthenticatedTransactions } from '../../../../../../src/services/bitcoin/sync/evidenceAuthentication';
 
 export function registerProcessTransactionNotificationsRbfTests(walletId: string): void {
     it('should mark pending active RBF transactions as replaced when confirmed tx reuses input', async () => {
@@ -252,7 +253,7 @@ export function registerProcessTransactionNotificationsRbfTests(walletId: string
       });
 
       await expect(processTransactionsPhase(ctx)).resolves.toBeDefined();
-      expect(mockElectrumClient.getTransaction).toHaveBeenCalledWith(txid, true);
+      expect(mockElectrumClient.getTransaction).toHaveBeenCalledWith(txid, false);
       expect(mockPrismaClient.transaction.createManyAndReturn).not.toHaveBeenCalled();
     });
 
@@ -291,6 +292,31 @@ export function registerProcessTransactionNotificationsRbfTests(walletId: string
         if (batchCalls === 1) return new Map([[txidBatch[0], mainTx]]);
         throw new Error('prefetch failed');
       });
+      const authenticationMock = vi.mocked(fetchAuthenticatedTransactions);
+      authenticationMock.mockReset();
+      let authenticationCalls = 0;
+      authenticationMock.mockImplementation(async (syncContext, txids) => {
+        authenticationCalls += 1;
+        if (authenticationCalls === 2) throw new Error('prefetch failed');
+        let results;
+        try {
+          results = await syncContext.client.getTransactionsBatch([...txids], false);
+        } catch {
+          results = new Map();
+          for (const requestedTxid of txids) {
+            try {
+              results.set(requestedTxid, await syncContext.client.getTransaction(requestedTxid, false));
+            } catch { /* expected for missing fallback evidence */ }
+          }
+        }
+        const accepted = new Set<string>();
+        for (const [fetchedTxid, details] of results) {
+          if (!details) continue;
+          syncContext.txDetailsCache.set(fetchedTxid, details);
+          accepted.add(fetchedTxid);
+        }
+        return accepted;
+      });
       mockElectrumClient.getTransaction.mockImplementation(async (requestedTxid: string) => {
         if (requestedTxid === prevTxid) return prevTx;
         return null;
@@ -311,7 +337,29 @@ export function registerProcessTransactionNotificationsRbfTests(walletId: string
       await processTransactionsPhase(ctx);
 
       expect(mockElectrumClient.getTransactionsBatch).toHaveBeenCalledTimes(2);
-      expect(mockElectrumClient.getTransaction).toHaveBeenCalledWith(prevTxid);
+      expect(mockElectrumClient.getTransaction).toHaveBeenCalledWith(prevTxid, false);
       expect(mockPrismaClient.transaction.createManyAndReturn).toHaveBeenCalled();
+
+      authenticationMock.mockReset();
+      authenticationMock.mockImplementation(async (syncContext, txids) => {
+        let results;
+        try {
+          results = await syncContext.client.getTransactionsBatch([...txids], false);
+        } catch {
+          results = new Map();
+          for (const requestedTxid of txids) {
+            try {
+              results.set(requestedTxid, await syncContext.client.getTransaction(requestedTxid, false));
+            } catch { /* exercised by retry-rotation contracts */ }
+          }
+        }
+        const accepted = new Set<string>();
+        for (const [fetchedTxid, details] of results) {
+          if (!details) continue;
+          syncContext.txDetailsCache.set(fetchedTxid, details);
+          accepted.add(fetchedTxid);
+        }
+        return accepted;
+      });
     });
 }

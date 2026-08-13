@@ -11,6 +11,7 @@ import {
   processTransactionsPhase,
   type SyncContext,
 } from '../../../../../../src/services/bitcoin/sync';
+import { classifyTransactions } from '../../../../../../src/services/bitcoin/sync/phases/processTransactions/classification';
 import {
   correctMisclassifiedConsolidations,
   recalculateWalletBalances,
@@ -20,6 +21,58 @@ import { getNotificationService, walletLog } from '../../../../../../src/websock
 import { notifyNewTransactions } from '../../../../../../src/services/notifications/notificationService';
 
 export function registerProcessTransactionClassificationTests(walletId: string): void {
+    it('does not classify a requested history item without authenticated transaction details', async () => {
+      const txid = 'missing_authenticated_details'.padEnd(64, 'a');
+      const walletAddress = 'tb1q_missing_authenticated_details';
+      const ctx = createTestContext({
+        walletId,
+        historyResults: new Map([[walletAddress, [{ tx_hash: txid, height: 800000 }]]]),
+        addressMap: new Map([[walletAddress, { id: 'missing-details-address' } as any]]),
+        txDetailsCache: new Map() as any,
+      });
+
+      await expect(classifyTransactions(ctx, new Set([txid]))).resolves.toEqual([]);
+      expect(mockPrismaClient.transaction.createManyAndReturn).not.toHaveBeenCalled();
+    });
+
+    it('uses canonical script evidence instead of a conflicting decoded input address', async () => {
+      const txid = 'canonical_script_input'.padEnd(64, 'a');
+      const walletAddress = 'tb1q_canonical_script_wallet';
+      const externalAddress = 'tb1q_conflicting_decoded_address';
+      const walletScript = '0014' + 'ab'.repeat(20);
+      const recipientAddress = 'tb1q_canonical_script_recipient';
+      const transaction = createMockTransaction({
+        txid,
+        inputs: [{ txid: 'script_prev'.padEnd(64, 'b'), vout: 0, value: 0.001, address: externalAddress }],
+        outputs: [{ value: 0.0009, address: recipientAddress }],
+      });
+      transaction.vin[0].prevout!.scriptPubKey = { address: externalAddress, hex: walletScript };
+      mockElectrumClient.getTransactionsBatch.mockResolvedValue(new Map([[txid, transaction]]));
+
+      const ctx = createTestContext({
+        walletId,
+        client: mockElectrumClient as any,
+        newTxids: [txid],
+        historyResults: new Map([[walletAddress, [{ tx_hash: txid, height: 800000 }]]]),
+        walletAddressSet: new Set([walletAddress]),
+        walletScriptToAddress: new Map([[walletScript, {
+          id: 'canonical-script-address',
+          address: walletAddress,
+          scriptPubKey: walletScript,
+        } as any]]),
+        addressMap: new Map([[walletAddress, { id: 'canonical-script-address' } as any]]),
+        txDetailsCache: new Map() as any,
+      });
+
+      await processTransactionsPhase(ctx);
+
+      expect(mockPrismaClient.transaction.createManyAndReturn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: [expect.objectContaining({ txid, type: 'sent', amount: BigInt(-100000) })],
+        })
+      );
+    });
+
     it('skips balance work when no transaction candidates or durable repair remain', async () => {
       const ctx = createTestContext({
         walletId,
@@ -190,8 +243,7 @@ export function registerProcessTransactionClassificationTests(walletId: string):
         outputs: [{ value: 0.0009, address: externalAddress }],
       });
       Reflect.deleteProperty(transaction.vin[0].prevout!, 'value');
-      mockElectrumClient.getTransactionsBatch.mockResolvedValue(new Map([[txid, transaction]]));
-      mockElectrumClient.getTransaction.mockResolvedValue({
+      const previousTransaction = {
         txid: previousTxid,
         vin: [],
         vout: [{
@@ -199,7 +251,11 @@ export function registerProcessTransactionClassificationTests(walletId: string):
           n: 0,
           scriptPubKey: { address: walletAddress },
         }],
-      });
+      };
+      mockElectrumClient.getTransactionsBatch
+        .mockResolvedValueOnce(new Map([[txid, transaction]]))
+        .mockResolvedValueOnce(new Map([[previousTxid, previousTransaction]]));
+      mockElectrumClient.getTransaction.mockResolvedValue(previousTransaction);
 
       await processTransactionsPhase(createTestContext({
         walletId,
@@ -747,7 +803,7 @@ export function registerProcessTransactionClassificationTests(walletId: string):
 
       await processTransactionsPhase(ctx);
 
-      expect(mockElectrumClient.getTransaction).toHaveBeenCalledWith(txid, true);
+      expect(mockElectrumClient.getTransaction).toHaveBeenCalledWith(txid, false);
     });
 
     it('should update stats with processed transaction counts', async () => {

@@ -15,6 +15,16 @@ import { getBlockchainService } from './blockchainTestHarness';
 export function registerBlockchainRbfTests(): void {
   describe('RBF Sync Detection', () => {
     const walletId = 'test-wallet-id';
+    const walletAddress = 'tb1test';
+
+    const mockEmptyAddressEvidence = (): void => {
+      mockElectrumClient.getAddressHistoryBatch.mockResolvedValue(
+        new Map([[walletAddress, []]])
+      );
+      mockElectrumClient.getAddressUTXOsBatch.mockResolvedValue(
+        new Map([[walletAddress, []]])
+      );
+    };
 
     beforeEach(() => {
       resetPrismaMocks();
@@ -36,7 +46,7 @@ export function registerBlockchainRbfTests(): void {
 
         // Mock addresses
         mockPrismaClient.address.findMany.mockResolvedValue([
-          { address: 'tb1test', derivationPath: "m/84'/0'/0'/0/0", index: 0, used: false },
+          { address: walletAddress, derivationPath: "m/84'/0'/0'/0/0", index: 0, used: false },
         ]);
 
         // Mock pending transactions with inputs (for RBF cleanup)
@@ -71,7 +81,7 @@ export function registerBlockchainRbfTests(): void {
         });
 
         // Mock empty address history (no new transactions to process)
-        mockElectrumClient.getAddressHistoryBatch.mockResolvedValue(new Map());
+        mockEmptyAddressEvidence();
 
         // Run sync
         await getBlockchainService().syncWallet(walletId);
@@ -94,7 +104,7 @@ export function registerBlockchainRbfTests(): void {
         });
 
         mockPrismaClient.address.findMany.mockResolvedValue([
-          { address: 'tb1test', derivationPath: "m/84'/0'/0'/0/0", index: 0, used: false },
+          { address: walletAddress, derivationPath: "m/84'/0'/0'/0/0", index: 0, used: false },
         ]);
 
         // Pending transaction with inputs
@@ -122,7 +132,7 @@ export function registerBlockchainRbfTests(): void {
           return args;
         });
 
-        mockElectrumClient.getAddressHistoryBatch.mockResolvedValue(new Map());
+        mockEmptyAddressEvidence();
 
         await getBlockchainService().syncWallet(walletId);
 
@@ -145,7 +155,7 @@ export function registerBlockchainRbfTests(): void {
         });
 
         mockPrismaClient.address.findMany.mockResolvedValue([
-          { address: 'tb1test', derivationPath: "m/84'/0'/0'/0/0", index: 0, used: false },
+          { address: walletAddress, derivationPath: "m/84'/0'/0'/0/0", index: 0, used: false },
         ]);
 
         mockPrismaClient.transaction.findMany.mockImplementation(async (args) => {
@@ -177,7 +187,7 @@ export function registerBlockchainRbfTests(): void {
           return args;
         });
 
-        mockElectrumClient.getAddressHistoryBatch.mockResolvedValue(new Map());
+        mockEmptyAddressEvidence();
 
         await getBlockchainService().syncWallet(walletId);
 
@@ -198,7 +208,7 @@ export function registerBlockchainRbfTests(): void {
         });
 
         mockPrismaClient.address.findMany.mockResolvedValue([
-          { address: 'tb1test', derivationPath: "m/84'/0'/0'/0/0", index: 0, used: false },
+          { address: walletAddress, derivationPath: "m/84'/0'/0'/0/0", index: 0, used: false },
         ]);
 
         mockPrismaClient.transaction.findMany.mockImplementation(async (args) => {
@@ -222,7 +232,7 @@ export function registerBlockchainRbfTests(): void {
           return args;
         });
 
-        mockElectrumClient.getAddressHistoryBatch.mockResolvedValue(new Map());
+        mockEmptyAddressEvidence();
 
         await getBlockchainService().syncWallet(walletId);
 

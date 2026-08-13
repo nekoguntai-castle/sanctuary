@@ -152,7 +152,7 @@ export function registerBlockchainSyncWalletCoreTests(): void {
         [addresses[0].address, [{ tx_hash: txHash, height: 800000 }]],
       ]));
       mockElectrumClient.getAddressUTXOsBatch.mockResolvedValue(new Map([
-        [addresses[0].address, [{ txid: txHash, vout: 0, value: 100000, height: 800000 }]],
+        [addresses[0].address, [{ tx_hash: txHash, tx_pos: 0, value: 100000, height: 800000 }]],
       ]));
 
       // Return empty for existing transactions check (so new txs will be created)

@@ -9,8 +9,15 @@ import { createLogger } from '../../../../utils/logger';
 import { getErrorMessage } from '../../../../utils/errors';
 import { walletLog } from '../../../../websocket/notifications';
 import type { SyncContext } from '../types';
+import { authenticateRawTransactionOutput, RawTransactionEvidenceError } from '../../rawTransactionEvidence';
+import { fetchAuthenticatedTransactions } from '../evidenceAuthentication';
 
 const log = createLogger('BITCOIN:SVC_SYNC_UTXOS');
+
+const recordFailClosed = (ctx: SyncContext, reason: string): void => {
+  ctx.rejectedEvidenceCount += 1;
+  log.warn('[SYNC] Rejected unauthenticated UTXO evidence', { reason, count: 1 });
+};
 
 /** Number of addresses to fetch per batch RPC call */
 const BATCH_SIZE = 50;
@@ -41,10 +48,13 @@ export async function fetchUtxosPhase(ctx: SyncContext): Promise<SyncContext> {
 
     try {
       const batchResults = await client.getAddressUTXOsBatch(batchAddresses);
-      // Convert Map to array format and track successful fetches
-      for (const [addr, utxos] of batchResults) {
-        ctx.utxoResults.push({ address: addr, utxos });
-        ctx.successfullyFetchedAddresses.add(addr);
+      for (const addr of batchAddresses) {
+        const utxos = batchResults.get(addr);
+        if (utxos) {
+          await authenticateAddressUtxos(ctx, addr, utxos);
+        } else {
+          recordFailClosed(ctx, 'missing_utxo_result');
+        }
       }
     } catch (error) {
       log.warn(`[SYNC] Batch UTXO fetch failed, falling back to individual requests`, { error: getErrorMessage(error) });
@@ -53,11 +63,10 @@ export async function fetchUtxosPhase(ctx: SyncContext): Promise<SyncContext> {
       for (const addr of batchAddresses) {
         try {
           const utxos = await client.getAddressUTXOs(addr);
-          ctx.utxoResults.push({ address: addr, utxos });
-          ctx.successfullyFetchedAddresses.add(addr);
+          await authenticateAddressUtxos(ctx, addr, utxos);
         } catch (e) {
           log.warn(`[SYNC] Failed to get UTXOs for ${addr}`, { error: getErrorMessage(e) });
-          // Don't add to successfullyFetchedAddresses - we don't know the true state
+          recordFailClosed(ctx, 'utxo_fetch_failed');
         }
       }
     }
@@ -76,3 +85,45 @@ export async function fetchUtxosPhase(ctx: SyncContext): Promise<SyncContext> {
 
   return ctx;
 }
+
+const authenticateAddressUtxos = async (
+  ctx: SyncContext,
+  address: string,
+  utxos: SyncContext['utxoResults'][number]['utxos'],
+): Promise<void> => {
+  const addressRecord = ctx.addressMap.get(address);
+  const expectedScript = addressRecord?.scriptPubKey?.toLowerCase();
+  if (!expectedScript) {
+    recordFailClosed(ctx, 'missing_canonical_script');
+    return;
+  }
+
+  await fetchAuthenticatedTransactions(ctx, utxos.map(utxo => utxo.tx_hash));
+  const accepted = [] as typeof utxos;
+  for (const utxo of utxos) {
+    try {
+      const rawHex = ctx.txDetailsCache.get(utxo.tx_hash)?.hex;
+      if (!rawHex) throw new Error('missing_raw_transaction');
+      authenticateRawTransactionOutput({
+        expectedTxid: utxo.tx_hash,
+        rawHex,
+        vout: utxo.tx_pos,
+        expectedValueSats: BigInt(utxo.value),
+        expectedScriptPubKeyHex: expectedScript,
+      });
+      accepted.push(utxo);
+    } catch (error) {
+      recordFailClosed(
+        ctx,
+        error instanceof RawTransactionEvidenceError ? error.reason : 'missing_raw_transaction',
+      );
+    }
+  }
+
+  // Accepted siblings remain useful, but any invalid member makes omission
+  // non-authoritative for destructive spent/draft reconciliation.
+  ctx.utxoResults.push({ address, utxos: accepted });
+  // A successful listunspent response authenticates listed outputs, not the
+  // absence of an output. Spending requires authenticated transaction input
+  // evidence; omission alone must never delete prior state or drafts.
+};

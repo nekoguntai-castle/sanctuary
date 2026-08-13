@@ -258,7 +258,10 @@ const buildOutputRow = (
     return null;
   }
 
-  const isOurs = ctx.walletAddressSet.has(outputAddress);
+  const scriptPubKey = output.scriptPubKey?.hex?.toLowerCase();
+  const isOurs = scriptPubKey !== undefined && ctx.walletScriptToAddress.size > 0
+    ? ctx.walletScriptToAddress.has(scriptPubKey)
+    : ctx.walletAddressSet.has(outputAddress);
 
   return {
     transactionId: txRecord.id,

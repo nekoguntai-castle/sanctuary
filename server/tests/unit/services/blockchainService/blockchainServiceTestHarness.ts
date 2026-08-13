@@ -89,7 +89,10 @@ export const mockNodeClient = {
   getAddressHistory: vi.fn<any>(),
   getAddressHistoryBatch: vi.fn<any>(),
   getTransaction: vi.fn<any>(),
-  getTransactionsBatch: vi.fn<any>(),
+  getTransactionsBatch: vi.fn<any>(async (txids: string[]) => new Map(
+    (await Promise.all(txids.map(async txid => [txid, await (mockNodeClient.getTransaction as any)(txid)] as const)))
+      .filter(([, details]) => details !== undefined && details !== null),
+  )),
   getAddressUTXOs: vi.fn<any>(),
   getAddressUTXOsBatch: vi.fn<any>(),
   getAddressBalance: vi.fn<(address: string) => Promise<{ confirmed: number; unconfirmed: number }>>(),
@@ -103,6 +106,52 @@ export const mockNodeClient = {
 vi.mock('../../../../src/services/bitcoin/nodeClient', () => ({
   getNodeClient: vi.fn(() => Promise.resolve(mockNodeClient)),
 }));
+
+vi.mock('../../../../src/services/wallet/canonicalAddressValidation', () => ({
+  assertCanonicalAddressesMatchWallet: vi.fn((_wallet, addresses) => {
+    for (const address of addresses) {
+      address.scriptPubKey ??= `0014${'00'.repeat(20)}`;
+    }
+  }),
+}));
+
+vi.mock('../../../../src/services/bitcoin/sync/evidenceAuthentication', () => ({
+  authenticateHistoryResults: vi.fn(),
+  fetchAuthenticatedTransactions: vi.fn(async (ctx, txids) => {
+    const accepted = new Set<string>();
+    let results = new Map<string, any>();
+    try {
+      results = await ctx.client.getTransactionsBatch(txids, false) ?? results;
+    } catch { /* legacy fallback contracts */ }
+    for (const txid of txids) {
+      const details = results.get(txid)
+        ?? await ctx.client.getTransaction(txid, false).catch(() => undefined);
+      if (!details) continue;
+      ctx.txDetailsCache.set(txid, details);
+      accepted.add(txid);
+    }
+    return accepted;
+  }),
+}));
+
+vi.mock('../../../../src/services/bitcoin/blockchain/receiveEvidenceAuthentication', () => ({
+  authenticateTransactionDetails: vi.fn((_expectedTxid, candidate) => candidate),
+}));
+
+vi.mock('../../../../src/services/bitcoin/sync/phases/receiveEvidenceGate', () => ({
+  receiveEvidenceGatePhase: vi.fn(async ctx => ctx),
+}));
+
+vi.mock('../../../../src/services/bitcoin/rawTransactionEvidence', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../../src/services/bitcoin/rawTransactionEvidence')>();
+  return {
+    ...actual,
+    authenticateRawTransactionOutput: vi.fn((input: any) => ({
+      valueSats: input.expectedValueSats,
+      scriptPubKeyHex: input.expectedScriptPubKeyHex,
+    })),
+  };
+});
 
 export const mockElectrumPool = {
   isProxyEnabled: vi.fn<any>(() => false),

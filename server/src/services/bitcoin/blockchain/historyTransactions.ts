@@ -53,7 +53,6 @@ interface HistoryTransactionContext {
   walletAddressSet: Set<string>;
   network: BitcoinNetwork;
   getConfirmations: ConfirmationsLoader;
-  warnMissingTransaction: (txid: string) => void;
 }
 
 const getScriptPubKeyAddress = (source: ScriptPubKeySource): string | undefined => {
@@ -254,10 +253,7 @@ const processHistoryTransaction = async (
   context: HistoryTransactionContext
 ): Promise<'created' | 'repaired' | 'unchanged' | null> => {
   const txDetails = context.txDetailsMap.get(item.tx_hash);
-  if (!txDetails) {
-    context.warnMissingTransaction(item.tx_hash);
-    return null;
-  }
+  if (!txDetails) return null;
 
   const outputs = txDetails.vout || [];
   const inputs = txDetails.vin || [];

@@ -32,21 +32,12 @@ describe('Blockchain Service - Transaction Detection', () => {
       const txDetails = {
         txid: 'abc123',
         time: 1704067200,
-        vin: [
-          {
-            txid: 'prev-tx',
-            vout: 0,
-            prevout: {
-              value: 0.2,
-              scriptPubKey: { address: 'bc1qexternal' },
-            },
-          },
-        ],
+        vin: [{ coinbase: '00' }],
         vout: [
           {
             value: 0.1,
             n: 0,
-            scriptPubKey: { address: 'bc1qtest123', hex: '0014test' },
+            scriptPubKey: { address: 'bc1qtest123', hex: `0014${'00'.repeat(20)}` },
           },
           {
             value: 0.09,
