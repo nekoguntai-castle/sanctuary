@@ -199,7 +199,9 @@ jobs:
       - name: Verify Node.js toolchain
         uses: ./.github/actions/setup-node-toolchain
       - name: Install locked report dependencies
-        run: npm ci --ignore-scripts
+        run: |
+          npm ci --ignore-scripts
+          npm --workspace shared run build
       - name: Generate revision-bound compatibility evidence
         env:
           # This repository variable is protected outside the candidate tree.
