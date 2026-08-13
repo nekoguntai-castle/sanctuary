@@ -140,10 +140,11 @@ apply_upgrade_test_network_defaults
 TEST_RUNTIME_DIR="${SANCTUARY_RUNTIME_DIR:-$TEST_ROOT/sanctuary-upgrade-runtime-${TEST_ID}}"
 TEST_SSL_DIR="${SANCTUARY_SSL_DIR:-$TEST_RUNTIME_DIR/ssl}"
 TEST_COMPOSE_SSL_DIR="${SANCTUARY_COMPOSE_SSL_DIR:-$(docker_visible_path "$TEST_SSL_DIR")}"
-# Same treatment as the SSL directory: give compose a path the engine can read.
-# Without this the monitoring overlay mounts /workspace/... and rootless Podman
-# fails with "mkdir /workspace: permission denied" (run 8833).
+# Same treatment as the SSL directory: give compose paths the engine can read.
+# Without this the monitoring and Tor overlays mount /workspace/... and
+# rootless Podman fails with "mkdir /workspace: permission denied".
 export SANCTUARY_MONITORING_CONFIG_DIR="${SANCTUARY_MONITORING_CONFIG_DIR:-$(monitoring_config_dir_for_compose "$TARGET_PROJECT_ROOT")}"
+export SANCTUARY_TOR_INGRESS_CONFIG="${SANCTUARY_TOR_INGRESS_CONFIG:-$(tor_ingress_config_for_compose "$TARGET_PROJECT_ROOT")}"
 TEST_HTTP_HOST=$(default_install_test_host)
 API_BASE_URL="https://${TEST_HTTP_HOST}:${HTTPS_PORT}"
 BROWSER_BASE_URL="https://${UPGRADE_BROWSER_HOST}:${HTTPS_PORT}"
@@ -371,34 +372,40 @@ run_install_script() {
     mkdir -p "$TEST_RUNTIME_DIR"
     isolate_legacy_optional_profile_compose "$project_dir" "$TARGET_PROJECT_ROOT"
 
-    # Scope the monitoring config directory to the checkout being installed. The
-    # variable is global but the lane installs two stacks with different config
-    # directories: run 8880 translated the target's path while the source
-    # install was the one that needed it, so the source still mounted
-    # /workspace/... and the engine could not see it. Restored on every exit so
-    # the two installs cannot leak each other's paths.
+    # Scope optional-profile bind sources to the checkout being installed. The
+    # variables are global but the lane installs two stacks with different
+    # config paths. Restore both on every exit so the installs cannot leak paths.
     local previous_monitoring_dir="${SANCTUARY_MONITORING_CONFIG_DIR:-}"
     local had_monitoring_dir="${SANCTUARY_MONITORING_CONFIG_DIR+set}"
+    local previous_tor_config="${SANCTUARY_TOR_INGRESS_CONFIG:-}"
+    local had_tor_config="${SANCTUARY_TOR_INGRESS_CONFIG+set}"
     SANCTUARY_MONITORING_CONFIG_DIR="$(monitoring_config_dir_for_compose "$project_dir")"
+    SANCTUARY_TOR_INGRESS_CONFIG="$(tor_ingress_config_for_compose "$project_dir")"
     export SANCTUARY_MONITORING_CONFIG_DIR
+    export SANCTUARY_TOR_INGRESS_CONFIG
 
-    restore_monitoring_config_dir() {
+    restore_optional_config_paths() {
         if [ -n "$had_monitoring_dir" ]; then
             export SANCTUARY_MONITORING_CONFIG_DIR="$previous_monitoring_dir"
         else
             unset SANCTUARY_MONITORING_CONFIG_DIR
         fi
+        if [ -n "$had_tor_config" ]; then
+            export SANCTUARY_TOR_INGRESS_CONFIG="$previous_tor_config"
+        else
+            unset SANCTUARY_TOR_INGRESS_CONFIG
+        fi
     }
 
     if run_install_script_attempt "$project_dir" "$install_log" false; then
         if ! install_log_has_buildkit_cache_corruption "$install_log"; then
-            restore_monitoring_config_dir
+            restore_optional_config_paths
             return 0
         fi
 
         log_warning "install.sh exited successfully after BuildKit cache corruption; retrying source install"
         if retry_install_script_after_cache_recovery "$project_dir" "$install_log"; then
-            restore_monitoring_config_dir
+            restore_optional_config_paths
             return 0
         fi
         exit_code=$?
@@ -406,14 +413,14 @@ run_install_script() {
         exit_code=$?
         if install_log_has_buildkit_cache_corruption "$install_log"; then
             if retry_install_script_after_cache_recovery "$project_dir" "$install_log"; then
-                restore_monitoring_config_dir
+                restore_optional_config_paths
                 return 0
             fi
             exit_code=$?
         fi
     fi
 
-    restore_monitoring_config_dir
+    restore_optional_config_paths
     log_error "install.sh failed for checkout: $project_dir"
     log_error "Install log: $install_log"
     return "$exit_code"

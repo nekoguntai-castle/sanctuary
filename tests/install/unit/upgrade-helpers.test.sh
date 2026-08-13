@@ -847,6 +847,48 @@ test_install_scopes_monitoring_config_dir_per_checkout() {
   return 0
 }
 
+test_install_scopes_tor_ingress_config_per_checkout() {
+  local lane="$PROJECT_ROOT/tests/install/e2e/upgrade-install.test.sh"
+  local body
+  body="$(awk '/^run_install_script\(\) \{/{f=1} f{print} f&&/^\}/{exit}' "$lane")"
+
+  if ! printf '%s\n' "$body" | grep -q 'SANCTUARY_TOR_INGRESS_CONFIG'; then
+    echo -e "${RED}ASSERTION FAILED:${NC} run_install_script must scope SANCTUARY_TOR_INGRESS_CONFIG to the checkout it installs"
+    return 1
+  fi
+  if ! printf '%s\n' "$body" | grep -q 'tor_ingress_config_for_compose "$project_dir"'; then
+    echo -e "${RED}ASSERTION FAILED:${NC} the scoped Tor value must be derived from the checkout being installed"
+    return 1
+  fi
+  return 0
+}
+
+test_tor_ingress_config_maps_workspace_volume() {
+  local fake_bin="$TEST_TMP_DIR/tor-bin"
+  local checkout="$TEST_TMP_DIR/source/repo"
+  local daemon_checkout="/var/lib/docker/volumes/workspace/_data/source/repo"
+  mkdir -p "$fake_bin" "$TEST_TMP_DIR/source/repo/docker/tor"
+  : > "$TEST_TMP_DIR/source/repo/docker/tor/payjoin-ingress.conf"
+  cat > "$fake_bin/docker" <<'EOF'
+#!/bin/sh
+if [ "$1" = "inspect" ]; then
+  printf '%s\t%s\n' "REPLACE_SOURCE" "REPLACE_DESTINATION"
+  exit 0
+fi
+exit 1
+EOF
+  sed -i "s|REPLACE_SOURCE|$daemon_checkout|; s|REPLACE_DESTINATION|$checkout|" "$fake_bin/docker"
+  chmod +x "$fake_bin/docker"
+
+  local mapped
+  mapped="$(HOSTNAME="test-container" PATH="$fake_bin:$PATH" \
+    bash -c 'source "$1"; tor_ingress_config_for_compose "$2"' _ \
+    "$PROJECT_ROOT/tests/install/utils/helpers.sh" "$checkout")"
+
+  assert_equals "$daemon_checkout/docker/tor/payjoin-ingress.conf" "$mapped" \
+    "Tor ingress config should map to the daemon-visible source file"
+}
+
 test_current_compose_builds_shared_backend_image_once() {
   local services
   services="$(shared_backend_services_with_build "$PROJECT_ROOT/docker-compose.yml" | paste -sd ',' -)"
@@ -1588,6 +1630,8 @@ main() {
   run_test "upgrade selection manifest records resolved refs" test_upgrade_selection_manifest_records_resolved_refs
   run_test "legacy optional profile compose is isolated" test_legacy_optional_profile_compose_is_isolated
   run_test "install scopes monitoring config dir per checkout" test_install_scopes_monitoring_config_dir_per_checkout
+  run_test "install scopes Tor ingress config per checkout" test_install_scopes_tor_ingress_config_per_checkout
+  run_test "Tor ingress config maps workspace volume" test_tor_ingress_config_maps_workspace_volume
   run_test "monitoring sync stands down when reachable" test_monitoring_sync_stands_down_when_configs_are_reachable
   run_test "monitoring sync still runs when untranslated" test_monitoring_sync_still_runs_when_path_is_untranslated
   run_test "upgrade teardown captures diagnostics before cleanup" test_upgrade_teardown_captures_diagnostics_before_cleanup

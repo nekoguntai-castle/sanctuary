@@ -17,7 +17,12 @@ describe("Tor Payjoin ingress", () => {
     );
     expect(compose).not.toMatch(/torproxy\.sh[^\n]*backend/);
     expect(compose).not.toMatch(/getent hosts backend/);
-    expect(compose).toContain("- ./docker/tor/payjoin-ingress.conf:/etc/nginx/conf.d/default.conf:ro");
+    expect(compose).toContain(
+      "- ${SANCTUARY_TOR_INGRESS_CONFIG:-./docker/tor/payjoin-ingress.conf}:/etc/nginx/conf.d/default.conf:ro",
+    );
+    expect(compose).not.toContain(
+      "- ./docker/tor/payjoin-ingress.conf:/etc/nginx/conf.d/default.conf:ro",
+    );
     expect(compose).toContain("tor_hidden_service:/var/lib/tor/hidden_service");
   });
 

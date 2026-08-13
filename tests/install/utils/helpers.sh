@@ -515,6 +515,14 @@ monitoring_config_dir_for_compose() {
     docker_visible_path "$src" 2>/dev/null || printf '%s\n' "$src"
 }
 
+tor_ingress_config_for_compose() {
+    local project_dir="$1"
+    local src="$project_dir/docker/tor/payjoin-ingress.conf"
+
+    [ -f "$src" ] || { printf '%s\n' "$src"; return 0; }
+    docker_visible_path "$src" 2>/dev/null || printf '%s\n' "$src"
+}
+
 sync_monitoring_configs_to_daemon() {
     local project_dir="$1"
     local src="$project_dir/docker/monitoring"
