@@ -53,7 +53,7 @@ The full audit report contains recovery-sensitive wallet evidence and must remai
   "schemaVersion": "sanctuary.wallet-safety-release-review.v1",
   "sourceCommit": "<40-character release commit>",
   "audit": {
-    "schemaVersion": "sanctuary.wallet-safety-audit.v1",
+    "schemaVersion": "sanctuary.wallet-safety-audit.v2",
     "generatedAt": "2026-08-09T10:00:00.000Z",
     "result": "clean",
     "exitCode": 0,

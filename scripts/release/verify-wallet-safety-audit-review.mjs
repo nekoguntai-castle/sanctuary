@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { matchesClassifierPath } from '../ci/check-wallet-safety-classifier.mjs';
 
 export const REVIEW_SCHEMA_VERSION = 'sanctuary.wallet-safety-release-review.v1';
-export const AUDIT_SCHEMA_VERSION = 'sanctuary.wallet-safety-audit.v1';
+export const AUDIT_SCHEMA_VERSION = 'sanctuary.wallet-safety-audit.v2';
 
 function exactKeys(value, expected, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {

@@ -71,7 +71,7 @@
     "test:ops:phase2": "./scripts/run-integration-tests.sh tests/integration/ops/phase2OperationsProof.integration.test.ts",
     "test:all": "npm run test:run && npm run test:backend",
     "test:backend": "cd server && npm test",
-    "audit:wallet-safety": "npm --prefix server run audit:wallet-safety --",
+    "audit:wallet-safety": "tsx server/scripts/audit-wallet-safety.ts",
     "test:backend:watch": "cd server && npm run test:watch",
     "test:backend:coverage": "cd server && npm run test:coverage",
     "test:docker": "docker compose --project-directory . -f docker/compose/test.yml run --rm test-all",

@@ -168,7 +168,7 @@ run_publish() {
         schemaVersion: "sanctuary.wallet-safety-release-review.v1",
         sourceCommit: $source_commit,
         audit: {
-          schemaVersion: "sanctuary.wallet-safety-audit.v1",
+          schemaVersion: "sanctuary.wallet-safety-audit.v2",
           generatedAt: $reviewed_at,
           result: "clean",
           exitCode: 0,

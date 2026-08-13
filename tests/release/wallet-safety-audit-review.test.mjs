@@ -88,6 +88,21 @@ test('accepts fresh independent clean-audit review evidence', () => {
   assert.deepEqual(validate(validEvidence()), validEvidence());
 });
 
+test('pins review receipts to the current v2 audit schema', () => {
+  assert.equal(AUDIT_SCHEMA_VERSION, 'sanctuary.wallet-safety-audit.v2');
+  const evidence = validEvidence();
+  evidence.audit.schemaVersion = 'sanctuary.wallet-safety-audit.v1';
+  assert.throws(() => validate(evidence), /unsupported audit schema version/);
+});
+
+test('root audit command invokes the CLI directly so npm forwards arguments once', () => {
+  const packageJson = JSON.parse(readFileSync(resolve(REPO_ROOT, 'package.json'), 'utf8'));
+  assert.equal(
+    packageJson.scripts['audit:wallet-safety'],
+    'tsx server/scripts/audit-wallet-safety.ts',
+  );
+});
+
 test('accepts explicitly reviewed findings with audit exit code 2', () => {
   const evidence = validEvidence();
   evidence.audit.result = 'findings_reviewed';
