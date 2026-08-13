@@ -7,7 +7,7 @@
  */
 
 import * as bitcoin from "bitcoinjs-lib";
-import { getNetwork } from "../utils";
+import { addressToOutputScript, getNetwork } from "../utils";
 import { getNodeClient } from "../nodeClient";
 import type { BitcoinNetwork } from "../networks";
 import { normalizeLegacyBitcoinNetwork } from "../networks";
@@ -75,7 +75,7 @@ export async function createBatchTransaction(
   const networkObj = getNetwork(network);
   const signingInfo = resolveWalletSigningInfo(wallet, "[ADVANCED_BATCH] ");
   const recipientScripts = recipients.map(recipient =>
-    bitcoin.address.toOutputScript(recipient.address, networkObj));
+    addressToOutputScript(recipient.address, network));
   const changeScript = transactionChangeScriptTemplate(signingInfo);
   const addressPathMap = await fetchAddressDerivationPaths(walletId, utxos.map(utxo => utxo.address));
   const spendEvidence = new Map(utxos.map(utxo => [
@@ -171,9 +171,9 @@ export async function createBatchTransaction(
   });
 
   // Add recipient outputs
-  for (const recipient of recipients) {
+  for (const [index, recipient] of recipients.entries()) {
     psbt.addOutput({
-      address: recipient.address,
+      script: recipientScripts[index],
       value: BigInt(recipient.amount),
     });
   }

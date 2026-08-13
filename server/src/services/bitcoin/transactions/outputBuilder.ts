@@ -22,6 +22,8 @@ const log = createLogger("BITCOIN:SVC_TX_OUTPUT");
 
 /**
  * Build all outputs (recipient, change, decoys) and add them to the PSBT in shuffled order.
+ * The caller must supply the exact network-validated recipient script so every
+ * address accepted by the production validator has identical send semantics.
  */
 export async function buildAndAddOutputs(
   psbt: bitcoin.Psbt,
@@ -32,6 +34,7 @@ export async function buildAndAddOutputs(
   dustThreshold: number,
   sendMax: boolean,
   preparedChangeOutputs: readonly PreparedChangeOutput[],
+  recipientScript: Uint8Array,
   decoyOutputs?: { enabled: boolean; count: number },
 ): Promise<{
   changeAddress?: string;
@@ -44,6 +47,7 @@ export async function buildAndAddOutputs(
   // Add recipient output
   pendingOutputs.push({
     address: recipient,
+    script: recipientScript,
     value: effectiveAmount,
     type: "recipient",
   });
@@ -80,10 +84,9 @@ export async function buildAndAddOutputs(
 
   // Add all outputs to PSBT in randomized order
   for (const output of pendingOutputs) {
-    psbt.addOutput({
-      address: output.address,
-      value: BigInt(output.value),
-    });
+    psbt.addOutput(output.script
+      ? { script: output.script, value: BigInt(output.value) }
+      : { address: output.address, value: BigInt(output.value) });
   }
 
   return { changeAddress, decoyOutputsResult, actualFee, actualChangeAmount };

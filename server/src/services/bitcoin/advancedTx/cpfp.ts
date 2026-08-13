@@ -10,7 +10,7 @@ import * as bitcoin from 'bitcoinjs-lib';
 import {
   WalletScriptType,
 } from '@sanctuary/shared/constants/walletIdentity';
-import { getNetwork } from '../utils';
+import { addressToOutputScript, getNetwork } from '../utils';
 import { getNodeClient } from '../nodeClient';
 import type { BitcoinNetwork } from '../networks';
 import { normalizeLegacyBitcoinNetwork } from '../networks';
@@ -112,7 +112,7 @@ export async function createCPFPTransaction(
   if (!wallet) throw new Error('Wallet script identity is unavailable');
   if (!utxo.scriptPubKey) throw new Error('UTXO is missing scriptPubKey evidence');
   const networkObj = getNetwork(network);
-  const recipientScript = bitcoin.address.toOutputScript(recipientAddress, networkObj);
+  const recipientScript = addressToOutputScript(recipientAddress, network);
   const signingInfo = resolveWalletSigningInfo(wallet, '[CPFP] ');
   const addressPathMap = await fetchAddressDerivationPaths(walletId, [utxo.address]);
   const evidence = resolveTransactionSpendPolicy(
@@ -194,7 +194,7 @@ export async function createCPFPTransaction(
   });
 
   psbt.addOutput({
-    address: recipientAddress,
+    script: recipientScript,
     value: BigInt(outputValue),
   });
   const signingContext = await bindPsbtAccount(walletId, psbt);

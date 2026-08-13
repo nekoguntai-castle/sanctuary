@@ -4,13 +4,12 @@
  * Fee and transaction size estimation utilities.
  */
 
-import * as bitcoin from 'bitcoinjs-lib';
 import { systemSettingRepository, walletRepository } from '../../repositories';
 import { DEFAULT_DUST_THRESHOLD } from '../../constants';
 import { getErrorMessage } from '../../utils/errors';
 import { SystemSettingSchemas } from '../../utils/safeJson';
 import { selectUTXOsExact } from './utxoSelection';
-import { getNetwork } from './utils';
+import { addressToOutputScript, getNetwork } from './utils';
 import { normalizeLegacyBitcoinNetwork } from './networks';
 import { resolveWalletSigningInfo } from './transactions/psbtConstruction';
 import {
@@ -59,8 +58,9 @@ export async function estimateTransaction(
     const dustThreshold = await getDustThreshold();
     const wallet = await walletRepository.findByIdWithSigningDevices(walletId);
     if (!wallet) throw new Error('Wallet not found');
-    const network = getNetwork(normalizeLegacyBitcoinNetwork(wallet.network, 'mainnet'));
-    const recipientScript = bitcoin.address.toOutputScript(_recipient, network);
+    const networkName = normalizeLegacyBitcoinNetwork(wallet.network, 'mainnet');
+    const network = getNetwork(networkName);
+    const recipientScript = addressToOutputScript(_recipient, networkName);
     const signingInfo = resolveWalletSigningInfo(wallet, '[ESTIMATE] ');
     const selection = await selectUTXOsExact(
       walletId,

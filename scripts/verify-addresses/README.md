@@ -4,6 +4,10 @@ This package produces the checked-in address fixtures used by Sanctuary's
 funds-safety tests. A case is accepted only when all four required
 implementations agree exactly on both the address and output script:
 
+This is **independently executed implementation-consensus evidence**. It is not
+an official literal vector, self-generated integration evidence, emulator or
+protocol proof, or physical-device proof. Those tiers are never interchangeable.
+
 | Implementation | Independent input |
 | --- | --- |
 | Bitcoin Core 29.0 | Root private key plus the complete hardened and unhardened path in a descriptor |

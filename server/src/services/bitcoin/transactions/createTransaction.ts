@@ -11,7 +11,7 @@
  */
 
 import * as bitcoin from 'bitcoinjs-lib';
-import { getNetwork } from '../utils';
+import { addressToOutputScript, getNetwork } from '../utils';
 import { normalizeLegacyBitcoinNetwork } from '../networks';
 import { RBF_SEQUENCE } from '../advancedTx';
 import { walletRepository } from '../../../repositories';
@@ -82,7 +82,7 @@ export async function createTransaction(
 
   let recipientScript: Uint8Array;
   try {
-    recipientScript = bitcoin.address.toOutputScript(recipient, networkObj);
+    recipientScript = addressToOutputScript(recipient, network);
   } catch (error) {
     throw new Error('Invalid recipient address');
   }
@@ -168,7 +168,7 @@ export async function createTransaction(
     actualChangeAmount,
   } = await buildAndAddOutputs(
     psbt, walletId, recipient, effectiveAmount,
-    selection, dustThreshold, sendMax, preparedChangeOutputs, decoyOutputs
+    selection, dustThreshold, sendMax, preparedChangeOutputs, recipientScript, decoyOutputs
   );
 
   // When decoys are used, don't return changeAmount/changeAddress separately

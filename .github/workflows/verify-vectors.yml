@@ -169,6 +169,12 @@ jobs:
           --pool threads --maxWorkers=1 --no-file-parallelism
           tests/scripts/verifyAddresses
 
+      - name: Verify pinned address/key corpus projection
+        timeout-minutes: 2
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/address-key-corpus.log"
+          node scripts/generate-address-key-corpora.mjs --check
+
       - name: Run address derivation tests
         timeout-minutes: 5
         working-directory: server

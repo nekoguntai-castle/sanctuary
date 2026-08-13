@@ -47,6 +47,7 @@ export interface TransactionOutput {
  */
 export interface PendingOutput {
   address: string;
+  script?: Uint8Array;
   value: number;
   type: 'recipient' | 'change' | 'decoy';
 }

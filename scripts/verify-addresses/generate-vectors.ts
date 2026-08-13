@@ -243,6 +243,7 @@ function vectorsFromEvidence(
     const canonical = results.find(result => result.implementation === bitcoinjsImpl.name)!;
     if (!canonical.descriptor) throw new Error(`Missing public descriptor for ${testCase.id}`);
     const common = {
+      evidenceTier: 'independently-executed-implementation-consensus',
       caseId: testCase.id,
       description: testCase.description,
       network: testCase.chain,

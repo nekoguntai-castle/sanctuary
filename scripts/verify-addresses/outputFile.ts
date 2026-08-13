@@ -23,6 +23,7 @@ export interface AccountKeyEvidence {
 }
 
 export interface VerifiedSingleSigVector {
+  readonly evidenceTier: 'independently-executed-implementation-consensus';
   readonly caseId: string;
   readonly description: string;
   readonly seedId: string;
@@ -43,6 +44,7 @@ export interface VerifiedSingleSigVector {
 }
 
 export interface VerifiedMultisigVector {
+  readonly evidenceTier: 'independently-executed-implementation-consensus';
   readonly caseId: string;
   readonly description: string;
   readonly seedIds: readonly string[];
@@ -73,7 +75,7 @@ export function generateOutputFile(
   return `/**
  * VERIFIED ADDRESS VECTORS — GENERATED FILE
  *
- * Seed/root-to-account/address evidence accepted only after exact agreement by
+ * Independently executed implementation-consensus evidence accepted only after exact agreement by
  * Bitcoin Core, bitcoinjs-lib, bip_utils, and btcd. No address normalization is
  * permitted. Regenerate with scripts/verify-addresses/verify-repeatable.sh.
  */

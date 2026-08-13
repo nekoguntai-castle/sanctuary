@@ -30,6 +30,11 @@ describe('validateAddress', () => {
       // Taproot addresses are 62 characters (bc1p + 58 chars)
       expect(validateAddress('bc1pqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqs3wf0qm')).toBe(true);
     });
+
+    it('should pass higher witness versions through to definitive server validation', () => {
+      expect(validateAddress('BC1SW50QGDZ25J')).toBe(true);
+      expect(validateAddress('bc1zw508d6qejxtdg4y5r3zarvaryvaxxpcs')).toBe(true);
+    });
   });
 
   describe('Valid testnet addresses', () => {
@@ -46,6 +51,10 @@ describe('validateAddress', () => {
     it('should accept valid testnet SegWit addresses starting with tb1', () => {
       expect(validateAddress('tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx')).toBe(true);
       expect(validateAddress('tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7')).toBe(true);
+    });
+
+    it('should accept regtest SegWit address formatting starting with bcrt1', () => {
+      expect(validateAddress('bcrt1q6rz28mcfaxtmd6v789l9rrlrusdprr9pz3cppk')).toBe(true);
     });
   });
 
@@ -70,6 +79,10 @@ describe('validateAddress', () => {
       expect(validateAddress('1A1zP1eP5QGefi2DMPTfTL5SLmv7Div@Na')).toBe(false); // Contains @
     });
 
+    it('should reject mixed-case SegWit formatting', () => {
+      expect(validateAddress('bc1Qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4')).toBe(false);
+    });
+
     it('should reject addresses with wrong prefix', () => {
       expect(validateAddress('5A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa')).toBe(false);
       expect(validateAddress('xc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4')).toBe(false);
@@ -77,7 +90,6 @@ describe('validateAddress', () => {
 
     it('should reject addresses with wrong length for type', () => {
       expect(validateAddress('bc1qw508')).toBe(false);
-      expect(validateAddress('bc1p5d7rjq7g6rdk2yhzks9smlaqtedr4dekq08ge8ztwac72sfr9rusxg32')).toBe(false); // Too short for taproot
     });
 
     it('should reject completely invalid strings', () => {
@@ -125,6 +137,11 @@ describe('getAddressType', () => {
 
   it('should identify Taproot addresses', () => {
     expect(getAddressType('bc1p5d7rjq7g6rdk2yhzks9smlaqtedr4dekq08ge8ztwac72sfr9rusxg3297')).toBe('taproot');
+  });
+
+  it('should identify generic and regtest SegWit address formats', () => {
+    expect(getAddressType('BC1SW50QGDZ25J')).toBe('generic_segwit');
+    expect(getAddressType('bcrt1q6rz28mcfaxtmd6v789l9rrlrusdprr9pz3cppk')).toBe('regtest_segwit');
   });
 
   it('should identify testnet legacy addresses', () => {
@@ -244,6 +261,10 @@ describe('getAddressNetwork', () => {
     expect(getAddressNetwork('tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx')).toBe('testnet');
   });
 
+  it('should return regtest only for the bcrt HRP', () => {
+    expect(getAddressNetwork('bcrt1q6rz28mcfaxtmd6v789l9rrlrusdprr9pz3cppk')).toBe('regtest');
+  });
+
   it('should return null for invalid addresses', () => {
     expect(getAddressNetwork('invalid-address')).toBeNull();
     expect(getAddressNetwork('')).toBeNull();
@@ -304,11 +325,15 @@ describe('addressMatchesNetwork - Cross-Network Rejection', () => {
   });
 
   describe('Regtest wallet address validation', () => {
-    it('should accept testnet-format addresses on regtest wallets', () => {
-      // Regtest uses same address format as testnet
+    it('should accept only the regtest HRP for SegWit addresses', () => {
+      expect(addressMatchesNetwork('bcrt1q6rz28mcfaxtmd6v789l9rrlrusdprr9pz3cppk', 'regtest')).toBe(true);
+      expect(addressMatchesNetwork('tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx', 'regtest')).toBe(false);
+      expect(addressMatchesNetwork('bcrt1q6rz28mcfaxtmd6v789l9rrlrusdprr9pz3cppk', 'testnet')).toBe(false);
+    });
+
+    it('should retain shared test-family Base58 addresses on regtest', () => {
       expect(addressMatchesNetwork('mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn', 'regtest')).toBe(true);
       expect(addressMatchesNetwork('2MzQwSSnBHWHqSAqtTVQ6v47XtaisrJa1Vc', 'regtest')).toBe(true);
-      expect(addressMatchesNetwork('tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx', 'regtest')).toBe(true);
     });
 
     it('should reject mainnet addresses on regtest wallets', () => {

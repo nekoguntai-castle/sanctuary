@@ -161,6 +161,11 @@ describe("Shared Bitcoin Utilities", () => {
           ),
         ).toBe(true);
       });
+
+      it("should recognize higher witness versions for definitive server validation", () => {
+        expect(isValidAddressFormat("BC1SW50QGDZ25J")).toBe(true);
+        expect(isValidAddressFormat("bc1zw508d6qejxtdg4y5r3zarvaryvaxxpcs")).toBe(true);
+      });
     });
 
     describe("testnet addresses", () => {
@@ -184,6 +189,12 @@ describe("Shared Bitcoin Utilities", () => {
           isValidAddressFormat("tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx"),
         ).toBe(true);
       });
+
+      it("should recognize regtest SegWit addresses (bcrt1)", () => {
+        expect(
+          isValidAddressFormat("bcrt1q6rz28mcfaxtmd6v789l9rrlrusdprr9pz3cppk"),
+        ).toBe(true);
+      });
     });
 
     describe("invalid addresses", () => {
@@ -199,6 +210,12 @@ describe("Shared Bitcoin Utilities", () => {
         expect(isValidAddressFormat("5A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa")).toBe(
           false,
         );
+      });
+
+      it("should reject mixed-case SegWit addresses", () => {
+        expect(
+          isValidAddressFormat("bc1Qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"),
+        ).toBe(false);
       });
 
       it("should reject random strings", () => {
@@ -249,6 +266,13 @@ describe("Shared Bitcoin Utilities", () => {
       ).toBe("taproot");
     });
 
+    it("should detect higher witness versions without treating them as wallet policies", () => {
+      expect(detectAddressType("BC1SW50QGDZ25J")).toBe("generic_segwit");
+      expect(
+        detectAddressType("bcrt1q6rz28mcfaxtmd6v789l9rrlrusdprr9pz3cppk"),
+      ).toBe("regtest_segwit");
+    });
+
     it("should detect testnet legacy addresses", () => {
       expect(detectAddressType("mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn")).toBe(
         "testnet_legacy",
@@ -272,6 +296,7 @@ describe("Shared Bitcoin Utilities", () => {
 
     it("should return null for invalid addresses", () => {
       expect(detectAddressType("invalid")).toBeNull();
+      expect(detectAddressType("bc1Qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4")).toBeNull();
       expect(detectAddressType("")).toBeNull();
       expect(detectAddressType(null as any)).toBeNull();
     });
@@ -306,6 +331,9 @@ describe("Shared Bitcoin Utilities", () => {
       );
       expect(
         isMainnetAddress("tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx"),
+      ).toBe(false);
+      expect(
+        isMainnetAddress("bcrt1q6rz28mcfaxtmd6v789l9rrlrusdprr9pz3cppk"),
       ).toBe(false);
     });
 

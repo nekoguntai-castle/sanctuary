@@ -38,6 +38,13 @@
       "reviewWhenTouched": false,
       "lastReviewed": "2026-08-12"
     },
+    "server/tests/fixtures/generated/address-key-corpora.ts": {
+      "category": "test-fixture",
+      "owner": "address-verification",
+      "reason": "Deterministically generated projection of SHA-locked Bitcoin Core and BIP address/key corpora; regenerate from the pinned upstream sources rather than manually split or edit.",
+      "reviewWhenTouched": false,
+      "lastReviewed": "2026-08-12"
+    },
     "server/tests/helpers/hardwareSignedFixtureIntake.ts": {
       "category": "proof-harness",
       "owner": "hardware-wallet-proof",

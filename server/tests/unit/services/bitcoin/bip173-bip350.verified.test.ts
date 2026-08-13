@@ -22,12 +22,23 @@ import {
   VALID_BECH32_STRINGS,
   INVALID_BECH32_STRINGS,
   BIP173_VALID_ADDRESSES,
+  BIP173_SUPERSEDED_VALID_ADDRESSES,
   BIP173_INVALID_ADDRESSES,
   VALID_BECH32M_STRINGS,
   INVALID_BECH32M_STRINGS,
   BIP350_VALID_ADDRESSES,
   BIP350_INVALID_ADDRESSES,
 } from '@fixtures/bip173-bip350-test-vectors';
+import {
+  addressToOutputScript,
+  validateAddress,
+} from '../../../../src/services/bitcoin/utils';
+
+const PRODUCTION_NETWORKS = ['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest'] as const;
+
+const addressNetwork = (address: string): 'mainnet' | 'testnet3' => (
+  address.toLowerCase().startsWith('bc1') ? 'mainnet' : 'testnet3'
+);
 
 describe('BIP-173 Bech32 Encoding', () => {
   describe('Valid Bech32 strings', () => {
@@ -95,6 +106,13 @@ describe('BIP-173 SegWit v0 Address Validation', () => {
         const scriptPubKey = buildScriptPubKey(decoded!.version, decoded!.program);
         expect(scriptPubKey.toString('hex')).toBe(vector.scriptPubKeyHex);
       });
+
+      it(`production validator should accept ${vector.address.substring(0, 40)}...`, () => {
+        const network = addressNetwork(vector.address);
+        expect(validateAddress(vector.address, network).valid).toBe(true);
+        expect(addressToOutputScript(vector.address, network).toString('hex'))
+          .toBe(vector.scriptPubKeyHex);
+      });
     });
   });
 
@@ -103,6 +121,22 @@ describe('BIP-173 SegWit v0 Address Validation', () => {
       it(`should reject: ${vector.reason}`, () => {
         const decoded = decodeSegwitAddress(vector.address);
         expect(decoded).toBeNull();
+      });
+
+      it(`production validator should reject on every network: ${vector.reason}`, () => {
+        for (const network of PRODUCTION_NETWORKS) {
+          expect(validateAddress(vector.address, network).valid).toBe(false);
+        }
+      });
+    });
+  });
+
+  describe('Historical higher-version Bech32 rows superseded by BIP-350', () => {
+    BIP173_SUPERSEDED_VALID_ADDRESSES.forEach((vector) => {
+      it(`production validator should reject obsolete encoding: ${vector.address}`, () => {
+        for (const network of PRODUCTION_NETWORKS) {
+          expect(validateAddress(vector.address, network).valid).toBe(false);
+        }
       });
     });
   });
@@ -118,6 +152,13 @@ describe('BIP-350 SegWit Address Validation (v0 + v1+)', () => {
         const scriptPubKey = buildScriptPubKey(decoded!.version, decoded!.program);
         expect(scriptPubKey.toString('hex')).toBe(vector.scriptPubKeyHex);
       });
+
+      it(`production validator should emit exact script: ${vector.address.substring(0, 40)}...`, () => {
+        const network = addressNetwork(vector.address);
+        expect(validateAddress(vector.address, network).valid).toBe(true);
+        expect(addressToOutputScript(vector.address, network).toString('hex'))
+          .toBe(vector.scriptPubKeyHex);
+      });
     });
   });
 
@@ -126,6 +167,12 @@ describe('BIP-350 SegWit Address Validation (v0 + v1+)', () => {
       it(`should reject: ${vector.reason}`, () => {
         const decoded = decodeSegwitAddress(vector.address);
         expect(decoded).toBeNull();
+      });
+
+      it(`production validator should reject on every network: ${vector.reason}`, () => {
+        for (const network of PRODUCTION_NETWORKS) {
+          expect(validateAddress(vector.address, network).valid).toBe(false);
+        }
       });
     });
   });

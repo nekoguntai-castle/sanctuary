@@ -4,6 +4,14 @@ export const DERIVATION_MATRIX_SCHEMA_VERSION = 2 as const;
 export const DERIVATION_MATRIX_ID = 'sanctuary-seed-to-address-v2' as const;
 export const EXPECTED_DERIVATION_CASE_COUNT = 480 as const;
 
+/** Mutually exclusive provenance claims; later entries must never be inferred from earlier ones. */
+export type EvidenceTier =
+  | 'literal-official-vector'
+  | 'independently-executed-implementation-consensus'
+  | 'self-generated-integration-fixture'
+  | 'emulator-protocol-proof'
+  | 'physical-device-proof';
+
 export type ChainEnvironment = 'mainnet' | 'testnet3' | 'testnet4' | 'signet' | 'regtest';
 export type DerivationFamily = 'mainnet' | 'testnet';
 export type SingleSigScriptType = 'legacy' | 'nested_segwit' | 'native_segwit' | 'taproot';
@@ -132,6 +140,7 @@ export interface VerifierProvenance {
 }
 
 export interface VerifiedSingleSigVector {
+  readonly evidenceTier: 'independently-executed-implementation-consensus';
   readonly caseId: string;
   readonly description: string;
   readonly seedId: string;
@@ -152,6 +161,7 @@ export interface VerifiedSingleSigVector {
 }
 
 export interface VerifiedMultisigVector {
+  readonly evidenceTier: 'independently-executed-implementation-consensus';
   readonly caseId: string;
   readonly description: string;
   readonly seedIds: readonly string[];

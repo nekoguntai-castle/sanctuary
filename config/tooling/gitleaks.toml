@@ -42,6 +42,12 @@ paths = [
   # internal-key fields intentionally contain high-entropy protocol bytes;
   # generator/verifier source and every non-generated path remain scanned.
   '''(^|/)server/tests/fixtures/generated-signed-psbt-vectors\.ts$''',
+  # Generated compatibility view of the pinned BIP-0032 invalid-serialization
+  # corpus. It intentionally contains official xprv/xpub strings (including
+  # malformed private extended keys) that exercise fail-closed parsing. The
+  # SHA-locked upstream source, generator, and corpus drift checks remain
+  # scanned; no operational key material belongs in this generated file.
+  '''(^|/)server/tests/fixtures/bip32-test-vectors\.ts$''',
   # These two byte-identical address-vector files are generated deterministic
   # public Bitcoin protocol fixtures. Their SLIP-132/BIP32 payload and chain-code
   # metadata can resemble API keys; generator and verifier source remain scanned.

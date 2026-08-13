@@ -10,7 +10,8 @@
  */
 
 import * as bitcoin from 'bitcoinjs-lib';
-import { getNetwork } from '../utils';
+import { addressToOutputScript, getNetwork } from '../utils';
+import type { LegacyNetworkType } from '@sanctuary/shared/constants/bitcoin';
 import { normalizeLegacyBitcoinNetwork } from '../networks';
 import { RBF_SEQUENCE } from '../advancedTx';
 import { walletRepository, utxoRepository, systemSettingRepository } from '../../../repositories';
@@ -67,7 +68,7 @@ export async function createBatchTransaction(
 
   const network = normalizeLegacyBitcoinNetwork(wallet.network, 'mainnet');
   const networkObj = getNetwork(network);
-  assertValidBatchOutputs(outputs, networkObj);
+  const recipientScripts = parseBatchOutputScripts(outputs, network);
   const signingInfo = resolveWalletSigningInfo(wallet, '[BATCH] ');
   const resolveSpendPolicies = createTransactionSpendPolicyResolver(walletId, signingInfo, networkObj);
 
@@ -89,8 +90,6 @@ export async function createBatchTransaction(
   assertUtxosHaveScriptPubKeys(utxos);
   const spendPolicies = await resolveSpendPolicies(utxos);
   const changeScript = hasSendMax ? undefined : transactionChangeScriptTemplate(signingInfo);
-  const recipientScripts = outputs.map(output => bitcoin.address.toOutputScript(output.address, networkObj));
-
   // Calculate amounts and select UTXOs
   let calculation = calculateBatchAmounts(
     utxos,
@@ -150,7 +149,7 @@ export async function createBatchTransaction(
     accountNode,
     networkObj,
   });
-  addBatchOutputs(psbt, finalOutputs);
+  addBatchOutputs(psbt, finalOutputs, network);
 
   // Add change output if needed
   let changeAddress: string | undefined;
@@ -201,18 +200,21 @@ interface UtxoRecord {
   scriptPubKey: string;
 }
 
-function assertValidBatchOutputs(outputs: TransactionOutput[], networkObj: bitcoin.Network): void {
+function parseBatchOutputScripts(
+  outputs: TransactionOutput[],
+  network: LegacyNetworkType,
+): Uint8Array[] {
   if (outputs.length === 0) {
     throw new Error('At least one output is required');
   }
 
-  for (const output of outputs) {
+  return outputs.map((output) => {
     try {
-      bitcoin.address.toOutputScript(output.address, networkObj);
-    } catch (error) {
+      return addressToOutputScript(output.address, network);
+    } catch {
       throw new Error(`Invalid address: ${output.address}`);
     }
-  }
+  });
 }
 
 function assertUtxosHaveScriptPubKeys(utxos: UtxoRecord[]): void {
@@ -248,11 +250,12 @@ function addBatchInputs(
 
 function addBatchOutputs(
   psbt: bitcoin.Psbt,
-  outputs: Array<{ address: string; amount: number }>
+  outputs: Array<{ address: string; amount: number }>,
+  network: LegacyNetworkType,
 ): void {
   for (const output of outputs) {
     psbt.addOutput({
-      address: output.address,
+      script: addressToOutputScript(output.address, network),
       value: BigInt(output.amount),
     });
   }

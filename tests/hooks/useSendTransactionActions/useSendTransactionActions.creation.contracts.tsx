@@ -153,7 +153,7 @@ export const registerUseSendTransactionActionsCreationContracts = () => {
 
     it('validates recipient network before creating a transaction', async () => {
       const state = createState({
-        outputs: [{ address: `tb1q${'b'.repeat(38)}`, amount: '1000', sendMax: false }],
+        outputs: [{ address: 'tb1qcrh3yqn4nlleplcez2yndq2ry8h9ncg3qh7n54', amount: '1000', sendMax: false }],
       });
 
       const { result } = renderSendTransactionActions({ state });

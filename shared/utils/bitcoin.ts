@@ -73,11 +73,18 @@ export function formatBTCFromSats(sats: number, decimals: number = 8): string {
  * cryptographic validation.
  */
 export function isValidAddressFormat(address: string): boolean {
-  if (!address || address.length < 26) return false;
+  if (!address || typeof address !== "string") return false;
   const trimmed = address.trim();
+  if (!trimmed || hasMixedSegwitCase(trimmed)) return false;
   return Object.values(ADDRESS_PATTERNS).some((pattern) =>
     pattern.test(trimmed),
   );
+}
+
+/** BIP173/350 forbid mixing upper- and lowercase within one encoded address. */
+function hasMixedSegwitCase(address: string): boolean {
+  if (!/^(bc1|tb1|bcrt1)/i.test(address)) return false;
+  return address !== address.toLowerCase() && address !== address.toUpperCase();
 }
 
 /**
@@ -87,14 +94,17 @@ export function isValidAddressFormat(address: string): boolean {
 export function detectAddressType(address: string): AddressType | null {
   if (!address) return null;
   const trimmed = address.trim();
+  if (hasMixedSegwitCase(trimmed)) return null;
 
   if (ADDRESS_PATTERNS.legacy.test(trimmed)) return "legacy";
   if (ADDRESS_PATTERNS.p2sh.test(trimmed)) return "p2sh";
   if (ADDRESS_PATTERNS.nativeSegwit.test(trimmed)) return "native_segwit";
   if (ADDRESS_PATTERNS.taproot.test(trimmed)) return "taproot";
+  if (ADDRESS_PATTERNS.mainnetSegwit.test(trimmed)) return "generic_segwit";
   if (ADDRESS_PATTERNS.testnetLegacy.test(trimmed)) return "testnet_legacy";
   if (ADDRESS_PATTERNS.testnetP2sh.test(trimmed)) return "testnet_p2sh";
   if (ADDRESS_PATTERNS.testnetSegwit.test(trimmed)) return "testnet_segwit";
+  if (ADDRESS_PATTERNS.regtestSegwit.test(trimmed)) return "regtest_segwit";
 
   return null;
 }
@@ -104,7 +114,11 @@ export function detectAddressType(address: string): AddressType | null {
  */
 export function isMainnetAddress(address: string): boolean {
   const type = detectAddressType(address);
-  return type !== null && !type.startsWith("testnet");
+  return type === "legacy"
+    || type === "p2sh"
+    || type === "native_segwit"
+    || type === "taproot"
+    || type === "generic_segwit";
 }
 
 /**
@@ -112,7 +126,7 @@ export function isMainnetAddress(address: string): boolean {
  */
 export function isTestnetAddress(address: string): boolean {
   const type = detectAddressType(address);
-  return type !== null && type.startsWith("testnet");
+  return type !== null && type.startsWith("testnet_");
 }
 
 // ============================================================================

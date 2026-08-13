@@ -52,9 +52,8 @@ export function getAddressNetwork(address: string): 'mainnet' | 'testnet' | 'reg
   const trimmed = address.trim();
 
   if (isMainnetAddress(trimmed)) return 'mainnet';
+  if (detectAddressType(trimmed) === 'regtest_segwit') return 'regtest';
   if (isTestnetAddress(trimmed)) return 'testnet';
-  // Note: regtest addresses look the same as testnet addresses
-  // They can only be distinguished by context (i.e., which network the wallet is on)
   return null;
 }
 
@@ -68,10 +67,13 @@ export function addressMatchesNetwork(
   const addressNetwork = getAddressNetwork(address);
   if (!addressNetwork) return false;
 
-  // Testnet3, testnet4, signet, and regtest use the testnet address family.
-  if (network !== 'mainnet') {
-    return addressNetwork === 'testnet';
+  if (network === 'mainnet') return addressNetwork === 'mainnet';
+  if (network === 'regtest') {
+    // Regtest shares testnet Base58 prefixes, but SegWit uses the distinct bcrt HRP.
+    const addressType = detectAddressType(address);
+    return addressNetwork === 'regtest'
+      || addressType === 'testnet_legacy'
+      || addressType === 'testnet_p2sh';
   }
-
-  return addressNetwork === network;
+  return addressNetwork === 'testnet';
 }

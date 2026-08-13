@@ -38,15 +38,55 @@ const log = createLogger('BITCOIN:SVC_UTILS');
 bitcoin.initEccLib(ecc);
 
 /**
- * Validate Bitcoin address
+ * Decode a recipient address into the exact script the transaction will pay.
+ * Keeping validation and script construction on one production path prevents
+ * the UI, API validation, and transaction builder from disagreeing.
  */
+export function addressToOutputScript(
+  address: string,
+  network: LegacyNetworkType = 'mainnet'
+): Buffer {
+  const networkObject = getNetwork(network);
+
+  try {
+    return Buffer.from(bitcoin.address.toOutputScript(address, networkObject));
+  } catch (standardAddressError) {
+    return futureWitnessOutputScript(address, networkObject, standardAddressError);
+  }
+}
+
+function futureWitnessOutputScript(
+  address: string,
+  network: bitcoin.Network,
+  standardAddressError: unknown,
+): Buffer {
+  // BIP141 permits witness versions 0..16 and programs of 2..40 bytes;
+  // BIP350 requires Bech32m for v1+ (enforced by fromBech32). This generic
+  // recipient boundary does not enable a wallet-owned derivation policy.
+  const decoded = bitcoin.address.fromBech32(address);
+  if (
+    decoded.prefix !== network.bech32
+    || decoded.version < 1
+    || decoded.version > 16
+    || decoded.data.length < 2
+    || decoded.data.length > 40
+  ) {
+    throw standardAddressError;
+  }
+
+  return Buffer.concat([
+    Buffer.from([0x50 + decoded.version, decoded.data.length]),
+    Buffer.from(decoded.data),
+  ]);
+}
+
+/** Validate a recipient address against the selected chain environment. */
 export function validateAddress(
   address: string,
   network: LegacyNetworkType = 'mainnet'
 ): { valid: boolean; error?: string } {
   try {
-    const networkObj = getNetwork(network);
-    bitcoin.address.toOutputScript(address, networkObj);
+    addressToOutputScript(address, network);
     return { valid: true };
   } catch (error) {
     return {

@@ -1055,8 +1055,8 @@
         {
           "id": "decoy-construction-preserves-the-inclusive-count-boundary",
           "productionFile": "src/services/bitcoin/transactions/outputBuilder.ts",
-          "lineStart": 113,
-          "lineEnd": 116,
+          "lineStart": 116,
+          "lineEnd": 119,
           "requiredTests": [
             {
               "file": "tests/unit/services/bitcoin/transactionService.create.test.ts",
@@ -1071,8 +1071,8 @@
             {
               "id": "two-decoy-boundary-is-inclusive",
               "location": {
-                "start": { "line": 113, "column": 46 },
-                "end": { "line": 113, "column": 69 }
+                "start": { "line": 116, "column": 46 },
+                "end": { "line": 116, "column": 69 }
               },
               "mutatorName": "EqualityOperator",
               "replacement": "decoyOutputs.count > 2",
@@ -1090,8 +1090,8 @@
             {
               "id": "sub-boundary-decoys-stay-disabled",
               "location": {
-                "start": { "line": 113, "column": 46 },
-                "end": { "line": 113, "column": 69 }
+                "start": { "line": 116, "column": 46 },
+                "end": { "line": 116, "column": 69 }
               },
               "mutatorName": "ConditionalExpression",
               "replacement": "true",
@@ -1105,8 +1105,8 @@
         {
           "id": "constructed-decoy-count-matches-selection",
           "productionFile": "src/services/bitcoin/transactions/outputBuilder.ts",
-          "lineStart": 126,
-          "lineEnd": 137,
+          "lineStart": 129,
+          "lineEnd": 140,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/transactionService.create.test.ts",
             "name": "Transaction Service — Creation createTransaction should fall back to a single change output when decoys become uneconomical"
@@ -1114,8 +1114,8 @@
           "canaries": [{
             "id": "decoys-require-selected-output-count",
             "location": {
-              "start": { "line": 126, "column": 37 },
-              "end": { "line": 126, "column": 85 }
+                "start": { "line": 129, "column": 37 },
+                "end": { "line": 129, "column": 85 }
             },
             "mutatorName": "ConditionalExpression",
             "replacement": "true",
@@ -1128,8 +1128,8 @@
         {
           "id": "standard-batch-change-and-fee-selection",
           "productionFile": "src/services/bitcoin/transactions/createBatchTransaction.ts",
-          "lineStart": 359,
-          "lineEnd": 386,
+          "lineStart": 362,
+          "lineEnd": 389,
           "requiredTests": [
             {
               "file": "tests/unit/services/bitcoin/transactionService.batch.test.ts",
@@ -1143,8 +1143,8 @@
           "canaries": [{
             "id": "standard-batch-selection-loop-cannot-be-removed",
             "location": {
-              "start": { "line": 359, "column": 29 },
-              "end": { "line": 386, "column": 4 }
+                "start": { "line": 362, "column": 29 },
+                "end": { "line": 389, "column": 4 }
             },
             "mutatorName": "BlockStatement",
             "replacement": "{}",
@@ -1155,8 +1155,8 @@
           }, {
             "id": "standard-batch-surplus-cannot-widen-tolerance",
             "location": {
-              "start": { "line": 383, "column": 25 },
-              "end": { "line": 383, "column": 72 }
+                "start": { "line": 386, "column": 25 },
+                "end": { "line": 386, "column": 72 }
             },
             "mutatorName": "ArithmeticOperator",
             "replacement": "selectedTotal - targetAmount + feeWithoutChange",

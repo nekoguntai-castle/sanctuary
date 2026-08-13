@@ -42,9 +42,11 @@ export type AddressType =
   | 'p2sh'
   | 'native_segwit'
   | 'taproot'
+  | 'generic_segwit'
   | 'testnet_legacy'
   | 'testnet_p2sh'
-  | 'testnet_segwit';
+  | 'testnet_segwit'
+  | 'regtest_segwit';
 
 /**
  * Address regex patterns for quick UI validation
@@ -59,10 +61,13 @@ export const ADDRESS_PATTERNS = {
   p2sh: /^3[a-km-zA-HJ-NP-Z1-9]{25,34}$/,
 
   /** Native SegWit P2WPKH/P2WSH addresses (bc1q...) */
-  nativeSegwit: /^bc1q[a-z0-9]{38,58}$/i,
+  nativeSegwit: /^bc1q[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{38,58}$/i,
 
   /** Taproot P2TR addresses (bc1p...) */
-  taproot: /^bc1p[a-z0-9]{58}$/i,
+  taproot: /^bc1p[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{58}$/i,
+
+  /** BIP173/350 format only: HRP + version symbol + data/checksum within the 90-character cap. */
+  mainnetSegwit: /^bc1[qpzry9x8gf2tvdw0s][qpzry9x8gf2tvdw0s3jn54khce6mua7l]{6,86}$/i,
 
   /** Testnet legacy addresses (m... or n...) */
   testnetLegacy: /^[mn][a-km-zA-HJ-NP-Z1-9]{25,34}$/,
@@ -70,6 +75,9 @@ export const ADDRESS_PATTERNS = {
   /** Testnet P2SH addresses (2...) */
   testnetP2sh: /^2[a-km-zA-HJ-NP-Z1-9]{25,34}$/,
 
-  /** Testnet SegWit addresses (tb1...) */
-  testnetSegwit: /^tb1[a-z0-9]{39,59}$/i,
+  /** Testnet-family SegWit format; the backend verifies checksum, version, and program length. */
+  testnetSegwit: /^tb1[qpzry9x8gf2tvdw0s][qpzry9x8gf2tvdw0s3jn54khce6mua7l]{6,86}$/i,
+
+  /** Regtest's longer bcrt HRP leaves 84 characters after the version within the same cap. */
+  regtestSegwit: /^bcrt1[qpzry9x8gf2tvdw0s][qpzry9x8gf2tvdw0s3jn54khce6mua7l]{6,84}$/i,
 } as const;

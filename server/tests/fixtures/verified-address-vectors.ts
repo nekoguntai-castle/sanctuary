@@ -1,7 +1,7 @@
 /**
  * VERIFIED ADDRESS VECTORS — GENERATED FILE
  *
- * Seed/root-to-account/address evidence accepted only after exact agreement by
+ * Independently executed implementation-consensus evidence accepted only after exact agreement by
  * Bitcoin Core, bitcoinjs-lib, bip_utils, and btcd. No address normalization is
  * permitted. Regenerate with scripts/verify-addresses/verify-repeatable.sh.
  */
@@ -25,6 +25,7 @@ export interface AccountKeyEvidence {
 }
 
 export interface VerifiedSingleSigVector {
+  readonly evidenceTier: 'independently-executed-implementation-consensus';
   readonly caseId: string;
   readonly description: string;
   readonly seedId: string;
@@ -45,6 +46,7 @@ export interface VerifiedSingleSigVector {
 }
 
 export interface VerifiedMultisigVector {
+  readonly evidenceTier: 'independently-executed-implementation-consensus';
   readonly caseId: string;
   readonly description: string;
   readonly seedIds: readonly string[];
@@ -69,7 +71,7 @@ export const VERIFIER_PROVENANCE = {
   "schemaVersion": 2,
   "matrixId": "sanctuary-seed-to-address-v2",
   "exactCaseCount": 480,
-  "sourceSha256": "b33cd344db914a2e8e3aed6756b28fe3047aed8f837cf523c9f9f25dc83f197d",
+  "sourceSha256": "14175a30694cbdf47dbb8c1e9e941464ec407416f1f943a9dbc32d80c407e9e5",
   "coreImage": "bitcoin/bitcoin:29.0@sha256:a6aa8a9e349b4108d13c558dbe43064057bd7b6474b858966884f9cb95b7ed78",
   "runtimes": {
     "node": "24.19.0",
@@ -191,6 +193,7 @@ export const VERIFIER_PROVENANCE = {
 
 export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:mainnet:a0:b0:i0",
     "description": "Legacy (BIP-44) mainnet account 0 branch 0 index 0",
     "network": "mainnet",
@@ -229,6 +232,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:mainnet:a0:b0:i1",
     "description": "Legacy (BIP-44) mainnet account 0 branch 0 index 1",
     "network": "mainnet",
@@ -267,6 +271,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:mainnet:a0:b0:i2147483647",
     "description": "Legacy (BIP-44) mainnet account 0 branch 0 index 2147483647",
     "network": "mainnet",
@@ -305,6 +310,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:mainnet:a0:b1:i0",
     "description": "Legacy (BIP-44) mainnet account 0 branch 1 index 0",
     "network": "mainnet",
@@ -343,6 +349,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:mainnet:a0:b1:i1",
     "description": "Legacy (BIP-44) mainnet account 0 branch 1 index 1",
     "network": "mainnet",
@@ -381,6 +388,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:mainnet:a0:b1:i2147483647",
     "description": "Legacy (BIP-44) mainnet account 0 branch 1 index 2147483647",
     "network": "mainnet",
@@ -419,6 +427,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:mainnet:a7:b0:i0",
     "description": "Legacy (BIP-44) mainnet account 7 branch 0 index 0",
     "network": "mainnet",
@@ -457,6 +466,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:mainnet:a7:b0:i1",
     "description": "Legacy (BIP-44) mainnet account 7 branch 0 index 1",
     "network": "mainnet",
@@ -495,6 +505,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:mainnet:a7:b0:i2147483647",
     "description": "Legacy (BIP-44) mainnet account 7 branch 0 index 2147483647",
     "network": "mainnet",
@@ -533,6 +544,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:mainnet:a7:b1:i0",
     "description": "Legacy (BIP-44) mainnet account 7 branch 1 index 0",
     "network": "mainnet",
@@ -571,6 +583,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:mainnet:a7:b1:i1",
     "description": "Legacy (BIP-44) mainnet account 7 branch 1 index 1",
     "network": "mainnet",
@@ -609,6 +622,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:mainnet:a7:b1:i2147483647",
     "description": "Legacy (BIP-44) mainnet account 7 branch 1 index 2147483647",
     "network": "mainnet",
@@ -647,6 +661,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:testnet3:a0:b0:i0",
     "description": "Legacy (BIP-44) testnet3 account 0 branch 0 index 0",
     "network": "testnet3",
@@ -685,6 +700,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:testnet3:a0:b0:i1",
     "description": "Legacy (BIP-44) testnet3 account 0 branch 0 index 1",
     "network": "testnet3",
@@ -723,6 +739,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:testnet3:a0:b0:i2147483647",
     "description": "Legacy (BIP-44) testnet3 account 0 branch 0 index 2147483647",
     "network": "testnet3",
@@ -761,6 +778,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:testnet3:a0:b1:i0",
     "description": "Legacy (BIP-44) testnet3 account 0 branch 1 index 0",
     "network": "testnet3",
@@ -799,6 +817,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:testnet3:a0:b1:i1",
     "description": "Legacy (BIP-44) testnet3 account 0 branch 1 index 1",
     "network": "testnet3",
@@ -837,6 +856,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:testnet3:a0:b1:i2147483647",
     "description": "Legacy (BIP-44) testnet3 account 0 branch 1 index 2147483647",
     "network": "testnet3",
@@ -875,6 +895,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:testnet3:a7:b0:i0",
     "description": "Legacy (BIP-44) testnet3 account 7 branch 0 index 0",
     "network": "testnet3",
@@ -913,6 +934,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:testnet3:a7:b0:i1",
     "description": "Legacy (BIP-44) testnet3 account 7 branch 0 index 1",
     "network": "testnet3",
@@ -951,6 +973,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:testnet3:a7:b0:i2147483647",
     "description": "Legacy (BIP-44) testnet3 account 7 branch 0 index 2147483647",
     "network": "testnet3",
@@ -989,6 +1012,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:testnet3:a7:b1:i0",
     "description": "Legacy (BIP-44) testnet3 account 7 branch 1 index 0",
     "network": "testnet3",
@@ -1027,6 +1051,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:testnet3:a7:b1:i1",
     "description": "Legacy (BIP-44) testnet3 account 7 branch 1 index 1",
     "network": "testnet3",
@@ -1065,6 +1090,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:testnet3:a7:b1:i2147483647",
     "description": "Legacy (BIP-44) testnet3 account 7 branch 1 index 2147483647",
     "network": "testnet3",
@@ -1103,6 +1129,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:testnet4:a0:b0:i0",
     "description": "Legacy (BIP-44) testnet4 account 0 branch 0 index 0",
     "network": "testnet4",
@@ -1141,6 +1168,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:testnet4:a0:b0:i1",
     "description": "Legacy (BIP-44) testnet4 account 0 branch 0 index 1",
     "network": "testnet4",
@@ -1179,6 +1207,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:testnet4:a0:b0:i2147483647",
     "description": "Legacy (BIP-44) testnet4 account 0 branch 0 index 2147483647",
     "network": "testnet4",
@@ -1217,6 +1246,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:testnet4:a0:b1:i0",
     "description": "Legacy (BIP-44) testnet4 account 0 branch 1 index 0",
     "network": "testnet4",
@@ -1255,6 +1285,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:testnet4:a0:b1:i1",
     "description": "Legacy (BIP-44) testnet4 account 0 branch 1 index 1",
     "network": "testnet4",
@@ -1293,6 +1324,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:testnet4:a0:b1:i2147483647",
     "description": "Legacy (BIP-44) testnet4 account 0 branch 1 index 2147483647",
     "network": "testnet4",
@@ -1331,6 +1363,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:testnet4:a7:b0:i0",
     "description": "Legacy (BIP-44) testnet4 account 7 branch 0 index 0",
     "network": "testnet4",
@@ -1369,6 +1402,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:testnet4:a7:b0:i1",
     "description": "Legacy (BIP-44) testnet4 account 7 branch 0 index 1",
     "network": "testnet4",
@@ -1407,6 +1441,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:testnet4:a7:b0:i2147483647",
     "description": "Legacy (BIP-44) testnet4 account 7 branch 0 index 2147483647",
     "network": "testnet4",
@@ -1445,6 +1480,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:testnet4:a7:b1:i0",
     "description": "Legacy (BIP-44) testnet4 account 7 branch 1 index 0",
     "network": "testnet4",
@@ -1483,6 +1519,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:testnet4:a7:b1:i1",
     "description": "Legacy (BIP-44) testnet4 account 7 branch 1 index 1",
     "network": "testnet4",
@@ -1521,6 +1558,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:testnet4:a7:b1:i2147483647",
     "description": "Legacy (BIP-44) testnet4 account 7 branch 1 index 2147483647",
     "network": "testnet4",
@@ -1559,6 +1597,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:signet:a0:b0:i0",
     "description": "Legacy (BIP-44) signet account 0 branch 0 index 0",
     "network": "signet",
@@ -1597,6 +1636,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:signet:a0:b0:i1",
     "description": "Legacy (BIP-44) signet account 0 branch 0 index 1",
     "network": "signet",
@@ -1635,6 +1675,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:signet:a0:b0:i2147483647",
     "description": "Legacy (BIP-44) signet account 0 branch 0 index 2147483647",
     "network": "signet",
@@ -1673,6 +1714,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:signet:a0:b1:i0",
     "description": "Legacy (BIP-44) signet account 0 branch 1 index 0",
     "network": "signet",
@@ -1711,6 +1753,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:signet:a0:b1:i1",
     "description": "Legacy (BIP-44) signet account 0 branch 1 index 1",
     "network": "signet",
@@ -1749,6 +1792,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:signet:a0:b1:i2147483647",
     "description": "Legacy (BIP-44) signet account 0 branch 1 index 2147483647",
     "network": "signet",
@@ -1787,6 +1831,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:signet:a7:b0:i0",
     "description": "Legacy (BIP-44) signet account 7 branch 0 index 0",
     "network": "signet",
@@ -1825,6 +1870,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:signet:a7:b0:i1",
     "description": "Legacy (BIP-44) signet account 7 branch 0 index 1",
     "network": "signet",
@@ -1863,6 +1909,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:signet:a7:b0:i2147483647",
     "description": "Legacy (BIP-44) signet account 7 branch 0 index 2147483647",
     "network": "signet",
@@ -1901,6 +1948,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:signet:a7:b1:i0",
     "description": "Legacy (BIP-44) signet account 7 branch 1 index 0",
     "network": "signet",
@@ -1939,6 +1987,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:signet:a7:b1:i1",
     "description": "Legacy (BIP-44) signet account 7 branch 1 index 1",
     "network": "signet",
@@ -1977,6 +2026,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:signet:a7:b1:i2147483647",
     "description": "Legacy (BIP-44) signet account 7 branch 1 index 2147483647",
     "network": "signet",
@@ -2015,6 +2065,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:regtest:a0:b0:i0",
     "description": "Legacy (BIP-44) regtest account 0 branch 0 index 0",
     "network": "regtest",
@@ -2053,6 +2104,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:regtest:a0:b0:i1",
     "description": "Legacy (BIP-44) regtest account 0 branch 0 index 1",
     "network": "regtest",
@@ -2091,6 +2143,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:regtest:a0:b0:i2147483647",
     "description": "Legacy (BIP-44) regtest account 0 branch 0 index 2147483647",
     "network": "regtest",
@@ -2129,6 +2182,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:regtest:a0:b1:i0",
     "description": "Legacy (BIP-44) regtest account 0 branch 1 index 0",
     "network": "regtest",
@@ -2167,6 +2221,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:regtest:a0:b1:i1",
     "description": "Legacy (BIP-44) regtest account 0 branch 1 index 1",
     "network": "regtest",
@@ -2205,6 +2260,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:regtest:a0:b1:i2147483647",
     "description": "Legacy (BIP-44) regtest account 0 branch 1 index 2147483647",
     "network": "regtest",
@@ -2243,6 +2299,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:regtest:a7:b0:i0",
     "description": "Legacy (BIP-44) regtest account 7 branch 0 index 0",
     "network": "regtest",
@@ -2281,6 +2338,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:regtest:a7:b0:i1",
     "description": "Legacy (BIP-44) regtest account 7 branch 0 index 1",
     "network": "regtest",
@@ -2319,6 +2377,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:regtest:a7:b0:i2147483647",
     "description": "Legacy (BIP-44) regtest account 7 branch 0 index 2147483647",
     "network": "regtest",
@@ -2357,6 +2416,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:regtest:a7:b1:i0",
     "description": "Legacy (BIP-44) regtest account 7 branch 1 index 0",
     "network": "regtest",
@@ -2395,6 +2455,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:regtest:a7:b1:i1",
     "description": "Legacy (BIP-44) regtest account 7 branch 1 index 1",
     "network": "regtest",
@@ -2433,6 +2494,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-legacy-bip44-v1:regtest:a7:b1:i2147483647",
     "description": "Legacy (BIP-44) regtest account 7 branch 1 index 2147483647",
     "network": "regtest",
@@ -2471,6 +2533,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "legacy"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:mainnet:a0:b0:i0",
     "description": "Nested SegWit (BIP-49) mainnet account 0 branch 0 index 0",
     "network": "mainnet",
@@ -2509,6 +2572,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:mainnet:a0:b0:i1",
     "description": "Nested SegWit (BIP-49) mainnet account 0 branch 0 index 1",
     "network": "mainnet",
@@ -2547,6 +2611,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:mainnet:a0:b0:i2147483647",
     "description": "Nested SegWit (BIP-49) mainnet account 0 branch 0 index 2147483647",
     "network": "mainnet",
@@ -2585,6 +2650,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:mainnet:a0:b1:i0",
     "description": "Nested SegWit (BIP-49) mainnet account 0 branch 1 index 0",
     "network": "mainnet",
@@ -2623,6 +2689,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:mainnet:a0:b1:i1",
     "description": "Nested SegWit (BIP-49) mainnet account 0 branch 1 index 1",
     "network": "mainnet",
@@ -2661,6 +2728,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:mainnet:a0:b1:i2147483647",
     "description": "Nested SegWit (BIP-49) mainnet account 0 branch 1 index 2147483647",
     "network": "mainnet",
@@ -2699,6 +2767,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:mainnet:a7:b0:i0",
     "description": "Nested SegWit (BIP-49) mainnet account 7 branch 0 index 0",
     "network": "mainnet",
@@ -2737,6 +2806,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:mainnet:a7:b0:i1",
     "description": "Nested SegWit (BIP-49) mainnet account 7 branch 0 index 1",
     "network": "mainnet",
@@ -2775,6 +2845,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:mainnet:a7:b0:i2147483647",
     "description": "Nested SegWit (BIP-49) mainnet account 7 branch 0 index 2147483647",
     "network": "mainnet",
@@ -2813,6 +2884,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:mainnet:a7:b1:i0",
     "description": "Nested SegWit (BIP-49) mainnet account 7 branch 1 index 0",
     "network": "mainnet",
@@ -2851,6 +2923,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:mainnet:a7:b1:i1",
     "description": "Nested SegWit (BIP-49) mainnet account 7 branch 1 index 1",
     "network": "mainnet",
@@ -2889,6 +2962,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:mainnet:a7:b1:i2147483647",
     "description": "Nested SegWit (BIP-49) mainnet account 7 branch 1 index 2147483647",
     "network": "mainnet",
@@ -2927,6 +3001,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:testnet3:a0:b0:i0",
     "description": "Nested SegWit (BIP-49) testnet3 account 0 branch 0 index 0",
     "network": "testnet3",
@@ -2965,6 +3040,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:testnet3:a0:b0:i1",
     "description": "Nested SegWit (BIP-49) testnet3 account 0 branch 0 index 1",
     "network": "testnet3",
@@ -3003,6 +3079,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:testnet3:a0:b0:i2147483647",
     "description": "Nested SegWit (BIP-49) testnet3 account 0 branch 0 index 2147483647",
     "network": "testnet3",
@@ -3041,6 +3118,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:testnet3:a0:b1:i0",
     "description": "Nested SegWit (BIP-49) testnet3 account 0 branch 1 index 0",
     "network": "testnet3",
@@ -3079,6 +3157,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:testnet3:a0:b1:i1",
     "description": "Nested SegWit (BIP-49) testnet3 account 0 branch 1 index 1",
     "network": "testnet3",
@@ -3117,6 +3196,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:testnet3:a0:b1:i2147483647",
     "description": "Nested SegWit (BIP-49) testnet3 account 0 branch 1 index 2147483647",
     "network": "testnet3",
@@ -3155,6 +3235,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:testnet3:a7:b0:i0",
     "description": "Nested SegWit (BIP-49) testnet3 account 7 branch 0 index 0",
     "network": "testnet3",
@@ -3193,6 +3274,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:testnet3:a7:b0:i1",
     "description": "Nested SegWit (BIP-49) testnet3 account 7 branch 0 index 1",
     "network": "testnet3",
@@ -3231,6 +3313,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:testnet3:a7:b0:i2147483647",
     "description": "Nested SegWit (BIP-49) testnet3 account 7 branch 0 index 2147483647",
     "network": "testnet3",
@@ -3269,6 +3352,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:testnet3:a7:b1:i0",
     "description": "Nested SegWit (BIP-49) testnet3 account 7 branch 1 index 0",
     "network": "testnet3",
@@ -3307,6 +3391,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:testnet3:a7:b1:i1",
     "description": "Nested SegWit (BIP-49) testnet3 account 7 branch 1 index 1",
     "network": "testnet3",
@@ -3345,6 +3430,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:testnet3:a7:b1:i2147483647",
     "description": "Nested SegWit (BIP-49) testnet3 account 7 branch 1 index 2147483647",
     "network": "testnet3",
@@ -3383,6 +3469,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:testnet4:a0:b0:i0",
     "description": "Nested SegWit (BIP-49) testnet4 account 0 branch 0 index 0",
     "network": "testnet4",
@@ -3421,6 +3508,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:testnet4:a0:b0:i1",
     "description": "Nested SegWit (BIP-49) testnet4 account 0 branch 0 index 1",
     "network": "testnet4",
@@ -3459,6 +3547,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:testnet4:a0:b0:i2147483647",
     "description": "Nested SegWit (BIP-49) testnet4 account 0 branch 0 index 2147483647",
     "network": "testnet4",
@@ -3497,6 +3586,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:testnet4:a0:b1:i0",
     "description": "Nested SegWit (BIP-49) testnet4 account 0 branch 1 index 0",
     "network": "testnet4",
@@ -3535,6 +3625,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:testnet4:a0:b1:i1",
     "description": "Nested SegWit (BIP-49) testnet4 account 0 branch 1 index 1",
     "network": "testnet4",
@@ -3573,6 +3664,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:testnet4:a0:b1:i2147483647",
     "description": "Nested SegWit (BIP-49) testnet4 account 0 branch 1 index 2147483647",
     "network": "testnet4",
@@ -3611,6 +3703,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:testnet4:a7:b0:i0",
     "description": "Nested SegWit (BIP-49) testnet4 account 7 branch 0 index 0",
     "network": "testnet4",
@@ -3649,6 +3742,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:testnet4:a7:b0:i1",
     "description": "Nested SegWit (BIP-49) testnet4 account 7 branch 0 index 1",
     "network": "testnet4",
@@ -3687,6 +3781,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:testnet4:a7:b0:i2147483647",
     "description": "Nested SegWit (BIP-49) testnet4 account 7 branch 0 index 2147483647",
     "network": "testnet4",
@@ -3725,6 +3820,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:testnet4:a7:b1:i0",
     "description": "Nested SegWit (BIP-49) testnet4 account 7 branch 1 index 0",
     "network": "testnet4",
@@ -3763,6 +3859,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:testnet4:a7:b1:i1",
     "description": "Nested SegWit (BIP-49) testnet4 account 7 branch 1 index 1",
     "network": "testnet4",
@@ -3801,6 +3898,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:testnet4:a7:b1:i2147483647",
     "description": "Nested SegWit (BIP-49) testnet4 account 7 branch 1 index 2147483647",
     "network": "testnet4",
@@ -3839,6 +3937,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:signet:a0:b0:i0",
     "description": "Nested SegWit (BIP-49) signet account 0 branch 0 index 0",
     "network": "signet",
@@ -3877,6 +3976,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:signet:a0:b0:i1",
     "description": "Nested SegWit (BIP-49) signet account 0 branch 0 index 1",
     "network": "signet",
@@ -3915,6 +4015,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:signet:a0:b0:i2147483647",
     "description": "Nested SegWit (BIP-49) signet account 0 branch 0 index 2147483647",
     "network": "signet",
@@ -3953,6 +4054,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:signet:a0:b1:i0",
     "description": "Nested SegWit (BIP-49) signet account 0 branch 1 index 0",
     "network": "signet",
@@ -3991,6 +4093,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:signet:a0:b1:i1",
     "description": "Nested SegWit (BIP-49) signet account 0 branch 1 index 1",
     "network": "signet",
@@ -4029,6 +4132,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:signet:a0:b1:i2147483647",
     "description": "Nested SegWit (BIP-49) signet account 0 branch 1 index 2147483647",
     "network": "signet",
@@ -4067,6 +4171,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:signet:a7:b0:i0",
     "description": "Nested SegWit (BIP-49) signet account 7 branch 0 index 0",
     "network": "signet",
@@ -4105,6 +4210,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:signet:a7:b0:i1",
     "description": "Nested SegWit (BIP-49) signet account 7 branch 0 index 1",
     "network": "signet",
@@ -4143,6 +4249,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:signet:a7:b0:i2147483647",
     "description": "Nested SegWit (BIP-49) signet account 7 branch 0 index 2147483647",
     "network": "signet",
@@ -4181,6 +4288,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:signet:a7:b1:i0",
     "description": "Nested SegWit (BIP-49) signet account 7 branch 1 index 0",
     "network": "signet",
@@ -4219,6 +4327,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:signet:a7:b1:i1",
     "description": "Nested SegWit (BIP-49) signet account 7 branch 1 index 1",
     "network": "signet",
@@ -4257,6 +4366,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:signet:a7:b1:i2147483647",
     "description": "Nested SegWit (BIP-49) signet account 7 branch 1 index 2147483647",
     "network": "signet",
@@ -4295,6 +4405,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:regtest:a0:b0:i0",
     "description": "Nested SegWit (BIP-49) regtest account 0 branch 0 index 0",
     "network": "regtest",
@@ -4333,6 +4444,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:regtest:a0:b0:i1",
     "description": "Nested SegWit (BIP-49) regtest account 0 branch 0 index 1",
     "network": "regtest",
@@ -4371,6 +4483,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:regtest:a0:b0:i2147483647",
     "description": "Nested SegWit (BIP-49) regtest account 0 branch 0 index 2147483647",
     "network": "regtest",
@@ -4409,6 +4522,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:regtest:a0:b1:i0",
     "description": "Nested SegWit (BIP-49) regtest account 0 branch 1 index 0",
     "network": "regtest",
@@ -4447,6 +4561,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:regtest:a0:b1:i1",
     "description": "Nested SegWit (BIP-49) regtest account 0 branch 1 index 1",
     "network": "regtest",
@@ -4485,6 +4600,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:regtest:a0:b1:i2147483647",
     "description": "Nested SegWit (BIP-49) regtest account 0 branch 1 index 2147483647",
     "network": "regtest",
@@ -4523,6 +4639,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:regtest:a7:b0:i0",
     "description": "Nested SegWit (BIP-49) regtest account 7 branch 0 index 0",
     "network": "regtest",
@@ -4561,6 +4678,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:regtest:a7:b0:i1",
     "description": "Nested SegWit (BIP-49) regtest account 7 branch 0 index 1",
     "network": "regtest",
@@ -4599,6 +4717,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:regtest:a7:b0:i2147483647",
     "description": "Nested SegWit (BIP-49) regtest account 7 branch 0 index 2147483647",
     "network": "regtest",
@@ -4637,6 +4756,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:regtest:a7:b1:i0",
     "description": "Nested SegWit (BIP-49) regtest account 7 branch 1 index 0",
     "network": "regtest",
@@ -4675,6 +4795,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:regtest:a7:b1:i1",
     "description": "Nested SegWit (BIP-49) regtest account 7 branch 1 index 1",
     "network": "regtest",
@@ -4713,6 +4834,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-nested-segwit-bip49-v1:regtest:a7:b1:i2147483647",
     "description": "Nested SegWit (BIP-49) regtest account 7 branch 1 index 2147483647",
     "network": "regtest",
@@ -4751,6 +4873,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "nested_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:mainnet:a0:b0:i0",
     "description": "Native SegWit (BIP-84) mainnet account 0 branch 0 index 0",
     "network": "mainnet",
@@ -4789,6 +4912,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:mainnet:a0:b0:i1",
     "description": "Native SegWit (BIP-84) mainnet account 0 branch 0 index 1",
     "network": "mainnet",
@@ -4827,6 +4951,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:mainnet:a0:b0:i2147483647",
     "description": "Native SegWit (BIP-84) mainnet account 0 branch 0 index 2147483647",
     "network": "mainnet",
@@ -4865,6 +4990,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:mainnet:a0:b1:i0",
     "description": "Native SegWit (BIP-84) mainnet account 0 branch 1 index 0",
     "network": "mainnet",
@@ -4903,6 +5029,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:mainnet:a0:b1:i1",
     "description": "Native SegWit (BIP-84) mainnet account 0 branch 1 index 1",
     "network": "mainnet",
@@ -4941,6 +5068,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:mainnet:a0:b1:i2147483647",
     "description": "Native SegWit (BIP-84) mainnet account 0 branch 1 index 2147483647",
     "network": "mainnet",
@@ -4979,6 +5107,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:mainnet:a7:b0:i0",
     "description": "Native SegWit (BIP-84) mainnet account 7 branch 0 index 0",
     "network": "mainnet",
@@ -5017,6 +5146,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:mainnet:a7:b0:i1",
     "description": "Native SegWit (BIP-84) mainnet account 7 branch 0 index 1",
     "network": "mainnet",
@@ -5055,6 +5185,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:mainnet:a7:b0:i2147483647",
     "description": "Native SegWit (BIP-84) mainnet account 7 branch 0 index 2147483647",
     "network": "mainnet",
@@ -5093,6 +5224,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:mainnet:a7:b1:i0",
     "description": "Native SegWit (BIP-84) mainnet account 7 branch 1 index 0",
     "network": "mainnet",
@@ -5131,6 +5263,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:mainnet:a7:b1:i1",
     "description": "Native SegWit (BIP-84) mainnet account 7 branch 1 index 1",
     "network": "mainnet",
@@ -5169,6 +5302,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:mainnet:a7:b1:i2147483647",
     "description": "Native SegWit (BIP-84) mainnet account 7 branch 1 index 2147483647",
     "network": "mainnet",
@@ -5207,6 +5341,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:testnet3:a0:b0:i0",
     "description": "Native SegWit (BIP-84) testnet3 account 0 branch 0 index 0",
     "network": "testnet3",
@@ -5245,6 +5380,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:testnet3:a0:b0:i1",
     "description": "Native SegWit (BIP-84) testnet3 account 0 branch 0 index 1",
     "network": "testnet3",
@@ -5283,6 +5419,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:testnet3:a0:b0:i2147483647",
     "description": "Native SegWit (BIP-84) testnet3 account 0 branch 0 index 2147483647",
     "network": "testnet3",
@@ -5321,6 +5458,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:testnet3:a0:b1:i0",
     "description": "Native SegWit (BIP-84) testnet3 account 0 branch 1 index 0",
     "network": "testnet3",
@@ -5359,6 +5497,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:testnet3:a0:b1:i1",
     "description": "Native SegWit (BIP-84) testnet3 account 0 branch 1 index 1",
     "network": "testnet3",
@@ -5397,6 +5536,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:testnet3:a0:b1:i2147483647",
     "description": "Native SegWit (BIP-84) testnet3 account 0 branch 1 index 2147483647",
     "network": "testnet3",
@@ -5435,6 +5575,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:testnet3:a7:b0:i0",
     "description": "Native SegWit (BIP-84) testnet3 account 7 branch 0 index 0",
     "network": "testnet3",
@@ -5473,6 +5614,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:testnet3:a7:b0:i1",
     "description": "Native SegWit (BIP-84) testnet3 account 7 branch 0 index 1",
     "network": "testnet3",
@@ -5511,6 +5653,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:testnet3:a7:b0:i2147483647",
     "description": "Native SegWit (BIP-84) testnet3 account 7 branch 0 index 2147483647",
     "network": "testnet3",
@@ -5549,6 +5692,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:testnet3:a7:b1:i0",
     "description": "Native SegWit (BIP-84) testnet3 account 7 branch 1 index 0",
     "network": "testnet3",
@@ -5587,6 +5731,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:testnet3:a7:b1:i1",
     "description": "Native SegWit (BIP-84) testnet3 account 7 branch 1 index 1",
     "network": "testnet3",
@@ -5625,6 +5770,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:testnet3:a7:b1:i2147483647",
     "description": "Native SegWit (BIP-84) testnet3 account 7 branch 1 index 2147483647",
     "network": "testnet3",
@@ -5663,6 +5809,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:testnet4:a0:b0:i0",
     "description": "Native SegWit (BIP-84) testnet4 account 0 branch 0 index 0",
     "network": "testnet4",
@@ -5701,6 +5848,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:testnet4:a0:b0:i1",
     "description": "Native SegWit (BIP-84) testnet4 account 0 branch 0 index 1",
     "network": "testnet4",
@@ -5739,6 +5887,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:testnet4:a0:b0:i2147483647",
     "description": "Native SegWit (BIP-84) testnet4 account 0 branch 0 index 2147483647",
     "network": "testnet4",
@@ -5777,6 +5926,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:testnet4:a0:b1:i0",
     "description": "Native SegWit (BIP-84) testnet4 account 0 branch 1 index 0",
     "network": "testnet4",
@@ -5815,6 +5965,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:testnet4:a0:b1:i1",
     "description": "Native SegWit (BIP-84) testnet4 account 0 branch 1 index 1",
     "network": "testnet4",
@@ -5853,6 +6004,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:testnet4:a0:b1:i2147483647",
     "description": "Native SegWit (BIP-84) testnet4 account 0 branch 1 index 2147483647",
     "network": "testnet4",
@@ -5891,6 +6043,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:testnet4:a7:b0:i0",
     "description": "Native SegWit (BIP-84) testnet4 account 7 branch 0 index 0",
     "network": "testnet4",
@@ -5929,6 +6082,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:testnet4:a7:b0:i1",
     "description": "Native SegWit (BIP-84) testnet4 account 7 branch 0 index 1",
     "network": "testnet4",
@@ -5967,6 +6121,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:testnet4:a7:b0:i2147483647",
     "description": "Native SegWit (BIP-84) testnet4 account 7 branch 0 index 2147483647",
     "network": "testnet4",
@@ -6005,6 +6160,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:testnet4:a7:b1:i0",
     "description": "Native SegWit (BIP-84) testnet4 account 7 branch 1 index 0",
     "network": "testnet4",
@@ -6043,6 +6199,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:testnet4:a7:b1:i1",
     "description": "Native SegWit (BIP-84) testnet4 account 7 branch 1 index 1",
     "network": "testnet4",
@@ -6081,6 +6238,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:testnet4:a7:b1:i2147483647",
     "description": "Native SegWit (BIP-84) testnet4 account 7 branch 1 index 2147483647",
     "network": "testnet4",
@@ -6119,6 +6277,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:signet:a0:b0:i0",
     "description": "Native SegWit (BIP-84) signet account 0 branch 0 index 0",
     "network": "signet",
@@ -6157,6 +6316,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:signet:a0:b0:i1",
     "description": "Native SegWit (BIP-84) signet account 0 branch 0 index 1",
     "network": "signet",
@@ -6195,6 +6355,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:signet:a0:b0:i2147483647",
     "description": "Native SegWit (BIP-84) signet account 0 branch 0 index 2147483647",
     "network": "signet",
@@ -6233,6 +6394,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:signet:a0:b1:i0",
     "description": "Native SegWit (BIP-84) signet account 0 branch 1 index 0",
     "network": "signet",
@@ -6271,6 +6433,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:signet:a0:b1:i1",
     "description": "Native SegWit (BIP-84) signet account 0 branch 1 index 1",
     "network": "signet",
@@ -6309,6 +6472,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:signet:a0:b1:i2147483647",
     "description": "Native SegWit (BIP-84) signet account 0 branch 1 index 2147483647",
     "network": "signet",
@@ -6347,6 +6511,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:signet:a7:b0:i0",
     "description": "Native SegWit (BIP-84) signet account 7 branch 0 index 0",
     "network": "signet",
@@ -6385,6 +6550,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:signet:a7:b0:i1",
     "description": "Native SegWit (BIP-84) signet account 7 branch 0 index 1",
     "network": "signet",
@@ -6423,6 +6589,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:signet:a7:b0:i2147483647",
     "description": "Native SegWit (BIP-84) signet account 7 branch 0 index 2147483647",
     "network": "signet",
@@ -6461,6 +6628,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:signet:a7:b1:i0",
     "description": "Native SegWit (BIP-84) signet account 7 branch 1 index 0",
     "network": "signet",
@@ -6499,6 +6667,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:signet:a7:b1:i1",
     "description": "Native SegWit (BIP-84) signet account 7 branch 1 index 1",
     "network": "signet",
@@ -6537,6 +6706,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:signet:a7:b1:i2147483647",
     "description": "Native SegWit (BIP-84) signet account 7 branch 1 index 2147483647",
     "network": "signet",
@@ -6575,6 +6745,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:regtest:a0:b0:i0",
     "description": "Native SegWit (BIP-84) regtest account 0 branch 0 index 0",
     "network": "regtest",
@@ -6613,6 +6784,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:regtest:a0:b0:i1",
     "description": "Native SegWit (BIP-84) regtest account 0 branch 0 index 1",
     "network": "regtest",
@@ -6651,6 +6823,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:regtest:a0:b0:i2147483647",
     "description": "Native SegWit (BIP-84) regtest account 0 branch 0 index 2147483647",
     "network": "regtest",
@@ -6689,6 +6862,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:regtest:a0:b1:i0",
     "description": "Native SegWit (BIP-84) regtest account 0 branch 1 index 0",
     "network": "regtest",
@@ -6727,6 +6901,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:regtest:a0:b1:i1",
     "description": "Native SegWit (BIP-84) regtest account 0 branch 1 index 1",
     "network": "regtest",
@@ -6765,6 +6940,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:regtest:a0:b1:i2147483647",
     "description": "Native SegWit (BIP-84) regtest account 0 branch 1 index 2147483647",
     "network": "regtest",
@@ -6803,6 +6979,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:regtest:a7:b0:i0",
     "description": "Native SegWit (BIP-84) regtest account 7 branch 0 index 0",
     "network": "regtest",
@@ -6841,6 +7018,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:regtest:a7:b0:i1",
     "description": "Native SegWit (BIP-84) regtest account 7 branch 0 index 1",
     "network": "regtest",
@@ -6879,6 +7057,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:regtest:a7:b0:i2147483647",
     "description": "Native SegWit (BIP-84) regtest account 7 branch 0 index 2147483647",
     "network": "regtest",
@@ -6917,6 +7096,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:regtest:a7:b1:i0",
     "description": "Native SegWit (BIP-84) regtest account 7 branch 1 index 0",
     "network": "regtest",
@@ -6955,6 +7135,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:regtest:a7:b1:i1",
     "description": "Native SegWit (BIP-84) regtest account 7 branch 1 index 1",
     "network": "regtest",
@@ -6993,6 +7174,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-native-segwit-bip84-v1:regtest:a7:b1:i2147483647",
     "description": "Native SegWit (BIP-84) regtest account 7 branch 1 index 2147483647",
     "network": "regtest",
@@ -7031,6 +7213,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "native_segwit"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:mainnet:a0:b0:i0",
     "description": "Taproot (BIP-86) mainnet account 0 branch 0 index 0",
     "network": "mainnet",
@@ -7069,6 +7252,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:mainnet:a0:b0:i1",
     "description": "Taproot (BIP-86) mainnet account 0 branch 0 index 1",
     "network": "mainnet",
@@ -7107,6 +7291,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:mainnet:a0:b0:i2147483647",
     "description": "Taproot (BIP-86) mainnet account 0 branch 0 index 2147483647",
     "network": "mainnet",
@@ -7145,6 +7330,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:mainnet:a0:b1:i0",
     "description": "Taproot (BIP-86) mainnet account 0 branch 1 index 0",
     "network": "mainnet",
@@ -7183,6 +7369,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:mainnet:a0:b1:i1",
     "description": "Taproot (BIP-86) mainnet account 0 branch 1 index 1",
     "network": "mainnet",
@@ -7221,6 +7408,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:mainnet:a0:b1:i2147483647",
     "description": "Taproot (BIP-86) mainnet account 0 branch 1 index 2147483647",
     "network": "mainnet",
@@ -7259,6 +7447,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:mainnet:a7:b0:i0",
     "description": "Taproot (BIP-86) mainnet account 7 branch 0 index 0",
     "network": "mainnet",
@@ -7297,6 +7486,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:mainnet:a7:b0:i1",
     "description": "Taproot (BIP-86) mainnet account 7 branch 0 index 1",
     "network": "mainnet",
@@ -7335,6 +7525,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:mainnet:a7:b0:i2147483647",
     "description": "Taproot (BIP-86) mainnet account 7 branch 0 index 2147483647",
     "network": "mainnet",
@@ -7373,6 +7564,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:mainnet:a7:b1:i0",
     "description": "Taproot (BIP-86) mainnet account 7 branch 1 index 0",
     "network": "mainnet",
@@ -7411,6 +7603,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:mainnet:a7:b1:i1",
     "description": "Taproot (BIP-86) mainnet account 7 branch 1 index 1",
     "network": "mainnet",
@@ -7449,6 +7642,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:mainnet:a7:b1:i2147483647",
     "description": "Taproot (BIP-86) mainnet account 7 branch 1 index 2147483647",
     "network": "mainnet",
@@ -7487,6 +7681,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:testnet3:a0:b0:i0",
     "description": "Taproot (BIP-86) testnet3 account 0 branch 0 index 0",
     "network": "testnet3",
@@ -7525,6 +7720,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:testnet3:a0:b0:i1",
     "description": "Taproot (BIP-86) testnet3 account 0 branch 0 index 1",
     "network": "testnet3",
@@ -7563,6 +7759,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:testnet3:a0:b0:i2147483647",
     "description": "Taproot (BIP-86) testnet3 account 0 branch 0 index 2147483647",
     "network": "testnet3",
@@ -7601,6 +7798,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:testnet3:a0:b1:i0",
     "description": "Taproot (BIP-86) testnet3 account 0 branch 1 index 0",
     "network": "testnet3",
@@ -7639,6 +7837,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:testnet3:a0:b1:i1",
     "description": "Taproot (BIP-86) testnet3 account 0 branch 1 index 1",
     "network": "testnet3",
@@ -7677,6 +7876,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:testnet3:a0:b1:i2147483647",
     "description": "Taproot (BIP-86) testnet3 account 0 branch 1 index 2147483647",
     "network": "testnet3",
@@ -7715,6 +7915,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:testnet3:a7:b0:i0",
     "description": "Taproot (BIP-86) testnet3 account 7 branch 0 index 0",
     "network": "testnet3",
@@ -7753,6 +7954,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:testnet3:a7:b0:i1",
     "description": "Taproot (BIP-86) testnet3 account 7 branch 0 index 1",
     "network": "testnet3",
@@ -7791,6 +7993,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:testnet3:a7:b0:i2147483647",
     "description": "Taproot (BIP-86) testnet3 account 7 branch 0 index 2147483647",
     "network": "testnet3",
@@ -7829,6 +8032,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:testnet3:a7:b1:i0",
     "description": "Taproot (BIP-86) testnet3 account 7 branch 1 index 0",
     "network": "testnet3",
@@ -7867,6 +8071,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:testnet3:a7:b1:i1",
     "description": "Taproot (BIP-86) testnet3 account 7 branch 1 index 1",
     "network": "testnet3",
@@ -7905,6 +8110,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:testnet3:a7:b1:i2147483647",
     "description": "Taproot (BIP-86) testnet3 account 7 branch 1 index 2147483647",
     "network": "testnet3",
@@ -7943,6 +8149,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:testnet4:a0:b0:i0",
     "description": "Taproot (BIP-86) testnet4 account 0 branch 0 index 0",
     "network": "testnet4",
@@ -7981,6 +8188,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:testnet4:a0:b0:i1",
     "description": "Taproot (BIP-86) testnet4 account 0 branch 0 index 1",
     "network": "testnet4",
@@ -8019,6 +8227,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:testnet4:a0:b0:i2147483647",
     "description": "Taproot (BIP-86) testnet4 account 0 branch 0 index 2147483647",
     "network": "testnet4",
@@ -8057,6 +8266,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:testnet4:a0:b1:i0",
     "description": "Taproot (BIP-86) testnet4 account 0 branch 1 index 0",
     "network": "testnet4",
@@ -8095,6 +8305,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:testnet4:a0:b1:i1",
     "description": "Taproot (BIP-86) testnet4 account 0 branch 1 index 1",
     "network": "testnet4",
@@ -8133,6 +8344,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:testnet4:a0:b1:i2147483647",
     "description": "Taproot (BIP-86) testnet4 account 0 branch 1 index 2147483647",
     "network": "testnet4",
@@ -8171,6 +8383,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:testnet4:a7:b0:i0",
     "description": "Taproot (BIP-86) testnet4 account 7 branch 0 index 0",
     "network": "testnet4",
@@ -8209,6 +8422,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:testnet4:a7:b0:i1",
     "description": "Taproot (BIP-86) testnet4 account 7 branch 0 index 1",
     "network": "testnet4",
@@ -8247,6 +8461,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:testnet4:a7:b0:i2147483647",
     "description": "Taproot (BIP-86) testnet4 account 7 branch 0 index 2147483647",
     "network": "testnet4",
@@ -8285,6 +8500,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:testnet4:a7:b1:i0",
     "description": "Taproot (BIP-86) testnet4 account 7 branch 1 index 0",
     "network": "testnet4",
@@ -8323,6 +8539,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:testnet4:a7:b1:i1",
     "description": "Taproot (BIP-86) testnet4 account 7 branch 1 index 1",
     "network": "testnet4",
@@ -8361,6 +8578,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:testnet4:a7:b1:i2147483647",
     "description": "Taproot (BIP-86) testnet4 account 7 branch 1 index 2147483647",
     "network": "testnet4",
@@ -8399,6 +8617,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:signet:a0:b0:i0",
     "description": "Taproot (BIP-86) signet account 0 branch 0 index 0",
     "network": "signet",
@@ -8437,6 +8656,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:signet:a0:b0:i1",
     "description": "Taproot (BIP-86) signet account 0 branch 0 index 1",
     "network": "signet",
@@ -8475,6 +8695,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:signet:a0:b0:i2147483647",
     "description": "Taproot (BIP-86) signet account 0 branch 0 index 2147483647",
     "network": "signet",
@@ -8513,6 +8734,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:signet:a0:b1:i0",
     "description": "Taproot (BIP-86) signet account 0 branch 1 index 0",
     "network": "signet",
@@ -8551,6 +8773,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:signet:a0:b1:i1",
     "description": "Taproot (BIP-86) signet account 0 branch 1 index 1",
     "network": "signet",
@@ -8589,6 +8812,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:signet:a0:b1:i2147483647",
     "description": "Taproot (BIP-86) signet account 0 branch 1 index 2147483647",
     "network": "signet",
@@ -8627,6 +8851,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:signet:a7:b0:i0",
     "description": "Taproot (BIP-86) signet account 7 branch 0 index 0",
     "network": "signet",
@@ -8665,6 +8890,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:signet:a7:b0:i1",
     "description": "Taproot (BIP-86) signet account 7 branch 0 index 1",
     "network": "signet",
@@ -8703,6 +8929,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:signet:a7:b0:i2147483647",
     "description": "Taproot (BIP-86) signet account 7 branch 0 index 2147483647",
     "network": "signet",
@@ -8741,6 +8968,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:signet:a7:b1:i0",
     "description": "Taproot (BIP-86) signet account 7 branch 1 index 0",
     "network": "signet",
@@ -8779,6 +9007,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:signet:a7:b1:i1",
     "description": "Taproot (BIP-86) signet account 7 branch 1 index 1",
     "network": "signet",
@@ -8817,6 +9046,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:signet:a7:b1:i2147483647",
     "description": "Taproot (BIP-86) signet account 7 branch 1 index 2147483647",
     "network": "signet",
@@ -8855,6 +9085,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:regtest:a0:b0:i0",
     "description": "Taproot (BIP-86) regtest account 0 branch 0 index 0",
     "network": "regtest",
@@ -8893,6 +9124,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:regtest:a0:b0:i1",
     "description": "Taproot (BIP-86) regtest account 0 branch 0 index 1",
     "network": "regtest",
@@ -8931,6 +9163,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:regtest:a0:b0:i2147483647",
     "description": "Taproot (BIP-86) regtest account 0 branch 0 index 2147483647",
     "network": "regtest",
@@ -8969,6 +9202,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:regtest:a0:b1:i0",
     "description": "Taproot (BIP-86) regtest account 0 branch 1 index 0",
     "network": "regtest",
@@ -9007,6 +9241,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:regtest:a0:b1:i1",
     "description": "Taproot (BIP-86) regtest account 0 branch 1 index 1",
     "network": "regtest",
@@ -9045,6 +9280,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:regtest:a0:b1:i2147483647",
     "description": "Taproot (BIP-86) regtest account 0 branch 1 index 2147483647",
     "network": "regtest",
@@ -9083,6 +9319,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:regtest:a7:b0:i0",
     "description": "Taproot (BIP-86) regtest account 7 branch 0 index 0",
     "network": "regtest",
@@ -9121,6 +9358,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:regtest:a7:b0:i1",
     "description": "Taproot (BIP-86) regtest account 7 branch 0 index 1",
     "network": "regtest",
@@ -9159,6 +9397,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:regtest:a7:b0:i2147483647",
     "description": "Taproot (BIP-86) regtest account 7 branch 0 index 2147483647",
     "network": "regtest",
@@ -9197,6 +9436,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:regtest:a7:b1:i0",
     "description": "Taproot (BIP-86) regtest account 7 branch 1 index 0",
     "network": "regtest",
@@ -9235,6 +9475,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:regtest:a7:b1:i1",
     "description": "Taproot (BIP-86) regtest account 7 branch 1 index 1",
     "network": "regtest",
@@ -9273,6 +9514,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
     "scriptType": "taproot"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ss:single-sig-taproot-bip86-v1:regtest:a7:b1:i2147483647",
     "description": "Taproot (BIP-86) regtest account 7 branch 1 index 2147483647",
     "network": "regtest",
@@ -9314,6 +9556,7 @@ export const VERIFIED_SINGLESIG_VECTORS: readonly VerifiedSingleSigVector[] = [
 
 export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:mainnet:a0:q2of3:b0:i0",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 mainnet account 0 branch 0 index 0",
     "network": "mainnet",
@@ -9387,6 +9630,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:mainnet:a0:q2of3:b0:i1",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 mainnet account 0 branch 0 index 1",
     "network": "mainnet",
@@ -9460,6 +9704,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:mainnet:a0:q2of3:b0:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 mainnet account 0 branch 0 index 2147483647",
     "network": "mainnet",
@@ -9533,6 +9778,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:mainnet:a0:q2of3:b1:i0",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 mainnet account 0 branch 1 index 0",
     "network": "mainnet",
@@ -9606,6 +9852,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:mainnet:a0:q2of3:b1:i1",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 mainnet account 0 branch 1 index 1",
     "network": "mainnet",
@@ -9679,6 +9926,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:mainnet:a0:q2of3:b1:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 mainnet account 0 branch 1 index 2147483647",
     "network": "mainnet",
@@ -9752,6 +10000,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:mainnet:a0:q3of5:b0:i0",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 mainnet account 0 branch 0 index 0",
     "network": "mainnet",
@@ -9855,6 +10104,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:mainnet:a0:q3of5:b0:i1",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 mainnet account 0 branch 0 index 1",
     "network": "mainnet",
@@ -9958,6 +10208,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:mainnet:a0:q3of5:b0:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 mainnet account 0 branch 0 index 2147483647",
     "network": "mainnet",
@@ -10061,6 +10312,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:mainnet:a0:q3of5:b1:i0",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 mainnet account 0 branch 1 index 0",
     "network": "mainnet",
@@ -10164,6 +10416,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:mainnet:a0:q3of5:b1:i1",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 mainnet account 0 branch 1 index 1",
     "network": "mainnet",
@@ -10267,6 +10520,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:mainnet:a0:q3of5:b1:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 mainnet account 0 branch 1 index 2147483647",
     "network": "mainnet",
@@ -10370,6 +10624,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:mainnet:a7:q2of3:b0:i0",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 mainnet account 7 branch 0 index 0",
     "network": "mainnet",
@@ -10443,6 +10698,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:mainnet:a7:q2of3:b0:i1",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 mainnet account 7 branch 0 index 1",
     "network": "mainnet",
@@ -10516,6 +10772,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:mainnet:a7:q2of3:b0:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 mainnet account 7 branch 0 index 2147483647",
     "network": "mainnet",
@@ -10589,6 +10846,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:mainnet:a7:q2of3:b1:i0",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 mainnet account 7 branch 1 index 0",
     "network": "mainnet",
@@ -10662,6 +10920,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:mainnet:a7:q2of3:b1:i1",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 mainnet account 7 branch 1 index 1",
     "network": "mainnet",
@@ -10735,6 +10994,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:mainnet:a7:q2of3:b1:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 mainnet account 7 branch 1 index 2147483647",
     "network": "mainnet",
@@ -10808,6 +11068,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:mainnet:a7:q3of5:b0:i0",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 mainnet account 7 branch 0 index 0",
     "network": "mainnet",
@@ -10911,6 +11172,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:mainnet:a7:q3of5:b0:i1",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 mainnet account 7 branch 0 index 1",
     "network": "mainnet",
@@ -11014,6 +11276,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:mainnet:a7:q3of5:b0:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 mainnet account 7 branch 0 index 2147483647",
     "network": "mainnet",
@@ -11117,6 +11380,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:mainnet:a7:q3of5:b1:i0",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 mainnet account 7 branch 1 index 0",
     "network": "mainnet",
@@ -11220,6 +11484,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:mainnet:a7:q3of5:b1:i1",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 mainnet account 7 branch 1 index 1",
     "network": "mainnet",
@@ -11323,6 +11588,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:mainnet:a7:q3of5:b1:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 mainnet account 7 branch 1 index 2147483647",
     "network": "mainnet",
@@ -11426,6 +11692,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet3:a0:q2of3:b0:i0",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 testnet3 account 0 branch 0 index 0",
     "network": "testnet3",
@@ -11499,6 +11766,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet3:a0:q2of3:b0:i1",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 testnet3 account 0 branch 0 index 1",
     "network": "testnet3",
@@ -11572,6 +11840,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet3:a0:q2of3:b0:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 testnet3 account 0 branch 0 index 2147483647",
     "network": "testnet3",
@@ -11645,6 +11914,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet3:a0:q2of3:b1:i0",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 testnet3 account 0 branch 1 index 0",
     "network": "testnet3",
@@ -11718,6 +11988,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet3:a0:q2of3:b1:i1",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 testnet3 account 0 branch 1 index 1",
     "network": "testnet3",
@@ -11791,6 +12062,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet3:a0:q2of3:b1:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 testnet3 account 0 branch 1 index 2147483647",
     "network": "testnet3",
@@ -11864,6 +12136,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet3:a0:q3of5:b0:i0",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 testnet3 account 0 branch 0 index 0",
     "network": "testnet3",
@@ -11967,6 +12240,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet3:a0:q3of5:b0:i1",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 testnet3 account 0 branch 0 index 1",
     "network": "testnet3",
@@ -12070,6 +12344,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet3:a0:q3of5:b0:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 testnet3 account 0 branch 0 index 2147483647",
     "network": "testnet3",
@@ -12173,6 +12448,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet3:a0:q3of5:b1:i0",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 testnet3 account 0 branch 1 index 0",
     "network": "testnet3",
@@ -12276,6 +12552,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet3:a0:q3of5:b1:i1",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 testnet3 account 0 branch 1 index 1",
     "network": "testnet3",
@@ -12379,6 +12656,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet3:a0:q3of5:b1:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 testnet3 account 0 branch 1 index 2147483647",
     "network": "testnet3",
@@ -12482,6 +12760,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet3:a7:q2of3:b0:i0",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 testnet3 account 7 branch 0 index 0",
     "network": "testnet3",
@@ -12555,6 +12834,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet3:a7:q2of3:b0:i1",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 testnet3 account 7 branch 0 index 1",
     "network": "testnet3",
@@ -12628,6 +12908,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet3:a7:q2of3:b0:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 testnet3 account 7 branch 0 index 2147483647",
     "network": "testnet3",
@@ -12701,6 +12982,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet3:a7:q2of3:b1:i0",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 testnet3 account 7 branch 1 index 0",
     "network": "testnet3",
@@ -12774,6 +13056,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet3:a7:q2of3:b1:i1",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 testnet3 account 7 branch 1 index 1",
     "network": "testnet3",
@@ -12847,6 +13130,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet3:a7:q2of3:b1:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 testnet3 account 7 branch 1 index 2147483647",
     "network": "testnet3",
@@ -12920,6 +13204,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet3:a7:q3of5:b0:i0",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 testnet3 account 7 branch 0 index 0",
     "network": "testnet3",
@@ -13023,6 +13308,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet3:a7:q3of5:b0:i1",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 testnet3 account 7 branch 0 index 1",
     "network": "testnet3",
@@ -13126,6 +13412,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet3:a7:q3of5:b0:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 testnet3 account 7 branch 0 index 2147483647",
     "network": "testnet3",
@@ -13229,6 +13516,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet3:a7:q3of5:b1:i0",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 testnet3 account 7 branch 1 index 0",
     "network": "testnet3",
@@ -13332,6 +13620,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet3:a7:q3of5:b1:i1",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 testnet3 account 7 branch 1 index 1",
     "network": "testnet3",
@@ -13435,6 +13724,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet3:a7:q3of5:b1:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 testnet3 account 7 branch 1 index 2147483647",
     "network": "testnet3",
@@ -13538,6 +13828,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet4:a0:q2of3:b0:i0",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 testnet4 account 0 branch 0 index 0",
     "network": "testnet4",
@@ -13611,6 +13902,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet4:a0:q2of3:b0:i1",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 testnet4 account 0 branch 0 index 1",
     "network": "testnet4",
@@ -13684,6 +13976,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet4:a0:q2of3:b0:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 testnet4 account 0 branch 0 index 2147483647",
     "network": "testnet4",
@@ -13757,6 +14050,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet4:a0:q2of3:b1:i0",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 testnet4 account 0 branch 1 index 0",
     "network": "testnet4",
@@ -13830,6 +14124,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet4:a0:q2of3:b1:i1",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 testnet4 account 0 branch 1 index 1",
     "network": "testnet4",
@@ -13903,6 +14198,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet4:a0:q2of3:b1:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 testnet4 account 0 branch 1 index 2147483647",
     "network": "testnet4",
@@ -13976,6 +14272,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet4:a0:q3of5:b0:i0",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 testnet4 account 0 branch 0 index 0",
     "network": "testnet4",
@@ -14079,6 +14376,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet4:a0:q3of5:b0:i1",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 testnet4 account 0 branch 0 index 1",
     "network": "testnet4",
@@ -14182,6 +14480,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet4:a0:q3of5:b0:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 testnet4 account 0 branch 0 index 2147483647",
     "network": "testnet4",
@@ -14285,6 +14584,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet4:a0:q3of5:b1:i0",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 testnet4 account 0 branch 1 index 0",
     "network": "testnet4",
@@ -14388,6 +14688,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet4:a0:q3of5:b1:i1",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 testnet4 account 0 branch 1 index 1",
     "network": "testnet4",
@@ -14491,6 +14792,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet4:a0:q3of5:b1:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 testnet4 account 0 branch 1 index 2147483647",
     "network": "testnet4",
@@ -14594,6 +14896,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet4:a7:q2of3:b0:i0",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 testnet4 account 7 branch 0 index 0",
     "network": "testnet4",
@@ -14667,6 +14970,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet4:a7:q2of3:b0:i1",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 testnet4 account 7 branch 0 index 1",
     "network": "testnet4",
@@ -14740,6 +15044,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet4:a7:q2of3:b0:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 testnet4 account 7 branch 0 index 2147483647",
     "network": "testnet4",
@@ -14813,6 +15118,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet4:a7:q2of3:b1:i0",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 testnet4 account 7 branch 1 index 0",
     "network": "testnet4",
@@ -14886,6 +15192,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet4:a7:q2of3:b1:i1",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 testnet4 account 7 branch 1 index 1",
     "network": "testnet4",
@@ -14959,6 +15266,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet4:a7:q2of3:b1:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 testnet4 account 7 branch 1 index 2147483647",
     "network": "testnet4",
@@ -15032,6 +15340,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet4:a7:q3of5:b0:i0",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 testnet4 account 7 branch 0 index 0",
     "network": "testnet4",
@@ -15135,6 +15444,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet4:a7:q3of5:b0:i1",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 testnet4 account 7 branch 0 index 1",
     "network": "testnet4",
@@ -15238,6 +15548,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet4:a7:q3of5:b0:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 testnet4 account 7 branch 0 index 2147483647",
     "network": "testnet4",
@@ -15341,6 +15652,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet4:a7:q3of5:b1:i0",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 testnet4 account 7 branch 1 index 0",
     "network": "testnet4",
@@ -15444,6 +15756,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet4:a7:q3of5:b1:i1",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 testnet4 account 7 branch 1 index 1",
     "network": "testnet4",
@@ -15547,6 +15860,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:testnet4:a7:q3of5:b1:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 testnet4 account 7 branch 1 index 2147483647",
     "network": "testnet4",
@@ -15650,6 +15964,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:signet:a0:q2of3:b0:i0",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 signet account 0 branch 0 index 0",
     "network": "signet",
@@ -15723,6 +16038,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:signet:a0:q2of3:b0:i1",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 signet account 0 branch 0 index 1",
     "network": "signet",
@@ -15796,6 +16112,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:signet:a0:q2of3:b0:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 signet account 0 branch 0 index 2147483647",
     "network": "signet",
@@ -15869,6 +16186,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:signet:a0:q2of3:b1:i0",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 signet account 0 branch 1 index 0",
     "network": "signet",
@@ -15942,6 +16260,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:signet:a0:q2of3:b1:i1",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 signet account 0 branch 1 index 1",
     "network": "signet",
@@ -16015,6 +16334,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:signet:a0:q2of3:b1:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 signet account 0 branch 1 index 2147483647",
     "network": "signet",
@@ -16088,6 +16408,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:signet:a0:q3of5:b0:i0",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 signet account 0 branch 0 index 0",
     "network": "signet",
@@ -16191,6 +16512,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:signet:a0:q3of5:b0:i1",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 signet account 0 branch 0 index 1",
     "network": "signet",
@@ -16294,6 +16616,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:signet:a0:q3of5:b0:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 signet account 0 branch 0 index 2147483647",
     "network": "signet",
@@ -16397,6 +16720,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:signet:a0:q3of5:b1:i0",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 signet account 0 branch 1 index 0",
     "network": "signet",
@@ -16500,6 +16824,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:signet:a0:q3of5:b1:i1",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 signet account 0 branch 1 index 1",
     "network": "signet",
@@ -16603,6 +16928,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:signet:a0:q3of5:b1:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 signet account 0 branch 1 index 2147483647",
     "network": "signet",
@@ -16706,6 +17032,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:signet:a7:q2of3:b0:i0",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 signet account 7 branch 0 index 0",
     "network": "signet",
@@ -16779,6 +17106,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:signet:a7:q2of3:b0:i1",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 signet account 7 branch 0 index 1",
     "network": "signet",
@@ -16852,6 +17180,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:signet:a7:q2of3:b0:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 signet account 7 branch 0 index 2147483647",
     "network": "signet",
@@ -16925,6 +17254,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:signet:a7:q2of3:b1:i0",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 signet account 7 branch 1 index 0",
     "network": "signet",
@@ -16998,6 +17328,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:signet:a7:q2of3:b1:i1",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 signet account 7 branch 1 index 1",
     "network": "signet",
@@ -17071,6 +17402,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:signet:a7:q2of3:b1:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 signet account 7 branch 1 index 2147483647",
     "network": "signet",
@@ -17144,6 +17476,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:signet:a7:q3of5:b0:i0",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 signet account 7 branch 0 index 0",
     "network": "signet",
@@ -17247,6 +17580,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:signet:a7:q3of5:b0:i1",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 signet account 7 branch 0 index 1",
     "network": "signet",
@@ -17350,6 +17684,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:signet:a7:q3of5:b0:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 signet account 7 branch 0 index 2147483647",
     "network": "signet",
@@ -17453,6 +17788,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:signet:a7:q3of5:b1:i0",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 signet account 7 branch 1 index 0",
     "network": "signet",
@@ -17556,6 +17892,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:signet:a7:q3of5:b1:i1",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 signet account 7 branch 1 index 1",
     "network": "signet",
@@ -17659,6 +17996,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:signet:a7:q3of5:b1:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 signet account 7 branch 1 index 2147483647",
     "network": "signet",
@@ -17762,6 +18100,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:regtest:a0:q2of3:b0:i0",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 regtest account 0 branch 0 index 0",
     "network": "regtest",
@@ -17835,6 +18174,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:regtest:a0:q2of3:b0:i1",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 regtest account 0 branch 0 index 1",
     "network": "regtest",
@@ -17908,6 +18248,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:regtest:a0:q2of3:b0:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 regtest account 0 branch 0 index 2147483647",
     "network": "regtest",
@@ -17981,6 +18322,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:regtest:a0:q2of3:b1:i0",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 regtest account 0 branch 1 index 0",
     "network": "regtest",
@@ -18054,6 +18396,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:regtest:a0:q2of3:b1:i1",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 regtest account 0 branch 1 index 1",
     "network": "regtest",
@@ -18127,6 +18470,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:regtest:a0:q2of3:b1:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 regtest account 0 branch 1 index 2147483647",
     "network": "regtest",
@@ -18200,6 +18544,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:regtest:a0:q3of5:b0:i0",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 regtest account 0 branch 0 index 0",
     "network": "regtest",
@@ -18303,6 +18648,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:regtest:a0:q3of5:b0:i1",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 regtest account 0 branch 0 index 1",
     "network": "regtest",
@@ -18406,6 +18752,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:regtest:a0:q3of5:b0:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 regtest account 0 branch 0 index 2147483647",
     "network": "regtest",
@@ -18509,6 +18856,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:regtest:a0:q3of5:b1:i0",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 regtest account 0 branch 1 index 0",
     "network": "regtest",
@@ -18612,6 +18960,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:regtest:a0:q3of5:b1:i1",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 regtest account 0 branch 1 index 1",
     "network": "regtest",
@@ -18715,6 +19064,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:regtest:a0:q3of5:b1:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 regtest account 0 branch 1 index 2147483647",
     "network": "regtest",
@@ -18818,6 +19168,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:regtest:a7:q2of3:b0:i0",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 regtest account 7 branch 0 index 0",
     "network": "regtest",
@@ -18891,6 +19242,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:regtest:a7:q2of3:b0:i1",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 regtest account 7 branch 0 index 1",
     "network": "regtest",
@@ -18964,6 +19316,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:regtest:a7:q2of3:b0:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 regtest account 7 branch 0 index 2147483647",
     "network": "regtest",
@@ -19037,6 +19390,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:regtest:a7:q2of3:b1:i0",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 regtest account 7 branch 1 index 0",
     "network": "regtest",
@@ -19110,6 +19464,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:regtest:a7:q2of3:b1:i1",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 regtest account 7 branch 1 index 1",
     "network": "regtest",
@@ -19183,6 +19538,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:regtest:a7:q2of3:b1:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 2-of-3 regtest account 7 branch 1 index 2147483647",
     "network": "regtest",
@@ -19256,6 +19612,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:regtest:a7:q3of5:b0:i0",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 regtest account 7 branch 0 index 0",
     "network": "regtest",
@@ -19359,6 +19716,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:regtest:a7:q3of5:b0:i1",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 regtest account 7 branch 0 index 1",
     "network": "regtest",
@@ -19462,6 +19820,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:regtest:a7:q3of5:b0:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 regtest account 7 branch 0 index 2147483647",
     "network": "regtest",
@@ -19565,6 +19924,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:regtest:a7:q3of5:b1:i0",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 regtest account 7 branch 1 index 0",
     "network": "regtest",
@@ -19668,6 +20028,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:regtest:a7:q3of5:b1:i1",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 regtest account 7 branch 1 index 1",
     "network": "regtest",
@@ -19771,6 +20132,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-nested-segwit-bip48-1-v1:regtest:a7:q3of5:b1:i2147483647",
     "description": "Multisig Nested SegWit (BIP-48) 3-of-5 regtest account 7 branch 1 index 2147483647",
     "network": "regtest",
@@ -19874,6 +20236,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/1'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:mainnet:a0:q2of3:b0:i0",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 mainnet account 0 branch 0 index 0",
     "network": "mainnet",
@@ -19947,6 +20310,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:mainnet:a0:q2of3:b0:i1",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 mainnet account 0 branch 0 index 1",
     "network": "mainnet",
@@ -20020,6 +20384,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:mainnet:a0:q2of3:b0:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 mainnet account 0 branch 0 index 2147483647",
     "network": "mainnet",
@@ -20093,6 +20458,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:mainnet:a0:q2of3:b1:i0",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 mainnet account 0 branch 1 index 0",
     "network": "mainnet",
@@ -20166,6 +20532,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:mainnet:a0:q2of3:b1:i1",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 mainnet account 0 branch 1 index 1",
     "network": "mainnet",
@@ -20239,6 +20606,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:mainnet:a0:q2of3:b1:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 mainnet account 0 branch 1 index 2147483647",
     "network": "mainnet",
@@ -20312,6 +20680,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:mainnet:a0:q3of5:b0:i0",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 mainnet account 0 branch 0 index 0",
     "network": "mainnet",
@@ -20415,6 +20784,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:mainnet:a0:q3of5:b0:i1",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 mainnet account 0 branch 0 index 1",
     "network": "mainnet",
@@ -20518,6 +20888,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:mainnet:a0:q3of5:b0:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 mainnet account 0 branch 0 index 2147483647",
     "network": "mainnet",
@@ -20621,6 +20992,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:mainnet:a0:q3of5:b1:i0",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 mainnet account 0 branch 1 index 0",
     "network": "mainnet",
@@ -20724,6 +21096,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:mainnet:a0:q3of5:b1:i1",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 mainnet account 0 branch 1 index 1",
     "network": "mainnet",
@@ -20827,6 +21200,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:mainnet:a0:q3of5:b1:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 mainnet account 0 branch 1 index 2147483647",
     "network": "mainnet",
@@ -20930,6 +21304,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:mainnet:a7:q2of3:b0:i0",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 mainnet account 7 branch 0 index 0",
     "network": "mainnet",
@@ -21003,6 +21378,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:mainnet:a7:q2of3:b0:i1",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 mainnet account 7 branch 0 index 1",
     "network": "mainnet",
@@ -21076,6 +21452,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:mainnet:a7:q2of3:b0:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 mainnet account 7 branch 0 index 2147483647",
     "network": "mainnet",
@@ -21149,6 +21526,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:mainnet:a7:q2of3:b1:i0",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 mainnet account 7 branch 1 index 0",
     "network": "mainnet",
@@ -21222,6 +21600,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:mainnet:a7:q2of3:b1:i1",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 mainnet account 7 branch 1 index 1",
     "network": "mainnet",
@@ -21295,6 +21674,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:mainnet:a7:q2of3:b1:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 mainnet account 7 branch 1 index 2147483647",
     "network": "mainnet",
@@ -21368,6 +21748,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:mainnet:a7:q3of5:b0:i0",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 mainnet account 7 branch 0 index 0",
     "network": "mainnet",
@@ -21471,6 +21852,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:mainnet:a7:q3of5:b0:i1",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 mainnet account 7 branch 0 index 1",
     "network": "mainnet",
@@ -21574,6 +21956,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:mainnet:a7:q3of5:b0:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 mainnet account 7 branch 0 index 2147483647",
     "network": "mainnet",
@@ -21677,6 +22060,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:mainnet:a7:q3of5:b1:i0",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 mainnet account 7 branch 1 index 0",
     "network": "mainnet",
@@ -21780,6 +22164,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:mainnet:a7:q3of5:b1:i1",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 mainnet account 7 branch 1 index 1",
     "network": "mainnet",
@@ -21883,6 +22268,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:mainnet:a7:q3of5:b1:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 mainnet account 7 branch 1 index 2147483647",
     "network": "mainnet",
@@ -21986,6 +22372,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/0'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet3:a0:q2of3:b0:i0",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 testnet3 account 0 branch 0 index 0",
     "network": "testnet3",
@@ -22059,6 +22446,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet3:a0:q2of3:b0:i1",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 testnet3 account 0 branch 0 index 1",
     "network": "testnet3",
@@ -22132,6 +22520,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet3:a0:q2of3:b0:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 testnet3 account 0 branch 0 index 2147483647",
     "network": "testnet3",
@@ -22205,6 +22594,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet3:a0:q2of3:b1:i0",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 testnet3 account 0 branch 1 index 0",
     "network": "testnet3",
@@ -22278,6 +22668,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet3:a0:q2of3:b1:i1",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 testnet3 account 0 branch 1 index 1",
     "network": "testnet3",
@@ -22351,6 +22742,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet3:a0:q2of3:b1:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 testnet3 account 0 branch 1 index 2147483647",
     "network": "testnet3",
@@ -22424,6 +22816,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet3:a0:q3of5:b0:i0",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 testnet3 account 0 branch 0 index 0",
     "network": "testnet3",
@@ -22527,6 +22920,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet3:a0:q3of5:b0:i1",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 testnet3 account 0 branch 0 index 1",
     "network": "testnet3",
@@ -22630,6 +23024,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet3:a0:q3of5:b0:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 testnet3 account 0 branch 0 index 2147483647",
     "network": "testnet3",
@@ -22733,6 +23128,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet3:a0:q3of5:b1:i0",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 testnet3 account 0 branch 1 index 0",
     "network": "testnet3",
@@ -22836,6 +23232,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet3:a0:q3of5:b1:i1",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 testnet3 account 0 branch 1 index 1",
     "network": "testnet3",
@@ -22939,6 +23336,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet3:a0:q3of5:b1:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 testnet3 account 0 branch 1 index 2147483647",
     "network": "testnet3",
@@ -23042,6 +23440,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet3:a7:q2of3:b0:i0",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 testnet3 account 7 branch 0 index 0",
     "network": "testnet3",
@@ -23115,6 +23514,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet3:a7:q2of3:b0:i1",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 testnet3 account 7 branch 0 index 1",
     "network": "testnet3",
@@ -23188,6 +23588,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet3:a7:q2of3:b0:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 testnet3 account 7 branch 0 index 2147483647",
     "network": "testnet3",
@@ -23261,6 +23662,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet3:a7:q2of3:b1:i0",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 testnet3 account 7 branch 1 index 0",
     "network": "testnet3",
@@ -23334,6 +23736,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet3:a7:q2of3:b1:i1",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 testnet3 account 7 branch 1 index 1",
     "network": "testnet3",
@@ -23407,6 +23810,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet3:a7:q2of3:b1:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 testnet3 account 7 branch 1 index 2147483647",
     "network": "testnet3",
@@ -23480,6 +23884,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet3:a7:q3of5:b0:i0",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 testnet3 account 7 branch 0 index 0",
     "network": "testnet3",
@@ -23583,6 +23988,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet3:a7:q3of5:b0:i1",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 testnet3 account 7 branch 0 index 1",
     "network": "testnet3",
@@ -23686,6 +24092,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet3:a7:q3of5:b0:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 testnet3 account 7 branch 0 index 2147483647",
     "network": "testnet3",
@@ -23789,6 +24196,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet3:a7:q3of5:b1:i0",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 testnet3 account 7 branch 1 index 0",
     "network": "testnet3",
@@ -23892,6 +24300,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet3:a7:q3of5:b1:i1",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 testnet3 account 7 branch 1 index 1",
     "network": "testnet3",
@@ -23995,6 +24404,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet3:a7:q3of5:b1:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 testnet3 account 7 branch 1 index 2147483647",
     "network": "testnet3",
@@ -24098,6 +24508,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet4:a0:q2of3:b0:i0",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 testnet4 account 0 branch 0 index 0",
     "network": "testnet4",
@@ -24171,6 +24582,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet4:a0:q2of3:b0:i1",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 testnet4 account 0 branch 0 index 1",
     "network": "testnet4",
@@ -24244,6 +24656,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet4:a0:q2of3:b0:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 testnet4 account 0 branch 0 index 2147483647",
     "network": "testnet4",
@@ -24317,6 +24730,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet4:a0:q2of3:b1:i0",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 testnet4 account 0 branch 1 index 0",
     "network": "testnet4",
@@ -24390,6 +24804,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet4:a0:q2of3:b1:i1",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 testnet4 account 0 branch 1 index 1",
     "network": "testnet4",
@@ -24463,6 +24878,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet4:a0:q2of3:b1:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 testnet4 account 0 branch 1 index 2147483647",
     "network": "testnet4",
@@ -24536,6 +24952,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet4:a0:q3of5:b0:i0",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 testnet4 account 0 branch 0 index 0",
     "network": "testnet4",
@@ -24639,6 +25056,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet4:a0:q3of5:b0:i1",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 testnet4 account 0 branch 0 index 1",
     "network": "testnet4",
@@ -24742,6 +25160,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet4:a0:q3of5:b0:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 testnet4 account 0 branch 0 index 2147483647",
     "network": "testnet4",
@@ -24845,6 +25264,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet4:a0:q3of5:b1:i0",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 testnet4 account 0 branch 1 index 0",
     "network": "testnet4",
@@ -24948,6 +25368,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet4:a0:q3of5:b1:i1",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 testnet4 account 0 branch 1 index 1",
     "network": "testnet4",
@@ -25051,6 +25472,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet4:a0:q3of5:b1:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 testnet4 account 0 branch 1 index 2147483647",
     "network": "testnet4",
@@ -25154,6 +25576,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet4:a7:q2of3:b0:i0",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 testnet4 account 7 branch 0 index 0",
     "network": "testnet4",
@@ -25227,6 +25650,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet4:a7:q2of3:b0:i1",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 testnet4 account 7 branch 0 index 1",
     "network": "testnet4",
@@ -25300,6 +25724,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet4:a7:q2of3:b0:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 testnet4 account 7 branch 0 index 2147483647",
     "network": "testnet4",
@@ -25373,6 +25798,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet4:a7:q2of3:b1:i0",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 testnet4 account 7 branch 1 index 0",
     "network": "testnet4",
@@ -25446,6 +25872,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet4:a7:q2of3:b1:i1",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 testnet4 account 7 branch 1 index 1",
     "network": "testnet4",
@@ -25519,6 +25946,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet4:a7:q2of3:b1:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 testnet4 account 7 branch 1 index 2147483647",
     "network": "testnet4",
@@ -25592,6 +26020,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet4:a7:q3of5:b0:i0",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 testnet4 account 7 branch 0 index 0",
     "network": "testnet4",
@@ -25695,6 +26124,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet4:a7:q3of5:b0:i1",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 testnet4 account 7 branch 0 index 1",
     "network": "testnet4",
@@ -25798,6 +26228,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet4:a7:q3of5:b0:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 testnet4 account 7 branch 0 index 2147483647",
     "network": "testnet4",
@@ -25901,6 +26332,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet4:a7:q3of5:b1:i0",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 testnet4 account 7 branch 1 index 0",
     "network": "testnet4",
@@ -26004,6 +26436,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet4:a7:q3of5:b1:i1",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 testnet4 account 7 branch 1 index 1",
     "network": "testnet4",
@@ -26107,6 +26540,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:testnet4:a7:q3of5:b1:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 testnet4 account 7 branch 1 index 2147483647",
     "network": "testnet4",
@@ -26210,6 +26644,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:signet:a0:q2of3:b0:i0",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 signet account 0 branch 0 index 0",
     "network": "signet",
@@ -26283,6 +26718,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:signet:a0:q2of3:b0:i1",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 signet account 0 branch 0 index 1",
     "network": "signet",
@@ -26356,6 +26792,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:signet:a0:q2of3:b0:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 signet account 0 branch 0 index 2147483647",
     "network": "signet",
@@ -26429,6 +26866,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:signet:a0:q2of3:b1:i0",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 signet account 0 branch 1 index 0",
     "network": "signet",
@@ -26502,6 +26940,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:signet:a0:q2of3:b1:i1",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 signet account 0 branch 1 index 1",
     "network": "signet",
@@ -26575,6 +27014,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:signet:a0:q2of3:b1:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 signet account 0 branch 1 index 2147483647",
     "network": "signet",
@@ -26648,6 +27088,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:signet:a0:q3of5:b0:i0",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 signet account 0 branch 0 index 0",
     "network": "signet",
@@ -26751,6 +27192,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:signet:a0:q3of5:b0:i1",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 signet account 0 branch 0 index 1",
     "network": "signet",
@@ -26854,6 +27296,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:signet:a0:q3of5:b0:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 signet account 0 branch 0 index 2147483647",
     "network": "signet",
@@ -26957,6 +27400,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:signet:a0:q3of5:b1:i0",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 signet account 0 branch 1 index 0",
     "network": "signet",
@@ -27060,6 +27504,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:signet:a0:q3of5:b1:i1",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 signet account 0 branch 1 index 1",
     "network": "signet",
@@ -27163,6 +27608,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:signet:a0:q3of5:b1:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 signet account 0 branch 1 index 2147483647",
     "network": "signet",
@@ -27266,6 +27712,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:signet:a7:q2of3:b0:i0",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 signet account 7 branch 0 index 0",
     "network": "signet",
@@ -27339,6 +27786,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:signet:a7:q2of3:b0:i1",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 signet account 7 branch 0 index 1",
     "network": "signet",
@@ -27412,6 +27860,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:signet:a7:q2of3:b0:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 signet account 7 branch 0 index 2147483647",
     "network": "signet",
@@ -27485,6 +27934,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:signet:a7:q2of3:b1:i0",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 signet account 7 branch 1 index 0",
     "network": "signet",
@@ -27558,6 +28008,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:signet:a7:q2of3:b1:i1",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 signet account 7 branch 1 index 1",
     "network": "signet",
@@ -27631,6 +28082,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:signet:a7:q2of3:b1:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 signet account 7 branch 1 index 2147483647",
     "network": "signet",
@@ -27704,6 +28156,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:signet:a7:q3of5:b0:i0",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 signet account 7 branch 0 index 0",
     "network": "signet",
@@ -27807,6 +28260,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:signet:a7:q3of5:b0:i1",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 signet account 7 branch 0 index 1",
     "network": "signet",
@@ -27910,6 +28364,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:signet:a7:q3of5:b0:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 signet account 7 branch 0 index 2147483647",
     "network": "signet",
@@ -28013,6 +28468,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:signet:a7:q3of5:b1:i0",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 signet account 7 branch 1 index 0",
     "network": "signet",
@@ -28116,6 +28572,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:signet:a7:q3of5:b1:i1",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 signet account 7 branch 1 index 1",
     "network": "signet",
@@ -28219,6 +28676,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:signet:a7:q3of5:b1:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 signet account 7 branch 1 index 2147483647",
     "network": "signet",
@@ -28322,6 +28780,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:regtest:a0:q2of3:b0:i0",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 regtest account 0 branch 0 index 0",
     "network": "regtest",
@@ -28395,6 +28854,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:regtest:a0:q2of3:b0:i1",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 regtest account 0 branch 0 index 1",
     "network": "regtest",
@@ -28468,6 +28928,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:regtest:a0:q2of3:b0:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 regtest account 0 branch 0 index 2147483647",
     "network": "regtest",
@@ -28541,6 +29002,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:regtest:a0:q2of3:b1:i0",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 regtest account 0 branch 1 index 0",
     "network": "regtest",
@@ -28614,6 +29076,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:regtest:a0:q2of3:b1:i1",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 regtest account 0 branch 1 index 1",
     "network": "regtest",
@@ -28687,6 +29150,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:regtest:a0:q2of3:b1:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 regtest account 0 branch 1 index 2147483647",
     "network": "regtest",
@@ -28760,6 +29224,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:regtest:a0:q3of5:b0:i0",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 regtest account 0 branch 0 index 0",
     "network": "regtest",
@@ -28863,6 +29328,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:regtest:a0:q3of5:b0:i1",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 regtest account 0 branch 0 index 1",
     "network": "regtest",
@@ -28966,6 +29432,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:regtest:a0:q3of5:b0:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 regtest account 0 branch 0 index 2147483647",
     "network": "regtest",
@@ -29069,6 +29536,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:regtest:a0:q3of5:b1:i0",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 regtest account 0 branch 1 index 0",
     "network": "regtest",
@@ -29172,6 +29640,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:regtest:a0:q3of5:b1:i1",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 regtest account 0 branch 1 index 1",
     "network": "regtest",
@@ -29275,6 +29744,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:regtest:a0:q3of5:b1:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 regtest account 0 branch 1 index 2147483647",
     "network": "regtest",
@@ -29378,6 +29848,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/0'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:regtest:a7:q2of3:b0:i0",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 regtest account 7 branch 0 index 0",
     "network": "regtest",
@@ -29451,6 +29922,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:regtest:a7:q2of3:b0:i1",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 regtest account 7 branch 0 index 1",
     "network": "regtest",
@@ -29524,6 +29996,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:regtest:a7:q2of3:b0:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 regtest account 7 branch 0 index 2147483647",
     "network": "regtest",
@@ -29597,6 +30070,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:regtest:a7:q2of3:b1:i0",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 regtest account 7 branch 1 index 0",
     "network": "regtest",
@@ -29670,6 +30144,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:regtest:a7:q2of3:b1:i1",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 regtest account 7 branch 1 index 1",
     "network": "regtest",
@@ -29743,6 +30218,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:regtest:a7:q2of3:b1:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 2-of-3 regtest account 7 branch 1 index 2147483647",
     "network": "regtest",
@@ -29816,6 +30292,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:regtest:a7:q3of5:b0:i0",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 regtest account 7 branch 0 index 0",
     "network": "regtest",
@@ -29919,6 +30396,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:regtest:a7:q3of5:b0:i1",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 regtest account 7 branch 0 index 1",
     "network": "regtest",
@@ -30022,6 +30500,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:regtest:a7:q3of5:b0:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 regtest account 7 branch 0 index 2147483647",
     "network": "regtest",
@@ -30125,6 +30604,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:regtest:a7:q3of5:b1:i0",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 regtest account 7 branch 1 index 0",
     "network": "regtest",
@@ -30228,6 +30708,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:regtest:a7:q3of5:b1:i1",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 regtest account 7 branch 1 index 1",
     "network": "regtest",
@@ -30331,6 +30812,7 @@ export const VERIFIED_MULTISIG_VECTORS: readonly VerifiedMultisigVector[] = [
     "accountPath": "m/48'/1'/7'/2'"
   },
   {
+    "evidenceTier": "independently-executed-implementation-consensus",
     "caseId": "ms:multisig-native-segwit-bip48-2-v1:regtest:a7:q3of5:b1:i2147483647",
     "description": "Multisig Native SegWit (BIP-48) 3-of-5 regtest account 7 branch 1 index 2147483647",
     "network": "regtest",

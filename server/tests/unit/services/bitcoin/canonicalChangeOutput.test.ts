@@ -33,6 +33,7 @@ import {
 } from '../../../../src/services/bitcoin/transactions/outputBuilder';
 
 const walletId = 'wallet-1';
+const recipientScript = Buffer.from('00141111111111111111111111111111111111111111', 'hex');
 const change = {
   id: 'change-0', walletId, address: 'bc1qchange', derivationPath: "m/84'/0'/0'/1/0",
   index: 0, branch: 1, coordinateVersion: 1,
@@ -85,6 +86,7 @@ describe('canonical change output selection', () => {
       546,
       false,
       preparedChangeOutputs,
+      recipientScript,
       { enabled: true, count: 2 },
     );
 
@@ -92,6 +94,10 @@ describe('canonical change output selection', () => {
       walletId, [change, second], 1,
     );
     expect(psbt.addOutput).toHaveBeenCalledTimes(3);
+    expect(psbt.addOutput).toHaveBeenCalledWith({
+      script: recipientScript,
+      value: 10_000n,
+    });
   });
 
   it('does not construct decoys below the two-output boundary even if selection metadata is inconsistent', async () => {
@@ -114,6 +120,7 @@ describe('canonical change output selection', () => {
         { address: change.address, scriptPubKey: Buffer.from(change.scriptPubKey, 'hex') },
         { address: second.address, scriptPubKey: Buffer.from(second.scriptPubKey, 'hex') },
       ],
+      recipientScript,
       { enabled: true, count: 1 },
     );
 
@@ -137,6 +144,7 @@ describe('canonical change output selection', () => {
       546,
       false,
       [],
+      recipientScript,
       { enabled: false, count: 1 },
     )).rejects.toThrow('No prepared change address available');
     expect(psbt.addOutput).not.toHaveBeenCalled();
@@ -156,6 +164,7 @@ describe('canonical change output selection', () => {
       546,
       false,
       [{ address: change.address, scriptPubKey: Buffer.from(change.scriptPubKey, 'hex') }],
+      recipientScript,
       { enabled: true, count: 2 },
     )).rejects.toThrow('Not enough change addresses for 2 decoy outputs');
   });

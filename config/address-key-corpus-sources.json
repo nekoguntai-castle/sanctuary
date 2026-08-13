@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "evidenceTier": "literal-official-vector",
+  "sources": {
+    "bitcoinCoreKeyIoValid": {
+      "commit": "f490f5562d4b20857ef8d042c050763795fd43da",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/f490f5562d4b20857ef8d042c050763795fd43da/src/test/data/key_io_valid.json",
+      "path": "server/tests/fixtures/upstream/bitcoin-core/f490f5562d4b20857ef8d042c050763795fd43da/key_io_valid.json",
+      "sha256": "cb4978dd01e4d39300597706b131f6c0105ce1fa4c6e8fb20750d09d2ff7370e",
+      "expectedRows": 70,
+      "expectedApplicableRows": 54,
+      "expectedWaivedRows": 16
+    },
+    "bitcoinCoreKeyIoInvalid": {
+      "commit": "f490f5562d4b20857ef8d042c050763795fd43da",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/f490f5562d4b20857ef8d042c050763795fd43da/src/test/data/key_io_invalid.json",
+      "path": "server/tests/fixtures/upstream/bitcoin-core/f490f5562d4b20857ef8d042c050763795fd43da/key_io_invalid.json",
+      "sha256": "c3ca74ddad7c01faaca7c26063537feb73ff2be03eb7fc83a42a655d2979261d",
+      "expectedRows": 70,
+      "expectedApplicableRows": 70,
+      "expectedWaivedRows": 0
+    },
+    "bip32": {
+      "commit": "60f5b33b0a7be3cf09b933d97b78071d684db7d1",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/60f5b33b0a7be3cf09b933d97b78071d684db7d1/bip-0032.mediawiki",
+      "path": "server/tests/fixtures/upstream/bitcoin-bips/60f5b33b0a7be3cf09b933d97b78071d684db7d1/bip-0032.mediawiki",
+      "sha256": "e5e00a8289db2f681052cf24a745320afc225e66b25d1e489a7c884d2fc7f11f",
+      "expectedInvalidSerializations": 16
+    },
+    "bip173": {
+      "commit": "60f5b33b0a7be3cf09b933d97b78071d684db7d1",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/60f5b33b0a7be3cf09b933d97b78071d684db7d1/bip-0173.mediawiki",
+      "path": "server/tests/fixtures/upstream/bitcoin-bips/60f5b33b0a7be3cf09b933d97b78071d684db7d1/bip-0173.mediawiki",
+      "sha256": "b19eab06b264bbd15ad7f7d640fa34de8f4a8809fba8a6ecc3e165545b27a543",
+      "expectedCounts": {
+        "validEncodingStrings": 7,
+        "invalidEncodingStrings": 12,
+        "validAddresses": 6,
+        "invalidAddresses": 10,
+        "supersededValidAddresses": 3
+      }
+    },
+    "bip350": {
+      "commit": "60f5b33b0a7be3cf09b933d97b78071d684db7d1",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/60f5b33b0a7be3cf09b933d97b78071d684db7d1/bip-0350.mediawiki",
+      "path": "server/tests/fixtures/upstream/bitcoin-bips/60f5b33b0a7be3cf09b933d97b78071d684db7d1/bip-0350.mediawiki",
+      "sha256": "63634b06aa8bae88b31929674736e74964c4598684269ac2b0b140c43a7a0dec",
+      "expectedCounts": {
+        "validEncodingStrings": 7,
+        "invalidEncodingStrings": 14,
+        "validAddresses": 8,
+        "invalidAddresses": 15
+      }
+    }
+  }
+}
