@@ -4,6 +4,10 @@ import { createLogger } from '../../../utils/logger';
 import { normalizeDerivationPath } from '@sanctuary/shared/utils/bitcoin';
 import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import {
+  parseCanonicalAccountPath,
+  parseCanonicalAddressPath,
+} from '@sanctuary/shared/constants/walletPolicy';
+import {
   buildMultisigBip32Derivations,
   buildMultisigWitnessScript,
 } from '../psbtBuilder';
@@ -175,32 +179,17 @@ const addMultisigBip32Info = (
   addWitnessScript(psbt, inputIndex, derivationPath, signingInfo, networkObj, logPrefix);
 };
 
-const findAccountPathEnd = (pathParts: string[]): number => {
-  let accountPathEnd = 0;
-  for (let i = 0; i < pathParts.length && i < 3; i++) {
-    if (pathParts[i].endsWith("'") || pathParts[i].endsWith('h')) {
-      accountPathEnd = i + 1;
-    }
-  }
-  return accountPathEnd;
-};
-
-const derivePathIndex = (part: string): number => {
-  return parseInt(part.replace(/['h]/g, ''), 10);
-};
-
 const deriveSingleSigPubkeyNode = (
   accountNode: AccountNode,
-  derivationPath: string
+  derivationPath: string,
+  accountPath: string,
 ): AccountNode => {
-  const pathParts = derivationPath.replace(/^m\/?/, '').split('/').filter(p => p);
-  let pubkeyNode = accountNode;
-
-  for (let i = findAccountPathEnd(pathParts); i < pathParts.length; i++) {
-    pubkeyNode = pubkeyNode.derive(derivePathIndex(pathParts[i]));
+  const parsedAddress = parseCanonicalAddressPath(normalizeDerivationPath(derivationPath));
+  const parsedAccount = parseCanonicalAccountPath(normalizeDerivationPath(accountPath));
+  if (!parsedAddress || !parsedAccount || parsedAddress.accountPath !== parsedAccount.path) {
+    throw new Error('Address derivation path does not match the signer account origin');
   }
-
-  return pubkeyNode;
+  return accountNode.derive(parsedAddress.branch).derive(parsedAddress.index);
 };
 
 const addSingleSigDerivationInfo = (
@@ -209,11 +198,16 @@ const addSingleSigDerivationInfo = (
   derivationPath: string,
   masterFingerprint: Buffer,
   accountNode: AccountNode,
+  accountPath: string,
   scriptType: WalletSigningInfo['scriptType'],
   logPrefix: string
 ): void => {
   try {
-    const pubkeyNode = deriveSingleSigPubkeyNode(accountNode, derivationPath);
+    const pubkeyNode = deriveSingleSigPubkeyNode(
+      accountNode,
+      derivationPath,
+      accountPath,
+    );
     const normalizedPath = normalizeDerivationPath(derivationPath);
     if (scriptType === WalletScriptType.TAPROOT) {
       const internalPubkey = Buffer.from(pubkeyNode.publicKey).subarray(1, 33);
@@ -277,13 +271,14 @@ const addBip32Info = (
     return;
   }
 
-  if (signingInfo.masterFingerprint && derivationPath && accountNode) {
+  if (signingInfo.masterFingerprint && signingInfo.accountPath && derivationPath && accountNode) {
     addSingleSigDerivationInfo(
       psbt,
       inputIndex,
       derivationPath,
       signingInfo.masterFingerprint,
       accountNode,
+      signingInfo.accountPath,
       signingInfo.scriptType,
       logPrefix,
     );

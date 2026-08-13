@@ -1,19 +1,23 @@
 import * as bitcoin from 'bitcoinjs-lib';
 import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import { normalizeDerivationPath } from '@sanctuary/shared/utils/bitcoin';
+import {
+  parseCanonicalAccountPath,
+  parseCanonicalAddressPath,
+} from '@sanctuary/shared/constants/walletPolicy';
 import bip32 from '../bip32';
 import { buildMultisigWitnessScript } from '../psbtBuilder';
 import { addressRepository } from '../../../repositories';
 import type { SpendEvidence } from '../utxoSelection';
 import type { WalletSigningInfo } from './types';
 
-const childIndexes = (derivationPath: string): number[] => {
-  const parts = normalizeDerivationPath(derivationPath).replace(/^m\/?/, '').split('/').filter(Boolean);
-  let accountPathEnd = 0;
-  for (let index = 0; index < Math.min(parts.length, 3); index += 1) {
-    if (parts[index].endsWith("'") || parts[index].endsWith('h')) accountPathEnd = index + 1;
+const childIndexes = (derivationPath: string, accountPath: string): [0 | 1, number] => {
+  const parsedAddress = parseCanonicalAddressPath(normalizeDerivationPath(derivationPath));
+  const parsedAccount = parseCanonicalAccountPath(normalizeDerivationPath(accountPath));
+  if (!parsedAddress || !parsedAccount || parsedAddress.accountPath !== parsedAccount.path) {
+    throw new Error('Cannot estimate transaction fee: address path does not match signer account');
   }
-  return parts.slice(accountPathEnd).map(part => Number.parseInt(part.replace(/['h]/g, ''), 10));
+  return [parsedAddress.branch, parsedAddress.index];
 };
 
 const deriveSingleSigPubkey = (
@@ -22,8 +26,9 @@ const deriveSingleSigPubkey = (
   network: bitcoin.Network,
 ): Uint8Array => {
   if (!signingInfo.accountXpub) throw new Error('Cannot estimate transaction fee: account xpub is missing');
+  if (!signingInfo.accountPath) throw new Error('Cannot estimate transaction fee: signer account origin is missing');
   let node = bip32.fromBase58(signingInfo.accountXpub, network);
-  for (const index of childIndexes(derivationPath)) node = node.derive(index);
+  for (const index of childIndexes(derivationPath, signingInfo.accountPath)) node = node.derive(index);
   /* v8 ignore next -- BIP32 nodes from a validated xpub always expose a compressed public key */
   if (!node.publicKey) throw new Error('Cannot estimate transaction fee: input public key derivation failed');
   return node.publicKey;

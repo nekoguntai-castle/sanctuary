@@ -18,7 +18,7 @@ export function buildWalletPolicyDerivationPath(
   walletType: WalletType,
   scriptType: WalletScriptType,
   network: Network,
-  account: number = 0,
+  account: number,
 ): string {
   return buildCanonicalAccountPath({
     walletType,
@@ -47,17 +47,19 @@ export function buildRangedKeyExpression(
   derivationPath: string,
   options: DescriptorBuildOptions
 ): string {
+  if (!device.derivationPath || derivationPath !== device.derivationPath) {
+    throw new Error('Device account origin is required');
+  }
   const formattedPath = formatPathForDescriptor(derivationPath);
   return `[${device.fingerprint}/${formattedPath}]${device.xpub}/${getDescriptorChain(options)}/*`;
 }
 
 export function buildMultiSigKeyExpressions(
   devices: DeviceKeyInfo[],
-  fallbackDerivationPath: string,
   options: MultiSigBuildOptions
 ): string[] {
   return devices.map((device) =>
-    buildRangedKeyExpression(device, device.derivationPath || fallbackDerivationPath, options)
+    buildRangedKeyExpression(device, device.derivationPath, options)
   );
 }
 

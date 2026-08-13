@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import bip32 from '../../../../src/services/bitcoin/bip32';
 import {
   convertXpubToFormat,
-  deriveAddress,
+  deriveRelativeAddress,
   validateXpub,
 } from '../../../../src/services/bitcoin/addressDerivation';
 import { testXpubs } from '../../../fixtures/bitcoin';
@@ -96,8 +96,8 @@ describe('Address Derivation Service convertXpubToFormat', () => {
     it('should preserve key data during Zpub to xpub conversion', () => {
       const converted = convertXpubToFormat(testZpub, 'xpub');
 
-      const zpubAddr = deriveAddress(testZpub, 0, { network: 'mainnet' });
-      const xpubAddr = deriveAddress(converted, 0, { network: 'mainnet' });
+      const zpubAddr = deriveRelativeAddress(testZpub, 0, { scriptType: 'native_segwit', network: 'mainnet', branch: 0 });
+      const xpubAddr = deriveRelativeAddress(converted, 0, { scriptType: 'native_segwit', network: 'mainnet', branch: 0 });
 
       expect(Buffer.from(zpubAddr.publicKey).equals(Buffer.from(xpubAddr.publicKey))).toBe(true);
     });

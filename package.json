@@ -122,6 +122,7 @@
     "test:release-artifacts": "node tests/release/verify-release-artifacts.test.mjs",
     "test:mutation": "stryker run config/tooling/stryker.config.mjs",
     "test:mutation:psbt-account-binding:browser": "stryker run config/tooling/stryker.psbt-account-binding.config.mjs",
+    "test:mutation:wallet-policy": "stryker run config/tooling/stryker.wallet-policy.config.mjs",
     "test:mutation:backend": "cd server && npx stryker run",
     "test:mutation:critical:backend": "cd server && npm run test:mutation:critical:gate",
     "arch:graphs": "node scripts/architecture/generate-graphs.mjs",

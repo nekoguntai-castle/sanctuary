@@ -8,7 +8,7 @@
 interface DeviceInfo {
   fingerprint: string;
   xpub: string;
-  derivationPath?: string;
+  derivationPath: string;
 }
 
 import { formatPathForDescriptor } from '@sanctuary/shared/utils/bitcoin';
@@ -81,8 +81,8 @@ const validateAndRenderDescriptor = (descriptor: string): string =>
  */
 export function getDerivationPath(
   scriptType: ScriptType,
-  network: Network = 'mainnet',
-  account: number = 0
+  network: Network,
+  account: number,
 ): string {
   return canonicalAccountPath(WalletType.SINGLE_SIG, scriptType, network, account);
 }
@@ -92,8 +92,8 @@ export function getDerivationPath(
  */
 export function getMultisigDerivationPath(
   scriptType: ScriptType,
-  network: Network = 'mainnet',
-  account: number = 0
+  network: Network,
+  account: number,
 ): string {
   // This safety program supports only BIP48 nested/native sorted multisig.
   // Legacy P2SH and Taproot multisig remain blocked until independently proven.
@@ -115,8 +115,8 @@ export function buildSingleSigDescriptor(
   if (!Object.values(WalletScriptType).includes(scriptType)) {
     throw new Error(`Unsupported script type: ${scriptType}`);
   }
-  const derivationPath = device.derivationPath || getDerivationPath(scriptType, network);
-  const formattedPath = formatPathForDescriptor(derivationPath);
+  if (!device.derivationPath) throw new Error('Device account origin is required');
+  const formattedPath = formatPathForDescriptor(device.derivationPath);
 
   // Build key expression: [fingerprint/path]xpub
   const keyExpression = `[${device.fingerprint}/${formattedPath}]${device.xpub}`;
@@ -146,6 +146,9 @@ export function buildMultiSigDescriptor(
   if (devices.length < 2) {
     throw new Error('Multi-sig requires at least 2 devices');
   }
+  if (devices.some(device => !device.derivationPath)) {
+    throw new Error('Every device account origin is required');
+  }
 
   if (quorum > devices.length) {
     throw new Error('Quorum cannot exceed total number of signers');
@@ -157,8 +160,7 @@ export function buildMultiSigDescriptor(
 
   // Build key expressions for each device
   const keyExpressions = devices.map((device) => {
-    const derivationPath = device.derivationPath || getMultisigDerivationPath(scriptType, network);
-    const formattedPath = formatPathForDescriptor(derivationPath);
+    const formattedPath = formatPathForDescriptor(device.derivationPath);
     return `[${device.fingerprint}/${formattedPath}]${device.xpub}/0/*`;
   });
 

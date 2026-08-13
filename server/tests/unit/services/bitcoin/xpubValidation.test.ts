@@ -19,7 +19,7 @@ import bip32 from '@/services/bitcoin/bip32';
 import {
   validateXpub,
   convertToStandardXpub,
-  deriveAddress,
+  deriveRelativeAddress,
 } from '@/services/bitcoin/addressDerivation';
 
 // Valid test xpubs from known seeds (verified in verified-address-vectors.ts)
@@ -130,13 +130,13 @@ describe('xpub Validation', () => {
       // The zpub should produce valid addresses when used with native segwit
       const zpub = VALID_XPUBS.mainnet.zpub;
 
-      const addr1 = deriveAddress(zpub, 0, {
+      const addr1 = deriveRelativeAddress(zpub, 0, {
         scriptType: 'native_segwit',
         network: 'mainnet',
         change: false,
       });
 
-      const addr2 = deriveAddress(zpub, 0, {
+      const addr2 = deriveRelativeAddress(zpub, 0, {
         scriptType: 'native_segwit',
         network: 'mainnet',
         change: false,
@@ -149,7 +149,7 @@ describe('xpub Validation', () => {
     });
 
     it('should derive valid native segwit address from tpub on testnet', () => {
-      const addr = deriveAddress(VALID_XPUBS.testnet.tpub, 0, {
+      const addr = deriveRelativeAddress(VALID_XPUBS.testnet.tpub, 0, {
         scriptType: 'native_segwit',
         network: 'testnet',
         change: false,
@@ -164,7 +164,7 @@ describe('xpub Validation', () => {
 describe('Boundary Condition Tests', () => {
   describe('Address Index Boundaries', () => {
     it('should handle index 0 (first address)', () => {
-      const addr = deriveAddress(VALID_XPUBS.testnet.tpub, 0, {
+      const addr = deriveRelativeAddress(VALID_XPUBS.testnet.tpub, 0, {
         scriptType: 'native_segwit',
         network: 'testnet',
         change: false,
@@ -174,7 +174,7 @@ describe('Boundary Condition Tests', () => {
     });
 
     it('should handle index 1', () => {
-      const addr = deriveAddress(VALID_XPUBS.testnet.tpub, 1, {
+      const addr = deriveRelativeAddress(VALID_XPUBS.testnet.tpub, 1, {
         scriptType: 'native_segwit',
         network: 'testnet',
         change: false,
@@ -185,7 +185,7 @@ describe('Boundary Condition Tests', () => {
 
     it('should handle moderately high indices', () => {
       for (const index of [100, 999, 9999]) {
-        const addr = deriveAddress(VALID_XPUBS.testnet.tpub, index, {
+        const addr = deriveRelativeAddress(VALID_XPUBS.testnet.tpub, index, {
           scriptType: 'native_segwit',
           network: 'testnet',
           change: false,
@@ -198,7 +198,7 @@ describe('Boundary Condition Tests', () => {
     it('should produce unique addresses for sequential indices', () => {
       const addresses = new Set<string>();
       for (let i = 0; i < 100; i++) {
-        const addr = deriveAddress(VALID_XPUBS.testnet.tpub, i, {
+        const addr = deriveRelativeAddress(VALID_XPUBS.testnet.tpub, i, {
           scriptType: 'native_segwit',
           network: 'testnet',
           change: false,
@@ -212,13 +212,13 @@ describe('Boundary Condition Tests', () => {
 
   describe('Change vs Receive Addresses', () => {
     it('should produce different addresses for receive vs change at same index', () => {
-      const receive = deriveAddress(VALID_XPUBS.testnet.tpub, 0, {
+      const receive = deriveRelativeAddress(VALID_XPUBS.testnet.tpub, 0, {
         scriptType: 'native_segwit',
         network: 'testnet',
         change: false,
       });
 
-      const change = deriveAddress(VALID_XPUBS.testnet.tpub, 0, {
+      const change = deriveRelativeAddress(VALID_XPUBS.testnet.tpub, 0, {
         scriptType: 'native_segwit',
         network: 'testnet',
         change: true,
@@ -228,13 +228,13 @@ describe('Boundary Condition Tests', () => {
     });
 
     it('should produce deterministic receive addresses', () => {
-      const addr1 = deriveAddress(VALID_XPUBS.testnet.tpub, 0, {
+      const addr1 = deriveRelativeAddress(VALID_XPUBS.testnet.tpub, 0, {
         scriptType: 'native_segwit',
         network: 'testnet',
         change: false,
       });
 
-      const addr2 = deriveAddress(VALID_XPUBS.testnet.tpub, 0, {
+      const addr2 = deriveRelativeAddress(VALID_XPUBS.testnet.tpub, 0, {
         scriptType: 'native_segwit',
         network: 'testnet',
         change: false,
@@ -244,13 +244,13 @@ describe('Boundary Condition Tests', () => {
     });
 
     it('should produce deterministic change addresses', () => {
-      const addr1 = deriveAddress(VALID_XPUBS.testnet.tpub, 0, {
+      const addr1 = deriveRelativeAddress(VALID_XPUBS.testnet.tpub, 0, {
         scriptType: 'native_segwit',
         network: 'testnet',
         change: true,
       });
 
-      const addr2 = deriveAddress(VALID_XPUBS.testnet.tpub, 0, {
+      const addr2 = deriveRelativeAddress(VALID_XPUBS.testnet.tpub, 0, {
         scriptType: 'native_segwit',
         network: 'testnet',
         change: true,
@@ -266,7 +266,7 @@ describe('Boundary Condition Tests', () => {
       const addresses = new Map<string, string>();
 
       for (const scriptType of scriptTypes) {
-        const addr = deriveAddress(VALID_XPUBS.mainnet.xpub, 0, {
+        const addr = deriveRelativeAddress(VALID_XPUBS.mainnet.xpub, 0, {
           scriptType,
           network: 'mainnet',
           change: false,
@@ -281,7 +281,7 @@ describe('Boundary Condition Tests', () => {
     });
 
     it('should produce correct address format for legacy (P2PKH)', () => {
-      const addr = deriveAddress(VALID_XPUBS.mainnet.xpub, 0, {
+      const addr = deriveRelativeAddress(VALID_XPUBS.mainnet.xpub, 0, {
         scriptType: 'legacy',
         network: 'mainnet',
         change: false,
@@ -291,7 +291,7 @@ describe('Boundary Condition Tests', () => {
     });
 
     it('should produce correct address format for nested segwit (P2SH-P2WPKH)', () => {
-      const addr = deriveAddress(VALID_XPUBS.mainnet.xpub, 0, {
+      const addr = deriveRelativeAddress(VALID_XPUBS.mainnet.xpub, 0, {
         scriptType: 'nested_segwit',
         network: 'mainnet',
         change: false,
@@ -301,7 +301,7 @@ describe('Boundary Condition Tests', () => {
     });
 
     it('should produce correct address format for native segwit (P2WPKH)', () => {
-      const addr = deriveAddress(VALID_XPUBS.mainnet.xpub, 0, {
+      const addr = deriveRelativeAddress(VALID_XPUBS.mainnet.xpub, 0, {
         scriptType: 'native_segwit',
         network: 'mainnet',
         change: false,
@@ -311,7 +311,7 @@ describe('Boundary Condition Tests', () => {
     });
 
     it('should produce correct address format for taproot (P2TR)', () => {
-      const addr = deriveAddress(VALID_XPUBS.mainnet.xpub, 0, {
+      const addr = deriveRelativeAddress(VALID_XPUBS.mainnet.xpub, 0, {
         scriptType: 'taproot',
         network: 'mainnet',
         change: false,
@@ -323,7 +323,7 @@ describe('Boundary Condition Tests', () => {
 
   describe('Network Boundaries', () => {
     it('should produce mainnet format for mainnet network', () => {
-      const addr = deriveAddress(VALID_XPUBS.mainnet.xpub, 0, {
+      const addr = deriveRelativeAddress(VALID_XPUBS.mainnet.xpub, 0, {
         scriptType: 'native_segwit',
         network: 'mainnet',
         change: false,
@@ -332,7 +332,7 @@ describe('Boundary Condition Tests', () => {
     });
 
     it('should produce testnet format for testnet network', () => {
-      const addr = deriveAddress(VALID_XPUBS.testnet.tpub, 0, {
+      const addr = deriveRelativeAddress(VALID_XPUBS.testnet.tpub, 0, {
         scriptType: 'native_segwit',
         network: 'testnet',
         change: false,
@@ -344,13 +344,13 @@ describe('Boundary Condition Tests', () => {
       // Using the same xpub but different networks should produce different addresses
       // Note: In practice you shouldn't use mainnet xpub for testnet, but the function
       // should handle it deterministically
-      const mainnetAddr = deriveAddress(VALID_XPUBS.mainnet.xpub, 0, {
+      const mainnetAddr = deriveRelativeAddress(VALID_XPUBS.mainnet.xpub, 0, {
         scriptType: 'native_segwit',
         network: 'mainnet',
         change: false,
       });
 
-      const testnetAddr = deriveAddress(VALID_XPUBS.testnet.tpub, 0, {
+      const testnetAddr = deriveRelativeAddress(VALID_XPUBS.testnet.tpub, 0, {
         scriptType: 'native_segwit',
         network: 'testnet',
         change: false,
@@ -368,31 +368,32 @@ describe('Boundary Condition Tests', () => {
 
 describe('Derivation Path Correctness', () => {
   it('should include correct derivation path in result', () => {
-    const addr = deriveAddress(VALID_XPUBS.testnet.tpub, 5, {
+    const addr = deriveRelativeAddress(VALID_XPUBS.testnet.tpub, 5, {
       scriptType: 'native_segwit',
       network: 'testnet',
       change: false,
     });
 
     // Derivation path should end with /0/5 for receive index 5
-    expect(addr.derivationPath).toMatch(/\/0\/5$/);
+    expect(addr).toMatchObject({ branch: 0, index: 5 });
+    expect(addr).not.toHaveProperty('derivationPath');
   });
 
   it('should include change flag in derivation path', () => {
-    const receive = deriveAddress(VALID_XPUBS.testnet.tpub, 0, {
+    const receive = deriveRelativeAddress(VALID_XPUBS.testnet.tpub, 0, {
       scriptType: 'native_segwit',
       network: 'testnet',
       change: false,
     });
 
-    const change = deriveAddress(VALID_XPUBS.testnet.tpub, 0, {
+    const change = deriveRelativeAddress(VALID_XPUBS.testnet.tpub, 0, {
       scriptType: 'native_segwit',
       network: 'testnet',
       change: true,
     });
 
     // Receive should have /0/index, change should have /1/index
-    expect(receive.derivationPath).toMatch(/\/0\/0$/);
-    expect(change.derivationPath).toMatch(/\/1\/0$/);
+    expect(receive).toMatchObject({ branch: 0, index: 0 });
+    expect(change).toMatchObject({ branch: 1, index: 0 });
   });
 });

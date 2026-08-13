@@ -6,7 +6,6 @@
 import {
   btcToSats,
   detectAddressType,
-  extractChangeAndAddressIndex,
   formatBTC,
   formatBTCFromSats,
   formatPathForDescriptor,
@@ -358,30 +357,6 @@ describe("Shared Bitcoin Utilities", () => {
     it("formats derivation paths for descriptor notation", () => {
       expect(formatPathForDescriptor("m/48'/0'/0'/2'")).toBe("48h/0h/0h/2h");
       expect(formatPathForDescriptor("84'/0'/0'")).toBe("84h/0h/0h");
-    });
-
-    it("extracts change/index and falls back to zero when path parts are missing", () => {
-      expect(extractChangeAndAddressIndex("m/48'/0'/0'/2'/0/5")).toEqual({
-        changeIdx: 0,
-        addressIdx: 5,
-      });
-      expect(extractChangeAndAddressIndex("m/84'/0'/0'/7")).toEqual({
-        changeIdx: 0,
-        addressIdx: 7,
-      });
-      expect(extractChangeAndAddressIndex("m/")).toEqual({
-        changeIdx: 0,
-        addressIdx: 0,
-      });
-    });
-
-    it("throws when extracting change/index from malformed paths", () => {
-      expect(() => extractChangeAndAddressIndex("invalid")).toThrow(
-        "Invalid derivation path",
-      );
-      expect(() => extractChangeAndAddressIndex("m/84'/bad/0'")).toThrow(
-        "Invalid derivation path",
-      );
     });
 
     it("parses single-sig account paths into structured fields", () => {

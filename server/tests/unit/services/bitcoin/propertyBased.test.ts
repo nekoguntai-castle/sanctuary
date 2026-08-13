@@ -14,7 +14,7 @@
 import { describe, it, expect } from 'vitest';
 import * as fc from 'fast-check';
 import {
-  deriveAddress,
+  deriveRelativeAddress,
   deriveAddressFromDescriptor as deriveStrictAddressFromDescriptor,
 } from '@/services/bitcoin/addressDerivation';
 import { replaceCanonicalDescriptorBranch } from '@/services/bitcoin/descriptorParser';
@@ -43,13 +43,13 @@ describe('Property-Based Tests: Address Derivation', () => {
           fc.integer({ min: 0, max: 10000 }),
           fc.boolean(),
           (index, isChange) => {
-            const addr1 = deriveAddress(TEST_XPUBS.testnet.tpub, index, {
+            const addr1 = deriveRelativeAddress(TEST_XPUBS.testnet.tpub, index, {
               scriptType: 'native_segwit',
               network: 'testnet',
               change: isChange,
             });
 
-            const addr2 = deriveAddress(TEST_XPUBS.testnet.tpub, index, {
+            const addr2 = deriveRelativeAddress(TEST_XPUBS.testnet.tpub, index, {
               scriptType: 'native_segwit',
               network: 'testnet',
               change: isChange,
@@ -68,7 +68,7 @@ describe('Property-Based Tests: Address Derivation', () => {
           const addresses = Array(5)
             .fill(null)
             .map(() =>
-              deriveAddress(TEST_XPUBS.testnet.tpub, index, {
+              deriveRelativeAddress(TEST_XPUBS.testnet.tpub, index, {
                 scriptType: 'native_segwit',
                 network: 'testnet',
                 change: false,
@@ -87,7 +87,7 @@ describe('Property-Based Tests: Address Derivation', () => {
     it('native segwit testnet addresses should always start with tb1q', () => {
       fc.assert(
         fc.property(fc.integer({ min: 0, max: 10000 }), (index) => {
-          const addr = deriveAddress(TEST_XPUBS.testnet.tpub, index, {
+          const addr = deriveRelativeAddress(TEST_XPUBS.testnet.tpub, index, {
             scriptType: 'native_segwit',
             network: 'testnet',
             change: false,
@@ -102,7 +102,7 @@ describe('Property-Based Tests: Address Derivation', () => {
     it('native segwit mainnet addresses should always start with bc1q', () => {
       fc.assert(
         fc.property(fc.integer({ min: 0, max: 10000 }), (index) => {
-          const addr = deriveAddress(TEST_XPUBS.mainnet.xpub, index, {
+          const addr = deriveRelativeAddress(TEST_XPUBS.mainnet.xpub, index, {
             scriptType: 'native_segwit',
             network: 'mainnet',
             change: false,
@@ -117,7 +117,7 @@ describe('Property-Based Tests: Address Derivation', () => {
     it('taproot mainnet addresses should always start with bc1p', () => {
       fc.assert(
         fc.property(fc.integer({ min: 0, max: 1000 }), (index) => {
-          const addr = deriveAddress(TEST_XPUBS.mainnet.xpub, index, {
+          const addr = deriveRelativeAddress(TEST_XPUBS.mainnet.xpub, index, {
             scriptType: 'taproot',
             network: 'mainnet',
             change: false,
@@ -132,7 +132,7 @@ describe('Property-Based Tests: Address Derivation', () => {
     it('legacy mainnet addresses should always start with 1', () => {
       fc.assert(
         fc.property(fc.integer({ min: 0, max: 1000 }), (index) => {
-          const addr = deriveAddress(TEST_XPUBS.mainnet.xpub, index, {
+          const addr = deriveRelativeAddress(TEST_XPUBS.mainnet.xpub, index, {
             scriptType: 'legacy',
             network: 'mainnet',
             change: false,
@@ -147,7 +147,7 @@ describe('Property-Based Tests: Address Derivation', () => {
     it('nested segwit mainnet addresses should always start with 3', () => {
       fc.assert(
         fc.property(fc.integer({ min: 0, max: 1000 }), (index) => {
-          const addr = deriveAddress(TEST_XPUBS.mainnet.xpub, index, {
+          const addr = deriveRelativeAddress(TEST_XPUBS.mainnet.xpub, index, {
             scriptType: 'nested_segwit',
             network: 'mainnet',
             change: false,
@@ -162,7 +162,7 @@ describe('Property-Based Tests: Address Derivation', () => {
     it('P2WPKH addresses should always be 42 characters (bc1q + 39)', () => {
       fc.assert(
         fc.property(fc.integer({ min: 0, max: 1000 }), (index) => {
-          const addr = deriveAddress(TEST_XPUBS.mainnet.xpub, index, {
+          const addr = deriveRelativeAddress(TEST_XPUBS.mainnet.xpub, index, {
             scriptType: 'native_segwit',
             network: 'mainnet',
             change: false,
@@ -177,7 +177,7 @@ describe('Property-Based Tests: Address Derivation', () => {
     it('P2TR addresses should always be 62 characters (bc1p + 58)', () => {
       fc.assert(
         fc.property(fc.integer({ min: 0, max: 1000 }), (index) => {
-          const addr = deriveAddress(TEST_XPUBS.mainnet.xpub, index, {
+          const addr = deriveRelativeAddress(TEST_XPUBS.mainnet.xpub, index, {
             scriptType: 'taproot',
             network: 'mainnet',
             change: false,
@@ -200,13 +200,13 @@ describe('Property-Based Tests: Address Derivation', () => {
             const index1 = baseIndex;
             const index2 = baseIndex + offset;
 
-            const addr1 = deriveAddress(TEST_XPUBS.testnet.tpub, index1, {
+            const addr1 = deriveRelativeAddress(TEST_XPUBS.testnet.tpub, index1, {
               scriptType: 'native_segwit',
               network: 'testnet',
               change: false,
             });
 
-            const addr2 = deriveAddress(TEST_XPUBS.testnet.tpub, index2, {
+            const addr2 = deriveRelativeAddress(TEST_XPUBS.testnet.tpub, index2, {
               scriptType: 'native_segwit',
               network: 'testnet',
               change: false,
@@ -222,13 +222,13 @@ describe('Property-Based Tests: Address Derivation', () => {
     it('receive and change addresses at same index should be different', () => {
       fc.assert(
         fc.property(fc.integer({ min: 0, max: 10000 }), (index) => {
-          const receive = deriveAddress(TEST_XPUBS.testnet.tpub, index, {
+          const receive = deriveRelativeAddress(TEST_XPUBS.testnet.tpub, index, {
             scriptType: 'native_segwit',
             network: 'testnet',
             change: false,
           });
 
-          const change = deriveAddress(TEST_XPUBS.testnet.tpub, index, {
+          const change = deriveRelativeAddress(TEST_XPUBS.testnet.tpub, index, {
             scriptType: 'native_segwit',
             network: 'testnet',
             change: true,
@@ -243,19 +243,19 @@ describe('Property-Based Tests: Address Derivation', () => {
     it('same index with different script types should produce different addresses', () => {
       fc.assert(
         fc.property(fc.integer({ min: 0, max: 1000 }), (index) => {
-          const native = deriveAddress(TEST_XPUBS.mainnet.xpub, index, {
+          const native = deriveRelativeAddress(TEST_XPUBS.mainnet.xpub, index, {
             scriptType: 'native_segwit',
             network: 'mainnet',
             change: false,
           });
 
-          const nested = deriveAddress(TEST_XPUBS.mainnet.xpub, index, {
+          const nested = deriveRelativeAddress(TEST_XPUBS.mainnet.xpub, index, {
             scriptType: 'nested_segwit',
             network: 'mainnet',
             change: false,
           });
 
-          const legacy = deriveAddress(TEST_XPUBS.mainnet.xpub, index, {
+          const legacy = deriveRelativeAddress(TEST_XPUBS.mainnet.xpub, index, {
             scriptType: 'legacy',
             network: 'mainnet',
             change: false,
@@ -272,13 +272,13 @@ describe('Property-Based Tests: Address Derivation', () => {
     it('derivation path should always end with correct index', () => {
       fc.assert(
         fc.property(fc.integer({ min: 0, max: 10000 }), (index) => {
-          const addr = deriveAddress(TEST_XPUBS.testnet.tpub, index, {
+          const addr = deriveRelativeAddress(TEST_XPUBS.testnet.tpub, index, {
             scriptType: 'native_segwit',
             network: 'testnet',
             change: false,
           });
 
-          return addr.derivationPath.endsWith(`/0/${index}`);
+          return addr.branch === 0 && addr.index === index && !('derivationPath' in addr);
         }),
         { numRuns: 100 },
       );
@@ -287,13 +287,13 @@ describe('Property-Based Tests: Address Derivation', () => {
     it('change derivation path should have /1/ for change', () => {
       fc.assert(
         fc.property(fc.integer({ min: 0, max: 10000 }), (index) => {
-          const addr = deriveAddress(TEST_XPUBS.testnet.tpub, index, {
+          const addr = deriveRelativeAddress(TEST_XPUBS.testnet.tpub, index, {
             scriptType: 'native_segwit',
             network: 'testnet',
             change: true,
           });
 
-          return addr.derivationPath.endsWith(`/1/${index}`);
+          return addr.branch === 1 && addr.index === index && !('derivationPath' in addr);
         }),
         { numRuns: 100 },
       );
@@ -442,7 +442,7 @@ describe('Property-Based Tests: Multisig Key Ordering (BIP-67)', () => {
 
 describe('Property-Based Tests: Edge Cases', () => {
   it('should handle boundary index 0', () => {
-    const addr = deriveAddress(TEST_XPUBS.testnet.tpub, 0, {
+    const addr = deriveRelativeAddress(TEST_XPUBS.testnet.tpub, 0, {
       scriptType: 'native_segwit',
       network: 'testnet',
       change: false,
@@ -458,7 +458,7 @@ describe('Property-Based Tests: Edge Cases', () => {
         const addresses = new Set<string>();
 
         for (let i = startIndex; i < startIndex + 100; i++) {
-          const addr = deriveAddress(TEST_XPUBS.testnet.tpub, i, {
+          const addr = deriveRelativeAddress(TEST_XPUBS.testnet.tpub, i, {
             scriptType: 'native_segwit',
             network: 'testnet',
             change: false,

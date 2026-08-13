@@ -16,7 +16,7 @@ export type Network = LegacyNetworkType;
 export interface DeviceKeyInfo {
   fingerprint: string;
   xpub: string;
-  derivationPath?: string;
+  derivationPath: string;
 }
 
 /**
@@ -68,12 +68,12 @@ export interface ScriptTypeHandler {
   /**
    * Get the standard derivation path for single-sig
    */
-  getDerivationPath(network: Network, account?: number): string;
+  getDerivationPath(network: Network, account: number): string;
 
   /**
    * Get the standard derivation path for multi-sig
    */
-  getMultisigDerivationPath(network: Network, account?: number): string;
+  getMultisigDerivationPath(network: Network, account: number): string;
 
   /**
    * Build a single-sig descriptor

@@ -696,7 +696,7 @@ describe('bindPsbtAccount', () => {
 
   it.each([
     ['outside the account', `${accountPath.replace("/0'", "/9'")}/0/0`, 'outside signer account'],
-    ['a hardened child', `${accountPath}/0/0'`, 'hardened or invalid child'],
+    ['a hardened child', `${accountPath}/0/0'`, 'address or signer account path is not canonical'],
   ])('rejects an address path %s', async (_label, derivationPath, message) => {
     const { psbt, first, second } = fixture();
     mocks.findUtxos.mockResolvedValue([first, second]);

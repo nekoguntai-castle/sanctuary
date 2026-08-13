@@ -268,17 +268,17 @@ describe('ScriptTypeRegistry', () => {
     it('should throw for unknown script type', () => {
       const registry = new ScriptTypeRegistry();
 
-      expect(() => registry.getDerivationPath('unknown', 'mainnet')).toThrow(
+      expect(() => registry.getDerivationPath('unknown', 'mainnet', 0)).toThrow(
         'Unknown script type: unknown'
       );
     });
 
-    it('should use default values', () => {
+    it('requires explicit network and account values', () => {
       const registry = new ScriptTypeRegistry();
       const handler = createMockHandler({ id: 'native_segwit' });
 
       registry.register(handler);
-      registry.getDerivationPath('native_segwit');
+      registry.getDerivationPath('native_segwit', 'mainnet', 0);
 
       expect(handler.getDerivationPath).toHaveBeenCalledWith('mainnet', 0);
     });
@@ -304,7 +304,7 @@ describe('ScriptTypeRegistry', () => {
 
       registry.register(handler);
 
-      expect(() => registry.getMultisigDerivationPath('taproot', 'mainnet')).toThrow(
+      expect(() => registry.getMultisigDerivationPath('taproot', 'mainnet', 0)).toThrow(
         "Script type 'taproot' does not support multisig"
       );
     });
@@ -312,7 +312,7 @@ describe('ScriptTypeRegistry', () => {
     it('should throw for unknown script type', () => {
       const registry = new ScriptTypeRegistry();
 
-      expect(() => registry.getMultisigDerivationPath('unknown', 'mainnet')).toThrow(
+      expect(() => registry.getMultisigDerivationPath('unknown', 'mainnet', 0)).toThrow(
         'Unknown script type: unknown'
       );
     });
@@ -343,6 +343,7 @@ describe('ScriptTypeRegistry', () => {
       expect(() => registry.buildSingleSigDescriptor('unknown', {
         fingerprint: 'abcd1234',
         xpub: 'xpub...',
+        derivationPath: "m/84'/0'/0'",
       }, { network: 'mainnet' })).toThrow('Unknown script type: unknown');
     });
   });
@@ -355,8 +356,8 @@ describe('ScriptTypeRegistry', () => {
       registry.register(handler);
 
       const devices: DeviceKeyInfo[] = [
-        { fingerprint: 'abcd1234', xpub: 'xpub1...' },
-        { fingerprint: 'efgh5678', xpub: 'xpub2...' },
+        { fingerprint: 'abcd1234', xpub: 'xpub1...', derivationPath: "m/48'/0'/0'/2'" },
+        { fingerprint: 'efgh5678', xpub: 'xpub2...', derivationPath: "m/48'/0'/0'/2'" },
       ];
       const options = { network: 'mainnet' as const, quorum: 2 };
 

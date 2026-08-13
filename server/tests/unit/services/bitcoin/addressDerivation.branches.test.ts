@@ -31,13 +31,15 @@ import bip32 from '../../../../src/services/bitcoin/bip32';
 import {
   convertToStandardXpub,
   convertXpubToFormat,
-  deriveMultisigAddress,
-  deriveAddress,
+  deriveRelativeAddress,
   deriveAddressFromDescriptor,
-  deriveAddressFromParsedDescriptor,
   parseDescriptor,
   validateXpub,
 } from '../../../../src/services/bitcoin/addressDerivation';
+import { deriveAddressFromParsedDescriptor } from
+  '../../../../src/services/bitcoin/addressDerivation/descriptorDerivation';
+import { deriveRelativeMultisigAddress as deriveMultisigAddress } from
+  '../../../../src/services/bitcoin/addressDerivation/multisigDerivation';
 import { testXpubs } from '../../../fixtures/bitcoin';
 
 bitcoin.initEccLib(ecc);
@@ -61,6 +63,49 @@ const bip48Descriptor = (
 };
 
 describe('Address Derivation Service additional branch coverage', () => {
+  it('rejects invalid child indexes before reading or deriving the account xpub', () => {
+    const fromBase58 = vi.fn();
+    expect(() => deriveRelativeAddress(
+      testXpubs.testnet.bip84,
+      0,
+      { network: 'testnet' } as never,
+      { fromBase58 },
+    )).toThrow(/coordinate branch/i);
+    expect(() => deriveRelativeAddress(
+      testXpubs.testnet.bip84,
+      0,
+      undefined as never,
+      { fromBase58 },
+    )).toThrow(/options are required/i);
+    expect(() => deriveRelativeAddress(
+      testXpubs.testnet.bip84,
+      0,
+      {
+        scriptType: 'native_segwit',
+        network: 'testnet',
+        branch: 0,
+        change: true,
+      } as never,
+      { fromBase58 },
+    )).toThrow(/conflicting.*branch/i);
+    for (const index of [-1, 0.5, 0x80000000, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => deriveRelativeAddress(
+        testXpubs.testnet.bip84,
+        index,
+        { scriptType: 'native_segwit', network: 'testnet', branch: 0 },
+        { fromBase58 },
+      )).toThrow(/coordinate index/i);
+    }
+    expect(fromBase58).not.toHaveBeenCalled();
+    expect(() => deriveRelativeAddress(
+      testXpubs.testnet.bip84,
+      0,
+      { scriptType: 'native_segwit', network: 'testnet', change: 'false' as unknown as boolean },
+      { fromBase58 },
+    )).toThrow(/coordinate branch/i);
+    expect(fromBase58).not.toHaveBeenCalled();
+  });
+
   afterEach(() => {
     paymentMocks.p2wpkh = null;
     paymentMocks.p2sh = null;
@@ -72,9 +117,10 @@ describe('Address Derivation Service additional branch coverage', () => {
   it('throws when native segwit address generation returns no address', () => {
     paymentMocks.p2wpkh = () => ({ address: undefined });
     expect(() =>
-      deriveAddress(testXpubs.testnet.bip84, 0, {
+      deriveRelativeAddress(testXpubs.testnet.bip84, 0, {
         scriptType: 'native_segwit',
         network: 'testnet',
+        branch: 0,
       })
     ).toThrow('Failed to generate address');
   });
@@ -82,9 +128,10 @@ describe('Address Derivation Service additional branch coverage', () => {
   it('throws when nested segwit address generation returns no address', () => {
     paymentMocks.p2sh = () => ({ address: undefined });
     expect(() =>
-      deriveAddress(testXpubs.testnet.bip84, 0, {
+      deriveRelativeAddress(testXpubs.testnet.bip84, 0, {
         scriptType: 'nested_segwit',
         network: 'testnet',
+        branch: 0,
       })
     ).toThrow('Failed to generate address');
   });
@@ -92,9 +139,10 @@ describe('Address Derivation Service additional branch coverage', () => {
   it('throws when taproot address generation returns no address', () => {
     paymentMocks.p2tr = () => ({ address: undefined });
     expect(() =>
-      deriveAddress(testXpubs.testnet.bip84, 0, {
+      deriveRelativeAddress(testXpubs.testnet.bip84, 0, {
         scriptType: 'taproot',
         network: 'testnet',
+        branch: 0,
       })
     ).toThrow('Failed to generate address');
   });
@@ -102,9 +150,10 @@ describe('Address Derivation Service additional branch coverage', () => {
   it('throws when legacy address generation returns no address', () => {
     paymentMocks.p2pkh = () => ({ address: undefined });
     expect(() =>
-      deriveAddress(testXpubs.testnet.bip84, 0, {
+      deriveRelativeAddress(testXpubs.testnet.bip84, 0, {
         scriptType: 'legacy',
         network: 'testnet',
+        branch: 0,
       })
     ).toThrow('Failed to generate address');
   });
@@ -116,12 +165,13 @@ describe('Address Derivation Service additional branch coverage', () => {
     };
 
     expect(() =>
-      deriveAddress(
+      deriveRelativeAddress(
         testXpubs.testnet.bip84,
         0,
         {
           scriptType: 'native_segwit',
           network: 'testnet',
+          branch: 0,
         },
         { fromBase58: () => fakeNode }
       )
@@ -201,9 +251,10 @@ describe('Address Derivation Service additional branch coverage', () => {
   it('throws for unsupported script type at runtime', () => {
     const tpub = testXpubs.testnet.bip84;
     expect(() =>
-      deriveAddress(tpub, 0, {
+      deriveRelativeAddress(tpub, 0, {
         scriptType: 'unsupported' as any,
         network: 'testnet',
+        branch: 0,
       })
     ).toThrow('Unsupported script type');
   });
@@ -287,12 +338,12 @@ describe('Address Derivation Service additional branch coverage', () => {
     expect(() => deriveMultisigAddress(
       { ...base, keys: [] },
       0,
-      { network: 'testnet', change: false },
+      { network: 'testnet', branch: 0 },
     )).toThrow('No keys found in multisig descriptor');
     expect(() => deriveMultisigAddress(
       { ...base, quorum: undefined },
       0,
-      { network: 'testnet', change: false },
+      { network: 'testnet', branch: 0 },
     )).toThrow('No quorum found in multisig descriptor');
   });
 
@@ -315,41 +366,42 @@ describe('Address Derivation Service additional branch coverage', () => {
     expect(() => deriveMultisigAddress(
       parsed,
       0,
-      { network: 'testnet', change: false },
+      { network: 'testnet', branch: 0 },
       { fromBase58: () => fakeNode },
     )).toThrow('explicit fixed branch wildcard');
     expect(() => deriveMultisigAddress(
       { ...parsed, keys: [{ ...parsed.keys[0], derivationPath: '0/*' }] },
       0,
-      { network: 'testnet', change: true },
+      { network: 'testnet', branch: 1 },
       { fromBase58: () => fakeNode },
     )).toThrow('descriptor branch 0 does not match requested branch 1');
     expect(() => deriveMultisigAddress(
       { ...parsed, keys: [{ ...parsed.keys[0], derivationPath: '0/*' }] },
       Number.NaN,
-      { network: 'testnet', change: false },
+      { network: 'testnet', branch: 0 },
       { fromBase58: () => fakeNode },
-    )).toThrow('Invalid descriptor child derivation index');
+    )).toThrow('Invalid canonical address coordinate index');
     expect(() => deriveMultisigAddress(
       { ...parsed, keys: [{ ...parsed.keys[0], derivationPath: '0/*' }] },
       0x80000000,
-      { network: 'testnet', change: false },
+      { network: 'testnet', branch: 0 },
       { fromBase58: () => fakeNode },
-    )).toThrow('Invalid descriptor child derivation index');
+    )).toThrow('Invalid canonical address coordinate index');
     expect(() => deriveMultisigAddress(
       { ...parsed, keys: [{ ...parsed.keys[0], accountPath: "48'/1'/0'/2'", derivationPath: '0/*' }] },
       { [Symbol.toPrimitive]: () => '' } as unknown as number,
-      { network: 'testnet', change: false },
+      { network: 'testnet', branch: 0 },
       { fromBase58: () => fakeNode },
-    )).toThrow('Invalid descriptor child derivation index');
+    )).toThrow('Invalid canonical address coordinate index');
 
     const normalized = deriveMultisigAddress(
       { ...parsed, keys: [{ ...parsed.keys[0], accountPath: "48'/1'/0'/2'", derivationPath: '0/*' }] },
       0,
-      { network: 'testnet', change: false },
+      { network: 'testnet', branch: 0 },
       { fromBase58: () => fakeNode },
     );
-    expect(normalized.derivationPath).toBe("m/48'/1'/0'/2'/0/0");
+    expect(normalized).toMatchObject({ branch: 0, index: 0 });
+    expect(normalized).not.toHaveProperty('derivationPath');
   });
 
   it('parses the canonical multipath suffix in the compatibility descriptor shape', () => {
@@ -366,15 +418,50 @@ describe('Address Derivation Service additional branch coverage', () => {
     );
   });
 
-  it('uses nested segwit account path for Zpub when nested script type is requested', () => {
+  it('rejects a single-sig descriptor that substitutes a multisig keys array for its xpub', () => {
+    expect(() => deriveAddressFromParsedDescriptor({
+      type: 'wpkh',
+      fingerprint: 'aabbccdd',
+      accountPath: "84'/1'/0'",
+      path: '0/*',
+      keys: [{
+        fingerprint: 'aabbccdd',
+        accountPath: "84'/1'/0'",
+        xpub: testXpubs.testnet.bip84,
+        derivationPath: '0/*',
+      }],
+    }, 0, { network: 'testnet' })).toThrow('No xpub found in descriptor');
+  });
+
+  it('rejects ambiguous single-sig descriptors that also contain multisig keys', () => {
+    expect(() => deriveAddressFromParsedDescriptor({
+      type: 'wpkh',
+      fingerprint: 'aabbccdd',
+      accountPath: "84'/1'/0'",
+      xpub: testXpubs.testnet.bip84,
+      path: '0/*',
+      keys: [{
+        fingerprint: '11223344',
+        accountPath: "84'/1'/0'",
+        xpub: testXpubs.testnet.bip84,
+        derivationPath: '0/*',
+      }],
+    }, 0, { network: 'testnet' })).toThrow(
+      'Single-signature descriptor cannot contain multisig keys',
+    );
+  });
+
+  it('never manufactures an account origin from an extended-key prefix', () => {
     const zpub = 'Zpub74omgM7ehB1aZZsx274C1CrbXjE8MSzKzijgwh4Wvhupc5UaLioFcYRi5pEtfdrJa5kSumat5xbiMWrNZuuKLqN22H72P6DrAqNQLE4dv1m';
-    const result = deriveAddress(zpub, 0, {
+    const result = deriveRelativeAddress(zpub, 0, {
       scriptType: 'nested_segwit',
       network: 'mainnet',
+      branch: 0,
     });
 
     expect(result.address).toMatch(/^3/);
-    expect(result.derivationPath).toContain("m/49'/0'/0'");
+    expect(result).toMatchObject({ branch: 0, index: 0 });
+    expect(result).not.toHaveProperty('derivationPath');
   });
 
   it('validates uppercase and testnet native-segwit extended key variants', () => {

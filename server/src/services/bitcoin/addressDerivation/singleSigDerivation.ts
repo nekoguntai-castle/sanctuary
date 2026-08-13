@@ -8,38 +8,55 @@
 
 import * as bitcoin from 'bitcoinjs-lib';
 import {
+  assertCanonicalRelativeCoordinate,
+  assertCanonicalAddressRange,
+} from '@sanctuary/shared/constants/walletPolicy';
+import {
   WalletScriptType,
   type WalletScriptType as WalletScriptTypeValue,
 } from '@sanctuary/shared/constants/walletIdentity';
 import bip32 from '../bip32';
 import { convertToStandardXpub } from './xpubConversion';
-import { getNetwork, getAccountPath } from './utils';
+import { getNetwork } from './utils';
 import type {
   AddressDerivationNetwork,
   DerivationNode,
   DescriptorDerivationDeps,
-  DerivedAddress,
+  RelativeDerivedAddress,
 } from './types';
+
+const MAX_DERIVATION_BATCH_SIZE = 1000;
 
 /**
  * Derive an address from xpub at a specific index
  */
-export function deriveAddress(
+export function deriveRelativeAddress(
   xpub: string,
   index: number,
   options: {
-    scriptType?: WalletScriptTypeValue;
-    network?: AddressDerivationNetwork;
-    change?: boolean; // false = external (receive), true = internal (change)
-  } = {},
+    scriptType: WalletScriptTypeValue;
+    network: AddressDerivationNetwork;
+  } & (
+    | { branch: 0 | 1; change?: never }
+    | { change: boolean; branch?: never }
+  ),
   deps: DescriptorDerivationDeps = {}
-): DerivedAddress {
-  const {
-    scriptType = WalletScriptType.NATIVE_SEGWIT,
-    network = 'mainnet',
-    change = false,
-  } = options;
-
+): RelativeDerivedAddress {
+  if (!options || typeof options !== 'object') {
+    throw new Error('Explicit address derivation options are required');
+  }
+  if (options.branch !== undefined && options.change !== undefined) {
+    throw new Error('Conflicting canonical address coordinate branch selectors');
+  }
+  const { scriptType, network } = options;
+  if (options.branch === undefined && typeof options.change !== 'boolean') {
+    throw new Error('Invalid canonical address coordinate branch');
+  }
+  const branch = options.branch ?? (options.change ? 1 : 0);
+  const coordinate = assertCanonicalRelativeCoordinate({
+    branch,
+    index,
+  });
   const networkObj = getNetwork(network);
 
   // Convert zpub/ypub/etc to standard xpub format for parsing
@@ -50,19 +67,13 @@ export function deriveAddress(
   const node = fromBase58(standardXpub, networkObj);
 
   // Derive address: m/<change>/<index>
-  const changeIndex = change ? 1 : 0;
-  const derived = node.derive(changeIndex).derive(index);
+  const derived = node.derive(coordinate.branch).derive(coordinate.index);
 
   if (!derived.publicKey) {
     throw new Error('Failed to derive public key');
   }
 
   let address: string;
-  let derivationPath: string;
-
-  // Get account path from xpub (standard paths)
-  const accountPath = getAccountPath(xpub, scriptType, network);
-  derivationPath = `${accountPath}/${changeIndex}/${index}`;
 
   // Generate address based on script type
   switch (scriptType) {
@@ -119,38 +130,36 @@ export function deriveAddress(
 
   return {
     address,
-    derivationPath,
     publicKey: derived.publicKey,
+    branch: coordinate.branch,
+    index: coordinate.index,
   };
 }
 
 /**
  * Derive multiple addresses at once
  */
-export function deriveAddresses(
+export function deriveRelativeAddresses(
   xpub: string,
   startIndex: number,
   count: number,
   options: {
-    scriptType?: WalletScriptTypeValue;
-    network?: AddressDerivationNetwork;
-    change?: boolean;
-  } = {}
-): Array<{
-  address: string;
-  derivationPath: string;
-  index: number;
-}> {
-  const addresses: Array<{
-    address: string;
-    derivationPath: string;
-    index: number;
-  }> = [];
+    scriptType: WalletScriptTypeValue;
+    network: AddressDerivationNetwork;
+  } & (
+    | { branch: 0 | 1; change?: never }
+    | { change: boolean; branch?: never }
+  )
+): RelativeDerivedAddress[] {
+  assertCanonicalAddressRange(startIndex, count);
+  if (count > MAX_DERIVATION_BATCH_SIZE) {
+    throw new Error(`Address derivation batch exceeds ${MAX_DERIVATION_BATCH_SIZE} entries`);
+  }
+  const addresses: RelativeDerivedAddress[] = [];
 
   for (let i = 0; i < count; i++) {
     const index = startIndex + i;
-    const { address, derivationPath } = deriveAddress(xpub, index, options);
-    addresses.push({ address, derivationPath, index });
+    addresses.push(deriveRelativeAddress(xpub, index, options));
   }
 
   return addresses;

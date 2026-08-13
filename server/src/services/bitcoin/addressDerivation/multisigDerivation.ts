@@ -6,6 +6,9 @@
  */
 
 import * as bitcoin from 'bitcoinjs-lib';
+import {
+  assertCanonicalRelativeCoordinate,
+} from '@sanctuary/shared/constants/walletPolicy';
 import bip32 from '../bip32';
 import { convertToStandardXpub } from './xpubConversion';
 import { getNetwork } from './utils';
@@ -14,7 +17,7 @@ import type {
   MultisigKeyInfo,
   DerivationNode,
   DescriptorDerivationDeps,
-  DerivedAddress,
+  RelativeDerivedAddress,
   AddressDerivationNetwork,
 } from './types';
 
@@ -24,40 +27,34 @@ type MultisigRedeem = ReturnType<typeof bitcoin.payments.p2ms>;
 /**
  * Derive multisig address from parsed descriptor
  */
-export function deriveMultisigAddress(
+export function deriveRelativeMultisigAddress(
   parsed: ParsedDescriptor,
   index: number,
   options: {
     network: AddressDerivationNetwork;
-    change: boolean;
+    branch: 0 | 1;
   },
   deps: DescriptorDerivationDeps = {}
-): DerivedAddress {
-  if (!Number.isInteger(index) || index < 0 || index > 0x7fffffff) {
-    throw new Error('Invalid descriptor child derivation index');
-  }
-  const { network, change } = options;
+): RelativeDerivedAddress {
+  const { network, branch } = options;
+  const coordinate = assertCanonicalRelativeCoordinate({
+    branch,
+    index,
+  });
   const networkObj = getNetwork(network);
   const fromBase58 = getBase58Reader(deps);
   const keys = getMultisigKeys(parsed);
   const quorum = getMultisigQuorum(parsed);
-  const changeIndex = change ? 1 : 0;
   const pubkeys = sortPubkeys(
-    deriveMultisigPublicKeys(keys, changeIndex, index, networkObj, fromBase58)
+    deriveMultisigPublicKeys(keys, coordinate.branch, coordinate.index, networkObj, fromBase58)
   );
   const address = createMultisigAddress(parsed.type, quorum, pubkeys, networkObj);
 
-  // Build derivation path string (use first key's path as reference)
-  const firstKey = keys[0];
-  const accountPath = firstKey.accountPath.startsWith('m/')
-    ? firstKey.accountPath
-    : `m/${firstKey.accountPath}`;
-  const derivationPath = `${accountPath}/${changeIndex}/${index}`;
-
   return {
     address,
-    derivationPath,
     publicKey: pubkeys[0], // Return first sorted pubkey as reference
+    branch: coordinate.branch,
+    index: coordinate.index,
   };
 }
 

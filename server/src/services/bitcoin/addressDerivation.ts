@@ -14,6 +14,7 @@ export {
   type DerivationNode,
   type DescriptorDerivationDeps,
   type DerivedAddress,
+  type RelativeDerivedAddress,
   type CanonicalDerivedAddress,
   type CanonicalSignerOrigin,
   type DerivedAddressWithIndex,
@@ -24,14 +25,11 @@ export {
   // Descriptor parsing
   parseDescriptor,
   // Single-sig derivation
-  deriveAddress,
-  deriveAddresses,
-  // Multisig derivation
-  deriveMultisigAddress,
+  deriveRelativeAddress,
+  deriveRelativeAddresses,
   // Descriptor-based derivation
   deriveCanonicalAddress,
   deriveAddressFromDescriptor,
-  deriveAddressFromParsedDescriptor,
   deriveAddressesFromDescriptor,
   // Utilities
   validateXpub,

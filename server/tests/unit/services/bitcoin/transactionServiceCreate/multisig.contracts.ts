@@ -66,6 +66,10 @@ export function registerTransactionServiceMultisigTests(): void {
     const walletId = "multisig-wallet-id";
     const recipient = testnetAddresses.nativeSegwit[0];
     const signingKeys = multisigKeyInfo.slice(0, 2);
+    const nestedSigningKeys = signingKeys.map(key => ({
+      ...key,
+      accountPath: "48'/1'/0'/1'",
+    }));
     const descriptor =
       "wsh(sortedmulti(2,[aabbccdd/48'/1'/0'/2']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*,[eeff0011/48'/1'/0'/2']tpubDC5FSnBiZDMmhiuCmWAYsLwgLYrrT9rAqvTySfuCCrgsWz8wxMXUS9Tb9iVMvcRbvFcAHGkMD5Kx8koh4GquNGNTfohfk7pgjhaPCdXpoba/0/*))";
 
@@ -188,12 +192,12 @@ export function registerTransactionServiceMultisigTests(): void {
       mockPrismaClient.wallet.findUnique.mockResolvedValue(multisigSigningWallet({
         ...sampleWallets.multiSig2of3,
         id: walletId,
-      }, multisigKeyInfo.slice(0, 2), {
+      }, nestedSigningKeys, {
         descriptor:
           "sh(wsh(sortedmulti(2,[aabbccdd/48'/1'/0'/1']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*,[eeff0011/48'/1'/0'/1']tpubDC5FSnBiZDMmhiuCmWAYsLwgLYrrT9rAqvTySfuCCrgsWz8wxMXUS9Tb9iVMvcRbvFcAHGkMD5Kx8koh4GquNGNTfohfk7pgjhaPCdXpoba/0/*)))",
       }));
       const nestedWitness = buildMultisigWitnessScript(
-        "m/48'/1'/0'/1'/0/0", signingKeys, 2, bitcoin.networks.testnet,
+        "m/48'/1'/0'/1'/0/0", nestedSigningKeys, 2, bitcoin.networks.testnet,
       )!;
       const nestedScript = bitcoin.payments.p2sh({
         redeem: bitcoin.payments.p2wsh({ redeem: { output: nestedWitness }, network: bitcoin.networks.testnet }),
@@ -291,7 +295,7 @@ export function registerTransactionServiceMultisigTests(): void {
       mockPrismaClient.wallet.findUnique.mockResolvedValue(multisigSigningWallet({
         ...sampleWallets.multiSig2of3,
         id: walletId,
-      }, multisigKeyInfo.slice(0, 2), {
+      }, nestedSigningKeys, {
         descriptor:
           "sh(wsh(sortedmulti(2,[aabbccdd/48'/1'/0'/1']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*,[eeff0011/48'/1'/0'/1']tpubDC5FSnBiZDMmhiuCmWAYsLwgLYrrT9rAqvTySfuCCrgsWz8wxMXUS9Tb9iVMvcRbvFcAHGkMD5Kx8koh4GquNGNTfohfk7pgjhaPCdXpoba/0/*)))",
       }));

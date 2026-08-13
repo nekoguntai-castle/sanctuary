@@ -5,7 +5,7 @@ export default {
   ...baseConfig,
   mutate: [
     'src/services/bitcoin/transactions/psbtConstruction.ts:67-77',
-    'src/services/bitcoin/transactions/psbtInputConstruction.ts:206-228',
+    'src/services/bitcoin/transactions/psbtInputConstruction.ts:206-222',
   ],
   testFiles: [
     'tests/unit/services/bitcoin/psbtConstruction.signingInfo.test.ts',

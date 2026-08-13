@@ -9,7 +9,11 @@ import bip32 from '../bip32';
 import { convertToStandardXpub } from '../addressDerivation/xpubConversion';
 import type { MultisigKeyInfo } from '../addressDerivation/types';
 import { createLogger } from '../../../utils/logger';
-import { extractChangeAndAddressIndex } from '@sanctuary/shared/utils/bitcoin';
+import { normalizeDerivationPath } from '@sanctuary/shared/utils/bitcoin';
+import {
+  parseCanonicalAccountPath,
+  parseCanonicalAddressPath,
+} from '@sanctuary/shared/constants/walletPolicy';
 
 const log = createLogger('BITCOIN:SVC_PSBT_WITNESS');
 
@@ -23,10 +27,17 @@ const deriveMultisigPubkeys = (
   network: bitcoin.Network,
   inputIndex?: number
 ): Uint8Array[] | undefined => {
-  const { changeIdx, addressIdx } = extractChangeAndAddressIndex(derivationPath);
+  const parsedAddress = parseCanonicalAddressPath(normalizeDerivationPath(derivationPath));
+  if (!parsedAddress) throw new Error('Invalid canonical address derivation path');
+  const { branch: changeIdx, index: addressIdx } = parsedAddress;
+  const canonicalKeys = multisigKeys.map(keyInfo => {
+    const account = parseCanonicalAccountPath(normalizeDerivationPath(keyInfo.accountPath));
+    if (!account) throw new Error('Multisig signer account is not canonical');
+    return keyInfo;
+  });
   const pubkeys: Uint8Array[] = [];
 
-  for (const keyInfo of multisigKeys) {
+  for (const keyInfo of canonicalKeys) {
     try {
       const standardXpub = convertToStandardXpub(keyInfo.xpub);
       const keyNode = bip32.fromBase58(standardXpub, network);
@@ -41,10 +52,10 @@ const deriveMultisigPubkeys = (
     }
   }
 
-  if (pubkeys.length !== multisigKeys.length) {
+  if (pubkeys.length !== canonicalKeys.length) {
     log.warn('Not all pubkeys derived for witnessScript', {
       inputIndex,
-      expected: multisigKeys.length,
+      expected: canonicalKeys.length,
       actual: pubkeys.length,
     });
     return undefined;

@@ -1,4 +1,5 @@
 import * as bitcoin from 'bitcoinjs-lib';
+import bs58check from 'bs58check';
 import { describe, expect, it } from 'vitest';
 import bip32 from '../../../../src/services/bitcoin/bip32';
 import { deriveCanonicalAddress } from '../../../../src/services/bitcoin/addressDerivation/descriptorDerivation';
@@ -20,6 +21,12 @@ function singleSigDescriptors(xpub: string, accountPath = "84'/1'/0'") {
     receiveDescriptor: `wpkh([aabbccdd/${accountPath}]${xpub}/0/*)`,
     changeDescriptor: `wpkh([aabbccdd/${accountPath}]${xpub}/1/*)`,
   };
+}
+
+function withZeroParentFingerprint(xpub: string): string {
+  const payload = Buffer.from(bs58check.decode(xpub));
+  payload.fill(0, 5, 9);
+  return bs58check.encode(payload);
 }
 
 describe('canonical descriptor xpub/account binding', () => {
@@ -60,6 +67,18 @@ describe('canonical descriptor xpub/account binding', () => {
       singleSigDescriptors(shallowXpub),
       { branch: 0, index: 0, network: 'testnet3' },
     )).toThrow('Extended public key depth does not match descriptor origin');
+  });
+
+  it('rejects an account xpub with missing serialized parent evidence', () => {
+    const xpub = accountXpub(
+      13,
+      bitcoin.networks.testnet,
+      [hardened(84), hardened(1), hardened(0)],
+    );
+    expect(() => deriveCanonicalAddress(
+      singleSigDescriptors(withZeroParentFingerprint(xpub)),
+      { branch: 0, index: 0, network: 'testnet3' },
+    )).toThrow('Extended public key parent fingerprint must be nonzero');
   });
 
   it('rejects a single-sig xpub whose child number differs from the declared account', () => {

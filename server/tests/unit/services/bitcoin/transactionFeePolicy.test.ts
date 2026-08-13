@@ -52,6 +52,7 @@ describe('transaction fee spend-policy resolution', () => {
     const info = signingInfo({
       scriptType: WalletScriptType.NESTED_SEGWIT,
       accountXpub: accountXpub(),
+      accountPath: "m/49'/1'/0'",
     });
     const evidence = resolveTransactionSpendPolicy(info, "m/49h/1h/0h/1/7", network);
 
@@ -59,8 +60,8 @@ describe('transaction fee spend-policy resolution', () => {
     expect(evidence.redeemScript).toHaveLength(22);
     expect(transactionChangeScriptTemplate(info)).toHaveLength(23);
 
-    const shallowSuffix = resolveTransactionSpendPolicy(info, 'm/0/7', network);
-    expect(shallowSuffix.redeemScript).toHaveLength(22);
+    expect(() => resolveTransactionSpendPolicy(info, 'm/0/7', network))
+      .toThrow(/address path does not match signer account/i);
   });
 
   it('fails closed when nested SegWit has no account xpub', () => {
@@ -69,6 +70,17 @@ describe('transaction fee spend-policy resolution', () => {
       "m/49'/1'/0'/0/0",
       network,
     )).toThrow('account xpub is missing');
+  });
+
+  it('fails closed when nested SegWit has no signer account origin', () => {
+    expect(() => resolveTransactionSpendPolicy(
+      signingInfo({
+        scriptType: WalletScriptType.NESTED_SEGWIT,
+        accountXpub: accountXpub(),
+      }),
+      "m/49'/1'/0'/0/0",
+      network,
+    )).toThrow('signer account origin is missing');
   });
 
   it.each([

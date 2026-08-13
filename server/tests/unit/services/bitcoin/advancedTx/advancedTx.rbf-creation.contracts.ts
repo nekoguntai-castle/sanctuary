@@ -663,10 +663,9 @@ export function registerRbfTransactionCreationContracts() {
         return { txid, confirmations: 0, hex: txHex, vin: [], vout: [] } as any;
       });
 
-      rejectNextPsbtBinding('PSBT account binding failed: address path is outside signer account');
       await expect(
         createRBFTransaction(originalTxid, 50, walletId, 'testnet3')
-      ).rejects.toThrow('outside signer account');
+      ).rejects.toThrow('Address derivation path does not match the signer account origin');
     });
 
     it('does not deduct change when calculated fee delta is not positive', async () => {

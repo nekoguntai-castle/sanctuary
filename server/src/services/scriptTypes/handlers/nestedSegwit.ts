@@ -32,26 +32,24 @@ export const nestedSegwitHandler: ScriptTypeHandler = {
   supportsMultisig: true,
   aliases: ['p2sh-p2wpkh', 'wrapped_segwit', 'p2sh_p2wpkh'],
 
-  getDerivationPath(network: Network, account: number = 0): string {
+  getDerivationPath(network: Network, account: number): string {
     return buildWalletPolicyDerivationPath(WalletType.SINGLE_SIG, WalletScriptType.NESTED_SEGWIT, network, account);
   },
 
-  getMultisigDerivationPath(network: Network, account: number = 0): string {
+  getMultisigDerivationPath(network: Network, account: number): string {
     return buildWalletPolicyDerivationPath(WalletType.MULTI_SIG, WalletScriptType.NESTED_SEGWIT, network, account);
   },
 
   buildSingleSigDescriptor(device: DeviceKeyInfo, options: DescriptorBuildOptions): string {
-    const derivationPath = device.derivationPath || this.getDerivationPath(options.network);
     return wrapWalletPolicyDescriptor(
       WalletType.SINGLE_SIG,
       WalletScriptType.NESTED_SEGWIT,
-      buildRangedKeyExpression(device, derivationPath, options),
+      buildRangedKeyExpression(device, device.derivationPath, options),
     );
   },
 
   buildMultiSigDescriptor(devices: DeviceKeyInfo[], options: MultiSigBuildOptions): string {
-    const fallbackPath = this.getMultisigDerivationPath(options.network);
-    const keyExpressions = buildMultiSigKeyExpressions(devices, fallbackPath, options);
+    const keyExpressions = buildMultiSigKeyExpressions(devices, options);
     return wrapWalletPolicyDescriptor(
       WalletType.MULTI_SIG,
       WalletScriptType.NESTED_SEGWIT,

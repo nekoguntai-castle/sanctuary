@@ -103,22 +103,22 @@ describe('Descriptor Builder Service', () => {
       });
     });
 
-    describe('Default values', () => {
-      it('should default to mainnet and account 0', () => {
-        const path = getDerivationPath('native_segwit');
-        expect(path).toBe("m/84'/0'/0'");
+    describe('Required origin values', () => {
+      it('does not default network or account 0', () => {
+        expect(() => (getDerivationPath as any)('native_segwit'))
+          .toThrow(/unknown bitcoin network/i);
       });
     });
 
     describe('Error handling', () => {
       it('should throw for unknown script type', () => {
         expect(() => {
-          getDerivationPath('unknown' as any);
+          getDerivationPath('unknown' as any, 'mainnet', 0);
         }).toThrow('Unknown script type');
       });
 
       it('should fail closed for an unknown network instead of deriving mainnet', () => {
-        expect(() => getDerivationPath('native_segwit', 'unknown' as never))
+        expect(() => getDerivationPath('native_segwit', 'unknown' as never, 0))
           .toThrow('Unknown Bitcoin network: unknown');
       });
 
@@ -186,7 +186,7 @@ describe('Descriptor Builder Service', () => {
     describe('Error handling', () => {
       it('should throw for unknown script type', () => {
         expect(() => {
-          getMultisigDerivationPath('unknown' as any);
+          getMultisigDerivationPath('unknown' as any, 'mainnet', 0);
         }).toThrow('Unknown script type');
       });
     });
@@ -222,15 +222,14 @@ describe('Descriptor Builder Service', () => {
         expect(descriptor).toContain('[d34db33f/84h/0h/5h]');
       });
 
-      it('should auto-generate derivation path if not provided', () => {
+      it('rejects a missing device account origin', () => {
         const deviceWithoutPath = {
           fingerprint: 'd34db33f',
           xpub: device.xpub,
         };
 
-        const descriptor = buildSingleSigDescriptor(deviceWithoutPath, 'native_segwit', 'mainnet');
-
-        expect(descriptor).toContain('[d34db33f/84h/0h/0h]');
+        expect(() => buildSingleSigDescriptor(deviceWithoutPath as any, 'native_segwit', 'mainnet'))
+          .toThrow(/account origin is required/i);
       });
 
       it('should handle testnet xpubs', () => {
@@ -451,29 +450,25 @@ describe('Descriptor Builder Service', () => {
       });
     });
 
-    describe('Auto-generate derivation paths', () => {
-      it('should auto-generate paths if not provided', () => {
+    describe('Required derivation paths', () => {
+      it('rejects missing signer account origins', () => {
         const devicesWithoutPaths = devices.map((d) => ({
           fingerprint: d.fingerprint,
           xpub: d.xpub,
         }));
 
-        const descriptor = buildMultiSigDescriptor(devicesWithoutPaths, 2, 'native_segwit', 'mainnet');
-
-        expect(descriptor).toContain('[aabbccdd/48h/0h/0h/2h]');
-        expect(descriptor).toContain('[11223344/48h/0h/0h/2h]');
-        expect(descriptor).toContain('[99887766/48h/0h/0h/2h]');
+        expect(() => buildMultiSigDescriptor(devicesWithoutPaths as any, 2, 'native_segwit', 'mainnet'))
+          .toThrow(/every device account origin is required/i);
       });
 
-      it('should use correct testnet paths when auto-generating', () => {
+      it('rejects missing testnet account origins instead of guessing account 0', () => {
         const devicesWithoutPaths = devices.map((d, index) => ({
           fingerprint: d.fingerprint,
           xpub: accountXpub("m/48'/1'/0'/2'", index + 1, bitcoin.networks.testnet),
         }));
 
-        const descriptor = buildMultiSigDescriptor(devicesWithoutPaths, 2, 'native_segwit', 'testnet');
-
-        expect(descriptor).toContain('48h/1h/0h/2h');
+        expect(() => buildMultiSigDescriptor(devicesWithoutPaths as any, 2, 'native_segwit', 'testnet'))
+          .toThrow(/every device account origin is required/i);
       });
     });
 

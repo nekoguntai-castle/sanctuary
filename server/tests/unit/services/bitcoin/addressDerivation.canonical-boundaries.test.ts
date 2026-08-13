@@ -29,7 +29,10 @@ vi.mock('../../../../src/services/bitcoin/addressDerivation/descriptorParser', (
   }),
 }));
 
-import { deriveCanonicalAddress } from '../../../../src/services/bitcoin/addressDerivation/descriptorDerivation';
+import {
+  deriveAddressFromParsedDescriptor,
+  deriveCanonicalAddress,
+} from '../../../../src/services/bitcoin/addressDerivation/descriptorDerivation';
 
 describe('canonical descriptor parser boundary', () => {
   it('fails closed when parsed evidence has no explicit branch wildcard', () => {
@@ -64,5 +67,14 @@ describe('canonical descriptor parser boundary', () => {
       { receiveDescriptor: 'prefixed-origin', changeDescriptor: 'prefixed-origin' },
       { branch: 0, index: 0, network: 'testnet' },
     )).toThrow('Canonical descriptor extended key is invalid');
+  });
+
+  it('fails closed when a parsed single-sig descriptor has no extended key', () => {
+    expect(() => deriveAddressFromParsedDescriptor({
+      type: 'wpkh',
+      fingerprint: 'aabbccdd',
+      accountPath: "84'/1'/0'",
+      path: '0/*',
+    }, 0, { network: 'testnet' })).toThrow('No xpub found in descriptor');
   });
 });

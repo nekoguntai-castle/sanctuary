@@ -652,7 +652,10 @@ describe("Address Repository", () => {
     it.each([
       ["invalid branch", { branch: 2 }],
       ["negative index", { index: -1 }],
+      ["fractional index", { index: 0.5 }],
+      ["NaN index", { index: Number.NaN }],
       ["oversized index", { index: 2147483648 }],
+      ["coordinate/path drift", { index: 4 }],
       ["invalid coordinate version", { coordinateVersion: 2 }],
       ["blank policy id", { canonicalPolicyId: " " }],
       ["invalid policy version", { canonicalPolicyVersion: 0 }],
@@ -769,7 +772,12 @@ describe("Address Repository", () => {
       const result = await addressRepository.createNextCanonical(
         "w1",
         0,
-        (index) => ({ ...canonicalAddress, index, branch: 0 }),
+        (index) => ({
+          ...canonicalAddress,
+          derivationPath: `m/84'/0'/0'/0/${index}`,
+          index,
+          branch: 0,
+        }),
       );
       expect(result).toMatchObject({ branch: 0, index: 0 });
     });
@@ -865,7 +873,12 @@ describe("Address Repository", () => {
       const result = await addressRepository.createCanonicalBatch(
         "w1",
         { receive: 1000, change: 0 },
-        (_branch, index) => ({ ...canonicalAddress, address: `bc1q${index}`, index }),
+        (branch, index) => ({
+          ...canonicalAddress,
+          address: `bc1q${index}`,
+          derivationPath: `m/84'/0'/0'/${branch}/${index}`,
+          index,
+        }),
       );
 
       expect(result).toHaveLength(1000);
@@ -939,7 +952,7 @@ describe("Address Repository", () => {
 
       await expect(
         addressRepository.createNextCanonical("w1", 2 as never, build),
-      ).rejects.toThrow("Canonical address branch must be 0 or 1");
+      ).rejects.toThrow("Invalid canonical address coordinate branch");
 
       expect(prisma.$transaction).not.toHaveBeenCalled();
       expect(build).not.toHaveBeenCalled();

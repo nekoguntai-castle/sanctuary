@@ -1,6 +1,10 @@
 import { createHash } from 'node:crypto';
 import * as bitcoin from 'bitcoinjs-lib';
 import {
+  parseCanonicalAccountPath,
+  parseCanonicalAddressPath,
+} from '@sanctuary/shared/constants/walletPolicy';
+import {
   parseWalletScriptType,
   parseWalletType,
   WalletScriptType,
@@ -112,17 +116,24 @@ function exactSignerSnapshots(wallet: BindingWallet): PsbtWalletSigner[] {
   });
 }
 
-function relativeAddressPath(addressPath: string, accountPath: string): number[] {
+function signerAddressPath(addressPath: string, accountPath: string, allowMixedAccounts: boolean): {
+  readonly relative: [0 | 1, number];
+  readonly fullPath: string;
+} {
   const normalizedAddress = normalizeDerivationPath(addressPath);
   const normalizedAccount = normalizeDerivationPath(accountPath);
-  const prefix = `${normalizedAccount}/`;
-  if (!normalizedAddress.startsWith(prefix)) {
+  const parsedAddress = parseCanonicalAddressPath(normalizedAddress);
+  const parsedAccount = parseCanonicalAccountPath(normalizedAccount);
+  if (!parsedAddress || !parsedAccount) {
+    throw bindingError('address or signer account path is not canonical');
+  }
+  if (!allowMixedAccounts && parsedAddress.accountPath !== parsedAccount.path) {
     throw bindingError(`address path ${normalizedAddress} is outside signer account ${normalizedAccount}`);
   }
-  return normalizedAddress.slice(prefix.length).split('/').map(part => {
-    if (!/^\d+$/.test(part)) throw bindingError('address path contains a hardened or invalid child');
-    return Number(part);
-  });
+  return {
+    relative: [parsedAddress.branch, parsedAddress.index],
+    fullPath: `${parsedAccount.path}/${parsedAddress.branch}/${parsedAddress.index}`,
+  };
 }
 
 function signerOrigins(
@@ -130,14 +141,16 @@ function signerOrigins(
   addressPath: string,
   networkObj: bitcoin.Network,
   xOnly: boolean,
+  allowMixedAccounts: boolean,
 ): PsbtSignerOrigin[] {
   return signers.map(signer => {
     let node = bip32.fromBase58(convertToStandardXpub(signer.accountXpub), networkObj);
-    for (const child of relativeAddressPath(addressPath, signer.accountPath)) node = node.derive(child);
+    const signerPath = signerAddressPath(addressPath, signer.accountPath, allowMixedAccounts);
+    for (const child of signerPath.relative) node = node.derive(child);
     const publicKey = Buffer.from(node.publicKey);
     return {
       masterFingerprint: signer.masterFingerprint,
-      path: normalizeDerivationPath(addressPath),
+      path: signerPath.fullPath,
       pubkey: (xOnly ? publicKey.subarray(1, 33) : publicKey).toString('hex'),
     };
   });
@@ -410,6 +423,7 @@ function bindOwnedInput(
     address.derivationPath,
     networkObj,
     parseWalletScriptType(wallet.scriptType) === WalletScriptType.TAPROOT,
+    parseWalletType(wallet.type) === WalletType.MULTI_SIG,
   );
   const payment = expectedPayment(wallet, address, origins, networkObj);
   if (!payment.output?.equals(script)) throw bindingError(`input ${inputIndex} script does not match signer keys`);
@@ -439,6 +453,7 @@ function bindChangeOutput(
     address.derivationPath,
     networkObj,
     parseWalletScriptType(wallet.scriptType) === WalletScriptType.TAPROOT,
+    parseWalletType(wallet.type) === WalletType.MULTI_SIG,
   );
   const payment = expectedPayment(wallet, address, origins, networkObj);
   if (!payment.output?.equals(Buffer.from(txOutput.script))

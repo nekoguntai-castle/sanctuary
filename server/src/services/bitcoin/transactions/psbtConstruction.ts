@@ -135,14 +135,14 @@ function resolveMultisigSigningInfo(
 function resolveSingleSigSigningInfo(
   wallet: WalletWithDevices,
   logPrefix: string
-): Pick<WalletSigningInfo, 'masterFingerprint' | 'accountXpub'> {
+): Pick<WalletSigningInfo, 'masterFingerprint' | 'accountXpub' | 'accountPath'> {
   return resolveSingleSigDeviceInfo(wallet, logPrefix);
 }
 
 function resolveSingleSigDeviceInfo(
   wallet: WalletWithDevices,
   logPrefix: string
-): Pick<WalletSigningInfo, 'masterFingerprint' | 'accountXpub'> {
+): Pick<WalletSigningInfo, 'masterFingerprint' | 'accountXpub' | 'accountPath'> {
   if (wallet.devices && wallet.devices.length > 0) {
     const link = wallet.devices[0];
     if (link.signerBindingVersion !== 1 || link.signerIndex !== 0
@@ -159,6 +159,7 @@ function resolveSingleSigDeviceInfo(
     return {
       masterFingerprint: Buffer.from(link.signerFingerprint, 'hex'),
       accountXpub: link.signerXpub,
+      accountPath: link.signerDerivationPath,
     };
   }
   throw new Error('Cannot create PSBT: immutable signer snapshot is missing');

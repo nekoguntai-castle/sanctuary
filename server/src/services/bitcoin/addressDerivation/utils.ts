@@ -1,8 +1,7 @@
 /**
  * Address Derivation Utilities
  *
- * Shared utilities for network resolution, account path detection,
- * and xpub validation.
+ * Shared utilities for network resolution and xpub validation.
  */
 
 import * as bitcoin from 'bitcoinjs-lib';
@@ -28,46 +27,6 @@ export function getNetwork(network: AddressDerivationNetwork): bitcoin.Network {
   if (bitcoinJsNetwork === 'testnet') return bitcoin.networks.testnet;
   if (bitcoinJsNetwork === 'regtest') return bitcoin.networks.regtest;
   return bitcoin.networks.bitcoin;
-}
-
-/**
- * Get standard account path for xpub
- */
-export function getAccountPath(
-  xpub: string,
-  scriptType: WalletScriptTypeValue | string,
-  network: AddressDerivationNetwork
-): string {
-  // Standard BIP44/49/84/86 paths
-  const coinType = network === 'mainnet' ? '0' : '1';
-
-  // Try to detect from xpub prefix
-  if (xpub.startsWith('xpub')) {
-    // xpub can be used for any script type - use scriptType to determine path
-    if (scriptType === WalletScriptType.NATIVE_SEGWIT) {
-      return `m/84'/${coinType}'/0'`; // BIP84 - native segwit
-    } else if (scriptType === WalletScriptType.NESTED_SEGWIT) {
-      return `m/49'/${coinType}'/0'`; // BIP49
-    } else if (scriptType === WalletScriptType.TAPROOT) {
-      return `m/86'/${coinType}'/0'`; // BIP86
-    } else {
-      return `m/44'/${coinType}'/0'`; // BIP44 - legacy
-    }
-  } else if (xpub.startsWith('ypub')) {
-    return `m/49'/${coinType}'/0'`; // BIP49 - nested segwit
-  } else if (xpub.startsWith('zpub')) {
-    return `m/84'/${coinType}'/0'`; // BIP84 - native segwit
-  } else if (xpub.startsWith('Zpub') || xpub.startsWith('Ypub')) {
-    // Multisig versions
-    if (scriptType === WalletScriptType.NESTED_SEGWIT) {
-      return `m/49'/${coinType}'/0'`;
-    } else {
-      return `m/84'/${coinType}'/0'`;
-    }
-  }
-
-  // Default to native segwit path
-  return `m/84'/${coinType}'/0'`;
 }
 
 /**

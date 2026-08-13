@@ -420,7 +420,7 @@ export function registerCreateBatchTransactionContracts() {
         { address: testnetAddresses.nativeSegwit[0], amount: 50_000 },
       ];
       await expect(createBatchTransaction(walletId, outputs, 10)).rejects.toThrow(
-        "outside signer account",
+        "Address derivation path does not match the signer account origin",
       );
     });
 

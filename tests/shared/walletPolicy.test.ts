@@ -4,6 +4,8 @@ import {
   WALLET_POLICY_REGISTRY,
   WALLET_POLICY_REGISTRY_VERSION,
   accountPathMatchesWalletPolicy,
+  assertCanonicalAddressCoordinate,
+  assertCanonicalAddressRange,
   buildCanonicalAccountPath,
   buildCanonicalAddressPath,
   chainEnvironmentToDerivationFamily,
@@ -136,6 +138,7 @@ describe('canonical wallet policy registry', () => {
       "m/45'/0'/0'", "m/48'/0'/0'/3'", "m/48'/0'/0'", "m/44'/0'/0'/0'",
       "m/84/0'/0'", "m/84'/0/0'", "m/84'/0'/0", "m/84'/0'/00'",
       "m/84'/0'/-1'", "m/84'/0'/2147483648'", "m/84'/2'/0'", "m/84'/0'/0'/0",
+      "prefix/m/84'/0'/0'", "m/84'/0'/0'/suffix",
     ]) {
       expect(parseCanonicalAccountPath(path), path).toBeNull();
     }
@@ -154,11 +157,47 @@ describe('canonical wallet policy registry', () => {
     for (const path of [
       "m/84'/0'/0'/2/0", "m/84'/0'/0'/0'/0", "m/84'/0'/0'/0/0'",
       "m/84'/0'/0'/0/00", "m/84'/0'/0'/0/2147483648", "m/84'/0'/0'/0",
+      "prefix/m/84'/0'/0'/0/0", "m/84'/0'/0'/0/0/suffix",
+      "m/84'/0'/0'/0/10junk",
     ]) {
       expect(parseCanonicalAddressPath(path), path).toBeNull();
     }
     expect(() => buildCanonicalAddressPath("m/84'/0'/0'", 2 as 0, 0)).toThrow(/branch/i);
     expect(() => buildCanonicalAddressPath("m/84'/0'/0'", 0, 1.5)).toThrow(/index/i);
     expect(() => buildCanonicalAddressPath('not-a-path', 0, 0)).toThrow(/account path/i);
+  });
+
+  it('rejects every non-canonical account, branch, and address index', () => {
+    expect(assertCanonicalAddressCoordinate({ account: 7, branch: 1, index: 2147483647 }))
+      .toEqual({ account: 7, branch: 1, index: 2147483647 });
+
+    const invalidChildren: unknown[] = [
+      -1, 0.5, 0x80000000, Number.MAX_SAFE_INTEGER, Number.POSITIVE_INFINITY,
+      Number.NaN, '0', null, undefined,
+    ];
+    for (const value of invalidChildren) {
+      expect(() => assertCanonicalAddressCoordinate({ account: value, branch: 0, index: 0 }))
+        .toThrow(/coordinate/i);
+      expect(() => assertCanonicalAddressCoordinate({ account: 0, branch: 0, index: value }))
+        .toThrow(/coordinate/i);
+    }
+    for (const branch of [-1, 2, 0.5, Number.NaN, '0', null, undefined]) {
+      expect(() => assertCanonicalAddressCoordinate({ account: 0, branch, index: 0 }))
+        .toThrow(/coordinate/i);
+    }
+  });
+
+  it('validates address ranges atomically at the unhardened boundary', () => {
+    expect(assertCanonicalAddressRange(0, 0)).toEqual({ startIndex: 0, count: 0 });
+    expect(assertCanonicalAddressRange(2147483647, 1)).toEqual({
+      startIndex: 2147483647,
+      count: 1,
+    });
+    for (const [startIndex, count] of [
+      [-1, 1], [0.5, 1], [2147483647, 2], [0, -1], [0, 0.5],
+      [Number.NaN, 1], [0, Number.NaN], [0, '1'],
+    ]) {
+      expect(() => assertCanonicalAddressRange(startIndex, count)).toThrow(/range/i);
+    }
   });
 });

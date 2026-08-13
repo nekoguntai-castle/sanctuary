@@ -12,13 +12,15 @@ import {
   type DerivationAddressChain,
 } from "@sanctuary/shared/utils/bitcoin";
 import {
+  assertCanonicalRelativeCoordinate,
   CANONICAL_ADDRESS_COORDINATE_VERSION,
+  MAX_BIP32_CHILD_INDEX,
+  parseCanonicalAddressPath,
   WALLET_POLICY_REGISTRY_VERSION,
 } from "@sanctuary/shared/constants/walletPolicy";
 
 const ADDRESS_CHAIN_SCAN_PAGE_SIZE = 200;
 export { CANONICAL_ADDRESS_COORDINATE_VERSION };
-const MAX_BIP32_INDEX = 0x7fffffff;
 const MAX_CANONICAL_BATCH_PER_BRANCH = 1000;
 const CANONICAL_ALLOCATION_MAX_WAIT_MS = 5_000;
 const CANONICAL_ALLOCATION_TIMEOUT_MS = 30_000;
@@ -64,12 +66,7 @@ function isExactNonempty(value: string): boolean {
 }
 
 function validateCanonicalAddressWrite(data: CanonicalAddressWrite): void {
-  if (data.branch !== 0 && data.branch !== 1) {
-    throw new Error('Canonical address branch must be 0 or 1');
-  }
-  if (!Number.isInteger(data.index) || data.index < 0 || data.index > MAX_BIP32_INDEX) {
-    throw new Error('Canonical address index is outside the BIP32 range');
-  }
+  const coordinate = assertCanonicalRelativeCoordinate(data);
   if (data.coordinateVersion !== CANONICAL_ADDRESS_COORDINATE_VERSION) {
     throw new Error('Canonical address coordinate version is unsupported');
   }
@@ -81,6 +78,10 @@ function validateCanonicalAddressWrite(data: CanonicalAddressWrite): void {
   }
   if (![data.walletId, data.address, data.derivationPath].every(isExactNonempty)) {
     throw new Error('Canonical address evidence must be exact and nonempty');
+  }
+  const path = parseCanonicalAddressPath(data.derivationPath);
+  if (!path || path.branch !== coordinate.branch || path.index !== coordinate.index) {
+    throw new Error('Canonical address derivation path does not match its coordinate');
   }
   if (!/^(?:[0-9a-f]{2})+$/.test(data.scriptPubKey)) {
     throw new Error('Canonical address scriptPubKey must be lowercase hexadecimal bytes');
@@ -499,9 +500,7 @@ export async function createNextCanonical(
   branch: 0 | 1,
   build: (index: number) => NextCanonicalAddressData,
 ): Promise<Address> {
-  if (branch !== 0 && branch !== 1) {
-    throw new Error('Canonical address branch must be 0 or 1');
-  }
+  assertCanonicalRelativeCoordinate({ branch, index: 0 });
   return prisma.$transaction(async (tx) => {
     const walletRows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
       SELECT "id" FROM "wallets"
@@ -518,7 +517,7 @@ export async function createNextCanonical(
       orderBy: { index: 'desc' },
       select: { index: true },
     });
-    if (latest?.index === MAX_BIP32_INDEX) {
+    if (latest?.index === MAX_BIP32_CHILD_INDEX) {
       throw new Error('Canonical address index space is exhausted');
     }
     const index = latest ? latest.index + 1 : 0;
@@ -629,7 +628,7 @@ export async function createCanonicalBatch(
     const created: CanonicalAddressWrite[] = [];
     for (const [branch, count] of [[0, counts.receive], [1, counts.change]] as const) {
       const start = branch === 0 ? state.receive.nextIndex : state.change.nextIndex;
-      if (count > 0 && start + count - 1 > MAX_BIP32_INDEX) {
+      if (count > 0 && start + count - 1 > MAX_BIP32_CHILD_INDEX) {
         throw new Error('Canonical address index space is exhausted');
       }
       for (let offset = 0; offset < count; offset++) {

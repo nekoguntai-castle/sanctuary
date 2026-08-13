@@ -4,8 +4,9 @@ import * as bitcoin from 'bitcoinjs-lib';
 import {
   deriveCanonicalAddress,
   deriveAddressFromDescriptor,
-  deriveAddressFromParsedDescriptor,
 } from '../../../../src/services/bitcoin/addressDerivation';
+import { deriveAddressFromParsedDescriptor } from
+  '../../../../src/services/bitcoin/addressDerivation/descriptorDerivation';
 import bip32 from '../../../../src/services/bitcoin/bip32';
 import { testXpubs } from '../../../fixtures/bitcoin';
 import { VERIFIED_MULTISIG_VECTORS } from '../../../fixtures/verified-address-vectors';
@@ -192,14 +193,17 @@ describe('Address Derivation Service descriptor derivation', () => {
   });
 
   it('throws when parsed multisig descriptor has no quorum', () => {
+    const xpub = VERIFIED_MULTISIG_VECTORS.find(({ network, scriptType }) =>
+      network === 'testnet3' && scriptType === 'p2wsh'
+    )!.xpubs[0];
     expect(() =>
       deriveAddressFromParsedDescriptor(
         {
           type: 'wsh-sortedmulti',
           keys: [{
             fingerprint: 'aabbccdd',
-            accountPath: "84'/1'/0'",
-            xpub: testXpubs.testnet.bip84,
+            accountPath: "48'/1'/0'/2'",
+            xpub,
             derivationPath: '0/*',
           }],
         } as any,
@@ -210,6 +214,9 @@ describe('Address Derivation Service descriptor derivation', () => {
   });
 
   it('throws when parsed multisig derivation yields no public key', () => {
+    const xpub = VERIFIED_MULTISIG_VECTORS.find(({ network, scriptType }) =>
+      network === 'testnet3' && scriptType === 'p2wsh'
+    )!.xpubs[0];
     const fakeNode: any = {
       publicKey: undefined,
       derive: vi.fn(() => fakeNode),
@@ -222,8 +229,8 @@ describe('Address Derivation Service descriptor derivation', () => {
           quorum: 1,
           keys: [{
             fingerprint: 'aabbccdd',
-            accountPath: "84'/1'/0'",
-            xpub: testXpubs.testnet.bip84,
+            accountPath: "48'/1'/0'/2'",
+            xpub,
             derivationPath: '0/*',
           }],
         } as any,

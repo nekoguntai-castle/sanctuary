@@ -7,6 +7,7 @@
 
 import { SATS_PER_BTC, ADDRESS_PATTERNS } from "../constants/bitcoin";
 import type { AddressType } from "../constants/bitcoin";
+import { parseCanonicalAddressPath } from '../constants/walletPolicy';
 import {
   DeviceAccountPurpose,
   WalletScriptType,
@@ -325,14 +326,6 @@ export function parseDerivationPath(
   };
 }
 
-const chainFromChangeIndex = (
-  changeIndex: number,
-): DerivationAddressChain | null => {
-  if (changeIndex === 0) return "receive";
-  if (changeIndex === 1) return "change";
-  return null;
-};
-
 /**
  * Parse a concrete wallet address derivation path into receive/change metadata.
  *
@@ -342,27 +335,18 @@ const chainFromChangeIndex = (
 export function parseAddressDerivationPath(
   path: string | null | undefined,
 ): ParsedAddressDerivationPath | null {
-  const parsed = parseDerivationPath(path);
-  const changeIndex = parsed.changeIndex;
-  const chain = changeIndex === null ? null : chainFromChangeIndex(changeIndex);
-
-  if (
-    !parsed.valid ||
-    !parsed.accountPath ||
-    chain === null ||
-    parsed.addressIndex === null ||
-    parsed.changeHardened ||
-    parsed.addressHardened
-  ) {
-    return null;
-  }
+  const parsed = parseCanonicalAddressPath(normalizeDerivationPath(path));
+  if (!parsed) return null;
+  // The canonical parser's return type and runtime validation both constrain
+  // the branch to BIP44 receive/change values 0 and 1.
+  const chain: DerivationAddressChain = parsed.branch === 0 ? "receive" : "change";
 
   return {
-    normalizedPath: parsed.normalizedPath,
+    normalizedPath: parsed.path,
     accountPath: parsed.accountPath,
     chain,
-    changeIndex: changeIndex as 0 | 1,
-    addressIndex: parsed.addressIndex,
+    changeIndex: parsed.branch,
+    addressIndex: parsed.index,
   };
 }
 
@@ -377,28 +361,4 @@ export function parseAddressDerivationPath(
 export function formatPathForDescriptor(path: string): string {
   // Remove m/ prefix and replace ' with h
   return path.replace(/^m\//, "").replace(/'/g, "h");
-}
-
-/**
- * Extract the change index and address index from a derivation path.
- * For BIP-48 multisig: purpose'/coin'/account'/script'/change/index
- * The last two non-hardened parts are change and index.
- *
- * @example
- * extractChangeAndAddressIndex("m/48'/0'/0'/2'/0/5") // => { changeIdx: 0, addressIdx: 5 }
- * extractChangeAndAddressIndex("m/84'/0'/0'/1/10") // => { changeIdx: 1, addressIdx: 10 }
- */
-export function extractChangeAndAddressIndex(derivationPath: string): {
-  changeIdx: number;
-  addressIdx: number;
-} {
-  const parsed = parseDerivationPath(derivationPath);
-  if (!parsed.valid) {
-    throw new Error("Invalid derivation path");
-  }
-
-  return {
-    changeIdx: parsed.changeIndex ?? 0,
-    addressIdx: parsed.addressIndex ?? 0,
-  };
 }

@@ -51,6 +51,7 @@ describe('resolveWalletSigningInfo', () => {
       scriptType: 'taproot',
       masterFingerprint: Buffer.from('aabbccdd', 'hex'),
       accountXpub: 'tpub-test-account',
+      accountPath: "m/86'/1'/0'",
     });
   });
 

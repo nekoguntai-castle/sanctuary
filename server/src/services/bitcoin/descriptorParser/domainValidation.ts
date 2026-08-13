@@ -1,4 +1,5 @@
 import { parseDerivationPath } from '@sanctuary/shared/utils/bitcoin';
+import { isValidBip32ChildIndex } from '@sanctuary/shared/constants/walletPolicy';
 import {
   WalletScriptType,
   WalletType,
@@ -14,7 +15,6 @@ const DESCRIPTOR_KEY_RE = new RegExp(
   'g',
 );
 const DESCRIPTOR_KEY_CANDIDATE_RE = /\[[a-fA-F0-9]{8}\/[^\]]+\][^,\)\s]+/g;
-const MAX_BIP32_INDEX = 2_147_483_647;
 
 type NetworkFamily = 'mainnet' | 'testnet';
 
@@ -155,7 +155,7 @@ const parsePathComponent = (component: string): ParsedPathComponent => {
   }
 
   const index = Number.parseInt(indexText, 10);
-  if (!Number.isSafeInteger(index) || index > MAX_BIP32_INDEX) {
+  if (!isValidBip32ChildIndex(index)) {
     throw new Error('Descriptor derivation path component is out of range');
   }
   return { index, hardened };

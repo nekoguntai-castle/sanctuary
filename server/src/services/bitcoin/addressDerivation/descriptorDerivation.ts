@@ -8,6 +8,9 @@
 import * as bitcoin from 'bitcoinjs-lib';
 import * as ecc from 'tiny-secp256k1';
 import {
+  assertCanonicalRelativeCoordinate,
+  assertCanonicalAddressRange,
+  buildCanonicalAddressPath,
   parseCanonicalAccountPath,
   type DescriptorWrapper,
 } from '@sanctuary/shared/constants/walletPolicy';
@@ -17,8 +20,8 @@ import {
 } from '@sanctuary/shared/constants/walletIdentity';
 import bip32 from '../bip32';
 import { parseDescriptor } from './descriptorParser';
-import { deriveAddress } from './singleSigDerivation';
-import { deriveMultisigAddress } from './multisigDerivation';
+import { deriveRelativeAddress } from './singleSigDerivation';
+import { deriveRelativeMultisigAddress } from './multisigDerivation';
 import { getNetwork } from './utils';
 import { convertToStandardXpub } from './xpubConversion';
 import type {
@@ -33,8 +36,8 @@ import type {
 // Initialize ECC library for Taproot/Schnorr support
 bitcoin.initEccLib(ecc);
 
-const MAX_UNHARDENED_INDEX = 0x7fffffff;
 const HARDENED_INDEX_OFFSET = 0x80000000;
+const MAX_DERIVATION_BATCH_SIZE = 1000;
 
 const normalizeAccountPath = (path: string): string => {
   const normalized = path.replace(/h/gi, "'");
@@ -48,15 +51,6 @@ const canonicalFingerprint = (fingerprint: string): string => {
   }
   return normalized;
 };
-
-function assertCanonicalCoordinate(branch: number, index: number): asserts branch is 0 | 1 {
-  if ((branch !== 0 && branch !== 1)
-    || !Number.isInteger(index)
-    || index < 0
-    || index > MAX_UNHARDENED_INDEX) {
-    throw new Error('Invalid canonical address coordinate');
-  }
-}
 
 const assertDescriptorBranch = (parsed: ParsedDescriptor, branch: 0 | 1): void => {
   const paths = parsed.keys?.map(({ derivationPath }) => derivationPath)
@@ -138,6 +132,16 @@ function descriptorExtendedKeyOrigins(parsed: ParsedDescriptor): ExtendedKeyOrig
   return [{ xpub: parsed.xpub!, accountPath: parsed.accountPath! }];
 }
 
+function canonicalSingleSigXpub(parsed: ParsedDescriptor): string {
+  if (!parsed.xpub) {
+    throw new Error('No xpub found in descriptor');
+  }
+  if (parsed.keys) {
+    throw new Error('Single-signature descriptor cannot contain multisig keys');
+  }
+  return parsed.xpub;
+}
+
 function assertExtendedKeyOriginBinding(
   origin: ExtendedKeyOrigin,
   network: AddressDerivationNetwork,
@@ -201,7 +205,7 @@ export function deriveCanonicalAddress(
   coordinate: { branch: 0 | 1; index: number; network: AddressDerivationNetwork },
   deps: DescriptorDerivationDeps = {}
 ): CanonicalDerivedAddress {
-  assertCanonicalCoordinate(coordinate.branch, coordinate.index);
+  assertCanonicalRelativeCoordinate(coordinate);
   const descriptor = coordinate.branch === 0
     ? descriptors.receiveDescriptor
     : descriptors.changeDescriptor;
@@ -215,7 +219,11 @@ export function deriveCanonicalAddress(
     { network: coordinate.network, change: coordinate.branch === 1 },
     deps
   );
-  const derivationPath = `${signerOrigins[0].accountPath}/${coordinate.branch}/${coordinate.index}`;
+  const derivationPath = buildCanonicalAddressPath(
+    signerOrigins[0].accountPath,
+    coordinate.branch,
+    coordinate.index,
+  );
   return {
     ...derived,
     derivationPath,
@@ -272,11 +280,34 @@ export function deriveAddressFromParsedDescriptor(
     throw new Error(`descriptor branch ${branch} does not match requested branch ${options.change ? 1 : 0}`);
   }
   const change = branch === 1;
+  const coordinate = assertCanonicalRelativeCoordinate({ branch, index });
+  const isMultisig = parsed.type === 'wsh-sortedmulti'
+    || parsed.type === 'sh-wsh-sortedmulti';
 
   // Handle multisig descriptors
-  if (parsed.type === 'wsh-sortedmulti' || parsed.type === 'sh-wsh-sortedmulti') {
-    return deriveMultisigAddress(parsed, index, { network, change }, deps);
+  if (isMultisig) {
+    const signerOrigins = canonicalSignerOrigins(parsed, coordinate.branch, coordinate.index);
+    assertCanonicalExtendedKeyBindings(parsed, network);
+    const derived = deriveRelativeMultisigAddress(
+      parsed,
+      coordinate.index,
+      { network, branch: coordinate.branch },
+      deps,
+    );
+    return {
+      address: derived.address,
+      publicKey: derived.publicKey,
+      derivationPath: buildCanonicalAddressPath(
+        signerOrigins[0].accountPath,
+        coordinate.branch,
+        coordinate.index,
+      ),
+    };
   }
+
+  const singleSigXpub = canonicalSingleSigXpub(parsed);
+  const signerOrigins = canonicalSignerOrigins(parsed, coordinate.branch, coordinate.index);
+  assertCanonicalExtendedKeyBindings(parsed, network);
 
   // Map descriptor type to script type for single-sig
   const scriptTypeMap: Record<'wpkh' | 'sh-wpkh' | 'tr' | 'pkh', WalletScriptTypeValue> = {
@@ -288,15 +319,20 @@ export function deriveAddressFromParsedDescriptor(
 
   const scriptType = scriptTypeMap[parsed.type as 'wpkh' | 'sh-wpkh' | 'tr' | 'pkh'];
 
-  if (!parsed.xpub) {
-    throw new Error('No xpub found in descriptor');
-  }
-
-  return deriveAddress(parsed.xpub, index, {
+  const derived = deriveRelativeAddress(singleSigXpub, coordinate.index, {
     scriptType,
     network,
-    change,
+    branch: coordinate.branch,
   });
+  return {
+    address: derived.address,
+    publicKey: derived.publicKey,
+    derivationPath: buildCanonicalAddressPath(
+      signerOrigins[0].accountPath,
+      coordinate.branch,
+      coordinate.index,
+    ),
+  };
 }
 
 /**
@@ -315,6 +351,10 @@ export function deriveAddressesFromDescriptor(
   derivationPath: string;
   index: number;
 }> {
+  assertCanonicalAddressRange(startIndex, count);
+  if (count > MAX_DERIVATION_BATCH_SIZE) {
+    throw new Error(`Address derivation batch exceeds ${MAX_DERIVATION_BATCH_SIZE} entries`);
+  }
   const addresses: Array<{
     address: string;
     derivationPath: string;

@@ -8,7 +8,7 @@
  */
 
 import { InvalidInputError } from "../../errors/ApiError";
-import { normalizeDerivationPath, parseDerivationPath } from "@sanctuary/shared/utils/bitcoin";
+import { normalizeDerivationPath } from "@sanctuary/shared/utils/bitcoin";
 import {
   accountPathMatchesWalletPolicy,
   parseCanonicalAccountPath,
@@ -67,8 +67,6 @@ export interface SignerBindingPolicySnapshot {
   signerScriptType: string;
 }
 
-const MAX_BIP32_INDEX = 0x7fffffff;
-
 const walletNetwork = (input: { network?: WalletNetwork }): WalletNetwork => {
   return input.network ?? "mainnet";
 };
@@ -83,13 +81,6 @@ const validateAccountPath = (
   input: Pick<WalletSignerResolutionInput, "type" | "scriptType" | "network">,
 ): void => {
   const normalized = normalizeDerivationPath(account.derivationPath);
-  if (!parseDerivationPath(normalized).accountPath) {
-    throw accountError(device, "derivation path is malformed");
-  }
-  const accountIndex = /^m\/\d+'\/\d+'\/(\d+)'(?:\/\d+')?$/.exec(normalized)?.[1];
-  if (accountIndex && Number(accountIndex) > MAX_BIP32_INDEX) {
-    throw accountError(device, "account index exceeds the BIP32 range");
-  }
   const parsed = parseCanonicalAccountPath(normalized);
   if (!parsed) {
     throw accountError(device, "derivation path must be a hardened account-level path");

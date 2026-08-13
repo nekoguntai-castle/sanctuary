@@ -12,6 +12,7 @@ export type {
   DerivationNode,
   DescriptorDerivationDeps,
   DerivedAddress,
+  RelativeDerivedAddress,
   CanonicalDerivedAddress,
   CanonicalSignerOrigin,
   DerivedAddressWithIndex,
@@ -26,16 +27,15 @@ export { convertToStandardXpub, convertXpubToFormat } from './xpubConversion';
 export { parseDescriptor } from './descriptorParser';
 
 // Single-sig derivation
-export { deriveAddress, deriveAddresses } from './singleSigDerivation';
-
-// Multisig derivation
-export { deriveMultisigAddress } from './multisigDerivation';
+export {
+  deriveRelativeAddress,
+  deriveRelativeAddresses,
+} from './singleSigDerivation';
 
 // Descriptor-based derivation (routes to single-sig or multisig)
 export {
   deriveCanonicalAddress,
   deriveAddressFromDescriptor,
-  deriveAddressFromParsedDescriptor,
   deriveAddressesFromDescriptor,
 } from './descriptorDerivation';
 

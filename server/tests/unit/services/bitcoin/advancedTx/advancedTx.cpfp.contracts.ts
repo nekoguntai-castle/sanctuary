@@ -270,6 +270,13 @@ export function registerCpfpContracts() {
         spent: false,
       });
       mockPrismaClient.wallet.findUnique.mockResolvedValueOnce(advancedSignableWallet(walletId, 'legacy'));
+      mockPrismaClient.address.findMany.mockImplementation((query: any) => {
+        const addresses: string[] = query?.where?.address?.in ?? [];
+        return Promise.resolve(addresses.map((address, index) => ({
+          address,
+          derivationPath: `m/44'/1'/0'/0/${index}`,
+        })));
+      });
       mockElectrumClient.getTransaction
         .mockResolvedValueOnce(chain.parent)
         .mockResolvedValueOnce(chain.funding);

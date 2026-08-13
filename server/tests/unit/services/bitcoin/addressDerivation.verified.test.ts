@@ -15,13 +15,14 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import {
   deriveCanonicalAddress,
-  deriveAddress,
+  deriveRelativeAddress,
   deriveAddressFromDescriptor,
-  deriveAddressFromParsedDescriptor,
   deriveAddressesFromDescriptor,
   validateXpub,
   convertToStandardXpub,
 } from '../../../../src/services/bitcoin/addressDerivation';
+import { deriveAddressFromParsedDescriptor } from
+  '../../../../src/services/bitcoin/addressDerivation/descriptorDerivation';
 import {
   VERIFIED_SINGLESIG_VECTORS,
   VERIFIED_MULTISIG_VECTORS,
@@ -42,7 +43,7 @@ const descriptorTemplateByScriptType: Record<
 function descriptorForSingleSigVector(vector: VerifiedSingleSigVector): string {
   const accountPath = vector.path.startsWith('m/') ? vector.path.slice(2) : vector.path;
   const receiveWildcardPath = ['0', '*'].join('/');
-  const keyExpression = `[aabbccdd/${accountPath}]${vector.xpub}/${receiveWildcardPath}`;
+  const keyExpression = `[${vector.accountKeys[0].masterFingerprint}/${accountPath}]${vector.xpub}/${receiveWildcardPath}`;
   return descriptorTemplateByScriptType[vector.scriptType](keyExpression);
 }
 
@@ -51,7 +52,7 @@ function canonicalDescriptorForSingleSigVector(
   branch: 0 | 1
 ): string {
   const accountPath = vector.path.startsWith('m/') ? vector.path.slice(2) : vector.path;
-  const keyExpression = `[aabbccdd/${accountPath}]${vector.xpub}/${branch}/*`;
+  const keyExpression = `[${vector.accountKeys[0].masterFingerprint}/${accountPath}]${vector.xpub}/${branch}/*`;
   return descriptorTemplateByScriptType[vector.scriptType](keyExpression);
 }
 
@@ -62,7 +63,7 @@ function canonicalDescriptorsForMultisigVector(
   receiveDescriptor: string;
   changeDescriptor: string;
 } {
-  const fingerprints = ['11111111', '22222222', '33333333', '44444444', '55555555'];
+  const fingerprints = vector.accountKeys.map(key => key.masterFingerprint);
   const accountPath = vector.accountPath.slice(2);
   const descriptor = (branch: 0 | 1): string => {
     const keys = xpubs.map((xpub, signerIndex) =>
@@ -109,7 +110,7 @@ describe('Address Derivation - Cross-Implementation Verification', () => {
       it.each(nativeSegwitVectors.map(v => [v.description, v]))(
         '%s',
         (_desc: string, vector: VerifiedSingleSigVector) => {
-          const result = deriveAddress(vector.xpub, vector.index, {
+          const result = deriveRelativeAddress(vector.xpub, vector.index, {
             scriptType: 'native_segwit',
             network: vector.network,
             change: vector.change,
@@ -132,7 +133,7 @@ describe('Address Derivation - Cross-Implementation Verification', () => {
       it.each(nestedSegwitVectors.map(v => [v.description, v]))(
         '%s',
         (_desc: string, vector: VerifiedSingleSigVector) => {
-          const result = deriveAddress(vector.xpub, vector.index, {
+          const result = deriveRelativeAddress(vector.xpub, vector.index, {
             scriptType: 'nested_segwit',
             network: vector.network,
             change: vector.change,
@@ -155,7 +156,7 @@ describe('Address Derivation - Cross-Implementation Verification', () => {
       it.each(legacyVectors.map(v => [v.description, v]))(
         '%s',
         (_desc: string, vector: VerifiedSingleSigVector) => {
-          const result = deriveAddress(vector.xpub, vector.index, {
+          const result = deriveRelativeAddress(vector.xpub, vector.index, {
             scriptType: 'legacy',
             network: vector.network,
             change: vector.change,
@@ -178,7 +179,7 @@ describe('Address Derivation - Cross-Implementation Verification', () => {
       it.each(taprootVectors.map(v => [v.description, v]))(
         '%s',
         (_desc: string, vector: VerifiedSingleSigVector) => {
-          const result = deriveAddress(vector.xpub, vector.index, {
+          const result = deriveRelativeAddress(vector.xpub, vector.index, {
             scriptType: 'taproot',
             network: vector.network,
             change: vector.change,
@@ -281,6 +282,12 @@ describe('Address Derivation - Cross-Implementation Verification', () => {
         expect(result.address).toBe(vector.expectedAddress);
         expect(result.scriptPubKey).toBe(vector.expectedScriptPubKey);
         expect(result.derivationPath).toBe(`${vector.path}/${branch}/${vector.index}`);
+        expect(result.signerOrigins).toEqual([{
+          fingerprint: vector.accountKeys[0].masterFingerprint,
+          accountPath: vector.path,
+          branch,
+          index: vector.index,
+        }]);
       }
     );
 
@@ -299,7 +306,12 @@ describe('Address Derivation - Cross-Implementation Verification', () => {
 
         expect(result.address).toBe(vector.expectedAddress);
         expect(result.scriptPubKey).toBe(vector.expectedScriptPubKey);
-        expect(result.signerOrigins).toHaveLength(vector.totalKeys);
+        expect(result.signerOrigins).toEqual(vector.accountKeys.map(key => ({
+          fingerprint: key.masterFingerprint,
+          accountPath: vector.accountPath,
+          branch,
+          index: vector.index,
+        })));
       }
     );
 
@@ -401,20 +413,21 @@ describe('Address Derivation - Cross-Implementation Verification', () => {
     if (!sampleVector) return;
 
     it('should be deterministic - same inputs always produce same output', () => {
-      const result1 = deriveAddress(sampleVector.xpub, sampleVector.index, {
+      const result1 = deriveRelativeAddress(sampleVector.xpub, sampleVector.index, {
         scriptType: sampleVector.scriptType,
         network: sampleVector.network,
         change: sampleVector.change,
       });
 
-      const result2 = deriveAddress(sampleVector.xpub, sampleVector.index, {
+      const result2 = deriveRelativeAddress(sampleVector.xpub, sampleVector.index, {
         scriptType: sampleVector.scriptType,
         network: sampleVector.network,
         change: sampleVector.change,
       });
 
       expect(result1.address).toBe(result2.address);
-      expect(result1.derivationPath).toBe(result2.derivationPath);
+      expect(result1).toMatchObject({ branch: result2.branch, index: result2.index });
+      expect(result1).not.toHaveProperty('derivationPath');
     });
 
     it('should produce different addresses for different indices', () => {
@@ -471,7 +484,7 @@ describe('Address Derivation - Cross-Implementation Verification', () => {
     it.each(highIndexVectors.map(v => [v.description, v]))(
       '%s',
       (_desc: string, vector: VerifiedSingleSigVector) => {
-        const result = deriveAddress(vector.xpub, vector.index, {
+        const result = deriveRelativeAddress(vector.xpub, vector.index, {
           scriptType: vector.scriptType,
           network: vector.network,
           change: vector.change,

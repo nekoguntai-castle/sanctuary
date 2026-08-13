@@ -107,6 +107,23 @@ describe("PSBT Builder", () => {
       }
     });
 
+    it("preserves each cosigner account origin while sharing branch and index", () => {
+      const mixedAccounts = [
+        testMultisigKeys[0],
+        { ...testMultisigKeys[1], accountPath: "m/48'/1'/7'/2'" },
+      ];
+      const result = buildMultisigBip32Derivations(
+        "m/48'/1'/0'/2'/1/10",
+        mixedAccounts,
+        network,
+      );
+
+      expect(result.map(entry => entry.path)).toEqual([
+        "m/48'/1'/0'/2'/1/10",
+        "m/48'/1'/7'/2'/1/10",
+      ]);
+    });
+
     it("should derive unique public keys for each cosigner", () => {
       const derivationPath = "m/48'/1'/0'/2'/0/0";
       const result = buildMultisigBip32Derivations(
@@ -124,6 +141,15 @@ describe("PSBT Builder", () => {
       const result = buildMultisigBip32Derivations(
         "invalid",
         testMultisigKeys,
+        network,
+      );
+      expect(result).toEqual([]);
+    });
+
+    it("should skip a cosigner with a non-canonical account origin", () => {
+      const result = buildMultisigBip32Derivations(
+        "m/48'/1'/0'/2'/0/0",
+        [{ ...testMultisigKeys[0], accountPath: 'invalid' }],
         network,
       );
       expect(result).toEqual([]);
@@ -315,6 +341,16 @@ describe("PSBT Builder", () => {
       const script = buildMultisigWitnessScript(
         "m/48'/1'/0'/2'/0/0",
         null as unknown as MultisigKeyInfo[],
+        2,
+        network,
+      );
+      expect(script).toBeUndefined();
+    });
+
+    it("fails the whole witness script when any signer account is non-canonical", () => {
+      const script = buildMultisigWitnessScript(
+        "m/48'/1'/0'/2'/0/0",
+        [testMultisigKeys[0], { ...testMultisigKeys[1], accountPath: "m/48'/1'/0'" }],
         2,
         network,
       );

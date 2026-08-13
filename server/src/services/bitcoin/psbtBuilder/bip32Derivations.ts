@@ -10,8 +10,12 @@ import { convertToStandardXpub, MultisigKeyInfo } from '../addressDerivation';
 import { createLogger } from '../../../utils/logger';
 import {
   normalizeDerivationPath,
-  extractChangeAndAddressIndex,
 } from '@sanctuary/shared/utils/bitcoin';
+import {
+  buildCanonicalAddressPath,
+  parseCanonicalAccountPath,
+  parseCanonicalAddressPath,
+} from '@sanctuary/shared/constants/walletPolicy';
 import type { Bip32DerivationEntry } from './types';
 
 const log = createLogger('BITCOIN:SVC_PSBT_DERIV');
@@ -41,12 +45,18 @@ export function buildMultisigBip32Derivations(
 ): Bip32DerivationEntry[] {
   try {
     // Extract change/index from the derivation path (e.g., m/48'/0'/0'/2'/0/5 -> 0, 5)
-    const { changeIdx, addressIdx } = extractChangeAndAddressIndex(derivationPath);
+    const parsedAddress = parseCanonicalAddressPath(normalizeDerivationPath(derivationPath));
+    if (!parsedAddress) throw new Error('Invalid canonical address derivation path');
+    const { branch: changeIdx, index: addressIdx } = parsedAddress;
 
     const bip32Derivations: Bip32DerivationEntry[] = [];
 
     for (const keyInfo of multisigKeys) {
       try {
+        const signerAccount = parseCanonicalAccountPath(
+          normalizeDerivationPath(keyInfo.accountPath),
+        );
+        if (!signerAccount) throw new Error('Multisig signer account is not canonical');
         // Convert xpub to standard format and create BIP32 node
         const standardXpub = convertToStandardXpub(keyInfo.xpub);
         const keyNode = bip32.fromBase58(standardXpub, network);
@@ -57,7 +67,11 @@ export function buildMultisigBip32Derivations(
         if (derivedNode.publicKey) {
           // Build full path for this key: m/{accountPath}/{change}/{index}
           // Normalize to apostrophe notation for PSBT compatibility
-          const fullPath = normalizeDerivationPath(`m/${keyInfo.accountPath}/${changeIdx}/${addressIdx}`);
+          const fullPath = buildCanonicalAddressPath(
+            signerAccount.path,
+            changeIdx,
+            addressIdx,
+          );
 
           bip32Derivations.push({
             masterFingerprint: Buffer.from(keyInfo.fingerprint, 'hex'),

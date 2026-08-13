@@ -63,6 +63,14 @@ export interface DerivedAddress {
   publicKey: Buffer;
 }
 
+/** Account-xpub child output. It deliberately carries no master/account path. */
+export interface RelativeDerivedAddress {
+  address: string;
+  publicKey: Buffer;
+  branch: 0 | 1;
+  index: number;
+}
+
 export interface CanonicalSignerOrigin {
   fingerprint: string;
   accountPath: string;

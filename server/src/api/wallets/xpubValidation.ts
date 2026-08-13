@@ -11,6 +11,10 @@ import {
   type WalletScriptType as WalletScriptTypeValue,
 } from '@sanctuary/shared/constants/walletIdentity';
 import { MasterFingerprintSchema } from '@sanctuary/shared/schemas/deviceIdentity';
+import {
+  accountPathMatchesWalletPolicy,
+  parseCanonicalAccountPath,
+} from '@sanctuary/shared/constants/walletPolicy';
 import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
 import { ErrorCodes, InvalidInputError } from '../../errors/ApiError';
@@ -45,27 +49,18 @@ function parseSupportedScriptType(scriptType: string): WalletScriptTypeValue {
   throw new InvalidInputError('Invalid script type');
 }
 
-function expectedAccountPathPrefix(scriptType: WalletScriptTypeValue, network: string): string {
-  const coinType = network === 'mainnet' ? "0'" : "1'";
-
-  switch (scriptType) {
-    case WalletScriptType.LEGACY:
-      return `44'/${coinType}/`;
-    case WalletScriptType.NESTED_SEGWIT:
-      return `49'/${coinType}/`;
-    case WalletScriptType.NATIVE_SEGWIT:
-      return `84'/${coinType}/`;
-    case WalletScriptType.TAPROOT:
-      return `86'/${coinType}/`;
-  }
-}
-
 function assertAccountPathMatchesPolicy(
   accountPath: string,
   scriptType: WalletScriptTypeValue,
   network: string,
 ): void {
-  if (!accountPath.startsWith(expectedAccountPathPrefix(scriptType, network))) {
+  const canonicalPath = `m/${accountPath}`;
+  if (!parseCanonicalAccountPath(canonicalPath)
+    || !accountPathMatchesWalletPolicy(canonicalPath, {
+      walletType: 'single_sig',
+      scriptType,
+      derivationFamily: network === 'mainnet' ? 'mainnet' : 'testnet',
+    })) {
     throw new InvalidInputError('Account path does not match the selected script type and network');
   }
 }

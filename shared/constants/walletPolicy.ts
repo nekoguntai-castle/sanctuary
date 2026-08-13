@@ -21,6 +21,16 @@ export const MAX_BIP32_CHILD_INDEX = 0x7fffffff;
 export const DERIVATION_NETWORK_FAMILIES = ['mainnet', 'testnet'] as const;
 export type DerivationNetworkFamily = (typeof DERIVATION_NETWORK_FAMILIES)[number];
 export type WalletAddressBranch = 0 | 1;
+export interface CanonicalAddressCoordinate {
+  readonly account: number;
+  readonly branch: WalletAddressBranch;
+  readonly index: number;
+}
+
+export interface RelativeAddressCoordinate {
+  readonly branch: WalletAddressBranch;
+  readonly index: number;
+}
 export type DescriptorWrapper =
   | 'pkh'
   | 'sh(wpkh)'
@@ -124,6 +134,46 @@ export function isValidBip32ChildIndex(index: unknown): index is number {
   return Number.isInteger(index) && Number(index) >= 0 && Number(index) <= MAX_BIP32_CHILD_INDEX;
 }
 
+export function assertCanonicalRelativeCoordinate(
+  coordinate: { readonly branch: unknown; readonly index: unknown },
+): RelativeAddressCoordinate {
+  if (coordinate.branch !== 0 && coordinate.branch !== 1) {
+    throw new Error('Invalid canonical address coordinate branch');
+  }
+  if (!isValidBip32ChildIndex(coordinate.index)) {
+    throw new Error('Invalid canonical address coordinate index');
+  }
+  return { branch: coordinate.branch, index: coordinate.index };
+}
+
+export function assertCanonicalAddressCoordinate(
+  coordinate: {
+    readonly account: unknown;
+    readonly branch: unknown;
+    readonly index: unknown;
+  },
+): CanonicalAddressCoordinate {
+  if (!isValidBip32ChildIndex(coordinate.account)) {
+    throw new Error('Invalid canonical address coordinate account');
+  }
+  const relative = assertCanonicalRelativeCoordinate(coordinate);
+  return { account: coordinate.account, ...relative };
+}
+
+export function assertCanonicalAddressRange(
+  startIndex: unknown,
+  count: unknown,
+): { readonly startIndex: number; readonly count: number } {
+  if (!isValidBip32ChildIndex(startIndex)
+    || !Number.isInteger(count)
+    || Number(count) < 0
+    || (Number(count) > 0
+      && startIndex + Number(count) - 1 > MAX_BIP32_CHILD_INDEX)) {
+    throw new Error('Invalid canonical address derivation range');
+  }
+  return { startIndex, count: Number(count) };
+}
+
 const canonicalIndex = (value: string): number | null => {
   const index = Number(value);
   return isValidBip32ChildIndex(index) ? index : null;
@@ -198,9 +248,9 @@ export function buildCanonicalAddressPath(
   branch: WalletAddressBranch,
   index: number,
 ): string {
-  if (!parseCanonicalAccountPath(accountPath)) throw new Error('Invalid canonical account path');
-  if (branch !== 0 && branch !== 1) throw new Error('Invalid wallet address branch');
-  if (!isValidBip32ChildIndex(index)) throw new Error('Invalid BIP32 address index');
+  const parsedAccount = parseCanonicalAccountPath(accountPath);
+  if (!parsedAccount) throw new Error('Invalid canonical account path');
+  assertCanonicalAddressCoordinate({ account: parsedAccount.account, branch, index });
   return `${accountPath}/${branch}/${index}`;
 }
 

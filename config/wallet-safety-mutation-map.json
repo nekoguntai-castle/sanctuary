@@ -12,8 +12,8 @@
         {
           "id": "descriptor-pair-identity",
           "productionFile": "src/services/bitcoin/psbtAccountBinding.ts",
-          "lineStart": 43,
-          "lineEnd": 47,
+          "lineStart": 47,
+          "lineEnd": 50,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/psbtAccountBinding.test.ts",
             "name": "bindPsbtAccount bindPsbtAccount commits the exact descriptor pair to descriptorDigest"
@@ -21,8 +21,8 @@
           "canaries": [{
             "id": "descriptor-digest-commits-both-descriptors",
             "location": {
-              "start": { "line": 45, "column": 28 },
-              "end": { "line": 45, "column": 65 }
+              "start": { "line": 49, "column": 28 },
+              "end": { "line": 49, "column": 65 }
             },
             "mutatorName": "ArrayDeclaration",
             "replacement": "[]",
@@ -35,8 +35,8 @@
         {
           "id": "immutable-signer-account-selection",
           "productionFile": "src/services/bitcoin/psbtAccountBinding.ts",
-          "lineStart": 81,
-          "lineEnd": 113,
+          "lineStart": 85,
+          "lineEnd": 115,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/psbtAccountBinding.test.ts",
             "name": "bindPsbtAccount rejects multisig signer snapshot order and account-path drift"
@@ -44,22 +44,28 @@
           "canaries": [{
             "id": "signer-snapshot-completeness",
             "location": {
-              "start": { "line": 88, "column": 9 },
-              "end": { "line": 90, "column": 36 }
+              "start": { "line": 92, "column": 9 },
+              "end": { "line": 94, "column": 36 }
             },
             "mutatorName": "ConditionalExpression",
             "replacement": "true",
-            "requiredKillingTest": {
-              "file": "tests/unit/services/bitcoin/psbtAccountBinding.test.ts",
-              "name": "bindPsbtAccount binds every owned input and exact branch-1 change metadata"
-            }
+            "requiredKillingTests": [
+              {
+                "file": "tests/unit/services/bitcoin/psbtAccountBinding.test.ts",
+                "name": "bindPsbtAccount binds every owned input and exact branch-1 change metadata"
+              },
+              {
+                "file": "tests/unit/services/bitcoin/psbtAccountBinding.taproot.test.ts",
+                "name": "bindPsbtAccount Taproot metadata binds exact Taproot key-path BIP371 input and change metadata"
+              }
+            ]
           }]
         },
         {
           "id": "server-origin-preservation",
           "productionFile": "src/services/bitcoin/psbtAccountBinding.ts",
-          "lineStart": 218,
-          "lineEnd": 234,
+          "lineStart": 237,
+          "lineEnd": 247,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/psbtAccountBinding.test.ts",
             "name": "bindPsbtAccount bindPsbtAccount rejects one drifted origin in an otherwise complete multisig derivation array"
@@ -67,9 +73,9 @@
           "canaries": [{
             "id": "all-origins-must-match",
             "location": {
-                "start": { "line": 232, "column": 9 },
-                "end": { "line": 232, "column": 62 }
-              },
+              "start": { "line": 245, "column": 9 },
+              "end": { "line": 245, "column": 62 }
+            },
             "mutatorName": "ConditionalExpression",
             "replacement": "false",
             "requiredKillingTest": {
@@ -97,8 +103,8 @@
             {
               "id": "server-taproot-derivations-have-no-leaf-hashes",
               "location": {
-                "start": { "line": 214, "column": 17 },
-                "end": { "line": 214, "column": 19 }
+                "start": { "line": 227, "column": 17 },
+                "end": { "line": 227, "column": 19 }
               },
               "mutatorName": "ArrayDeclaration",
               "replacement": "[\"Stryker was here\"]",
@@ -110,8 +116,8 @@
             {
               "id": "server-taproot-script-path-is-rejected",
               "location": {
-                "start": { "line": 281, "column": 7 },
-                "end": { "line": 281, "column": 84 }
+                "start": { "line": 294, "column": 7 },
+                "end": { "line": 294, "column": 84 }
               },
               "mutatorName": "ConditionalExpression",
               "replacement": "false",
@@ -125,8 +131,8 @@
         {
           "id": "server-taproot-multisig-fails-closed",
           "productionFile": "src/services/bitcoin/psbtAccountBinding.ts",
-          "lineStart": 467,
-          "lineEnd": 470,
+          "lineStart": 482,
+          "lineEnd": 485,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/psbtAccountBinding.taproot.test.ts",
             "name": "bindPsbtAccount Taproot metadata rejects a persisted Taproot multisig wallet before descriptor or account binding"
@@ -134,8 +140,8 @@
           "canaries": [{
             "id": "server-taproot-multisig-block",
             "location": {
-              "start": { "line": 467, "column": 7 },
-              "end": { "line": 468, "column": 56 }
+              "start": { "line": 482, "column": 7 },
+              "end": { "line": 483, "column": 56 }
             },
             "mutatorName": "ConditionalExpression",
             "replacement": "false",
@@ -148,8 +154,8 @@
         {
           "id": "authenticated-previous-output",
           "productionFile": "src/services/bitcoin/psbtAccountBinding.ts",
-          "lineStart": 360,
-          "lineEnd": 387,
+          "lineStart": 373,
+          "lineEnd": 399,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/psbtAccountBinding.test.ts",
             "name": "bindPsbtAccount rejects conflicting witnessUtxo and authenticated nonWitnessUtxo evidence"
@@ -157,8 +163,8 @@
           "canaries": [{
             "id": "non-witness-txid-match",
             "location": {
-              "start": { "line": 373, "column": 9 },
-              "end": { "line": 373, "column": 36 }
+              "start": { "line": 386, "column": 9 },
+              "end": { "line": 386, "column": 36 }
             },
             "mutatorName": "ConditionalExpression",
             "replacement": "true",
@@ -171,8 +177,8 @@
         {
           "id": "canonical-utxo-value-and-script",
           "productionFile": "src/services/bitcoin/psbtAccountBinding.ts",
-          "lineStart": 389,
-          "lineEnd": 426,
+          "lineStart": 402,
+          "lineEnd": 430,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/psbtAccountBinding.test.ts",
             "name": "bindPsbtAccount bindPsbtAccount rejects a wallet UTXO amount that differs from the authenticated prevout"
@@ -180,8 +186,8 @@
           "canaries": [{
             "id": "utxo-evidence-match-is-mandatory",
             "location": {
-              "start": { "line": 404, "column": 43 },
-              "end": { "line": 404, "column": 80 }
+              "start": { "line": 417, "column": 43 },
+              "end": { "line": 417, "column": 80 }
             },
             "mutatorName": "ConditionalExpression",
             "replacement": "false",
@@ -194,8 +200,8 @@
         {
           "id": "branch-one-change-classification",
           "productionFile": "src/services/bitcoin/psbtAccountBinding.ts",
-          "lineStart": 497,
-          "lineEnd": 509,
+          "lineStart": 520,
+          "lineEnd": 524,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/psbtAccountBinding.test.ts",
             "name": "bindPsbtAccount does not claim an external output as change"
@@ -203,8 +209,8 @@
           "canaries": [{
             "id": "change-branch-check",
             "location": {
-              "start": { "line": 507, "column": 9 },
-              "end": { "line": 507, "column": 41 }
+              "start": { "line": 522, "column": 9 },
+              "end": { "line": 522, "column": 41 }
             },
             "mutatorName": "ConditionalExpression",
             "replacement": "true",
@@ -696,7 +702,7 @@
           "id": "taproot-bip371-construction-metadata",
           "productionFile": "src/services/bitcoin/transactions/psbtInputConstruction.ts",
           "lineStart": 206,
-          "lineEnd": 228,
+          "lineEnd": 222,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/psbtInputConstruction.branches.test.ts",
             "name": "PSBT input construction branch coverage adds exact BIP371 key-path metadata for single-sig Taproot input m/86'/1'/0'/0/5"
@@ -705,8 +711,8 @@
             {
               "id": "taproot-construction-branch-is-mandatory",
               "location": {
-                "start": { "line": 218, "column": 9 },
-                "end": { "line": 218, "column": 48 }
+              "start": { "line": 212, "column": 9 },
+              "end": { "line": 212, "column": 48 }
               },
               "mutatorName": "ConditionalExpression",
               "replacement": "false",
@@ -718,8 +724,8 @@
             {
               "id": "taproot-origin-tuple-is-complete",
               "location": {
-                "start": { "line": 222, "column": 30 },
-                "end": { "line": 227, "column": 10 }
+              "start": { "line": 216, "column": 30 },
+              "end": { "line": 221, "column": 10 }
               },
               "mutatorName": "ObjectLiteral",
               "replacement": "{}",
@@ -731,8 +737,8 @@
             {
               "id": "taproot-key-path-leaf-hashes-stay-empty",
               "location": {
-                "start": { "line": 226, "column": 23 },
-                "end": { "line": 226, "column": 25 }
+              "start": { "line": 220, "column": 23 },
+              "end": { "line": 220, "column": 25 }
               },
               "mutatorName": "ArrayDeclaration",
               "replacement": "[\"Stryker was here\"]",

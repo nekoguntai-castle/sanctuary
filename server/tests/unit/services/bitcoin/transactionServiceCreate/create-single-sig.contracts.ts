@@ -546,7 +546,7 @@ export function registerTransactionServiceCreateSingleSigTests(): void {
       ).rejects.toThrow("missing BIP32 derivation metadata");
     });
 
-    it("should derive BIP32 with non-hardened leading path segments", async () => {
+    it("rejects noncanonical leading path segments before BIP32 derivation", async () => {
       mockPrismaClient.wallet.findUnique.mockResolvedValue(singleSigSigningWallet({
         ...sampleWallets.singleSigNativeSegwit,
         id: walletId,
@@ -561,10 +561,8 @@ export function registerTransactionServiceCreateSingleSigTests(): void {
         unusedRows: [changeAddressRow(walletId)],
       });
 
-      const result = await createTransaction(walletId, recipient, 50_000, 10);
-      const psbt = bitcoin.Psbt.fromBase64(result.psbtBase64);
-
-      expect(psbt.data.inputs[0].bip32Derivation?.[0].path).toBe("m/0/1/2/3/4");
+      await expect(createTransaction(walletId, recipient, 50_000, 10))
+        .rejects.toThrow('Address derivation path does not match the signer account origin');
     });
 
     it("should reject when single-sig input pubkey derivation fails", async () => {
