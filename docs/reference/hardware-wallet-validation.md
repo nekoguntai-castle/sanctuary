@@ -182,9 +182,27 @@ from rows that Sanctuary currently blocks at the product level.
 | BitBox02 P2WPKH, P2SH-P2WPKH, P2TR                  | Required, missing physical fixture                 | BitBox adapter maps these to `btcSignSimple` single-sig script configs and still needs vendor-signed artifacts.                                                                                                     |
 | BitBox02 P2WSH, P2SH-P2WSH                          | Unsupported, product blocked                       | BitBox adapter currently uses `btcSignSimple` single-sig script configs only; multisig BitBox signing is not exposed.                                                                                               |
 
-This leaves 16 required rows awaiting physical evidence and 6 explicitly blocked
-unsupported rows. The executable source of truth is
+This leaves 16 supported rows blocked pending physical evidence and 6 explicitly
+blocked unsupported rows. Every supported row, including BitBox02 single-signature
+rows, is accounted for in the fail-closed fixture inventory. The executable source of truth is
 `server/tests/fixtures/hardware-signed-psbt-vectors.ts`.
+
+Physical fixtures use schema v5. Each fixture must enumerate the exact product
+capabilities it proves and carry three independently verified Ed25519 receipts:
+Bitcoin Core acceptance, the Sanctuary capture, and a distinct reviewer receipt.
+The application receipt binds the address agreement matrix, negative controls,
+software gates, account policy, expected outputs/fee/txid, and sanitization review.
+Release evaluation uses the runner's current UTC time, validates the complete
+fixture set against trusted public keys, cryptographically replays every fixture,
+and resolves every enabled capability to matching vendor, model, policy,
+capability, and fresh Tier 3 evidence. Empty Tier 3 remains a valid safe-disabled
+state; it cannot enable any funds-controlling row.
+
+When any physical fixture exists, the release runner must provide the protected
+repository variable `HARDWARE_EVIDENCE_TRUST_SHA256` with the reviewed SHA-256
+digest of `config/hardware-physical-evidence-trust.json`. Because that digest is
+held outside the candidate tree, a candidate cannot authorize newly injected
+receipt keys.
 
 The unsupported Ledger and BitBox multisig rows are enforced in the product, not
 only documented. USB signing refuses those device/script combinations before

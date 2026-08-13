@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { validateMnemonic, wordlists } from "bip39";
 import {
@@ -34,6 +35,7 @@ import {
   sourceManifestMatches,
   validateApplicationReceipt,
   validateCoreReceipt,
+  validateReviewerReceipt,
   type HardwareEvidenceVerificationContext,
 } from "./hardwareSignedEvidenceProvenance";
 
@@ -67,18 +69,14 @@ const BIP39_WORDLISTS = [
   ...new Set(Object.values(wordlists as Record<string, string[]>)),
 ].map((words) => ({ words, vocabulary: new Set(words) }));
 const MAX_EVIDENCE_AGE_MS = 180 * 24 * 60 * 60 * 1000;
-const PACKAGE_LOCK_PATH = fileURLToPath(
-  new URL("../../../package-lock.json", import.meta.url),
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+const PACKAGE_LOCK_PATH = resolve(REPO_ROOT, "package-lock.json");
+const PACKAGE_JSON_PATH = resolve(REPO_ROOT, "package.json");
+const CORE_PROOF_PATH = resolve(
+  REPO_ROOT,
+  "scripts/verify-psbt/proof-manifest.json",
 );
-const PACKAGE_JSON_PATH = fileURLToPath(
-  new URL("../../../package.json", import.meta.url),
-);
-const CORE_PROOF_PATH = fileURLToPath(
-  new URL("../../../scripts/verify-psbt/proof-manifest.json", import.meta.url),
-);
-const JADE_PROOF_PATH = fileURLToPath(
-  new URL("../../../config/jade-emulator-proof.json", import.meta.url),
-);
+const JADE_PROOF_PATH = resolve(REPO_ROOT, "config/jade-emulator-proof.json");
 const PACKAGE_LOCK = JSON.parse(readFileSync(PACKAGE_LOCK_PATH, "utf8")) as {
   packages: Record<string, { version?: string; integrity?: string }>;
 };
@@ -322,7 +320,7 @@ const validateProvenanceIdentity = (
 ): HardwareSignedFixtureIntakeIssue[] => {
   const issues: HardwareSignedFixtureIntakeIssue[] = [];
   const evidence = vector.evidence;
-  if (vector.fixtureSchemaVersion !== 4) {
+  if (vector.fixtureSchemaVersion !== 5) {
     issues.push(
       issue(
         vector.id,
@@ -820,6 +818,11 @@ const validateRepositoryAndReceipt = (
     issues.push(
       issue(vector.id, "evidence.application.receipt", applicationReceiptError),
     );
+  const reviewerReceiptError = validateReviewerReceipt(vector, context);
+  if (reviewerReceiptError)
+    issues.push(
+      issue(vector.id, "evidence.independentReview.receipt", reviewerReceiptError),
+    );
   return issues;
 };
 
@@ -1144,14 +1147,20 @@ export function validateHardwareSignedFixtureSet(
   unsupportedRows: UnsupportedHardwareSignedRow[],
   context: HardwareEvidenceVerificationContext = EMPTY_HARDWARE_EVIDENCE_TRUST,
 ): HardwareSignedFixtureIntakeIssue[] {
-  const seen = new Set<string>();
+  const seenRows = new Set<string>();
+  const seenIds = new Set<string>();
   const unsupported = new Set(unsupportedRows.map(rowKey));
   return fixtures.flatMap((vector) => {
     const key = rowKey(vector);
     const issues = validateHardwareSignedFixtureIntake(vector, context);
-    if (seen.has(key)) {
+    if (seenRows.has(key)) {
       issues.push(
         issue(vector.id, "fixtureSet", `duplicate hardware fixture row ${key}`),
+      );
+    }
+    if (vector.id.trim() === "" || seenIds.has(vector.id)) {
+      issues.push(
+        issue(vector.id, "fixtureSet", "hardware fixture IDs must be nonempty and unique"),
       );
     }
     if (unsupported.has(key)) {
@@ -1163,7 +1172,8 @@ export function validateHardwareSignedFixtureSet(
         ),
       );
     }
-    seen.add(key);
+    seenRows.add(key);
+    seenIds.add(vector.id);
     return issues;
   });
 }

@@ -37,6 +37,7 @@ import {
 import {
   applicationReceiptPayload,
   coreReceiptPayload,
+  reviewerReceiptPayload,
   currentApplicationVersion,
   currentHardwareEvidenceSourceManifest,
   currentPackageLockSha256,
@@ -60,6 +61,8 @@ const CORE_RECEIPT_KEY_ID = "unit-test-core-receipt";
 const CORE_RECEIPT_KEYS = generateKeyPairSync("ed25519");
 const APPLICATION_RECEIPT_KEY_ID = "unit-test-application-receipt";
 const APPLICATION_RECEIPT_KEYS = generateKeyPairSync("ed25519");
+const REVIEWER_RECEIPT_KEY_ID = "unit-test-independent-review";
+const REVIEWER_RECEIPT_KEYS = generateKeyPairSync("ed25519");
 const TEST_CONTEXT: HardwareEvidenceVerificationContext = {
   trustedCoreReceiptKeys: {
     [CORE_RECEIPT_KEY_ID]: CORE_RECEIPT_KEYS.publicKey
@@ -68,6 +71,11 @@ const TEST_CONTEXT: HardwareEvidenceVerificationContext = {
   },
   trustedApplicationReceiptKeys: {
     [APPLICATION_RECEIPT_KEY_ID]: APPLICATION_RECEIPT_KEYS.publicKey
+      .export({ type: "spki", format: "pem" })
+      .toString(),
+  },
+  trustedReviewerReceiptKeys: {
+    [REVIEWER_RECEIPT_KEY_ID]: REVIEWER_RECEIPT_KEYS.publicKey
       .export({ type: "spki", format: "pem" })
       .toString(),
   },
@@ -386,6 +394,15 @@ function physicalEvidence(
         signatureBase64: "",
       },
     },
+    independentReview: {
+      reviewerKeyId: REVIEWER_RECEIPT_KEY_ID,
+      receipt: {
+        algorithm: "ed25519" as const,
+        keyId: REVIEWER_RECEIPT_KEY_ID,
+        payloadSha256: "",
+        signatureBase64: "",
+      },
+    },
   };
 }
 
@@ -412,6 +429,13 @@ function signApplicationReceipt(vector: HardwareSignedPsbtVector): void {
 function signEvidenceReceipts(vector: HardwareSignedPsbtVector): void {
   signCoreReceipt(vector);
   signApplicationReceipt(vector);
+  const payload = reviewerReceiptPayload(vector);
+  vector.evidence.independentReview.receipt.payloadSha256 = hash(payload);
+  vector.evidence.independentReview.receipt.signatureBase64 = sign(
+    null,
+    payload,
+    REVIEWER_RECEIPT_KEYS.privateKey,
+  ).toString("base64");
 }
 
 function ledgerArtifact(
@@ -493,7 +517,7 @@ function syntheticHardwareVector(
           signedPsbtBase64: source.signedPsbtBase64,
         });
   const vector: HardwareSignedPsbtVector = {
-    fixtureSchemaVersion: 4,
+    fixtureSchemaVersion: 5,
     evidenceTier: "physical-device",
     id: "ledger-p2wpkh-synthetic-replay",
     description:
@@ -501,6 +525,7 @@ function syntheticHardwareVector(
     vendor,
     scriptType,
     network: "regtest",
+    coveredCapabilities: ["display", "sign", "finalize", "broadcast"],
     device: physicalDeviceForVendor(vendor),
     account: {
       fingerprint: SIGNER.fingerprint,
@@ -778,7 +803,7 @@ describe("Hardware-signed PSBT fixture replay harness", () => {
   it("keeps required, unsupported, and evidence-blocked rows explicit", () => {
     expect(REQUIRED_HARDWARE_SIGNED_ROWS).toHaveLength(22);
     expect(UNSUPPORTED_HARDWARE_SIGNED_ROWS).toHaveLength(6);
-    expect(BLOCKED_HARDWARE_SIGNED_ROWS).toHaveLength(13);
+    expect(BLOCKED_HARDWARE_SIGNED_ROWS).toHaveLength(16);
     expect(
       BLOCKED_HARDWARE_SIGNED_ROWS.filter((row) => row.vendor === "ledger"),
     ).toHaveLength(4);
@@ -789,8 +814,11 @@ describe("Hardware-signed PSBT fixture replay harness", () => {
       BLOCKED_HARDWARE_SIGNED_ROWS.filter((row) => row.vendor === "jade"),
     ).toHaveLength(4);
     expect(
+      BLOCKED_HARDWARE_SIGNED_ROWS.filter((row) => row.vendor === "bitbox"),
+    ).toHaveLength(3);
+    expect(
       BLOCKED_HARDWARE_SIGNED_ROWS.every((row) =>
-        ["ledger", "trezor", "jade"].includes(row.vendor),
+        ["ledger", "trezor", "jade", "bitbox"].includes(row.vendor),
       ),
     ).toBe(true);
     expect(
@@ -823,7 +851,7 @@ describe("Hardware-signed PSBT fixture replay harness", () => {
         UNSUPPORTED_HARDWARE_SIGNED_ROWS,
         BLOCKED_HARDWARE_SIGNED_ROWS,
       ),
-    ).toHaveLength(3);
+    ).toHaveLength(0);
     if (process.env.REQUIRE_HARDWARE_SIGNED_FIXTURES === "1")
       expect(missing).toEqual([]);
     if (process.env.REQUIRE_TREZOR_PHYSICAL_FIXTURES === "1") {
@@ -1057,6 +1085,28 @@ describe("Hardware-signed PSBT fixture replay harness", () => {
         }),
       ),
     ).toThrow("operator and sanitization reviewer must differ");
+
+    const aliasedKeyVector = syntheticHardwareVector();
+    const reviewerAlias = "same-key-different-id";
+    aliasedKeyVector.evidence.independentReview.reviewerKeyId = reviewerAlias;
+    aliasedKeyVector.evidence.independentReview.receipt.keyId = reviewerAlias;
+    const reviewerPayload = reviewerReceiptPayload(aliasedKeyVector);
+    aliasedKeyVector.evidence.independentReview.receipt.payloadSha256 = hash(
+      reviewerPayload,
+    );
+    aliasedKeyVector.evidence.independentReview.receipt.signatureBase64 = sign(
+      null,
+      reviewerPayload,
+      APPLICATION_RECEIPT_KEYS.privateKey,
+    ).toString("base64");
+    expect(() => assertHardwareSignedFixtureIntakeRaw(aliasedKeyVector, {
+      ...TEST_CONTEXT,
+      trustedReviewerReceiptKeys: {
+        [reviewerAlias]: APPLICATION_RECEIPT_KEYS.publicKey
+          .export({ type: "spki", format: "pem" })
+          .toString(),
+      },
+    })).toThrow("Independent reviewer key must differ from capture key");
   });
 
   it("rejects incomplete provenance and evidence hash drift", () => {
@@ -1605,6 +1655,25 @@ describe("Hardware-signed PSBT fixture replay harness", () => {
         message: expect.stringContaining("duplicate"),
       }),
     ]);
+    expect(
+      validateHardwareSignedFixtureSet(
+        [
+          syntheticHardwareVector({ id: "duplicate-id" }),
+          syntheticHardwareVector({
+            id: "duplicate-id",
+            vendor: "trezor",
+            device: physicalDeviceForVendor("trezor"),
+            artifact: trezorArtifact(),
+          }),
+        ],
+        UNSUPPORTED_HARDWARE_SIGNED_ROWS,
+      ),
+    ).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        field: "fixtureSet",
+        message: expect.stringContaining("IDs must be nonempty and unique"),
+      }),
+    ]));
     expect(
       validateHardwareSignedFixtureSet(
         [

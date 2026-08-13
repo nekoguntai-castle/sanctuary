@@ -279,7 +279,6 @@ export function deriveAddressFromParsedDescriptor(
   if (options.change !== undefined && options.change !== (branch === 1)) {
     throw new Error(`descriptor branch ${branch} does not match requested branch ${options.change ? 1 : 0}`);
   }
-  const change = branch === 1;
   const coordinate = assertCanonicalRelativeCoordinate({ branch, index });
   const isMultisig = parsed.type === 'wsh-sortedmulti'
     || parsed.type === 'sh-wsh-sortedmulti';

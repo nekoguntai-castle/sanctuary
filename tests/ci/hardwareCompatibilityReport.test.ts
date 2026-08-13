@@ -1,10 +1,12 @@
 import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   buildHardwareCompatibilityReport,
   classifyHardwareReleaseDecision,
   renderHardwareCompatibilityMarkdown,
+  validateExternallyPinnedTrust,
 } from "../../scripts/ci/hardware-compatibility-report";
 import {
   HARDWARE_WALLET_CAPABILITY_ROWS,
@@ -36,6 +38,12 @@ describe("hardware compatibility statement", () => {
         ),
     ).size,
     ).toBe(22);
+    expect(first.hardwareRows.filter(
+      ({ status }) => status === "blocked-pending-physical-evidence",
+    )).toHaveLength(16);
+    expect(first.hardwareRows.filter(
+      ({ status }) => status === "unverified-missing-physical-evidence",
+    )).toHaveLength(0);
   });
 
   it("truthfully reports nonempty software proof and absent physical evidence", () => {
@@ -54,6 +62,8 @@ describe("hardware compatibility statement", () => {
       physicalFixtureCount: 0,
       freshPhysicalRowCount: 0,
       expiredPhysicalRowCount: 0,
+      validatedPhysicalFixtureCount: 0,
+      validationIssueCount: 0,
     });
   });
 
@@ -71,6 +81,8 @@ describe("hardware compatibility statement", () => {
       enabledCapabilityCount: 0,
       allFundsControllingCapabilitiesDisabled: true,
       skippedRequiredCaseCount: 0,
+      pendingPhysicalRowCount: 16,
+      validationIssues: [],
     });
   });
 
@@ -104,15 +116,95 @@ describe("hardware compatibility statement", () => {
   });
 
   it("blocks enabled rows unless every row has current strict evidence", () => {
-    expect(classifyHardwareReleaseDecision([], 0)).toBe("safe-fail-closed");
-    expect(
-      classifyHardwareReleaseDecision([{ evidenceIds: ["proof"] }], 0),
-    ).toBe("enabled-rows-require-strict-release-verification");
-    expect(classifyHardwareReleaseDecision([{ evidenceIds: [] }], 0)).toBe(
-      "blocked-invalid-enabled-row",
+    const asOf = Date.parse(AS_OF);
+    const capability = {
+      id: "ledger.ledger-nano-x.sign",
+      vendor: "ledger",
+      modelFamily: "ledger-nano-x",
+      policy: "single-sig-native-segwit-bip84-v1",
+      capability: "sign",
+      enabled: true,
+      evidenceTier: "physical-device",
+      evidenceIds: ["proof"],
+      freshness: {
+        status: "fresh",
+        checkedAt: "2026-08-10T00:00:00.000Z",
+        expiresAt: "2026-09-10T00:00:00.000Z",
+      },
+    };
+    const evidence = [{
+      id: "proof",
+      vendor: "ledger",
+      model: "Ledger Nano X",
+      policy: "single-sig-native-segwit-bip84-v1",
+      capabilities: ["sign"],
+      fresh: true,
+    }];
+
+    expect(classifyHardwareReleaseDecision([], [], 0, asOf).status).toBe(
+      "safe-fail-closed",
     );
     expect(
-      classifyHardwareReleaseDecision([{ evidenceIds: ["proof"] }], 1),
-    ).toBe("blocked-invalid-enabled-row");
+      classifyHardwareReleaseDecision([capability], evidence, 0, asOf).status,
+    ).toBe("enabled-rows-verified");
+    expect(classifyHardwareReleaseDecision([{
+      ...capability,
+      id: "jade.blockstream-jade-plus.sign",
+      vendor: "jade",
+      modelFamily: "blockstream-jade-plus",
+      evidenceIds: ["jade-proof"],
+    }], [{
+      ...evidence[0],
+      id: "jade-proof",
+      vendor: "jade",
+      model: "Jade Plus",
+    }], 0, asOf).status).toBe("enabled-rows-verified");
+
+    for (const invalid of [
+      { ...capability, evidenceIds: [] },
+      { ...capability, evidenceTier: "emulator" },
+      { ...capability, modelFamily: "ledger-nano-s-plus" },
+      { ...capability, policy: "single-sig-taproot-bip86-v1" },
+      { ...capability, freshness: { ...capability.freshness, status: "expired" } },
+      { ...capability, freshness: { ...capability.freshness, expiresAt: AS_OF } },
+    ]) {
+      expect(
+        classifyHardwareReleaseDecision([invalid], evidence, 0, asOf),
+      ).toMatchObject({
+        status: "blocked-invalid-enabled-row",
+        issues: [{
+          capabilityId: invalid.id,
+          code: "enabled-row-lacks-exact-fresh-tier3-proof",
+        }],
+      });
+    }
+    expect(
+      classifyHardwareReleaseDecision([], [], 1, asOf),
+    ).toMatchObject({
+      status: "blocked-invalid-enabled-row",
+      issues: [{ capabilityId: null, code: "invalid-physical-fixture-set" }],
+    });
+    expect(
+      classifyHardwareReleaseDecision([], [evidence[0], evidence[0]], 0, asOf),
+    ).toMatchObject({
+      status: "blocked-invalid-enabled-row",
+      issues: [{ capabilityId: null, code: "ambiguous-physical-evidence-id" }],
+    });
+  });
+
+  it("requires physical evidence trust roots to match an external release pin", () => {
+    const trust = "reviewed trust roots";
+    const digest = createHash("sha256").update(trust).digest("hex");
+    expect(validateExternallyPinnedTrust(0, trust, null)).toEqual([]);
+    expect(validateExternallyPinnedTrust(1, trust, null)).toMatchObject([
+      { code: "missing-external-trust-root-pin" },
+    ]);
+    expect(validateExternallyPinnedTrust(1, trust, "not-a-digest")).toMatchObject([
+      { code: "missing-external-trust-root-pin" },
+    ]);
+    expect(validateExternallyPinnedTrust(1, `${trust}!`, digest)).toMatchObject([
+      { code: "external-trust-root-pin-mismatch" },
+    ]);
+    expect(validateExternallyPinnedTrust(1, trust, digest)).toEqual([]);
   });
 });

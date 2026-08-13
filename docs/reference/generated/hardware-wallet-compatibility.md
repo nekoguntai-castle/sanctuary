@@ -7,30 +7,30 @@ Decision: safe-fail-closed
 
 All inventoried signer families (bitbox, coldcard, generic, jade, keystone, ledger, passport, seedsigner, specter, trezor) remain disabled unless a separately reviewed capability row says otherwise.
 
-| Vendor | Script      | Status                               | Tier 3 freshness | Evidence |
-| ------ | ----------- | ------------------------------------ | ---------------- | -------- |
-| ledger | p2pkh       | blocked-pending-physical-evidence    | unverified       | none     |
-| ledger | p2wpkh      | blocked-pending-physical-evidence    | unverified       | none     |
-| ledger | p2sh-p2wpkh | blocked-pending-physical-evidence    | unverified       | none     |
-| ledger | p2tr        | blocked-pending-physical-evidence    | unverified       | none     |
-| ledger | p2wsh       | unsupported-product-blocked          | unverified       | none     |
-| ledger | p2sh-p2wsh  | unsupported-product-blocked          | unverified       | none     |
-| trezor | p2wpkh      | blocked-pending-physical-evidence    | unverified       | none     |
-| trezor | p2sh-p2wpkh | blocked-pending-physical-evidence    | unverified       | none     |
-| trezor | p2tr        | blocked-pending-physical-evidence    | unverified       | none     |
-| trezor | p2wsh       | blocked-pending-physical-evidence    | unverified       | none     |
-| trezor | p2sh-p2wsh  | blocked-pending-physical-evidence    | unverified       | none     |
-| jade   | p2pkh       | blocked-pending-physical-evidence    | unverified       | none     |
-| jade   | p2wpkh      | blocked-pending-physical-evidence    | unverified       | none     |
-| jade   | p2sh-p2wpkh | blocked-pending-physical-evidence    | unverified       | none     |
-| jade   | p2tr        | blocked-pending-physical-evidence    | unverified       | none     |
-| jade   | p2wsh       | unsupported-product-blocked          | unverified       | none     |
-| jade   | p2sh-p2wsh  | unsupported-product-blocked          | unverified       | none     |
-| bitbox | p2wpkh      | unverified-missing-physical-evidence | unverified       | none     |
-| bitbox | p2sh-p2wpkh | unverified-missing-physical-evidence | unverified       | none     |
-| bitbox | p2tr        | unverified-missing-physical-evidence | unverified       | none     |
-| bitbox | p2wsh       | unsupported-product-blocked          | unverified       | none     |
-| bitbox | p2sh-p2wsh  | unsupported-product-blocked          | unverified       | none     |
+| Vendor | Script      | Status                            | Tier 3 freshness | Evidence |
+| ------ | ----------- | --------------------------------- | ---------------- | -------- |
+| ledger | p2pkh       | blocked-pending-physical-evidence | unverified       | none     |
+| ledger | p2wpkh      | blocked-pending-physical-evidence | unverified       | none     |
+| ledger | p2sh-p2wpkh | blocked-pending-physical-evidence | unverified       | none     |
+| ledger | p2tr        | blocked-pending-physical-evidence | unverified       | none     |
+| ledger | p2wsh       | unsupported-product-blocked       | unverified       | none     |
+| ledger | p2sh-p2wsh  | unsupported-product-blocked       | unverified       | none     |
+| trezor | p2wpkh      | blocked-pending-physical-evidence | unverified       | none     |
+| trezor | p2sh-p2wpkh | blocked-pending-physical-evidence | unverified       | none     |
+| trezor | p2tr        | blocked-pending-physical-evidence | unverified       | none     |
+| trezor | p2wsh       | blocked-pending-physical-evidence | unverified       | none     |
+| trezor | p2sh-p2wsh  | blocked-pending-physical-evidence | unverified       | none     |
+| jade   | p2pkh       | blocked-pending-physical-evidence | unverified       | none     |
+| jade   | p2wpkh      | blocked-pending-physical-evidence | unverified       | none     |
+| jade   | p2sh-p2wpkh | blocked-pending-physical-evidence | unverified       | none     |
+| jade   | p2tr        | blocked-pending-physical-evidence | unverified       | none     |
+| jade   | p2wsh       | unsupported-product-blocked       | unverified       | none     |
+| jade   | p2sh-p2wsh  | unsupported-product-blocked       | unverified       | none     |
+| bitbox | p2wpkh      | blocked-pending-physical-evidence | unverified       | none     |
+| bitbox | p2sh-p2wpkh | blocked-pending-physical-evidence | unverified       | none     |
+| bitbox | p2tr        | blocked-pending-physical-evidence | unverified       | none     |
+| bitbox | p2wsh       | unsupported-product-blocked       | unverified       | none     |
+| bitbox | p2sh-p2wsh  | unsupported-product-blocked       | unverified       | none     |
 
 ## Proof counts
 

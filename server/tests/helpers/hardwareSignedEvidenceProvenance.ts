@@ -9,9 +9,12 @@ import type {
   HardwareWalletVendor,
 } from "../fixtures/hardware-signed-psbt-vectors";
 
-const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+const REPO_ROOT = import.meta.url.startsWith("file:")
+  ? resolve(dirname(fileURLToPath(import.meta.url)), "../../..")
+  : resolve(process.cwd());
 const PROOF_SOURCE_ROOTS = [
   "package-lock.json",
+  "config/hardware-physical-evidence-trust.json",
   "shared/constants/hardwareWalletCapabilities.ts",
   "shared/constants/walletPolicy.ts",
   "src/hooks/send/useUsbSigning.ts",
@@ -62,6 +65,7 @@ const STATIC_IMPORT_CACHE = new Map<
 export interface HardwareEvidenceVerificationContext {
   trustedCoreReceiptKeys: Readonly<Record<string, string>>;
   trustedApplicationReceiptKeys: Readonly<Record<string, string>>;
+  trustedReviewerReceiptKeys: Readonly<Record<string, string>>;
   isTestedCommitReachable?: (sha: string) => boolean;
   now?: number;
 }
@@ -70,6 +74,7 @@ export const EMPTY_HARDWARE_EVIDENCE_TRUST: HardwareEvidenceVerificationContext 
   Object.freeze({
     trustedCoreReceiptKeys: Object.freeze({}),
     trustedApplicationReceiptKeys: Object.freeze({}),
+    trustedReviewerReceiptKeys: Object.freeze({}),
   });
 
 const sha256 = (value: Uint8Array | string): string =>
@@ -298,12 +303,38 @@ export function applicationReceiptPayload(
     sdkPackages: vector.evidence.sdkPackages,
     hostOs: vector.evidence.hostOs,
     browser: vector.evidence.browser,
+    capturedAt: vector.evidence.capturedAt,
+    expiresAt: vector.evidence.expiresAt,
+    operator: vector.evidence.operator,
+    changeRecognizedOnDevice: vector.evidence.changeRecognizedOnDevice,
     unsignedPsbtSha256: vector.evidence.unsignedPsbtSha256,
     signedArtifactSha256: vector.evidence.signedArtifactSha256,
     coreReceiptPayloadSha256:
       vector.evidence.coreAcceptance.receipt.payloadSha256,
+    coveredCapabilities: vector.coveredCapabilities,
+    account: vector.account,
+    expectedTxid: vector.expectedTxid,
+    expectedFeeSats: vector.expectedFeeSats,
+    expectedVsize: vector.expectedVsize,
+    expectedOutputs: vector.expectedOutputs,
+    addressEvidence: vector.addressEvidence,
+    negativeControls: vector.negativeControls,
+    softwareGates: vector.softwareGates,
+    sanitization: vector.sanitization,
   };
   return Buffer.from(JSON.stringify(payload), "utf8");
+}
+
+export function reviewerReceiptPayload(vector: HardwareSignedPsbtVector): Buffer {
+  return Buffer.from(JSON.stringify({
+    schema: "sanctuary-physical-hardware-independent-review-v1",
+    captureId: vector.evidence.captureId,
+    testedCommitSha: vector.evidence.testedCommitSha,
+    reviewer: vector.sanitization.reviewer,
+    reviewerKeyId: vector.evidence.independentReview.reviewerKeyId,
+    applicationReceiptPayloadSha256: vector.evidence.application.receipt.payloadSha256,
+    coreReceiptPayloadSha256: vector.evidence.coreAcceptance.receipt.payloadSha256,
+  }), "utf8");
 }
 
 const validateSignedReceipt = (
@@ -358,6 +389,43 @@ export function validateApplicationReceipt(
     vector.evidence.application.receipt,
     context.trustedApplicationReceiptKeys,
     "Sanctuary application",
+  );
+}
+
+export function validateReviewerReceipt(
+  vector: HardwareSignedPsbtVector,
+  context: HardwareEvidenceVerificationContext,
+): string | null {
+  const review = vector.evidence.independentReview;
+  if (review.reviewerKeyId === vector.evidence.application.receipt.keyId) {
+    return "Independent reviewer key must differ from capture key";
+  }
+  const captureKey = context.trustedApplicationReceiptKeys[
+    vector.evidence.application.receipt.keyId
+  ];
+  const reviewerKey = context.trustedReviewerReceiptKeys[review.reviewerKeyId];
+  try {
+    if (captureKey && reviewerKey) {
+      const captureDer = createPublicKey(captureKey).export({
+        type: "spki",
+        format: "der",
+      });
+      const reviewerDer = createPublicKey(reviewerKey).export({
+        type: "spki",
+        format: "der",
+      });
+      if (captureDer.equals(reviewerDer)) {
+        return "Independent reviewer key must differ from capture key";
+      }
+    }
+  } catch {
+    return "Independent review receipt signature is invalid";
+  }
+  return validateSignedReceipt(
+    reviewerReceiptPayload(vector),
+    review.receipt,
+    context.trustedReviewerReceiptKeys,
+    "Independent review",
   );
 }
 

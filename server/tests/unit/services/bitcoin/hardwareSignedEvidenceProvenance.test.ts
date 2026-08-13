@@ -207,6 +207,7 @@ describe("hardware evidence repository and receipt provenance", () => {
       validateCoreReceipt(vector, {
         trustedCoreReceiptKeys,
         trustedApplicationReceiptKeys: {},
+        trustedReviewerReceiptKeys: {},
       }),
     ).toBeNull();
     const signature = Buffer.from(
@@ -220,6 +221,7 @@ describe("hardware evidence repository and receipt provenance", () => {
       validateCoreReceipt(vector, {
         trustedCoreReceiptKeys,
         trustedApplicationReceiptKeys: {},
+        trustedReviewerReceiptKeys: {},
       }),
     ).toBe("Core acceptance receipt signature is invalid");
   });
@@ -235,6 +237,7 @@ describe("hardware evidence repository and receipt provenance", () => {
       validateCoreReceipt(vector, {
         trustedCoreReceiptKeys: { "test-key": "not-a-public-key" },
         trustedApplicationReceiptKeys: {},
+        trustedReviewerReceiptKeys: {},
       }),
     ).toBe("Core acceptance receipt signature is invalid");
   });

@@ -5014,8 +5014,8 @@
     {
       "vendor": "bitbox",
       "scriptType": "p2wpkh",
-      "status": "unverified-missing-physical-evidence",
-      "reason": "No current reviewed physical-device fixture is committed.",
+      "status": "blocked-pending-physical-evidence",
+      "reason": "BitBox02 capability remains disabled until current Tier 3 physical-device artifacts are reviewed.",
       "evidenceIds": [],
       "freshness": "unverified",
       "expiresAt": null,
@@ -5024,8 +5024,8 @@
     {
       "vendor": "bitbox",
       "scriptType": "p2sh-p2wpkh",
-      "status": "unverified-missing-physical-evidence",
-      "reason": "No current reviewed physical-device fixture is committed.",
+      "status": "blocked-pending-physical-evidence",
+      "reason": "BitBox02 capability remains disabled until current Tier 3 physical-device artifacts are reviewed.",
       "evidenceIds": [],
       "freshness": "unverified",
       "expiresAt": null,
@@ -5034,8 +5034,8 @@
     {
       "vendor": "bitbox",
       "scriptType": "p2tr",
-      "status": "unverified-missing-physical-evidence",
-      "reason": "No current reviewed physical-device fixture is committed.",
+      "status": "blocked-pending-physical-evidence",
+      "reason": "BitBox02 capability remains disabled until current Tier 3 physical-device artifacts are reviewed.",
       "evidenceIds": [],
       "freshness": "unverified",
       "expiresAt": null,
@@ -5110,13 +5110,17 @@
       "status": "unverified-no-physical-fixtures",
       "physicalFixtureCount": 0,
       "freshPhysicalRowCount": 0,
-      "expiredPhysicalRowCount": 0
+      "expiredPhysicalRowCount": 0,
+      "validatedPhysicalFixtureCount": 0,
+      "validationIssueCount": 0
     }
   },
   "releaseDecision": {
     "status": "safe-fail-closed",
     "enabledCapabilityCount": 0,
     "allFundsControllingCapabilitiesDisabled": true,
-    "skippedRequiredCaseCount": 0
+    "pendingPhysicalRowCount": 16,
+    "skippedRequiredCaseCount": 0,
+    "validationIssues": []
   }
 }

@@ -92,6 +92,9 @@ export interface HardwareSignedSanitizationReview {
   sanitizedArtifactsReviewed: true;
 }
 
+export type HardwareSignedCapability =
+  | "import" | "account_add" | "display" | "sign" | "finalize" | "broadcast";
+
 export interface HardwareSignedCosigner {
   fingerprint: string;
   accountPath: string;
@@ -161,13 +164,14 @@ export interface SignedEvidenceReceipt {
 }
 
 export interface HardwareSignedPsbtVector {
-  fixtureSchemaVersion: 4;
+  fixtureSchemaVersion: 5;
   evidenceTier: "physical-device";
   id: string;
   description: string;
   vendor: HardwareWalletVendor;
   scriptType: HardwareSignedScriptType;
   network: HardwareSignedNetwork;
+  coveredCapabilities: HardwareSignedCapability[];
   device: {
     model: string;
     firmwareVersion: string;
@@ -239,6 +243,10 @@ export interface HardwareSignedPsbtVector {
         payloadSha256: string;
         signatureBase64: string;
       };
+    };
+    independentReview: {
+      reviewerKeyId: string;
+      receipt: SignedEvidenceReceipt;
     };
     notes?: string;
   };
@@ -391,6 +399,13 @@ export const BLOCKED_HARDWARE_SIGNED_ROWS: BlockedHardwareSignedRow[] = [
     scriptType: scriptType as HardwareSignedScriptType,
     reason:
       "Jade capability remains disabled until a current Tier 3 Jade Plus physical-device artifact is reviewed.",
+    productDecision: "blocked-pending-physical-evidence" as const,
+  })),
+  ...["p2wpkh", "p2sh-p2wpkh", "p2tr"].map((scriptType) => ({
+    vendor: "bitbox" as const,
+    scriptType: scriptType as HardwareSignedScriptType,
+    reason:
+      "BitBox02 capability remains disabled until current Tier 3 physical-device artifacts are reviewed.",
     productDecision: "blocked-pending-physical-evidence" as const,
   })),
 ];

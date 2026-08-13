@@ -201,10 +201,14 @@ jobs:
       - name: Install locked report dependencies
         run: npm ci --ignore-scripts
       - name: Generate revision-bound compatibility evidence
+        env:
+          # This repository variable is protected outside the candidate tree.
+          # It is required as soon as any physical fixture is committed.
+          HARDWARE_EVIDENCE_TRUST_SHA256: ${{ vars.HARDWARE_EVIDENCE_TRUST_SHA256 }}
         run: |
           mkdir -p release-evidence
           revision="$(git rev-parse HEAD)"
-          as_of="$(git show -s --format=%cI HEAD)"
+          as_of="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           npx --no-install tsx scripts/ci/hardware-compatibility-report.ts \
             --as-of "$as_of" \
             --revision "$revision" \
@@ -213,7 +217,9 @@ jobs:
           node -e '
             const report = require("./release-evidence/hardware-wallet-compatibility.json");
             if (report.revision !== process.env.GITHUB_SHA && report.revision !== require("node:child_process").execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim()) process.exit(1);
-            if (report.releaseDecision.status === "blocked-invalid-enabled-row" || report.releaseDecision.skippedRequiredCaseCount !== 0) process.exit(1);
+            if (!["safe-fail-closed", "enabled-rows-verified"].includes(report.releaseDecision.status)) process.exit(1);
+            if (report.releaseDecision.skippedRequiredCaseCount !== 0 || report.releaseDecision.validationIssues.length !== 0) process.exit(1);
+            if (report.proofTiers.tier3.validatedPhysicalFixtureCount !== report.proofTiers.tier3.physicalFixtureCount) process.exit(1);
           '
       - name: Upload hardware compatibility evidence
         uses: ./.github/actions/upload-artifact
