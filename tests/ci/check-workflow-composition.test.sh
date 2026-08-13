@@ -626,6 +626,7 @@ assert_contains_in_order "$RC" \
   "release-candidate emits revision-bound hardware compatibility evidence" \
   "hardware-compatibility-evidence:" \
   "npm --workspace shared run build" \
+  "npm --workspace server run prisma:generate" \
   "npx --no-install tsx scripts/ci/hardware-compatibility-report.ts" \
   '--revision "$revision"' \
   'name: hardware-compatibility-evidence-${{ github.run_id }}'

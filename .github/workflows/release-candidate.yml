@@ -202,6 +202,7 @@ jobs:
         run: |
           npm ci --ignore-scripts
           npm --workspace shared run build
+          npm --workspace server run prisma:generate
       - name: Generate revision-bound compatibility evidence
         env:
           # This repository variable is protected outside the candidate tree.
