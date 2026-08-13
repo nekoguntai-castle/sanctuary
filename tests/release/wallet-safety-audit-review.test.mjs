@@ -156,7 +156,7 @@ test('independent funds-safety inventory is present and covered by canonical sco
   assert.equal(inventory.schemaVersion, 1);
   assert.equal(inventory.pr2aCommit, '1bfbaaf9a0fdc99e61c7ee5030fe569624c55ce2');
   assert.equal(inventory.pr2aFundsSafetyFiles.length, 32);
-  assert.equal(inventory.existingFundsSafetyFiles.length, 51);
+  assert.equal(inventory.existingFundsSafetyFiles.length, 52);
 
   const criticalPaths = loadWalletSafetyCriticalPaths(REPO_ROOT);
   const repositoryFiles = new Set(execFileSync(

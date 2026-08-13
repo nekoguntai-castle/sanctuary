@@ -125,6 +125,10 @@ print(json.dumps({
 PY
 )"
 
+GITHUB_PAYLOAD="$(printf '%s' "$PAYLOAD" | jq -c \
+  --arg make_latest "$([[ "$PRERELEASE" == "false" ]] && printf true || printf false)" \
+  '. + {make_latest: $make_latest}')"
+
 ENCODED_TAG="$(TAG="$TAG" python3 - <<'PY'
 import os
 import urllib.parse
@@ -167,7 +171,8 @@ report_failure() {
 }
 
 release_matches_payload() {
-  jq -e --argjson expected "$PAYLOAD" \
+  local expected_payload="$1"
+  jq -e --argjson expected "$expected_payload" \
     '.tag_name == $expected.tag_name
       and .name == $expected.name
       and .body == $expected.body
@@ -178,7 +183,9 @@ release_matches_payload() {
 
 accept_existing_release() {
   local name="$1"
-  if release_matches_payload; then
+  local expected_payload="$2"
+  if release_matches_payload "$expected_payload"; then
+    LAST_RELEASE_ID="$(jq -r '.id // empty' "$RESPONSE_FILE")"
     echo -e "  ${YELLOW}~${NC} $name: matching release already exists, skipping"
     return 0
   fi
@@ -190,7 +197,8 @@ create_release() {
   local name="$1"
   local releases_url="$2"
   local auth_header="$3"
-  shift 3
+  local payload="$4"
+  shift 4
   local headers=("$@")
   local lookup_code
   local create_code
@@ -201,7 +209,7 @@ create_release() {
   fi
 
   if [[ "$lookup_code" == "200" ]]; then
-    accept_existing_release "$name"
+    accept_existing_release "$name" "$payload"
     return
   fi
 
@@ -212,13 +220,14 @@ create_release() {
 
   if ! create_code="$(request "$auth_header" POST "$releases_url" \
     "${headers[@]}" \
-    -H "Content-Type: application/json" \
-    -d "$PAYLOAD")"; then
+      -H "Content-Type: application/json" \
+      -d "$payload")"; then
     report_failure "$name" "release creation" "$create_code"
     return 1
   fi
 
   if [[ "$create_code" =~ ^2 ]]; then
+    LAST_RELEASE_ID="$(jq -r '.id // empty' "$RESPONSE_FILE")"
     echo -e "  ${GREEN}✓${NC} $name: created (HTTP $create_code)"
     return 0
   fi
@@ -227,13 +236,43 @@ create_release() {
   if [[ "$create_code" == "409" || "$create_code" == "422" ]]; then
     if lookup_code="$(request "$auth_header" GET "${releases_url}/tags/${ENCODED_TAG}" "${headers[@]}")" \
       && [[ "$lookup_code" == "200" ]]; then
-      accept_existing_release "$name"
+      accept_existing_release "$name" "$payload"
       return
     fi
   fi
 
   report_failure "$name" "release creation" "$create_code"
   return 1
+}
+
+promote_github_latest() {
+  [[ "$PRERELEASE" == "false" ]] || return 0
+  [[ -n "${LAST_RELEASE_ID:-}" ]] || {
+    echo -e "  ${RED}✗${NC} GitHub: release response did not include an id" >&2
+    return 1
+  }
+
+  local releases_url="${GITHUB_API_URL%/}/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases"
+  local headers=(-H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28")
+  local update_code latest_code
+  if ! update_code="$(request "Bearer ${GITHUB_RELEASE_TOKEN}" PATCH \
+    "${releases_url}/${LAST_RELEASE_ID}" "${headers[@]}" \
+    -H "Content-Type: application/json" -d '{"make_latest":"true"}')" \
+    || [[ ! "$update_code" =~ ^2 ]]; then
+    report_failure "GitHub" "latest promotion" "$update_code"
+    return 1
+  fi
+  if ! latest_code="$(request "Bearer ${GITHUB_RELEASE_TOKEN}" GET \
+    "${releases_url}/latest" "${headers[@]}")" \
+    || [[ "$latest_code" != "200" ]]; then
+    report_failure "GitHub" "latest verification" "$latest_code"
+    return 1
+  fi
+  if ! jq -e --arg tag "$TAG" '.tag_name == $tag' "$RESPONSE_FILE" >/dev/null; then
+    echo -e "  ${RED}✗${NC} GitHub: /releases/latest does not resolve to ${TAG}" >&2
+    return 1
+  fi
+  echo -e "  ${GREEN}✓${NC} GitHub: latest release verified"
 }
 
 echo -e "${YELLOW}Creating release for ${TAG}${NC}"
@@ -247,6 +286,7 @@ if ! create_release \
   "Forgejo" \
   "${FORGEJO_URL%/}/api/v1/repos/${FORGEJO_OWNER}/${FORGEJO_REPO}/releases" \
   "token ${FORGEJO_TOKEN}" \
+  "$PAYLOAD" \
   -H "Accept: application/json"; then
   result=1
 fi
@@ -255,8 +295,13 @@ if ! create_release \
   "GitHub" \
   "${GITHUB_API_URL%/}/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases" \
   "Bearer ${GITHUB_RELEASE_TOKEN}" \
+  "$GITHUB_PAYLOAD" \
   -H "Accept: application/vnd.github+json" \
   -H "X-GitHub-Api-Version: 2022-11-28"; then
+  result=1
+fi
+
+if (( result == 0 )) && ! promote_github_latest; then
   result=1
 fi
 

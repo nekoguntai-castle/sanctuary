@@ -3,7 +3,7 @@ import {
   canonicalRemediationJson,
   remediationDigest,
   remediationProposalId,
-} from '../../../../src/services/walletRemediation/canonicalDocument';
+} from '../../../../src/utils/walletRemediationCanonicalDocument';
 
 describe('canonical remediation document', () => {
   it('sorts object keys while preserving array order', () => {

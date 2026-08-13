@@ -4,7 +4,7 @@ import { buildWalletRemediationDocument } from '../../../../src/services/walletR
 import {
   remediationDigest,
   remediationProposalId,
-} from '../../../../src/services/walletRemediation/canonicalDocument';
+} from '../../../../src/utils/walletRemediationCanonicalDocument';
 import { validateRemediationEvidenceForRestore } from '../../../../src/services/backupService/remediationEvidenceValidation';
 import type { BackupRecord } from '../../../../src/services/backupService';
 

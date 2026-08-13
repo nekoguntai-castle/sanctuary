@@ -3,7 +3,7 @@ import { getErrorMessage } from '../../utils/errors';
 import {
   remediationDigest,
   remediationProposalId,
-} from '../walletRemediation/canonicalDocument';
+} from '../../utils/walletRemediationCanonicalDocument';
 import { parseWalletRemediationDocument } from '../walletRemediation/schema';
 import type { BackupRecord } from './types';
 

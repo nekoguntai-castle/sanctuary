@@ -35,7 +35,7 @@ import {
   walletRemediationRepository,
   withSerializableTransaction,
 } from '../../../src/repositories/walletRemediationRepository';
-import { remediationDigest } from '../../../src/services/walletRemediation/canonicalDocument';
+import { remediationDigest } from '../../../src/utils/walletRemediationCanonicalDocument';
 
 const actor = { userId: 'user-1', username: 'alice' };
 const document = {

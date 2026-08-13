@@ -154,8 +154,16 @@ printf '%s' "$payload" > "$CURL_LOG_DIR/payload-$count"
 
 http_code=404
 response='{"message":"Not Found"}'
-if [[ "$method" == "POST" ]]; then
+if [[ "$url" == */releases/latest ]]; then
+  http_code=200
+  latest_tag="$STUB_EXPECTED_TAG"
+  [[ "${STUB_MODE:-success}" != "latest_mismatch" ]] || latest_tag="v0.0.1"
+  response="$(jq -cn --arg tag "$latest_tag" '{id:1,tag_name:$tag}')"
+elif [[ "$method" == "POST" ]]; then
   http_code=201
+  response='{"id":1}'
+elif [[ "$method" == "PATCH" ]]; then
+  http_code=200
   response='{"id":1}'
 elif [[ "${STUB_MODE:-success}" == "exists" || "${STUB_MODE:-success}" == "mismatch" ]]; then
   http_code=200
@@ -235,7 +243,7 @@ test_stable_release_uses_provider_apis_and_bounded_notes() {
   local output="$TEST_ROOT/stable-output"
   run_release success v1.0.0 "$output"
 
-  assert_call_count 4
+  assert_call_count 6
   assert_contains "$CURL_LOG_DIR/args-1" "https://forgejo.example.invalid/api/v1/repos/forge-owner/sanctuary/releases/tags/v1.0.0"
   assert_contains "$CURL_LOG_DIR/auth-1" "Authorization: token forge-secret"
   if grep -Fq "forge-secret" "$CURL_LOG_DIR/args-1"; then
@@ -248,6 +256,9 @@ test_stable_release_uses_provider_apis_and_bounded_notes() {
   fi
   assert_contains "$CURL_LOG_DIR/args-3" "Accept: application/vnd.github+json"
   assert_contains "$CURL_LOG_DIR/args-3" "X-GitHub-Api-Version: 2022-11-28"
+  assert_contains "$CURL_LOG_DIR/args-5" "https://api.github.example/repos/github-owner/sanctuary/releases/1"
+  assert_contains "$CURL_LOG_DIR/payload-5" '"make_latest":"true"'
+  assert_contains "$CURL_LOG_DIR/args-6" "https://api.github.example/repos/github-owner/sanctuary/releases/latest"
 
   python3 - "$CURL_LOG_DIR/payload-2" <<'PY'
 import json
@@ -264,8 +275,15 @@ assert "release change 105" in payload["body"]
 assert not any(line.endswith("release change 5") for line in payload["body"].splitlines())
 PY
 
-  cmp "$CURL_LOG_DIR/payload-2" "$CURL_LOG_DIR/payload-4" \
-    || fail "Forgejo and GitHub payloads differ"
+  python3 - "$CURL_LOG_DIR/payload-4" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as payload_file:
+    payload = json.load(payload_file)
+assert payload["make_latest"] == "true"
+PY
+
   [[ -z "$(find "$RESPONSE_TMP" -type f -print -quit)" ]] \
     || fail "response temporary file was not removed"
 }
@@ -299,7 +317,7 @@ test_existing_release_is_idempotent() {
   local output="$TEST_ROOT/existing-output"
   run_release exists v1.0.0 "$output"
 
-  assert_call_count 2
+  assert_call_count 4
   assert_contains "$output" "Forgejo: matching release already exists"
   assert_contains "$output" "GitHub: matching release already exists"
 }
@@ -395,6 +413,18 @@ test_transport_failure_fails_closed() {
   assert_contains "$output" "GitHub: release creation failed (HTTP 000)"
 }
 
+test_stable_release_fails_when_latest_endpoint_does_not_advance() {
+  reset_run_state
+  local output="$TEST_ROOT/latest-mismatch-output"
+
+  if run_release latest_mismatch v1.0.0 "$output"; then
+    fail "stable release unexpectedly passed with a stale latest endpoint"
+  fi
+
+  assert_call_count 6
+  assert_contains "$output" "GitHub: /releases/latest does not resolve to v1.0.0"
+}
+
 test_stable_release_uses_provider_apis_and_bounded_notes
 test_stable_release_notes_span_previous_stable_tag
 test_existing_release_is_idempotent
@@ -404,5 +434,6 @@ test_missing_config_fails_before_requests
 test_one_target_failure_fails_overall_after_attempting_both
 test_lookup_failure_is_not_treated_as_absent
 test_transport_failure_fails_closed
+test_stable_release_fails_when_latest_endpoint_does_not_advance
 
 echo "create-forge-release tests passed"

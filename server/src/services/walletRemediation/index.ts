@@ -6,7 +6,7 @@ import {
   remediationDigest,
   remediationProofDigest,
   remediationProposalId,
-} from './canonicalDocument';
+} from '../../utils/walletRemediationCanonicalDocument';
 import { buildWalletRemediationDocument } from './proof';
 import {
   parseWalletRemediationDocument,

@@ -6,7 +6,7 @@ import type {
   WalletRemediationDocument,
   WalletRemediationSnapshot,
 } from '../services/walletRemediation/types';
-import { remediationDigest } from '../services/walletRemediation/canonicalDocument';
+import { remediationDigest } from '../utils/walletRemediationCanonicalDocument';
 import { NotFoundError } from '../errors';
 
 const REMEDIATION_PATCH_FIELDS = {

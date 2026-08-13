@@ -18,7 +18,7 @@ import { buildWalletRemediationDocument } from '../../../../src/services/walletR
 import {
   remediationDigest,
   remediationProposalId,
-} from '../../../../src/services/walletRemediation/canonicalDocument';
+} from '../../../../src/utils/walletRemediationCanonicalDocument';
 
 const auditFixture = provenAuditSnapshot();
 const document = buildWalletRemediationDocument({

@@ -21,6 +21,7 @@
     "server/src/services/backupService/**",
     "server/src/services/walletSafetyAudit/**",
     "server/src/services/walletRemediation/**",
+    "server/src/utils/walletRemediationCanonicalDocument.ts",
     "server/src/validation/walletSafetyAudit.ts",
     "server/prisma/**",
     "server/src/services/export/**",

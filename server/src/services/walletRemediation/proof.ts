@@ -21,7 +21,7 @@ import {
   validateCanonicalDescriptorPair,
 } from '../bitcoin/descriptorParser';
 import { prepareDescriptorPolicy } from '../wallet/descriptorPolicy';
-import { remediationDigest, remediationProofDigest } from './canonicalDocument';
+import { remediationDigest, remediationProofDigest } from '../../utils/walletRemediationCanonicalDocument';
 import {
   WALLET_REMEDIATION_SCHEMA_VERSION,
   type RemediationBlocker,

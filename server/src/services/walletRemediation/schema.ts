@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { WALLET_REMEDIATION_SCHEMA_VERSION } from './types';
-import { remediationDigest, remediationProofDigest } from './canonicalDocument';
+import { remediationDigest, remediationProofDigest } from '../../utils/walletRemediationCanonicalDocument';
 import type {
   WalletRemediationDocument,
   WalletRemediationProposalView,

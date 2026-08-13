@@ -60,6 +60,7 @@
     "server/src/services/deviceRegistration.ts",
     "server/src/services/draftSigning.ts",
     "server/src/services/hardwareWalletCapabilities.ts",
+    "server/src/utils/walletRemediationCanonicalDocument.ts",
     "src/api/devices.ts",
     "src/api/drafts.ts",
     "src/api/payjoin.ts",

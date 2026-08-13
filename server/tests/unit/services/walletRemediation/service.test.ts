@@ -26,7 +26,7 @@ import {
 import {
   remediationDigest,
   remediationProposalId,
-} from '../../../../src/services/walletRemediation/canonicalDocument';
+} from '../../../../src/utils/walletRemediationCanonicalDocument';
 import { buildWalletRemediationDocument } from '../../../../src/services/walletRemediation/proof';
 
 const actor = { userId: 'owner-1', username: 'owner' };

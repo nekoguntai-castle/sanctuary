@@ -1,7 +1,7 @@
 {
   "name": "sanctuary",
   "private": true,
-  "version": "0.8.62",
+  "version": "0.8.63",
   "type": "module",
   "packageManager": "npm@11.19.0",
   "engines": {
@@ -27,7 +27,7 @@
     "hono": "4.12.26",
     "undici": "7.29.0",
     "zod": "4.3.6",
-    "nanoid": "3.3.17"
+    "nanoid": "3.3.18"
   },
   "allowScripts": {
     "@firebase/util": false,
