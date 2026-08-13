@@ -756,8 +756,8 @@
         {
           "id": "taproot-artifact-key-path-metadata",
           "productionFile": "src/services/bitcoin/signingIntent/artifactValidation.ts",
-          "lineStart": 188,
-          "lineEnd": 212,
+          "lineStart": 336,
+          "lineEnd": 360,
           "requiredTests": [
             {
               "file": "tests/unit/services/bitcoin/signingIntent/artifactValidation.test.ts",
@@ -780,8 +780,8 @@
             {
               "id": "taproot-script-path-and-mixed-metadata-are-rejected",
               "location": {
-                "start": { "line": 188, "column": 7 },
-                "end": { "line": 189, "column": 88 }
+                "start": { "line": 336, "column": 7 },
+                "end": { "line": 337, "column": 88 }
               },
               "mutatorName": "ConditionalExpression",
               "replacement": "false",
@@ -793,8 +793,8 @@
             {
               "id": "taproot-internal-key-and-single-derivation-are-required",
               "location": {
-                "start": { "line": 195, "column": 7 },
-                "end": { "line": 195, "column": 57 }
+                "start": { "line": 343, "column": 7 },
+                "end": { "line": 343, "column": 57 }
               },
               "mutatorName": "ConditionalExpression",
               "replacement": "false",
@@ -806,8 +806,8 @@
             {
               "id": "taproot-artifact-leaf-hashes-stay-empty",
               "location": {
-                "start": { "line": 207, "column": 7 },
-                "end": { "line": 207, "column": 45 }
+                "start": { "line": 355, "column": 7 },
+                "end": { "line": 355, "column": 45 }
               },
               "mutatorName": "ConditionalExpression",
               "replacement": "false",
@@ -821,8 +821,8 @@
         {
           "id": "non-taproot-artifacts-reject-taproot-fields",
           "productionFile": "src/services/bitcoin/signingIntent/artifactValidation.ts",
-          "lineStart": 173,
-          "lineEnd": 234,
+          "lineStart": 321,
+          "lineEnd": 382,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/signingIntent/artifactValidation.test.ts",
             "name": "signed artifact authentication boundary rejects non-Taproot signed artifacts carrying tapBip32Derivation"
@@ -830,8 +830,8 @@
           "canaries": [{
             "id": "non-taproot-inputs-fail-closed-on-taproot-fields",
             "location": {
-              "start": { "line": 229, "column": 7 },
-              "end": { "line": 229, "column": 35 }
+              "start": { "line": 377, "column": 7 },
+              "end": { "line": 377, "column": 35 }
             },
             "mutatorName": "ConditionalExpression",
             "replacement": "false",
@@ -844,8 +844,8 @@
         {
           "id": "taproot-signature-family-and-schnorr-validation",
           "productionFile": "src/services/bitcoin/signingIntent/artifactValidation.ts",
-          "lineStart": 219,
-          "lineEnd": 290,
+          "lineStart": 367,
+          "lineEnd": 438,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/signingIntent/artifactValidation.test.ts",
             "name": "signed artifact authentication boundary accepts Core-backed signed vector: 'p2tr'"
@@ -854,8 +854,8 @@
             {
               "id": "p2tr-inputs-use-the-taproot-signature-family",
               "location": {
-                "start": { "line": 220, "column": 7 },
-                "end": { "line": 220, "column": 14 }
+                "start": { "line": 368, "column": 7 },
+                "end": { "line": 368, "column": 14 }
               },
               "mutatorName": "ConditionalExpression",
               "replacement": "false",
@@ -867,8 +867,8 @@
             {
               "id": "x-only-keys-select-schnorr-validation",
               "location": {
-                "start": { "line": 270, "column": 9 },
-                "end": { "line": 270, "column": 29 }
+                "start": { "line": 418, "column": 9 },
+                "end": { "line": 418, "column": 29 }
               },
               "mutatorName": "ConditionalExpression",
               "replacement": "false",
@@ -880,8 +880,8 @@
             {
               "id": "present-signatures-are-cryptographically-validated",
               "location": {
-                "start": { "line": 290, "column": 9 },
-                "end": { "line": 290, "column": 76 }
+                "start": { "line": 438, "column": 9 },
+                "end": { "line": 438, "column": 76 }
               },
               "mutatorName": "ConditionalExpression",
               "replacement": "false",
@@ -895,8 +895,8 @@
         {
           "id": "taproot-artifact-deterministic-finalization",
           "productionFile": "src/services/bitcoin/signingIntent/artifactValidation.ts",
-          "lineStart": 298,
-          "lineEnd": 309,
+          "lineStart": 446,
+          "lineEnd": 457,
           "requiredTests": [{
             "file": "tests/unit/services/bitcoin/signingIntent/artifactValidation.test.ts",
             "name": "signed artifact authentication boundary validates, finalizes, and extracts an exactly preserved signed PSBT"
@@ -904,14 +904,352 @@
           "canaries": [{
             "id": "non-multisig-inputs-use-library-finalization",
             "location": {
-              "start": { "line": 305, "column": 14 },
-              "end": { "line": 307, "column": 8 }
+              "start": { "line": 453, "column": 14 },
+              "end": { "line": 455, "column": 8 }
             },
             "mutatorName": "BlockStatement",
             "replacement": "{}",
             "requiredKillingTest": {
               "file": "tests/unit/services/bitcoin/signingIntent/artifactValidation.test.ts",
               "name": "signed artifact authentication boundary validates, finalizes, and extracts an exactly preserved signed PSBT"
+            }
+          }]
+        }
+      ]
+    },
+    {
+      "id": "serverFeePolicy",
+      "reportPath": "server/reports/mutation/fee-policy.json",
+      "files": [
+        { "path": "src/services/bitcoin/signingIntent/feePolicy.ts", "minScore": 60 },
+        { "path": "src/services/bitcoin/transactionWeight.ts", "minScore": 80 },
+        { "path": "src/services/bitcoin/utxoSelection.ts", "minScore": 60 },
+        { "path": "src/services/bitcoin/transactions/outputBuilder.ts", "minScore": 85 },
+        { "path": "src/services/bitcoin/transactions/createBatchTransaction.ts", "minScore": 70 },
+        { "path": "src/services/bitcoin/advancedTx/batch.ts", "minScore": 75 },
+        { "path": "src/services/bitcoin/advancedTx/cpfp.ts", "minScore": 75 },
+        { "path": "src/services/bitcoin/advancedTx/rbf.ts", "minScore": 75 }
+      ],
+      "invariants": [
+        {
+          "id": "fee-surplus-is-independently-bounded",
+          "productionFile": "src/services/bitcoin/signingIntent/feePolicy.ts",
+          "lineStart": 136,
+          "lineEnd": 159,
+          "requiredTests": [{
+            "file": "tests/unit/services/bitcoin/signingIntent/feePolicy.test.ts",
+            "name": "signing intent fee policy construction does not let a missing change output widen its own authorization"
+          }],
+          "canaries": [{
+            "id": "missing-change-fee-is-rejected",
+            "location": {
+              "start": { "line": 150, "column": 72 },
+              "end": { "line": 157, "column": 4 }
+            },
+            "mutatorName": "BlockStatement",
+            "replacement": "{}",
+            "requiredKillingTest": {
+              "file": "tests/unit/services/bitcoin/signingIntent/feePolicy.test.ts",
+              "name": "signing intent fee policy construction does not let a missing change output widen its own authorization"
+            }
+          }]
+        },
+        {
+          "id": "multisig-quorum-is-bounded",
+          "productionFile": "src/services/bitcoin/transactionWeight.ts",
+          "lineStart": 155,
+          "lineEnd": 161,
+          "requiredTests": [{
+            "file": "tests/unit/services/bitcoin/transactionWeight.test.ts",
+            "name": "transactionWeight estimateTransactionWeight uses conservative literal weight for '2-of-3 P2WSH sortedmulti'"
+          }],
+          "canaries": [{
+            "id": "quorum-cannot-exceed-key-count",
+            "location": {
+              "start": { "line": 158, "column": 7 },
+              "end": { "line": 158, "column": 26 }
+            },
+            "mutatorName": "EqualityOperator",
+            "replacement": "policy.m <= policy.n",
+            "requiredKillingTest": {
+              "file": "tests/unit/services/bitcoin/transactionWeight.test.ts",
+              "name": "transactionWeight estimateTransactionWeight uses conservative literal weight for '2-of-3 P2WSH sortedmulti'"
+            }
+          }]
+        },
+        {
+          "id": "script-commitments-require-exact-byte-equality",
+          "productionFile": "src/services/bitcoin/transactionWeight.ts",
+          "lineStart": 119,
+          "lineEnd": 121,
+          "requiredTests": [{
+            "file": "tests/unit/services/bitcoin/transactionWeight.test.ts",
+            "name": "transactionWeight estimateTransactionWeight rejects a one-byte P2SH commitment mismatch even when the remaining bytes match"
+          }],
+          "canaries": [{
+            "id": "commitment-equality-cannot-be-removed",
+            "location": {
+              "start": { "line": 119, "column": 67 },
+              "end": { "line": 121, "column": 2 }
+            },
+            "mutatorName": "BlockStatement",
+            "replacement": "{}",
+            "requiredKillingTest": {
+              "file": "tests/unit/services/bitcoin/transactionWeight.test.ts",
+              "name": "transactionWeight estimateTransactionWeight uses conservative literal weight for 'P2SH-P2WPKH'"
+            }
+          }]
+        },
+        {
+          "id": "no-change-selection-cannot-create-an-unauthorized-change-branch",
+          "productionFile": "src/services/bitcoin/utxoSelection.ts",
+          "lineStart": 160,
+          "lineEnd": 161,
+          "requiredTests": [{
+            "file": "tests/unit/services/bitcoin/transactionSelection.boundaries.test.ts",
+            "name": "exact transaction selection boundaries absorbs surplus into the fee when no change script is authorized"
+          }],
+          "canaries": [{
+            "id": "change-output-requires-an-authorized-change-script",
+            "location": {
+              "start": { "line": 160, "column": 9 },
+              "end": { "line": 160, "column": 41 }
+            },
+            "mutatorName": "ConditionalExpression",
+            "replacement": "true",
+            "requiredKillingTest": {
+              "file": "tests/unit/services/bitcoin/transactionSelection.boundaries.test.ts",
+              "name": "exact transaction selection boundaries absorbs surplus into the fee when no change script is authorized"
+            }
+          }]
+        },
+        {
+          "id": "decoy-fallback-count-is-preserved",
+          "productionFile": "src/services/bitcoin/utxoSelection.ts",
+          "lineStart": 171,
+          "lineEnd": 190,
+          "requiredTests": [{
+            "file": "tests/unit/services/bitcoin/transactionSelection.boundaries.test.ts",
+            "name": "exact transaction selection boundaries records a single-output decoy fallback so construction cannot re-enable extra outputs"
+          }],
+          "canaries": [{
+            "id": "single-output-fallback-cannot-be-skipped",
+            "location": {
+              "start": { "line": 171, "column": 43 },
+              "end": { "line": 190, "column": 6 }
+            },
+            "mutatorName": "BlockStatement",
+            "replacement": "{}",
+            "requiredKillingTest": {
+              "file": "tests/unit/services/bitcoin/transactionSelection.boundaries.test.ts",
+              "name": "exact transaction selection boundaries records a single-output decoy fallback so construction cannot re-enable extra outputs"
+            }
+          }]
+        },
+        {
+          "id": "decoy-construction-preserves-the-inclusive-count-boundary",
+          "productionFile": "src/services/bitcoin/transactions/outputBuilder.ts",
+          "lineStart": 113,
+          "lineEnd": 116,
+          "requiredTests": [
+            {
+              "file": "tests/unit/services/bitcoin/transactionService.create.test.ts",
+              "name": "Transaction Service — Creation createTransaction should preserve the inclusive two-decoy boundary"
+            },
+            {
+              "file": "tests/unit/services/bitcoin/canonicalChangeOutput.test.ts",
+              "name": "canonical change output selection does not construct decoys below the two-output boundary even if selection metadata is inconsistent"
+            }
+          ],
+          "canaries": [
+            {
+              "id": "two-decoy-boundary-is-inclusive",
+              "location": {
+                "start": { "line": 113, "column": 46 },
+                "end": { "line": 113, "column": 69 }
+              },
+              "mutatorName": "EqualityOperator",
+              "replacement": "decoyOutputs.count > 2",
+              "requiredKillingTests": [
+                {
+                  "file": "tests/unit/services/bitcoin/transactionService.create.test.ts",
+                  "name": "Transaction Service — Creation createTransaction should preserve the inclusive two-decoy boundary"
+                },
+                {
+                  "file": "tests/unit/services/bitcoin/canonicalChangeOutput.test.ts",
+                  "name": "canonical change output selection verifies every decoy change row before any PSBT output is added"
+                }
+              ]
+            },
+            {
+              "id": "sub-boundary-decoys-stay-disabled",
+              "location": {
+                "start": { "line": 113, "column": 46 },
+                "end": { "line": 113, "column": 69 }
+              },
+              "mutatorName": "ConditionalExpression",
+              "replacement": "true",
+              "requiredKillingTest": {
+                "file": "tests/unit/services/bitcoin/canonicalChangeOutput.test.ts",
+                "name": "canonical change output selection does not construct decoys below the two-output boundary even if selection metadata is inconsistent"
+              }
+            }
+          ]
+        },
+        {
+          "id": "constructed-decoy-count-matches-selection",
+          "productionFile": "src/services/bitcoin/transactions/outputBuilder.ts",
+          "lineStart": 126,
+          "lineEnd": 137,
+          "requiredTests": [{
+            "file": "tests/unit/services/bitcoin/transactionService.create.test.ts",
+            "name": "Transaction Service — Creation createTransaction should fall back to a single change output when decoys become uneconomical"
+          }],
+          "canaries": [{
+            "id": "decoys-require-selected-output-count",
+            "location": {
+              "start": { "line": 126, "column": 37 },
+              "end": { "line": 126, "column": 85 }
+            },
+            "mutatorName": "ConditionalExpression",
+            "replacement": "true",
+            "requiredKillingTest": {
+              "file": "tests/unit/services/bitcoin/transactionService.create.test.ts",
+              "name": "Transaction Service — Creation createTransaction should fall back to a single change output when decoys become uneconomical"
+            }
+          }]
+        },
+        {
+          "id": "standard-batch-change-and-fee-selection",
+          "productionFile": "src/services/bitcoin/transactions/createBatchTransaction.ts",
+          "lineStart": 359,
+          "lineEnd": 386,
+          "requiredTests": [
+            {
+              "file": "tests/unit/services/bitcoin/transactionService.batch.test.ts",
+              "name": "Transaction Service — Batch createBatchTransaction should create transaction with multiple outputs"
+            },
+            {
+              "file": "tests/unit/services/bitcoin/transactionService.batch.test.ts",
+              "name": "Transaction Service — Batch createBatchTransaction should accept exact no-change coverage after adding the final input"
+            }
+          ],
+          "canaries": [{
+            "id": "standard-batch-selection-loop-cannot-be-removed",
+            "location": {
+              "start": { "line": 359, "column": 29 },
+              "end": { "line": 386, "column": 4 }
+            },
+            "mutatorName": "BlockStatement",
+            "replacement": "{}",
+            "requiredKillingTest": {
+              "file": "tests/unit/services/bitcoin/transactionService.batch.test.ts",
+              "name": "Transaction Service — Batch createBatchTransaction should create transaction with multiple outputs"
+            }
+          }, {
+            "id": "standard-batch-surplus-cannot-widen-tolerance",
+            "location": {
+              "start": { "line": 383, "column": 25 },
+              "end": { "line": 383, "column": 72 }
+            },
+            "mutatorName": "ArithmeticOperator",
+            "replacement": "selectedTotal - targetAmount + feeWithoutChange",
+            "requiredKillingTest": {
+              "file": "tests/unit/services/bitcoin/transactionService.batch.test.ts",
+              "name": "Transaction Service — Batch createBatchTransaction should accept exact no-change coverage after adding the final input"
+            }
+          }]
+        },
+        {
+          "id": "advanced-batch-change-and-fee-selection",
+          "productionFile": "src/services/bitcoin/advancedTx/batch.ts",
+          "lineStart": 111,
+          "lineEnd": 130,
+          "requiredTests": [
+            {
+              "file": "tests/unit/services/bitcoin/advancedTx.test.ts",
+              "name": "Advanced Transaction Features Batch transactions creates a batch PSBT with recipients and change"
+            },
+            {
+              "file": "tests/unit/services/bitcoin/advancedTx.test.ts",
+              "name": "Advanced Transaction Features Batch transactions accepts exact no-change coverage after adding the final input"
+            }
+          ],
+          "canaries": [{
+            "id": "advanced-batch-selection-loop-cannot-be-removed",
+            "location": {
+              "start": { "line": 111, "column": 29 },
+              "end": { "line": 130, "column": 4 }
+            },
+            "mutatorName": "BlockStatement",
+            "replacement": "{}",
+            "requiredKillingTests": [
+              {
+                "file": "tests/unit/services/bitcoin/advancedTx.test.ts",
+                "name": "Advanced Transaction Features Batch transactions creates a batch PSBT with recipients and change"
+              },
+              {
+                "file": "tests/unit/services/bitcoin/advancedTx.test.ts",
+                "name": "Advanced Transaction Features Batch transactions uses exactly the explicitly selected batch outpoint"
+              }
+            ]
+          }, {
+            "id": "advanced-batch-surplus-cannot-widen-tolerance",
+            "location": {
+              "start": { "line": 127, "column": 24 },
+              "end": { "line": 127, "column": 46 }
+            },
+            "mutatorName": "ArithmeticOperator",
+            "replacement": "fee + feeWithoutChange",
+            "requiredKillingTest": {
+              "file": "tests/unit/services/bitcoin/advancedTx.test.ts",
+              "name": "Advanced Transaction Features Batch transactions accepts exact no-change coverage after adding the final input"
+            }
+          }]
+        },
+        {
+          "id": "cpfp-package-fee-is-conserved",
+          "productionFile": "src/services/bitcoin/advancedTx/cpfp.ts",
+          "lineStart": 53,
+          "lineEnd": 61,
+          "requiredTests": [{
+            "file": "tests/unit/services/bitcoin/advancedTx.test.ts",
+            "name": "Advanced Transaction Features CPFP Fee Calculation should calculate correct child fee for target package rate"
+          }],
+          "canaries": [{
+            "id": "cpfp-child-fee-subtracts-parent-fee",
+            "location": {
+              "start": { "line": 57, "column": 20 },
+              "end": { "line": 57, "column": 40 }
+            },
+            "mutatorName": "ArithmeticOperator",
+            "replacement": "totalFee + parentFee",
+            "requiredKillingTest": {
+              "file": "tests/unit/services/bitcoin/advancedTx.test.ts",
+              "name": "Advanced Transaction Features CPFP Fee Calculation should calculate correct child fee for target package rate"
+            }
+          }]
+        },
+        {
+          "id": "rbf-input-policy-drives-exact-weight",
+          "productionFile": "src/services/bitcoin/advancedTx/rbf.ts",
+          "lineStart": 208,
+          "lineEnd": 218,
+          "requiredTests": [{
+            "file": "tests/unit/services/bitcoin/advancedTx.test.ts",
+            "name": "Advanced Transaction Features RBF Transaction Creation should create an RBF replacement PSBT when a wallet change output exists"
+          }],
+          "canaries": [{
+            "id": "rbf-weight-request-cannot-be-emptied",
+            "location": {
+              "start": { "line": 208, "column": 55 },
+              "end": { "line": 218, "column": 4 }
+            },
+            "mutatorName": "ObjectLiteral",
+            "replacement": "{}",
+            "requiredKillingTest": {
+              "file": "tests/unit/services/bitcoin/advancedTx.test.ts",
+              "name": "Advanced Transaction Features RBF Transaction Creation should create an RBF replacement PSBT when a wallet change output exists"
             }
           }]
         }

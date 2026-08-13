@@ -388,7 +388,7 @@ describe('stepValidation', () => {
           feeRate: 0,
         });
         const errors = getStepErrors('outputs', state);
-        expect(errors).toContain('Fee rate must be greater than 0');
+        expect(errors).toContain('Fee rate must be between 0.1 and 1000 sat/vB');
       });
 
       it('returns multiple errors for multiple issues', () => {

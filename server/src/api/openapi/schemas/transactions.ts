@@ -231,7 +231,11 @@ export const transactionSchemas = {
     properties: {
       recipient: { type: 'string' },
       amount: { type: 'number', minimum: 1 },
-      feeRate: { type: 'number', minimum: MOBILE_API_REQUEST_LIMITS.minFeeRate },
+      feeRate: {
+        type: 'number',
+        minimum: MOBILE_API_REQUEST_LIMITS.minFeeRate,
+        maximum: MOBILE_API_REQUEST_LIMITS.maxFeeRate,
+      },
       selectedUtxoIds: { type: 'array', items: { type: 'string' } },
       enableRBF: { type: 'boolean', default: true },
       label: { type: 'string' },
@@ -293,7 +297,11 @@ export const transactionSchemas = {
         minItems: 1,
         items: { $ref: '#/components/schemas/TransactionBatchOutput' },
       },
-      feeRate: { type: 'number', minimum: MOBILE_API_REQUEST_LIMITS.minFeeRate },
+      feeRate: {
+        type: 'number',
+        minimum: MOBILE_API_REQUEST_LIMITS.minFeeRate,
+        maximum: MOBILE_API_REQUEST_LIMITS.maxFeeRate,
+      },
       selectedUtxoIds: { type: 'array', items: { type: 'string' } },
       enableRBF: { type: 'boolean', default: true },
       label: { type: 'string' },
@@ -335,7 +343,11 @@ export const transactionSchemas = {
     properties: {
       recipient: { type: 'string' },
       amount: { type: 'number', minimum: 1 },
-      feeRate: { type: 'number', minimum: MOBILE_API_REQUEST_LIMITS.minFeeRate },
+      feeRate: {
+        type: 'number',
+        minimum: MOBILE_API_REQUEST_LIMITS.minFeeRate,
+        maximum: MOBILE_API_REQUEST_LIMITS.maxFeeRate,
+      },
       selectedUtxoIds: { type: 'array', items: { type: 'string' } },
     },
     required: ['recipient', 'amount', 'feeRate'],
@@ -406,7 +418,11 @@ export const transactionSchemas = {
           required: ['address', 'amount'],
         },
       },
-      feeRate: { type: 'number', minimum: MOBILE_API_REQUEST_LIMITS.minFeeRate },
+      feeRate: {
+        type: 'number',
+        minimum: MOBILE_API_REQUEST_LIMITS.minFeeRate,
+        maximum: MOBILE_API_REQUEST_LIMITS.maxFeeRate,
+      },
       utxoIds: { type: 'array', items: { type: 'string' } },
     },
     required: ['recipients', 'feeRate'],

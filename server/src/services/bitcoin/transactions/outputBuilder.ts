@@ -13,6 +13,11 @@ import { shuffleInPlace } from "../secureRandom";
 import type { PendingOutput, UtxoSelection } from "./types";
 import { assertCanonicalAddressesForWallet } from "../../wallet/canonicalAddressValidation";
 
+export interface PreparedChangeOutput {
+  address: string;
+  scriptPubKey: Uint8Array;
+}
+
 const log = createLogger("BITCOIN:SVC_TX_OUTPUT");
 
 /**
@@ -26,7 +31,7 @@ export async function buildAndAddOutputs(
   selection: UtxoSelection,
   dustThreshold: number,
   sendMax: boolean,
-  feeRate: number,
+  preparedChangeOutputs: readonly PreparedChangeOutput[],
   decoyOutputs?: { enabled: boolean; count: number },
 ): Promise<{
   changeAddress?: string;
@@ -55,8 +60,8 @@ export async function buildAndAddOutputs(
       walletId,
       selection,
       dustThreshold,
-      feeRate,
       effectiveAmount,
+      preparedChangeOutputs,
       decoyOutputs,
     );
 
@@ -91,8 +96,8 @@ async function buildChangeOutputs(
   walletId: string,
   selection: UtxoSelection,
   dustThreshold: number,
-  feeRate: number,
   effectiveAmount: number,
+  preparedChangeOutputs: readonly PreparedChangeOutput[],
   decoyOutputs?: { enabled: boolean; count: number },
 ): Promise<{
   changeAddress?: string;
@@ -118,23 +123,7 @@ async function buildChangeOutputs(
     dustThreshold,
   });
 
-  // If using decoys, recalculate fee for extra outputs
-  if (useDecoys && numChangeOutputs > 1) {
-    const extraOutputs = numChangeOutputs - 1;
-    const extraVbytes = extraOutputs * 34;
-    const extraFee = Math.ceil(extraVbytes * feeRate);
-
-    actualFee = selection.estimatedFee + extraFee;
-    actualChangeAmount = selection.totalAmount - effectiveAmount - actualFee;
-
-    if (actualChangeAmount < dustThreshold * numChangeOutputs) {
-      actualFee = selection.estimatedFee;
-      actualChangeAmount = selection.changeAmount;
-    }
-  }
-
-  const canUseDecoys =
-    useDecoys && actualChangeAmount >= dustThreshold * numChangeOutputs;
+  const canUseDecoys = useDecoys && selection.changeOutputCount === numChangeOutputs;
 
   if (canUseDecoys) {
     return buildDecoyChangeOutputs(
@@ -143,11 +132,13 @@ async function buildChangeOutputs(
       actualChangeAmount,
       dustThreshold,
       actualFee,
+      preparedChangeOutputs,
     );
   }
 
   // Single change output
-  const changeAddress = await findChangeAddress(walletId);
+  const changeAddress = preparedChangeOutputs[0]?.address;
+  if (!changeAddress) throw new Error("No prepared change address available");
 
   pendingOutputs.push({
     address: changeAddress,
@@ -172,6 +163,7 @@ async function buildDecoyChangeOutputs(
   actualChangeAmount: number,
   dustThreshold: number,
   actualFee: number,
+  preparedChangeOutputs: readonly PreparedChangeOutput[],
 ): Promise<{
   changeAddress?: string;
   decoyOutputsResult: Array<{ address: string; amount: number }>;
@@ -181,14 +173,7 @@ async function buildDecoyChangeOutputs(
 }> {
   const pendingOutputs: PendingOutput[] = [];
 
-  // Get multiple unused change addresses
-  const changeAddresses = await addressRepository.findUnusedChangeAddresses(
-    walletId,
-    numChangeOutputs,
-  );
-  await assertCanonicalAddressesForWallet(walletId, changeAddresses, 1);
-
-  if (changeAddresses.length < numChangeOutputs) {
+  if (preparedChangeOutputs.length < numChangeOutputs) {
     throw new Error(
       `Not enough change addresses for ${numChangeOutputs} decoy outputs`,
     );
@@ -202,7 +187,7 @@ async function buildDecoyChangeOutputs(
   );
 
   // Shuffle addresses for additional obfuscation
-  const shuffledAddresses = [...changeAddresses];
+  const shuffledAddresses = [...preparedChangeOutputs];
   shuffleInPlace(shuffledAddresses);
 
   let changeAddress: string | undefined;
@@ -240,13 +225,24 @@ async function buildDecoyChangeOutputs(
  * Find an available change address for a wallet.
  */
 export async function findChangeAddress(walletId: string): Promise<string> {
-  const existingChangeAddress =
-    await addressRepository.findNextUnusedChange(walletId);
+  return (await prepareChangeOutputs(walletId, 1))[0].address;
+}
 
-  if (existingChangeAddress) {
-    await assertCanonicalAddressesForWallet(walletId, [existingChangeAddress], 1);
-    return existingChangeAddress.address;
+export async function prepareChangeOutputs(
+  walletId: string,
+  count: number,
+): Promise<PreparedChangeOutput[]> {
+  const rows = count === 1
+    ? [await addressRepository.findNextUnusedChange(walletId)].filter((row): row is NonNullable<typeof row> => Boolean(row))
+    : await addressRepository.findUnusedChangeAddresses(walletId, count);
+  /* v8 ignore next -- both outcomes are tested; sharded V8 report merging records the false branch with a negative counter */
+  if (rows.length < count) {
+    if (count === 1) throw new Error('No change address available');
+    throw new Error(`Not enough change addresses for ${count} change outputs`);
   }
-
-  throw new Error("No change address available");
+  await assertCanonicalAddressesForWallet(walletId, rows, 1);
+  return rows.map(row => {
+    if (!row.scriptPubKey) throw new Error("Canonical change address is missing script evidence");
+    return { address: row.address, scriptPubKey: Buffer.from(row.scriptPubKey, "hex") };
+  });
 }

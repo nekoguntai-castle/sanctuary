@@ -10,13 +10,22 @@ import {
 } from '../../../../../src/services/bitcoin/signingIntent/canonical';
 import type {
   SigningIntentPrevout,
-  SigningIntentSnapshotV1,
+  SigningIntentSnapshotV2,
 } from '../../../../../src/services/bitcoin/signingIntent/types';
 
-const baseSnapshot: SigningIntentSnapshotV1 = {
-  version: 1,
+const feePolicy = {
+  version: 1 as const,
+  expectedFeeSats: 1_000,
+  requestedFeeRateSatsPerVbyte: 10,
+  roundingMode: 'ceil' as const,
+  roundingToleranceSats: 1,
+};
+
+const baseSnapshot: SigningIntentSnapshotV2 = {
+  version: 2,
   walletId: 'wallet-1',
   network: 'regtest',
+  feePolicy,
   transaction: {
     version: 2,
     locktime: 0,
@@ -80,7 +89,7 @@ describe('signing intent canonical authentication', () => {
   it('property: every supported output amount mutation changes the digest', () => {
     fc.assert(fc.property(fc.integer({ min: 0, max: Number.MAX_SAFE_INTEGER }), amount => {
       fc.pre(amount.toString() !== baseSnapshot.transaction.outputs[0].amountSats);
-      const mutated: SigningIntentSnapshotV1 = {
+      const mutated: SigningIntentSnapshotV2 = {
         ...baseSnapshot,
         transaction: {
           ...baseSnapshot.transaction,
@@ -91,10 +100,13 @@ describe('signing intent canonical authentication', () => {
     }));
   });
 
-  const committedFieldMutations: Array<[string, (value: SigningIntentSnapshotV1) => void]> = [
-    ['snapshot version', value => { (value as { version: number }).version = 2; }],
+  const committedFieldMutations: Array<[string, (value: SigningIntentSnapshotV2) => void]> = [
+    ['snapshot version', value => { (value as { version: number }).version = 1; }],
     ['wallet id', value => { value.walletId = 'wallet-2'; }],
     ['network', value => { value.network = 'testnet3'; }],
+    ['requested fee rate', value => { value.feePolicy.requestedFeeRateSatsPerVbyte = 11; }],
+    ['expected fee', value => { value.feePolicy.expectedFeeSats = 1_001; }],
+    ['rounding tolerance', value => { value.feePolicy.roundingToleranceSats = 2; }],
     ['transaction version', value => { value.transaction.version = 1; }],
     ['locktime', value => { value.transaction.locktime = 1; }],
     ['replacement identity', value => { value.transaction.replacementTxid = 'aa'.repeat(32); }],
@@ -139,11 +151,36 @@ describe('signing intent canonical authentication', () => {
       amountSats: '10000',
       scriptPubKeyHex: '0014' + 'AB'.repeat(20),
       role: 'wallet',
-    }], 'CC'.repeat(32));
+    }], feePolicy, 'CC'.repeat(32));
 
     expect(snapshot.transaction.replacementTxid).toBe('cc'.repeat(32));
     expect(snapshot.transaction.inputs[0].prevout.scriptPubKeyHex).toBe('0014' + 'ab'.repeat(20));
     expect(defaultInputRoles(2)).toEqual(['wallet', 'wallet']);
+  });
+
+  it('rejects an expected fee that does not match authenticated inputs minus outputs', () => {
+    const psbt = new bitcoin.Psbt({ network: bitcoin.networks.testnet });
+    psbt.addInput({ hash: '11'.repeat(32), index: 0 });
+    psbt.addOutput({ script: Buffer.from('6a', 'hex'), value: 9_000n });
+
+    expect(() => buildSigningIntentSnapshot('wallet-1', 'testnet3', psbt, [{
+      amountSats: '10000', scriptPubKeyHex: '6a', role: 'wallet',
+    }], { ...feePolicy, expectedFeeSats: 999 })).toThrow(
+      'fee does not match the authenticated transaction',
+    );
+  });
+
+  it('distinguishes fee policies below and above the authenticated transaction fee', () => {
+    const psbt = new bitcoin.Psbt({ network: bitcoin.networks.testnet });
+    psbt.addInput({ hash: '11'.repeat(32), index: 0 });
+    psbt.addOutput({ script: Buffer.from('6a', 'hex'), value: 9_000n });
+    const prevouts = [{ amountSats: '10000', scriptPubKeyHex: '6a', role: 'wallet' as const }];
+
+    for (const [expectedFeeSats, reason] of [[999, 'fee_too_high'], [1_001, 'fee_too_low']] as const) {
+      expect(() => buildSigningIntentSnapshot(
+        'wallet-1', 'testnet3', psbt, prevouts, { ...feePolicy, expectedFeeSats },
+      )).toThrow(expect.objectContaining({ details: expect.objectContaining({ reason }) }));
+    }
   });
 
   const withoutInputs = new bitcoin.Psbt();
@@ -161,6 +198,7 @@ describe('signing intent canonical authentication', () => {
       'testnet3',
       psbt,
       prevouts,
+      feePolicy,
     )).toThrow('requires inputs and outputs');
   });
 
@@ -169,21 +207,23 @@ describe('signing intent canonical authentication', () => {
     psbt.addInput({ hash: '11'.repeat(32), index: 0 });
     psbt.addOutput({ script: Buffer.from('6a', 'hex'), value: BigInt(Number.MAX_SAFE_INTEGER) });
     expect(buildSigningIntentSnapshot('wallet-1', 'testnet3', psbt, [{
-      amountSats: '0', scriptPubKeyHex: '6a', role: 'wallet',
-    }]).transaction).toMatchObject({
-      inputs: [expect.objectContaining({ prevout: expect.objectContaining({ amountSats: '0' }) })],
+      amountSats: Number.MAX_SAFE_INTEGER.toString(), scriptPubKeyHex: '6a', role: 'wallet',
+    }], { ...feePolicy, expectedFeeSats: 0 }).transaction).toMatchObject({
+      inputs: [expect.objectContaining({
+        prevout: expect.objectContaining({ amountSats: Number.MAX_SAFE_INTEGER.toString() }),
+      })],
       outputs: [expect.objectContaining({ amountSats: Number.MAX_SAFE_INTEGER.toString() })],
     });
     expect(() => buildSigningIntentSnapshot('wallet-1', 'testnet3', psbt, [{
       amountSats: (BigInt(Number.MAX_SAFE_INTEGER) + 1n).toString(),
       scriptPubKeyHex: '6a',
       role: 'wallet',
-    }])).toThrow('outside the supported range');
+    }], feePolicy)).toThrow('outside the supported range');
   });
 
   it.each([
     ['empty transaction', () => buildSigningIntentSnapshot(
-      'wallet-1', 'testnet3', new bitcoin.Psbt(), [],
+      'wallet-1', 'testnet3', new bitcoin.Psbt(), [], feePolicy,
     )],
     ['missing prevout', () => {
       const psbt = bitcoin.Psbt.fromBase64((() => {
@@ -192,7 +232,7 @@ describe('signing intent canonical authentication', () => {
         value.addOutput({ script: Buffer.from('6a', 'hex'), value: 0n });
         return value.toBase64();
       })());
-      return buildSigningIntentSnapshot('wallet-1', 'testnet3', psbt, []);
+      return buildSigningIntentSnapshot('wallet-1', 'testnet3', psbt, [], feePolicy);
     }],
     ['invalid replacement txid', () => {
       const psbt = new bitcoin.Psbt();
@@ -200,7 +240,7 @@ describe('signing intent canonical authentication', () => {
       psbt.addOutput({ script: Buffer.from('6a', 'hex'), value: 0n });
       return buildSigningIntentSnapshot('wallet-1', 'testnet3', psbt, [{
         amountSats: '1', scriptPubKeyHex: '6a', role: 'wallet',
-      }], 'invalid');
+      }], feePolicy, 'invalid');
     }],
     ['invalid script', () => {
       const psbt = new bitcoin.Psbt();
@@ -208,7 +248,7 @@ describe('signing intent canonical authentication', () => {
       psbt.addOutput({ script: Buffer.from('6a', 'hex'), value: 0n });
       return buildSigningIntentSnapshot('wallet-1', 'testnet3', psbt, [{
         amountSats: '1', scriptPubKeyHex: 'not-hex', role: 'wallet',
-      }]);
+      }], feePolicy);
     }],
     ['unsupported amount', () => {
       const psbt = new bitcoin.Psbt();
@@ -216,7 +256,7 @@ describe('signing intent canonical authentication', () => {
       psbt.addOutput({ script: Buffer.from('6a', 'hex'), value: 0n });
       return buildSigningIntentSnapshot('wallet-1', 'testnet3', psbt, [{
         amountSats: '-1', scriptPubKeyHex: '6a', role: 'wallet',
-      }]);
+      }], feePolicy);
     }],
   ])('rejects %s snapshot evidence', (_name, action) => {
     expect(action).toThrow();

@@ -187,7 +187,7 @@ export function registerCreateBatchTransactionMultisigContracts() {
       await expect(
         createBatchTransaction(walletId, outputs, 10),
       ).rejects.toThrow(
-        "Cannot create multisig PSBT: failed to build complete BIP32 derivation metadata for input 0",
+        "Cannot estimate transaction fee: witness script derivation failed",
       );
     });
 
@@ -211,7 +211,7 @@ export function registerCreateBatchTransactionMultisigContracts() {
       await expect(
         createBatchTransaction(walletId, outputs, 10),
       ).rejects.toThrow(
-        "Cannot create multisig PSBT: failed to build complete BIP32 derivation metadata for input 0",
+        "Cannot estimate transaction fee: witness script derivation failed",
       );
     });
 
@@ -227,7 +227,7 @@ export function registerCreateBatchTransactionMultisigContracts() {
       await expect(
         createBatchTransaction(walletId, outputs, 10),
       ).rejects.toThrow(
-        "Cannot create multisig PSBT: missing multisig keys for input 0",
+        "Cannot estimate transaction fee: multisig policy is incomplete",
       );
     });
 
@@ -261,7 +261,7 @@ export function registerCreateBatchTransactionMultisigContracts() {
       await expect(
         createBatchTransaction(walletId, outputs, 10),
       ).rejects.toThrow(
-        "Cannot create multisig PSBT: unsupported multisig descriptor type for input 0",
+        "Cannot estimate transaction fee: multisig script policy is unsupported",
       );
     });
   });

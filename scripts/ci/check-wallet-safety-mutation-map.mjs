@@ -97,12 +97,17 @@ function validateCanary(canary, mutants, testIndex, invariant) {
   if (line < invariant.lineStart || line > invariant.lineEnd) {
     fail(`canary ${canary.id} is outside invariant ${invariant.id}`);
   }
-  const killingTestId = requireNamedTest(testIndex, canary.requiredKillingTest);
+  const requiredKillingTests = canary.requiredKillingTests ?? [canary.requiredKillingTest];
+  if (!Array.isArray(requiredKillingTests) || requiredKillingTests.length === 0
+    || requiredKillingTests.some(test => !test)) {
+    fail(`canary ${canary.id} has no required named killing test`);
+  }
+  const killingTestIds = requiredKillingTests.map(test => requireNamedTest(testIndex, test));
   if (mutant.status !== 'Killed') {
     fail(`canary ${canary.id} was ${mutant.status}; an attributable Killed result is required`);
   }
-  if (!(mutant.killedBy ?? []).includes(killingTestId)) {
-    fail(`canary ${canary.id} was not killed by its required named test`);
+  if (!killingTestIds.some(testId => (mutant.killedBy ?? []).includes(testId))) {
+    fail(`canary ${canary.id} was not killed by any required named test`);
   }
 }
 

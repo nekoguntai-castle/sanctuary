@@ -9,6 +9,10 @@ import { act,fireEvent,render,screen,waitFor } from '@testing-library/react';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
 import { Variables } from '../../src/components/Variables';
 import * as adminApi from '../../src/api/admin';
+import {
+  MAX_DUST_THRESHOLD,
+  validateThresholds,
+} from '../../src/components/Variables/settingsModel';
 
 // Mock the admin API
 vi.mock('../../src/api/admin', () => ({
@@ -197,6 +201,19 @@ describe('Variables', () => {
       fireEvent.change(inputs[2], { target: { value: '1000' } });
 
       expect(inputs[2]).toHaveValue(1000);
+    });
+
+    it('clamps dust threshold to the server maximum', async () => {
+      render(<Variables />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Dust Threshold')).toBeInTheDocument();
+      });
+
+      const inputs = screen.getAllByRole('spinbutton');
+      fireEvent.change(inputs[2], { target: { value: '10001' } });
+
+      expect(inputs[2]).toHaveValue(10000);
     });
 
     it('enforces minimum value of 1 for confirmation threshold', async () => {
@@ -436,4 +453,28 @@ describe('Variables', () => {
       });
     });
   });
+});
+
+describe('Variables threshold validation', () => {
+  const otherwiseValidThresholds = {
+    confirmationThreshold: 2,
+    deepConfirmationThreshold: 6,
+  };
+
+  it.each([
+    ['below the minimum', 0],
+    ['above the maximum', MAX_DUST_THRESHOLD + 1],
+    ['non-integer', 546.5],
+  ])('rejects a dust threshold %s', (_case, dustThreshold) => {
+    expect(validateThresholds({ ...otherwiseValidThresholds, dustThreshold })).toBe(
+      `Dust threshold must be between 1 and ${MAX_DUST_THRESHOLD} sats`,
+    );
+  });
+
+  it.each([1, MAX_DUST_THRESHOLD])(
+    'accepts the inclusive dust threshold boundary %i',
+    (dustThreshold) => {
+      expect(validateThresholds({ ...otherwiseValidThresholds, dustThreshold })).toBeNull();
+    },
+  );
 });

@@ -10,6 +10,13 @@ import { utxoRepository, systemSettingRepository } from '../../repositories';
 import { estimateTransactionSize, calculateFee } from './utils';
 import { DEFAULT_CONFIRMATION_THRESHOLD } from '../../constants';
 import { SystemSettingSchemas } from '../../utils/safeJson';
+import {
+  estimateTransactionWeight,
+  feeForRate,
+  type TransactionWeightInput,
+} from './transactionWeight';
+
+export type SpendEvidence = Omit<TransactionWeightInput, 'prevoutScript' | 'count'>;
 
 /**
  * UTXO selection modes supported by the legacy transaction builder.
@@ -47,6 +54,154 @@ export interface UTXOSelectionResult {
   totalAmount: number;
   estimatedFee: number;
   changeAmount: number;
+  changeOutputCount?: number;
+  feeSurplusSats?: number;
+}
+
+export const assertExactUtxoSelection = <T extends { txid: string; vout: number }>(
+  available: readonly T[],
+  selectedUtxoIds?: readonly string[],
+): void => {
+  if (!selectedUtxoIds?.length) return;
+  const requested = new Set(selectedUtxoIds);
+  if (requested.size !== selectedUtxoIds.length) {
+    throw new Error('Selected UTXO outpoints must be unique');
+  }
+  const availableOutpoints = new Set(available.map(utxo => `${utxo.txid}:${utxo.vout}`));
+  const missing = selectedUtxoIds.filter(outpoint => !availableOutpoints.has(outpoint));
+  if (missing.length > 0) {
+    throw new Error(`Selected UTXOs are unavailable: ${missing.join(', ')}`);
+  }
+};
+
+export interface ExactSelectionFeeContext {
+  resolveSpendPolicies: (
+    utxos: readonly { address: string }[],
+  ) => Promise<ReadonlyMap<string, SpendEvidence>>;
+  recipientScript: Uint8Array;
+  changeScripts: readonly Uint8Array[];
+  dustThreshold: number;
+}
+
+const exactFee = (
+  utxos: Array<{ scriptPubKey: string; address: string }>,
+  outputScripts: readonly Uint8Array[],
+  context: ExactSelectionFeeContext,
+  spendPolicies: ReadonlyMap<string, SpendEvidence>,
+  feeRate: number,
+): number => feeForRate(estimateTransactionWeight({
+  inputs: utxos.map(utxo => ({
+    ...(spendPolicies.get(utxo.address) ?? (() => { throw new Error('UTXO spend policy evidence is missing'); })()),
+    prevoutScript: Buffer.from(utxo.scriptPubKey, 'hex'),
+  })),
+  outputs: outputScripts.map(scriptPubKey => ({ scriptPubKey })),
+}).vsize, feeRate);
+
+const mapSelectedUtxos = <T extends {
+  id: string;
+  txid: string;
+  vout: number;
+  amount: bigint;
+  scriptPubKey: string | null;
+  address: string;
+}>(utxos: T[]): SelectedUTXO[] => utxos.map(utxo => ({
+  id: utxo.id,
+  txid: utxo.txid,
+  vout: utxo.vout,
+  amount: utxo.amount,
+  // selectUTXOsExact rejects missing script evidence before mapping.
+  scriptPubKey: utxo.scriptPubKey!,
+  address: utxo.address,
+}));
+
+/** Select UTXOs using authenticated input policy and exact output scripts. */
+export async function selectUTXOsExact(
+  walletId: string,
+  targetAmount: number,
+  feeRate: number,
+  context: ExactSelectionFeeContext,
+  selectedUtxoIds?: string[],
+): Promise<UTXOSelectionResult> {
+  const confirmationThreshold = await systemSettingRepository.getParsed(
+    'confirmationThreshold',
+    SystemSettingSchemas.number,
+    DEFAULT_CONFIRMATION_THRESHOLD,
+  );
+  let available = await utxoRepository.findAvailableForSpending(walletId, {
+    minConfirmations: confirmationThreshold,
+    excludeDraftLocked: !(selectedUtxoIds && selectedUtxoIds.length > 0),
+  });
+  if (selectedUtxoIds?.length) {
+    assertExactUtxoSelection(available, selectedUtxoIds);
+    available = available.filter(utxo => selectedUtxoIds.includes(`${utxo.txid}:${utxo.vout}`));
+  }
+  if (available.length === 0) throw new Error('No spendable UTXOs available');
+  if (available.some(utxo => !utxo.scriptPubKey)) {
+    throw new Error('UTXO is missing scriptPubKey evidence');
+  }
+  const spendPolicies = await context.resolveSpendPolicies(available);
+
+  const candidates = selectedUtxoIds?.length ? [available] : available.map((_, index) => available.slice(0, index + 1));
+  let finalNeed = targetAmount;
+  let finalTotal = 0;
+  for (const selected of candidates) {
+    const totalAmount = selected.reduce((sum, utxo) => sum + Number(utxo.amount), 0);
+    const feeWithoutChange = exactFee(selected as Array<{ scriptPubKey: string; address: string }>, [context.recipientScript], context, spendPolicies, feeRate);
+    const feeWithChange = context.changeScripts.length > 0
+      ? exactFee(
+        selected as Array<{ scriptPubKey: string; address: string }>,
+        [context.recipientScript, ...context.changeScripts],
+        context,
+        spendPolicies,
+        feeRate,
+      )
+      : feeWithoutChange;
+    const changeAmount = totalAmount - targetAmount - feeWithChange;
+    if (context.changeScripts.length > 0
+      && changeAmount >= context.dustThreshold * context.changeScripts.length) {
+      return {
+        utxos: mapSelectedUtxos(selected),
+        totalAmount,
+        estimatedFee: feeWithChange,
+        changeAmount,
+        changeOutputCount: context.changeScripts.length,
+        feeSurplusSats: 0,
+      };
+    }
+    if (context.changeScripts.length > 1) {
+      const singleChangeFee = exactFee(
+        selected as Array<{ scriptPubKey: string; address: string }>,
+        [context.recipientScript, context.changeScripts[0]],
+        context,
+        spendPolicies,
+        feeRate,
+      );
+      const singleChangeAmount = totalAmount - targetAmount - singleChangeFee;
+      if (singleChangeAmount >= context.dustThreshold) {
+        return {
+          utxos: mapSelectedUtxos(selected),
+          totalAmount,
+          estimatedFee: singleChangeFee,
+          changeAmount: singleChangeAmount,
+          changeOutputCount: 1,
+          feeSurplusSats: 0,
+        };
+      }
+    }
+    if (totalAmount >= targetAmount + feeWithoutChange) {
+      return {
+        utxos: mapSelectedUtxos(selected),
+        totalAmount,
+        estimatedFee: totalAmount - targetAmount,
+        changeAmount: 0,
+        changeOutputCount: 0,
+        feeSurplusSats: totalAmount - targetAmount - feeWithoutChange,
+      };
+    }
+    finalNeed = targetAmount + feeWithChange;
+    finalTotal = totalAmount;
+  }
+  throw new Error(`Insufficient funds. Need ${finalNeed} sats, have ${finalTotal} sats`);
 }
 
 /**
@@ -83,6 +238,7 @@ export async function selectUTXOs(
 
   // Filter by selected UTXOs if provided
   if (selectedUtxoIds && selectedUtxoIds.length > 0) {
+    assertExactUtxoSelection(utxos, selectedUtxoIds);
     utxos = utxos.filter((utxo) =>
       selectedUtxoIds.includes(`${utxo.txid}:${utxo.vout}`)
     );
@@ -118,6 +274,7 @@ export async function selectUTXOs(
       totalAmount,
       estimatedFee,
       changeAmount,
+      changeOutputCount: changeAmount > 0 ? 1 : 0,
     };
   }
 
@@ -154,6 +311,7 @@ export async function selectUTXOs(
         totalAmount,
         estimatedFee,
         changeAmount,
+        changeOutputCount: changeAmount > 0 ? 1 : 0,
       };
     }
   }

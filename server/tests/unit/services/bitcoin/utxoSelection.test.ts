@@ -249,6 +249,24 @@ describe('UTXO Selection', () => {
       expect(result.utxos).toHaveLength(1);
       expect(result.utxos[0].scriptPubKey).toBe('');
     });
+
+    it('reports no change output when an explicit selection covers the target and fee exactly', async () => {
+      const txid = 'f00d'.repeat(16);
+      const selectedId = `${txid}:0`;
+      const utxos = [createMockUtxo({ txid, amount: BigInt(200_000) })];
+      mockPrismaClient.uTXO.findMany.mockResolvedValueOnce(utxos);
+      const baseline = await selectUTXOs(
+        'wallet-1', 10_000, 1, UTXOSelectionStrategy.LARGEST_FIRST, [selectedId],
+      );
+      mockPrismaClient.uTXO.findMany.mockResolvedValueOnce(utxos);
+
+      const exact = await selectUTXOs(
+        'wallet-1', 200_000 - baseline.estimatedFee, 1,
+        UTXOSelectionStrategy.LARGEST_FIRST, [selectedId],
+      );
+
+      expect(exact).toMatchObject({ changeAmount: 0, changeOutputCount: 0 });
+    });
   });
 
   // ========================================

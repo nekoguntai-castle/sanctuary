@@ -224,7 +224,16 @@ describe('FeeSelector', () => {
       const input = screen.getByRole('spinbutton');
       fireEvent.change(input, { target: { value: '' } });
 
-      expect(setFeeRate).toHaveBeenCalledWith(0);
+      expect(setFeeRate).toHaveBeenCalledWith(0.1);
+    });
+
+    it('clamps a custom fee below the admitted minimum', () => {
+      const setFeeRate = vi.fn();
+      render(<FeeSelector {...defaultProps} setFeeRate={setFeeRate} />);
+
+      fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '0.01' } });
+
+      expect(setFeeRate).toHaveBeenCalledWith(0.1);
     });
   });
   describe('when a fee estimate is missing', () => {

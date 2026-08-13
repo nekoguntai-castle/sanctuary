@@ -608,7 +608,7 @@ model TransactionSigningIntent {
   createdByUserId    String
   network            String
   source             String
-  snapshotVersion    Int      @default(1)
+  snapshotVersion    Int      @default(2)
   snapshot           Json
   signingContext     Json?
   snapshotDigest     String

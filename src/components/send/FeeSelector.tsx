@@ -13,6 +13,7 @@ import { BlockVisualizer } from '../BlockVisualizer';
 import type { FeeEstimate } from '../../types';
 import type { BlockData, QueuedBlocksSummary } from '../../api/bitcoin';
 import { usableFeeRate } from '../../utils/feeRate';
+import { MOBILE_API_REQUEST_LIMITS } from '@sanctuary/shared/schemas/mobileApiRequests';
 
 export interface FeeSelectorProps {
   // Fee state
@@ -91,10 +92,17 @@ export function FeeSelector({
             <label className="text-xs text-sanctuary-500">Custom:</label>
             <input
               type="number"
-              min={0.1}
+              min={MOBILE_API_REQUEST_LIMITS.minFeeRate}
+              max={MOBILE_API_REQUEST_LIMITS.maxFeeRate}
               step={0.01}
               value={feeRate}
-              onChange={(e) => !disabled && setFeeRate(parseFloat(e.target.value) || 0)}
+              onChange={(e) => !disabled && setFeeRate(Math.max(
+                MOBILE_API_REQUEST_LIMITS.minFeeRate,
+                Math.min(
+                  parseFloat(e.target.value) || MOBILE_API_REQUEST_LIMITS.minFeeRate,
+                  MOBILE_API_REQUEST_LIMITS.maxFeeRate,
+                ),
+              ))}
               disabled={disabled}
               className={`w-20 px-2 py-1.5 text-sm rounded-md border border-sanctuary-300 dark:border-sanctuary-700 bg-transparent focus:ring-2 focus:ring-sanctuary-500 ${disabled ? 'cursor-not-allowed' : ''}`}
             />

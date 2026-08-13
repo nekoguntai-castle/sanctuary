@@ -7,6 +7,7 @@
 import * as bitcoin from 'bitcoinjs-lib';
 import type { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
+import type { SigningIntentFeePolicyV1 } from '../signingIntent/types';
 
 export type { PrismaTxClient } from '../../../models/prisma';
 
@@ -66,6 +67,7 @@ export interface CreateTransactionResult {
   effectiveAmount: number; // The actual amount being sent
   decoyOutputs?: Array<{ address: string; amount: number }>; // Decoy change outputs
   signingContext: PsbtSigningContext;
+  feePolicy: SigningIntentFeePolicyV1;
 }
 
 /**
@@ -83,6 +85,7 @@ export interface CreateBatchTransactionResult {
   inputPaths: string[];
   outputs: Array<{ address: string; amount: number }>;
   signingContext: PsbtSigningContext;
+  feePolicy: SigningIntentFeePolicyV1;
 }
 
 /**
@@ -109,6 +112,8 @@ export interface UtxoSelection {
   totalAmount: number;
   estimatedFee: number;
   changeAmount: number;
+  changeOutputCount?: number;
+  feeSurplusSats?: number;
 }
 
 /**

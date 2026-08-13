@@ -92,6 +92,81 @@ describe("PSBT input construction branch coverage", () => {
     expect(mockBuildMultisigWitnessScript).not.toHaveBeenCalled();
   });
 
+  it.each([undefined, ""])("rejects a SegWit input with missing scriptPubKey evidence: %s", scriptPubKey => {
+    const psbt = new bitcoin.Psbt({ network });
+
+    expect(() => addInputsWithBip32(psbt, [{ ...baseUtxo, scriptPubKey: scriptPubKey as string }], {
+      sequence: 0xfffffffd,
+      isLegacy: false,
+      rawTxCache: new Map(),
+      addressPathMap: new Map([[baseUtxo.address, "m/84'/1'/0'/0/0"]]),
+      signingInfo: { isMultisig: false, scriptType: "native_segwit" },
+      networkObj: network,
+    })).toThrow("is missing scriptPubKey data");
+  });
+
+  it("rejects an unsupported multisig descriptor type after building the witness script", () => {
+    const psbt = new bitcoin.Psbt({ network });
+
+    expect(() => addInputsWithBip32(psbt, [baseUtxo], {
+      sequence: 0xfffffffd,
+      isLegacy: false,
+      rawTxCache: new Map(),
+      addressPathMap: new Map([[baseUtxo.address, "m/48'/1'/0'/2'/0/0"]]),
+      signingInfo: {
+        isMultisig: true,
+        scriptType: "native_segwit",
+        multisigKeys: testMultisigKeys,
+        multisigQuorum: 2,
+        multisigScriptType: "unsupported" as never,
+      },
+      networkObj: network,
+    })).toThrow("unsupported multisig descriptor type");
+  });
+
+  it("adds both witness and redeem scripts for a supported nested multisig descriptor", () => {
+    const psbt = new bitcoin.Psbt({ network });
+
+    expect(addInputsWithBip32(psbt, [baseUtxo], {
+      sequence: 0xfffffffd,
+      isLegacy: false,
+      rawTxCache: new Map(),
+      addressPathMap: new Map([[baseUtxo.address, "m/48'/1'/0'/1'/0/0"]]),
+      signingInfo: {
+        isMultisig: true,
+        scriptType: "native_segwit",
+        multisigKeys: testMultisigKeys,
+        multisigQuorum: 2,
+        multisigScriptType: "sh-wsh-sortedmulti",
+      },
+      networkObj: network,
+    })).toEqual(["m/48'/1'/0'/1'/0/0"]);
+    expect(psbt.data.inputs[0].witnessScript).toEqual(Buffer.from([0x51, 0xae]));
+    expect(psbt.data.inputs[0].redeemScript).toEqual(bitcoin.payments.p2wsh({
+      redeem: { output: Buffer.from([0x51, 0xae]), network },
+      network,
+    }).output);
+  });
+
+  it("rejects multisig input construction when the derivation path is missing", () => {
+    const psbt = new bitcoin.Psbt({ network });
+
+    expect(() => addInputsWithBip32(psbt, [baseUtxo], {
+      sequence: 0xfffffffd,
+      isLegacy: false,
+      rawTxCache: new Map(),
+      addressPathMap: new Map(),
+      signingInfo: {
+        isMultisig: true,
+        scriptType: "native_segwit",
+        multisigKeys: testMultisigKeys,
+        multisigQuorum: 2,
+        multisigScriptType: "wsh-sortedmulti",
+      },
+      networkObj: network,
+    })).toThrow("missing input derivation path");
+  });
+
   it.each(["m/84'/1'/0'/0/5", "m/84h/1h/0h/0/5"])(
     "derives exact single-sig metadata from account node for %s",
     derivationPath => {

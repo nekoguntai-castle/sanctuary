@@ -2,6 +2,7 @@ import { Loader2, TrendingUp } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { InfoBox, ModalFrame } from './TransactionModalShared';
 import type { TransactionActionHandlers, TransactionActionState } from './types';
+import { MOBILE_API_REQUEST_LIMITS } from '@sanctuary/shared/schemas/mobileApiRequests';
 
 export function RBFModal({
   handlers,
@@ -35,7 +36,9 @@ export function RBFModal({
         </Button>
         <Button
           onClick={handlers.handleRBF}
-          disabled={state.processing || state.newFeeRate < (state.rbfStatus.minNewFeeRate || 0.1)}
+          disabled={state.processing
+            || state.newFeeRate < (state.rbfStatus.minNewFeeRate || MOBILE_API_REQUEST_LIMITS.minFeeRate)
+            || state.newFeeRate > MOBILE_API_REQUEST_LIMITS.maxFeeRate}
           className="flex-1"
         >
           <RBFSubmitContent processing={state.processing} />
@@ -77,8 +80,12 @@ function RBFRateInput({
       <input
         type="number"
         value={newFeeRate}
-        onChange={(event) => onChange(parseFloat(event.target.value) || 0)}
+        onChange={(event) => onChange(Math.min(
+          parseFloat(event.target.value) || 0,
+          MOBILE_API_REQUEST_LIMITS.maxFeeRate,
+        ))}
         min={minNewFeeRate || 0.1}
+        max={MOBILE_API_REQUEST_LIMITS.maxFeeRate}
         step={0.01}
         className="block w-full px-4 py-3 rounded-lg border border-sanctuary-300 dark:border-sanctuary-700 surface-muted focus:ring-2 focus:ring-sanctuary-500 focus:outline-none"
       />

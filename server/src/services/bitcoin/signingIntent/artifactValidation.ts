@@ -9,7 +9,8 @@ import { assertWalletHardwareCapabilityById } from '../../hardwareWalletCapabili
 import type {
   SigningIntentEnvelope,
   SigningIntentHandle,
-  SigningIntentSnapshotV1,
+  SigningIntentSnapshot,
+  SigningIntentSnapshotV2,
 } from './types';
 
 bitcoin.initEccLib(ecc);
@@ -20,9 +21,12 @@ export interface ValidatedBroadcastArtifact {
   readonly rawTx: string;
   readonly txid: string;
   readonly walletId: string;
-  readonly network: SigningIntentSnapshotV1['network'];
+  readonly network: SigningIntentSnapshot['network'];
   readonly intent: SigningIntentHandle;
-  readonly snapshot: SigningIntentSnapshotV1;
+  readonly snapshot: SigningIntentSnapshot;
+  readonly actualFeeSats: number;
+  readonly vsize: number;
+  readonly feeRateSatsPerVbyte: number;
   readonly broadcastReplay?: SigningIntentEnvelope['broadcastReplay'];
   readonly [validatedArtifactBrand]: true;
 }
@@ -31,6 +35,14 @@ type ValidatedBroadcastArtifactFields = Omit<
   ValidatedBroadcastArtifact,
   typeof validatedArtifactBrand
 >;
+
+type ValidatedBroadcastArtifactTestFields = Omit<
+  ValidatedBroadcastArtifactFields,
+  'actualFeeSats' | 'vsize' | 'feeRateSatsPerVbyte'
+> & Partial<Pick<
+  ValidatedBroadcastArtifactFields,
+  'actualFeeSats' | 'vsize' | 'feeRateSatsPerVbyte'
+>>;
 
 const sealValidatedBroadcastArtifact = (
   fields: ValidatedBroadcastArtifactFields,
@@ -44,12 +56,17 @@ const sealValidatedBroadcastArtifact = (
  * Production callers must obtain this opaque type from validateSignedArtifact.
  */
 export const createValidatedBroadcastArtifactForTest = (
-  fields: ValidatedBroadcastArtifactFields,
+  fields: ValidatedBroadcastArtifactTestFields,
 ): ValidatedBroadcastArtifact => {
   if (process.env.NODE_ENV !== 'test') {
     throw new Error('Validated broadcast test artifacts are unavailable outside tests');
   }
-  return sealValidatedBroadcastArtifact(fields);
+  return sealValidatedBroadcastArtifact({
+    actualFeeSats: 0,
+    vsize: 1,
+    feeRateSatsPerVbyte: 0,
+    ...fields,
+  });
 };
 
 export type SignedArtifactInput = SigningIntentHandle & {
@@ -97,7 +114,7 @@ const parseRawTransaction = (value: string): bitcoin.Transaction => {
 
 export const assertTransactionMatchesSnapshot = (
   transaction: bitcoin.Transaction,
-  snapshot: SigningIntentSnapshotV1,
+  snapshot: SigningIntentSnapshot,
 ): void => {
   const expected = snapshot.transaction;
   if (transaction.version !== expected.version) {
@@ -133,6 +150,137 @@ export const assertTransactionMatchesSnapshot = (
       mismatch(`transaction.outputs.${index}.scriptPubKeyHex`, output.scriptPubKeyHex, script);
     }
   });
+};
+
+interface FinalizedFeeMetrics {
+  actualFeeSats: number;
+  vsize: number;
+  feeRateSatsPerVbyte: number;
+}
+
+const safeSnapshotSats = (value: string, field: string): bigint => {
+  const amount = BigInt(value);
+  if (amount < 0n || amount > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new InvalidInputError('Signing intent fee evidence is invalid', field, {
+      reason: 'unknown_input_value',
+    });
+  }
+  return amount;
+};
+
+const sumSnapshotSats = (
+  values: string[],
+  field: 'inputs' | 'outputs',
+): bigint => values.reduce(
+  (sum, value, index) => sum + safeSnapshotSats(value, `${field}.${index}.amountSats`),
+  0n,
+);
+
+const calculateAuthenticatedFee = (snapshot: SigningIntentSnapshot): bigint => {
+  const inputTotal = sumSnapshotSats(
+    snapshot.transaction.inputs.map(input => input.prevout.amountSats),
+    'inputs',
+  );
+  const outputTotal = sumSnapshotSats(
+    snapshot.transaction.outputs.map(output => output.amountSats),
+    'outputs',
+  );
+  const fee = inputTotal - outputTotal;
+  if (fee < 0n || fee > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new InvalidInputError('Finalized transaction fee is invalid', 'fee', {
+      reason: fee < 0n ? 'fee_too_low' : 'fee_too_high',
+    });
+  }
+  return fee;
+};
+
+const requireFeePolicy = (snapshot: SigningIntentSnapshot): SigningIntentSnapshotV2['feePolicy'] => {
+  if (snapshot.version !== 2) {
+    throw new InvalidInputError('Signing intent has no authenticated fee policy', 'intentId', {
+      reason: 'stale_intent',
+    });
+  }
+  return snapshot.feePolicy;
+};
+
+const feePolicyFailure = (
+  reason: 'fee_too_high' | 'fee_too_low',
+  actualFeeSats: number,
+  expectedFeeSats: number,
+  requestedFeeSatsAtFinalVsize: number,
+  toleranceSats: number,
+): never => {
+  throw new InvalidInputError('Finalized transaction fee is outside the authorized policy', 'fee', {
+    reason,
+    actualFeeSats,
+    expectedFeeSats,
+    requestedFeeSatsAtFinalVsize,
+    roundingToleranceSats: toleranceSats,
+  });
+};
+
+const validateFinalizedFeePolicy = (
+  transaction: bitcoin.Transaction,
+  snapshot: SigningIntentSnapshot,
+): FinalizedFeeMetrics => {
+  const fee = calculateAuthenticatedFee(snapshot);
+
+  const vsize = transaction.virtualSize();
+  if (!Number.isSafeInteger(vsize) || vsize <= 0) {
+    throw new InvalidInputError('Finalized transaction virtual size is invalid', 'vsize', {
+      reason: 'invalid_raw_transaction',
+    });
+  }
+
+  const policy = requireFeePolicy(snapshot);
+  const requestedFeeSatsAtFinalVsize = Math.ceil(policy.requestedFeeRateSatsPerVbyte * vsize);
+  if (!Number.isSafeInteger(requestedFeeSatsAtFinalVsize) || requestedFeeSatsAtFinalVsize < 0) {
+    throw new InvalidInputError('Authorized fee policy is outside the supported range', 'feePolicy', {
+      reason: 'fee_too_high',
+    });
+  }
+
+  const actualFeeSats = Number(fee);
+  const policyDeltaSats = policy.expectedFeeSats - requestedFeeSatsAtFinalVsize;
+  if (Math.abs(policyDeltaSats) > policy.roundingToleranceSats) {
+    feePolicyFailure(
+      policyDeltaSats < 0 ? 'fee_too_low' : 'fee_too_high',
+      actualFeeSats,
+      policy.expectedFeeSats,
+      requestedFeeSatsAtFinalVsize,
+      policy.roundingToleranceSats,
+    );
+  }
+  if (actualFeeSats !== policy.expectedFeeSats) {
+    feePolicyFailure(
+      actualFeeSats < policy.expectedFeeSats ? 'fee_too_low' : 'fee_too_high',
+      actualFeeSats,
+      policy.expectedFeeSats,
+      requestedFeeSatsAtFinalVsize,
+      policy.roundingToleranceSats,
+    );
+  }
+
+  return {
+    actualFeeSats,
+    vsize,
+    feeRateSatsPerVbyte: actualFeeSats / vsize,
+  };
+};
+
+const legacyReplayFeeMetrics = (
+  transaction: bitcoin.Transaction,
+  snapshot: SigningIntentSnapshot,
+): FinalizedFeeMetrics => {
+  const fee = calculateAuthenticatedFee(snapshot);
+  const vsize = transaction.virtualSize();
+  if (!Number.isSafeInteger(vsize) || vsize <= 0) {
+    throw new InvalidInputError('Finalized transaction virtual size is invalid', 'vsize', {
+      reason: 'invalid_raw_transaction',
+    });
+  }
+  const actualFeeSats = Number(fee);
+  return { actualFeeSats, vsize, feeRateSatsPerVbyte: actualFeeSats / vsize };
 };
 
 const normalizePsbtValue = (value: unknown): unknown => {
@@ -383,6 +531,9 @@ export const validateSignedArtifact = async (
   if (!envelope.broadcastReplay) {
     await assertPrevoutsStillMatch(envelope, originalPsbt, input.draftId);
   }
+  // Fail before bitcoinjs finalization/extraction can collapse a negative fee
+  // into a generic not-finalizable error. Prevouts were authenticated above.
+  calculateAuthenticatedFee(envelope.snapshot);
   const transaction = resolveFinalTransaction(input, envelope, originalPsbt);
   assertTransactionMatchesSnapshot(transaction, envelope.snapshot);
   if (envelope.broadcastReplay
@@ -396,6 +547,9 @@ export const validateSignedArtifact = async (
       rawTx: transaction.toHex(),
     });
   }
+  const feeMetrics = envelope.snapshot.version === 1 && envelope.broadcastReplay
+    ? legacyReplayFeeMetrics(transaction, envelope.snapshot)
+    : validateFinalizedFeePolicy(transaction, envelope.snapshot);
 
   return sealValidatedBroadcastArtifact({
     rawTx: transaction.toHex(),
@@ -404,6 +558,7 @@ export const validateSignedArtifact = async (
     network: envelope.snapshot.network,
     intent: { intentId: input.intentId, intentDigest: input.intentDigest },
     snapshot: envelope.snapshot,
+    ...feeMetrics,
     ...(envelope.broadcastReplay && { broadcastReplay: envelope.broadcastReplay }),
   });
 };
@@ -418,6 +573,7 @@ export const validatePartialSignedPsbt = async (
   // Reject before ingesting any partial signature into the intent workflow.
   await assertWalletHardwareCapabilityById(input.walletId, 'sign');
   const envelope = await loadSigningIntent(input, input.walletId);
+  requireFeePolicy(envelope.snapshot);
   const originalPsbt = parsePsbt(envelope.unsignedPsbtBase64, 'intentId');
   const candidate = parsePsbt(input.signedPsbtBase64, 'signedPsbtBase64');
   const unsignedCandidate = bitcoin.Transaction.fromBuffer(

@@ -50,9 +50,11 @@ export const MOBILE_API_REQUEST_LIMITS = {
   labelColorMaxLength: 32,
   labelDescriptionMaxLength: 500,
   minFeeRate: 0.1,
+  maxFeeRate: 1000,
 } as const;
 
 const feeRateMinimumMessage = `feeRate must be at least ${MOBILE_API_REQUEST_LIMITS.minFeeRate} sat/vB`;
+const feeRateMaximumMessage = `feeRate must be at most ${MOBILE_API_REQUEST_LIMITS.maxFeeRate} sat/vB`;
 const transactionEstimateRequiredMessage = 'recipient, amount, and feeRate are required';
 const transactionBroadcastSourceRequiredMessage = 'Either signedPsbtBase64, rawTxHex, or draftId is required';
 const transactionBroadcastExplicitSourceAmbiguousMessage = 'Provide either signedPsbtBase64 or rawTxHex, not both';
@@ -282,7 +284,7 @@ export const MobileTransactionCreateRequestSchema = MobileTransactionMetadataSch
   feeRate: z.number({ message: 'feeRate is required' }).min(
     MOBILE_API_REQUEST_LIMITS.minFeeRate,
     feeRateMinimumMessage
-  ),
+  ).max(MOBILE_API_REQUEST_LIMITS.maxFeeRate, feeRateMaximumMessage),
   selectedUtxoIds: z.array(z.string()).optional(),
   enableRBF: z.boolean().optional(),
   sendMax: z.boolean().optional(),
@@ -300,7 +302,7 @@ export const MobileTransactionEstimateRequestSchema = z.object({
   feeRate: z.number({ message: transactionEstimateRequiredMessage }).min(
     MOBILE_API_REQUEST_LIMITS.minFeeRate,
     feeRateMinimumMessage
-  ),
+  ).max(MOBILE_API_REQUEST_LIMITS.maxFeeRate, feeRateMaximumMessage),
   selectedUtxoIds: z.array(z.string()).optional(),
 });
 
@@ -344,7 +346,7 @@ export const MobilePsbtCreateRequestSchema = z.object({
   feeRate: z.number({ message: 'feeRate is required' }).min(
     MOBILE_API_REQUEST_LIMITS.minFeeRate,
     feeRateMinimumMessage
-  ),
+  ).max(MOBILE_API_REQUEST_LIMITS.maxFeeRate, feeRateMaximumMessage),
   utxoIds: z.array(z.string()).optional(),
 });
 

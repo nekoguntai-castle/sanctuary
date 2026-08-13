@@ -1,5 +1,5 @@
 import * as bitcoin from "bitcoinjs-lib";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import "./transactionServiceCreateTestHarness";
 import {
   sampleUtxos,
@@ -31,9 +31,26 @@ export function registerTransactionServicePsbtHelpersLegacyTests(): void {
   describe("Edge Cases", () => {
     const walletId = "test-wallet-id";
 
+    beforeEach(() => {
+      mockPrismaClient.wallet.findUnique.mockResolvedValue(singleSigSigningWallet({
+        ...sampleWallets.singleSigNativeSegwit,
+        id: walletId,
+      }));
+      mockAddressFindManyByQuery({
+        inputRows: sampleUtxos.map((utxo, index) => inputAddressRow(walletId, index, { address: utxo.address })),
+        unusedRows: [changeAddressRow(walletId)],
+      });
+      const previous = new bitcoin.Transaction();
+      previous.addInput(Buffer.alloc(32), 0xffffffff);
+      previous.addOutput(Buffer.from("76a914" + "a".repeat(40) + "88ac", 'hex'), 200_000n);
+      vi.mocked(nodeClient.getNodeClient).mockResolvedValueOnce({
+        getTransaction: vi.fn().mockResolvedValue(previous.toHex()),
+      } as any);
+    });
+
     it("should handle dust amount correctly", async () => {
       mockPrismaClient.uTXO.findMany.mockResolvedValue([
-        { ...sampleUtxos[0], walletId },
+        { ...sampleUtxos[0], walletId, scriptPubKey: "0014" + "a".repeat(40) },
       ]);
 
       // Trying to send dust amount should still work (recipient's problem)
@@ -49,7 +66,7 @@ export function registerTransactionServicePsbtHelpersLegacyTests(): void {
 
     it("should handle very high fee rate", async () => {
       mockPrismaClient.uTXO.findMany.mockResolvedValue([
-        { ...sampleUtxos[2], walletId }, // 200000 sats
+        { ...sampleUtxos[2], walletId, scriptPubKey: "0014" + "a".repeat(40) }, // 200000 sats
       ]);
 
       const result = await estimateTransaction(
@@ -66,7 +83,7 @@ export function registerTransactionServicePsbtHelpersLegacyTests(): void {
 
     it("should handle minimum fee rate of 1 sat/vB", async () => {
       mockPrismaClient.uTXO.findMany.mockResolvedValue([
-        { ...sampleUtxos[0], walletId },
+        { ...sampleUtxos[0], walletId, scriptPubKey: "0014" + "a".repeat(40) },
       ]);
 
       const result = await estimateTransaction(

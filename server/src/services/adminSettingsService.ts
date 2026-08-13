@@ -43,6 +43,7 @@ const smtpKeys = [
   'smtp.fromAddress',
   'smtp.fromName',
 ];
+const MAX_DUST_THRESHOLD = 10_000;
 
 export function buildAdminSettingsResponse(settings: StoredSetting[]): AdminSettings {
   const settingsObj: AdminSettings = {};
@@ -89,6 +90,7 @@ export async function updateAdminSettings(updates: AdminSettingsUpdate): Promise
     throw new InvalidInputError(`System setting '${operationalKey}' is managed by the runtime`);
   }
   await validateConfirmationThresholds(updates);
+  validateDustThreshold(updates);
 
   const normalizedUpdates = await normalizeAdminSettingsUpdates(updates);
   const smtpChanged = Object.keys(normalizedUpdates).some((key) => smtpKeys.includes(key));
@@ -108,6 +110,14 @@ export async function updateAdminSettings(updates: AdminSettingsUpdate): Promise
   }
 
   return getAdminSettings();
+}
+
+function validateDustThreshold(updates: AdminSettingsUpdate): void {
+  if (updates.dustThreshold === undefined) return;
+  const value = Number(updates.dustThreshold);
+  if (!Number.isSafeInteger(value) || value < 1 || value > MAX_DUST_THRESHOLD) {
+    throw new InvalidInputError(`Dust threshold must be an integer between 1 and ${MAX_DUST_THRESHOLD}`);
+  }
 }
 
 async function normalizeAdminSettingsUpdates(updates: AdminSettingsUpdate): Promise<AdminSettingsUpdate> {

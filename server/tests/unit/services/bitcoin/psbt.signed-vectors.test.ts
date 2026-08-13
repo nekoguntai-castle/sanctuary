@@ -92,7 +92,7 @@ describe('Generated Signed PSBT Vectors', () => {
       expect(vector.verifiedBy.some((impl) => impl.includes('Bitcoin Core'))).toBe(true);
       expect(vector.verifiedBy.some((impl) => impl.includes('Sanctuary software signer'))).toBe(true);
       expect(vector.coreProof.decodedSignedPsbt.tx.vin).toHaveLength(1);
-      expect(vector.coreProof.decodedSignedPsbt.tx.vout).toHaveLength(1);
+      expect(vector.coreProof.decodedSignedPsbt.tx.vout).toHaveLength(2);
       expect(vector.coreProof.analyzedSignedPsbt).toMatchObject({
         next: 'finalizer',
         inputs: [{ has_utxo: true, is_final: false, next: 'finalizer' }],
@@ -180,7 +180,8 @@ describe('Generated Signed PSBT Vectors', () => {
 
       psbt.txOutputs.forEach((output) => {
         const address = bitcoin.address.fromOutputScript(output.script, NETWORK);
-        expect(address.startsWith('bcrt1')).toBe(true);
+        expect(Buffer.from(bitcoin.address.toOutputScript(address, NETWORK)))
+          .toEqual(Buffer.from(output.script));
       });
     });
   });

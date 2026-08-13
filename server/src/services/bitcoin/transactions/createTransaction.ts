@@ -26,9 +26,15 @@ import {
   addInputsWithBip32,
 } from './psbtConstruction';
 import { selectUtxosForMode } from './utxoModes';
-import { buildAndAddOutputs } from './outputBuilder';
+import {
+  buildAndAddOutputs,
+  prepareChangeOutputs,
+  type PreparedChangeOutput,
+} from './outputBuilder';
 import type { CreateTransactionResult } from './types';
 import { bindPsbtAccount } from '../psbtAccountBinding';
+import { createTransactionSpendPolicyResolver, transactionChangeScriptTemplate } from './feePolicy';
+import { buildSigningIntentFeePolicy } from '../signingIntent/feePolicy';
 
 const log = createLogger('BITCOIN:SVC_TX_CREATE');
 
@@ -74,16 +80,55 @@ export async function createTransaction(
   // Resolve wallet signing info (fingerprints, xpubs, multisig keys)
   const signingInfo = resolveWalletSigningInfo(wallet, 'BIP32 derivation: ');
 
+  let recipientScript: Uint8Array;
   try {
-    bitcoin.address.toOutputScript(recipient, networkObj);
+    recipientScript = bitcoin.address.toOutputScript(recipient, networkObj);
   } catch (error) {
     throw new Error('Invalid recipient address');
   }
 
+  const desiredDecoyCount = decoyOutputs?.enabled && decoyOutputs.count >= 2
+    ? Math.min(Math.max(decoyOutputs.count, 2), 4)
+    : 0;
+  const changeScriptTemplate = transactionChangeScriptTemplate(signingInfo);
+  let preparedChangeOutputs: PreparedChangeOutput[] = [];
+  const baseFeeContext = {
+    resolveSpendPolicies: createTransactionSpendPolicyResolver(walletId, signingInfo, networkObj),
+    recipientScript,
+    changeScripts: sendMax ? [] : [changeScriptTemplate],
+    dustThreshold,
+  };
+
   // Select UTXOs based on transaction mode
-  const { effectiveAmount, selection } = await selectUtxosForMode(
-    walletId, amount, feeRate, dustThreshold, sendMax, subtractFees, selectedUtxoIds
+  let { effectiveAmount, selection } = await selectUtxosForMode(
+    walletId, amount, feeRate, dustThreshold, sendMax, subtractFees, baseFeeContext, selectedUtxoIds
   );
+  if (!sendMax && !subtractFees && desiredDecoyCount > 0
+    && selection.changeAmount >= dustThreshold * desiredDecoyCount) {
+    ({ effectiveAmount, selection } = await selectUtxosForMode(
+      walletId,
+      amount,
+      feeRate,
+      dustThreshold,
+      false,
+      false,
+      { ...baseFeeContext, changeScripts: Array(desiredDecoyCount).fill(changeScriptTemplate) },
+      selectedUtxoIds,
+    ));
+  }
+  if (selection.changeOutputCount) {
+    preparedChangeOutputs = await prepareChangeOutputs(walletId, selection.changeOutputCount);
+    ({ effectiveAmount, selection } = await selectUtxosForMode(
+      walletId,
+      amount,
+      feeRate,
+      dustThreshold,
+      false,
+      subtractFees,
+      { ...baseFeeContext, changeScripts: preparedChangeOutputs.map(output => output.scriptPubKey) },
+      selectedUtxoIds,
+    ));
+  }
 
   // Create PSBT
   const psbt = new bitcoin.Psbt({ network: networkObj });
@@ -123,7 +168,7 @@ export async function createTransaction(
     actualChangeAmount,
   } = await buildAndAddOutputs(
     psbt, walletId, recipient, effectiveAmount,
-    selection, dustThreshold, sendMax, feeRate, decoyOutputs
+    selection, dustThreshold, sendMax, preparedChangeOutputs, decoyOutputs
   );
 
   // When decoys are used, don't return changeAmount/changeAddress separately
@@ -143,5 +188,11 @@ export async function createTransaction(
     effectiveAmount,
     decoyOutputs: decoyOutputsResult,
     signingContext,
+    feePolicy: buildSigningIntentFeePolicy(
+      psbt.toBase64(),
+      feeRate,
+      actualFee,
+      selection.feeSurplusSats ?? 0,
+    ),
   };
 }

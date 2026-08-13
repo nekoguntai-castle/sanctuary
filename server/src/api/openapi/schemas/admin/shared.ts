@@ -98,7 +98,7 @@ export const baseSettingsProperties = {
   registrationEnabled: { type: 'boolean', default: false },
   confirmationThreshold: { type: 'integer', default: DEFAULT_CONFIRMATION_THRESHOLD },
   deepConfirmationThreshold: { type: 'integer', default: DEFAULT_DEEP_CONFIRMATION_THRESHOLD },
-  dustThreshold: { type: 'integer', default: DEFAULT_DUST_THRESHOLD },
+  dustThreshold: { type: 'integer', minimum: 1, maximum: 10_000, default: DEFAULT_DUST_THRESHOLD },
   draftExpirationDays: { type: 'integer', default: DEFAULT_DRAFT_EXPIRATION_DAYS },
   aiEnabled: { type: 'boolean', default: DEFAULT_AI_ENABLED },
   aiEndpoint: { type: 'string', default: DEFAULT_AI_ENDPOINT },

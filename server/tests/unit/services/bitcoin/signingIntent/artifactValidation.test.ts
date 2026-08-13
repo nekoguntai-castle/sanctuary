@@ -26,7 +26,7 @@ import {
 } from '../../../../../src/services/bitcoin/signingIntent/artifactValidation';
 import type {
   SigningIntentEnvelope,
-  SigningIntentSnapshotV1,
+  SigningIntentSnapshotV2,
 } from '../../../../../src/services/bitcoin/signingIntent';
 import { GENERATED_SIGNED_PSBT_VECTORS } from '../../../../fixtures/generated-signed-psbt-vectors';
 
@@ -43,10 +43,19 @@ const transaction = (): bitcoin.Transaction => {
   return tx;
 };
 
-const snapshot = (): SigningIntentSnapshotV1 => ({
-  version: 1,
+const permissiveFeePolicy = {
+  version: 1 as const,
+  expectedFeeSats: 1_000,
+  requestedFeeRateSatsPerVbyte: 1,
+  roundingMode: 'ceil' as const,
+  roundingToleranceSats: 10_000,
+};
+
+const snapshot = (): SigningIntentSnapshotV2 => ({
+  version: 2,
   walletId: 'wallet-1',
   network: 'testnet3',
+  feePolicy: permissiveFeePolicy,
   transaction: {
     version: 2,
     locktime: 42,
@@ -94,7 +103,7 @@ const publicKey = Buffer.from(ecc.pointFromScalar(privateKey, true)!);
 const witnessScript = bitcoin.payments.p2wpkh({ pubkey: publicKey }).output!;
 const destinationScript = Buffer.from(`0014${'77'.repeat(20)}`, 'hex');
 
-const buildPsbt = (): bitcoin.Psbt => {
+const buildPsbt = (outputValue = 9_000): bitcoin.Psbt => {
   const psbt = new bitcoin.Psbt({ network: bitcoin.networks.testnet });
   psbt.setVersion(2);
   psbt.addInput({
@@ -103,21 +112,35 @@ const buildPsbt = (): bitcoin.Psbt => {
     sequence: 0xfffffffd,
     witnessUtxo: { script: witnessScript, value: 10_000n },
   });
-  psbt.addOutput({ script: destinationScript, value: 9_000n });
+  psbt.addOutput({ script: destinationScript, value: BigInt(outputValue) });
   return psbt;
 };
 
 const envelopeFor = (
   psbt: bitcoin.Psbt,
-  network: SigningIntentSnapshotV1['network'] = 'testnet3',
-): SigningIntentEnvelope => {
+  network: SigningIntentSnapshotV2['network'] = 'testnet3',
+): SigningIntentEnvelope & { snapshot: SigningIntentSnapshotV2 } => {
   const unsigned = bitcoin.Transaction.fromBuffer(
     psbt.data.globalMap.unsignedTx.toBuffer(),
   );
-  const snapshot: SigningIntentSnapshotV1 = {
-    version: 1,
+  const snapshot: SigningIntentSnapshotV2 = {
+    version: 2,
     walletId: 'wallet-1',
     network,
+    feePolicy: {
+      ...permissiveFeePolicy,
+      expectedFeeSats: psbt.txInputs.reduce((sum, _input, index) => {
+        const psbtInput = psbt.data.inputs[index];
+        const prevout = psbtInput.witnessUtxo ?? (() => {
+          if (!psbtInput.nonWitnessUtxo) throw new Error(`Missing prevout evidence for input ${index}`);
+          const previous = bitcoin.Transaction.fromBuffer(psbtInput.nonWitnessUtxo);
+          const output = previous.outs[psbt.txInputs[index].index];
+          if (!output) throw new Error(`Missing previous output for input ${index}`);
+          return output;
+        })();
+        return sum + Number(prevout.value);
+      }, 0) - psbt.txOutputs.reduce((sum, output) => sum + Number(output.value), 0),
+    },
     transaction: {
       version: unsigned.version,
       locktime: unsigned.locktime,
@@ -164,9 +187,21 @@ const signingInput = {
   intentDigest: 'a'.repeat(64),
 };
 
+const signPsbt = (psbt: bitcoin.Psbt): bitcoin.Psbt => {
+  const signed = bitcoin.Psbt.fromBase64(psbt.toBase64());
+  signed.signInput(0, { publicKey, sign: hash => ecc.sign(hash, privateKey) });
+  return signed;
+};
+
+const finalizedVsize = (signed: bitcoin.Psbt): number => {
+  const finalized = bitcoin.Psbt.fromBase64(signed.toBase64());
+  finalized.finalizeAllInputs();
+  return finalized.extractTransaction().virtualSize();
+};
+
 describe('signed artifact authentication boundary', () => {
   let original: bitcoin.Psbt;
-  let envelope: SigningIntentEnvelope;
+  let envelope: SigningIntentEnvelope & { snapshot: SigningIntentSnapshotV2 };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -263,11 +298,15 @@ describe('signed artifact authentication boundary', () => {
   });
 
   it('validates, finalizes, and extracts an exactly preserved signed PSBT', async () => {
-    const signed = bitcoin.Psbt.fromBase64(original.toBase64());
-    signed.signInput(0, {
-      publicKey,
-      sign: hash => ecc.sign(hash, privateKey),
-    });
+    const signed = signPsbt(original);
+    const vsize = finalizedVsize(signed);
+    envelope.snapshot.feePolicy = {
+      version: 1,
+      expectedFeeSats: 1_000,
+      requestedFeeRateSatsPerVbyte: (1_000 - 0.5) / vsize,
+      roundingMode: 'ceil',
+      roundingToleranceSats: 0,
+    };
 
     const artifact = await validateSignedArtifact({
       ...signingInput,
@@ -276,6 +315,241 @@ describe('signed artifact authentication boundary', () => {
 
     expect(artifact.txid).toMatch(/^[0-9a-f]{64}$/);
     expect(bitcoin.Transaction.fromHex(artifact.rawTx).hasWitnesses()).toBe(true);
+    expect(artifact).toMatchObject({
+      actualFeeSats: 1_000,
+      vsize,
+      feeRateSatsPerVbyte: 1_000 / vsize,
+    });
+  });
+
+  it.each([
+    ['fee_too_high', 990],
+    ['fee_too_low', 1_010],
+  ] as const)('rejects an exact constructed-fee mismatch: %s', async (reason, expectedFeeSats) => {
+    const signed = signPsbt(original);
+    const vsize = finalizedVsize(signed);
+    envelope.snapshot.feePolicy = {
+      version: 1,
+      expectedFeeSats,
+      requestedFeeRateSatsPerVbyte: (expectedFeeSats - 0.5) / vsize,
+      roundingMode: 'ceil',
+      roundingToleranceSats: 0,
+    };
+
+    await expect(validateSignedArtifact({
+      ...signingInput,
+      signedPsbtBase64: signed.toBase64(),
+    })).rejects.toMatchObject({ details: { reason } });
+  });
+
+  it('applies the authenticated rounding tolerance inclusively', async () => {
+    const signed = signPsbt(original);
+    const vsize = finalizedVsize(signed);
+    envelope.snapshot.feePolicy = {
+      version: 1,
+      expectedFeeSats: 1_000,
+      requestedFeeRateSatsPerVbyte: (995 - 0.5) / vsize,
+      roundingMode: 'ceil',
+      roundingToleranceSats: 5,
+    };
+
+    await expect(validateSignedArtifact({
+      ...signingInput,
+      signedPsbtBase64: signed.toBase64(),
+    })).resolves.toMatchObject({ actualFeeSats: 1_000, vsize });
+  });
+
+  it.each([
+    ['fee_too_high', 990],
+    ['fee_too_low', 1_010],
+  ] as const)('rejects a requested-rate delta outside tolerance: %s', async (reason, requestedFee) => {
+    const signed = signPsbt(original);
+    const vsize = finalizedVsize(signed);
+    envelope.snapshot.feePolicy = {
+      version: 1,
+      expectedFeeSats: 1_000,
+      requestedFeeRateSatsPerVbyte: (requestedFee - 0.5) / vsize,
+      roundingMode: 'ceil',
+      roundingToleranceSats: 0,
+    };
+
+    await expect(validateSignedArtifact({
+      ...signingInput,
+      signedPsbtBase64: signed.toBase64(),
+    })).rejects.toMatchObject({ details: { reason } });
+  });
+
+  it('rejects a requested fee calculation outside the safe integer range', async () => {
+    const signed = signPsbt(original);
+    envelope.snapshot.feePolicy = {
+      ...permissiveFeePolicy,
+      requestedFeeRateSatsPerVbyte: Number.MAX_VALUE,
+    };
+
+    await expect(validateSignedArtifact({
+      ...signingInput,
+      signedPsbtBase64: signed.toBase64(),
+    })).rejects.toMatchObject({ details: { reason: 'fee_too_high' } });
+  });
+
+  it.each([
+    '-1',
+    (BigInt(Number.MAX_SAFE_INTEGER) + 1n).toString(),
+  ])('rejects unsafe authenticated snapshot amount %s', async (amountSats) => {
+    const signed = signPsbt(original);
+    envelope.snapshot.transaction.inputs[0].prevout.amountSats = amountSats;
+    mocks.authenticateIntentPrevouts.mockResolvedValue(
+      envelope.snapshot.transaction.inputs.map(input => input.prevout),
+    );
+
+    await expect(validateSignedArtifact({
+      ...signingInput,
+      signedPsbtBase64: signed.toBase64(),
+    })).rejects.toMatchObject({ details: { reason: 'unknown_input_value' } });
+  });
+
+  it('rejects an invalid finalized virtual size under the authenticated fee policy', async () => {
+    const signed = signPsbt(original);
+    const originalVirtualSize = bitcoin.Transaction.prototype.virtualSize;
+    let calls = 0;
+    const virtualSize = vi.spyOn(bitcoin.Transaction.prototype, 'virtualSize').mockImplementation(function (
+      this: bitcoin.Transaction,
+    ) {
+      calls += 1;
+      return calls === 1 ? originalVirtualSize.call(this) : 0;
+    });
+    try {
+      await expect(validateSignedArtifact({
+        ...signingInput,
+        signedPsbtBase64: signed.toBase64(),
+      })).rejects.toMatchObject({ details: { reason: 'invalid_raw_transaction' } });
+    } finally {
+      virtualSize.mockRestore();
+    }
+  });
+
+  it('does not use rounding tolerance to authorize an absolute fee mismatch', async () => {
+    const signed = signPsbt(original);
+    const vsize = finalizedVsize(signed);
+    envelope.snapshot.feePolicy = {
+      version: 1,
+      expectedFeeSats: 995,
+      requestedFeeRateSatsPerVbyte: (995 - 0.5) / vsize,
+      roundingMode: 'ceil',
+      roundingToleranceSats: 5,
+    };
+
+    await expect(validateSignedArtifact({
+      ...signingInput,
+      signedPsbtBase64: signed.toBase64(),
+    })).rejects.toMatchObject({ details: {
+      reason: 'fee_too_high',
+      actualFeeSats: 1_000,
+      expectedFeeSats: 995,
+    } });
+  });
+
+  it('rejects a legacy V1 intent that has no authenticated fee policy', async () => {
+    const signed = signPsbt(original);
+    const { feePolicy: _feePolicy, ...legacySnapshot } = envelope.snapshot;
+    mocks.loadSigningIntent.mockResolvedValue({
+      ...envelope,
+      snapshot: { ...legacySnapshot, version: 1 },
+    });
+
+    await expect(validateSignedArtifact({
+      ...signingInput,
+      signedPsbtBase64: signed.toBase64(),
+    })).rejects.toMatchObject({ details: { reason: 'stale_intent' } });
+  });
+
+  it('preserves an exact authenticated replay for an already-consumed V1 intent', async () => {
+    const signed = signPsbt(original);
+    const first = await validateSignedArtifact({ ...signingInput, signedPsbtBase64: signed.toBase64() });
+    const { feePolicy: _feePolicy, ...legacySnapshot } = envelope.snapshot;
+    mocks.loadSigningIntent.mockResolvedValue({
+      ...envelope,
+      snapshot: { ...legacySnapshot, version: 1 },
+      broadcastReplay: { state: 'accepted', txid: first.txid, rawTx: first.rawTx },
+    });
+
+    await expect(validateSignedArtifact({
+      ...signingInput,
+      signedPsbtBase64: signed.toBase64(),
+    })).resolves.toMatchObject({
+      txid: first.txid,
+      rawTx: first.rawTx,
+      actualFeeSats: 1_000,
+    });
+  });
+
+  it('rejects an invalid finalized virtual size during authenticated legacy replay', async () => {
+    const signed = signPsbt(original);
+    const first = await validateSignedArtifact({ ...signingInput, signedPsbtBase64: signed.toBase64() });
+    const { feePolicy: _feePolicy, ...legacySnapshot } = envelope.snapshot;
+    mocks.loadSigningIntent.mockResolvedValue({
+      ...envelope,
+      snapshot: { ...legacySnapshot, version: 1 },
+      broadcastReplay: { state: 'accepted', txid: first.txid, rawTx: first.rawTx },
+    });
+    const originalVirtualSize = bitcoin.Transaction.prototype.virtualSize;
+    let calls = 0;
+    const virtualSize = vi.spyOn(bitcoin.Transaction.prototype, 'virtualSize').mockImplementation(function (
+      this: bitcoin.Transaction,
+    ) {
+      calls += 1;
+      return calls === 1 ? originalVirtualSize.call(this) : 0;
+    });
+    try {
+      await expect(validateSignedArtifact({
+        ...signingInput,
+        signedPsbtBase64: signed.toBase64(),
+      })).rejects.toMatchObject({ details: { reason: 'invalid_raw_transaction' } });
+    } finally {
+      virtualSize.mockRestore();
+    }
+  });
+
+  it('rejects a negative finalized fee before returning an artifact', async () => {
+    const overspend = buildPsbt(11_000);
+    const signed = signPsbt(overspend);
+    envelope = envelopeFor(overspend);
+    mocks.loadSigningIntent.mockResolvedValue(envelope);
+    mocks.authenticateIntentPrevouts.mockResolvedValue(
+      envelope.snapshot.transaction.inputs.map(input => input.prevout),
+    );
+
+    await expect(validateSignedArtifact({
+      ...signingInput,
+      signedPsbtBase64: signed.toBase64(),
+    })).rejects.toMatchObject({ details: { reason: 'fee_too_low' } });
+  });
+
+  it('rejects a finalized fee above the safe integer range', async () => {
+    const oversized = new bitcoin.Psbt({ network: bitcoin.networks.testnet });
+    oversized.setVersion(2);
+    for (const hash of ['aa', 'bb']) {
+      oversized.addInput({
+        hash: hash.repeat(32),
+        index: 0,
+        sequence: 0xfffffffd,
+        witnessUtxo: { script: witnessScript, value: BigInt(Number.MAX_SAFE_INTEGER) },
+      });
+    }
+    oversized.addOutput({ script: destinationScript, value: 9_000n });
+    const signed = bitcoin.Psbt.fromBase64(oversized.toBase64());
+    signed.signInput(0, { publicKey, sign: hash => ecc.sign(hash, privateKey) });
+    signed.signInput(1, { publicKey, sign: hash => ecc.sign(hash, privateKey) });
+    envelope = envelopeFor(oversized);
+    mocks.loadSigningIntent.mockResolvedValue(envelope);
+    mocks.authenticateIntentPrevouts.mockResolvedValue(
+      envelope.snapshot.transaction.inputs.map(input => input.prevout),
+    );
+
+    await expect(validateSignedArtifact({
+      ...signingInput,
+      signedPsbtBase64: signed.toBase64(),
+    })).rejects.toMatchObject({ details: { reason: 'fee_too_high' } });
   });
 
   it('rejects a valid signed PSBT encoded with non-canonical base64 padding', async () => {
@@ -783,6 +1057,19 @@ describe('signed artifact authentication boundary', () => {
     expect(mocks.authenticateIntentPrevouts).toHaveBeenCalledWith(
       'wallet-1', 'testnet3', expect.any(bitcoin.Psbt), ['wallet'], 'draft-1', undefined,
     );
+  });
+
+  it('rejects partial-signature ingestion for an active legacy V1 intent', async () => {
+    const { feePolicy: _feePolicy, ...legacySnapshot } = envelope.snapshot;
+    mocks.loadSigningIntent.mockResolvedValue({
+      ...envelope,
+      snapshot: { ...legacySnapshot, version: 1 },
+    });
+
+    await expect(validatePartialSignedPsbt({
+      ...signingInput,
+      signedPsbtBase64: original.toBase64(),
+    })).rejects.toMatchObject({ details: { reason: 'stale_intent' } });
   });
 
   it('rejects prevout evidence that changed since intent creation', async () => {

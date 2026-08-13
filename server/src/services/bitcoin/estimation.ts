@@ -4,11 +4,19 @@
  * Fee and transaction size estimation utilities.
  */
 
-import { systemSettingRepository } from '../../repositories';
+import * as bitcoin from 'bitcoinjs-lib';
+import { systemSettingRepository, walletRepository } from '../../repositories';
 import { DEFAULT_DUST_THRESHOLD } from '../../constants';
 import { getErrorMessage } from '../../utils/errors';
 import { SystemSettingSchemas } from '../../utils/safeJson';
-import { selectUTXOs, UTXOSelectionStrategy } from './utxoSelection';
+import { selectUTXOsExact } from './utxoSelection';
+import { getNetwork } from './utils';
+import { normalizeLegacyBitcoinNetwork } from './networks';
+import { resolveWalletSigningInfo } from './transactions/psbtConstruction';
+import {
+  createTransactionSpendPolicyResolver,
+  transactionChangeScriptTemplate,
+} from './transactions/feePolicy';
 
 /**
  * Get dust threshold from system settings
@@ -49,11 +57,21 @@ export async function estimateTransaction(
 ): Promise<TransactionEstimate> {
   try {
     const dustThreshold = await getDustThreshold();
-    const selection = await selectUTXOs(
+    const wallet = await walletRepository.findByIdWithSigningDevices(walletId);
+    if (!wallet) throw new Error('Wallet not found');
+    const network = getNetwork(normalizeLegacyBitcoinNetwork(wallet.network, 'mainnet'));
+    const recipientScript = bitcoin.address.toOutputScript(_recipient, network);
+    const signingInfo = resolveWalletSigningInfo(wallet, '[ESTIMATE] ');
+    const selection = await selectUTXOsExact(
       walletId,
       amount,
       feeRate,
-      UTXOSelectionStrategy.LARGEST_FIRST,
+      {
+        resolveSpendPolicies: createTransactionSpendPolicyResolver(walletId, signingInfo, network),
+        recipientScript,
+        changeScripts: [transactionChangeScriptTemplate(signingInfo)],
+        dustThreshold,
+      },
       selectedUtxoIds
     );
 

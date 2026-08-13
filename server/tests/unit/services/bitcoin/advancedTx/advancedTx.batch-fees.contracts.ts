@@ -13,14 +13,17 @@ import {
 } from "../../../../../src/services/bitcoin/advancedTx";
 import { getNodeClient } from "../../../../../src/services/bitcoin/nodeClient";
 import { assertCanonicalAddressesForWallet } from "../../../../../src/services/wallet/canonicalAddressValidation";
+import * as psbtConstruction from "../../../../../src/services/bitcoin/transactions/psbtConstruction";
 import {
   changeAddressRow,
+  inputAddressRow,
   mockAddressFindManyByQuery,
   receiveAddressRow,
 } from "../transactionServiceAddressMocks";
 import {
   rawTransactionWithOutput,
   resolveNextPsbtBindingNetwork,
+  advancedSignableWallet,
 } from "./advancedTxTestHarness";
 
 export function registerBatchFeeAndConstantContracts() {
@@ -46,7 +49,116 @@ export function registerBatchFeeAndConstantContracts() {
           ["other-tx:1"],
           "testnet3",
         ),
-      ).rejects.toThrow("No spendable UTXOs available");
+      ).rejects.toThrow("Selected UTXOs are unavailable");
+    });
+
+    it("throws when the wallet has no spendable UTXOs", async () => {
+      mockPrismaClient.uTXO.findMany.mockResolvedValueOnce([]);
+
+      await expect(createBatchTransaction(
+        [{ address: testnetAddresses.nativeSegwit[0], amount: 1_000 }],
+        5,
+        walletId,
+        undefined,
+        "testnet3",
+      )).rejects.toThrow("No spendable UTXOs available");
+    });
+
+    it("uses exactly the explicitly selected batch outpoint", async () => {
+      const selected = { ...sampleUtxos[0], walletId, spent: false, amount: 30_000n };
+      const ignored = { ...sampleUtxos[1], walletId, spent: false };
+      mockPrismaClient.uTXO.findMany.mockResolvedValueOnce([selected, ignored]);
+      mockAddressFindManyByQuery({
+        inputRows: [inputAddressRow(walletId, 0, { address: selected.address })],
+        unusedRows: [changeAddressRow(walletId, 0)],
+      });
+
+      const result = await createBatchTransaction(
+        [{ address: testnetAddresses.nativeSegwit[0], amount: 29_800 }],
+        1,
+        walletId,
+        [`${selected.txid}:${selected.vout}`],
+        "testnet3",
+      );
+
+      expect(result.psbt.txInputs).toHaveLength(1);
+      expect(Buffer.from(result.psbt.txInputs[0].hash).reverse().toString("hex")).toBe(selected.txid);
+    });
+
+    it("fails closed when an advanced batch UTXO lacks script evidence", async () => {
+      mockPrismaClient.uTXO.findMany.mockResolvedValueOnce([{
+        ...sampleUtxos[0], walletId, spent: false, scriptPubKey: "",
+      }]);
+
+      await expect(createBatchTransaction(
+        [{ address: testnetAddresses.nativeSegwit[0], amount: 20_000 }],
+        5,
+        walletId,
+        undefined,
+        "testnet3",
+      )).rejects.toThrow("UTXO is missing scriptPubKey evidence");
+    });
+
+    it("fails closed when advanced batch derivation-path evidence is missing", async () => {
+      mockPrismaClient.uTXO.findMany.mockResolvedValueOnce([
+        { ...sampleUtxos[0], walletId, spent: false },
+      ]);
+      mockPrismaClient.address.findMany.mockResolvedValueOnce([]);
+
+      await expect(createBatchTransaction(
+        [{ address: testnetAddresses.nativeSegwit[0], amount: 20_000 }],
+        5,
+        walletId,
+        undefined,
+        "testnet3",
+      )).rejects.toThrow("Batch input spend evidence is missing");
+    });
+
+    it("fails closed if UTXO identity changes after spend evidence is resolved", async () => {
+      const firstAddress = sampleUtxos[0].address;
+      let reads = 0;
+      const unstable = {
+        ...sampleUtxos[0],
+        walletId,
+        spent: false,
+        get address() {
+          reads += 1;
+          return reads <= 3 ? firstAddress : testnetAddresses.nativeSegwit[1];
+        },
+      };
+      mockPrismaClient.uTXO.findMany.mockResolvedValueOnce([unstable]);
+
+      await expect(createBatchTransaction(
+        [{ address: testnetAddresses.nativeSegwit[0], amount: 20_000 }],
+        5,
+        walletId,
+        undefined,
+        "testnet3",
+      )).rejects.toThrow("Batch input spend evidence is missing");
+    });
+
+    it("fails closed when single-sig account-node evidence is unavailable", async () => {
+      const wallet = advancedSignableWallet(walletId);
+      const signingInfo = psbtConstruction.resolveWalletSigningInfo(wallet as any, "[TEST] ");
+      const resolverSpy = vi.spyOn(psbtConstruction, "resolveWalletSigningInfo").mockReturnValueOnce({
+        ...signingInfo,
+        accountXpub: undefined,
+      });
+      mockPrismaClient.uTXO.findMany.mockResolvedValueOnce([
+        { ...sampleUtxos[0], walletId, spent: false },
+      ]);
+
+      try {
+        await expect(createBatchTransaction(
+          [{ address: testnetAddresses.nativeSegwit[0], amount: 20_000 }],
+          5,
+          walletId,
+          undefined,
+          "testnet3",
+        )).rejects.toThrow("missing BIP32 derivation metadata");
+      } finally {
+        resolverSpy.mockRestore();
+      }
     });
 
     it("creates a batch PSBT with recipients and change", async () => {
@@ -101,16 +213,16 @@ export function registerBatchFeeAndConstantContracts() {
         vout: 0,
         amount: 100_000n,
         scriptPubKey: legacyScript,
+        address: testnetAddresses.legacy[0],
         walletId,
         spent: false,
       }]);
-      mockPrismaClient.wallet.findUnique.mockResolvedValueOnce({
-        id: walletId,
-        type: "single_sig",
-        network: "testnet3",
-        scriptType: "legacy",
-      });
+      mockPrismaClient.wallet.findUnique.mockResolvedValueOnce(advancedSignableWallet(walletId, "legacy"));
       mockAddressFindManyByQuery({
+        inputRows: [inputAddressRow(walletId, 0, {
+          address: testnetAddresses.legacy[0],
+          derivationPath: "m/44'/1'/0'/0/0",
+        })],
         unusedRows: [changeAddressRow(walletId, 0, {
           address: testnetAddresses.legacy[1],
           derivationPath: "m/44'/1'/0'/1/0",
@@ -261,6 +373,77 @@ export function registerBatchFeeAndConstantContracts() {
       expect(result.changeAmount).toBeLessThan(546);
       expect(result.psbt.txOutputs.length).toBe(1);
       expect(mockPrismaClient.address.findFirst).not.toHaveBeenCalled();
+    });
+
+    it("preserves change exactly at the dust threshold", async () => {
+      mockPrismaClient.uTXO.findMany.mockResolvedValueOnce([{
+        ...sampleUtxos[0],
+        walletId,
+        spent: false,
+        amount: 10_687n,
+        scriptPubKey: "0014" + "a".repeat(40),
+      }]);
+      mockAddressFindManyByQuery({
+        unusedRows: [changeAddressRow(walletId, 0, {
+          address: testnetAddresses.nativeSegwit[0],
+        })],
+      });
+
+      const result = await createBatchTransaction(
+        [{ address: testnetAddresses.nativeSegwit[0], amount: 10_000 }],
+        1,
+        walletId,
+        undefined,
+        "testnet3",
+      );
+
+      expect(result).toMatchObject({
+        totalInput: 10_687,
+        totalOutput: 10_000,
+        fee: 141,
+        changeAmount: 546,
+      });
+      expect(result.psbt.txInputs).toHaveLength(1);
+      expect(result.psbt.txOutputs).toHaveLength(2);
+      expect(result.totalInput).toBe(result.totalOutput + result.changeAmount + result.fee);
+    });
+
+    it("accepts exact no-change coverage after adding the final input", async () => {
+      mockPrismaClient.uTXO.findMany.mockResolvedValueOnce([
+        {
+          ...sampleUtxos[0],
+          walletId,
+          spent: false,
+          amount: 10_109n,
+          scriptPubKey: "0014" + "a".repeat(40),
+        },
+        {
+          ...sampleUtxos[1],
+          walletId,
+          spent: false,
+          amount: 69n,
+          scriptPubKey: "0014" + "b".repeat(40),
+        },
+      ]);
+
+      const result = await createBatchTransaction(
+        [{ address: testnetAddresses.nativeSegwit[0], amount: 10_000 }],
+        1,
+        walletId,
+        undefined,
+        "testnet3",
+      );
+
+      expect(result).toMatchObject({
+        totalInput: 10_178,
+        totalOutput: 10_000,
+        fee: 178,
+        changeAmount: 0,
+      });
+      expect(result.psbt.txInputs).toHaveLength(2);
+      expect(result.psbt.txOutputs).toHaveLength(1);
+      expect(result.totalInput).toBe(result.totalOutput + result.fee);
+      expect(result.feePolicy.roundingToleranceSats).toBeLessThan(100);
     });
   });
 

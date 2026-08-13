@@ -31,6 +31,13 @@
       "reviewWhenTouched": false,
       "lastReviewed": "2026-04-27"
     },
+    "server/tests/fixtures/generated-signed-psbt-vectors.ts": {
+      "category": "test-fixture",
+      "owner": "psbt-verification",
+      "reason": "Deterministically generated Bitcoin Core-accepted signed transaction fixtures for every enabled spend policy; regenerate from the pinned Core harness rather than manually split or edit.",
+      "reviewWhenTouched": false,
+      "lastReviewed": "2026-08-12"
+    },
     "server/tests/helpers/hardwareSignedFixtureIntake.ts": {
       "category": "proof-harness",
       "owner": "hardware-wallet-proof",
@@ -58,6 +65,13 @@
       "reason": "Stateful address-sync proof harness sharing one complete Electrum and repository mock boundary across classification, reconciliation, and I/O repair behavior.",
       "reviewWhenTouched": true,
       "lastReviewed": "2026-07-30"
+    },
+    "server/tests/unit/services/bitcoin/signingIntent/artifactValidation.test.ts": {
+      "category": "proof-harness",
+      "owner": "signing-intent-safety",
+      "reason": "Security-critical signed-artifact acceptance harness sharing one canonical transaction and intent-envelope fixture boundary across exact output, prevout, fee-policy, replay, and legacy fail-closed behavior.",
+      "reviewWhenTouched": true,
+      "lastReviewed": "2026-08-12"
     },
     "server/tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts": {
       "category": "proof-harness",

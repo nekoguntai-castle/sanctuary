@@ -251,6 +251,26 @@ describe('adminSettingsService', () => {
     expect(mocks.set).not.toHaveBeenCalled();
   });
 
+  it.each([0, 10_001, 1.5, 'not-a-number'])(
+    'rejects an unsafe dust threshold: %s',
+    async (dustThreshold) => {
+      const { updateAdminSettings } = await loadService();
+      await expect(updateAdminSettings({ dustThreshold })).rejects.toMatchObject({
+        statusCode: 400,
+        message: 'Dust threshold must be an integer between 1 and 10000',
+      });
+      expect(mocks.set).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([1, 10_000])('accepts the inclusive dust threshold boundary: %s', async (dustThreshold) => {
+    mocks.getAll.mockResolvedValueOnce([{ key: 'dustThreshold', value: String(dustThreshold) }]);
+    const { updateAdminSettings } = await loadService();
+
+    await expect(updateAdminSettings({ dustThreshold })).resolves.toMatchObject({ dustThreshold });
+    expect(mocks.set).toHaveBeenCalledWith('dustThreshold', JSON.stringify(dustThreshold));
+  });
+
   it('rejects attempts to overwrite operational runtime metadata', async () => {
     const { updateAdminSettings } = await loadService();
 

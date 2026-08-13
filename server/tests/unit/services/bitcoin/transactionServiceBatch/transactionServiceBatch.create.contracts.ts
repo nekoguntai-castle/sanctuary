@@ -7,6 +7,7 @@ import { mockGetTransaction } from "./transactionServiceBatchTestHarness";
 import { createBatchTransaction } from "../../../../../src/services/bitcoin/transactionService";
 import * as nodeClient from "../../../../../src/services/bitcoin/nodeClient";
 import * as asyncUtils from "../../../../../src/utils/async";
+import * as transactionFeePolicy from "../../../../../src/services/bitcoin/transactions/feePolicy";
 import {
   inputAddressRow,
   mockAddressFindManyByQuery,
@@ -120,6 +121,68 @@ export function registerCreateBatchTransactionContracts() {
       ).rejects.toThrow("Insufficient funds");
     });
 
+    it("should reject a batch when no spendable UTXOs are available", async () => {
+      mockPrismaClient.uTXO.findMany.mockResolvedValue([]);
+
+      await expect(createBatchTransaction(
+        walletId,
+        [{ address: testnetAddresses.nativeSegwit[0], amount: 10_000 }],
+        10,
+      )).rejects.toThrow("No spendable UTXOs available");
+    });
+
+    it("should fail closed if batch UTXO identity changes after policy resolution", async () => {
+      const stableAddress = fixture.utxos[0].address;
+      let reads = 0;
+      const unstable = {
+        ...fixture.utxos[0],
+        get address() {
+          reads += 1;
+          return reads <= 2 ? stableAddress : testnetAddresses.nativeSegwit[1];
+        },
+      };
+      mockPrismaClient.uTXO.findMany.mockResolvedValue([unstable]);
+
+      await expect(createBatchTransaction(
+        walletId,
+        [{ address: testnetAddresses.nativeSegwit[0], amount: 10_000 }],
+        10,
+      )).rejects.toThrow("UTXO spend policy evidence is missing");
+    });
+
+    it("should reject change rows without an address before constructing the output", async () => {
+      mockPrismaClient.address.findFirst.mockResolvedValueOnce({
+        ...fixture.changeAddress,
+        address: undefined,
+      });
+
+      await expect(createBatchTransaction(
+        walletId,
+        [{ address: testnetAddresses.nativeSegwit[0], amount: 50_000 }],
+        5,
+      )).rejects.toThrow("No prepared change address available");
+    });
+
+    it("should fail closed when a normal batch cannot derive a change script", async () => {
+      const templateSpy = vi.spyOn(
+        transactionFeePolicy,
+        "transactionChangeScriptTemplate",
+      ).mockReturnValueOnce(undefined as any);
+      mockPrismaClient.uTXO.findMany.mockResolvedValue([
+        { ...fixture.utxos[0], amount: 1_000n },
+      ]);
+
+      try {
+        await expect(createBatchTransaction(
+          walletId,
+          [{ address: testnetAddresses.nativeSegwit[0], amount: 10_000 }],
+          10,
+        )).rejects.toThrow("Insufficient funds");
+      } finally {
+        templateSpy.mockRestore();
+      }
+    });
+
     it("should include change output when change exceeds dust threshold", async () => {
       const outputs = [
         { address: testnetAddresses.nativeSegwit[0], amount: 50000 },
@@ -130,6 +193,78 @@ export function registerCreateBatchTransactionContracts() {
       // Should have change output
       expect(result.changeAmount).toBeGreaterThan(546);
       expect(result.changeAddress).toBeDefined();
+    });
+
+    it("should preserve change exactly at the dust threshold", async () => {
+      mockPrismaClient.uTXO.findMany.mockResolvedValue([
+        { ...fixture.utxos[0], amount: 10_687n },
+      ]);
+
+      const result = await createBatchTransaction(
+        walletId,
+        [{ address: testnetAddresses.nativeSegwit[0], amount: 10_000 }],
+        1,
+      );
+      const psbt = bitcoin.Psbt.fromBase64(result.psbtBase64);
+
+      expect(result).toMatchObject({
+        totalInput: 10_687,
+        totalOutput: 10_546,
+        fee: 141,
+        changeAmount: 546,
+      });
+      expect(psbt.txInputs).toHaveLength(1);
+      expect(psbt.txOutputs).toHaveLength(2);
+      expect(result.totalInput).toBe(result.totalOutput + result.fee);
+    });
+
+    it("should accept exact no-change coverage after adding the final input", async () => {
+      mockPrismaClient.uTXO.findMany.mockResolvedValue([
+        { ...fixture.utxos[0], amount: 10_109n },
+        { ...fixture.utxos[1], amount: 69n },
+      ]);
+
+      const result = await createBatchTransaction(
+        walletId,
+        [{ address: testnetAddresses.nativeSegwit[0], amount: 10_000 }],
+        1,
+      );
+      const psbt = bitcoin.Psbt.fromBase64(result.psbtBase64);
+
+      expect(result).toMatchObject({
+        totalInput: 10_178,
+        totalOutput: 10_000,
+        fee: 178,
+        changeAmount: 0,
+      });
+      expect(result.utxos).toHaveLength(2);
+      expect(psbt.txInputs).toHaveLength(2);
+      expect(psbt.txOutputs).toHaveLength(1);
+      expect(result.totalInput).toBe(result.totalOutput + result.fee);
+      expect(result.feePolicy.roundingToleranceSats).toBeLessThan(100);
+    });
+
+    it("should allow a send-max output exactly at the dust threshold", async () => {
+      mockPrismaClient.uTXO.findMany.mockResolvedValue([
+        { ...fixture.utxos[0], amount: 10_687n },
+      ]);
+
+      const outputs = [
+        { address: fixture.inputAddresses[0].address, amount: 10_000 },
+        { address: fixture.inputAddresses[1].address, amount: 0, sendMax: true },
+      ];
+      const result = await createBatchTransaction(walletId, outputs, 1);
+      const psbt = bitcoin.Psbt.fromBase64(result.psbtBase64);
+
+      expect(result.outputs[1].amount).toBe(546);
+      expect(result).toMatchObject({
+        totalInput: 10_687,
+        totalOutput: 10_546,
+        fee: 141,
+        changeAmount: 0,
+      });
+      expect(psbt.txOutputs).toHaveLength(2);
+      expect(result.totalInput).toBe(result.totalOutput + result.fee);
     });
 
     it("should disable RBF sequence numbers in batch mode when enableRBF is false", async () => {
@@ -156,7 +291,7 @@ export function registerCreateBatchTransactionContracts() {
         createBatchTransaction(walletId, outputs, 10, {
           selectedUtxoIds: ["not-present:999"],
         }),
-      ).rejects.toThrow("No spendable UTXOs available");
+      ).rejects.toThrow("Selected UTXOs are unavailable");
     });
 
     it("should filter to selected batch UTXOs when selectedUtxoIds are provided", async () => {
@@ -328,7 +463,7 @@ export function registerCreateBatchTransactionContracts() {
         { address: testnetAddresses.nativeSegwit[0], amount: 50_000 },
       ];
       await expect(createBatchTransaction(walletId, outputs, 10)).rejects.toThrow(
-        "Cannot create PSBT: missing BIP32 derivation metadata for input 0",
+        "PSBT account binding failed: input 0 lacks canonical address evidence",
       );
     });
 

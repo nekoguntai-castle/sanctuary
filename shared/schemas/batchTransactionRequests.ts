@@ -12,6 +12,7 @@ import { MOBILE_API_REQUEST_LIMITS } from './mobileApiRequests';
 
 const outputsArrayRequiredMessage = 'outputs array is required with at least one output';
 const feeRateMinimumMessage = `feeRate must be at least ${MOBILE_API_REQUEST_LIMITS.minFeeRate} sat/vB`;
+const feeRateMaximumMessage = `feeRate must be at most ${MOBILE_API_REQUEST_LIMITS.maxFeeRate} sat/vB`;
 const singleSendMaxMessage = 'Only one output can have sendMax enabled';
 
 const BatchTransactionOutputItemSchema = z
@@ -29,7 +30,8 @@ export const BatchTransactionRequestSchema = z
       .min(1, outputsArrayRequiredMessage),
     feeRate: z
       .number({ message: 'feeRate is required' })
-      .min(MOBILE_API_REQUEST_LIMITS.minFeeRate, feeRateMinimumMessage),
+      .min(MOBILE_API_REQUEST_LIMITS.minFeeRate, feeRateMinimumMessage)
+      .max(MOBILE_API_REQUEST_LIMITS.maxFeeRate, feeRateMaximumMessage),
     selectedUtxoIds: z.array(z.string()).optional(),
     enableRBF: z.boolean().optional(),
     label: z.string().optional(),

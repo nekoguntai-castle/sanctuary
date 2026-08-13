@@ -2,6 +2,7 @@ import { ArrowUpCircle, Loader2 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { InfoBox, ModalFrame } from './TransactionModalShared';
 import type { TransactionActionHandlers, TransactionActionState } from './types';
+import { MOBILE_API_REQUEST_LIMITS } from '@sanctuary/shared/schemas/mobileApiRequests';
 
 export function CPFPModal({
   handlers,
@@ -33,7 +34,9 @@ export function CPFPModal({
         </Button>
         <Button
           onClick={handlers.handleCPFP}
-          disabled={state.processing || state.targetFeeRate < 1}
+          disabled={state.processing
+            || state.targetFeeRate < 1
+            || state.targetFeeRate > MOBILE_API_REQUEST_LIMITS.maxFeeRate}
           className="flex-1"
         >
           <CPFPSubmitContent processing={state.processing} />
@@ -58,8 +61,12 @@ function CPFPRateInput({
       <input
         type="number"
         value={targetFeeRate}
-        onChange={(event) => onChange(parseFloat(event.target.value) || 0)}
-        min={0.1}
+        onChange={(event) => onChange(Math.min(
+          parseFloat(event.target.value) || 0,
+          MOBILE_API_REQUEST_LIMITS.maxFeeRate,
+        ))}
+        min={MOBILE_API_REQUEST_LIMITS.minFeeRate}
+        max={MOBILE_API_REQUEST_LIMITS.maxFeeRate}
         step={0.01}
         placeholder="e.g., 50"
         className="block w-full px-4 py-3 rounded-lg border border-sanctuary-300 dark:border-sanctuary-700 surface-muted focus:ring-2 focus:ring-sanctuary-500 focus:outline-none"

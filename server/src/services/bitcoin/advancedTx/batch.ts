@@ -7,19 +7,27 @@
  */
 
 import * as bitcoin from "bitcoinjs-lib";
-import { getNetwork, estimateTransactionSize, calculateFee } from "../utils";
+import { getNetwork } from "../utils";
 import { getNodeClient } from "../nodeClient";
 import type { BitcoinNetwork } from "../networks";
 import { normalizeLegacyBitcoinNetwork } from "../networks";
-import { utxoRepository, addressRepository, walletRepository } from "../../../repositories";
+import { utxoRepository, walletRepository } from "../../../repositories";
 import { RBF_SEQUENCE, getDustThreshold } from "./shared";
-import {
-  parseWalletScriptType,
-  WalletScriptType,
-} from "@sanctuary/shared/constants/walletIdentity";
-import { assertCanonicalAddressesForWallet } from "../../wallet/canonicalAddressValidation";
+import { WalletScriptType } from "@sanctuary/shared/constants/walletIdentity";
 import type { PsbtSigningContext } from "@sanctuary/shared/schemas/psbtSigningContext";
 import { bindPsbtAccount } from "../psbtAccountBinding";
+import {
+  addInputsWithBip32,
+  fetchAddressDerivationPaths,
+  parseAccountNode,
+  resolveWalletSigningInfo,
+} from "../transactions/psbtConstruction";
+import { resolveTransactionSpendPolicy, transactionChangeScriptTemplate } from "../transactions/feePolicy";
+import { prepareChangeOutputs } from "../transactions/outputBuilder";
+import { estimateTransactionWeight, feeForRate } from "../transactionWeight";
+import { buildSigningIntentFeePolicy } from "../signingIntent/feePolicy";
+import type { SigningIntentFeePolicyV1 } from "../signingIntent/types";
+import { assertExactUtxoSelection } from "../utxoSelection";
 
 /**
  * Create a batch transaction sending to multiple recipients
@@ -38,6 +46,7 @@ export async function createBatchTransaction(
   changeAmount: number;
   savedFees: number; // Savings compared to individual transactions
   signingContext: PsbtSigningContext;
+  feePolicy: SigningIntentFeePolicyV1;
 }> {
   if (recipients.length === 0) {
     throw new Error("At least one recipient is required");
@@ -51,6 +60,7 @@ export async function createBatchTransaction(
 
   // Filter by selected UTXOs if provided
   if (selectedUtxoIds && selectedUtxoIds.length > 0) {
+    assertExactUtxoSelection(utxos, selectedUtxoIds);
     utxos = utxos.filter((utxo) =>
       selectedUtxoIds.includes(`${utxo.txid}:${utxo.vout}`),
     );
@@ -60,8 +70,22 @@ export async function createBatchTransaction(
     throw new Error("No spendable UTXOs available");
   }
   const wallet = await walletRepository.findByIdWithSigningDevices(walletId);
-  const walletScriptType = wallet && parseWalletScriptType(wallet.scriptType);
-  if (!wallet || !walletScriptType) throw new Error("Wallet script identity is unavailable");
+  if (!wallet) throw new Error("Wallet script identity is unavailable");
+  if (utxos.some(utxo => !utxo.scriptPubKey)) throw new Error("UTXO is missing scriptPubKey evidence");
+  const networkObj = getNetwork(network);
+  const signingInfo = resolveWalletSigningInfo(wallet, "[ADVANCED_BATCH] ");
+  const recipientScripts = recipients.map(recipient =>
+    bitcoin.address.toOutputScript(recipient.address, networkObj));
+  const changeScript = transactionChangeScriptTemplate(signingInfo);
+  const addressPathMap = await fetchAddressDerivationPaths(walletId, utxos.map(utxo => utxo.address));
+  const spendEvidence = new Map(utxos.map(utxo => [
+    utxo.address,
+    resolveTransactionSpendPolicy(
+      signingInfo,
+      addressPathMap.get(utxo.address) ?? (() => { throw new Error("Batch input spend evidence is missing"); })(),
+      networkObj,
+    ),
+  ]));
 
   // Calculate total output amount
   const totalOutputAmount = recipients.reduce((sum, r) => sum + r.amount, 0);
@@ -69,53 +93,58 @@ export async function createBatchTransaction(
   // Select UTXOs to cover the amount
   const selectedUtxos: typeof utxos = [];
   let totalInput = 0;
+  let fee = 0;
+  let changeAmount = 0;
+  let feeSurplusSats = 0;
+
+  const estimateFee = (selected: typeof utxos, scripts: readonly Uint8Array[]) => feeForRate(
+    estimateTransactionWeight({
+      inputs: selected.map(utxo => ({
+        ...(spendEvidence.get(utxo.address) ?? (() => { throw new Error("Batch input spend evidence is missing"); })()),
+        prevoutScript: Buffer.from(utxo.scriptPubKey!, "hex"),
+      })),
+      outputs: scripts.map(scriptPubKey => ({ scriptPubKey })),
+    }).vsize,
+    feeRate,
+  );
 
   for (const utxo of utxos) {
     selectedUtxos.push(utxo);
     totalInput += Number(utxo.amount);
 
-    // Estimate fee with current inputs
-    const estimatedSize = estimateTransactionSize(
-      selectedUtxos.length,
-      recipients.length + 1, // +1 for change output
-      walletScriptType,
-    );
-    const estimatedFee = calculateFee(estimatedSize, feeRate);
-
-    if (totalInput >= totalOutputAmount + estimatedFee) {
+    const feeWithChange = estimateFee(selectedUtxos, [...recipientScripts, changeScript]);
+    const candidateChange = totalInput - totalOutputAmount - feeWithChange;
+    if (candidateChange >= dustThreshold) {
+      fee = feeWithChange;
+      changeAmount = candidateChange;
+      feeSurplusSats = 0;
+      break;
+    }
+    const feeWithoutChange = estimateFee(selectedUtxos, recipientScripts);
+    if (totalInput >= totalOutputAmount + feeWithoutChange) {
+      fee = totalInput - totalOutputAmount;
+      changeAmount = 0;
+      feeSurplusSats = fee - feeWithoutChange;
       break;
     }
   }
-
-  // Final fee calculation
-  const txSize = estimateTransactionSize(
-    selectedUtxos.length,
-    recipients.length + 1,
-    walletScriptType,
-  );
-  const fee = calculateFee(txSize, feeRate);
-
-  if (totalInput < totalOutputAmount + fee) {
+  if (fee === 0) {
+    const requiredFee = estimateFee(selectedUtxos, [...recipientScripts, changeScript]);
     throw new Error(
-      `Insufficient funds. Need ${totalOutputAmount + fee} sats, have ${totalInput} sats`,
+      `Insufficient funds. Need ${totalOutputAmount + requiredFee} sats, have ${totalInput} sats`,
     );
   }
 
-  const changeAmount = totalInput - totalOutputAmount - fee;
-
   // Calculate savings vs individual transactions
-  const individualTxFee = calculateFee(
-    estimateTransactionSize(1, 2, walletScriptType), // 1 in, 2 out (recipient + change)
-    feeRate,
-  );
-  const totalIndividualFees = individualTxFee * recipients.length;
+  const totalIndividualFees = recipientScripts.reduce((sum, recipientScript) =>
+    sum + estimateFee([selectedUtxos[0]], [recipientScript, changeScript]), 0);
   const savedFees = totalIndividualFees - fee;
 
   // Create PSBT
-  const networkObj = getNetwork(network);
   const psbt = new bitcoin.Psbt({ network: networkObj });
   const rawTransactions = new Map<string, Buffer>();
-  if (walletScriptType === WalletScriptType.LEGACY) {
+  const isLegacy = wallet.scriptType === WalletScriptType.LEGACY;
+  if (isLegacy) {
     const client = await getNodeClient(network);
     const rows = await Promise.all(selectedUtxos.map(async utxo => {
       const transaction = await client.getTransaction(utxo.txid);
@@ -124,21 +153,22 @@ export async function createBatchTransaction(
     for (const [txid, transaction] of rows) rawTransactions.set(txid, transaction);
   }
 
-  // Add inputs with RBF enabled
-  for (const utxo of selectedUtxos) {
-    const rawTransaction = rawTransactions.get(utxo.txid);
-    psbt.addInput({
-      hash: utxo.txid,
-      index: utxo.vout,
-      sequence: RBF_SEQUENCE,
-      ...(walletScriptType === WalletScriptType.LEGACY ? {
-        nonWitnessUtxo: rawTransaction!,
-      } : { witnessUtxo: {
-        script: Buffer.from(utxo.scriptPubKey, "hex"),
-        value: BigInt(utxo.amount),
-      } }),
-    });
-  }
+  const accountNode = signingInfo.accountXpub
+    ? parseAccountNode(signingInfo.accountXpub, networkObj)
+    : undefined;
+  addInputsWithBip32(psbt, selectedUtxos.map(utxo => ({
+    ...utxo,
+    scriptPubKey: utxo.scriptPubKey!,
+  })), {
+    sequence: RBF_SEQUENCE,
+    isLegacy,
+    rawTxCache: rawTransactions,
+    addressPathMap,
+    signingInfo,
+    accountNode,
+    networkObj,
+    logPrefix: "[ADVANCED_BATCH] ",
+  });
 
   // Add recipient outputs
   for (const recipient of recipients) {
@@ -150,15 +180,9 @@ export async function createBatchTransaction(
 
   // Add change output
   if (changeAmount >= dustThreshold) {
-    const changeAddress = await addressRepository.findNextUnusedChange(walletId);
-
-    if (!changeAddress) {
-      throw new Error("No change address available");
-    }
-    await assertCanonicalAddressesForWallet(walletId, [changeAddress], 1);
-
+    const [preparedChange] = await prepareChangeOutputs(walletId, 1);
     psbt.addOutput({
-      address: changeAddress.address,
+      address: preparedChange.address,
       value: BigInt(changeAmount),
     });
   }
@@ -175,5 +199,11 @@ export async function createBatchTransaction(
     changeAmount,
     savedFees,
     signingContext,
+    feePolicy: buildSigningIntentFeePolicy(
+      psbt.toBase64(),
+      feeRate,
+      fee,
+      feeSurplusSats,
+    ),
   };
 }

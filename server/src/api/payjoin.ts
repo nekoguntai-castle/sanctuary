@@ -41,6 +41,11 @@ import {
   unsignedPsbtSha256,
 } from '../services/bitcoin/signingIntent/canonical';
 import { bindPsbtAccount } from '../services/bitcoin/psbtAccountBinding';
+import {
+  buildSigningIntentFeePolicy,
+  calculatePsbtFee,
+  estimatePsbtMaximumSignedVsize,
+} from '../services/bitcoin/signingIntent/feePolicy';
 
 const log = createLogger('PAYJOIN:ROUTE');
 
@@ -308,12 +313,38 @@ router.post('/attempt', authenticate, requireFeature('payjoinSupport'), validate
     foreignInputIndexes: inputRoles.flatMap((role, index) => role === 'payjoin_peer' ? [index] : []),
   });
   const boundProposalPsbt = proposal.toBase64();
+  const originalRequestedFeeRate = originalIntent.snapshot.version === 2
+    ? originalIntent.snapshot.feePolicy.requestedFeeRateSatsPerVbyte
+    : (() => { throw new InvalidInputError('Payjoin requires a current signing intent', 'intentId', { reason: 'stale_intent' }); })();
+  // The Payjoin sender validator has already enforced the BIP78 sender-output
+  // and bounded-fee-increase invariants. Bind the proposal's exact total fee,
+  // including any receiver-funded contribution, without weakening final
+  // artifact equality checks.
+  const proposalFee = calculatePsbtFee(proposal);
+  const proposalMaximumVsize = estimatePsbtMaximumSignedVsize(proposal);
+  // Pick an interior point in the proposal fee's integer ceiling bucket. For an
+  // integer fee F and maximum vsize V, ceil(((F - 0.5) / V) * V) remains F,
+  // while avoiding a binary floating-point result infinitesimally above F.
+  const requestedFeeRate = Math.min(
+    originalRequestedFeeRate,
+    (proposalFee - 0.5) / proposalMaximumVsize,
+  );
+  const proposalFeeSurplus = Math.max(
+    0,
+    proposalFee - Math.ceil(requestedFeeRate * proposalMaximumVsize),
+  );
   const replacementIntent = await createSigningIntent({
     walletId,
     createdByUserId: userId,
     network: networkStr,
     source: 'payjoin',
     unsignedPsbtBase64: boundProposalPsbt,
+    feePolicy: buildSigningIntentFeePolicy(
+      boundProposalPsbt,
+      requestedFeeRate,
+      undefined,
+      proposalFeeSurplus,
+    ),
     inputRoles,
     supersedesIntentId: originalIntent.intentId,
     signingContext,

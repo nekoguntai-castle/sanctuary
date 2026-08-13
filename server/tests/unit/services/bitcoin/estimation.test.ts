@@ -5,6 +5,7 @@
  */
 
 import { mockPrismaClient, resetPrismaMocks } from '../../../mocks/prisma';
+import { sampleWallets, testnetAddresses } from '../../../fixtures/bitcoin';
 
 // Mock Prisma before importing the module under test
 vi.mock('../../../../src/models/prisma', () => ({
@@ -13,21 +14,31 @@ vi.mock('../../../../src/models/prisma', () => ({
 
 // Mock utxoSelection since estimateTransaction depends on it
 vi.mock('../../../../src/services/bitcoin/utxoSelection', () => ({
-  selectUTXOs: vi.fn(),
-  UTXOSelectionStrategy: {
-    LARGEST_FIRST: 'largest_first',
-    SMALLEST_FIRST: 'smallest_first',
-  },
+  selectUTXOsExact: vi.fn(),
+}));
+
+vi.mock('../../../../src/services/bitcoin/transactions/psbtConstruction', () => ({
+  resolveWalletSigningInfo: vi.fn(() => ({ scriptType: 'native_segwit' })),
+}));
+
+vi.mock('../../../../src/services/bitcoin/transactions/feePolicy', () => ({
+  createTransactionSpendPolicyResolver: vi.fn(() => vi.fn()),
+  transactionChangeScriptTemplate: vi.fn(() => Buffer.from(`0014${'44'.repeat(20)}`, 'hex')),
 }));
 
 import { getDustThreshold, estimateTransaction } from '../../../../src/services/bitcoin/estimation';
-import { selectUTXOs } from '../../../../src/services/bitcoin/utxoSelection';
+import { selectUTXOsExact } from '../../../../src/services/bitcoin/utxoSelection';
 import { DEFAULT_DUST_THRESHOLD } from '../../../../src/constants';
 
 describe('Transaction Estimation', () => {
   beforeEach(() => {
     resetPrismaMocks();
-    vi.mocked(selectUTXOs).mockReset();
+    vi.mocked(selectUTXOsExact).mockReset();
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({
+      ...sampleWallets.singleSigNativeSegwit,
+      network: 'testnet3',
+      devices: [],
+    });
   });
 
   // ========================================
@@ -77,12 +88,28 @@ describe('Transaction Estimation', () => {
   // estimateTransaction
   // ========================================
   describe('estimateTransaction', () => {
+    it('fails closed when the wallet no longer exists', async () => {
+      mockPrismaClient.systemSetting.findUnique.mockResolvedValue(null);
+      mockPrismaClient.wallet.findUnique.mockResolvedValueOnce(null);
+
+      const result = await estimateTransaction(
+        'missing-wallet', testnetAddresses.nativeSegwit[0], 100_000, 10,
+      );
+
+      expect(result).toMatchObject({
+        sufficient: false,
+        fee: 0,
+        inputCount: 0,
+        error: 'Wallet not found',
+      });
+      expect(selectUTXOsExact).not.toHaveBeenCalled();
+    });
+
     it('should return successful estimate when funds are sufficient', async () => {
       // Mock dust threshold
       mockPrismaClient.systemSetting.findUnique.mockResolvedValue(null);
 
-      // Mock selectUTXOs to return a successful selection
-      vi.mocked(selectUTXOs).mockResolvedValue({
+      vi.mocked(selectUTXOsExact).mockResolvedValue({
         utxos: [
           { id: 'u1', txid: 'aaa', vout: 0, amount: BigInt(500000), scriptPubKey: '00', address: 'tb1q' },
         ],
@@ -91,7 +118,7 @@ describe('Transaction Estimation', () => {
         changeAmount: 398870,
       });
 
-      const result = await estimateTransaction('wallet-1', 'tb1qrecipient', 100000, 10);
+      const result = await estimateTransaction('wallet-1', testnetAddresses.nativeSegwit[0], 100000, 10);
 
       expect(result.sufficient).toBe(true);
       expect(result.fee).toBe(1130);
@@ -103,7 +130,7 @@ describe('Transaction Estimation', () => {
     it('should return 2 outputs when change exceeds dust threshold', async () => {
       mockPrismaClient.systemSetting.findUnique.mockResolvedValue(null);
 
-      vi.mocked(selectUTXOs).mockResolvedValue({
+      vi.mocked(selectUTXOsExact).mockResolvedValue({
         utxos: [
           { id: 'u1', txid: 'aaa', vout: 0, amount: BigInt(200000), scriptPubKey: '00', address: 'tb1q' },
         ],
@@ -112,7 +139,7 @@ describe('Transaction Estimation', () => {
         changeAmount: 99435, // Well above dust threshold
       });
 
-      const result = await estimateTransaction('wallet-1', 'tb1qrecipient', 100000, 5);
+      const result = await estimateTransaction('wallet-1', testnetAddresses.nativeSegwit[0], 100000, 5);
 
       expect(result.outputCount).toBe(2); // recipient + change
     });
@@ -120,7 +147,7 @@ describe('Transaction Estimation', () => {
     it('should return 1 output when change is below dust threshold', async () => {
       mockPrismaClient.systemSetting.findUnique.mockResolvedValue(null);
 
-      vi.mocked(selectUTXOs).mockResolvedValue({
+      vi.mocked(selectUTXOsExact).mockResolvedValue({
         utxos: [
           { id: 'u1', txid: 'aaa', vout: 0, amount: BigInt(100600), scriptPubKey: '00', address: 'tb1q' },
         ],
@@ -129,7 +156,7 @@ describe('Transaction Estimation', () => {
         changeAmount: 100, // Below dust threshold (546)
       });
 
-      const result = await estimateTransaction('wallet-1', 'tb1qrecipient', 100000, 5);
+      const result = await estimateTransaction('wallet-1', testnetAddresses.nativeSegwit[0], 100000, 5);
 
       expect(result.outputCount).toBe(1); // recipient only, change absorbed into fee
     });
@@ -137,11 +164,11 @@ describe('Transaction Estimation', () => {
     it('should return insufficient when selectUTXOs throws', async () => {
       mockPrismaClient.systemSetting.findUnique.mockResolvedValue(null);
 
-      vi.mocked(selectUTXOs).mockRejectedValue(
+      vi.mocked(selectUTXOsExact).mockRejectedValue(
         new Error('Insufficient funds. Need 150000 sats, have 100000 sats')
       );
 
-      const result = await estimateTransaction('wallet-1', 'tb1qrecipient', 100000, 10);
+      const result = await estimateTransaction('wallet-1', testnetAddresses.nativeSegwit[0], 100000, 10);
 
       expect(result.sufficient).toBe(false);
       expect(result.fee).toBe(0);
@@ -152,11 +179,11 @@ describe('Transaction Estimation', () => {
     it('should return insufficient when no UTXOs are available', async () => {
       mockPrismaClient.systemSetting.findUnique.mockResolvedValue(null);
 
-      vi.mocked(selectUTXOs).mockRejectedValue(
+      vi.mocked(selectUTXOsExact).mockRejectedValue(
         new Error('No spendable UTXOs available')
       );
 
-      const result = await estimateTransaction('wallet-1', 'tb1qrecipient', 50000, 5);
+      const result = await estimateTransaction('wallet-1', testnetAddresses.nativeSegwit[0], 50000, 5);
 
       expect(result.sufficient).toBe(false);
       expect(result.error).toContain('No spendable UTXOs');
@@ -165,7 +192,7 @@ describe('Transaction Estimation', () => {
     it('should pass selected UTXO IDs to selectUTXOs', async () => {
       mockPrismaClient.systemSetting.findUnique.mockResolvedValue(null);
 
-      vi.mocked(selectUTXOs).mockResolvedValue({
+      vi.mocked(selectUTXOsExact).mockResolvedValue({
         utxos: [
           { id: 'u1', txid: 'aaa', vout: 0, amount: BigInt(100000), scriptPubKey: '00', address: 'tb1q' },
         ],
@@ -175,13 +202,18 @@ describe('Transaction Estimation', () => {
       });
 
       const selectedIds = ['txid1:0', 'txid2:1'];
-      await estimateTransaction('wallet-1', 'tb1qrecipient', 50000, 5, selectedIds);
+      await estimateTransaction('wallet-1', testnetAddresses.nativeSegwit[0], 50000, 5, selectedIds);
 
-      expect(selectUTXOs).toHaveBeenCalledWith(
+      expect(selectUTXOsExact).toHaveBeenCalledWith(
         'wallet-1',
         50000,
         5,
-        'largest_first',
+        expect.objectContaining({
+          recipientScript: expect.any(Uint8Array),
+          changeScripts: [expect.any(Uint8Array)],
+          dustThreshold: 546,
+          resolveSpendPolicies: expect.any(Function),
+        }),
         selectedIds
       );
     });
@@ -189,7 +221,7 @@ describe('Transaction Estimation', () => {
     it('should handle multiple inputs in estimate', async () => {
       mockPrismaClient.systemSetting.findUnique.mockResolvedValue(null);
 
-      vi.mocked(selectUTXOs).mockResolvedValue({
+      vi.mocked(selectUTXOsExact).mockResolvedValue({
         utxos: [
           { id: 'u1', txid: 'aaa', vout: 0, amount: BigInt(30000), scriptPubKey: '00', address: 'tb1q' },
           { id: 'u2', txid: 'bbb', vout: 0, amount: BigInt(30000), scriptPubKey: '00', address: 'tb1q' },
@@ -200,7 +232,7 @@ describe('Transaction Estimation', () => {
         changeAmount: 38000,
       });
 
-      const result = await estimateTransaction('wallet-1', 'tb1qrecipient', 50000, 20);
+      const result = await estimateTransaction('wallet-1', testnetAddresses.nativeSegwit[0], 50000, 20);
 
       expect(result.inputCount).toBe(3);
       expect(result.sufficient).toBe(true);

@@ -77,6 +77,10 @@ vi.mock('../../../src/services/bitcoin/signingIntent/service', () => ({
   loadSigningIntent: vi.fn().mockResolvedValue({
     intentId: 'intent-1',
     unsignedPsbtSha256: 'psbt-hash',
+    snapshot: {
+      version: 2,
+      feePolicy: { requestedFeeRateSatsPerVbyte: 4 },
+    },
   }),
   createSigningIntent: vi.fn().mockResolvedValue({
     intentId: 'intent-2',
@@ -197,22 +201,30 @@ const mockBindPsbtAccount = vi.mocked(bindPsbtAccount);
 const TEST_ADDRESS = 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx';
 const TEST_ADDRESS_ID = 'addr-123';
 const TEST_WALLET_ID = 'wallet-123';
-const VALID_PSBT_BASE64 =
-  'cHNidP8BAFICAAAAARERERERERERERERERERERERERERERERERERERERERERAAAAAAD/////AYgTAAAAAAAAFgAUIiIiIiIiIiIiIiIiIiIiIiIiIiIAAAAAAAAA';
-const PROPOSAL_PSBT_BASE64 =
-  'cHNidP8BAHECAAAAARERERERERERERERERERERERERERERERERERERERERERAAAAAAD/////AqAPAAAAAAAAFgAUIiIiIiIiIiIiIiIiIiIiIiIiIiKEAwAAAAAAABYAFCIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAAAAAAA=';
-const payjoinProposalWithPeerInput = (): string => {
-  const proposal = bitcoin.Psbt.fromBase64(PROPOSAL_PSBT_BASE64);
-  proposal.addInput({
-    hash: '55'.repeat(32),
-    index: 1,
-    witnessUtxo: {
-      script: Buffer.from(`0014${'66'.repeat(20)}`, 'hex'),
-      value: 2_000n,
-    },
+const payjoinPsbt = (outputs: number[], peerInput = false): string => {
+  const psbt = new bitcoin.Psbt();
+  const script = Buffer.from(`0014${'22'.repeat(20)}`, 'hex');
+  psbt.addInput({
+    hash: '11'.repeat(32),
+    index: 0,
+    witnessUtxo: { script, value: 10_000n },
   });
-  return proposal.toBase64();
+  if (peerInput) {
+    psbt.addInput({
+      hash: '55'.repeat(32),
+      index: 1,
+      witnessUtxo: { script: Buffer.from(`0014${'66'.repeat(20)}`, 'hex'), value: 2_000n },
+    });
+  }
+  for (const value of outputs) psbt.addOutput({ script, value: BigInt(value) });
+  return psbt.toBase64();
 };
+const VALID_PSBT_BASE64 = payjoinPsbt([9_400]);
+const PROPOSAL_PSBT_BASE64 = payjoinPsbt([4_000, 5_400]);
+const payjoinProposalWithPeerInput = (): string => {
+  return payjoinPsbt([5_760, 5_400], true);
+};
+const feePreservingPayjoinProposal = (): string => payjoinPsbt([9_400, 2_000], true);
 const ATTEMPT_AUTH = {
   walletId: TEST_WALLET_ID,
   intentId: 'intent-1',
@@ -980,6 +992,55 @@ describe('Payjoin API Routes', () => {
         expect.objectContaining({ inputCount: 2 }),
         { foreignInputIndexes: [1] },
       );
+    });
+
+    it('issues an exact replacement intent when receiver weight preserves the absolute fee', async () => {
+      mockAttemptPayjoinSend.mockResolvedValue({
+        success: true,
+        proposalPsbt: feePreservingPayjoinProposal(),
+        isPayjoin: true,
+      });
+      mockDerivePayjoinInputRoles.mockReturnValueOnce(['wallet', 'payjoin_peer']);
+
+      const res = await request(app)
+        .post('/api/v1/payjoin/attempt')
+        .set('Authorization', 'Bearer test-token')
+        .send({
+          ...ATTEMPT_AUTH,
+          psbt: VALID_PSBT_BASE64,
+          payjoinUrl: 'https://example.com/pj',
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ success: true, intentId: 'intent-2' });
+    });
+
+    it('rejects a Payjoin proposal when the original signing intent predates exact fee policy', async () => {
+      mockLoadSigningIntent.mockResolvedValueOnce({
+        intentId: 'intent-1',
+        unsignedPsbtSha256: 'psbt-hash',
+        snapshot: { version: 1 },
+      } as never);
+      mockAttemptPayjoinSend.mockResolvedValue({
+        success: true,
+        proposalPsbt: feePreservingPayjoinProposal(),
+        isPayjoin: true,
+      });
+
+      const res = await request(app)
+        .post('/api/v1/payjoin/attempt')
+        .set('Authorization', 'Bearer test-token')
+        .send({
+          ...ATTEMPT_AUTH,
+          psbt: VALID_PSBT_BASE64,
+          payjoinUrl: 'https://example.com/pj',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toMatchObject({
+        error: 'InvalidInput',
+        message: 'Payjoin requires a current signing intent',
+      });
     });
 
     it('should return failure response when Payjoin fails', async () => {

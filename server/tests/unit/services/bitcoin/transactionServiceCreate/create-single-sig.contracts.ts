@@ -19,6 +19,7 @@ import {
 } from "../../../../../src/services/bitcoin/transactionService";
 import * as asyncUtils from "../../../../../src/utils/async";
 import * as nodeClient from "../../../../../src/services/bitcoin/nodeClient";
+import * as utxoSelection from "../../../../../src/services/bitcoin/utxoSelection";
 import {
   mockBindPsbtAccount,
   singleSigSigningWallet,
@@ -180,7 +181,7 @@ export function registerTransactionServiceCreateSingleSigTests(): void {
           subtractFees: true,
           selectedUtxoIds: ["does-not-exist:0"],
         }),
-      ).rejects.toThrow("No spendable UTXOs available");
+      ).rejects.toThrow("Selected UTXOs are unavailable");
     });
 
     it("should throw when sendMax amount cannot cover fees", async () => {
@@ -192,6 +193,10 @@ export function registerTransactionServiceCreateSingleSigTests(): void {
           scriptPubKey: "0014" + "a".repeat(40),
         },
       ]);
+      mockAddressFindManyByQuery({
+        inputRows: [inputAddressRow(walletId, 0, { address: sampleUtxos[0].address })],
+        unusedRows: [changeAddressRow(walletId)],
+      });
 
       await expect(
         createTransaction(walletId, recipient, 0, 10, { sendMax: true }),
@@ -236,7 +241,7 @@ export function registerTransactionServiceCreateSingleSigTests(): void {
       ]);
       mockAddressFindManyByQuery({
         inputRows: [inputAddressRow(walletId, 0, { address: sampleUtxos[0].address })],
-        unusedRows: [changeAddressRow(walletId)],
+        unusedRows: [],
       });
 
       const result = await createTransaction(walletId, recipient, 10_000, 5);
@@ -244,6 +249,59 @@ export function registerTransactionServiceCreateSingleSigTests(): void {
       expect(result.changeAmount).toBeLessThan(546);
       expect(result.psbt.txOutputs.length).toBe(1);
       expect(result.totalOutput).toBe(result.effectiveAmount);
+      expect(mockPrismaClient.address.findFirst).not.toHaveBeenCalled();
+    });
+
+    it("authorizes only the actual absorbed remainder with a configured high dust threshold", async () => {
+      mockPrismaClient.systemSetting.findUnique.mockImplementation((query: any) => Promise.resolve({
+        key: query.where.key,
+        value: query.where.key === 'dustThreshold' ? '10000' : '1',
+      }));
+      mockPrismaClient.uTXO.findMany.mockResolvedValue([{
+        ...sampleUtxos[0],
+        walletId,
+        amount: BigInt(20_704),
+        scriptPubKey: "0014" + "a".repeat(40),
+      }]);
+      mockAddressFindManyByQuery({
+        inputRows: [inputAddressRow(walletId, 0, { address: sampleUtxos[0].address })],
+        unusedRows: [],
+      });
+
+      const result = await createTransaction(walletId, recipient, 10_000, 5);
+
+      expect(result.psbt.txOutputs).toHaveLength(1);
+      expect(result.feePolicy.roundingToleranceSats).toBeGreaterThan(10_000);
+      expect(result.feePolicy.roundingToleranceSats).toBeLessThan(53_000);
+      expect(mockPrismaClient.address.findFirst).not.toHaveBeenCalled();
+    });
+
+    it("defaults a legacy exact-selection result to zero fee surplus", async () => {
+      const selected = {
+        ...sampleUtxos[0],
+        walletId,
+        amount: 10_550n,
+        scriptPubKey: "0014" + "a".repeat(40),
+      };
+      const selectionSpy = vi.spyOn(utxoSelection, "selectUTXOsExact").mockResolvedValueOnce({
+        utxos: [selected],
+        totalAmount: 10_550,
+        estimatedFee: 550,
+        changeAmount: 0,
+        changeOutputCount: 0,
+      });
+      mockAddressFindManyByQuery({
+        inputRows: [inputAddressRow(walletId, 0, { address: selected.address })],
+        unusedRows: [],
+      });
+
+      try {
+        const result = await createTransaction(walletId, recipient, 10_000, 5);
+        expect(result.fee).toBe(550);
+        expect(result.psbt.txOutputs).toHaveLength(1);
+      } finally {
+        selectionSpy.mockRestore();
+      }
     });
 
     it("should throw when sendMax selectedUtxoIds removes all spendable UTXOs", async () => {
@@ -252,7 +310,7 @@ export function registerTransactionServiceCreateSingleSigTests(): void {
           sendMax: true,
           selectedUtxoIds: ["missing-txid:999"],
         }),
-      ).rejects.toThrow("No spendable UTXOs found");
+      ).rejects.toThrow("Selected UTXOs are unavailable");
     });
 
     it("should throw when a selected SegWit UTXO is missing scriptPubKey", async () => {
@@ -338,6 +396,28 @@ export function registerTransactionServiceCreateSingleSigTests(): void {
       });
 
       expect(result.decoyOutputs?.length).toBe(3);
+      expect(result.changeAmount).toBe(0);
+      expect(result.changeAddress).toBeUndefined();
+    });
+
+    it("should preserve the inclusive two-decoy boundary", async () => {
+      mockAddressFindManyByQuery({
+        inputRows: [
+          inputAddressRow(walletId, 0, { address: sampleUtxos[2].address }),
+        ],
+        unusedRows: [
+          changeAddressRow(walletId, 0),
+          changeAddressRow(walletId, 1, {
+            address: testnetAddresses.nestedSegwit[0],
+          }),
+        ],
+      });
+
+      const result = await createTransaction(walletId, recipient, 50_000, 5, {
+        decoyOutputs: { enabled: true, count: 2 },
+      });
+
+      expect(result.decoyOutputs).toHaveLength(2);
       expect(result.changeAmount).toBe(0);
       expect(result.changeAddress).toBeUndefined();
     });

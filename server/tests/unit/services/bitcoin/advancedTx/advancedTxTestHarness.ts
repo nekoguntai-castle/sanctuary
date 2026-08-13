@@ -8,6 +8,7 @@ import * as bitcoin from 'bitcoinjs-lib';
 
 import { mockPrismaClient, resetPrismaMocks } from '../../../../mocks/prisma';
 import { mockElectrumClient, resetElectrumMocks } from '../../../../mocks/electrum';
+import { testnetAddresses } from '../../../../fixtures/bitcoin';
 
 const mockBindPsbtAccount = vi.hoisted(() => vi.fn());
 
@@ -78,6 +79,28 @@ export function immutableSignerLink(overrides: Record<string, unknown> = {}) {
   };
 }
 
+export function advancedSignableWallet(
+  id: string,
+  scriptType: 'native_segwit' | 'legacy' = 'native_segwit',
+) {
+  const purpose = scriptType === 'legacy' ? 44 : 84;
+  const wrapper = scriptType === 'legacy' ? 'pkh' : 'wpkh';
+  const descriptorKey = `[aabbccdd/${purpose}'/1'/0']${TEST_ACCOUNT_XPUB}`;
+  return {
+    id,
+    type: 'single_sig',
+    network: 'testnet3',
+    scriptType,
+    descriptor: `${wrapper}(${descriptorKey}/0/*)`,
+    changeDescriptor: `${wrapper}(${descriptorKey}/1/*)`,
+    canonicalPolicyId: scriptType === 'legacy'
+      ? 'single-sig-legacy-bip44-v1'
+      : 'single-sig-native-segwit-bip84-v1',
+    canonicalPolicyVersion: 1,
+    devices: [immutableSignerLink({ signerDerivationPath: `m/${purpose}'/1'/0'` })],
+  };
+}
+
 export function rejectNextPsbtBinding(message: string): void {
   mockBindPsbtAccount.mockRejectedValueOnce(new Error(message));
 }
@@ -133,11 +156,28 @@ export function registerAdvancedTxTestSetup() {
       key: 'dustThreshold',
       value: '546',
     });
-    mockPrismaClient.wallet.findUnique.mockResolvedValue({
-      id: 'advanced-wallet',
-      type: 'single_sig',
-      network: 'testnet3',
-      scriptType: 'native_segwit',
+    mockPrismaClient.wallet.findUnique.mockResolvedValue(advancedSignableWallet('advanced-wallet'));
+    mockPrismaClient.address.findMany.mockImplementation((query: any) => {
+      const addresses: string[] = query?.where?.address?.in ?? [];
+      return Promise.resolve(addresses.map((address, index) => ({
+        address,
+        derivationPath: `m/84'/1'/0'/0/${index}`,
+      })));
+    });
+    mockPrismaClient.address.findFirst.mockResolvedValue({
+      id: 'change-0',
+      walletId: 'advanced-wallet',
+      address: testnetAddresses.nativeSegwit[1],
+      derivationPath: "m/84'/1'/0'/1/0",
+      index: 0,
+      branch: 1,
+      coordinateVersion: 1,
+      canonicalPolicyId: 'single-sig-native-segwit-bip84-v1',
+      canonicalPolicyVersion: 1,
+      scriptPubKey: Buffer.from(bitcoin.address.toOutputScript(
+        testnetAddresses.nativeSegwit[1], bitcoin.networks.testnet,
+      )).toString('hex'),
+      used: false,
     });
     mockBindPsbtAccount.mockReset();
     mockBindPsbtAccount.mockImplementation(async (walletId: string) => (

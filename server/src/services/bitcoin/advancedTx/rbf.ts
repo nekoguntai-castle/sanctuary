@@ -8,7 +8,7 @@
  */
 
 import * as bitcoin from 'bitcoinjs-lib';
-import { getNetwork, calculateFee } from '../utils';
+import { getNetwork } from '../utils';
 import { getNodeClient } from '../nodeClient';
 import type { BitcoinNetwork } from '../networks';
 import { normalizeLegacyBitcoinNetwork } from '../networks';
@@ -25,6 +25,10 @@ import {
 } from '../transactions/psbtConstruction';
 import { bindPsbtAccount } from '../psbtAccountBinding';
 import { assertCanonicalAddressesMatchWallet } from '../../wallet/canonicalAddressValidation';
+import { resolveTransactionSpendPolicy } from '../transactions/feePolicy';
+import { estimateTransactionWeight, feeForRate } from '../transactionWeight';
+import { buildSigningIntentFeePolicy } from '../signingIntent/feePolicy';
+import type { SigningIntentFeePolicyV1 } from '../signingIntent/types';
 
 /**
  * Check if a transaction signals RBF
@@ -145,6 +149,7 @@ export async function createRBFTransaction(
   outputs: Array<{ address: string; value: number }>;
   inputPaths: string[];
   signingContext: PsbtSigningContext;
+  feePolicy: SigningIntentFeePolicyV1;
 }> {
   // Use nodeClient which respects poolEnabled setting from node_configs
   const client = await getNodeClient(network);
@@ -200,9 +205,17 @@ export async function createRBFTransaction(
     logPrefix: '[RBF] ',
   });
 
-  // Calculate new fee
-  const vsize = tx.virtualSize();
-  const newFee = calculateFee(vsize, newFeeRate);
+  const newFee = feeForRate(estimateTransactionWeight({
+    inputs: rbfInputs.psbtUtxos.map(utxo => ({
+      ...resolveTransactionSpendPolicy(
+        signingInfo,
+        addressPathMap.get(utxo.address) ?? (() => { throw new Error('RBF input spend evidence is missing'); })(),
+        networkObj,
+      ),
+      prevoutScript: Buffer.from(utxo.scriptPubKey, 'hex'),
+    })),
+    outputs: tx.outs.map(output => ({ scriptPubKey: output.script })),
+  }).vsize, newFeeRate);
 
   // Get wallet addresses to identify change output
   const originalOutputAddresses = tx.outs.map(output =>
@@ -240,6 +253,7 @@ export async function createRBFTransaction(
     outputs: outputs.map(({ address, value }) => ({ address, value })),
     inputPaths,
     signingContext,
+    feePolicy: buildSigningIntentFeePolicy(psbt.toBase64(), newFeeRate, newFee),
   };
 }
 

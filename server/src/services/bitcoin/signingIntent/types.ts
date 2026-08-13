@@ -1,7 +1,10 @@
 import type { BitcoinNetwork } from '../networks';
 import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
 
-export const SIGNING_INTENT_SNAPSHOT_VERSION = 1 as const;
+export const LEGACY_SIGNING_INTENT_SNAPSHOT_VERSION = 1 as const;
+export const SIGNING_INTENT_SNAPSHOT_VERSION = 2 as const;
+export const SIGNING_INTENT_MIN_FEE_RATE = 0.1;
+export const SIGNING_INTENT_MAX_FEE_RATE = 1000;
 
 export const SIGNING_INTENT_SOURCE_VALUES = [
   'standard',
@@ -35,18 +38,45 @@ export interface SigningIntentOutput {
   scriptPubKeyHex: string;
 }
 
+interface SigningIntentTransactionSnapshot {
+  version: number;
+  locktime: number;
+  replacementTxid?: string;
+  inputs: SigningIntentInput[];
+  outputs: SigningIntentOutput[];
+}
+
 export interface SigningIntentSnapshotV1 {
+  version: typeof LEGACY_SIGNING_INTENT_SNAPSHOT_VERSION;
+  walletId: string;
+  network: BitcoinNetwork;
+  transaction: SigningIntentTransactionSnapshot;
+}
+
+/**
+ * Fee authorization is evaluated against the final witness-bearing transaction.
+ * `expectedFeeSats` binds the exact absolute fee authorized at construction.
+ * `roundingToleranceSats` is only an inclusive bound on the absolute difference
+ * between that fee and `ceil(requestedFeeRateSatsPerVbyte * finalVsize)`; it
+ * never authorizes the final fee to differ from `expectedFeeSats`.
+ */
+export interface SigningIntentFeePolicyV1 {
+  version: 1;
+  expectedFeeSats: number;
+  requestedFeeRateSatsPerVbyte: number;
+  roundingMode: 'ceil';
+  roundingToleranceSats: number;
+}
+
+export interface SigningIntentSnapshotV2 {
   version: typeof SIGNING_INTENT_SNAPSHOT_VERSION;
   walletId: string;
   network: BitcoinNetwork;
-  transaction: {
-    version: number;
-    locktime: number;
-    replacementTxid?: string;
-    inputs: SigningIntentInput[];
-    outputs: SigningIntentOutput[];
-  };
+  feePolicy: SigningIntentFeePolicyV1;
+  transaction: SigningIntentTransactionSnapshot;
 }
+
+export type SigningIntentSnapshot = SigningIntentSnapshotV1 | SigningIntentSnapshotV2;
 
 export interface SigningIntentHandle {
   intentId: string;
@@ -59,7 +89,7 @@ export type IssuedSigningIntentHandle = SigningIntentHandle & {
 
 export interface SigningIntentEnvelope extends SigningIntentHandle {
   signingContext?: PsbtSigningContext;
-  snapshot: SigningIntentSnapshotV1;
+  snapshot: SigningIntentSnapshot;
   unsignedPsbtBase64: string;
   unsignedPsbtSha256: string;
   source: SigningIntentSource;
@@ -77,6 +107,7 @@ export interface CreateSigningIntentInput {
   network: BitcoinNetwork;
   source: SigningIntentSource;
   unsignedPsbtBase64: string;
+  feePolicy: SigningIntentFeePolicyV1;
   inputRoles?: SigningIntentInputRole[];
   supersedesIntentId?: string;
   replacementTxid?: string;

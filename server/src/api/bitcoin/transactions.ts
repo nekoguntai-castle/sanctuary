@@ -6,6 +6,7 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
+import { MAX_FEE_RATE, MIN_FEE_RATE } from '../../constants';
 import { authenticate, requireAuthenticatedUser } from '../../middleware/auth';
 import { validate } from '../../middleware/validate';
 import * as blockchain from '../../services/bitcoin/blockchain';
@@ -37,14 +38,14 @@ const RbfCheckBodySchema = z.object({
 });
 
 const RbfBodySchema = z.object({
-  newFeeRate: z.number().positive(),
+  newFeeRate: z.number().min(MIN_FEE_RATE).max(MAX_FEE_RATE),
   walletId: z.string().min(1),
 });
 
 const CpfpBodySchema = z.object({
   parentTxid: z.string().min(1),
   parentVout: z.number().int().nonnegative(),
-  targetFeeRate: z.number().positive(),
+  targetFeeRate: z.number().min(MIN_FEE_RATE).max(MAX_FEE_RATE),
   recipientAddress: z.string().min(1),
   walletId: z.string().min(1),
 });
@@ -54,7 +55,7 @@ const BatchTransactionBodySchema = z.object({
     address: z.string().min(1),
     amount: z.number().positive(),
   }).passthrough()).min(1),
-  feeRate: z.number().positive(),
+  feeRate: z.number().min(MIN_FEE_RATE).max(MAX_FEE_RATE),
   walletId: z.string().min(1),
   selectedUtxoIds: z.array(z.string()).optional(),
 });
@@ -178,6 +179,7 @@ router.post('/transaction/:txid/rbf', authenticate, validate(
     network,
     source: 'rbf',
     unsignedPsbtBase64: psbtBase64,
+    feePolicy: result.feePolicy,
     replacementTxid: txid,
     signingContext: result.signingContext,
   });
@@ -235,6 +237,7 @@ router.post('/transaction/cpfp', authenticate, validate(
     network,
     source: 'cpfp',
     unsignedPsbtBase64: psbtBase64,
+    feePolicy: result.feePolicy,
     signingContext: result.signingContext,
   });
 
@@ -287,6 +290,7 @@ router.post('/transaction/batch', authenticate, validate(
     network,
     source: 'advanced_batch',
     unsignedPsbtBase64: psbtBase64,
+    feePolicy: result.feePolicy,
     signingContext: result.signingContext,
   });
 

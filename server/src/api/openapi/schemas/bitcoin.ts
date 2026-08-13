@@ -1,5 +1,6 @@
 import { BITCOIN_NETWORKS } from "@sanctuary/shared/constants/bitcoin";
 import { WALLET_SCRIPT_TYPE_VALUES } from "@sanctuary/shared/constants/walletIdentity";
+import { MOBILE_API_REQUEST_LIMITS } from "@sanctuary/shared/schemas/mobileApiRequests";
 import { ELECTRUM_SERVER_USAGE_VALUES } from "../../../services/bitcoin/electrum/capabilities";
 
 export { syncSchemas } from "./bitcoinSync";
@@ -403,7 +404,11 @@ export const bitcoinSchemas = {
   RbfRequest: {
     type: "object",
     properties: {
-      newFeeRate: { type: "number", minimum: 0 },
+      newFeeRate: {
+        type: "number",
+        minimum: MOBILE_API_REQUEST_LIMITS.minFeeRate,
+        maximum: MOBILE_API_REQUEST_LIMITS.maxFeeRate,
+      },
       walletId: { type: "string" },
     },
     required: ["newFeeRate", "walletId"],
@@ -456,7 +461,11 @@ export const bitcoinSchemas = {
     properties: {
       parentTxid: { type: "string" },
       parentVout: { type: "integer", minimum: 0 },
-      targetFeeRate: { type: "number", minimum: 0 },
+      targetFeeRate: {
+        type: "number",
+        minimum: MOBILE_API_REQUEST_LIMITS.minFeeRate,
+        maximum: MOBILE_API_REQUEST_LIMITS.maxFeeRate,
+      },
       recipientAddress: { type: "string" },
       walletId: { type: "string" },
     },
@@ -509,7 +518,11 @@ export const bitcoinSchemas = {
         minItems: 1,
         items: { $ref: "#/components/schemas/BatchTransactionRecipient" },
       },
-      feeRate: { type: "number", minimum: 0 },
+      feeRate: {
+        type: "number",
+        minimum: MOBILE_API_REQUEST_LIMITS.minFeeRate,
+        maximum: MOBILE_API_REQUEST_LIMITS.maxFeeRate,
+      },
       walletId: { type: "string" },
       selectedUtxoIds: {
         type: "array",

@@ -11,11 +11,22 @@ import { sampleUtxos, sampleWallets, testnetAddresses, multisigKeyInfo } from '.
 import * as bitcoin from 'bitcoinjs-lib';
 
 // Hoist mock variables for use in vi.mock() factories
-const { mockParseDescriptor, mockNotifyNewTransactions, mockEmitTransactionSent, mockEmitTransactionReceived } = vi.hoisted(() => ({
+const {
+  mockParseDescriptor,
+  mockNotifyNewTransactions,
+  mockEmitTransactionSent,
+  mockEmitTransactionReceived,
+  mockSelectUtxosExact,
+  mockPrepareChangeOutputs,
+  mockResolveWalletSigningInfo,
+} = vi.hoisted(() => ({
   mockParseDescriptor: vi.fn(),
   mockNotifyNewTransactions: vi.fn(),
   mockEmitTransactionSent: vi.fn(),
   mockEmitTransactionReceived: vi.fn(),
+  mockSelectUtxosExact: vi.fn(),
+  mockPrepareChangeOutputs: vi.fn(),
+  mockResolveWalletSigningInfo: vi.fn(),
 }));
 
 // Mock the Prisma client before importing the service
@@ -69,6 +80,21 @@ vi.mock('../../../../src/services/bitcoin/addressDerivation', () => ({
   }),
 }));
 
+vi.mock('../../../../src/services/bitcoin/utxoSelection', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../../src/services/bitcoin/utxoSelection')>()),
+  selectUTXOsExact: mockSelectUtxosExact,
+}));
+
+vi.mock('../../../../src/services/bitcoin/transactions/outputBuilder', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../../src/services/bitcoin/transactions/outputBuilder')>()),
+  prepareChangeOutputs: mockPrepareChangeOutputs,
+}));
+
+vi.mock('../../../../src/services/bitcoin/transactions/psbtConstruction', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../../src/services/bitcoin/transactions/psbtConstruction')>()),
+  resolveWalletSigningInfo: mockResolveWalletSigningInfo,
+}));
+
 // Now import the service after mocks are set up
 
 import {
@@ -85,6 +111,22 @@ describe('Transaction Service — UTXO & Fees', () => {
     mockNotifyNewTransactions.mockResolvedValue(undefined);
     mockEmitTransactionSent.mockReset();
     mockEmitTransactionReceived.mockReset();
+    mockSelectUtxosExact.mockReset();
+    mockPrepareChangeOutputs.mockReset();
+    mockResolveWalletSigningInfo.mockReset();
+    mockResolveWalletSigningInfo.mockReturnValue({
+      isMultisig: false,
+      scriptType: 'native_segwit',
+    });
+    mockPrepareChangeOutputs.mockResolvedValue([{
+      address: testnetAddresses.nativeSegwit[1],
+      scriptPubKey: Buffer.from(`0014${'44'.repeat(20)}`, 'hex'),
+    }]);
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({
+      ...sampleWallets.singleSigNativeSegwit,
+      network: 'testnet3',
+      devices: [],
+    });
     // Set up default system settings
     mockPrismaClient.systemSetting.findUnique.mockImplementation((query: any) => {
       if (query.where.key === 'confirmationThreshold') {
@@ -315,6 +357,12 @@ describe('Transaction Service — UTXO & Fees', () => {
     });
 
     it('should return fee estimate for valid transaction', async () => {
+      mockSelectUtxosExact.mockResolvedValue({
+        utxos: [{ ...sampleUtxos[2], walletId }],
+        totalAmount: 200_000,
+        estimatedFee: 1_410,
+        changeAmount: 148_590,
+      });
       const result = await estimateTransaction(walletId, recipient, 50000, 10);
 
       expect(result.sufficient).toBe(true);
@@ -325,6 +373,9 @@ describe('Transaction Service — UTXO & Fees', () => {
     });
 
     it('should return insufficient when not enough funds', async () => {
+      mockSelectUtxosExact.mockRejectedValue(
+        new Error('Insufficient funds. Need 10001410 sats, have 200000 sats'),
+      );
       const result = await estimateTransaction(walletId, recipient, 10000000, 10);
 
       expect(result.sufficient).toBe(false);
@@ -333,6 +384,12 @@ describe('Transaction Service — UTXO & Fees', () => {
 
     it('should show correct output count based on change', async () => {
       // Small amount = change output
+      mockSelectUtxosExact.mockResolvedValueOnce({
+        utxos: [{ ...sampleUtxos[2], walletId }],
+        totalAmount: 200_000,
+        estimatedFee: 705,
+        changeAmount: 189_295,
+      });
       const resultWithChange = await estimateTransaction(walletId, recipient, 10000, 5);
       expect(resultWithChange.outputCount).toBe(2);
 
@@ -340,6 +397,12 @@ describe('Transaction Service — UTXO & Fees', () => {
       mockPrismaClient.uTXO.findMany.mockResolvedValue([
         { ...sampleUtxos[0], walletId, amount: BigInt(10700) }, // Just enough for amount + fee
       ]);
+      mockSelectUtxosExact.mockResolvedValueOnce({
+        utxos: [{ ...sampleUtxos[0], walletId, amount: 10_700n }],
+        totalAmount: 10_700,
+        estimatedFee: 700,
+        changeAmount: 0,
+      });
       const resultNoChange = await estimateTransaction(walletId, recipient, 10000, 5);
       expect(resultNoChange.changeAmount).toBeLessThan(546);
     });
@@ -429,9 +492,7 @@ describe('Transaction Service — UTXO & Fees', () => {
   describe('estimateTransaction Error Cases', () => {
     const walletId = 'estimate-error-wallet';
 
-    it('should return estimate even for invalid recipient (validation happens during creation)', async () => {
-      // estimateTransaction only checks UTXO availability, not address validity
-      // Address validation happens during actual transaction creation
+    it('should fail closed for an invalid recipient script', async () => {
       mockPrismaClient.uTXO.findMany.mockResolvedValue([
         { ...sampleUtxos[2], walletId },
       ]);
@@ -443,14 +504,14 @@ describe('Transaction Service — UTXO & Fees', () => {
         10
       );
 
-      // The estimate can succeed even with invalid address
-      // since it only calculates fees and UTXO selection
-      expect(result).toBeDefined();
-      expect(result.fee).toBeDefined();
+      expect(result.sufficient).toBe(false);
+      expect(result.fee).toBe(0);
+      expect(result.error).toMatch(/no matching script|invalid/i);
     });
 
     it('should handle wallet with zero UTXOs', async () => {
       mockPrismaClient.uTXO.findMany.mockResolvedValue([]);
+      mockSelectUtxosExact.mockRejectedValue(new Error('No spendable UTXOs available'));
 
       const result = await estimateTransaction(
         walletId,
@@ -464,14 +525,22 @@ describe('Transaction Service — UTXO & Fees', () => {
     });
 
     it('should handle transaction to own wallet address', async () => {
+      const ownAddress = testnetAddresses.nativeSegwit[0];
+      const ownUtxo = { ...sampleUtxos[2], walletId, address: ownAddress };
       mockPrismaClient.uTXO.findMany.mockResolvedValue([
-        { ...sampleUtxos[2], walletId },
+        ownUtxo,
       ]);
+      mockSelectUtxosExact.mockResolvedValue({
+        utxos: [ownUtxo],
+        totalAmount: 200_000,
+        estimatedFee: 1_410,
+        changeAmount: 148_590,
+      });
 
       // Sending to own address (consolidation)
       const result = await estimateTransaction(
         walletId,
-        sampleUtxos[2].address, // Own address
+        ownAddress,
         50000,
         10
       );

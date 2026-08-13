@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
 import * as bitcoin from 'bitcoinjs-lib';
 import bip32 from '../../../../../src/services/bitcoin/bip32';
 
@@ -16,6 +16,7 @@ import {
   createRBFTransaction,
   RBF_SEQUENCE,
 } from '../../../../../src/services/bitcoin/advancedTx';
+import * as psbtConstruction from '../../../../../src/services/bitcoin/transactions/psbtConstruction';
 
 export function registerRbfTransactionCreationContracts() {
   describe('RBF Transaction Creation', () => {
@@ -247,6 +248,44 @@ export function registerRbfTransactionCreationContracts() {
         value: 100_000n,
       });
       expect(result.psbt.data.inputs[0].nonWitnessUtxo).toBeUndefined();
+    });
+
+    it('fails closed when downstream RBF spend evidence is missing', async () => {
+      const spendAddress = testnetAddresses.nativeSegwit[0];
+      const changeAddress = testnetAddresses.nativeSegwit[1];
+      const spendScriptHex = Buffer.from(bitcoin.address.toOutputScript(
+        spendAddress,
+        bitcoin.networks.testnet,
+      )).toString('hex');
+      const inputHash = Buffer.from('31'.repeat(32), 'hex');
+      const inputTxid = Buffer.from(inputHash).reverse().toString('hex');
+      const tx = new bitcoin.Transaction();
+      tx.version = 2;
+      tx.addInput(inputHash, 0, RBF_SEQUENCE);
+      tx.addOutput(bitcoin.address.toOutputScript(spendAddress, bitcoin.networks.testnet), 40_000n);
+      tx.addOutput(bitcoin.address.toOutputScript(changeAddress, bitcoin.networks.testnet), 55_000n);
+
+      mockPrismaClient.wallet.findUnique.mockResolvedValueOnce(signableWallet('RBF Missing Evidence Wallet'));
+      mockPrismaClient.address.findMany.mockResolvedValueOnce([]);
+      mockElectrumClient.getTransaction.mockImplementation(async (txid: string) => {
+        if (txid === originalTxid) {
+          return { txid: originalTxid, confirmations: 0, hex: tx.toHex(), vin: [], vout: [] } as any;
+        }
+        if (txid === inputTxid) {
+          return prevoutResponse(inputTxid, spendScriptHex, spendAddress) as any;
+        }
+        throw new Error(`Unexpected transaction lookup: ${txid}`);
+      });
+      const inputBuilderSpy = vi.spyOn(psbtConstruction, 'addInputsWithBip32')
+        .mockReturnValueOnce([]);
+
+      try {
+        await expect(createRBFTransaction(
+          originalTxid, 55, walletId, 'testnet3',
+        )).rejects.toThrow('RBF input spend evidence is missing');
+      } finally {
+        inputBuilderSpy.mockRestore();
+      }
     });
 
     it('authenticates a legacy RBF input with its complete previous transaction', async () => {
@@ -630,7 +669,7 @@ export function registerRbfTransactionCreationContracts() {
       ).rejects.toThrow('outside signer account');
     });
 
-    it('keeps outputs unchanged when calculated fee delta is not positive', async () => {
+    it('does not deduct change when calculated fee delta is not positive', async () => {
       const spendAddress = testnetAddresses.nativeSegwit[0];
       const changeAddress = testnetAddresses.nativeSegwit[1];
       const spendScriptHex = Buffer.from(bitcoin.address.toOutputScript(spendAddress, bitcoin.networks.testnet)).toString('hex');
@@ -642,6 +681,9 @@ export function registerRbfTransactionCreationContracts() {
       for (const hash of inputHashes) {
         tx.addInput(hash, 0, RBF_SEQUENCE);
       }
+      inputHashes.forEach((_hash, index) => {
+        tx.setWitness(index, [Buffer.alloc(1_000, 1)]);
+      });
 
       const externalValue = 100_000;
       tx.addOutput(bitcoin.address.toOutputScript(spendAddress, bitcoin.networks.testnet), BigInt(externalValue));
@@ -680,10 +722,9 @@ export function registerRbfTransactionCreationContracts() {
         return { txid, confirmations: 0, hex: txHex, vin: [], vout: [] } as any;
       });
 
-      const result = await createRBFTransaction(originalTxid, 10.001, walletId, 'testnet3');
-
-      expect(result.feeDelta).toBeLessThanOrEqual(0);
-      expect(result.outputs.find((output) => output.address === changeAddress)?.value).toBe(originalChangeValue);
+      await expect(
+        createRBFTransaction(originalTxid, 10.001, walletId, 'testnet3'),
+      ).rejects.toThrow('Constructed transaction fee does not match its PSBT');
     });
   });
 }

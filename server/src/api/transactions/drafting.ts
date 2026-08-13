@@ -132,6 +132,7 @@ router.post('/wallets/:walletId/transactions/create', requireWalletAccess('edit'
     network,
     source: 'standard',
     unsignedPsbtBase64: txData.psbtBase64,
+    feePolicy: txData.feePolicy,
     signingContext: txData.signingContext,
   });
 
@@ -219,6 +220,7 @@ router.post('/wallets/:walletId/transactions/batch', requireWalletAccess('edit')
     network,
     source: 'batch',
     unsignedPsbtBase64: txData.psbtBase64,
+    feePolicy: txData.feePolicy,
     signingContext: txData.signingContext,
   });
 
@@ -310,6 +312,7 @@ router.post('/wallets/:walletId/psbt/create', requireWalletAccess('edit'), async
     network,
     source: 'hardware',
     unsignedPsbtBase64: txData.psbtBase64,
+    feePolicy: txData.feePolicy,
     signingContext: txData.signingContext,
   });
 

@@ -8,10 +8,9 @@
 
 import * as bitcoin from 'bitcoinjs-lib';
 import {
-  parseWalletScriptType,
   WalletScriptType,
 } from '@sanctuary/shared/constants/walletIdentity';
-import { getNetwork, estimateTransactionSize } from '../utils';
+import { getNetwork } from '../utils';
 import { getNodeClient } from '../nodeClient';
 import type { BitcoinNetwork } from '../networks';
 import { normalizeLegacyBitcoinNetwork } from '../networks';
@@ -19,6 +18,16 @@ import { utxoRepository, walletRepository } from '../../../repositories';
 import { getDustThreshold } from './shared';
 import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
 import { bindPsbtAccount } from '../psbtAccountBinding';
+import {
+  addInputsWithBip32,
+  fetchAddressDerivationPaths,
+  parseAccountNode,
+  resolveWalletSigningInfo,
+} from '../transactions/psbtConstruction';
+import { resolveTransactionSpendPolicy } from '../transactions/feePolicy';
+import { estimateTransactionWeight, feeForRate } from '../transactionWeight';
+import { buildSigningIntentFeePolicy } from '../signingIntent/feePolicy';
+import type { SigningIntentFeePolicyV1 } from '../signingIntent/types';
 
 /**
  * Calculate CPFP fee to achieve target fee rate
@@ -27,7 +36,8 @@ export function calculateCPFPFee(
   parentTxSize: number,
   parentFeeRate: number,
   childTxSize: number,
-  targetFeeRate: number
+  targetFeeRate: number,
+  authenticatedParentFee?: number,
 ): {
   childFee: number;
   childFeeRate: number;
@@ -35,12 +45,13 @@ export function calculateCPFPFee(
   totalSize: number;
   effectiveFeeRate: number;
 } {
-  // Calculate parent fee
-  const parentFee = Math.ceil(parentTxSize * parentFeeRate);
+  const parentFee = authenticatedParentFee ?? (
+    parentFeeRate === 0 ? 0 : feeForRate(parentTxSize, parentFeeRate)
+  );
 
   // Calculate total fee needed for target rate
   const totalSize = parentTxSize + childTxSize;
-  const totalFee = Math.ceil(totalSize * targetFeeRate);
+  const totalFee = feeForRate(totalSize, targetFeeRate);
 
   // Child fee is the difference
   const childFee = totalFee - parentFee;
@@ -75,6 +86,7 @@ export async function createCPFPTransaction(
   parentFeeRate: number;
   effectiveFeeRate: number;
   signingContext: PsbtSigningContext;
+  feePolicy: SigningIntentFeePolicyV1;
 }> {
   // Use nodeClient which respects poolEnabled setting from node_configs
   const client = await getNodeClient(network);
@@ -97,8 +109,17 @@ export async function createCPFPTransaction(
     throw new Error('UTXO is already spent');
   }
   const wallet = await walletRepository.findByIdWithSigningDevices(walletId);
-  const walletScriptType = wallet && parseWalletScriptType(wallet.scriptType);
-  if (!wallet || !walletScriptType) throw new Error('Wallet script identity is unavailable');
+  if (!wallet) throw new Error('Wallet script identity is unavailable');
+  if (!utxo.scriptPubKey) throw new Error('UTXO is missing scriptPubKey evidence');
+  const networkObj = getNetwork(network);
+  const recipientScript = bitcoin.address.toOutputScript(recipientAddress, networkObj);
+  const signingInfo = resolveWalletSigningInfo(wallet, '[CPFP] ');
+  const addressPathMap = await fetchAddressDerivationPaths(walletId, [utxo.address]);
+  const evidence = resolveTransactionSpendPolicy(
+    signingInfo,
+    addressPathMap.get(utxo.address) ?? (() => { throw new Error('CPFP input spend evidence is missing'); })(),
+    networkObj,
+  );
 
   // Calculate parent fee rate
   let parentInputValue = 0;
@@ -115,16 +136,22 @@ export async function createCPFPTransaction(
   const parentFee = parentInputValue - parentOutputValue;
   const parentFeeRate = parentFee / parentVsize;
 
-  // Estimate child transaction size (1 input, 1 output)
-  const childTxSize = estimateTransactionSize(1, 1, walletScriptType);
+  const childTxSize = estimateTransactionWeight({
+    inputs: [{ ...evidence, prevoutScript: Buffer.from(utxo.scriptPubKey, 'hex') }],
+    outputs: [{ scriptPubKey: recipientScript }],
+  }).vsize;
 
   // Calculate CPFP fees
   const cpfpCalc = calculateCPFPFee(
     parentVsize,
     parentFeeRate,
     childTxSize,
-    targetFeeRate
+    targetFeeRate,
+    parentFee,
   );
+  if (cpfpCalc.childFee <= 0) {
+    throw new Error('Target fee rate does not require a positive CPFP child fee');
+  }
 
   // Ensure we have enough value to create the transaction
   const utxoValue = Number(utxo.amount);
@@ -142,20 +169,29 @@ export async function createCPFPTransaction(
   }
 
   // Create PSBT
-  const networkObj = getNetwork(network);
   const psbt = new bitcoin.Psbt({ network: networkObj });
-
-  const input = {
-    hash: parentTxid,
-    index: parentVout,
-    ...(walletScriptType === WalletScriptType.LEGACY ? {
-      nonWitnessUtxo: Buffer.from(parentTx.hex, 'hex'),
-    } : { witnessUtxo: {
-      script: Buffer.from(utxo.scriptPubKey, 'hex'),
-      value: BigInt(utxoValue),
-    } }),
-  };
-  psbt.addInput(input);
+  const isLegacy = wallet.scriptType === WalletScriptType.LEGACY;
+  const accountNode = signingInfo.accountXpub
+    ? parseAccountNode(signingInfo.accountXpub, networkObj)
+    : undefined;
+  addInputsWithBip32(psbt, [{
+    txid: parentTxid,
+    vout: parentVout,
+    amount: utxo.amount,
+    address: utxo.address,
+    scriptPubKey: utxo.scriptPubKey,
+  }], {
+    sequence: 0xffffffff,
+    isLegacy,
+    rawTxCache: isLegacy
+      ? new Map([[parentTxid, Buffer.from(parentTx.hex, 'hex')]])
+      : new Map(),
+    addressPathMap,
+    signingInfo,
+    accountNode,
+    networkObj,
+    logPrefix: '[CPFP] ',
+  });
 
   psbt.addOutput({
     address: recipientAddress,
@@ -173,5 +209,10 @@ export async function createCPFPTransaction(
     parentFeeRate,
     effectiveFeeRate: cpfpCalc.effectiveFeeRate,
     signingContext,
+    feePolicy: buildSigningIntentFeePolicy(
+      psbt.toBase64(),
+      cpfpCalc.childFee / childTxSize,
+      cpfpCalc.childFee,
+    ),
   };
 }

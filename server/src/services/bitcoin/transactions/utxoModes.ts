@@ -7,10 +7,13 @@
  * - Subtract-fees: fee deducted from amount
  */
 
-import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
-import { estimateTransactionSize, calculateFee } from '../utils';
 import { utxoRepository } from '../../../repositories';
-import { selectUTXOs, UTXOSelectionStrategy } from '../utxoSelection';
+import {
+  selectUTXOsExact,
+  assertExactUtxoSelection,
+  type ExactSelectionFeeContext,
+} from '../utxoSelection';
+import { estimateTransactionWeight, feeForRate } from '../transactionWeight';
 import type { UtxoSelection } from './types';
 
 /**
@@ -23,24 +26,25 @@ export async function selectUtxosForMode(
   dustThreshold: number,
   sendMax: boolean,
   subtractFees: boolean,
+  feeContext: ExactSelectionFeeContext,
   selectedUtxoIds?: string[]
 ): Promise<{ effectiveAmount: number; selection: UtxoSelection }> {
   let effectiveAmount = amount;
 
   if (sendMax) {
-    return selectUtxosForSendMax(walletId, feeRate, selectedUtxoIds);
+    return selectUtxosForSendMax(walletId, feeRate, feeContext, selectedUtxoIds);
   }
 
   if (subtractFees) {
-    return selectUtxosForSubtractFees(walletId, amount, feeRate, dustThreshold, selectedUtxoIds);
+    return selectUtxosForSubtractFees(walletId, amount, feeRate, dustThreshold, feeContext, selectedUtxoIds);
   }
 
   // Normal selection: amount + fee must be covered
-  const selection = await selectUTXOs(
+  const selection = await selectUTXOsExact(
     walletId,
     amount,
     feeRate,
-    UTXOSelectionStrategy.LARGEST_FIRST,
+    feeContext,
     selectedUtxoIds
   );
 
@@ -50,11 +54,14 @@ export async function selectUtxosForMode(
       utxos: selection.utxos.map(u => ({
         ...u,
         amount: Number(u.amount),
-        scriptPubKey: u.scriptPubKey || '',
+        // selectUTXOsExact rejects missing script evidence before returning.
+        scriptPubKey: u.scriptPubKey!,
       })),
       totalAmount: selection.totalAmount,
       estimatedFee: selection.estimatedFee,
       changeAmount: selection.changeAmount,
+      changeOutputCount: selection.changeOutputCount,
+      feeSurplusSats: selection.feeSurplusSats,
     },
   };
 }
@@ -65,11 +72,13 @@ export async function selectUtxosForMode(
 async function selectUtxosForSendMax(
   walletId: string,
   feeRate: number,
+  feeContext: ExactSelectionFeeContext,
   selectedUtxoIds?: string[]
 ): Promise<{ effectiveAmount: number; selection: UtxoSelection }> {
   let utxos = await utxoRepository.findUnspent(walletId, { excludeFrozen: true });
 
   if (selectedUtxoIds && selectedUtxoIds.length > 0) {
+    assertExactUtxoSelection(utxos, selectedUtxoIds);
     utxos = utxos.filter((utxo) =>
       selectedUtxoIds.includes(`${utxo.txid}:${utxo.vout}`)
     );
@@ -80,14 +89,24 @@ async function selectUtxosForSendMax(
   }
 
   const totalAmount = utxos.reduce((sum, u) => sum + Number(u.amount), 0);
-  const estimatedSize = estimateTransactionSize(utxos.length, 1, WalletScriptType.NATIVE_SEGWIT);
-  const estimatedFee = calculateFee(estimatedSize, feeRate);
+  if (utxos.some(utxo => !utxo.scriptPubKey)) throw new Error('UTXO is missing scriptPubKey evidence');
+  const spendPolicies = await feeContext.resolveSpendPolicies(utxos);
+  const estimatedFee = feeForRate(estimateTransactionWeight({
+    inputs: utxos.map(utxo => ({
+      ...(spendPolicies.get(utxo.address) ?? (() => { throw new Error('UTXO spend policy evidence is missing'); })()),
+      prevoutScript: Buffer.from(utxo.scriptPubKey!, 'hex'),
+    })),
+    outputs: [{ scriptPubKey: feeContext.recipientScript }],
+  }).vsize, feeRate);
 
   if (totalAmount <= estimatedFee) {
     throw new Error(`Insufficient funds. Total ${totalAmount} sats is not enough to cover fee ${estimatedFee} sats`);
   }
 
   const effectiveAmount = totalAmount - estimatedFee;
+  if (effectiveAmount < feeContext.dustThreshold) {
+    throw new Error(`Send-max amount ${effectiveAmount} sats is below dust threshold ${feeContext.dustThreshold} sats`);
+  }
 
   return {
     effectiveAmount,
@@ -95,11 +114,14 @@ async function selectUtxosForSendMax(
       utxos: utxos.map(u => ({
         ...u,
         amount: Number(u.amount),
-        scriptPubKey: u.scriptPubKey || '',
+        // The evidence guard above establishes this invariant.
+        scriptPubKey: u.scriptPubKey!,
       })),
       totalAmount,
       estimatedFee,
       changeAmount: 0,
+      changeOutputCount: 0,
+      feeSurplusSats: 0,
     },
   };
 }
@@ -112,11 +134,13 @@ async function selectUtxosForSubtractFees(
   amount: number,
   feeRate: number,
   dustThreshold: number,
+  feeContext: ExactSelectionFeeContext,
   selectedUtxoIds?: string[]
 ): Promise<{ effectiveAmount: number; selection: UtxoSelection }> {
   let utxos = await utxoRepository.findUnspent(walletId, { excludeFrozen: true });
 
   if (selectedUtxoIds && selectedUtxoIds.length > 0) {
+    assertExactUtxoSelection(utxos, selectedUtxoIds);
     utxos = utxos.filter((utxo) =>
       selectedUtxoIds.includes(`${utxo.txid}:${utxo.vout}`)
     );
@@ -143,13 +167,19 @@ async function selectUtxosForSubtractFees(
     throw new Error(`Insufficient funds. Have ${totalAmount} sats, need ${amount} sats`);
   }
 
-  // Calculate fee based on actual selection
-  const estimatedSize = estimateTransactionSize(
-    selectedUtxos.length,
-    2,
-    WalletScriptType.NATIVE_SEGWIT,
-  );
-  const estimatedFee = calculateFee(estimatedSize, feeRate);
+  if (selectedUtxos.some(utxo => !utxo.scriptPubKey)) throw new Error('UTXO is missing scriptPubKey evidence');
+  const spendPolicies = await feeContext.resolveSpendPolicies(selectedUtxos);
+  const rawChangeAmount = totalAmount - amount;
+  const changeScripts = rawChangeAmount >= dustThreshold * feeContext.changeScripts.length
+    ? feeContext.changeScripts
+    : [];
+  const estimatedFee = feeForRate(estimateTransactionWeight({
+    inputs: selectedUtxos.map(utxo => ({
+      ...(spendPolicies.get(utxo.address) ?? (() => { throw new Error('UTXO spend policy evidence is missing'); })()),
+      prevoutScript: Buffer.from(utxo.scriptPubKey!, 'hex'),
+    })),
+    outputs: [feeContext.recipientScript, ...changeScripts].map(scriptPubKey => ({ scriptPubKey })),
+  }).vsize, feeRate);
 
   // Fee is subtracted from the amount being sent
   const effectiveAmount = amount - estimatedFee;
@@ -158,7 +188,8 @@ async function selectUtxosForSubtractFees(
   }
 
   // Calculate change
-  const changeAmount = totalAmount - amount;
+  const changeAmount = changeScripts.length > 0 ? rawChangeAmount : 0;
+  const actualFee = estimatedFee + (changeScripts.length > 0 ? 0 : rawChangeAmount);
 
   return {
     effectiveAmount,
@@ -166,11 +197,14 @@ async function selectUtxosForSubtractFees(
       utxos: selectedUtxos.map(u => ({
         ...u,
         amount: Number(u.amount),
-        scriptPubKey: u.scriptPubKey || '',
+        // The evidence guard above establishes this invariant.
+        scriptPubKey: u.scriptPubKey!,
       })),
       totalAmount,
-      estimatedFee,
+      estimatedFee: actualFee,
       changeAmount,
+      changeOutputCount: changeScripts.length,
+      feeSurplusSats: changeScripts.length > 0 ? 0 : rawChangeAmount,
     },
   };
 }

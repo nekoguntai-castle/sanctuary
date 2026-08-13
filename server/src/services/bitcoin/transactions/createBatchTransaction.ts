@@ -10,8 +10,7 @@
  */
 
 import * as bitcoin from 'bitcoinjs-lib';
-import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
-import { getNetwork, estimateTransactionSize, calculateFee } from '../utils';
+import { getNetwork } from '../utils';
 import { normalizeLegacyBitcoinNetwork } from '../networks';
 import { RBF_SEQUENCE } from '../advancedTx';
 import { walletRepository, utxoRepository, systemSettingRepository } from '../../../repositories';
@@ -28,9 +27,13 @@ import {
   addInputsWithBip32,
   type AddInputsWithBip32Options,
 } from './psbtConstruction';
-import { findChangeAddress } from './outputBuilder';
+import { prepareChangeOutputs } from './outputBuilder';
 import type { TransactionOutput, CreateBatchTransactionResult } from './types';
 import { bindPsbtAccount } from '../psbtAccountBinding';
+import { estimateTransactionWeight, feeForRate } from '../transactionWeight';
+import { assertExactUtxoSelection, type SpendEvidence } from '../utxoSelection';
+import { createTransactionSpendPolicyResolver, transactionChangeScriptTemplate } from './feePolicy';
+import { buildSigningIntentFeePolicy } from '../signingIntent/feePolicy';
 
 const log = createLogger('BITCOIN:SVC_TX_BATCH');
 
@@ -66,6 +69,7 @@ export async function createBatchTransaction(
   const networkObj = getNetwork(network);
   assertValidBatchOutputs(outputs, networkObj);
   const signingInfo = resolveWalletSigningInfo(wallet, '[BATCH] ');
+  const resolveSpendPolicies = createTransactionSpendPolicyResolver(walletId, signingInfo, networkObj);
 
   // Check if any output has sendMax
   const sendMaxOutputIndex = outputs.findIndex(o => o.sendMax);
@@ -83,11 +87,39 @@ export async function createBatchTransaction(
   });
 
   assertUtxosHaveScriptPubKeys(utxos);
+  const spendPolicies = await resolveSpendPolicies(utxos);
+  const changeScript = hasSendMax ? undefined : transactionChangeScriptTemplate(signingInfo);
+  const recipientScripts = outputs.map(output => bitcoin.address.toOutputScript(output.address, networkObj));
 
   // Calculate amounts and select UTXOs
-  const { finalOutputs, changeAmount, selectedUtxos, estimatedFee } = calculateBatchAmounts(
-    utxos, outputs, sendMaxOutputIndex, hasSendMax, feeRate
+  let calculation = calculateBatchAmounts(
+    utxos,
+    outputs,
+    recipientScripts,
+    changeScript,
+    sendMaxOutputIndex,
+    hasSendMax,
+    feeRate,
+    dustThreshold,
+    spendPolicies,
   );
+  let preparedChangeAddress: string | undefined;
+  if (!hasSendMax && calculation.changeAmount >= dustThreshold) {
+    const [preparedChange] = await prepareChangeOutputs(walletId, 1);
+    preparedChangeAddress = preparedChange.address;
+    calculation = calculateBatchAmounts(
+      utxos,
+      outputs,
+      recipientScripts,
+      preparedChange.scriptPubKey,
+      sendMaxOutputIndex,
+      false,
+      feeRate,
+      dustThreshold,
+      spendPolicies,
+    );
+  }
+  const { finalOutputs, changeAmount, selectedUtxos, estimatedFee, feeSurplusSats } = calculation;
   utxos = selectedUtxos;
 
   // Create PSBT
@@ -124,7 +156,8 @@ export async function createBatchTransaction(
   let changeAddress: string | undefined;
 
   if (!hasSendMax && changeAmount >= dustThreshold) {
-    changeAddress = await findChangeAddress(walletId);
+    changeAddress = preparedChangeAddress;
+    if (!changeAddress) throw new Error('No prepared change address available');
 
     psbt.addOutput({
       address: changeAddress,
@@ -148,6 +181,12 @@ export async function createBatchTransaction(
     inputPaths,
     outputs: finalOutputs,
     signingContext,
+    feePolicy: buildSigningIntentFeePolicy(
+      psbt.toBase64(),
+      feeRate,
+      estimatedFee,
+      feeSurplusSats,
+    ),
   };
 }
 
@@ -239,6 +278,7 @@ async function getAvailableUtxos(
 
   // Filter by selected UTXOs if provided
   if (hasUserSelection) {
+    assertExactUtxoSelection(utxos, selectedUtxoIds);
     utxos = utxos.filter((utxo) =>
       selectedUtxoIds.includes(`${utxo.txid}:${utxo.vout}`)
     );
@@ -257,14 +297,19 @@ async function getAvailableUtxos(
 function calculateBatchAmounts(
   utxos: UtxoRecord[],
   outputs: TransactionOutput[],
+  recipientScripts: Uint8Array[],
+  changeScript: Uint8Array | undefined,
   sendMaxOutputIndex: number,
   hasSendMax: boolean,
-  feeRate: number
+  feeRate: number,
+  dustThreshold: number,
+  spendPolicies: ReadonlyMap<string, SpendEvidence>,
 ): {
   finalOutputs: Array<{ address: string; amount: number }>;
   changeAmount: number;
   selectedUtxos: UtxoRecord[];
   estimatedFee: number;
+  feeSurplusSats: number;
 } {
   const totalAvailable = utxos.reduce((sum, u) => sum + Number(u.amount), 0);
 
@@ -273,19 +318,24 @@ function calculateBatchAmounts(
     .filter((_, i) => i !== sendMaxOutputIndex)
     .reduce((sum, o) => sum + o.amount, 0);
 
-  // Determine number of outputs: specified outputs + possible change
-  const numOutputs = hasSendMax ? outputs.length : outputs.length + 1;
-
-  // Estimate fee
-  const estimatedSize = estimateTransactionSize(utxos.length, numOutputs, WalletScriptType.NATIVE_SEGWIT);
-  const estimatedFee = calculateFee(estimatedSize, feeRate);
+  const estimateFee = (selected: UtxoRecord[], scripts: Uint8Array[]): number => feeForRate(
+    estimateTransactionWeight({
+      inputs: selected.map(utxo => ({
+        ...(spendPolicies.get(utxo.address) ?? (() => { throw new Error('UTXO spend policy evidence is missing'); })()),
+        prevoutScript: Buffer.from(utxo.scriptPubKey, 'hex'),
+      })),
+      outputs: scripts.map(scriptPubKey => ({ scriptPubKey })),
+    }).vsize,
+    feeRate,
+  );
 
   if (hasSendMax) {
+    const estimatedFee = estimateFee(utxos, recipientScripts);
     // Calculate remaining balance for sendMax output
     const sendMaxAmount = totalAvailable - fixedOutputTotal - estimatedFee;
-    if (sendMaxAmount <= 0) {
+    if (sendMaxAmount < dustThreshold) {
       throw new Error(
-        `Insufficient funds. Need ${fixedOutputTotal + estimatedFee} sats for outputs and fee, have ${totalAvailable} sats`
+        `Insufficient funds. Send-max output ${sendMaxAmount} sats is below dust threshold ${dustThreshold} sats`
       );
     }
 
@@ -297,6 +347,7 @@ function calculateBatchAmounts(
       changeAmount: 0,
       selectedUtxos: utxos,
       estimatedFee,
+      feeSurplusSats: 0,
     };
   }
 
@@ -304,46 +355,37 @@ function calculateBatchAmounts(
   const targetAmount = fixedOutputTotal;
   const selectedUtxos: UtxoRecord[] = [];
   let selectedTotal = 0;
-  let changeAmount = 0;
 
   for (const utxo of utxos) {
     selectedUtxos.push(utxo);
     selectedTotal += Number(utxo.amount);
 
-    // Re-estimate fee with current selection
-    const currentSize = estimateTransactionSize(
-      selectedUtxos.length,
-      outputs.length + 1,
-      WalletScriptType.NATIVE_SEGWIT,
-    );
-    const currentFee = calculateFee(currentSize, feeRate);
-
-    if (selectedTotal >= targetAmount + currentFee) {
-      changeAmount = selectedTotal - targetAmount - currentFee;
-      break;
+    if (changeScript) {
+      const feeWithChange = estimateFee(selectedUtxos, [...recipientScripts, changeScript]);
+      const changeAmount = selectedTotal - targetAmount - feeWithChange;
+      if (changeAmount >= dustThreshold) {
+        return {
+          finalOutputs: outputs.map(output => ({ address: output.address, amount: output.amount })),
+          changeAmount,
+          selectedUtxos,
+          estimatedFee: feeWithChange,
+          feeSurplusSats: 0,
+        };
+      }
+    }
+    const feeWithoutChange = estimateFee(selectedUtxos, recipientScripts);
+    if (selectedTotal >= targetAmount + feeWithoutChange) {
+      return {
+        finalOutputs: outputs.map(output => ({ address: output.address, amount: output.amount })),
+        changeAmount: 0,
+        selectedUtxos,
+        estimatedFee: selectedTotal - targetAmount,
+        feeSurplusSats: selectedTotal - targetAmount - feeWithoutChange,
+      };
     }
   }
 
-  // Check if we have enough
-  const finalSize = estimateTransactionSize(
-    selectedUtxos.length,
-    outputs.length + 1,
-    WalletScriptType.NATIVE_SEGWIT,
-  );
-  const finalFee = calculateFee(finalSize, feeRate);
-  if (selectedTotal < targetAmount + finalFee) {
-    throw new Error(
-      `Insufficient funds. Need ${targetAmount + finalFee} sats, have ${selectedTotal} sats`
-    );
-  }
-
-  return {
-    finalOutputs: outputs.map(o => ({
-      address: o.address,
-      amount: o.amount,
-    })),
-    changeAmount,
-    selectedUtxos,
-    estimatedFee,
-  };
+  const finalScripts = changeScript ? [...recipientScripts, changeScript] : recipientScripts;
+  const finalFee = estimateFee(selectedUtxos, finalScripts);
+  throw new Error(`Insufficient funds. Need ${targetAmount + finalFee} sats, have ${selectedTotal} sats`);
 }

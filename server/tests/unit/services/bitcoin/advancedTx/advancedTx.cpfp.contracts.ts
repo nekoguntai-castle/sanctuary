@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
 import * as bitcoin from 'bitcoinjs-lib';
 
 import { mockPrismaClient } from '../../../../mocks/prisma';
@@ -11,7 +11,9 @@ import {
 import {
   rawTransactionWithOutput,
   resolveNextPsbtBindingNetwork,
+  advancedSignableWallet,
 } from './advancedTxTestHarness';
+import * as psbtConstruction from '../../../../../src/services/bitcoin/transactions/psbtConstruction';
 
 export function registerCpfpContracts() {
   describe('CPFP Fee Calculation', () => {
@@ -50,8 +52,19 @@ export function registerCpfpContracts() {
         targetFeeRate
       );
 
-      // Child fee rate should be higher than target to bring package average up
-      expect(result.childFeeRate).toBeGreaterThan(targetFeeRate);
+      expect(result.childFeeRate).toBe(22);
+    });
+
+    it('treats a zero-rate parent as an exact zero-fee package member', () => {
+      const result = calculateCPFPFee(200, 0, 100, 10);
+      expect(result.childFee).toBe(3_000);
+      expect(result.childFeeRate).toBe(30);
+    });
+
+    it('uses the authenticated integer parent fee without a floating-point round trip', () => {
+      const result = calculateCPFPFee(82, 91 / 82, 110, 10, 91);
+      expect(result.totalFee).toBe(1_920);
+      expect(result.childFee).toBe(1_829);
     });
   });
 
@@ -132,6 +145,61 @@ export function registerCpfpContracts() {
       )).rejects.toThrow('Wallet script identity is unavailable');
     });
 
+    it('fails closed when CPFP input script evidence is missing', async () => {
+      mockPrismaClient.uTXO.findUnique.mockResolvedValueOnce({
+        ...sampleUtxos[0],
+        txid: parentTxid,
+        vout: parentVout,
+        walletId,
+        spent: false,
+        scriptPubKey: '',
+      });
+
+      await expect(createCPFPTransaction(
+        parentTxid, parentVout, 5, recipientAddress, walletId, 'testnet3',
+      )).rejects.toThrow('UTXO is missing scriptPubKey evidence');
+    });
+
+    it('fails closed when CPFP derivation-path evidence is missing', async () => {
+      mockPrismaClient.address.findMany.mockResolvedValueOnce([]);
+
+      await expect(createCPFPTransaction(
+        parentTxid, parentVout, 5, recipientAddress, walletId, 'testnet3',
+      )).rejects.toThrow('CPFP input spend evidence is missing');
+    });
+
+    it('rejects a target rate that does not require a positive child fee', async () => {
+      const chain = cpfpChain();
+      mockElectrumClient.getTransaction
+        .mockResolvedValueOnce(chain.parent)
+        .mockResolvedValueOnce(chain.funding);
+
+      await expect(createCPFPTransaction(
+        parentTxid, parentVout, 0.1, recipientAddress, walletId, 'testnet3',
+      )).rejects.toThrow('does not require a positive CPFP child fee');
+    });
+
+    it('fails closed when single-sig CPFP account-node evidence is unavailable', async () => {
+      const wallet = advancedSignableWallet(walletId);
+      const signingInfo = psbtConstruction.resolveWalletSigningInfo(wallet as any, '[TEST] ');
+      const resolverSpy = vi.spyOn(psbtConstruction, 'resolveWalletSigningInfo').mockReturnValueOnce({
+        ...signingInfo,
+        accountXpub: undefined,
+      });
+      const chain = cpfpChain();
+      mockElectrumClient.getTransaction
+        .mockResolvedValueOnce(chain.parent)
+        .mockResolvedValueOnce(chain.funding);
+
+      try {
+        await expect(createCPFPTransaction(
+          parentTxid, parentVout, 5, recipientAddress, walletId, 'testnet3',
+        )).rejects.toThrow('missing BIP32 derivation metadata');
+      } finally {
+        resolverSpy.mockRestore();
+      }
+    });
+
     it('should throw error if UTXO value insufficient for fee', async () => {
       // UTXO with very small value
       mockPrismaClient.uTXO.findUnique.mockResolvedValue({
@@ -201,12 +269,7 @@ export function registerCpfpContracts() {
         walletId,
         spent: false,
       });
-      mockPrismaClient.wallet.findUnique.mockResolvedValueOnce({
-        id: walletId,
-        type: 'single_sig',
-        network: 'testnet3',
-        scriptType: 'legacy',
-      });
+      mockPrismaClient.wallet.findUnique.mockResolvedValueOnce(advancedSignableWallet(walletId, 'legacy'));
       mockElectrumClient.getTransaction
         .mockResolvedValueOnce(chain.parent)
         .mockResolvedValueOnce(chain.funding);

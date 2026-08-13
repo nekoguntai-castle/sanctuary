@@ -21,6 +21,8 @@ export interface GeneratedSignedPsbtVector {
   expectedTxid: string;
   expectedFee: number;
   expectedVsize: number;
+  expectedRecipientValue: number;
+  expectedChangeValue: number;
   mempoolAccept: {
     allowed: boolean;
     txid: string;
@@ -71,26 +73,28 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
     "description": "Bitcoin Core accepted regtest P2PKH software-signed spend",
     "scriptType": "p2pkh",
     "network": "regtest",
-    "unsignedPsbtBase64": "cHNidP8BAFICAAAAAZAG69ZpcuqcjjQUKHsYWBN7Lo38Mtn8Vp4sJzpVdwMrAAAAAAD9////ASTsBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wAAAAAAAEAqgIAAAAAAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP////8CUQD/////AgDyBSoBAAAAGXapFHUedugZkZbUVJQcRdGzoyPxQzvWiKwAAAAAAAAAACZqJKohqe3i9hw/cdHe/T+pmd+jaVN1XGkGiXmZYrSL69g2l06M+QEgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIgYCeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5gY2QxqTywAAIABAACAAAAAgAAAAAAAAAAAAAA=",
-    "signedPsbtBase64": "cHNidP8BAFICAAAAAZAG69ZpcuqcjjQUKHsYWBN7Lo38Mtn8Vp4sJzpVdwMrAAAAAAD9////ASTsBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wAAAAAAAEAqgIAAAAAAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP////8CUQD/////AgDyBSoBAAAAGXapFHUedugZkZbUVJQcRdGzoyPxQzvWiKwAAAAAAAAAACZqJKohqe3i9hw/cdHe/T+pmd+jaVN1XGkGiXmZYrSL69g2l06M+QEgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIgICeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5hIMEUCIQCZmjo77c67x02cmnrnI7qSptBrzRsejttfr1IBVtYZjAIgFHtpt0eRXiIf+qzK0tWLpsbIHYjQS8UJyhUU9oF4J7kBIgYCeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5gY2QxqTywAAIABAACAAAAAgAAAAAAAAAAAAAA=",
-    "finalizedPsbtBase64": "cHNidP8BAFICAAAAAZAG69ZpcuqcjjQUKHsYWBN7Lo38Mtn8Vp4sJzpVdwMrAAAAAAD9////ASTsBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wAAAAAAAEAqgIAAAAAAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP////8CUQD/////AgDyBSoBAAAAGXapFHUedugZkZbUVJQcRdGzoyPxQzvWiKwAAAAAAAAAACZqJKohqe3i9hw/cdHe/T+pmd+jaVN1XGkGiXmZYrSL69g2l06M+QEgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQdrSDBFAiEAmZo6O+3Ou8dNnJp65yO6kqbQa80bHo7bX69SAVbWGYwCIBR7abdHkV4iH/qsytLVi6bGyB2I0EvFCcoVFPaBeCe5ASECeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5gAAA==",
-    "finalTxHex": "02000000019006ebd66972ea9c8e3414287b1858137b2e8dfc32d9fc569e2c273a5577032b000000006b483045022100999a3a3bedcebbc74d9c9a7ae723ba92a6d06bcd1b1e8edb5faf520156d6198c0220147b69b747915e221ffaaccad2d58ba6c6c81d88d04bc509ca1514f6817827b901210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798fdffffff0124ec052a010000001600147dd65592d0ab2fe0d0257d571abf032cd9db93dc00000000",
-    "expectedTxid": "f4a524cb07d01f4709914917ca1cf018ab0e95941badc8efaafce884b7cb07b6",
-    "expectedFee": 1500,
-    "expectedVsize": 189,
+    "unsignedPsbtBase64": "cHNidP8BAHQCAAAAAZAG69ZpcuqcjjQUKHsYWBN7Lo38Mtn8Vp4sJzpVdwMrAAAAAAD9////ApDGBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wQJwAAAAAAABl2qRR1HnboGZGW1FSUHEXRs6Mj8UM71oisAAAAAAABAKoCAAAAAAEBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/////AlEA/////wIA8gUqAQAAABl2qRR1HnboGZGW1FSUHEXRs6Mj8UM71oisAAAAAAAAAAAmaiSqIant4vYcP3HR3v0/qZnfo2lTdVxpBol5mWK0i+vYNpdOjPkBIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACIGAnm+Zn753LusVaBilc6HCwcCm/zbLc4o2VnygVsW+BeYGNkMak8sAACAAQAAgAAAAIAAAAAAAAAAAAAAAA==",
+    "signedPsbtBase64": "cHNidP8BAHQCAAAAAZAG69ZpcuqcjjQUKHsYWBN7Lo38Mtn8Vp4sJzpVdwMrAAAAAAD9////ApDGBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wQJwAAAAAAABl2qRR1HnboGZGW1FSUHEXRs6Mj8UM71oisAAAAAAABAKoCAAAAAAEBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/////AlEA/////wIA8gUqAQAAABl2qRR1HnboGZGW1FSUHEXRs6Mj8UM71oisAAAAAAAAAAAmaiSqIant4vYcP3HR3v0/qZnfo2lTdVxpBol5mWK0i+vYNpdOjPkBIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACICAnm+Zn753LusVaBilc6HCwcCm/zbLc4o2VnygVsW+BeYRzBEAiAwDbgjNHIfG2nyBO2+92dcRHuo3zkI1lbz0hNQJ/Jo1AIgI0nY5k5BIvDS9tkjINhtALEOjw93ciRjH0CvCipC9R4BIgYCeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5gY2QxqTywAAIABAACAAAAAgAAAAAAAAAAAAAAA",
+    "finalizedPsbtBase64": "cHNidP8BAHQCAAAAAZAG69ZpcuqcjjQUKHsYWBN7Lo38Mtn8Vp4sJzpVdwMrAAAAAAD9////ApDGBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wQJwAAAAAAABl2qRR1HnboGZGW1FSUHEXRs6Mj8UM71oisAAAAAAABAKoCAAAAAAEBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/////AlEA/////wIA8gUqAQAAABl2qRR1HnboGZGW1FSUHEXRs6Mj8UM71oisAAAAAAAAAAAmaiSqIant4vYcP3HR3v0/qZnfo2lTdVxpBol5mWK0i+vYNpdOjPkBIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEHakcwRAIgMA24IzRyHxtp8gTtvvdnXER7qN85CNZW89ITUCfyaNQCICNJ2OZOQSLw0vbZIyDYbQCxDo8Pd3IkYx9ArwoqQvUeASECeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5gAAAA=",
+    "finalTxHex": "02000000019006ebd66972ea9c8e3414287b1858137b2e8dfc32d9fc569e2c273a5577032b000000006a4730440220300db82334721f1b69f204edbef7675c447ba8df3908d656f3d2135027f268d402202349d8e64e4122f0d2f6d92320d86d00b10e8f0f777224631f40af0a2a42f51e01210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798fdffffff0290c6052a010000001600147dd65592d0ab2fe0d0257d571abf032cd9db93dc10270000000000001976a914751e76e8199196d454941c45d1b3a323f1433bd688ac00000000",
+    "expectedTxid": "f9d3a08703192028c316691e3e30f10115551572b02e8104595af91f6a5528eb",
+    "expectedFee": 1120,
+    "expectedVsize": 222,
+    "expectedRecipientValue": 4999988880,
+    "expectedChangeValue": 10000,
     "mempoolAccept": {
       "allowed": true,
-      "txid": "f4a524cb07d01f4709914917ca1cf018ab0e95941badc8efaafce884b7cb07b6"
+      "txid": "f9d3a08703192028c316691e3e30f10115551572b02e8104595af91f6a5528eb"
     },
     "coreProof": {
       "decodedSignedPsbt": {
         "tx": {
-          "txid": "463d95f7ccc2f15fbe130ea25246256ec86a8d181479fab784ab999df1dc750b",
-          "hash": "463d95f7ccc2f15fbe130ea25246256ec86a8d181479fab784ab999df1dc750b",
+          "txid": "53796c4df2b3f20257aec4d86e2583176d5b153ea48c0b690a4c9371661d261e",
+          "hash": "53796c4df2b3f20257aec4d86e2583176d5b153ea48c0b690a4c9371661d261e",
           "version": 2,
-          "size": 82,
-          "vsize": 82,
-          "weight": 328,
+          "size": 116,
+          "vsize": 116,
+          "weight": 464,
           "locktime": 0,
           "vin": [
             {
@@ -105,7 +109,7 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
           ],
           "vout": [
             {
-              "value": 49.999985,
+              "value": 49.9998888,
               "n": 0,
               "scriptPubKey": {
                 "asm": "0 7dd65592d0ab2fe0d0257d571abf032cd9db93dc",
@@ -113,6 +117,17 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
                 "hex": "00147dd65592d0ab2fe0d0257d571abf032cd9db93dc",
                 "address": "bcrt1q0ht9tyks4vh7p5p904t340cr9nvahy7uevmqwj",
                 "type": "witness_v0_keyhash"
+              }
+            },
+            {
+              "value": 0.0001,
+              "n": 1,
+              "scriptPubKey": {
+                "asm": "OP_DUP OP_HASH160 751e76e8199196d454941c45d1b3a323f1433bd6 OP_EQUALVERIFY OP_CHECKSIG",
+                "desc": "addr(mrCDrCybB6J1vRfbwM5hemdJz73FwDBC8r)#wdmryvnu",
+                "hex": "76a914751e76e8199196d454941c45d1b3a323f1433bd688ac",
+                "address": "mrCDrCybB6J1vRfbwM5hemdJz73FwDBC8r",
+                "type": "pubkeyhash"
               }
             }
           ]
@@ -165,7 +180,7 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
               ]
             },
             "partial_signatures": {
-              "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798": "3045022100999a3a3bedcebbc74d9c9a7ae723ba92a6d06bcd1b1e8edb5faf520156d6198c0220147b69b747915e221ffaaccad2d58ba6c6c81d88d04bc509ca1514f6817827b901"
+              "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798": "30440220300db82334721f1b69f204edbef7675c447ba8df3908d656f3d2135027f268d402202349d8e64e4122f0d2f6d92320d86d00b10e8f0f777224631f40af0a2a42f51e01"
             },
             "bip32_derivs": [
               {
@@ -177,9 +192,10 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
           }
         ],
         "outputs": [
+          {},
           {}
         ],
-        "fee": 0.000015
+        "fee": 0.0000112
       },
       "analyzedSignedPsbt": {
         "inputs": [
@@ -189,37 +205,37 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
             "next": "finalizer"
           }
         ],
-        "estimated_vsize": 189,
-        "estimated_feerate": 0.00007936,
-        "fee": 0.000015,
+        "estimated_vsize": 222,
+        "estimated_feerate": 0.00005045,
+        "fee": 0.0000112,
         "next": "finalizer"
       },
       "finalizedPsbt": {
-        "hex": "02000000019006ebd66972ea9c8e3414287b1858137b2e8dfc32d9fc569e2c273a5577032b000000006b483045022100999a3a3bedcebbc74d9c9a7ae723ba92a6d06bcd1b1e8edb5faf520156d6198c0220147b69b747915e221ffaaccad2d58ba6c6c81d88d04bc509ca1514f6817827b901210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798fdffffff0124ec052a010000001600147dd65592d0ab2fe0d0257d571abf032cd9db93dc00000000",
+        "hex": "02000000019006ebd66972ea9c8e3414287b1858137b2e8dfc32d9fc569e2c273a5577032b000000006a4730440220300db82334721f1b69f204edbef7675c447ba8df3908d656f3d2135027f268d402202349d8e64e4122f0d2f6d92320d86d00b10e8f0f777224631f40af0a2a42f51e01210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798fdffffff0290c6052a010000001600147dd65592d0ab2fe0d0257d571abf032cd9db93dc10270000000000001976a914751e76e8199196d454941c45d1b3a323f1433bd688ac00000000",
         "complete": true
       },
       "decodedTransaction": {
-        "txid": "f4a524cb07d01f4709914917ca1cf018ab0e95941badc8efaafce884b7cb07b6",
-        "hash": "f4a524cb07d01f4709914917ca1cf018ab0e95941badc8efaafce884b7cb07b6",
+        "txid": "f9d3a08703192028c316691e3e30f10115551572b02e8104595af91f6a5528eb",
+        "hash": "f9d3a08703192028c316691e3e30f10115551572b02e8104595af91f6a5528eb",
         "version": 2,
-        "size": 189,
-        "vsize": 189,
-        "weight": 756,
+        "size": 222,
+        "vsize": 222,
+        "weight": 888,
         "locktime": 0,
         "vin": [
           {
             "txid": "2b0377553a272c9e56fcd932fc8d2e7b1358187b2814348e9cea7269d6eb0690",
             "vout": 0,
             "scriptSig": {
-              "asm": "3045022100999a3a3bedcebbc74d9c9a7ae723ba92a6d06bcd1b1e8edb5faf520156d6198c0220147b69b747915e221ffaaccad2d58ba6c6c81d88d04bc509ca1514f6817827b9[ALL] 0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
-              "hex": "483045022100999a3a3bedcebbc74d9c9a7ae723ba92a6d06bcd1b1e8edb5faf520156d6198c0220147b69b747915e221ffaaccad2d58ba6c6c81d88d04bc509ca1514f6817827b901210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+              "asm": "30440220300db82334721f1b69f204edbef7675c447ba8df3908d656f3d2135027f268d402202349d8e64e4122f0d2f6d92320d86d00b10e8f0f777224631f40af0a2a42f51e[ALL] 0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+              "hex": "4730440220300db82334721f1b69f204edbef7675c447ba8df3908d656f3d2135027f268d402202349d8e64e4122f0d2f6d92320d86d00b10e8f0f777224631f40af0a2a42f51e01210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
             },
             "sequence": 4294967293
           }
         ],
         "vout": [
           {
-            "value": 49.999985,
+            "value": 49.9998888,
             "n": 0,
             "scriptPubKey": {
               "asm": "0 7dd65592d0ab2fe0d0257d571abf032cd9db93dc",
@@ -227,6 +243,17 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
               "hex": "00147dd65592d0ab2fe0d0257d571abf032cd9db93dc",
               "address": "bcrt1q0ht9tyks4vh7p5p904t340cr9nvahy7uevmqwj",
               "type": "witness_v0_keyhash"
+            }
+          },
+          {
+            "value": 0.0001,
+            "n": 1,
+            "scriptPubKey": {
+              "asm": "OP_DUP OP_HASH160 751e76e8199196d454941c45d1b3a323f1433bd6 OP_EQUALVERIFY OP_CHECKSIG",
+              "desc": "addr(mrCDrCybB6J1vRfbwM5hemdJz73FwDBC8r)#wdmryvnu",
+              "hex": "76a914751e76e8199196d454941c45d1b3a323f1433bd688ac",
+              "address": "mrCDrCybB6J1vRfbwM5hemdJz73FwDBC8r",
+              "type": "pubkeyhash"
             }
           }
         ]
@@ -242,26 +269,28 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
     "description": "Bitcoin Core accepted regtest P2WPKH software-signed spend",
     "scriptType": "p2wpkh",
     "network": "regtest",
-    "unsignedPsbtBase64": "cHNidP8BAFICAAAAAd0NKMq8f5R6UgmFarveUiRvN/h0JWQToEinOjaJOzL4AAAAAAD9////ARjuBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wAAAAAAAEBHwDyBSoBAAAAFgAUdR526BmRltRUlBxF0bOjI/FDO9YiBgJ5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmBjZDGpPVAAAgAEAAIAAAACAAAAAAAAAAAAAAA==",
-    "signedPsbtBase64": "cHNidP8BAFICAAAAAd0NKMq8f5R6UgmFarveUiRvN/h0JWQToEinOjaJOzL4AAAAAAD9////ARjuBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wAAAAAAAEBHwDyBSoBAAAAFgAUdR526BmRltRUlBxF0bOjI/FDO9YiAgJ5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmEcwRAIgRoX6K1BxRfIay+gy8cfhy2tRg76InULu0K5/M87BFBUCIEPGtqGiPer8Bocxe+E0zTgsC3l4Dzr1Pz6XfS48w+oEASIGAnm+Zn753LusVaBilc6HCwcCm/zbLc4o2VnygVsW+BeYGNkMak9UAACAAQAAgAAAAIAAAAAAAAAAAAAA",
-    "finalizedPsbtBase64": "cHNidP8BAFICAAAAAd0NKMq8f5R6UgmFarveUiRvN/h0JWQToEinOjaJOzL4AAAAAAD9////ARjuBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wAAAAAAAEBHwDyBSoBAAAAFgAUdR526BmRltRUlBxF0bOjI/FDO9YBCGsCRzBEAiBGhforUHFF8hrL6DLxx+HLa1GDvoidQu7Qrn8zzsEUFQIgQ8a2oaI96vwGhzF74TTNOCwLeXgPOvU/Ppd9LjzD6gQBIQJ5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmAAA",
-    "finalTxHex": "02000000000101dd0d28cabc7f947a5209856abbde52246f37f874256413a048a73a36893b32f80000000000fdffffff0118ee052a010000001600147dd65592d0ab2fe0d0257d571abf032cd9db93dc0247304402204685fa2b507145f21acbe832f1c7e1cb6b5183be889d42eed0ae7f33cec11415022043c6b6a1a23deafc0687317be134cd382c0b79780f3af53f3e977d2e3cc3ea0401210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179800000000",
-    "expectedTxid": "eeee44c7efeee783f5a13e8bb5ee09bd73ac61314c2cbe462e7b60f8cf229a7d",
-    "expectedFee": 1000,
-    "expectedVsize": 110,
+    "unsignedPsbtBase64": "cHNidP8BAHECAAAAAd0NKMq8f5R6UgmFarveUiRvN/h0JWQToEinOjaJOzL4AAAAAAD9////Ai/IBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wQJwAAAAAAABYAFHUedugZkZbUVJQcRdGzoyPxQzvWAAAAAAABAR8A8gUqAQAAABYAFHUedugZkZbUVJQcRdGzoyPxQzvWIgYCeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5gY2QxqT1QAAIABAACAAAAAgAAAAAAAAAAAAAAA",
+    "signedPsbtBase64": "cHNidP8BAHECAAAAAd0NKMq8f5R6UgmFarveUiRvN/h0JWQToEinOjaJOzL4AAAAAAD9////Ai/IBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wQJwAAAAAAABYAFHUedugZkZbUVJQcRdGzoyPxQzvWAAAAAAABAR8A8gUqAQAAABYAFHUedugZkZbUVJQcRdGzoyPxQzvWIgICeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5hHMEQCIBYVqyXuCTXBHNqvGo8ilU15Zw6QAEn3yFeF2WaCeJYJAiAOpwsRuXHL3cyZjXoRCE5o1Tus+nVOPHt2myC6r1+N+AEiBgJ5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmBjZDGpPVAAAgAEAAIAAAACAAAAAAAAAAAAAAAA=",
+    "finalizedPsbtBase64": "cHNidP8BAHECAAAAAd0NKMq8f5R6UgmFarveUiRvN/h0JWQToEinOjaJOzL4AAAAAAD9////Ai/IBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wQJwAAAAAAABYAFHUedugZkZbUVJQcRdGzoyPxQzvWAAAAAAABAR8A8gUqAQAAABYAFHUedugZkZbUVJQcRdGzoyPxQzvWAQhrAkcwRAIgFhWrJe4JNcEc2q8ajyKVTXlnDpAASffIV4XZZoJ4lgkCIA6nCxG5ccvdzJmNehEITmjVO6z6dU48e3abILqvX434ASECeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5gAAAA=",
+    "finalTxHex": "02000000000101dd0d28cabc7f947a5209856abbde52246f37f874256413a048a73a36893b32f80000000000fdffffff022fc8052a010000001600147dd65592d0ab2fe0d0257d571abf032cd9db93dc1027000000000000160014751e76e8199196d454941c45d1b3a323f1433bd60247304402201615ab25ee0935c11cdaaf1a8f22954d79670e900049f7c85785d9668278960902200ea70b11b971cbddcc998d7a11084e68d53bacfa754e3c7b769b20baaf5f8df801210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179800000000",
+    "expectedTxid": "37748740ecfb16f3b7fcb8fed91a9bd9bb2c27217465d359422807115bfd884c",
+    "expectedFee": 705,
+    "expectedVsize": 141,
+    "expectedRecipientValue": 4999989295,
+    "expectedChangeValue": 10000,
     "mempoolAccept": {
       "allowed": true,
-      "txid": "eeee44c7efeee783f5a13e8bb5ee09bd73ac61314c2cbe462e7b60f8cf229a7d"
+      "txid": "37748740ecfb16f3b7fcb8fed91a9bd9bb2c27217465d359422807115bfd884c"
     },
     "coreProof": {
       "decodedSignedPsbt": {
         "tx": {
-          "txid": "eeee44c7efeee783f5a13e8bb5ee09bd73ac61314c2cbe462e7b60f8cf229a7d",
-          "hash": "eeee44c7efeee783f5a13e8bb5ee09bd73ac61314c2cbe462e7b60f8cf229a7d",
+          "txid": "37748740ecfb16f3b7fcb8fed91a9bd9bb2c27217465d359422807115bfd884c",
+          "hash": "37748740ecfb16f3b7fcb8fed91a9bd9bb2c27217465d359422807115bfd884c",
           "version": 2,
-          "size": 82,
-          "vsize": 82,
-          "weight": 328,
+          "size": 113,
+          "vsize": 113,
+          "weight": 452,
           "locktime": 0,
           "vin": [
             {
@@ -276,13 +305,24 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
           ],
           "vout": [
             {
-              "value": 49.99999,
+              "value": 49.99989295,
               "n": 0,
               "scriptPubKey": {
                 "asm": "0 7dd65592d0ab2fe0d0257d571abf032cd9db93dc",
                 "desc": "addr(bcrt1q0ht9tyks4vh7p5p904t340cr9nvahy7uevmqwj)#mtszgwaz",
                 "hex": "00147dd65592d0ab2fe0d0257d571abf032cd9db93dc",
                 "address": "bcrt1q0ht9tyks4vh7p5p904t340cr9nvahy7uevmqwj",
+                "type": "witness_v0_keyhash"
+              }
+            },
+            {
+              "value": 0.0001,
+              "n": 1,
+              "scriptPubKey": {
+                "asm": "0 751e76e8199196d454941c45d1b3a323f1433bd6",
+                "desc": "addr(bcrt1qw508d6qejxtdg4y5r3zarvary0c5xw7kygt080)#8pk5s7ya",
+                "hex": "0014751e76e8199196d454941c45d1b3a323f1433bd6",
+                "address": "bcrt1qw508d6qejxtdg4y5r3zarvary0c5xw7kygt080",
                 "type": "witness_v0_keyhash"
               }
             }
@@ -305,7 +345,7 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
               }
             },
             "partial_signatures": {
-              "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798": "304402204685fa2b507145f21acbe832f1c7e1cb6b5183be889d42eed0ae7f33cec11415022043c6b6a1a23deafc0687317be134cd382c0b79780f3af53f3e977d2e3cc3ea0401"
+              "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798": "304402201615ab25ee0935c11cdaaf1a8f22954d79670e900049f7c85785d9668278960902200ea70b11b971cbddcc998d7a11084e68d53bacfa754e3c7b769b20baaf5f8df801"
             },
             "bip32_derivs": [
               {
@@ -317,9 +357,10 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
           }
         ],
         "outputs": [
+          {},
           {}
         ],
-        "fee": 0.00001
+        "fee": 0.00000705
       },
       "analyzedSignedPsbt": {
         "inputs": [
@@ -329,22 +370,22 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
             "next": "finalizer"
           }
         ],
-        "estimated_vsize": 110,
-        "estimated_feerate": 0.0000909,
-        "fee": 0.00001,
+        "estimated_vsize": 141,
+        "estimated_feerate": 0.00005,
+        "fee": 0.00000705,
         "next": "finalizer"
       },
       "finalizedPsbt": {
-        "hex": "02000000000101dd0d28cabc7f947a5209856abbde52246f37f874256413a048a73a36893b32f80000000000fdffffff0118ee052a010000001600147dd65592d0ab2fe0d0257d571abf032cd9db93dc0247304402204685fa2b507145f21acbe832f1c7e1cb6b5183be889d42eed0ae7f33cec11415022043c6b6a1a23deafc0687317be134cd382c0b79780f3af53f3e977d2e3cc3ea0401210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179800000000",
+        "hex": "02000000000101dd0d28cabc7f947a5209856abbde52246f37f874256413a048a73a36893b32f80000000000fdffffff022fc8052a010000001600147dd65592d0ab2fe0d0257d571abf032cd9db93dc1027000000000000160014751e76e8199196d454941c45d1b3a323f1433bd60247304402201615ab25ee0935c11cdaaf1a8f22954d79670e900049f7c85785d9668278960902200ea70b11b971cbddcc998d7a11084e68d53bacfa754e3c7b769b20baaf5f8df801210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179800000000",
         "complete": true
       },
       "decodedTransaction": {
-        "txid": "eeee44c7efeee783f5a13e8bb5ee09bd73ac61314c2cbe462e7b60f8cf229a7d",
-        "hash": "d10406d12bf76269f8eb8a2732b28a8315d42af88027d280911a19d24f00b739",
+        "txid": "37748740ecfb16f3b7fcb8fed91a9bd9bb2c27217465d359422807115bfd884c",
+        "hash": "ce90a1d2fb445065199473119c7daa12830de274273fcca54a7eb5d1476f6bbc",
         "version": 2,
-        "size": 191,
-        "vsize": 110,
-        "weight": 437,
+        "size": 222,
+        "vsize": 141,
+        "weight": 561,
         "locktime": 0,
         "vin": [
           {
@@ -355,7 +396,7 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
               "hex": ""
             },
             "txinwitness": [
-              "304402204685fa2b507145f21acbe832f1c7e1cb6b5183be889d42eed0ae7f33cec11415022043c6b6a1a23deafc0687317be134cd382c0b79780f3af53f3e977d2e3cc3ea0401",
+              "304402201615ab25ee0935c11cdaaf1a8f22954d79670e900049f7c85785d9668278960902200ea70b11b971cbddcc998d7a11084e68d53bacfa754e3c7b769b20baaf5f8df801",
               "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
             ],
             "sequence": 4294967293
@@ -363,13 +404,24 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
         ],
         "vout": [
           {
-            "value": 49.99999,
+            "value": 49.99989295,
             "n": 0,
             "scriptPubKey": {
               "asm": "0 7dd65592d0ab2fe0d0257d571abf032cd9db93dc",
               "desc": "addr(bcrt1q0ht9tyks4vh7p5p904t340cr9nvahy7uevmqwj)#mtszgwaz",
               "hex": "00147dd65592d0ab2fe0d0257d571abf032cd9db93dc",
               "address": "bcrt1q0ht9tyks4vh7p5p904t340cr9nvahy7uevmqwj",
+              "type": "witness_v0_keyhash"
+            }
+          },
+          {
+            "value": 0.0001,
+            "n": 1,
+            "scriptPubKey": {
+              "asm": "0 751e76e8199196d454941c45d1b3a323f1433bd6",
+              "desc": "addr(bcrt1qw508d6qejxtdg4y5r3zarvary0c5xw7kygt080)#8pk5s7ya",
+              "hex": "0014751e76e8199196d454941c45d1b3a323f1433bd6",
+              "address": "bcrt1qw508d6qejxtdg4y5r3zarvary0c5xw7kygt080",
               "type": "witness_v0_keyhash"
             }
           }
@@ -386,26 +438,28 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
     "description": "Bitcoin Core accepted regtest P2SH-P2WPKH software-signed spend",
     "scriptType": "p2sh-p2wpkh",
     "network": "regtest",
-    "unsignedPsbtBase64": "cHNidP8BAFICAAAAAY9SVQW6ZLcPaToJvKYQv8+akAH7y/KNdAxmQxA8zOChAAAAAAD9////ASTsBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wAAAAAAAEBIADyBSoBAAAAF6kUvP63KLWEJT1fP3C8t4Dp7yGKaPSHAQQWABR1HnboGZGW1FSUHEXRs6Mj8UM71iIGAnm+Zn753LusVaBilc6HCwcCm/zbLc4o2VnygVsW+BeYGNkMak8xAACAAQAAgAAAAIAAAAAAAAAAAAAA",
-    "signedPsbtBase64": "cHNidP8BAFICAAAAAY9SVQW6ZLcPaToJvKYQv8+akAH7y/KNdAxmQxA8zOChAAAAAAD9////ASTsBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wAAAAAAAEBIADyBSoBAAAAF6kUvP63KLWEJT1fP3C8t4Dp7yGKaPSHIgICeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5hIMEUCIQDZ0y4OlPP37bCRgPnA32lsjZ8nnlfx14HB2hrogeofUQIgGoPJCdq0I7P46PQdChNLykspLX0f1U6jr1kyz+gGT64BAQQWABR1HnboGZGW1FSUHEXRs6Mj8UM71iIGAnm+Zn753LusVaBilc6HCwcCm/zbLc4o2VnygVsW+BeYGNkMak8xAACAAQAAgAAAAIAAAAAAAAAAAAAA",
-    "finalizedPsbtBase64": "cHNidP8BAFICAAAAAY9SVQW6ZLcPaToJvKYQv8+akAH7y/KNdAxmQxA8zOChAAAAAAD9////ASTsBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wAAAAAAAEBIADyBSoBAAAAF6kUvP63KLWEJT1fP3C8t4Dp7yGKaPSHAQcXFgAUdR526BmRltRUlBxF0bOjI/FDO9YBCGwCSDBFAiEA2dMuDpTz9+2wkYD5wN9pbI2fJ55X8deBwdoa6IHqH1ECIBqDyQnatCOz+Oj0HQoTS8pLKS19H9VOo69ZMs/oBk+uASECeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5gAAA==",
-    "finalTxHex": "020000000001018f525505ba64b70f693a09bca610bfcf9a9001fbcbf28d740c6643103ccce0a10000000017160014751e76e8199196d454941c45d1b3a323f1433bd6fdffffff0124ec052a010000001600147dd65592d0ab2fe0d0257d571abf032cd9db93dc02483045022100d9d32e0e94f3f7edb09180f9c0df696c8d9f279e57f1d781c1da1ae881ea1f5102201a83c909dab423b3f8e8f41d0a134bca4b292d7d1fd54ea3af5932cfe8064fae01210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179800000000",
-    "expectedTxid": "3fc2c8b43ddf44832eaa2fbedbdd9d806a4ebf28e5cd2d2fab9bcb7935edc618",
-    "expectedFee": 1500,
-    "expectedVsize": 133,
+    "unsignedPsbtBase64": "cHNidP8BAHICAAAAAY9SVQW6ZLcPaToJvKYQv8+akAH7y/KNdAxmQxA8zOChAAAAAAD9////ArfHBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wQJwAAAAAAABepFLz+tyi1hCU9Xz9wvLeA6e8himj0hwAAAAAAAQEgAPIFKgEAAAAXqRS8/rcotYQlPV8/cLy3gOnvIYpo9IcBBBYAFHUedugZkZbUVJQcRdGzoyPxQzvWIgYCeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5gY2QxqTzEAAIABAACAAAAAgAAAAAAAAAAAAAAA",
+    "signedPsbtBase64": "cHNidP8BAHICAAAAAY9SVQW6ZLcPaToJvKYQv8+akAH7y/KNdAxmQxA8zOChAAAAAAD9////ArfHBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wQJwAAAAAAABepFLz+tyi1hCU9Xz9wvLeA6e8himj0hwAAAAAAAQEgAPIFKgEAAAAXqRS8/rcotYQlPV8/cLy3gOnvIYpo9IciAgJ5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmEgwRQIhAIzFQT9aZldsMaiwU5EBamiuA6xn3sbUDQ9UEgWgDy/3AiAs/9/BUuKdkmY3qkOs1jdzeUn1ZCWEY6kH0LEctjWJTQEBBBYAFHUedugZkZbUVJQcRdGzoyPxQzvWIgYCeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5gY2QxqTzEAAIABAACAAAAAgAAAAAAAAAAAAAAA",
+    "finalizedPsbtBase64": "cHNidP8BAHICAAAAAY9SVQW6ZLcPaToJvKYQv8+akAH7y/KNdAxmQxA8zOChAAAAAAD9////ArfHBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wQJwAAAAAAABepFLz+tyi1hCU9Xz9wvLeA6e8himj0hwAAAAAAAQEgAPIFKgEAAAAXqRS8/rcotYQlPV8/cLy3gOnvIYpo9IcBBxcWABR1HnboGZGW1FSUHEXRs6Mj8UM71gEIbAJIMEUCIQCMxUE/WmZXbDGosFORAWporgOsZ97G1A0PVBIFoA8v9wIgLP/fwVLinZJmN6pDrNY3c3lJ9WQlhGOpB9CxHLY1iU0BIQJ5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmAAAAA==",
+    "finalTxHex": "020000000001018f525505ba64b70f693a09bca610bfcf9a9001fbcbf28d740c6643103ccce0a10000000017160014751e76e8199196d454941c45d1b3a323f1433bd6fdffffff02b7c7052a010000001600147dd65592d0ab2fe0d0257d571abf032cd9db93dc102700000000000017a914bcfeb728b584253d5f3f70bcb780e9ef218a68f487024830450221008cc5413f5a66576c31a8b05391016a68ae03ac67dec6d40d0f541205a00f2ff702202cffdfc152e29d926637aa43acd637737949f564258463a907d0b11cb635894d01210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179800000000",
+    "expectedTxid": "e18c163daf178b60a23d420cef666c64699dedd09080b194ac2c7097c2de659d",
+    "expectedFee": 825,
+    "expectedVsize": 165,
+    "expectedRecipientValue": 4999989175,
+    "expectedChangeValue": 10000,
     "mempoolAccept": {
       "allowed": true,
-      "txid": "3fc2c8b43ddf44832eaa2fbedbdd9d806a4ebf28e5cd2d2fab9bcb7935edc618"
+      "txid": "e18c163daf178b60a23d420cef666c64699dedd09080b194ac2c7097c2de659d"
     },
     "coreProof": {
       "decodedSignedPsbt": {
         "tx": {
-          "txid": "9c1154c908aa14a7480a11e44b7a6df38178175cced1404eaf2bfcec66f989e5",
-          "hash": "9c1154c908aa14a7480a11e44b7a6df38178175cced1404eaf2bfcec66f989e5",
+          "txid": "333e40c829fd65ba1f14dd9e37353ef6f00eb181b9cfa44046b20fc240302c00",
+          "hash": "333e40c829fd65ba1f14dd9e37353ef6f00eb181b9cfa44046b20fc240302c00",
           "version": 2,
-          "size": 82,
-          "vsize": 82,
-          "weight": 328,
+          "size": 114,
+          "vsize": 114,
+          "weight": 456,
           "locktime": 0,
           "vin": [
             {
@@ -420,7 +474,7 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
           ],
           "vout": [
             {
-              "value": 49.999985,
+              "value": 49.99989175,
               "n": 0,
               "scriptPubKey": {
                 "asm": "0 7dd65592d0ab2fe0d0257d571abf032cd9db93dc",
@@ -428,6 +482,17 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
                 "hex": "00147dd65592d0ab2fe0d0257d571abf032cd9db93dc",
                 "address": "bcrt1q0ht9tyks4vh7p5p904t340cr9nvahy7uevmqwj",
                 "type": "witness_v0_keyhash"
+              }
+            },
+            {
+              "value": 0.0001,
+              "n": 1,
+              "scriptPubKey": {
+                "asm": "OP_HASH160 bcfeb728b584253d5f3f70bcb780e9ef218a68f4 OP_EQUAL",
+                "desc": "addr(2NAUYAHhujozruyzpsFRP63mbrdaU5wnEpN)#js8djwar",
+                "hex": "a914bcfeb728b584253d5f3f70bcb780e9ef218a68f487",
+                "address": "2NAUYAHhujozruyzpsFRP63mbrdaU5wnEpN",
+                "type": "scripthash"
               }
             }
           ]
@@ -449,7 +514,7 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
               }
             },
             "partial_signatures": {
-              "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798": "3045022100d9d32e0e94f3f7edb09180f9c0df696c8d9f279e57f1d781c1da1ae881ea1f5102201a83c909dab423b3f8e8f41d0a134bca4b292d7d1fd54ea3af5932cfe8064fae01"
+              "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798": "30450221008cc5413f5a66576c31a8b05391016a68ae03ac67dec6d40d0f541205a00f2ff702202cffdfc152e29d926637aa43acd637737949f564258463a907d0b11cb635894d01"
             },
             "redeem_script": {
               "asm": "0 751e76e8199196d454941c45d1b3a323f1433bd6",
@@ -466,9 +531,10 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
           }
         ],
         "outputs": [
+          {},
           {}
         ],
-        "fee": 0.000015
+        "fee": 0.00000825
       },
       "analyzedSignedPsbt": {
         "inputs": [
@@ -478,22 +544,22 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
             "next": "finalizer"
           }
         ],
-        "estimated_vsize": 133,
-        "estimated_feerate": 0.00011278,
-        "fee": 0.000015,
+        "estimated_vsize": 165,
+        "estimated_feerate": 0.00005,
+        "fee": 0.00000825,
         "next": "finalizer"
       },
       "finalizedPsbt": {
-        "hex": "020000000001018f525505ba64b70f693a09bca610bfcf9a9001fbcbf28d740c6643103ccce0a10000000017160014751e76e8199196d454941c45d1b3a323f1433bd6fdffffff0124ec052a010000001600147dd65592d0ab2fe0d0257d571abf032cd9db93dc02483045022100d9d32e0e94f3f7edb09180f9c0df696c8d9f279e57f1d781c1da1ae881ea1f5102201a83c909dab423b3f8e8f41d0a134bca4b292d7d1fd54ea3af5932cfe8064fae01210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179800000000",
+        "hex": "020000000001018f525505ba64b70f693a09bca610bfcf9a9001fbcbf28d740c6643103ccce0a10000000017160014751e76e8199196d454941c45d1b3a323f1433bd6fdffffff02b7c7052a010000001600147dd65592d0ab2fe0d0257d571abf032cd9db93dc102700000000000017a914bcfeb728b584253d5f3f70bcb780e9ef218a68f487024830450221008cc5413f5a66576c31a8b05391016a68ae03ac67dec6d40d0f541205a00f2ff702202cffdfc152e29d926637aa43acd637737949f564258463a907d0b11cb635894d01210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179800000000",
         "complete": true
       },
       "decodedTransaction": {
-        "txid": "3fc2c8b43ddf44832eaa2fbedbdd9d806a4ebf28e5cd2d2fab9bcb7935edc618",
-        "hash": "bd87d26e9f0e97777e931b158d7e7c29bde8a2e6d9b6b2ca84f4f8c11ccb165c",
+        "txid": "e18c163daf178b60a23d420cef666c64699dedd09080b194ac2c7097c2de659d",
+        "hash": "23bbbbaa5cfe69413767c0154102c3bf4f52e4bf31af3ae8182c68335386538c",
         "version": 2,
-        "size": 215,
-        "vsize": 133,
-        "weight": 530,
+        "size": 247,
+        "vsize": 165,
+        "weight": 658,
         "locktime": 0,
         "vin": [
           {
@@ -504,7 +570,7 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
               "hex": "160014751e76e8199196d454941c45d1b3a323f1433bd6"
             },
             "txinwitness": [
-              "3045022100d9d32e0e94f3f7edb09180f9c0df696c8d9f279e57f1d781c1da1ae881ea1f5102201a83c909dab423b3f8e8f41d0a134bca4b292d7d1fd54ea3af5932cfe8064fae01",
+              "30450221008cc5413f5a66576c31a8b05391016a68ae03ac67dec6d40d0f541205a00f2ff702202cffdfc152e29d926637aa43acd637737949f564258463a907d0b11cb635894d01",
               "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
             ],
             "sequence": 4294967293
@@ -512,7 +578,7 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
         ],
         "vout": [
           {
-            "value": 49.999985,
+            "value": 49.99989175,
             "n": 0,
             "scriptPubKey": {
               "asm": "0 7dd65592d0ab2fe0d0257d571abf032cd9db93dc",
@@ -520,6 +586,17 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
               "hex": "00147dd65592d0ab2fe0d0257d571abf032cd9db93dc",
               "address": "bcrt1q0ht9tyks4vh7p5p904t340cr9nvahy7uevmqwj",
               "type": "witness_v0_keyhash"
+            }
+          },
+          {
+            "value": 0.0001,
+            "n": 1,
+            "scriptPubKey": {
+              "asm": "OP_HASH160 bcfeb728b584253d5f3f70bcb780e9ef218a68f4 OP_EQUAL",
+              "desc": "addr(2NAUYAHhujozruyzpsFRP63mbrdaU5wnEpN)#js8djwar",
+              "hex": "a914bcfeb728b584253d5f3f70bcb780e9ef218a68f487",
+              "address": "2NAUYAHhujozruyzpsFRP63mbrdaU5wnEpN",
+              "type": "scripthash"
             }
           }
         ]
@@ -535,26 +612,28 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
     "description": "Bitcoin Core accepted regtest P2TR BIP371 key-path software-signed spend",
     "scriptType": "p2tr",
     "network": "regtest",
-    "unsignedPsbtBase64": "cHNidP8BAFICAAAAASObxDfnfielGHpYxM4QwGQEYzibHnVZaUF9SkpZB+NMAAAAAAD9////ARjuBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wAAAAAAAEBKwDyBSoBAAAAIlEg2kcQlk94Umld4toCUpDiSvbYwoHeWguQK3E1/Z/XTSEhFnm+Zn753LusVaBilc6HCwcCm/zbLc4o2VnygVsW+BeYGQDZDGpPVgAAgAEAAIAAAACAAAAAAAAAAAABFyB5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmAAA",
-    "signedPsbtBase64": "cHNidP8BAFICAAAAASObxDfnfielGHpYxM4QwGQEYzibHnVZaUF9SkpZB+NMAAAAAAD9////ARjuBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wAAAAAAAEBKwDyBSoBAAAAIlEg2kcQlk94Umld4toCUpDiSvbYwoHeWguQK3E1/Z/XTSEBE0CaF8jhcrKzrB3KeS9YgkOR/Pp1AsDmCDa/kRTTTN5u/lj24Bp/ZJtM97BH0dbC/Yx3q/BusA+nrZrD8XCTaVXfIRZ5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmBkA2QxqT1YAAIABAACAAAAAgAAAAAAAAAAAARcgeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5gAAA==",
-    "finalizedPsbtBase64": "cHNidP8BAFICAAAAASObxDfnfielGHpYxM4QwGQEYzibHnVZaUF9SkpZB+NMAAAAAAD9////ARjuBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wAAAAAAAEBKwDyBSoBAAAAIlEg2kcQlk94Umld4toCUpDiSvbYwoHeWguQK3E1/Z/XTSEBCEIBQJoXyOFysrOsHcp5L1iCQ5H8+nUCwOYINr+RFNNM3m7+WPbgGn9km0z3sEfR1sL9jHer8G6wD6etmsPxcJNpVd8AAA==",
-    "finalTxHex": "02000000000101239bc437e77e27a5187a58c4ce10c0640463389b1e755969417d4a4a5907e34c0000000000fdffffff0118ee052a010000001600147dd65592d0ab2fe0d0257d571abf032cd9db93dc01409a17c8e172b2b3ac1dca792f58824391fcfa7502c0e60836bf9114d34cde6efe58f6e01a7f649b4cf7b047d1d6c2fd8c77abf06eb00fa7ad9ac3f170936955df00000000",
-    "expectedTxid": "d145bad5be34acfba538680478bc7e479485f45b7bcd749bc16362ea0e80b765",
-    "expectedFee": 1000,
-    "expectedVsize": 99,
+    "unsignedPsbtBase64": "cHNidP8BAH0CAAAAASObxDfnfielGHpYxM4QwGQEYzibHnVZaUF9SkpZB+NMAAAAAAD9////AiXIBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wQJwAAAAAAACJRINpHEJZPeFJpXeLaAlKQ4kr22MKB3loLkCtxNf2f100hAAAAAAABASsA8gUqAQAAACJRINpHEJZPeFJpXeLaAlKQ4kr22MKB3loLkCtxNf2f100hIRZ5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmBkA2QxqT1YAAIABAACAAAAAgAAAAAAAAAAAARcgeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5gAAAA=",
+    "signedPsbtBase64": "cHNidP8BAH0CAAAAASObxDfnfielGHpYxM4QwGQEYzibHnVZaUF9SkpZB+NMAAAAAAD9////AiXIBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wQJwAAAAAAACJRINpHEJZPeFJpXeLaAlKQ4kr22MKB3loLkCtxNf2f100hAAAAAAABASsA8gUqAQAAACJRINpHEJZPeFJpXeLaAlKQ4kr22MKB3loLkCtxNf2f100hARNAl0Fhequpvkh9+CkkX3Wduwmj18IHPi0wq1ceGC+VqDa1XH0lVRN2L92NHh9iR6hL0sryWCk+slhmhxCg9tOFQyEWeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5gZANkMak9WAACAAQAAgAAAAIAAAAAAAAAAAAEXIHm+Zn753LusVaBilc6HCwcCm/zbLc4o2VnygVsW+BeYAAAA",
+    "finalizedPsbtBase64": "cHNidP8BAH0CAAAAASObxDfnfielGHpYxM4QwGQEYzibHnVZaUF9SkpZB+NMAAAAAAD9////AiXIBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wQJwAAAAAAACJRINpHEJZPeFJpXeLaAlKQ4kr22MKB3loLkCtxNf2f100hAAAAAAABASsA8gUqAQAAACJRINpHEJZPeFJpXeLaAlKQ4kr22MKB3loLkCtxNf2f100hAQhCAUCXQWF6q6m+SH34KSRfdZ27CaPXwgc+LTCrVx4YL5WoNrVcfSVVE3Yv3Y0eH2JHqEvSyvJYKT6yWGaHEKD204VDAAAA",
+    "finalTxHex": "02000000000101239bc437e77e27a5187a58c4ce10c0640463389b1e755969417d4a4a5907e34c0000000000fdffffff0225c8052a010000001600147dd65592d0ab2fe0d0257d571abf032cd9db93dc1027000000000000225120da4710964f7852695de2da025290e24af6d8c281de5a0b902b7135fd9fd74d2101409741617aaba9be487df829245f759dbb09a3d7c2073e2d30ab571e182f95a836b55c7d255513762fdd8d1e1f6247a84bd2caf258293eb258668710a0f6d3854300000000",
+    "expectedTxid": "1e28cac8157a6a748ff2c54ebc19fdf4e6ead6be84c28cd12f846eeb483f80bc",
+    "expectedFee": 715,
+    "expectedVsize": 142,
+    "expectedRecipientValue": 4999989285,
+    "expectedChangeValue": 10000,
     "mempoolAccept": {
       "allowed": true,
-      "txid": "d145bad5be34acfba538680478bc7e479485f45b7bcd749bc16362ea0e80b765"
+      "txid": "1e28cac8157a6a748ff2c54ebc19fdf4e6ead6be84c28cd12f846eeb483f80bc"
     },
     "coreProof": {
       "decodedSignedPsbt": {
         "tx": {
-          "txid": "d145bad5be34acfba538680478bc7e479485f45b7bcd749bc16362ea0e80b765",
-          "hash": "d145bad5be34acfba538680478bc7e479485f45b7bcd749bc16362ea0e80b765",
+          "txid": "1e28cac8157a6a748ff2c54ebc19fdf4e6ead6be84c28cd12f846eeb483f80bc",
+          "hash": "1e28cac8157a6a748ff2c54ebc19fdf4e6ead6be84c28cd12f846eeb483f80bc",
           "version": 2,
-          "size": 82,
-          "vsize": 82,
-          "weight": 328,
+          "size": 125,
+          "vsize": 125,
+          "weight": 500,
           "locktime": 0,
           "vin": [
             {
@@ -569,7 +648,7 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
           ],
           "vout": [
             {
-              "value": 49.99999,
+              "value": 49.99989285,
               "n": 0,
               "scriptPubKey": {
                 "asm": "0 7dd65592d0ab2fe0d0257d571abf032cd9db93dc",
@@ -577,6 +656,17 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
                 "hex": "00147dd65592d0ab2fe0d0257d571abf032cd9db93dc",
                 "address": "bcrt1q0ht9tyks4vh7p5p904t340cr9nvahy7uevmqwj",
                 "type": "witness_v0_keyhash"
+              }
+            },
+            {
+              "value": 0.0001,
+              "n": 1,
+              "scriptPubKey": {
+                "asm": "1 da4710964f7852695de2da025290e24af6d8c281de5a0b902b7135fd9fd74d21",
+                "desc": "rawtr(da4710964f7852695de2da025290e24af6d8c281de5a0b902b7135fd9fd74d21)#8l2km90v",
+                "hex": "5120da4710964f7852695de2da025290e24af6d8c281de5a0b902b7135fd9fd74d21",
+                "address": "bcrt1pmfr3p9j00pfxjh0zmgp99y8zftmd3s5pmedqhyptwy6lm87hf5ssm803es",
+                "type": "witness_v1_taproot"
               }
             }
           ]
@@ -597,7 +687,7 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
                 "type": "witness_v1_taproot"
               }
             },
-            "taproot_key_path_sig": "9a17c8e172b2b3ac1dca792f58824391fcfa7502c0e60836bf9114d34cde6efe58f6e01a7f649b4cf7b047d1d6c2fd8c77abf06eb00fa7ad9ac3f170936955df",
+            "taproot_key_path_sig": "9741617aaba9be487df829245f759dbb09a3d7c2073e2d30ab571e182f95a836b55c7d255513762fdd8d1e1f6247a84bd2caf258293eb258668710a0f6d38543",
             "taproot_bip32_derivs": [
               {
                 "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
@@ -610,9 +700,10 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
           }
         ],
         "outputs": [
+          {},
           {}
         ],
-        "fee": 0.00001
+        "fee": 0.00000715
       },
       "analyzedSignedPsbt": {
         "inputs": [
@@ -622,20 +713,20 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
             "next": "finalizer"
           }
         ],
-        "fee": 0.00001,
+        "fee": 0.00000715,
         "next": "finalizer"
       },
       "finalizedPsbt": {
-        "hex": "02000000000101239bc437e77e27a5187a58c4ce10c0640463389b1e755969417d4a4a5907e34c0000000000fdffffff0118ee052a010000001600147dd65592d0ab2fe0d0257d571abf032cd9db93dc01409a17c8e172b2b3ac1dca792f58824391fcfa7502c0e60836bf9114d34cde6efe58f6e01a7f649b4cf7b047d1d6c2fd8c77abf06eb00fa7ad9ac3f170936955df00000000",
+        "hex": "02000000000101239bc437e77e27a5187a58c4ce10c0640463389b1e755969417d4a4a5907e34c0000000000fdffffff0225c8052a010000001600147dd65592d0ab2fe0d0257d571abf032cd9db93dc1027000000000000225120da4710964f7852695de2da025290e24af6d8c281de5a0b902b7135fd9fd74d2101409741617aaba9be487df829245f759dbb09a3d7c2073e2d30ab571e182f95a836b55c7d255513762fdd8d1e1f6247a84bd2caf258293eb258668710a0f6d3854300000000",
         "complete": true
       },
       "decodedTransaction": {
-        "txid": "d145bad5be34acfba538680478bc7e479485f45b7bcd749bc16362ea0e80b765",
-        "hash": "670085a8011b64d14921877547b1dbcf862a1ae9722948dd41e6c8a314baecb0",
+        "txid": "1e28cac8157a6a748ff2c54ebc19fdf4e6ead6be84c28cd12f846eeb483f80bc",
+        "hash": "26bc2c06bd008f1f1ff6697a736f935acf73c885fb0e731e169704e8dbeab698",
         "version": 2,
-        "size": 150,
-        "vsize": 99,
-        "weight": 396,
+        "size": 193,
+        "vsize": 142,
+        "weight": 568,
         "locktime": 0,
         "vin": [
           {
@@ -646,14 +737,14 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
               "hex": ""
             },
             "txinwitness": [
-              "9a17c8e172b2b3ac1dca792f58824391fcfa7502c0e60836bf9114d34cde6efe58f6e01a7f649b4cf7b047d1d6c2fd8c77abf06eb00fa7ad9ac3f170936955df"
+              "9741617aaba9be487df829245f759dbb09a3d7c2073e2d30ab571e182f95a836b55c7d255513762fdd8d1e1f6247a84bd2caf258293eb258668710a0f6d38543"
             ],
             "sequence": 4294967293
           }
         ],
         "vout": [
           {
-            "value": 49.99999,
+            "value": 49.99989285,
             "n": 0,
             "scriptPubKey": {
               "asm": "0 7dd65592d0ab2fe0d0257d571abf032cd9db93dc",
@@ -661,6 +752,17 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
               "hex": "00147dd65592d0ab2fe0d0257d571abf032cd9db93dc",
               "address": "bcrt1q0ht9tyks4vh7p5p904t340cr9nvahy7uevmqwj",
               "type": "witness_v0_keyhash"
+            }
+          },
+          {
+            "value": 0.0001,
+            "n": 1,
+            "scriptPubKey": {
+              "asm": "1 da4710964f7852695de2da025290e24af6d8c281de5a0b902b7135fd9fd74d21",
+              "desc": "rawtr(da4710964f7852695de2da025290e24af6d8c281de5a0b902b7135fd9fd74d21)#8l2km90v",
+              "hex": "5120da4710964f7852695de2da025290e24af6d8c281de5a0b902b7135fd9fd74d21",
+              "address": "bcrt1pmfr3p9j00pfxjh0zmgp99y8zftmd3s5pmedqhyptwy6lm87hf5ssm803es",
+              "type": "witness_v1_taproot"
             }
           }
         ]
@@ -676,26 +778,28 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
     "description": "Bitcoin Core accepted regtest P2WSH 2-of-2 software-signed spend",
     "scriptType": "p2wsh",
     "network": "regtest",
-    "unsignedPsbtBase64": "cHNidP8BAFICAAAAAajkwYRGibAKc49v+kw2MyI5khMXQEuJ5NlTIHguLo2GAAAAAAD9////ATDqBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wAAAAAAAEBKwDyBSoBAAAAIgAgm5hMe64+/dw6Pwog/4G/6J7R/gf/E+ViFJ7mVL7YRdsBBUdSIQJ5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmCECxgR/lEHtfW0wRUBulcB82Fx3jkuM7zynq6wJuVxwnuVSriIGAnm+Zn753LusVaBilc6HCwcCm/zbLc4o2VnygVsW+BeYHNkMak8wAACAAQAAgAAAAIACAACAAAAAAAAAAAAiBgLGBH+UQe19bTBFQG6VwHzYXHeOS4zvPKerrAm5XHCe5RzCGyw9MAAAgAEAAIAAAACAAgAAgAAAAAAAAAAAAAA=",
-    "signedPsbtBase64": "cHNidP8BAFICAAAAAajkwYRGibAKc49v+kw2MyI5khMXQEuJ5NlTIHguLo2GAAAAAAD9////ATDqBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wAAAAAAAEBKwDyBSoBAAAAIgAgm5hMe64+/dw6Pwog/4G/6J7R/gf/E+ViFJ7mVL7YRdsiAgJ5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmEgwRQIhAKejYsfRQOLB0zENQ1JKM2fljUT9W4U9pzR8zdvio5aQAiBtNN1BOM2rUekSumjbTn0aJirzVKfjmfODdQohuEwvWgEiAgLGBH+UQe19bTBFQG6VwHzYXHeOS4zvPKerrAm5XHCe5UcwRAIgOzBOOlk+ProTo8yI0zkY5wAUK3gz+YLbTQGcensejKsCICGLYY3xrFQIjlArzNimmiMCYLhkJqbAqXgWwuXJXTwnAQEFR1IhAnm+Zn753LusVaBilc6HCwcCm/zbLc4o2VnygVsW+BeYIQLGBH+UQe19bTBFQG6VwHzYXHeOS4zvPKerrAm5XHCe5VKuIgYCeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5gc2QxqTzAAAIABAACAAAAAgAIAAIAAAAAAAAAAACIGAsYEf5RB7X1tMEVAbpXAfNhcd45LjO88p6usCblccJ7lHMIbLD0wAACAAQAAgAAAAIACAACAAAAAAAAAAAAAAA==",
-    "finalizedPsbtBase64": "cHNidP8BAFICAAAAAajkwYRGibAKc49v+kw2MyI5khMXQEuJ5NlTIHguLo2GAAAAAAD9////ATDqBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wAAAAAAAEBKwDyBSoBAAAAIgAgm5hMe64+/dw6Pwog/4G/6J7R/gf/E+ViFJ7mVL7YRdsiAgJ5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmEgwRQIhAKejYsfRQOLB0zENQ1JKM2fljUT9W4U9pzR8zdvio5aQAiBtNN1BOM2rUekSumjbTn0aJirzVKfjmfODdQohuEwvWgEiAgLGBH+UQe19bTBFQG6VwHzYXHeOS4zvPKerrAm5XHCe5UcwRAIgOzBOOlk+ProTo8yI0zkY5wAUK3gz+YLbTQGcensejKsCICGLYY3xrFQIjlArzNimmiMCYLhkJqbAqXgWwuXJXTwnAQEFR1IhAnm+Zn753LusVaBilc6HCwcCm/zbLc4o2VnygVsW+BeYIQLGBH+UQe19bTBFQG6VwHzYXHeOS4zvPKerrAm5XHCe5VKuIgYCeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5gc2QxqTzAAAIABAACAAAAAgAIAAIAAAAAAAAAAACIGAsYEf5RB7X1tMEVAbpXAfNhcd45LjO88p6usCblccJ7lHMIbLD0wAACAAQAAgAAAAIACAACAAAAAAAAAAAABCNsEAEgwRQIhAKejYsfRQOLB0zENQ1JKM2fljUT9W4U9pzR8zdvio5aQAiBtNN1BOM2rUekSumjbTn0aJirzVKfjmfODdQohuEwvWgFHMEQCIDswTjpZPj66E6PMiNM5GOcAFCt4M/mC200BnHp7HoyrAiAhi2GN8axUCI5QK8zYppojAmC4ZCamwKl4FsLlyV08JwFHUiECeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5ghAsYEf5RB7X1tMEVAbpXAfNhcd45LjO88p6usCblccJ7lUq4AAA==",
-    "finalTxHex": "02000000000101a8e4c1844689b00a738f6ffa4c36332239921317404b89e4d95320782e2e8d860000000000fdffffff0130ea052a010000001600147dd65592d0ab2fe0d0257d571abf032cd9db93dc0400483045022100a7a362c7d140e2c1d3310d43524a3367e58d44fd5b853da7347ccddbe2a3969002206d34dd4138cdab51e912ba68db4e7d1a262af354a7e399f383750a21b84c2f5a0147304402203b304e3a593e3eba13a3cc88d33918e700142b7833f982db4d019c7a7b1e8cab0220218b618df1ac54088e502bccd8a69a230260b86426a6c0a97816c2e5c95d3c27014752210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817982102c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee552ae00000000",
-    "expectedTxid": "3ea688276b3bcd65bdd5a3c6e82ed2b3cffbdc32110f9e8d1185f24215fb2155",
-    "expectedFee": 2000,
-    "expectedVsize": 138,
+    "unsignedPsbtBase64": "cHNidP8BAH0CAAAAAajkwYRGibAKc49v+kw2MyI5khMXQEuJ5NlTIHguLo2GAAAAAAD9////AmfHBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wQJwAAAAAAACIAIJuYTHuuPv3cOj8KIP+Bv+ie0f4H/xPlYhSe5lS+2EXbAAAAAAABASsA8gUqAQAAACIAIJuYTHuuPv3cOj8KIP+Bv+ie0f4H/xPlYhSe5lS+2EXbAQVHUiECeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5ghAsYEf5RB7X1tMEVAbpXAfNhcd45LjO88p6usCblccJ7lUq4iBgJ5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmBzZDGpPMAAAgAEAAIAAAACAAgAAgAAAAAAAAAAAIgYCxgR/lEHtfW0wRUBulcB82Fx3jkuM7zynq6wJuVxwnuUcwhssPTAAAIABAACAAAAAgAIAAIAAAAAAAAAAAAAAAA==",
+    "signedPsbtBase64": "cHNidP8BAH0CAAAAAajkwYRGibAKc49v+kw2MyI5khMXQEuJ5NlTIHguLo2GAAAAAAD9////AmfHBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wQJwAAAAAAACIAIJuYTHuuPv3cOj8KIP+Bv+ie0f4H/xPlYhSe5lS+2EXbAAAAAAABASsA8gUqAQAAACIAIJuYTHuuPv3cOj8KIP+Bv+ie0f4H/xPlYhSe5lS+2EXbIgICeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5hHMEQCIB3EhiDw42Q8fgi4QBNXVI1Qh4Q3XzAX9CVhvIAN0A6yAiBcSwgMv8rUR4TCsxd54WSnihmjyvvvOhwm4CukhBDAFAEiAgLGBH+UQe19bTBFQG6VwHzYXHeOS4zvPKerrAm5XHCe5UgwRQIhAKPDmdrOQA3a0FT1t7Wg2XP/WeQOGTW4E/qBqbdKHNnwAiAciZtXWLZKmG002tkjN5dAVvXBQb2MTu8zr/8c3XVhqwEBBUdSIQJ5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmCECxgR/lEHtfW0wRUBulcB82Fx3jkuM7zynq6wJuVxwnuVSriIGAnm+Zn753LusVaBilc6HCwcCm/zbLc4o2VnygVsW+BeYHNkMak8wAACAAQAAgAAAAIACAACAAAAAAAAAAAAiBgLGBH+UQe19bTBFQG6VwHzYXHeOS4zvPKerrAm5XHCe5RzCGyw9MAAAgAEAAIAAAACAAgAAgAAAAAAAAAAAAAAA",
+    "finalizedPsbtBase64": "cHNidP8BAH0CAAAAAajkwYRGibAKc49v+kw2MyI5khMXQEuJ5NlTIHguLo2GAAAAAAD9////AmfHBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wQJwAAAAAAACIAIJuYTHuuPv3cOj8KIP+Bv+ie0f4H/xPlYhSe5lS+2EXbAAAAAAABASsA8gUqAQAAACIAIJuYTHuuPv3cOj8KIP+Bv+ie0f4H/xPlYhSe5lS+2EXbIgICeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5hHMEQCIB3EhiDw42Q8fgi4QBNXVI1Qh4Q3XzAX9CVhvIAN0A6yAiBcSwgMv8rUR4TCsxd54WSnihmjyvvvOhwm4CukhBDAFAEiAgLGBH+UQe19bTBFQG6VwHzYXHeOS4zvPKerrAm5XHCe5UgwRQIhAKPDmdrOQA3a0FT1t7Wg2XP/WeQOGTW4E/qBqbdKHNnwAiAciZtXWLZKmG002tkjN5dAVvXBQb2MTu8zr/8c3XVhqwEBBUdSIQJ5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmCECxgR/lEHtfW0wRUBulcB82Fx3jkuM7zynq6wJuVxwnuVSriIGAnm+Zn753LusVaBilc6HCwcCm/zbLc4o2VnygVsW+BeYHNkMak8wAACAAQAAgAAAAIACAACAAAAAAAAAAAAiBgLGBH+UQe19bTBFQG6VwHzYXHeOS4zvPKerrAm5XHCe5RzCGyw9MAAAgAEAAIAAAACAAgAAgAAAAAAAAAAAAQjbBABHMEQCIB3EhiDw42Q8fgi4QBNXVI1Qh4Q3XzAX9CVhvIAN0A6yAiBcSwgMv8rUR4TCsxd54WSnihmjyvvvOhwm4CukhBDAFAFIMEUCIQCjw5nazkAN2tBU9be1oNlz/1nkDhk1uBP6gam3ShzZ8AIgHImbV1i2SphtNNrZIzeXQFb1wUG9jE7vM6//HN11YasBR1IhAnm+Zn753LusVaBilc6HCwcCm/zbLc4o2VnygVsW+BeYIQLGBH+UQe19bTBFQG6VwHzYXHeOS4zvPKerrAm5XHCe5VKuAAAA",
+    "finalTxHex": "02000000000101a8e4c1844689b00a738f6ffa4c36332239921317404b89e4d95320782e2e8d860000000000fdffffff0267c7052a010000001600147dd65592d0ab2fe0d0257d571abf032cd9db93dc10270000000000002200209b984c7bae3efddc3a3f0a20ff81bfe89ed1fe07ff13e562149ee654bed845db040047304402201dc48620f0e3643c7e08b8401357548d508784375f3017f42561bc800dd00eb202205c4b080cbfcad44784c2b31779e164a78a19a3cafbef3a1c26e02ba48410c01401483045022100a3c399dace400ddad054f5b7b5a0d973ff59e40e1935b813fa81a9b74a1cd9f002201c899b5758b64a986d34dad92337974056f5c141bd8c4eef33afff1cdd7561ab014752210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817982102c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee552ae00000000",
+    "expectedTxid": "768f6b4fae9c671e03b871b601713e8f42aa19654824d0da635634f3d76b9fd6",
+    "expectedFee": 905,
+    "expectedVsize": 181,
+    "expectedRecipientValue": 4999989095,
+    "expectedChangeValue": 10000,
     "mempoolAccept": {
       "allowed": true,
-      "txid": "3ea688276b3bcd65bdd5a3c6e82ed2b3cffbdc32110f9e8d1185f24215fb2155"
+      "txid": "768f6b4fae9c671e03b871b601713e8f42aa19654824d0da635634f3d76b9fd6"
     },
     "coreProof": {
       "decodedSignedPsbt": {
         "tx": {
-          "txid": "3ea688276b3bcd65bdd5a3c6e82ed2b3cffbdc32110f9e8d1185f24215fb2155",
-          "hash": "3ea688276b3bcd65bdd5a3c6e82ed2b3cffbdc32110f9e8d1185f24215fb2155",
+          "txid": "768f6b4fae9c671e03b871b601713e8f42aa19654824d0da635634f3d76b9fd6",
+          "hash": "768f6b4fae9c671e03b871b601713e8f42aa19654824d0da635634f3d76b9fd6",
           "version": 2,
-          "size": 82,
-          "vsize": 82,
-          "weight": 328,
+          "size": 125,
+          "vsize": 125,
+          "weight": 500,
           "locktime": 0,
           "vin": [
             {
@@ -710,7 +814,7 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
           ],
           "vout": [
             {
-              "value": 49.99998,
+              "value": 49.99989095,
               "n": 0,
               "scriptPubKey": {
                 "asm": "0 7dd65592d0ab2fe0d0257d571abf032cd9db93dc",
@@ -718,6 +822,17 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
                 "hex": "00147dd65592d0ab2fe0d0257d571abf032cd9db93dc",
                 "address": "bcrt1q0ht9tyks4vh7p5p904t340cr9nvahy7uevmqwj",
                 "type": "witness_v0_keyhash"
+              }
+            },
+            {
+              "value": 0.0001,
+              "n": 1,
+              "scriptPubKey": {
+                "asm": "0 9b984c7bae3efddc3a3f0a20ff81bfe89ed1fe07ff13e562149ee654bed845db",
+                "desc": "addr(bcrt1qnwvyc7aw8m7acw3lpgs0lqdlaz0drls8luf72cs5nmn9f0kcghdsr03hg4)#sncal8mg",
+                "hex": "00209b984c7bae3efddc3a3f0a20ff81bfe89ed1fe07ff13e562149ee654bed845db",
+                "address": "bcrt1qnwvyc7aw8m7acw3lpgs0lqdlaz0drls8luf72cs5nmn9f0kcghdsr03hg4",
+                "type": "witness_v0_scripthash"
               }
             }
           ]
@@ -739,8 +854,8 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
               }
             },
             "partial_signatures": {
-              "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5": "304402203b304e3a593e3eba13a3cc88d33918e700142b7833f982db4d019c7a7b1e8cab0220218b618df1ac54088e502bccd8a69a230260b86426a6c0a97816c2e5c95d3c2701",
-              "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798": "3045022100a7a362c7d140e2c1d3310d43524a3367e58d44fd5b853da7347ccddbe2a3969002206d34dd4138cdab51e912ba68db4e7d1a262af354a7e399f383750a21b84c2f5a01"
+              "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5": "3045022100a3c399dace400ddad054f5b7b5a0d973ff59e40e1935b813fa81a9b74a1cd9f002201c899b5758b64a986d34dad92337974056f5c141bd8c4eef33afff1cdd7561ab01",
+              "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798": "304402201dc48620f0e3643c7e08b8401357548d508784375f3017f42561bc800dd00eb202205c4b080cbfcad44784c2b31779e164a78a19a3cafbef3a1c26e02ba48410c01401"
             },
             "witness_script": {
               "asm": "2 0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798 02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5 2 OP_CHECKMULTISIG",
@@ -762,9 +877,10 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
           }
         ],
         "outputs": [
+          {},
           {}
         ],
-        "fee": 0.00002
+        "fee": 0.00000905
       },
       "analyzedSignedPsbt": {
         "inputs": [
@@ -774,22 +890,22 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
             "next": "finalizer"
           }
         ],
-        "estimated_vsize": 138,
-        "estimated_feerate": 0.00014492,
-        "fee": 0.00002,
+        "estimated_vsize": 181,
+        "estimated_feerate": 0.00005,
+        "fee": 0.00000905,
         "next": "finalizer"
       },
       "finalizedPsbt": {
-        "hex": "02000000000101a8e4c1844689b00a738f6ffa4c36332239921317404b89e4d95320782e2e8d860000000000fdffffff0130ea052a010000001600147dd65592d0ab2fe0d0257d571abf032cd9db93dc0400483045022100a7a362c7d140e2c1d3310d43524a3367e58d44fd5b853da7347ccddbe2a3969002206d34dd4138cdab51e912ba68db4e7d1a262af354a7e399f383750a21b84c2f5a0147304402203b304e3a593e3eba13a3cc88d33918e700142b7833f982db4d019c7a7b1e8cab0220218b618df1ac54088e502bccd8a69a230260b86426a6c0a97816c2e5c95d3c27014752210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817982102c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee552ae00000000",
+        "hex": "02000000000101a8e4c1844689b00a738f6ffa4c36332239921317404b89e4d95320782e2e8d860000000000fdffffff0267c7052a010000001600147dd65592d0ab2fe0d0257d571abf032cd9db93dc10270000000000002200209b984c7bae3efddc3a3f0a20ff81bfe89ed1fe07ff13e562149ee654bed845db040047304402201dc48620f0e3643c7e08b8401357548d508784375f3017f42561bc800dd00eb202205c4b080cbfcad44784c2b31779e164a78a19a3cafbef3a1c26e02ba48410c01401483045022100a3c399dace400ddad054f5b7b5a0d973ff59e40e1935b813fa81a9b74a1cd9f002201c899b5758b64a986d34dad92337974056f5c141bd8c4eef33afff1cdd7561ab014752210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817982102c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee552ae00000000",
         "complete": true
       },
       "decodedTransaction": {
-        "txid": "3ea688276b3bcd65bdd5a3c6e82ed2b3cffbdc32110f9e8d1185f24215fb2155",
-        "hash": "eeb18144e009672b2c65e088658f2b5944bf6b7a222731862637703128ec8e5f",
+        "txid": "768f6b4fae9c671e03b871b601713e8f42aa19654824d0da635634f3d76b9fd6",
+        "hash": "be01711acbb3e63331d858ce387c3e3fe56d51a90cc6eafada88664443d92c1f",
         "version": 2,
-        "size": 303,
-        "vsize": 138,
-        "weight": 549,
+        "size": 346,
+        "vsize": 181,
+        "weight": 721,
         "locktime": 0,
         "vin": [
           {
@@ -801,8 +917,8 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
             },
             "txinwitness": [
               "",
-              "3045022100a7a362c7d140e2c1d3310d43524a3367e58d44fd5b853da7347ccddbe2a3969002206d34dd4138cdab51e912ba68db4e7d1a262af354a7e399f383750a21b84c2f5a01",
-              "304402203b304e3a593e3eba13a3cc88d33918e700142b7833f982db4d019c7a7b1e8cab0220218b618df1ac54088e502bccd8a69a230260b86426a6c0a97816c2e5c95d3c2701",
+              "304402201dc48620f0e3643c7e08b8401357548d508784375f3017f42561bc800dd00eb202205c4b080cbfcad44784c2b31779e164a78a19a3cafbef3a1c26e02ba48410c01401",
+              "3045022100a3c399dace400ddad054f5b7b5a0d973ff59e40e1935b813fa81a9b74a1cd9f002201c899b5758b64a986d34dad92337974056f5c141bd8c4eef33afff1cdd7561ab01",
               "52210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817982102c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee552ae"
             ],
             "sequence": 4294967293
@@ -810,7 +926,7 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
         ],
         "vout": [
           {
-            "value": 49.99998,
+            "value": 49.99989095,
             "n": 0,
             "scriptPubKey": {
               "asm": "0 7dd65592d0ab2fe0d0257d571abf032cd9db93dc",
@@ -818,6 +934,17 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
               "hex": "00147dd65592d0ab2fe0d0257d571abf032cd9db93dc",
               "address": "bcrt1q0ht9tyks4vh7p5p904t340cr9nvahy7uevmqwj",
               "type": "witness_v0_keyhash"
+            }
+          },
+          {
+            "value": 0.0001,
+            "n": 1,
+            "scriptPubKey": {
+              "asm": "0 9b984c7bae3efddc3a3f0a20ff81bfe89ed1fe07ff13e562149ee654bed845db",
+              "desc": "addr(bcrt1qnwvyc7aw8m7acw3lpgs0lqdlaz0drls8luf72cs5nmn9f0kcghdsr03hg4)#sncal8mg",
+              "hex": "00209b984c7bae3efddc3a3f0a20ff81bfe89ed1fe07ff13e562149ee654bed845db",
+              "address": "bcrt1qnwvyc7aw8m7acw3lpgs0lqdlaz0drls8luf72cs5nmn9f0kcghdsr03hg4",
+              "type": "witness_v0_scripthash"
             }
           }
         ]
@@ -833,26 +960,28 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
     "description": "Bitcoin Core accepted regtest P2SH-P2WSH 2-of-2 software-signed spend",
     "scriptType": "p2sh-p2wsh",
     "network": "regtest",
-    "unsignedPsbtBase64": "cHNidP8BAFICAAAAAR/qTdV/oCeCPXlOe44OYRwcENcyDw2oGjl/6Hjqyd3kAAAAAAD9////ATzoBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wAAAAAAAEBIADyBSoBAAAAF6kUlfulMNfJ3sEIdlumV1WfL8PdJjeHAQQiACCbmEx7rj793Do/CiD/gb/ontH+B/8T5WIUnuZUvthF2wEFR1IhAnm+Zn753LusVaBilc6HCwcCm/zbLc4o2VnygVsW+BeYIQLGBH+UQe19bTBFQG6VwHzYXHeOS4zvPKerrAm5XHCe5VKuIgYCeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5gc2QxqTzAAAIABAACAAAAAgAIAAIAAAAAAAAAAACIGAsYEf5RB7X1tMEVAbpXAfNhcd45LjO88p6usCblccJ7lHMIbLD0wAACAAQAAgAAAAIACAACAAAAAAAAAAAAAAA==",
-    "signedPsbtBase64": "cHNidP8BAFICAAAAAR/qTdV/oCeCPXlOe44OYRwcENcyDw2oGjl/6Hjqyd3kAAAAAAD9////ATzoBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wAAAAAAAEBIADyBSoBAAAAF6kUlfulMNfJ3sEIdlumV1WfL8PdJjeHIgICeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5hIMEUCIQDotuz+wJWT+8PUV+dzyCTrtW7jfdm9d0lHrEWkRfyAAQIgC3SaNX6MFhNcMfOHPukmn9WGm5TTrvuA9AFewpjpMrIBIgICxgR/lEHtfW0wRUBulcB82Fx3jkuM7zynq6wJuVxwnuVHMEQCIB6H/OjTCej4iHkpySXvYmmh/8u5U7CGWRAkejSzsqEbAiBcANpcmkgHyhKhkRa6bPh0wsZs/xlr1RpzsLppiKbY6gEBBCIAIJuYTHuuPv3cOj8KIP+Bv+ie0f4H/xPlYhSe5lS+2EXbAQVHUiECeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5ghAsYEf5RB7X1tMEVAbpXAfNhcd45LjO88p6usCblccJ7lUq4iBgJ5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmBzZDGpPMAAAgAEAAIAAAACAAgAAgAAAAAAAAAAAIgYCxgR/lEHtfW0wRUBulcB82Fx3jkuM7zynq6wJuVxwnuUcwhssPTAAAIABAACAAAAAgAIAAIAAAAAAAAAAAAAA",
-    "finalizedPsbtBase64": "cHNidP8BAFICAAAAAR/qTdV/oCeCPXlOe44OYRwcENcyDw2oGjl/6Hjqyd3kAAAAAAD9////ATzoBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wAAAAAAAEBIADyBSoBAAAAF6kUlfulMNfJ3sEIdlumV1WfL8PdJjeHIgICeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5hIMEUCIQDotuz+wJWT+8PUV+dzyCTrtW7jfdm9d0lHrEWkRfyAAQIgC3SaNX6MFhNcMfOHPukmn9WGm5TTrvuA9AFewpjpMrIBIgICxgR/lEHtfW0wRUBulcB82Fx3jkuM7zynq6wJuVxwnuVHMEQCIB6H/OjTCej4iHkpySXvYmmh/8u5U7CGWRAkejSzsqEbAiBcANpcmkgHyhKhkRa6bPh0wsZs/xlr1RpzsLppiKbY6gEBBCIAIJuYTHuuPv3cOj8KIP+Bv+ie0f4H/xPlYhSe5lS+2EXbAQVHUiECeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5ghAsYEf5RB7X1tMEVAbpXAfNhcd45LjO88p6usCblccJ7lUq4iBgJ5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmBzZDGpPMAAAgAEAAIAAAACAAgAAgAAAAAAAAAAAIgYCxgR/lEHtfW0wRUBulcB82Fx3jkuM7zynq6wJuVxwnuUcwhssPTAAAIABAACAAAAAgAIAAIAAAAAAAAAAAAEHIyIAIJuYTHuuPv3cOj8KIP+Bv+ie0f4H/xPlYhSe5lS+2EXbAQjbBABIMEUCIQDotuz+wJWT+8PUV+dzyCTrtW7jfdm9d0lHrEWkRfyAAQIgC3SaNX6MFhNcMfOHPukmn9WGm5TTrvuA9AFewpjpMrIBRzBEAiAeh/zo0wno+Ih5Kckl72Jpof/LuVOwhlkQJHo0s7KhGwIgXADaXJpIB8oSoZEWumz4dMLGbP8Za9Uac7C6aYim2OoBR1IhAnm+Zn753LusVaBilc6HCwcCm/zbLc4o2VnygVsW+BeYIQLGBH+UQe19bTBFQG6VwHzYXHeOS4zvPKerrAm5XHCe5VKuAAA=",
-    "finalTxHex": "020000000001011fea4dd57fa027823d794e7b8e0e611c1c10d7320f0da81a397fe878eac9dde400000000232200209b984c7bae3efddc3a3f0a20ff81bfe89ed1fe07ff13e562149ee654bed845dbfdffffff013ce8052a010000001600147dd65592d0ab2fe0d0257d571abf032cd9db93dc0400483045022100e8b6ecfec09593fbc3d457e773c824ebb56ee37dd9bd774947ac45a445fc800102200b749a357e8c16135c31f3873ee9269fd5869b94d3aefb80f4015ec298e932b20147304402201e87fce8d309e8f8887929c925ef6269a1ffcbb953b0865910247a34b3b2a11b02205c00da5c9a4807ca12a19116ba6cf874c2c66cff196bd51a73b0ba6988a6d8ea014752210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817982102c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee552ae00000000",
-    "expectedTxid": "f225c29e61c5b383b8df37a918129d443d9fe11028d6e2f874a950ebdb5b8bf2",
-    "expectedFee": 2500,
-    "expectedVsize": 173,
+    "unsignedPsbtBase64": "cHNidP8BAHICAAAAAR/qTdV/oCeCPXlOe44OYRwcENcyDw2oGjl/6Hjqyd3kAAAAAAD9////Au/GBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wQJwAAAAAAABepFJX7pTDXyd7BCHZbpldVny/D3SY3hwAAAAAAAQEgAPIFKgEAAAAXqRSV+6Uw18newQh2W6ZXVZ8vw90mN4cBBCIAIJuYTHuuPv3cOj8KIP+Bv+ie0f4H/xPlYhSe5lS+2EXbAQVHUiECeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5ghAsYEf5RB7X1tMEVAbpXAfNhcd45LjO88p6usCblccJ7lUq4iBgJ5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmBzZDGpPMAAAgAEAAIAAAACAAgAAgAAAAAAAAAAAIgYCxgR/lEHtfW0wRUBulcB82Fx3jkuM7zynq6wJuVxwnuUcwhssPTAAAIABAACAAAAAgAIAAIAAAAAAAAAAAAAAAA==",
+    "signedPsbtBase64": "cHNidP8BAHICAAAAAR/qTdV/oCeCPXlOe44OYRwcENcyDw2oGjl/6Hjqyd3kAAAAAAD9////Au/GBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wQJwAAAAAAABepFJX7pTDXyd7BCHZbpldVny/D3SY3hwAAAAAAAQEgAPIFKgEAAAAXqRSV+6Uw18newQh2W6ZXVZ8vw90mN4ciAgJ5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmEgwRQIhAJrxUuI2Be08x0m+PblhtOLlnd8Dwd3GCSGTCWU0OtgOAiBCgB0wLO6kAkqtQ+CAGxklvUNpMIAgQpK1D9SZiE57LQEiAgLGBH+UQe19bTBFQG6VwHzYXHeOS4zvPKerrAm5XHCe5UcwRAIgPMC1cTcDYLv5glE9QYRTbnwFiTp1AFU/VUOH72D8atQCIFubNPUB0XfA/PuNdwjIf75wzkA0dI7Dqz61Z7HcYkhSAQEEIgAgm5hMe64+/dw6Pwog/4G/6J7R/gf/E+ViFJ7mVL7YRdsBBUdSIQJ5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmCECxgR/lEHtfW0wRUBulcB82Fx3jkuM7zynq6wJuVxwnuVSriIGAnm+Zn753LusVaBilc6HCwcCm/zbLc4o2VnygVsW+BeYHNkMak8wAACAAQAAgAAAAIACAACAAAAAAAAAAAAiBgLGBH+UQe19bTBFQG6VwHzYXHeOS4zvPKerrAm5XHCe5RzCGyw9MAAAgAEAAIAAAACAAgAAgAAAAAAAAAAAAAAA",
+    "finalizedPsbtBase64": "cHNidP8BAHICAAAAAR/qTdV/oCeCPXlOe44OYRwcENcyDw2oGjl/6Hjqyd3kAAAAAAD9////Au/GBSoBAAAAFgAUfdZVktCrL+DQJX1XGr8DLNnbk9wQJwAAAAAAABepFJX7pTDXyd7BCHZbpldVny/D3SY3hwAAAAAAAQEgAPIFKgEAAAAXqRSV+6Uw18newQh2W6ZXVZ8vw90mN4ciAgJ5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmEgwRQIhAJrxUuI2Be08x0m+PblhtOLlnd8Dwd3GCSGTCWU0OtgOAiBCgB0wLO6kAkqtQ+CAGxklvUNpMIAgQpK1D9SZiE57LQEiAgLGBH+UQe19bTBFQG6VwHzYXHeOS4zvPKerrAm5XHCe5UcwRAIgPMC1cTcDYLv5glE9QYRTbnwFiTp1AFU/VUOH72D8atQCIFubNPUB0XfA/PuNdwjIf75wzkA0dI7Dqz61Z7HcYkhSAQEEIgAgm5hMe64+/dw6Pwog/4G/6J7R/gf/E+ViFJ7mVL7YRdsBBUdSIQJ5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmCECxgR/lEHtfW0wRUBulcB82Fx3jkuM7zynq6wJuVxwnuVSriIGAnm+Zn753LusVaBilc6HCwcCm/zbLc4o2VnygVsW+BeYHNkMak8wAACAAQAAgAAAAIACAACAAAAAAAAAAAAiBgLGBH+UQe19bTBFQG6VwHzYXHeOS4zvPKerrAm5XHCe5RzCGyw9MAAAgAEAAIAAAACAAgAAgAAAAAAAAAAAAQcjIgAgm5hMe64+/dw6Pwog/4G/6J7R/gf/E+ViFJ7mVL7YRdsBCNsEAEgwRQIhAJrxUuI2Be08x0m+PblhtOLlnd8Dwd3GCSGTCWU0OtgOAiBCgB0wLO6kAkqtQ+CAGxklvUNpMIAgQpK1D9SZiE57LQFHMEQCIDzAtXE3A2C7+YJRPUGEU258BYk6dQBVP1VDh+9g/GrUAiBbmzT1AdF3wPz7jXcIyH++cM5ANHSOw6s+tWex3GJIUgFHUiECeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5ghAsYEf5RB7X1tMEVAbpXAfNhcd45LjO88p6usCblccJ7lUq4AAAA=",
+    "finalTxHex": "020000000001011fea4dd57fa027823d794e7b8e0e611c1c10d7320f0da81a397fe878eac9dde400000000232200209b984c7bae3efddc3a3f0a20ff81bfe89ed1fe07ff13e562149ee654bed845dbfdffffff02efc6052a010000001600147dd65592d0ab2fe0d0257d571abf032cd9db93dc102700000000000017a91495fba530d7c9dec108765ba657559f2fc3dd26378704004830450221009af152e23605ed3cc749be3db961b4e2e59ddf03c1ddc60921930965343ad80e022042801d302ceea4024aad43e0801b1925bd43693080204292b50fd499884e7b2d0147304402203cc0b571370360bbf982513d4184536e7c05893a7500553f554387ef60fc6ad402205b9b34f501d177c0fcfb8d7708c87fbe70ce4034748ec3ab3eb567b1dc624852014752210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817982102c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee552ae00000000",
+    "expectedTxid": "730703debb0070f1cc48a65720a8b38653ddf8f4a769549203cd369b23684af0",
+    "expectedFee": 1025,
+    "expectedVsize": 205,
+    "expectedRecipientValue": 4999988975,
+    "expectedChangeValue": 10000,
     "mempoolAccept": {
       "allowed": true,
-      "txid": "f225c29e61c5b383b8df37a918129d443d9fe11028d6e2f874a950ebdb5b8bf2"
+      "txid": "730703debb0070f1cc48a65720a8b38653ddf8f4a769549203cd369b23684af0"
     },
     "coreProof": {
       "decodedSignedPsbt": {
         "tx": {
-          "txid": "9a0c542a63a15e5e50326b99958f47ebbabe5d7769d29d9f8b868081f87497bc",
-          "hash": "9a0c542a63a15e5e50326b99958f47ebbabe5d7769d29d9f8b868081f87497bc",
+          "txid": "c56e14d8152074d405a509acf2680edbcbebc5882cee7dc1d16db88725a3f6ff",
+          "hash": "c56e14d8152074d405a509acf2680edbcbebc5882cee7dc1d16db88725a3f6ff",
           "version": 2,
-          "size": 82,
-          "vsize": 82,
-          "weight": 328,
+          "size": 114,
+          "vsize": 114,
+          "weight": 456,
           "locktime": 0,
           "vin": [
             {
@@ -867,7 +996,7 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
           ],
           "vout": [
             {
-              "value": 49.999975,
+              "value": 49.99988975,
               "n": 0,
               "scriptPubKey": {
                 "asm": "0 7dd65592d0ab2fe0d0257d571abf032cd9db93dc",
@@ -875,6 +1004,17 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
                 "hex": "00147dd65592d0ab2fe0d0257d571abf032cd9db93dc",
                 "address": "bcrt1q0ht9tyks4vh7p5p904t340cr9nvahy7uevmqwj",
                 "type": "witness_v0_keyhash"
+              }
+            },
+            {
+              "value": 0.0001,
+              "n": 1,
+              "scriptPubKey": {
+                "asm": "OP_HASH160 95fba530d7c9dec108765ba657559f2fc3dd2637 OP_EQUAL",
+                "desc": "addr(2N6vG8VCbxnqyukVoMnFXo8z19q6jCJiChQ)#s2hq8kfq",
+                "hex": "a91495fba530d7c9dec108765ba657559f2fc3dd263787",
+                "address": "2N6vG8VCbxnqyukVoMnFXo8z19q6jCJiChQ",
+                "type": "scripthash"
               }
             }
           ]
@@ -896,8 +1036,8 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
               }
             },
             "partial_signatures": {
-              "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5": "304402201e87fce8d309e8f8887929c925ef6269a1ffcbb953b0865910247a34b3b2a11b02205c00da5c9a4807ca12a19116ba6cf874c2c66cff196bd51a73b0ba6988a6d8ea01",
-              "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798": "3045022100e8b6ecfec09593fbc3d457e773c824ebb56ee37dd9bd774947ac45a445fc800102200b749a357e8c16135c31f3873ee9269fd5869b94d3aefb80f4015ec298e932b201"
+              "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5": "304402203cc0b571370360bbf982513d4184536e7c05893a7500553f554387ef60fc6ad402205b9b34f501d177c0fcfb8d7708c87fbe70ce4034748ec3ab3eb567b1dc62485201",
+              "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798": "30450221009af152e23605ed3cc749be3db961b4e2e59ddf03c1ddc60921930965343ad80e022042801d302ceea4024aad43e0801b1925bd43693080204292b50fd499884e7b2d01"
             },
             "redeem_script": {
               "asm": "0 9b984c7bae3efddc3a3f0a20ff81bfe89ed1fe07ff13e562149ee654bed845db",
@@ -924,9 +1064,10 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
           }
         ],
         "outputs": [
+          {},
           {}
         ],
-        "fee": 0.000025
+        "fee": 0.00001025
       },
       "analyzedSignedPsbt": {
         "inputs": [
@@ -936,22 +1077,22 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
             "next": "finalizer"
           }
         ],
-        "estimated_vsize": 173,
-        "estimated_feerate": 0.0001445,
-        "fee": 0.000025,
+        "estimated_vsize": 205,
+        "estimated_feerate": 0.00005,
+        "fee": 0.00001025,
         "next": "finalizer"
       },
       "finalizedPsbt": {
-        "hex": "020000000001011fea4dd57fa027823d794e7b8e0e611c1c10d7320f0da81a397fe878eac9dde400000000232200209b984c7bae3efddc3a3f0a20ff81bfe89ed1fe07ff13e562149ee654bed845dbfdffffff013ce8052a010000001600147dd65592d0ab2fe0d0257d571abf032cd9db93dc0400483045022100e8b6ecfec09593fbc3d457e773c824ebb56ee37dd9bd774947ac45a445fc800102200b749a357e8c16135c31f3873ee9269fd5869b94d3aefb80f4015ec298e932b20147304402201e87fce8d309e8f8887929c925ef6269a1ffcbb953b0865910247a34b3b2a11b02205c00da5c9a4807ca12a19116ba6cf874c2c66cff196bd51a73b0ba6988a6d8ea014752210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817982102c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee552ae00000000",
+        "hex": "020000000001011fea4dd57fa027823d794e7b8e0e611c1c10d7320f0da81a397fe878eac9dde400000000232200209b984c7bae3efddc3a3f0a20ff81bfe89ed1fe07ff13e562149ee654bed845dbfdffffff02efc6052a010000001600147dd65592d0ab2fe0d0257d571abf032cd9db93dc102700000000000017a91495fba530d7c9dec108765ba657559f2fc3dd26378704004830450221009af152e23605ed3cc749be3db961b4e2e59ddf03c1ddc60921930965343ad80e022042801d302ceea4024aad43e0801b1925bd43693080204292b50fd499884e7b2d0147304402203cc0b571370360bbf982513d4184536e7c05893a7500553f554387ef60fc6ad402205b9b34f501d177c0fcfb8d7708c87fbe70ce4034748ec3ab3eb567b1dc624852014752210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817982102c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee552ae00000000",
         "complete": true
       },
       "decodedTransaction": {
-        "txid": "f225c29e61c5b383b8df37a918129d443d9fe11028d6e2f874a950ebdb5b8bf2",
-        "hash": "f4b7a3e87e0a928eae97672e145b6bee3ff472dc7ab246847917fff8a7d5d3bc",
+        "txid": "730703debb0070f1cc48a65720a8b38653ddf8f4a769549203cd369b23684af0",
+        "hash": "d7e5fe7063e37d9dd3d01dd0b6c4ebe78ae97dc5e85319e9e98d3003192fb55e",
         "version": 2,
-        "size": 338,
-        "vsize": 173,
-        "weight": 689,
+        "size": 370,
+        "vsize": 205,
+        "weight": 817,
         "locktime": 0,
         "vin": [
           {
@@ -963,8 +1104,8 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
             },
             "txinwitness": [
               "",
-              "3045022100e8b6ecfec09593fbc3d457e773c824ebb56ee37dd9bd774947ac45a445fc800102200b749a357e8c16135c31f3873ee9269fd5869b94d3aefb80f4015ec298e932b201",
-              "304402201e87fce8d309e8f8887929c925ef6269a1ffcbb953b0865910247a34b3b2a11b02205c00da5c9a4807ca12a19116ba6cf874c2c66cff196bd51a73b0ba6988a6d8ea01",
+              "30450221009af152e23605ed3cc749be3db961b4e2e59ddf03c1ddc60921930965343ad80e022042801d302ceea4024aad43e0801b1925bd43693080204292b50fd499884e7b2d01",
+              "304402203cc0b571370360bbf982513d4184536e7c05893a7500553f554387ef60fc6ad402205b9b34f501d177c0fcfb8d7708c87fbe70ce4034748ec3ab3eb567b1dc62485201",
               "52210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817982102c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee552ae"
             ],
             "sequence": 4294967293
@@ -972,7 +1113,7 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
         ],
         "vout": [
           {
-            "value": 49.999975,
+            "value": 49.99988975,
             "n": 0,
             "scriptPubKey": {
               "asm": "0 7dd65592d0ab2fe0d0257d571abf032cd9db93dc",
@@ -980,6 +1121,17 @@ export const GENERATED_SIGNED_PSBT_VECTORS: GeneratedSignedPsbtVector[] = [
               "hex": "00147dd65592d0ab2fe0d0257d571abf032cd9db93dc",
               "address": "bcrt1q0ht9tyks4vh7p5p904t340cr9nvahy7uevmqwj",
               "type": "witness_v0_keyhash"
+            }
+          },
+          {
+            "value": 0.0001,
+            "n": 1,
+            "scriptPubKey": {
+              "asm": "OP_HASH160 95fba530d7c9dec108765ba657559f2fc3dd2637 OP_EQUAL",
+              "desc": "addr(2N6vG8VCbxnqyukVoMnFXo8z19q6jCJiChQ)#s2hq8kfq",
+              "hex": "a91495fba530d7c9dec108765ba657559f2fc3dd263787",
+              "address": "2N6vG8VCbxnqyukVoMnFXo8z19q6jCJiChQ",
+              "type": "scripthash"
             }
           }
         ]

@@ -7,6 +7,7 @@
 
 import type { TransactionState, WizardStep } from './types';
 import { parsePositiveSatoshiAmount } from '../../utils/sendAmount';
+import { MOBILE_API_REQUEST_LIMITS } from '@sanctuary/shared/schemas/mobileApiRequests';
 
 // ============================================================================
 // VALIDATION FUNCTIONS
@@ -48,7 +49,8 @@ export function validateOutputsStep(state: TransactionState): boolean {
   // Selecting UTXOs means user wants manual control, so they must cover the transaction
 
   // Fee validation (now part of outputs step)
-  if (state.feeRate <= 0) {
+  if (state.feeRate < MOBILE_API_REQUEST_LIMITS.minFeeRate
+    || state.feeRate > MOBILE_API_REQUEST_LIMITS.maxFeeRate) {
     return false;
   }
 
@@ -118,8 +120,11 @@ export function getStepErrors(step: WizardStep, state: TransactionState): string
       });
       // Coin control is now auto by default - no error if no UTXOs selected
       // Fee validation (now part of outputs step)
-      if (state.feeRate <= 0) {
-        errors.push('Fee rate must be greater than 0');
+      if (state.feeRate < MOBILE_API_REQUEST_LIMITS.minFeeRate
+        || state.feeRate > MOBILE_API_REQUEST_LIMITS.maxFeeRate) {
+        errors.push(
+          `Fee rate must be between ${MOBILE_API_REQUEST_LIMITS.minFeeRate} and ${MOBILE_API_REQUEST_LIMITS.maxFeeRate} sat/vB`,
+        );
       }
       break;
 

@@ -73,6 +73,20 @@ test('accepts a mapped per-file score and attributable named-test canary kill', 
   assert.doesNotThrow(() => validateMutationEvidence(map, reports));
 });
 
+test('accepts any explicitly named deterministic killer for a shared canary', () => {
+  const { map, reports } = fixture();
+  const alternate = { file: 'tests/alternate.test.ts', name: 'rejects the same drift directly' };
+  reports.get('example').testFiles[alternate.file] = {
+    tests: [{ id: 'test-2', name: alternate.name }],
+  };
+  reports.get('example').files[SOURCE_FILE].mutants[0].killedBy = ['test-2'];
+  const canary = map.profiles[0].invariants[0].canaries[0];
+  canary.requiredKillingTests = [canary.requiredKillingTest, alternate];
+  delete canary.requiredKillingTest;
+
+  assert.doesNotThrow(() => validateMutationEvidence(map, reports));
+});
+
 test('rejects a missing mutation report', () => {
   rejectsAfter(value => value.reports.clear(), /missing report/);
 });
@@ -119,7 +133,7 @@ test('rejects a surviving or timeout-only semantic canary', () => {
 test('rejects a canary killed by a different test', () => {
   rejectsAfter(value => {
     value.reports.get('example').files[SOURCE_FILE].mutants[0].killedBy = ['other-test'];
-  }, /not killed by its required named test/);
+  }, /not killed by any required named test/);
 });
 
 test('rejects a below-threshold file score and a zero-counted report', () => {

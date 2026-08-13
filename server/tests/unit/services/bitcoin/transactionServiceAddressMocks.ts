@@ -1,5 +1,6 @@
 import { mockPrismaClient } from "../../../mocks/prisma";
 import { sampleUtxos, testnetAddresses } from "../../../fixtures/bitcoin";
+import * as bitcoin from 'bitcoinjs-lib';
 
 type AddressMockRow = {
   id?: string;
@@ -52,9 +53,11 @@ export function changeAddressRow(
   index = 0,
   overrides: Partial<AddressMockRow> = {},
 ): AddressMockRow {
+  const address = String(overrides.address ?? testnetAddresses.nativeSegwit[1]);
   return {
     id: `change-addr-${index}`,
-    address: testnetAddresses.nativeSegwit[1],
+    address,
+    scriptPubKey: Buffer.from(bitcoin.address.toOutputScript(address, bitcoin.networks.testnet)).toString('hex'),
     derivationPath: `m/84'/1'/0'/1/${index}`,
     walletId,
     used: false,
@@ -90,6 +93,15 @@ function selectAddressRows(
 ): AddressMockRow[] {
   const where = query.where ?? {};
   const addressFilter = where.address;
+  if (addressFilter?.in && inputRows.length === 0) {
+    return addressFilter.in.map((address, index) => ({
+      address,
+      derivationPath: `m/84'/1'/0'/0/${index}`,
+      walletId: where.walletId,
+      index,
+      branch: 0,
+    }));
+  }
   const rows = addressFilter?.in
     ? inputRows
     : where.used === false

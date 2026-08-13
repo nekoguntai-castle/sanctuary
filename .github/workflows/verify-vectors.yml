@@ -124,6 +124,15 @@ jobs:
               npm --prefix server run test:mutation:psbt-account-binding
               npm --prefix server run test:mutation:taproot-construction
               npm --prefix server run test:mutation:taproot-artifact-finalization
+            '
+
+      - name: Prove exact transaction fee invariants by mutation
+        timeout-minutes: 8
+        run: |
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/fee-policy-mutation.log" \
+            ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain bash -c '
+              set -euo pipefail
+              npm --prefix server run test:mutation:fee-policy
               node scripts/ci/check-wallet-safety-mutation-map.mjs
             '
 
@@ -137,6 +146,7 @@ jobs:
             server/reports/mutation/psbt-account-binding-server.json
             server/reports/mutation/taproot-construction.json
             server/reports/mutation/taproot-artifact-finalization.json
+            server/reports/mutation/fee-policy.json
           if-no-files-found: error
           retention-days: 14
 

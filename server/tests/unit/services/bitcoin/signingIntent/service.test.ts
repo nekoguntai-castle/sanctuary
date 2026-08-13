@@ -56,9 +56,17 @@ const signingContext = {
   changeOutputs: [],
 };
 
+const feePolicy = {
+  version: 1 as const,
+  expectedFeeSats: 1_000,
+  requestedFeeRateSatsPerVbyte: 10,
+  roundingMode: 'ceil' as const,
+  roundingToleranceSats: 1,
+};
+
 const createSigningIntent = (
-  input: Omit<Parameters<typeof createSigningIntentWithContext>[0], 'signingContext'>,
-) => createSigningIntentWithContext({ ...input, signingContext });
+  input: Omit<Parameters<typeof createSigningIntentWithContext>[0], 'signingContext' | 'feePolicy'>,
+) => createSigningIntentWithContext({ ...input, signingContext, feePolicy });
 
 const psbtBase64 = (includePayjoinPeer = false): string => {
   const psbt = new bitcoin.Psbt({ network: bitcoin.networks.testnet });
@@ -112,9 +120,10 @@ describe('transaction signing intent lifecycle', () => {
       signingContext,
     });
     expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({
-      snapshotVersion: 1,
+      snapshotVersion: 2,
       snapshotDigest: result.intentDigest,
       source: 'standard',
+      snapshot: expect.objectContaining({ feePolicy }),
     }));
   });
 
@@ -169,6 +178,7 @@ describe('transaction signing intent lifecycle', () => {
       source: 'standard',
       unsignedPsbtBase64,
       signingContext: { ...signingContext, ...contextOverride },
+      feePolicy,
     })).rejects.toThrow('Signing context does not match signing intent scope');
     expect(mocks.authenticateIntentPrevouts).not.toHaveBeenCalled();
     expect(mocks.create).not.toHaveBeenCalled();
@@ -213,13 +223,15 @@ describe('transaction signing intent lifecycle', () => {
       },
     ]);
 
-    await createSigningIntent({
+    await createSigningIntentWithContext({
       walletId: 'wallet-1',
       createdByUserId: 'user-1',
       network: 'testnet3',
       source: 'payjoin',
       unsignedPsbtBase64: psbtBase64(true),
       inputRoles: ['wallet', 'payjoin_peer'],
+      signingContext,
+      feePolicy: { ...feePolicy, expectedFeeSats: 3_000 },
     });
 
     expect(mocks.authenticateIntentPrevouts).toHaveBeenCalledWith(
@@ -287,6 +299,27 @@ describe('transaction signing intent lifecycle', () => {
     });
   });
 
+  it('rejects a valid snapshot whose stored version metadata disagrees', async () => {
+    mocks.create.mockImplementationOnce(async data => ({ id: 'intent-1', ...data }));
+    await createSigningIntent({
+      walletId: 'wallet-1', createdByUserId: 'user-1', network: 'testnet3',
+      source: 'standard', unsignedPsbtBase64: psbtBase64(),
+    });
+    const created = mocks.create.mock.calls[0][0];
+    mocks.findById.mockResolvedValue({
+      id: 'intent-1',
+      ...created,
+      snapshotVersion: 1,
+      supersededById: null,
+      consumedAt: null,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+
+    await expect(loadSigningIntent(
+      { intentId: 'intent-1', intentDigest: created.snapshotDigest }, 'wallet-1',
+    )).rejects.toThrow('snapshot version does not match its stored version');
+  });
+
   it('loads only an exact accepted/complete consumed intent for authenticated replay', async () => {
     mocks.create.mockImplementationOnce(async data => ({ id: 'intent-1', ...data }));
     await createSigningIntent({
@@ -345,7 +378,7 @@ describe('transaction signing intent lifecycle', () => {
   it.each([
     ['missing record', null, 'not found'],
     ['wrong wallet', { walletId: 'wallet-2' }, 'not found'],
-    ['unsupported version', { snapshotVersion: 2 }, 'version'],
+    ['unsupported version', { snapshotVersion: 3 }, 'version'],
     ['invalid network', { network: 'invalid-network' }, 'network'],
     ['malformed snapshot', { snapshot: {} }, 'malformed'],
     ['wrong snapshot wallet', { snapshotWalletId: 'wallet-2' }, 'identity'],

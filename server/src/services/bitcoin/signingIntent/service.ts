@@ -10,7 +10,7 @@ import {
 } from './canonical';
 import { authenticateIntentPrevouts } from './prevoutValidation';
 import { toPrismaInputJson } from './json';
-import { SigningIntentSnapshotSchema } from './schema';
+import { SigningIntentFeePolicySchema, SigningIntentSnapshotSchema } from './schema';
 import { PsbtSigningContextSchema } from '@sanctuary/shared/schemas/psbtSigningContext';
 import { assertPsbtMatchesSigningContext } from '../psbtSigningContextValidation';
 import {
@@ -47,6 +47,7 @@ export const createSigningIntent = async (
 ): Promise<IssuedSigningIntentHandle> => {
   const psbt = parsePsbt(input.unsignedPsbtBase64, 'psbtBase64');
   const signingContext = PsbtSigningContextSchema.parse(input.signingContext);
+  const feePolicy = SigningIntentFeePolicySchema.parse(input.feePolicy);
   if (signingContext.walletId !== input.walletId || signingContext.network !== input.network) {
     throw new InvalidInputError('Signing context does not match signing intent scope');
   }
@@ -65,6 +66,7 @@ export const createSigningIntent = async (
     input.network,
     psbt,
     prevouts,
+    feePolicy,
     input.replacementTxid,
   );
   const snapshotDigest = calculateSigningIntentDigest(snapshot, signingContext);
@@ -96,7 +98,7 @@ type StoredSigningIntent = NonNullable<
 const assertStoredIntentScope = (record: StoredSigningIntent, handle: SigningIntentHandle, walletId: string): void => {
   if (record.walletId !== walletId) throw invalidIntent('Signing intent was not found');
   if (record.snapshotDigest !== handle.intentDigest) throw invalidIntent('Signing intent digest does not match');
-  if (record.snapshotVersion !== SIGNING_INTENT_SNAPSHOT_VERSION) {
+  if (record.snapshotVersion !== 1 && record.snapshotVersion !== SIGNING_INTENT_SNAPSHOT_VERSION) {
     throw invalidIntent('Signing intent version is unsupported');
   }
   if (record.supersededById) throw invalidIntent('Signing intent has been superseded', 'stale_intent');
@@ -124,6 +126,9 @@ const resolveAuthenticatedReplay = (
 const authenticateStoredSnapshot = (record: StoredSigningIntent, walletId: string) => {
   const parsed = SigningIntentSnapshotSchema.safeParse(record.snapshot);
   if (!parsed.success) throw invalidIntent('Signing intent snapshot is malformed');
+  if (parsed.data.version !== record.snapshotVersion) {
+    throw invalidIntent('Signing intent snapshot version does not match its stored version');
+  }
   if (parsed.data.walletId !== walletId || parsed.data.network !== record.network) {
     throw invalidIntent('Signing intent identity does not match its stored scope');
   }

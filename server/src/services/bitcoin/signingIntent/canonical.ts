@@ -5,9 +5,11 @@ import type { BitcoinNetwork } from '../networks';
 import type { PsbtSigningContext } from '@sanctuary/shared/schemas/psbtSigningContext';
 import {
   SIGNING_INTENT_SNAPSHOT_VERSION,
+  type SigningIntentFeePolicyV1,
   type SigningIntentInputRole,
   type SigningIntentPrevout,
-  type SigningIntentSnapshotV1,
+  type SigningIntentSnapshot,
+  type SigningIntentSnapshotV2,
 } from './types';
 
 const TXID_PATTERN = /^[0-9a-f]{64}$/;
@@ -16,14 +18,14 @@ const HEX_PATTERN = /^(?:[0-9a-f]{2})*$/;
 export const sha256Hex = (value: string | Buffer): string =>
   createHash('sha256').update(value).digest('hex');
 
-export const canonicalSnapshotJson = (snapshot: SigningIntentSnapshotV1): string =>
+export const canonicalSnapshotJson = (snapshot: SigningIntentSnapshot): string =>
   JSON.stringify(snapshot);
 
-export const calculateSnapshotDigest = (snapshot: SigningIntentSnapshotV1): string =>
+export const calculateSnapshotDigest = (snapshot: SigningIntentSnapshot): string =>
   sha256Hex(canonicalSnapshotJson(snapshot));
 
 export const calculateSigningIntentDigest = (
-  snapshot: SigningIntentSnapshotV1,
+  snapshot: SigningIntentSnapshot,
   signingContext: PsbtSigningContext,
 ): string => sha256Hex(JSON.stringify({ snapshot, signingContext }));
 
@@ -71,8 +73,9 @@ export const buildSigningIntentSnapshot = (
   network: BitcoinNetwork,
   psbt: bitcoin.Psbt,
   prevouts: SigningIntentPrevout[],
+  feePolicy: SigningIntentFeePolicyV1,
   replacementTxid?: string,
-): SigningIntentSnapshotV1 => {
+): SigningIntentSnapshotV2 => {
   if (psbt.txInputs.length === 0 || psbt.txOutputs.length === 0) {
     throw new InvalidInputError('Signing intent requires inputs and outputs', 'psbtBase64', {
       reason: 'invalid_psbt',
@@ -84,11 +87,7 @@ export const buildSigningIntentSnapshot = (
     });
   }
 
-  return {
-    version: SIGNING_INTENT_SNAPSHOT_VERSION,
-    walletId,
-    network,
-    transaction: {
+  const transaction: SigningIntentSnapshotV2['transaction'] = {
       version: psbt.version,
       locktime: psbt.locktime,
       ...(replacementTxid && { replacementTxid: normalizeTxid(replacementTxid, 'replacementTxid') }),
@@ -110,7 +109,28 @@ export const buildSigningIntentSnapshot = (
           `outputs.${index}.scriptPubKeyHex`,
         ),
       })),
-    },
+  };
+  const authenticatedFeeSats = transaction.inputs.reduce(
+    (sum, input) => sum + BigInt(input.prevout.amountSats),
+    0n,
+  ) - transaction.outputs.reduce(
+    (sum, output) => sum + BigInt(output.amountSats),
+    0n,
+  );
+  if (authenticatedFeeSats !== BigInt(feePolicy.expectedFeeSats)) {
+    throw new InvalidInputError('Signing intent fee does not match the authenticated transaction', 'feePolicy', {
+      reason: authenticatedFeeSats < BigInt(feePolicy.expectedFeeSats) ? 'fee_too_low' : 'fee_too_high',
+      actualFeeSats: authenticatedFeeSats.toString(),
+      expectedFeeSats: feePolicy.expectedFeeSats,
+    });
+  }
+
+  return {
+    version: SIGNING_INTENT_SNAPSHOT_VERSION,
+    walletId,
+    network,
+    feePolicy,
+    transaction,
   };
 };
 

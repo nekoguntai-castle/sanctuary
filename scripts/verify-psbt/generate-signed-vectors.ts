@@ -88,6 +88,7 @@ interface SpendTemplate {
   fundingScript: Buffer;
   inputValue: bigint;
   outputValue: bigint;
+  changeValue: bigint;
   addInputMetadata(psbt: bitcoin.Psbt, utxo: FundedUtxo): void;
   sign(psbt: bitcoin.Psbt): void;
   finalize(psbt: bitcoin.Psbt): void;
@@ -165,6 +166,8 @@ interface SignedVector {
   expectedTxid: string;
   expectedFee: number;
   expectedVsize: number;
+  expectedRecipientValue: number;
+  expectedChangeValue: number;
   mempoolAccept: {
     allowed: boolean;
     txid: string;
@@ -308,7 +311,8 @@ function buildTemplates(): SpendTemplate[] {
       fundingAddress: requirePaymentAddress(p2pkh, 'P2PKH'),
       fundingScript: requirePaymentOutput(p2pkh, 'P2PKH'),
       inputValue: COINBASE_VALUE,
-      outputValue: COINBASE_VALUE - 1_500n,
+      outputValue: COINBASE_VALUE - 1_120n - 10_000n,
+      changeValue: 10_000n,
       addInputMetadata: (psbt, utxo) => {
         psbt.addInput({
           hash: utxo.txid,
@@ -331,7 +335,8 @@ function buildTemplates(): SpendTemplate[] {
       fundingAddress: requirePaymentAddress(p2wpkh, 'P2WPKH'),
       fundingScript: requirePaymentOutput(p2wpkh, 'P2WPKH'),
       inputValue: COINBASE_VALUE,
-      outputValue: COINBASE_VALUE - 1_000n,
+      outputValue: COINBASE_VALUE - 705n - 10_000n,
+      changeValue: 10_000n,
       addInputMetadata: (psbt, utxo) => {
         psbt.addInput({
           hash: utxo.txid,
@@ -354,7 +359,8 @@ function buildTemplates(): SpendTemplate[] {
       fundingAddress: requirePaymentAddress(p2shP2wpkh, 'P2SH-P2WPKH'),
       fundingScript: requirePaymentOutput(p2shP2wpkh, 'P2SH-P2WPKH'),
       inputValue: COINBASE_VALUE,
-      outputValue: COINBASE_VALUE - 1_500n,
+      outputValue: COINBASE_VALUE - 825n - 10_000n,
+      changeValue: 10_000n,
       addInputMetadata: (psbt, utxo) => {
         psbt.addInput({
           hash: utxo.txid,
@@ -378,7 +384,8 @@ function buildTemplates(): SpendTemplate[] {
       fundingAddress: requirePaymentAddress(p2tr, 'P2TR'),
       fundingScript: requirePaymentOutput(p2tr, 'P2TR'),
       inputValue: COINBASE_VALUE,
-      outputValue: COINBASE_VALUE - 1_000n,
+      outputValue: COINBASE_VALUE - 715n - 10_000n,
+      changeValue: 10_000n,
       addInputMetadata: (psbt, utxo) => {
         psbt.addInput({
           hash: utxo.txid,
@@ -403,7 +410,8 @@ function buildTemplates(): SpendTemplate[] {
       fundingAddress: requirePaymentAddress(p2wsh, 'P2WSH'),
       fundingScript: requirePaymentOutput(p2wsh, 'P2WSH'),
       inputValue: COINBASE_VALUE,
-      outputValue: COINBASE_VALUE - 2_000n,
+      outputValue: COINBASE_VALUE - 905n - 10_000n,
+      changeValue: 10_000n,
       addInputMetadata: (psbt, utxo) => addMultisigInput(psbt, utxo, witnessScript, undefined),
       sign: signMultisig,
       finalize: (psbt) => finalizeMultisigInput(psbt, 0),
@@ -414,7 +422,8 @@ function buildTemplates(): SpendTemplate[] {
       fundingAddress: requirePaymentAddress(p2shP2wsh, 'P2SH-P2WSH'),
       fundingScript: requirePaymentOutput(p2shP2wsh, 'P2SH-P2WSH'),
       inputValue: COINBASE_VALUE,
-      outputValue: COINBASE_VALUE - 2_500n,
+      outputValue: COINBASE_VALUE - 1_025n - 10_000n,
+      changeValue: 10_000n,
       addInputMetadata: (psbt, utxo) => {
         addMultisigInput(psbt, utxo, witnessScript, requirePaymentOutput(nestedP2wsh, 'P2SH-P2WSH redeem'));
       },
@@ -543,6 +552,7 @@ async function buildVector(
   const psbt = new bitcoin.Psbt({ network: NETWORK });
   template.addInputMetadata(psbt, utxo);
   psbt.addOutput({ address: destinationAddress(), value: template.outputValue });
+  psbt.addOutput({ address: template.fundingAddress, value: template.changeValue });
   const unsignedPsbtBase64 = psbt.toBase64();
 
   template.sign(psbt);
@@ -556,7 +566,7 @@ async function buildVector(
   const finalTxHex = tx.toHex();
   const decodedTransaction = await rpc<CoreDecodedTransaction>('decoderawtransaction', [finalTxHex]);
   const mempoolAccept = await acceptTx(finalTxHex);
-  const expectedFee = Number(template.inputValue - template.outputValue);
+  const expectedFee = Number(template.inputValue - template.outputValue - template.changeValue);
   const finalizer = template.scriptType === 'p2wsh' || template.scriptType === 'p2sh-p2wsh'
     ? 'Sanctuary multisig finalizer'
     : 'bitcoinjs-lib finalizer';
@@ -579,6 +589,8 @@ async function buildVector(
     expectedTxid: tx.getId(),
     expectedFee,
     expectedVsize: tx.virtualSize(),
+    expectedRecipientValue: Number(template.outputValue),
+    expectedChangeValue: Number(template.changeValue),
     mempoolAccept: {
       allowed: mempoolAccept.allowed,
       txid: mempoolAccept.txid,
@@ -621,6 +633,8 @@ export interface GeneratedSignedPsbtVector {
   expectedTxid: string;
   expectedFee: number;
   expectedVsize: number;
+  expectedRecipientValue: number;
+  expectedChangeValue: number;
   mempoolAccept: {
     allowed: boolean;
     txid: string;
