@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as walletsApi from '../../api/wallets';
 import * as transactionsApi from '../../api/transactions';
 import { createQueryKeys, createListQuery, createMutation, createInvalidateAll } from './factory';
@@ -259,6 +259,40 @@ export function useActivitySummary(walletIds: string[], timeframe: Timeframe) {
   };
 }
 
+export type WalletSparklineResult =
+  | { status: 'ready'; values: [number, number, ...number[]] }
+  | { status: 'unavailable' }
+  | { status: 'error' };
+
+type WalletSparklineInput = readonly [id: string, balance: number];
+
+function sortedSparklineInputs(
+  wallets: Array<{ id: string; balance: number }>
+): WalletSparklineInput[] {
+  return wallets
+    .map(({ id, balance }) => [id, balance] as const)
+    .sort(([leftId], [rightId]) => leftId.localeCompare(rightId));
+}
+
+function unavailableSparklines(inputs: WalletSparklineInput[]) {
+  return Object.fromEntries(
+    inputs.map(([id]) => [id, { status: 'unavailable' } as const])
+  ) as Record<string, WalletSparklineResult>;
+}
+
+async function fetchSparkline(
+  [id, balance]: WalletSparklineInput
+): Promise<[string, WalletSparklineResult]> {
+  try {
+    const history = await transactionsApi.getBalanceHistory('1W', balance, [id]);
+    if (history.length < 2) return [id, { status: 'unavailable' }];
+    const values = history.map(({ value }) => value) as [number, number, ...number[]];
+    return [id, { status: 'ready', values }];
+  } catch {
+    return [id, { status: 'error' }];
+  }
+}
+
 /**
  * Hook to fetch per-wallet balance sparkline data for grid cards
  * Uses a single useQuery with Promise.all to batch all per-wallet requests
@@ -266,32 +300,19 @@ export function useActivitySummary(walletIds: string[], timeframe: Timeframe) {
 export function useWalletSparklines(
   wallets: Array<{ id: string; balance: number }>
 ) {
-  const walletIdsKey = wallets.map(w => w.id).join(',');
+  const inputs = sortedSparklineInputs(wallets);
 
   const query = useQuery({
-    queryKey: ['walletSparklines', walletIdsKey],
+    queryKey: ['walletSparklines', inputs],
     queryFn: async () => {
-      const results = await Promise.all(
-        wallets.map(w =>
-          transactionsApi.getBalanceHistory('1W', w.balance, [w.id])
-            .then(data => ({ id: w.id, data }))
-            .catch(() => ({ id: w.id, data: [] }))
-        )
-      );
-      const map: Record<string, number[]> = {};
-      for (const { id, data } of results) {
-        if (data.length >= 2) {
-          map[id] = data.map(d => d.value);
-        }
-      }
-      return map;
+      const results = await Promise.all(inputs.map(fetchSparkline));
+      return Object.fromEntries(results) as Record<string, WalletSparklineResult>;
     },
-    enabled: wallets.length > 0,
+    enabled: inputs.length > 0,
     staleTime: 120000,
-    placeholderData: keepPreviousData,
   });
 
-  return query.data ?? {};
+  return query.data ?? unavailableSparklines(inputs);
 }
 
 /**

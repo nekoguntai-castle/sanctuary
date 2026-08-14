@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import { ImportValidationResult } from '../../../api/wallets';
 import type { TabNetwork } from '../../../app/networks';
@@ -19,6 +19,11 @@ export interface BytesUrDecoderLike {
   resultUR: () => {
     decodeCBOR: () => Uint8Array;
   };
+}
+
+export interface ImportNetworkOwner {
+  network: TabNetwork;
+  generation: number;
 }
 
 export function useImportState(network: TabNetwork = 'mainnet') {
@@ -55,6 +60,61 @@ export function useImportState(network: TabNetwork = 'mainnet') {
   const [urProgress, setUrProgress] = useState<number>(0);
   const [qrScanned, setQrScanned] = useState(false);
   const bytesDecoderRef = useRef<BytesUrDecoderLike | null>(null);
+
+  const ownerRef = useRef<ImportNetworkOwner>({ network, generation: 0 });
+  const mountedRef = useRef(true);
+
+  const resetNetworkOwnedState = () => {
+    setStep(1);
+    setFormat(null);
+    setImportData('');
+    setWalletName('');
+    setValidationResult(null);
+    setIsValidating(false);
+    setValidationError(null);
+    setIsImporting(false);
+    setImportError(null);
+    setHardwareDeviceType('ledger');
+    setDeviceConnected(false);
+    setDeviceLabel(null);
+    setScriptType(WalletScriptType.NATIVE_SEGWIT);
+    setAccountIndex(0);
+    setXpubData(null);
+    setIsFetchingXpub(false);
+    setIsConnecting(false);
+    setHardwareError(null);
+    setCameraActive(false);
+    setCameraError(null);
+    setUrProgress(0);
+    setQrScanned(false);
+    bytesDecoderRef.current = null;
+  };
+
+  if (ownerRef.current.network !== network) {
+    ownerRef.current = {
+      network,
+      generation: ownerRef.current.generation + 1,
+    };
+    resetNetworkOwnedState();
+  }
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const getNetworkOwner = useCallback(
+    (): ImportNetworkOwner => ({ ...ownerRef.current }),
+    [],
+  );
+
+  const isNetworkOwnerCurrent = useCallback((owner: ImportNetworkOwner): boolean => (
+    mountedRef.current
+    && owner.network === ownerRef.current.network
+    && owner.generation === ownerRef.current.generation
+  ), []);
 
   const resetHardwareState = () => {
     setDeviceConnected(false);
@@ -101,6 +161,8 @@ export function useImportState(network: TabNetwork = 'mainnet') {
     urProgress, setUrProgress,
     qrScanned, setQrScanned,
     bytesDecoderRef,
+    getNetworkOwner,
+    isNetworkOwnerCurrent,
     resetHardwareState,
     resetQrState,
     resetValidation,

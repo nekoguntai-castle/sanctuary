@@ -76,6 +76,8 @@ function ImportDataStep({
         setIsConnecting={state.setIsConnecting}
         hardwareError={state.hardwareError}
         setHardwareError={state.setHardwareError}
+        networkOwner={state.getNetworkOwner()}
+        isNetworkOwnerCurrent={state.isNetworkOwnerCurrent}
       />
     );
   }
@@ -95,6 +97,8 @@ function ImportDataStep({
         validationError={state.validationError}
         setValidationError={state.setValidationError}
         bytesDecoderRef={state.bytesDecoderRef}
+        networkOwner={state.getNetworkOwner()}
+        isNetworkOwnerCurrent={state.isNetworkOwnerCurrent}
       />
     );
   }

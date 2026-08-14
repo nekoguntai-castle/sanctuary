@@ -6,7 +6,7 @@ import {
   QrValidationError,
   SupportedQrFormats,
 } from './QrScanSections';
-import type { BytesUrDecoderLike } from '../hooks/useImportState';
+import type { BytesUrDecoderLike, ImportNetworkOwner } from '../hooks/useImportState';
 import { useQrScanHandlers } from './useQrScanHandlers';
 
 interface QrScanStepProps {
@@ -22,6 +22,8 @@ interface QrScanStepProps {
   validationError: string | null;
   setValidationError: (error: string | null) => void;
   bytesDecoderRef: React.MutableRefObject<BytesUrDecoderLike | null>;
+  networkOwner: ImportNetworkOwner;
+  isNetworkOwnerCurrent: (owner: ImportNetworkOwner) => boolean;
 }
 
 export const QrScanStep: React.FC<QrScanStepProps> = ({
@@ -37,6 +39,8 @@ export const QrScanStep: React.FC<QrScanStepProps> = ({
   validationError,
   setValidationError,
   bytesDecoderRef,
+  networkOwner,
+  isNetworkOwnerCurrent,
 }) => {
   const {
     handleCameraError,
@@ -51,6 +55,8 @@ export const QrScanStep: React.FC<QrScanStepProps> = ({
     setQrScanned,
     setUrProgress,
     setValidationError,
+    networkOwner,
+    isNetworkOwnerCurrent,
   });
 
   return (

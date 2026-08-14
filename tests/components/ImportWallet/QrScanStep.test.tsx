@@ -1,4 +1,4 @@
-import { render,screen } from '@testing-library/react';
+import { render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { QrScanStep } from '../../../src/components/ImportWallet/steps/QrScanStep';
@@ -64,6 +64,8 @@ interface RenderOptions {
   urProgress?: number;
   qrScanned?: boolean;
   validationError?: string | null;
+  networkOwner?: { network: 'mainnet' | 'testnet3'; generation: number };
+  isNetworkOwnerCurrent?: (owner: { network: string; generation: number }) => boolean;
 }
 
 function createDecoder() {
@@ -93,6 +95,8 @@ function renderQrScanStep(options: RenderOptions = {}) {
     validationError: options.validationError ?? null,
     setValidationError: vi.fn(),
     bytesDecoderRef: { current: null as any },
+    networkOwner: options.networkOwner ?? { network: 'mainnet', generation: 0 },
+    isNetworkOwnerCurrent: options.isNetworkOwnerCurrent ?? (() => true),
   };
 
   render(<QrScanStep {...props} />);
@@ -322,6 +326,61 @@ describe('QrScanStep', () => {
     await user.click(screen.getByRole('button', { name: 'Try Again' }));
     expect(retryProps.setCameraActive).toHaveBeenCalledWith(true);
     expect(retryProps.setCameraError).toHaveBeenCalledWith(null);
+  });
+
+  it('drops a stale UR dynamic-import continuation after an A-B-A owner change', async () => {
+    const originalOwner = { network: 'mainnet' as const, generation: 0 };
+    let activeOwner: { network: string; generation: number } = originalOwner;
+    const props = renderQrScanStep({
+      cameraActive: true,
+      networkOwner: originalOwner,
+      isNetworkOwnerCurrent: (owner) => owner === activeOwner,
+    });
+    const scanPromise = getScannerProps().onScan([{ rawValue: 'ur:bytes/part-one' }]);
+    activeOwner = { network: 'mainnet', generation: 2 };
+
+    await scanPromise;
+    await waitFor(() => expect(mockDecoderFactory).not.toHaveBeenCalled());
+    expect(props.setImportData).not.toHaveBeenCalled();
+    expect(props.setQrScanned).not.toHaveBeenCalled();
+    expect(props.setUrProgress).not.toHaveBeenCalled();
+  });
+
+  it('ignores stale scanner resume and error callbacks after unmount', () => {
+    let mounted = true;
+    const props = renderQrScanStep({
+      cameraActive: true,
+      isNetworkOwnerCurrent: () => mounted,
+    });
+    const qrScanner = getScannerProps();
+    mounted = false;
+
+    qrScanner.onScan([{ rawValue: 'wpkh(stale)' }]);
+    qrScanner.onError(new Error('stale camera error'));
+
+    expect(props.setImportData).not.toHaveBeenCalled();
+    expect(props.setQrScanned).not.toHaveBeenCalled();
+    expect(props.setCameraError).not.toHaveBeenCalled();
+  });
+
+  it('ignores stale camera start and stop callbacks', async () => {
+    const user = userEvent.setup();
+    const startProps = renderQrScanStep({
+      cameraActive: false,
+      isNetworkOwnerCurrent: () => false,
+    });
+    await user.click(screen.getByRole('button', { name: 'Start Camera' }));
+    expect(startProps.setCameraActive).not.toHaveBeenCalled();
+    expect(startProps.setCameraError).not.toHaveBeenCalled();
+
+    const stopProps = renderQrScanStep({
+      cameraActive: true,
+      isNetworkOwnerCurrent: () => false,
+    });
+    const buttons = screen.getAllByRole('button');
+    await user.click(buttons[buttons.length - 1]);
+    expect(stopProps.setCameraActive).not.toHaveBeenCalled();
+    expect(stopProps.setUrProgress).not.toHaveBeenCalled();
   });
 
   it('renders success and validation states from props', () => {

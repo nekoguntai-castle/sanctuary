@@ -2,13 +2,14 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Wallet } from '../../api/wallets';
 import { useCurrency } from '../../contexts/CurrencyContext';
+import type { WalletSparklineResult } from '../../hooks/queries/useWallets';
 import { WalletGridCard } from './WalletGridCard';
 import type { PendingData } from './types';
 
 interface WalletGridViewProps {
   wallets: Wallet[];
   pendingByWallet: Record<string, PendingData>;
-  sparklineData?: Record<string, number[]>;
+  sparklineData?: Record<string, WalletSparklineResult>;
 }
 
 /**
@@ -30,7 +31,7 @@ export const WalletGridView: React.FC<WalletGridViewProps> = ({
           key={wallet.id}
           wallet={wallet}
           pendingData={pendingByWallet[wallet.id]}
-          sparklineValues={sparklineData[wallet.id]}
+          sparkline={sparklineData[wallet.id] ?? { status: 'unavailable' }}
           format={format}
           formatFiat={formatFiat}
           showFiat={showFiat}

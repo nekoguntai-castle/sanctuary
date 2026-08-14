@@ -28,12 +28,23 @@ export function ImportWalletFooter({
           size="lg"
           onClick={onImport}
           isLoading={state.isImporting}
+          disabled={!isImportReady(state)}
         >
           <Upload className="w-4 h-4 mr-2" /> Import Wallet
         </Button>
       )}
     </div>
   );
+}
+
+function isImportReady(state: ImportWalletState): boolean {
+  const owner = state.getNetworkOwner();
+  return Boolean(state.validationResult)
+    && Boolean(state.importData.trim())
+    && Boolean(state.walletName.trim())
+    && !state.isValidating
+    && !state.isImporting
+    && state.isNetworkOwnerCurrent(owner);
 }
 
 function isNextDisabled(state: ImportWalletState): boolean {

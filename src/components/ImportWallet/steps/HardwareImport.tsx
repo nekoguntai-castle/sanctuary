@@ -6,7 +6,7 @@ import {
   ScriptType,
   HardwareDeviceType,
 } from '../importHelpers';
-import { XpubData } from '../hooks/useImportState';
+import type { ImportNetworkOwner, XpubData } from '../hooks/useImportState';
 import {
   ConnectedHardwareOptions,
   DeviceConnectionPanel,
@@ -38,6 +38,8 @@ interface HardwareImportProps {
   setIsConnecting: (connecting: boolean) => void;
   hardwareError: string | null;
   setHardwareError: (error: string | null) => void;
+  networkOwner: ImportNetworkOwner;
+  isNetworkOwnerCurrent: (owner: ImportNetworkOwner) => boolean;
 }
 
 export const HardwareImport: React.FC<HardwareImportProps> = ({
@@ -60,6 +62,8 @@ export const HardwareImport: React.FC<HardwareImportProps> = ({
   setIsConnecting,
   hardwareError,
   setHardwareError,
+  networkOwner,
+  isNetworkOwnerCurrent,
 }) => {
   const [hardwareDeviceModel, setHardwareDeviceModel] = React.useState(
     () => getDefaultHardwareImportModel(hardwareDeviceType),
@@ -77,7 +81,6 @@ export const HardwareImport: React.FC<HardwareImportProps> = ({
     hardwareDeviceModel,
     scriptType,
     accountIndex,
-    network,
     setHardwareDeviceType,
     setHardwareDeviceModel,
     setDeviceConnected,
@@ -88,6 +91,8 @@ export const HardwareImport: React.FC<HardwareImportProps> = ({
     setIsFetchingXpub,
     setIsConnecting,
     setHardwareError,
+    networkOwner,
+    isNetworkOwnerCurrent,
   });
 
   return (

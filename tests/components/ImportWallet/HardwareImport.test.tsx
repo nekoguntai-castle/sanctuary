@@ -1,7 +1,10 @@
 import { fireEvent,render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import type { XpubData } from '../../../src/components/ImportWallet/hooks/useImportState';
+import type {
+  ImportNetworkOwner,
+  XpubData,
+} from '../../../src/components/ImportWallet/hooks/useImportState';
 import {
 HardwareImport,
 } from '../../../src/components/ImportWallet/steps/HardwareImport';
@@ -54,6 +57,8 @@ interface HardwareImportOverrides {
   isFetchingXpub?: boolean;
   isConnecting?: boolean;
   hardwareError?: string | null;
+  networkOwner?: ImportNetworkOwner;
+  isNetworkOwnerCurrent?: (owner: { network: string; generation: number }) => boolean;
 }
 
 function renderHardwareImport(overrides: HardwareImportOverrides = {}) {
@@ -77,6 +82,8 @@ function renderHardwareImport(overrides: HardwareImportOverrides = {}) {
     setIsConnecting: vi.fn(),
     hardwareError: overrides.hardwareError ?? null,
     setHardwareError: vi.fn(),
+    networkOwner: overrides.networkOwner ?? { network: overrides.network ?? 'mainnet', generation: 0 },
+    isNetworkOwnerCurrent: overrides.isNetworkOwnerCurrent ?? (() => true),
   };
 
   render(<HardwareImport {...props} />);
@@ -174,6 +181,141 @@ describe('HardwareImport', () => {
     expect(props.setDeviceConnected).toHaveBeenCalledWith(true);
     expect(props.setDeviceLabel).toHaveBeenCalledWith('Ledger Nano S Plus');
     expect(props.setIsConnecting).toHaveBeenLastCalledWith(false);
+  });
+
+  it('suppresses stale connection resolve and finally commits after an A-B-A owner change', async () => {
+    const user = userEvent.setup();
+    let resolveConnect!: (device: { name: string }) => void;
+    const pendingConnect = new Promise<{ name: string }>((resolve) => {
+      resolveConnect = resolve;
+    });
+    mockConnect.mockReturnValue(pendingConnect);
+    const currentOwner: ImportNetworkOwner = { network: 'mainnet', generation: 0 };
+    let activeOwner = currentOwner;
+    const props = renderHardwareImport({
+      networkOwner: currentOwner,
+      isNetworkOwnerCurrent: (owner) => owner === activeOwner,
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Connect Device' }));
+    await waitFor(() => expect(mockConnect).toHaveBeenCalled());
+    activeOwner = { network: 'mainnet', generation: 2 };
+    resolveConnect({ name: 'Stale Ledger' });
+
+    await waitFor(() => expect(props.setDeviceConnected).not.toHaveBeenCalled());
+    expect(props.setDeviceLabel).not.toHaveBeenCalled();
+    expect(props.setHardwareError).toHaveBeenCalledTimes(1);
+    expect(props.setIsConnecting).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not start hardware work for a stale rendered owner', async () => {
+    const user = userEvent.setup();
+    const connectProps = renderHardwareImport({
+      isNetworkOwnerCurrent: () => false,
+    });
+    await user.click(screen.getByRole('button', { name: 'Connect Device' }));
+    expect(mockConnect).not.toHaveBeenCalled();
+    expect(connectProps.setIsConnecting).not.toHaveBeenCalled();
+
+    const fetchProps = renderHardwareImport({
+      deviceConnected: true,
+      isNetworkOwnerCurrent: () => false,
+    });
+    await user.click(screen.getByRole('button', { name: 'Fetch Xpub from Device' }));
+    expect(mockGetXpub).not.toHaveBeenCalled();
+    expect(fetchProps.setIsFetchingXpub).not.toHaveBeenCalled();
+  });
+
+  it('stops after the hardware runtime loads if ownership changed', async () => {
+    const user = userEvent.setup();
+    let checks = 0;
+    const props = renderHardwareImport({
+      isNetworkOwnerCurrent: () => ++checks === 1,
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Connect Device' }));
+
+    await waitFor(() => expect(props.setIsConnecting).toHaveBeenCalledWith(true));
+    expect(mockConnect).not.toHaveBeenCalled();
+    expect(props.setIsConnecting).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops xpub work after the hardware runtime loads if ownership changed', async () => {
+    const user = userEvent.setup();
+    let checks = 0;
+    const props = renderHardwareImport({
+      deviceConnected: true,
+      isNetworkOwnerCurrent: () => ++checks === 1,
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Fetch Xpub from Device' }));
+
+    await waitFor(() => expect(props.setIsFetchingXpub).toHaveBeenCalledWith(true));
+    expect(mockGetXpub).not.toHaveBeenCalled();
+    expect(props.setIsFetchingXpub).toHaveBeenCalledTimes(1);
+  });
+
+  it('suppresses a stale hardware connection rejection and finally commit', async () => {
+    const user = userEvent.setup();
+    let rejectConnect!: (error: Error) => void;
+    mockConnect.mockReturnValue(new Promise((_, reject) => {
+      rejectConnect = reject;
+    }));
+    let current = true;
+    const props = renderHardwareImport({
+      isNetworkOwnerCurrent: () => current,
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Connect Device' }));
+    await waitFor(() => expect(mockConnect).toHaveBeenCalled());
+    current = false;
+    rejectConnect(new Error('stale connect failure'));
+
+    await waitFor(() => expect(props.setHardwareError).toHaveBeenCalledTimes(1));
+    expect(props.setIsConnecting).toHaveBeenCalledTimes(1);
+  });
+
+  it('suppresses stale xpub rejection and finally commits after unmount ownership loss', async () => {
+    const user = userEvent.setup();
+    let rejectXpub!: (error: Error) => void;
+    mockGetXpub.mockReturnValue(new Promise((_, reject) => {
+      rejectXpub = reject;
+    }));
+    let mounted = true;
+    const props = renderHardwareImport({
+      deviceConnected: true,
+      isNetworkOwnerCurrent: () => mounted,
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Fetch Xpub from Device' }));
+    await waitFor(() => expect(mockGetXpub).toHaveBeenCalled());
+    mounted = false;
+    rejectXpub(new Error('stale failure'));
+
+    await waitFor(() => expect(props.setXpubData).not.toHaveBeenCalled());
+    expect(props.setHardwareError).toHaveBeenCalledTimes(1);
+    expect(props.setIsFetchingXpub).toHaveBeenCalledTimes(1);
+  });
+
+  it('suppresses a stale xpub resolve after the device request begins', async () => {
+    const user = userEvent.setup();
+    let resolveXpub!: (result: { xpub: string; fingerprint: string }) => void;
+    mockGetXpub.mockReturnValue(new Promise((resolve) => {
+      resolveXpub = resolve;
+    }));
+    let current = true;
+    const props = renderHardwareImport({
+      deviceConnected: true,
+      isNetworkOwnerCurrent: () => current,
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Fetch Xpub from Device' }));
+    await waitFor(() => expect(mockGetXpub).toHaveBeenCalled());
+    current = false;
+    resolveXpub({ xpub: 'stale', fingerprint: 'stale' });
+
+    await waitFor(() => expect(props.setXpubData).not.toHaveBeenCalled());
+    expect(props.setIsFetchingXpub).toHaveBeenCalledTimes(1);
   });
 
   it('uses trezor fallback label when connected device has no name', async () => {

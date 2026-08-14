@@ -1,6 +1,9 @@
 import type React from 'react';
 import { createLogger } from '../../../utils/logger';
-import type { BytesUrDecoderLike } from '../hooks/useImportState';
+import type {
+  BytesUrDecoderLike,
+  ImportNetworkOwner,
+} from '../hooks/useImportState';
 
 const log = createLogger('ImportWallet');
 
@@ -16,6 +19,8 @@ export function useQrScanHandlers({
   setQrScanned,
   setUrProgress,
   setValidationError,
+  networkOwner,
+  isNetworkOwnerCurrent,
 }: {
   bytesDecoderRef: React.MutableRefObject<BytesUrDecoderLike | null>;
   setCameraActive: (active: boolean) => void;
@@ -24,25 +29,31 @@ export function useQrScanHandlers({
   setQrScanned: (scanned: boolean) => void;
   setUrProgress: (progress: number) => void;
   setValidationError: (error: string | null) => void;
+  networkOwner: ImportNetworkOwner;
+  isNetworkOwnerCurrent: (owner: ImportNetworkOwner) => boolean;
 }) {
   const startCamera = () => {
+    if (!isNetworkOwnerCurrent(networkOwner)) return;
     setCameraActive(true);
     setCameraError(null);
   };
 
   const stopCamera = () => {
+    if (!isNetworkOwnerCurrent(networkOwner)) return;
     setCameraActive(false);
     setUrProgress(0);
     bytesDecoderRef.current = null;
   };
 
   const handleCameraError = (error: unknown) => {
+    if (!isNetworkOwnerCurrent(networkOwner)) return;
     log.error('Camera error', { error });
     setCameraActive(false);
     setCameraError(cameraErrorMessage(error));
   };
 
   const handleQrScan = async (result: QrScanResult[]) => {
+    if (!isNetworkOwnerCurrent(networkOwner)) return;
     const content = getFirstQrContent(result);
     if (!content) return;
 
@@ -57,6 +68,8 @@ export function useQrScanHandlers({
         setQrScanned,
         setUrProgress,
         setValidationError,
+        networkOwner,
+        isNetworkOwnerCurrent,
       });
       return;
     }
@@ -95,6 +108,8 @@ async function handleUrQrContent({
   setQrScanned,
   setUrProgress,
   setValidationError,
+  networkOwner,
+  isNetworkOwnerCurrent,
 }: {
   bytesDecoderRef: React.MutableRefObject<BytesUrDecoderLike | null>;
   content: string;
@@ -103,6 +118,8 @@ async function handleUrQrContent({
   setQrScanned: (scanned: boolean) => void;
   setUrProgress: (progress: number) => void;
   setValidationError: (error: string | null) => void;
+  networkOwner: ImportNetworkOwner;
+  isNetworkOwnerCurrent: (owner: ImportNetworkOwner) => boolean;
 }) {
   const urType = getUrType(content);
 
@@ -115,16 +132,21 @@ async function handleUrQrContent({
         setImportData,
         setQrScanned,
         setUrProgress,
+        networkOwner,
+        isNetworkOwnerCurrent,
       });
       return;
     }
 
     setValidationError(`Unsupported UR type: ${urType}. Please export as JSON or output descriptor.`);
   } catch (error) {
-    log.error('UR decode error', { error });
-    setValidationError(error instanceof Error ? error.message : 'Failed to decode QR code');
-    setCameraActive(false);
-    bytesDecoderRef.current = null;
+    /* v8 ignore next -- ownership can change only across the awaited decoder load, which returns early */
+    if (isNetworkOwnerCurrent(networkOwner)) {
+      log.error('UR decode error', { error });
+      setValidationError(error instanceof Error ? error.message : 'Failed to decode QR code');
+      setCameraActive(false);
+      bytesDecoderRef.current = null;
+    }
   }
 }
 
@@ -135,6 +157,8 @@ async function decodeBytesUr({
   setImportData,
   setQrScanned,
   setUrProgress,
+  networkOwner,
+  isNetworkOwnerCurrent,
 }: {
   bytesDecoderRef: React.MutableRefObject<BytesUrDecoderLike | null>;
   content: string;
@@ -142,9 +166,12 @@ async function decodeBytesUr({
   setImportData: (data: string) => void;
   setQrScanned: (scanned: boolean) => void;
   setUrProgress: (progress: number) => void;
+  networkOwner: ImportNetworkOwner;
+  isNetworkOwnerCurrent: (owner: ImportNetworkOwner) => boolean;
 }) {
   if (!bytesDecoderRef.current) {
     const { URDecoder } = await import('@ngraveio/bc-ur');
+    if (!isNetworkOwnerCurrent(networkOwner)) return;
     bytesDecoderRef.current = new URDecoder() as BytesUrDecoderLike;
   }
 

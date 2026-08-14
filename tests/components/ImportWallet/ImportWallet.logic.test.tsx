@@ -125,6 +125,8 @@ function createState(overrides: Record<string, unknown> = {}) {
     qrScanned: false,
     setQrScanned: vi.fn(),
     bytesDecoderRef: { current: null },
+    getNetworkOwner: vi.fn(() => ({ network: 'mainnet', generation: 0 })),
+    isNetworkOwnerCurrent: vi.fn(() => true),
     resetHardwareState: vi.fn(),
     resetQrState: vi.fn(),
     resetValidation: vi.fn(),
@@ -194,9 +196,9 @@ describe('ImportWallet logic branches', () => {
       'hardware',
       '',
       '',
-      state.setValidationResult,
-      state.setValidationError,
-      state.setWalletName,
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
       'mainnet',
       'wpkh([abcd]xpub/<0;1>/*)',
     );
@@ -236,6 +238,37 @@ describe('ImportWallet logic branches', () => {
       expect(mockValidateImportData).toHaveBeenCalled();
     });
     expect(descriptorState.setStep).not.toHaveBeenCalledWith(3);
+  });
+
+  it('does not advance or clear new loading state when validation resolves after A-B-A', async () => {
+    const user = userEvent.setup();
+    let resolveValidation!: (valid: boolean) => void;
+    mockValidateImportData.mockReturnValue(new Promise<boolean>((resolve) => {
+      resolveValidation = resolve;
+    }));
+    const originalOwner = { network: 'mainnet', generation: 0 };
+    let activeOwner = originalOwner;
+    const state = createState({
+      step: 2,
+      format: 'descriptor',
+      importData: 'wpkh(old)',
+      getNetworkOwner: () => originalOwner,
+      isNetworkOwnerCurrent: (owner: unknown) => owner === activeOwner,
+    });
+    renderImportWalletWithState(state);
+
+    await user.click(screen.getByRole('button', { name: /Next Step/i }));
+    await waitFor(() => expect(mockValidateImportData).toHaveBeenCalled());
+    activeOwner = { network: 'mainnet', generation: 2 };
+    const staleSetValidationError = mockValidateImportData.mock.calls[0][4] as (
+      error: string | null,
+    ) => void;
+    staleSetValidationError('stale validation failure');
+    resolveValidation(true);
+
+    await waitFor(() => expect(state.setStep).not.toHaveBeenCalledWith(3));
+    expect(state.setIsValidating).toHaveBeenCalledTimes(1);
+    expect(state.setValidationError).not.toHaveBeenCalled();
   });
 
   it('advances from step 3 to step 4 when wallet name is present', async () => {
@@ -289,8 +322,9 @@ describe('ImportWallet logic branches', () => {
       step: 4,
       importData: 'wpkh(...)',
       walletName: '  Imported Vault  ',
-      network: 'testnet',
+      network: 'testnet3',
       validationResult: { valid: true },
+      getNetworkOwner: () => ({ network: 'testnet3', generation: 0 }),
     });
     const { mutateAsync } = renderImportWalletWithState(state);
     mutateAsync.mockResolvedValueOnce({ wallet: { id: 'wallet-123' } });
@@ -301,13 +335,85 @@ describe('ImportWallet logic branches', () => {
       expect(mutateAsync).toHaveBeenCalledWith({
         data: 'wpkh(...)',
         name: 'Imported Vault',
-        network: 'testnet',
+        network: 'testnet3',
       });
     });
     expect(state.setIsImporting).toHaveBeenNthCalledWith(1, true);
     expect(state.setImportError).toHaveBeenNthCalledWith(1, null);
     expect(mockNavigate).toHaveBeenCalledWith('/wallets/wallet-123');
     expect(state.setIsImporting).toHaveBeenLastCalledWith(false);
+  });
+
+  it('suppresses stale import resolve and finally commits', async () => {
+    const user = userEvent.setup();
+    let resolveImport!: (result: { wallet: { id: string } }) => void;
+    const originalOwner = { network: 'mainnet', generation: 0 };
+    let activeOwner = originalOwner;
+    const state = createState({
+      step: 4,
+      importData: 'wpkh(old)',
+      walletName: 'Old Wallet',
+      validationResult: { valid: true },
+      getNetworkOwner: () => originalOwner,
+      isNetworkOwnerCurrent: (owner: unknown) => owner === activeOwner,
+    });
+    const { mutateAsync } = renderImportWalletWithState(state);
+    mutateAsync.mockReturnValue(new Promise((resolve) => {
+      resolveImport = resolve;
+    }));
+
+    await user.click(screen.getByRole('button', { name: /Import Wallet/i }));
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
+    activeOwner = { network: 'mainnet', generation: 2 };
+    resolveImport({ wallet: { id: 'stale-wallet' } });
+
+    await waitFor(() => expect(mockNavigate).not.toHaveBeenCalledWith('/wallets/stale-wallet'));
+    expect(state.setImportError).toHaveBeenCalledTimes(1);
+    expect(state.setIsImporting).toHaveBeenCalledTimes(1);
+  });
+
+  it('suppresses stale import rejection and its finally commit after unmount', async () => {
+    const user = userEvent.setup();
+    let rejectImport!: (error: Error) => void;
+    let mounted = true;
+    const state = createState({
+      step: 4,
+      importData: 'wpkh(old)',
+      walletName: 'Old Wallet',
+      validationResult: { valid: true },
+      isNetworkOwnerCurrent: () => mounted,
+    });
+    const { mutateAsync, unmount } = renderImportWalletWithState(state);
+    mutateAsync.mockReturnValue(new Promise((_, reject) => {
+      rejectImport = reject;
+    }));
+
+    await user.click(screen.getByRole('button', { name: /Import Wallet/i }));
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
+    mounted = false;
+    unmount();
+    rejectImport(new Error('stale import failure'));
+
+    await waitFor(() => expect(state.setImportError).toHaveBeenCalledTimes(1));
+    expect(state.setIsImporting).toHaveBeenCalledTimes(1);
+  });
+
+  it('blocks submit when the rendered review owner is stale', async () => {
+    const user = userEvent.setup();
+    const owner = { network: 'mainnet', generation: 0 };
+    const state = createState({
+      step: 4,
+      importData: 'wpkh(old)',
+      walletName: 'Old Wallet',
+      validationResult: { valid: true },
+      getNetworkOwner: () => owner,
+      isNetworkOwnerCurrent: () => false,
+    });
+    const { mutateAsync } = renderImportWalletWithState(state);
+
+    expect(screen.getByRole('button', { name: /Import Wallet/i })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: /Import Wallet/i }));
+    expect(mutateAsync).not.toHaveBeenCalled();
   });
 
   it('handles ApiError and generic import failures', async () => {

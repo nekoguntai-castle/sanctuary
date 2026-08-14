@@ -10,6 +10,7 @@ import { BalanceChart } from './BalanceChart';
 import { WalletGridView } from './WalletGridView';
 import { WalletListHeader } from './WalletListHeader';
 import type { PendingData, WalletSortField, WalletSortOrder, WalletViewMode } from './types';
+import type { WalletSparklineResult } from '../../hooks/queries/useWallets';
 
 export function WalletListContent({
   selectedNetwork,
@@ -43,7 +44,7 @@ export function WalletListContent({
   walletIds: string[];
   pendingByWallet: Record<string, PendingData>;
   walletsWithPending: WalletWithPending[];
-  sparklineData: Record<string, number[]>;
+  sparklineData: Record<string, WalletSparklineResult>;
   viewMode: WalletViewMode;
   setViewMode: (mode: WalletViewMode) => void;
   sortBy: WalletSortField;

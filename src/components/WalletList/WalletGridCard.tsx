@@ -1,6 +1,7 @@
 import type { Wallet } from '../../api/wallets';
 import { WalletType } from '@sanctuary/shared/constants/walletIdentity';
 import type { PendingData, WalletAmountFormatter, WalletFiatFormatter } from './types';
+import type { WalletSparklineResult } from '../../hooks/queries/useWallets';
 import { WalletBalance } from './WalletGridCardBalance';
 import { WalletMetadata } from './WalletGridCardMetadata';
 import { WalletSparkline } from './WalletGridCardSparkline';
@@ -10,7 +11,7 @@ import { walletGridCardStyles } from './walletGridCardStyles';
 export function WalletGridCard({
   wallet,
   pendingData,
-  sparklineValues,
+  sparkline,
   format,
   formatFiat,
   showFiat,
@@ -18,7 +19,7 @@ export function WalletGridCard({
 }: {
   wallet: Wallet;
   pendingData?: PendingData;
-  sparklineValues?: number[];
+  sparkline: WalletSparklineResult;
   format: WalletAmountFormatter;
   formatFiat: WalletFiatFormatter;
   showFiat: boolean;
@@ -45,7 +46,7 @@ export function WalletGridCard({
       <WalletSparkline
         wallet={wallet}
         isMultisig={styles.isMultisig}
-        values={sparklineValues}
+        result={sparkline}
       />
       <WalletMetadata wallet={wallet} />
     </div>

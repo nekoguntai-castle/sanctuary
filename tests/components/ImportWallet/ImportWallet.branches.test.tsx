@@ -139,6 +139,8 @@ function createState(overrides: Record<string, unknown> = {}) {
     qrScanned: false,
     setQrScanned: vi.fn(),
     bytesDecoderRef: { current: null },
+    getNetworkOwner: vi.fn(() => ({ network: 'mainnet', generation: 0 })),
+    isNetworkOwnerCurrent: vi.fn(() => true),
     resetHardwareState: vi.fn(),
     resetQrState: vi.fn(),
     resetValidation: vi.fn(),
@@ -147,12 +149,13 @@ function createState(overrides: Record<string, unknown> = {}) {
 }
 
 function renderImportWalletWithState(state: Record<string, unknown>) {
+  const mutateAsync = vi.fn();
   mockUseImportState.mockReturnValue(state);
   mockUseImportWallet.mockReturnValue({
-    mutateAsync: vi.fn(),
+    mutateAsync,
     isLoading: false,
   });
-  return render(<ImportWallet />);
+  return { ...render(<ImportWallet />), mutateAsync };
 }
 
 describe('ImportWallet guard branches', () => {
@@ -258,5 +261,29 @@ describe('ImportWallet guard branches', () => {
     await user.click(screen.getByRole('button', { name: /Next Step/i }));
 
     expect(state.setStep).not.toHaveBeenCalledWith(4);
+  });
+
+  it('rejects stale next and import callbacks even when the button guard is bypassed', async () => {
+    const user = userEvent.setup();
+    const nextState = createState({
+      step: 1,
+      format: 'descriptor',
+      isNetworkOwnerCurrent: () => false,
+    });
+    const nextRender = renderImportWalletWithState(nextState);
+    await user.click(screen.getByRole('button', { name: /Next Step/i }));
+    expect(nextState.setStep).not.toHaveBeenCalled();
+    nextRender.unmount();
+
+    const importState = createState({
+      step: 4,
+      importData: 'wpkh(stale)',
+      walletName: 'Stale',
+      validationResult: { valid: true },
+      isNetworkOwnerCurrent: () => false,
+    });
+    const importRender = renderImportWalletWithState(importState);
+    await user.click(screen.getByRole('button', { name: /Import Wallet/i }));
+    expect(importRender.mutateAsync).not.toHaveBeenCalled();
   });
 });

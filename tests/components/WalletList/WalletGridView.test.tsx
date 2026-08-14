@@ -195,7 +195,7 @@ describe('WalletGridView', () => {
           } as any,
         ]}
         pendingByWallet={{}}
-        sparklineData={{ 'w-spark': [100, 200, 150, 300] }}
+        sparklineData={{ 'w-spark': { status: 'ready', values: [100, 200, 150, 300] } }}
       />
     );
 
@@ -228,7 +228,7 @@ describe('WalletGridView', () => {
           } as any,
         ]}
         pendingByWallet={{}}
-        sparklineData={{ 'w-multi-spark': [500, 800, 600] }}
+        sparklineData={{ 'w-multi-spark': { status: 'ready', values: [500, 800, 600] } }}
       />
     );
 
@@ -257,7 +257,7 @@ describe('WalletGridView', () => {
           } as any,
         ]}
         pendingByWallet={{}}
-        sparklineData={{ 'w-flat': [500, 500, 500] }}
+        sparklineData={{ 'w-flat': { status: 'ready', values: [500, 500, 500] } }}
       />
     );
 
@@ -268,8 +268,8 @@ describe('WalletGridView', () => {
     expect(paths?.[1].getAttribute('d')).toContain('L');
   });
 
-  it('handles sparkline data with fewer than 2 points as fallback', () => {
-    const { container } = render(
+  it('renders an accessible neutral state for unavailable history without a synthetic path', () => {
+    render(
       <WalletGridView
         wallets={[
           {
@@ -285,24 +285,23 @@ describe('WalletGridView', () => {
           } as any,
         ]}
         pendingByWallet={{}}
-        sparklineData={{ 'w-one-point': [100] }}
+        sparklineData={{ 'w-one-point': { status: 'unavailable' } }}
       />
     );
 
-    const svg = container.querySelector('svg');
-    const paths = svg?.querySelectorAll('path');
-    // sparklinePath returns '' for < 2 values, so area/line paths are empty
-    // Still renders 2 paths but with empty d attributes
-    expect(paths?.length).toBe(2);
+    const emptyState = screen.getByRole('img', { name: 'Balance history unavailable' });
+    expect(emptyState).toBeInTheDocument();
+    expect(emptyState.querySelector('svg')).not.toBeInTheDocument();
+    expect(emptyState.querySelector('path')).not.toBeInTheDocument();
   });
 
-  it('falls back to decorative sparkline without sparklineData', () => {
-    const { container } = render(
+  it('renders an accessible neutral error state without a synthetic path', () => {
+    render(
       <WalletGridView
         wallets={[
           {
-            id: 'w-deco',
-            name: 'Deco Wallet',
+            id: 'w-error',
+            name: 'Error Wallet',
             type: 'single_sig',
             balance: 1000,
             scriptType: 'native_segwit',
@@ -313,14 +312,14 @@ describe('WalletGridView', () => {
           } as any,
         ]}
         pendingByWallet={{}}
+        sparklineData={{ 'w-error': { status: 'error' } }}
       />
     );
 
-    // Decorative sparkline renders a single path with Q/T curves
-    const svg = container.querySelector('svg');
-    const paths = svg?.querySelectorAll('path');
-    expect(paths?.length).toBe(1);
-    expect(paths?.[0].getAttribute('d')).toContain('Q');
+    const errorState = screen.getByRole('img', { name: 'Balance history could not be loaded' });
+    expect(errorState).toBeInTheDocument();
+    expect(errorState.querySelector('svg')).not.toBeInTheDocument();
+    expect(errorState.querySelector('path')).not.toBeInTheDocument();
   });
 
   it('hides fiat values when disabled and when formatter returns empty output', () => {

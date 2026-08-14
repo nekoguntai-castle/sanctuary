@@ -2,14 +2,13 @@ import type { DeviceType } from '../../../services/hardwareWallet/types';
 import { isSecureContext } from '../../../services/hardwareWallet/environment';
 import { loadHardwareWalletRuntime } from '../../../services/hardwareWallet/loader';
 import { createLogger } from '../../../utils/logger';
-import type { TabNetwork } from '../../../app/networks';
 import {
   getDefaultHardwareImportModel,
   getDerivationPath,
   HardwareDeviceType,
   ScriptType,
 } from '../importHelpers';
-import { XpubData } from '../hooks/useImportState';
+import type { ImportNetworkOwner, XpubData } from '../hooks/useImportState';
 
 const log = createLogger('ImportWallet');
 
@@ -18,7 +17,6 @@ export function useHardwareImportActions({
   hardwareDeviceModel,
   scriptType,
   accountIndex,
-  network,
   setHardwareDeviceType,
   setHardwareDeviceModel,
   setDeviceConnected,
@@ -29,12 +27,13 @@ export function useHardwareImportActions({
   setIsFetchingXpub,
   setIsConnecting,
   setHardwareError,
+  networkOwner,
+  isNetworkOwnerCurrent,
 }: {
   hardwareDeviceType: HardwareDeviceType;
   hardwareDeviceModel: string;
   scriptType: ScriptType;
   accountIndex: number;
-  network: TabNetwork;
   setHardwareDeviceType: (type: HardwareDeviceType) => void;
   setHardwareDeviceModel: (model: string) => void;
   setDeviceConnected: (connected: boolean) => void;
@@ -45,6 +44,8 @@ export function useHardwareImportActions({
   setIsFetchingXpub: (fetching: boolean) => void;
   setIsConnecting: (connecting: boolean) => void;
   setHardwareError: (error: string | null) => void;
+  networkOwner: ImportNetworkOwner;
+  isNetworkOwnerCurrent: (owner: ImportNetworkOwner) => boolean;
 }) {
   const ledgerSupported = isSecureContext();
 
@@ -72,33 +73,43 @@ export function useHardwareImportActions({
   };
 
   const handleConnectDevice = async () => {
+    const owner = networkOwner;
+    if (!isNetworkOwnerCurrent(owner)) return;
     setIsConnecting(true);
     setHardwareError(null);
 
     try {
       const { hardwareWalletService } = await loadHardwareWalletRuntime();
+      if (!isNetworkOwnerCurrent(owner)) return;
       const device = await hardwareWalletService.connect(hardwareDeviceType as DeviceType, {
-        chainEnvironment: network,
+        chainEnvironment: owner.network,
         expectedModel: hardwareDeviceModel,
       });
+      if (!isNetworkOwnerCurrent(owner)) return;
       setDeviceConnected(true);
       setDeviceLabel(device.name || hardwareDeviceModel);
     } catch (error) {
-      log.error('Failed to connect hardware device', { error });
-      setHardwareError(hardwareErrorMessage(error, 'Failed to connect device'));
+      if (isNetworkOwnerCurrent(owner)) {
+        log.error('Failed to connect hardware device', { error });
+        setHardwareError(hardwareErrorMessage(error, 'Failed to connect device'));
+      }
     } finally {
-      setIsConnecting(false);
+      if (isNetworkOwnerCurrent(owner)) setIsConnecting(false);
     }
   };
 
   const handleFetchXpub = async () => {
+    const owner = networkOwner;
+    if (!isNetworkOwnerCurrent(owner)) return;
     setIsFetchingXpub(true);
     setHardwareError(null);
 
     try {
       const { hardwareWalletService } = await loadHardwareWalletRuntime();
-      const path = getDerivationPath(scriptType, accountIndex, network);
+      if (!isNetworkOwnerCurrent(owner)) return;
+      const path = getDerivationPath(scriptType, accountIndex, owner.network);
       const result = await hardwareWalletService.getXpub(path);
+      if (!isNetworkOwnerCurrent(owner)) return;
 
       if (result.xpub && result.fingerprint) {
         setXpubData({
@@ -110,10 +121,12 @@ export function useHardwareImportActions({
         setHardwareError('Failed to retrieve xpub from device');
       }
     } catch (error) {
-      log.error('Failed to fetch xpub', { error });
-      setHardwareError(hardwareErrorMessage(error, 'Failed to fetch xpub'));
+      if (isNetworkOwnerCurrent(owner)) {
+        log.error('Failed to fetch xpub', { error });
+        setHardwareError(hardwareErrorMessage(error, 'Failed to fetch xpub'));
+      }
     } finally {
-      setIsFetchingXpub(false);
+      if (isNetworkOwnerCurrent(owner)) setIsFetchingXpub(false);
     }
   };
 

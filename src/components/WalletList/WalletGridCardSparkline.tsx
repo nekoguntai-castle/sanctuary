@@ -1,31 +1,61 @@
 import type { Wallet } from '../../api/wallets';
+import type { WalletSparklineResult } from '../../hooks/queries/useWallets';
+
+type SparklineValues = Extract<WalletSparklineResult, { status: 'ready' }>['values'];
 
 export function WalletSparkline({
   wallet,
   isMultisig,
-  values,
+  result,
 }: {
   wallet: Wallet;
   isMultisig: boolean;
-  values?: number[];
+  result: WalletSparklineResult;
 }) {
   const color = isMultisig ? 'var(--color-warning-500)' : 'var(--color-success-500)';
 
+  if (result.status !== 'ready') {
+    return <EmptySparkline status={result.status} />;
+  }
+
   return (
     <div className="h-8 w-full mt-2 opacity-30 overflow-hidden">
-      <svg viewBox="0 0 100 30" preserveAspectRatio="none" className="w-full h-full">
+      <svg
+        viewBox="0 0 100 30"
+        preserveAspectRatio="none"
+        className="w-full h-full"
+        role="img"
+        aria-label={`Balance history for ${wallet.name}`}
+      >
         <defs>
           <linearGradient id={`spark-${wallet.id}`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={color} stopOpacity="0.4" />
             <stop offset="100%" stopColor={color} stopOpacity="0" />
           </linearGradient>
         </defs>
-        {values ? (
-          <RealSparkline walletId={wallet.id} values={values} color={color} />
-        ) : (
-          <DecorativeSparkline wallet={wallet} color={color} />
-        )}
+        <RealSparkline walletId={wallet.id} values={result.values} color={color} />
       </svg>
+    </div>
+  );
+}
+
+function EmptySparkline({ status }: { status: 'unavailable' | 'error' }) {
+  const label = status === 'error'
+    ? 'Balance history could not be loaded'
+    : 'Balance history unavailable';
+
+  return (
+    <div
+      className="h-8 w-full mt-2 flex items-center justify-center opacity-30"
+      role="img"
+      aria-label={label}
+    >
+      <span
+        aria-hidden="true"
+        className="text-sanctuary-400 dark:text-sanctuary-600 tracking-[0.3em]"
+      >
+        •••
+      </span>
     </div>
   );
 }
@@ -36,7 +66,7 @@ function RealSparkline({
   color,
 }: {
   walletId: string;
-  values: number[];
+  values: SparklineValues;
   color: string;
 }) {
   return (
@@ -57,26 +87,7 @@ function RealSparkline({
   );
 }
 
-function DecorativeSparkline({
-  wallet,
-  color,
-}: {
-  wallet: Wallet;
-  color: string;
-}) {
-  return (
-    <path
-      d={`M0,20 Q10,${15 + (wallet.balance % 7)} 20,${18 - (wallet.balance % 5)} T40,${14 + (wallet.balance % 8)} T60,${10 + (wallet.balance % 6)} T80,${16 - (wallet.balance % 4)} T100,${12 + (wallet.balance % 5)}`}
-      fill={`url(#spark-${wallet.id})`}
-      stroke={color}
-      strokeWidth="1.5"
-      strokeLinecap="round"
-    />
-  );
-}
-
-function sparklinePath(values: number[]): string {
-  if (values.length < 2) return '';
+function sparklinePath(values: SparklineValues): string {
   const min = Math.min(...values);
   const max = Math.max(...values);
   const range = max - min || 1;
@@ -90,8 +101,7 @@ function sparklinePath(values: number[]): string {
     .join(' ');
 }
 
-function sparklineAreaPath(values: number[]): string {
+function sparklineAreaPath(values: SparklineValues): string {
   const line = sparklinePath(values);
-  if (!line) return '';
   return `${line} L100,30 L0,30 Z`;
 }
