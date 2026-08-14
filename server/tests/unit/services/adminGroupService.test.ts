@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   findUserById: vi.fn(),
   clearAccessCacheStrict: vi.fn(),
   invalidateUserAccessCache: vi.fn(),
+  invalidateWebSocketWalletAccess: vi.fn(),
 }));
 
 vi.mock('../../../src/repositories/groupRepository', () => ({
@@ -44,6 +45,10 @@ vi.mock('../../../src/services/accessControl', () => ({
   invalidateUserAccessCacheStrict: mocks.invalidateUserAccessCache,
 }));
 
+vi.mock('../../../src/services/websocketAuthorizationInvalidation', () => ({
+  invalidateWebSocketWalletAccess: mocks.invalidateWebSocketWalletAccess,
+}));
+
 const loadService = async () => {
   vi.resetModules();
   return import('../../../src/services/adminGroupService');
@@ -54,6 +59,7 @@ describe('adminGroupService', () => {
     vi.clearAllMocks();
     mocks.clearAccessCacheStrict.mockResolvedValue(undefined);
     mocks.invalidateUserAccessCache.mockResolvedValue(undefined);
+    mocks.invalidateWebSocketWalletAccess.mockResolvedValue(undefined);
   });
 
   it('lists groups using the API member shape', async () => {
@@ -100,6 +106,7 @@ describe('adminGroupService', () => {
     mocks.createWithMembers.mockResolvedValue({
       group,
       membershipChanges: { addedUserIds: ['user-2'], removedUserIds: [] },
+      affectedWalletIds: [],
     });
     const { createAdminGroup } = await loadService();
 
@@ -135,6 +142,7 @@ describe('adminGroupService', () => {
     mocks.updateWithMembers.mockResolvedValue({
       group,
       membershipChanges: { addedUserIds: ['user-3'], removedUserIds: ['user-1'] },
+      affectedWalletIds: ['wallet-1'],
     });
     const { updateAdminGroup } = await loadService();
 
@@ -148,6 +156,7 @@ describe('adminGroupService', () => {
       ['user-2', 'user-3'],
     );
     expect(mocks.clearAccessCacheStrict).toHaveBeenCalledTimes(1);
+    expect(mocks.invalidateWebSocketWalletAccess).toHaveBeenCalledWith(['wallet-1']);
     expect(mocks.updateWithMembers.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.clearAccessCacheStrict.mock.invocationCallOrder[0],
     );
@@ -172,6 +181,7 @@ describe('adminGroupService', () => {
     mocks.updateWithMembers.mockResolvedValue({
       group,
       membershipChanges: { addedUserIds: [], removedUserIds: [] },
+      affectedWalletIds: ['wallet-1'],
     });
     const { updateAdminGroup } = await loadService();
 
@@ -198,10 +208,12 @@ describe('adminGroupService', () => {
       .mockResolvedValueOnce({
         group,
         membershipChanges: { addedUserIds: [], removedUserIds: ['user-1'] },
+        affectedWalletIds: ['wallet-1'],
       })
       .mockResolvedValueOnce({
         group,
         membershipChanges: { addedUserIds: [], removedUserIds: [] },
+        affectedWalletIds: ['wallet-1'],
       });
     mocks.clearAccessCacheStrict
       .mockRejectedValueOnce(new Error('cache down'))
@@ -240,6 +252,7 @@ describe('adminGroupService', () => {
       id: 'group-3',
       name: 'Team C',
       members: [{ userId: 'user-1' }, { userId: 'user-2' }],
+      wallets: [{ id: 'wallet-1' }],
     });
     const { deleteAdminGroup } = await loadService();
 
@@ -249,6 +262,23 @@ describe('adminGroupService', () => {
     });
     expect(mocks.invalidateUserAccessCache).toHaveBeenCalledWith('user-1');
     expect(mocks.invalidateUserAccessCache).toHaveBeenCalledWith('user-2');
+    expect(mocks.invalidateWebSocketWalletAccess).toHaveBeenCalledWith(['wallet-1']);
+  });
+
+  it('removes a member and invalidates wallets returned by the committed transaction', async () => {
+    mocks.removeMember.mockResolvedValue({
+      membership: { groupId: 'group-4', userId: 'user-4' },
+      affectedWalletIds: ['wallet-1', 'wallet-2'],
+    });
+    const { removeAdminGroupMember } = await loadService();
+
+    await expect(removeAdminGroupMember('group-4', 'user-4')).resolves.toBeUndefined();
+
+    expect(mocks.invalidateWebSocketWalletAccess).toHaveBeenCalledWith([
+      'wallet-1',
+      'wallet-2',
+    ]);
+    expect(mocks.invalidateUserAccessCache).toHaveBeenCalledWith('user-4');
   });
 
   it('rejects duplicate group membership before mutating access caches', async () => {

@@ -47,6 +47,32 @@ async function verifyWebSocketAccessToken(token: string): Promise<JWTPayload> {
   return resolveCurrentAccessTokenPayload(decoded);
 }
 
+type AccessTokenClaims = JWTPayload & { exp?: number };
+
+function storeVerifiedClaims(client: AuthenticatedWebSocket, decoded: JWTPayload): void {
+  const claims = decoded as AccessTokenClaims;
+  if (
+    typeof claims.jti !== 'string' || claims.jti.length === 0 ||
+    typeof claims.sessionVersion !== 'number' ||
+    !Number.isSafeInteger(claims.sessionVersion) || claims.sessionVersion < 0 ||
+    typeof claims.exp !== 'number' || !Number.isFinite(claims.exp) ||
+    claims.exp * 1000 <= Date.now()
+  ) {
+    throw new Error('Invalid access-token claims');
+  }
+  client.userId = claims.userId;
+  client.authClaims = decoded;
+  client.authJti = claims.jti;
+  client.authSessionVersion = claims.sessionVersion;
+
+  client.authExpiresAt = claims.exp * 1000;
+  const delay = Math.max(0, client.authExpiresAt - Date.now());
+  client.authExpiryTimeout = setTimeout(() => {
+    client.closeReason = 'auth_expired';
+    client.close(4003, 'Authentication expired');
+  }, delay);
+}
+
 /**
  * Callback interface for auth operations that need to interact with the server
  */
@@ -128,20 +154,22 @@ export function authenticateOnUpgrade(
   if (token) {
     verifyWebSocketAccessToken(token)
       .then((decoded) => {
-        client.userId = decoded.userId;
+        storeVerifiedClaims(client, decoded);
 
         // Check per-user connection limit
-        const userConnections = callbacks.getUserConnections(client.userId);
+        const userConnections = callbacks.getUserConnections(decoded.userId);
         if (userConnections && userConnections.size >= MAX_WEBSOCKET_PER_USER) {
           log.warn(`Connection rejected for user ${client.userId}: per-user limit of ${MAX_WEBSOCKET_PER_USER} reached`);
           client.close(1008, `User connection limit of ${MAX_WEBSOCKET_PER_USER} reached`);
+          clearTimeout(client.authExpiryTimeout);
+          client.authExpiryTimeout = undefined;
           return;
         }
 
         log.info(`WebSocket client authenticated: ${client.userId}`);
 
         // Track per-user connection
-        callbacks.trackUserConnection(client.userId, client);
+        callbacks.trackUserConnection(decoded.userId, client);
 
         // Complete client registration
         callbacks.completeClientRegistration(client);
@@ -201,7 +229,7 @@ export async function handleAuthMessage(
       return;
     }
 
-    client.userId = userId;
+    storeVerifiedClaims(client, decoded);
     log.debug(`WebSocket client authenticated via message: ${client.userId}`);
 
     // Track per-user connection

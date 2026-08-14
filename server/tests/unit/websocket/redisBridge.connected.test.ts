@@ -5,6 +5,7 @@ type EventCallback = (...args: any[]) => void;
 function createMockPubSubClient(options?: {
   autoConnect?: boolean;
   publishThrows?: boolean;
+  publishRejects?: boolean;
   status?: string;
 }) {
   const onceHandlers = new Map<string, EventCallback[]>();
@@ -41,6 +42,9 @@ function createMockPubSubClient(options?: {
     publish: vi.fn((_channel: string, _payload: string) => {
       if (options?.publishThrows) {
         throw new Error('publish failed');
+      }
+      if (options?.publishRejects) {
+        return Promise.reject(new Error('async publish failed'));
       }
       return 1;
     }),
@@ -122,7 +126,9 @@ describe('RedisWebSocketBridge (connected mode)', () => {
 
     await initializeRedisBridge();
     expect(redisBridge.isActive()).toBe(true);
-    expect(mocks.subscriber.subscribe).toHaveBeenCalledWith('sanctuary:ws:broadcast');
+    expect(mocks.subscriber.subscribe).toHaveBeenCalledWith(
+      'sanctuary:ws:broadcast', 'sanctuary:ws:authorization-control',
+    );
 
     const envelope = {
       event: { type: 'sync', data: { source: 'remote' }, walletId: 'wallet-1' },
@@ -195,6 +201,146 @@ describe('RedisWebSocketBridge (connected mode)', () => {
     await shutdownRedisBridge();
   });
 
+  it('publishes and receives versioned authorization controls on a separate channel', async () => {
+    const { initializeRedisBridge, redisBridge, shutdownRedisBridge, mocks } = await loadBridgeWithMocks();
+    const handler = vi.fn();
+    redisBridge.setControlHandler(handler);
+    await initializeRedisBridge();
+
+    const control = { version: 1 as const, type: 'access-token-revoked' as const, jti: 'jti-1' };
+    redisBridge.publishControl(control);
+    expect(mocks.publisher.publish).toHaveBeenCalledWith(
+      'sanctuary:ws:authorization-control',
+      expect.stringContaining('"type":"access-token-revoked"'),
+    );
+
+    mocks.subscriber.emit('message', 'sanctuary:ws:authorization-control', JSON.stringify({
+      control,
+      instanceId: 'remote-instance',
+      timestamp: Date.now(),
+    }));
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(handler).toHaveBeenCalledWith(control);
+    await shutdownRedisBridge();
+  });
+
+  it('rejects malformed controls without invoking the handler', async () => {
+    const { initializeRedisBridge, redisBridge, shutdownRedisBridge, mocks } = await loadBridgeWithMocks();
+    const handler = vi.fn();
+    redisBridge.setControlHandler(handler);
+    await initializeRedisBridge();
+
+    mocks.subscriber.emit('message', 'sanctuary:ws:authorization-control', JSON.stringify({
+      control: { version: 1, type: 'user-access-revoked' },
+      instanceId: 'remote-instance',
+      timestamp: Date.now(),
+    }));
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(redisBridge.getMetrics().errors).toBe(1);
+    await shutdownRedisBridge();
+  });
+
+  it.each([
+    ['non-object envelope', 'not-an-envelope'],
+    ['missing instance ID', { control: { version: 1, type: 'user-access-revoked', userId: 'u1' }, timestamp: 1 }],
+    ['non-numeric timestamp', { control: { version: 1, type: 'user-access-revoked', userId: 'u1' }, instanceId: 'remote', timestamp: 'now' }],
+    ['non-object control', { control: 'revoke', instanceId: 'remote', timestamp: 1 }],
+    ['unsupported version', { control: { version: 2, type: 'user-access-revoked', userId: 'u1' }, instanceId: 'remote', timestamp: 1 }],
+    ['missing control type', { control: { version: 1, userId: 'u1' }, instanceId: 'remote', timestamp: 1 }],
+    ['wallet control without wallet ID', { control: { version: 1, type: 'wallet-access-changed', walletId: '' }, instanceId: 'remote', timestamp: 1 }],
+    ['token control without token ID', { control: { version: 1, type: 'access-token-revoked', jti: '' }, instanceId: 'remote', timestamp: 1 }],
+    ['unknown control type', { control: { version: 1, type: 'unknown' }, instanceId: 'remote', timestamp: 1 }],
+  ])('rejects a %s authorization control', async (_description, envelope) => {
+    const { initializeRedisBridge, redisBridge, shutdownRedisBridge, mocks } = await loadBridgeWithMocks();
+    const handler = vi.fn();
+    redisBridge.setControlHandler(handler);
+    await initializeRedisBridge();
+
+    mocks.subscriber.emit(
+      'message',
+      'sanctuary:ws:authorization-control',
+      JSON.stringify(envelope),
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(redisBridge.getMetrics().errors).toBe(1);
+    await shutdownRedisBridge();
+  });
+
+  it('accepts a wallet authorization control', async () => {
+    const { initializeRedisBridge, redisBridge, shutdownRedisBridge, mocks } = await loadBridgeWithMocks();
+    const handler = vi.fn();
+    redisBridge.setControlHandler(handler);
+    await initializeRedisBridge();
+    const control = { version: 1, type: 'wallet-access-changed', walletId: 'wallet-1' };
+
+    mocks.subscriber.emit('message', 'sanctuary:ws:authorization-control', JSON.stringify({
+      control,
+      instanceId: 'remote-instance',
+      timestamp: Date.now(),
+    }));
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(handler).toHaveBeenCalledWith(control);
+    expect(redisBridge.getMetrics().received).toBe(1);
+    await shutdownRedisBridge();
+  });
+
+  it('ignores a valid remote control when no control handler is set', async () => {
+    const { initializeRedisBridge, redisBridge, shutdownRedisBridge, mocks } = await loadBridgeWithMocks();
+    await initializeRedisBridge();
+
+    mocks.subscriber.emit('message', 'sanctuary:ws:authorization-control', JSON.stringify({
+      control: { version: 1, type: 'user-access-revoked', userId: 'u1' },
+      instanceId: 'remote-instance',
+      timestamp: Date.now(),
+    }));
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(redisBridge.getMetrics()).toMatchObject({ received: 0, errors: 0 });
+    await shutdownRedisBridge();
+  });
+
+  it('deduplicates self-published authorization controls', async () => {
+    const { initializeRedisBridge, redisBridge, shutdownRedisBridge, mocks } = await loadBridgeWithMocks();
+    const handler = vi.fn();
+    redisBridge.setControlHandler(handler);
+    await initializeRedisBridge();
+
+    mocks.subscriber.emit('message', 'sanctuary:ws:authorization-control', JSON.stringify({
+      control: { version: 1, type: 'user-access-revoked', userId: 'u1' },
+      instanceId: redisBridge.getInstanceId(),
+      timestamp: Date.now(),
+    }));
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(redisBridge.getMetrics().skippedSelf).toBe(1);
+    await shutdownRedisBridge();
+  });
+
+  it('observes rejected async authorization control handlers', async () => {
+    const { initializeRedisBridge, redisBridge, shutdownRedisBridge, mocks } = await loadBridgeWithMocks();
+    redisBridge.setControlHandler(vi.fn(async () => { throw new Error('control failed'); }));
+    await initializeRedisBridge();
+
+    mocks.subscriber.emit('message', 'sanctuary:ws:authorization-control', JSON.stringify({
+      control: { version: 1, type: 'user-access-revoked', userId: 'u1' },
+      instanceId: 'remote-instance',
+      timestamp: Date.now(),
+    }));
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(redisBridge.getMetrics().errors).toBe(1);
+    expect(mocks.log.error).toHaveBeenCalledWith(
+      'Failed to handle WebSocket authorization control', expect.any(Object),
+    );
+    await shutdownRedisBridge();
+  });
+
   it('initializes when duplicate Redis clients are already ready', async () => {
     const publisher = createMockPubSubClient({ autoConnect: false, status: 'ready' });
     const subscriber = createMockPubSubClient({ autoConnect: false, status: 'ready' });
@@ -206,7 +352,9 @@ describe('RedisWebSocketBridge (connected mode)', () => {
     await initializeRedisBridge();
 
     expect(redisBridge.isActive()).toBe(true);
-    expect(mocks.subscriber.subscribe).toHaveBeenCalledWith('sanctuary:ws:broadcast');
+    expect(mocks.subscriber.subscribe).toHaveBeenCalledWith(
+      'sanctuary:ws:broadcast', 'sanctuary:ws:authorization-control',
+    );
     expect(publisher.once).not.toHaveBeenCalledWith('ready', expect.any(Function));
     expect(subscriber.once).not.toHaveBeenCalledWith('ready', expect.any(Function));
 
@@ -225,6 +373,49 @@ describe('RedisWebSocketBridge (connected mode)', () => {
 
     expect(redisBridge.getMetrics().errors).toBe(1);
 
+    await shutdownRedisBridge();
+  });
+
+  it('observes asynchronous publisher rejections', async () => {
+    const publisher = createMockPubSubClient({ autoConnect: true, publishRejects: true });
+    const { initializeRedisBridge, redisBridge, shutdownRedisBridge } = await loadBridgeWithMocks({ publisher });
+    await initializeRedisBridge();
+
+    redisBridge.publishControl({ version: 1, type: 'user-access-revoked', userId: 'u1' });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(redisBridge.getMetrics().errors).toBe(1);
+    await shutdownRedisBridge();
+  });
+
+  it('observes asynchronous broadcast publisher rejections', async () => {
+    const publisher = createMockPubSubClient({ autoConnect: true, publishRejects: true });
+    const { initializeRedisBridge, redisBridge, shutdownRedisBridge, mocks } = await loadBridgeWithMocks({ publisher });
+    await initializeRedisBridge();
+
+    redisBridge.publishBroadcast({ type: 'sync', data: { source: 'local' } } as any);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(redisBridge.getMetrics().errors).toBe(1);
+    expect(mocks.log.error).toHaveBeenCalledWith(
+      'Failed to publish WebSocket broadcast',
+      expect.objectContaining({ error: 'async publish failed', eventType: 'sync' }),
+    );
+    await shutdownRedisBridge();
+  });
+
+  it('records synchronous authorization control publish failures', async () => {
+    const publisher = createMockPubSubClient({ autoConnect: true, publishThrows: true });
+    const { initializeRedisBridge, redisBridge, shutdownRedisBridge, mocks } = await loadBridgeWithMocks({ publisher });
+    await initializeRedisBridge();
+
+    redisBridge.publishControl({ version: 1, type: 'user-access-revoked', userId: 'u1' });
+
+    expect(redisBridge.getMetrics().errors).toBe(1);
+    expect(mocks.log.error).toHaveBeenCalledWith(
+      'Failed to publish WebSocket authorization control',
+      expect.objectContaining({ error: 'publish failed', controlType: 'user-access-revoked' }),
+    );
     await shutdownRedisBridge();
   });
 
@@ -293,7 +484,9 @@ describe('RedisWebSocketBridge (connected mode)', () => {
 
     await shutdownRedisBridge();
 
-    expect(mocks.subscriber.unsubscribe).toHaveBeenCalledWith('sanctuary:ws:broadcast');
+    expect(mocks.subscriber.unsubscribe).toHaveBeenCalledWith(
+      'sanctuary:ws:broadcast', 'sanctuary:ws:authorization-control',
+    );
     expect(mocks.subscriber.quit).toHaveBeenCalled();
     expect(mocks.publisher.quit).toHaveBeenCalled();
     expect(redisBridge.isActive()).toBe(false);

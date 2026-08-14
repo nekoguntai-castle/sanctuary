@@ -2,15 +2,29 @@ import { vi } from 'vitest';
 import { WebSocket } from 'ws';
 
 const clientServerLimitMocks = vi.hoisted(() => {
-  const mockCheckWalletAccess = vi.fn(async () => ({ hasAccess: true, canEdit: true, role: 'owner' }));
+  const mockCheckWalletAccess = vi.fn(async (_walletId: string, _userId: string) => ({
+    hasAccess: true, canEdit: true, role: 'owner',
+  }));
+  const mockCheckWalletAccessCached = vi.fn(async (_walletId: string, _userId: string) => ({
+    hasAccess: true, canEdit: true, role: 'owner',
+  }));
   const mockVerifyToken = vi.fn(async () => ({
     userId: 'user-1',
     username: 'alice',
     isAdmin: false,
     sessionVersion: 0,
+    jti: 'access-jti',
+    exp: Math.floor(Date.now() / 1000) + 60,
   }));
   const mockResolveCurrentAccessTokenPayload = vi.fn(async (payload) => payload);
   const mockPublishBroadcast = vi.fn();
+  const mockIsTokenRevoked = vi.fn(async () => false);
+  const mockLogger = {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  };
 
   const metricMocks = {
     websocketConnections: { inc: vi.fn(), dec: vi.fn() },
@@ -23,14 +37,18 @@ const clientServerLimitMocks = vi.hoisted(() => {
   return {
     metricMocks,
     mockCheckWalletAccess,
+    mockCheckWalletAccessCached,
     mockPublishBroadcast,
+    mockIsTokenRevoked,
+    mockLogger,
     mockResolveCurrentAccessTokenPayload,
     mockVerifyToken,
   };
 });
 
 vi.mock('../../../../src/services/accessControl', () => ({
-  checkWalletAccess: clientServerLimitMocks.mockCheckWalletAccess,
+  checkWalletAccess: clientServerLimitMocks.mockCheckWalletAccessCached,
+  checkWalletAccessUncached: clientServerLimitMocks.mockCheckWalletAccess,
 }));
 
 vi.mock('../../../../src/utils/jwt', () => ({
@@ -44,19 +62,19 @@ vi.mock('../../../../src/services/accessTokenSessionService', () => ({
   resolveCurrentAccessTokenPayload: clientServerLimitMocks.mockResolveCurrentAccessTokenPayload,
 }));
 
+vi.mock('../../../../src/services/tokenRevocation', () => ({
+  isTokenRevoked: clientServerLimitMocks.mockIsTokenRevoked,
+}));
+
 vi.mock('../../../../src/websocket/redisBridge', () => ({
   redisBridge: {
     publishBroadcast: clientServerLimitMocks.mockPublishBroadcast,
+    publishControl: vi.fn(),
   },
 }));
 
 vi.mock('../../../../src/utils/logger', () => ({
-  createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  }),
+  createLogger: () => clientServerLimitMocks.mockLogger,
 }));
 
 vi.mock('../../../../src/observability/metrics', () => clientServerLimitMocks.metricMocks);
@@ -64,7 +82,10 @@ vi.mock('../../../../src/observability/metrics', () => clientServerLimitMocks.me
 const {
   metricMocks,
   mockCheckWalletAccess,
+  mockCheckWalletAccessCached,
   mockPublishBroadcast,
+  mockIsTokenRevoked,
+  mockLogger,
   mockResolveCurrentAccessTokenPayload,
   mockVerifyToken,
 } = clientServerLimitMocks;
@@ -72,7 +93,10 @@ const {
 export {
   metricMocks,
   mockCheckWalletAccess,
+  mockCheckWalletAccessCached,
   mockPublishBroadcast,
+  mockIsTokenRevoked,
+  mockLogger,
   mockResolveCurrentAccessTokenPayload,
   mockVerifyToken,
 };
@@ -97,6 +121,7 @@ export const createClient = (overrides: Record<string, unknown> = {}) => {
     messageQueue: [] as string[],
     isProcessingQueue: false,
     droppedMessages: 0,
+    subscriptionGeneration: 0,
     readyState: WebSocket.OPEN,
     bufferedAmount: 0,
     send: vi.fn(),
@@ -158,13 +183,17 @@ export const setupClientServerLimitMocks = () => {
   process.env.WS_MAX_QUEUE_SIZE = '100';
   process.env.WS_QUEUE_OVERFLOW_POLICY = 'drop_oldest';
   mockCheckWalletAccess.mockResolvedValue({ hasAccess: true, canEdit: true, role: 'owner' });
+  mockCheckWalletAccessCached.mockResolvedValue({ hasAccess: true, canEdit: true, role: 'owner' });
   mockResolveCurrentAccessTokenPayload.mockImplementation(async (payload) => payload);
   mockVerifyToken.mockResolvedValue({
     userId: 'user-1',
     username: 'alice',
     isAdmin: false,
     sessionVersion: 0,
+    jti: 'access-jti',
+    exp: Math.floor(Date.now() / 1000) + 60,
   });
+  mockIsTokenRevoked.mockResolvedValue(false);
 };
 
 export const cleanupClientServerLimitMocks = () => {

@@ -27,6 +27,9 @@ vi.mock('../../../src/models/prisma', () => ({
     user: {
       findMany: vi.fn(),
     },
+    wallet: {
+      findMany: vi.fn(),
+    },
     $transaction: vi.fn(),
   },
 }));
@@ -98,6 +101,7 @@ describe('Group Repository', () => {
       (prisma.group.updateMany as Mock).mockResolvedValue({ count: 1 });
       (prisma.group.findUnique as Mock).mockResolvedValue({
         ...mockGroup,
+        wallets: [{ id: 'wallet-1' }],
         members: [
           { ...mockMember, userId: 'user-1', role: 'admin' },
           { ...mockMember, userId: 'user-2' },
@@ -121,6 +125,7 @@ describe('Group Repository', () => {
         addedUserIds: ['user-3'],
         removedUserIds: ['user-2'],
       });
+      expect(result?.affectedWalletIds).toEqual(['wallet-1']);
       expect(prisma.groupMember.deleteMany).toHaveBeenCalledWith({
         where: { groupId: 'group-1', userId: { in: ['user-2'] } },
       });
@@ -269,7 +274,9 @@ describe('Group Repository', () => {
       const groupWithMemberIds = {
         ...mockGroup,
         members: [{ userId: 'user-1' }, { userId: 'user-2' }],
+        wallets: [{ id: 'wallet-1' }],
       };
+      (prisma.group.updateMany as Mock).mockResolvedValue({ count: 1 });
       (prisma.group.findUnique as Mock).mockResolvedValue(groupWithMemberIds);
       (prisma.group.delete as Mock).mockResolvedValue(mockGroup);
 
@@ -282,12 +289,43 @@ describe('Group Repository', () => {
     });
 
     it('should return null when group does not exist', async () => {
-      (prisma.group.findUnique as Mock).mockResolvedValue(null);
+      (prisma.group.updateMany as Mock).mockResolvedValue({ count: 0 });
 
       const result = await groupRepository.deleteById('missing');
 
       expect(result).toBeNull();
       expect(prisma.group.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('removeMember', () => {
+    it('returns null without membership reads when the group lock finds no group', async () => {
+      (prisma.group.updateMany as Mock).mockResolvedValue({ count: 0 });
+
+      await expect(groupRepository.removeMember('missing-group', 'user-1'))
+        .resolves.toBeNull();
+
+      expect(prisma.groupMember.findUnique).not.toHaveBeenCalled();
+      expect(prisma.wallet.findMany).not.toHaveBeenCalled();
+      expect(prisma.groupMember.delete).not.toHaveBeenCalled();
+    });
+
+    it('returns wallet ids from the same serializable removal transaction', async () => {
+      (prisma.group.updateMany as Mock).mockResolvedValue({ count: 1 });
+      (prisma.groupMember.findUnique as Mock).mockResolvedValue(mockMember);
+      (prisma.wallet.findMany as Mock).mockResolvedValue([
+        { id: 'wallet-1' },
+        { id: 'wallet-2' },
+      ]);
+      (prisma.groupMember.delete as Mock).mockResolvedValue(mockMember);
+
+      await expect(groupRepository.removeMember('group-1', 'user-1')).resolves.toEqual({
+        membership: mockMember,
+        affectedWalletIds: ['wallet-1', 'wallet-2'],
+      });
+      expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+        isolationLevel: 'Serializable',
+      });
     });
   });
 
@@ -446,11 +484,14 @@ describe('Group Repository', () => {
 
   describe('removeMember', () => {
     it('should remove a member by composite key', async () => {
+      (prisma.group.updateMany as Mock).mockResolvedValue({ count: 1 });
+      (prisma.groupMember.findUnique as Mock).mockResolvedValue(mockMember);
+      (prisma.wallet.findMany as Mock).mockResolvedValue([]);
       (prisma.groupMember.delete as Mock).mockResolvedValue(mockMember);
 
       const result = await groupRepository.removeMember('group-1', 'user-1');
 
-      expect(result).toEqual(mockMember);
+      expect(result).toEqual({ membership: mockMember, affectedWalletIds: [] });
       expect(prisma.groupMember.delete).toHaveBeenCalledWith({
         where: { userId_groupId: { userId: 'user-1', groupId: 'group-1' } },
       });

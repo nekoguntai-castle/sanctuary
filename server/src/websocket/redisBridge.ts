@@ -24,11 +24,13 @@ import { getErrorMessage } from '../utils/errors';
 import { safeJsonParseUntyped } from '../utils/safeJson';
 import { getRedisClient, isRedisConnected } from '../infrastructure/redis';
 import type { WebSocketEvent } from './types';
+import type { WebSocketAuthorizationControl } from './authorizationControl';
 
 const log = createLogger('WS:REDIS_BRIDGE');
 
 // Channel for WebSocket broadcasts
 const WS_BROADCAST_CHANNEL = 'sanctuary:ws:broadcast';
+const WS_AUTHORIZATION_CONTROL_CHANNEL = 'sanctuary:ws:authorization-control';
 
 /**
  * Unique instance identifier for deduplication
@@ -45,10 +47,39 @@ interface WebSocketEnvelope {
   timestamp: number;
 }
 
+interface AuthorizationControlEnvelope {
+  control: WebSocketAuthorizationControl;
+  instanceId: string;
+  timestamp: number;
+}
+
 /**
  * Callback type for handling remote broadcasts
  */
 type BroadcastHandler = (event: WebSocketEvent) => void;
+type ControlHandler = (control: WebSocketAuthorizationControl) => Promise<void> | void;
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
+function isAuthorizationControl(value: unknown): value is WebSocketAuthorizationControl {
+  if (!value || typeof value !== 'object') return false;
+  const control = value as Record<string, unknown>;
+  if (control.version !== 1 || typeof control.type !== 'string') return false;
+  if (control.type === 'wallet-access-changed') return isNonEmptyString(control.walletId);
+  if (control.type === 'access-token-revoked') return isNonEmptyString(control.jti);
+  if (control.type === 'user-access-revoked') return isNonEmptyString(control.userId);
+  return false;
+}
+
+function isControlEnvelope(value: unknown): value is AuthorizationControlEnvelope {
+  if (!value || typeof value !== 'object') return false;
+  const envelope = value as Record<string, unknown>;
+  return isNonEmptyString(envelope.instanceId) &&
+    typeof envelope.timestamp === 'number' &&
+    isAuthorizationControl(envelope.control);
+}
 
 /**
  * Redis WebSocket Bridge for cross-instance broadcasting
@@ -58,6 +89,7 @@ class RedisWebSocketBridge {
   private subscriber: Redis | null = null;
   private isInitialized = false;
   private broadcastHandler: BroadcastHandler | null = null;
+  private controlHandler: ControlHandler | null = null;
 
   // Metrics
   private metrics = {
@@ -102,12 +134,14 @@ class RedisWebSocketBridge {
       ]);
 
       // Subscribe to broadcast channel
-      await this.subscriber.subscribe(WS_BROADCAST_CHANNEL);
+      await this.subscriber.subscribe(WS_BROADCAST_CHANNEL, WS_AUTHORIZATION_CONTROL_CHANNEL);
 
       // Handle incoming messages
       this.subscriber.on('message', (channel: string, message: string) => {
         if (channel === WS_BROADCAST_CHANNEL) {
-          this.handleMessage(message);
+          this.handleBroadcastMessage(message);
+        } else if (channel === WS_AUTHORIZATION_CONTROL_CHANNEL) {
+          void this.handleControlMessage(message);
         }
       });
 
@@ -139,6 +173,10 @@ class RedisWebSocketBridge {
    */
   setBroadcastHandler(handler: BroadcastHandler): void {
     this.broadcastHandler = handler;
+  }
+
+  setControlHandler(handler: ControlHandler): void {
+    this.controlHandler = handler;
   }
 
   private waitForReady(client: Redis | null, label: string): Promise<void> {
@@ -195,7 +233,13 @@ class RedisWebSocketBridge {
         timestamp: Date.now(),
       };
 
-      this.publisher.publish(WS_BROADCAST_CHANNEL, JSON.stringify(envelope));
+      const published = this.publisher.publish(WS_BROADCAST_CHANNEL, JSON.stringify(envelope));
+      void Promise.resolve(published).catch((error) => {
+        log.error('Failed to publish WebSocket broadcast', {
+          error: getErrorMessage(error), eventType: event.type,
+        });
+        this.metrics.errors++;
+      });
       this.metrics.published++;
     } catch (error) {
       log.error('Failed to publish WebSocket broadcast', {
@@ -206,10 +250,37 @@ class RedisWebSocketBridge {
     }
   }
 
+  publishControl(control: WebSocketAuthorizationControl): void {
+    if (!this.isInitialized || !this.publisher) return;
+    const envelope: AuthorizationControlEnvelope = {
+      control,
+      instanceId,
+      timestamp: Date.now(),
+    };
+    try {
+      const published = this.publisher.publish(
+        WS_AUTHORIZATION_CONTROL_CHANNEL,
+        JSON.stringify(envelope),
+      );
+      void Promise.resolve(published).catch((error) => {
+        log.error('Failed to publish WebSocket authorization control', {
+          error: getErrorMessage(error), controlType: control.type,
+        });
+        this.metrics.errors++;
+      });
+      this.metrics.published++;
+    } catch (error) {
+      log.error('Failed to publish WebSocket authorization control', {
+        error: getErrorMessage(error), controlType: control.type,
+      });
+      this.metrics.errors++;
+    }
+  }
+
   /**
    * Handle incoming message from Redis
    */
-  private handleMessage(message: string): void {
+  private handleBroadcastMessage(message: string): void {
     try {
       const envelope = safeJsonParseUntyped<WebSocketEnvelope | null>(message, null, 'websocket broadcast');
       if (!envelope) {
@@ -240,13 +311,36 @@ class RedisWebSocketBridge {
     }
   }
 
+  private async handleControlMessage(message: string): Promise<void> {
+    try {
+      const parsed = safeJsonParseUntyped<unknown>(message, null, 'websocket authorization control');
+      if (!isControlEnvelope(parsed)) {
+        log.warn('Rejected malformed WebSocket authorization control');
+        this.metrics.errors++;
+        return;
+      }
+      if (parsed.instanceId === instanceId) {
+        this.metrics.skippedSelf++;
+        return;
+      }
+      if (!this.controlHandler) return;
+      await this.controlHandler(parsed.control);
+      this.metrics.received++;
+    } catch (error) {
+      log.error('Failed to handle WebSocket authorization control', {
+        error: getErrorMessage(error),
+      });
+      this.metrics.errors++;
+    }
+  }
+
   /**
    * Clean up Redis connections
    */
   private async cleanup(): Promise<void> {
     if (this.subscriber) {
       try {
-        await this.subscriber.unsubscribe(WS_BROADCAST_CHANNEL);
+        await this.subscriber.unsubscribe(WS_BROADCAST_CHANNEL, WS_AUTHORIZATION_CONTROL_CHANNEL);
         await this.subscriber.quit();
       } catch (error) {
         log.debug('Redis WebSocket subscriber cleanup failed', { error: getErrorMessage(error) });
@@ -281,6 +375,7 @@ class RedisWebSocketBridge {
     await this.cleanup();
     this.isInitialized = false;
     this.broadcastHandler = null;
+    this.controlHandler = null;
   }
 
   /**

@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { faker } from '@faker-js/faker';
 
 // Hoist mocks to avoid reference before initialization
-const { mockSessionRepository, mockPublishRevokedToken } = vi.hoisted(() => {
+const { mockSessionRepository, mockPublishRevokedToken, mockDisconnectWebSocketAccessToken } = vi.hoisted(() => {
   const mockSessionRepository = {
     createRefreshToken: vi.fn(),
     consumeAndReplaceRefreshToken: vi.fn(),
@@ -24,7 +24,11 @@ const { mockSessionRepository, mockPublishRevokedToken } = vi.hoisted(() => {
     deleteExpiredRefreshTokens: vi.fn(),
     countActiveSessions: vi.fn(),
   };
-  return { mockSessionRepository, mockPublishRevokedToken: vi.fn() };
+  return {
+    mockSessionRepository,
+    mockPublishRevokedToken: vi.fn(),
+    mockDisconnectWebSocketAccessToken: vi.fn(),
+  };
 });
 
 vi.mock('../../../src/repositories', () => ({
@@ -33,6 +37,10 @@ vi.mock('../../../src/repositories', () => ({
 
 vi.mock('../../../src/services/tokenRevocation', () => ({
   publishRevokedToken: mockPublishRevokedToken,
+}));
+
+vi.mock('../../../src/services/websocketAuthorizationInvalidation', () => ({
+  disconnectWebSocketAccessToken: mockDisconnectWebSocketAccessToken,
 }));
 
 // Mock JWT utilities
@@ -87,6 +95,7 @@ describe('Refresh Token Service', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDisconnectWebSocketAccessToken.mockResolvedValue(undefined);
   });
 
   describe('createRefreshToken', () => {
@@ -259,6 +268,7 @@ describe('Refresh Token Service', () => {
       expect(mockSessionRepository.revokeRefreshToken).not.toHaveBeenCalled();
       expect(mockSessionRepository.createRefreshToken).not.toHaveBeenCalled();
       expect(mockPublishRevokedToken).toHaveBeenCalledWith(accessToken.jti, accessToken.expiresAt);
+      expect(mockDisconnectWebSocketAccessToken).toHaveBeenCalledWith(accessToken.jti);
     });
 
     it('should carry the current session version into rotated refresh tokens', async () => {
@@ -390,6 +400,7 @@ describe('Refresh Token Service', () => {
       expect(result).toBe(true);
       expect(mockSessionRepository.revokeSessionById).toHaveBeenCalledWith(testSessionId, testUserId);
       expect(mockPublishRevokedToken).toHaveBeenCalledWith(accessToken.jti, accessToken.expiresAt);
+      expect(mockDisconnectWebSocketAccessToken).toHaveBeenCalledWith(accessToken.jti);
     });
 
     it('should return false for session not found', async () => {
@@ -439,6 +450,7 @@ describe('Refresh Token Service', () => {
       expect(mockPublishRevokedToken).toHaveBeenCalledAfter(
         mockSessionRepository.revokeLogoutCredentials
       );
+      expect(mockDisconnectWebSocketAccessToken).toHaveBeenCalledWith(accessToken.jti);
     });
 
     it('does not publish or hide transaction failures', async () => {

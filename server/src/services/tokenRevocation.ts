@@ -24,6 +24,10 @@ import { createLogger } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
 import { getNamespacedCache } from '../infrastructure/redis';
 import type { ICacheService } from './cache/cacheService';
+import {
+  disconnectWebSocketAccessToken,
+  disconnectWebSocketUser,
+} from './websocketAuthorizationInvalidation';
 
 const log = createLogger('TOKEN_REVOCATION:SVC');
 
@@ -86,6 +90,7 @@ export async function revokeToken(
   try {
     await sessionRepository.upsertRevokedToken(jti, expiresAt, userId, reason);
     await publishRevokedToken(jti, expiresAt);
+    await disconnectWebSocketAccessToken(jti);
     log.debug('Token revoked', { jti: jti.substring(0, 8) + '...', reason });
   } catch (error) {
     log.error('Failed to revoke token', { error: getErrorMessage(error), jti: jti.substring(0, 8) + '...' });
@@ -177,6 +182,7 @@ export async function revokeAllUserTokens(userId: string, reason?: string): Prom
 
     // Delete all refresh tokens for the user
     const count = await sessionRepository.revokeAllUserTokens(userId);
+    await disconnectWebSocketUser(userId);
 
     log.info('Revoked all user tokens', { userId, count, sessionVersion });
     return count;

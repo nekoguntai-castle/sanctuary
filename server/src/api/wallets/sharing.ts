@@ -14,6 +14,7 @@ import { userRepository, walletSharingRepository } from '../../repositories';
 import { getDevicesToShareForWallet } from '../../services/deviceAccess';
 import { WALLET_SHARE_ROLE_VALUES } from '@sanctuary/shared/constants/walletRoles';
 import { requireAuthenticatedUser } from '../../middleware/auth';
+import { invalidateWebSocketWalletAccess } from '../../services/websocketAuthorizationInvalidation';
 
 const router = Router();
 
@@ -76,6 +77,7 @@ router.post(
 
     // Update wallet's group and role
     const wallet = await walletSharingRepository.updateWalletGroupWithResult(walletId, groupId || null, role);
+    await invalidateWebSocketWalletAccess(walletId);
 
     res.json({
       success: true,
@@ -115,6 +117,7 @@ router.post(
       // Update role if different
       if (existingAccess.role !== role && existingAccess.role !== 'owner') {
         await walletSharingRepository.updateUserRole(existingAccess.id, role);
+        await invalidateWebSocketWalletAccess(walletId);
       }
       return res.json({
         success: true,
@@ -156,6 +159,7 @@ router.delete('/:id/share/user/:targetUserId', requireWalletAccess('owner'), asy
   }
 
   await walletSharingRepository.removeUserFromWallet(targetWalletUser.id);
+  await invalidateWebSocketWalletAccess(walletId);
 
   res.json({
     success: true,

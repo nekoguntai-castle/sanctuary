@@ -11,6 +11,7 @@ export interface SetMembersResult {
 export interface AtomicGroupResult {
   group: NonNullable<Awaited<ReturnType<typeof findByIdWithMembers>>>;
   membershipChanges: SetMembersResult;
+  affectedWalletIds: string[];
 }
 
 const MAX_GROUP_TRANSACTION_ATTEMPTS = 3;
@@ -81,6 +82,7 @@ export async function createWithMembers(data: {
       return {
         group,
         membershipChanges: { addedUserIds: validUserIds, removedUserIds: [] },
+        affectedWalletIds: [],
       };
     }, { isolationLevel: 'Serializable' });
   });
@@ -101,7 +103,10 @@ export async function updateWithMembers(
 
       const current = await tx.group.findUnique({
         where: { id: groupId },
-        include: { members: true },
+        include: {
+          members: true,
+          wallets: { select: { id: true } },
+        },
       });
       /* v8 ignore next -- the transaction-owned update above proves existence. */
       if (!current) return null;
@@ -114,7 +119,11 @@ export async function updateWithMembers(
         data,
         include: membersInclude,
       });
-      return { group, membershipChanges: changes };
+      return {
+        group,
+        membershipChanges: changes,
+        affectedWalletIds: current.wallets.map(({ id }) => id),
+      };
     }, { isolationLevel: 'Serializable' });
   });
 }
@@ -179,14 +188,26 @@ export async function update(
  * Delete a group and return it with member userIds for cache invalidation.
  */
 export async function deleteById(groupId: string) {
-  const group = await prisma.group.findUnique({
-    where: { id: groupId },
-    include: { members: { select: { userId: true } } },
-  });
-  if (!group) return null;
+  return withGroupTransactionRetry(() => prisma.$transaction(async (tx) => {
+    const locked = await tx.group.updateMany({
+      where: { id: groupId },
+      data: { updatedAt: new Date() },
+    });
+    if (locked.count === 0) return null;
 
-  await prisma.group.delete({ where: { id: groupId } });
-  return group;
+    const group = await tx.group.findUnique({
+      where: { id: groupId },
+      include: {
+        members: { select: { userId: true } },
+        wallets: { select: { id: true } },
+      },
+    });
+    /* v8 ignore next -- the transaction-owned update above proves existence. */
+    if (!group) return null;
+
+    await tx.group.delete({ where: { id: groupId } });
+    return group;
+  }, { isolationLevel: 'Serializable' }));
 }
 
 /**
@@ -250,9 +271,32 @@ export async function addMember(
 }
 
 export async function removeMember(groupId: string, userId: string) {
-  return prisma.groupMember.delete({
-    where: { userId_groupId: { userId, groupId } },
-  });
+  return withGroupTransactionRetry(() => prisma.$transaction(async (tx) => {
+    const locked = await tx.group.updateMany({
+      where: { id: groupId },
+      data: { updatedAt: new Date() },
+    });
+    if (locked.count === 0) return null;
+
+    const [membership, wallets] = await Promise.all([
+      tx.groupMember.findUnique({
+        where: { userId_groupId: { userId, groupId } },
+      }),
+      tx.wallet.findMany({
+        where: { groupId },
+        select: { id: true },
+      }),
+    ]);
+    if (!membership) return null;
+
+    await tx.groupMember.delete({
+      where: { userId_groupId: { userId, groupId } },
+    });
+    return {
+      membership,
+      affectedWalletIds: wallets.map(({ id }) => id),
+    };
+  }, { isolationLevel: 'Serializable' }));
 }
 
 export async function findMembership(userId: string, groupId: string): Promise<GroupMember | null> {

@@ -13,6 +13,7 @@ import { NotFoundError, ForbiddenError, InvalidInputError, ConflictError } from 
 import { isExpired, formatTransfer } from './helpers';
 import { withSerializableRetry } from './serializableRetry';
 import type { PrismaTx, Transfer } from './types';
+import { invalidateWebSocketWalletAccess } from '../websocketAuthorizationInvalidation';
 
 const log = createLogger('TRANSFER:SVC');
 
@@ -61,7 +62,7 @@ export async function confirmTransfer(
         data: { status: 'expired' },
       });
       // Return instead of throwing so the expired transition commits first.
-      return { expired: true };
+      return { expired: true, walletId: null };
     }
 
     await transferRepository.lockResourceOwnership(
@@ -76,11 +77,18 @@ export async function confirmTransfer(
     } else {
       await executeDeviceTransferTx(tx, current);
     }
-    return { expired: false };
+    return {
+      expired: false,
+      walletId: current.resourceType === 'wallet' ? current.resourceId : null,
+    };
   });
 
   if (result.expired) {
     throw new InvalidInputError('Transfer has expired');
+  }
+
+  if (result.walletId) {
+    await invalidateWebSocketWalletAccess(result.walletId);
   }
 
   // Fetch updated transfer for return

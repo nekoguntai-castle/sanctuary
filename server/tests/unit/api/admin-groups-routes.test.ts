@@ -242,6 +242,7 @@ describe('Admin Groups Routes', () => {
         name: 'Old',
         description: 'old desc',
         purpose: 'old purpose',
+        wallets: [],
         members: [{ userId: 'u1' }],
       } as any);
     mockPrismaClient.group.update.mockResolvedValue({
@@ -274,6 +275,7 @@ describe('Admin Groups Routes', () => {
         name: 'Group',
         description: null,
         purpose: null,
+        wallets: [{ id: 'wallet-1' }],
         members: [{ userId: 'u1' }, { userId: 'u2' }],
       } as any);
     mockPrismaClient.group.update.mockResolvedValue({
@@ -313,6 +315,7 @@ describe('Admin Groups Routes', () => {
         name: 'Existing Name',
         description: 'old description',
         purpose: 'old purpose',
+        wallets: [],
         members: [{ userId: 'u1' }],
       } as any);
     mockPrismaClient.group.update.mockResolvedValue({
@@ -353,6 +356,7 @@ describe('Admin Groups Routes', () => {
         name: 'Group',
         description: null,
         purpose: null,
+        wallets: [{ id: 'wallet-1' }],
         members: [{ userId: 'u1' }, { userId: 'u2' }],
       } as any);
     mockPrismaClient.group.update.mockResolvedValue({
@@ -385,6 +389,7 @@ describe('Admin Groups Routes', () => {
         name: 'Group',
         description: null,
         purpose: null,
+        wallets: [],
         members: [{ userId: 'u1' }, { userId: 'u2' }],
       } as any);
     mockPrismaClient.group.update.mockResolvedValue({
@@ -417,6 +422,7 @@ describe('Admin Groups Routes', () => {
         name: 'Group',
         description: null,
         purpose: null,
+        wallets: [{ id: 'wallet-1' }],
         members: [],
       } as any);
     mockPrismaClient.group.update.mockResolvedValue({
@@ -468,7 +474,12 @@ describe('Admin Groups Routes', () => {
   });
 
   it('deletes a group and writes audit log', async () => {
-    mockPrismaClient.group.findUnique.mockResolvedValue({ id: 'group-1', name: 'Team A', members: [{ userId: 'u1' }] } as any);
+    mockPrismaClient.group.findUnique.mockResolvedValue({
+      id: 'group-1',
+      name: 'Team A',
+      members: [{ userId: 'u1' }],
+      wallets: [{ id: 'wallet-1' }],
+    } as any);
 
     const response = await request(app).delete('/api/v1/admin/groups/group-1');
 

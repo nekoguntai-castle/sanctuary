@@ -23,6 +23,7 @@ import { SanctauryWebSocketServer, getRateLimitEvents } from './clientServer';
 import { GatewayWebSocketServer } from './gatewayServer';
 import { redisBridge } from './redisBridge';
 import { createLogger } from '../utils/logger';
+import { registerWebSocketAuthorizationControlDispatcher } from './authorizationControl';
 
 // Re-export types for external use
 export type {
@@ -32,6 +33,7 @@ export type {
   WebSocketEvent,
   GatewayWebSocket,
 } from './types';
+export type { WebSocketAuthorizationControl } from './authorizationControl';
 
 // Re-export typed events for gradual migration
 export type { ClientMessage, BroadcastEvent, ServerEvent } from './events';
@@ -69,7 +71,14 @@ export const initializeWebSocketServer = (): SanctauryWebSocketServer => {
   // When events arrive from other instances via Redis, broadcast locally
   redisBridge.setBroadcastHandler((event) => {
     // wsServer is assigned immediately before this handler is registered.
-    wsServer!.localBroadcast(event);
+    void wsServer!.localBroadcast(event).catch((error) => {
+      log.error('Failed to apply remote WebSocket broadcast', { error: String(error) });
+    });
+  });
+  redisBridge.setControlHandler((control) => wsServer!.applyAuthorizationControl(control));
+  registerWebSocketAuthorizationControlDispatcher(async (control) => {
+    await wsServer!.applyAuthorizationControl(control);
+    redisBridge.publishControl(control);
   });
 
   log.info('Client WebSocket server initialized');

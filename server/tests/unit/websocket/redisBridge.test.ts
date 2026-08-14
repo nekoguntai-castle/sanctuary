@@ -110,6 +110,20 @@ describe('RedisWebSocketBridge', () => {
     });
   });
 
+  describe('publishControl', () => {
+    it('should silently skip publishing when not initialized', () => {
+      expect(() => {
+        redisBridge.publishControl({
+          version: 1,
+          type: 'user-access-revoked',
+          userId: 'user-1',
+        });
+      }).not.toThrow();
+
+      expect(redisBridge.getMetrics().published).toBe(0);
+    });
+  });
+
   describe('setBroadcastHandler', () => {
     it('should accept a broadcast handler', () => {
       const handler = vi.fn();

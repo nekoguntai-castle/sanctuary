@@ -1,6 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { adminRoutesRequest, mockAuditService, mockPrisma } from './adminRoutesTestHarness';
 import { PASSWORD_POLICY } from '../../../../src/utils/password';
+import { revokeAllUserTokens } from '../../../../src/services/tokenRevocation';
+
+const mockRevokeAllUserTokens = vi.mocked(revokeAllUserTokens);
 
 export function registerAdminRoutesUserUpdateDeleteContracts(): void {
   describe('PUT /api/v1/admin/users/:userId', () => {
@@ -304,12 +307,14 @@ export function registerAdminRoutesUserUpdateDeleteContracts(): void {
     });
 
     it('should log admin grant action when isAdmin is set to true', async () => {
-      mockPrisma.user.findUnique.mockResolvedValueOnce({
-        id: 'user-1',
-        username: 'testuser',
-        email: 'test@test.com',
-        isAdmin: false,
-      });
+      mockPrisma.user.findUnique
+        .mockResolvedValueOnce({
+          id: 'user-1',
+          username: 'testuser',
+          email: 'test@test.com',
+          isAdmin: false,
+        })
+        .mockResolvedValueOnce({ isAdmin: false });
       mockPrisma.user.update.mockResolvedValue({
         id: 'user-1',
         username: 'testuser',
@@ -336,12 +341,15 @@ export function registerAdminRoutesUserUpdateDeleteContracts(): void {
     });
 
     it('should log admin revoke action when isAdmin is set to false', async () => {
-      mockPrisma.user.findUnique.mockResolvedValueOnce({
-        id: 'user-1',
-        username: 'testuser',
-        email: 'test@test.com',
-        isAdmin: true,
-      });
+      mockPrisma.user.findUnique
+        .mockResolvedValueOnce({
+          id: 'user-1',
+          username: 'testuser',
+          email: 'test@test.com',
+          isAdmin: true,
+        })
+        .mockResolvedValueOnce({ isAdmin: true });
+      mockPrisma.user.count.mockResolvedValueOnce(2);
       mockPrisma.user.update.mockResolvedValue({
         id: 'user-1',
         username: 'testuser',
@@ -367,12 +375,112 @@ export function registerAdminRoutesUserUpdateDeleteContracts(): void {
       );
     });
 
-    it('should handle update errors', async () => {
-      mockPrisma.user.findUnique.mockResolvedValueOnce({
+    it('uses the transactional role state when a stale preflight would allow the final demotion', async () => {
+      mockPrisma.user.findUnique
+        .mockResolvedValueOnce({
+          id: 'user-1',
+          username: 'testuser',
+          email: 'test@test.com',
+          isAdmin: false,
+        })
+        .mockResolvedValueOnce({ isAdmin: true });
+      mockPrisma.user.count.mockResolvedValueOnce(1);
+
+      const response = await adminRoutesRequest()
+        .put('/api/v1/admin/users/user-1')
+        .send({ isAdmin: false });
+
+      expect(response.status).toBe(409);
+      expect(response.body.message).toContain('final administrator');
+      expect(mockPrisma.user.update).not.toHaveBeenCalled();
+      expect(mockRevokeAllUserTokens).not.toHaveBeenCalled();
+      expect(mockAuditService.logFromRequest).not.toHaveBeenCalled();
+    });
+
+    it('uses a barrier-staled preflight and revokes from the committed security transitions', async () => {
+      let releaseTransactionRead!: () => void;
+      const transactionReadBarrier = new Promise<void>((resolve) => {
+        releaseTransactionRead = resolve;
+      });
+      mockPrisma.user.findUnique
+        .mockResolvedValueOnce({
+          id: 'user-1',
+          username: 'testuser',
+          email: 'test@test.com',
+          isAdmin: false,
+        })
+        .mockImplementationOnce(async () => {
+          await transactionReadBarrier;
+          return { isAdmin: true };
+        });
+      mockPrisma.user.count.mockResolvedValueOnce(2);
+      mockPrisma.user.update.mockResolvedValue({
         id: 'user-1',
         username: 'testuser',
         email: 'test@test.com',
+        emailVerified: true,
+        isAdmin: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
       });
+
+      const pendingResponse = adminRoutesRequest()
+        .put('/api/v1/admin/users/user-1')
+        .send({ isAdmin: false, password: 'Str0ngPassw0rd!' })
+        .then((response) => response);
+
+      await vi.waitFor(() => {
+        expect(mockPrisma.user.findUnique).toHaveBeenCalledTimes(2);
+      });
+      releaseTransactionRead();
+      const response = await pendingResponse;
+
+      expect(response.status).toBe(200);
+      expect(mockRevokeAllUserTokens).toHaveBeenCalledWith('user-1', 'admin_security_update');
+      expect(mockPrisma.user.update).toHaveBeenCalledBefore(mockRevokeAllUserTokens);
+    });
+
+    it('does not revoke when a stale preflight suggests a role transition that did not commit', async () => {
+      mockPrisma.user.findUnique
+        .mockResolvedValueOnce({
+          id: 'user-1',
+          username: 'testuser',
+          email: 'test@test.com',
+          isAdmin: true,
+        })
+        .mockResolvedValueOnce({ isAdmin: false });
+      mockPrisma.user.update.mockResolvedValue({
+        id: 'user-1',
+        username: 'testuser',
+        email: 'test@test.com',
+        emailVerified: true,
+        isAdmin: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const response = await adminRoutesRequest()
+        .put('/api/v1/admin/users/user-1')
+        .send({ isAdmin: false });
+
+      expect(response.status).toBe(200);
+      expect(mockRevokeAllUserTokens).not.toHaveBeenCalled();
+      expect(mockAuditService.logFromRequest).toHaveBeenCalledWith(
+        expect.any(Object),
+        'user.update',
+        'user',
+        expect.any(Object),
+      );
+    });
+
+    it('should handle update errors', async () => {
+      mockPrisma.user.findUnique
+        .mockResolvedValueOnce({
+          id: 'user-1',
+          username: 'testuser',
+          email: 'test@test.com',
+        })
+        .mockResolvedValueOnce({ isAdmin: false });
       mockPrisma.user.update.mockRejectedValue(new Error('update failed'));
 
       const response = await adminRoutesRequest()

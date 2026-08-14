@@ -18,6 +18,7 @@ vi.mock('../../../src/models/prisma', () => ({
       count: vi.fn(),
       update: vi.fn(),
       updateMany: vi.fn(),
+      delete: vi.fn(),
     },
     refreshToken: {
       deleteMany: vi.fn(),
@@ -137,6 +138,35 @@ describe('User Repository', () => {
       (prisma.user.count as Mock).mockRejectedValue(new Error('Database error'));
 
       await expect(userRepository.exists('user-123')).rejects.toThrow('Database error');
+    });
+  });
+
+  describe('selected mutations', () => {
+    it('updates a user with the requested projection', async () => {
+      const selectedUser = { id: 'user-123', username: 'renamed' };
+      (prisma.user.update as Mock).mockResolvedValue(selectedUser);
+
+      await expect(userRepository.updateWithSelect(
+        'user-123',
+        { username: 'renamed' },
+        { id: true, username: true },
+      )).resolves.toEqual(selectedUser);
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-123' },
+        data: { username: 'renamed' },
+        select: { id: true, username: true },
+      });
+    });
+
+    it('deletes a user by id and resolves without exposing the database result', async () => {
+      (prisma.user.delete as Mock).mockResolvedValue({ id: 'user-123' });
+
+      await expect(userRepository.deleteById('user-123')).resolves.toBeUndefined();
+
+      expect(prisma.user.delete).toHaveBeenCalledWith({
+        where: { id: 'user-123' },
+      });
     });
   });
 

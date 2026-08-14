@@ -57,8 +57,10 @@ import prisma from '../../../src/models/prisma';
 import { clearAccessCacheStrict } from '../../../src/infrastructure/accessCache';
 import {
   getUserWalletRole,
+  getUserWalletRoleUncached,
   hasWalletAccess,
   checkWalletAccess,
+  checkWalletAccessUncached,
   checkWalletEditAccess,
   checkWalletOwnerAccess,
   checkWalletApproveAccess,
@@ -113,6 +115,25 @@ describe('Access Control Service', () => {
   });
 
   describe('getUserWalletRole', () => {
+    it('can bypass a stale cached grant for security-sensitive revalidation', async () => {
+      mockCache.get.mockResolvedValue({ role: 'owner' });
+      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(null);
+      vi.mocked(prisma.wallet.findFirst).mockResolvedValue(null);
+
+      await expect(getUserWalletRoleUncached(walletId, userId)).resolves.toBeNull();
+
+      expect(mockCache.get).not.toHaveBeenCalled();
+      expect(prisma.walletUser.findFirst).toHaveBeenCalledWith({
+        where: { walletId, userId },
+      });
+      await expect(checkWalletAccessUncached(walletId, userId)).resolves.toEqual({
+        hasAccess: false,
+        canEdit: false,
+        role: null,
+      });
+      mockCache.get.mockResolvedValue(null);
+    });
+
     it('should return owner role for direct owner access', async () => {
       vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(
         makeWalletUser(walletId, userId, 'owner')

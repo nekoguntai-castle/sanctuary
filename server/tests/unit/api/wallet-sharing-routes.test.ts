@@ -23,6 +23,7 @@ const {
   mockUpdateWalletGroupWithResult,
   mockGetWalletSharingInfo,
   mockGetDevicesToShareForWallet,
+  mockInvalidateWebSocketWalletAccess,
 } = vi.hoisted(() => ({
   mockFindById: vi.fn(),
   mockFindWalletUser: vi.fn(),
@@ -33,6 +34,7 @@ const {
   mockUpdateWalletGroupWithResult: vi.fn(),
   mockGetWalletSharingInfo: vi.fn(),
   mockGetDevicesToShareForWallet: vi.fn(),
+  mockInvalidateWebSocketWalletAccess: vi.fn(),
 }));
 
 vi.mock('../../../src/middleware/walletAccess', () => ({
@@ -62,6 +64,10 @@ vi.mock('../../../src/services/deviceAccess', () => ({
   getDevicesToShareForWallet: mockGetDevicesToShareForWallet,
 }));
 
+vi.mock('../../../src/services/websocketAuthorizationInvalidation', () => ({
+  invalidateWebSocketWalletAccess: mockInvalidateWebSocketWalletAccess,
+}));
+
 vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
@@ -85,6 +91,7 @@ describe('Wallet Sharing Routes', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockInvalidateWebSocketWalletAccess.mockResolvedValue(undefined);
   });
 
   // =============================================
@@ -107,6 +114,7 @@ describe('Wallet Sharing Routes', () => {
       expect(response.status).toBe(200);
       expect(mockIsGroupMember).toHaveBeenCalledWith('group-1', 'owner-1');
       expect(mockUpdateWalletGroupWithResult).toHaveBeenCalledWith('wallet-1', 'group-1', 'viewer');
+      expect(mockInvalidateWebSocketWalletAccess).toHaveBeenCalledWith('wallet-1');
       expect(response.body).toEqual({
         success: true,
         groupId: 'group-1',
@@ -328,6 +336,7 @@ describe('Wallet Sharing Routes', () => {
         success: true,
         message: 'User removed from wallet',
       });
+      expect(mockInvalidateWebSocketWalletAccess).toHaveBeenCalledWith('wallet-1');
     });
 
     it('returns 404 when user has no access', async () => {

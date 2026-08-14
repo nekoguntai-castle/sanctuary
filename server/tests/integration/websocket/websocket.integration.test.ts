@@ -3,7 +3,7 @@ import { WebSocket } from 'ws';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createWebSocketTestServer } from '../setup/websocketHarness';
 import { verifyToken } from '../../../src/utils/jwt';
-import { checkWalletAccess } from '../../../src/services/accessControl';
+import { checkWalletAccessUncached } from '../../../src/services/accessControl';
 
 vi.mock('../../../src/utils/jwt', () => ({
   TokenAudience: {
@@ -14,6 +14,8 @@ vi.mock('../../../src/utils/jwt', () => ({
     username: token === 'good-token' ? 'alice' : 'bob',
     isAdmin: false,
     sessionVersion: 0,
+    jti: `jti-${token}`,
+    exp: Math.floor(Date.now() / 1000) + 60,
   })),
 }));
 
@@ -23,6 +25,7 @@ vi.mock('../../../src/services/accessTokenSessionService', () => ({
 
 vi.mock('../../../src/services/accessControl', () => ({
   checkWalletAccess: vi.fn(async () => ({ hasAccess: true, canEdit: true, role: 'owner' })),
+  checkWalletAccessUncached: vi.fn(async () => ({ hasAccess: true, canEdit: true, role: 'owner' })),
 }));
 
 vi.mock('../../../src/observability/metrics', () => ({
@@ -84,7 +87,7 @@ const waitForClose = (socket: WebSocket) =>
 describe('websocket integration', () => {
   afterEach(() => {
     (verifyToken as ReturnType<typeof vi.fn>).mockClear();
-    (checkWalletAccess as ReturnType<typeof vi.fn>).mockClear();
+    (checkWalletAccessUncached as ReturnType<typeof vi.fn>).mockClear();
   });
 
   it('authenticates via auth message', async () => {
@@ -182,7 +185,7 @@ describe('websocket integration', () => {
     client.send(JSON.stringify({ type: 'auth', data: { token: 'good-token' } }));
     await waitForJsonMessage(client, (msg) => msg.type === 'authenticated');
 
-    (checkWalletAccess as ReturnType<typeof vi.fn>).mockImplementation(async (walletId: string) => ({
+    (checkWalletAccessUncached as ReturnType<typeof vi.fn>).mockImplementation(async (walletId: string) => ({
       hasAccess: walletId !== 'deadbeef',
       canEdit: true,
       role: 'owner',

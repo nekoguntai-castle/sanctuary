@@ -7,6 +7,10 @@
 import { Router, type Request, type Response } from "express";
 import expressRateLimit from "express-rate-limit";
 import { userRepository } from "../../repositories";
+import type {
+  AdminUpdateTransitions,
+  AdminUserUpdateData,
+} from "../../repositories/userRepository";
 import { authenticate, requireAdmin } from "../../middleware/auth";
 import { rateLimitByUser } from "../../middleware/rateLimit";
 import { asyncHandler, type TypedRequest } from "../../errors/errorHandler";
@@ -24,6 +28,7 @@ import {
   AuditCategory,
 } from "../../services/auditService";
 import { revokeAllUserTokens } from "../../services/tokenRevocation";
+import { disconnectWebSocketUser } from "../../services/websocketAuthorizationInvalidation";
 import { CreateUserSchema, UpdateUserSchema } from "../schemas/admin";
 import { parseAdminRequestBody } from "./requestValidation";
 
@@ -36,6 +41,15 @@ const adminUsersCodeqlLimiter = expressRateLimit({
   legacyHeaders: false,
 });
 const adminUsersPolicyLimiter = rateLimitByUser("admin:default");
+const ADMIN_USER_RESPONSE_SELECT = {
+  id: true,
+  username: true,
+  email: true,
+  emailVerified: true,
+  isAdmin: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
 
 type ExistingUserForUpdate = NonNullable<
   Awaited<ReturnType<typeof userRepository.findById>>
@@ -98,7 +112,7 @@ function formatUpdateUserValidation(
 }
 
 async function applyUsernameUpdate(
-  updateData: Record<string, unknown>,
+  updateData: AdminUserUpdateData,
   existingUser: ExistingUserForUpdate,
   username?: string,
 ): Promise<void> {
@@ -113,7 +127,7 @@ async function applyUsernameUpdate(
 }
 
 async function applyEmailUpdate(
-  updateData: Record<string, unknown>,
+  updateData: AdminUserUpdateData,
   existingUser: ExistingUserForUpdate,
   email?: string | null,
 ): Promise<void> {
@@ -147,8 +161,8 @@ async function applyEmailUpdate(
 async function buildUserUpdateData(
   existingUser: ExistingUserForUpdate,
   input: AdminUserUpdateInput,
-): Promise<Record<string, unknown>> {
-  const updateData: Record<string, unknown> = {};
+): Promise<AdminUserUpdateData> {
+  const updateData: AdminUserUpdateData = {};
   await applyUsernameUpdate(updateData, existingUser, input.username);
   await applyEmailUpdate(updateData, existingUser, input.email);
 
@@ -167,9 +181,10 @@ async function auditUserUpdate(
   req: Request,
   userId: string,
   username: string,
-  updateData: Record<string, unknown>,
+  updateData: AdminUserUpdateData,
+  transitions: AdminUpdateTransitions,
 ): Promise<void> {
-  if ("isAdmin" in updateData) {
+  if (transitions.adminRoleChanged) {
     await auditService.logFromRequest(
       req,
       updateData.isAdmin
@@ -196,20 +211,15 @@ async function auditUserUpdate(
 }
 
 function getSessionRevocationReason(
-  existingUser: ExistingUserForUpdate,
-  updateData: Record<string, unknown>,
+  transitions: AdminUpdateTransitions,
 ): string | null {
-  const passwordChanged = "password" in updateData;
-  const adminRoleChanged =
-    "isAdmin" in updateData && updateData.isAdmin !== existingUser.isAdmin;
-
-  if (passwordChanged && adminRoleChanged) {
+  if (transitions.passwordChanged && transitions.adminRoleChanged) {
     return "admin_security_update";
   }
-  if (passwordChanged) {
+  if (transitions.passwordChanged) {
     return "admin_password_reset";
   }
-  if (adminRoleChanged) {
+  if (transitions.adminRoleChanged) {
     return "admin_role_change";
   }
   return null;
@@ -234,10 +244,13 @@ async function handleUpdateUser(
     formatUpdateUserValidation,
   ) as AdminUserUpdateInput;
   const updateData = await buildUserUpdateData(existingUser, updateInput);
-  const sessionRevocationReason = getSessionRevocationReason(
-    existingUser,
+
+  const { user, transitions } = await userRepository.updateFromAdmin(
+    userId,
     updateData,
+    ADMIN_USER_RESPONSE_SELECT,
   );
+  const sessionRevocationReason = getSessionRevocationReason(transitions);
 
   if (sessionRevocationReason) {
     await revokeAllUserTokens(userId, sessionRevocationReason);
@@ -247,19 +260,8 @@ async function handleUpdateUser(
     });
   }
 
-  // Update user
-  const user = await userRepository.updateWithSelect(userId, updateData, {
-    id: true,
-    username: true,
-    email: true,
-    emailVerified: true,
-    isAdmin: true,
-    createdAt: true,
-    updatedAt: true,
-  });
-
   log.info("User updated:", { userId, changes: Object.keys(updateData) });
-  await auditUserUpdate(req, userId, user.username, updateData);
+  await auditUserUpdate(req, userId, user.username, updateData, transitions);
 
   res.json(user);
 }
@@ -384,19 +386,10 @@ router.delete(
       throw new InvalidInputError("Cannot delete your own account");
     }
 
-    // Check if user exists
-    const existingUser = await userRepository.findById(userId);
+    const deletedUser = await userRepository.deleteFromAdmin(userId);
+    await disconnectWebSocketUser(userId);
 
-    if (!existingUser) {
-      throw new NotFoundError("User not found");
-    }
-
-    await revokeAllUserTokens(userId, "admin_user_delete");
-
-    // Delete user
-    await userRepository.deleteById(userId);
-
-    log.info("User deleted:", { userId, username: existingUser.username });
+    log.info("User deleted:", { userId, username: deletedUser.username });
 
     // Audit log
     await auditService.logFromRequest(
@@ -404,7 +397,7 @@ router.delete(
       AuditAction.USER_DELETE,
       AuditCategory.USER,
       {
-        details: { targetUser: existingUser.username, userId },
+        details: { targetUser: deletedUser.username, userId },
       },
     );
 

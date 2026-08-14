@@ -159,6 +159,12 @@ vi.mock('../../../../src/services/tokenRevocation', () => ({
   revokeAllUserTokens: vi.fn().mockResolvedValue(0),
 }));
 
+vi.mock('../../../../src/services/websocketAuthorizationInvalidation', () => ({
+  disconnectWebSocketAccessToken: vi.fn().mockResolvedValue(undefined),
+  disconnectWebSocketUser: vi.fn().mockResolvedValue(undefined),
+  invalidateWebSocketWalletAccess: vi.fn().mockResolvedValue(undefined),
+}));
+
 // Mock backup service
 vi.mock('../../../../src/services/backupService', () => ({
   backupService: {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { mockPrismaClient } from '../../../mocks/prisma';
-import { deviceId, mockCheckDeviceOwnerAccess, mockCheckWalletOwnerAccess, ownerId, recipientId, transferId, walletId } from './transferServiceTestHarness';
+import { deviceId, mockCheckDeviceOwnerAccess, mockCheckWalletOwnerAccess, mockInvalidateWebSocketWalletAccess, ownerId, recipientId, transferId, walletId } from './transferServiceTestHarness';
 import {
   initiateTransfer,
   acceptTransfer,
@@ -70,6 +70,7 @@ export const registerTransferConfirmContracts = () => {
       const result = await confirmTransfer(ownerId, transferId);
 
       expect(result.status).toBe('confirmed');
+      expect(mockInvalidateWebSocketWalletAccess).toHaveBeenCalledWith(walletId);
     });
 
     it('should reject confirm of non-accepted transfer', async () => {
@@ -283,6 +284,7 @@ export const registerTransferConfirmContracts = () => {
       expect(walletDeleteSpy).toHaveBeenCalledWith({
         where: { id: 'wu-owner' },
       });
+      expect(mockInvalidateWebSocketWalletAccess).toHaveBeenCalledWith(walletId);
     });
 
     it('should confirm device transfer by updating legacy owner field and downgrading old owner', async () => {

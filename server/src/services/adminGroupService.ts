@@ -2,6 +2,7 @@ import { NotFoundError, ConflictError } from '../errors/ApiError';
 import { clearAccessCacheStrict, invalidateUserAccessCacheStrict } from './accessControl';
 import * as groupRepo from '../repositories/groupRepository';
 import { findById as findUserById } from '../repositories/userRepository';
+import { invalidateWebSocketWalletAccess } from './websocketAuthorizationInvalidation';
 
 type GroupWithMembers = NonNullable<Awaited<ReturnType<typeof groupRepo.findByIdWithMembers>>>;
 type SetMembersResult = groupRepo.SetMembersResult;
@@ -73,6 +74,7 @@ export async function updateAdminGroup(
     throw new NotFoundError('Group not found');
   }
   if (input.memberIds !== undefined) {
+    await invalidateWebSocketWalletAccess(result.affectedWalletIds);
     // The transaction may already have committed when cache invalidation fails.
     // Clear the complete cache even for an idempotent retry so a retry can repair
     // stale decisions for users removed by the first committed attempt.
@@ -86,6 +88,10 @@ export async function deleteAdminGroup(groupId: string): Promise<DeletedAdminGro
   if (!deletedGroup) {
     throw new NotFoundError('Group not found');
   }
+
+  await invalidateWebSocketWalletAccess(
+    deletedGroup.wallets.map(({ id }) => id),
+  );
 
   await Promise.all(
     deletedGroup.members.map((member) => invalidateUserAccessCacheStrict(member.userId)),
@@ -128,12 +134,12 @@ export async function addAdminGroupMember(
 }
 
 export async function removeAdminGroupMember(groupId: string, userId: string): Promise<void> {
-  const membership = await groupRepo.findMembership(userId, groupId);
-  if (!membership) {
+  const result = await groupRepo.removeMember(groupId, userId);
+  if (!result) {
     throw new NotFoundError('Member not found in this group');
   }
 
-  await groupRepo.removeMember(groupId, userId);
+  await invalidateWebSocketWalletAccess(result.affectedWalletIds);
   await invalidateUserAccessCacheStrict(userId);
 }
 

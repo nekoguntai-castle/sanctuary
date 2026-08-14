@@ -11,6 +11,16 @@ import { ConflictError, NotFoundError } from '../errors';
 import { normalizeEmail } from '../utils/email';
 import { normalizeUsername } from '../utils/username';
 import { isSerializableTransactionConflict } from '../utils/prismaSerializableConflict';
+import {
+  executeAdminUserDelete,
+  executeAdminUserUpdate,
+  type AdminUserUpdateData,
+} from './userAdminUpdate';
+
+export type {
+  AdminUpdateTransitions,
+  AdminUserUpdateData,
+} from './userAdminUpdate';
 
 const MAX_PREFERENCE_UPDATE_ATTEMPTS = 3;
 const PREFERENCE_USER_SELECT = {
@@ -163,6 +173,18 @@ export async function updateWithSelect<T extends Prisma.UserSelect>(
 }
 
 /**
+ * Apply an admin-initiated user update. Role-bearing updates use a serializable
+ * transaction so concurrent demotions cannot commit a zero-admin state.
+ */
+export async function updateFromAdmin<T extends Prisma.UserSelect>(
+  id: string,
+  data: AdminUserUpdateData,
+  select: T,
+) {
+  return executeAdminUserUpdate(id, data, select);
+}
+
+/**
  * Advance a user's session version to invalidate existing access and refresh JWTs.
  */
 export async function incrementSessionVersion(id: string): Promise<number> {
@@ -181,6 +203,11 @@ export async function deleteById(id: string): Promise<void> {
   await prisma.user.delete({
     where: { id },
   });
+}
+
+/** Delete a user without allowing the administrator set to reach zero. */
+export async function deleteFromAdmin(id: string) {
+  return executeAdminUserDelete(id);
 }
 
 /**
@@ -445,8 +472,10 @@ export const userRepository = {
   createWithSelect,
   update,
   updateWithSelect,
+  updateFromAdmin,
   incrementSessionVersion,
   deleteById,
+  deleteFromAdmin,
   updateEmailVerification,
   updateEmail,
   updatePreferencesAtomically,

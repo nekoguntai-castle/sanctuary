@@ -8,7 +8,7 @@
  * - Event-to-channel routing for broadcast fanout
  */
 
-import { checkWalletAccess } from '../services/accessControl';
+import { checkWalletAccessUncached } from '../services/accessControl';
 import {
   getWalletIdFromWebSocketChannel,
   isWebSocketWalletEventType,
@@ -24,6 +24,7 @@ import {
   MAX_SUBSCRIPTIONS_PER_CONNECTION,
   AuthenticatedWebSocket,
   WebSocketEvent,
+  bumpSubscriptionGeneration,
 } from './types';
 import { recordRateLimitEvent } from './rateLimiter';
 
@@ -91,7 +92,7 @@ export async function handleSubscribe(
   if (isWebSocketWalletChannel(channel) && client.userId) {
     const walletId = getWalletIdFromWebSocketChannel(channel);
     if (walletId) {
-      const access = await checkWalletAccess(walletId, client.userId);
+      const access = await checkWalletAccessUncached(walletId, client.userId);
       if (!access.hasAccess) {
         log.warn(`User ${client.userId} denied access to wallet ${walletId}`);
         callbacks.sendToClient(client, {
@@ -104,15 +105,13 @@ export async function handleSubscribe(
   }
 
   // Add to subscriptions
-  client.subscriptions.add(channel);
-
-  if (!subscriptions.has(channel)) {
-    subscriptions.set(channel, new Set());
+  if (!client.subscriptions.has(channel)) {
+    client.subscriptions.add(channel);
+    bumpSubscriptionGeneration(client);
+    if (!subscriptions.has(channel)) subscriptions.set(channel, new Set());
+    subscriptions.get(channel)!.add(client);
+    websocketSubscriptions.inc();
   }
-  subscriptions.get(channel)!.add(client);
-
-  // Track subscription gauge
-  websocketSubscriptions.inc();
 
   log.info(`Client subscribed to ${channel} (total subscribers: ${subscriptions.get(channel)!.size})`);
 
@@ -137,6 +136,7 @@ export function handleUnsubscribe(
   if (!client.subscriptions.has(channel)) return;
 
   client.subscriptions.delete(channel);
+  bumpSubscriptionGeneration(client);
 
   const subscribers = subscriptions.get(channel);
   if (subscribers) {
@@ -194,7 +194,7 @@ export async function handleSubscribeBatch(
     if (isWebSocketWalletChannel(channel) && client.userId) {
       const walletId = getWalletIdFromWebSocketChannel(channel);
       if (walletId) {
-        const access = await checkWalletAccess(walletId, client.userId);
+        const access = await checkWalletAccessUncached(walletId, client.userId);
         if (!access.hasAccess) {
           errors.push({ channel, reason: 'Access denied' });
           continue;
@@ -204,6 +204,7 @@ export async function handleSubscribeBatch(
 
     // Add to subscriptions
     client.subscriptions.add(channel);
+    bumpSubscriptionGeneration(client);
 
     if (!subscriptions.has(channel)) {
       subscriptions.set(channel, new Set());
@@ -239,6 +240,7 @@ export function handleUnsubscribeBatch(
     if (!client.subscriptions.has(channel)) continue;
 
     client.subscriptions.delete(channel);
+    bumpSubscriptionGeneration(client);
 
     const subscribers = subscriptions.get(channel);
     if (subscribers) {

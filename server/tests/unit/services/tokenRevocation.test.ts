@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { faker } from '@faker-js/faker';
 
 // Hoist mocks to avoid reference before initialization
-const { mockPrisma, mockCache, mockLogger } = vi.hoisted(() => {
+const { mockPrisma, mockCache, mockLogger, mockDisconnectToken, mockDisconnectUser } = vi.hoisted(() => {
   const mockPrisma = {
     revokedToken: {
       upsert: vi.fn(),
@@ -38,7 +38,13 @@ const { mockPrisma, mockCache, mockLogger } = vi.hoisted(() => {
     debug: vi.fn(),
   };
 
-  return { mockPrisma, mockCache, mockLogger };
+  return {
+    mockPrisma,
+    mockCache,
+    mockLogger,
+    mockDisconnectToken: vi.fn(),
+    mockDisconnectUser: vi.fn(),
+  };
 });
 
 vi.mock('../../../src/models/prisma', () => ({
@@ -52,6 +58,11 @@ vi.mock('../../../src/infrastructure/redis', () => ({
 // Mock logger
 vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => mockLogger,
+}));
+
+vi.mock('../../../src/services/websocketAuthorizationInvalidation', () => ({
+  disconnectWebSocketAccessToken: mockDisconnectToken,
+  disconnectWebSocketUser: mockDisconnectUser,
 }));
 
 import {
@@ -73,6 +84,8 @@ describe('Token Revocation Service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockPrisma.user.update.mockResolvedValue({ sessionVersion: 1 });
+    mockDisconnectToken.mockResolvedValue(undefined);
+    mockDisconnectUser.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -104,6 +117,7 @@ describe('Token Revocation Service', () => {
           reason: 'logout',
         }),
       });
+      expect(mockDisconnectToken).toHaveBeenCalledWith(testJti);
     });
 
     it('should update cache when revoking token', async () => {
@@ -272,6 +286,7 @@ describe('Token Revocation Service', () => {
       expect(mockPrisma.refreshToken.deleteMany).toHaveBeenCalledWith({
         where: { userId: testUserId },
       });
+      expect(mockDisconnectUser).toHaveBeenCalledWith(testUserId);
     });
 
     it('should throw error on database failure', async () => {

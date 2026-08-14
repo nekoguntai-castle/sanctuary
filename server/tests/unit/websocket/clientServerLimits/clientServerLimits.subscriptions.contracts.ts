@@ -4,7 +4,9 @@ import {
   activeServers,
   createClient,
   loadServer,
+  metricMocks,
   mockCheckWalletAccess,
+  mockCheckWalletAccessCached,
   parseLastSend,
 } from './clientServerLimitsTestHarness';
 
@@ -82,6 +84,40 @@ export const registerClientServerLimitSubscriptionContracts = () => {
     const payload = parseLastSend(client);
     expect(payload.type).toBe('subscribed');
     expect(payload.data.channel).toBe('wallet:deadbeef');
+  });
+
+  it('acknowledges an existing subscription without duplicating it', async () => {
+    const Server = await loadServer();
+    const server = new Server();
+    activeServers.push(server);
+    const client = createClient();
+    client.subscriptions.add('system');
+    client.subscriptionGeneration = 1;
+    (server as any).subscriptions.set('system', new Set([client]));
+
+    await (server as any).handleSubscribe(client, { channel: 'system' });
+
+    expect(client.subscriptions).toEqual(new Set(['system']));
+    expect((server as any).subscriptions.get('system')).toEqual(new Set([client]));
+    expect(client.subscriptionGeneration).toBe(1);
+    expect(metricMocks.websocketSubscriptions.inc).not.toHaveBeenCalled();
+    expect(parseLastSend(client).data.channel).toBe('system');
+  });
+
+  it('bypasses cached wallet access when admitting a subscription', async () => {
+    mockCheckWalletAccessCached.mockResolvedValueOnce({ hasAccess: true, canEdit: true, role: 'owner' });
+    mockCheckWalletAccess.mockResolvedValueOnce({ hasAccess: false, canEdit: false, role: 'viewer' });
+    const Server = await loadServer();
+    const server = new Server();
+    activeServers.push(server);
+    const client = createClient({ userId: 'user-1' });
+
+    await (server as any).handleSubscribe(client, { channel: 'wallet:deadbeef' });
+
+    expect(mockCheckWalletAccessCached).not.toHaveBeenCalled();
+    expect(mockCheckWalletAccess).toHaveBeenCalledWith('deadbeef', 'user-1');
+    expect(client.subscriptions.has('wallet:deadbeef')).toBe(false);
+    expect(parseLastSend(client).data.message).toBe('Access denied to this wallet');
   });
 
   it('returns early when unsubscribing a channel client is not subscribed to', async () => {

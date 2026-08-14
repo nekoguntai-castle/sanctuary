@@ -74,6 +74,8 @@ describe('websocket auth', () => {
       username: 'alice',
       isAdmin: false,
       sessionVersion: 0,
+      jti: 'access-jti',
+      exp: Math.floor(Date.now() / 1000) + 60,
     });
     mockResolveCurrentAccessTokenPayload.mockImplementation(async (payload) => payload);
   });
@@ -92,6 +94,11 @@ describe('websocket auth', () => {
     );
     expect(callbacks.trackUserConnection).toHaveBeenCalledWith('user-1', client);
     expect(callbacks.completeClientRegistration).toHaveBeenCalledWith(client);
+    expect(client.authJti).toBe('access-jti');
+    expect(client.authSessionVersion).toBe(0);
+    expect(client.authExpiresAt).toBeGreaterThan(Date.now());
+    expect(client.authExpiryTimeout).toBeDefined();
+    clearTimeout(client.authExpiryTimeout);
   });
 
   it('rejects stale session-version tokens during upgrade authentication', async () => {
@@ -103,6 +110,20 @@ describe('websocket auth', () => {
     await flushMicrotasks();
 
     expect(mockVerifyToken).toHaveBeenCalledWith('stale-token', 'sanctuary:access');
+    expect(client.close).toHaveBeenCalledWith(1008, 'Authentication failed');
+    expect(callbacks.completeClientRegistration).not.toHaveBeenCalled();
+  });
+
+  it('rejects upgrade authentication when required token lineage claims are missing', async () => {
+    mockVerifyToken.mockResolvedValueOnce({
+      userId: 'user-1', username: 'alice', isAdmin: false, sessionVersion: 0,
+    });
+    const client = createClient();
+    const callbacks = createCallbacks();
+
+    authenticateOnUpgrade(client, createRequest('claimless-token'), callbacks);
+    await flushMicrotasks();
+
     expect(client.close).toHaveBeenCalledWith(1008, 'Authentication failed');
     expect(callbacks.completeClientRegistration).not.toHaveBeenCalled();
   });
@@ -133,10 +154,31 @@ describe('websocket auth', () => {
 
     expect(mockVerifyToken).toHaveBeenCalledWith('message-token', 'sanctuary:access');
     expect(client.userId).toBe('user-1');
+    expect(client.authJti).toBe('access-jti');
+    expect(client.authClaims).toEqual(expect.objectContaining({ userId: 'user-1', jti: 'access-jti' }));
     expect(callbacks.sendToClient).toHaveBeenCalledWith(
       client,
       expect.objectContaining({ type: 'authenticated' })
     );
+  });
+
+  it('closes an authenticated connection when its access token expires', async () => {
+    vi.useFakeTimers();
+    try {
+      mockVerifyToken.mockResolvedValueOnce({
+        userId: 'user-1', username: 'alice', isAdmin: false, sessionVersion: 0,
+        jti: 'short-lived', exp: Math.floor(Date.now() / 1000) + 1,
+      });
+      const client = createClient();
+      await handleAuthMessage(client, { token: 'short-lived-token' }, createCallbacks());
+
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(client.closeReason).toBe('auth_expired');
+      expect(client.close).toHaveBeenCalledWith(4003, 'Authentication expired');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('rejects stale session-version tokens during auth-message authentication', async () => {

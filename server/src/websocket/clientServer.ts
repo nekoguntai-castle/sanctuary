@@ -24,14 +24,10 @@ import {
 import {
   MAX_WEBSOCKET_CONNECTIONS,
   MAX_WEBSOCKET_PER_USER,
-  MAX_MESSAGES_PER_SECOND,
   MAX_SUBSCRIPTIONS_PER_CONNECTION,
-  RATE_LIMIT_GRACE_PERIOD_MS,
-  GRACE_PERIOD_MESSAGE_LIMIT,
-  MAX_QUEUE_SIZE,
-  QUEUE_OVERFLOW_POLICY,
   AuthenticatedWebSocket,
   WebSocketEvent,
+  bumpSubscriptionGeneration,
 } from './types';
 
 // Module imports
@@ -43,8 +39,11 @@ import {
   handleUnsubscribeBatch,
   getChannelsForEvent,
 } from './channels';
-import { checkRateLimit, getDroppedMessagesTotal } from './rateLimiter';
+import { checkRateLimit } from './rateLimiter';
 import { sendToClient, processClientQueue } from './messageQueue';
+import type { WebSocketAuthorizationControl } from './authorizationControl';
+import { applyAuthorizationControlToClients, broadcastAuthorizedEvent } from './clientAuthorization';
+import { getClientWebSocketStats } from './clientStats';
 
 // Re-export for external consumers
 export { getRateLimitEvents } from './rateLimiter';
@@ -70,6 +69,7 @@ export class SanctauryWebSocketServer {
   private clients: Set<AuthenticatedWebSocket> = new Set();
   private subscriptions: Map<string, Set<AuthenticatedWebSocket>> = new Map();
   private connectionsPerUser: Map<string, Set<AuthenticatedWebSocket>> = new Map();
+  private localBroadcastQueue: Promise<void> = Promise.resolve();
 
   constructor() {
     this.wss = new WebSocketServer({
@@ -97,6 +97,7 @@ export class SanctauryWebSocketServer {
   private handleConnection(ws: WebSocket, request: IncomingMessage) {
     const client = ws as AuthenticatedWebSocket;
     client.subscriptions = new Set();
+    client.subscriptionGeneration = 0;
     client.isAlive = true;
     client.messageCount = 0;
     client.lastMessageReset = Date.now();
@@ -256,13 +257,19 @@ export class SanctauryWebSocketServer {
       clearTimeout(client.authTimeout);
       client.authTimeout = undefined;
     }
+    if (client.authExpiryTimeout) {
+      clearTimeout(client.authExpiryTimeout);
+      client.authExpiryTimeout = undefined;
+    }
+
+    if (!this.clients.delete(client)) {
+      return;
+    }
 
     // Track connection duration
     const connectionDurationSec = (Date.now() - client.connectionTime) / 1000;
     const closeReason = client.closeReason || 'normal';
     websocketConnectionDuration.observe({ close_reason: closeReason }, connectionDurationSec);
-
-    this.clients.delete(client);
 
     // Track WebSocket disconnection metric
     websocketConnections.dec({ type: 'main' });
@@ -292,7 +299,9 @@ export class SanctauryWebSocketServer {
     // Decrement subscription gauge by count of client's subscriptions
     if (subscriptionCount > 0) {
       websocketSubscriptions.dec(subscriptionCount);
+      bumpSubscriptionGeneration(client);
     }
+    client.subscriptions.clear();
 
     log.debug('WebSocket client disconnected', { closeReason, durationSec: connectionDurationSec.toFixed(1) });
   }
@@ -392,7 +401,12 @@ export class SanctauryWebSocketServer {
     redisBridge.publishBroadcast(event);
 
     // Broadcast to local clients on this instance
-    this.localBroadcast(event);
+    void this.localBroadcast(event).catch((error) => {
+      log.error('Failed to broadcast WebSocket event locally', {
+        error: getErrorMessage(error),
+        eventType: event.type,
+      });
+    });
   }
 
   /**
@@ -401,25 +415,32 @@ export class SanctauryWebSocketServer {
    * This is the actual broadcast logic that sends to WebSocket clients
    * connected to this specific server instance.
    */
-  public localBroadcast(event: WebSocketEvent) {
-    const channels = getChannelsForEvent(event);
+  public async localBroadcast(event: WebSocketEvent): Promise<void> {
+    const broadcast = this.localBroadcastQueue.then(
+      () => broadcastAuthorizedEvent(event, this.authorizationContext()),
+    );
+    this.localBroadcastQueue = broadcast.catch(() => undefined);
+    return broadcast;
+  }
 
-    for (const channel of channels) {
-      const subscribers = this.subscriptions.get(channel);
-      if (subscribers) {
-        const message = {
-          type: 'event',
-          event: event.type,
-          data: event.data,
-          channel,
-          timestamp: Date.now(),
-        };
+  private revokeClient(client: AuthenticatedWebSocket): void {
+    client.closeReason = 'auth_revoked';
+    client.close(4003, 'Authorization revoked');
+    this.handleDisconnect(client);
+  }
 
-        for (const client of subscribers) {
-          this.sendToClient(client, message);
-        }
-      }
-    }
+  public async applyAuthorizationControl(control: WebSocketAuthorizationControl): Promise<void> {
+    return applyAuthorizationControlToClients(control, this.authorizationContext());
+  }
+
+  private authorizationContext() {
+    return {
+      clients: this.clients,
+      subscriptions: this.subscriptions,
+      connectionsPerUser: this.connectionsPerUser,
+      revokeClient: (client: AuthenticatedWebSocket) => this.revokeClient(client),
+      sendToClient: (client: AuthenticatedWebSocket, message: unknown) => this.sendToClient(client, message),
+    };
   }
 
   /**
@@ -453,42 +474,7 @@ export class SanctauryWebSocketServer {
    * Get statistics
    */
   public getStats() {
-    // Calculate total subscriptions and queue stats across all clients
-    let totalSubscriptions = 0;
-    let totalQueuedMessages = 0;
-    let totalDroppedMessages = 0;
-    let maxQueueSize = 0;
-
-    for (const client of this.clients) {
-      totalSubscriptions += client.subscriptions.size;
-      totalQueuedMessages += client.messageQueue.length;
-      totalDroppedMessages += client.droppedMessages;
-      maxQueueSize = Math.max(maxQueueSize, client.messageQueue.length);
-    }
-
-    return {
-      clients: this.clients.size,
-      maxClients: MAX_WEBSOCKET_CONNECTIONS,
-      subscriptions: totalSubscriptions,
-      channels: this.subscriptions.size,
-      channelList: Array.from(this.subscriptions.keys()),
-      uniqueUsers: this.connectionsPerUser.size,
-      maxPerUser: MAX_WEBSOCKET_PER_USER,
-      rateLimits: {
-        maxMessagesPerSecond: MAX_MESSAGES_PER_SECOND,
-        gracePeriodMs: RATE_LIMIT_GRACE_PERIOD_MS,
-        gracePeriodMessageLimit: GRACE_PERIOD_MESSAGE_LIMIT,
-        maxSubscriptionsPerConnection: MAX_SUBSCRIPTIONS_PER_CONNECTION,
-      },
-      // Bounded queue stats
-      messageQueue: {
-        maxQueueSize: MAX_QUEUE_SIZE,
-        overflowPolicy: QUEUE_OVERFLOW_POLICY,
-        totalQueuedMessages,
-        totalDroppedMessages: totalDroppedMessages + getDroppedMessagesTotal(),
-        maxClientQueueSize: maxQueueSize,
-      },
-    };
+    return getClientWebSocketStats(this.clients, this.subscriptions, this.connectionsPerUser);
   }
 
   /**

@@ -6,6 +6,7 @@
 
 import { WebSocket } from 'ws';
 import type { BroadcastEvent, ClientMessage } from '@sanctuary/shared/types/websocket';
+import type { JWTPayload } from '../utils/jwt';
 
 // ============================================================================
 // Connection Limits
@@ -86,18 +87,28 @@ export interface RateLimitEvent {
 /** Extended WebSocket with authentication and subscription state */
 export interface AuthenticatedWebSocket extends WebSocket {
   userId?: string;
+  authJti?: string;
+  authExpiresAt?: number;
+  authSessionVersion?: number;
+  authClaims?: JWTPayload;
+  authExpiryTimeout?: NodeJS.Timeout;
   subscriptions: Set<string>;
+  subscriptionGeneration: number;
   isAlive: boolean;
   authTimeout?: NodeJS.Timeout;
   messageCount: number;
   lastMessageReset: number;
   connectionTime: number;
   totalMessageCount: number;
-  closeReason?: 'normal' | 'rate_limit' | 'auth_timeout' | 'error' | 'queue_overflow';
+  closeReason?: 'normal' | 'rate_limit' | 'auth_timeout' | 'auth_expired' | 'auth_revoked' | 'error' | 'queue_overflow';
   // Bounded message queue for backpressure
   messageQueue: Array<string>;
   isProcessingQueue: boolean;
   droppedMessages: number;
+}
+
+export function bumpSubscriptionGeneration(client: AuthenticatedWebSocket): void {
+  client.subscriptionGeneration = (client.subscriptionGeneration ?? 0) + 1;
 }
 
 /** WebSocket message types from client */

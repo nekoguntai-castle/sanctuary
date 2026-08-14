@@ -5,6 +5,7 @@ const transferServiceMocks = vi.hoisted(() => ({
   mockCheckWalletOwnerAccess: vi.fn(),
   mockCheckDeviceOwnerAccess: vi.fn(),
   mockLoggerDebug: vi.fn(),
+  mockInvalidateWebSocketWalletAccess: vi.fn(),
 }));
 
 vi.mock('../../../../src/models/prisma', async () => {
@@ -32,6 +33,10 @@ vi.mock('../../../../src/services/deviceAccess', () => ({
   checkDeviceOwnerAccess: transferServiceMocks.mockCheckDeviceOwnerAccess,
 }));
 
+vi.mock('../../../../src/services/websocketAuthorizationInvalidation', () => ({
+  invalidateWebSocketWalletAccess: transferServiceMocks.mockInvalidateWebSocketWalletAccess,
+}));
+
 export const ownerId = 'owner-123';
 export const recipientId = 'recipient-456';
 export const walletId = 'wallet-789';
@@ -41,12 +46,14 @@ export const transferId = 'transfer-xyz';
 export const mockCheckWalletOwnerAccess = transferServiceMocks.mockCheckWalletOwnerAccess;
 export const mockCheckDeviceOwnerAccess = transferServiceMocks.mockCheckDeviceOwnerAccess;
 export const mockLoggerDebug = transferServiceMocks.mockLoggerDebug;
+export const mockInvalidateWebSocketWalletAccess = transferServiceMocks.mockInvalidateWebSocketWalletAccess;
 
 export const setupTransferServiceMocks = () => {
   resetPrismaMocks();
   vi.clearAllMocks();
   mockCheckWalletOwnerAccess.mockResolvedValue(true);
   mockCheckDeviceOwnerAccess.mockResolvedValue(true);
+  mockInvalidateWebSocketWalletAccess.mockResolvedValue(undefined);
   mockPrismaClient.walletUser.findFirst.mockImplementation(async ({ where }) => (
     where.userId === ownerId ? { role: 'owner' } : null
   ));

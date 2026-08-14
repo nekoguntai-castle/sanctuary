@@ -1,5 +1,10 @@
-import { describe, expect, it } from 'vitest';
-import { adminRoutesRequest, mockPrisma } from './adminRoutesTestHarness';
+import { describe, expect, it, vi } from 'vitest';
+import { adminRoutesRequest, mockAuditService, mockPrisma } from './adminRoutesTestHarness';
+import { disconnectWebSocketUser } from '../../../../src/services/websocketAuthorizationInvalidation';
+import { revokeAllUserTokens } from '../../../../src/services/tokenRevocation';
+
+const mockDisconnectWebSocketUser = vi.mocked(disconnectWebSocketUser);
+const mockRevokeAllUserTokens = vi.mocked(revokeAllUserTokens);
 
 export function registerAdminRoutesDeleteContracts(): void {
   describe('DELETE /api/v1/admin/users/:id', () => {
@@ -15,6 +20,12 @@ export function registerAdminRoutesDeleteContracts(): void {
 
       expect(response.status).toBe(200);
       expect(response.body.message).toContain('deleted');
+      expect(mockPrisma.user.delete).toHaveBeenCalledBefore(mockDisconnectWebSocketUser);
+      expect(mockDisconnectWebSocketUser).toHaveBeenCalledBefore(
+        mockAuditService.logFromRequest,
+      );
+      expect(mockDisconnectWebSocketUser).toHaveBeenCalledWith('user-to-delete');
+      expect(mockRevokeAllUserTokens).not.toHaveBeenCalled();
     });
 
     it('should prevent self-deletion', async () => {
@@ -45,6 +56,26 @@ export function registerAdminRoutesDeleteContracts(): void {
 
       expect(response.status).toBe(500);
       expect(response.body.error).toBe('Internal');
+      expect(mockDisconnectWebSocketUser).not.toHaveBeenCalled();
+      expect(mockAuditService.logFromRequest).not.toHaveBeenCalled();
+    });
+
+    it('rejects deleting the final administrator without side effects', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'other-admin',
+        username: 'other-admin',
+        isAdmin: true,
+      });
+      mockPrisma.user.count.mockResolvedValue(1);
+
+      const response = await adminRoutesRequest().delete('/api/v1/admin/users/other-admin');
+
+      expect(response.status).toBe(409);
+      expect(response.body.message).toContain('final administrator');
+      expect(mockPrisma.user.delete).not.toHaveBeenCalled();
+      expect(mockDisconnectWebSocketUser).not.toHaveBeenCalled();
+      expect(mockRevokeAllUserTokens).not.toHaveBeenCalled();
+      expect(mockAuditService.logFromRequest).not.toHaveBeenCalled();
     });
   });
 
@@ -54,7 +85,9 @@ export function registerAdminRoutesDeleteContracts(): void {
         id: 'group-to-delete',
         name: 'Test Group',
         members: [{ userId: 'user-1' }],
+        wallets: [{ id: 'wallet-1' }],
       });
+      mockPrisma.group.updateMany.mockResolvedValue({ count: 1 });
       mockPrisma.group.delete.mockResolvedValue({ id: 'group-to-delete' });
 
       const response = await adminRoutesRequest().delete('/api/v1/admin/groups/group-to-delete');
@@ -63,7 +96,7 @@ export function registerAdminRoutesDeleteContracts(): void {
     });
 
     it('should handle non-existent group', async () => {
-      mockPrisma.group.findUnique.mockResolvedValue(null);
+      mockPrisma.group.updateMany.mockResolvedValue({ count: 0 });
 
       const response = await adminRoutesRequest().delete('/api/v1/admin/groups/nonexistent');
 

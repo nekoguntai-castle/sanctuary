@@ -17,6 +17,7 @@ import { generateRefreshToken, decodeToken } from '../utils/jwt';
 import type { TokenLineage } from '../utils/jwt';
 import { randomUUID } from 'crypto';
 import { publishRevokedToken } from './tokenRevocation';
+import { disconnectWebSocketAccessToken } from './websocketAuthorizationInvalidation';
 import { createLogger } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
 
@@ -172,6 +173,7 @@ export async function rotateRefreshToken(
       replacement.revokedAccessToken.jti,
       replacement.revokedAccessToken.expiresAt
     );
+    await disconnectWebSocketAccessToken(replacement.revokedAccessToken.jti);
     log.debug('Refresh token rotated', { userId: replacement.replacement.userId });
 
     return { status: 'rotated', refreshToken: newToken };
@@ -213,6 +215,7 @@ export async function revokeSession(sessionId: string, userId: string): Promise<
       return false;
     }
     await publishRevokedToken(revoked.jti, revoked.expiresAt);
+    await disconnectWebSocketAccessToken(revoked.jti);
     log.info('Session revoked', { sessionId, userId });
     return true;
   } catch (error) {
@@ -237,6 +240,7 @@ export async function revokeLogoutCredentials(input: {
     refreshTokenExpiresAt: input.refreshTokenExpiresAt,
   });
   await publishRevokedToken(input.accessToken.jti, input.accessToken.expiresAt);
+  await disconnectWebSocketAccessToken(input.accessToken.jti);
   return status;
 }
 

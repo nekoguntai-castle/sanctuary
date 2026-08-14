@@ -95,7 +95,24 @@ export async function getUserWalletRole(walletId: string, userId: string): Promi
     log.debug('Access cache lookup failed, continuing to DB', { error: getErrorMessage(error) });
   }
 
-  // Check direct user access first
+  const role = await getUserWalletRoleUncached(walletId, userId);
+
+  // Cache the result (including null for no access)
+  // Wrap in object to distinguish from cache miss
+  try {
+    await cache.set<CachedRole>(cacheKey, { role }, ACCESS_CACHE_TTL_SECONDS);
+  } catch (error) {
+    log.debug('Failed to cache access role', { error: getErrorMessage(error) });
+  }
+
+  return role;
+}
+
+/** Resolve current wallet access directly from durable relationships. */
+export async function getUserWalletRoleUncached(
+  walletId: string,
+  userId: string,
+): Promise<WalletRole> {
   const walletUser = await walletSharingRepository.findWalletUser(walletId, userId);
 
   let role: WalletRole = null;
@@ -111,14 +128,6 @@ export async function getUserWalletRole(walletId: string, userId: string): Promi
     }
   }
 
-  // Cache the result (including null for no access)
-  // Wrap in object to distinguish from cache miss
-  try {
-    await cache.set<CachedRole>(cacheKey, { role }, ACCESS_CACHE_TTL_SECONDS);
-  } catch (error) {
-    log.debug('Failed to cache access role', { error: getErrorMessage(error) });
-  }
-
   return role;
 }
 
@@ -127,6 +136,19 @@ export async function getUserWalletRole(walletId: string, userId: string): Promi
  */
 export async function checkWalletAccess(walletId: string, userId: string): Promise<WalletAccessResult> {
   const role = await getUserWalletRole(walletId, userId);
+  return {
+    hasAccess: role !== null,
+    canEdit: canWalletRoleEdit(role),
+    role,
+  };
+}
+
+/** Check durable wallet relationships without trusting an access cache entry. */
+export async function checkWalletAccessUncached(
+  walletId: string,
+  userId: string,
+): Promise<WalletAccessResult> {
+  const role = await getUserWalletRoleUncached(walletId, userId);
   return {
     hasAccess: role !== null,
     canEdit: canWalletRoleEdit(role),
@@ -333,8 +355,10 @@ export async function requireAddressEditAccess(
 export const accessControlService = {
   buildWalletAccessWhere,
   getUserWalletRole,
+  getUserWalletRoleUncached,
   hasWalletAccess,
   checkWalletAccess,
+  checkWalletAccessUncached,
   checkWalletEditAccess,
   checkWalletOwnerAccess,
   checkWalletApproveAccess,
