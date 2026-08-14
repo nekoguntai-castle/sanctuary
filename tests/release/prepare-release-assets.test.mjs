@@ -51,13 +51,17 @@ try {
     repoDigests: image.startsWith('sanctuary-') ? [] : [`example.invalid/image@sha256:${'c'.repeat(64)}`],
   }));
   for (const image of expectedImages) {
-    const bucket = /^(jaegertracing|grafana|prom)\//.test(image) ? 'monitoring' : image.startsWith('dperson/torproxy:') ? 'tor' : 'core';
+    const bucket = image.startsWith('sanctuary-grafana-migration:') || /^(jaegertracing|grafana|prom)\//.test(image)
+      ? 'monitoring'
+      : image.startsWith('dperson/torproxy:') ? 'tor' : 'core';
     writeFileSync(path.join(bundleStage, 'images', bucket, `${image.replace(/[^A-Za-z0-9._-]/g, '-')}.tar`), `image ${image}\n`);
   }
   writeFileSync(path.join(bundleStage, 'image-inventory.json'), `${JSON.stringify({ schema: 1, platform: 'linux/amd64', images: imageInventory })}\n`);
   run('git', ['-C', repo, 'bundle', 'create', path.join(bundleStage, 'repo/sanctuary.git.bundle'), 'refs/tags/v1.2.3-rc.1']);
   const imageFiles = expectedImages.map((image) => {
-    const bucket = /^(jaegertracing|grafana|prom)\//.test(image) ? 'monitoring' : image.startsWith('dperson/torproxy:') ? 'tor' : 'core';
+    const bucket = image.startsWith('sanctuary-grafana-migration:') || /^(jaegertracing|grafana|prom)\//.test(image)
+      ? 'monitoring'
+      : image.startsWith('dperson/torproxy:') ? 'tor' : 'core';
     return `images/${bucket}/${image.replace(/[^A-Za-z0-9._-]/g, '-')}.tar`;
   });
   const checksumFiles = ['payload.txt', 'manifest.env', 'manifest.json', 'image-inventory.json', 'repo/sanctuary.git.bundle', ...imageFiles];

@@ -165,7 +165,7 @@ function validateBundle(options, bundlePath, commit) {
 
 function imageTarPath(stageDir, image) {
   let bucket = 'core';
-  if (/^(jaegertracing|grafana|prom)\//.test(image)) bucket = 'monitoring';
+  if (image.startsWith('sanctuary-grafana-migration:') || /^(jaegertracing|grafana|prom)\//.test(image)) bucket = 'monitoring';
   if (image.startsWith('dperson/torproxy:')) bucket = 'tor';
   return path.join(stageDir, 'images', bucket, `${image.replace(/[^A-Za-z0-9._-]/g, '-')}.tar`);
 }
