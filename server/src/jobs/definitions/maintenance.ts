@@ -49,6 +49,42 @@ interface DatabaseMaintenanceData {
   timeout?: number;
 }
 
+const weeklyReindexStatements = {
+  audit_logs: () => prisma.$executeRaw`REINDEX TABLE "audit_logs"`,
+  transactions: () => prisma.$executeRaw`REINDEX TABLE "transactions"`,
+  utxos: () => prisma.$executeRaw`REINDEX TABLE "utxos"`,
+} as const;
+
+type WeeklyMaintenanceTable = keyof typeof weeklyReindexStatements;
+
+const defaultWeeklyMaintenanceTables: readonly WeeklyMaintenanceTable[] = [
+  'audit_logs',
+  'transactions',
+  'utxos',
+];
+
+function isWeeklyMaintenanceTable(table: string): table is WeeklyMaintenanceTable {
+  return Object.prototype.hasOwnProperty.call(weeklyReindexStatements, table);
+}
+
+function validateWeeklyMaintenanceTables(tables: unknown): WeeklyMaintenanceTable[] {
+  if (!Array.isArray(tables)) {
+    throw new Error('Weekly maintenance tables must be an array');
+  }
+
+  const seenTables = new Set<WeeklyMaintenanceTable>();
+  return tables.map((table) => {
+    if (typeof table !== 'string' || !isWeeklyMaintenanceTable(table)) {
+      throw new Error(`Unsupported weekly maintenance table: ${String(table)}`);
+    }
+    if (seenTables.has(table)) {
+      throw new Error(`Duplicate weekly maintenance table: ${table}`);
+    }
+    seenTables.add(table);
+    return table;
+  });
+}
+
 interface PersistPriceFeesResult {
   pricesWritten: number;
   feesWritten: number;
@@ -308,6 +344,9 @@ export const cleanupExpiredTokensJob: JobDefinition<void, number> = {
 export const weeklyVacuumJob: JobDefinition<DatabaseMaintenanceData, void> = {
   name: 'maintenance:weekly-vacuum',
   handler: async (job: Job<DatabaseMaintenanceData>, execution) => {
+    const tables = validateWeeklyMaintenanceTables(
+      job.data.tables === undefined ? defaultWeeklyMaintenanceTables : job.data.tables,
+    );
     execution?.throwIfAborted();
     const timeout = job.data.timeout ?? 300000; // 5 minutes default
     const startTime = Date.now();
@@ -318,54 +357,41 @@ export const weeklyVacuumJob: JobDefinition<DatabaseMaintenanceData, void> = {
 
     // Set statement timeout
     await prisma.$executeRaw`SET statement_timeout = ${timeout}`;
-    execution?.throwIfAborted();
 
     try {
+      execution?.throwIfAborted();
       await prisma.$executeRaw`VACUUM ANALYZE`;
       execution?.throwIfAborted();
       await job.updateProgress(50);
-
-      // REINDEX heavily-updated tables
-      const tables = job.data.tables ?? ['audit_logs', 'Transaction', 'UTXO'];
 
       for (let i = 0; i < tables.length; i++) {
         execution?.throwIfAborted();
         const table = tables[i];
         log.info('Running REINDEX on table', { table });
 
-        // Use individual queries to avoid SQL injection
-        switch (table) {
-          case 'audit_logs':
-            await prisma.$executeRaw`REINDEX TABLE "audit_logs"`;
-            break;
-          case 'Transaction':
-            await prisma.$executeRaw`REINDEX TABLE "Transaction"`;
-            break;
-          case 'UTXO':
-            await prisma.$executeRaw`REINDEX TABLE "UTXO"`;
-            break;
-        }
+        await weeklyReindexStatements[table]();
 
         await job.updateProgress(50 + Math.floor((i + 1) / tables.length * 40));
         execution?.throwIfAborted();
       }
 
-      const duration = Date.now() - startTime;
-      log.info('Weekly database maintenance completed', { durationMs: duration });
-
-      await auditService.log({
-        username: 'system',
-        action: 'maintenance.weekly_db_maintenance',
-        category: AuditCategory.SYSTEM,
-        details: { durationMs: duration, tablesReindexed: tables },
-        success: true,
-      });
-      execution?.throwIfAborted();
-
-      await job.updateProgress(100);
     } finally {
       await prisma.$executeRaw`SET statement_timeout = '0'`;
     }
+
+    execution?.throwIfAborted();
+    await job.updateProgress(100);
+    execution?.throwIfAborted();
+
+    const duration = Date.now() - startTime;
+    await auditService.log({
+      username: 'system',
+      action: 'maintenance.weekly_db_maintenance',
+      category: AuditCategory.SYSTEM,
+      details: { durationMs: duration, tablesReindexed: tables },
+      success: true,
+    });
+    log.info('Weekly database maintenance completed', { durationMs: duration });
   },
   options: {
     attempts: 1, // Don't retry - could cause issues

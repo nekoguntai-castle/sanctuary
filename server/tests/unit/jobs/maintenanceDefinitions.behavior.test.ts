@@ -272,81 +272,254 @@ describe('Maintenance job definitions behavior', () => {
     );
   });
 
-  it('runs weekly vacuum + reindex job and resets statement timeout', async () => {
+  it('uses only physical table names for the default weekly reindex job', async () => {
     const updateProgress = vi.fn().mockResolvedValue(undefined);
 
     await weeklyVacuumJob.handler({
-      data: { timeout: 12345, tables: ['audit_logs', 'Transaction', 'UTXO'] },
+      data: { timeout: 12345 },
       updateProgress,
     } as any);
 
     const sqlCalls = mockExecuteRaw.mock.calls.map(sqlFromCall);
-    expect(sqlCalls.some(sql => sql.includes('SET statement_timeout = ?'))).toBe(true);
-    expect(sqlCalls.some(sql => sql.includes('VACUUM ANALYZE'))).toBe(true);
-    expect(sqlCalls.some(sql => sql.includes('REINDEX TABLE "audit_logs"'))).toBe(true);
-    expect(sqlCalls.some(sql => sql.includes('REINDEX TABLE "Transaction"'))).toBe(true);
-    expect(sqlCalls.some(sql => sql.includes('REINDEX TABLE "UTXO"'))).toBe(true);
-    expect(sqlCalls.some(sql => sql.includes("SET statement_timeout = '0'"))).toBe(true);
-
-    expect(updateProgress).toHaveBeenCalledWith(10);
-    expect(updateProgress).toHaveBeenCalledWith(50);
-    expect(updateProgress).toHaveBeenCalledWith(100);
+    expect(sqlCalls).toEqual([
+      'SET statement_timeout = ?',
+      'VACUUM ANALYZE',
+      'REINDEX TABLE "audit_logs"',
+      'REINDEX TABLE "transactions"',
+      'REINDEX TABLE "utxos"',
+      "SET statement_timeout = '0'",
+    ]);
+    expect(sqlCalls.join('\n')).not.toMatch(/"(?:Transaction|UTXO)"/);
+    expect(mockExecuteRaw.mock.calls[0]?.[1]).toBe(12345);
+    expect(updateProgress.mock.calls.map(([progress]) => progress)).toEqual([
+      10, 50, 63, 76, 90, 100,
+    ]);
     expect(mockAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'maintenance.weekly_db_maintenance',
         category: 'SYSTEM',
+        details: expect.objectContaining({
+          tablesReindexed: ['audit_logs', 'transactions', 'utxos'],
+        }),
         success: true,
       })
     );
   });
 
-  it('always resets statement timeout even when weekly vacuum fails', async () => {
+  it('accepts an allowlisted caller-supplied subset', async () => {
+    const updateProgress = vi.fn().mockResolvedValue(undefined);
+
+    await weeklyVacuumJob.handler({
+      data: { tables: ['utxos'] },
+      updateProgress,
+    } as any);
+
+    const sqlCalls = mockExecuteRaw.mock.calls.map(sqlFromCall);
+    expect(sqlCalls.filter(sql => sql.includes('REINDEX TABLE'))).toEqual([
+      'REINDEX TABLE "utxos"',
+    ]);
+    expect(updateProgress.mock.calls.map(([progress]) => progress)).toEqual([
+      10, 50, 90, 100,
+    ]);
+    expect(mockAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+      details: expect.objectContaining({ tablesReindexed: ['utxos'] }),
+    }));
+  });
+
+  it('accepts an empty table list without fabricating reindex work', async () => {
+    const updateProgress = vi.fn().mockResolvedValue(undefined);
+
+    await weeklyVacuumJob.handler({
+      data: { tables: [] },
+      updateProgress,
+    } as any);
+
+    expect(mockExecuteRaw.mock.calls.map(sqlFromCall)).toEqual([
+      'SET statement_timeout = ?',
+      'VACUUM ANALYZE',
+      "SET statement_timeout = '0'",
+    ]);
+    expect(updateProgress.mock.calls.map(([progress]) => progress)).toEqual([
+      10, 50, 100,
+    ]);
+    expect(mockAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+      details: expect.objectContaining({ tablesReindexed: [] }),
+    }));
+  });
+
+  it('rejects an unknown table before any maintenance side effect', async () => {
+    const updateProgress = vi.fn().mockResolvedValue(undefined);
+
+    await expect(weeklyVacuumJob.handler({
+      data: { tables: ['audit_logs', 'UnknownTable'] },
+      updateProgress,
+    } as any)).rejects.toThrow('Unsupported weekly maintenance table: UnknownTable');
+
+    expect(mockExecuteRaw).not.toHaveBeenCalled();
+    expect(updateProgress).not.toHaveBeenCalled();
+    expect(mockAuditLog).not.toHaveBeenCalled();
+    expect(mockLogInfo).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { tables: null, message: 'Weekly maintenance tables must be an array' },
+    { tables: 'audit_logs', message: 'Weekly maintenance tables must be an array' },
+    { tables: [123], message: 'Unsupported weekly maintenance table: 123' },
+    {
+      tables: ['audit_logs', 'audit_logs'],
+      message: 'Duplicate weekly maintenance table: audit_logs',
+    },
+  ])('rejects malformed or duplicate table input before side effects: $tables', async ({
+    tables,
+    message,
+  }) => {
+    const updateProgress = vi.fn().mockResolvedValue(undefined);
+
+    await expect(weeklyVacuumJob.handler({
+      data: { tables },
+      updateProgress,
+    } as any)).rejects.toThrow(message);
+
+    expect(mockExecuteRaw).not.toHaveBeenCalled();
+    expect(updateProgress).not.toHaveBeenCalled();
+    expect(mockAuditLog).not.toHaveBeenCalled();
+    expect(mockLogInfo).not.toHaveBeenCalled();
+  });
+
+  it('resets the timeout and stops before the next table when cancelled', async () => {
+    const updateProgress = vi.fn().mockResolvedValue(undefined);
+    let completedReindexes = 0;
+    mockExecuteRaw.mockImplementation(async (template: TemplateStringsArray) => {
+      if (template.join('?').includes('REINDEX TABLE')) completedReindexes += 1;
+      return 0;
+    });
+    const execution: JobExecutionContext = {
+      signal: new AbortController().signal,
+      throwIfAborted: vi.fn(() => {
+        if (completedReindexes === 1) throw new Error('cancelled');
+      }),
+    };
+
+    await expect(weeklyVacuumJob.handler({
+      data: { tables: ['audit_logs', 'transactions'] },
+      updateProgress,
+    } as any, execution)).rejects.toThrow('cancelled');
+
+    const sqlCalls = mockExecuteRaw.mock.calls.map(sqlFromCall);
+    expect(sqlCalls.filter(sql => sql.includes('REINDEX TABLE'))).toEqual([
+      'REINDEX TABLE "audit_logs"',
+    ]);
+    expect(sqlCalls.at(-1)).toBe("SET statement_timeout = '0'");
+    expect(mockAuditLog).not.toHaveBeenCalled();
+  });
+
+  it('resets the timeout when cancelled immediately after enabling it', async () => {
+    const updateProgress = vi.fn().mockResolvedValue(undefined);
+    let abortChecks = 0;
+    const execution: JobExecutionContext = {
+      signal: new AbortController().signal,
+      throwIfAborted: vi.fn(() => {
+        abortChecks += 1;
+        if (abortChecks === 2) throw new Error('cancelled');
+      }),
+    };
+
+    await expect(weeklyVacuumJob.handler({
+      data: {},
+      updateProgress,
+    } as any, execution)).rejects.toThrow('cancelled');
+
+    expect(mockExecuteRaw.mock.calls.map(sqlFromCall)).toEqual([
+      'SET statement_timeout = ?',
+      "SET statement_timeout = '0'",
+    ]);
+    expect(mockAuditLog).not.toHaveBeenCalled();
+  });
+
+  it('propagates a REINDEX failure and restores the timeout in finally', async () => {
     const updateProgress = vi.fn().mockResolvedValue(undefined);
     mockExecuteRaw.mockImplementation(async (template: TemplateStringsArray) => {
-      const sql = template.join('?');
-      if (sql.includes('VACUUM ANALYZE')) {
+      if (template.join('?').includes('REINDEX TABLE "transactions"')) {
+        throw new Error('reindex failed');
+      }
+      return 0;
+    });
+
+    await expect(weeklyVacuumJob.handler({
+      data: {},
+      updateProgress,
+    } as any)).rejects.toThrow('reindex failed');
+
+    const sqlCalls = mockExecuteRaw.mock.calls.map(sqlFromCall);
+    expect(sqlCalls.at(-1)).toBe("SET statement_timeout = '0'");
+    expect(sqlCalls).not.toContain('REINDEX TABLE "utxos"');
+    expect(updateProgress.mock.calls.map(([progress]) => progress)).toEqual([
+      10, 50, 63,
+    ]);
+    expect(mockAuditLog).not.toHaveBeenCalled();
+  });
+
+  it('always resets statement timeout when weekly vacuum fails', async () => {
+    const updateProgress = vi.fn().mockResolvedValue(undefined);
+    mockExecuteRaw.mockImplementation(async (template: TemplateStringsArray) => {
+      if (template.join('?').includes('VACUUM ANALYZE')) {
         throw new Error('vacuum failed');
       }
       return 0;
     });
 
-    await expect(
-      weeklyVacuumJob.handler({
-        data: {},
-        updateProgress,
-      } as any)
-    ).rejects.toThrow('vacuum failed');
-
-    const sqlCalls = mockExecuteRaw.mock.calls.map(sqlFromCall);
-    expect(sqlCalls.some(sql => sql.includes("SET statement_timeout = '0'"))).toBe(true);
-  });
-
-  it('skips unknown reindex tables during weekly maintenance', async () => {
-    const updateProgress = vi.fn().mockResolvedValue(undefined);
-
-    await weeklyVacuumJob.handler({
-      data: { tables: ['UnknownTable'] },
-      updateProgress,
-    } as any);
-
-    const sqlCalls = mockExecuteRaw.mock.calls.map(sqlFromCall);
-    expect(sqlCalls.some(sql => sql.includes('VACUUM ANALYZE'))).toBe(true);
-    expect(sqlCalls.some(sql => sql.includes('REINDEX TABLE'))).toBe(false);
-    expect(updateProgress).toHaveBeenCalledWith(90);
-  });
-
-  it('uses default weekly reindex table list when tables are not provided', async () => {
-    const updateProgress = vi.fn().mockResolvedValue(undefined);
-
-    await weeklyVacuumJob.handler({
+    await expect(weeklyVacuumJob.handler({
       data: {},
       updateProgress,
-    } as any);
+    } as any)).rejects.toThrow('vacuum failed');
 
-    const sqlCalls = mockExecuteRaw.mock.calls.map(sqlFromCall);
-    expect(sqlCalls.some(sql => sql.includes('REINDEX TABLE "audit_logs"'))).toBe(true);
-    expect(sqlCalls.some(sql => sql.includes('REINDEX TABLE "Transaction"'))).toBe(true);
-    expect(sqlCalls.some(sql => sql.includes('REINDEX TABLE "UTXO"'))).toBe(true);
+    expect(mockExecuteRaw.mock.calls.map(sqlFromCall).at(-1))
+      .toBe("SET statement_timeout = '0'");
+  });
+
+  it('does not commit success when statement timeout restoration fails', async () => {
+    const updateProgress = vi.fn().mockResolvedValue(undefined);
+    mockExecuteRaw.mockImplementation(async (template: TemplateStringsArray) => {
+      if (template.join('?') === "SET statement_timeout = '0'") {
+        throw new Error('timeout reset failed');
+      }
+      return 0;
+    });
+
+    await expect(weeklyVacuumJob.handler({
+      data: { tables: [] },
+      updateProgress,
+    } as any)).rejects.toThrow('timeout reset failed');
+
+    expect(updateProgress).not.toHaveBeenCalledWith(100);
+    expect(mockAuditLog).not.toHaveBeenCalled();
+    expect(mockLogInfo).not.toHaveBeenCalledWith(
+      'Weekly database maintenance completed',
+      expect.anything(),
+    );
+  });
+
+  it('treats the success audit as the final cancellation commit point', async () => {
+    const updateProgress = vi.fn().mockResolvedValue(undefined);
+    let aborted = false;
+    const execution: JobExecutionContext = {
+      signal: new AbortController().signal,
+      throwIfAborted: vi.fn(() => {
+        if (aborted) throw new Error('cancelled');
+      }),
+    };
+    mockAuditLog.mockImplementationOnce(async () => {
+      aborted = true;
+    });
+
+    await expect(weeklyVacuumJob.handler({
+      data: { tables: [] },
+      updateProgress,
+    } as any, execution)).resolves.toBeUndefined();
+
+    expect(mockAuditLog).toHaveBeenCalledTimes(1);
+    expect(updateProgress.mock.invocationCallOrder.at(-1))
+      .toBeLessThan(mockAuditLog.mock.invocationCallOrder[0]);
   });
 
   it('runs monthly cleanup job, reports progress, and returns summary', async () => {
