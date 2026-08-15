@@ -48,6 +48,7 @@ export interface CreateDraftInput {
   signedPsbtBase64?: string | null;
   signedDeviceIds?: string[];
   status?: DraftStatus;
+  approvalStatus?: string;
   fee: bigint;
   totalInput: bigint;
   totalOutput: bigint;
@@ -265,6 +266,7 @@ function buildDraftCreateData(data: CreateDraftInput): Prisma.DraftTransactionUn
     }),
     ...(data.signedDeviceIds !== undefined && { signedDeviceIds: data.signedDeviceIds }),
     ...(data.status !== undefined && { status: data.status }),
+    ...(data.approvalStatus !== undefined && { approvalStatus: data.approvalStatus }),
     outputs: toDraftJsonCreateValue(data.outputs),
     inputs: toDraftJsonCreateValue(data.inputs),
     decoyOutputs: toDraftJsonCreateValue(data.decoyOutputs),
@@ -389,9 +391,11 @@ export async function deleteExpired(): Promise<number> {
  */
 export async function updateApprovalStatus(
   draftId: string,
-  approvalStatus: string
+  approvalStatus: string,
+  client?: DraftDbClient
 ): Promise<void> {
-  await prisma.draftTransaction.update({
+  const db = client ?? prisma;
+  await db.draftTransaction.update({
     where: { id: draftId },
     data: {
       approvalStatus,

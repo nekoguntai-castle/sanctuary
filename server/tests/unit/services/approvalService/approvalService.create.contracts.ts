@@ -2,7 +2,7 @@ import { faker } from '@faker-js/faker';
 import { expect, it, vi } from 'vitest';
 
 import { draftId, mockDraftRepo, mockLog, mockNotify, mockPolicyRepo, policyId, requestId, userId, walletId } from './approvalServiceTestHarness';
-import { approvalService } from '../../../../src/services/vaultPolicy/approvalService';
+import { approvalService, type ApprovalDbClient } from '../../../../src/services/vaultPolicy/approvalService';
 
 export function registerCreateApprovalRequestsForDraftContracts() {
   it('returns empty array when no approval_required policies in triggered list', async () => {
@@ -170,5 +170,113 @@ export function registerCreateApprovalRequestsForDraftContracts() {
         expect.objectContaining({ error: 'Notification failed' })
       );
     });
+  });
+
+  it('propagates composite client to policy find/create and draft approval status update', async () => {
+    const mockClient = { vaultPolicy: {}, approvalRequest: {}, draftTransaction: {} } as unknown as ApprovalDbClient;
+    mockPolicyRepo.findPolicyById.mockResolvedValue({
+      id: policyId,
+      config: {
+        trigger: { always: true },
+        requiredApprovals: 1,
+        quorumType: 'any_n',
+        allowSelfApproval: false,
+        expirationHours: 0,
+      },
+    });
+
+    mockPolicyRepo.createApprovalRequest.mockResolvedValue({ id: requestId, status: 'pending' });
+
+    const result = await approvalService.createApprovalRequestsForDraft(
+      draftId, walletId, userId,
+      [{ policyId, policyName: 'Test', type: 'approval_required', action: 'approval_required', reason: 'test' }],
+      mockClient
+    );
+
+    expect(result).toHaveLength(1);
+    expect(mockPolicyRepo.findPolicyById).toHaveBeenCalledWith(policyId, mockClient);
+    expect(mockPolicyRepo.createApprovalRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ draftTransactionId: draftId, policyId }),
+      mockClient
+    );
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'pending', mockClient);
+    // Notification behavior preserved when a client is supplied
+    expect(mockNotify.notifyApprovalRequested).toHaveBeenCalledWith(walletId, draftId, userId);
+  });
+
+  it('suppresses only the notification when suppressNotification is true', async () => {
+    mockPolicyRepo.findPolicyById.mockResolvedValue({
+      id: policyId,
+      config: {
+        trigger: { always: true },
+        requiredApprovals: 1,
+        quorumType: 'any_n',
+        allowSelfApproval: false,
+        expirationHours: 0,
+      },
+    });
+
+    mockPolicyRepo.createApprovalRequest.mockResolvedValue({ id: requestId, status: 'pending' });
+
+    const result = await approvalService.createApprovalRequestsForDraft(
+      draftId, walletId, userId,
+      [{ policyId, policyName: 'Test', type: 'approval_required', action: 'approval_required', reason: 'test' }],
+      undefined,
+      true
+    );
+
+    // Request creation and pending status update still happen
+    expect(result).toHaveLength(1);
+    expect(mockPolicyRepo.findPolicyById).toHaveBeenCalledWith(policyId);
+    expect(mockPolicyRepo.createApprovalRequest).toHaveBeenCalledTimes(1);
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'pending');
+
+    // Only the notification is skipped
+    expect(mockNotify.notifyApprovalRequested).not.toHaveBeenCalled();
+  });
+
+  it('dispatchApprovalRequestedNotification calls notify with exact args and warns on rejection', async () => {
+    mockNotify.notifyApprovalRequested.mockRejectedValue(new Error('Notification failed'));
+
+    approvalService.dispatchApprovalRequestedNotification(walletId, draftId, userId);
+
+    expect(mockNotify.notifyApprovalRequested).toHaveBeenCalledWith(walletId, draftId, userId);
+
+    // Wait for the .catch() handler to execute
+    await vi.waitFor(() => {
+      expect(mockLog.warn).toHaveBeenCalledWith(
+        'Failed to send approval notification',
+        expect.objectContaining({ error: 'Notification failed' })
+      );
+    });
+  });
+
+  it('passes original repository arity by default when no client is supplied', async () => {
+    mockPolicyRepo.findPolicyById.mockResolvedValue({
+      id: policyId,
+      config: {
+        trigger: { always: true },
+        requiredApprovals: 1,
+        quorumType: 'any_n',
+        allowSelfApproval: false,
+        expirationHours: 0,
+      },
+    });
+
+    mockPolicyRepo.createApprovalRequest.mockResolvedValue({ id: requestId, status: 'pending' });
+
+    await approvalService.createApprovalRequestsForDraft(
+      draftId, walletId, userId,
+      [{ policyId, policyName: 'Test', type: 'approval_required', action: 'approval_required', reason: 'test' }]
+    );
+
+    expect(mockPolicyRepo.findPolicyById).toHaveBeenCalledTimes(1);
+    expect(mockPolicyRepo.findPolicyById).toHaveBeenCalledWith(policyId);
+    expect(mockPolicyRepo.createApprovalRequest).toHaveBeenCalledTimes(1);
+    expect(mockPolicyRepo.createApprovalRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ draftTransactionId: draftId, policyId })
+    );
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledTimes(1);
+    expect(mockDraftRepo.updateApprovalStatus).toHaveBeenCalledWith(draftId, 'pending');
   });
 }

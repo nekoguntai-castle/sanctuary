@@ -21,6 +21,7 @@ vi.mock('../../../src/models/prisma', () => ({
       findUnique: vi.fn(),
     },
   },
+  withTransaction: (fn: (tx: unknown) => Promise<unknown>) => fn({}),
 }));
 
 vi.mock('../../../src/repositories', () => ({
@@ -59,6 +60,7 @@ vi.mock('../../../src/services/notifications/dispatch', () => ({
 vi.mock('../../../src/services/vaultPolicy/approvalService', () => ({
   approvalService: {
     createApprovalRequestsForDraft: vi.fn().mockResolvedValue([]),
+    dispatchApprovalRequestedNotification: vi.fn(),
   },
 }));
 
@@ -486,16 +488,22 @@ describe('DraftService', () => {
 
       const result = await createDraft(walletId, userId, { ...validInput, policyEvaluation });
 
+      expect(draftRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ approvalStatus: 'pending' }),
+        expect.any(Object)
+      );
       expect(approvalService.createApprovalRequestsForDraft).toHaveBeenCalledWith(
         mockDraft.id,
         walletId,
         userId,
-        policyEvaluation.triggered
+        policyEvaluation.triggered,
+        expect.any(Object),
+        true
       );
       expect(result).toEqual(mockDraft);
     });
 
-    it('swallows errors from approval request creation and still returns draft', async () => {
+    it('propagates approval request creation errors and rolls back the draft', async () => {
       const { approvalService } = await import('../../../src/services/vaultPolicy/approvalService');
       (approvalService.createApprovalRequestsForDraft as Mock).mockRejectedValueOnce(
         new Error('approval service down')
@@ -508,10 +516,10 @@ describe('DraftService', () => {
         ],
       };
 
-      const result = await createDraft(walletId, userId, { ...validInput, policyEvaluation });
+      await expect(createDraft(walletId, userId, { ...validInput, policyEvaluation }))
+        .rejects.toThrow('approval service down');
 
       expect(approvalService.createApprovalRequestsForDraft).toHaveBeenCalled();
-      expect(result).toEqual(mockDraft);
     });
 
     it('does not create approval requests when no triggers have approval_required action', async () => {

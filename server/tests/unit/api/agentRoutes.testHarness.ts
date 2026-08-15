@@ -17,6 +17,7 @@ const mockState = vi.hoisted(() => {
     mockEvaluateRejectedFundingAttemptAlert: vi.fn(),
     mockCreateDraft: vi.fn(),
     mockRunDraftCreatedSideEffects: vi.fn(),
+    mockDispatchDraftCreatedPostCommitNotifications: vi.fn(),
     mockGetDraft: vi.fn(),
     mockUpdateDraft: vi.fn(),
     mockGetOrCreateOperationalReceiveAddress: vi.fn(),
@@ -74,6 +75,7 @@ const {
   mockEvaluateRejectedFundingAttemptAlert,
   mockCreateDraft,
   mockRunDraftCreatedSideEffects,
+  mockDispatchDraftCreatedPostCommitNotifications,
   mockGetDraft,
   mockUpdateDraft,
   mockGetOrCreateOperationalReceiveAddress,
@@ -148,6 +150,8 @@ vi.mock("../../../src/services/draftService", () => ({
   draftService: {
     createDraft: mockState.mockCreateDraft,
     runDraftCreatedSideEffects: mockState.mockRunDraftCreatedSideEffects,
+    dispatchDraftCreatedPostCommitNotifications:
+      mockState.mockDispatchDraftCreatedPostCommitNotifications,
     getDraft: mockState.mockGetDraft,
     updateDraft: mockState.mockUpdateDraft,
   },
@@ -197,6 +201,7 @@ export {
   mockCreateFundingAttempt,
   mockCreateTransaction,
   mockCreateSigningIntent,
+  mockDispatchDraftCreatedPostCommitNotifications,
   mockEnforceAgentFundingPolicy,
   mockEvaluatePolicies,
   mockEvaluateRejectedFundingAttemptAlert,
@@ -286,6 +291,7 @@ export const resetAgentRouteMocks = () => {
   );
   mockCreateFundingAttempt.mockResolvedValue({ id: "attempt-1" });
   mockRunDraftCreatedSideEffects.mockResolvedValue(undefined);
+  mockDispatchDraftCreatedPostCommitNotifications.mockReturnValue(undefined);
   mockAuditLog.mockResolvedValue(undefined);
   mockGetClientInfo.mockReturnValue({
     ipAddress: "127.0.0.1",

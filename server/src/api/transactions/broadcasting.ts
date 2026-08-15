@@ -9,6 +9,7 @@ import {
 } from '@sanctuary/shared/schemas/mobileApiRequests';
 import { addressRepository } from '../../repositories/addressRepository';
 import { draftRepository } from '../../repositories/draftRepository';
+import { draftSigningIntentRepository } from '../../repositories/draftSigningIntentRepository';
 import { walletRepository } from '../../repositories/walletRepository';
 import { requireWalletAccess } from '../../middleware/walletAccess';
 import { requireAuthenticatedUser } from '../../middleware/auth';
@@ -60,6 +61,23 @@ const loadDraft = async (walletId: string, draftId?: string): Promise<BroadcastD
   const draft = await draftRepository.findByIdInWallet(draftId, walletId);
   if (!draft) throw new NotFoundError('Draft not found', undefined, { draftId });
   return draft;
+};
+
+const resolveAuthoritativeDraft = async (
+  walletId: string,
+  artifact: ValidatedBroadcastArtifact,
+  callerDraft: BroadcastDraft,
+): Promise<BroadcastDraft> => {
+  const linkedDraft = await draftSigningIntentRepository.findDraftByWalletAndSigningIntent(
+    walletId,
+    artifact.intent.intentId,
+  );
+  if (linkedDraft && callerDraft && linkedDraft.id !== callerDraft.id) {
+    throw new InvalidInputError('Request draft does not match the signing intent', 'draftId', {
+      reason: 'metadata_mismatch',
+    });
+  }
+  return linkedDraft ?? callerDraft;
 };
 
 const assertDraftIntentMatchesRequest = (
@@ -203,15 +221,22 @@ const assertExactOutpoints = (
   }
 };
 
+type OptionalBroadcastMetadata = {
+  recipient?: string;
+  amount?: number;
+  fee?: number;
+  utxos?: BroadcastOutpoint[];
+};
+
 const assertOptionalMetadata = (
-  body: MobileTransactionBroadcastRequest,
+  optional: OptionalBroadcastMetadata,
   draft: BroadcastDraft,
   metadata: CanonicalRouteMetadata,
 ): void => {
   const checks: Array<[string, unknown, unknown]> = [
-    ['recipient', metadata.recipient, body.recipient ?? draft?.recipient],
-    ['amount', metadata.amount, body.amount ?? (draft ? Number(draft.effectiveAmount) : undefined)],
-    ['fee', metadata.fee, body.fee ?? (draft ? Number(draft.fee) : undefined)],
+    ['recipient', metadata.recipient, optional.recipient ?? draft?.recipient],
+    ['amount', metadata.amount, optional.amount ?? (draft ? Number(draft.effectiveAmount) : undefined)],
+    ['fee', metadata.fee, optional.fee ?? (draft ? Number(draft.fee) : undefined)],
   ];
   for (const [field, expected, actual] of checks) {
     if (actual !== undefined && actual !== expected) {
@@ -220,7 +245,7 @@ const assertOptionalMetadata = (
       });
     }
   }
-  assertExactOutpoints(metadata.utxos, body.utxos, 'utxos');
+  assertExactOutpoints(metadata.utxos, optional.utxos, 'utxos');
   if (draft) {
     const outpoints = draft.selectedUtxoIds.map(value => {
       const [txid, rawVout] = value.split(':');
@@ -304,7 +329,8 @@ const handleTransactionBroadcast = async (
     ...resolveTransactionPayload(body, draft),
     ...(draft && { draftId: draft.id }),
   });
-  if (draft && !artifact.broadcastReplay) assertDraftAllowsBroadcast(draft);
+  const authoritativeDraft = await resolveAuthoritativeDraft(walletId, artifact, draft);
+  if (authoritativeDraft && !artifact.broadcastReplay) assertDraftAllowsBroadcast(authoritativeDraft);
   const walletNetwork = await walletRepository.findNetwork(walletId);
   if (walletNetwork !== artifact.network && !(walletNetwork === 'testnet' && artifact.network === 'testnet3')) {
     throw new InvalidInputError('Signing intent network does not match wallet', 'network', {
@@ -312,11 +338,15 @@ const handleTransactionBroadcast = async (
     });
   }
   const metadata = await buildCanonicalMetadata(artifact);
-  assertOptionalMetadata(body, draft, metadata);
+  assertOptionalMetadata(
+    { recipient: body.recipient, amount: body.amount, fee: body.fee, utxos: body.utxos },
+    authoritativeDraft,
+    metadata,
+  );
   if (!artifact.broadcastReplay) await assertPolicyAllows(req, walletId, metadata);
-  return broadcastValidated(req, artifact, metadata, draft, {
-    label: body.label ?? draft?.label,
-    memo: body.memo ?? draft?.memo,
+  return broadcastValidated(req, artifact, metadata, authoritativeDraft, {
+    label: body.label ?? authoritativeDraft?.label,
+    memo: body.memo ?? authoritativeDraft?.memo,
   });
 };
 
@@ -331,9 +361,15 @@ const handlePsbtBroadcast = async (
     intentDigest: body.intentDigest,
     signedPsbtBase64: body.signedPsbt,
   });
+  const authoritativeDraft = await resolveAuthoritativeDraft(walletId, artifact, null);
+  if (authoritativeDraft && !artifact.broadcastReplay) assertDraftAllowsBroadcast(authoritativeDraft);
   const metadata = await buildCanonicalMetadata(artifact);
+  assertOptionalMetadata({}, authoritativeDraft, metadata);
   if (!artifact.broadcastReplay) await assertPolicyAllows(req, walletId, metadata);
-  return broadcastValidated(req, artifact, metadata, null, body);
+  return broadcastValidated(req, artifact, metadata, authoritativeDraft, {
+    label: body.label ?? authoritativeDraft?.label,
+    memo: body.memo ?? authoritativeDraft?.memo,
+  });
 };
 
 router.post('/wallets/:walletId/transactions/broadcast', requireWalletAccess('edit'), asyncHandler(async (req, res) => {

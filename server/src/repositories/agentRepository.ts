@@ -130,9 +130,11 @@ export type AgentFundingTransactionClient = Pick<
   | '$queryRaw'
   | 'agentFundingAttempt'
   | 'agentFundingOverride'
+  | 'approvalRequest'
   | 'draftTransaction'
   | 'draftUtxoLock'
   | 'uTXO'
+  | 'vaultPolicy'
   | 'walletAgent'
 >;
 

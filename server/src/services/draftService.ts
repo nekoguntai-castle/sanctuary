@@ -10,11 +10,11 @@ import type { DraftTransaction } from '../generated/prisma/client';
 import { draftRepository } from '../repositories';
 import { ForbiddenError, NotFoundError } from '../errors';
 import { createLogger } from '../utils/logger';
-import { createDraft, runDraftCreatedSideEffects } from './draftCreate';
+import { createDraft, dispatchDraftCreatedPostCommitNotifications, runDraftCreatedSideEffects } from './draftCreate';
 import { updateDraft } from './draftUpdate';
 
 export type { CreateDraftInput, UpdateDraftInput } from './draftTypes';
-export { createDraft, runDraftCreatedSideEffects, updateDraft };
+export { createDraft, dispatchDraftCreatedPostCommitNotifications, runDraftCreatedSideEffects, updateDraft };
 
 const log = createLogger('DRAFT:SVC');
 
@@ -89,6 +89,7 @@ export const draftService = {
   getDraftsForWallet,
   getDraft,
   createDraft,
+  dispatchDraftCreatedPostCommitNotifications,
   runDraftCreatedSideEffects,
   updateDraft,
   deleteDraft,

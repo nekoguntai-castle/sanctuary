@@ -79,6 +79,7 @@ const smoke = vi.hoisted(() => {
     evaluatePolicies: vi.fn(),
     createDraft: vi.fn(),
     runDraftCreatedSideEffects: vi.fn(),
+    dispatchDraftCreatedPostCommitNotifications: vi.fn(),
     getDraft: vi.fn(),
     updateDraft: vi.fn(),
     auditLog: vi.fn(),
@@ -161,6 +162,8 @@ vi.mock('../../../src/services/draftService', () => ({
   draftService: {
     createDraft: smoke.createDraft,
     runDraftCreatedSideEffects: smoke.runDraftCreatedSideEffects,
+    dispatchDraftCreatedPostCommitNotifications:
+      smoke.dispatchDraftCreatedPostCommitNotifications,
     getDraft: smoke.getDraft,
     updateDraft: smoke.updateDraft,
   },
@@ -367,6 +370,7 @@ describe('agent wallet funding route smoke', () => {
     smoke.agentRepository.markFundingOverrideUsed.mockResolvedValue(undefined);
     smoke.agentRepository.createFundingAttempt.mockResolvedValue({ id: 'attempt-1' });
     smoke.runDraftCreatedSideEffects.mockResolvedValue(undefined);
+    smoke.dispatchDraftCreatedPostCommitNotifications.mockReturnValue(undefined);
 
     smoke.validateAgentFundingDraftSubmission.mockResolvedValue({
       recipient: 'tb1qoperational',
@@ -506,6 +510,8 @@ describe('agent wallet funding route smoke', () => {
         runSideEffects: false,
       }),
     );
+    expect(smoke.dispatchDraftCreatedPostCommitNotifications).toHaveBeenCalledOnce();
+    expect(smoke.runDraftCreatedSideEffects).not.toHaveBeenCalled();
 
     const mobileReview = await request(app)
       .get('/api/v1/mobile/agent-funding-drafts')

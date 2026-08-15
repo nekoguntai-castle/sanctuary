@@ -20,6 +20,8 @@ import type {
 // lets the composite unique index prevent duplicate concurrent wallet windows.
 export const WALLET_SCOPED_USAGE_WINDOW_USER_ID = '00000000-0000-0000-0000-000000000000';
 
+export type PolicyDbClient = Pick<typeof prisma, 'vaultPolicy' | 'approvalRequest'>;
+
 // ========================================
 // VAULT POLICY CRUD
 // ========================================
@@ -78,8 +80,9 @@ export async function findGroupPolicies(groupId: string): Promise<VaultPolicy[]>
   });
 }
 
-export async function findPolicyById(policyId: string): Promise<VaultPolicy | null> {
-  return prisma.vaultPolicy.findUnique({
+export async function findPolicyById(policyId: string, client?: PolicyDbClient): Promise<VaultPolicy | null> {
+  const db = client ?? prisma;
+  return db.vaultPolicy.findUnique({
     where: { id: policyId },
   });
 }
@@ -210,8 +213,9 @@ export async function createApprovalRequest(data: {
   allowSelfApproval?: boolean;
   vetoDeadline?: Date;
   expiresAt?: Date;
-}): Promise<ApprovalRequest> {
-  return prisma.approvalRequest.create({
+}, client?: PolicyDbClient): Promise<ApprovalRequest> {
+  const db = client ?? prisma;
+  return db.approvalRequest.create({
     data: {
       draftTransactionId: data.draftTransactionId,
       policyId: data.policyId,

@@ -23,6 +23,7 @@ import {
   mockCreateDraft,
   mockCreateFundingAttempt,
   mockCreateTransaction,
+  mockDispatchDraftCreatedPostCommitNotifications,
   mockEnforceAgentFundingPolicy,
   mockEvaluatePolicies,
   mockEvaluateRejectedFundingAttemptAlert,
@@ -30,6 +31,7 @@ import {
   mockMarkAgentFundingDraftCreated,
   mockMarkFundingOverrideUsed,
   mockRequireAgentFundingDraftAccess,
+  mockRunDraftCreatedSideEffects,
   mockUpdateDraft,
   mockValidateAgentFundingDraftSubmission,
   mockVerifyOperationalReceiveAddress,
@@ -160,6 +162,8 @@ describe("Agent Routes funding drafts", () => {
         runSideEffects: false,
       }),
     );
+    expect(mockDispatchDraftCreatedPostCommitNotifications).toHaveBeenCalledOnce();
+    expect(mockRunDraftCreatedSideEffects).not.toHaveBeenCalled();
     expect(mockMarkAgentFundingDraftCreated).toHaveBeenCalledWith(
       "agent-1",
       expect.any(Date),
@@ -246,6 +250,8 @@ describe("Agent Routes funding drafts", () => {
         runSideEffects: false,
       }),
     );
+    expect(mockDispatchDraftCreatedPostCommitNotifications).toHaveBeenCalledOnce();
+    expect(mockRunDraftCreatedSideEffects).not.toHaveBeenCalled();
     expect(mockCreateFundingAttempt).toHaveBeenCalledWith(
       expect.objectContaining({
         status: "accepted",
@@ -286,6 +292,8 @@ describe("Agent Routes funding drafts", () => {
         runSideEffects: false,
       }),
     );
+    expect(mockDispatchDraftCreatedPostCommitNotifications).toHaveBeenCalledOnce();
+    expect(mockRunDraftCreatedSideEffects).not.toHaveBeenCalled();
     expect(mockMarkFundingOverrideUsed).toHaveBeenCalledWith(
       "override-1",
       "draft-agent",

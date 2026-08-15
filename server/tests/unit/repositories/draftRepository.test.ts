@@ -246,6 +246,7 @@ describe('draftRepository', () => {
       signedPsbtBase64: 'signed-psbt',
       signedDeviceIds: ['device-agent'],
       status: 'partial',
+      approvalStatus: 'pending',
       fee: BigInt(100),
       totalInput: BigInt(1100),
       totalOutput: BigInt(1000),
@@ -270,6 +271,7 @@ describe('draftRepository', () => {
         signedPsbtBase64: 'signed-psbt',
         signedDeviceIds: ['device-agent'],
         status: 'partial',
+        approvalStatus: 'pending',
         changeAddress: 'tb1qchange',
       }),
     });

@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   findNetwork: vi.fn(),
   findAddressStrings: vi.fn(),
   findDraft: vi.fn(),
+  findLinkedDraft: vi.fn(),
   evaluatePolicies: vi.fn(),
   recordUsage: vi.fn(),
   audit: vi.fn(),
@@ -18,6 +19,9 @@ vi.mock('../../../src/repositories/addressRepository', () => ({
 }));
 vi.mock('../../../src/repositories/draftRepository', () => ({
   draftRepository: { findByIdInWallet: mocks.findDraft },
+}));
+vi.mock('../../../src/repositories/draftSigningIntentRepository', () => ({
+  draftSigningIntentRepository: { findDraftByWalletAndSigningIntent: mocks.findLinkedDraft },
 }));
 vi.mock('../../../src/repositories/walletRepository', () => ({
   walletRepository: { findNetwork: mocks.findNetwork },
@@ -95,6 +99,7 @@ describe('transaction signing-intent broadcast route', () => {
   });
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.findLinkedDraft.mockResolvedValue(null);
     mocks.validateSignedArtifact.mockResolvedValue(artifact);
     mocks.findNetwork.mockResolvedValue('testnet3');
     mocks.findAddressStrings.mockResolvedValue([]);
@@ -377,5 +382,146 @@ describe('transaction signing-intent broadcast route', () => {
       signedPsbt: 'cHNi', intentId: body.intentId, intentDigest: body.intentDigest,
     });
     expect(response.status).toBe(200);
+  });
+
+  describe('intent-linked draft resolution', () => {
+    it('rejects an omitted pending-approval draft linked to the intent', async () => {
+      mocks.findLinkedDraft.mockResolvedValue(draft({ approvalStatus: 'pending' }));
+      const response = await request(app)
+        .post('/api/v1/wallets/wallet-1/transactions/broadcast')
+        .send(body);
+      expect(response.status).toBe(403);
+      expect(mocks.broadcastAndSave).not.toHaveBeenCalled();
+    });
+
+    it('rejects a caller draft that differs from the intent-linked draft (parallel creation)', async () => {
+      mocks.findDraft.mockResolvedValue(draft());
+      mocks.findLinkedDraft.mockResolvedValue(draft({ id: 'draft-linked' }));
+      const response = await request(app)
+        .post('/api/v1/wallets/wallet-1/transactions/broadcast')
+        .send({ ...body, draftId: 'draft-1' });
+      expect(response.status).toBe(400);
+      expect(mocks.broadcastAndSave).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['approved'],
+      ['not_required'],
+    ])('accepts an intent-linked draft with approvalStatus %s', async (approvalStatus) => {
+      mocks.findLinkedDraft.mockResolvedValue(draft({ approvalStatus }));
+      const response = await request(app)
+        .post('/api/v1/wallets/wallet-1/transactions/broadcast')
+        .send(body);
+      expect(response.status).toBe(200);
+      expect(mocks.broadcastAndSave).toHaveBeenCalledWith(artifact, expect.objectContaining({
+        draftId: 'draft-1',
+      }));
+    });
+
+    it('keeps a draftless PSBT broadcast valid when no draft is linked to the intent', async () => {
+      mocks.findLinkedDraft.mockResolvedValue(null);
+      const response = await request(app)
+        .post('/api/v1/wallets/wallet-1/psbt/broadcast')
+        .send({ signedPsbt: 'cHNi', intentId: body.intentId, intentDigest: body.intentDigest });
+      expect(response.status).toBe(200);
+      expect(mocks.broadcastAndSave).toHaveBeenCalledWith(
+        artifact,
+        expect.not.objectContaining({ draftId: expect.anything() }),
+      );
+    });
+
+    it('returns a replay for an intent-linked broadcasted draft without reapplying approval or policy', async () => {
+      mocks.findLinkedDraft.mockResolvedValue(draft({ status: 'broadcasted' }));
+      const replayArtifact = {
+        ...artifact,
+        broadcastReplay: { state: 'complete', txid: artifact.txid, rawTx: artifact.rawTx },
+      };
+      mocks.validateSignedArtifact.mockResolvedValue(replayArtifact);
+      const response = await request(app)
+        .post('/api/v1/wallets/wallet-1/transactions/broadcast')
+        .send(body);
+      expect(response.status).toBe(200);
+      expect(mocks.broadcastAndSave).toHaveBeenCalledWith(replayArtifact, expect.objectContaining({
+        draftId: 'draft-1',
+      }));
+      expect(mocks.evaluatePolicies).not.toHaveBeenCalled();
+      expect(mocks.recordUsage).not.toHaveBeenCalled();
+    });
+
+    it('scopes the intent-linked draft lookup to the route wallet', async () => {
+      mocks.findLinkedDraft.mockResolvedValue(null);
+      const response = await request(app)
+        .post('/api/v1/wallets/wallet-2/transactions/broadcast')
+        .send(body);
+      expect(response.status).toBe(200);
+      expect(mocks.findLinkedDraft).toHaveBeenCalledWith('wallet-2', 'intent-1');
+    });
+
+    it('accepts a duplicate caller draft that matches the intent-linked draft and persists it once', async () => {
+      mocks.findDraft.mockResolvedValue(draft());
+      mocks.findLinkedDraft.mockResolvedValue(draft());
+      const response = await request(app)
+        .post('/api/v1/wallets/wallet-1/transactions/broadcast')
+        .send({ ...body, draftId: 'draft-1' });
+      expect(response.status).toBe(200);
+      expect(mocks.broadcastAndSave).toHaveBeenCalledTimes(1);
+      expect(mocks.broadcastAndSave).toHaveBeenCalledWith(artifact, expect.objectContaining({
+        draftId: 'draft-1',
+      }));
+    });
+
+    it('rejects a PSBT broadcast when the intent-linked draft metadata disagrees with the snapshot', async () => {
+      mocks.findLinkedDraft.mockResolvedValue(draft({
+        approvalStatus: 'approved',
+        selectedUtxoIds: [`${'2'.repeat(64)}:0`],
+      }));
+      const response = await request(app)
+        .post('/api/v1/wallets/wallet-1/psbt/broadcast')
+        .send({ signedPsbt: 'cHNi', intentId: body.intentId, intentDigest: body.intentDigest });
+      expect(response.status).toBe(400);
+      expect(mocks.broadcastAndSave).not.toHaveBeenCalled();
+    });
+
+    it('persists the intent-linked draft on an approved PSBT broadcast', async () => {
+      mocks.findLinkedDraft.mockResolvedValue(draft({ approvalStatus: 'approved' }));
+      const response = await request(app)
+        .post('/api/v1/wallets/wallet-1/psbt/broadcast')
+        .send({ signedPsbt: 'cHNi', intentId: body.intentId, intentDigest: body.intentDigest });
+      expect(response.status).toBe(200);
+      expect(mocks.broadcastAndSave).toHaveBeenCalledWith(artifact, expect.objectContaining({
+        draftId: 'draft-1',
+      }));
+    });
+
+    it('rejects a PSBT broadcast for an intent linked to a pending-approval draft', async () => {
+      mocks.findLinkedDraft.mockResolvedValue(draft({ approvalStatus: 'pending' }));
+      const response = await request(app)
+        .post('/api/v1/wallets/wallet-1/psbt/broadcast')
+        .send({ signedPsbt: 'cHNi', intentId: body.intentId, intentDigest: body.intentDigest });
+      expect(response.status).toBe(403);
+      expect(mocks.broadcastAndSave).not.toHaveBeenCalled();
+    });
+
+    it('enforces intent-linked draft metadata when the request omits draftId', async () => {
+      mocks.findLinkedDraft.mockResolvedValue(draft({
+        selectedUtxoIds: [`${'2'.repeat(64)}:0`],
+      }));
+      const response = await request(app)
+        .post('/api/v1/wallets/wallet-1/transactions/broadcast')
+        .send(body);
+      expect(response.status).toBe(400);
+      expect(mocks.broadcastAndSave).not.toHaveBeenCalled();
+    });
+
+    it('falls back to intent-linked draft labels and memo when the request omits them', async () => {
+      mocks.findLinkedDraft.mockResolvedValue(draft({ label: 'L', memo: 'M' }));
+      const response = await request(app)
+        .post('/api/v1/wallets/wallet-1/transactions/broadcast')
+        .send(body);
+      expect(response.status).toBe(200);
+      expect(mocks.broadcastAndSave).toHaveBeenCalledWith(artifact, expect.objectContaining({
+        label: 'L', memo: 'M',
+      }));
+    });
   });
 });

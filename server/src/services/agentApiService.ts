@@ -479,7 +479,7 @@ export async function submitAgentFundingDraft(
   }
 
   if (draftSideEffects) {
-    await draftService.runDraftCreatedSideEffects(
+    draftService.dispatchDraftCreatedPostCommitNotifications(
       draftSideEffects.walletId,
       draftSideEffects.userId,
       draftSideEffects.draft,

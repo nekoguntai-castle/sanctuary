@@ -10,7 +10,9 @@
 
 import type { ApprovalRequest, ApprovalVote } from '../../generated/prisma/client';
 import { policyRepository } from '../../repositories/policyRepository';
+import type { PolicyDbClient } from '../../repositories/policyRepository';
 import { draftRepository } from '../../repositories/draftRepository';
+import type { DraftDbClient } from '../../repositories/draftRepository';
 import { NotFoundError, ForbiddenError, InvalidInputError, ConflictError } from '../../errors';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
@@ -26,10 +28,25 @@ const log = createLogger('VAULT_POLICY:SVC_APPROVAL');
 
 type ApprovalRequestWithVotes = ApprovalRequest & { votes: ApprovalVote[] };
 type ApprovalDraft = Awaited<ReturnType<typeof draftRepository.findById>>;
+export type ApprovalDbClient = DraftDbClient & PolicyDbClient;
 
 // ========================================
 // CREATE APPROVAL REQUESTS
 // ========================================
+
+/**
+ * Fire-and-forget dispatch of an approval-requested notification.
+ * Never throws; failures are logged as warnings.
+ */
+export function dispatchApprovalRequestedNotification(
+  walletId: string,
+  draftId: string,
+  userId: string
+): void {
+  notifyApprovalRequested(walletId, draftId, userId).catch(err => {
+    log.warn('Failed to send approval notification', { error: getErrorMessage(err) });
+  });
+}
 
 /**
  * Create approval requests for a draft based on triggered policies.
@@ -39,7 +56,9 @@ export async function createApprovalRequestsForDraft(
   draftId: string,
   walletId: string,
   createdByUserId: string,
-  triggeredPolicies: PolicyEvaluationResult['triggered']
+  triggeredPolicies: PolicyEvaluationResult['triggered'],
+  client?: ApprovalDbClient,
+  suppressNotification = false
 ): Promise<ApprovalRequest[]> {
   const approvalPolicies = triggeredPolicies.filter(t => t.action === 'approval_required');
 
@@ -50,7 +69,9 @@ export async function createApprovalRequestsForDraft(
   const requests: ApprovalRequest[] = [];
 
   for (const triggered of approvalPolicies) {
-    const policy = await policyRepository.findPolicyById(triggered.policyId);
+    const policy = client !== undefined
+      ? await policyRepository.findPolicyById(triggered.policyId, client)
+      : await policyRepository.findPolicyById(triggered.policyId);
     if (!policy) continue;
 
     const config = policy.config as unknown as ApprovalRequiredConfig;
@@ -62,14 +83,18 @@ export async function createApprovalRequestsForDraft(
       expiresAt.setHours(expiresAt.getHours() + config.expirationHours);
     }
 
-    const request = await policyRepository.createApprovalRequest({
+    const requestData = {
       draftTransactionId: draftId,
       policyId: triggered.policyId,
       requiredApprovals: config.requiredApprovals,
       quorumType: config.quorumType,
       allowSelfApproval: config.allowSelfApproval,
       expiresAt,
-    });
+    };
+
+    const request = client !== undefined
+      ? await policyRepository.createApprovalRequest(requestData, client)
+      : await policyRepository.createApprovalRequest(requestData);
 
     requests.push(request);
 
@@ -82,12 +107,14 @@ export async function createApprovalRequestsForDraft(
   }
 
   // Update draft approval status
-  await updateDraftApprovalStatus(draftId, 'pending');
+  await updateDraftApprovalStatus(draftId, 'pending', client);
 
-  // Send notifications (async, don't block)
-  notifyApprovalRequested(walletId, draftId, createdByUserId).catch(err => {
-    log.warn('Failed to send approval notification', { error: getErrorMessage(err) });
-  });
+  // Send notifications (async, don't block) unless suppressed.
+  // Suppression only skips the notification; request creation and the
+  // pending status update above always run.
+  if (!suppressNotification) {
+    dispatchApprovalRequestedNotification(walletId, draftId, createdByUserId);
+  }
 
   return requests;
 }
@@ -402,9 +429,14 @@ async function updateDraftApprovalFromRequests(draftId: string): Promise<void> {
 
 async function updateDraftApprovalStatus(
   draftId: string,
-  status: string
+  status: string,
+  client?: DraftDbClient
 ): Promise<void> {
-  await draftRepository.updateApprovalStatus(draftId, status);
+  if (client !== undefined) {
+    await draftRepository.updateApprovalStatus(draftId, status, client);
+  } else {
+    await draftRepository.updateApprovalStatus(draftId, status);
+  }
 }
 
 // ========================================
@@ -413,6 +445,7 @@ async function updateDraftApprovalStatus(
 
 export const approvalService = {
   createApprovalRequestsForDraft,
+  dispatchApprovalRequestedNotification,
   castVote,
   ownerOverride,
   getPendingApprovalsForUser,

@@ -3,6 +3,7 @@ import { CreateDraftRequestSchema } from '@sanctuary/shared/schemas/draftRequest
 import { draftRepository, systemSettingRepository } from '../repositories';
 import type { DraftDbClient } from '../repositories/draftRepository';
 import type { DraftLockDbClient } from '../repositories/draftLockRepository';
+import { withTransaction } from '../models/prisma';
 import { ConflictError, InvalidInputError } from '../errors';
 import { createLogger } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
@@ -10,14 +11,14 @@ import { SystemSettingSchemas } from '../utils/safeJson';
 import { DEFAULT_DRAFT_EXPIRATION_DAYS } from '../constants';
 import { lockUtxosForDraft, resolveUtxoIds } from './draftLockService';
 import { dispatchDraftNotification } from './notifications/dispatch';
-import { approvalService } from './vaultPolicy/approvalService';
+import { approvalService, type ApprovalDbClient } from './vaultPolicy/approvalService';
 import { validateInitialSigningState } from './draftSigning';
 import type { CreateDraftInput, InitialSigningState } from './draftTypes';
 import { loadSigningIntent, unsignedPsbtSha256 } from './bitcoin/signingIntent';
 
 const log = createLogger('DRAFT:SVC_CREATE');
 
-type CreateDraftDbClient = DraftDbClient & DraftLockDbClient;
+type CreateDraftDbClient = DraftDbClient & DraftLockDbClient & ApprovalDbClient;
 type DraftRequestJsonField = CreateDraftInput['outputs'];
 
 export interface CreateDraftOptions {
@@ -31,6 +32,10 @@ const optionalDraftJsonField = (value: DraftRequestJsonField): unknown => {
 
 const toDraftAmountNumber = (value: unknown): unknown => {
   return typeof value === 'string' ? Number(value) : value;
+};
+
+const requiresApproval = (data: CreateDraftInput): boolean => {
+  return data.policyEvaluation?.triggered?.some(t => t.action === 'approval_required') ?? false;
 };
 
 const normalizeDraftJsonAmounts = (
@@ -153,6 +158,7 @@ const createDraftRecord = async (
     signedPsbtBase64: initialSigningState.signedPsbtBase64,
     signedDeviceIds: initialSigningState.signedDeviceIds,
     status: initialSigningState.status,
+    approvalStatus: requiresApproval(data) ? 'pending' : undefined,
     inputPaths: data.inputPaths || [],
     signingIntentId: data.intentId,
     signingIntentDigest: data.intentDigest,
@@ -205,22 +211,23 @@ const createApprovalRequestsIfNeeded = async (
   draft: DraftTransaction,
   walletId: string,
   userId: string,
-  data: CreateDraftInput
+  data: CreateDraftInput,
+  client?: ApprovalDbClient,
+  suppressNotification = false
 ): Promise<void> => {
-  if (!data.policyEvaluation?.triggered?.some(t => t.action === 'approval_required')) {
+  if (!requiresApproval(data)) {
     return;
   }
 
-  try {
-    await approvalService.createApprovalRequestsForDraft(
-      draft.id,
-      walletId,
-      userId,
-      data.policyEvaluation.triggered
-    );
-  } catch (err) {
-    log.error('Failed to create approval requests', { error: getErrorMessage(err), draftId: draft.id });
-  }
+  const triggered = data.policyEvaluation!.triggered!;
+  await approvalService.createApprovalRequestsForDraft(
+    draft.id,
+    walletId,
+    userId,
+    triggered,
+    client,
+    suppressNotification
+  );
 };
 
 const dispatchCreatedDraftNotification = (
@@ -255,11 +262,50 @@ export async function runDraftCreatedSideEffects(
   walletId: string,
   userId: string,
   draft: DraftTransaction,
-  data: CreateDraftInput
+  data: CreateDraftInput,
+  client?: ApprovalDbClient
 ): Promise<void> {
-  await createApprovalRequestsIfNeeded(draft, walletId, userId, data);
+  await createApprovalRequestsIfNeeded(draft, walletId, userId, data, client);
   dispatchCreatedDraftNotification(walletId, userId, draft, data);
 }
+
+/**
+ * Post-commit notification dispatch for drafts created through an external
+ * transaction client. Approval requests must already exist (created inside the
+ * caller's transaction); this helper only dispatches notifications and never
+ * creates approval requests.
+ */
+export const dispatchDraftCreatedPostCommitNotifications = (
+  walletId: string,
+  userId: string,
+  draft: DraftTransaction,
+  data: CreateDraftInput
+): void => {
+  if (requiresApproval(data)) {
+    approvalService.dispatchApprovalRequestedNotification(walletId, draft.id, userId);
+  }
+  dispatchCreatedDraftNotification(walletId, userId, draft, data);
+};
+
+const persistDraftWithLocks = async (
+  walletId: string,
+  userId: string,
+  data: CreateDraftInput,
+  initialSigningState: InitialSigningState,
+  signingContext: Prisma.InputJsonValue,
+  client?: CreateDraftDbClient
+): Promise<DraftTransaction> => {
+  const draft = await createDraftRecord(
+    walletId,
+    userId,
+    data,
+    initialSigningState,
+    signingContext,
+    client
+  );
+  await lockSelectedUtxos(walletId, draft, data, client);
+  return draft;
+};
 
 /**
  * Create a new draft transaction.
@@ -270,6 +316,12 @@ export async function createDraft(
   data: CreateDraftInput,
   options: CreateDraftOptions = {}
 ): Promise<DraftTransaction> {
+  if (options.client && options.runSideEffects !== false) {
+    throw new InvalidInputError(
+      'External-client draft creation requires runSideEffects: false'
+    );
+  }
+
   const intent = await loadSigningIntent(
     { intentId: data.intentId, intentDigest: data.intentDigest },
     walletId,
@@ -283,20 +335,54 @@ export async function createDraft(
   assertValidCreateDraftInput(data);
 
   const initialSigningState = await validateInitialSigningState(walletId, data);
-  const draft = await createDraftRecord(
-    walletId,
-    userId,
-    data,
-    initialSigningState,
-    intent.signingContext as Prisma.InputJsonValue,
-    options.client,
-  );
-  await lockSelectedUtxos(walletId, draft, data, options.client);
+  const signingContext = intent.signingContext as Prisma.InputJsonValue;
+  const approvalRequired = requiresApproval(data);
+
+  let draft: DraftTransaction;
+  if (approvalRequired && options.client === undefined) {
+    // Approval-required drafts are born pending: one transaction creates the
+    // draft, locks UTXOs, and sets up approval requests exactly once. Any
+    // error propagates so the whole unit rolls back.
+    draft = await withTransaction(async (tx) => {
+      const created = await persistDraftWithLocks(
+        walletId,
+        userId,
+        data,
+        initialSigningState,
+        signingContext,
+        tx
+      );
+      await createApprovalRequestsIfNeeded(created, walletId, userId, data, tx, true);
+      return created;
+    });
+  } else {
+    draft = await persistDraftWithLocks(
+      walletId,
+      userId,
+      data,
+      initialSigningState,
+      signingContext,
+      options.client
+    );
+    if (approvalRequired) {
+      // External-client branch: the caller owns the transaction, so approval
+      // requests are created here within it (notification suppressed). No
+      // notifications are dispatched from this branch.
+      await createApprovalRequestsIfNeeded(draft, walletId, userId, data, options.client, true);
+    }
+  }
 
   log.info('Created draft', { draftId: draft.id, walletId, userId, isRBF: data.isRBF ?? false });
 
   if (options.runSideEffects !== false) {
-    await runDraftCreatedSideEffects(walletId, userId, draft, data);
+    if (approvalRequired && options.client === undefined) {
+      // Approval setup already ran inside the transaction with notification
+      // suppressed; dispatch it now, then the draft-created notification.
+      approvalService.dispatchApprovalRequestedNotification(walletId, draft.id, userId);
+      dispatchCreatedDraftNotification(walletId, userId, draft, data);
+    } else {
+      await runDraftCreatedSideEffects(walletId, userId, draft, data, options.client);
+    }
   }
 
   return draft;

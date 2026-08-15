@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   createFundingAttempt: vi.fn(),
   createDraft: vi.fn(),
   createTransaction: vi.fn(),
+  dispatchDraftCreatedPostCommitNotifications: vi.fn(),
   enforceAgentFundingPolicy: vi.fn(),
   evaluateRejectedFundingAttemptAlert: vi.fn(),
   evaluatePolicies: vi.fn(),
@@ -75,6 +76,8 @@ vi.mock('../../../src/services/bitcoin/signingIntent', () => ({
 vi.mock('../../../src/services/draftService', () => ({
   draftService: {
     createDraft: mocks.createDraft,
+    dispatchDraftCreatedPostCommitNotifications:
+      mocks.dispatchDraftCreatedPostCommitNotifications,
     runDraftCreatedSideEffects: mocks.runDraftCreatedSideEffects,
   },
 }));
@@ -141,6 +144,9 @@ describe('agentApiService', () => {
     vi.clearAllMocks();
     mocks.createFundingAttempt.mockResolvedValue({ id: 'attempt-1' });
     mocks.createDraft.mockResolvedValue({ id: 'draft-1' });
+    mocks.dispatchDraftCreatedPostCommitNotifications.mockResolvedValue(
+      undefined,
+    );
     mocks.createTransaction.mockResolvedValue(makeTransactionData());
     mocks.findNetwork.mockResolvedValue('testnet3');
     mocks.createSigningIntent.mockResolvedValue({
@@ -370,6 +376,18 @@ describe('agentApiService', () => {
       }),
     );
 
+    const sideEffectOrder: string[] = [];
+    mocks.withAgentFundingTransaction.mockImplementationOnce(async (_agentId, fn) => {
+      const result = await fn({ tx: true });
+      sideEffectOrder.push('tx-resolved');
+      return result;
+    });
+    mocks.dispatchDraftCreatedPostCommitNotifications.mockImplementationOnce(
+      () => {
+        sideEffectOrder.push('dispatch');
+      },
+    );
+
     await expect(
       submitAgentFundingDraft({
         context: agentContext,
@@ -415,12 +433,15 @@ describe('agentApiService', () => {
       expect.objectContaining({ status: 'accepted', amount: 1000n }),
       expect.any(Object),
     );
-    expect(mocks.runDraftCreatedSideEffects).toHaveBeenCalledWith(
+    expect(sideEffectOrder).toEqual(['tx-resolved', 'dispatch']);
+    expect(mocks.dispatchDraftCreatedPostCommitNotifications).toHaveBeenCalledTimes(1);
+    expect(mocks.dispatchDraftCreatedPostCommitNotifications).toHaveBeenCalledWith(
       'funding-wallet',
       'user-1',
       { id: 'draft-1' },
       expect.objectContaining({ policyEvaluation }),
     );
+    expect(mocks.runDraftCreatedSideEffects).not.toHaveBeenCalled();
   });
 
   it('rolls back agent draft acceptance when accepted attempt recording fails', async () => {
@@ -441,6 +462,7 @@ describe('agentApiService', () => {
       expect.objectContaining({ runSideEffects: false }),
     );
     expect(mocks.runDraftCreatedSideEffects).not.toHaveBeenCalled();
+    expect(mocks.dispatchDraftCreatedPostCommitNotifications).not.toHaveBeenCalled();
     expect(mocks.createFundingAttempt).toHaveBeenLastCalledWith(
       expect.objectContaining({
         status: 'rejected',
@@ -468,6 +490,7 @@ describe('agentApiService', () => {
     });
 
     expect(mocks.runDraftCreatedSideEffects).not.toHaveBeenCalled();
+    expect(mocks.dispatchDraftCreatedPostCommitNotifications).not.toHaveBeenCalled();
   });
 
   it('rejects vault policy blocks before draft creation', async () => {
