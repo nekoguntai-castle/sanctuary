@@ -3,6 +3,7 @@ import { CANONICAL_ADDRESS_COORDINATE_VERSION } from '@sanctuary/shared/constant
 import {
   assertPersistedCanonicalPolicy,
   canonicalPolicyIdentity,
+  hasCanonicalPolicyIdentity,
   hasCompleteCanonicalAddressEvidence,
   requireCanonicalWalletPolicy,
 } from '../../../../src/services/wallet/canonicalPolicy';
@@ -65,5 +66,29 @@ describe('canonical wallet policy identity', () => {
     ]) {
       expect(hasCompleteCanonicalAddressEvidence(incomplete)).toBe(false);
     }
+  });
+
+  it('detects whether a wallet opted into canonical address evidence', () => {
+    // Legacy rows from before the canonical-evidence migrations: nothing to validate.
+    expect(hasCanonicalPolicyIdentity({
+      canonicalPolicyId: null,
+      canonicalPolicyVersion: null,
+    })).toBe(false);
+
+    expect(hasCanonicalPolicyIdentity({
+      canonicalPolicyId: 'single-sig-native-segwit-bip84-v1',
+      canonicalPolicyVersion: 1,
+    })).toBe(true);
+
+    // Half-populated identities are unreachable under the CHECK constraint but
+    // must fail closed rather than read as "never opted in".
+    expect(hasCanonicalPolicyIdentity({
+      canonicalPolicyId: 'single-sig-native-segwit-bip84-v1',
+      canonicalPolicyVersion: null,
+    })).toBe(true);
+    expect(hasCanonicalPolicyIdentity({
+      canonicalPolicyId: null,
+      canonicalPolicyVersion: 1,
+    })).toBe(true);
   });
 });

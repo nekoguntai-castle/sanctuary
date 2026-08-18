@@ -38,9 +38,15 @@ const log = createLogger('BITCOIN:SVC_UTILS');
 bitcoin.initEccLib(ecc);
 
 /**
- * Decode a recipient address into the exact script the transaction will pay.
+ * Decode an address into the exact script a transaction pays it.
  * Keeping validation and script construction on one production path prevents
  * the UI, API validation, and transaction builder from disagreeing.
+ *
+ * Also used by the sync context to anchor ownership for wallets that predate
+ * canonical address evidence. That is sound because the result is a pure
+ * function of an address we already hold — it derives nothing and proves no
+ * provenance, so it is strictly weaker than descriptor-derived evidence and
+ * must never stand in for it on a path that confers ownership.
  */
 export function addressToOutputScript(
   address: string,

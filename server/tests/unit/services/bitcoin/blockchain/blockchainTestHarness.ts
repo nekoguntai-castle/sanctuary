@@ -130,11 +130,32 @@ vi.mock('../../../../../src/services/bitcoin/rawTransactionEvidence', async impo
   };
 });
 
-vi.mock('../../../../../src/services/bitcoin/utils', () => ({
-  validateAddress: vi.fn().mockReturnValue({ valid: true }),
-  parseTransaction: vi.fn(),
-  getNetwork: vi.fn().mockReturnValue(require('bitcoinjs-lib').networks.testnet),
-}));
+// Spread the real module: the sync context derives ownership scripts with
+// addressToOutputScript, and a hand-listed partial mock silently returns
+// undefined for anything it forgot, which surfaces as unrelated evidence
+// rejections rather than an import error.
+vi.mock('../../../../../src/services/bitcoin/utils', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../../../src/services/bitcoin/utils')>();
+  return {
+    ...actual,
+    validateAddress: vi.fn().mockReturnValue({ valid: true }),
+    parseTransaction: vi.fn(),
+    getNetwork: vi.fn().mockReturnValue(require('bitcoinjs-lib').networks.testnet),
+    // The sync context derives each address's ownership script here. Several
+    // long-standing fixtures below use placeholder addresses ('tb1test',
+    // 'tb1qtest') that no network can decode, and production correctly refuses
+    // to invent an anchor for those. Give them one stable synthetic script so
+    // suites whose subject is RBF and UTXO reconciliation keep testing that,
+    // rather than address decoding.
+    addressToOutputScript: vi.fn((address: string, network?: Parameters<typeof actual.addressToOutputScript>[1]) => {
+      try {
+        return actual.addressToOutputScript(address, network);
+      } catch {
+        return Buffer.from(`0014${'00'.repeat(20)}`, 'hex');
+      }
+    }),
+  };
+});
 
 vi.mock('../../../../../src/websocket/notifications', () => ({
   walletLog: vi.fn(),

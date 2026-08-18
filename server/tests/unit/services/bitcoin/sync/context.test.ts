@@ -67,6 +67,50 @@ describe('Sync context factory', () => {
     expect(ctx.addressToDerivationPath.has('tb1qcontextaddress000000000000000000000000000002')).toBe(false);
   });
 
+  it('derives an ownership script for legacy rows that never got canonical evidence', () => {
+    const ctx = createSyncContext({
+      walletId: 'wallet-ctx',
+      wallet: testWallet,
+      network: 'testnet3',
+      client: {} as any,
+      addresses: [
+        {
+          id: 'legacy-1',
+          address: 'tb1q6rz28mcfaxtmd6v789l9rrlrusdprr9pqcpvkl',
+          derivationPath: "m/84'/1'/0'/0/0",
+          scriptPubKey: null,
+        } as any,
+      ],
+      currentBlockHeight: 1_000,
+    });
+
+    const script = '0014d0c4a3ef09e997b6e99e397e518fe3e41a118ca1';
+    expect(ctx.addressMap.get('tb1q6rz28mcfaxtmd6v789l9rrlrusdprr9pqcpvkl')?.scriptPubKey).toBe(script);
+    expect(ctx.walletScriptToAddress.get(script)?.id).toBe('legacy-1');
+  });
+
+  it('leaves a persisted canonical script exactly as stored', () => {
+    const stored = '0014d0c4a3ef09e997b6e99e397e518fe3e41a118ca1';
+    const ctx = createSyncContext({
+      walletId: 'wallet-ctx',
+      wallet: testWallet,
+      network: 'testnet3',
+      client: {} as any,
+      addresses: [
+        {
+          id: 'canonical-1',
+          address: 'tb1q6rz28mcfaxtmd6v789l9rrlrusdprr9pqcpvkl',
+          derivationPath: "m/84'/1'/0'/0/0",
+          scriptPubKey: stored,
+        } as any,
+      ],
+      currentBlockHeight: 1_000,
+    });
+
+    expect(ctx.addressMap.get('tb1q6rz28mcfaxtmd6v789l9rrlrusdprr9pqcpvkl')?.scriptPubKey).toBe(stored);
+    expect(ctx.walletScriptToAddress.get(stored)?.id).toBe('canonical-1');
+  });
+
   it('applies overrides in test context while preserving defaults', () => {
     const stats = createSyncStats();
     stats.newAddressesGenerated = 3;

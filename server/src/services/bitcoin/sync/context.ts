@@ -6,7 +6,38 @@
 
 import type { Address, Wallet } from '../../../generated/prisma/client';
 import type { NodeClientInterface } from '../nodeClient';
+import { addressToOutputScript } from '../utils';
 import type { SyncContext, SyncStats, BitcoinNetwork } from './types';
+
+/**
+ * Give one address row the ownership anchor the evidence phases require.
+ *
+ * Canonical rows carry a persisted `scriptPubKey`. Rows that predate the
+ * canonical-evidence migrations carry none and no migration backfills them, so
+ * derive the script from the stored address instead. The output script is a
+ * pure function of the address, computed locally from data we already hold —
+ * it introduces no remote input and asserts no canonical provenance. This
+ * restores the pre-canonical ownership test (an output is ours when it pays an
+ * address we hold) for wallets that never opted in, while canonical wallets
+ * keep the strictly stronger descriptor-derived evidence untouched.
+ *
+ * Derived scripts stay context-local and are never persisted: writing one alone
+ * would violate `addresses_canonical_coordinate_complete_check`, which demands
+ * the whole coordinate set or none of it.
+ */
+function withOwnershipScript(address: Address, network: BitcoinNetwork): Address {
+  if (address.scriptPubKey) return address;
+  try {
+    return {
+      ...address,
+      scriptPubKey: addressToOutputScript(address.address, network).toString('hex'),
+    };
+  } catch {
+    // An address we cannot decode gets no anchor, so the evidence phases keep
+    // failing it closed rather than guessing at ownership.
+    return address;
+  }
+}
 
 /**
  * Create initial empty sync stats
@@ -37,7 +68,10 @@ export function createSyncContext(params: {
   currentBlockHeight: number;
   viaTor?: boolean;
 }): SyncContext {
-  const { walletId, wallet, network, client, addresses, currentBlockHeight, viaTor = false } = params;
+  const {
+    walletId, wallet, network, client, currentBlockHeight, viaTor = false,
+  } = params;
+  const addresses = params.addresses.map(address => withOwnershipScript(address, network));
 
   // Build address lookup structures
   const walletAddressSet = new Set(addresses.map(a => a.address));

@@ -31,6 +31,34 @@ export function hasCompleteCanonicalAddressEvidence(address: {
     && /^(?:[0-9a-f]{2})+$/.test(address.scriptPubKey);
 }
 
+/**
+ * Whether a wallet may have opted into canonical address evidence.
+ *
+ * Wallets created before the canonical-policy scheme carry no policy identity,
+ * and the database guarantees their address rows carry no coordinate evidence
+ * either: `addresses_canonical_coordinate_complete_check` forces the five
+ * coordinate columns to be all-null or all-set, and the
+ * `addresses_enforce_wallet_policy_identity` trigger rejects any set row whose
+ * policy identity differs from its wallet's. A wallet without an identity
+ * therefore has nothing for `assertCanonicalAddressesMatchWallet` to compare
+ * against.
+ *
+ * Use this only to skip a canonical comparison that cannot apply. It is NOT a
+ * licence to confer ownership: paths that hand out a receive address or bind a
+ * signing input must keep requiring real evidence rather than consulting this.
+ *
+ * `false` is the load-bearing answer, so both fields are required — a partial
+ * `select` that omits them must be a compile error, not a silent skip. A
+ * half-populated identity (unreachable under the CHECK constraint, but cheap to
+ * defend) answers `true` so it fails closed downstream.
+ */
+export function hasCanonicalPolicyIdentity(wallet: {
+  canonicalPolicyId: string | null;
+  canonicalPolicyVersion: number | null;
+}): boolean {
+  return wallet.canonicalPolicyId !== null || wallet.canonicalPolicyVersion !== null;
+}
+
 export function requireCanonicalWalletPolicy(
   walletType: unknown,
   scriptType: unknown,

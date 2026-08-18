@@ -14,6 +14,7 @@ import { walletLog } from "../../../websocket/notifications";
 import { getBlockHeight } from "../utils/blockHeight";
 import { parseAddressDerivationPath } from "@sanctuary/shared/utils/bitcoin";
 import { assertCanonicalAddressesMatchWallet } from '../../wallet/canonicalAddressValidation';
+import { hasCanonicalPolicyIdentity } from '../../wallet/canonicalPolicy';
 
 import { createSyncContext } from "./context";
 import type {
@@ -86,7 +87,15 @@ export async function executeSyncPipeline(
   const addresses = await addressRepository.findByWalletId(walletId);
 
   // Remote observations must never confer ownership on stale or drifted rows.
-  if (addresses.length > 0) {
+  // Wallets that predate canonical address evidence carry none to compare
+  // against, so this check cannot apply to them; they synced without it before
+  // it existed and must keep doing so, or every upgraded install stops syncing
+  // entirely. Such a wallet's ownership anchor is its stored address, with no
+  // descriptor cross-check — v0.8.62 parity, deliberately weaker than the
+  // evidence a canonical wallet gets. Handing out a receive address stays
+  // fail-closed for them (see addressDisplaySafety), so remediation is still
+  // the way a legacy wallet becomes fully usable.
+  if (addresses.length > 0 && hasCanonicalPolicyIdentity(wallet)) {
     assertCanonicalAddressesMatchWallet(wallet, addresses);
   }
 

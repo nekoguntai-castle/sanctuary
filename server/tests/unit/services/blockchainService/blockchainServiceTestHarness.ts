@@ -115,6 +115,25 @@ vi.mock('../../../../src/services/wallet/canonicalAddressValidation', () => ({
   }),
 }));
 
+// The sync context now derives each address's ownership script itself, so the
+// fixtures below no longer get one as a side effect of the guard mock above.
+// Their placeholder addresses ('bc1qwallet') decode on no network, and
+// production correctly refuses to invent an anchor — so keep serving the same
+// synthetic script these fixtures have always been written against.
+vi.mock('../../../../src/services/bitcoin/utils', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../../src/services/bitcoin/utils')>();
+  return {
+    ...actual,
+    addressToOutputScript: vi.fn((address: string, network?: Parameters<typeof actual.addressToOutputScript>[1]) => {
+      try {
+        return actual.addressToOutputScript(address, network);
+      } catch {
+        return Buffer.from(`0014${'00'.repeat(20)}`, 'hex');
+      }
+    }),
+  };
+});
+
 vi.mock('../../../../src/services/bitcoin/sync/evidenceAuthentication', () => ({
   authenticateHistoryResults: vi.fn(),
   fetchAuthenticatedTransactions: vi.fn(async (ctx, txids) => {
