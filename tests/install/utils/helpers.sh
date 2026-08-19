@@ -428,6 +428,30 @@ cleanup_containers() {
         run_project_compose "$project_dir" down -v --remove-orphans 2>/dev/null || true
     )
 
+    # The Grafana quiescence coordinator creates its migration and control-helper
+    # containers directly with `podman create` (run-grafana-password-migration.sh,
+    # grafana-quiescence-records.sh), labelled sanctuary.grafana.* rather than as
+    # compose services -- so the `compose down --remove-orphans` above is
+    # structurally unable to see them.
+    #
+    # v0.8.64-rc4 failed on exactly that gap. The baseline install lost the podman
+    # terminal-state race, the harness retried and recovered, but the orphaned
+    # migration container survived into the upgrade phase. The upgrade rebuilds the
+    # migration image, and validate_migration_identity() compares
+    # `image = $migration_image_id`, so a container left over from the previous
+    # image can never be reconciled: the upgrade died with "the reserved migration
+    # container has an unexpected identity" and took the whole optional-profiles
+    # fixture with it.
+    #
+    # Sweep by label, not by name: it catches the migration container and the
+    # control helpers alike and survives any future rename. Scoped to this
+    # project, so it inherits the production-volume guard above.
+    local grafana_cid
+    while read -r grafana_cid; do
+        [ -n "$grafana_cid" ] || continue
+        docker rm -f "$grafana_cid" >/dev/null 2>&1 || true
+    done < <(docker ps -aq --filter "label=sanctuary.grafana.project=$project" 2>/dev/null || true)
+
     cleanup_docker_resources --project "$project" 2>/dev/null || true
 
     log_success "Cleanup complete"

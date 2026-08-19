@@ -171,6 +171,54 @@ test_compose_file_has_explicit_name() {
     "docker-compose.yml must declare 'name: sanctuary' explicitly so the project name does not depend on cwd basename" || return 1
 }
 
+# ---------------------------------------------------------------------------
+# The Grafana quiescence coordinator creates its migration and control-helper
+# containers directly with `podman create` (run-grafana-password-migration.sh:241,
+# grafana-quiescence-records.sh:47), labelled sanctuary.grafana.*, NOT as compose
+# services. `compose down -v --remove-orphans` therefore cannot see them.
+#
+# v0.8.64-rc4 failed on exactly this: the baseline install lost the podman
+# terminal-state race, the harness retried, and the orphaned migration container
+# survived into the upgrade phase. The upgrade rebuilds the migration image, and
+# validate_migration_identity() compares `image = $migration_image_id`, so a
+# container left from the previous image can never be reconciled -- the upgrade
+# died with "the reserved migration container has an unexpected identity" and the
+# whole optional-profiles fixture failed.
+#
+# Sweep by label rather than by name: it catches the migration container and the
+# control helpers alike, and survives any future rename.
+test_cleanup_removes_out_of_band_grafana_containers() {
+  local tmp; tmp="$(mktemp -d)"
+  local calls="$tmp/docker.calls"
+  cat > "$tmp/docker" <<'STUB'
+#!/bin/bash
+printf '%s
+' "$*" >> "$DOCKER_CALLS"
+# report one container for the grafana label filter, nothing otherwise
+if [[ "$*" == *"label=sanctuary.grafana.project="* && "$*" == *"-aq"* ]]; then
+  echo "grafana-orphan-cid"
+fi
+exit 0
+STUB
+  chmod +x "$tmp/docker"
+  : > "$calls"
+
+  (
+    export PATH="$tmp:$PATH" DOCKER_CALLS="$calls"
+    export COMPOSE_PROJECT_NAME="sanctuary-test-cleanup-$$"
+    # shellcheck disable=SC1090
+    source "$HELPERS"
+    cleanup_containers "$tmp" >/dev/null 2>&1 || true
+  )
+
+  grep -q "label=sanctuary.grafana.project=" "$calls" \
+    || { rm -rf "$tmp"; return 1; }
+  grep -q "rm -f grafana-orphan-cid" "$calls" \
+    || { rm -rf "$tmp"; return 1; }
+  rm -rf "$tmp"
+  return 0
+}
+
 main() {
   echo ""
   echo "cleanup_containers Guard Regression Tests"
@@ -181,6 +229,7 @@ main() {
   run_test "refuses empty COMPOSE_PROJECT_NAME" test_refuses_empty_project_name
   run_test "run_project_compose passes -p when env is set" test_run_project_compose_passes_explicit_project_flag
   run_test "docker-compose.yml declares name: sanctuary explicitly" test_compose_file_has_explicit_name
+  run_test "cleanup removes out-of-band grafana containers" test_cleanup_removes_out_of_band_grafana_containers
 
   echo ""
   echo "Total:  $TESTS_RUN"
