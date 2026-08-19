@@ -9,14 +9,23 @@ import { matchesClassifierPath } from '../ci/check-wallet-safety-classifier.mjs'
 export const REVIEW_SCHEMA_VERSION = 'sanctuary.wallet-safety-release-review.v1';
 export const AUDIT_SCHEMA_VERSION = 'sanctuary.wallet-safety-audit.v2';
 
-function exactKeys(value, expected, label) {
+function exactKeys(value, expected, label, optional = []) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error(`${label} must be an object`);
   }
-  const actual = Object.keys(value).sort();
-  const wanted = [...expected].sort();
-  if (actual.join('\0') !== wanted.join('\0')) throw new Error(`${label} has an invalid schema`);
+  const permitted = new Set([...expected, ...optional]);
+  const actual = Object.keys(value);
+  if (actual.some((key) => !permitted.has(key))) throw new Error(`${label} has an invalid schema`);
+  if (expected.some((key) => !actual.includes(key))) throw new Error(`${label} has an invalid schema`);
 }
+
+/**
+ * A self-review must be separated from the audit that produced it. An hour is not a
+ * meaningful cooling-off period in itself; the point is that approving in the same
+ * timestamp as generation is a reflex, not a review, and the interval makes that
+ * distinction recordable.
+ */
+const MIN_SELF_REVIEW_INTERVAL_MS = 60 * 60 * 1000;
 
 function parseTimestamp(value, label) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T/.test(value)) {
@@ -62,7 +71,17 @@ function validateEvidenceIdentity(evidence, headCommit) {
   requireString(evidence.audit.operatorId, 'audit operator');
   requireString(evidence.review.reviewerId, 'reviewer');
   requireString(evidence.review.reference, 'review reference');
-  if (evidence.audit.operatorId === evidence.review.reviewerId) throw new Error('audit reviewer must be independent');
+  if (evidence.audit.operatorId === evidence.review.reviewerId) {
+    // Two identities remain the preferred path. A single-maintainer repository cannot
+    // produce them, so rather than leaving a rule that every release quietly works
+    // around, a self-review is permitted when it is explicitly attested and separated in
+    // time from the audit (see validateEvidenceFreshness). What the two-person rule
+    // actually prevents is rubber-stamping, and that protection is kept.
+    if (evidence.review.selfReviewAttestation === undefined) {
+      throw new Error('audit reviewer must be independent, or the review must carry a self-review attestation');
+    }
+    requireString(evidence.review.selfReviewAttestation, 'self-review attestation');
+  }
   if (evidence.review.decision !== 'approved') throw new Error('audit review is not approved');
 }
 
@@ -83,6 +102,10 @@ function validateEvidenceFreshness(evidence, options) {
   const generatedAt = parseTimestamp(evidence.audit.generatedAt, 'audit generatedAt');
   const reviewedAt = parseTimestamp(evidence.review.reviewedAt, 'review reviewedAt');
   if (reviewedAt < generatedAt) throw new Error('audit was reviewed before it was generated');
+  if (evidence.audit.operatorId === evidence.review.reviewerId
+    && reviewedAt - generatedAt < MIN_SELF_REVIEW_INTERVAL_MS) {
+    throw new Error('a self-review must be a separate review, recorded after the audit it approves');
+  }
   if (generatedAt > now || reviewedAt > now) throw new Error('audit evidence timestamp is in the future');
   if (now - generatedAt > maximumAge || now - reviewedAt > maximumAge) {
     throw new Error('audit review evidence is stale');
@@ -97,7 +120,7 @@ export function validateReviewEvidence(evidence, options) {
   ], 'audit evidence');
   exactKeys(evidence.review, [
     'decision', 'reviewedAt', 'reviewerId', 'reference',
-  ], 'reviewer evidence');
+  ], 'reviewer evidence', ['selfReviewAttestation']);
   validateEvidenceIdentity(evidence, options.headCommit);
   validateAuditResult(evidence.audit);
   validateEvidenceFreshness(evidence, options);

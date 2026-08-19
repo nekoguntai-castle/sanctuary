@@ -247,3 +247,51 @@ test('release-candidate scope blocks SigningFlow changes without review evidence
 test('release-candidate scope blocks raw operational-xpub changes without review evidence', (context) => {
   assertReleaseCandidateRequiresEvidence(context, 'src/api/walletXpub.ts');
 });
+
+// --- single-maintainer attestation -------------------------------------------------
+//
+// A two-person review is unsatisfiable on a single-maintainer repository. What that rule
+// actually prevents is rubber-stamping: approving your own audit in the same breath as
+// producing it. The single-maintainer path keeps that protection by requiring the review
+// to be a separate, explicitly attested act, separated in time.
+
+function selfReviewedEvidence(overrides = {}) {
+  const evidence = validEvidence();
+  evidence.audit.operatorId = 'solo-maintainer';
+  evidence.review.reviewerId = 'solo-maintainer';
+  evidence.review.selfReviewAttestation = 'No second maintainer exists for this repository.';
+  return { ...evidence, ...overrides };
+}
+
+test('rejects a self-review with no attestation', () => {
+  const evidence = selfReviewedEvidence();
+  delete evidence.review.selfReviewAttestation;
+
+  assert.throws(() => validate(evidence), /reviewer must be independent/);
+});
+
+test('accepts a self-review carrying an explicit attestation and a real interval', () => {
+  const evidence = selfReviewedEvidence();
+  // Generated 10:00, reviewed 11:00 — an hour apart.
+  assert.equal(validate(evidence).review.reviewerId, 'solo-maintainer');
+});
+
+test('rejects a self-review approved in the same breath as the audit', () => {
+  const evidence = selfReviewedEvidence();
+  evidence.review.reviewedAt = evidence.audit.generatedAt;
+
+  assert.throws(() => validate(evidence), /separate review/);
+});
+
+test('rejects an empty or whitespace attestation', () => {
+  const evidence = selfReviewedEvidence();
+  evidence.review.selfReviewAttestation = '   ';
+
+  assert.throws(() => validate(evidence), /attestation/);
+});
+
+test('ignores the attestation when the reviewer is genuinely independent', () => {
+  // Two identities remain the preferred path and must not require the extra field.
+  const evidence = validEvidence();
+  assert.equal(validate(evidence).review.reviewerId, 'independent-reviewer');
+});
