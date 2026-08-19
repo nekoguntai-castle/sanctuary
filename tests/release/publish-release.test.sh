@@ -67,7 +67,7 @@ elif [[ "$url" == *"/actions/runs?"* ]]; then
 elif [[ "$url" == *"/actions/runs/42" ]]; then
   body="$(jq -cn \
     --arg status "${RELEASE_TEST_GATE_STATUS:-success}" \
-    --arg tag "$RELEASE_TEST_TAG" \
+    --arg tag "${RELEASE_TEST_GATE_REF:-$RELEASE_TEST_TAG}" \
     --arg sha "$RELEASE_TEST_SHA" \
     '{workflow_id:"install-test.yml",event:"push",status:$status,prettyref:$tag,commit_sha:$sha}')"
 elif [[ "$url" == *"forgejo.test"*"/git/commits/"* ]]; then
@@ -209,6 +209,45 @@ run_publish() {
     TMPDIR="$fixture/tmp" \
     "$fixture/scripts/release/publish-release.sh" "$tag" "$@"
   )
+}
+
+# The stable tag and its final RC are the same commit, and install-test.yml gives every
+# refs/tags/v* the identical release-critical scope -- so the RC run already validated these
+# exact bytes. v0.8.64 re-ran that ~2h matrix on the stable tag and lost it three times to
+# infrastructure (issue #837), which is pure wall clock for zero added signal.
+test_rc_tag_run_at_same_commit_satisfies_gate() {
+  local tag="v1.2.3"
+  local fixture
+  fixture="$(new_fixture rc-gate "$tag")"
+  RELEASE_TEST_GATE_REF="$tag-rc3" run_publish "$fixture" "$tag" > "$fixture/output.log"
+  assert_contains "$fixture/output.log" "published to Forgejo and GitHub"
+  assert_contains "$fixture/output.log" "Forgejo release gate is green"
+}
+
+# The widening must stay tight: only <tag>-rc<digits>, never an arbitrary suffix.
+test_non_numeric_rc_suffix_does_not_satisfy_gate() {
+  local tag="v1.2.3"
+  local fixture
+  fixture="$(new_fixture rc-gate-bad-suffix "$tag")"
+  if RELEASE_TEST_GATE_REF="$tag-rcX" run_publish "$fixture" "$tag" \
+    > "$fixture/output.log" 2>&1; then
+    fail "a non-numeric rc suffix unexpectedly satisfied the release gate"
+  fi
+  assert_contains "$fixture/output.log" "no successful install-test.yml"
+  assert_not_contains "$fixture/trace.log" "create-release"
+}
+
+# An unrelated tag's run must never satisfy the gate, however green it is.
+test_foreign_tag_run_does_not_satisfy_gate() {
+  local tag="v1.2.3"
+  local fixture
+  fixture="$(new_fixture rc-gate-foreign "$tag")"
+  if RELEASE_TEST_GATE_REF="v9.9.9" run_publish "$fixture" "$tag" \
+    > "$fixture/output.log" 2>&1; then
+    fail "a foreign tag's run unexpectedly satisfied the release gate"
+  fi
+  assert_contains "$fixture/output.log" "no successful install-test.yml"
+  assert_not_contains "$fixture/trace.log" "create-release"
 }
 
 test_dry_run_verifies_without_mutation() {
@@ -397,6 +436,9 @@ test_exact_tag_lookup_ignores_branch_name_collision() {
 }
 
 test_dry_run_verifies_without_mutation
+test_rc_tag_run_at_same_commit_satisfies_gate
+test_non_numeric_rc_suffix_does_not_satisfy_gate
+test_foreign_tag_run_does_not_satisfy_gate
 test_real_publish_orders_release_gates
 test_existing_github_tag_is_idempotent
 test_dirty_checkout_fails_before_network

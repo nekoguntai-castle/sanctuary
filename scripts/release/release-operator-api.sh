@@ -56,7 +56,16 @@ verify_forgejo_release_gate() {
       return
     fi
   done < <(jq -r '.workflow_runs[]? | select(.workflow_id == "install-test.yml" and .event == "push" and .status == "success") | .id' "$response")
-  fail "no successful install-test.yml push run matches tag $TAG at $RELEASE_COMMIT"
+  # Name what was actually found. The bare "no run matches" gave no way to tell a wrong event
+  # from a wrong ref from a wrong commit, which is what made this an hour of guesswork.
+  local all_runs="$TEMP_DIR/forgejo-runs-unfiltered.json"
+  if [[ "$(api_request GET "$base/actions/runs?head_sha=${RELEASE_COMMIT}&limit=50" \
+    "$FORGEJO_TOKEN" "$all_runs")" == "200" ]]; then
+    jq -r '.workflow_runs[]? | select(.workflow_id == "install-test.yml")
+      | "  observed: id=\(.id) event=\(.event) status=\(.status) ref=\(.prettyref)"' \
+      "$all_runs" >&2 || true
+  fi
+  fail "no successful install-test.yml push run matches tag $TAG (or $TAG-rc<N>) at $RELEASE_COMMIT"
 }
 
 forgejo_run_is_green_tag_gate() {
@@ -66,13 +75,26 @@ forgejo_run_is_green_tag_gate() {
   local code
   code="$(api_request GET "$base/actions/runs/$run_id" "$FORGEJO_TOKEN" "$response")" || return 1
   [[ "$code" == "200" ]] || return 1
+  # The stable tag and its release candidates are validated by the SAME workflow, at the same
+  # commit, with the same scope: install-test.yml fires on every refs/tags/v* and
+  # classify-install-scope.sh gives them all `release-critical`. Accepting <tag>-rc<N> therefore
+  # adds no new trust -- it recognises validation that already happened on identical bytes -- and
+  # removes a duplicate ~2h matrix that v0.8.64 lost to infrastructure three times (issue #837).
+  #
+  # Everything else stays pinned. commit_sha must still equal the release commit, so an RC that
+  # was cut from different bytes cannot vouch for this tag. `event == "push"` is deliberately NOT
+  # relaxed: workflow_dispatch carries a `test_suite` input that can narrow the run to `unit`, and
+  # the run JSON does not expose inputs, so a dispatch run cannot be proven to have covered the
+  # release-critical lanes.
   jq -e \
     --arg tag "$TAG" \
     --arg sha "$RELEASE_COMMIT" \
     '.workflow_id == "install-test.yml"
       and .event == "push"
       and .status == "success"
-      and .prettyref == $tag
+      and (.prettyref == $tag
+        or ((.prettyref | startswith($tag + "-rc"))
+          and ((.prettyref | ltrimstr($tag + "-rc")) | test("^[0-9]+$"))))
       and .commit_sha == $sha' \
     "$response" >/dev/null
 }

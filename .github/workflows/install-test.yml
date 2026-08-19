@@ -959,6 +959,7 @@ jobs:
           '
 
       - name: Run baseline upgrades sequentially
+        timeout-minutes: 100
         env:
           UPGRADE_BASELINE_REFS: ${{ needs.determine-scope.outputs.upgrade_baseline_refs }}
           UPGRADE_EXTENDED_SOURCE_REF: ${{ github.event.inputs.upgrade_source_ref }}
@@ -1113,7 +1114,7 @@ jobs:
         needs.determine-scope.outputs.run_install_script != 'true')) &&
       (needs.install-stack-smoke.result == 'success' || needs.install-stack-smoke.result == 'skipped' || needs.install-stack-smoke.result == 'failure') &&
       (needs.auth-flow-test.result == 'success' || needs.auth-flow-test.result == 'skipped')
-    timeout-minutes: 120
+    timeout-minutes: 180
     env:
       JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/upgrade-extended-fixtures
 
@@ -1135,6 +1136,7 @@ jobs:
         run: scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" scripts/ci/wait-for-docker.sh
 
       - name: Run extended upgrade fixtures sequentially
+        timeout-minutes: 150
         env:
           SANCTUARY_UPGRADE_SOURCE_REF_OVERRIDE: ${{ github.event.inputs.upgrade_source_ref }}
           SANCTUARY_UPGRADE_BASELINE_REFS: ${{ needs.determine-scope.outputs.upgrade_baseline_refs }}

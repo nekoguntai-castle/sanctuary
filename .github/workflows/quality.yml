@@ -523,6 +523,7 @@ jobs:
           clean: false
 
       - name: Install actionlint + shellcheck
+        timeout-minutes: 4
         run: |
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-actionlint-shellcheck.log" bash -euo pipefail <<'QUALITY_INSTALL_ACTIONLINT'
           curl -sSL \
@@ -540,6 +541,7 @@ jobs:
           QUALITY_INSTALL_ACTIONLINT
 
       - name: Run actionlint
+        timeout-minutes: 3
         run: |
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/actionlint.log" bash -euo pipefail <<'QUALITY_ACTIONLINT'
           # Filter shellcheck to error severity only — captures the shell
