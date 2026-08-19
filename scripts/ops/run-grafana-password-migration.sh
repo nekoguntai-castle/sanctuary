@@ -303,9 +303,54 @@ validate_migration_outcome() {
     fail "Grafana credential migration failed with exit code $exit_code."
 }
 
+# `docker wait` returns as soon as the container's process ends, but the daemon
+# finalises State.Status and State.ExitCode asynchronously. Podman's docker-compat
+# layer -- what CI runs on -- updates its state database from conmon after wait has
+# already returned, so an immediate inspect can still report a non-terminal status.
+#
+# Sampling once and refusing on the first disagreement turned that lag into a hard
+# install failure ("migration container terminal state is inconsistent") and took
+# down the release-blocking latest-stable/optional-profiles upgrade lane on
+# v0.8.64-rc1 and rc2 -- in a different phase each run, the signature of a race.
+#
+# Poll for convergence instead. The invariant is unchanged: the state must still
+# become exactly "exited" with an exit code matching `docker wait`. Only a lagging
+# observation is tolerated, never a different outcome.
+#
+# Sound here and deliberately nowhere else in this script: run_migration has already
+# waited on this container, so a non-terminal read cannot mean "still running".
+# reconcile_migration_container and remove_terminal_migration_container inspect
+# containers they never waited on, where a non-terminal state is a real signal and
+# must keep failing closed.
+migration_terminal_settle_attempts="${SANCTUARY_GRAFANA_TERMINAL_SETTLE_ATTEMPTS:-20}"
+migration_terminal_settle_delay="${SANCTUARY_GRAFANA_TERMINAL_SETTLE_DELAY:-1}"
+
+# Set by await_terminal_migration_identity so a refusal can name what it saw.
+# Diagnosing the original failure needed a full reproduction purely because the
+# message carried no values.
+last_observed_migration_state=""
+last_observed_migration_exit_code=""
+
+await_terminal_migration_identity() {
+    local wait_code="$1" attempt=1 identity state exit_code
+    while :; do
+        identity="$(inspect_migration_container)" || return 2
+        IFS='|' read -r _ state exit_code _ <<< "$identity"
+        last_observed_migration_state="$state"
+        last_observed_migration_exit_code="$exit_code"
+        if [ "$state" = "exited" ] && [ "$exit_code" = "$wait_code" ]; then
+            printf '%s\n' "$identity"
+            return 0
+        fi
+        [ "$attempt" -lt "$migration_terminal_settle_attempts" ] || return 1
+        attempt=$((attempt + 1))
+        sleep "$migration_terminal_settle_delay"
+    done
+}
+
 run_migration() {
     local token="$1" grafana_container_id="$2" generation="$3"
-    local id identity state exit_code wait_code
+    local id identity state exit_code wait_code settle_status
     id="$(create_migration_container "$token" "$grafana_container_id" "$generation")" \
         || fail "migration container launch failed; reserved state requires reconciliation."
     identity="$(inspect_migration_container)" \
@@ -318,11 +363,13 @@ run_migration() {
     fi
     wait_code="$(docker wait "$id")" \
         || fail "migration container completion is unavailable."
-    identity="$(inspect_migration_container)" \
+    settle_status=0
+    identity="$(await_terminal_migration_identity "$wait_code")" || settle_status=$?
+    [ "$settle_status" != "2" ] \
         || fail "completed migration container identity is unavailable."
+    [ "$settle_status" = "0" ] \
+        || fail "migration container terminal state is inconsistent (state=$last_observed_migration_state exit_code=$last_observed_migration_exit_code wait_code=$wait_code)."
     IFS='|' read -r _ state exit_code _ <<< "$identity"
-    [ "$state" = "exited" ] && [ "$exit_code" = "$wait_code" ] \
-        || fail "migration container terminal state is inconsistent."
     validate_migration_outcome "$token" "$exit_code" "$grafana_container_id" "$generation"
     docker container rm "$id" >/dev/null \
         || fail "completed migration container could not be removed."

@@ -118,6 +118,9 @@ if [ "${1:-}" = container ] && [ "${2:-}" = inspect ]; then
     if [ "$name" = "${FAKE_MIGRATION_NAME:?}" ]; then
         [ -f "$migration_state" ] || exit 1
         read_migration
+        if [ "${FAKE_DOCKER_MODE:-success}" = terminal-state-lag ] && [ "$state" = stopping ]; then
+            printf 'exited|0|%s|%s|%s\n' "$token" "$container" "$generation" > "$migration_state"
+        fi
         if [[ "$*" == *'--format'* ]]; then
             printf 'migration-id|%s|%s|sha256:migration-image|password-migration|%s|%s|%s|%s|%s|%s\n' \
                 "$state" "$exit_code" "${FAKE_PROJECT_NAME:?}" \
@@ -309,6 +312,18 @@ EOF
             printf 'outcome\n' >> "$event_log"
             printf 'exited|0|%s|%s|%s\n' "$token" "$container" "$generation" > "$migration_state"
             exit 10
+        fi
+        if [ "${FAKE_DOCKER_MODE:-success}" = terminal-state-stuck ]; then
+            write_outcome success
+            printf 'stopping|0|%s|%s|%s\n' "$token" "$container" "$generation" > "$migration_state"
+            printf 'migration-id\n'
+            exit 0
+        fi
+        if [ "${FAKE_DOCKER_MODE:-success}" = terminal-state-lag ]; then
+            write_outcome success
+            printf 'stopping|0|%s|%s|%s\n' "$token" "$container" "$generation" > "$migration_state"
+            printf 'migration-id\n'
+            exit 0
         fi
         if [ "${FAKE_DOCKER_MODE:-success}" = client-disconnect ]; then
             printf 'running|0|%s|%s|%s\n' "$token" "$container" "$generation" > "$migration_state"
@@ -788,6 +803,49 @@ test_stale_owned_control_helpers_are_reclaimed() {
     done
 }
 
+# A container that has genuinely exited can still be reported non-terminal for a
+# moment: `docker wait` returns as soon as the process ends, while the daemon
+# finalises State.Status asynchronously. Podman's docker-compat layer widens that
+# window (conmon updates the state DB after wait returns), and rootless Podman is
+# what CI runs on.
+#
+# run_migration sampled the state exactly once and refused on the first
+# disagreement, so that lag surfaced as a hard install failure:
+#   Grafana credential migration refused: migration container terminal state is inconsistent.
+# It took down the release-blocking latest-stable/optional-profiles upgrade lane on
+# v0.8.64-rc1 and rc2, in a different phase each time -- the signature of a race,
+# not a deterministic fault.
+#
+# The invariant is unchanged: the state must still converge to exactly "exited"
+# with an exit code matching `docker wait`. Only the moment of observation may lag.
+test_terminal_state_lag_settles_instead_of_refusing() {
+    reset_case
+    run_helper terminal-state-lag >/dev/null
+    grep -Fq 'sanctuary.grafana.role=password-migration' "$TEST_ROOT/docker.log"
+    grep -Fq 'container rm migration-id' "$TEST_ROOT/docker.log"
+}
+
+# Negative control for the settle above: tolerating a lagging observation must not
+# become tolerating any observation. A state that never converges is still refused,
+# with the same message, once the settle budget is spent.
+test_terminal_state_that_never_settles_is_still_refused() {
+    reset_case
+    local output status
+    set +e
+    output="$(SANCTUARY_GRAFANA_TERMINAL_SETTLE_ATTEMPTS=2 SANCTUARY_GRAFANA_TERMINAL_SETTLE_DELAY=0 \
+        run_helper terminal-state-stuck 2>&1)"
+    status=$?
+    set -e
+    [ "$status" -ne 0 ] || { echo "FAIL: a never-settling terminal state was accepted" >&2; return 1; }
+    case "$output" in
+        *"migration container terminal state is inconsistent"*) ;;
+        *) echo "FAIL: unexpected refusal reason: $output" >&2; return 1 ;;
+    esac
+    grep -Fq 'container rm migration-id' "$TEST_ROOT/docker.log" \
+        && { echo "FAIL: removed a container whose state never settled" >&2; return 1; }
+    return 0
+}
+
 make_fake_docker "$TEST_ROOT/bin"
 test_success_uses_daemon_control_volume
 test_precondition_refusals_happen_before_migration
@@ -808,5 +866,7 @@ test_client_disconnect_requires_scoped_terminal_outcome
 test_terminal_disconnect_reconciles_fresh_and_marked_paths
 test_remote_daemon_never_receives_client_checkout_path
 test_online_and_preloaded_offline_helpers_never_pull
+test_terminal_state_lag_settles_instead_of_refusing
+test_terminal_state_that_never_settles_is_still_refused
 
 echo "Grafana quiescence tests passed"

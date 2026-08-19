@@ -346,6 +346,41 @@ run_install_script_attempt() {
     return "$exit_code"
 }
 
+# The baseline install runs the SOURCE ref's own install.sh -- for v0.8.64 that
+# is v0.8.63, byte for byte, including its unfixed Grafana credential migration.
+# On rootless Podman that migration samples the container's terminal state
+# inside podman's async cleanup window and refuses (~29% per invocation under
+# load; see the fix in scripts/ops/run-grafana-password-migration.sh). We can fix
+# the candidate, but we cannot fix an already-released baseline, so the
+# release-blocking optional-profiles lane would stay a coin flip.
+#
+# Retry that one signature, exactly as the BuildKit-cache-corruption path above
+# does: the baseline install is provisioning, not the system under test -- the
+# upgrade is. Deliberately scoped to this single message so every other install
+# failure still fails immediately. The candidate's own install cannot produce it
+# any more, so in practice this only ever fires for the source install; if it
+# ever fires for the upgrade install, that is a regression in the fix and the
+# retry line below is the thing that says so.
+install_log_has_grafana_terminal_state_race() {
+    local install_log="$1"
+
+    [ -f "$install_log" ] || return 1
+
+    grep -Fq 'migration container terminal state is inconsistent' "$install_log"
+}
+
+retry_install_script_after_grafana_terminal_state_race() {
+    local project_dir="$1"
+    local install_log="$2"
+
+    {
+        echo ""
+        echo "Retrying install after the Podman Grafana terminal-state race (baseline ref carries the unfixed migration)..."
+    } | tee -a "$install_log"
+    cleanup_containers "$project_dir" 2>/dev/null || true
+    run_install_script_attempt "$project_dir" "$install_log" true
+}
+
 retry_install_script_after_cache_recovery() {
     local project_dir="$1"
     local install_log="$2"
@@ -413,6 +448,13 @@ run_install_script() {
         exit_code=$?
         if install_log_has_buildkit_cache_corruption "$install_log"; then
             if retry_install_script_after_cache_recovery "$project_dir" "$install_log"; then
+                restore_optional_config_paths
+                return 0
+            fi
+            exit_code=$?
+        elif install_log_has_grafana_terminal_state_race "$install_log"; then
+            log_warning "install.sh hit the Podman Grafana terminal-state race; retrying once"
+            if retry_install_script_after_grafana_terminal_state_race "$project_dir" "$install_log"; then
                 restore_optional_config_paths
                 return 0
             fi

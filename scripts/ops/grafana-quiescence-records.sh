@@ -282,16 +282,20 @@ assert_reclamation_identity() {
 
 wait_and_remove_reclaimed_migration() {
     local expected_id="$1" token="$2" container_id="$3" generation="$4"
-    local identity id state exit_code wait_code
+    local identity id state exit_code wait_code settle_status
     wait_code="$(docker wait "$expected_id")" \
         || fail "the reclaimed migration container did not stop."
-    identity="$(inspect_migration_container)" \
+    # Same podman cleanup-window race as run_migration; this is the path that
+    # recovers from that very failure, so it must not be racy itself.
+    settle_status=0
+    identity="$(await_terminal_migration_identity "$wait_code")" || settle_status=$?
+    [ "$settle_status" != "2" ] \
         || fail "the reclaimed migration terminal identity is unavailable."
+    [ "$settle_status" = "0" ] \
+        || fail "the reclaimed migration terminal state is inconsistent (state=$last_observed_migration_state exit_code=$last_observed_migration_exit_code wait_code=$wait_code)."
     assert_reclamation_identity "$identity" "$expected_id" "$token" "$container_id" "$generation" \
         || fail "the reclaimed migration terminal identity changed."
     IFS='|' read -r id state exit_code _ <<< "$identity"
-    [ "$state" = exited ] && [ "$exit_code" = "$wait_code" ] \
-        || fail "the reclaimed migration terminal state is inconsistent."
     docker container rm "$id" >/dev/null \
         || fail "the reclaimed migration container could not be removed."
 }
@@ -306,7 +310,7 @@ recover_reclaimed_removal_failure() {
     IFS='|' read -r id state exit_code _ <<< "$identity"
     case "$state" in
         running) wait_and_remove_reclaimed_migration "$expected_id" "$token" "$container_id" "$generation" ;;
-        exited) docker container rm "$id" >/dev/null \
+        exited|stopped) docker container rm "$id" >/dev/null \
             || fail "the exited reclaimed migration container could not be removed." ;;
         *) fail "the reclaimed migration container could not be removed safely." ;;
     esac
