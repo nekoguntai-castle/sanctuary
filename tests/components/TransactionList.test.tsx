@@ -81,25 +81,39 @@ vi.mock('../../src/components/Amount', () => ({
 }));
 
 // Mock react-virtuoso - render a simpler version that just shows data
+// Honours `components.TableRow` so the inline detail expansion — which is rendered by
+// that override, not by itemContent — is exercised here rather than silently skipped.
 vi.mock('react-virtuoso', () => ({
-  TableVirtuoso: ({ data, fixedHeaderContent, itemContent }: {
+  TableVirtuoso: ({ data, fixedHeaderContent, itemContent, components }: {
     data: unknown[];
     fixedHeaderContent?: () => React.ReactNode;
     itemContent: (index: number, item: unknown) => React.ReactNode;
-  }) => (
-    <table data-testid="virtuoso-table">
-      <thead>
-        {fixedHeaderContent?.()}
-      </thead>
-      <tbody>
-        {data.map((item, index) => (
-          <tr key={index} data-testid="transaction-row">
-            {itemContent(index, item)}
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  ),
+    components?: { TableRow?: React.ComponentType<Record<string, unknown>> };
+  }) => {
+    const TableRow = components?.TableRow;
+    return (
+      <table data-testid="virtuoso-table">
+        <thead>
+          {fixedHeaderContent?.()}
+        </thead>
+        <tbody>
+          {data.map((item, index) => (
+            TableRow
+              ? (
+                <TableRow key={index} item={item} data-index={index} data-testid="transaction-row">
+                  {itemContent(index, item)}
+                </TableRow>
+              )
+              : (
+                <tr key={index} data-testid="transaction-row">
+                  {itemContent(index, item)}
+                </tr>
+              )
+          ))}
+        </tbody>
+      </table>
+    );
+  },
 }));
 
 // Mock lucide-react icons
@@ -656,33 +670,85 @@ describe('TransactionList - Master-detail split (#52)', () => {
     vi.mocked(transactionsApi.getTransaction).mockResolvedValue({} as any);
   });
 
-  it('shows the split layout with an empty detail pane when it owns selection and nothing is selected', async () => {
+  it('reserves no space for details while nothing is selected', async () => {
+    // The old layout kept a 320-448px pane showing "Select a transaction to see its
+    // details" from 900px up. That reserved column is the whole reason for this change.
     const { TransactionList } = await import('../../src/components/TransactionList');
     const { container } = render(<TransactionList transactions={[baseTx]} />);
 
-    // Master column opts into the tablet split row.
-    expect(container.querySelector('.tablet\\:flex')).not.toBeNull();
-    const pane = screen.getByTestId('transaction-detail-pane');
-    // Pane is hidden below tablet, shown as a column at tablet+.
-    expect(pane).toHaveClass('hidden', 'tablet:flex');
-    expect(screen.getByText('Select a transaction to see its details')).toBeInTheDocument();
-    // Nothing selected → the modal/pane detail host is absent.
+    expect(screen.queryByTestId('transaction-detail-pane')).not.toBeInTheDocument();
+    expect(screen.queryByText('Select a transaction to see its details')).not.toBeInTheDocument();
     expect(screen.queryByTestId('transaction-detail')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('transaction-detail-expansion')).not.toBeInTheDocument();
+    // No split row either: the table gets the full content width.
+    expect(container.querySelector('.flex.gap-4')).toBeNull();
   });
 
-  it('swaps the empty pane for the responsive detail host once a transaction is selected', async () => {
+  it('expands the detail inline beneath its row below 2xl instead of reserving a pane', async () => {
+    // matchMedia defaults to matches:false in tests/setup.ts, i.e. below 2xl.
     const user = userEvent.setup();
     const { TransactionList } = await import('../../src/components/TransactionList');
     render(<TransactionList transactions={[baseTx]} />);
 
     await user.click(screen.getByTestId('transaction-row').querySelectorAll('td')[0]);
 
-    const detail = await screen.findByTestId('transaction-detail');
-    // One element that is a modal below tablet and an inline pane at tablet+.
-    expect(detail).toHaveClass('fixed', 'inset-0', 'z-50', 'tablet:static');
-    // The empty pane is gone; details render exactly once.
-    expect(screen.queryByTestId('transaction-detail-pane')).not.toBeInTheDocument();
+    const expansion = await screen.findByTestId('transaction-detail-expansion');
+    expect(expansion.tagName).toBe('TR');
+    expect(expansion.querySelector('td')).toHaveAttribute('colspan');
+    // Bounded, so the rows around it stay reachable while reading.
+    expect(expansion.querySelector('[data-testid="transaction-detail-expansion-scroll"]'))
+      .toHaveClass('overflow-y-auto');
+    // The details body is in the DOM exactly once.
     expect(screen.getAllByText('Transaction Details')).toHaveLength(1);
+    expect(screen.queryByTestId('transaction-detail')).not.toBeInTheDocument();
+  });
+
+  it('uses the side-by-side pane at 2xl where the table still has room', async () => {
+    vi.mocked(window.matchMedia).mockImplementation((query: string) => ({
+      matches: query.includes('1536'),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }) as unknown as MediaQueryList);
+
+    const user = userEvent.setup();
+    const { TransactionList } = await import('../../src/components/TransactionList');
+    render(<TransactionList transactions={[baseTx]} />);
+
+    await user.click(screen.getByTestId('transaction-row').querySelectorAll('td')[0]);
+
+    expect(await screen.findByTestId('transaction-detail')).toBeInTheDocument();
+    expect(screen.queryByTestId('transaction-detail-expansion')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Transaction Details')).toHaveLength(1);
+  });
+
+  it('keeps an empty pane at 2xl, where the table can spare the width', async () => {
+    // Deliberate asymmetry. Below 2xl no pane is rendered at all, because a 448px
+    // column would leave the table too narrow to scan. At 2xl the table still clears
+    // ~750px with the pane present, so it is kept: collapsing and re-expanding on
+    // every selection would reflow the table by 464px, which reads worse than a
+    // placeholder in space the layout can afford.
+    vi.mocked(window.matchMedia).mockImplementation((query: string) => ({
+      matches: query.includes('1536'),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }) as unknown as MediaQueryList);
+
+    const { TransactionList } = await import('../../src/components/TransactionList');
+    render(<TransactionList transactions={[baseTx]} />);
+
+    expect(screen.getByTestId('transaction-detail-pane')).toBeInTheDocument();
+    expect(screen.getByText('Select a transaction to see its details')).toBeInTheDocument();
+    expect(screen.queryByTestId('transaction-detail-expansion')).not.toBeInTheDocument();
   });
 
   it('renders no detail host when a caller owns selection via onTransactionClick', async () => {

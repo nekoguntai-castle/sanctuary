@@ -192,6 +192,19 @@ describe('TransactionList branch coverage', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // These cases cover the detail body's own branches, not the responsive layout, so
+    // pin the viewport to the side-by-side pane and assert one DOM shape. The inline
+    // expansion path is covered in tests/components/TransactionList.test.tsx.
+    vi.mocked(window.matchMedia).mockImplementation((query: string) => ({
+      matches: query.includes('1536'),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }) as unknown as MediaQueryList);
     useTransactionListMock.mockReturnValue(makeHookState());
   });
 

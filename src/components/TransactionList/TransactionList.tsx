@@ -5,6 +5,9 @@ import { useAIStatus } from '../../hooks/useAIStatus';
 import { useTransactionList } from './hooks/useTransactionList';
 import type { TransactionStats } from '../../api/transactions';
 import { TransactionDetail } from './TransactionList/TransactionDetail';
+import { TransactionDetailsBody } from './TransactionList/TransactionDetailsBody';
+import { TransactionDetailsHeader } from './TransactionList/TransactionDetailsHeader';
+import { SIDE_BY_SIDE_DETAIL_QUERY, useMediaQuery } from '../../hooks/useMediaQuery';
 import { TransactionStatsGrid } from './TransactionList/TransactionStatsGrid';
 import { TransactionTable } from './TransactionList/TransactionTable';
 import type { TransactionDetailsContentProps } from './TransactionList/types';
@@ -154,7 +157,19 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     };
   }, [recalcHeight]);
 
-  // Shared by the phone modal and the tablet+ split pane — both render the same
+  // Where the detail goes depends on how much room the table would have left. The
+  // wallet route gives up 256px to the sidebar from `lg` and 64px to padding, so a
+  // 448px pane leaves the table only 368px at 1024px and 496px at 1280px. Only at
+  // 1536px does it clear 750px, which is where side-by-side is worth its width.
+  //
+  // Below that the detail expands inline beneath its own row instead, which uses the
+  // full content width and reserves nothing while nothing is selected. Exactly one of
+  // the two renders, so the details body stays in the DOM once.
+  const canFitSideBySide = useMediaQuery(SIDE_BY_SIDE_DETAIL_QUERY);
+  const showPane = ownsSelection && canFitSideBySide;
+  const expandInline = ownsSelection && !canFitSideBySide;
+
+  // Shared by the inline expansion and the side-by-side pane — both render the same
   // TransactionDetailsBody, so the detail props are assembled once here.
   const detailProps: Omit<TransactionDetailsContentProps, 'selectedTx'> = {
     wallets,
@@ -183,14 +198,21 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     onAISuggestion: handleAISuggestion,
   };
 
+  const renderExpandedDetail = () => selectedTx && (
+    <>
+      <TransactionDetailsHeader selectedTx={selectedTx} onClose={clearSelectedTx} />
+      <TransactionDetailsBody selectedTx={selectedTx} {...detailProps} />
+    </>
+  );
+
   return (
     <>
       {density === 'comfortable' && <TransactionStatsGrid txStats={txStats} />}
 
-      <div className={ownsSelection ? 'tablet:flex tablet:gap-4 tablet:items-start' : undefined}>
+      <div className={showPane ? 'flex gap-4 items-start' : undefined}>
         <div
           ref={tableContainerRef}
-          className={ownsSelection ? 'tablet:flex-1 tablet:min-w-0' : undefined}
+          className={showPane ? 'flex-1 min-w-0' : undefined}
         >
           {filteredTransactions.length === 0 ? (
             <div
@@ -204,6 +226,8 @@ export const TransactionList: React.FC<TransactionListProps> = ({
             </div>
           ) : (
             <TransactionTable
+              expandedTxId={expandInline && selectedTx ? selectedTx.id : undefined}
+              renderExpandedDetail={expandInline && selectedTx ? renderExpandedDetail : undefined}
               filteredTransactions={filteredTransactions}
               virtuosoRef={virtuosoRef}
               tableHeight={tableHeight}
@@ -220,7 +244,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
           )}
         </div>
 
-        {ownsSelection && (
+        {showPane && (
           <TransactionDetail
             selectedTx={selectedTx}
             tableHeight={tableHeight}

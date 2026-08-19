@@ -340,109 +340,110 @@ end
 70["useHardwareWallet.ts"]
 71["useIntelligenceStatus.ts"]
 72["useLoadingState.ts"]
-73["useModalForm.ts"]
-74["useNotificationSound.ts"]
-75["useNotify.ts"]
-76["usePaginatedList.ts"]
-77["useUserPreference.ts"]
-subgraph 78["websocket"]
-79[" "]
+73["useMediaQuery.ts"]
+74["useModalForm.ts"]
+75["useNotificationSound.ts"]
+76["useNotify.ts"]
+77["usePaginatedList.ts"]
+78["useUserPreference.ts"]
+subgraph 79["websocket"]
+7A[" "]
 end
 end
-7A["main.tsx"]
-subgraph 7B["providers"]
-7C["AppProviders.tsx"]
-7D["QueryProvider.tsx"]
+7B["main.tsx"]
+subgraph 7C["providers"]
+7D["AppProviders.tsx"]
+7E["QueryProvider.tsx"]
 end
-subgraph 7E["services"]
-7F["bbqr.ts"]
-subgraph 7G["deviceParsers"]
-7H[" "]
+subgraph 7F["services"]
+7G["bbqr.ts"]
+subgraph 7H["deviceParsers"]
+7I[" "]
 end
-subgraph 7I["hardwareWallet"]
-7J[" "]
+subgraph 7J["hardwareWallet"]
+7K[" "]
 end
-7K["websocket.ts"]
+7L["websocket.ts"]
 end
-subgraph 7L["themes"]
-7M["backgroundCategories.ts"]
-subgraph 7N["bamboo"]
-7O[" "]
+subgraph 7M["themes"]
+7N["backgroundCategories.ts"]
+subgraph 7O["bamboo"]
+7P[" "]
 end
-subgraph 7P["copper"]
-7Q[" "]
+subgraph 7Q["copper"]
+7R[" "]
 end
-subgraph 7R["cyber"]
-7S[" "]
+subgraph 7S["cyber"]
+7T[" "]
 end
-subgraph 7T["desert"]
-7U[" "]
+subgraph 7U["desert"]
+7V[" "]
 end
-subgraph 7V["forest"]
-7W[" "]
+subgraph 7W["forest"]
+7X[" "]
 end
-7X["index.ts"]
-subgraph 7Y["midnight"]
-7Z[" "]
+7Y["index.ts"]
+subgraph 7Z["midnight"]
+80[" "]
 end
-subgraph 80["ocean"]
-81[" "]
+subgraph 81["ocean"]
+82[" "]
 end
-82["patterns.ts"]
-83["registry.ts"]
-subgraph 84["sakura-sumie"]
-85[" "]
+83["patterns.ts"]
+84["registry.ts"]
+subgraph 85["sakura-sumie"]
+86[" "]
 end
-subgraph 86["sakura-yoshino"]
-87[" "]
+subgraph 87["sakura-yoshino"]
+88[" "]
 end
-subgraph 88["sanctuary"]
-89[" "]
+subgraph 89["sanctuary"]
+8A[" "]
 end
-subgraph 8A["seasonal"]
-8B[" "]
+subgraph 8B["seasonal"]
+8C[" "]
 end
-subgraph 8C["serenity"]
-8D[" "]
+subgraph 8D["serenity"]
+8E[" "]
 end
-subgraph 8E["sunrise"]
-8F[" "]
+subgraph 8F["sunrise"]
+8G[" "]
 end
-subgraph 8G["sunset"]
-8H[" "]
+subgraph 8H["sunset"]
+8I[" "]
 end
-8I["types.ts"]
+8J["types.ts"]
 end
-subgraph 8J["types"]
-8K["hardware.ts"]
-8L["index.ts"]
-8M["ui.ts"]
-8N["user.ts"]
+subgraph 8K["types"]
+8L["hardware.ts"]
+8M["index.ts"]
+8N["ui.ts"]
+8O["user.ts"]
 end
-subgraph 8O["utils"]
-8P["bip21Parser.ts"]
-8Q["bufferUtils.ts"]
-8R["clipboard.ts"]
-8S["derivationPathGroups.ts"]
-8T["deviceConnection.ts"]
-8U["download.ts"]
-8V["errorHandler.ts"]
-8W["explorer.ts"]
-8X["feeRate.ts"]
-8Y["formatters.ts"]
-8Z["logger.ts"]
-90["networkScopedDevices.ts"]
-91["nodeGlobals.ts"]
-92["preferencePaths.ts"]
-93["psbtFormat.ts"]
-94["relativeTime.ts"]
-95["sendAmount.ts"]
-96["transaction.ts"]
-97["urDeviceDecoder.ts"]
-98["urPsbt.ts"]
-99["utxoAge.ts"]
-9A["validateAddress.ts"]
-9B["walletCapabilities.ts"]
+subgraph 8P["utils"]
+8Q["bip21Parser.ts"]
+8R["bufferUtils.ts"]
+8S["clipboard.ts"]
+8T["derivationPathGroups.ts"]
+8U["deviceConnection.ts"]
+8V["download.ts"]
+8W["errorHandler.ts"]
+8X["explorer.ts"]
+8Y["feeRate.ts"]
+8Z["formatters.ts"]
+90["logger.ts"]
+91["networkScopedDevices.ts"]
+92["nodeGlobals.ts"]
+93["preferencePaths.ts"]
+94["psbtFormat.ts"]
+95["relativeTime.ts"]
+96["sendAmount.ts"]
+97["transaction.ts"]
+98["urDeviceDecoder.ts"]
+99["urPsbt.ts"]
+9A["utxoAge.ts"]
+9B["validateAddress.ts"]
+9C["walletCapabilities.ts"]
 end
 end
 C-->4
@@ -471,20 +472,20 @@ Y-->C
 10-->Z
 14-->E
 17-->21
-17-->7C
+17-->7D
 1A-->1G
-1A-->8U
+1A-->8V
 1B-->1G
 1C-->1G
-1C-->8Z
+1C-->90
 1F-->1G
 1F-->I
 1G-->1D
 1G-->1E
 1G-->1P
 1G-->1Q
-1G-->8U
-1G-->8Z
+1G-->8V
+1G-->90
 1G-->Z
 1H-->1G
 1I-->1G
@@ -499,7 +500,7 @@ Y-->C
 1O-->M
 1P-->1D
 1P-->1E
-1P-->8Z
+1P-->90
 1R-->1G
 1R-->9
 1T-->1G
@@ -528,9 +529,9 @@ Y-->C
 21-->62
 21-->65
 21-->6Q
-21-->79
-21-->82
-21-->8Z
+21-->7A
+21-->83
+21-->90
 23-->2A
 23-->3I
 26-->A
@@ -564,63 +565,63 @@ Y-->C
 2A-->5W
 2D-->2F
 2F-->1B
-2F-->8Z
+2F-->90
 2G-->2I
 2I-->1B
 2I-->6J
-2I-->8Z
+2I-->90
 2K-->1A
 2K-->1B
 2K-->1G
 2K-->5W
 2K-->6P
 2K-->71
-2K-->8Z
+2K-->90
 2M-->1C
 2M-->1G
 2M-->1V
 2M-->5W
 2M-->65
-2M-->8R
-2M-->8Z
+2M-->8S
+2M-->90
 2O-->1A
 2O-->1Y
 2O-->5W
-2O-->8V
+2O-->8W
 2O-->B
 2Q-->1A
 2Q-->5W
-2Q-->8V
-2Q-->8Z
+2Q-->8W
+2Q-->90
 2Q-->B
 2R-->60
 2S-->2U
-2S-->82
+2S-->83
 2W-->1A
 2W-->72
-2W-->8Z
-2W-->94
+2W-->90
+2W-->95
 2Y-->1A
 2Y-->5W
 2Y-->5Z
-2Y-->8U
-2Y-->8Z
+2Y-->8V
+2Y-->90
 30-->6Y
 30-->8
 31-->1C
 31-->1G
 31-->5W
-31-->8Z
+31-->90
 33-->5W
 33-->5Y
 33-->6G
 33-->6V
 33-->6W
 33-->6X
-33-->7H
-33-->7J
-33-->8S
+33-->7I
+33-->7K
 33-->8T
+33-->8U
 33-->B
 33-->J
 35-->1H
@@ -637,9 +638,9 @@ Y-->C
 39-->5Y
 39-->6I
 39-->6Z
-39-->8L
-39-->8V
-39-->8Z
+39-->8M
+39-->8W
+39-->90
 39-->B
 39-->C
 3B-->1A
@@ -653,13 +654,13 @@ Y-->C
 3B-->62
 3B-->6I
 3B-->6U
-3B-->74
-3B-->77
-3B-->79
-3B-->8L
-3B-->8X
-3B-->8Z
-3B-->94
+3B-->75
+3B-->78
+3B-->7A
+3B-->8M
+3B-->8Y
+3B-->90
+3B-->95
 3B-->Y
 3D-->1A
 3D-->1C
@@ -672,13 +673,13 @@ Y-->C
 3D-->5Y
 3D-->65
 3D-->6J
-3D-->7H
-3D-->7J
-3D-->8L
-3D-->8S
-3D-->8V
-3D-->8Z
-3D-->97
+3D-->7I
+3D-->7K
+3D-->8M
+3D-->8T
+3D-->8W
+3D-->90
+3D-->98
 3D-->B
 3D-->Y
 3F-->1I
@@ -689,10 +690,10 @@ Y-->C
 3F-->5Y
 3F-->65
 3F-->72
-3F-->8V
-3F-->8Z
+3F-->8W
 3F-->90
-3F-->92
+3F-->91
+3F-->93
 3F-->B
 3H-->1J
 3H-->2R
@@ -701,11 +702,11 @@ Y-->C
 3H-->5W
 3H-->60
 3H-->72
-3H-->8L
-3H-->8U
-3H-->8Y
+3H-->8M
+3H-->8V
 3H-->8Z
-3H-->93
+3H-->90
+3H-->94
 3K-->1A
 3K-->5W
 3K-->6P
@@ -720,8 +721,8 @@ Y-->C
 3N-->5Y
 3N-->6I
 3N-->7
-3N-->7J
-3N-->8Z
+3N-->7K
+3N-->90
 3N-->B
 3N-->C
 3P-->1L
@@ -730,15 +731,15 @@ Y-->C
 3P-->5Y
 3P-->6I
 3P-->6J
-3P-->8Z
-3P-->94
+3P-->90
+3P-->95
 3Q-->3S
 3S-->6I
-3S-->8Z
+3S-->90
 3S-->Z
 3T-->3V
 3V-->6I
-3V-->8Z
+3V-->90
 3X-->1A
 3X-->1F
 3X-->1J
@@ -758,10 +759,10 @@ Y-->C
 3X-->6I
 3X-->6Q
 3X-->6R
-3X-->8L
-3X-->8V
-3X-->8Z
+3X-->8M
+3X-->8W
 3X-->90
+3X-->91
 3Z-->1C
 3Z-->1K
 3Z-->2S
@@ -774,12 +775,12 @@ Y-->C
 43-->27
 43-->5W
 43-->8
-43-->8V
-43-->8Z
+43-->8W
+43-->90
 44-->46
 46-->1R
 46-->27
-46-->8V
+46-->8W
 47-->27
 47-->5W
 49-->1A
@@ -789,13 +790,13 @@ Y-->C
 49-->4M
 49-->5W
 49-->8
-49-->8V
-49-->8Z
+49-->8W
+49-->90
 4B-->4D
 4B-->5Z
 4D-->5Z
-4D-->8Z
-4D-->94
+4D-->90
+4D-->95
 4E-->4G
 4I-->1N
 4I-->4H
@@ -805,7 +806,7 @@ Y-->C
 4L-->5W
 4L-->65
 4L-->72
-4L-->94
+4L-->95
 4M-->1O
 4M-->5W
 4N-->5Q
@@ -816,11 +817,11 @@ Y-->C
 4Q-->5W
 4Q-->60
 4Q-->65
-4Q-->74
-4Q-->7M
-4Q-->7X
-4Q-->8V
-4Q-->8Z
+4Q-->75
+4Q-->7N
+4Q-->7Y
+4Q-->8W
+4Q-->90
 4R-->5Q
 4R-->5W
 4T-->1A
@@ -832,14 +833,14 @@ Y-->C
 4W-->1J
 4W-->1T
 4W-->5W
-4W-->8Z
+4W-->90
 4W-->L
 4X-->1T
 4X-->5W
-4X-->8Z
+4X-->90
 4Y-->4Z
 4Y-->60
-4Z-->8Y
+4Z-->8Z
 51-->1F
 51-->1M
 51-->1T
@@ -850,17 +851,18 @@ Y-->C
 51-->4Y
 51-->60
 51-->6P
+51-->73
 51-->8
-51-->8L
-51-->8W
-51-->8Z
-51-->96
+51-->8M
+51-->8X
+51-->90
+51-->97
 52-->54
 54-->1C
 54-->1G
 54-->1U
 54-->5W
-54-->8Z
+54-->90
 56-->1F
 56-->2R
 56-->4N
@@ -869,15 +871,15 @@ Y-->C
 56-->60
 56-->6I
 56-->8
-56-->8W
-56-->8Z
-56-->99
+56-->8X
+56-->90
+56-->9A
 56-->B
 58-->1A
 58-->5W
 58-->6Z
 58-->72
-58-->8Z
+58-->90
 59-->5B
 5B-->1A
 5B-->72
@@ -917,16 +919,16 @@ Y-->C
 5D-->6P
 5D-->6T
 5D-->6Z
-5D-->76
-5D-->79
+5D-->77
+5D-->7A
 5D-->8
-5D-->8L
-5D-->8V
+5D-->8M
 5D-->8W
-5D-->8Y
+5D-->8X
 5D-->8Z
-5D-->96
-5D-->9B
+5D-->90
+5D-->97
+5D-->9C
 5D-->B
 5D-->D
 5D-->E
@@ -942,22 +944,22 @@ Y-->C
 5F-->65
 5F-->6I
 5F-->6U
-5F-->8L
-5F-->92
+5F-->8M
+5F-->93
 5F-->B
 5G-->27
 5G-->5I
 5G-->60
 5G-->6U
-5J-->82
+5J-->83
 5N-->3F
 5N-->5W
-5N-->8L
+5N-->8M
 5N-->B
 5Q-->A
-5S-->8Z
-5S-->93
-5S-->98
+5S-->90
+5S-->94
+5S-->99
 5U-->1F
 5U-->1I
 5U-->1T
@@ -976,22 +978,22 @@ Y-->C
 5U-->6Z
 5U-->7
 5U-->70
-5U-->8L
-5U-->8P
-5U-->8X
-5U-->8Z
-5U-->95
-5U-->99
+5U-->8M
+5U-->8Q
+5U-->8Y
+5U-->90
+5U-->96
 5U-->9A
 5U-->9B
+5U-->9C
 5U-->L
 5U-->Z
 5W-->6Y
-5W-->77
-5W-->8L
+5W-->78
+5W-->8M
 5Y-->27
-5Y-->77
-5Z-->8Z
+5Y-->78
+5Z-->90
 60-->27
 60-->5Y
 60-->61
@@ -999,19 +1001,19 @@ Y-->C
 60-->Y
 61-->1O
 61-->65
-61-->8Z
+61-->90
 61-->Y
 62-->4E
 63-->1O
 63-->61
-63-->8Z
+63-->90
 65-->68
 65-->69
 65-->6A
 65-->6B
 65-->6D
-67-->8X
-67-->95
+67-->8Y
+67-->96
 67-->L
 68-->1C
 68-->1G
@@ -1022,19 +1024,19 @@ Y-->C
 69-->1G
 69-->1P
 69-->6D
-69-->8Z
+69-->90
 6A-->1C
 6A-->1G
 6A-->6D
-6A-->92
+6A-->93
 6B-->6D
-6B-->7X
-6D-->92
-6G-->7F
-6G-->7H
-6G-->8T
-6G-->8Z
-6G-->97
+6B-->7Y
+6D-->93
+6G-->7G
+6G-->7I
+6G-->8U
+6G-->90
+6G-->98
 6I-->1F
 6I-->1I
 6I-->1M
@@ -1047,16 +1049,16 @@ Y-->C
 6L-->60
 6L-->6Z
 6L-->70
-6L-->74
-6L-->7D
-6L-->7J
-6L-->8L
-6L-->8Q
-6L-->8U
-6L-->8Z
-6L-->93
-6L-->95
-6L-->9A
+6L-->75
+6L-->7E
+6L-->7K
+6L-->8M
+6L-->8R
+6L-->8V
+6L-->90
+6L-->94
+6L-->96
+6L-->9B
 6L-->Z
 6M-->6O
 6P-->1B
@@ -1064,101 +1066,101 @@ Y-->C
 6Q-->71
 6R-->2B
 6S-->6P
-6T-->8R
-6V-->7J
-6V-->8T
-6V-->8Z
+6T-->8S
+6V-->7K
+6V-->8U
+6V-->90
 6W-->1I
-6W-->8Z
+6W-->90
 6X-->1I
 6X-->64
-6X-->8Z
+6X-->90
 6Z-->1G
-6Z-->75
-70-->7J
-70-->8Z
+6Z-->76
+70-->7K
+70-->90
 71-->1L
 72-->Z
-73-->8V
-74-->65
-74-->6M
-74-->8Z
-75-->5Z
-75-->62
-77-->65
-77-->8Z
-77-->92
-79-->1R
-79-->7D
-79-->7K
-79-->8Z
-79-->W
-7A-->17
-7A-->7X
-7A-->91
-7C-->5Y
-7C-->5Z
-7C-->60
-7C-->62
-7C-->64
-7C-->65
-7C-->7D
-7F-->8Z
-7H-->12
-7H-->8Z
-7H-->B
-7H-->Y
-7H-->Z
-7J-->1G
-7J-->7
-7J-->8Q
-7J-->8Z
-7J-->B
-7J-->C
-7J-->I
-7J-->J
-7J-->N
-7J-->Y
-7K-->8Z
-7K-->W
-7M-->82
-7X-->7O
-7X-->7Q
-7X-->7S
-7X-->7U
-7X-->7W
-7X-->7Z
-7X-->81
-7X-->82
-7X-->83
-7X-->85
-7X-->87
-7X-->89
-7X-->8B
-7X-->8D
-7X-->8F
-7X-->8H
-7X-->8Z
-83-->8B
-83-->8Z
-8L-->8K
-8L-->T
-8P-->95
-8R-->8Z
-8S-->27
-8S-->B
-8S-->C
-8T-->Y
-8V-->1G
-8V-->Z
-8Z-->V
-90-->27
-90-->8S
-97-->7H
-97-->8Z
-98-->8Z
-98-->93
-98-->97
-9A-->Y
-9B-->D
+74-->8W
+75-->65
+75-->6M
+75-->90
+76-->5Z
+76-->62
+78-->65
+78-->90
+78-->93
+7A-->1R
+7A-->7E
+7A-->7L
+7A-->90
+7A-->W
+7B-->17
+7B-->7Y
+7B-->92
+7D-->5Y
+7D-->5Z
+7D-->60
+7D-->62
+7D-->64
+7D-->65
+7D-->7E
+7G-->90
+7I-->12
+7I-->90
+7I-->B
+7I-->Y
+7I-->Z
+7K-->1G
+7K-->7
+7K-->8R
+7K-->90
+7K-->B
+7K-->C
+7K-->I
+7K-->J
+7K-->N
+7K-->Y
+7L-->90
+7L-->W
+7N-->83
+7Y-->7P
+7Y-->7R
+7Y-->7T
+7Y-->7V
+7Y-->7X
+7Y-->80
+7Y-->82
+7Y-->83
+7Y-->84
+7Y-->86
+7Y-->88
+7Y-->8A
+7Y-->8C
+7Y-->8E
+7Y-->8G
+7Y-->8I
+7Y-->90
+84-->8C
+84-->90
+8M-->8L
+8M-->T
+8Q-->96
+8S-->90
+8T-->27
+8T-->B
+8T-->C
+8U-->Y
+8W-->1G
+8W-->Z
+90-->V
+91-->27
+91-->8T
+98-->7I
+98-->90
+99-->90
+99-->94
+99-->98
+9B-->Y
+9C-->D
 ```

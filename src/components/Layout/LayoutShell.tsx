@@ -34,9 +34,16 @@ interface MobileMenuOverlayProps {
 // Icon-only rail between md and lg (768–1024px); full labeled sidebar at lg+.
 // The same sidebarContent renders in the mobile overlay (md:hidden) below md, so
 // the collapse uses md:/lg: variants only — mobile labels are never affected.
+//
+// The rail widens in two steps rather than one. Going straight from w-16 to w-64 at `lg`
+// took 192px from the content in a single pixel of viewport growth, so a window widened
+// past 1024px made the page *narrower* — on the wallet route the transaction table lost
+// more width than the viewport gained. w-48 still fits the longest label
+// ("Administration") and halves that step; the remainder lands at `xl`, where there is
+// slack to absorb it.
 const DesktopSidebar: React.FC<{ sidebarContent: React.ReactNode }> = ({ sidebarContent }) => (
   <div className="hidden md:flex md:flex-shrink-0">
-    <div className="flex flex-col w-64 md:w-16 lg:w-64">
+    <div className="flex flex-col w-64 md:w-16 lg:w-48 xl:w-64">
       <div className="flex flex-col h-0 flex-1 border-r border-sanctuary-200 dark:border-sanctuary-800 surface-elevated">
         {sidebarContent}
       </div>

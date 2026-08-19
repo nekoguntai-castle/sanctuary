@@ -602,12 +602,16 @@ describe('Layout', () => {
   });
 
   describe('Sidebar icon-rail collapse (#51)', () => {
-    it('collapses the desktop sidebar to an icon rail at md and expands at lg', () => {
+    it('widens the desktop sidebar in two steps so no breakpoint narrows the content', () => {
       const { container } = renderLayout('/');
       // The only element carrying the rail width is the desktop sidebar wrapper.
       const rail = container.querySelector('.md\\:w-16');
       expect(rail).not.toBeNull();
-      expect(rail).toHaveClass('w-64', 'md:w-16', 'lg:w-64');
+      // A single w-16 -> w-64 jump at lg took 192px from the content in one pixel of
+      // viewport growth, so widening past 1024px made the page narrower. The step is
+      // split so the worst case is 128px and the rest lands at xl.
+      expect(rail).toHaveClass('w-64', 'md:w-16', 'lg:w-48', 'xl:w-64');
+      expect(rail).not.toHaveClass('lg:w-64');
     });
 
     it('never applies rail collapse to the mobile overlay (labels + full width survive below md)', async () => {
