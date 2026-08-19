@@ -192,7 +192,7 @@ describeWithDatabase('wallet remediation atomic evidence', () => {
     expect(after.sourceDescriptorChecksum).toBeNull();
 
     const afterAddresses = await prisma.address.findMany({
-      where: { walletId: wallet.id }, orderBy: { index: 'asc' },
+      where: { walletId: wallet.id }, orderBy: [{ index: 'asc' }, { address: 'asc' }],
     });
     for (const address of afterAddresses) {
       expect(address.coordinateVersion).toBe(1);
@@ -200,10 +200,14 @@ describeWithDatabase('wallet remediation atomic evidence', () => {
       expect(address.scriptPubKey).toMatch(/^[0-9a-f]+$/);
     }
     // The address strings and their user-visible paths are never rewritten.
-    expect(afterAddresses.map((a) => [a.address, a.derivationPath]))
-      .toEqual(legacyAddresses
-        .sort((a, b) => a.index - b.index)
-        .map((a) => [a.address, a.derivationPath]));
+    // Sort by address, not by index: the fixture's receive and change rows share
+    // index 0, so an index comparator returns 0 for the pair and leaves their order
+    // to whatever Postgres happened to return.
+    const byAddress = (rows: readonly { address: string; derivationPath: string }[]) =>
+      [...rows]
+        .map((a) => [a.address, a.derivationPath])
+        .sort((left, right) => left[0].localeCompare(right[0]));
+    expect(byAddress(afterAddresses)).toEqual(byAddress(legacyAddresses));
 
     // The loop is closed: the ownership proof that gates deposit addresses now passes.
     await expect(assertCanonicalAddressesForWallet(wallet.id, afterAddresses))
