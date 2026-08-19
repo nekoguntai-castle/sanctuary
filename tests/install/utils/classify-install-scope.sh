@@ -344,37 +344,8 @@ classify_install_workflow_change() {
   esac
 }
 
-# Baseline sources for the PR-scoped upgrade run. The release gate still uses
-# upgrade_default_baseline_refs (latest-stable,n-2); a PR runs one source, which
-# exercises the same code path for roughly half the wall-clock.
-PR_UPGRADE_BASELINE_REFS='latest-stable'
-
 defer_automatic_upgrade_e2e() {
   if [ "$run_upgrade" != "true" ]; then
-    return 0
-  fi
-
-  # A pull request that changes the upgrade harness runs the baseline lane.
-  #
-  # This used to defer on *every* event -- unlike defer_pull_request_docker_e2e
-  # below, it never looked at event_name -- so the upgrade lanes were reachable
-  # only from a release tag or a manual dispatch. That meant #657's stale-
-  # completion protection and the #658 gate guarding it were proven for the
-  # first time during a release, which is the worst moment to learn either is
-  # broken: #723 went green on all three required checks while executing none
-  # of the code it changed.
-  #
-  # Scoped deliberately:
-  #   - only when the diff already enabled the upgrade scope, so an unrelated
-  #     install change does not pay for a long lane
-  #   - baseline only; the extended fixture matrix stays release-gated
-  #   - one source ref rather than two
-  if [ "$event_name" = "pull_request" ]; then
-    run_upgrade_extended=false
-    upgrade_extended_fixtures=''
-    set_upgrade_baseline_refs "$PR_UPGRADE_BASELINE_REFS"
-    add_scope upgrade-baseline-pr
-    reason="${reason}; upgrade baseline runs on this PR because it changes the upgrade harness"
     return 0
   fi
 
