@@ -134,6 +134,24 @@ export function registerWalletAddressDescriptorStatsTests(): void {
       await expect(generateAddress('wallet-1', 'user-1')).rejects.toThrow('Wallet does not have a descriptor');
     });
 
+    it('points a policy-less wallet at remediation instead of a destructive re-import', async () => {
+      // Re-importing creates a NEW wallet, stranding this one's id, labels, history,
+      // sharing and policies. A wallet that has a descriptor is recoverable in place.
+      mockPrismaClient.wallet.findUnique.mockResolvedValueOnce({
+        id: 'wallet-1',
+        devices: [{ device: { type: 'coldcard', model: null } }],
+      });
+      mockPrismaClient.wallet.findFirst.mockResolvedValueOnce({
+        id: 'wallet-1',
+        network: 'mainnet',
+        descriptor: 'wpkh([aabbccdd/84h/0h/0h]xpub/0/*)',
+        changeDescriptor: null,
+      });
+
+      await expect(generateAddress('wallet-1', 'user-1'))
+        .rejects.toThrow(/remediation/i);
+    });
+
     it('fails closed for a legacy descriptor wallet without persisted canonical policy identity', async () => {
       mockPrismaClient.wallet.findUnique.mockResolvedValueOnce({
         id: 'wallet-legacy',

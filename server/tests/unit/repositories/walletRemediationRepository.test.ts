@@ -218,6 +218,73 @@ describe('walletRemediationRepository', () => {
     expect(tx.walletRemediationEvent.findMany).not.toHaveBeenCalled();
   });
 
+  const recoveryPatch = () => ({
+    descriptorPolicyVersion: 1,
+    descriptorSourceKind: 'recovered_legacy',
+    changeDescriptor: 'wpkh([aabbccdd/84h/0h/0h]xpub-change/1/*)',
+    sourceDescriptor: 'wpkh([aabbccdd/84h/0h/0h]xpub-receive/0/*)',
+    canonicalPolicyId: 'single-sig-native-segwit-bip84-v1',
+    canonicalPolicyVersion: 1,
+  });
+
+  it('bounds a policy recovery to the exact pre-state it was proven against', async () => {
+    const change: RemediationChange = {
+      kind: 'wallet_policy_recovery', recordId: 'wallet-1', proposed: recoveryPatch(), evidenceIds: [],
+    };
+    const tx = {
+      wallet: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+    } as unknown as PrismaTxClient;
+
+    await expect(applyChanges(tx, 'wallet-1', [change])).resolves.toBeUndefined();
+    expect(tx.wallet.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'wallet-1',
+        descriptorPolicyVersion: null,
+        canonicalPolicyId: null,
+        descriptor: change.proposed.sourceDescriptor,
+      },
+      data: change.proposed,
+    });
+  });
+
+  it('rejects a policy recovery whose patch is incomplete', async () => {
+    const { sourceDescriptor: _omitted, ...partial } = recoveryPatch();
+    const change: RemediationChange = {
+      kind: 'wallet_policy_recovery', recordId: 'wallet-1', proposed: partial, evidenceIds: [],
+    };
+    const tx = { wallet: { updateMany: vi.fn() } } as unknown as PrismaTxClient;
+
+    await expect(applyChanges(tx, 'wallet-1', [change]))
+      .rejects.toThrow('Incomplete remediation patch for wallet-1');
+    expect(tx.wallet.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects a policy recovery whose bounding value is not an exact string', async () => {
+    const change: RemediationChange = {
+      kind: 'wallet_policy_recovery',
+      recordId: 'wallet-1',
+      proposed: { ...recoveryPatch(), sourceDescriptor: '' },
+      evidenceIds: [],
+    };
+    const tx = { wallet: { updateMany: vi.fn() } } as unknown as PrismaTxClient;
+
+    await expect(applyChanges(tx, 'wallet-1', [change]))
+      .rejects.toThrow(/must be an exact string/);
+    expect(tx.wallet.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rolls back a policy recovery when the wallet already acquired a policy', async () => {
+    const change: RemediationChange = {
+      kind: 'wallet_policy_recovery', recordId: 'wallet-1', proposed: recoveryPatch(), evidenceIds: [],
+    };
+    const tx = {
+      wallet: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+    } as unknown as PrismaTxClient;
+
+    await expect(applyChanges(tx, 'wallet-1', [change]))
+      .rejects.toThrow('Remediation write count mismatch for wallet-1');
+  });
+
   it('applies every supported exact patch to the scoped record', async () => {
     const changes: RemediationChange[] = [
       { kind: 'wallet_policy', recordId: 'wallet-1', proposed: { canonicalPolicyVersion: 1 }, evidenceIds: [] },

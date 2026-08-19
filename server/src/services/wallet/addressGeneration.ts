@@ -127,9 +127,14 @@ export async function generateAddress(
   await assertWalletHardwareCapabilityById(walletId, 'display');
 
   if (!wallet.descriptor || !wallet.changeDescriptor) {
+    // Do not advise re-importing: import always creates a NEW wallet, so it would strand
+    // this wallet's id, labels, transaction history, sharing and policies. A wallet that
+    // has a descriptor but no policy is recoverable in place through remediation.
     throw new InvalidInputError(
-      'Wallet does not have a descriptor. Cannot derive addresses. ' +
-      'Please import wallet with xpub or descriptor.'
+      wallet.descriptor
+        ? 'Wallet predates descriptor policies and cannot derive addresses yet. '
+          + 'Run wallet remediation to recover its descriptor policy in place.'
+        : 'Wallet does not have a descriptor. Cannot derive addresses.'
     );
   }
 

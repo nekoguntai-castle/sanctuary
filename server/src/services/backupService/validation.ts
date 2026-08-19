@@ -22,6 +22,7 @@ import type { BackupRecord, BackupMeta, ValidationResult } from './types';
 import {
   descriptorPolicyFingerprint,
   prepareDescriptorPolicy,
+  prepareRecoveredLegacyDescriptorPolicy,
 } from '../wallet/descriptorPolicy';
 import { parseDescriptorForImport } from '../bitcoin/descriptorParser';
 import { isBitcoinNetwork } from '../bitcoin/networks';
@@ -99,7 +100,8 @@ const validateLegacyDescriptorPolicy = (
 };
 
 const preparedPolicyMatchesWallet = (
-  prepared: ReturnType<typeof prepareDescriptorPolicy>,
+  prepared: ReturnType<typeof prepareDescriptorPolicy>
+    | ReturnType<typeof prepareRecoveredLegacyDescriptorPolicy>,
   wallet: CompleteVersionedWalletPolicy,
 ): boolean => (
   prepared.descriptor === wallet.descriptor
@@ -125,15 +127,21 @@ const validateVersionedDescriptorPolicy = (
   }
   try {
     const sourceKind = wallet.descriptorSourceKind;
-    const prepared = prepareDescriptorPolicy({
-      receiveDescriptor: wallet.sourceDescriptor,
-      changeDescriptor: sourceKind === 'imported_multipath'
-        ? undefined
-        : typeof wallet.sourceChangeDescriptor === 'string'
-          ? wallet.sourceChangeDescriptor
-          : undefined,
-      sourceKind: sourceKind === 'generated_pair' ? 'generated_pair' : 'imported',
-    });
+    // Each provenance kind is rebuilt by the code that produced it. Falling back to
+    // 'imported' for an unrecognised kind is not a safe default here: a recovered wallet
+    // has no source change descriptor, so it would route into multipath expansion, throw
+    // on its fixed-branch token, and block the restore of an otherwise valid backup.
+    const prepared = sourceKind === 'recovered_legacy'
+      ? prepareRecoveredLegacyDescriptorPolicy(wallet.sourceDescriptor)
+      : prepareDescriptorPolicy({
+        receiveDescriptor: wallet.sourceDescriptor,
+        changeDescriptor: sourceKind === 'imported_multipath'
+          ? undefined
+          : typeof wallet.sourceChangeDescriptor === 'string'
+            ? wallet.sourceChangeDescriptor
+            : undefined,
+        sourceKind: sourceKind === 'generated_pair' ? 'generated_pair' : 'imported',
+      });
     return preparedPolicyMatchesWallet(prepared, wallet)
       ? undefined
       : `Wallet ${walletId} descriptor policy does not match its exact source evidence`;

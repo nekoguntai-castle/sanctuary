@@ -7,24 +7,51 @@ import { InvalidInputError } from '../../errors';
 import {
   expandCanonicalMultipathDescriptor,
   parseCanonicalDescriptor,
+  renderCanonicalDescriptor,
   validateCanonicalDescriptorPair,
 } from '../bitcoin/descriptorParser';
+import { buildChangeDescriptor } from '../bitcoin/descriptorBuilder';
 
+/**
+ * What each value asserts about where a wallet's descriptor came from. These are
+ * provenance claims, not formats, and they are immutable once written.
+ *
+ * - `generated_pair`      Sanctuary materialised both descriptors from key material it holds.
+ * - `imported_pair`       a human supplied both descriptor tokens verbatim.
+ * - `imported_multipath`  a human supplied one multipath token, expanded into a pair.
+ * - `recovered_legacy`    nobody's origin was ever recorded. This wallet predates descriptor
+ *                         policies; its stored receive descriptor is the only token it has
+ *                         ever had, and the change descriptor was derived from it by
+ *                         canonical branch substitution and then proven by re-deriving every
+ *                         address the wallet already holds. Reachable ONLY from the wallet
+ *                         remediation flow — never from wallet creation, import or linking.
+ */
 export type DescriptorSourceKind =
   | 'generated_pair'
   | 'imported_pair'
-  | 'imported_multipath';
+  | 'imported_multipath'
+  | 'recovered_legacy';
 
-export interface PreparedDescriptorPolicy {
+/** Provenance kinds a wallet can acquire at creation, import or device linking. */
+export type OriginatedDescriptorSourceKind = Exclude<DescriptorSourceKind, 'recovered_legacy'>;
+
+export interface PreparedDescriptorPolicy<
+  Kind extends DescriptorSourceKind = OriginatedDescriptorSourceKind,
+> {
   descriptor: string;
   changeDescriptor: string;
   descriptorPolicyVersion: 1;
-  descriptorSourceKind: DescriptorSourceKind;
+  descriptorSourceKind: Kind;
   sourceDescriptor: string;
   sourceChangeDescriptor: string | null;
   sourceDescriptorChecksum: string | null;
   sourceChangeDescriptorChecksum: string | null;
 }
+
+export type PreparedRecoveredDescriptorPolicy = PreparedDescriptorPolicy<'recovered_legacy'>;
+
+/** Any prepared policy, whatever its provenance. */
+export type AnyPreparedDescriptorPolicy = PreparedDescriptorPolicy<DescriptorSourceKind>;
 
 interface PrepareDescriptorPolicyInput {
   receiveDescriptor: string;
@@ -48,6 +75,51 @@ const invalidDescriptor = (error: unknown): never => {
   const message = error instanceof Error ? error.message : 'Invalid descriptor policy';
   throw new InvalidInputError(message);
 };
+
+/**
+ * Reconstruct the descriptor policy of a wallet that predates descriptor policies.
+ *
+ * The change descriptor is DERIVED, never supplied: `buildChangeDescriptor` is the same
+ * canonical branch substitution wallet creation has always used, so recovery reproduces
+ * what creation would have written rather than inventing a second token. `sourceDescriptor`
+ * is pinned to the stored receive descriptor byte-for-byte, and `sourceChangeDescriptor`
+ * stays null because no second token was ever supplied — recording the derived token there
+ * would claim provenance that does not exist.
+ *
+ * The stored descriptor must already be canonical and checksum-free. The descriptor column
+ * is frozen by `protect_wallet_descriptor_policy` the instant a policy is assigned, so a
+ * descriptor that would need normalising can never be reconciled afterwards; blocking is
+ * the only safe answer. This function proves nothing about the wallet's addresses — that
+ * obligation lives in the remediation proof, which re-derives every one of them.
+ */
+export function prepareRecoveredLegacyDescriptorPolicy(
+  receiveDescriptor: string,
+): PreparedRecoveredDescriptorPolicy {
+  assertExactToken(receiveDescriptor, 'Stored descriptor');
+  try {
+    const parsed = parseCanonicalDescriptor(receiveDescriptor);
+    if (parsed.checksum !== undefined) {
+      throw new Error('Recovered descriptor must not carry a checksum');
+    }
+    if (renderCanonicalDescriptor(parsed) !== receiveDescriptor) {
+      throw new Error('Recovered descriptor is not already canonical');
+    }
+    const derivedChange = buildChangeDescriptor(receiveDescriptor);
+    const { receive, change } = validateCanonicalDescriptorPair(receiveDescriptor, derivedChange);
+    return {
+      descriptor: receive.body,
+      changeDescriptor: change.body,
+      descriptorPolicyVersion: 1,
+      descriptorSourceKind: 'recovered_legacy',
+      sourceDescriptor: receiveDescriptor,
+      sourceChangeDescriptor: null,
+      sourceDescriptorChecksum: null,
+      sourceChangeDescriptorChecksum: null,
+    };
+  } catch (error) {
+    return invalidDescriptor(error);
+  }
+}
 
 /**
  * Validate a complete receive/change policy and retain the exact source

@@ -2,7 +2,8 @@ import { parseDescriptorForImport } from '../bitcoin/descriptorParser';
 import { removeChecksum } from '../bitcoin/descriptorParser/checksum';
 import {
   prepareDescriptorPolicy,
-  type PreparedDescriptorPolicy,
+  prepareRecoveredLegacyDescriptorPolicy,
+  type AnyPreparedDescriptorPolicy,
 } from '../wallet/descriptorPolicy';
 import type { ParsedDescriptor } from '../bitcoin/descriptorParser/types';
 import type {
@@ -96,7 +97,7 @@ function hasExactOrderedRecoveryProvenance(wallet: RawAuditWallet): boolean {
   }
 }
 
-function reconstructPolicy(wallet: RawAuditWallet): PreparedDescriptorPolicy | null {
+function reconstructPolicy(wallet: RawAuditWallet): AnyPreparedDescriptorPolicy | null {
   if (!wallet.sourceDescriptor) return null;
   if (wallet.descriptorSourceKind === 'generated_pair') {
     if (!wallet.sourceChangeDescriptor) return null;
@@ -120,10 +121,13 @@ function reconstructPolicy(wallet: RawAuditWallet): PreparedDescriptorPolicy | n
       sourceKind: 'imported',
     });
   }
+  if (wallet.descriptorSourceKind === 'recovered_legacy') {
+    return prepareRecoveredLegacyDescriptorPolicy(wallet.sourceDescriptor);
+  }
   return null;
 }
 
-function policyMatches(wallet: RawAuditWallet, policy: PreparedDescriptorPolicy): boolean {
+function policyMatches(wallet: RawAuditWallet, policy: AnyPreparedDescriptorPolicy): boolean {
   return wallet.descriptorPolicyVersion === policy.descriptorPolicyVersion
     && wallet.descriptorSourceKind === policy.descriptorSourceKind
     && wallet.descriptor === policy.descriptor
@@ -207,6 +211,15 @@ export function inspectDescriptorEvidence(wallet: RawAuditWallet): DescriptorEvi
     else if (!policyMatches(wallet, policy)) findings.push('descriptor.policy_inconsistent');
   } catch {
     findings.push('descriptor.policy_inconsistent');
+  }
+
+  // A recovered wallet reconstructs cleanly — that is what its proof established — but
+  // its descriptor's origin was never recorded. Report that unconditionally so it can
+  // never reach proven_safe and stays distinguishable from a wallet whose provenance a
+  // human actually supplied. (Kept inline: extracting it into a helper makes lizard's
+  // TypeScript parser lose this file's function boundaries and blow the complexity gate.)
+  if (wallet.descriptorSourceKind === 'recovered_legacy') {
+    findings.push('descriptor.provenance_recovered');
   }
 
   const parsed = parseBranches(wallet);

@@ -217,3 +217,49 @@ describe('backup descriptor policy restore preflight', () => {
     }
   });
 });
+
+describe('recovered legacy descriptor policy restore', () => {
+  const recoveredWallet = () => ({
+    id: 'wallet-recovered',
+    type: 'single_sig',
+    scriptType: 'native_segwit',
+    network: 'mainnet',
+    quorum: null,
+    totalSigners: null,
+    descriptor: CANONICAL_RECEIVE,
+    fingerprint: 'aabbccdd',
+    changeDescriptor: CANONICAL_CHANGE,
+    descriptorPolicyVersion: 1,
+    descriptorSourceKind: 'recovered_legacy',
+    sourceDescriptor: CANONICAL_RECEIVE,
+    sourceChangeDescriptor: null,
+    sourceDescriptorChecksum: null,
+    sourceChangeDescriptorChecksum: null,
+  });
+
+  it('restores a recovered wallet instead of rejecting it as malformed evidence', () => {
+    // Without an explicit branch this kind falls through to the multipath expander, which
+    // throws on a fixed-branch token and makes every backup containing a recovered wallet
+    // unrestorable.
+    const result = validateDescriptorPoliciesForRestore({ wallet: [recoveredWallet()] });
+
+    expect(result.issues).toEqual([]);
+  });
+
+  it('rejects a recovered wallet whose change descriptor was tampered with', () => {
+    const wallet = { ...recoveredWallet(), changeDescriptor: CANONICAL_RECEIVE };
+
+    const result = validateDescriptorPoliciesForRestore({ wallet: [wallet] });
+
+    expect(result.issues).toHaveLength(1);
+    expect(result.issues[0]).toContain('does not match its exact source evidence');
+  });
+
+  it('rejects a recovered wallet whose source token is not the stored descriptor', () => {
+    const wallet = { ...recoveredWallet(), sourceDescriptor: CANONICAL_CHANGE };
+
+    const result = validateDescriptorPoliciesForRestore({ wallet: [wallet] });
+
+    expect(result.issues).toHaveLength(1);
+  });
+});

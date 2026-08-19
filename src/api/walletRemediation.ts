@@ -25,6 +25,20 @@ const remediationChangeSchema = z.discriminatedUnion('kind', [
   }).strict(),
   z.object({
     ...changeBase,
+    kind: z.literal('wallet_policy_recovery'),
+    // Required together, mirroring the server: a recovery always emits the full set, so a
+    // partial patch is malformed rather than merely smaller.
+    proposed: z.object({
+      descriptorPolicyVersion: z.literal(1),
+      descriptorSourceKind: z.literal('recovered_legacy'),
+      changeDescriptor: z.string().min(1),
+      sourceDescriptor: z.string().min(1),
+      canonicalPolicyId: z.string().min(1),
+      canonicalPolicyVersion: z.number().int().positive(),
+    }).strict(),
+  }).strict(),
+  z.object({
+    ...changeBase,
     kind: z.literal('signer_binding'),
     proposed: nonEmptyPatch({
       deviceAccountId: z.string().min(1).optional(), signerIndex: z.number().int().nonnegative().optional(),

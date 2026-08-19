@@ -204,6 +204,25 @@ describe('wallet safety audit analyzer', () => {
     expect(audited.findings).toContainEqual({ id: 'signer.snapshot_mismatch' });
   });
 
+  it('reports recovered provenance and never classifies such a wallet proven_safe', () => {
+    // A recovered wallet reconstructs cleanly — that is the point of the proof — but its
+    // descriptor's origin was never recorded, so it must stay distinguishable from a
+    // wallet whose provenance a human actually supplied.
+    const snapshot = provenAuditSnapshot();
+    const wallet = snapshot.wallets[0];
+    wallet.descriptorSourceKind = 'recovered_legacy';
+    wallet.sourceDescriptor = wallet.descriptor;
+    wallet.sourceChangeDescriptor = null;
+    wallet.sourceDescriptorChecksum = null;
+    wallet.sourceChangeDescriptorChecksum = null;
+
+    const audited = buildWalletSafetyAuditReport(snapshot, GENERATED_AT).wallets[0];
+
+    expect(audited.findings).toContainEqual({ id: 'descriptor.provenance_recovered' });
+    expect(audited.findings).not.toContainEqual({ id: 'descriptor.provenance_unproven' });
+    expect(audited.classification).not.toBe('proven_safe');
+  });
+
   it('rejects non-hardened BIP48 origins before recovery classification', () => {
     const snapshot = recoverableOrderedMultisigSnapshot();
     const replaceOrigin = (value: string | null) => value?.replaceAll(

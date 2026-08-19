@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import * as bitcoin from 'bitcoinjs-lib';
 import bip32 from '../../../../src/services/bitcoin/bip32';
-import { prepareDescriptorPolicy } from '../../../../src/services/wallet/descriptorPolicy';
+import {
+  prepareDescriptorPolicy,
+  prepareRecoveredLegacyDescriptorPolicy,
+} from '../../../../src/services/wallet/descriptorPolicy';
 import { computeDescriptorChecksum } from '../../../../src/services/bitcoin/descriptorParser/checksum';
 
 const XPUB = bip32.fromSeed(Buffer.alloc(32, 7), bitcoin.networks.bitcoin)
@@ -189,4 +192,56 @@ describe('prepareDescriptorPolicy', () => {
     })).toThrow('exact non-empty descriptor token');
   });
 
+});
+
+describe('recovered legacy descriptor policy', () => {
+  // Canonical descriptors render hardened steps as `h` (shared/utils/bitcoin formats
+  // descriptor paths that way), unlike address derivation paths which use apostrophes.
+  const RECEIVE = receive.replace(/'/g, 'h');
+  const CHANGE = change.replace(/'/g, 'h');
+
+  it('derives the change descriptor and records the stored token as its own source', () => {
+    const prepared = prepareRecoveredLegacyDescriptorPolicy(RECEIVE);
+
+    expect(prepared).toEqual({
+      descriptor: RECEIVE,
+      changeDescriptor: CHANGE,
+      descriptorPolicyVersion: 1,
+      descriptorSourceKind: 'recovered_legacy',
+      // Pinned equal to the descriptor: the CHECK constraint enforces this, so recovery
+      // can never introduce descriptor bytes the wallet did not already hold.
+      sourceDescriptor: RECEIVE,
+      sourceChangeDescriptor: null,
+      sourceDescriptorChecksum: null,
+      sourceChangeDescriptorChecksum: null,
+    });
+  });
+
+  it('refuses a validly checksummed descriptor rather than stripping it', () => {
+    // A real checksum, so parsing succeeds and the checksum guard is what rejects it.
+    // The descriptor column is frozen once a policy is assigned, so a token that would
+    // need rewriting can never be reconciled afterwards.
+    const checksummed = `${RECEIVE}#${computeDescriptorChecksum(RECEIVE)}`;
+
+    expect(() => prepareRecoveredLegacyDescriptorPolicy(checksummed))
+      .toThrow(/checksum/i);
+  });
+
+  it('refuses a descriptor that is not already canonical', () => {
+    // Apostrophe form is a valid descriptor but not the canonical rendering, and the
+    // descriptor column is frozen once a policy is assigned, so it must be blocked
+    // rather than silently normalised.
+    expect(() => prepareRecoveredLegacyDescriptorPolicy(receive))
+      .toThrow(/canonical/i);
+  });
+
+  it('refuses an empty or untrimmed token', () => {
+    expect(() => prepareRecoveredLegacyDescriptorPolicy(' '))
+      .toThrow('exact non-empty descriptor token');
+  });
+
+  it('refuses a descriptor that is not a receive branch', () => {
+    expect(() => prepareRecoveredLegacyDescriptorPolicy(CHANGE))
+      .toThrow(/branch|Invalid/i);
+  });
 });

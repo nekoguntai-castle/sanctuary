@@ -20,7 +20,11 @@ import {
   parseCanonicalDescriptor,
   validateCanonicalDescriptorPair,
 } from '../bitcoin/descriptorParser';
-import { prepareDescriptorPolicy } from '../wallet/descriptorPolicy';
+import {
+  prepareDescriptorPolicy,
+  prepareRecoveredLegacyDescriptorPolicy,
+  type PreparedRecoveredDescriptorPolicy,
+} from '../wallet/descriptorPolicy';
 import { remediationDigest, remediationProofDigest } from '../../utils/walletRemediationCanonicalDocument';
 import {
   WALLET_REMEDIATION_SCHEMA_VERSION,
@@ -38,6 +42,9 @@ interface ProvenWalletPolicy {
   change: RemediationChange | null;
   receive: string;
   changeDescriptor: string;
+  descriptorSourceKind: string;
+  canonicalPolicyId: string;
+  canonicalPolicyVersion: number;
 }
 
 type ParsedDescriptorKey = ReturnType<typeof parseCanonicalDescriptor>['keys'][number];
@@ -46,10 +53,41 @@ type SupportedWalletRow = WalletRow & {
   type: WalletType;
   scriptType: WalletScriptType;
   descriptor: string;
+};
+/** A wallet that already carries a complete descriptor policy. */
+type CompletePolicyWalletRow = SupportedWalletRow & {
   changeDescriptor: string;
   sourceDescriptor: string;
 };
-type PreparedPolicy = ReturnType<typeof prepareDescriptorPolicy>;
+type PreparedPolicy =
+  | ReturnType<typeof prepareDescriptorPolicy>
+  | PreparedRecoveredDescriptorPolicy;
+
+/**
+ * Whether two derivation paths denote the same BIP32 coordinates.
+ *
+ * Canonical derivation always renders hardened steps with an apostrophe
+ * (addressDerivation/descriptorDerivation.ts normalises `h` to `'`), while pre-policy
+ * derivation stored whatever notation the wallet's descriptor used — multisigDerivation
+ * wrote `firstKey.accountPath` verbatim. `m/48h/0h/0h/2h/0/0` and `m/48'/0'/0'/2'/0/0` are
+ * the same path, so comparing them byte-for-byte would block recovery on a label format.
+ *
+ * This is not a relaxation of the proof: the caller still requires the derived `address`
+ * and `scriptPubKey` to match byte-for-byte, and those are what bind ownership. The path
+ * is a human-facing label, and it is never rewritten by remediation.
+ */
+const sameDerivationPath = (left: string, right: string): boolean =>
+  left.replace(/h/gi, "'") === right.replace(/h/gi, "'");
+
+/**
+ * A wallet that predates descriptor policies. The CHECK constraint
+ * wallets_descriptor_policy_complete_check makes the policy columns all-null or all-set, so
+ * testing the version alone is sufficient and cannot be tricked by a partially-populated row.
+ */
+const isLegacyNullPolicyRow = (wallet: WalletRow): boolean =>
+  wallet.descriptorPolicyVersion === null
+  && wallet.changeDescriptor === null
+  && wallet.sourceDescriptor === null;
 type RegisteredPolicy = NonNullable<ReturnType<typeof findWalletPolicy>>;
 type ProposedMetadata = Record<string, string | number>;
 
@@ -124,7 +162,11 @@ const validateWalletPolicyCandidate = (
   wallet: WalletRow,
   blockers: RemediationBlocker[],
 ): wallet is SupportedWalletRow => {
-  if (!wallet.descriptor || !wallet.changeDescriptor || !wallet.sourceDescriptor) {
+  // A wallet that predates descriptor policies has no provenance to be missing — its
+  // policy is reconstructed and proven below. Only a partially-populated row, which the
+  // CHECK constraint should already make impossible, is a genuine provenance failure.
+  if (!wallet.descriptor || (!isLegacyNullPolicyRow(wallet)
+    && (!wallet.changeDescriptor || !wallet.sourceDescriptor))) {
     blockers.push(blocker('descriptor.provenance_missing', 'Exact descriptor provenance is required.'));
     return false;
   }
@@ -144,13 +186,23 @@ const validateWalletPolicyCandidate = (
 };
 
 const prepareWalletDescriptors = (wallet: SupportedWalletRow): PreparedPolicy => {
-  if (wallet.sourceChangeDescriptor === null) {
-    return prepareDescriptorPolicy({ receiveDescriptor: wallet.sourceDescriptor, sourceKind: 'imported' });
+  // Recovery first, by kind AND by shape. A legacy-null wallet has no source tokens to
+  // prepare from; an ALREADY-recovered wallet has exactly one, and must be rebuilt the
+  // same way it was built. Falling through would send both into the multipath expander
+  // (its only trigger is a null sourceChangeDescriptor), which throws on their
+  // fixed-branch token — so a recovered wallet would stop re-proving the moment it was
+  // remediated, and the post-apply convergence check would fail.
+  if (wallet.descriptorSourceKind === 'recovered_legacy' || isLegacyNullPolicyRow(wallet)) {
+    return prepareRecoveredLegacyDescriptorPolicy(wallet.sourceDescriptor ?? wallet.descriptor);
+  }
+  const complete = wallet as CompletePolicyWalletRow;
+  if (complete.sourceChangeDescriptor === null) {
+    return prepareDescriptorPolicy({ receiveDescriptor: complete.sourceDescriptor, sourceKind: 'imported' });
   }
   return prepareDescriptorPolicy({
-    receiveDescriptor: wallet.sourceDescriptor,
-    changeDescriptor: wallet.sourceChangeDescriptor,
-    sourceKind: wallet.descriptorSourceKind === 'generated_pair' ? 'generated_pair' : 'imported',
+    receiveDescriptor: complete.sourceDescriptor,
+    changeDescriptor: complete.sourceChangeDescriptor,
+    sourceKind: complete.descriptorSourceKind === 'generated_pair' ? 'generated_pair' : 'imported',
   });
 };
 
@@ -158,10 +210,17 @@ const proveDescriptorPolicy = (
   wallet: SupportedWalletRow,
   prepared: PreparedPolicy,
 ): RegisteredPolicy => {
-  if (prepared.descriptor !== wallet.descriptor || prepared.changeDescriptor !== wallet.changeDescriptor) {
+  // The receive descriptor is always compared byte-for-byte: it is frozen the moment a
+  // policy is assigned, so a mismatch is unfixable afterwards. The change descriptor is
+  // only compared when the wallet already has one — for a recovery it is the derived
+  // value, and the address re-derivation below is what proves it.
+  if (prepared.descriptor !== wallet.descriptor) {
     throw new Error('Source descriptors do not reproduce active descriptors');
   }
-  const pair = validateCanonicalDescriptorPair(wallet.descriptor, wallet.changeDescriptor);
+  if (wallet.changeDescriptor !== null && prepared.changeDescriptor !== wallet.changeDescriptor) {
+    throw new Error('Source descriptors do not reproduce active descriptors');
+  }
+  const pair = validateCanonicalDescriptorPair(prepared.descriptor, prepared.changeDescriptor);
   const policy = findWalletPolicy(wallet.type, wallet.scriptType);
   if (!policy || pair.receive.wrapper !== policy.descriptorWrapper) {
     throw new Error('Descriptor wrapper does not match wallet policy');
@@ -182,6 +241,10 @@ const walletPolicyPatch = (
   const values = {
     descriptorPolicyVersion: prepared.descriptorPolicyVersion,
     descriptorSourceKind: prepared.descriptorSourceKind,
+    // Only ever emitted for a recovery: exactNullable omits them when the wallet already
+    // holds the same value, so an already-versioned wallet's patch is unchanged.
+    changeDescriptor: prepared.changeDescriptor,
+    sourceDescriptor: prepared.sourceDescriptor,
     sourceDescriptorChecksum: prepared.sourceDescriptorChecksum,
     sourceChangeDescriptorChecksum: prepared.sourceChangeDescriptorChecksum,
     canonicalPolicyId: policy.id,
@@ -207,15 +270,21 @@ const walletPolicyChange = (
     const prepared = prepareWalletDescriptors(wallet);
     const policy = proveDescriptorPolicy(wallet, prepared);
     const proposed = walletPolicyPatch(wallet, prepared, policy);
+    const recovering = isLegacyNullPolicyRow(wallet);
     return {
       change: Object.keys(proposed).length === 0 ? null : {
-        kind: 'wallet_policy',
+        kind: recovering ? 'wallet_policy_recovery' : 'wallet_policy',
         recordId: wallet.id,
         proposed,
-        evidenceIds: ['wallet:' + wallet.id + ':descriptor-policy'],
+        evidenceIds: [
+          'wallet:' + wallet.id + (recovering ? ':descriptor-policy-recovery' : ':descriptor-policy'),
+        ],
       },
       receive: prepared.descriptor,
       changeDescriptor: prepared.changeDescriptor,
+      descriptorSourceKind: prepared.descriptorSourceKind,
+      canonicalPolicyId: policy.id,
+      canonicalPolicyVersion: policy.version,
     };
   } catch (error) {
     blockers.push(blocker(
@@ -357,7 +426,7 @@ const addressChanges = (
         { branch, index: address.index, network: wallet.network as never },
       )).filter((derived) => derived.address === address.address
         && derived.scriptPubKey === storedScript
-        && derived.derivationPath === address.derivationPath);
+        && sameDerivationPath(derived.derivationPath, address.derivationPath));
       if (candidates.length !== 1) throw new Error('Stored address does not have one exact branch match');
       const derived = candidates[0];
       const proposed: Record<string, string | number> = {};
@@ -406,15 +475,19 @@ export const buildWalletRemediationDocument = (
   const changeEvidenceIds = changes.flatMap((change) => change.evidenceIds);
   const originalState = exactOriginalState(snapshot);
   const originalStateDigest = remediationDigest(originalState);
-  const recoveryEvidenceDigest = eligible ? remediationDigest({
+  const provenPolicy = policy;
+  const recoveryEvidenceDigest = eligible && provenPolicy ? remediationDigest({
     walletId: snapshot.wallet.id,
     descriptor: snapshot.wallet.descriptor,
-    changeDescriptor: snapshot.wallet.changeDescriptor,
+    // Sourced from the PROVEN policy, not from the row or the patch. For a recovery the
+    // wallet's own columns are still null, and a kind-specific patch lookup would miss and
+    // yield `undefined` — which `canonicalize` has no arm for and would throw on while
+    // building the evidence document. The proven values are always present when eligible.
+    changeDescriptor: provenPolicy.changeDescriptor,
     fingerprint: snapshot.wallet.fingerprint,
-    policyId: snapshot.wallet.canonicalPolicyId ?? changes.find(change => change.kind === 'wallet_policy')
-      ?.proposed.canonicalPolicyId,
-    policyVersion: snapshot.wallet.canonicalPolicyVersion ?? changes.find(change => change.kind === 'wallet_policy')
-      ?.proposed.canonicalPolicyVersion,
+    descriptorSourceKind: provenPolicy.descriptorSourceKind,
+    policyId: provenPolicy.canonicalPolicyId,
+    policyVersion: provenPolicy.canonicalPolicyVersion,
     signers: originalState.signers.map(signer => ({
       linkId: signer.id,
       accountId: signer.accountId,

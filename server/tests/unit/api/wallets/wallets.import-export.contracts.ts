@@ -306,6 +306,30 @@ export const registerWalletImportExportContracts = () => {
         'wpkh(imported/<0;1>/*)#multsum1',
         undefined,
       ],
+      [
+        // A recovered wallet has no source change descriptor, only a derived one. It is
+        // emitted explicitly so a derived token is never presented as source evidence.
+        'a recovered legacy source with its derived change branch',
+        {
+          descriptorSourceKind: 'recovered_legacy',
+          sourceDescriptor: 'wpkh(recovered/0/*)',
+          sourceChangeDescriptor: null,
+          changeDescriptor: 'wpkh(recovered/1/*)',
+        },
+        'wpkh(recovered/0/*)',
+        'wpkh(recovered/1/*)',
+      ],
+      [
+        'a recovered legacy source whose derived change branch is absent',
+        {
+          descriptorSourceKind: 'recovered_legacy',
+          sourceDescriptor: 'wpkh(recovered/0/*)',
+          sourceChangeDescriptor: null,
+          changeDescriptor: null,
+        },
+        'wpkh(recovered/0/*)',
+        undefined,
+      ],
     ])('exports %s as recovery evidence', async (
       _case,
       overrides,

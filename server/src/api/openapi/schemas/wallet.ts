@@ -439,6 +439,32 @@ export const walletSchemas = {
       {
         type: 'object',
         properties: {
+          kind: { type: 'string', enum: ['wallet_policy_recovery'] },
+          recordId: { type: 'string' },
+          proposed: {
+            type: 'object',
+            properties: {
+              descriptorPolicyVersion: { type: 'integer', minimum: 1, maximum: 1 },
+              descriptorSourceKind: { type: 'string', enum: ['recovered_legacy'] },
+              changeDescriptor: { type: 'string' },
+              sourceDescriptor: { type: 'string' },
+              canonicalPolicyId: { type: 'string' },
+              canonicalPolicyVersion: { type: 'integer', minimum: 1 },
+            },
+            required: [
+              'descriptorPolicyVersion', 'descriptorSourceKind', 'changeDescriptor',
+              'sourceDescriptor', 'canonicalPolicyId', 'canonicalPolicyVersion',
+            ],
+            additionalProperties: false,
+          },
+          evidenceIds: { type: 'array', items: { type: 'string' }, minItems: 1 },
+        },
+        required: ['kind', 'recordId', 'proposed', 'evidenceIds'],
+        additionalProperties: false,
+      },
+      {
+        type: 'object',
+        properties: {
           kind: { type: 'string', enum: ['signer_binding'] },
           recordId: { type: 'string' },
           proposed: {

@@ -14,6 +14,13 @@ const REMEDIATION_PATCH_FIELDS = {
     'descriptorPolicyVersion', 'descriptorSourceKind', 'sourceDescriptorChecksum',
     'sourceChangeDescriptorChecksum', 'canonicalPolicyId', 'canonicalPolicyVersion',
   ]),
+  // A recovery additionally assigns the descriptor policy a legacy wallet never had.
+  // `descriptor` and `fingerprint` are absent on purpose: they are frozen by
+  // protect_wallet_descriptor_policy and must never appear in any patch.
+  wallet_policy_recovery: new Set([
+    'descriptorPolicyVersion', 'descriptorSourceKind', 'changeDescriptor', 'sourceDescriptor',
+    'canonicalPolicyId', 'canonicalPolicyVersion',
+  ]),
   signer_binding: new Set([
     'deviceAccountId', 'signerIndex', 'signerBindingVersion', 'signerFingerprint',
     'signerXpub', 'signerDerivationPath', 'signerPurpose', 'signerScriptType',
@@ -23,12 +30,34 @@ const REMEDIATION_PATCH_FIELDS = {
   ]),
 } as const;
 
+/**
+ * Kinds whose patch is only meaningful when complete. A recovery that omitted, say,
+ * `sourceDescriptor` would still satisfy the allowlist while silently dropping the value
+ * the compare-and-set below depends on, so requiredness is enforced, not assumed.
+ */
+const REQUIRED_PATCH_FIELDS: Partial<Record<RemediationChange['kind'], ReadonlySet<string>>> = {
+  wallet_policy_recovery: REMEDIATION_PATCH_FIELDS.wallet_policy_recovery,
+};
+
 function assertExactPatch(change: RemediationChange): void {
   const keys = Object.keys(change.proposed);
   const allowed = REMEDIATION_PATCH_FIELDS[change.kind];
   if (keys.length === 0 || keys.some((key) => !allowed.has(key as never))) {
     throw new Error(`Unsafe remediation patch for ${change.recordId}`);
   }
+  const required = REQUIRED_PATCH_FIELDS[change.kind];
+  if (required && [...required].some((field) => !(field in change.proposed))) {
+    throw new Error(`Incomplete remediation patch for ${change.recordId}`);
+  }
+}
+
+/** Read a patch field that must be an exact string before it can bound a write. */
+function patchString(change: RemediationChange, field: string): string {
+  const value = change.proposed[field];
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new Error(`Remediation patch field ${field} must be an exact string for ${change.recordId}`);
+  }
+  return value;
 }
 
 export async function loadSnapshot(
@@ -162,6 +191,20 @@ export async function applyChanges(
     assertExactPatch(change);
     const result = change.kind === 'wallet_policy'
       ? await tx.wallet.updateMany({ where: { id: walletId }, data: change.proposed })
+      : change.kind === 'wallet_policy_recovery'
+        // Compare-and-set on the exact pre-state this proposal was proven against. The
+        // policy columns are assignable once and then frozen by trigger, so a wallet that
+        // acquired a policy after the proposal was built must not be written to; the
+        // count === 1 assertion below turns that into a rollback rather than a silent skip.
+        ? await tx.wallet.updateMany({
+          where: {
+            id: walletId,
+            descriptorPolicyVersion: null,
+            canonicalPolicyId: null,
+            descriptor: patchString(change, 'sourceDescriptor'),
+          },
+          data: change.proposed,
+        })
       : change.kind === 'signer_binding'
         ? await tx.walletDevice.updateMany({ where: { id: change.recordId, walletId }, data: change.proposed })
         : await tx.address.updateMany({ where: { id: change.recordId, walletId }, data: change.proposed });

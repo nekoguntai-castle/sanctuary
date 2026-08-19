@@ -124,7 +124,7 @@ model Wallet {
   descriptor                     String? // Output descriptor
   changeDescriptor               String? // Change output descriptor
   descriptorPolicyVersion        Int?    // Null until descriptor policy is explicitly verified
-  descriptorSourceKind           String? // generated_pair, imported_pair, imported_multipath
+  descriptorSourceKind           String? // generated_pair, imported_pair, imported_multipath, recovered_legacy
   sourceDescriptor               String? // Exact source descriptor before any canonicalization
   sourceChangeDescriptor         String? // Exact paired change source; null for multipath sources
   sourceDescriptorChecksum       String? // Exact checksum supplied with sourceDescriptor

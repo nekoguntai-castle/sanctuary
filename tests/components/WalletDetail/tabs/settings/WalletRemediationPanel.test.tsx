@@ -121,6 +121,19 @@ describe('WalletRemediationPanel', () => {
         ...proposal.changes,
         { kind: 'wallet_policy', recordId: 'wallet-1', proposed: { descriptorPolicyVersion: 1 }, evidenceIds: ['evidence-2'] },
         { kind: 'signer_binding', recordId: 'link-1', proposed: { signerIndex: 0 }, evidenceIds: ['evidence-3'] },
+        {
+          kind: 'wallet_policy_recovery',
+          recordId: 'wallet-1',
+          proposed: {
+            descriptorPolicyVersion: 1,
+            descriptorSourceKind: 'recovered_legacy',
+            changeDescriptor: 'wpkh([aabbccdd/84h/0h/0h]xpub/1/*)',
+            sourceDescriptor: 'wpkh([aabbccdd/84h/0h/0h]xpub/0/*)',
+            canonicalPolicyId: 'single-sig-native-segwit-bip84-v1',
+            canonicalPolicyVersion: 1,
+          },
+          evidenceIds: ['evidence-4'],
+        },
       ],
     });
     render(<WalletRemediationPanel walletId="wallet-1" walletName="Main Wallet" />);
@@ -130,6 +143,9 @@ describe('WalletRemediationPanel', () => {
     expect(await screen.findByText(/Canonical policy metadata/)).toBeInTheDocument();
     expect(screen.getByText(/Signer account binding/)).toBeInTheDocument();
     expect(screen.getByText(/Address coordinate/)).toBeInTheDocument();
+    // A recovery writes the descriptor policy itself, so it must not be presented under
+    // the same label as a metadata-only backfill.
+    expect(screen.getByText(/Recovered descriptor policy/)).toBeInTheDocument();
   });
 
   it.each([

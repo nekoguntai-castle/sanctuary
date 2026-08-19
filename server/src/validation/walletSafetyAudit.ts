@@ -18,6 +18,7 @@ export const walletAuditFindingIdSchema = z.enum([
   'address.zero_addresses',
   'descriptor.mixed_change_branches',
   'descriptor.policy_inconsistent',
+  'descriptor.provenance_recovered',
   'descriptor.provenance_unproven',
   'policy.ordered_multisig_unsupported',
   'policy.legacy_multisig_unsupported',

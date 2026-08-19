@@ -7,8 +7,14 @@ export interface RemediationBlocker {
   message: string;
 }
 
+/**
+ * `wallet_policy` backfills canonical policy identity onto a wallet that already has a
+ * descriptor policy. `wallet_policy_recovery` additionally assigns the descriptor policy
+ * itself, for a wallet that predates policies and has none — a strictly larger write, kept
+ * a separate kind so the repository allowlist and the review UI can treat it as such.
+ */
 export interface RemediationChange {
-  kind: 'wallet_policy' | 'signer_binding' | 'address_coordinate';
+  kind: 'wallet_policy' | 'wallet_policy_recovery' | 'signer_binding' | 'address_coordinate';
   recordId: string;
   proposed: Record<string, string | number>;
   evidenceIds: string[];

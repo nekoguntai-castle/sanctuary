@@ -6,10 +6,13 @@ import {
 } from '../../../src/services/walletRemediation';
 import { prepareDescriptorPolicy } from '../../../src/services/wallet/descriptorPolicy';
 import {
+  AUDIT_FIXTURE_CHANGE,
+  AUDIT_FIXTURE_RECEIVE,
   AUDIT_FIXTURE_SOURCE,
   AUDIT_FIXTURE_XPUB,
   provenAuditSnapshot,
 } from '../../fixtures/walletSafetyAuditFixture';
+import { assertCanonicalAddressesForWallet } from '../../../src/services/wallet/canonicalAddressValidation';
 import {
   canRunIntegrationTests,
   cleanupTestData,
@@ -95,6 +98,50 @@ async function createLegacyWallet(prisma: PrismaClient) {
   return { user, wallet, account };
 }
 
+/**
+ * A wallet exactly as an upgraded install holds it: a stored receive descriptor and
+ * addresses, and NOTHING else — every descriptor-policy and canonical-policy column null.
+ * This is the shape the two 20260810 migrations leave behind, and the shape that could
+ * not be remediated before recovery existed.
+ */
+async function createLegacyNullWallet(prisma: PrismaClient) {
+  const user = await createTestUser(prisma, getTestUser());
+  const fixture = provenAuditSnapshot();
+  const wallet = await prisma.wallet.create({
+    data: {
+      name: `remediation-legacy-null-${Date.now()}`,
+      type: 'single_sig', scriptType: 'native_segwit', network: 'testnet3',
+      descriptor: AUDIT_FIXTURE_RECEIVE,
+      fingerprint: 'aabbccdd',
+      users: { create: { userId: user.id, role: 'owner' } },
+    },
+  });
+  const device = await prisma.device.create({
+    data: {
+      userId: user.id, type: 'trezor', label: 'Legacy signer',
+      fingerprint: 'aabbccdd', xpub: AUDIT_FIXTURE_XPUB,
+      derivationPath: "m/84'/1'/0'",
+    },
+  });
+  const account = await prisma.deviceAccount.create({
+    data: {
+      deviceId: device.id, purpose: 'single_sig', scriptType: 'native_segwit',
+      derivationPath: "m/84'/1'/0'", xpub: AUDIT_FIXTURE_XPUB,
+    },
+  });
+  await prisma.walletDevice.create({ data: { walletId: wallet.id, deviceId: device.id } });
+  await prisma.address.createMany({
+    data: fixture.addresses.map((address) => ({
+      walletId: wallet.id,
+      address: address.address,
+      derivationPath: address.derivationPath,
+      index: address.index,
+      used: false,
+    })),
+  });
+  return { user, wallet, account };
+}
+
 describeWithDatabase('wallet remediation atomic evidence', () => {
   let prisma: PrismaClient;
 
@@ -102,6 +149,125 @@ describeWithDatabase('wallet remediation atomic evidence', () => {
   beforeEach(async () => { await dropFailure(prisma); await cleanupTestData(); });
   afterEach(async () => { await dropFailure(prisma); await cleanupTestData(); });
   afterAll(async () => { await teardownTestDatabase(); });
+
+  it('recovers a legacy-null wallet end to end and unblocks receive addresses', async () => {
+    const { user, wallet } = await createLegacyNullWallet(prisma);
+    const before = await prisma.wallet.findUniqueOrThrow({ where: { id: wallet.id } });
+    expect(before.descriptorPolicyVersion).toBeNull();
+    expect(before.changeDescriptor).toBeNull();
+
+    // Before recovery the ownership proof that gates deposit addresses cannot pass.
+    // (assertUnusedAddressesSafeForDisplay wraps this behind a hardware-capability gate,
+    // which is an independent axis this change does not touch, so the canonical proof is
+    // asserted directly.)
+    const legacyAddresses = await prisma.address.findMany({ where: { walletId: wallet.id } });
+    await expect(assertCanonicalAddressesForWallet(wallet.id, legacyAddresses))
+      .rejects.toThrow(/descriptor policy is incomplete/i);
+
+    const proposal = await createWalletRemediationProposal(wallet.id, {
+      userId: user.id, username: user.username,
+    });
+    expect(proposal.eligible).toBe(true);
+    expect(proposal.changes.map((change) => change.kind)).toContain('wallet_policy_recovery');
+
+    const applied = await approveWalletRemediationProposal(
+      wallet.id, proposal.proposalId, proposal.proposalDigest,
+      { userId: user.id, username: user.username },
+    );
+    expect(applied.state).toBe('applied');
+
+    const after = await prisma.wallet.findUniqueOrThrow({ where: { id: wallet.id } });
+    expect(after).toMatchObject({
+      descriptorPolicyVersion: 1,
+      descriptorSourceKind: 'recovered_legacy',
+      changeDescriptor: AUDIT_FIXTURE_CHANGE,
+      sourceDescriptor: AUDIT_FIXTURE_RECEIVE,
+      canonicalPolicyId: 'single-sig-native-segwit-bip84-v1',
+      canonicalPolicyVersion: 1,
+    });
+    // The frozen columns are untouched, and no second source token was invented.
+    expect(after.descriptor).toBe(before.descriptor);
+    expect(after.fingerprint).toBe(before.fingerprint);
+    expect(after.sourceChangeDescriptor).toBeNull();
+    expect(after.sourceDescriptorChecksum).toBeNull();
+
+    const afterAddresses = await prisma.address.findMany({
+      where: { walletId: wallet.id }, orderBy: { index: 'asc' },
+    });
+    for (const address of afterAddresses) {
+      expect(address.coordinateVersion).toBe(1);
+      expect(address.canonicalPolicyId).toBe('single-sig-native-segwit-bip84-v1');
+      expect(address.scriptPubKey).toMatch(/^[0-9a-f]+$/);
+    }
+    // The address strings and their user-visible paths are never rewritten.
+    expect(afterAddresses.map((a) => [a.address, a.derivationPath]))
+      .toEqual(legacyAddresses
+        .sort((a, b) => a.index - b.index)
+        .map((a) => [a.address, a.derivationPath]));
+
+    // The loop is closed: the ownership proof that gates deposit addresses now passes.
+    await expect(assertCanonicalAddressesForWallet(wallet.id, afterAddresses))
+      .resolves.toBeUndefined();
+  });
+
+  it('is idempotent on a retried recovery approval and never writes twice', async () => {
+    // Approval is intentionally idempotent: a retried request returns the applied view
+    // rather than re-writing. That matters here because the policy columns are frozen by
+    // trigger the moment they are set, so a second write would not merely be redundant --
+    // it would abort the transaction.
+    const { user, wallet } = await createLegacyNullWallet(prisma);
+    const proposal = await createWalletRemediationProposal(wallet.id, {
+      userId: user.id, username: user.username,
+    });
+    const first = await approveWalletRemediationProposal(
+      wallet.id, proposal.proposalId, proposal.proposalDigest,
+      { userId: user.id, username: user.username },
+    );
+    const afterFirst = await prisma.wallet.findUniqueOrThrow({ where: { id: wallet.id } });
+
+    const second = await approveWalletRemediationProposal(
+      wallet.id, proposal.proposalId, proposal.proposalDigest,
+      { userId: user.id, username: user.username },
+    );
+
+    expect(second.state).toBe('applied');
+    expect(second.appliedAt).toEqual(first.appliedAt);
+    await expect(prisma.wallet.findUniqueOrThrow({ where: { id: wallet.id } }))
+      .resolves.toEqual(afterFirst);
+    // Exactly one applied event: the retry appended no new evidence.
+    await expect(prisma.walletRemediationEvent.findMany({
+      where: { proposalId: proposal.proposalId, kind: 'approved_applied' },
+    })).resolves.toHaveLength(1);
+  });
+
+  it('rejects recovered provenance that claims a source change descriptor', async () => {
+    // The CHECK constraint is what makes the provenance claim honest rather than a
+    // convention the application could drift away from.
+    const { wallet } = await createLegacyNullWallet(prisma);
+
+    await expect(prisma.$executeRawUnsafe(`
+      UPDATE "wallets" SET
+        "descriptorPolicyVersion" = 1,
+        "descriptorSourceKind" = 'recovered_legacy',
+        "changeDescriptor" = '${AUDIT_FIXTURE_CHANGE}',
+        "sourceDescriptor" = '${AUDIT_FIXTURE_RECEIVE}',
+        "sourceChangeDescriptor" = '${AUDIT_FIXTURE_CHANGE}'
+      WHERE "id" = '${wallet.id}'
+    `)).rejects.toThrow();
+  });
+
+  it('rejects recovered provenance whose source token is not the stored descriptor', async () => {
+    const { wallet } = await createLegacyNullWallet(prisma);
+
+    await expect(prisma.$executeRawUnsafe(`
+      UPDATE "wallets" SET
+        "descriptorPolicyVersion" = 1,
+        "descriptorSourceKind" = 'recovered_legacy',
+        "changeDescriptor" = '${AUDIT_FIXTURE_CHANGE}',
+        "sourceDescriptor" = '${AUDIT_FIXTURE_CHANGE}'
+      WHERE "id" = '${wallet.id}'
+    `)).rejects.toThrow();
+  });
 
   it('applies unique proof metadata without changing descriptors, addresses, paths, or scripts', async () => {
     const { user, wallet, account } = await createLegacyWallet(prisma);

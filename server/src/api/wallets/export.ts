@@ -75,6 +75,15 @@ function recoveryDescriptorSet(wallet: ExportWallet): RecoveryDescriptorSet {
   if (wallet.descriptorSourceKind === 'imported_multipath' && wallet.sourceDescriptor) {
     return { descriptor: wallet.sourceDescriptor };
   }
+  // A recovered wallet has no source change descriptor — only a derived one. Emit it
+  // explicitly rather than letting the `||` chain below present a derived token as if it
+  // were source evidence. (Third-party export formats carry no provenance field, so the
+  // recovered/imported distinction survives only in the database, backup and audit.)
+  if (wallet.descriptorSourceKind === 'recovered_legacy' && wallet.sourceDescriptor) {
+    return wallet.changeDescriptor
+      ? { descriptor: wallet.sourceDescriptor, changeDescriptor: wallet.changeDescriptor }
+      : { descriptor: wallet.sourceDescriptor };
+  }
   return {
     descriptor: wallet.sourceDescriptor || wallet.descriptor || '',
     changeDescriptor: wallet.sourceChangeDescriptor || wallet.changeDescriptor || undefined,

@@ -28,6 +28,9 @@ const isStaleConflict = (error: unknown): boolean => (
 
 const changeLabel = (kind: WalletRemediationProposal['changes'][number]['kind']): string => {
   if (kind === 'wallet_policy') return 'Canonical policy metadata';
+  // A recovery writes the descriptor policy itself, not just metadata. Say so plainly:
+  // approving it is a materially larger decision than approving a metadata backfill.
+  if (kind === 'wallet_policy_recovery') return 'Recovered descriptor policy';
   if (kind === 'signer_binding') return 'Signer account binding';
   return 'Address coordinate';
 };

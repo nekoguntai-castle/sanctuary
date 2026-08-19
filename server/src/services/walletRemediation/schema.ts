@@ -56,6 +56,25 @@ const walletPolicyPatchSchema = z.object({
   canonicalPolicyVersion: z.number().int().positive().optional(),
 }).strict().refine((value) => Object.keys(value).length > 0, 'An exact wallet policy patch is required');
 
+/**
+ * A recovery assigns the descriptor policy a legacy wallet never had, so unlike
+ * `walletPolicyPatchSchema` these fields are REQUIRED together rather than independently
+ * optional: for a legacy-null row every one of them is always emitted, and a patch missing
+ * any of them is malformed by construction. Requiredness is also what makes the
+ * repository's compare-and-set on `sourceDescriptor` sound.
+ *
+ * `descriptor` and `fingerprint` are absent on purpose — they are frozen by
+ * protect_wallet_descriptor_policy and must never appear in a patch.
+ */
+const walletPolicyRecoveryPatchSchema = z.object({
+  descriptorPolicyVersion: z.literal(1),
+  descriptorSourceKind: z.literal('recovered_legacy'),
+  changeDescriptor: nonEmptyString,
+  sourceDescriptor: nonEmptyString,
+  canonicalPolicyId: nonEmptyString,
+  canonicalPolicyVersion: z.number().int().positive(),
+}).strict();
+
 const signerBindingPatchSchema = z.object({
   deviceAccountId: nonEmptyString.optional(),
   signerIndex: z.number().int().min(0).optional(),
@@ -82,6 +101,7 @@ const changeBase = {
 
 export const remediationChangeSchema = z.discriminatedUnion('kind', [
   z.object({ ...changeBase, kind: z.literal('wallet_policy'), proposed: walletPolicyPatchSchema }).strict(),
+  z.object({ ...changeBase, kind: z.literal('wallet_policy_recovery'), proposed: walletPolicyRecoveryPatchSchema }).strict(),
   z.object({ ...changeBase, kind: z.literal('signer_binding'), proposed: signerBindingPatchSchema }).strict(),
   z.object({ ...changeBase, kind: z.literal('address_coordinate'), proposed: addressCoordinatePatchSchema }).strict(),
 ]);

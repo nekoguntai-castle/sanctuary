@@ -50,6 +50,48 @@ function legacySnapshot(): WalletRemediationSnapshot {
   };
 }
 
+/**
+ * A wallet exactly as it exists after upgrading an install from <= v0.8.62.
+ *
+ * `legacySnapshot()` above is NOT this shape: it keeps changeDescriptor,
+ * sourceDescriptor and descriptorSourceKind while nulling descriptorPolicyVersion,
+ * which the wallets_descriptor_policy_complete_check CHECK constraint forbids, so no
+ * such row can exist in Postgres. The production shape is wholly legacy-null, because
+ * migrations 20260810010000 and 20260810020000 create these columns and rewrite no data.
+ *
+ * `pathNotation: 'h'` reproduces wallets whose stored derivationPath uses `h` hardened
+ * markers — what pre-policy derivation persisted when the descriptor itself used them
+ * (multisigDerivation.ts:49 stored firstKey.accountPath verbatim). Canonical derivation
+ * always emits apostrophes (descriptorDerivation.ts:41-44), so these denote the identical
+ * BIP32 path in a different notation.
+ */
+function legacyNullSnapshot(
+  { pathNotation = 'apostrophe' }: { pathNotation?: 'apostrophe' | 'h' } = {},
+): WalletRemediationSnapshot {
+  const base = legacySnapshot();
+  return {
+    ...base,
+    wallet: {
+      ...base.wallet,
+      changeDescriptor: null,
+      descriptorPolicyVersion: null,
+      descriptorSourceKind: null,
+      sourceDescriptor: null,
+      sourceChangeDescriptor: null,
+      sourceDescriptorChecksum: null,
+      sourceChangeDescriptorChecksum: null,
+      canonicalPolicyId: null,
+      canonicalPolicyVersion: null,
+    },
+    addresses: base.addresses.map((address) => ({
+      ...address,
+      derivationPath: pathNotation === 'h'
+        ? address.derivationPath.replace(/'/g, 'h')
+        : address.derivationPath,
+    })),
+  };
+}
+
 function provenSnapshot(): WalletRemediationSnapshot {
   const fixture = provenAuditSnapshot();
   return {
@@ -62,6 +104,94 @@ function provenSnapshot(): WalletRemediationSnapshot {
     ownerUserIds: ['owner-1'],
   };
 }
+
+describe('wallet remediation proof — legacy-null wallets (upgrade path)', () => {
+  it('recovers a descriptor policy for a wallet whose rows predate the policy migrations', () => {
+    const document = buildWalletRemediationDocument(legacyNullSnapshot());
+
+    expect(document.blockers).toEqual([]);
+    expect(document.eligible).toBe(true);
+    expect(document.changes.map((change) => change.kind)).toEqual([
+      'wallet_policy_recovery',
+      'signer_binding',
+      'address_coordinate',
+      'address_coordinate',
+    ]);
+    expect(document.changes[0].proposed).toMatchObject({
+      descriptorPolicyVersion: 1,
+      descriptorSourceKind: 'recovered_legacy',
+      changeDescriptor: AUDIT_FIXTURE_CHANGE,
+      sourceDescriptor: AUDIT_FIXTURE_RECEIVE,
+      canonicalPolicyId: 'single-sig-native-segwit-bip84-v1',
+      canonicalPolicyVersion: 1,
+    });
+    // The immutable columns must never appear in a recovery patch.
+    expect(document.changes[0].proposed).not.toHaveProperty('descriptor');
+    expect(document.changes[0].proposed).not.toHaveProperty('fingerprint');
+    expect(document.proof.recoveryStatus).toBe('recovery-proven');
+  });
+
+  it('recovers a wallet whose stored derivation paths use h hardened notation', () => {
+    // Same BIP32 coordinates, different notation. The address and scriptPubKey still
+    // have to match byte-for-byte; only the path label differs.
+    const document = buildWalletRemediationDocument(legacyNullSnapshot({ pathNotation: 'h' }));
+
+    expect(document.blockers).toEqual([]);
+    expect(document.eligible).toBe(true);
+    expect(document.changes.filter((change) => change.kind === 'address_coordinate')).toHaveLength(2);
+  });
+
+  it('re-proves an already-recovered wallet with no further changes', () => {
+    // The post-apply convergence check re-runs this proof against the written row. A
+    // recovered wallet has exactly one source token, so it must be rebuilt as a recovery;
+    // falling through to the multipath expander (whose only trigger is a null
+    // sourceChangeDescriptor) throws on its fixed-branch token and the approval that just
+    // succeeded would be rolled back.
+    const base = legacyNullSnapshot();
+    const applied: WalletRemediationSnapshot = {
+      ...base,
+      wallet: {
+        ...base.wallet,
+        descriptorPolicyVersion: 1,
+        descriptorSourceKind: 'recovered_legacy',
+        changeDescriptor: AUDIT_FIXTURE_CHANGE,
+        sourceDescriptor: AUDIT_FIXTURE_RECEIVE,
+        canonicalPolicyId: 'single-sig-native-segwit-bip84-v1',
+        canonicalPolicyVersion: 1,
+      },
+      signers: base.signers.map((signer) => ({
+        ...signer,
+        deviceAccountId: signer.accountId,
+        signerIndex: 0,
+        signerBindingVersion: 1,
+        signerFingerprint: signer.deviceFingerprint,
+        signerXpub: signer.accountXpub,
+        signerDerivationPath: signer.accountDerivationPath,
+        signerPurpose: signer.accountPurpose,
+        signerScriptType: signer.accountScriptType,
+      })),
+      addresses: provenAuditSnapshot().addresses,
+    };
+
+    const document = buildWalletRemediationDocument(applied);
+
+    expect(document.blockers).toEqual([]);
+    expect(document.eligible).toBe(true);
+    expect(document.changes).toEqual([]);
+  });
+
+  it('does not rewrite the stored derivation path when recovering', () => {
+    const document = buildWalletRemediationDocument(legacyNullSnapshot({ pathNotation: 'h' }));
+
+    const coordinateChanges = document.changes.filter((c) => c.kind === 'address_coordinate');
+    // Guard against passing vacuously while the wallet is still blocked.
+    expect(coordinateChanges).toHaveLength(2);
+    for (const change of coordinateChanges) {
+      expect(change.proposed).not.toHaveProperty('derivationPath');
+      expect(change.proposed).not.toHaveProperty('address');
+    }
+  });
+});
 
 describe('wallet remediation proof', () => {
   it('proposes only null proof metadata while preserving descriptors, paths, addresses, and scripts', () => {
@@ -163,6 +293,11 @@ describe('wallet remediation proof', () => {
     }, 'policy.multisig_unsupported'],
     ['source and active descriptor mismatch', (snapshot: WalletRemediationSnapshot) => {
       snapshot.wallet.descriptor = snapshot.wallet.changeDescriptor;
+    }, 'descriptor.provenance_unproven'],
+    // A wallet that already has a change descriptor must still reproduce it exactly; only
+    // a legacy-null wallet is allowed to have one derived for it.
+    ['active change descriptor mismatch', (snapshot: WalletRemediationSnapshot) => {
+      snapshot.wallet.changeDescriptor = snapshot.wallet.descriptor;
     }, 'descriptor.provenance_unproven'],
     ['descriptor wrapper and policy mismatch', (snapshot: WalletRemediationSnapshot) => {
       snapshot.wallet.scriptType = 'nested_segwit';
