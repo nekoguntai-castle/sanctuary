@@ -153,6 +153,77 @@ async function getCruiseOptions(pkg, extractOptions) {
   };
 }
 
+/**
+ * Replace dependency-cruiser's positional node ids with ids derived from each
+ * node's place in the graph.
+ *
+ * The emitter names nodes by the order it happens to visit them — `4R`, `4S`,
+ * `4T`. Inserting one module renumbers every node after it and every edge that
+ * mentions one, so adding a single file rewrote ~700 lines of a 1171-line file:
+ * the diff was unreviewable, and any two branches that each added a module
+ * conflicted here even when they touched nothing else.
+ *
+ * A node's path through the subgraph labels is unique and stable, so an id built
+ * from it changes only when that node does. Adding a module then adds its own
+ * lines and nothing else.
+ *
+ * Runs before `stabilizeMermaidEdges`, or the sort would order edges by the
+ * positional ids this is replacing.
+ */
+export function stabilizeMermaidIds(mermaid) {
+  const subgraphRe = /^(\s*)subgraph\s+([\w-]+)\["(.*)"\]\s*$/;
+  const nodeRe = /^(\s*)([\w-]+)\["(.*)"\]\s*$/;
+  const endRe = /^\s*end\s*$/;
+  const edgeRe = /^(\s*)([\w-]+)-->([\w-]+)\s*$/;
+
+  const lines = mermaid.split('\n');
+  const idByOld = new Map();
+  const taken = new Set();
+  const stack = [];
+
+  const assign = (oldId, label) => {
+    // A collapsed group's hidden files are emitted as a blank label; name them
+    // for the group they belong to rather than leaving them anonymous.
+    const segments = [...stack, label.trim() === '' ? '_collapsed' : label.trim()];
+    let candidate = `n_${segments.join('_').replace(/[^A-Za-z0-9_]+/g, '_')}`;
+    // Two distinct paths cannot collide, but two labels differing only in
+    // punctuation can slug the same. Suffix rather than silently merge nodes.
+    if (taken.has(candidate)) {
+      let suffix = 2;
+      while (taken.has(`${candidate}_${suffix}`)) suffix += 1;
+      candidate = `${candidate}_${suffix}`;
+    }
+    taken.add(candidate);
+    idByOld.set(oldId, candidate);
+  };
+
+  for (const line of lines) {
+    const subgraph = subgraphRe.exec(line);
+    if (subgraph) {
+      assign(subgraph[2], subgraph[3]);
+      stack.push(subgraph[3].trim());
+      continue;
+    }
+    if (endRe.test(line)) {
+      stack.pop();
+      continue;
+    }
+    const node = nodeRe.exec(line);
+    if (node) assign(node[2], node[3]);
+  }
+
+  const rename = (id) => idByOld.get(id) ?? id;
+  return lines.map((line) => {
+    const subgraph = subgraphRe.exec(line);
+    if (subgraph) return `${subgraph[1]}subgraph ${rename(subgraph[2])}["${subgraph[3]}"]`;
+    const node = nodeRe.exec(line);
+    if (node) return `${node[1]}${rename(node[2])}["${node[3]}"]`;
+    const edge = edgeRe.exec(line);
+    if (edge) return `${edge[1]}${rename(edge[2])}-->${rename(edge[3])}`;
+    return line;
+  }).join('\n');
+}
+
 // Stabilize edge ordering: dependency-cruiser's Mermaid emitter produces
 // edges in a Map-iteration order that's not deterministic across Node
 // versions / fs orderings. Sort consecutive `A-->B` lines within each
@@ -205,7 +276,7 @@ async function cruiseMermaid(pkg, dependencyCruiser) {
   const result = await dependencyCruiser.cruise(files, options);
   const mermaid = String(result.output ?? '');
   assertMermaidGraph(pkg, mermaid, files.length);
-  return stabilizeMermaidEdges(mermaid);
+  return stabilizeMermaidEdges(stabilizeMermaidIds(mermaid));
 }
 
 export function wrap(pkg, mermaid) {

@@ -19,39 +19,39 @@ This is an import-dependency appendix for drift detection. It answers "which sou
 ```mermaid
 flowchart LR
 
-subgraph 0["src"]
-1["config.ts"]
-subgraph 2["config"]
-3[" "]
+subgraph n_src["src"]
+n_src_config_ts["config.ts"]
+subgraph n_src_config["config"]
+n_src_config__collapsed[" "]
 end
-4["index.ts"]
-subgraph 5["middleware"]
-6[" "]
+n_src_index_ts["index.ts"]
+subgraph n_src_middleware["middleware"]
+n_src_middleware__collapsed[" "]
 end
-subgraph 7["routes"]
-8[" "]
+subgraph n_src_routes["routes"]
+n_src_routes__collapsed[" "]
 end
-subgraph 9["services"]
-A[" "]
+subgraph n_src_services["services"]
+n_src_services__collapsed[" "]
 end
-subgraph B["utils"]
-C[" "]
+subgraph n_src_utils["utils"]
+n_src_utils__collapsed[" "]
 end
 end
-1-->3
-1-->C
-4-->1
-4-->6
-4-->8
-4-->A
-4-->C
-6-->1
-6-->8
-6-->C
-8-->1
-8-->6
-8-->C
-A-->1
-A-->C
-C-->1
+n_src_config_ts-->n_src_config__collapsed
+n_src_config_ts-->n_src_utils__collapsed
+n_src_index_ts-->n_src_config_ts
+n_src_index_ts-->n_src_middleware__collapsed
+n_src_index_ts-->n_src_routes__collapsed
+n_src_index_ts-->n_src_services__collapsed
+n_src_index_ts-->n_src_utils__collapsed
+n_src_middleware__collapsed-->n_src_config_ts
+n_src_middleware__collapsed-->n_src_routes__collapsed
+n_src_middleware__collapsed-->n_src_utils__collapsed
+n_src_routes__collapsed-->n_src_config_ts
+n_src_routes__collapsed-->n_src_middleware__collapsed
+n_src_routes__collapsed-->n_src_utils__collapsed
+n_src_services__collapsed-->n_src_config_ts
+n_src_services__collapsed-->n_src_utils__collapsed
+n_src_utils__collapsed-->n_src_config_ts
 ```

@@ -19,211 +19,211 @@ This is an import-dependency appendix for drift detection. It answers "which sou
 ```mermaid
 flowchart LR
 
-subgraph 0["src"]
-subgraph 1["agent"]
-2[" "]
+subgraph n_src["src"]
+subgraph n_src_agent["agent"]
+n_src_agent__collapsed[" "]
 end
-subgraph 3["api"]
-4[" "]
+subgraph n_src_api["api"]
+n_src_api__collapsed[" "]
 end
-subgraph 5["assistant"]
-6[" "]
+subgraph n_src_assistant["assistant"]
+n_src_assistant__collapsed[" "]
 end
-subgraph 7["config"]
-8[" "]
+subgraph n_src_config["config"]
+n_src_config__collapsed[" "]
 end
-9["constants.ts"]
-subgraph A["constants"]
-B[" "]
+n_src_constants_ts["constants.ts"]
+subgraph n_src_constants["constants"]
+n_src_constants__collapsed[" "]
 end
-subgraph C["errors"]
-D[" "]
+subgraph n_src_errors["errors"]
+n_src_errors__collapsed[" "]
 end
-subgraph E["events"]
-F[" "]
+subgraph n_src_events["events"]
+n_src_events__collapsed[" "]
 end
-subgraph G["i18n"]
-H[" "]
+subgraph n_src_i18n["i18n"]
+n_src_i18n__collapsed[" "]
 end
-I["index.ts"]
-subgraph J["infrastructure"]
-K[" "]
+n_src_index_ts["index.ts"]
+subgraph n_src_infrastructure["infrastructure"]
+n_src_infrastructure__collapsed[" "]
 end
-subgraph L["internal"]
-M[" "]
+subgraph n_src_internal["internal"]
+n_src_internal__collapsed[" "]
 end
-subgraph N["jobs"]
-O[" "]
+subgraph n_src_jobs["jobs"]
+n_src_jobs__collapsed[" "]
 end
-P["mcp-entry.ts"]
-subgraph Q["mcp"]
-R[" "]
+n_src_mcp_entry_ts["mcp-entry.ts"]
+subgraph n_src_mcp["mcp"]
+n_src_mcp__collapsed[" "]
 end
-subgraph S["middleware"]
-T[" "]
+subgraph n_src_middleware["middleware"]
+n_src_middleware__collapsed[" "]
 end
-subgraph U["models"]
-V[" "]
+subgraph n_src_models["models"]
+n_src_models__collapsed[" "]
 end
-subgraph W["observability"]
-X[" "]
+subgraph n_src_observability["observability"]
+n_src_observability__collapsed[" "]
 end
-subgraph Y["providers"]
-Z[" "]
+subgraph n_src_providers["providers"]
+n_src_providers__collapsed[" "]
 end
-subgraph 10["repositories"]
-11[" "]
+subgraph n_src_repositories["repositories"]
+n_src_repositories__collapsed[" "]
 end
-12["routes.ts"]
-subgraph 13["services"]
-14[" "]
+n_src_routes_ts["routes.ts"]
+subgraph n_src_services["services"]
+n_src_services__collapsed[" "]
 end
-subgraph 15["utils"]
-16[" "]
+subgraph n_src_utils["utils"]
+n_src_utils__collapsed[" "]
 end
-subgraph 17["validation"]
-18[" "]
+subgraph n_src_validation["validation"]
+n_src_validation__collapsed[" "]
 end
-subgraph 19["websocket"]
-1A[" "]
+subgraph n_src_websocket["websocket"]
+n_src_websocket__collapsed[" "]
 end
-1B["worker.ts"]
-subgraph 1C["worker"]
-1D[" "]
+n_src_worker_ts["worker.ts"]
+subgraph n_src_worker["worker"]
+n_src_worker__collapsed[" "]
 end
 end
-2-->11
-2-->14
-2-->16
-2-->D
-4-->11
-4-->14
-4-->16
-4-->18
-4-->1A
-4-->2
-4-->6
-4-->8
-4-->9
-4-->D
-4-->R
-4-->T
-6-->11
-6-->14
-6-->16
-6-->8
-6-->D
-8-->16
-D-->16
-F-->16
-H-->16
-H-->T
-I-->11
-I-->12
-I-->14
-I-->16
-I-->1A
-I-->8
-I-->D
-I-->H
-I-->K
-I-->O
-I-->T
-I-->V
-I-->X
-K-->14
-K-->16
-K-->8
-K-->F
-K-->M
-K-->O
-O-->11
-O-->14
-O-->16
-O-->K
-O-->V
-P-->14
-P-->16
-P-->8
-P-->K
-P-->R
-P-->V
-P-->X
-R-->11
-R-->14
-R-->16
-R-->6
-R-->8
-R-->K
-R-->T
-R-->X
-T-->14
-T-->16
-T-->2
-T-->8
-T-->D
-T-->H
-T-->X
-V-->16
-V-->X
-X-->16
-Z-->16
-11-->16
-11-->18
-11-->B
-11-->D
-11-->K
-11-->V
-12-->14
-12-->4
-12-->8
-12-->T
-14-->11
-14-->16
-14-->18
-14-->1A
-14-->1D
-14-->2
-14-->8
-14-->9
-14-->B
-14-->D
-14-->F
-14-->K
-14-->M
-14-->O
-14-->R
-14-->V
-14-->X
-14-->Z
-16-->14
-16-->18
-16-->8
-16-->D
-18-->16
-1A-->11
-1A-->14
-1A-->16
-1A-->8
-1A-->K
-1A-->T
-1A-->X
-1B-->14
-1B-->16
-1B-->1A
-1B-->1D
-1B-->8
-1B-->K
-1B-->V
-1B-->X
-1D-->11
-1D-->14
-1D-->16
-1D-->1A
-1D-->8
-1D-->B
-1D-->K
-1D-->M
-1D-->O
-1D-->X
+n_src_agent__collapsed-->n_src_errors__collapsed
+n_src_agent__collapsed-->n_src_repositories__collapsed
+n_src_agent__collapsed-->n_src_services__collapsed
+n_src_agent__collapsed-->n_src_utils__collapsed
+n_src_api__collapsed-->n_src_agent__collapsed
+n_src_api__collapsed-->n_src_assistant__collapsed
+n_src_api__collapsed-->n_src_config__collapsed
+n_src_api__collapsed-->n_src_constants_ts
+n_src_api__collapsed-->n_src_errors__collapsed
+n_src_api__collapsed-->n_src_mcp__collapsed
+n_src_api__collapsed-->n_src_middleware__collapsed
+n_src_api__collapsed-->n_src_repositories__collapsed
+n_src_api__collapsed-->n_src_services__collapsed
+n_src_api__collapsed-->n_src_utils__collapsed
+n_src_api__collapsed-->n_src_validation__collapsed
+n_src_api__collapsed-->n_src_websocket__collapsed
+n_src_assistant__collapsed-->n_src_config__collapsed
+n_src_assistant__collapsed-->n_src_errors__collapsed
+n_src_assistant__collapsed-->n_src_repositories__collapsed
+n_src_assistant__collapsed-->n_src_services__collapsed
+n_src_assistant__collapsed-->n_src_utils__collapsed
+n_src_config__collapsed-->n_src_utils__collapsed
+n_src_errors__collapsed-->n_src_utils__collapsed
+n_src_events__collapsed-->n_src_utils__collapsed
+n_src_i18n__collapsed-->n_src_middleware__collapsed
+n_src_i18n__collapsed-->n_src_utils__collapsed
+n_src_index_ts-->n_src_config__collapsed
+n_src_index_ts-->n_src_errors__collapsed
+n_src_index_ts-->n_src_i18n__collapsed
+n_src_index_ts-->n_src_infrastructure__collapsed
+n_src_index_ts-->n_src_jobs__collapsed
+n_src_index_ts-->n_src_middleware__collapsed
+n_src_index_ts-->n_src_models__collapsed
+n_src_index_ts-->n_src_observability__collapsed
+n_src_index_ts-->n_src_repositories__collapsed
+n_src_index_ts-->n_src_routes_ts
+n_src_index_ts-->n_src_services__collapsed
+n_src_index_ts-->n_src_utils__collapsed
+n_src_index_ts-->n_src_websocket__collapsed
+n_src_infrastructure__collapsed-->n_src_config__collapsed
+n_src_infrastructure__collapsed-->n_src_events__collapsed
+n_src_infrastructure__collapsed-->n_src_internal__collapsed
+n_src_infrastructure__collapsed-->n_src_jobs__collapsed
+n_src_infrastructure__collapsed-->n_src_services__collapsed
+n_src_infrastructure__collapsed-->n_src_utils__collapsed
+n_src_jobs__collapsed-->n_src_infrastructure__collapsed
+n_src_jobs__collapsed-->n_src_models__collapsed
+n_src_jobs__collapsed-->n_src_repositories__collapsed
+n_src_jobs__collapsed-->n_src_services__collapsed
+n_src_jobs__collapsed-->n_src_utils__collapsed
+n_src_mcp_entry_ts-->n_src_config__collapsed
+n_src_mcp_entry_ts-->n_src_infrastructure__collapsed
+n_src_mcp_entry_ts-->n_src_mcp__collapsed
+n_src_mcp_entry_ts-->n_src_models__collapsed
+n_src_mcp_entry_ts-->n_src_observability__collapsed
+n_src_mcp_entry_ts-->n_src_services__collapsed
+n_src_mcp_entry_ts-->n_src_utils__collapsed
+n_src_mcp__collapsed-->n_src_assistant__collapsed
+n_src_mcp__collapsed-->n_src_config__collapsed
+n_src_mcp__collapsed-->n_src_infrastructure__collapsed
+n_src_mcp__collapsed-->n_src_middleware__collapsed
+n_src_mcp__collapsed-->n_src_observability__collapsed
+n_src_mcp__collapsed-->n_src_repositories__collapsed
+n_src_mcp__collapsed-->n_src_services__collapsed
+n_src_mcp__collapsed-->n_src_utils__collapsed
+n_src_middleware__collapsed-->n_src_agent__collapsed
+n_src_middleware__collapsed-->n_src_config__collapsed
+n_src_middleware__collapsed-->n_src_errors__collapsed
+n_src_middleware__collapsed-->n_src_i18n__collapsed
+n_src_middleware__collapsed-->n_src_observability__collapsed
+n_src_middleware__collapsed-->n_src_services__collapsed
+n_src_middleware__collapsed-->n_src_utils__collapsed
+n_src_models__collapsed-->n_src_observability__collapsed
+n_src_models__collapsed-->n_src_utils__collapsed
+n_src_observability__collapsed-->n_src_utils__collapsed
+n_src_providers__collapsed-->n_src_utils__collapsed
+n_src_repositories__collapsed-->n_src_constants__collapsed
+n_src_repositories__collapsed-->n_src_errors__collapsed
+n_src_repositories__collapsed-->n_src_infrastructure__collapsed
+n_src_repositories__collapsed-->n_src_models__collapsed
+n_src_repositories__collapsed-->n_src_utils__collapsed
+n_src_repositories__collapsed-->n_src_validation__collapsed
+n_src_routes_ts-->n_src_api__collapsed
+n_src_routes_ts-->n_src_config__collapsed
+n_src_routes_ts-->n_src_middleware__collapsed
+n_src_routes_ts-->n_src_services__collapsed
+n_src_services__collapsed-->n_src_agent__collapsed
+n_src_services__collapsed-->n_src_config__collapsed
+n_src_services__collapsed-->n_src_constants__collapsed
+n_src_services__collapsed-->n_src_constants_ts
+n_src_services__collapsed-->n_src_errors__collapsed
+n_src_services__collapsed-->n_src_events__collapsed
+n_src_services__collapsed-->n_src_infrastructure__collapsed
+n_src_services__collapsed-->n_src_internal__collapsed
+n_src_services__collapsed-->n_src_jobs__collapsed
+n_src_services__collapsed-->n_src_mcp__collapsed
+n_src_services__collapsed-->n_src_models__collapsed
+n_src_services__collapsed-->n_src_observability__collapsed
+n_src_services__collapsed-->n_src_providers__collapsed
+n_src_services__collapsed-->n_src_repositories__collapsed
+n_src_services__collapsed-->n_src_utils__collapsed
+n_src_services__collapsed-->n_src_validation__collapsed
+n_src_services__collapsed-->n_src_websocket__collapsed
+n_src_services__collapsed-->n_src_worker__collapsed
+n_src_utils__collapsed-->n_src_config__collapsed
+n_src_utils__collapsed-->n_src_errors__collapsed
+n_src_utils__collapsed-->n_src_services__collapsed
+n_src_utils__collapsed-->n_src_validation__collapsed
+n_src_validation__collapsed-->n_src_utils__collapsed
+n_src_websocket__collapsed-->n_src_config__collapsed
+n_src_websocket__collapsed-->n_src_infrastructure__collapsed
+n_src_websocket__collapsed-->n_src_middleware__collapsed
+n_src_websocket__collapsed-->n_src_observability__collapsed
+n_src_websocket__collapsed-->n_src_repositories__collapsed
+n_src_websocket__collapsed-->n_src_services__collapsed
+n_src_websocket__collapsed-->n_src_utils__collapsed
+n_src_worker_ts-->n_src_config__collapsed
+n_src_worker_ts-->n_src_infrastructure__collapsed
+n_src_worker_ts-->n_src_models__collapsed
+n_src_worker_ts-->n_src_observability__collapsed
+n_src_worker_ts-->n_src_services__collapsed
+n_src_worker_ts-->n_src_utils__collapsed
+n_src_worker_ts-->n_src_websocket__collapsed
+n_src_worker_ts-->n_src_worker__collapsed
+n_src_worker__collapsed-->n_src_config__collapsed
+n_src_worker__collapsed-->n_src_constants__collapsed
+n_src_worker__collapsed-->n_src_infrastructure__collapsed
+n_src_worker__collapsed-->n_src_internal__collapsed
+n_src_worker__collapsed-->n_src_jobs__collapsed
+n_src_worker__collapsed-->n_src_observability__collapsed
+n_src_worker__collapsed-->n_src_repositories__collapsed
+n_src_worker__collapsed-->n_src_services__collapsed
+n_src_worker__collapsed-->n_src_utils__collapsed
+n_src_worker__collapsed-->n_src_websocket__collapsed
 ```

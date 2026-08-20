@@ -19,1162 +19,1162 @@ This is an import-dependency appendix for drift detection. It answers "which sou
 ```mermaid
 flowchart LR
 
-subgraph 0["shared"]
-subgraph 1["constants"]
-2["adminAgents.ts"]
-3["adminMonitoring.ts"]
-4["bitcoin.ts"]
-5["deviceRoles.ts"]
-6["drafts.ts"]
-7["hardwareWalletCapabilities.ts"]
-8["nodeConfig.ts"]
-9["sync.ts"]
-A["transactions.ts"]
-B["walletIdentity.ts"]
-C["walletPolicy.ts"]
-D["walletRoles.ts"]
-E["webhooks.ts"]
-end
-F["index.ts"]
-subgraph G["schemas"]
-H["batchTransactionRequests.ts"]
-I["bitcoinResponses.ts"]
-J["deviceIdentity.ts"]
-K["draftRequests.ts"]
-L["mobileApiRequests.ts"]
-M["priceResponses.ts"]
-N["psbtSigningContext.ts"]
-O["transactionResponses.ts"]
-P["walletResponses.ts"]
-end
-subgraph Q["types"]
-R["ambient-modules.d.ts"]
-S["api.ts"]
-T["domain.ts"]
-U["index.ts"]
-V["logger.ts"]
-W["websocket.ts"]
-end
-subgraph X["utils"]
-Y["bitcoin.ts"]
-Z["errors.ts"]
-10["fatalProcessHandlers.ts"]
-11["gatewayAuth.ts"]
-12["priorityRegistry.ts"]
-13["processExit.ts"]
-14["redact.ts"]
-15["request.ts"]
-end
-end
-subgraph 16["src"]
-17["App.tsx"]
-subgraph 18["api"]
-subgraph 19["admin"]
-1A[" "]
-end
-1B["ai.ts"]
-1C["auth.ts"]
-1D["authPolicy.ts"]
-1E["baseUrl.ts"]
-1F["bitcoin.ts"]
-1G["client.ts"]
-1H["console.ts"]
-1I["devices.ts"]
-1J["drafts.ts"]
-1K["health.ts"]
-1L["intelligence.ts"]
-1M["labels.ts"]
-1N["payjoin.ts"]
-1O["price.ts"]
-1P["refresh.ts"]
-1Q["retryPolicy.ts"]
-1R["sync.ts"]
-subgraph 1S["transactions"]
-1T[" "]
-end
-1U["transfers.ts"]
-1V["twoFactor.ts"]
-1W["walletRemediation.ts"]
-1X["walletXpub.ts"]
-1Y["wallets.ts"]
-end
-subgraph 1Z["app"]
-subgraph 20["AppRoutes"]
-21[" "]
-end
-22["appRouteTypes.ts"]
-23["appRoutes.tsx"]
-24["browserNavigation.ts"]
-25["capabilities.ts"]
-26["consoleTransactionNavigation.ts"]
-27["networks.ts"]
-28["resolvePageContentWidth.ts"]
-29["routeComponents.tsx"]
-2A["routeDefinitions.tsx"]
-2B["shortcuts.ts"]
-end
-subgraph 2C["components"]
-2D["AILabelSuggestion.tsx"]
-subgraph 2E["AILabelSuggestion"]
-2F[" "]
-end
-2G["AIQueryInput.tsx"]
-subgraph 2H["AIQueryInput"]
-2I[" "]
+subgraph n_shared["shared"]
+subgraph n_shared_constants["constants"]
+n_shared_constants_adminAgents_ts["adminAgents.ts"]
+n_shared_constants_adminMonitoring_ts["adminMonitoring.ts"]
+n_shared_constants_bitcoin_ts["bitcoin.ts"]
+n_shared_constants_deviceRoles_ts["deviceRoles.ts"]
+n_shared_constants_drafts_ts["drafts.ts"]
+n_shared_constants_hardwareWalletCapabilities_ts["hardwareWalletCapabilities.ts"]
+n_shared_constants_nodeConfig_ts["nodeConfig.ts"]
+n_shared_constants_sync_ts["sync.ts"]
+n_shared_constants_transactions_ts["transactions.ts"]
+n_shared_constants_walletIdentity_ts["walletIdentity.ts"]
+n_shared_constants_walletPolicy_ts["walletPolicy.ts"]
+n_shared_constants_walletRoles_ts["walletRoles.ts"]
+n_shared_constants_webhooks_ts["webhooks.ts"]
+end
+n_shared_index_ts["index.ts"]
+subgraph n_shared_schemas["schemas"]
+n_shared_schemas_batchTransactionRequests_ts["batchTransactionRequests.ts"]
+n_shared_schemas_bitcoinResponses_ts["bitcoinResponses.ts"]
+n_shared_schemas_deviceIdentity_ts["deviceIdentity.ts"]
+n_shared_schemas_draftRequests_ts["draftRequests.ts"]
+n_shared_schemas_mobileApiRequests_ts["mobileApiRequests.ts"]
+n_shared_schemas_priceResponses_ts["priceResponses.ts"]
+n_shared_schemas_psbtSigningContext_ts["psbtSigningContext.ts"]
+n_shared_schemas_transactionResponses_ts["transactionResponses.ts"]
+n_shared_schemas_walletResponses_ts["walletResponses.ts"]
+end
+subgraph n_shared_types["types"]
+n_shared_types_ambient_modules_d_ts["ambient-modules.d.ts"]
+n_shared_types_api_ts["api.ts"]
+n_shared_types_domain_ts["domain.ts"]
+n_shared_types_index_ts["index.ts"]
+n_shared_types_logger_ts["logger.ts"]
+n_shared_types_websocket_ts["websocket.ts"]
+end
+subgraph n_shared_utils["utils"]
+n_shared_utils_bitcoin_ts["bitcoin.ts"]
+n_shared_utils_errors_ts["errors.ts"]
+n_shared_utils_fatalProcessHandlers_ts["fatalProcessHandlers.ts"]
+n_shared_utils_gatewayAuth_ts["gatewayAuth.ts"]
+n_shared_utils_priorityRegistry_ts["priorityRegistry.ts"]
+n_shared_utils_processExit_ts["processExit.ts"]
+n_shared_utils_redact_ts["redact.ts"]
+n_shared_utils_request_ts["request.ts"]
+end
+end
+subgraph n_src["src"]
+n_src_App_tsx["App.tsx"]
+subgraph n_src_api["api"]
+subgraph n_src_api_admin["admin"]
+n_src_api_admin__collapsed[" "]
+end
+n_src_api_ai_ts["ai.ts"]
+n_src_api_auth_ts["auth.ts"]
+n_src_api_authPolicy_ts["authPolicy.ts"]
+n_src_api_baseUrl_ts["baseUrl.ts"]
+n_src_api_bitcoin_ts["bitcoin.ts"]
+n_src_api_client_ts["client.ts"]
+n_src_api_console_ts["console.ts"]
+n_src_api_devices_ts["devices.ts"]
+n_src_api_drafts_ts["drafts.ts"]
+n_src_api_health_ts["health.ts"]
+n_src_api_intelligence_ts["intelligence.ts"]
+n_src_api_labels_ts["labels.ts"]
+n_src_api_payjoin_ts["payjoin.ts"]
+n_src_api_price_ts["price.ts"]
+n_src_api_refresh_ts["refresh.ts"]
+n_src_api_retryPolicy_ts["retryPolicy.ts"]
+n_src_api_sync_ts["sync.ts"]
+subgraph n_src_api_transactions["transactions"]
+n_src_api_transactions__collapsed[" "]
+end
+n_src_api_transfers_ts["transfers.ts"]
+n_src_api_twoFactor_ts["twoFactor.ts"]
+n_src_api_walletRemediation_ts["walletRemediation.ts"]
+n_src_api_walletXpub_ts["walletXpub.ts"]
+n_src_api_wallets_ts["wallets.ts"]
+end
+subgraph n_src_app["app"]
+subgraph n_src_app_AppRoutes["AppRoutes"]
+n_src_app_AppRoutes__collapsed[" "]
+end
+n_src_app_appRouteTypes_ts["appRouteTypes.ts"]
+n_src_app_appRoutes_tsx["appRoutes.tsx"]
+n_src_app_browserNavigation_ts["browserNavigation.ts"]
+n_src_app_capabilities_ts["capabilities.ts"]
+n_src_app_consoleTransactionNavigation_ts["consoleTransactionNavigation.ts"]
+n_src_app_networks_ts["networks.ts"]
+n_src_app_resolvePageContentWidth_ts["resolvePageContentWidth.ts"]
+n_src_app_routeComponents_tsx["routeComponents.tsx"]
+n_src_app_routeDefinitions_tsx["routeDefinitions.tsx"]
+n_src_app_shortcuts_ts["shortcuts.ts"]
+end
+subgraph n_src_components["components"]
+n_src_components_AILabelSuggestion_tsx["AILabelSuggestion.tsx"]
+subgraph n_src_components_AILabelSuggestion["AILabelSuggestion"]
+n_src_components_AILabelSuggestion__collapsed[" "]
+end
+n_src_components_AIQueryInput_tsx["AIQueryInput.tsx"]
+subgraph n_src_components_AIQueryInput["AIQueryInput"]
+n_src_components_AIQueryInput__collapsed[" "]
 end
-subgraph 2J["AISettings"]
-2K[" "]
+subgraph n_src_components_AISettings["AISettings"]
+n_src_components_AISettings__collapsed[" "]
 end
-subgraph 2L["Account"]
-2M[" "]
+subgraph n_src_components_Account["Account"]
+n_src_components_Account__collapsed[" "]
 end
-subgraph 2N["AgentManagement"]
-2O[" "]
+subgraph n_src_components_AgentManagement["AgentManagement"]
+n_src_components_AgentManagement__collapsed[" "]
 end
-subgraph 2P["AgentWalletDashboard"]
-2Q[" "]
+subgraph n_src_components_AgentWalletDashboard["AgentWalletDashboard"]
+n_src_components_AgentWalletDashboard__collapsed[" "]
 end
-2R["Amount.tsx"]
-2S["AnimatedBackground.tsx"]
-subgraph 2T["AnimatedBackground"]
-2U[" "]
+n_src_components_Amount_tsx["Amount.tsx"]
+n_src_components_AnimatedBackground_tsx["AnimatedBackground.tsx"]
+subgraph n_src_components_AnimatedBackground["AnimatedBackground"]
+n_src_components_AnimatedBackground__collapsed[" "]
 end
-subgraph 2V["AuditLogs"]
-2W[" "]
+subgraph n_src_components_AuditLogs["AuditLogs"]
+n_src_components_AuditLogs__collapsed[" "]
 end
-subgraph 2X["BackupRestore"]
-2Y[" "]
+subgraph n_src_components_BackupRestore["BackupRestore"]
+n_src_components_BackupRestore__collapsed[" "]
 end
-subgraph 2Z["BlockVisualizer"]
-30[" "]
+subgraph n_src_components_BlockVisualizer["BlockVisualizer"]
+n_src_components_BlockVisualizer__collapsed[" "]
 end
-31["ChangePasswordModal.tsx"]
-subgraph 32["ConnectDevice"]
-33[" "]
+n_src_components_ChangePasswordModal_tsx["ChangePasswordModal.tsx"]
+subgraph n_src_components_ConnectDevice["ConnectDevice"]
+n_src_components_ConnectDevice__collapsed[" "]
 end
-subgraph 34["ConsoleDrawer"]
-35[" "]
+subgraph n_src_components_ConsoleDrawer["ConsoleDrawer"]
+n_src_components_ConsoleDrawer__collapsed[" "]
 end
-subgraph 36["ConsoleResults"]
-37[" "]
+subgraph n_src_components_ConsoleResults["ConsoleResults"]
+n_src_components_ConsoleResults__collapsed[" "]
 end
-subgraph 38["CreateWallet"]
-39[" "]
+subgraph n_src_components_CreateWallet["CreateWallet"]
+n_src_components_CreateWallet__collapsed[" "]
 end
-subgraph 3A["Dashboard"]
-3B[" "]
+subgraph n_src_components_Dashboard["Dashboard"]
+n_src_components_Dashboard__collapsed[" "]
 end
-subgraph 3C["DeviceDetail"]
-3D[" "]
+subgraph n_src_components_DeviceDetail["DeviceDetail"]
+n_src_components_DeviceDetail__collapsed[" "]
 end
-subgraph 3E["DeviceList"]
-3F[" "]
+subgraph n_src_components_DeviceList["DeviceList"]
+n_src_components_DeviceList__collapsed[" "]
 end
-subgraph 3G["DraftList"]
-3H[" "]
+subgraph n_src_components_DraftList["DraftList"]
+n_src_components_DraftList__collapsed[" "]
 end
-3I["ErrorBoundary.tsx"]
-subgraph 3J["FeatureFlags"]
-3K[" "]
+n_src_components_ErrorBoundary_tsx["ErrorBoundary.tsx"]
+subgraph n_src_components_FeatureFlags["FeatureFlags"]
+n_src_components_FeatureFlags__collapsed[" "]
 end
-3L["FiatDisplay.tsx"]
-subgraph 3M["ImportWallet"]
-3N[" "]
+n_src_components_FiatDisplay_tsx["FiatDisplay.tsx"]
+subgraph n_src_components_ImportWallet["ImportWallet"]
+n_src_components_ImportWallet__collapsed[" "]
 end
-subgraph 3O["Intelligence"]
-3P[" "]
+subgraph n_src_components_Intelligence["Intelligence"]
+n_src_components_Intelligence__collapsed[" "]
 end
-3Q["LabelManager.tsx"]
-subgraph 3R["LabelManager"]
-3S[" "]
+n_src_components_LabelManager_tsx["LabelManager.tsx"]
+subgraph n_src_components_LabelManager["LabelManager"]
+n_src_components_LabelManager__collapsed[" "]
 end
-3T["LabelSelector.tsx"]
-subgraph 3U["LabelSelector"]
-3V[" "]
+n_src_components_LabelSelector_tsx["LabelSelector.tsx"]
+subgraph n_src_components_LabelSelector["LabelSelector"]
+n_src_components_LabelSelector__collapsed[" "]
 end
-subgraph 3W["Layout"]
-3X[" "]
+subgraph n_src_components_Layout["Layout"]
+n_src_components_Layout__collapsed[" "]
 end
-subgraph 3Y["Login"]
-3Z[" "]
+subgraph n_src_components_Login["Login"]
+n_src_components_Login__collapsed[" "]
 end
-subgraph 40["Monitoring"]
-41[" "]
+subgraph n_src_components_Monitoring["Monitoring"]
+n_src_components_Monitoring__collapsed[" "]
 end
-subgraph 42["NetworkConnectionCard"]
-43[" "]
+subgraph n_src_components_NetworkConnectionCard["NetworkConnectionCard"]
+n_src_components_NetworkConnectionCard__collapsed[" "]
 end
-44["NetworkSyncActions.tsx"]
-subgraph 45["NetworkSyncActions"]
-46[" "]
+n_src_components_NetworkSyncActions_tsx["NetworkSyncActions.tsx"]
+subgraph n_src_components_NetworkSyncActions["NetworkSyncActions"]
+n_src_components_NetworkSyncActions__collapsed[" "]
 end
-47["NetworkTabs.tsx"]
-subgraph 48["NodeConfig"]
-49[" "]
+n_src_components_NetworkTabs_tsx["NetworkTabs.tsx"]
+subgraph n_src_components_NodeConfig["NodeConfig"]
+n_src_components_NodeConfig__collapsed[" "]
 end
-4A["NotificationBadge.tsx"]
-4B["NotificationPanel.tsx"]
-subgraph 4C["NotificationPanel"]
-4D[" "]
+n_src_components_NotificationBadge_tsx["NotificationBadge.tsx"]
+n_src_components_NotificationPanel_tsx["NotificationPanel.tsx"]
+subgraph n_src_components_NotificationPanel["NotificationPanel"]
+n_src_components_NotificationPanel__collapsed[" "]
 end
-4E["NotificationToast.tsx"]
-subgraph 4F["NotificationToast"]
-4G[" "]
+n_src_components_NotificationToast_tsx["NotificationToast.tsx"]
+subgraph n_src_components_NotificationToast["NotificationToast"]
+n_src_components_NotificationToast__collapsed[" "]
 end
-4H["PayjoinEducationModal.tsx"]
-4I["PayjoinSection.tsx"]
-4J["PendingTransfersPanel.tsx"]
-subgraph 4K["PendingTransfersPanel"]
-4L[" "]
+n_src_components_PayjoinEducationModal_tsx["PayjoinEducationModal.tsx"]
+n_src_components_PayjoinSection_tsx["PayjoinSection.tsx"]
+n_src_components_PendingTransfersPanel_tsx["PendingTransfersPanel.tsx"]
+subgraph n_src_components_PendingTransfersPanel["PendingTransfersPanel"]
+n_src_components_PendingTransfersPanel__collapsed[" "]
 end
-4M["PriceProviderDiagnostics.tsx"]
-4N["PrivacyBadge.tsx"]
-4O["PrivacyDetailPanel.tsx"]
-subgraph 4P["Settings"]
-4Q[" "]
+n_src_components_PriceProviderDiagnostics_tsx["PriceProviderDiagnostics.tsx"]
+n_src_components_PrivacyBadge_tsx["PrivacyBadge.tsx"]
+n_src_components_PrivacyDetailPanel_tsx["PrivacyDetailPanel.tsx"]
+subgraph n_src_components_Settings["Settings"]
+n_src_components_Settings__collapsed[" "]
 end
-4R["SpendPrivacyCard.tsx"]
-subgraph 4S["SystemSettings"]
-4T[" "]
+n_src_components_SpendPrivacyCard_tsx["SpendPrivacyCard.tsx"]
+subgraph n_src_components_SystemSettings["SystemSettings"]
+n_src_components_SystemSettings__collapsed[" "]
 end
-4U["TransactionActions.tsx"]
-subgraph 4V["TransactionActions"]
-4W[" "]
-end
-4X["TransactionExportModal.tsx"]
-4Y["TransactionFlowPreview.tsx"]
-4Z["TransactionFlowPreviewParts.tsx"]
-subgraph 50["TransactionList"]
-51[" "]
-end
-52["TransferOwnershipModal.tsx"]
-subgraph 53["TransferOwnershipModal"]
-54[" "]
-end
-subgraph 55["UTXOList"]
-56[" "]
-end
-subgraph 57["UsersGroups"]
-58[" "]
-end
-59["Variables.tsx"]
-subgraph 5A["Variables"]
-5B[" "]
-end
-subgraph 5C["WalletDetail"]
-5D[" "]
-end
-subgraph 5E["WalletList"]
-5F[" "]
-end
-5G["WalletStats.tsx"]
-subgraph 5H["WalletStats"]
-5I[" "]
-end
-5J["animatedPatterns.ts"]
-subgraph 5K["animations"]
-5L[" "]
-end
-subgraph 5M["cells"]
-5N[" "]
-end
-subgraph 5O["columns"]
-5P[" "]
-end
-5Q["privacyScoreUtils.ts"]
-subgraph 5R["qr"]
-5S[" "]
-end
-subgraph 5T["send"]
-5U[" "]
+n_src_components_TransactionActions_tsx["TransactionActions.tsx"]
+subgraph n_src_components_TransactionActions["TransactionActions"]
+n_src_components_TransactionActions__collapsed[" "]
+end
+n_src_components_TransactionExportModal_tsx["TransactionExportModal.tsx"]
+n_src_components_TransactionFlowPreview_tsx["TransactionFlowPreview.tsx"]
+n_src_components_TransactionFlowPreviewParts_tsx["TransactionFlowPreviewParts.tsx"]
+subgraph n_src_components_TransactionList["TransactionList"]
+n_src_components_TransactionList__collapsed[" "]
+end
+n_src_components_TransferOwnershipModal_tsx["TransferOwnershipModal.tsx"]
+subgraph n_src_components_TransferOwnershipModal["TransferOwnershipModal"]
+n_src_components_TransferOwnershipModal__collapsed[" "]
+end
+subgraph n_src_components_UTXOList["UTXOList"]
+n_src_components_UTXOList__collapsed[" "]
+end
+subgraph n_src_components_UsersGroups["UsersGroups"]
+n_src_components_UsersGroups__collapsed[" "]
+end
+n_src_components_Variables_tsx["Variables.tsx"]
+subgraph n_src_components_Variables["Variables"]
+n_src_components_Variables__collapsed[" "]
+end
+subgraph n_src_components_WalletDetail["WalletDetail"]
+n_src_components_WalletDetail__collapsed[" "]
+end
+subgraph n_src_components_WalletList["WalletList"]
+n_src_components_WalletList__collapsed[" "]
+end
+n_src_components_WalletStats_tsx["WalletStats.tsx"]
+subgraph n_src_components_WalletStats["WalletStats"]
+n_src_components_WalletStats__collapsed[" "]
+end
+n_src_components_animatedPatterns_ts["animatedPatterns.ts"]
+subgraph n_src_components_animations["animations"]
+n_src_components_animations__collapsed[" "]
+end
+subgraph n_src_components_cells["cells"]
+n_src_components_cells__collapsed[" "]
+end
+subgraph n_src_components_columns["columns"]
+n_src_components_columns__collapsed[" "]
+end
+n_src_components_privacyScoreUtils_ts["privacyScoreUtils.ts"]
+subgraph n_src_components_qr["qr"]
+n_src_components_qr__collapsed[" "]
+end
+subgraph n_src_components_send["send"]
+n_src_components_send__collapsed[" "]
 end
-subgraph 5V["ui"]
-5W[" "]
+subgraph n_src_components_ui["ui"]
+n_src_components_ui__collapsed[" "]
 end
 end
-subgraph 5X["contexts"]
-5Y["ActiveNetworkContext.tsx"]
-5Z["AppNotificationContext.tsx"]
-60["CurrencyContext.tsx"]
-61["CurrencyPreferencesContext.tsx"]
-62["NotificationContext.tsx"]
-63["PriceContext.tsx"]
-64["SidebarContext.tsx"]
-65["UserContext.tsx"]
-subgraph 66["send"]
-67[" "]
+subgraph n_src_contexts["contexts"]
+n_src_contexts_ActiveNetworkContext_tsx["ActiveNetworkContext.tsx"]
+n_src_contexts_AppNotificationContext_tsx["AppNotificationContext.tsx"]
+n_src_contexts_CurrencyContext_tsx["CurrencyContext.tsx"]
+n_src_contexts_CurrencyPreferencesContext_tsx["CurrencyPreferencesContext.tsx"]
+n_src_contexts_NotificationContext_tsx["NotificationContext.tsx"]
+n_src_contexts_PriceContext_tsx["PriceContext.tsx"]
+n_src_contexts_SidebarContext_tsx["SidebarContext.tsx"]
+n_src_contexts_UserContext_tsx["UserContext.tsx"]
+subgraph n_src_contexts_send["send"]
+n_src_contexts_send__collapsed[" "]
 end
-68["useUserAuthActions.ts"]
-69["useUserAuthLifecycle.ts"]
-6A["useUserPreferenceMutation.ts"]
-6B["useUserTheme.ts"]
-6C["userContextTypes.ts"]
-6D["userModel.ts"]
+n_src_contexts_useUserAuthActions_ts["useUserAuthActions.ts"]
+n_src_contexts_useUserAuthLifecycle_ts["useUserAuthLifecycle.ts"]
+n_src_contexts_useUserPreferenceMutation_ts["useUserPreferenceMutation.ts"]
+n_src_contexts_useUserTheme_ts["useUserTheme.ts"]
+n_src_contexts_userContextTypes_ts["userContextTypes.ts"]
+n_src_contexts_userModel_ts["userModel.ts"]
 end
-subgraph 6E["hooks"]
-subgraph 6F["qr"]
-6G[" "]
+subgraph n_src_hooks["hooks"]
+subgraph n_src_hooks_qr["qr"]
+n_src_hooks_qr__collapsed[" "]
 end
-subgraph 6H["queries"]
-6I[" "]
+subgraph n_src_hooks_queries["queries"]
+n_src_hooks_queries__collapsed[" "]
 end
-6J["requestOwnership.ts"]
-subgraph 6K["send"]
-6L[" "]
+n_src_hooks_requestOwnership_ts["requestOwnership.ts"]
+subgraph n_src_hooks_send["send"]
+n_src_hooks_send__collapsed[" "]
 end
-6M["soundPresets.ts"]
-subgraph 6N["soundPresets"]
-6O[" "]
+n_src_hooks_soundPresets_ts["soundPresets.ts"]
+subgraph n_src_hooks_soundPresets["soundPresets"]
+n_src_hooks_soundPresets__collapsed[" "]
 end
-6P["useAIStatus.ts"]
-6Q["useAppCapabilities.ts"]
-6R["useAppShortcuts.ts"]
-6S["useConsoleAvailability.ts"]
-6T["useCopyToClipboard.ts"]
-6U["useDelayedRender.ts"]
-6V["useDeviceConnection.ts"]
-6W["useDeviceModels.ts"]
-6X["useDeviceSave.ts"]
-6Y["useDismissable.ts"]
-6Z["useElementWidth.ts"]
-70["useErrorHandler.ts"]
-71["useHardwareWallet.ts"]
-72["useIntelligenceStatus.ts"]
-73["useLoadingState.ts"]
-74["useMediaQuery.ts"]
-75["useModalForm.ts"]
-76["useNotificationSound.ts"]
-77["useNotify.ts"]
-78["usePaginatedList.ts"]
-79["useUserPreference.ts"]
-subgraph 7A["websocket"]
-7B[" "]
-end
-end
-7C["main.tsx"]
-subgraph 7D["providers"]
-7E["AppProviders.tsx"]
-7F["QueryProvider.tsx"]
-end
-subgraph 7G["services"]
-7H["bbqr.ts"]
-subgraph 7I["deviceParsers"]
-7J[" "]
-end
-subgraph 7K["hardwareWallet"]
-7L[" "]
-end
-7M["websocket.ts"]
-end
-subgraph 7N["themes"]
-7O["backgroundCategories.ts"]
-subgraph 7P["bamboo"]
-7Q[" "]
-end
-subgraph 7R["copper"]
-7S[" "]
-end
-subgraph 7T["cyber"]
-7U[" "]
-end
-subgraph 7V["desert"]
-7W[" "]
-end
-subgraph 7X["forest"]
-7Y[" "]
-end
-7Z["index.ts"]
-subgraph 80["midnight"]
-81[" "]
-end
-subgraph 82["ocean"]
-83[" "]
-end
-84["patterns.ts"]
-85["registry.ts"]
-subgraph 86["sakura-sumie"]
-87[" "]
-end
-subgraph 88["sakura-yoshino"]
-89[" "]
-end
-subgraph 8A["sanctuary"]
-8B[" "]
-end
-subgraph 8C["seasonal"]
-8D[" "]
-end
-subgraph 8E["serenity"]
-8F[" "]
-end
-subgraph 8G["sunrise"]
-8H[" "]
-end
-subgraph 8I["sunset"]
-8J[" "]
-end
-8K["types.ts"]
-end
-subgraph 8L["types"]
-8M["hardware.ts"]
-8N["index.ts"]
-8O["ui.ts"]
-8P["user.ts"]
-end
-subgraph 8Q["utils"]
-8R["bip21Parser.ts"]
-8S["bufferUtils.ts"]
-8T["clipboard.ts"]
-8U["derivationPathGroups.ts"]
-8V["deviceConnection.ts"]
-8W["download.ts"]
-8X["errorHandler.ts"]
-8Y["explorer.ts"]
-8Z["feeRate.ts"]
-90["formatters.ts"]
-91["logger.ts"]
-92["networkScopedDevices.ts"]
-93["nodeGlobals.ts"]
-94["preferencePaths.ts"]
-95["psbtFormat.ts"]
-96["relativeTime.ts"]
-97["sendAmount.ts"]
-98["transaction.ts"]
-99["urDeviceDecoder.ts"]
-9A["urPsbt.ts"]
-9B["utxoAge.ts"]
-9C["validateAddress.ts"]
-9D["walletCapabilities.ts"]
-9E["walletSyncPresentation.ts"]
-9F["walletSyncPresentationTypes.ts"]
-9G["walletSyncSettledStates.ts"]
-end
-end
-C-->4
-C-->B
-F-->Z
-H-->L
-I-->N
-K-->6
-L-->4
-L-->6
-L-->B
-L-->J
-L-->K
-N-->4
-N-->B
-N-->J
-O-->N
-T-->B
-U-->S
-U-->T
-U-->V
-U-->W
-Y-->4
-Y-->B
-Y-->C
-10-->Z
-14-->E
-17-->21
-17-->7E
-1A-->1G
-1A-->8W
-1B-->1G
-1C-->1G
-1C-->91
-1F-->1G
-1F-->I
-1G-->1D
-1G-->1E
-1G-->1P
-1G-->1Q
-1G-->8W
-1G-->91
-1G-->Z
-1H-->1G
-1I-->1G
-1J-->1G
-1J-->O
-1K-->1E
-1L-->1G
-1M-->1G
-1N-->1G
-1N-->I
-1O-->1G
-1O-->M
-1P-->1D
-1P-->1E
-1P-->91
-1R-->1G
-1R-->9
-1T-->1G
-1T-->O
-1T-->P
-1U-->1G
-1V-->1G
-1W-->1G
-1X-->1G
-1X-->P
-1Y-->1G
-1Y-->1W
-1Y-->1X
-1Y-->E
-1Y-->P
-21-->1C
-21-->23
-21-->24
-21-->25
-21-->2S
-21-->31
-21-->3X
-21-->3Z
-21-->4E
-21-->5W
-21-->62
-21-->65
-21-->6Q
-21-->7B
-21-->84
-21-->91
-23-->2A
-23-->3I
-26-->A
-27-->4
-28-->2A
-29-->2K
-29-->2M
-29-->2O
-29-->2Q
-29-->2W
-29-->2Y
-29-->33
-29-->37
-29-->39
-29-->3B
-29-->3D
-29-->3F
-29-->3K
-29-->3N
-29-->3P
-29-->41
-29-->49
-29-->4Q
-29-->4T
-29-->58
-29-->59
-29-->5D
-29-->5F
-29-->5U
-2A-->29
-2A-->5W
-2D-->2F
-2F-->1B
-2F-->91
-2G-->2I
-2I-->1B
-2I-->6J
-2I-->91
-2K-->1A
-2K-->1B
-2K-->1G
-2K-->5W
-2K-->6P
-2K-->72
-2K-->91
-2M-->1C
-2M-->1G
-2M-->1V
-2M-->5W
-2M-->65
-2M-->8T
-2M-->91
-2O-->1A
-2O-->1Y
-2O-->5W
-2O-->8X
-2O-->B
-2Q-->1A
-2Q-->5W
-2Q-->8X
-2Q-->91
-2Q-->B
-2R-->60
-2S-->2U
-2S-->84
-2W-->1A
-2W-->73
-2W-->91
-2W-->96
-2Y-->1A
-2Y-->5W
-2Y-->5Z
-2Y-->8W
-2Y-->91
-30-->6Y
-30-->8
-31-->1C
-31-->1G
-31-->5W
-31-->91
-33-->5W
-33-->5Y
-33-->6G
-33-->6V
-33-->6W
-33-->6X
-33-->7J
-33-->7L
-33-->8U
-33-->8V
-33-->B
-33-->J
-35-->1H
-35-->26
-35-->27
-37-->1T
-37-->26
-37-->51
-37-->5D
-37-->6I
-39-->1I
-39-->27
-39-->5W
-39-->5Y
-39-->6I
-39-->70
-39-->8N
-39-->8X
-39-->91
-39-->B
-39-->C
-3B-->1A
-3B-->27
-3B-->2R
-3B-->30
-3B-->51
-3B-->5W
-3B-->5Y
-3B-->60
-3B-->62
-3B-->6I
-3B-->6U
-3B-->76
-3B-->79
-3B-->7B
-3B-->8N
-3B-->8Z
-3B-->91
-3B-->96
-3B-->9E
-3B-->Y
-3D-->1A
-3D-->1C
-3D-->1I
-3D-->27
-3D-->4J
-3D-->52
-3D-->5S
-3D-->5W
-3D-->5Y
-3D-->65
-3D-->6J
-3D-->7J
-3D-->7L
-3D-->8N
-3D-->8U
-3D-->8X
-3D-->91
-3D-->99
-3D-->B
-3D-->Y
-3F-->1I
-3F-->27
-3F-->5N
-3F-->5P
-3F-->5W
-3F-->5Y
-3F-->65
-3F-->73
-3F-->8X
-3F-->91
-3F-->92
-3F-->94
-3F-->B
-3H-->1J
-3H-->2R
-3H-->3L
-3H-->4Y
-3H-->5W
-3H-->60
-3H-->73
-3H-->8N
-3H-->8W
-3H-->90
-3H-->91
-3H-->95
-3K-->1A
-3K-->5W
-3K-->6P
-3K-->72
-3K-->73
-3L-->60
-3N-->1G
-3N-->1Y
-3N-->27
-3N-->5S
-3N-->5W
-3N-->5Y
-3N-->6I
-3N-->7
-3N-->7L
-3N-->91
-3N-->B
-3N-->C
-3P-->1L
-3P-->27
-3P-->5W
-3P-->5Y
-3P-->6I
-3P-->6J
-3P-->91
-3P-->96
-3Q-->3S
-3S-->6I
-3S-->91
-3S-->Z
-3T-->3V
-3V-->6I
-3V-->91
-3X-->1A
-3X-->1F
-3X-->1J
-3X-->23
-3X-->25
-3X-->27
-3X-->28
-3X-->2B
-3X-->35
-3X-->47
-3X-->4A
-3X-->4B
-3X-->5W
-3X-->5Y
-3X-->5Z
-3X-->65
-3X-->6I
-3X-->6Q
-3X-->6R
-3X-->8N
-3X-->8X
-3X-->91
-3X-->92
-3X-->9E
-3Z-->1C
-3Z-->1K
-3Z-->2S
-3Z-->5W
-3Z-->65
-41-->1A
-41-->5W
-41-->73
-43-->1A
-43-->27
-43-->5W
-43-->8
-43-->8X
-43-->91
-44-->46
-46-->1R
-46-->27
-46-->8X
-47-->27
-47-->5W
-49-->1A
-49-->1F
-49-->27
-49-->43
-49-->4M
-49-->5W
-49-->8
-49-->8X
-49-->91
-4B-->4D
-4B-->5Z
-4D-->5Z
-4D-->91
-4D-->96
-4E-->4G
-4I-->1N
-4I-->4H
-4J-->4L
-4L-->1G
-4L-->1U
-4L-->5W
-4L-->65
-4L-->73
-4L-->96
-4M-->1O
-4M-->5W
-4N-->5Q
-4O-->5Q
-4O-->5W
-4O-->60
-4Q-->1C
-4Q-->5W
-4Q-->60
-4Q-->65
-4Q-->76
-4Q-->7O
-4Q-->7Z
-4Q-->8X
-4Q-->91
-4R-->5Q
-4R-->5W
-4T-->1A
-4T-->5W
-4T-->6I
-4T-->73
-4U-->4W
-4W-->1F
-4W-->1J
-4W-->1T
-4W-->5W
-4W-->91
-4W-->L
-4X-->1T
-4X-->5W
-4X-->91
-4Y-->4Z
-4Y-->60
-4Z-->90
-51-->1F
-51-->1M
-51-->1T
-51-->2D
-51-->2R
-51-->3T
-51-->4U
-51-->4Y
-51-->5W
-51-->60
-51-->6P
-51-->6Z
-51-->74
-51-->8
-51-->8N
-51-->8Y
-51-->90
-51-->91
-51-->98
-52-->54
-54-->1C
-54-->1G
-54-->1U
-54-->5W
-54-->91
-56-->1F
-56-->2R
-56-->4N
-56-->4O
-56-->5W
-56-->60
-56-->6I
-56-->8
-56-->8Y
-56-->91
-56-->9B
-56-->B
-58-->1A
-58-->5W
-58-->70
-58-->73
-58-->91
-59-->5B
-5B-->1A
-5B-->73
-5D-->1A
-5D-->1C
-5D-->1F
-5D-->1G
-5D-->1I
-5D-->1J
-5D-->1M
-5D-->1N
-5D-->1R
-5D-->1T
-5D-->1Y
-5D-->26
-5D-->27
-5D-->2G
-5D-->2R
-5D-->3H
-5D-->3Q
-5D-->3T
-5D-->4I
-5D-->4J
-5D-->4X
-5D-->51
-5D-->52
-5D-->56
-5D-->5G
-5D-->5W
-5D-->5Y
-5D-->5Z
-5D-->60
-5D-->62
-5D-->65
-5D-->6I
-5D-->6J
-5D-->6P
-5D-->6T
-5D-->70
-5D-->78
-5D-->7B
-5D-->8
-5D-->8N
-5D-->8X
-5D-->8Y
-5D-->90
-5D-->91
-5D-->98
-5D-->9D
-5D-->9E
-5D-->B
-5D-->D
-5D-->E
-5D-->Y
-5F-->27
-5F-->2R
-5F-->44
-5F-->5N
-5F-->5P
-5F-->5W
-5F-->5Y
-5F-->60
-5F-->65
-5F-->6I
-5F-->6U
-5F-->8N
-5F-->94
-5F-->9E
-5F-->B
-5G-->27
-5G-->5I
-5G-->60
-5G-->6U
-5J-->84
-5N-->3F
-5N-->5W
-5N-->8N
-5N-->9E
-5N-->B
-5Q-->A
-5S-->91
-5S-->95
-5S-->9A
-5U-->1F
-5U-->1I
-5U-->1T
-5U-->1Y
-5U-->30
-5U-->3L
-5U-->4N
-5U-->4R
-5U-->4Y
-5U-->5S
-5U-->5W
-5U-->60
-5U-->65
-5U-->67
-5U-->6L
-5U-->7
-5U-->70
-5U-->71
-5U-->8N
-5U-->8R
-5U-->8Z
-5U-->91
-5U-->97
-5U-->9B
-5U-->9C
-5U-->9D
-5U-->L
-5U-->Z
-5W-->6Y
-5W-->79
-5W-->8N
-5W-->91
-5Y-->27
-5Y-->79
-5Z-->91
-60-->27
-60-->5Y
-60-->61
-60-->63
-60-->Y
-61-->1O
-61-->65
-61-->91
-61-->Y
-62-->4E
-63-->1O
-63-->61
-63-->91
-65-->68
-65-->69
-65-->6A
-65-->6B
-65-->6D
-67-->8Z
-67-->97
-67-->L
-68-->1C
-68-->1G
-68-->1P
-68-->1V
-68-->6D
-69-->1C
-69-->1G
-69-->1P
-69-->6D
-69-->91
-6A-->1C
-6A-->1G
-6A-->6D
-6A-->94
-6B-->6D
-6B-->7Z
-6D-->94
-6G-->7H
-6G-->7J
-6G-->8V
-6G-->91
-6G-->99
-6I-->1F
-6I-->1I
-6I-->1M
-6I-->1T
-6I-->1Y
-6L-->1G
-6L-->1J
-6L-->1N
-6L-->1T
-6L-->60
-6L-->70
-6L-->71
-6L-->76
-6L-->7F
-6L-->7L
-6L-->8N
-6L-->8S
-6L-->8W
-6L-->91
-6L-->95
-6L-->97
-6L-->9C
-6L-->Z
-6M-->6O
-6P-->1B
-6Q-->6S
-6Q-->72
-6R-->2B
-6S-->6P
-6T-->8T
-6V-->7L
-6V-->8V
-6V-->91
-6W-->1I
-6W-->91
-6X-->1I
-6X-->64
-6X-->91
-70-->1G
-70-->77
-71-->7L
-71-->91
-72-->1L
-73-->Z
-75-->8X
-76-->65
-76-->6M
-76-->91
-77-->5Z
-77-->62
-79-->65
-79-->91
-79-->94
-7B-->1R
-7B-->7F
-7B-->7M
-7B-->91
-7B-->W
-7C-->17
-7C-->7Z
-7C-->93
-7E-->5Y
-7E-->5Z
-7E-->60
-7E-->62
-7E-->64
-7E-->65
-7E-->7F
-7H-->91
-7J-->12
-7J-->91
-7J-->B
-7J-->Y
-7J-->Z
-7L-->1G
-7L-->7
-7L-->8S
-7L-->91
-7L-->B
-7L-->C
-7L-->I
-7L-->J
-7L-->N
-7L-->Y
-7M-->91
-7M-->W
-7O-->84
-7Z-->7Q
-7Z-->7S
-7Z-->7U
-7Z-->7W
-7Z-->7Y
-7Z-->81
-7Z-->83
-7Z-->84
-7Z-->85
-7Z-->87
-7Z-->89
-7Z-->8B
-7Z-->8D
-7Z-->8F
-7Z-->8H
-7Z-->8J
-7Z-->91
-85-->8D
-85-->91
-8N-->8M
-8N-->T
-8R-->97
-8T-->91
-8U-->27
-8U-->B
-8U-->C
-8V-->Y
-8X-->1G
-8X-->Z
-91-->V
-92-->27
-92-->8U
-99-->7J
-99-->91
-9A-->91
-9A-->95
-9A-->99
-9C-->Y
-9D-->D
-9E-->9G
+n_src_hooks_useAIStatus_ts["useAIStatus.ts"]
+n_src_hooks_useAppCapabilities_ts["useAppCapabilities.ts"]
+n_src_hooks_useAppShortcuts_ts["useAppShortcuts.ts"]
+n_src_hooks_useConsoleAvailability_ts["useConsoleAvailability.ts"]
+n_src_hooks_useCopyToClipboard_ts["useCopyToClipboard.ts"]
+n_src_hooks_useDelayedRender_ts["useDelayedRender.ts"]
+n_src_hooks_useDeviceConnection_ts["useDeviceConnection.ts"]
+n_src_hooks_useDeviceModels_ts["useDeviceModels.ts"]
+n_src_hooks_useDeviceSave_ts["useDeviceSave.ts"]
+n_src_hooks_useDismissable_ts["useDismissable.ts"]
+n_src_hooks_useElementWidth_ts["useElementWidth.ts"]
+n_src_hooks_useErrorHandler_ts["useErrorHandler.ts"]
+n_src_hooks_useHardwareWallet_ts["useHardwareWallet.ts"]
+n_src_hooks_useIntelligenceStatus_ts["useIntelligenceStatus.ts"]
+n_src_hooks_useLoadingState_ts["useLoadingState.ts"]
+n_src_hooks_useMediaQuery_ts["useMediaQuery.ts"]
+n_src_hooks_useModalForm_ts["useModalForm.ts"]
+n_src_hooks_useNotificationSound_ts["useNotificationSound.ts"]
+n_src_hooks_useNotify_ts["useNotify.ts"]
+n_src_hooks_usePaginatedList_ts["usePaginatedList.ts"]
+n_src_hooks_useUserPreference_ts["useUserPreference.ts"]
+subgraph n_src_hooks_websocket["websocket"]
+n_src_hooks_websocket__collapsed[" "]
+end
+end
+n_src_main_tsx["main.tsx"]
+subgraph n_src_providers["providers"]
+n_src_providers_AppProviders_tsx["AppProviders.tsx"]
+n_src_providers_QueryProvider_tsx["QueryProvider.tsx"]
+end
+subgraph n_src_services["services"]
+n_src_services_bbqr_ts["bbqr.ts"]
+subgraph n_src_services_deviceParsers["deviceParsers"]
+n_src_services_deviceParsers__collapsed[" "]
+end
+subgraph n_src_services_hardwareWallet["hardwareWallet"]
+n_src_services_hardwareWallet__collapsed[" "]
+end
+n_src_services_websocket_ts["websocket.ts"]
+end
+subgraph n_src_themes["themes"]
+n_src_themes_backgroundCategories_ts["backgroundCategories.ts"]
+subgraph n_src_themes_bamboo["bamboo"]
+n_src_themes_bamboo__collapsed[" "]
+end
+subgraph n_src_themes_copper["copper"]
+n_src_themes_copper__collapsed[" "]
+end
+subgraph n_src_themes_cyber["cyber"]
+n_src_themes_cyber__collapsed[" "]
+end
+subgraph n_src_themes_desert["desert"]
+n_src_themes_desert__collapsed[" "]
+end
+subgraph n_src_themes_forest["forest"]
+n_src_themes_forest__collapsed[" "]
+end
+n_src_themes_index_ts["index.ts"]
+subgraph n_src_themes_midnight["midnight"]
+n_src_themes_midnight__collapsed[" "]
+end
+subgraph n_src_themes_ocean["ocean"]
+n_src_themes_ocean__collapsed[" "]
+end
+n_src_themes_patterns_ts["patterns.ts"]
+n_src_themes_registry_ts["registry.ts"]
+subgraph n_src_themes_sakura_sumie["sakura-sumie"]
+n_src_themes_sakura_sumie__collapsed[" "]
+end
+subgraph n_src_themes_sakura_yoshino["sakura-yoshino"]
+n_src_themes_sakura_yoshino__collapsed[" "]
+end
+subgraph n_src_themes_sanctuary["sanctuary"]
+n_src_themes_sanctuary__collapsed[" "]
+end
+subgraph n_src_themes_seasonal["seasonal"]
+n_src_themes_seasonal__collapsed[" "]
+end
+subgraph n_src_themes_serenity["serenity"]
+n_src_themes_serenity__collapsed[" "]
+end
+subgraph n_src_themes_sunrise["sunrise"]
+n_src_themes_sunrise__collapsed[" "]
+end
+subgraph n_src_themes_sunset["sunset"]
+n_src_themes_sunset__collapsed[" "]
+end
+n_src_themes_types_ts["types.ts"]
+end
+subgraph n_src_types["types"]
+n_src_types_hardware_ts["hardware.ts"]
+n_src_types_index_ts["index.ts"]
+n_src_types_ui_ts["ui.ts"]
+n_src_types_user_ts["user.ts"]
+end
+subgraph n_src_utils["utils"]
+n_src_utils_bip21Parser_ts["bip21Parser.ts"]
+n_src_utils_bufferUtils_ts["bufferUtils.ts"]
+n_src_utils_clipboard_ts["clipboard.ts"]
+n_src_utils_derivationPathGroups_ts["derivationPathGroups.ts"]
+n_src_utils_deviceConnection_ts["deviceConnection.ts"]
+n_src_utils_download_ts["download.ts"]
+n_src_utils_errorHandler_ts["errorHandler.ts"]
+n_src_utils_explorer_ts["explorer.ts"]
+n_src_utils_feeRate_ts["feeRate.ts"]
+n_src_utils_formatters_ts["formatters.ts"]
+n_src_utils_logger_ts["logger.ts"]
+n_src_utils_networkScopedDevices_ts["networkScopedDevices.ts"]
+n_src_utils_nodeGlobals_ts["nodeGlobals.ts"]
+n_src_utils_preferencePaths_ts["preferencePaths.ts"]
+n_src_utils_psbtFormat_ts["psbtFormat.ts"]
+n_src_utils_relativeTime_ts["relativeTime.ts"]
+n_src_utils_sendAmount_ts["sendAmount.ts"]
+n_src_utils_transaction_ts["transaction.ts"]
+n_src_utils_urDeviceDecoder_ts["urDeviceDecoder.ts"]
+n_src_utils_urPsbt_ts["urPsbt.ts"]
+n_src_utils_utxoAge_ts["utxoAge.ts"]
+n_src_utils_validateAddress_ts["validateAddress.ts"]
+n_src_utils_walletCapabilities_ts["walletCapabilities.ts"]
+n_src_utils_walletSyncPresentation_ts["walletSyncPresentation.ts"]
+n_src_utils_walletSyncPresentationTypes_ts["walletSyncPresentationTypes.ts"]
+n_src_utils_walletSyncSettledStates_ts["walletSyncSettledStates.ts"]
+end
+end
+n_shared_constants_walletPolicy_ts-->n_shared_constants_bitcoin_ts
+n_shared_constants_walletPolicy_ts-->n_shared_constants_walletIdentity_ts
+n_shared_index_ts-->n_shared_utils_errors_ts
+n_shared_schemas_batchTransactionRequests_ts-->n_shared_schemas_mobileApiRequests_ts
+n_shared_schemas_bitcoinResponses_ts-->n_shared_schemas_psbtSigningContext_ts
+n_shared_schemas_draftRequests_ts-->n_shared_constants_drafts_ts
+n_shared_schemas_mobileApiRequests_ts-->n_shared_constants_bitcoin_ts
+n_shared_schemas_mobileApiRequests_ts-->n_shared_constants_drafts_ts
+n_shared_schemas_mobileApiRequests_ts-->n_shared_constants_walletIdentity_ts
+n_shared_schemas_mobileApiRequests_ts-->n_shared_schemas_deviceIdentity_ts
+n_shared_schemas_mobileApiRequests_ts-->n_shared_schemas_draftRequests_ts
+n_shared_schemas_psbtSigningContext_ts-->n_shared_constants_bitcoin_ts
+n_shared_schemas_psbtSigningContext_ts-->n_shared_constants_walletIdentity_ts
+n_shared_schemas_psbtSigningContext_ts-->n_shared_schemas_deviceIdentity_ts
+n_shared_schemas_transactionResponses_ts-->n_shared_schemas_psbtSigningContext_ts
+n_shared_types_domain_ts-->n_shared_constants_walletIdentity_ts
+n_shared_types_index_ts-->n_shared_types_api_ts
+n_shared_types_index_ts-->n_shared_types_domain_ts
+n_shared_types_index_ts-->n_shared_types_logger_ts
+n_shared_types_index_ts-->n_shared_types_websocket_ts
+n_shared_utils_bitcoin_ts-->n_shared_constants_bitcoin_ts
+n_shared_utils_bitcoin_ts-->n_shared_constants_walletIdentity_ts
+n_shared_utils_bitcoin_ts-->n_shared_constants_walletPolicy_ts
+n_shared_utils_fatalProcessHandlers_ts-->n_shared_utils_errors_ts
+n_shared_utils_redact_ts-->n_shared_constants_webhooks_ts
+n_src_App_tsx-->n_src_app_AppRoutes__collapsed
+n_src_App_tsx-->n_src_providers_AppProviders_tsx
+n_src_api_admin__collapsed-->n_src_api_client_ts
+n_src_api_admin__collapsed-->n_src_utils_download_ts
+n_src_api_ai_ts-->n_src_api_client_ts
+n_src_api_auth_ts-->n_src_api_client_ts
+n_src_api_auth_ts-->n_src_utils_logger_ts
+n_src_api_bitcoin_ts-->n_shared_schemas_bitcoinResponses_ts
+n_src_api_bitcoin_ts-->n_src_api_client_ts
+n_src_api_client_ts-->n_shared_utils_errors_ts
+n_src_api_client_ts-->n_src_api_authPolicy_ts
+n_src_api_client_ts-->n_src_api_baseUrl_ts
+n_src_api_client_ts-->n_src_api_refresh_ts
+n_src_api_client_ts-->n_src_api_retryPolicy_ts
+n_src_api_client_ts-->n_src_utils_download_ts
+n_src_api_client_ts-->n_src_utils_logger_ts
+n_src_api_console_ts-->n_src_api_client_ts
+n_src_api_devices_ts-->n_src_api_client_ts
+n_src_api_drafts_ts-->n_shared_schemas_transactionResponses_ts
+n_src_api_drafts_ts-->n_src_api_client_ts
+n_src_api_health_ts-->n_src_api_baseUrl_ts
+n_src_api_intelligence_ts-->n_src_api_client_ts
+n_src_api_labels_ts-->n_src_api_client_ts
+n_src_api_payjoin_ts-->n_shared_schemas_bitcoinResponses_ts
+n_src_api_payjoin_ts-->n_src_api_client_ts
+n_src_api_price_ts-->n_shared_schemas_priceResponses_ts
+n_src_api_price_ts-->n_src_api_client_ts
+n_src_api_refresh_ts-->n_src_api_authPolicy_ts
+n_src_api_refresh_ts-->n_src_api_baseUrl_ts
+n_src_api_refresh_ts-->n_src_utils_logger_ts
+n_src_api_sync_ts-->n_shared_constants_sync_ts
+n_src_api_sync_ts-->n_src_api_client_ts
+n_src_api_transactions__collapsed-->n_shared_schemas_transactionResponses_ts
+n_src_api_transactions__collapsed-->n_shared_schemas_walletResponses_ts
+n_src_api_transactions__collapsed-->n_src_api_client_ts
+n_src_api_transfers_ts-->n_src_api_client_ts
+n_src_api_twoFactor_ts-->n_src_api_client_ts
+n_src_api_walletRemediation_ts-->n_src_api_client_ts
+n_src_api_walletXpub_ts-->n_shared_schemas_walletResponses_ts
+n_src_api_walletXpub_ts-->n_src_api_client_ts
+n_src_api_wallets_ts-->n_shared_constants_webhooks_ts
+n_src_api_wallets_ts-->n_shared_schemas_walletResponses_ts
+n_src_api_wallets_ts-->n_src_api_client_ts
+n_src_api_wallets_ts-->n_src_api_walletRemediation_ts
+n_src_api_wallets_ts-->n_src_api_walletXpub_ts
+n_src_app_AppRoutes__collapsed-->n_src_api_auth_ts
+n_src_app_AppRoutes__collapsed-->n_src_app_appRoutes_tsx
+n_src_app_AppRoutes__collapsed-->n_src_app_browserNavigation_ts
+n_src_app_AppRoutes__collapsed-->n_src_app_capabilities_ts
+n_src_app_AppRoutes__collapsed-->n_src_components_AnimatedBackground_tsx
+n_src_app_AppRoutes__collapsed-->n_src_components_ChangePasswordModal_tsx
+n_src_app_AppRoutes__collapsed-->n_src_components_Layout__collapsed
+n_src_app_AppRoutes__collapsed-->n_src_components_Login__collapsed
+n_src_app_AppRoutes__collapsed-->n_src_components_NotificationToast_tsx
+n_src_app_AppRoutes__collapsed-->n_src_components_ui__collapsed
+n_src_app_AppRoutes__collapsed-->n_src_contexts_NotificationContext_tsx
+n_src_app_AppRoutes__collapsed-->n_src_contexts_UserContext_tsx
+n_src_app_AppRoutes__collapsed-->n_src_hooks_useAppCapabilities_ts
+n_src_app_AppRoutes__collapsed-->n_src_hooks_websocket__collapsed
+n_src_app_AppRoutes__collapsed-->n_src_themes_patterns_ts
+n_src_app_AppRoutes__collapsed-->n_src_utils_logger_ts
+n_src_app_appRoutes_tsx-->n_src_app_routeDefinitions_tsx
+n_src_app_appRoutes_tsx-->n_src_components_ErrorBoundary_tsx
+n_src_app_consoleTransactionNavigation_ts-->n_shared_constants_transactions_ts
+n_src_app_networks_ts-->n_shared_constants_bitcoin_ts
+n_src_app_resolvePageContentWidth_ts-->n_src_app_routeDefinitions_tsx
+n_src_app_routeComponents_tsx-->n_src_components_AISettings__collapsed
+n_src_app_routeComponents_tsx-->n_src_components_Account__collapsed
+n_src_app_routeComponents_tsx-->n_src_components_AgentManagement__collapsed
+n_src_app_routeComponents_tsx-->n_src_components_AgentWalletDashboard__collapsed
+n_src_app_routeComponents_tsx-->n_src_components_AuditLogs__collapsed
+n_src_app_routeComponents_tsx-->n_src_components_BackupRestore__collapsed
+n_src_app_routeComponents_tsx-->n_src_components_ConnectDevice__collapsed
+n_src_app_routeComponents_tsx-->n_src_components_ConsoleResults__collapsed
+n_src_app_routeComponents_tsx-->n_src_components_CreateWallet__collapsed
+n_src_app_routeComponents_tsx-->n_src_components_Dashboard__collapsed
+n_src_app_routeComponents_tsx-->n_src_components_DeviceDetail__collapsed
+n_src_app_routeComponents_tsx-->n_src_components_DeviceList__collapsed
+n_src_app_routeComponents_tsx-->n_src_components_FeatureFlags__collapsed
+n_src_app_routeComponents_tsx-->n_src_components_ImportWallet__collapsed
+n_src_app_routeComponents_tsx-->n_src_components_Intelligence__collapsed
+n_src_app_routeComponents_tsx-->n_src_components_Monitoring__collapsed
+n_src_app_routeComponents_tsx-->n_src_components_NodeConfig__collapsed
+n_src_app_routeComponents_tsx-->n_src_components_Settings__collapsed
+n_src_app_routeComponents_tsx-->n_src_components_SystemSettings__collapsed
+n_src_app_routeComponents_tsx-->n_src_components_UsersGroups__collapsed
+n_src_app_routeComponents_tsx-->n_src_components_Variables_tsx
+n_src_app_routeComponents_tsx-->n_src_components_WalletDetail__collapsed
+n_src_app_routeComponents_tsx-->n_src_components_WalletList__collapsed
+n_src_app_routeComponents_tsx-->n_src_components_send__collapsed
+n_src_app_routeDefinitions_tsx-->n_src_app_routeComponents_tsx
+n_src_app_routeDefinitions_tsx-->n_src_components_ui__collapsed
+n_src_components_AILabelSuggestion_tsx-->n_src_components_AILabelSuggestion__collapsed
+n_src_components_AILabelSuggestion__collapsed-->n_src_api_ai_ts
+n_src_components_AILabelSuggestion__collapsed-->n_src_utils_logger_ts
+n_src_components_AIQueryInput_tsx-->n_src_components_AIQueryInput__collapsed
+n_src_components_AIQueryInput__collapsed-->n_src_api_ai_ts
+n_src_components_AIQueryInput__collapsed-->n_src_hooks_requestOwnership_ts
+n_src_components_AIQueryInput__collapsed-->n_src_utils_logger_ts
+n_src_components_AISettings__collapsed-->n_src_api_admin__collapsed
+n_src_components_AISettings__collapsed-->n_src_api_ai_ts
+n_src_components_AISettings__collapsed-->n_src_api_client_ts
+n_src_components_AISettings__collapsed-->n_src_components_ui__collapsed
+n_src_components_AISettings__collapsed-->n_src_hooks_useAIStatus_ts
+n_src_components_AISettings__collapsed-->n_src_hooks_useIntelligenceStatus_ts
+n_src_components_AISettings__collapsed-->n_src_utils_logger_ts
+n_src_components_Account__collapsed-->n_src_api_auth_ts
+n_src_components_Account__collapsed-->n_src_api_client_ts
+n_src_components_Account__collapsed-->n_src_api_twoFactor_ts
+n_src_components_Account__collapsed-->n_src_components_ui__collapsed
+n_src_components_Account__collapsed-->n_src_contexts_UserContext_tsx
+n_src_components_Account__collapsed-->n_src_utils_clipboard_ts
+n_src_components_Account__collapsed-->n_src_utils_logger_ts
+n_src_components_AgentManagement__collapsed-->n_shared_constants_walletIdentity_ts
+n_src_components_AgentManagement__collapsed-->n_src_api_admin__collapsed
+n_src_components_AgentManagement__collapsed-->n_src_api_wallets_ts
+n_src_components_AgentManagement__collapsed-->n_src_components_ui__collapsed
+n_src_components_AgentManagement__collapsed-->n_src_utils_errorHandler_ts
+n_src_components_AgentWalletDashboard__collapsed-->n_shared_constants_walletIdentity_ts
+n_src_components_AgentWalletDashboard__collapsed-->n_src_api_admin__collapsed
+n_src_components_AgentWalletDashboard__collapsed-->n_src_components_ui__collapsed
+n_src_components_AgentWalletDashboard__collapsed-->n_src_utils_errorHandler_ts
+n_src_components_AgentWalletDashboard__collapsed-->n_src_utils_logger_ts
+n_src_components_Amount_tsx-->n_src_contexts_CurrencyContext_tsx
+n_src_components_AnimatedBackground_tsx-->n_src_components_AnimatedBackground__collapsed
+n_src_components_AnimatedBackground_tsx-->n_src_themes_patterns_ts
+n_src_components_AuditLogs__collapsed-->n_src_api_admin__collapsed
+n_src_components_AuditLogs__collapsed-->n_src_hooks_useLoadingState_ts
+n_src_components_AuditLogs__collapsed-->n_src_utils_logger_ts
+n_src_components_AuditLogs__collapsed-->n_src_utils_relativeTime_ts
+n_src_components_BackupRestore__collapsed-->n_src_api_admin__collapsed
+n_src_components_BackupRestore__collapsed-->n_src_components_ui__collapsed
+n_src_components_BackupRestore__collapsed-->n_src_contexts_AppNotificationContext_tsx
+n_src_components_BackupRestore__collapsed-->n_src_utils_download_ts
+n_src_components_BackupRestore__collapsed-->n_src_utils_logger_ts
+n_src_components_BlockVisualizer__collapsed-->n_shared_constants_nodeConfig_ts
+n_src_components_BlockVisualizer__collapsed-->n_src_hooks_useDismissable_ts
+n_src_components_ChangePasswordModal_tsx-->n_src_api_auth_ts
+n_src_components_ChangePasswordModal_tsx-->n_src_api_client_ts
+n_src_components_ChangePasswordModal_tsx-->n_src_components_ui__collapsed
+n_src_components_ChangePasswordModal_tsx-->n_src_utils_logger_ts
+n_src_components_ConnectDevice__collapsed-->n_shared_constants_walletIdentity_ts
+n_src_components_ConnectDevice__collapsed-->n_shared_schemas_deviceIdentity_ts
+n_src_components_ConnectDevice__collapsed-->n_src_components_ui__collapsed
+n_src_components_ConnectDevice__collapsed-->n_src_contexts_ActiveNetworkContext_tsx
+n_src_components_ConnectDevice__collapsed-->n_src_hooks_qr__collapsed
+n_src_components_ConnectDevice__collapsed-->n_src_hooks_useDeviceConnection_ts
+n_src_components_ConnectDevice__collapsed-->n_src_hooks_useDeviceModels_ts
+n_src_components_ConnectDevice__collapsed-->n_src_hooks_useDeviceSave_ts
+n_src_components_ConnectDevice__collapsed-->n_src_services_deviceParsers__collapsed
+n_src_components_ConnectDevice__collapsed-->n_src_services_hardwareWallet__collapsed
+n_src_components_ConnectDevice__collapsed-->n_src_utils_derivationPathGroups_ts
+n_src_components_ConnectDevice__collapsed-->n_src_utils_deviceConnection_ts
+n_src_components_ConsoleDrawer__collapsed-->n_src_api_console_ts
+n_src_components_ConsoleDrawer__collapsed-->n_src_app_consoleTransactionNavigation_ts
+n_src_components_ConsoleDrawer__collapsed-->n_src_app_networks_ts
+n_src_components_ConsoleResults__collapsed-->n_src_api_transactions__collapsed
+n_src_components_ConsoleResults__collapsed-->n_src_app_consoleTransactionNavigation_ts
+n_src_components_ConsoleResults__collapsed-->n_src_components_TransactionList__collapsed
+n_src_components_ConsoleResults__collapsed-->n_src_components_WalletDetail__collapsed
+n_src_components_ConsoleResults__collapsed-->n_src_hooks_queries__collapsed
+n_src_components_CreateWallet__collapsed-->n_shared_constants_walletIdentity_ts
+n_src_components_CreateWallet__collapsed-->n_shared_constants_walletPolicy_ts
+n_src_components_CreateWallet__collapsed-->n_src_api_devices_ts
+n_src_components_CreateWallet__collapsed-->n_src_app_networks_ts
+n_src_components_CreateWallet__collapsed-->n_src_components_ui__collapsed
+n_src_components_CreateWallet__collapsed-->n_src_contexts_ActiveNetworkContext_tsx
+n_src_components_CreateWallet__collapsed-->n_src_hooks_queries__collapsed
+n_src_components_CreateWallet__collapsed-->n_src_hooks_useErrorHandler_ts
+n_src_components_CreateWallet__collapsed-->n_src_types_index_ts
+n_src_components_CreateWallet__collapsed-->n_src_utils_errorHandler_ts
+n_src_components_CreateWallet__collapsed-->n_src_utils_logger_ts
+n_src_components_Dashboard__collapsed-->n_shared_utils_bitcoin_ts
+n_src_components_Dashboard__collapsed-->n_src_api_admin__collapsed
+n_src_components_Dashboard__collapsed-->n_src_app_networks_ts
+n_src_components_Dashboard__collapsed-->n_src_components_Amount_tsx
+n_src_components_Dashboard__collapsed-->n_src_components_BlockVisualizer__collapsed
+n_src_components_Dashboard__collapsed-->n_src_components_TransactionList__collapsed
+n_src_components_Dashboard__collapsed-->n_src_components_ui__collapsed
+n_src_components_Dashboard__collapsed-->n_src_contexts_ActiveNetworkContext_tsx
+n_src_components_Dashboard__collapsed-->n_src_contexts_CurrencyContext_tsx
+n_src_components_Dashboard__collapsed-->n_src_contexts_NotificationContext_tsx
+n_src_components_Dashboard__collapsed-->n_src_hooks_queries__collapsed
+n_src_components_Dashboard__collapsed-->n_src_hooks_useDelayedRender_ts
+n_src_components_Dashboard__collapsed-->n_src_hooks_useNotificationSound_ts
+n_src_components_Dashboard__collapsed-->n_src_hooks_useUserPreference_ts
+n_src_components_Dashboard__collapsed-->n_src_hooks_websocket__collapsed
+n_src_components_Dashboard__collapsed-->n_src_types_index_ts
+n_src_components_Dashboard__collapsed-->n_src_utils_feeRate_ts
+n_src_components_Dashboard__collapsed-->n_src_utils_logger_ts
+n_src_components_Dashboard__collapsed-->n_src_utils_relativeTime_ts
+n_src_components_Dashboard__collapsed-->n_src_utils_walletSyncPresentation_ts
+n_src_components_DeviceDetail__collapsed-->n_shared_constants_walletIdentity_ts
+n_src_components_DeviceDetail__collapsed-->n_shared_utils_bitcoin_ts
+n_src_components_DeviceDetail__collapsed-->n_src_api_admin__collapsed
+n_src_components_DeviceDetail__collapsed-->n_src_api_auth_ts
+n_src_components_DeviceDetail__collapsed-->n_src_api_devices_ts
+n_src_components_DeviceDetail__collapsed-->n_src_app_networks_ts
+n_src_components_DeviceDetail__collapsed-->n_src_components_PendingTransfersPanel_tsx
+n_src_components_DeviceDetail__collapsed-->n_src_components_TransferOwnershipModal_tsx
+n_src_components_DeviceDetail__collapsed-->n_src_components_qr__collapsed
+n_src_components_DeviceDetail__collapsed-->n_src_components_ui__collapsed
+n_src_components_DeviceDetail__collapsed-->n_src_contexts_ActiveNetworkContext_tsx
+n_src_components_DeviceDetail__collapsed-->n_src_contexts_UserContext_tsx
+n_src_components_DeviceDetail__collapsed-->n_src_hooks_requestOwnership_ts
+n_src_components_DeviceDetail__collapsed-->n_src_services_deviceParsers__collapsed
+n_src_components_DeviceDetail__collapsed-->n_src_services_hardwareWallet__collapsed
+n_src_components_DeviceDetail__collapsed-->n_src_types_index_ts
+n_src_components_DeviceDetail__collapsed-->n_src_utils_derivationPathGroups_ts
+n_src_components_DeviceDetail__collapsed-->n_src_utils_errorHandler_ts
+n_src_components_DeviceDetail__collapsed-->n_src_utils_logger_ts
+n_src_components_DeviceDetail__collapsed-->n_src_utils_urDeviceDecoder_ts
+n_src_components_DeviceList__collapsed-->n_shared_constants_walletIdentity_ts
+n_src_components_DeviceList__collapsed-->n_src_api_devices_ts
+n_src_components_DeviceList__collapsed-->n_src_app_networks_ts
+n_src_components_DeviceList__collapsed-->n_src_components_cells__collapsed
+n_src_components_DeviceList__collapsed-->n_src_components_columns__collapsed
+n_src_components_DeviceList__collapsed-->n_src_components_ui__collapsed
+n_src_components_DeviceList__collapsed-->n_src_contexts_ActiveNetworkContext_tsx
+n_src_components_DeviceList__collapsed-->n_src_contexts_UserContext_tsx
+n_src_components_DeviceList__collapsed-->n_src_hooks_useLoadingState_ts
+n_src_components_DeviceList__collapsed-->n_src_utils_errorHandler_ts
+n_src_components_DeviceList__collapsed-->n_src_utils_logger_ts
+n_src_components_DeviceList__collapsed-->n_src_utils_networkScopedDevices_ts
+n_src_components_DeviceList__collapsed-->n_src_utils_preferencePaths_ts
+n_src_components_DraftList__collapsed-->n_src_api_drafts_ts
+n_src_components_DraftList__collapsed-->n_src_components_Amount_tsx
+n_src_components_DraftList__collapsed-->n_src_components_FiatDisplay_tsx
+n_src_components_DraftList__collapsed-->n_src_components_TransactionFlowPreview_tsx
+n_src_components_DraftList__collapsed-->n_src_components_ui__collapsed
+n_src_components_DraftList__collapsed-->n_src_contexts_CurrencyContext_tsx
+n_src_components_DraftList__collapsed-->n_src_hooks_useLoadingState_ts
+n_src_components_DraftList__collapsed-->n_src_types_index_ts
+n_src_components_DraftList__collapsed-->n_src_utils_download_ts
+n_src_components_DraftList__collapsed-->n_src_utils_formatters_ts
+n_src_components_DraftList__collapsed-->n_src_utils_logger_ts
+n_src_components_DraftList__collapsed-->n_src_utils_psbtFormat_ts
+n_src_components_FeatureFlags__collapsed-->n_src_api_admin__collapsed
+n_src_components_FeatureFlags__collapsed-->n_src_components_ui__collapsed
+n_src_components_FeatureFlags__collapsed-->n_src_hooks_useAIStatus_ts
+n_src_components_FeatureFlags__collapsed-->n_src_hooks_useIntelligenceStatus_ts
+n_src_components_FeatureFlags__collapsed-->n_src_hooks_useLoadingState_ts
+n_src_components_FiatDisplay_tsx-->n_src_contexts_CurrencyContext_tsx
+n_src_components_ImportWallet__collapsed-->n_shared_constants_hardwareWalletCapabilities_ts
+n_src_components_ImportWallet__collapsed-->n_shared_constants_walletIdentity_ts
+n_src_components_ImportWallet__collapsed-->n_shared_constants_walletPolicy_ts
+n_src_components_ImportWallet__collapsed-->n_src_api_client_ts
+n_src_components_ImportWallet__collapsed-->n_src_api_wallets_ts
+n_src_components_ImportWallet__collapsed-->n_src_app_networks_ts
+n_src_components_ImportWallet__collapsed-->n_src_components_qr__collapsed
+n_src_components_ImportWallet__collapsed-->n_src_components_ui__collapsed
+n_src_components_ImportWallet__collapsed-->n_src_contexts_ActiveNetworkContext_tsx
+n_src_components_ImportWallet__collapsed-->n_src_hooks_queries__collapsed
+n_src_components_ImportWallet__collapsed-->n_src_services_hardwareWallet__collapsed
+n_src_components_ImportWallet__collapsed-->n_src_utils_logger_ts
+n_src_components_Intelligence__collapsed-->n_src_api_intelligence_ts
+n_src_components_Intelligence__collapsed-->n_src_app_networks_ts
+n_src_components_Intelligence__collapsed-->n_src_components_ui__collapsed
+n_src_components_Intelligence__collapsed-->n_src_contexts_ActiveNetworkContext_tsx
+n_src_components_Intelligence__collapsed-->n_src_hooks_queries__collapsed
+n_src_components_Intelligence__collapsed-->n_src_hooks_requestOwnership_ts
+n_src_components_Intelligence__collapsed-->n_src_utils_logger_ts
+n_src_components_Intelligence__collapsed-->n_src_utils_relativeTime_ts
+n_src_components_LabelManager_tsx-->n_src_components_LabelManager__collapsed
+n_src_components_LabelManager__collapsed-->n_shared_utils_errors_ts
+n_src_components_LabelManager__collapsed-->n_src_hooks_queries__collapsed
+n_src_components_LabelManager__collapsed-->n_src_utils_logger_ts
+n_src_components_LabelSelector_tsx-->n_src_components_LabelSelector__collapsed
+n_src_components_LabelSelector__collapsed-->n_src_hooks_queries__collapsed
+n_src_components_LabelSelector__collapsed-->n_src_utils_logger_ts
+n_src_components_Layout__collapsed-->n_src_api_admin__collapsed
+n_src_components_Layout__collapsed-->n_src_api_bitcoin_ts
+n_src_components_Layout__collapsed-->n_src_api_drafts_ts
+n_src_components_Layout__collapsed-->n_src_app_appRoutes_tsx
+n_src_components_Layout__collapsed-->n_src_app_capabilities_ts
+n_src_components_Layout__collapsed-->n_src_app_networks_ts
+n_src_components_Layout__collapsed-->n_src_app_resolvePageContentWidth_ts
+n_src_components_Layout__collapsed-->n_src_app_shortcuts_ts
+n_src_components_Layout__collapsed-->n_src_components_ConsoleDrawer__collapsed
+n_src_components_Layout__collapsed-->n_src_components_NetworkTabs_tsx
+n_src_components_Layout__collapsed-->n_src_components_NotificationBadge_tsx
+n_src_components_Layout__collapsed-->n_src_components_NotificationPanel_tsx
+n_src_components_Layout__collapsed-->n_src_components_ui__collapsed
+n_src_components_Layout__collapsed-->n_src_contexts_ActiveNetworkContext_tsx
+n_src_components_Layout__collapsed-->n_src_contexts_AppNotificationContext_tsx
+n_src_components_Layout__collapsed-->n_src_contexts_UserContext_tsx
+n_src_components_Layout__collapsed-->n_src_hooks_queries__collapsed
+n_src_components_Layout__collapsed-->n_src_hooks_useAppCapabilities_ts
+n_src_components_Layout__collapsed-->n_src_hooks_useAppShortcuts_ts
+n_src_components_Layout__collapsed-->n_src_types_index_ts
+n_src_components_Layout__collapsed-->n_src_utils_errorHandler_ts
+n_src_components_Layout__collapsed-->n_src_utils_logger_ts
+n_src_components_Layout__collapsed-->n_src_utils_networkScopedDevices_ts
+n_src_components_Layout__collapsed-->n_src_utils_walletSyncPresentation_ts
+n_src_components_Login__collapsed-->n_src_api_auth_ts
+n_src_components_Login__collapsed-->n_src_api_health_ts
+n_src_components_Login__collapsed-->n_src_components_AnimatedBackground_tsx
+n_src_components_Login__collapsed-->n_src_components_ui__collapsed
+n_src_components_Login__collapsed-->n_src_contexts_UserContext_tsx
+n_src_components_Monitoring__collapsed-->n_src_api_admin__collapsed
+n_src_components_Monitoring__collapsed-->n_src_components_ui__collapsed
+n_src_components_Monitoring__collapsed-->n_src_hooks_useLoadingState_ts
+n_src_components_NetworkConnectionCard__collapsed-->n_shared_constants_nodeConfig_ts
+n_src_components_NetworkConnectionCard__collapsed-->n_src_api_admin__collapsed
+n_src_components_NetworkConnectionCard__collapsed-->n_src_app_networks_ts
+n_src_components_NetworkConnectionCard__collapsed-->n_src_components_ui__collapsed
+n_src_components_NetworkConnectionCard__collapsed-->n_src_utils_errorHandler_ts
+n_src_components_NetworkConnectionCard__collapsed-->n_src_utils_logger_ts
+n_src_components_NetworkSyncActions_tsx-->n_src_components_NetworkSyncActions__collapsed
+n_src_components_NetworkSyncActions__collapsed-->n_src_api_sync_ts
+n_src_components_NetworkSyncActions__collapsed-->n_src_app_networks_ts
+n_src_components_NetworkSyncActions__collapsed-->n_src_utils_errorHandler_ts
+n_src_components_NetworkTabs_tsx-->n_src_app_networks_ts
+n_src_components_NetworkTabs_tsx-->n_src_components_ui__collapsed
+n_src_components_NodeConfig__collapsed-->n_shared_constants_nodeConfig_ts
+n_src_components_NodeConfig__collapsed-->n_src_api_admin__collapsed
+n_src_components_NodeConfig__collapsed-->n_src_api_bitcoin_ts
+n_src_components_NodeConfig__collapsed-->n_src_app_networks_ts
+n_src_components_NodeConfig__collapsed-->n_src_components_NetworkConnectionCard__collapsed
+n_src_components_NodeConfig__collapsed-->n_src_components_PriceProviderDiagnostics_tsx
+n_src_components_NodeConfig__collapsed-->n_src_components_ui__collapsed
+n_src_components_NodeConfig__collapsed-->n_src_utils_errorHandler_ts
+n_src_components_NodeConfig__collapsed-->n_src_utils_logger_ts
+n_src_components_NotificationPanel_tsx-->n_src_components_NotificationPanel__collapsed
+n_src_components_NotificationPanel_tsx-->n_src_contexts_AppNotificationContext_tsx
+n_src_components_NotificationPanel__collapsed-->n_src_contexts_AppNotificationContext_tsx
+n_src_components_NotificationPanel__collapsed-->n_src_utils_logger_ts
+n_src_components_NotificationPanel__collapsed-->n_src_utils_relativeTime_ts
+n_src_components_NotificationToast_tsx-->n_src_components_NotificationToast__collapsed
+n_src_components_PayjoinSection_tsx-->n_src_api_payjoin_ts
+n_src_components_PayjoinSection_tsx-->n_src_components_PayjoinEducationModal_tsx
+n_src_components_PendingTransfersPanel_tsx-->n_src_components_PendingTransfersPanel__collapsed
+n_src_components_PendingTransfersPanel__collapsed-->n_src_api_client_ts
+n_src_components_PendingTransfersPanel__collapsed-->n_src_api_transfers_ts
+n_src_components_PendingTransfersPanel__collapsed-->n_src_components_ui__collapsed
+n_src_components_PendingTransfersPanel__collapsed-->n_src_contexts_UserContext_tsx
+n_src_components_PendingTransfersPanel__collapsed-->n_src_hooks_useLoadingState_ts
+n_src_components_PendingTransfersPanel__collapsed-->n_src_utils_relativeTime_ts
+n_src_components_PriceProviderDiagnostics_tsx-->n_src_api_price_ts
+n_src_components_PriceProviderDiagnostics_tsx-->n_src_components_ui__collapsed
+n_src_components_PrivacyBadge_tsx-->n_src_components_privacyScoreUtils_ts
+n_src_components_PrivacyDetailPanel_tsx-->n_src_components_privacyScoreUtils_ts
+n_src_components_PrivacyDetailPanel_tsx-->n_src_components_ui__collapsed
+n_src_components_PrivacyDetailPanel_tsx-->n_src_contexts_CurrencyContext_tsx
+n_src_components_Settings__collapsed-->n_src_api_auth_ts
+n_src_components_Settings__collapsed-->n_src_components_ui__collapsed
+n_src_components_Settings__collapsed-->n_src_contexts_CurrencyContext_tsx
+n_src_components_Settings__collapsed-->n_src_contexts_UserContext_tsx
+n_src_components_Settings__collapsed-->n_src_hooks_useNotificationSound_ts
+n_src_components_Settings__collapsed-->n_src_themes_backgroundCategories_ts
+n_src_components_Settings__collapsed-->n_src_themes_index_ts
+n_src_components_Settings__collapsed-->n_src_utils_errorHandler_ts
+n_src_components_Settings__collapsed-->n_src_utils_logger_ts
+n_src_components_SpendPrivacyCard_tsx-->n_src_components_privacyScoreUtils_ts
+n_src_components_SpendPrivacyCard_tsx-->n_src_components_ui__collapsed
+n_src_components_SystemSettings__collapsed-->n_src_api_admin__collapsed
+n_src_components_SystemSettings__collapsed-->n_src_components_ui__collapsed
+n_src_components_SystemSettings__collapsed-->n_src_hooks_queries__collapsed
+n_src_components_SystemSettings__collapsed-->n_src_hooks_useLoadingState_ts
+n_src_components_TransactionActions_tsx-->n_src_components_TransactionActions__collapsed
+n_src_components_TransactionActions__collapsed-->n_shared_schemas_mobileApiRequests_ts
+n_src_components_TransactionActions__collapsed-->n_src_api_bitcoin_ts
+n_src_components_TransactionActions__collapsed-->n_src_api_drafts_ts
+n_src_components_TransactionActions__collapsed-->n_src_api_transactions__collapsed
+n_src_components_TransactionActions__collapsed-->n_src_components_ui__collapsed
+n_src_components_TransactionActions__collapsed-->n_src_utils_logger_ts
+n_src_components_TransactionExportModal_tsx-->n_src_api_transactions__collapsed
+n_src_components_TransactionExportModal_tsx-->n_src_components_ui__collapsed
+n_src_components_TransactionExportModal_tsx-->n_src_utils_logger_ts
+n_src_components_TransactionFlowPreview_tsx-->n_src_components_TransactionFlowPreviewParts_tsx
+n_src_components_TransactionFlowPreview_tsx-->n_src_contexts_CurrencyContext_tsx
+n_src_components_TransactionFlowPreviewParts_tsx-->n_src_utils_formatters_ts
+n_src_components_TransactionList__collapsed-->n_shared_constants_nodeConfig_ts
+n_src_components_TransactionList__collapsed-->n_src_api_bitcoin_ts
+n_src_components_TransactionList__collapsed-->n_src_api_labels_ts
+n_src_components_TransactionList__collapsed-->n_src_api_transactions__collapsed
+n_src_components_TransactionList__collapsed-->n_src_components_AILabelSuggestion_tsx
+n_src_components_TransactionList__collapsed-->n_src_components_Amount_tsx
+n_src_components_TransactionList__collapsed-->n_src_components_LabelSelector_tsx
+n_src_components_TransactionList__collapsed-->n_src_components_TransactionActions_tsx
+n_src_components_TransactionList__collapsed-->n_src_components_TransactionFlowPreview_tsx
+n_src_components_TransactionList__collapsed-->n_src_components_ui__collapsed
+n_src_components_TransactionList__collapsed-->n_src_contexts_CurrencyContext_tsx
+n_src_components_TransactionList__collapsed-->n_src_hooks_useAIStatus_ts
+n_src_components_TransactionList__collapsed-->n_src_hooks_useElementWidth_ts
+n_src_components_TransactionList__collapsed-->n_src_hooks_useMediaQuery_ts
+n_src_components_TransactionList__collapsed-->n_src_types_index_ts
+n_src_components_TransactionList__collapsed-->n_src_utils_explorer_ts
+n_src_components_TransactionList__collapsed-->n_src_utils_formatters_ts
+n_src_components_TransactionList__collapsed-->n_src_utils_logger_ts
+n_src_components_TransactionList__collapsed-->n_src_utils_transaction_ts
+n_src_components_TransferOwnershipModal_tsx-->n_src_components_TransferOwnershipModal__collapsed
+n_src_components_TransferOwnershipModal__collapsed-->n_src_api_auth_ts
+n_src_components_TransferOwnershipModal__collapsed-->n_src_api_client_ts
+n_src_components_TransferOwnershipModal__collapsed-->n_src_api_transfers_ts
+n_src_components_TransferOwnershipModal__collapsed-->n_src_components_ui__collapsed
+n_src_components_TransferOwnershipModal__collapsed-->n_src_utils_logger_ts
+n_src_components_UTXOList__collapsed-->n_shared_constants_nodeConfig_ts
+n_src_components_UTXOList__collapsed-->n_shared_constants_walletIdentity_ts
+n_src_components_UTXOList__collapsed-->n_src_api_bitcoin_ts
+n_src_components_UTXOList__collapsed-->n_src_components_Amount_tsx
+n_src_components_UTXOList__collapsed-->n_src_components_PrivacyBadge_tsx
+n_src_components_UTXOList__collapsed-->n_src_components_PrivacyDetailPanel_tsx
+n_src_components_UTXOList__collapsed-->n_src_components_ui__collapsed
+n_src_components_UTXOList__collapsed-->n_src_contexts_CurrencyContext_tsx
+n_src_components_UTXOList__collapsed-->n_src_hooks_queries__collapsed
+n_src_components_UTXOList__collapsed-->n_src_utils_explorer_ts
+n_src_components_UTXOList__collapsed-->n_src_utils_logger_ts
+n_src_components_UTXOList__collapsed-->n_src_utils_utxoAge_ts
+n_src_components_UsersGroups__collapsed-->n_src_api_admin__collapsed
+n_src_components_UsersGroups__collapsed-->n_src_components_ui__collapsed
+n_src_components_UsersGroups__collapsed-->n_src_hooks_useErrorHandler_ts
+n_src_components_UsersGroups__collapsed-->n_src_hooks_useLoadingState_ts
+n_src_components_UsersGroups__collapsed-->n_src_utils_logger_ts
+n_src_components_Variables_tsx-->n_src_components_Variables__collapsed
+n_src_components_Variables__collapsed-->n_src_api_admin__collapsed
+n_src_components_Variables__collapsed-->n_src_hooks_useLoadingState_ts
+n_src_components_WalletDetail__collapsed-->n_shared_constants_nodeConfig_ts
+n_src_components_WalletDetail__collapsed-->n_shared_constants_walletIdentity_ts
+n_src_components_WalletDetail__collapsed-->n_shared_constants_walletRoles_ts
+n_src_components_WalletDetail__collapsed-->n_shared_constants_webhooks_ts
+n_src_components_WalletDetail__collapsed-->n_shared_utils_bitcoin_ts
+n_src_components_WalletDetail__collapsed-->n_src_api_admin__collapsed
+n_src_components_WalletDetail__collapsed-->n_src_api_auth_ts
+n_src_components_WalletDetail__collapsed-->n_src_api_bitcoin_ts
+n_src_components_WalletDetail__collapsed-->n_src_api_client_ts
+n_src_components_WalletDetail__collapsed-->n_src_api_devices_ts
+n_src_components_WalletDetail__collapsed-->n_src_api_drafts_ts
+n_src_components_WalletDetail__collapsed-->n_src_api_labels_ts
+n_src_components_WalletDetail__collapsed-->n_src_api_payjoin_ts
+n_src_components_WalletDetail__collapsed-->n_src_api_sync_ts
+n_src_components_WalletDetail__collapsed-->n_src_api_transactions__collapsed
+n_src_components_WalletDetail__collapsed-->n_src_api_wallets_ts
+n_src_components_WalletDetail__collapsed-->n_src_app_consoleTransactionNavigation_ts
+n_src_components_WalletDetail__collapsed-->n_src_app_networks_ts
+n_src_components_WalletDetail__collapsed-->n_src_components_AIQueryInput_tsx
+n_src_components_WalletDetail__collapsed-->n_src_components_Amount_tsx
+n_src_components_WalletDetail__collapsed-->n_src_components_DraftList__collapsed
+n_src_components_WalletDetail__collapsed-->n_src_components_LabelManager_tsx
+n_src_components_WalletDetail__collapsed-->n_src_components_LabelSelector_tsx
+n_src_components_WalletDetail__collapsed-->n_src_components_PayjoinSection_tsx
+n_src_components_WalletDetail__collapsed-->n_src_components_PendingTransfersPanel_tsx
+n_src_components_WalletDetail__collapsed-->n_src_components_TransactionExportModal_tsx
+n_src_components_WalletDetail__collapsed-->n_src_components_TransactionList__collapsed
+n_src_components_WalletDetail__collapsed-->n_src_components_TransferOwnershipModal_tsx
+n_src_components_WalletDetail__collapsed-->n_src_components_UTXOList__collapsed
+n_src_components_WalletDetail__collapsed-->n_src_components_WalletStats_tsx
+n_src_components_WalletDetail__collapsed-->n_src_components_ui__collapsed
+n_src_components_WalletDetail__collapsed-->n_src_contexts_ActiveNetworkContext_tsx
+n_src_components_WalletDetail__collapsed-->n_src_contexts_AppNotificationContext_tsx
+n_src_components_WalletDetail__collapsed-->n_src_contexts_CurrencyContext_tsx
+n_src_components_WalletDetail__collapsed-->n_src_contexts_NotificationContext_tsx
+n_src_components_WalletDetail__collapsed-->n_src_contexts_UserContext_tsx
+n_src_components_WalletDetail__collapsed-->n_src_hooks_queries__collapsed
+n_src_components_WalletDetail__collapsed-->n_src_hooks_requestOwnership_ts
+n_src_components_WalletDetail__collapsed-->n_src_hooks_useAIStatus_ts
+n_src_components_WalletDetail__collapsed-->n_src_hooks_useCopyToClipboard_ts
+n_src_components_WalletDetail__collapsed-->n_src_hooks_useErrorHandler_ts
+n_src_components_WalletDetail__collapsed-->n_src_hooks_usePaginatedList_ts
+n_src_components_WalletDetail__collapsed-->n_src_hooks_websocket__collapsed
+n_src_components_WalletDetail__collapsed-->n_src_types_index_ts
+n_src_components_WalletDetail__collapsed-->n_src_utils_errorHandler_ts
+n_src_components_WalletDetail__collapsed-->n_src_utils_explorer_ts
+n_src_components_WalletDetail__collapsed-->n_src_utils_formatters_ts
+n_src_components_WalletDetail__collapsed-->n_src_utils_logger_ts
+n_src_components_WalletDetail__collapsed-->n_src_utils_transaction_ts
+n_src_components_WalletDetail__collapsed-->n_src_utils_walletCapabilities_ts
+n_src_components_WalletDetail__collapsed-->n_src_utils_walletSyncPresentation_ts
+n_src_components_WalletList__collapsed-->n_shared_constants_walletIdentity_ts
+n_src_components_WalletList__collapsed-->n_src_app_networks_ts
+n_src_components_WalletList__collapsed-->n_src_components_Amount_tsx
+n_src_components_WalletList__collapsed-->n_src_components_NetworkSyncActions_tsx
+n_src_components_WalletList__collapsed-->n_src_components_cells__collapsed
+n_src_components_WalletList__collapsed-->n_src_components_columns__collapsed
+n_src_components_WalletList__collapsed-->n_src_components_ui__collapsed
+n_src_components_WalletList__collapsed-->n_src_contexts_ActiveNetworkContext_tsx
+n_src_components_WalletList__collapsed-->n_src_contexts_CurrencyContext_tsx
+n_src_components_WalletList__collapsed-->n_src_contexts_UserContext_tsx
+n_src_components_WalletList__collapsed-->n_src_hooks_queries__collapsed
+n_src_components_WalletList__collapsed-->n_src_hooks_useDelayedRender_ts
+n_src_components_WalletList__collapsed-->n_src_types_index_ts
+n_src_components_WalletList__collapsed-->n_src_utils_preferencePaths_ts
+n_src_components_WalletList__collapsed-->n_src_utils_walletSyncPresentation_ts
+n_src_components_WalletStats_tsx-->n_src_app_networks_ts
+n_src_components_WalletStats_tsx-->n_src_components_WalletStats__collapsed
+n_src_components_WalletStats_tsx-->n_src_contexts_CurrencyContext_tsx
+n_src_components_WalletStats_tsx-->n_src_hooks_useDelayedRender_ts
+n_src_components_animatedPatterns_ts-->n_src_themes_patterns_ts
+n_src_components_cells__collapsed-->n_shared_constants_walletIdentity_ts
+n_src_components_cells__collapsed-->n_src_components_DeviceList__collapsed
+n_src_components_cells__collapsed-->n_src_components_ui__collapsed
+n_src_components_cells__collapsed-->n_src_types_index_ts
+n_src_components_cells__collapsed-->n_src_utils_walletSyncPresentation_ts
+n_src_components_privacyScoreUtils_ts-->n_shared_constants_transactions_ts
+n_src_components_qr__collapsed-->n_src_utils_logger_ts
+n_src_components_qr__collapsed-->n_src_utils_psbtFormat_ts
+n_src_components_qr__collapsed-->n_src_utils_urPsbt_ts
+n_src_components_send__collapsed-->n_shared_constants_hardwareWalletCapabilities_ts
+n_src_components_send__collapsed-->n_shared_schemas_mobileApiRequests_ts
+n_src_components_send__collapsed-->n_shared_utils_errors_ts
+n_src_components_send__collapsed-->n_src_api_bitcoin_ts
+n_src_components_send__collapsed-->n_src_api_devices_ts
+n_src_components_send__collapsed-->n_src_api_transactions__collapsed
+n_src_components_send__collapsed-->n_src_api_wallets_ts
+n_src_components_send__collapsed-->n_src_components_BlockVisualizer__collapsed
+n_src_components_send__collapsed-->n_src_components_FiatDisplay_tsx
+n_src_components_send__collapsed-->n_src_components_PrivacyBadge_tsx
+n_src_components_send__collapsed-->n_src_components_SpendPrivacyCard_tsx
+n_src_components_send__collapsed-->n_src_components_TransactionFlowPreview_tsx
+n_src_components_send__collapsed-->n_src_components_qr__collapsed
+n_src_components_send__collapsed-->n_src_components_ui__collapsed
+n_src_components_send__collapsed-->n_src_contexts_CurrencyContext_tsx
+n_src_components_send__collapsed-->n_src_contexts_UserContext_tsx
+n_src_components_send__collapsed-->n_src_contexts_send__collapsed
+n_src_components_send__collapsed-->n_src_hooks_send__collapsed
+n_src_components_send__collapsed-->n_src_hooks_useErrorHandler_ts
+n_src_components_send__collapsed-->n_src_hooks_useHardwareWallet_ts
+n_src_components_send__collapsed-->n_src_types_index_ts
+n_src_components_send__collapsed-->n_src_utils_bip21Parser_ts
+n_src_components_send__collapsed-->n_src_utils_feeRate_ts
+n_src_components_send__collapsed-->n_src_utils_logger_ts
+n_src_components_send__collapsed-->n_src_utils_sendAmount_ts
+n_src_components_send__collapsed-->n_src_utils_utxoAge_ts
+n_src_components_send__collapsed-->n_src_utils_validateAddress_ts
+n_src_components_send__collapsed-->n_src_utils_walletCapabilities_ts
+n_src_components_ui__collapsed-->n_src_hooks_useDismissable_ts
+n_src_components_ui__collapsed-->n_src_hooks_useUserPreference_ts
+n_src_components_ui__collapsed-->n_src_types_index_ts
+n_src_components_ui__collapsed-->n_src_utils_logger_ts
+n_src_contexts_ActiveNetworkContext_tsx-->n_src_app_networks_ts
+n_src_contexts_ActiveNetworkContext_tsx-->n_src_hooks_useUserPreference_ts
+n_src_contexts_AppNotificationContext_tsx-->n_src_utils_logger_ts
+n_src_contexts_CurrencyContext_tsx-->n_shared_utils_bitcoin_ts
+n_src_contexts_CurrencyContext_tsx-->n_src_app_networks_ts
+n_src_contexts_CurrencyContext_tsx-->n_src_contexts_ActiveNetworkContext_tsx
+n_src_contexts_CurrencyContext_tsx-->n_src_contexts_CurrencyPreferencesContext_tsx
+n_src_contexts_CurrencyContext_tsx-->n_src_contexts_PriceContext_tsx
+n_src_contexts_CurrencyPreferencesContext_tsx-->n_shared_utils_bitcoin_ts
+n_src_contexts_CurrencyPreferencesContext_tsx-->n_src_api_price_ts
+n_src_contexts_CurrencyPreferencesContext_tsx-->n_src_contexts_UserContext_tsx
+n_src_contexts_CurrencyPreferencesContext_tsx-->n_src_utils_logger_ts
+n_src_contexts_NotificationContext_tsx-->n_src_components_NotificationToast_tsx
+n_src_contexts_PriceContext_tsx-->n_src_api_price_ts
+n_src_contexts_PriceContext_tsx-->n_src_contexts_CurrencyPreferencesContext_tsx
+n_src_contexts_PriceContext_tsx-->n_src_utils_logger_ts
+n_src_contexts_UserContext_tsx-->n_src_contexts_useUserAuthActions_ts
+n_src_contexts_UserContext_tsx-->n_src_contexts_useUserAuthLifecycle_ts
+n_src_contexts_UserContext_tsx-->n_src_contexts_useUserPreferenceMutation_ts
+n_src_contexts_UserContext_tsx-->n_src_contexts_useUserTheme_ts
+n_src_contexts_UserContext_tsx-->n_src_contexts_userModel_ts
+n_src_contexts_send__collapsed-->n_shared_schemas_mobileApiRequests_ts
+n_src_contexts_send__collapsed-->n_src_utils_feeRate_ts
+n_src_contexts_send__collapsed-->n_src_utils_sendAmount_ts
+n_src_contexts_useUserAuthActions_ts-->n_src_api_auth_ts
+n_src_contexts_useUserAuthActions_ts-->n_src_api_client_ts
+n_src_contexts_useUserAuthActions_ts-->n_src_api_refresh_ts
+n_src_contexts_useUserAuthActions_ts-->n_src_api_twoFactor_ts
+n_src_contexts_useUserAuthActions_ts-->n_src_contexts_userModel_ts
+n_src_contexts_useUserAuthLifecycle_ts-->n_src_api_auth_ts
+n_src_contexts_useUserAuthLifecycle_ts-->n_src_api_client_ts
+n_src_contexts_useUserAuthLifecycle_ts-->n_src_api_refresh_ts
+n_src_contexts_useUserAuthLifecycle_ts-->n_src_contexts_userModel_ts
+n_src_contexts_useUserAuthLifecycle_ts-->n_src_utils_logger_ts
+n_src_contexts_useUserPreferenceMutation_ts-->n_src_api_auth_ts
+n_src_contexts_useUserPreferenceMutation_ts-->n_src_api_client_ts
+n_src_contexts_useUserPreferenceMutation_ts-->n_src_contexts_userModel_ts
+n_src_contexts_useUserPreferenceMutation_ts-->n_src_utils_preferencePaths_ts
+n_src_contexts_useUserTheme_ts-->n_src_contexts_userModel_ts
+n_src_contexts_useUserTheme_ts-->n_src_themes_index_ts
+n_src_contexts_userModel_ts-->n_src_utils_preferencePaths_ts
+n_src_hooks_qr__collapsed-->n_src_services_bbqr_ts
+n_src_hooks_qr__collapsed-->n_src_services_deviceParsers__collapsed
+n_src_hooks_qr__collapsed-->n_src_utils_deviceConnection_ts
+n_src_hooks_qr__collapsed-->n_src_utils_logger_ts
+n_src_hooks_qr__collapsed-->n_src_utils_urDeviceDecoder_ts
+n_src_hooks_queries__collapsed-->n_src_api_bitcoin_ts
+n_src_hooks_queries__collapsed-->n_src_api_devices_ts
+n_src_hooks_queries__collapsed-->n_src_api_labels_ts
+n_src_hooks_queries__collapsed-->n_src_api_transactions__collapsed
+n_src_hooks_queries__collapsed-->n_src_api_wallets_ts
+n_src_hooks_send__collapsed-->n_shared_utils_errors_ts
+n_src_hooks_send__collapsed-->n_src_api_client_ts
+n_src_hooks_send__collapsed-->n_src_api_drafts_ts
+n_src_hooks_send__collapsed-->n_src_api_payjoin_ts
+n_src_hooks_send__collapsed-->n_src_api_transactions__collapsed
+n_src_hooks_send__collapsed-->n_src_contexts_CurrencyContext_tsx
+n_src_hooks_send__collapsed-->n_src_hooks_useErrorHandler_ts
+n_src_hooks_send__collapsed-->n_src_hooks_useHardwareWallet_ts
+n_src_hooks_send__collapsed-->n_src_hooks_useNotificationSound_ts
+n_src_hooks_send__collapsed-->n_src_providers_QueryProvider_tsx
+n_src_hooks_send__collapsed-->n_src_services_hardwareWallet__collapsed
+n_src_hooks_send__collapsed-->n_src_types_index_ts
+n_src_hooks_send__collapsed-->n_src_utils_bufferUtils_ts
+n_src_hooks_send__collapsed-->n_src_utils_download_ts
+n_src_hooks_send__collapsed-->n_src_utils_logger_ts
+n_src_hooks_send__collapsed-->n_src_utils_psbtFormat_ts
+n_src_hooks_send__collapsed-->n_src_utils_sendAmount_ts
+n_src_hooks_send__collapsed-->n_src_utils_validateAddress_ts
+n_src_hooks_soundPresets_ts-->n_src_hooks_soundPresets__collapsed
+n_src_hooks_useAIStatus_ts-->n_src_api_ai_ts
+n_src_hooks_useAppCapabilities_ts-->n_src_hooks_useConsoleAvailability_ts
+n_src_hooks_useAppCapabilities_ts-->n_src_hooks_useIntelligenceStatus_ts
+n_src_hooks_useAppShortcuts_ts-->n_src_app_shortcuts_ts
+n_src_hooks_useConsoleAvailability_ts-->n_src_hooks_useAIStatus_ts
+n_src_hooks_useCopyToClipboard_ts-->n_src_utils_clipboard_ts
+n_src_hooks_useDeviceConnection_ts-->n_src_services_hardwareWallet__collapsed
+n_src_hooks_useDeviceConnection_ts-->n_src_utils_deviceConnection_ts
+n_src_hooks_useDeviceConnection_ts-->n_src_utils_logger_ts
+n_src_hooks_useDeviceModels_ts-->n_src_api_devices_ts
+n_src_hooks_useDeviceModels_ts-->n_src_utils_logger_ts
+n_src_hooks_useDeviceSave_ts-->n_src_api_devices_ts
+n_src_hooks_useDeviceSave_ts-->n_src_contexts_SidebarContext_tsx
+n_src_hooks_useDeviceSave_ts-->n_src_utils_logger_ts
+n_src_hooks_useErrorHandler_ts-->n_src_api_client_ts
+n_src_hooks_useErrorHandler_ts-->n_src_hooks_useNotify_ts
+n_src_hooks_useHardwareWallet_ts-->n_src_services_hardwareWallet__collapsed
+n_src_hooks_useHardwareWallet_ts-->n_src_utils_logger_ts
+n_src_hooks_useIntelligenceStatus_ts-->n_src_api_intelligence_ts
+n_src_hooks_useLoadingState_ts-->n_shared_utils_errors_ts
+n_src_hooks_useModalForm_ts-->n_src_utils_errorHandler_ts
+n_src_hooks_useNotificationSound_ts-->n_src_contexts_UserContext_tsx
+n_src_hooks_useNotificationSound_ts-->n_src_hooks_soundPresets_ts
+n_src_hooks_useNotificationSound_ts-->n_src_utils_logger_ts
+n_src_hooks_useNotify_ts-->n_src_contexts_AppNotificationContext_tsx
+n_src_hooks_useNotify_ts-->n_src_contexts_NotificationContext_tsx
+n_src_hooks_useUserPreference_ts-->n_src_contexts_UserContext_tsx
+n_src_hooks_useUserPreference_ts-->n_src_utils_logger_ts
+n_src_hooks_useUserPreference_ts-->n_src_utils_preferencePaths_ts
+n_src_hooks_websocket__collapsed-->n_shared_types_websocket_ts
+n_src_hooks_websocket__collapsed-->n_src_api_sync_ts
+n_src_hooks_websocket__collapsed-->n_src_providers_QueryProvider_tsx
+n_src_hooks_websocket__collapsed-->n_src_services_websocket_ts
+n_src_hooks_websocket__collapsed-->n_src_utils_logger_ts
+n_src_main_tsx-->n_src_App_tsx
+n_src_main_tsx-->n_src_themes_index_ts
+n_src_main_tsx-->n_src_utils_nodeGlobals_ts
+n_src_providers_AppProviders_tsx-->n_src_contexts_ActiveNetworkContext_tsx
+n_src_providers_AppProviders_tsx-->n_src_contexts_AppNotificationContext_tsx
+n_src_providers_AppProviders_tsx-->n_src_contexts_CurrencyContext_tsx
+n_src_providers_AppProviders_tsx-->n_src_contexts_NotificationContext_tsx
+n_src_providers_AppProviders_tsx-->n_src_contexts_SidebarContext_tsx
+n_src_providers_AppProviders_tsx-->n_src_contexts_UserContext_tsx
+n_src_providers_AppProviders_tsx-->n_src_providers_QueryProvider_tsx
+n_src_services_bbqr_ts-->n_src_utils_logger_ts
+n_src_services_deviceParsers__collapsed-->n_shared_constants_walletIdentity_ts
+n_src_services_deviceParsers__collapsed-->n_shared_utils_bitcoin_ts
+n_src_services_deviceParsers__collapsed-->n_shared_utils_errors_ts
+n_src_services_deviceParsers__collapsed-->n_shared_utils_priorityRegistry_ts
+n_src_services_deviceParsers__collapsed-->n_src_utils_logger_ts
+n_src_services_hardwareWallet__collapsed-->n_shared_constants_hardwareWalletCapabilities_ts
+n_src_services_hardwareWallet__collapsed-->n_shared_constants_walletIdentity_ts
+n_src_services_hardwareWallet__collapsed-->n_shared_constants_walletPolicy_ts
+n_src_services_hardwareWallet__collapsed-->n_shared_schemas_bitcoinResponses_ts
+n_src_services_hardwareWallet__collapsed-->n_shared_schemas_deviceIdentity_ts
+n_src_services_hardwareWallet__collapsed-->n_shared_schemas_psbtSigningContext_ts
+n_src_services_hardwareWallet__collapsed-->n_shared_utils_bitcoin_ts
+n_src_services_hardwareWallet__collapsed-->n_src_api_client_ts
+n_src_services_hardwareWallet__collapsed-->n_src_utils_bufferUtils_ts
+n_src_services_hardwareWallet__collapsed-->n_src_utils_logger_ts
+n_src_services_websocket_ts-->n_shared_types_websocket_ts
+n_src_services_websocket_ts-->n_src_utils_logger_ts
+n_src_themes_backgroundCategories_ts-->n_src_themes_patterns_ts
+n_src_themes_index_ts-->n_src_themes_bamboo__collapsed
+n_src_themes_index_ts-->n_src_themes_copper__collapsed
+n_src_themes_index_ts-->n_src_themes_cyber__collapsed
+n_src_themes_index_ts-->n_src_themes_desert__collapsed
+n_src_themes_index_ts-->n_src_themes_forest__collapsed
+n_src_themes_index_ts-->n_src_themes_midnight__collapsed
+n_src_themes_index_ts-->n_src_themes_ocean__collapsed
+n_src_themes_index_ts-->n_src_themes_patterns_ts
+n_src_themes_index_ts-->n_src_themes_registry_ts
+n_src_themes_index_ts-->n_src_themes_sakura_sumie__collapsed
+n_src_themes_index_ts-->n_src_themes_sakura_yoshino__collapsed
+n_src_themes_index_ts-->n_src_themes_sanctuary__collapsed
+n_src_themes_index_ts-->n_src_themes_seasonal__collapsed
+n_src_themes_index_ts-->n_src_themes_serenity__collapsed
+n_src_themes_index_ts-->n_src_themes_sunrise__collapsed
+n_src_themes_index_ts-->n_src_themes_sunset__collapsed
+n_src_themes_index_ts-->n_src_utils_logger_ts
+n_src_themes_registry_ts-->n_src_themes_seasonal__collapsed
+n_src_themes_registry_ts-->n_src_utils_logger_ts
+n_src_types_index_ts-->n_shared_types_domain_ts
+n_src_types_index_ts-->n_src_types_hardware_ts
+n_src_utils_bip21Parser_ts-->n_src_utils_sendAmount_ts
+n_src_utils_clipboard_ts-->n_src_utils_logger_ts
+n_src_utils_derivationPathGroups_ts-->n_shared_constants_walletIdentity_ts
+n_src_utils_derivationPathGroups_ts-->n_shared_constants_walletPolicy_ts
+n_src_utils_derivationPathGroups_ts-->n_src_app_networks_ts
+n_src_utils_deviceConnection_ts-->n_shared_utils_bitcoin_ts
+n_src_utils_errorHandler_ts-->n_shared_utils_errors_ts
+n_src_utils_errorHandler_ts-->n_src_api_client_ts
+n_src_utils_logger_ts-->n_shared_types_logger_ts
+n_src_utils_networkScopedDevices_ts-->n_src_app_networks_ts
+n_src_utils_networkScopedDevices_ts-->n_src_utils_derivationPathGroups_ts
+n_src_utils_urDeviceDecoder_ts-->n_src_services_deviceParsers__collapsed
+n_src_utils_urDeviceDecoder_ts-->n_src_utils_logger_ts
+n_src_utils_urPsbt_ts-->n_src_utils_logger_ts
+n_src_utils_urPsbt_ts-->n_src_utils_psbtFormat_ts
+n_src_utils_urPsbt_ts-->n_src_utils_urDeviceDecoder_ts
+n_src_utils_validateAddress_ts-->n_shared_utils_bitcoin_ts
+n_src_utils_walletCapabilities_ts-->n_shared_constants_walletRoles_ts
+n_src_utils_walletSyncPresentation_ts-->n_src_utils_walletSyncSettledStates_ts
 ```

@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   assertMermaidGraph,
   expandPackageGlobs,
+  stabilizeMermaidIds,
   wrap,
 } from '../../scripts/architecture/generate-graphs.mjs';
 
@@ -63,3 +64,71 @@ describe('generate-graphs helpers', () => {
     expect(graph).toContain('["WalletDetail"]');
   });
 });
+
+describe('stabilizeMermaidIds', () => {
+  const graph = (...lines: string[]) => ['flowchart LR', '', ...lines].join('\n');
+
+  it('names each node for its path through the subgraphs', () => {
+    const out = stabilizeMermaidIds(graph(
+      'subgraph 0["shared"]',
+      'subgraph 1["constants"]',
+      '2["bitcoin.ts"]',
+      'end',
+      'end',
+    ));
+
+    expect(out).toContain('subgraph n_shared["shared"]');
+    expect(out).toContain('subgraph n_shared_constants["constants"]');
+    expect(out).toContain('n_shared_constants_bitcoin_ts["bitcoin.ts"]');
+  });
+
+  it('rewrites edges to match, so the graph still resolves', () => {
+    const out = stabilizeMermaidIds(graph(
+      '0["a.ts"]',
+      '1["b.ts"]',
+      '0-->1',
+    ));
+
+    expect(out).toContain('n_a_ts-->n_b_ts');
+    expect(out).not.toMatch(/^0-->1$/m);
+  });
+
+  it('names a collapsed group\'s hidden files for the group', () => {
+    // dependency-cruiser emits them with a blank label; anonymous ids would be
+    // positional again.
+    const out = stabilizeMermaidIds(graph(
+      'subgraph 0["components"]',
+      '1[" "]',
+      'end',
+    ));
+
+    expect(out).toContain('n_components__collapsed[" "]');
+  });
+
+  it('keeps ids stable when a node is inserted before others', () => {
+    // The whole point: adding a module must not renumber everything after it.
+    const before = stabilizeMermaidIds(graph('0["a.ts"]', '1["z.ts"]', '0-->1'));
+    const after = stabilizeMermaidIds(graph('0["a.ts"]', '1["m.ts"]', '2["z.ts"]', '0-->2'));
+
+    expect(before).toContain('n_z_ts["z.ts"]');
+    expect(after).toContain('n_z_ts["z.ts"]');
+    expect(after).toContain('n_a_ts-->n_z_ts');
+  });
+
+  it('suffixes rather than merges when two labels slug the same', () => {
+    // "a.ts" and "a-ts" both sanitize to n_a_ts; collapsing them would silently
+    // fuse two modules into one node.
+    const out = stabilizeMermaidIds(graph('0["a.ts"]', '1["a-ts"]'));
+
+    expect(out).toContain('n_a_ts["a.ts"]');
+    expect(out).toContain('n_a_ts_2["a-ts"]');
+  });
+
+  it('leaves everything that is not a node or an edge untouched', () => {
+    const out = stabilizeMermaidIds(graph('%% a comment', 'subgraph 0["x"]', 'end'));
+
+    expect(out.split('\n')[0]).toBe('flowchart LR');
+    expect(out).toContain('%% a comment');
+  });
+});
+
