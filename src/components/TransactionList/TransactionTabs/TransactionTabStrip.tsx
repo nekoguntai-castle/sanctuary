@@ -1,4 +1,10 @@
-import { forwardRef, type KeyboardEvent, type ReactNode } from 'react';
+import {
+  forwardRef,
+  useRef,
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactNode,
+} from 'react';
 import {
   DndContext,
   PointerSensor,
@@ -86,10 +92,17 @@ export const TransactionTabStrip = forwardRef<HTMLDivElement, TransactionTabStri
 
     const handleDragEnd = (event: DragEndEvent) => {
       const { active, over } = event;
+      // Dropped clear of the strip: that is the drag equivalent of the detach
+      // control, and it is where the panel is about to appear anyway.
+      if (onDetach && droppedOutsideStrip(navRef.current, event)) {
+        onDetach(String(active.id));
+        return;
+      }
       if (!over || active.id === over.id) return;
       onReorder(String(active.id), String(over.id));
     };
 
+    const navRef = useRef<HTMLElement>(null);
     const tabListProps = getTabListProps('Transaction tabs');
     const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
       // Plain arrows already move selection, so reordering is the modified
@@ -119,6 +132,7 @@ export const TransactionTabStrip = forwardRef<HTMLDivElement, TransactionTabStri
       >
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <nav
+            ref={navRef}
             {...tabListProps}
             onKeyDown={handleKeyDown}
             data-testid="transaction-tab-strip"
@@ -147,6 +161,8 @@ export const TransactionTabStrip = forwardRef<HTMLDivElement, TransactionTabStri
                       })}
                       className={tabClassName(isActive, 'pl-3.5 pr-1.5')}
                       title={txid}
+                      onAuxClick={(event) => handleMiddleClick(event, () => onClose(txid))}
+                      onMouseDown={suppressMiddleClickScroll}
                     >
                       {tabTitle(txid, tx)}
                     </button>
@@ -209,6 +225,46 @@ function SortableTab({ txid, children }: { txid: string; children: ReactNode }) 
       {children}
     </div>
   );
+}
+
+/**
+ * Middle-click closes a tab, as it does in a browser. `onAuxClick` rather than
+ * `onClick`, which never fires for the middle button.
+ */
+function handleMiddleClick(event: MouseEvent<HTMLElement>, close: () => void) {
+  if (event.button !== 1) return;
+  event.preventDefault();
+  close();
+}
+
+/** Middle-press otherwise starts the browser's autoscroll over the strip. */
+function suppressMiddleClickScroll(event: MouseEvent<HTMLElement>) {
+  if (event.button === 1) event.preventDefault();
+}
+
+/**
+ * Did the drag finish clear of the strip?
+ *
+ * Measured against the strip's own box rather than trusting a null `over`: the
+ * tabs are the only droppables, so a drop in the gap between two of them also
+ * reports no target, and that is a fumbled reorder rather than a request to
+ * detach.
+ */
+export function droppedOutsideStrip(nav: HTMLElement | null, event: DragEndEvent): boolean {
+  /* v8 ignore next -- the nav is mounted for as long as a drag can run. */
+  if (!nav) return false;
+  // dnd-kit only fills in the translated rect once it has measured the drag; a
+  // gesture that ends before then has no position to judge, and guessing would
+  // detach a tab the user only tapped.
+  const dragged = event.active.rect.current.translated;
+  if (!dragged) return false;
+  const rect = nav.getBoundingClientRect();
+  const centre = {
+    x: dragged.left + dragged.width / 2,
+    y: dragged.top + dragged.height / 2,
+  };
+  return centre.x < rect.left || centre.x > rect.right
+    || centre.y < rect.top || centre.y > rect.bottom;
 }
 
 const ARROW_DIRECTIONS: Record<string, -1 | 1 | undefined> = {

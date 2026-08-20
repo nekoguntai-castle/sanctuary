@@ -222,7 +222,10 @@ describe('TransactionRow branch coverage', () => {
     );
 
     fireEvent.click(screen.getByText('Multi Wallet'));
-    expect(onTxClick).toHaveBeenCalledWith(expect.objectContaining({ id: 'tx-1' }));
+    expect(onTxClick).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'tx-1' }),
+      { background: false },
+    );
   });
 
   it('calls onWalletClick and stops propagation when wallet callback is provided', () => {

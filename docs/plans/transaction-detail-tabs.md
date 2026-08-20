@@ -1,6 +1,6 @@
 # Transaction detail: sub-tabs, detachable panels, compact stats header
 
-Status: phases 1-4 delivered (2026-08-19) — #841 (statistics header), #842
+Status: complete (2026-08-19) — #841 (statistics header), #842
 (sub-tabs), #843 (detach), #845 (drag)
 Owner: frontend
 Supersedes: the side-by-side pane (#832 inline-expand follow-up) in `TransactionList`
@@ -167,10 +167,17 @@ the same PR.
   `TransactionList.branches.test.tsx` — both assert on
   `transaction-detail-pane` / `transaction-detail-expansion`.
 - `tests/hooks/useMediaQuery.test.ts` loses its `SIDE_BY_SIDE_DETAIL_QUERY` case.
-- E2E: any new endpoint is not introduced, so the mock maps are untouched, but
-  `tests/e2e/render-regression.spec.ts-snapshots/` baselines covering wallet
-  detail **will** change and must be regenerated (build + static-serve `dist/`
-  + a throwaway Playwright config with no `webServer`, per CLAUDE.md).
+- E2E: any new endpoint is not introduced, so the mock maps are untouched. The
+  baselines under `tests/e2e/render-regression.spec.ts-snapshots/` were expected
+  to change and **did not** — the wallet-detail screenshot is taken on the
+  Addresses tab, so nothing the tabs touch is in frame. Every phase was still
+  checked against a built bundle (build + static-serve `dist/` + a throwaway
+  Playwright config with no `webServer`, per CLAUDE.md); all 62 chromium specs
+  passed with no baseline regenerated.
+- Not covered in a browser, as a result: the strip and panels themselves. The
+  wallet-detail fixture has no transactions, so no tab ever opens there. Giving
+  it one means editing the shared render-regression harness, which is worth its
+  own change.
 - `tests/config/themeClassPolicy.test.ts` will police the new palette classes.
 
 ## Phasing (one PR each)

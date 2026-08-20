@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { createEvent, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -6,7 +6,10 @@ vi.mock('lucide-react', () => ({
   X: () => <span data-testid="x-icon" />,
   PanelRightOpen: () => <span data-testid="detach-icon" />,
 }));
-import { TransactionTabStrip } from '../../../src/components/TransactionList/TransactionTabs/TransactionTabStrip';
+import {
+  TransactionTabStrip,
+  droppedOutsideStrip,
+} from '../../../src/components/TransactionList/TransactionTabs/TransactionTabStrip';
 import { LIST_TAB } from '../../../src/components/TransactionList/hooks/transactionTabsState';
 import type { Transaction } from '../../../src/types';
 
@@ -22,12 +25,15 @@ const findTransaction = (txid: string) =>
 function renderStrip(
   activeTab: string = LIST_TAB,
   openTxids = [A, B],
-  overrides: { isDockTarget?: boolean; onDetach?: (txid: string) => void } = {},
+  overrides: { isDockTarget?: boolean; detachable?: boolean } = {},
 ) {
   const onActivate = vi.fn();
   const onClose = vi.fn();
   const onReorder = vi.fn();
   const onNudge = vi.fn();
+  // `detachable: false` is the small-screen case, where the prop is absent
+  // entirely rather than a callback that does nothing.
+  const onDetach = vi.fn();
   render(
     <TransactionTabStrip
       openTxids={openTxids}
@@ -38,10 +44,29 @@ function renderStrip(
       onClose={onClose}
       onReorder={onReorder}
       onNudge={onNudge}
-      {...overrides}
+      isDockTarget={overrides.isDockTarget}
+      onDetach={overrides.detachable === false ? undefined : onDetach}
     />,
   );
-  return { onActivate, onClose, onReorder, onNudge };
+  return { onActivate, onClose, onReorder, onNudge, onDetach };
+}
+
+/**
+ * jsdom measures every box as zero, so the strip needs a real one before a drop
+ * point can be inside or outside it. dnd-kit reports the dragged rect as zeros
+ * too, i.e. a centre at the origin — a strip placed away from the origin is
+ * therefore "dropped outside", and one covering it is "dropped inside".
+ */
+function stubStripBox(box: { left: number; top: number; right: number; bottom: number }) {
+  const nav = screen.getByTestId('transaction-tab-strip');
+  vi.spyOn(nav, 'getBoundingClientRect').mockReturnValue({
+    ...box,
+    width: box.right - box.left,
+    height: box.bottom - box.top,
+    x: box.left,
+    y: box.top,
+    toJSON: () => ({}),
+  } as DOMRect);
 }
 
 describe('TransactionTabStrip', () => {
@@ -298,6 +323,131 @@ describe('TransactionTabStrip', () => {
 
       expect(onReorder).not.toHaveBeenCalled();
       expect(onActivate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('closing with the middle button', () => {
+    /** No fireEvent.auxClick helper exists, so dispatch the event itself. */
+    const middleClick = (element: HTMLElement, button: number) => {
+      fireEvent(element, new MouseEvent('auxclick', { bubbles: true, cancelable: true, button }));
+    };
+
+    it('closes the tab, as a browser does', () => {
+      const { onClose, onActivate } = renderStrip(LIST_TAB, [A, B]);
+
+      middleClick(screen.getByRole('tab', { name: /Received/ }), 1);
+
+      expect(onClose).toHaveBeenCalledWith(A);
+      expect(onActivate).not.toHaveBeenCalled();
+    });
+
+    it('ignores other auxiliary buttons', () => {
+      const { onClose } = renderStrip(LIST_TAB, [A, B]);
+
+      middleClick(screen.getByRole('tab', { name: /Received/ }), 2);
+
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('suppresses the browser autoscroll a middle-press would start', () => {
+      renderStrip(LIST_TAB, [A, B]);
+      const tab = screen.getByRole('tab', { name: /Received/ });
+
+      const middle = createEvent.mouseDown(tab, { button: 1 });
+      fireEvent(tab, middle);
+      expect(middle.defaultPrevented).toBe(true);
+
+      const primary = createEvent.mouseDown(tab, { button: 0 });
+      fireEvent(tab, primary);
+      expect(primary.defaultPrevented).toBe(false);
+    });
+  });
+
+  describe('dragging a tab off the strip', () => {
+    const dragTabTo = async (txid: string, toX: number) => {
+      const handle = screen
+        .getByTestId('transaction-tab-strip')
+        .querySelector(`[data-txid="${txid}"]`)!;
+      fireEvent.pointerDown(handle, {
+        button: 0,
+        pointerId: 1,
+        clientX: 100,
+        clientY: 10,
+        isPrimary: true,
+      });
+      fireEvent.pointerMove(document, {
+        pointerId: 1,
+        clientX: toX,
+        clientY: 10,
+        isPrimary: true,
+      });
+      await waitFor(() => expect(handle).toHaveClass('opacity-60'));
+      fireEvent.pointerUp(document, { pointerId: 1, isPrimary: true });
+    };
+
+    it('detaches it, the drag equivalent of the detach control', async () => {
+      const { onDetach, onReorder } = renderStrip(LIST_TAB, [A, B]);
+      stubStripBox({ left: 400, top: 400, right: 900, bottom: 440 });
+
+      await dragTabTo(B, 20);
+
+      await waitFor(() => expect(onDetach).toHaveBeenCalledWith(B));
+      expect(onReorder).not.toHaveBeenCalled();
+    });
+
+    it('reorders instead when the drop lands on the strip', async () => {
+      const { onDetach, onReorder } = renderStrip(LIST_TAB, [A, B]);
+      stubStripBox({ left: -100, top: -100, right: 900, bottom: 440 });
+
+      await dragTabTo(B, 20);
+
+      await waitFor(() => expect(onReorder).toHaveBeenCalled());
+      expect(onDetach).not.toHaveBeenCalled();
+    });
+
+    it('reorders where detaching is unavailable, rather than losing the drag', async () => {
+      // Below the tablet breakpoint there is nowhere useful for a panel to
+      // float, so the same gesture must still do something sensible.
+      const { onReorder, onDetach } = renderStrip(LIST_TAB, [A, B], { detachable: false });
+      stubStripBox({ left: 400, top: 400, right: 900, bottom: 440 });
+
+      await dragTabTo(B, 20);
+
+      await waitFor(() => expect(onReorder).toHaveBeenCalled());
+      expect(onDetach).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('droppedOutsideStrip', () => {
+    const stripElement = (box: { left: number; top: number; right: number; bottom: number }) => ({
+      getBoundingClientRect: () => ({
+        ...box,
+        width: box.right - box.left,
+        height: box.bottom - box.top,
+      }),
+    }) as unknown as HTMLElement;
+
+    const dragEvent = (translated: { left: number; top: number } | null) => ({
+      active: { rect: { current: { translated: translated
+        ? { ...translated, width: 100, height: 30 }
+        : null } } },
+    }) as unknown as Parameters<typeof droppedOutsideStrip>[1];
+
+    const strip = stripElement({ left: 0, top: 0, right: 500, bottom: 40 });
+
+    it('is false while the drag is over the strip', () => {
+      expect(droppedOutsideStrip(strip, dragEvent({ left: 100, top: 5 }))).toBe(false);
+    });
+
+    it('is true once the drag centre clears the strip in any direction', () => {
+      expect(droppedOutsideStrip(strip, dragEvent({ left: 100, top: 200 }))).toBe(true);
+      expect(droppedOutsideStrip(strip, dragEvent({ left: 100, top: -200 }))).toBe(true);
+      expect(droppedOutsideStrip(strip, dragEvent({ left: 600, top: 5 }))).toBe(true);
+      expect(droppedOutsideStrip(strip, dragEvent({ left: -600, top: 5 }))).toBe(true);
+    });
+
+    it('is false when the drag was never measured, so a tap cannot detach', () => {
+      expect(droppedOutsideStrip(strip, dragEvent(null))).toBe(false);
     });
   });
 });

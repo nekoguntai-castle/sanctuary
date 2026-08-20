@@ -132,7 +132,9 @@ const ClickableCell = ({
   return (
     <td
       className={`${className} cursor-pointer transition-colors ${highlightClass}`}
-      onClick={() => onTxClick(tx)}
+      // Meta on macOS, Control elsewhere — the same chord that opens a link in a
+      // background browser tab.
+      onClick={(event) => onTxClick(tx, { background: event.metaKey || event.ctrlKey })}
     >
       {children}
     </td>

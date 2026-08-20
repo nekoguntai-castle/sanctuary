@@ -126,14 +126,14 @@ export function useTransactionList({
   // Stable reference: TransactionRow is memo'd, so passing a fresh function ref
   // every render would defeat the memo.
   const handleTxClick = useCallback(
-    (tx: Transaction) => {
+    (tx: Transaction, options?: { background?: boolean }) => {
       if (onTransactionClick) {
         onTransactionClick(tx);
         return;
       }
       // Clicking a row that is already open focuses its tab rather than opening
       // a second one; `openTab` dedupes on txid.
-      tabs.openTab(tx);
+      tabs.openTab(tx, options);
     },
     [onTransactionClick, tabs.openTab],
   );
