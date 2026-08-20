@@ -124,6 +124,24 @@ for dir in "${PKG_DIRS[@]}"; do
   fi
 done
 
+# The hardware-compatibility statement pins both the application version and the
+# package-lock digest, so a bump invalidates the checked-in artifact and
+# tests/ci/hardwareCompatibilityReport.test.ts fails until it is regenerated.
+# Regenerate here rather than leaving it to be rediscovered mid-release: the
+# `--as-of` value must stay the one the artifact was generated with, because the
+# test builds its expectation from that same constant.
+HARDWARE_REPORT_AS_OF="$(node -e "process.stdout.write(require('./docs/reference/generated/hardware-wallet-compatibility.json').generatedAt)" 2>/dev/null || true)"
+if [ -n "$HARDWARE_REPORT_AS_OF" ]; then
+  if npx tsx scripts/ci/hardware-compatibility-report.ts \
+      --as-of "$HARDWARE_REPORT_AS_OF" \
+      --json docs/reference/generated/hardware-wallet-compatibility.json \
+      --markdown docs/reference/generated/hardware-wallet-compatibility.md >/dev/null 2>&1; then
+    echo -e "  ${GREEN}✓${NC} docs/reference/generated/hardware-wallet-compatibility.{json,md}"
+  else
+    echo -e "  ${YELLOW}!${NC} could not regenerate the hardware-compatibility statement — run it by hand before committing"
+  fi
+fi
+
 echo ""
 echo -e "${GREEN}Version updated to $NEW_VERSION${NC}"
 echo ""
@@ -134,6 +152,11 @@ echo "in the /release skill at .claude/commands/release.md — invoke that"
 echo "for an end-to-end release rather than driving these steps by hand."
 echo ""
 echo "Quick reference for the manual path (origin = Forgejo; main is PR-only):"
+echo "  0. If you re-resolve a lockfile after this script ran, regenerate the"
+echo "     hardware-compatibility statement again - it pins the lockfile digest:"
+echo "     npx tsx scripts/ci/hardware-compatibility-report.ts --as-of <generatedAt> \\"
+echo "       --json docs/reference/generated/hardware-wallet-compatibility.json \\"
+echo "       --markdown docs/reference/generated/hardware-wallet-compatibility.md"
 echo "  1. bash scripts/quality/check-lockfile-peer-resolution.sh   # verify lockfile"
 echo "  2. git checkout -b chore/bump-version-$NEW_VERSION"
 echo "  3. git add -A && git commit -m 'chore: bump version to $NEW_VERSION'"

@@ -4,8 +4,8 @@
   "generatedAt": "2026-08-11T00:00:00.000Z",
   "revision": null,
   "source": {
-    "applicationVersion": "0.8.64",
-    "packageLockSha256": "f234de5656ec3e91d6fc5dc0e796108480a2e18ef5c004710b23d9e6a95eeba1",
+    "applicationVersion": "0.8.65",
+    "packageLockSha256": "b5b42424f84ffdc8d1dd44a26d557ff257737f09b0ee8ca2440169c9499dd840",
     "capabilityManifestId": "wallet-safety-v3-2026-08-12"
   },
   "capabilityRows": [
