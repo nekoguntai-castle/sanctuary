@@ -102,6 +102,7 @@ function buildValidConfig() {
       startupCatchUpDelayMs: 5000,
       startupCatchUpStaggerDelayMs: 500,
       maxRetryAttempts: 3,
+      lockContentionRetryDelayMs: 30000,
       retryDelaysMs: [5000, 15000, 45000],
       maxSyncDurationMs: 1800000,
       transactionBatchSize: 100,

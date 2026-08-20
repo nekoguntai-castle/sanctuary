@@ -237,6 +237,32 @@ export function registerSyncServiceAddressMaintenanceTests(context: SyncServiceT
 
       await expect(context.syncService['resetStuckSyncs']()).resolves.toBeUndefined();
     });
+
+    it('demotes rows stranded mid-retry on start, since the retry timer did not survive', async () => {
+      // The ladder is an in-heap setTimeout, so a restart drops it and leaves
+      // lastSyncStatus='retrying' that no reaper selects (2026-08-20).
+      mockPrismaClient.wallet.updateMany
+        .mockResolvedValueOnce({ count: 0 })   // resetAllStuckSyncFlags
+        .mockResolvedValueOnce({ count: 2 });  // demoteStrandedRetries
+
+      await context.syncService['resetStuckSyncs']();
+
+      expect(mockPrismaClient.wallet.updateMany).toHaveBeenLastCalledWith({
+        where: { lastSyncStatus: 'retrying', syncInProgress: false },
+        data: {
+          lastSyncStatus: 'failed',
+          lastSyncError: 'Sync retry was interrupted by a restart and did not resume',
+        },
+      });
+    });
+
+    it('handles a failing retry demotion without throwing', async () => {
+      mockPrismaClient.wallet.updateMany
+        .mockResolvedValueOnce({ count: 0 })
+        .mockRejectedValueOnce(new Error('demote failed'));
+
+      await expect(context.syncService['resetStuckSyncs']()).resolves.toBeUndefined();
+    });
   });
 
   describe('confirmation update flows', () => {

@@ -37,6 +37,7 @@ import type { SyncState, SyncResult } from "./types";
 import { processQueue } from "./syncQueue";
 import { isNetworkDisabledError } from "../bitcoin/errors";
 import { scheduleWalletLockAuthorityRetry } from "./lockAuthorityRecovery";
+import { formatRetryError, resumeRetryCount } from "./retryLadder";
 
 const log = createLogger("SYNC:SVC_WALLET");
 
@@ -127,6 +128,18 @@ export async function executeSyncJob(
   ) => Promise<SyncResult>,
   retryCount: number = 0,
 ): Promise<SyncResult> {
+  // An externally-triggered attempt (manual Sync, queue drain, stale sweep) has
+  // no ladder position on its call stack, so it used to restart at 0 and rewrite
+  // "(retrying 1/3)" forever - the terminal `failed` write needs
+  // retryCount >= maxRetryAttempts and was therefore unreachable. Recover the
+  // position the wallet had actually reached.
+  if (retryCount === 0) {
+    const persisted = await walletRepository
+      .findByIdWithSelect(walletId, { lastSyncStatus: true, lastSyncError: true })
+      .catch(() => null);
+    retryCount = resumeRetryCount(persisted, getConfig().sync.maxRetryAttempts);
+  }
+
   // Try to acquire distributed lock - prevents race conditions across instances
   let acquired: boolean;
   try {
@@ -141,6 +154,24 @@ export async function executeSyncJob(
     );
   }
   if (!acquired) {
+    // Do not drop a ladder here. The retry timer deletes its own pendingRetries
+    // entry before calling, so returning silently leaves nothing armed and no
+    // DB write - which is how a 31-minute lock turned into a 14.5-hour stall.
+    // Re-arm at the same position; the lock always carries a TTL, so this
+    // cannot wait forever, and the ladder itself is still bounded.
+    if (retryCount > 0 && !state.pendingRetries.has(walletId)) {
+      const timer = setTimeout(() => {
+        state.pendingRetries.delete(walletId);
+        executeSyncJobFn(walletId, retryCount).catch((err) => {
+          log.error(`[SYNC] Lock-contention retry failed for wallet ${walletId}`, {
+            error: getErrorMessage(err),
+          });
+        });
+      }, getConfig().sync.lockContentionRetryDelayMs);
+      timer.unref?.();
+      state.pendingRetries.set(walletId, timer);
+      log.warn(`[SYNC] Wallet ${walletId} is locked; retry ${retryCount} re-armed rather than dropped`);
+    }
     return {
       success: false,
       addresses: 0,
@@ -376,7 +407,7 @@ export async function executeSyncJob(
       // Update DB to show retrying state
       await walletRepository.update(walletId, {
         lastSyncStatus: "retrying",
-        lastSyncError: `${errorMessage} (retrying ${nextRetry}/${syncConfig.maxRetryAttempts})`,
+        lastSyncError: formatRetryError(errorMessage, nextRetry, syncConfig.maxRetryAttempts),
         syncInProgress: false, // Will be set to true when retry starts
       });
 

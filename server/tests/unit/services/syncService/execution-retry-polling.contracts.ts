@@ -54,6 +54,116 @@ export function registerSyncServiceExecutionRetryPollingTests(
       expect(result.error).toContain("Already syncing");
     });
 
+    it("re-arms a laddered retry blocked by a held lock instead of dropping it", async () => {
+      // The retry timer deletes its own pendingRetries entry before calling, so
+      // returning bare "Already syncing" left nothing armed and no DB write.
+      // That is how a 31-minute lock became a 14.5-hour stall (2026-08-20).
+      context.syncService["isRunning"] = true;
+      mockAcquireLock.mockResolvedValue(null);
+      const state = context.syncService["state"];
+      state.pendingRetries.clear();
+
+      const result = await context.syncService["executeSyncJob"]("wallet-laddered", 2);
+
+      expect(result.error).toContain("Already syncing");
+      expect(state.pendingRetries.has("wallet-laddered")).toBe(true);
+      clearTimeout(state.pendingRetries.get("wallet-laddered")!);
+      state.pendingRetries.delete("wallet-laddered");
+    });
+
+    it("actually re-runs the sync when the re-armed lock retry fires", async () => {
+      // Covers the timer body: without this the re-arm is only proven to have
+      // been scheduled, not to lead anywhere.
+      vi.useFakeTimers();
+      context.syncService["isRunning"] = true;
+      mockAcquireLock.mockResolvedValue(null);
+      const state = context.syncService["state"];
+      state.pendingRetries.clear();
+
+      await context.syncService["executeSyncJob"]("wallet-refires", 2);
+      expect(state.pendingRetries.has("wallet-refires")).toBe(true);
+
+      await vi.runOnlyPendingTimersAsync();
+
+      // The timer clears its own entry before re-invoking, and the re-invocation
+      // hits the same held lock and re-arms again - bounded by the lock's TTL.
+      expect(mockAcquireLock).toHaveBeenCalledTimes(2);
+
+      for (const timer of state.pendingRetries.values()) clearTimeout(timer);
+      state.pendingRetries.clear();
+      vi.useRealTimers();
+    });
+
+    it("contains a rejection from the re-armed retry rather than surfacing it unhandled", async () => {
+      // The timer body is fire-and-forget; without the catch this would become
+      // an unhandled rejection and could take the process down.
+      vi.useFakeTimers();
+      context.syncService["isRunning"] = true;
+      mockAcquireLock.mockResolvedValueOnce(null);
+      const state = context.syncService["state"];
+      state.pendingRetries.clear();
+
+      await context.syncService["executeSyncJob"]("wallet-rejects", 2);
+      expect(state.pendingRetries.has("wallet-rejects")).toBe(true);
+
+      // The re-invocation throws from acquireSyncLock (not an authority error,
+      // so executeSyncJob rethrows it).
+      mockAcquireLock.mockRejectedValueOnce(new Error("redis exploded"));
+      await vi.runOnlyPendingTimersAsync();
+
+      // The callback ran (it deletes its own entry before re-invoking) and the
+      // rejection was swallowed by the catch rather than escaping the timer.
+      expect(state.pendingRetries.has("wallet-rejects")).toBe(false);
+
+      for (const timer of state.pendingRetries.values()) clearTimeout(timer);
+      state.pendingRetries.clear();
+      vi.useRealTimers();
+    });
+
+    it("does not re-arm when a retry is already pending for that wallet", async () => {
+      context.syncService["isRunning"] = true;
+      mockAcquireLock.mockResolvedValue(null);
+      const state = context.syncService["state"];
+      const existing = setTimeout(() => undefined, 60_000);
+      state.pendingRetries.set("wallet-armed", existing);
+
+      await context.syncService["executeSyncJob"]("wallet-armed", 1);
+
+      expect(state.pendingRetries.get("wallet-armed")).toBe(existing);
+      clearTimeout(existing);
+      state.pendingRetries.delete("wallet-armed");
+    });
+
+    it("resumes the ladder position an externally triggered sync has no stack for", async () => {
+      // retryCount defaults to 0 on every external entry point, which reset the
+      // ladder and made the terminal `failed` write unreachable.
+      context.syncService["isRunning"] = true;
+      mockAcquireLock.mockResolvedValue(null);
+      mockPrismaClient.wallet.findUnique.mockResolvedValueOnce({
+        lastSyncStatus: "retrying",
+        lastSyncError: "boom (retrying 2/3)",
+      });
+      const state = context.syncService["state"];
+      state.pendingRetries.clear();
+
+      await context.syncService["executeSyncJob"]("wallet-resumed");
+
+      // Resumed at 2, so the lock-contention branch re-arms rather than no-ops.
+      expect(state.pendingRetries.has("wallet-resumed")).toBe(true);
+      clearTimeout(state.pendingRetries.get("wallet-resumed")!);
+      state.pendingRetries.delete("wallet-resumed");
+    });
+
+    it("survives a failed lookup when resuming the ladder", async () => {
+      context.syncService["isRunning"] = true;
+      mockAcquireLock.mockResolvedValue(null);
+      mockPrismaClient.wallet.findUnique.mockRejectedValueOnce(new Error("db down"));
+
+      const result = await context.syncService["executeSyncJob"]("wallet-lookup-failed");
+
+      expect(result.error).toContain("Already syncing");
+    });
+
     it("releases a wallet whose sync never settles once the duration cap elapses", async () => {
       // A hung Electrum call leaves syncWallet() pending forever. The lock was
       // released only in the finally, which that promise never reaches, so the

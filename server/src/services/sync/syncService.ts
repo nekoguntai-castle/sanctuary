@@ -529,6 +529,21 @@ class SyncService {
     } catch (error) {
       log.error('[SYNC] Failed to reset stuck sync flags', { error: getErrorMessage(error) });
     }
+
+    // The retry ladder is an in-heap timer, so this restart just discarded every
+    // pending retry. A row left at 'retrying' is selected by no reaper and shows
+    // "Retrying" over work nothing is doing; demoting it to 'failed' both tells
+    // the truth and returns the wallet to findStale's population.
+    try {
+      const demoted = await walletRepository.demoteStrandedRetries(
+        'Sync retry was interrupted by a restart and did not resume',
+      );
+      if (demoted > 0) {
+        log.warn(`[SYNC] Demoted ${demoted} wallets stranded mid-retry to failed`);
+      }
+    } catch (error) {
+      log.error('[SYNC] Failed to demote stranded retries', { error: getErrorMessage(error) });
+    }
   }
 
   /**

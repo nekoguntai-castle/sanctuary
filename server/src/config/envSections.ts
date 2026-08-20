@@ -75,6 +75,7 @@ export function buildSyncConfig() {
     startupCatchUpDelayMs: parseIntegerEnv('SYNC_STARTUP_CATCH_UP_DELAY_MS', 10000),
     startupCatchUpStaggerDelayMs: parseIntegerEnv('SYNC_STARTUP_CATCH_UP_STAGGER_DELAY_MS', 1000),
     maxRetryAttempts: parseIntegerEnv('SYNC_MAX_RETRIES', 3),
+    lockContentionRetryDelayMs: parseIntegerEnv('SYNC_LOCK_CONTENTION_RETRY_DELAY_MS', 30_000),
     retryDelaysMs: parseRetryDelays(),
     maxSyncDurationMs: parseIntegerEnv('SYNC_MAX_DURATION_MS', 30 * 60 * 1000),
     transactionBatchSize: parseIntegerEnv('SYNC_TRANSACTION_BATCH_SIZE', 100),

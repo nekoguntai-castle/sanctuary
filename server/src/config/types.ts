@@ -143,6 +143,7 @@ export interface SyncConfig {
   startupCatchUpDelayMs: number;        // Delay before startup catch-up begins (default: 10s)
   startupCatchUpStaggerDelayMs: number; // Delay between startup catch-up sync jobs (default: 250ms)
   maxRetryAttempts: number;              // Max retries on failure (default: 3)
+  lockContentionRetryDelayMs: number;    // Wait before re-arming a retry blocked by a held lock
   retryDelaysMs: number[];               // Exponential backoff delays
   maxSyncDurationMs: number;             // Max time for a single wallet sync (default: 30 minutes)
   transactionBatchSize: number;          // Batch size for transaction updates (default: 100)

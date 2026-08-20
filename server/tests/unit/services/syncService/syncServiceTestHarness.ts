@@ -99,6 +99,7 @@ vi.mock('../../../../src/repositories', () => ({
     update: (id: string, data: unknown) => mockPrismaClient.wallet.update({ where: { id }, data }),
     updateSyncState: (id: string, state: unknown) => mockPrismaClient.wallet.update({ where: { id }, data: state }),
     resetAllStuckSyncFlags: () => mockPrismaClient.wallet.updateMany({ where: { syncInProgress: true }, data: { syncInProgress: false } }).then((r: any) => r.count),
+    demoteStrandedRetries: (reason: string) => mockPrismaClient.wallet.updateMany({ where: { lastSyncStatus: 'retrying', syncInProgress: false }, data: { lastSyncStatus: 'failed', lastSyncError: reason } }).then((r: any) => r.count),
     findStuckSyncing: () => mockPrismaClient.wallet.findMany({ where: { syncInProgress: true }, select: { id: true, name: true } }),
     findStale: (opts: any) => mockPrismaClient.wallet.findMany({
       where: { OR: [{ lastSyncedAt: null }, { lastSyncedAt: { lt: new Date(Date.now() - opts.staleThresholdMs) } }], syncInProgress: false },

@@ -375,6 +375,26 @@ export async function resetAllStuckSyncFlags(): Promise<number> {
 }
 
 /**
+ * Demote rows stranded mid-retry to a terminal `failed`.
+ *
+ * The retry ladder is driven by an in-heap `setTimeout`, so a restart discards
+ * it silently and leaves `lastSyncStatus = 'retrying'` with no timer, no job
+ * and no reaper that selects it - `findStuckWithCutoff` requires
+ * `syncInProgress = true`, which a retrying row never has. The badge then reads
+ * "Retrying" forever over work nothing is doing.
+ *
+ * Scoped to `syncInProgress = false` so a retry that has already been picked up
+ * again is left alone.
+ */
+export async function demoteStrandedRetries(reason: string): Promise<number> {
+  const result = await prisma.wallet.updateMany({
+    where: { lastSyncStatus: 'retrying', syncInProgress: false },
+    data: { lastSyncStatus: 'failed', lastSyncError: reason },
+  });
+  return result.count;
+}
+
+/**
  * Find wallets currently marked as syncing
  */
 export async function findStuckSyncing(
@@ -715,6 +735,7 @@ export const walletRepository = {
   findNameById,
   findNetwork,
   resetAllStuckSyncFlags,
+  demoteStrandedRetries,
   findStuckSyncing,
   findStale,
   findStuckWithCutoff,

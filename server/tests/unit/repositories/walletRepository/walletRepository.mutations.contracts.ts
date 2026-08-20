@@ -422,4 +422,25 @@ export const registerWalletRepositoryMutationContracts = () => {
       });
     });
   });
+
+  describe('demoteStrandedRetries', () => {
+    it('demotes only retrying rows that no longer have a sync in flight', async () => {
+      // The retry ladder is an in-heap setTimeout, so a restart leaves
+      // lastSyncStatus='retrying' with no timer and no reaper that selects it
+      // (findStuckWithCutoff requires syncInProgress=true). 2026-08-20.
+      prisma.wallet.updateMany.mockResolvedValueOnce({ count: 2 });
+
+      await expect(walletRepository.demoteStrandedRetries('restarted')).resolves.toBe(2);
+
+      expect(prisma.wallet.updateMany).toHaveBeenCalledWith({
+        where: { lastSyncStatus: 'retrying', syncInProgress: false },
+        data: { lastSyncStatus: 'failed', lastSyncError: 'restarted' },
+      });
+    });
+
+    it('reports zero when nothing was stranded', async () => {
+      prisma.wallet.updateMany.mockResolvedValueOnce({ count: 0 });
+      await expect(walletRepository.demoteStrandedRetries('restarted')).resolves.toBe(0);
+    });
+  });
 };

@@ -135,6 +135,7 @@ export const SyncConfigSchema = z.object({
   startupCatchUpDelayMs: z.number().int().min(0).max(300000),
   startupCatchUpStaggerDelayMs: z.number().int().min(0).max(30000),
   maxRetryAttempts: z.number().int().min(0).max(10),
+  lockContentionRetryDelayMs: z.number().int().min(1000).max(600_000),
   retryDelaysMs: z.array(z.number().int().min(0)),
   maxSyncDurationMs: z.number().int().min(1000),
   transactionBatchSize: z.number().int().min(1).max(10000),
