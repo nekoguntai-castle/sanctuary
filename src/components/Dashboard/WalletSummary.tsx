@@ -2,8 +2,12 @@ import React, { useState, useEffect, memo } from 'react';
 import type { MouseEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Wallet, isMultisigType } from '../../types';
-import { Wallet as WalletIcon, ChevronRight, RefreshCw, Check, AlertTriangle, Clock } from 'lucide-react';
+import { Wallet as WalletIcon, ChevronRight } from 'lucide-react';
 import { Amount } from '../Amount';
+import {
+  getWalletSyncPresentation,
+  type WalletSyncTone,
+} from '../../utils/walletSyncPresentation';
 import { WalletEmptyState } from '../ui/EmptyState';
 import { TabNetwork } from '../NetworkTabs';
 import { useUserPreference } from '../../hooks/useUserPreference';
@@ -47,15 +51,7 @@ interface WalletSummaryProps {
 // Tooltip styles are in src/index.html as .tooltip-popup and .tooltip-arrow
 
 function getSyncTooltipText(w: Wallet): string {
-  if (w.syncInProgress) return 'Syncing in progress\u2026';
-  if (w.lastSyncStatus === 'success') {
-    return w.lastSyncedAt
-      ? `Last synced: ${new Date(w.lastSyncedAt).toLocaleString()}`
-      : 'Synced';
-  }
-  if (w.lastSyncStatus === 'failed') return 'Sync failed';
-  if (w.lastSyncedAt) return `Cached from ${new Date(w.lastSyncedAt).toLocaleString()}`;
-  return 'Never synced';
+  return getWalletSyncPresentation(w).description;
 }
 
 function getNetworkLabel(selectedNetwork: TabNetwork) {
@@ -225,38 +221,28 @@ function getWalletTypeBadgeClass(isMultisig: boolean) {
     : 'bg-success-100 text-success-800 border border-success-200 dark:bg-success-500/10 dark:border-success-500/20';
 }
 
+// `success`, `warning` and `sent` invert per mode and declare no 300/400
+// shade, so the base class is correct in both modes; `rose` is standard
+// Tailwind and keeps its explicit dark variant.
+const SYNC_ICON_TONE_CLASSES: Record<WalletSyncTone, string> = {
+  syncing: 'text-primary-600 dark:text-primary-400',
+  resyncing: 'text-primary-600 dark:text-primary-400',
+  retrying: 'text-warning-600',
+  success: 'text-success-600',
+  stale: 'text-warning-600',
+  failed: 'text-rose-600 dark:text-rose-400',
+  partial: 'text-warning-600',
+  cached: 'text-sanctuary-400',
+  never: 'text-warning-600',
+  unknown: 'text-warning-600',
+};
+
 function WalletSyncIcon({ wallet }: { wallet: Wallet }) {
-  if (wallet.syncInProgress) {
-    return (
-      <span className="inline-flex items-center text-primary-600 dark:text-primary-400">
-        <RefreshCw className="w-4 h-4 animate-spin" />
-      </span>
-    );
-  }
-  if (wallet.lastSyncStatus === 'success') {
-    return (
-      <span className="inline-flex items-center text-success-600">
-        <Check className="w-4 h-4" />
-      </span>
-    );
-  }
-  if (wallet.lastSyncStatus === 'failed') {
-    return (
-      <span className="inline-flex items-center text-rose-600 dark:text-rose-400">
-        <AlertTriangle className="w-4 h-4" />
-      </span>
-    );
-  }
-  if (wallet.lastSyncedAt) {
-    return (
-      <span className="inline-flex items-center text-sanctuary-400">
-        <Clock className="w-4 h-4" />
-      </span>
-    );
-  }
+  const { tone, icon: Icon, spinning } = getWalletSyncPresentation(wallet);
+
   return (
-    <span className="inline-flex items-center text-warning-600">
-      <AlertTriangle className="w-4 h-4" />
+    <span className={`inline-flex items-center ${SYNC_ICON_TONE_CLASSES[tone]}`}>
+      <Icon className={`w-4 h-4 ${spinning ? 'animate-spin' : ''}`} />
     </span>
   );
 }

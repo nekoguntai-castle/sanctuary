@@ -445,6 +445,9 @@ subgraph 8Q["utils"]
 9B["utxoAge.ts"]
 9C["validateAddress.ts"]
 9D["walletCapabilities.ts"]
+9E["walletSyncPresentation.ts"]
+9F["walletSyncPresentationTypes.ts"]
+9G["walletSyncSettledStates.ts"]
 end
 end
 C-->4
@@ -662,6 +665,7 @@ Y-->C
 3B-->8Z
 3B-->91
 3B-->96
+3B-->9E
 3B-->Y
 3D-->1A
 3D-->1C
@@ -764,6 +768,7 @@ Y-->C
 3X-->8X
 3X-->91
 3X-->92
+3X-->9E
 3Z-->1C
 3Z-->1K
 3Z-->2S
@@ -933,6 +938,7 @@ Y-->C
 5D-->91
 5D-->98
 5D-->9D
+5D-->9E
 5D-->B
 5D-->D
 5D-->E
@@ -950,6 +956,7 @@ Y-->C
 5F-->6U
 5F-->8N
 5F-->94
+5F-->9E
 5F-->B
 5G-->27
 5G-->5I
@@ -959,6 +966,7 @@ Y-->C
 5N-->3F
 5N-->5W
 5N-->8N
+5N-->9E
 5N-->B
 5Q-->A
 5S-->91
@@ -1168,4 +1176,5 @@ Y-->C
 9A-->99
 9C-->Y
 9D-->D
+9E-->9G
 ```

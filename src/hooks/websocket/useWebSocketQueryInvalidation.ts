@@ -77,13 +77,27 @@ export const useWebSocketQueryInvalidation = () => {
       if (!queryClient) return;
       if (event.event !== 'sync') return;
 
-      const { walletId, inProgress, status } = event.data as {
+      const { walletId, inProgress, status, lastSyncedAt } = event.data as {
         walletId: string;
         inProgress: boolean;
         status?: string;
+        lastSyncedAt?: string;
       };
 
       if (!walletId) return;
+
+      // "Sync finished" is not "sync succeeded". Stamping the clock on every
+      // terminal event — `failed` included — is why the list could claim a
+      // wallet had just synced while the detail page showed the failure. Trust
+      // the server's timestamp when it sends one, and otherwise stamp only a
+      // success.
+      const syncedAtPatch = (() => {
+        if (lastSyncedAt) return { lastSyncedAt };
+        if (!inProgress && status === 'success') {
+          return { lastSyncedAt: new Date().toISOString() };
+        }
+        return {};
+      })();
 
       // Directly update wallet list cache
       queryClient.setQueryData(['wallets', 'list'], (oldData: Record<string, unknown>[] | undefined) => {
@@ -94,7 +108,7 @@ export const useWebSocketQueryInvalidation = () => {
                 ...wallet,
                 syncInProgress: inProgress,
                 ...(status && { lastSyncStatus: status }),
-                ...(!inProgress && { lastSyncedAt: new Date().toISOString() }),
+                ...syncedAtPatch,
               }
             : wallet
         );
@@ -107,7 +121,7 @@ export const useWebSocketQueryInvalidation = () => {
           ...oldData,
           syncInProgress: inProgress,
           ...(status && { lastSyncStatus: status }),
-          ...(!inProgress && { lastSyncedAt: new Date().toISOString() }),
+          ...syncedAtPatch,
         };
       });
     };

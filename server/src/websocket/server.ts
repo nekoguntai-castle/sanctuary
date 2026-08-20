@@ -24,6 +24,7 @@ import { GatewayWebSocketServer } from './gatewayServer';
 import { redisBridge } from './redisBridge';
 import { createLogger } from '../utils/logger';
 import { registerWebSocketAuthorizationControlDispatcher } from './authorizationControl';
+import { ingestRemoteWalletLog } from './remoteLogIngest';
 
 // Re-export types for external use
 export type {
@@ -70,6 +71,11 @@ export const initializeWebSocketServer = (): SanctauryWebSocketServer => {
   // Set up Redis bridge handler for cross-instance broadcasts
   // When events arrive from other instances via Redis, broadcast locally
   redisBridge.setBroadcastHandler((event) => {
+    // Worker-run syncs write their log entries into the worker's own in-memory
+    // buffer, which GET /sync/logs/:walletId cannot read. Mirror remote entries
+    // into this process's buffer so the wallet Log tab stops coming back empty.
+    ingestRemoteWalletLog(event);
+
     // wsServer is assigned immediately before this handler is registered.
     void wsServer!.localBroadcast(event).catch((error) => {
       log.error('Failed to apply remote WebSocket broadcast', { error: String(error) });

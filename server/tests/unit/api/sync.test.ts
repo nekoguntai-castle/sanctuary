@@ -25,6 +25,7 @@ const {
     updateSyncState: vi.fn(),
     getIdsByNetwork: vi.fn(),
     findByNetworkWithSyncStatus: vi.fn(),
+    findAccessibleWithSelect: vi.fn().mockResolvedValue([]),
     resetSyncState: vi.fn(),
   },
   mockTransactionRepository: {
@@ -657,6 +658,7 @@ describe('Sync API - Network Endpoints', () => {
         deduplicatedWalletIds: [],
         rejectedWallets: [],
         indeterminateWallets: [],
+        excludedWallets: [],
         message: 'Queued 2 wallets; 0 wallets already queued.',
       });
     });
@@ -685,7 +687,10 @@ describe('Sync API - Network Endpoints', () => {
         .send({});
 
       expect(response.status).toBe(200);
-      expect(response.body.walletIds).toEqual(['wallet-1', 'wallet-2', 'wallet-3']);
+      // walletIds now reports only what was actually queued - deduplicated
+      // wallets are no longer folded in and claimed as queued.
+      expect(response.body.walletIds).toEqual(['wallet-2']);
+      expect(response.body.deduplicatedWalletIds).toEqual(['wallet-1', 'wallet-3']);
       expect(response.body.queued).toBe(1);
     });
 
@@ -757,6 +762,7 @@ describe('Sync API - Network Endpoints', () => {
           reason: 'queue_error',
         }],
         indeterminateWallets: [],
+        excludedWallets: [],
         message: 'Queued 1 wallet; 0 wallets already queued; 1 wallet rejected.',
       });
     });
@@ -801,6 +807,7 @@ describe('Sync API - Network Endpoints', () => {
           walletId: 'wallet-2',
           reason: 'queue_state_unknown',
         }],
+        excludedWallets: [],
         message: 'Queued 1 wallet; 0 wallets already queued; 1 wallet queue state unknown.',
       });
     });
@@ -832,6 +839,7 @@ describe('Sync API - Network Endpoints', () => {
         deduplicatedWalletIds: [],
         rejectedWallets: [],
         indeterminateWallets: [],
+        excludedWallets: [],
         message: 'No signet wallets found',
       });
     });

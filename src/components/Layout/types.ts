@@ -27,7 +27,9 @@ export interface SubNavItemProps {
   activeColorClass?: string;
   badgeCount?: number;
   badgeSeverity?: 'info' | 'warning' | 'critical';
-  statusDot?: 'synced' | 'syncing' | 'error' | 'pending';
+  statusDot?: 'synced' | 'syncing' | 'resyncing' | 'retrying' | 'stale' | 'error' | 'pending';
+  /** Human-readable explanation for the dot; the enum name is not one. */
+  statusDotTitle?: string;
 }
 
 export interface ExpandedState {

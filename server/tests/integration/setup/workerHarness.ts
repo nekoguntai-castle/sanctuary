@@ -214,6 +214,14 @@ export const createWorkerTestHarness = async (
     stopCaptureParticipant: vi.fn(async () => undefined),
   }));
 
+  // The worker publishes its WebSocket events onto the Redis bridge. The real
+  // module reaches the un-mocked infrastructure/redis and metrics graph, which
+  // this harness does not stand up.
+  vi.doMock('../../../src/websocket/redisBridge', () => ({
+    initializeRedisBridge: vi.fn(async () => undefined),
+    shutdownRedisBridge: vi.fn(async () => undefined),
+  }));
+
   const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
 
   await import('../../../src/worker');

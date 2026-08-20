@@ -85,6 +85,31 @@ describe('websocket/server singleton wiring', () => {
     expect((server as any).applyAuthorizationControl).toHaveBeenCalledWith(control);
   });
 
+  it('mirrors remote wallet log entries into this process log buffer', async () => {
+    // Sync runs in the worker but GET /sync/logs/:walletId is served here, so
+    // without this the wallet Log tab is empty for every worker-run sync.
+    const mod = await import('../../../src/websocket/server');
+    const { walletLogBuffer } = await import('../../../src/services/walletLogBuffer');
+    walletLogBuffer.clear('wallet-remote');
+    mod.initializeWebSocketServer();
+
+    mocks.emitRedisEvent({
+      type: 'log',
+      walletId: 'wallet-remote',
+      data: {
+        id: 'entry-1',
+        timestamp: '2026-08-19T00:00:00.000Z',
+        level: 'info',
+        module: 'SYNC',
+        message: 'Sync started',
+      },
+    });
+
+    expect(walletLogBuffer.get('wallet-remote')).toEqual([
+      expect.objectContaining({ id: 'entry-1', message: 'Sync started' }),
+    ]);
+  });
+
   it('logs rejected remote broadcasts without leaking an unhandled rejection', async () => {
     const mod = await import('../../../src/websocket/server');
     const server = mod.initializeWebSocketServer();

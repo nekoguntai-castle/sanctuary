@@ -50,20 +50,48 @@ const mockGetStats = vi.fn().mockReturnValue({
 const mockIsGatewayConnected = vi.fn().mockReturnValue(false);
 const mockSendEvent = vi.fn();
 
+const mockGetWebSocketServerIfInitialized = vi.hoisted(() => vi.fn<() => unknown>());
+const mockPublishBroadcast = vi.hoisted(() => vi.fn());
+
 vi.mock('../../../src/websocket/server', () => ({
   getWebSocketServer: vi.fn(() => ({
     broadcast: mockBroadcast,
     getStats: mockGetStats,
   })),
+  getWebSocketServerIfInitialized: mockGetWebSocketServerIfInitialized,
   getGatewayWebSocketServer: vi.fn(() => ({
     isGatewayConnected: mockIsGatewayConnected,
     sendEvent: mockSendEvent,
   })),
 }));
 
+vi.mock('../../../src/websocket/redisBridge', () => ({
+  redisBridge: {
+    publishBroadcast: mockPublishBroadcast,
+    isActive: vi.fn(() => true),
+  },
+}));
+
 describe('Broadcast Helpers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetWebSocketServerIfInitialized.mockReturnValue({
+      broadcast: mockBroadcast,
+      getStats: mockGetStats,
+    });
+  });
+
+  describe('without a local WebSocket server', () => {
+    it('publishes onto the Redis bridge instead of dropping the event', () => {
+      mockGetWebSocketServerIfInitialized.mockReturnValue(null);
+
+      broadcastSync('wallet-123', { inProgress: true });
+
+      expect(mockBroadcast).not.toHaveBeenCalled();
+      expect(mockPublishBroadcast).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'sync', walletId: 'wallet-123' })
+      );
+    });
   });
 
   describe('broadcastTransaction', () => {
@@ -461,7 +489,7 @@ describe('Broadcast Helpers', () => {
     });
 
     it('should skip broadcast when websocket server is unavailable', () => {
-      vi.mocked(getWebSocketServer).mockImplementationOnce(() => {
+      mockBroadcast.mockImplementationOnce(() => {
         throw new Error('server not initialized');
       });
 

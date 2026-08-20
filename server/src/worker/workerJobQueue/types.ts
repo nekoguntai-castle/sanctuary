@@ -3,7 +3,7 @@
  */
 
 import type { Queue, Worker, QueueEvents, JobsOptions } from 'bullmq';
-import type { JobExecutionContext } from '../jobs/types';
+import type { JobExecutionContext, LockRetryBudgetExhaustedDetail } from '../jobs/types';
 
 export interface WorkerJobQueueConfig {
   /** Worker concurrency per queue (default: 3) */
@@ -34,6 +34,26 @@ export interface RegisteredHandler {
     lockKey: (data: unknown) => string;
     lockTtlMs?: number;
     retryDelayMsIfUnavailable?: (data: unknown) => number | null;
+    /**
+     * Wall-clock budget for re-delaying a job whose lock is held. Defaults to
+     * the lock TTL, which by construction outlives one run of the guarded work,
+     * so legitimate contention still waits. Past the budget the job fails
+     * normally instead of re-delaying forever.
+     */
+    maxLockRetryWindowMs?: number;
+    /**
+     * Record what giving up on lock contention means for the guarded resource.
+     *
+     * The budget is spent before the handler ever runs, so the processor knows
+     * only that the job was abandoned. Only the handler's owner knows what
+     * durable state that leaves behind. Failures here are logged and swallowed:
+     * the give-up is what releases the deduplication key, and no bookkeeping
+     * error may turn it back into an unbounded re-delay.
+     */
+    onLockRetryBudgetExhausted?: (
+      data: unknown,
+      detail: LockRetryBudgetExhaustedDetail,
+    ) => Promise<void>;
   };
 }
 

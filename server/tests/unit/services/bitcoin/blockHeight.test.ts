@@ -72,6 +72,28 @@ describe("blockHeight utils", () => {
       expect(mockLogger.error).toHaveBeenCalled();
     });
 
+    it("assertChainReachable throws on a dead node even with a warm cache", async () => {
+      // The contrast with the test above is the whole point. getBlockHeight
+      // deliberately masks an unreachable node behind the cache, which makes it
+      // useless as a precondition for anything destructive: a full resync would
+      // read a stale height, delete every transaction, and then fail to rebuild.
+      const { assertChainReachable, setCachedBlockHeight } = await loadModule();
+      setCachedBlockHeight(777777, "mainnet");
+      mockGetNodeClient.mockRejectedValue(new Error("node down"));
+
+      await expect(assertChainReachable("mainnet")).rejects.toThrow("node down");
+    });
+
+    it("assertChainReachable refreshes the cache when the node answers", async () => {
+      const { assertChainReachable, getCachedBlockHeight } = await loadModule();
+      mockGetNodeClient.mockResolvedValue({
+        getBlockHeight: vi.fn().mockResolvedValue(901234),
+      });
+
+      await expect(assertChainReachable("signet")).resolves.toBe(901234);
+      expect(getCachedBlockHeight("signet")).toBe(901234);
+    });
+
     it("reconnects and retries once after a transient connection close", async () => {
       const { getBlockHeight, getCachedBlockHeight } = await loadModule();
       const firstClient = {

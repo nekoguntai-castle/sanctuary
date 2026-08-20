@@ -235,8 +235,10 @@ export const SupportPackageCard: React.FC = () => {
           <div>
             <h4 id="aggregate-support-heading" className="font-medium text-sanctuary-900 dark:text-sanctuary-100">Aggregate profile</h4>
             <p className="mt-1 text-sm text-sanctuary-600 dark:text-sanctuary-400">
-              Aggregate notification diagnostics exclude identities, wallet and transaction data,
-              credentials, message content, endpoints, payloads, and raw errors.
+              Aggregate notification and wallet sync diagnostics include wallet counts and sync
+              status categories per network. They exclude identities, wallet names, addresses,
+              descriptors, transaction data, credentials, message content, endpoints, payloads,
+              and raw error text.
             </p>
           </div>
           <NoticeAlert message={PRIVACY_NOTICE} tone="warning" />

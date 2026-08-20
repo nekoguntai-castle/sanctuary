@@ -50,6 +50,8 @@ export type SupportPackageSourceKind = typeof SUPPORT_PACKAGE_SOURCE_KINDS[numbe
  * Diagnostic claims that a collector can or cannot support. Static defaults
  * describe startup configuration; effective configuration describes current
  * runtime state; worker delivery requires evidence from the worker process.
+ * Wallet sync state and full resync intent are persisted rows; neither is
+ * evidence that the worker actually executed a sync.
  */
 export const SUPPORT_PACKAGE_AUTHORITIES = [
   'static_notification_configuration',
@@ -58,6 +60,9 @@ export const SUPPORT_PACKAGE_AUTHORITIES = [
   'worker_notification_capability',
   'worker_delivery_aggregates',
   'worker_delivery',
+  'wallet_sync_state',
+  'wallet_full_resync_intent',
+  'wallet_sync_execution',
 ] as const;
 export type SupportPackageAuthority = typeof SUPPORT_PACKAGE_AUTHORITIES[number];
 

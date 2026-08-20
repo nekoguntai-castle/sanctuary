@@ -98,6 +98,21 @@ async function fetchBlockHeight(network: Network): Promise<number> {
   return client.getBlockHeight();
 }
 
+/**
+ * Prove the chain is actually reachable right now, throwing if it is not.
+ *
+ * Deliberately not `getBlockHeight`: that falls back to the process cache on
+ * failure, so a warm cache reports success against a node that is down. Callers
+ * about to do something destructive need the live answer, not the last one.
+ */
+export async function assertChainReachable(
+  network: Network = "mainnet",
+): Promise<number> {
+  const height = await fetchBlockHeight(network);
+  setCachedBlockHeight(height, network);
+  return height;
+}
+
 function shouldRetryBlockHeight(error: unknown): boolean {
   const message = getErrorMessage(error).toLowerCase();
   return TRANSIENT_BLOCK_HEIGHT_ERROR_PARTS.some((part) =>

@@ -136,16 +136,46 @@ describe("WalletHeader", () => {
     );
   });
 
-  it("uses retrying defaults when status is retrying without retry metadata", () => {
+  it("never fabricates an attempt count when retry metadata is absent", () => {
     renderHeader({
       lastSyncStatus: "retrying",
+      lastSyncError: "connect ECONNREFUSED 127.0.0.1:50002",
       network: "testnet3",
     });
 
-    const badge = screen.getByText("Retrying 1/3").closest("span");
     expect(screen.getByText("Testnet3")).toHaveClass("dark:text-testnet-300");
     expect(screen.getByText("Testnet3")).toHaveClass("dark:bg-testnet-900/20");
-    expect(badge).toHaveAttribute("title", "Sync failed, retrying...");
+    expect(screen.getByText("Retrying")).toBeInTheDocument();
+    expect(screen.queryByText("Retrying 1/3")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("tooltip"),
+    ).toHaveTextContent("connect ECONNREFUSED 127.0.0.1:50002");
+    expect(
+      screen.queryByText("Sync failed, retrying..."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps the sync-now affordance for a never-synced wallet stuck in retry", () => {
+    const { handlers } = renderHeader({
+      lastSyncStatus: "retrying",
+      lastSyncedAt: null,
+      syncInProgress: false,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Sync Now/i }));
+    expect(handlers.onSync).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not call a wallet mid-resync 'not synced'", () => {
+    renderHeader({
+      lastSyncStatus: "resyncing",
+      lastSyncedAt: null,
+      syncInProgress: false,
+    });
+
+    expect(screen.getByText("Resyncing")).toBeInTheDocument();
+    expect(screen.queryByText("Not Synced")).not.toBeInTheDocument();
+    expect(screen.queryByText("Wallet not synced")).not.toBeInTheDocument();
   });
 
   it("shows syncing badge and disables sync controls while syncing", () => {
@@ -161,10 +191,20 @@ describe("WalletHeader", () => {
   it("renders success status when sync completed", () => {
     renderHeader({
       lastSyncStatus: "success",
-      lastSyncedAt: "2026-02-02T00:00:00.000Z",
+      lastSyncedAt: new Date(Date.now() - 60_000).toISOString(),
     });
 
     expect(screen.getByText("Synced")).toBeInTheDocument();
+  });
+
+  it("does not show a green success badge for a sync that is hours old", () => {
+    renderHeader({
+      lastSyncStatus: "success",
+      lastSyncedAt: "2026-02-02T00:00:00.000Z",
+    });
+
+    expect(screen.queryByText("Synced")).not.toBeInTheDocument();
+    expect(screen.getByText("Stale")).toBeInTheDocument();
   });
 
   it("renders success status without last-synced timestamp and supports custom network badge", () => {
@@ -202,6 +242,22 @@ describe("WalletHeader", () => {
     expect(screen.getByText("Cached")).toBeInTheDocument();
   });
 
+  it("renders an arbitrary sync failure reason inline, not only in a tooltip", () => {
+    const { handlers } = renderHeader({
+      lastSyncStatus: "failed",
+      lastSyncError: "connect ECONNREFUSED 127.0.0.1:50002",
+    });
+
+    expect(screen.getByText("Sync failed")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("wallet-sync-failure-reason"),
+    ).toHaveTextContent("connect ECONNREFUSED 127.0.0.1:50002");
+    // One banner, not the real reason plus a vaguer card repeating it.
+    expect(screen.queryByText("Wallet not synced")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Sync Now/i }));
+    expect(handlers.onSync).toHaveBeenCalledTimes(1);
+  });
+
   it("shows a network sync-off warning for disabled testnet sync failures", () => {
     renderHeader({
       network: "testnet3",
@@ -211,9 +267,10 @@ describe("WalletHeader", () => {
     });
 
     expect(screen.getByText("Network sync is off")).toBeInTheDocument();
+    expect(screen.queryByText("Sync failed")).not.toBeInTheDocument();
     expect(
-      screen.getByText(/Enable Testnet3 under Network Connections/i),
-    ).toBeInTheDocument();
+      screen.getByTestId("wallet-sync-failure-reason"),
+    ).toHaveTextContent(/Enable Testnet3 under Network Connections/i);
     expect(screen.queryByText("Wallet not synced")).not.toBeInTheDocument();
   });
 

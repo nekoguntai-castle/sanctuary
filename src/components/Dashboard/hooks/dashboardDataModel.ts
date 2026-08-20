@@ -76,7 +76,10 @@ export function mapApiWalletToDashboardWallet(wallet: Wallet): Wallet {
     label: wallet.name,
     xpub: '',
     lastSyncedAt: wallet.lastSyncedAt,
-    lastSyncStatus: wallet.lastSyncStatus as 'success' | 'failed' | 'partial' | null,
+    lastSyncStatus: wallet.lastSyncStatus,
+    // The API has always sent this; the whitelist simply dropped it, which is
+    // why a failing dashboard wallet could show no reason at all.
+    lastSyncError: wallet.lastSyncError,
     syncInProgress: wallet.syncInProgress,
   };
 }

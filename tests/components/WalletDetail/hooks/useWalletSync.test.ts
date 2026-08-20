@@ -107,7 +107,7 @@ describe("useWalletSync", () => {
     expect(handleError).not.toHaveBeenCalled();
   });
 
-  it("still refreshes when sync returns an explicit API error payload", async () => {
+  it("surfaces a sync failure that does not match the network-sync-off wording", async () => {
     vi.mocked(syncApi.syncWallet).mockResolvedValue({
       success: false,
       syncedAddresses: 0,
@@ -127,6 +127,7 @@ describe("useWalletSync", () => {
       await result.current.handleSync();
     });
 
+    expect(showWarning).toHaveBeenCalledWith("backend timeout", "Sync Failed");
     expect(onDataRefresh).toHaveBeenCalled();
     expect(handleError).not.toHaveBeenCalled();
   });
@@ -178,7 +179,12 @@ describe("useWalletSync", () => {
     expect(syncApi.resyncWallet).not.toHaveBeenCalled();
   });
 
-  it("queues full resync and shows success", async () => {
+  it("queues full resync and shows success when the queue accepted it", async () => {
+    vi.mocked(syncApi.resyncWallet).mockResolvedValue({
+      message: "queued",
+      status: "accepted",
+    } as never);
+
     const { result } = renderHook(() =>
       useWalletSync({
         walletId: "wallet-1",
@@ -192,8 +198,33 @@ describe("useWalletSync", () => {
 
     expect(syncApi.resyncWallet).toHaveBeenCalledWith("wallet-1");
     expect(showSuccess).toHaveBeenCalledWith("queued", "Resync Queued");
+    expect(showWarning).not.toHaveBeenCalled();
     expect(onDataRefresh).toHaveBeenCalled();
     expect(result.current.syncing).toBe(false);
+  });
+
+  it("does not report a deduplicated resync as a success", async () => {
+    vi.mocked(syncApi.resyncWallet).mockResolvedValue({
+      message: "Full resync already queued for this wallet",
+      status: "deduplicated",
+    } as never);
+
+    const { result } = renderHook(() =>
+      useWalletSync({
+        walletId: "wallet-1",
+        onDataRefresh,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.handleFullResync();
+    });
+
+    expect(showSuccess).not.toHaveBeenCalled();
+    expect(showWarning).toHaveBeenCalledWith(
+      "Full resync already queued for this wallet",
+      "Resync Already Queued",
+    );
   });
 
   it("handles full resync failures through error handler", async () => {

@@ -73,7 +73,8 @@ describe('SupportPackageCard', () => {
 
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/inactive/i));
 
-    expect(screen.getByText(/exclude identities, wallet and transaction data/i)).toBeInTheDocument();
+    expect(screen.getByText(/include wallet counts and sync status categories/i)).toBeInTheDocument();
+    expect(screen.getByText(/exclude identities, wallet names, addresses/i)).toBeInTheDocument();
     expect(screen.getByText(/aggregate counts and coarse activity windows/i)).toBeInTheDocument();
     expect(screen.getByText(/version 0.8.56 are not safe to share/i)).toBeInTheDocument();
     expect(screen.getByText(/selectors are excluded from the resulting file/i)).toBeInTheDocument();

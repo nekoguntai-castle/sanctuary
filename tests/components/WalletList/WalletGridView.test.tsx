@@ -141,6 +141,7 @@ describe('WalletGridView', () => {
             deviceCount: 2,
             isShared: false,
             lastSyncStatus: 'failed',
+            lastSyncError: 'connect ECONNREFUSED 127.0.0.1:50002',
             syncInProgress: false,
           } as any,
           {
@@ -152,6 +153,29 @@ describe('WalletGridView', () => {
             deviceCount: 2,
             isShared: false,
             lastSyncStatus: 'retrying',
+            syncInProgress: false,
+          } as any,
+          {
+            id: 'resyncing',
+            name: 'Resyncing Wallet',
+            type: 'single_sig',
+            balance: 1,
+            scriptType: 'legacy',
+            deviceCount: 2,
+            isShared: false,
+            lastSyncStatus: 'resyncing',
+            syncInProgress: false,
+          } as any,
+          {
+            id: 'stale',
+            name: 'Stale Wallet',
+            type: 'single_sig',
+            balance: 1,
+            scriptType: 'legacy',
+            deviceCount: 2,
+            isShared: false,
+            lastSyncStatus: 'success',
+            lastSyncedAt: '2026-01-01T00:00:00.000Z',
             syncInProgress: false,
           } as any,
           {
@@ -170,10 +194,18 @@ describe('WalletGridView', () => {
       />
     );
 
+    // The reason is reachable, not a bare "Sync failed" in a native title the
+    // keyboard and touch cannot get at.
+    expect(screen.getByLabelText('Sync status: Failed')).toBeInTheDocument();
+    expect(
+      screen.getByText('connect ECONNREFUSED 127.0.0.1:50002')
+    ).toBeInTheDocument();
+    expect(screen.queryByTitle('Sync failed')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Sync status: Resyncing')).toBeInTheDocument();
+    expect(screen.getByLabelText('Sync status: Stale')).toBeInTheDocument();
     expect(screen.getByTitle('Syncing')).toBeInTheDocument();
     expect(screen.getByTitle('Synced')).toBeInTheDocument();
-    expect(screen.getByTitle('Sync failed')).toBeInTheDocument();
-    expect(screen.getByTitle('Retrying')).toBeInTheDocument();
+    expect(screen.getByLabelText('Sync status: Retrying')).toBeInTheDocument();
     expect(screen.getByTitle('Pending sync')).toBeInTheDocument();
     expect(screen.getByText('0 devices')).toBeInTheDocument();
   });

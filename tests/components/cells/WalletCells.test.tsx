@@ -8,6 +8,10 @@ vi.mock('lucide-react', () => ({
   CheckCircle: () => <span data-testid="check-icon" />,
   AlertCircle: () => <span data-testid="alert-icon" />,
   Clock: () => <span data-testid="clock-icon" />,
+  // walletSyncPresentation's default glyph set; the cell maps tones to its own
+  // outline icons but the module is still imported.
+  AlertTriangle: () => <span data-testid="alert-triangle-icon" />,
+  Check: () => <span data-testid="check-plain-icon" />,
   Users: () => <span data-testid="users-icon" />,
   ArrowDownLeft: () => <span data-testid="incoming-icon" />,
   ArrowUpRight: () => <span data-testid="outgoing-icon" />,
@@ -149,6 +153,47 @@ describe('WalletCells', () => {
 
     rerender(<renderers.sync item={{ ...baseWallet, lastSyncStatus: undefined }} column={baseColumn} />);
     expect(screen.getByText('Pending')).toBeInTheDocument();
+  });
+
+  it('distinguishes a full resync from a wallet that was never queued', () => {
+    const renderers = createWalletCellRenderers({
+      format: (sats) => `${sats} sats`,
+      formatFiat: () => null,
+      showFiat: false,
+    });
+
+    render(
+      <renderers.sync
+        item={{ ...baseWallet, lastSyncStatus: 'resyncing', syncInProgress: false }}
+        column={baseColumn}
+      />
+    );
+
+    expect(screen.getByText('Resyncing')).toBeInTheDocument();
+    expect(screen.queryByText('Pending')).not.toBeInTheDocument();
+  });
+
+  it('exposes the failure reason on the failed state', () => {
+    const renderers = createWalletCellRenderers({
+      format: (sats) => `${sats} sats`,
+      formatFiat: () => null,
+      showFiat: false,
+    });
+
+    render(
+      <renderers.sync
+        item={{
+          ...baseWallet,
+          lastSyncStatus: 'failed',
+          lastSyncError: 'connect ECONNREFUSED 127.0.0.1:50002',
+        }}
+        column={baseColumn}
+      />
+    );
+
+    expect(screen.getByRole('tooltip')).toHaveTextContent(
+      'connect ECONNREFUSED 127.0.0.1:50002'
+    );
   });
 
   it('renders synced state for successful sync status', () => {

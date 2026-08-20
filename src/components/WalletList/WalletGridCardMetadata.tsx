@@ -1,5 +1,7 @@
 import { AlertCircle, CheckCircle, Clock, RefreshCw } from 'lucide-react';
 import { getQuorumM } from '../../types';
+import { Tooltip } from '../ui/Tooltip';
+import { getWalletSyncPresentation } from '../../utils/walletSyncPresentation';
 import type { Wallet } from '../../api/wallets';
 
 export function WalletMetadata({ wallet }: { wallet: Wallet }) {
@@ -24,21 +26,52 @@ export function WalletMetadata({ wallet }: { wallet: Wallet }) {
 }
 
 function SyncStatusIcon({ wallet }: { wallet: Wallet }) {
-  if (wallet.syncInProgress) {
+  const presentation = getWalletSyncPresentation(wallet);
+
+  // States with something to explain get a focusable tooltip carrying the real
+  // reason; the healthy ones keep the cheap native title. A grid card is icon
+  // only, so without this the reason had nowhere at all to appear.
+  if (presentation.reason) {
+    return (
+      <Tooltip
+        content={presentation.reason}
+        label={`Sync status: ${presentation.label}`}
+        placement="bottom"
+      >
+        <ReasonIcon tone={presentation.tone} spinning={presentation.spinning} />
+      </Tooltip>
+    );
+  }
+
+  if (presentation.tone === 'syncing') {
     return <span title="Syncing"><RefreshCw className="w-3.5 h-3.5 text-primary-500 animate-spin" /></span>;
   }
 
-  if (wallet.lastSyncStatus === 'success') {
+  if (presentation.tone === 'success') {
     return <span title="Synced"><CheckCircle className="w-3.5 h-3.5 text-success-500" /></span>;
   }
 
-  if (wallet.lastSyncStatus === 'failed') {
-    return <span title="Sync failed"><AlertCircle className="w-3.5 h-3.5 text-rose-500" /></span>;
-  }
-
-  if (wallet.lastSyncStatus === 'retrying') {
-    return <span title="Retrying"><RefreshCw className="w-3.5 h-3.5 text-amber-500" /></span>;
-  }
-
   return <span title="Pending sync"><Clock className="w-3.5 h-3.5 text-sanctuary-400" /></span>;
+}
+
+function ReasonIcon({
+  tone,
+  spinning,
+}: {
+  tone: ReturnType<typeof getWalletSyncPresentation>['tone'];
+  spinning: boolean;
+}) {
+  if (tone === 'retrying' || tone === 'resyncing') {
+    return (
+      <RefreshCw
+        className={`w-3.5 h-3.5 text-amber-500 ${spinning ? 'animate-spin' : ''}`}
+      />
+    );
+  }
+
+  if (tone === 'stale' || tone === 'partial' || tone === 'cached') {
+    return <Clock className="w-3.5 h-3.5 text-amber-500" />;
+  }
+
+  return <AlertCircle className="w-3.5 h-3.5 text-rose-500" />;
 }

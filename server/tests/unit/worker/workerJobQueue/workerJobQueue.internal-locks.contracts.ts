@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   acquireLock,
+  capturedLogs,
   extendLock,
   mockHardTerminate,
   releaseLock,
@@ -58,6 +59,11 @@ export const registerWorkerJobQueueInternalLockContracts = (getQueue: WorkerJobQ
       });
 
       expect(result).toEqual({ skipped: true, reason: 'lock_held' });
+      expect(capturedLogs).toContainEqual({
+        level: 'warn',
+        message: 'Skipping job - lock held: sync:locked',
+        meta: { jobId: 'j-3', lockKey: 'lock:wallet-1', walletId: 'wallet-1' },
+      });
     });
 
     it('rejects retry-owned jobs when their distributed lock is held', async () => {
@@ -75,15 +81,279 @@ export const registerWorkerJobQueueInternalLockContracts = (getQueue: WorkerJobQ
       });
 
       const moveToDelayed = vi.fn().mockResolvedValue(undefined);
-      await expect((queue as any).processJob('sync', {
+      const updateData = vi.fn().mockResolvedValue(undefined);
+      const job = {
         id: 'retry-locked-job',
         name: 'retry-locked',
         data: { walletId: 'wallet-1', fullResync: true },
         token: 'worker-token',
+        timestamp: Date.now(),
         moveToDelayed,
-      })).rejects.toHaveProperty('name', 'DelayedError');
+        updateData,
+      };
+      await expect((queue as any).processJob('sync', job))
+        .rejects.toHaveProperty('name', 'DelayedError');
       expect(moveToDelayed).toHaveBeenCalledWith(expect.any(Number), 'worker-token');
       expect(handler).not.toHaveBeenCalled();
+      // The budget is read from the job's own enqueue time, so nothing has to be
+      // written back into the payload to make it survive the DelayedError.
+      expect(updateData).not.toHaveBeenCalled();
+    });
+
+    it('fails a lock-contended retry job once its re-delay budget is exhausted', async () => {
+      vi.mocked(acquireLock).mockResolvedValue(null);
+      const handler = vi.fn(async () => ({ ok: true }));
+      const registered = {
+        handler,
+        lockOptions: {
+          lockKey: () => 'lock:wallet-budget',
+          lockTtlMs: 20_000,
+          retryDelayMsIfUnavailable: () => 5_000,
+        },
+      };
+      const job: any = {
+        id: 'budget-job',
+        data: { walletId: 'wallet-budget', fullResync: true },
+        token: 'worker-token',
+        timestamp: Date.now(),
+        moveToDelayed: vi.fn().mockResolvedValue(undefined),
+        updateData: vi.fn().mockResolvedValue(undefined),
+      };
+
+      // Inside the window it keeps re-delaying, however many times it bounces.
+      await expect(processJobWithLock('sync:budget', registered as any, job))
+        .rejects.toHaveProperty('name', 'DelayedError');
+      expect(job.moveToDelayed).toHaveBeenCalledTimes(1);
+
+      // Once the wallet has been contended for the whole window, the job must
+      // fail normally so BullMQ finalizes it and releases its dedup key.
+      job.timestamp = Date.now() - 20_001;
+      await expect(processJobWithLock('sync:budget', registered as any, job))
+        .rejects.toHaveProperty('name', 'LockRetryBudgetExhaustedError');
+      expect(job.moveToDelayed).toHaveBeenCalledTimes(1);
+      expect(handler).not.toHaveBeenCalled();
+      expect(capturedLogs).toContainEqual(expect.objectContaining({
+        level: 'error',
+        meta: expect.objectContaining({
+          lockKey: 'lock:wallet-budget',
+          walletId: 'wallet-budget',
+        }),
+      }));
+    });
+
+    it('gives a BullMQ attempt retry its own full re-delay window', async () => {
+      // A payload counter was never reset once the lock was finally acquired, so
+      // attempt 2 of 3 began with a spent budget and gave up on first contention.
+      vi.mocked(acquireLock).mockResolvedValue(null);
+      const registered = {
+        handler: vi.fn(async () => ({ ok: true })),
+        lockOptions: {
+          lockKey: () => 'lock:wallet-reattempt',
+          lockTtlMs: 20_000,
+          retryDelayMsIfUnavailable: () => 5_000,
+        },
+      };
+      const job: any = {
+        id: 'reattempt-job',
+        data: { walletId: 'wallet-reattempt' },
+        token: 'worker-token',
+        timestamp: Date.now(),
+        attemptsMade: 2,
+        opts: { attempts: 3 },
+        moveToDelayed: vi.fn().mockResolvedValue(undefined),
+        updateData: vi.fn().mockResolvedValue(undefined),
+      };
+
+      await expect(processJobWithLock('sync:reattempt', registered as any, job))
+        .rejects.toHaveProperty('name', 'DelayedError');
+      expect(job.moveToDelayed).toHaveBeenCalledTimes(1);
+    });
+
+    it('lets the handler record the terminal outcome when the budget runs out', async () => {
+      vi.mocked(acquireLock).mockResolvedValue(null);
+      const onLockRetryBudgetExhausted = vi.fn().mockResolvedValue(undefined);
+      const registered = {
+        handler: vi.fn(async () => ({ ok: true })),
+        lockOptions: {
+          lockKey: () => 'lock:wallet-record',
+          lockTtlMs: 5_000,
+          maxLockRetryWindowMs: 5_000,
+          retryDelayMsIfUnavailable: () => 5_000,
+          onLockRetryBudgetExhausted,
+        },
+      };
+      const job: any = {
+        id: 'record-job',
+        data: { walletId: 'wallet-record' },
+        token: 'worker-token',
+        timestamp: Date.now() - 5_001,
+        attemptsMade: 0,
+        opts: { attempts: 3 },
+        moveToDelayed: vi.fn().mockResolvedValue(undefined),
+        updateData: vi.fn().mockResolvedValue(undefined),
+      };
+
+      await expect(processJobWithLock('sync:record', registered as any, job))
+        .rejects.toHaveProperty('name', 'LockRetryBudgetExhaustedError');
+
+      // retriesExhausted must reflect the real attempt state: giving up here
+      // still burns only one of three BullMQ attempts.
+      expect(onLockRetryBudgetExhausted).toHaveBeenCalledWith(
+        { walletId: 'wallet-record' },
+        {
+          lockKey: 'lock:wallet-record',
+          retryWindowMs: 5_000,
+          message: expect.stringContaining('lock:wallet-record'),
+          isFinalAttempt: false,
+        },
+      );
+    });
+
+    it('tells the handler when the give-up is the final attempt', async () => {
+      vi.mocked(acquireLock).mockResolvedValue(null);
+      const onLockRetryBudgetExhausted = vi.fn().mockResolvedValue(undefined);
+      const registered = {
+        handler: vi.fn(async () => ({ ok: true })),
+        lockOptions: {
+          lockKey: () => 'lock:wallet-final',
+          lockTtlMs: 5_000,
+          retryDelayMsIfUnavailable: () => 5_000,
+          onLockRetryBudgetExhausted,
+        },
+      };
+      const job: any = {
+        id: 'final-job',
+        data: { walletId: 'wallet-final' },
+        token: 'worker-token',
+        timestamp: Date.now() - 5_001,
+        attemptsMade: 2,
+        opts: { attempts: 3 },
+        moveToDelayed: vi.fn().mockResolvedValue(undefined),
+        updateData: vi.fn().mockResolvedValue(undefined),
+      };
+
+      await expect(processJobWithLock('sync:final', registered as any, job))
+        .rejects.toHaveProperty('name', 'LockRetryBudgetExhaustedError');
+      expect(onLockRetryBudgetExhausted).toHaveBeenCalledWith(
+        { walletId: 'wallet-final' },
+        expect.objectContaining({ isFinalAttempt: true }),
+      );
+    });
+
+    it('still fails the job when recording the terminal outcome throws', async () => {
+      vi.mocked(acquireLock).mockResolvedValue(null);
+      const registered = {
+        handler: vi.fn(async () => ({ ok: true })),
+        lockOptions: {
+          lockKey: () => 'lock:wallet-record-fails',
+          lockTtlMs: 5_000,
+          maxLockRetryWindowMs: 1,
+          retryDelayMsIfUnavailable: () => 5_000,
+          onLockRetryBudgetExhausted: vi.fn().mockRejectedValue(new Error('database down')),
+        },
+      };
+      const job: any = {
+        id: 'record-fails-job',
+        data: { walletId: 'wallet-record-fails' },
+        token: 'worker-token',
+        timestamp: Date.now() - 1_000,
+        moveToDelayed: vi.fn().mockResolvedValue(undefined),
+        updateData: vi.fn(),
+      };
+
+      // The give-up is what releases the deduplication key. A bookkeeping
+      // failure must not turn it back into an unbounded re-delay.
+      await expect(processJobWithLock('sync:record-fails', registered as any, job))
+        .rejects.toHaveProperty('name', 'LockRetryBudgetExhaustedError');
+      expect(capturedLogs).toContainEqual(expect.objectContaining({
+        level: 'error',
+        message: expect.stringContaining('Failed to record lock retry budget exhaustion'),
+      }));
+    });
+
+    it('honours an explicit re-delay window over the lock TTL', async () => {
+      vi.mocked(acquireLock).mockResolvedValue(null);
+      const registered = {
+        handler: vi.fn(async () => ({ ok: true })),
+        lockOptions: {
+          lockKey: () => 'lock:wallet-window',
+          lockTtlMs: 600_000,
+          maxLockRetryWindowMs: 5_000,
+          retryDelayMsIfUnavailable: () => 5_000,
+        },
+      };
+      const job: any = {
+        id: 'window-job',
+        data: { walletId: 'wallet-window' },
+        token: 'worker-token',
+        timestamp: Date.now(),
+        moveToDelayed: vi.fn().mockResolvedValue(undefined),
+        updateData: vi.fn().mockResolvedValue(undefined),
+      };
+
+      await expect(processJobWithLock('sync:window', registered as any, job))
+        .rejects.toHaveProperty('name', 'DelayedError');
+
+      // Past the explicit 5s window but far inside the 600s lock TTL.
+      job.timestamp = Date.now() - 5_001;
+      await expect(processJobWithLock('sync:window', registered as any, job))
+        .rejects.toThrow('lock:wallet-window');
+      expect(job.moveToDelayed).toHaveBeenCalledTimes(1);
+    });
+
+    it('re-delays a job whose payload names no wallet', async () => {
+      // Lock scoping is a handler convention, not a queue guarantee; a payload
+      // without a walletId must still get its re-delay rather than crash.
+      vi.mocked(acquireLock).mockResolvedValue(null);
+      const registered = {
+        handler: vi.fn(async () => ({ ok: true })),
+        lockOptions: {
+          lockKey: () => 'lock:anonymous',
+          lockTtlMs: 20_000,
+          retryDelayMsIfUnavailable: () => 5_000,
+        },
+      };
+      const job: any = {
+        id: 'anonymous-job',
+        data: { reason: 'manual' },
+        token: 'worker-token',
+        timestamp: Date.now(),
+        moveToDelayed: vi.fn().mockResolvedValue(undefined),
+      };
+
+      await expect(processJobWithLock('sync:anonymous', registered as any, job))
+        .rejects.toHaveProperty('name', 'DelayedError');
+      expect(job.moveToDelayed).toHaveBeenCalledTimes(1);
+    });
+
+    it('treats a job with no declared attempts as single-shot', async () => {
+      vi.mocked(acquireLock).mockResolvedValue(null);
+      const onLockRetryBudgetExhausted = vi.fn().mockResolvedValue(undefined);
+      const registered = {
+        handler: vi.fn(async () => ({ ok: true })),
+        lockOptions: {
+          lockKey: () => 'lock:no-attempts',
+          lockTtlMs: 5_000,
+          retryDelayMsIfUnavailable: () => 5_000,
+          onLockRetryBudgetExhausted,
+        },
+      };
+      const job: any = {
+        id: 'no-attempts-job',
+        data: 'not-a-record',
+        token: 'worker-token',
+        timestamp: Date.now() - 5_001,
+        attemptsMade: 0,
+        opts: {},
+        moveToDelayed: vi.fn().mockResolvedValue(undefined),
+      };
+
+      await expect(processJobWithLock('sync:no-attempts', registered as any, job))
+        .rejects.toHaveProperty('name', 'LockRetryBudgetExhaustedError');
+      expect(onLockRetryBudgetExhausted).toHaveBeenCalledWith(
+        'not-a-record',
+        expect.objectContaining({ isFinalAttempt: true }),
+      );
     });
 
     it('rejects without running the handler when lock authority is unavailable', async () => {

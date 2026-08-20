@@ -46,6 +46,26 @@ describe('SubNavItem branch coverage', () => {
     expect(screen.getByTestId('badge')).toHaveTextContent('critical:3');
   });
 
+  it('shows a human-readable status-dot title, falling back to the state name', () => {
+    render(
+      <SubNavItem
+        to="/wallets/3"
+        label="Wallet 3"
+        statusDot="retrying"
+        statusDotTitle="electrum handshake timed out"
+      />
+    );
+
+    expect(screen.getByTitle('electrum handshake timed out')).toBeInTheDocument();
+    expect(screen.queryByTitle('retrying')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the state name when no title is supplied', () => {
+    render(<SubNavItem to="/wallets/4" label="Wallet 4" statusDot="pending" />);
+
+    expect(screen.getByTitle('pending')).toBeInTheDocument();
+  });
+
   it('covers icon-absent path and default warning badge severity', () => {
     routerState.pathname = '/somewhere-else';
 

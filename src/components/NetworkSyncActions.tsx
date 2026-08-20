@@ -9,6 +9,7 @@ export type { NetworkSyncActionsProps } from './NetworkSyncActions/types';
 export const NetworkSyncActions: React.FC<NetworkSyncActionsProps> = ({
   network,
   walletCount,
+  wallets,
   className = '',
   compact = false,
   onSyncStarted,
@@ -16,6 +17,7 @@ export const NetworkSyncActions: React.FC<NetworkSyncActionsProps> = ({
   const actions = useNetworkSyncActions({
     network,
     walletCount,
+    wallets,
     onSyncStarted,
   });
 

@@ -61,6 +61,13 @@ export interface ResyncNetworkResponse extends QueueNetworkSyncResponse {
     walletId: string;
     reason: 'queue_state_unknown';
   }>;
+  /** Wallets the user owns that no network resync can reach. */
+  excludedWallets: ExcludedWallet[];
+}
+
+export interface ExcludedWallet {
+  walletId: string;
+  reason: 'network_not_syncable';
 }
 
 export interface NetworkSyncStatusResponse {
@@ -101,6 +108,21 @@ async function requireWalletAccess(walletId: string, userId: string): Promise<vo
   if (!wallet) {
     throw new NotFoundError('Wallet not found');
   }
+}
+
+/**
+ * Wallets the user can see but no network resync can ever reach, because their
+ * network is outside the syncable set. They are absent from every batch rather
+ * than rejected by one, so a queued count alone silently omits them.
+ */
+async function findWalletsExcludedFromSync(userId: string): Promise<ExcludedWallet[]> {
+  const wallets = await walletRepository.findAccessibleWithSelect(
+    userId,
+    { id: true },
+    { network: { notIn: [...SYNC_NETWORKS] } },
+  );
+
+  return wallets.map(({ id }) => ({ walletId: id, reason: 'network_not_syncable' as const }));
 }
 
 async function getSyncStaggerDelayMs(): Promise<number> {
@@ -290,7 +312,13 @@ export class SyncCoordinator {
       throw new InvalidInputError('Full resync requires X-Confirm-Resync: true header');
     }
 
-    const wallets = await walletRepository.findByNetworkWithSyncStatus(userId, syncNetwork);
+    const [wallets, excludedWallets] = await Promise.all([
+      walletRepository.findByNetworkWithSyncStatus(userId, syncNetwork),
+      findWalletsExcludedFromSync(userId),
+    ]);
+    const exclusionClause = excludedWallets.length > 0
+      ? `${walletCountLabel(excludedWallets.length)} not on a syncable network`
+      : null;
 
     if (wallets.length === 0) {
       return {
@@ -301,7 +329,10 @@ export class SyncCoordinator {
         deduplicatedWalletIds: [],
         rejectedWallets: [],
         indeterminateWallets: [],
-        message: `No ${syncNetwork} wallets found`,
+        excludedWallets,
+        message: exclusionClause
+          ? `No ${syncNetwork} wallets found; ${exclusionClause}.`
+          : `No ${syncNetwork} wallets found`,
       };
     }
 
@@ -314,10 +345,9 @@ export class SyncCoordinator {
       reason: `manual-network-resync:${syncNetwork}`,
       staggerDelayMs,
     });
-    const queuedWalletIds = result.outcomes
-      .filter(outcome => outcome.status === 'accepted' || outcome.status === 'deduplicated')
-      .map(outcome => outcome.walletId);
-    if (queuedWalletIds.length === 0) {
+    const retainedWalletCount = result.acceptedWalletIds.length
+      + result.deduplicatedWalletIds.length;
+    if (retainedWalletCount === 0) {
       throw new ServiceUnavailableError(
         'Full resync queue is unavailable or could not be confirmed',
         undefined,
@@ -328,11 +358,15 @@ export class SyncCoordinator {
     return {
       success: true,
       queued: result.acceptedWalletIds.length,
-      walletIds: queuedWalletIds,
+      // Deduplicated wallets are reported in their own bucket: folding them in
+      // here would claim work was queued for a wallet that may already be wedged
+      // behind the retained job.
+      walletIds: result.acceptedWalletIds,
       acceptedWalletIds: result.acceptedWalletIds,
       deduplicatedWalletIds: result.deduplicatedWalletIds,
       rejectedWallets: result.rejectedWallets,
       indeterminateWallets: result.indeterminateWallets,
+      excludedWallets,
       message: [
         `Queued ${walletCountLabel(result.acceptedWalletIds.length)}`,
         `${walletCountLabel(result.deduplicatedWalletIds.length)} already queued`,
@@ -342,6 +376,7 @@ export class SyncCoordinator {
         ...(result.indeterminateWallets.length > 0
           ? [`${walletCountLabel(result.indeterminateWallets.length)} queue state unknown`]
           : []),
+        ...(exclusionClause ? [exclusionClause] : []),
       ].join('; ') + '.',
     };
   }

@@ -127,7 +127,7 @@ describe('useWebSocketQueryInvalidation branch coverage', () => {
         data: {
           walletId: 'wallet-1',
           inProgress: false,
-          status: 'complete',
+          status: 'success',
         },
       });
     });
@@ -138,11 +138,57 @@ describe('useWebSocketQueryInvalidation branch coverage', () => {
     const detailComplete = detailUpdaterComplete?.({ id: 'wallet-1', syncInProgress: true });
 
     expect(listComplete[0].syncInProgress).toBe(false);
-    expect(listComplete[0].lastSyncStatus).toBe('complete');
+    expect(listComplete[0].lastSyncStatus).toBe('success');
     expect(typeof listComplete[0].lastSyncedAt).toBe('string');
 
     expect(detailComplete.syncInProgress).toBe(false);
-    expect(detailComplete.lastSyncStatus).toBe('complete');
+    expect(detailComplete.lastSyncStatus).toBe('success');
     expect(typeof detailComplete.lastSyncedAt).toBe('string');
+  });
+
+  it('does not stamp a fresh sync time onto a wallet whose sync just failed', () => {
+    renderHook(() => useWebSocketQueryInvalidation());
+
+    act(() => {
+      emit('sync', {
+        event: 'sync',
+        data: { walletId: 'wallet-1', inProgress: false, status: 'failed' },
+      });
+    });
+
+    const listFailed = getUpdater(['wallets', 'list'])?.([
+      { id: 'wallet-1', syncInProgress: true, lastSyncedAt: '2026-01-01T00:00:00.000Z' },
+    ]);
+    const detailFailed = getUpdater(['wallets', 'detail', 'wallet-1'])?.({
+      id: 'wallet-1',
+      syncInProgress: true,
+      lastSyncedAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    expect(listFailed[0].lastSyncStatus).toBe('failed');
+    expect(listFailed[0].lastSyncedAt).toBe('2026-01-01T00:00:00.000Z');
+    expect(detailFailed.lastSyncedAt).toBe('2026-01-01T00:00:00.000Z');
+  });
+
+  it('prefers a server-supplied sync time over the client clock', () => {
+    renderHook(() => useWebSocketQueryInvalidation());
+
+    act(() => {
+      emit('sync', {
+        event: 'sync',
+        data: {
+          walletId: 'wallet-1',
+          inProgress: false,
+          status: 'success',
+          lastSyncedAt: '2026-08-19T10:00:00.000Z',
+        },
+      });
+    });
+
+    const listUpdated = getUpdater(['wallets', 'list'])?.([
+      { id: 'wallet-1', syncInProgress: true },
+    ]);
+
+    expect(listUpdated[0].lastSyncedAt).toBe('2026-08-19T10:00:00.000Z');
   });
 });

@@ -223,6 +223,13 @@ vi.mock('../../../src/observability/metrics/helpers', () => ({
   updateJobQueueMetrics: vi.fn(),
 }));
 
+// The worker publishes its WebSocket events onto the Redis bridge. The real
+// module reaches the un-mocked infrastructure/redis and metrics graph.
+vi.mock('../../../src/websocket/redisBridge', () => ({
+  initializeRedisBridge: vi.fn(async () => undefined),
+  shutdownRedisBridge: vi.fn(async () => undefined),
+}));
+
 vi.mock('../../../src/services/supportPackage/captureRuntime', () => ({
   startCaptureParticipant: mocks.startCaptureParticipant, stopCaptureParticipant: mocks.stopCaptureParticipant,
 }));

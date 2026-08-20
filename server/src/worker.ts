@@ -71,6 +71,7 @@ import { getTelegramTransportDiagnostics } from './services/telegram/api';
 import { WorkerHeartbeatWriter } from './services/workerHeartbeatRegistry';
 import type { WorkerDiagnosticsResponse } from './internal/workerDiagnostics/protocol';
 import { startCaptureParticipant, stopCaptureParticipant } from './services/supportPackage/captureRuntime';
+import { initializeRedisBridge, shutdownRedisBridge } from './websocket/redisBridge';
 
 const log = createLogger('WORKER');
 
@@ -89,12 +90,35 @@ let shutdownExitCode: 0 | 1 = 0;
 let recurringScheduleCoordinator: RecurringScheduleCoordinator | null = null;
 let workerStartedAt = 0;
 let diagnosticHeartbeat: WorkerHeartbeatWriter | null = null;
+let stopUiEventBridge: (() => Promise<void>) | null = null;
 
 // Reconciliation interval - clean up stale subscriptions every 15 minutes
 const RECONCILIATION_INTERVAL_MS = 15 * 60 * 1000;
 
 function toBullPriority(priority: SyncPriority): number {
   return SYNC_PRIORITY_BULLMQ_PRIORITY[priority];
+}
+
+/**
+ * Start publishing this process's WebSocket events onto the Redis bridge.
+ *
+ * The worker serves no WebSocket clients, so every broadcast it makes - sync
+ * status, wallet logs, transaction and balance updates - would otherwise be
+ * dropped. Publishing onto the bridge hands them to the API process, which fans
+ * them out to the browsers connected to it.
+ *
+ * Best-effort: losing the UI channel costs visibility, never the background
+ * work itself, so it must never fail startup.
+ */
+async function startUiEventBridge(): Promise<void> {
+  try {
+    await initializeRedisBridge({ publishOnly: true });
+    stopUiEventBridge = shutdownRedisBridge;
+  } catch (error) {
+    log.error('WebSocket bridge unavailable, worker events will not reach the UI', {
+      error: getErrorMessage(error),
+    });
+  }
 }
 
 function getWorkerDiagnosticsSnapshot(
@@ -157,6 +181,8 @@ async function startWorker(): Promise<void> {
   }
   initializeDistributedLock('redis-required');
   initializeNotificationTelemetry('worker');
+
+  const uiEventBridgeStarted = startUiEventBridge();
   log.info('Redis connected');
 
   // Observe capture arms before BullMQ can consume any retained notification jobs.
@@ -196,7 +222,9 @@ async function startWorker(): Promise<void> {
   );
   await featureFlagService.initialize();
   // Retained jobs can execute only after the durable feature snapshot is
-  // installed, conditional schedules converge, and the worker acknowledges it.
+  // installed, conditional schedules converge, the worker acknowledges it, and
+  // their progress has somewhere to be reported.
+  await uiEventBridgeStarted;
   jobQueue.startConsumers();
 
   // Initialize Electrum subscription manager
@@ -559,6 +587,16 @@ async function shutdown(signal: string, exitCode: 0 | 1 = 0): Promise<void> {
     await shutdownNotificationDispatcher();
   } catch (err) {
     log.error('Error shutting down notification dispatcher', { error: getErrorMessage(err) });
+  }
+
+  // Stop publishing WebSocket events before the shared Redis client closes
+  if (stopUiEventBridge) {
+    try {
+      await stopUiEventBridge();
+    } catch (err) {
+      log.error('Error shutting down Redis WebSocket bridge', { error: getErrorMessage(err) });
+    }
+    stopUiEventBridge = null;
   }
 
   // Shutdown distributed locking

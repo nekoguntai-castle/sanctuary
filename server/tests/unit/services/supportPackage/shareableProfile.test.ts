@@ -41,6 +41,7 @@ describe('assembled shareable support profile', () => {
         'notificationTelemetry',
         'notificationWorker',
         'notificationWorkerFleet',
+        'walletSync',
       ]);
       for (const forbidden of [
         secret,

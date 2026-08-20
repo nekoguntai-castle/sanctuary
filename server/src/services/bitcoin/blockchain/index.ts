@@ -35,6 +35,7 @@ export {
   getCachedBlockHeight,
   setCachedBlockHeight,
   getBlockHeight,
+  assertChainReachable,
   getBlockTimestamp,
   type Network,
 } from '../utils/blockHeight';

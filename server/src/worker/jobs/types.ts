@@ -35,7 +35,27 @@ export interface WorkerJobHandler<T = unknown, R = void> {
     lockTtlMs?: number;
     /** Delay without consuming an attempt when lock contention must retain work. */
     retryDelayMsIfUnavailable?: (data: T) => number | null;
+    /** Wall-clock budget for re-delaying under contention (default: the lock TTL). */
+    maxLockRetryWindowMs?: number;
+    /** Record what abandoning the job means for the resource the lock guards. */
+    onLockRetryBudgetExhausted?: (
+      data: unknown,
+      detail: LockRetryBudgetExhaustedDetail,
+    ) => Promise<void>;
   };
+}
+
+/** What the processor can tell a handler about a give-up on lock contention. */
+export interface LockRetryBudgetExhaustedDetail {
+  lockKey: string;
+  retryWindowMs: number;
+  message: string;
+  /**
+   * Whether the queue will retry this job. Giving up on the lock still throws,
+   * which consumes one BullMQ attempt of several - so a handler that reports
+   * the outcome must not claim the retries are spent when they are not.
+   */
+  isFinalAttempt: boolean;
 }
 
 /**

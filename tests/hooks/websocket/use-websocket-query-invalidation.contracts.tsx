@@ -365,7 +365,7 @@ function registerSyncEventHandlingTests(): void {
         data: {
           walletId: 'wallet-789',
           inProgress: false,
-          status: 'complete',
+          status: 'success',
         },
       };
 
@@ -391,7 +391,9 @@ function registerSyncEventHandlingTests(): void {
       const result = listUpdater(mockWallets);
 
       expect(result[0].syncInProgress).toBe(false);
-      expect(result[0].lastSyncStatus).toBe('complete');
+      expect(result[0].lastSyncStatus).toBe('success');
+      // Stamped only because the sync succeeded; a `failed` terminal event
+      // must leave the previous timestamp alone.
       expect(result[0].lastSyncedAt).toBeDefined();
       expect(result[1].syncInProgress).toBe(false); // Unchanged
     });

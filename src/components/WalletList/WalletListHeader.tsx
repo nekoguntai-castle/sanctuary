@@ -2,6 +2,7 @@ import { ArrowUpDown, LayoutGrid, List as ListIcon, Plus, Upload } from 'lucide-
 import { Button } from '../ui/Button';
 import { ColumnConfigButton } from '../ui/ColumnConfigButton';
 import { NetworkSyncActions } from '../NetworkSyncActions';
+import type { NetworkSyncWallet } from '../NetworkSyncActions/types';
 import {
   DEFAULT_WALLET_COLUMN_ORDER,
   DEFAULT_WALLET_VISIBLE_COLUMNS,
@@ -19,6 +20,7 @@ export function WalletListHeader({
   setViewMode,
   setSort,
   filteredWalletCount,
+  filteredWallets,
   columnOrder,
   visibleColumns,
   onColumnOrderChange,
@@ -35,6 +37,8 @@ export function WalletListHeader({
   setViewMode: (mode: WalletViewMode) => void;
   setSort: (field: WalletSortField, order: WalletSortOrder) => void;
   filteredWalletCount: number;
+  /** Names the wallets a partial batch could not queue. */
+  filteredWallets: NetworkSyncWallet[];
   columnOrder: string[];
   visibleColumns: string[];
   onColumnOrderChange: (newOrder: string[]) => void;
@@ -72,6 +76,7 @@ export function WalletListHeader({
           <NetworkSyncActions
             network={selectedNetwork}
             walletCount={filteredWalletCount}
+            wallets={filteredWallets}
             compact={true}
             onSyncStarted={onSyncStarted}
           />

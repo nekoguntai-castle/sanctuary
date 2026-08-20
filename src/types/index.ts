@@ -500,11 +500,16 @@ export interface Wallet {
   createdAt?: string;
   lastSyncedAt?: string | null;
   lastSyncedBlockHeight?: number | null;
+  // The `| string` arm makes this union documentation, not a constraint — it
+  // is kept because the server may write a value this build predates. Every
+  // one of these is handled by `utils/walletSyncPresentation`; `'partial'` is
+  // legacy and has no current server writer.
   lastSyncStatus?:
     | "success"
     | "failed"
     | "partial"
     | "retrying"
+    | "resyncing"
     | string
     | null;
   lastSyncError?: string | null;

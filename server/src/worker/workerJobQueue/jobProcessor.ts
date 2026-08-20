@@ -14,12 +14,17 @@ import {
   type DistributedLock,
 } from '../../infrastructure/distributedLock';
 import { createLogger } from '../../utils/logger';
+import { getErrorMessage } from '../../utils/errors';
 import type { JobExecutionContext } from '../jobs/types';
 import { hardTerminateProcess, type HardTerminate } from './hardTermination';
 import type { RegisteredHandler } from './types';
 
 const log = createLogger('WORKER:QUEUE_PROCESSOR');
 const DEFAULT_LOCK_TTL_MS = 5 * 60 * 1000;
+// BullMQ never advances attemptsMade for a DelayedError, so the queue itself
+// remembers nothing about how long a job has been bouncing off a held lock.
+// The job's own enqueue timestamp is the honest clock: it needs no payload
+// mutation, survives DLQ replay, and cannot be left stale by a later attempt.
 
 // Legal paths are owned -> settling -> settled for normal completion and
 // owned -> lost for fatal ownership loss. Only settling may release a token.
@@ -33,6 +38,22 @@ export interface JobProcessorDependencies {
     extend: typeof extendLock;
     release: typeof releaseLock;
   };
+}
+
+class LockRetryBudgetExhaustedError extends Error {
+  constructor(handlerKey: string, lockKey: string, retryWindowMs: number) {
+    super(
+      `Lock ${lockKey} for ${handlerKey} stayed held for the whole ${retryWindowMs}ms ` +
+      'retry budget; failing the job so it can finalize.'
+    );
+    this.name = 'LockRetryBudgetExhaustedError';
+  }
+}
+
+/** Best-effort: job payloads are only conventionally wallet-scoped. */
+function readWalletId(data: unknown): string | undefined {
+  const walletId = (data as { walletId?: unknown } | null | undefined)?.walletId;
+  return typeof walletId === 'string' ? walletId : undefined;
 }
 
 class LockOwnershipLostError extends Error {
@@ -122,12 +143,57 @@ export async function processJobWithLock(
   };
   let lock = await lockOperations.acquire(lockKey, { ttlMs: lockTtlMs });
   if (!lock) {
-    log.debug(`Skipping job - lock held: ${handlerKey}`, { jobId: job.id, lockKey });
+    const walletId = readWalletId(job.data);
     const retryDelayMs = registered.lockOptions.retryDelayMsIfUnavailable?.(job.data);
     if (retryDelayMs !== null && retryDelayMs !== undefined) {
+      const retryWindowMs = registered.lockOptions.maxLockRetryWindowMs ?? lockTtlMs;
+      // Measured from when the job was enqueued, not from a counter in the
+      // payload: a counter is never reset once the lock is finally acquired, so
+      // a job that contends, runs, fails and is retried would start its next
+      // attempt with a spent budget - and it would ride into the DLQ and back.
+      const waitedMs = Date.now() - job.timestamp;
+      if (waitedMs >= retryWindowMs) {
+        log.error(`Lock retry budget exhausted - failing job: ${handlerKey}`, {
+          jobId: job.id,
+          lockKey,
+          walletId,
+          waitedMs,
+          retryWindowMs,
+        });
+        const exhausted = new LockRetryBudgetExhaustedError(handlerKey, lockKey, retryWindowMs);
+        try {
+          const attempts = typeof job.opts.attempts === 'number' ? job.opts.attempts : 1;
+          await registered.lockOptions.onLockRetryBudgetExhausted?.(job.data, {
+            lockKey,
+            retryWindowMs,
+            message: exhausted.message,
+            isFinalAttempt: job.attemptsMade + 1 >= attempts,
+          });
+        } catch (error) {
+          // Recording the outcome is bookkeeping. Failing the job is what
+          // releases the deduplication key, so it happens either way.
+          log.error(`Failed to record lock retry budget exhaustion: ${handlerKey}`, {
+            jobId: job.id,
+            lockKey,
+            walletId,
+            error: getErrorMessage(error),
+          });
+        }
+        throw exhausted;
+      }
+      log.debug(`Delaying job - lock held: ${handlerKey}`, {
+        jobId: job.id,
+        lockKey,
+        walletId,
+        waitedMs,
+        retryWindowMs,
+      });
       await job.moveToDelayed(Date.now() + retryDelayMs, job.token);
       throw new DelayedError();
     }
+    // The job resolves having done nothing, so this is the only record that the
+    // wallet was passed over.
+    log.warn(`Skipping job - lock held: ${handlerKey}`, { jobId: job.id, lockKey, walletId });
     return { skipped: true, reason: 'lock_held' };
   }
 

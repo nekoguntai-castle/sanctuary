@@ -104,6 +104,11 @@ export interface NetworkResyncResult {
     walletId: string;
     reason: 'queue_state_unknown';
   }>;
+  /** Wallets the user owns that no network resync can reach (e.g. regtest). */
+  excludedWallets: Array<{
+    walletId: string;
+    reason: 'network_not_syncable';
+  }>;
   message?: string;
 }
 

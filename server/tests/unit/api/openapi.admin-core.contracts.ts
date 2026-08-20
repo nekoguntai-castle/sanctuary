@@ -256,6 +256,7 @@ export function registerOpenApiAdminCoreTests() {
       'notificationTelemetry',
       'notificationWorker',
       'notificationWorkerFleet',
+      'walletSync',
     ]);
     expect(packageSchema.properties.collectors.additionalProperties).toBe(false);
     for (const section of Object.values(packageSchema.properties.collectors.properties)) {
@@ -333,6 +334,9 @@ export function registerOpenApiAdminCoreTests() {
       'worker_notification_capability',
       'worker_delivery_aggregates',
       'worker_delivery',
+      'wallet_sync_state',
+      'wallet_full_resync_intent',
+      'wallet_sync_execution',
     ]);
 
     const queueRetention =

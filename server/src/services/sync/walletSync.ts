@@ -20,6 +20,7 @@ import {
 } from "../../websocket/notifications";
 import { createLogger } from "../../utils/logger";
 import { getErrorMessage } from "../../utils/errors";
+import { withTimeout } from "../../utils/async";
 import { getConfig } from "../../config";
 import { eventService } from "../eventService";
 import { recordSyncFailure } from "../deadLetterQueue";
@@ -95,6 +96,13 @@ export async function releaseSyncLock(
   }
   state.activeSyncs.delete(walletId);
 }
+
+/**
+ * How long a cancelled sync may take to unwind before the lock is reclaimed
+ * anyway. Cancellation is cooperative, so a call blocked below the pipeline's
+ * checkpoints would otherwise hold the lock — and the wallet — forever.
+ */
+const SYNC_ABORT_GRACE_MS = 30_000;
 
 /**
  * Get wallet balance from UTXOs, separated into confirmed and unconfirmed.
@@ -184,9 +192,14 @@ export async function executeSyncJob(
       previousBalances.confirmed + previousBalances.unconfirmed;
 
     // Execute sync and keep lock ownership until the underlying promise settles.
-    // Important: Promise.race timeouts do not cancel syncWallet(), which could otherwise
-    // keep mutating DB after lock release and race with retries/other workers.
-    const syncPromise = syncWallet(walletId);
+    // The timeout cancels rather than merely observing: the lock and the
+    // in-memory activeSyncs entry are released in the finally below, which a
+    // promise that never settles never reaches. Leaving that entry behind
+    // wedges the wallet for the life of the process, because acquireSyncLock
+    // short-circuits on it before ever consulting Redis - so every later sync
+    // returns "Already syncing" long after the Redis lock TTL has expired.
+    const abortController = new AbortController();
+    const syncPromise = syncWallet(walletId, 0, abortController.signal);
     let timeoutHandle: NodeJS.Timeout | null = null;
     const timeoutPromise = new Promise<{ timedOut: true }>((resolve) => {
       timeoutHandle = setTimeout(
@@ -205,16 +218,31 @@ export async function executeSyncJob(
     }
 
     if (raced.timedOut) {
+      const timeoutSeconds = Math.round(syncConfig.maxSyncDurationMs / 1000);
       log.warn(
-        `[SYNC] Wallet ${walletId} exceeded configured sync threshold (${syncConfig.maxSyncDurationMs / 1000}s); waiting for completion`,
+        `[SYNC] Wallet ${walletId} exceeded configured sync threshold (${timeoutSeconds}s); cancelling`,
       );
       walletLog(
         walletId,
         "warn",
         "SYNC",
-        `Sync is taking longer than expected (${Math.round(syncConfig.maxSyncDurationMs / 1000)}s), continuing...`,
+        `Sync exceeded the ${timeoutSeconds}s limit and was cancelled`,
       );
-      result = await syncPromise;
+      abortController.abort(
+        new Error(`Sync exceeded the ${timeoutSeconds}s limit and was cancelled`),
+      );
+      // Cancellation is cooperative - the pipeline checks the signal at phase
+      // boundaries. Bound the wait so a call stuck below those checkpoints
+      // cannot hold the lock open indefinitely either. Abandoning the promise
+      // risks a late write after the lock is released; that is the lesser evil,
+      // because the Redis lock has a TTL while a leaked activeSyncs entry does
+      // not and would wedge the wallet for the life of the process.
+      // withTimeout keeps the abandoned rejection handled on our behalf.
+      result = await withTimeout(
+        syncPromise,
+        SYNC_ABORT_GRACE_MS,
+        `Sync exceeded the ${timeoutSeconds}s limit and did not respond to cancellation`,
+      );
     } else {
       result = raced.value;
     }

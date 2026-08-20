@@ -309,7 +309,7 @@ describe('wallet cache helper hooks', () => {
     expect(detailAfterStart.syncInProgress).toBe(true);
     expect(detailAfterStart.lastSyncStatus).toBe('syncing');
 
-    act(() => result.current('w1', false));
+    act(() => result.current('w1', false, 'success'));
     const listAfterFinish = queryClient.getQueryData(walletKeys.lists()) as any[];
     const detailAfterFinish = queryClient.getQueryData(walletKeys.detail('w1')) as any;
     expect(listAfterFinish[0].syncInProgress).toBe(false);
@@ -318,6 +318,45 @@ describe('wallet cache helper hooks', () => {
     expect(detailAfterFinish.lastSyncedAt).toEqual(expect.any(String));
     expect(new Date(listAfterFinish[0].lastSyncedAt).toString()).not.toBe('Invalid Date');
     expect(new Date(detailAfterFinish.lastSyncedAt).toString()).not.toBe('Invalid Date');
+  });
+
+  it('does not stamp a fresh sync time when the sync ended in failure', () => {
+    queryClient.setQueryData(walletKeys.lists(), [
+      { id: 'w1', name: 'Wallet 1', syncInProgress: true, lastSyncedAt: '2026-01-01T00:00:00.000Z' },
+    ]);
+    queryClient.setQueryData(walletKeys.detail('w1'), {
+      id: 'w1',
+      name: 'Wallet 1',
+      syncInProgress: true,
+      lastSyncedAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    const { result } = renderHook(() => useUpdateWalletSyncStatus(), { wrapper: createWrapper(queryClient) });
+
+    act(() => result.current('w1', false, 'failed'));
+
+    const list = queryClient.getQueryData(walletKeys.lists()) as any[];
+    const detail = queryClient.getQueryData(walletKeys.detail('w1')) as any;
+    expect(list[0].lastSyncedAt).toBe('2026-01-01T00:00:00.000Z');
+    expect(detail.lastSyncedAt).toBe('2026-01-01T00:00:00.000Z');
+  });
+
+  it('leaves the sync time alone when a terminal event carries no status', () => {
+    queryClient.setQueryData(walletKeys.lists(), [
+      { id: 'w1', name: 'Wallet 1', syncInProgress: true },
+    ]);
+    queryClient.setQueryData(walletKeys.detail('w1'), {
+      id: 'w1',
+      name: 'Wallet 1',
+      syncInProgress: true,
+    });
+
+    const { result } = renderHook(() => useUpdateWalletSyncStatus(), { wrapper: createWrapper(queryClient) });
+
+    act(() => result.current('w1', false));
+
+    const list = queryClient.getQueryData(walletKeys.lists()) as any[];
+    expect(list[0].lastSyncedAt).toBeUndefined();
   });
 
   it('no-ops sync status cache updates when list/detail caches are missing', () => {

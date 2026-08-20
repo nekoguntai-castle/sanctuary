@@ -151,6 +151,13 @@ export function useUpdateWalletSyncStatus() {
   const queryClient = useQueryClient();
 
   return useCallback((walletId: string, syncInProgress: boolean, lastSyncStatus?: string) => {
+    // Only a success moves the clock. Stamping "now" on every terminal event —
+    // a failure included — made the list claim a wallet had just synced while
+    // the detail page showed the failure that ended it.
+    const syncedAtPatch = !syncInProgress && lastSyncStatus === 'success'
+      ? { lastSyncedAt: new Date().toISOString() }
+      : {};
+
     // Update the wallet list cache
     queryClient.setQueryData(walletKeys.lists(), (oldData: walletsApi.Wallet[] | undefined) => {
       if (!oldData) return oldData;
@@ -160,7 +167,7 @@ export function useUpdateWalletSyncStatus() {
               ...wallet,
               syncInProgress,
               ...(lastSyncStatus && { lastSyncStatus }),
-              ...(!syncInProgress && { lastSyncedAt: new Date().toISOString() }),
+              ...syncedAtPatch,
             }
           : wallet
       );
@@ -173,7 +180,7 @@ export function useUpdateWalletSyncStatus() {
         ...oldData,
         syncInProgress,
         ...(lastSyncStatus && { lastSyncStatus }),
-        ...(!syncInProgress && { lastSyncedAt: new Date().toISOString() }),
+        ...syncedAtPatch,
       };
     });
   }, [queryClient]);

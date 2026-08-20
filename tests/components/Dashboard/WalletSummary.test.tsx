@@ -82,8 +82,8 @@ describe('WalletSummary', () => {
     const user = userEvent.setup();
     const wallets = [
       { id: 'w1', name: 'Alpha', type: 'single_sig', balance: 1000, syncInProgress: true },
-      { id: 'w2', name: 'Beta', type: 'multi_sig', balance: 2000, lastSyncStatus: 'success', lastSyncedAt: new Date('2026-01-01T00:00:00Z').toISOString() },
-      { id: 'w3', name: 'Gamma', type: 'single_sig', balance: 3000, lastSyncStatus: 'failed' },
+      { id: 'w2', name: 'Beta', type: 'multi_sig', balance: 2000, lastSyncStatus: 'success', lastSyncedAt: new Date(Date.now() - 60_000).toISOString() },
+      { id: 'w3', name: 'Gamma', type: 'single_sig', balance: 3000, lastSyncStatus: 'failed', lastSyncError: 'connect ECONNREFUSED 127.0.0.1:50002' },
       { id: 'w4', name: 'Delta', type: 'single_sig', balance: 4000, lastSyncedAt: new Date('2026-01-01T00:00:00Z').toISOString() },
       { id: 'w5', name: 'Epsilon', type: 'single_sig', balance: 5000 },
     ] as any[];
@@ -102,11 +102,15 @@ describe('WalletSummary', () => {
     expect(screen.getByText('Multisig')).toBeInTheDocument();
     expect(screen.getAllByText('Single Sig').length).toBeGreaterThan(0);
 
-    expect(screen.getByText('Syncing in progress\u2026')).toBeInTheDocument();
-    expect(screen.getByText('Sync failed')).toBeInTheDocument();
-    expect(screen.getByText('Never synced')).toBeInTheDocument();
-    expect(screen.getByText(/Last synced:/)).toBeInTheDocument();
-    expect(screen.getByText(/Cached from/)).toBeInTheDocument();
+    expect(screen.getAllByText('Syncing in progress\u2026').length).toBeGreaterThan(0);
+    // The reason, not the bare word "failed" the tooltip used to hardcode.
+    expect(
+      screen.getAllByText('connect ECONNREFUSED 127.0.0.1:50002').length
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText('Sync failed')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Never synced').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Last synced:/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Cached from/).length).toBeGreaterThan(0);
 
     // The name is a real link, so a click on it navigates via the router
     // rather than the row's convenience handler.
@@ -118,6 +122,58 @@ describe('WalletSummary', () => {
     // Clicking elsewhere in the row still navigates.
     await user.click(screen.getByText('Multisig'));
     expect(mockNavigate).toHaveBeenCalledWith('/wallets/w2');
+  });
+
+  it('gives a retrying wallet a failure tone and its reason, not a neutral cached clock', () => {
+    renderWalletSummary(
+      <WalletSummary
+        selectedNetwork="mainnet"
+        filteredWallets={[
+          {
+            id: 'w-retry',
+            name: 'Retry',
+            type: 'single_sig',
+            balance: 1000,
+            lastSyncStatus: 'retrying',
+            lastSyncError: 'electrum handshake timed out',
+            lastSyncedAt: new Date('2026-01-01T00:00:00Z').toISOString(),
+          },
+        ] as any}
+        totalBalance={1000}
+      />
+    );
+
+    expect(
+      screen.getAllByText('electrum handshake timed out').length
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText(/Cached from/)).not.toBeInTheDocument();
+    // Not the neutral `text-sanctuary-400` clock a retrying wallet used to get.
+    expect(
+      document.querySelector('.text-warning-600')
+    ).toBeInTheDocument();
+  });
+
+  it('does not describe a wallet mid-resync as never synced', () => {
+    renderWalletSummary(
+      <WalletSummary
+        selectedNetwork="mainnet"
+        filteredWallets={[
+          {
+            id: 'w-resync',
+            name: 'Resync',
+            type: 'single_sig',
+            balance: 1000,
+            lastSyncStatus: 'resyncing',
+            lastSyncedAt: null,
+            syncInProgress: false,
+          },
+        ] as any}
+        totalBalance={1000}
+      />
+    );
+
+    expect(screen.queryByText('Never synced')).not.toBeInTheDocument();
+    expect(screen.getAllByText(/full resync/i).length).toBeGreaterThan(0);
   });
 
   it('uses zero-percent distribution fallback and success title fallback when totals/sync timestamp are missing', () => {

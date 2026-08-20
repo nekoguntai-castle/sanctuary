@@ -11,7 +11,10 @@ import {
 } from "@sanctuary/shared/constants/sync";
 import type { SyncWalletJobData } from "../worker/jobs/types";
 import { reserveFullResyncGeneration } from "../repositories/resyncRepository";
-import { SYNC_WALLET_JOB_OPTIONS } from "../worker/jobs/jobOptions";
+import {
+  SYNC_WALLET_JOB_OPTIONS,
+  getSyncLockTtlMs,
+} from "../worker/jobs/jobOptions";
 import { isSyncWalletEnvelope } from "./deadLetterJobEnvelope";
 import type { DeadLetterJobEnvelope } from "./deadLetterQueueTypes";
 
@@ -210,6 +213,26 @@ function indeterminateFullResyncOutcome(
   return { walletId, status: "indeterminate", reason: "queue_state_unknown" };
 }
 
+/**
+ * Drop a deduplication key that outlived its job. BullMQ only reaps the key when
+ * the job it names finalizes, so a key naming a job that no longer exists would
+ * block every later resync request for that wallet.
+ */
+async function releaseStaleDeduplicationKey(
+  queue: Queue<SyncWalletJobData>,
+  walletId: string,
+  deduplicationId: string,
+): Promise<void> {
+  try {
+    await queue.removeDeduplicationKey(deduplicationId);
+  } catch (error) {
+    log.warn("Failed to release stale full-resync deduplication key", {
+      walletId,
+      error: getErrorMessage(error),
+    });
+  }
+}
+
 async function reconcileFullResyncEnqueue(
   queue: Queue<SyncWalletJobData>,
   walletId: string,
@@ -232,12 +255,18 @@ async function reconcileFullResyncEnqueue(
     return { walletId, status: "rejected", reason: "queue_error" };
   }
   if (retainedJobId === candidateJobId) {
+    // The key names this candidate, which the lookup above proved absent.
+    await releaseStaleDeduplicationKey(queue, walletId, deduplicationId);
     return indeterminateFullResyncOutcome(walletId);
   }
 
   const retainedJobLookup = await Promise.allSettled([queue.getJob(retainedJobId)]);
   const retainedJob = retainedJobLookup[0];
-  if (retainedJob.status === "rejected" || !retainedJob.value) {
+  if (retainedJob.status === "rejected") {
+    return indeterminateFullResyncOutcome(walletId);
+  }
+  if (!retainedJob.value) {
+    await releaseStaleDeduplicationKey(queue, walletId, deduplicationId);
     return indeterminateFullResyncOutcome(walletId);
   }
 
@@ -283,10 +312,12 @@ async function enqueueFullResyncWallet(
         priority: toBullPriority("high"),
         delay: delayMs,
         jobId: candidateJobId,
-        // Waiting/delayed work deduplicates normally. If the retained job is
-        // already active, BullMQ stores this candidate as the single successor
-        // so a request arriving after reset preparation cannot be lost.
-        deduplication: { id: deduplicationId, keepLastIfActive: true },
+        // The key must expire on its own: BullMQ otherwise reaps it only when
+        // the job it names finalizes, so one wedged job would block this wallet
+        // forever. `keepLastIfActive` is deliberately absent - BullMQ ignores
+        // `ttl` alongside it, and it stores a successor only while the retained
+        // job is active, which a lock-contended job almost never is.
+        deduplication: { id: deduplicationId, ttl: getSyncLockTtlMs() },
       },
     );
     return {

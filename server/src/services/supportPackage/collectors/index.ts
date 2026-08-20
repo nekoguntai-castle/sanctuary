@@ -30,6 +30,7 @@ import './webhooks';
 import './sync';
 import './database';
 import './wallets';
+import './walletSync';
 import './walletLogs';
 import './electrumPool';
 import './jobQueue';

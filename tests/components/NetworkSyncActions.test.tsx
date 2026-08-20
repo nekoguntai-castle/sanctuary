@@ -30,6 +30,7 @@ describe('NetworkSyncActions', () => {
       deduplicatedWalletIds: [],
       rejectedWallets: [],
       indeterminateWallets: [],
+      excludedWallets: [],
     });
   });
 

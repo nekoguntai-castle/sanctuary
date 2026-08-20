@@ -1,0 +1,214 @@
+/**
+ * Privacy-safe database-backed wallet sync collector.
+ *
+ * The legacy `wallets` collector is per-wallet, anonymized-id and raw-error
+ * shaped, so admitting it would fail the final byte scan and reject the whole
+ * package. This collector emits aggregate counts and fixed enum labels only.
+ */
+import { getConfig } from '../../../config';
+import {
+  getWalletSyncAggregates,
+  type WalletSyncAggregates,
+} from '../../../repositories/supportWalletSyncDiagnosticsRepository';
+import { BITCOIN_NETWORKS, type NetworkType } from '@sanctuary/shared/constants/bitcoin';
+import { registerShareableCollector } from './registry';
+import {
+  MAX_WALLET_SYNC_COUNT,
+  WALLET_SYNC_ERROR_CLASSES,
+  walletSyncSchema,
+  type FullResyncDriftBucket,
+  type WalletSyncErrorClass,
+} from './walletSyncSchema';
+
+const MAX_STALE_THRESHOLD_MINUTES = 100_000;
+
+type StatusKey = 'success' | 'failed' | 'retrying' | 'resyncing' | 'never_synced' | 'other';
+type StatusCounts = Record<StatusKey, number>;
+type AgeKey =
+  | 'never'
+  | 'lt_one_hour'
+  | 'one_to_twenty_four_hours'
+  | 'one_to_seven_days'
+  | 'gte_seven_days';
+
+interface NetworkSection {
+  total: number;
+  byStatus: StatusCounts;
+  syncInProgressCount: number;
+  stuckCandidatesCount: number;
+  fullResyncPendingCount: number;
+}
+
+/**
+ * First match wins. Patterns are ordered most specific first so that a message
+ * naming both a subsystem and a symptom is attributed to the subsystem.
+ */
+const ERROR_CLASS_PATTERNS: readonly (readonly [WalletSyncErrorClass, RegExp])[] = [
+  ['lock_contention', /already syncing|sync already in progress|lock held|lock_held/i],
+  ['canonical_evidence_missing', /canonical/i],
+  ['descriptor_policy_missing', /descriptor|policy/i],
+  ['database_unavailable', /prisma|database|connection pool|too many connections/i],
+  [
+    'node_rpc_unavailable',
+    /node rpc|node returned|node configuration|sync is off|bitcoind|bitcoin core/i,
+  ],
+  [
+    'electrum_unavailable',
+    /electrum|socket error|econnrefused|econnreset|ehostunreach|enetunreach|enotfound|epipe|connection (?:closed|ended|not connected)|pool is shutting down|pool request queue/i,
+  ],
+  ['timeout', /timed out|timeout|etimedout/i],
+];
+
+/** Map one `lastSyncError` message to a fixed label; the message is discarded. */
+export function toWalletSyncErrorClass(message: string): WalletSyncErrorClass {
+  for (const [errorClass, pattern] of ERROR_CLASS_PATTERNS) {
+    if (pattern.test(message)) return errorClass;
+  }
+  return 'other';
+}
+
+/** Bucket `requested - processed` full resync generations without exporting either. */
+export function toFullResyncDriftBucket(drift: number): FullResyncDriftBucket {
+  if (!Number.isFinite(drift) || drift <= 0) return 'none';
+  if (drift === 1) return 'one';
+  if (drift <= 5) return 'two_to_five';
+  return 'six_plus';
+}
+
+function boundedCount(value: number): number {
+  return Math.min(Math.max(Math.trunc(value), 0), MAX_WALLET_SYNC_COUNT);
+}
+
+function boundedCounts<Key extends string>(counts: Record<Key, number>): Record<Key, number> {
+  return Object.fromEntries(
+    Object.entries<number>(counts).map(([key, value]) => [key, boundedCount(value)]),
+  ) as Record<Key, number>;
+}
+
+function emptyStatusCounts(): StatusCounts {
+  return { success: 0, failed: 0, retrying: 0, resyncing: 0, never_synced: 0, other: 0 };
+}
+
+function emptyNetworkSection(): NetworkSection {
+  return {
+    total: 0,
+    byStatus: emptyStatusCounts(),
+    syncInProgressCount: 0,
+    stuckCandidatesCount: 0,
+    fullResyncPendingCount: 0,
+  };
+}
+
+function summarize(aggregates: WalletSyncAggregates, staleThresholdMs: number) {
+  const byNetwork = Object.fromEntries(
+    BITCOIN_NETWORKS.map((network) => [network, emptyNetworkSection()]),
+  ) as Record<NetworkType, NetworkSection>;
+  const byStatus = emptyStatusCounts();
+  const lastSyncAgeBuckets: Record<AgeKey, number> = {
+    never: 0,
+    lt_one_hour: 0,
+    one_to_twenty_four_hours: 0,
+    one_to_seven_days: 0,
+    gte_seven_days: 0,
+  };
+  const errorClasses = Object.fromEntries(
+    WALLET_SYNC_ERROR_CLASSES.map((errorClass) => [errorClass, 0]),
+  ) as Record<WalletSyncErrorClass, number>;
+  let totalWallets = 0;
+  let syncInProgressCount = 0;
+  let stuckCandidatesCount = 0;
+  let fullResyncPendingCount = 0;
+  let maxFullResyncDrift = 0;
+  let withSyncError = 0;
+
+  for (const row of aggregates.networks) {
+    totalWallets += row.total;
+    byStatus.success += row.success;
+    byStatus.failed += row.failed;
+    byStatus.retrying += row.retrying;
+    byStatus.resyncing += row.resyncing;
+    byStatus.never_synced += row.neverSynced;
+    byStatus.other += row.otherStatus;
+    lastSyncAgeBuckets.never += row.ageNever;
+    lastSyncAgeBuckets.lt_one_hour += row.ageUnderOneHour;
+    lastSyncAgeBuckets.one_to_twenty_four_hours += row.ageOneToTwentyFourHours;
+    lastSyncAgeBuckets.one_to_seven_days += row.ageOneToSevenDays;
+    lastSyncAgeBuckets.gte_seven_days += row.ageOverSevenDays;
+    syncInProgressCount += row.syncInProgress;
+    stuckCandidatesCount += row.stuckCandidates;
+    fullResyncPendingCount += row.fullResyncPending;
+    maxFullResyncDrift = Math.max(maxFullResyncDrift, row.maxFullResyncDrift);
+    withSyncError += row.withSyncError;
+
+    // `wallets.network` is enum-constrained on write, so an unrecognized value
+    // is retained in the totals rather than given an axis it cannot belong to.
+    const section = byNetwork[row.network as NetworkType];
+    if (!section) continue;
+    section.total += row.total;
+    section.byStatus.success += row.success;
+    section.byStatus.failed += row.failed;
+    section.byStatus.retrying += row.retrying;
+    section.byStatus.resyncing += row.resyncing;
+    section.byStatus.never_synced += row.neverSynced;
+    section.byStatus.other += row.otherStatus;
+    section.syncInProgressCount += row.syncInProgress;
+    section.stuckCandidatesCount += row.stuckCandidates;
+    section.fullResyncPendingCount += row.fullResyncPending;
+  }
+
+  let classified = 0;
+  for (const group of aggregates.errorGroups) {
+    errorClasses[toWalletSyncErrorClass(group.message)] += group.count;
+    classified += group.count;
+  }
+  // Wallets whose failure text fell outside the bounded grouping are still
+  // reported, as unclassified rather than as no failure at all.
+  errorClasses.other += Math.max(0, withSyncError - classified);
+
+  return {
+    observation: 'observed' as const,
+    unit: 'wallet_rows' as const,
+    staleThresholdMinutes: Math.min(
+      Math.max(Math.round(staleThresholdMs / 60_000), 0),
+      MAX_STALE_THRESHOLD_MINUTES,
+    ),
+    totalWallets: boundedCount(totalWallets),
+    byStatus: boundedCounts(byStatus),
+    byNetwork: Object.fromEntries(
+      Object.entries(byNetwork).map(([network, section]) => [network, {
+        total: boundedCount(section.total),
+        byStatus: boundedCounts(section.byStatus),
+        syncInProgressCount: boundedCount(section.syncInProgressCount),
+        stuckCandidatesCount: boundedCount(section.stuckCandidatesCount),
+        fullResyncPendingCount: boundedCount(section.fullResyncPendingCount),
+      }]),
+    ),
+    syncInProgressCount: boundedCount(syncInProgressCount),
+    stuckCandidatesCount: boundedCount(stuckCandidatesCount),
+    lastSyncAgeBuckets: boundedCounts(lastSyncAgeBuckets),
+    fullResync: {
+      pendingCount: boundedCount(fullResyncPendingCount),
+      maxDrift: toFullResyncDriftBucket(maxFullResyncDrift),
+    },
+    errorClasses: boundedCounts(errorClasses),
+  };
+}
+
+async function collectWalletSync() {
+  return Promise.resolve()
+    .then(() => getConfig().sync.staleThresholdMs)
+    .then(async (staleThresholdMs) => walletSyncSchema.parse(
+      summarize(await getWalletSyncAggregates({ staleThresholdMs }), staleThresholdMs),
+    ))
+    // A degraded section keeps the rest of the package generatable.
+    .catch(() => ({ observation: 'unavailable' as const }));
+}
+
+registerShareableCollector('walletSync', {
+  collect: collectWalletSync,
+  schema: walletSyncSchema,
+  sourceProcess: 'database_shared',
+  sourceKind: 'aggregate_query',
+  authoritativeFor: ['wallet_sync_state', 'wallet_full_resync_intent'],
+  notAuthoritativeFor: ['wallet_sync_execution'],
+});

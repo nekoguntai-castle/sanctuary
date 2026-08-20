@@ -363,6 +363,9 @@ const supportPackageAuthority = {
     'worker_notification_capability',
     'worker_delivery_aggregates',
     'worker_delivery',
+    'wallet_sync_state',
+    'wallet_full_resync_intent',
+    'wallet_sync_execution',
   ],
 } as const;
 const provenance = {

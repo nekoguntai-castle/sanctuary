@@ -54,6 +54,38 @@ export function registerSyncServiceExecutionRetryPollingTests(
       expect(result.error).toContain("Already syncing");
     });
 
+    it("releases a wallet whose sync never settles once the duration cap elapses", async () => {
+      // A hung Electrum call leaves syncWallet() pending forever. The lock was
+      // released only in the finally, which that promise never reaches, so the
+      // in-memory activeSyncs entry outlived the Redis lock TTL and every later
+      // sync short-circuited on "Already syncing" for the life of the process.
+      context.syncService["isRunning"] = true;
+      mockPrismaClient.wallet.update.mockResolvedValue({});
+      mockPrismaClient.uTXO.aggregate.mockResolvedValue({
+        _sum: { amount: BigInt(0) },
+      });
+
+      let abortReason: unknown;
+      mockSyncWallet.mockImplementationOnce(
+        (_walletId: unknown, _depth: unknown, signal: unknown) =>
+          new Promise((_resolve, reject) => {
+            (signal as AbortSignal | undefined)?.addEventListener("abort", () => {
+              abortReason = (signal as AbortSignal).reason;
+              reject((signal as AbortSignal).reason);
+            });
+          }),
+      );
+
+      const pending = context.syncService.syncNow("wallet-hung");
+      // maxSyncDurationMs in the harness config; the cap cancels the sync there.
+      await vi.advanceTimersByTimeAsync(120_000);
+      await pending;
+
+      expect(abortReason).toBeDefined();
+      expect(context.syncService["activeSyncs"].has("wallet-hung")).toBe(false);
+      expect(mockReleaseLock).toHaveBeenCalled();
+    });
+
     it("delays and retries once after lock authority recovers", async () => {
       context.syncService["isRunning"] = true;
       mockAcquireLock

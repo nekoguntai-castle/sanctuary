@@ -193,12 +193,25 @@ export const syncSchemas = {
               additionalProperties: false,
             },
           },
+          excludedWallets: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                walletId: { type: "string" },
+                reason: { type: "string", enum: ["network_not_syncable"] },
+              },
+              required: ["walletId", "reason"],
+              additionalProperties: false,
+            },
+          },
         },
         required: [
           "acceptedWalletIds",
           "deduplicatedWalletIds",
           "rejectedWallets",
           "indeterminateWallets",
+          "excludedWallets",
         ],
       },
     ],

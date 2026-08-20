@@ -73,6 +73,7 @@ export function WalletListContent({
         setViewMode={setViewMode}
         setSort={setSort}
         filteredWalletCount={filteredWallets.length}
+        filteredWallets={filteredWallets}
         columnOrder={columnOrder}
         visibleColumns={visibleColumns}
         onColumnOrderChange={onColumnOrderChange}

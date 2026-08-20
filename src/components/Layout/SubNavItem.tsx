@@ -3,13 +3,18 @@ import { Link, useLocation } from 'react-router-dom';
 import { NotificationBadge } from '../NotificationBadge';
 import { SubNavItemProps } from './types';
 
-export const SubNavItem: React.FC<SubNavItemProps> = ({ to, label, icon, activeColorClass, badgeCount, badgeSeverity, statusDot }) => {
+export const SubNavItem: React.FC<SubNavItemProps> = ({ to, label, icon, activeColorClass, badgeCount, badgeSeverity, statusDot, statusDotTitle }) => {
   const location = useLocation();
   const isActive = location.pathname === to;
 
+  // `warning` inverts per mode and declares no 300/400 shade, so shade 500 is
+  // correct in both modes without a `dark:` variant.
   const dotColors = {
     synced: 'bg-success-500',
     syncing: 'bg-primary-500 animate-pulse',
+    resyncing: 'bg-warning-500 animate-pulse',
+    retrying: 'bg-warning-500 animate-pulse',
+    stale: 'bg-warning-500',
     error: 'bg-rose-500',
     pending: 'bg-sanctuary-400',
   };
@@ -33,7 +38,7 @@ export const SubNavItem: React.FC<SubNavItemProps> = ({ to, label, icon, activeC
           <NotificationBadge count={badgeCount!} severity={badgeSeverity || 'warning'} size="sm" />
         )}
         {statusDot && (
-          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotColors[statusDot]}`} title={statusDot} />
+          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotColors[statusDot]}`} title={statusDotTitle ?? statusDot} />
         )}
       </span>
     </Link>

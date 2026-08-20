@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
     .mockResolvedValue([{ id: "job-1" }, { id: "job-2" }]),
   mockQueueGetJob: vi.fn(),
   mockQueueGetDeduplicationJobId: vi.fn(),
+  mockQueueRemoveDeduplicationKey: vi.fn(),
   mockReserveFullResyncGeneration: vi.fn(),
   mockQueueClose: vi.fn().mockResolvedValue(undefined),
   mockGetRedisClient: vi.fn(),
@@ -20,6 +21,7 @@ vi.mock("bullmq", () => ({
       addBulk: mocks.mockQueueAddBulk,
       getJob: mocks.mockQueueGetJob,
       getDeduplicationJobId: mocks.mockQueueGetDeduplicationJobId,
+      removeDeduplicationKey: mocks.mockQueueRemoveDeduplicationKey,
       close: mocks.mockQueueClose,
     };
   }),
@@ -52,7 +54,10 @@ import {
 } from "../../../src/services/workerSyncQueue";
 import { toBullMqJobId } from "../../../src/jobs/bullMqJobIds";
 import { SYNC_PRIORITY_BULLMQ_PRIORITY } from "@sanctuary/shared/constants/sync";
-import { SYNC_WALLET_JOB_OPTIONS } from "../../../src/worker/jobs/jobOptions";
+import {
+  SYNC_WALLET_JOB_OPTIONS,
+  getSyncLockTtlMs,
+} from "../../../src/worker/jobs/jobOptions";
 import type { DeadLetterJobEnvelope } from "../../../src/services/deadLetterQueueTypes";
 import { FULL_RESYNC_GENERATION_MAX } from "../../../src/constants/fullResync";
 
@@ -77,6 +82,7 @@ describe("workerSyncQueue", () => {
     }));
     mocks.mockQueueGetJob.mockResolvedValue(null);
     mocks.mockQueueGetDeduplicationJobId.mockResolvedValue(null);
+    mocks.mockQueueRemoveDeduplicationKey.mockResolvedValue(1);
     mocks.mockReserveFullResyncGeneration.mockResolvedValue(1);
     mocks.mockGetRedisClient.mockReturnValue({
       options: { host: "localhost", port: 6379, db: 0 },
@@ -143,7 +149,7 @@ describe("workerSyncQueue", () => {
         jobId: expect.any(String),
         deduplication: {
           id: toBullMqJobId("full-resync:wallet-1"),
-          keepLastIfActive: true,
+          ttl: getSyncLockTtlMs(),
         },
       }),
     );
@@ -175,10 +181,10 @@ describe("workerSyncQueue", () => {
     ]);
   });
 
-  it("submits a generation-bearing successor when the retained job is active", async () => {
+  it("reports a bounded retained intention when BullMQ returns another job ID", async () => {
     mocks.mockReserveFullResyncGeneration.mockResolvedValueOnce(2);
     mocks.mockQueueAdd.mockImplementationOnce(async () => ({
-      // BullMQ returns active A while keepLastIfActive stores candidate B.
+      // BullMQ returns the retained job A while this candidate B is dropped.
       id: "full-resync-attempt-wallet-1-1",
     }));
 
@@ -201,7 +207,7 @@ describe("workerSyncQueue", () => {
         jobId: toBullMqJobId("full-resync-attempt:wallet-1:2"),
         deduplication: {
           id: toBullMqJobId("full-resync:wallet-1"),
-          keepLastIfActive: true,
+          ttl: getSyncLockTtlMs(),
         },
       }),
     );
@@ -348,6 +354,59 @@ describe("workerSyncQueue", () => {
       reason: "queue_error",
     }]);
     expect(mocks.mockQueueAdd).not.toHaveBeenCalled();
+  });
+
+  it("releases a deduplication key pointing at a job that no longer exists", async () => {
+    mocks.mockQueueAdd.mockRejectedValueOnce(new Error("connection reset"));
+    mocks.mockQueueGetDeduplicationJobId.mockResolvedValueOnce("vanished-job");
+    mocks.mockQueueGetJob.mockResolvedValue(null);
+
+    const result = await enqueueFullResyncBatch(
+      ["wallet-1"],
+      { reason: "manual-resync" },
+    );
+
+    expect(result.outcomes).toEqual([{
+      walletId: "wallet-1",
+      status: "indeterminate",
+      reason: "queue_state_unknown",
+    }]);
+    expect(mocks.mockQueueRemoveDeduplicationKey).toHaveBeenCalledWith(
+      toBullMqJobId("full-resync:wallet-1"),
+    );
+  });
+
+  it("keeps a deduplication key that still points at a live job", async () => {
+    mocks.mockQueueAdd.mockRejectedValueOnce(new Error("connection reset"));
+    mocks.mockQueueGetDeduplicationJobId.mockResolvedValueOnce("active-job");
+    mocks.mockQueueGetJob.mockImplementation(async jobId => (
+      jobId === "active-job"
+        ? { getState: vi.fn().mockResolvedValue("active") }
+        : null
+    ));
+
+    await enqueueFullResyncBatch(["wallet-1"], { reason: "manual-resync" });
+
+    expect(mocks.mockQueueRemoveDeduplicationKey).not.toHaveBeenCalled();
+  });
+
+  it("tolerates a failed deduplication key release", async () => {
+    mocks.mockQueueAdd.mockRejectedValueOnce(new Error("connection reset"));
+    mocks.mockQueueGetDeduplicationJobId.mockResolvedValueOnce("vanished-job");
+    mocks.mockQueueGetJob.mockResolvedValue(null);
+    mocks.mockQueueRemoveDeduplicationKey.mockRejectedValueOnce(
+      new Error("redis unavailable"),
+    );
+
+    const result = await enqueueFullResyncBatch(
+      ["wallet-1"],
+      { reason: "manual-resync" },
+    );
+
+    expect(result.indeterminateWallets).toEqual([{
+      walletId: "wallet-1",
+      reason: "queue_state_unknown",
+    }]);
   });
 
   it("encodes batch sync job IDs under BullMQ bulk opts", async () => {

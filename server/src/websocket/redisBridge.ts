@@ -54,6 +54,20 @@ interface AuthorizationControlEnvelope {
 }
 
 /**
+ * Bridge initialization options
+ */
+export interface RedisWebSocketBridgeOptions {
+  /**
+   * Publish without subscribing.
+   *
+   * The worker process has no WebSocket clients of its own, so it only ever
+   * needs the publisher half. Skipping the subscriber avoids a second Redis
+   * connection that would parse every fleet-wide broadcast and discard it.
+   */
+  publishOnly?: boolean;
+}
+
+/**
  * Callback type for handling remote broadcasts
  */
 type BroadcastHandler = (event: WebSocketEvent) => void;
@@ -88,6 +102,7 @@ class RedisWebSocketBridge {
   private publisher: Redis | null = null;
   private subscriber: Redis | null = null;
   private isInitialized = false;
+  private publishOnly = false;
   private broadcastHandler: BroadcastHandler | null = null;
   private controlHandler: ControlHandler | null = null;
 
@@ -103,7 +118,7 @@ class RedisWebSocketBridge {
    * Initialize the bridge with Redis pub/sub connections
    * Must be called after Redis is connected
    */
-  async initialize(): Promise<void> {
+  async initialize(options: RedisWebSocketBridgeOptions = {}): Promise<void> {
     if (this.isInitialized) {
       log.warn('Redis WebSocket bridge already initialized');
       return;
@@ -121,29 +136,38 @@ class RedisWebSocketBridge {
         return;
       }
 
+      this.publishOnly = options.publishOnly === true;
+
       // Create dedicated pub/sub connections (required by Redis)
       // Subscriber connection enters pub/sub mode and can't be used for other commands
       this.publisher = redisClient.duplicate();
-      this.subscriber = redisClient.duplicate();
+      this.subscriber = this.publishOnly ? null : redisClient.duplicate();
 
       // Wait for connections to be command-ready. Duplicate clients can reach
       // ready before listeners are attached, so handle already-ready clients.
       await Promise.all([
         this.waitForReady(this.publisher, 'Publisher'),
-        this.waitForReady(this.subscriber, 'Subscriber'),
+        ...(this.subscriber ? [this.waitForReady(this.subscriber, 'Subscriber')] : []),
       ]);
 
-      // Subscribe to broadcast channel
-      await this.subscriber.subscribe(WS_BROADCAST_CHANNEL, WS_AUTHORIZATION_CONTROL_CHANNEL);
+      if (this.subscriber) {
+        // Subscribe to broadcast channel
+        await this.subscriber.subscribe(WS_BROADCAST_CHANNEL, WS_AUTHORIZATION_CONTROL_CHANNEL);
 
-      // Handle incoming messages
-      this.subscriber.on('message', (channel: string, message: string) => {
-        if (channel === WS_BROADCAST_CHANNEL) {
-          this.handleBroadcastMessage(message);
-        } else if (channel === WS_AUTHORIZATION_CONTROL_CHANNEL) {
-          void this.handleControlMessage(message);
-        }
-      });
+        // Handle incoming messages
+        this.subscriber.on('message', (channel: string, message: string) => {
+          if (channel === WS_BROADCAST_CHANNEL) {
+            this.handleBroadcastMessage(message);
+          } else if (channel === WS_AUTHORIZATION_CONTROL_CHANNEL) {
+            void this.handleControlMessage(message);
+          }
+        });
+
+        this.subscriber.on('error', (err) => {
+          log.error('Redis WebSocket bridge subscriber error', { error: err.message });
+          this.metrics.errors++;
+        });
+      }
 
       // Handle connection errors
       this.publisher.on('error', (err) => {
@@ -151,13 +175,8 @@ class RedisWebSocketBridge {
         this.metrics.errors++;
       });
 
-      this.subscriber.on('error', (err) => {
-        log.error('Redis WebSocket bridge subscriber error', { error: err.message });
-        this.metrics.errors++;
-      });
-
       this.isInitialized = true;
-      log.info('Redis WebSocket bridge initialized', { instanceId });
+      log.info('Redis WebSocket bridge initialized', { instanceId, publishOnly: this.publishOnly });
     } catch (error) {
       log.error('Failed to initialize Redis WebSocket bridge', {
         error: getErrorMessage(error),
@@ -374,6 +393,7 @@ class RedisWebSocketBridge {
 
     await this.cleanup();
     this.isInitialized = false;
+    this.publishOnly = false;
     this.broadcastHandler = null;
     this.controlHandler = null;
   }
@@ -382,7 +402,8 @@ class RedisWebSocketBridge {
    * Check if bridge is active (Redis connected and initialized)
    */
   isActive(): boolean {
-    return this.isInitialized && this.publisher !== null && this.subscriber !== null;
+    if (!this.isInitialized || this.publisher === null) return false;
+    return this.publishOnly || this.subscriber !== null;
   }
 
   /**
@@ -432,8 +453,10 @@ export const redisBridge = new RedisWebSocketBridge();
  * Initialize the Redis WebSocket bridge
  * Call after Redis is connected
  */
-export async function initializeRedisBridge(): Promise<void> {
-  await redisBridge.initialize();
+export async function initializeRedisBridge(
+  options: RedisWebSocketBridgeOptions = {},
+): Promise<void> {
+  await redisBridge.initialize(options);
 }
 
 /**

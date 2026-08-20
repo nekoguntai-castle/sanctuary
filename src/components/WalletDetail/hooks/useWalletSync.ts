@@ -80,9 +80,14 @@ export function useWalletSync({
       if (!owns(token, id)) return;
       if (!result.success && result.error) {
         log.error("Sync error", { error: result.error });
-        if (NETWORK_SYNC_OFF_PATTERN.test(result.error)) {
-          showWarning(result.error, "Wallet Sync Off");
-        }
+        // The pattern selects the *title*, not whether the user is told at all.
+        // Every other failure used to reach `log.error` and nowhere else.
+        showWarning(
+          result.error,
+          NETWORK_SYNC_OFF_PATTERN.test(result.error)
+            ? "Wallet Sync Off"
+            : "Sync Failed",
+        );
       }
       // Reload wallet data after sync
       await onDataRefresh();
@@ -113,7 +118,14 @@ export function useWalletSync({
       setSyncing(true);
       const result = await syncApi.resyncWallet(id);
       if (!owns(token, id)) return;
-      showSuccess(result.message, "Resync Queued");
+      // A green "Resync Queued" for a `deduplicated` response is why a wallet
+      // whose dedup key never clears looks like it resyncs on every click and
+      // never changes. The two outcomes must not look alike.
+      if (result.status === "deduplicated") {
+        showWarning(result.message, "Resync Already Queued");
+      } else {
+        showSuccess(result.message, "Resync Queued");
+      }
       // Reload wallet data after resync is queued
       await onDataRefresh();
     } catch (err) {

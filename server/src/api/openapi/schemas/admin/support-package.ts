@@ -8,6 +8,51 @@ import {
   workerSnapshot,
 } from './support-package-shared';
 import { supportNotificationWorkerFleetSchema } from './support-package-fleet';
+import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
+import {
+  MAX_WALLET_SYNC_COUNT,
+  WALLET_SYNC_ERROR_CLASSES,
+} from '../../../../services/supportPackage/collectors/walletSyncSchema';
+
+/** Mirrors the collector's boundedCountSchema; populations are clamped, not leaked. */
+const walletSyncCount = {
+  type: 'integer',
+  minimum: 0,
+  maximum: MAX_WALLET_SYNC_COUNT,
+} as const;
+
+const walletSyncStatusCounts = {
+  type: 'object',
+  properties: {
+    success: walletSyncCount,
+    failed: walletSyncCount,
+    retrying: walletSyncCount,
+    resyncing: walletSyncCount,
+    never_synced: walletSyncCount,
+    other: walletSyncCount,
+  },
+  required: ['success', 'failed', 'retrying', 'resyncing', 'never_synced', 'other'],
+  additionalProperties: false,
+} as const;
+
+const walletSyncNetworkSection = {
+  type: 'object',
+  properties: {
+    total: walletSyncCount,
+    byStatus: walletSyncStatusCounts,
+    syncInProgressCount: walletSyncCount,
+    stuckCandidatesCount: walletSyncCount,
+    fullResyncPendingCount: walletSyncCount,
+  },
+  required: [
+    'total',
+    'byStatus',
+    'syncInProgressCount',
+    'stuckCandidatesCount',
+    'fullResyncPendingCount',
+  ],
+  additionalProperties: false,
+} as const;
 
 const retentionLimit = {
   oneOf: [
@@ -109,6 +154,9 @@ export const adminSupportPackageSchemas = {
           notificationTelemetry: supportSection({
             $ref: '#/components/schemas/SupportNotificationTelemetry',
           }),
+          walletSync: supportSection({
+            $ref: '#/components/schemas/SupportWalletSync',
+          }),
         },
         additionalProperties: false,
       },
@@ -140,6 +188,94 @@ export const adminSupportPackageSchemas = {
       'meta',
     ],
     additionalProperties: false,
+  },
+  SupportWalletSync: {
+    oneOf: [
+      {
+        type: 'object',
+        properties: {
+          observation: { type: 'string', enum: ['observed'] },
+          unit: { type: 'string', enum: ['wallet_rows'] },
+          staleThresholdMinutes: {
+            type: 'integer',
+            minimum: 0,
+            maximum: 100_000,
+          },
+          totalWallets: walletSyncCount,
+          byStatus: walletSyncStatusCounts,
+          byNetwork: {
+            type: 'object',
+            properties: Object.fromEntries(
+              BITCOIN_NETWORKS.map((network) => [network, walletSyncNetworkSection]),
+            ),
+            required: [...BITCOIN_NETWORKS],
+            additionalProperties: false,
+          },
+          syncInProgressCount: walletSyncCount,
+          stuckCandidatesCount: walletSyncCount,
+          lastSyncAgeBuckets: {
+            type: 'object',
+            properties: {
+              never: walletSyncCount,
+              lt_one_hour: walletSyncCount,
+              one_to_twenty_four_hours: walletSyncCount,
+              one_to_seven_days: walletSyncCount,
+              gte_seven_days: walletSyncCount,
+            },
+            required: [
+              'never',
+              'lt_one_hour',
+              'one_to_twenty_four_hours',
+              'one_to_seven_days',
+              'gte_seven_days',
+            ],
+            additionalProperties: false,
+          },
+          fullResync: {
+            type: 'object',
+            properties: {
+              pendingCount: walletSyncCount,
+              maxDrift: {
+                type: 'string',
+                enum: ['none', 'one', 'two_to_five', 'six_plus'],
+              },
+            },
+            required: ['pendingCount', 'maxDrift'],
+            additionalProperties: false,
+          },
+          errorClasses: {
+            type: 'object',
+            properties: Object.fromEntries(
+              WALLET_SYNC_ERROR_CLASSES.map((cls) => [cls, walletSyncCount]),
+            ),
+            required: [...WALLET_SYNC_ERROR_CLASSES],
+            additionalProperties: false,
+          },
+        },
+        required: [
+          'observation',
+          'unit',
+          'staleThresholdMinutes',
+          'totalWallets',
+          'byStatus',
+          'byNetwork',
+          'syncInProgressCount',
+          'stuckCandidatesCount',
+          'lastSyncAgeBuckets',
+          'fullResync',
+          'errorClasses',
+        ],
+        additionalProperties: false,
+      },
+      {
+        type: 'object',
+        properties: {
+          observation: { type: 'string', enum: ['unavailable'] },
+        },
+        required: ['observation'],
+        additionalProperties: false,
+      },
+    ],
   },
   SupportSafeConfig: {
     type: 'object',

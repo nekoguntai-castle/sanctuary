@@ -48,12 +48,9 @@ export function formatWalletFromApi(apiWallet: Wallet, userId: string): Wallet {
     deviceIds: [],
     // Sync metadata
     lastSyncedAt: apiWallet.lastSyncedAt,
-    lastSyncStatus: apiWallet.lastSyncStatus as
-      | "success"
-      | "failed"
-      | "partial"
-      | "retrying"
-      | null,
+    // No narrowing cast: the server also writes 'resyncing', and a union that
+    // omits it reads as a guarantee this mapper cannot make.
+    lastSyncStatus: apiWallet.lastSyncStatus,
     lastSyncError: apiWallet.lastSyncError,
     syncInProgress: apiWallet.syncInProgress,
     // Sharing info

@@ -7,6 +7,7 @@ export const createdWorkers: Array<{
   run: ReturnType<typeof vi.fn>;
 }> = [];
 const hoistedMocks = vi.hoisted(() => ({
+  capturedLogs: [] as Array<{ level: string; message: string; meta?: unknown }>,
   mockDlqAdd: vi.fn().mockResolvedValue(undefined),
   mockRecordNotificationTelemetry: vi.fn(),
   mockRecordCaptureTerminal: vi.fn(),
@@ -34,6 +35,7 @@ const hoistedMocks = vi.hoisted(() => ({
     del: vi.fn().mockResolvedValue(1),
   },
 }));
+export const capturedLogs = hoistedMocks.capturedLogs;
 export const mockDlqAdd = hoistedMocks.mockDlqAdd;
 export const mockRecordNotificationTelemetry = hoistedMocks.mockRecordNotificationTelemetry;
 export const mockRecordCaptureTerminal = hoistedMocks.mockRecordCaptureTerminal;
@@ -102,6 +104,24 @@ vi.mock('bullmq', () => {
   };
 });
 
+// Capture log output so lock-contention visibility can be asserted
+vi.mock('../../../../src/utils/logger', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../src/utils/logger')>();
+  const record = (level: string) => (message: string, meta?: unknown) => {
+    hoistedMocks.capturedLogs.push({ level, message, meta });
+  };
+  return {
+    ...actual,
+    createLogger: (prefix: string) => ({
+      ...actual.createLogger(prefix),
+      debug: record('debug'),
+      info: record('info'),
+      warn: record('warn'),
+      error: record('error'),
+    }),
+  };
+});
+
 // Mock Redis
 vi.mock('../../../../src/infrastructure', () => ({
   getRedisClient: vi.fn(() => hoistedMocks.mockRedis),
@@ -161,5 +181,6 @@ export const createDefaultWorkerJobQueue = (): WorkerJobQueueType => new WorkerJ
 export const setupWorkerJobQueueTest = (): WorkerJobQueueType => {
   vi.clearAllMocks();
   createdWorkers.length = 0;
+  hoistedMocks.capturedLogs.length = 0;
   return createDefaultWorkerJobQueue();
 };

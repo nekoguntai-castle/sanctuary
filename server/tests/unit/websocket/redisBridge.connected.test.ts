@@ -143,6 +143,27 @@ describe('RedisWebSocketBridge (connected mode)', () => {
     await shutdownRedisBridge();
   });
 
+  it('runs publish-only for processes with no WebSocket clients of their own', async () => {
+    // The worker publishes sync status and wallet logs but has nobody to fan
+    // them out to, so it must not open (or parse) a subscriber connection.
+    const { initializeRedisBridge, redisBridge, shutdownRedisBridge, mocks } = await loadBridgeWithMocks();
+
+    await initializeRedisBridge({ publishOnly: true });
+
+    expect(redisBridge.isActive()).toBe(true);
+    expect(mocks.rootClient.duplicate).toHaveBeenCalledTimes(1);
+    expect(mocks.subscriber.subscribe).not.toHaveBeenCalled();
+
+    redisBridge.publishBroadcast({ type: 'sync', data: { inProgress: true }, walletId: 'wallet-1' });
+    expect(mocks.publisher.publish).toHaveBeenCalledWith(
+      'sanctuary:ws:broadcast',
+      expect.stringContaining('"walletId":"wallet-1"'),
+    );
+
+    await shutdownRedisBridge();
+    expect(redisBridge.isActive()).toBe(false);
+  });
+
   it('ignores messages from channels other than the broadcast channel', async () => {
     const { initializeRedisBridge, redisBridge, shutdownRedisBridge, mocks } = await loadBridgeWithMocks();
     const handler = vi.fn();

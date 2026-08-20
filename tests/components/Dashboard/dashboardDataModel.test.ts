@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatFeeRate, neverAnswered } from '../../../src/components/Dashboard/hooks/dashboardDataModel';
+import {
+  formatFeeRate,
+  mapApiWalletToDashboardWallet,
+  neverAnswered,
+} from '../../../src/components/Dashboard/hooks/dashboardDataModel';
+import type { Wallet } from '../../../src/types';
 
 describe('formatFeeRate', () => {
   it('formats rates by magnitude', () => {
@@ -52,5 +57,26 @@ describe('neverAnswered', () => {
     expect(neverAnswered(false, undefined)).toBe(false);
     expect(neverAnswered(undefined, undefined)).toBe(false);
     expect(neverAnswered(false, [])).toBe(false);
+  });
+});
+
+describe('mapApiWalletToDashboardWallet', () => {
+  it('carries the sync failure reason through the whitelist', () => {
+    // The mapper is an explicit field whitelist, so anything it forgets is
+    // silently unavailable to every dashboard surface downstream.
+    const mapped = mapApiWalletToDashboardWallet({
+      id: 'w1',
+      name: 'Primary',
+      type: 'single_sig',
+      balance: 0,
+      network: 'mainnet',
+      lastSyncStatus: 'failed',
+      lastSyncError: 'connect ECONNREFUSED 127.0.0.1:50002',
+      lastSyncedAt: null,
+      syncInProgress: false,
+    } as unknown as Wallet);
+
+    expect(mapped.lastSyncError).toBe('connect ECONNREFUSED 127.0.0.1:50002');
+    expect(mapped.lastSyncStatus).toBe('failed');
   });
 });

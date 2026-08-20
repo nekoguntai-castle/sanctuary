@@ -36,8 +36,85 @@ interface WalletHeaderProps {
   onExport: () => void;
 }
 
-function isNetworkSyncOffMessage(message: string | null | undefined): boolean {
-  return /sync is off in Node Configuration/i.test(message || "");
+/**
+ * Whether a failure reason is the "enable this network first" message.
+ *
+ * This selects the *banner wording* only. It used to decide whether a reason
+ * was shown at all, so every other failure — an unreachable node, a canonical
+ * policy mismatch, a wedged resync — rendered no explanation anywhere.
+ */
+function isNetworkSyncOffMessage(message: string): boolean {
+  return /sync is off in Node Configuration/i.test(message);
+}
+
+/**
+ * Does the failure banner own the explanation for this wallet? If it does, the
+ * never-synced banner stands down rather than stacking a second, vaguer card
+ * on top of the real reason.
+ */
+function hasSyncFailureBanner(wallet: Wallet): boolean {
+  return wallet.lastSyncStatus === "failed" && !!wallet.lastSyncError;
+}
+
+function SyncFailureBanner({
+  wallet,
+  onSync,
+}: {
+  wallet: Wallet;
+  onSync: () => void;
+}) {
+  const reason = hasSyncFailureBanner(wallet) ? wallet.lastSyncError : null;
+  if (!reason) {
+    return null;
+  }
+
+  const networkSyncOff = isNetworkSyncOffMessage(reason);
+
+  return (
+    <div
+      className={`surface-elevated rounded-xl p-4 shadow-sm animate-fade-in ${
+        networkSyncOff
+          ? "border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10"
+          : "border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/20"
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <div className="flex-shrink-0">
+          <AlertCircle
+            className={`w-6 h-6 ${
+              networkSyncOff
+                ? "text-amber-600 dark:text-amber-300"
+                : "text-rose-600 dark:text-rose-400"
+            }`}
+          />
+        </div>
+        <div className="flex-1">
+          <h3
+            className={`text-sm font-medium ${
+              networkSyncOff
+                ? "text-amber-900 dark:text-amber-100"
+                : "text-rose-900 dark:text-rose-100"
+            }`}
+          >
+            {networkSyncOff ? "Network sync is off" : "Sync failed"}
+          </h3>
+          <p
+            data-testid="wallet-sync-failure-reason"
+            className={`text-xs mt-0.5 ${
+              networkSyncOff
+                ? "text-amber-700 dark:text-amber-200"
+                : "text-rose-700 dark:text-rose-300"
+            }`}
+          >
+            {reason}
+          </p>
+        </div>
+        <Button variant="secondary" size="sm" onClick={onSync}>
+          <RefreshCw className="w-3 h-3 mr-1" /> Sync Now
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 export const WalletHeader: React.FC<WalletHeaderProps> = ({
@@ -148,31 +225,18 @@ export const WalletHeader: React.FC<WalletHeaderProps> = ({
       </div>
     )}
 
-    {wallet.lastSyncStatus === "failed" &&
-      isNetworkSyncOffMessage(wallet.lastSyncError) && (
-        <div className="surface-elevated rounded-xl p-4 shadow-sm border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 animate-fade-in">
-          <div className="flex items-center gap-3">
-            <div className="flex-shrink-0">
-              <AlertCircle className="w-6 h-6 text-amber-600 dark:text-amber-300" />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-sm font-medium text-amber-900 dark:text-amber-100">
-                Network sync is off
-              </h3>
-              <p className="text-xs text-amber-700 dark:text-amber-200 mt-0.5">
-                {wallet.lastSyncError}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
+    <SyncFailureBanner wallet={wallet} onSync={onSync} />
 
-    {/* Never Synced Banner - shown when sync hasn't started */}
+    {/* Never Synced Banner - shown when sync hasn't started.
+        `retrying` no longer suppresses it: a wallet that has never synced and
+        is stuck in retry backoff still needs the Sync Now affordance. A
+        `resyncing` wallet is excluded because its history was deliberately
+        cleared — "never synced" would be a lie. */}
     {!wallet.lastSyncedAt &&
       !syncing &&
       !wallet.syncInProgress &&
-      wallet.lastSyncStatus !== "retrying" &&
-      !isNetworkSyncOffMessage(wallet.lastSyncError) && (
+      wallet.lastSyncStatus !== "resyncing" &&
+      !hasSyncFailureBanner(wallet) && (
         <div className="surface-elevated rounded-xl p-4 shadow-sm border border-warning-200 dark:border-warning-800 bg-warning-50 dark:bg-warning-950/30 animate-fade-in">
           <div className="flex items-center gap-3">
             <div className="flex-shrink-0">

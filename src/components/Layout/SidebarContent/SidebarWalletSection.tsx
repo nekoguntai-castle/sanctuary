@@ -8,6 +8,7 @@ import {
   getSortedWallets,
   getWalletActiveColor,
   getWalletSyncStatus,
+  getWalletSyncTitle,
   renderWalletIcon,
 } from './sidebarItems';
 
@@ -43,6 +44,7 @@ const WalletSubNavList: React.FC<Pick<SidebarWalletSectionProps, 'wallets' | 'ge
         badgeCount={getWalletCount(wallet.id)}
         badgeSeverity="warning"
         statusDot={getWalletSyncStatus(wallet)}
+        statusDotTitle={getWalletSyncTitle(wallet)}
       />
     ))}
   </div>

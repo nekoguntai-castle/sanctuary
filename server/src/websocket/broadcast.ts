@@ -12,7 +12,12 @@
  * broadcastBalance(walletId, { balance: 10000, unconfirmed: 0, change: 100 });
  */
 
-import { getWebSocketServer, getGatewayWebSocketServer } from './server';
+import {
+  getWebSocketServer,
+  getWebSocketServerIfInitialized,
+  getGatewayWebSocketServer,
+} from './server';
+import { redisBridge } from './redisBridge';
 import type {
   TransactionEvent,
   BalanceEvent,
@@ -54,11 +59,23 @@ function toLegacyEvent(event: BroadcastEvent): WebSocketEvent {
 
 /**
  * Internal broadcast implementation
+ *
+ * Background processes (the worker) never initialize a WebSocket server, so
+ * there are no local clients to reach. Publishing the same legacy envelope
+ * straight onto the Redis bridge lets the API process fan the event out to its
+ * own clients unchanged - without it a worker-run sync cannot tell the UI
+ * anything at all.
  */
 function broadcastEvent(event: BroadcastEvent): void {
+  const legacyEvent = toLegacyEvent(event);
+  const wsServer = getWebSocketServerIfInitialized();
+
+  if (!wsServer) {
+    redisBridge.publishBroadcast(legacyEvent);
+    return;
+  }
+
   try {
-    const legacyEvent = toLegacyEvent(event);
-    const wsServer = getWebSocketServer();
     wsServer.broadcast(legacyEvent);
 
     // Also send to gateway if connected

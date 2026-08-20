@@ -16,6 +16,7 @@ import {
   broadcastSync,
   broadcastLog,
 } from '../broadcast';
+import { redisBridge } from '../redisBridge';
 import { walletLogBuffer } from '../../services/walletLogBuffer';
 import { createLogger } from '../../utils/logger';
 import type {
@@ -30,21 +31,27 @@ import type {
 
 const log = createLogger('WS:NOTIFY_BROADCAST');
 
-function getBroadcastServer(eventType: WebSocketEvent['type']) {
-  const wsServer = getWebSocketServerIfInitialized();
-  if (!wsServer) {
-    log.debug('Skipping websocket broadcast; server not initialized', { type: eventType });
-    return null;
-  }
-  return wsServer;
+/**
+ * Decide whether an event has anywhere to go.
+ *
+ * The API process broadcasts to its own clients. Background processes (the
+ * worker) never initialize a WebSocket server, so their only route to the UI is
+ * the Redis bridge - the broadcast helpers publish onto it and the API process
+ * fans the event out unchanged.
+ */
+function canBroadcast(eventType: WebSocketEvent['type']): boolean {
+  if (getWebSocketServerIfInitialized()) return true;
+  if (redisBridge.isActive()) return true;
+
+  log.debug('Skipping websocket broadcast; server not initialized', { type: eventType });
+  return false;
 }
 
 /**
  * Broadcast transaction notification
  */
 export function broadcastTransactionNotification(notification: TransactionNotification): void {
-  const wsServer = getBroadcastServer('transaction');
-  if (!wsServer) return;
+  if (!canBroadcast('transaction')) return;
 
   broadcastTransaction(notification.walletId, {
     txid: notification.txid,
@@ -61,8 +68,7 @@ export function broadcastTransactionNotification(notification: TransactionNotifi
  * Broadcast balance update
  */
 export function broadcastBalanceUpdate(update: BalanceUpdate): void {
-  const wsServer = getBroadcastServer('balance');
-  if (!wsServer) return;
+  if (!canBroadcast('balance')) return;
 
   broadcastBalance(update.walletId, {
     balance: update.balance,
@@ -77,8 +83,7 @@ export function broadcastBalanceUpdate(update: BalanceUpdate): void {
  * Broadcast new block notification (full details)
  */
 export function broadcastBlockNotification(notification: BlockNotification): void {
-  const wsServer = getBroadcastServer('block');
-  if (!wsServer) return;
+  if (!canBroadcast('block')) return;
 
   broadcastBlock({
     height: notification.height,
@@ -94,8 +99,7 @@ export function broadcastBlockNotification(notification: BlockNotification): voi
  * Used by real-time Electrum subscription
  */
 export function broadcastNewBlock(block: { height: number }): void {
-  const wsServer = getBroadcastServer('newBlock');
-  if (!wsServer) return;
+  if (!canBroadcast('newBlock')) return;
 
   broadcastTypedNewBlock({
     height: block.height,
@@ -108,8 +112,7 @@ export function broadcastNewBlock(block: { height: number }): void {
  * Broadcast mempool notification
  */
 export function broadcastMempoolNotification(notification: MempoolNotification): void {
-  const wsServer = getBroadcastServer('mempool');
-  if (!wsServer) return;
+  if (!canBroadcast('mempool')) return;
 
   broadcastMempool({
     txid: notification.txid,
@@ -124,8 +127,7 @@ export function broadcastMempoolNotification(notification: MempoolNotification):
  * Includes previousConfirmations so frontend can detect milestone transitions (e.g., 0->1)
  */
 export function broadcastConfirmationUpdate(walletId: string, update: ConfirmationUpdate): void {
-  const wsServer = getBroadcastServer('confirmation');
-  if (!wsServer) return;
+  if (!canBroadcast('confirmation')) return;
 
   broadcastConfirmation(walletId, {
     txid: update.txid,
@@ -146,8 +148,7 @@ export function broadcastConfirmationUpdate(walletId: string, update: Confirmati
  * Broadcast sync status update for a wallet
  */
 export function broadcastSyncStatus(walletId: string, status: SyncStatusUpdate): void {
-  const wsServer = getBroadcastServer('sync');
-  if (!wsServer) return;
+  if (!canBroadcast('sync')) return;
 
   broadcastSync(walletId, {
     ...status,
@@ -169,8 +170,7 @@ export function broadcastWalletLog(walletId: string, entry: Omit<WalletLogEntry,
   // Store in buffer for historical retrieval
   walletLogBuffer.add(walletId, logEntry);
 
-  const wsServer = getBroadcastServer('log');
-  if (!wsServer) return;
+  if (!canBroadcast('log')) return;
 
   broadcastLog(walletId, logEntry);
 }

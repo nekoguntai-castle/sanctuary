@@ -424,7 +424,13 @@ export function registerSyncServiceLifecycleQueueTests(context: SyncServiceTestC
       const result = await context.syncService.syncNow('wallet-1');
 
       expect(result.success).toBe(true);
-      expect(mockSyncWallet).toHaveBeenCalledWith('wallet-1');
+      // The signal is what lets the duration cap cancel a hung sync instead of
+      // waiting on it forever and leaking the wallet's activeSyncs entry.
+      expect(mockSyncWallet).toHaveBeenCalledWith(
+        'wallet-1',
+        0,
+        expect.any(AbortSignal),
+      );
     });
 
     it('should return error if already syncing', async () => {

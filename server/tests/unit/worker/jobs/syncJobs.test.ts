@@ -12,6 +12,15 @@ const syncJobPrismaMocks = vi.hoisted(() => ({
   walletUpdate: vi.fn<(args?: unknown) => Promise<unknown>>(),
 }));
 
+// The stale reaper probes each wallet's sync lock before force-clearing its
+// flag, so the lock authority has to answer in unit tests.
+const mockIsLocked = vi.hoisted(() => vi.fn<(key: string) => Promise<boolean>>());
+
+vi.mock('../../../../src/infrastructure/distributedLock', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  isLocked: mockIsLocked,
+}));
+
 // Mock prisma
 vi.mock('../../../../src/models/prisma', () => ({
   default: (() => {
@@ -59,6 +68,7 @@ vi.mock('../../../../src/config', () => ({
 vi.mock('../../../../src/services/bitcoin/blockchain', () => ({
   getCachedBlockHeight: vi.fn().mockReturnValue(100000),
   setCachedBlockHeight: vi.fn(),
+  assertChainReachable: vi.fn().mockResolvedValue(100000),
   syncWallet: vi.fn(),
 }));
 
@@ -69,7 +79,7 @@ vi.mock('../../../../src/services/bitcoin/sync/confirmations', () => ({
 }));
 
 import prisma from '../../../../src/models/prisma';
-import { syncWallet } from '../../../../src/services/bitcoin/blockchain';
+import { syncWallet, assertChainReachable } from '../../../../src/services/bitcoin/blockchain';
 import { populateMissingTransactionFields } from '../../../../src/services/bitcoin/sync/confirmations';
 import {
   syncWalletJob,
@@ -81,6 +91,7 @@ describe('Sync Jobs', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     syncJobPrismaMocks.walletUpdate.mockResolvedValue({});
+    mockIsLocked.mockResolvedValue(false);
   });
 
   describe('syncWalletJob', () => {
@@ -96,6 +107,43 @@ describe('Sync Jobs', () => {
       expect(syncWalletJob.lockOptions?.retryDelayMsIfUnavailable?.({
         walletId: 'test',
       })).toBeNull();
+    });
+
+    it('keeps transaction history when the node is unreachable at resync time', async () => {
+      // The reset deletes every transaction before the rebuild is attempted, so
+      // an unreachable node used to destroy history it could not then restore.
+      // Reaching the chain is the one precondition worth proving up front.
+      vi.mocked(prisma.wallet.findUnique)
+        .mockResolvedValueOnce({ network: 'mainnet' } as any);
+      vi.mocked(assertChainReachable).mockRejectedValueOnce(
+        new Error('connect ECONNREFUSED 127.0.0.1:50002'),
+      );
+      const job = {
+        id: 'full-resync-unreachable',
+        data: {
+          walletId: 'wallet-1',
+          priority: 'high',
+          reason: 'manual',
+          fullResync: true,
+          fullResyncGeneration: FULL_RESYNC_GENERATION_MAX,
+        },
+        attemptsMade: 2,
+        opts: { attempts: 3 },
+        updateData: vi.fn().mockResolvedValue(undefined),
+      } as unknown as Job;
+
+      await expect(syncWalletJob.handler(job)).rejects.toThrow(/ECONNREFUSED/);
+
+      expect(prisma.transaction.deleteMany).not.toHaveBeenCalled();
+      expect(prisma.wallet.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'wallet-1' },
+          data: expect.objectContaining({
+            lastSyncStatus: 'failed',
+            lastSyncError: expect.stringContaining('ECONNREFUSED'),
+          }),
+        }),
+      );
     });
 
     it('resets full-resync state while retaining durable rebuild job data', async () => {
@@ -798,6 +846,50 @@ describe('Sync Jobs', () => {
         where: { id: 'wallet-stuck-2' },
         data: { syncInProgress: false },
       });
+    });
+
+    it('should leave the flag set while the wallet sync lock is still held', async () => {
+      // A full resync nulls lastSyncedAt, so it matches findStuckWithCutoff's
+      // unbounded NULL arm seconds after it starts. Clearing the flag under it
+      // is what made a running resync look idle.
+      vi.mocked(prisma.wallet.findMany)
+        .mockResolvedValueOnce([
+          { id: 'wallet-resyncing', name: 'Resyncing', lastSyncedAt: null },
+        ] as never)
+        .mockResolvedValueOnce([]);
+      mockIsLocked.mockResolvedValue(true);
+
+      const mockJob = {
+        id: 'job-live-resync',
+        data: {},
+        attemptsMade: 0,
+        opts: { attempts: 2 },
+      } as unknown as Job;
+
+      await checkStaleWalletsJob.handler(mockJob);
+
+      expect(mockIsLocked).toHaveBeenCalledWith('sync:wallet:wallet-resyncing');
+      expect(prisma.wallet.update).not.toHaveBeenCalled();
+    });
+
+    it('should leave the flag set when the lock authority cannot be probed', async () => {
+      vi.mocked(prisma.wallet.findMany)
+        .mockResolvedValueOnce([
+          { id: 'wallet-unknown', name: 'Unknown', lastSyncedAt: null },
+        ] as never)
+        .mockResolvedValueOnce([]);
+      mockIsLocked.mockRejectedValue(new Error('redis unavailable'));
+
+      const mockJob = {
+        id: 'job-probe-failure',
+        data: {},
+        attemptsMade: 0,
+        opts: { attempts: 2 },
+      } as unknown as Job;
+
+      await checkStaleWalletsJob.handler(mockJob);
+
+      expect(prisma.wallet.update).not.toHaveBeenCalled();
     });
 
     it('should query stuck wallets using maxSyncDurationMs cutoff', async () => {

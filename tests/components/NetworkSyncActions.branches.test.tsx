@@ -20,6 +20,11 @@ vi.mock('lucide-react', () => ({
   X: (props: React.HTMLAttributes<HTMLSpanElement>) => <span data-testid="icon-x" {...props} />,
 }));
 
+const WALLETS = [
+  { id: 'w1', name: 'Alpha' },
+  { id: 'w2', name: 'Beta' },
+];
+
 const renderActions = (
   overrides: Partial<React.ComponentProps<typeof NetworkSyncActions>> = {}
 ) => {
@@ -28,6 +33,7 @@ const renderActions = (
     <NetworkSyncActions
       network={'mainnet' as TabNetwork}
       walletCount={2}
+      wallets={WALLETS}
       onSyncStarted={onSyncStarted}
       {...overrides}
     />
@@ -51,6 +57,7 @@ describe('NetworkSyncActions branch coverage', () => {
       deduplicatedWalletIds: [],
       rejectedWallets: [],
       indeterminateWallets: [],
+      excludedWallets: [],
     });
   });
 
@@ -103,6 +110,7 @@ describe('NetworkSyncActions branch coverage', () => {
       deduplicatedWalletIds: [],
       rejectedWallets: [],
       indeterminateWallets: [],
+      excludedWallets: [],
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Full Resync All Mainnet' }));
@@ -144,6 +152,7 @@ describe('NetworkSyncActions branch coverage', () => {
       deduplicatedWalletIds: [],
       rejectedWallets: [{ walletId: 'w2', reason: 'queue_error' }],
       indeterminateWallets: [],
+      excludedWallets: [],
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Full Resync All Mainnet' }));
@@ -152,8 +161,84 @@ describe('NetworkSyncActions branch coverage', () => {
     });
 
     expect(screen.getByText(
-      'Queued 1 wallet for resync; 1 rejected.',
+      'Queued 1 wallet for resync; 1 rejected: Beta (queue error).',
     )).toBeInTheDocument();
+  });
+
+  it('renders a rejection as an error, not a green success line', async () => {
+    renderActions();
+    vi.mocked(syncApi.resyncNetworkWallets).mockResolvedValueOnce({
+      success: true,
+      queued: 1,
+      walletIds: ['w1'],
+      acceptedWalletIds: ['w1'],
+      deduplicatedWalletIds: [],
+      rejectedWallets: [{ walletId: 'w2', reason: 'queue_unavailable' }],
+      indeterminateWallets: [],
+      excludedWallets: [],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Full Resync All Mainnet' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Resync All Wallets' }));
+    });
+
+    expect(
+      screen.getByText(/1 rejected: Beta \(queue unavailable\)/)
+    ).toHaveClass('text-rose-600');
+  });
+
+  it('does not call a batch that queued nothing a success', async () => {
+    renderActions();
+    vi.mocked(syncApi.resyncNetworkWallets).mockResolvedValueOnce({
+      success: true,
+      queued: 0,
+      walletIds: ['w1', 'w2'],
+      acceptedWalletIds: [],
+      deduplicatedWalletIds: ['w1', 'w2'],
+      rejectedWallets: [],
+      indeterminateWallets: [],
+      excludedWallets: [],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Full Resync All Mainnet' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Resync All Wallets' }));
+    });
+
+    const line = screen.getByText(
+      'Queued 0 wallets for resync; 2 already queued: Alpha, Beta.'
+    );
+    expect(line).toHaveClass('text-warning-600');
+    expect(line).not.toHaveClass('text-success-600');
+  });
+
+  it('keeps a non-success resync result on screen instead of timing it out', async () => {
+    vi.useFakeTimers();
+    renderActions();
+    vi.mocked(syncApi.resyncNetworkWallets).mockResolvedValueOnce({
+      success: true,
+      queued: 0,
+      walletIds: ['w1', 'w2'],
+      acceptedWalletIds: [],
+      deduplicatedWalletIds: ['w1', 'w2'],
+      rejectedWallets: [],
+      indeterminateWallets: [],
+      excludedWallets: [],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Full Resync All Mainnet' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Resync All Wallets' }));
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(8000);
+    });
+
+    expect(
+      screen.getByText('Queued 0 wallets for resync; 2 already queued: Alpha, Beta.')
+    ).toBeInTheDocument();
   });
 
   it('surfaces deduplicated full-resync intentions', async () => {
@@ -166,6 +251,7 @@ describe('NetworkSyncActions branch coverage', () => {
       deduplicatedWalletIds: ['w2'],
       rejectedWallets: [],
       indeterminateWallets: [],
+      excludedWallets: [],
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Full Resync All Mainnet' }));
@@ -174,7 +260,7 @@ describe('NetworkSyncActions branch coverage', () => {
     });
 
     expect(screen.getByText(
-      'Queued 1 wallet for resync; 1 already queued.',
+      'Queued 1 wallet for resync; 1 already queued: Beta.',
     )).toBeInTheDocument();
   });
 
@@ -188,6 +274,7 @@ describe('NetworkSyncActions branch coverage', () => {
       deduplicatedWalletIds: [],
       rejectedWallets: [],
       indeterminateWallets: [{ walletId: 'w2', reason: 'queue_state_unknown' }],
+      excludedWallets: [],
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Full Resync All Mainnet' }));
@@ -196,9 +283,82 @@ describe('NetworkSyncActions branch coverage', () => {
     });
 
     expect(screen.getByText(
-      'Queued 1 wallet for resync; 1 queue state unknown.',
+      'Queued 1 wallet for resync; 1 queue state unknown: Beta.',
     )).toBeInTheDocument();
     expect(screen.queryByText(/rejected/)).not.toBeInTheDocument();
+  });
+
+  // C5: a regtest wallet is rendered under the Mainnet tab but never reaches
+  // findByNetworkWithSyncStatus, so a batch that omits it must say so.
+  it('names wallets the batch could not reach at all', async () => {
+    renderActions();
+    vi.mocked(syncApi.resyncNetworkWallets).mockResolvedValueOnce({
+      success: true,
+      queued: 1,
+      walletIds: ['w1'],
+      acceptedWalletIds: ['w1'],
+      deduplicatedWalletIds: [],
+      rejectedWallets: [],
+      indeterminateWallets: [],
+      excludedWallets: [{ walletId: 'w2', reason: 'network_not_syncable' }],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Full Resync All Mainnet' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Resync All Wallets' }));
+    });
+
+    expect(screen.getByText(
+      'Queued 1 wallet for resync; 1 not on a syncable network: Beta.',
+    )).toBeInTheDocument();
+    // Not green: the user can see Beta in this tab and it was never queued.
+    expect(screen.queryByText(/rejected/)).not.toBeInTheDocument();
+  });
+
+  it('prints an unrecognised rejection reason verbatim rather than blanking it', async () => {
+    renderActions();
+    vi.mocked(syncApi.resyncNetworkWallets).mockResolvedValueOnce({
+      success: true,
+      queued: 1,
+      walletIds: ['w1'],
+      acceptedWalletIds: ['w1'],
+      deduplicatedWalletIds: [],
+      rejectedWallets: [{ walletId: 'w2', reason: 'moon_phase' as never }],
+      indeterminateWallets: [],
+      excludedWallets: [],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Full Resync All Mainnet' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Resync All Wallets' }));
+    });
+
+    expect(screen.getByText(
+      'Queued 1 wallet for resync; 1 rejected: Beta (moon_phase).',
+    )).toBeInTheDocument();
+  });
+
+  it('names an unknown wallet id rather than dropping it', async () => {
+    renderActions({ wallets: [] });
+    vi.mocked(syncApi.resyncNetworkWallets).mockResolvedValueOnce({
+      success: true,
+      queued: 1,
+      walletIds: ['w1'],
+      acceptedWalletIds: ['w1'],
+      deduplicatedWalletIds: ['w9'],
+      rejectedWallets: [],
+      indeterminateWallets: [],
+      excludedWallets: [],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Full Resync All Mainnet' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Resync All Wallets' }));
+    });
+
+    expect(screen.getByText(
+      'Queued 1 wallet for resync; 1 already queued: w9.',
+    )).toBeInTheDocument();
   });
 
   it('handles compact dialog close via Cancel and X controls', () => {
