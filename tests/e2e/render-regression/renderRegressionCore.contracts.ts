@@ -130,6 +130,17 @@ export async function renderWalletDetailRendersTabShellsAndEmptyStateContent({
   ).toBeVisible();
   await expect(page.getByText("No transactions found.")).toBeVisible();
 
+  // The seven statistics tiles need 1080px to sit on one line, and at Desktop
+  // Chrome's 1280px this grid gets 910px. Before the density switch it wrapped
+  // to two rows and stood 128px tall, pushing the first transaction row toward
+  // the fold; the compact tiles fit one 46px row. Only a browser knows the real
+  // width, so the unit tests stub it and this pins it.
+  const statsGrid = page.getByTestId("transaction-stats-grid");
+  await expect(statsGrid).toHaveAttribute("data-density", "compact");
+  expect(
+    await statsGrid.evaluate((el) => el.getBoundingClientRect().height),
+  ).toBeLessThan(80);
+
   await page.getByRole("tab", { name: "UTXOs", exact: true }).click();
   await expect(page.getByText("Available Outputs")).toBeVisible();
 

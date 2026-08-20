@@ -93,10 +93,14 @@ describe('TransactionList reveal remeasurement', () => {
 
     expect(tableHeight()).toBe(736);
 
-    // The container itself must be observed. Without this assertion the suite
-    // would pass against a build that constructs an observer and never wires it.
-    expect(observations).toHaveLength(1);
-    expect(observations[0].target).toBeInstanceOf(HTMLElement);
+    // The table's own container must be observed. Without this assertion the
+    // suite would pass against a build that constructs an observer and never
+    // wires it. Looked up by target rather than by index because the statistics
+    // grid above the table observes itself too, to pick its tile density.
+    const tableObservation = observations.find(({ target }) =>
+      target.contains(screen.getByTestId('tx-table'))
+    );
+    expect(tableObservation).toBeDefined();
 
     // Grow the available space without dispatching a resize event: this is the
     // shape of a reveal, where the element's box changes but the window's does
@@ -104,7 +108,7 @@ describe('TransactionList reveal remeasurement', () => {
     Object.defineProperty(window, 'innerHeight', { configurable: true, value: 1200 });
 
     act(() => {
-      observations[0].callback([], {} as ResizeObserver);
+      tableObservation!.callback([], {} as ResizeObserver);
     });
 
     // Now content-bound rather than viewport-bound.
