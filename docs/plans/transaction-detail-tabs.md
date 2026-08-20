@@ -1,7 +1,9 @@
 # Transaction detail: sub-tabs, detachable panels, compact stats header
 
-Status: complete (2026-08-19) — #841 (statistics header), #842
-(sub-tabs), #843 (detach), #845 (drag)
+Status: complete (2026-08-19) — #841 (statistics header), #842 (sub-tabs),
+#843 (detach), #845 (drag and reorder), #849 (middle-click close, background
+open, drag-off to detach). #847 (stable ids for the generated architecture
+graphs) came out of this work but is tooling, not part of the plan.
 Owner: frontend
 Supersedes: the side-by-side pane (#832 inline-expand follow-up) in `TransactionList`
 

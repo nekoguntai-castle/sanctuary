@@ -106,8 +106,17 @@ function validateCanary(canary, mutants, testIndex, invariant) {
   if (mutant.status !== 'Killed') {
     fail(`canary ${canary.id} was ${mutant.status}; an attributable Killed result is required`);
   }
-  if (!killingTestIds.some(testId => (mutant.killedBy ?? []).includes(testId))) {
-    fail(`canary ${canary.id} was not killed by any required named test`);
+  const killedBy = mutant.killedBy ?? [];
+  if (!killingTestIds.some(testId => killedBy.includes(testId))) {
+    // Attribution, not coverage, is what fails here. Stryker bails on the first
+    // failing test unless `disableBail` is set, and then credits only that one —
+    // so where several tests cover a canary, which one gets the credit is decided
+    // by execution order and the assertion becomes a coin flip (#844). Say so,
+    // rather than leaving the next reader to conclude the invariant regressed.
+    const detail = killedBy.length > 1
+      ? `killed by ${killedBy.length} tests, none of them required`
+      : `killed by ${killedBy.length} test(s); if this profile has bail enabled, the credit is order-dependent — set disableBail in its Stryker config`;
+    fail(`canary ${canary.id} was not killed by any required named test (${detail})`);
   }
 }
 
