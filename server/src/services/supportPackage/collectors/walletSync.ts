@@ -44,10 +44,26 @@ interface NetworkSection {
  * naming both a subsystem and a symptom is attributed to the subsystem.
  */
 const ERROR_CLASS_PATTERNS: readonly (readonly [WalletSyncErrorClass, RegExp])[] = [
-  ['lock_contention', /already syncing|sync already in progress|lock held|lock_held/i],
+  // Ordered before `canonical_evidence_missing`: the gate's message says
+  // "evidence" and that class matches /canonical/i, so the two never competed
+  // and every gate failure fell through to `other` on a live install.
+  ['evidence_authentication_failed', /receive evidence|evidence authentication/i],
   ['canonical_evidence_missing', /canonical/i],
+  [
+    'lock_contention',
+    /already syncing|sync already in progress|lock held|lock_held|retry budget|lost distributed lock|lock authority/i,
+  ],
+  // Ordered before `timeout`: a cancelled sync is a decision this process made,
+  // not a peer that went quiet, and /timed out|timeout/ never matches "limit".
+  [
+    'sync_cancelled',
+    /exceeded the \d+s limit|was cancelled|did not respond to cancellation|operation was aborted|queue is shutting down/i,
+  ],
   ['descriptor_policy_missing', /descriptor|policy/i],
-  ['database_unavailable', /prisma|database|connection pool|too many connections/i],
+  [
+    'database_unavailable',
+    /prisma|database|connection pool|too many connections|connection terminated/i,
+  ],
   [
     'node_rpc_unavailable',
     /node rpc|node returned|node configuration|sync is off|bitcoind|bitcoin core/i,

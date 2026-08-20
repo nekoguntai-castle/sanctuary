@@ -14,8 +14,10 @@ export const WALLET_SYNC_ERROR_CLASSES = [
   'node_rpc_unavailable',
   'descriptor_policy_missing',
   'canonical_evidence_missing',
+  'evidence_authentication_failed',
   'lock_contention',
   'timeout',
+  'sync_cancelled',
   'database_unavailable',
   'other',
 ] as const;
