@@ -146,7 +146,10 @@ export async function processJobWithLock(
     const walletId = readWalletId(job.data);
     const retryDelayMs = registered.lockOptions.retryDelayMsIfUnavailable?.(job.data);
     if (retryDelayMs !== null && retryDelayMs !== undefined) {
-      const retryWindowMs = registered.lockOptions.maxLockRetryWindowMs ?? lockTtlMs;
+      const configuredWindow = registered.lockOptions.maxLockRetryWindowMs;
+      const retryWindowMs = typeof configuredWindow === 'function'
+        ? configuredWindow(job.data)
+        : configuredWindow ?? lockTtlMs;
       // Measured from when the job was enqueued, not from a counter in the
       // payload: a counter is never reset once the lock is finally acquired, so
       // a job that contends, runs, fails and is retried would start its next

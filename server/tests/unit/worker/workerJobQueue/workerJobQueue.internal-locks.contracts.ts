@@ -169,6 +169,41 @@ export const registerWorkerJobQueueInternalLockContracts = (getQueue: WorkerJobQ
       expect(job.moveToDelayed).toHaveBeenCalledTimes(1);
     });
 
+    it('accepts a retry window computed from the job data', async () => {
+      // Different work needs different patience: a full resync should wait out a
+      // whole sync, an ordinary one must give up before the next stale sweep.
+      vi.mocked(acquireLock).mockResolvedValue(null);
+      const onLockRetryBudgetExhausted = vi.fn().mockResolvedValue(undefined);
+      const registered = {
+        handler: vi.fn(async () => ({ ok: true })),
+        lockOptions: {
+          lockKey: () => 'lock:wallet-fn-window',
+          lockTtlMs: 5_000,
+          maxLockRetryWindowMs: (data: any) => (data.fullResync === true ? 60_000 : 1_000),
+          retryDelayMsIfUnavailable: () => 5_000,
+          onLockRetryBudgetExhausted,
+        },
+      };
+      const job: any = {
+        id: 'fn-window-job',
+        data: { walletId: 'wallet-fn-window' },
+        token: 'worker-token',
+        timestamp: Date.now() - 1_001,
+        attemptsMade: 0,
+        opts: { attempts: 3 },
+        moveToDelayed: vi.fn().mockResolvedValue(undefined),
+        updateData: vi.fn().mockResolvedValue(undefined),
+      };
+
+      // 1001ms waited against the ordinary 1000ms window: budget exhausted.
+      await expect(processJobWithLock('sync:fn-window', registered as any, job))
+        .rejects.toHaveProperty('name', 'LockRetryBudgetExhaustedError');
+      expect(onLockRetryBudgetExhausted).toHaveBeenCalledWith(
+        job.data,
+        expect.objectContaining({ retryWindowMs: 1_000 }),
+      );
+    });
+
     it('lets the handler record the terminal outcome when the budget runs out', async () => {
       vi.mocked(acquireLock).mockResolvedValue(null);
       const onLockRetryBudgetExhausted = vi.fn().mockResolvedValue(undefined);

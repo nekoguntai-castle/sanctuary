@@ -40,7 +40,7 @@ export interface RegisteredHandler {
      * so legitimate contention still waits. Past the budget the job fails
      * normally instead of re-delaying forever.
      */
-    maxLockRetryWindowMs?: number;
+    maxLockRetryWindowMs?: number | ((data: unknown) => number);
     /**
      * Record what giving up on lock contention means for the guarded resource.
      *

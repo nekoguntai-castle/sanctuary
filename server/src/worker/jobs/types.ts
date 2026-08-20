@@ -35,8 +35,12 @@ export interface WorkerJobHandler<T = unknown, R = void> {
     lockTtlMs?: number;
     /** Delay without consuming an attempt when lock contention must retain work. */
     retryDelayMsIfUnavailable?: (data: T) => number | null;
-    /** Wall-clock budget for re-delaying under contention (default: the lock TTL). */
-    maxLockRetryWindowMs?: number;
+    /**
+     * Wall-clock budget for re-delaying under contention (default: the lock TTL).
+     * A function of the job data where different work needs different patience -
+     * a full resync should wait out a whole sync, an ordinary one should not.
+     */
+    maxLockRetryWindowMs?: number | ((data: T) => number);
     /** Record what abandoning the job means for the resource the lock guards. */
     onLockRetryBudgetExhausted?: (
       data: unknown,

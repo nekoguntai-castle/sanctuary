@@ -104,9 +104,12 @@ describe('Sync Jobs', () => {
         walletId: 'test',
         fullResync: true,
       })).toBe(5000);
+      // Previously null, which routed every ordinary sync to the silent
+      // `{ skipped: true, reason: 'lock_held' }` no-op. See
+      // syncLockContention.test.ts for why that had to change.
       expect(syncWalletJob.lockOptions?.retryDelayMsIfUnavailable?.({
         walletId: 'test',
-      })).toBeNull();
+      })).toBe(15000);
     });
 
     it('keeps transaction history when the node is unreachable at resync time', async () => {
@@ -639,14 +642,18 @@ describe('Sync Jobs', () => {
     });
 
     it('should safety-net reset syncInProgress when catch block DB update fails', async () => {
+      vi.useFakeTimers();
       vi.mocked(syncWallet).mockRejectedValueOnce(new Error('Sync failed'));
-      // First call: set syncInProgress=true (succeeds)
-      // Second call: catch block's error update (fails)
-      // Third call: finally block's safety-net reset (succeeds)
+      // The catch-block status write is now retried (persistTerminalSyncStatus),
+      // so the safety net only engages once every attempt has failed. Reject all
+      // four, then let the finally block's reset succeed.
       vi.mocked(prisma.wallet.update)
-        .mockResolvedValueOnce({} as any)   // syncInProgress: true
-        .mockRejectedValueOnce(new Error('DB connection lost'))  // catch block fails
-        .mockResolvedValueOnce({} as any);  // finally safety-net
+        .mockResolvedValueOnce({} as any)                          // syncInProgress: true
+        .mockRejectedValueOnce(new Error('DB connection lost'))     // terminal write attempt 1
+        .mockRejectedValueOnce(new Error('DB connection lost'))     // attempt 2
+        .mockRejectedValueOnce(new Error('DB connection lost'))     // attempt 3
+        .mockRejectedValueOnce(new Error('DB connection lost'))     // attempt 4 (final)
+        .mockResolvedValueOnce({} as any);                          // finally safety-net
 
       const mockJob = {
         id: 'job-1',
@@ -655,22 +662,29 @@ describe('Sync Jobs', () => {
         opts: { attempts: 3 },
       } as unknown as Job;
 
-      await expect(syncWalletJob.handler(mockJob)).rejects.toThrow('Sync failed');
+      const pending = expect(syncWalletJob.handler(mockJob)).rejects.toThrow('Sync failed');
+      await vi.runAllTimersAsync();
+      await pending;
 
-      // Verify the finally block's safety-net reset was called
-      expect(prisma.wallet.update).toHaveBeenCalledTimes(3);
-      expect(prisma.wallet.update).toHaveBeenNthCalledWith(3, {
+      // Verify the finally block's safety-net reset was the last write.
+      expect(prisma.wallet.update).toHaveBeenCalledTimes(6);
+      expect(prisma.wallet.update).toHaveBeenNthCalledWith(6, {
         where: { id: 'wallet-1' },
         data: { syncInProgress: false },
       });
+      vi.useRealTimers();
     });
 
     it('should handle finally block safety-net DB failure gracefully', async () => {
+      vi.useFakeTimers();
       vi.mocked(syncWallet).mockRejectedValueOnce(new Error('Sync failed'));
       vi.mocked(prisma.wallet.update)
-        .mockResolvedValueOnce({} as any)            // syncInProgress: true
-        .mockRejectedValueOnce(new Error('DB down'))  // catch block fails
-        .mockRejectedValueOnce(new Error('DB still down')); // finally safety-net also fails
+        .mockResolvedValueOnce({} as any)                    // syncInProgress: true
+        .mockRejectedValueOnce(new Error('DB down'))          // terminal write attempt 1
+        .mockRejectedValueOnce(new Error('DB down'))          // attempt 2
+        .mockRejectedValueOnce(new Error('DB down'))          // attempt 3
+        .mockRejectedValueOnce(new Error('DB down'))          // attempt 4 (final)
+        .mockRejectedValueOnce(new Error('DB still down'));   // finally safety-net also fails
 
       const mockJob = {
         id: 'job-1',
@@ -680,8 +694,11 @@ describe('Sync Jobs', () => {
       } as unknown as Job;
 
       // Cleanup errors are contained without masking the original failure.
-      await expect(syncWalletJob.handler(mockJob)).rejects.toThrow('Sync failed');
-      expect(prisma.wallet.update).toHaveBeenCalledTimes(3);
+      const pending = expect(syncWalletJob.handler(mockJob)).rejects.toThrow('Sync failed');
+      await vi.runAllTimersAsync();
+      await pending;
+      expect(prisma.wallet.update).toHaveBeenCalledTimes(6);
+      vi.useRealTimers();
     });
 
     it('should not double-reset flag when catch block succeeds', async () => {
