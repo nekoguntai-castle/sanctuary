@@ -6,19 +6,18 @@ import {
   type RenderHookResult,
 } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { MemoryRouter, useSearchParams } from 'react-router-dom';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { useTransactionList } from '../../../src/components/TransactionList/hooks/useTransactionList';
 import {
   isAbortError,
-  removeExpectedTxParam,
   selectionErrorMessage,
 } from '../../../src/components/TransactionList/hooks/selectionResolution';
 import * as bitcoinApi from '../../../src/api/bitcoin';
 import * as labelsApi from '../../../src/api/labels';
 import type { TransactionStats } from '../../../src/api/transactions';
 import * as transactionsApi from '../../../src/api/transactions';
-import type { Label,Transaction } from '../../../src/types';
+import type { Transaction } from '../../../src/types';
 
 vi.mock('../../../src/api/bitcoin', () => ({
   getStatus: vi.fn(),
@@ -54,16 +53,6 @@ const makeTx = (overrides: Partial<Transaction> = {}): Transaction => ({
 
 const VALID_TXID = 'a'.repeat(64);
 
-function createDeferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise;
-    reject = rejectPromise;
-  });
-  return { promise, reject, resolve };
-}
-
 // useTransactionList calls useSearchParams, so the hook must render inside a
 // Router. renderTxHook injects a MemoryRouter wrapper (default at "/"); pass a
 // custom one via options.wrapper to seed the ?tx deep-link param.
@@ -83,16 +72,6 @@ describe('useTransactionList branches', () => {
   it('normalizes non-Error selection failures and distinguishes non-abort DOM exceptions', () => {
     expect(selectionErrorMessage('offline')).toBe('Failed to load transaction details');
     expect(isAbortError(new DOMException('bad request', 'NetworkError'))).toBe(false);
-  });
-
-  it('removes only the expected normalized transaction URL parameter', () => {
-    const missing = new URLSearchParams('view=compact');
-    const different = new URLSearchParams(`tx=${'b'.repeat(64)}&view=compact`);
-    const matching = new URLSearchParams(`tx=${VALID_TXID.toUpperCase()}&view=compact`);
-
-    expect(removeExpectedTxParam(missing, VALID_TXID)).toBe(missing);
-    expect(removeExpectedTxParam(different, VALID_TXID)).toBe(different);
-    expect(removeExpectedTxParam(matching, VALID_TXID).toString()).toBe('view=compact');
   });
 
   beforeEach(() => {
@@ -154,9 +133,8 @@ describe('useTransactionList branches', () => {
     });
   });
 
-  it('covers explorer/details fetch failures plus clipboard success/fallback timeout paths', async () => {
+  it('survives an explorer-status failure and covers clipboard success/fallback timeout paths', async () => {
     vi.mocked(bitcoinApi.getStatus).mockRejectedValueOnce(new Error('status failed'));
-    vi.mocked(transactionsApi.getTransaction).mockRejectedValueOnce(new Error('details failed'));
     const timeoutCallbacks: Array<() => void> = [];
     let timeoutId = 0;
     const realSetTimeout = globalThis.setTimeout;
@@ -188,16 +166,7 @@ describe('useTransactionList branches', () => {
     const tx = makeTx({ id: 'tx-fail', txid: 'txid-fail' });
     const { result } = renderTxHook(() => useTransactionList({ transactions: [tx] }));
 
-    act(() => {
-      result.current.handleTxClick(tx);
-    });
-    await waitFor(() => {
-      expect(transactionsApi.getTransaction).toHaveBeenCalledWith('wallet-1', 'txid-fail', expect.any(Object));
-    });
-    await waitFor(() => {
-      expect(result.current.loadingDetails).toBe(false);
-    });
-    expect(result.current.fullTxDetails).toBeNull();
+    await waitFor(() => expect(bitcoinApi.getStatus).toHaveBeenCalled());
 
     await act(async () => {
       await result.current.copyToClipboard('txid-fail');
@@ -214,215 +183,6 @@ describe('useTransactionList branches', () => {
     expect(result.current.copied).toBe(false);
     clearTimeoutSpy.mockRestore();
     setTimeoutSpy.mockRestore();
-  });
-
-  it('no-ops save labels and AI suggestion when no transaction is selected', async () => {
-    const { result } = renderTxHook(() => useTransactionList({ transactions: [makeTx()] }));
-
-    await act(async () => {
-      await result.current.handleSaveLabels();
-      await result.current.handleAISuggestion('Coffee');
-    });
-
-    expect(labelsApi.setTransactionLabels).not.toHaveBeenCalled();
-    expect(labelsApi.createLabel).not.toHaveBeenCalled();
-  });
-
-  it('falls back to empty selected labels when transaction labels are undefined', async () => {
-    const tx = makeTx({
-      id: 'tx-no-labels',
-      txid: 'txid-no-labels',
-      labels: undefined as any,
-    });
-
-    const { result } = renderTxHook(() =>
-      useTransactionList({
-        transactions: [tx],
-      })
-    );
-
-    act(() => {
-      result.current.handleTxClick(tx);
-    });
-    await waitFor(() => expect(transactionsApi.getTransaction).toHaveBeenCalledWith('wallet-1', 'txid-no-labels', expect.any(Object)));
-
-    await act(async () => {
-      await result.current.handleEditLabels(tx);
-    });
-
-    expect(result.current.selectedLabelIds).toEqual([]);
-  });
-
-  it('edits labels, toggles add/remove branches, and saves selected labels', async () => {
-    const tx = makeTx({
-      id: 'tx-edit',
-      txid: 'txid-edit',
-      labels: [{ id: 'lbl-existing-on-tx', name: 'Existing', color: '#333333' } as Label],
-    });
-    const onLabelsChange = vi.fn();
-    const labelA: Label = {
-      id: 'lbl-a',
-      walletId: 'wallet-1',
-      name: 'A',
-      color: '#111111',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    const labelB: Label = {
-      id: 'lbl-b',
-      walletId: 'wallet-1',
-      name: 'B',
-      color: '#222222',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    const { result } = renderTxHook(() =>
-      useTransactionList({
-        transactions: [tx],
-        walletLabels: [labelA, labelB],
-        onLabelsChange,
-      })
-    );
-
-    act(() => {
-      result.current.handleTxClick(tx);
-    });
-    await waitFor(() => expect(transactionsApi.getTransaction).toHaveBeenCalledWith('wallet-1', 'txid-edit', expect.any(Object)));
-
-    await act(async () => {
-      await result.current.handleEditLabels(tx);
-    });
-    expect(result.current.selectedLabelIds).toEqual(['lbl-existing-on-tx']);
-
-    act(() => {
-      result.current.handleToggleLabel('lbl-a');
-    });
-    expect(result.current.selectedLabelIds).toEqual(['lbl-existing-on-tx', 'lbl-a']);
-
-    act(() => {
-      result.current.handleToggleLabel('lbl-a');
-    });
-    expect(result.current.selectedLabelIds).toEqual(['lbl-existing-on-tx']);
-
-    act(() => {
-      result.current.handleToggleLabel('lbl-b');
-    });
-    expect(result.current.selectedLabelIds).toEqual(['lbl-existing-on-tx', 'lbl-b']);
-    vi.mocked(labelsApi.setTransactionLabels).mockResolvedValueOnce([labelB]);
-
-    await act(async () => {
-      await result.current.handleSaveLabels();
-    });
-
-    expect(labelsApi.setTransactionLabels).toHaveBeenCalledWith('tx-edit', ['lbl-existing-on-tx', 'lbl-b']);
-    expect(result.current.selectedTx?.labels?.map(l => l.id)).toEqual(['lbl-existing-on-tx', 'lbl-b']);
-    expect(onLabelsChange).toHaveBeenCalledTimes(1);
-  });
-
-  it('covers save/AI suggestion error handlers', async () => {
-    const tx = makeTx({ id: 'tx-errors', txid: 'txid-errors', walletId: 'wallet-errors', labels: [] });
-    vi.mocked(labelsApi.setTransactionLabels).mockRejectedValueOnce('save failed');
-    vi.mocked(labelsApi.createLabel).mockRejectedValueOnce(new Error('create failed'));
-
-    const { result } = renderTxHook(() =>
-      useTransactionList({
-        transactions: [tx],
-      })
-    );
-
-    act(() => {
-      result.current.handleTxClick(tx);
-    });
-    await waitFor(() => expect(transactionsApi.getTransaction).toHaveBeenCalledWith('wallet-errors', 'txid-errors', expect.any(Object)));
-
-    // handleEditLabels now reads from walletLabels synchronously (no API call)
-    await act(async () => {
-      await result.current.handleEditLabels(tx);
-    });
-
-    act(() => {
-      result.current.handleToggleLabel('lbl-x');
-    });
-    await act(async () => {
-      await result.current.handleSaveLabels();
-    });
-
-    await act(async () => {
-      await result.current.handleAISuggestion('NewLabel');
-    });
-
-    expect(labelsApi.setTransactionLabels).toHaveBeenCalled();
-    expect(labelsApi.createLabel).toHaveBeenCalled();
-    expect(result.current.labelMutationError).toBe('create failed');
-
-    await act(async () => {
-      await result.current.handleEditLabels(tx);
-    });
-    expect(result.current.labelMutationError).toBeNull();
-  });
-
-
-  it('applies AI suggestions for existing labels, avoids duplicate selection, and creates missing labels', async () => {
-    const tx = makeTx({ id: 'tx-ai', txid: 'txid-ai', walletId: 'wallet-ai', labels: [] });
-    const existing: Label = {
-      id: 'lbl-existing',
-      walletId: 'wallet-ai',
-      name: 'Groceries',
-      color: '#00aa00',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    const created: Label = {
-      id: 'lbl-created',
-      walletId: 'wallet-ai',
-      name: 'Coffee',
-      color: '#6366f1',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    vi.mocked(labelsApi.createLabel).mockResolvedValueOnce(created);
-
-    const { result } = renderTxHook(() =>
-      useTransactionList({
-        transactions: [tx],
-        walletLabels: [existing],
-      })
-    );
-
-    act(() => {
-      result.current.handleTxClick(tx);
-    });
-    await waitFor(() => expect(transactionsApi.getTransaction).toHaveBeenCalledWith('wallet-ai', 'txid-ai', expect.any(Object)));
-
-    // handleEditLabels now reads from walletLabels synchronously
-    await act(async () => {
-      await result.current.handleEditLabels(tx);
-    });
-
-    // "groceries" matches existing label (case-insensitive) - should not create
-    await act(async () => {
-      await result.current.handleAISuggestion('groceries');
-    });
-    expect(labelsApi.createLabel).not.toHaveBeenCalled();
-    expect(result.current.selectedLabelIds).toEqual(['lbl-existing']);
-
-    // Duplicate suggestion - should remain selected without duplication
-    await act(async () => {
-      await result.current.handleAISuggestion('groceries');
-    });
-    expect(result.current.selectedLabelIds).toEqual(['lbl-existing']);
-
-    // "Coffee" does not exist - should create via API
-    await act(async () => {
-      await result.current.handleAISuggestion('Coffee');
-    });
-
-    expect(labelsApi.createLabel).toHaveBeenCalledWith('wallet-ai', {
-      name: 'Coffee',
-      color: '#6366f1',
-    });
-    expect(result.current.selectedLabelIds).toEqual(expect.arrayContaining(['lbl-existing', 'lbl-created']));
   });
 
   it('covers consolidation classification and txStats fee branches', () => {
@@ -546,399 +306,14 @@ describe('useTransactionList branches', () => {
     });
   });
 
-  describe('URL selection sync (#52)', () => {
-    it('keeps B loading and details when stale A settles before B', async () => {
-      const txA = makeTx({ id: 'tx-a', txid: 'txid-a' });
-      const txB = makeTx({ id: 'tx-b', txid: 'txid-b' });
-      const detailsA = createDeferred<Transaction>();
-      const detailsB = createDeferred<Transaction>();
-      vi.mocked(transactionsApi.getTransaction).mockImplementation((_walletId, txid) => (
-        txid === 'txid-a' ? detailsA.promise : detailsB.promise
-      ));
-      const { result } = renderTxHook(() =>
-        useTransactionList({ transactions: [txA, txB] })
-      );
 
-      act(() => result.current.handleTxClick(txA));
-      await waitFor(() => expect(transactionsApi.getTransaction).toHaveBeenCalledWith('wallet-1', 'txid-a', expect.any(Object)));
-      act(() => result.current.handleTxClick(txB));
-      await waitFor(() => expect(transactionsApi.getTransaction).toHaveBeenCalledWith('wallet-1', 'txid-b', expect.any(Object)));
+  it('finds the row behind an open tab, and reports one it does not have', () => {
+    // The tab strip labels a tab from its row; a tab opened by deep link before
+    // the page loads has no row yet.
+    const tx = makeTx({ id: 'tx-known', txid: VALID_TXID });
+    const { result } = renderTxHook(() => useTransactionList({ transactions: [tx] }));
 
-      await act(async () => {
-        detailsA.resolve({ ...txA, inputs: [] });
-        await detailsA.promise;
-      });
-      expect(result.current.selectedTx?.txid).toBe('txid-b');
-      expect(result.current.fullTxDetails).toBeNull();
-      expect(result.current.loadingDetails).toBe(true);
-
-      await act(async () => {
-        detailsB.resolve({ ...txB, inputs: [] });
-        await detailsB.promise;
-      });
-      expect(result.current.fullTxDetails?.txid).toBe('txid-b');
-      expect(result.current.loadingDetails).toBe(false);
-    });
-
-    it('ignores a stale detail failure after a newer selection starts', async () => {
-      const txA = makeTx({ id: 'tx-a', txid: 'txid-a' });
-      const txB = makeTx({ id: 'tx-b', txid: 'txid-b' });
-      const detailsA = createDeferred<Transaction>();
-      const detailsB = createDeferred<Transaction>();
-      vi.mocked(transactionsApi.getTransaction).mockImplementation((_walletId, txid) => (
-        txid === 'txid-a' ? detailsA.promise : detailsB.promise
-      ));
-      const { result } = renderTxHook(() =>
-        useTransactionList({ transactions: [txA, txB] })
-      );
-
-      act(() => result.current.handleTxClick(txA));
-      await waitFor(() => expect(transactionsApi.getTransaction).toHaveBeenCalledWith('wallet-1', 'txid-a', expect.any(Object)));
-      act(() => result.current.handleTxClick(txB));
-      await waitFor(() => expect(transactionsApi.getTransaction).toHaveBeenCalledWith('wallet-1', 'txid-b', expect.any(Object)));
-
-      await act(async () => {
-        detailsA.reject(new Error('stale detail failure'));
-        await expect(detailsA.promise).rejects.toThrow('stale detail failure');
-      });
-      expect(result.current.loadingDetails).toBe(true);
-
-      await act(async () => {
-        detailsB.resolve({ ...txB, inputs: [] });
-        await detailsB.promise;
-      });
-      expect(result.current.fullTxDetails?.txid).toBe('txid-b');
-      expect(result.current.loadingDetails).toBe(false);
-    });
-
-    it('does not let late A overwrite details after B completes first', async () => {
-      const txA = makeTx({ id: 'tx-a', txid: 'txid-a' });
-      const txB = makeTx({ id: 'tx-b', txid: 'txid-b' });
-      const detailsA = createDeferred<Transaction>();
-      const detailsB = createDeferred<Transaction>();
-      vi.mocked(transactionsApi.getTransaction).mockImplementation((_walletId, txid) => (
-        txid === 'txid-a' ? detailsA.promise : detailsB.promise
-      ));
-      const { result } = renderTxHook(() =>
-        useTransactionList({ transactions: [txA, txB] })
-      );
-
-      act(() => result.current.handleTxClick(txA));
-      await waitFor(() => expect(transactionsApi.getTransaction).toHaveBeenCalledWith('wallet-1', 'txid-a', expect.any(Object)));
-      act(() => result.current.handleTxClick(txB));
-      await waitFor(() => expect(transactionsApi.getTransaction).toHaveBeenCalledWith('wallet-1', 'txid-b', expect.any(Object)));
-      await act(async () => {
-        detailsB.resolve({ ...txB, outputs: [] });
-        await detailsB.promise;
-      });
-      expect(result.current.fullTxDetails?.txid).toBe('txid-b');
-
-      await act(async () => {
-        detailsA.resolve({ ...txA, outputs: [] });
-        await detailsA.promise;
-      });
-      expect(result.current.selectedTx?.txid).toBe('txid-b');
-      expect(result.current.fullTxDetails?.txid).toBe('txid-b');
-      expect(result.current.loadingDetails).toBe(false);
-    });
-
-    it('writes ?tx on select, clears it on clear, and clears selection when ?tx is removed externally', async () => {
-      const tx = makeTx({ id: 'tx-1', txid: 'txid-1' });
-      const { result } = renderTxHook(() => {
-        const list = useTransactionList({ transactions: [tx] });
-        const [params, setParams] = useSearchParams();
-        return { list, txParam: params.get('tx'), setParams };
-      });
-
-      // Settle the mount-time explorer-URL fetch before driving selection.
-      await waitFor(() => expect(bitcoinApi.getStatus).toHaveBeenCalled());
-      expect(result.current.list.ownsSelection).toBe(true);
-      expect(result.current.txParam).toBeNull();
-
-      // Selecting writes ?tx; the reconcile effect then resolves it to selectedTx.
-      await act(async () => result.current.list.handleTxClick(tx));
-      expect(result.current.list.selectedTx?.txid).toBe('txid-1');
-      expect(result.current.txParam).toBe('txid-1');
-
-      // Explicit clear removes ?tx.
-      await act(async () => result.current.list.clearSelectedTx());
-      expect(result.current.list.selectedTx).toBeNull();
-      expect(result.current.txParam).toBeNull();
-
-      // Re-select, then drop ?tx externally (e.g. browser back) → selection clears.
-      await act(async () => result.current.list.handleTxClick(tx));
-      expect(result.current.list.selectedTx?.txid).toBe('txid-1');
-      await act(async () => result.current.setParams(new URLSearchParams()));
-      expect(result.current.list.selectedTx).toBeNull();
-    });
-
-    it('resolves a valid off-page deep link through the wallet-scoped endpoint', async () => {
-      const tx = makeTx({ id: 'tx-2', txid: VALID_TXID });
-      vi.mocked(transactionsApi.getTransaction).mockResolvedValueOnce(tx);
-      const { result } = renderTxHook(
-        () => useTransactionList({ transactions: [], walletId: 'wallet-1' }),
-        { wrapper: makeRouterWrapper([`/?tx=${VALID_TXID}`]) },
-      );
-
-      expect(result.current.selectionStatus).toBe('loading');
-      await waitFor(() => expect(result.current.selectedTx?.txid).toBe(VALID_TXID));
-      expect(transactionsApi.getTransaction).toHaveBeenCalledWith(
-        'wallet-1',
-        VALID_TXID,
-        expect.objectContaining({ signal: expect.any(AbortSignal) }),
-      );
-      expect(result.current.fullTxDetails).toEqual(tx);
-      act(() => result.current.retrySelection());
-      expect(transactionsApi.getTransaction).toHaveBeenCalledTimes(1);
-    });
-
-    it('shows a stable error when a valid deep link has no wallet context', async () => {
-      const { result } = renderTxHook(
-        () => useTransactionList({ transactions: [] }),
-        { wrapper: makeRouterWrapper([`/?tx=${VALID_TXID}`]) },
-      );
-
-      await waitFor(() => expect(result.current.selectionStatus).toBe('error'));
-      expect(result.current.selectionError).toBe('Unable to determine the transaction wallet');
-      expect(transactionsApi.getTransaction).not.toHaveBeenCalled();
-    });
-
-    it('clears a deep link when the fetched transaction was replaced', async () => {
-      vi.mocked(transactionsApi.getTransaction).mockResolvedValueOnce(
-        makeTx({ txid: VALID_TXID, rbfStatus: 'replaced' }),
-      );
-      const { result } = renderTxHook(() => {
-        const list = useTransactionList({ transactions: [], walletId: 'wallet-1' });
-        const [params] = useSearchParams();
-        return { list, txParam: params.get('tx') };
-      }, { wrapper: makeRouterWrapper([`/?tx=${VALID_TXID}`]) });
-
-      await waitFor(() => expect(result.current.txParam).toBeNull());
-      expect(result.current.list.selectedTx).toBeNull();
-    });
-
-    it('leaves selection empty for a ?tx that matches no transaction', async () => {
-      const tx = makeTx({ id: 'tx-1', txid: 'txid-1' });
-      const { result } = renderTxHook(() => {
-        const list = useTransactionList({ transactions: [tx] });
-        const [params] = useSearchParams();
-        return { list, txParam: params.get('tx') };
-      }, { wrapper: makeRouterWrapper(['/?tx=does-not-exist&view=compact']) });
-
-      await waitFor(() => expect(bitcoinApi.getStatus).toHaveBeenCalled());
-      await waitFor(() => expect(result.current.txParam).toBeNull());
-      expect(result.current.list.selectedTx).toBeNull();
-      expect(transactionsApi.getTransaction).not.toHaveBeenCalled();
-    });
-
-    it('clears an empty or whitespace-only transaction URL parameter', async () => {
-      const { result } = renderTxHook(() => {
-        const list = useTransactionList({ transactions: [], walletId: 'wallet-1' });
-        const [params, setParams] = useSearchParams();
-        return { list, txParam: params.get('tx'), setParams };
-      }, { wrapper: makeRouterWrapper(['/?tx=']) });
-
-      await waitFor(() => expect(result.current.txParam).toBeNull());
-      act(() => result.current.setParams({ tx: '   ' }));
-      await waitFor(() => expect(result.current.txParam).toBeNull());
-      expect(transactionsApi.getTransaction).not.toHaveBeenCalled();
-    });
-
-    it('clears an invalid replacement while ignoring a late 404 from the prior deep link', async () => {
-      const deferred = createDeferred<Transaction>();
-      vi.mocked(transactionsApi.getTransaction).mockReturnValueOnce(deferred.promise);
-      const { result } = renderTxHook(() => {
-        const list = useTransactionList({ transactions: [], walletId: 'wallet-1' });
-        const [params, setParams] = useSearchParams();
-        return { list, txParam: params.get('tx'), setParams };
-      }, { wrapper: makeRouterWrapper([`/?tx=${VALID_TXID}`]) });
-
-      await waitFor(() => expect(transactionsApi.getTransaction).toHaveBeenCalledTimes(1));
-      const priorSignal = vi.mocked(transactionsApi.getTransaction).mock.calls[0][2]?.signal;
-      act(() => result.current.setParams({ tx: 'invalid-replacement' }));
-
-      await waitFor(() => expect(result.current.txParam).toBeNull());
-      expect(priorSignal?.aborted).toBe(true);
-      await act(async () => deferred.reject({ status: 404 }));
-      expect(result.current.txParam).toBeNull();
-      expect(result.current.list.selectionStatus).toBe('idle');
-    });
-
-    it('clears a current 404 but retains and retries a network failure', async () => {
-      const tx = makeTx({ txid: VALID_TXID });
-      vi.mocked(transactionsApi.getTransaction)
-        .mockRejectedValueOnce({ status: 404 })
-        .mockRejectedValueOnce(new Error('offline'))
-        .mockResolvedValueOnce(tx);
-      const { result } = renderTxHook(() => {
-        const list = useTransactionList({ transactions: [], walletId: 'wallet-1' });
-        const [params, setParams] = useSearchParams();
-        return { list, txParam: params.get('tx'), setParams };
-      }, { wrapper: makeRouterWrapper([`/?tx=${VALID_TXID}`]) });
-
-      await waitFor(() => expect(result.current.txParam).toBeNull());
-      act(() => result.current.setParams({ tx: VALID_TXID }));
-      await waitFor(() => expect(result.current.list.selectionStatus).toBe('error'));
-      expect(result.current.txParam).toBe(VALID_TXID);
-
-      act(() => result.current.list.retrySelection());
-      await waitFor(() => expect(result.current.list.selectionStatus).toBe('resolved'));
-      expect(result.current.txParam).toBe(VALID_TXID);
-      expect(transactionsApi.getTransaction).toHaveBeenCalledTimes(3);
-    });
-
-    it('aborts on unmount and does not duplicate a request when the row enters the list', async () => {
-      const deferred = createDeferred<Transaction>();
-      vi.mocked(transactionsApi.getTransaction).mockReturnValue(deferred.promise);
-      const { result, rerender, unmount } = renderTxHook(
-        ({ rows }: { rows: Transaction[] }) => useTransactionList({
-          transactions: rows,
-          selectionTransactions: rows,
-          walletId: 'wallet-1',
-        }),
-        {
-          initialProps: { rows: [] as Transaction[] },
-          wrapper: makeRouterWrapper([`/?tx=${VALID_TXID}`]),
-        },
-      );
-      await waitFor(() => expect(transactionsApi.getTransaction).toHaveBeenCalledTimes(1));
-      const signal = vi.mocked(transactionsApi.getTransaction).mock.calls[0][2]?.signal;
-
-      rerender({ rows: [makeTx({ txid: VALID_TXID })] });
-      expect(transactionsApi.getTransaction).toHaveBeenCalledTimes(1);
-      expect(result.current.selectedTx?.txid).toBe(VALID_TXID);
-
-      unmount();
-      expect(signal?.aborted).toBe(true);
-      deferred.resolve(makeTx({ txid: VALID_TXID }));
-    });
-
-    it('refreshes a resolved summary from list data without another detail request', async () => {
-      const initial = makeTx({ id: 'tx-initial', txid: VALID_TXID, confirmations: 1 });
-      const refreshed = { ...initial, confirmations: 2, label: 'refreshed' };
-      vi.mocked(transactionsApi.getTransaction).mockResolvedValue(initial);
-      const { result, rerender } = renderTxHook(
-        ({ rows }: { rows: Transaction[] }) => useTransactionList({
-          transactions: rows,
-          selectionTransactions: rows,
-          walletId: 'wallet-1',
-        }),
-        {
-          initialProps: { rows: [initial] },
-          wrapper: makeRouterWrapper([`/?tx=${VALID_TXID}`]),
-        },
-      );
-      await waitFor(() => expect(result.current.selectionStatus).toBe('resolved'));
-
-      rerender({ rows: [refreshed] });
-      await waitFor(() => expect(result.current.selectedTx).toMatchObject({
-        confirmations: 2,
-        label: 'refreshed',
-      }));
-      expect(transactionsApi.getTransaction).toHaveBeenCalledTimes(1);
-    });
-
-    it('preserves a refreshed local summary when the pending detail request resolves', async () => {
-      const initial = makeTx({ id: 'tx-initial', txid: VALID_TXID, confirmations: 1 });
-      const refreshed = { ...initial, confirmations: 2, label: 'refreshed' };
-      const deferred = createDeferred<Transaction>();
-      vi.mocked(transactionsApi.getTransaction).mockReturnValue(deferred.promise);
-      const { result, rerender } = renderTxHook(
-        ({ rows }: { rows: Transaction[] }) => useTransactionList({
-          transactions: rows,
-          selectionTransactions: rows,
-          walletId: 'wallet-1',
-        }),
-        {
-          initialProps: { rows: [initial] },
-          wrapper: makeRouterWrapper([`/?tx=${VALID_TXID}`]),
-        },
-      );
-      await waitFor(() => expect(result.current.selectionStatus).toBe('loading'));
-
-      rerender({ rows: [refreshed] });
-      await waitFor(() => expect(result.current.selectedTx).toBe(refreshed));
-      await act(async () => deferred.resolve(makeTx({
-        id: 'tx-detail',
-        txid: VALID_TXID,
-        confirmations: 3,
-      })));
-
-      await waitFor(() => expect(result.current.selectionStatus).toBe('resolved'));
-      expect(result.current.selectedTx).toBe(refreshed);
-      expect(result.current.fullTxDetails?.confirmations).toBe(3);
-      expect(transactionsApi.getTransaction).toHaveBeenCalledTimes(1);
-    });
-
-    it('aborts an in-flight detail request when the tx URL parameter is cleared', async () => {
-      const deferred = createDeferred<Transaction>();
-      vi.mocked(transactionsApi.getTransaction).mockReturnValue(deferred.promise);
-      const { result } = renderTxHook(() => {
-        const list = useTransactionList({ transactions: [], walletId: 'wallet-1' });
-        const [, setParams] = useSearchParams();
-        return { list, setParams };
-      }, { wrapper: makeRouterWrapper([`/?tx=${VALID_TXID}`]) });
-
-      await waitFor(() => expect(transactionsApi.getTransaction).toHaveBeenCalledTimes(1));
-      const signal = vi.mocked(transactionsApi.getTransaction).mock.calls[0][2]?.signal;
-      act(() => result.current.setParams({}));
-
-      await waitFor(() => expect(result.current.list.selectionStatus).toBe('idle'));
-      expect(signal?.aborted).toBe(true);
-      deferred.resolve(makeTx({ txid: VALID_TXID }));
-    });
-
-    it('clears a valid selection when the URL changes to an unresolved transaction', async () => {
-      const tx = makeTx({ id: 'tx-1', txid: 'txid-1' });
-      const { result } = renderTxHook(() => {
-        const list = useTransactionList({ transactions: [tx] });
-        const [, setParams] = useSearchParams();
-        return { list, setParams };
-      }, {
-        wrapper: makeRouterWrapper(['/?tx=txid-1']),
-      });
-      await waitFor(() => expect(result.current.list.selectedTx?.txid).toBe('txid-1'));
-
-      act(() => result.current.setParams({ tx: 'missing-txid' }));
-
-      await waitFor(() => expect(result.current.list.selectedTx).toBeNull());
-      expect(result.current.list.fullTxDetails).toBeNull();
-    });
-
-    it('clears a selected transaction when it becomes replaced', async () => {
-      const tx = makeTx({ id: 'tx-1', txid: 'txid-1' });
-      const { result, rerender } = renderTxHook(
-        ({ transactions }: { transactions: Transaction[] }) =>
-          useTransactionList({ transactions }),
-        {
-          initialProps: { transactions: [tx] },
-          wrapper: makeRouterWrapper(['/?tx=txid-1']),
-        },
-      );
-      await waitFor(() => expect(result.current.selectedTx?.txid).toBe('txid-1'));
-
-      rerender({ transactions: [{ ...tx, rbfStatus: 'replaced' }] });
-
-      await waitFor(() => expect(result.current.selectedTx).toBeNull());
-      expect(result.current.filteredTransactions).toEqual([]);
-    });
-
-    it('ignores ?tx and delegates clicks when a caller owns selection via onTransactionClick', async () => {
-      const tx = makeTx({ id: 'tx-1', txid: 'txid-1' });
-      const onTransactionClick = vi.fn();
-      const { result } = renderTxHook(
-        () => useTransactionList({ transactions: [tx], onTransactionClick }),
-        { wrapper: makeRouterWrapper(['/?tx=txid-1']) },
-      );
-
-      await waitFor(() => expect(bitcoinApi.getStatus).toHaveBeenCalled());
-      expect(result.current.ownsSelection).toBe(false);
-      // The matching ?tx must NOT hijack a delegating list.
-      expect(result.current.selectedTx).toBeNull();
-
-      act(() => result.current.handleTxClick(tx));
-      expect(onTransactionClick).toHaveBeenCalledWith(tx);
-      expect(result.current.selectedTx).toBeNull();
-    });
+    expect(result.current.findTransaction(VALID_TXID.toUpperCase())).toBe(tx);
+    expect(result.current.findTransaction('b'.repeat(64))).toBeNull();
   });
 });

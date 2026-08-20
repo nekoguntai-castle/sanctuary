@@ -1,16 +1,7 @@
-import {
-  act,
-  renderHook,
-  waitFor,
-  type RenderHookOptions,
-  type RenderHookResult,
-} from "@testing-library/react";
-import type { ReactNode } from "react";
-import { MemoryRouter } from "react-router-dom";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useTransactionLabelMutations } from "../../../src/components/TransactionList/hooks/useTransactionLabelMutations";
-import { useTransactionList } from "../../../src/components/TransactionList/hooks/useTransactionList";
-import { useTransactionSelection } from "../../../src/components/TransactionList/hooks/useTransactionSelection";
+import { useTransactionResolution } from "../../../src/components/TransactionList/hooks/useTransactionResolution";
 import * as bitcoinApi from "../../../src/api/bitcoin";
 import * as labelsApi from "../../../src/api/labels";
 import * as transactionsApi from "../../../src/api/transactions";
@@ -49,16 +40,46 @@ function createDeferred<T>() {
   return { promise, reject, resolve };
 }
 
-const makeRouterWrapper = () =>
-  function RouterWrapper({ children }: { children: ReactNode }) {
-    return <MemoryRouter>{children}</MemoryRouter>;
-  };
+/**
+ * The two hooks a detail panel runs: one resolution and the label editor bound
+ * to it. Each open tab mounts its own pair, so "a stale mutation must not touch
+ * a newer transaction" is now a statement about two panels rather than about one
+ * slot being switched between transactions.
+ */
+function renderPanelHooks(
+  initialProps: { rows: Transaction[]; walletLabels?: Label[] },
+) {
+  const onLabelsChange = vi.fn();
+  const view = renderHook(
+    ({ rows, walletLabels = [] }: { rows: Transaction[]; walletLabels?: Label[] }) => {
+      const resolution = useTransactionResolution({
+        txid: rows[0].txid,
+        selectionTransactions: rows,
+        walletId: "wallet-1",
+        onUnresolvable: vi.fn(),
+      });
+      const mutations = useTransactionLabelMutations({
+        selection: resolution.selection,
+        walletLabels,
+        onLabelsChange,
+        patchSelectedTxLabels: resolution.patchSelectedTxLabels,
+      });
+      return { ...mutations, selection: resolution.selection };
+    },
+    { initialProps },
+  );
+  return { ...view, onLabelsChange };
+}
 
-function renderTxHook<Result, Props>(
-  callback: (props: Props) => Result,
-  options?: RenderHookOptions<Props>,
-): RenderHookResult<Result, Props> {
-  return renderHook(callback, { wrapper: makeRouterWrapper(), ...options });
+async function renderResolvedPanel(
+  tx: Transaction,
+  walletLabels: Label[] = [],
+) {
+  const view = renderPanelHooks({ rows: [tx], walletLabels });
+  await waitFor(() =>
+    expect(view.result.current.selection.selectedTx?.id).toBe(tx.id),
+  );
+  return view;
 }
 
 describe("transaction label mutation concurrency", () => {
@@ -79,7 +100,11 @@ describe("transaction label mutation concurrency", () => {
     vi.mocked(transactionsApi.getTransaction).mockResolvedValue(makeTx());
   });
 
-  it("does not let a stale label save overwrite a newer transaction selection", async () => {
+  it("keeps a slow label save inside the tab that started it", async () => {
+    // Before tabs, this was one editor slot switched between transactions, and a
+    // save that finished after the switch could write onto whatever was showing.
+    // Two open tabs are two editors, so the guarantee is structural — and the
+    // save still has to land correctly on the tab that started it.
     const txA = makeTx({ id: "tx-a", txid: "txid-a" });
     const txB = makeTx({ id: "tx-b", txid: "txid-b" });
     const saved = {
@@ -94,39 +119,36 @@ describe("transaction label mutation concurrency", () => {
       async (_walletId, txid) => (txid === txA.txid ? txA : txB),
     );
 
-    const { result } = renderTxHook(() =>
-      useTransactionList({
-        transactions: [txA, txB],
-        walletLabels: [saved],
-      }),
-    );
+    const panelA = await renderResolvedPanel(txA, [saved]);
+    const panelB = await renderResolvedPanel(txB, [saved]);
 
-    act(() => result.current.handleTxClick(txA));
-    await waitFor(() => expect(result.current.selectedTx?.id).toBe("tx-a"));
     act(() => {
-      result.current.handleEditLabels(txA);
-      result.current.handleToggleLabel(saved.id);
+      panelA.result.current.handleEditLabels(txA);
+      panelA.result.current.handleToggleLabel(saved.id);
     });
     let savePromise!: Promise<void>;
     act(() => {
-      savePromise = result.current.handleSaveLabels();
+      savePromise = panelA.result.current.handleSaveLabels();
     });
-    await waitFor(() => expect(result.current.savingLabels).toBe(true));
+    await waitFor(() => expect(panelA.result.current.savingLabels).toBe(true));
+    expect(panelB.result.current.savingLabels).toBe(false);
 
-    act(() => result.current.handleTxClick(txB));
-    await waitFor(() => expect(result.current.selectedTx?.id).toBe("tx-b"));
     await act(async () => {
       save.resolve([saved]);
       await savePromise;
     });
 
-    expect(result.current.selectedTx?.id).toBe("tx-b");
-    expect(result.current.selectedTx?.labels).toEqual([]);
-    expect(result.current.savingLabels).toBe(false);
-    expect(result.current.labelMutationError).toBeNull();
+    expect(labelsApi.setTransactionLabels).toHaveBeenCalledWith(txA.id, [saved.id]);
+    expect(panelA.result.current.selection.selectedTx?.labels).toEqual([saved]);
+    expect(panelA.result.current.savingLabels).toBe(false);
+    expect(panelA.result.current.labelMutationError).toBeNull();
+    // The other open transaction is untouched: different editor, different
+    // resolution, no shared slot to overwrite.
+    expect(panelB.result.current.selection.selectedTx?.labels).toEqual([]);
+    expect(panelB.result.current.editingLabels).toBe(false);
   });
 
-  it("does not let a stale AI label creation mutate a newer transaction selection", async () => {
+  it("keeps a slow AI label creation inside the tab that started it", async () => {
     const txA = makeTx({ id: "tx-ai-a", txid: "txid-ai-a" });
     const txB = makeTx({ id: "tx-ai-b", txid: "txid-ai-b" });
     const created = {
@@ -141,32 +163,26 @@ describe("transaction label mutation concurrency", () => {
       async (_walletId, txid) => (txid === txA.txid ? txA : txB),
     );
 
-    const { result } = renderTxHook(() =>
-      useTransactionList({
-        transactions: [txA, txB],
-      }),
-    );
+    const panelA = await renderResolvedPanel(txA);
+    const panelB = await renderResolvedPanel(txB);
 
-    act(() => result.current.handleTxClick(txA));
-    await waitFor(() => expect(result.current.selectedTx?.id).toBe(txA.id));
-    act(() => result.current.handleEditLabels(txA));
+    act(() => panelA.result.current.handleEditLabels(txA));
     let createPromise!: Promise<void>;
     act(() => {
-      createPromise = result.current.handleAISuggestion(created.name);
+      createPromise = panelA.result.current.handleAISuggestion(created.name);
     });
 
-    act(() => result.current.handleTxClick(txB));
-    await waitFor(() => expect(result.current.selectedTx?.id).toBe(txB.id));
     await act(async () => {
       create.resolve(created);
       await createPromise;
     });
 
-    expect(result.current.selectedTx?.id).toBe(txB.id);
-    expect(result.current.availableLabels).toEqual([]);
-    expect(result.current.selectedLabelIds).toEqual([]);
-    expect(result.current.editingLabels).toBe(false);
-    expect(result.current.labelMutationError).toBeNull();
+    expect(panelA.result.current.selectedLabelIds).toEqual([created.id]);
+    expect(panelA.result.current.availableLabels).toEqual([created]);
+    expect(panelA.result.current.labelMutationError).toBeNull();
+    expect(panelB.result.current.selectedLabelIds).toEqual([]);
+    expect(panelB.result.current.availableLabels).toEqual([]);
+    expect(panelB.result.current.editingLabels).toBe(false);
   });
 
   it("invalidates pending label operations when editing is cancelled", async () => {
@@ -176,11 +192,7 @@ describe("transaction label mutation concurrency", () => {
     vi.mocked(labelsApi.setTransactionLabels).mockReturnValueOnce(save.promise);
     vi.mocked(labelsApi.createLabel).mockReturnValueOnce(create.promise);
 
-    const { result } = renderTxHook(() =>
-      useTransactionList({ transactions: [tx] }),
-    );
-    act(() => result.current.handleTxClick(tx));
-    await waitFor(() => expect(result.current.selectedTx?.id).toBe(tx.id));
+    const { result } = await renderResolvedPanel(tx);
     act(() => result.current.handleEditLabels(tx));
     let savePromise!: Promise<void>;
     let createPromise!: Promise<void>;
@@ -217,11 +229,7 @@ describe("transaction label mutation concurrency", () => {
     vi.mocked(labelsApi.setTransactionLabels).mockReturnValueOnce(save.promise);
     vi.mocked(labelsApi.createLabel).mockReturnValueOnce(create.promise);
 
-    const { result } = renderTxHook(() =>
-      useTransactionList({ transactions: [tx] }),
-    );
-    act(() => result.current.handleTxClick(tx));
-    await waitFor(() => expect(result.current.selectedTx?.id).toBe(tx.id));
+    const { result } = await renderResolvedPanel(tx);
     act(() => result.current.handleEditLabels(tx));
     let savePromise!: Promise<void>;
     let createPromise!: Promise<void>;
@@ -263,11 +271,7 @@ describe("transaction label mutation concurrency", () => {
       );
       vi.mocked(labelsApi.createLabel).mockReturnValueOnce(create.promise);
 
-      const { result } = renderTxHook(() =>
-        useTransactionList({ transactions: [tx] }),
-      );
-      act(() => result.current.handleTxClick(tx));
-      await waitFor(() => expect(result.current.selectedTx?.id).toBe(tx.id));
+      const { result } = await renderResolvedPanel(tx);
       act(() => result.current.handleEditLabels(tx));
       let savePromise!: Promise<void>;
       let createPromise!: Promise<void>;
@@ -306,11 +310,7 @@ describe("transaction label mutation concurrency", () => {
       .mockRejectedValueOnce(null)
       .mockResolvedValueOnce([]);
 
-    const { result } = renderTxHook(() =>
-      useTransactionList({ transactions: [tx] }),
-    );
-    act(() => result.current.handleTxClick(tx));
-    await waitFor(() => expect(result.current.selectedTx?.id).toBe(tx.id));
+    const { result } = await renderResolvedPanel(tx);
     act(() => {
       result.current.handleEditLabels(tx);
       result.current.handleToggleLabel("missing-label");
@@ -320,7 +320,7 @@ describe("transaction label mutation concurrency", () => {
     expect(result.current.labelMutationError).toBe("Failed to save labels");
 
     await act(async () => result.current.handleSaveLabels());
-    expect(result.current.selectedTx?.labels).toEqual([]);
+    expect(result.current.selection.selectedTx?.labels).toEqual([]);
   });
 
   it("does not duplicate an AI-created label selected while creation is pending", async () => {
@@ -334,11 +334,7 @@ describe("transaction label mutation concurrency", () => {
     const create = createDeferred<Label>();
     vi.mocked(labelsApi.createLabel).mockReturnValueOnce(create.promise);
 
-    const { result } = renderTxHook(() =>
-      useTransactionList({ transactions: [tx] }),
-    );
-    act(() => result.current.handleTxClick(tx));
-    await waitFor(() => expect(result.current.selectedTx?.id).toBe(tx.id));
+    const { result } = await renderResolvedPanel(tx);
     act(() => result.current.handleEditLabels(tx));
     let createPromise!: Promise<void>;
     act(() => {
@@ -351,35 +347,6 @@ describe("transaction label mutation concurrency", () => {
     });
 
     expect(result.current.selectedLabelIds).toEqual([created.id]);
-  });
-
-  it("ignores label patches whose expected selection key is stale", async () => {
-    const tx = makeTx({ id: "tx-patch-guard", txid: "txid-patch-guard" });
-    vi.mocked(transactionsApi.getTransaction).mockResolvedValueOnce(tx);
-    const { result } = renderTxHook(() =>
-      useTransactionSelection({
-        ownsSelection: true,
-        selectionTransactions: [tx],
-        walletId: tx.walletId,
-      }),
-    );
-
-    act(() => result.current.selectTx(tx));
-    await waitFor(() =>
-      expect(result.current.selection.selectedTx?.id).toBe(tx.id),
-    );
-    act(() => {
-      result.current.patchSelectedTxLabels("stale-selection-key", tx.id, [
-        {
-          id: "should-not-apply",
-          walletId: tx.walletId,
-          name: "Stale",
-          color: "#000000",
-        } as Label,
-      ]);
-    });
-
-    expect(result.current.selection.selectedTx?.labels).toEqual([]);
   });
 
   it("skips AI mutation when a selected summary has no resolvable selection key", async () => {
@@ -421,14 +388,12 @@ describe("transaction label mutation concurrency", () => {
     const save = createDeferred<Label[]>();
     vi.mocked(labelsApi.setTransactionLabels).mockReturnValueOnce(save.promise);
 
-    const { result, rerender } = renderTxHook(
-      ({ transactions }) =>
-        useTransactionList({ transactions, walletLabels: [label] }),
-      { initialProps: { transactions: [original] } },
-    );
-    act(() => result.current.handleTxClick(original));
+    const { result, rerender } = renderPanelHooks({
+      rows: [original],
+      walletLabels: [label],
+    });
     await waitFor(() =>
-      expect(result.current.selectedTx?.id).toBe(original.id),
+      expect(result.current.selection.selectedTx?.id).toBe(original.id),
     );
     act(() => {
       result.current.handleEditLabels(original);
@@ -438,14 +403,16 @@ describe("transaction label mutation concurrency", () => {
     act(() => {
       savePromise = result.current.handleSaveLabels();
     });
-    rerender({ transactions: [refreshed] });
-    await waitFor(() => expect(result.current.selectedTx?.memo).toBe("new"));
+    rerender({ rows: [refreshed], walletLabels: [label] });
+    await waitFor(() =>
+      expect(result.current.selection.selectedTx?.memo).toBe("new"),
+    );
 
     await act(async () => {
       save.resolve([label]);
       await savePromise;
     });
-    expect(result.current.selectedTx).toMatchObject({
+    expect(result.current.selection.selectedTx).toMatchObject({
       id: original.id,
       memo: "new",
       confirmations: 9,
@@ -476,14 +443,7 @@ describe("transaction label mutation concurrency", () => {
       );
       vi.mocked(labelsApi.createLabel).mockReturnValueOnce(create.promise);
 
-      const { result } = renderTxHook(() =>
-        useTransactionList({
-          transactions: [tx],
-          walletLabels: [saved],
-        }),
-      );
-      act(() => result.current.handleTxClick(tx));
-      await waitFor(() => expect(result.current.selectedTx?.id).toBe(tx.id));
+      const { result } = await renderResolvedPanel(tx, [saved]);
       act(() => {
         result.current.handleEditLabels(tx);
         result.current.handleToggleLabel(saved.id);
@@ -510,11 +470,269 @@ describe("transaction label mutation concurrency", () => {
       });
 
       expect(
-        result.current.selectedTx?.labels?.map((label) => label.id),
+        result.current.selection.selectedTx?.labels?.map((label) => label.id),
       ).toEqual([saved.id]);
       expect(result.current.editingLabels).toBe(false);
       expect(result.current.savingLabels).toBe(false);
       expect(result.current.labelMutationError).toBeNull();
     },
   );
+
+  it("falls back to empty selected labels when transaction labels are undefined", async () => {
+    const tx = makeTx({
+      id: "tx-no-labels",
+      txid: "txid-no-labels",
+      labels: undefined as any,
+    });
+
+    const { result } = await renderResolvedPanel(tx);
+
+    await act(async () => {
+      await result.current.handleEditLabels(tx);
+    });
+
+    expect(result.current.selectedLabelIds).toEqual([]);
+  });
+
+  it("edits labels, toggles add/remove branches, and saves selected labels", async () => {
+    const tx = makeTx({
+      id: "tx-edit",
+      txid: "txid-edit",
+      labels: [{ id: "lbl-existing-on-tx", name: "Existing", color: "#333333" } as Label],
+    });
+    const labelA: Label = {
+      id: "lbl-a",
+      walletId: "wallet-1",
+      name: "A",
+      color: "#111111",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const labelB: Label = {
+      id: "lbl-b",
+      walletId: "wallet-1",
+      name: "B",
+      color: "#222222",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const { result, onLabelsChange } = await renderResolvedPanel(tx, [labelA, labelB]);
+
+    await act(async () => {
+      await result.current.handleEditLabels(tx);
+    });
+    expect(result.current.selectedLabelIds).toEqual(["lbl-existing-on-tx"]);
+
+    act(() => {
+      result.current.handleToggleLabel("lbl-a");
+    });
+    expect(result.current.selectedLabelIds).toEqual(["lbl-existing-on-tx", "lbl-a"]);
+
+    act(() => {
+      result.current.handleToggleLabel("lbl-a");
+    });
+    expect(result.current.selectedLabelIds).toEqual(["lbl-existing-on-tx"]);
+
+    act(() => {
+      result.current.handleToggleLabel("lbl-b");
+    });
+    expect(result.current.selectedLabelIds).toEqual(["lbl-existing-on-tx", "lbl-b"]);
+    vi.mocked(labelsApi.setTransactionLabels).mockResolvedValueOnce([labelB]);
+
+    await act(async () => {
+      await result.current.handleSaveLabels();
+    });
+
+    expect(labelsApi.setTransactionLabels).toHaveBeenCalledWith("tx-edit", ["lbl-existing-on-tx", "lbl-b"]);
+    expect(result.current.selection.selectedTx?.labels?.map(l => l.id)).toEqual(["lbl-existing-on-tx", "lbl-b"]);
+    expect(onLabelsChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("covers save/AI suggestion error handlers", async () => {
+    const tx = makeTx({ id: "tx-errors", txid: "txid-errors", walletId: "wallet-errors", labels: [] });
+    vi.mocked(labelsApi.setTransactionLabels).mockRejectedValueOnce("save failed");
+    vi.mocked(labelsApi.createLabel).mockRejectedValueOnce(new Error("create failed"));
+
+    const { result } = await renderResolvedPanel(tx);
+
+    // handleEditLabels now reads from walletLabels synchronously (no API call)
+    await act(async () => {
+      await result.current.handleEditLabels(tx);
+    });
+
+    act(() => {
+      result.current.handleToggleLabel("lbl-x");
+    });
+    await act(async () => {
+      await result.current.handleSaveLabels();
+    });
+
+    await act(async () => {
+      await result.current.handleAISuggestion("NewLabel");
+    });
+
+    expect(labelsApi.setTransactionLabels).toHaveBeenCalled();
+    expect(labelsApi.createLabel).toHaveBeenCalled();
+    expect(result.current.labelMutationError).toBe("create failed");
+
+    await act(async () => {
+      await result.current.handleEditLabels(tx);
+    });
+    expect(result.current.labelMutationError).toBeNull();
+  });
+
+
+  it("applies AI suggestions for existing labels, avoids duplicate selection, and creates missing labels", async () => {
+    const tx = makeTx({ id: "tx-ai", txid: "txid-ai", walletId: "wallet-ai", labels: [] });
+    const existing: Label = {
+      id: "lbl-existing",
+      walletId: "wallet-ai",
+      name: "Groceries",
+      color: "#00aa00",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const created: Label = {
+      id: "lbl-created",
+      walletId: "wallet-ai",
+      name: "Coffee",
+      color: "#6366f1",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    vi.mocked(labelsApi.createLabel).mockResolvedValueOnce(created);
+
+    const { result } = await renderResolvedPanel(tx, [existing]);
+
+    // handleEditLabels now reads from walletLabels synchronously
+    await act(async () => {
+      await result.current.handleEditLabels(tx);
+    });
+
+    // "groceries" matches existing label (case-insensitive) - should not create
+    await act(async () => {
+      await result.current.handleAISuggestion("groceries");
+    });
+    expect(labelsApi.createLabel).not.toHaveBeenCalled();
+    expect(result.current.selectedLabelIds).toEqual(["lbl-existing"]);
+
+    // Duplicate suggestion - should remain selected without duplication
+    await act(async () => {
+      await result.current.handleAISuggestion("groceries");
+    });
+    expect(result.current.selectedLabelIds).toEqual(["lbl-existing"]);
+
+    // "Coffee" does not exist - should create via API
+    await act(async () => {
+      await result.current.handleAISuggestion("Coffee");
+    });
+
+    expect(labelsApi.createLabel).toHaveBeenCalledWith("wallet-ai", {
+      name: "Coffee",
+      color: "#6366f1",
+    });
+    expect(result.current.selectedLabelIds).toEqual(expect.arrayContaining(["lbl-existing", "lbl-created"]));
+  });
+
+  it("does nothing when the panel has no resolvable transaction to edit", async () => {
+    // The missing-wallet case: a summary with no selection key. Saving or
+    // asking for a suggestion must not reach the API.
+    const { result } = renderHook(() =>
+      useTransactionLabelMutations({
+        selection: {
+          key: null,
+          status: "error",
+          selectedTx: null,
+          fullTxDetails: null,
+          error: "Unable to determine the transaction wallet",
+        },
+        walletLabels: [],
+        patchSelectedTxLabels: vi.fn(),
+      }),
+    );
+
+    await act(async () => {
+      await result.current.handleSaveLabels();
+      await result.current.handleAISuggestion("Coffee");
+    });
+
+    expect(labelsApi.setTransactionLabels).not.toHaveBeenCalled();
+    expect(labelsApi.createLabel).not.toHaveBeenCalled();
+  });
+
+  it("saves without an onLabelsChange listener", async () => {
+    // TransactionList passes it through from a caller that may not supply one.
+    const tx = makeTx({ id: "tx-no-listener", txid: "txid-no-listener" });
+    const label = {
+      id: "lbl-quiet",
+      walletId: "wallet-1",
+      name: "Quiet",
+      color: "#444444",
+    } as Label;
+    vi.mocked(labelsApi.setTransactionLabels).mockResolvedValueOnce([label]);
+
+    const { result } = renderHook(() => {
+      const resolution = useTransactionResolution({
+        txid: tx.txid,
+        selectionTransactions: [tx],
+        walletId: "wallet-1",
+        onUnresolvable: vi.fn(),
+      });
+      const mutations = useTransactionLabelMutations({
+        selection: resolution.selection,
+        walletLabels: [label],
+        patchSelectedTxLabels: resolution.patchSelectedTxLabels,
+      });
+      return { ...mutations, selection: resolution.selection };
+    });
+    await waitFor(() =>
+      expect(result.current.selection.selectedTx?.id).toBe(tx.id),
+    );
+
+    act(() => {
+      result.current.handleEditLabels(tx);
+      result.current.handleToggleLabel(label.id);
+    });
+    await act(async () => result.current.handleSaveLabels());
+
+    expect(result.current.selection.selectedTx?.labels).toEqual([label]);
+  });
+
+  it("discards a save that succeeds after the editor was invalidated", async () => {
+    // Cancelling closes the editor immediately. The request is already on its
+    // way, so when it lands it must apply nothing rather than reopening the
+    // editor over whatever the panel now shows.
+    const tx = makeTx({ id: "tx-late-success", txid: "txid-late-success" });
+    const label = {
+      id: "lbl-late",
+      walletId: "wallet-1",
+      name: "Late",
+      color: "#555555",
+    } as Label;
+    const save = createDeferred<Label[]>();
+    vi.mocked(labelsApi.setTransactionLabels).mockReturnValueOnce(save.promise);
+
+    const { result } = await renderResolvedPanel(tx, [label]);
+    act(() => {
+      result.current.handleEditLabels(tx);
+      result.current.handleToggleLabel(label.id);
+    });
+    let savePromise!: Promise<void>;
+    act(() => {
+      savePromise = result.current.handleSaveLabels();
+    });
+    await waitFor(() => expect(result.current.savingLabels).toBe(true));
+
+    act(() => result.current.handleCancelEdit());
+    await act(async () => {
+      save.resolve([label]);
+      await savePromise;
+    });
+
+    expect(result.current.selection.selectedTx?.labels).toEqual([]);
+    expect(result.current.editingLabels).toBe(false);
+    expect(result.current.selectedLabelIds).toEqual([]);
+    expect(result.current.labelMutationError).toBeNull();
+  });
 });

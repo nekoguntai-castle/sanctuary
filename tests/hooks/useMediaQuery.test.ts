@@ -1,6 +1,8 @@
 import { renderHook, act } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SIDE_BY_SIDE_DETAIL_QUERY, useMediaQuery } from '../../src/hooks/useMediaQuery';
+import { useMediaQuery } from '../../src/hooks/useMediaQuery';
+
+const QUERY = '(min-width: 1024px)';
 
 type ChangeHandler = (event: MediaQueryListEvent) => void;
 
@@ -37,14 +39,14 @@ describe('useMediaQuery', () => {
   it('reports the query state on mount', () => {
     stubMatchMedia(true);
 
-    const { result } = renderHook(() => useMediaQuery(SIDE_BY_SIDE_DETAIL_QUERY));
+    const { result } = renderHook(() => useMediaQuery(QUERY));
 
     expect(result.current).toBe(true);
   });
 
   it('tracks the query across viewport changes', () => {
     const media = stubMatchMedia(false);
-    const { result } = renderHook(() => useMediaQuery(SIDE_BY_SIDE_DETAIL_QUERY));
+    const { result } = renderHook(() => useMediaQuery(QUERY));
     expect(result.current).toBe(false);
 
     act(() => media.emit(true));
@@ -57,7 +59,7 @@ describe('useMediaQuery', () => {
   it('unsubscribes on unmount', () => {
     const media = stubMatchMedia(true);
 
-    const { unmount } = renderHook(() => useMediaQuery(SIDE_BY_SIDE_DETAIL_QUERY));
+    const { unmount } = renderHook(() => useMediaQuery(QUERY));
     unmount();
 
     expect(media.removeEventListener).toHaveBeenCalledWith('change', expect.any(Function));
@@ -70,7 +72,7 @@ describe('useMediaQuery', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- deleting a DOM global for the unsupported-environment case
     delete (window as any).matchMedia;
 
-    const { result } = renderHook(() => useMediaQuery(SIDE_BY_SIDE_DETAIL_QUERY));
+    const { result } = renderHook(() => useMediaQuery(QUERY));
 
     expect(result.current).toBe(false);
     window.matchMedia = original;

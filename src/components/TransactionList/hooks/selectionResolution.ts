@@ -24,16 +24,6 @@ export const isValidTxid = (value: string): boolean => /^[0-9a-f]{64}$/.test(val
 
 export const selectionKey = (walletId: string, txid: string): string => `${walletId}:${txid}`;
 
-export const removeExpectedTxParam = (
-  params: URLSearchParams,
-  expectedTxid: string,
-): URLSearchParams => {
-  if (normalizeTxid(params.get('tx') ?? '') !== expectedTxid) return params;
-  const next = new URLSearchParams(params);
-  next.delete('tx');
-  return next;
-};
-
 export const isNotFoundError = (error: unknown): boolean => (
   typeof error === 'object'
   && error !== null

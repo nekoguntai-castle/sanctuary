@@ -5,7 +5,6 @@ import {
   useState,
   type MutableRefObject,
 } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import type { Transaction } from '../../../types';
 import * as transactionsApi from '../../../api/transactions';
 import { createLogger } from '../../../utils/logger';
@@ -15,7 +14,6 @@ import {
   isNotFoundError,
   isValidTxid,
   normalizeTxid,
-  removeExpectedTxParam,
   selectionErrorMessage,
   selectionKey,
   type SelectionResolution,
@@ -23,18 +21,36 @@ import {
 
 const log = createLogger('TransactionList');
 
-interface UseTransactionSelectionParams {
-  ownsSelection: boolean;
+interface UseTransactionResolutionParams {
+  /** The transaction this view is for. One resolution per open detail tab. */
+  txid: string;
   selectionTransactions: Transaction[];
   walletId?: string;
+  /**
+   * The transaction cannot be shown: the txid is malformed, the node has never
+   * heard of it, or it was replaced. The caller closes the tab — leaving it open
+   * would strand a permanently empty panel and, since tabs are URL state, would
+   * make a bad link sticky across reloads.
+   */
+  onUnresolvable: (txid: string) => void;
 }
 
-export function useTransactionSelection({
-  ownsSelection,
+/**
+ * Resolve one transaction for one detail view.
+ *
+ * Deliberately single-slot: each open tab mounts its own copy, so a response
+ * can only ever reach the view that asked for it. The previous shape — one
+ * resolver switched between transactions — had to police that with generation
+ * counters alone, and shared its label-mutation slot across transactions.
+ * Identity is now structural; the counters below only guard the narrower race
+ * where one view re-requests the same slot (a retry, or a wallet arriving late).
+ */
+export function useTransactionResolution({
+  txid,
   selectionTransactions,
   walletId,
-}: UseTransactionSelectionParams) {
-  const [searchParams, setSearchParams] = useSearchParams();
+  onUnresolvable,
+}: UseTransactionResolutionParams) {
   const [selection, setSelection] = useState<SelectionResolution>(IDLE_SELECTION);
   const selectionRef = useRef(selection);
   const activeRequestRef = useRef<{
@@ -46,58 +62,32 @@ export function useTransactionSelection({
   const [retryGeneration, setRetryGeneration] = useState(0);
   const lastStartedRetryRef = useRef<{ key: string; retryGeneration: number } | null>(null);
   const lastObservedLocalRef = useRef<{ key: string; tx: Transaction | null } | null>(null);
-  const txParam = searchParams.get('tx');
 
   const updateSelection = useCallback((next: SelectionResolution) => {
     selectionRef.current = next;
     setSelection(next);
   }, []);
 
-  const selectTx = useCallback((tx: Transaction) => {
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      next.set('tx', tx.txid);
-      return next;
-    }, { replace: true });
-  }, [setSearchParams]);
-
-  const clearSelectedTx = useCallback(() => {
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      next.delete('tx');
-      return next;
-    }, { replace: true });
-  }, [setSearchParams]);
-
-  const clearCurrentTxParam = useCallback((expectedTxid: string) => {
-    setSearchParams(
-      (prev) => removeExpectedTxParam(prev, expectedTxid),
-      { replace: true },
-    );
-  }, [setSearchParams]);
-
   useEffect(() => {
     reconcileSelection({
       activeRequestRef,
-      clearCurrentTxParam,
       lastObservedLocalRef,
       lastStartedRetryRef,
-      ownsSelection,
+      onUnresolvable,
       requestGenerationRef,
       retryGeneration,
       selectionRef,
       selectionTransactions,
-      txParam,
+      txid,
       updateSelection,
       walletId,
     });
   }, [
-    clearCurrentTxParam,
-    ownsSelection,
+    onUnresolvable,
     retryGeneration,
     selectionTransactions,
+    txid,
     updateSelection,
-    txParam,
     walletId,
   ]);
 
@@ -107,7 +97,7 @@ export function useTransactionSelection({
     activeRequestRef.current = null;
   }, []);
 
-  const retrySelection = useCallback(() => {
+  const retry = useCallback(() => {
     if (selectionRef.current.status === 'error') {
       setRetryGeneration((current) => current + 1);
     }
@@ -126,7 +116,7 @@ export function useTransactionSelection({
     });
   }, [updateSelection]);
 
-  return { clearSelectedTx, patchSelectedTxLabels, retrySelection, selection, selectTx };
+  return { patchSelectedTxLabels, retry, selection };
 }
 
 type ActiveRequestRef = MutableRefObject<{
@@ -140,44 +130,30 @@ type UpdateSelection = (next: SelectionResolution) => void;
 
 interface ReconcileSelectionParams {
   activeRequestRef: ActiveRequestRef;
-  clearCurrentTxParam: (txid: string) => void;
   lastObservedLocalRef: MutableRefObject<{ key: string; tx: Transaction | null } | null>;
   lastStartedRetryRef: RetryRef;
-  ownsSelection: boolean;
+  onUnresolvable: (txid: string) => void;
   requestGenerationRef: GenerationRef;
   retryGeneration: number;
   selectionRef: MutableRefObject<SelectionResolution>;
   selectionTransactions: Transaction[];
-  txParam: string | null;
+  txid: string;
   updateSelection: UpdateSelection;
   walletId?: string;
 }
 
 function reconcileSelection(params: ReconcileSelectionParams) {
-  if (!params.ownsSelection) return;
-  const normalizedTxid = params.txParam ? normalizeTxid(params.txParam) : null;
+  const normalizedTxid = normalizeTxid(params.txid);
   const localTx = findLocalTransaction(params.selectionTransactions, normalizedTxid);
   if (handleUnresolvableSelection(params, normalizedTxid, localTx)) return;
-  reconcileResolvableSelection(params, normalizedTxid!, localTx);
+  reconcileResolvableSelection(params, normalizedTxid, localTx);
 }
 
 function handleUnresolvableSelection(
   params: ReconcileSelectionParams,
-  normalizedTxid: string | null,
+  normalizedTxid: string,
   localTx: Transaction | null,
 ): boolean {
-  if (!normalizedTxid) {
-    resetIdleSelection(
-      params.activeRequestRef,
-      params.requestGenerationRef,
-      params.selectionRef,
-      params.updateSelection,
-    );
-    params.lastStartedRetryRef.current = null;
-    params.lastObservedLocalRef.current = null;
-    if (params.txParam !== null) params.clearCurrentTxParam('');
-    return true;
-  }
   if (!isInvalidSelection(normalizedTxid, localTx)) return false;
   if (params.selectionRef.current.status !== 'not-found' || params.activeRequestRef.current !== null) {
     markNotFound(
@@ -186,7 +162,7 @@ function handleUnresolvableSelection(
       params.updateSelection,
     );
   }
-  params.clearCurrentTxParam(normalizedTxid);
+  params.onUnresolvable(normalizedTxid);
   return true;
 }
 
@@ -219,11 +195,11 @@ function reconcileResolvableSelection(
   params.lastObservedLocalRef.current = { key, tx: localTx };
   startSelectionRequest({
     activeRequestRef: params.activeRequestRef,
-    clearCurrentTxParam: params.clearCurrentTxParam,
     key,
     lastStartedRetryRef: params.lastStartedRetryRef,
     localTx,
     normalizedTxid,
+    onUnresolvable: params.onUnresolvable,
     requestGenerationRef: params.requestGenerationRef,
     resolvedWalletId,
     retryGeneration: params.retryGeneration,
@@ -245,28 +221,12 @@ function reconcileMissingWallet(
   setMissingWalletError(localTx, params.updateSelection);
 }
 
-function findLocalTransaction(rows: Transaction[], txid: string | null): Transaction | null {
-  if (!txid) return null;
+function findLocalTransaction(rows: Transaction[], txid: string): Transaction | null {
   return rows.find((tx) => normalizeTxid(tx.txid) === txid) ?? null;
 }
 
 function isInvalidSelection(txid: string, localTx: Transaction | null): boolean {
   return (!isValidTxid(txid) && !localTx) || localTx?.rbfStatus === 'replaced';
-}
-
-function resetIdleSelection(
-  activeRef: ActiveRequestRef,
-  generationRef: GenerationRef,
-  selectionRef: MutableRefObject<SelectionResolution>,
-  update: UpdateSelection,
-) {
-  const hadActiveRequest = activeRef.current !== null;
-  activeRef.current?.controller.abort();
-  activeRef.current = null;
-  if (hadActiveRequest) generationRef.current += 1;
-  if (selectionRef.current.status !== 'idle' || selectionRef.current.key !== null) {
-    update(IDLE_SELECTION);
-  }
 }
 
 function markNotFound(
@@ -319,11 +279,11 @@ function updatePendingSummary(
 
 interface StartRequestParams {
   activeRequestRef: ActiveRequestRef;
-  clearCurrentTxParam: (txid: string) => void;
   key: string;
   lastStartedRetryRef: RetryRef;
   localTx: Transaction | null;
   normalizedTxid: string;
+  onUnresolvable: (txid: string) => void;
   requestGenerationRef: GenerationRef;
   resolvedWalletId: string;
   retryGeneration: number;
@@ -365,7 +325,7 @@ function commitSuccess(
   params.activeRequestRef.current = null;
   if (details.rbfStatus === 'replaced') {
     params.updateSelection({ ...IDLE_SELECTION, key: params.key, status: 'not-found' });
-    params.clearCurrentTxParam(params.normalizedTxid);
+    params.onUnresolvable(params.normalizedTxid);
     return;
   }
   params.updateSelection({
@@ -387,7 +347,7 @@ function commitFailure(
   params.activeRequestRef.current = null;
   if (isNotFoundError(error)) {
     params.updateSelection({ ...IDLE_SELECTION, key: params.key, status: 'not-found' });
-    params.clearCurrentTxParam(params.normalizedTxid);
+    params.onUnresolvable(params.normalizedTxid);
     return;
   }
   log.error('Failed to fetch transaction details', { error, txid: params.normalizedTxid });

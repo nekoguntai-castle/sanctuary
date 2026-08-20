@@ -1,14 +1,12 @@
 import type { Label, Transaction, Wallet } from '../../../types';
-import type { SelectionStatus } from '../hooks/selectionResolution';
 
 /**
- * Props shared by the transaction-details body and its two hosts:
- * the phone modal (`TransactionDetailsModal`) and the tablet+ split-view
- * pane (`TransactionDetailPane`). Both render the identical body via
- * `TransactionDetailsBody`; only the chrome around it differs.
+ * Props for the transaction-details body, which is rendered inside a detail
+ * tab's panel — docked in the tab strip or, from phase 2, detached into a
+ * floating panel. The chrome differs; the body does not.
  *
- * `onClose` means "deselect": close the modal on phone, clear the pane
- * (and the `?tx` URL param) on tablet+.
+ * `onClose` means "close this tab": it drops the transaction from `?tx` and
+ * hands focus to the neighbouring tab.
  */
 export interface TransactionDetailsContentProps {
   selectedTx: Transaction;
@@ -36,19 +34,4 @@ export interface TransactionDetailsContentProps {
   onCancelEdit: () => void;
   onToggleLabel: (labelId: string) => void;
   onAISuggestion: (suggestion: string) => void;
-}
-
-/**
- * The unified detail view is a full-screen modal below `tablet` and an inline
- * split-view pane at `tablet`+. It renders an empty state when nothing is
- * selected (pane only), so `selectedTx` is nullable.
- */
-export interface TransactionDetailProps
-  extends Omit<TransactionDetailsContentProps, 'selectedTx'> {
-  selectedTx: Transaction | null;
-  selectionStatus: SelectionStatus;
-  selectionError: string | null;
-  onRetrySelection: () => void;
-  /** Pixel height to match the master table column so the pane scrolls independently. */
-  tableHeight: number;
 }

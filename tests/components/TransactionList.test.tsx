@@ -5,7 +5,7 @@
  * transaction details, and label management.
  */
 
-import { fireEvent,render as rtlRender,screen,waitFor } from '@testing-library/react';
+import { fireEvent,render as rtlRender,screen,waitFor,within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
@@ -652,7 +652,7 @@ describe('TransactionList - Additional behaviors', () => {
   });
 });
 
-describe('TransactionList - Master-detail split (#52)', () => {
+describe('TransactionList - detail sub-tabs', () => {
   const baseTx = {
     id: 'tx-1',
     txid: 'txid-1',
@@ -664,103 +664,146 @@ describe('TransactionList - Master-detail split (#52)', () => {
     type: 'received',
   } as Transaction;
 
+  const secondTx = {
+    ...baseTx,
+    id: 'tx-2',
+    txid: 'txid-2',
+    amount: -2000,
+  } as Transaction;
+
+  const openRow = async (user: ReturnType<typeof userEvent.setup>, index = 0) => {
+    const rows = screen.getAllByTestId('transaction-row');
+    await user.click(rows[index].querySelectorAll('td')[0]);
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(bitcoinApi.getStatus).mockResolvedValue({} as any);
     vi.mocked(transactionsApi.getTransaction).mockResolvedValue({} as any);
   });
 
-  it('reserves no space for details while nothing is selected', async () => {
-    // The old layout kept a 320-448px pane showing "Select a transaction to see its
-    // details" from 900px up. That reserved column is the whole reason for this change.
+  it('reserves no space for details while nothing is open', async () => {
+    // The old layout kept a 320-448px pane showing "Select a transaction to see
+    // its details" from 900px up. That reserved column is why this changed.
     const { TransactionList } = await import('../../src/components/TransactionList');
-    const { container } = render(<TransactionList transactions={[baseTx]} />);
+    render(<TransactionList transactions={[baseTx]} />);
 
-    expect(screen.queryByTestId('transaction-detail-pane')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('transaction-tab-strip')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('transaction-detail-panel')).not.toBeInTheDocument();
     expect(screen.queryByText('Select a transaction to see its details')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('transaction-detail')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('transaction-detail-expansion')).not.toBeInTheDocument();
-    // No split row either: the table gets the full content width.
-    expect(container.querySelector('.flex.gap-4')).toBeNull();
   });
 
-  it('expands the detail inline beneath its row below 2xl instead of reserving a pane', async () => {
-    // matchMedia defaults to matches:false in tests/setup.ts, i.e. below 2xl.
+  it('opens a transaction into its own tab and shows it instead of the table', async () => {
     const user = userEvent.setup();
     const { TransactionList } = await import('../../src/components/TransactionList');
     render(<TransactionList transactions={[baseTx]} />);
 
-    await user.click(screen.getByTestId('transaction-row').querySelectorAll('td')[0]);
+    await openRow(user);
 
-    const expansion = await screen.findByTestId('transaction-detail-expansion');
-    expect(expansion.tagName).toBe('TR');
-    expect(expansion.querySelector('td')).toHaveAttribute('colspan');
-    // Bounded, so the rows around it stay reachable while reading.
-    expect(expansion.querySelector('[data-testid="transaction-detail-expansion-scroll"]'))
-      .toHaveClass('overflow-y-auto');
+    const strip = await screen.findByRole('tablist', { name: 'Transaction tabs' });
+    expect(within(strip).getByRole('tab', { name: 'Transactions' })).toBeInTheDocument();
+    const detailTab = within(strip).getByRole('tab', { name: /Received/ });
+    expect(detailTab).toHaveAttribute('aria-selected', 'true');
     // The details body is in the DOM exactly once.
     expect(screen.getAllByText('Transaction Details')).toHaveLength(1);
-    expect(screen.queryByTestId('transaction-detail')).not.toBeInTheDocument();
   });
 
-  it('uses the side-by-side pane at 2xl where the table still has room', async () => {
-    vi.mocked(window.matchMedia).mockImplementation((query: string) => ({
-      matches: query.includes('1536'),
-      media: query,
-      onchange: null,
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    }) as unknown as MediaQueryList);
+  it('keeps several transactions open at once and switches between them', async () => {
+    const user = userEvent.setup();
+    const { TransactionList } = await import('../../src/components/TransactionList');
+    render(<TransactionList transactions={[baseTx, secondTx]} />);
 
+    await openRow(user, 0);
+    await user.click(screen.getByRole('tab', { name: 'Transactions' }));
+    await openRow(user, 1);
+
+    const strip = screen.getByTestId('transaction-tab-strip');
+    const tabs = within(strip).getAllByRole('tab');
+    expect(tabs.map((tab) => tab.getAttribute('aria-selected'))).toEqual([
+      'false',
+      'false',
+      'true',
+    ]);
+
+    // Both panels stay mounted; only the inactive one is hidden, so switching
+    // back does not refetch or lose an in-progress label edit.
+    const panels = screen.getAllByTestId('transaction-detail-panel');
+    expect(panels).toHaveLength(2);
+    expect(panels.filter((panel) => !panel.hasAttribute('hidden'))).toHaveLength(1);
+
+    await user.click(tabs[1]);
+    expect(screen.getAllByTestId('transaction-detail-panel')[0]).not.toHaveAttribute('hidden');
+  });
+
+  it('closes a tab from its own close control', async () => {
     const user = userEvent.setup();
     const { TransactionList } = await import('../../src/components/TransactionList');
     render(<TransactionList transactions={[baseTx]} />);
+    await openRow(user);
 
-    await user.click(screen.getByTestId('transaction-row').querySelectorAll('td')[0]);
+    await user.click(screen.getByRole('button', { name: /^Close / }));
 
-    expect(await screen.findByTestId('transaction-detail')).toBeInTheDocument();
-    expect(screen.queryByTestId('transaction-detail-expansion')).not.toBeInTheDocument();
-    expect(screen.getAllByText('Transaction Details')).toHaveLength(1);
+    expect(screen.queryByTestId('transaction-tab-strip')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('transaction-detail-panel')).not.toBeInTheDocument();
+    expect(screen.getByTestId('transaction-row')).toBeInTheDocument();
   });
 
-  it('keeps an empty pane at 2xl, where the table can spare the width', async () => {
-    // Deliberate asymmetry. Below 2xl no pane is rendered at all, because a 448px
-    // column would leave the table too narrow to scan. At 2xl the table still clears
-    // ~750px with the pane present, so it is kept: collapsing and re-expanding on
-    // every selection would reflow the table by 464px, which reads worse than a
-    // placeholder in space the layout can afford.
-    vi.mocked(window.matchMedia).mockImplementation((query: string) => ({
-      matches: query.includes('1536'),
-      media: query,
-      onchange: null,
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    }) as unknown as MediaQueryList);
-
+  it('shows the table again from the pinned list tab without closing anything', async () => {
+    const user = userEvent.setup();
     const { TransactionList } = await import('../../src/components/TransactionList');
     render(<TransactionList transactions={[baseTx]} />);
+    await openRow(user);
 
-    expect(screen.getByTestId('transaction-detail-pane')).toBeInTheDocument();
-    expect(screen.getByText('Select a transaction to see its details')).toBeInTheDocument();
-    expect(screen.queryByTestId('transaction-detail-expansion')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: 'Transactions' }));
+
+    expect(screen.getByTestId('transaction-detail-panel')).toHaveAttribute('hidden');
+    expect(screen.getByRole('tab', { name: /Received/ })).toBeInTheDocument();
   });
 
-  it('renders no detail host when a caller owns selection via onTransactionClick', async () => {
+  it('gives the close control an accessible name, and keeps it out of the tab', async () => {
+    // A button nested inside a role="tab" becomes a tab stop of its own and
+    // shadows the tab in keyboard traversal.
+    const user = userEvent.setup();
+    const { TransactionList } = await import('../../src/components/TransactionList');
+    render(<TransactionList transactions={[baseTx]} />);
+    await openRow(user);
+
+    const closeButton = screen.getByRole('button', { name: /^Close Received/ });
+    expect(closeButton.closest('[role="tab"]')).toBeNull();
+  });
+
+  it('renders no tabs when a caller owns selection via onTransactionClick', async () => {
+    const user = userEvent.setup();
     const { TransactionList } = await import('../../src/components/TransactionList');
     const onTransactionClick = vi.fn();
-    const { container } = render(
+    render(
       <TransactionList transactions={[baseTx]} onTransactionClick={onTransactionClick} />
     );
 
-    // Delegating list: no split row, no pane, no modal.
-    expect(container.querySelector('.tablet\\:flex')).toBeNull();
-    expect(screen.queryByTestId('transaction-detail-pane')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('transaction-detail')).not.toBeInTheDocument();
+    await openRow(user);
+
+    expect(onTransactionClick).toHaveBeenCalledWith(baseTx);
+    expect(screen.queryByTestId('transaction-tab-strip')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('transaction-detail-panel')).not.toBeInTheDocument();
+  });
+
+  it('closes a tab whose transaction turns out not to exist', async () => {
+    // A deep link to a transaction the node has never heard of. Leaving the tab
+    // open would strand an empty panel, and since tabs are URL state it would
+    // survive a reload.
+    vi.mocked(transactionsApi.getTransaction).mockRejectedValue({ status: 404 });
+    const { TransactionList } = await import('../../src/components/TransactionList');
+    const missing = 'f'.repeat(64);
+
+    rtlRender(<TransactionList transactions={[baseTx]} walletId="wallet-1" />, {
+      wrapper: ({ children }) => (
+        <MemoryRouter initialEntries={[`/?tx=${missing}`]}>{children}</MemoryRouter>
+      ),
+    });
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('transaction-detail-panel')).not.toBeInTheDocument());
+    expect(screen.queryByTestId('transaction-tab-strip')).not.toBeInTheDocument();
+    expect(screen.getByTestId('transaction-row')).toBeInTheDocument();
   });
 });

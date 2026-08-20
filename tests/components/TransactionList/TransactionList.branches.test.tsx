@@ -3,10 +3,13 @@ import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { TransactionList } from '../../../src/components/TransactionList/TransactionList';
+import { TransactionDetailPanel } from '../../../src/components/TransactionList/TransactionTabs/TransactionDetailPanel';
 import { getOwnAddressValue } from '../../../src/components/TransactionList/TransactionList/detailsModel';
 import type { Transaction } from '../../../src/types';
 
 const useTransactionListMock = vi.fn();
+const useTransactionResolutionMock = vi.fn();
+const useTransactionLabelMutationsMock = vi.fn();
 
 vi.mock('../../../src/contexts/CurrencyContext', () => {
   const value = {
@@ -28,6 +31,16 @@ vi.mock('../../../src/hooks/useAIStatus', () => ({
 
 vi.mock('../../../src/components/TransactionList/hooks/useTransactionList', () => ({
   useTransactionList: (args: unknown) => useTransactionListMock(args),
+}));
+
+// The detail body's own branches are the subject here, so the panel's two hooks
+// are stubbed and the states they can produce are driven directly.
+vi.mock('../../../src/components/TransactionList/hooks/useTransactionResolution', () => ({
+  useTransactionResolution: (args: unknown) => useTransactionResolutionMock(args),
+}));
+
+vi.mock('../../../src/components/TransactionList/hooks/useTransactionLabelMutations', () => ({
+  useTransactionLabelMutations: (args: unknown) => useTransactionLabelMutationsMock(args),
 }));
 
 vi.mock('../../../src/components/Amount', () => ({
@@ -120,10 +133,9 @@ vi.mock('../../../src/components/TransactionList/LabelEditor', () => ({
 }));
 
 describe('TransactionList branch coverage', () => {
-  const setSelectedTx = vi.fn();
-  const clearSelectedTx = vi.fn();
+  const closeTab = vi.fn();
   const handleCancelEdit = vi.fn();
-  const retrySelection = vi.fn();
+  const retry = vi.fn();
 
   const baseTx: Transaction = {
     id: 'tx-1',
@@ -141,125 +153,157 @@ describe('TransactionList branch coverage', () => {
     type: 'received' as any,
   } as Transaction;
 
-  const makeHookState = (
-    overrides: Partial<ReturnType<typeof useTransactionListMock>> = {},
-    selectedTxOverride?: Partial<Transaction> | null
+  const makeListState = (overrides: Record<string, unknown> = {}) => ({
+    ownsSelection: true,
+    explorerUrl: 'https://mempool.space',
+    copied: false,
+    activeTab: 'list',
+    openTxids: [],
+    activateTab: vi.fn(),
+    closeTab,
+    findTransaction: vi.fn().mockReturnValue(baseTx),
+    filteredTransactions: [{ ...baseTx }],
+    virtuosoRef: { current: null },
+    txStats: {
+      total: 1,
+      received: 1,
+      sent: 0,
+      consolidations: 0,
+      totalReceived: 1000,
+      totalSent: 0,
+      totalFees: 10,
+    },
+    getWallet: vi.fn().mockReturnValue({ id: 'wallet-1', name: 'Main Wallet' }),
+    copyToClipboard: vi.fn(),
+    handleTxClick: vi.fn(),
+    getTxTypeInfo: vi.fn().mockReturnValue({ isReceive: true, isConsolidation: false }),
+    ...overrides,
+  });
+
+  const setSelection = (
+    overrides: Record<string, unknown> = {},
+    selectedTxOverride?: Partial<Transaction> | null,
   ) => {
     const selectedTx =
-      selectedTxOverride === null
-        ? null
-        : ({ ...baseTx, ...selectedTxOverride } as Transaction);
+      selectedTxOverride === null ? null : ({ ...baseTx, ...selectedTxOverride } as Transaction);
+    useTransactionResolutionMock.mockReturnValue({
+      selection: {
+        key: 'wallet-1:txid-1',
+        status: 'resolved',
+        selectedTx,
+        fullTxDetails: null,
+        error: null,
+        ...overrides,
+      },
+      retry,
+      patchSelectedTxLabels: vi.fn(),
+    });
+  };
 
-    return {
-      selectedTx,
-      setSelectedTx,
-      clearSelectedTx,
-      ownsSelection: true,
-      explorerUrl: 'https://mempool.space',
-      copied: false,
+  const renderPanel = (walletAddresses: string[] = []) =>
+    render(
+      <TransactionDetailPanel
+        txid="txid-1"
+        instanceId="test"
+        hidden={false}
+        onClose={closeTab}
+        onUnresolvable={vi.fn()}
+        wallets={[]}
+        walletAddresses={walletAddresses}
+        walletLabels={[]}
+        selectionTransactions={[baseTx]}
+        walletId="wallet-1"
+        explorerUrl="https://mempool.space"
+        copied={false}
+        canEdit
+        aiEnabled
+        confirmationThreshold={1}
+        deepConfirmationThreshold={3}
+        format={(sats: number) => `${sats.toLocaleString()} sats`}
+        onCopyToClipboard={vi.fn()}
+      />,
+    );
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useTransactionListMock.mockReturnValue(makeListState());
+    useTransactionLabelMutationsMock.mockReturnValue({
       editingLabels: false,
       availableLabels: [],
       selectedLabelIds: [],
       savingLabels: false,
-      fullTxDetails: null,
-      loadingDetails: false,
-      selectionStatus: 'resolved',
-      selectionError: null,
-      retrySelection,
-      filteredTransactions: [{ ...baseTx }],
-      virtuosoRef: { current: null },
-      txStats: {
-        total: 1,
-        received: 1,
-        sent: 0,
-        consolidations: 0,
-        totalReceived: 1000,
-        totalSent: 0,
-        totalFees: 10,
-      },
-      getWallet: vi.fn().mockReturnValue({ id: 'wallet-1', name: 'Main Wallet' }),
-      copyToClipboard: vi.fn(),
-      handleTxClick: vi.fn(),
+      labelMutationError: null,
       handleEditLabels: vi.fn(),
       handleSaveLabels: vi.fn(),
       handleCancelEdit,
       handleToggleLabel: vi.fn(),
       handleAISuggestion: vi.fn(),
-      getTxTypeInfo: vi.fn().mockReturnValue({ isReceive: true, isConsolidation: false }),
-      ...overrides,
-    };
-  };
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    // These cases cover the detail body's own branches, not the responsive layout, so
-    // pin the viewport to the side-by-side pane and assert one DOM shape. The inline
-    // expansion path is covered in tests/components/TransactionList.test.tsx.
-    vi.mocked(window.matchMedia).mockImplementation((query: string) => ({
-      matches: query.includes('1536'),
-      media: query,
-      onchange: null,
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    }) as unknown as MediaQueryList);
-    useTransactionListMock.mockReturnValue(makeHookState());
+    });
+    setSelection();
   });
 
   it('shows empty state when hook returns no filtered transactions', () => {
-    useTransactionListMock.mockReturnValue(
-      makeHookState({
-        filteredTransactions: [],
-      })
-    );
+    useTransactionListMock.mockReturnValue(makeListState({ filteredTransactions: [] }));
 
     render(<TransactionList transactions={[baseTx]} />);
     expect(screen.getByText('No transactions found.')).toBeInTheDocument();
   });
 
-  it('renders loading and retryable transaction detail states', async () => {
-    const user = userEvent.setup();
+  it('hides the table and shows the panel when a transaction tab is active', () => {
     useTransactionListMock.mockReturnValue(
-      makeHookState({
-        selectionStatus: 'loading',
-      }, null)
+      makeListState({ openTxids: ['txid-1'], activeTab: 'txid-1' }),
     );
-    const { rerender } = render(<TransactionList transactions={[]} />);
+
+    render(<TransactionList transactions={[baseTx]} />);
+
+    expect(screen.getByTestId('transaction-tab-strip')).toBeInTheDocument();
+    const panel = screen.getByTestId('transaction-detail-panel');
+    expect(panel).not.toHaveAttribute('hidden');
+    expect(screen.getByTestId('virtuoso-table').closest('[hidden]')).not.toBeNull();
+  });
+
+  it('renders loading and retryable panel states', async () => {
+    const user = userEvent.setup();
+    setSelection({ status: 'loading' }, null);
+    const { rerender } = renderPanel();
     expect(screen.getByText('Loading transaction details…')).toBeInTheDocument();
 
-    useTransactionListMock.mockReturnValue(
-      makeHookState({
-        selectionStatus: 'error',
-        selectionError: null,
-      }, null)
-    );
-    rerender(<TransactionList transactions={[]} />);
+    setSelection({ status: 'error', error: null }, null);
+    rerender(<div />);
+    renderPanel();
     expect(screen.getByText('Failed to load transaction details')).toBeInTheDocument();
 
-    const statusCard = screen.getByTestId('transaction-detail-status').querySelector('aside');
-    if (!statusCard) throw new Error('Missing transaction status card');
-    await user.click(statusCard);
-    expect(clearSelectedTx).not.toHaveBeenCalled();
-
     await user.click(screen.getByRole('button', { name: 'Retry' }));
-    expect(retrySelection).toHaveBeenCalledTimes(1);
-    await user.click(screen.getByTestId('transaction-detail-status'));
-    expect(clearSelectedTx).toHaveBeenCalledTimes(1);
+    expect(retry).toHaveBeenCalledTimes(1);
+    // Nothing here closes the tab: a failed load is retryable, and the tab is
+    // closed from its own × or by the resolution reporting it unresolvable.
+    expect(closeTab).not.toHaveBeenCalled();
   });
 
   it('renders confirming status branch and pending timestamp/date fallbacks', () => {
-    useTransactionListMock.mockReturnValue(
-      makeHookState({}, { confirmations: 1, timestamp: undefined as any, blockHeight: 0 as any })
-    );
+    setSelection({}, { confirmations: 1, timestamp: undefined as any, blockHeight: 0 as any });
 
     render(
-      <TransactionList
-        transactions={[baseTx]}
+      <TransactionDetailPanel
+        txid="txid-1"
+        instanceId="test"
+        hidden={false}
+        onClose={closeTab}
+        onUnresolvable={vi.fn()}
+        wallets={[]}
+        walletAddresses={[]}
+        walletLabels={[]}
+        selectionTransactions={[baseTx]}
+        walletId="wallet-1"
+        explorerUrl="https://mempool.space"
+        copied={false}
+        canEdit
+        aiEnabled
         confirmationThreshold={3}
         deepConfirmationThreshold={6}
-      />
+        format={(sats: number) => `${sats.toLocaleString()} sats`}
+        onCopyToClipboard={vi.fn()}
+      />,
     );
 
     expect(screen.getByText('Confirming (1/6)')).toBeInTheDocument();
@@ -268,11 +312,9 @@ describe('TransactionList branch coverage', () => {
   });
 
   it('renders pending confirmation and confirmation fallback to 0 when undefined', () => {
-    useTransactionListMock.mockReturnValue(
-      makeHookState({}, { confirmations: undefined as any })
-    );
+    setSelection({}, { confirmations: undefined as any });
 
-    render(<TransactionList transactions={[baseTx]} />);
+    renderPanel();
     expect(screen.getByText('Pending Confirmation')).toBeInTheDocument();
     const confirmationsCard = screen.getByText('Confirmations').closest('div');
     expect(confirmationsCard).toBeInTheDocument();
@@ -281,83 +323,63 @@ describe('TransactionList branch coverage', () => {
   });
 
   it('renders network fee and N/A branches for sent transactions', () => {
-    const { rerender } = render(<TransactionList transactions={[baseTx]} />);
-
-    useTransactionListMock.mockReturnValue(makeHookState({}, { amount: -1000, fee: 25 }));
-    rerender(<TransactionList transactions={[baseTx]} />);
+    setSelection({}, { amount: -1000, fee: 25 });
+    const { unmount } = renderPanel();
     expect(screen.getByText('25 sats')).toBeInTheDocument();
+    unmount();
 
-    useTransactionListMock.mockReturnValue(makeHookState({}, { amount: -1000, fee: 0 }));
-    rerender(<TransactionList transactions={[baseTx]} />);
+    setSelection({}, { amount: -1000, fee: 0 });
+    renderPanel();
     expect(screen.getByText('N/A')).toBeInTheDocument();
   });
 
   it('renders consolidation labels for both sent and received self-transfer cases', () => {
     const walletAddresses = ['bc1q-self'];
-    const { rerender } = render(
-      <TransactionList transactions={[baseTx]} walletAddresses={walletAddresses} />
-    );
 
-    useTransactionListMock.mockReturnValue(
-      makeHookState({}, { amount: -1200, counterpartyAddress: 'bc1q-self' })
-    );
-    rerender(<TransactionList transactions={[baseTx]} walletAddresses={walletAddresses} />);
+    setSelection({}, { amount: -1200, counterpartyAddress: 'bc1q-self' });
+    const { unmount } = renderPanel(walletAddresses);
     expect(screen.getByText('Consolidation')).toBeInTheDocument();
     expect(screen.getByText('Consolidation Address (Your Wallet)')).toBeInTheDocument();
+    unmount();
 
-    useTransactionListMock.mockReturnValue(
-      makeHookState({}, { amount: 1200, counterpartyAddress: 'bc1q-self' })
-    );
-    rerender(<TransactionList transactions={[baseTx]} walletAddresses={walletAddresses} />);
+    setSelection({}, { amount: 1200, counterpartyAddress: 'bc1q-self' });
+    renderPanel(walletAddresses);
     expect(screen.getByText('Consolidation')).toBeInTheDocument();
     expect(screen.getByText('Consolidation Address (Your Wallet)')).toBeInTheDocument();
   });
 
   it('renders sender/recipient labels for non-consolidation branches', () => {
     const walletAddresses = ['bc1q-self'];
-    const { rerender } = render(
-      <TransactionList transactions={[baseTx]} walletAddresses={walletAddresses} />
-    );
 
-    useTransactionListMock.mockReturnValue(
-      makeHookState({}, { amount: 500, counterpartyAddress: 'bc1q-external' })
-    );
-    rerender(<TransactionList transactions={[baseTx]} walletAddresses={walletAddresses} />);
+    setSelection({}, { amount: 500, counterpartyAddress: 'bc1q-external' });
+    const { unmount } = renderPanel(walletAddresses);
     expect(screen.getAllByText('Received').length).toBeGreaterThan(0);
     expect(screen.getByText('Sender Address')).toBeInTheDocument();
+    unmount();
 
-    useTransactionListMock.mockReturnValue(
-      makeHookState({}, { amount: -500, counterpartyAddress: 'bc1q-external' })
-    );
-    rerender(<TransactionList transactions={[baseTx]} walletAddresses={walletAddresses} />);
+    setSelection({}, { amount: -500, counterpartyAddress: 'bc1q-external' });
+    renderPanel(walletAddresses);
     expect(screen.getAllByText('Sent').length).toBeGreaterThan(0);
     expect(screen.getByText('Recipient Address')).toBeInTheDocument();
   });
 
   it('renders own address branches for string and object forms', () => {
-    const { rerender } = render(<TransactionList transactions={[baseTx]} />);
-
-    useTransactionListMock.mockReturnValue(
-      makeHookState({}, { amount: 1000, address: 'bc1q-string-address' as any })
-    );
-    rerender(<TransactionList transactions={[baseTx]} />);
+    setSelection({}, { amount: 1000, address: 'bc1q-string-address' as any });
+    const { unmount } = renderPanel();
     expect(screen.getByText('Your Receiving Address')).toBeInTheDocument();
     expect(screen.getByText('bc1q-string-address')).toBeInTheDocument();
+    unmount();
 
-    useTransactionListMock.mockReturnValue(
-      makeHookState({}, { amount: -1000, address: { address: 'bc1q-object-address' } as any })
-    );
-    rerender(<TransactionList transactions={[baseTx]} />);
+    setSelection({}, { amount: -1000, address: { address: 'bc1q-object-address' } as any });
+    renderPanel();
     expect(screen.getByText('Your Sending Address')).toBeInTheDocument();
     expect(screen.getByText('bc1q-object-address')).toBeInTheDocument();
   });
 
   it('hides counterparty and own-address blocks when fields are absent', () => {
-    useTransactionListMock.mockReturnValue(
-      makeHookState({}, { counterpartyAddress: undefined as any, address: undefined as any })
-    );
+    setSelection({}, { counterpartyAddress: undefined as any, address: undefined as any });
 
-    render(<TransactionList transactions={[baseTx]} />);
+    renderPanel();
     expect(screen.queryByText('Sender Address')).not.toBeInTheDocument();
     expect(screen.queryByText('Recipient Address')).not.toBeInTheDocument();
     expect(screen.queryByText('Your Receiving Address')).not.toBeInTheDocument();
@@ -365,13 +387,9 @@ describe('TransactionList branch coverage', () => {
     expect(getOwnAddressValue({ ...baseTx, address: undefined as any })).toBe('');
   });
 
-  it('executes modal close handlers from backdrop, header close, action menu, and label cancel', async () => {
+  it('closes the tab from the header, the action menu, and cancels label editing', async () => {
     const user = userEvent.setup();
-    const { container } = render(<TransactionList transactions={[baseTx]} />);
-
-    const backdrop = container.querySelector('div.fixed.inset-0.z-50');
-    if (!backdrop) throw new Error('Missing backdrop container');
-    await user.click(backdrop);
+    renderPanel();
 
     const closeButton = screen.getByTestId('x-icon').closest('button');
     if (!closeButton) throw new Error('Missing header close button');
@@ -380,7 +398,8 @@ describe('TransactionList branch coverage', () => {
     await user.click(screen.getByTestId('action-close'));
     await user.click(screen.getByTestId('cancel-edit'));
 
-    expect(clearSelectedTx).toHaveBeenCalled();
+    expect(closeTab).toHaveBeenCalledTimes(2);
+    expect(closeTab).toHaveBeenCalledWith('txid-1');
     expect(handleCancelEdit).toHaveBeenCalledTimes(1);
   });
 });

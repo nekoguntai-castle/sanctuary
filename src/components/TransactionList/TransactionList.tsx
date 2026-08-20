@@ -1,16 +1,16 @@
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useId, useRef, useState, useEffect, useCallback } from 'react';
 import { Transaction, Wallet, Label } from '../../types';
 import { usePriceFreeFormatter } from '../../contexts/CurrencyContext';
 import { useAIStatus } from '../../hooks/useAIStatus';
 import { useTransactionList } from './hooks/useTransactionList';
 import type { TransactionStats } from '../../api/transactions';
-import { TransactionDetail } from './TransactionList/TransactionDetail';
-import { TransactionDetailsBody } from './TransactionList/TransactionDetailsBody';
-import { TransactionDetailsHeader } from './TransactionList/TransactionDetailsHeader';
-import { SIDE_BY_SIDE_DETAIL_QUERY, useMediaQuery } from '../../hooks/useMediaQuery';
 import { TransactionStatsGrid } from './TransactionList/TransactionStatsGrid';
 import { TransactionTable } from './TransactionList/TransactionTable';
-import type { TransactionDetailsContentProps } from './TransactionList/types';
+import { TransactionDetailPanel } from './TransactionTabs/TransactionDetailPanel';
+import { TransactionTabStrip } from './TransactionTabs/TransactionTabStrip';
+import { LIST_TAB } from './hooks/transactionTabsState';
+import { panelDomId, tabDomId } from './TransactionTabs/tabPresentation';
+import type { TransactionPanelSharedProps } from './TransactionTabs/types';
 
 // Stable empty arrays to prevent re-renders when props aren't provided
 const EMPTY_WALLETS: Wallet[] = [];
@@ -77,45 +77,35 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const { enabled: aiEnabled } = useAIStatus();
 
   const {
-    selectedTx,
-    clearSelectedTx,
     ownsSelection,
     explorerUrl,
     copied,
-    editingLabels,
-    availableLabels,
-    selectedLabelIds,
-    savingLabels,
-    labelMutationError,
-    fullTxDetails,
-    loadingDetails,
-    selectionStatus,
-    selectionError,
-    retrySelection,
+    activeTab,
+    openTxids,
+    activateTab,
+    closeTab,
+    findTransaction,
+    selectionTransactions: panelTransactions,
     filteredTransactions,
     virtuosoRef,
     txStats,
     getWallet,
     copyToClipboard,
     handleTxClick,
-    handleEditLabels,
-    handleSaveLabels,
-    handleCancelEdit,
-    handleToggleLabel,
-    handleAISuggestion,
     getTxTypeInfo,
   } = useTransactionList({
     transactions,
-    walletId,
     selectionTransactions,
     wallets,
     walletAddresses,
-    walletLabels,
     onTransactionClick,
-    onLabelsChange,
     highlightedTxId,
     transactionStats,
   });
+  // Two transaction lists can share a page (the dashboard preview and a wallet
+  // route are different mounts, but a future page could hold both), so tab and
+  // panel ids are scoped per instance.
+  const instanceId = useId();
 
   // Dynamic height: fill remaining viewport space instead of fixed 600px cap
   const tableContainerRef = useRef<HTMLDivElement>(null);
@@ -157,104 +147,94 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     };
   }, [recalcHeight]);
 
-  // Where the detail goes depends on how much room the table would have left. The
-  // wallet route gives up 256px to the sidebar from `lg` and 64px to padding, so a
-  // 448px pane leaves the table only 368px at 1024px and 496px at 1280px. Only at
-  // 1536px does it clear 750px, which is where side-by-side is worth its width.
-  //
-  // Below that the detail expands inline beneath its own row instead, which uses the
-  // full content width and reserves nothing while nothing is selected. Exactly one of
-  // the two renders, so the details body stays in the DOM once.
-  const canFitSideBySide = useMediaQuery(SIDE_BY_SIDE_DETAIL_QUERY);
-  const showPane = ownsSelection && canFitSideBySide;
-  const expandInline = ownsSelection && !canFitSideBySide;
-
-  // Shared by the inline expansion and the side-by-side pane — both render the same
-  // TransactionDetailsBody, so the detail props are assembled once here.
-  const detailProps: Omit<TransactionDetailsContentProps, 'selectedTx'> = {
+  // Every open tab keeps its panel mounted and hides the inactive ones, so
+  // switching tabs preserves scroll position and any half-finished label edit
+  // instead of remounting and re-fetching. The table is hidden the same way.
+  const showList = activeTab === LIST_TAB;
+  const sharedPanelProps: TransactionPanelSharedProps = {
     wallets,
     walletAddresses,
+    walletLabels,
+    selectionTransactions: panelTransactions,
+    walletId,
     explorerUrl,
     copied,
-    fullTxDetails,
-    loadingDetails,
-    editingLabels,
-    availableLabels,
-    selectedLabelIds,
-    savingLabels,
-    labelMutationError,
     canEdit,
     aiEnabled,
     confirmationThreshold,
     deepConfirmationThreshold,
     format,
-    onClose: clearSelectedTx,
-    onLabelsChange,
     onCopyToClipboard: copyToClipboard,
-    onEditLabels: handleEditLabels,
-    onSaveLabels: handleSaveLabels,
-    onCancelEdit: handleCancelEdit,
-    onToggleLabel: handleToggleLabel,
-    onAISuggestion: handleAISuggestion,
+    onLabelsChange,
   };
-
-  const renderExpandedDetail = () => selectedTx && (
-    <>
-      <TransactionDetailsHeader selectedTx={selectedTx} onClose={clearSelectedTx} />
-      <TransactionDetailsBody selectedTx={selectedTx} {...detailProps} />
-    </>
-  );
 
   return (
     <>
       {density === 'comfortable' && <TransactionStatsGrid txStats={txStats} />}
 
-      <div className={showPane ? 'flex gap-4 items-start' : undefined}>
-        <div
-          ref={tableContainerRef}
-          className={showPane ? 'flex-1 min-w-0' : undefined}
-        >
-          {filteredTransactions.length === 0 ? (
-            <div
-              className={`flex items-center justify-center text-center ${
-                density === 'comfortable' ? 'min-h-[300px] py-10' : 'py-6'
-              }`}
-            >
-              <p className="text-sanctuary-400 dark:text-sanctuary-500" data-testid="transactions-empty-state">
-                {unavailable ? 'Transactions unavailable.' : 'No transactions found.'}
-              </p>
-            </div>
-          ) : (
-            <TransactionTable
-              expandedTxId={expandInline && selectedTx ? selectedTx.id : undefined}
-              renderExpandedDetail={expandInline && selectedTx ? renderExpandedDetail : undefined}
-              filteredTransactions={filteredTransactions}
-              virtuosoRef={virtuosoRef}
-              tableHeight={tableHeight}
-              showWalletBadge={showWalletBadge}
-              walletBalance={walletBalance}
-              confirmationThreshold={confirmationThreshold}
-              deepConfirmationThreshold={deepConfirmationThreshold}
-              highlightedTxId={highlightedTxId}
-              getWallet={getWallet}
-              getTxTypeInfo={getTxTypeInfo}
-              onWalletClick={onWalletClick}
-              onTxClick={handleTxClick}
-            />
-          )}
-        </div>
+      {ownsSelection && openTxids.length > 0 && (
+        <TransactionTabStrip
+          openTxids={openTxids}
+          activeTab={activeTab}
+          instanceId={instanceId}
+          findTransaction={findTransaction}
+          onActivate={activateTab}
+          onClose={closeTab}
+        />
+      )}
 
-        {showPane && (
-          <TransactionDetail
-            selectedTx={selectedTx}
+      <div
+        ref={tableContainerRef}
+        // Only a tab panel when there are tabs to belong to; a lone table on the
+        // dashboard is not part of a tablist and must not claim to be.
+        {...(ownsSelection && openTxids.length > 0
+          ? {
+            role: 'tabpanel',
+            id: panelDomId(instanceId, LIST_TAB),
+            'aria-labelledby': tabDomId(instanceId, LIST_TAB),
+          }
+          : {})}
+        hidden={!showList}
+      >
+        {filteredTransactions.length === 0 ? (
+          <div
+            className={`flex items-center justify-center text-center ${
+              density === 'comfortable' ? 'min-h-[300px] py-10' : 'py-6'
+            }`}
+          >
+            <p className="text-sanctuary-400 dark:text-sanctuary-500" data-testid="transactions-empty-state">
+              {unavailable ? 'Transactions unavailable.' : 'No transactions found.'}
+            </p>
+          </div>
+        ) : (
+          <TransactionTable
+            filteredTransactions={filteredTransactions}
+            virtuosoRef={virtuosoRef}
             tableHeight={tableHeight}
-            selectionStatus={selectionStatus}
-            selectionError={selectionError}
-            onRetrySelection={retrySelection}
-            {...detailProps}
+            showWalletBadge={showWalletBadge}
+            walletBalance={walletBalance}
+            confirmationThreshold={confirmationThreshold}
+            deepConfirmationThreshold={deepConfirmationThreshold}
+            highlightedTxId={highlightedTxId}
+            getWallet={getWallet}
+            getTxTypeInfo={getTxTypeInfo}
+            onWalletClick={onWalletClick}
+            onTxClick={handleTxClick}
           />
         )}
       </div>
+
+      {openTxids.map((txid) => (
+        <TransactionDetailPanel
+          key={txid}
+          txid={txid}
+          instanceId={instanceId}
+          hidden={activeTab !== txid}
+          onClose={closeTab}
+          onUnresolvable={closeTab}
+          {...sharedPanelProps}
+        />
+      ))}
     </>
   );
 };

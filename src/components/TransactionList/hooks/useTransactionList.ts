@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Transaction, Wallet, Label } from '../../../types';
+import { Transaction, Wallet } from '../../../types';
 import * as bitcoinApi from '../../../api/bitcoin';
 import { createLogger } from '../../../utils/logger';
 import { isConsolidation } from '../../../utils/transaction';
 import { getDefaultNodeExternalServiceUrl } from '@sanctuary/shared/constants/nodeConfig';
 import type { TransactionStats } from '../../../api/transactions';
-import { useTransactionSelection } from './useTransactionSelection';
-import { useTransactionLabelMutations } from './useTransactionLabelMutations';
+import { useTransactionTabs } from './useTransactionTabs';
+import { normalizeTxid } from './selectionResolution';
 
 const log = createLogger('TransactionList');
 
@@ -16,58 +16,35 @@ const EMPTY_ADDRESSES: string[] = [];
 
 interface UseTransactionListParams {
   transactions: Transaction[];
-  walletId?: string;
   selectionTransactions?: Transaction[];
   wallets?: Wallet[];
   walletAddresses?: string[];
-  walletLabels?: Label[];
   onTransactionClick?: (transaction: Transaction) => void;
-  onLabelsChange?: () => void;
   highlightedTxId?: string;
   transactionStats?: TransactionStats;
 }
 
-const EMPTY_LABELS: Label[] = [];
-
 export function useTransactionList({
   transactions,
-  walletId,
   selectionTransactions = transactions,
   wallets = EMPTY_WALLETS,
   walletAddresses = EMPTY_ADDRESSES,
-  walletLabels = EMPTY_LABELS,
   onTransactionClick,
-  onLabelsChange,
   highlightedTxId,
   transactionStats,
 }: UseTransactionListParams) {
-  // This list owns selection (opens the modal / split-view pane and the ?tx URL
-  // param) only when the caller doesn't take selection over via onTransactionClick
-  // — e.g. the Dashboard recent-tx list and Console results delegate instead.
+  // This list owns selection (opens detail tabs and the ?tx URL param) only when
+  // the caller doesn't take selection over via onTransactionClick — e.g. the
+  // Dashboard recent-tx list and Console results delegate instead.
   const ownsSelection = !onTransactionClick;
   const [explorerUrl, setExplorerUrl] = useState(getDefaultNodeExternalServiceUrl('mainnet'));
   const [copied, setCopied] = useState(false);
   const copiedResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Selection owns transaction identity; label mutations bind their async work
-  // to that identity so late completions cannot modify a newer detail view.
-  const {
-    clearSelectedTx,
-    patchSelectedTxLabels,
-    retrySelection,
-    selection,
-    selectTx,
-  } = useTransactionSelection({
-    ownsSelection,
-    selectionTransactions,
-    walletId,
-  });
-  const labelMutations = useTransactionLabelMutations({
-    selection,
-    walletLabels,
-    onLabelsChange,
-    patchSelectedTxLabels,
-  });
+  // Tabs own which transactions are open; each open tab resolves and edits its
+  // own transaction inside its panel, so two open transactions never share a
+  // request slot or a half-finished label edit.
+  const tabs = useTransactionTabs({ enabled: ownsSelection });
 
   // Load explorer URL from server config
   useEffect(() => {
@@ -146,25 +123,28 @@ export function useTransactionList({
     }
   };
 
-  // Stable reference: TransactionRow is memo'd, so passing a fresh
-  // function ref every render would defeat the memo. Dependencies are the
-  // external handler (caller-controlled), selectTx, and stable setState refs.
+  // Stable reference: TransactionRow is memo'd, so passing a fresh function ref
+  // every render would defeat the memo.
   const handleTxClick = useCallback(
     (tx: Transaction) => {
       if (onTransactionClick) {
         onTransactionClick(tx);
-      } else {
-        labelMutations.invalidateForSelectionChange();
-        selectTx(tx);
+        return;
       }
+      // Clicking a row that is already open focuses its tab rather than opening
+      // a second one; `openTab` dedupes on txid.
+      tabs.openTab(tx);
     },
-    [labelMutations.invalidateForSelectionChange, onTransactionClick, selectTx],
+    [onTransactionClick, tabs.openTab],
   );
 
-  const handleClearSelectedTx = useCallback(() => {
-    labelMutations.invalidateForSelectionChange();
-    clearSelectedTx();
-  }, [clearSelectedTx, labelMutations.invalidateForSelectionChange]);
+  const findTransaction = useCallback(
+    (txid: string): Transaction | null => {
+      const normalized = normalizeTxid(txid);
+      return selectionTransactions.find((tx) => normalizeTxid(tx.txid) === normalized) ?? null;
+    },
+    [selectionTransactions],
+  );
 
   // Helper to get transaction type info
   const getTxTypeInfo = (tx: Transaction) => ({
@@ -228,32 +208,23 @@ export function useTransactionList({
   }, [filteredTransactions, walletAddresses, transactionStats]);
 
   return {
-    selectedTx: selection.selectedTx,
-    clearSelectedTx: handleClearSelectedTx,
     ownsSelection,
+    // Resolved here rather than at both call sites: the panels and the tab
+    // labels have to read the same list the selection resolves against.
+    selectionTransactions,
     explorerUrl,
     copied,
-    editingLabels: labelMutations.editingLabels,
-    availableLabels: labelMutations.availableLabels,
-    selectedLabelIds: labelMutations.selectedLabelIds,
-    savingLabels: labelMutations.savingLabels,
-    labelMutationError: labelMutations.labelMutationError,
-    fullTxDetails: selection.fullTxDetails,
-    loadingDetails: selection.status === 'loading',
-    selectionStatus: selection.status,
-    selectionError: selection.error,
-    retrySelection,
+    activeTab: tabs.activeTab,
+    openTxids: tabs.openTxids,
+    activateTab: tabs.activateTab,
+    closeTab: tabs.closeTab,
+    findTransaction,
     filteredTransactions,
     virtuosoRef,
     txStats,
     getWallet,
     copyToClipboard,
     handleTxClick,
-    handleEditLabels: labelMutations.handleEditLabels,
-    handleSaveLabels: labelMutations.handleSaveLabels,
-    handleCancelEdit: labelMutations.handleCancelEdit,
-    handleToggleLabel: labelMutations.handleToggleLabel,
-    handleAISuggestion: labelMutations.handleAISuggestion,
     getTxTypeInfo,
   };
 }

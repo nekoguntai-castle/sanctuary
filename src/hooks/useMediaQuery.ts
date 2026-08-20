@@ -26,13 +26,3 @@ export function useMediaQuery(query: string): boolean {
 
   return matches;
 }
-
-/**
- * The width at which the transaction list can afford a side-by-side detail pane.
- *
- * Below this the pane leaves the table too narrow to scan: on the wallet route the
- * sidebar takes 256px from `lg` up and the content is padded 64px, so a 448px pane
- * leaves the table 496px at 1280px wide and only 368px at 1024px. At 1536px the table
- * clears 750px, which is where both halves are genuinely readable.
- */
-export const SIDE_BY_SIDE_DETAIL_QUERY = '(min-width: 1536px)';
