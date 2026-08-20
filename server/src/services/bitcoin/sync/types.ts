@@ -138,6 +138,12 @@ export interface SyncContext {
   completedPhases: string[];
   /** Rejected remote evidence; checked only after safe accepted siblings persist. */
   rejectedEvidenceCount: number;
+  /**
+   * Why evidence was rejected, keyed by reason code with an occurrence count.
+   * Summarised into the thrown error so the reason survives into the persisted
+   * `lastSyncError`; without it only the count crosses the process boundary.
+   */
+  rejectedEvidenceReasons: Map<string, number>;
 }
 
 /** Data for creating a new transaction */
@@ -241,8 +247,20 @@ export class SyncPipelineError extends Error {
 }
 
 export class ReceiveEvidenceRetryableError extends Error {
-  constructor(public readonly rejectedCount: number) {
-    super('Receive evidence authentication was incomplete; retry required');
+  constructor(
+    public readonly rejectedCount: number,
+    /** `reason x count` pairs, most frequent first; empty when unattributed. */
+    public readonly reasonSummary: string = '',
+  ) {
+    // The reason belongs in the message, not only in a field: this string is
+    // what reaches `wallets.lastSyncError`, the sync tooltip, and the support
+    // bundle's error classifier. A bare sentence there is what left a
+    // production install unable to say why two wallets would not sync.
+    super(
+      reasonSummary
+        ? `Receive evidence authentication was incomplete; retry required (${rejectedCount} rejected: ${reasonSummary})`
+        : `Receive evidence authentication was incomplete; retry required (${rejectedCount} rejected)`,
+    );
     this.name = 'ReceiveEvidenceRetryableError';
   }
 }

@@ -11,11 +11,12 @@ import { walletLog } from '../../../../websocket/notifications';
 import type { SyncContext } from '../types';
 import { authenticateRawTransactionOutput, RawTransactionEvidenceError } from '../../rawTransactionEvidence';
 import { fetchAuthenticatedTransactions } from '../evidenceAuthentication';
+import { recordRejectedEvidence } from '../rejectedEvidence';
 
 const log = createLogger('BITCOIN:SVC_SYNC_UTXOS');
 
 const recordFailClosed = (ctx: SyncContext, reason: string): void => {
-  ctx.rejectedEvidenceCount += 1;
+  recordRejectedEvidence(ctx, reason);
   log.warn('[SYNC] Rejected unauthenticated UTXO evidence', { reason, count: 1 });
 };
 

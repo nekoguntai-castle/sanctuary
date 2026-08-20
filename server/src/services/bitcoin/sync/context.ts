@@ -133,6 +133,7 @@ export function createSyncContext(params: {
     // Phase tracking
     completedPhases: [],
     rejectedEvidenceCount: 0,
+    rejectedEvidenceReasons: new Map(),
   };
 }
 
@@ -171,6 +172,7 @@ export function createTestContext(overrides: Partial<SyncContext>): SyncContext 
     viaTor: false,
     completedPhases: [],
     rejectedEvidenceCount: 0,
+    rejectedEvidenceReasons: new Map(),
   };
 
   return { ...defaultContext, ...overrides };

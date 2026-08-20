@@ -1,10 +1,12 @@
 import * as bitcoin from 'bitcoinjs-lib';
 import { createLogger } from '../../../utils/logger';
+import { getErrorMessage } from '../../../utils/errors';
 import { getNetwork } from '../utils';
 import {
   parseAuthenticatedRawTransaction,
   RawTransactionEvidenceError,
 } from '../rawTransactionEvidence';
+import { recordRejectedEvidence } from './rejectedEvidence';
 import type {
   RawTransaction,
   SyncContext,
@@ -15,12 +17,21 @@ import type {
 const log = createLogger('BITCOIN:SVC_SYNC_EVIDENCE');
 const FETCH_BATCH_SIZE = 100;
 
-const reasonCode = (error: unknown): string => (
-  error instanceof RawTransactionEvidenceError ? error.reason : 'fetch_failed'
-);
+/** Sentinel for "the server listed this txid but returned no entry for it". */
+const MISSING_RESULT = 'missing_result';
+
+// `missing_result` (the server returned no entry for a txid it listed) and a
+// genuine transport failure are different faults with different remedies, so
+// they no longer collapse into one `fetch_failed` label.
+const reasonCode = (error: unknown): string => {
+  if (error instanceof RawTransactionEvidenceError) return error.reason;
+  // getErrorMessage already normalises a non-Error throw, so there is no
+  // unreachable `instanceof Error` fallback to carry here.
+  return getErrorMessage(error) === MISSING_RESULT ? MISSING_RESULT : 'fetch_failed';
+};
 
 const recordFailClosed = (ctx: SyncContext, reason: string): void => {
-  ctx.rejectedEvidenceCount += 1;
+  recordRejectedEvidence(ctx, reason);
   log.warn('[SYNC] Rejected unauthenticated transaction evidence', { reason, count: 1 });
 };
 
@@ -81,7 +92,7 @@ const cacheAuthenticatedResult = (
   details: RawTransaction | undefined,
 ): boolean => {
   try {
-    if (!details) throw new Error('missing_result');
+    if (!details) throw new Error(MISSING_RESULT);
     ctx.txDetailsCache.set(expectedTxid, toAuthenticatedDetails(ctx, expectedTxid, details));
     return true;
   } catch (error) {

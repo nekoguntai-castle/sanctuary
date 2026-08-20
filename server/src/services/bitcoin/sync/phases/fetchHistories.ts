@@ -10,11 +10,12 @@ import { getErrorMessage } from '../../../../utils/errors';
 import { walletLog } from '../../../../websocket/notifications';
 import type { SyncContext } from '../types';
 import { authenticateHistoryResults } from '../evidenceAuthentication';
+import { recordRejectedEvidence } from '../rejectedEvidence';
 
 const log = createLogger('BITCOIN:SVC_SYNC_HISTORIES');
 
 const recordHistoryFetchFailure = (ctx: SyncContext, reason: string): void => {
-  ctx.rejectedEvidenceCount += 1;
+  recordRejectedEvidence(ctx, reason);
   log.warn('[SYNC] Rejected incomplete address-history evidence', { reason, count: 1 });
 };
 
