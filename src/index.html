@@ -958,6 +958,16 @@
         opacity: 1;
         translate: 0 0;
       }
+      /* Portalled variant: positioned against the viewport from the trigger's
+         rect, because as an absolutely-positioned sibling the popup was clipped
+         by every card it sat in (overflow-hidden), and by the wallet table's
+         overflow-x-auto - which forces overflow-y to auto and so clips
+         vertically too. `white-space` is overridden here rather than on
+         .tooltip-popup so the CSS-only tooltips that rely on nowrap keep it. */
+      .tooltip-popup.tooltip-portal {
+        position: fixed;
+        white-space: normal;
+      }
       .tooltip-arrow {
         --tooltip-arrow-size: 0.5rem;
         position: absolute;
