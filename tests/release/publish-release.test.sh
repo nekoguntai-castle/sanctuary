@@ -156,6 +156,10 @@ run_publish() {
   shift 2
   local sha
   sha="$(git -C "$fixture" rev-parse HEAD)"
+  # publish-release.sh no longer reads SANCTUARY_WALLET_SAFETY_AUDIT_REVIEW: the
+  # release-time attestation gate is suspended (see the runbook). This generator
+  # is kept rather than deleted so reinstating the gate is wiring, not a rewrite
+  # of the harness — until then the variable it exports is simply ignored.
   local evidence_path=""
   if [[ "${RELEASE_TEST_WITHOUT_REVIEW:-false}" != "true" ]]; then
     local reviewed_at
@@ -322,68 +326,13 @@ test_failed_gate_blocks_all_publication() {
   assert_not_contains "$fixture/trace.log" "docker "
 }
 
-test_wallet_safety_change_requires_review_evidence() {
-  local tag="v1.2.3"
-  local fixture
-  fixture="$(new_fixture wallet-safety-review "$tag")"
-  git -C "$fixture" tag -d "$tag" >/dev/null
-  git -C "$fixture" tag v1.2.2
-  mkdir -p "$fixture/server/src/services"
-  printf 'device account registration change\n' \
-    > "$fixture/server/src/services/deviceAccountRegistration.ts"
-  git -C "$fixture" add server/src/services/deviceAccountRegistration.ts
-  git -C "$fixture" commit -qm "device account registration change"
-  git -C "$fixture" tag "$tag"
-
-  if RELEASE_TEST_WITHOUT_REVIEW=true run_publish "$fixture" "$tag" \
-    > "$fixture/output.log" 2>&1; then
-    fail "wallet-safety release unexpectedly passed without reviewed audit evidence"
-  fi
-  assert_contains "$fixture/output.log" "wallet-safety audit review evidence is required"
-  [[ ! -f "$fixture/trace.log" ]] || fail "wallet-safety evidence failure reached the network"
-}
-
-test_jade_qr_change_requires_review_evidence() {
-  local tag="v1.2.3"
-  local fixture
-  fixture="$(new_fixture jade-qr-review "$tag")"
-  git -C "$fixture" tag -d "$tag" >/dev/null
-  git -C "$fixture" tag v1.2.2
-  mkdir -p "$fixture/src/components/qr/QRSigningModal"
-  printf 'Jade QR signing change\n' \
-    > "$fixture/src/components/qr/QRSigningModal/useQRSigningModalController.ts"
-  git -C "$fixture" add src/components/qr/QRSigningModal/useQRSigningModalController.ts
-  git -C "$fixture" commit -qm "Jade QR signing change"
-  git -C "$fixture" tag "$tag"
-
-  if RELEASE_TEST_WITHOUT_REVIEW=true run_publish "$fixture" "$tag" \
-    > "$fixture/output.log" 2>&1; then
-    fail "Jade QR release unexpectedly passed without reviewed audit evidence"
-  fi
-  assert_contains "$fixture/output.log" "wallet-safety audit review evidence is required"
-  [[ ! -f "$fixture/trace.log" ]] || fail "Jade QR evidence failure reached the network"
-}
-
-test_ledger_parser_change_requires_review_evidence() {
-  local tag="v1.2.3"
-  local fixture
-  fixture="$(new_fixture ledger-parser-review "$tag")"
-  git -C "$fixture" tag -d "$tag" >/dev/null
-  git -C "$fixture" tag v1.2.2
-  mkdir -p "$fixture/src/services/deviceParsers/parsers"
-  printf 'Ledger parser change\n' \
-    > "$fixture/src/services/deviceParsers/parsers/ledger.ts"
-  git -C "$fixture" add src/services/deviceParsers/parsers/ledger.ts
-  git -C "$fixture" commit -qm "Ledger parser change"
-  git -C "$fixture" tag "$tag"
-
-  if RELEASE_TEST_WITHOUT_REVIEW=true run_publish "$fixture" "$tag" \
-    > "$fixture/output.log" 2>&1; then
-    fail "Ledger parser release unexpectedly passed without reviewed audit evidence"
-  fi
-  assert_contains "$fixture/output.log" "wallet-safety audit review evidence is required"
-  [[ ! -f "$fixture/trace.log" ]] || fail "Ledger parser evidence failure reached the network"
-}
+# The three cases that asserted publication blocks on reviewed audit evidence
+# (a server wallet-safety path, a Jade QR path and a Ledger parser path) are gone
+# with the gate they exercised. See docs/reference/wallet-safety-audit-review-runbook.md
+# for why it is suspended and what reinstating it restores. The verifier they
+# drove still exists and is still unit-tested by
+# tests/release/wallet-safety-audit-review.test.mjs, so reinstatement is wiring,
+# not a rewrite.
 
 test_github_actions_drift_blocks_tag_creation() {
   local tag="v1.2.3"
@@ -443,9 +392,6 @@ test_real_publish_orders_release_gates
 test_existing_github_tag_is_idempotent
 test_dirty_checkout_fails_before_network
 test_failed_gate_blocks_all_publication
-test_wallet_safety_change_requires_review_evidence
-test_jade_qr_change_requires_review_evidence
-test_ledger_parser_change_requires_review_evidence
 test_github_actions_drift_blocks_tag_creation
 test_mismatched_github_tag_blocks_release
 test_dry_run_requires_existing_github_tag

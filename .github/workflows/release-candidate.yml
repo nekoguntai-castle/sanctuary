@@ -154,38 +154,6 @@ jobs:
             echo "---"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  wallet-safety-audit-review:
-    name: Wallet Safety Audit Review
-    runs-on: ubuntu-22.04
-    needs: validation-info
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          ref: ${{ needs.validation-info.outputs.candidate_ref }}
-          fetch-depth: 0
-
-      - name: Verify reviewed wallet-safety audit evidence when required
-        env:
-          REVIEW_EVIDENCE_JSON: ${{ vars.WALLET_SAFETY_AUDIT_REVIEW_JSON }}
-        run: |
-          evidence_file="$(mktemp "${RUNNER_TEMP:?}/wallet-safety-review.XXXXXX.json")"
-          cleanup_evidence() {
-            : > "$evidence_file"
-            unlink "$evidence_file"
-          }
-          trap cleanup_evidence EXIT
-          if [ -n "$REVIEW_EVIDENCE_JSON" ]; then
-            printf '%s' "$REVIEW_EVIDENCE_JSON" > "$evidence_file"
-          fi
-          base_ref="$(git describe --tags --abbrev=0 \
-            --match 'v[0-9]*.[0-9]*.[0-9]*' --exclude '*-*' HEAD^ 2>/dev/null || true)"
-          arguments=(--base "$base_ref" --head HEAD)
-          if [ -s "$evidence_file" ]; then
-            arguments+=(--evidence "$evidence_file")
-          fi
-          node scripts/release/verify-wallet-safety-audit-review.mjs "${arguments[@]}"
-
   hardware-compatibility-evidence:
     name: Hardware Compatibility Evidence
     runs-on: ubuntu-22.04
@@ -700,7 +668,7 @@ jobs:
   validation-summary:
     name: Validation Summary
     runs-on: ubuntu-22.04
-    needs: [validation-info, wallet-safety-audit-review, hardware-compatibility-evidence, unit-tests, fresh-install-test, container-health-test, auth-flow-test]
+    needs: [validation-info, hardware-compatibility-evidence, unit-tests, fresh-install-test, container-health-test, auth-flow-test]
     if: always()
 
     steps:
@@ -714,13 +682,6 @@ jobs:
 
           echo "| Test Suite | Result | Duration |" >> $GITHUB_STEP_SUMMARY
           echo "|------------|--------|----------|" >> $GITHUB_STEP_SUMMARY
-
-          if [ "${{ needs.wallet-safety-audit-review.result }}" == "success" ]; then
-            echo "| Wallet Safety Audit Review | :white_check_mark: Passed | <1m |" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "| Wallet Safety Audit Review | :x: Failed | - |" >> $GITHUB_STEP_SUMMARY
-            ALL_PASSED=false
-          fi
 
           # Unit tests
           if [ "${{ needs.unit-tests.result }}" == "success" ]; then
@@ -768,7 +729,6 @@ jobs:
           CORE_PASSED=true
           if [ "${{ needs.unit-tests.result }}" != "success" ] || \
              [ "${{ needs.fresh-install-test.result }}" != "success" ] || \
-             [ "${{ needs.wallet-safety-audit-review.result }}" != "success" ] || \
              [ "${{ needs.hardware-compatibility-evidence.result }}" != "success" ]; then
             CORE_PASSED=false
           fi
@@ -806,7 +766,6 @@ jobs:
           # removed upgrade-test job for rationale.
           if [ "${{ needs.unit-tests.result }}" != "success" ] || \
              [ "${{ needs.fresh-install-test.result }}" != "success" ] || \
-             [ "${{ needs.wallet-safety-audit-review.result }}" != "success" ] || \
              [ "${{ needs.hardware-compatibility-evidence.result }}" != "success" ]; then
             echo "::error::Release candidate validation FAILED - core tests did not pass."
             exit 1

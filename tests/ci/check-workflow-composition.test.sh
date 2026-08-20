@@ -633,7 +633,7 @@ assert_contains_in_order "$RC" \
 
 assert_contains_in_order "$RC" \
   "release-candidate requires hardware compatibility evidence" \
-  "needs: [validation-info, wallet-safety-audit-review, hardware-compatibility-evidence" \
+  "needs: [validation-info, hardware-compatibility-evidence" \
   'needs.hardware-compatibility-evidence.result'
 
 assert_contains_in_order "$RC" \

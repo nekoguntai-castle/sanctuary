@@ -136,18 +136,6 @@ validate_checkout() {
   RELEASE_COMMIT="$tag_commit"
 }
 
-verify_wallet_safety_audit_review() {
-  local previous_release evidence_path
-  previous_release="$("$SCRIPT_DIR/previous-release-tag.sh" "$TAG" "$ROOT_DIR")"
-  evidence_path="${SANCTUARY_WALLET_SAFETY_AUDIT_REVIEW:-}"
-  local arguments=(--base "$previous_release" --head "$TAG")
-  if [[ -n "$evidence_path" ]]; then
-    arguments+=(--evidence "$evidence_path")
-  fi
-  node "$SCRIPT_DIR/verify-wallet-safety-audit-review.mjs" "${arguments[@]}" \
-    || fail "wallet-safety audit review gate did not pass"
-}
-
 create_release_objects() {
   env -u GHCR_USER -u GHCR_TOKEN -u UMBREL_DISPATCH_TOKEN \
     -u UMBREL_OWNER -u UMBREL_REPO \
@@ -169,7 +157,6 @@ main() {
   TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/sanctuary-publish-release.XXXXXX")"
   trap on_exit EXIT
   validate_checkout
-  verify_wallet_safety_audit_review
   verify_forgejo_tag
   verify_forgejo_release_gate
   verify_github_actions_disabled

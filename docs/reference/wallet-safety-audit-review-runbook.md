@@ -1,8 +1,40 @@
 # Wallet-safety audit review — release runbook
 
-Producing the evidence that `scripts/release/verify-wallet-safety-audit-review.mjs`
-requires. Until this document existed the flow was undocumented, which is how a release
-first discovered the gate at the gate.
+> **SUSPENDED as of v0.8.65.** Neither release-candidate validation nor the
+> publication command enforces this gate today. Everything below describes how to
+> produce the evidence, and stays accurate for the day it is reinstated — nothing
+> here has been deleted.
+>
+> **Why.** The gate requires a human attestation, preferably from two identities.
+> This repository has one maintainer, so every release resolved to a self-review
+> with a mandatory hour between generating the audit and approving it. Against a
+> maintainer deployment that holds **zero wallets**, that ceremony attested to an
+> empty dataset: the v0.8.64 evidence says so in its own words — "it is not
+> evidence about production wallet state". The cost was real and recurring; the
+> protection, at that wallet count, was not.
+>
+> **What still protects wallet-safety code.** Everything automated, all still
+> blocking: the per-file mutation gates on the funds-controlling modules
+> (`psbtAccountBinding`, `feePolicy`, `taproot*`, `receiveEvidence`) with their
+> canary map, the wallet-safety classifier drift check, `verify-vectors` including
+> the Jade/Ledger/Trezor emulator proofs, and the critical-path inventory in
+> `config/wallet-safety-critical-paths.json` — which is still maintained, because
+> reinstating the gate depends on it being accurate.
+>
+> **What is no longer enforced.** A human confirming they looked at the diff of
+> wallet-safety-critical paths before the release ships, and the audit of live
+> wallet rows that confirmation was attached to.
+>
+> **Reinstate when there is a second maintainer** — that is the condition that
+> makes the two-identity path possible and the ceremony meaningful. Reinstatement
+> is wiring, not a rewrite: `verify-wallet-safety-audit-review.mjs` and its unit
+> tests (`tests/release/wallet-safety-audit-review.test.mjs`) are untouched. Restore
+> the `wallet-safety-audit-review` job in `.github/workflows/release-candidate.yml`
+> and the `verify_wallet_safety_audit_review` call in
+> `scripts/release/publish-release.sh`; both are one revert away in git history.
+>
+> Until then, production wallets are audited post-upgrade rather than pre-release —
+> see `reports/incident-wallet-sync-v0.8.63-2026-08-18.md`.
 
 ## When it applies
 
