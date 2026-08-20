@@ -21,6 +21,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 QUALITY="$REPO_ROOT/.github/workflows/quality.yml"
 WORKFLOW_DIR="$REPO_ROOT/.github/workflows"
+# Suites can be registered by name here instead of in a workflow.
+SUITE_RUNNER="$REPO_ROOT/scripts/ci/run-install-unit-tests.sh"
 
 PASS=0
 FAIL=0
@@ -84,6 +86,13 @@ for path in "$REPO_ROOT"/tests/ci/*.test.sh; do
   # executable form `./tests/ci/x.test.sh`. Missing the second one is how this
   # check previously mis-flagged relay-job-diagnosability as an orphan.
   if grep -rqE "(bash|\./)[[:space:]]*tests/ci/${name}" "$WORKFLOW_DIR"; then
+    continue
+  fi
+  # A suite may be run indirectly: install-test.yml and release-candidate.yml now
+  # both call scripts/ci/run-install-unit-tests.sh rather than enumerating suites,
+  # which is what stopped the two lists drifting apart (install-test listed 15,
+  # release-candidate listed 10). Naming it there counts as registration.
+  if [ -f "$SUITE_RUNNER" ] && grep -qF "tests/ci/${name}" "$SUITE_RUNNER"; then
     continue
   fi
   allowed "$name" ${EXECUTION_ALLOWLIST+"${EXECUTION_ALLOWLIST[@]}"} && continue
@@ -188,6 +197,16 @@ while IFS= read -r path; do
   if grep -rqE "(bash|\./)[[:space:]]*${rel}" "$WORKFLOW_DIR"; then
     continue
   fi
+  # tests/install/unit/* are executed by the shared suite runner via a glob, so
+  # they are registered by construction -- adding a suite needs no workflow edit.
+  # That is the point: the enumeration is what drifted.
+  case "$rel" in
+    tests/install/unit/*.test.sh)
+      if [ -f "$SUITE_RUNNER" ] && grep -qF 'tests/install/unit/*.test.sh' "$SUITE_RUNNER"; then
+        continue
+      fi
+      ;;
+  esac
   allowed "$name" ${INSTALL_EXECUTION_ALLOWLIST+"${INSTALL_EXECUTION_ALLOWLIST[@]}"} && continue
   install_missing_exec+=("$rel")
 done < <({ find "$REPO_ROOT/tests/install/unit" -maxdepth 1 -name '*.test.sh' -type f

@@ -251,17 +251,7 @@ jobs:
         run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh
 
       - name: Run unit tests
-        run: |
-          ./tests/install/unit/install-script.test.sh
-          ./tests/install/unit/reset-user-2fa-script.test.sh
-          ./tests/install/unit/upgrade-helpers.test.sh
-          ./tests/install/unit/purge-image-scope.test.sh
-          ./tests/install/unit/offline-bundle-script.test.sh
-          ./tests/install/unit/upgrade-backup-script.test.sh
-          ./tests/install/unit/upgrade-staleness.test.sh
-          ./tests/install/unit/install-scope.test.sh
-          ./tests/install/unit/cleanup-containers-guard.test.sh
-          ./tests/install/unit/image-tag-isolation.test.sh
+        run: scripts/ci/run-install-unit-tests.sh
 
   # ============================================
   # Fresh Install E2E Test

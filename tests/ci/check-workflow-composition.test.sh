@@ -676,10 +676,30 @@ assert_occurrence_count "$IT" \
   "SANCTUARY_RESTART_POLICY: 'no'" \
   1
 
+# The install unit lane no longer enumerates suites in the workflow -- it calls
+# scripts/ci/run-install-unit-tests.sh, which globs tests/install/unit/*.test.sh.
+# That is a stronger guarantee than the old per-name assertion: coverage cannot
+# drift when a suite is added, and it closes the gap where install-test.yml
+# listed fifteen suites while release-candidate.yml listed ten, silently omitting
+# the three Grafana/compose ones. Assert the wiring and the glob instead of the
+# names.
 assert_occurrence_count "$IT" \
-  "install unit lane covers daemon-visible Grafana quiescence" \
-  './tests/install/unit/grafana-quiescence.test.sh' \
+  "install unit lane runs the shared suite runner" \
+  'scripts/ci/run-install-unit-tests.sh' \
   1
+
+assert_occurrence_count "$REPO_ROOT/.github/workflows/release-candidate.yml" \
+  "release-candidate unit lane runs the same shared suite runner" \
+  'scripts/ci/run-install-unit-tests.sh' \
+  1
+
+assert_contains_in_order "$REPO_ROOT/scripts/ci/run-install-unit-tests.sh" \
+  "the suite runner globs every install unit suite" \
+  'tests/install/unit/*.test.sh'
+
+assert_contains_in_order "$REPO_ROOT/scripts/ci/run-install-unit-tests.sh" \
+  "the suite runner aborts on the first failing suite" \
+  'set -euo pipefail'
 
 # Production retains `unless-stopped` by default, while CI can atomically
 # override every long-running Sanctuary service to `no`. This prevents an
@@ -833,11 +853,23 @@ assert_contains_in_order "$IT" \
   'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Install Unit Tests"' \
   "diag-install-unit-tests"
 
+# Same reason as above: the suites are no longer enumerated here. What still
+# matters about ordering is that the unit-tests job invokes the shared runner.
 assert_contains_in_order "$IT" \
   "install-test static workflow validation" \
   "unit-tests:" \
-  "./tests/install/unit/install-scope.test.sh" \
-  "./tests/ci/check-workflow-composition.test.sh"
+  "scripts/ci/run-install-unit-tests.sh"
+
+# The two ci-composition suites install-test has always run alongside the install
+# ones are named in the runner, not the workflow -- assert they did not get lost
+# in the move.
+assert_contains_in_order "$REPO_ROOT/scripts/ci/run-install-unit-tests.sh" \
+  "the suite runner still runs the workflow-composition guard" \
+  'tests/ci/check-workflow-composition.test.sh'
+
+assert_contains_in_order "$REPO_ROOT/scripts/ci/run-install-unit-tests.sh" \
+  "the suite runner still runs the relay diagnosability guard" \
+  'tests/ci/relay-job-diagnosability.test.sh'
 
 assert_contains_in_order "$IT" \
   "install-test upgrade selection inputs and outputs" \
@@ -2342,6 +2374,63 @@ echo "===================="
 echo "Total:  $((PASS + FAIL))"
 echo "Passed: $PASS"
 echo "Failed: $FAIL"
+# ------------------------------------------------------- interpreter-fed blocks
+# A multi-command script piped into a bare `bash` on stdin cannot fail: bash
+# reading from stdin without -e does not abort on a failing command, so the
+# step's exit status is only the LAST command's.
+#
+# install-test.yml did exactly that with fifteen test scripts, so fourteen of
+# them were structurally unable to fail CI. PR #832 shipped a broken
+# classify-install-scope.sh green because install-scope.test.sh ran at position
+# 11, failed, and was discarded -- and that bug then cost v0.8.64 four extra
+# release candidates.
+#
+# This guard is deliberately in the same commit as the fix. It is itself one of
+# the fifteen suites that could not fail, so shipping it earlier would have
+# landed it blind.
+#
+# A heredoc is acceptable when the interpreter carries -e, or the body sets it,
+# or the line explicitly ends in `|| true` (the four container-log dumps are
+# deliberately tolerant).
+check_interpreter_heredocs() {
+  local label="no workflow pipes an unguarded multi-command script into bash"
+  local offenders=""
+  local wf line lineno interp term body guarded
+
+  for wf in "$REPO_ROOT"/.github/workflows/*.yml; do
+    [ -f "$wf" ] || continue
+    lineno=0
+    while IFS= read -r line; do
+      lineno=$((lineno + 1))
+      case "$line" in
+        *"bash <<'"*|*"sh <<'"*|*'bash <<"'*) ;;
+        *) continue ;;
+      esac
+      case "$line" in *"|| true") continue ;; esac
+      term="$(printf '%s
+' "$line" | sed -E "s/.*<<'?([A-Za-z_][A-Za-z0-9_]*)'?.*/\1/")"
+      [ -n "$term" ] || continue
+      body="$(awk -v start="$lineno" -v term="$term" \
+        'NR > start { if ($0 ~ "^[[:space:]]*"term"[[:space:]]*$") exit; print }' "$wf")"
+      guarded=no
+      printf '%s
+' "$body" | grep -Eq '^[[:space:]]*set -[a-z]*e' && guarded=yes
+      [ "$guarded" = yes ] || offenders="${offenders} $(basename "$wf"):${lineno}"
+    done < "$wf"
+  done
+
+  if [ -n "$offenders" ]; then
+    FAIL=$((FAIL + 1))
+    FAILURES+=("$label: unguarded heredoc(s):${offenders}")
+    echo "FAIL: $label" >&2
+  else
+    PASS=$((PASS + 1))
+    echo "PASS: $label"
+  fi
+}
+
+check_interpreter_heredocs
+
 if [ "$FAIL" -gt 0 ]; then
   echo
   echo "Failures:" >&2

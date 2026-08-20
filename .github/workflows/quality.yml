@@ -717,6 +717,7 @@ jobs:
           bash -n scripts/ci/run-quality-lint.sh
           bash -n scripts/ci/redactor.sh
           bash -n scripts/ci/run-with-log.sh
+          bash -n scripts/ci/run-install-unit-tests.sh
           bash -n scripts/ci/write-preflight-diagnostics.sh
           bash -n scripts/ci/write-empty-diagnostic-breadcrumb.sh
           bash -n scripts/ci/write-diagnostic-summary.sh

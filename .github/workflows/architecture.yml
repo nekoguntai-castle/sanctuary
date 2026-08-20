@@ -62,7 +62,7 @@ jobs:
           # direct hit on this exact pattern; heredoc with 'EOF' eliminates the
           # entire class.
           scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-dependencies.log" \
-            scripts/ci/with-runner-lock.sh node-toolchain bash <<'INNER'
+            scripts/ci/with-runner-lock.sh node-toolchain bash -euo pipefail <<'INNER'
           set -euo pipefail
           cd "$ARCH_WORKDIR"
           # Phase B: root npm ci installs all workspaces (shared, server, gateway).
@@ -75,7 +75,7 @@ jobs:
       - name: Lint diagram click hrefs
         run: |
           scripts/ci/run-with-log.sh ".tmp/ci-diagnostics/architecture/lint-diagrams.log" \
-            bash <<'INNER'
+            bash -euo pipefail <<'INNER'
           cd "$ARCH_WORKDIR"
           npm run arch:lint
           INNER
@@ -96,7 +96,7 @@ jobs:
       - name: Regenerate dependency graphs
         run: |
           scripts/ci/run-with-log.sh ".tmp/ci-diagnostics/architecture/dependency-graphs.log" \
-            scripts/ci/with-runner-lock.sh node-toolchain bash <<'INNER'
+            scripts/ci/with-runner-lock.sh node-toolchain bash -euo pipefail <<'INNER'
           set -euo pipefail
           cd "$ARCH_WORKDIR"
           scripts/ci/retry-command.sh "architecture dependency graphs" npm run arch:graphs
@@ -105,7 +105,7 @@ jobs:
       - name: Regenerate function-level call graphs
         run: |
           scripts/ci/run-with-log.sh ".tmp/ci-diagnostics/architecture/call-graphs.log" \
-            scripts/ci/with-runner-lock.sh node-toolchain bash <<'INNER'
+            scripts/ci/with-runner-lock.sh node-toolchain bash -euo pipefail <<'INNER'
           set -euo pipefail
           cd "$ARCH_WORKDIR"
           scripts/ci/retry-command.sh "architecture call graphs" npm run arch:calls
@@ -114,7 +114,7 @@ jobs:
       - name: Detect stale generated graphs
         run: |
           scripts/ci/run-with-log.sh ".tmp/ci-diagnostics/architecture/stale-generated-graphs.log" \
-            bash <<'INNER'
+            bash -euo pipefail <<'INNER'
           cd "$ARCH_WORKDIR"
           if ! git diff --exit-code -- docs/architecture/generated; then
             echo "::error::Generated architecture graphs are stale. Run 'npm run arch:graphs && npm run arch:calls' locally and commit the result."
@@ -175,7 +175,7 @@ jobs:
           SANCTUARY_RETRY_ATTEMPTS: '5'
         run: |
           scripts/ci/run-with-log.sh ".tmp/ci-diagnostics/architecture/docs-typecheck.log" \
-            scripts/ci/with-runner-lock.sh node-toolchain bash <<'INNER'
+            scripts/ci/with-runner-lock.sh node-toolchain bash -euo pipefail <<'INNER'
           set -euo pipefail
           cd "$ARCH_WORKDIR"
           scripts/ci/retry-command.sh "docs typecheck" scripts/ci/time-command.sh "docs typecheck" npm --prefix docs/site run typecheck
@@ -184,7 +184,7 @@ jobs:
       - name: Build Docusaurus site
         run: |
           scripts/ci/run-with-log.sh ".tmp/ci-diagnostics/architecture/docs-build.log" \
-            scripts/ci/with-runner-lock.sh node-toolchain bash <<'INNER'
+            scripts/ci/with-runner-lock.sh node-toolchain bash -euo pipefail <<'INNER'
           set -euo pipefail
           cd "$ARCH_WORKDIR"
           scripts/ci/retry-command.sh "docs build" npm run docs:build

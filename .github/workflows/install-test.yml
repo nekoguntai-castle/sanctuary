@@ -209,23 +209,7 @@ jobs:
 
       - name: Run unit tests
         run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-unit-tests.log" scripts/ci/run-in-isolated-workspace.sh install-unit bash <<'INNER'
-          ./tests/install/unit/install-script.test.sh
-          ./tests/install/unit/migration-compose-contract.test.sh
-          ./tests/install/unit/grafana-password-migration.test.sh
-          ./tests/install/unit/grafana-quiescence.test.sh
-          ./tests/install/unit/reset-user-2fa-script.test.sh
-          ./tests/install/unit/upgrade-helpers.test.sh
-          ./tests/install/unit/purge-image-scope.test.sh
-          ./tests/install/unit/offline-bundle-script.test.sh
-          ./tests/install/unit/upgrade-backup-script.test.sh
-          ./tests/install/unit/upgrade-staleness.test.sh
-          ./tests/install/unit/install-scope.test.sh
-          ./tests/install/unit/cleanup-containers-guard.test.sh
-          ./tests/install/unit/image-tag-isolation.test.sh
-          ./tests/ci/check-workflow-composition.test.sh
-          ./tests/ci/relay-job-diagnosability.test.sh
-          INNER
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-unit-tests.log" scripts/ci/run-in-isolated-workspace.sh install-unit scripts/ci/run-install-unit-tests.sh
 
       - name: Write install unit diagnostic summary
         if: always()
@@ -300,7 +284,7 @@ jobs:
       - name: Prepare isolated install workspace
         if: github.event_name != 'pull_request'
         run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" bash <<'INNER'
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" bash -euo pipefail <<'INNER'
           workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible fresh-install)"
           echo "SANCTUARY_INSTALL_WORKSPACE=$workspace" >> "$GITHUB_ENV"
           INNER
@@ -308,7 +292,7 @@ jobs:
       - name: Assign run-specific ports
         if: github.event_name != 'pull_request'
         run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-ports.log" bash <<'INNER'
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-ports.log" bash -euo pipefail <<'INNER'
           cd "$SANCTUARY_INSTALL_WORKSPACE"
           bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
           INNER
@@ -509,7 +493,7 @@ jobs:
       - name: Prepare isolated stack workspace
         if: env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true'
         run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" bash <<'INNER'
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" bash -euo pipefail <<'INNER'
           workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible install-stack)"
           echo "SANCTUARY_STACK_WORKSPACE=$workspace" >> "$GITHUB_ENV"
           INNER
@@ -517,7 +501,7 @@ jobs:
       - name: Assign run-specific ports
         if: env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true'
         run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-ports.log" bash <<'INNER'
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-ports.log" bash -euo pipefail <<'INNER'
           cd "$SANCTUARY_STACK_WORKSPACE"
           bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
           INNER
@@ -659,14 +643,14 @@ jobs:
 
       - name: Prepare isolated health workspace
         run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" bash <<'INNER'
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" bash -euo pipefail <<'INNER'
           workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible container-health)"
           echo "SANCTUARY_HEALTH_WORKSPACE=$workspace" >> "$GITHUB_ENV"
           INNER
 
       - name: Assign run-specific ports
         run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-ports.log" bash <<'INNER'
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-ports.log" bash -euo pipefail <<'INNER'
           cd "$SANCTUARY_HEALTH_WORKSPACE"
           bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
           INNER
@@ -802,14 +786,14 @@ jobs:
 
       - name: Prepare isolated auth workspace
         run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" bash <<'INNER'
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" bash -euo pipefail <<'INNER'
           workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible auth-flow)"
           echo "SANCTUARY_AUTH_WORKSPACE=$workspace" >> "$GITHUB_ENV"
           INNER
 
       - name: Assign run-specific ports
         run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-ports.log" bash <<'INNER'
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-ports.log" bash -euo pipefail <<'INNER'
           cd "$SANCTUARY_AUTH_WORKSPACE"
           bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
           INNER
