@@ -15,6 +15,12 @@ interface TransactionDetailPanelProps extends TransactionPanelSharedProps {
    * edit, and re-fetch the transaction on the way back.
    */
   hidden: boolean;
+  /**
+   * `'floating'` drops the panel's own card chrome and details header: the
+   * floating window around it already carries a border, a title and the close
+   * control, and the date is in the metadata grid either way.
+   */
+  presentation?: 'docked' | 'floating';
   onClose: (txid: string) => void;
   onUnresolvable: (txid: string) => void;
 }
@@ -23,6 +29,7 @@ export function TransactionDetailPanel({
   txid,
   instanceId,
   hidden,
+  presentation = 'docked',
   onClose,
   onUnresolvable,
   ...shared
@@ -51,7 +58,11 @@ export function TransactionDetailPanel({
       data-testid="transaction-detail-panel"
       data-txid={txid}
       hidden={hidden}
-      className="surface-elevated rounded-xl border border-sanctuary-200 dark:border-sanctuary-800 overflow-hidden"
+      className={
+        presentation === 'floating'
+          ? undefined
+          : 'surface-elevated rounded-xl border border-sanctuary-200 dark:border-sanctuary-800 overflow-hidden'
+      }
     >
       {selection.status === 'error' ? (
         <PanelMessage>
@@ -64,7 +75,9 @@ export function TransactionDetailPanel({
         </PanelMessage>
       ) : selectedTx ? (
         <>
-          <TransactionDetailsHeader selectedTx={selectedTx} onClose={close} />
+          {presentation === 'docked' && (
+            <TransactionDetailsHeader selectedTx={selectedTx} onClose={close} />
+          )}
           <TransactionDetailsBody
             selectedTx={selectedTx}
             fullTxDetails={selection.fullTxDetails}

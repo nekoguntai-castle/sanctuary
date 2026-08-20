@@ -3,6 +3,7 @@ import {
   LIST_TAB,
   MAX_OPEN_TABS,
   nextActiveAfterClose,
+  parseFloatingTxids,
   parseOpenTxids,
   resolveActiveTab,
   serializeOpenTxids,
@@ -91,6 +92,52 @@ describe('transaction tab URL state', () => {
 
     it('falls back to the list when the only tab closes', () => {
       expect(nextActiveAfterClose([A], A, A)).toBe(LIST_TAB);
+    });
+  });
+
+  describe('parseFloatingTxids', () => {
+    it('reads which open transactions are floating', () => {
+      expect(parseFloatingTxids(`${B}`, [A, B])).toEqual([B]);
+    });
+
+    it('ignores a floating entry with no tab behind it', () => {
+      // A hand-edited link could otherwise conjure a panel for a transaction
+      // that is not open at all.
+      expect(parseFloatingTxids(`${C}`, [A, B])).toEqual([]);
+    });
+
+    it('keeps the parameter order, which is the panels stacking order', () => {
+      expect(parseFloatingTxids(`${B},${A}`, [A, B])).toEqual([B, A]);
+    });
+
+    it('normalizes and dedupes like the open list does', () => {
+      expect(parseFloatingTxids(` ${A.toUpperCase()} ,${A}`, [A])).toEqual([A]);
+      expect(parseFloatingTxids(null, [A])).toEqual([]);
+    });
+  });
+
+  describe('with floating panels', () => {
+    it('never makes a floating transaction the active tab', () => {
+      // Its panel is already on screen; selecting its tab would show the same
+      // transaction twice and point the strip at a panel that is not in it.
+      expect(resolveActiveTab([A, B], A, [A])).toBe(B);
+      expect(resolveActiveTab([A, B], null, [A])).toBe(B);
+    });
+
+    it('falls back to the list when every open transaction is floating', () => {
+      expect(resolveActiveTab([A, B], null, [A, B])).toBe(LIST_TAB);
+    });
+
+    it('skips floating tabs when choosing the neighbour after a close', () => {
+      expect(nextActiveAfterClose([A, B, C], A, A, [B])).toBe(C);
+    });
+
+    it('falls back to the list when only floating tabs remain', () => {
+      expect(nextActiveAfterClose([A, B], A, A, [B])).toBe(LIST_TAB);
+    });
+
+    it('takes the left neighbour when the closed tab was last', () => {
+      expect(nextActiveAfterClose([A, B, C], C, C, [])).toBe(B);
     });
   });
 });

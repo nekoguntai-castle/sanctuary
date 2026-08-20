@@ -22,6 +22,11 @@ export function closeTabLabel(txid: string, tx: Transaction | null): string {
   return `Close ${tabTitle(txid, tx)}`;
 }
 
+/** Screen-reader name for the control that pops a tab out into its own panel. */
+export function detachTabLabel(txid: string, tx: Transaction | null): string {
+  return `Detach ${tabTitle(txid, tx)}`;
+}
+
 /**
  * DOM ids linking each tab to its panel (`aria-controls` / `aria-labelledby`).
  * Scoped by the list's instance id because two transaction lists can be on one

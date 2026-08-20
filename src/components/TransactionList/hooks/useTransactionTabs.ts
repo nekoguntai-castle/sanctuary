@@ -4,10 +4,12 @@ import type { Transaction } from '../../../types';
 import { normalizeTxid } from './selectionResolution';
 import {
   ACTIVE_PARAM,
+  FLOATING_PARAM,
   LIST_TAB,
   MAX_OPEN_TABS,
   OPEN_PARAM,
   nextActiveAfterClose,
+  parseFloatingTxids,
   parseOpenTxids,
   resolveActiveTab,
   serializeOpenTxids,
@@ -36,28 +38,41 @@ export function useTransactionTabs({ enabled }: UseTransactionTabsParams) {
   const [searchParams, setSearchParams] = useSearchParams();
   const openParam = enabled ? searchParams.get(OPEN_PARAM) : null;
   const activeParam = enabled ? searchParams.get(ACTIVE_PARAM) : null;
+  const floatingParam = enabled ? searchParams.get(FLOATING_PARAM) : null;
 
   const openTxids = useMemo(() => parseOpenTxids(openParam), [openParam]);
+  const floatingTxids = useMemo(
+    () => parseFloatingTxids(floatingParam, openTxids),
+    [floatingParam, openTxids],
+  );
   const activeTab = useMemo(
-    () => resolveActiveTab(openTxids, activeParam),
-    [openTxids, activeParam],
+    () => resolveActiveTab(openTxids, activeParam, floatingTxids),
+    [openTxids, activeParam, floatingTxids],
   );
 
   // Every writer goes through this so the two parameters can never disagree:
   // an active tab that is not open, or an `txTab` left behind by the last close.
-  const writeTabs = useCallback((nextOpen: string[], nextActive: TabId) => {
+  const writeTabs = useCallback((
+    nextOpen: string[],
+    nextActive: TabId,
+    nextFloating: string[] = floatingTxids,
+  ) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       if (nextOpen.length === 0) {
         next.delete(OPEN_PARAM);
         next.delete(ACTIVE_PARAM);
+        next.delete(FLOATING_PARAM);
         return next;
       }
       next.set(OPEN_PARAM, serializeOpenTxids(nextOpen));
       next.set(ACTIVE_PARAM, nextActive);
+      const floating = nextFloating.filter((txid) => nextOpen.includes(txid));
+      if (floating.length === 0) next.delete(FLOATING_PARAM);
+      else next.set(FLOATING_PARAM, serializeOpenTxids(floating));
       return next;
     }, { replace: true });
-  }, [setSearchParams]);
+  }, [floatingTxids, setSearchParams]);
 
   const openTab = useCallback((tx: Transaction, options?: { background?: boolean }) => {
     const txid = normalizeTxid(tx.txid);
@@ -69,17 +84,25 @@ export function useTransactionTabs({ enabled }: UseTransactionTabsParams) {
       ? openTxids
       : openTxids.filter((open) => open !== oldestClosable(openTxids, activeTab));
     const nextOpen = alreadyOpen ? trimmed : [...trimmed, txid];
+    // Clicking the row behind a floating panel raises it rather than docking it:
+    // the panel is already on screen, and pulling it back into the strip would
+    // undo a placement the user chose.
+    if (floatingTxids.includes(txid)) {
+      writeTabs(nextOpen, activeTab, raiseFloating(floatingTxids, txid));
+      return;
+    }
     writeTabs(nextOpen, options?.background ? activeTab : txid);
-  }, [activeTab, openTxids, writeTabs]);
+  }, [activeTab, floatingTxids, openTxids, writeTabs]);
 
   const closeTab = useCallback((txid: string) => {
     const normalized = normalizeTxid(txid);
     if (!openTxids.includes(normalized)) return;
     writeTabs(
       openTxids.filter((open) => open !== normalized),
-      nextActiveAfterClose(openTxids, normalized, activeTab),
+      nextActiveAfterClose(openTxids, normalized, activeTab, floatingTxids),
+      floatingTxids.filter((open) => open !== normalized),
     );
-  }, [activeTab, openTxids, writeTabs]);
+  }, [activeTab, floatingTxids, openTxids, writeTabs]);
 
   const activateTab = useCallback((tab: TabId) => {
     if (tab === LIST_TAB) {
@@ -92,7 +115,45 @@ export function useTransactionTabs({ enabled }: UseTransactionTabsParams) {
     writeTabs(openTxids, tab);
   }, [openTxids, writeTabs]);
 
-  return { activateTab, activeTab, closeTab, openTab, openTxids };
+  const detachTab = useCallback((txid: string) => {
+    const normalized = normalizeTxid(txid);
+    if (!openTxids.includes(normalized) || floatingTxids.includes(normalized)) return;
+    const nextFloating = [...floatingTxids, normalized];
+    writeTabs(
+      openTxids,
+      // The strip cannot keep pointing at a tab that just left it.
+      nextActiveAfterClose(openTxids, normalized, activeTab, nextFloating),
+      nextFloating,
+    );
+  }, [activeTab, floatingTxids, openTxids, writeTabs]);
+
+  const dockTab = useCallback((txid: string) => {
+    const normalized = normalizeTxid(txid);
+    if (!floatingTxids.includes(normalized)) return;
+    // Docking shows what was just docked; anything else hides the panel the
+    // user was reading behind whatever tab happened to be active.
+    writeTabs(
+      openTxids,
+      normalized,
+      floatingTxids.filter((open) => open !== normalized),
+    );
+  }, [floatingTxids, openTxids, writeTabs]);
+
+  return {
+    activateTab,
+    activeTab,
+    closeTab,
+    detachTab,
+    dockTab,
+    floatingTxids,
+    openTab,
+    openTxids,
+  };
+}
+
+/** Most recently raised last, which is the order the panels stack in. */
+function raiseFloating(floatingTxids: string[], txid: string): string[] {
+  return [...floatingTxids.filter((open) => open !== txid), txid];
 }
 
 /**

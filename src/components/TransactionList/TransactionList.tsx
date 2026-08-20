@@ -1,4 +1,4 @@
-import React, { useId, useRef, useState, useEffect, useCallback } from 'react';
+import React, { useId, useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { Transaction, Wallet, Label } from '../../types';
 import { usePriceFreeFormatter } from '../../contexts/CurrencyContext';
 import { useAIStatus } from '../../hooks/useAIStatus';
@@ -9,6 +9,9 @@ import { TransactionTable } from './TransactionList/TransactionTable';
 import { TransactionDetailPanel } from './TransactionTabs/TransactionDetailPanel';
 import { TransactionTabStrip } from './TransactionTabs/TransactionTabStrip';
 import { LIST_TAB } from './hooks/transactionTabsState';
+import { FloatingPanel } from '../ui/FloatingPanel';
+import { FLOATING_PANEL_QUERY, useMediaQuery } from '../../hooks/useMediaQuery';
+import { tabTitle } from './TransactionTabs/tabPresentation';
 import { panelDomId, tabDomId } from './TransactionTabs/tabPresentation';
 import type { TransactionPanelSharedProps } from './TransactionTabs/types';
 
@@ -84,6 +87,9 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     openTxids,
     activateTab,
     closeTab,
+    detachTab,
+    dockTab,
+    floatingTxids,
     findTransaction,
     selectionTransactions: panelTransactions,
     filteredTransactions,
@@ -150,6 +156,19 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   // Every open tab keeps its panel mounted and hides the inactive ones, so
   // switching tabs preserves scroll position and any half-finished label edit
   // instead of remounting and re-fetching. The table is hidden the same way.
+  // Below `tablet` a floating panel has nowhere useful to float: it would cover
+  // the list it exists to sit beside. The affordance is hidden, and a panel that
+  // survives a narrowing viewport is docked rather than left stranded.
+  const canFloat = useMediaQuery(FLOATING_PANEL_QUERY);
+  useEffect(() => {
+    if (canFloat) return;
+    for (const txid of floatingTxids) dockTab(txid);
+  }, [canFloat, dockTab, floatingTxids]);
+
+  const dockedTxids = useMemo(
+    () => openTxids.filter((txid) => !floatingTxids.includes(txid)),
+    [floatingTxids, openTxids],
+  );
   const showList = activeTab === LIST_TAB;
   const sharedPanelProps: TransactionPanelSharedProps = {
     wallets,
@@ -174,12 +193,17 @@ export const TransactionList: React.FC<TransactionListProps> = ({
 
       {ownsSelection && openTxids.length > 0 && (
         <TransactionTabStrip
-          openTxids={openTxids}
+          // Docked tabs only: a detached transaction is on screen in its own
+          // panel, so leaving its tab in the strip would offer a second way to
+          // "show" something already showing — and one that cannot be selected,
+          // since a floating transaction is never the active tab.
+          openTxids={dockedTxids}
           activeTab={activeTab}
           instanceId={instanceId}
           findTransaction={findTransaction}
           onActivate={activateTab}
           onClose={closeTab}
+          onDetach={canFloat ? detachTab : undefined}
         />
       )}
 
@@ -224,7 +248,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
         )}
       </div>
 
-      {openTxids.map((txid) => (
+      {dockedTxids.map((txid) => (
         <TransactionDetailPanel
           key={txid}
           txid={txid}
@@ -235,6 +259,31 @@ export const TransactionList: React.FC<TransactionListProps> = ({
           {...sharedPanelProps}
         />
       ))}
+
+      {floatingTxids.map((txid, index) => {
+        const label = tabTitle(txid, findTransaction(txid));
+        return (
+          <FloatingPanel
+            key={txid}
+            storageId={txid}
+            index={index}
+            title={label}
+            label={label}
+            onDock={() => dockTab(txid)}
+            onClose={() => closeTab(txid)}
+          >
+            <TransactionDetailPanel
+              txid={txid}
+              instanceId={instanceId}
+              hidden={false}
+              presentation="floating"
+              onClose={closeTab}
+              onUnresolvable={closeTab}
+              {...sharedPanelProps}
+            />
+          </FloatingPanel>
+        );
+      })}
     </>
   );
 };

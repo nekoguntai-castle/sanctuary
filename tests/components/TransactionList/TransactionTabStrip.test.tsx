@@ -1,6 +1,11 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('lucide-react', () => ({
+  X: () => <span data-testid="x-icon" />,
+  PanelRightOpen: () => <span data-testid="detach-icon" />,
+}));
 import { TransactionTabStrip } from '../../../src/components/TransactionList/TransactionTabs/TransactionTabStrip';
 import { LIST_TAB } from '../../../src/components/TransactionList/hooks/transactionTabsState';
 import type { Transaction } from '../../../src/types';

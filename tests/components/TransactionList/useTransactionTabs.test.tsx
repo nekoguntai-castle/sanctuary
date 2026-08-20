@@ -221,4 +221,108 @@ describe('useTransactionTabs', () => {
     expect(result.current.tabs.openTxids).toEqual([]);
     expect(result.current.tabs.activeTab).toBe(LIST_TAB);
   });
+
+  describe('detaching and docking', () => {
+    it('detaches a tab into a floating panel and moves the strip off it', () => {
+      const { result } = renderTabs();
+      act(() => result.current.tabs.openTab(tx(A)));
+      act(() => result.current.tabs.openTab(tx(B)));
+
+      act(() => result.current.tabs.detachTab(B));
+
+      expect(result.current.tabs.floatingTxids).toEqual([B]);
+      expect(result.current.tabs.openTxids).toEqual([A, B]);
+      expect(result.current.tabs.activeTab).toBe(A);
+      expect(result.current.params.get('txWin')).toBe(B);
+    });
+
+    it('shows the list when the only open tab detaches', () => {
+      const { result } = renderTabs();
+      act(() => result.current.tabs.openTab(tx(A)));
+
+      act(() => result.current.tabs.detachTab(A));
+
+      expect(result.current.tabs.activeTab).toBe(LIST_TAB);
+    });
+
+    it('docks a panel back and shows what was just docked', () => {
+      const { result } = renderTabs();
+      act(() => result.current.tabs.openTab(tx(A)));
+      act(() => result.current.tabs.detachTab(A));
+
+      act(() => result.current.tabs.dockTab(A));
+
+      expect(result.current.tabs.floatingTxids).toEqual([]);
+      expect(result.current.tabs.activeTab).toBe(A);
+      expect(result.current.params.get('txWin')).toBeNull();
+    });
+
+    it('ignores detaching a tab that is not open, or already floating', () => {
+      const { result } = renderTabs();
+      act(() => result.current.tabs.openTab(tx(A)));
+
+      act(() => result.current.tabs.detachTab(B));
+      expect(result.current.tabs.floatingTxids).toEqual([]);
+
+      act(() => result.current.tabs.detachTab(A));
+      act(() => result.current.tabs.detachTab(A));
+      expect(result.current.tabs.floatingTxids).toEqual([A]);
+    });
+
+    it('ignores docking a tab that is not floating', () => {
+      const { result } = renderTabs();
+      act(() => result.current.tabs.openTab(tx(A)));
+
+      act(() => result.current.tabs.dockTab(A));
+
+      expect(result.current.tabs.activeTab).toBe(A);
+      expect(result.current.tabs.floatingTxids).toEqual([]);
+    });
+
+    it('raises a floating panel when its row is clicked again, without docking it', () => {
+      // The panel is already on screen; pulling it back into the strip would
+      // undo a placement the user chose.
+      const { result } = renderTabs();
+      act(() => result.current.tabs.openTab(tx(A)));
+      act(() => result.current.tabs.openTab(tx(B)));
+      act(() => result.current.tabs.detachTab(A));
+      act(() => result.current.tabs.detachTab(B));
+      expect(result.current.tabs.floatingTxids).toEqual([A, B]);
+
+      act(() => result.current.tabs.openTab(tx(A)));
+
+      expect(result.current.tabs.floatingTxids).toEqual([B, A]);
+      expect(result.current.tabs.activeTab).toBe(LIST_TAB);
+    });
+
+    it('drops a floating panel when its tab closes', () => {
+      const { result } = renderTabs();
+      act(() => result.current.tabs.openTab(tx(A)));
+      act(() => result.current.tabs.openTab(tx(B)));
+      act(() => result.current.tabs.detachTab(A));
+
+      act(() => result.current.tabs.closeTab(A));
+
+      expect(result.current.tabs.floatingTxids).toEqual([]);
+      expect(result.current.tabs.openTxids).toEqual([B]);
+      expect(result.current.params.get('txWin')).toBeNull();
+    });
+
+    it('restores detached panels from a link', () => {
+      const { result } = renderTabs(`/?tx=${A},${B}&txWin=${A}&txTab=${B}`);
+
+      expect(result.current.tabs.floatingTxids).toEqual([A]);
+      expect(result.current.tabs.activeTab).toBe(B);
+    });
+
+    it('clears every parameter when the last tab closes', () => {
+      const { result } = renderTabs(`/?tx=${A}&txWin=${A}`);
+
+      act(() => result.current.tabs.closeTab(A));
+
+      expect(result.current.params.get('tx')).toBeNull();
+      expect(result.current.params.get('txTab')).toBeNull();
+      expect(result.current.params.get('txWin')).toBeNull();
+    });
+  });
 });

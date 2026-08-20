@@ -88,6 +88,8 @@ vi.mock('lucide-react', () => ({
   ShieldCheck: () => <span data-testid="shield-check-icon" />,
   CheckCircle2: () => <span data-testid="check-circle-icon" />,
   X: () => <span data-testid="x-icon" />,
+  PanelRightOpen: () => <span data-testid="detach-icon" />,
+  PanelBottomClose: () => <span data-testid="dock-icon" />,
 }));
 
 vi.mock('../../../src/components/TransactionList/TransactionRow', () => ({
@@ -161,6 +163,9 @@ describe('TransactionList branch coverage', () => {
     openTxids: [],
     activateTab: vi.fn(),
     closeTab,
+    detachTab: vi.fn(),
+    dockTab: vi.fn(),
+    floatingTxids: [],
     findTransaction: vi.fn().mockReturnValue(baseTx),
     filteredTransactions: [{ ...baseTx }],
     virtuosoRef: { current: null },

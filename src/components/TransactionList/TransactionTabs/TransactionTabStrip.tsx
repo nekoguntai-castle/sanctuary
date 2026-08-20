@@ -1,8 +1,14 @@
-import { X } from 'lucide-react';
+import { PanelRightOpen, X } from 'lucide-react';
 import type { Transaction } from '../../../types';
 import { useTabsA11y } from '../../ui/useTabsA11y';
 import { LIST_TAB, type TabId } from '../hooks/transactionTabsState';
-import { closeTabLabel, panelDomId, tabDomId, tabTitle } from './tabPresentation';
+import {
+  closeTabLabel,
+  detachTabLabel,
+  panelDomId,
+  tabDomId,
+  tabTitle,
+} from './tabPresentation';
 
 interface TransactionTabStripProps {
   openTxids: string[];
@@ -11,6 +17,8 @@ interface TransactionTabStripProps {
   findTransaction: (txid: string) => Transaction | null;
   onActivate: (tab: TabId) => void;
   onClose: (txid: string) => void;
+  /** Absent where the viewport is too small for a floating panel to help. */
+  onDetach?: (txid: string) => void;
   /** Distinguishes the DOM ids of two transaction lists on one page. */
   instanceId: string;
 }
@@ -32,6 +40,7 @@ export function TransactionTabStrip({
   findTransaction,
   onActivate,
   onClose,
+  onDetach,
   instanceId,
 }: TransactionTabStripProps) {
   const tabs: TabId[] = [LIST_TAB, ...openTxids];
@@ -75,15 +84,21 @@ export function TransactionTabStrip({
               >
                 {tabTitle(txid, tx)}
               </button>
+              {onDetach && (
+                <button
+                  type="button"
+                  aria-label={detachTabLabel(txid, tx)}
+                  onClick={() => onDetach(txid)}
+                  className={`${controlClassName(isActive)} self-center`}
+                >
+                  <PanelRightOpen className="w-3.5 h-3.5" />
+                </button>
+              )}
               <button
                 type="button"
                 aria-label={closeTabLabel(txid, tx)}
                 onClick={() => onClose(txid)}
-                className={`${
-                  isActive
-                    ? 'text-primary-600 dark:text-primary-400'
-                    : 'text-sanctuary-400 dark:text-sanctuary-500'
-                } self-center mr-1.5 rounded p-1 hover:bg-sanctuary-100 dark:hover:bg-sanctuary-800 hover:text-sanctuary-700 dark:hover:text-sanctuary-200 transition-colors focus-visible:ring-2 focus-visible:ring-primary-500`}
+                className={`${controlClassName(isActive)} self-center mr-1.5`}
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -93,6 +108,13 @@ export function TransactionTabStrip({
       </nav>
     </div>
   );
+}
+
+function controlClassName(isActive: boolean): string {
+  const state = isActive
+    ? 'text-primary-600 dark:text-primary-400'
+    : 'text-sanctuary-400 dark:text-sanctuary-500';
+  return `${state} rounded p-1 hover:bg-sanctuary-100 dark:hover:bg-sanctuary-800 hover:text-sanctuary-700 dark:hover:text-sanctuary-200 transition-colors focus-visible:ring-2 focus-visible:ring-primary-500`;
 }
 
 // An underline, where the wallet-detail tabs above are pills: these are

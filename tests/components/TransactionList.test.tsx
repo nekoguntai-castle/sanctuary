@@ -133,6 +133,8 @@ vi.mock('lucide-react', () => ({
   Edit2: () => <span data-testid="edit-icon" />,
   TrendingUp: () => <span data-testid="trending-up-icon" />,
   Loader2: () => <span data-testid="loader-icon" />,
+  PanelRightOpen: () => <span data-testid="detach-icon" />,
+  PanelBottomClose: () => <span data-testid="dock-icon" />,
 }));
 
 // Mock child components
@@ -676,10 +678,25 @@ describe('TransactionList - detail sub-tabs', () => {
     await user.click(rows[index].querySelectorAll('td')[0]);
   };
 
+  /** Wide enough for a detached panel to sit beside the list (the tablet breakpoint). */
+  const stubViewport = (canFloat: boolean) => {
+    vi.mocked(window.matchMedia).mockImplementation((query: string) => ({
+      matches: canFloat && query.includes('900'),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }) as unknown as MediaQueryList);
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(bitcoinApi.getStatus).mockResolvedValue({} as any);
     vi.mocked(transactionsApi.getTransaction).mockResolvedValue({} as any);
+    stubViewport(true);
   });
 
   it('reserves no space for details while nothing is open', async () => {
@@ -805,5 +822,74 @@ describe('TransactionList - detail sub-tabs', () => {
       expect(screen.queryByTestId('transaction-detail-panel')).not.toBeInTheDocument());
     expect(screen.queryByTestId('transaction-tab-strip')).not.toBeInTheDocument();
     expect(screen.getByTestId('transaction-row')).toBeInTheDocument();
+  });
+
+  it('detaches a tab into a floating panel and docks it back', async () => {
+    const user = userEvent.setup();
+    const { TransactionList } = await import('../../src/components/TransactionList');
+    render(<TransactionList transactions={[baseTx]} />);
+    await openRow(user);
+
+    await user.click(screen.getByRole('button', { name: /^Detach / }));
+
+    const floating = screen.getByTestId('floating-panel');
+    expect(floating).toBeInTheDocument();
+    // Its tab leaves the strip: the transaction is on screen in its own panel,
+    // and a tab that can never be selected is worse than no tab.
+    expect(screen.queryByRole('tab', { name: /Received/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Transactions' })).toBeInTheDocument();
+    // The table is showing again behind it: that is the point of detaching.
+    expect(screen.getByTestId('transaction-row')).toBeInTheDocument();
+    expect(within(floating).getByTestId('transaction-detail-panel')).not.toHaveAttribute('hidden');
+    // The floating window carries the title and controls, so the panel does not
+    // repeat its own header inside it.
+    expect(within(floating).queryByText('Transaction Details')).not.toBeInTheDocument();
+
+    await user.click(within(floating).getByRole('button', { name: /^Dock / }));
+
+    expect(screen.queryByTestId('floating-panel')).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Received/ })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('closes a detached panel from its own close control', async () => {
+    const user = userEvent.setup();
+    const { TransactionList } = await import('../../src/components/TransactionList');
+    render(<TransactionList transactions={[baseTx]} />);
+    await openRow(user);
+    await user.click(screen.getByRole('button', { name: /^Detach / }));
+
+    await user.click(within(screen.getByTestId('floating-panel')).getByRole('button', { name: /^Close / }));
+
+    expect(screen.queryByTestId('floating-panel')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('transaction-tab-strip')).not.toBeInTheDocument();
+  });
+
+  it('offers no detach where a floating panel would cover the list', async () => {
+    // Below the tablet breakpoint a panel wide enough to read hides the list it
+    // was detached to sit beside.
+    stubViewport(false);
+    const user = userEvent.setup();
+    const { TransactionList } = await import('../../src/components/TransactionList');
+    render(<TransactionList transactions={[baseTx]} />);
+    await openRow(user);
+
+    expect(screen.queryByRole('button', { name: /^Detach / })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Close / })).toBeInTheDocument();
+  });
+
+  it('docks a panel that a narrowing window would strand', async () => {
+    const { TransactionList } = await import('../../src/components/TransactionList');
+    const missing = 'c'.repeat(64);
+    stubViewport(false);
+
+    rtlRender(<TransactionList transactions={[{ ...baseTx, txid: missing }]} />, {
+      wrapper: ({ children }) => (
+        <MemoryRouter initialEntries={[`/?tx=${missing}&txWin=${missing}`]}>{children}</MemoryRouter>
+      ),
+    });
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('floating-panel')).not.toBeInTheDocument());
+    expect(screen.getByTestId('transaction-detail-panel')).not.toHaveAttribute('hidden');
   });
 });

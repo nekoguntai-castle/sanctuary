@@ -7,6 +7,7 @@ export type TabId = typeof LIST_TAB | string;
 
 export const OPEN_PARAM = 'tx';
 export const ACTIVE_PARAM = 'txTab';
+export const FLOATING_PARAM = 'txWin';
 
 /**
  * Tabs are URL state, so the count is whatever someone pastes. Each open tab
@@ -43,18 +44,50 @@ export function serializeOpenTxids(txids: string[]): string {
 }
 
 /**
- * Which tab is showing.
+ * Which transactions are floating rather than docked in the strip.
  *
- * An absent `txTab` resolves to the first open transaction rather than to the
+ * Scoped to what is open, so a `txWin` naming a transaction that is not in `tx`
+ * is ignored rather than conjuring a panel with no tab behind it. Detachment is
+ * in the URL — a reload should put the panels back — while where each one sits
+ * is not: a shared link should reproduce what is open, not where someone
+ * dragged it.
+ */
+export function parseFloatingTxids(raw: string | null, openTxids: string[]): string[] {
+  if (!raw) return [];
+  const open = new Set(openTxids);
+  const floating = new Set<string>();
+  for (const entry of raw.split(',')) {
+    const txid = normalizeTxid(entry);
+    if (open.has(txid)) floating.add(txid);
+  }
+  // Kept in the order `txWin` gives, not the order the tabs opened in: that
+  // order is the panels' stacking order, and raising one rewrites it.
+  return [...floating];
+}
+
+/**
+ * Which tab is showing in the strip.
+ *
+ * An absent `txTab` resolves to the first docked transaction rather than to the
  * list, which is what makes a legacy `?tx=<txid>` link land on that
  * transaction's detail. `txTab=list` is how the list tab is addressed
  * explicitly.
+ *
+ * A floating transaction is never the active tab: its panel is already on
+ * screen, so selecting its tab would show the same thing twice and leave the
+ * strip pointing at a panel that is not in it.
  */
-export function resolveActiveTab(openTxids: string[], raw: string | null): TabId {
+export function resolveActiveTab(
+  openTxids: string[],
+  raw: string | null,
+  floatingTxids: string[] = [],
+): TabId {
   if (raw === LIST_TAB) return LIST_TAB;
+  const floating = new Set(floatingTxids);
+  const docked = openTxids.filter((txid) => !floating.has(txid));
   const requested = raw ? normalizeTxid(raw) : null;
-  if (requested && openTxids.includes(requested)) return requested;
-  return openTxids[0] ?? LIST_TAB;
+  if (requested && docked.includes(requested)) return requested;
+  return docked[0] ?? LIST_TAB;
 }
 
 /**
@@ -66,10 +99,18 @@ export function nextActiveAfterClose(
   openTxids: string[],
   closedTxid: string,
   activeTab: TabId,
+  floatingTxids: string[] = [],
 ): TabId {
   if (activeTab !== closedTxid) return activeTab;
+  const floating = new Set(floatingTxids);
   const index = openTxids.indexOf(closedTxid);
-  const remaining = openTxids.filter((txid) => txid !== closedTxid);
+  // Only docked tabs are candidates — a floating panel is already on screen.
+  const remaining = openTxids.filter(
+    (txid) => txid !== closedTxid && !floating.has(txid),
+  );
   if (remaining.length === 0) return LIST_TAB;
-  return remaining[Math.min(index, remaining.length - 1)];
+  const neighbour = openTxids
+    .slice(index + 1)
+    .find((txid) => remaining.includes(txid));
+  return neighbour ?? remaining[remaining.length - 1];
 }

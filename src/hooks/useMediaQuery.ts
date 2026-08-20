@@ -26,3 +26,12 @@ export function useMediaQuery(query: string): boolean {
 
   return matches;
 }
+
+/**
+ * The width at which a detached transaction panel can float somewhere useful.
+ *
+ * Matches the `tablet` breakpoint (900px). Narrower than that, a panel wide
+ * enough to read covers the list it was detached to sit beside, which is the
+ * whole point of detaching it.
+ */
+export const FLOATING_PANEL_QUERY = '(min-width: 900px)';
