@@ -377,7 +377,9 @@ jobs:
       HTTPS_PORT: '15643'
       HTTP_PORT: '15280'
       GATEWAY_PORT: '15200'
-      PORT_OFFSET: '1'
+      # Lanes consume three consecutive ports each, so offsets must step by at
+      # least three. 0/1/2 gave these three concurrent lanes overlapping triples.
+      PORT_OFFSET: '3'
       JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/container-health
       SANCTUARY_CI_DEBUG_TRACE: '1'
 
@@ -518,7 +520,7 @@ jobs:
       HTTPS_PORT: '15743'
       HTTP_PORT: '15380'
       GATEWAY_PORT: '15300'
-      PORT_OFFSET: '2'
+      PORT_OFFSET: '6'
       JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/auth-flow
       SANCTUARY_CI_DEBUG_TRACE: '1'
 
