@@ -325,7 +325,7 @@ export function registerElectrumManagerStandaloneContracts() {
       networks.set('mainnet', state);
       addressToWallet.set(getAddressSubscriptionKey('mainnet', 'addr1'), { walletId: 'wallet1', network: 'mainnet' });
       (manager as any).subscriptionLock = { key: 'k', token: 't' };
-      vi.mocked(releaseLock).mockResolvedValue(true);
+      vi.mocked(releaseLock).mockResolvedValue('deleted');
 
       const metrics = manager.getHealthMetrics();
       expect(metrics.networks.mainnet).toEqual({
@@ -352,7 +352,7 @@ export function registerElectrumManagerStandaloneContracts() {
       vi.mocked(extendLock)
         .mockResolvedValueOnce({ key: 'lock', token: 'token-2' } as any)
         .mockResolvedValueOnce(null);
-      vi.mocked(releaseLock).mockResolvedValue(true);
+      vi.mocked(releaseLock).mockResolvedValue('deleted');
 
       await manager.start();
 

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { mockSet, mockEval, mockExists, mockGetRedisClient, mockIsRedisConnected } = vi.hoisted(() => ({
   mockSet: vi.fn(),
@@ -34,6 +34,13 @@ import {
 } from '../../../src/infrastructure/distributedLock';
 
 describe('distributedLock Redis behavior', () => {
+  // An unconfirmed release retains its token in a module-level map and arms a
+  // 5s reclaim interval. Without this teardown a later test in this file could
+  // observe a stray `eval` from that sweep.
+  afterEach(() => {
+    shutdownDistributedLock();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     shutdownDistributedLock();
@@ -108,29 +115,44 @@ describe('distributedLock Redis behavior', () => {
     };
 
     mockEval.mockResolvedValueOnce(1);
-    await expect(releaseLock(lock)).resolves.toBe(true);
+    await expect(releaseLock(lock)).resolves.toBe('deleted');
 
     mockEval.mockResolvedValueOnce(0);
-    await expect(releaseLock(lock)).resolves.toBe(false);
+    await expect(releaseLock(lock)).resolves.toBe('not-owned');
 
+    // An eval that rejects establishes nothing, so it is no longer reported
+    // the same way as a confirmed non-ownership. See distributedLockRelease.test.ts.
     mockEval.mockRejectedValueOnce(new Error('eval failed'));
-    await expect(releaseLock(lock)).resolves.toBe(false);
+    await expect(releaseLock(lock)).resolves.toBe('unconfirmed');
   });
 
-  it.each([
-    ['missing client', null, true],
-    ['disconnected', { set: mockSet, eval: mockEval, exists: mockExists }, false],
-  ])('fails closed when releasing with a %s', async (_label, client, connected) => {
-    mockGetRedisClient.mockReturnValue(client);
-    mockIsRedisConnected.mockReturnValue(connected);
+  it('cannot attempt a release with no client at all', async () => {
+    mockGetRedisClient.mockReturnValue(null);
 
     await expect(releaseLock({
       key: 'redis:unavailable-release',
       token: 'token',
       expiresAt: Date.now() + 3000,
       isLocal: false,
-    })).resolves.toBe(false);
+    })).resolves.toBe('unconfirmed');
     expect(mockEval).not.toHaveBeenCalled();
+  });
+
+  it('still attempts the delete when the connection flag reads disconnected', async () => {
+    // This inverts a previously-asserted short-circuit. Skipping the delete on a
+    // momentary disconnect is what left tombstoned `lock:sync:wallet:*` keys
+    // blocking wallet syncs for a full TTL on a production install (2026-08-20).
+    mockGetRedisClient.mockReturnValue({ set: mockSet, eval: mockEval, exists: mockExists });
+    mockIsRedisConnected.mockReturnValue(false);
+    mockEval.mockResolvedValueOnce(1);
+
+    await expect(releaseLock({
+      key: 'redis:disconnected-release',
+      token: 'token',
+      expiresAt: Date.now() + 3000,
+      isLocal: false,
+    })).resolves.toBe('deleted');
+    expect(mockEval).toHaveBeenCalledTimes(1);
   });
 
   it('extends Redis lock TTL based on eval result and handles errors', async () => {

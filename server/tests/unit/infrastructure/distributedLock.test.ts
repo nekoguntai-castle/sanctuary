@@ -137,7 +137,7 @@ describe('DistributedLock', () => {
       expect(lock).not.toBeNull();
 
       const released = await releaseLock(lock!);
-      expect(released).toBe(true);
+      expect(released).toBe('deleted');
 
       // Should be able to acquire again
       const lock2 = await acquireLock('test:release:1', 5000);
@@ -155,20 +155,20 @@ describe('DistributedLock', () => {
       };
 
       const released = await releaseLock(fakeLock);
-      expect(released).toBe(false);
+      expect(released).toBe('not-owned');
 
       // Original lock should still be held
       const lock2 = await acquireLock('test:release:2', 5000);
       expect(lock2).toBeNull();
     });
 
-    it('should return false for already-released lock', async () => {
+    it('should report not-owned for an already-released lock', async () => {
       const lock = await acquireLock('test:release:3', 5000);
       expect(lock).not.toBeNull();
 
       await releaseLock(lock!);
       const released2 = await releaseLock(lock!);
-      expect(released2).toBe(false);
+      expect(released2).toBe('not-owned');
     });
   });
 

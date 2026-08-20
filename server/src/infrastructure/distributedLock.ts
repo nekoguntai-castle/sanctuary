@@ -40,16 +40,30 @@ import { createLogger } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
 import crypto from 'crypto';
 import {
+  initializeDistributedLock as initializeLockAuthority,
   LockAuthorityUnavailableError,
   requireLockAuthorityMode,
   resetLockAuthority,
 } from './lockAuthority';
+import type { LockAuthorityMode } from './lockAuthority';
 
 export {
-  initializeDistributedLock,
   LockAuthorityUnavailableError,
   type LockAuthorityMode,
 } from './lockAuthority';
+
+/**
+ * Initialise the lock subsystem.
+ *
+ * Wraps the authority's own initialiser so the unconfirmed-release reclaim,
+ * which `shutdownDistributedLock()` disables, comes back with it. Without this
+ * a shutdown/init cycle would leave every later unconfirmed release untracked.
+ */
+export function initializeDistributedLock(mode: LockAuthorityMode): void {
+  reclaimEnabled = true;
+  reclaimSweepInFlight = false;
+  initializeLockAuthority(mode);
+}
 
 const log = createLogger('INFRA:DIST_LOCK');
 
@@ -158,6 +172,128 @@ export async function acquireLock(
 }
 
 /**
+ * What a release attempt established.
+ *
+ * `deleted` and `not-owned` are both terminal — the caller may drop the token.
+ * `unconfirmed` means the key may still exist and we still own it; the token is
+ * retained here and retried, because an abandoned token becomes a tombstone
+ * that blocks the resource until its TTL.
+ */
+export type LockReleaseOutcome = 'deleted' | 'not-owned' | 'unconfirmed';
+
+/** Compare-and-delete: only remove the key when we still hold the token. */
+const RELEASE_SCRIPT = `
+  if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("del", KEYS[1])
+  else
+    return 0
+  end
+`;
+
+/** How often to retry releases whose outcome was never confirmed. */
+const RECLAIM_INTERVAL_MS = 5_000;
+
+/**
+ * Per-call ceiling for a compare-and-delete, used by both the direct release and
+ * the reclaim sweep. Without the `isRedisConnected()` gate the eval is issued
+ * against a possibly-disconnected client, and ioredis' offline queue would
+ * otherwise stall the releasing caller for the whole reconnect window.
+ */
+const LOCK_CALL_TIMEOUT_MS = 2_000;
+
+interface PendingRelease {
+  token: string;
+  expiresAt: number;
+}
+
+const unconfirmedReleases = new Map<string, PendingRelease>();
+let reclaimTimer: NodeJS.Timeout | null = null;
+/** Guards against a sweep that outlives its own interval overlapping the next. */
+let reclaimSweepInFlight = false;
+/**
+ * Cleared by shutdown. Without it a `releaseLock` still in flight when
+ * `shutdownDistributedLock()` runs would re-arm the timer and repopulate the
+ * map that shutdown had just emptied.
+ */
+let reclaimEnabled = true;
+
+function stopReclaimTimer(): void {
+  if (!reclaimTimer) return;
+  clearInterval(reclaimTimer);
+  reclaimTimer = null;
+}
+
+function startReclaimTimer(): void {
+  if (reclaimTimer || !reclaimEnabled) return;
+  reclaimTimer = setInterval(() => {
+    // A degraded Redis makes each sweep slower than the interval; overlapping
+    // sweeps would iterate the same map concurrently and double-evict.
+    if (reclaimSweepInFlight) return;
+    reclaimSweepInFlight = true;
+    void reclaimUnconfirmedLocks()
+      .catch((error) => {
+        log.debug('Lock reclaim sweep failed', { error: getErrorMessage(error) });
+      })
+      .finally(() => {
+        reclaimSweepInFlight = false;
+      });
+  }, RECLAIM_INTERVAL_MS);
+  // Never hold the process open for a retry sweep.
+  reclaimTimer.unref?.();
+}
+
+/** Reject if one compare-and-delete outlives its ceiling; the token stays held. */
+function withLockCallTimeout<T>(operation: Promise<T>, key: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`Lock operation for ${key} exceeded ${LOCK_CALL_TIMEOUT_MS}ms`)),
+      LOCK_CALL_TIMEOUT_MS,
+    );
+    timer.unref?.();
+    operation.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (error) => { clearTimeout(timer); reject(error); },
+    );
+  });
+}
+
+function forgetUnconfirmedRelease(key: string): void {
+  if (unconfirmedReleases.delete(key) && unconfirmedReleases.size === 0) {
+    stopReclaimTimer();
+  }
+}
+
+/**
+ * Retain a token whose release could not be confirmed, and say so loudly.
+ *
+ * At `warn` this was invisible in the incident that motivated the change: the
+ * only surviving symptom was a wallet being skipped every five minutes for
+ * `lock held`, with nothing explaining why the lock existed.
+ */
+function trackUnconfirmedRelease(lock: DistributedLock, reason: string): void {
+  if (!reclaimEnabled) {
+    // Shutting down: nothing will sweep, so do not repopulate the map.
+    log.warn('Lock release unconfirmed during shutdown; leaving it to its TTL', {
+      key: lock.key,
+      reason,
+    });
+    return;
+  }
+  if (lock.expiresAt <= Date.now()) {
+    // Redis has already expired it; there is nothing left to reclaim.
+    forgetUnconfirmedRelease(lock.key);
+    return;
+  }
+  unconfirmedReleases.set(lock.key, { token: lock.token, expiresAt: lock.expiresAt });
+  startReclaimTimer();
+  log.error('Lock release unconfirmed - the key may block this resource until its TTL', {
+    key: lock.key,
+    expiresInMs: lock.expiresAt - Date.now(),
+    reason,
+  });
+}
+
+/**
  * Try to acquire lock once (no waiting)
  */
 async function tryAcquireLock(
@@ -212,43 +348,55 @@ async function tryAcquireLock(
 }
 
 /**
- * Release a distributed lock
+ * Release a distributed lock.
  *
- * Only releases if the token matches (prevents releasing someone else's lock)
+ * Only releases if the token matches, so one holder cannot delete another's
+ * lock.
  *
  * @param lock - Lock object from acquireLock
- * @returns true if released, false if lock was already released or held by another
+ * @returns `deleted` when the key was removed; `not-owned` when the key is gone
+ *          or a later holder owns it (both terminal - the token may be
+ *          dropped); `unconfirmed` when the outcome could not be established,
+ *          in which case the token is retained here and retried, because an
+ *          abandoned token becomes a tombstone that blocks the resource until
+ *          its TTL.
  */
-export async function releaseLock(lock: DistributedLock): Promise<boolean> {
+export async function releaseLock(lock: DistributedLock): Promise<LockReleaseOutcome> {
   if (!lock.isLocal) {
     const redis = getRedisClient();
-    if (!redis || !isRedisConnected()) {
-      log.warn('Redis lock release failed: authority unavailable', { key: lock.key });
-      return false;
+    if (!redis) {
+      // No client at all is not the same as a client that is briefly offline.
+      trackUnconfirmedRelease(lock, 'redis client unavailable');
+      return 'unconfirmed';
     }
     try {
-      // Lua script to atomically check and delete
-      // Only delete if the token matches (we own the lock)
-      const script = `
-        if redis.call("get", KEYS[1]) == ARGV[1] then
-          return redis.call("del", KEYS[1])
-        else
-          return 0
-        end
-      `;
-
-      const result = await redis.eval(script, 1, `lock:${lock.key}`, lock.token);
+      // Deliberately NOT gated on isRedisConnected(). That flag short-circuited
+      // the delete during a momentary disconnect, so the key was never even
+      // asked about and survived to its TTL as a tombstone that blocked every
+      // later sync for the wallet. ioredis buffers the command across a
+      // reconnect, so attempting it is strictly better than skipping it.
+      // Bounded: a disconnected client would otherwise park this await in
+      // ioredis' offline queue for the whole reconnect window, blocking a
+      // caller that is usually inside a job's finally block.
+      const result = await withLockCallTimeout(
+        redis.eval(RELEASE_SCRIPT, 1, `lock:${lock.key}`, lock.token),
+        lock.key,
+      );
 
       if (result === 1) {
         log.debug(`Released Redis lock: ${lock.key}`);
-        return true;
+        forgetUnconfirmedRelease(lock.key);
+        return 'deleted';
       }
 
+      // Terminal and safe: the key is gone, or a later holder owns it. Retrying
+      // would risk deleting a lock that is legitimately someone else's.
       log.debug(`Lock already released or stolen: ${lock.key}`);
-      return false;
+      forgetUnconfirmedRelease(lock.key);
+      return 'not-owned';
     } catch (error) {
-      log.warn(`Redis lock release failed`, { key: lock.key, error: getErrorMessage(error) });
-      return false;
+      trackUnconfirmedRelease(lock, getErrorMessage(error));
+      return 'unconfirmed';
     }
   }
 
@@ -257,10 +405,53 @@ export async function releaseLock(lock: DistributedLock): Promise<boolean> {
   if (existing && existing.token === lock.token) {
     localLocks.delete(lock.key);
     log.debug(`Released local lock: ${lock.key}`);
-    return true;
+    return 'deleted';
   }
 
-  return false;
+  return 'not-owned';
+}
+
+/**
+ * Retry every release whose outcome was never confirmed.
+ *
+ * Called on a timer while any token is outstanding. A lock whose TTL has passed
+ * is dropped rather than retried: Redis has already removed it, and holding the
+ * token would leak the map for the life of the process.
+ */
+export async function reclaimUnconfirmedLocks(): Promise<void> {
+  if (unconfirmedReleases.size === 0) return;
+  const redis = getRedisClient();
+
+  for (const [key, pending] of [...unconfirmedReleases]) {
+    if (pending.expiresAt <= Date.now()) {
+      unconfirmedReleases.delete(key);
+      log.warn('Abandoning unconfirmed lock release; its TTL has passed', { key });
+      continue;
+    }
+    // `continue`, not `return`: an absent client must not stop the loop pruning
+    // entries later in iteration order whose TTL has already lapsed, or they
+    // would accumulate for as long as the client stays null.
+    if (!redis) continue;
+    try {
+      // Bound each call. ioredis' own retry/backoff is the only limit
+      // otherwise, so one degraded key could stretch a sweep indefinitely and
+      // starve the rest of the map.
+      await withLockCallTimeout(redis.eval(RELEASE_SCRIPT, 1, `lock:${key}`, pending.token), key);
+      unconfirmedReleases.delete(key);
+      log.info('Reclaimed a lock whose release was previously unconfirmed', { key });
+    } catch (error) {
+      log.warn('Lock reclaim still failing; will retry', {
+        key,
+        error: getErrorMessage(error),
+      });
+    }
+  }
+  if (unconfirmedReleases.size === 0) stopReclaimTimer();
+}
+
+/** Outstanding unconfirmed releases; each one can wedge a wallet until its TTL. */
+export function pendingUnconfirmedLockCount(): number {
+  return unconfirmedReleases.size;
 }
 
 /**
@@ -385,6 +576,10 @@ export function shutdownDistributedLock(): void {
     clearInterval(cleanupInterval);
     cleanupInterval = null;
   }
+  reclaimEnabled = false;
+  reclaimSweepInFlight = false;
+  stopReclaimTimer();
+  unconfirmedReleases.clear();
   localLocks.clear();
   resetLockAuthority();
 }
