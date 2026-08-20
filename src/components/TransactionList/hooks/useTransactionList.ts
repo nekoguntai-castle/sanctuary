@@ -221,6 +221,8 @@ export function useTransactionList({
     detachTab: tabs.detachTab,
     dockTab: tabs.dockTab,
     floatingTxids: tabs.floatingTxids,
+    nudgeTab: tabs.nudgeTab,
+    reorderTab: tabs.reorderTab,
     findTransaction,
     filteredTransactions,
     virtuosoRef,

@@ -201,4 +201,69 @@ describe('FloatingPanel', () => {
 
     expect(position().left).toBe(`${parseInt(before.left, 10) + 50}px`);
   });
+
+  it('does not start a drag from the header controls', () => {
+    // Their pointerdown bubbles to the header. Before this guard, clicking
+    // close started a drag that ended at the click point — and over the tab
+    // strip, that docked the panel instead of closing it.
+    const onDragEnd = vi.fn();
+    renderPanel({ onDragEnd });
+    const before = position();
+
+    const closeButton = screen.getByRole('button', { name: /^Close / });
+    fireEvent.pointerDown(closeButton, { button: 0, pointerId: 1, clientX: 300, clientY: 300 });
+    fireEvent.pointerMove(header(), { pointerId: 1, clientX: 500, clientY: 500 });
+    fireEvent.pointerUp(header(), { pointerId: 1 });
+
+    expect(position()).toEqual(before);
+    expect(onDragEnd).not.toHaveBeenCalled();
+  });
+
+  it('reports where a drag is and where it ended, for a drop target', () => {
+    const onDragMove = vi.fn();
+    const onDragEnd = vi.fn();
+    renderPanel({ onDragMove, onDragEnd });
+
+    drag({ x: 200, y: 200 }, { x: 264, y: 288 });
+
+    expect(onDragMove).toHaveBeenCalledWith({ x: 264, y: 288 });
+    expect(onDragEnd).toHaveBeenCalledWith({ x: 264, y: 288 });
+    // Cleared at the end so the target can drop its highlight.
+    expect(onDragMove).toHaveBeenLastCalledWith(null);
+  });
+
+  it('reports no drop when the pointer never moved', () => {
+    // Focusing the header is a plain click, and it is how a keyboard user
+    // reaches the arrow-key move. Over the tab strip, treating that as a drop
+    // would dock the panel out from under them.
+    const onDragEnd = vi.fn();
+    renderPanel({ onDragEnd });
+
+    fireEvent.pointerDown(header(), { button: 0, pointerId: 1, clientX: 200, clientY: 200 });
+    fireEvent.pointerUp(header(), { pointerId: 1 });
+
+    expect(onDragEnd).not.toHaveBeenCalled();
+  });
+
+  it('drags without a drop target attached', () => {
+    renderPanel();
+    const before = position();
+
+    drag({ x: 200, y: 200 }, { x: 230, y: 200 });
+
+    expect(position().left).toBe(`${parseInt(before.left, 10) + 30}px`);
+  });
+
+  it('does not report a drop when the gesture is cancelled', () => {
+    // The pointer left the window or the OS took over; the panel must not dock
+    // wherever it happened to be.
+    const onDragEnd = vi.fn();
+    renderPanel({ onDragEnd });
+
+    fireEvent.pointerDown(header(), { button: 0, pointerId: 1, clientX: 200, clientY: 200 });
+    fireEvent.pointerMove(header(), { pointerId: 1, clientX: 300, clientY: 300 });
+    fireEvent.pointerCancel(header(), { pointerId: 1 });
+
+    expect(onDragEnd).not.toHaveBeenCalled();
+  });
 });

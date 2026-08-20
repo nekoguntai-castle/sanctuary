@@ -14,6 +14,13 @@ interface FloatingPanelProps {
   label: string;
   onDock: () => void;
   onClose: () => void;
+  /**
+   * Where the pointer is during a header drag, for a drop target to react to.
+   * `null` once the gesture is over, so the target can drop its highlight.
+   */
+  onDragMove?: (point: { x: number; y: number } | null) => void;
+  /** The header drag ended here. Returning true means a drop target took it. */
+  onDragEnd?: (point: { x: number; y: number }) => boolean;
   children: ReactNode;
 }
 
@@ -39,18 +46,32 @@ export function FloatingPanel({
   label,
   onDock,
   onClose,
+  onDragMove,
+  onDragEnd,
   children,
 }: FloatingPanelProps) {
   const { geometry, update } = useFloatingGeometry(storageId, index);
   const dragOriginRef = useRef<{ x: number; y: number } | null>(null);
+  const lastPointRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const movedRef = useRef(false);
 
   const startGesture = useCallback((
     event: ReactPointerEvent<HTMLElement>,
     apply: (delta: { x: number; y: number }) => void,
+    report?: {
+      move: (point: { x: number; y: number }) => void;
+      end: (point: { x: number; y: number }) => void;
+    },
   ) => {
     // Only the primary button drags; a right-click on the header should be able
     // to reach a context menu.
     if (event.button !== 0) return;
+    // The dock and close controls live inside the header and their pointerdown
+    // bubbles to it. Without this guard, clicking one starts a drag that ends
+    // wherever the click was — and over the strip that docked the panel instead
+    // of closing it.
+    if (event.target !== event.currentTarget
+      && (event.target as HTMLElement).closest('button')) return;
     event.preventDefault();
     const target = event.currentTarget;
     // Optional throughout: pointer capture is an enhancement that keeps the
@@ -58,6 +79,8 @@ export function FloatingPanel({
     // environment implements it. Losing it costs a smoother drag, not the drag.
     target.setPointerCapture?.(event.pointerId);
     dragOriginRef.current = { x: event.clientX, y: event.clientY };
+    lastPointRef.current = { x: event.clientX, y: event.clientY };
+    movedRef.current = false;
 
     const onMove = (moveEvent: PointerEvent) => {
       const origin = dragOriginRef.current;
@@ -65,23 +88,49 @@ export function FloatingPanel({
       if (!origin) return;
       apply({ x: moveEvent.clientX - origin.x, y: moveEvent.clientY - origin.y });
       dragOriginRef.current = { x: moveEvent.clientX, y: moveEvent.clientY };
+      lastPointRef.current = { x: moveEvent.clientX, y: moveEvent.clientY };
+      movedRef.current = true;
+      report?.move(lastPointRef.current);
     };
-    const onEnd = () => {
+    const finish = () => {
       dragOriginRef.current = null;
       target.releasePointerCapture?.(event.pointerId);
       target.removeEventListener('pointermove', onMove);
-      target.removeEventListener('pointerup', onEnd);
-      target.removeEventListener('pointercancel', onEnd);
+      target.removeEventListener('pointerup', onUp);
+      target.removeEventListener('pointercancel', onCancel);
     };
+    // Only a completed gesture that actually moved is a drop. A cancelled one —
+    // the pointer left the window, or the OS took over — must not dock the panel
+    // somewhere the user never released it, and neither must a plain click on
+    // the header, which is how a keyboard user focuses it: over the strip, that
+    // click would otherwise dock the panel out from under them.
+    const onUp = () => {
+      if (movedRef.current) report?.end(lastPointRef.current);
+      finish();
+    };
+    const onCancel = () => finish();
 
     target.addEventListener('pointermove', onMove);
-    target.addEventListener('pointerup', onEnd);
-    target.addEventListener('pointercancel', onEnd);
+    target.addEventListener('pointerup', onUp);
+    target.addEventListener('pointercancel', onCancel);
   }, []);
 
   const onHeaderPointerDown = useCallback((event: ReactPointerEvent<HTMLElement>) => {
-    startGesture(event, (delta) => update((current, bounds) => moveGeometry(current, delta, bounds)));
-  }, [startGesture, update]);
+    lastPointRef.current = { x: event.clientX, y: event.clientY };
+    startGesture(
+      event,
+      (delta) => update((current, bounds) => moveGeometry(current, delta, bounds)),
+      {
+        move: (point) => onDragMove?.(point),
+        end: (point) => {
+          // A drop target that takes the panel replaces it — docking unmounts
+          // this component — so nothing more is done with the gesture here.
+          onDragEnd?.(point);
+          onDragMove?.(null);
+        },
+      },
+    );
+  }, [onDragEnd, onDragMove, startGesture, update]);
 
   const onResizePointerDown = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     startGesture(event, (delta) => update((current, bounds) => resizeGeometry(current, delta, bounds)));

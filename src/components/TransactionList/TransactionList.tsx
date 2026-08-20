@@ -90,6 +90,8 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     detachTab,
     dockTab,
     floatingTxids,
+    nudgeTab,
+    reorderTab,
     findTransaction,
     selectionTransactions: panelTransactions,
     filteredTransactions,
@@ -165,6 +167,20 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     for (const txid of floatingTxids) dockTab(txid);
   }, [canFloat, dockTab, floatingTxids]);
 
+  // A floating panel dragged over the strip docks when dropped. The strip is the
+  // drop target because that is where the tab would reappear, and hit-testing
+  // its own box needs no drag library on either side of the gesture.
+  const stripRef = useRef<HTMLDivElement>(null);
+  const [dockCandidate, setDockCandidate] = useState<string | null>(null);
+  const isOverStrip = useCallback((point: { x: number; y: number } | null) => {
+    if (!point) return false;
+    const rect = stripRef.current?.getBoundingClientRect();
+    /* v8 ignore next -- the strip is always mounted while a panel floats. */
+    if (!rect) return false;
+    return point.x >= rect.left && point.x <= rect.right
+      && point.y >= rect.top && point.y <= rect.bottom;
+  }, []);
+
   const dockedTxids = useMemo(
     () => openTxids.filter((txid) => !floatingTxids.includes(txid)),
     [floatingTxids, openTxids],
@@ -204,6 +220,10 @@ export const TransactionList: React.FC<TransactionListProps> = ({
           onActivate={activateTab}
           onClose={closeTab}
           onDetach={canFloat ? detachTab : undefined}
+          onReorder={reorderTab}
+          onNudge={nudgeTab}
+          isDockTarget={dockCandidate !== null}
+          ref={stripRef}
         />
       )}
 
@@ -271,6 +291,12 @@ export const TransactionList: React.FC<TransactionListProps> = ({
             label={label}
             onDock={() => dockTab(txid)}
             onClose={() => closeTab(txid)}
+            onDragMove={(point) => setDockCandidate(isOverStrip(point) ? txid : null)}
+            onDragEnd={(point) => {
+              if (!isOverStrip(point)) return false;
+              dockTab(txid);
+              return true;
+            }}
           >
             <TransactionDetailPanel
               txid={txid}

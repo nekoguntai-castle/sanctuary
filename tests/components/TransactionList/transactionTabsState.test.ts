@@ -3,8 +3,10 @@ import {
   LIST_TAB,
   MAX_OPEN_TABS,
   nextActiveAfterClose,
+  nudgeTxid,
   parseFloatingTxids,
   parseOpenTxids,
+  reorderTxids,
   resolveActiveTab,
   serializeOpenTxids,
 } from '../../../src/components/TransactionList/hooks/transactionTabsState';
@@ -138,6 +140,40 @@ describe('transaction tab URL state', () => {
 
     it('takes the left neighbour when the closed tab was last', () => {
       expect(nextActiveAfterClose([A, B, C], C, C, [])).toBe(B);
+    });
+  });
+
+  describe('reorderTxids', () => {
+    it('moves a tab to the position of the one it was dropped on', () => {
+      expect(reorderTxids([A, B, C], A, C)).toEqual([B, C, A]);
+      expect(reorderTxids([A, B, C], C, A)).toEqual([C, A, B]);
+    });
+
+    it('returns the same list, by identity, when nothing moves', () => {
+      // Callers skip the URL write on identity, so a no-op drop leaves no
+      // history entry behind.
+      const open = [A, B];
+      expect(reorderTxids(open, A, A)).toBe(open);
+      expect(reorderTxids(open, A, C)).toBe(open);
+      expect(reorderTxids(open, C, A)).toBe(open);
+    });
+  });
+
+  describe('nudgeTxid', () => {
+    it('moves a tab one place in either direction', () => {
+      expect(nudgeTxid([A, B, C], B, 1)).toEqual([A, C, B]);
+      expect(nudgeTxid([A, B, C], B, -1)).toEqual([B, A, C]);
+    });
+
+    it('holds at the ends rather than wrapping', () => {
+      const open = [A, B, C];
+      expect(nudgeTxid(open, A, -1)).toBe(open);
+      expect(nudgeTxid(open, C, 1)).toBe(open);
+    });
+
+    it('ignores a tab that is not open', () => {
+      const open = [A, B];
+      expect(nudgeTxid(open, C, 1)).toBe(open);
     });
   });
 });

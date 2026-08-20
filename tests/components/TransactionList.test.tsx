@@ -892,4 +892,89 @@ describe('TransactionList - detail sub-tabs', () => {
       expect(screen.queryByTestId('floating-panel')).not.toBeInTheDocument());
     expect(screen.getByTestId('transaction-detail-panel')).not.toHaveAttribute('hidden');
   });
+
+  describe('dragging a panel back into the strip', () => {
+    /**
+     * jsdom gives every element a zero box, so the strip has to be given one
+     * before a pointer position can be inside or outside it.
+     */
+    const stubStripRect = (rect: { top: number; bottom: number }) => {
+      const zone = screen.getByTestId('transaction-tab-strip-zone');
+      vi.spyOn(zone, 'getBoundingClientRect').mockReturnValue({
+        left: 0,
+        right: 1200,
+        top: rect.top,
+        bottom: rect.bottom,
+        width: 1200,
+        height: rect.bottom - rect.top,
+        x: 0,
+        y: rect.top,
+        toJSON: () => ({}),
+      } as DOMRect);
+    };
+
+    const dragHeaderTo = (to: { x: number; y: number }) => {
+      const header = screen.getByTestId('floating-panel-header');
+      fireEvent.pointerDown(header, { button: 0, pointerId: 1, clientX: 600, clientY: 600 });
+      fireEvent.pointerMove(header, { pointerId: 1, clientX: to.x, clientY: to.y });
+      fireEvent.pointerUp(header, { pointerId: 1 });
+    };
+
+    const openDetached = async (user: ReturnType<typeof userEvent.setup>) => {
+      const { TransactionList } = await import('../../src/components/TransactionList');
+      render(<TransactionList transactions={[baseTx]} />);
+      await openRow(user);
+      await user.click(screen.getByRole('button', { name: /^Detach / }));
+    };
+
+    beforeEach(() => {
+      Element.prototype.setPointerCapture = vi.fn();
+      Element.prototype.releasePointerCapture = vi.fn();
+    });
+
+    it('docks the panel when it is dropped on the strip', async () => {
+      const user = userEvent.setup();
+      await openDetached(user);
+      stubStripRect({ top: 100, bottom: 140 });
+
+      dragHeaderTo({ x: 400, y: 120 });
+
+      expect(screen.queryByTestId('floating-panel')).not.toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: /Received/ })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+    });
+
+    it('leaves the panel floating when it is dropped anywhere else', async () => {
+      const user = userEvent.setup();
+      await openDetached(user);
+      stubStripRect({ top: 100, bottom: 140 });
+
+      dragHeaderTo({ x: 400, y: 700 });
+
+      expect(screen.getByTestId('floating-panel')).toBeInTheDocument();
+    });
+
+    it('marks the strip while the panel is over it, and unmarks it after', async () => {
+      const user = userEvent.setup();
+      await openDetached(user);
+      stubStripRect({ top: 100, bottom: 140 });
+      const header = screen.getByTestId('floating-panel-header');
+
+      fireEvent.pointerDown(header, { button: 0, pointerId: 1, clientX: 600, clientY: 600 });
+      fireEvent.pointerMove(header, { pointerId: 1, clientX: 400, clientY: 120 });
+      expect(screen.getByTestId('transaction-tab-strip-zone')).toHaveAttribute('data-dock-target');
+
+      fireEvent.pointerMove(header, { pointerId: 1, clientX: 400, clientY: 700 });
+      expect(screen.getByTestId('transaction-tab-strip-zone')).not.toHaveAttribute(
+        'data-dock-target',
+      );
+
+      fireEvent.pointerUp(header, { pointerId: 1 });
+      expect(screen.getByTestId('transaction-tab-strip-zone')).not.toHaveAttribute(
+        'data-dock-target',
+      );
+    });
+  });
 });

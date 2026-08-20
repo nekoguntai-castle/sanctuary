@@ -9,9 +9,11 @@ import {
   MAX_OPEN_TABS,
   OPEN_PARAM,
   nextActiveAfterClose,
+  nudgeTxid,
   parseFloatingTxids,
   parseOpenTxids,
   resolveActiveTab,
+  reorderTxids,
   serializeOpenTxids,
   type TabId,
 } from './transactionTabsState';
@@ -115,6 +117,18 @@ export function useTransactionTabs({ enabled }: UseTransactionTabsParams) {
     writeTabs(openTxids, tab);
   }, [openTxids, writeTabs]);
 
+  const reorderTab = useCallback((fromTxid: string, toTxid: string) => {
+    const next = reorderTxids(openTxids, normalizeTxid(fromTxid), normalizeTxid(toTxid));
+    if (next === openTxids) return;
+    writeTabs(next, activeTab);
+  }, [activeTab, openTxids, writeTabs]);
+
+  const nudgeTab = useCallback((txid: string, direction: -1 | 1) => {
+    const next = nudgeTxid(openTxids, normalizeTxid(txid), direction);
+    if (next === openTxids) return;
+    writeTabs(next, activeTab);
+  }, [activeTab, openTxids, writeTabs]);
+
   const detachTab = useCallback((txid: string) => {
     const normalized = normalizeTxid(txid);
     if (!openTxids.includes(normalized) || floatingTxids.includes(normalized)) return;
@@ -146,8 +160,10 @@ export function useTransactionTabs({ enabled }: UseTransactionTabsParams) {
     detachTab,
     dockTab,
     floatingTxids,
+    nudgeTab,
     openTab,
     openTxids,
+    reorderTab,
   };
 }
 

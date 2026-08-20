@@ -1,6 +1,7 @@
 # Transaction detail: sub-tabs, detachable panels, compact stats header
 
-Status: proposed (2026-08-19)
+Status: phases 1-4 delivered (2026-08-19) — #841 (statistics header), #842
+(sub-tabs), #843 (detach), #845 (drag)
 Owner: frontend
 Supersedes: the side-by-side pane (#832 inline-expand follow-up) in `TransactionList`
 
@@ -107,9 +108,13 @@ already form-factor agnostic, which is what makes this a shell swap.
   centred-ish, offset per already-floating panel so they don't stack exactly.
 - **Dock**: drag the panel header onto the strip (highlighted drop zone), or the
   panel's Dock button.
-- **Drag** uses `@dnd-kit/core` — already a dependency (`DraggableColumnItem`).
-  One `DndContext` covers the strip (droppable) and floating panel headers
-  (draggable); drag end either applies the delta to stored geometry or docks.
+- **Drag** ended up split, and deliberately so. A floating panel moves on raw
+  pointer events, and docking is a hit-test of the strip's own box at the drop
+  point: a free-floating window has no droppable grid to snap to, and running it
+  through a drag library would mean a second drag system on the same element as
+  the sortable strip. Tab reordering *is* a sortable list, so it uses
+  `@dnd-kit/sortable` — already a dependency (`DraggableColumnItem`) — with a
+  distance activation constraint so a click still activates the tab.
 - **Keyboard/a11y**: reuse `src/components/ui/useTabsA11y.ts` for arrow-key
   navigation. The close button is a *sibling* of the `role="tab"` element, not
   a child — nested interactive content breaks both a11y and that hook's
@@ -173,10 +178,11 @@ the same PR.
 1. **Tabs.** Tab model, strip, panel, removal of pane/inline-expand. Ships
    complete on its own; multi-open and close already work.
 2. **Detach.** `FloatingPanel`, detach/dock buttons, geometry persistence.
-3. **Drag.** dnd-kit drag-to-move, drag-to-dock, and tab reordering within the
-   strip (`@dnd-kit/sortable`, the `DraggableColumnItem` pattern). Reorder is in
-   scope, not a follow-up: order is already the `?tx=` list order, so the strip
-   only needs the sortable wiring and a keyboard reorder path.
+3. **Drag.** Drop-to-dock (a pointer hit-test against the strip) and tab
+   reordering within the strip (`@dnd-kit/sortable`, the `DraggableColumnItem`
+   pattern). Reorder is in scope, not a follow-up: order is already the `?tx=`
+   list order, so the strip only needs the sortable wiring and a keyboard reorder
+   path — `Alt`+arrow, since plain arrows already move selection.
 4. **Stats header.** Independent of 1–3; can land first if a quick win is
    wanted.
 

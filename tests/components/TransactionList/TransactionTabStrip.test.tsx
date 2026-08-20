@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -19,9 +19,15 @@ const row = (txid: string, amount: number) =>
 const findTransaction = (txid: string) =>
   txid === A ? row(A, 1000) : txid === B ? row(B, -2000) : null;
 
-function renderStrip(activeTab: string = LIST_TAB, openTxids = [A, B]) {
+function renderStrip(
+  activeTab: string = LIST_TAB,
+  openTxids = [A, B],
+  overrides: { isDockTarget?: boolean; onDetach?: (txid: string) => void } = {},
+) {
   const onActivate = vi.fn();
   const onClose = vi.fn();
+  const onReorder = vi.fn();
+  const onNudge = vi.fn();
   render(
     <TransactionTabStrip
       openTxids={openTxids}
@@ -30,9 +36,12 @@ function renderStrip(activeTab: string = LIST_TAB, openTxids = [A, B]) {
       findTransaction={findTransaction}
       onActivate={onActivate}
       onClose={onClose}
+      onReorder={onReorder}
+      onNudge={onNudge}
+      {...overrides}
     />,
   );
-  return { onActivate, onClose };
+  return { onActivate, onClose, onReorder, onNudge };
 }
 
 describe('TransactionTabStrip', () => {
@@ -135,5 +144,160 @@ describe('TransactionTabStrip', () => {
     renderStrip();
 
     expect(screen.getByRole('tab', { name: /Received/ })).toHaveAttribute('title', A);
+  });
+
+  describe('reordering', () => {
+    it('moves the focused tab with a modified arrow key', () => {
+      // Plain arrows already move selection, so reordering is the chord.
+      const { onNudge, onActivate } = renderStrip(A);
+
+      fireEvent.keyDown(screen.getByTestId('transaction-tab-strip'), {
+        key: 'ArrowRight',
+        altKey: true,
+      });
+
+      expect(onNudge).toHaveBeenCalledWith(A, 1);
+      expect(onActivate).not.toHaveBeenCalled();
+    });
+
+    it('moves left as well', () => {
+      const { onNudge } = renderStrip(B);
+
+      fireEvent.keyDown(screen.getByTestId('transaction-tab-strip'), {
+        key: 'ArrowLeft',
+        altKey: true,
+      });
+
+      expect(onNudge).toHaveBeenCalledWith(B, -1);
+    });
+
+    it('leaves plain arrows to selection', () => {
+      const { onNudge, onActivate } = renderStrip(A);
+
+      fireEvent.keyDown(screen.getByTestId('transaction-tab-strip'), { key: 'ArrowRight' });
+
+      expect(onNudge).not.toHaveBeenCalled();
+      expect(onActivate).toHaveBeenCalled();
+    });
+
+    it('does not try to move the pinned list tab', () => {
+      const { onNudge } = renderStrip(LIST_TAB);
+
+      fireEvent.keyDown(screen.getByTestId('transaction-tab-strip'), {
+        key: 'ArrowRight',
+        altKey: true,
+      });
+
+      expect(onNudge).not.toHaveBeenCalled();
+    });
+
+    it('ignores a modified key that is not an arrow', () => {
+      const { onNudge, onActivate } = renderStrip(A);
+
+      fireEvent.keyDown(screen.getByTestId('transaction-tab-strip'), {
+        key: 'Home',
+        altKey: true,
+      });
+
+      expect(onNudge).not.toHaveBeenCalled();
+      expect(onActivate).toHaveBeenCalledWith(LIST_TAB);
+    });
+
+    it('keeps the tab semantics the sortable wrapper could have overwritten', () => {
+      // `useSortable` supplies its own role and tabindex; they must not land on
+      // the tab, whose role and roving tabindex are what useTabsA11y drives.
+      renderStrip(A);
+
+      const tab = screen.getByRole('tab', { name: /Received/ });
+      expect(tab).toHaveAttribute('role', 'tab');
+      expect(tab).toHaveAttribute('tabindex', '0');
+      expect(tab.closest('[data-testid="transaction-tab"]')).toHaveAttribute(
+        'role',
+        'presentation',
+      );
+    });
+  });
+
+  describe('as a dock target', () => {
+    it('is plain until a panel is dragged over it', () => {
+      renderStrip();
+
+      expect(screen.getByTestId('transaction-tab-strip-zone')).not.toHaveAttribute(
+        'data-dock-target',
+      );
+    });
+
+    it('marks itself while a panel hovers, so the drop is predictable', () => {
+      renderStrip(LIST_TAB, [A, B], { isDockTarget: true });
+
+      expect(screen.getByTestId('transaction-tab-strip-zone')).toHaveAttribute(
+        'data-dock-target',
+      );
+    });
+  });
+
+  describe('dragging tabs into a new order', () => {
+    const tabHandle = (txid: string) =>
+      screen.getByTestId('transaction-tab-strip').querySelector(`[data-txid="${txid}"]`)!;
+
+    /** The drag has to clear the sensor's activation distance to start at all. */
+    const dragTab = async (txid: string, toX: number) => {
+      fireEvent.pointerDown(tabHandle(txid), {
+        button: 0,
+        pointerId: 1,
+        clientX: 100,
+        clientY: 10,
+        isPrimary: true,
+      });
+      fireEvent.pointerMove(document, {
+        pointerId: 1,
+        clientX: toX,
+        clientY: 10,
+        isPrimary: true,
+      });
+      await waitFor(() => expect(tabHandle(txid)).toHaveClass('opacity-60'));
+      fireEvent.pointerUp(document, { pointerId: 1, isPrimary: true });
+    };
+
+    it('reports the tab that moved and the one it landed on', async () => {
+      const { onReorder } = renderStrip(LIST_TAB, [A, B]);
+
+      await dragTab(B, 20);
+
+      await waitFor(() => expect(onReorder).toHaveBeenCalledTimes(1));
+      expect(onReorder).toHaveBeenCalledWith(B, A);
+    });
+
+    it('reports nothing when a tab is dropped back onto itself', async () => {
+      const { onReorder } = renderStrip(LIST_TAB, [A, B]);
+
+      await dragTab(A, 140);
+
+      expect(onReorder).not.toHaveBeenCalled();
+    });
+
+    it('reports nothing when a tab is not dragged far enough to move', async () => {
+      // Without the activation distance every click on a tab would start a drag
+      // and the tab would never activate.
+      const { onReorder, onActivate } = renderStrip(LIST_TAB, [A, B]);
+
+      fireEvent.pointerDown(tabHandle(A), {
+        button: 0,
+        pointerId: 1,
+        clientX: 100,
+        clientY: 10,
+        isPrimary: true,
+      });
+      fireEvent.pointerMove(document, {
+        pointerId: 1,
+        clientX: 102,
+        clientY: 10,
+        isPrimary: true,
+      });
+      fireEvent.pointerUp(document, { pointerId: 1, isPrimary: true });
+
+      expect(onReorder).not.toHaveBeenCalled();
+      expect(onActivate).not.toHaveBeenCalled();
+    });
   });
 });

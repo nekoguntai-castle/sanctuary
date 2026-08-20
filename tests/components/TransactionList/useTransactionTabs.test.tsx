@@ -325,4 +325,52 @@ describe('useTransactionTabs', () => {
       expect(result.current.params.get('txWin')).toBeNull();
     });
   });
+
+  describe('reordering', () => {
+    it('rewrites the open order, so a reordered strip survives a reload', () => {
+      const { result } = renderTabs();
+      act(() => result.current.tabs.openTab(tx(A)));
+      act(() => result.current.tabs.openTab(tx(B)));
+      act(() => result.current.tabs.openTab(tx(C)));
+
+      act(() => result.current.tabs.reorderTab(A, C));
+
+      expect(result.current.tabs.openTxids).toEqual([B, C, A]);
+      expect(result.current.params.get('tx')).toBe(`${B},${C},${A}`);
+    });
+
+    it('keeps the active tab through a reorder', () => {
+      const { result } = renderTabs();
+      act(() => result.current.tabs.openTab(tx(A)));
+      act(() => result.current.tabs.openTab(tx(B)));
+      act(() => result.current.tabs.activateTab(A));
+
+      act(() => result.current.tabs.reorderTab(A, B));
+
+      expect(result.current.tabs.activeTab).toBe(A);
+    });
+
+    it('nudges one place at a time', () => {
+      const { result } = renderTabs();
+      act(() => result.current.tabs.openTab(tx(A)));
+      act(() => result.current.tabs.openTab(tx(B)));
+
+      act(() => result.current.tabs.nudgeTab(A, 1));
+
+      expect(result.current.tabs.openTxids).toEqual([B, A]);
+    });
+
+    it('leaves the URL untouched when the move changes nothing', () => {
+      const { result } = renderTabs();
+      act(() => result.current.tabs.openTab(tx(A)));
+      act(() => result.current.tabs.openTab(tx(B)));
+      const before = result.current.params.toString();
+
+      act(() => result.current.tabs.nudgeTab(A, -1));
+      act(() => result.current.tabs.reorderTab(A, C));
+
+      expect(result.current.params.toString()).toBe(before);
+      expect(result.current.tabs.openTxids).toEqual([A, B]);
+    });
+  });
 });

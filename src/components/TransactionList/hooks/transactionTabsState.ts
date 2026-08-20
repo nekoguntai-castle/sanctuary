@@ -114,3 +114,36 @@ export function nextActiveAfterClose(
     .find((txid) => remaining.includes(txid));
   return neighbour ?? remaining[remaining.length - 1];
 }
+
+/**
+ * Move one tab to the position of another — the drop result of dragging a tab
+ * across the strip.
+ *
+ * Order is the `?tx` list order, so a reorder is a rewrite of that parameter and
+ * survives a reload like every other tab state.
+ */
+export function reorderTxids(openTxids: string[], fromTxid: string, toTxid: string): string[] {
+  const from = openTxids.indexOf(fromTxid);
+  const to = openTxids.indexOf(toTxid);
+  if (from === -1 || to === -1 || from === to) return openTxids;
+  const next = [...openTxids];
+  next.splice(to, 0, ...next.splice(from, 1));
+  return next;
+}
+
+/**
+ * Move a tab one place left or right, for the keyboard path. Reordering must not
+ * be pointer-only, and the arrow keys alone already move *selection* — so this
+ * is the modified chord, and a tab at the end of the strip simply stays put.
+ */
+export function nudgeTxid(
+  openTxids: string[],
+  txid: string,
+  direction: -1 | 1,
+): string[] {
+  const from = openTxids.indexOf(txid);
+  if (from === -1) return openTxids;
+  const to = from + direction;
+  if (to < 0 || to >= openTxids.length) return openTxids;
+  return reorderTxids(openTxids, txid, openTxids[to]);
+}
