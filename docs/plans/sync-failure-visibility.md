@@ -1,9 +1,58 @@
 # Sync Failure Visibility & Resync Reliability
 
-Status: investigation complete, not yet implemented
+Status: partially delivered — see "Delivery status" below before reading §3
 Date: 2026-08-19
 Target: remote v0.8.64 install — 3 wallets stuck "not syncing", "Full resync"
 silently no-ops, "Resync all" leaves wallets unspun.
+
+## Delivery status
+
+§3 is written as a to-do list. Most of it shipped in **#846**; four items did
+not. Read this table before treating any §3 item as done.
+
+| Item | State | Note |
+| --- | --- | --- |
+| a1, a2, a3, a10 — resync queue reliability | shipped | #846 |
+| a5 — hung sync cancelled, `activeSyncs` cannot leak | shipped | #846; landed via `AbortSignal` + the shared `withTimeout` helper |
+| a6 — stale reaper no longer false-idles a running resync | shipped | #846 |
+| a8 — chain reachability proved before deleting history | shipped | #846; needed a new `assertChainReachable()`, because `getBlockHeight()` falls back to the cached height and so reports success against a node that is down |
+| a11 — worker → UI event bridge | shipped | #846; **not verified end to end** — proven by unit tests asserting the exact envelope shape, not by observing an event reach a browser |
+| b0–b9 — GUI sync-failure visibility | shipped | #846 |
+| c1–c4 — aggregate `walletSync` support collector | shipped | #846 |
+| **a7** — reapers normalise `lastSyncStatus` | **open** | Six sites still write `{syncInProgress:false}` alone, stranding `resyncing`/`retrying` |
+| **a9** — legacy canonical wedge | **open, severity unresolved** | See below |
+| **a12** — regtest tab bucketing | **open, gated** | Only matters if the install owns regtest wallets — settle with §2.2 query G first |
+| **c5** — remaining dead collectors | **open** | `sync`, `walletLogs`, `jobQueue`, `workerHealth`, `electrumPool` are still registered through the dead path |
+
+### a9 — why its severity is still unknown
+
+`assertPersistedCanonicalPolicy` (`services/wallet/canonicalPolicy.ts`) compares
+`wallet.canonicalPolicyId !== policy.id`, so a null id throws. The DB constraints
+do permit a wallet carrying descriptors while `canonicalPolicyId` is null, which
+is what makes §3's a9 look reachable.
+
+But two guards sit in front of the call at
+`services/bitcoin/sync/addressDiscovery.ts:91`:
+
+1. a missing-descriptor early return (`:74`), and
+2. a hardware-capability check (`:79`) that returns `[]` on `ForbiddenError`.
+
+If address display is fail-closed for legacy wallets, they return at (2) and the
+throw is unreachable — which is likely why §5's refutation #7 marked this
+hypothesis dead. That refutation and §3's a9 are in tension, and the code alone
+does not settle it.
+
+**It is decided by data, not by reading:** run §2's query A and check whether the
+affected wallets have `canonicalPolicyId` set. Do that before spending any effort
+on a9.
+
+### What #846 does not tell you
+
+The bridge means a worker-run sync can finally report progress and failure to the
+UI. It does not make a failing sync succeed. If a9 does bite a legacy wallet, the
+post-#846 build surfaces the real error in the tooltip instead of a green
+"Synced" badge or silence — which is what makes the remaining items diagnosable
+rather than guesswork.
 
 ## Executive summary
 
