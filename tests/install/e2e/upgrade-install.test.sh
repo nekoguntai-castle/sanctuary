@@ -35,6 +35,7 @@ source "$SCRIPT_DIR/../utils/upgrade-notification-helpers.sh"
 source "$SCRIPT_DIR/../utils/upgrade-assertions.sh"
 source "$SCRIPT_DIR/../utils/upgrade-staleness.sh"
 source "$SCRIPT_DIR/../utils/upgrade-transaction-migration-helpers.sh"
+source "$SCRIPT_DIR/../utils/upgrade-wallet-sync-state-helpers.sh"
 source "$SCRIPT_DIR/../utils/collect-upgrade-artifacts.sh"
 
 # ============================================
@@ -181,6 +182,8 @@ LEGACY_TWO_FACTOR_PASSWORD="LegacyUpgradePassword123!"
 LEGACY_TWO_FACTOR_SECRET=""
 TEST_WALLET_ID=""
 TEST_OPERATIONAL_WALLET_ID=""
+TEST_NEVER_FAILED_WALLET_ID=""
+TEST_SYNC_QUIESCENT_UNTIL=""
 TEST_DEVICE_ID=""
 TEST_WALLET_AGENT_ID=""
 TEST_LABEL_NAME="upgrade-fixture-label"
@@ -1445,6 +1448,16 @@ test_verify_transaction_migrations() {
     verify_transaction_migrations
 }
 
+# Seeded as late as possible before the stop: the source ref is live until then
+# and a real sync attempt would overwrite the legacy shape this fixture plants.
+test_seed_wallet_sync_state_fixture() {
+    seed_wallet_sync_state_fixture
+}
+
+test_verify_wallet_sync_state_migration() {
+    verify_wallet_sync_state_migration
+}
+
 # ============================================
 # Test: Verify 2FA Preserved After Upgrade
 # ============================================
@@ -1930,6 +1943,7 @@ main() {
     run_test "Ensure Existing Installation" test_ensure_existing_installation
     run_test "Create Pre-Upgrade Data" test_create_pre_upgrade_data
     run_test "Capture Pre-Upgrade State" test_capture_pre_upgrade_state
+    run_test "Seed Wallet Sync State Fixture" test_seed_wallet_sync_state_fixture
 
     # Phase 2: Simulate upgrade
     run_test "Stop Containers for Upgrade" test_stop_containers_for_upgrade
@@ -1942,6 +1956,7 @@ main() {
     run_test "Verify Data Preserved" test_verify_data_preserved
     run_test "Verify Representative App State Preserved" test_verify_representative_app_state_preserved
     run_test "Verify Transaction Migrations" test_verify_transaction_migrations
+    run_test "Verify Wallet Sync State Migration" test_verify_wallet_sync_state_migration
     run_test "Verify 2FA Preserved" test_verify_two_factor_preserved
     run_test "Verify Multiple 2FA Users Preserved" test_verify_multiple_two_factor_users_preserved
     run_test "Verify 2FA Backup Code Preserved" test_verify_two_factor_backup_code_preserved

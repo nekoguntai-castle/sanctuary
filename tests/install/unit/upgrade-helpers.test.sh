@@ -1002,6 +1002,48 @@ test_upgrade_harness_covers_historical_transaction_migrations() {
   return "$failures"
 }
 
+# The wallet sync-state migration parses a retry count out of legacy free text
+# and backfills a bounded failure taxonomy. Losing this wiring would leave that
+# data migration unproven while the suite still reported green.
+test_upgrade_harness_covers_wallet_sync_state_migration() {
+  local contents
+  local failures=0
+
+  contents="$(cat "$PROJECT_ROOT/tests/install/e2e/upgrade-install.test.sh")"
+
+  assert_contains "$contents" 'source "$SCRIPT_DIR/../utils/upgrade-wallet-sync-state-helpers.sh"' \
+    "upgrade harness should load wallet sync state fixtures" || failures=1
+  assert_contains "$contents" 'run_test "Seed Wallet Sync State Fixture" test_seed_wallet_sync_state_fixture' \
+    "upgrade suite should seed legacy wallet sync state before the upgrade" || failures=1
+  assert_contains "$contents" 'run_test "Verify Wallet Sync State Migration" test_verify_wallet_sync_state_migration' \
+    "upgrade suite should verify wallet sync state after the upgrade" || failures=1
+
+  local helper_contents
+  helper_contents="$(cat "$PROJECT_ROOT/tests/install/utils/upgrade-wallet-sync-state-helpers.sh")"
+
+  assert_contains "$helper_contents" "electrum_unavailable" \
+    "fixture should assert the recovered failure class" || failures=1
+  assert_contains "$helper_contents" "legacy failure text was not classified" \
+    "fixture should assert the taxonomy backfill on a settled failure" || failures=1
+  # demoteStrandedInlineRetries() clears the migration's recovered retry position
+  # on the first boot, so the handoff is what an upgrade can actually observe.
+  assert_contains "$helper_contents" "stranded retry was never reconciled" \
+    "fixture should assert the migrate-then-reconcile handoff" || failures=1
+  assert_contains "$helper_contents" "expected exactly one reconciliation over the migrated default" \
+    "fixture should pin the reconciliation to exactly one step over the migrated default" || failures=1
+  assert_contains "$helper_contents" "bounds constraint accepted an out-of-taxonomy value" \
+    "fixture should assert the migration CHECK constraints are live" || failures=1
+  # The pin keeps the post-upgrade stale sweep off the fixture rows. Without it
+  # the sweep rewrites the very columns the fixture reads, so a silent removal
+  # would turn this coverage back into the race it was written to remove.
+  assert_contains "$helper_contents" "QUIESCENT_UNTIL" \
+    "fixture should pin its rows past the stale-sweep window" || failures=1
+  assert_contains "$helper_contents" "was synced after the upgrade" \
+    "fixture should fail loudly if the stale-sweep pin ever stops holding" || failures=1
+
+  return "$failures"
+}
+
 test_upgrade_harness_never_logs_secret_prefixes() {
   local contents
 
@@ -1647,6 +1689,7 @@ main() {
   run_test "install workflow uses run-scoped ssl dirs" test_install_workflow_uses_run_scoped_ssl_dirs
   run_test "release tag workflows use distinct concurrency groups" test_release_tag_workflows_use_distinct_concurrency_groups
   run_test "upgrade harness covers historical transaction migrations" test_upgrade_harness_covers_historical_transaction_migrations
+  run_test "upgrade harness covers wallet sync state migration" test_upgrade_harness_covers_wallet_sync_state_migration
   run_test "upgrade harness never logs secret prefixes" test_upgrade_harness_never_logs_secret_prefixes
   run_test "runner lock helper uses cross-UID writable locks" test_runner_lock_helper_uses_cross_uid_writable_locks
   run_test "upgrade network defaults respect overrides" test_upgrade_network_defaults_respect_overrides

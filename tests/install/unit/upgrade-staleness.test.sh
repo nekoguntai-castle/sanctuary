@@ -98,14 +98,63 @@ if [ "$listed" -eq 2 ]; then
 else
   bad "expected 2 freshness schedules, helper lists ${listed}"
 fi
+# A literal grep of the schedule table is not enough on its own. #863 moved the
+# sync job names into jobs/syncJobContract.ts, so the table now reads
+# `CHECK_STALE_WALLETS_JOB_NAME` where it once read 'check-stale-wallets'. The
+# schedule, its scheduler id and the Redis key the helper ages were all
+# unchanged, but a literal-only check reported the schedule as deleted.
+#
+# Following the indirection keeps the guard honest in both directions: a name
+# behind a constant still resolves, and a schedule genuinely dropped from the
+# table resolves to nothing, because neither the literal nor the constant that
+# defines it is referenced there any more.
+schedule_is_defined() {
+  local needle="$1"
+  local table="$2"
+  local server_src="$3"
+  local const_name
+
+  if grep -q "$needle" "$table"; then
+    return 0
+  fi
+
+  const_name=$(grep -rhoE "export const [A-Za-z0-9_]+ *= *'[^']*${needle}'" "$server_src" 2>/dev/null \
+    | sed -E "s/export const ([A-Za-z0-9_]+) *=.*/\\1/" | head -n 1)
+  [ -n "$const_name" ] && grep -qE "(^|[^A-Za-z0-9_])${const_name}([^A-Za-z0-9_]|$)" "$table"
+}
+
 for entry in "${UPGRADE_STALENESS_SCHEDULES[@]}"; do
   sid="${entry%:*}"
-  if grep -q "${sid##*:}" "$src"; then
+  if schedule_is_defined "${sid##*:}" "$src" "$PROJECT_ROOT/server/src"; then
     ok "schedule ${sid} still exists in recurringSchedules.ts"
   else
     bad "schedule ${sid} is no longer defined — the helper would age a key nothing reads"
   fi
 done
+
+# The check above is only worth having if it still fails when a schedule really
+# is removed. Prove that against a table with the reference stripped out, rather
+# than trusting that a widened matcher stayed strict.
+staleness_fixture_dir="$(mktemp -d)"
+
+grep -v 'CHECK_STALE_WALLETS_JOB_NAME' "$src" > "$staleness_fixture_dir/without-sync.ts"
+if schedule_is_defined "check-stale-wallets" "$staleness_fixture_dir/without-sync.ts" "$PROJECT_ROOT/server/src"; then
+  bad "drift check accepts a table that no longer references the sync schedule"
+else
+  ok "drift check still rejects a table that dropped the sync schedule"
+fi
+
+printf "%s\n" "const CHECK_STALE_WALLETS_JOB_NAME = 0;" > "$staleness_fixture_dir/literal.ts"
+printf "%s\n" "defineSchedule('sync', 'check-stale-wallets', {});" >> "$staleness_fixture_dir/literal.ts"
+if schedule_is_defined "check-stale-wallets" "$staleness_fixture_dir/literal.ts" "$PROJECT_ROOT/server/src"; then
+  ok "drift check accepts a schedule declared with a plain literal"
+else
+  bad "drift check rejects a schedule declared with a plain literal"
+fi
+
+# Removed here rather than in an EXIT trap: a later section installs its own
+# trap, which would replace this one and leak the directory.
+rm -rf "$staleness_fixture_dir"
 
 # ----- 5. the verdict logic, against synthetic /metrics payloads ------------
 # These replay the shapes the 60-minute lane can produce, including the one that
