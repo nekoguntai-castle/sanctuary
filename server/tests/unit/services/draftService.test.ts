@@ -21,7 +21,6 @@ vi.mock('../../../src/models/prisma', () => ({
       findUnique: vi.fn(),
     },
   },
-  withTransaction: (fn: (tx: unknown) => Promise<unknown>) => fn({}),
 }));
 
 vi.mock('../../../src/repositories', () => ({
@@ -32,6 +31,7 @@ vi.mock('../../../src/repositories', () => ({
     update: vi.fn(),
     remove: vi.fn(),
     deleteExpired: vi.fn(),
+    withTransaction: (fn: (tx: unknown) => Promise<unknown>) => fn({}),
   },
   systemSettingRepository: {
     getParsed: vi.fn(),

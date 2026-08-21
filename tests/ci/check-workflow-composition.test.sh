@@ -1022,6 +1022,24 @@ assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
   '.npm-cache/docs-site'
 
 assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
+  "architecture runtime boundary gate composition" \
+  "Enforce runtime architecture boundaries" \
+  ".tmp/ci-diagnostics/architecture/runtime-boundaries.log" \
+  "npm run check:architecture-boundaries"
+
+assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
+  "architecture Prisma boundary gate composition" \
+  "Enforce repository-owned Prisma access" \
+  ".tmp/ci-diagnostics/architecture/prisma-imports.log" \
+  "npm --workspace server run check:prisma-imports"
+
+assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
+  "architecture server cycle baseline composition" \
+  "Enforce server dependency cycle baseline" \
+  ".tmp/ci-diagnostics/architecture/server-cycle-baseline.log" \
+  "npm run check:server-cycle-baseline"
+
+assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
   "architecture docs typecheck retry composition" \
   "Typecheck Docusaurus site" \
   "SANCTUARY_RETRY_ATTEMPTS: '5'" \

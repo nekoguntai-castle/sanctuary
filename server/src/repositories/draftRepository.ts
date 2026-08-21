@@ -6,6 +6,7 @@
  */
 
 import prisma from '../models/prisma';
+import type { PrismaTxClient } from '../models/prisma';
 import { Prisma } from '../generated/prisma/client';
 import type { DraftTransaction } from '../generated/prisma/client';
 import {
@@ -77,6 +78,16 @@ export interface UpdateDraftInput {
 }
 
 export type DraftDbClient = Pick<typeof prisma, 'draftTransaction'>;
+
+/**
+ * Runs an atomic draft workflow behind the repository-owned Prisma boundary.
+ * Callers must perform every database operation through the provided client.
+ */
+export async function withDraftTransaction<T>(
+  operation: (client: PrismaTxClient) => Promise<T>
+): Promise<T> {
+  return prisma.$transaction(operation);
+}
 
 const mobileAgentDraftInclude = {
   wallet: {
@@ -474,6 +485,7 @@ export async function deleteManyByIds(draftIds: string[]): Promise<number> {
 
 // Export all functions as namespace
 export const draftRepository = {
+  withTransaction: withDraftTransaction,
   findByWalletId,
   findById,
   findByIdInWallet,

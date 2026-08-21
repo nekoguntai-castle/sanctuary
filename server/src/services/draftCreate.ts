@@ -3,7 +3,6 @@ import { CreateDraftRequestSchema } from '@sanctuary/shared/schemas/draftRequest
 import { draftRepository, systemSettingRepository } from '../repositories';
 import type { DraftDbClient } from '../repositories/draftRepository';
 import type { DraftLockDbClient } from '../repositories/draftLockRepository';
-import { withTransaction } from '../models/prisma';
 import { ConflictError, InvalidInputError } from '../errors';
 import { createLogger } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
@@ -343,7 +342,7 @@ export async function createDraft(
     // Approval-required drafts are born pending: one transaction creates the
     // draft, locks UTXOs, and sets up approval requests exactly once. Any
     // error propagates so the whole unit rolls back.
-    draft = await withTransaction(async (tx) => {
+    draft = await draftRepository.withTransaction(async (tx) => {
       const created = await persistDraftWithLocks(
         walletId,
         userId,

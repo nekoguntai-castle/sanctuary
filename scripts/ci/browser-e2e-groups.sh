@@ -43,6 +43,7 @@ list_group_specs() {
         tests/e2e/settings-persistence.spec.ts \
         tests/e2e/user-journeys.spec.ts \
         tests/e2e/wallet-sharing-privacy.spec.ts \
+        tests/e2e/wallet-sync-tooltip.spec.ts \
         tests/e2e/wallet.spec.ts
       ;;
     *)

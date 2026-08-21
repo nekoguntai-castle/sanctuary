@@ -1762,3 +1762,105 @@ The detailed executable checklist, risks, commands, recovery requirements, and
 acceptance criteria live in `tasks/umbrel-retirement-plan-2026-07-31.md`. Planning
 used current `origin/main` at `ecd16a42877bc8e696c25932d2ad4ec493b05dd2` and
 read-only repository/API evidence; no product code or external state changed.
+
+## Architecture Boundary Revalidation - 2026-08-20
+
+Date: 2026-08-20
+Owner: Codex
+Status: Implementation in progress; Phase 0 local verification complete
+Scope: revalidation of the architecture audit after PRs #854, #859, #855, #856, #858, and #857; baseline `2a14f8088a`, target `origin/main` at `32278d7531`
+
+### Executive Summary
+
+- The six PRs improve real sync reliability and observability, but they do not resolve any previously identified architectural boundary problem.
+- The macro design remains appropriate: keep the modular monolith and its separate browser, API, worker, gateway, and LLM-egress processes.
+- The sync recommendation is now more urgent and more specific. Inline sync and worker sync have grown into two compensating state machines: inline owns persisted retry parsing plus heap-timer rearming, while the worker owns separate lock-contention budgets and terminal-status write retries.
+- A new boundary finding is confirmed: machine state is encoded in presentation text. Retry progression is parsed from `lastSyncError`, evidence reason codes are rendered into an exception message, and support diagnostics classify errors with regexes over that same message.
+- Non-sync fitness signals are unchanged: 45 route/repository exceptions across 36 route files, 2 direct-Prisma violations, 17 server cycles, 32 service-to-WebSocket runtime edges, and no CI invocation of the architecture/Prisma checks.
+- The new tooltip implementation is a positive UI boundary improvement, but its E2E spec adds another standalone API simulator; E2E fixture duplication therefore worsened slightly.
+
+### Finding Status Update
+
+| Prior finding | Status on `32278d7531` | Updated evidence | Updated disposition |
+| --- | --- | --- | --- |
+| Top-level process boundaries | Unchanged / strong | No container, network, gateway, or process-topology changes in the six PRs | Keep separate |
+| Inline versus worker sync ownership | Architecturally worsened; operationally improved | `walletSync.ts:122-204,225-493`; `syncJobs.ts:282-520`; core owner files grew from 1,741 to 1,864 lines, plus two new policy helpers | Highest-priority convergence |
+| Confirmation updater duplication | Unchanged, with broader evidence | Unused tested implementation at `confirmationUpdater.ts:23-82`; live private copy at `syncService.ts:594-650`; worker copy at `syncJobs.ts:613-679`; wallet-scoped path at `syncCoordinator.ts:165-173` | Converge after sync lifecycle contract |
+| Terminal status/retry/lock policy | Reliability improved; ownership worsened | Inline `retryLadder.ts:1-66` and heap timers in `walletSync.ts:397-426`; worker `terminalStatus.ts:1-75` and lock budgets at `syncJobs.ts:286-305` | One lifecycle policy with adapter-specific scheduling |
+| Event versus direct WebSocket delivery | Slightly worsened | Inline still publishes through event helpers and direct broadcasters; worker adds direct lock-budget terminal broadcasts at `syncJobs.ts:100-117` | One lifecycle publisher |
+| Worker contract direction | Worsened | Services still import `worker/jobs/types` and `jobOptions`; worker reconciliation dynamically imports `services/workerSyncQueue` at `syncJobs.ts:192-220` | Move neutral contracts out of `worker/` |
+| Durable sync-state contract | New finding | Retry count parsed from `lastSyncError` in `retryLadder.ts:13-65`; rejection reasons rendered into exception text in `rejectedEvidence.ts:12-53`; support classes inferred by regex in `services/supportPackage/collectors/walletSync.ts:46-83`; schema stores only free-form status/error at `schema.prisma:140-147` | Converge before orchestration extraction |
+| Route/service/repository enforcement | Unchanged / failing | Same boundary violation; same 45 exceptions across 36 API files | Restore green and require in CI |
+| Direct-Prisma enforcement | Unchanged / failing | Same violations in `draftCreate.ts` and `walletSafetyAudit/processRunner.ts`; same 9 explicit exceptions | Restore green and require in CI |
+| Server import cycles | Unchanged | 43 circular edges and 17 unique cycle sets at both refs | Retain no-new-cycle ratchet recommendation |
+| Service-to-WebSocket coupling | Unchanged by normalized graph metric | 32 runtime edges from 32 service files at both refs | Converge by lifecycle/event slice |
+| React Query versus component-local server state | Unchanged | Recent frontend changes touch Tooltip and `index.html`, not wallet/device data ownership | Converge as previously planned |
+| Raw React Query keys | Unchanged | Canonical wallet keys coexist with raw/mismatched keys in WebSocket and broadcast hooks | Converge as previously planned |
+| Frontend response validation | Unchanged | Same 19 `schema:` uses under `src/api`; recent PRs add no API contracts | Continue feature-by-feature |
+| LLM configuration handshake | Unchanged, with caller inconsistency confirmed | Console blocks on failed sync, while suggest/query/analysis/chat paths ignore the sync result | One `ensureLlmProxyConfigured` boundary |
+| Gateway manifest/schema split | Reclassified to watch | Separate schema lookup remains protected by a parity contract covering manifest routes | Keep separate until a real drift incident occurs |
+| E2E API simulators | Worsened | E2E TypeScript grew 10,610 -> 10,853 lines; `balance-history` fixture sites 12 -> 13; new `wallet-sync-tooltip.spec.ts:75-147` owns another parser/map/dispatcher | Raise fixture convergence priority |
+| Tooltip ownership | Improved | Shared Tooltip now portals to `document.body` and centralizes dismiss/reposition behavior at `Tooltip.tsx:33-188` | Preserve |
+
+### Revised Canonical Path Decisions
+
+| Area | Canonical path | Paths to retire or wrap | Compatibility policy | Decision needed |
+| --- | --- | --- | --- | --- |
+| Durable sync state | Typed current-state columns on `Wallet`: execution owner, retry count, next retry time, started time, and a monotonic state version | Parsing retry/control state and diagnostic class from `lastSyncError` text; no duplicate attempt-history table | Keep `lastSyncError` as user-readable/backward-compatible presentation; BullMQ remains the durable worker attempt record | Resolved: explicit wallet columns |
+| Sync execution | One application use case owns state transitions and outcome; inline and BullMQ paths are scheduling/lock adapters | Independent inline and worker lifecycle state machines | Preserve the newly fixed lock, retry, cancellation, and terminal-write semantics; retain inline availability fallback and synchronous/manual execution | Resolved: retain inline fallback |
+| Sync publication | One `SyncLifecyclePublisher` consumes persisted typed transitions and emits event bus/WebSocket effects exactly once | Direct event plus direct broadcast calls in inline sync; worker-only direct broadcasts | PostgreSQL is authoritative; Redis/WebSocket remains best-effort and reconnect invalidates/refetches state | Resolved: no outbox for replaceable sync snapshots |
+| Queue contracts | Neutral, versioned sync command/result/lock policy contracts owned outside `worker/` | Service imports from worker implementation; worker dynamic import of queue service | Preserve BullMQ payload compatibility | None |
+| E2E API simulation | One strict baseline simulator with scenario overrides | New and existing per-spec bootstrap maps | Preserve explicit failures and `unhandledRequests` assertions | None |
+
+### Revised Convergence Order
+
+| Order | Work | Why the order changed | Exit criteria |
+| ---: | --- | --- | --- |
+| 0 | Restore architecture and Prisma checks to green and wire them into required CI | Still unchanged after six PRs; documentation remains unenforced | Local implementation complete; pending PR delivery |
+| 1 | Define canonical structured sync status/failure/retry contracts and persistence | Recent fixes now depend on parsing presentation text; consolidating first would codify that coupling | Retry progression and support classification do not parse `lastSyncError`; legacy message remains readable |
+| 2 | Extract one sync-attempt lifecycle/use case and route inline/worker execution through it | Two policy-bearing state machines expanded independently in the recent PRs | Shared transition contract passes through both adapters for success, retry, timeout, cancellation, lock contention, and terminal-write failure |
+| 3 | Move queue contracts out of `worker/` and remove the worker-to-queue-service dynamic import | Recent stranded-resync logic confirms bidirectional ownership | Producer and consumer depend on neutral contracts; dependency direction is one-way |
+| 4 | Add one lifecycle publisher and collapse confirmation refresh implementations | Duplicate publication and four confirmation paths remain | Exactly one external lifecycle publication per transition; one confirmation workflow owner |
+| 5 | Consolidate the E2E baseline API simulator, starting with `wallet-sync-tooltip.spec.ts` | The latest UI PR repeated the known fixture fan-out pattern | Tooltip spec is a thin scenario override; common bootstrap endpoints have one definition |
+| 6 | Continue frontend query ownership/keys/contracts, route/repository debt, LLM handshake, and cycle removal | No recent PR changed their evidence or relative risk | Existing phase-specific ratchets continue |
+
+### Implementation Decisions And Acceptance Gates
+
+- Phase 0 keeps the current 45 reviewed route/repository exceptions as a non-increasing budget, inventories the 17 existing server cycle sets exactly, and fails CI for a new exception or changed cycle set. The route and Prisma violations named above are fixed at their ownership boundaries rather than added as exceptions.
+- Phase 1 stores current sync execution state on `Wallet`, not in an attempt-history table. It adds explicit execution ownership so restart recovery cannot confuse an inline timer with a durable BullMQ retry. A migration preserves readable legacy errors while removing retry progression from presentation text.
+- Phase 2 retains in-process execution as a supported worker-unavailable fallback. Inline and worker adapters must pass the same lifecycle transition tests while retaining their distinct retry schedulers, lock fencing, cancellation, and terminal-write recovery.
+- Phase 3 moves commands, results, and lock policy types to a neutral sync contract module. No service may import worker implementation modules and the worker may not dynamically import the queue service after this phase.
+- Phase 4 persists a transition before publishing it. Publication failure cannot roll back or reclassify a successful sync; reconnect invalidates/refetches authoritative wallet state, and stale event versions cannot regress the cache. No transactional outbox is introduced for replaceable sync snapshots.
+- Phase 5 introduces an exact method/path simulator with explicit scenario override precedence, records every unknown request before a standardized 404, and repairs all balance-history fixtures to the live `{ name, value }` contract without adding permissive catch-all behavior.
+- Phase 6 is a fresh bounded re-audit. Remaining broad themes are implemented only when a concrete owner, compatibility policy, acceptance gate, and independently mergeable scope can be established; otherwise they are recorded as deferred rather than treated as an unbounded refactor mandate.
+
+### Edge Cases
+
+- Preserve every reliability behavior added by #855-#858. Convergence is not permission to simplify away lock fencing, bounded contention, restart-safe retries, terminal-write retries, cancellation, or stranded-resync recovery.
+- A structured failure code must not persist secret material or raw remote evidence. Store bounded enum-like classification and safe metadata; keep sensitive detail in scoped logs.
+- `lastSyncError` remains part of UI, support, MCP, and assistant output. Migrate readers before changing its wording and keep a compatibility projection until all machine readers use structured fields.
+- BullMQ retry count and application retry count are different concepts. Name and model them separately even if one adapter maps between them.
+- Inline fallback is a real availability decision, not merely legacy code. If retained, it must pass the same lifecycle contract tests as worker execution.
+- The gateway manifest/schema split is not selected for work while its parity test prevents drift; avoid convergence for its own sake.
+
+### Deferred Or Rejected
+
+- Do not revert or broadly rewrite the six incident fixes; they are the behavioral baseline for later consolidation.
+- Do not create a generic workflow engine. A sync-specific state contract and use case are sufficient.
+- Do not introduce a microservice, general IoC container, or event-sourcing system to solve these ownership problems.
+- Do not move all E2E behavior into a permissive catch-all fixture; strict unknown-request failure remains valuable.
+
+### Verification Notes
+
+- Phase 0 local implementation passed `check:architecture-boundaries` with 45 reviewed exceptions, `check:prisma-imports` with 968 checked files and 80 allowed files, and the new server cycle baseline with 17 known cycle sets and 43 exact circular edges.
+- Phase 0 full server unit coverage passed: 598 files, 14,036 tests, and 100% statements, branches, functions, and lines. Server build/test typecheck, root test typecheck, lint, workflow composition (289 assertions), focused boundary tests, and `git diff --check` also passed.
+- Independent Phase 0 review found two gaps in the first draft: cycle member sets could hide new internal edges, and audit CLI dependency wiring had lost direct coverage. Exact circular-edge inventory and an importable/tested CLI entry wrapper closed both findings.
+- Fetched `origin/main`; local `main` remained at `2a14f8088a` and was not fast-forwarded. Target was audited from an isolated archive at `32278d7531` so unrelated untracked planning files remained untouched.
+- `git diff --stat HEAD..origin/main`: 47 files, 3,416 insertions, 195 deletions, concentrated in sync, distributed locks, support diagnostics, Tooltip, and tests.
+- Architecture checker failed identically at both refs on `api/transactions/broadcasting.ts -> repositories/draftSigningIntentRepository.ts`.
+- Prisma checker failed identically at both refs on `services/draftCreate.ts` and `services/walletSafetyAudit/processRunner.ts`.
+- Dependency-cruiser comparison: 17 unique server cycle sets and 32 service-to-WebSocket runtime edges at both refs.
+- OpenAPI route coverage passed on target: 347 Express routes, 343 OpenAPI operations, and 4 documented infrastructure/docs exceptions.
+- No workflow invokes `check:architecture-boundaries`, `check:prisma-imports`, or `check:openapi-route-coverage`; the six PRs did not change those scripts or policies.
+- Static target inventories using the same audit method: 187 API files, 36 direct-repository route files, 45 route exceptions, 19 frontend API schema uses, 10,853 E2E TypeScript lines, and 13 `balance-history` E2E fixture sites.
+- The preceding audit evidence was analysis-only. Phase 0 implementation now exists on `codex/implement-merge/rationalization-phase-0`; PR delivery is pending.

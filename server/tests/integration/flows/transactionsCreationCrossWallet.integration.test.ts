@@ -28,6 +28,7 @@ const mockBroadcastAndSave = vi.fn();
 const mockEstimateTransaction = vi.fn();
 const mockCreateSigningIntent = vi.fn();
 const mockValidateSignedArtifact = vi.fn();
+const mockFindDraftBySigningIntent = vi.fn();
 const mockGetCachedBlockHeight = vi.fn();
 const mockAuditLogFromRequest = vi.fn();
 
@@ -50,6 +51,7 @@ vi.mock('../../../src/services/bitcoin/transactionService', () => ({
 vi.mock('../../../src/services/bitcoin/signingIntent', () => ({
   createSigningIntent: (...args: unknown[]) => mockCreateSigningIntent(...args),
   validateSignedArtifact: (...args: unknown[]) => mockValidateSignedArtifact(...args),
+  findDraftBySigningIntent: (...args: unknown[]) => mockFindDraftBySigningIntent(...args),
 }));
 
 vi.mock('../../../src/services/bitcoin/transactions/broadcasting', () => ({
@@ -115,6 +117,7 @@ describeWithDb('Transaction Creation and Cross-Wallet Integration', () => {
       intentId: 'intent-1',
       intentDigest: 'a'.repeat(64),
     });
+    mockFindDraftBySigningIntent.mockResolvedValue(null);
     mockEstimateTransaction.mockResolvedValue({
       fee: 500,
       totalInput: 150000,

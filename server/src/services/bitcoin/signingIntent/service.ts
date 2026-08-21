@@ -1,6 +1,7 @@
 import * as bitcoin from 'bitcoinjs-lib';
 import { InvalidInputError } from '../../../errors/ApiError';
 import { transactionSigningIntentRepository } from '../../../repositories/transactionSigningIntentRepository';
+import { draftSigningIntentRepository } from '../../../repositories/draftSigningIntentRepository';
 import { isBitcoinNetwork } from '../networks';
 import {
   buildSigningIntentSnapshot,
@@ -178,3 +179,12 @@ export const loadSigningIntent = async (
     ...(broadcastReplay && { broadcastReplay }),
   };
 };
+
+/**
+ * Resolve the draft linked to a signing intent without exposing repository
+ * ownership to HTTP adapters.
+ */
+export const findDraftBySigningIntent = (
+  walletId: string,
+  signingIntentId: string,
+) => draftSigningIntentRepository.findDraftByWalletAndSigningIntent(walletId, signingIntentId);

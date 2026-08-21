@@ -4,7 +4,13 @@ import * as bitcoin from 'bitcoinjs-lib';
 const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   findById: vi.fn(),
+  findDraftByWalletAndSigningIntent: vi.fn(),
   authenticateIntentPrevouts: vi.fn(),
+}));
+vi.mock('../../../../../src/repositories/draftSigningIntentRepository', () => ({
+  draftSigningIntentRepository: {
+    findDraftByWalletAndSigningIntent: mocks.findDraftByWalletAndSigningIntent,
+  },
 }));
 
 vi.mock('../../../../../src/repositories/transactionSigningIntentRepository', () => ({
@@ -20,6 +26,7 @@ vi.mock('../../../../../src/services/bitcoin/signingIntent/prevoutValidation', (
 import {
   createSigningIntent as createSigningIntentWithContext,
   loadSigningIntent,
+  findDraftBySigningIntent,
 } from '../../../../../src/services/bitcoin/signingIntent/service';
 
 const signingContext = {
@@ -67,6 +74,14 @@ const feePolicy = {
 const createSigningIntent = (
   input: Omit<Parameters<typeof createSigningIntentWithContext>[0], 'signingContext' | 'feePolicy'>,
 ) => createSigningIntentWithContext({ ...input, signingContext, feePolicy });
+
+it('resolves a draft through the signing-intent service boundary', async () => {
+  const draft = { id: 'draft-1' };
+  mocks.findDraftByWalletAndSigningIntent.mockResolvedValueOnce(draft);
+
+  await expect(findDraftBySigningIntent('wallet-1', 'intent-1')).resolves.toBe(draft);
+  expect(mocks.findDraftByWalletAndSigningIntent).toHaveBeenCalledWith('wallet-1', 'intent-1');
+});
 
 const psbtBase64 = (includePayjoinPeer = false): string => {
   const psbt = new bitcoin.Psbt({ network: bitcoin.networks.testnet });

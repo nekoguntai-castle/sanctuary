@@ -2,6 +2,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { collectImportStatements } from './quality/import-parser.mjs';
+import { assertArchitectureExceptionBudget } from './quality/architecture-exception-budget.mjs';
 
 const root = process.env.QUALITY_ROOT ?? process.cwd();
 const codeFilePattern = /\.(?:ts|tsx|js|jsx|mjs|cjs)$/;
@@ -22,6 +23,7 @@ const excludedSegments = [
   '/server/src/generated/',
 ];
 const exceptionFile = 'scripts/quality/architecture-boundary-exceptions.json';
+const maximumExceptionCount = 45;
 
 function normalize(filePath) {
   return filePath.split(path.sep).join('/');
@@ -315,6 +317,12 @@ const rules = [
 ];
 
 const exceptions = loadExceptions();
+try {
+  assertArchitectureExceptionBudget(exceptions.length, maximumExceptionCount);
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+}
 const usedExceptions = new Set();
 const files = sourceRoots.flatMap((sourceRoot) => walk(sourceRoot));
 const violations = [];

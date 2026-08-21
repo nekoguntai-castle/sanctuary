@@ -26,6 +26,7 @@ const {
   mockFindUtxosByOutpointsForWallet,
   mockCreateSigningIntent,
   mockValidateSignedArtifact,
+  mockFindLinkedDraft,
   mockAssertWalletHardwareCapabilityById,
 } = vi.hoisted(() => ({
   mockGetCachedBlockHeight: vi.fn(),
@@ -51,6 +52,7 @@ const {
   mockFindUtxosByOutpointsForWallet: vi.fn(),
   mockCreateSigningIntent: vi.fn(),
   mockValidateSignedArtifact: vi.fn(),
+  mockFindLinkedDraft: vi.fn(),
   mockAssertWalletHardwareCapabilityById: vi.fn(),
 }));
 
@@ -166,6 +168,7 @@ vi.mock('../../../../src/services/bitcoin/transactions/broadcasting', () => ({
 vi.mock('../../../../src/services/bitcoin/signingIntent', () => ({
   createSigningIntent: mockCreateSigningIntent,
   validateSignedArtifact: mockValidateSignedArtifact,
+  findDraftBySigningIntent: mockFindLinkedDraft,
 }));
 
 vi.mock('../../../../src/services/vaultPolicy', () => ({
@@ -214,6 +217,7 @@ export function setupTransactionHttpRouteHooks(): void {
       devices: [{ device: { type: 'coldcard', model: null } }],
     }));
     mockDraftFindByIdInWallet.mockResolvedValue(null);
+    mockFindLinkedDraft.mockResolvedValue(null);
     mockFindAddressStrings.mockResolvedValue(['tb1qchange']);
     mockFindUtxosByOutpointsForWallet.mockResolvedValue([]);
     mockCreateSigningIntent.mockResolvedValue({

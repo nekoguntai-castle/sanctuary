@@ -5,6 +5,10 @@ on:
     paths:
       - '**/*.ts'
       - '**/*.tsx'
+      - '**/*.js'
+      - '**/*.jsx'
+      - '**/*.mjs'
+      - '**/*.cjs'
       - '**/ARCHITECTURE.md'
       - 'docs/**'
       - '.github/CONTRIBUTING.md'
@@ -12,6 +16,10 @@ on:
       - 'server/.dependency-cruiser.cjs'
       - 'gateway/.dependency-cruiser.cjs'
       - 'scripts/architecture/**'
+      - 'scripts/quality/architecture-boundary-exceptions.json'
+      - 'scripts/quality/server-cycle-baseline.json'
+      - 'package.json'
+      - 'server/package.json'
       - 'scripts/ci/create-isolated-workspace.sh'
       - 'scripts/ci/retry-command.sh'
       - 'scripts/ci/run-with-log.sh'
@@ -78,6 +86,30 @@ jobs:
             bash -euo pipefail <<'INNER'
           cd "$ARCH_WORKDIR"
           npm run arch:lint
+          INNER
+
+      - name: Enforce runtime architecture boundaries
+        run: |
+          scripts/ci/run-with-log.sh ".tmp/ci-diagnostics/architecture/runtime-boundaries.log" \
+            bash -euo pipefail <<'INNER'
+          cd "$ARCH_WORKDIR"
+          npm run check:architecture-boundaries
+          INNER
+
+      - name: Enforce repository-owned Prisma access
+        run: |
+          scripts/ci/run-with-log.sh ".tmp/ci-diagnostics/architecture/prisma-imports.log" \
+            bash -euo pipefail <<'INNER'
+          cd "$ARCH_WORKDIR"
+          npm --workspace server run check:prisma-imports
+          INNER
+
+      - name: Enforce server dependency cycle baseline
+        run: |
+          scripts/ci/run-with-log.sh ".tmp/ci-diagnostics/architecture/server-cycle-baseline.log" \
+            bash -euo pipefail <<'INNER'
+          cd "$ARCH_WORKDIR"
+          npm run check:server-cycle-baseline
           INNER
 
       - name: Warn on diagram drift (changed files referenced by C4 diagrams)

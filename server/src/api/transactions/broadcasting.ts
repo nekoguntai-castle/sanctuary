@@ -9,7 +9,6 @@ import {
 } from '@sanctuary/shared/schemas/mobileApiRequests';
 import { addressRepository } from '../../repositories/addressRepository';
 import { draftRepository } from '../../repositories/draftRepository';
-import { draftSigningIntentRepository } from '../../repositories/draftSigningIntentRepository';
 import { walletRepository } from '../../repositories/walletRepository';
 import { requireWalletAccess } from '../../middleware/walletAccess';
 import { requireAuthenticatedUser } from '../../middleware/auth';
@@ -20,6 +19,7 @@ import { policyEvaluationEngine } from '../../services/vaultPolicy';
 import { getNetwork } from '../../services/bitcoin/utils';
 import {
   validateSignedArtifact,
+  findDraftBySigningIntent,
   type SigningIntentHandle,
   type ValidatedBroadcastArtifact,
 } from '../../services/bitcoin/signingIntent';
@@ -68,7 +68,7 @@ const resolveAuthoritativeDraft = async (
   artifact: ValidatedBroadcastArtifact,
   callerDraft: BroadcastDraft,
 ): Promise<BroadcastDraft> => {
-  const linkedDraft = await draftSigningIntentRepository.findDraftByWalletAndSigningIntent(
+  const linkedDraft = await findDraftBySigningIntent(
     walletId,
     artifact.intent.intentId,
   );

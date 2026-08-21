@@ -15,6 +15,7 @@ vi.mock('../../../src/models/prisma', () => ({
       deleteMany: vi.fn(),
       count: vi.fn(),
     },
+    $transaction: vi.fn(),
   },
 }));
 
@@ -38,11 +39,20 @@ import {
   remove,
   update,
   updateApprovalStatus,
+  withDraftTransaction,
 } from '../../../src/repositories/draftRepository';
 
 describe('draftRepository', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('owns draft transaction execution', async () => {
+    const operation = vi.fn().mockResolvedValue('created');
+    (prisma.$transaction as Mock).mockImplementation(operation => operation({ draftTransaction: {} }));
+
+    await expect(withDraftTransaction(operation)).resolves.toBe('created');
+    expect(prisma.$transaction).toHaveBeenCalledWith(operation);
   });
 
   it('findByWalletId queries wallet drafts ordered by createdAt desc', async () => {
@@ -442,6 +452,7 @@ describe('draftRepository', () => {
   });
 
   it('exports all operations via namespace and default object', () => {
+    expect(draftRepository.withTransaction).toBe(withDraftTransaction);
     expect(draftRepository.findById).toBe(findById);
     expect(draftRepository.create).toBe(create);
     expect(draftRepository.update).toBe(update);

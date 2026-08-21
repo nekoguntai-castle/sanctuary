@@ -1,24 +1,19 @@
-import { disconnect } from '../../models/prisma';
-import { runWalletSafetyAuditCli } from './cli';
-
-interface AuditProcessDependencies {
+/**
+ * Concrete process entrypoints own these dependencies so service code does not
+ * import database lifecycle or process I/O infrastructure directly.
+ */
+export interface AuditProcessDependencies {
   runCli: () => Promise<number>;
   disconnectDatabase: () => Promise<void>;
   stderr: (message: string) => void;
 }
-
-const defaultDependencies: AuditProcessDependencies = {
-  runCli: runWalletSafetyAuditCli,
-  disconnectDatabase: disconnect,
-  stderr: (message) => process.stderr.write(`${message}\n`),
-};
 
 /**
  * Runs the audit CLI and closes its database pool, returning a process exit
  * code instead of exposing audit or cleanup errors to the caller.
  */
 export async function runWalletSafetyAuditProcess(
-  dependencies: AuditProcessDependencies = defaultDependencies,
+  dependencies: AuditProcessDependencies,
 ): Promise<number> {
   let exitCode: number;
   try {

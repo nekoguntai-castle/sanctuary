@@ -110,6 +110,7 @@
     "check:npm-ci-callsites": "node scripts/ci/check-npm-ci-callsites.mjs",
     "check:supply-chain-locks": "node scripts/ci/check-supply-chain-locks.mjs",
     "check:architecture-boundaries": "node scripts/check-architecture-boundaries.mjs",
+    "check:server-cycle-baseline": "node scripts/check-server-cycle-baseline.mjs",
     "check:openapi-route-coverage": "node scripts/check-openapi-route-coverage.mjs",
     "check:semgrep-baseline": "node scripts/quality/check-semgrep-baseline.mjs reports/semgrep/semgrep.json scripts/quality/semgrep-baseline.json",
     "check:api-body-validation": "node scripts/check-api-body-validation.mjs",

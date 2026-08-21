@@ -26,20 +26,11 @@ const txTracker = vi.hoisted(() => {
   return { withTransaction, clients };
 });
 
-vi.mock('../../../src/models/prisma', () => ({
-  __esModule: true,
-  default: {
-    systemSetting: {
-      findUnique: vi.fn(),
-    },
-  },
-  withTransaction: txTracker.withTransaction,
-}));
-
 vi.mock('../../../src/repositories', () => ({
   draftRepository: {
     create: vi.fn(),
     remove: vi.fn(),
+    withTransaction: txTracker.withTransaction,
   },
   systemSettingRepository: {
     getParsed: vi.fn(),

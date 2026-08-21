@@ -20,9 +20,6 @@ vi.mock('../../../src/repositories/addressRepository', () => ({
 vi.mock('../../../src/repositories/draftRepository', () => ({
   draftRepository: { findByIdInWallet: mocks.findDraft },
 }));
-vi.mock('../../../src/repositories/draftSigningIntentRepository', () => ({
-  draftSigningIntentRepository: { findDraftByWalletAndSigningIntent: mocks.findLinkedDraft },
-}));
 vi.mock('../../../src/repositories/walletRepository', () => ({
   walletRepository: { findNetwork: mocks.findNetwork },
 }));
@@ -49,6 +46,7 @@ vi.mock('../../../src/services/vaultPolicy', () => ({
 }));
 vi.mock('../../../src/services/bitcoin/signingIntent', () => ({
   validateSignedArtifact: mocks.validateSignedArtifact,
+  findDraftBySigningIntent: mocks.findLinkedDraft,
 }));
 vi.mock('../../../src/services/bitcoin/transactions/broadcasting', () => ({
   broadcastAndSave: mocks.broadcastAndSave,
