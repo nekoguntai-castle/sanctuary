@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { flatBalanceHistory } from "./fixtures/balanceHistory";
 import { getFailClosedWalletRemediationResponse, json, registerApiRoutes, unmocked } from "./helpers";
 
 const USER = {
@@ -141,10 +142,7 @@ const STATIC_RESPONSES: Record<string, MockApiResponse> = {
   [`GET /wallets/${WALLET_ID}/drafts`]: mockResponse([]),
   [`GET /wallets/${WALLET_ID}/transactions/pending`]: mockResponse([]),
   "GET /transactions/activity-summary": mockResponse({ count: 0, receivedSats: 0, sentSats: 0, latestAt: null }),
-  "GET /transactions/balance-history": mockResponse([
-    { name: "Start", value: WALLET.balance },
-    { name: "Now", value: WALLET.balance },
-  ]),
+  "GET /transactions/balance-history": mockResponse(flatBalanceHistory(WALLET.balance)),
   "POST /hardware/jade/pin": mockResponse({}),
   "GET /console/sessions": mockResponse({ sessions: [] }),
   "GET /console/prompts": mockResponse({ prompts: [PROMPT_HISTORY] }),

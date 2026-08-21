@@ -6,6 +6,7 @@
  */
 
 import type { Page, Route } from "@playwright/test";
+import { getSharedApiResponse } from "./fixtures/apiBaseline";
 
 type CommonApiResponse = {
   status?: number;
@@ -63,85 +64,22 @@ export function unmocked(route: Route, method: string, path: string) {
   return json(route, { message: `Unmocked: ${method} ${path}` }, 404);
 }
 
-const PRICE_PROVIDER_INFOS = [
-  {
-    name: "mempool",
-    priority: 100,
-    supportedCurrencies: ["USD", "EUR", "GBP", "CAD", "CHF", "AUD", "JPY"],
-    enabled: true,
-  },
-  {
-    name: "coingecko",
-    priority: 90,
-    supportedCurrencies: [
-      "USD",
-      "EUR",
-      "GBP",
-      "CAD",
-      "CHF",
-      "AUD",
-      "JPY",
-      "CNY",
-      "KRW",
-      "INR",
-    ],
-    enabled: true,
-  },
-  {
-    name: "kraken",
-    priority: 80,
-    supportedCurrencies: ["USD", "EUR", "GBP", "CAD", "CHF", "AUD", "JPY"],
-    enabled: true,
-  },
-  {
-    name: "coinbase",
-    priority: 70,
-    supportedCurrencies: ["USD", "EUR", "GBP", "CAD"],
-    enabled: true,
-  },
-  {
-    name: "binance",
-    priority: 60,
-    supportedCurrencies: ["USD", "EUR", "GBP"],
-    enabled: false,
-  },
-];
-
-const ENABLED_PRICE_PROVIDERS = PRICE_PROVIDER_INFOS.filter(
-  (provider) => provider.enabled,
-).map((provider) => provider.name);
-
 function parseApiRoute(route: Route) {
   const request = route.request();
   const method = request.method();
   const url = new URL(request.url());
-  const path = url.pathname.replace(/^\/api\/v1/, "");
+  const path = url.pathname.replace(/^\/api\/v1(?=\/|$)/, "");
   return { method, path };
 }
 
-function getCommonApiResponse(
-  method: string,
-  path: string,
-): CommonApiResponse | null {
-  if (method === "GET" && path === "/price/providers") {
-    return {
-      body: {
-        providers: ENABLED_PRICE_PROVIDERS,
-        count: ENABLED_PRICE_PROVIDERS.length,
-      },
-    };
+export async function registerStrictApiRoutes(
+  page: Page,
+  handler: (route: Route) => Promise<void> | void,
+) {
+  await page.route("**/api/v1/**", handler);
+  if (API_ORIGIN) {
+    await page.route(`${API_ORIGIN}/**`, handler);
   }
-
-  if (method === "GET" && path === "/price/providers/status") {
-    return {
-      body: {
-        providers: PRICE_PROVIDER_INFOS,
-        count: PRICE_PROVIDER_INFOS.length,
-      },
-    };
-  }
-
-  return null;
 }
 
 /**
@@ -155,7 +93,7 @@ export async function registerApiRoutes(
 ) {
   const routeHandler = async (route: Route) => {
     const { method, path } = parseApiRoute(route);
-    const commonResponse = getCommonApiResponse(method, path);
+    const commonResponse = getSharedApiResponse(method, path);
     if (commonResponse) {
       await json(route, commonResponse.body, commonResponse.status);
       return;
@@ -164,8 +102,5 @@ export async function registerApiRoutes(
     await handler(route);
   };
 
-  await page.route("**/api/v1/**", routeHandler);
-  if (API_ORIGIN) {
-    await page.route(`${API_ORIGIN}/**`, routeHandler);
-  }
+  await registerStrictApiRoutes(page, routeHandler);
 }

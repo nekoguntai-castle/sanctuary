@@ -6,6 +6,7 @@
  */
 
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { emptyBalanceHistory } from "./fixtures/balanceHistory";
 import { getFailClosedWalletRemediationResponse, json, unmocked, registerApiRoutes } from "./helpers";
 
 const WALLET_ID = "wallet-send-1";
@@ -364,7 +365,7 @@ const getAdminResponse: SendApiResponder = ({ requestKey }) => {
   if (requestKey === "POST /hardware/jade/pin") return mockResponse({});
   if (requestKey === "GET /transactions/recent") return mockResponse([]);
   if (requestKey === "GET /transactions/balance-history")
-    return mockResponse([]);
+    return mockResponse(emptyBalanceHistory());
   if (requestKey === "GET /transactions/activity-summary")
     return mockResponse({ count: 0, receivedSats: 0, sentSats: 0, latestAt: null });
   if (requestKey === "GET /ai/status") {

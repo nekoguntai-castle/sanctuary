@@ -19,8 +19,18 @@
  * the ancestor chain, intersects the clip rect of every ancestor whose computed
  * `overflow` is not `visible`, and checks the popup is contained by it.
  */
-import { expect, test, type Page, type Route } from "@playwright/test";
-import { getFailClosedWalletRemediationResponse, json, registerApiRoutes, unmocked } from "./helpers";
+import { expect, test, type Page } from "@playwright/test";
+import {
+  createStaticApiSimulator,
+  mockResponse,
+  type ApiResponseMap,
+} from "./apiSimulator";
+import {
+  BASELINE_API_KEYS,
+  createAuthenticatedApiBaseline,
+} from "./fixtures/apiBaseline";
+import { flatBalanceHistory } from "./fixtures/balanceHistory";
+import { getFailClosedWalletRemediationResponse, registerStrictApiRoutes } from "./helpers";
 
 const USER = {
   id: "user-tooltip",
@@ -72,78 +82,59 @@ const WALLET = {
   lastSyncError: SYNC_ERROR,
 };
 
-type MockApiResponse = { status?: number; body: unknown };
-
-const mockResponse = (body: unknown, status?: number): MockApiResponse => ({ body, status });
-
-function parseApiRoute(route: Route) {
-  const request = route.request();
-  const method = request.method();
-  const url = new URL(request.url());
-  const path = url.pathname.replace(/^\/api\/v1/, "");
-  return { method, path, requestKey: `${method} ${path}` };
-}
-
-const STATIC_RESPONSES: Record<string, MockApiResponse> = {
+const STATIC_RESPONSES: ApiResponseMap = {
+  ...createAuthenticatedApiBaseline({
+    include: [
+      BASELINE_API_KEYS.registrationStatus,
+      BASELINE_API_KEYS.devices,
+      BASELINE_API_KEYS.health,
+      BASELINE_API_KEYS.price,
+      BASELINE_API_KEYS.priceProviders,
+      BASELINE_API_KEYS.priceProviderStatus,
+      BASELINE_API_KEYS.bitcoinStatus,
+      BASELINE_API_KEYS.activitySummary,
+      BASELINE_API_KEYS.balanceHistory,
+      BASELINE_API_KEYS.aiStatus,
+      BASELINE_API_KEYS.intelligenceStatus,
+    ],
+    overrides: {
+      [BASELINE_API_KEYS.price]: mockResponse({
+        price: 95000,
+        currency: "USD",
+        sources: [],
+        median: 95000,
+        average: 95000,
+        timestamp: "2026-08-20T00:00:00.000Z",
+        cached: true,
+        change24h: 1.5,
+      }),
+      [BASELINE_API_KEYS.bitcoinStatus]: mockResponse({
+        connected: true,
+        blockHeight: 900100,
+        explorerUrl: "https://mempool.space",
+        confirmationThreshold: 1,
+        deepConfirmationThreshold: 6,
+        pool: { enabled: false },
+      }),
+      [BASELINE_API_KEYS.balanceHistory]: mockResponse(flatBalanceHistory(WALLET.balance)),
+    },
+  }),
   "GET /auth/me": mockResponse(USER),
-  "GET /auth/registration-status": mockResponse({ enabled: false }),
   "GET /wallets": mockResponse([WALLET]),
-  "GET /devices": mockResponse([]),
-  "GET /health": mockResponse({ status: "ok" }),
-  "GET /price": mockResponse({
-    price: 95000,
-    currency: "USD",
-    sources: [],
-    median: 95000,
-    average: 95000,
-    timestamp: "2026-08-20T00:00:00.000Z",
-    cached: true,
-    change24h: 1.5,
-  }),
-  "GET /ai/status": mockResponse({ enabled: false, available: false, proxyAvailable: false }),
-  "GET /intelligence/status": mockResponse({ available: false, ollamaConfigured: false }),
-  "GET /bitcoin/status": mockResponse({
-    connected: true,
-    blockHeight: 900100,
-    explorerUrl: "https://mempool.space",
-    confirmationThreshold: 1,
-    deepConfirmationThreshold: 6,
-    pool: { enabled: false },
-  }),
   [`GET /wallets/${WALLET_ID}/drafts`]: mockResponse([]),
   [`GET /wallets/${WALLET_ID}/transactions/pending`]: mockResponse([]),
-  "GET /transactions/activity-summary": mockResponse({
-    count: 0, receivedSats: 0, sentSats: 0, latestAt: null,
-  }),
-  "GET /transactions/balance-history": mockResponse([
-    { name: "Start", value: WALLET.balance },
-    { name: "Now", value: WALLET.balance },
-  ]),
 };
 
 async function mockWalletApi(page: Page) {
-  const unhandledRequests: string[] = [];
-
-  await registerApiRoutes(page, async (route) => {
-    const parsed = parseApiRoute(route);
-
-    const remediation = getFailClosedWalletRemediationResponse(parsed.method, parsed.path);
-    if (remediation) {
-      await json(route, remediation.body, remediation.status);
-      return;
-    }
-
-    const response = STATIC_RESPONSES[parsed.requestKey];
-    if (response) {
-      await json(route, response.body, response.status);
-      return;
-    }
-
-    unhandledRequests.push(parsed.requestKey);
-    await unmocked(route, parsed.method, parsed.path);
+  const simulator = createStaticApiSimulator({
+    responses: STATIC_RESPONSES,
+    dynamicResponse: ({ method, path }) => (
+      getFailClosedWalletRemediationResponse(method, path)
+    ),
   });
+  await registerStrictApiRoutes(page, simulator.handler);
 
-  return unhandledRequests;
+  return simulator.unhandledRequests;
 }
 
 /**

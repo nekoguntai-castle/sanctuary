@@ -6,6 +6,7 @@
  */
 
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { balanceHistory, emptyBalanceHistory } from './fixtures/balanceHistory';
 import { getFailClosedWalletRemediationResponse, json, unmocked, registerApiRoutes } from './helpers';
 
 const WALLET_ID = 'wallet-a11y-1';
@@ -164,7 +165,7 @@ const A11Y_API_RESPONSES: Record<string, MockApiResponse> = {
   'GET /admin/agents': mockResponse([]),
   'GET /transactions/recent': mockResponse([]),
   'GET /transactions/activity-summary': mockResponse({ count: 0, receivedSats: 0, sentSats: 0, latestAt: null }),
-  'GET /transactions/balance-history': mockResponse([]),
+  'GET /transactions/balance-history': mockResponse(emptyBalanceHistory()),
   'GET /ai/status': mockResponse({ available: false, proxyAvailable: false }),
   'GET /intelligence/status': mockResponse({ available: false, ollamaConfigured: false }),
   'GET /admin/groups': mockResponse([]),
@@ -618,10 +619,10 @@ test.describe('Accessibility', () => {
   test('balance direction is legible without colour', async ({ page }) => {
     const unhandledRequests = await mockA11yApi(page, {
       'GET /transactions/activity-summary': mockResponse({ count: 0, receivedSats: 0, sentSats: 0, latestAt: null }),
-      'GET /transactions/balance-history': mockResponse([
-        { timestamp: '2026-08-01T00:00:00.000Z', balance: 1_000_000 },
-        { timestamp: '2026-08-02T00:00:00.000Z', balance: 1_125_000 },
-      ]),
+      'GET /transactions/balance-history': mockResponse(balanceHistory([
+        { name: '2026-08-01', value: 1_000_000 },
+        { name: '2026-08-02', value: 1_125_000 },
+      ])),
     });
 
     await page.setViewportSize({ width: 1280, height: 900 });

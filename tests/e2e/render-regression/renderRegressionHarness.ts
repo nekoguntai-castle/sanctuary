@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { flatBalanceHistory } from '../fixtures/balanceHistory';
 import { getFailClosedWalletRemediationResponse, json, unmocked, registerApiRoutes } from '../helpers';
 
 /**
@@ -610,10 +611,7 @@ const AUTHENTICATED_API_RESPONSES: Record<string, MockApiResponse> = {
     queuedBlocksSummary: null,
   }),
   'GET /transactions/recent': mockResponse([]),
-  'GET /transactions/balance-history': mockResponse([
-    { name: 'Start', value: 125000000 },
-    { name: 'Now', value: 125000000 },
-  ]),
+  'GET /transactions/balance-history': mockResponse(flatBalanceHistory(125000000)),
   'GET /transactions/activity-summary': mockResponse({
     count: 3,
     receivedSats: 250000,

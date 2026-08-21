@@ -6,6 +6,7 @@
  */
 
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { emptyBalanceHistory } from './fixtures/balanceHistory';
 import { getFailClosedWalletRemediationResponse, json, unmocked, registerApiRoutes } from './helpers';
 
 const WALLET_ID = 'wallet-error-1';
@@ -167,7 +168,7 @@ const MOCK_API_RESPONSES: Record<string, MockApiResponse> = {
   'GET /admin/agents': mockResponse([]),
   'GET /transactions/recent': mockResponse([]),
   'GET /transactions/activity-summary': mockResponse({ count: 0, receivedSats: 0, sentSats: 0, latestAt: null }),
-  'GET /transactions/balance-history': mockResponse([]),
+  'GET /transactions/balance-history': mockResponse(emptyBalanceHistory()),
   'GET /intelligence/status': mockResponse({ available: false, ollamaConfigured: false }),
   [`GET /wallets/${WALLET_ID}`]: mockResponse(WALLET),
   [`GET /wallets/${WALLET_ID}/transactions`]: mockResponse([]),

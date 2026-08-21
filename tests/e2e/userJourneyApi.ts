@@ -1,4 +1,9 @@
 import type { Page, Route } from '@playwright/test';
+import {
+  BASELINE_API_KEYS,
+  createAuthenticatedApiBaseline,
+} from './fixtures/apiBaseline';
+import { flatBalanceHistory } from './fixtures/balanceHistory';
 import { getFailClosedWalletRemediationResponse, json, registerApiRoutes, unmocked } from './helpers';
 
 export const MAINNET_WALLET_ID = 'wallet-journey-main';
@@ -321,28 +326,34 @@ const NODE_CONFIG_RESPONSE = {
 };
 
 const AUTHENTICATED_STATIC_API_RESPONSES: Record<string, MockApiResponse> = {
+  ...createAuthenticatedApiBaseline({
+    include: [
+      BASELINE_API_KEYS.registrationStatus,
+      BASELINE_API_KEYS.devices,
+      BASELINE_API_KEYS.health,
+      BASELINE_API_KEYS.price,
+      BASELINE_API_KEYS.priceProviders,
+      BASELINE_API_KEYS.priceProviderStatus,
+      BASELINE_API_KEYS.bitcoinStatus,
+      BASELINE_API_KEYS.bitcoinFees,
+      BASELINE_API_KEYS.bitcoinMempool,
+      BASELINE_API_KEYS.adminVersion,
+      BASELINE_API_KEYS.recentTransactions,
+      BASELINE_API_KEYS.activitySummary,
+      BASELINE_API_KEYS.balanceHistory,
+      BASELINE_API_KEYS.aiStatus,
+      BASELINE_API_KEYS.intelligenceStatus,
+    ],
+    overrides: {
+      [BASELINE_API_KEYS.devices]: mockResponse([JOURNEY_DEVICE]),
+      [BASELINE_API_KEYS.price]: mockResponse(PRICE_RESPONSE),
+      [BASELINE_API_KEYS.bitcoinStatus]: mockResponse(BITCOIN_STATUS_RESPONSE),
+      [BASELINE_API_KEYS.balanceHistory]: mockResponse(flatBalanceHistory(250000000)),
+    },
+  }),
   'POST /auth/refresh': mockResponse({ message: 'Unauthorized' }, 401),
   'POST /auth/logout': mockResponse({ success: true }),
-  'GET /auth/registration-status': mockResponse({ enabled: false }),
-  'GET /devices': mockResponse([JOURNEY_DEVICE]),
   'POST /hardware/jade/pin': mockResponse({}),
-  'GET /health': mockResponse({ status: 'ok' }),
-  'GET /admin/version': mockResponse({ updateAvailable: false, currentVersion: '0.8.14' }),
-  'GET /price': mockResponse(PRICE_RESPONSE),
-  'GET /bitcoin/status': mockResponse(BITCOIN_STATUS_RESPONSE),
-  'GET /bitcoin/fees': mockResponse({ fastest: 18, halfHour: 12, hour: 8, economy: 3 }),
-  'GET /bitcoin/mempool': mockResponse({
-    mempool: [],
-    blocks: [],
-    mempoolInfo: { count: 0, size: 0, totalFees: 0 },
-    queuedBlocksSummary: null,
-  }),
-  'GET /transactions/recent': mockResponse([]),
-  'GET /transactions/activity-summary': mockResponse({ count: 0, receivedSats: 0, sentSats: 0, latestAt: null }),
-  'GET /transactions/balance-history': mockResponse([
-    { name: 'Start', value: 250000000 },
-    { name: 'Now', value: 250000000 },
-  ]),
   [`GET /wallets/${MAINNET_WALLET_ID}/transactions/pending`]: mockResponse([]),
   [`GET /wallets/${TESTNET_WALLET_ID}/transactions/pending`]: mockResponse([]),
   [`GET /wallets/${MAINNET_WALLET_ID}`]: mockResponse(MAINNET_WALLET),
@@ -422,8 +433,6 @@ const AUTHENTICATED_STATIC_API_RESPONSES: Record<string, MockApiResponse> = {
     byAction: {},
     failedEvents: 0,
   }),
-  'GET /ai/status': mockResponse({ available: false, proxyAvailable: false }),
-  'GET /intelligence/status': mockResponse({ available: false, ollamaConfigured: false }),
 };
 
 function getStatefulApiResponse(

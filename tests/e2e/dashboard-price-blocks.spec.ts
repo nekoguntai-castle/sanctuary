@@ -7,6 +7,7 @@
  */
 
 import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
+import { flatBalanceHistory } from './fixtures/balanceHistory';
 import { getFailClosedWalletRemediationResponse, json, unmocked, registerApiRoutes } from './helpers';
 
 const MAINNET_WALLET_ID = 'wallet-dash-price-1';
@@ -205,10 +206,7 @@ const STATIC_DASHBOARD_API_RESPONSES: Record<string, MockApiResponse> = {
   'GET /bitcoin/fees': mockResponse({ fastest: 18, halfHour: 12, hour: 8, economy: 3 }),
   'GET /transactions/recent': mockResponse([]),
   'GET /transactions/activity-summary': mockResponse({ count: 0, receivedSats: 0, sentSats: 0, latestAt: null }),
-  'GET /transactions/balance-history': mockResponse([
-    { name: 'Start', value: 100000000 },
-    { name: 'Now', value: 100000000 },
-  ]),
+  'GET /transactions/balance-history': mockResponse(flatBalanceHistory(100000000)),
   [`GET /wallets/${MAINNET_WALLET_ID}/transactions/pending`]: mockResponse([]),
   'GET /admin/features': mockResponse([]),
   'GET /admin/settings': mockResponse(ADMIN_SETTINGS_RESPONSE),
