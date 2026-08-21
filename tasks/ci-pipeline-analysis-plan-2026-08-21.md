@@ -238,12 +238,14 @@ precisely; measurement itself does not become a required failure point.
       Redis suites execute rather than skip.
 - [ ] Seed auth E2E users and remove `SKIP_AUTH_TESTS`, or split/rename the gate
       so its contract is exact.
-- [ ] Add `quality.yml` push-to-main coverage and test the aggregate behavior.
+- [x] Add `quality.yml` push-to-main coverage and test the aggregate behavior.
 - [ ] Make RC approval consume canonical same-commit install/upgrade evidence,
       then remove stale inputs and claims.
-- [ ] Add LLM proxy lint, explicit gateway build/typecheck, and local/CI coverage
+- [x] Add LLM proxy lint, explicit gateway build/typecheck, and local/CI coverage
       parity.
-- [ ] Add Docker job timeouts.
+- [x] Add Docker job timeouts.
+- [ ] Make online installs explicitly fetch missing digest-pinned external
+      runtime images before no-build startup; preserve pull-free offline mode.
 
 Acceptance: deliberate skip counts are enumerated; unexpected skips fail;
 required aggregate contexts remain stable and fail closed; direct main pushes

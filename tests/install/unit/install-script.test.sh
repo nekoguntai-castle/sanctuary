@@ -1479,6 +1479,18 @@ if [ "$1" = "builder" ] && [ "${2:-}" = "prune" ]; then
     exit 0
 fi
 
+if [ "$1" = "image" ] && [ "${2:-}" = "inspect" ]; then
+    case "${3:-}" in
+        sanctuary-*) exit 0 ;;
+        *) exit 1 ;;
+    esac
+fi
+
+if [ "$1" = "pull" ]; then
+    printf 'docker pull:%s\n' "${2:-}" >> "$log_file"
+    exit 0
+fi
+
 if [ "$1" = "ps" ]; then
     exit 0
 fi
@@ -1511,6 +1523,8 @@ EOF
     log="$(cat "$log_file")"
     assert_contains "$log" "compose build:" \
         "setup.sh should run an initial compose build" || return 1
+    assert_contains "$log" "docker pull:tecnativa/docker-socket-proxy:latest@sha256:1f5038b54f06c3e18422902cf00ba21803d1c97805aae032e5e6673d532d3459" \
+        "setup.sh should explicitly pull a missing digest-pinned runtime image" || return 1
     assert_contains "$log" "builder prune:prune --force" \
         "setup.sh should clear builder cache before retrying" || return 1
     assert_contains "$log" "compose build:--no-cache" \

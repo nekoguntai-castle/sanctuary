@@ -831,9 +831,7 @@ export_runtime_environment() {
 # ============================================
 # Service Startup
 # ============================================
-validate_offline_images() {
-    local missing=false
-    local image
+required_runtime_images() {
     local required_images=(
         "sanctuary-backend:${SANCTUARY_IMAGE_TAG:-local}"
         "sanctuary-frontend:${SANCTUARY_IMAGE_TAG:-local}"
@@ -860,12 +858,33 @@ validate_offline_images() {
         required_images+=("dperson/torproxy:latest@sha256:d8b5f1cf24f1b7a0aa334929a264b2606a107223dd0d51eb1cda8aae6fbeec53")
     fi
 
-    for image in "${required_images[@]}"; do
+    printf '%s\n' "${required_images[@]}"
+}
+
+pull_external_runtime_images() {
+    local image
+
+    while IFS= read -r image; do
+        case "$image" in
+            sanctuary-*) continue ;;
+        esac
+        if ! docker image inspect "$image" >/dev/null 2>&1; then
+            echo "Pulling required runtime image: $image"
+            docker pull "$image"
+        fi
+    done < <(required_runtime_images)
+}
+
+validate_offline_images() {
+    local missing=false
+    local image
+
+    while IFS= read -r image; do
         if ! docker image inspect "$image" >/dev/null 2>&1; then
             echo -e "${RED}Missing offline image:${NC} $image"
             missing=true
         fi
-    done
+    done < <(required_runtime_images)
 
     if [ "$missing" = true ]; then
         echo ""
@@ -1015,6 +1034,11 @@ start_services() {
     if [ "$OPT_OFFLINE" = true ]; then
         validate_offline_images
     else
+        # Compose implementations do not all pull a missing digest-pinned image
+        # during `up --no-build`. Pull external runtime images explicitly so a
+        # clean Docker or Podman-compatible daemon behaves deterministically.
+        pull_external_runtime_images
+
         # Step 1: Build all images first (ensures all build output completes before continuing)
         BUILD_ARGS=""
         if [ "$OPT_UPGRADE" = true ]; then
