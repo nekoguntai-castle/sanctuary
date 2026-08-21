@@ -1958,6 +1958,16 @@ jobs:
           ${{ github.workspace }}/scripts/ci/time-command.sh "gateway npm ci"
           npm ci --strict-allow-scripts --audit=false --fund=false --cache .tmp/npm-cache
 
+      - name: Build shared and gateway production path
+        working-directory: ${{ github.workspace }}
+        run: |
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/gateway-build.log" \
+            ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain \
+            bash -euo pipefail <<'GATEWAY_BUILD'
+          npm --workspace shared run build
+          npm --workspace gateway run build
+          GATEWAY_BUILD
+
       - name: Run gateway coverage
         env:
           NODE_ENV: test

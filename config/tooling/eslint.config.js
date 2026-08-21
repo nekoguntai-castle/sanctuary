@@ -6,6 +6,7 @@ const productionSource = [
   'shared/**/*.ts',
   'server/src/**/*.ts',
   'gateway/src/**/*.ts',
+  'llm-egress-proxy/src/**/*.ts',
 ];
 
 export default [
@@ -97,6 +98,7 @@ export default [
     files: [
       'server/src/utils/logger.ts',
       'gateway/src/utils/logger.ts',
+      'llm-egress-proxy/src/logger.ts',
     ],
     rules: {
       'no-restricted-syntax': 'off',

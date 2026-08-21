@@ -91,6 +91,7 @@ jobs:
   detect-image-scope:
     name: Detect Image Scope
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/docker-build-detect-image-scope
     outputs:
@@ -136,6 +137,7 @@ jobs:
     name: Validate frontend image
     if: needs.detect-image-scope.outputs.frontend_image == 'true'
     runs-on: ubuntu-22.04
+    timeout-minutes: 45
     needs: [detect-image-scope]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/docker-build-frontend
@@ -173,6 +175,7 @@ jobs:
       needs.detect-image-scope.outputs.backend_image == 'true' &&
       (needs.build-frontend.result == 'success' || needs.build-frontend.result == 'skipped')
     runs-on: ubuntu-22.04
+    timeout-minutes: 45
     needs: [detect-image-scope, build-frontend]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/docker-build-backend
@@ -207,6 +210,7 @@ jobs:
     name: Validate gateway image
     if: needs.detect-image-scope.outputs.gateway_image == 'true'
     runs-on: ubuntu-22.04
+    timeout-minutes: 30
     needs: [detect-image-scope]
     steps:
       - name: Checkout repository
@@ -227,6 +231,7 @@ jobs:
     name: Validate LLM egress proxy image
     if: needs.detect-image-scope.outputs.llm_egress_proxy_image == 'true'
     runs-on: ubuntu-22.04
+    timeout-minutes: 30
     needs: [detect-image-scope]
     steps:
       - name: Checkout repository
@@ -250,6 +255,7 @@ jobs:
       needs.detect-image-scope.result == 'success' &&
       needs.detect-image-scope.outputs.grafana_migration_image == 'true'
     runs-on: ubuntu-22.04
+    timeout-minutes: 30
     needs: [detect-image-scope]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/docker-build-grafana-migration
@@ -278,6 +284,7 @@ jobs:
   summary:
     name: Docker image validation summary
     runs-on: ubuntu-22.04
+    timeout-minutes: 10
     needs: [detect-image-scope, build-frontend, build-backend, build-gateway, build-llm-egress-proxy, build-grafana-migration]
     if: always()
     steps:

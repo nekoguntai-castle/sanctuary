@@ -1194,6 +1194,9 @@ assert_not_contains "$TEST_WORKFLOW" \
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full gateway diagnostics" \
   "full-gateway-tests:" \
+  "Build shared and gateway production path" \
+  "npm --workspace shared run build" \
+  "npm --workspace gateway run build" \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/gateway-coverage.log"' \
   "scripts/ci/with-runner-lock.sh node-toolchain" \
   'scripts/ci/time-command.sh "gateway coverage"' \
@@ -1990,6 +1993,38 @@ assert_occurrence_count "$DOCKER_BUILD_WORKFLOW" \
   "run: scripts/ci/build-runtime-image.sh " \
   5
 
+for docker_timeout_contract in \
+  "detect-image-scope:|timeout-minutes: 10" \
+  "build-frontend:|timeout-minutes: 45" \
+  "build-backend:|timeout-minutes: 45" \
+  "build-gateway:|timeout-minutes: 30" \
+  "build-llm-egress-proxy:|timeout-minutes: 30" \
+  "build-grafana-migration:|timeout-minutes: 30" \
+  "summary:|timeout-minutes: 10"; do
+  IFS='|' read -r docker_job docker_timeout <<< "$docker_timeout_contract"
+  assert_contains_in_order "$DOCKER_BUILD_WORKFLOW" \
+    "docker-build ${docker_job%:} job has a bounded runtime" \
+    "$docker_job" \
+    "$docker_timeout"
+done
+
+assert_occurrence_count "$DOCKER_BUILD_WORKFLOW" \
+  "every docker-build job has a timeout" \
+  "timeout-minutes:" \
+  7
+assert_occurrence_count "$DOCKER_BUILD_WORKFLOW" \
+  "docker-build classifier and summary use short timeouts" \
+  "timeout-minutes: 10" \
+  2
+assert_occurrence_count "$DOCKER_BUILD_WORKFLOW" \
+  "docker-build small images use medium timeouts" \
+  "timeout-minutes: 30" \
+  3
+assert_occurrence_count "$DOCKER_BUILD_WORKFLOW" \
+  "docker-build application images use long timeouts" \
+  "timeout-minutes: 45" \
+  2
+
 for grafana_image_path in \
   "'scripts/ops/migrate-grafana-password.sh'" \
   "'scripts/ops/run-grafana-password-migration.sh'" \
@@ -2044,6 +2079,32 @@ assert_named_job_step_config_rejected \
 
 # --- quality workflow diagnostic coverage -----------------------------------
 QUALITY_WORKFLOW="$REPO_ROOT/.github/workflows/quality.yml"
+
+assert_contains_in_order "$QUALITY_WORKFLOW" \
+  "quality runs on direct main pushes" \
+  "on:" \
+  "push:" \
+  "branches:" \
+  "- main" \
+  "pull_request:"
+
+assert_contains_in_order "$REPO_ROOT/config/tooling/eslint.config.js" \
+  "LLM egress proxy production source receives the TypeScript lint policy" \
+  "const productionSource" \
+  "llm-egress-proxy/src/**/*.ts"
+
+assert_contains_in_order "$REPO_ROOT/package.json" \
+  "root lint includes the LLM egress proxy" \
+  '"lint":' \
+  "npm run lint:gateway" \
+  "npm run lint:llm-egress-proxy" \
+  "npm run check:blocking-io"
+
+assert_contains_in_order "$REPO_ROOT/package.json" \
+  "full local coverage includes gateway and LLM egress proxy" \
+  '"test:coverage:full":' \
+  "npm run test:coverage:gateway" \
+  "npm run test:coverage:llm-egress-proxy"
 
 for node_workflow in architecture quality release-candidate test; do
   assert_contains_in_order \

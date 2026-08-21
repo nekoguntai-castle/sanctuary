@@ -38,7 +38,7 @@ Use stable aggregate jobs as branch-protection targets. Do not require path-cond
 Required for PRs:
 
 - `PR Required Checks`
-- `Full Test Summary`, expected to appear as skipped/success on pull requests
+- `Full Test Summary`
 - `Code Quality Required Checks`
 
 Required for `main` confidence:
@@ -47,9 +47,11 @@ Required for `main` confidence:
 - `Code Quality Required Checks`
 
 `PR Required Checks` and `Full Test Summary` live in the same `Test Suite`
-workflow. On Forgejo pull requests, the quick-lane aggregate is meaningful and
-the full-lane aggregate is skipped. Pushes to `main` run the path-aware full
-confidence lane.
+workflow. Forgejo pull requests run both the changed-file quick lane and the
+path-aware full lane; `PR Required Checks` fails unless `Full Test Summary`
+succeeds. Pushes to `main` repeat the path-aware full lane against the immutable
+merged commit. This intentionally keeps exhaustive pre-merge validation while
+Forgejo pull requests, rather than a merge queue, are the active merge model.
 
 Do not globally require `Validate Docker Images`, `Install Test Summary`, or
 `Verify Bitcoin Vectors`. Those workflows are intentionally path-gated or
@@ -59,20 +61,23 @@ PRs where the workflow never starts.
 
 ## PR validation checklist
 
-- Confirm `PR Required Checks` runs on the pull request and fails only when a quick-lane child fails.
+- Confirm `PR Required Checks` runs on the pull request and fails when a required quick-lane child or `Full Test Summary` fails.
 - Confirm `Code Quality Required Checks` runs on the pull request and reflects lint, gitleaks, lizard, and jscpd.
-- Confirm `Full Test Summary` is present on the pull request as skipped/success, so branch protection does not wait on the full lane.
+- Confirm `Full Test Summary` runs and succeeds on the pull request before merge.
 - Confirm docs-only or workflow-only PRs do not wait on absent Docker, install, or vector checks.
 - Confirm the post-merge `main` full lane runs only for the touched package unless the test workflow, schedule, or manual dispatch requires an exhaustive run.
 - After merge, confirm the push-to-`main` full lane runs as the merge confidence backstop.
 
 ## First PR Validation Result
 
-Validated on 2026-04-19 HST with PR #8, `ci-pr-flow-aggregates`, merged as `72bdce96`.
+The first aggregate implementation was validated on 2026-04-19 HST with PR #8,
+`ci-pr-flow-aggregates`, merged as `72bdce96`. Its quick-only PR policy is
+historical; the current workflow also requires the full PR lane.
 
 - `PR Required Checks` passed on the PR.
 - `Code Quality Required Checks` passed on the PR.
-- `Full Test Summary` appeared on the PR and completed as skipped, satisfying branch protection without running the full lane before merge.
+- `Full Test Summary` was skipped under the historical policy. Do not use that
+  result as evidence for the current full pre-merge contract.
 - Path-gated workflow checks behaved correctly: Docker build, install tests, and vector verification ran because this PR changed their workflow files; they were not global requirements for unrelated PRs.
 - The post-merge `main` backstop passed: `Full Test Summary`, full backend, full frontend, full gateway, full E2E, full build, install summary, release check, and dev image build completed successfully.
 
@@ -134,9 +139,10 @@ Push once per batch after the relevant local gate is green, then let the Forgejo
 PR checks run once. If CI finds a reproducible local gap, add that command to
 this Tier 0 checklist before retrying.
 
-### Tier 1 - PR Quick Gate
+### Tier 1 - PR Feedback And Full Gate
 
-The PR quick gate is optimized for repeated branch updates.
+The PR quick lane provides changed-file feedback before the path-aware full lane.
+Both lanes are currently part of the required pre-merge contract.
 
 `Test Suite` runs changed-file detection and then conditionally runs:
 
@@ -150,19 +156,22 @@ The PR quick gate is optimized for repeated branch updates.
 - Chromium render regression only for visual/rendering paths such as app shell, components, hooks, providers, themes, utilities, and render-regression fixtures/snapshots.
 - Critical mutation gate for critical Bitcoin/auth/access-control paths.
 
-`PR Required Checks` fails if any required quick-lane child fails, and allows skipped path-conditional children.
+`PR Required Checks` fails if any required quick-lane child or `Full Test
+Summary` fails, and allows skipped path-conditional children.
 
 `Code Quality` runs lint, gitleaks, lizard, and jscpd on every PR. `Code Quality Required Checks` fails if any of those children fail.
 
 The CI lizard job currently gates a measured CI-scope baseline of 9 warnings. That prevents new complexity regressions while the broader remediation loop continues ratcheting down the full lizard backlog. Lower `LIZARD_WARNING_BASELINE` whenever the CI-scope warning count is reduced.
 
-### Tier 2 - Main Confidence Gate
+### Tier 2 - Main Confidence Backstop
 
-The post-merge `main` gate proves the final merged commit, not every local-sized commit.
+The post-merge `main` gate proves the final merged commit after the same
+path-aware full checks have already protected the pull request.
 
-`Test Suite` full lane runs on `main`, schedule, and manual dispatch. On push
-events, it first classifies changed paths and runs only the relevant full lanes.
-Schedule and manual dispatch set `full_scan=true` and remain exhaustive.
+`Test Suite` full lane runs on pull requests, `main`, schedule, and manual
+dispatch. Pull requests and pushes classify changed paths and run only the
+relevant full lanes. Schedule and manual dispatch set `full_scan=true` and
+remain exhaustive.
 
 Markdown and MDX files are docs-only for the test classifiers, including package-local docs under `server/`, `gateway/`, `llm-egress-proxy/`, and `tests/install/`. A docs-only change may still get required aggregate/no-op checks on PRs, but it must not start source tests, DB-backed tests, E2E lanes, install tests, or image builds.
 
