@@ -26,6 +26,7 @@ const {
   mockExtendLock,
   mockReleaseLock,
   mockWithLock,
+  mockIsLocked,
   mockGetWorkerHealthStatus,
 } = vi.hoisted(() => ({
   mockPrismaClient: {
@@ -81,6 +82,7 @@ const {
     const result = await fn();
     return { success: true, result };
   }),
+  mockIsLocked: vi.fn<(key: string) => Promise<boolean>>(),
   mockGetWorkerHealthStatus: vi.fn<() => { healthy: boolean }>().mockReturnValue({ healthy: false }),
 }));
 
@@ -94,13 +96,85 @@ vi.mock('../../../../src/repositories', () => ({
   walletRepository: {
     findByUserId: (...args: unknown[]) => mockPrismaClient.wallet.findMany(...args),
     findByIdWithSelect: (id: string, select: unknown) => mockPrismaClient.wallet.findUnique({ where: { id }, select }),
+    findSyncState: (id: string) => mockPrismaClient.wallet.findUnique({
+      where: { id },
+      select: {
+        syncInProgress: true,
+        lastSyncedAt: true,
+        lastSyncStatus: true,
+        lastSyncError: true,
+        lastSyncFailureClass: true,
+        syncExecutionOwner: true,
+        syncRetryCount: true,
+        syncNextRetryAt: true,
+        syncStartedAt: true,
+        syncStateVersion: true,
+      },
+    }),
     findById: (id: string) => mockPrismaClient.wallet.findUnique({ where: { id } }),
     findNetwork: (id: string) => mockPrismaClient.wallet.findUnique({ where: { id }, select: { network: true } }).then((w: any) => w?.network ?? null),
     update: (id: string, data: unknown) => mockPrismaClient.wallet.update({ where: { id }, data }),
     updateSyncState: (id: string, state: unknown) => mockPrismaClient.wallet.update({ where: { id }, data: state }),
-    resetAllStuckSyncFlags: () => mockPrismaClient.wallet.updateMany({ where: { syncInProgress: true }, data: { syncInProgress: false } }).then((r: any) => r.count),
-    demoteStrandedRetries: (reason: string) => mockPrismaClient.wallet.updateMany({ where: { lastSyncStatus: 'retrying', syncInProgress: false }, data: { lastSyncStatus: 'failed', lastSyncError: reason } }).then((r: any) => r.count),
-    findStuckSyncing: () => mockPrismaClient.wallet.findMany({ where: { syncInProgress: true }, select: { id: true, name: true } }),
+    clearSyncStateIfUnchanged: (candidate: any) => mockPrismaClient.wallet.updateMany({
+      where: {
+        id: candidate.id,
+        syncInProgress: true,
+        syncExecutionOwner: candidate.syncExecutionOwner,
+        syncStartedAt: candidate.syncStartedAt,
+        syncStateVersion: candidate.syncStateVersion,
+      },
+      data: {
+        syncInProgress: false,
+        syncExecutionOwner: null,
+        syncRetryCount: 0,
+        syncNextRetryAt: null,
+        syncStartedAt: null,
+        syncStateVersion: { increment: 1 },
+      },
+    }).then((r: any) => r.count === 1),
+    resetAllStuckSyncFlags: () => mockPrismaClient.wallet.updateMany({
+      where: {
+        syncInProgress: true,
+        OR: [{ syncExecutionOwner: null }, { syncExecutionOwner: 'inline' }],
+      },
+      data: {
+        syncInProgress: false,
+        syncExecutionOwner: null,
+        syncRetryCount: 0,
+        syncNextRetryAt: null,
+        syncStartedAt: null,
+        syncStateVersion: { increment: 1 },
+      },
+    }).then((r: any) => r.count),
+    demoteStrandedInlineRetries: (reason: string, failureClass: string) => mockPrismaClient.wallet.updateMany({
+      where: {
+        lastSyncStatus: 'retrying',
+        OR: [{ syncExecutionOwner: null }, { syncExecutionOwner: 'inline' }],
+        syncInProgress: false,
+      },
+      data: {
+        lastSyncStatus: 'failed',
+        lastSyncError: reason,
+        lastSyncFailureClass: failureClass,
+        syncExecutionOwner: null,
+        syncRetryCount: 0,
+        syncNextRetryAt: null,
+        syncStartedAt: null,
+        syncStateVersion: { increment: 1 },
+      },
+    }).then((r: any) => r.count),
+    findStuckSyncing: () => mockPrismaClient.wallet.findMany({
+      where: { syncInProgress: true },
+      select: {
+        id: true,
+        name: true,
+        syncExecutionOwner: true,
+        syncStartedAt: true,
+        syncStateVersion: true,
+      },
+      orderBy: [{ syncStartedAt: 'asc' }, { id: 'asc' }],
+      take: 100,
+    }),
     findStale: (opts: any) => mockPrismaClient.wallet.findMany({
       where: { OR: [{ lastSyncedAt: null }, { lastSyncedAt: { lt: new Date(Date.now() - opts.staleThresholdMs) } }], syncInProgress: false },
       select: { id: true },
@@ -200,6 +274,7 @@ vi.mock('../../../../src/infrastructure', () => ({
   },
   releaseLock: mockReleaseLock,
   withLock: mockWithLock,
+  isLocked: mockIsLocked,
 }));
 
 // Mock dead letter queue
@@ -253,6 +328,7 @@ export function resetSyncServiceState(syncService: SyncService): void {
 export function setDefaultSyncServiceMocks(): void {
   // Default worker health: unhealthy (in-process polling)
   mockGetWorkerHealthStatus.mockReturnValue({ healthy: false });
+  mockIsLocked.mockResolvedValue(false);
 
   // Default mock implementations
   mockAcquireLock.mockResolvedValue({
@@ -265,6 +341,7 @@ export function setDefaultSyncServiceMocks(): void {
   mockReleaseLock.mockResolvedValue(undefined);
   mockSyncWallet.mockResolvedValue({ addresses: 10, transactions: 5, utxos: 3 });
   mockPopulateMissingTransactionFields.mockResolvedValue({ updated: 0, confirmationUpdates: [] });
+  mockPrismaClient.wallet.findUnique.mockResolvedValue(null);
   mockPrismaClient.wallet.updateMany.mockResolvedValue({ count: 0 });
   mockPrismaClient.wallet.update.mockResolvedValue({});
   mockPrismaClient.address.findMany.mockResolvedValue([]);
@@ -311,6 +388,7 @@ export function setupSyncServiceErrorHandlingTestHooks(): SyncServiceTestContext
 
     mockAcquireLock.mockResolvedValue({ id: 'lock-1', resource: 'test' });
     mockReleaseLock.mockResolvedValue(undefined);
+    mockPrismaClient.wallet.findUnique.mockResolvedValue(null);
     mockPrismaClient.wallet.update.mockResolvedValue({});
     mockPrismaClient.uTXO.aggregate.mockResolvedValue({ _sum: { amount: BigInt(0) } });
   });
@@ -341,4 +419,5 @@ export {
   mockSyncWallet,
   mockUpdateTransactionConfirmations,
   mockWithLock,
+  mockIsLocked,
 };

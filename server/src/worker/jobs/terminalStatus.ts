@@ -15,16 +15,15 @@
  */
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
+import type { WalletSyncStatePatch } from '../../repositories/types';
 
 const log = createLogger('JOB:SYNC_STATUS');
 
 /** Backoff between attempts; its length plus one is the attempt count. */
 const RETRY_BACKOFF_MS = [250, 1_000, 3_000] as const;
 
-type WalletStatusUpdate = Record<string, unknown>;
-
 interface StatusWriter {
-  update: (walletId: string, data: WalletStatusUpdate) => Promise<unknown>;
+  updateSyncState: (walletId: string, data: WalletSyncStatePatch) => Promise<unknown>;
 }
 
 const delay = (ms: number): Promise<void> => new Promise((resolve) => {
@@ -41,12 +40,12 @@ const delay = (ms: number): Promise<void> => new Promise((resolve) => {
  */
 export async function persistTerminalSyncStatus(
   walletId: string,
-  data: WalletStatusUpdate,
+  data: WalletSyncStatePatch,
   writer: StatusWriter,
 ): Promise<boolean> {
   for (let attempt = 0; attempt <= RETRY_BACKOFF_MS.length; attempt += 1) {
     try {
-      await writer.update(walletId, data);
+      await writer.updateSyncState(walletId, data);
       if (attempt > 0) {
         log.info(`Recorded terminal sync status for wallet ${walletId} after ${attempt} retries`);
       }

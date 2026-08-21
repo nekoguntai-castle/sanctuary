@@ -12,7 +12,7 @@ export const RESTORE_DATE_FIELDS: Record<string, readonly string[]> = {
   user: ['createdAt', 'updatedAt', 'emailVerifiedAt'],
   group: ['createdAt', 'updatedAt'],
   groupMember: ['createdAt'],
-  wallet: ['lastSyncedAt', 'createdAt', 'updatedAt'],
+  wallet: ['lastSyncedAt', 'syncNextRetryAt', 'syncStartedAt', 'createdAt', 'updatedAt'],
   walletUser: ['createdAt'],
   hardwareDeviceModel: ['createdAt', 'updatedAt'],
   device: ['createdAt', 'updatedAt'],

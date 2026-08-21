@@ -169,21 +169,35 @@ export function registerSyncServiceAddressMaintenanceTests(context: SyncServiceT
 
       mockPrismaClient.wallet.findMany
         .mockResolvedValueOnce([
-          { id: 'wallet-stuck', name: 'Stuck Wallet' },
-          { id: 'wallet-active', name: 'Active Wallet' },
+          { id: 'wallet-stuck', name: 'Stuck Wallet', syncStateVersion: 1 },
+          { id: 'wallet-active', name: 'Active Wallet', syncStateVersion: 1 },
         ])
         .mockResolvedValueOnce([
           { id: 'wallet-stale-1' },
           { id: 'wallet-stale-2' },
         ]);
+      mockPrismaClient.wallet.updateMany.mockResolvedValueOnce({ count: 1 });
 
       const queueSpy = vi.spyOn(context.syncService as any, 'queueSync');
 
       await context.syncService['checkAndQueueStaleSyncs']();
 
-      expect(mockPrismaClient.wallet.update).toHaveBeenCalledWith({
-        where: { id: 'wallet-stuck' },
-        data: { syncInProgress: false },
+      expect(mockPrismaClient.wallet.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'wallet-stuck',
+          syncInProgress: true,
+          syncExecutionOwner: null,
+          syncStartedAt: null,
+          syncStateVersion: 1,
+        },
+        data: {
+          syncInProgress: false,
+          syncExecutionOwner: null,
+          syncRetryCount: 0,
+          syncNextRetryAt: null,
+          syncStartedAt: null,
+          syncStateVersion: { increment: 1 },
+        },
       });
       expect(queueSpy).toHaveBeenCalledWith('wallet-stale-1', 'low');
       expect(queueSpy).toHaveBeenCalledWith('wallet-stale-2', 'low');
@@ -197,6 +211,23 @@ export function registerSyncServiceAddressMaintenanceTests(context: SyncServiceT
       expect(mockPrismaClient.wallet.findMany).not.toHaveBeenCalled();
     });
 
+    it('does not clear worker-owned progress absent from the API-local active set', async () => {
+      context.syncService['isRunning'] = true;
+      mockPrismaClient.wallet.findMany
+        .mockResolvedValueOnce([{
+          id: 'wallet-worker',
+          name: 'Worker Wallet',
+          syncExecutionOwner: 'worker',
+          syncStartedAt: new Date(),
+          syncStateVersion: 1,
+        }])
+        .mockResolvedValueOnce([]);
+
+      await context.syncService['checkAndQueueStaleSyncs']();
+
+      expect(mockPrismaClient.wallet.updateMany).not.toHaveBeenCalled();
+    });
+
     it('handles stale-check query errors without throwing', async () => {
       context.syncService['isRunning'] = true;
       mockPrismaClient.wallet.findMany.mockRejectedValueOnce(new Error('db down'));
@@ -207,14 +238,28 @@ export function registerSyncServiceAddressMaintenanceTests(context: SyncServiceT
     it('auto-unstucks using wallet id when wallet name is missing', async () => {
       context.syncService['isRunning'] = true;
       mockPrismaClient.wallet.findMany
-        .mockResolvedValueOnce([{ id: 'wallet-unnamed', name: '' }])
+        .mockResolvedValueOnce([{ id: 'wallet-unnamed', name: '', syncStateVersion: 1 }])
         .mockResolvedValueOnce([]);
+      mockPrismaClient.wallet.updateMany.mockResolvedValueOnce({ count: 1 });
 
       await context.syncService['checkAndQueueStaleSyncs']();
 
-      expect(mockPrismaClient.wallet.update).toHaveBeenCalledWith({
-        where: { id: 'wallet-unnamed' },
-        data: { syncInProgress: false },
+      expect(mockPrismaClient.wallet.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'wallet-unnamed',
+          syncInProgress: true,
+          syncExecutionOwner: null,
+          syncStartedAt: null,
+          syncStateVersion: 1,
+        },
+        data: {
+          syncInProgress: false,
+          syncExecutionOwner: null,
+          syncRetryCount: 0,
+          syncNextRetryAt: null,
+          syncStartedAt: null,
+          syncStateVersion: { increment: 1 },
+        },
       });
     });
 
@@ -222,13 +267,13 @@ export function registerSyncServiceAddressMaintenanceTests(context: SyncServiceT
       context.syncService['isRunning'] = true;
       context.syncService['activeSyncs'].add('wallet-active');
       mockPrismaClient.wallet.findMany
-        .mockResolvedValueOnce([{ id: 'wallet-active', name: 'Active Wallet' }])
+        .mockResolvedValueOnce([{ id: 'wallet-active', name: 'Active Wallet', syncStateVersion: 1 }])
         .mockResolvedValueOnce([]);
       const queueSpy = vi.spyOn(context.syncService as any, 'queueSync');
 
       await context.syncService['checkAndQueueStaleSyncs']();
 
-      expect(mockPrismaClient.wallet.update).not.toHaveBeenCalled();
+      expect(mockPrismaClient.wallet.updateMany).not.toHaveBeenCalled();
       expect(queueSpy).not.toHaveBeenCalled();
     });
 
@@ -243,15 +288,28 @@ export function registerSyncServiceAddressMaintenanceTests(context: SyncServiceT
       // lastSyncStatus='retrying' that no reaper selects (2026-08-20).
       mockPrismaClient.wallet.updateMany
         .mockResolvedValueOnce({ count: 0 })   // resetAllStuckSyncFlags
-        .mockResolvedValueOnce({ count: 2 });  // demoteStrandedRetries
+        .mockResolvedValueOnce({ count: 2 });  // demoteStrandedInlineRetries
 
       await context.syncService['resetStuckSyncs']();
 
       expect(mockPrismaClient.wallet.updateMany).toHaveBeenLastCalledWith({
-        where: { lastSyncStatus: 'retrying', syncInProgress: false },
+        where: {
+          lastSyncStatus: 'retrying',
+          OR: [
+            { syncExecutionOwner: null },
+            { syncExecutionOwner: 'inline' },
+          ],
+          syncInProgress: false,
+        },
         data: {
           lastSyncStatus: 'failed',
           lastSyncError: 'Sync retry was interrupted by a restart and did not resume',
+          lastSyncFailureClass: 'other',
+          syncExecutionOwner: null,
+          syncRetryCount: 0,
+          syncNextRetryAt: null,
+          syncStartedAt: null,
+          syncStateVersion: { increment: 1 },
         },
       });
     });

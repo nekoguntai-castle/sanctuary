@@ -101,6 +101,13 @@ describe('syncWalletJob worker → UI bridge', () => {
     });
     expect(bridgeMocks.broadcastWalletLog).toHaveBeenCalledWith('wallet-1',
       expect.objectContaining({ level: 'info', module: 'SYNC', message: 'Sync started' }));
+    expect(bridgeMocks.walletUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        syncInProgress: true,
+        syncExecutionOwner: 'worker',
+        syncStartedAt: expect.any(Date),
+      }),
+    }));
   });
 
   it('announces success with the timestamp it persisted', async () => {
@@ -150,6 +157,15 @@ describe('syncWalletJob worker → UI bridge', () => {
         module: 'SYNC',
         message: 'Sync failed: Electrum unreachable',
       }));
+    expect(bridgeMocks.walletUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        lastSyncFailureClass: 'electrum_unavailable',
+        syncExecutionOwner: null,
+        syncRetryCount: 0,
+        syncNextRetryAt: null,
+        syncStartedAt: null,
+      }),
+    }));
   });
 
   it('marks the last attempt as exhausted', async () => {
@@ -203,10 +219,13 @@ describe('syncWalletJob worker → UI bridge', () => {
 
       expect(bridgeMocks.walletUpdate).toHaveBeenCalledWith(expect.objectContaining({
         where: { id: 'wallet-1' },
-        data: {
+        data: expect.objectContaining({
           lastSyncStatus: 'failed',
           lastSyncError: 'Lock sync:wallet:wallet-1 stayed held for the whole retry budget',
-        },
+          lastSyncFailureClass: 'lock_contention',
+          syncExecutionOwner: null,
+          syncStartedAt: null,
+        }),
       }));
       expect(bridgeMocks.broadcastSyncStatus).toHaveBeenCalledWith('wallet-1', {
         inProgress: false,

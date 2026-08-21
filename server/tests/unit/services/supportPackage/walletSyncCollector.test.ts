@@ -19,7 +19,6 @@ vi.mock('../../../../src/services/supportPackage/collectors/registry', () => ({
 import '../../../../src/services/supportPackage/collectors/walletSync';
 import {
   toFullResyncDriftBucket,
-  toWalletSyncErrorClass,
 } from '../../../../src/services/supportPackage/collectors/walletSync';
 import {
   walletSyncSchema,
@@ -73,22 +72,6 @@ describe('wallet sync collector', () => {
     expect(toFullResyncDriftBucket(drift)).toBe(bucket);
   });
 
-  it.each([
-    ['Sync already in progress', 'lock_contention'],
-    ['Skipping job - lock held: sync:wallet', 'lock_contention'],
-    ['Canonical address script evidence is missing', 'canonical_evidence_missing'],
-    ['Wallet descriptor policy is incomplete', 'descriptor_policy_missing'],
-    ['Prisma connection pool timed out', 'database_unavailable'],
-    ['Wallet sync is off in Node Configuration', 'node_rpc_unavailable'],
-    ['Socket error: connect ECONNREFUSED 127.0.0.1:50001', 'electrum_unavailable'],
-    ['Electrum server refused the request', 'electrum_unavailable'],
-    ['Request timeout after 30000ms', 'timeout'],
-    ['Something nobody has classified yet', 'other'],
-    ['', 'other'],
-  ] as const)('classifies %s as %s without retaining the message', (message, errorClass) => {
-    expect(toWalletSyncErrorClass(message)).toBe(errorClass);
-  });
-
   it('emits aggregate-only counts across every network axis', async () => {
     mockAggregates.mockResolvedValue({
       networks: [
@@ -121,8 +104,8 @@ describe('wallet sync collector', () => {
         }),
       ],
       errorGroups: [
-        { message: 'Electrum server unreachable', count: 1 },
-        { message: 'Request timeout after 30000ms', count: 1 },
+        { failureClass: 'electrum_unavailable', count: 1 },
+        { failureClass: 'timeout', count: 1 },
       ],
     });
 
@@ -176,7 +159,7 @@ describe('wallet sync collector', () => {
   it('counts wallets whose error text was truncated by the group bound as unclassified', async () => {
     mockAggregates.mockResolvedValue({
       networks: [networkRow({ network: 'mainnet', total: 9, failed: 9, withSyncError: 9 })],
-      errorGroups: [{ message: 'Electrum server unreachable', count: 4 }],
+      errorGroups: [{ failureClass: 'electrum_unavailable', count: 4 }],
     });
 
     const result = await collect();
@@ -205,10 +188,7 @@ describe('wallet sync collector', () => {
       networks: [networkRow({
         network: 'mainnet', total: 1, failed: 1, withSyncError: 1,
       })],
-      errorGroups: [{
-        message: `Node returned unexpected txid ${hash} for address ${address}`,
-        count: 1,
-      }],
+      errorGroups: [{ failureClass: 'node_rpc_unavailable', count: 1 }],
     });
 
     const result = await collect();
@@ -234,8 +214,8 @@ describe('wallet sync collector', () => {
           maxFullResyncDrift: 4_000,
           withSyncError: 5_000_000,
         })),
-      errorGroups: Array.from({ length: 200 }, (_, index) => ({
-        message: `Electrum failure variant ${index}`,
+      errorGroups: Array.from({ length: 200 }, () => ({
+        failureClass: 'electrum_unavailable',
         count: 12_345,
       })),
     });
@@ -244,6 +224,19 @@ describe('wallet sync collector', () => {
 
     expect(walletSyncSchema.safeParse(result).success).toBe(true);
     expect(Buffer.byteLength(JSON.stringify(result), 'utf8')).toBeLessThan(MAX_COLLECTOR_BYTES);
+  });
+
+  it('folds an invalid persisted failure class into the bounded other bucket', async () => {
+    mockAggregates.mockResolvedValue({
+      networks: [networkRow({ withSyncError: 2 })],
+      errorGroups: [{ failureClass: 'unexpected_future_value', count: 2 }],
+    });
+
+    const result = await collect();
+
+    expect(result).toMatchObject({
+      errorClasses: { other: 2 },
+    });
   });
 
   it('reports unavailable instead of misleading zeroes on database failure', async () => {

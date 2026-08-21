@@ -29,7 +29,7 @@ const {
 
 vi.mock('../../../../src/repositories', () => ({
   walletRepository: {
-    update: mockUpdate,
+    updateSyncState: mockUpdate,
     findByIdWithSelect: mockFindByIdWithSelect,
     findStale: mockFindStale,
     findStuckWithCutoff: mockFindStuckWithCutoff,

@@ -5,12 +5,20 @@ const {
   mockFindStuckSyncing,
   mockFindStale,
   mockWalletUpdate,
+  mockWithLock,
   mockLogger,
 } = vi.hoisted(() => ({
   mockResetAllStuckSyncFlags: vi.fn<() => Promise<number>>(),
-  mockFindStuckSyncing: vi.fn<() => Promise<Array<{ id: string; name: string }>>>(),
+  mockFindStuckSyncing: vi.fn<() => Promise<Array<{
+    id: string;
+    name: string;
+    syncExecutionOwner?: string | null;
+    syncStartedAt?: Date | null;
+    syncStateVersion?: number;
+  }>>>(),
   mockFindStale: vi.fn<(options: unknown) => Promise<Array<{ id: string }>>>(),
-  mockWalletUpdate: vi.fn<(id: string, data: unknown) => Promise<unknown>>(),
+  mockWalletUpdate: vi.fn<(...args: unknown[]) => Promise<boolean>>(),
+  mockWithLock: vi.fn(),
   mockLogger: {
     debug: vi.fn(),
     info: vi.fn(),
@@ -28,8 +36,12 @@ vi.mock('../../../../src/repositories', () => ({
     resetAllStuckSyncFlags: mockResetAllStuckSyncFlags,
     findStuckSyncing: mockFindStuckSyncing,
     findStale: mockFindStale,
-    update: mockWalletUpdate,
+    clearSyncStateIfUnchanged: mockWalletUpdate,
   },
+}));
+
+vi.mock('../../../../src/infrastructure', () => ({
+  withLock: mockWithLock,
 }));
 
 vi.mock('../../../../src/utils/logger', () => ({
@@ -44,6 +56,7 @@ vi.mock('../../../../src/config', () => ({
   getConfig: () => ({
     sync: {
       staleThresholdMs: 300_000, // 5 minutes
+      maxSyncDurationMs: 120_000,
     },
   }),
 }));
@@ -70,6 +83,11 @@ const makeSyncState = (overrides: Partial<SyncState> = {}): SyncState => ({
 describe('staleWalletChecker', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockWithLock.mockImplementation(async (_key, _ttl, callback) => ({
+      success: true,
+      result: await callback(),
+    }));
+    mockWalletUpdate.mockResolvedValue(true);
   });
 
   describe('resetStuckSyncs', () => {
@@ -121,19 +139,22 @@ describe('staleWalletChecker', () => {
 
       // Stuck wallets
       mockFindStuckSyncing.mockResolvedValueOnce([
-        { id: 'w1', name: 'Stuck Wallet' },
-        { id: 'w2', name: 'Active Wallet' }, // this one IS in activeSyncs
+        { id: 'w1', name: 'Stuck Wallet', syncStateVersion: 1 },
+        { id: 'w2', name: 'Active Wallet', syncStateVersion: 1 }, // this one IS in activeSyncs
       ]);
       // Stale wallets
       mockFindStale.mockResolvedValueOnce([]);
-      mockWalletUpdate.mockResolvedValue({});
-
       const queueSync = vi.fn();
       await checkAndQueueStaleSyncs(state, queueSync);
 
       // Only w1 should be unstuck (w2 is genuinely syncing)
       expect(mockWalletUpdate).toHaveBeenCalledTimes(1);
-      expect(mockWalletUpdate).toHaveBeenCalledWith('w1', { syncInProgress: false });
+      expect(mockWalletUpdate).toHaveBeenCalledWith({
+        id: 'w1',
+        syncExecutionOwner: null,
+        syncStartedAt: null,
+        syncStateVersion: 1,
+      });
       expect(mockLogger.info).toHaveBeenCalledWith(
         expect.stringContaining('Auto-unstuck 1 wallets'),
       );
@@ -157,6 +178,114 @@ describe('staleWalletChecker', () => {
       expect(queueSync).toHaveBeenCalledWith('w2', 'low');
       expect(mockLogger.info).toHaveBeenCalledWith(
         expect.stringContaining('Queued 2 stale wallets'),
+      );
+    });
+
+    it('keeps a fresh worker-owned attempt absent from API-local activity', async () => {
+      mockFindStuckSyncing.mockResolvedValueOnce([{
+        id: 'worker-wallet',
+        name: 'Worker Wallet',
+        syncExecutionOwner: 'worker',
+        syncStartedAt: new Date(),
+        syncStateVersion: 1,
+      }]);
+      mockFindStale.mockResolvedValueOnce([]);
+
+      await checkAndQueueStaleSyncs(makeSyncState(), vi.fn());
+
+      expect(mockWalletUpdate).not.toHaveBeenCalled();
+      expect(mockWithLock).not.toHaveBeenCalled();
+    });
+
+    it('recovers an expired worker-owned row only when its lock is absent', async () => {
+      mockFindStuckSyncing.mockResolvedValueOnce([{
+        id: 'worker-wallet',
+        name: 'Worker Wallet',
+        syncExecutionOwner: 'worker',
+        syncStartedAt: new Date(Date.now() - 600_000),
+        syncStateVersion: 1,
+      }]);
+      mockFindStale.mockResolvedValueOnce([]);
+
+      await checkAndQueueStaleSyncs(makeSyncState(), vi.fn());
+
+      expect(mockWithLock).toHaveBeenCalledWith(
+        'sync:wallet:worker-wallet',
+        30_000,
+        expect.any(Function),
+      );
+      expect(mockWalletUpdate).toHaveBeenCalledWith(expect.objectContaining({
+        id: 'worker-wallet',
+        syncExecutionOwner: 'worker',
+        syncStateVersion: 1,
+      }));
+    });
+
+    it('fails closed when worker lock authority is unavailable', async () => {
+      mockFindStuckSyncing.mockResolvedValueOnce([{
+        id: 'worker-wallet',
+        name: 'Worker Wallet',
+        syncExecutionOwner: 'worker',
+        syncStartedAt: null,
+        syncStateVersion: 1,
+      }]);
+      mockFindStale.mockResolvedValueOnce([]);
+      mockWithLock.mockRejectedValueOnce(new Error('redis unavailable'));
+
+      await checkAndQueueStaleSyncs(makeSyncState(), vi.fn());
+
+      expect(mockWalletUpdate).not.toHaveBeenCalled();
+    });
+
+    it('does not clear a remote inline attempt while its distributed lock is held', async () => {
+      mockFindStuckSyncing.mockResolvedValueOnce([{
+        id: 'inline-wallet',
+        name: 'Remote Inline Wallet',
+        syncExecutionOwner: 'inline',
+        syncStartedAt: new Date(),
+        syncStateVersion: 1,
+      }]);
+      mockFindStale.mockResolvedValueOnce([]);
+      mockWithLock.mockResolvedValueOnce({ success: false });
+
+      await checkAndQueueStaleSyncs(makeSyncState(), vi.fn());
+
+      expect(mockWalletUpdate).not.toHaveBeenCalled();
+    });
+
+    it('fails closed when a candidate lacks an observed state version', async () => {
+      mockFindStuckSyncing.mockResolvedValueOnce([{
+        id: 'unversioned-wallet',
+        name: 'Unversioned Wallet',
+        syncExecutionOwner: 'inline',
+      }]);
+      mockFindStale.mockResolvedValueOnce([]);
+
+      await checkAndQueueStaleSyncs(makeSyncState(), vi.fn());
+
+      expect(mockWithLock).not.toHaveBeenCalled();
+      expect(mockWalletUpdate).not.toHaveBeenCalled();
+    });
+
+    it('does not report a clear when the observed state version changed', async () => {
+      mockFindStuckSyncing.mockResolvedValueOnce([{
+        id: 'changed-wallet',
+        name: 'Changed Wallet',
+        syncExecutionOwner: 'inline',
+        syncStartedAt: null,
+        syncStateVersion: 4,
+      }]);
+      mockFindStale.mockResolvedValueOnce([]);
+      mockWalletUpdate.mockResolvedValueOnce(false);
+
+      await checkAndQueueStaleSyncs(makeSyncState(), vi.fn());
+
+      expect(mockWalletUpdate).toHaveBeenCalledWith(expect.objectContaining({
+        id: 'changed-wallet',
+        syncStateVersion: 4,
+      }));
+      expect(mockLogger.info).not.toHaveBeenCalledWith(
+        expect.stringContaining('Auto-unstuck'),
       );
     });
 

@@ -353,11 +353,14 @@ describe('Sync Jobs', () => {
       await expect(syncWalletJob.handler(job)).rejects.toThrow('reset failed');
       expect(prisma.wallet.update).toHaveBeenCalledWith({
         where: { id: 'wallet-1' },
-        data: {
+        data: expect.objectContaining({
           syncInProgress: false,
           lastSyncStatus: 'failed',
           lastSyncError: 'reset failed',
-        },
+          lastSyncFailureClass: 'other',
+          syncExecutionOwner: null,
+          syncStartedAt: null,
+        }),
       });
       expect(syncWallet).not.toHaveBeenCalled();
     });
@@ -433,7 +436,14 @@ describe('Sync Jobs', () => {
       // Should mark wallet as syncing
       expect(prisma.wallet.update).toHaveBeenCalledWith({
         where: { id: 'wallet-1' },
-        data: { syncInProgress: true },
+        data: expect.objectContaining({
+          syncInProgress: true,
+          syncExecutionOwner: 'worker',
+          syncRetryCount: 0,
+          syncNextRetryAt: null,
+          syncStartedAt: expect.any(Date),
+          syncStateVersion: { increment: 1 },
+        }),
       });
 
       // Should call syncWallet
@@ -445,15 +455,20 @@ describe('Sync Jobs', () => {
       // Should update wallet with success status and block height
       expect(prisma.wallet.update).toHaveBeenCalledWith({
         where: { id: 'wallet-1' },
-        data: {
+        data: expect.objectContaining({
           syncInProgress: false,
           lastSyncedAt: expect.any(Date),
-          lastSyncedBlockHeight: 100000,
           lastSyncStatus: 'success',
           lastSyncError: null,
-        },
+          lastSyncedBlockHeight: 100000,
+          lastSyncFailureClass: null,
+          syncExecutionOwner: null,
+          syncRetryCount: 0,
+          syncNextRetryAt: null,
+          syncStartedAt: null,
+          syncStateVersion: { increment: 1 },
+        }),
       });
-
       expect(result.success).toBe(true);
       expect(result.transactionsFound).toBe(5);
       expect(result.utxosUpdated).toBe(10);
@@ -515,7 +530,11 @@ describe('Sync Jobs', () => {
       await expect(processing).rejects.toMatchObject({ name: 'AbortError' });
       expect(prisma.wallet.update).toHaveBeenNthCalledWith(2, {
         where: { id: 'wallet-abort-mark' },
-        data: { syncInProgress: false },
+        data: expect.objectContaining({
+          syncInProgress: false,
+          syncExecutionOwner: null,
+          syncStartedAt: null,
+        }),
       });
       expect(syncWallet).not.toHaveBeenCalled();
     });
@@ -551,11 +570,14 @@ describe('Sync Jobs', () => {
 
       expect(prisma.wallet.update).toHaveBeenNthCalledWith(2, {
         where: { id: 'wallet-final-abort' },
-        data: {
+        data: expect.objectContaining({
           syncInProgress: false,
           lastSyncStatus: 'failed',
           lastSyncError: 'This operation was aborted',
-        },
+          lastSyncFailureClass: 'sync_cancelled',
+          syncExecutionOwner: null,
+          syncStartedAt: null,
+        }),
       });
       expect(syncWallet).not.toHaveBeenCalled();
     });
@@ -592,7 +614,11 @@ describe('Sync Jobs', () => {
 
       expect(prisma.wallet.update).toHaveBeenNthCalledWith(3, {
         where: { id: 'wallet-final-abort' },
-        data: { syncInProgress: false },
+        data: expect.objectContaining({
+          syncInProgress: false,
+          syncExecutionOwner: null,
+          syncStartedAt: null,
+        }),
       });
       expect(syncWallet).not.toHaveBeenCalled();
     });
@@ -633,11 +659,14 @@ describe('Sync Jobs', () => {
       // Should update wallet with error status
       expect(prisma.wallet.update).toHaveBeenCalledWith({
         where: { id: 'wallet-1' },
-        data: {
+        data: expect.objectContaining({
           syncInProgress: false,
           lastSyncStatus: 'failed',
           lastSyncError: 'Sync failed',
-        },
+          lastSyncFailureClass: 'other',
+          syncExecutionOwner: null,
+          syncStartedAt: null,
+        }),
       });
     });
 
@@ -670,7 +699,11 @@ describe('Sync Jobs', () => {
       expect(prisma.wallet.update).toHaveBeenCalledTimes(6);
       expect(prisma.wallet.update).toHaveBeenNthCalledWith(6, {
         where: { id: 'wallet-1' },
-        data: { syncInProgress: false },
+        data: expect.objectContaining({
+          syncInProgress: false,
+          syncExecutionOwner: null,
+          syncStartedAt: null,
+        }),
       });
       vi.useRealTimers();
     });
@@ -837,8 +870,8 @@ describe('Sync Jobs', () => {
 
     it('should reset stuck syncInProgress flags for wallets exceeding maxSyncDurationMs', async () => {
       const stuckWallets = [
-        { id: 'wallet-stuck-1', name: 'Stuck Wallet 1', lastSyncedAt: new Date('2026-04-08T05:07:00Z') },
-        { id: 'wallet-stuck-2', name: 'Stuck Wallet 2', lastSyncedAt: new Date('2026-04-08T05:08:00Z') },
+        { id: 'wallet-stuck-1', name: 'Stuck Wallet 1', syncStartedAt: new Date('2026-04-08T05:07:00Z') },
+        { id: 'wallet-stuck-2', name: 'Stuck Wallet 2', syncStartedAt: new Date('2026-04-08T05:08:00Z') },
       ];
 
       syncJobPrismaMocks.walletFindMany
@@ -857,11 +890,11 @@ describe('Sync Jobs', () => {
       // Should have reset both stuck wallets
       expect(prisma.wallet.update).toHaveBeenCalledWith({
         where: { id: 'wallet-stuck-1' },
-        data: { syncInProgress: false },
+        data: expect.objectContaining({ syncInProgress: false, syncExecutionOwner: null }),
       });
       expect(prisma.wallet.update).toHaveBeenCalledWith({
         where: { id: 'wallet-stuck-2' },
-        data: { syncInProgress: false },
+        data: expect.objectContaining({ syncInProgress: false, syncExecutionOwner: null }),
       });
     });
 
@@ -929,10 +962,11 @@ describe('Sync Jobs', () => {
           where: {
             syncInProgress: true,
             OR: [
-              { lastSyncedAt: { lt: expect.any(Date) } },
-              { lastSyncedAt: null },
+              { syncStartedAt: { lt: expect.any(Date) } },
+              { syncStartedAt: null },
             ],
           },
+          select: { id: true, name: true, syncStartedAt: true },
         })
       );
     });

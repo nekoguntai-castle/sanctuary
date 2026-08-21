@@ -56,6 +56,12 @@ describe('resyncRepository', () => {
         lastSyncedAt: null,
         lastSyncStatus: 'resyncing',
         lastSyncError: null,
+        lastSyncFailureClass: null,
+        syncExecutionOwner: 'worker',
+        syncRetryCount: 0,
+        syncNextRetryAt: null,
+        syncStartedAt: expect.any(Date),
+        syncStateVersion: { increment: 1 },
         processedFullResyncGeneration: 4,
       },
     });

@@ -8,14 +8,9 @@ import apiClient from './client';
 import type { NetworkType as BitcoinNetworkType } from '@sanctuary/shared/constants/bitcoin';
 import { DEFAULT_SYNC_PRIORITY, type SyncPriority } from '@sanctuary/shared/constants/sync';
 import type { WalletLogEntry } from '../hooks/websocket';
+import type { WalletSyncStatus } from '@sanctuary/shared/types/api';
 
-export interface SyncStatus {
-  lastSyncedAt: string | null;
-  syncStatus: string | null;
-  syncInProgress: boolean;
-  isStale: boolean;
-  queuePosition: number | null;
-}
+export type SyncStatus = WalletSyncStatus;
 
 export interface SyncResult {
   success: boolean;

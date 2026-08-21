@@ -2,10 +2,9 @@
  * Aggregate-only database observation for wallet sync state.
  *
  * The SQL performs all grouping in PostgreSQL and returns counts per network
- * plus deduplicated failure text. Wallet identities, names, descriptors,
- * addresses, and per-wallet rows never cross the repository boundary. The
- * failure text returned here is classified into fixed labels by the collector
- * and is never itself exported.
+ * plus bounded persisted failure classes. Wallet identities, names,
+ * descriptors, addresses, raw errors, and per-wallet rows never cross the
+ * repository boundary.
  */
 import prisma from '../models/prisma';
 import { Prisma } from '../generated/prisma/client';
@@ -32,9 +31,9 @@ export interface WalletSyncNetworkAggregate {
   withSyncError: number;
 }
 
-/** Deduplicated failure text with its wallet count, bounded by MAX_ERROR_GROUPS. */
+/** Persisted failure class with its wallet count. */
 export interface WalletSyncErrorGroup {
-  message: string;
+  failureClass: string;
   count: number;
 }
 
@@ -46,13 +45,12 @@ export interface WalletSyncAggregates {
 const QUERY_TIMEOUT_MS = 2_000;
 
 /**
- * Distinct failure strings are unbounded in principle. The collector treats the
- * difference between `withSyncError` and the returned counts as unclassified,
- * so a truncated grouping under-reports classes rather than losing wallets.
+ * The schema bounds failure classes; this cap remains a fail-safe for malformed
+ * legacy databases rather than cardinality control for raw error text.
  */
 const MAX_ERROR_GROUPS = 200;
 
-/** Return only aggregate counts and deduplicated failure text for wallet sync. */
+/** Return only aggregate counts and bounded failure classes for wallet sync. */
 export async function getWalletSyncAggregates(
   options: { staleThresholdMs: number },
 ): Promise<WalletSyncAggregates> {
@@ -75,13 +73,13 @@ export async function getWalletSyncAggregates(
             AND "lastSyncStatus" NOT IN ('success', 'failed', 'retrying', 'resyncing')
         )::int AS "otherStatus",
         COUNT(*) FILTER (WHERE "syncInProgress")::int AS "syncInProgress",
-        -- A wallet whose reset cleared lastSyncedAt is indistinguishable from one
-        -- that has been in flight since before the cutoff, so both are candidates.
+        -- syncStartedAt is the attempt clock. Null remains a candidate for
+        -- legacy active rows that predate the structured lifecycle contract.
         COUNT(*) FILTER (
           WHERE "syncInProgress"
             AND (
-              "lastSyncedAt" IS NULL
-              OR "lastSyncedAt" < NOW() - make_interval(secs => ${staleThresholdSeconds}::double precision)
+              "syncStartedAt" IS NULL
+              OR "syncStartedAt" < NOW() - make_interval(secs => ${staleThresholdSeconds}::double precision)
             )
         )::int AS "stuckCandidates",
         COUNT(*) FILTER (WHERE "lastSyncedAt" IS NULL)::int AS "ageNever",
@@ -110,11 +108,12 @@ export async function getWalletSyncAggregates(
       GROUP BY "network"
     `);
     const errorGroups = await tx.$queryRaw<WalletSyncErrorGroup[]>(Prisma.sql`
-      SELECT "lastSyncError" AS "message", COUNT(*)::int AS "count"
+      SELECT COALESCE("lastSyncFailureClass", 'other') AS "failureClass",
+             COUNT(*)::int AS "count"
       FROM "wallets"
       WHERE "lastSyncError" IS NOT NULL
-      GROUP BY "lastSyncError"
-      ORDER BY COUNT(*) DESC, "lastSyncError" ASC
+      GROUP BY COALESCE("lastSyncFailureClass", 'other')
+      ORDER BY COUNT(*) DESC, COALESCE("lastSyncFailureClass", 'other') ASC
       LIMIT ${MAX_ERROR_GROUPS}
     `);
     return { networks, errorGroups };

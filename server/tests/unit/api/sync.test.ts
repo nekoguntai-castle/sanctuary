@@ -388,7 +388,13 @@ describe('Sync API - Network Endpoints', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-      expect(mockWalletRepository.updateSyncState).toHaveBeenCalledWith('wallet-1', { syncInProgress: false });
+      expect(mockWalletRepository.updateSyncState).toHaveBeenCalledWith('wallet-1', {
+        syncInProgress: false,
+        syncExecutionOwner: null,
+        syncRetryCount: 0,
+        syncNextRetryAt: null,
+        syncStartedAt: null,
+      });
     });
 
     it('POST /sync/reset/:walletId returns 404 when wallet missing', async () => {

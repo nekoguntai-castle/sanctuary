@@ -37,7 +37,8 @@ import type { SyncState, SyncResult } from "./types";
 import { processQueue } from "./syncQueue";
 import { isNetworkDisabledError } from "../bitcoin/errors";
 import { scheduleWalletLockAuthorityRetry } from "./lockAuthorityRecovery";
-import { formatRetryError, resumeRetryCount } from "./retryLadder";
+import { classifyWalletSyncFailure } from "./failureClassification";
+import { resumeRetryCount } from "./retryLadder";
 
 const log = createLogger("SYNC:SVC_WALLET");
 
@@ -135,7 +136,7 @@ export async function executeSyncJob(
   // position the wallet had actually reached.
   if (retryCount === 0) {
     const persisted = await walletRepository
-      .findByIdWithSelect(walletId, { lastSyncStatus: true, lastSyncError: true })
+      .findSyncState(walletId)
       .catch(() => null);
     retryCount = resumeRetryCount(persisted, getConfig().sync.maxRetryAttempts);
   }
@@ -186,8 +187,15 @@ export async function executeSyncJob(
     state.pendingRetries.delete(walletId);
   }
 
-  // Mark sync in progress
-  await walletRepository.update(walletId, { syncInProgress: true });
+  // Mark this structured attempt before doing any wallet work. The inline
+  // owner distinguishes its heap-timer retry from BullMQ's durable retries.
+  await walletRepository.updateSyncState(walletId, {
+    syncInProgress: true,
+    syncExecutionOwner: "inline",
+    syncRetryCount: retryCount,
+    syncNextRetryAt: null,
+    syncStartedAt: new Date(),
+  });
 
   // Get retry config
   const syncConfig = getConfig().sync;
@@ -303,11 +311,17 @@ export async function executeSyncJob(
     const newTotal = newBalances.confirmed + newBalances.unconfirmed;
 
     // Update sync metadata
-    await walletRepository.update(walletId, {
-      lastSyncedAt: new Date(),
+    const syncedAt = new Date();
+    await walletRepository.updateSyncState(walletId, {
+      lastSyncedAt: syncedAt,
       lastSyncStatus: "success",
       lastSyncError: null,
+      lastSyncFailureClass: null,
       syncInProgress: false,
+      syncExecutionOwner: null,
+      syncRetryCount: 0,
+      syncNextRetryAt: null,
+      syncStartedAt: null,
     });
 
     const duration = Date.now() - startTime;
@@ -338,7 +352,7 @@ export async function executeSyncJob(
     notificationService.broadcastSyncStatus(walletId, {
       inProgress: false,
       status: "success",
-      lastSyncedAt: new Date(),
+      lastSyncedAt: syncedAt,
     });
 
     // Notify via WebSocket if balance changed (confirmed or unconfirmed)
@@ -379,6 +393,7 @@ export async function executeSyncJob(
       const delayMs =
         syncConfig.retryDelaysMs[retryCount] ||
         syncConfig.retryDelaysMs[syncConfig.retryDelaysMs.length - 1];
+      const nextRetryAt = new Date(Date.now() + delayMs);
 
       log.info(
         `[SYNC] Will retry wallet ${walletId} in ${delayMs / 1000}s (attempt ${nextRetry}/${syncConfig.maxRetryAttempts})`,
@@ -405,10 +420,15 @@ export async function executeSyncJob(
       });
 
       // Update DB to show retrying state
-      await walletRepository.update(walletId, {
+      await walletRepository.updateSyncState(walletId, {
         lastSyncStatus: "retrying",
-        lastSyncError: formatRetryError(errorMessage, nextRetry, syncConfig.maxRetryAttempts),
+        lastSyncError: errorMessage,
+        lastSyncFailureClass: classifyWalletSyncFailure(errorMessage),
         syncInProgress: false, // Will be set to true when retry starts
+        syncExecutionOwner: "inline",
+        syncRetryCount: nextRetry,
+        syncNextRetryAt: nextRetryAt,
+        syncStartedAt: null,
       });
 
       // Release distributed lock so retry can acquire it fresh
@@ -463,10 +483,15 @@ export async function executeSyncJob(
     );
 
     // Update sync metadata with final error
-    await walletRepository.update(walletId, {
+    await walletRepository.updateSyncState(walletId, {
       lastSyncStatus: "failed",
       lastSyncError: errorMessage,
+      lastSyncFailureClass: classifyWalletSyncFailure(errorMessage),
       syncInProgress: false,
+      syncExecutionOwner: null,
+      syncRetryCount: 0,
+      syncNextRetryAt: null,
+      syncStartedAt: null,
     });
 
     // Notify sync failure via WebSocket

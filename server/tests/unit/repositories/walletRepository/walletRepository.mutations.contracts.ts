@@ -28,6 +28,68 @@ export const registerWalletRepositoryMutationContracts = () => {
         data: {
           syncInProgress: true,
           lastSyncStatus: 'syncing',
+          syncStateVersion: { increment: 1 },
+        },
+      });
+    });
+  });
+
+  describe('findSyncState', () => {
+    it('selects only the authoritative lifecycle snapshot', async () => {
+      const snapshot = {
+        syncInProgress: true,
+        lastSyncedAt: null,
+        lastSyncStatus: 'retrying',
+        lastSyncError: 'temporary failure',
+        lastSyncFailureClass: 'other',
+        syncExecutionOwner: 'inline',
+        syncRetryCount: 1,
+        syncNextRetryAt: new Date('2026-08-20T12:01:00.000Z'),
+        syncStartedAt: null,
+        syncStateVersion: 4,
+      };
+      (prisma.wallet.findUnique as Mock).mockResolvedValue(snapshot);
+
+      await expect(walletRepository.findSyncState('wallet-123')).resolves.toEqual(snapshot);
+      expect(prisma.wallet.findUnique).toHaveBeenCalledWith({
+        where: { id: 'wallet-123' },
+        select: {
+          syncInProgress: true,
+          lastSyncedAt: true,
+          lastSyncStatus: true,
+          lastSyncError: true,
+          lastSyncFailureClass: true,
+          syncExecutionOwner: true,
+          syncRetryCount: true,
+          syncNextRetryAt: true,
+          syncStartedAt: true,
+          syncStateVersion: true,
+        },
+      });
+    });
+  });
+
+  describe('completeSyncSuccess', () => {
+    it('commits block height and lifecycle success atomically', async () => {
+      const syncedAt = new Date('2026-08-20T12:00:00.000Z');
+      (prisma.wallet.update as Mock).mockResolvedValue(mockWallet);
+
+      await walletRepository.completeSyncSuccess('wallet-123', syncedAt, 900_000);
+
+      expect(prisma.wallet.update).toHaveBeenCalledWith({
+        where: { id: 'wallet-123' },
+        data: {
+          lastSyncedAt: syncedAt,
+          lastSyncedBlockHeight: 900_000,
+          lastSyncStatus: 'success',
+          lastSyncError: null,
+          lastSyncFailureClass: null,
+          syncInProgress: false,
+          syncExecutionOwner: null,
+          syncRetryCount: 0,
+          syncNextRetryAt: null,
+          syncStartedAt: null,
+          syncStateVersion: { increment: 1 },
         },
       });
     });
@@ -54,6 +116,13 @@ export const registerWalletRepositoryMutationContracts = () => {
           syncInProgress: false,
           lastSyncedAt: null,
           lastSyncStatus: null,
+          lastSyncError: null,
+          lastSyncFailureClass: null,
+          syncExecutionOwner: null,
+          syncRetryCount: 0,
+          syncNextRetryAt: null,
+          syncStartedAt: null,
+          syncStateVersion: { increment: 1 },
         },
       });
     });
@@ -371,8 +440,21 @@ export const registerWalletRepositoryMutationContracts = () => {
 
       expect(result).toBe(3);
       expect(prisma.wallet.updateMany).toHaveBeenCalledWith({
-        where: { syncInProgress: true },
-        data: { syncInProgress: false },
+        where: {
+          syncInProgress: true,
+          OR: [
+            { syncExecutionOwner: null },
+            { syncExecutionOwner: 'inline' },
+          ],
+        },
+        data: {
+          syncInProgress: false,
+          syncExecutionOwner: null,
+          syncRetryCount: 0,
+          syncNextRetryAt: null,
+          syncStartedAt: null,
+          syncStateVersion: { increment: 1 },
+        },
       });
     });
 
@@ -395,19 +477,58 @@ export const registerWalletRepositoryMutationContracts = () => {
       expect(result).toEqual(stuck);
       expect(prisma.wallet.findMany).toHaveBeenCalledWith({
         where: { syncInProgress: true },
-        select: { id: true, name: true },
+        select: {
+          id: true,
+          name: true,
+          syncExecutionOwner: true,
+          syncStartedAt: true,
+          syncStateVersion: true,
+        },
+        orderBy: [
+          { syncStartedAt: 'asc' },
+          { id: 'asc' },
+        ],
+        take: 100,
+      });
+    });
+  });
+
+  describe('clearSyncStateIfUnchanged', () => {
+    it('uses the observed lifecycle version as a compare-and-swap guard', async () => {
+      (prisma.wallet.updateMany as Mock).mockResolvedValue({ count: 1 });
+      const startedAt = new Date('2026-08-20T12:00:00.000Z');
+      const candidate = {
+        id: 'wallet-123',
+        syncExecutionOwner: 'worker',
+        syncStartedAt: startedAt,
+        syncStateVersion: 7,
+      };
+
+      await expect(walletRepository.clearSyncStateIfUnchanged(candidate)).resolves.toBe(true);
+      expect(prisma.wallet.updateMany).toHaveBeenCalledWith({
+        where: {
+          ...candidate,
+          syncInProgress: true,
+        },
+        data: {
+          syncInProgress: false,
+          syncExecutionOwner: null,
+          syncRetryCount: 0,
+          syncNextRetryAt: null,
+          syncStartedAt: null,
+          syncStateVersion: { increment: 1 },
+        },
       });
     });
 
-    it('should use custom select when provided', async () => {
-      (prisma.wallet.findMany as Mock).mockResolvedValue([]);
-
-      await walletRepository.findStuckSyncing({ id: true, name: true, lastSyncedAt: true });
-
-      expect(prisma.wallet.findMany).toHaveBeenCalledWith({
-        where: { syncInProgress: true },
-        select: { id: true, name: true, lastSyncedAt: true },
-      });
+    it('reports a stale observation when no row matches', async () => {
+      (prisma.wallet.updateMany as Mock).mockResolvedValue({ count: 0 });
+      await expect(walletRepository.clearSyncStateIfUnchanged({
+        id: 'wallet-123',
+        syncExecutionOwner: null,
+        syncStartedAt: null,
+        syncStateVersion: 1,
+      })).resolves.toBe(false);
     });
   });
 
@@ -423,24 +544,40 @@ export const registerWalletRepositoryMutationContracts = () => {
     });
   });
 
-  describe('demoteStrandedRetries', () => {
-    it('demotes only retrying rows that no longer have a sync in flight', async () => {
+  describe('demoteStrandedInlineRetries', () => {
+    it('demotes inline and legacy retrying rows that have no sync in flight', async () => {
       // The retry ladder is an in-heap setTimeout, so a restart leaves
       // lastSyncStatus='retrying' with no timer and no reaper that selects it
       // (findStuckWithCutoff requires syncInProgress=true). 2026-08-20.
       prisma.wallet.updateMany.mockResolvedValueOnce({ count: 2 });
 
-      await expect(walletRepository.demoteStrandedRetries('restarted')).resolves.toBe(2);
+      await expect(walletRepository.demoteStrandedInlineRetries('restarted', 'other')).resolves.toBe(2);
 
       expect(prisma.wallet.updateMany).toHaveBeenCalledWith({
-        where: { lastSyncStatus: 'retrying', syncInProgress: false },
-        data: { lastSyncStatus: 'failed', lastSyncError: 'restarted' },
+        where: {
+          lastSyncStatus: 'retrying',
+          OR: [
+            { syncExecutionOwner: null },
+            { syncExecutionOwner: 'inline' },
+          ],
+          syncInProgress: false,
+        },
+        data: {
+          lastSyncStatus: 'failed',
+          lastSyncError: 'restarted',
+          lastSyncFailureClass: 'other',
+          syncExecutionOwner: null,
+          syncRetryCount: 0,
+          syncNextRetryAt: null,
+          syncStartedAt: null,
+          syncStateVersion: { increment: 1 },
+        },
       });
     });
 
     it('reports zero when nothing was stranded', async () => {
       prisma.wallet.updateMany.mockResolvedValueOnce({ count: 0 });
-      await expect(walletRepository.demoteStrandedRetries('restarted')).resolves.toBe(0);
+      await expect(walletRepository.demoteStrandedInlineRetries('restarted', 'other')).resolves.toBe(0);
     });
   });
 };

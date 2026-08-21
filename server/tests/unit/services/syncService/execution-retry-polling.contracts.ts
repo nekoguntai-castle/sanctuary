@@ -141,7 +141,9 @@ export function registerSyncServiceExecutionRetryPollingTests(
       mockAcquireLock.mockResolvedValue(null);
       mockPrismaClient.wallet.findUnique.mockResolvedValueOnce({
         lastSyncStatus: "retrying",
-        lastSyncError: "boom (retrying 2/3)",
+        lastSyncError: "boom",
+        syncExecutionOwner: "inline",
+        syncRetryCount: 2,
       });
       const state = context.syncService["state"];
       state.pendingRetries.clear();
@@ -269,6 +271,7 @@ export function registerSyncServiceExecutionRetryPollingTests(
   describe("retry logic", () => {
     it("should retry on failure", async () => {
       context.syncService["isRunning"] = true;
+      vi.setSystemTime(new Date("2026-08-20T12:00:00.000Z"));
 
       mockPrismaClient.wallet.update.mockResolvedValue({});
       mockPrismaClient.uTXO.aggregate.mockResolvedValue({
@@ -280,6 +283,74 @@ export function registerSyncServiceExecutionRetryPollingTests(
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("retrying");
+      expect(mockPrismaClient.wallet.update).toHaveBeenLastCalledWith({
+        where: { id: "wallet-1" },
+        data: {
+          lastSyncStatus: "retrying",
+          lastSyncError: "Connection failed",
+          lastSyncFailureClass: "other",
+          syncInProgress: false,
+          syncExecutionOwner: "inline",
+          syncRetryCount: 1,
+          syncNextRetryAt: new Date("2026-08-20T12:00:01.000Z"),
+          syncStartedAt: null,
+        },
+      });
+    });
+
+    it("persists structured inline ownership when an attempt starts", async () => {
+      context.syncService["isRunning"] = true;
+      vi.setSystemTime(new Date("2026-08-20T12:00:00.000Z"));
+      mockPrismaClient.wallet.update.mockResolvedValue({});
+      mockPrismaClient.uTXO.aggregate.mockResolvedValue({
+        _sum: { amount: BigInt(0) },
+      });
+
+      await context.syncService.syncNow("wallet-started");
+
+      expect(mockPrismaClient.wallet.update).toHaveBeenNthCalledWith(1, {
+        where: { id: "wallet-started" },
+        data: {
+          syncInProgress: true,
+          syncExecutionOwner: "inline",
+          syncRetryCount: 0,
+          syncNextRetryAt: null,
+          syncStartedAt: new Date("2026-08-20T12:00:00.000Z"),
+        },
+      });
+    });
+
+    it("clears structured execution state after a successful inline sync", async () => {
+      context.syncService["isRunning"] = true;
+      vi.setSystemTime(new Date("2026-08-20T12:00:00.000Z"));
+      mockPrismaClient.wallet.update.mockResolvedValue({});
+      mockPrismaClient.uTXO.aggregate.mockResolvedValue({
+        _sum: { amount: BigInt(0) },
+      });
+
+      await context.syncService.syncNow("wallet-success");
+
+      expect(mockPrismaClient.wallet.update).toHaveBeenLastCalledWith({
+        where: { id: "wallet-success" },
+        data: {
+          lastSyncedAt: new Date("2026-08-20T12:00:00.000Z"),
+          lastSyncStatus: "success",
+          lastSyncError: null,
+          lastSyncFailureClass: null,
+          syncInProgress: false,
+          syncExecutionOwner: null,
+          syncRetryCount: 0,
+          syncNextRetryAt: null,
+          syncStartedAt: null,
+        },
+      });
+      expect(mockNotificationService.broadcastSyncStatus).toHaveBeenCalledWith(
+        "wallet-success",
+        expect.objectContaining({
+          status: "success",
+          lastSyncedAt: new Date("2026-08-20T12:00:00.000Z"),
+        }),
+      );
     });
 
     it("does not retry when the wallet network is disabled in node config", async () => {
@@ -311,7 +382,12 @@ export function registerSyncServiceExecutionRetryPollingTests(
             lastSyncError: expect.stringContaining(
               "Testnet sync is off in Node Configuration",
             ),
+            lastSyncFailureClass: "node_rpc_unavailable",
             syncInProgress: false,
+            syncExecutionOwner: null,
+            syncRetryCount: 0,
+            syncNextRetryAt: null,
+            syncStartedAt: null,
           }),
         }),
       );

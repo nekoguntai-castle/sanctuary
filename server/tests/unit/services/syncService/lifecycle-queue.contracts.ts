@@ -65,8 +65,18 @@ export function registerSyncServiceLifecycleQueueTests(context: SyncServiceTestC
       await context.syncService.start();
 
       expect(mockPrismaClient.wallet.updateMany).toHaveBeenCalledWith({
-        where: { syncInProgress: true },
-        data: { syncInProgress: false },
+        where: {
+          syncInProgress: true,
+          OR: [{ syncExecutionOwner: null }, { syncExecutionOwner: 'inline' }],
+        },
+        data: {
+          syncInProgress: false,
+          syncExecutionOwner: null,
+          syncRetryCount: 0,
+          syncNextRetryAt: null,
+          syncStartedAt: null,
+          syncStateVersion: { increment: 1 },
+        },
       });
     });
 
@@ -368,6 +378,31 @@ export function registerSyncServiceLifecycleQueueTests(context: SyncServiceTestC
 
       expect(status.syncStatus).toBe('success');
       expect(status.syncInProgress).toBe(false);
+    });
+
+    it('reports worker-owned progress from authoritative persisted state', async () => {
+      const startedAt = new Date('2026-08-20T12:00:00.000Z');
+      mockPrismaClient.wallet.findUnique.mockResolvedValue({
+        lastSyncedAt: null,
+        lastSyncStatus: 'syncing',
+        syncInProgress: true,
+        syncExecutionOwner: 'worker',
+        syncRetryCount: 0,
+        syncNextRetryAt: null,
+        syncStartedAt: startedAt,
+        syncStateVersion: 7,
+      });
+
+      const status = await context.syncService.getSyncStatus('wallet-worker');
+
+      expect(status).toMatchObject({
+        syncInProgress: true,
+        executionOwner: 'worker',
+        retryCount: 0,
+        nextRetryAt: null,
+        startedAt,
+        stateVersion: 7,
+      });
     });
 
     it('should detect stale wallets', async () => {

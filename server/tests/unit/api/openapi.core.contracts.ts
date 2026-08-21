@@ -572,7 +572,25 @@ export function registerOpenApiCoreTests() {
       "syncInProgress",
       "isStale",
       "queuePosition",
+      "executionOwner",
+      "retryCount",
+      "nextRetryAt",
+      "startedAt",
+      "stateVersion",
     ]);
+    expect(openApiSpec.components.schemas.WalletSyncStatus.properties).toMatchObject({
+      executionOwner: {
+        enum: ["inline", "worker"],
+        nullable: true,
+      },
+      retryCount: { minimum: 0 },
+      nextRetryAt: { format: "date-time", nullable: true },
+      startedAt: { format: "date-time", nullable: true },
+      stateVersion: { minimum: 0 },
+    });
+    expect(
+      openApiSpec.components.schemas.QueuedWalletSyncResponse.properties,
+    ).not.toHaveProperty("executionOwner");
     expect(
       openApiSpec.components.schemas.WalletSyncLogsResponse.required,
     ).toEqual(["logs"]);

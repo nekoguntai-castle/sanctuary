@@ -221,7 +221,13 @@ export class SyncCoordinator {
 
   async resetWalletSyncState(userId: string, walletId: string): Promise<ResetWalletSyncResponse> {
     await requireWalletAccess(walletId, userId);
-    await walletRepository.updateSyncState(walletId, { syncInProgress: false });
+    await walletRepository.updateSyncState(walletId, {
+      syncInProgress: false,
+      syncExecutionOwner: null,
+      syncRetryCount: 0,
+      syncNextRetryAt: null,
+      syncStartedAt: null,
+    });
 
     return {
       success: true,

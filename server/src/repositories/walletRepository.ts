@@ -12,6 +12,7 @@ import type {
   NetworkType,
   WalletWithAddresses,
   WalletSyncState,
+  WalletSyncStatePatch,
   CursorPaginationOptions,
   CursorPaginatedResult,
 } from './types';
@@ -149,16 +150,62 @@ export async function getIdsByNetwork(
 }
 
 /**
- * Update wallet sync state
+ * Update wallet sync state and advance the CAS token used by stale recovery.
  */
 export async function updateSyncState(
   walletId: string,
-  state: Partial<WalletSyncState>
+  state: WalletSyncStatePatch
 ): Promise<Wallet> {
   return prisma.wallet.update({
     where: { id: walletId },
-    data: state,
+    data: {
+      ...state,
+      syncStateVersion: { increment: 1 },
+    },
   });
+}
+
+/** Atomically persist a worker sync's success metadata and lifecycle state. */
+export async function completeSyncSuccess(
+  walletId: string,
+  lastSyncedAt: Date,
+  lastSyncedBlockHeight: number,
+): Promise<Wallet> {
+  return prisma.wallet.update({
+    where: { id: walletId },
+    data: {
+      lastSyncedAt,
+      lastSyncedBlockHeight,
+      lastSyncStatus: 'success',
+      lastSyncError: null,
+      lastSyncFailureClass: null,
+      syncInProgress: false,
+      syncExecutionOwner: null,
+      syncRetryCount: 0,
+      syncNextRetryAt: null,
+      syncStartedAt: null,
+      syncStateVersion: { increment: 1 },
+    },
+  });
+}
+
+/** Read the authoritative persisted sync lifecycle state. */
+export async function findSyncState(walletId: string): Promise<WalletSyncState | null> {
+  return prisma.wallet.findUnique({
+    where: { id: walletId },
+    select: {
+      syncInProgress: true,
+      lastSyncedAt: true,
+      lastSyncStatus: true,
+      lastSyncError: true,
+      lastSyncFailureClass: true,
+      syncExecutionOwner: true,
+      syncRetryCount: true,
+      syncNextRetryAt: true,
+      syncStartedAt: true,
+      syncStateVersion: true,
+    },
+  }) as Promise<WalletSyncState | null>;
 }
 
 /**
@@ -171,6 +218,13 @@ export async function resetSyncState(walletId: string): Promise<Wallet> {
       syncInProgress: false,
       lastSyncedAt: null,
       lastSyncStatus: null,
+      lastSyncError: null,
+      lastSyncFailureClass: null,
+      syncExecutionOwner: null,
+      syncRetryCount: 0,
+      syncNextRetryAt: null,
+      syncStartedAt: null,
+      syncStateVersion: { increment: 1 },
     },
   });
 }
@@ -363,13 +417,27 @@ export async function findNetwork(walletId: string): Promise<string | null> {
 }
 
 /**
- * Reset all wallets with syncInProgress=true (batch updateMany)
- * Used on startup to clear stale flags from previous server sessions.
+ * Reset inline or legacy rows left active by an API-process restart.
+ * Worker-owned attempts remain authoritative in BullMQ and must not be cleared
+ * merely because an API process restarted.
  */
 export async function resetAllStuckSyncFlags(): Promise<number> {
   const result = await prisma.wallet.updateMany({
-    where: { syncInProgress: true },
-    data: { syncInProgress: false },
+    where: {
+      syncInProgress: true,
+      OR: [
+        { syncExecutionOwner: null },
+        { syncExecutionOwner: 'inline' },
+      ],
+    },
+    data: {
+      syncInProgress: false,
+      syncExecutionOwner: null,
+      syncRetryCount: 0,
+      syncNextRetryAt: null,
+      syncStartedAt: null,
+      syncStateVersion: { increment: 1 },
+    },
   });
   return result.count;
 }
@@ -383,26 +451,89 @@ export async function resetAllStuckSyncFlags(): Promise<number> {
  * `syncInProgress = true`, which a retrying row never has. The badge then reads
  * "Retrying" forever over work nothing is doing.
  *
- * Scoped to `syncInProgress = false` so a retry that has already been picked up
- * again is left alone.
+ * Scoped to inline-owned rows and legacy null-owner rows because BullMQ owns
+ * worker retry durability. `syncInProgress = false` leaves picked-up work alone.
  */
-export async function demoteStrandedRetries(reason: string): Promise<number> {
+export async function demoteStrandedInlineRetries(
+  reason: string,
+  failureClass: WalletSyncState['lastSyncFailureClass'],
+): Promise<number> {
   const result = await prisma.wallet.updateMany({
-    where: { lastSyncStatus: 'retrying', syncInProgress: false },
-    data: { lastSyncStatus: 'failed', lastSyncError: reason },
+    where: {
+      lastSyncStatus: 'retrying',
+      OR: [
+        { syncExecutionOwner: null },
+        { syncExecutionOwner: 'inline' },
+      ],
+      syncInProgress: false,
+    },
+    data: {
+      lastSyncStatus: 'failed',
+      lastSyncError: reason,
+      lastSyncFailureClass: failureClass,
+      syncExecutionOwner: null,
+      syncRetryCount: 0,
+      syncNextRetryAt: null,
+      syncStartedAt: null,
+      syncStateVersion: { increment: 1 },
+    },
   });
   return result.count;
+}
+
+/** Clear a stale active row only if its observed lifecycle snapshot is current. */
+export async function clearSyncStateIfUnchanged(candidate: {
+  id: string;
+  syncExecutionOwner: string | null;
+  syncStartedAt: Date | null;
+  syncStateVersion: number;
+}): Promise<boolean> {
+  const result = await prisma.wallet.updateMany({
+    where: {
+      id: candidate.id,
+      syncInProgress: true,
+      syncExecutionOwner: candidate.syncExecutionOwner,
+      syncStartedAt: candidate.syncStartedAt,
+      syncStateVersion: candidate.syncStateVersion,
+    },
+    data: {
+      syncInProgress: false,
+      syncExecutionOwner: null,
+      syncRetryCount: 0,
+      syncNextRetryAt: null,
+      syncStartedAt: null,
+      syncStateVersion: { increment: 1 },
+    },
+  });
+  return result.count === 1;
 }
 
 /**
  * Find wallets currently marked as syncing
  */
-export async function findStuckSyncing(
-  select?: { id: true; name: true; lastSyncedAt?: true }
-): Promise<Array<{ id: string; name: string; lastSyncedAt?: Date | null }>> {
+export async function findStuckSyncing(): Promise<Array<{
+  id: string;
+  name: string;
+  syncExecutionOwner?: string | null;
+  syncStartedAt?: Date | null;
+  syncStateVersion?: number;
+}>> {
   return prisma.wallet.findMany({
     where: { syncInProgress: true },
-    select: select ?? { id: true, name: true },
+    select: {
+      id: true,
+      name: true,
+      syncExecutionOwner: true,
+      syncStartedAt: true,
+      syncStateVersion: true,
+    },
+    orderBy: [
+      { syncStartedAt: 'asc' },
+      { id: 'asc' },
+    ],
+    // Bound lock-authority work per sweep. Cleared rows leave this ordered
+    // population, so subsequent sweeps deterministically advance through it.
+    take: 100,
   });
 }
 
@@ -429,20 +560,21 @@ export async function findStale(options: {
 }
 
 /**
- * Find stuck wallets (syncInProgress=true AND not synced recently)
+ * Find stuck wallets by the current attempt start time. Null start times are
+ * legacy candidates and still require the caller's lock-authority probe.
  */
 export async function findStuckWithCutoff(
   cutoff: Date
-): Promise<Array<{ id: string; name: string; lastSyncedAt: Date | null }>> {
+): Promise<Array<{ id: string; name: string; syncStartedAt: Date | null }>> {
   return prisma.wallet.findMany({
     where: {
       syncInProgress: true,
       OR: [
-        { lastSyncedAt: { lt: cutoff } },
-        { lastSyncedAt: null },
+        { syncStartedAt: { lt: cutoff } },
+        { syncStartedAt: null },
       ],
     },
-    select: { id: true, name: true, lastSyncedAt: true },
+    select: { id: true, name: true, syncStartedAt: true },
   });
 }
 
@@ -720,6 +852,8 @@ export const walletRepository = {
   findByNetworkWithSyncStatus,
   getIdsByNetwork,
   updateSyncState,
+  completeSyncSuccess,
+  findSyncState,
   resetSyncState,
   update,
   hasAccess,
@@ -735,7 +869,8 @@ export const walletRepository = {
   findNameById,
   findNetwork,
   resetAllStuckSyncFlags,
-  demoteStrandedRetries,
+  demoteStrandedInlineRetries,
+  clearSyncStateIfUnchanged,
   findStuckSyncing,
   findStale,
   findStuckWithCutoff,

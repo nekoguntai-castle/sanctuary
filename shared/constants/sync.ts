@@ -8,6 +8,30 @@
 export const SYNC_PRIORITY_VALUES = ['high', 'normal', 'low'] as const;
 export type SyncPriority = (typeof SYNC_PRIORITY_VALUES)[number];
 
+/** Adapter that owns the current persisted sync attempt. */
+export const SYNC_EXECUTION_OWNER_VALUES = ['inline', 'worker'] as const;
+export type SyncExecutionOwner = (typeof SYNC_EXECUTION_OWNER_VALUES)[number];
+
+/**
+ * Privacy-safe failure taxonomy persisted with wallet sync state.
+ *
+ * Free-form diagnostic detail remains in `lastSyncError`; only these bounded
+ * values are suitable for control flow and aggregate support diagnostics.
+ */
+export const WALLET_SYNC_FAILURE_CLASS_VALUES = [
+  'electrum_unavailable',
+  'node_rpc_unavailable',
+  'descriptor_policy_missing',
+  'canonical_evidence_missing',
+  'evidence_authentication_failed',
+  'lock_contention',
+  'timeout',
+  'sync_cancelled',
+  'database_unavailable',
+  'other',
+] as const;
+export type WalletSyncFailureClass = (typeof WALLET_SYNC_FAILURE_CLASS_VALUES)[number];
+
 export const DEFAULT_SYNC_PRIORITY: SyncPriority = 'normal';
 
 export const SYNC_PRIORITY_SORT_ORDER: Record<SyncPriority, number> = {
@@ -24,4 +48,14 @@ export const SYNC_PRIORITY_BULLMQ_PRIORITY: Record<SyncPriority, number> = {
 
 export function isSyncPriority(value: unknown): value is SyncPriority {
   return typeof value === 'string' && (SYNC_PRIORITY_VALUES as readonly string[]).includes(value);
+}
+
+export function isSyncExecutionOwner(value: unknown): value is SyncExecutionOwner {
+  return typeof value === 'string'
+    && (SYNC_EXECUTION_OWNER_VALUES as readonly string[]).includes(value);
+}
+
+export function isWalletSyncFailureClass(value: unknown): value is WalletSyncFailureClass {
+  return typeof value === 'string'
+    && (WALLET_SYNC_FAILURE_CLASS_VALUES as readonly string[]).includes(value);
 }

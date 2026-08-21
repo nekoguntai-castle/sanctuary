@@ -11,6 +11,7 @@ import {
   type WalletSyncAggregates,
 } from '../../../repositories/supportWalletSyncDiagnosticsRepository';
 import { BITCOIN_NETWORKS, type NetworkType } from '@sanctuary/shared/constants/bitcoin';
+import { isWalletSyncFailureClass } from '@sanctuary/shared/constants/sync';
 import { registerShareableCollector } from './registry';
 import {
   MAX_WALLET_SYNC_COUNT,
@@ -37,50 +38,6 @@ interface NetworkSection {
   syncInProgressCount: number;
   stuckCandidatesCount: number;
   fullResyncPendingCount: number;
-}
-
-/**
- * First match wins. Patterns are ordered most specific first so that a message
- * naming both a subsystem and a symptom is attributed to the subsystem.
- */
-const ERROR_CLASS_PATTERNS: readonly (readonly [WalletSyncErrorClass, RegExp])[] = [
-  // Ordered before `canonical_evidence_missing`: the gate's message says
-  // "evidence" and that class matches /canonical/i, so the two never competed
-  // and every gate failure fell through to `other` on a live install.
-  ['evidence_authentication_failed', /receive evidence|evidence authentication/i],
-  ['canonical_evidence_missing', /canonical/i],
-  [
-    'lock_contention',
-    /already syncing|sync already in progress|lock held|lock_held|retry budget|lost distributed lock|lock authority/i,
-  ],
-  // Ordered before `timeout`: a cancelled sync is a decision this process made,
-  // not a peer that went quiet, and /timed out|timeout/ never matches "limit".
-  [
-    'sync_cancelled',
-    /exceeded the \d+s limit|was cancelled|did not respond to cancellation|operation was aborted|queue is shutting down/i,
-  ],
-  ['descriptor_policy_missing', /descriptor|policy/i],
-  [
-    'database_unavailable',
-    /prisma|database|connection pool|too many connections|connection terminated/i,
-  ],
-  [
-    'node_rpc_unavailable',
-    /node rpc|node returned|node configuration|sync is off|bitcoind|bitcoin core/i,
-  ],
-  [
-    'electrum_unavailable',
-    /electrum|socket error|econnrefused|econnreset|ehostunreach|enetunreach|enotfound|epipe|connection (?:closed|ended|not connected)|pool is shutting down|pool request queue/i,
-  ],
-  ['timeout', /timed out|timeout|etimedout/i],
-];
-
-/** Map one `lastSyncError` message to a fixed label; the message is discarded. */
-export function toWalletSyncErrorClass(message: string): WalletSyncErrorClass {
-  for (const [errorClass, pattern] of ERROR_CLASS_PATTERNS) {
-    if (pattern.test(message)) return errorClass;
-  }
-  return 'other';
 }
 
 /** Bucket `requested - processed` full resync generations without exporting either. */
@@ -174,7 +131,10 @@ function summarize(aggregates: WalletSyncAggregates, staleThresholdMs: number) {
 
   let classified = 0;
   for (const group of aggregates.errorGroups) {
-    errorClasses[toWalletSyncErrorClass(group.message)] += group.count;
+    const failureClass = isWalletSyncFailureClass(group.failureClass)
+      ? group.failureClass
+      : 'other';
+    errorClasses[failureClass] += group.count;
     classified += group.count;
   }
   // Wallets whose failure text fell outside the bounded grouping are still

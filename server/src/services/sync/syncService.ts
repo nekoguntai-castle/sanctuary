@@ -23,11 +23,17 @@ import { eventService } from '../eventService';
 import { releaseLock, withLock } from '../../infrastructure';
 import { getWorkerHealthStatus } from '../workerHealth';
 import { syncPollingModeTransitions } from '../../observability/metrics';
-import { DEFAULT_SYNC_PRIORITY, type SyncPriority } from '@sanctuary/shared/constants/sync';
+import {
+  DEFAULT_SYNC_PRIORITY,
+  type SyncExecutionOwner,
+  type SyncPriority,
+} from '@sanctuary/shared/constants/sync';
 import type { SyncState, SyncResult, SyncHealthMetrics, PollingMode } from './types';
 import { queueSync as doQueueSync, processQueue as doProcessQueue } from './syncQueue';
 import { executeSyncJob as doExecuteSyncJob, acquireSyncLock as doAcquireSyncLock } from './walletSync';
 import { SubscriptionAuthorityRetryController } from './lockAuthorityRecovery';
+import { classifyWalletSyncFailure } from './failureClassification';
+import { clearStuckSyncIfAuthorized } from './staleWalletChecker';
 import {
   setupRealTimeSubscriptions as doSetupRealTimeSubscriptions,
   teardownRealTimeSubscriptions as doTeardownRealTimeSubscriptions,
@@ -263,6 +269,9 @@ class SyncService {
    * Get health metrics for monitoring
    */
   getHealthMetrics(): SyncHealthMetrics {
+    // Structured recovery now protects this durable flag with owner/start
+    // metadata, distributed-lock authority, and a versioned CAS. It therefore
+    // represents worker-owned attempts that cannot appear in local activeSyncs.
     return {
       isRunning: this.state.isRunning,
       queueLength: this.state.syncQueue.length,
@@ -308,12 +317,13 @@ class SyncService {
     syncInProgress: boolean;
     isStale: boolean;
     queuePosition: number | null;
+    executionOwner: SyncExecutionOwner | null;
+    retryCount: number;
+    nextRetryAt: Date | null;
+    startedAt: Date | null;
+    stateVersion: number;
   }> {
-    const wallet = await walletRepository.findByIdWithSelect(walletId, {
-      lastSyncedAt: true,
-      lastSyncStatus: true,
-      syncInProgress: true,
-    });
+    const wallet = await walletRepository.findSyncState(walletId);
 
     if (!wallet) {
       throw new Error('Wallet not found');
@@ -324,16 +334,17 @@ class SyncService {
     const isStale = !wallet.lastSyncedAt ||
       (Date.now() - wallet.lastSyncedAt.getTime()) > staleThresholdMs;
 
-    // Only trust the in-memory activeSyncs set for current sync status
-    // The DB flag may be stale from a previous server session
-    const isActuallyInProgress = this.state.activeSyncs.has(walletId);
-
     return {
       lastSyncedAt: wallet.lastSyncedAt,
       syncStatus: wallet.lastSyncStatus,
-      syncInProgress: isActuallyInProgress,
+      syncInProgress: wallet.syncInProgress,
       isStale,
       queuePosition: queuePosition >= 0 ? queuePosition + 1 : null,
+      executionOwner: wallet.syncExecutionOwner,
+      retryCount: wallet.syncRetryCount,
+      nextRetryAt: wallet.syncNextRetryAt,
+      startedAt: wallet.syncStartedAt,
+      stateVersion: wallet.syncStateVersion,
     };
   }
 
@@ -535,8 +546,10 @@ class SyncService {
     // "Retrying" over work nothing is doing; demoting it to 'failed' both tells
     // the truth and returns the wallet to findStale's population.
     try {
-      const demoted = await walletRepository.demoteStrandedRetries(
-        'Sync retry was interrupted by a restart and did not resume',
+      const reason = 'Sync retry was interrupted by a restart and did not resume';
+      const demoted = await walletRepository.demoteStrandedInlineRetries(
+        reason,
+        classifyWalletSyncFailure(reason),
       );
       if (demoted > 0) {
         log.warn(`[SYNC] Demoted ${demoted} wallets stranded mid-retry to failed`);
@@ -561,9 +574,8 @@ class SyncService {
       // Reset any wallet that's marked as syncing but isn't actually syncing
       let unstuckCount = 0;
       for (const wallet of stuckWallets) {
-        if (!this.state.activeSyncs.has(wallet.id)) {
+        if (await clearStuckSyncIfAuthorized(wallet, this.state.activeSyncs)) {
           log.warn(`[SYNC] Auto-unstuck wallet ${wallet.name || wallet.id} (was stuck with syncInProgress=true)`);
-          await walletRepository.update(wallet.id, { syncInProgress: false });
           unstuckCount++;
         }
       }

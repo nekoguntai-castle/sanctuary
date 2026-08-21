@@ -6,6 +6,10 @@
 
 import type { Wallet, Address, Transaction, User, UTXO } from '../generated/prisma/client';
 import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
+import type {
+  SyncExecutionOwner,
+  WalletSyncFailureClass,
+} from '@sanctuary/shared/constants/sync';
 import type { TransactionFilterType } from '@sanctuary/shared/constants/transactions';
 
 // Re-export Prisma types that repositories use
@@ -123,7 +127,17 @@ export interface WalletSyncState {
   syncInProgress: boolean;
   lastSyncedAt: Date | null;
   lastSyncStatus: string | null;
+  lastSyncError: string | null;
+  lastSyncFailureClass: WalletSyncFailureClass | null;
+  syncExecutionOwner: SyncExecutionOwner | null;
+  syncRetryCount: number;
+  syncNextRetryAt: Date | null;
+  syncStartedAt: Date | null;
+  syncStateVersion: number;
 }
+
+/** Repository-managed patches; callers cannot set the monotonic version. */
+export type WalletSyncStatePatch = Partial<Omit<WalletSyncState, 'syncStateVersion'>>;
 
 // Transaction repository specific types
 export interface TransactionFilter {

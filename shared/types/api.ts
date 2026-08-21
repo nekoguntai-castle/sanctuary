@@ -8,6 +8,8 @@
  * (no Prisma, no React, no Express). Only pure TypeScript types.
  */
 
+import type { SyncExecutionOwner } from '../constants/sync';
+
 // =============================================================================
 // Generic API Patterns
 // =============================================================================
@@ -201,6 +203,20 @@ export interface QueueResult {
   queued: boolean;
   queuePosition: number | null;
   syncInProgress: boolean;
+}
+
+/** Authoritative persisted lifecycle state for a wallet sync. */
+export interface WalletSyncStatus {
+  lastSyncedAt: string | null;
+  syncStatus: string | null;
+  syncInProgress: boolean;
+  isStale: boolean;
+  queuePosition: number | null;
+  executionOwner: SyncExecutionOwner | null;
+  retryCount: number;
+  nextRetryAt: string | null;
+  startedAt: string | null;
+  stateVersion: number;
 }
 
 // =============================================================================

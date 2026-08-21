@@ -36,7 +36,7 @@ describe('support wallet sync diagnostics repository', () => {
 
   it('groups wallet sync state in SQL and never selects a wallet row', async () => {
     const networks = [{ network: 'mainnet', total: 3 }];
-    const errorGroups = [{ message: 'Electrum unreachable', count: 2 }];
+    const errorGroups = [{ failureClass: 'electrum_unavailable', count: 2 }];
     mockQueryRaw.mockResolvedValueOnce(networks).mockResolvedValueOnce(errorGroups);
 
     await expect(getWalletSyncAggregates({ staleThresholdMs: 600_000 })).resolves.toEqual({
@@ -50,13 +50,16 @@ describe('support wallet sync diagnostics repository', () => {
     expect(aggregate).toContain('GROUP BY "network"');
     expect(aggregate).toContain('"lastSyncStatus"');
     expect(aggregate).toContain('make_interval');
+    expect(aggregate).toContain('"syncStartedAt" IS NULL');
+    expect(aggregate).toContain('"syncStartedAt" < NOW()');
     expect(aggregate).toContain('"requestedFullResyncGeneration"');
     expect(aggregate).not.toContain('"descriptor"');
     expect(aggregate).not.toContain('"name"');
     expect(aggregate).not.toContain('SELECT *');
 
     const errors = sqlOf(1);
-    expect(errors).toContain('GROUP BY "lastSyncError"');
+    expect(errors).toContain('GROUP BY COALESCE("lastSyncFailureClass", \'other\')');
+    expect(errors).not.toContain('GROUP BY "lastSyncError"');
     expect(errors).toContain('LIMIT');
   });
 

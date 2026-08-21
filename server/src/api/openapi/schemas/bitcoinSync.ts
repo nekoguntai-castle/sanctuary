@@ -1,5 +1,8 @@
 import { BITCOIN_NON_REGTEST_NETWORKS } from "@sanctuary/shared/constants/bitcoin";
-import { SYNC_PRIORITY_VALUES } from "@sanctuary/shared/constants/sync";
+import {
+  SYNC_EXECUTION_OWNER_VALUES,
+  SYNC_PRIORITY_VALUES,
+} from "@sanctuary/shared/constants/sync";
 
 export const syncSchemas = {
   SyncPriority: {
@@ -41,6 +44,15 @@ export const syncSchemas = {
       syncInProgress: { type: "boolean" },
       isStale: { type: "boolean" },
       queuePosition: { type: "integer", nullable: true, minimum: 0 },
+      executionOwner: {
+        type: "string",
+        enum: [...SYNC_EXECUTION_OWNER_VALUES],
+        nullable: true,
+      },
+      retryCount: { type: "integer", minimum: 0 },
+      nextRetryAt: { type: "string", format: "date-time", nullable: true },
+      startedAt: { type: "string", format: "date-time", nullable: true },
+      stateVersion: { type: "integer", minimum: 0 },
     },
     required: [
       "lastSyncedAt",
@@ -48,6 +60,11 @@ export const syncSchemas = {
       "syncInProgress",
       "isStale",
       "queuePosition",
+      "executionOwner",
+      "retryCount",
+      "nextRetryAt",
+      "startedAt",
+      "stateVersion",
     ],
   },
   WalletSyncLogsResponse: {

@@ -41,6 +41,7 @@ import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { SYNC_WALLET_JOB_OPTIONS, getSyncLockTtlMs } from './jobOptions';
 import { isFullResyncGeneration } from '../../constants/fullResync';
+import { classifyWalletSyncFailure } from '../../services/sync/failureClassification';
 
 const log = createLogger('JOB:SYNC');
 
@@ -111,17 +112,21 @@ async function recordLockRetryBudgetExhausted(
     details: { lockKey: detail.lockKey, retryWindowMs: detail.retryWindowMs },
   });
 
-  await walletRepository.update(walletId, {
+  await walletRepository.updateSyncState(walletId, {
     lastSyncStatus: 'failed',
     lastSyncError: detail.message,
+    lastSyncFailureClass: 'lock_contention',
+    syncExecutionOwner: null,
+    syncRetryCount: 0,
+    syncNextRetryAt: null,
+    syncStartedAt: null,
   });
 }
 
 /**
  * Is a sync actually running for this wallet right now?
  *
- * The stale reaper's NULL arm has no time bound, so a full resync - which nulls
- * lastSyncedAt before it starts - matches within seconds. The wallet's sync lock
+ * Legacy rows with no `syncStartedAt` have no time bound. The wallet's sync lock
  * is the only liveness signal available cross-process, so probe it before
  * force-clearing anything.
  */
@@ -232,18 +237,22 @@ async function resetStuckSyncFlags(maxSyncDurationMs: number): Promise<void> {
       log.debug(`Sync still running for wallet ${wallet.name || wallet.id}, leaving flag set`);
       continue;
     }
-    await walletRepository.update(wallet.id, { syncInProgress: false });
+    await walletRepository.updateSyncState(wallet.id, {
+      syncInProgress: false,
+      syncExecutionOwner: null,
+      syncRetryCount: 0,
+      syncNextRetryAt: null,
+      syncStartedAt: null,
+    });
     resetCount++;
-    // Serialise the Date explicitly. The logger renders a bare Date as `{}`,
-    // so this line read `lastSyncedAt={} stuckForMs=50530938` on a live
-    // install - the age was there but the timestamp it was measured from was
-    // not, and `stuckForMs=unknown` gave no way to tell a never-synced wallet
-    // from a missing field.
+    // Serialise the Date explicitly. The logger renders a bare Date as `{}`;
+    // logging the authoritative start clock makes the measured age auditable
+    // and distinguishes legacy rows that have no start timestamp.
     /* v8 ignore next 4 -- fallback id/null stale timestamp are defensive logging metadata */
     log.warn(`Reset stuck syncInProgress flag for wallet ${wallet.name || wallet.id}`, {
-      lastSyncedAt: wallet.lastSyncedAt?.toISOString() ?? null,
-      stuckForMs: wallet.lastSyncedAt ? Date.now() - wallet.lastSyncedAt.getTime() : null,
-      neverSynced: wallet.lastSyncedAt === null || wallet.lastSyncedAt === undefined,
+      syncStartedAt: wallet.syncStartedAt?.toISOString() ?? null,
+      stuckForMs: wallet.syncStartedAt ? Date.now() - wallet.syncStartedAt.getTime() : null,
+      missingStartTime: wallet.syncStartedAt === null || wallet.syncStartedAt === undefined,
     });
   }
   if (resetCount > 0) {
@@ -349,7 +358,13 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
       // Keep the mark and the abort checkpoint inside the cleanup guard. If
       // cooperative shutdown arrives while the write is in flight, the flag is
       // reset before the handler settles and its lock is released.
-      await walletRepository.update(walletId, { syncInProgress: true });
+      await walletRepository.updateSyncState(walletId, {
+        syncInProgress: true,
+        syncExecutionOwner: 'worker',
+        syncRetryCount: 0,
+        syncNextRetryAt: null,
+        syncStartedAt: new Date(startTime),
+      });
       syncFlagSet = true;
       execution?.throwIfAborted();
 
@@ -371,15 +386,8 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
       const network = normalizeLegacyBitcoinNetwork(wallet.network, 'mainnet');
       const currentBlockHeight = getCachedBlockHeight(network);
 
-      // Update wallet metadata with block height
       const syncedAt = new Date();
-      await walletRepository.update(walletId, {
-        syncInProgress: false,
-        lastSyncedAt: syncedAt,
-        lastSyncedBlockHeight: currentBlockHeight,
-        lastSyncStatus: 'success',
-        lastSyncError: null,
-      });
+      await walletRepository.completeSyncSuccess(walletId, syncedAt, currentBlockHeight);
       flagCleared = true;
       // Publish the timestamp we persisted rather than letting the client invent
       // one, so the list and the detail view cannot disagree.
@@ -422,10 +430,15 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
         if (fullResyncPrepared && !flagCleared && isFinalAttempt(job)) {
           const abortMessage = getErrorMessage(abortError);
           try {
-            await walletRepository.update(walletId, {
+            await walletRepository.updateSyncState(walletId, {
               syncInProgress: false,
               lastSyncStatus: 'failed',
               lastSyncError: abortMessage,
+              lastSyncFailureClass: classifyWalletSyncFailure(abortMessage),
+              syncExecutionOwner: null,
+              syncRetryCount: 0,
+              syncNextRetryAt: null,
+              syncStartedAt: null,
             });
             flagCleared = true;
             broadcastSyncStatus(walletId, {
@@ -473,6 +486,11 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
             syncInProgress: false,
             lastSyncStatus: 'failed',
             lastSyncError: errorMsg,
+            lastSyncFailureClass: classifyWalletSyncFailure(errorMsg),
+            syncExecutionOwner: null,
+            syncRetryCount: 0,
+            syncNextRetryAt: null,
+            syncStartedAt: null,
           }, walletRepository);
         }
         log.warn(`Full resync preparation will retry for wallet ${walletId}`, {
@@ -490,6 +508,11 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
         syncInProgress: false,
         lastSyncStatus: 'failed',
         lastSyncError: errorMsg,
+        lastSyncFailureClass: classifyWalletSyncFailure(errorMsg),
+        syncExecutionOwner: null,
+        syncRetryCount: 0,
+        syncNextRetryAt: null,
+        syncStartedAt: null,
       }, walletRepository);
 
       log.error(`Wallet ${walletId} sync failed`, {
@@ -505,7 +528,13 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
       // force-reset it so the wallet doesn't stay stuck forever.
       if (syncFlagSet && !flagCleared) {
         try {
-          await walletRepository.update(walletId, { syncInProgress: false });
+          await walletRepository.updateSyncState(walletId, {
+            syncInProgress: false,
+            syncExecutionOwner: null,
+            syncRetryCount: 0,
+            syncNextRetryAt: null,
+            syncStartedAt: null,
+          });
           // Stop the UI spinner even on a path that never reached a terminal
           // status, otherwise the wallet appears to sync forever.
           broadcastSyncStatus(walletId, { inProgress: false });

@@ -101,6 +101,12 @@ export async function resetWalletForFullResync(
         lastSyncedAt: null,
         lastSyncStatus: 'resyncing',
         lastSyncError: null,
+        lastSyncFailureClass: null,
+        syncExecutionOwner: 'worker',
+        syncRetryCount: 0,
+        syncNextRetryAt: null,
+        syncStartedAt: new Date(),
+        syncStateVersion: { increment: 1 },
         processedFullResyncGeneration: fullResyncGeneration,
       },
     });

@@ -142,7 +142,13 @@ model Wallet {
   lastSyncedBlockHeight Int?      // Block height at last successful sync
   lastSyncStatus        String?   // success, failed, partial
   lastSyncError         String?   // Error message if failed
+  lastSyncFailureClass  String?   // Bounded machine-readable failure classification
   syncInProgress        Boolean   @default(false)
+  syncExecutionOwner    String?   // inline, worker; null when no attempt owns execution
+  syncRetryCount        Int       @default(0)
+  syncNextRetryAt       DateTime?
+  syncStartedAt         DateTime?
+  syncStateVersion      Int       @default(0)
   requestedFullResyncGeneration Int @default(0)
   processedFullResyncGeneration Int @default(0)
 
@@ -169,6 +175,8 @@ model Wallet {
 
   @@index([groupId])
   @@index([syncInProgress]) // For sync service startup & scheduling
+  @@index([syncExecutionOwner, syncInProgress]) // For owner-specific restart recovery
+  @@index([lastSyncStatus, syncNextRetryAt]) // For durable retry scheduling
   @@index([lastSyncedAt]) // For stale wallet detection
   @@index([network, syncInProgress, lastSyncedAt]) // For stale wallet queries by network
   @@map("wallets")

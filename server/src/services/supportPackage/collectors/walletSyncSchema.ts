@@ -1,26 +1,18 @@
 import { z } from 'zod';
 import { BITCOIN_NETWORKS, type NetworkType } from '@sanctuary/shared/constants/bitcoin';
+import {
+  WALLET_SYNC_FAILURE_CLASS_VALUES,
+  type WalletSyncFailureClass,
+} from '@sanctuary/shared/constants/sync';
 
 /** Upper bound on every exported count; larger populations are clamped, not leaked. */
 export const MAX_WALLET_SYNC_COUNT = 1_000_000;
 
 /**
- * Fixed failure taxonomy. Only these labels are exported; the `lastSyncError`
- * text they are derived from can carry relayed server output and never leaves
- * the collector.
+ * Fixed privacy-safe failure taxonomy. Classification is persisted beside the
+ * raw error so support aggregation exports only these labels, never error text.
  */
-export const WALLET_SYNC_ERROR_CLASSES = [
-  'electrum_unavailable',
-  'node_rpc_unavailable',
-  'descriptor_policy_missing',
-  'canonical_evidence_missing',
-  'evidence_authentication_failed',
-  'lock_contention',
-  'timeout',
-  'sync_cancelled',
-  'database_unavailable',
-  'other',
-] as const;
+export const WALLET_SYNC_ERROR_CLASSES = WALLET_SYNC_FAILURE_CLASS_VALUES;
 
 export const fullResyncDriftBucketSchema = z.enum([
   'none',
@@ -88,5 +80,5 @@ export const walletSyncSchema = z.discriminatedUnion('observation', [
   z.object({ observation: z.literal('unavailable') }).strict(),
 ]);
 
-export type WalletSyncErrorClass = typeof WALLET_SYNC_ERROR_CLASSES[number];
+export type WalletSyncErrorClass = WalletSyncFailureClass;
 export type FullResyncDriftBucket = z.infer<typeof fullResyncDriftBucketSchema>;

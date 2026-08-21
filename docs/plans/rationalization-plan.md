@@ -1767,7 +1767,7 @@ read-only repository/API evidence; no product code or external state changed.
 
 Date: 2026-08-20
 Owner: Codex
-Status: Implementation in progress; Phase 0 local verification complete
+Status: Implementation in progress; Phase 0 merged, Phase 1 local implementation active
 Scope: revalidation of the architecture audit after PRs #854, #859, #855, #856, #858, and #857; baseline `2a14f8088a`, target `origin/main` at `32278d7531`
 
 ### Executive Summary
@@ -1816,7 +1816,7 @@ Scope: revalidation of the architecture audit after PRs #854, #859, #855, #856, 
 
 | Order | Work | Why the order changed | Exit criteria |
 | ---: | --- | --- | --- |
-| 0 | Restore architecture and Prisma checks to green and wire them into required CI | Still unchanged after six PRs; documentation remains unenforced | Local implementation complete; pending PR delivery |
+| 0 | Restore architecture and Prisma checks to green and wire them into required CI | Still unchanged after six PRs; documentation remains unenforced | Merged in PR #860 (`06c1a36814`) with branch and post-merge CI green |
 | 1 | Define canonical structured sync status/failure/retry contracts and persistence | Recent fixes now depend on parsing presentation text; consolidating first would codify that coupling | Retry progression and support classification do not parse `lastSyncError`; legacy message remains readable |
 | 2 | Extract one sync-attempt lifecycle/use case and route inline/worker execution through it | Two policy-bearing state machines expanded independently in the recent PRs | Shared transition contract passes through both adapters for success, retry, timeout, cancellation, lock contention, and terminal-write failure |
 | 3 | Move queue contracts out of `worker/` and remove the worker-to-queue-service dynamic import | Recent stranded-resync logic confirms bidirectional ownership | Producer and consumer depend on neutral contracts; dependency direction is one-way |
@@ -1827,7 +1827,7 @@ Scope: revalidation of the architecture audit after PRs #854, #859, #855, #856, 
 ### Implementation Decisions And Acceptance Gates
 
 - Phase 0 keeps the current 45 reviewed route/repository exceptions as a non-increasing budget, inventories the 17 existing server cycle sets exactly, and fails CI for a new exception or changed cycle set. The route and Prisma violations named above are fixed at their ownership boundaries rather than added as exceptions.
-- Phase 1 stores current sync execution state on `Wallet`, not in an attempt-history table. It adds explicit execution ownership so restart recovery cannot confuse an inline timer with a durable BullMQ retry. A migration preserves readable legacy errors while removing retry progression from presentation text.
+- Phase 1 stores current sync execution state on `Wallet`, not in an attempt-history table. It adds explicit execution ownership so restart recovery cannot confuse an inline timer with a durable BullMQ retry, plus a bounded failure classification so support aggregation no longer parses presentation text. A migration preserves readable legacy errors while removing retry progression from presentation text. Deployment is quiesced across this migration: old API/worker binaries must be stopped before migration and may not be rolled back across the new data contract.
 - Phase 2 retains in-process execution as a supported worker-unavailable fallback. Inline and worker adapters must pass the same lifecycle transition tests while retaining their distinct retry schedulers, lock fencing, cancellation, and terminal-write recovery.
 - Phase 3 moves commands, results, and lock policy types to a neutral sync contract module. No service may import worker implementation modules and the worker may not dynamically import the queue service after this phase.
 - Phase 4 persists a transition before publishing it. Publication failure cannot roll back or reclassify a successful sync; reconnect invalidates/refetches authoritative wallet state, and stale event versions cannot regress the cache. No transactional outbox is introduced for replaceable sync snapshots.

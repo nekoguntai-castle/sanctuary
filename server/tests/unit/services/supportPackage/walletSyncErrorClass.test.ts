@@ -16,7 +16,7 @@
  * when it fails it names the string that fell through.
  */
 import { describe, expect, it } from 'vitest';
-import { toWalletSyncErrorClass } from '../../../../src/services/supportPackage/collectors/walletSync';
+import { classifyWalletSyncFailure } from '../../../../src/services/sync/failureClassification';
 
 /**
  * Literal messages reachable at the six `lastSyncError` write sites
@@ -60,24 +60,24 @@ const LIVE_MESSAGES: ReadonlyArray<readonly [string, string]> = [
 
 describe('wallet sync error classification', () => {
   it.each(LIVE_MESSAGES)('classifies %j', (message, expected) => {
-    expect(toWalletSyncErrorClass(message)).toBe(expected);
+    expect(classifyWalletSyncFailure(message)).toBe(expected);
   });
 
   it('leaves no live message unclassified', () => {
     const unclassified = LIVE_MESSAGES
       .map(([message]) => message)
-      .filter((message) => toWalletSyncErrorClass(message) === 'other');
+      .filter((message) => classifyWalletSyncFailure(message) === 'other');
     expect(unclassified).toEqual([]);
   });
 
   it('still falls back to other for a genuinely unknown message', () => {
-    expect(toWalletSyncErrorClass('something nobody has seen before')).toBe('other');
+    expect(classifyWalletSyncFailure('something nobody has seen before')).toBe('other');
   });
 
   it('does not let the evidence class swallow a canonical-policy failure', () => {
     // `evidence_authentication_failed` is ordered before
     // `canonical_evidence_missing`; neither may capture the other's message.
-    expect(toWalletSyncErrorClass('canonical policy evidence is missing'))
+    expect(classifyWalletSyncFailure('canonical policy evidence is missing'))
       .toBe('canonical_evidence_missing');
   });
 });
