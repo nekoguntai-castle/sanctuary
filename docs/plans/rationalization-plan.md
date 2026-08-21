@@ -1767,7 +1767,7 @@ read-only repository/API evidence; no product code or external state changed.
 
 Date: 2026-08-20
 Owner: Codex
-Status: Implementation in progress; Phases 0-2 merged, Phase 3 locally complete and verified
+Status: Complete; Phases 0-6 merged and verified
 Scope: revalidation of the architecture audit after PRs #854, #859, #855, #856, #858, and #857; baseline `2a14f8088a`, target `origin/main` at `32278d7531`
 
 ### Executive Summary
@@ -1819,10 +1819,10 @@ Scope: revalidation of the architecture audit after PRs #854, #859, #855, #856, 
 | 0 | Restore architecture and Prisma checks to green and wire them into required CI | Still unchanged after six PRs; documentation remains unenforced | Merged in PR #860 (`06c1a36814`) with branch and post-merge CI green |
 | 1 | Define canonical structured sync status/failure/retry contracts and persistence | Recent fixes now depend on parsing presentation text; consolidating first would codify that coupling | Merged in PR #861 (`e4df8aa591`) with branch and post-merge CI green |
 | 2 | Extract one sync-attempt lifecycle/use case and route inline/worker execution through it | Two policy-bearing state machines expanded independently in the recent PRs | Merged in PR #862 (`c45ac24d16`) with branch and post-merge CI green |
-| 3 | Move queue contracts out of `worker/` and remove the worker-to-queue-service dynamic import | Recent stranded-resync logic confirms bidirectional ownership | Locally complete and verified: producer and consumer use the neutral v1 contract, queue adapter injection is one-way, and unsupported versions fail before lock effects |
-| 4 | Add one lifecycle publisher and collapse confirmation refresh implementations | Duplicate publication and four confirmation paths remain | Exactly one external lifecycle publication per transition; one confirmation workflow owner |
-| 5 | Consolidate the E2E baseline API simulator, starting with `wallet-sync-tooltip.spec.ts` | The latest UI PR repeated the known fixture fan-out pattern | Tooltip spec is a thin scenario override; common bootstrap endpoints have one definition |
-| 6 | Continue frontend query ownership/keys/contracts, route/repository debt, LLM handshake, and cycle removal | No recent PR changed their evidence or relative risk | Existing phase-specific ratchets continue |
+| 3 | Move queue contracts out of `worker/` and remove the worker-to-queue-service dynamic import | Recent stranded-resync logic confirms bidirectional ownership | Merged in PR #863 (`8257512769`) with branch and post-merge CI green |
+| 4 | Add one lifecycle publisher and collapse confirmation refresh implementations | Duplicate publication and four confirmation paths remain | Merged in PR #864 (`a3ab6cb6ff`) with exact-SHA replacement runs green after two infrastructure timeouts |
+| 5 | Consolidate the E2E baseline API simulator, starting with `wallet-sync-tooltip.spec.ts` | The latest UI PR repeated the known fixture fan-out pattern | Merged in PR #865 (`f26c0b17b7`) with branch and post-merge CI green |
+| 6 | Continue frontend query ownership/keys/contracts, route/repository debt, LLM handshake, and cycle removal | No recent PR changed their evidence or relative risk | Completed as bounded PRs #866-#868: cache-cycle reduction, query-key convergence, and fail-closed LLM readiness |
 
 ### Implementation Decisions And Acceptance Gates
 
@@ -1849,6 +1849,17 @@ Scope: revalidation of the architecture audit after PRs #854, #859, #855, #856, 
 - Do not create a generic workflow engine. A sync-specific state contract and use case are sufficient.
 - Do not introduce a microservice, general IoC container, or event-sourcing system to solve these ownership problems.
 - Do not move all E2E behavior into a permissive catch-all fixture; strict unknown-request failure remains valuable.
+- Broad route/repository exception removal is deferred. The 45 reviewed route exceptions remain a required non-increasing budget; individually small routes overlap shared authorization/read semantics and need their own bounded ownership plan.
+- WalletDetail and DeviceDetail component-local server-state migration is deferred. Their request fencing, route changes, pagination, WebSocket replay, and mutation-local updates make this a separate compatibility project rather than a safe query-key cleanup.
+- Generic frontend response-schema conversion is deferred. The re-audit found no concrete schema/type drift, and the current partial validators protect selected high-consequence fields; continue conversion feature by feature.
+- The remaining wallet-import cycle component (2 known cycle sets / 4 exact edges) is deferred. Phase 6 removed the independently bounded cache-warming component and retained the exact no-growth ratchet for the residual cycle.
+
+### Phase 6 Closeout
+
+- PR #866 moved startup cache warming out of the cache primitive and reduced the exact server cycle baseline from 17 sets / 43 edges to 2 sets / 4 edges.
+- PR #867 centralized cross-owner wallet activity query keys and removed two broadcast selectors that matched no live query, without moving WalletDetail or DeviceDetail state ownership.
+- PR #868 introduced `ensureLlmProxyConfigured` as the fail-closed readiness boundary for every inference caller while preserving the distinct model discovery, health, and administrative synchronization paths.
+- All seven numbered phases are merged. The broad items above remain explicit future projects rather than incomplete exit criteria for this bounded convergence plan.
 
 ### Verification Notes
 
@@ -1865,6 +1876,12 @@ Scope: revalidation of the architecture audit after PRs #854, #859, #855, #856, 
 - Prisma checker failed identically at both refs on `services/draftCreate.ts` and `services/walletSafetyAudit/processRunner.ts`.
 - Dependency-cruiser comparison: 17 unique server cycle sets and 32 service-to-WebSocket runtime edges at both refs.
 - OpenAPI route coverage passed on target: 347 Express routes, 343 OpenAPI operations, and 4 documented infrastructure/docs exceptions.
-- No workflow invokes `check:architecture-boundaries`, `check:prisma-imports`, or `check:openapi-route-coverage`; the six PRs did not change those scripts or policies.
-- Static target inventories using the same audit method: 187 API files, 36 direct-repository route files, 45 route exceptions, 19 frontend API schema uses, 10,853 E2E TypeScript lines, and 13 `balance-history` E2E fixture sites.
-- The preceding audit evidence initiated this implementation loop. Phases 0-2 are merged; Phase 3 is locally complete and verified on `codex/implement-merge/rationalization-phase-3` pending PR delivery.
+- The initial audit found that no workflow invoked `check:architecture-boundaries`, `check:prisma-imports`, or `check:openapi-route-coverage`; Phase 0 added the architecture and Prisma checks to required CI.
+- Initial target inventories using the same audit method were 187 API files, 36 direct-repository route files, 45 route exceptions, 19 frontend API schema uses, 10,853 E2E TypeScript lines, and 13 `balance-history` E2E fixture sites.
+- The preceding audit evidence initiated this implementation loop. Phases 0-6 are now merged and the bounded plan is complete.
+- Phase 3 merged in PR #863 as `8257512769`; neutral versioned queue contracts and composition-root injection removed the reverse worker/queue dependency.
+- Phase 4 merged in PR #864 as `a3ab6cb6ff`; versioned persistence-first lifecycle publication and one confirmation refresh workflow replaced the duplicated paths.
+- Phase 5 merged in PR #865 as `f26c0b17b7`; the strict simulator, opt-in authenticated baseline, and typed balance-history fixtures passed focused and broad Chromium verification.
+- Phase 6A merged in PR #866 as `6b36584414`; the cycle ratchet is now 2 known sets / 4 exact edges and all target-branch workflows passed.
+- Phase 6B merged in PR #867 as `090c5c9f70`; canonical wallet activity query tuples and effective invalidations passed full frontend coverage and target-branch CI.
+- Phase 6C merged in PR #868 as `666ee4cc0c`; all inference paths use the fail-closed LLM readiness boundary, and the reviewed PR tree exactly matches main.
