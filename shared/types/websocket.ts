@@ -8,6 +8,12 @@
  * Both frontend and backend import from this file.
  */
 
+import type {
+  SyncExecutionOwner,
+  SyncLifecycleTransitionKind,
+  WalletSyncFailureClass,
+} from '../constants/sync';
+
 // =============================================================================
 // Client-to-Server Messages
 // =============================================================================
@@ -289,10 +295,17 @@ export interface SyncEvent {
   walletId: string;
   data: {
     inProgress: boolean;
+    transition?: SyncLifecycleTransitionKind;
     status?: string;
-    error?: string;
-    lastSyncedAt?: Date | string;
+    syncStatus?: string | null;
+    error?: string | null;
+    failureClass?: WalletSyncFailureClass | null;
+    lastSyncedAt?: Date | string | null;
+    executionOwner?: SyncExecutionOwner | null;
     retryCount?: number;
+    nextRetryAt?: Date | string | null;
+    startedAt?: Date | string | null;
+    stateVersion?: number;
     maxRetries?: number;
     retryingIn?: number;
     retriesExhausted?: boolean;

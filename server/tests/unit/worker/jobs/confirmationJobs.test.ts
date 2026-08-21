@@ -7,16 +7,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMockJob } from '../../../helpers/workerJob';
 
-const confirmationJobPrismaMocks = vi.hoisted(() => ({
-  transactionFindMany: vi.fn<() => Promise<unknown[]>>(),
+const confirmationJobMocks = vi.hoisted(() => ({
+  refreshPendingConfirmations: vi.fn(),
 }));
 
 vi.mock('../../../../src/models/prisma', () => ({
   default: {
     transaction: {
-      findMany: confirmationJobPrismaMocks.transactionFindMany,
+      findMany: vi.fn(),
     },
   },
+}));
+
+vi.mock('../../../../src/services/sync/confirmationUpdater', () => ({
+  refreshPendingConfirmations: confirmationJobMocks.refreshPendingConfirmations,
 }));
 
 vi.mock('../../../../src/config', () => ({
@@ -40,14 +44,7 @@ vi.mock('../../../../src/services/bitcoin/blockchain', () => ({
   syncWallet: vi.fn(),
 }));
 
-vi.mock('../../../../src/services/bitcoin/sync/confirmations', () => ({
-  updateTransactionConfirmations: vi.fn().mockResolvedValue([]),
-  populateMissingTransactionFields: vi.fn().mockResolvedValue(undefined),
-}));
-
-import prisma from '../../../../src/models/prisma';
 import { setCachedBlockHeight } from '../../../../src/services/bitcoin/blockchain';
-import { updateTransactionConfirmations } from '../../../../src/services/bitcoin/sync/confirmations';
 import {
   updateAllConfirmationsJob,
   updateConfirmationsJob,
@@ -56,6 +53,15 @@ import {
 describe('Confirmation Jobs', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    confirmationJobMocks.refreshPendingConfirmations.mockResolvedValue({
+      walletIds: [],
+      wallets: [],
+      fieldUpdates: 0,
+      confirmationUpdateCount: 0,
+      milestoneCount: 0,
+      publicationFailures: [],
+      failures: [],
+    });
   });
 
   describe('updateConfirmationsJob', () => {
@@ -65,8 +71,6 @@ describe('Confirmation Jobs', () => {
     });
 
     it('should update block height when provided', async () => {
-      vi.mocked(prisma.transaction.findMany).mockResolvedValueOnce([]);
-
       const mockJob = createMockJob(
         { height: 100005, hash: '0000abc123' },
         { id: 'job-1', opts: { attempts: 2 } },
@@ -78,8 +82,6 @@ describe('Confirmation Jobs', () => {
     });
 
     it('should return early if no pending transactions', async () => {
-      vi.mocked(prisma.transaction.findMany).mockResolvedValueOnce([]);
-
       const mockJob = createMockJob(
         { version: 1 as const, height: 100005 },
         { id: 'job-1', opts: { attempts: 2 } },
@@ -89,22 +91,19 @@ describe('Confirmation Jobs', () => {
 
       expect(result.updated).toBe(0);
       expect(result.notified).toBe(0);
-      expect(updateTransactionConfirmations).not.toHaveBeenCalled();
+      expect(confirmationJobMocks.refreshPendingConfirmations).toHaveBeenCalledOnce();
     });
 
     it('should update confirmations for wallets with pending transactions', async () => {
-      confirmationJobPrismaMocks.transactionFindMany.mockResolvedValueOnce([
-        { walletId: 'w1' },
-        { walletId: 'w2' },
-      ]);
-      vi.mocked(updateTransactionConfirmations)
-        .mockResolvedValueOnce([
-          { txid: 'tx1', oldConfirmations: 0, newConfirmations: 1 },
-        ])
-        .mockResolvedValueOnce([
-          { txid: 'tx2', oldConfirmations: 2, newConfirmations: 3 },
-          { txid: 'tx3', oldConfirmations: 5, newConfirmations: 6 },
-        ]);
+      confirmationJobMocks.refreshPendingConfirmations.mockResolvedValueOnce({
+        walletIds: ['w1', 'w2'],
+        wallets: [],
+        fieldUpdates: 1,
+        confirmationUpdateCount: 3,
+        milestoneCount: 3,
+        publicationFailures: [],
+        failures: [],
+      });
 
       const mockJob = createMockJob(
         { height: 100005 },
@@ -113,17 +112,19 @@ describe('Confirmation Jobs', () => {
 
       const result = await updateConfirmationsJob.handler(mockJob);
 
-      expect(updateTransactionConfirmations).toHaveBeenCalledTimes(2);
-      expect(updateTransactionConfirmations).toHaveBeenCalledWith('w1');
-      expect(updateTransactionConfirmations).toHaveBeenCalledWith('w2');
       expect(result).toEqual({ version: 1, updated: 3, notified: 3 });
     });
 
     it('should not increment notified count for non-milestone confirmations', async () => {
-      confirmationJobPrismaMocks.transactionFindMany.mockResolvedValueOnce([{ walletId: 'w1' }]);
-      vi.mocked(updateTransactionConfirmations).mockResolvedValueOnce([
-        { txid: 'tx1', oldConfirmations: 1, newConfirmations: 2 },
-      ]);
+      confirmationJobMocks.refreshPendingConfirmations.mockResolvedValueOnce({
+        walletIds: ['w1'],
+        wallets: [],
+        fieldUpdates: 0,
+        confirmationUpdateCount: 1,
+        milestoneCount: 0,
+        publicationFailures: [],
+        failures: [],
+      });
 
       const result = await updateConfirmationsJob.handler(
         createMockJob({}, { id: 'job-non-milestone', opts: { attempts: 2 } }),
@@ -141,12 +142,19 @@ describe('Confirmation Jobs', () => {
       await expect(updateConfirmationsJob.handler(job)).rejects.toThrow(
         'Unsupported or invalid update-confirmations job payload',
       );
-      expect(confirmationJobPrismaMocks.transactionFindMany).not.toHaveBeenCalled();
+      expect(confirmationJobMocks.refreshPendingConfirmations).not.toHaveBeenCalled();
     });
 
     it('should skip update summary log path when pending wallets produce no updates', async () => {
-      confirmationJobPrismaMocks.transactionFindMany.mockResolvedValueOnce([{ walletId: 'w1' }]);
-      vi.mocked(updateTransactionConfirmations).mockResolvedValueOnce([]);
+      confirmationJobMocks.refreshPendingConfirmations.mockResolvedValueOnce({
+        walletIds: ['w1'],
+        wallets: [],
+        fieldUpdates: 2,
+        confirmationUpdateCount: 0,
+        milestoneCount: 0,
+        publicationFailures: [],
+        failures: [],
+      });
 
       const result = await updateConfirmationsJob.handler(
         createMockJob({}, { id: 'job-empty-updates', opts: { attempts: 2 } }),
@@ -156,15 +164,15 @@ describe('Confirmation Jobs', () => {
     });
 
     it('should process successful wallets then reject an aggregated wallet failure', async () => {
-      confirmationJobPrismaMocks.transactionFindMany.mockResolvedValueOnce([
-        { walletId: 'w-fail' },
-        { walletId: 'w-ok' },
-      ]);
-      vi.mocked(updateTransactionConfirmations)
-        .mockRejectedValueOnce(new Error('wallet update failed'))
-        .mockResolvedValueOnce([
-          { txid: 'tx-ok', oldConfirmations: 0, newConfirmations: 1 },
-        ]);
+      confirmationJobMocks.refreshPendingConfirmations.mockResolvedValueOnce({
+        walletIds: ['w-fail', 'w-ok'],
+        wallets: [],
+        fieldUpdates: 0,
+        confirmationUpdateCount: 1,
+        milestoneCount: 1,
+        publicationFailures: [],
+        failures: [{ walletId: 'w-fail', error: new Error('wallet update failed') }],
+      });
 
       const processing = updateConfirmationsJob.handler(
         createMockJob({}, { id: 'job-partial-failure', opts: { attempts: 2 } }),
@@ -173,20 +181,22 @@ describe('Confirmation Jobs', () => {
       await expect(processing).rejects.toThrow(
         'Failed to update confirmations for wallets: w-fail',
       );
-      expect(updateTransactionConfirmations).toHaveBeenCalledTimes(2);
+      expect(confirmationJobMocks.refreshPendingConfirmations).toHaveBeenCalledOnce();
     });
 
     it('sorts and deduplicates wallets before deterministic failure aggregation', async () => {
-      confirmationJobPrismaMocks.transactionFindMany.mockResolvedValueOnce([
-        { walletId: 'wallet-z' },
-        { walletId: 'wallet-a' },
-        { walletId: 'wallet-z' },
-        { walletId: 'wallet-m' },
-      ]);
-      vi.mocked(updateTransactionConfirmations)
-        .mockRejectedValueOnce(new Error('a failed'))
-        .mockResolvedValueOnce([])
-        .mockRejectedValueOnce(new Error('z failed'));
+      confirmationJobMocks.refreshPendingConfirmations.mockResolvedValueOnce({
+        walletIds: ['wallet-a', 'wallet-m', 'wallet-z'],
+        wallets: [],
+        fieldUpdates: 0,
+        confirmationUpdateCount: 0,
+        milestoneCount: 0,
+        publicationFailures: [],
+        failures: [
+          { walletId: 'wallet-a', error: new Error('a failed') },
+          { walletId: 'wallet-z', error: new Error('z failed') },
+        ],
+      });
 
       const processing = updateConfirmationsJob.handler(
         createMockJob({}, { id: 'job-multiple-failures', opts: { attempts: 2 } }),
@@ -196,11 +206,27 @@ describe('Confirmation Jobs', () => {
         name: 'AggregateError',
         message: 'Failed to update confirmations for wallets: wallet-a, wallet-z',
       });
-      expect(vi.mocked(updateTransactionConfirmations).mock.calls).toEqual([
-        ['wallet-a'],
-        ['wallet-m'],
-        ['wallet-z'],
-      ]);
+      expect(confirmationJobMocks.refreshPendingConfirmations).toHaveBeenCalledOnce();
+    });
+
+    it('does not retry persisted updates when confirmation publication fails', async () => {
+      confirmationJobMocks.refreshPendingConfirmations.mockResolvedValueOnce({
+        walletIds: ['wallet-1'],
+        wallets: [],
+        fieldUpdates: 0,
+        confirmationUpdateCount: 1,
+        milestoneCount: 1,
+        publicationFailures: [{
+          walletId: 'wallet-1',
+          txid: 'tx-1',
+          error: new Error('websocket unavailable'),
+        }],
+        failures: [],
+      });
+
+      await expect(updateConfirmationsJob.handler(
+        createMockJob({}, { id: 'job-publication-failure', opts: { attempts: 2 } }),
+      )).resolves.toEqual({ version: 1, updated: 1, notified: 1 });
     });
   });
 

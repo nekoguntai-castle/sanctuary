@@ -2,9 +2,22 @@ import { walletRepository } from '../../repositories';
 import { BITCOIN_NON_REGTEST_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
 import { DEFAULT_SYNC_PRIORITY, type SyncPriority } from '@sanctuary/shared/constants/sync';
 import type { NetworkType } from '../../repositories/types';
-import { NotFoundError, InvalidInputError, ServiceUnavailableError } from '../../errors/ApiError';
+import {
+  NotFoundError,
+  InvalidInputError,
+  ServiceUnavailableError,
+  SyncInProgressError,
+} from '../../errors/ApiError';
 import { createLogger } from '../../utils/logger';
 import * as blockchain from '../bitcoin/blockchain';
+import {
+  ConfirmationLockUnavailableError,
+  ConfirmationRefreshError,
+  refreshWalletConfirmations,
+} from './confirmationUpdater';
+import { clearActiveSyncAttempt } from './syncAttemptLifecycle';
+import { syncLifecyclePublisher } from './syncLifecyclePublisher';
+import type { ConfirmationUpdate } from '../bitcoin/blockchain';
 
 const log = createLogger('SYNC:COORDINATOR');
 
@@ -87,7 +100,7 @@ export interface LegacyWalletSyncResponse {
 
 export interface UpdateConfirmationsResponse {
   message: string;
-  updated: Awaited<ReturnType<typeof blockchain.updateTransactionConfirmations>>;
+  updated: ConfirmationUpdate[];
 }
 
 function parseSyncNetwork(network: string): SyncNetwork {
@@ -165,11 +178,22 @@ export class SyncCoordinator {
   async updateWalletConfirmations(userId: string, walletId: string): Promise<UpdateConfirmationsResponse> {
     await requireWalletAccess(walletId, userId);
 
-    const updated = await blockchain.updateTransactionConfirmations(walletId);
+    let result;
+    try {
+      result = await refreshWalletConfirmations(walletId);
+    } catch (error) {
+      if (
+        error instanceof ConfirmationRefreshError
+        && error.cause instanceof ConfirmationLockUnavailableError
+      ) {
+        throw new SyncInProgressError(walletId);
+      }
+      throw error;
+    }
 
     return {
       message: 'Confirmations updated',
-      updated,
+      updated: result.confirmationUpdates,
     };
   }
 
@@ -221,13 +245,8 @@ export class SyncCoordinator {
 
   async resetWalletSyncState(userId: string, walletId: string): Promise<ResetWalletSyncResponse> {
     await requireWalletAccess(walletId, userId);
-    await walletRepository.updateSyncState(walletId, {
-      syncInProgress: false,
-      syncExecutionOwner: null,
-      syncRetryCount: 0,
-      syncNextRetryAt: null,
-      syncStartedAt: null,
-    });
+    const transition = await clearActiveSyncAttempt(walletId, walletRepository);
+    await syncLifecyclePublisher.publish(transition);
 
     return {
       success: true,

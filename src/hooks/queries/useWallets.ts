@@ -1,8 +1,15 @@
-import { useCallback, useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMemo } from 'react';
+import {
+  keepPreviousData,
+  useQuery,
+  useMutation,
+  useQueryClient,
+  type UseQueryOptions,
+} from '@tanstack/react-query';
 import * as walletsApi from '../../api/wallets';
 import * as transactionsApi from '../../api/transactions';
-import { createQueryKeys, createListQuery, createMutation, createInvalidateAll } from './factory';
+import { createQueryKeys, createMutation, createInvalidateAll } from './factory';
+import { mergeWalletListHttpSyncState } from '../../utils/walletSyncSnapshot';
 
 // Stable empty arrays to prevent re-renders when data is loading
 const EMPTY_TRANSACTIONS: Awaited<ReturnType<typeof transactionsApi.getTransactions>> = [];
@@ -25,7 +32,23 @@ export const walletKeys = {
 /**
  * Hook to fetch all wallets for the current user
  */
-export const useWallets = createListQuery(walletKeys, walletsApi.getWallets);
+type WalletList = Awaited<ReturnType<typeof walletsApi.getWallets>>;
+
+export function useWallets(overrides?: Partial<UseQueryOptions<WalletList>>) {
+  const queryClient = useQueryClient();
+  return useQuery<WalletList>({
+    queryKey: walletKeys.lists(),
+    queryFn: async () => {
+      const incoming = await walletsApi.getWallets();
+      return mergeWalletListHttpSyncState(
+        queryClient.getQueryData<WalletList>(walletKeys.lists()),
+        incoming,
+      );
+    },
+    placeholderData: keepPreviousData,
+    ...overrides,
+  });
+}
 
 /**
  * Hook to create a new wallet
@@ -142,49 +165,6 @@ export const useInvalidateAllWallets = createInvalidateAll(walletKeys, [
   ['pendingTransactions'],
   ['balanceHistory'],
 ]);
-
-/**
- * Helper to directly update wallet sync status in cache
- * This provides immediate UI update without waiting for refetch
- */
-export function useUpdateWalletSyncStatus() {
-  const queryClient = useQueryClient();
-
-  return useCallback((walletId: string, syncInProgress: boolean, lastSyncStatus?: string) => {
-    // Only a success moves the clock. Stamping "now" on every terminal event —
-    // a failure included — made the list claim a wallet had just synced while
-    // the detail page showed the failure that ended it.
-    const syncedAtPatch = !syncInProgress && lastSyncStatus === 'success'
-      ? { lastSyncedAt: new Date().toISOString() }
-      : {};
-
-    // Update the wallet list cache
-    queryClient.setQueryData(walletKeys.lists(), (oldData: walletsApi.Wallet[] | undefined) => {
-      if (!oldData) return oldData;
-      return oldData.map(wallet =>
-        wallet.id === walletId
-          ? {
-              ...wallet,
-              syncInProgress,
-              ...(lastSyncStatus && { lastSyncStatus }),
-              ...syncedAtPatch,
-            }
-          : wallet
-      );
-    });
-
-    // Also update the individual wallet cache if it exists
-    queryClient.setQueryData(walletKeys.detail(walletId), (oldData: walletsApi.Wallet | undefined) => {
-      if (!oldData) return oldData;
-      return {
-        ...oldData,
-        syncInProgress,
-        ...(lastSyncStatus && { lastSyncStatus }),
-        ...syncedAtPatch,
-      };
-    });
-  }, [queryClient]);
-}
 
 type Timeframe = '1D' | '1W' | '1M' | '1Y' | 'ALL';
 

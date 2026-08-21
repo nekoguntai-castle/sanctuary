@@ -19,7 +19,6 @@ export const mockUnsubscribe = vi.fn();
 export const mockAddNotification = vi.fn();
 export const mockPlayEventSound = vi.fn();
 export const mockInvalidateAllWallets = vi.fn();
-export const mockUpdateWalletSyncStatus = vi.fn();
 export const mockRefetchMempool = vi.fn();
 
 export const wsEventHandlers: Record<string, ((event: any) => void) | undefined> = {};
@@ -147,7 +146,6 @@ vi.mock('../../../src/hooks/queries/useWallets', () => ({
   },
   usePendingTransactions: () => ({ data: state.pendingTxData }),
   useInvalidateAllWallets: () => mockInvalidateAllWallets,
-  useUpdateWalletSyncStatus: () => mockUpdateWalletSyncStatus,
   useBalanceHistory: () => ({ data: state.balanceHistoryData, isUnavailable: state.balanceHistoryIsUnavailable }),
   useActivitySummary: (_ids: string[], timeframe: string) => {
     activitySummaryCalls.push({ timeframe });

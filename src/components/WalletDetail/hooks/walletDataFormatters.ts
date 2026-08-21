@@ -52,7 +52,13 @@ export function formatWalletFromApi(apiWallet: Wallet, userId: string): Wallet {
     // omits it reads as a guarantee this mapper cannot make.
     lastSyncStatus: apiWallet.lastSyncStatus,
     lastSyncError: apiWallet.lastSyncError,
+    lastSyncFailureClass: apiWallet.lastSyncFailureClass,
     syncInProgress: apiWallet.syncInProgress,
+    syncExecutionOwner: apiWallet.syncExecutionOwner,
+    syncRetryCount: apiWallet.syncRetryCount,
+    syncNextRetryAt: apiWallet.syncNextRetryAt,
+    syncStartedAt: apiWallet.syncStartedAt,
+    syncStateVersion: apiWallet.syncStateVersion,
     // Sharing info
     isShared: apiWallet.isShared,
     sharedWith: apiWallet.sharedWith,

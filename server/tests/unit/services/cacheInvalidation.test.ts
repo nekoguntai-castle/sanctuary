@@ -71,6 +71,7 @@ describe('CacheInvalidation', () => {
 
       // Should have registered listeners for various events
       expect(eventBus.listenerCount('wallet:synced')).toBeGreaterThan(initialListenerCount);
+      expect(eventBus.listenerCount('wallet:syncTransition')).toBeGreaterThan(0);
       expect(eventBus.listenerCount('wallet:deleted')).toBeGreaterThan(0);
       expect(eventBus.listenerCount('wallet:balanceChanged')).toBeGreaterThan(0);
       expect(eventBus.listenerCount('transaction:received')).toBeGreaterThan(0);
@@ -134,6 +135,18 @@ describe('CacheInvalidation', () => {
         unconfirmedBalance: 0n,
         transactionCount: 10,
         duration: 500,
+      });
+
+      await waitForWalletCacheInvalidation(walletId);
+    });
+
+    it('should invalidate caches on a persisted wallet sync transition', async () => {
+      const walletId = 'transition-wallet-123';
+
+      eventBus.emit('wallet:syncTransition', {
+        walletId,
+        transition: 'succeeded',
+        stateVersion: 9,
       });
 
       await waitForWalletCacheInvalidation(walletId);
@@ -312,7 +325,7 @@ describe('CacheInvalidation', () => {
       initializeCacheInvalidation();
       expect(getCacheInvalidationStatus()).toEqual({
         initialized: true,
-        listeners: 8,
+        listeners: 9,
       });
 
       shutdownCacheInvalidation();

@@ -60,6 +60,7 @@ vi.mock('../../src/hooks/queries/useBitcoin', () => ({
 }));
 
 vi.mock('../../src/hooks/websocket', () => ({
+  useWebSocket: vi.fn(() => ({ connected: true })),
   useWalletEvents: vi.fn(),
   useWalletLogs: vi.fn(),
 }));

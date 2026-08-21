@@ -21,6 +21,11 @@ export interface PopulateFieldsResult {
   confirmationUpdates: ConfirmationUpdate[];
 }
 
+/** One database batch that has committed and is safe to publish. */
+export type PopulateFieldsCommit = PopulateFieldsResult;
+
+export type PopulateFieldsCommitHandler = (commit: PopulateFieldsCommit) => void;
+
 /**
  * Statistics tracked during field population
  */

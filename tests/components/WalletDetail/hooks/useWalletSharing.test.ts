@@ -511,7 +511,22 @@ describe('useWalletSharing', () => {
     });
 
     expect(walletsApi.getWallet).toHaveBeenCalledWith('wallet-1');
-    expect(setWallet).toHaveBeenCalledWith({ id: 'wallet-1', name: 'Reloaded' });
+    const merge = setWallet.mock.calls[0][0] as (current: any) => any;
+    expect(merge({
+      id: 'wallet-1',
+      name: 'Current',
+      syncStateVersion: 7,
+      lastSyncStatus: 'success',
+    })).toEqual({
+      id: 'wallet-1',
+      name: 'Reloaded',
+      syncStateVersion: 7,
+      lastSyncStatus: 'success',
+    });
+    expect(merge({ id: 'other-wallet', name: 'Other' })).toEqual({
+      id: 'other-wallet',
+      name: 'Other',
+    });
     expect(walletsApi.getWalletShareInfo).toHaveBeenCalledWith('wallet-1');
   });
 

@@ -6,7 +6,6 @@ import {
   type WalletNetwork,
   type WebSocketBalanceData,
   type WebSocketConfirmationData,
-  type WebSocketSyncData,
   type WebSocketTransactionData,
 } from '../../../types';
 import type { Notification } from '../../NotificationToast';
@@ -80,7 +79,13 @@ export function mapApiWalletToDashboardWallet(wallet: Wallet): Wallet {
     // The API has always sent this; the whitelist simply dropped it, which is
     // why a failing dashboard wallet could show no reason at all.
     lastSyncError: wallet.lastSyncError,
+    lastSyncFailureClass: wallet.lastSyncFailureClass,
     syncInProgress: wallet.syncInProgress,
+    syncExecutionOwner: wallet.syncExecutionOwner,
+    syncRetryCount: wallet.syncRetryCount,
+    syncNextRetryAt: wallet.syncNextRetryAt,
+    syncStartedAt: wallet.syncStartedAt,
+    syncStateVersion: wallet.syncStateVersion,
   };
 }
 
@@ -259,8 +264,4 @@ export function buildConfirmationNotification(
     },
     sound: isFirstConfirmation ? 'confirmation' : undefined,
   };
-}
-
-export function getSyncWalletId(data: WebSocketSyncData): string | null {
-  return data.walletId || null;
 }

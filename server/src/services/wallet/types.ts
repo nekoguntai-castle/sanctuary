@@ -106,7 +106,13 @@ export interface WalletWithBalance {
   lastSyncedAt?: Date | null;
   lastSyncStatus?: string | null;
   lastSyncError?: string | null;
+  lastSyncFailureClass?: string | null;
   syncInProgress?: boolean;
+  syncExecutionOwner?: string | null;
+  syncRetryCount?: number;
+  syncNextRetryAt?: Date | null;
+  syncStartedAt?: Date | null;
+  syncStateVersion?: number;
   // Sharing info
   isShared: boolean;
   sharedWith?: {

@@ -191,4 +191,61 @@ describe('useWebSocketQueryInvalidation branch coverage', () => {
 
     expect(listUpdated[0].lastSyncedAt).toBe('2026-08-19T10:00:00.000Z');
   });
+
+  it('applies only a newer complete sync snapshot and clears nullable cache fields', () => {
+    renderHook(() => useWebSocketQueryInvalidation());
+
+    act(() => {
+      emit('sync', {
+        event: 'sync',
+        data: {
+          walletId: 'wallet-1',
+          inProgress: false,
+          status: 'complete',
+          syncStatus: 'success',
+          error: null,
+          failureClass: null,
+          executionOwner: null,
+          retryCount: 0,
+          nextRetryAt: null,
+          startedAt: null,
+          stateVersion: 12,
+          lastSyncedAt: '2026-08-20T12:00:00.000Z',
+        },
+      });
+    });
+
+    const updater = getUpdater(['wallets', 'list']);
+    const staleWallet = {
+      id: 'wallet-1',
+      syncInProgress: true,
+      lastSyncStatus: 'retrying',
+      lastSyncError: 'temporary failure',
+      lastSyncFailureClass: 'electrum_unavailable',
+      syncExecutionOwner: 'worker',
+      syncRetryCount: 2,
+      syncNextRetryAt: '2026-08-20T11:59:00.000Z',
+      syncStartedAt: '2026-08-20T11:58:00.000Z',
+      syncStateVersion: 11,
+    };
+
+    expect(updater?.([staleWallet])[0]).toEqual({
+      id: 'wallet-1',
+      syncInProgress: false,
+      lastSyncStatus: 'success',
+      lastSyncError: null,
+      lastSyncFailureClass: null,
+      syncExecutionOwner: null,
+      syncRetryCount: 0,
+      syncNextRetryAt: null,
+      syncStartedAt: null,
+      syncStateVersion: 12,
+      lastSyncedAt: '2026-08-20T12:00:00.000Z',
+    });
+
+    const equalWallet = { ...staleWallet, syncStateVersion: 12 };
+    expect(updater?.([equalWallet])[0]).toBe(equalWallet);
+    const newerWallet = { ...staleWallet, syncStateVersion: 13 };
+    expect(updater?.([newerWallet])[0]).toBe(newerWallet);
+  });
 });

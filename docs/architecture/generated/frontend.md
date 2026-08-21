@@ -448,6 +448,7 @@ n_src_utils_walletCapabilities_ts["walletCapabilities.ts"]
 n_src_utils_walletSyncPresentation_ts["walletSyncPresentation.ts"]
 n_src_utils_walletSyncPresentationTypes_ts["walletSyncPresentationTypes.ts"]
 n_src_utils_walletSyncSettledStates_ts["walletSyncSettledStates.ts"]
+n_src_utils_walletSyncSnapshot_ts["walletSyncSnapshot.ts"]
 end
 end
 n_shared_constants_walletPolicy_ts-->n_shared_constants_bitcoin_ts
@@ -943,6 +944,7 @@ n_src_components_WalletDetail__collapsed-->n_src_utils_logger_ts
 n_src_components_WalletDetail__collapsed-->n_src_utils_transaction_ts
 n_src_components_WalletDetail__collapsed-->n_src_utils_walletCapabilities_ts
 n_src_components_WalletDetail__collapsed-->n_src_utils_walletSyncPresentation_ts
+n_src_components_WalletDetail__collapsed-->n_src_utils_walletSyncSnapshot_ts
 n_src_components_WalletList__collapsed-->n_shared_constants_walletIdentity_ts
 n_src_components_WalletList__collapsed-->n_src_app_networks_ts
 n_src_components_WalletList__collapsed-->n_src_components_Amount_tsx
@@ -1055,6 +1057,7 @@ n_src_hooks_queries__collapsed-->n_src_api_devices_ts
 n_src_hooks_queries__collapsed-->n_src_api_labels_ts
 n_src_hooks_queries__collapsed-->n_src_api_transactions__collapsed
 n_src_hooks_queries__collapsed-->n_src_api_wallets_ts
+n_src_hooks_queries__collapsed-->n_src_utils_walletSyncSnapshot_ts
 n_src_hooks_send__collapsed-->n_shared_utils_errors_ts
 n_src_hooks_send__collapsed-->n_src_api_client_ts
 n_src_hooks_send__collapsed-->n_src_api_drafts_ts
@@ -1105,9 +1108,11 @@ n_src_hooks_useUserPreference_ts-->n_src_utils_logger_ts
 n_src_hooks_useUserPreference_ts-->n_src_utils_preferencePaths_ts
 n_src_hooks_websocket__collapsed-->n_shared_types_websocket_ts
 n_src_hooks_websocket__collapsed-->n_src_api_sync_ts
+n_src_hooks_websocket__collapsed-->n_src_hooks_queries__collapsed
 n_src_hooks_websocket__collapsed-->n_src_providers_QueryProvider_tsx
 n_src_hooks_websocket__collapsed-->n_src_services_websocket_ts
 n_src_hooks_websocket__collapsed-->n_src_utils_logger_ts
+n_src_hooks_websocket__collapsed-->n_src_utils_walletSyncSnapshot_ts
 n_src_main_tsx-->n_src_App_tsx
 n_src_main_tsx-->n_src_themes_index_ts
 n_src_main_tsx-->n_src_utils_nodeGlobals_ts

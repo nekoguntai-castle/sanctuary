@@ -70,8 +70,7 @@ export function useWalletMutations({
 
     try {
       // Optimistic update
-      const updatedWallet = { ...wallet, ...updatedData };
-      setWallet(updatedWallet);
+      setWallet(current => current?.id === id ? { ...current, ...updatedData } : current);
 
       // Wallet identity material is immutable through the generic update API.
       await walletsApi.updateWallet(id, {
@@ -80,8 +79,8 @@ export function useWalletMutations({
     } catch (err) {
       log.error('Failed to update wallet', { error: err });
       if (!ownership.isRouteOwner(token) || id !== walletId) return;
-      // Revert optimistic update on error
-      setWallet(current => current?.id === id ? wallet : current);
+      // Revert only the optimistic field so a newer sync snapshot cannot regress.
+      setWallet(current => current?.id === id ? { ...current, name: wallet.name } : current);
       handleError(err, 'Update Failed');
     }
   }, [handleError, ownership, ownershipKey, setWallet, wallet, walletId]);

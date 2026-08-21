@@ -93,6 +93,11 @@ import type {
 } from "@sanctuary/shared/types/api";
 import type { PendingTransactionType } from "@sanctuary/shared/constants/transactions";
 import type { NodeMempoolEstimator } from "@sanctuary/shared/constants/nodeConfig";
+import type {
+  SyncExecutionOwner,
+  WalletSyncFailureClass,
+} from "@sanctuary/shared/constants/sync";
+import type { SyncEvent } from "@sanctuary/shared/types/websocket";
 
 export { WalletType };
 export type {
@@ -513,7 +518,13 @@ export interface Wallet {
     | string
     | null;
   lastSyncError?: string | null;
+  lastSyncFailureClass?: WalletSyncFailureClass | null;
   syncInProgress?: boolean;
+  syncExecutionOwner?: SyncExecutionOwner | null;
+  syncRetryCount?: number;
+  syncNextRetryAt?: string | null;
+  syncStartedAt?: string | null;
+  syncStateVersion?: number;
   isShared?: boolean;
   sharedWith?: {
     groupName?: string | null;
@@ -615,23 +626,17 @@ export interface WebSocketConfirmationData {
   walletId?: string;
 }
 
-export interface WebSocketSyncData {
+export type WebSocketSyncData = Omit<
+  SyncEvent["data"],
+  "inProgress" | "lastSyncedAt" | "nextRetryAt" | "startedAt" | "timestamp"
+> & {
   inProgress?: boolean;
-  status?:
-    | "scanning"
-    | "complete"
-    | "error"
-    | "retry"
-    | "retrying"
-    | "success"
-    | "failed";
-  lastSyncedAt?: string;
+  lastSyncedAt?: string | null;
   lastSyncedBlockHeight?: number | null;
-  error?: string;
-  retryCount?: number;
-  maxRetries?: number;
+  nextRetryAt?: string | null;
+  startedAt?: string | null;
   walletId?: string;
-}
+};
 
 export interface WebSocketEventData {
   walletId?: string;

@@ -7,6 +7,23 @@ interface SyncJobsFailureCleanupContext {
   syncWalletJob: typeof import('../../../../src/worker/jobs/syncJobs').syncWalletJob;
 }
 
+function persistedSyncState(args?: unknown, stateVersion = 1): any {
+  const data = (args as { data?: Record<string, unknown> } | undefined)?.data ?? {};
+  return {
+    syncInProgress: false,
+    lastSyncedAt: null,
+    lastSyncStatus: null,
+    lastSyncError: null,
+    lastSyncFailureClass: null,
+    syncExecutionOwner: null,
+    syncRetryCount: 0,
+    syncNextRetryAt: null,
+    syncStartedAt: null,
+    ...data,
+    syncStateVersion: stateVersion,
+  };
+}
+
 export function registerSyncJobsFailureCleanupContracts({
   prisma,
   syncWallet,
@@ -81,12 +98,16 @@ export function registerSyncJobsFailureCleanupContracts({
     // so the safety net only engages once every attempt has failed. Reject all
     // four, then let the finally block's reset succeed.
     vi.mocked(prisma.wallet.update)
-      .mockResolvedValueOnce({} as any)                          // syncInProgress: true
+      .mockResolvedValueOnce(persistedSyncState({ data: {
+        syncInProgress: true,
+        syncExecutionOwner: 'worker',
+        syncStartedAt: new Date(),
+      } }, 1))
       .mockRejectedValueOnce(new Error('DB connection lost'))     // terminal write attempt 1
       .mockRejectedValueOnce(new Error('DB connection lost'))     // attempt 2
       .mockRejectedValueOnce(new Error('DB connection lost'))     // attempt 3
       .mockRejectedValueOnce(new Error('DB connection lost'))     // attempt 4 (final)
-      .mockResolvedValueOnce({} as any);                          // finally safety-net
+      .mockResolvedValueOnce(persistedSyncState(undefined, 2));
 
     const mockJob = {
       id: 'job-1',
@@ -116,7 +137,11 @@ export function registerSyncJobsFailureCleanupContracts({
     vi.useFakeTimers();
     vi.mocked(syncWallet).mockRejectedValueOnce(new Error('Sync failed'));
     vi.mocked(prisma.wallet.update)
-      .mockResolvedValueOnce({} as any)                    // syncInProgress: true
+      .mockResolvedValueOnce(persistedSyncState({ data: {
+        syncInProgress: true,
+        syncExecutionOwner: 'worker',
+        syncStartedAt: new Date(),
+      } }, 1))
       .mockRejectedValueOnce(new Error('DB down'))          // terminal write attempt 1
       .mockRejectedValueOnce(new Error('DB down'))          // attempt 2
       .mockRejectedValueOnce(new Error('DB down'))          // attempt 3

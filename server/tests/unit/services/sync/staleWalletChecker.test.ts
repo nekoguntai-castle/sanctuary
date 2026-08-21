@@ -5,6 +5,7 @@ const {
   mockFindStuckSyncing,
   mockFindStale,
   mockWalletUpdate,
+  mockLifecyclePublish,
   mockWithLock,
   mockLogger,
 } = vi.hoisted(() => ({
@@ -17,7 +18,8 @@ const {
     syncStateVersion?: number;
   }>>>(),
   mockFindStale: vi.fn<(options: unknown) => Promise<Array<{ id: string }>>>(),
-  mockWalletUpdate: vi.fn<(...args: unknown[]) => Promise<boolean>>(),
+  mockWalletUpdate: vi.fn(),
+  mockLifecyclePublish: vi.fn(),
   mockWithLock: vi.fn(),
   mockLogger: {
     debug: vi.fn(),
@@ -42,6 +44,10 @@ vi.mock('../../../../src/repositories', () => ({
 
 vi.mock('../../../../src/infrastructure', () => ({
   withLock: mockWithLock,
+}));
+
+vi.mock('../../../../src/services/sync/syncLifecyclePublisher', () => ({
+  syncLifecyclePublisher: { publish: mockLifecyclePublish },
 }));
 
 vi.mock('../../../../src/utils/logger', () => ({
@@ -87,7 +93,18 @@ describe('staleWalletChecker', () => {
       success: true,
       result: await callback(),
     }));
-    mockWalletUpdate.mockResolvedValue(true);
+    mockWalletUpdate.mockResolvedValue({
+      syncInProgress: false,
+      lastSyncedAt: null,
+      lastSyncStatus: null,
+      lastSyncError: null,
+      lastSyncFailureClass: null,
+      syncExecutionOwner: null,
+      syncRetryCount: 0,
+      syncNextRetryAt: null,
+      syncStartedAt: null,
+      syncStateVersion: 2,
+    });
   });
 
   describe('resetStuckSyncs', () => {
@@ -158,6 +175,11 @@ describe('staleWalletChecker', () => {
       expect(mockLogger.info).toHaveBeenCalledWith(
         expect.stringContaining('Auto-unstuck 1 wallets'),
       );
+      expect(mockLifecyclePublish).toHaveBeenCalledWith(expect.objectContaining({
+        walletId: 'w1',
+        transition: 'cleared',
+        state: expect.objectContaining({ syncStateVersion: 2 }),
+      }));
     });
 
     it('queues stale wallets for low-priority sync', async () => {
@@ -219,6 +241,24 @@ describe('staleWalletChecker', () => {
         syncExecutionOwner: 'worker',
         syncStateVersion: 1,
       }));
+      expect(mockLifecyclePublish).toHaveBeenCalledOnce();
+    });
+
+    it('does not publish when the compare-and-swap observation is stale', async () => {
+      mockFindStuckSyncing.mockResolvedValueOnce([{
+        id: 'stale-observation',
+        name: 'Stale observation',
+        syncStateVersion: 1,
+      }]);
+      mockFindStale.mockResolvedValueOnce([]);
+      mockWalletUpdate.mockResolvedValueOnce(null);
+
+      await checkAndQueueStaleSyncs(makeSyncState(), vi.fn());
+
+      expect(mockLifecyclePublish).not.toHaveBeenCalled();
+      expect(mockLogger.info).not.toHaveBeenCalledWith(
+        expect.stringContaining('Auto-unstuck 1 wallets'),
+      );
     });
 
     it('fails closed when worker lock authority is unavailable', async () => {
@@ -276,7 +316,7 @@ describe('staleWalletChecker', () => {
         syncStateVersion: 4,
       }]);
       mockFindStale.mockResolvedValueOnce([]);
-      mockWalletUpdate.mockResolvedValueOnce(false);
+      mockWalletUpdate.mockResolvedValueOnce(null);
 
       await checkAndQueueStaleSyncs(makeSyncState(), vi.fn());
 

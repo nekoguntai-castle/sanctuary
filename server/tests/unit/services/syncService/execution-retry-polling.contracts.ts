@@ -5,6 +5,7 @@ import {
   mockPopulateMissingTransactionFields,
   mockPrismaClient,
   mockReleaseLock,
+  mockSyncLifecyclePublish,
   mockSyncWallet,
   type SyncServiceTestContext,
 } from "./syncServiceTestHarness";
@@ -334,7 +335,7 @@ export function registerSyncServiceExecutionRetryPollingTests(
   });
 
   describe("retry logic", () => {
-    it.each(["event", "websocket", "balance", "queue"] as const)(
+    it.each(["balance", "queue"] as const)(
       "keeps a durably committed success when the %s side effect throws",
       async sideEffect => {
         context.syncService["isRunning"] = true;
@@ -345,7 +346,6 @@ export function registerSyncServiceExecutionRetryPollingTests(
           .mockResolvedValueOnce({ _sum: { amount: BigInt(1_500) } })
           .mockResolvedValueOnce({ _sum: { amount: BigInt(0) } });
 
-        const { eventService } = await import("../../../../src/services/eventService");
         const syncQueue = await import("../../../../src/services/sync/syncQueue");
         const queueSpy = sideEffect === "queue"
           ? vi.spyOn(syncQueue, "processQueue").mockImplementationOnce(() => {
@@ -353,17 +353,7 @@ export function registerSyncServiceExecutionRetryPollingTests(
           })
           : null;
 
-        if (sideEffect === "event") {
-          vi.mocked(eventService.emitWalletSynced).mockImplementationOnce(() => {
-            throw new Error("sync event failed");
-          });
-        } else if (sideEffect === "websocket") {
-          mockNotificationService.broadcastSyncStatus
-            .mockImplementationOnce(() => undefined)
-            .mockImplementationOnce(() => {
-              throw new Error("sync status broadcast failed");
-            });
-        } else if (sideEffect === "balance") {
+        if (sideEffect === "balance") {
           mockNotificationService.broadcastBalanceUpdate.mockImplementationOnce(() => {
             throw new Error("balance broadcast failed");
           });
@@ -393,9 +383,7 @@ export function registerSyncServiceExecutionRetryPollingTests(
       },
     );
 
-    it.each(["dead-letter", "failure-event"] as const)(
-      "persists the original terminal failure when the %s side effect rejects",
-      async sideEffect => {
+    it("persists the original terminal failure when dead-letter recording rejects", async () => {
         context.syncService["isRunning"] = true;
         mockPrismaClient.wallet.update.mockResolvedValue({});
         mockPrismaClient.uTXO.aggregate.mockResolvedValue({
@@ -404,17 +392,10 @@ export function registerSyncServiceExecutionRetryPollingTests(
         mockSyncWallet.mockRejectedValueOnce(new Error("original pipeline failure"));
 
         const { recordSyncFailure } = await import("../../../../src/services/deadLetterQueue");
-        const { eventService } = await import("../../../../src/services/eventService");
-        if (sideEffect === "dead-letter") {
-          vi.mocked(recordSyncFailure).mockRejectedValueOnce(new Error("dead letter unavailable"));
-        } else {
-          vi.mocked(eventService.emitWalletSyncFailed).mockImplementationOnce(() => {
-            throw new Error("failure event unavailable");
-          });
-        }
+        vi.mocked(recordSyncFailure).mockRejectedValueOnce(new Error("dead letter unavailable"));
 
         const result = await context.syncService["executeSyncJob"](
-          `wallet-terminal-${sideEffect}`,
+          "wallet-terminal-dead-letter",
           3,
         );
 
@@ -423,22 +404,25 @@ export function registerSyncServiceExecutionRetryPollingTests(
           error: "original pipeline failure",
         });
         expect(mockPrismaClient.wallet.update).toHaveBeenCalledWith(expect.objectContaining({
-          where: { id: `wallet-terminal-${sideEffect}` },
+          where: { id: "wallet-terminal-dead-letter" },
           data: expect.objectContaining({
             lastSyncStatus: "failed",
             lastSyncError: "original pipeline failure",
             syncExecutionOwner: null,
           }),
         }));
-      },
-    );
+      });
 
     it("does not arm a heap retry until the durable retry transition succeeds", async () => {
       vi.useFakeTimers();
       context.syncService["isRunning"] = true;
       mockPrismaClient.wallet.update
         .mockResolvedValueOnce({})
-        .mockRejectedValue(new Error("retry state unavailable"));
+        .mockRejectedValueOnce(new Error("retry state unavailable"))
+        .mockRejectedValueOnce(new Error("retry state unavailable"))
+        .mockRejectedValueOnce(new Error("retry state unavailable"))
+        .mockRejectedValueOnce(new Error("retry state unavailable"))
+        .mockResolvedValueOnce({});
       mockPrismaClient.uTXO.aggregate.mockResolvedValue({
         _sum: { amount: BigInt(0) },
       });
@@ -464,6 +448,12 @@ export function registerSyncServiceExecutionRetryPollingTests(
       expect(context.syncService["pendingRetries"].has("wallet-retry-write-failed"))
         .toBe(false);
       expect(mockSyncWallet).toHaveBeenCalledTimes(1);
+      expect(mockSyncLifecyclePublish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          walletId: "wallet-retry-write-failed",
+          transition: "cleared",
+        }),
+      );
     });
 
     it("preserves the original terminal result when durable failure state is unavailable", async () => {
@@ -540,6 +530,7 @@ export function registerSyncServiceExecutionRetryPollingTests(
         where: { id: "wallet-started" },
         data: {
           syncInProgress: true,
+          lastSyncStatus: "syncing",
           syncExecutionOwner: "inline",
           syncRetryCount: 0,
           syncNextRetryAt: null,
@@ -572,11 +563,10 @@ export function registerSyncServiceExecutionRetryPollingTests(
           syncStartedAt: null,
         },
       });
-      expect(mockNotificationService.broadcastSyncStatus).toHaveBeenCalledWith(
-        "wallet-success",
+      expect(mockSyncLifecyclePublish).toHaveBeenCalledWith(
         expect.objectContaining({
-          status: "success",
-          lastSyncedAt: new Date("2026-08-20T12:00:00.000Z"),
+          walletId: "wallet-success",
+          transition: "succeeded",
         }),
       );
     });
@@ -619,11 +609,10 @@ export function registerSyncServiceExecutionRetryPollingTests(
           }),
         }),
       );
-      expect(mockNotificationService.broadcastSyncStatus).toHaveBeenCalledWith(
-        "wallet-testnet-disabled",
+      expect(mockSyncLifecyclePublish).toHaveBeenCalledWith(
         expect.objectContaining({
-          status: "failed",
-          retriesExhausted: true,
+          walletId: "wallet-testnet-disabled",
+          transition: "failed",
         }),
       );
     });
@@ -785,12 +774,12 @@ export function registerSyncServiceExecutionRetryPollingTests(
       configSpy.mockRestore();
 
       expect(result.success).toBe(false);
-      expect(mockNotificationService.broadcastSyncStatus).toHaveBeenCalledWith(
-        "wallet-retry-delay",
+      expect(mockSyncLifecyclePublish).toHaveBeenCalledWith(
         expect.objectContaining({
-          status: "retrying",
-          retryingIn: 2500,
+          walletId: "wallet-retry-delay",
+          transition: "retrying",
         }),
+        { maxRetries: 3 },
       );
     });
   });

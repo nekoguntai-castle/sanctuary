@@ -114,13 +114,34 @@ export function registerPopulateMissingTransactionFieldsMainFlowContracts() {
       { id: 'addr-2', address: 'change-addr' },
     ]);
 
-    const result = await populateMissingTransactionFields('wallet-1');
+    const onCommit = vi.fn();
+    const result = await populateMissingTransactionFields(
+      'wallet-1',
+      undefined,
+      onCommit,
+    );
 
     expect(result.updated).toBe(4);
     expect(result.confirmationUpdates).toEqual([
       { txid: 'tx-sent', oldConfirmations: 0, newConfirmations: 2 },
       { txid: 'tx-recv-nodetails', oldConfirmations: 0, newConfirmations: 6 },
       { txid: 'tx-consolidate', oldConfirmations: 0, newConfirmations: 2 },
+    ]);
+    expect(onCommit).toHaveBeenCalledTimes(2);
+    expect(onCommit.mock.calls.map(([commit]) => commit)).toEqual([
+      {
+        updated: 2,
+        confirmationUpdates: [
+          { txid: 'tx-sent', oldConfirmations: 0, newConfirmations: 2 },
+          { txid: 'tx-recv-nodetails', oldConfirmations: 0, newConfirmations: 6 },
+        ],
+      },
+      {
+        updated: 2,
+        confirmationUpdates: [
+          { txid: 'tx-consolidate', oldConfirmations: 0, newConfirmations: 2 },
+        ],
+      },
     ]);
     expect(mockClient.getTransaction).toHaveBeenCalledWith('prev-fee', true);
     expect(mockPrismaClient.transaction.update).toHaveBeenCalledWith({
@@ -193,7 +214,9 @@ export function registerPopulateMissingTransactionFieldsMainFlowContracts() {
     )).rejects.toThrow('cancel population after current chunk');
 
     expect(mockClient.getTransaction).toHaveBeenCalledTimes(50);
-    expect(mockPrismaClient.transaction.update).toHaveBeenCalledTimes(50);
+    // Cancellation is checked between database batches, so only the first
+    // configured two-row transaction commits before the abort is observed.
+    expect(mockPrismaClient.transaction.update).toHaveBeenCalledTimes(2);
     expect(mockClient.getTransaction).not.toHaveBeenCalledWith('txid-50', true);
   });
 }

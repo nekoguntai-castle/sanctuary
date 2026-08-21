@@ -24,7 +24,6 @@ import {
   mockSubscribeWallets,
   mockUnsubscribe,
   mockUnsubscribeWallets,
-  mockUpdateWalletSyncStatus,
   recentTxCalls,
   resetState,
   state,
@@ -291,7 +290,7 @@ describe('useDashboardData', () => {
     expect(mockInvalidateAllWallets.mock.calls.length).toBe(invalidateCountBeforeVisibility);
   });
 
-  it('handles websocket transaction/balance/block/confirmation/sync events', async () => {
+  it('handles websocket transaction/balance/block/confirmation events', async () => {
     const { result } = renderHook(() => useDashboardData());
     await act(async () => {
       await Promise.resolve();
@@ -304,7 +303,9 @@ describe('useDashboardData', () => {
     expect(wsEventHandlers.balance).toBeTypeOf('function');
     expect(wsEventHandlers.block).toBeTypeOf('function');
     expect(wsEventHandlers.confirmation).toBeTypeOf('function');
-    expect(wsEventHandlers.sync).toBeTypeOf('function');
+    // Sync cache ownership lives at the app root so Dashboard cannot apply the
+    // same event a second time after the version guard has accepted/rejected it.
+    expect(wsEventHandlers.sync).toBeUndefined();
 
     act(() => {
       wsEventHandlers.transaction?.({
@@ -411,28 +412,6 @@ describe('useDashboardData', () => {
       });
     });
     expect(mockAddNotification.mock.calls.length).toBe(confirmationNoticeCount);
-
-    act(() => {
-      wsEventHandlers.sync?.({
-        data: {
-          walletId: 'w-main-low',
-          inProgress: false,
-          status: 'success',
-        },
-      });
-    });
-    expect(mockUpdateWalletSyncStatus).toHaveBeenCalledWith('w-main-low', false, 'success');
-
-    const syncCallCount = mockUpdateWalletSyncStatus.mock.calls.length;
-    act(() => {
-      wsEventHandlers.sync?.({
-        data: {
-          inProgress: true,
-          status: 'partial',
-        },
-      });
-    });
-    expect(mockUpdateWalletSyncStatus.mock.calls.length).toBe(syncCallCount);
 
     expect(mockInvalidateAllWallets).toHaveBeenCalled();
   });
@@ -560,16 +539,6 @@ describe('useDashboardData', () => {
     });
     expect(mockAddNotification.mock.calls.length).toBe(notifyCountBeforeNoConfirm);
 
-    act(() => {
-      wsEventHandlers.sync?.({
-        data: {
-          walletId: 'w-main-high',
-          status: 'partial',
-          // inProgress omitted => fallback false
-        },
-      });
-    });
-    expect(mockUpdateWalletSyncStatus).toHaveBeenCalledWith('w-main-high', false, 'partial');
   });
 
   describe('recent activity paging', () => {

@@ -5,6 +5,7 @@
  * Ensures cache consistency when underlying data changes.
  */
 
+import { getDistributedEventBus } from '../infrastructure';
 import { eventBus } from '../events/eventBus';
 import { walletCache, feeCache, priceCache } from './cache';
 import { createLogger } from '../utils/logger';
@@ -43,11 +44,21 @@ export function initializeCacheInvalidation(): void {
   }
 
   log.info('Initializing cache invalidation listeners');
+  const distributedEventBus = getDistributedEventBus();
 
   // Wallet sync events - invalidate all wallet caches
   unsubscribers.push(
     eventBus.on('wallet:synced', async ({ walletId }) => {
       log.debug(`Invalidating caches for synced wallet ${walletId}`);
+      await invalidateWalletCaches(walletId);
+    })
+  );
+
+  // Canonical persisted lifecycle transition. This also covers worker-owned
+  // syncs, which do not run in the API process that owns the wallet cache.
+  unsubscribers.push(
+    distributedEventBus.on('wallet:syncTransition', async ({ walletId }) => {
+      log.debug(`Invalidating caches for wallet sync transition ${walletId}`);
       await invalidateWalletCaches(walletId);
     })
   );

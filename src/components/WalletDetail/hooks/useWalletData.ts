@@ -36,6 +36,7 @@ import {
   type RouteToken,
 } from '../../../hooks/requestOwnership';
 import type { ListEpochToken } from '../../../hooks/usePaginatedList';
+import { mergeWalletHttpSyncState } from '../../../utils/walletSyncSnapshot';
 
 export type { UseWalletDataParams, UseWalletDataReturn } from './walletDataTypes';
 
@@ -339,7 +340,7 @@ export function useWalletData({
 
     if (!ownsRequest()) return;
     const formattedWallet = formatWalletFromApi(apiWallet, user.id);
-    setWallet(formattedWallet);
+    setWallet(current => mergeWalletHttpSyncState(current, formattedWallet));
     setLoading(false);
 
     // 2. Fetch auxiliary data in parallel (non-critical)

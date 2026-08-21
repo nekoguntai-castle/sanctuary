@@ -13,6 +13,7 @@ import { getConfig } from '../../config';
 import type { SyncPriority } from '@sanctuary/shared/constants/sync';
 import type { SyncState } from './types';
 import { withLock } from '../../infrastructure';
+import { syncLifecyclePublisher } from './syncLifecyclePublisher';
 
 const log = createLogger('SYNC:STALE');
 
@@ -53,7 +54,13 @@ export async function clearStuckSyncIfAuthorized(
         syncStateVersion: wallet.syncStateVersion as number,
       });
     });
-    return result.success && result.result === true;
+    if (!result.success || result.result === null) return false;
+    await syncLifecyclePublisher.publish({
+      walletId: wallet.id,
+      transition: 'cleared',
+      state: result.result,
+    });
+    return true;
   } catch (error) {
     log.warn(`[SYNC] Could not acquire stale-sync authority for wallet ${wallet.id}`, {
       error: getErrorMessage(error),

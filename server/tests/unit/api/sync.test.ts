@@ -380,7 +380,18 @@ describe('Sync API - Network Endpoints', () => {
 
     it('POST /sync/reset/:walletId resets stuck state', async () => {
       mockWalletRepository.findByIdWithAccess.mockResolvedValue({ id: 'wallet-1' });
-      mockWalletRepository.updateSyncState.mockResolvedValue({});
+      mockWalletRepository.updateSyncState.mockResolvedValue({
+        syncInProgress: false,
+        lastSyncedAt: null,
+        lastSyncStatus: 'failed',
+        lastSyncError: 'stale sync',
+        lastSyncFailureClass: 'other',
+        syncExecutionOwner: null,
+        syncRetryCount: 0,
+        syncNextRetryAt: null,
+        syncStartedAt: null,
+        syncStateVersion: 2,
+      });
 
       const response = await request(app)
         .post('/sync/reset/wallet-1')
@@ -390,6 +401,9 @@ describe('Sync API - Network Endpoints', () => {
       expect(response.body.success).toBe(true);
       expect(mockWalletRepository.updateSyncState).toHaveBeenCalledWith('wallet-1', {
         syncInProgress: false,
+        lastSyncStatus: null,
+        lastSyncError: null,
+        lastSyncFailureClass: null,
         syncExecutionOwner: null,
         syncRetryCount: 0,
         syncNextRetryAt: null,

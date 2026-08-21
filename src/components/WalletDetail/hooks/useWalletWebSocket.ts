@@ -1,10 +1,16 @@
+import { useEffect, useRef } from 'react';
 import { Wallet, Transaction } from '../../../types';
 import { satsToBTC, formatBTC } from '@sanctuary/shared/utils/bitcoin';
-import { useWalletEvents } from '../../../hooks/websocket';
+import { useWalletEvents, useWebSocket } from '../../../hooks/websocket';
 import { useNotifications } from '../../../contexts/NotificationContext';
 import { createLogger } from '../../../utils/logger';
 import type { SyncRetryInfo } from '../types';
 import { useWalletRouteOwnership } from './useWalletRouteOwnership';
+import {
+  applyAuthoritativeSyncSnapshot,
+  isApplicableSyncSnapshot,
+  type SyncSnapshotEvent,
+} from '../../../utils/walletSyncSnapshot';
 
 const log = createLogger('WalletDetail:WebSocket');
 
@@ -30,7 +36,21 @@ export function useWalletWebSocket({
   fetchData,
 }: UseWalletWebSocketOptions) {
   const { addNotification } = useNotifications();
+  const { connected } = useWebSocket();
   const ownership = useWalletRouteOwnership(ownershipKey);
+  const wasConnected = useRef(connected);
+  const latestSyncVersion = useRef(wallet?.syncStateVersion);
+
+  useEffect(() => {
+    latestSyncVersion.current = wallet?.syncStateVersion;
+  }, [wallet?.id, wallet?.syncStateVersion]);
+
+  useEffect(() => {
+    const reconnected = connected && !wasConnected.current;
+    wasConnected.current = connected;
+    if (reconnected && walletId) fetchData(true);
+  }, [connected, fetchData, walletId]);
+
   const ownsEvent = (eventWalletId?: string) => (
     Boolean(walletId)
     && ownership.isRouteOwner(ownership.captureRoute(ownershipKey))
@@ -66,8 +86,11 @@ export function useWalletWebSocket({
       log.debug('Real-time balance update', { balance: data?.confirmed });
 
       // Update wallet balance immediately
-      if (wallet && wallet.id === walletId && data.balance !== undefined) {
-        setWallet({ ...wallet, balance: data.balance });
+      const balance = data.balance;
+      if (wallet && wallet.id === walletId && balance !== undefined) {
+        setWallet(current => current?.id === walletId
+          ? { ...current, balance }
+          : current);
       }
 
       // Note: Balance notifications are handled globally in Dashboard.tsx
@@ -100,17 +123,20 @@ export function useWalletWebSocket({
     },
     onSync: (data) => {
       if (!ownsEvent(data.walletId)) return;
+      const snapshot = data as typeof data & SyncSnapshotEvent;
+      if (!isApplicableSyncSnapshot(
+        latestSyncVersion.current,
+        snapshot.stateVersion,
+      )) return;
+      if (snapshot.stateVersion !== undefined) {
+        latestSyncVersion.current = snapshot.stateVersion;
+      }
       log.debug('Sync status update', { status: data?.status });
 
       // Update wallet sync status (use functional form to avoid stale closure)
       setWallet(prevWallet => {
         if (!prevWallet || prevWallet.id !== walletId) return prevWallet;
-        return {
-          ...prevWallet,
-          syncInProgress: data.inProgress,
-          lastSyncStatus: data.status || prevWallet.lastSyncStatus,
-          lastSyncedAt: data.lastSyncedAt ? new Date(data.lastSyncedAt).toISOString() : prevWallet.lastSyncedAt,
-        };
+        return applyAuthoritativeSyncSnapshot(prevWallet, snapshot);
       });
 
       // Update retry info
@@ -118,7 +144,7 @@ export function useWalletWebSocket({
         setSyncRetryInfo({
           retryCount: data.retryCount,
           maxRetries: data.maxRetries,
-          error: data.error,
+          error: data.error ?? undefined,
         });
       } else if (data.status === 'success' || data.status === 'failed') {
         // Clear retry info on success or final failure
@@ -126,12 +152,12 @@ export function useWalletWebSocket({
       }
 
       // If sync completed, clear local syncing state (don't wait for HTTP response)
-      if (!data.inProgress) {
+      if (data.inProgress === false) {
         setSyncing(false);
       }
 
       // If sync completed successfully, refresh data
-      if (!data.inProgress && data.status === 'success') {
+      if (data.inProgress === false && data.status === 'success') {
         fetchData(true);
       }
     },

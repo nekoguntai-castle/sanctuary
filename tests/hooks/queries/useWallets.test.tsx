@@ -11,7 +11,6 @@ useInvalidateAllWallets,
 usePendingTransactions,
 useRecentTransactions,
 useUpdateWallet,
-useUpdateWalletSyncStatus,
 useWalletSparklines,
 useWallets,
 walletKeys,
@@ -100,6 +99,38 @@ describe('wallet query and mutation hooks', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(result.current.data?.[0]?.id).toBe('w1');
+  });
+
+  it('does not let an older HTTP list overwrite a newer WebSocket snapshot', async () => {
+    const request = createDeferred<Awaited<ReturnType<typeof walletsApi.getWallets>>>();
+    mockGetWallets.mockReturnValueOnce(request.promise);
+
+    const { result } = renderHook(() => useWallets(), { wrapper: createWrapper(queryClient) });
+    await waitFor(() => expect(mockGetWallets).toHaveBeenCalledOnce());
+    act(() => {
+      queryClient.setQueryData(walletKeys.lists(), [{
+        id: 'w1',
+        name: 'WebSocket cache',
+        syncStateVersion: 7,
+        lastSyncStatus: 'failed',
+        lastSyncError: 'newer failure',
+      }]);
+      request.resolve([{
+      id: 'w1',
+      name: 'Fresh name',
+      syncStateVersion: 6,
+      lastSyncStatus: 'success',
+      lastSyncError: null,
+      } as any]);
+    });
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+    expect(result.current.data?.[0]).toMatchObject({
+      name: 'Fresh name',
+      syncStateVersion: 7,
+      lastSyncStatus: 'failed',
+      lastSyncError: 'newer failure',
+    });
   });
 
   it('creates wallet and invalidates wallet list query', async () => {
@@ -287,88 +318,6 @@ describe('wallet cache helper hooks', () => {
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['balanceHistory'] });
   });
 
-  it('updates sync status in wallet list and detail cache entries', () => {
-    queryClient.setQueryData(walletKeys.lists(), [
-      { id: 'w1', name: 'Wallet 1', syncInProgress: false, lastSyncStatus: 'idle' },
-      { id: 'w2', name: 'Wallet 2', syncInProgress: false },
-    ]);
-    queryClient.setQueryData(walletKeys.detail('w1'), {
-      id: 'w1',
-      name: 'Wallet 1',
-      syncInProgress: false,
-      lastSyncStatus: 'idle',
-    });
-
-    const { result } = renderHook(() => useUpdateWalletSyncStatus(), { wrapper: createWrapper(queryClient) });
-
-    act(() => result.current('w1', true, 'syncing'));
-    const listAfterStart = queryClient.getQueryData(walletKeys.lists()) as any[];
-    const detailAfterStart = queryClient.getQueryData(walletKeys.detail('w1')) as any;
-    expect(listAfterStart[0].syncInProgress).toBe(true);
-    expect(listAfterStart[0].lastSyncStatus).toBe('syncing');
-    expect(detailAfterStart.syncInProgress).toBe(true);
-    expect(detailAfterStart.lastSyncStatus).toBe('syncing');
-
-    act(() => result.current('w1', false, 'success'));
-    const listAfterFinish = queryClient.getQueryData(walletKeys.lists()) as any[];
-    const detailAfterFinish = queryClient.getQueryData(walletKeys.detail('w1')) as any;
-    expect(listAfterFinish[0].syncInProgress).toBe(false);
-    expect(detailAfterFinish.syncInProgress).toBe(false);
-    expect(listAfterFinish[0].lastSyncedAt).toEqual(expect.any(String));
-    expect(detailAfterFinish.lastSyncedAt).toEqual(expect.any(String));
-    expect(new Date(listAfterFinish[0].lastSyncedAt).toString()).not.toBe('Invalid Date');
-    expect(new Date(detailAfterFinish.lastSyncedAt).toString()).not.toBe('Invalid Date');
-  });
-
-  it('does not stamp a fresh sync time when the sync ended in failure', () => {
-    queryClient.setQueryData(walletKeys.lists(), [
-      { id: 'w1', name: 'Wallet 1', syncInProgress: true, lastSyncedAt: '2026-01-01T00:00:00.000Z' },
-    ]);
-    queryClient.setQueryData(walletKeys.detail('w1'), {
-      id: 'w1',
-      name: 'Wallet 1',
-      syncInProgress: true,
-      lastSyncedAt: '2026-01-01T00:00:00.000Z',
-    });
-
-    const { result } = renderHook(() => useUpdateWalletSyncStatus(), { wrapper: createWrapper(queryClient) });
-
-    act(() => result.current('w1', false, 'failed'));
-
-    const list = queryClient.getQueryData(walletKeys.lists()) as any[];
-    const detail = queryClient.getQueryData(walletKeys.detail('w1')) as any;
-    expect(list[0].lastSyncedAt).toBe('2026-01-01T00:00:00.000Z');
-    expect(detail.lastSyncedAt).toBe('2026-01-01T00:00:00.000Z');
-  });
-
-  it('leaves the sync time alone when a terminal event carries no status', () => {
-    queryClient.setQueryData(walletKeys.lists(), [
-      { id: 'w1', name: 'Wallet 1', syncInProgress: true },
-    ]);
-    queryClient.setQueryData(walletKeys.detail('w1'), {
-      id: 'w1',
-      name: 'Wallet 1',
-      syncInProgress: true,
-    });
-
-    const { result } = renderHook(() => useUpdateWalletSyncStatus(), { wrapper: createWrapper(queryClient) });
-
-    act(() => result.current('w1', false));
-
-    const list = queryClient.getQueryData(walletKeys.lists()) as any[];
-    expect(list[0].lastSyncedAt).toBeUndefined();
-  });
-
-  it('no-ops sync status cache updates when list/detail caches are missing', () => {
-    const setQueryDataSpy = vi.spyOn(queryClient, 'setQueryData');
-    const { result } = renderHook(() => useUpdateWalletSyncStatus(), { wrapper: createWrapper(queryClient) });
-
-    act(() => result.current('missing-wallet', true, 'syncing'));
-
-    expect(setQueryDataSpy).toHaveBeenCalledTimes(2);
-    expect(queryClient.getQueryData(walletKeys.lists())).toBeUndefined();
-    expect(queryClient.getQueryData(walletKeys.detail('missing-wallet'))).toBeUndefined();
-  });
 });
 
 describe('useBalanceHistory', () => {

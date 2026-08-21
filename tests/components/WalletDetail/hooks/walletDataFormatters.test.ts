@@ -69,6 +69,31 @@ describe('walletDataFormatters', () => {
     expect(formatted.quorum).toEqual({ m: 1, n: 1 });
   });
 
+  it('preserves the authoritative structured sync snapshot', () => {
+    const formatted = formatWalletFromApi({
+      id: 'wallet-syncing',
+      name: 'Syncing',
+      type: 'single_sig',
+      network: 'mainnet',
+      balance: 0,
+      lastSyncFailureClass: 'electrum_unavailable',
+      syncExecutionOwner: 'worker',
+      syncRetryCount: 2,
+      syncNextRetryAt: '2026-08-20T12:01:00.000Z',
+      syncStartedAt: null,
+      syncStateVersion: 17,
+    } as any, 'user-1');
+
+    expect(formatted).toMatchObject({
+      lastSyncFailureClass: 'electrum_unavailable',
+      syncExecutionOwner: 'worker',
+      syncRetryCount: 2,
+      syncNextRetryAt: '2026-08-20T12:01:00.000Z',
+      syncStartedAt: null,
+      syncStateVersion: 17,
+    });
+  });
+
   it('formats wallet devices using exact account matches and account-missing fallbacks', () => {
     const apiWallet = {
       id: 'wallet-1',

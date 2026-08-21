@@ -324,7 +324,7 @@ export function registerSyncServiceAddressMaintenanceTests(context: SyncServiceT
   });
 
   describe('confirmation update flows', () => {
-    it('updates confirmations and broadcasts only changed transactions', async () => {
+    it('delegates confirmation updates to the single event-service publisher', async () => {
       context.syncService['isRunning'] = true;
 
       mockPrismaClient.transaction.findMany.mockResolvedValueOnce([{ walletId: 'wallet-1' }]);
@@ -340,7 +340,7 @@ export function registerSyncServiceAddressMaintenanceTests(context: SyncServiceT
 
       await context.syncService['updateAllConfirmations']();
 
-      expect(mockNotificationService.broadcastConfirmationUpdate).toHaveBeenCalledTimes(2);
+      expect(mockNotificationService.broadcastConfirmationUpdate).not.toHaveBeenCalled();
       expect(eventService.emitTransactionConfirmed).toHaveBeenCalledTimes(2);
     });
 
@@ -359,7 +359,28 @@ export function registerSyncServiceAddressMaintenanceTests(context: SyncServiceT
       await context.syncService['updateAllConfirmations']();
 
       expect(mockUpdateTransactionConfirmations).toHaveBeenCalledTimes(1);
-      expect(mockUpdateTransactionConfirmations).toHaveBeenCalledWith('wallet-ok');
+      expect(mockUpdateTransactionConfirmations).toHaveBeenCalledWith(
+        'wallet-ok',
+        expect.any(AbortSignal),
+        expect.any(Function),
+      );
+    });
+
+    it('contains and reports confirmation publication failures', async () => {
+      context.syncService['isRunning'] = true;
+      mockPrismaClient.transaction.findMany.mockResolvedValueOnce([{ walletId: 'wallet-1' }]);
+      mockUpdateTransactionConfirmations.mockResolvedValueOnce([
+        { txid: 'tx-publish-fail', oldConfirmations: 0, newConfirmations: 1 },
+      ]);
+      const { eventService } = await import('../../../../src/services/eventService');
+      vi.mocked(eventService.emitTransactionConfirmed).mockImplementationOnce(() => {
+        throw new Error('publisher unavailable');
+      });
+
+      await expect(context.syncService['updateAllConfirmations']()).resolves.toBeUndefined();
+
+      expect(mockUpdateTransactionConfirmations).toHaveBeenCalledOnce();
+      expect(eventService.emitTransactionConfirmed).toHaveBeenCalledOnce();
     });
 
     it('returns early when not running', async () => {

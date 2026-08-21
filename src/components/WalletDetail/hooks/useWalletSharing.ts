@@ -6,7 +6,7 @@
  * Extracted from WalletDetail.tsx to isolate sharing concerns.
  */
 
-import { useLayoutEffect, useState } from 'react';
+import { useLayoutEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import * as walletsApi from '../../../api/wallets';
 import * as devicesApi from '../../../api/devices';
 import * as authApi from '../../../api/auth';
@@ -19,6 +19,7 @@ import type { DeviceSharePromptState } from '../types';
 import type { WalletShareRole } from '@sanctuary/shared/constants/walletRoles';
 import type { RouteToken } from '../../../hooks/requestOwnership';
 import { useWalletRouteOwnership } from './useWalletRouteOwnership';
+import { mergeWalletHttpSyncState } from '../../../utils/walletSyncSnapshot';
 
 const log = createLogger('useWalletSharing');
 
@@ -43,7 +44,7 @@ export interface UseWalletSharingParams {
   /** Setter for walletShareInfo on parent (will be removed once state moves entirely here) */
   setWalletShareInfo: (info: walletsApi.WalletShareInfo | null) => void;
   /** Setter for wallet on parent (for handleTransferComplete) */
-  setWallet: (wallet: Wallet | null) => void;
+  setWallet: Dispatch<SetStateAction<Wallet | null>>;
 }
 
 export interface UseWalletSharingReturn {
@@ -336,7 +337,11 @@ export function useWalletSharing({
     if (!owns(token, id)) return;
     try {
       const walletData = await walletsApi.getWallet(id);
-      if (owns(token, id)) setWallet(walletData);
+      if (owns(token, id)) {
+        setWallet(current => current?.id === id
+          ? mergeWalletHttpSyncState(current, walletData)
+          : current);
+      }
       await refreshShareInfo(id, token);
     } catch (err) {
       log.error('Failed to reload wallet after transfer', { error: err });

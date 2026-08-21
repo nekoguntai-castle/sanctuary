@@ -72,11 +72,25 @@ describe('mapApiWalletToDashboardWallet', () => {
       network: 'mainnet',
       lastSyncStatus: 'failed',
       lastSyncError: 'connect ECONNREFUSED 127.0.0.1:50002',
+      lastSyncFailureClass: 'electrum_unavailable',
       lastSyncedAt: null,
       syncInProgress: false,
+      syncExecutionOwner: 'worker',
+      syncRetryCount: 2,
+      syncNextRetryAt: '2026-08-20T12:01:00.000Z',
+      syncStartedAt: null,
+      syncStateVersion: 17,
     } as unknown as Wallet);
 
     expect(mapped.lastSyncError).toBe('connect ECONNREFUSED 127.0.0.1:50002');
     expect(mapped.lastSyncStatus).toBe('failed');
+    expect(mapped).toMatchObject({
+      lastSyncFailureClass: 'electrum_unavailable',
+      syncExecutionOwner: 'worker',
+      syncRetryCount: 2,
+      syncNextRetryAt: '2026-08-20T12:01:00.000Z',
+      syncStartedAt: null,
+      syncStateVersion: 17,
+    });
   });
 });

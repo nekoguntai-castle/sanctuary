@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { WalletSyncStatePatch } from '../../../../src/repositories/types';
+import type {
+  WalletSyncState,
+  WalletSyncStatePatch,
+} from '../../../../src/repositories/types';
 import {
   clearActiveSyncAttempt,
   persistSyncStateWithRetry,
@@ -12,10 +15,23 @@ import {
   type SyncAttemptWriter,
 } from '../../../../src/services/sync/syncAttemptLifecycle';
 
-function createWriter(): SyncAttemptWriter {
+const persistedState: WalletSyncState = {
+  syncInProgress: false,
+  lastSyncedAt: new Date('2026-08-20T12:01:00.000Z'),
+  lastSyncStatus: 'success',
+  lastSyncError: null,
+  lastSyncFailureClass: null,
+  syncExecutionOwner: null,
+  syncRetryCount: 0,
+  syncNextRetryAt: null,
+  syncStartedAt: null,
+  syncStateVersion: 7,
+};
+
+function createWriter(state: WalletSyncState = persistedState): SyncAttemptWriter {
   return {
-    updateSyncState: vi.fn().mockResolvedValue({}),
-    completeSyncSuccess: vi.fn().mockResolvedValue({}),
+    updateSyncState: vi.fn().mockResolvedValue(state),
+    completeSyncSuccess: vi.fn().mockResolvedValue(state),
   };
 }
 
@@ -30,19 +46,54 @@ describe('sync attempt lifecycle', () => {
       const writer = createWriter();
       const startedAt = new Date('2026-08-20T12:00:00.000Z');
 
-      await startSyncAttempt(
+      await expect(startSyncAttempt(
         'wallet-1',
         { owner, retryCount: 2, startedAt },
         writer,
-      );
+      )).resolves.toEqual({
+        walletId: 'wallet-1',
+        transition: 'started',
+        state: persistedState,
+      });
 
       expect(writer.updateSyncState).toHaveBeenCalledWith('wallet-1', {
         syncInProgress: true,
+        lastSyncStatus: 'syncing',
         syncExecutionOwner: owner,
         syncRetryCount: 2,
         syncNextRetryAt: null,
         syncStartedAt: startedAt,
       });
+    },
+  );
+
+  it.each(['failed', 'retrying'])(
+    'replaces a prior %s status when a new attempt starts',
+    async (lastSyncStatus) => {
+      const writer = createWriter({ ...persistedState, lastSyncStatus });
+      vi.mocked(writer.updateSyncState).mockImplementationOnce(async (_walletId, patch) => ({
+        ...persistedState,
+        lastSyncStatus,
+        ...patch,
+      }));
+
+      await expect(startSyncAttempt(
+        'wallet-1',
+        {
+          owner: 'inline',
+          retryCount: 0,
+          startedAt: new Date('2026-08-20T12:00:00.000Z'),
+        },
+        writer,
+      )).resolves.toMatchObject({
+        transition: 'started',
+        state: { lastSyncStatus: 'syncing' },
+      });
+
+      expect(writer.updateSyncState).toHaveBeenCalledWith(
+        'wallet-1',
+        expect.objectContaining({ lastSyncStatus: 'syncing' }),
+      );
     },
   );
 
@@ -64,11 +115,33 @@ describe('sync attempt lifecycle', () => {
     ).rejects.toBe(persistenceError);
   });
 
+  it('rejects a persisted snapshot with an unknown execution owner', async () => {
+    const writer = createWriter();
+    vi.mocked(writer.updateSyncState).mockResolvedValueOnce({
+      ...persistedState,
+      syncExecutionOwner: 'legacy-owner',
+    } as never);
+
+    await expect(startSyncAttempt(
+      'wallet-1',
+      {
+        owner: 'inline',
+        retryCount: 0,
+        startedAt: new Date('2026-08-20T12:00:00.000Z'),
+      },
+      writer,
+    )).rejects.toThrow('Invalid persisted sync execution owner: legacy-owner');
+  });
+
   it('records inline success without inventing a block height', async () => {
     const writer = createWriter();
     const syncedAt = new Date('2026-08-20T12:01:00.000Z');
 
-    await recordSyncSuccess('wallet-1', { syncedAt }, writer);
+    await expect(recordSyncSuccess('wallet-1', { syncedAt }, writer)).resolves.toEqual({
+      walletId: 'wallet-1',
+      transition: 'succeeded',
+      state: persistedState,
+    });
 
     expect(writer.completeSyncSuccess).not.toHaveBeenCalled();
     expect(writer.updateSyncState).toHaveBeenCalledWith('wallet-1', {
@@ -88,11 +161,15 @@ describe('sync attempt lifecycle', () => {
     const writer = createWriter();
     const syncedAt = new Date('2026-08-20T12:01:00.000Z');
 
-    await recordSyncSuccess(
+    await expect(recordSyncSuccess(
       'wallet-1',
       { syncedAt, lastSyncedBlockHeight: 900_000 },
       writer,
-    );
+    )).resolves.toEqual({
+      walletId: 'wallet-1',
+      transition: 'succeeded',
+      state: persistedState,
+    });
 
     expect(writer.completeSyncSuccess).toHaveBeenCalledWith(
       'wallet-1',
@@ -119,11 +196,25 @@ describe('sync attempt lifecycle', () => {
     ).rejects.toBe(persistenceError);
   });
 
+  it('rejects a persisted snapshot with an unknown failure class', async () => {
+    const writer = createWriter();
+    vi.mocked(writer.updateSyncState).mockResolvedValueOnce({
+      ...persistedState,
+      lastSyncFailureClass: 'legacy-failure',
+    } as never);
+
+    await expect(recordSyncSuccess(
+      'wallet-1',
+      { syncedAt: new Date('2026-08-20T12:01:00.000Z') },
+      writer,
+    )).rejects.toThrow('Invalid persisted sync failure class: legacy-failure');
+  });
+
   it.each(['inline', 'worker'] as const)(
     'records a clean classified retry for the %s adapter',
     async (owner) => {
       const writer = createWriter();
-      const persist = vi.fn().mockResolvedValue(true);
+      const persist = vi.fn().mockResolvedValue(persistedState);
       const nextRetryAt = new Date('2026-08-20T12:02:00.000Z');
 
       await expect(
@@ -138,7 +229,11 @@ describe('sync attempt lifecycle', () => {
           writer,
           persist,
         ),
-      ).resolves.toBe(true);
+      ).resolves.toEqual({
+        walletId: 'wallet-1',
+        transition: 'retrying',
+        state: persistedState,
+      });
 
       expect(persist).toHaveBeenCalledWith(
         'wallet-1',
@@ -164,11 +259,15 @@ describe('sync attempt lifecycle', () => {
     'records terminal %s failures with class %s',
     async (message, failureClass) => {
       const writer = createWriter();
-      const persist = vi.fn().mockResolvedValue(true);
+      const persist = vi.fn().mockResolvedValue(persistedState);
 
       await expect(
         recordSyncFailure('wallet-1', { error: new Error(message) }, writer, persist),
-      ).resolves.toBe(true);
+      ).resolves.toEqual({
+        walletId: 'wallet-1',
+        transition: 'failed',
+        state: persistedState,
+      });
 
       expect(persist).toHaveBeenCalledWith(
         'wallet-1',
@@ -202,21 +301,53 @@ describe('sync attempt lifecycle', () => {
         },
         writer,
       ),
-    ).resolves.toBe(true);
+    ).resolves.toEqual({
+      walletId: 'wallet-1',
+      transition: 'retrying',
+      state: persistedState,
+    });
     await expect(
       recordSyncFailure('wallet-1', { error: 'terminal failure' }, writer),
-    ).resolves.toBe(true);
+    ).resolves.toEqual({
+      walletId: 'wallet-1',
+      transition: 'failed',
+      state: persistedState,
+    });
 
     expect(writer.updateSyncState).toHaveBeenCalledTimes(2);
   });
 
-  it('clears only active-attempt fields', async () => {
+  it('returns null when injected retry persistence is exhausted', async () => {
+    const writer = createWriter();
+    const persist = vi.fn().mockResolvedValue(null);
+
+    await expect(recordSyncRetry(
+      'wallet-1',
+      {
+        owner: 'worker',
+        retryCount: 3,
+        nextRetryAt: new Date('2026-08-20T12:03:00.000Z'),
+        error: 'still unavailable',
+      },
+      writer,
+      persist,
+    )).resolves.toBeNull();
+  });
+
+  it('clears an abandoned active attempt without leaving a syncing status', async () => {
     const writer = createWriter();
 
-    await clearActiveSyncAttempt('wallet-1', writer);
+    await expect(clearActiveSyncAttempt('wallet-1', writer)).resolves.toEqual({
+      walletId: 'wallet-1',
+      transition: 'cleared',
+      state: persistedState,
+    });
 
     expect(writer.updateSyncState).toHaveBeenCalledWith('wallet-1', {
       syncInProgress: false,
+      lastSyncStatus: null,
+      lastSyncError: null,
+      lastSyncFailureClass: null,
       syncExecutionOwner: null,
       syncRetryCount: 0,
       syncNextRetryAt: null,
@@ -232,6 +363,18 @@ describe('runSyncAttemptWithTimeout', () => {
     await expect(
       runSyncAttemptWithTimeout(async () => 'complete', 1_000, 100),
     ).resolves.toBe('complete');
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('preserves an execution failure that happens before cancellation', async () => {
+    vi.useFakeTimers();
+    const executionError = new Error('pipeline failed');
+
+    await expect(runSyncAttemptWithTimeout(
+      async () => { throw executionError; },
+      1_000,
+      100,
+    )).rejects.toBe(executionError);
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -359,14 +502,14 @@ describe('runSyncAttemptWithTimeout', () => {
 
   it('records only final lock-contention exhaustion without clearing another holder flag', async () => {
     const writer = createWriter();
-    const persist = vi.fn().mockResolvedValue(true);
+    const persist = vi.fn().mockResolvedValue(persistedState);
 
     await expect(recordSyncLockContention(
       'wallet-1',
       { error: 'lock budget exhausted', isFinalAttempt: false },
       writer,
       persist,
-    )).resolves.toBe(true);
+    )).resolves.toBeNull();
     expect(persist).not.toHaveBeenCalled();
 
     await expect(recordSyncLockContention(
@@ -374,7 +517,11 @@ describe('runSyncAttemptWithTimeout', () => {
       { error: 'lock budget exhausted', isFinalAttempt: true },
       writer,
       persist,
-    )).resolves.toBe(true);
+    )).resolves.toEqual({
+      walletId: 'wallet-1',
+      transition: 'failed',
+      state: persistedState,
+    });
     expect(persist).toHaveBeenCalledWith('wallet-1', {
       lastSyncStatus: 'failed',
       lastSyncError: 'lock budget exhausted',
@@ -418,7 +565,7 @@ describe('persistSyncStateWithRetry', () => {
 
     await expect(
       persistSyncStateWithRetry('wallet-1', state, writer),
-    ).resolves.toBe(true);
+    ).resolves.toEqual(persistedState);
     expect(writer.updateSyncState).toHaveBeenCalledTimes(1);
   });
 
@@ -428,19 +575,32 @@ describe('persistSyncStateWithRetry', () => {
     vi.mocked(writer.updateSyncState)
       .mockRejectedValueOnce(new Error('pool unavailable'))
       .mockRejectedValueOnce(new Error('pool unavailable'))
-      .mockResolvedValueOnce({});
+      .mockResolvedValueOnce(persistedState);
 
     const pending = persistSyncStateWithRetry('wallet-1', state, writer);
     await vi.runAllTimersAsync();
 
-    await expect(pending).resolves.toBe(true);
+    await expect(pending).resolves.toEqual(persistedState);
     expect(writer.updateSyncState).toHaveBeenCalledTimes(3);
     for (const call of vi.mocked(writer.updateSyncState).mock.calls) {
       expect(call).toEqual(['wallet-1', state]);
     }
   });
 
-  it('returns false after four failures without throwing', async () => {
+  it('does not repeat a successful write that returns an invalid snapshot', async () => {
+    const writer = createWriter();
+    vi.mocked(writer.updateSyncState).mockResolvedValueOnce({
+      ...persistedState,
+      syncExecutionOwner: 'legacy-owner',
+    } as never);
+
+    await expect(
+      persistSyncStateWithRetry('wallet-1', state, writer),
+    ).resolves.toBeNull();
+    expect(writer.updateSyncState).toHaveBeenCalledOnce();
+  });
+
+  it('returns null after four failures without throwing', async () => {
     vi.useFakeTimers();
     const writer = createWriter();
     vi.mocked(writer.updateSyncState).mockRejectedValue(
@@ -450,7 +610,7 @@ describe('persistSyncStateWithRetry', () => {
     const pending = persistSyncStateWithRetry('wallet-1', state, writer);
     await vi.runAllTimersAsync();
 
-    await expect(pending).resolves.toBe(false);
+    await expect(pending).resolves.toBeNull();
     expect(writer.updateSyncState).toHaveBeenCalledTimes(4);
   });
 });

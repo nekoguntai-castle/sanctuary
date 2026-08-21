@@ -243,6 +243,51 @@ describe('useWalletData', () => {
     );
   });
 
+  it('keeps a newer WebSocket sync snapshot when an older HTTP refresh settles', async () => {
+    vi.mocked(walletsApi.getWallet).mockResolvedValueOnce({
+      ...baseWallet,
+      syncStateVersion: 5,
+    } as never);
+    const staleRefresh = createDeferred<typeof baseWallet>();
+    const view = renderHook(() => useWalletData({ id: 'wallet-1', user: defaultUser }));
+    await waitFor(() => expect(view.result.current.wallet?.syncStateVersion).toBe(5));
+
+    vi.mocked(walletsApi.getWallet).mockReturnValueOnce(
+      staleRefresh.promise as ReturnType<typeof walletsApi.getWallet>,
+    );
+    let refresh!: Promise<void>;
+    act(() => {
+      refresh = view.result.current.fetchData(true);
+    });
+    await waitFor(() => expect(walletsApi.getWallet).toHaveBeenCalledTimes(2));
+
+    act(() => {
+      view.result.current.setWallet(current => current && ({
+        ...current,
+        syncStateVersion: 6,
+        lastSyncStatus: 'failed',
+        lastSyncError: 'newer WebSocket failure',
+      }));
+    });
+    await act(async () => {
+      staleRefresh.resolve({
+        ...baseWallet,
+        name: 'Fresh HTTP name',
+        syncStateVersion: 5,
+        lastSyncStatus: 'success',
+        lastSyncError: null,
+      });
+      await refresh;
+    });
+
+    expect(view.result.current.wallet).toMatchObject({
+      name: 'Fresh HTTP name',
+      syncStateVersion: 6,
+      lastSyncStatus: 'failed',
+      lastSyncError: 'newer WebSocket failure',
+    });
+  });
+
   it('clears every wallet-owned field before loading a partially failing wallet B', async () => {
     vi.mocked(bitcoinApi.getStatus).mockResolvedValueOnce({
       explorerUrl: 'https://wallet-a.example',

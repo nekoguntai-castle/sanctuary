@@ -15,6 +15,10 @@ import {
   WALLET_TYPE_VALUES,
 } from '@sanctuary/shared/constants/walletIdentity';
 import {
+  SYNC_EXECUTION_OWNER_VALUES,
+  WALLET_SYNC_FAILURE_CLASS_VALUES,
+} from '@sanctuary/shared/constants/sync';
+import {
   WALLET_IMPORT_FORMAT_VALUES,
   WALLET_IMPORT_NETWORK_VALUES,
   WALLET_IMPORT_SCRIPT_TYPE_VALUES,
@@ -52,6 +56,24 @@ export const walletSchemas = {
       unconfirmedBalance: { type: 'string', description: 'Unconfirmed balance in satoshis' },
       lastSynced: { type: 'string', format: 'date-time', nullable: true },
       syncStatus: { type: 'string', enum: ['synced', 'syncing', 'error', 'pending', 'never'] },
+      lastSyncedAt: { type: 'string', format: 'date-time', nullable: true },
+      lastSyncStatus: { type: 'string', nullable: true },
+      lastSyncError: { type: 'string', nullable: true },
+      lastSyncFailureClass: {
+        type: 'string',
+        enum: [...WALLET_SYNC_FAILURE_CLASS_VALUES],
+        nullable: true,
+      },
+      syncInProgress: { type: 'boolean' },
+      syncExecutionOwner: {
+        type: 'string',
+        enum: [...SYNC_EXECUTION_OWNER_VALUES],
+        nullable: true,
+      },
+      syncRetryCount: { type: 'integer', minimum: 0 },
+      syncNextRetryAt: { type: 'string', format: 'date-time', nullable: true },
+      syncStartedAt: { type: 'string', format: 'date-time', nullable: true },
+      syncStateVersion: { type: 'integer', minimum: 0 },
       createdAt: { type: 'string', format: 'date-time' },
       updatedAt: { type: 'string', format: 'date-time' },
       role: { type: 'string', enum: [...WALLET_ROLE_VALUES] },

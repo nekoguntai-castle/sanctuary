@@ -449,6 +449,9 @@ export const registerWalletRepositoryMutationContracts = () => {
         },
         data: {
           syncInProgress: false,
+          lastSyncStatus: null,
+          lastSyncError: null,
+          lastSyncFailureClass: null,
           syncExecutionOwner: null,
           syncRetryCount: 0,
           syncNextRetryAt: null,
@@ -496,6 +499,19 @@ export const registerWalletRepositoryMutationContracts = () => {
   describe('clearSyncStateIfUnchanged', () => {
     it('uses the observed lifecycle version as a compare-and-swap guard', async () => {
       (prisma.wallet.updateMany as Mock).mockResolvedValue({ count: 1 });
+      const clearedState = {
+        syncInProgress: false,
+        lastSyncedAt: null,
+        lastSyncStatus: null,
+        lastSyncError: null,
+        lastSyncFailureClass: null,
+        syncExecutionOwner: null,
+        syncRetryCount: 0,
+        syncNextRetryAt: null,
+        syncStartedAt: null,
+        syncStateVersion: 8,
+      };
+      (prisma.wallet.findUnique as Mock).mockResolvedValue(clearedState);
       const startedAt = new Date('2026-08-20T12:00:00.000Z');
       const candidate = {
         id: 'wallet-123',
@@ -504,7 +520,9 @@ export const registerWalletRepositoryMutationContracts = () => {
         syncStateVersion: 7,
       };
 
-      await expect(walletRepository.clearSyncStateIfUnchanged(candidate)).resolves.toBe(true);
+      await expect(walletRepository.clearSyncStateIfUnchanged(candidate)).resolves.toEqual(
+        clearedState,
+      );
       expect(prisma.wallet.updateMany).toHaveBeenCalledWith({
         where: {
           ...candidate,
@@ -512,11 +530,29 @@ export const registerWalletRepositoryMutationContracts = () => {
         },
         data: {
           syncInProgress: false,
+          lastSyncStatus: null,
+          lastSyncError: null,
+          lastSyncFailureClass: null,
           syncExecutionOwner: null,
           syncRetryCount: 0,
           syncNextRetryAt: null,
           syncStartedAt: null,
           syncStateVersion: { increment: 1 },
+        },
+      });
+      expect(prisma.wallet.findUnique).toHaveBeenCalledWith({
+        where: { id: 'wallet-123' },
+        select: {
+          syncInProgress: true,
+          lastSyncedAt: true,
+          lastSyncStatus: true,
+          lastSyncError: true,
+          lastSyncFailureClass: true,
+          syncExecutionOwner: true,
+          syncRetryCount: true,
+          syncNextRetryAt: true,
+          syncStartedAt: true,
+          syncStateVersion: true,
         },
       });
     });
@@ -528,7 +564,8 @@ export const registerWalletRepositoryMutationContracts = () => {
         syncExecutionOwner: null,
         syncStartedAt: null,
         syncStateVersion: 1,
-      })).resolves.toBe(false);
+      })).resolves.toBeNull();
+      expect(prisma.wallet.findUnique).not.toHaveBeenCalled();
     });
   });
 

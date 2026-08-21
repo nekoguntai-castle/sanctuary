@@ -86,6 +86,49 @@ describe('worker broadcasts without a local WebSocket server', () => {
     });
   });
 
+  it('preserves the complete authoritative sync snapshot across the worker bridge', () => {
+    const lastSyncedAt = new Date('2026-08-20T12:00:00.000Z');
+    const nextRetryAt = new Date('2026-08-20T12:05:00.000Z');
+
+    broadcastSyncStatus('wallet-1', {
+      inProgress: false,
+      transition: 'retrying',
+      status: 'retrying',
+      syncStatus: 'retrying',
+      error: 'Electrum unavailable',
+      failureClass: 'electrum_unavailable',
+      lastSyncedAt,
+      executionOwner: 'worker',
+      retryCount: 2,
+      nextRetryAt,
+      startedAt: null,
+      stateVersion: 7,
+      retriesExhausted: false,
+    });
+
+    expect(mockPublishBroadcast).toHaveBeenCalledWith({
+      type: 'sync',
+      walletId: 'wallet-1',
+      data: {
+        inProgress: false,
+        transition: 'retrying',
+        status: 'retrying',
+        syncStatus: 'retrying',
+        error: 'Electrum unavailable',
+        failureClass: 'electrum_unavailable',
+        lastSyncedAt,
+        executionOwner: 'worker',
+        retryCount: 2,
+        nextRetryAt,
+        startedAt: null,
+        stateVersion: 7,
+        retriesExhausted: false,
+        walletId: 'wallet-1',
+        timestamp: expect.any(String),
+      },
+    });
+  });
+
   it('publishes wallet log entries onto the Redis bridge', () => {
     broadcastWalletLog('wallet-2', {
       level: 'info',

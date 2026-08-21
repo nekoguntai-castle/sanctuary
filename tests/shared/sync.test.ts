@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_SYNC_PRIORITY,
   SYNC_EXECUTION_OWNER_VALUES,
+  SYNC_LIFECYCLE_TRANSITION_VALUES,
   SYNC_PRIORITY_BULLMQ_PRIORITY,
   SYNC_PRIORITY_SORT_ORDER,
   SYNC_PRIORITY_VALUES,
@@ -33,6 +34,16 @@ describe('sync priority constants', () => {
     expect(isSyncExecutionOwner('worker')).toBe(true);
     expect(isSyncExecutionOwner('queue')).toBe(false);
     expect(isSyncExecutionOwner(undefined)).toBe(false);
+  });
+
+  it('defines the persisted lifecycle transition vocabulary', () => {
+    expect(SYNC_LIFECYCLE_TRANSITION_VALUES).toEqual([
+      'started',
+      'succeeded',
+      'retrying',
+      'failed',
+      'cleared',
+    ]);
   });
 
   it('defines and guards the bounded sync failure taxonomy', () => {

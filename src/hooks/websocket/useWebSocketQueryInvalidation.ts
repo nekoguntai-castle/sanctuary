@@ -16,14 +16,30 @@
  * as fast as Sparrow does.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { WebSocketChannels } from '@sanctuary/shared/types/websocket';
 import { websocketClient, WebSocketEvent } from '../../services/websocket';
 import { getQueryClient } from '../../providers/QueryProvider';
+import { walletKeys } from '../queries/useWallets';
 import { useWebSocket } from './useWebSocket';
+import {
+  applyAuthoritativeSyncSnapshot,
+  type SyncSnapshotEvent,
+} from '../../utils/walletSyncSnapshot';
 
 export const useWebSocketQueryInvalidation = () => {
   const { connected, subscribeBatch, unsubscribeBatch } = useWebSocket();
+  const wasConnected = useRef(connected);
+
+  useEffect(() => {
+    const reconnected = connected && !wasConnected.current;
+    wasConnected.current = connected;
+    if (!reconnected) return;
+
+    // The socket is replaceable delivery, not the source of truth. Refetch the
+    // persisted snapshot after every reconnect to recover missed transitions.
+    getQueryClient()?.invalidateQueries({ queryKey: walletKeys.all });
+  }, [connected]);
 
   useEffect(() => {
     if (!connected) return;
@@ -50,7 +66,7 @@ export const useWebSocketQueryInvalidation = () => {
 
       // Invalidate wallet balance when balance changes
       if (event.event === 'balance') {
-        queryClient.invalidateQueries({ queryKey: ['wallets'] });
+        queryClient.invalidateQueries({ queryKey: walletKeys.all });
       }
     };
 
@@ -67,7 +83,7 @@ export const useWebSocketQueryInvalidation = () => {
       // period totals.
       queryClient.invalidateQueries({ queryKey: ['activitySummary'] });
       // Also refresh wallets since UTXOs may have new confirmations
-      queryClient.invalidateQueries({ queryKey: ['wallets'] });
+      queryClient.invalidateQueries({ queryKey: walletKeys.all });
     };
 
     // Handle sync events - directly update wallet cache for immediate UI response
@@ -77,52 +93,26 @@ export const useWebSocketQueryInvalidation = () => {
       if (!queryClient) return;
       if (event.event !== 'sync') return;
 
-      const { walletId, inProgress, status, lastSyncedAt } = event.data as {
-        walletId: string;
-        inProgress: boolean;
-        status?: string;
-        lastSyncedAt?: string;
+      const { walletId, ...snapshot } = event.data as SyncSnapshotEvent & {
+        walletId?: string;
       };
 
       if (!walletId) return;
 
-      // "Sync finished" is not "sync succeeded". Stamping the clock on every
-      // terminal event — `failed` included — is why the list could claim a
-      // wallet had just synced while the detail page showed the failure. Trust
-      // the server's timestamp when it sends one, and otherwise stamp only a
-      // success.
-      const syncedAtPatch = (() => {
-        if (lastSyncedAt) return { lastSyncedAt };
-        if (!inProgress && status === 'success') {
-          return { lastSyncedAt: new Date().toISOString() };
-        }
-        return {};
-      })();
-
       // Directly update wallet list cache
-      queryClient.setQueryData(['wallets', 'list'], (oldData: Record<string, unknown>[] | undefined) => {
+      queryClient.setQueryData(walletKeys.lists(), (oldData: Record<string, unknown>[] | undefined) => {
         if (!oldData) return oldData;
         return oldData.map((wallet) =>
           wallet.id === walletId
-            ? {
-                ...wallet,
-                syncInProgress: inProgress,
-                ...(status && { lastSyncStatus: status }),
-                ...syncedAtPatch,
-              }
+            ? applyAuthoritativeSyncSnapshot(wallet, snapshot)
             : wallet
         );
       });
 
       // Also update individual wallet cache if it exists
-      queryClient.setQueryData(['wallets', 'detail', walletId], (oldData: Record<string, unknown> | undefined) => {
+      queryClient.setQueryData(walletKeys.detail(walletId), (oldData: Record<string, unknown> | undefined) => {
         if (!oldData) return oldData;
-        return {
-          ...oldData,
-          syncInProgress: inProgress,
-          ...(status && { lastSyncStatus: status }),
-          ...syncedAtPatch,
-        };
+        return applyAuthoritativeSyncSnapshot(oldData, snapshot);
       });
     };
 

@@ -11,6 +11,11 @@ import { isSyncWalletJobLockData } from '../../../../src/jobs/syncJobContract';
 const syncJobPrismaMocks = vi.hoisted(() => ({
   walletFindMany: vi.fn<() => Promise<unknown[]>>(),
   walletUpdate: vi.fn<(args?: unknown) => Promise<unknown>>(),
+  publishLifecycle: vi.fn<(...args: unknown[]) => Promise<void>>(),
+}));
+
+vi.mock('../../../../src/services/sync/syncLifecyclePublisher', () => ({
+  syncLifecyclePublisher: { publish: syncJobPrismaMocks.publishLifecycle },
 }));
 
 // The stale reaper probes each wallet's sync lock before force-clearing its
@@ -95,10 +100,32 @@ function createOrdinarySyncJob(attemptsMade = 0, walletId = 'wallet-1'): Job {
   } as unknown as Job;
 }
 
+function persistedSyncState(args?: unknown, stateVersion = 1): Record<string, unknown> {
+  const data = (args as { data?: Record<string, unknown> } | undefined)?.data ?? {};
+  return {
+    syncInProgress: false,
+    lastSyncedAt: null,
+    lastSyncStatus: null,
+    lastSyncError: null,
+    lastSyncFailureClass: null,
+    syncExecutionOwner: null,
+    syncRetryCount: 0,
+    syncNextRetryAt: null,
+    syncStartedAt: null,
+    ...data,
+    syncStateVersion: stateVersion,
+  };
+}
+
 describe('Sync Jobs', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    syncJobPrismaMocks.walletUpdate.mockResolvedValue({});
+    let stateVersion = 0;
+    syncJobPrismaMocks.walletUpdate.mockImplementation(async (args: unknown) => (
+      persistedSyncState(args, ++stateVersion)
+    ));
+    vi.mocked(syncWallet).mockReset();
+    vi.mocked(syncWallet).mockResolvedValue({ transactions: 0, utxos: 0 } as never);
     mockIsLocked.mockResolvedValue(false);
   });
 
@@ -424,14 +451,17 @@ describe('Sync Jobs', () => {
     });
 
     it('preserves the preparation error when final metadata recording also fails', async () => {
+      vi.useFakeTimers();
       vi.mocked(prisma.wallet.findUnique)
         .mockResolvedValueOnce({ network: 'mainnet' } as any);
       vi.mocked(prisma.transaction.deleteMany).mockRejectedValueOnce(
         new Error('reset failed'),
       );
-      vi.mocked(prisma.wallet.update).mockRejectedValueOnce(
-        new Error('metadata failed'),
-      );
+      vi.mocked(prisma.wallet.update)
+        .mockRejectedValueOnce(new Error('metadata failed'))
+        .mockRejectedValueOnce(new Error('metadata failed'))
+        .mockRejectedValueOnce(new Error('metadata failed'))
+        .mockRejectedValueOnce(new Error('metadata failed'));
       const job = {
         id: 'exhausted-full-resync-job',
         data: {
@@ -444,8 +474,14 @@ describe('Sync Jobs', () => {
         updateData: vi.fn(),
       } as unknown as Job;
 
-      await expect(syncWalletJob.handler(job)).rejects.toThrow('reset failed');
-      expect(syncWallet).not.toHaveBeenCalled();
+      try {
+        const processing = expect(syncWalletJob.handler(job)).rejects.toThrow('reset failed');
+        await vi.runAllTimersAsync();
+        await processing;
+        expect(syncWallet).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('should sync wallet and update metadata on success', async () => {
@@ -740,11 +776,11 @@ describe('Sync Jobs', () => {
       };
       vi.mocked(syncWallet).mockResolvedValueOnce({ addresses: 1, transactions: 2, utxos: 3 });
       syncJobPrismaMocks.walletUpdate
-        .mockResolvedValueOnce({})
+        .mockImplementationOnce(async (args) => persistedSyncState(args, 1))
         .mockImplementationOnce(async (args?: unknown) => {
           const data = (args as { data?: { lastSyncStatus?: string } })?.data;
           if (data?.lastSyncStatus === 'success') controller.abort();
-          return {};
+          return persistedSyncState(args, 2);
         });
 
       await expect(syncWalletJob.handler(createOrdinarySyncJob(0), execution))
@@ -753,7 +789,7 @@ describe('Sync Jobs', () => {
       const persistedStatuses = syncJobPrismaMocks.walletUpdate.mock.calls
         .map(([args]) => (args as { data?: { lastSyncStatus?: string } })?.data?.lastSyncStatus)
         .filter(Boolean);
-      expect(persistedStatuses).toEqual(['success']);
+      expect(persistedStatuses).toEqual(['syncing', 'success']);
     });
 
     it('resets syncInProgress when shutdown aborts while the mark-true update is in flight', async () => {
@@ -769,9 +805,13 @@ describe('Sync Jobs', () => {
         .mockImplementationOnce(async () => {
           markStarted();
           await finishMarkPromise;
-          return {};
+          return persistedSyncState({ data: {
+            syncInProgress: true,
+            syncExecutionOwner: 'worker',
+            syncStartedAt: new Date(),
+          } }, 1);
         })
-        .mockResolvedValueOnce({});
+        .mockImplementationOnce(async (args) => persistedSyncState(args, 2));
 
       const controller = new AbortController();
       const execution = {
@@ -794,7 +834,9 @@ describe('Sync Jobs', () => {
         where: { id: 'wallet-abort-mark' },
         data: expect.objectContaining({
           syncInProgress: false,
-          syncExecutionOwner: null,
+          lastSyncStatus: 'retrying',
+          syncExecutionOwner: 'worker',
+          syncRetryCount: 1,
           syncStartedAt: null,
         }),
       });
@@ -808,9 +850,9 @@ describe('Sync Jobs', () => {
       syncJobPrismaMocks.walletUpdate
         .mockImplementationOnce(async () => {
           controller.abort();
-          return {};
+          return persistedSyncState();
         })
-        .mockResolvedValueOnce({});
+        .mockImplementationOnce(async (args) => persistedSyncState(args, 2));
       const execution = {
         signal: controller.signal,
         throwIfAborted: () => controller.signal.throwIfAborted(),
@@ -851,10 +893,10 @@ describe('Sync Jobs', () => {
       syncJobPrismaMocks.walletUpdate
         .mockImplementationOnce(async () => {
           controller.abort();
-          return {};
+          return persistedSyncState();
         })
         .mockRejectedValueOnce(new Error('metadata failed'))
-        .mockResolvedValueOnce({});
+        .mockImplementationOnce(async (args) => persistedSyncState(args, 2));
       const execution = {
         signal: controller.signal,
         throwIfAborted: () => controller.signal.throwIfAborted(),

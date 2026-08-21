@@ -3,6 +3,8 @@ import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { useWalletWebSocket } from '../../../../src/components/WalletDetail/hooks/useWalletWebSocket';
 import { useWalletEvents } from '../../../../src/hooks/websocket';
 
+const socketState = vi.hoisted(() => ({ connected: true }));
+
 vi.mock('../../../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
@@ -14,6 +16,7 @@ vi.mock('../../../../src/utils/logger', () => ({
 
 vi.mock('../../../../src/hooks/websocket', () => ({
   useWalletEvents: vi.fn(),
+  useWebSocket: () => ({ connected: socketState.connected }),
 }));
 
 const addNotification = vi.fn();
@@ -47,6 +50,7 @@ describe('useWalletWebSocket', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    socketState.connected = true;
     handlers = {};
     vi.mocked(useWalletEvents).mockImplementation((_, cb) => {
       handlers = cb as Record<string, (data: any) => void>;
@@ -132,12 +136,22 @@ describe('useWalletWebSocket', () => {
 
   it('updates wallet balance on balance events', () => {
     handlers.onBalance({ balance: 55_000, confirmed: 55_000 });
-    expect(setWallet).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: 'wallet-1',
-        balance: 55_000,
-      })
-    );
+    const updater = setWallet.mock.calls[0][0] as (wallet: any) => any;
+    expect(updater({
+      id: 'wallet-1',
+      balance: 10_000,
+      syncStateVersion: 7,
+      lastSyncStatus: 'success',
+    })).toEqual({
+      id: 'wallet-1',
+      balance: 55_000,
+      syncStateVersion: 7,
+      lastSyncStatus: 'success',
+    });
+    expect(updater({ id: 'other-wallet', balance: 10_000 })).toEqual({
+      id: 'other-wallet',
+      balance: 10_000,
+    });
   });
 
   it('does not update wallet balance when wallet is missing or data lacks balance', () => {
@@ -271,6 +285,97 @@ describe('useWalletWebSocket', () => {
     expect(setSyncRetryInfo).toHaveBeenCalledWith(null);
     expect(setSyncing).toHaveBeenCalledWith(false);
     expect(fetchData).not.toHaveBeenCalled();
+  });
+
+  it('applies a newer complete snapshot and clears nullable wallet fields', () => {
+    renderWithWallet({
+      id: 'wallet-1',
+      name: 'Primary Wallet',
+      balance: 10_000,
+      syncStateVersion: 4,
+    });
+
+    handlers.onSync({
+      inProgress: false,
+      status: 'complete',
+      syncStatus: 'success',
+      error: null,
+      failureClass: null,
+      executionOwner: null,
+      retryCount: 0,
+      nextRetryAt: null,
+      startedAt: null,
+      stateVersion: 5,
+      lastSyncedAt: '2026-08-20T12:00:00.000Z',
+    });
+
+    const updater = setWallet.mock.calls.at(-1)?.[0] as (wallet: any) => any;
+    expect(updater({
+      id: 'wallet-1',
+      syncStateVersion: 4,
+      lastSyncError: 'temporary failure',
+      lastSyncFailureClass: 'electrum_unavailable',
+      syncExecutionOwner: 'worker',
+      syncRetryCount: 2,
+      syncNextRetryAt: 'later',
+      syncStartedAt: 'earlier',
+    })).toMatchObject({
+      syncStateVersion: 5,
+      lastSyncError: null,
+      lastSyncFailureClass: null,
+      syncExecutionOwner: null,
+      syncRetryCount: 0,
+      syncNextRetryAt: null,
+      syncStartedAt: null,
+    });
+  });
+
+  it.each([3, 4])('rejects stale or equal version %s including local side effects', (stateVersion) => {
+    renderWithWallet({
+      id: 'wallet-1',
+      name: 'Primary Wallet',
+      balance: 10_000,
+      syncStateVersion: 4,
+    });
+    vi.clearAllMocks();
+
+    handlers.onSync({
+      inProgress: false,
+      status: 'success',
+      stateVersion,
+    });
+
+    expect(setWallet).not.toHaveBeenCalled();
+    expect(setSyncRetryInfo).not.toHaveBeenCalled();
+    expect(setSyncing).not.toHaveBeenCalled();
+    expect(fetchData).not.toHaveBeenCalled();
+  });
+
+  it('rejects a duplicate version immediately after accepting it', () => {
+    renderWithWallet({
+      id: 'wallet-1',
+      name: 'Primary Wallet',
+      balance: 10_000,
+      syncStateVersion: 4,
+    });
+    vi.clearAllMocks();
+
+    handlers.onSync({ inProgress: true, status: 'retrying', stateVersion: 5 });
+    handlers.onSync({ inProgress: false, status: 'success', stateVersion: 5 });
+
+    expect(setWallet).toHaveBeenCalledTimes(1);
+    expect(fetchData).not.toHaveBeenCalled();
+  });
+
+  it('silently refetches the component-local wallet after reconnect', () => {
+    socketState.connected = false;
+    const view = renderWithWallet();
+    vi.clearAllMocks();
+
+    socketState.connected = true;
+    view.rerender();
+
+    expect(fetchData).toHaveBeenCalledWith(true);
   });
 
   it('registers wallet events even when walletId is undefined', () => {

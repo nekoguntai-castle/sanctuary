@@ -110,7 +110,14 @@ export function registerWalletAccessQueryTests(): void {
           groupRole: 'viewer',
           lastSyncedAt: now,
           lastSyncStatus: 'success',
+          lastSyncError: null,
+          lastSyncFailureClass: null,
           syncInProgress: false,
+          syncExecutionOwner: null,
+          syncRetryCount: 0,
+          syncNextRetryAt: null,
+          syncStartedAt: null,
+          syncStateVersion: 7,
         },
       ]);
       mockPrismaClient.uTXO.groupBy.mockResolvedValueOnce([
@@ -138,6 +145,8 @@ export function registerWalletAccessQueryTests(): void {
           groupName: 'Treasury',
           userCount: 2,
         },
+        syncStateVersion: 7,
+        syncRetryCount: 0,
       }));
     });
 
@@ -267,7 +276,14 @@ export function registerWalletAccessQueryTests(): void {
         groupRole: 'viewer',
         lastSyncedAt: now,
         lastSyncStatus: 'success',
+        lastSyncError: null,
+        lastSyncFailureClass: null,
         syncInProgress: false,
+        syncExecutionOwner: null,
+        syncRetryCount: 0,
+        syncNextRetryAt: null,
+        syncStartedAt: null,
+        syncStateVersion: 11,
       });
       mockPrismaClient.wallet.findUnique.mockResolvedValueOnce({
         id: 'wallet-1',
@@ -285,6 +301,8 @@ export function registerWalletAccessQueryTests(): void {
         userRole: 'signer',
         canEdit: true,
         isShared: true,
+        syncStateVersion: 11,
+        syncRetryCount: 0,
       }));
     });
 

@@ -3,6 +3,10 @@ import {
   PRIVACY_GRADES,
   UTXO_SELECTION_STRATEGIES,
 } from '@sanctuary/shared/constants/transactions';
+import {
+  SYNC_EXECUTION_OWNER_VALUES,
+  WALLET_SYNC_FAILURE_CLASS_VALUES,
+} from '@sanctuary/shared/constants/sync';
 
 import {
   openApiSpec,
@@ -27,6 +31,29 @@ import type {
 } from './openapi.helpers';
 
 export function registerOpenApiWalletTests() {
+  it('documents the authoritative wallet sync snapshot fields', () => {
+    expect(openApiSpec.components.schemas.Wallet.properties).toMatchObject({
+      lastSyncedAt: { type: 'string', format: 'date-time', nullable: true },
+      lastSyncStatus: { type: 'string', nullable: true },
+      lastSyncError: { type: 'string', nullable: true },
+      lastSyncFailureClass: {
+        type: 'string',
+        enum: [...WALLET_SYNC_FAILURE_CLASS_VALUES],
+        nullable: true,
+      },
+      syncInProgress: { type: 'boolean' },
+      syncExecutionOwner: {
+        type: 'string',
+        enum: [...SYNC_EXECUTION_OWNER_VALUES],
+        nullable: true,
+      },
+      syncRetryCount: { type: 'integer', minimum: 0 },
+      syncNextRetryAt: { type: 'string', format: 'date-time', nullable: true },
+      syncStartedAt: { type: 'string', format: 'date-time', nullable: true },
+      syncStateVersion: { type: 'integer', minimum: 0 },
+    });
+  });
+
   it('documents transaction helper, UTXO selection, and privacy routes', () => {
     const routes: Array<[OpenApiPathKey, string]> = [
       ['/transactions/{txid}/raw', 'get'],

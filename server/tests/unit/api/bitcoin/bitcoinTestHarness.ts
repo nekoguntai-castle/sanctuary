@@ -72,6 +72,11 @@ vi.mock('../../../../src/models/prisma', () => ({
 
 vi.mock('../../../../src/services/bitcoin/nodeClient', () => bitcoinApiMocks.mockNodeClient);
 vi.mock('../../../../src/services/bitcoin/blockchain', () => bitcoinApiMocks.mockBlockchain);
+vi.mock('../../../../src/services/sync/confirmationUpdater', () => ({
+  refreshWalletConfirmations: async (walletId: string) => ({
+    confirmationUpdates: await bitcoinApiMocks.mockBlockchain.updateTransactionConfirmations(walletId),
+  }),
+}));
 vi.mock('../../../../src/services/bitcoin/mempool', () => bitcoinApiMocks.mockMempool);
 vi.mock('../../../../src/services/bitcoin/utils', () => bitcoinApiMocks.mockUtils);
 vi.mock('../../../../src/services/bitcoin/advancedTx', () => bitcoinApiMocks.mockAdvancedTx);

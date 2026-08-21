@@ -1,16 +1,45 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+  findByIdWithAccess: vi.fn(),
   findByNetworkWithSyncStatus: vi.fn(),
   findAccessibleWithSelect: vi.fn(),
   enqueueFullResyncBatch: vi.fn(),
+  refreshWalletConfirmations: vi.fn(),
+  clearActiveSyncAttempt: vi.fn(),
+  publishLifecycle: vi.fn(),
 }));
+
+const confirmationErrors = vi.hoisted(() => {
+  class ConfirmationLockUnavailableError extends Error {}
+  class ConfirmationRefreshError extends Error {
+    constructor(readonly cause: unknown) {
+      super('confirmation refresh failed');
+    }
+  }
+  return { ConfirmationLockUnavailableError, ConfirmationRefreshError };
+});
 
 vi.mock('../../../../src/repositories', () => ({
   walletRepository: {
+    findByIdWithAccess: mocks.findByIdWithAccess,
     findByNetworkWithSyncStatus: mocks.findByNetworkWithSyncStatus,
     findAccessibleWithSelect: mocks.findAccessibleWithSelect,
   },
+}));
+
+vi.mock('../../../../src/services/sync/confirmationUpdater', () => ({
+  ConfirmationLockUnavailableError: confirmationErrors.ConfirmationLockUnavailableError,
+  ConfirmationRefreshError: confirmationErrors.ConfirmationRefreshError,
+  refreshWalletConfirmations: mocks.refreshWalletConfirmations,
+}));
+
+vi.mock('../../../../src/services/sync/syncAttemptLifecycle', () => ({
+  clearActiveSyncAttempt: mocks.clearActiveSyncAttempt,
+}));
+
+vi.mock('../../../../src/services/sync/syncLifecyclePublisher', () => ({
+  syncLifecyclePublisher: { publish: mocks.publishLifecycle },
 }));
 
 vi.mock('../../../../src/services/workerSyncQueue', () => ({
@@ -23,6 +52,15 @@ describe('SyncCoordinator.resyncNetwork', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetSyncCoordinatorForTests();
+    mocks.findByIdWithAccess.mockResolvedValue({ id: 'wallet-1' });
+    mocks.refreshWalletConfirmations.mockResolvedValue({
+      confirmationUpdates: [],
+    });
+    mocks.clearActiveSyncAttempt.mockResolvedValue({
+      walletId: 'wallet-1',
+      transition: 'cleared',
+      state: { syncStateVersion: 4 },
+    });
     mocks.findByNetworkWithSyncStatus.mockResolvedValue([
       { id: 'wallet-1', syncInProgress: false },
       { id: 'wallet-2', syncInProgress: false },
@@ -113,5 +151,67 @@ describe('SyncCoordinator.resyncNetwork', () => {
   it('requires the confirmation flag', async () => {
     await expect(getSyncCoordinator().resyncNetwork('user-1', 'mainnet', false))
       .rejects.toThrow('X-Confirm-Resync');
+  });
+
+  it('projects the canonical wallet confirmation result into the existing API response', async () => {
+    const confirmationUpdates = [
+      { txid: 'tx-1', oldConfirmations: 0, newConfirmations: 1 },
+    ];
+    mocks.refreshWalletConfirmations.mockResolvedValueOnce({ confirmationUpdates });
+
+    await expect(
+      getSyncCoordinator().updateWalletConfirmations('user-1', 'wallet-1'),
+    ).resolves.toEqual({
+      message: 'Confirmations updated',
+      updated: confirmationUpdates,
+    });
+    expect(mocks.findByIdWithAccess).toHaveBeenCalledWith('wallet-1', 'user-1');
+    expect(mocks.refreshWalletConfirmations).toHaveBeenCalledWith('wallet-1');
+  });
+
+  it('maps confirmation lock contention to the existing sync-in-progress API error', async () => {
+    mocks.refreshWalletConfirmations.mockRejectedValueOnce(
+      new confirmationErrors.ConfirmationRefreshError(
+        new confirmationErrors.ConfirmationLockUnavailableError(),
+      ),
+    );
+
+    await expect(
+      getSyncCoordinator().updateWalletConfirmations('user-1', 'wallet-1'),
+    ).rejects.toMatchObject({ statusCode: 503, code: 'SYNC_IN_PROGRESS' });
+  });
+
+  it('preserves non-contention confirmation refresh failures', async () => {
+    const refreshError = new confirmationErrors.ConfirmationRefreshError(
+      new Error('electrum unavailable'),
+    );
+    mocks.refreshWalletConfirmations.mockRejectedValueOnce(refreshError);
+
+    await expect(
+      getSyncCoordinator().updateWalletConfirmations('user-1', 'wallet-1'),
+    ).rejects.toBe(refreshError);
+  });
+
+  it('publishes the exact persisted transition when manually resetting sync state', async () => {
+    const transition = {
+      walletId: 'wallet-1',
+      transition: 'cleared',
+      state: { syncStateVersion: 4 },
+    };
+    mocks.clearActiveSyncAttempt.mockResolvedValueOnce(transition);
+
+    await expect(
+      getSyncCoordinator().resetWalletSyncState('user-1', 'wallet-1'),
+    ).resolves.toEqual({ success: true, message: 'Sync state reset' });
+
+    expect(mocks.findByIdWithAccess).toHaveBeenCalledWith('wallet-1', 'user-1');
+    expect(mocks.clearActiveSyncAttempt).toHaveBeenCalledWith(
+      'wallet-1',
+      expect.any(Object),
+    );
+    expect(mocks.publishLifecycle).toHaveBeenCalledWith(transition);
+    expect(mocks.clearActiveSyncAttempt.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.publishLifecycle.mock.invocationCallOrder[0] ?? 0,
+    );
   });
 });

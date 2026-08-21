@@ -38,12 +38,10 @@ import {
   UPDATE_ALL_CONFIRMATIONS_JOB_NAME,
   UPDATE_CONFIRMATIONS_JOB_NAME,
 } from '../../jobs/syncJobContract';
-import { resyncRepository, walletRepository, transactionRepository } from '../../repositories';
+import { resyncRepository, walletRepository } from '../../repositories';
 import { syncWallet } from '../../services/bitcoin/blockchain';
-import {
-  updateTransactionConfirmations,
-  populateMissingTransactionFields,
-} from '../../services/bitcoin/sync/confirmations';
+import { populateMissingTransactionFields } from '../../services/bitcoin/sync/confirmations';
+import { refreshPendingConfirmations } from '../../services/sync/confirmationUpdater';
 import {
   setCachedBlockHeight,
   getCachedBlockHeight,
@@ -52,10 +50,7 @@ import {
 import { getConfig } from '../../config';
 import { normalizeLegacyBitcoinNetwork } from '../../services/bitcoin/networks';
 import { isLocked } from '../../infrastructure';
-import {
-  broadcastSyncStatus,
-  broadcastWalletLog,
-} from '../../websocket/notifications/broadcasts';
+import { broadcastWalletLog } from '../../websocket/notifications/broadcasts';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { isFullResyncGeneration } from '../../constants/fullResync';
@@ -68,7 +63,9 @@ import {
   SYNC_ABORT_GRACE_MS,
   runSyncAttemptWithTimeout,
   startSyncAttempt,
+  type PersistedSyncTransition,
 } from '../../services/sync/syncAttemptLifecycle';
+import { syncLifecyclePublisher } from '../../services/sync/syncLifecyclePublisher';
 
 const log = createLogger('JOB:SYNC');
 
@@ -86,6 +83,25 @@ function workerRetryState(job: Job<SyncWalletJobData>): {
     retryCount: job.attemptsMade + 1,
     nextRetryAt: new Date(Date.now() + workerRetryDelayMs(job)),
   };
+}
+
+function workerMaxRetries(job: Job<SyncWalletJobData>): number {
+  const totalAttempts = job.opts?.attempts ?? SYNC_WALLET_JOB_OPTIONS.attempts!;
+  return Math.max(0, totalAttempts - 1);
+}
+
+async function publishWorkerAttemptTransition(
+  job: Job<SyncWalletJobData>,
+  transition: PersistedSyncTransition | null,
+): Promise<void> {
+  if (transition === null) return;
+  if (transition.transition === 'retrying') {
+    await syncLifecyclePublisher.publish(transition, {
+      maxRetries: workerMaxRetries(job),
+    });
+    return;
+  }
+  await syncLifecyclePublisher.publish(transition);
 }
 
 function runWorkerSideEffect(description: string, effect: () => unknown): void {
@@ -146,30 +162,21 @@ async function recordLockRetryBudgetExhausted(
     holderSyncInProgress: false,
   });
 
-  // Report before the write, so a failing database still reaches the UI.
-  runWorkerSideEffect('Lock contention status publication', () => {
-    broadcastSyncStatus(walletId, {
-      inProgress: false,
-      status: detail.isFinalAttempt ? 'failed' : 'retrying',
-      error: detail.message,
-      retriesExhausted: detail.isFinalAttempt,
-    });
-  });
-  runWorkerSideEffect('Lock contention log publication', () => {
-    broadcastWalletLog(walletId, {
-      level: detail.isFinalAttempt ? 'error' : 'warn',
-      module: 'SYNC',
-      message: detail.isFinalAttempt
-        ? `Sync abandoned: ${detail.message}`
-        : `Sync lock retry pending: ${detail.message}`,
-      details: { lockKey: detail.lockKey, retryWindowMs: detail.retryWindowMs },
-    });
-  });
-
-  await recordSyncLockContention(walletId, {
+  const transition = await recordSyncLockContention(walletId, {
     error: detail.message,
     isFinalAttempt: detail.isFinalAttempt,
   }, walletRepository);
+  if (!transition) return;
+
+  await syncLifecyclePublisher.publish(transition);
+  runWorkerSideEffect('Lock contention log publication', () => {
+    broadcastWalletLog(walletId, {
+      level: 'error',
+      module: 'SYNC',
+      message: `Sync abandoned: ${detail.message}`,
+      details: { lockKey: detail.lockKey, retryWindowMs: detail.retryWindowMs },
+    });
+  });
 }
 
 /**
@@ -194,7 +201,9 @@ async function isSyncLockHeld(walletId: string): Promise<boolean> {
 }
 
 function isFinalAttempt(job: Job<SyncWalletJobData>): boolean {
-  const attempts = typeof job.opts?.attempts === 'number' ? job.opts.attempts : 1;
+  const attempts = typeof job.opts?.attempts === 'number'
+    ? job.opts.attempts
+    : SYNC_WALLET_JOB_OPTIONS.attempts!;
   return job.attemptsMade + 1 >= attempts;
 }
 
@@ -287,13 +296,8 @@ async function resetStuckSyncFlags(maxSyncDurationMs: number): Promise<void> {
       log.debug(`Sync still running for wallet ${wallet.name || wallet.id}, leaving flag set`);
       continue;
     }
-    await walletRepository.updateSyncState(wallet.id, {
-      syncInProgress: false,
-      syncExecutionOwner: null,
-      syncRetryCount: 0,
-      syncNextRetryAt: null,
-      syncStartedAt: null,
-    });
+    const transition = await clearActiveSyncAttempt(wallet.id, walletRepository);
+    await syncLifecyclePublisher.publish(transition);
     resetCount++;
     // Serialise the Date explicitly. The logger renders a bare Date as `{}`;
     // logging the authoritative start clock makes the measured age auditable
@@ -382,21 +386,6 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
       };
     }
 
-    // Announce the pickup before any work: the worker has no WebSocket clients
-    // of its own, so this event (routed over the Redis bridge) is the only way
-    // the UI learns a queued sync actually started.
-    runWorkerSideEffect('Sync start status publication', () => {
-      broadcastSyncStatus(walletId, { inProgress: true });
-    });
-    runWorkerSideEffect('Sync start log publication', () => {
-      broadcastWalletLog(walletId, {
-        level: 'info',
-        module: 'SYNC',
-        message: job.data.fullResync === true ? 'Full resync started' : 'Sync started',
-        details: { reason, jobId: job.id },
-      });
-    });
-
     let syncFlagSet = false;
     let flagCleared = false;
     let preparingFullResync = job.data.fullResync === true;
@@ -413,12 +402,21 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
       // Keep the mark and the abort checkpoint inside the cleanup guard. If
       // cooperative shutdown arrives while the write is in flight, the flag is
       // reset before the handler settles and its lock is released.
-      await startSyncAttempt(walletId, {
+      const startedTransition = await startSyncAttempt(walletId, {
         owner: 'worker',
         retryCount: job.attemptsMade,
         startedAt: new Date(startTime),
       }, walletRepository);
       syncFlagSet = true;
+      await syncLifecyclePublisher.publish(startedTransition);
+      runWorkerSideEffect('Sync start log publication', () => {
+        broadcastWalletLog(walletId, {
+          level: 'info',
+          module: 'SYNC',
+          message: job.data.fullResync === true ? 'Full resync started' : 'Sync started',
+          details: { reason, jobId: job.id },
+        });
+      });
       execution?.throwIfAborted();
 
       // Execute sync
@@ -439,20 +437,12 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
       const currentBlockHeight = getCachedBlockHeight(network);
 
       const syncedAt = new Date();
-      await recordSyncSuccess(walletId, {
+      const successTransition = await recordSyncSuccess(walletId, {
         syncedAt,
         lastSyncedBlockHeight: currentBlockHeight,
       }, walletRepository);
       flagCleared = true;
-      // Publish the timestamp we persisted rather than letting the client invent
-      // one, so the list and the detail view cannot disagree.
-      runWorkerSideEffect('Sync success status publication', () => {
-        broadcastSyncStatus(walletId, {
-          inProgress: false,
-          status: 'success',
-          lastSyncedAt: syncedAt,
-        });
-      });
+      await syncLifecyclePublisher.publish(successTransition);
 
       const duration = Date.now() - startTime;
 
@@ -493,33 +483,24 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
       const errorMsg = getErrorMessage(error);
       const finalAttempt = isFinalAttempt(job);
 
-      // Report before touching the database. The row write can itself fail, and
-      // then this event is the only account of the failure the user ever gets.
-      runWorkerSideEffect('Sync failure status publication', () => {
-        broadcastSyncStatus(walletId, {
-          inProgress: false,
-          status: finalAttempt ? 'failed' : 'retrying',
-          error: errorMsg,
-          retriesExhausted: finalAttempt,
-        });
-      });
-      runWorkerSideEffect('Sync failure log publication', () => {
-        broadcastWalletLog(walletId, {
-          level: 'error',
-          module: 'SYNC',
-          message: `Sync failed: ${errorMsg}`,
-          details: { duration, jobId: job.id, attemptsMade: job.attemptsMade },
-        });
-      });
-
       if (preparingFullResync) {
-        flagCleared = finalAttempt
+        const transition = finalAttempt
           ? await recordSyncFailure(walletId, { error }, walletRepository)
           : await recordSyncRetry(walletId, {
             owner: 'worker',
             ...workerRetryState(job),
             error,
           }, walletRepository);
+        flagCleared = transition !== null;
+        await publishWorkerAttemptTransition(job, transition);
+        runWorkerSideEffect('Sync failure log publication', () => {
+          broadcastWalletLog(walletId, {
+            level: 'error',
+            module: 'SYNC',
+            message: `Sync failed: ${errorMsg}`,
+            details: { duration, jobId: job.id, attemptsMade: job.attemptsMade },
+          });
+        });
         log.warn(`Full resync preparation will retry for wallet ${walletId}`, {
           error: errorMsg,
           jobId: job.id,
@@ -528,13 +509,23 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
         throw error;
       }
 
-      flagCleared = finalAttempt
+      const transition = finalAttempt
         ? await recordSyncFailure(walletId, { error }, walletRepository)
         : await recordSyncRetry(walletId, {
           owner: 'worker',
           ...workerRetryState(job),
           error,
         }, walletRepository);
+      flagCleared = transition !== null;
+      await publishWorkerAttemptTransition(job, transition);
+      runWorkerSideEffect('Sync failure log publication', () => {
+        broadcastWalletLog(walletId, {
+          level: 'error',
+          module: 'SYNC',
+          message: `Sync failed: ${errorMsg}`,
+          details: { duration, jobId: job.id, attemptsMade: job.attemptsMade },
+        });
+      });
 
       log.error(`Wallet ${walletId} sync failed`, {
         error: errorMsg,
@@ -549,12 +540,11 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
       // force-reset it so the wallet doesn't stay stuck forever.
       if (syncFlagSet && !flagCleared) {
         try {
-          await clearActiveSyncAttempt(walletId, walletRepository);
-          // Stop the UI spinner even on a path that never reached a terminal
-          // status, otherwise the wallet appears to sync forever.
-          runWorkerSideEffect('Sync safety-net status publication', () => {
-            broadcastSyncStatus(walletId, { inProgress: false });
-          });
+          const clearedTransition = await clearActiveSyncAttempt(
+            walletId,
+            walletRepository,
+          );
+          await syncLifecyclePublisher.publish(clearedTransition);
           log.warn(`Safety-net reset syncInProgress for wallet ${walletId}`);
         } catch (cleanupError) {
           log.error(`Failed to safety-net reset syncInProgress for wallet ${walletId}`, {
@@ -688,57 +678,39 @@ export const updateConfirmationsJob: WorkerJobHandler<UpdateConfirmationsJobData
       log.info(`Block height updated to ${height}`, { hash: hash?.slice(0, 16) });
     }
 
-    // Find all wallets with pending transactions (< 6 confirmations)
-    const walletIds = await transactionRepository.findWalletIdsWithPendingConfirmations(6);
-    const walletsWithPending = [...new Set(walletIds)].sort();
-
-    if (walletsWithPending.length === 0) {
+    const result = await refreshPendingConfirmations();
+    if (result.walletIds.length === 0) {
       log.debug('No wallets with pending transactions');
       return { version: SYNC_JOB_CONTRACT_VERSION, updated: 0, notified: 0 };
     }
 
-    log.debug(`Updating confirmations for ${walletsWithPending.length} wallets`);
-
-    let totalUpdated = 0;
-    let totalNotified = 0;
-
-    const failures: Array<{ walletId: string; error: unknown }> = [];
-    for (const walletId of walletsWithPending) {
-      try {
-        const updates = await updateTransactionConfirmations(walletId);
-        totalUpdated += updates.length;
-
-        // Track milestone confirmations for notifications
-        // Notifications are handled by the notification jobs
-        for (const update of updates) {
-          if ([1, 3, 6].includes(update.newConfirmations)) {
-            totalNotified++;
-            // Note: Actual notification sending is done by queueing notification jobs
-            // This is handled in the worker entry point
-          }
-        }
-      } catch (error) {
-        failures.push({ walletId, error });
-        log.error(`Failed to update confirmations for wallet ${walletId}`, {
-          error: getErrorMessage(error),
-        });
-      }
+    log.debug(`Updating confirmations for ${result.walletIds.length} wallets`);
+    for (const failure of result.failures) {
+      log.error(`Failed to update confirmations for wallet ${failure.walletId}`, {
+        error: getErrorMessage(failure.error),
+      });
     }
-
-    if (totalUpdated > 0) {
-      log.info(`Updated ${totalUpdated} transaction confirmations`, {
-        wallets: walletsWithPending.length,
+    for (const failure of result.publicationFailures) {
+      log.error(`Failed to publish confirmation update for wallet ${failure.walletId}`, {
+        error: getErrorMessage(failure.error),
+        txid: failure.txid,
       });
     }
 
-    if (failures.length > 0) {
-      throw new ConfirmationUpdateAggregateError(failures);
+    if (result.confirmationUpdateCount > 0) {
+      log.info(`Updated ${result.confirmationUpdateCount} transaction confirmations`, {
+        wallets: result.walletIds.length,
+      });
+    }
+
+    if (result.failures.length > 0) {
+      throw new ConfirmationUpdateAggregateError(result.failures);
     }
 
     return {
       version: SYNC_JOB_CONTRACT_VERSION,
-      updated: totalUpdated,
-      notified: totalNotified,
+      updated: result.confirmationUpdateCount,
+      notified: result.milestoneCount,
     };
   },
 };

@@ -12,6 +12,17 @@ export type SyncPriority = (typeof SYNC_PRIORITY_VALUES)[number];
 export const SYNC_EXECUTION_OWNER_VALUES = ['inline', 'worker'] as const;
 export type SyncExecutionOwner = (typeof SYNC_EXECUTION_OWNER_VALUES)[number];
 
+/** Persisted lifecycle transitions that may be published to sync observers. */
+export const SYNC_LIFECYCLE_TRANSITION_VALUES = [
+  'started',
+  'succeeded',
+  'retrying',
+  'failed',
+  'cleared',
+] as const;
+export type SyncLifecycleTransitionKind =
+  (typeof SYNC_LIFECYCLE_TRANSITION_VALUES)[number];
+
 /**
  * Privacy-safe failure taxonomy persisted with wallet sync state.
  *

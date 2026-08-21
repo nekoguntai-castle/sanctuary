@@ -6,6 +6,7 @@
 
 import type { DeviceRoleValue } from '@sanctuary/shared/constants/deviceRoles';
 import type { WalletType } from '@sanctuary/shared/constants/walletIdentity';
+import type { SyncLifecycleTransitionKind } from '@sanctuary/shared/constants/sync';
 
 /**
  * Wallet-related events
@@ -37,6 +38,11 @@ export interface WalletEvents {
     walletId: string;
     error: string;
     retryCount: number;
+  };
+  'wallet:syncTransition': {
+    walletId: string;
+    transition: SyncLifecycleTransitionKind;
+    stateVersion: number;
   };
   'wallet:balanceChanged': {
     walletId: string;

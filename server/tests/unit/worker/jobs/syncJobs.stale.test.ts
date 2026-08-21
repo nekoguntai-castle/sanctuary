@@ -11,6 +11,11 @@ import type { Job } from 'bullmq';
 const staleJobPrismaMocks = vi.hoisted(() => ({
   walletFindMany: vi.fn<() => Promise<unknown[]>>(),
   walletUpdate: vi.fn<(args?: unknown) => Promise<unknown>>(),
+  publishLifecycle: vi.fn<(...args: unknown[]) => Promise<void>>(),
+}));
+
+vi.mock('../../../../src/services/sync/syncLifecyclePublisher', () => ({
+  syncLifecyclePublisher: { publish: staleJobPrismaMocks.publishLifecycle },
 }));
 
 const mockIsLocked = vi.hoisted(() => vi.fn<(key: string) => Promise<boolean>>());
@@ -65,7 +70,20 @@ const checkStaleWalletsJob = createCheckStaleWalletsJob({
 describe('checkStaleWalletsJob', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    staleJobPrismaMocks.walletUpdate.mockResolvedValue({});
+    let stateVersion = 0;
+    staleJobPrismaMocks.walletUpdate.mockImplementation(async (args: any) => ({
+      syncInProgress: false,
+      lastSyncedAt: null,
+      lastSyncStatus: null,
+      lastSyncError: null,
+      lastSyncFailureClass: null,
+      syncExecutionOwner: null,
+      syncRetryCount: 0,
+      syncNextRetryAt: null,
+      syncStartedAt: null,
+      ...args?.data,
+      syncStateVersion: ++stateVersion,
+    }));
     mockIsLocked.mockResolvedValue(false);
     mockEnqueueFullResync.mockResolvedValue({
       acceptedWalletIds: [],
@@ -234,6 +252,14 @@ describe('checkStaleWalletsJob', () => {
         syncExecutionOwner: null,
       }),
     });
+    expect(staleJobPrismaMocks.publishLifecycle).toHaveBeenCalledTimes(2);
+    expect(staleJobPrismaMocks.publishLifecycle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        walletId: 'wallet-stuck-1',
+        transition: 'cleared',
+        state: expect.objectContaining({ syncStateVersion: 1 }),
+      }),
+    );
     expect(prisma.wallet.update).toHaveBeenCalledWith({
       where: { id: 'wallet-stuck-2' },
       data: expect.objectContaining({

@@ -14,12 +14,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
-  mockUpdate, mockFindByIdWithSelect, mockBroadcastSyncStatus, mockBroadcastWalletLog,
+  mockUpdate, mockFindByIdWithSelect, mockPublishLifecycle, mockBroadcastWalletLog,
   mockFindStranded, mockEnqueueFullResync, mockFindStale, mockFindStuckWithCutoff,
 } = vi.hoisted(() => ({
   mockUpdate: vi.fn(),
   mockFindByIdWithSelect: vi.fn(),
-  mockBroadcastSyncStatus: vi.fn(),
+  mockPublishLifecycle: vi.fn(),
   mockBroadcastWalletLog: vi.fn(),
   mockFindStranded: vi.fn(),
   mockEnqueueFullResync: vi.fn(),
@@ -29,7 +29,22 @@ const {
 
 vi.mock('../../../../src/repositories', () => ({
   walletRepository: {
-    updateSyncState: mockUpdate,
+    updateSyncState: async (walletId: string, state: Record<string, unknown>) => {
+      await mockUpdate(walletId, state);
+      return {
+        syncInProgress: false,
+        lastSyncedAt: null,
+        lastSyncStatus: null,
+        lastSyncError: null,
+        lastSyncFailureClass: null,
+        syncExecutionOwner: null,
+        syncRetryCount: 0,
+        syncNextRetryAt: null,
+        syncStartedAt: null,
+        syncStateVersion: 1,
+        ...state,
+      };
+    },
     findByIdWithSelect: mockFindByIdWithSelect,
     findStale: mockFindStale,
     findStuckWithCutoff: mockFindStuckWithCutoff,
@@ -42,8 +57,11 @@ vi.mock('../../../../src/repositories', () => ({
 }));
 
 vi.mock('../../../../src/websocket/notifications/broadcasts', () => ({
-  broadcastSyncStatus: mockBroadcastSyncStatus,
   broadcastWalletLog: mockBroadcastWalletLog,
+}));
+
+vi.mock('../../../../src/services/sync/syncLifecyclePublisher', () => ({
+  syncLifecyclePublisher: { publish: mockPublishLifecycle },
 }));
 
 import {
@@ -123,7 +141,9 @@ describe('sync lock contention is never a silent success', () => {
       expect(mockUpdate).toHaveBeenCalledWith('w5', expect.objectContaining({
         lastSyncStatus: 'failed',
       }));
-      expect(mockBroadcastSyncStatus).toHaveBeenCalled();
+      expect(mockPublishLifecycle).toHaveBeenCalledWith(
+        expect.objectContaining({ walletId: 'w5', transition: 'failed' }),
+      );
     });
 
     it('does not persist terminal state while BullMQ still has an attempt', async () => {
@@ -135,8 +155,7 @@ describe('sync lock contention is never a silent success', () => {
       );
 
       expect(mockUpdate).not.toHaveBeenCalled();
-      expect(mockBroadcastSyncStatus).toHaveBeenCalledWith('w5',
-        expect.objectContaining({ status: 'retrying', retriesExhausted: false }));
+      expect(mockPublishLifecycle).not.toHaveBeenCalled();
     });
 
     it('does NOT mark the wallet failed when a sync is genuinely running', async () => {
@@ -160,7 +179,7 @@ describe('sync lock contention is never a silent success', () => {
       await syncWalletJob.lockOptions?.onLockRetryBudgetExhausted?.({ walletId: 'w6' }, detail);
 
       expect(mockUpdate).not.toHaveBeenCalled();
-      expect(mockBroadcastSyncStatus).not.toHaveBeenCalled();
+      expect(mockPublishLifecycle).not.toHaveBeenCalled();
     });
   });
 });

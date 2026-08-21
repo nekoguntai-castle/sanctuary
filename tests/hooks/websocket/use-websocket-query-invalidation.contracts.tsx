@@ -129,6 +129,22 @@ function registerGlobalChannelSubscriptionTests(): void {
           'logs:all',
         ]);
       });
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['wallets'] });
+
+      act(() => {
+        mockIsConnected.mockReturnValue(false);
+        mockGetState.mockReturnValue('disconnected');
+        connectionChangeCallbacks.forEach(cb => cb(false));
+      });
+      act(() => {
+        mockIsConnected.mockReturnValue(true);
+        mockGetState.mockReturnValue('connected');
+        connectionChangeCallbacks.forEach(cb => cb(true));
+      });
+
+      await waitFor(() => {
+        expect(mockInvalidateQueries).toHaveBeenCalledTimes(2);
+      });
     });
   });
 }

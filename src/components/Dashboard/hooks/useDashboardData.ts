@@ -1,13 +1,13 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { WebSocketTransactionData, WebSocketBalanceData, WebSocketConfirmationData, WebSocketSyncData } from '../../../types';
+import { WebSocketTransactionData, WebSocketBalanceData, WebSocketConfirmationData } from '../../../types';
 import * as adminApi from '../../../api/admin';
 import { useWebSocket, useWebSocketEvent } from '../../../hooks/websocket';
 import { useNotifications } from '../../../contexts/NotificationContext';
 import { useNotificationSound } from '../../../hooks/useNotificationSound';
 import { useActiveNetwork } from '../../../contexts/ActiveNetworkContext';
 import { createLogger } from '../../../utils/logger';
-import { useWallets, useRecentTransactions, useInvalidateAllWallets, useUpdateWalletSyncStatus, useBalanceHistory, usePendingTransactions, useActivitySummary } from '../../../hooks/queries/useWallets';
+import { useWallets, useRecentTransactions, useInvalidateAllWallets, useBalanceHistory, usePendingTransactions, useActivitySummary } from '../../../hooks/queries/useWallets';
 import { useFeeEstimates, useBitcoinStatus, useMempoolData } from '../../../hooks/queries/useBitcoin';
 import { useCurrency } from '../../../contexts/CurrencyContext';
 import { useDelayedRender } from '../../../hooks/useDelayedRender';
@@ -22,7 +22,6 @@ import {
   formatFeeRate,
   getFilteredWallets,
   getNodeStatus,
-  getSyncWalletId,
   mapApiWalletToDashboardWallet,
   mapRecentTransaction,
   toDashboardFeeEstimate,
@@ -76,7 +75,6 @@ export function useDashboardData() {
   const { addNotification } = useNotifications();
   const { playEventSound } = useNotificationSound();
   const invalidateAllWallets = useInvalidateAllWallets();
-  const updateWalletSyncStatus = useUpdateWalletSyncStatus();
 
   // React Query hooks for data fetching
   const { data: apiWallets, isLoading: walletsLoading, isError: walletsFetchFailed } = useWallets();
@@ -222,17 +220,6 @@ export function useDashboardData() {
     };
   }, [invalidateAllWallets]);
 
-  // Refetch wallet data when WebSocket reconnects (handles missed events during disconnection)
-  useEffect(() => {
-    if (wsConnected) {
-      // Small delay to ensure subscriptions are complete
-      const timer = setTimeout(() => {
-        invalidateAllWallets();
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [wsConnected, invalidateAllWallets]);
-
   // Subscribe to global block/mempool channel for real-time updates
   useEffect(() => {
     subscribe('blocks');
@@ -297,18 +284,6 @@ export function useDashboardData() {
     // Refresh wallet data to update confirmation counts in the UI
     invalidateAllWallets();
   }, [addNotification, playEventSound, invalidateAllWallets]);
-
-  // Handle sync status changes - update syncInProgress in real-time
-  useWebSocketEvent('sync', (event) => {
-    const data = event.data as WebSocketSyncData;
-    const walletId = getSyncWalletId(data);
-
-    // Directly update the cache for immediate UI response
-    // This is more reliable than invalidating + refetching
-    if (walletId) {
-      updateWalletSyncStatus(walletId, data.inProgress ?? false, data.status);
-    }
-  }, [updateWalletSyncStatus]);
 
   // Calculate total balance for filtered wallets (network-specific)
   const walletsUnavailable = neverAnswered(walletsFetchFailed, apiWallets);

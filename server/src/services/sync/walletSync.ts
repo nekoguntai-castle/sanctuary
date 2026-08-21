@@ -21,7 +21,6 @@ import {
 import { createLogger } from "../../utils/logger";
 import { getErrorMessage } from "../../utils/errors";
 import { getConfig } from "../../config";
-import { eventService } from "../eventService";
 import { recordSyncFailure as recordDeadLetterSyncFailure } from "../deadLetterQueue";
 import {
   acquireLock,
@@ -46,6 +45,7 @@ import {
   startSyncAttempt,
   clearActiveSyncAttempt,
 } from "./syncAttemptLifecycle";
+import { syncLifecyclePublisher } from "./syncLifecyclePublisher";
 
 const log = createLogger("SYNC:SVC_WALLET");
 
@@ -207,24 +207,13 @@ export async function executeSyncJob(
   try {
     // Mark this structured attempt before doing any wallet work. The inline
     // owner distinguishes its heap-timer retry from BullMQ's durable retries.
-    await startSyncAttempt(walletId, {
+    const startedTransition = await startSyncAttempt(walletId, {
       owner: "inline",
       retryCount,
       startedAt: new Date(),
     }, walletRepository);
     attemptStarted = true;
-
-    await runSyncSideEffect("sync start status publication", () => {
-      notificationService.broadcastSyncStatus(walletId, {
-        inProgress: true,
-        retryCount,
-        maxRetries: syncConfig.maxRetryAttempts,
-      });
-    });
-
-    await runSyncSideEffect("sync start event publication", () => {
-      eventService.emitWalletSyncStarted(walletId, false);
-    });
+    await syncLifecyclePublisher.publish(startedTransition);
 
     const startTime = Date.now();
     log.info(
@@ -299,8 +288,13 @@ export async function executeSyncJob(
 
     // Update sync metadata
     const syncedAt = new Date();
-    await recordSyncSuccess(walletId, { syncedAt }, walletRepository);
+    const successTransition = await recordSyncSuccess(
+      walletId,
+      { syncedAt },
+      walletRepository,
+    );
     stateCleared = true;
+    await syncLifecyclePublisher.publish(successTransition);
 
     const duration = Date.now() - startTime;
     log.info(
@@ -319,26 +313,6 @@ export async function executeSyncJob(
     await runSyncSideEffect("sync success metrics", () => {
       walletSyncsTotal.inc({ status: "success" });
       walletSyncDuration.observe({ walletType: "all" }, duration / 1000);
-    });
-
-    // Emit wallet synced event (handles both event bus and WebSocket)
-    await runSyncSideEffect("sync success event publication", () => {
-      eventService.emitWalletSynced({
-        walletId,
-        balance: BigInt(newBalances.confirmed),
-        unconfirmedBalance: BigInt(newBalances.unconfirmed),
-        transactionCount: result.transactions,
-        duration,
-      });
-    });
-
-    // Always notify sync completion via WebSocket
-    await runSyncSideEffect("sync success status publication", () => {
-      notificationService.broadcastSyncStatus(walletId, {
-        inProgress: false,
-        status: "success",
-        lastSyncedAt: syncedAt,
-      });
     });
 
     // Notify via WebSocket if balance changed (confirmed or unconfirmed)
@@ -389,6 +363,26 @@ export async function executeSyncJob(
       log.info(
         `[SYNC] Will retry wallet ${walletId} in ${delayMs / 1000}s (attempt ${nextRetry}/${syncConfig.maxRetryAttempts})`,
       );
+      const retryTransition = await recordSyncRetry(walletId, {
+        owner: "inline",
+        retryCount: nextRetry,
+        nextRetryAt,
+        error,
+      }, walletRepository);
+      if (!retryTransition) {
+        log.error(`[SYNC] Retry state could not be persisted for wallet ${walletId}; not arming an in-memory retry`);
+        return {
+          success: false,
+          addresses: 0,
+          transactions: 0,
+          utxos: 0,
+          error: errorMessage,
+        };
+      }
+      stateCleared = true;
+      await syncLifecyclePublisher.publish(retryTransition, {
+        maxRetries: syncConfig.maxRetryAttempts,
+      });
       await runSyncSideEffect("sync retry wallet log publication", () => {
         walletLog(
           walletId,
@@ -400,35 +394,6 @@ export async function executeSyncJob(
             maxAttempts: syncConfig.maxRetryAttempts,
           },
         );
-      });
-
-      const retryPersisted = await recordSyncRetry(walletId, {
-        owner: "inline",
-        retryCount: nextRetry,
-        nextRetryAt,
-        error,
-      }, walletRepository);
-      if (!retryPersisted) {
-        log.error(`[SYNC] Retry state could not be persisted for wallet ${walletId}; not arming an in-memory retry`);
-        return {
-          success: false,
-          addresses: 0,
-          transactions: 0,
-          utxos: 0,
-          error: errorMessage,
-        };
-      }
-      stateCleared = true;
-
-      await runSyncSideEffect("sync retry status publication", () => {
-        notificationService.broadcastSyncStatus(walletId, {
-          inProgress: true,
-          status: "retrying",
-          error: errorMessage,
-          retryCount: nextRetry,
-          maxRetries: syncConfig.maxRetryAttempts,
-          retryingIn: delayMs,
-        });
       });
 
       // Release distributed lock so retry can acquire it fresh
@@ -460,15 +425,16 @@ export async function executeSyncJob(
         ? `Sync failed after ${syncConfig.maxRetryAttempts} attempts: ${errorMessage}`
         : `Sync failed: ${errorMessage}`;
     log.error(`[SYNC] Final sync failure for wallet ${walletId}`);
-    const failurePersisted = await recordSyncFailure(
+    const failureTransition = await recordSyncFailure(
       walletId,
       { error },
       walletRepository,
     );
-    if (!failurePersisted) {
+    if (!failureTransition) {
       log.error(`[SYNC] Terminal failure state could not be persisted for wallet ${walletId}`);
     } else {
       stateCleared = true;
+      await syncLifecyclePublisher.publish(failureTransition);
     }
 
     await runSyncSideEffect("sync failure wallet log publication", () => {
@@ -485,24 +451,6 @@ export async function executeSyncJob(
       syncConfig.maxRetryAttempts,
       { lastError: errorMessage },
     ));
-
-    await runSyncSideEffect("sync failure event publication", () => {
-      eventService.emitWalletSyncFailed(
-        walletId,
-        errorMessage,
-        syncConfig.maxRetryAttempts,
-      );
-    });
-
-    // Notify sync failure via WebSocket
-    await runSyncSideEffect("sync failure status publication", () => {
-      notificationService.broadcastSyncStatus(walletId, {
-        inProgress: false,
-        status: "failed",
-        error: errorMessage,
-        retriesExhausted: true,
-      });
-    });
 
     // Continue processing queue
     /* v8 ignore start -- queue continuation callback is covered by sync queue tests */
@@ -521,7 +469,11 @@ export async function executeSyncJob(
   } finally {
     if (attemptStarted && !stateCleared) {
       try {
-        await clearActiveSyncAttempt(walletId, walletRepository);
+        const clearedTransition = await clearActiveSyncAttempt(
+          walletId,
+          walletRepository,
+        );
+        await syncLifecyclePublisher.publish(clearedTransition);
       } catch (cleanupError) {
         log.error(`[SYNC] Failed to safety-net reset sync state for wallet ${walletId}`, {
           error: getErrorMessage(cleanupError),

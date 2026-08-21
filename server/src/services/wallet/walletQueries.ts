@@ -110,7 +110,13 @@ export async function getUserWallets(
       lastSyncedAt: wallet.lastSyncedAt,
       lastSyncStatus: wallet.lastSyncStatus,
       lastSyncError: wallet.lastSyncError,
+      lastSyncFailureClass: wallet.lastSyncFailureClass,
       syncInProgress: wallet.syncInProgress,
+      syncExecutionOwner: wallet.syncExecutionOwner,
+      syncRetryCount: wallet.syncRetryCount,
+      syncNextRetryAt: wallet.syncNextRetryAt,
+      syncStartedAt: wallet.syncStartedAt,
+      syncStateVersion: wallet.syncStateVersion,
       // Sharing info
       isShared,
       sharedWith: isShared
@@ -205,7 +211,13 @@ export async function getWalletById(
     lastSyncedAt: wallet.lastSyncedAt,
     lastSyncStatus: wallet.lastSyncStatus,
     lastSyncError: wallet.lastSyncError,
+    lastSyncFailureClass: wallet.lastSyncFailureClass,
     syncInProgress: wallet.syncInProgress,
+    syncExecutionOwner: wallet.syncExecutionOwner,
+    syncRetryCount: wallet.syncRetryCount,
+    syncNextRetryAt: wallet.syncNextRetryAt,
+    syncStartedAt: wallet.syncStartedAt,
+    syncStateVersion: wallet.syncStateVersion,
     // Sharing info
     isShared,
     sharedWith: isShared

@@ -266,8 +266,21 @@ describe('Wallet Detail route ownership', () => {
 
     view.rerender({ walletId: 'A', currentWallet: wallet('A'), ownershipKey: 'A:user:mainnet' });
     await act(() => view.result.current.handleUpdateWallet({ name: 'Renamed A' }));
+    const optimistic = setWallet.mock.calls.at(-2)?.[0] as (current: any) => any;
+    expect(optimistic(wallet('A'))).toEqual(wallet('A', 'Renamed A'));
+    expect(optimistic(wallet('B'))).toEqual(wallet('B'));
     const revert = setWallet.mock.calls.at(-1)?.[0] as (current: any) => any;
-    expect(revert(wallet('A', 'Optimistic A'))).toEqual(wallet('A'));
+    expect(revert({
+      id: 'A',
+      name: 'Optimistic A',
+      syncStateVersion: 7,
+      lastSyncStatus: 'success',
+    })).toEqual({
+      id: 'A',
+      name: 'A',
+      syncStateVersion: 7,
+      lastSyncStatus: 'success',
+    });
     expect(revert(wallet('B'))).toEqual(wallet('B'));
     expect(handleError).toHaveBeenCalledWith(expect.any(Error), 'Update Failed');
 

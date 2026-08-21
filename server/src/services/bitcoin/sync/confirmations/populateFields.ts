@@ -20,7 +20,12 @@ import { executeInChunks } from './batchUpdates';
 import { fetchBlockHeightsFromHistory, fetchTransactionDetails, fetchPreviousTransactions } from './fetchHelpers';
 import { processTransactionUpdates } from './processUpdates';
 import { normalizeLegacyBitcoinNetwork } from '../../networks';
-import type { ConfirmationUpdate, PopulationStats, PopulateFieldsResult } from './types';
+import type {
+  ConfirmationUpdate,
+  PopulationStats,
+  PopulateFieldsCommitHandler,
+  PopulateFieldsResult,
+} from './types';
 
 const log = createLogger('BITCOIN:SVC_CONFIRMATIONS');
 
@@ -44,6 +49,7 @@ const POPULATE_CHUNK_SIZE = 50;
 export async function populateMissingTransactionFields(
   walletId: string,
   signal?: AbortSignal,
+  onCommit?: PopulateFieldsCommitHandler,
 ): Promise<PopulateFieldsResult> {
   signal?.throwIfAborted();
   // Get wallet to determine network for correct block height
@@ -122,21 +128,29 @@ export async function populateMissingTransactionFields(
       );
 
       if (pendingUpdates.length > 0) {
-        await executeInChunks(pendingUpdates, walletId);
+        await executeInChunks(pendingUpdates, walletId, (committedUpdates) => {
+          const confirmationUpdates: ConfirmationUpdate[] = [];
+          for (const update of committedUpdates) {
+            if (
+              update.data.confirmations !== undefined
+              && update.data.confirmations !== update.oldConfirmations
+            ) {
+              confirmationUpdates.push({
+                txid: update.txid,
+                oldConfirmations: update.oldConfirmations,
+                newConfirmations: update.data.confirmations as number,
+              });
+            }
+          }
+          allConfirmationUpdates.push(...confirmationUpdates);
+          onCommit?.({
+            updated: committedUpdates.length,
+            confirmationUpdates,
+          });
+        }, signal);
         signal?.throwIfAborted();
         if (pendingUpdates.some(u => u.data.amount !== undefined)) {
           hasAmountUpdates = true;
-        }
-
-        // Extract confirmation updates immediately so pendingUpdates can be GC'd
-        for (const u of pendingUpdates) {
-          if (u.data.confirmations !== undefined && u.data.confirmations !== u.oldConfirmations) {
-            allConfirmationUpdates.push({
-              txid: u.txid,
-              oldConfirmations: u.oldConfirmations,
-              newConfirmations: u.data.confirmations as number,
-            });
-          }
         }
       }
 

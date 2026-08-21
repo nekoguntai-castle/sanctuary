@@ -4,6 +4,8 @@
  * Type definitions for all notification events broadcast via WebSocket.
  */
 
+import type { SyncEvent } from '@sanctuary/shared/types/websocket';
+
 export interface TransactionNotification {
   txid: string;
   walletId: string;
@@ -48,16 +50,7 @@ export interface WalletLogEntry {
   details?: Record<string, unknown>;
 }
 
-export interface SyncStatusUpdate {
-  inProgress: boolean;
-  status?: string;
-  error?: string;
-  lastSyncedAt?: Date;
-  retryCount?: number;
-  maxRetries?: number;
-  retryingIn?: number;
-  retriesExhausted?: boolean;
-}
+export type SyncStatusUpdate = Omit<SyncEvent['data'], 'timestamp'>;
 
 export interface ConfirmationUpdate {
   txid: string;

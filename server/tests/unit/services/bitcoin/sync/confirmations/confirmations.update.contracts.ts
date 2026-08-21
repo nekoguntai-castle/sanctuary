@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 
 import { mockPrismaClient } from '../../../../../mocks/prisma';
 import { mockGetBlockHeight, mockGetConfig, mockWalletLog } from './confirmationsTestHarness';
@@ -38,13 +38,32 @@ export function registerUpdateTransactionConfirmationsContracts() {
     ]);
     mockGetBlockHeight.mockResolvedValue(1000);
 
-    const updates = await updateTransactionConfirmations('wallet-1');
+    const onCommit = vi.fn();
+    const updates = await updateTransactionConfirmations(
+      'wallet-1',
+      new AbortController().signal,
+      onCommit,
+    );
 
     expect(updates).toEqual([
       { txid: 'tx-1', oldConfirmations: 0, newConfirmations: 1 },
       { txid: 'tx-3', oldConfirmations: 0, newConfirmations: 3 },
     ]);
     expect(mockPrismaClient.$transaction).toHaveBeenCalledTimes(2);
+    expect(onCommit.mock.calls.map(([commit]) => commit)).toEqual([
+      {
+        updated: 0,
+        confirmationUpdates: [
+          { txid: 'tx-1', oldConfirmations: 0, newConfirmations: 1 },
+        ],
+      },
+      {
+        updated: 0,
+        confirmationUpdates: [
+          { txid: 'tx-3', oldConfirmations: 0, newConfirmations: 3 },
+        ],
+      },
+    ]);
     expect(mockPrismaClient.transaction.update).toHaveBeenCalledWith({
       where: { id: 't1' },
       data: { confirmations: 1, rbfStatus: 'confirmed' },
@@ -59,6 +78,18 @@ export function registerUpdateTransactionConfirmationsContracts() {
       'DB',
       expect.stringContaining('Processing batch')
     );
+  });
+
+  it('rejects an already-aborted refresh before reading wallet state', async () => {
+    const controller = new AbortController();
+    controller.abort(new Error('refresh lock lost'));
+
+    await expect(updateTransactionConfirmations(
+      'wallet-1',
+      controller.signal,
+    )).rejects.toThrow('refresh lock lost');
+
+    expect(mockPrismaClient.wallet.findUnique).not.toHaveBeenCalled();
   });
 
   it('uses network fallback and skips zero-height/unchanged transactions without writes', async () => {
