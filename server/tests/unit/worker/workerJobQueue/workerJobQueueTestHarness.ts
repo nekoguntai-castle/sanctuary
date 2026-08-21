@@ -96,11 +96,19 @@ vi.mock('bullmq', () => {
     }
   }
 
+  class UnrecoverableError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = 'UnrecoverableError';
+    }
+  }
+
   return {
     Queue: MockQueue,
     Worker: MockWorker,
     QueueEvents: MockQueueEvents,
     DelayedError,
+    UnrecoverableError,
   };
 });
 

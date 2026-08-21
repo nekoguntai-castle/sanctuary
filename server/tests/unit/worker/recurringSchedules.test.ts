@@ -210,12 +210,16 @@ describe('recurring schedule contracts', () => {
     expect(
       baseline.find(({ schedulerId }) => schedulerId === 'sync:check-stale-wallets'),
     ).toEqual(expect.objectContaining({
+      data: { version: 1 },
       recurrence: { every: 300_000 },
       freshness: expect.any(Object),
     }));
     expect(
       baseline.find(({ schedulerId }) => schedulerId === 'confirmations:update-all-confirmations'),
-    ).toEqual(expect.objectContaining({ recurrence: { every: 120_000 } }));
+    ).toEqual(expect.objectContaining({
+      data: { version: 1 },
+      recurrence: { every: 120_000 },
+    }));
     expect(
       baseline.find(({ schedulerId }) => schedulerId === 'maintenance:backup:scheduled'),
     ).toEqual(expect.objectContaining({

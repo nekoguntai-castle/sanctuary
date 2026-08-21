@@ -55,9 +55,10 @@ import {
 import { toBullMqJobId } from "../../../src/jobs/bullMqJobIds";
 import { SYNC_PRIORITY_BULLMQ_PRIORITY } from "@sanctuary/shared/constants/sync";
 import {
+  SYNC_JOB_CONTRACT_VERSION,
   SYNC_WALLET_JOB_OPTIONS,
   getSyncLockTtlMs,
-} from "../../../src/worker/jobs/jobOptions";
+} from "../../../src/jobs/syncJobContract";
 import type { DeadLetterJobEnvelope } from "../../../src/services/deadLetterQueueTypes";
 import { FULL_RESYNC_GENERATION_MAX } from "../../../src/constants/fullResync";
 
@@ -102,7 +103,12 @@ describe("workerSyncQueue", () => {
     expect(queued).toBe(true);
     expect(mocks.mockQueueAdd).toHaveBeenCalledWith(
       "sync-wallet",
-      { walletId: "wallet-1", priority: "high", reason: "manual" },
+      {
+        version: SYNC_JOB_CONTRACT_VERSION,
+        walletId: "wallet-1",
+        priority: "high",
+        reason: "manual",
+      },
       {
         ...SYNC_WALLET_JOB_OPTIONS,
         priority: SYNC_PRIORITY_BULLMQ_PRIORITY.high,
@@ -138,6 +144,7 @@ describe("workerSyncQueue", () => {
       1,
       "sync-wallet",
       {
+        version: SYNC_JOB_CONTRACT_VERSION,
         walletId: "wallet-1",
         priority: "high",
         reason: "manual-resync",
@@ -424,6 +431,7 @@ describe("workerSyncQueue", () => {
       {
         name: "sync-wallet",
         data: {
+          version: SYNC_JOB_CONTRACT_VERSION,
           walletId: "wallet-1",
           priority: "low",
           reason: "manual-network-sync",
@@ -440,6 +448,7 @@ describe("workerSyncQueue", () => {
       {
         name: "sync-wallet",
         data: {
+          version: SYNC_JOB_CONTRACT_VERSION,
           walletId: "wallet-2",
           priority: "low",
           reason: "manual-network-sync",
@@ -490,7 +499,12 @@ describe("workerSyncQueue", () => {
     expect(queued).toBe(true);
     expect(mocks.mockQueueAdd).toHaveBeenCalledWith(
       "sync-wallet",
-      { walletId: "wallet-1", priority: "normal", reason: undefined },
+      {
+        version: SYNC_JOB_CONTRACT_VERSION,
+        walletId: "wallet-1",
+        priority: "normal",
+        reason: undefined,
+      },
       {
         ...SYNC_WALLET_JOB_OPTIONS,
         priority: SYNC_PRIORITY_BULLMQ_PRIORITY.normal,
@@ -546,6 +560,27 @@ describe("workerSyncQueue", () => {
     await expect(
       enqueueDeadLetterJob(syncDeadLetterEnvelope(), "entry-failure"),
     ).resolves.toBe(false);
+  });
+
+  it("replays an explicit v1 sync payload without rewriting its wire data", async () => {
+    const data = {
+      version: SYNC_JOB_CONTRACT_VERSION,
+      walletId: "wallet-1",
+      reason: "retry",
+    };
+
+    await expect(enqueueDeadLetterJob({
+      ...syncDeadLetterEnvelope(),
+      data,
+    }, "entry-v1")).resolves.toBe(true);
+
+    expect(mocks.mockQueueAdd).toHaveBeenCalledWith(
+      "sync-wallet",
+      data,
+      expect.objectContaining({
+        jobId: toBullMqJobId("dead-letter-retry:entry-v1"),
+      }),
+    );
   });
 
   it("preserves a valid full-resync attempt through dead-letter retry", async () => {
@@ -605,6 +640,12 @@ describe("workerSyncQueue", () => {
         queue: "sync",
         name: "other-job",
         data: { walletId: "wallet-1" },
+      },
+      {
+        version: 1,
+        queue: "sync",
+        name: "sync-wallet",
+        data: { version: 2, walletId: "wallet-1" },
       },
       {
         version: 1,

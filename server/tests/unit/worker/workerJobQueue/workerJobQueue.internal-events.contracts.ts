@@ -111,10 +111,52 @@ export const registerWorkerJobQueueInternalEventContracts = (getQueue: WorkerJob
         new Error('retrying')
       );
 
+      handlers.failed?.(
+        {
+          id: 'job-unsupported-version',
+          name: 'sync-wallet',
+          data: { version: 2, walletId: 'w1' },
+          attemptsMade: 1,
+          opts: { attempts: 3 },
+        },
+        { name: 'UnrecoverableError', message: 'invalid payload' },
+      );
+
+      expect(() => handlers.failed?.(
+        {
+          id: 'job-non-error-rejection',
+          name: 'sync-wallet',
+          data: { walletId: 'w1' },
+          attemptsMade: 1,
+          opts: { attempts: 3 },
+        },
+        null,
+      )).not.toThrow();
+      expect(() => handlers.failed?.(
+        {
+          id: 'job-primitive-rejection',
+          name: 'sync-wallet',
+          data: { walletId: 'w1' },
+          attemptsMade: 1,
+          opts: { attempts: 3 },
+        },
+        'primitive rejection',
+      )).not.toThrow();
+      expect(() => handlers.failed?.(
+        {
+          id: 'job-object-rejection',
+          name: 'sync-wallet',
+          data: { walletId: 'w1' },
+          attemptsMade: 1,
+          opts: { attempts: 3 },
+        },
+        { code: 'E_FAILURE' },
+      )).not.toThrow();
+
       handlers.error?.(new Error('worker-error'));
       handlers.stalled?.('job-4');
 
-      expect(mockDlqAdd).toHaveBeenCalledTimes(1);
+      expect(mockDlqAdd).toHaveBeenCalledTimes(2);
       expect(mockDlqAdd).toHaveBeenCalledWith(
         'sync',
         'sync',
@@ -125,6 +167,17 @@ export const registerWorkerJobQueueInternalEventContracts = (getQueue: WorkerJob
         }),
         expect.any(Error)
       );
+      expect(mockDlqAdd).toHaveBeenCalledWith(
+        'sync',
+        'sync',
+        expect.objectContaining({ id: 'job-unsupported-version' }),
+        expect.objectContaining({ name: 'UnrecoverableError', message: 'invalid payload' }),
+      );
+      const unrecoverable = mockDlqAdd.mock.calls.find(
+        call => call[2]?.id === 'job-unsupported-version',
+      )?.[3];
+      expect(unrecoverable?.constructor.name).toBe('UnrecoverableError');
+      expect(unrecoverable?.stack).toMatch(/^UnrecoverableError: invalid payload/);
     });
 
     it('records safe transaction attempt and terminal outcomes from worker callbacks', () => {

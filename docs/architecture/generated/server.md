@@ -137,6 +137,8 @@ n_src_infrastructure__collapsed-->n_src_internal__collapsed
 n_src_infrastructure__collapsed-->n_src_jobs__collapsed
 n_src_infrastructure__collapsed-->n_src_services__collapsed
 n_src_infrastructure__collapsed-->n_src_utils__collapsed
+n_src_jobs__collapsed-->n_src_config__collapsed
+n_src_jobs__collapsed-->n_src_constants__collapsed
 n_src_jobs__collapsed-->n_src_infrastructure__collapsed
 n_src_jobs__collapsed-->n_src_models__collapsed
 n_src_jobs__collapsed-->n_src_repositories__collapsed
@@ -195,7 +197,6 @@ n_src_services__collapsed-->n_src_repositories__collapsed
 n_src_services__collapsed-->n_src_utils__collapsed
 n_src_services__collapsed-->n_src_validation__collapsed
 n_src_services__collapsed-->n_src_websocket__collapsed
-n_src_services__collapsed-->n_src_worker__collapsed
 n_src_utils__collapsed-->n_src_config__collapsed
 n_src_utils__collapsed-->n_src_errors__collapsed
 n_src_utils__collapsed-->n_src_services__collapsed
@@ -210,6 +211,7 @@ n_src_websocket__collapsed-->n_src_services__collapsed
 n_src_websocket__collapsed-->n_src_utils__collapsed
 n_src_worker_ts-->n_src_config__collapsed
 n_src_worker_ts-->n_src_infrastructure__collapsed
+n_src_worker_ts-->n_src_jobs__collapsed
 n_src_worker_ts-->n_src_models__collapsed
 n_src_worker_ts-->n_src_observability__collapsed
 n_src_worker_ts-->n_src_services__collapsed

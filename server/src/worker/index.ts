@@ -10,15 +10,17 @@
 export { ElectrumSubscriptionManager, type BitcoinNetwork } from './electrumManager';
 export { WorkerJobQueue, type WorkerJobQueueConfig } from './workerJobQueue';
 export { startHealthServer, type HealthCheckProvider, type HealthServerHandle } from './healthServer';
-export { syncJobs, notificationJobs, registerWorkerJobs } from './jobs';
+export { createSyncJobs, notificationJobs, registerWorkerJobs } from './jobs';
 export type {
   WorkerJobHandler,
-  SyncWalletJobData,
-  SyncWalletJobResult,
-  CheckStaleWalletsJobData,
-  CheckStaleWalletsResult,
   TransactionNotifyJobData,
   DraftNotifyJobData,
   ConfirmationNotifyJobData,
   NotifyJobResult,
 } from './jobs/types';
+export type {
+  SyncWalletJobData,
+  SyncWalletJobResult,
+  CheckStaleWalletsJobData,
+  CheckStaleWalletsResult,
+} from '../jobs/syncJobContract';

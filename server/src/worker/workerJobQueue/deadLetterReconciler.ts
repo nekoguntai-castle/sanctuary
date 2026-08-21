@@ -1,6 +1,7 @@
 import type { Job } from 'bullmq';
 import { deadLetterQueue } from '../../services/deadLetterQueue';
 import { queueToDlqCategory } from './eventHandlers';
+import { isRetainedUnrecoverableJobFailure } from './jobFailureClassification';
 import type { QueueInstance } from './types';
 
 export const DEAD_LETTER_RECONCILIATION_INTERVAL_MS = 60_000;
@@ -15,7 +16,8 @@ class DeadLetterReconciliationError extends Error {
 }
 
 function isExhausted(job: Job): boolean {
-  return job.attemptsMade >= (job.opts.attempts ?? 1);
+  return job.attemptsMade >= (job.opts.attempts ?? 1)
+    || isRetainedUnrecoverableJobFailure(job);
 }
 
 function isRetainedFailureCurrent(job: Job, now: number): boolean {

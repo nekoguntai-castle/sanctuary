@@ -52,6 +52,20 @@ import { WorkerJobQueue } from './worker/workerJobQueue';
 import { ElectrumSubscriptionManager, type BitcoinNetwork } from './worker/electrumManager';
 import { startHealthServer, type HealthServerHandle } from './worker/healthServer';
 import { registerWorkerJobs } from './worker/jobs';
+import { enqueueFullResyncBatch } from './services/workerSyncQueue';
+import {
+  CHECK_STALE_WALLETS_JOB_NAME,
+  CONFIRMATIONS_QUEUE_NAME,
+  SYNC_JOB_CONTRACT_VERSION,
+  SYNC_QUEUE_NAME,
+  SYNC_WALLET_JOB_NAME,
+  hasSupportedSyncJobContractVersion,
+  type CheckStaleWalletsJobData,
+  type CheckStaleWalletsResult,
+  type SyncWalletJobData,
+  type UpdateConfirmationsJobData,
+  UPDATE_CONFIRMATIONS_JOB_NAME,
+} from './jobs/syncJobContract';
 import { featureFlagService } from './services/featureFlagService';
 import { circuitBreakerRegistry } from './services/circuitBreaker';
 import { buildWorkerDiagnosticsSnapshot } from './worker/diagnostics/snapshot';
@@ -199,7 +213,7 @@ async function startWorker(): Promise<void> {
   });
 
   // Register handlers before BullMQ workers start consuming retained jobs.
-  registerWorkerJobs(jobQueue);
+  registerWorkerJobs(jobQueue, { enqueueFullResyncBatch });
   await jobQueue.initialize();
   log.info('Job handlers registered', {
     jobs: jobQueue.getRegisteredJobs(),
@@ -319,7 +333,8 @@ async function startWorker(): Promise<void> {
 
   // Queue an immediate stale-wallet check to catch transactions that arrived
   // during the startup window before Electrum subscriptions were active
-  await jobQueue.addJob('sync', 'check-stale-wallets', {
+  await jobQueue.addJob<CheckStaleWalletsJobData>(SYNC_QUEUE_NAME, CHECK_STALE_WALLETS_JOB_NAME, {
+    version: SYNC_JOB_CONTRACT_VERSION,
     maxWallets: config.sync.startupCatchUpBatchSize,
     priority: 'normal',
     staggerDelayMs: config.sync.startupCatchUpStaggerDelayMs,
@@ -370,13 +385,18 @@ function handleNewBlock(network: BitcoinNetwork, height: number, hash: string): 
   log.info(`New block on ${network}: ${height}`);
 
   // Queue confirmation update job
-  jobQueue?.addJob('confirmations', 'update-confirmations', {
-    height,
-    hash,
-  }, {
-    priority: 1, // High priority
-    jobId: `confirmations:${height}`, // Deduplicate by height
-  }).catch(err => {
+  jobQueue?.addJob<UpdateConfirmationsJobData>(
+    CONFIRMATIONS_QUEUE_NAME,
+    UPDATE_CONFIRMATIONS_JOB_NAME,
+    {
+      version: SYNC_JOB_CONTRACT_VERSION,
+      height,
+      hash,
+    }, {
+      priority: 1, // High priority
+      jobId: `confirmations:${height}`, // Deduplicate by height
+    },
+  ).catch(err => {
     log.error('Failed to queue confirmation update job', {
       error: getErrorMessage(err),
       height,
@@ -392,7 +412,8 @@ function handleAddressActivity(network: BitcoinNetwork, walletId: string, addres
   log.info(`Address activity on ${network}: ${address} (wallet: ${walletId})`);
 
   // Queue high-priority sync job
-  jobQueue?.addJob('sync', 'sync-wallet', {
+  jobQueue?.addJob<SyncWalletJobData>(SYNC_QUEUE_NAME, SYNC_WALLET_JOB_NAME, {
+    version: SYNC_JOB_CONTRACT_VERSION,
     walletId,
     priority: 'high',
     reason: `address_activity:${address}`,
@@ -489,16 +510,14 @@ function startScheduleReconciliationTimer(): void {
 function setupStaleWalletHandler(): void {
   if (!jobQueue) return;
 
-  jobQueue.onJobCompleted('sync', 'check-stale-wallets', async (returnvalue) => {
+  jobQueue.onJobCompleted(SYNC_QUEUE_NAME, CHECK_STALE_WALLETS_JOB_NAME, async (returnvalue) => {
     if (isShuttingDown) return;
+    if (!hasSupportedSyncJobContractVersion(returnvalue)) {
+      log.warn('Ignoring check-stale-wallets result with an unsupported contract version');
+      return;
+    }
 
-    const result = returnvalue as {
-      staleWalletIds?: string[];
-      queued?: number;
-      priority?: SyncPriority;
-      staggerDelayMs?: number;
-      reason?: string;
-    } | undefined;
+    const result = returnvalue as Partial<CheckStaleWalletsResult> | undefined;
     if (!result?.staleWalletIds?.length) return;
 
     log.info(`Queueing sync for ${result.staleWalletIds.length} stale wallets`);
@@ -507,9 +526,9 @@ function setupStaleWalletHandler(): void {
     const priority = result.priority ?? 'low';
     const staggerDelayMs = result.staggerDelayMs ?? config.sync.syncStaggerDelayMs;
     const reason = result.reason ?? 'stale';
-    await jobQueue!.addBulkJobs('sync', result.staleWalletIds.map((walletId, index) => ({
-      name: 'sync-wallet',
-      data: { walletId, priority, reason },
+    await jobQueue!.addBulkJobs<SyncWalletJobData>(SYNC_QUEUE_NAME, result.staleWalletIds.map((walletId, index) => ({
+      name: SYNC_WALLET_JOB_NAME,
+      data: { version: SYNC_JOB_CONTRACT_VERSION, walletId, priority, reason },
       options: {
         priority: toBullPriority(priority),
         jobId: `sync:stale:${walletId}:${Date.now()}`,

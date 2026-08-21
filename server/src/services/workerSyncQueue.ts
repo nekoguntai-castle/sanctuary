@@ -9,19 +9,21 @@ import {
   SYNC_PRIORITY_BULLMQ_PRIORITY,
   type SyncPriority,
 } from "@sanctuary/shared/constants/sync";
-import type { SyncWalletJobData } from "../worker/jobs/types";
+import type { SyncWalletJobData } from "../jobs/syncJobContract";
 import { reserveFullResyncGeneration } from "../repositories/resyncRepository";
 import {
+  SYNC_JOB_CONTRACT_VERSION,
+  SYNC_QUEUE_NAME,
+  SYNC_WALLET_JOB_NAME,
   SYNC_WALLET_JOB_OPTIONS,
   getSyncLockTtlMs,
-} from "../worker/jobs/jobOptions";
+} from "../jobs/syncJobContract";
 import { isSyncWalletEnvelope } from "./deadLetterJobEnvelope";
 import type { DeadLetterJobEnvelope } from "./deadLetterQueueTypes";
 
 const log = createLogger("WORKER_SYNC_QUEUE");
 
 const WORKER_QUEUE_PREFIX = "sanctuary:worker";
-const SYNC_QUEUE_NAME = "sync";
 const FULL_RESYNC_ENQUEUE_CONCURRENCY = 10;
 
 let syncQueue: Queue<SyncWalletJobData> | null = null;
@@ -144,8 +146,9 @@ export async function enqueueWalletSync(
 
   try {
     await queue.add(
-      "sync-wallet",
+      SYNC_WALLET_JOB_NAME,
       {
+        version: SYNC_JOB_CONTRACT_VERSION,
         walletId,
         priority,
         reason: options.reason,
@@ -299,8 +302,9 @@ async function enqueueFullResyncWallet(
   const deduplicationId = toBullMqJobId(`full-resync:${walletId}`);
   try {
     const job = await queue.add(
-      "sync-wallet",
+      SYNC_WALLET_JOB_NAME,
       {
+        version: SYNC_JOB_CONTRACT_VERSION,
         walletId,
         priority: "high",
         reason,
@@ -416,8 +420,9 @@ export async function enqueueWalletSyncBatch(
   try {
     const jobs = await queue.addBulk(
       walletIds.map((walletId, index) => ({
-        name: "sync-wallet",
+        name: SYNC_WALLET_JOB_NAME,
         data: {
+          version: SYNC_JOB_CONTRACT_VERSION,
           walletId,
           priority,
           reason: options.reason,

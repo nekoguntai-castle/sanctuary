@@ -17,7 +17,27 @@ import type {
   CheckStaleWalletsResult,
   UpdateConfirmationsJobData,
   UpdateConfirmationsResult,
-} from './types';
+  SyncJobDependencies,
+} from '../../jobs/syncJobContract';
+import {
+  CHECK_STALE_WALLETS_JOB_NAME,
+  CONFIRMATIONS_QUEUE_NAME,
+  getSyncJobBackoffDelayMs,
+  getSyncLockKey,
+  getSyncLockRetryDelayMs,
+  getSyncLockRetryWindowMs,
+  getSyncLockTtlMs,
+  hasSupportedSyncJobContractVersion,
+  isCheckStaleWalletsJobData,
+  isSyncWalletJobLockData,
+  isUpdateConfirmationsJobData,
+  SYNC_JOB_CONTRACT_VERSION,
+  SYNC_QUEUE_NAME,
+  SYNC_WALLET_JOB_NAME,
+  SYNC_WALLET_JOB_OPTIONS,
+  UPDATE_ALL_CONFIRMATIONS_JOB_NAME,
+  UPDATE_CONFIRMATIONS_JOB_NAME,
+} from '../../jobs/syncJobContract';
 import { resyncRepository, walletRepository, transactionRepository } from '../../repositories';
 import { syncWallet } from '../../services/bitcoin/blockchain';
 import {
@@ -38,7 +58,6 @@ import {
 } from '../../websocket/notifications/broadcasts';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
-import { SYNC_WALLET_JOB_OPTIONS, getSyncLockTtlMs } from './jobOptions';
 import { isFullResyncGeneration } from '../../constants/fullResync';
 import {
   clearActiveSyncAttempt,
@@ -55,23 +74,8 @@ const log = createLogger('JOB:SYNC');
 
 // Keep lock alive beyond expected sync duration to avoid concurrent sync overlap.
 const SYNC_LOCK_TTL_MS = getSyncLockTtlMs();
-const FULL_RESYNC_LOCK_RETRY_DELAY_MS = 5_000;
-/** Re-delay for a contended ordinary sync; long enough not to spin on Redis. */
-const ORDINARY_SYNC_LOCK_RETRY_DELAY_MS = 15_000;
-/**
- * Patience for a contended ordinary sync. Deliberately under the stale sweep's
- * own interval so at most one delayed job per wallet is ever outstanding, and a
- * wallet blocked by a leaked lock surfaces one visible failure per sweep rather
- * than accumulating delayed jobs or silently vanishing from the sweep.
- */
-const ORDINARY_SYNC_LOCK_RETRY_WINDOW_MS = 4 * 60_000;
 function workerRetryDelayMs(job: Job<SyncWalletJobData>): number {
-  const configured = (job.opts?.backoff ?? SYNC_WALLET_JOB_OPTIONS.backoff)!;
-  if (typeof configured === 'number') return configured;
-  const delay = configured.delay ?? 0;
-  return configured.type === 'exponential'
-    ? delay * (2 ** job.attemptsMade)
-    : delay;
+  return getSyncJobBackoffDelayMs(job.attemptsMade, job.opts?.backoff);
 }
 
 function workerRetryState(job: Job<SyncWalletJobData>): {
@@ -239,7 +243,9 @@ async function prepareFullResync(
  * kept a healthy badge. Observed live on 2026-08-20 with drift 1, no queued job
  * and no dedup key.
  */
-async function reconcileStrandedFullResyncs(): Promise<void> {
+async function reconcileStrandedFullResyncs(
+  enqueueFullResyncBatch: SyncJobDependencies['enqueueFullResyncBatch'],
+): Promise<void> {
   let stranded: Awaited<ReturnType<typeof resyncRepository.findStrandedFullResyncWallets>>;
   try {
     stranded = await resyncRepository.findStrandedFullResyncWallets();
@@ -254,7 +260,6 @@ async function reconcileStrandedFullResyncs(): Promise<void> {
   });
 
   try {
-    const { enqueueFullResyncBatch } = await import('../../services/workerSyncQueue');
     const result = await enqueueFullResyncBatch(
       stranded.map(wallet => wallet.id),
       { reason: 'reconcile-stranded-full-resync' },
@@ -334,31 +339,29 @@ class ConfirmationUpdateAggregateError extends Error {
  * 5. Updates wallet metadata
  */
 export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobResult> = {
-  name: 'sync-wallet',
-  queue: 'sync',
+  name: SYNC_WALLET_JOB_NAME,
+  queue: SYNC_QUEUE_NAME,
   options: SYNC_WALLET_JOB_OPTIONS,
+  validateData: isSyncWalletJobLockData,
   lockOptions: {
-    lockKey: (data) => `sync:wallet:${data.walletId}`,
+    lockKey: getSyncLockKey,
     lockTtlMs: SYNC_LOCK_TTL_MS,
     // No sync may complete as a lock-contention no-op. Returning null here put
     // every ordinary and stale sync on the silent-skip branch: the job resolved
     // successfully having done nothing, wrote no row, and left a green badge -
     // which is how a leaked lock stranded a wallet for 14.5 hours.
-    retryDelayMsIfUnavailable: data => (
-      data.fullResync === true
-        ? FULL_RESYNC_LOCK_RETRY_DELAY_MS
-        : ORDINARY_SYNC_LOCK_RETRY_DELAY_MS
-    ),
+    retryDelayMsIfUnavailable: getSyncLockRetryDelayMs,
     // A full resync waits out a whole sync (the lock TTL). An ordinary sync
     // gives up sooner than the stale sweep's own interval, so a wallet under
     // sustained contention resolves into one visible failure per sweep instead
     // of stacking a delayed job per sweep forever.
-    maxLockRetryWindowMs: data => (
-      data.fullResync === true ? SYNC_LOCK_TTL_MS : ORDINARY_SYNC_LOCK_RETRY_WINDOW_MS
-    ),
+    maxLockRetryWindowMs: getSyncLockRetryWindowMs,
     onLockRetryBudgetExhausted: recordLockRetryBudgetExhausted,
   },
   handler: async (job: Job<SyncWalletJobData>, execution): Promise<SyncWalletJobResult> => {
+    if (!hasSupportedSyncJobContractVersion(job.data)) {
+      throw new Error('Unsupported sync-wallet job contract version');
+    }
     const { walletId, reason } = job.data;
     const startTime = Date.now();
     execution?.throwIfAborted();
@@ -371,7 +374,12 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
 
     if (!wallet) {
       log.warn(`Wallet ${walletId} not found, skipping sync`);
-      return { success: false, duration: 0, error: 'Wallet not found' };
+      return {
+        version: SYNC_JOB_CONTRACT_VERSION,
+        success: false,
+        duration: 0,
+        error: 'Wallet not found',
+      };
     }
 
     // Announce the pickup before any work: the worker has no WebSocket clients
@@ -468,6 +476,7 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
       });
 
       return {
+        version: SYNC_JOB_CONTRACT_VERSION,
         success: true,
         duration,
         transactionsFound: result.transactions,
@@ -568,73 +577,83 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
  * that haven't been synced recently and queue them for sync.
  * Limited to a configured batch size to prevent queue flooding.
  */
-export const checkStaleWalletsJob: WorkerJobHandler<CheckStaleWalletsJobData, CheckStaleWalletsResult> = {
-  name: 'check-stale-wallets',
-  queue: 'sync',
-  options: {
-    attempts: 2,
-    backoff: { type: 'fixed', delay: 5000 },
-  },
-  handler: async (job: Job<CheckStaleWalletsJobData>): Promise<CheckStaleWalletsResult> => {
-    const config = getConfig();
-    const staleThresholdMs = job.data.staleThresholdMs ?? config.sync.staleThresholdMs;
-    const maxWallets = job.data.maxWallets ?? config.sync.staleBatchSize;
-    const priority = job.data.priority ?? 'low';
-    const staggerDelayMs = job.data.staggerDelayMs ?? config.sync.syncStaggerDelayMs;
-    const reason = job.data.reason ?? 'stale';
-    const cutoffTime = new Date(Date.now() - staleThresholdMs);
+export function createCheckStaleWalletsJob(
+  dependencies: SyncJobDependencies,
+): WorkerJobHandler<CheckStaleWalletsJobData, CheckStaleWalletsResult> {
+  return {
+    name: CHECK_STALE_WALLETS_JOB_NAME,
+    queue: SYNC_QUEUE_NAME,
+    options: {
+      attempts: 2,
+      backoff: { type: 'fixed', delay: 5000 },
+    },
+    validateData: isCheckStaleWalletsJobData,
+    handler: async (job: Job<CheckStaleWalletsJobData>): Promise<CheckStaleWalletsResult> => {
+      if (!isCheckStaleWalletsJobData(job.data)) {
+        throw new Error('Unsupported or invalid check-stale-wallets job payload');
+      }
+      const config = getConfig();
+      const staleThresholdMs = job.data.staleThresholdMs ?? config.sync.staleThresholdMs;
+      const maxWallets = job.data.maxWallets ?? config.sync.staleBatchSize;
+      const priority = job.data.priority ?? 'low';
+      const staggerDelayMs = job.data.staggerDelayMs ?? config.sync.syncStaggerDelayMs;
+      const reason = job.data.reason ?? 'stale';
+      const cutoffTime = new Date(Date.now() - staleThresholdMs);
 
-    log.debug('Checking for stale wallets', {
-      staleThresholdMs,
-      cutoffTime,
-      maxWallets,
-      priority,
-      staggerDelayMs,
-      reason,
-    });
+      log.debug('Checking for stale wallets', {
+        staleThresholdMs,
+        cutoffTime,
+        maxWallets,
+        priority,
+        staggerDelayMs,
+        reason,
+      });
 
-    await resetStuckSyncFlags(config.sync.maxSyncDurationMs);
-    await reconcileStrandedFullResyncs();
+      await resetStuckSyncFlags(config.sync.maxSyncDurationMs);
+      await reconcileStrandedFullResyncs(dependencies.enqueueFullResyncBatch);
 
-    // Find stale wallets, prioritizing those never synced, then oldest first
-    // Limited to prevent queue flooding
-    const staleWallets = await walletRepository.findStale({
-      staleThresholdMs: staleThresholdMs,
-      maxResults: maxWallets,
-      orderBy: [{ lastSyncedAt: { sort: 'asc', nulls: 'first' } }],
-    });
+      // Find stale wallets, prioritizing those never synced, then oldest first
+      // Limited to prevent queue flooding
+      const staleWallets = await walletRepository.findStale({
+        staleThresholdMs: staleThresholdMs,
+        maxResults: maxWallets,
+        orderBy: [{ lastSyncedAt: { sort: 'asc', nulls: 'first' } }],
+      });
 
-    if (staleWallets.length === 0) {
-      log.debug('No stale wallets found');
+      if (staleWallets.length === 0) {
+        log.debug('No stale wallets found');
+        return {
+          version: SYNC_JOB_CONTRACT_VERSION,
+          staleWalletIds: [],
+          queued: 0,
+          priority,
+          staggerDelayMs,
+          reason,
+          maxWallets,
+        };
+      }
+
+      log.info(`Found ${staleWallets.length} stale wallets (max: ${maxWallets})`, {
+        priority,
+        reason,
+      });
+
+      // Return the wallet IDs - the worker will queue them
+      // This is done in the worker entry point to avoid circular dependencies
+      const staleWalletIds = staleWallets.map(w => w.id);
+
       return {
-        staleWalletIds: [],
-        queued: 0,
+        version: SYNC_JOB_CONTRACT_VERSION,
+        staleWalletIds,
+        queued: staleWalletIds.length,
         priority,
         staggerDelayMs,
         reason,
         maxWallets,
       };
-    }
-
-    log.info(`Found ${staleWallets.length} stale wallets (max: ${maxWallets})`, {
-      priority,
-      reason,
-    });
-
-    // Return the wallet IDs - the worker will queue them
-    // This is done in the worker entry point to avoid circular dependencies
-    const staleWalletIds = staleWallets.map(w => w.id);
-
-    return {
-      staleWalletIds,
-      queued: staleWalletIds.length,
-      priority,
-      staggerDelayMs,
-      reason,
-      maxWallets,
-    };
-  },
-};
+    },
+  };
+}
 
 // =============================================================================
 // Update Confirmations Job
@@ -648,13 +667,17 @@ export const checkStaleWalletsJob: WorkerJobHandler<CheckStaleWalletsJobData, Ch
  * - Periodically as a scheduled job
  */
 export const updateConfirmationsJob: WorkerJobHandler<UpdateConfirmationsJobData, UpdateConfirmationsResult> = {
-  name: 'update-confirmations',
-  queue: 'confirmations',
+  name: UPDATE_CONFIRMATIONS_JOB_NAME,
+  queue: CONFIRMATIONS_QUEUE_NAME,
   options: {
     attempts: 2,
     backoff: { type: 'fixed', delay: 3000 },
   },
+  validateData: isUpdateConfirmationsJobData,
   handler: async (job: Job<UpdateConfirmationsJobData>): Promise<UpdateConfirmationsResult> => {
+    if (!isUpdateConfirmationsJobData(job.data)) {
+      throw new Error('Unsupported or invalid update-confirmations job payload');
+    }
     const { height, hash } = job.data;
 
     // Update cached block height if provided
@@ -671,7 +694,7 @@ export const updateConfirmationsJob: WorkerJobHandler<UpdateConfirmationsJobData
 
     if (walletsWithPending.length === 0) {
       log.debug('No wallets with pending transactions');
-      return { updated: 0, notified: 0 };
+      return { version: SYNC_JOB_CONTRACT_VERSION, updated: 0, notified: 0 };
     }
 
     log.debug(`Updating confirmations for ${walletsWithPending.length} wallets`);
@@ -712,7 +735,11 @@ export const updateConfirmationsJob: WorkerJobHandler<UpdateConfirmationsJobData
       throw new ConfirmationUpdateAggregateError(failures);
     }
 
-    return { updated: totalUpdated, notified: totalNotified };
+    return {
+      version: SYNC_JOB_CONTRACT_VERSION,
+      updated: totalUpdated,
+      notified: totalNotified,
+    };
   },
 };
 
@@ -720,16 +747,21 @@ export const updateConfirmationsJob: WorkerJobHandler<UpdateConfirmationsJobData
  * Scheduled job to update all confirmations
  * This runs on a cron schedule as a fallback to real-time updates
  */
-export const updateAllConfirmationsJob: WorkerJobHandler<void, UpdateConfirmationsResult> = {
-  name: 'update-all-confirmations',
-  queue: 'confirmations',
+export const updateAllConfirmationsJob: WorkerJobHandler<
+  UpdateConfirmationsJobData,
+  UpdateConfirmationsResult
+> = {
+  name: UPDATE_ALL_CONFIRMATIONS_JOB_NAME,
+  queue: CONFIRMATIONS_QUEUE_NAME,
   options: {
     attempts: 1,
   },
-  handler: async (): Promise<UpdateConfirmationsResult> => {
-    // Delegate to the main update confirmations job with no block data
-    const mockJob = { data: {} } as Job<UpdateConfirmationsJobData>;
-    return updateConfirmationsJob.handler(mockJob);
+  validateData: isUpdateConfirmationsJobData,
+  handler: async (job: Job<UpdateConfirmationsJobData>): Promise<UpdateConfirmationsResult> => {
+    if (!isUpdateConfirmationsJobData(job.data)) {
+      throw new Error('Unsupported or invalid update-all-confirmations job payload');
+    }
+    return updateConfirmationsJob.handler(job);
   },
 };
 
@@ -737,9 +769,13 @@ export const updateAllConfirmationsJob: WorkerJobHandler<void, UpdateConfirmatio
 // Export all sync jobs
 // =============================================================================
 
-export const syncJobs: WorkerJobHandler<unknown, unknown>[] = [
-  syncWalletJob as WorkerJobHandler<unknown, unknown>,
-  checkStaleWalletsJob as WorkerJobHandler<unknown, unknown>,
-  updateConfirmationsJob as WorkerJobHandler<unknown, unknown>,
-  updateAllConfirmationsJob as WorkerJobHandler<unknown, unknown>,
-];
+export function createSyncJobs(
+  dependencies: SyncJobDependencies,
+): WorkerJobHandler<unknown, unknown>[] {
+  return [
+    syncWalletJob as WorkerJobHandler<unknown, unknown>,
+    createCheckStaleWalletsJob(dependencies) as WorkerJobHandler<unknown, unknown>,
+    updateConfirmationsJob as WorkerJobHandler<unknown, unknown>,
+    updateAllConfirmationsJob as WorkerJobHandler<unknown, unknown>,
+  ];
+}

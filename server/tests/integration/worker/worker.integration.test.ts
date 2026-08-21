@@ -43,7 +43,7 @@ describe('worker integration', () => {
     expect(harness.jobQueue.addJob).toHaveBeenCalledWith(
       'confirmations',
       'update-confirmations',
-      { height: 123, hash: 'hash-123' },
+      { version: 1, height: 123, hash: 'hash-123' },
       { priority: 1, jobId: 'confirmations:123' }
     );
 
@@ -54,6 +54,7 @@ describe('worker integration', () => {
     );
     expect(syncCall).toBeDefined();
     expect(syncCall![2]).toEqual({
+      version: 1,
       walletId: 'wallet-1',
       priority: 'high',
       reason: 'address_activity:addr-1',

@@ -4,7 +4,7 @@
  * Sets up BullMQ worker event handlers for logging and dead letter queue routing.
  */
 
-import type { Job, Worker } from 'bullmq';
+import { UnrecoverableError, type Job, type Worker } from 'bullmq';
 import { createLogger } from '../../utils/logger';
 import { deadLetterQueue, type DeadLetterCategory } from '../../services/deadLetterQueue';
 import { jobProcessingDuration } from '../../observability/metrics/infrastructureMetrics';
@@ -16,8 +16,22 @@ import {
 } from '../../services/notifications/outcomes';
 import { recordNotificationTelemetry } from '../../services/notifications/telemetry';
 import { controlledCaptureObservations } from '../../services/supportPackage/capture';
+import { isUnrecoverableJobError } from './jobFailureClassification';
 
 const log = createLogger('WORKER:QUEUE_EVENTS');
+
+function normalizeWorkerFailure(error: unknown): Error {
+  if (error instanceof Error) return error;
+  const message = typeof error === 'object'
+    && error !== null
+    && 'message' in error
+    && typeof error.message === 'string'
+    ? error.message
+    : String(error);
+  return isUnrecoverableJobError(error)
+    ? new UnrecoverableError(message)
+    : new Error(message);
+}
 
 /**
  * Observe job processing duration if timing data is available.
@@ -83,13 +97,17 @@ export function setupWorkerEventHandlers(
   });
 
   worker.on('failed', (job, error) => {
+    const isUnrecoverable = isUnrecoverableJobError(error);
+    const failure = normalizeWorkerFailure(error);
     const maxAttempts = job?.opts?.attempts ?? 1;
     const attemptsMade = job?.attemptsMade ?? 0;
-    const isExhausted = attemptsMade >= maxAttempts;
+    // BullMQ skips remaining retries for deterministic payload failures, so
+    // treat them as terminal even though attemptsMade is below maxAttempts.
+    const isExhausted = isUnrecoverable || attemptsMade >= maxAttempts;
 
     log.error(`Job failed: ${queueName}:${job?.name}`, {
       jobId: job?.id,
-      error: error.message,
+      error: failure.message,
       attemptsMade,
       maxAttempts,
       exhausted: isExhausted,
@@ -110,7 +128,7 @@ export function setupWorkerEventHandlers(
         dlqCategory,
         queueName,
         job,
-        error,
+        failure,
       ).catch(dlqError => {
         log.debug('Failed to record exhausted job in DLQ', { error: String(dlqError) });
       });

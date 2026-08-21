@@ -1,4 +1,12 @@
 import type { CombinedConfig } from '../config';
+import {
+  CHECK_STALE_WALLETS_JOB_NAME,
+  CONFIRMATIONS_QUEUE_NAME,
+  SYNC_JOB_CONTRACT_VERSION,
+  UPDATE_ALL_CONFIRMATIONS_JOB_NAME,
+  type CheckStaleWalletsJobData,
+  type UpdateConfirmationsJobData,
+} from '../jobs/syncJobContract';
 import type {
   RecurringScheduleDefinition,
   RecurringScheduleRecurrence,
@@ -88,17 +96,17 @@ export function buildBaselineRecurringSchedules(
   config: CombinedConfig,
 ): RecurringScheduleDefinition[] {
   return [
-    defineSchedule(
+    defineSchedule<CheckStaleWalletsJobData>(
       'sync',
-      'check-stale-wallets',
-      {},
+      CHECK_STALE_WALLETS_JOB_NAME,
+      { version: SYNC_JOB_CONTRACT_VERSION },
       every(config.sync.intervalMs),
       syncFreshness(config.sync.intervalMs),
     ),
-    defineSchedule(
-      'confirmations',
-      'update-all-confirmations',
-      {},
+    defineSchedule<UpdateConfirmationsJobData>(
+      CONFIRMATIONS_QUEUE_NAME,
+      UPDATE_ALL_CONFIRMATIONS_JOB_NAME,
+      { version: SYNC_JOB_CONTRACT_VERSION },
       every(config.sync.confirmationUpdateIntervalMs),
     ),
     defineSchedule(

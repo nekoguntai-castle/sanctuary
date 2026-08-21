@@ -14,6 +14,7 @@ const staleJobPrismaMocks = vi.hoisted(() => ({
 }));
 
 const mockIsLocked = vi.hoisted(() => vi.fn<(key: string) => Promise<boolean>>());
+const mockEnqueueFullResync = vi.hoisted(() => vi.fn());
 
 vi.mock('../../../../src/infrastructure/distributedLock', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -55,18 +56,38 @@ vi.mock('../../../../src/services/bitcoin/sync/confirmations', () => ({
 }));
 
 import prisma from '../../../../src/models/prisma';
-import { checkStaleWalletsJob } from '../../../../src/worker/jobs/syncJobs';
+import { createCheckStaleWalletsJob } from '../../../../src/worker/jobs/syncJobs';
+
+const checkStaleWalletsJob = createCheckStaleWalletsJob({
+  enqueueFullResyncBatch: mockEnqueueFullResync,
+});
 
 describe('checkStaleWalletsJob', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     staleJobPrismaMocks.walletUpdate.mockResolvedValue({});
     mockIsLocked.mockResolvedValue(false);
+    mockEnqueueFullResync.mockResolvedValue({
+      acceptedWalletIds: [],
+      deduplicatedWalletIds: [],
+      indeterminateWallets: [],
+    });
   });
 
   it('should have correct configuration', () => {
     expect(checkStaleWalletsJob.name).toBe('check-stale-wallets');
     expect(checkStaleWalletsJob.queue).toBe('sync');
+  });
+
+  it('rejects an unsupported live command version', async () => {
+    const job = {
+      data: { version: 2 },
+    } as unknown as Job;
+
+    await expect(checkStaleWalletsJob.handler(job)).rejects.toThrow(
+      'Unsupported or invalid check-stale-wallets job payload',
+    );
+    expect(staleJobPrismaMocks.walletFindMany).not.toHaveBeenCalled();
   });
 
   it('should find stale wallets', async () => {
@@ -81,7 +102,7 @@ describe('checkStaleWalletsJob', () => {
 
     const mockJob = {
       id: 'job-1',
-      data: {},
+      data: { version: 1 },
       attemptsMade: 0,
       opts: { attempts: 2 },
     } as unknown as Job;
@@ -90,6 +111,7 @@ describe('checkStaleWalletsJob', () => {
 
     expect(result.staleWalletIds).toEqual(['wallet-1', 'wallet-2']);
     expect(result.queued).toBe(2);
+    expect(result.version).toBe(1);
   });
 
   it('should return empty array when no stale wallets', async () => {
@@ -108,6 +130,7 @@ describe('checkStaleWalletsJob', () => {
 
     expect(result.staleWalletIds).toEqual([]);
     expect(result.queued).toBe(0);
+    expect(result.version).toBe(1);
   });
 
   it('should limit results to configured stale batch size by default', async () => {

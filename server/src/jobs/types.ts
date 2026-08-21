@@ -17,6 +17,37 @@ export interface JobExecutionContext {
   throwIfAborted: () => void;
 }
 
+/** What the processor can tell a handler after giving up on lock contention. */
+export interface LockRetryBudgetExhaustedDetail {
+  lockKey: string;
+  retryWindowMs: number;
+  message: string;
+  /** Whether the queue will retry the job after this failed attempt. */
+  isFinalAttempt: boolean;
+}
+
+/** Distributed-lock behavior attached to a registered background job. */
+export interface JobLockOptions<T = unknown> {
+  lockKey: (data: T) => string;
+  lockTtlMs?: number;
+  retryDelayMsIfUnavailable?: (data: T) => number | null;
+  maxLockRetryWindowMs?: number | ((data: T) => number);
+  onLockRetryBudgetExhausted?: (
+    data: unknown,
+    detail: LockRetryBudgetExhaustedDetail,
+  ) => Promise<void>;
+}
+
+/** Worker registration contract shared by job definitions and queue runtime. */
+export interface WorkerJobHandler<T = unknown, R = void> {
+  name: string;
+  queue: 'sync' | 'notifications' | 'confirmations' | 'maintenance';
+  handler: (job: Job<T>, execution?: JobExecutionContext) => Promise<R>;
+  options?: JobsOptions;
+  validateData?: (data: unknown) => boolean;
+  lockOptions?: JobLockOptions<T>;
+}
+
 /**
  * Job definition for registering job handlers
  */

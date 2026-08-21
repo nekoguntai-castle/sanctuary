@@ -9,7 +9,7 @@ import {
   type CountBucket,
   type WorkerDiagnosticsResponse,
 } from "../internal/workerDiagnostics/protocol";
-import { bucketAge, bucketCount } from "../worker/diagnostics/snapshot";
+import { bucketAge, bucketCount } from "../internal/workerDiagnostics/buckets";
 import { safeJsonParse } from "../utils/safeJson";
 import { createLogger } from "../utils/logger";
 

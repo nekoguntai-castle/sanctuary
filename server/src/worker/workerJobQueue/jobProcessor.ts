@@ -6,7 +6,7 @@
  * arbitrary JavaScript promise cannot be cancelled safely.
  */
 
-import { DelayedError, type Job } from 'bullmq';
+import { DelayedError, UnrecoverableError, type Job } from 'bullmq';
 import {
   acquireLock,
   extendLock,
@@ -15,8 +15,9 @@ import {
 } from '../../infrastructure/distributedLock';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
-import type { JobExecutionContext } from '../jobs/types';
+import type { JobExecutionContext } from '../../jobs/types';
 import { hardTerminateProcess, type HardTerminate } from './hardTermination';
+import { unrecoverableJobPayloadMessage } from './jobFailureClassification';
 import type { RegisteredHandler } from './types';
 
 const log = createLogger('WORKER:QUEUE_PROCESSOR');
@@ -119,6 +120,9 @@ export async function processJobWithLock(
   job: Job,
   dependencies: JobProcessorDependencies = {},
 ): Promise<unknown> {
+  if (registered.validateData && !registered.validateData(job.data)) {
+    throw new UnrecoverableError(unrecoverableJobPayloadMessage(handlerKey));
+  }
   if (!registered.lockOptions) {
     const executionController = createExecutionController(dependencies.shutdownSignal);
     const { controller } = executionController;

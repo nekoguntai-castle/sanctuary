@@ -41,16 +41,19 @@ vi.mock('../../../../src/repositories', () => ({
   },
 }));
 
-vi.mock('../../../../src/services/workerSyncQueue', () => ({
-  enqueueFullResyncBatch: mockEnqueueFullResync,
-}));
-
 vi.mock('../../../../src/websocket/notifications/broadcasts', () => ({
   broadcastSyncStatus: mockBroadcastSyncStatus,
   broadcastWalletLog: mockBroadcastWalletLog,
 }));
 
-import { checkStaleWalletsJob, syncWalletJob } from '../../../../src/worker/jobs/syncJobs';
+import {
+  createCheckStaleWalletsJob,
+  syncWalletJob,
+} from '../../../../src/worker/jobs/syncJobs';
+
+const checkStaleWalletsJob = createCheckStaleWalletsJob({
+  enqueueFullResyncBatch: mockEnqueueFullResync,
+});
 
 describe('sync lock contention is never a silent success', () => {
   beforeEach(() => {

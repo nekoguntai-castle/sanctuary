@@ -4,7 +4,7 @@
  * All job handlers for the background worker.
  */
 
-export { syncJobs } from './syncJobs';
+export { createSyncJobs } from './syncJobs';
 export { notificationJobs } from './notificationJobs';
 export { maintenanceJobs } from './maintenanceJobs';
 export { autopilotJobs } from './autopilotJobs';
@@ -14,7 +14,8 @@ export { webhookDeliveryJobs } from './webhookDeliveryJobs';
 
 import type { WorkerJobQueue } from '../workerJobQueue';
 import type { WorkerJobHandler } from './types';
-import { syncJobs } from './syncJobs';
+import type { SyncJobDependencies } from '../../jobs/syncJobContract';
+import { createSyncJobs } from './syncJobs';
 import { notificationJobs } from './notificationJobs';
 import { maintenanceJobs } from './maintenanceJobs';
 import { autopilotJobs } from './autopilotJobs';
@@ -25,9 +26,12 @@ import { webhookDeliveryJobs } from './webhookDeliveryJobs';
 /**
  * Register all job handlers with the worker queue
  */
-export function registerWorkerJobs(queue: WorkerJobQueue): void {
+export function registerWorkerJobs(
+  queue: WorkerJobQueue,
+  dependencies: SyncJobDependencies,
+): void {
   const allJobs: WorkerJobHandler<unknown, unknown>[] = [
-    ...syncJobs,
+    ...createSyncJobs(dependencies),
     ...notificationJobs,
     ...maintenanceJobs,
     ...autopilotJobs,

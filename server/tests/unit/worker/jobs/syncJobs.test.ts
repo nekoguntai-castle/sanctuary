@@ -6,6 +6,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Job } from 'bullmq';
+import { isSyncWalletJobLockData } from '../../../../src/jobs/syncJobContract';
 
 const syncJobPrismaMocks = vi.hoisted(() => ({
   walletFindMany: vi.fn<() => Promise<unknown[]>>(),
@@ -81,8 +82,9 @@ vi.mock('../../../../src/services/bitcoin/sync/confirmations', () => ({
 import prisma from '../../../../src/models/prisma';
 import { syncWallet, assertChainReachable } from '../../../../src/services/bitcoin/blockchain';
 import { populateMissingTransactionFields } from '../../../../src/services/bitcoin/sync/confirmations';
-import { syncWalletJob } from '../../../../src/worker/jobs/syncJobs';
+import { createSyncJobs, syncWalletJob } from '../../../../src/worker/jobs/syncJobs';
 import { FULL_RESYNC_GENERATION_MAX } from '../../../../src/constants/fullResync';
+import { registerSyncJobsFailureCleanupContracts } from './syncJobs.failure-cleanup.contracts';
 
 function createOrdinarySyncJob(attemptsMade = 0, walletId = 'wallet-1'): Job {
   return {
@@ -100,11 +102,26 @@ describe('Sync Jobs', () => {
     mockIsLocked.mockResolvedValue(false);
   });
 
+  it('builds the complete sync handler set from neutral dependencies', () => {
+    const jobs = createSyncJobs({
+      enqueueFullResyncBatch: vi.fn(),
+    });
+
+    expect(jobs.map(({ name }) => name)).toEqual([
+      'sync-wallet',
+      'check-stale-wallets',
+      'update-confirmations',
+      'update-all-confirmations',
+    ]);
+  });
+
   describe('syncWalletJob', () => {
     it('should have correct configuration', () => {
       expect(syncWalletJob.name).toBe('sync-wallet');
       expect(syncWalletJob.queue).toBe('sync');
       expect(syncWalletJob.options?.attempts).toBe(3);
+      expect(syncWalletJob.validateData).toBe(isSyncWalletJobLockData);
+      expect(syncWalletJob.validateData?.({ walletId: '' })).toBe(false);
       expect(syncWalletJob.lockOptions?.lockKey({ walletId: 'test' })).toBe('sync:wallet:test');
       expect(syncWalletJob.lockOptions?.retryDelayMsIfUnavailable?.({
         walletId: 'test',
@@ -130,6 +147,7 @@ describe('Sync Jobs', () => {
       const job = {
         id: 'full-resync-unreachable',
         data: {
+          version: 1,
           walletId: 'wallet-1',
           priority: 'high',
           reason: 'manual',
@@ -867,131 +885,6 @@ describe('Sync Jobs', () => {
       expect(syncWallet).not.toHaveBeenCalled();
     });
 
-    it('should return early when wallet does not exist', async () => {
-      vi.mocked(prisma.wallet.findUnique).mockResolvedValueOnce(null as any);
-
-      const mockJob = {
-        id: 'job-missing-wallet',
-        data: { walletId: 'missing-wallet', reason: 'scheduled' },
-        attemptsMade: 0,
-        opts: { attempts: 3 },
-      } as unknown as Job;
-
-      const result = await syncWalletJob.handler(mockJob);
-
-      expect(result).toEqual({
-        success: false,
-        duration: 0,
-        error: 'Wallet not found',
-      });
-      expect(prisma.wallet.update).not.toHaveBeenCalled();
-    });
-
-    it('should record and rethrow the original sync failure after BullMQ retries are exhausted', async () => {
-      const syncError = new Error('Sync failed');
-      vi.mocked(syncWallet).mockRejectedValueOnce(syncError);
-
-      const mockJob = {
-        id: 'job-1',
-        data: { walletId: 'wallet-1' },
-        attemptsMade: 2,
-        opts: { attempts: 3 },
-      } as unknown as Job;
-
-      await expect(syncWalletJob.handler(mockJob)).rejects.toBe(syncError);
-
-      // Should update wallet with error status
-      expect(prisma.wallet.update).toHaveBeenCalledWith({
-        where: { id: 'wallet-1' },
-        data: expect.objectContaining({
-          syncInProgress: false,
-          lastSyncStatus: 'failed',
-          lastSyncError: 'Sync failed',
-          lastSyncFailureClass: 'other',
-          syncExecutionOwner: null,
-          syncStartedAt: null,
-        }),
-      });
-    });
-
-    it('should safety-net reset syncInProgress when catch block DB update fails', async () => {
-      vi.useFakeTimers();
-      vi.mocked(syncWallet).mockRejectedValueOnce(new Error('Sync failed'));
-      // The catch-block status write is retried by the shared lifecycle owner,
-      // so the safety net only engages once every attempt has failed. Reject all
-      // four, then let the finally block's reset succeed.
-      vi.mocked(prisma.wallet.update)
-        .mockResolvedValueOnce({} as any)                          // syncInProgress: true
-        .mockRejectedValueOnce(new Error('DB connection lost'))     // terminal write attempt 1
-        .mockRejectedValueOnce(new Error('DB connection lost'))     // attempt 2
-        .mockRejectedValueOnce(new Error('DB connection lost'))     // attempt 3
-        .mockRejectedValueOnce(new Error('DB connection lost'))     // attempt 4 (final)
-        .mockResolvedValueOnce({} as any);                          // finally safety-net
-
-      const mockJob = {
-        id: 'job-1',
-        data: { walletId: 'wallet-1' },
-        attemptsMade: 2,
-        opts: { attempts: 3 },
-      } as unknown as Job;
-
-      const pending = expect(syncWalletJob.handler(mockJob)).rejects.toThrow('Sync failed');
-      await vi.runAllTimersAsync();
-      await pending;
-
-      // Verify the finally block's safety-net reset was the last write.
-      expect(prisma.wallet.update).toHaveBeenCalledTimes(6);
-      expect(prisma.wallet.update).toHaveBeenNthCalledWith(6, {
-        where: { id: 'wallet-1' },
-        data: expect.objectContaining({
-          syncInProgress: false,
-          syncExecutionOwner: null,
-          syncStartedAt: null,
-        }),
-      });
-      vi.useRealTimers();
-    });
-
-    it('should handle finally block safety-net DB failure gracefully', async () => {
-      vi.useFakeTimers();
-      vi.mocked(syncWallet).mockRejectedValueOnce(new Error('Sync failed'));
-      vi.mocked(prisma.wallet.update)
-        .mockResolvedValueOnce({} as any)                    // syncInProgress: true
-        .mockRejectedValueOnce(new Error('DB down'))          // terminal write attempt 1
-        .mockRejectedValueOnce(new Error('DB down'))          // attempt 2
-        .mockRejectedValueOnce(new Error('DB down'))          // attempt 3
-        .mockRejectedValueOnce(new Error('DB down'))          // attempt 4 (final)
-        .mockRejectedValueOnce(new Error('DB still down'));   // finally safety-net also fails
-
-      const mockJob = {
-        id: 'job-1',
-        data: { walletId: 'wallet-1' },
-        attemptsMade: 0,
-        opts: { attempts: 3 },
-      } as unknown as Job;
-
-      // Cleanup errors are contained without masking the original failure.
-      const pending = expect(syncWalletJob.handler(mockJob)).rejects.toThrow('Sync failed');
-      await vi.runAllTimersAsync();
-      await pending;
-      expect(prisma.wallet.update).toHaveBeenCalledTimes(6);
-      vi.useRealTimers();
-    });
-
-    it('should not double-reset flag when catch block succeeds', async () => {
-      vi.mocked(syncWallet).mockRejectedValueOnce(new Error('Sync failed'));
-
-      const mockJob = {
-        id: 'job-1',
-        data: { walletId: 'wallet-1' },
-        attemptsMade: 0,
-        opts: { attempts: 3 },
-      } as unknown as Job;
-
-      await expect(syncWalletJob.handler(mockJob)).rejects.toThrow('Sync failed');
-
-      // Only 2 calls: set true + catch block set false. No finally safety-net call.
-      expect(prisma.wallet.update).toHaveBeenCalledTimes(2);
-    });
+    registerSyncJobsFailureCleanupContracts({ prisma, syncWallet, syncWalletJob });
   });
 });

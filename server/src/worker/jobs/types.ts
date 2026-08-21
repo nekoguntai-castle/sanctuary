@@ -4,96 +4,18 @@
  * Type definitions for background worker jobs.
  */
 
-import type { Job, JobsOptions } from 'bullmq';
-import type { SyncPriority } from '@sanctuary/shared/constants/sync';
-import type { JobExecutionContext } from '../../jobs/types';
 import type {
   NotificationFailureClass,
   NotificationOutcome,
   SafeChannelOutcome,
 } from '../../services/notifications/outcomes';
 
-export type { JobExecutionContext } from '../../jobs/types';
-
-/**
- * Worker job handler definition
- */
-export interface WorkerJobHandler<T = unknown, R = void> {
-  /** Job name (unique identifier) */
-  name: string;
-  /** Queue this job belongs to */
-  queue: 'sync' | 'notifications' | 'confirmations' | 'maintenance';
-  /** Job handler function */
-  handler: (job: Job<T>, execution?: JobExecutionContext) => Promise<R>;
-  /** Default job options */
-  options?: JobsOptions;
-  /** Lock options for distributed locking */
-  lockOptions?: {
-    /** Function to generate lock key from job data */
-    lockKey: (data: T) => string;
-    /** Lock TTL in milliseconds */
-    lockTtlMs?: number;
-    /** Delay without consuming an attempt when lock contention must retain work. */
-    retryDelayMsIfUnavailable?: (data: T) => number | null;
-    /**
-     * Wall-clock budget for re-delaying under contention (default: the lock TTL).
-     * A function of the job data where different work needs different patience -
-     * a full resync should wait out a whole sync, an ordinary one should not.
-     */
-    maxLockRetryWindowMs?: number | ((data: T) => number);
-    /** Record what abandoning the job means for the resource the lock guards. */
-    onLockRetryBudgetExhausted?: (
-      data: unknown,
-      detail: LockRetryBudgetExhaustedDetail,
-    ) => Promise<void>;
-  };
-}
-
-/** What the processor can tell a handler about a give-up on lock contention. */
-export interface LockRetryBudgetExhaustedDetail {
-  lockKey: string;
-  retryWindowMs: number;
-  message: string;
-  /**
-   * Whether the queue will retry this job. Giving up on the lock still throws,
-   * which consumes one BullMQ attempt of several - so a handler that reports
-   * the outcome must not claim the retries are spent when they are not.
-   */
-  isFinalAttempt: boolean;
-}
-
-/**
- * Sync job data types
- */
-export interface SyncWalletJobData {
-  walletId: string;
-  priority?: SyncPriority;
-  reason?: string;
-  /** Reset sync-derived wallet state once after exclusive lock acquisition. */
-  fullResync?: boolean;
-  /** Durable monotonic generation for exactly-once reset preparation across retries. */
-  fullResyncGeneration?: number;
-}
-
-export interface CheckStaleWalletsJobData {
-  /** Override stale threshold in ms */
-  staleThresholdMs?: number;
-  /** Override the number of stale wallets to return */
-  maxWallets?: number;
-  /** Priority to use when queueing resulting sync jobs */
-  priority?: SyncPriority;
-  /** Delay between queued sync jobs */
-  staggerDelayMs?: number;
-  /** Free-form reason for observability */
-  reason?: string;
-}
-
-export interface UpdateConfirmationsJobData {
-  /** Current block height (from new block event) */
-  height?: number;
-  /** Block hash */
-  hash?: string;
-}
+export type {
+  JobExecutionContext,
+  JobLockOptions,
+  LockRetryBudgetExhaustedDetail,
+  WorkerJobHandler,
+} from '../../jobs/types';
 
 /**
  * Notification job data types
@@ -161,31 +83,6 @@ export interface WebhookDeliveryJobData {
 
 export interface WebhookRecoveryJobData {
   batchSize?: number;
-}
-
-/**
- * Sync job results
- */
-export interface SyncWalletJobResult {
-  success: boolean;
-  duration: number;
-  transactionsFound?: number;
-  utxosUpdated?: number;
-  error?: string;
-}
-
-export interface CheckStaleWalletsResult {
-  staleWalletIds: string[];
-  queued: number;
-  priority: SyncPriority;
-  staggerDelayMs: number;
-  reason: string;
-  maxWallets: number;
-}
-
-export interface UpdateConfirmationsResult {
-  updated: number;
-  notified: number;
 }
 
 /**

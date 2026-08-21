@@ -627,19 +627,19 @@ describe('worker entrypoint', () => {
     expect(callback).toBeDefined();
 
     // Simulate stale wallet check completing with results
-    await callback({ staleWalletIds: ['w1', 'w2'], queued: 2 });
+    await callback({ version: 1, staleWalletIds: ['w1', 'w2'], queued: 2 });
 
     expect(mocks.queueInstance.addBulkJobs).toHaveBeenCalledWith(
       'sync',
       expect.arrayContaining([
         expect.objectContaining({
           name: 'sync-wallet',
-          data: { walletId: 'w1', priority: 'low', reason: 'stale' },
+          data: { version: 1, walletId: 'w1', priority: 'low', reason: 'stale' },
           options: expect.objectContaining({ delay: 0, priority: 3 }),
         }),
         expect.objectContaining({
           name: 'sync-wallet',
-          data: { walletId: 'w2', priority: 'low', reason: 'stale' },
+          data: { version: 1, walletId: 'w2', priority: 'low', reason: 'stale' },
           options: expect.objectContaining({ delay: 2000, priority: 3 }),
         }),
       ])
@@ -667,6 +667,10 @@ describe('worker entrypoint', () => {
 
     // Undefined result
     await callback(undefined);
+    expect(mocks.queueInstance.addBulkJobs).not.toHaveBeenCalled();
+
+    // Unknown future result versions must not be interpreted as v1.
+    await callback({ version: 2, staleWalletIds: ['future-wallet'], queued: 1 });
     expect(mocks.queueInstance.addBulkJobs).not.toHaveBeenCalled();
   });
 
@@ -929,6 +933,7 @@ describe('worker entrypoint', () => {
       'sync',
       'check-stale-wallets',
       {
+        version: 1,
         maxWallets: 250,
         priority: 'normal',
         staggerDelayMs: 250,

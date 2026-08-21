@@ -89,6 +89,46 @@ describe('reconcileExhaustedJobs', () => {
     );
   });
 
+  it('repairs retained unrecoverable failures before the attempt budget is exhausted', async () => {
+    const sync = {
+      queue: {
+        getJobs: vi.fn().mockResolvedValue([
+          job({
+            id: 'invalid-payload',
+            attemptsMade: 1,
+            failedReason: 'Unrecoverable job payload: invalid payload for sync:sync-wallet',
+          }),
+          job({
+            id: 'handler-unrecoverable',
+            attemptsMade: 1,
+            failedReason: 'handler rejected the job',
+            stacktrace: ['UnrecoverableError: handler rejected the job\n    at handler.ts:1:1'],
+          }),
+        ]),
+      },
+    };
+
+    await expect(reconcileExhaustedJobs(
+      new Map([['sync', sync as any]]),
+      20_000,
+    )).resolves.toBe(2);
+
+    expect(mockAddExhaustedJob).toHaveBeenCalledWith(
+      'sync',
+      'sync',
+      expect.objectContaining({ id: 'invalid-payload', attemptsMade: 1 }),
+      'Unrecoverable job payload: invalid payload for sync:sync-wallet',
+      new Date(10_000),
+    );
+    expect(mockAddExhaustedJob).toHaveBeenCalledWith(
+      'sync',
+      'sync',
+      expect.objectContaining({ id: 'handler-unrecoverable', attemptsMade: 1 }),
+      'handler rejected the job',
+      new Date(10_000),
+    );
+  });
+
   it('uses a bounded fallback error and propagates queue or Redis failures', async () => {
     const queue = {
       queue: {

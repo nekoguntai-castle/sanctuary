@@ -24,7 +24,7 @@ import { getRedisClient, isRedisConnected } from "../../infrastructure";
 import { createLogger } from "../../utils/logger";
 import { getErrorMessage } from "../../utils/errors";
 import { toBullMqJobId, withBullMqSafeJobId } from "../../jobs/bullMqJobIds";
-import type { WorkerJobHandler } from "../jobs/types";
+import type { WorkerJobHandler } from "../../jobs/types";
 import type {
   WorkerJobQueueConfig,
   QueueInstance,
@@ -344,6 +344,7 @@ export class WorkerJobQueue {
     this.handlers.set(handlerKey, {
       handler: handler.handler as RegisteredHandler["handler"],
       options: handler.options,
+      validateData: handler.validateData,
       lockOptions: handler.lockOptions as RegisteredHandler["lockOptions"],
     });
 

@@ -81,7 +81,7 @@ describe('Confirmation Jobs', () => {
       vi.mocked(prisma.transaction.findMany).mockResolvedValueOnce([]);
 
       const mockJob = createMockJob(
-        { height: 100005 },
+        { version: 1 as const, height: 100005 },
         { id: 'job-1', opts: { attempts: 2 } },
       );
 
@@ -116,7 +116,7 @@ describe('Confirmation Jobs', () => {
       expect(updateTransactionConfirmations).toHaveBeenCalledTimes(2);
       expect(updateTransactionConfirmations).toHaveBeenCalledWith('w1');
       expect(updateTransactionConfirmations).toHaveBeenCalledWith('w2');
-      expect(result).toEqual({ updated: 3, notified: 3 });
+      expect(result).toEqual({ version: 1, updated: 3, notified: 3 });
     });
 
     it('should not increment notified count for non-milestone confirmations', async () => {
@@ -129,7 +129,19 @@ describe('Confirmation Jobs', () => {
         createMockJob({}, { id: 'job-non-milestone', opts: { attempts: 2 } }),
       );
 
-      expect(result).toEqual({ updated: 1, notified: 0 });
+      expect(result).toEqual({ version: 1, updated: 1, notified: 0 });
+    });
+
+    it('rejects an unsupported live confirmation command version', async () => {
+      const job = createMockJob(
+        { version: 2 } as never,
+        { id: 'job-unsupported-version', opts: { attempts: 2 } },
+      );
+
+      await expect(updateConfirmationsJob.handler(job)).rejects.toThrow(
+        'Unsupported or invalid update-confirmations job payload',
+      );
+      expect(confirmationJobPrismaMocks.transactionFindMany).not.toHaveBeenCalled();
     });
 
     it('should skip update summary log path when pending wallets produce no updates', async () => {
@@ -140,7 +152,7 @@ describe('Confirmation Jobs', () => {
         createMockJob({}, { id: 'job-empty-updates', opts: { attempts: 2 } }),
       );
 
-      expect(result).toEqual({ updated: 0, notified: 0 });
+      expect(result).toEqual({ version: 1, updated: 0, notified: 0 });
     });
 
     it('should process successful wallets then reject an aggregated wallet failure', async () => {
@@ -199,10 +211,39 @@ describe('Confirmation Jobs', () => {
         notified: 1,
       });
 
-      const result = await Reflect.apply(updateAllConfirmationsJob.handler, undefined, []);
+      const job = createMockJob({}, { id: 'update-all-legacy', opts: { attempts: 1 } });
+      const result = await updateAllConfirmationsJob.handler(job);
 
-      expect(handlerSpy).toHaveBeenCalledWith(expect.objectContaining({ data: {} }));
+      expect(handlerSpy).toHaveBeenCalledWith(job);
       expect(result).toEqual({ updated: 2, notified: 1 });
+    });
+
+    it('accepts explicit v1 and rejects unknown versions before delegation', async () => {
+      const handlerSpy = vi.spyOn(updateConfirmationsJob, 'handler').mockResolvedValueOnce({
+        version: 1,
+        updated: 0,
+        notified: 0,
+      });
+      const currentJob = createMockJob(
+        { version: 1 as const },
+        { id: 'update-all-v1', opts: { attempts: 1 } },
+      );
+
+      await expect(updateAllConfirmationsJob.handler(currentJob)).resolves.toEqual({
+        version: 1,
+        updated: 0,
+        notified: 0,
+      });
+      expect(handlerSpy).toHaveBeenCalledWith(currentJob);
+
+      const futureJob = createMockJob(
+        { version: 2 } as never,
+        { id: 'update-all-v2', opts: { attempts: 1 } },
+      );
+      await expect(updateAllConfirmationsJob.handler(futureJob)).rejects.toThrow(
+        'Unsupported or invalid update-all-confirmations job payload',
+      );
+      expect(handlerSpy).toHaveBeenCalledTimes(1);
     });
   });
 });

@@ -146,6 +146,29 @@ export const registerWorkerJobQueueCoreContracts = (
       expect(queue.getRegisteredJobs()).toContain("sync:test-job");
     });
 
+    it("preserves payload validation when registering a handler", async () => {
+      const handler = vi.fn();
+      const validateData = vi.fn(() => false);
+
+      queue.registerHandler("sync", {
+        name: "validated-job",
+        queue: "sync",
+        handler,
+        validateData,
+      });
+
+      await expect((queue as any).processJob("sync", {
+        id: "invalid-job",
+        name: "validated-job",
+        data: { version: 2 },
+      })).rejects.toMatchObject({
+        name: "UnrecoverableError",
+        message: "Unrecoverable job payload: invalid payload for sync:validated-job",
+      });
+      expect(validateData).toHaveBeenCalledWith({ version: 2 });
+      expect(handler).not.toHaveBeenCalled();
+    });
+
     it("should warn when overwriting existing handler", async () => {
       await queue.initialize();
 

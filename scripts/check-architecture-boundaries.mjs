@@ -184,7 +184,15 @@ function isServerApiPath(file) {
 }
 
 function isServerWorkerPath(file) {
+  return file === 'server/src/worker.ts' || file.startsWith('server/src/worker/');
+}
+
+function isServerWorkerImplementationPath(file) {
   return file.startsWith('server/src/worker/');
+}
+
+function isServerWorkerEntrypoint(file) {
+  return file === 'server/src/worker.ts';
 }
 
 function isServerApiTarget(target) {
@@ -192,7 +200,11 @@ function isServerApiTarget(target) {
 }
 
 function isServerWorkerTarget(target) {
-  return target.startsWith('server/src/worker/');
+  return target === 'server/src/worker.ts' || target.startsWith('server/src/worker/');
+}
+
+function isWorkerSyncQueueServiceTarget(target) {
+  return target === 'server/src/services/workerSyncQueue.ts';
 }
 
 function isServerRepositoryTarget(target) {
@@ -247,6 +259,13 @@ const rules = [
     ignoreTypeOnly: true,
   },
   {
+    id: 'server-services-no-worker-job-contracts',
+    description: 'services must use neutral job contracts, not worker job implementation modules',
+    from: isServerServicePath,
+    forbidden: isServerWorkerTarget,
+    ignoreTypeOnly: false,
+  },
+  {
     id: 'server-api-runtime-worker',
     description: 'API routes may not import worker implementation modules',
     from: isServerApiPath,
@@ -266,6 +285,21 @@ const rules = [
     from: isServerWorkerPath,
     forbidden: isServerApiTarget,
     ignoreTypeOnly: true,
+  },
+  {
+    id: 'server-worker-no-sync-queue-adapter',
+    description: 'worker implementations receive the sync queue adapter from the process boundary',
+    from: isServerWorkerImplementationPath,
+    forbidden: isWorkerSyncQueueServiceTarget,
+    ignoreTypeOnly: true,
+  },
+  {
+    id: 'server-worker-entry-no-dynamic-sync-queue',
+    description: 'the worker composition root must declare the sync queue adapter statically',
+    from: isServerWorkerEntrypoint,
+    forbidden: isWorkerSyncQueueServiceTarget,
+    ignoreTypeOnly: true,
+    dynamicOnly: true,
   },
   {
     id: 'gateway-runtime-isolated',
@@ -362,6 +396,9 @@ for (const file of files) {
         continue;
       }
       if (rule.ignoreTypeOnly && imported.typeOnly) {
+        continue;
+      }
+      if (rule.dynamicOnly && !imported.dynamic) {
         continue;
       }
 
