@@ -456,6 +456,27 @@ describe("aiService", () => {
     ).resolves.toBeNull();
   });
 
+  it("does not request a label suggestion when provider config sync fails", async () => {
+    mockConfiguredAiSettings();
+    mocks.fetch.mockResolvedValueOnce(
+      errJson(400, {
+        error: "AI endpoint is not allowed",
+        reason: "host_not_allowed",
+      }),
+    );
+
+    const mod = await import("../../../src/services/aiService");
+    await expect(
+      mod.suggestTransactionLabel("tx-sync-failed", "token-abc"),
+    ).resolves.toBeNull();
+
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+    expect(mocks.fetch).toHaveBeenCalledWith(
+      "http://llm-egress-proxy:3100/config",
+      expect.any(Object),
+    );
+  });
+
   it("returns null label suggestion when LLM egress proxy returns non-ok", async () => {
     mocks.systemSettingFindMany.mockResolvedValue([
       setting("aiEnabled", true),
@@ -599,6 +620,24 @@ describe("aiService", () => {
     await expect(
       mod.executeNaturalQuery("show latest", "wallet-1", "token-xyz"),
     ).resolves.toBeNull();
+  });
+
+  it("does not execute a natural query when provider config sync fails", async () => {
+    mockConfiguredAiSettings();
+    mocks.fetch.mockResolvedValueOnce(
+      errJson(503, { error: "Configuration sync unavailable" }),
+    );
+
+    const mod = await import("../../../src/services/aiService");
+    await expect(
+      mod.executeNaturalQuery("show latest", "wallet-1", "token-xyz"),
+    ).resolves.toBeNull();
+
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+    expect(mocks.fetch).toHaveBeenCalledWith(
+      "http://llm-egress-proxy:3100/config",
+      expect.any(Object),
+    );
   });
 
   it("returns null for natural query when LLM egress proxy returns non-ok", async () => {

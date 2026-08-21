@@ -25,9 +25,23 @@ export function registerIntelligenceStatusContracts(): void {
       });
     });
 
+    it("should report the proxy unavailable without probing stale config when sync fails", async () => {
+      (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(false);
+
+      const result = await getIntelligenceStatus();
+
+      expect(result).toEqual({
+        available: false,
+        ollamaConfigured: false,
+        reason: "llm_egress_proxy_unreachable",
+      });
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
     it("should return available when the configured provider is reachable", async () => {
       (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(true);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -45,7 +59,7 @@ export function registerIntelligenceStatusContracts(): void {
 
     it("should return unavailable when provider check returns not compatible", async () => {
       (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(true);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -63,7 +77,7 @@ export function registerIntelligenceStatusContracts(): void {
 
     it("should return default reason when provider check is not compatible and reason is falsy", async () => {
       (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(true);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -81,7 +95,7 @@ export function registerIntelligenceStatusContracts(): void {
 
     it("should return unreachable when LLM egress proxy request fails", async () => {
       (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(true);
 
       mockFetch.mockResolvedValueOnce({
         ok: false,
@@ -99,7 +113,7 @@ export function registerIntelligenceStatusContracts(): void {
 
     it("should return unreachable when fetch throws", async () => {
       (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(true);
 
       mockFetch.mockRejectedValueOnce(new Error("Connection refused"));
 

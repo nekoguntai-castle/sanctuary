@@ -1,8 +1,7 @@
 import { ServiceUnavailableError } from "../../errors/ApiError";
 import {
-  getAIConfig,
+  ensureLlmProxyConfigured,
   getLlmEgressProxyUrl,
-  syncConfigToLlmEgressProxy,
 } from "../../services/ai/config";
 import { buildLlmEgressProxyJsonHeaders } from "../../services/ai/llmEgressProxyClient";
 import { getErrorMessage } from "../../utils/errors";
@@ -89,23 +88,20 @@ function consoleSetupError(
 }
 
 async function ensureConfiguredProvider(): Promise<ConsoleGatewayProviderState> {
-  const config = await getAIConfig();
-  if (!config.enabled || !config.endpoint || !config.model) {
+  const readiness = await ensureLlmProxyConfigured();
+  if (!readiness.ready) {
+    const message = readiness.reason === "provider_not_configured"
+      ? "AI provider is not configured for Sanctuary Console"
+      : "AI provider configuration could not be synced for Sanctuary Console";
     throw consoleSetupError(
-      "AI provider is not configured for Sanctuary Console",
-      "provider_not_configured",
+      message,
+      readiness.reason,
     );
   }
-  const synced = await syncConfigToLlmEgressProxy(config);
-  if (!synced) {
-    throw consoleSetupError(
-      "AI provider configuration could not be synced for Sanctuary Console",
-      "provider_config_sync_failed",
-    );
-  }
+
   return {
-    providerProfileId: config.providerProfileId,
-    model: config.model,
+    providerProfileId: readiness.config.providerProfileId,
+    model: readiness.config.model,
   };
 }
 

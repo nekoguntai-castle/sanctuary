@@ -41,6 +41,23 @@ vi.mock('../../../../../src/services/ai/config', () => ({
   getAIConfig: analysisServiceMocks.mockGetAIConfig,
   syncConfigToLlmEgressProxy: analysisServiceMocks.mockSyncConfigToLlmEgressProxy,
   getLlmEgressProxyUrl: analysisServiceMocks.mockGetLlmEgressProxyUrl,
+  ensureLlmProxyConfigured: async (signal?: AbortSignal) => {
+    signal?.throwIfAborted();
+    const config = await analysisServiceMocks.mockGetAIConfig();
+    signal?.throwIfAborted();
+    if (!config.enabled || !config.endpoint || !config.model) {
+      return { ready: false, reason: 'provider_not_configured' };
+    }
+    const synced = await analysisServiceMocks.mockSyncConfigToLlmEgressProxy(config);
+    signal?.throwIfAborted();
+    return synced === true
+      ? { ready: true, config }
+      : {
+          ready: false,
+          reason: 'provider_config_sync_failed',
+          syncResult: { success: false },
+        };
+  },
 }));
 
 vi.mock('../../../../../src/repositories/intelligenceRepository', () => ({
@@ -103,6 +120,7 @@ export const validConfig = {
 
 export function setupAnalysisServiceMocks(): void {
   vi.clearAllMocks();
+  analysisServiceMocks.mockSyncConfigToLlmEgressProxy.mockResolvedValue(true);
   redis.exists.mockResolvedValue(0);
   redis.set.mockResolvedValue('OK');
   (mockIsRedisConnected as Mock).mockReturnValue(true);

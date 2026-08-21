@@ -11,8 +11,7 @@ import { getRedisClient, isRedisConnected } from "../../infrastructure";
 import { createLogger } from "../../utils/logger";
 import { getErrorMessage } from "../../utils/errors";
 import {
-  getAIConfig,
-  syncConfigToLlmEgressProxy,
+  ensureLlmProxyConfigured,
   getLlmEgressProxyUrl,
 } from "../ai/config";
 import { buildLlmEgressProxyJsonHeaders } from "../ai/llmEgressProxyClient";
@@ -43,17 +42,15 @@ type TransactionVelocityRows = Awaited<
  */
 export async function runAnalysisPipelines(signal?: AbortSignal): Promise<void> {
   try {
-    signal?.throwIfAborted();
-    const config = await getAIConfig();
-    signal?.throwIfAborted();
-    if (!config.enabled || !config.endpoint || !config.model) {
-      log.debug("AI not configured, skipping analysis");
+    const readiness = await ensureLlmProxyConfigured(signal);
+    if (!readiness.ready) {
+      log.debug(
+        readiness.reason === "provider_not_configured"
+          ? "AI not configured, skipping analysis"
+          : "AI provider configuration sync failed, skipping analysis",
+      );
       return;
     }
-
-    // Sync config to LLM egress proxy
-    await syncConfigToLlmEgressProxy(config);
-    signal?.throwIfAborted();
 
     const providerReady = await checkProviderReachable();
     signal?.throwIfAborted();
@@ -444,9 +441,8 @@ async function setDedup(walletId: string, type: InsightType): Promise<void> {
  * Get intelligence status: checks if all prerequisites are met.
  */
 export async function getIntelligenceStatus() {
-  const config = await getAIConfig();
-
-  if (!config.enabled || !config.endpoint || !config.model) {
+  const readiness = await ensureLlmProxyConfigured();
+  if (!readiness.ready && readiness.reason === "provider_not_configured") {
     return {
       available: false,
       ollamaConfigured: false,
@@ -454,7 +450,13 @@ export async function getIntelligenceStatus() {
     };
   }
 
-  await syncConfigToLlmEgressProxy(config);
+  if (!readiness.ready) {
+    return {
+      available: false,
+      ollamaConfigured: false,
+      reason: "llm_egress_proxy_unreachable",
+    };
+  }
 
   const result = await fetchProviderCheck();
   if (!result) {

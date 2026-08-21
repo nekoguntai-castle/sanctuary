@@ -73,6 +73,15 @@ export interface ConfigSyncResult {
   reason?: string;
 }
 
+export type LlmProxyReadinessResult =
+  | { ready: true; config: AIConfig }
+  | { ready: false; reason: "provider_not_configured" }
+  | {
+      ready: false;
+      reason: "provider_config_sync_failed";
+      syncResult: ConfigSyncResult;
+    };
+
 function getStringField(
   value: unknown,
   field: string,
@@ -325,6 +334,34 @@ export async function syncConfigToLlmEgressProxy(
 ): Promise<boolean> {
   const result = await syncConfigToLlmEgressProxyResult(config, force);
   return result.success;
+}
+
+/**
+ * Load the active provider configuration and synchronize it before inference.
+ * Callers must not invoke the LLM egress proxy unless this returns ready.
+ */
+export async function ensureLlmProxyConfigured(
+  signal?: AbortSignal,
+): Promise<LlmProxyReadinessResult> {
+  signal?.throwIfAborted();
+  const config = await getAIConfig();
+  signal?.throwIfAborted();
+
+  if (!config.enabled || !config.endpoint || !config.model) {
+    return { ready: false, reason: "provider_not_configured" };
+  }
+
+  const syncResult = await syncConfigToLlmEgressProxyResult(config);
+  signal?.throwIfAborted();
+  if (!syncResult.success) {
+    return {
+      ready: false,
+      reason: "provider_config_sync_failed",
+      syncResult,
+    };
+  }
+
+  return { ready: true, config };
 }
 
 /**

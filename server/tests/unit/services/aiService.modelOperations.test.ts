@@ -329,6 +329,127 @@ describe("aiService model operations", () => {
     ).toBe("Failed to connect to LLM egress proxy for config sync");
   });
 
+  it("reports provider readiness only after loading and syncing complete config", async () => {
+    mocks.systemSettingFindMany.mockResolvedValue([
+      setting("aiEnabled", true),
+      setting("aiEndpoint", "http://host.docker.internal:11434"),
+      setting("aiModel", "llama3.2"),
+    ] as any);
+    mocks.fetch.mockResolvedValueOnce(okJson({ success: true }));
+
+    const { ensureLlmProxyConfigured } =
+      await import("../../../src/services/ai/config");
+
+    await expect(ensureLlmProxyConfigured()).resolves.toEqual({
+      ready: true,
+      config: expect.objectContaining({
+        enabled: true,
+        endpoint: "http://host.docker.internal:11434",
+        model: "llama3.2",
+      }),
+    });
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports an incomplete provider without attempting config sync", async () => {
+    mocks.systemSettingFindMany.mockResolvedValue([
+      setting("aiEnabled", true),
+      setting("aiEndpoint", "http://host.docker.internal:11434"),
+    ] as any);
+
+    const { ensureLlmProxyConfigured } =
+      await import("../../../src/services/ai/config");
+
+    await expect(ensureLlmProxyConfigured()).resolves.toEqual({
+      ready: false,
+      reason: "provider_not_configured",
+    });
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
+  it("retains detailed config sync failure information in provider readiness", async () => {
+    mocks.systemSettingFindMany.mockResolvedValue([
+      setting("aiEnabled", true),
+      setting("aiEndpoint", "http://192.168.1.20:1234/v1"),
+      setting("aiModel", "qwen3"),
+    ] as any);
+    mocks.fetch.mockResolvedValueOnce(
+      errJson(400, {
+        error: "AI endpoint is not allowed",
+        reason: "host_not_allowed",
+      }),
+    );
+
+    const { ensureLlmProxyConfigured } =
+      await import("../../../src/services/ai/config");
+
+    await expect(ensureLlmProxyConfigured()).resolves.toEqual({
+      ready: false,
+      reason: "provider_config_sync_failed",
+      syncResult: {
+        success: false,
+        status: 400,
+        error: "AI endpoint is not allowed",
+        reason: "host_not_allowed",
+      },
+    });
+  });
+
+  it("preserves cancellation before provider readiness work begins", async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    const { ensureLlmProxyConfigured } =
+      await import("../../../src/services/ai/config");
+
+    await expect(
+      ensureLlmProxyConfigured(controller.signal),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(mocks.systemSettingFindMany).not.toHaveBeenCalled();
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
+  it("preserves cancellation between provider lookup and config sync", async () => {
+    const controller = new AbortController();
+    mocks.systemSettingFindMany.mockImplementationOnce(async () => {
+      controller.abort();
+      return [
+        setting("aiEnabled", true),
+        setting("aiEndpoint", "http://host.docker.internal:11434"),
+        setting("aiModel", "llama3.2"),
+      ] as any;
+    });
+
+    const { ensureLlmProxyConfigured } =
+      await import("../../../src/services/ai/config");
+
+    await expect(
+      ensureLlmProxyConfigured(controller.signal),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
+  it("preserves cancellation while provider config sync is in flight", async () => {
+    const controller = new AbortController();
+    mocks.systemSettingFindMany.mockResolvedValue([
+      setting("aiEnabled", true),
+      setting("aiEndpoint", "http://host.docker.internal:11434"),
+      setting("aiModel", "llama3.2"),
+    ] as any);
+    mocks.fetch.mockImplementationOnce(async () => {
+      controller.abort();
+      return okJson({ success: true });
+    });
+
+    const { ensureLlmProxyConfigured } =
+      await import("../../../src/services/ai/config");
+
+    await expect(
+      ensureLlmProxyConfigured(controller.signal),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("returns config sync connection failure details when the proxy request throws", async () => {
     mocks.fetch.mockRejectedValueOnce(new Error("connection refused"));
 

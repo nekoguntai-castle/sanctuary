@@ -20,7 +20,7 @@ export function registerRunAnalysisErrorDedupContracts(): void {
       'finishes insight, dedup, and notification before honoring shutdown during %s',
       async (abortPoint) => {
         (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-        (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
+        (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(true);
         mockFetch
           .mockResolvedValueOnce({
             ok: true,
@@ -107,7 +107,7 @@ export function registerRunAnalysisErrorDedupContracts(): void {
 
     it('should skip when AI analysis returns non-ok response', async () => {
       (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(true);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -145,7 +145,7 @@ export function registerRunAnalysisErrorDedupContracts(): void {
 
     it('should skip when AI analysis returns invalid response (missing title)', async () => {
       (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(true);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -187,7 +187,7 @@ export function registerRunAnalysisErrorDedupContracts(): void {
 
     it('should skip when AI analysis fetch throws an error', async () => {
       (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(true);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -222,7 +222,7 @@ export function registerRunAnalysisErrorDedupContracts(): void {
 
     it('should handle notification dispatch error gracefully', async () => {
       (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(true);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -282,7 +282,7 @@ export function registerRunAnalysisErrorDedupContracts(): void {
 
     it('should handle dedup check when Redis is not connected', async () => {
       (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(true);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -341,7 +341,7 @@ export function registerRunAnalysisErrorDedupContracts(): void {
 
     it('should handle dedup check when Redis client is null', async () => {
       (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(true);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -397,7 +397,7 @@ export function registerRunAnalysisErrorDedupContracts(): void {
 
     it('should catch and log error when createInsight throws in runPipeline', async () => {
       (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(true);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,

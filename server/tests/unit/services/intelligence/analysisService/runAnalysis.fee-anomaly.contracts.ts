@@ -16,7 +16,7 @@ import { runAnalysisPipelines } from '../../../../../src/services/intelligence/a
 export function registerRunAnalysisFeeAnomalyContracts(): void {
     it('should run fee_timing pipeline and create insight', async () => {
       (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(true);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -79,7 +79,7 @@ export function registerRunAnalysisFeeAnomalyContracts(): void {
 
     it('should return null context for fee_timing when latest snapshot is missing', async () => {
       (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(true);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -105,7 +105,7 @@ export function registerRunAnalysisFeeAnomalyContracts(): void {
 
     it('should return null context for fee_timing when too few snapshots', async () => {
       (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(true);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -131,7 +131,7 @@ export function registerRunAnalysisFeeAnomalyContracts(): void {
 
     it('should run anomaly pipeline and create insight', async () => {
       (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(true);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -186,7 +186,7 @@ export function registerRunAnalysisFeeAnomalyContracts(): void {
 
     it('should return null context for anomaly when velocity is empty', async () => {
       (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(true);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -213,7 +213,7 @@ export function registerRunAnalysisFeeAnomalyContracts(): void {
 
     it('should handle anomaly when velocity objects have undefined count/totalSats', async () => {
       (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(true);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,

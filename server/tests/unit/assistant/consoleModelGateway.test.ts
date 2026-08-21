@@ -15,6 +15,20 @@ vi.mock("../../../src/services/ai/config", () => ({
   getAIConfig: mocks.getAIConfig,
   getLlmEgressProxyUrl: mocks.getLlmEgressProxyUrl,
   syncConfigToLlmEgressProxy: mocks.syncConfigToLlmEgressProxy,
+  ensureLlmProxyConfigured: async () => {
+    const config = await mocks.getAIConfig();
+    if (!config.enabled || !config.endpoint || !config.model) {
+      return { ready: false, reason: "provider_not_configured" };
+    }
+    const synced = await mocks.syncConfigToLlmEgressProxy(config);
+    return synced === true
+      ? { ready: true, config }
+      : {
+          ready: false,
+          reason: "provider_config_sync_failed",
+          syncResult: { success: false },
+        };
+  },
 }));
 
 vi.mock("../../../src/services/ai/llmEgressProxyClient", () => ({

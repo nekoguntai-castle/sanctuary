@@ -7,8 +7,7 @@
 import { createLogger } from "../../utils/logger";
 import { getErrorMessage } from "../../utils/errors";
 import {
-  getAIConfig,
-  syncConfigToLlmEgressProxy,
+  ensureLlmProxyConfigured,
   getLlmEgressProxyUrl,
 } from "../ai/config";
 import { buildLlmEgressProxyJsonHeaders } from "../ai/llmEgressProxyClient";
@@ -113,8 +112,8 @@ export async function sendMessage(
     .filter((message) => message.content.length > 0);
 
   // Call LLM egress proxy
-  const config = await getAIConfig();
-  if (!config.enabled || !config.endpoint || !config.model) {
+  const readiness = await ensureLlmProxyConfigured();
+  if (!readiness.ready && readiness.reason === "provider_not_configured") {
     const errorMsg = await intelligenceRepository.addMessage({
       conversationId,
       role: "assistant",
@@ -124,7 +123,14 @@ export async function sendMessage(
     return { userMessage, assistantMessage: errorMsg };
   }
 
-  await syncConfigToLlmEgressProxy(config);
+  if (!readiness.ready) {
+    const errorMsg = await intelligenceRepository.addMessage({
+      conversationId,
+      role: "assistant",
+      content: "I was unable to process your request. Please try again.",
+    });
+    return { userMessage, assistantMessage: errorMsg };
+  }
 
   try {
     const response = await fetch(`${LLM_EGRESS_PROXY_URL}/chat`, {

@@ -17,8 +17,8 @@ import { createLogger } from "../../utils/logger";
 import { getErrorMessage } from "../../utils/errors";
 import {
   describeConfigSyncFailure,
+  ensureLlmProxyConfigured,
   getAIConfig,
-  syncConfigToLlmEgressProxy,
   syncConfigToLlmEgressProxyResult,
   getLlmEgressProxyUrl,
 } from "./config";
@@ -53,14 +53,10 @@ export async function suggestTransactionLabel(
   transactionId: string,
   authToken: string,
 ): Promise<string | null> {
-  const config = await getAIConfig();
-
-  if (!config.enabled || !config.endpoint || !config.model) {
+  const readiness = await ensureLlmProxyConfigured();
+  if (!readiness.ready) {
     return null;
   }
-
-  // Sync config to LLM egress proxy
-  await syncConfigToLlmEgressProxy(config);
 
   try {
     const response = await fetch(`${LLM_EGRESS_PROXY_URL}/suggest-label`, {
@@ -113,14 +109,10 @@ export async function executeNaturalQuery(
   walletId: string,
   authToken: string,
 ): Promise<QueryResult | null> {
-  const config = await getAIConfig();
-
-  if (!config.enabled || !config.endpoint || !config.model) {
+  const readiness = await ensureLlmProxyConfigured();
+  if (!readiness.ready) {
     return null;
   }
-
-  // Sync config to LLM egress proxy
-  await syncConfigToLlmEgressProxy(config);
 
   try {
     const response = await fetch(`${LLM_EGRESS_PROXY_URL}/query`, {

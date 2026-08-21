@@ -40,6 +40,20 @@ vi.mock("../../../../src/services/ai/config", () => ({
   getAIConfig: mockGetAIConfig,
   syncConfigToLlmEgressProxy: mockSyncConfigToLlmEgressProxy,
   getLlmEgressProxyUrl: mockGetLlmEgressProxyUrl,
+  ensureLlmProxyConfigured: async () => {
+    const config = await mockGetAIConfig();
+    if (!config.enabled || !config.endpoint || !config.model) {
+      return { ready: false, reason: "provider_not_configured" };
+    }
+    const synced = await mockSyncConfigToLlmEgressProxy(config);
+    return synced === true
+      ? { ready: true, config }
+      : {
+          ready: false,
+          reason: "provider_config_sync_failed",
+          syncResult: { success: false },
+        };
+  },
 }));
 
 vi.mock("../../../../src/repositories/intelligenceRepository", () => ({
@@ -103,6 +117,7 @@ describe("Conversation Service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockFindByIdWithAccess.mockResolvedValue({ id: "wallet-1" });
+    mockSyncConfigToLlmEgressProxy.mockResolvedValue(true);
   });
 
   // ========================================
@@ -307,7 +322,7 @@ describe("Conversation Service", () => {
         endpoint: "http://host.docker.internal:11434",
         model: "llama3",
       });
-      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(true);
 
       // AI response
       mockFetch.mockResolvedValueOnce({
@@ -425,6 +440,40 @@ describe("Conversation Service", () => {
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
+    it("persists the user and a fallback response without chatting on sync failure", async () => {
+      (mockRepo.findConversationById as Mock).mockResolvedValue(mockConversation);
+      (mockRepo.addMessage as Mock)
+        .mockResolvedValueOnce(mockUserMessage)
+        .mockResolvedValueOnce({
+          ...mockAssistantMessage,
+          content: "I was unable to process your request. Please try again.",
+        });
+      (mockRepo.getNewestMessages as Mock).mockResolvedValue([mockUserMessage]);
+      (mockGetAIConfig as Mock).mockResolvedValue({
+        enabled: true,
+        endpoint: "http://host.docker.internal:11434",
+        model: "llama3",
+      });
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(false);
+
+      const result = await sendMessage("conv-1", "user-1", "Hello");
+
+      expect(result.userMessage).toEqual(mockUserMessage);
+      expect(result.assistantMessage.content).toContain("unable to process");
+      expect(mockRepo.addMessage).toHaveBeenNthCalledWith(1, {
+        conversationId: "conv-1",
+        role: "user",
+        content: "Hello",
+      });
+      expect(mockRepo.addMessage).toHaveBeenNthCalledWith(2, {
+        conversationId: "conv-1",
+        role: "assistant",
+        content: "I was unable to process your request. Please try again.",
+      });
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(mockRepo.updateConversationTitle).not.toHaveBeenCalled();
+    });
+
     it("should throw when conversation not found", async () => {
       (mockRepo.findConversationById as Mock).mockResolvedValue(null);
 
@@ -461,7 +510,7 @@ describe("Conversation Service", () => {
         endpoint: "http://host.docker.internal:11434",
         model: "llama3",
       });
-      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(true);
 
       mockFetch.mockResolvedValueOnce({
         ok: false,
@@ -492,7 +541,7 @@ describe("Conversation Service", () => {
         endpoint: "http://host.docker.internal:11434",
         model: "llama3",
       });
-      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(true);
 
       mockFetch.mockRejectedValueOnce(new Error("Connection refused"));
 
@@ -516,7 +565,7 @@ describe("Conversation Service", () => {
         endpoint: "http://host.docker.internal:11434",
         model: "llama3",
       });
-      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(true);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -550,7 +599,7 @@ describe("Conversation Service", () => {
         endpoint: "http://host.docker.internal:11434",
         model: "llama3",
       });
-      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(true);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
