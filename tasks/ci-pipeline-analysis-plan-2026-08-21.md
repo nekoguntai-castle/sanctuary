@@ -217,14 +217,14 @@ blocking approval.
 
 ### Phase 0 — Lock the contract and baseline it
 
-- [ ] Update the CI strategy to describe the actual desired pre-merge contract.
+- [x] Update the CI strategy to describe the actual desired pre-merge contract.
 - [ ] Record 20 comparable successful runs per cohort: docs-only, gateway-only,
       frontend, backend unit-only, backend integration-sensitive, wallet-safety,
       main push, install, and RC.
 - [ ] Capture wall p50/p90, summed runner time, queue time, runner-lock wait,
       setup/install/build time, artifact time, cancellation waste, first-failure
       stage, and failures uniquely caught by quick/full/vector/deep gates.
-- [ ] Add a workflow-level performance report artifact/summary using existing
+- [x] Add a workflow-level performance report artifact/summary using existing
       timing notices; warning-only initially.
 - [ ] Decision gate: unless a real Forgejo merge-group rehearsal proves full
       pre-merge enforcement, retain full validation on PRs.
@@ -246,7 +246,7 @@ precisely; measurement itself does not become a required failure point.
 - [x] Add Docker job timeouts.
 - [x] Make online installs explicitly fetch missing digest-pinned external
       runtime images before no-build startup; preserve pull-free offline mode.
-- [ ] Make upgrade fixtures distinguish legacy source schemas from already
+- [x] Make upgrade fixtures distinguish legacy source schemas from already
       migrated latest-stable schemas while retaining historical migration proof.
 
 Acceptance: deliberate skip counts are enumerated; unexpected skips fail;

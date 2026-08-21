@@ -8,7 +8,8 @@ Rebuild policy: `after-plan`
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Phase 0/1a | `main` | `codex/implement-merge/ci-truthful-gates` | `/home/nekoguntai/sanctuary-ci-truthful-gates` | yes | no | retained pending final cleanup | [#871](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/871) | `331bcb83272a12d58b7b9299832d5950c7ef3dd6` |
 | Phase 1b | `main` | `codex/implement-merge/ci-install-hermetic` | `/home/nekoguntai/sanctuary-ci-install-hermetic` | yes | no | retained pending final cleanup | [#873](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/873) | `fdee4acc2bf41126a8dab309a7345a2c6179d7e9` |
-| Phase 1c | `main` | `codex/implement-merge/ci-upgrade-sync-fixture` | `/home/nekoguntai/sanctuary-ci-upgrade-sync-fixture` | yes | no | active | pending | pending |
+| Phase 1c | `main` | `codex/implement-merge/ci-upgrade-sync-fixture` | `/home/nekoguntai/sanctuary-ci-upgrade-sync-fixture` | yes | no | retained pending final cleanup | [#874](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/874) | `c8200025442cc8bab6a9bf9d87d31ee36b9a1fdc` |
+| Phase 0b | `main` | `codex/implement-merge/ci-performance-report` | `/home/nekoguntai/sanctuary-ci-performance-report` | yes | no | active | pending | pending |
 
 ## Ownership boundary
 
@@ -45,3 +46,11 @@ from cleanup and mutation.
   migration, while the fixture incorrectly expected that migration to rerun.
   Phase 1c owns schema-aware legacy-versus-structured fixture seeding; the
   older `n-2` baseline retains the actual migration proof.
+- 2026-08-21: Phase 1c merged through PR #874. PR baseline proof passed after a
+  live-gate correction for shell-quoted SQL parameterization. Merged-revision
+  workflow-dispatch run 11826 then passed latest-stable preservation, `n-2`
+  migration proof, exact Docker cleanup, and the install summary. Every
+  landed-main workflow at `c8200025442c` also passed.
+- 2026-08-21: Phase 0b started from `c8200025442c` to replace the GitHub-only
+  trend collector with GET-only Forgejo reporting and a trusted,
+  event-separated, non-blocking weekly artifact.

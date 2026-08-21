@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TREND_SCRIPT="$ROOT_DIR/scripts/ci/report-workflow-trends.sh"
+QUALITY_WORKFLOW="$ROOT_DIR/.github/workflows/quality.yml"
 TEST_TEMP_DIR=''
 
 fail() {
@@ -21,6 +22,15 @@ assert_contains() {
   local expected="$2"
 
   grep -Fq -- "$expected" "$file" || fail "expected output to contain: $expected"
+}
+
+assert_not_contains() {
+  local file="$1"
+  local unexpected="$2"
+
+  if grep -Fq -- "$unexpected" "$file"; then
+    fail "expected output not to contain: $unexpected"
+  fi
 }
 
 assert_fails_with() {
@@ -135,9 +145,10 @@ main() {
   TEST_TEMP_DIR="$(mktemp -d)"
   trap cleanup EXIT
 
-  local fixture_file output_file
+  local fixture_file output_file summary_file
   fixture_file="$TEST_TEMP_DIR/runs.json"
   output_file="$TEST_TEMP_DIR/output"
+  summary_file="$TEST_TEMP_DIR/summary.json"
   write_fixture "$fixture_file"
 
   bash -n "$TREND_SCRIPT"
@@ -146,7 +157,7 @@ main() {
   assert_fails_with '--limit must be a positive integer' bash "$TREND_SCRIPT" --runs-json "$fixture_file" --limit 0
   assert_fails_with 'runs JSON file not found' bash "$TREND_SCRIPT" --runs-json "$TEST_TEMP_DIR/missing.json"
 
-  bash "$TREND_SCRIPT" --runs-json "$fixture_file" --event merge_group > "$output_file"
+  bash "$TREND_SCRIPT" --runs-json "$fixture_file" --event merge_group --json-out "$summary_file" > "$output_file"
   assert_contains "$output_file" 'Workflow Duration Trend'
   assert_contains "$output_file" 'Event filter | merge_group'
   assert_contains "$output_file" 'Runs | 3'
@@ -155,11 +166,73 @@ main() {
   assert_contains "$output_file" 'Runner p50 | 8m 0s'
   assert_contains "$output_file" 'Runner p90 | 10m 0s'
   assert_contains "$output_file" '103 | merge_group | 10m 0s | 10m 0s | Browser E2E (6m 40s)'
+  jq -e '.schema_version == 1 and .sample_count == 3' "$summary_file" >/dev/null
+  jq -e '.metrics.wall_seconds == {"p50":480,"p90":600}' "$summary_file" >/dev/null
+  jq -e '.metrics.runner_seconds.available == true' "$summary_file" >/dev/null
 
   bash "$TREND_SCRIPT" --runs-json "$fixture_file" --event pull_request > "$output_file"
   assert_contains "$output_file" 'Runs | 1'
   assert_contains "$output_file" 'Wall p50 | 2m 0s'
   assert_contains "$output_file" '104 | pull_request | 2m 0s | 2m 0s | PR Required Checks (2m 0s)'
+
+  mkdir -p "$TEST_TEMP_DIR/bin"
+  cat > "$TEST_TEMP_DIR/bin/curl" <<'CURL'
+#!/usr/bin/env bash
+set -euo pipefail
+url="${!#}"
+printf '%s\n' "$url" >> "${TREND_URL_LOG:?}"
+[[ " $* " == *"Authorization: token test-token"* ]] || {
+  echo "missing API authorization header" >&2
+  exit 1
+}
+case "$url" in
+  */actions/runs\?*)
+    cat <<'JSON'
+{"workflow_runs":[
+  {"id":201,"workflow_id":"test.yml","event":"pull_request","trigger_event":"pull_request","prettyref":"feature","status":"success","started":"2026-04-25T05:00:00Z","stopped":"2026-04-25T05:10:00Z","duration":600000000000},
+  {"id":202,"workflow_id":"test.yml","event":"push","trigger_event":"push","prettyref":"main","status":"success","started":"2026-04-25T06:00:00Z","stopped":"2026-04-25T06:20:00Z","duration":1200000000000},
+  {"id":203,"workflow_id":"test.yml","event":"pull_request","trigger_event":"pull_request","prettyref":"other","status":"failure","started":"2026-04-25T07:00:00Z","stopped":"2026-04-25T07:30:00Z","duration":1800000000000}
+]}
+JSON
+    ;;
+  *)
+    echo "unexpected URL: $url" >&2
+    exit 1
+    ;;
+esac
+CURL
+  chmod +x "$TEST_TEMP_DIR/bin/curl"
+
+  : > "$TEST_TEMP_DIR/urls.log"
+  PATH="$TEST_TEMP_DIR/bin:$PATH" \
+    TREND_URL_LOG="$TEST_TEMP_DIR/urls.log" \
+    FORGEJO_API_URL="https://forge.example/api/v1" \
+    FORGEJO_REPOSITORY="owner/repo" \
+    FORGEJO_TOKEN="test-token" \
+    bash "$TREND_SCRIPT" --workflow test.yml --event pull_request --limit 1 \
+      --json-out "$summary_file" > "$output_file"
+
+  assert_contains "$output_file" 'Runs | 1'
+  assert_contains "$output_file" 'Wall p50 | 10m 0s'
+  assert_contains "$output_file" 'Runner p50 | n/a'
+  assert_contains "$TEST_TEMP_DIR/urls.log" 'workflow_id=test.yml'
+  jq -e '.runs[0].id == 201 and .runs[0].ref == "feature"' "$summary_file" >/dev/null
+  jq -e '.metrics.runner_seconds.available == false' "$summary_file" >/dev/null
+
+  assert_fails_with 'no API token' env \
+    FORGEJO_API_URL="https://forge.example/api/v1" \
+    FORGEJO_REPOSITORY="owner/repo" \
+    FORGEJO_TOKEN='' GITHUB_TOKEN='' \
+    bash "$TREND_SCRIPT" --workflow test.yml
+
+  assert_contains "$QUALITY_WORKFLOW" 'ci-performance-report:'
+  assert_contains "$QUALITY_WORKFLOW" "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'"
+  assert_contains "$QUALITY_WORKFLOW" 'FORGEJO_API_URL: ${{ github.api_url }}'
+  assert_contains "$QUALITY_WORKFLOW" 'name: ci-performance-report'
+  assert_contains "$QUALITY_WORKFLOW" 'bash scripts/ci/report-workflow-trends.sh'
+
+  awk '/^  ci-performance-report:/{found=1} found{print}' "$QUALITY_WORKFLOW" > "$TEST_TEMP_DIR/performance-job.yml"
+  assert_not_contains "$TEST_TEMP_DIR/performance-job.yml" 'needs:'
 
   echo 'workflow trend report regression checks passed'
 }

@@ -4,12 +4,13 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  scripts/ci/report-workflow-trends.sh --workflow WORKFLOW [--event EVENT] [--branch BRANCH] [--limit N]
-  scripts/ci/report-workflow-trends.sh --runs-json FILE [--event EVENT]
+  scripts/ci/report-workflow-trends.sh --workflow WORKFLOW [--event EVENT] [--branch BRANCH] [--limit N] [--json-out FILE]
+  scripts/ci/report-workflow-trends.sh --runs-json FILE [--event EVENT] [--json-out FILE]
 
-Summarize recent GitHub Actions workflow durations as p50/p90 wall time and
-runner time. Live mode fetches runs with `gh run list` and job details with
-`gh run view`. Fixture mode reads JSON shaped as:
+Summarize recent Forgejo Actions workflow durations as p50/p90 wall time and,
+when job timestamps are available, runner time. Live mode uses GET-only Forgejo
+API calls. It reads FORGEJO_API_URL, FORGEJO_REPOSITORY, and FORGEJO_TOKEN,
+falling back to the equivalent GITHUB_* Actions variables. Fixture mode reads:
 
   { "runs": [ { "databaseId": 1, "event": "pull_request", "conclusion": "success",
                 "createdAt": "...", "updatedAt": "...", "jobs": [...] } ] }
@@ -34,6 +35,7 @@ event_filter=''
 branch=''
 limit='20'
 runs_json_file=''
+json_output_file=''
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -66,6 +68,11 @@ while [ "$#" -gt 0 ]; do
       runs_json_file="$2"
       shift 2
       ;;
+    --json-out)
+      [ "$#" -ge 2 ] || fail '--json-out requires a value'
+      json_output_file="$2"
+      shift 2
+      ;;
     *)
       fail "unknown argument: $1"
       ;;
@@ -74,12 +81,12 @@ done
 
 is_positive_integer "$limit" || fail '--limit must be a positive integer'
 
-summarize_runs() {
+build_summary() {
   local runs_file="$1"
   local label="$2"
   local event="$3"
 
-  jq -r --arg workflow_label "$label" --arg event "$event" '
+  jq -c --arg workflow_label "$label" --arg event "$event" --arg branch "$branch" '
     def to_epoch:
       if . == null then null else fromdateiso8601 end;
 
@@ -110,11 +117,13 @@ summarize_runs() {
       seconds_between(.startedAt; .completedAt);
 
     def runner_seconds:
-      [(.jobs // [])[] | job_seconds // 0] | add // 0;
+      [(.jobs // [])[] | job_seconds | select(. != null)]
+      | if length == 0 then null else add end;
 
     def longest_job:
       [(.jobs // [])[]
-        | {name: (.name // "unknown"), seconds: (job_seconds)}]
+        | {name: (.name // "unknown"), seconds: (job_seconds)}
+        | select(.seconds != null)]
       | sort_by(.seconds // -1)
       | reverse
       | .[0] // {name: "n/a", seconds: null};
@@ -124,69 +133,157 @@ summarize_runs() {
         | select(.conclusion == "success")
         | select($event == "" or .event == $event)
         | . + {
-            wall_seconds: seconds_between(.createdAt; .updatedAt),
+            wall_seconds: (.wallSeconds // seconds_between(.createdAt; .updatedAt)),
             runner_seconds: runner_seconds,
             longest_job: longest_job
           }] as $runs
-    | ($runs | map(.wall_seconds // 0)) as $wall_values
-    | ($runs | map(.runner_seconds // 0)) as $runner_values
-    | [
-        "Workflow Duration Trend",
-        "Workflow | \($workflow_label)",
-        "Event filter | \(if $event == "" then "all" else $event end)",
-        "Runs | \($runs | length)",
-        "Wall p50 | \(($wall_values | percentile(0.5)) | format_seconds)",
-        "Wall p90 | \(($wall_values | percentile(0.9)) | format_seconds)",
-        "Runner p50 | \(($runner_values | percentile(0.5)) | format_seconds)",
-        "Runner p90 | \(($runner_values | percentile(0.9)) | format_seconds)",
-        "",
-        "Run | Event | Wall | Runner | Longest job",
-        "--- | --- | --- | --- | ---"
-      ]
-      + ($runs
+    | ($runs | map(.wall_seconds) | map(select(. != null))) as $wall_values
+    | ($runs | map(.runner_seconds) | map(select(. != null))) as $runner_values
+    | {
+        schema_version: 1,
+        workflow: $workflow_label,
+        event_filter: (if $event == "" then null else $event end),
+        branch_filter: (if $branch == "" then null else $branch end),
+        sample_count: ($runs | length),
+        metrics: {
+          wall_seconds: {
+            p50: ($wall_values | percentile(0.5)),
+            p90: ($wall_values | percentile(0.9))
+          },
+          runner_seconds: {
+            p50: ($runner_values | percentile(0.5)),
+            p90: ($runner_values | percentile(0.9)),
+            available: (($runner_values | length) > 0)
+          }
+        },
+        runs: ($runs
           | sort_by(.updatedAt // .createdAt // "")
           | reverse
-          | map("\(.databaseId // .id // "n/a") | \(.event // "n/a") | \(.wall_seconds | format_seconds) | \(.runner_seconds | format_seconds) | \(.longest_job.name) (\(.longest_job.seconds | format_seconds))"))
-      | .[]
+          | map({
+              id: (.databaseId // .id // null),
+              event: (.event // null),
+              ref: (.ref // null),
+              wall_seconds,
+              runner_seconds,
+              longest_job
+            }))
+      }
   ' "$runs_file"
+}
+
+render_summary() {
+  local summary_file="$1"
+
+  jq -r '
+    def format_seconds:
+      if . == null then "n/a"
+      else
+        (floor as $seconds
+          | "\(($seconds / 60) | floor)m \(($seconds % 60))s")
+      end;
+
+    [
+      "Workflow Duration Trend",
+      "Workflow | \(.workflow)",
+      "Event filter | \(.event_filter // "all")",
+      "Branch filter | \(.branch_filter // "all")",
+      "Runs | \(.sample_count)",
+      "Wall p50 | \(.metrics.wall_seconds.p50 | format_seconds)",
+      "Wall p90 | \(.metrics.wall_seconds.p90 | format_seconds)",
+      "Runner p50 | \(.metrics.runner_seconds.p50 | format_seconds)",
+      "Runner p90 | \(.metrics.runner_seconds.p90 | format_seconds)",
+      "",
+      "Run | Event | Wall | Runner | Longest job",
+      "--- | --- | --- | --- | ---"
+    ]
+    + (.runs
+        | map("\(.id // "n/a") | \(.event // "n/a") | \(.wall_seconds | format_seconds) | \(.runner_seconds | format_seconds) | \(.longest_job.name) (\(.longest_job.seconds | format_seconds))"))
+    | .[]
+  ' "$summary_file"
+}
+
+summarize_runs() {
+  local runs_file="$1"
+  local label="$2"
+  local event="$3"
+  local summary_file
+  summary_file="$(mktemp)"
+
+  build_summary "$runs_file" "$label" "$event" > "$summary_file"
+  render_summary "$summary_file"
+
+  if [ -n "$json_output_file" ]; then
+    mkdir -p "$(dirname "$json_output_file")"
+    jq '.' "$summary_file" > "$json_output_file"
+  fi
+
+  rm -f "$summary_file"
 }
 
 fetch_live_runs() {
   local output_file="$1"
 
   [ -n "$workflow" ] || fail '--workflow is required unless --runs-json is used'
-  require_command gh
+  require_command curl
 
-  local args
-  args=(run list --workflow "$workflow" --status success --limit "$limit" --json databaseId,workflowName,event,status,conclusion,createdAt,updatedAt,headBranch)
-  if [ -n "$event_filter" ]; then
-    args+=(--event "$event_filter")
-  fi
-  if [ -n "$branch" ]; then
-    args+=(--branch "$branch")
-  fi
+  local token api_base repository owner repo workflow_query runs_url
+  token="${FORGEJO_TOKEN:-${GITHUB_TOKEN:-}}"
+  [ -n "$token" ] || fail 'no API token in FORGEJO_TOKEN / GITHUB_TOKEN'
 
-  local runs_json
-  runs_json="$(gh "${args[@]}")"
+  api_base="${FORGEJO_API_URL:-${GITHUB_API_URL:-}}"
+  [ -n "$api_base" ] || fail 'no API URL in FORGEJO_API_URL / GITHUB_API_URL'
+  api_base="${api_base%/}"
+  case "$api_base" in
+    */api/v1) ;;
+    *) api_base="$api_base/api/v1" ;;
+  esac
 
-  local first=true
-  printf '{"runs":[' > "$output_file"
-  while IFS= read -r run_json; do
-    [ -n "$run_json" ] || continue
+  repository="${FORGEJO_REPOSITORY:-${GITHUB_REPOSITORY:-}}"
+  case "$repository" in
+    */*) ;;
+    *) fail 'repository must be owner/name in FORGEJO_REPOSITORY / GITHUB_REPOSITORY' ;;
+  esac
+  owner="${repository%%/*}"
+  repo="${repository#*/}"
 
-    local run_id jobs_json merged_json
-    run_id="$(jq -r '.databaseId' <<<"$run_json")"
-    jobs_json="$(gh run view "$run_id" --json jobs)"
-    merged_json="$(jq -c -n --argjson run "$run_json" --argjson jobs "$jobs_json" '$run + {jobs: ($jobs.jobs // [])}')"
+  workflow_query="$(jq -rn --arg value "$workflow" '$value | @uri')"
+  runs_url="$api_base/repos/$owner/$repo/actions/runs?page=1&limit=50&status=success&workflow_id=$workflow_query"
 
-    if [ "$first" = "true" ]; then
-      first=false
-    else
-      printf ',' >> "$output_file"
-    fi
-    printf '%s' "$merged_json" >> "$output_file"
-  done < <(jq -c '.[]' <<<"$runs_json")
-  printf ']}' >> "$output_file"
+  local runs_json selected_runs
+  runs_json="$(curl -fsS -H "Authorization: token $token" -H 'Accept: application/json' "$runs_url")"
+  selected_runs="$(jq -c \
+    --arg workflow "$workflow" \
+    --arg event "$event_filter" \
+    --arg branch "$branch" \
+    --argjson limit "$limit" '
+      def effective_event:
+        if (.trigger_event // "") != "" then .trigger_event else (.event // "") end;
+      [(.workflow_runs // [])[]
+        | . + {effective_event: effective_event}
+        | select(.workflow_id == $workflow)
+        | select(.status == "success")
+        | select($event == "" or .effective_event == $event)
+        | select($branch == "" or .prettyref == $branch or .prettyref == ("refs/heads/" + $branch))]
+      | sort_by(.id)
+      | reverse
+      | .[0:$limit]
+    ' <<<"$runs_json")"
+
+  jq -c '
+    {
+      runs: [.[]
+        | {
+          databaseId: .id,
+          event: .effective_event,
+          ref: (.prettyref // null),
+          conclusion: .status,
+          createdAt: (.started // .created // null),
+          updatedAt: (.stopped // .updated // null),
+          wallSeconds: (if (.duration // 0) > 0 then (.duration / 1000000000) else null end),
+          jobs: []
+        }]
+    }
+  ' <<<"$selected_runs" > "$output_file"
 }
 
 main() {

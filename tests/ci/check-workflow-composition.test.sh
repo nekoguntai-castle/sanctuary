@@ -2416,7 +2416,7 @@ assert_contains_in_order "$QUALITY_WORKFLOW" \
 assert_jobs_use_node24_runners \
   "$QUALITY_WORKFLOW" \
   "quality jobs select Node 24-capable runners" \
-  13
+  14
 
 assert_jobs_use_node24_runners \
   "$REPO_ROOT/.github/workflows/test.yml" \

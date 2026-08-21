@@ -179,7 +179,7 @@ Markdown and MDX files are docs-only for the test classifiers, including package
 - Full backend unit coverage for backend changes, test-workflow changes, or exhaustive runs. This remains DB-backed and keeps publishing the stable `backend-coverage` artifact.
 - Full backend integration tests for integration-sensitive backend changes, test-workflow changes, or exhaustive runs. Integration-sensitive paths include API routes, middleware, repositories, Prisma migrations, worker/queue infrastructure, package/config files, and integration tests. Clearly unit-scoped backend helpers skip the DB-backed integration groups on merge/main but still run backend typecheck and unit coverage.
 - `Full Backend Tests` remains the aggregate backend result consumed by `Full Test Summary`, so branch protection does not depend on path-conditional source or integration leaf jobs.
-- Full frontend app typecheck, test typecheck, and threshold-enforced coverage for frontend changes, test-workflow changes, or exhaustive runs. Typechecks run in a small matrix, while frontend coverage runs as two Vitest shard jobs that upload blob reports. A merge job then combines those blobs, generates the normal `coverage/` output, and enforces the existing coverage thresholds once. The `full-frontend-tests` job remains the aggregate result consumed by `Full Test Summary`.
+- Full frontend app typecheck, test typecheck, and threshold-enforced coverage for frontend changes, test-workflow changes, or exhaustive runs. Typechecks currently run in a small matrix. The two logical coverage shards run sequentially after one checkout/install in the coverage job, which then combines their blob reports, generates the normal `coverage/` output, and enforces the existing thresholds once. The `full-frontend-tests` job remains the aggregate result consumed by `Full Test Summary`.
 - Full gateway coverage for gateway changes, test-workflow changes, or exhaustive runs.
 - Full LLM egress proxy build plus `tests/llm-egress-proxy` for LLM egress proxy changes, test-workflow changes, or exhaustive runs.
 - Critical mutation gate for critical mutation paths or exhaustive runs.
@@ -269,24 +269,29 @@ This parses the notices emitted by `scripts/ci/time-command.sh` from matching jo
 Use the trend helper before changing a workflow shape:
 
 ```bash
-bash scripts/ci/report-workflow-trends.sh --workflow test.yml --event push --limit 20
-bash scripts/ci/report-workflow-trends.sh --workflow install-test.yml --limit 20
+FORGEJO_API_URL=https://forge.example/api/v1 \
+FORGEJO_REPOSITORY=owner/sanctuary \
+FORGEJO_TOKEN=... \
+  bash scripts/ci/report-workflow-trends.sh --workflow test.yml --event push --branch main --limit 20
 ```
 
-The trend helper fetches recent successful runs, sums job durations as runner
-time, reports wall-time and runner-time p50/p90, and lists the longest job per
-run. Keep PR quick gates, `main` gates, release/install gates, and
-scheduled/manual runs separate; a combined average hides the cost model. Do not
-shard or add setup reuse for a lane unless the p90 trend shows it is still a real
-tail.
+The Forgejo-native trend helper performs GET-only API calls and reports
+wall-time p50/p90 for recent successful runs. It also reports runner-time and
+the longest job when fixture or provider data includes job timestamps; the
+current Forgejo job API does not expose those timestamps, so live reports mark
+runner metrics as unavailable instead of inventing them. `Code Quality` uploads
+an event-separated, non-blocking `ci-performance-report` artifact from trusted
+scheduled/manual `main` runs. Keep PR, `main`, release/install, and
+scheduled/manual cohorts separate; a combined average hides the cost model.
+Do not shard or add setup reuse for a lane unless the p90 trend shows it remains
+a real tail.
 
-The frontend/backend matrix split intentionally trades extra runner minutes for
-lower `main` gate wall time. Keep coverage artifact names stable
-(`frontend-coverage`, `backend-coverage`) so `Full Test Summary` remains the
-branch-protection aggregate. Frontend coverage now shards execution with Vitest
-blob reports and enforces thresholds only in the merge job; if it becomes the
-long pole again, increase the shard count only after measuring shard balance and
-merge overhead from workflow durations.
+Keep coverage artifact names stable (`frontend-coverage`, `backend-coverage`)
+so `Full Test Summary` remains the branch-protection aggregate. Frontend
+coverage keeps two logical Vitest blobs but runs them sequentially in one job to
+avoid duplicate setup. If it becomes the long pole again, change parallelism
+only after measuring shard balance, setup overhead, runner pressure, and merge
+overhead from workflow durations.
 
 Backend integration tests now use deterministic groups in `scripts/ci/backend-integration-groups.sh`. Run the group check after adding, removing, or renaming an integration spec:
 

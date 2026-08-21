@@ -1222,3 +1222,100 @@ jobs:
           if-no-files-found: ignore
           include-hidden-files: true
           retention-days: 14
+
+  # Observability only: this job is deliberately independent from the required
+  # quality aggregate and never runs in an untrusted pull-request context.
+  ci-performance-report:
+    name: CI Performance Report
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    if: >-
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
+      github.ref == 'refs/heads/main'
+    env:
+      FORGEJO_API_URL: ${{ github.api_url }}
+      FORGEJO_REPOSITORY: ${{ github.repository }}
+      FORGEJO_TOKEN: ${{ github.token }}
+      REPORT_DIR: .tmp/ci-performance-report
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          clean: false
+
+      - name: Collect event-separated workflow trends
+        run: |
+          set +e
+          mkdir -p "$REPORT_DIR"
+          cohorts='[]'
+
+          collect_cohort() {
+            slug="$1"
+            workflow="$2"
+            event="$3"
+            branch="$4"
+            markdown_file="$REPORT_DIR/$slug.md"
+            json_file="$REPORT_DIR/$slug.json"
+            error_file="$REPORT_DIR/$slug.error.log"
+            args=(--workflow "$workflow" --event "$event" --limit 20 --json-out "$json_file")
+            if [ -n "$branch" ]; then
+              args+=(--branch "$branch")
+            fi
+
+            if bash scripts/ci/report-workflow-trends.sh "${args[@]}" >"$markdown_file" 2>"$error_file"; then
+              status='success'
+              rm -f "$error_file"
+            else
+              status='error'
+              echo "::warning::Could not collect CI performance cohort $slug; see artifact diagnostics"
+              {
+                echo "Workflow Duration Trend"
+                echo "Cohort | $slug"
+                echo "Status | collection error"
+              } > "$markdown_file"
+              jq -n \
+                --arg workflow "$workflow" \
+                --arg event "$event" \
+                --arg branch "$branch" \
+                '{schema_version: 1, workflow: $workflow, event_filter: $event, branch_filter: (if $branch == "" then null else $branch end), sample_count: 0, collection_error: true, metrics: {wall_seconds: {p50: null, p90: null}, runner_seconds: {p50: null, p90: null, available: false}}, runs: []}' \
+                > "$json_file"
+            fi
+
+            cohorts="$(jq -c \
+              --arg slug "$slug" \
+              --arg status "$status" \
+              --slurpfile report "$json_file" \
+              '. + [{slug: $slug, status: $status, report: $report[0]}]' \
+              <<<"$cohorts")"
+          }
+
+          collect_cohort test-pr test.yml pull_request ''
+          collect_cohort test-main test.yml push main
+          collect_cohort test-schedule test.yml schedule main
+          collect_cohort vectors-pr verify-vectors.yml pull_request ''
+          collect_cohort install-pr install-test.yml pull_request ''
+          collect_cohort install-main install-test.yml push main
+          collect_cohort install-schedule install-test.yml schedule main
+          collect_cohort release-tag release-candidate.yml push ''
+          collect_cohort release-manual release-candidate.yml workflow_dispatch ''
+          collect_cohort release-call release-candidate.yml workflow_call ''
+
+          jq -n \
+            --arg generated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg repository "$FORGEJO_REPOSITORY" \
+            --argjson cohorts "$cohorts" \
+            '{schema_version: 1, generated_at: $generated_at, repository: $repository, cohorts: $cohorts}' \
+            > "$REPORT_DIR/manifest.json"
+
+          exit 0
+
+      - name: Upload CI performance report
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-performance-report
+          path: .tmp/ci-performance-report/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 30
