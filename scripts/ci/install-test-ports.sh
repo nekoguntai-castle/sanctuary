@@ -38,13 +38,17 @@ fi
 # assigned that exact port. Neither was lane-versus-lane contention; both lanes
 # were binding a port that was correctly theirs.
 PORT_RANGE_START=10240
-# 128 per run, not 40: the optional-profiles upgrade fixture derives its own
-# ports as HTTPS_PORT+100..+106, which under a 40-wide block reached into the
-# NEXT run's block. A 128-wide block keeps a lane's whole footprint — including
-# that derived range — inside the run's own reservation.
-PORT_BLOCK_SIZE=128
-# 10240 + 170*128 = 32000, leaving headroom under the 32768 floor below.
-PORT_SLOT_COUNT=170
+# Wide enough for the HIGHEST offset the workflows use plus that offset's own
+# derived span, not merely for the derived span alone. The optional-profiles
+# upgrade fixture derives HTTPS_PORT+100..+106 and runs at offset 30, so the
+# block has to hold 30+106=136; a 128-wide block rejected every extended
+# fixture at offset >= 22 (`offset plus its derived ports overflows`), which
+# took out legacy-runtime-env, notification-delivery and optional-profiles on
+# v0.8.66-rc1. 144 leaves room above the current maximum without crowding the
+# slot count below.
+PORT_BLOCK_SIZE=144
+# 10240 + 150*144 = 31840, leaving headroom under the 32768 floor below.
+PORT_SLOT_COUNT=150
 # How far past its own base a single lane reaches: the optional-profiles upgrade
 # fixture derives HTTPS_PORT+100..+106. Measured from the lane's base, not the
 # block's, so the offset is added separately below.
