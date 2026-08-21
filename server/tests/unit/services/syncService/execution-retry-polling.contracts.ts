@@ -1,7 +1,6 @@
 import { expect, it, vi } from "vitest";
 import {
   mockAcquireLock,
-  mockGetWorkerHealthStatus,
   mockNotificationService,
   mockPopulateMissingTransactionFields,
   mockPrismaClient,
@@ -10,6 +9,7 @@ import {
   type SyncServiceTestContext,
 } from "./syncServiceTestHarness";
 import { LockAuthorityUnavailableError } from "../../../../src/infrastructure";
+import { registerSyncServicePollingModeTests } from "./polling-mode.contracts";
 
 export function registerSyncServiceExecutionRetryPollingTests(
   context: SyncServiceTestContext,
@@ -198,6 +198,71 @@ export function registerSyncServiceExecutionRetryPollingTests(
       expect(mockReleaseLock).toHaveBeenCalled();
     });
 
+    it("bounds field population as part of the active sync attempt", async () => {
+      context.syncService["isRunning"] = true;
+      mockPrismaClient.wallet.update.mockResolvedValue({});
+      mockPrismaClient.uTXO.aggregate.mockResolvedValue({
+        _sum: { amount: BigInt(0) },
+      });
+      mockSyncWallet.mockResolvedValueOnce({
+        addresses: 0,
+        transactions: 0,
+        utxos: 0,
+      });
+      let populateSignal: AbortSignal | undefined;
+      mockPopulateMissingTransactionFields.mockImplementationOnce(
+        (...args: unknown[]) => {
+          const signal = args[1] as AbortSignal | undefined;
+          populateSignal = signal;
+          return new Promise((_resolve, reject) => {
+            signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+          });
+        },
+      );
+
+      const pending = context.syncService.syncNow("wallet-populate-hung");
+      await vi.advanceTimersByTimeAsync(120_000);
+      await expect(pending).resolves.toMatchObject({ success: false });
+
+      expect(populateSignal?.aborted).toBe(true);
+      expect(context.syncService["activeSyncs"].has("wallet-populate-hung")).toBe(false);
+      expect(mockReleaseLock).toHaveBeenCalled();
+      const retryTimer = context.syncService["pendingRetries"].get("wallet-populate-hung");
+      if (retryTimer) clearTimeout(retryTimer);
+      context.syncService["pendingRetries"].delete("wallet-populate-hung");
+    });
+
+    it("bounds the pre-sync balance read as part of the active attempt", async () => {
+      context.syncService["isRunning"] = true;
+      mockPrismaClient.wallet.update.mockResolvedValue({});
+      let balanceStarted!: () => void;
+      const balanceStartedPromise = new Promise<void>((resolve) => {
+        balanceStarted = resolve;
+      });
+      mockPrismaClient.uTXO.aggregate.mockImplementationOnce(
+        () => {
+          balanceStarted();
+          return new Promise(() => undefined);
+        },
+      );
+
+      const pending = context.syncService["executeSyncJob"](
+        "wallet-balance-hung",
+        1,
+      );
+      await balanceStartedPromise;
+      await vi.advanceTimersByTimeAsync(120_000);
+      await vi.advanceTimersByTimeAsync(30_000);
+      await expect(pending).resolves.toMatchObject({ success: false });
+
+      expect(mockSyncWallet).not.toHaveBeenCalled();
+      expect(context.syncService["activeSyncs"].has("wallet-balance-hung")).toBe(false);
+      expect(mockReleaseLock).toHaveBeenCalled();
+      const retryTimer = context.syncService["pendingRetries"].get("wallet-balance-hung");
+      if (retryTimer) clearTimeout(retryTimer);
+      context.syncService["pendingRetries"].delete("wallet-balance-hung");
+    });
+
     it("delays and retries once after lock authority recovers", async () => {
       context.syncService["isRunning"] = true;
       mockAcquireLock
@@ -269,6 +334,169 @@ export function registerSyncServiceExecutionRetryPollingTests(
   });
 
   describe("retry logic", () => {
+    it.each(["event", "websocket", "balance", "queue"] as const)(
+      "keeps a durably committed success when the %s side effect throws",
+      async sideEffect => {
+        context.syncService["isRunning"] = true;
+        mockPrismaClient.wallet.update.mockResolvedValue({});
+        mockPrismaClient.uTXO.aggregate
+          .mockResolvedValueOnce({ _sum: { amount: BigInt(1_000) } })
+          .mockResolvedValueOnce({ _sum: { amount: BigInt(0) } })
+          .mockResolvedValueOnce({ _sum: { amount: BigInt(1_500) } })
+          .mockResolvedValueOnce({ _sum: { amount: BigInt(0) } });
+
+        const { eventService } = await import("../../../../src/services/eventService");
+        const syncQueue = await import("../../../../src/services/sync/syncQueue");
+        const queueSpy = sideEffect === "queue"
+          ? vi.spyOn(syncQueue, "processQueue").mockImplementationOnce(() => {
+            throw new Error("queue continuation failed");
+          })
+          : null;
+
+        if (sideEffect === "event") {
+          vi.mocked(eventService.emitWalletSynced).mockImplementationOnce(() => {
+            throw new Error("sync event failed");
+          });
+        } else if (sideEffect === "websocket") {
+          mockNotificationService.broadcastSyncStatus
+            .mockImplementationOnce(() => undefined)
+            .mockImplementationOnce(() => {
+              throw new Error("sync status broadcast failed");
+            });
+        } else if (sideEffect === "balance") {
+          mockNotificationService.broadcastBalanceUpdate.mockImplementationOnce(() => {
+            throw new Error("balance broadcast failed");
+          });
+        }
+
+        try {
+          const result = await context.syncService.syncNow(`wallet-post-commit-${sideEffect}`);
+          expect(result).toMatchObject({ success: true });
+
+          const stateWrites = mockPrismaClient.wallet.update.mock.calls
+            .map(([args]: any[]) => args.data);
+          expect(stateWrites).toContainEqual(expect.objectContaining({
+            lastSyncStatus: "success",
+            syncExecutionOwner: null,
+          }));
+          expect(stateWrites).not.toContainEqual(expect.objectContaining({
+            lastSyncStatus: "retrying",
+          }));
+          expect(stateWrites).not.toContainEqual(expect.objectContaining({
+            lastSyncStatus: "failed",
+          }));
+          expect(context.syncService["pendingRetries"].has(`wallet-post-commit-${sideEffect}`))
+            .toBe(false);
+        } finally {
+          queueSpy?.mockRestore();
+        }
+      },
+    );
+
+    it.each(["dead-letter", "failure-event"] as const)(
+      "persists the original terminal failure when the %s side effect rejects",
+      async sideEffect => {
+        context.syncService["isRunning"] = true;
+        mockPrismaClient.wallet.update.mockResolvedValue({});
+        mockPrismaClient.uTXO.aggregate.mockResolvedValue({
+          _sum: { amount: BigInt(0) },
+        });
+        mockSyncWallet.mockRejectedValueOnce(new Error("original pipeline failure"));
+
+        const { recordSyncFailure } = await import("../../../../src/services/deadLetterQueue");
+        const { eventService } = await import("../../../../src/services/eventService");
+        if (sideEffect === "dead-letter") {
+          vi.mocked(recordSyncFailure).mockRejectedValueOnce(new Error("dead letter unavailable"));
+        } else {
+          vi.mocked(eventService.emitWalletSyncFailed).mockImplementationOnce(() => {
+            throw new Error("failure event unavailable");
+          });
+        }
+
+        const result = await context.syncService["executeSyncJob"](
+          `wallet-terminal-${sideEffect}`,
+          3,
+        );
+
+        expect(result).toMatchObject({
+          success: false,
+          error: "original pipeline failure",
+        });
+        expect(mockPrismaClient.wallet.update).toHaveBeenCalledWith(expect.objectContaining({
+          where: { id: `wallet-terminal-${sideEffect}` },
+          data: expect.objectContaining({
+            lastSyncStatus: "failed",
+            lastSyncError: "original pipeline failure",
+            syncExecutionOwner: null,
+          }),
+        }));
+      },
+    );
+
+    it("does not arm a heap retry until the durable retry transition succeeds", async () => {
+      vi.useFakeTimers();
+      context.syncService["isRunning"] = true;
+      mockPrismaClient.wallet.update
+        .mockResolvedValueOnce({})
+        .mockRejectedValue(new Error("retry state unavailable"));
+      mockPrismaClient.uTXO.aggregate.mockResolvedValue({
+        _sum: { amount: BigInt(0) },
+      });
+      mockSyncWallet.mockRejectedValueOnce(new Error("original retryable failure"));
+
+      const pending = context.syncService.syncNow("wallet-retry-write-failed");
+      await vi.runAllTimersAsync();
+      await expect(pending).resolves.toMatchObject({
+        success: false,
+        error: "original retryable failure",
+      });
+
+      // One start write, four bounded retry-state writes, and one safety clear.
+      expect(mockPrismaClient.wallet.update).toHaveBeenCalledTimes(6);
+      expect(mockPrismaClient.wallet.update).toHaveBeenLastCalledWith({
+        where: { id: "wallet-retry-write-failed" },
+        data: expect.objectContaining({
+          syncInProgress: false,
+          syncExecutionOwner: null,
+          syncStartedAt: null,
+        }),
+      });
+      expect(context.syncService["pendingRetries"].has("wallet-retry-write-failed"))
+        .toBe(false);
+      expect(mockSyncWallet).toHaveBeenCalledTimes(1);
+    });
+
+    it("preserves the original terminal result when durable failure state is unavailable", async () => {
+      vi.useFakeTimers();
+      context.syncService["isRunning"] = true;
+      mockPrismaClient.wallet.update
+        .mockResolvedValueOnce({})
+        .mockRejectedValue(new Error("terminal state unavailable"));
+      mockPrismaClient.uTXO.aggregate.mockResolvedValue({
+        _sum: { amount: BigInt(0) },
+      });
+      mockSyncWallet.mockRejectedValueOnce(new Error("original terminal failure"));
+
+      const pending = context.syncService["executeSyncJob"]("wallet-terminal-write-failed", 3);
+      await vi.runAllTimersAsync();
+
+      await expect(pending).resolves.toMatchObject({
+        success: false,
+        error: "original terminal failure",
+      });
+      expect(mockPrismaClient.wallet.update).toHaveBeenCalledTimes(6);
+      expect(mockPrismaClient.wallet.update).toHaveBeenLastCalledWith({
+        where: { id: "wallet-terminal-write-failed" },
+        data: expect.objectContaining({
+          syncInProgress: false,
+          syncExecutionOwner: null,
+          syncStartedAt: null,
+        }),
+      });
+      expect(context.syncService["pendingRetries"].has("wallet-terminal-write-failed"))
+        .toBe(false);
+    });
+
     it("should retry on failure", async () => {
       context.syncService["isRunning"] = true;
       vi.setSystemTime(new Date("2026-08-20T12:00:00.000Z"));
@@ -650,228 +878,5 @@ export function registerSyncServiceExecutionRetryPollingTests(
     });
   });
 
-  describe("polling mode", () => {
-    it("should start in-process polling when worker is unhealthy", async () => {
-      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false });
-
-      await context.syncService.start();
-
-      expect(context.syncService.getHealthMetrics().pollingMode).toBe(
-        "in-process",
-      );
-      expect(context.syncService["syncInterval"]).not.toBeNull();
-      expect(context.syncService["confirmationInterval"]).not.toBeNull();
-    });
-
-    it("should defer polling to worker when worker is healthy", async () => {
-      mockGetWorkerHealthStatus.mockReturnValue({ healthy: true });
-
-      await context.syncService.start();
-
-      expect(context.syncService.getHealthMetrics().pollingMode).toBe(
-        "worker-delegated",
-      );
-      expect(context.syncService["syncInterval"]).toBeNull();
-      expect(context.syncService["confirmationInterval"]).toBeNull();
-    });
-
-    it("should always start reconciliation interval regardless of worker health", async () => {
-      mockGetWorkerHealthStatus.mockReturnValue({ healthy: true });
-
-      await context.syncService.start();
-
-      expect(context.syncService["reconciliationInterval"]).not.toBeNull();
-    });
-
-    it("should always start workerHealthPollTimer", async () => {
-      mockGetWorkerHealthStatus.mockReturnValue({ healthy: true });
-
-      await context.syncService.start();
-
-      expect(context.syncService["workerHealthPollTimer"]).not.toBeNull();
-    });
-
-    it("should transition from worker-delegated to in-process when worker goes down", async () => {
-      mockGetWorkerHealthStatus.mockReturnValue({ healthy: true });
-      await context.syncService.start();
-
-      expect(context.syncService.getHealthMetrics().pollingMode).toBe(
-        "worker-delegated",
-      );
-
-      // Worker goes down
-      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false });
-      context.syncService["evaluatePollingMode"]();
-
-      expect(context.syncService.getHealthMetrics().pollingMode).toBe(
-        "in-process",
-      );
-      expect(context.syncService["syncInterval"]).not.toBeNull();
-      expect(context.syncService["confirmationInterval"]).not.toBeNull();
-    });
-
-    it("should transition from in-process to worker-delegated when worker recovers", async () => {
-      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false });
-      await context.syncService.start();
-
-      expect(context.syncService.getHealthMetrics().pollingMode).toBe(
-        "in-process",
-      );
-
-      // Worker recovers
-      mockGetWorkerHealthStatus.mockReturnValue({ healthy: true });
-      context.syncService["evaluatePollingMode"]();
-
-      expect(context.syncService.getHealthMetrics().pollingMode).toBe(
-        "worker-delegated",
-      );
-      expect(context.syncService["syncInterval"]).toBeNull();
-      expect(context.syncService["confirmationInterval"]).toBeNull();
-    });
-
-    it("should not double-start polling intervals", async () => {
-      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false });
-      await context.syncService.start();
-
-      const firstSyncInterval = context.syncService["syncInterval"];
-      const firstConfirmInterval = context.syncService["confirmationInterval"];
-
-      // Call startPollingIntervals again — should be a no-op
-      context.syncService["startPollingIntervals"]();
-
-      expect(context.syncService["syncInterval"]).toBe(firstSyncInterval);
-      expect(context.syncService["confirmationInterval"]).toBe(
-        firstConfirmInterval,
-      );
-    });
-
-    it("should not evaluate polling mode when service is stopped", async () => {
-      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false });
-      await context.syncService.start();
-      await context.syncService.stop();
-
-      // Worker recovers while service is stopped
-      mockGetWorkerHealthStatus.mockReturnValue({ healthy: true });
-      context.syncService["evaluatePollingMode"]();
-
-      // Should remain unchanged since isRunning is false
-      expect(context.syncService["syncInterval"]).toBeNull();
-    });
-
-    it("should be no-op when worker stays healthy (already delegated)", async () => {
-      mockGetWorkerHealthStatus.mockReturnValue({ healthy: true });
-      await context.syncService.start();
-
-      // Evaluate again with same state
-      context.syncService["evaluatePollingMode"]();
-
-      expect(context.syncService.getHealthMetrics().pollingMode).toBe(
-        "worker-delegated",
-      );
-      expect(context.syncService["syncInterval"]).toBeNull();
-    });
-
-    it("should be no-op when worker stays unhealthy (already in-process)", async () => {
-      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false });
-      await context.syncService.start();
-
-      const firstSyncInterval = context.syncService["syncInterval"];
-
-      // Evaluate again with same state
-      context.syncService["evaluatePollingMode"]();
-
-      expect(context.syncService.getHealthMetrics().pollingMode).toBe(
-        "in-process",
-      );
-      expect(context.syncService["syncInterval"]).toBe(firstSyncInterval);
-    });
-
-    it("should clear workerHealthPollTimer on stop", async () => {
-      await context.syncService.start();
-
-      expect(context.syncService["workerHealthPollTimer"]).not.toBeNull();
-
-      await context.syncService.stop();
-
-      expect(context.syncService["workerHealthPollTimer"]).toBeNull();
-    });
-
-    it("should trigger evaluatePollingMode via the 30s timer", async () => {
-      mockGetWorkerHealthStatus.mockReturnValue({ healthy: true });
-      await context.syncService.start();
-
-      expect(context.syncService.getHealthMetrics().pollingMode).toBe(
-        "worker-delegated",
-      );
-
-      // Worker goes down — advance the 30s timer
-      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false });
-      await vi.advanceTimersByTimeAsync(30_000);
-
-      expect(context.syncService.getHealthMetrics().pollingMode).toBe(
-        "in-process",
-      );
-    });
-
-    it("should handle full round-trip: healthy → unhealthy → healthy via timer", async () => {
-      mockGetWorkerHealthStatus.mockReturnValue({ healthy: true });
-      await context.syncService.start();
-
-      // Phase 1: worker-delegated, no polling intervals
-      expect(context.syncService.getHealthMetrics().pollingMode).toBe(
-        "worker-delegated",
-      );
-      expect(context.syncService["syncInterval"]).toBeNull();
-      expect(context.syncService["confirmationInterval"]).toBeNull();
-
-      // Phase 2: worker goes down — timer fires, transitions to in-process
-      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false });
-      await vi.advanceTimersByTimeAsync(30_000);
-
-      expect(context.syncService.getHealthMetrics().pollingMode).toBe(
-        "in-process",
-      );
-      expect(context.syncService["syncInterval"]).not.toBeNull();
-      expect(context.syncService["confirmationInterval"]).not.toBeNull();
-      const syncIntervalRef = context.syncService["syncInterval"];
-
-      // Phase 3: worker recovers — timer fires, transitions back to worker-delegated
-      mockGetWorkerHealthStatus.mockReturnValue({ healthy: true });
-      await vi.advanceTimersByTimeAsync(30_000);
-
-      expect(context.syncService.getHealthMetrics().pollingMode).toBe(
-        "worker-delegated",
-      );
-      expect(context.syncService["syncInterval"]).toBeNull();
-      expect(context.syncService["confirmationInterval"]).toBeNull();
-
-      // Verify the old interval reference was cleared (not leaked)
-      expect(context.syncService["syncInterval"]).not.toBe(syncIntervalRef);
-    });
-
-    it("should increment transition metric on mode change", async () => {
-      const { syncPollingModeTransitions } =
-        await import("../../../../src/observability/metrics");
-      mockGetWorkerHealthStatus.mockReturnValue({ healthy: true });
-      await context.syncService.start();
-
-      // Transition: worker-delegated → in-process
-      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false });
-      context.syncService["evaluatePollingMode"]();
-
-      expect(syncPollingModeTransitions.inc).toHaveBeenCalledWith({
-        from: "worker-delegated",
-        to: "in-process",
-      });
-
-      // Transition: in-process → worker-delegated
-      mockGetWorkerHealthStatus.mockReturnValue({ healthy: true });
-      context.syncService["evaluatePollingMode"]();
-
-      expect(syncPollingModeTransitions.inc).toHaveBeenCalledWith({
-        from: "in-process",
-        to: "worker-delegated",
-      });
-    });
-  });
+  registerSyncServicePollingModeTests(context);
 }

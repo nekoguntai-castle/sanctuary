@@ -26,7 +26,10 @@ vi.mock('../../../../src/models/prisma', () => ({
     const client: any = {
       wallet: {
         findMany: vi.fn().mockResolvedValue([]),
-        findUnique: vi.fn().mockResolvedValue({ network: 'mainnet' }),
+        findUnique: vi.fn().mockResolvedValue({
+          network: 'mainnet',
+          syncInProgress: false,
+        }),
         update: bridgeMocks.walletUpdate,
       },
       address: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
@@ -141,15 +144,17 @@ describe('syncWalletJob worker → UI bridge', () => {
 
   it('carries the failure reason to the UI', async () => {
     vi.mocked(syncWallet).mockRejectedValue(new Error('Electrum unreachable'));
+    const job = createJob();
+    (job as { attemptsMade: number }).attemptsMade = 2;
 
-    await expect(syncWalletJob.handler(createJob(), undefined as never))
+    await expect(syncWalletJob.handler(job, undefined as never))
       .rejects.toThrow('Electrum unreachable');
 
     expect(bridgeMocks.broadcastSyncStatus).toHaveBeenCalledWith('wallet-1', {
       inProgress: false,
       status: 'failed',
       error: 'Electrum unreachable',
-      retriesExhausted: false,
+      retriesExhausted: true,
     });
     expect(bridgeMocks.broadcastWalletLog).toHaveBeenCalledWith('wallet-1',
       expect.objectContaining({
@@ -166,6 +171,25 @@ describe('syncWalletJob worker → UI bridge', () => {
         syncStartedAt: null,
       }),
     }));
+  });
+
+  it('does not reclassify a committed success when success publication throws', async () => {
+    bridgeMocks.broadcastSyncStatus
+      .mockImplementationOnce(() => undefined)
+      .mockImplementationOnce(() => {
+        throw new Error('redis publish failed');
+      })
+      .mockImplementation(() => undefined);
+
+    await expect(syncWalletJob.handler(createJob(), undefined as never))
+      .resolves.toMatchObject({ success: true });
+
+    const persistedStatuses = bridgeMocks.walletUpdate.mock.calls
+      .map(([args]) => (args as { data?: { lastSyncStatus?: string } })?.data?.lastSyncStatus)
+      .filter(Boolean);
+    expect(persistedStatuses).toEqual(['success']);
+    expect(bridgeMocks.broadcastWalletLog).toHaveBeenCalledWith('wallet-1',
+      expect.objectContaining({ message: 'Sync completed' }));
   });
 
   it('marks the last attempt as exhausted', async () => {
@@ -185,8 +209,10 @@ describe('syncWalletJob worker → UI bridge', () => {
       .mockResolvedValueOnce({})
       .mockRejectedValueOnce(new Error('db down'))
       .mockResolvedValue({});
+    const job = createJob();
+    (job as { attemptsMade: number }).attemptsMade = 2;
 
-    await expect(syncWalletJob.handler(createJob(), undefined as never)).rejects.toThrow('boom');
+    await expect(syncWalletJob.handler(job, undefined as never)).rejects.toThrow('boom');
 
     expect(bridgeMocks.broadcastSyncStatus).toHaveBeenCalledWith('wallet-1',
       expect.objectContaining({ status: 'failed', error: 'boom' }));
@@ -259,16 +285,47 @@ describe('syncWalletJob worker → UI bridge', () => {
 
     // The processor logs and swallows a failure here, so the one thing that must
     // not depend on the database is the report itself.
-    it('still reports to the UI when the row write fails', async () => {
-      bridgeMocks.walletUpdate.mockRejectedValueOnce(new Error('database down'));
+    it('still reports to the UI and retries the durable write after a transient failure', async () => {
+      vi.useFakeTimers();
+      try {
+        bridgeMocks.walletUpdate
+          .mockRejectedValueOnce(new Error('database down'))
+          .mockResolvedValueOnce({});
+
+        const pending = syncWalletJob.lockOptions?.onLockRetryBudgetExhausted?.(
+          { walletId: 'wallet-1' },
+          { lockKey: 'k', retryWindowMs: 1, message: 'gave up', isFinalAttempt: true },
+        );
+        await vi.runAllTimersAsync();
+        await expect(pending).resolves.toBeUndefined();
+
+        expect(bridgeMocks.walletUpdate).toHaveBeenCalledTimes(2);
+        expect(bridgeMocks.broadcastSyncStatus).toHaveBeenCalledWith('wallet-1',
+          expect.objectContaining({ status: 'failed' }));
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('persists lock contention even when both publications throw', async () => {
+      bridgeMocks.broadcastSyncStatus.mockImplementationOnce(() => {
+        throw new Error('status bridge failed');
+      });
+      bridgeMocks.broadcastWalletLog.mockImplementationOnce(() => {
+        throw new Error('log bridge failed');
+      });
 
       await expect(syncWalletJob.lockOptions?.onLockRetryBudgetExhausted?.(
         { walletId: 'wallet-1' },
         { lockKey: 'k', retryWindowMs: 1, message: 'gave up', isFinalAttempt: true },
-      )).rejects.toThrow('database down');
+      )).resolves.toBeUndefined();
 
-      expect(bridgeMocks.broadcastSyncStatus).toHaveBeenCalledWith('wallet-1',
-        expect.objectContaining({ status: 'failed' }));
+      expect(bridgeMocks.walletUpdate).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({
+          lastSyncStatus: 'failed',
+          lastSyncFailureClass: 'lock_contention',
+        }),
+      }));
     });
   });
 });

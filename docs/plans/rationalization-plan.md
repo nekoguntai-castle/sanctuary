@@ -1767,7 +1767,7 @@ read-only repository/API evidence; no product code or external state changed.
 
 Date: 2026-08-20
 Owner: Codex
-Status: Implementation in progress; Phase 0 merged, Phase 1 local implementation active
+Status: Implementation in progress; Phases 0-1 merged, Phase 2 local implementation complete
 Scope: revalidation of the architecture audit after PRs #854, #859, #855, #856, #858, and #857; baseline `2a14f8088a`, target `origin/main` at `32278d7531`
 
 ### Executive Summary
@@ -1817,7 +1817,7 @@ Scope: revalidation of the architecture audit after PRs #854, #859, #855, #856, 
 | Order | Work | Why the order changed | Exit criteria |
 | ---: | --- | --- | --- |
 | 0 | Restore architecture and Prisma checks to green and wire them into required CI | Still unchanged after six PRs; documentation remains unenforced | Merged in PR #860 (`06c1a36814`) with branch and post-merge CI green |
-| 1 | Define canonical structured sync status/failure/retry contracts and persistence | Recent fixes now depend on parsing presentation text; consolidating first would codify that coupling | Retry progression and support classification do not parse `lastSyncError`; legacy message remains readable |
+| 1 | Define canonical structured sync status/failure/retry contracts and persistence | Recent fixes now depend on parsing presentation text; consolidating first would codify that coupling | Merged in PR #861 (`e4df8aa591`) with branch and post-merge CI green |
 | 2 | Extract one sync-attempt lifecycle/use case and route inline/worker execution through it | Two policy-bearing state machines expanded independently in the recent PRs | Shared transition contract passes through both adapters for success, retry, timeout, cancellation, lock contention, and terminal-write failure |
 | 3 | Move queue contracts out of `worker/` and remove the worker-to-queue-service dynamic import | Recent stranded-resync logic confirms bidirectional ownership | Producer and consumer depend on neutral contracts; dependency direction is one-way |
 | 4 | Add one lifecycle publisher and collapse confirmation refresh implementations | Duplicate publication and four confirmation paths remain | Exactly one external lifecycle publication per transition; one confirmation workflow owner |
@@ -1855,6 +1855,9 @@ Scope: revalidation of the architecture audit after PRs #854, #859, #855, #856, 
 - Phase 0 local implementation passed `check:architecture-boundaries` with 45 reviewed exceptions, `check:prisma-imports` with 968 checked files and 80 allowed files, and the new server cycle baseline with 17 known cycle sets and 43 exact circular edges.
 - Phase 0 full server unit coverage passed: 598 files, 14,036 tests, and 100% statements, branches, functions, and lines. Server build/test typecheck, root test typecheck, lint, workflow composition (289 assertions), focused boundary tests, and `git diff --check` also passed.
 - Independent Phase 0 review found two gaps in the first draft: cycle member sets could hide new internal edges, and audit CLI dependency wiring had lost direct coverage. Exact circular-edge inventory and an importable/tested CLI entry wrapper closed both findings.
+- Phase 1 merged in PR #861 as `e4df8aa591`. Its structured Wallet state, legacy backfill, inline/worker adoption, support classification, authoritative status API, and lock/CAS stale recovery passed 30 branch contexts and 30 post-merge contexts with every workflow green.
+- Phase 2 local implementation routes inline and worker attempt persistence through `syncAttemptLifecycle.ts`, retains adapter-specific locking/scheduling/full-resync policy, bounds application execution plus worker database statements/transactions, and records non-final worker failures/cancellations as durable retrying state.
+- Phase 2 verification passed 599 server unit files and 14,082 tests at 100% statements, branches, functions, and lines; 249 focused adapter/lifecycle tests; server/root test typechecks; server build and lint; architecture and Prisma boundaries; Compose rendering and its worker-timeout contract; complexity and whitespace gates. Three independent review passes closed timeout, state-cleanup, full-resync retry, lock-authority, publication-isolation, and backoff assertions, with no remaining P0-P2 findings.
 - Fetched `origin/main`; local `main` remained at `2a14f8088a` and was not fast-forwarded. Target was audited from an isolated archive at `32278d7531` so unrelated untracked planning files remained untouched.
 - `git diff --stat HEAD..origin/main`: 47 files, 3,416 insertions, 195 deletions, concentrated in sync, distributed locks, support diagnostics, Tooltip, and tests.
 - Architecture checker failed identically at both refs on `api/transactions/broadcasting.ts -> repositories/draftSigningIntentRepository.ts`.
@@ -1863,4 +1866,4 @@ Scope: revalidation of the architecture audit after PRs #854, #859, #855, #856, 
 - OpenAPI route coverage passed on target: 347 Express routes, 343 OpenAPI operations, and 4 documented infrastructure/docs exceptions.
 - No workflow invokes `check:architecture-boundaries`, `check:prisma-imports`, or `check:openapi-route-coverage`; the six PRs did not change those scripts or policies.
 - Static target inventories using the same audit method: 187 API files, 36 direct-repository route files, 45 route exceptions, 19 frontend API schema uses, 10,853 E2E TypeScript lines, and 13 `balance-history` E2E fixture sites.
-- The preceding audit evidence was analysis-only. Phase 0 implementation now exists on `codex/implement-merge/rationalization-phase-0`; PR delivery is pending.
+- The preceding audit evidence initiated this implementation loop. Phases 0 and 1 are now merged; Phase 2 continues on `codex/implement-merge/rationalization-phase-2`.

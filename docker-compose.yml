@@ -333,8 +333,12 @@ services:
       NODE_ENV: ${NODE_ENV:-production}
       LOG_LEVEL: ${LOG_LEVEL:-info}
 
-      # Database
-      DATABASE_URL: postgresql://${POSTGRES_USER:-sanctuary}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-sanctuary}?schema=public&connection_limit=${DB_WORKER_POOL_SIZE:-10}&pool_timeout=30&connect_timeout=10
+      # Database: bound connection acquisition, statements, and interactive
+      # transactions so a worker cannot renew a wallet lock indefinitely while
+      # waiting on PostgreSQL outside the cooperative sync execution timeout.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-sanctuary}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-sanctuary}?schema=public&connection_limit=${DB_WORKER_POOL_SIZE:-10}&pool_timeout=30&connect_timeout=10&statement_timeout=30000
+      PRISMA_TRANSACTION_MAX_WAIT_MS: 10000
+      PRISMA_TRANSACTION_TIMEOUT_MS: 30000
 
       # Redis (required for job queue)
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379

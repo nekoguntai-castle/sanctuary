@@ -123,6 +123,19 @@ describe('sync lock contention is never a silent success', () => {
       expect(mockBroadcastSyncStatus).toHaveBeenCalled();
     });
 
+    it('does not persist terminal state while BullMQ still has an attempt', async () => {
+      mockFindByIdWithSelect.mockResolvedValue({ syncInProgress: false });
+
+      await syncWalletJob.lockOptions?.onLockRetryBudgetExhausted?.(
+        { walletId: 'w5' },
+        { ...detail, isFinalAttempt: false },
+      );
+
+      expect(mockUpdate).not.toHaveBeenCalled();
+      expect(mockBroadcastSyncStatus).toHaveBeenCalledWith('w5',
+        expect.objectContaining({ status: 'retrying', retriesExhausted: false }));
+    });
+
     it('does NOT mark the wallet failed when a sync is genuinely running', async () => {
       // Legitimate contention: another holder is mid-sync and will write its own
       // terminal status. Marking failed here would be a false negative.
@@ -138,16 +151,13 @@ describe('sync lock contention is never a silent success', () => {
       expect(mockUpdate).not.toHaveBeenCalled();
     });
 
-    it('still records the failure when the liveness lookup itself fails', async () => {
-      // A failing lookup must not become a reason to stay silent: the wallet
-      // would keep a green badge with nothing else ever writing a status.
+    it('fails closed when the liveness lookup itself fails', async () => {
       mockFindByIdWithSelect.mockRejectedValue(new Error('db down'));
 
       await syncWalletJob.lockOptions?.onLockRetryBudgetExhausted?.({ walletId: 'w6' }, detail);
 
-      expect(mockUpdate).toHaveBeenCalledWith('w6', expect.objectContaining({
-        lastSyncStatus: 'failed',
-      }));
+      expect(mockUpdate).not.toHaveBeenCalled();
+      expect(mockBroadcastSyncStatus).not.toHaveBeenCalled();
     });
   });
 });

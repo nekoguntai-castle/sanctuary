@@ -289,11 +289,6 @@ vi.mock('../../../../src/observability/metrics', () => ({
   syncPollingModeTransitions: { inc: vi.fn() },
 }));
 
-// Mock async utilities
-vi.mock('../../../../src/utils/async', () => ({
-  withTimeout: vi.fn().mockImplementation((promise) => promise),
-}));
-
 // Mock worker health — default to unhealthy so existing tests keep in-process polling
 vi.mock('../../../../src/services/workerHealth', () => ({
   getWorkerHealthStatus: mockGetWorkerHealthStatus,
