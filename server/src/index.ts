@@ -55,7 +55,8 @@ import {
   isRedisConnected,
 } from './infrastructure';
 import { shutdownElectrumPool } from './services/bitcoin/electrumPool';
-import { cache, warmCaches } from './services/cache/cacheService';
+import { cache } from './services/cache/cacheService';
+import { warmCaches } from './services/cache/cacheWarmer';
 import { walletLogBuffer } from './services/walletLogBuffer';
 import { deadLetterQueue } from './services/deadLetterQueue';
 import { initializeCacheInvalidation, shutdownCacheInvalidation } from './services/cacheInvalidation';

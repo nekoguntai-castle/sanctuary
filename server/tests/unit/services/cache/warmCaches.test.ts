@@ -6,7 +6,7 @@ import { vi } from 'vitest';
  * data into the cache during server startup.
  */
 
-import { warmCaches } from '../../../../src/services/cache/cacheService';
+import { warmCaches } from '../../../../src/services/cache/cacheWarmer';
 
 // Mock the logger to avoid console noise
 vi.mock('../../../../src/utils/logger', () => ({
