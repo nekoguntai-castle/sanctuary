@@ -2,6 +2,11 @@ import { act, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import {
+  walletActivityKeys,
+  walletKeys,
+} from '../../../src/hooks/queries/useWallets';
+
+import {
   baseTxData,
   createState,
   mocks,
@@ -199,8 +204,15 @@ export const registerUseSendTransactionActionsSigningContracts = () => {
         fee: 123,
         utxos: baseTxData.utxos,
       });
-      expect(mocks.refetchQueries).toHaveBeenCalledTimes(3);
-      expect(mocks.invalidateQueries).toHaveBeenCalledTimes(2);
+      expect(mocks.refetchQueries).toHaveBeenCalledTimes(2);
+      expect(mocks.refetchQueries).toHaveBeenCalledWith({
+        queryKey: walletActivityKeys.pendingTransactions.all,
+      });
+      expect(mocks.refetchQueries).toHaveBeenCalledWith({ queryKey: walletKeys.all });
+      expect(mocks.invalidateQueries).toHaveBeenCalledTimes(1);
+      expect(mocks.invalidateQueries).toHaveBeenCalledWith({
+        queryKey: walletActivityKeys.recentTransactions.all,
+      });
       expect(mocks.deleteDraft).not.toHaveBeenCalled();
       expect(mocks.playEventSound).toHaveBeenCalledWith('send');
       expect(mocks.showSuccess).toHaveBeenCalled();

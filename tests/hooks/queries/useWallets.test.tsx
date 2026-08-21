@@ -13,6 +13,7 @@ useRecentTransactions,
 useUpdateWallet,
 useWalletSparklines,
 useWallets,
+walletActivityKeys,
 walletKeys,
 } from '../../../src/hooks/queries/useWallets';
 
@@ -80,6 +81,33 @@ describe('walletKeys', () => {
       1,
       10,
       0,
+    ]);
+  });
+});
+
+describe('walletActivityKeys', () => {
+  it('preserves every existing activity query prefix and tuple', () => {
+    const sparklineInputs = [['w1', 1000]] as const;
+
+    expect(walletActivityKeys.recentTransactions.all).toEqual(['recentTransactions']);
+    expect(walletActivityKeys.recentTransactions.page('w1,w2', 5, 2)).toEqual([
+      'recentTransactions', 'w1,w2', 5, 2,
+    ]);
+    expect(walletActivityKeys.pendingTransactions.all).toEqual(['pendingTransactions']);
+    expect(walletActivityKeys.pendingTransactions.list('w1,w2')).toEqual([
+      'pendingTransactions', 'w1,w2',
+    ]);
+    expect(walletActivityKeys.balanceHistory.all).toEqual(['balanceHistory']);
+    expect(walletActivityKeys.balanceHistory.detail('w1,w2', '1W', 1000)).toEqual([
+      'balanceHistory', 'w1,w2', '1W', 1000,
+    ]);
+    expect(walletActivityKeys.activitySummary.all).toEqual(['activitySummary']);
+    expect(walletActivityKeys.activitySummary.detail('w1,w2', '1M')).toEqual([
+      'activitySummary', 'w1,w2', '1M',
+    ]);
+    expect(walletActivityKeys.walletSparklines.all).toEqual(['walletSparklines']);
+    expect(walletActivityKeys.walletSparklines.list(sparklineInputs)).toEqual([
+      'walletSparklines', sparklineInputs,
     ]);
   });
 });
@@ -313,9 +341,15 @@ describe('wallet cache helper hooks', () => {
 
     act(() => result.current());
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: walletKeys.all });
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['recentTransactions'] });
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['pendingTransactions'] });
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['balanceHistory'] });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: walletActivityKeys.recentTransactions.all,
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: walletActivityKeys.pendingTransactions.all,
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: walletActivityKeys.balanceHistory.all,
+    });
   });
 
 });
@@ -342,16 +376,18 @@ describe('useBalanceHistory', () => {
     renderHook(() => useBalanceHistory([], 1000, '1W'), { wrapper: createWrapper(queryClient) });
 
     const query = queryClient.getQueryCache().find({
-      queryKey: ['balanceHistory', '', '1W', 1000],
+      queryKey: walletActivityKeys.balanceHistory.detail('', '1W', 1000),
     });
     expect(query).not.toBeUndefined();
-    expect(query?.queryKey).toEqual(['balanceHistory', '', '1W', 1000]);
+    expect(query?.queryKey).toEqual(walletActivityKeys.balanceHistory.detail('', '1W', 1000));
 
     await act(async () => {
       await (query as any).fetch();
     });
 
-    expect(queryClient.getQueryData(['balanceHistory', '', '1W', 1000])).toEqual([]);
+    expect(queryClient.getQueryData(
+      walletActivityKeys.balanceHistory.detail('', '1W', 1000),
+    )).toEqual([]);
     expect(mockGetBalanceHistory).not.toHaveBeenCalled();
   });
 

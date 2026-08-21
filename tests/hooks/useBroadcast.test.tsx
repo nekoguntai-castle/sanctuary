@@ -73,6 +73,7 @@ vi.mock('../../src/utils/logger', () => ({
 }));
 
 import { useBroadcast } from '../../src/hooks/send/useBroadcast';
+import { walletActivityKeys, walletKeys } from '../../src/hooks/queries/useWallets';
 
 const baseTxData = {
   psbtBase64: 'signed-psbt',
@@ -253,6 +254,30 @@ describe('useBroadcast', () => {
       expect.stringContaining('Amount: 5000 sats'),
       'Transaction Broadcast'
     );
+  });
+
+  it('refreshes only live canonical caches after broadcast', async () => {
+    const { result } = renderHook(() => useBroadcast(createDeps()));
+
+    await act(async () => {
+      await result.current.broadcastTransaction();
+    });
+
+    expect(mocks.refetchQueries).toHaveBeenCalledTimes(2);
+    expect(mocks.refetchQueries).toHaveBeenCalledWith({
+      queryKey: walletActivityKeys.pendingTransactions.all,
+    });
+    expect(mocks.refetchQueries).toHaveBeenCalledWith({ queryKey: walletKeys.all });
+    expect(mocks.invalidateQueries).toHaveBeenCalledTimes(1);
+    expect(mocks.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: walletActivityKeys.recentTransactions.all,
+    });
+    expect(mocks.refetchQueries).not.toHaveBeenCalledWith({
+      queryKey: ['wallet', 'wallet-1'],
+    });
+    expect(mocks.invalidateQueries).not.toHaveBeenCalledWith({
+      queryKey: ['transactions', 'wallet-1'],
+    });
   });
 
   it('prefers raw transaction hex over PSBT when both signed sources are available for single-sig', async () => {

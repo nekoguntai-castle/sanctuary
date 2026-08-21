@@ -20,7 +20,7 @@ import { useEffect, useRef } from 'react';
 import { WebSocketChannels } from '@sanctuary/shared/types/websocket';
 import { websocketClient, WebSocketEvent } from '../../services/websocket';
 import { getQueryClient } from '../../providers/QueryProvider';
-import { walletKeys } from '../queries/useWallets';
+import { walletActivityKeys, walletKeys } from '../queries/useWallets';
 import { useWebSocket } from './useWebSocket';
 import {
   applyAuthoritativeSyncSnapshot,
@@ -55,13 +55,13 @@ export const useWebSocketQueryInvalidation = () => {
       // Invalidate pending transactions when any transaction event occurs
       if (event.event === 'transaction' || event.event === 'confirmation') {
         // Invalidate pending transactions query (Dashboard block visualization)
-        queryClient.invalidateQueries({ queryKey: ['pendingTransactions'] });
+        queryClient.invalidateQueries({ queryKey: walletActivityKeys.pendingTransactions.all });
         // Also invalidate recent transactions query
-        queryClient.invalidateQueries({ queryKey: ['recentTransactions'] });
+        queryClient.invalidateQueries({ queryKey: walletActivityKeys.recentTransactions.all });
         // ...and the period totals shown above that list, or a new transaction
         // would appear in the list under a summary still reporting the old
         // count for as long as the dashboard stayed open.
-        queryClient.invalidateQueries({ queryKey: ['activitySummary'] });
+        queryClient.invalidateQueries({ queryKey: walletActivityKeys.activitySummary.all });
       }
 
       // Invalidate wallet balance when balance changes
@@ -77,11 +77,11 @@ export const useWebSocketQueryInvalidation = () => {
       if (event.event !== 'newBlock') return;
 
       // Invalidate pending transactions to show updated confirmations
-      queryClient.invalidateQueries({ queryKey: ['pendingTransactions'] });
-      queryClient.invalidateQueries({ queryKey: ['recentTransactions'] });
+      queryClient.invalidateQueries({ queryKey: walletActivityKeys.pendingTransactions.all });
+      queryClient.invalidateQueries({ queryKey: walletActivityKeys.recentTransactions.all });
       // A new block confirms transactions, which changes the confirmed-only
       // period totals.
-      queryClient.invalidateQueries({ queryKey: ['activitySummary'] });
+      queryClient.invalidateQueries({ queryKey: walletActivityKeys.activitySummary.all });
       // Also refresh wallets since UTXOs may have new confirmations
       queryClient.invalidateQueries({ queryKey: walletKeys.all });
     };

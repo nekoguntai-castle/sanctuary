@@ -13,6 +13,7 @@ import { useErrorHandler } from '../useErrorHandler';
 import { useNotificationSound } from '../useNotificationSound';
 import { usePriceFreeFormatter } from '../../contexts/CurrencyContext';
 import { queryClient } from '../../providers/QueryProvider';
+import { walletActivityKeys, walletKeys } from '../queries/useWallets';
 import { isMultisigType } from '../../types';
 import { createLogger } from '../../utils/logger';
 import { toHex } from '../../utils/bufferUtils';
@@ -195,17 +196,15 @@ const showBroadcastReconciliationWarning = (showWarning: ShowWarning, txid: stri
   );
 };
 
-const refetchBroadcastCaches = async (walletId: string): Promise<void> => {
+const refetchBroadcastCaches = async (): Promise<void> => {
   // Refetch React Query caches so Dashboard updates immediately.
   // invalidateQueries only marks as stale and can race with navigate().
   await Promise.all([
-    queryClient.refetchQueries({ queryKey: ['pendingTransactions'] }),
-    queryClient.refetchQueries({ queryKey: ['wallets'] }),
-    queryClient.refetchQueries({ queryKey: ['wallet', walletId] }),
+    queryClient.refetchQueries({ queryKey: walletActivityKeys.pendingTransactions.all }),
+    queryClient.refetchQueries({ queryKey: walletKeys.all }),
   ]);
 
-  queryClient.invalidateQueries({ queryKey: ['recentTransactions'] });
-  queryClient.invalidateQueries({ queryKey: ['transactions', walletId] });
+  queryClient.invalidateQueries({ queryKey: walletActivityKeys.recentTransactions.all });
 };
 
 const getBroadcastErrorMessage = (err: unknown): string => {
@@ -305,7 +304,7 @@ export function useBroadcast({
         showBroadcastSuccess(showSuccess, format, broadcastResult.txid, state.outputs.length, effectiveAmount, txData.fee);
         playEventSound('send');
       }
-      await refetchBroadcastCaches(walletId);
+      await refetchBroadcastCaches();
       if (!lease.isCurrent()) return false;
       navigate(`/wallets/${walletId}`);
       return true;

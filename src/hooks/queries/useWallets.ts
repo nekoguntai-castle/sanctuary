@@ -15,6 +15,9 @@ import { mergeWalletListHttpSyncState } from '../../utils/walletSyncSnapshot';
 const EMPTY_TRANSACTIONS: Awaited<ReturnType<typeof transactionsApi.getTransactions>> = [];
 const EMPTY_PENDING: Awaited<ReturnType<typeof transactionsApi.getPendingTransactions>> = [];
 
+type Timeframe = '1D' | '1W' | '1M' | '1Y' | 'ALL';
+type WalletSparklineInput = readonly [id: string, balance: number];
+
 // Base keys from factory, extended with wallet-specific sub-resources
 const baseKeys = createQueryKeys('wallets');
 
@@ -27,6 +30,40 @@ export const walletKeys = {
   transactions: (id: string, params?: { page?: number; limit?: number; offset?: number }) =>
     [...baseKeys.all, 'transactions', id, params?.page, params?.limit, params?.offset] as const,
   balance: (id: string) => [...baseKeys.all, 'balance', id] as const,
+};
+
+const recentTransactionsPrefix = ['recentTransactions'] as const;
+const pendingTransactionsPrefix = ['pendingTransactions'] as const;
+const balanceHistoryPrefix = ['balanceHistory'] as const;
+const activitySummaryPrefix = ['activitySummary'] as const;
+const walletSparklinesPrefix = ['walletSparklines'] as const;
+
+/** Canonical keys for wallet activity queries that intentionally predate walletKeys. */
+export const walletActivityKeys = {
+  recentTransactions: {
+    all: recentTransactionsPrefix,
+    page: (walletIdsKey: string, pageSize: number, page: number) =>
+      [...recentTransactionsPrefix, walletIdsKey, pageSize, page] as const,
+  },
+  pendingTransactions: {
+    all: pendingTransactionsPrefix,
+    list: (walletIdsKey: string) => [...pendingTransactionsPrefix, walletIdsKey] as const,
+  },
+  balanceHistory: {
+    all: balanceHistoryPrefix,
+    detail: (walletIdsKey: string, timeframe: Timeframe, totalBalance: number) =>
+      [...balanceHistoryPrefix, walletIdsKey, timeframe, totalBalance] as const,
+  },
+  activitySummary: {
+    all: activitySummaryPrefix,
+    detail: (walletIdsKey: string, timeframe: Timeframe) =>
+      [...activitySummaryPrefix, walletIdsKey, timeframe] as const,
+  },
+  walletSparklines: {
+    all: walletSparklinesPrefix,
+    list: (inputs: readonly WalletSparklineInput[]) =>
+      [...walletSparklinesPrefix, inputs] as const,
+  },
 };
 
 /**
@@ -82,7 +119,7 @@ export function useRecentTransactions(
   const offset = page * pageSize;
 
   const query = useQuery({
-    queryKey: ['recentTransactions', walletIdsKey, pageSize, page],
+    queryKey: walletActivityKeys.recentTransactions.page(walletIdsKey, pageSize, page),
     queryFn: async () => {
       if (walletIds.length === 0) return [];
       // Single API call - server handles aggregation and sorting
@@ -131,7 +168,7 @@ export function usePendingTransactions(walletIds: string[]) {
   const walletIdsKey = walletIds.join(',');
 
   const query = useQuery({
-    queryKey: ['pendingTransactions', walletIdsKey],
+    queryKey: walletActivityKeys.pendingTransactions.list(walletIdsKey),
     queryFn: async () => {
       if (walletIds.length === 0) return [];
       // Fetch all wallets in parallel, single state update when all complete
@@ -161,12 +198,10 @@ export function usePendingTransactions(walletIds: string[]) {
  * Returns a stable function reference to prevent re-renders
  */
 export const useInvalidateAllWallets = createInvalidateAll(walletKeys, [
-  ['recentTransactions'],
-  ['pendingTransactions'],
-  ['balanceHistory'],
+  walletActivityKeys.recentTransactions.all,
+  walletActivityKeys.pendingTransactions.all,
+  walletActivityKeys.balanceHistory.all,
 ]);
-
-type Timeframe = '1D' | '1W' | '1M' | '1Y' | 'ALL';
 
 /**
  * Hook to fetch all transactions from all wallets for balance history chart
@@ -183,7 +218,7 @@ export function useBalanceHistory(
   const walletIdsKey = walletIds.join(',');
 
   const query = useQuery({
-    queryKey: ['balanceHistory', walletIdsKey, timeframe, totalBalance],
+    queryKey: walletActivityKeys.balanceHistory.detail(walletIdsKey, timeframe, totalBalance),
     queryFn: async () => {
       if (walletIds.length === 0) return [];
       return transactionsApi.getBalanceHistory(timeframe, totalBalance, walletIds);
@@ -230,7 +265,7 @@ export function useActivitySummary(walletIds: string[], timeframe: Timeframe) {
   const walletIdsKey = walletIds.join(',');
 
   const query = useQuery({
-    queryKey: ['activitySummary', walletIdsKey, timeframe],
+    queryKey: walletActivityKeys.activitySummary.detail(walletIdsKey, timeframe),
     queryFn: async () => transactionsApi.getActivitySummary(timeframe, walletIds),
     enabled: walletIds.length > 0,
     // Matches the endpoint's own 30s cache; refetching faster than that would
@@ -250,8 +285,6 @@ export type WalletSparklineResult =
   | { status: 'ready'; values: [number, number, ...number[]] }
   | { status: 'unavailable' }
   | { status: 'error' };
-
-type WalletSparklineInput = readonly [id: string, balance: number];
 
 function sortedSparklineInputs(
   wallets: Array<{ id: string; balance: number }>
@@ -290,7 +323,7 @@ export function useWalletSparklines(
   const inputs = sortedSparklineInputs(wallets);
 
   const query = useQuery({
-    queryKey: ['walletSparklines', inputs],
+    queryKey: walletActivityKeys.walletSparklines.list(inputs),
     queryFn: async () => {
       const results = await Promise.all(inputs.map(fetchSparkline));
       return Object.fromEntries(results) as Record<string, WalletSparklineResult>;

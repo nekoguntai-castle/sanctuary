@@ -18,6 +18,10 @@ import {
 import {
   useWebSocketQueryInvalidation,
 } from '../../../src/hooks/websocket';
+import {
+  walletActivityKeys,
+  walletKeys,
+} from '../../../src/hooks/queries/useWallets';
 
 function resetUseWebSocketQueryInvalidationHarness(): void {
   vi.clearAllMocks();
@@ -170,8 +174,15 @@ function registerTransactionEventHandlingTests(): void {
       emitWebSocketEvent('transaction', transactionEvent);
 
       await waitFor(() => {
-        expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['pendingTransactions'] });
-        expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['recentTransactions'] });
+        expect(mockInvalidateQueries).toHaveBeenCalledWith({
+          queryKey: walletActivityKeys.pendingTransactions.all,
+        });
+        expect(mockInvalidateQueries).toHaveBeenCalledWith({
+          queryKey: walletActivityKeys.recentTransactions.all,
+        });
+        expect(mockInvalidateQueries).toHaveBeenCalledWith({
+          queryKey: walletActivityKeys.activitySummary.all,
+        });
       });
     });
 
@@ -194,8 +205,15 @@ function registerTransactionEventHandlingTests(): void {
       emitWebSocketEvent('confirmation', confirmationEvent);
 
       await waitFor(() => {
-        expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['pendingTransactions'] });
-        expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['recentTransactions'] });
+        expect(mockInvalidateQueries).toHaveBeenCalledWith({
+          queryKey: walletActivityKeys.pendingTransactions.all,
+        });
+        expect(mockInvalidateQueries).toHaveBeenCalledWith({
+          queryKey: walletActivityKeys.recentTransactions.all,
+        });
+        expect(mockInvalidateQueries).toHaveBeenCalledWith({
+          queryKey: walletActivityKeys.activitySummary.all,
+        });
       });
     });
 
@@ -218,7 +236,7 @@ function registerTransactionEventHandlingTests(): void {
       emitWebSocketEvent('balance', balanceEvent);
 
       await waitFor(() => {
-        expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['wallets'] });
+        expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: walletKeys.all });
       });
     });
   });
@@ -245,9 +263,16 @@ function registerNewBlockEventHandlingTests(): void {
       emitWebSocketEvent('newBlock', newBlockEvent);
 
       await waitFor(() => {
-        expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['pendingTransactions'] });
-        expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['recentTransactions'] });
-        expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['wallets'] });
+        expect(mockInvalidateQueries).toHaveBeenCalledWith({
+          queryKey: walletActivityKeys.pendingTransactions.all,
+        });
+        expect(mockInvalidateQueries).toHaveBeenCalledWith({
+          queryKey: walletActivityKeys.recentTransactions.all,
+        });
+        expect(mockInvalidateQueries).toHaveBeenCalledWith({
+          queryKey: walletActivityKeys.activitySummary.all,
+        });
+        expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: walletKeys.all });
       });
     });
 
