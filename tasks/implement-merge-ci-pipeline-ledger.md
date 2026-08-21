@@ -7,7 +7,8 @@ Rebuild policy: `after-plan`
 | Phase | Target branch | Task branch | Worktree | Created by loop | Converted to next phase | Cleanup status | PR | Merge commit |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Phase 0/1a | `main` | `codex/implement-merge/ci-truthful-gates` | `/home/nekoguntai/sanctuary-ci-truthful-gates` | yes | no | retained pending final cleanup | [#871](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/871) | `331bcb83272a12d58b7b9299832d5950c7ef3dd6` |
-| Phase 1b | `main` | `codex/implement-merge/ci-install-hermetic` | `/home/nekoguntai/sanctuary-ci-install-hermetic` | yes | no | active | pending | pending |
+| Phase 1b | `main` | `codex/implement-merge/ci-install-hermetic` | `/home/nekoguntai/sanctuary-ci-install-hermetic` | yes | no | retained pending final cleanup | [#873](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/873) | `fdee4acc2bf41126a8dab309a7345a2c6179d7e9` |
+| Phase 1c | `main` | `codex/implement-merge/ci-upgrade-sync-fixture` | `/home/nekoguntai/sanctuary-ci-upgrade-sync-fixture` | yes | no | active | pending | pending |
 
 ## Ownership boundary
 
@@ -37,3 +38,10 @@ from cleanup and mutation.
   digest-pinned docker-socket-proxy before `up --no-build`, so the backend was
   never created. Phase 1b owns the hermetic external-image prefetch fix; the
   existing tag is not mutated.
+- 2026-08-21: Phase 1b merged through PR #873. PR CI, all landed-main
+  workflows, fresh-install E2E, and installer E2E passed. Manual upgrade-baseline
+  run 11812 proved the missing-image failure was fixed, then exposed a separate
+  fixture defect: `latest-stable` now already contains the wallet-sync-state
+  migration, while the fixture incorrectly expected that migration to rerun.
+  Phase 1c owns schema-aware legacy-versus-structured fixture seeding; the
+  older `n-2` baseline retains the actual migration proof.

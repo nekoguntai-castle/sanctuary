@@ -244,8 +244,10 @@ precisely; measurement itself does not become a required failure point.
 - [x] Add LLM proxy lint, explicit gateway build/typecheck, and local/CI coverage
       parity.
 - [x] Add Docker job timeouts.
-- [ ] Make online installs explicitly fetch missing digest-pinned external
+- [x] Make online installs explicitly fetch missing digest-pinned external
       runtime images before no-build startup; preserve pull-free offline mode.
+- [ ] Make upgrade fixtures distinguish legacy source schemas from already
+      migrated latest-stable schemas while retaining historical migration proof.
 
 Acceptance: deliberate skip counts are enumerated; unexpected skips fail;
 required aggregate contexts remain stable and fail closed; direct main pushes

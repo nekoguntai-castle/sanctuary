@@ -1025,6 +1025,18 @@ test_upgrade_harness_covers_wallet_sync_state_migration() {
     "fixture should assert the recovered failure class" || failures=1
   assert_contains "$helper_contents" "legacy failure text was not classified" \
     "fixture should assert the taxonomy backfill on a settled failure" || failures=1
+  assert_contains "$helper_contents" "sourceHasStructuredSyncState" \
+    "fixture should distinguish an already-migrated source from a legacy source" || failures=1
+  assert_contains "$helper_contents" "sourceStructuredSyncState" \
+    "fixture should carry the detected source schema mode into verification" || failures=1
+  assert_contains "$helper_contents" 'table_schema = ${PUBLIC_SCHEMA}' \
+    "fixture should parameterize schema detection inside the shell-quoted Node script" || failures=1
+  assert_contains "$helper_contents" 'THEN ${FAILED_CLASS}' \
+    "fixture should parameterize structured failure classes inside the shell-quoted Node script" || failures=1
+  assert_contains "$helper_contents" 'THEN ${INLINE_OWNER}' \
+    "fixture should parameterize structured execution owners inside the shell-quoted Node script" || failures=1
+  assert_contains "$helper_contents" "Structured wallet sync state preserved across upgrade" \
+    "fixture should report preservation instead of claiming a rerun migration" || failures=1
   # demoteStrandedInlineRetries() clears the migration's recovered retry position
   # on the first boot, so the handoff is what an upgrade can actually observe.
   assert_contains "$helper_contents" "stranded retry was never reconciled" \

@@ -10,8 +10,11 @@
 # an operator's node as a wallet whose failure history is silently reclassified,
 # or as a migration that aborts mid-upgrade on an integer cast.
 #
-# Seeded on the source ref through raw SQL and pre-migration columns only, so the
-# fixture never depends on the schema it is meant to prove.
+# Seeded on the source ref through raw SQL. Legacy sources receive only
+# pre-migration columns, so the fixture proves the backfill. A latest-stable
+# source that already owns the structured columns receives schema-consistent
+# values, so the same fixture proves preservation without pretending that an
+# already-applied migration will run again.
 #
 # Two post-upgrade writers act on these rows, and the fixture is built around
 # both rather than trying to outrun them.
@@ -91,6 +94,11 @@ const prisma = prismaModule.default || prismaModule;
 
 const FAILED = "failed";
 const RETRYING = "retrying";
+const PUBLIC_SCHEMA = "public";
+const WALLETS_TABLE = "wallets";
+const FAILURE_CLASS_COLUMN = "lastSyncFailureClass";
+const FAILED_CLASS = "electrum_unavailable";
+const INLINE_OWNER = "inline";
 // Past the stale window by a wide margin, so the post-upgrade sweep cannot
 // select these rows however long the image rebuild takes.
 const QUIESCENT_UNTIL = new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -111,6 +119,17 @@ const QUIESCENT_UNTIL = new Date(Date.now() + 24 * 60 * 60 * 1000);
   if (!operational) {
     throw new Error("operational wallet missing");
   }
+
+  const [structuredSchema] = await prisma.$queryRaw`
+    SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = ${PUBLIC_SCHEMA}
+        AND table_name = ${WALLETS_TABLE}
+        AND column_name = ${FAILURE_CLASS_COLUMN}
+    ) AS "present"
+  `;
+  const sourceHasStructuredSyncState = structuredSchema?.present === true;
 
   // A wallet that never failed proves the backfill does not fabricate a failure
   // class out of nothing. Both other fixture wallets are about to be given an
@@ -157,9 +176,35 @@ const QUIESCENT_UNTIL = new Date(Date.now() + 24 * 60 * 60 * 1000);
     throw new Error(`expected to seed 2 wallet rows, updated ${settled} and ${stranded}`);
   }
 
+  if (sourceHasStructuredSyncState) {
+    const structured = await prisma.$executeRaw`
+      UPDATE "wallets"
+      SET "lastSyncFailureClass" = CASE
+            WHEN "id" = ${process.env.UPGRADE_WALLET_ID} THEN ${FAILED_CLASS}
+            ELSE NULL
+          END,
+          "syncExecutionOwner" = CASE
+            WHEN "id" = ${process.env.UPGRADE_OPERATIONAL_WALLET_ID} THEN ${INLINE_OWNER}
+            ELSE NULL
+          END,
+          "syncRetryCount" = CASE
+            WHEN "id" = ${process.env.UPGRADE_OPERATIONAL_WALLET_ID} THEN 3
+            ELSE 0
+          END
+      WHERE "id" IN (
+        ${process.env.UPGRADE_WALLET_ID},
+        ${process.env.UPGRADE_OPERATIONAL_WALLET_ID}
+      )
+    `;
+    if (structured !== 2) {
+      throw new Error(`expected to seed 2 structured wallet rows, updated ${structured}`);
+    }
+  }
+
   process.stdout.write("walletSyncStateSeeded=true\n");
   process.stdout.write(`neverFailedWalletId=${neverFailed.id}\n`);
   process.stdout.write(`quiescentUntil=${QUIESCENT_UNTIL.toISOString()}\n`);
+  process.stdout.write(`sourceStructuredSyncState=${sourceHasStructuredSyncState}\n`);
 })()
   .then(() => prisma.$disconnect())
   .catch(async (error) => {
@@ -182,7 +227,9 @@ const QUIESCENT_UNTIL = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
     TEST_NEVER_FAILED_WALLET_ID=$(echo "$seed_output" | sed -n 's/^neverFailedWalletId=//p' | tail -n 1)
     TEST_SYNC_QUIESCENT_UNTIL=$(echo "$seed_output" | sed -n 's/^quiescentUntil=//p' | tail -n 1)
-    if [ -z "$TEST_NEVER_FAILED_WALLET_ID" ] || [ -z "$TEST_SYNC_QUIESCENT_UNTIL" ]; then
+    TEST_SYNC_SOURCE_STRUCTURED=$(echo "$seed_output" | sed -n 's/^sourceStructuredSyncState=//p' | tail -n 1)
+    if [ -z "$TEST_NEVER_FAILED_WALLET_ID" ] || [ -z "$TEST_SYNC_QUIESCENT_UNTIL" ] \
+        || { [ "$TEST_SYNC_SOURCE_STRUCTURED" != "true" ] && [ "$TEST_SYNC_SOURCE_STRUCTURED" != "false" ]; }; then
         log_error "Wallet sync state fixture did not return its seeded identifiers"
         log_error "Output: $seed_output"
         return 1
@@ -197,7 +244,8 @@ verify_wallet_sync_state_migration() {
         return 0
     fi
 
-    if [ -z "$TEST_NEVER_FAILED_WALLET_ID" ] || [ -z "$TEST_SYNC_QUIESCENT_UNTIL" ]; then
+    if [ -z "$TEST_NEVER_FAILED_WALLET_ID" ] || [ -z "$TEST_SYNC_QUIESCENT_UNTIL" ] \
+        || { [ "$TEST_SYNC_SOURCE_STRUCTURED" != "true" ] && [ "$TEST_SYNC_SOURCE_STRUCTURED" != "false" ]; }; then
         log_error "Wallet sync state verification requires the seeded identifiers"
         return 1
     fi
@@ -213,6 +261,7 @@ verify_wallet_sync_state_migration() {
         -e "UPGRADE_RESTART_REASON=$WALLET_SYNC_STATE_RESTART_REASON" \
         -e "UPGRADE_RESTART_CLASS=$WALLET_SYNC_STATE_RESTART_CLASS" \
         -e "UPGRADE_QUIESCENT_UNTIL=$TEST_SYNC_QUIESCENT_UNTIL" \
+        -e "UPGRADE_SOURCE_STRUCTURED_SYNC_STATE=$TEST_SYNC_SOURCE_STRUCTURED" \
         backend node -e '
 function loadModule(candidates) {
   for (const candidate of candidates) {
@@ -358,6 +407,7 @@ function assertUnscheduled(label, wallet) {
   }
 
   process.stdout.write("walletSyncStateMigrationVerified=true\n");
+  process.stdout.write(`walletSyncStateSourceMode=${process.env.UPGRADE_SOURCE_STRUCTURED_SYNC_STATE === "true" ? "structured" : "legacy"}\n`);
 })()
   .then(() => prisma.$disconnect())
   .catch(async (error) => {
@@ -378,5 +428,16 @@ function assertUnscheduled(label, wallet) {
         return 1
     fi
 
-    log_success "Wallet sync state migration verified"
+    local expected_source_mode="legacy"
+    [ "$TEST_SYNC_SOURCE_STRUCTURED" = "true" ] && expected_source_mode="structured"
+    if ! echo "$output" | grep -q "^walletSyncStateSourceMode=${expected_source_mode}$"; then
+        log_error "Wallet sync state verification reported the wrong source mode: $output"
+        return 1
+    fi
+
+    if [ "$TEST_SYNC_SOURCE_STRUCTURED" = "true" ]; then
+        log_success "Structured wallet sync state preserved across upgrade"
+    else
+        log_success "Legacy wallet sync state migration verified"
+    fi
 }
