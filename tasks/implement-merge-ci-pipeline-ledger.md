@@ -22,7 +22,7 @@ Rebuild policy: `after-plan`
 | Phase 1f | `main` | `codex/implement-merge/ci-auth-e2e-fidelity` | `/home/nekoguntai/sanctuary-ci-auth-e2e-fidelity` | yes | no | cleaned after landed-main verification | [#891](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/891) | `2b5d05b818d33609b45748f51fa72079d5a8dad6` |
 | Phase 4 | `main` | `codex/implement-merge/ci-release-preflight-truth` | `/home/nekoguntai/sanctuary-ci-release-preflight-truth` | yes | no | cleaned after landed-main and manual RC verification | [#892](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/892) | `a355673249e98c2b3cfff38a7f5643b2968e517b` |
 | Phase 3d | `main` | `codex/implement-merge/ci-quality-artifact-policy` | `/home/nekoguntai/sanctuary-ci-quality-artifact-policy` | yes | no | retained pending final cleanup | [#893](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/893) | `6436668d9766ba2be180f664c874f1a096f207ca` |
-| Phase 3e | `main` | `codex/implement-merge/ci-runtime-cve-socket` | `/home/nekoguntai/sanctuary-ci-runtime-cve-socket` | yes | no | active correction | pending | pending |
+| Phase 3e | `main` | `codex/implement-merge/ci-runtime-cve-socket` | `/home/nekoguntai/sanctuary-ci-runtime-cve-socket` | yes | no | cleaned after landed-main and RC verification | [#894](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/894) | `a35e72694f825b7374adbb267295ad8c76f7a6ae` |
 
 ## Ownership boundary
 
@@ -388,3 +388,20 @@ from cleanup and mutation.
   job-local `/var/run/docker.sock` as a daemon-host path on the rootless Podman
   runner. Phase 3e therefore owns the deterministic socket-discovery correction;
   no release gate or summary dependency changes.
+- 2026-08-22: Phase 3e merged through PR #894 as `a35e72694f`. Its exact PR
+  Architecture, Quality, Test, and Vector workflows passed in 118, 263, 172,
+  and 968 seconds, including all three protected aggregate contexts. Landed-main
+  Architecture, Quality, Test, and Vector workflows then passed in 125, 267,
+  175, and 962 seconds; the combined commit status was green.
+- 2026-08-22: Controlled corrected RC run 12015 passed strict observer
+  acceptance at exact candidate `a35e72694f825b7374adbb267295ad8c76f7a6ae`.
+  The 254-second workflow was only 15 seconds longer than the pre-observer run
+  11995; the successful observer occupied 27 seconds, below its 60-second bound.
+  Artifact 53536 reports overall `observed` and contains four full Trivy JSON
+  reports whose metadata binds the exact candidate, image-lock SHA, and immutable
+  image IDs. Findings were backend 1 critical/8 high, frontend 0/0, gateway
+  1/7, and LLM proxy 1/7: 25 fixable and zero unfixable findings in total. The
+  rootless Podman socket was the sole successful daemon-host candidate, cleanup
+  left no run-scoped containers, networks, or volumes, and Validation Summary
+  remained a truthful nonconsumer. Phase 3e worktree and local/remote branch
+  were then removed after exact clean/head/tree/ancestry checks.
