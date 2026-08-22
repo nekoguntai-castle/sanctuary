@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Job, Queue, QueueEvents, Worker, type ConnectionOptions } from 'bullmq';
+import { Job, Queue, Worker, type ConnectionOptions } from 'bullmq';
 import Redis from 'ioredis';
 import { afterEach, expect, it, vi } from 'vitest';
 import { toBullMqJobId } from '../../../src/jobs/bullMqJobIds';
@@ -11,7 +11,6 @@ const QUEUE_PREFIX = 'sanctuary:worker';
 describeWithRedis('webhook notification retained-job recovery', () => {
   let dispatcherShutdown: (() => Promise<void>) | undefined;
   let queue: Queue | undefined;
-  let queueEvents: QueueEvents | undefined;
   let redis: Redis | undefined;
   let worker: Worker | undefined;
   let job: Job | undefined;
@@ -19,7 +18,6 @@ describeWithRedis('webhook notification retained-job recovery', () => {
   afterEach(async () => {
     await worker?.close();
     await job?.remove().catch(() => undefined);
-    await queueEvents?.close();
     await queue?.close();
     await dispatcherShutdown?.();
     await redis?.quit();
@@ -39,7 +37,6 @@ describeWithRedis('webhook notification retained-job recovery', () => {
       dispatcherShutdown = dispatcher.shutdownNotificationDispatcher;
 
       queue = new Queue(QUEUE_NAME, { connection, prefix: QUEUE_PREFIX });
-      queueEvents = new QueueEvents(QUEUE_NAME, { connection, prefix: QUEUE_PREFIX });
       const deliveryId = `retained-${terminalState}-${randomUUID()}`;
       const payload = { deliveryId, attempt: 1 };
       const jobId = toBullMqJobId(`webhook-delivery:${deliveryId}:1`);
@@ -51,23 +48,26 @@ describeWithRedis('webhook notification retained-job recovery', () => {
         prefix: QUEUE_PREFIX,
         concurrency: 1,
       });
+      await worker.waitUntilReady();
 
-      job = await queue.add('webhook-delivery', payload, {
+      const retainedJob = await queue.add('webhook-delivery', payload, {
         jobId,
         attempts: 1,
         removeOnComplete: false,
         removeOnFail: false,
       });
+      job = retainedJob;
+      await waitForTerminalState(retainedJob, terminalState, 5_000);
+      job = await queue.getJob(jobId);
+      expect(job).toBeDefined();
       if (terminalState === 'failed') {
-        await expect(job.waitUntilFinished(queueEvents, 5_000)).rejects.toThrow(
-          'intentional retained failure',
-        );
+        expect(job!.failedReason).toBe('intentional retained failure');
       } else {
-        await expect(job.waitUntilFinished(queueEvents, 5_000)).resolves.toBeNull();
+        expect(job!.returnvalue).toBeNull();
       }
       await worker.close();
       worker = undefined;
-      await expect(job.getState()).resolves.toBe(terminalState);
+      await expect(job!.getState()).resolves.toBe(terminalState);
 
       await expect(
         dispatcher.queueWebhookDeliveryNotification(payload),
@@ -90,4 +90,22 @@ function toBullConnection(redis: Redis): ConnectionOptions {
     password: redis.options.password,
     db: redis.options.db,
   };
+}
+
+async function waitForTerminalState(
+  job: Job,
+  expectedState: 'completed' | 'failed',
+  timeoutMs: number,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  let state = await job.getState();
+  while (state !== expectedState && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    state = await job.getState();
+  }
+  if (state !== expectedState) {
+    throw new Error(
+      `Timed out waiting for retained job state ${expectedState}; last state was ${state}`,
+    );
+  }
 }
