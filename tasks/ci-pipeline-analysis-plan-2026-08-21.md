@@ -273,14 +273,17 @@ falls; no required context can succeed when its selected test set is empty.
 
 ### Phase 3 — Consolidate setup and artifact work
 
-- [ ] Pilot one shared frontend build artifact for browser/render jobs and retain
-      it only if measured wall and runner time beat independent builds.
+- [x] Evaluate one shared frontend build artifact for browser/render jobs; reject
+      it while their build-time API URLs differ and each measured build costs
+      only 4-6 seconds.
 - [x] Consolidate quick browser/render preparation or remove those quick jobs if
       Phase 2 proves they add no unique signal.
-- [ ] Standardize root npm caching through a single composite action, beginning
-      with frontend typecheck/coverage; measure cold and warm cases.
-- [ ] Upload verbose diagnostics on failure only where reliable; always retain
-      coverage, mutation, release, and other required evidence.
+- [x] Evaluate standardized root npm download caching; do not add it while exact
+      warm hits leave clean `npm ci` at the existing 16-20 second range.
+- [ ] Upload verbose diagnostics on failure only where reliable; Phase 3c owns
+      the Test workflow, while remaining workflows still require an evidence
+      inventory. Always retain coverage, mutation, release, and other required
+      evidence.
 - [x] Split architecture graph/boundary checks from docs-site validation, and
       apply equivalent path filters to main pushes.
 

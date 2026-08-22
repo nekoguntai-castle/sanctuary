@@ -1449,6 +1449,58 @@ assert_not_contains "$TEST_WORKFLOW" \
   "quick lane must not duplicate full Stryker execution" \
   "quick-critical-mutation-shards:"
 
+while IFS='|' read -r diagnostic_job diagnostic_step; do
+  assert_named_job_step_contains "$TEST_WORKFLOW" \
+    "$diagnostic_job" \
+    "$diagnostic_step" \
+    "$diagnostic_job uploads verbose diagnostics only on failure" \
+    "if: failure()"
+done <<'DIAGNOSTIC_UPLOADS'
+quick-test-hygiene|Upload quick hygiene diagnostics
+quick-frontend-tests|Upload quick frontend diagnostics
+quick-backend-tests|Upload quick backend test diagnostics
+quick-backend-integration-smoke|Upload quick backend integration smoke diagnostics
+full-backend-typecheck|Upload backend typecheck diagnostics
+full-backend-unit-coverage-shards|Upload backend unit coverage shard diagnostics
+full-backend-unit-coverage|Upload backend unit coverage merge diagnostics
+full-backend-integration-tests|Upload backend integration diagnostics
+full-frontend-typechecks|Upload frontend typecheck diagnostics
+full-frontend-coverage-merge|Upload frontend coverage merge diagnostics
+full-gateway-tests|Upload gateway diagnostics
+full-llm-egress-proxy-tests|Upload LLM egress proxy diagnostics
+full-critical-mutation-shards|Upload critical mutation shard diagnostics
+full-browser-e2e-tests|Upload browser E2E diagnostics
+full-render-e2e-tests|Upload render E2E diagnostics
+full-build-check|Upload build-check diagnostics
+DIAGNOSTIC_UPLOADS
+
+for e2e_job in full-browser-e2e-tests full-render-e2e-tests; do
+  assert_named_job_step_contains "$TEST_WORKFLOW" \
+    "$e2e_job" \
+    "Upload Playwright report" \
+    "$e2e_job uploads its verbose HTML report only on failure" \
+    "if: failure()"
+done
+
+while IFS='|' read -r evidence_job evidence_step; do
+  assert_named_job_step_contains "$TEST_WORKFLOW" \
+    "$evidence_job" \
+    "$evidence_step" \
+    "$evidence_job retains required evidence on every outcome" \
+    "if: always()"
+done <<'REQUIRED_EVIDENCE_UPLOADS'
+full-backend-unit-coverage-shards|Upload backend coverage shard blob
+full-backend-unit-coverage|Upload merged backend coverage
+full-frontend-coverage-merge|Upload frontend coverage shard evidence
+full-frontend-coverage-merge|Upload frontend coverage
+full-gateway-tests|Upload gateway coverage
+full-llm-egress-proxy-tests|Upload LLM egress proxy coverage
+full-critical-mutation-shards|Upload critical mutation shard report
+full-critical-mutation|Upload merged critical mutation report
+full-browser-e2e-tests|Upload test results
+full-render-e2e-tests|Upload test results
+REQUIRED_EVIDENCE_UPLOADS
+
 for retired_quick_job in \
   "quick-gateway-tests:" \
   "quick-llm-egress-proxy-tests:" \
@@ -1489,6 +1541,30 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "full-test-summary" \
   'FULL_TEST_SUMMARY: ${{ needs.full-test-summary.result }}' \
   'require_success "Full Test Summary" "$FULL_TEST_SUMMARY"'
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "full test summary checks out local artifact actions before downloads" \
+  "full-test-summary:" \
+  "Checkout repository" \
+  "continue-on-error: true" \
+  "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd" \
+  "Download backend coverage" \
+  "uses: ./.github/actions/download-artifact"
+
+assert_named_job_not_contains "$TEST_WORKFLOW" \
+  "full-test-summary" \
+  "full test summary does not download unused mutation evidence" \
+  "Download critical mutation report"
+
+assert_named_job_contains "$TEST_WORKFLOW" \
+  "full-test-summary" \
+  "full test summary reads gateway coverage from the extracted directory root" \
+  "gateway-results/coverage-summary.json"
+
+assert_named_job_not_contains "$TEST_WORKFLOW" \
+  "full-test-summary" \
+  "full test summary rejects the stale nested gateway coverage path" \
+  "gateway-results/coverage/coverage-summary.json"
 
 assert_not_contains "$TEST_WORKFLOW" \
   "PR required checks must not no-op on merge group" \

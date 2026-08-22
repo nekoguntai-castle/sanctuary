@@ -220,6 +220,11 @@ async function runFixture(workflowContent, configure = () => {}, runtimeOptions 
   const rootDir = path.join(tempDir, 'repo');
   const manifestRoot = path.join(tempDir, 'manifests');
   writeWorkflow(rootDir, workflowContent);
+  writeRemoteAction(
+    manifestRoot,
+    'actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd',
+    "name: checkout\nruns:\n  using: 'node24'\n  main: dist/index.js\n",
+  );
   configure(rootDir, manifestRoot);
 
   try {
@@ -614,8 +619,65 @@ jobs:
     runs-on: ubuntu-latest
     needs: [detect-changes, full-lane-ready, full-backend-tests, full-frontend-tests, full-gateway-tests, full-llm-egress-proxy-tests, full-critical-mutation, full-browser-e2e-tests, full-render-e2e-tests, full-build-check]
     steps:
+      - name: Checkout repository
+        continue-on-error: true
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - name: Download backend coverage
+        run: echo download
       - run: echo full
 `;
+}
+
+async function assertBlocksSummaryDownloadWithoutCheckout() {
+  const workflow = validTestSuiteWorkflow().replace(
+    `      - name: Checkout repository
+        continue-on-error: true
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+`,
+    '',
+  );
+  const result = await runFixture(
+    `
+name: Runtime Check
+on: pull_request
+jobs: {}
+`,
+    (rootDir) => {
+      writeFile(path.join(rootDir, '.github/workflows/test.yml'), workflow);
+    },
+  );
+
+  assert.equal(result.findings.length, 0);
+  assert.match(
+    result.errors.join('\n'),
+    /full-test-summary" must attempt a non-blocking checkout before invoking its local artifact downloader/,
+  );
+}
+
+async function assertBlocksHardSummaryCheckout() {
+  const workflow = validTestSuiteWorkflow().replace(
+    `      - name: Checkout repository
+        continue-on-error: true
+`,
+    `      - name: Checkout repository
+`,
+  );
+  const result = await runFixture(
+    `
+name: Runtime Check
+on: pull_request
+jobs: {}
+`,
+    (rootDir) => {
+      writeFile(path.join(rootDir, '.github/workflows/test.yml'), workflow);
+    },
+  );
+
+  assert.equal(result.findings.length, 0);
+  assert.match(
+    result.errors.join('\n'),
+    /full-test-summary" must attempt a non-blocking checkout before invoking its local artifact downloader/,
+  );
 }
 
 async function assertBlocksManualFullTestSummaryStatusPost() {
@@ -889,6 +951,8 @@ await assertUsesTrackedManifestRootByDefault();
 await assertIgnoresForgejoGithubTokenForRemoteManifestFetches();
 await assertBlocksBareRepoRootCiHelperCalls();
 await assertAllowsWorkspaceAbsoluteCiHelperCalls();
+await assertBlocksSummaryDownloadWithoutCheckout();
+await assertBlocksHardSummaryCheckout();
 await assertBlocksManualFullTestSummaryStatusPost();
 await assertBlocksSkippedAsSuccessfulFullLanePrerequisite();
 await assertBlocksBrowserE2eMatrixFanout();

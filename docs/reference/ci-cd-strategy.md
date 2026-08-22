@@ -312,6 +312,21 @@ avoid duplicate setup. If it becomes the long pole again, change parallelism
 only after measuring shard balance, setup overhead, runner pressure, and merge
 overhead from workflow durations.
 
+`Full Test Summary` attempts a non-blocking checkout before invoking the local
+Forgejo artifact downloader. The checkout and coverage downloads are
+presentation-only and remain non-blocking; the upstream coverage gates own
+threshold and artifact completeness. Single-directory artifacts extract
+directly into their requested destination, so gateway coverage is read from
+`gateway-results/coverage-summary.json` rather than a synthetic nested
+`coverage/` directory.
+
+Test jobs always write concise diagnostic notices into their job summaries, but
+upload the verbose `ci-diagnostics-*` bundles only on failure. Browser and
+render HTML reports follow the same failure-only policy. Required evidence is
+different: coverage blobs and reports, mutation reports, and Playwright
+`test-results` timing files continue to upload on every outcome. Do not convert
+those evidence artifacts to failure-only troubleshooting data.
+
 Backend integration tests now use deterministic groups in `scripts/ci/backend-integration-groups.sh`. Run the group check after adding, removing, or renaming an integration spec:
 
 ```bash

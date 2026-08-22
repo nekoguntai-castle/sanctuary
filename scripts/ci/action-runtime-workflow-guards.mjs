@@ -78,6 +78,19 @@ export function inspectStrictFullTestSummaryGate(workflow, relativePath, state) 
       `${relativePath}: full-test-summary job must not exclude pull_request events`,
     );
   }
+  requireJobTextInOrder(
+    summaryJobBody,
+    relativePath,
+    state,
+    'full-test-summary',
+    [
+      'name: Checkout repository',
+      'continue-on-error: true',
+      'uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd',
+      'name: Download backend coverage',
+    ],
+    'must attempt a non-blocking checkout before invoking its local artifact downloader',
+  );
 
   inspectFullLaneParallelization(workflow, relativePath, state);
   inspectExhaustivePrDeduplication(workflow, relativePath, state);

@@ -152,7 +152,7 @@ jobs:
         run: scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Test Hygiene"
 
       - name: Upload quick hygiene diagnostics
-        if: always()
+        if: failure()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
@@ -216,7 +216,7 @@ jobs:
         run: scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Frontend"
 
       - name: Upload quick frontend diagnostics
-        if: always()
+        if: failure()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
@@ -324,7 +324,7 @@ jobs:
         run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Backend Tests"
 
       - name: Upload quick backend test diagnostics
-        if: always()
+        if: failure()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
@@ -413,7 +413,7 @@ jobs:
         run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Backend Integration Smoke"
 
       - name: Upload quick backend integration smoke diagnostics
-        if: always()
+        if: failure()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
@@ -573,7 +573,7 @@ jobs:
         run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Backend Typecheck"
 
       - name: Upload backend typecheck diagnostics
-        if: always()
+        if: failure()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
@@ -663,7 +663,7 @@ jobs:
         run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Backend Unit Coverage shard ${{ matrix.shard }}"
 
       - name: Upload backend unit coverage shard diagnostics
-        if: always()
+        if: failure()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
@@ -743,7 +743,7 @@ jobs:
         run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Backend Unit Coverage Merge"
 
       - name: Upload backend unit coverage merge diagnostics
-        if: always()
+        if: failure()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
@@ -963,7 +963,7 @@ jobs:
         run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Backend Integration"
 
       - name: Upload backend integration diagnostics
-        if: always()
+        if: failure()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
@@ -1124,7 +1124,7 @@ jobs:
         run: scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Frontend Typechecks"
 
       - name: Upload frontend typecheck diagnostics
-        if: always()
+        if: failure()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
@@ -1232,7 +1232,7 @@ jobs:
         run: scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Frontend Coverage Merge"
 
       - name: Upload frontend coverage merge diagnostics
-        if: always()
+        if: failure()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
@@ -1369,7 +1369,7 @@ jobs:
         run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Gateway"
 
       - name: Upload gateway diagnostics
-        if: always()
+        if: failure()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
@@ -1447,7 +1447,7 @@ jobs:
         run: scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "LLM Egress Proxy"
 
       - name: Upload LLM egress proxy diagnostics
-        if: always()
+        if: failure()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
@@ -1525,7 +1525,7 @@ jobs:
         run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Critical Mutation shard ${{ matrix.shard }}"
 
       - name: Upload critical mutation shard diagnostics
-        if: always()
+        if: failure()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
@@ -1832,7 +1832,7 @@ jobs:
         run: scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Browser E2E"
 
       - name: Upload browser E2E diagnostics
-        if: always()
+        if: failure()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
@@ -1843,7 +1843,7 @@ jobs:
           retention-days: 14
 
       - name: Upload Playwright report
-        if: always()
+        if: failure()
         uses: ./.github/actions/upload-artifact
         with:
           name: playwright-report-browser
@@ -1936,7 +1936,7 @@ jobs:
         run: scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Render E2E"
 
       - name: Upload render E2E diagnostics
-        if: always()
+        if: failure()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
@@ -1947,7 +1947,7 @@ jobs:
           retention-days: 14
 
       - name: Upload Playwright report
-        if: always()
+        if: failure()
         uses: ./.github/actions/upload-artifact
         with:
           name: playwright-report-render
@@ -2016,7 +2016,7 @@ jobs:
         run: scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Build Check"
 
       - name: Upload build-check diagnostics
-        if: always()
+        if: failure()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
@@ -2034,6 +2034,10 @@ jobs:
     needs: [detect-changes, full-lane-ready, full-backend-tests, full-frontend-tests, full-gateway-tests, full-llm-egress-proxy-tests, full-critical-mutation, full-browser-e2e-tests, full-render-e2e-tests, full-build-check]
 
     steps:
+      - name: Checkout repository
+        continue-on-error: true
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
       - name: Download backend coverage
         if: needs.full-backend-tests.result == 'success' || needs.full-backend-tests.result == 'failure'
         continue-on-error: true
@@ -2065,14 +2069,6 @@ jobs:
         with:
           name: llm-egress-proxy-coverage
           path: llm-egress-proxy-results/
-
-      - name: Download critical mutation report
-        if: needs.full-critical-mutation.result == 'success' || needs.full-critical-mutation.result == 'failure'
-        continue-on-error: true
-        uses: ./.github/actions/download-artifact
-        with:
-          name: critical-mutation-report
-          path: mutation-results/
 
       - name: Generate summary
         run: |
@@ -2121,12 +2117,12 @@ jobs:
             echo "### Gateway: Failed" >> $GITHUB_STEP_SUMMARY
           fi
 
-          if [ -f gateway-results/coverage/coverage-summary.json ]; then
+          if [ -f gateway-results/coverage-summary.json ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "#### Gateway Coverage" >> $GITHUB_STEP_SUMMARY
             echo "| Metric | Coverage |" >> $GITHUB_STEP_SUMMARY
             echo "|--------|----------|" >> $GITHUB_STEP_SUMMARY
-            jq -r '.total | to_entries[] | "| \(.key) | \(.value.pct)% |"' gateway-results/coverage/coverage-summary.json >> $GITHUB_STEP_SUMMARY
+            jq -r '.total | to_entries[] | "| \(.key) | \(.value.pct)% |"' gateway-results/coverage-summary.json >> $GITHUB_STEP_SUMMARY
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY

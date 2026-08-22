@@ -12,7 +12,9 @@ Rebuild policy: `after-plan`
 | Phase 0b | `main` | `codex/implement-merge/ci-performance-report` | `/home/nekoguntai/sanctuary-ci-performance-report` | yes | no | retained pending final cleanup | [#875](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/875) | `e3a8780e7869cda3ffadd60de35dc710830c5582` |
 | Phase 2a | `main` | `codex/implement-merge/ci-critical-path` | `/home/nekoguntai/sanctuary-ci-critical-path` | yes | no | retained pending final cleanup | [#881](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/881) | `4e43ab9acd1ed36a9b75b34a094c927261f23b02` |
 | Phase 2b | `main` | `codex/implement-merge/ci-quick-lane-dedup` | `/home/nekoguntai/sanctuary-ci-quick-lane-dedup` | yes | no | retained pending final cleanup | [#882](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/882) | `908d7ede694a9772aa246565c0749fb8064f5860` |
-| Phase 3a | `main` | `codex/implement-merge/ci-architecture-scope` | `/home/nekoguntai/sanctuary-ci-architecture-scope` | yes | no | active | pending | pending |
+| Phase 3a | `main` | `codex/implement-merge/ci-architecture-scope` | `/home/nekoguntai/sanctuary-ci-architecture-scope` | yes | no | retained pending final cleanup | [#883](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/883) | `07c7d37cac14f461b7cd6e321ddebf8e7f07712d` |
+| Phase 3b (rejected pilot) | `main` | `codex/implement-merge/ci-frontend-coverage-parallel` | `/home/nekoguntai/sanctuary-ci-frontend-coverage-parallel` | yes | no | retained as experiment record | [#884](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/884) | not merged (timing rollback) |
+| Phase 3c | `main` | `codex/implement-merge/ci-artifact-policy` | `/home/nekoguntai/sanctuary-ci-artifact-policy` | yes | no | active | [#885](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/885) | pending |
 
 ## Ownership boundary
 
@@ -126,3 +128,21 @@ from cleanup and mutation.
   changes avoid about 54 seconds of docs work, docs-only changes avoid about 35
   seconds of application/architecture work, and 16% of sampled main pushes skip
   the workflow entirely while retaining one visible Architecture result.
+- 2026-08-21: Phase 3a merged through PR #883 as `07c7d37cac`. All 30 PR
+  contexts passed; Architecture proved both selected scopes. Every landed-main
+  workflow passed, and the scoped Architecture job completed in 113 seconds.
+- 2026-08-21: Phase 3b PR #884 safely proved a two-child frontend coverage
+  matrix, but the experiment failed its validation-time contract. Raw coverage
+  execution improved 230 seconds and Test runner time rose only 4.1%, with no
+  native, OOM, artifact, lock, or test failure. Runner queues delayed the
+  children 220-247 seconds, however: coverage-gate latency improved only 71-72
+  seconds and Full Test Summary regressed 17 seconds. The PR was closed without
+  merge, its branch was retained, and a completion-ordering alternative was
+  rejected because it delayed frontend coverage and depended on queue order.
+- 2026-08-21: Phase 3c starts from `07c7d37cac`. A live-log audit found that
+  `Full Test Summary` had no checkout, so all five local artifact downloads
+  failed under `continue-on-error` and successful summaries contained no
+  coverage tables. The slice restores the local action, fixes the gateway
+  extraction path, removes an unused mutation download, and makes 16 verbose
+  Test diagnostic bundles plus two Playwright HTML reports failure-only while
+  preserving coverage, mutation, and Playwright timing evidence.
