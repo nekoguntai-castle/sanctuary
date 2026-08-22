@@ -105,6 +105,7 @@ test('live compatibility inventory matches production without claiming cutover',
   assert.deepEqual(result.errors, []);
   assert.equal(result.contract.cutoverComplete, false);
   assert.equal(result.contract.compatibility.staleScheduleState, 'legacy_desired_until_cutover');
+  assert.equal(result.contract.compatibility.admissionState, 'dormant_no_production_callers');
 });
 
 test('accepts an exact compatibility inventory fixture', () => {
@@ -162,6 +163,20 @@ test('rejects premature cutover and lifecycle weakening', () => {
   assert.throws(
     () => parseWalletSyncLifecycleContract(JSON.stringify(weakened)),
     /lifecycle\.forbiddenWalletHistoryTriggers/,
+  );
+});
+
+test('rejects a production admission caller before the activation release', () => {
+  const root = createFixture();
+  write(
+    root,
+    'server/src/services/earlyCutover.ts',
+    "import { requestIncrementalSync as request } from '../repositories/syncIntentRepository';\n"
+      + "void request('wallet-1');\n",
+  );
+  assert.match(
+    checkWalletSyncLifecycleContract(root).errors.join('\n'),
+    /durable admission activated before cutover/,
   );
 });
 

@@ -51,7 +51,11 @@ vi.mock('../../../../src/models/prisma', () => ({
     },
     $queryRaw: vi.fn().mockResolvedValue([{
       requestedFullResyncGeneration: 1,
+      preparedFullResyncGeneration: 1,
       processedFullResyncGeneration: 0,
+      lastSyncedAt: null,
+      lastSyncStatus: 'resyncing',
+      syncInProgress: true,
     }]),
     };
     client.$transaction = vi.fn(async (callback: any) => callback(client));
@@ -293,7 +297,15 @@ describe('Sync Jobs', () => {
         .mockResolvedValueOnce({ network: 'mainnet' } as any);
       vi.mocked(prisma.$queryRaw).mockResolvedValueOnce([{
         requestedFullResyncGeneration: FULL_RESYNC_GENERATION_MAX,
+        preparedFullResyncGeneration: FULL_RESYNC_GENERATION_MAX - 1,
         processedFullResyncGeneration: FULL_RESYNC_GENERATION_MAX - 1,
+      }] as any).mockResolvedValueOnce([{
+        requestedFullResyncGeneration: FULL_RESYNC_GENERATION_MAX,
+        preparedFullResyncGeneration: FULL_RESYNC_GENERATION_MAX,
+        processedFullResyncGeneration: FULL_RESYNC_GENERATION_MAX - 1,
+        lastSyncedAt: null,
+        lastSyncStatus: 'resyncing',
+        syncInProgress: true,
       }] as any);
       vi.mocked(prisma.transaction.deleteMany).mockResolvedValueOnce({ count: 7 } as any);
       vi.mocked(syncWallet).mockResolvedValueOnce({ addresses: 3, transactions: 5, utxos: 10 });
@@ -324,6 +336,20 @@ describe('Sync Jobs', () => {
     it('does not depend on mutable queue data after persisting the reset generation', async () => {
       vi.mocked(prisma.wallet.findUnique)
         .mockResolvedValueOnce({ network: 'mainnet' } as any);
+      vi.mocked(prisma.$queryRaw)
+        .mockResolvedValueOnce([{
+          requestedFullResyncGeneration: 1,
+          preparedFullResyncGeneration: 0,
+          processedFullResyncGeneration: 0,
+        }] as any)
+        .mockResolvedValueOnce([{
+          requestedFullResyncGeneration: 1,
+          preparedFullResyncGeneration: 1,
+          processedFullResyncGeneration: 0,
+          lastSyncedAt: null,
+          lastSyncStatus: 'resyncing',
+          syncInProgress: true,
+        }] as any);
       vi.mocked(syncWallet).mockResolvedValueOnce({ addresses: 1, transactions: 1, utxos: 2 });
       const updateData = vi.fn().mockRejectedValue(new Error('redis update failed'));
       const job = {
@@ -361,11 +387,21 @@ describe('Sync Jobs', () => {
       vi.mocked(prisma.$queryRaw)
         .mockResolvedValueOnce([{
           requestedFullResyncGeneration: 1,
+          preparedFullResyncGeneration: 0,
           processedFullResyncGeneration: 0,
         }] as any)
         .mockResolvedValueOnce([{
           requestedFullResyncGeneration: 1,
-          processedFullResyncGeneration: 1,
+          preparedFullResyncGeneration: 1,
+          processedFullResyncGeneration: 0,
+        }] as any)
+        .mockResolvedValueOnce([{
+          requestedFullResyncGeneration: 1,
+          preparedFullResyncGeneration: 1,
+          processedFullResyncGeneration: 0,
+          lastSyncedAt: null,
+          lastSyncStatus: 'resyncing',
+          syncInProgress: true,
         }] as any);
       vi.mocked(syncWallet)
         .mockRejectedValueOnce(new Error('sync interrupted'))
@@ -399,11 +435,29 @@ describe('Sync Jobs', () => {
       vi.mocked(prisma.$queryRaw)
         .mockResolvedValueOnce([{
           requestedFullResyncGeneration: 2,
+          preparedFullResyncGeneration: 0,
           processedFullResyncGeneration: 0,
         }] as any)
         .mockResolvedValueOnce([{
           requestedFullResyncGeneration: 2,
+          preparedFullResyncGeneration: 1,
+          processedFullResyncGeneration: 0,
+          lastSyncedAt: null,
+          lastSyncStatus: 'resyncing',
+          syncInProgress: true,
+        }] as any)
+        .mockResolvedValueOnce([{
+          requestedFullResyncGeneration: 2,
+          preparedFullResyncGeneration: 1,
           processedFullResyncGeneration: 1,
+        }] as any)
+        .mockResolvedValueOnce([{
+          requestedFullResyncGeneration: 2,
+          preparedFullResyncGeneration: 2,
+          processedFullResyncGeneration: 1,
+          lastSyncedAt: null,
+          lastSyncStatus: 'resyncing',
+          syncInProgress: true,
         }] as any);
       let signalActiveReset!: () => void;
       let finishActiveReset!: () => void;
@@ -450,6 +504,60 @@ describe('Sync Jobs', () => {
       }));
     });
 
+    it('fails closed when a newer destructive generation supersedes completion', async () => {
+      vi.mocked(prisma.wallet.findUnique)
+        .mockResolvedValueOnce({ network: 'mainnet' } as any);
+      vi.mocked(prisma.$queryRaw)
+        .mockResolvedValueOnce([{
+          requestedFullResyncGeneration: 2,
+          preparedFullResyncGeneration: 1,
+          processedFullResyncGeneration: 0,
+        }] as any)
+        .mockResolvedValueOnce([{
+          requestedFullResyncGeneration: 2,
+          preparedFullResyncGeneration: 2,
+          processedFullResyncGeneration: 0,
+          lastSyncedAt: null,
+          lastSyncStatus: 'resyncing',
+          syncInProgress: true,
+        }] as any);
+      vi.mocked(syncWallet).mockResolvedValueOnce({
+        addresses: 1,
+        transactions: 1,
+        utxos: 1,
+      });
+      const job = {
+        id: 'superseded-full-resync-generation-1',
+        data: {
+          walletId: 'wallet-1',
+          fullResync: true,
+          fullResyncGeneration: 1,
+        },
+        attemptsMade: 0,
+        opts: { attempts: 3 },
+      } as unknown as Job;
+
+      await expect(syncWalletJob.handler(job)).rejects.toThrow(
+        'Full resync completion lost its durable generation fence',
+      );
+
+      expect(prisma.transaction.deleteMany).not.toHaveBeenCalled();
+      expect(syncWallet).toHaveBeenCalledOnce();
+      expect(prisma.wallet.update).not.toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ processedFullResyncGeneration: 1 }),
+      }));
+      expect(prisma.wallet.update).toHaveBeenCalledTimes(1);
+      expect(prisma.wallet.update).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({
+          syncInProgress: true,
+          lastSyncStatus: 'syncing',
+        }),
+      }));
+      expect(prisma.wallet.update).not.toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ syncInProgress: false }),
+      }));
+    });
+
     it.each([
       undefined,
       0,
@@ -477,6 +585,11 @@ describe('Sync Jobs', () => {
       vi.mocked(prisma.transaction.deleteMany).mockRejectedValueOnce(
         new Error('reset failed'),
       );
+      vi.mocked(prisma.$queryRaw).mockResolvedValueOnce([{
+        requestedFullResyncGeneration: 1,
+        preparedFullResyncGeneration: 0,
+        processedFullResyncGeneration: 0,
+      }] as any);
       const job = {
         id: 'exhausted-full-resync-job',
         data: {
@@ -511,6 +624,11 @@ describe('Sync Jobs', () => {
       vi.mocked(prisma.transaction.deleteMany).mockRejectedValueOnce(
         new Error('reset failed'),
       );
+      vi.mocked(prisma.$queryRaw).mockResolvedValueOnce([{
+        requestedFullResyncGeneration: 1,
+        preparedFullResyncGeneration: 0,
+        processedFullResyncGeneration: 0,
+      }] as any);
       const job = {
         id: 'retryable-full-resync-job',
         data: {
@@ -545,6 +663,11 @@ describe('Sync Jobs', () => {
       vi.mocked(prisma.transaction.deleteMany).mockRejectedValueOnce(
         new Error('reset failed'),
       );
+      vi.mocked(prisma.$queryRaw).mockResolvedValueOnce([{
+        requestedFullResyncGeneration: 1,
+        preparedFullResyncGeneration: 0,
+        processedFullResyncGeneration: 0,
+      }] as any);
       vi.mocked(prisma.wallet.update)
         .mockRejectedValueOnce(new Error('metadata failed'))
         .mockRejectedValueOnce(new Error('metadata failed'))

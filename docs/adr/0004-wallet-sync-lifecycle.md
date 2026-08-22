@@ -59,6 +59,12 @@ The compatibility precursor is additive:
 - missing policy retains legacy behavior before cutover, while malformed or
   unreadable policy must not silently recreate a schedule after cutover.
 
+The dormant admission capability may persist and recover coalesced intent, but
+it has no production callers in the precursor. Restores discard database lease
+authority while retaining pending generations, and a full-resync generation is
+processed only after its prepared rebuild completes successfully. Activation,
+queue payload emission, and handler claiming remain a separate cutover change.
+
 This ADR and `config/wallet-sync-lifecycle-contract.json` establish the target and
 freeze the current compatibility exceptions. They do **not** retire the recurring
 schedule, change a producer, install the durable disable marker, or claim that the

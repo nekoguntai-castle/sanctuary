@@ -36,6 +36,7 @@
     "queueRole": "at_least_once_wakeup_only"
   },
   "compatibility": {
+    "admissionState": "dormant_no_production_callers",
     "staleScheduleName": "check-stale-wallets",
     "staleScheduleState": "legacy_desired_until_cutover",
     "durableDisablePolicyState": "compatibility_floor_available_marker_not_activated",

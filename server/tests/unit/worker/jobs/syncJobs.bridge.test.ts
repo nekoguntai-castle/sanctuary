@@ -43,7 +43,11 @@ vi.mock('../../../../src/models/prisma', () => ({
       },
       $queryRaw: vi.fn().mockResolvedValue([{
         requestedFullResyncGeneration: 1,
+        preparedFullResyncGeneration: 1,
         processedFullResyncGeneration: 0,
+        lastSyncedAt: null,
+        lastSyncStatus: 'resyncing',
+        syncInProgress: true,
       }]),
     };
     client.$transaction = vi.fn(async (callback: any) => callback(client));

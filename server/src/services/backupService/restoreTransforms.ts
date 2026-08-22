@@ -110,7 +110,9 @@ export function processWalletSyncIntentRecords(
 
 function processWalletSyncIntentRecord(record: BackupRecord): BackupRecord {
   const presentFields = WALLET_INCREMENTAL_SYNC_FIELDS.filter(field => field in record);
-  if (presentFields.length === WALLET_INCREMENTAL_SYNC_FIELDS.length) return record;
+  if (presentFields.length === WALLET_INCREMENTAL_SYNC_FIELDS.length) {
+    return normalizeRestoredSyncAuthority(record);
+  }
   if (presentFields.length !== 0) {
     throw new Error('Wallet backup contains a partial incremental-sync compatibility state');
   }
@@ -125,7 +127,7 @@ function processWalletSyncIntentRecord(record: BackupRecord): BackupRecord {
     record.processedFullResyncGeneration,
   );
 
-  return {
+  return normalizeRestoredSyncAuthority({
     ...record,
     requestedIncrementalSyncGeneration: hasUnfinishedLegacyWork ? 1 : 0,
     claimedIncrementalSyncGeneration: 0,
@@ -138,7 +140,66 @@ function processWalletSyncIntentRecord(record: BackupRecord): BackupRecord {
     processedFullResyncGeneration: hasProvenSuccess
       ? legacyProcessedFullResyncGeneration
       : 0,
+  });
+}
+
+function normalizeRestoredSyncAuthority(record: BackupRecord): BackupRecord {
+  const processedIncremental = normalizeGeneration(
+    record.processedIncrementalSyncGeneration,
+  );
+  const claimedIncremental = normalizeGeneration(
+    record.claimedIncrementalSyncGeneration,
+  );
+  const hadExecutionAuthority = hasRestoredExecutionAuthority(
+    record,
+    claimedIncremental,
+    processedIncremental,
+  );
+  const hasDurableWork = normalizeGeneration(record.requestedIncrementalSyncGeneration)
+      > processedIncremental
+    || normalizeGeneration(record.requestedFullResyncGeneration)
+      > normalizeGeneration(record.processedFullResyncGeneration);
+  const requestedIncremental = hadExecutionAuthority && !hasDurableWork
+    ? nextGeneration(processedIncremental)
+    : record.requestedIncrementalSyncGeneration;
+
+  return {
+    ...record,
+    requestedIncrementalSyncGeneration: requestedIncremental,
+    claimedIncrementalSyncGeneration: processedIncremental,
+    incrementalSyncLeaseToken: null,
+    incrementalSyncClaimedAt: null,
+    incrementalSyncLeaseExpiresAt: null,
+    syncInProgress: false,
+    syncExecutionOwner: null,
+    syncStartedAt: null,
+    ...(hadExecutionAuthority && record.syncActionRequiredAt == null
+      ? { lastSyncStatus: 'retrying' }
+      : {}),
   };
+}
+
+function hasRestoredExecutionAuthority(
+  record: BackupRecord,
+  claimedIncremental: number,
+  processedIncremental: number,
+): boolean {
+  return record.syncInProgress === true
+    || record.syncExecutionOwner != null
+    || record.syncStartedAt != null
+    || record.incrementalSyncLeaseToken != null
+    || record.incrementalSyncClaimedAt != null
+    || record.incrementalSyncLeaseExpiresAt != null
+    || claimedIncremental > processedIncremental
+    || record.lastSyncStatus === 'syncing'
+    || record.lastSyncStatus === 'resyncing';
+}
+
+function nextGeneration(generation: number): number {
+  if (generation >= 2_147_483_647) {
+    throw new Error('Restored wallet sync generation cannot retain active legacy work');
+  }
+  return generation + 1;
 }
 
 function normalizeGeneration(value: unknown): number {

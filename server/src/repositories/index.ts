@@ -54,6 +54,10 @@ export { consoleRepository, default as consoleRepo } from './consoleRepository';
 export { webhookRepository, default as webhookRepo } from './webhookRepository';
 export { resyncRepository, default as resyncRepo } from './resyncRepository';
 export { syncIntentRepository, default as syncIntentRepo } from './syncIntentRepository';
+export type {
+  IncrementalSyncClaimInput,
+  IncrementalSyncRetryReleaseInput,
+} from './syncIntentRepository';
 export {
   subscriptionCheckpointRepository,
   default as subscriptionCheckpointRepo,
@@ -78,6 +82,12 @@ export type {
   WalletNetworkFilter,
   WalletSyncState,
   IncrementalSyncIntentState,
+  IncrementalSyncRequestMode,
+  IncrementalSyncRequestResult,
+  IncrementalSyncFence,
+  IncrementalSyncClaim,
+  IncrementalSyncClaimResult,
+  IncrementalSyncTerminalResult,
   SubscriptionCheckpointState,
   SubscriptionEnrollmentCandidate,
   TransactionFilter,

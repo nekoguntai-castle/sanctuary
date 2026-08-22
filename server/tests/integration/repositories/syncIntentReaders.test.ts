@@ -64,6 +64,16 @@ describeWithDatabase('sync intent readers', () => {
     });
     await expect(findActionableIncrementalSyncIntents({ now: new Date() }))
       .resolves.not.toEqual(expect.arrayContaining([expect.objectContaining({ id: wallet.id })]));
+
+    await prisma.wallet.update({
+      where: { id: wallet.id },
+      data: {
+        syncActionRequiredAt: null,
+        requestedFullResyncGeneration: 1,
+      },
+    });
+    await expect(findActionableIncrementalSyncIntents({ now: new Date() }))
+      .resolves.not.toEqual(expect.arrayContaining([expect.objectContaining({ id: wallet.id })]));
   });
 
   it('distinguishes a missing checkpoint from authoritative null status', async () => {

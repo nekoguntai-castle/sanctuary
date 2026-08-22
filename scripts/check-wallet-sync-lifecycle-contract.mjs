@@ -33,6 +33,14 @@ const REQUIRED_FORBIDDEN_TRIGGERS = [
   'ordinary_navigation',
   'session_restore',
 ];
+const DORMANT_ADMISSION_MUTATIONS = [
+  'claimIncrementalSync',
+  'completeIncrementalSync',
+  'releaseIncrementalSyncAsActionRequired',
+  'releaseIncrementalSyncForRetry',
+  'requestIncrementalSync',
+];
+const SYNC_INTENT_REPOSITORY_PATH = 'server/src/repositories/syncIntentRepository.ts';
 
 function normalize(filePath) {
   return filePath.split(path.sep).join('/');
@@ -190,7 +198,17 @@ export function parseWalletSyncLifecycleContract(source) {
     throw new Error('futureOwnership.queueRole must remain an at-least-once wake-up only');
   }
 
-  const compatibility = requireObject(contract.compatibility, 'compatibility');
+  validateCompatibility(contract.compatibility);
+  assertExact(contract.requiredInvariantIds, REQUIRED_INVARIANTS, 'requiredInvariantIds');
+  validateInventory(contract.inventory);
+  return contract;
+}
+
+function validateCompatibility(value) {
+  const compatibility = requireObject(value, 'compatibility');
+  if (compatibility.admissionState !== 'dormant_no_production_callers') {
+    throw new Error('the compatibility precursor must keep durable admission dormant');
+  }
   if (compatibility.staleScheduleName !== 'check-stale-wallets') {
     throw new Error('compatibility.staleScheduleName must retain the legacy wire identity');
   }
@@ -203,9 +221,6 @@ export function parseWalletSyncLifecycleContract(source) {
   if (compatibility.legacyEntriesAreTemporary !== true) {
     throw new Error('compatibility legacy entries must be explicitly temporary');
   }
-  assertExact(contract.requiredInvariantIds, REQUIRED_INVARIANTS, 'requiredInvariantIds');
-  validateInventory(contract.inventory);
-  return contract;
 }
 
 function collectSources(root) {
@@ -219,6 +234,21 @@ function actualReferenceFiles(sources, pattern) {
   return [...sources]
     .filter(([, source]) => pattern.test(source))
     .map(([file]) => file)
+    .sort();
+}
+
+function dormantAdmissionConsumers(sources, admissionModule) {
+  const moduleConsumers = actualReferenceFiles(
+    sources,
+    /['"][^'"]*syncIntentAdmission(?:\.[cm]?[jt]s)?['"]/,
+  );
+  const mutationPattern = new RegExp(
+    `\\b(?:${DORMANT_ADMISSION_MUTATIONS.join('|')})\\b`,
+  );
+  const mutationConsumers = actualReferenceFiles(sources, mutationPattern);
+  const allowed = new Set([admissionModule, SYNC_INTENT_REPOSITORY_PATH]);
+  return [...new Set([...moduleConsumers, ...mutationConsumers])]
+    .filter(file => !allowed.has(file))
     .sort();
 }
 
@@ -315,6 +345,15 @@ export function checkWalletSyncLifecycleContract(root) {
   const contract = parseWalletSyncLifecycleContract(readRequired(root, CONTRACT_PATH));
   const sources = collectSources(root);
   const errors = [];
+  const admissionConsumers = dormantAdmissionConsumers(
+    sources,
+    contract.futureOwnership.singleAdmissionModule,
+  );
+  if (admissionConsumers.length > 0) {
+    errors.push(
+      `durable admission activated before cutover: ${admissionConsumers.join(', ')}`,
+    );
+  }
   compareDirectCalls(sources, contract.inventory.directExecutorCalls, errors);
   compareReferenceInventory(
     sources,

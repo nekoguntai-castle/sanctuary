@@ -67,6 +67,7 @@ import {
   runSyncAttemptWithTimeout,
   startSyncAttempt,
   type PersistedSyncTransition,
+  type SyncAttemptWriter,
 } from '../../services/sync/syncAttemptLifecycle';
 import { syncLifecyclePublisher } from '../../services/sync/syncLifecyclePublisher';
 import { classifyStaleWalletScheduleJob } from '../../jobs/staleWalletJobPolicy';
@@ -305,6 +306,34 @@ async function prepareFullResync(
   });
 }
 
+function syncAttemptWriterFor(data: SyncWalletJobFields): SyncAttemptWriter {
+  if (data.fullResync !== true || !isFullResyncGeneration(data.fullResyncGeneration)) {
+    return walletRepository;
+  }
+  const generation = data.fullResyncGeneration;
+  return {
+    updateSyncState: walletRepository.updateSyncState,
+    completeSyncSuccess: async (walletId, syncedAt, lastSyncedBlockHeight) => {
+      const completion = await resyncRepository.completeWalletFullResync(
+        walletId,
+        generation,
+        { syncedAt, lastSyncedBlockHeight },
+      );
+      if (!completion.completionRecorded || !completion.syncState) {
+        throw new SupersededFullResyncCompletionError();
+      }
+      return completion.syncState;
+    },
+  };
+}
+
+class SupersededFullResyncCompletionError extends Error {
+  constructor() {
+    super('Full resync completion lost its durable generation fence');
+    this.name = 'SupersededFullResyncCompletionError';
+  }
+}
+
 /**
  * Clear syncInProgress for wallets whose sync is demonstrably not running.
  *
@@ -536,7 +565,7 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
       const successTransition = await recordSyncSuccess(walletId, {
         syncedAt,
         lastSyncedBlockHeight: currentBlockHeight,
-      }, walletRepository);
+      }, syncAttemptWriterFor(data));
       flagCleared = true;
       await syncLifecyclePublisher.publish(successTransition);
 
@@ -569,6 +598,16 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
         utxosUpdated: result.utxos,
       };
     } catch (caughtError) {
+      if (caughtError instanceof SupersededFullResyncCompletionError) {
+        // A newer destructive generation owns the wallet lifecycle now. Any
+        // legacy retry/failure or safety-net write from this stale attempt
+        // would clear or relabel that newer owner's state without its fence.
+        flagCleared = true;
+        log.warn(`Ignoring stale full-resync completion for wallet ${walletId}`, {
+          jobId: job.id,
+        });
+        throw caughtError;
+      }
       let error = caughtError;
       try {
         execution?.throwIfAborted();

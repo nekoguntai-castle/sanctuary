@@ -1,10 +1,30 @@
 import prisma from '../models/prisma';
 import { Prisma } from '../generated/prisma/client';
 import { isFullResyncGeneration } from '../constants/fullResync';
+import type { WalletSyncState } from './types';
 
 export interface FullResyncResetResult {
   deletedTransactions: number;
   resetPerformed: boolean;
+}
+
+export interface FullResyncCompletionResult {
+  completionRecorded: boolean;
+  syncState?: WalletSyncState;
+}
+
+export interface FullResyncSuccessInput {
+  syncedAt: Date;
+  lastSyncedBlockHeight: number;
+}
+
+interface FullResyncGenerationState {
+  requestedFullResyncGeneration: number;
+  preparedFullResyncGeneration: number;
+  processedFullResyncGeneration: number;
+  lastSyncedAt: Date | null;
+  lastSyncStatus: string | null;
+  syncInProgress: boolean;
 }
 
 /** A wallet whose requested full resync was never carried out. */
@@ -69,12 +89,14 @@ export async function resetWalletForFullResync(
   }
 
   return prisma.$transaction(async tx => {
-    const [wallet] = await tx.$queryRaw<Array<{
-      requestedFullResyncGeneration: number;
-      processedFullResyncGeneration: number;
-    }>>(Prisma.sql`
+    const [wallet] = await tx.$queryRaw<FullResyncGenerationState[]>(Prisma.sql`
       /* full-resync-wallet-lock */
-      SELECT "requestedFullResyncGeneration", "processedFullResyncGeneration"
+      SELECT "requestedFullResyncGeneration",
+             "preparedFullResyncGeneration",
+             "processedFullResyncGeneration",
+             "lastSyncedAt",
+             "lastSyncStatus",
+             "syncInProgress"
       FROM "wallets"
       WHERE "id" = ${walletId}
       FOR UPDATE
@@ -85,7 +107,11 @@ export async function resetWalletForFullResync(
     if (fullResyncGeneration > wallet.requestedFullResyncGeneration) {
       throw new Error('Full resync generation was not reserved');
     }
-    if (fullResyncGeneration <= wallet.processedFullResyncGeneration) {
+    const resetHighWaterMark = Math.max(
+      wallet.preparedFullResyncGeneration,
+      wallet.processedFullResyncGeneration,
+    );
+    if (fullResyncGeneration <= resetHighWaterMark) {
       return { deletedTransactions: 0, resetPerformed: false };
     }
 
@@ -107,7 +133,7 @@ export async function resetWalletForFullResync(
         syncNextRetryAt: null,
         syncStartedAt: new Date(),
         syncStateVersion: { increment: 1 },
-        processedFullResyncGeneration: fullResyncGeneration,
+        preparedFullResyncGeneration: fullResyncGeneration,
       },
     });
 
@@ -118,9 +144,93 @@ export async function resetWalletForFullResync(
   });
 }
 
+/**
+ * Mark one prepared full-resync generation complete after its rebuild succeeds.
+ *
+ * The row lock keeps the generation fence and successful lifecycle write in one
+ * transaction. A late completion for an older generation is an idempotent no-op;
+ * it must not overwrite the state established by a newer destructive reset.
+ */
+export async function completeWalletFullResync(
+  walletId: string,
+  fullResyncGeneration: number,
+  input: FullResyncSuccessInput,
+): Promise<FullResyncCompletionResult> {
+  if (!isFullResyncGeneration(fullResyncGeneration)) {
+    throw new Error('Full resync generation is outside the supported range');
+  }
+
+  return prisma.$transaction(async tx => {
+    const [wallet] = await tx.$queryRaw<FullResyncGenerationState[]>(Prisma.sql`
+      /* full-resync-wallet-lock */
+      SELECT "requestedFullResyncGeneration",
+             "preparedFullResyncGeneration",
+             "processedFullResyncGeneration",
+             "lastSyncedAt",
+             "lastSyncStatus",
+             "syncInProgress"
+      FROM "wallets"
+      WHERE "id" = ${walletId}
+      FOR UPDATE
+    `);
+    if (!wallet) {
+      throw new Error('Wallet not found');
+    }
+    if (fullResyncGeneration > wallet.requestedFullResyncGeneration) {
+      throw new Error('Full resync generation was not reserved');
+    }
+    if (
+      fullResyncGeneration < wallet.processedFullResyncGeneration
+      || fullResyncGeneration < wallet.preparedFullResyncGeneration
+    ) {
+      return { completionRecorded: false };
+    }
+    const legacyPreparationAlreadyProcessed =
+      fullResyncGeneration === wallet.processedFullResyncGeneration;
+    if (
+      fullResyncGeneration > wallet.preparedFullResyncGeneration
+      && !legacyPreparationAlreadyProcessed
+    ) {
+      throw new Error('Full resync generation was not prepared');
+    }
+    if (
+      legacyPreparationAlreadyProcessed
+      && wallet.lastSyncStatus === 'success'
+      && wallet.syncInProgress === false
+      && wallet.lastSyncedAt !== null
+    ) {
+      return { completionRecorded: false };
+    }
+
+    const syncState = await tx.wallet.update({
+      where: { id: walletId },
+      data: {
+        lastSyncedAt: input.syncedAt,
+        lastSyncedBlockHeight: input.lastSyncedBlockHeight,
+        lastSyncStatus: 'success',
+        lastSyncError: null,
+        lastSyncFailureClass: null,
+        syncInProgress: false,
+        syncExecutionOwner: null,
+        syncRetryCount: 0,
+        syncNextRetryAt: null,
+        syncStartedAt: null,
+        syncStateVersion: { increment: 1 },
+        processedFullResyncGeneration: fullResyncGeneration,
+      },
+    });
+
+    return {
+      completionRecorded: true,
+      syncState: syncState as WalletSyncState,
+    };
+  });
+}
+
 export const resyncRepository = {
   reserveFullResyncGeneration,
   resetWalletForFullResync,
+  completeWalletFullResync,
   findStrandedFullResyncWallets,
 };
 

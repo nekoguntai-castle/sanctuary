@@ -183,9 +183,10 @@ export function registerBackupSnapshotTests(): void {
       }
     });
 
-    it('preserves complete modern wallet state and rejects partial compatibility state', () => {
-      const modern = {
-        id: 'modern',
+    it('removes restored execution authority without erasing durable intent evidence', () => {
+      const actionRequiredAt = new Date('2026-08-20T00:00:00.000Z');
+      const active = {
+        id: 'active-modern',
         requestedIncrementalSyncGeneration: 4,
         claimedIncrementalSyncGeneration: 3,
         processedIncrementalSyncGeneration: 2,
@@ -194,8 +195,119 @@ export function registerBackupSnapshotTests(): void {
         incrementalSyncLeaseExpiresAt: new Date(),
         syncActionRequiredAt: null,
         preparedFullResyncGeneration: 1,
+        requestedFullResyncGeneration: 2,
+        processedFullResyncGeneration: 1,
+        syncInProgress: true,
+        syncExecutionOwner: 'worker',
+        syncStartedAt: new Date(),
+        lastSyncStatus: 'syncing',
       };
-      expect(processWalletSyncIntentRecords([modern])).toEqual([modern]);
+      const settled = {
+        ...active,
+        id: 'settled-modern',
+        requestedIncrementalSyncGeneration: 2,
+        claimedIncrementalSyncGeneration: 2,
+        incrementalSyncLeaseToken: null,
+        incrementalSyncClaimedAt: null,
+        incrementalSyncLeaseExpiresAt: null,
+        syncActionRequiredAt: actionRequiredAt,
+        requestedFullResyncGeneration: 1,
+        syncInProgress: false,
+        syncExecutionOwner: null,
+        syncStartedAt: null,
+        lastSyncStatus: 'failed',
+      };
+
+      const [restoredActive, restoredSettled] = processWalletSyncIntentRecords([active, settled]);
+      expect(restoredActive).toMatchObject({
+        requestedIncrementalSyncGeneration: 4,
+        claimedIncrementalSyncGeneration: 2,
+        processedIncrementalSyncGeneration: 2,
+        incrementalSyncLeaseToken: null,
+        incrementalSyncClaimedAt: null,
+        incrementalSyncLeaseExpiresAt: null,
+        preparedFullResyncGeneration: 1,
+        requestedFullResyncGeneration: 2,
+        processedFullResyncGeneration: 1,
+        syncInProgress: false,
+        syncExecutionOwner: null,
+        syncStartedAt: null,
+        lastSyncStatus: 'retrying',
+      });
+      expect(restoredSettled).toMatchObject({
+        requestedIncrementalSyncGeneration: 2,
+        claimedIncrementalSyncGeneration: 2,
+        processedIncrementalSyncGeneration: 2,
+        syncActionRequiredAt: actionRequiredAt,
+        lastSyncStatus: 'failed',
+      });
+    });
+
+    it('retains active mixed-version work that has no durable pending generation', () => {
+      const modernDefaultsWrittenByLegacyWorker = {
+        id: 'mixed-active',
+        requestedIncrementalSyncGeneration: 0,
+        claimedIncrementalSyncGeneration: 0,
+        processedIncrementalSyncGeneration: 0,
+        incrementalSyncLeaseToken: null,
+        incrementalSyncClaimedAt: null,
+        incrementalSyncLeaseExpiresAt: null,
+        syncActionRequiredAt: null,
+        preparedFullResyncGeneration: 0,
+        requestedFullResyncGeneration: 0,
+        processedFullResyncGeneration: 0,
+        syncInProgress: true,
+        syncExecutionOwner: 'worker',
+        syncStartedAt: new Date(),
+        lastSyncStatus: 'syncing',
+      };
+      const [restoredModern, restoredLegacy] = processWalletSyncIntentRecords([
+        modernDefaultsWrittenByLegacyWorker,
+        {
+          id: 'legacy-active',
+          lastSyncedAt: new Date(),
+          lastSyncStatus: 'syncing',
+          syncInProgress: true,
+          syncExecutionOwner: 'inline',
+          syncStartedAt: new Date(),
+        },
+      ]);
+
+      for (const restored of [restoredModern, restoredLegacy]) {
+        expect(restored).toMatchObject({
+          requestedIncrementalSyncGeneration: 1,
+          claimedIncrementalSyncGeneration: 0,
+          processedIncrementalSyncGeneration: 0,
+          incrementalSyncLeaseToken: null,
+          syncInProgress: false,
+          syncExecutionOwner: null,
+          syncStartedAt: null,
+          lastSyncStatus: 'retrying',
+        });
+      }
+    });
+
+    it('rejects active legacy work when its generation cannot advance', () => {
+      expect(() => processWalletSyncIntentRecords([{
+        id: 'exhausted-active',
+        requestedIncrementalSyncGeneration: 2_147_483_647,
+        claimedIncrementalSyncGeneration: 2_147_483_647,
+        processedIncrementalSyncGeneration: 2_147_483_647,
+        incrementalSyncLeaseToken: '10000000-0000-4000-8000-000000000001',
+        incrementalSyncClaimedAt: new Date(),
+        incrementalSyncLeaseExpiresAt: new Date(),
+        syncActionRequiredAt: null,
+        preparedFullResyncGeneration: 0,
+        requestedFullResyncGeneration: 0,
+        processedFullResyncGeneration: 0,
+        syncInProgress: true,
+        syncExecutionOwner: 'worker',
+        syncStartedAt: new Date(),
+        lastSyncStatus: 'syncing',
+      }])).toThrow('Restored wallet sync generation cannot retain active legacy work');
+    });
+
+    it('rejects partial compatibility state', () => {
       expect(() => processWalletSyncIntentRecords([
         { id: 'partial', requestedIncrementalSyncGeneration: 1 },
       ])).toThrow('partial incremental-sync compatibility state');

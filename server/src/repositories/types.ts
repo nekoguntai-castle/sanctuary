@@ -152,6 +152,41 @@ export interface IncrementalSyncIntentState {
   processedFullResyncGeneration: number;
 }
 
+export type IncrementalSyncRequestMode = 'automatic' | 'explicit_reopen';
+
+export type IncrementalSyncRequestResult =
+  | {
+    status: 'requested' | 'merged';
+    state: IncrementalSyncIntentState;
+  }
+  | { status: 'generation_exhausted' | 'not_found' };
+
+export interface IncrementalSyncFence {
+  generation: number;
+  leaseToken: string;
+}
+
+export interface IncrementalSyncClaim extends IncrementalSyncFence {
+  claimedAt: Date;
+  leaseExpiresAt: Date;
+}
+
+export type IncrementalSyncClaimResult =
+  | {
+    status: 'claimed';
+    claim: IncrementalSyncClaim;
+    state: IncrementalSyncIntentState;
+  }
+  | { status: 'not_claimed' };
+
+export type IncrementalSyncTerminalResult =
+  | {
+    status: 'applied';
+    state: IncrementalSyncIntentState;
+    trailingGenerationPending: boolean;
+  }
+  | { status: 'lost_fence' };
+
 export interface SubscriptionCheckpointState {
   addressId: string;
   network: string;

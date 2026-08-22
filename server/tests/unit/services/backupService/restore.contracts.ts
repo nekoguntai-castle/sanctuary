@@ -182,6 +182,51 @@ describe('restoreFromBackup', () => {
       });
     });
 
+    it('restores durable intent without importing active execution authority', async () => {
+      const backup = createValidBackup();
+      backup.data.wallet[0] = {
+        ...backup.data.wallet[0],
+        requestedIncrementalSyncGeneration: 5,
+        claimedIncrementalSyncGeneration: 4,
+        processedIncrementalSyncGeneration: 3,
+        incrementalSyncLeaseToken: '11111111-1111-4111-8111-111111111111',
+        incrementalSyncClaimedAt: '2026-08-22T10:00:00.000Z',
+        incrementalSyncLeaseExpiresAt: '2026-08-22T10:05:00.000Z',
+        syncActionRequiredAt: null,
+        preparedFullResyncGeneration: 2,
+        requestedFullResyncGeneration: 3,
+        processedFullResyncGeneration: 2,
+        syncInProgress: true,
+        syncExecutionOwner: 'worker',
+        syncStartedAt: '2026-08-22T10:00:00.000Z',
+        lastSyncStatus: 'syncing',
+      };
+      mockPrismaClient.$transaction.mockImplementation(async (fn: any) => fn(mockPrismaClient));
+      mockAllTableWrites();
+
+      await expect(backupService.restoreFromBackup(backup)).resolves.toMatchObject({
+        success: true,
+      });
+      const walletWrite = mockPrismaClient.wallet.createMany.mock.calls
+        .flatMap(([args]) => args.data)[0];
+      expect(walletWrite).toMatchObject({
+        requestedIncrementalSyncGeneration: 5,
+        claimedIncrementalSyncGeneration: 3,
+        processedIncrementalSyncGeneration: 3,
+        incrementalSyncLeaseToken: null,
+        incrementalSyncClaimedAt: null,
+        incrementalSyncLeaseExpiresAt: null,
+        syncActionRequiredAt: null,
+        preparedFullResyncGeneration: 2,
+        requestedFullResyncGeneration: 3,
+        processedFullResyncGeneration: 2,
+        syncInProgress: false,
+        syncExecutionOwner: null,
+        syncStartedAt: null,
+        lastSyncStatus: 'retrying',
+      });
+    });
+
     it('should clear access cache only after the restore transaction commits', async () => {
       const backup = createValidBackup();
       const events: string[] = [];

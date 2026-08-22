@@ -2,6 +2,7 @@ import prisma from '../../../src/models/prisma';
 import type { PrismaClient } from '../../../src/generated/prisma/client';
 import { correctTransactionToConsolidation } from '../../../src/repositories/balanceCorrectionRepository';
 import {
+  completeWalletFullResync,
   reserveFullResyncGeneration,
   resetWalletForFullResync,
 } from '../../../src/repositories/resyncRepository';
@@ -95,11 +96,17 @@ describeWithDatabase('sync correction atomicity', () => {
     })).resolves.toEqual({ used: true });
     await expect(prisma.wallet.findUnique({
       where: { id: wallet.id },
-      select: { processedFullResyncGeneration: true },
-    })).resolves.toEqual({ processedFullResyncGeneration: 0 });
+      select: {
+        preparedFullResyncGeneration: true,
+        processedFullResyncGeneration: true,
+      },
+    })).resolves.toEqual({
+      preparedFullResyncGeneration: 0,
+      processedFullResyncGeneration: 0,
+    });
   });
 
-  it('serializes inverted reset generations without regressing the processed high-water mark', async () => {
+  it('serializes inverted reset generations without regressing the prepared high-water mark', async () => {
     const { wallet } = await createWalletFixture();
     await createTestTransaction(factoryClient, wallet.id);
     await reserveFullResyncGeneration(wallet.id);
@@ -131,8 +138,77 @@ describeWithDatabase('sync correction atomicity', () => {
     ]);
     await expect(prisma.wallet.findUnique({
       where: { id: wallet.id },
-      select: { processedFullResyncGeneration: true },
-    })).resolves.toEqual({ processedFullResyncGeneration: 2 });
+      select: {
+        preparedFullResyncGeneration: true,
+        processedFullResyncGeneration: true,
+      },
+    })).resolves.toEqual({
+      preparedFullResyncGeneration: 2,
+      processedFullResyncGeneration: 0,
+    });
+  });
+
+  it('advances completion only after rebuild success and preserves mixed-version high-water marks', async () => {
+    const { wallet } = await createWalletFixture();
+    const generation = await reserveFullResyncGeneration(wallet.id);
+    await resetWalletForFullResync(wallet.id, generation);
+    const syncedAt = new Date('2026-08-22T20:00:00.000Z');
+
+    await expect(completeWalletFullResync(wallet.id, generation, {
+      syncedAt,
+      lastSyncedBlockHeight: 250,
+    })).resolves.toMatchObject({ completionRecorded: true });
+    await expect(prisma.wallet.findUnique({
+      where: { id: wallet.id },
+      select: {
+        preparedFullResyncGeneration: true,
+        processedFullResyncGeneration: true,
+        lastSyncedAt: true,
+        lastSyncedBlockHeight: true,
+        lastSyncStatus: true,
+        syncInProgress: true,
+      },
+    })).resolves.toEqual({
+      preparedFullResyncGeneration: generation,
+      processedFullResyncGeneration: generation,
+      lastSyncedAt: syncedAt,
+      lastSyncedBlockHeight: 250,
+      lastSyncStatus: 'success',
+      syncInProgress: false,
+    });
+
+    await prisma.wallet.update({
+      where: { id: wallet.id },
+      data: {
+        requestedFullResyncGeneration: 3,
+        preparedFullResyncGeneration: 1,
+        processedFullResyncGeneration: 3,
+        lastSyncedAt: null,
+        lastSyncStatus: 'resyncing',
+        syncInProgress: true,
+      },
+    });
+    await expect(resetWalletForFullResync(wallet.id, 2)).resolves.toEqual({
+      deletedTransactions: 0,
+      resetPerformed: false,
+    });
+    const mixedVersionSyncedAt = new Date('2026-08-22T21:00:00.000Z');
+    await expect(completeWalletFullResync(wallet.id, 3, {
+      syncedAt: mixedVersionSyncedAt,
+      lastSyncedBlockHeight: 251,
+    })).resolves.toMatchObject({ completionRecorded: true });
+    await expect(prisma.wallet.findUnique({
+      where: { id: wallet.id },
+      select: {
+        preparedFullResyncGeneration: true,
+        processedFullResyncGeneration: true,
+        lastSyncedAt: true,
+      },
+    })).resolves.toEqual({
+      preparedFullResyncGeneration: 1,
+      processedFullResyncGeneration: 3,
+      lastSyncedAt: mixedVersionSyncedAt,
+    });
   });
 
   it('rejects forged future generations and database counter overflow', async () => {
