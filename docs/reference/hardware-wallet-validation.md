@@ -52,6 +52,19 @@ success artifact can be produced. This conservative inventory is the
 prerequisite for measuring a future path classifier; it does not currently skip
 or condition any emulator job.
 
+`verify-vectors.yml` also publishes a 90-day, revision-bound shadow
+classification report for every run. Pull requests classify the merge-base to
+head change, while pushes and merge groups classify their exact event range.
+Missing revisions, inventory or diff errors, empty diffs, unsupported events,
+and unknown hardware or emulator control-plane paths conservatively predict all
+three vendors. The observer has no job outputs or consumers: Trezor, Ledger,
+Jade, and the stable Vector summary remain unconditional while the repository
+collects the minimum 30-day yield and false-negative evidence required before a
+separate activation decision. It reuses the existing base Vector checkout and
+Node toolchain instead of claiming another shared runner; its observe and upload
+steps are independently bounded and nonblocking. Retain the observer only when
+the base Vector job's p95 latency increases by no more than 10 seconds.
+
 The Ledger app binaries and Speculos runtime are baked into this dedicated proof
 image; CI does not download or repair them after the container starts. The root
 SDK and WebUSB versions are exact lockfile pins checked against the proof

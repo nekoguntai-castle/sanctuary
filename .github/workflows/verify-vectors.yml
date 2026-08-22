@@ -63,16 +63,46 @@ jobs:
     timeout-minutes: 60
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/verify-vectors
+      SANCTUARY_CI_RUN_ID_OVERRIDE: ${{ github.run_id }}
       SANCTUARY_CI_RUN_ATTEMPT_OVERRIDE: ${{ github.run_attempt }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 0
 
       - name: Verify Node.js toolchain
         uses: ./.github/actions/setup-node-toolchain
         with:
           install-npm: 'false'
+
+      - name: Observe hardware emulator scope
+        continue-on-error: true
+        timeout-minutes: 2
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          MERGE_GROUP_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: >
+          node scripts/ci/classify-hardware-emulator-shadow.mjs
+          --output .tmp/ci-evidence/hardware-emulator-shadow/classification.json
+
+      - name: Upload hardware emulator shadow classification
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 2
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: hardware-emulator-shadow-classification-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .tmp/ci-evidence/hardware-emulator-shadow/classification.json
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
 
       - name: Verify wallet-safety classifier completeness
         run: node scripts/ci/check-wallet-safety-classifier.mjs

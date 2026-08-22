@@ -263,15 +263,35 @@ function scopeSelectsPath(scope, path) {
   );
 }
 
-export function findRelevantDirtySources(inventory, dirtyPaths, vendor) {
+export function classifyInventoryPaths(inventory, candidatePaths) {
   validateInventoryShape(inventory);
+  if (!Array.isArray(candidatePaths)) {
+    fail("candidate paths must be an array");
+  }
+  const paths = [...new Set(candidatePaths)];
+  paths.forEach((path, index) =>
+    validateSelector(path, `candidatePaths[${index}]`, false),
+  );
+  paths.sort();
+  return {
+    common: paths.filter((path) => scopeSelectsPath(inventory.common, path)),
+    vendors: Object.fromEntries(
+      HARDWARE_EMULATOR_VENDORS.map((vendor) => [
+        vendor,
+        paths.filter((path) =>
+          scopeSelectsPath(inventory.vendors[vendor], path),
+        ),
+      ]),
+    ),
+  };
+}
+
+export function findRelevantDirtySources(inventory, dirtyPaths, vendor) {
   if (!HARDWARE_EMULATOR_VENDORS.includes(vendor)) {
     fail(`unknown vendor: ${vendor}`);
   }
-  const scopes = [inventory.common, inventory.vendors[vendor]];
-  return [...new Set(dirtyPaths)]
-    .filter((path) => scopes.some((scope) => scopeSelectsPath(scope, path)))
-    .sort();
+  const classified = classifyInventoryPaths(inventory, dirtyPaths);
+  return [...classified.common, ...classified.vendors[vendor]].sort();
 }
 
 async function assertRegularSources(root, sources) {

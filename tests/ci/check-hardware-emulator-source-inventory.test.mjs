@@ -436,6 +436,12 @@ test("dirty-source detection is vendor-specific and includes untracked pattern m
     () => findRelevantDirtySources(inventory, [], "unknown"),
     /unknown vendor/,
   );
+  for (const path of ["../escape", "/absolute", "bad\npath", "bad\\path"]) {
+    assert.throws(
+      () => findRelevantDirtySources(inventory, [path], "trezor"),
+      /hardware emulator source inventory:/,
+    );
+  }
 });
 
 test("commit-bound resolution excludes untracked files and rejects dirty sources and symlinks", async (t) => {

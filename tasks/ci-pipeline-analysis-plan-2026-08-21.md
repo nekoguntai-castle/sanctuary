@@ -324,8 +324,17 @@ schedule, and tag paths have executable contract tests.
       move unaffected hardware emulators to nightly/RC, while forcing them for
       wallet/signing/hardware-sensitive changes.
       Before any re-tiering, Phase 5a gives all three proof runners one canonical
-      hashed-source inventory; Phase 5b will observe a classifier without
-      changing execution.
+      hashed-source inventory. Phase 5b adds an independent 90-day shadow report
+      using PR merge-base semantics and exact push/merge-group ranges. Every
+      fallback and unknown provider predicts all vendors, while the classifier
+      exposes no outputs and remains absent from every emulator and summary
+      dependency. Execution cannot change until at least 30 calendar days,
+      30 noncancelled PR reports, one weekly run, >=99% report availability,
+      zero observed false negatives, and the documented wall/runner savings
+      thresholds are all satisfied. The observer reuses the existing base Vector
+      checkout/toolchain rather than adding a runner claimant; both report steps
+      are bounded and nonblocking, and the slice rolls back if base-job p95 grows
+      by more than 10 seconds.
 - [ ] Decide whether 100% statement/branch/function/line coverage remains global
       or becomes 100% on funds/auth boundaries plus a non-decreasing ratchet
       elsewhere. Do not lower thresholds without mutation and escaped-defect data.

@@ -1916,6 +1916,46 @@ assert_not_contains "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
   "verify-vectors has no path-filter blind spots" \
   "paths:"
 
+assert_contains_in_order "$VV" \
+  "hardware emulator classifier remains report only" \
+  "verify-vectors:" \
+  "Checkout repository" \
+  "fetch-depth: 0" \
+  "Observe hardware emulator scope" \
+  "continue-on-error: true" \
+  "timeout-minutes: 2" \
+  "node scripts/ci/classify-hardware-emulator-shadow.mjs" \
+  "--output .tmp/ci-evidence/hardware-emulator-shadow/classification.json" \
+  "Upload hardware emulator shadow classification" \
+  "if: always()" \
+  "continue-on-error: true" \
+  "timeout-minutes: 2" \
+  'hardware-emulator-shadow-classification-${{ github.run_id }}-${{ github.run_attempt }}' \
+  "if-no-files-found: error" \
+  "retention-days: 90" \
+  "Verify wallet-safety classifier completeness" \
+  "Verify hardware emulator source inventory" \
+  "Verify Go toolchain"
+
+assert_named_job_step_contains "$VV" \
+  "verify-vectors" \
+  "Observe hardware emulator scope" \
+  "hardware emulator shadow observation is bounded and nonblocking" \
+  "continue-on-error: true" \
+  "timeout-minutes: 2"
+
+assert_named_job_step_contains "$VV" \
+  "verify-vectors" \
+  "Upload hardware emulator shadow classification" \
+  "hardware emulator shadow publication is bounded and nonblocking" \
+  "if: always()" \
+  "continue-on-error: true" \
+  "timeout-minutes: 2"
+
+assert_not_contains "$VV" \
+  "hardware emulator shadow classifier has no result consumers" \
+  "needs.classify-hardware-emulator-shadow"
+
 for vendor in trezor ledger jade; do
   vendor_title="${vendor^}"
   assert_contains_in_order \
@@ -1929,6 +1969,15 @@ for vendor in trezor ledger jade; do
     "$vendor_title proof-source inventory resolved empty" \
     'mapfile -t proof_sources <<< "$proof_sources_text"' \
     "readonly -a proof_sources"
+
+  assert_named_job_contains "$VV" \
+    "verify-${vendor}-emulator" \
+    "$vendor_title emulator remains dependent only on the base vector proof" \
+    "needs: [verify-vectors]"
+  assert_named_job_not_contains "$VV" \
+    "verify-${vendor}-emulator" \
+    "$vendor_title emulator does not consume the shadow classifier" \
+    "classify-hardware-emulator-shadow"
 done
 
 assert_contains_in_order "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
@@ -2041,6 +2090,11 @@ assert_contains_in_order "$VV" \
   '${{ needs.verify-trezor-emulator.result }}' \
   '${{ needs.verify-ledger-emulator.result }}' \
   '${{ needs.verify-jade-emulator.result }}'
+
+assert_named_job_not_contains "$VV" \
+  "summary" \
+  "vector summary does not consume the shadow classifier" \
+  "classify-hardware-emulator-shadow"
 
 assert_contains_in_order "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
   "Trezor emulator lock has a dedicated measured timeout" \

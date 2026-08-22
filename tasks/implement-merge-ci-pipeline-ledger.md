@@ -17,7 +17,8 @@ Rebuild policy: `after-plan`
 | Phase 3c | `main` | `codex/implement-merge/ci-artifact-policy` | `/home/nekoguntai/sanctuary-ci-artifact-policy` | yes | no | retained pending final cleanup | [#885](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/885) | `f6894c80135e29147e1d37262c038a8632841a20` |
 | Phase 1d | `main` | `codex/implement-merge/ci-quality-push-scope` | `/home/nekoguntai/sanctuary-ci-quality-push-scope` | yes | no | retained pending final cleanup | [#886](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/886) | `1c608ae13f1ad4747ecf2c43226088b56b8eb39b` |
 | Phase 5a | `main` | `codex/implement-merge/ci-hardware-proof-sources` | `/home/nekoguntai/sanctuary-ci-hardware-proof-sources` | yes | no | retained pending final cleanup | [#887](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/887) | `244aa7c45d7f9e9da3667af05602bc88e95d4ccc` |
-| Phase 1e | `main` | `codex/implement-merge/ci-redis-integration` | `/home/nekoguntai/sanctuary-ci-redis-integration` | yes | no | active | [#888](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/888) | pending |
+| Phase 1e | `main` | `codex/implement-merge/ci-redis-integration` | `/home/nekoguntai/sanctuary-ci-redis-integration` | yes | no | retained pending final cleanup | [#888](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/888) | `57a1776b158ffc2c264d1af33dcfecd025edb43a` |
+| Phase 5b | `main` | `codex/implement-merge/ci-hardware-shadow` | `/home/nekoguntai/sanctuary-ci-hardware-shadow` | yes | no | active | pending | pending |
 
 ## Ownership boundary
 
@@ -239,3 +240,16 @@ from cleanup and mutation.
   concrete alias IPs and accepting exactly one authenticated candidate. A
   local digest-pinned password-enabled rehearsal then passed 14/14 worker tests
   with zero skips in 3.97 seconds. The amended remote run owns final acceptance.
+- 2026-08-21: PR #888's corrected head passed all 30 contexts. Browser E2E
+  completed in 355 seconds, and backend integration completed in 167 seconds
+  versus the 169-second Phase 5a baseline. The integration result moved from
+  645 passed plus 14 skipped tests to 659 passed and zero skipped tests: the
+  four Redis worker suites executed all 14 cases. PR #888 squash-merged as
+  `57a1776b15`; landed-main verification is in progress.
+- 2026-08-21: Phase 5b rebased onto exact Phase 1e main `57a1776b15`. It adds
+  only report-only hardware-emulator shadow telemetry: PRs use merge-base diff
+  semantics, push and merge-group events use exact ranges, and every ambiguous
+  or unknown hardware path predicts all three vendors. The observer reuses the
+  existing base Vector checkout/toolchain; both report steps are bounded and
+  nonblocking, expose no outputs, and remain absent from emulator and summary
+  dependencies. No emulator execution changes before the 30-day evidence gate.

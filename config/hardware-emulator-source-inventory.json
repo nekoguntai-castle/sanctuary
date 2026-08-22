@@ -18,6 +18,7 @@
       "src/api/retryPolicy.ts",
       "scripts/ci/bootstrap-node.sh",
       "scripts/ci/check-wallet-safety-classifier.mjs",
+      "scripts/ci/classify-hardware-emulator-shadow.mjs",
       "scripts/ci/docker-exec-tcp-forwarder.mjs",
       "scripts/ci/ensure-node.sh",
       "scripts/ci/hardware-emulator-source-inventory.mjs",
@@ -31,7 +32,8 @@
       "src/utils/download.ts",
       "src/utils/logger.ts",
       "tests/ci/check-hardware-emulator-source-inventory.test.mjs",
-      "tests/ci/check-wallet-safety-classifier.test.mjs"
+      "tests/ci/check-wallet-safety-classifier.test.mjs",
+      "tests/ci/classify-hardware-emulator-shadow.test.mjs"
     ],
     "patterns": ["shared/**", "src/services/hardwareWallet/*.ts"]
   },
