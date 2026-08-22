@@ -1742,6 +1742,16 @@ jobs:
             "${{ github.workspace }}/scripts/ci/time-command.sh" "browser prisma migrate" \
             npx prisma migrate deploy
 
+      - name: Seed browser E2E fixtures
+        working-directory: server
+        env:
+          NODE_ENV: test
+          SANCTUARY_SEED_BROWSER_E2E: 'true'
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/browser-e2e-seed.log"
+          ${{ github.workspace }}/scripts/ci/time-command.sh "browser E2E fixture seed"
+          npx --no-install tsx scripts/seed-browser-e2e.ts
+
       - name: Build backend
         env:
           SANCTUARY_RETRY_ATTEMPTS: '5'
@@ -1832,8 +1842,6 @@ jobs:
           # E2E harness starts only the server, not the paired worker, so
           # disable the critical worker-heartbeat startup gate.
           WORKER_HEALTH_MONITOR_ENABLED: 'false'
-          # Keep auth-dependent legacy specs skipped until seeded test auth users exist.
-          SKIP_AUTH_TESTS: 'true'
 
       - name: Write browser E2E diagnostic summary
         if: always()

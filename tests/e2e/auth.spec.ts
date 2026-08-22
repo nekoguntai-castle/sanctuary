@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { BROWSER_E2E_FIXTURES } from './support/browserE2EFixtures';
 
 /**
  * Authentication E2E Tests
@@ -43,25 +44,19 @@ test.describe('Authentication', () => {
   });
 
   test('should successfully login with valid credentials', async ({ page }) => {
-    // Note: This test requires a test user to be set up
-    // Skip if running without test backend
-    test.skip(process.env.SKIP_AUTH_TESTS === 'true', 'Auth tests disabled');
-
-    await page.getByLabel(/username/i).fill('testuser');
-    await page.getByLabel(/password/i).fill('testpassword');
+    await page.getByLabel(/username/i).fill(BROWSER_E2E_FIXTURES.user.username);
+    await page.getByLabel(/password/i).fill(BROWSER_E2E_FIXTURES.user.password);
     await page.getByRole('button', { name: /sign in/i }).click();
 
-    // Should redirect to dashboard
-    await expect(page).toHaveURL(/dashboard|wallets|home/i);
+    await expect(page.getByRole('button', { name: /logout/i })).toBeVisible();
+    await expect(
+      page.getByText(BROWSER_E2E_FIXTURES.user.username, { exact: true }),
+    ).toBeVisible();
   });
 
-  test('should handle 2FA flow when enabled', async ({ page }) => {
-    test.skip(process.env.SKIP_AUTH_TESTS === 'true', 'Auth tests disabled');
-
-    // This test is for users with 2FA enabled
-    // After initial login, should show 2FA prompt
-    await page.getByLabel(/username/i).fill('user_with_2fa');
-    await page.getByLabel(/password/i).fill('password');
+  test('should prompt for 2FA after a valid password', async ({ page }) => {
+    await page.getByLabel(/username/i).fill(BROWSER_E2E_FIXTURES.twoFactorUser.username);
+    await page.getByLabel(/password/i).fill(BROWSER_E2E_FIXTURES.twoFactorUser.password);
     await page.getByRole('button', { name: /sign in/i }).click();
 
     // Should show 2FA input
@@ -69,13 +64,11 @@ test.describe('Authentication', () => {
   });
 
   test('should logout successfully', async ({ page }) => {
-    test.skip(process.env.SKIP_AUTH_TESTS === 'true', 'Auth tests disabled');
-
     // First login
-    await page.getByLabel(/username/i).fill('testuser');
-    await page.getByLabel(/password/i).fill('testpassword');
+    await page.getByLabel(/username/i).fill(BROWSER_E2E_FIXTURES.user.username);
+    await page.getByLabel(/password/i).fill(BROWSER_E2E_FIXTURES.user.password);
     await page.getByRole('button', { name: /sign in/i }).click();
-    await expect(page).toHaveURL(/dashboard|wallets|home/i);
+    await expect(page.getByRole('button', { name: /logout/i })).toBeVisible();
 
     // Then logout
     await page.getByRole('button', { name: /logout|sign out/i }).click();

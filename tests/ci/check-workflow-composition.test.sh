@@ -1281,6 +1281,24 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/resolve-redis.log"' \
   "scripts/ci/resolve-redis-service.sh"
 
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "browser E2E fixtures seed after migration and before backend build" \
+  "full-browser-e2e-tests:" \
+  "Setup backend" \
+  "npx prisma migrate deploy" \
+  "Seed browser E2E fixtures" \
+  "NODE_ENV: test" \
+  "SANCTUARY_SEED_BROWSER_E2E: 'true'" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/browser-e2e-seed.log"' \
+  'scripts/ci/time-command.sh "browser E2E fixture seed"' \
+  "npx --no-install tsx scripts/seed-browser-e2e.ts" \
+  "Build backend" \
+  "Run browser-flow E2E tests"
+
+assert_not_contains "$TEST_WORKFLOW" \
+  "browser E2E auth coverage must not be skipped" \
+  "SKIP_AUTH_TESTS"
+
 assert_occurrence_count "$TEST_WORKFLOW" \
   "full integration Redis health and resolver share one job-unique credential" \
   'sanctuary-redis-ci-${{ github.run_id }}-${{ github.run_attempt }}-full-integration' \

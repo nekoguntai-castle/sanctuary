@@ -128,6 +128,19 @@ main() {
   assert_eq "middleware -> backend_integration" "true" "$(json_query "$plan" lanes.backend_integration.run)"
   assert_eq "middleware -> critical_mutation (auth.ts)" "true" "$(json_query "$plan" lanes.critical_mutation.run)"
 
+  # ---- Browser E2E seeder change runs its real browser consumer ------------
+  base="$head"
+  mkdir -p "$repo/server/scripts"
+  printf 'export const seedBrowserE2E = true\n' > "$repo/server/scripts/seed-browser-e2e.ts"
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm 'browser e2e seeder change'
+  head="$(git -C "$repo" rev-parse HEAD)"
+
+  plan="$(EVENT_NAME=pull_request run_planner "$repo" "$base" "$head")"
+  assert_eq "browser seeder -> backend_unit" "true" "$(json_query "$plan" lanes.backend_unit.run)"
+  assert_eq "browser seeder -> browser_smoke" "true" "$(json_query "$plan" lanes.browser_smoke.run)"
+  assert_eq "browser seeder does not select render" "false" "$(json_query "$plan" lanes.render_regression.run)"
+
   # ---- Workflow file change forces full scan -------------------------------
   base="$head"
   mkdir -p "$repo/.github/workflows"

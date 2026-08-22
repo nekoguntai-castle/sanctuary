@@ -18,7 +18,8 @@ Rebuild policy: `after-plan`
 | Phase 1d | `main` | `codex/implement-merge/ci-quality-push-scope` | `/home/nekoguntai/sanctuary-ci-quality-push-scope` | yes | no | retained pending final cleanup | [#886](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/886) | `1c608ae13f1ad4747ecf2c43226088b56b8eb39b` |
 | Phase 5a | `main` | `codex/implement-merge/ci-hardware-proof-sources` | `/home/nekoguntai/sanctuary-ci-hardware-proof-sources` | yes | no | retained pending final cleanup | [#887](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/887) | `244aa7c45d7f9e9da3667af05602bc88e95d4ccc` |
 | Phase 1e | `main` | `codex/implement-merge/ci-redis-integration` | `/home/nekoguntai/sanctuary-ci-redis-integration` | yes | no | retained pending final cleanup | [#888](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/888) | `57a1776b158ffc2c264d1af33dcfecd025edb43a` |
-| Phase 5b | `main` | `codex/implement-merge/ci-hardware-shadow` | `/home/nekoguntai/sanctuary-ci-hardware-shadow` | yes | no | active | pending | pending |
+| Phase 5b | `main` | `codex/implement-merge/ci-hardware-shadow` | `/home/nekoguntai/sanctuary-ci-hardware-shadow` | yes | no | retained pending final cleanup | [#889](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/889) | `32e2dfe0d99e87da3ba5aa75b7b32e778bb878a4` |
+| Phase 1f | `main` | `codex/implement-merge/ci-auth-e2e-fidelity` | `/home/nekoguntai/sanctuary-ci-auth-e2e-fidelity` | yes | no | active | pending | pending |
 
 ## Ownership boundary
 
@@ -253,3 +254,35 @@ from cleanup and mutation.
   existing base Vector checkout/toolchain; both report steps are bounded and
   nonblocking, expose no outputs, and remain absent from emulator and summary
   dependencies. No emulator execution changes before the 30-day evidence gate.
+- 2026-08-22: Phase 1e's first landed-main integration run exposed a load-racy
+  BullMQ fixture: Worker startup and QueueEvents delivery consumed the entire
+  five-second terminal-state deadline. PR #890 replaced that event race with
+  explicit Worker readiness and bounded persisted-state polling while retaining
+  exact completed/failed payload assertions. It squash-merged as `4de94846df`;
+  both its PR and landed-main runs executed all 14 Redis cases with zero skips,
+  including the repaired retention pair in 194 and 201 milliseconds.
+- 2026-08-22: Phase 5b merged through PR #889 as `32e2dfe0d9`. All 30 PR
+  contexts passed, the exact-revision shadow artifact predicted all three
+  vendors, and Trezor, Ledger, Jade, and the stable Vector summary still ran
+  unconditionally. Provider-context policy passed. The measured full-history
+  checkout plus observer delay before unchanged core proof was about 3.6
+  seconds, below the ten-second retain bound; activation remains prohibited
+  until the documented 30-day/30-run shadow evidence gate is satisfied.
+- 2026-08-22: Phase 1f starts from exact merged main `32e2dfe0d9`. It adds a
+  guarded, idempotent browser-E2E seeder for deterministic login, 2FA-prompt,
+  logout, and wallet list-to-detail evidence; removes the legacy auth skip and
+  conditional wallet no-ops; and classifies seeder-only changes into the browser
+  lane. Local proof passed the focused seeder tests, server test typecheck,
+  classifier and planner regressions, browser group ownership, 371 workflow
+  composition assertions, action/runtime policy, actionlint, Playwright
+  discovery, and the production-environment refusal rehearsal. Independent
+  review found no remaining P0-P2 issue; remote browser execution owns final
+  acceptance of zero skipped auth/wallet cases and seed overhead.
+- 2026-08-22: Every landed-main workflow passed at the Phase 5b merge commit.
+  The Vector base proof, Trezor, Ledger, Jade, and stable summary all executed
+  successfully; the shadow artifact remained revision-bound and explicitly
+  reported that emulator and summary execution were not conditioned. The base
+  Vector job completed within 5.4 seconds of the immediately preceding
+  non-observer landed-main comparison, inside the ten-second representative
+  retain bound. Test and Quality also finished with all 30 commit contexts
+  green and no failure or pending status.

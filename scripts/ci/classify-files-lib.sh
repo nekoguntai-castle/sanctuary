@@ -115,7 +115,7 @@ is_browser_smoke_file() {
       esac
       return 0
       ;;
-    server/src/api/*|server/src/routes.ts|server/src/index.ts|server/prisma/*)
+    server/src/api/*|server/src/routes.ts|server/src/index.ts|server/prisma/*|server/scripts/seed-browser-e2e.ts)
       return 0
       ;;
     server/src/middleware/auth.ts|server/src/middleware/csrf.ts|server/src/middleware/corsOrigin.ts|server/src/middleware/bodyParsing.ts|server/src/middleware/validate.ts)
