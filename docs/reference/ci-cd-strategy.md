@@ -226,8 +226,8 @@ Promote a scheduled check into the PR quick gate only when escaped defects show 
 
 ### Tier 4 - Release Gate
 
-Release validation intentionally duplicates install and image-build evidence,
-but never publishes:
+Release validation separates fast preflight evidence from canonical blocking
+install evidence, and never publishes from CI:
 
 - `Install Tests` validates fresh install, install script flow, container health, auth flow, and upgrade on release-critical paths.
 - Pull-request and main-branch install tests are scoped by `tests/install/utils/classify-install-scope.sh`: unit-only, installer, compose/docker, auth-flow, upgrade-baseline, upgrade, or release-critical. Container-health and auth-flow reuse one stack when both are relevant. Prisma/migration-only changes run the baseline upgrade matrix, while upgrade harness/fixture changes, release tags, schedules, install workflow edits, and manual release-critical/all/upgrade runs include both baseline and extended upgrade fixtures. Install Markdown/MDX changes are docs-only and should not run install tests.
@@ -235,8 +235,8 @@ but never publishes:
   `scripts/ci/classify-docker-build-images.sh`. Frontend-only inputs build only
   the frontend image, backend-only inputs build only the backend image, and
   shared image inputs build both. Every build uses `push: false`.
-- `Release Candidate Validation` is the deliberate pre-release install validation pass.
-- Stable-tag `Install Tests` is the final Forgejo release gate.
+- `Release Candidate Validation` resolves one immutable candidate SHA and runs unit, hardware-compatibility, and fresh-install preflight checks. Its stable `Validation Summary` explicitly leaves release approval pending.
+- Release-tag `Install Tests` owns the blocking same-commit install, health, auth, and upgrade evidence and remains the final Forgejo release gate.
 - The trusted operator release command owns GitHub tag reconciliation and
   matching GitHub/Forgejo Release objects.
 
@@ -422,15 +422,13 @@ must wrap the lock to capture that wait line in the diagnostic artifact.
 `tests/ci/check-workflow-composition.test.sh` enforces this order across
 both workflows.
 
-**`docker/setup-buildx-action` removed** from the five Docker-backed
-release-candidate install/upgrade jobs (`fresh-install-test`,
-`container-health-test`, `auth-flow-test`, `upgrade-test`,
-`upgrade-full-recovery-test`). Compose Bake is disabled in install E2E
-and the dedicated `Docker Build` workflow owns Buildx coverage, so the
-action's only role in those jobs was creating a buildx context the
-install paths did not use, while expanding the action-internal blind
-spot the diagnostic harness cannot reach. Do not reintroduce it without
-restoring an actual Buildx-dependent invocation.
+**`docker/setup-buildx-action` is omitted** from the retained
+release-candidate `fresh-install-test`. Compose Bake is disabled in install E2E
+and the dedicated `Docker Build` workflow owns Buildx coverage, so the action's
+only role there was creating a buildx context the install path did not use,
+while expanding the action-internal blind spot the diagnostic harness cannot
+reach. Do not reintroduce it without restoring an actual Buildx-dependent
+invocation.
 
 **Diagnostic artifact retention** is set to 14 days explicitly on every
 `upload-artifact` invocation that writes to `${{ env.JOB_LOG_DIR }}`,

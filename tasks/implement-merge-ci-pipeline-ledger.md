@@ -19,7 +19,8 @@ Rebuild policy: `after-plan`
 | Phase 5a | `main` | `codex/implement-merge/ci-hardware-proof-sources` | `/home/nekoguntai/sanctuary-ci-hardware-proof-sources` | yes | no | retained pending final cleanup | [#887](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/887) | `244aa7c45d7f9e9da3667af05602bc88e95d4ccc` |
 | Phase 1e | `main` | `codex/implement-merge/ci-redis-integration` | `/home/nekoguntai/sanctuary-ci-redis-integration` | yes | no | retained pending final cleanup | [#888](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/888) | `57a1776b158ffc2c264d1af33dcfecd025edb43a` |
 | Phase 5b | `main` | `codex/implement-merge/ci-hardware-shadow` | `/home/nekoguntai/sanctuary-ci-hardware-shadow` | yes | no | retained pending final cleanup | [#889](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/889) | `32e2dfe0d99e87da3ba5aa75b7b32e778bb878a4` |
-| Phase 1f | `main` | `codex/implement-merge/ci-auth-e2e-fidelity` | `/home/nekoguntai/sanctuary-ci-auth-e2e-fidelity` | yes | no | active | pending | pending |
+| Phase 1f | `main` | `codex/implement-merge/ci-auth-e2e-fidelity` | `/home/nekoguntai/sanctuary-ci-auth-e2e-fidelity` | yes | no | cleaned after landed-main verification | [#891](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/891) | `2b5d05b818d33609b45748f51fa72079d5a8dad6` |
+| Phase 4 | `main` | `codex/implement-merge/ci-release-preflight-truth` | `/home/nekoguntai/sanctuary-ci-release-preflight-truth` | yes | no | active | pending | pending |
 
 ## Ownership boundary
 
@@ -286,3 +287,24 @@ from cleanup and mutation.
   non-observer landed-main comparison, inside the ten-second representative
   retain bound. Test and Quality also finished with all 30 commit contexts
   green and no failure or pending status.
+- 2026-08-22: Phase 1f merged through PR #891 as `2b5d05b818`. All five PR
+  workflows and the exact three protected contexts passed. The guarded browser
+  seed completed before the sequential browser groups, the seeded-wallet case
+  passed 1/1 without a retry or skip, and the admin-auth group completed after
+  removal of its runtime skip flag and every local `test.skip` branch. Landed
+  main Architecture, Docker, Quality, Test, and Vector workflows then passed in
+  103, 669, 694, 1,324, and 1,240 seconds respectively; Browser repeated the
+  seeded-wallet pass in 365 seconds. The owned remote branch, local branch, and
+  isolated worktree were removed only after ancestry, tree, and landed-CI proof.
+- 2026-08-22: Phase 4 rebases onto exact merged main `2b5d05b818`. Release
+  Candidate Validation now resolves its trusted ref once, locks the resulting
+  full commit SHA, and fans that immutable commit out to all retained evidence
+  jobs. The two sequential warning-only health/auth stack rebuilds are retired;
+  canonical release-tag Install Tests remain the sole blocking health, auth,
+  and upgrade evidence, and the trusted publisher still requires their
+  successful run at the exact release commit. The stable `Validation Summary`
+  and `Install Test Summary` contexts are unchanged, while both summaries now
+  state the commit/evidence boundary without claiming approval. Local proof
+  passed 366 workflow-composition assertions, all 13 install unit suites plus
+  their two CI guards, the release-distribution suite, CI registration checks,
+  actionlint with error-level shellcheck, and diff checks.

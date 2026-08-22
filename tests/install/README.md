@@ -301,13 +301,11 @@ workflow_dispatch:
 
 #### 2. Release Candidate Validation (`.github/workflows/release-candidate.yml`)
 
-Use this workflow **before cutting a release** to run the full test suite including the blocking historical upgrade matrix.
+Use this workflow **before cutting a release** for a SHA-bound unit, hardware-evidence, and fresh-install preflight. It is not release approval; the release tag's Install Tests workflow owns the blocking health, auth, and historical upgrade evidence.
 
 **Recommended release process:**
 1. Run the Release Candidate workflow on the commit you plan to release
-   - Let it auto-upgrade from the matrix source aliases, or provide `upgrade_source_ref` for a specific source version you care about
-   - Enable `include_full_upgrade_recovery` for the final pre-cut pass when you want the extended recovery scenarios in CI
-2. Wait for all tests to pass, including the upgrade matrix
+2. Wait for the SHA-bound preflight to pass
 3. Create the release tag
 4. The Install Tests workflow will run release-critical tests and the blocking upgrade matrix on the tag
 5. If all tests pass, run the trusted operator release command documented in
@@ -318,10 +316,7 @@ Use this workflow **before cutting a release** to run the full test suite includ
 ```yaml
 workflow_dispatch:
   inputs:
-    ref: 'main'  # Git ref to test (branch, tag, or SHA)
-    version: '0.5.0'  # Optional version for logging
-    upgrade_source_ref: 'v0.8.39'  # Optional older ref/tag to install before upgrading
-    include_full_upgrade_recovery: true # Optional full-mode recovery lane
+    ref: 'main'  # Trusted main, release/* branch, or v* tag to resolve once to a commit
 ```
 
 ### Release Blocking

@@ -1,15 +1,16 @@
 name: Release Candidate Validation
 
-# This workflow runs the FULL install test suite including upgrade tests.
-# Use this before cutting a release to thoroughly validate the installation process.
+# This workflow runs a SHA-bound preflight before canonical release validation.
+# The same-commit install, health, auth, and upgrade gate lives in install-test.yml.
 #
 # Recommended workflow:
 # 1. Run this workflow manually on the commit you plan to release
-# 2. Wait for all tests to pass (including upgrade tests)
+# 2. Wait for this preflight to pass
 # 3. Create the release tag
-# 4. The regular install-test workflow will run release-critical tests on the tag
+# 4. Wait for install-test.yml to pass on the exact release commit
 #
-# Total runtime: ~25-35 minutes
+# Runtime is dominated by the retained fresh-install preflight; the canonical
+# health, auth, and upgrade evidence runs once in install-test.yml.
 
 on:
   # Fire automatically on RC / pre-release tag pushes so RC validation
@@ -31,19 +32,6 @@ on:
         required: false
         default: 'main'
         type: string
-      version:
-        description: 'Version being validated'
-        required: false
-        type: string
-      upgrade_source_ref:
-        description: 'Optional older git ref or tag to install before upgrading to the candidate ref'
-        required: false
-        type: string
-      include_full_upgrade_recovery:
-        description: 'Run one full-mode baseline upgrade recovery lane in addition to the core matrix'
-        required: false
-        default: false
-        type: boolean
   workflow_dispatch:
     inputs:
       ref:
@@ -51,19 +39,6 @@ on:
         required: false
         default: 'main'
         type: string
-      version:
-        description: 'Version being validated (for logging only)'
-        required: false
-        type: string
-      upgrade_source_ref:
-        description: 'Optional older git ref or tag to install before upgrading to the candidate ref'
-        required: false
-        type: string
-      include_full_upgrade_recovery:
-        description: 'Run one full-mode baseline upgrade recovery lane in addition to the core matrix'
-        required: false
-        default: false
-        type: boolean
 
 concurrency:
   # Keep each candidate out of install-test.yml's concurrency group. GitHub-style
@@ -97,7 +72,7 @@ jobs:
     name: Validation Info
     runs-on: ubuntu-22.04
     outputs:
-      candidate_ref: ${{ steps.candidate.outputs.candidate_ref }}
+      candidate_sha: ${{ steps.candidate-commit.outputs.candidate_sha }}
     steps:
       - name: Resolve trusted candidate ref
         id: candidate
@@ -131,11 +106,26 @@ jobs:
 
           echo "candidate_ref=$candidate_ref" >> "$GITHUB_OUTPUT"
 
+      - name: Checkout resolved candidate
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ steps.candidate.outputs.candidate_ref }}
+          fetch-depth: 0
+
+      - name: Lock immutable candidate commit
+        id: candidate-commit
+        run: |
+          candidate_sha="$(git rev-parse HEAD)"
+          if [[ ! "$candidate_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Resolved candidate commit is not a full SHA: $candidate_sha"
+            exit 1
+          fi
+          echo "candidate_sha=$candidate_sha" >> "$GITHUB_OUTPUT"
+
       - name: Display validation context
         env:
           VALIDATION_REF: ${{ steps.candidate.outputs.candidate_ref }}
-          VALIDATION_VERSION: ${{ github.event.inputs.version || inputs.version || 'N/A' }}
-          FULL_UPGRADE_RECOVERY: ${{ github.event.inputs.include_full_upgrade_recovery || inputs.include_full_upgrade_recovery || false }}
+          VALIDATION_SHA: ${{ steps.candidate-commit.outputs.candidate_sha }}
           TRIGGERED_BY: ${{ github.actor }}
         run: |
           {
@@ -144,12 +134,11 @@ jobs:
             echo "| Field | Value |"
             echo "|-------|-------|"
             echo "| Git Ref | \`${VALIDATION_REF}\` |"
-            echo "| Version | ${VALIDATION_VERSION} |"
-            echo "| Full Upgrade Recovery | ${FULL_UPGRADE_RECOVERY} |"
+            echo "| Commit | \`${VALIDATION_SHA}\` |"
             echo "| Triggered By | ${TRIGGERED_BY} |"
             echo "| Time | $(date -u '+%Y-%m-%d %H:%M:%S UTC') |"
             echo ""
-            echo "This workflow runs the **full** install test suite including upgrade tests."
+            echo "This workflow is a preflight. Release approval remains pending the canonical same-commit Install Tests gate."
             echo ""
             echo "---"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -162,7 +151,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
-          ref: ${{ needs.validation-info.outputs.candidate_ref }}
+          ref: ${{ needs.validation-info.outputs.candidate_sha }}
           fetch-depth: 0
       - name: Verify Node.js toolchain
         uses: ./.github/actions/setup-node-toolchain
@@ -212,7 +201,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
-          ref: ${{ needs.validation-info.outputs.candidate_ref }}
+          ref: ${{ needs.validation-info.outputs.candidate_sha }}
           fetch-depth: 0
 
       - name: Make test scripts executable
@@ -244,7 +233,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
-          ref: ${{ needs.validation-info.outputs.candidate_ref }}
+          ref: ${{ needs.validation-info.outputs.candidate_sha }}
           clean: false
 
       # docker/setup-buildx-action intentionally removed: install E2E disables
@@ -360,304 +349,12 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
+  # Canonical release evidence note
   # ============================================
-  # Container Health Test (non-blocking)
-  # ============================================
-  container-health-test:
-    name: Container Health
-    runs-on: [ubuntu-22.04, docker-socket]
-    concurrency:
-      group: sanctuary-runner-e2e
-      cancel-in-progress: false
-    needs: [validation-info, fresh-install-test]
-    continue-on-error: true  # Non-blocking - failures are warnings
-    timeout-minutes: 30
-    env:
-      COMPOSE_PROJECT_NAME: sanctuary-rc-health-${{ github.run_id }}
-      HTTPS_PORT: '15643'
-      HTTP_PORT: '15280'
-      GATEWAY_PORT: '15200'
-      # Lanes consume three consecutive ports each, so offsets must step by at
-      # least three. 0/1/2 gave these three concurrent lanes overlapping triples.
-      PORT_OFFSET: '3'
-      JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/container-health
-      SANCTUARY_CI_DEBUG_TRACE: '1'
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          ref: ${{ needs.validation-info.outputs.candidate_ref }}
-          clean: false
-
-      # docker/setup-buildx-action removed (see fresh-install-test rationale).
-
-      - name: Pre-flight diagnostics
-        if: always()
-        run: |
-          chmod +x scripts/ci/run-with-log.sh scripts/ci/write-preflight-diagnostics.sh
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/preflight.log" \
-            scripts/ci/write-preflight-diagnostics.sh
-
-      - name: Make test scripts executable
-        run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh scripts/ci/*.sh
-
-      - name: Check Docker
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" \
-            scripts/ci/wait-for-docker.sh
-
-      - name: Prepare isolated install workspace
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" bash -c '
-            workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible container-health)"
-            for relative_path in docker-compose.yml docker-compose.ghcr.yml docker-compose.monitoring.yml docker-compose.tor.yml docker/compose/monitoring.yml docker/compose/tor.yml; do
-              compose_file="$workspace/$relative_path"
-              [ -f "$compose_file" ] || continue
-              sed -i -E '\''s/^([[:space:]]*restart:).*/\1 "no"/'\'' "$compose_file"
-            done
-            echo "SANCTUARY_INSTALL_WORKSPACE=$workspace" >> "$GITHUB_ENV"
-          '
-
-      - name: Assign run-specific ports
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-ports.log" bash -c '
-            cd "$SANCTUARY_INSTALL_WORKSPACE"
-            bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
-          '
-
-      - name: Start containers
-        run: |
-          # Generate all required secrets
-          JWT_SECRET=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
-          ENCRYPTION_KEY=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
-
-          ENCRYPTION_SALT=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
-          GATEWAY_SECRET=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
-          WORKER_DIAGNOSTICS_SECRET=$(openssl rand -hex 32)
-          POSTGRES_PASSWORD=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
-          LLM_EGRESS_PROXY_SECRET=$(openssl rand -hex 32)
-          REDIS_PASSWORD=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
-          cd "$SANCTUARY_INSTALL_WORKSPACE"
-          # Generate SSL certs to a dind-visible path. Without
-          # SANCTUARY_COMPOSE_SSL_DIR set to the docker-visible
-          # translation, the frontend container's bind mount points
-          # at a path the docker daemon (dind) can't see, so it
-          # serves HTTP and the healthcheck on :443 fails.
-          # shellcheck disable=SC1091
-          source tests/install/utils/helpers.sh
-          # Per-lane image tag, derived from COMPOSE_PROJECT_NAME. Set here
-          # rather than inside the .test.sh because run-e2e-lane-phases.sh builds
-          # and starts the stack in phase 1, before the test script runs -- a tag
-          # exported later would name images that were never built. Without it
-          # these two lanes stay on the shared `:local` tag (#740), which is what
-          # a cross-lane image purge reaches for (#739).
-          export_lane_image_tag
-          export SANCTUARY_SSL_DIR="$SANCTUARY_INSTALL_WORKSPACE/docker/nginx/ssl"
-          SANCTUARY_COMPOSE_SSL_DIR="$(docker_visible_path "$SANCTUARY_SSL_DIR")"
-          export SANCTUARY_COMPOSE_SSL_DIR
-          mkdir -p "$SANCTUARY_SSL_DIR"
-          ./docker/nginx/ssl/generate-certs.sh localhost
-          export JWT_SECRET ENCRYPTION_KEY ENCRYPTION_SALT GATEWAY_SECRET WORKER_DIAGNOSTICS_SECRET POSTGRES_PASSWORD LLM_EGRESS_PROXY_SECRET REDIS_PASSWORD
-          cd "${{ github.workspace }}"
-          # One lock for the whole lifetime of the stack. Taking it per step left
-          # a live stack unprotected between locked sections, which is where
-          # v0.8.60-rc2 lost its backend and migrate containers (#719).
-          scripts/ci/with-runner-lock.sh e2e \
-            scripts/ci/run-e2e-lane-phases.sh \
-              "$SANCTUARY_INSTALL_WORKSPACE" "$JOB_LOG_DIR" container-health \
-              ./tests/install/e2e/container-health.test.sh --verbose
-
-      - name: Cleanup
-        if: always()
-        run: |
-          project="${COMPOSE_PROJECT_NAME:-}"
-          if [ -z "$project" ]; then
-            echo "::error::COMPOSE_PROJECT_NAME is required for container-health cleanup"
-            exit 1
-          fi
-          bash "${{ github.workspace }}/scripts/ci/cleanup-docker-resources.sh" --project "$project" --verify-empty
-
-      - name: Post-cleanup diagnostics
-        if: always()
-        continue-on-error: true
-        env:
-          SANCTUARY_CI_PROJECT_PREFIXES: sanctuary-rc-health-${{ github.run_id }}
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/post-cleanup.log" \
-            scripts/ci/write-preflight-diagnostics.sh
-
-      - name: Write container health diagnostic summary
-        if: always()
-        continue-on-error: true
-        run: scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Release Candidate Container Health"
-
-      - name: Upload diagnostic logs
-        if: always()
-        continue-on-error: true
-        uses: ./.github/actions/upload-artifact
-        with:
-          name: diag-container-health-${{ github.run_id }}
-          path: ${{ env.JOB_LOG_DIR }}
-          retention-days: 14
-          if-no-files-found: ignore
-
-  # ============================================
-  # Authentication Flow Test (non-blocking)
-  # ============================================
-  auth-flow-test:
-    name: Auth Flow
-    runs-on: [ubuntu-22.04, docker-socket]
-    concurrency:
-      group: sanctuary-runner-e2e
-      cancel-in-progress: false
-    needs: [validation-info, fresh-install-test, container-health-test]
-    if: always() && needs.fresh-install-test.result == 'success'
-    continue-on-error: true  # Non-blocking - failures are warnings
-    timeout-minutes: 30
-    env:
-      COMPOSE_PROJECT_NAME: sanctuary-rc-auth-${{ github.run_id }}
-      HTTPS_PORT: '15743'
-      HTTP_PORT: '15380'
-      GATEWAY_PORT: '15300'
-      PORT_OFFSET: '6'
-      JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/auth-flow
-      SANCTUARY_CI_DEBUG_TRACE: '1'
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          ref: ${{ needs.validation-info.outputs.candidate_ref }}
-          clean: false
-
-      # docker/setup-buildx-action removed (see fresh-install-test rationale).
-
-      - name: Pre-flight diagnostics
-        if: always()
-        run: |
-          chmod +x scripts/ci/run-with-log.sh scripts/ci/write-preflight-diagnostics.sh
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/preflight.log" \
-            scripts/ci/write-preflight-diagnostics.sh
-
-      - name: Make test scripts executable
-        run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh scripts/ci/*.sh
-
-      - name: Check Docker
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" \
-            scripts/ci/wait-for-docker.sh
-
-      - name: Prepare isolated install workspace
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" bash -c '
-            workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible auth-flow)"
-            for relative_path in docker-compose.yml docker-compose.ghcr.yml docker-compose.monitoring.yml docker-compose.tor.yml docker/compose/monitoring.yml docker/compose/tor.yml; do
-              compose_file="$workspace/$relative_path"
-              [ -f "$compose_file" ] || continue
-              sed -i -E '\''s/^([[:space:]]*restart:).*/\1 "no"/'\'' "$compose_file"
-            done
-            echo "SANCTUARY_INSTALL_WORKSPACE=$workspace" >> "$GITHUB_ENV"
-          '
-
-      - name: Assign run-specific ports
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-ports.log" bash -c '
-            cd "$SANCTUARY_INSTALL_WORKSPACE"
-            bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
-          '
-
-      - name: Start containers
-        run: |
-          # Generate required secrets
-          JWT_SECRET=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
-          ENCRYPTION_KEY=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
-
-          ENCRYPTION_SALT=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
-          GATEWAY_SECRET=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
-          WORKER_DIAGNOSTICS_SECRET=$(openssl rand -hex 32)
-          POSTGRES_PASSWORD=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
-          LLM_EGRESS_PROXY_SECRET=$(openssl rand -hex 32)
-          REDIS_PASSWORD=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
-          cd "$SANCTUARY_INSTALL_WORKSPACE"
-          # Generate SSL certs to a dind-visible path. Without
-          # SANCTUARY_COMPOSE_SSL_DIR set to the docker-visible
-          # translation, the frontend container's bind mount points
-          # at a path the docker daemon (dind) can't see, so it
-          # serves HTTP and the healthcheck on :443 fails.
-          # shellcheck disable=SC1091
-          source tests/install/utils/helpers.sh
-          # Per-lane image tag, derived from COMPOSE_PROJECT_NAME. Set here
-          # rather than inside the .test.sh because run-e2e-lane-phases.sh builds
-          # and starts the stack in phase 1, before the test script runs -- a tag
-          # exported later would name images that were never built. Without it
-          # these two lanes stay on the shared `:local` tag (#740), which is what
-          # a cross-lane image purge reaches for (#739).
-          export_lane_image_tag
-          export SANCTUARY_SSL_DIR="$SANCTUARY_INSTALL_WORKSPACE/docker/nginx/ssl"
-          SANCTUARY_COMPOSE_SSL_DIR="$(docker_visible_path "$SANCTUARY_SSL_DIR")"
-          export SANCTUARY_COMPOSE_SSL_DIR
-          mkdir -p "$SANCTUARY_SSL_DIR"
-          ./docker/nginx/ssl/generate-certs.sh localhost
-          # Raise auth rate limits for stressy auth-flow test sequences
-          export JWT_SECRET ENCRYPTION_KEY ENCRYPTION_SALT GATEWAY_SECRET WORKER_DIAGNOSTICS_SECRET POSTGRES_PASSWORD LLM_EGRESS_PROXY_SECRET REDIS_PASSWORD
-          export RATE_LIMIT_LOGIN=100 RATE_LIMIT_PASSWORD_CHANGE=100
-          cd "${{ github.workspace }}"
-          # One lock for the whole lifetime of the stack. Taking it per step left
-          # a live stack unprotected between locked sections, which is where
-          # v0.8.60-rc2 lost its backend and migrate containers (#719).
-          scripts/ci/with-runner-lock.sh e2e \
-            scripts/ci/run-e2e-lane-phases.sh \
-              "$SANCTUARY_INSTALL_WORKSPACE" "$JOB_LOG_DIR" auth-flow \
-              ./tests/install/e2e/auth-flow.test.sh --verbose
-
-      - name: Cleanup
-        if: always()
-        run: |
-          project="${COMPOSE_PROJECT_NAME:-}"
-          if [ -z "$project" ]; then
-            echo "::error::COMPOSE_PROJECT_NAME is required for auth-flow cleanup"
-            exit 1
-          fi
-          bash "${{ github.workspace }}/scripts/ci/cleanup-docker-resources.sh" --project "$project" --verify-empty
-
-      - name: Post-cleanup diagnostics
-        if: always()
-        continue-on-error: true
-        env:
-          SANCTUARY_CI_PROJECT_PREFIXES: sanctuary-rc-auth-${{ github.run_id }}
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/post-cleanup.log" \
-            scripts/ci/write-preflight-diagnostics.sh
-
-      - name: Write auth flow diagnostic summary
-        if: always()
-        continue-on-error: true
-        run: scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Release Candidate Auth Flow"
-
-      - name: Upload diagnostic logs
-        if: always()
-        continue-on-error: true
-        uses: ./.github/actions/upload-artifact
-        with:
-          name: diag-auth-flow-${{ github.run_id }}
-          path: ${{ env.JOB_LOG_DIR }}
-          retention-days: 14
-          if-no-files-found: ignore
-
-  # ============================================
-  # Upgrade coverage note
-  # ============================================
-  # release-candidate.yml deliberately does NOT run an upgrade matrix.
-  # install-test.yml's serialized chain (Upgrade Baseline + Upgrade
-  # Extended + Upgrade Extended Fixtures) is the canonical upgrade
-  # gate — it fires on the same tag push, runs all six fixtures
-  # sequentially against the same self-hosted runner, and has a
-  # decade of stability behind it. Duplicating that coverage here
-  # produced a long history of false reds (see commits leading up to
-  # v0.8.52) because Forgejo's act_runner does not honor matrix
-  # max-parallel or job-level concurrency, so a parallel matrix in
-  # this workflow saturated the dind docker daemon every run.
+  # release-candidate.yml deliberately does NOT duplicate container-health,
+  # auth-flow, or upgrade jobs. On tag pushes, install-test.yml owns those
+  # blocking checks and the trusted publisher requires its successful push run
+  # at the exact release commit. Manual RC runs are preflight evidence only.
 
   # Release distribution is intentionally outside Forgejo Actions. After these
   # validation gates pass, the trusted operator command creates matching
@@ -670,121 +367,85 @@ jobs:
   validation-summary:
     name: Validation Summary
     runs-on: ubuntu-22.04
-    needs: [validation-info, hardware-compatibility-evidence, unit-tests, fresh-install-test, container-health-test, auth-flow-test]
+    needs: [validation-info, hardware-compatibility-evidence, unit-tests, fresh-install-test]
     if: always()
 
     steps:
       - name: Generate validation report
+        env:
+          CANDIDATE_SHA: ${{ needs.validation-info.outputs.candidate_sha }}
+          FRESH_INSTALL_RESULT: ${{ needs.fresh-install-test.result }}
+          HARDWARE_EVIDENCE_RESULT: ${{ needs.hardware-compatibility-evidence.result }}
+          UNIT_TEST_RESULT: ${{ needs.unit-tests.result }}
         run: |
           echo "## Validation Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-
-          # Determine overall status
-          ALL_PASSED=true
+          echo "Candidate commit: \`$CANDIDATE_SHA\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
 
           echo "| Test Suite | Result | Duration |" >> $GITHUB_STEP_SUMMARY
           echo "|------------|--------|----------|" >> $GITHUB_STEP_SUMMARY
 
-          # Unit tests
-          if [ "${{ needs.unit-tests.result }}" == "success" ]; then
+          if [ "$UNIT_TEST_RESULT" = "success" ]; then
             echo "| Unit Tests | :white_check_mark: Passed | ~5s |" >> $GITHUB_STEP_SUMMARY
           else
             echo "| Unit Tests | :x: Failed | - |" >> $GITHUB_STEP_SUMMARY
-            ALL_PASSED=false
           fi
 
-          # Fresh install
-          if [ "${{ needs.fresh-install-test.result }}" == "success" ]; then
+          if [ "$FRESH_INSTALL_RESULT" = "success" ]; then
             echo "| Fresh Install E2E | :white_check_mark: Passed | ~5-10m |" >> $GITHUB_STEP_SUMMARY
           else
             echo "| Fresh Install E2E | :x: Failed | - |" >> $GITHUB_STEP_SUMMARY
-            ALL_PASSED=false
           fi
 
-          # Container health
-          if [ "${{ needs.container-health-test.result }}" == "success" ]; then
-            echo "| Container Health | :white_check_mark: Passed | ~2m |" >> $GITHUB_STEP_SUMMARY
+          if [ "$HARDWARE_EVIDENCE_RESULT" = "success" ]; then
+            echo "| Hardware Compatibility Evidence | :white_check_mark: Passed | - |" >> $GITHUB_STEP_SUMMARY
           else
-            echo "| Container Health | :x: Failed | - |" >> $GITHUB_STEP_SUMMARY
-            ALL_PASSED=false
+            echo "| Hardware Compatibility Evidence | :x: Failed | - |" >> $GITHUB_STEP_SUMMARY
           fi
 
-          # Auth flow
-          if [ "${{ needs.auth-flow-test.result }}" == "success" ]; then
-            echo "| Auth Flow | :white_check_mark: Passed | ~2m |" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "| Auth Flow | :x: Failed | - |" >> $GITHUB_STEP_SUMMARY
-            ALL_PASSED=false
-          fi
-
-          # Upgrade coverage lives in install-test.yml (Upgrade Baseline +
-          # Upgrade Extended + Upgrade Extended Fixtures). It fires on the
-          # same tag push and is the canonical upgrade gate — see comment
-          # above where the duplicate matrix used to live.
-          echo "| Upgrade Suite | :information_source: See install-test.yml | covers all 6 fixtures |" >> $GITHUB_STEP_SUMMARY
+          echo "| Canonical Install/Health/Auth/Upgrade Gate | :hourglass_flowing_sand: Pending same-commit Install Tests | - |" >> $GITHUB_STEP_SUMMARY
 
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "---" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Core tests determine release approval here.
-          CORE_PASSED=true
-          if [ "${{ needs.unit-tests.result }}" != "success" ] || \
-             [ "${{ needs.fresh-install-test.result }}" != "success" ] || \
-             [ "${{ needs.hardware-compatibility-evidence.result }}" != "success" ]; then
-            CORE_PASSED=false
+          PREFLIGHT_PASSED=true
+          if [ "$UNIT_TEST_RESULT" != "success" ] || \
+             [ "$FRESH_INSTALL_RESULT" != "success" ] || \
+             [ "$HARDWARE_EVIDENCE_RESULT" != "success" ]; then
+            PREFLIGHT_PASSED=false
           fi
 
-          if [ "$CORE_PASSED" == "true" ]; then
-            if [ "$ALL_PASSED" == "true" ]; then
-              echo "## :rocket: Release Candidate APPROVED" >> $GITHUB_STEP_SUMMARY
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "All install tests passed. This commit is ready for release." >> $GITHUB_STEP_SUMMARY
-            else
-              echo "## :rocket: Release Candidate APPROVED (with warnings)" >> $GITHUB_STEP_SUMMARY
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "Core tests (Unit + Fresh Install + Upgrade Matrix) passed. Extended tests have non-blocking failures." >> $GITHUB_STEP_SUMMARY
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "> **Note:** Extended test failures may indicate upgrade-specific or environment-specific risk." >> $GITHUB_STEP_SUMMARY
-              echo "> Review failed tests before release even though they do not yet hard-block this workflow." >> $GITHUB_STEP_SUMMARY
-            fi
+          if [ "$PREFLIGHT_PASSED" = "true" ]; then
+            echo "## :white_check_mark: Release Candidate Preflight Passed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "The retained preflight checks passed for \`$CANDIDATE_SHA\`. This is not release approval." >> $GITHUB_STEP_SUMMARY
+            echo "Release remains pending a successful install-test.yml push run for the exact same commit and the trusted publication gate." >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "**Next steps:**" >> $GITHUB_STEP_SUMMARY
             echo "1. Create a release tag on this commit" >> $GITHUB_STEP_SUMMARY
-            echo "2. Wait for stable-tag install-test.yml validation" >> $GITHUB_STEP_SUMMARY
+            echo "2. Wait for same-commit install-test.yml validation" >> $GITHUB_STEP_SUMMARY
             echo "3. Run npm run release:publish -- <tag> from a trusted operator checkout" >> $GITHUB_STEP_SUMMARY
           else
-            echo "## :stop_sign: Release Candidate REJECTED" >> $GITHUB_STEP_SUMMARY
+            echo "## :stop_sign: Release Candidate Preflight Failed" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Core install tests failed. **Do not release this commit.**" >> $GITHUB_STEP_SUMMARY
+            echo "Preflight checks failed for \`$CANDIDATE_SHA\`. **Do not release this commit.**" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "Review the failed tests and fix issues before attempting release." >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Check validation result
+        env:
+          CANDIDATE_SHA: ${{ needs.validation-info.outputs.candidate_sha }}
+          FRESH_INSTALL_RESULT: ${{ needs.fresh-install-test.result }}
+          HARDWARE_EVIDENCE_RESULT: ${{ needs.hardware-compatibility-evidence.result }}
+          UNIT_TEST_RESULT: ${{ needs.unit-tests.result }}
         run: |
-          # Core tests that MUST pass for release. Upgrade gates live in
-          # install-test.yml's Install Test Summary — see comment near the
-          # removed upgrade-test job for rationale.
-          if [ "${{ needs.unit-tests.result }}" != "success" ] || \
-             [ "${{ needs.fresh-install-test.result }}" != "success" ] || \
-             [ "${{ needs.hardware-compatibility-evidence.result }}" != "success" ]; then
-            echo "::error::Release candidate validation FAILED - core tests did not pass."
+          if [ "$UNIT_TEST_RESULT" != "success" ] || \
+             [ "$FRESH_INSTALL_RESULT" != "success" ] || \
+             [ "$HARDWARE_EVIDENCE_RESULT" != "success" ]; then
+            echo "::error::Release candidate preflight failed for $CANDIDATE_SHA."
             exit 1
           fi
-
-          # Extended tests - warn but don't block release
-          WARNINGS=0
-          if [ "${{ needs.container-health-test.result }}" != "success" ]; then
-            echo "::warning::Container Health test failed (non-blocking)"
-            WARNINGS=$((WARNINGS + 1))
-          fi
-          if [ "${{ needs.auth-flow-test.result }}" != "success" ]; then
-            echo "::warning::Auth Flow test failed (non-blocking)"
-            WARNINGS=$((WARNINGS + 1))
-          fi
-          if [ $WARNINGS -gt 0 ]; then
-            echo "Release candidate validation PASSED with $WARNINGS warning(s)"
-          else
-            echo "Release candidate validation PASSED!"
-          fi
+          echo "Release candidate preflight passed for $CANDIDATE_SHA; release approval remains pending same-commit Install Tests."

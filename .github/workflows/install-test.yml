@@ -1277,6 +1277,7 @@ jobs:
         env:
           AUTH_FLOW: ${{ needs.auth-flow-test.result }}
           CONTAINER_HEALTH: ${{ needs.container-health-test.result }}
+          COMMIT_SHA: ${{ github.sha }}
           EVENT_NAME: ${{ github.event_name }}
           FRESH_INSTALL: ${{ needs.fresh-install-test.result }}
           INSTALL_SCRIPT: ${{ needs.install-script-test.result }}
@@ -1312,6 +1313,8 @@ jobs:
           }
 
           echo "## Install Test Results" >> "$summary"
+          echo "" >> "$summary"
+          echo "Workflow commit: \`$COMMIT_SHA\`" >> "$summary"
           echo "" >> "$summary"
 
           # Check if tests were skipped due to no relevant changes

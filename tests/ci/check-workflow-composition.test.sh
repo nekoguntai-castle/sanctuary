@@ -557,6 +557,8 @@ assert_runner_parser_rejects_post_comment_drift() {
 # --- release-candidate.yml --------------------------------------------------
 RC="$REPO_ROOT/.github/workflows/release-candidate.yml"
 PHASE_RUNNER="$REPO_ROOT/scripts/ci/run-e2e-lane-phases.sh"
+RELEASE_GATES="$REPO_ROOT/docs/reference/release-gates.md"
+UPGRADE_ROADMAP="$REPO_ROOT/docs/plans/upgrade-testing-roadmap.md"
 
 assert_occurrence_count "$RC" \
   "release-candidate disables restart for CI-created Compose stacks" \
@@ -566,7 +568,7 @@ assert_occurrence_count "$RC" \
 assert_occurrence_count "$RC" \
   "every release-candidate isolated checkout rewrites historical restart policies" \
   "sed -i -E" \
-  3
+  1
 
 assert_contains_in_order "$RC" \
   "release-candidate fresh-install-test composition" \
@@ -574,26 +576,6 @@ assert_contains_in_order "$RC" \
   "scripts/ci/with-runner-lock.sh e2e" \
   'scripts/ci/time-command.sh "fresh install e2e"' \
   "fresh-install.test.sh"
-
-# container-health and auth-flow no longer compose these steps inline. Both
-# lanes now take the e2e lock ONCE and hand the whole stack lifetime to
-# run-e2e-lane-phases.sh, because taking the lock per step left a live stack
-# unprotected between locked sections (#719). The run-with-log/time-command
-# composition still exists, but inside the phase runner, so it is asserted
-# there instead.
-assert_contains_in_order "$RC" \
-  "release-candidate container-health single-lock composition" \
-  "scripts/ci/with-runner-lock.sh e2e" \
-  "scripts/ci/run-e2e-lane-phases.sh" \
-  "container-health" \
-  "container-health.test.sh"
-
-assert_contains_in_order "$RC" \
-  "release-candidate auth-flow single-lock composition" \
-  "scripts/ci/with-runner-lock.sh e2e" \
-  "scripts/ci/run-e2e-lane-phases.sh" \
-  "auth-flow" \
-  "auth-flow.test.sh"
 
 assert_contains_in_order "$PHASE_RUNNER" \
   "phase runner logs each stack phase in order" \
@@ -608,49 +590,100 @@ assert_contains_in_order "$RC" \
   "cancel-in-progress: false"
 
 assert_contains_in_order "$RC" \
-  "release-candidate Docker jobs require the docker-socket capability label" \
+  "release-candidate fresh install requires the docker-socket capability label" \
   "fresh-install-test:" \
-  "runs-on: [ubuntu-22.04, docker-socket]" \
-  "container-health-test:" \
-  "runs-on: [ubuntu-22.04, docker-socket]" \
-  "auth-flow-test:" \
   "runs-on: [ubuntu-22.04, docker-socket]"
 
 assert_occurrence_count "$RC" \
-  "every release-candidate ad hoc stack generates the diagnostics secret" \
-  'WORKER_DIAGNOSTICS_SECRET=$(openssl rand -hex 32)' \
-  2
+  "release-candidate retires duplicate container-health job" \
+  "container-health-test:" \
+  0
 
 assert_occurrence_count "$RC" \
-  "every release-candidate ad hoc stack exports the diagnostics secret" \
-  'export JWT_SECRET ENCRYPTION_KEY ENCRYPTION_SALT GATEWAY_SECRET WORKER_DIAGNOSTICS_SECRET' \
-  2
-
-assert_contains_in_order "$RC" \
-  "release-candidate isolated stack jobs allow a full DIND build window" \
-  "container-health-test:" \
-  "timeout-minutes: 30" \
+  "release-candidate retires duplicate auth-flow job" \
   "auth-flow-test:" \
-  "timeout-minutes: 30"
+  0
 
 assert_not_contains "$RC" \
   "release-candidate checkout must not use raw input ref" \
   '${{ github.event.inputs.ref || inputs.ref || '\''main'\'' }}'
 
 assert_contains_in_order "$RC" \
-  "release-candidate trusted ref resolution" \
+  "release-candidate resolves one immutable commit for every retained job" \
   "validation-info:" \
   "Resolve trusted candidate ref" \
   "Release candidate ref must be main, release/*, or a v* tag" \
   "candidate_ref=\$candidate_ref" \
+  "Checkout resolved candidate" \
+  "Lock immutable candidate commit" \
+  "candidate_sha=\$candidate_sha" \
   "unit-tests:" \
-  'ref: ${{ needs.validation-info.outputs.candidate_ref }}' \
+  'ref: ${{ needs.validation-info.outputs.candidate_sha }}' \
   "fresh-install-test:" \
-  'ref: ${{ needs.validation-info.outputs.candidate_ref }}' \
-  "container-health-test:" \
-  'ref: ${{ needs.validation-info.outputs.candidate_ref }}' \
-  "auth-flow-test:" \
-  'ref: ${{ needs.validation-info.outputs.candidate_ref }}'
+  'ref: ${{ needs.validation-info.outputs.candidate_sha }}'
+
+assert_occurrence_count "$RC" \
+  "every retained release-candidate evidence job checks out the immutable SHA" \
+  'ref: ${{ needs.validation-info.outputs.candidate_sha }}' \
+  3
+
+for stale_rc_input in "version:" "upgrade_source_ref:" "include_full_upgrade_recovery:"; do
+  assert_occurrence_count "$RC" \
+    "release-candidate removes stale input $stale_rc_input" \
+    "$stale_rc_input" \
+    0
+done
+
+for stale_rc_claim in "APPROVED" "ready for release" "Upgrade Matrix"; do
+  assert_not_contains "$RC" \
+    "release-candidate preflight omits stale claim $stale_rc_claim" \
+    "$stale_rc_claim"
+done
+
+assert_contains_in_order "$RC" \
+  "release-candidate preflight leaves approval to same-commit Install Tests" \
+  "The retained preflight checks passed" \
+  "This is not release approval" \
+  "pending a successful install-test.yml push run for the exact same commit"
+
+assert_contains_in_order "$RC" \
+  "release-candidate preserves the stable validation summary context" \
+  "validation-summary:" \
+  "name: Validation Summary"
+
+assert_not_contains "$UPGRADE_ROADMAP" \
+  "upgrade roadmap assigns the blocking matrix only to Install Tests" \
+  "in both install and release-candidate workflows"
+
+assert_contains_in_order "$UPGRADE_ROADMAP" \
+  "upgrade roadmap records the actual Install Tests upgrade topology" \
+  'upgrade-baseline-test' \
+  'upgrade-extended-fixture-test' \
+  'upgrade-extended-test'
+
+assert_contains_in_order "$UPGRADE_ROADMAP" \
+  "upgrade roadmap records the complete six-lane blocking matrix" \
+  "latest-stable / baseline" \
+  "n-2 / baseline" \
+  "latest-stable / browser-origin-ip" \
+  "latest-stable / legacy-runtime-env" \
+  "latest-stable / notification-delivery" \
+  "latest-stable / optional-profiles"
+
+for suspended_wallet_review_input in \
+  "WALLET_SAFETY_AUDIT_REVIEW_JSON" \
+  "SANCTUARY_WALLET_SAFETY_AUDIT_REVIEW"; do
+  assert_not_contains "$RELEASE_GATES" \
+    "suspended wallet review does not advertise inactive input $suspended_wallet_review_input" \
+    "$suspended_wallet_review_input"
+done
+
+assert_contains_in_order "$REPO_ROOT/.github/workflows/install-test.yml" \
+  "install-test preserves its stable summary context and reports the workflow commit" \
+  "test-summary:" \
+  "name: Install Test Summary" \
+  'COMMIT_SHA: ${{ github.sha }}' \
+  'Workflow commit: \`$COMMIT_SHA\`'
 
 assert_contains_in_order "$RC" \
   "release-candidate emits revision-bound hardware compatibility evidence" \
@@ -669,22 +702,14 @@ assert_contains_in_order "$RC" \
 assert_contains_in_order "$RC" \
   "release-candidate diagnostic summaries publishable" \
   "Write fresh install diagnostic summary" \
-  'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Release Candidate Fresh Install"' \
-  "Write container health diagnostic summary" \
-  'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Release Candidate Container Health"' \
-  "Write auth flow diagnostic summary" \
-  'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Release Candidate Auth Flow"'
+  'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Release Candidate Fresh Install"'
 
 assert_contains_in_order "$RC" \
   "release-candidate exact cleanup verification" \
   "fresh-install-test:" \
-  '--project "$project" --verify-empty' \
-  "container-health-test:" \
-  '--project "$project" --verify-empty' \
-  "auth-flow-test:" \
   '--project "$project" --verify-empty'
 
-for rc_job in fresh-install-test container-health-test auth-flow-test; do
+for rc_job in fresh-install-test; do
   assert_named_job_step_contains "$RC" "$rc_job" "Cleanup" \
     "release-candidate $rc_job uses exact label cleanup" \
     '--project "$project" --verify-empty'

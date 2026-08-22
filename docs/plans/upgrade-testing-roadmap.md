@@ -1,7 +1,7 @@
 # Upgrade Testing Roadmap
 
 Date: 2026-04-23 (Pacific/Honolulu)
-Updated: 2026-04-24 for the 0.8.42 2FA/encryption-material regression and release-blocking upgrade matrix.
+Updated: 2026-08-22 for canonical Install Tests ownership of release-blocking upgrade evidence.
 
 This roadmap is based on the current repository state, not on earlier assumptions. As of drafting:
 
@@ -16,12 +16,14 @@ What exists today:
 - The script supports:
   - `--mode core` for the focused ref-to-ref upgrade lane
   - `--mode full` for the extended local recovery scenarios
-- [install-test.yml](/home/nekoguntai/sanctuary/.github/workflows/install-test.yml) and [release-candidate.yml](/home/nekoguntai/sanctuary/.github/workflows/release-candidate.yml) run the core lane through a release-blocking matrix.
-- The workflows now run a blocking upgrade matrix for release candidates and release tags:
+- [install-test.yml](/home/nekoguntai/sanctuary/.github/workflows/install-test.yml) runs the core lane through the release-blocking matrix. [release-candidate.yml](/home/nekoguntai/sanctuary/.github/workflows/release-candidate.yml) is a SHA-bound unit, hardware-evidence, and fresh-install preflight; it does not duplicate health, auth, or upgrade evidence.
+- The Install Tests workflow now runs a blocking upgrade matrix for release candidates and release tags:
   - `latest-stable / baseline`
   - `n-2 / baseline`
   - `latest-stable / browser-origin-ip`
   - `latest-stable / legacy-runtime-env`
+  - `latest-stable / notification-delivery`
+  - `latest-stable / optional-profiles`
 - The core lane seeds and validates encrypted operational 2FA state:
   - encrypted admin TOTP login after upgrade
   - encrypted secondary 2FA user login after upgrade
@@ -39,7 +41,6 @@ What exists today:
 
 What is still missing:
 
-- optional-profile workflow lane after runtime cost is measured
 - WebSocket browser-origin upgrade smoke once the auth/browser helper shape is stable enough for an install E2E lane
 - soak data from scheduled/manual runs across the new blocking matrix
 - documented source-version support window for future releases
@@ -163,7 +164,7 @@ Exit criteria:
 
 ### Phase 4: Expand Workflow Coverage To A Historical Upgrade Matrix
 
-Status: implemented as a matrix inside the existing `upgrade-test` job in both install and release-candidate workflows. The first blocking matrix uses `latest-stable/baseline`, `n-2/baseline`, `latest-stable/browser-origin-ip`, and `latest-stable/legacy-runtime-env`.
+Status: implemented in the Install Tests workflow through `upgrade-baseline-test` for the baseline source refs, `upgrade-extended-fixture-test` for the extended fixtures, and the `upgrade-extended-test` aggregate consumed by Install Test Summary. Release Candidate Validation is a separate SHA-bound preflight and does not own upgrade evidence. The blocking matrix uses `latest-stable/baseline`, `n-2/baseline`, `latest-stable/browser-origin-ip`, `latest-stable/legacy-runtime-env`, `latest-stable/notification-delivery`, and `latest-stable/optional-profiles`.
 
 Purpose:
 
@@ -181,11 +182,10 @@ Exact files to update:
 - [tests/install/run-all-tests.sh](/home/nekoguntai/sanctuary/tests/install/run-all-tests.sh)
 - [tests/install/unit/install-script.test.sh](/home/nekoguntai/sanctuary/tests/install/unit/install-script.test.sh)
 - [install-test.yml](/home/nekoguntai/sanctuary/.github/workflows/install-test.yml)
-- [release-candidate.yml](/home/nekoguntai/sanctuary/.github/workflows/release-candidate.yml)
 
 Workflow implementation:
 
-- keep one `upgrade-test` matrix job so release summaries can treat upgrade preservation as one required gate
+- keep baseline sources in `upgrade-baseline-test`, extended fixtures in `upgrade-extended-fixture-test`, and their aggregate in `upgrade-extended-test` so Install Test Summary remains the single release decision
 - add a nightly schedule to [install-test.yml](/home/nekoguntai/sanctuary/.github/workflows/install-test.yml)
 - upload failed-upgrade artifacts from every matrix lane
 
@@ -203,7 +203,7 @@ Initial matrix:
 Execution policy:
 
 - the whole matrix is release-blocking before cutting the next release
-- future `n-3` and `optional-profiles` lanes should start nightly/manual until signal and runtime cost are understood
+- future `n-3` and WebSocket browser-origin lanes should start nightly/manual until signal and runtime cost are understood
 
 Exit criteria:
 
@@ -221,7 +221,6 @@ Exact files:
 
 - [tests/install/utils/collect-upgrade-artifacts.sh](/home/nekoguntai/sanctuary/tests/install/utils/collect-upgrade-artifacts.sh)
 - [install-test.yml](/home/nekoguntai/sanctuary/.github/workflows/install-test.yml)
-- [release-candidate.yml](/home/nekoguntai/sanctuary/.github/workflows/release-candidate.yml)
 
 Artifacts to collect:
 
@@ -247,11 +246,11 @@ Exact files:
 
 - [docs/reference/release-gates.md](/home/nekoguntai/sanctuary/docs/reference/release-gates.md)
 - [tests/install/README.md](/home/nekoguntai/sanctuary/tests/install/README.md)
-- [release-candidate.yml](/home/nekoguntai/sanctuary/.github/workflows/release-candidate.yml)
+- [install-test.yml](/home/nekoguntai/sanctuary/.github/workflows/install-test.yml)
 
 Promotion policy:
 
-- the current four-lane matrix is release-blocking
+- the current six-lane matrix is release-blocking
 - future lanes become blocking only after nightly/manual signal is stable and CI runtime is acceptable
 
 ## Recommended Execution Order
@@ -259,5 +258,5 @@ Promotion policy:
 1. Run focused unit/syntax/YAML/lizard checks for the helper and workflow changes.
 2. Run at least one local `--mode core --fixture baseline` upgrade from a stable tag.
 3. Run browser-origin and legacy-runtime-env fixture lanes locally if runtime allows before release tagging.
-4. Let the release-candidate workflow run the full blocking matrix on the exact commit to be tagged.
-5. Use nightly/manual signal to decide whether `n-3`, `optional-profiles`, and WebSocket browser-origin lanes should become blocking in a later release.
+4. Let the release-candidate workflow pass its SHA-bound preflight, then require the release tag's Install Tests workflow to run the full blocking matrix on that exact commit.
+5. Use nightly/manual signal to decide whether `n-3` and WebSocket browser-origin lanes should become blocking in a later release.
