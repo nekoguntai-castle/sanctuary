@@ -12,6 +12,7 @@ import { isFullResyncGeneration } from '../constants/fullResync';
  * unversioned legacy v1 shape until retained jobs have drained.
  */
 export const SYNC_JOB_CONTRACT_VERSION = 1 as const;
+export const SYNC_WALLET_JOB_READER_VERSION = 2 as const;
 export const SYNC_QUEUE_NAME = 'sync' as const;
 export const SYNC_WALLET_JOB_NAME = 'sync-wallet' as const;
 export const CHECK_STALE_WALLETS_JOB_NAME = 'check-stale-wallets' as const;
@@ -24,7 +25,7 @@ export interface VersionedSyncJobContract {
   version?: typeof SYNC_JOB_CONTRACT_VERSION;
 }
 
-export interface SyncWalletJobData extends VersionedSyncJobContract {
+export interface SyncWalletJobFields {
   walletId: string;
   priority?: SyncPriority;
   reason?: string;
@@ -32,6 +33,38 @@ export interface SyncWalletJobData extends VersionedSyncJobContract {
   fullResync?: boolean;
   /** Durable monotonic generation for exactly-once reset preparation across retries. */
   fullResyncGeneration?: number;
+}
+
+export interface SyncWalletLockContention {
+  firstLockContentionAt: number;
+  attemptEpoch: number;
+}
+
+/** Missing version remains the retained v1 wire shape. */
+export interface SyncWalletJobDataV1 extends SyncWalletJobFields {
+  version?: typeof SYNC_JOB_CONTRACT_VERSION;
+  lockContention?: never;
+}
+
+/**
+ * Reader-only compatibility shape. Producers remain on v1 until the compatible
+ * consumer release has fully deployed.
+ */
+export interface SyncWalletJobDataV2 extends SyncWalletJobFields {
+  version: typeof SYNC_WALLET_JOB_READER_VERSION;
+  lockContention?: SyncWalletLockContention;
+}
+
+export type SyncWalletJobData = SyncWalletJobDataV1 | SyncWalletJobDataV2;
+
+/** Canonical, explicitly versioned in-process shape returned by the wire reader. */
+export type NormalizedSyncWalletJobData =
+  | (Omit<SyncWalletJobDataV1, 'version'> & { version: typeof SYNC_JOB_CONTRACT_VERSION })
+  | SyncWalletJobDataV2;
+
+export interface SyncWalletLockContractState {
+  version: typeof SYNC_JOB_CONTRACT_VERSION | typeof SYNC_WALLET_JOB_READER_VERSION;
+  lockContention?: SyncWalletLockContention;
 }
 
 export interface CheckStaleWalletsJobData extends VersionedSyncJobContract {
@@ -97,7 +130,7 @@ export function getSyncLockTtlMs(): number {
   return getConfig().sync.maxSyncDurationMs + 60_000;
 }
 
-export function getSyncLockKey(data: Pick<SyncWalletJobData, 'walletId'>): string {
+export function getSyncLockKey(data: Pick<SyncWalletJobFields, 'walletId'>): string {
   return `sync:wallet:${data.walletId}`;
 }
 
@@ -129,34 +162,95 @@ export function getSyncJobBackoffDelayMs(
     : delay;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+interface UnknownRecord {
+  [key: string]: unknown;
+}
+
+function isRecord(value: unknown): boolean {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-/** Accept both retained unversioned v1 jobs and newly emitted explicit v1 jobs. */
-export function isSyncWalletJobData(value: unknown): value is SyncWalletJobData {
-  if (!isRecord(value)) return false;
-  const version = value.version;
+const readLockContention = (
+  value: unknown,
+): SyncWalletLockContention | undefined | null => {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) return null;
+  const record = value as unknown as UnknownRecord;
+  if (Object.keys(record).some((key) => !['firstLockContentionAt', 'attemptEpoch'].includes(key))) {
+    return null;
+  }
+  const firstLockContentionAt = record.firstLockContentionAt;
+  const attemptEpoch = record.attemptEpoch;
+  if (typeof firstLockContentionAt !== 'number'
+    || !Number.isSafeInteger(firstLockContentionAt)
+    || firstLockContentionAt <= 0) {
+    return null;
+  }
+  if (typeof attemptEpoch !== 'number'
+    || !Number.isSafeInteger(attemptEpoch)
+    || attemptEpoch < 0) return null;
+  return {
+    firstLockContentionAt,
+    attemptEpoch,
+  };
+};
+
+const readSyncWalletJobFields = (
+  value: UnknownRecord,
+): SyncWalletJobFields | null => {
   const priority = value.priority;
   const reason = value.reason;
   const fullResync = value.fullResync;
   const generation = value.fullResyncGeneration;
-  return (version === undefined || version === SYNC_JOB_CONTRACT_VERSION)
-    && typeof value.walletId === 'string'
-    && value.walletId.trim().length > 0
-    && (priority === undefined || isSyncPriority(priority))
-    && (reason === undefined || typeof reason === 'string')
-    && (fullResync === undefined || typeof fullResync === 'boolean')
-    && (fullResync === true
-      ? isFullResyncGeneration(generation)
-      : generation === undefined);
+  if (typeof value.walletId !== 'string' || value.walletId.trim().length === 0) return null;
+  if (priority !== undefined && !isSyncPriority(priority)) return null;
+  if (reason !== undefined && typeof reason !== 'string') return null;
+  if (fullResync !== undefined && typeof fullResync !== 'boolean') return null;
+  if (fullResync === true ? !isFullResyncGeneration(generation) : generation !== undefined) {
+    return null;
+  }
+  const fields: SyncWalletJobFields = {
+    walletId: value.walletId,
+  };
+  if (priority !== undefined) fields.priority = priority;
+  if (reason !== undefined) fields.reason = reason;
+  if (fullResync !== undefined) fields.fullResync = fullResync;
+  if (typeof generation === 'number') fields.fullResyncGeneration = generation;
+  return fields;
+};
+
+/** Parse retained unversioned/v1 and additive v2 wallet jobs. */
+export function readSyncWalletJobData(value: unknown): NormalizedSyncWalletJobData | null {
+  if (!isRecord(value)) return null;
+  const record = value as UnknownRecord;
+  const fields = readSyncWalletJobFields(record);
+  if (fields === null) return null;
+  const wireVersion = record.version ?? SYNC_JOB_CONTRACT_VERSION;
+  if (wireVersion === SYNC_JOB_CONTRACT_VERSION) {
+    if (record.lockContention !== undefined) return null;
+    return { version: SYNC_JOB_CONTRACT_VERSION, ...fields };
+  }
+  if (wireVersion !== SYNC_WALLET_JOB_READER_VERSION) return null;
+  const lockContention = readLockContention(record.lockContention);
+  if (lockContention === null) return null;
+  return {
+    version: SYNC_WALLET_JOB_READER_VERSION,
+    ...fields,
+    ...(lockContention === undefined ? {} : { lockContention }),
+  };
+}
+
+/** Accept both retained unversioned/v1 jobs and compatible v2 wallet jobs. */
+export function isSyncWalletJobData(value: unknown): value is SyncWalletJobData {
+  return readSyncWalletJobData(value) !== null;
 }
 
 export function hasSupportedSyncJobContractVersion(
   value: unknown,
 ): value is VersionedSyncJobContract {
   if (!isRecord(value)) return false;
-  return value.version === undefined || value.version === SYNC_JOB_CONTRACT_VERSION;
+  const record = value as UnknownRecord;
+  return record.version === undefined || record.version === SYNC_JOB_CONTRACT_VERSION;
 }
 
 /**
@@ -168,8 +262,31 @@ export function hasSupportedSyncJobContractVersion(
 export function isSyncWalletJobLockData(
   value: unknown,
 ): value is SyncWalletJobData {
-  if (!isRecord(value) || !hasSupportedSyncJobContractVersion(value)) return false;
-  return typeof value.walletId === 'string' && value.walletId.trim().length > 0;
+  if (!isRecord(value)) return false;
+  const record = value as UnknownRecord;
+  const version = record.version ?? SYNC_JOB_CONTRACT_VERSION;
+  if (version !== SYNC_JOB_CONTRACT_VERSION && version !== SYNC_WALLET_JOB_READER_VERSION) {
+    return false;
+  }
+  const lockContention = readLockContention(record.lockContention);
+  if (lockContention === null) return false;
+  if (version === SYNC_JOB_CONTRACT_VERSION && lockContention !== undefined) return false;
+  return typeof record.walletId === 'string' && record.walletId.trim().length > 0;
+}
+
+/** Read the versioned lock clock after `isSyncWalletJobLockData` succeeds. */
+export function readSyncWalletLockContractState(
+  value: unknown,
+): SyncWalletLockContractState | null {
+  if (!isSyncWalletJobLockData(value)) return null;
+  const record = value as unknown as UnknownRecord;
+  const version = (record.version ?? SYNC_JOB_CONTRACT_VERSION) as
+    SyncWalletLockContractState['version'];
+  const lockContention = record.lockContention as SyncWalletLockContention | undefined;
+  return {
+    version,
+    ...(lockContention === undefined ? {} : { lockContention }),
+  };
 }
 
 export function isCheckStaleWalletsJobData(

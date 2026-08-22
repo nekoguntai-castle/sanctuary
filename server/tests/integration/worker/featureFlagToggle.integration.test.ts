@@ -59,10 +59,12 @@ describe('feature flag admin + worker integration', () => {
 
     const jobQueueInstance = {
       initialize: vi.fn(async () => undefined),
+      startConsumers: vi.fn(),
       getRegisteredJobs: vi.fn(() => ['maintenance:autopilot:evaluate']),
       isHealthy: vi.fn(() => true),
       getHealth: vi.fn(async () => ({ queues: {} })),
       addJob: vi.fn(async () => undefined),
+      addBulkJobs: vi.fn(async () => []),
       scheduleRecurring: vi.fn(async () => ({ status: 'created' })),
       inspectRecurringSchedules: vi.fn(async () => ({
         healthy: true,
@@ -76,6 +78,8 @@ describe('feature flag admin + worker integration', () => {
         records: {},
       })),
       removeRecurring: vi.fn(async () => ({ status: 'absent' })),
+      purgeStaleWalletScheduleJobs: vi.fn(async () => ({ status: 'absent' })),
+      onJobCompleted: vi.fn(),
       shutdown: vi.fn(async () => undefined),
     };
 
@@ -228,6 +232,10 @@ describe('feature flag admin + worker integration', () => {
       getLastDatabaseHealth: vi.fn(() => true),
       startDatabaseHealthCheck: vi.fn(),
       stopDatabaseHealthCheck: vi.fn(),
+    }));
+
+    vi.doMock('../../../src/repositories/walletSyncSchedulePolicyRepository', () => ({
+      readStaleWalletSchedulePolicy: vi.fn(async () => ({ mode: 'legacy_enabled' })),
     }));
 
     vi.doMock('../../../src/infrastructure', () => ({

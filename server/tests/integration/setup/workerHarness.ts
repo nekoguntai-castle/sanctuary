@@ -51,6 +51,7 @@ export const createWorkerTestHarness = async (
       inspectionFailures: [],
     })),
     removeRecurring: vi.fn(async () => ({ status: 'absent' })),
+    purgeStaleWalletScheduleJobs: vi.fn(async () => ({ status: 'absent' })),
     getRegisteredJobs: vi.fn(() => ['test-job']),
     getHealth: vi.fn(async () => ({ queues: {} })),
     isHealthy: vi.fn(() => true),
@@ -139,6 +140,10 @@ export const createWorkerTestHarness = async (
     getLastDatabaseHealth: vi.fn(() => true),
     startDatabaseHealthCheck: vi.fn(),
     stopDatabaseHealthCheck: vi.fn(),
+  }));
+
+  vi.doMock('../../../src/repositories/walletSyncSchedulePolicyRepository', () => ({
+    readStaleWalletSchedulePolicy: vi.fn(async () => ({ mode: 'legacy_enabled' })),
   }));
 
   vi.doMock('../../../src/infrastructure', () => ({

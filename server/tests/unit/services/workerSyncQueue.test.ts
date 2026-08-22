@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   mockQueueClose: vi.fn().mockResolvedValue(undefined),
   mockGetRedisClient: vi.fn(),
   mockIsRedisConnected: vi.fn(),
+  mockReadStaleWalletSchedulePolicy: vi.fn(),
 }));
 
 vi.mock("bullmq", () => ({
@@ -34,6 +35,10 @@ vi.mock("../../../src/infrastructure", () => ({
 
 vi.mock("../../../src/repositories/resyncRepository", () => ({
   reserveFullResyncGeneration: mocks.mockReserveFullResyncGeneration,
+}));
+
+vi.mock("../../../src/repositories/walletSyncSchedulePolicyRepository", () => ({
+  readStaleWalletSchedulePolicy: mocks.mockReadStaleWalletSchedulePolicy,
 }));
 
 vi.mock("../../../src/utils/logger", () => ({
@@ -89,6 +94,7 @@ describe("workerSyncQueue", () => {
       options: { host: "localhost", port: 6379, db: 0 },
     });
     mocks.mockIsRedisConnected.mockReturnValue(true);
+    mocks.mockReadStaleWalletSchedulePolicy.mockResolvedValue({ mode: "legacy_enabled" });
     await closeWorkerSyncQueue();
   });
 
@@ -583,6 +589,74 @@ describe("workerSyncQueue", () => {
     );
   });
 
+  it("replays valid v2 data with a fresh contention clock for the new attempt", async () => {
+    const data = {
+      version: 2 as const,
+      walletId: "wallet-1",
+      reason: "retry",
+      lockContention: {
+        firstLockContentionAt: 1_786_000_000_000,
+        attemptEpoch: 2,
+      },
+    };
+
+    await expect(enqueueDeadLetterJob({
+      ...syncDeadLetterEnvelope(),
+      data,
+    }, "entry-v2")).resolves.toBe(true);
+
+    expect(mocks.mockQueueAdd).toHaveBeenCalledWith(
+      "sync-wallet",
+      { version: 2, walletId: "wallet-1", reason: "retry" },
+      expect.objectContaining({
+        jobId: toBullMqJobId("dead-letter-retry:entry-v2"),
+      }),
+    );
+  });
+
+  it("does not replay stale-only work after durable scheduler retirement", async () => {
+    mocks.mockReadStaleWalletSchedulePolicy.mockResolvedValue({
+      mode: "forbidden",
+      tombstone: {
+        version: 1,
+        forbiddenAt: "2026-08-22T00:00:00.000Z",
+        compatibilityFloor: 2,
+      },
+    });
+
+    await expect(enqueueDeadLetterJob({
+      ...syncDeadLetterEnvelope(),
+      jobId: toBullMqJobId("sync:stale:wallet-1:123"),
+      data: { version: 1, walletId: "wallet-1", reason: "stale" },
+    }, "stale-entry")).resolves.toBe(false);
+    expect(mocks.mockQueueAdd).not.toHaveBeenCalled();
+  });
+
+  it("preserves stale provenance in replay identity before later retirement", async () => {
+    await expect(enqueueDeadLetterJob({
+      ...syncDeadLetterEnvelope(),
+      jobId: toBullMqJobId("sync:stale:wallet-1:123"),
+      data: { version: 1, walletId: "wallet-1", reason: "custom-stale-sweep" },
+    }, "entry-stale-custom")).resolves.toBe(true);
+
+    expect(mocks.mockQueueAdd).toHaveBeenCalledWith(
+      "sync-wallet",
+      expect.objectContaining({ reason: "custom-stale-sweep" }),
+      expect.objectContaining({
+        jobId: toBullMqJobId("sync:stale:dead-letter-retry:entry-stale-custom"),
+      }),
+    );
+  });
+
+  it("does not replay a malformed sync identity with indeterminate provenance", async () => {
+    await expect(enqueueDeadLetterJob({
+      ...syncDeadLetterEnvelope(),
+      jobId: "b64_not+base64",
+      data: { version: 1, walletId: "wallet-1", reason: "custom-source" },
+    }, "entry-unknown")).resolves.toBe(false);
+    expect(mocks.mockQueueAdd).not.toHaveBeenCalled();
+  });
+
   it("preserves a valid full-resync attempt through dead-letter retry", async () => {
     const data = {
       walletId: "wallet-1",
@@ -645,7 +719,7 @@ describe("workerSyncQueue", () => {
         version: 1,
         queue: "sync",
         name: "sync-wallet",
-        data: { version: 2, walletId: "wallet-1" },
+        data: { version: 3, walletId: "wallet-1" },
       },
       {
         version: 1,

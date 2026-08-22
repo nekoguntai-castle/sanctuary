@@ -11,6 +11,7 @@ import {
   COMPLETE_TABLE_POLICY_HASH,
   COMPLETE_TABLE_POLICY_VERSION,
   PRE_SIGNING_INTENT_COMPLETE_TABLE_POLICY_HASH,
+  PRE_WALLET_SYNC_COMPLETE_TABLE_POLICY_HASH,
   PRE_REMEDIATION_COMPLETE_TABLE_POLICY_HASH,
   getRequiredRestoreTables,
   LEGACY_BACKUP_FORMAT_VERSION,
@@ -213,6 +214,7 @@ export async function validateBackup(backup: unknown): Promise<ValidationResult>
   validateUsers(data, issues);
   validateDeviceReferences(data, issues);
   validateWalletUserReferences(data, issues);
+  validateSubscriptionCheckpointReferences(data, issues);
 
   return createValidationResult(issues.length === 0, issues, warnings, meta, tables, data);
 }
@@ -352,6 +354,7 @@ const validateTablePolicy = (meta: BackupMeta, issues: string[]): void => {
 
   const { version, hash } = meta.tablePolicy;
   const recognizedHash = hash === COMPLETE_TABLE_POLICY_HASH
+    || hash === PRE_WALLET_SYNC_COMPLETE_TABLE_POLICY_HASH
     || hash === PRE_REMEDIATION_COMPLETE_TABLE_POLICY_HASH
     || hash === PRE_SIGNING_INTENT_COMPLETE_TABLE_POLICY_HASH
     || hash === PRE_TOMBSTONE_COMPLETE_TABLE_POLICY_HASH
@@ -469,6 +472,43 @@ const validateWalletUserReferences = (
       if (!userIds.has(wu.userId)) {
         issues.push(`WalletUser references non-existent user ${wu.userId}`);
       }
+    }
+  }
+};
+
+const validateSubscriptionCheckpointReferences = (
+  data: Record<string, BackupRecord[]>,
+  issues: string[],
+): void => {
+  if (
+    !Array.isArray(data.wallet)
+    || !Array.isArray(data.address)
+    || !Array.isArray(data.addressSubscriptionCheckpoint)
+  ) {
+    return;
+  }
+
+  const walletsById = new Map(data.wallet.map(wallet => [wallet.id, wallet]));
+  const addressesById = new Map(data.address.map(address => [address.id, address]));
+  for (const checkpoint of data.addressSubscriptionCheckpoint) {
+    const address = addressesById.get(checkpoint.addressId);
+    if (!address) {
+      issues.push(
+        `AddressSubscriptionCheckpoint ${String(checkpoint.addressId)} references non-existent address`,
+      );
+      continue;
+    }
+    const wallet = walletsById.get(address.walletId);
+    if (!wallet) {
+      issues.push(
+        `AddressSubscriptionCheckpoint ${String(checkpoint.addressId)} references address with non-existent wallet ${String(address.walletId)}`,
+      );
+      continue;
+    }
+    if (checkpoint.network !== wallet.network) {
+      issues.push(
+        `AddressSubscriptionCheckpoint ${String(checkpoint.addressId)} network ${String(checkpoint.network)} does not match owning wallet ${String(wallet.id)} network ${String(wallet.network)}`,
+      );
     }
   }
 };

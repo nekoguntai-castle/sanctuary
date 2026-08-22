@@ -53,7 +53,7 @@ export function registerSyncJobsFailureCleanupContracts({
   it('rejects an unsupported live sync command version before reading the wallet', async () => {
     const job = {
       id: 'job-unsupported-version',
-      data: { version: 2, walletId: 'wallet-1' },
+      data: { version: 3, walletId: 'wallet-1' },
       attemptsMade: 0,
       opts: { attempts: 3 },
     } as unknown as Job;

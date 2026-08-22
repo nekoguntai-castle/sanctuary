@@ -53,6 +53,15 @@ export { agentRepository, default as agentRepo } from './agentRepository';
 export { consoleRepository, default as consoleRepo } from './consoleRepository';
 export { webhookRepository, default as webhookRepo } from './webhookRepository';
 export { resyncRepository, default as resyncRepo } from './resyncRepository';
+export { syncIntentRepository, default as syncIntentRepo } from './syncIntentRepository';
+export {
+  subscriptionCheckpointRepository,
+  default as subscriptionCheckpointRepo,
+} from './subscriptionCheckpointRepository';
+export {
+  walletSyncSchedulePolicyRepository,
+  default as walletSyncSchedulePolicyRepo,
+} from './walletSyncSchedulePolicyRepository';
 export {
   balanceCorrectionRepository,
   default as balanceCorrectionRepo,
@@ -68,6 +77,9 @@ export type {
   WalletAccessFilter,
   WalletNetworkFilter,
   WalletSyncState,
+  IncrementalSyncIntentState,
+  SubscriptionCheckpointState,
+  SubscriptionEnrollmentCandidate,
   TransactionFilter,
   AddressFilter,
 } from './types';

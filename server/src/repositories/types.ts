@@ -136,6 +136,39 @@ export interface WalletSyncState {
   syncStateVersion: number;
 }
 
+export interface IncrementalSyncIntentState {
+  id: string;
+  requestedIncrementalSyncGeneration: number;
+  claimedIncrementalSyncGeneration: number;
+  processedIncrementalSyncGeneration: number;
+  incrementalSyncLeaseToken: string | null;
+  incrementalSyncClaimedAt: Date | null;
+  incrementalSyncLeaseExpiresAt: Date | null;
+  syncRetryCount: number;
+  syncNextRetryAt: Date | null;
+  syncActionRequiredAt: Date | null;
+  requestedFullResyncGeneration: number;
+  preparedFullResyncGeneration: number;
+  processedFullResyncGeneration: number;
+}
+
+export interface SubscriptionCheckpointState {
+  addressId: string;
+  network: string;
+  scriptHash: string | null;
+  statusKnown: boolean;
+  observedStatus: string | null;
+  lastObservedAt: Date | null;
+  requestedEnrollmentGeneration: number;
+  processedEnrollmentGeneration: number;
+}
+
+export interface SubscriptionEnrollmentCandidate extends SubscriptionCheckpointState {
+  walletId: string;
+  address: string;
+  checkpointMissing: boolean;
+}
+
 /** Repository-managed patches; callers cannot set the monotonic version. */
 export type WalletSyncStatePatch = Partial<Omit<WalletSyncState, 'syncStateVersion'>>;
 

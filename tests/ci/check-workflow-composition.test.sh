@@ -1135,6 +1135,14 @@ assert_occurrence_count "$ARCHITECTURE_WORKFLOW" \
 assert_occurrence_count "$ARCHITECTURE_WORKFLOW" \
   "architecture triggers for gateway dependency-cruiser tsconfig" \
   "gateway/tsconfig.json" 2
+for wallet_lifecycle_input in \
+  "config/wallet-sync-lifecycle-contract.json" \
+  "server/prisma/schema.prisma" \
+  "server/prisma/migrations/**"; do
+  assert_occurrence_count "$ARCHITECTURE_WORKFLOW" \
+    "architecture triggers for $wallet_lifecycle_input on PR and main push" \
+    "$wallet_lifecycle_input" 2
+done
 
 assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
   "architecture scope classifier composition" \
@@ -1173,6 +1181,12 @@ assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
   "if: steps.scope.outputs.core == 'true'" \
   ".tmp/ci-diagnostics/architecture/runtime-boundaries.log" \
   "npm run check:architecture-boundaries"
+
+assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
+  "wallet sync lifecycle contract gate composition" \
+  "Enforce wallet sync lifecycle contract" \
+  ".tmp/ci-diagnostics/architecture/wallet-sync-lifecycle-contract.log" \
+  "npm run check:wallet-sync-lifecycle-contract"
 
 assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
   "architecture Prisma boundary gate composition" \
@@ -1331,6 +1345,8 @@ assert_occurrence_count "$TEST_WORKFLOW" \
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full backend typecheck diagnostics" \
   "full-backend-typecheck:" \
+  "Run server test typecheck" \
+  "NODE_OPTIONS: '--max-old-space-size=4096'" \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/server-test-typecheck.log"' \
   "scripts/ci/with-runner-lock.sh node-toolchain" \
   'scripts/ci/retry-command.sh "server test typecheck"' \

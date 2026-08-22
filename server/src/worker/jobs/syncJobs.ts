@@ -8,9 +8,10 @@
  * - Transaction confirmation updates
  */
 
-import type { Job } from 'bullmq';
+import { UnrecoverableError, type Job } from 'bullmq';
 import type { LockRetryBudgetExhaustedDetail, WorkerJobHandler } from './types';
 import type {
+  SyncWalletJobFields,
   SyncWalletJobData,
   SyncWalletJobResult,
   CheckStaleWalletsJobData,
@@ -31,6 +32,8 @@ import {
   isCheckStaleWalletsJobData,
   isSyncWalletJobLockData,
   isUpdateConfirmationsJobData,
+  readSyncWalletJobData,
+  readSyncWalletLockContractState,
   SYNC_JOB_CONTRACT_VERSION,
   SYNC_QUEUE_NAME,
   SYNC_WALLET_JOB_NAME,
@@ -66,11 +69,68 @@ import {
   type PersistedSyncTransition,
 } from '../../services/sync/syncAttemptLifecycle';
 import { syncLifecyclePublisher } from '../../services/sync/syncLifecyclePublisher';
+import { classifyStaleWalletScheduleJob } from '../../jobs/staleWalletJobPolicy';
+import { readStaleWalletSchedulePolicy } from '../../repositories/walletSyncSchedulePolicyRepository';
 
 const log = createLogger('JOB:SYNC');
 
 // Keep lock alive beyond expected sync duration to avoid concurrent sync overlap.
 const SYNC_LOCK_TTL_MS = getSyncLockTtlMs();
+// Tolerate ordinary host-clock drift, but replace a marker farther in the
+// future so corrupt data cannot extend the bounded contention window forever.
+const SYNC_LOCK_CONTENTION_CLOCK_SKEW_MS = 30_000;
+
+const retiredStaleJobResult = (): SyncWalletJobResult => ({
+  version: SYNC_JOB_CONTRACT_VERSION,
+  success: false,
+  duration: 0,
+  error: 'Stale-wallet scheduler work retired',
+});
+
+async function completeRetiredStaleJob(
+  job: Job<SyncWalletJobData>,
+): Promise<SyncWalletJobResult | undefined> {
+  const classification = classifyStaleWalletScheduleJob({
+    name: job.name,
+    jobId: job.id,
+    data: job.data,
+  });
+  if (classification === 'preserve') return undefined;
+  const policy = await readStaleWalletSchedulePolicy();
+  if (policy.mode !== 'forbidden') return undefined;
+  if (classification === 'indeterminate') {
+    throw new UnrecoverableError('Cannot classify retained sync-wallet job identity');
+  }
+  return retiredStaleJobResult();
+}
+
+/** Resolve and durably persist the v2 contention-window start for this attempt. */
+export async function resolveSyncLockRetryStartedAt(
+  job: Job<SyncWalletJobData>,
+): Promise<number> {
+  const state = readSyncWalletLockContractState(job.data);
+  if (!state || state.version === SYNC_JOB_CONTRACT_VERSION) return job.timestamp;
+  const now = Date.now();
+  if (
+    state.lockContention?.attemptEpoch === job.attemptsMade
+    && state.lockContention.firstLockContentionAt <= now + SYNC_LOCK_CONTENTION_CLOCK_SKEW_MS
+  ) {
+    return state.lockContention.firstLockContentionAt;
+  }
+  const firstLockContentionAt = now;
+  const nextData: SyncWalletJobData = {
+    ...job.data,
+    version: 2,
+    lockContention: {
+      firstLockContentionAt,
+      attemptEpoch: job.attemptsMade,
+    },
+  };
+  await job.updateData(nextData);
+  job.data = nextData;
+  return firstLockContentionAt;
+}
+
 function workerRetryDelayMs(job: Job<SyncWalletJobData>): number {
   return getSyncJobBackoffDelayMs(job.attemptsMade, job.opts?.backoff);
 }
@@ -207,12 +267,23 @@ function isFinalAttempt(job: Job<SyncWalletJobData>): boolean {
   return job.attemptsMade + 1 >= attempts;
 }
 
+function hasDeferredFullResyncGenerationError(data: SyncWalletJobData): boolean {
+  if (data.fullResync !== true || isFullResyncGeneration(data.fullResyncGeneration)) {
+    return false;
+  }
+  return readSyncWalletJobData({
+    ...data,
+    fullResyncGeneration: 1,
+  }) !== null;
+}
+
 async function prepareFullResync(
-  job: Job<SyncWalletJobData>,
+  data: SyncWalletJobFields,
+  jobId: string | undefined,
   walletNetwork: string,
 ): Promise<void> {
-  if (!job.data.fullResync) return;
-  const generation = job.data.fullResyncGeneration;
+  if (!data.fullResync) return;
+  const generation = data.fullResyncGeneration;
   if (!isFullResyncGeneration(generation)) {
     throw new Error('Full resync job is missing its durable generation');
   }
@@ -224,13 +295,13 @@ async function prepareFullResync(
   await assertChainReachable(normalizeLegacyBitcoinNetwork(walletNetwork, 'mainnet'));
 
   const reset = await resyncRepository.resetWalletForFullResync(
-    job.data.walletId,
+    data.walletId,
     generation,
   );
-  log.info(`Prepared full resync for wallet ${job.data.walletId}`, {
+  log.info(`Prepared full resync for wallet ${data.walletId}`, {
     deletedTransactions: reset.deletedTransactions,
     resetPerformed: reset.resetPerformed,
-    jobId: job.id,
+    jobId,
   });
 }
 
@@ -350,6 +421,10 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
   lockOptions: {
     lockKey: getSyncLockKey,
     lockTtlMs: SYNC_LOCK_TTL_MS,
+    beforeLockAttempt: async (job) => {
+      const result = await completeRetiredStaleJob(job);
+      return result ? { complete: true, result } : undefined;
+    },
     // No sync may complete as a lock-contention no-op. Returning null here put
     // every ordinary and stale sync on the silent-skip branch: the job resolved
     // successfully having done nothing, wrote no row, and left a green badge -
@@ -360,15 +435,36 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
     // sustained contention resolves into one visible failure per sweep instead
     // of stacking a delayed job per sweep forever.
     maxLockRetryWindowMs: getSyncLockRetryWindowMs,
+    resolveLockRetryStartedAt: resolveSyncLockRetryStartedAt,
     onLockRetryBudgetExhausted: recordLockRetryBudgetExhausted,
   },
   handler: async (job: Job<SyncWalletJobData>, execution): Promise<SyncWalletJobResult> => {
-    if (!hasSupportedSyncJobContractVersion(job.data)) {
+    const normalizedData = readSyncWalletJobData(job.data);
+    if (!normalizedData && (
+      !isSyncWalletJobLockData(job.data)
+      || !hasDeferredFullResyncGenerationError(job.data)
+    )) {
       throw new Error('Unsupported sync-wallet job contract version');
     }
-    const { walletId, reason } = job.data;
+    // Full-resync generation validation deliberately remains inside the
+    // lifecycle guard below. Every otherwise-valid v1/v2 payload uses the
+    // canonical reader output so v2 metadata is neither cast away nor mistaken
+    // for another contract's version.
+    const data = normalizedData ?? job.data;
+    const { walletId, reason } = data;
     const startTime = Date.now();
     execution?.throwIfAborted();
+
+    // Re-read after lock acquisition: the durable tombstone can be created
+    // while this job waits, and stale work must not execute after that flip.
+    const retiredResult = await completeRetiredStaleJob(job);
+    if (retiredResult) {
+      log.warn(`Neutralizing retained stale-wallet sync for ${walletId}`, {
+        jobId: job.id,
+        reason,
+      });
+      return retiredResult;
+    }
 
     log.info(`Syncing wallet ${walletId}`, { reason, jobId: job.id });
 
@@ -388,10 +484,10 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
 
     let syncFlagSet = false;
     let flagCleared = false;
-    let preparingFullResync = job.data.fullResync === true;
+    let preparingFullResync = data.fullResync === true;
     try {
-      await prepareFullResync(job, wallet.network);
-      if (job.data.fullResync === true) {
+      await prepareFullResync(data, job.id, wallet.network);
+      if (data.fullResync === true) {
         // Reset preparation commits syncInProgress=true. Arm cleanup before the
         // first abort checkpoint so shutdown cannot strand that durable state.
         syncFlagSet = true;
@@ -413,7 +509,7 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
         broadcastWalletLog(walletId, {
           level: 'info',
           module: 'SYNC',
-          message: job.data.fullResync === true ? 'Full resync started' : 'Sync started',
+          message: data.fullResync === true ? 'Full resync started' : 'Sync started',
           details: { reason, jobId: job.id },
         });
       });
@@ -581,6 +677,17 @@ export function createCheckStaleWalletsJob(
     handler: async (job: Job<CheckStaleWalletsJobData>): Promise<CheckStaleWalletsResult> => {
       if (!isCheckStaleWalletsJobData(job.data)) {
         throw new Error('Unsupported or invalid check-stale-wallets job payload');
+      }
+      if ((await readStaleWalletSchedulePolicy()).mode === 'forbidden') {
+        return {
+          version: SYNC_JOB_CONTRACT_VERSION,
+          staleWalletIds: [],
+          queued: 0,
+          priority: job.data.priority ?? 'low',
+          staggerDelayMs: job.data.staggerDelayMs ?? getConfig().sync.syncStaggerDelayMs,
+          reason: job.data.reason ?? 'stale',
+          maxWallets: job.data.maxWallets ?? getConfig().sync.staleBatchSize,
+        };
       }
       const config = getConfig();
       const staleThresholdMs = job.data.staleThresholdMs ?? config.sync.staleThresholdMs;

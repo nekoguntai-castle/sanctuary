@@ -69,6 +69,7 @@ main() {
   assert_redis_suite_contract 'tests/integration/worker/jobProcessorLockLoss.integration.test.ts'
   assert_redis_suite_contract 'tests/integration/worker/notificationDispatcherRetention.integration.test.ts'
   assert_redis_suite_contract 'tests/integration/worker/recurringSchedules.integration.test.ts'
+  assert_contains "$TEST_TEMP_DIR/repositories-core" 'tests/integration/repositories/syncIntentReaders.test.ts'
   assert_contains "$TEST_TEMP_DIR/repositories-core" 'tests/integration/repositories/transactionSigningIntentRepository.integration.test.ts'
 
   groups_file="$TEST_TEMP_DIR/groups"

@@ -5,6 +5,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import type { CombinedConfig } from '../../../src/config';
 import { RecurringScheduleCoordinator } from '../../../src/worker/recurringSchedules';
 import { describeWithRedis } from '../setup/redis';
+import { toBullMqJobId } from '../../../src/jobs/bullMqJobIds';
 
 const HEARTBEAT_FIXTURE = resolve(
   process.cwd(),
@@ -62,6 +63,11 @@ describeWithRedis('recurring schedule Redis integration', () => {
     }>>;
     obliterate: (options: { force: boolean }) => Promise<void>;
     removeJobScheduler: (id: string) => Promise<boolean>;
+    getJobs: (states: string[]) => Promise<Array<{
+      id?: string;
+      name: string;
+      data: unknown;
+    }>>;
   } | undefined;
   let allBullQueues: Array<NonNullable<typeof bullQueue>> = [];
   let redis: Redis | undefined;
@@ -271,6 +277,7 @@ describeWithRedis('recurring schedule Redis integration', () => {
         return {
           autopilotEnabled,
           intelligenceEnabled: false,
+          staleWalletScheduleForbidden: false,
         };
       },
     );
@@ -319,5 +326,78 @@ describeWithRedis('recurring schedule Redis integration', () => {
     await expect(coordinator.reconcile()).resolves.toEqual(
       expect.objectContaining({ healthy: true }),
     );
+  });
+
+  it('removes the legacy schedule and only stale prestart work when forbidden', async () => {
+    redis = new Redis(process.env.REDIS_URL!);
+    vi.doMock('../../../src/infrastructure', () => ({
+      getRedisClient: () => redis,
+      isRedisConnected: () => true,
+    }));
+    const { WorkerJobQueue } = await import('../../../src/worker/workerJobQueue');
+    const queue = new WorkerJobQueue({
+      concurrency: 1,
+      queues: ['sync', 'notifications', 'confirmations', 'maintenance'],
+      prefix: `sanctuary:test:stale-retirement:${process.pid}:${Date.now()}`,
+      autorun: false,
+    });
+    workerQueue = queue;
+    await queue.initialize();
+    const queueInstances = Array.from(
+      (queue as any).queues.values(),
+    ) as Array<{ queue: typeof bullQueue }>;
+    const activeQueues = queueInstances.map(({ queue: instance }) => instance!);
+    allBullQueues = activeQueues;
+    const syncQueue = activeQueues.find((instance) => instance.name === 'sync')!;
+    let staleWalletScheduleForbidden = false;
+    const coordinator = new RecurringScheduleCoordinator(
+      queue,
+      config,
+      async () => ({
+        autopilotEnabled: false,
+        intelligenceEnabled: false,
+        staleWalletScheduleForbidden,
+      }),
+    );
+    await expect(coordinator.reconcile()).resolves.toEqual(
+      expect.objectContaining({ healthy: true }),
+    );
+    await syncQueue.add('sync-wallet', { walletId: 'stale', reason: 'stale' }, {
+      delay: 60_000,
+      jobId: toBullMqJobId('sync:stale:wallet-stale:123'),
+    });
+    await syncQueue.add('sync-wallet', { walletId: 'manual', reason: 'manual' }, {
+      delay: 60_000,
+      jobId: toBullMqJobId('manual-sync:wallet-manual'),
+    });
+
+    staleWalletScheduleForbidden = true;
+    await expect(coordinator.reconcile()).resolves.toEqual(
+      expect.objectContaining({
+        healthy: true,
+        removals: expect.objectContaining({
+          'sync:check-stale-wallets': expect.objectContaining({ status: expect.any(String) }),
+          'sync:stale-wallet-jobs': { status: 'removed' },
+        }),
+      }),
+    );
+
+    expect((await syncQueue.getJobSchedulers()).some(
+      ({ name }) => name === 'check-stale-wallets',
+    )).toBe(false);
+    const retained = await syncQueue.getJobs([
+      'waiting',
+      'delayed',
+      'prioritized',
+      'paused',
+      'waiting-children',
+    ]);
+    expect(retained).toEqual([
+      expect.objectContaining({
+        id: toBullMqJobId('manual-sync:wallet-manual'),
+        name: 'sync-wallet',
+        data: expect.objectContaining({ reason: 'manual' }),
+      }),
+    ]);
   });
 });

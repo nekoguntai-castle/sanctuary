@@ -17,10 +17,15 @@ import {
   TABLE_ORDER,
   CACHE_TABLES,
   LARGE_TABLES,
+  LARGE_TABLE_CURSOR_FIELDS,
   BACKUP_PAGE_SIZE,
 } from './constants';
 import type { BackupRecord, SanctuaryBackup, BackupOptions } from './types';
-import { FEATURE_RUNTIME_GENERATION_KEY } from '../../repositories/operationalSystemSettings';
+import {
+  STALE_WALLET_SCHEDULE_FORBIDDEN_KEY,
+  isOperationalSystemSettingKey,
+} from '../../repositories/operationalSystemSettings';
+import { parseStaleWalletScheduleTombstone } from '../../repositories/walletSyncSchedulePolicyRepository';
 
 const log = createLogger('BACKUP:SVC');
 export const BACKUP_TRANSACTION_MAX_WAIT_MS = 10_000;
@@ -110,7 +115,15 @@ export async function createBackupSnapshot(
 }
 
 function isOperationalRecord(table: string, record: BackupRecord): boolean {
-  return table === 'systemSetting' && record.key === FEATURE_RUNTIME_GENERATION_KEY;
+  if (table !== 'systemSetting' || typeof record.key !== 'string') return false;
+  if (record.key === STALE_WALLET_SCHEDULE_FORBIDDEN_KEY) {
+    if (typeof record.value !== 'string') {
+      throw new Error('Invalid durable stale-wallet schedule tombstone');
+    }
+    parseStaleWalletScheduleTombstone(record.value);
+    return false;
+  }
+  return isOperationalSystemSettingKey(record.key);
 }
 
 /**
@@ -123,6 +136,8 @@ async function exportTablePaginated(
   signal?: AbortSignal,
 ): Promise<BackupRecord[]> {
   const allRecords: BackupRecord[] = [];
+  // This helper is called only for LARGE_TABLES, which is derived from this map.
+  const cursorField = LARGE_TABLE_CURSOR_FIELDS.get(table)!;
   let cursor: string | undefined;
 
   // eslint-disable-next-line no-constant-condition
@@ -131,8 +146,8 @@ async function exportTablePaginated(
     // @ts-expect-error - Dynamic Prisma table access; table name validated against LARGE_TABLES set
     const page: BackupRecord[] = await client[table].findMany({
       take: BACKUP_PAGE_SIZE,
-      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
-      orderBy: { id: 'asc' },
+      ...(cursor ? { skip: 1, cursor: { [cursorField]: cursor } } : {}),
+      orderBy: { [cursorField]: 'asc' },
     });
 
     for (const record of page) {
@@ -144,7 +159,11 @@ async function exportTablePaginated(
       break; // Last page
     }
 
-    cursor = page[page.length - 1].id as string;
+    const nextCursor = page[page.length - 1][cursorField];
+    if (typeof nextCursor !== 'string' || nextCursor.length === 0) {
+      throw new Error(`Backup pagination cursor ${table}.${cursorField} must be a non-empty string`);
+    }
+    cursor = nextCursor;
   }
 
   return allRecords;

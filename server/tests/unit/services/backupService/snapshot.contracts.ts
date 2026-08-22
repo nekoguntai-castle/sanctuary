@@ -12,8 +12,20 @@ import {
   TABLE_ORDER,
 } from '../../../../src/services/backupService/constants';
 import { migrationService } from '../../../../src/services/migrationService';
-import { FEATURE_RUNTIME_GENERATION_KEY } from '../../../../src/repositories/operationalSystemSettings';
-import { processSystemSettingRecords } from '../../../../src/services/backupService/restoreTransforms';
+import {
+  FEATURE_RUNTIME_GENERATION_KEY,
+  STALE_WALLET_SCHEDULE_FORBIDDEN_KEY,
+} from '../../../../src/repositories/operationalSystemSettings';
+import {
+  processSystemSettingRecords,
+  processWalletSyncIntentRecords,
+} from '../../../../src/services/backupService/restoreTransforms';
+
+const validFloorValue = JSON.stringify({
+  version: 1,
+  forbiddenAt: '2026-08-22T00:00:00.000Z',
+  compatibilityFloor: 2,
+});
 
 export function registerBackupSnapshotTests(): void {
   describe('BackupService snapshot creation', () => {
@@ -88,25 +100,105 @@ export function registerBackupSnapshotTests(): void {
         .rejects.toThrow('snapshot query failed');
     });
 
-    it('excludes operational feature generation metadata from backup payloads and counts', async () => {
+    it('exports the irreversible scheduler floor but excludes ephemeral operational metadata', async () => {
       mockPrismaClient.systemSetting.findMany.mockResolvedValue([
         { id: 'op', key: FEATURE_RUNTIME_GENERATION_KEY, value: '99' },
+        { id: 'floor', key: STALE_WALLET_SCHEDULE_FORBIDDEN_KEY, value: validFloorValue },
         { id: 'durable', key: 'registrationEnabled', value: 'true' },
       ]);
 
       const backup = await backupService.createBackup('admin');
 
       expect(backup.data.systemSetting).toEqual([
+        expect.objectContaining({ key: STALE_WALLET_SCHEDULE_FORBIDDEN_KEY }),
         expect.objectContaining({ key: 'registrationEnabled' }),
       ]);
-      expect(backup.meta.recordCounts.systemSetting).toBe(1);
+      expect(backup.meta.recordCounts.systemSetting).toBe(2);
     });
 
-    it('drops injected operational generation records during restore transforms', () => {
+    it('fails backup creation when the durable scheduler floor is malformed', async () => {
+      mockPrismaClient.systemSetting.findMany.mockResolvedValue([
+        { id: 'floor', key: STALE_WALLET_SCHEDULE_FORBIDDEN_KEY, value: '{}' },
+      ]);
+
+      await expect(backupService.createBackup('admin'))
+        .rejects.toThrow('Invalid durable stale-wallet schedule tombstone');
+
+      mockPrismaClient.systemSetting.findMany.mockResolvedValue([
+        { id: 'floor', key: STALE_WALLET_SCHEDULE_FORBIDDEN_KEY, value: null },
+      ]);
+      await expect(backupService.createBackup('admin'))
+        .rejects.toThrow('Invalid durable stale-wallet schedule tombstone');
+    });
+
+    it('allows only a valid backup floor when no live floor exists', () => {
       expect(processSystemSettingRecords([
         { key: FEATURE_RUNTIME_GENERATION_KEY, value: '999999' },
+        { key: STALE_WALLET_SCHEDULE_FORBIDDEN_KEY, value: validFloorValue },
         { key: 'registrationEnabled', value: 'true' },
-      ], [])).toEqual([{ key: 'registrationEnabled', value: 'true' }]);
+      ], [])).toEqual([
+        { key: STALE_WALLET_SCHEDULE_FORBIDDEN_KEY, value: validFloorValue },
+        { key: 'registrationEnabled', value: 'true' },
+      ]);
+      expect(processSystemSettingRecords([
+        { key: STALE_WALLET_SCHEDULE_FORBIDDEN_KEY, value: validFloorValue },
+      ], [], new Set([STALE_WALLET_SCHEDULE_FORBIDDEN_KEY]))).toEqual([]);
+      expect(() => processSystemSettingRecords([
+        { key: STALE_WALLET_SCHEDULE_FORBIDDEN_KEY, value: '{}' },
+      ], [])).toThrow('Invalid durable stale-wallet schedule tombstone');
+      expect(() => processSystemSettingRecords([
+        { key: STALE_WALLET_SCHEDULE_FORBIDDEN_KEY, value: null },
+      ], [])).toThrow('Invalid durable stale-wallet schedule tombstone');
+    });
+
+    it('backfills old wallet backups with the same conservative sync intent as SQL', () => {
+      const updatedAt = new Date('2026-08-21T00:00:00.000Z');
+      const [quiet, neverSynced, active, failed, failedWithoutTimestamp, prepared] = processWalletSyncIntentRecords([
+        { id: 'quiet', lastSyncedAt: new Date(), lastSyncStatus: 'success', syncInProgress: false },
+        { id: 'never', lastSyncedAt: null, lastSyncStatus: null, syncInProgress: false },
+        { id: 'active', lastSyncedAt: new Date(), lastSyncStatus: 'syncing', syncInProgress: true },
+        { id: 'failed', lastSyncedAt: new Date(), lastSyncStatus: 'failed', syncInProgress: false, updatedAt },
+        { id: 'failed-no-time', lastSyncedAt: new Date(), lastSyncStatus: 'failed', syncInProgress: false },
+        { id: 'prepared', lastSyncedAt: null, processedFullResyncGeneration: 3 },
+      ]);
+
+      expect(quiet.requestedIncrementalSyncGeneration).toBe(0);
+      expect(neverSynced.requestedIncrementalSyncGeneration).toBe(1);
+      expect(active.requestedIncrementalSyncGeneration).toBe(1);
+      expect(failed).toMatchObject({
+        requestedIncrementalSyncGeneration: 1,
+        syncActionRequiredAt: updatedAt,
+      });
+      expect(failedWithoutTimestamp.syncActionRequiredAt).toBeNull();
+      expect(prepared).toMatchObject({
+        preparedFullResyncGeneration: 3,
+        processedFullResyncGeneration: 0,
+      });
+      for (const record of [quiet, neverSynced, active, failed, failedWithoutTimestamp, prepared]) {
+        expect(record).toMatchObject({
+          claimedIncrementalSyncGeneration: 0,
+          processedIncrementalSyncGeneration: 0,
+          incrementalSyncLeaseToken: null,
+        });
+      }
+    });
+
+    it('preserves complete modern wallet state and rejects partial compatibility state', () => {
+      const modern = {
+        id: 'modern',
+        requestedIncrementalSyncGeneration: 4,
+        claimedIncrementalSyncGeneration: 3,
+        processedIncrementalSyncGeneration: 2,
+        incrementalSyncLeaseToken: 'token',
+        incrementalSyncClaimedAt: new Date(),
+        incrementalSyncLeaseExpiresAt: new Date(),
+        syncActionRequiredAt: null,
+        preparedFullResyncGeneration: 1,
+      };
+      expect(processWalletSyncIntentRecords([modern])).toEqual([modern]);
+      expect(() => processWalletSyncIntentRecords([
+        { id: 'partial', requestedIncrementalSyncGeneration: 1 },
+      ])).toThrow('partial incremental-sync compatibility state');
     });
   });
 }

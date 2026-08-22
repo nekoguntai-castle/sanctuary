@@ -73,11 +73,16 @@ const backupOnlyModelNames = [
   'consolePromptHistory',
   'walletRemediationProposal',
   'walletRemediationEvent',
+  'addressSubscriptionCheckpoint',
 ] as const;
 
 const backupPrisma = mockPrismaClient as Record<string, unknown>;
 for (const modelName of backupOnlyModelNames) {
   backupPrisma[modelName] ??= createBackupModelMock();
+}
+
+export function getBackupOnlyModelMock(modelName: typeof backupOnlyModelNames[number]) {
+  return backupPrisma[modelName] as ReturnType<typeof createBackupModelMock>;
 }
 
 export const allBackupDatabaseTables = [

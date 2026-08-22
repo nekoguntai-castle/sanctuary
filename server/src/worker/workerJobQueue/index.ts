@@ -49,6 +49,7 @@ import {
   DEAD_LETTER_RECONCILIATION_INTERVAL_MS,
   reconcileExhaustedJobs,
 } from "./deadLetterReconciler";
+import { classifyStaleWalletScheduleJob } from "../../jobs/staleWalletJobPolicy";
 
 export type { WorkerJobQueueConfig } from "./types";
 export type {
@@ -60,6 +61,27 @@ export type {
 } from "./types";
 
 const log = createLogger("WORKER:QUEUE");
+const STALE_JOB_PURGE_BATCH_SIZE = 250;
+const STALE_JOB_PURGE_STATES = [
+  // BullMQ's public "waiting" alias also returns paused jobs. Use the isolated
+  // internal job type so snapshot pagination never double-counts paused rows.
+  "wait",
+  "delayed",
+  "prioritized",
+  "paused",
+  "waiting-children",
+] as const;
+
+function readQueueStateCount(
+  counts: Record<string, number>,
+  state: (typeof STALE_JOB_PURGE_STATES)[number],
+): number {
+  const count = counts[state] ?? 0;
+  if (!Number.isSafeInteger(count) || count < 0) {
+    throw new Error(`Invalid ${state} job count: ${String(count)}`);
+  }
+  return count;
+}
 
 function definedJobOptions(options?: JobsOptions): JobsOptions | undefined {
   if (!options) return undefined;
@@ -558,6 +580,71 @@ export class WorkerJobQueue {
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       log.error(`Failed to remove recurring job: ${queueName}:${jobName}`, {
+        error: errorMessage,
+      });
+      return { status: "failed", error: errorMessage };
+    }
+  }
+
+  /**
+   * Remove only non-running jobs created by the retired elapsed-age scheduler.
+   * The bounded scan fails closed if it cannot prove the inspected queue clean.
+   */
+  async purgeStaleWalletScheduleJobs(): Promise<RecurringRemovalResult> {
+    const queueInstance = this.queues.get("sync");
+    if (!queueInstance) {
+      return { status: "failed", error: "Queue not found: sync" };
+    }
+
+    let removed = 0;
+    try {
+      const initialCounts = await queueInstance.queue.getJobCounts(
+        ...STALE_JOB_PURGE_STATES,
+      );
+      for (const state of STALE_JOB_PURGE_STATES) {
+        let offset = 0;
+        let remaining = readQueueStateCount(initialCounts, state);
+        while (remaining > 0) {
+          const pageSize = Math.min(STALE_JOB_PURGE_BATCH_SIZE, remaining);
+          const jobs = await queueInstance.queue.getJobs(
+            [state],
+            offset,
+            offset + pageSize - 1,
+            false,
+          );
+          const classified = jobs.map((job) => ({
+            job,
+            classification: classifyStaleWalletScheduleJob({
+              name: job.name,
+              jobId: job.id,
+              data: job.data,
+            }),
+          }));
+          const indeterminate = classified.find(({ classification }) => (
+            classification === "indeterminate"
+          ));
+          if (indeterminate) {
+            return {
+              status: "failed",
+              error: `Cannot classify queued sync job ${indeterminate.job.id ?? "<unknown>"}`,
+            };
+          }
+          const staleJobs = classified
+            .filter(({ classification }) => classification === "stale")
+            .map(({ job }) => job);
+          for (const job of staleJobs) await job.remove();
+          removed += staleJobs.length;
+          remaining -= jobs.length;
+          if (jobs.length < pageSize) break;
+          // Removing entries compacts the range. Advance past only retained jobs.
+          offset += jobs.length - staleJobs.length;
+        }
+      }
+      if (removed > 0) log.info("Purged stale-wallet scheduler jobs", { removed });
+      return { status: removed > 0 ? "removed" : "absent" };
+    } catch (error) {
+      const errorMessage = getErrorMessage(error);
+      log.error("Failed to purge stale-wallet scheduler jobs", {
         error: errorMessage,
       });
       return { status: "failed", error: errorMessage };

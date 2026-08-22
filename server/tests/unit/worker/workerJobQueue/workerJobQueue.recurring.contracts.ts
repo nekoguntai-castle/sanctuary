@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { toBullMqJobId } from "../../../../src/jobs/bullMqJobIds";
 
 import {
   mockRedis,
@@ -611,6 +612,197 @@ export const registerWorkerJobQueueRecurringContracts = (
         status: "failed",
         error: "Redis error",
       });
+    });
+  });
+
+  describe("purgeStaleWalletScheduleJobs", () => {
+    it("removes encoded stale parents and children across every safe prestart state", async () => {
+      await queue.initialize();
+      const syncQueue = (queue as any).queues.get("sync").queue;
+      const staleParent = {
+        id: "repeat-parent",
+        name: "check-stale-wallets",
+        data: {},
+        remove: vi.fn().mockResolvedValue(undefined),
+      };
+      const staleChild = {
+        id: toBullMqJobId("sync:stale:wallet-1:123"),
+        name: "sync-wallet",
+        data: { reason: "stale" },
+        remove: vi.fn().mockResolvedValue(undefined),
+      };
+      const manual = {
+        id: toBullMqJobId("manual-sync:wallet-1"),
+        name: "sync-wallet",
+        data: { reason: "manual" },
+        remove: vi.fn().mockResolvedValue(undefined),
+      };
+      syncQueue.getJobs.mockClear();
+      syncQueue.getJobCounts.mockResolvedValue({
+        wait: 3,
+        delayed: 1,
+        prioritized: 1,
+        paused: 1,
+        "waiting-children": 1,
+      });
+      syncQueue.getJobs.mockImplementation(async (states: string[]) => (
+        states[0] === "wait" ? [staleParent, staleChild, manual] : []
+      ));
+
+      await expect(queue.purgeStaleWalletScheduleJobs()).resolves.toEqual({
+        status: "removed",
+      });
+      expect(syncQueue.getJobs).toHaveBeenCalledWith(["wait"], 0, 2, false);
+      for (const state of ["delayed", "prioritized", "paused", "waiting-children"]) {
+        expect(syncQueue.getJobs).toHaveBeenCalledWith([state], 0, 0, false);
+      }
+      expect(staleParent.remove).toHaveBeenCalledOnce();
+      expect(staleChild.remove).toHaveBeenCalledOnce();
+      expect(manual.remove).not.toHaveBeenCalled();
+    });
+
+    it("fails closed when a matching job cannot be removed", async () => {
+      await queue.initialize();
+      const syncQueue = (queue as any).queues.get("sync").queue;
+      syncQueue.getJobCounts.mockResolvedValue({ wait: 1 });
+      syncQueue.getJobs.mockResolvedValueOnce([{
+        id: toBullMqJobId("sync:stale:wallet-1"),
+        name: "sync-wallet",
+        data: {},
+        remove: vi.fn().mockRejectedValue(new Error("job became active")),
+      }]);
+
+      await expect(queue.purgeStaleWalletScheduleJobs()).resolves.toEqual({
+        status: "failed",
+        error: "job became active",
+      });
+    });
+
+    it("fails closed instead of deleting an indeterminate encoded identity", async () => {
+      await queue.initialize();
+      const syncQueue = (queue as any).queues.get("sync").queue;
+      const unknown = {
+        id: "b64_not+base64",
+        name: "sync-wallet",
+        data: { reason: "custom-source" },
+        remove: vi.fn(),
+      };
+      syncQueue.getJobCounts.mockResolvedValue({ wait: 1 });
+      syncQueue.getJobs.mockResolvedValueOnce([unknown]);
+
+      await expect(queue.purgeStaleWalletScheduleJobs()).resolves.toEqual({
+        status: "failed",
+        error: expect.stringContaining("Cannot classify queued sync job"),
+      });
+      expect(unknown.remove).not.toHaveBeenCalled();
+    });
+
+    it("scans a legitimate backlog beyond the former fixed cardinality ceiling", async () => {
+      await queue.initialize();
+      const syncQueue = (queue as any).queues.get("sync").queue;
+      const retained = Array.from({ length: 5_001 }, (_, index) => ({
+        id: `manual-${index}`,
+        name: "sync-wallet",
+        data: { reason: "manual" },
+        remove: vi.fn(),
+      }));
+      syncQueue.getJobCounts.mockResolvedValue({ wait: retained.length });
+      syncQueue.getJobs.mockImplementation(async (
+        states: string[],
+        start: number,
+        end: number,
+      ) => states[0] === "wait" ? retained.slice(start, end + 1) : []);
+
+      await expect(queue.purgeStaleWalletScheduleJobs()).resolves.toEqual({
+        status: "absent",
+      });
+      expect(syncQueue.getJobs.mock.calls.filter(([states]: [string[]]) => (
+        states[0] === "wait"
+      )).length).toBeGreaterThan(20);
+      expect(retained.every((job) => job.remove.mock.calls.length === 0)).toBe(true);
+    });
+
+    it("bounds each scan to the queue population observed at reconciliation start", async () => {
+      await queue.initialize();
+      const syncQueue = (queue as any).queues.get("sync").queue;
+      syncQueue.getJobs.mockClear();
+      const retained = Array.from({ length: 250 }, (_, index) => ({
+        id: `manual-${index}`,
+        name: "sync-wallet",
+        data: { reason: "manual" },
+        remove: vi.fn(),
+      }));
+      syncQueue.getJobCounts.mockResolvedValue({ wait: retained.length });
+      syncQueue.getJobs.mockResolvedValue(retained);
+
+      await expect(queue.purgeStaleWalletScheduleJobs()).resolves.toEqual({
+        status: "absent",
+      });
+      expect(syncQueue.getJobs).toHaveBeenCalledTimes(1);
+      expect(syncQueue.getJobs).toHaveBeenCalledWith(["wait"], 0, 249, false);
+    });
+
+    it("isolates waiting pages from BullMQ's waiting-to-paused alias expansion", async () => {
+      await queue.initialize();
+      const syncQueue = (queue as any).queues.get("sync").queue;
+      syncQueue.getJobs.mockClear();
+      const waiting = Array.from({ length: 500 }, (_, index) => ({
+        id: `manual-waiting-${index}`,
+        name: "sync-wallet",
+        data: { reason: "manual" },
+        remove: vi.fn(),
+      }));
+      const paused = Array.from({ length: 250 }, (_, index) => ({
+        id: `manual-paused-${index}`,
+        name: "sync-wallet",
+        data: { reason: "manual" },
+        remove: vi.fn(),
+      }));
+      syncQueue.getJobCounts.mockResolvedValue({
+        wait: waiting.length,
+        waiting: waiting.length,
+        paused: paused.length,
+      });
+      syncQueue.getJobs.mockImplementation(async (
+        states: string[],
+        start: number,
+        end: number,
+      ) => {
+        if (states[0] === "wait") return waiting.slice(start, end + 1);
+        if (states[0] === "paused") return paused.slice(start, end + 1);
+        if (states[0] === "waiting") {
+          return [
+            ...waiting.slice(start, end + 1),
+            ...paused.slice(start, end + 1),
+          ];
+        }
+        return [];
+      });
+
+      await expect(queue.purgeStaleWalletScheduleJobs()).resolves.toEqual({
+        status: "absent",
+      });
+      expect(syncQueue.getJobs).toHaveBeenCalledWith(["wait"], 0, 249, false);
+      expect(syncQueue.getJobs).toHaveBeenCalledWith(["wait"], 250, 499, false);
+      expect(syncQueue.getJobs).toHaveBeenCalledWith(["paused"], 0, 249, false);
+      expect(syncQueue.getJobs).not.toHaveBeenCalledWith(
+        ["waiting"],
+        expect.any(Number),
+        expect.any(Number),
+        false,
+      );
+    });
+
+    it.each([-1, 0.5])("fails closed for an invalid queue snapshot count %s", async (count) => {
+      await queue.initialize();
+      const syncQueue = (queue as any).queues.get("sync").queue;
+      syncQueue.getJobCounts.mockResolvedValue({ wait: count });
+
+      await expect(queue.purgeStaleWalletScheduleJobs()).resolves.toEqual({
+        status: "failed",
+        error: `Invalid wait job count: ${String(count)}`,
+      });
+      expect(syncQueue.getJobs).toHaveBeenCalledTimes(1);
     });
   });
 };

@@ -18,6 +18,10 @@ import {
   EPHEMERAL_TABLES,
   TABLE_ORDER,
 } from '../../../../src/services/backupService/constants';
+import {
+  FEATURE_RUNTIME_GENERATION_KEY,
+  STALE_WALLET_SCHEDULE_FORBIDDEN_KEY,
+} from '../../../../src/repositories/operationalSystemSettings';
 
 export function registerBackupRestoreTests(): void {
 describe('restoreFromBackup', () => {
@@ -165,6 +169,17 @@ describe('restoreFromBackup', () => {
       expect(result.cacheInvalidated).toBe(true);
       expect(result.accessCacheReconciled).toBe(true);
       expect(result.featureRuntimeReconciled).toBe(true);
+      const walletWrite = mockPrismaClient.wallet.createMany.mock.calls
+        .flatMap(([args]) => args.data)[0];
+      expect(walletWrite).toMatchObject({
+        id: 'wallet-1',
+        requestedIncrementalSyncGeneration: 1,
+        claimedIncrementalSyncGeneration: 0,
+        processedIncrementalSyncGeneration: 0,
+        incrementalSyncLeaseToken: null,
+        syncActionRequiredAt: null,
+        preparedFullResyncGeneration: 0,
+      });
     });
 
     it('should clear access cache only after the restore transaction commits', async () => {
@@ -199,6 +214,81 @@ describe('restoreFromBackup', () => {
         generation: '1',
         flags: [],
       });
+    });
+
+    it('preserves a live scheduler floor instead of accepting a backup replacement', async () => {
+      const backup = createValidBackup();
+      backup.data.systemSetting = [
+        {
+          id: 'backup-floor',
+          key: STALE_WALLET_SCHEDULE_FORBIDDEN_KEY,
+          value: JSON.stringify({
+            version: 1,
+            forbiddenAt: '2000-01-01T00:00:00.000Z',
+            compatibilityFloor: 2,
+          }),
+        },
+        { id: 'ordinary', key: 'registrationEnabled', value: 'true' },
+      ];
+      const liveFloor = {
+        id: 'live-floor',
+        key: STALE_WALLET_SCHEDULE_FORBIDDEN_KEY,
+        value: JSON.stringify({
+          version: 1,
+          forbiddenAt: '2026-08-22T00:00:00.000Z',
+          compatibilityFloor: 2,
+        }),
+        createdAt: new Date('2026-08-22T00:00:00.000Z'),
+        updatedAt: new Date('2026-08-22T00:00:00.000Z'),
+      };
+      const liveGeneration = {
+        id: 'live-generation',
+        key: FEATURE_RUNTIME_GENERATION_KEY,
+        value: '7',
+        createdAt: new Date('2026-08-22T00:00:00.000Z'),
+        updatedAt: new Date('2026-08-22T00:00:00.000Z'),
+      };
+      mockPrismaClient.systemSetting.findMany.mockResolvedValue([liveFloor, liveGeneration]);
+      mockPrismaClient.$transaction.mockImplementation(async (fn: any) => fn(mockPrismaClient));
+      mockAllTableWrites();
+
+      const result = await backupService.restoreFromBackup(backup);
+
+      expect(result.success).toBe(true);
+      const writes = mockPrismaClient.systemSetting.createMany.mock.calls
+        .map(([args]) => args.data as Array<{ key: string; value: string }>);
+      expect(writes).toContainEqual([expect.objectContaining({
+        key: 'registrationEnabled',
+        value: 'true',
+      })]);
+      expect(writes).toContainEqual([liveFloor, liveGeneration]);
+      expect(writes.flat().filter(({ key }) => key === STALE_WALLET_SCHEDULE_FORBIDDEN_KEY))
+        .toEqual([liveFloor]);
+    });
+
+    it('restores a valid scheduler floor into an empty recovery database', async () => {
+      const backup = createValidBackup();
+      const backupFloor = {
+        id: 'backup-floor',
+        key: STALE_WALLET_SCHEDULE_FORBIDDEN_KEY,
+        value: JSON.stringify({
+          version: 1,
+          forbiddenAt: '2026-08-22T00:00:00.000Z',
+          compatibilityFloor: 2,
+        }),
+      };
+      backup.data.systemSetting = [backupFloor];
+      mockPrismaClient.systemSetting.findMany.mockResolvedValue([]);
+      mockPrismaClient.$transaction.mockImplementation(async (fn: any) => fn(mockPrismaClient));
+      mockAllTableWrites();
+
+      const result = await backupService.restoreFromBackup(backup);
+
+      expect(result.success).toBe(true);
+      const writes = mockPrismaClient.systemSetting.createMany.mock.calls
+        .flatMap(([args]) => args.data as Array<{ key: string; value: string }>);
+      expect(writes.filter(({ key }) => key === STALE_WALLET_SCHEDULE_FORBIDDEN_KEY))
+        .toEqual([backupFloor]);
     });
 
     it('should not clear access cache when validation fails before the transaction', async () => {

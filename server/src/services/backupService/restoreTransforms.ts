@@ -13,7 +13,20 @@ import {
 } from '../ai/providerCredentials';
 import type { BackupRecord } from './types';
 import { redactWebhookDiagnosticHeaders } from '../webhooks/diagnostics';
-import { FEATURE_RUNTIME_GENERATION_KEY } from '../../repositories/operationalSystemSettings';
+import { isOperationalSystemSettingKey } from '../../repositories/operationalSystemSettings';
+import { STALE_WALLET_SCHEDULE_FORBIDDEN_KEY } from '../../repositories/operationalSystemSettings';
+import { parseStaleWalletScheduleTombstone } from '../../repositories/walletSyncSchedulePolicyRepository';
+
+const WALLET_INCREMENTAL_SYNC_FIELDS = [
+  'requestedIncrementalSyncGeneration',
+  'claimedIncrementalSyncGeneration',
+  'processedIncrementalSyncGeneration',
+  'incrementalSyncLeaseToken',
+  'incrementalSyncClaimedAt',
+  'incrementalSyncLeaseExpiresAt',
+  'syncActionRequiredAt',
+  'preparedFullResyncGeneration',
+] as const;
 
 export function processNodeConfigRecords(
   records: BackupRecord[],
@@ -48,7 +61,8 @@ export function processUserRecords(
 
 export function processSystemSettingRecords(
   records: BackupRecord[],
-  warnings: string[]
+  warnings: string[],
+  preservedOperationalKeys: ReadonlySet<string> = new Set(),
 ): BackupRecord[] {
   const smtpConfigured = records.some(
     record => typeof record.key === 'string' &&
@@ -60,7 +74,7 @@ export function processSystemSettingRecords(
   }
 
   return records
-    .filter(record => record.key !== FEATURE_RUNTIME_GENERATION_KEY)
+    .filter(record => shouldRestoreSystemSetting(record, preservedOperationalKeys))
     .map(record => {
       const aiRecord = disableAIProviderCredentialRecord(record, warnings);
       if (typeof aiRecord.key !== 'string' || !aiRecord.key.startsWith('smtp.')) {
@@ -71,6 +85,66 @@ export function processSystemSettingRecords(
       }
       return aiRecord;
     });
+}
+
+function shouldRestoreSystemSetting(
+  record: BackupRecord,
+  preservedOperationalKeys: ReadonlySet<string>,
+): boolean {
+  if (typeof record.key !== 'string' || !isOperationalSystemSettingKey(record.key)) {
+    return true;
+  }
+  if (record.key !== STALE_WALLET_SCHEDULE_FORBIDDEN_KEY) return false;
+  if (typeof record.value !== 'string') {
+    throw new Error('Invalid durable stale-wallet schedule tombstone');
+  }
+  parseStaleWalletScheduleTombstone(record.value);
+  return !preservedOperationalKeys.has(STALE_WALLET_SCHEDULE_FORBIDDEN_KEY);
+}
+
+export function processWalletSyncIntentRecords(
+  records: BackupRecord[],
+): BackupRecord[] {
+  return records.map(processWalletSyncIntentRecord);
+}
+
+function processWalletSyncIntentRecord(record: BackupRecord): BackupRecord {
+  const presentFields = WALLET_INCREMENTAL_SYNC_FIELDS.filter(field => field in record);
+  if (presentFields.length === WALLET_INCREMENTAL_SYNC_FIELDS.length) return record;
+  if (presentFields.length !== 0) {
+    throw new Error('Wallet backup contains a partial incremental-sync compatibility state');
+  }
+
+  const hasProvenSuccess = record.lastSyncedAt != null;
+  const hasUnfinishedLegacyWork = !hasProvenSuccess
+    || record.syncInProgress === true
+    || (record.lastSyncStatus != null && record.lastSyncStatus !== 'success');
+  const requiresAction = record.lastSyncStatus === 'failed'
+    && record.syncInProgress === false;
+  const legacyProcessedFullResyncGeneration = normalizeGeneration(
+    record.processedFullResyncGeneration,
+  );
+
+  return {
+    ...record,
+    requestedIncrementalSyncGeneration: hasUnfinishedLegacyWork ? 1 : 0,
+    claimedIncrementalSyncGeneration: 0,
+    processedIncrementalSyncGeneration: 0,
+    incrementalSyncLeaseToken: null,
+    incrementalSyncClaimedAt: null,
+    incrementalSyncLeaseExpiresAt: null,
+    syncActionRequiredAt: requiresAction ? record.updatedAt ?? null : null,
+    preparedFullResyncGeneration: legacyProcessedFullResyncGeneration,
+    processedFullResyncGeneration: hasProvenSuccess
+      ? legacyProcessedFullResyncGeneration
+      : 0,
+  };
+}
+
+function normalizeGeneration(value: unknown): number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
+    ? value
+    : 0;
 }
 
 export function processMcpApiKeyRecords(

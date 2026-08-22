@@ -73,6 +73,26 @@ function createUniqueId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+async function seedWalletRemediationEvidence(
+  walletId: string,
+  actor: { userId: string; username: string },
+): Promise<void> {
+  const [{ createWalletRemediationProposal }, { walletRemediationRepository }] = await Promise.all([
+    import('../../../src/services/walletRemediation'),
+    import('../../../src/repositories/walletRemediationRepository'),
+  ]);
+  const proposal = await createWalletRemediationProposal(walletId, actor);
+  await walletRemediationRepository.withSerializableTransaction((tx) => (
+    walletRemediationRepository.appendEvent(tx, {
+      proposalId: proposal.proposalId,
+      proposalDigest: proposal.proposalDigest,
+      kind: 'failed',
+      actor,
+      details: { reasonCode: 'backup_drill' },
+    })
+  ));
+}
+
 describeIfDb('Phase 2 operations proof', () => {
   let prisma: PrismaClient;
   let app: Express;
@@ -274,6 +294,19 @@ describeIfDb('Phase 2 operations proof', () => {
         index: 0,
       },
     });
+    await prisma.addressSubscriptionCheckpoint.create({
+      data: {
+        addressId: address.id,
+        network: wallet.network,
+        scriptHash: 'ab'.repeat(32),
+        statusKnown: true,
+        observedStatus: createUniqueId('backup-observed-status'),
+        lastObservedAt: new Date('2026-07-30T12:34:56.000Z'),
+        requestedEnrollmentGeneration: 1,
+        processedEnrollmentGeneration: 1,
+      },
+    });
+    await seedWalletRemediationEvidence(wallet.id, { userId: user.id, username });
     const transaction = await prisma.transaction.create({
       data: {
         walletId: wallet.id,

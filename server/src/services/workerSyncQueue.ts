@@ -15,16 +15,29 @@ import {
   SYNC_JOB_CONTRACT_VERSION,
   SYNC_QUEUE_NAME,
   SYNC_WALLET_JOB_NAME,
+  SYNC_WALLET_JOB_READER_VERSION,
   SYNC_WALLET_JOB_OPTIONS,
   getSyncLockTtlMs,
+  readSyncWalletJobData,
 } from "../jobs/syncJobContract";
 import { isSyncWalletEnvelope } from "./deadLetterJobEnvelope";
 import type { DeadLetterJobEnvelope } from "./deadLetterQueueTypes";
+import { classifyStaleWalletScheduleJob } from "../jobs/staleWalletJobPolicy";
+import { readStaleWalletSchedulePolicy } from "../repositories/walletSyncSchedulePolicyRepository";
 
 const log = createLogger("WORKER_SYNC_QUEUE");
 
 const WORKER_QUEUE_PREFIX = "sanctuary:worker";
 const FULL_RESYNC_ENQUEUE_CONCURRENCY = 10;
+
+function resetReplayContentionClock(data: unknown): SyncWalletJobData {
+  const normalized = readSyncWalletJobData(data);
+  if (normalized?.version !== SYNC_WALLET_JOB_READER_VERSION) {
+    return data as SyncWalletJobData;
+  }
+  const { lockContention: _retiredClock, ...withoutContentionClock } = normalized;
+  return withoutContentionClock;
+}
 
 let syncQueue: Queue<SyncWalletJobData> | null = null;
 let syncQueueConnectionKey: string | null = null;
@@ -92,6 +105,28 @@ export async function enqueueDeadLetterJob(
     });
     return false;
   }
+  const staleClassification = classifyStaleWalletScheduleJob({
+    name: envelope.name,
+    jobId: envelope.jobId,
+    data: envelope.data,
+  });
+  if (staleClassification === "indeterminate") {
+    log.warn("Indeterminate dead-letter sync job is not replayable", {
+      retryEntryId,
+      jobId: envelope.jobId,
+    });
+    return false;
+  }
+  if (
+    staleClassification === "stale"
+    && (await readStaleWalletSchedulePolicy()).mode === "forbidden"
+  ) {
+    log.warn("Retired stale-wallet dead-letter job is not replayable", {
+      retryEntryId,
+      jobId: envelope.jobId,
+    });
+    return false;
+  }
   const queue = getOrCreateSyncQueue();
   if (!queue) {
     log.warn("Worker sync queue unavailable, dead-letter job not added", {
@@ -108,14 +143,18 @@ export async function enqueueDeadLetterJob(
       removeOnComplete,
       removeOnFail,
     } = envelope.options;
-    await queue.add(envelope.name, envelope.data, {
+    const replayData = resetReplayContentionClock(envelope.data);
+    const logicalReplayId = staleClassification === "stale"
+      ? `sync:stale:dead-letter-retry:${retryEntryId}`
+      : `dead-letter-retry:${retryEntryId}`;
+    await queue.add(envelope.name, replayData, {
       ...SYNC_WALLET_JOB_OPTIONS,
       attempts: attempts ?? SYNC_WALLET_JOB_OPTIONS.attempts,
       backoff: backoff ?? SYNC_WALLET_JOB_OPTIONS.backoff,
       ...(priority !== undefined ? { priority } : {}),
       ...(removeOnComplete !== undefined ? { removeOnComplete } : {}),
       ...(removeOnFail !== undefined ? { removeOnFail } : {}),
-      jobId: toBullMqJobId(`dead-letter-retry:${retryEntryId}`),
+      jobId: toBullMqJobId(logicalReplayId),
     });
     return true;
   } catch (error) {

@@ -21,6 +21,11 @@ vi.mock('../../../../src/services/sync/syncLifecyclePublisher', () => ({
 // The stale reaper probes each wallet's sync lock before force-clearing its
 // flag, so the lock authority has to answer in unit tests.
 const mockIsLocked = vi.hoisted(() => vi.fn<(key: string) => Promise<boolean>>());
+const mockReadStaleWalletSchedulePolicy = vi.hoisted(() => vi.fn());
+
+vi.mock('../../../../src/repositories/walletSyncSchedulePolicyRepository', () => ({
+  readStaleWalletSchedulePolicy: mockReadStaleWalletSchedulePolicy,
+}));
 
 vi.mock('../../../../src/infrastructure/distributedLock', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -120,6 +125,7 @@ function persistedSyncState(args?: unknown, stateVersion = 1): Record<string, un
 describe('Sync Jobs', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockReadStaleWalletSchedulePolicy.mockResolvedValue({ mode: 'legacy_enabled' });
     let stateVersion = 0;
     syncJobPrismaMocks.walletUpdate.mockImplementation(async (args: unknown) => (
       persistedSyncState(args, ++stateVersion)
@@ -160,6 +166,88 @@ describe('Sync Jobs', () => {
       expect(syncWalletJob.lockOptions?.retryDelayMsIfUnavailable?.({
         walletId: 'test',
       })).toBe(15000);
+    });
+
+    it('executes a validated v2 payload without rewriting or dropping its contention marker', async () => {
+      const data = {
+        version: 2,
+        walletId: 'wallet-v2',
+        priority: 'high',
+        reason: 'address_activity',
+        lockContention: {
+          firstLockContentionAt: 1_786_000_000_000,
+          attemptEpoch: 0,
+        },
+      } as const;
+      const job = {
+        id: 'wallet-v2-job',
+        data,
+        attemptsMade: 0,
+        opts: { attempts: 3 },
+      } as unknown as Job;
+
+      await expect(syncWalletJob.handler(job)).resolves.toMatchObject({ success: true });
+
+      expect(syncWallet).toHaveBeenCalledWith('wallet-v2', 0, expect.any(AbortSignal));
+      expect(job.data).toBe(data);
+      expect(job.data.lockContention).toEqual(data.lockContention);
+    });
+
+    it('rejects unknown wallet payload versions before repository effects', async () => {
+      const job = {
+        id: 'future-wallet-job',
+        data: { version: 3, walletId: 'wallet-future' },
+        attemptsMade: 0,
+        opts: { attempts: 3 },
+      } as unknown as Job;
+
+      await expect(syncWalletJob.handler(job)).rejects.toThrow(
+        'Unsupported sync-wallet job contract version',
+      );
+      expect(prisma.wallet.findUnique).not.toHaveBeenCalled();
+      expect(syncWallet).not.toHaveBeenCalled();
+    });
+
+    it('rejects an invalid v1 payload that still has a lock-safe wallet identity', async () => {
+      const job = {
+        id: 'invalid-wallet-job',
+        data: { version: 1, walletId: 'wallet-invalid', reason: 42 },
+        attemptsMade: 0,
+        opts: { attempts: 3 },
+      } as unknown as Job;
+
+      await expect(syncWalletJob.handler(job)).rejects.toThrow(
+        'Unsupported sync-wallet job contract version',
+      );
+      expect(prisma.wallet.findUnique).not.toHaveBeenCalled();
+      expect(syncWallet).not.toHaveBeenCalled();
+    });
+
+    it('neutralizes retained stale-only work after durable retirement', async () => {
+      mockReadStaleWalletSchedulePolicy.mockResolvedValue({
+        mode: 'forbidden',
+        tombstone: {
+          version: 1,
+          forbiddenAt: '2026-08-22T00:00:00.000Z',
+          compatibilityFloor: 2,
+        },
+      });
+      const job = {
+        id: 'b64_c3luYzpzdGFsZTp3YWxsZXQtMTox',
+        name: 'sync-wallet',
+        data: { version: 1, walletId: 'wallet-1', reason: 'stale' },
+        attemptsMade: 0,
+        opts: { attempts: 3 },
+      } as unknown as Job;
+
+      await expect(syncWalletJob.handler(job)).resolves.toEqual({
+        version: 1,
+        success: false,
+        duration: 0,
+        error: 'Stale-wallet scheduler work retired',
+      });
+      expect(prisma.wallet.findUnique).not.toHaveBeenCalled();
+      expect(syncWallet).not.toHaveBeenCalled();
     });
 
     it('keeps transaction history when the node is unreachable at resync time', async () => {

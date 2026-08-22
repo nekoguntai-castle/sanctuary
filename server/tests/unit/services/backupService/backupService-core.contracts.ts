@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
-import './backupServiceTestHarness';
+import { getBackupOnlyModelMock } from './backupServiceTestHarness';
 import { mockPrismaClient, resetPrismaMocks } from '../../../mocks/prisma';
 import { sampleUsers, sampleWallets } from '../../../fixtures/bitcoin';
 import { BackupService, type SanctuaryBackup, type BackupMeta } from '../../../../src/services/backupService';
@@ -16,8 +16,10 @@ import {
   COMPLETE_TABLE_POLICY,
   COMPLETE_TABLE_POLICY_VERSION,
   PRE_SIGNING_INTENT_COMPLETE_TABLE_POLICY_HASH,
+  PRE_WALLET_SYNC_COMPLETE_TABLE_POLICY_HASH,
   EPHEMERAL_TABLES,
   getRestoreTables,
+  LARGE_TABLE_CURSOR_FIELDS,
   LEGACY_TABLE_ORDER,
   PRE_TOMBSTONE_COMPLETE_TABLE_POLICY_HASH,
   PREVIOUS_COMPLETE_TABLE_POLICY_HASH,
@@ -366,7 +368,31 @@ describe('BackupService', () => {
       return backup;
     };
 
+    const addSubscriptionCheckpointGraph = (
+      backup: SanctuaryBackup,
+      options: { includeWallet?: boolean; includeAddress?: boolean; checkpointNetwork?: string } = {},
+    ): void => {
+      if (options.includeWallet !== false) {
+        backup.data.wallet.push({ id: 'wallet-mainnet', network: 'mainnet' });
+      }
+      if (options.includeAddress !== false) {
+        backup.data.address.push({
+          id: 'address-mainnet',
+          walletId: 'wallet-mainnet',
+          address: 'bc1qcheckpoint',
+        });
+      }
+      backup.data.addressSubscriptionCheckpoint.push({
+        addressId: 'address-mainnet',
+        network: options.checkpointNetwork ?? 'mainnet',
+      });
+      backup.meta.recordCounts.wallet = backup.data.wallet.length;
+      backup.meta.recordCounts.address = backup.data.address.length;
+      backup.meta.recordCounts.addressSubscriptionCheckpoint = 1;
+    };
+
     it.each([
+      [PRE_WALLET_SYNC_COMPLETE_TABLE_POLICY_HASH, true],
       [PREVIOUS_COMPLETE_TABLE_POLICY_HASH, false],
       [PRE_TOMBSTONE_COMPLETE_TABLE_POLICY_HASH, true],
       [PRE_SIGNING_INTENT_COMPLETE_TABLE_POLICY_HASH, true],
@@ -385,6 +411,7 @@ describe('BackupService', () => {
       expect(getRestoreTables(backup.meta).includes('transactionOwnershipRepair')).toBe(
         includesRepairQueue
       );
+      expect(getRestoreTables(backup.meta).includes('addressSubscriptionCheckpoint')).toBe(false);
     });
 
     it('should return structure validation for non-object restore input', async () => {
@@ -510,6 +537,55 @@ describe('BackupService', () => {
 
       expect(result.valid).toBe(false);
       expect(result.issues).toContain('Missing required restore table: webhookDelivery');
+    });
+
+    it('rejects subscription checkpoints whose network differs from the owning wallet', async () => {
+      vi.mocked(migrationService.getSchemaVersion).mockResolvedValue(61);
+      const backup = createCompleteBackup();
+      addSubscriptionCheckpointGraph(backup, { checkpointNetwork: 'signet' });
+
+      const result = await backupService.validateBackupForRestore(backup);
+
+      expect(result.valid).toBe(false);
+      expect(result.issues).toContain(
+        'AddressSubscriptionCheckpoint address-mainnet network signet does not match owning wallet wallet-mainnet network mainnet',
+      );
+    });
+
+    it('rejects subscription checkpoints without an included address', async () => {
+      vi.mocked(migrationService.getSchemaVersion).mockResolvedValue(61);
+      const backup = createCompleteBackup();
+      addSubscriptionCheckpointGraph(backup, { includeAddress: false });
+
+      const result = await backupService.validateBackupForRestore(backup);
+
+      expect(result.valid).toBe(false);
+      expect(result.issues).toContain(
+        'AddressSubscriptionCheckpoint address-mainnet references non-existent address',
+      );
+    });
+
+    it('rejects subscription checkpoints whose address has no included wallet', async () => {
+      vi.mocked(migrationService.getSchemaVersion).mockResolvedValue(61);
+      const backup = createCompleteBackup();
+      addSubscriptionCheckpointGraph(backup, { includeWallet: false });
+
+      const result = await backupService.validateBackupForRestore(backup);
+
+      expect(result.valid).toBe(false);
+      expect(result.issues).toContain(
+        'AddressSubscriptionCheckpoint address-mainnet references address with non-existent wallet wallet-mainnet',
+      );
+    });
+
+    it('accepts subscription checkpoints on the owning wallet network', async () => {
+      vi.mocked(migrationService.getSchemaVersion).mockResolvedValue(61);
+      const backup = createCompleteBackup();
+      addSubscriptionCheckpointGraph(backup);
+
+      const result = await backupService.validateBackupForRestore(backup);
+
+      expect(result.valid, result.issues.join('; ')).toBe(true);
     });
 
     it('should reject a downgraded complete policy on a 1.0.0 backup', async () => {
@@ -719,6 +795,56 @@ describe('BackupService', () => {
       expect(backup.data.transaction).toHaveLength(1001);
     });
 
+    it('should declare the non-id cursor beside every paginated table', () => {
+      expect(LARGE_TABLE_CURSOR_FIELDS.get('addressSubscriptionCheckpoint')).toBe('addressId');
+      expect(
+        [...LARGE_TABLE_CURSOR_FIELDS.entries()]
+          .filter(([table]) => table !== 'addressSubscriptionCheckpoint')
+          .every(([, cursorField]) => cursorField === 'id')
+      ).toBe(true);
+    });
+
+    it('should paginate address subscription checkpoints by their addressId primary key', async () => {
+      const checkpointModel = getBackupOnlyModelMock('addressSubscriptionCheckpoint');
+      const firstPage = Array.from({ length: 1000 }, (_, i) => ({
+        addressId: `address-${i}`,
+        network: 'mainnet',
+      }));
+      const secondPage = [
+        { addressId: 'address-1000', network: 'mainnet' },
+      ];
+
+      checkpointModel.findMany
+        .mockResolvedValueOnce(firstPage)
+        .mockResolvedValueOnce(secondPage);
+
+      const backup = await backupService.createBackup('admin');
+
+      expect(checkpointModel.findMany).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          take: 1000,
+          skip: 1,
+          cursor: { addressId: 'address-999' },
+          orderBy: { addressId: 'asc' },
+        })
+      );
+      expect(backup.data.addressSubscriptionCheckpoint).toHaveLength(1001);
+    });
+
+    it.each([undefined, ''])('should reject an invalid checkpoint pagination cursor %p', async (addressId) => {
+      const checkpointModel = getBackupOnlyModelMock('addressSubscriptionCheckpoint');
+      const page = Array.from({ length: 1000 }, (_, i) => ({
+        addressId: i === 999 ? addressId : `address-${i}`,
+        network: 'mainnet',
+      }));
+      checkpointModel.findMany.mockResolvedValueOnce(page);
+
+      await expect(backupService.createBackup('admin')).rejects.toThrow(
+        'Backup pagination cursor addressSubscriptionCheckpoint.addressId must be a non-empty string'
+      );
+    });
+
     it('should serialize array fields recursively', async () => {
       mockPrismaClient.user.findMany.mockResolvedValue([
         {
@@ -751,6 +877,7 @@ describe('BackupService', () => {
         'aIInsight',
         'aIConversation',
         'aIMessage',
+        'addressSubscriptionCheckpoint',
       ]));
     });
 

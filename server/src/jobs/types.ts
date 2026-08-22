@@ -26,12 +26,21 @@ export interface LockRetryBudgetExhaustedDetail {
   isFinalAttempt: boolean;
 }
 
+export interface PreLockJobCompletion {
+  complete: true;
+  result: unknown;
+}
+
 /** Distributed-lock behavior attached to a registered background job. */
 export interface JobLockOptions<T = unknown> {
   lockKey: (data: T) => string;
   lockTtlMs?: number;
+  /** Complete retired/invalid work before it can contend for a shared lock. */
+  beforeLockAttempt?: (job: Job<T>) => Promise<PreLockJobCompletion | undefined>;
   retryDelayMsIfUnavailable?: (data: T) => number | null;
   maxLockRetryWindowMs?: number | ((data: T) => number);
+  /** Resolve and, when needed, durably initialize this attempt's contention clock. */
+  resolveLockRetryStartedAt?: (job: Job<T>) => Promise<number>;
   onLockRetryBudgetExhausted?: (
     data: unknown,
     detail: LockRetryBudgetExhaustedDetail,

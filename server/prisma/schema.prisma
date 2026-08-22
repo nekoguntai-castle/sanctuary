@@ -149,7 +149,15 @@ model Wallet {
   syncNextRetryAt       DateTime?
   syncStartedAt         DateTime?
   syncStateVersion      Int       @default(0)
+  requestedIncrementalSyncGeneration Int @default(0)
+  claimedIncrementalSyncGeneration Int @default(0)
+  processedIncrementalSyncGeneration Int @default(0)
+  incrementalSyncLeaseToken String? @db.Uuid
+  incrementalSyncClaimedAt DateTime?
+  incrementalSyncLeaseExpiresAt DateTime?
+  syncActionRequiredAt DateTime?
   requestedFullResyncGeneration Int @default(0)
+  preparedFullResyncGeneration Int @default(0)
   processedFullResyncGeneration Int @default(0)
 
   createdAt DateTime @default(now())
@@ -371,6 +379,7 @@ model Address {
   wallet        Wallet         @relation(fields: [walletId], references: [id], onDelete: Cascade)
   transactions  Transaction[]
   addressLabels AddressLabel[]
+  subscriptionCheckpoint AddressSubscriptionCheckpoint?
 
   @@index([walletId]) // For address listing queries
   @@index([address]) // For cross-wallet ownership and monitoring lookups
@@ -379,6 +388,24 @@ model Address {
   @@index([walletId, branch, used, index])
   @@unique([walletId, address])
   @@map("addresses")
+}
+
+model AddressSubscriptionCheckpoint {
+  addressId String @id
+  network String
+  scriptHash String?
+  statusKnown Boolean @default(false)
+  observedStatus String?
+  lastObservedAt DateTime?
+  requestedEnrollmentGeneration Int @default(1)
+  processedEnrollmentGeneration Int @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  address Address @relation(fields: [addressId], references: [id], onDelete: Cascade)
+
+  @@index([network, scriptHash])
+  @@map("address_subscription_checkpoints")
 }
 
 model Transaction {

@@ -46,6 +46,19 @@ export interface RecurringScheduleCoordinatorState {
 interface ConditionalScheduleState {
   autopilotEnabled: boolean;
   intelligenceEnabled: boolean;
+  staleWalletScheduleForbidden: boolean;
+}
+
+const STALE_WALLET_PURGE_RESULT_ID = 'sync:stale-wallet-jobs';
+
+export function requireStaleWalletSchedule(
+  schedules: readonly RecurringScheduleDefinition[],
+): RecurringScheduleDefinition {
+  const schedule = schedules.find(
+    ({ schedulerId }) => schedulerId === `sync:${CHECK_STALE_WALLETS_JOB_NAME}`,
+  );
+  if (!schedule) throw new Error('Stale-wallet schedule definition is missing');
+  return schedule;
 }
 
 function defineSchedule<T>(
@@ -286,6 +299,8 @@ export class RecurringScheduleCoordinator {
   private async reconcileCurrentState(): Promise<RecurringScheduleReconciliation> {
     try {
       const conditional = await this.readConditionalState();
+      const baseline = buildBaselineRecurringSchedules(this.config);
+      const staleWalletSchedule = requireStaleWalletSchedule(baseline);
       const desiredConditional = [
         ...(conditional.autopilotEnabled ? AUTOPILOT_RECURRING_SCHEDULES : []),
         ...(conditional.intelligenceEnabled
@@ -293,6 +308,9 @@ export class RecurringScheduleCoordinator {
           : []),
       ];
       const forbidden = [
+        ...(conditional.staleWalletScheduleForbidden
+          ? [staleWalletSchedule]
+          : []),
         ...(!conditional.autopilotEnabled
           ? AUTOPILOT_RECURRING_SCHEDULES
           : []),
@@ -301,7 +319,11 @@ export class RecurringScheduleCoordinator {
           : []),
       ];
       const desired = [
-        ...buildBaselineRecurringSchedules(this.config),
+        ...baseline.filter(
+          ({ schedulerId }) =>
+            !conditional.staleWalletScheduleForbidden ||
+            schedulerId !== staleWalletSchedule.schedulerId,
+        ),
         ...desiredConditional,
       ];
       this.state = {
@@ -310,14 +332,20 @@ export class RecurringScheduleCoordinator {
         reconciliationHealthy: false,
       };
 
-      const reconciliation = await reconcileRecurringSchedules(
-        this.queue,
-        desired,
-      );
       const removals = await removeRecurringSchedules(this.queue, forbidden);
+      if (conditional.staleWalletScheduleForbidden) {
+        removals[STALE_WALLET_PURGE_RESULT_ID] =
+          await this.queue.purgeStaleWalletScheduleJobs();
+      }
       const removalHealthy = Object.values(removals).every(
         ({ status }) => status !== 'failed',
       );
+      // Once the irreversible tombstone exists, scheduling desired work while
+      // retired definitions or children may remain would violate the rollback
+      // floor. Keep startup/reconciliation fail-closed until removal succeeds.
+      const reconciliation = removalHealthy
+        ? await reconcileRecurringSchedules(this.queue, desired)
+        : { healthy: false, results: {}, removals: {} };
       const healthy = reconciliation.healthy && removalHealthy;
       this.state = {
         desired,

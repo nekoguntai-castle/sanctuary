@@ -86,6 +86,7 @@ import { WorkerHeartbeatWriter } from './services/workerHeartbeatRegistry';
 import type { WorkerDiagnosticsResponse } from './internal/workerDiagnostics/protocol';
 import { startCaptureParticipant, stopCaptureParticipant } from './services/supportPackage/captureRuntime';
 import { initializeRedisBridge, shutdownRedisBridge } from './websocket/redisBridge';
+import { readStaleWalletSchedulePolicy } from './repositories/walletSyncSchedulePolicyRepository';
 
 const log = createLogger('WORKER');
 
@@ -227,6 +228,8 @@ async function startWorker(): Promise<void> {
       intelligenceEnabled: await featureFlagService.isEnabled(
         'treasuryIntelligence',
       ),
+      staleWalletScheduleForbidden:
+        (await readStaleWalletSchedulePolicy()).mode === 'forbidden',
     }),
   );
   // Worker acknowledgement follows snapshot installation and schedule convergence.
@@ -234,6 +237,7 @@ async function startWorker(): Promise<void> {
     'worker',
     reconcileApplicableRecurringSchedules,
   );
+  setupStaleWalletHandler();
   await featureFlagService.initialize();
   // Retained jobs can execute only after the durable feature snapshot is
   // installed, conditional schedules converge, the worker acknowledges it, and
@@ -250,7 +254,6 @@ async function startWorker(): Promise<void> {
   await electrumManager.start();
 
   workerStartedAt = Date.now();
-  setupStaleWalletHandler();
 
   // Start health server only after required schedules are present.
   const healthPort = parseInt(process.env.WORKER_HEALTH_PORT || '3002', 10);
@@ -331,18 +334,21 @@ async function startWorker(): Promise<void> {
   // This cleans up addresses from deleted wallets and subscribes to new ones
   startReconciliationTimer();
 
-  // Queue an immediate stale-wallet check to catch transactions that arrived
-  // during the startup window before Electrum subscriptions were active
-  await jobQueue.addJob<CheckStaleWalletsJobData>(SYNC_QUEUE_NAME, CHECK_STALE_WALLETS_JOB_NAME, {
-    version: SYNC_JOB_CONTRACT_VERSION,
-    maxWallets: config.sync.startupCatchUpBatchSize,
-    priority: 'normal',
-    staggerDelayMs: config.sync.startupCatchUpStaggerDelayMs,
-    reason: 'startup-catch-up',
-  }, {
-    delay: config.sync.startupCatchUpDelayMs,
-    jobId: `startup-catch-up:${Date.now()}`,
-  });
+  // Queue the compatibility catch-up only while the durable retirement marker
+  // remains absent. A strict read failure aborts startup rather than recreating
+  // work after cutover.
+  if ((await readStaleWalletSchedulePolicy()).mode === 'legacy_enabled') {
+    await jobQueue.addJob<CheckStaleWalletsJobData>(SYNC_QUEUE_NAME, CHECK_STALE_WALLETS_JOB_NAME, {
+      version: SYNC_JOB_CONTRACT_VERSION,
+      maxWallets: config.sync.startupCatchUpBatchSize,
+      priority: 'normal',
+      staggerDelayMs: config.sync.startupCatchUpStaggerDelayMs,
+      reason: 'startup-catch-up',
+    }, {
+      delay: config.sync.startupCatchUpDelayMs,
+      jobId: `startup-catch-up:${Date.now()}`,
+    });
+  }
 
   log.info('Sanctuary Background Worker started successfully', {
     healthPort,
@@ -519,6 +525,10 @@ function setupStaleWalletHandler(): void {
 
     const result = returnvalue as Partial<CheckStaleWalletsResult> | undefined;
     if (!result?.staleWalletIds?.length) return;
+    if ((await readStaleWalletSchedulePolicy()).mode === 'forbidden') {
+      log.warn('Ignoring stale-wallet completion after durable scheduler retirement');
+      return;
+    }
 
     log.info(`Queueing sync for ${result.staleWalletIds.length} stale wallets`);
 
@@ -526,6 +536,10 @@ function setupStaleWalletHandler(): void {
     const priority = result.priority ?? 'low';
     const staggerDelayMs = result.staggerDelayMs ?? config.sync.syncStaggerDelayMs;
     const reason = result.reason ?? 'stale';
+    if ((await readStaleWalletSchedulePolicy()).mode === 'forbidden') {
+      log.warn('Ignoring stale-wallet completion that raced durable scheduler retirement');
+      return;
+    }
     await jobQueue!.addBulkJobs<SyncWalletJobData>(SYNC_QUEUE_NAME, result.staleWalletIds.map((walletId, index) => ({
       name: SYNC_WALLET_JOB_NAME,
       data: { version: SYNC_JOB_CONTRACT_VERSION, walletId, priority, reason },

@@ -50,6 +50,7 @@ export const COMPLETE_TABLE_POLICY: readonly BackupTablePolicyEntry[] = [
   { model: 'DeviceAccount', table: 'deviceAccount', classification: 'durable-restored' },
   { model: 'WalletDevice', table: 'walletDevice', classification: 'durable-restored' },
   { model: 'Address', table: 'address', classification: 'durable-restored' },
+  { model: 'AddressSubscriptionCheckpoint', table: 'addressSubscriptionCheckpoint', classification: 'durable-restored' },
   { model: 'Label', table: 'label', classification: 'durable-restored' },
   { model: 'DraftTransaction', table: 'draftTransaction', classification: 'durable-restored' },
   { model: 'MobilePermission', table: 'mobilePermission', classification: 'durable-restored' },
@@ -104,6 +105,9 @@ export const EPHEMERAL_TABLES = getTablesByClassification('security-ephemeral');
  * contract test recomputes this value so policy edits cannot retain a stale ID.
  */
 export const COMPLETE_TABLE_POLICY_HASH =
+  '594949940eebbc3590f682ec374580a3617180b479618e27d175cd05cf728240';
+/** Policy hash emitted before durable address-subscription checkpoints existed. */
+export const PRE_WALLET_SYNC_COMPLETE_TABLE_POLICY_HASH =
   '266399aca02ff5a79cec4b8c89d7a33fc11d7ade0c1942f682e0098896b4acf0';
 /** Policy hash emitted immediately before immutable remediation evidence. */
 export const PRE_REMEDIATION_COMPLETE_TABLE_POLICY_HASH =
@@ -123,7 +127,11 @@ export const IMMUTABLE_EVIDENCE_TABLES = [
   'walletRemediationEvent',
 ] as const;
 
-const PRE_REMEDIATION_COMPLETE_TABLE_ORDER = TABLE_ORDER.filter(
+const PRE_WALLET_SYNC_COMPLETE_TABLE_ORDER = TABLE_ORDER.filter(
+  table => table !== 'addressSubscriptionCheckpoint'
+);
+
+const PRE_REMEDIATION_COMPLETE_TABLE_ORDER = PRE_WALLET_SYNC_COMPLETE_TABLE_ORDER.filter(
   table => !IMMUTABLE_EVIDENCE_TABLES.includes(
     table as (typeof IMMUTABLE_EVIDENCE_TABLES)[number],
   )
@@ -139,6 +147,14 @@ const usesPreRemediationCompletePolicy = (
   meta.version === BACKUP_FORMAT_VERSION
   && meta.tablePolicy?.version === COMPLETE_TABLE_POLICY_VERSION
   && meta.tablePolicy.hash === PRE_REMEDIATION_COMPLETE_TABLE_POLICY_HASH
+);
+
+const usesPreWalletSyncCompletePolicy = (
+  meta: Pick<BackupMeta, 'version' | 'tablePolicy'>
+): boolean => (
+  meta.version === BACKUP_FORMAT_VERSION
+  && meta.tablePolicy?.version === COMPLETE_TABLE_POLICY_VERSION
+  && meta.tablePolicy.hash === PRE_WALLET_SYNC_COMPLETE_TABLE_POLICY_HASH
 );
 
 const usesOtherPreRemediationCompletePolicy = (
@@ -251,6 +267,8 @@ export function getRequiredRestoreTables(
     requiredTables = LEGACY_TABLE_ORDER.filter(
       (table) => meta.schemaVersion >= LEGACY_RESTORE_TABLE_MIN_SCHEMA_VERSION[table]
     );
+  } else if (usesPreWalletSyncCompletePolicy(meta)) {
+    requiredTables = PRE_WALLET_SYNC_COMPLETE_TABLE_ORDER;
   } else if (usesPreRemediationCompletePolicy(meta)
     || usesOtherPreRemediationCompletePolicy(meta)) {
     requiredTables = PRE_REMEDIATION_COMPLETE_TABLE_ORDER;
@@ -274,6 +292,8 @@ export function getRestoreTables(
   let durableTables: readonly string[] = TABLE_ORDER;
   if (meta.version === LEGACY_BACKUP_FORMAT_VERSION) {
     durableTables = LEGACY_TABLE_ORDER.filter((table) => !EPHEMERAL_TABLES.includes(table));
+  } else if (usesPreWalletSyncCompletePolicy(meta)) {
+    durableTables = PRE_WALLET_SYNC_COMPLETE_TABLE_ORDER;
   } else if (usesPreRemediationCompletePolicy(meta)
     || usesOtherPreRemediationCompletePolicy(meta)) {
     durableTables = PRE_REMEDIATION_COMPLETE_TABLE_ORDER;
@@ -286,15 +306,20 @@ export function getRestoreTables(
     : [...durableTables];
 }
 
-// Tables that can grow large and should use cursor-based pagination for export
-// to avoid loading all rows into a single Prisma response buffer at once
-export const LARGE_TABLES = new Set([
-  'transaction', 'uTXO', 'transactionInput', 'transactionOutput',
-  'address', 'auditLog', 'addressLabel', 'transactionLabel',
-  'agentFundingAttempt', 'agentAlert', 'consolePromptHistory', 'consoleTurn',
-  'consoleToolTrace', 'webhookDelivery', 'featureFlagAudit', 'policyEvent',
-  'approvalVote', 'aIInsight', 'aIMessage',
+// Tables that can grow large and the unique, stable string field used for
+// cursor pagination. Keep the field beside the table declaration: most models
+// use `id`, while AddressSubscriptionCheckpoint is keyed by `addressId`.
+export const LARGE_TABLE_CURSOR_FIELDS: ReadonlyMap<string, string> = new Map([
+  ['transaction', 'id'], ['uTXO', 'id'], ['transactionInput', 'id'], ['transactionOutput', 'id'],
+  ['address', 'id'], ['auditLog', 'id'], ['addressLabel', 'id'], ['transactionLabel', 'id'],
+  ['addressSubscriptionCheckpoint', 'addressId'],
+  ['agentFundingAttempt', 'id'], ['agentAlert', 'id'], ['consolePromptHistory', 'id'],
+  ['consoleTurn', 'id'], ['consoleToolTrace', 'id'], ['webhookDelivery', 'id'],
+  ['featureFlagAudit', 'id'], ['policyEvent', 'id'], ['approvalVote', 'id'],
+  ['aIInsight', 'id'], ['aIMessage', 'id'],
 ]);
+
+export const LARGE_TABLES = new Set(LARGE_TABLE_CURSOR_FIELDS.keys());
 
 // Number of rows to fetch per cursor page during backup export
 export const BACKUP_PAGE_SIZE = 1000;

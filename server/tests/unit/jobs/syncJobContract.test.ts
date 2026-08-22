@@ -21,11 +21,14 @@ import {
   ORDINARY_SYNC_LOCK_RETRY_DELAY_MS,
   ORDINARY_SYNC_LOCK_RETRY_WINDOW_MS,
   SYNC_JOB_CONTRACT_VERSION,
+  SYNC_WALLET_JOB_READER_VERSION,
   SYNC_QUEUE_NAME,
   SYNC_WALLET_JOB_NAME,
   SYNC_WALLET_JOB_OPTIONS,
   UPDATE_ALL_CONFIRMATIONS_JOB_NAME,
   UPDATE_CONFIRMATIONS_JOB_NAME,
+  readSyncWalletJobData,
+  readSyncWalletLockContractState,
 } from '../../../src/jobs/syncJobContract';
 
 describe('sync job contract', () => {
@@ -53,17 +56,100 @@ describe('sync job contract', () => {
     })).toBe(true);
   });
 
+  it('reads unversioned and explicit v1 jobs into the canonical v1 shape', () => {
+    expect(readSyncWalletJobData({ walletId: 'legacy-wallet' })).toEqual({
+      version: 1,
+      walletId: 'legacy-wallet',
+    });
+    expect(readSyncWalletJobData({
+      version: 1,
+      walletId: 'current-wallet',
+      priority: 'high',
+      reason: 'manual',
+    })).toEqual({
+      version: 1,
+      walletId: 'current-wallet',
+      priority: 'high',
+      reason: 'manual',
+    });
+  });
+
+  it('reads the additive v2 wallet shape without changing the producer version', () => {
+    expect(SYNC_JOB_CONTRACT_VERSION).toBe(1);
+    expect(SYNC_WALLET_JOB_READER_VERSION).toBe(2);
+    const payload = {
+      version: 2,
+      walletId: 'wallet-v2',
+      priority: 'normal',
+      lockContention: {
+        firstLockContentionAt: 1_786_000_000_000,
+        attemptEpoch: 2,
+      },
+    } as const;
+
+    expect(isSyncWalletJobData(payload)).toBe(true);
+    expect(isSyncWalletJobLockData(payload)).toBe(true);
+    expect(readSyncWalletJobData(payload)).toEqual(payload);
+    expect(readSyncWalletJobData({ version: 2, walletId: 'marker-free-v2' })).toEqual({
+      version: 2,
+      walletId: 'marker-free-v2',
+    });
+  });
+
   it.each([
     null,
     {},
     { walletId: '' },
-    { version: 2, walletId: 'wallet-1' },
+    { version: 3, walletId: 'wallet-1' },
     { walletId: 'wallet-1', priority: 'urgent' },
     { walletId: 'wallet-1', reason: 42 },
+    { walletId: 'wallet-1', fullResync: 'yes' },
     { walletId: 'wallet-1', fullResync: true },
     { walletId: 'wallet-1', fullResync: false, fullResyncGeneration: 1 },
   ])('rejects an incompatible payload: %j', (payload) => {
     expect(isSyncWalletJobData(payload)).toBe(false);
+  });
+
+  it.each([
+    { firstLockContentionAt: 0, attemptEpoch: 0 },
+    { firstLockContentionAt: -1, attemptEpoch: 0 },
+    { firstLockContentionAt: 1.5, attemptEpoch: 0 },
+    { firstLockContentionAt: Number.MAX_SAFE_INTEGER + 1, attemptEpoch: 0 },
+    { firstLockContentionAt: 1_786_000_000_000, attemptEpoch: -1 },
+    { firstLockContentionAt: 1_786_000_000_000, attemptEpoch: 0.5 },
+    { firstLockContentionAt: 1_786_000_000_000 },
+    { attemptEpoch: 0 },
+    { firstLockContentionAt: 1_786_000_000_000, attemptEpoch: 0, extra: true },
+  ])('rejects malformed v2 lock contention before lock effects: %j', (lockContention) => {
+    const payload = { version: 2, walletId: 'wallet-1', lockContention };
+    expect(readSyncWalletJobData(payload)).toBeNull();
+    expect(isSyncWalletJobData(payload)).toBe(false);
+    expect(isSyncWalletJobLockData(payload)).toBe(false);
+  });
+
+  it('normalizes lock-only state for unversioned and marker-free v2 jobs', () => {
+    expect(readSyncWalletLockContractState(null)).toBeNull();
+    expect(readSyncWalletLockContractState({ walletId: 'legacy' })).toEqual({
+      version: 1,
+    });
+    expect(readSyncWalletLockContractState({ version: 2, walletId: 'v2' })).toEqual({
+      version: 2,
+    });
+    expect(readSyncWalletLockContractState({
+      version: 2,
+      walletId: 'invalid',
+      lockContention: 'not-an-object',
+    })).toBeNull();
+  });
+
+  it('rejects v2-only contention metadata on retained v1 jobs', () => {
+    const payload = {
+      version: 1,
+      walletId: 'wallet-1',
+      lockContention: { firstLockContentionAt: 1_786_000_000_000, attemptEpoch: 0 },
+    };
+    expect(readSyncWalletJobData(payload)).toBeNull();
+    expect(isSyncWalletJobLockData(payload)).toBe(false);
   });
 
   it('requires a valid generation for a full resync', () => {
@@ -80,7 +166,8 @@ describe('sync job contract', () => {
     expect(isSyncWalletJobLockData([])).toBe(false);
     expect(isSyncWalletJobLockData({ walletId: 'wallet-1' })).toBe(true);
     expect(isSyncWalletJobLockData({ version: 1, walletId: 'wallet-1' })).toBe(true);
-    expect(isSyncWalletJobLockData({ version: 2, walletId: 'wallet-1' })).toBe(false);
+    expect(isSyncWalletJobLockData({ version: 2, walletId: 'wallet-1' })).toBe(true);
+    expect(isSyncWalletJobLockData({ version: 3, walletId: 'wallet-1' })).toBe(false);
     expect(isSyncWalletJobLockData({})).toBe(false);
     expect(isSyncWalletJobLockData({ walletId: '   ' })).toBe(false);
     expect(isSyncWalletJobLockData({

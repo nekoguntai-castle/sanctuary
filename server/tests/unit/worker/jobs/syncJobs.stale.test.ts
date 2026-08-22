@@ -20,6 +20,11 @@ vi.mock('../../../../src/services/sync/syncLifecyclePublisher', () => ({
 
 const mockIsLocked = vi.hoisted(() => vi.fn<(key: string) => Promise<boolean>>());
 const mockEnqueueFullResync = vi.hoisted(() => vi.fn());
+const mockReadStaleWalletSchedulePolicy = vi.hoisted(() => vi.fn());
+
+vi.mock('../../../../src/repositories/walletSyncSchedulePolicyRepository', () => ({
+  readStaleWalletSchedulePolicy: mockReadStaleWalletSchedulePolicy,
+}));
 
 vi.mock('../../../../src/infrastructure/distributedLock', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -70,6 +75,7 @@ const checkStaleWalletsJob = createCheckStaleWalletsJob({
 describe('checkStaleWalletsJob', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockReadStaleWalletSchedulePolicy.mockResolvedValue({ mode: 'legacy_enabled' });
     let stateVersion = 0;
     staleJobPrismaMocks.walletUpdate.mockImplementation(async (args: any) => ({
       syncInProgress: false,
@@ -95,6 +101,30 @@ describe('checkStaleWalletsJob', () => {
   it('should have correct configuration', () => {
     expect(checkStaleWalletsJob.name).toBe('check-stale-wallets');
     expect(checkStaleWalletsJob.queue).toBe('sync');
+  });
+
+  it('returns no work without touching age-based state after durable retirement', async () => {
+    mockReadStaleWalletSchedulePolicy.mockResolvedValue({
+      mode: 'forbidden',
+      tombstone: {
+        version: 1,
+        forbiddenAt: '2026-08-22T00:00:00.000Z',
+        compatibilityFloor: 2,
+      },
+    });
+
+    await expect(checkStaleWalletsJob.handler({
+      id: 'retained-stale-parent',
+      data: { version: 1 },
+      attemptsMade: 0,
+      opts: { attempts: 2 },
+    } as Job<any>)).resolves.toEqual(expect.objectContaining({
+      version: 1,
+      staleWalletIds: [],
+      queued: 0,
+    }));
+    expect(staleJobPrismaMocks.walletFindMany).not.toHaveBeenCalled();
+    expect(mockEnqueueFullResync).not.toHaveBeenCalled();
   });
 
   it('rejects an unsupported live command version', async () => {

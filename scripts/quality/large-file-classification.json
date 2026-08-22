@@ -80,6 +80,20 @@
       "reviewWhenTouched": true,
       "lastReviewed": "2026-07-30"
     },
+    "server/tests/unit/services/backupService/backupService-core.contracts.ts": {
+      "category": "proof-harness",
+      "owner": "backup-restore",
+      "reason": "Backup policy and transformation contract harness sharing one complete backup fixture, Prisma mock boundary, and schema-policy history across compatibility behavior.",
+      "reviewWhenTouched": true,
+      "lastReviewed": "2026-08-22"
+    },
+    "server/tests/unit/services/backupService/restore.contracts.ts": {
+      "category": "proof-harness",
+      "owner": "backup-restore",
+      "reason": "Transactional restore proof harness sharing one backup fixture and ordered Prisma table mock boundary across rollback-floor, deserialization, and compatibility cases.",
+      "reviewWhenTouched": true,
+      "lastReviewed": "2026-08-22"
+    },
     "server/tests/unit/services/bitcoin/signingIntent/artifactValidation.test.ts": {
       "category": "proof-harness",
       "owner": "signing-intent-safety",
@@ -114,6 +128,20 @@
       "reason": "Worker entrypoint lifecycle proof harness sharing one hoisted module-mock boundary across initialization ordering, recurring reconciliation, readiness, and shutdown behavior.",
       "reviewWhenTouched": true,
       "lastReviewed": "2026-08-09"
+    },
+    "server/tests/unit/worker/jobs/syncJobs.test.ts": {
+      "category": "proof-harness",
+      "owner": "wallet-sync-worker",
+      "reason": "Wallet sync worker lifecycle proof harness sharing one hoisted Prisma, lock-authority, blockchain, and lifecycle-publisher boundary across normal and full-resync execution.",
+      "reviewWhenTouched": true,
+      "lastReviewed": "2026-08-22"
+    },
+    "server/tests/unit/worker/workerJobQueue/workerJobQueue.internal-locks.contracts.ts": {
+      "category": "proof-harness",
+      "owner": "worker-runtime",
+      "reason": "Distributed-lock execution proof harness sharing one queue instance and lock/timer/termination mock boundary across contention, refresh, shutdown, and authority-loss races.",
+      "reviewWhenTouched": true,
+      "lastReviewed": "2026-08-22"
     },
     "tests/components/WalletDetail/hooks/useWalletData.test.ts": {
       "category": "proof-harness",

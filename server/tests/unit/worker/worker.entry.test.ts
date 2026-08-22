@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => {
     addBulkJobs: vi.fn(),
     scheduleRecurring: vi.fn(),
     removeRecurring: vi.fn(),
+    purgeStaleWalletScheduleJobs: vi.fn(),
     onJobCompleted: vi.fn(),
     shutdown: vi.fn(),
   };
@@ -135,6 +136,7 @@ const mocks = vi.hoisted(() => {
       shutdownRuntime: vi.fn(),
       isEnabled: vi.fn(),
     },
+    readStaleWalletSchedulePolicy: vi.fn(),
     getElectrumCallbacks: () => electrumCallbacks,
     getHealthProvider: () => healthProvider,
     getDiagnosticsProvider: () => diagnosticsProvider,
@@ -187,6 +189,10 @@ vi.mock('../../../src/infrastructure', () => ({
 
 vi.mock('../../../src/services/featureFlagService', () => ({
   featureFlagService: mocks.mockFeatureFlagService,
+}));
+
+vi.mock('../../../src/repositories/walletSyncSchedulePolicyRepository', () => ({
+  readStaleWalletSchedulePolicy: mocks.readStaleWalletSchedulePolicy,
 }));
 
 vi.mock('../../../src/worker/workerJobQueue', () => ({
@@ -287,6 +293,7 @@ describe('worker entrypoint', () => {
       inspectionFailures: [],
     });
     mocks.queueInstance.removeRecurring.mockResolvedValue({ status: 'absent' });
+    mocks.queueInstance.purgeStaleWalletScheduleJobs.mockResolvedValue({ status: 'absent' });
     mocks.queueInstance.onJobCompleted.mockReturnValue(undefined);
     mocks.queueInstance.shutdown.mockResolvedValue(undefined);
 
@@ -311,6 +318,7 @@ describe('worker entrypoint', () => {
       await reconcileInstalledSnapshot?.();
     });
     mocks.mockFeatureFlagService.isEnabled.mockResolvedValue(false);
+    mocks.readStaleWalletSchedulePolicy.mockResolvedValue({ mode: 'legacy_enabled' });
   });
 
   it('handles startup failure by logging and exiting with code 1', async () => {
@@ -461,6 +469,65 @@ describe('worker entrypoint', () => {
     expect(mocks.queueInstance.startConsumers).toHaveBeenCalledOnce();
     expect(mocks.queueInstance.removeRecurring.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.queueInstance.startConsumers.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('purges retired stale-wallet work before consumers and suppresses startup catch-up', async () => {
+    vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
+      void event;
+      void handler;
+      return process;
+    }) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+    mocks.readStaleWalletSchedulePolicy.mockResolvedValue({
+      mode: 'forbidden',
+      tombstone: {
+        version: 1,
+        forbiddenAt: '2026-08-22T00:00:00.000Z',
+        compatibilityFloor: 2,
+      },
+    });
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+
+    expect(mocks.queueInstance.removeRecurring).toHaveBeenCalledWith(
+      'sync',
+      'check-stale-wallets',
+      { purgeQueued: true },
+    );
+    expect(mocks.queueInstance.purgeStaleWalletScheduleJobs).toHaveBeenCalledOnce();
+    expect(mocks.queueInstance.purgeStaleWalletScheduleJobs.mock.invocationCallOrder[0])
+      .toBeLessThan(mocks.queueInstance.startConsumers.mock.invocationCallOrder[0]);
+    expect(mocks.queueInstance.scheduleRecurring).not.toHaveBeenCalledWith(
+      expect.objectContaining({ schedulerId: 'sync:check-stale-wallets' }),
+    );
+    expect(mocks.queueInstance.addJob).not.toHaveBeenCalledWith(
+      'sync',
+      'check-stale-wallets',
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
+  it('fails closed before consumers when the durable schedule policy cannot be read', async () => {
+    vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
+      void event;
+      void handler;
+      return process;
+    }) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+    mocks.readStaleWalletSchedulePolicy.mockRejectedValue(
+      new Error('schedule policy unavailable'),
+    );
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+
+    expect(mocks.queueInstance.startConsumers).not.toHaveBeenCalled();
+    expect(mocks.logger.error).toHaveBeenCalledWith(
+      'Worker startup failed',
+      expect.objectContaining({ error: 'schedule policy unavailable' }),
     );
   });
 
@@ -619,6 +686,8 @@ describe('worker entrypoint', () => {
       'check-stale-wallets',
       expect.any(Function)
     );
+    expect(mocks.queueInstance.onJobCompleted.mock.invocationCallOrder[0])
+      .toBeLessThan(mocks.queueInstance.startConsumers.mock.invocationCallOrder[0]);
 
     // Get the registered callback
     const callback = mocks.queueInstance.onJobCompleted.mock.calls.find(
@@ -671,6 +740,34 @@ describe('worker entrypoint', () => {
 
     // Unknown future result versions must not be interpreted as v1.
     await callback({ version: 2, staleWalletIds: ['future-wallet'], queued: 1 });
+    expect(mocks.queueInstance.addBulkJobs).not.toHaveBeenCalled();
+  });
+
+  it('suppresses stale-wallet completion output when retirement is observed', async () => {
+    vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
+      void event;
+      void handler;
+      return process;
+    }) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+    mocks.queueInstance.addBulkJobs.mockClear();
+    mocks.readStaleWalletSchedulePolicy.mockResolvedValue({
+      mode: 'forbidden',
+      tombstone: {
+        version: 1,
+        forbiddenAt: '2026-08-22T00:00:00.000Z',
+        compatibilityFloor: 2,
+      },
+    });
+    const callback = mocks.queueInstance.onJobCompleted.mock.calls.find(
+      (call: any) => call[0] === 'sync' && call[1] === 'check-stale-wallets'
+    )?.[2];
+
+    await callback({ version: 1, staleWalletIds: ['w1'], queued: 1 });
+
     expect(mocks.queueInstance.addBulkJobs).not.toHaveBeenCalled();
   });
 

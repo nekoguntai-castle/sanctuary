@@ -135,6 +135,11 @@ export async function processJobWithLock(
     }
   }
 
+  if (registered.lockOptions.beforeLockAttempt) {
+    const preLockCompletion = await registered.lockOptions.beforeLockAttempt(job);
+    if (preLockCompletion?.complete) return preLockCompletion.result;
+  }
+
   const lockKey = registered.lockOptions.lockKey(job.data);
   const lockTtlMs = registered.lockOptions.lockTtlMs ?? DEFAULT_LOCK_TTL_MS;
   if (!Number.isInteger(lockTtlMs) || lockTtlMs < 2) {
@@ -158,7 +163,10 @@ export async function processJobWithLock(
       // payload: a counter is never reset once the lock is finally acquired, so
       // a job that contends, runs, fails and is retried would start its next
       // attempt with a spent budget - and it would ride into the DLQ and back.
-      const waitedMs = Date.now() - job.timestamp;
+      const retryStartedAt = registered.lockOptions.resolveLockRetryStartedAt
+        ? await registered.lockOptions.resolveLockRetryStartedAt(job)
+        : job.timestamp;
+      const waitedMs = Math.max(0, Date.now() - retryStartedAt);
       if (waitedMs >= retryWindowMs) {
         log.error(`Lock retry budget exhausted - failing job: ${handlerKey}`, {
           jobId: job.id,

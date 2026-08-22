@@ -26,6 +26,11 @@ const {
   mockFindStale: vi.fn(),
   mockFindStuckWithCutoff: vi.fn(),
 }));
+const mockReadStaleWalletSchedulePolicy = vi.hoisted(() => vi.fn());
+
+vi.mock('../../../../src/repositories/walletSyncSchedulePolicyRepository', () => ({
+  readStaleWalletSchedulePolicy: mockReadStaleWalletSchedulePolicy,
+}));
 
 vi.mock('../../../../src/repositories', () => ({
   walletRepository: {
@@ -66,6 +71,7 @@ vi.mock('../../../../src/services/sync/syncLifecyclePublisher', () => ({
 
 import {
   createCheckStaleWalletsJob,
+  resolveSyncLockRetryStartedAt,
   syncWalletJob,
 } from '../../../../src/worker/jobs/syncJobs';
 
@@ -76,6 +82,7 @@ const checkStaleWalletsJob = createCheckStaleWalletsJob({
 describe('sync lock contention is never a silent success', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockReadStaleWalletSchedulePolicy.mockResolvedValue({ mode: 'legacy_enabled' });
     mockUpdate.mockResolvedValue({});
     mockFindStale.mockResolvedValue([]);
     mockFindStuckWithCutoff.mockResolvedValue([]);
@@ -122,6 +129,133 @@ describe('sync lock contention is never a silent success', () => {
     const resolved = typeof window === 'function' ? window({ walletId: 'w4' }) : window;
     expect(resolved).toBeDefined();
     expect(resolved as number).toBeLessThan(5 * 60_000);
+  });
+
+  describe('v2 per-attempt contention clock', () => {
+    const makeJob = (data: Record<string, unknown>, attemptsMade = 0, timestamp = 123) => ({
+      data,
+      attemptsMade,
+      timestamp,
+      updateData: vi.fn().mockResolvedValue(undefined),
+    } as any);
+
+    it('keeps the retained enqueue timestamp for v1 jobs', async () => {
+      const job = makeJob({ version: 1, walletId: 'w-v1' }, 0, 456);
+      await expect(resolveSyncLockRetryStartedAt(job)).resolves.toBe(456);
+      expect(job.updateData).not.toHaveBeenCalled();
+    });
+
+    it('persists the first v2 contention time before delaying', async () => {
+      vi.spyOn(Date, 'now').mockReturnValueOnce(1_786_000_000_000);
+      const job = makeJob({ version: 2, walletId: 'w-v2' }, 1, 100);
+
+      await expect(resolveSyncLockRetryStartedAt(job)).resolves.toBe(1_786_000_000_000);
+      expect(job.updateData).toHaveBeenCalledWith({
+        version: 2,
+        walletId: 'w-v2',
+        lockContention: {
+          firstLockContentionAt: 1_786_000_000_000,
+          attemptEpoch: 1,
+        },
+      });
+    });
+
+    it('reuses a matching marker and replaces one from an earlier attempt', async () => {
+      vi.spyOn(Date, 'now').mockReturnValueOnce(1_500);
+      const matching = makeJob({
+        version: 2,
+        walletId: 'w-v2',
+        lockContention: { firstLockContentionAt: 1_000, attemptEpoch: 2 },
+      }, 2);
+      await expect(resolveSyncLockRetryStartedAt(matching)).resolves.toBe(1_000);
+      expect(matching.updateData).not.toHaveBeenCalled();
+
+      vi.spyOn(Date, 'now').mockReturnValueOnce(2_000);
+      const advanced = makeJob({
+        version: 2,
+        walletId: 'w-v2',
+        lockContention: { firstLockContentionAt: 1_000, attemptEpoch: 1 },
+      }, 2);
+      await expect(resolveSyncLockRetryStartedAt(advanced)).resolves.toBe(2_000);
+      expect(advanced.updateData).toHaveBeenCalledWith(expect.objectContaining({
+        lockContention: { firstLockContentionAt: 2_000, attemptEpoch: 2 },
+      }));
+    });
+
+    it('replaces a matching marker that is implausibly far in the future', async () => {
+      vi.spyOn(Date, 'now').mockReturnValueOnce(10_000);
+      const job = makeJob({
+        version: 2,
+        walletId: 'w-v2',
+        lockContention: {
+          firstLockContentionAt: 10_000 + 30_001,
+          attemptEpoch: 2,
+        },
+      }, 2);
+
+      await expect(resolveSyncLockRetryStartedAt(job)).resolves.toBe(10_000);
+      expect(job.updateData).toHaveBeenCalledWith(expect.objectContaining({
+        lockContention: { firstLockContentionAt: 10_000, attemptEpoch: 2 },
+      }));
+    });
+
+    it('fails instead of delaying without a durable v2 marker', async () => {
+      const job = makeJob({ version: 2, walletId: 'w-v2' });
+      job.updateData.mockRejectedValueOnce(new Error('redis write failed'));
+      await expect(resolveSyncLockRetryStartedAt(job)).rejects.toThrow('redis write failed');
+    });
+  });
+
+  it('neutralizes retired stale work before any wallet-lock attempt', async () => {
+    mockReadStaleWalletSchedulePolicy.mockResolvedValue({
+      mode: 'forbidden',
+      tombstone: {
+        version: 1,
+        forbiddenAt: '2026-08-22T00:00:00.000Z',
+        compatibilityFloor: 2,
+      },
+    });
+    const job = {
+      id: 'b64_c3luYzpzdGFsZTp3LTE',
+      name: 'sync-wallet',
+      data: { version: 1, walletId: 'w-1', reason: 'stale' },
+    } as any;
+
+    await expect(syncWalletJob.lockOptions?.beforeLockAttempt?.(job)).resolves.toEqual({
+      complete: true,
+      result: expect.objectContaining({ error: 'Stale-wallet scheduler work retired' }),
+    });
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it('preserves stale work while the compatibility policy remains enabled', async () => {
+    const job = {
+      id: 'b64_c3luYzpzdGFsZTp3LTE',
+      name: 'sync-wallet',
+      data: { version: 1, walletId: 'w-1', reason: 'stale' },
+    } as any;
+
+    await expect(syncWalletJob.lockOptions?.beforeLockAttempt?.(job))
+      .resolves.toBeUndefined();
+  });
+
+  it('fails closed on an indeterminate retained identity after retirement', async () => {
+    mockReadStaleWalletSchedulePolicy.mockResolvedValue({
+      mode: 'forbidden',
+      tombstone: {
+        version: 1,
+        forbiddenAt: '2026-08-22T00:00:00.000Z',
+        compatibilityFloor: 2,
+      },
+    });
+    const job = {
+      id: 'b64_not+base64',
+      name: 'sync-wallet',
+      data: { version: 1, walletId: 'w-1', reason: 'custom-source' },
+    } as any;
+
+    await expect(syncWalletJob.lockOptions?.beforeLockAttempt?.(job))
+      .rejects.toThrow('Cannot classify retained sync-wallet job identity');
   });
 
   describe('when the retry budget is exhausted', () => {
@@ -191,6 +325,7 @@ describe('stranded full-resync reconciliation', () => {
   }) as never;
 
   beforeEach(() => {
+    mockReadStaleWalletSchedulePolicy.mockResolvedValue({ mode: 'legacy_enabled' });
     mockFindStale.mockResolvedValue([]);
     mockFindStuckWithCutoff.mockResolvedValue([]);
   });

@@ -1,0 +1,236 @@
+{
+  "schemaVersion": 1,
+  "deliveryState": "compatibility_precursor",
+  "cutoverComplete": false,
+  "wireContract": {
+    "currentProducerVersion": 1,
+    "requiredReadableVersions": [1, 2],
+    "unversionedPayloadMeans": 1
+  },
+  "lifecycle": {
+    "states": [
+      "initial_catch_up",
+      "subscribed_current",
+      "activity_driven_incremental_catch_up"
+    ],
+    "walletHistoryTriggers": [
+      "address_activity",
+      "explicit_user_request",
+      "first_never_synced",
+      "reconnect_gap",
+      "startup_gap"
+    ],
+    "forbiddenWalletHistoryTriggers": [
+      "block_header",
+      "elapsed_wall_clock",
+      "ordinary_navigation",
+      "session_restore"
+    ],
+    "blockHeaderRole": "chain_tip_and_known_transaction_confirmations_only",
+    "gapRecovery": "compare_durable_address_status_checkpoints_and_request_only_changed_or_unknown_wallets"
+  },
+  "futureOwnership": {
+    "singleAdmissionModule": "server/src/services/sync/syncIntentAdmission.ts",
+    "walletHistoryExecutor": "server/src/worker/jobs/syncJobs.ts",
+    "subscriptionOwner": "worker",
+    "queueRole": "at_least_once_wakeup_only"
+  },
+  "compatibility": {
+    "staleScheduleName": "check-stale-wallets",
+    "staleScheduleState": "legacy_desired_until_cutover",
+    "durableDisablePolicyState": "compatibility_floor_available_marker_not_activated",
+    "rollbackFloor": "all_running_binaries_must_honor_the_durable_forbidden_marker_before_cutover",
+    "legacyEntriesAreTemporary": true
+  },
+  "requiredInvariantIds": [
+    "WSYNC-ADMISSION-001",
+    "WSYNC-BLOCK-001",
+    "WSYNC-COMPAT-001",
+    "WSYNC-LIFECYCLE-001",
+    "WSYNC-STALE-001",
+    "WSYNC-WORKER-001"
+  ],
+  "inventory": {
+    "directExecutorCalls": [
+      {
+        "callee": "syncAddress",
+        "implementationModules": [
+          "server/src/services/bitcoin/blockchain/syncAddress.ts"
+        ],
+        "entries": [
+          {
+            "file": "server/src/api/bitcoin/address.ts",
+            "count": 1,
+            "role": "legacy_direct_executor"
+          }
+        ]
+      },
+      {
+        "callee": "syncWallet",
+        "implementationModules": [
+          "server/src/services/bitcoin/blockchain/syncWallet.ts"
+        ],
+        "entries": [
+          {
+            "file": "server/src/services/sync/syncCoordinator.ts",
+            "count": 1,
+            "role": "legacy_direct_executor"
+          },
+          {
+            "file": "server/src/services/sync/walletSync.ts",
+            "count": 1,
+            "role": "legacy_direct_executor"
+          },
+          {
+            "file": "server/src/worker/jobs/syncJobs.ts",
+            "count": 1,
+            "role": "canonical_worker_executor"
+          }
+        ]
+      }
+    ],
+    "symbolReferences": [
+      {
+        "symbol": "CHECK_STALE_WALLETS_JOB_NAME",
+        "entries": [
+          {
+            "file": "server/src/jobs/staleWalletJobPolicy.ts",
+            "role": "compatibility_stale_work_classifier"
+          },
+          {
+            "file": "server/src/jobs/syncJobContract.ts",
+            "role": "neutral_wire_contract"
+          },
+          {
+            "file": "server/src/worker.ts",
+            "role": "compatibility_guarded_stale_producer_and_completion_bridge"
+          },
+          {
+            "file": "server/src/worker/jobs/syncJobs.ts",
+            "role": "legacy_stale_consumer"
+          },
+          {
+            "file": "server/src/worker/recurringSchedules.ts",
+            "role": "compatibility_schedule_definition_default_desired"
+          }
+        ]
+      },
+      {
+        "symbol": "SYNC_WALLET_JOB_NAME",
+        "entries": [
+          {
+            "file": "server/src/jobs/staleWalletJobPolicy.ts",
+            "role": "compatibility_stale_child_classifier"
+          },
+          {
+            "file": "server/src/jobs/syncJobContract.ts",
+            "role": "neutral_wire_contract"
+          },
+          {
+            "file": "server/src/services/deadLetterJobEnvelope.ts",
+            "role": "neutral_dead_letter_reader"
+          },
+          {
+            "file": "server/src/services/workerSyncQueue.ts",
+            "role": "legacy_wallet_job_producer"
+          },
+          {
+            "file": "server/src/worker.ts",
+            "role": "compatibility_guarded_stale_completion_producer"
+          },
+          {
+            "file": "server/src/worker/jobs/syncJobs.ts",
+            "role": "canonical_worker_consumer"
+          }
+        ]
+      },
+      {
+        "symbol": "SYNC_WALLET_JOB_READER_VERSION",
+        "entries": [
+          {
+            "file": "server/src/jobs/syncJobContract.ts",
+            "role": "reader_only_v2_compatibility"
+          },
+          {
+            "file": "server/src/services/workerSyncQueue.ts",
+            "role": "retained_v2_dead_letter_replay_clock_reset"
+          }
+        ]
+      },
+      {
+        "symbol": "findStale",
+        "entries": [
+          {
+            "file": "server/src/repositories/walletRepository.ts",
+            "role": "legacy_age_query"
+          },
+          {
+            "file": "server/src/services/sync/staleWalletChecker.ts",
+            "role": "legacy_inline_age_trigger"
+          },
+          {
+            "file": "server/src/services/sync/syncService.ts",
+            "role": "legacy_inline_age_trigger"
+          },
+          {
+            "file": "server/src/worker/jobs/syncJobs.ts",
+            "role": "legacy_worker_age_trigger"
+          }
+        ]
+      }
+    ],
+    "literalReferences": [
+      {
+        "literal": "check-stale-wallets",
+        "entries": [
+          {
+            "file": "server/src/jobs/syncJobContract.ts",
+            "role": "neutral_wire_contract"
+          },
+          {
+            "file": "server/src/repositories/operationalSystemSettings.ts",
+            "role": "durable_forbidden_marker_key"
+          },
+          {
+            "file": "server/src/worker.ts",
+            "role": "compatibility_guarded_stale_producer_and_completion_bridge"
+          },
+          {
+            "file": "server/src/worker/jobs/syncJobs.ts",
+            "role": "legacy_stale_consumer_diagnostic"
+          }
+        ]
+      },
+      {
+        "literal": "sync-wallet",
+        "entries": [
+          {
+            "file": "server/src/jobs/syncJobContract.ts",
+            "role": "neutral_wire_contract"
+          },
+          {
+            "file": "server/src/worker/jobs/syncJobs.ts",
+            "role": "canonical_worker_consumer_diagnostic"
+          }
+        ]
+      },
+      {
+        "literal": "sync:stale:",
+        "entries": [
+          {
+            "file": "server/src/jobs/staleWalletJobPolicy.ts",
+            "role": "compatibility_stale_child_classifier"
+          },
+          {
+            "file": "server/src/services/workerSyncQueue.ts",
+            "role": "retained_stale_dead_letter_provenance"
+          },
+          {
+            "file": "server/src/worker.ts",
+            "role": "legacy_timestamped_child_job"
+          }
+        ]
+      }
+    ]
+  }
+}

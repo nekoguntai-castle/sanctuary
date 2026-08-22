@@ -190,6 +190,13 @@ The error handler middleware (`src/errors/errorHandler.ts`) automatically conver
 
 ## Wallet Sync Pipeline
 
+Wallet synchronization is converging on the durable, activity-driven lifecycle
+defined by [ADR 0004](../docs/adr/0004-wallet-sync-lifecycle.md). The current
+compatibility precursor still retains legacy API execution and the recurring
+`check-stale-wallets` schedule; the executable inventory in
+`config/wallet-sync-lifecycle-contract.json` prevents those exceptions from
+growing while the single-admission, worker-owned path is introduced.
+
 The wallet sync process uses a modular pipeline architecture where each phase is an independent, testable function. The pipeline orchestrator executes phases in sequence, passing a shared context object between them.
 
 **Location:** `src/services/bitcoin/sync/`

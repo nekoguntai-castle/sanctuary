@@ -33,6 +33,11 @@ assert_scope "diagram-linted README selects architecture only" \
 assert_scope "dependency-cruiser tsconfig selects architecture only" \
   $'core=true\ndocs=false' \
   "config/tooling/tsconfig.app.json"
+assert_scope "wallet lifecycle schema and contract fail closed into both scopes" \
+  $'core=true\ndocs=true' \
+  "server/prisma/schema.prisma" \
+  "server/prisma/migrations/20260822070000_add_incremental_sync_intent/migration.sql" \
+  "config/wallet-sync-lifecycle-contract.json"
 assert_scope "docs content selects docs only" \
   $'core=false\ndocs=true' \
   "docs/reference/ci-cd-strategy.md"

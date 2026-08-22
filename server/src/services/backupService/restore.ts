@@ -5,7 +5,7 @@
  * encrypted field handling, and schema migration.
  */
 
-import prisma from '../../models/prisma';
+import prisma, { type PrismaTxClient } from '../../models/prisma';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { withTimeout } from '../../utils/async';
@@ -31,6 +31,7 @@ import {
   processNodeConfigRecords,
   processSystemSettingRecords,
   processUserRecords,
+  processWalletSyncIntentRecords,
   processWebhookDeliveryRecords,
   processWebhookEndpointRecords,
 } from './restoreTransforms';
@@ -40,9 +41,56 @@ import { serializeRecord } from './serialization';
 import { featureFlagRepository } from '../../repositories/featureFlagRepository';
 import { featureFlagService } from '../featureFlagService';
 import type { FeatureRuntimeState } from '../../repositories/featureFlagRepository';
+import { OPERATIONAL_SYSTEM_SETTING_PREFIX } from '../../repositories/operationalSystemSettings';
+import type { Prisma } from '../../generated/prisma/client';
 
 const log = createLogger('BACKUP:SVC');
 const RESTORE_ACCESS_CACHE_CLEAR_TIMEOUT_MS = 5_000;
+
+async function readOperationalSettings(
+  tx: PrismaTxClient,
+): Promise<Prisma.SystemSettingCreateManyInput[]> {
+  return tx.systemSetting.findMany({
+    where: { key: { startsWith: OPERATIONAL_SYSTEM_SETTING_PREFIX } },
+  });
+}
+
+async function preserveOperationalSettings(
+  tx: PrismaTxClient,
+  settings: Prisma.SystemSettingCreateManyInput[],
+): Promise<void> {
+  if (settings.length === 0) return;
+  await tx.systemSetting.createMany({ data: settings });
+}
+
+function processRestoreRecords(
+  table: string,
+  records: BackupRecord[],
+  warnings: string[],
+  currentSessionVersions: ReadonlyMap<string, number>,
+  currentOperationalKeys: ReadonlySet<string>,
+): BackupRecord[] {
+  let processed = records.map(record => deserializeRecordForTable(table, record));
+  if (table === 'nodeConfig') processed = processNodeConfigRecords(processed, warnings);
+  if (table === 'systemSetting') {
+    processed = processSystemSettingRecords(
+      processed,
+      warnings,
+      currentOperationalKeys,
+    );
+  }
+  if (table === 'wallet') processed = processWalletSyncIntentRecords(processed);
+  if (table === 'user') {
+    processed = processUserRecords(processed, warnings, currentSessionVersions);
+  }
+  if (table === 'mcpApiKey') processed = processMcpApiKeyRecords(processed, warnings);
+  if (table === 'agentApiKey') processed = processAgentApiKeyRecords(processed, warnings);
+  if (table === 'webhookEndpoint') {
+    processed = processWebhookEndpointRecords(processed, warnings);
+  }
+  if (table === 'webhookDelivery') processed = processWebhookDeliveryRecords(processed);
+  return processed;
+}
 
 /**
  * Restore database from backup
@@ -139,6 +187,10 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
     restoredRuntimeState = await prisma.$transaction(async (tx) => {
       const currentSessionVersions = await getCurrentSessionVersions(tx);
       const currentFeatureGeneration = await featureFlagRepository.readGeneration(tx);
+      const currentOperationalSettings = await readOperationalSettings(tx);
+      const currentOperationalKeys = new Set(
+        currentOperationalSettings.map(({ key }) => key),
+      );
       // Delete all tables in REVERSE order (to handle foreign key constraints)
       log.debug('[BACKUP] Deleting existing data in reverse order');
       for (const table of [...tablesToDelete].reverse()) {
@@ -162,45 +214,13 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
         }
 
         try {
-          // Handle DateTime fields (they come as strings from JSON)
-          let processedRecords = records.map((record) => deserializeRecordForTable(table, record));
-
-          // Special handling for nodeConfig - check if encrypted passwords can be decrypted
-          if (table === 'nodeConfig') {
-            processedRecords = processNodeConfigRecords(processedRecords, warnings);
-          }
-
-          // Special handling for system settings - restored external AI provider credentials fail closed.
-          if (table === 'systemSetting') {
-            processedRecords = processSystemSettingRecords(processedRecords, warnings);
-          }
-
-          // Special handling for user - check if encrypted 2FA secrets can be decrypted
-          if (table === 'user') {
-            processedRecords = processUserRecords(
-              processedRecords,
-              warnings,
-              currentSessionVersions
-            );
-          }
-
-          // Restored MCP bearer-token hashes are external-access credentials.
-          // Keep metadata for audit/admin review, but force every restored key closed.
-          if (table === 'mcpApiKey') {
-            processedRecords = processMcpApiKeyRecords(processedRecords, warnings);
-          }
-
-          if (table === 'agentApiKey') {
-            processedRecords = processAgentApiKeyRecords(processedRecords, warnings);
-          }
-
-          if (table === 'webhookEndpoint') {
-            processedRecords = processWebhookEndpointRecords(processedRecords, warnings);
-          }
-
-          if (table === 'webhookDelivery') {
-            processedRecords = processWebhookDeliveryRecords(processedRecords);
-          }
+          const processedRecords = processRestoreRecords(
+            table,
+            records,
+            warnings,
+            currentSessionVersions,
+            currentOperationalKeys,
+          );
 
           await persistRestoreRecords(
             tx,
@@ -218,6 +238,10 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
           throw new Error(errorMsg);
         }
       }
+      // Live operational settings always win. The irreversible stale-schedule
+      // floor is the sole operational setting that may seed an empty recovery
+      // database from a strictly validated backup.
+      await preserveOperationalSettings(tx, currentOperationalSettings);
       const generation = await featureFlagRepository.advanceGeneration(
         tx,
         currentFeatureGeneration,

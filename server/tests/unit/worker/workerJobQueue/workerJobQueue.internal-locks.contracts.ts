@@ -72,6 +72,63 @@ export const registerWorkerJobQueueInternalLockContracts = (getQueue: WorkerJobQ
       expect(handler).not.toHaveBeenCalled();
     });
 
+    it('completes a pre-lock retirement decision without acquiring the distributed lock', async () => {
+      const handler = vi.fn();
+      const beforeLockAttempt = vi.fn().mockResolvedValue({
+        complete: true,
+        result: { retired: true },
+      });
+      const registered = {
+        handler,
+        lockOptions: {
+          lockKey: () => 'lock:retired',
+          beforeLockAttempt,
+        },
+      };
+      const job: any = {
+        id: 'retired-job',
+        name: 'sync-wallet',
+        data: { walletId: 'wallet-retired' },
+      };
+
+      await expect(processJobWithLock('sync:retired', registered as any, job))
+        .resolves.toEqual({ retired: true });
+      expect(beforeLockAttempt).toHaveBeenCalledWith(job);
+      expect(acquireLock).not.toHaveBeenCalled();
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it('continues to lock and execute when the pre-lock guard preserves the job', async () => {
+      const handler = vi.fn().mockResolvedValue({ ok: true });
+      const beforeLockAttempt = vi.fn().mockResolvedValue(undefined);
+      vi.mocked(acquireLock).mockResolvedValueOnce({
+        key: 'lock:preserved',
+        token: 'token-preserved',
+        expiresAt: Date.now() + 300_000,
+        isLocal: false,
+      });
+      const registered = {
+        handler,
+        lockOptions: {
+          lockKey: () => 'lock:preserved',
+          beforeLockAttempt,
+        },
+      };
+      const job: any = {
+        id: 'preserved-job',
+        name: 'sync-wallet',
+        data: { walletId: 'wallet-preserved' },
+      };
+
+      await expect(processJobWithLock('sync:preserved', registered as any, job))
+        .resolves.toEqual({ ok: true });
+      expect(acquireLock).toHaveBeenCalledWith(
+        'lock:preserved',
+        { ttlMs: expect.any(Number) },
+      );
+      expect(handler).toHaveBeenCalled();
+    });
+
     it('skips locked handlers when lock is already held', async () => {
       vi.mocked(acquireLock).mockResolvedValueOnce(null);
 
@@ -367,6 +424,36 @@ export const registerWorkerJobQueueInternalLockContracts = (getQueue: WorkerJobQ
       await expect(processJobWithLock('sync:window', registered as any, job))
         .rejects.toThrow('lock:wallet-window');
       expect(job.moveToDelayed).toHaveBeenCalledTimes(1);
+    });
+
+    it('uses the handler contention clock instead of an old enqueue timestamp', async () => {
+      vi.mocked(acquireLock).mockResolvedValue(null);
+      const now = Date.now();
+      const resolveLockRetryStartedAt = vi.fn().mockResolvedValue(now);
+      const registered = {
+        handler: vi.fn(),
+        lockOptions: {
+          lockKey: () => 'lock:v2-clock',
+          lockTtlMs: 5_000,
+          retryDelayMsIfUnavailable: () => 100,
+          maxLockRetryWindowMs: 1_000,
+          resolveLockRetryStartedAt,
+        },
+      };
+      const job: any = {
+        id: 'v2-clock-job',
+        data: { version: 2, walletId: 'wallet-v2' },
+        token: 'worker-token',
+        timestamp: now - 60_000,
+        attemptsMade: 0,
+        opts: { attempts: 3 },
+        moveToDelayed: vi.fn().mockResolvedValue(undefined),
+      };
+
+      await expect(processJobWithLock('sync:v2-clock', registered as any, job))
+        .rejects.toHaveProperty('name', 'DelayedError');
+      expect(resolveLockRetryStartedAt).toHaveBeenCalledWith(job);
+      expect(job.moveToDelayed).toHaveBeenCalledOnce();
     });
 
     it('re-delays a job whose payload names no wallet', async () => {

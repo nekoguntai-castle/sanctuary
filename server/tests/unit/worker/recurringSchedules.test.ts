@@ -6,6 +6,7 @@ import {
   RecurringScheduleCoordinator,
   buildBaselineRecurringSchedules,
   inspectRecurringScheduleHealth,
+  requireStaleWalletSchedule,
   reconcileRecurringSchedules,
 } from '../../../src/worker/recurringSchedules';
 
@@ -42,6 +43,13 @@ function freshHeartbeatRecords(
 }
 
 describe('recurring schedule contracts', () => {
+  it('fails closed when the compatibility baseline loses the stale definition', () => {
+    expect(requireStaleWalletSchedule(buildBaselineRecurringSchedules(config))).toMatchObject({
+      schedulerId: 'sync:check-stale-wallets',
+    });
+    expect(() => requireStaleWalletSchedule([]))
+      .toThrow('Stale-wallet schedule definition is missing');
+  });
   const buildNeverCompletedQueue = (activatedAt: number) =>
     ({
       inspectRecurringSchedules: vi.fn().mockResolvedValue({
@@ -461,6 +469,7 @@ describe('recurring schedule contracts', () => {
       async () => ({
         autopilotEnabled: false,
         intelligenceEnabled: false,
+        staleWalletScheduleForbidden: false,
       }),
     );
 
@@ -498,6 +507,74 @@ describe('recurring schedule contracts', () => {
     );
   });
 
+  it('removes and purges the stale-wallet schedule before scheduling desired work', async () => {
+    const operations: string[] = [];
+    const queue = {
+      scheduleRecurring: vi.fn(async (definition: { schedulerId: string }) => {
+        operations.push(`schedule:${definition.schedulerId}`);
+        return { status: 'unchanged' };
+      }),
+      removeRecurring: vi.fn(async (_queue: string, name: string) => {
+        operations.push(`remove:${name}`);
+        return { status: 'removed' };
+      }),
+      purgeStaleWalletScheduleJobs: vi.fn(async () => {
+        operations.push('purge:stale-wallet-jobs');
+        return { status: 'removed' };
+      }),
+    } as any;
+    const coordinator = new RecurringScheduleCoordinator(
+      queue,
+      config,
+      async () => ({
+        autopilotEnabled: false,
+        intelligenceEnabled: false,
+        staleWalletScheduleForbidden: true,
+      }),
+    );
+
+    const result = await coordinator.reconcile();
+
+    expect(result.healthy).toBe(true);
+    expect(result.removals).toEqual(expect.objectContaining({
+      'sync:check-stale-wallets': { status: 'removed' },
+      'sync:stale-wallet-jobs': { status: 'removed' },
+    }));
+    expect(coordinator.getState().desired.map(({ schedulerId }) => schedulerId))
+      .not.toContain('sync:check-stale-wallets');
+    expect(coordinator.getState().forbidden.map(({ schedulerId }) => schedulerId))
+      .toContain('sync:check-stale-wallets');
+    const firstSchedule = operations.findIndex((value) => value.startsWith('schedule:'));
+    expect(operations.indexOf('remove:check-stale-wallets')).toBeLessThan(firstSchedule);
+    expect(operations.indexOf('purge:stale-wallet-jobs')).toBeLessThan(firstSchedule);
+  });
+
+  it('does not schedule desired work when stale-wallet cleanup fails', async () => {
+    const queue = {
+      scheduleRecurring: vi.fn().mockResolvedValue({ status: 'unchanged' }),
+      removeRecurring: vi.fn().mockResolvedValue({ status: 'removed' }),
+      purgeStaleWalletScheduleJobs: vi.fn().mockResolvedValue({
+        status: 'failed',
+        error: 'queue inspection failed',
+      }),
+    } as any;
+    const coordinator = new RecurringScheduleCoordinator(
+      queue,
+      config,
+      async () => ({
+        autopilotEnabled: false,
+        intelligenceEnabled: false,
+        staleWalletScheduleForbidden: true,
+      }),
+    );
+
+    await expect(coordinator.reconcile()).resolves.toEqual(
+      expect.objectContaining({ healthy: false, results: {} }),
+    );
+    expect(queue.scheduleRecurring).not.toHaveBeenCalled();
+    expect(coordinator.getState().reconciliationHealthy).toBe(false);
+  });
+
   it('serializes overlapping reconciliations and rereads current feature state', async () => {
     let autopilotEnabled = true;
     let releaseAutopilot!: () => void;
@@ -529,6 +606,7 @@ describe('recurring schedule contracts', () => {
       async () => ({
         autopilotEnabled,
         intelligenceEnabled: false,
+        staleWalletScheduleForbidden: false,
       }),
     );
 
@@ -562,6 +640,7 @@ describe('recurring schedule contracts', () => {
       .mockResolvedValue({
         autopilotEnabled: false,
         intelligenceEnabled: false,
+        staleWalletScheduleForbidden: false,
       });
     const coordinator = new RecurringScheduleCoordinator(
       queue,

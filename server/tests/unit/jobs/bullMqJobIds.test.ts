@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 import { describe, expect, it } from "vitest";
 
 import {
+  fromBullMqJobId,
   toBullMqJobId,
   withBullMqSafeJobId,
 } from "../../../src/jobs/bullMqJobIds";
@@ -20,6 +21,16 @@ describe("bullMqJobIds", () => {
     expect(Buffer.from(encoded.slice(4), "base64url").toString("utf8")).toBe(
       logicalJobId,
     );
+    expect(fromBullMqJobId(encoded)).toBe(logicalJobId);
+  });
+
+  it("keeps safe logical IDs and rejects malformed encoded IDs", () => {
+    expect(fromBullMqJobId("custom-id")).toBe("custom-id");
+    expect(fromBullMqJobId("b64_")).toBeNull();
+    expect(fromBullMqJobId("b64_not+base64")).toBeNull();
+    expect(fromBullMqJobId(`b64_${Buffer.from("bad\nvalue").toString("base64url")}`))
+      .toBeNull();
+    expect(fromBullMqJobId("b64_YQ")).toBeNull();
   });
 
   it("copies options only when the custom job ID needs encoding", () => {
