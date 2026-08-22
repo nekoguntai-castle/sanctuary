@@ -227,6 +227,7 @@ jobs:
       GATEWAY_PORT: '15100'
       PORT_OFFSET: '0'
       JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/fresh-install
+      IMAGE_CVE_REPORT_DIR: ${{ github.workspace }}/.tmp/ci-evidence/runtime-image-cves
       SANCTUARY_CI_DEBUG_TRACE: '1'
 
     steps:
@@ -275,6 +276,19 @@ jobs:
             bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
           '
 
+      - name: Bind runtime images to candidate
+        env:
+          CANDIDATE_SHA: ${{ needs.validation-info.outputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          image_lock_sha="$(sha256sum config/container-image-lock.json | cut -d ' ' -f 1)"
+          if [[ ! "$image_lock_sha" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::Container image lock did not produce a SHA-256 digest"
+            exit 1
+          fi
+          echo "SANCTUARY_SOURCE_COMMIT=$CANDIDATE_SHA" >> "$GITHUB_ENV"
+          echo "SANCTUARY_IMAGE_LOCK_SHA256=$image_lock_sha" >> "$GITHUB_ENV"
+
       - name: Run fresh install test
         run: |
           # Composition: run-with-log → with-runner-lock → time-command → command
@@ -303,6 +317,19 @@ jobs:
           echo ""
           echo "=== Gateway Logs ==="
           docker compose logs --tail 100 gateway 2>&1 || true
+
+      - name: Observe candidate image CVEs
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          CANDIDATE_SHA: ${{ needs.validation-info.outputs.candidate_sha }}
+        run: |
+          scripts/ci/observe-runtime-image-cves.sh \
+            --project "$COMPOSE_PROJECT_NAME" \
+            --candidate "$CANDIDATE_SHA" \
+            --image-lock config/container-image-lock.json \
+            --output "$IMAGE_CVE_REPORT_DIR"
 
       - name: Cleanup
         if: always()
@@ -333,6 +360,17 @@ jobs:
         run: |
           scripts/ci/run-with-log.sh "$JOB_LOG_DIR/post-cleanup.log" \
             scripts/ci/write-preflight-diagnostics.sh
+
+      - name: Upload candidate image CVE observation
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: runtime-image-cves-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .tmp/ci-evidence/runtime-image-cves/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
 
       - name: Write fresh install diagnostic summary
         if: always()

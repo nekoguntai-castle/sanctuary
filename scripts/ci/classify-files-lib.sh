@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Sourceable library of file-classification predicates used by
-# classify-test-changes.sh (KEY=VALUE emitter, legacy contract) and
-# plan-test-run.sh (JSON emitter, Phase 3+ contract).
+# classify-test-changes.sh (CI scalar-output adapter) and plan-test-run.sh
+# (local/developer JSON adapter).
 #
 # Each function takes one argument — a repo-relative path string — and exits
 # 0 (true) or 1 (false). The patterns must stay in lockstep across both
-# emitters; that's the whole point of having one library.
+# adapters; that is the purpose of having one predicate library.
 
 if [ "${SANCTUARY_CI_CLASSIFY_FILES_LIB_LOADED:-0}" = "1" ]; then
   return 0 2>/dev/null || exit 0

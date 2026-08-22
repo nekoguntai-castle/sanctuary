@@ -34,10 +34,15 @@ function isImageSource(relativePath) {
     || relativePath.startsWith('docker/')
     || relativePath.startsWith('scripts/verify-');
   if (/config\/(?:trezor-emulator-proof|jade-emulator-proof|jade-protocol-harness)\.json$/.test(relativePath)) return true;
-  return ['scripts/offline/bundle-common.sh', 'scripts/ops/phase2-alert-receiver-smoke.mjs'].includes(relativePath);
+  return [
+    'scripts/ci/observe-runtime-image-cves.sh',
+    'scripts/offline/bundle-common.sh',
+    'scripts/ops/phase2-alert-receiver-smoke.mjs',
+  ].includes(relativePath);
 }
 
 function contextualImageLine(line, relativePath) {
+  if (relativePath === 'scripts/ci/observe-runtime-image-cves.sh' && /^readonly TRIVY_IMAGE=/.test(line)) return true;
   if (/^\s*FROM\s+/i.test(line) || /^\s*image:\s*/.test(line) || /"image"\s*:/.test(line)) return true;
   if (/\bdocker\s+(?:run|pull)\b/.test(line)) return true;
   return relativePath === 'scripts/offline/bundle-common.sh' && /^\s*"/.test(line);

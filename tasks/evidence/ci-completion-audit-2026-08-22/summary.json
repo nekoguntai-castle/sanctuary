@@ -1,0 +1,4262 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-08-22T13:21:51.701Z",
+  "exact_window": {
+    "start_inclusive": "2026-06-23T13:21:51.701Z",
+    "end_inclusive": "2026-08-22T13:21:51.701Z",
+    "days": 60
+  },
+  "repository_revision": "a355673249e98c2b3cfff38a7f5643b2968e517b",
+  "methodology": {
+    "api": "Forgejo GET only; runs, PR files, job inventories, selected/failure job logs",
+    "cohort_overlap": true,
+    "sample": "latest 20 successful path-comparable runs per cohort; topology is not normalized",
+    "runner_time": "sum of first-to-last timestamps in persisted executed-job logs",
+    "queue_time": "workflow started minus created; job-level queue timestamps unavailable",
+    "observed_subtimings": "regex-derived lower bounds from timing/lock notices and artifact log markers; zero may mean unavailable"
+  },
+  "workflow_counts": {
+    "test.yml": {
+      "total": 1009,
+      "success": 690,
+      "failure": 82,
+      "cancelled": 237,
+      "other": 0
+    },
+    "install-test.yml": {
+      "total": 479,
+      "success": 384,
+      "failure": 53,
+      "cancelled": 42,
+      "other": 0
+    },
+    "release-candidate.yml": {
+      "total": 37,
+      "success": 21,
+      "failure": 11,
+      "cancelled": 5,
+      "other": 0
+    },
+    "verify-vectors.yml": {
+      "total": 455,
+      "success": 309,
+      "failure": 48,
+      "cancelled": 98,
+      "other": 0
+    }
+  },
+  "cohorts": {
+    "docs-only": {
+      "name": "docs-only",
+      "counts": {
+        "total": 10,
+        "success": 10,
+        "failure": 0,
+        "cancelled": 0,
+        "other": 0
+      },
+      "comparable_success_sample_count": 10,
+      "sample_shortfall": 10,
+      "metrics": {
+        "wall_seconds": {
+          "available": 10,
+          "p50": 32,
+          "p90": 107
+        },
+        "workflow_queue_seconds": {
+          "available": 10,
+          "p50": 1,
+          "p90": 56
+        },
+        "runner_sum_seconds": {
+          "available": 10,
+          "p50": 11.447,
+          "p90": 14.377
+        },
+        "lock_seconds_observed": {
+          "available": 0,
+          "p50": null,
+          "p90": null
+        },
+        "setup_seconds_observed": {
+          "available": 0,
+          "p50": null,
+          "p90": null
+        },
+        "artifact_seconds_observed": {
+          "available": 0,
+          "p50": null,
+          "p90": null
+        }
+      },
+      "sample_runs": [
+        {
+          "id": 11734,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#869",
+          "commit": "b09faa5b662aa0d66061aa5b9c7b625ed05cbae5",
+          "wall_seconds": 107,
+          "workflow_queue_seconds": 9,
+          "runner_seconds": 12.898,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": null
+        },
+        {
+          "id": 11439,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#848",
+          "commit": "c07a396ecfd9d2cda6e634225634ae9b57a21cb0",
+          "wall_seconds": 543,
+          "workflow_queue_seconds": 436,
+          "runner_seconds": 14.559,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": null
+        },
+        {
+          "id": 9633,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#779",
+          "commit": "15b566a4ee5816187579d44b2e273466a6e28dc0",
+          "wall_seconds": 30,
+          "workflow_queue_seconds": 1,
+          "runner_seconds": 13.358,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": null
+        },
+        {
+          "id": 9585,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#775",
+          "commit": "c421a05c2dc53349c32d0ab18e6ae878b1290304",
+          "wall_seconds": 32,
+          "workflow_queue_seconds": 2,
+          "runner_seconds": 11.447,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": null
+        },
+        {
+          "id": 9451,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#762",
+          "commit": "e10ca4d693ef9ae52fb889928645cf9c33c0f8b2",
+          "wall_seconds": 37,
+          "workflow_queue_seconds": 56,
+          "runner_seconds": 14.377,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": null
+        },
+        {
+          "id": 8919,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#702",
+          "commit": "016bafb0769f472f9bf9da52ffc967b2c563c7a4",
+          "wall_seconds": 35,
+          "workflow_queue_seconds": 0,
+          "runner_seconds": 13.478,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": null
+        },
+        {
+          "id": 7414,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#575",
+          "commit": "178002829ef9eb0d863cd9f9ad463bc71234361f",
+          "wall_seconds": 27,
+          "workflow_queue_seconds": 1,
+          "runner_seconds": 5.127000000000001,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": null
+        },
+        {
+          "id": 7411,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#574",
+          "commit": "d676c468f832d7c335fd4936b1c8f4f4c854ec9b",
+          "wall_seconds": 23,
+          "workflow_queue_seconds": 1,
+          "runner_seconds": 4.472,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": null
+        },
+        {
+          "id": 7398,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#572",
+          "commit": "3fa761954ab8d66559fd44f0272941ee27b5558f",
+          "wall_seconds": 23,
+          "workflow_queue_seconds": 1,
+          "runner_seconds": 4.829999999999999,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": null
+        },
+        {
+          "id": 5522,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#554",
+          "commit": "21e291812d3e00619e7cfdf0afec47e9ba516529",
+          "wall_seconds": 45,
+          "workflow_queue_seconds": 0,
+          "runner_seconds": 5.574999999999995,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": null
+        }
+      ]
+    },
+    "gateway-only": {
+      "name": "gateway-only",
+      "counts": {
+        "total": 1,
+        "success": 1,
+        "failure": 0,
+        "cancelled": 0,
+        "other": 0
+      },
+      "comparable_success_sample_count": 1,
+      "sample_shortfall": 19,
+      "metrics": {
+        "wall_seconds": {
+          "available": 1,
+          "p50": 921,
+          "p90": 921
+        },
+        "workflow_queue_seconds": {
+          "available": 1,
+          "p50": 2,
+          "p90": 2
+        },
+        "runner_sum_seconds": {
+          "available": 1,
+          "p50": 2144.6360000000004,
+          "p90": 2144.6360000000004
+        },
+        "lock_seconds_observed": {
+          "available": 0,
+          "p50": null,
+          "p90": null
+        },
+        "setup_seconds_observed": {
+          "available": 1,
+          "p50": 36,
+          "p90": 36
+        },
+        "artifact_seconds_observed": {
+          "available": 1,
+          "p50": 7.675,
+          "p90": 7.675
+        }
+      },
+      "sample_runs": [
+        {
+          "id": 8421,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#646",
+          "commit": "10d884944404a4df93829b930246246a2da6daba",
+          "wall_seconds": 921,
+          "workflow_queue_seconds": 2,
+          "runner_seconds": 2144.6360000000004,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 36,
+          "artifact_seconds_observed": 7.675
+        }
+      ]
+    },
+    "frontend": {
+      "name": "frontend",
+      "counts": {
+        "total": 214,
+        "success": 167,
+        "failure": 7,
+        "cancelled": 40,
+        "other": 0
+      },
+      "comparable_success_sample_count": 20,
+      "sample_shortfall": 0,
+      "metrics": {
+        "wall_seconds": {
+          "available": 20,
+          "p50": 1378,
+          "p90": 1973
+        },
+        "workflow_queue_seconds": {
+          "available": 20,
+          "p50": 2,
+          "p90": 146
+        },
+        "runner_sum_seconds": {
+          "available": 20,
+          "p50": 2366.315,
+          "p90": 2616.4530000000004
+        },
+        "lock_seconds_observed": {
+          "available": 0,
+          "p50": null,
+          "p90": null
+        },
+        "setup_seconds_observed": {
+          "available": 13,
+          "p50": 9,
+          "p90": 10
+        },
+        "artifact_seconds_observed": {
+          "available": 16,
+          "p50": 15.668000000000001,
+          "p90": 16.608
+        }
+      },
+      "sample_runs": [
+        {
+          "id": 11988,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#892",
+          "commit": "4477bb8120937ccf028422f6fb37ba243e17c061",
+          "wall_seconds": 1330,
+          "workflow_queue_seconds": 2,
+          "runner_seconds": 2445.6139999999996,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 9,
+          "artifact_seconds_observed": 13.524
+        },
+        {
+          "id": 11891,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#886",
+          "commit": "cf5b94255657f0d2ed6ba57b2552868917ed8cae",
+          "wall_seconds": 1532,
+          "workflow_queue_seconds": 11,
+          "runner_seconds": 2360.9570000000003,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 9,
+          "artifact_seconds_observed": 13.527000000000001
+        },
+        {
+          "id": 11878,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#885",
+          "commit": "35ae3e1eea7149571c03eddac396f2917c5843ab",
+          "wall_seconds": 1422,
+          "workflow_queue_seconds": 13,
+          "runner_seconds": 2356.079,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 9,
+          "artifact_seconds_observed": 13.658999999999999
+        },
+        {
+          "id": 11866,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#884",
+          "commit": "76cb6495241c615e27df59838dc89944bd51b64c",
+          "wall_seconds": 1482,
+          "workflow_queue_seconds": 2,
+          "runner_seconds": 2609.7000000000007,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 9,
+          "artifact_seconds_observed": 16.660999999999998
+        },
+        {
+          "id": 11858,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#883",
+          "commit": "c5abc5f2224487c5bfe1a5ce2922d8afa415265b",
+          "wall_seconds": 1465,
+          "workflow_queue_seconds": 1,
+          "runner_seconds": 2521.801,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 10,
+          "artifact_seconds_observed": 16.049000000000003
+        },
+        {
+          "id": 11850,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#882",
+          "commit": "ae5185588c9cc121b7cf1e6b34211dd5888525dd",
+          "wall_seconds": 1291,
+          "workflow_queue_seconds": 5,
+          "runner_seconds": 2550.3489999999997,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 8,
+          "artifact_seconds_observed": 16.552
+        },
+        {
+          "id": 11846,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#882",
+          "commit": "00d590dda2a047f0159123a86e885ea340710205",
+          "wall_seconds": 1378,
+          "workflow_queue_seconds": 1,
+          "runner_seconds": 2366.315,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 9,
+          "artifact_seconds_observed": 15.937000000000001
+        },
+        {
+          "id": 11838,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#881",
+          "commit": "be470a1bf1c12932b60db1ec3092e6327f603a74",
+          "wall_seconds": 1353,
+          "workflow_queue_seconds": 2,
+          "runner_seconds": 2367.2769999999996,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 10,
+          "artifact_seconds_observed": 16.087
+        },
+        {
+          "id": 11829,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#875",
+          "commit": "6fa8a775623b89ba18382e54c327c3d34c5ba183",
+          "wall_seconds": 1316,
+          "workflow_queue_seconds": 1,
+          "runner_seconds": 2616.4530000000004,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 9,
+          "artifact_seconds_observed": 15.652000000000003
+        },
+        {
+          "id": 11819,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#874",
+          "commit": "2d76078e428cb3c3a6c6053544b6d438cad6be65",
+          "wall_seconds": 144,
+          "workflow_queue_seconds": 6,
+          "runner_seconds": 14.384,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": null
+        },
+        {
+          "id": 11815,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#874",
+          "commit": "de75e905e849ff664b83e9ac13217c25437a596a",
+          "wall_seconds": 141,
+          "workflow_queue_seconds": 1,
+          "runner_seconds": 13.557,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": null
+        },
+        {
+          "id": 11805,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#873",
+          "commit": "7bf285bcea6e9dc11071fc2d8f4e7037bee7d318",
+          "wall_seconds": 142,
+          "workflow_queue_seconds": 2,
+          "runner_seconds": 13.586,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": null
+        },
+        {
+          "id": 11790,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#871",
+          "commit": "a634ffc2c63d55914401f409543a9db77caa0745",
+          "wall_seconds": 1973,
+          "workflow_queue_seconds": 17,
+          "runner_seconds": 2501.448000000001,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 8,
+          "artifact_seconds_observed": 16.608
+        },
+        {
+          "id": 11779,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#872",
+          "commit": "f3990aca69baae2dfa2da072daf04c9e92840af6",
+          "wall_seconds": 595,
+          "workflow_queue_seconds": 235,
+          "runner_seconds": 13.211,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": null
+        },
+        {
+          "id": 11775,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#871",
+          "commit": "b2aebd44fe92ab43c249f928b4ab43458c7ca828",
+          "wall_seconds": 1957,
+          "workflow_queue_seconds": 2,
+          "runner_seconds": 2651.9980000000005,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 44,
+          "artifact_seconds_observed": 15.668000000000001
+        },
+        {
+          "id": 11689,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#865",
+          "commit": "16ce6f819fdf6ca94c6acf447eb70ebc91fa3c21",
+          "wall_seconds": 1229,
+          "workflow_queue_seconds": 1,
+          "runner_seconds": 1748.156,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 5.898
+        },
+        {
+          "id": 11565,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#859",
+          "commit": "334b7488c18f74bb20f4cb71f65f191a9cfae284",
+          "wall_seconds": 2743,
+          "workflow_queue_seconds": 146,
+          "runner_seconds": 1800.9940000000001,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 6.695000000000001
+        },
+        {
+          "id": 11509,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#853",
+          "commit": "a999fd0ce17a4a483bdb2aa0d39a4567d19a2209",
+          "wall_seconds": 1461,
+          "workflow_queue_seconds": 1,
+          "runner_seconds": 2809.32,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 10,
+          "artifact_seconds_observed": 16.103
+        },
+        {
+          "id": 11493,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#852",
+          "commit": "589c7bfd1ed6b6be79c32260bde09fd1c80e3ccd",
+          "wall_seconds": 2170,
+          "workflow_queue_seconds": 732,
+          "runner_seconds": 2527.781,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 8,
+          "artifact_seconds_observed": 16.567
+        },
+        {
+          "id": 11460,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#847",
+          "commit": "4948b8a4521275e51b8eda59942050868715fbae",
+          "wall_seconds": 1453,
+          "workflow_queue_seconds": 108,
+          "runner_seconds": 888.306,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 3.7739999999999996
+        }
+      ]
+    },
+    "backend-unit-only": {
+      "name": "backend-unit-only",
+      "counts": {
+        "total": 27,
+        "success": 20,
+        "failure": 1,
+        "cancelled": 6,
+        "other": 0
+      },
+      "comparable_success_sample_count": 20,
+      "sample_shortfall": 0,
+      "metrics": {
+        "wall_seconds": {
+          "available": 20,
+          "p50": 1057,
+          "p90": 1533
+        },
+        "workflow_queue_seconds": {
+          "available": 20,
+          "p50": 8,
+          "p90": 177
+        },
+        "runner_sum_seconds": {
+          "available": 20,
+          "p50": 563.861,
+          "p90": 2220.1099999999997
+        },
+        "lock_seconds_observed": {
+          "available": 0,
+          "p50": null,
+          "p90": null
+        },
+        "setup_seconds_observed": {
+          "available": 20,
+          "p50": 7,
+          "p90": 12
+        },
+        "artifact_seconds_observed": {
+          "available": 20,
+          "p50": 5.041,
+          "p90": 14.42
+        }
+      },
+      "sample_runs": [
+        {
+          "id": 11978,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#891",
+          "commit": "a398f1e987bba0a831bb08d053e6a27ee2bab58b",
+          "wall_seconds": 1487,
+          "workflow_queue_seconds": 2,
+          "runner_seconds": 2498.63,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 9,
+          "artifact_seconds_observed": 14.42
+        },
+        {
+          "id": 11726,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#868",
+          "commit": "13c9e45df4c51ca5021ac9209dcbd6ed825df0fa",
+          "wall_seconds": 576,
+          "workflow_queue_seconds": 2,
+          "runner_seconds": 563.861,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 6,
+          "artifact_seconds_observed": 4.939
+        },
+        {
+          "id": 11703,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#866",
+          "commit": "d2996577e5120269b1b65c38453a0fc6cafeb807",
+          "wall_seconds": 1262,
+          "workflow_queue_seconds": 2,
+          "runner_seconds": 1389.816,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 8,
+          "artifact_seconds_observed": 5.606
+        },
+        {
+          "id": 11583,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#856",
+          "commit": "34692cebf8ab2b0b27826853f84e5a5d25eecc9a",
+          "wall_seconds": 1223,
+          "workflow_queue_seconds": 90,
+          "runner_seconds": 912.895,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 13,
+          "artifact_seconds_observed": 4.921
+        },
+        {
+          "id": 11536,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#856",
+          "commit": "6ad85f62b5c658056c9afb259a87d618fa48c88a",
+          "wall_seconds": 4293,
+          "workflow_queue_seconds": 242,
+          "runner_seconds": 891.1629999999999,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 10,
+          "artifact_seconds_observed": 5.041
+        },
+        {
+          "id": 11526,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#854",
+          "commit": "58fbcdbc600df71d5ee70e0830c42907d253d368",
+          "wall_seconds": 3495,
+          "workflow_queue_seconds": 2,
+          "runner_seconds": 1426.8070000000002,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 7,
+          "artifact_seconds_observed": 8.975999999999999
+        },
+        {
+          "id": 10956,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#826",
+          "commit": "473ab384e28eedfd92d3e43140a0fa19fef3ef71",
+          "wall_seconds": 790,
+          "workflow_queue_seconds": 40,
+          "runner_seconds": 530.1390000000001,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 6,
+          "artifact_seconds_observed": 4.845
+        },
+        {
+          "id": 10167,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#799",
+          "commit": "b1671372e729d57e31e0fe2001fc10db9c52bb39",
+          "wall_seconds": 1093,
+          "workflow_queue_seconds": 1,
+          "runner_seconds": 1765.6139999999998,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 13,
+          "artifact_seconds_observed": 12.14
+        },
+        {
+          "id": 10158,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#798",
+          "commit": "0212003f48ad1a4a2726831bc59f4bc52aec67ed",
+          "wall_seconds": 1390,
+          "workflow_queue_seconds": 2,
+          "runner_seconds": 2072.427,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 11,
+          "artifact_seconds_observed": 12.628
+        },
+        {
+          "id": 10149,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#797",
+          "commit": "df0770adcb770def2ac7656c7cb5eb8b80d99ed5",
+          "wall_seconds": 462,
+          "workflow_queue_seconds": 1,
+          "runner_seconds": 483.19100000000003,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 6,
+          "artifact_seconds_observed": 4.794
+        },
+        {
+          "id": 10126,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#795",
+          "commit": "9e4b81d8bf08ee3aa75861b0c4aa8bcaad31b464",
+          "wall_seconds": 576,
+          "workflow_queue_seconds": 146,
+          "runner_seconds": 480.96799999999996,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 7,
+          "artifact_seconds_observed": 5.856
+        },
+        {
+          "id": 10117,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#794",
+          "commit": "ab03b44c29f42fd5e979fbf4106196b35645c4c8",
+          "wall_seconds": 1057,
+          "workflow_queue_seconds": 8,
+          "runner_seconds": 1692.0689999999997,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 12,
+          "artifact_seconds_observed": 12.858999999999998
+        },
+        {
+          "id": 10107,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#795",
+          "commit": "6bdabe6ef00e9a4b461b9cfe3eaebf75ac3559c9",
+          "wall_seconds": 913,
+          "workflow_queue_seconds": 343,
+          "runner_seconds": 524.889,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 6,
+          "artifact_seconds_observed": 5.447
+        },
+        {
+          "id": 10093,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#793",
+          "commit": "f651eadaf6efd37c2e17a05d9984e602eff57479",
+          "wall_seconds": 1533,
+          "workflow_queue_seconds": 177,
+          "runner_seconds": 2284.773,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 11,
+          "artifact_seconds_observed": 16.653000000000002
+        },
+        {
+          "id": 9569,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#773",
+          "commit": "a52b4233a63b76579c493f237459bfa93c545457",
+          "wall_seconds": 1259,
+          "workflow_queue_seconds": 16,
+          "runner_seconds": 2220.1099999999997,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 7,
+          "artifact_seconds_observed": 15.674
+        },
+        {
+          "id": 8839,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#694",
+          "commit": "1a705293f7867d50ad512c0230a5a00a8c1a6ba2",
+          "wall_seconds": 1430,
+          "workflow_queue_seconds": 8,
+          "runner_seconds": 435.99999999999994,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 4,
+          "artifact_seconds_observed": 4.6930000000000005
+        },
+        {
+          "id": 8389,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#644",
+          "commit": "9b79b77c58284a7a5af5a8d3b1294b07f256c10a",
+          "wall_seconds": 415,
+          "workflow_queue_seconds": 12,
+          "runner_seconds": 401.58500000000004,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 6,
+          "artifact_seconds_observed": 4.425000000000001
+        },
+        {
+          "id": 7386,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#571",
+          "commit": "516753e0d28a4e5068c06457bb92159a2c5b2a40",
+          "wall_seconds": 309,
+          "workflow_queue_seconds": 20,
+          "runner_seconds": 378.337,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 6,
+          "artifact_seconds_observed": 1.591
+        },
+        {
+          "id": 5565,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#558",
+          "commit": "b6196362bc760ee4999c98c75aa35927443ee6a1",
+          "wall_seconds": 271,
+          "workflow_queue_seconds": 0,
+          "runner_seconds": 347.24800000000005,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 8,
+          "artifact_seconds_observed": 1.448
+        },
+        {
+          "id": 5558,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#557",
+          "commit": "8b20de5a9be2e868df28fe8b7078e374f5701d9b",
+          "wall_seconds": 304,
+          "workflow_queue_seconds": 1,
+          "runner_seconds": 374.1209999999999,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 5,
+          "artifact_seconds_observed": 1.591
+        }
+      ]
+    },
+    "backend-integration-sensitive": {
+      "name": "backend-integration-sensitive",
+      "counts": {
+        "total": 310,
+        "success": 108,
+        "failure": 54,
+        "cancelled": 148,
+        "other": 0
+      },
+      "comparable_success_sample_count": 20,
+      "sample_shortfall": 0,
+      "metrics": {
+        "wall_seconds": {
+          "available": 20,
+          "p50": 1540,
+          "p90": 2641
+        },
+        "workflow_queue_seconds": {
+          "available": 20,
+          "p50": 21,
+          "p90": 182
+        },
+        "runner_sum_seconds": {
+          "available": 20,
+          "p50": 2330.3089999999997,
+          "p90": 2759.936
+        },
+        "lock_seconds_observed": {
+          "available": 0,
+          "p50": null,
+          "p90": null
+        },
+        "setup_seconds_observed": {
+          "available": 20,
+          "p50": 10,
+          "p90": 15
+        },
+        "artifact_seconds_observed": {
+          "available": 20,
+          "p50": 11.056000000000001,
+          "p90": 15.828
+        }
+      },
+      "sample_runs": [
+        {
+          "id": 11952,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#890",
+          "commit": "be82956bd4fae8b0bb14e8defda716a0c9acaeea",
+          "wall_seconds": 1040,
+          "workflow_queue_seconds": 39,
+          "runner_seconds": 683.5439999999999,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 10,
+          "artifact_seconds_observed": 4.8709999999999996
+        },
+        {
+          "id": 11932,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#888",
+          "commit": "c39d27616b1f1218deb46a06955239ca5985849e",
+          "wall_seconds": 1454,
+          "workflow_queue_seconds": 6,
+          "runner_seconds": 2485.1949999999997,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 10,
+          "artifact_seconds_observed": 13.841000000000001
+        },
+        {
+          "id": 11761,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#870",
+          "commit": "35d41f32a39aa58c8fb58020bdb17ddd57ebf5bb",
+          "wall_seconds": 1773,
+          "workflow_queue_seconds": 20,
+          "runner_seconds": 2411.7769999999996,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 7,
+          "artifact_seconds_observed": 16.214999999999996
+        },
+        {
+          "id": 11677,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#864",
+          "commit": "01040691bd42226f2b314b0ab0178107df67dce9",
+          "wall_seconds": 1905,
+          "workflow_queue_seconds": 20,
+          "runner_seconds": 2793.4169999999995,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 10,
+          "artifact_seconds_observed": 10.644999999999998
+        },
+        {
+          "id": 11662,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#863",
+          "commit": "334b17c8863e4f6c37ad2f053b5ae59052144b6a",
+          "wall_seconds": 1122,
+          "workflow_queue_seconds": 22,
+          "runner_seconds": 1673.9150000000002,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 10,
+          "artifact_seconds_observed": 8.668
+        },
+        {
+          "id": 11647,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#862",
+          "commit": "8e85b4362b4b29b458fa8f5e6350d67bda4ff946",
+          "wall_seconds": 1379,
+          "workflow_queue_seconds": 23,
+          "runner_seconds": 1864.734,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 9,
+          "artifact_seconds_observed": 8.92
+        },
+        {
+          "id": 11630,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#861",
+          "commit": "0505bb5f738f7ed6658001eb1d6939da0177a193",
+          "wall_seconds": 1771,
+          "workflow_queue_seconds": 9,
+          "runner_seconds": 2346.473,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 11,
+          "artifact_seconds_observed": 10.044
+        },
+        {
+          "id": 11620,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#860",
+          "commit": "e37db21778e64d2bfb158678dff5ce99c5f77c55",
+          "wall_seconds": 1685,
+          "workflow_queue_seconds": 7,
+          "runner_seconds": 2833.6699999999996,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 8,
+          "artifact_seconds_observed": 15.828
+        },
+        {
+          "id": 11601,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#857",
+          "commit": "892009d15012d459074ef9d9356657b9e136c97a",
+          "wall_seconds": 1201,
+          "workflow_queue_seconds": 110,
+          "runner_seconds": 869.684,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 9,
+          "artifact_seconds_observed": 4.832999999999999
+        },
+        {
+          "id": 11592,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#858",
+          "commit": "3b2de5fdf12ce25b7c90c741cd55bbc5145cf4a6",
+          "wall_seconds": 1526,
+          "workflow_queue_seconds": 111,
+          "runner_seconds": 872.798,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 8,
+          "artifact_seconds_observed": 5.018000000000001
+        },
+        {
+          "id": 11546,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#858",
+          "commit": "7842eeed1c8f18ca414b83f057ba8c76e707ed05",
+          "wall_seconds": 3519,
+          "workflow_queue_seconds": 575,
+          "runner_seconds": 818.508,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 11,
+          "artifact_seconds_observed": 4.934
+        },
+        {
+          "id": 11541,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#857",
+          "commit": "c536f7a0bda9094b978b89268b229b128b808146",
+          "wall_seconds": 3977,
+          "workflow_queue_seconds": 321,
+          "runner_seconds": 825.2640000000001,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 10,
+          "artifact_seconds_observed": 5.071
+        },
+        {
+          "id": 11481,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#851",
+          "commit": "6088d78cecb654e29c8c5b7161cc12649c59d1d1",
+          "wall_seconds": 1758,
+          "workflow_queue_seconds": 94,
+          "runner_seconds": 2700.944,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 39,
+          "artifact_seconds_observed": 15.713999999999999
+        },
+        {
+          "id": 11414,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#846",
+          "commit": "409a3367e1ca49c73ccd310414ba40c9b1472945",
+          "wall_seconds": 2641,
+          "workflow_queue_seconds": 182,
+          "runner_seconds": 2614.4339999999993,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 8,
+          "artifact_seconds_observed": 11.471
+        },
+        {
+          "id": 11239,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#834",
+          "commit": "7a89d6694fea168eae3eb576cbfc26eaec730357",
+          "wall_seconds": 1378,
+          "workflow_queue_seconds": 7,
+          "runner_seconds": 2759.936,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 8,
+          "artifact_seconds_observed": 15.462
+        },
+        {
+          "id": 11200,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#831",
+          "commit": "cc1036a56415e0b93789188b2f4ec3ed9ca2f942",
+          "wall_seconds": 1642,
+          "workflow_queue_seconds": 21,
+          "runner_seconds": 2626.406,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 10,
+          "artifact_seconds_observed": 11.056000000000001
+        },
+        {
+          "id": 10994,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#827",
+          "commit": "1a56462b43ef9983aca1915f0ca1762d39edcd83",
+          "wall_seconds": 1443,
+          "workflow_queue_seconds": 7,
+          "runner_seconds": 1900.0059999999996,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 17,
+          "artifact_seconds_observed": 14.967000000000002
+        },
+        {
+          "id": 10931,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#824",
+          "commit": "7a84565d009755b10d45f46e4a92efb928754d55",
+          "wall_seconds": 1682,
+          "workflow_queue_seconds": 141,
+          "runner_seconds": 1824.477,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 15,
+          "artifact_seconds_observed": 14.279
+        },
+        {
+          "id": 10840,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#818",
+          "commit": "72bc79b22dead448e9a3894464d5561c98722942",
+          "wall_seconds": 1540,
+          "workflow_queue_seconds": 20,
+          "runner_seconds": 2612.6459999999997,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 9,
+          "artifact_seconds_observed": 15.536
+        },
+        {
+          "id": 10796,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#816",
+          "commit": "15ae68a47a194f1ede92498491b05aaf86b608bf",
+          "wall_seconds": 1202,
+          "workflow_queue_seconds": 16,
+          "runner_seconds": 2330.3089999999997,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 9,
+          "artifact_seconds_observed": 16.499000000000002
+        }
+      ]
+    },
+    "wallet-safety": {
+      "name": "wallet-safety",
+      "counts": {
+        "total": 341,
+        "success": 114,
+        "failure": 54,
+        "cancelled": 173,
+        "other": 0
+      },
+      "comparable_success_sample_count": 20,
+      "sample_shortfall": 0,
+      "metrics": {
+        "wall_seconds": {
+          "available": 20,
+          "p50": 1526,
+          "p90": 2897
+        },
+        "workflow_queue_seconds": {
+          "available": 20,
+          "p50": 21,
+          "p90": 321
+        },
+        "runner_sum_seconds": {
+          "available": 20,
+          "p50": 1349.668,
+          "p90": 2793.4169999999995
+        },
+        "lock_seconds_observed": {
+          "available": 0,
+          "p50": null,
+          "p90": null
+        },
+        "setup_seconds_observed": {
+          "available": 18,
+          "p50": 9,
+          "p90": 11
+        },
+        "artifact_seconds_observed": {
+          "available": 20,
+          "p50": 5.4319999999999995,
+          "p90": 15.462
+        }
+      },
+      "sample_runs": [
+        {
+          "id": 11968,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#889",
+          "commit": "bee5e616410e3f46789955591324633519406472",
+          "wall_seconds": 1965,
+          "workflow_queue_seconds": 42,
+          "runner_seconds": 2322.2889999999993,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 9,
+          "artifact_seconds_observed": 14.349
+        },
+        {
+          "id": 11910,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#887",
+          "commit": "cd6a67a428e35aa2f020a6721f918f691a9ee049",
+          "wall_seconds": 1583,
+          "workflow_queue_seconds": 21,
+          "runner_seconds": 2489.29,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 9,
+          "artifact_seconds_observed": 13.422
+        },
+        {
+          "id": 11717,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#867",
+          "commit": "fb5882af1e783bb8ee64e551cc7d7950f154d7d9",
+          "wall_seconds": 1215,
+          "workflow_queue_seconds": 12,
+          "runner_seconds": 1349.668,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 5.4319999999999995
+        },
+        {
+          "id": 11677,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#864",
+          "commit": "01040691bd42226f2b314b0ab0178107df67dce9",
+          "wall_seconds": 1905,
+          "workflow_queue_seconds": 20,
+          "runner_seconds": 2793.4169999999995,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 10,
+          "artifact_seconds_observed": 10.644999999999998
+        },
+        {
+          "id": 11630,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#861",
+          "commit": "0505bb5f738f7ed6658001eb1d6939da0177a193",
+          "wall_seconds": 1771,
+          "workflow_queue_seconds": 9,
+          "runner_seconds": 2346.473,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 11,
+          "artifact_seconds_observed": 10.044
+        },
+        {
+          "id": 11620,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#860",
+          "commit": "e37db21778e64d2bfb158678dff5ce99c5f77c55",
+          "wall_seconds": 1685,
+          "workflow_queue_seconds": 7,
+          "runner_seconds": 2833.6699999999996,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 8,
+          "artifact_seconds_observed": 15.828
+        },
+        {
+          "id": 11601,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#857",
+          "commit": "892009d15012d459074ef9d9356657b9e136c97a",
+          "wall_seconds": 1201,
+          "workflow_queue_seconds": 110,
+          "runner_seconds": 869.684,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 9,
+          "artifact_seconds_observed": 4.832999999999999
+        },
+        {
+          "id": 11592,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#858",
+          "commit": "3b2de5fdf12ce25b7c90c741cd55bbc5145cf4a6",
+          "wall_seconds": 1526,
+          "workflow_queue_seconds": 111,
+          "runner_seconds": 872.798,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 8,
+          "artifact_seconds_observed": 5.018000000000001
+        },
+        {
+          "id": 11574,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#855",
+          "commit": "649f19bb1efce10d3234d07e7b808d0b85ba619f",
+          "wall_seconds": 1423,
+          "workflow_queue_seconds": 39,
+          "runner_seconds": 546.2199999999999,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 5,
+          "artifact_seconds_observed": 4.832
+        },
+        {
+          "id": 11556,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#855",
+          "commit": "9bcec113e1e5799a6d0474b5d3a8ecb4574b29a6",
+          "wall_seconds": 2897,
+          "workflow_queue_seconds": 503,
+          "runner_seconds": 574.342,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 7,
+          "artifact_seconds_observed": 4.93
+        },
+        {
+          "id": 11546,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#858",
+          "commit": "7842eeed1c8f18ca414b83f057ba8c76e707ed05",
+          "wall_seconds": 3519,
+          "workflow_queue_seconds": 575,
+          "runner_seconds": 818.508,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 11,
+          "artifact_seconds_observed": 4.934
+        },
+        {
+          "id": 11541,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#857",
+          "commit": "c536f7a0bda9094b978b89268b229b128b808146",
+          "wall_seconds": 3977,
+          "workflow_queue_seconds": 321,
+          "runner_seconds": 825.2640000000001,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 10,
+          "artifact_seconds_observed": 5.071
+        },
+        {
+          "id": 11472,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#850",
+          "commit": "42eb4347e06d871d0943a2739efacd2a599c1f68",
+          "wall_seconds": 1434,
+          "workflow_queue_seconds": 124,
+          "runner_seconds": 2817.9329999999995,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 11,
+          "artifact_seconds_observed": 16.033999999999995
+        },
+        {
+          "id": 11414,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#846",
+          "commit": "409a3367e1ca49c73ccd310414ba40c9b1472945",
+          "wall_seconds": 2641,
+          "workflow_queue_seconds": 182,
+          "runner_seconds": 2614.4339999999993,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 8,
+          "artifact_seconds_observed": 11.471
+        },
+        {
+          "id": 11239,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#834",
+          "commit": "7a89d6694fea168eae3eb576cbfc26eaec730357",
+          "wall_seconds": 1378,
+          "workflow_queue_seconds": 7,
+          "runner_seconds": 2759.936,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 8,
+          "artifact_seconds_observed": 15.462
+        },
+        {
+          "id": 11200,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#831",
+          "commit": "cc1036a56415e0b93789188b2f4ec3ed9ca2f942",
+          "wall_seconds": 1642,
+          "workflow_queue_seconds": 21,
+          "runner_seconds": 2626.406,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 10,
+          "artifact_seconds_observed": 11.056000000000001
+        },
+        {
+          "id": 11184,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#829",
+          "commit": "15947a5ae902a2cea0c76726d7381f526de884b1",
+          "wall_seconds": 689,
+          "workflow_queue_seconds": 8,
+          "runner_seconds": 594.6070000000001,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 6,
+          "artifact_seconds_observed": 4.959
+        },
+        {
+          "id": 11179,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#829",
+          "commit": "6926a41870a879e4fbda354ff6c269c4cb1b8bbd",
+          "wall_seconds": 606,
+          "workflow_queue_seconds": 1,
+          "runner_seconds": 571.2979999999999,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 8,
+          "artifact_seconds_observed": 4.914
+        },
+        {
+          "id": 10994,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#827",
+          "commit": "1a56462b43ef9983aca1915f0ca1762d39edcd83",
+          "wall_seconds": 1443,
+          "workflow_queue_seconds": 7,
+          "runner_seconds": 1900.0059999999996,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 17,
+          "artifact_seconds_observed": 14.967000000000002
+        },
+        {
+          "id": 10944,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#825",
+          "commit": "a00f0ae681c41da10db596b64c2f0150b060c195",
+          "wall_seconds": 1283,
+          "workflow_queue_seconds": 29,
+          "runner_seconds": 1239.9550000000002,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 5.23
+        }
+      ]
+    },
+    "main-push": {
+      "name": "main-push",
+      "counts": {
+        "total": 292,
+        "success": 286,
+        "failure": 5,
+        "cancelled": 1,
+        "other": 0
+      },
+      "comparable_success_sample_count": 20,
+      "sample_shortfall": 0,
+      "metrics": {
+        "wall_seconds": {
+          "available": 20,
+          "p50": 1239,
+          "p90": 1671
+        },
+        "workflow_queue_seconds": {
+          "available": 20,
+          "p50": 6,
+          "p90": 8
+        },
+        "runner_sum_seconds": {
+          "available": 20,
+          "p50": 2424.4530000000004,
+          "p90": 2554.645
+        },
+        "lock_seconds_observed": {
+          "available": 0,
+          "p50": null,
+          "p90": null
+        },
+        "setup_seconds_observed": {
+          "available": 15,
+          "p50": 9,
+          "p90": 43
+        },
+        "artifact_seconds_observed": {
+          "available": 17,
+          "p50": 14.11,
+          "p90": 16.323
+        }
+      },
+      "sample_runs": [
+        {
+          "id": 11993,
+          "status": "success",
+          "event": "push",
+          "ref": "main",
+          "commit": "a355673249e98c2b3cfff38a7f5643b2968e517b",
+          "wall_seconds": 1577,
+          "workflow_queue_seconds": 6,
+          "runner_seconds": 2498.4170000000004,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 11,
+          "artifact_seconds_observed": 13.812999999999999
+        },
+        {
+          "id": 11983,
+          "status": "success",
+          "event": "push",
+          "ref": "main",
+          "commit": "2b5d05b818d33609b45748f51fa72079d5a8dad6",
+          "wall_seconds": 1324,
+          "workflow_queue_seconds": 6,
+          "runner_seconds": 2536.256,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 8,
+          "artifact_seconds_observed": 13.492
+        },
+        {
+          "id": 11973,
+          "status": "success",
+          "event": "push",
+          "ref": "main",
+          "commit": "32e2dfe0d99e87da3ba5aa75b7b32e778bb878a4",
+          "wall_seconds": 1292,
+          "workflow_queue_seconds": 6,
+          "runner_seconds": 2566.133,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 8,
+          "artifact_seconds_observed": 13.571000000000002
+        },
+        {
+          "id": 11963,
+          "status": "success",
+          "event": "push",
+          "ref": "main",
+          "commit": "4de94846dffb4629e04de6233b1cb15dfd149b05",
+          "wall_seconds": 1494,
+          "workflow_queue_seconds": 6,
+          "runner_seconds": 612.2489999999999,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 7,
+          "artifact_seconds_observed": 4.872
+        },
+        {
+          "id": 11915,
+          "status": "success",
+          "event": "push",
+          "ref": "main",
+          "commit": "244aa7c45d7f9e9da3667af05602bc88e95d4ccc",
+          "wall_seconds": 1446,
+          "workflow_queue_seconds": 5,
+          "runner_seconds": 2461.4510000000005,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 9,
+          "artifact_seconds_observed": 14.11
+        },
+        {
+          "id": 11894,
+          "status": "success",
+          "event": "push",
+          "ref": "main",
+          "commit": "1c608ae13f1ad4747ecf2c43226088b56b8eb39b",
+          "wall_seconds": 1406,
+          "workflow_queue_seconds": 6,
+          "runner_seconds": 2490.579,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 10,
+          "artifact_seconds_observed": 14.221
+        },
+        {
+          "id": 11882,
+          "status": "success",
+          "event": "push",
+          "ref": "main",
+          "commit": "f6894c80135e29147e1d37262c038a8632841a20",
+          "wall_seconds": 2091,
+          "workflow_queue_seconds": 5,
+          "runner_seconds": 2411.3160000000003,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 10,
+          "artifact_seconds_observed": 14.624999999999998
+        },
+        {
+          "id": 11862,
+          "status": "success",
+          "event": "push",
+          "ref": "main",
+          "commit": "07c7d37cac14f461b7cd6e321ddebf8e7f07712d",
+          "wall_seconds": 1193,
+          "workflow_queue_seconds": 4,
+          "runner_seconds": 2452.1470000000004,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 9,
+          "artifact_seconds_observed": 16.659
+        },
+        {
+          "id": 11854,
+          "status": "success",
+          "event": "push",
+          "ref": "main",
+          "commit": "908d7ede694a9772aa246565c0749fb8064f5860",
+          "wall_seconds": 1176,
+          "workflow_queue_seconds": 6,
+          "runner_seconds": 2498.8759999999997,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 11,
+          "artifact_seconds_observed": 15.431
+        },
+        {
+          "id": 11842,
+          "status": "success",
+          "event": "push",
+          "ref": "main",
+          "commit": "4e43ab9acd1ed36a9b75b34a094c927261f23b02",
+          "wall_seconds": 1239,
+          "workflow_queue_seconds": 6,
+          "runner_seconds": 2424.4530000000004,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 8,
+          "artifact_seconds_observed": 15.214999999999998
+        },
+        {
+          "id": 11833,
+          "status": "success",
+          "event": "push",
+          "ref": "main",
+          "commit": "e3a8780e7869cda3ffadd60de35dc710830c5582",
+          "wall_seconds": 1378,
+          "workflow_queue_seconds": 7,
+          "runner_seconds": 2439.7509999999997,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 7,
+          "artifact_seconds_observed": 16.017
+        },
+        {
+          "id": 11824,
+          "status": "success",
+          "event": "push",
+          "ref": "main",
+          "commit": "c8200025442cc8bab6a9bf9d87d31ee36b9a1fdc",
+          "wall_seconds": 50,
+          "workflow_queue_seconds": 8,
+          "runner_seconds": 10.218,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": null
+        },
+        {
+          "id": 11810,
+          "status": "success",
+          "event": "push",
+          "ref": "main",
+          "commit": "fdee4acc2bf41126a8dab309a7345a2c6179d7e9",
+          "wall_seconds": 60,
+          "workflow_queue_seconds": 8,
+          "runner_seconds": 11.667,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": null
+        },
+        {
+          "id": 11796,
+          "status": "success",
+          "event": "push",
+          "ref": "main",
+          "commit": "331bcb83272a12d58b7b9299832d5950c7ef3dd6",
+          "wall_seconds": 1671,
+          "workflow_queue_seconds": 16,
+          "runner_seconds": 2554.645,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 60,
+          "artifact_seconds_observed": 15.953999999999999
+        },
+        {
+          "id": 11783,
+          "status": "success",
+          "event": "push",
+          "ref": "main",
+          "commit": "80048b23986eaf905395722f31538f770b236913",
+          "wall_seconds": 103,
+          "workflow_queue_seconds": 14,
+          "runner_seconds": 10.779,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": null
+        },
+        {
+          "id": 11767,
+          "status": "success",
+          "event": "push",
+          "ref": "main",
+          "commit": "19ee80e59ff59514dd344fb85e3544e799383228",
+          "wall_seconds": 1693,
+          "workflow_queue_seconds": 7,
+          "runner_seconds": 2635.793,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 43,
+          "artifact_seconds_observed": 16.323
+        },
+        {
+          "id": 11730,
+          "status": "success",
+          "event": "push",
+          "ref": "main",
+          "commit": "666ee4cc0c5e60fde260e1f3080555437b3ca51e",
+          "wall_seconds": 424,
+          "workflow_queue_seconds": 7,
+          "runner_seconds": 445.752,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 4,
+          "artifact_seconds_observed": 4.973
+        },
+        {
+          "id": 11721,
+          "status": "success",
+          "event": "push",
+          "ref": "main",
+          "commit": "090c5c9f70438cbe470ec2a739c74c87c2bf6daf",
+          "wall_seconds": 909,
+          "workflow_queue_seconds": 7,
+          "runner_seconds": 1109.345,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 4.554
+        },
+        {
+          "id": 11707,
+          "status": "success",
+          "event": "push",
+          "ref": "main",
+          "commit": "6b36584414a2ec4a7699a7fb122dfccc94edd122",
+          "wall_seconds": 903,
+          "workflow_queue_seconds": 7,
+          "runner_seconds": 1042.481,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 6,
+          "artifact_seconds_observed": 5.837999999999999
+        },
+        {
+          "id": 11692,
+          "status": "success",
+          "event": "push",
+          "ref": "main",
+          "commit": "f26c0b17b78309db875ab6f16c0956379f123c79",
+          "wall_seconds": 891,
+          "workflow_queue_seconds": 7,
+          "runner_seconds": 1509.957,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 5.5120000000000005
+        }
+      ]
+    },
+    "install": {
+      "name": "install",
+      "counts": {
+        "total": 479,
+        "success": 384,
+        "failure": 53,
+        "cancelled": 42,
+        "other": 0
+      },
+      "comparable_success_sample_count": 20,
+      "sample_shortfall": 0,
+      "metrics": {
+        "wall_seconds": {
+          "available": 20,
+          "p50": 602,
+          "p90": 1612
+        },
+        "workflow_queue_seconds": {
+          "available": 20,
+          "p50": 9,
+          "p90": 107
+        },
+        "runner_sum_seconds": {
+          "available": 20,
+          "p50": 98.153,
+          "p90": 1127.639
+        },
+        "lock_seconds_observed": {
+          "available": 0,
+          "p50": null,
+          "p90": null
+        },
+        "setup_seconds_observed": {
+          "available": 5,
+          "p50": 855,
+          "p90": 1948
+        },
+        "artifact_seconds_observed": {
+          "available": 19,
+          "p50": 0.08099999999999999,
+          "p90": 0.145
+        }
+      },
+      "sample_runs": [
+        {
+          "id": 11991,
+          "status": "success",
+          "event": "push",
+          "ref": "main",
+          "commit": "a355673249e98c2b3cfff38a7f5643b2968e517b",
+          "wall_seconds": 1053,
+          "workflow_queue_seconds": 10,
+          "runner_seconds": 518.664,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.08499999999999999
+        },
+        {
+          "id": 11986,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#892",
+          "commit": "4477bb8120937ccf028422f6fb37ba243e17c061",
+          "wall_seconds": 519,
+          "workflow_queue_seconds": 2,
+          "runner_seconds": 73.899,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.028
+        },
+        {
+          "id": 11959,
+          "status": "success",
+          "event": "schedule",
+          "ref": "main",
+          "commit": "57a1776b158ffc2c264d1af33dcfecd025edb43a",
+          "wall_seconds": 103,
+          "workflow_queue_seconds": 14,
+          "runner_seconds": 87.45,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.049
+        },
+        {
+          "id": 11826,
+          "status": "success",
+          "event": "workflow_dispatch",
+          "ref": "main",
+          "commit": "c8200025442cc8bab6a9bf9d87d31ee36b9a1fdc",
+          "wall_seconds": 1137,
+          "workflow_queue_seconds": 107,
+          "runner_seconds": 1127.639,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 855,
+          "artifact_seconds_observed": 0.094
+        },
+        {
+          "id": 11822,
+          "status": "success",
+          "event": "push",
+          "ref": "main",
+          "commit": "c8200025442cc8bab6a9bf9d87d31ee36b9a1fdc",
+          "wall_seconds": 122,
+          "workflow_queue_seconds": 4,
+          "runner_seconds": 98.153,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.056999999999999995
+        },
+        {
+          "id": 11817,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#874",
+          "commit": "2d76078e428cb3c3a6c6053544b6d438cad6be65",
+          "wall_seconds": 682,
+          "workflow_queue_seconds": 10,
+          "runner_seconds": 612.4399999999999,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 408,
+          "artifact_seconds_observed": 0.08499999999999999
+        },
+        {
+          "id": 11808,
+          "status": "success",
+          "event": "push",
+          "ref": "main",
+          "commit": "fdee4acc2bf41126a8dab309a7345a2c6179d7e9",
+          "wall_seconds": 416,
+          "workflow_queue_seconds": 2,
+          "runner_seconds": 389.44899999999996,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.10200000000000001
+        },
+        {
+          "id": 11803,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#873",
+          "commit": "7bf285bcea6e9dc11071fc2d8f4e7037bee7d318",
+          "wall_seconds": 138,
+          "workflow_queue_seconds": 2,
+          "runner_seconds": 77.091,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.029
+        },
+        {
+          "id": 11798,
+          "status": "success",
+          "event": "push",
+          "ref": "v0.8.66-rc2",
+          "commit": "331bcb83272a12d58b7b9299832d5950c7ef3dd6",
+          "wall_seconds": 3023,
+          "workflow_queue_seconds": 31,
+          "runner_seconds": 4467.71,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 1948,
+          "artifact_seconds_observed": 0.7120000000000001
+        },
+        {
+          "id": 11792,
+          "status": "success",
+          "event": "workflow_dispatch",
+          "ref": "main",
+          "commit": "80048b23986eaf905395722f31538f770b236913",
+          "wall_seconds": 1757,
+          "workflow_queue_seconds": 428,
+          "runner_seconds": 1598.206,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 863,
+          "artifact_seconds_observed": 0.145
+        },
+        {
+          "id": 11788,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#871",
+          "commit": "a634ffc2c63d55914401f409543a9db77caa0745",
+          "wall_seconds": 402,
+          "workflow_queue_seconds": 15,
+          "runner_seconds": 8.064,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": null
+        },
+        {
+          "id": 11782,
+          "status": "success",
+          "event": "push",
+          "ref": "main",
+          "commit": "80048b23986eaf905395722f31538f770b236913",
+          "wall_seconds": 1612,
+          "workflow_queue_seconds": 8,
+          "runner_seconds": 513.3580000000001,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.102
+        },
+        {
+          "id": 11777,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#872",
+          "commit": "f3990aca69baae2dfa2da072daf04c9e92840af6",
+          "wall_seconds": 602,
+          "workflow_queue_seconds": 214,
+          "runner_seconds": 74.347,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.023
+        },
+        {
+          "id": 11766,
+          "status": "success",
+          "event": "push",
+          "ref": "main",
+          "commit": "19ee80e59ff59514dd344fb85e3544e799383228",
+          "wall_seconds": 1015,
+          "workflow_queue_seconds": 9,
+          "runner_seconds": 94.777,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.053
+        },
+        {
+          "id": 11759,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#870",
+          "commit": "35d41f32a39aa58c8fb58020bdb17ddd57ebf5bb",
+          "wall_seconds": 1025,
+          "workflow_queue_seconds": 17,
+          "runner_seconds": 654.0459999999999,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": 440,
+          "artifact_seconds_observed": 0.08499999999999999
+        },
+        {
+          "id": 11651,
+          "status": "success",
+          "event": "push",
+          "ref": "main",
+          "commit": "c45ac24d1684750fa0d56668228e69cd7cbb8e2c",
+          "wall_seconds": 723,
+          "workflow_queue_seconds": 8,
+          "runner_seconds": 657.803,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.09
+        },
+        {
+          "id": 11645,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#862",
+          "commit": "8e85b4362b4b29b458fa8f5e6350d67bda4ff946",
+          "wall_seconds": 272,
+          "workflow_queue_seconds": 20,
+          "runner_seconds": 75.75,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.029
+        },
+        {
+          "id": 11639,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#862",
+          "commit": "acfde0d9f446c37dd6c0ec4ff9ba91e9ec9522e7",
+          "wall_seconds": 296,
+          "workflow_queue_seconds": 0,
+          "runner_seconds": 69.239,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.024
+        },
+        {
+          "id": 11634,
+          "status": "success",
+          "event": "push",
+          "ref": "main",
+          "commit": "e4df8aa5911d041f5318eda3281e7119e17513bc",
+          "wall_seconds": 814,
+          "workflow_queue_seconds": 9,
+          "runner_seconds": 701.78,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.08099999999999999
+        },
+        {
+          "id": 11628,
+          "status": "success",
+          "event": "pull_request",
+          "ref": "#861",
+          "commit": "0505bb5f738f7ed6658001eb1d6939da0177a193",
+          "wall_seconds": 389,
+          "workflow_queue_seconds": 1,
+          "runner_seconds": 91.196,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.026
+        }
+      ]
+    },
+    "rc": {
+      "name": "rc",
+      "counts": {
+        "total": 37,
+        "success": 21,
+        "failure": 11,
+        "cancelled": 5,
+        "other": 0
+      },
+      "comparable_success_sample_count": 20,
+      "sample_shortfall": 0,
+      "metrics": {
+        "wall_seconds": {
+          "available": 20,
+          "p50": 1335,
+          "p90": 2237
+        },
+        "workflow_queue_seconds": {
+          "available": 20,
+          "p50": 37,
+          "p90": 486
+        },
+        "runner_sum_seconds": {
+          "available": 20,
+          "p50": 1294.613,
+          "p90": 2116.74
+        },
+        "lock_seconds_observed": {
+          "available": 0,
+          "p50": null,
+          "p90": null
+        },
+        "setup_seconds_observed": {
+          "available": 0,
+          "p50": null,
+          "p90": null
+        },
+        "artifact_seconds_observed": {
+          "available": 20,
+          "p50": 0.10900000000000001,
+          "p90": 0.125
+        }
+      },
+      "sample_runs": [
+        {
+          "id": 11995,
+          "status": "success",
+          "event": "workflow_dispatch",
+          "ref": "main",
+          "commit": "a355673249e98c2b3cfff38a7f5643b2968e517b",
+          "wall_seconds": 239,
+          "workflow_queue_seconds": 0,
+          "runner_seconds": 332.776,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.054
+        },
+        {
+          "id": 11800,
+          "status": "success",
+          "event": "push",
+          "ref": "v0.8.66-rc2",
+          "commit": "331bcb83272a12d58b7b9299832d5950c7ef3dd6",
+          "wall_seconds": 1236,
+          "workflow_queue_seconds": 37,
+          "runner_seconds": 1147.733,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.125
+        },
+        {
+          "id": 11771,
+          "status": "success",
+          "event": "push",
+          "ref": "v0.8.66-rc1",
+          "commit": "19ee80e59ff59514dd344fb85e3544e799383228",
+          "wall_seconds": 1290,
+          "workflow_queue_seconds": 171,
+          "runner_seconds": 686.3059999999999,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.11599999999999999
+        },
+        {
+          "id": 11500,
+          "status": "success",
+          "event": "push",
+          "ref": "v0.8.65-rc2",
+          "commit": "049cd1bc596c42cc20cfd4300ea7f985dc8096c1",
+          "wall_seconds": 959,
+          "workflow_queue_seconds": 486,
+          "runner_seconds": 584.6550000000001,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.128
+        },
+        {
+          "id": 11328,
+          "status": "success",
+          "event": "push",
+          "ref": "v0.8.64-rc5",
+          "commit": "0628cd40378779d7747baf224354e0d592bcaafa",
+          "wall_seconds": 758,
+          "workflow_queue_seconds": 58,
+          "runner_seconds": 708.1320000000001,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.118
+        },
+        {
+          "id": 11317,
+          "status": "success",
+          "event": "push",
+          "ref": "v0.8.64-rc4",
+          "commit": "1696cfe9d4d90d5b2274f108045bed4ddb15c66f",
+          "wall_seconds": 1335,
+          "workflow_queue_seconds": 46,
+          "runner_seconds": 662.125,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.11699999999999999
+        },
+        {
+          "id": 11276,
+          "status": "success",
+          "event": "push",
+          "ref": "v0.8.64-rc3",
+          "commit": "3a8b71da1e257f93cdb28094b17b3a25c024504b",
+          "wall_seconds": 843,
+          "workflow_queue_seconds": 20,
+          "runner_seconds": 832.3119999999998,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.11
+        },
+        {
+          "id": 10890,
+          "status": "success",
+          "event": "push",
+          "ref": "v0.8.63-rc4",
+          "commit": "9e78816f4bae876e958243f28c0677ec730924ae",
+          "wall_seconds": 1028,
+          "workflow_queue_seconds": 263,
+          "runner_seconds": 816.186,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.13699999999999998
+        },
+        {
+          "id": 10876,
+          "status": "success",
+          "event": "push",
+          "ref": "v0.8.63-rc3",
+          "commit": "cee017f62bd084fe262ac5867fd3b64768b03ff7",
+          "wall_seconds": 1054,
+          "workflow_queue_seconds": 990,
+          "runner_seconds": 624.5260000000001,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.11
+        },
+        {
+          "id": 9463,
+          "status": "success",
+          "event": "push",
+          "ref": "v0.8.62-rc1",
+          "commit": "d05d29d95643399b23436397fcd45ed6e7ef94a8",
+          "wall_seconds": 1697,
+          "workflow_queue_seconds": 240,
+          "runner_seconds": 1503.1129999999998,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.099
+        },
+        {
+          "id": 9339,
+          "status": "success",
+          "event": "push",
+          "ref": "v0.8.61-rc1",
+          "commit": "90de4b95029a42833064d80c666151edd06cfb1b",
+          "wall_seconds": 2436,
+          "workflow_queue_seconds": 61,
+          "runner_seconds": 1813.453,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.101
+        },
+        {
+          "id": 9121,
+          "status": "success",
+          "event": "workflow_dispatch",
+          "ref": "v0.8.60",
+          "commit": "fc3ec7578d3497157310d45428634641666cf26b",
+          "wall_seconds": 1276,
+          "workflow_queue_seconds": 1,
+          "runner_seconds": 1294.613,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.083
+        },
+        {
+          "id": 9115,
+          "status": "success",
+          "event": "workflow_dispatch",
+          "ref": "v0.8.60-rc2",
+          "commit": "fc3ec7578d3497157310d45428634641666cf26b",
+          "wall_seconds": 2004,
+          "workflow_queue_seconds": 0,
+          "runner_seconds": 2023.019,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.09
+        },
+        {
+          "id": 9098,
+          "status": "success",
+          "event": "workflow_dispatch",
+          "ref": "v0.8.60-rc1",
+          "commit": "fd7a2685d2e5d22c58ff337dfeca38a8094f0838",
+          "wall_seconds": 2287,
+          "workflow_queue_seconds": 1562,
+          "runner_seconds": 2151.419,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.08499999999999999
+        },
+        {
+          "id": 9060,
+          "status": "success",
+          "event": "workflow_dispatch",
+          "ref": "main",
+          "commit": "fcd681ad8c77315206eb3eb6d74ca84fac5b3ac0",
+          "wall_seconds": 2237,
+          "workflow_queue_seconds": 138,
+          "runner_seconds": 2061.9210000000003,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.113
+        },
+        {
+          "id": 8592,
+          "status": "success",
+          "event": "push",
+          "ref": "v0.8.59-rc5",
+          "commit": "f5e1797fcfc9e6319c4b3985d08915b7e2014f9a",
+          "wall_seconds": 2173,
+          "workflow_queue_seconds": 3,
+          "runner_seconds": 2122.245,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.118
+        },
+        {
+          "id": 8579,
+          "status": "success",
+          "event": "push",
+          "ref": "v0.8.59-rc4",
+          "commit": "5f830bf098a6f42c2125bb2e2eff1222beb8d310",
+          "wall_seconds": 1828,
+          "workflow_queue_seconds": 1,
+          "runner_seconds": 1825.328,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.10500000000000001
+        },
+        {
+          "id": 8569,
+          "status": "success",
+          "event": "push",
+          "ref": "v0.8.59-rc3",
+          "commit": "22904a47801e9e0ae094e8a3721e5456391da1b0",
+          "wall_seconds": 2131,
+          "workflow_queue_seconds": 1,
+          "runner_seconds": 2116.74,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.1
+        },
+        {
+          "id": 8533,
+          "status": "success",
+          "event": "push",
+          "ref": "v0.8.59-rc1",
+          "commit": "3b2d0d1e232b03a2af32aa51e9f3669ce8973484",
+          "wall_seconds": 1977,
+          "workflow_queue_seconds": 2,
+          "runner_seconds": 1974.0330000000001,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.099
+        },
+        {
+          "id": 8150,
+          "status": "success",
+          "event": "push",
+          "ref": "v0.8.58-rc.7",
+          "commit": "10b985f5ec3991a1daca1c57bd1c77680ccd3b65",
+          "wall_seconds": 1741,
+          "workflow_queue_seconds": 1,
+          "runner_seconds": 1732.35,
+          "lock_seconds_observed": null,
+          "setup_seconds_observed": null,
+          "artifact_seconds_observed": 0.10900000000000001
+        }
+      ]
+    }
+  },
+  "cancellation_waste": {
+    "test.yml": {
+      "count": 237,
+      "runner_waste_seconds_observed": 174543.36200000014,
+      "runs_with_log_timing": 228,
+      "unavailable_runs": 9
+    },
+    "install-test.yml": {
+      "count": 42,
+      "runner_waste_seconds_observed": 19410.482,
+      "runs_with_log_timing": 39,
+      "unavailable_runs": 3
+    },
+    "release-candidate.yml": {
+      "count": 5,
+      "runner_waste_seconds_observed": 1030.2830000000001,
+      "runs_with_log_timing": 4,
+      "unavailable_runs": 1
+    },
+    "verify-vectors.yml": {
+      "count": 98,
+      "runner_waste_seconds_observed": 35090.23900000001,
+      "runs_with_log_timing": 91,
+      "unavailable_runs": 7
+    }
+  },
+  "first_failure_stage": {
+    "test.yml": {
+      "counts": {
+        "Full Backend Integration Tests": 34,
+        "Full Browser E2E Tests": 7,
+        "Quick Backend Typecheck": 2,
+        "Quick Test Hygiene": 2,
+        "Quick Frontend Tests": 3,
+        "Full Critical Mutation Gate (shard 3)": 1,
+        "Full Frontend Coverage Merge": 11,
+        "Full Backend Unit Coverage": 10,
+        "Full Render E2E Tests": 2,
+        "Full Gateway Tests": 2,
+        "Full Frontend Coverage Shard 2/2": 1,
+        "Quick Render Regression": 3,
+        "Quick Backend Tests": 1,
+        "Full Frontend Coverage Shard 1/2": 2,
+        "Quick Backend Integration Smoke": 1
+      },
+      "records": [
+        {
+          "run_id": 11937,
+          "job_id": 153949,
+          "job_name": "Full Backend Integration Tests"
+        },
+        {
+          "run_id": 11927,
+          "job_id": 153846,
+          "job_name": "Full Browser E2E Tests"
+        },
+        {
+          "run_id": 11615,
+          "job_id": 149806,
+          "job_name": "Full Backend Integration Tests"
+        },
+        {
+          "run_id": 11531,
+          "job_id": 148697,
+          "job_name": "Quick Backend Typecheck"
+        },
+        {
+          "run_id": 11392,
+          "job_id": 146921,
+          "job_name": "Quick Test Hygiene"
+        },
+        {
+          "run_id": 11355,
+          "job_id": 146515,
+          "job_name": "Quick Frontend Tests"
+        },
+        {
+          "run_id": 11234,
+          "job_id": 145001,
+          "job_name": "Full Backend Integration Tests"
+        },
+        {
+          "run_id": 11159,
+          "job_id": 144015,
+          "job_name": "Full Critical Mutation Gate (shard 3)"
+        },
+        {
+          "run_id": 11126,
+          "job_id": 143518,
+          "job_name": "Full Frontend Coverage Merge"
+        },
+        {
+          "run_id": 10989,
+          "job_id": 141501,
+          "job_name": "Full Backend Unit Coverage"
+        },
+        {
+          "run_id": 10917,
+          "job_id": 140465,
+          "job_name": "Full Backend Unit Coverage"
+        },
+        {
+          "run_id": 10777,
+          "job_id": 138669,
+          "job_name": "Full Render E2E Tests"
+        },
+        {
+          "run_id": 10674,
+          "job_id": 137302,
+          "job_name": "Full Backend Unit Coverage"
+        },
+        {
+          "run_id": 10644,
+          "job_id": 136923,
+          "job_name": "Full Frontend Coverage Merge"
+        },
+        {
+          "run_id": 10600,
+          "job_id": 136351,
+          "job_name": "Full Backend Integration Tests"
+        },
+        {
+          "run_id": 10590,
+          "job_id": 136226,
+          "job_name": "Full Frontend Coverage Merge"
+        },
+        {
+          "run_id": 10585,
+          "job_id": 136161,
+          "job_name": "Full Frontend Coverage Merge"
+        },
+        {
+          "run_id": 10469,
+          "job_id": 134718,
+          "job_name": "Full Browser E2E Tests"
+        },
+        {
+          "run_id": 10463,
+          "job_id": 134641,
+          "job_name": "Full Browser E2E Tests"
+        },
+        {
+          "run_id": 10433,
+          "job_id": 134231,
+          "job_name": "Full Render E2E Tests"
+        },
+        {
+          "run_id": 10427,
+          "job_id": 134145,
+          "job_name": "Full Frontend Coverage Merge"
+        },
+        {
+          "run_id": 10371,
+          "job_id": 133412,
+          "job_name": "Full Frontend Coverage Merge"
+        },
+        {
+          "run_id": 10260,
+          "job_id": 132049,
+          "job_name": "Full Frontend Coverage Merge"
+        },
+        {
+          "run_id": 10255,
+          "job_id": 131979,
+          "job_name": "Full Backend Unit Coverage"
+        },
+        {
+          "run_id": 10186,
+          "job_id": 131118,
+          "job_name": "Full Gateway Tests"
+        },
+        {
+          "run_id": 10112,
+          "job_id": 130195,
+          "job_name": "Full Backend Unit Coverage"
+        },
+        {
+          "run_id": 10080,
+          "job_id": 129795,
+          "job_name": "Full Frontend Coverage Shard 2/2"
+        },
+        {
+          "run_id": 10007,
+          "job_id": 128925,
+          "job_name": "Full Backend Unit Coverage"
+        },
+        {
+          "run_id": 9991,
+          "job_id": 128729,
+          "job_name": "Full Backend Integration Tests"
+        },
+        {
+          "run_id": 9957,
+          "job_id": 128309,
+          "job_name": "Full Backend Unit Coverage"
+        },
+        {
+          "run_id": 9918,
+          "job_id": 127834,
+          "job_name": "Full Backend Integration Tests"
+        },
+        {
+          "run_id": 9913,
+          "job_id": 127773,
+          "job_name": "Full Gateway Tests"
+        },
+        {
+          "run_id": 9911,
+          "job_id": 127720,
+          "job_name": "Full Backend Unit Coverage"
+        },
+        {
+          "run_id": 9872,
+          "job_id": 127247,
+          "job_name": "Full Frontend Coverage Merge"
+        },
+        {
+          "run_id": 9862,
+          "job_id": 127109,
+          "job_name": "Quick Render Regression"
+        },
+        {
+          "run_id": 9815,
+          "job_id": 126523,
+          "job_name": "Full Frontend Coverage Merge"
+        },
+        {
+          "run_id": 9800,
+          "job_id": 126334,
+          "job_name": "Full Backend Integration Tests"
+        },
+        {
+          "run_id": 9774,
+          "job_id": 126011,
+          "job_name": "Quick Render Regression"
+        },
+        {
+          "run_id": 9759,
+          "job_id": 125819,
+          "job_name": "Full Backend Integration Tests"
+        },
+        {
+          "run_id": 9755,
+          "job_id": 125762,
+          "job_name": "Full Backend Integration Tests"
+        },
+        {
+          "run_id": 9743,
+          "job_id": 125599,
+          "job_name": "Full Backend Unit Coverage"
+        },
+        {
+          "run_id": 9729,
+          "job_id": 125397,
+          "job_name": "Quick Backend Tests"
+        },
+        {
+          "run_id": 9715,
+          "job_id": 125235,
+          "job_name": "Full Backend Integration Tests"
+        },
+        {
+          "run_id": 9685,
+          "job_id": 124845,
+          "job_name": "Full Backend Integration Tests"
+        },
+        {
+          "run_id": 9502,
+          "job_id": 122324,
+          "job_name": "Full Frontend Coverage Merge"
+        },
+        {
+          "run_id": 9415,
+          "job_id": 121002,
+          "job_name": "Full Browser E2E Tests"
+        },
+        {
+          "run_id": 9207,
+          "job_id": 117609,
+          "job_name": "Quick Frontend Tests"
+        },
+        {
+          "run_id": 8771,
+          "job_id": 111840,
+          "job_name": "Full Browser E2E Tests"
+        },
+        {
+          "run_id": 8767,
+          "job_id": 111783,
+          "job_name": "Full Browser E2E Tests"
+        },
+        {
+          "run_id": 8736,
+          "job_id": 111283,
+          "job_name": "Quick Render Regression"
+        },
+        {
+          "run_id": 8369,
+          "job_id": 105708,
+          "job_name": "Full Frontend Coverage Shard 1/2"
+        },
+        {
+          "run_id": 8362,
+          "job_id": 105563,
+          "job_name": "Full Frontend Coverage Shard 1/2"
+        },
+        {
+          "run_id": 8043,
+          "job_id": 100955,
+          "job_name": "Full Backend Integration Tests"
+        },
+        {
+          "run_id": 8042,
+          "job_id": 100917,
+          "job_name": "Full Backend Integration Tests"
+        },
+        {
+          "run_id": 8030,
+          "job_id": 100779,
+          "job_name": "Full Backend Integration Tests"
+        },
+        {
+          "run_id": 8019,
+          "job_id": 100624,
+          "job_name": "Full Backend Integration Tests"
+        },
+        {
+          "run_id": 8018,
+          "job_id": 100586,
+          "job_name": "Full Backend Integration Tests"
+        },
+        {
+          "run_id": 8016,
+          "job_id": 100533,
+          "job_name": "Full Backend Integration Tests"
+        },
+        {
+          "run_id": 8004,
+          "job_id": 100381,
+          "job_name": "Full Backend Integration Tests"
+        },
+        {
+          "run_id": 7969,
+          "job_id": 99820,
+          "job_name": "Full Backend Integration Tests"
+        },
+        {
+          "run_id": 7965,
+          "job_id": 99739,
+          "job_name": "Full Backend Integration Tests"
+        },
+        {
+          "run_id": 7962,
+          "job_id": 99673,
+          "job_name": "Full Backend Integration Tests"
+        },
+        {
+          "run_id": 7925,
+          "job_id": 99045,
+          "job_name": "Quick Frontend Tests"
+        },
+        {
+          "run_id": 7917,
+          "job_id": 98947,
+          "job_name": "Full Backend Integration Tests"
+        },
+        {
+          "run_id": 7908,
+          "job_id": 98803,
+          "job_name": "Quick Backend Integration Smoke"
+        },
+        {
+          "run_id": 7900,
+          "job_id": 98687,
+          "job_name": "Quick Test Hygiene"
+        },
+        {
+          "run_id": 7848,
+          "job_id": 97963,
+          "job_name": "Full Backend Integration Tests"
+        },
+        {
+          "run_id": 7813,
+          "job_id": 97479,
+          "job_name": "Full Backend Integration Tests"
+        },
+        {
+          "run_id": 7809,
+          "job_id": 97423,
+          "job_name": "Full Backend Integration Tests"
+        },
+        {
+          "run_id": 7801,
+          "job_id": 97311,
+          "job_name": "Full Backend Integration Tests"
+        },
+        {
+          "run_id": 7794,
+          "job_id": 97224,
+          "job_name": "Full Backend Integration Tests"
+        },
+        {
+          "run_id": 7751,
+          "job_id": 96738,
+          "job_name": "Full Backend Unit Coverage"
+        },
+        {
+          "run_id": 7702,
+          "job_id": 96238,
+          "job_name": "Full Backend Integration Tests"
+        },
+        {
+          "run_id": 7676,
+          "job_id": 95835,
+          "job_name": "Full Backend Integration Tests"
+        },
+        {
+          "run_id": 7672,
+          "job_id": 95780,
+          "job_name": "Full Backend Integration Tests"
+        },
+        {
+          "run_id": 7447,
+          "job_id": 92647,
+          "job_name": "Full Backend Integration Tests"
+        },
+        {
+          "run_id": 7280,
+          "job_id": 90647,
+          "job_name": "Full Backend Integration Tests"
+        },
+        {
+          "run_id": 7203,
+          "job_id": 89524,
+          "job_name": "Quick Backend Typecheck"
+        },
+        {
+          "run_id": 6578,
+          "job_id": 80873,
+          "job_name": "Full Browser E2E Tests"
+        },
+        {
+          "run_id": 5543,
+          "job_id": 74175,
+          "job_name": "Full Frontend Coverage Merge"
+        },
+        {
+          "run_id": 5488,
+          "job_id": 73395,
+          "job_name": "Full Backend Integration Tests"
+        },
+        {
+          "run_id": 5452,
+          "job_id": 72935,
+          "job_name": "Full Backend Integration Tests"
+        }
+      ]
+    },
+    "install-test.yml": {
+      "counts": {
+        "Upgrade Baseline": 17,
+        "Upgrade Extended Fixtures": 20,
+        "Install Script Unit Tests": 4,
+        "Install Stack Smoke": 2,
+        "Fresh Install E2E Test": 10
+      },
+      "records": [
+        {
+          "run_id": 11813,
+          "job_id": 152343,
+          "job_name": "Upgrade Baseline"
+        },
+        {
+          "run_id": 11812,
+          "job_id": 152331,
+          "job_name": "Upgrade Baseline"
+        },
+        {
+          "run_id": 11801,
+          "job_id": 152179,
+          "job_name": "Upgrade Baseline"
+        },
+        {
+          "run_id": 11769,
+          "job_id": 151783,
+          "job_name": "Upgrade Extended Fixtures"
+        },
+        {
+          "run_id": 11752,
+          "job_id": 151570,
+          "job_name": "Upgrade Baseline"
+        },
+        {
+          "run_id": 11746,
+          "job_id": 151493,
+          "job_name": "Upgrade Baseline"
+        },
+        {
+          "run_id": 11699,
+          "job_id": 150908,
+          "job_name": "Install Script Unit Tests"
+        },
+        {
+          "run_id": 11503,
+          "job_id": 148350,
+          "job_name": "Upgrade Extended Fixtures"
+        },
+        {
+          "run_id": 11498,
+          "job_id": 148311,
+          "job_name": "Upgrade Baseline"
+        },
+        {
+          "run_id": 11329,
+          "job_id": 146224,
+          "job_name": "Install Stack Smoke"
+        },
+        {
+          "run_id": 11315,
+          "job_id": 146060,
+          "job_name": "Upgrade Extended Fixtures"
+        },
+        {
+          "run_id": 11288,
+          "job_id": 145709,
+          "job_name": "Upgrade Extended Fixtures"
+        },
+        {
+          "run_id": 11283,
+          "job_id": 145655,
+          "job_name": "Upgrade Extended Fixtures"
+        },
+        {
+          "run_id": 11256,
+          "job_id": 145297,
+          "job_name": "Upgrade Extended Fixtures"
+        },
+        {
+          "run_id": 11245,
+          "job_id": 145150,
+          "job_name": "Upgrade Extended Fixtures"
+        },
+        {
+          "run_id": 10874,
+          "job_id": 139910,
+          "job_name": "Upgrade Extended Fixtures"
+        },
+        {
+          "run_id": 10865,
+          "job_id": 139787,
+          "job_name": "Upgrade Extended Fixtures"
+        },
+        {
+          "run_id": 10856,
+          "job_id": 139664,
+          "job_name": "Upgrade Extended Fixtures"
+        },
+        {
+          "run_id": 9136,
+          "job_id": 116521,
+          "job_name": "Upgrade Baseline"
+        },
+        {
+          "run_id": 9095,
+          "job_id": 116044,
+          "job_name": "Upgrade Baseline"
+        },
+        {
+          "run_id": 8904,
+          "job_id": 113663,
+          "job_name": "Upgrade Extended Fixtures"
+        },
+        {
+          "run_id": 8880,
+          "job_id": 113414,
+          "job_name": "Upgrade Extended Fixtures"
+        },
+        {
+          "run_id": 8833,
+          "job_id": 112792,
+          "job_name": "Upgrade Extended Fixtures"
+        },
+        {
+          "run_id": 8824,
+          "job_id": 112657,
+          "job_name": "Upgrade Baseline"
+        },
+        {
+          "run_id": 8813,
+          "job_id": 112482,
+          "job_name": "Upgrade Baseline"
+        },
+        {
+          "run_id": 8795,
+          "job_id": 112214,
+          "job_name": "Upgrade Baseline"
+        },
+        {
+          "run_id": 8788,
+          "job_id": 112084,
+          "job_name": "Upgrade Baseline"
+        },
+        {
+          "run_id": 8720,
+          "job_id": 111037,
+          "job_name": "Upgrade Baseline"
+        },
+        {
+          "run_id": 8718,
+          "job_id": 110981,
+          "job_name": "Fresh Install E2E Test"
+        },
+        {
+          "run_id": 8703,
+          "job_id": 110803,
+          "job_name": "Fresh Install E2E Test"
+        },
+        {
+          "run_id": 8679,
+          "job_id": 110497,
+          "job_name": "Upgrade Baseline"
+        },
+        {
+          "run_id": 8669,
+          "job_id": 110341,
+          "job_name": "Fresh Install E2E Test"
+        },
+        {
+          "run_id": 8667,
+          "job_id": 110290,
+          "job_name": "Fresh Install E2E Test"
+        },
+        {
+          "run_id": 8650,
+          "job_id": 110013,
+          "job_name": "Fresh Install E2E Test"
+        },
+        {
+          "run_id": 8620,
+          "job_id": 109472,
+          "job_name": "Install Script Unit Tests"
+        },
+        {
+          "run_id": 8614,
+          "job_id": 109355,
+          "job_name": "Install Script Unit Tests"
+        },
+        {
+          "run_id": 8611,
+          "job_id": 109291,
+          "job_name": "Install Script Unit Tests"
+        },
+        {
+          "run_id": 8578,
+          "job_id": 108888,
+          "job_name": "Upgrade Extended Fixtures"
+        },
+        {
+          "run_id": 8568,
+          "job_id": 108752,
+          "job_name": "Upgrade Extended Fixtures"
+        },
+        {
+          "run_id": 8561,
+          "job_id": 108624,
+          "job_name": "Upgrade Extended Fixtures"
+        },
+        {
+          "run_id": 8554,
+          "job_id": 108496,
+          "job_name": "Upgrade Extended Fixtures"
+        },
+        {
+          "run_id": 8545,
+          "job_id": 108350,
+          "job_name": "Upgrade Extended Fixtures"
+        },
+        {
+          "run_id": 8538,
+          "job_id": 108222,
+          "job_name": "Upgrade Extended Fixtures"
+        },
+        {
+          "run_id": 8535,
+          "job_id": 108191,
+          "job_name": "Upgrade Baseline"
+        },
+        {
+          "run_id": 8532,
+          "job_id": 108135,
+          "job_name": "Upgrade Extended Fixtures"
+        },
+        {
+          "run_id": 8358,
+          "job_id": 105475,
+          "job_name": "Fresh Install E2E Test"
+        },
+        {
+          "run_id": 8222,
+          "job_id": 103626,
+          "job_name": "Upgrade Baseline"
+        },
+        {
+          "run_id": 8221,
+          "job_id": 103614,
+          "job_name": "Upgrade Baseline"
+        },
+        {
+          "run_id": 8121,
+          "job_id": 102150,
+          "job_name": "Install Stack Smoke"
+        },
+        {
+          "run_id": 8093,
+          "job_id": 101667,
+          "job_name": "Fresh Install E2E Test"
+        },
+        {
+          "run_id": 8053,
+          "job_id": 101078,
+          "job_name": "Fresh Install E2E Test"
+        },
+        {
+          "run_id": 7275,
+          "job_id": 90582,
+          "job_name": "Fresh Install E2E Test"
+        },
+        {
+          "run_id": 7273,
+          "job_id": 90530,
+          "job_name": "Fresh Install E2E Test"
+        }
+      ]
+    },
+    "release-candidate.yml": {
+      "counts": {
+        "Wallet Safety Audit Review": 3,
+        "Hardware Compatibility Evidence": 2,
+        "Container Health": 3,
+        "Auth Flow": 2,
+        "Fresh Install E2E": 1
+      },
+      "records": [
+        {
+          "run_id": 11489,
+          "job_id": 148157,
+          "job_name": "Wallet Safety Audit Review"
+        },
+        {
+          "run_id": 11258,
+          "job_id": 145303,
+          "job_name": "Wallet Safety Audit Review"
+        },
+        {
+          "run_id": 11247,
+          "job_id": 145156,
+          "job_name": "Wallet Safety Audit Review"
+        },
+        {
+          "run_id": 10867,
+          "job_id": 139794,
+          "job_name": "Hardware Compatibility Evidence"
+        },
+        {
+          "run_id": 10858,
+          "job_id": 139671,
+          "job_name": "Hardware Compatibility Evidence"
+        },
+        {
+          "run_id": 9110,
+          "job_id": 116177,
+          "job_name": "Container Health"
+        },
+        {
+          "run_id": 9097,
+          "job_id": 116053,
+          "job_name": "Container Health"
+        },
+        {
+          "run_id": 8546,
+          "job_id": 108358,
+          "job_name": "Auth Flow"
+        },
+        {
+          "run_id": 8142,
+          "job_id": 102478,
+          "job_name": "Auth Flow"
+        },
+        {
+          "run_id": 8132,
+          "job_id": 102310,
+          "job_name": "Container Health"
+        },
+        {
+          "run_id": 8122,
+          "job_id": 102160,
+          "job_name": "Fresh Install E2E"
+        }
+      ]
+    },
+    "verify-vectors.yml": {
+      "counts": {
+        "verify-vectors": 41,
+        "verify-trezor-emulator": 4,
+        "verify-jade-emulator": 1,
+        "verify-ledger-emulator": 1,
+        "regenerate-vectors": 1
+      },
+      "records": [
+        {
+          "run_id": 11658,
+          "job_id": 150364,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 11547,
+          "job_id": 148926,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 11432,
+          "job_id": 147428,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 11365,
+          "job_id": 146667,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 11180,
+          "job_id": 144297,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 10696,
+          "job_id": 137591,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 10596,
+          "job_id": 136304,
+          "job_name": "verify-trezor-emulator"
+        },
+        {
+          "run_id": 10586,
+          "job_id": 136174,
+          "job_name": "verify-trezor-emulator"
+        },
+        {
+          "run_id": 10576,
+          "job_id": 136046,
+          "job_name": "verify-jade-emulator"
+        },
+        {
+          "run_id": 10571,
+          "job_id": 135978,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 10556,
+          "job_id": 135783,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 10495,
+          "job_id": 135035,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 10470,
+          "job_id": 134722,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 10393,
+          "job_id": 133708,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 10381,
+          "job_id": 133541,
+          "job_name": "verify-ledger-emulator"
+        },
+        {
+          "run_id": 10338,
+          "job_id": 132995,
+          "job_name": "verify-trezor-emulator"
+        },
+        {
+          "run_id": 10328,
+          "job_id": 132869,
+          "job_name": "verify-trezor-emulator"
+        },
+        {
+          "run_id": 10323,
+          "job_id": 132806,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 10316,
+          "job_id": 132742,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 10311,
+          "job_id": 132680,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 10296,
+          "job_id": 132494,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 10286,
+          "job_id": 132370,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 10266,
+          "job_id": 132123,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 10187,
+          "job_id": 131128,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 10076,
+          "job_id": 129746,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 10051,
+          "job_id": 129436,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 10041,
+          "job_id": 129312,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 10036,
+          "job_id": 129250,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 10031,
+          "job_id": 129188,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 9044,
+          "job_id": 115343,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 9038,
+          "job_id": 115246,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 9034,
+          "job_id": 115189,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 9029,
+          "job_id": 115117,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 9019,
+          "job_id": 115002,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 9011,
+          "job_id": 114927,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 9009,
+          "job_id": 114922,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 8997,
+          "job_id": 114791,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 8988,
+          "job_id": 114666,
+          "job_name": "regenerate-vectors"
+        },
+        {
+          "run_id": 8978,
+          "job_id": 114537,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 8972,
+          "job_id": 114462,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 8965,
+          "job_id": 114372,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 8953,
+          "job_id": 114279,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 8947,
+          "job_id": 114206,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 8907,
+          "job_id": 113719,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 8891,
+          "job_id": 113510,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 8873,
+          "job_id": 113339,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 8236,
+          "job_id": 103834,
+          "job_name": "verify-vectors"
+        },
+        {
+          "run_id": 8199,
+          "job_id": 103360,
+          "job_name": "verify-vectors"
+        }
+      ]
+    }
+  },
+  "unique_yield": {
+    "quick_only_failures": [],
+    "full_only_failures": [
+      11937,
+      11927,
+      11615,
+      11234,
+      11159,
+      11126,
+      10989,
+      10917,
+      10777,
+      10674,
+      10644,
+      10600,
+      10590,
+      10585,
+      10469,
+      10463,
+      10433,
+      10427,
+      10371,
+      10260,
+      10255,
+      10186,
+      10112,
+      10080,
+      10007,
+      9991,
+      9957,
+      9918,
+      9913,
+      9911,
+      9872,
+      9815,
+      9800,
+      9759,
+      9755,
+      9743,
+      9715,
+      9685,
+      9502,
+      9415,
+      8771,
+      8767,
+      8369,
+      8362,
+      8043,
+      8042,
+      8030,
+      8019,
+      8018,
+      8016,
+      8004,
+      7969,
+      7965,
+      7962,
+      7917,
+      7848,
+      7813,
+      7809,
+      7801,
+      7794,
+      7751,
+      7702,
+      7676,
+      7672,
+      7447,
+      7280,
+      6578,
+      5543,
+      5488,
+      5452
+    ],
+    "mutation_unique_failures": [
+      11159
+    ],
+    "vector_unique_vs_test": [
+      11547,
+      11432,
+      11180,
+      10381,
+      10338,
+      10328,
+      10323,
+      10316,
+      10311,
+      9044,
+      9038,
+      9019,
+      8997,
+      8978,
+      8972,
+      8965,
+      8947,
+      8907,
+      8891,
+      8873,
+      8236,
+      8199
+    ],
+    "install_unique_vs_test": [
+      11813,
+      11812,
+      11801,
+      11769,
+      11699,
+      11503,
+      11498,
+      11329,
+      11315,
+      11288,
+      11283,
+      11256,
+      11245,
+      10874,
+      10865,
+      10856,
+      9095,
+      8904,
+      8880,
+      8833,
+      8824,
+      8813,
+      8795,
+      8788,
+      8720,
+      8718,
+      8703,
+      8679,
+      8669,
+      8667,
+      8650,
+      8578,
+      8568,
+      8561,
+      8554,
+      8545,
+      8538,
+      8535,
+      8532,
+      8358,
+      8121,
+      8093,
+      8053,
+      7275,
+      7273
+    ]
+  },
+  "failure_attribution": {
+    "mutation": [
+      {
+        "run_id": 11159,
+        "job_id": 144015,
+        "job_name": "Full Critical Mutation Gate (shard 3)",
+        "commit": "048d69f4988fe72a694b56fa279f5e6fa91659aa",
+        "ref": "main",
+        "category": "unknown",
+        "log_path": "raw/logs/144015.log"
+      },
+      {
+        "run_id": 9729,
+        "job_id": 125399,
+        "job_name": "Quick Critical Mutation Gate (shard 1)",
+        "commit": "e978a42ee1fa0d2e22b7c13a734c2340e31418d2",
+        "ref": "#782",
+        "category": "unknown",
+        "log_path": "raw/logs/125399.log"
+      },
+      {
+        "run_id": 9729,
+        "job_id": 125401,
+        "job_name": "Quick Critical Mutation Gate (shard 3)",
+        "commit": "e978a42ee1fa0d2e22b7c13a734c2340e31418d2",
+        "ref": "#782",
+        "category": "deterministic-test-or-product-defect",
+        "log_path": "raw/logs/125401.log"
+      },
+      {
+        "run_id": 8369,
+        "job_id": 105714,
+        "job_name": "Full Critical Mutation Gate (shard 1)",
+        "commit": "fa2230e504980ca75dab4284411c14d0cb23fbfa",
+        "ref": "#642",
+        "category": "unknown-provider-auth",
+        "log_path": "raw/logs/105714.log"
+      },
+      {
+        "run_id": 8369,
+        "job_id": 105715,
+        "job_name": "Full Critical Mutation Gate (shard 2)",
+        "commit": "fa2230e504980ca75dab4284411c14d0cb23fbfa",
+        "ref": "#642",
+        "category": "unknown-provider-auth",
+        "log_path": "raw/logs/105715.log"
+      },
+      {
+        "run_id": 8369,
+        "job_id": 105716,
+        "job_name": "Full Critical Mutation Gate (shard 3)",
+        "commit": "fa2230e504980ca75dab4284411c14d0cb23fbfa",
+        "ref": "#642",
+        "category": "unknown-provider-auth",
+        "log_path": "raw/logs/105716.log"
+      }
+    ],
+    "install": [
+      {
+        "run_id": 11813,
+        "job_id": 152343,
+        "job_name": "Upgrade Baseline",
+        "commit": "de75e905e849ff664b83e9ac13217c25437a596a",
+        "ref": "#874",
+        "category": "registry-rate-limit",
+        "log_path": "raw/logs/152343.log"
+      },
+      {
+        "run_id": 11812,
+        "job_id": 152331,
+        "job_name": "Upgrade Baseline",
+        "commit": "fdee4acc2bf41126a8dab309a7345a2c6179d7e9",
+        "ref": "main",
+        "category": "registry-rate-limit",
+        "log_path": "raw/logs/152331.log"
+      },
+      {
+        "run_id": 11801,
+        "job_id": 152179,
+        "job_name": "Upgrade Baseline",
+        "commit": "331bcb83272a12d58b7b9299832d5950c7ef3dd6",
+        "ref": "v0.8.66",
+        "category": "unknown",
+        "log_path": "raw/logs/152179.log"
+      },
+      {
+        "run_id": 11769,
+        "job_id": 151783,
+        "job_name": "Upgrade Extended Fixtures",
+        "commit": "19ee80e59ff59514dd344fb85e3544e799383228",
+        "ref": "v0.8.66-rc1",
+        "category": "dependency-drift",
+        "log_path": "raw/logs/151783.log"
+      },
+      {
+        "run_id": 11752,
+        "job_id": 151570,
+        "job_name": "Upgrade Baseline",
+        "commit": "bcb1314c505f8d8a53c7811224d0fb2136f65204",
+        "ref": "#870",
+        "category": "registry-rate-limit",
+        "log_path": "raw/logs/151570.log"
+      },
+      {
+        "run_id": 11746,
+        "job_id": 151493,
+        "job_name": "Upgrade Baseline",
+        "commit": "4e1cb03b3504a7ee6b1e5faa37f3b4f1af3e7bc6",
+        "ref": "#870",
+        "category": "registry-rate-limit",
+        "log_path": "raw/logs/151493.log"
+      },
+      {
+        "run_id": 11699,
+        "job_id": 150908,
+        "job_name": "Install Script Unit Tests",
+        "commit": "f26c0b17b78309db875ab6f16c0956379f123c79",
+        "ref": "main",
+        "category": "unknown",
+        "log_path": "raw/logs/150908.log"
+      },
+      {
+        "run_id": 11503,
+        "job_id": 148350,
+        "job_name": "Upgrade Extended Fixtures",
+        "commit": "049cd1bc596c42cc20cfd4300ea7f985dc8096c1",
+        "ref": "v0.8.65-rc2",
+        "category": "proven-runner-or-substrate",
+        "log_path": "raw/logs/148350.log"
+      },
+      {
+        "run_id": 11498,
+        "job_id": 148311,
+        "job_name": "Upgrade Baseline",
+        "commit": "049cd1bc596c42cc20cfd4300ea7f985dc8096c1",
+        "ref": "v0.8.65-rc2",
+        "category": "dependency-drift",
+        "log_path": "raw/logs/148311.log"
+      },
+      {
+        "run_id": 11329,
+        "job_id": 146224,
+        "job_name": "Install Stack Smoke",
+        "commit": "0628cd40378779d7747baf224354e0d592bcaafa",
+        "ref": "v0.8.64",
+        "category": "registry-rate-limit",
+        "log_path": "raw/logs/146224.log"
+      },
+      {
+        "run_id": 11329,
+        "job_id": 146228,
+        "job_name": "Upgrade Extended Fixtures",
+        "commit": "0628cd40378779d7747baf224354e0d592bcaafa",
+        "ref": "v0.8.64",
+        "category": "dependency-drift",
+        "log_path": "raw/logs/146228.log"
+      },
+      {
+        "run_id": 11315,
+        "job_id": 146060,
+        "job_name": "Upgrade Extended Fixtures",
+        "commit": "1696cfe9d4d90d5b2274f108045bed4ddb15c66f",
+        "ref": "v0.8.64-rc4",
+        "category": "dependency-drift",
+        "log_path": "raw/logs/146060.log"
+      },
+      {
+        "run_id": 11288,
+        "job_id": 145709,
+        "job_name": "Upgrade Extended Fixtures",
+        "commit": "3a8b71da1e257f93cdb28094b17b3a25c024504b",
+        "ref": "v0.8.64",
+        "category": "proven-runner-or-substrate",
+        "log_path": "raw/logs/145709.log"
+      },
+      {
+        "run_id": 11283,
+        "job_id": 145655,
+        "job_name": "Upgrade Extended Fixtures",
+        "commit": "3a8b71da1e257f93cdb28094b17b3a25c024504b",
+        "ref": "v0.8.64",
+        "category": "proven-runner-or-substrate",
+        "log_path": "raw/logs/145655.log"
+      },
+      {
+        "run_id": 11256,
+        "job_id": 145297,
+        "job_name": "Upgrade Extended Fixtures",
+        "commit": "92480b293566ecb11b4f13966a4e7ce225e8405b",
+        "ref": "v0.8.64-rc2",
+        "category": "dependency-drift",
+        "log_path": "raw/logs/145297.log"
+      },
+      {
+        "run_id": 11256,
+        "job_id": 145299,
+        "job_name": "Docker Resource Cleanup",
+        "commit": "92480b293566ecb11b4f13966a4e7ce225e8405b",
+        "ref": "v0.8.64-rc2",
+        "category": "unknown",
+        "log_path": "raw/logs/145299.log"
+      },
+      {
+        "run_id": 11245,
+        "job_id": 145150,
+        "job_name": "Upgrade Extended Fixtures",
+        "commit": "c51ca9d8d7115630487d864059ba17d3ee819a13",
+        "ref": "v0.8.64-rc1",
+        "category": "dependency-drift",
+        "log_path": "raw/logs/145150.log"
+      },
+      {
+        "run_id": 10874,
+        "job_id": 139910,
+        "job_name": "Upgrade Extended Fixtures",
+        "commit": "cee017f62bd084fe262ac5867fd3b64768b03ff7",
+        "ref": "v0.8.63-rc3",
+        "category": "dependency-drift",
+        "log_path": "raw/logs/139910.log"
+      },
+      {
+        "run_id": 10865,
+        "job_id": 139787,
+        "job_name": "Upgrade Extended Fixtures",
+        "commit": "0dc9911b4cb9e1a28a015f3fd94c1714575b3fda",
+        "ref": "v0.8.63-rc2",
+        "category": "dependency-drift",
+        "log_path": "raw/logs/139787.log"
+      },
+      {
+        "run_id": 10856,
+        "job_id": 139664,
+        "job_name": "Upgrade Extended Fixtures",
+        "commit": "49fcce9bc6b02028359a0e0b3d08d80742b6267f",
+        "ref": "v0.8.63-rc1",
+        "category": "proven-runner-or-substrate",
+        "log_path": "raw/logs/139664.log"
+      },
+      {
+        "run_id": 9136,
+        "job_id": 116521,
+        "job_name": "Upgrade Baseline",
+        "commit": "70c34f5812773614af245df5e83e042e0ed75cda",
+        "ref": "ci/deterministic-upgrade-staleness-gate",
+        "category": "registry-rate-limit",
+        "log_path": "raw/logs/116521.log"
+      },
+      {
+        "run_id": 9095,
+        "job_id": 116044,
+        "job_name": "Upgrade Baseline",
+        "commit": "fd7a2685d2e5d22c58ff337dfeca38a8094f0838",
+        "ref": "v0.8.60-rc1",
+        "category": "unknown",
+        "log_path": "raw/logs/116044.log"
+      },
+      {
+        "run_id": 8904,
+        "job_id": 113663,
+        "job_name": "Upgrade Extended Fixtures",
+        "commit": "f06510a73f3e49e943e7e238171a4e92011f20ed",
+        "ref": "main",
+        "category": "proven-runner-or-substrate",
+        "log_path": "raw/logs/113663.log"
+      },
+      {
+        "run_id": 8880,
+        "job_id": 113414,
+        "job_name": "Upgrade Extended Fixtures",
+        "commit": "a6e68b42332c4344142b756bbc3019394d6c7e49",
+        "ref": "main",
+        "category": "proven-runner-or-substrate",
+        "log_path": "raw/logs/113414.log"
+      },
+      {
+        "run_id": 8833,
+        "job_id": 112792,
+        "job_name": "Upgrade Extended Fixtures",
+        "commit": "dc594af6d236c801659acd6c1022df31a86066b3",
+        "ref": "main",
+        "category": "proven-runner-or-substrate",
+        "log_path": "raw/logs/112792.log"
+      },
+      {
+        "run_id": 8824,
+        "job_id": 112657,
+        "job_name": "Upgrade Baseline",
+        "commit": "e03360ef891e68c302f91a420e350666f80e89ff",
+        "ref": "main",
+        "category": "proven-runner-or-substrate",
+        "log_path": "raw/logs/112657.log"
+      },
+      {
+        "run_id": 8813,
+        "job_id": 112482,
+        "job_name": "Upgrade Baseline",
+        "commit": "01d4f76b03d3bc49ee58e76f76fa4176077d8392",
+        "ref": "main",
+        "category": "proven-runner-or-substrate",
+        "log_path": "raw/logs/112482.log"
+      },
+      {
+        "run_id": 8795,
+        "job_id": 112214,
+        "job_name": "Upgrade Baseline",
+        "commit": "9aa0c80a927edefb1c60e8da342545799ef91e5a",
+        "ref": "main",
+        "category": "proven-runner-or-substrate",
+        "log_path": "raw/logs/112214.log"
+      },
+      {
+        "run_id": 8788,
+        "job_id": 112084,
+        "job_name": "Upgrade Baseline",
+        "commit": "7cab80ef4859be23c89425833c3b2e9855df0152",
+        "ref": "main",
+        "category": "proven-runner-or-substrate",
+        "log_path": "raw/logs/112084.log"
+      },
+      {
+        "run_id": 8720,
+        "job_id": 111037,
+        "job_name": "Upgrade Baseline",
+        "commit": "0ef4cdfe0436ded769a2c6f26013a7ed115f4b10",
+        "ref": "main",
+        "category": "proven-runner-or-substrate",
+        "log_path": "raw/logs/111037.log"
+      },
+      {
+        "run_id": 8718,
+        "job_id": 110981,
+        "job_name": "Fresh Install E2E Test",
+        "commit": "0ef4cdfe0436ded769a2c6f26013a7ed115f4b10",
+        "ref": "main",
+        "category": "deterministic-test-or-product-defect",
+        "log_path": "raw/logs/110981.log"
+      },
+      {
+        "run_id": 8718,
+        "job_id": 110982,
+        "job_name": "Install Script E2E Test",
+        "commit": "0ef4cdfe0436ded769a2c6f26013a7ed115f4b10",
+        "ref": "main",
+        "category": "deterministic-test-or-product-defect",
+        "log_path": "raw/logs/110982.log"
+      },
+      {
+        "run_id": 8703,
+        "job_id": 110803,
+        "job_name": "Fresh Install E2E Test",
+        "commit": "5625e45477b30330dcd512e583007d0efa6296e9",
+        "ref": "main",
+        "category": "dependency-drift",
+        "log_path": "raw/logs/110803.log"
+      },
+      {
+        "run_id": 8703,
+        "job_id": 110804,
+        "job_name": "Install Script E2E Test",
+        "commit": "5625e45477b30330dcd512e583007d0efa6296e9",
+        "ref": "main",
+        "category": "deterministic-test-or-product-defect",
+        "log_path": "raw/logs/110804.log"
+      },
+      {
+        "run_id": 8679,
+        "job_id": 110497,
+        "job_name": "Upgrade Baseline",
+        "commit": "3796a8b22cb7f2b96b7d522a526d1119cccf30df",
+        "ref": "main",
+        "category": "proven-runner-or-substrate",
+        "log_path": "raw/logs/110497.log"
+      },
+      {
+        "run_id": 8669,
+        "job_id": 110341,
+        "job_name": "Fresh Install E2E Test",
+        "commit": "da7ff28da91682c28e9e659e313e7b85ddd99a25",
+        "ref": "main",
+        "category": "registry-rate-limit",
+        "log_path": "raw/logs/110341.log"
+      },
+      {
+        "run_id": 8669,
+        "job_id": 110342,
+        "job_name": "Install Script E2E Test",
+        "commit": "da7ff28da91682c28e9e659e313e7b85ddd99a25",
+        "ref": "main",
+        "category": "deterministic-test-or-product-defect",
+        "log_path": "raw/logs/110342.log"
+      },
+      {
+        "run_id": 8667,
+        "job_id": 110290,
+        "job_name": "Fresh Install E2E Test",
+        "commit": "da7ff28da91682c28e9e659e313e7b85ddd99a25",
+        "ref": "main",
+        "category": "registry-rate-limit",
+        "log_path": "raw/logs/110290.log"
+      },
+      {
+        "run_id": 8667,
+        "job_id": 110291,
+        "job_name": "Install Script E2E Test",
+        "commit": "da7ff28da91682c28e9e659e313e7b85ddd99a25",
+        "ref": "main",
+        "category": "deterministic-test-or-product-defect",
+        "log_path": "raw/logs/110291.log"
+      },
+      {
+        "run_id": 8650,
+        "job_id": 110013,
+        "job_name": "Fresh Install E2E Test",
+        "commit": "f96c9af7915830b9774cc581de920e2e8deb99cb",
+        "ref": "main",
+        "category": "registry-rate-limit",
+        "log_path": "raw/logs/110013.log"
+      },
+      {
+        "run_id": 8650,
+        "job_id": 110014,
+        "job_name": "Install Script E2E Test",
+        "commit": "f96c9af7915830b9774cc581de920e2e8deb99cb",
+        "ref": "main",
+        "category": "deterministic-test-or-product-defect",
+        "log_path": "raw/logs/110014.log"
+      },
+      {
+        "run_id": 8620,
+        "job_id": 109472,
+        "job_name": "Install Script Unit Tests",
+        "commit": "5279ac43729bd941709942042a7336ae3d4d5b5b",
+        "ref": "#671",
+        "category": "proven-runner-or-substrate",
+        "log_path": "raw/logs/109472.log"
+      },
+      {
+        "run_id": 8614,
+        "job_id": 109355,
+        "job_name": "Install Script Unit Tests",
+        "commit": "bed5ec41104620355e58177f9f520e067b914b02",
+        "ref": "ci/podman-socket-canary",
+        "category": "proven-runner-or-substrate",
+        "log_path": "raw/logs/109355.log"
+      },
+      {
+        "run_id": 8614,
+        "job_id": 109357,
+        "job_name": "Install Script E2E Test",
+        "commit": "bed5ec41104620355e58177f9f520e067b914b02",
+        "ref": "ci/podman-socket-canary",
+        "category": "deterministic-test-or-product-defect",
+        "log_path": "raw/logs/109357.log"
+      },
+      {
+        "run_id": 8611,
+        "job_id": 109291,
+        "job_name": "Install Script Unit Tests",
+        "commit": "bed5ec41104620355e58177f9f520e067b914b02",
+        "ref": "#671",
+        "category": "proven-runner-or-substrate",
+        "log_path": "raw/logs/109291.log"
+      },
+      {
+        "run_id": 8578,
+        "job_id": 108888,
+        "job_name": "Upgrade Extended Fixtures",
+        "commit": "5f830bf098a6f42c2125bb2e2eff1222beb8d310",
+        "ref": "v0.8.59-rc4",
+        "category": "dependency-drift",
+        "log_path": "raw/logs/108888.log"
+      },
+      {
+        "run_id": 8568,
+        "job_id": 108752,
+        "job_name": "Upgrade Extended Fixtures",
+        "commit": "22904a47801e9e0ae094e8a3721e5456391da1b0",
+        "ref": "v0.8.59-rc3",
+        "category": "registry-rate-limit",
+        "log_path": "raw/logs/108752.log"
+      },
+      {
+        "run_id": 8561,
+        "job_id": 108624,
+        "job_name": "Upgrade Extended Fixtures",
+        "commit": "8422ac660e99b39e69d87ffdd53e87285080be91",
+        "ref": "main",
+        "category": "dependency-drift",
+        "log_path": "raw/logs/108624.log"
+      },
+      {
+        "run_id": 8554,
+        "job_id": 108496,
+        "job_name": "Upgrade Extended Fixtures",
+        "commit": "497aa6694321a368cd55387d8b8c01c6747d39ec",
+        "ref": "main",
+        "category": "dependency-drift",
+        "log_path": "raw/logs/108496.log"
+      },
+      {
+        "run_id": 8545,
+        "job_id": 108350,
+        "job_name": "Upgrade Extended Fixtures",
+        "commit": "297595b76a8799e2ce3b6831d0c1554f240a8976",
+        "ref": "v0.8.59-rc2",
+        "category": "registry-rate-limit",
+        "log_path": "raw/logs/108350.log"
+      },
+      {
+        "run_id": 8538,
+        "job_id": 108222,
+        "job_name": "Upgrade Extended Fixtures",
+        "commit": "3b2d0d1e232b03a2af32aa51e9f3669ce8973484",
+        "ref": "v0.8.59-rc1",
+        "category": "dependency-drift",
+        "log_path": "raw/logs/108222.log"
+      },
+      {
+        "run_id": 8535,
+        "job_id": 108191,
+        "job_name": "Upgrade Baseline",
+        "commit": "3b2d0d1e232b03a2af32aa51e9f3669ce8973484",
+        "ref": "v0.8.59",
+        "category": "unknown",
+        "log_path": "raw/logs/108191.log"
+      },
+      {
+        "run_id": 8532,
+        "job_id": 108135,
+        "job_name": "Upgrade Extended Fixtures",
+        "commit": "3b2d0d1e232b03a2af32aa51e9f3669ce8973484",
+        "ref": "v0.8.59-rc1",
+        "category": "registry-rate-limit",
+        "log_path": "raw/logs/108135.log"
+      },
+      {
+        "run_id": 8358,
+        "job_id": 105475,
+        "job_name": "Fresh Install E2E Test",
+        "commit": "8464a2193f768086208689c263abdc64fe29a323",
+        "ref": "main",
+        "category": "unknown",
+        "log_path": "raw/logs/105475.log"
+      },
+      {
+        "run_id": 8358,
+        "job_id": 105476,
+        "job_name": "Install Script E2E Test",
+        "commit": "8464a2193f768086208689c263abdc64fe29a323",
+        "ref": "main",
+        "category": "deterministic-test-or-product-defect",
+        "log_path": "raw/logs/105476.log"
+      },
+      {
+        "run_id": 8222,
+        "job_id": 103626,
+        "job_name": "Upgrade Baseline",
+        "commit": "8c059b2fac204fa7a7b1e59bb65492b98036c32c",
+        "ref": "codex/implement-merge/x300-tls-20260803",
+        "category": "registry-rate-limit",
+        "log_path": "raw/logs/103626.log"
+      },
+      {
+        "run_id": 8221,
+        "job_id": 103614,
+        "job_name": "Upgrade Baseline",
+        "commit": "8c059b2fac204fa7a7b1e59bb65492b98036c32c",
+        "ref": "codex/implement-merge/x300-tls-20260803",
+        "category": "registry-rate-limit",
+        "log_path": "raw/logs/103614.log"
+      },
+      {
+        "run_id": 8121,
+        "job_id": 102150,
+        "job_name": "Install Stack Smoke",
+        "commit": "6ae9760862b669a96bbdb03da429c3d36ba7811b",
+        "ref": "v0.8.58-rc.4",
+        "category": "unknown",
+        "log_path": "raw/logs/102150.log"
+      },
+      {
+        "run_id": 8093,
+        "job_id": 101667,
+        "job_name": "Fresh Install E2E Test",
+        "commit": "4b05448b0852ea058d2b0c23d9e5558af04a1729",
+        "ref": "main",
+        "category": "dependency-drift",
+        "log_path": "raw/logs/101667.log"
+      },
+      {
+        "run_id": 8053,
+        "job_id": 101078,
+        "job_name": "Fresh Install E2E Test",
+        "commit": "ff05e57553a8d18b3bba8dbc2610291a5e7cec8b",
+        "ref": "main",
+        "category": "unknown",
+        "log_path": "raw/logs/101078.log"
+      },
+      {
+        "run_id": 8053,
+        "job_id": 101079,
+        "job_name": "Install Script E2E Test",
+        "commit": "ff05e57553a8d18b3bba8dbc2610291a5e7cec8b",
+        "ref": "main",
+        "category": "deterministic-test-or-product-defect",
+        "log_path": "raw/logs/101079.log"
+      },
+      {
+        "run_id": 7275,
+        "job_id": 90582,
+        "job_name": "Fresh Install E2E Test",
+        "commit": "b1555054e8e9f021151d4e3ecc0c697e4b59e6bf",
+        "ref": "main",
+        "category": "unknown",
+        "log_path": "raw/logs/90582.log"
+      },
+      {
+        "run_id": 7273,
+        "job_id": 90530,
+        "job_name": "Fresh Install E2E Test",
+        "commit": "b1555054e8e9f021151d4e3ecc0c697e4b59e6bf",
+        "ref": "main",
+        "category": "unknown",
+        "log_path": "raw/logs/90530.log"
+      }
+    ]
+  },
+  "limitations": [
+    "Forgejo run/job APIs expose no job timestamps; runner sums require logs and remain lower-bound estimates.",
+    "Lock/setup notices were introduced during the window, so absence is not zero cost.",
+    "Automated failure categories require representative-log review; unknown and deterministic-test-or-product-defect are intentionally not over-attributed.",
+    "Cross-browser failure attribution is unavailable because CI selected Chromium only during the window.",
+    "A successful run can belong to more than one path cohort; cohorts are reported independently, not summed."
+  ]
+}

@@ -1,7 +1,7 @@
 # CI pipeline analysis and optimization plan
 
 Date: 2026-08-21 (Pacific/Honolulu)  
-Status: implementation in progress via isolated, reviewed pull requests  
+Status: implemented; evidence-gated re-tiering remains deliberately inactive
 Scope: CI workflows, their policy documentation, and CI regression tests; no branch-protection weakening  
 Evidence baseline: `origin/main` at `19ee80e59ff59514dd344fb85e3544e799383228`
 
@@ -225,15 +225,17 @@ blocking approval.
 ### Phase 0 — Lock the contract and baseline it
 
 - [x] Update the CI strategy to describe the actual desired pre-merge contract.
-- [ ] Record 20 comparable successful runs per cohort: docs-only, gateway-only,
-      frontend, backend unit-only, backend integration-sensitive, wallet-safety,
-      main push, install, and RC.
-- [ ] Capture wall p50/p90, summed runner time, queue time, runner-lock wait,
+- [x] Persist a reproducible 60-day cohort audit and use the latest 20
+      comparable successes where the history contains them. Seven cohorts met
+      20; docs-only had 10 and gateway-only had 1, so those two measurement
+      gates explicitly failed rather than being padded with unlike runs.
+- [x] Capture wall p50/p90, summed runner time, queue time, runner-lock wait,
       setup/install/build time, artifact time, cancellation waste, first-failure
-      stage, and failures uniquely caught by quick/full/vector/deep gates.
+      stage, and failures uniquely caught by quick/full/vector/deep gates;
+      unavailable provider fields are recorded as unavailable, never zero.
 - [x] Add a workflow-level performance report artifact/summary using existing
       timing notices; warning-only initially.
-- [ ] Decision gate: unless a real Forgejo merge-group rehearsal proves full
+- [x] Decision gate: because no real Forgejo merge-group rehearsal proved full
       pre-merge enforcement, retain full validation on PRs.
 
 Acceptance: cohorts are not blended; queue/rate-limit/test failures are named
@@ -243,12 +245,13 @@ precisely; measurement itself does not become a required failure point.
 
 - [x] Provision Redis for the worker integration group and assert that the four
       Redis suites execute rather than skip.
-- [ ] Seed auth E2E users and remove `SKIP_AUTH_TESTS`, or split/rename the gate
+- [x] Seed auth E2E users and remove `SKIP_AUTH_TESTS`, or split/rename the gate
       so its contract is exact.
 - [x] Add `quality.yml` push-to-main coverage, classify the exact landed range,
       and fail closed when range evidence is unavailable.
-- [ ] Make RC approval consume canonical same-commit install/upgrade evidence,
-      then remove stale inputs and claims.
+- [x] Remove RC approval entirely, bind the remaining preflight to one immutable
+      SHA, retire duplicate health/auth ownership, and leave release approval to
+      the canonical same-commit Install Tests and trusted publisher gate.
 - [x] Add LLM proxy lint, explicit gateway build/typecheck, and local/CI coverage
       parity.
 - [x] Add Docker job timeouts.
@@ -288,7 +291,7 @@ falls; no required context can succeed when its selected test set is empty.
       Phase 2 proves they add no unique signal.
 - [x] Evaluate standardized root npm download caching; do not add it while exact
       warm hits leave clean `npm ci` at the existing 16-20 second range.
-- [ ] Upload verbose diagnostics on failure only where reliable; Phase 3c owns
+- [x] Upload verbose diagnostics on failure only where reliable; Phase 3c owns
       the Test workflow, while remaining workflows still require an evidence
       inventory. Always retain coverage, mutation, release, and other required
       evidence.
@@ -301,13 +304,13 @@ trusted as test evidence.
 
 ### Phase 4 — Rationalize workflow ownership
 
-- [ ] Extract canonical callable install/health/auth/upgrade building blocks and
-      reuse them from install and RC workflows.
-- [ ] Finish migration to the structured test-plan composite or remove it and its
+- [x] Establish one install/health/auth/upgrade owner by retiring the duplicated
+      RC jobs; no callable extraction remains necessary for the RC preflight.
+- [x] Finish migration to the structured test-plan composite or remove it and its
       dead contract; keep one classifier source of truth with composition tests.
-- [ ] Reconcile workflow comments, CI strategy, release gates, and actual trigger
+- [x] Reconcile workflow comments, CI strategy, release gates, and actual trigger
       semantics in the same change.
-- [ ] Add contract tests for required-context presence, selected-test counts,
+- [x] Add contract tests for required-context presence, selected-test counts,
       cross-workflow same-commit evidence, and skip policy.
 
 Acceptance: one owner per classifier and install/release proof; manual, PR, main,
@@ -315,14 +318,17 @@ schedule, and tag paths have executable contract tests.
 
 ### Phase 5 — Re-tier deep safety checks only with yield evidence
 
-- [ ] Attribute 30-60 days of vector, emulator, mutation, cross-browser, and
+- [x] Attribute 30-60 days of vector, emulator, mutation, cross-browser, and
       install failures to product defect, deterministic test defect, dependency
       drift, registry/rate limit, queueing, or proven runner fault.
-      The exact 60-day vector/emulator audit is complete and supports shadow
-      measurement only; mutation, cross-browser, and install attribution remain.
-- [ ] If evidence supports it, keep fast wallet-safety invariants on every PR and
-      move unaffected hardware emulators to nightly/RC, while forcing them for
-      wallet/signing/hardware-sensitive changes.
+      The earlier exact 60-day Vector/emulator audit and decision are recorded
+      in the implementation ledger. The tracked completion audit under
+      `tasks/evidence/ci-completion-audit-2026-08-22/` supplies mutation and
+      install attribution. Cross-browser attribution is explicitly unavailable
+      because the period contained Chromium-only CI, so browser re-tiering was
+      rejected rather than inferred from absent evidence.
+- [x] Keep fast wallet-safety invariants and every hardware emulator unconditional
+      while the shadow classifier gathers evidence; do not activate re-tiering.
       Before any re-tiering, Phase 5a gives all three proof runners one canonical
       hashed-source inventory. Phase 5b adds an independent 90-day shadow report
       using PR merge-base semantics and exact push/merge-group ranges. Every
@@ -335,13 +341,18 @@ schedule, and tag paths have executable contract tests.
       checkout/toolchain rather than adding a runner claimant; both report steps
       are bounded and nonblocking, and the slice rolls back if base-job p95 grows
       by more than 10 seconds.
-- [ ] Decide whether 100% statement/branch/function/line coverage remains global
-      or becomes 100% on funds/auth boundaries plus a non-decreasing ratchet
-      elsewhere. Do not lower thresholds without mutation and escaped-defect data.
-- [ ] Decide the supported browser contract; add nightly Firefox/WebKit only if
-      the product claims support and the failures are actionable.
-- [ ] Evaluate scheduled/RC image CVE scanning against noise, runtime package
-      inventory, and operator remediation cost.
+- [x] Retain every current coverage threshold: frontend/backend unit scopes at
+      100%, gateway at B100/F98/L100/S100, and the LLM proxy ratchet at
+      B69/F90/L81/S78. Do not lower thresholds without the named evidence below.
+      Any later change requires mutation and escaped-defect data, a named
+      replacement invariant, and a non-decreasing ratchet.
+- [x] Define Desktop Chromium as the required CI browser evidence contract;
+      Firefox, WebKit, and mobile Playwright projects remain developer-facing
+      compatibility aids rather than release evidence.
+- [x] Evaluate scheduled/RC image CVE scanning against noise, runtime package
+      inventory, and operator remediation cost. Retain a nonblocking RC observer
+      over the four exact candidate images; do not add a PR gate or scheduled
+      all-image build until availability and remediation ownership are proven.
 
 Acceptance: no safety gate moves later solely to improve duration; each move has
 a named earlier invariant, later backstop, path-classifier test, and rollback

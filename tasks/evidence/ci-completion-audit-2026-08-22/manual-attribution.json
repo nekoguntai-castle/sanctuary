@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "review_basis": "Manual review of persisted first/root failing job logs, run titles, and repository ledger; aggregate summary/relay failures were excluded.",
+  "mutation": {
+    "total_failed_runs_with_mutation_root": 3,
+    "categories": [
+      {
+        "category": "deterministic-test-defect",
+        "count": 2,
+        "run_ids": [9729, 11159],
+        "evidence": ["raw/logs/125399.log", "raw/logs/125401.log", "raw/logs/144015.log"],
+        "reason": "Stryker initial test execution failed deterministically before mutation scoring."
+      },
+      {
+        "category": "provider-authentication-failure",
+        "count": 1,
+        "run_ids": [8369],
+        "evidence": ["raw/logs/105714.log", "raw/logs/105715.log", "raw/logs/105716.log"],
+        "reason": "All three shards stopped on explicit unauthorized provider/cache errors; this is not attributed to a product defect or runner fault."
+      }
+    ],
+    "product_defect_count": 0,
+    "registry_rate_limit_count": 0,
+    "queueing_count": 0,
+    "proven_runner_fault_count": 0
+  },
+  "install": {
+    "total_failed_runs": 53,
+    "categories": [
+      {
+        "category": "deterministic-test-or-harness-defect",
+        "count": 34,
+        "run_ids": [8532, 8535, 8538, 8545, 8554, 8561, 8568, 8578, 8611, 8614, 8620, 8650, 8667, 8669, 8679, 8703, 8718, 8720, 8788, 8795, 8813, 8824, 8833, 8880, 8904, 9136, 10865, 10874, 11256, 11315, 11329, 11498, 11769, 11801],
+        "representative_evidence": ["raw/logs/109291.log", "raw/logs/108191.log", "raw/logs/151783.log", "raw/logs/152179.log"],
+        "reason": "Repeatable composition, secret/config, health-wait, migration-fixture, cleanup, or release-harness failures; many runs are explicitly titled as successive CI/install fixes."
+      },
+      {
+        "category": "product-or-runtime-defect",
+        "count": 2,
+        "run_ids": [10856, 11245],
+        "representative_evidence": ["raw/logs/139664.log", "raw/logs/145150.log"],
+        "reason": "Grafana provisioning database locking and inconsistent migration terminal state surfaced in the runtime stack."
+      },
+      {
+        "category": "upgrade-source-dependency-drift",
+        "count": 4,
+        "run_ids": [11746, 11752, 11812, 11813],
+        "representative_evidence": ["raw/logs/151493.log", "raw/logs/151570.log", "raw/logs/152331.log", "raw/logs/152343.log"],
+        "reason": "The latest-stable source had already acquired wallet-sync-state schema behavior that the fixture still expected to migrate. Incidental CoinGecko 429 warnings were not the failing assertion."
+      },
+      {
+        "category": "proven-runner-or-substrate",
+        "count": 6,
+        "run_ids": [7275, 8221, 8222, 8358, 11283, 11288],
+        "representative_evidence": ["raw/logs/90582.log", "raw/logs/105475.log", "raw/logs/145655.log", "raw/logs/145709.log"],
+        "reason": "Missing Docker CLI, DIND/TLS work, runner-to-container archive deadlines, or host mount permission failures are explicit in the native logs."
+      },
+      {
+        "category": "unresolved-from-native-root-log",
+        "count": 7,
+        "run_ids": [7273, 8053, 8093, 8121, 9095, 11503, 11699],
+        "representative_evidence": ["raw/logs/90530.log", "raw/logs/101078.log", "raw/logs/116044.log", "raw/logs/150908.log"],
+        "reason": "The retained native job log shows the failing lane but omits or obscures the decisive nested diagnostic; no stronger attribution is claimed."
+      }
+    ],
+    "registry_rate_limit_root_cause_count": 0,
+    "queueing_root_cause_count": 0,
+    "note": "External price-provider HTTP 429 warnings appear in several container dumps but are incidental to explicit migration/fixture failures and are not counted as root causes."
+  }
+}

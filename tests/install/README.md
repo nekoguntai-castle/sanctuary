@@ -275,10 +275,10 @@ This workflow runs automatically on:
 | Push to main (install paths) | Scoped install lanes | Path-scoped | No |
 | PR to main (install paths) | Scoped install lanes | Path-scoped | No |
 | Release tag (`v*.*.*`) | Release-critical + blocking upgrade matrix | Baseline + extended | **Yes** |
-| Nightly schedule | Upgrade matrix | Baseline + extended | No |
+| Nightly schedule | Unit/static install checks | None | No |
 | Manual dispatch | Configurable | Configurable | No |
 
-PR runs are scoped by `tests/install/utils/classify-install-scope.sh` instead of running every install lane for every install-related path. Unit/docs-only changes run unit checks, installer changes run installer checks, compose/docker changes run a reusable stack plus container health, auth-flow changes run a reusable stack plus auth flow, and Prisma/migration-only changes run the baseline upgrade matrix. Upgrade harness, fixture, workflow, release, scheduled, and manual `all`/`upgrade`/`release-critical` changes run both baseline and extended upgrade lanes. Container-health and auth-flow share one stack when both are relevant.
+PR runs are scoped by `tests/install/utils/classify-install-scope.sh` instead of running every install lane for every install-related path. Unit/docs-only changes run unit checks, installer changes run installer checks, compose/docker changes run a reusable stack plus container health, auth-flow changes run a reusable stack plus auth flow, and Prisma/migration-only changes run the baseline upgrade matrix. Upgrade harness, fixture, workflow, release-tag, and manual `all`/`upgrade`/`release-critical` changes run both baseline and extended upgrade lanes. Scheduled drift runs are unit-only. Container-health and auth-flow share one stack when both are relevant.
 
 **Release-critical tests** include:
 - Unit tests, including install-script, 2FA reset-script, and upgrade-helper safety checks (~5 seconds)

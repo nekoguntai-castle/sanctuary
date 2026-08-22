@@ -14,6 +14,18 @@ This document records the checks that should protect the A-grade engineering goa
 - Accepted dependency findings must remain documented in `docs/plans/dependency-audit-triage.md`; new high or critical production advisories require a fix or explicit risk acceptance before release.
 - CI/CD tiering, required aggregate checks, merge-queue behavior, and emergency hotfix rules are documented in `docs/reference/ci-cd-strategy.md`.
 
+## Nonblocking Release Observations
+
+RC fresh-install validation scans exactly the four candidate-built application
+images with digest-pinned Trivy after verifying their candidate and image-lock
+OCI labels. The 90-day JSON artifact is evidence for deciding a future policy;
+its status is `observed`, `partial`, or `unavailable`, never “passed” or “clean.”
+Scanner/database failure and vulnerability findings do not feed `Validation
+Summary` and cannot approve or block a release. New high or critical production
+advisories still require the existing dependency-review process and explicit
+risk ownership. A blocking image-CVE gate requires a separately reviewed
+baseline and at least 95% observer availability.
+
 ## Required Gates
 
 | Area | Gate | Evidence | Status |

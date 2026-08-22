@@ -47,9 +47,10 @@ npm --prefix llm-egress-proxy run test
 When targeting coverage thresholds, run coverage locally:
 
 ```bash
-cd server && npx vitest run --coverage  # backend: 99% threshold
-npm run test:coverage                   # frontend: 100% threshold
-npm --prefix llm-egress-proxy run test:coverage # LLM egress proxy: package-local baseline gate
+cd server && npm run test:unit -- --coverage # backend unit scope: 100% on all metrics
+npm run test:coverage                       # frontend: 100% on all metrics
+npm --prefix gateway run test:coverage      # gateway: 100%, except functions at 98%
+npm --prefix llm-egress-proxy run test:coverage # proxy ratchet: B69/F90/L81/S78
 ```
 
 Run `git commit` in the foreground; pre-commit hooks run validation whose feedback must be reviewed.
@@ -125,7 +126,7 @@ Long-running steps wrap their command with `scripts/ci/run-with-log.sh` and foll
     "$FORGEJO_URL/api/v1/repos/<owner>/<repo>/actions/jobs/<job_id>/logs"
   ```
 
-When adding a new long-running CI step, follow the same pattern: wrap with `run-with-log.sh "$DIAGNOSTIC_DIR/<step>.log"` for capture, call `write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "<Lane Name>"` in an `if: always()` step, and upload `$DIAGNOSTIC_DIR` as `ci-diagnostics-<lane>` with `if-no-files-found: ignore`.
+When adding a new long-running CI step, follow the same pattern: wrap with `run-with-log.sh "$DIAGNOSTIC_DIR/<step>.log"` for capture, call `write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "<Lane Name>"` in an `if: always()` step, and upload `$DIAGNOSTIC_DIR` as `ci-diagnostics-<lane>` on failure with `if-no-files-found: ignore`. Keep compact reports that are required evidence separate from verbose troubleshooting artifacts so successful runs retain the former without paying to publish the latter.
 
 ### Retrigger discipline
 

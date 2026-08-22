@@ -106,7 +106,7 @@ jobs:
         run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Determine Scope"
 
       - name: Upload quality scope diagnostics
-        if: always()
+        if: failure()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
@@ -159,7 +159,7 @@ jobs:
         run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Lint"
 
       - name: Upload lint diagnostics
-        if: always()
+        if: failure()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
@@ -215,7 +215,7 @@ jobs:
         run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Lockfile Peer Resolution"
 
       - name: Upload lockfile peer diagnostics
-        if: always()
+        if: failure()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
@@ -314,7 +314,7 @@ jobs:
         run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Dependency Audit"
 
       - name: Upload dependency audit diagnostics
-        if: always()
+        if: failure()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
@@ -394,7 +394,7 @@ jobs:
         run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Gitleaks"
 
       - name: Upload gitleaks diagnostics
-        if: always()
+        if: failure()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
@@ -502,7 +502,7 @@ jobs:
         run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Semgrep"
 
       - name: Upload Semgrep diagnostics
-        if: always()
+        if: failure()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
@@ -571,7 +571,7 @@ jobs:
         run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Workflow Lint"
 
       - name: Upload workflow lint diagnostics
-        if: always()
+        if: failure()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
@@ -620,7 +620,7 @@ jobs:
         run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Workflow Action Runtime Guard"
 
       - name: Upload workflow action runtime guard diagnostics
-        if: always()
+        if: failure()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
@@ -700,6 +700,7 @@ jobs:
           bash -n scripts/ci/backend-coverage-merge.sh
           bash -n scripts/ci/backend-coverage-shard.sh
           bash -n scripts/ci/build-runtime-image.sh
+          bash -n scripts/ci/observe-runtime-image-cves.sh
           bash -n scripts/ci/check-llm-egress-proxy-shared-isolation.sh
           bash -n scripts/ci/cleanup-docker-resources.sh
           bash -n scripts/ci/install-playwright-chromium.sh
@@ -757,6 +758,7 @@ jobs:
           bash -n tests/ci/ci-registration-completeness.test.sh
           bash -n tests/ci/backend-coverage-scripts.test.sh
           bash -n tests/ci/build-runtime-image.test.sh
+          bash -n tests/ci/observe-runtime-image-cves.test.sh
           bash -n tests/ci/cleanup-docker-resources.test.sh
           bash -n tests/ci/install-playwright-chromium.test.sh
           bash -n tests/ci/quality-audit.test.sh
@@ -853,6 +855,7 @@ jobs:
           bash tests/ci/wait-for-migration.test.sh
           bash tests/ci/backend-coverage-scripts.test.sh
           bash tests/ci/build-runtime-image.test.sh
+          bash tests/ci/observe-runtime-image-cves.test.sh
           bash tests/ci/cleanup-docker-resources.test.sh
           bash tests/ci/install-playwright-chromium.test.sh
           bash tests/ci/quality-audit.test.sh
@@ -916,7 +919,7 @@ jobs:
         run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality CI Classifier Tests"
 
       - name: Upload CI classifier diagnostics
-        if: always()
+        if: failure()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
@@ -965,7 +968,7 @@ jobs:
         run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Lizard"
 
       - name: Upload lizard diagnostics
-        if: always()
+        if: failure()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
@@ -1034,7 +1037,7 @@ jobs:
         run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality JSCPD"
 
       - name: Upload jscpd diagnostics
-        if: always()
+        if: failure()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
@@ -1081,7 +1084,7 @@ jobs:
         run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Large File Classification"
 
       - name: Upload large-file classification diagnostics
-        if: always()
+        if: failure()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
@@ -1224,7 +1227,7 @@ jobs:
         run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Required Checks"
 
       - name: Upload quality required checks diagnostics
-        if: always()
+        if: failure()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:

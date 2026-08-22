@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Emits a unified test plan as JSON. Workflow YAML and local devs both consume
-# this instead of the 19 boolean outputs from classify-test-changes.sh.
+# Emits the local/developer test plan as JSON. CI uses
+# classify-test-changes.sh's scalar-output adapter; both adapters source
+# classify-files-lib.sh so their path predicates have one owner.
 #
 # Usage:
 #   plan-test-run.sh                      # auto-detect via provider-context

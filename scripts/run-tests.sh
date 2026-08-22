@@ -15,9 +15,10 @@
 #   --watch      Run in watch mode (frontend only, not with --docker)
 #   --integration  Run integration tests with database (backend only)
 #   --since REF  Only run lanes affected by changes since REF (e.g. main).
-#                Uses scripts/ci/plan-test-run.sh + run-lane.sh — same
-#                contract CI uses, so what runs locally matches what runs
-#                on PR. Pairs well with `npm run test:related`.
+#                Uses scripts/ci/plan-test-run.sh + run-lane.sh. This local
+#                JSON adapter shares CI's canonical file predicates, while CI
+#                retains its scalar-output workflow adapter. Pairs well with
+#                `npm run test:related`.
 #   --help       Show this help message
 #
 # Examples:

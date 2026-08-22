@@ -179,8 +179,8 @@ git rev-parse --verify "$base_sha^{commit}" >/dev/null
 git rev-parse --verify "$head_sha^{commit}" >/dev/null
 
 # File-classification predicates live in scripts/ci/classify-files-lib.sh
-# (sourced above). plan-test-run.sh shares the same library so the legacy
-# KEY=VALUE emitter and the JSON emitter stay in lockstep.
+# (sourced above). This is CI's scalar-output adapter; plan-test-run.sh is the
+# local/developer JSON adapter over the same predicate owner.
 
 while IFS= read -r file; do
   [ -n "$file" ] || continue

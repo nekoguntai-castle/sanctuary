@@ -204,6 +204,27 @@ Markdown and MDX files are docs-only for the test classifiers, including package
 - Full frontend/backend build check for package, build config, Docker/image entrypoint, Prisma, test-workflow, or exhaustive runs. It also starts from path classification instead of waiting behind coverage. Typecheck and coverage remain the primary source-level compile gate for ordinary frontend/backend source changes.
 - `Full Test Summary` aggregate, which fails if any required full-lane child fails.
 
+The required browser evidence contract is Desktop Chromium. CI installs and
+runs Chromium only. The Firefox, WebKit, and mobile projects in Playwright
+configuration are developer-facing compatibility aids, not release evidence.
+General UI support documentation may describe additional browsers, while
+hardware-wallet flows remain limited by each browser's WebUSB, WebHID, and
+WebSerial support; neither claim should be inferred from a green Chromium lane.
+
+Coverage remains a deliberately mixed, non-decreasing policy rather than one
+global percentage. This review retains every current threshold:
+
+| Package/scope | Branches | Functions | Lines | Statements |
+| --- | ---: | ---: | ---: | ---: |
+| Frontend | 100% | 100% | 100% | 100% |
+| Backend unit scope | 100% | 100% | 100% | 100% |
+| Gateway | 100% | 98% | 100% | 100% |
+| LLM egress proxy | 69% | 90% | 81% | 78% |
+
+Thresholds must not be lowered merely to reduce validation time. A later change
+requires mutation and escaped-defect evidence, a named replacement invariant,
+and a non-decreasing ratchet for any scope that is not held at 100%.
+
 Push-to-main full-lane runs are the path-aware backstop for the final merged
 commit; scheduled and manual runs provide periodic exhaustive proof.
 
@@ -230,12 +251,20 @@ Release validation separates fast preflight evidence from canonical blocking
 install evidence, and never publishes from CI:
 
 - `Install Tests` validates fresh install, install script flow, container health, auth flow, and upgrade on release-critical paths.
-- Pull-request and main-branch install tests are scoped by `tests/install/utils/classify-install-scope.sh`: unit-only, installer, compose/docker, auth-flow, upgrade-baseline, upgrade, or release-critical. Container-health and auth-flow reuse one stack when both are relevant. Prisma/migration-only changes run the baseline upgrade matrix, while upgrade harness/fixture changes, release tags, schedules, install workflow edits, and manual release-critical/all/upgrade runs include both baseline and extended upgrade fixtures. Install Markdown/MDX changes are docs-only and should not run install tests.
+- Pull-request and main-branch install tests are scoped by `tests/install/utils/classify-install-scope.sh`: unit-only, installer, compose/docker, auth-flow, upgrade-baseline, upgrade, or release-critical. Container-health and auth-flow reuse one stack when both are relevant. Prisma/migration-only changes run the baseline upgrade matrix, while upgrade harness/fixture changes, release tags, install workflow edits, and manual release-critical/all/upgrade runs include both baseline and extended upgrade fixtures. The scheduled drift check is deliberately unit-only; release tags remain the periodic full install/upgrade owner. Install Markdown/MDX changes are docs-only and should not run install tests.
 - `Validate Docker Images` is scoped by
   `scripts/ci/classify-docker-build-images.sh`. Frontend-only inputs build only
   the frontend image, backend-only inputs build only the backend image, and
   shared image inputs build both. Every build uses `push: false`.
 - `Release Candidate Validation` resolves one immutable candidate SHA and runs unit, hardware-compatibility, and fresh-install preflight checks. Its stable `Validation Summary` explicitly leaves release approval pending.
+- The RC fresh-install lane also observes high/critical CVEs in exactly the four
+  candidate-built application images. It verifies candidate and image-lock OCI
+  labels, scans immutable image IDs with digest-pinned Trivy, and retains JSON
+  evidence for 90 days. This observer is nonblocking and reports `observed`,
+  `partial`, or `unavailable`; it is not release approval and is not consumed by
+  `Validation Summary`. Consider a blocking policy only after at least 95% report
+  availability and an owned remediation baseline; roll the observer back if its
+  p95 RC overhead exceeds 60 seconds or scanner/DB failures become persistent.
 - Release-tag `Install Tests` owns the blocking same-commit install, health, auth, and upgrade evidence and remains the final Forgejo release gate.
 - The trusted operator release command owns GitHub tag reconciliation and
   matching GitHub/Forgejo Release objects.

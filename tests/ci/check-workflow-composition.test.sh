@@ -559,6 +559,8 @@ RC="$REPO_ROOT/.github/workflows/release-candidate.yml"
 PHASE_RUNNER="$REPO_ROOT/scripts/ci/run-e2e-lane-phases.sh"
 RELEASE_GATES="$REPO_ROOT/docs/reference/release-gates.md"
 UPGRADE_ROADMAP="$REPO_ROOT/docs/plans/upgrade-testing-roadmap.md"
+CI_STRATEGY="$REPO_ROOT/docs/reference/ci-cd-strategy.md"
+INSTALL_README="$REPO_ROOT/tests/install/README.md"
 
 assert_occurrence_count "$RC" \
   "release-candidate disables restart for CI-created Compose stacks" \
@@ -576,6 +578,47 @@ assert_contains_in_order "$RC" \
   "scripts/ci/with-runner-lock.sh e2e" \
   'scripts/ci/time-command.sh "fresh install e2e"' \
   "fresh-install.test.sh"
+
+assert_contains_in_order "$RC" \
+  "release-candidate binds and observes exact candidate images before cleanup" \
+  "Bind runtime images to candidate" \
+  'SANCTUARY_SOURCE_COMMIT=$CANDIDATE_SHA' \
+  'SANCTUARY_IMAGE_LOCK_SHA256=$image_lock_sha' \
+  "Run fresh install test" \
+  "Observe candidate image CVEs" \
+  'scripts/ci/observe-runtime-image-cves.sh' \
+  "Cleanup" \
+  "Upload candidate image CVE observation" \
+  'name: runtime-image-cves-${{ github.run_id }}-${{ github.run_attempt }}' \
+  "retention-days: 90"
+
+assert_named_job_step_contains "$RC" \
+  "fresh-install-test" \
+  "Observe candidate image CVEs" \
+  "release-candidate image CVE observer is nonblocking" \
+  "if: always()" \
+  "continue-on-error: true" \
+  "timeout-minutes: 5"
+
+assert_named_job_step_contains "$RC" \
+  "fresh-install-test" \
+  "Upload candidate image CVE observation" \
+  "release-candidate image CVE artifact is nonblocking" \
+  "if: always()" \
+  "continue-on-error: true" \
+  "if-no-files-found: error"
+
+assert_named_job_not_contains "$RC" \
+  "validation-summary" \
+  "release-candidate summary does not gate on CVE observation" \
+  "runtime-image-cves"
+
+assert_contains_in_order "$RELEASE_GATES" \
+  "release gates describe CVE evidence as nonblocking observation" \
+  "RC fresh-install validation scans exactly the four candidate-built application" \
+  'status is `observed`, `partial`, or `unavailable`' \
+  'do not feed `Validation' \
+  "cannot approve or block a release"
 
 assert_contains_in_order "$PHASE_RUNNER" \
   "phase runner logs each stack phase in order" \
@@ -669,6 +712,16 @@ assert_contains_in_order "$UPGRADE_ROADMAP" \
   "latest-stable / legacy-runtime-env" \
   "latest-stable / notification-delivery" \
   "latest-stable / optional-profiles"
+
+assert_contains_in_order "$CI_STRATEGY" \
+  "CI strategy records scheduled Install Tests as unit-only" \
+  "The scheduled drift check is deliberately unit-only" \
+  "release tags remain the periodic full install/upgrade owner"
+
+assert_contains_in_order "$INSTALL_README" \
+  "install README records the schedule without upgrade evidence" \
+  "| Nightly schedule | Unit/static install checks | None | No |" \
+  "Scheduled drift runs are unit-only"
 
 for suspended_wallet_review_input in \
   "WALLET_SAFETY_AUDIT_REVIEW_JSON" \
@@ -1167,6 +1220,62 @@ assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
 
 # --- full frontend typecheck retry stability --------------------------------
 TEST_WORKFLOW="$REPO_ROOT/.github/workflows/test.yml"
+CLASSIFY_TEST_CHANGES="$REPO_ROOT/scripts/ci/classify-test-changes.sh"
+PLAN_TEST_RUN="$REPO_ROOT/scripts/ci/plan-test-run.sh"
+RETIRED_TEST_PLAN_ACTION="$REPO_ROOT/.github/actions/test-plan-load/action.yml"
+FRONTEND_VITEST_CONFIG="$REPO_ROOT/config/tooling/vitest.config.ts"
+BACKEND_VITEST_CONFIG="$REPO_ROOT/server/vitest.config.ts"
+GATEWAY_VITEST_CONFIG="$REPO_ROOT/gateway/vitest.config.ts"
+PROXY_VITEST_CONFIG="$REPO_ROOT/llm-egress-proxy/vitest.config.ts"
+
+assert_occurrence_count "$TEST_WORKFLOW" \
+  "test workflow invokes its scalar classifier exactly once" \
+  "bash scripts/ci/classify-test-changes.sh" \
+  1
+
+assert_contains_in_order "$CLASSIFY_TEST_CHANGES" \
+  "CI test classifier sources the canonical predicate library" \
+  '. "$SCRIPT_DIR/provider-context.sh"' \
+  '. "$SCRIPT_DIR/classify-files-lib.sh"'
+
+assert_contains_in_order "$PLAN_TEST_RUN" \
+  "local test planner sources the canonical predicate library" \
+  '. "$SCRIPT_DIR/provider-context.sh"' \
+  '. "$SCRIPT_DIR/classify-files-lib.sh"'
+
+if [ ! -e "$RETIRED_TEST_PLAN_ACTION" ]; then
+  PASS=$((PASS + 1))
+  echo "PASS: unused test-plan-load composite is retired"
+else
+  FAIL=$((FAIL + 1))
+  FAILURES+=("unused test-plan-load composite still exists: $RETIRED_TEST_PLAN_ACTION")
+  echo "FAIL: unused test-plan-load composite is retired" >&2
+fi
+
+if grep -R -Fq "test-plan-load" "$REPO_ROOT/.github/workflows"; then
+  FAIL=$((FAIL + 1))
+  FAILURES+=("a workflow still references retired test-plan-load composite")
+  echo "FAIL: workflows do not reference retired test-plan-load composite" >&2
+else
+  PASS=$((PASS + 1))
+  echo "PASS: workflows do not reference retired test-plan-load composite"
+fi
+
+assert_contains_in_order "$CI_STRATEGY" \
+  "CI strategy defines Chromium as the required browser evidence" \
+  "The required browser evidence contract is Desktop Chromium" \
+  "Firefox, WebKit, and mobile projects" \
+  "not release evidence"
+
+for coverage_contract in \
+  "$FRONTEND_VITEST_CONFIG|frontend coverage stays at 100 percent|branches: 100|functions: 100|lines: 100|statements: 100" \
+  "$BACKEND_VITEST_CONFIG|backend unit coverage stays at 100 percent|branches: 100|functions: 100|lines: 100|statements: 100" \
+  "$GATEWAY_VITEST_CONFIG|gateway coverage retains its ratchet|branches: 100|functions: 98|lines: 100|statements: 100" \
+  "$PROXY_VITEST_CONFIG|proxy coverage retains its ratchet|branches: 69|functions: 90|lines: 81|statements: 78"; do
+  IFS='|' read -r coverage_file coverage_label branches functions lines statements <<< "$coverage_contract"
+  assert_contains_in_order "$coverage_file" "$coverage_label" \
+    "$branches" "$functions" "$lines" "$statements"
+done
 
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full frontend app typecheck retry composition" \
@@ -2662,6 +2771,63 @@ assert_contains_in_order "$QUALITY_WORKFLOW" \
   "Write quality required checks diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Required Checks"' \
   "ci-diagnostics-quality-required-checks"
+
+quality_failure_diagnostic_steps=(
+  "determine-scope|Upload quality scope diagnostics|Write quality scope diagnostic summary"
+  "lint|Upload lint diagnostics|Write lint diagnostic summary"
+  "lockfile-peer-resolution|Upload lockfile peer diagnostics|Write lockfile peer diagnostic summary"
+  "dependency-audit|Upload dependency audit diagnostics|Write dependency audit diagnostic summary"
+  "gitleaks|Upload gitleaks diagnostics|Write gitleaks diagnostic summary"
+  "semgrep-sast|Upload Semgrep diagnostics|Write Semgrep diagnostic summary"
+  "workflow-lint|Upload workflow lint diagnostics|Write workflow lint diagnostic summary"
+  "workflow-action-runtime-guard|Upload workflow action runtime guard diagnostics|Write workflow action runtime guard diagnostic summary"
+  "ci-classifier-tests|Upload CI classifier diagnostics|Write CI classifier diagnostic summary"
+  "lizard|Upload lizard diagnostics|Write lizard diagnostic summary"
+  "jscpd|Upload jscpd diagnostics|Write jscpd diagnostic summary"
+  "large-file-classification|Upload large-file classification diagnostics|Write large-file classification diagnostic summary"
+  "quality-required-checks|Upload quality required checks diagnostics|Write quality required checks diagnostic summary"
+)
+
+for quality_diagnostic in "${quality_failure_diagnostic_steps[@]}"; do
+  IFS='|' read -r quality_job quality_step quality_summary_step <<< "$quality_diagnostic"
+  assert_named_job_step_contains \
+    "$QUALITY_WORKFLOW" \
+    "$quality_job" \
+    "$quality_step" \
+    "quality $quality_job uploads verbose diagnostics only on failure" \
+    "if: failure()"
+  assert_named_job_step_not_contains \
+    "$QUALITY_WORKFLOW" \
+    "$quality_job" \
+    "$quality_step" \
+    "quality $quality_job does not upload verbose diagnostics on success" \
+    "if: always()"
+  assert_named_job_step_contains \
+    "$QUALITY_WORKFLOW" \
+    "$quality_job" \
+    "$quality_summary_step" \
+    "quality $quality_job retains its always-visible diagnostic summary" \
+    "if: always()"
+done
+
+assert_occurrence_count "$QUALITY_WORKFLOW" \
+  "quality has exactly thirteen verbose diagnostic artifact names" \
+  "name: ci-diagnostics-quality-" \
+  13
+
+for quality_evidence in \
+  "semgrep-sast|Upload Semgrep report" \
+  "jscpd|Upload jscpd report" \
+  "ci-performance-report|Upload CI performance report"; do
+  quality_job="${quality_evidence%%|*}"
+  quality_step="${quality_evidence#*|}"
+  assert_named_job_step_contains \
+    "$QUALITY_WORKFLOW" \
+    "$quality_job" \
+    "$quality_step" \
+    "quality $quality_job retains compact evidence on every outcome" \
+    "if: always()"
+done
 
 assert_jobs_use_node24_runners \
   "$QUALITY_WORKFLOW" \

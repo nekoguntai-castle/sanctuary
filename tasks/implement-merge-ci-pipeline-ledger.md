@@ -20,7 +20,8 @@ Rebuild policy: `after-plan`
 | Phase 1e | `main` | `codex/implement-merge/ci-redis-integration` | `/home/nekoguntai/sanctuary-ci-redis-integration` | yes | no | retained pending final cleanup | [#888](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/888) | `57a1776b158ffc2c264d1af33dcfecd025edb43a` |
 | Phase 5b | `main` | `codex/implement-merge/ci-hardware-shadow` | `/home/nekoguntai/sanctuary-ci-hardware-shadow` | yes | no | retained pending final cleanup | [#889](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/889) | `32e2dfe0d99e87da3ba5aa75b7b32e778bb878a4` |
 | Phase 1f | `main` | `codex/implement-merge/ci-auth-e2e-fidelity` | `/home/nekoguntai/sanctuary-ci-auth-e2e-fidelity` | yes | no | cleaned after landed-main verification | [#891](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/891) | `2b5d05b818d33609b45748f51fa72079d5a8dad6` |
-| Phase 4 | `main` | `codex/implement-merge/ci-release-preflight-truth` | `/home/nekoguntai/sanctuary-ci-release-preflight-truth` | yes | no | active | pending | pending |
+| Phase 4 | `main` | `codex/implement-merge/ci-release-preflight-truth` | `/home/nekoguntai/sanctuary-ci-release-preflight-truth` | yes | no | cleaned after landed-main and manual RC verification | [#892](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/892) | `a355673249e98c2b3cfff38a7f5643b2968e517b` |
+| Phase 3d | `main` | `codex/implement-merge/ci-quality-artifact-policy` | `/home/nekoguntai/sanctuary-ci-quality-artifact-policy` | yes | no | prepared locally | pending | pending |
 
 ## Ownership boundary
 
@@ -308,3 +309,64 @@ from cleanup and mutation.
   passed 366 workflow-composition assertions, all 13 install unit suites plus
   their two CI guards, the release-distribution suite, CI registration checks,
   actionlint with error-level shellcheck, and diff checks.
+- 2026-08-22: Phase 4 merged through PR #892 as `a355673249`. All five standard
+  PR workflows and the stable Install Test Summary passed; the workflow-only
+  install scope correctly ran its unit/static owner and skipped every expensive
+  stack and upgrade lane. Landed-main and controlled manual RC preflight proof
+  were pending at merge and are recorded in the next entry.
+- 2026-08-22: Phase 4 landed-main and manual acceptance are complete. Exact
+  merge commit `a355673249` passed Architecture run 11990 (127 seconds), Install
+  Tests 11991 (1,053 seconds), Quality 11992 (586 seconds), Test 11993 (1,577
+  seconds), and Vectors 11994 (1,136 seconds), with 30/30 terminal commit
+  contexts green or intentionally skipped. Controlled manual RC run 11995
+  resolved `main` once to full SHA `a355673249e98c2b3cfff38a7f5643b2968e517b`;
+  Hardware Compatibility Evidence, Unit Tests, and Fresh Install E2E each
+  checked out that exact SHA and passed. Its hardware artifact binds the same
+  revision. Only the five retained jobs existed, and the stable Validation
+  Summary finished the 239-second workflow with: “Release candidate preflight
+  passed for a355673249e98c2b3cfff38a7f5643b2968e517b; release approval remains
+  pending same-commit Install Tests.” The previously observed duplicated RC path
+  took about 21.5 minutes, so this controlled rehearsal reduced RC preflight wall
+  by about 81% while removing no canonical release gate.
+- 2026-08-22: Phase 4 cleanup completed after exact ancestry/tree/remote-head
+  checks. Its isolated worktree and owned local/remote branch were removed;
+  unrelated worktrees and retained experiments were not touched.
+- 2026-08-22: Phase 3d rebases onto exact Phase 4 main `a355673249`. Its
+  bounded final artifact-policy slice makes the 13 verbose
+  `ci-diagnostics-quality-*` bundles failure-only while retaining always-visible
+  diagnostic summaries and the Semgrep, jscpd, and weekly performance evidence.
+  Exact landed-main run 11972 published all 13 successful diagnostic bundles
+  for only 36,773 bytes. Full Quality PR run 11967 measured a 10.483-second
+  lower bound of runner action time from content discovery through post hooks,
+  excluding action initialization; the protected aggregate's upload alone
+  added at least 757 milliseconds to terminal wall time. No validator, job
+  dependency, classifier, stable context, or branch-protection rule changes.
+  Local proof passed 422 workflow-composition assertions, Quality scope and
+  audit regressions, workflow test-only policy, the action-runtime suite,
+  actionlint with error-level shellcheck, shell syntax, and diff checks.
+- 2026-08-22: The final CI closeout persists the reproducible 60-day GET-only
+  audit under `tasks/evidence/ci-completion-audit-2026-08-22/`, including the
+  portable collector, derived summaries, checksums, and the manifest digest for
+  the external 184 MiB raw capture. Seven requested cohorts reached 20
+  comparable successful runs; docs-only reached 10 and gateway-only reached 1,
+  so those two sample gates are recorded as failed rather than padded. The audit
+  attributes mutation and install failures, records at least 63.9 runner-hours
+  consumed by cancelled work, and supports retaining every deep gate. Hardware
+  emulator execution remains unconditional while the Phase 5 shadow observer
+  gathers its separately required 30-day evidence.
+- 2026-08-22: Phase 4 classifier ownership closes by deleting the unused
+  `test-plan-load` composite. Both the CI scalar adapter and local JSON planner
+  continue to source the sole path predicate library, and composition tests
+  prevent another unconsumed classifier contract. Documentation now records the
+  actual unit-only scheduled Install Tests behavior, the retained package-level
+  coverage thresholds, and Desktop Chromium as the required browser evidence.
+- 2026-08-22: The image-CVE evaluation retains a nonblocking RC observer rather
+  than a PR gate or scheduled rebuild. The fresh-install lane binds its four
+  candidate images to the immutable candidate and image-lock SHA, then scans
+  their immutable image IDs with digest-pinned Trivy and retains a 90-day JSON
+  artifact whose status is `observed`, `partial`, or `unavailable`. Scanner,
+  database, and vulnerability outcomes cannot feed the stable Validation
+  Summary. Local proof passed 55 observer cases, six supply-chain lock tests,
+  439 workflow-composition assertions, CI registration/classifier/planner/lane/
+  portability/runtime-policy suites, actionlint, evidence checksums, and diff
+  checks. Remote RC observation and overhead remain the final acceptance proof.
