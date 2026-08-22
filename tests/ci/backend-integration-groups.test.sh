@@ -32,6 +32,16 @@ assert_not_contains() {
   fi
 }
 
+assert_redis_suite_contract() {
+  local spec="$ROOT_DIR/server/$1"
+
+  [ "$(grep -Fc 'describeWithRedis' "$spec")" -eq 2 ] \
+    || fail "expected $1 to import and invoke describeWithRedis exactly once"
+  if grep -Eq 'describeIfRedis|process\.env\.REDIS_URL[[:space:]]*\?[[:space:]]*describe' "$spec"; then
+    fail "expected $1 to use only the centralized Redis suite contract"
+  fi
+}
+
 main() {
   local groups_file specs_file repo_specs_file repo_count assigned_count
 
@@ -51,6 +61,14 @@ main() {
   "$GROUP_SCRIPT" repositories-core > "$TEST_TEMP_DIR/repositories-core"
   assert_contains "$TEST_TEMP_DIR/ops-destructive" 'tests/integration/ops/phase2OperationsProof.integration.test.ts'
   assert_not_contains "$TEST_TEMP_DIR/ops-workers" 'tests/integration/ops/phase2OperationsProof.integration.test.ts'
+  assert_contains "$TEST_TEMP_DIR/ops-workers" 'tests/integration/worker/deadLetterQueue.integration.test.ts'
+  assert_contains "$TEST_TEMP_DIR/ops-workers" 'tests/integration/worker/jobProcessorLockLoss.integration.test.ts'
+  assert_contains "$TEST_TEMP_DIR/ops-workers" 'tests/integration/worker/notificationDispatcherRetention.integration.test.ts'
+  assert_contains "$TEST_TEMP_DIR/ops-workers" 'tests/integration/worker/recurringSchedules.integration.test.ts'
+  assert_redis_suite_contract 'tests/integration/worker/deadLetterQueue.integration.test.ts'
+  assert_redis_suite_contract 'tests/integration/worker/jobProcessorLockLoss.integration.test.ts'
+  assert_redis_suite_contract 'tests/integration/worker/notificationDispatcherRetention.integration.test.ts'
+  assert_redis_suite_contract 'tests/integration/worker/recurringSchedules.integration.test.ts'
   assert_contains "$TEST_TEMP_DIR/repositories-core" 'tests/integration/repositories/transactionSigningIntentRepository.integration.test.ts'
 
   groups_file="$TEST_TEMP_DIR/groups"

@@ -2,8 +2,12 @@ import { fork, type ChildProcess } from 'node:child_process';
 import { resolve } from 'node:path';
 import { Queue, Worker, type ConnectionOptions, type Job } from 'bullmq';
 import Redis from 'ioredis';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, expect, it } from 'vitest';
 import { DeadLetterQueue } from '../../../src/services/deadLetterQueue';
+import {
+  initializeRedis,
+  shutdownRedis,
+} from '../../../src/infrastructure';
 import { RedisDeadLetterStore } from '../../../src/services/redisDeadLetterStore';
 import {
   closeWorkerSyncQueue,
@@ -11,8 +15,8 @@ import {
 } from '../../../src/services/workerSyncQueue';
 import { toBullMqJobId } from '../../../src/jobs/bullMqJobIds';
 import { setupWorkerEventHandlers } from '../../../src/worker/workerJobQueue/eventHandlers';
+import { describeWithRedis } from '../setup/redis';
 
-const describeIfRedis = process.env.REDIS_URL ? describe : describe.skip;
 const FIXTURE = resolve(
   process.cwd(),
   'tests/fixtures/deadLetterQueueWorker.ts',
@@ -87,7 +91,7 @@ function bullConnection(redisClient: Redis): ConnectionOptions {
   };
 }
 
-describeIfRedis('dead letter queue Redis integration', () => {
+describeWithRedis('dead letter queue Redis integration', () => {
   const children: ChildProcess[] = [];
   const roots: string[] = [];
   let redis: Redis | undefined;
@@ -309,6 +313,7 @@ describeIfRedis('dead letter queue Redis integration', () => {
     const retryJobId = toBullMqJobId(`dead-letter-retry:${entryId}`);
 
     try {
+      await initializeRedis();
       await expect(
         enqueueDeadLetterJob(claim.claim.entry.job, entryId),
       ).resolves.toBe(true);
@@ -326,6 +331,7 @@ describeIfRedis('dead letter queue Redis integration', () => {
       await (await inspector.getJob(retryJobId))?.remove();
       await inspector.close();
       await closeWorkerSyncQueue();
+      await shutdownRedis();
     }
   });
 });

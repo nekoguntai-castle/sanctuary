@@ -140,7 +140,7 @@ duplicated harness ownership.
 
 ## Confirmed gaps
 
-### P1 — Redis integration tests are registered but skipped
+### Resolved in Phase 1e — Redis integration tests are registered but skipped
 
 Four worker integration specs select `describe.skip` unless `REDIS_URL` exists:
 
@@ -149,12 +149,19 @@ Four worker integration specs select `describe.skip` unless `REDIS_URL` exists:
 - `notificationDispatcherRetention.integration.test.ts`
 - `recurringSchedules.integration.test.ts`
 
-All are assigned to the supposedly complete `ops-workers` group
-(`scripts/ci/backend-integration-groups.sh:75-85`), but the full backend
-integration job provisions only Postgres and never sets `REDIS_URL`
-(`test.yml:1373-1575`). Group completeness proves registration, not execution.
-Add a pinned Redis service and explicit readiness/URL setup, or create a named
-Redis-worker integration lane. Add a fail-closed assertion for unexpected skips.
+All were assigned to the supposedly complete `ops-workers` group
+(`scripts/ci/backend-integration-groups.sh:75-85`), but before Phase 1e the full
+backend integration job provisioned only Postgres and never set `REDIS_URL`.
+Group completeness proved registration, not execution.
+Phase 1e adds the digest-pinned Redis service to the existing full backend
+integration lane and sets a strict CI requirement consumed by one shared suite
+helper. Each service health check installs a job-unique password. The resolver
+prefers the runner-published endpoint, but Forgejo v13 can omit that mapping; in
+that case it enumerates concrete alias IPs and accepts exactly one candidate
+that authenticates with this job's password. Local runs without Redis may still
+skip explicitly; CI fails during collection when the required URL is absent or
+the enforcement value is invalid. The same resolver also replaces the browser
+lane's unauthenticated alias lookup.
 
 ### P1 — “Full Browser E2E” excludes auth-dependent browser tests
 
@@ -234,7 +241,7 @@ precisely; measurement itself does not become a required failure point.
 
 ### Phase 1 — Make green checks truthful
 
-- [ ] Provision Redis for the worker integration group and assert that the four
+- [x] Provision Redis for the worker integration group and assert that the four
       Redis suites execute rather than skip.
 - [ ] Seed auth E2E users and remove `SKIP_AUTH_TESTS`, or split/rename the gate
       so its contract is exact.

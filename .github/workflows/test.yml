@@ -814,6 +814,16 @@ jobs:
           --memory-reservation 256m
           --shm-size 256m
 
+      redis:
+        image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
+        ports:
+          - 6379/tcp
+        options: >-
+          --health-cmd "redis-cli CONFIG SET requirepass sanctuary-redis-ci-${{ github.run_id }}-${{ github.run_attempt }}-full-integration >/dev/null 2>&1 || true; redis-cli --no-auth-warning --raw -a sanctuary-redis-ci-${{ github.run_id }}-${{ github.run_attempt }}-full-integration CONFIG GET requirepass 2>/dev/null | grep -Fxq sanctuary-redis-ci-${{ github.run_id }}-${{ github.run_attempt }}-full-integration"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -824,13 +834,17 @@ jobs:
       - name: Setup server dependencies
         uses: ./.github/actions/setup-server-deps
 
-      - name: Resolve Postgres service host
+      - name: Resolve service endpoints
         env:
           POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}
           POSTGRES_PASSWORD: sanctuary-ci-${{ github.run_id }}-${{ github.run_attempt }}-full-integration
-        run: >
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/resolve-postgres.log"
-          ${{ github.workspace }}/scripts/ci/resolve-postgres-service.sh
+          REDIS_PORT: ${{ job.services.redis.ports['6379'] }}
+          REDIS_PASSWORD: sanctuary-redis-ci-${{ github.run_id }}-${{ github.run_attempt }}-full-integration
+        run: |
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/resolve-postgres.log" \
+            ${{ github.workspace }}/scripts/ci/resolve-postgres-service.sh
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/resolve-redis.log" \
+            ${{ github.workspace }}/scripts/ci/resolve-redis-service.sh
 
       - name: Run integration tests
         env:
@@ -844,6 +858,9 @@ jobs:
           PRISMA_TRANSACTION_MAX_WAIT_MS: '10000'
           PRISMA_TRANSACTION_TIMEOUT_MS: '30000'
           SANCTUARY_VITEST_INFRA_ATTEMPTS: '5'
+          # The ops-workers group registers four Redis-backed suites. CI must
+          # fail at collection instead of silently reporting them as skipped.
+          SANCTUARY_REQUIRE_REDIS_INTEGRATION: 'true'
         run: |
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/integration-tests.log" bash -c '
             set -uo pipefail
@@ -1639,7 +1656,7 @@ jobs:
         ports:
           - 6379/tcp
         options: >-
-          --health-cmd "redis-cli ping"
+          --health-cmd "redis-cli CONFIG SET requirepass sanctuary-redis-ci-${{ github.run_id }}-${{ github.run_attempt }}-browser-e2e >/dev/null 2>&1 || true; redis-cli --no-auth-warning --raw -a sanctuary-redis-ci-${{ github.run_id }}-${{ github.run_attempt }}-browser-e2e CONFIG GET requirepass 2>/dev/null | grep -Fxq sanctuary-redis-ci-${{ github.run_id }}-${{ github.run_attempt }}-browser-e2e"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -1708,20 +1725,12 @@ jobs:
           POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}
           POSTGRES_PASSWORD: sanctuary-ci-${{ github.run_id }}-${{ github.run_attempt }}-browser-e2e
           REDIS_PORT: ${{ job.services.redis.ports['6379'] }}
+          REDIS_PASSWORD: sanctuary-redis-ci-${{ github.run_id }}-${{ github.run_attempt }}-browser-e2e
         run: |
           scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/resolve-postgres.log" \
             scripts/ci/resolve-postgres-service.sh
-          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/resolve-redis.log" bash -c '
-            if getent hosts redis >/dev/null 2>&1; then
-              redis_host=redis
-              redis_port=6379
-            else
-              redis_host=localhost
-              redis_port="${REDIS_PORT:-6379}"
-            fi
-
-            echo "REDIS_URL=redis://${redis_host}:${redis_port}" >> "$GITHUB_ENV"
-          '
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/resolve-redis.log" \
+            scripts/ci/resolve-redis-service.sh
 
       - name: Setup backend
         working-directory: server

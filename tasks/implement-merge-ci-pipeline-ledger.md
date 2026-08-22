@@ -16,7 +16,8 @@ Rebuild policy: `after-plan`
 | Phase 3b (rejected pilot) | `main` | `codex/implement-merge/ci-frontend-coverage-parallel` | `/home/nekoguntai/sanctuary-ci-frontend-coverage-parallel` | yes | no | retained as experiment record | [#884](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/884) | not merged (timing rollback) |
 | Phase 3c | `main` | `codex/implement-merge/ci-artifact-policy` | `/home/nekoguntai/sanctuary-ci-artifact-policy` | yes | no | retained pending final cleanup | [#885](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/885) | `f6894c80135e29147e1d37262c038a8632841a20` |
 | Phase 1d | `main` | `codex/implement-merge/ci-quality-push-scope` | `/home/nekoguntai/sanctuary-ci-quality-push-scope` | yes | no | retained pending final cleanup | [#886](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/886) | `1c608ae13f1ad4747ecf2c43226088b56b8eb39b` |
-| Phase 5a | `main` | `codex/implement-merge/ci-hardware-proof-sources` | `/home/nekoguntai/sanctuary-ci-hardware-proof-sources` | yes | no | active | [#887](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/887) | pending |
+| Phase 5a | `main` | `codex/implement-merge/ci-hardware-proof-sources` | `/home/nekoguntai/sanctuary-ci-hardware-proof-sources` | yes | no | retained pending final cleanup | [#887](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/887) | `244aa7c45d7f9e9da3667af05602bc88e95d4ccc` |
+| Phase 1e | `main` | `codex/implement-merge/ci-redis-integration` | `/home/nekoguntai/sanctuary-ci-redis-integration` | yes | no | active | [#888](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/888) | pending |
 
 ## Ownership boundary
 
@@ -202,3 +203,39 @@ from cleanup and mutation.
   dependency-closure change only: all three emulator jobs still execute
   unconditionally, and the existing Vector summary and protected contexts are
   unchanged pending terminal PR and landed-main verification.
+- 2026-08-21: Phase 5a merged through PR #887 as `244aa7c45d`. Its corrected
+  head passed all 30 PR contexts after selector validation was split below the
+  repository CCN threshold. All five landed-main workflows then passed:
+  Architecture 122 seconds, Docker 18 seconds, Quality 748 seconds, Test 1,446
+  seconds, and Vectors 1,008 seconds. The base vector proof and all three
+  emulator proofs remained selected and green.
+- 2026-08-21: Phase 1e starts from exact merged main `244aa7c45d` in a new
+  isolated worktree. It owns the four Redis-conditional worker integration
+  suites, a published-port Redis resolver shared with browser E2E, and explicit
+  fail-closed CI enforcement. It does not change backend integration grouping,
+  retry policy, aggregate names, or protected contexts.
+- 2026-08-21: Phase 1e local rehearsal used the workflow's exact digest-pinned
+  Redis image on a random published localhost port. The shared resolver proved
+  that endpoint, and all four worker files then executed 14/14 tests in 4.10
+  seconds with zero skips. The first positive run exposed two previously hidden
+  test-contract defects: the dead-letter retry fixture had not initialized the
+  real Redis infrastructure used by its production enqueue path, and a BullMQ
+  scheduler assertion required an optional key to exist with value `undefined`.
+  Both fixtures now exercise the production contract accurately. Separate
+  rehearsals prove required-without-URL fails with the exact collection error
+  and optional local mode reports all 14 tests as explicit skips.
+- 2026-08-21: Phase 1e opened as PR #888 at `8a95aa001c` after two independent
+  read-only reviews found no P0-P2 issue. The local pre-commit gate also passed
+  14,266 backend and 7,999 frontend tests. The first remote run owns acceptance
+  of Forgejo's assigned Redis port/gateway behavior and the backend-integration
+  timing threshold; no protected aggregate name or dependency changed.
+- 2026-08-21: PR #888's first remote Test run failed truthfully before both
+  Redis-backed lanes: Forgejo v13 left `job.services.redis.ports['6379']`
+  empty even though both service containers were healthy. Browser and backend
+  integration therefore rejected the missing port, and the two protected Test
+  aggregates failed; the 14 worker cases did not run. The correction does not
+  restore the rotating unauthenticated alias. Instead, each Redis health check
+  installs a job-unique password, and the resolver falls back by enumerating
+  concrete alias IPs and accepting exactly one authenticated candidate. A
+  local digest-pinned password-enabled rehearsal then passed 14/14 worker tests
+  with zero skips in 3.97 seconds. The amended remote run owns final acceptance.

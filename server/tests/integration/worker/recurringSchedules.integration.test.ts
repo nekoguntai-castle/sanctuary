@@ -1,11 +1,11 @@
 import { fork, type ChildProcess } from 'node:child_process';
 import { resolve } from 'node:path';
 import Redis from 'ioredis';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import type { CombinedConfig } from '../../../src/config';
 import { RecurringScheduleCoordinator } from '../../../src/worker/recurringSchedules';
+import { describeWithRedis } from '../setup/redis';
 
-const describeIfRedis = process.env.REDIS_URL ? describe : describe.skip;
 const HEARTBEAT_FIXTURE = resolve(
   process.cwd(),
   'tests/fixtures/recurringHeartbeatWorker.ts',
@@ -48,7 +48,7 @@ function stopChild(child: ChildProcess): Promise<void> {
   });
 }
 
-describeIfRedis('recurring schedule Redis integration', () => {
+describeWithRedis('recurring schedule Redis integration', () => {
   let workerQueue: { shutdown: () => Promise<void> } | undefined;
   let bullQueue: {
     name: string;
@@ -197,13 +197,16 @@ describeIfRedis('recurring schedule Redis integration', () => {
       status: 'created',
     });
     let schedulers = await activeBullQueue.getJobSchedulers();
-    expect(schedulers.filter(({ name }) => name === 'cleanup:test')).toEqual([
+    const cleanupSchedulers = schedulers.filter(
+      ({ name }) => name === 'cleanup:test',
+    );
+    expect(cleanupSchedulers).toEqual([
       expect.objectContaining({
         key: 'maintenance:cleanup:test',
         every: 90_000,
-        pattern: undefined,
       }),
     ]);
+    expect(cleanupSchedulers[0]?.pattern).toBeUndefined();
 
     await activeBullQueue.removeJobScheduler('maintenance:cleanup:test');
     await expect(

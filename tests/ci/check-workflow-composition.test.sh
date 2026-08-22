@@ -1244,6 +1244,8 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "full-backend-integration-tests:" \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/resolve-postgres.log"' \
   "scripts/ci/resolve-postgres-service.sh" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/resolve-redis.log"' \
+  "scripts/ci/resolve-redis-service.sh" \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/integration-tests.log"' \
   "scripts/ci/backend-integration-groups.sh" \
   "scripts/ci/prepare-integration-db.sh" \
@@ -1256,6 +1258,47 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Backend Integration"' \
   "Upload backend integration diagnostics" \
   "ci-diagnostics-backend-integration"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "full backend integration requires its pinned Redis proof" \
+  "full-backend-integration-tests:" \
+  "redis:" \
+  "redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2" \
+  'redis-cli CONFIG SET requirepass sanctuary-redis-ci-${{ github.run_id }}-${{ github.run_attempt }}-full-integration' \
+  'redis-cli --no-auth-warning --raw -a sanctuary-redis-ci-${{ github.run_id }}-${{ github.run_attempt }}-full-integration CONFIG GET requirepass' \
+  'grep -Fxq sanctuary-redis-ci-${{ github.run_id }}-${{ github.run_attempt }}-full-integration' \
+  'REDIS_PORT: ${{ job.services.redis.ports['"'"'6379'"'"'] }}' \
+  'REDIS_PASSWORD: sanctuary-redis-ci-${{ github.run_id }}-${{ github.run_attempt }}-full-integration' \
+  "scripts/ci/resolve-redis-service.sh" \
+  "SANCTUARY_REQUIRE_REDIS_INTEGRATION: 'true'" \
+  'npm run test:run:ci -- "${specs[@]}"'
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "browser uses the verified Redis resolver" \
+  "full-browser-e2e-tests:" \
+  'REDIS_PORT: ${{ job.services.redis.ports['"'"'6379'"'"'] }}' \
+  'REDIS_PASSWORD: sanctuary-redis-ci-${{ github.run_id }}-${{ github.run_attempt }}-browser-e2e' \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/resolve-redis.log"' \
+  "scripts/ci/resolve-redis-service.sh"
+
+assert_occurrence_count "$TEST_WORKFLOW" \
+  "full integration Redis health and resolver share one job-unique credential" \
+  'sanctuary-redis-ci-${{ github.run_id }}-${{ github.run_attempt }}-full-integration' \
+  2
+
+assert_occurrence_count "$TEST_WORKFLOW" \
+  "browser Redis health and resolver share one job-unique credential" \
+  'sanctuary-redis-ci-${{ github.run_id }}-${{ github.run_attempt }}-browser-e2e' \
+  2
+
+assert_occurrence_count "$TEST_WORKFLOW" \
+  "all Redis-backed lanes use the published-port service resolver" \
+  "scripts/ci/resolve-redis-service.sh" \
+  2
+
+assert_not_contains "$TEST_WORKFLOW" \
+  "Redis-backed lanes must not prefer the shared service alias" \
+  "getent hosts redis"
 
 assert_occurrence_count "$TEST_WORKFLOW" \
   "all Postgres-backed lanes use the verified service resolver" \
@@ -2359,10 +2402,18 @@ assert_contains_in_order "$QUALITY_WORKFLOW" \
   "quality frontend Compose contract" \
   "Run CI classifier tests" \
   "node tests/ci/check-hardware-emulator-source-inventory.test.mjs" \
+  "node --check scripts/ci/check-redis-service.mjs" \
+  "node tests/ci/check-redis-service.test.mjs" \
   "node tests/ci/check-npm-install-scripts.test.mjs" \
   "node tests/ci/check-root-layout.test.mjs" \
   "node tests/ci/docker-compose-test-contract.test.mjs" \
   "node tests/ci/provider-context-node.test.mjs"
+
+assert_contains_in_order "$QUALITY_WORKFLOW" \
+  "quality validates the Redis service resolver" \
+  "bash -n scripts/ci/resolve-redis-service.sh" \
+  "bash -n tests/ci/resolve-redis-service.test.sh" \
+  "bash tests/ci/resolve-redis-service.test.sh"
 
 assert_contains_in_order "$QUALITY_WORKFLOW" \
   "quality determine-scope diagnostics" \

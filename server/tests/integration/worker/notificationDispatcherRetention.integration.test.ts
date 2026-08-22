@@ -1,14 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { Job, Queue, QueueEvents, Worker, type ConnectionOptions } from 'bullmq';
 import Redis from 'ioredis';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { toBullMqJobId } from '../../../src/jobs/bullMqJobIds';
+import { describeWithRedis } from '../setup/redis';
 
-const describeIfRedis = process.env.REDIS_URL ? describe : describe.skip;
 const QUEUE_NAME = 'notifications';
 const QUEUE_PREFIX = 'sanctuary:worker';
 
-describeIfRedis('webhook notification retained-job recovery', () => {
+describeWithRedis('webhook notification retained-job recovery', () => {
   let dispatcherShutdown: (() => Promise<void>) | undefined;
   let queue: Queue | undefined;
   let queueEvents: QueueEvents | undefined;

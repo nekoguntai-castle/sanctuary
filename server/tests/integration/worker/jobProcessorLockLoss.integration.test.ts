@@ -3,9 +3,9 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import Redis from 'ioredis';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, expect, it } from 'vitest';
+import { describeWithRedis } from '../setup/redis';
 
-const describeIfRedis = process.env.REDIS_URL ? describe : describe.skip;
 const FIXTURE_PATH = resolve(process.cwd(), 'tests/fixtures/lockOwnershipWorker.ts');
 const MESSAGE_TIMEOUT_MS = 5_000;
 
@@ -55,7 +55,7 @@ function waitForExit(child: ChildProcess): Promise<{ code: number | null; signal
   });
 }
 
-describeIfRedis('job processor lock-loss process fencing', () => {
+describeWithRedis('job processor lock-loss process fencing', () => {
   const children: ChildProcess[] = [];
 
   afterEach(() => {
