@@ -72,6 +72,17 @@ fi
 
 if [ "$1" = run ]; then
   joined=" $* "
+  if [[ "$joined" == *' --entrypoint /bin/sh '* ]] && [[ "$joined" == *' test -S /var/run/docker.sock '* ]]; then
+    case "${FAKE_SOCKET_MODE:-default}" in
+      rootless) [[ "$joined" == *'source=/run/user/1001/podman/podman.sock,target='* ]] ;;
+      default) [[ "$joined" == *'source=/var/run/docker.sock,target='* ]] ;;
+      override) [[ "$joined" == *"source=${EXPECTED_SOCKET_OVERRIDE:-},target="* ]] ;;
+      ambiguous) [[ "$joined" == *'source=/run/user/1001/podman/podman.sock,target='* || "$joined" == *'source=/var/run/docker.sock,target='* ]] ;;
+      none) false ;;
+      *) exit 10 ;;
+    esac
+    exit
+  fi
   if [[ "$joined" == *' --download-db-only '* ]]; then
     [ "${FAKE_SCENARIO:-}" != db-failure ]
     exit
@@ -91,14 +102,19 @@ SH
 }
 
 run_observer() {
-  local root="$1" scenario="${2:-observed}"
-  EXPECTED_LOCK_SHA="$(sha256sum "$root/image-lock.json" | cut -d ' ' -f 1)" \
-  EXPECTED_CANDIDATE="$CANDIDATE" FAKE_SCENARIO="$scenario" \
-  DOCKER_CALLS="$root/docker.calls" SANCTUARY_CI_STEP_SUMMARY_FILE="$root/step-summary.md" \
-  OBSERVER_TEST_SECRET='observer-test-secret' \
-  PATH="$root/bin:$PATH" \
-    "$SCRIPT" --project "$PROJECT" --candidate "$CANDIDATE" \
-      --image-lock "$root/image-lock.json" --output "$root/output"
+  local root="$1" scenario="${2:-observed}" socket_mode="${3:-default}"
+  local override="${4-__unset__}"
+  local -a environment=(env -u SANCTUARY_DOCKER_SOCKET_PATH
+    "EXPECTED_LOCK_SHA=$(sha256sum "$root/image-lock.json" | cut -d ' ' -f 1)"
+    "EXPECTED_CANDIDATE=$CANDIDATE" "FAKE_SCENARIO=$scenario"
+    "FAKE_SOCKET_MODE=$socket_mode" "DOCKER_CALLS=$root/docker.calls"
+    "SANCTUARY_CI_STEP_SUMMARY_FILE=$root/step-summary.md"
+    'OBSERVER_TEST_SECRET=observer-test-secret' "PATH=$root/bin:$PATH")
+  if [ "$override" != __unset__ ]; then
+    environment+=("SANCTUARY_DOCKER_SOCKET_PATH=$override" "EXPECTED_SOCKET_OVERRIDE=$override")
+  fi
+  "${environment[@]}" "$SCRIPT" --project "$PROJECT" --candidate "$CANDIDATE" \
+    --image-lock "$root/image-lock.json" --output "$root/output"
 }
 
 test_observed_contract() {
@@ -118,7 +134,12 @@ test_observed_contract() {
     assert_file_contains "$role candidate tag is inspected" "$root/docker.calls" "sanctuary-$role:$PROJECT"
   done
   assert_file_contains 'scanner is digest pinned' "$root/docker.calls" 'docker.io/aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969'
-  assert_file_contains 'scanner receives the daemon socket' "$root/docker.calls" '/var/run/docker.sock:/var/run/docker.sock'
+  assert_eq 'all scans receive the discovered default socket' 4 \
+    "$(grep -- '--skip-db-update' "$root/docker.calls" | grep -c '/var/run/docker.sock:/var/run/docker.sock:ro')"
+  assert_file_contains 'default discovery probes the rootless candidate first' "$root/docker.calls" \
+    'type=bind\,source=/run/user/1001/podman/podman.sock'
+  assert_file_contains 'default discovery falls back to the Docker socket' "$root/docker.calls" \
+    'type=bind\,source=/var/run/docker.sock'
   assert_file_contains 'cache volume is project labeled' "$root/docker.calls" "com.docker.compose.project=$PROJECT"
   assert_file_contains 'cache volume is removed by the cleanup trap' "$root/docker.calls" "volume rm -f ${PROJECT}-trivy-cache"
   if grep -Eq 'postgres|redis|docker-proxy|grafana' "$root/docker.calls"; then
@@ -133,6 +154,39 @@ test_observed_contract() {
   else
     ok 'observer does not pass unrelated environment secrets to Docker or reports'
   fi
+}
+
+test_socket_selection() {
+  local name="$1" mode="$2" expected="$3" override="${4-__unset__}"
+  local root
+  root="$(make_fixture "$name")"
+  install_fake_docker "$root"
+  run_observer "$root" observed "$mode" "$override"
+
+  assert_eq "$name produces observed evidence" observed "$(jq -r .status "$root/output/status.json")"
+  assert_eq "$name mounts its exact discovered source in all scans" 4 \
+    "$(grep -- '--skip-db-update' "$root/docker.calls" | grep -F -c -- "$expected:/var/run/docker.sock:ro")"
+  if [ "$mode" = override ]; then
+    assert_eq 'an override suppresses default candidate probes' 1 \
+      "$(grep -c -- '--entrypoint /bin/sh' "$root/docker.calls")"
+  fi
+}
+
+test_socket_unavailable() {
+  local name="$1" mode="$2" override="${3-__unset__}"
+  local root
+  root="$(make_fixture "$name")"
+  install_fake_docker "$root"
+  if run_observer "$root" observed "$mode" "$override" >/dev/null 2>&1; then
+    bad "$name should exit nonzero"
+  else
+    ok "$name exits nonzero"
+  fi
+  assert_eq "$name records unavailable status" unavailable "$(jq -r .status "$root/output/status.json")"
+  assert_eq "$name records all four socket failures" 4 \
+    "$(jq '[.roles[] | select(.reason == "Docker daemon socket unavailable or ambiguous")] | length' "$root/output/status.json")"
+  assert_eq "$name does not start a vulnerability DB download" 0 \
+    "$(grep -c -- '--download-db-only' "$root/docker.calls" || true)"
 }
 
 test_partial_contract() {
@@ -201,6 +255,11 @@ test_invalid_inputs() {
 }
 
 test_observed_contract
+test_socket_selection rootless-socket rootless /run/user/1001/podman/podman.sock
+test_socket_selection override-socket override /run/sanctuary/custom.sock /run/sanctuary/custom.sock
+test_socket_unavailable no-socket none
+test_socket_unavailable ambiguous-socket ambiguous
+test_socket_unavailable unsafe-override none '/tmp/socket path.sock'
 test_partial_contract revision-mismatch 'candidate revision label mismatch'
 test_partial_contract lock-mismatch 'image-lock label mismatch'
 test_partial_contract scan-failure 'scanner execution failed'

@@ -616,6 +616,7 @@ assert_named_job_not_contains "$RC" \
 assert_contains_in_order "$RELEASE_GATES" \
   "release gates describe CVE evidence as nonblocking observation" \
   "RC fresh-install validation scans exactly the four candidate-built application" \
+  "daemon-host socket bind source" \
   'status is `observed`, `partial`, or `unavailable`' \
   'do not feed `Validation' \
   "cannot approve or block a release"

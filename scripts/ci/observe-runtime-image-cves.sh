@@ -63,7 +63,8 @@ cleanup_cache() {
 
 prepare_output() {
   mkdir -p -- "$output_dir" "$role_status_dir" || fail 'could not create the report directory'
-  rm -f -- "$output_dir/status.json" "$output_dir/database-update.log"
+  rm -f -- "$output_dir/status.json" "$output_dir/database-update.log" \
+    "$output_dir/socket-probe.log"
 
   local role
   for role in "${IMAGE_ROLES[@]}"; do
@@ -71,6 +72,41 @@ prepare_output() {
       "$output_dir/$role-inspect.log" "$output_dir/$role-scan.log" \
       "$role_status_dir/$role.json"
   done
+}
+
+valid_socket_candidate() {
+  [[ "$1" =~ ^/[A-Za-z0-9._/-]+\.sock$ ]] && \
+    [[ "$1" != *'//'* && "$1" != *'/./'* && "$1" != *'/../'* ]]
+}
+
+probe_socket_candidate() {
+  local socket_path="$1"
+  valid_socket_candidate "$socket_path" || return 1
+
+  docker run --rm --entrypoint /bin/sh \
+    --mount "type=bind,source=$socket_path,target=/var/run/docker.sock,readonly" \
+    "$TRIVY_IMAGE" -c 'test -S /var/run/docker.sock' \
+    >>"$output_dir/socket-probe.log" 2>&1
+}
+
+discover_daemon_socket() {
+  local -a candidates=()
+  if [ "${SANCTUARY_DOCKER_SOCKET_PATH+x}" = x ]; then
+    candidates+=("$SANCTUARY_DOCKER_SOCKET_PATH")
+  else
+    candidates+=(/run/user/1001/podman/podman.sock /var/run/docker.sock)
+  fi
+
+  local socket_path discovered='' matches=0
+  for socket_path in "${candidates[@]}"; do
+    if probe_socket_candidate "$socket_path"; then
+      discovered="$socket_path"
+      matches=$((matches + 1))
+    fi
+  done
+
+  [ "$matches" -eq 1 ] || return 1
+  printf '%s\n' "$discovered"
 }
 
 write_role_status() {
@@ -130,7 +166,7 @@ scan_image() {
 
   if ! docker run --rm --name "$container_name" \
     --label "com.docker.compose.project=$project" \
-    --volume /var/run/docker.sock:/var/run/docker.sock \
+    --volume "$daemon_socket:/var/run/docker.sock:ro" \
     --volume "$cache_volume:/root/.cache" \
     "$TRIVY_IMAGE" image --image-src docker --cache-dir /root/.cache \
     --skip-db-update --scanners vuln --pkg-types os,library \
@@ -156,12 +192,16 @@ scan_image() {
   write_role_status "$role" observed "$image" "$image_id" "$critical" "$high" "$fixable" "$unfixable" ''
 }
 
-mark_database_unavailable() {
-  local role image
+mark_all_unavailable() {
+  local reason="$1" role image
   for role in "${IMAGE_ROLES[@]}"; do
     image="sanctuary-$role:$project"
-    write_role_status "$role" unavailable "$image" '' 0 0 0 0 'vulnerability database unavailable'
+    write_role_status "$role" unavailable "$image" '' 0 0 0 0 "$reason"
   done
+}
+
+mark_database_unavailable() {
+  mark_all_unavailable 'vulnerability database unavailable'
 }
 
 write_overall_status() {
@@ -218,7 +258,10 @@ main() {
   trap 'exit 130' INT
   trap 'exit 143' TERM
 
-  if ! docker volume create --label "com.docker.compose.project=$project" "$cache_volume" >/dev/null; then
+  daemon_socket="$(discover_daemon_socket)" || daemon_socket=''
+  if [ -z "$daemon_socket" ]; then
+    mark_all_unavailable 'Docker daemon socket unavailable or ambiguous'
+  elif ! docker volume create --label "com.docker.compose.project=$project" "$cache_volume" >/dev/null; then
     mark_database_unavailable
   elif ! download_database; then
     mark_database_unavailable

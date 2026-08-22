@@ -21,7 +21,8 @@ Rebuild policy: `after-plan`
 | Phase 5b | `main` | `codex/implement-merge/ci-hardware-shadow` | `/home/nekoguntai/sanctuary-ci-hardware-shadow` | yes | no | retained pending final cleanup | [#889](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/889) | `32e2dfe0d99e87da3ba5aa75b7b32e778bb878a4` |
 | Phase 1f | `main` | `codex/implement-merge/ci-auth-e2e-fidelity` | `/home/nekoguntai/sanctuary-ci-auth-e2e-fidelity` | yes | no | cleaned after landed-main verification | [#891](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/891) | `2b5d05b818d33609b45748f51fa72079d5a8dad6` |
 | Phase 4 | `main` | `codex/implement-merge/ci-release-preflight-truth` | `/home/nekoguntai/sanctuary-ci-release-preflight-truth` | yes | no | cleaned after landed-main and manual RC verification | [#892](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/892) | `a355673249e98c2b3cfff38a7f5643b2968e517b` |
-| Phase 3d | `main` | `codex/implement-merge/ci-quality-artifact-policy` | `/home/nekoguntai/sanctuary-ci-quality-artifact-policy` | yes | no | prepared locally | pending | pending |
+| Phase 3d | `main` | `codex/implement-merge/ci-quality-artifact-policy` | `/home/nekoguntai/sanctuary-ci-quality-artifact-policy` | yes | no | retained pending final cleanup | [#893](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/893) | `6436668d9766ba2be180f664c874f1a096f207ca` |
+| Phase 3e | `main` | `codex/implement-merge/ci-runtime-cve-socket` | `/home/nekoguntai/sanctuary-ci-runtime-cve-socket` | yes | no | active correction | pending | pending |
 
 ## Ownership boundary
 
@@ -370,3 +371,20 @@ from cleanup and mutation.
   439 workflow-composition assertions, CI registration/classifier/planner/lane/
   portability/runtime-policy suites, actionlint, evidence checksums, and diff
   checks. Remote RC observation and overhead remain the final acceptance proof.
+- 2026-08-22: Phase 3d merged through PR #893 as `6436668d97`. All five PR
+  workflows and the exact three protected contexts passed. Quality success
+  retained only Semgrep and jscpd reports and emitted zero verbose
+  `ci-diagnostics-quality-*` artifacts. Landed Architecture, Docker, Quality,
+  Test, and Vector workflows then passed in 134, 835, 828, 1,519, and 1,033
+  seconds respectively, with the same success-artifact result.
+- 2026-08-22: Controlled RC run 12006 proved candidate and image-lock binding
+  for all four immutable application image IDs, preserved the truthful
+  nonblocking Validation Summary, and completed successfully in 350 seconds.
+  The observer itself occupied about 12 seconds, below its 60-second threshold;
+  the 111-second workflow delta versus run 11995 came primarily from a
+  99-second increase in the unchanged fresh-install core. The first remote
+  artifact correctly reported `unavailable`, not clean: Trivy downloaded its
+  database, but every scan failed because the nested container tried to mount
+  job-local `/var/run/docker.sock` as a daemon-host path on the rootless Podman
+  runner. Phase 3e therefore owns the deterministic socket-discovery correction;
+  no release gate or summary dependency changes.

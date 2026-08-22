@@ -18,7 +18,8 @@ This document records the checks that should protect the A-grade engineering goa
 
 RC fresh-install validation scans exactly the four candidate-built application
 images with digest-pinned Trivy after verifying their candidate and image-lock
-OCI labels. The 90-day JSON artifact is evidence for deciding a future policy;
+OCI labels and the daemon-host socket bind source. The 90-day JSON artifact is
+evidence for deciding a future policy;
 its status is `observed`, `partial`, or `unavailable`, never “passed” or “clean.”
 Scanner/database failure and vulnerability findings do not feed `Validation
 Summary` and cannot approve or block a release. New high or critical production

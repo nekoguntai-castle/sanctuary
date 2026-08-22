@@ -259,9 +259,10 @@ install evidence, and never publishes from CI:
 - `Release Candidate Validation` resolves one immutable candidate SHA and runs unit, hardware-compatibility, and fresh-install preflight checks. Its stable `Validation Summary` explicitly leaves release approval pending.
 - The RC fresh-install lane also observes high/critical CVEs in exactly the four
   candidate-built application images. It verifies candidate and image-lock OCI
-  labels, scans immutable image IDs with digest-pinned Trivy, and retains JSON
-  evidence for 90 days. This observer is nonblocking and reports `observed`,
-  `partial`, or `unavailable`; it is not release approval and is not consumed by
+  labels, discovers and verifies the daemon-host socket bind source on
+  containerized rootless runners, scans immutable image IDs with digest-pinned
+  Trivy, and retains JSON evidence for 90 days. This observer is nonblocking and
+  reports `observed`, `partial`, or `unavailable`; it is not release approval and is not consumed by
   `Validation Summary`. Consider a blocking policy only after at least 95% report
   availability and an owned remediation baseline; roll the observer back if its
   p95 RC overhead exceeds 60 seconds or scanner/DB failures become persistent.
