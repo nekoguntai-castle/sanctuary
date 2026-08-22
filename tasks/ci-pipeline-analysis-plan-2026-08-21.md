@@ -238,7 +238,8 @@ precisely; measurement itself does not become a required failure point.
       Redis suites execute rather than skip.
 - [ ] Seed auth E2E users and remove `SKIP_AUTH_TESTS`, or split/rename the gate
       so its contract is exact.
-- [x] Add `quality.yml` push-to-main coverage and test the aggregate behavior.
+- [x] Add `quality.yml` push-to-main coverage, classify the exact landed range,
+      and fail closed when range evidence is unavailable.
 - [ ] Make RC approval consume canonical same-commit install/upgrade evidence,
       then remove stale inputs and claims.
 - [x] Add LLM proxy lint, explicit gateway build/typecheck, and local/CI coverage

@@ -2160,6 +2160,13 @@ assert_contains_in_order "$QUALITY_WORKFLOW" \
   "- main" \
   "pull_request:"
 
+assert_contains_in_order "$QUALITY_WORKFLOW" \
+  "quality classifies the exact landed-main push range" \
+  "Classify quality scope" \
+  'PUSH_BEFORE_SHA: ${{ github.event.before }}' \
+  'WORKFLOW_SHA: ${{ github.sha }}' \
+  "scripts/ci/classify-quality-scope.sh"
+
 assert_contains_in_order "$REPO_ROOT/config/tooling/eslint.config.js" \
   "LLM egress proxy production source receives the TypeScript lint policy" \
   "const productionSource" \

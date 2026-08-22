@@ -7,7 +7,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 event_name="$(ci_event_name)"
 workflow_sha="$(ci_event_head_sha)"
-origin_main_ref="${ORIGIN_MAIN_REF:-origin/main}"
 
 run_repo_quality=true
 run_workflow_quality=false
@@ -58,7 +57,9 @@ case "$event_name" in
 esac
 
 if [ -z "$base_sha" ]; then
-  base_sha="$(git merge-base "$origin_main_ref" "$head_sha")"
+  mark_full_quality
+  emit_outputs
+  exit 0
 fi
 
 ensure_commit() {
@@ -116,6 +117,6 @@ while IFS= read -r file; do
   if ! is_repo_quality_exempt_file "$file"; then
     run_repo_quality=true
   fi
-done < <(git diff --name-only "$base_sha" "$head_sha")
+done < <(git diff --no-renames --name-only "$base_sha" "$head_sha")
 
 emit_outputs

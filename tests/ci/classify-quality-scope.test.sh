@@ -36,6 +36,7 @@ run_classifier() {
   local head_sha="$3"
   local output_file="$4"
   local event_name="${5:-push}"
+  local include_base_sha="${6:-true}"
 
   : > "$output_file"
   (
@@ -44,7 +45,12 @@ run_classifier() {
     export GITHUB_OUTPUT="$output_file"
     export MERGE_GROUP_BASE_SHA="$base_sha"
     export MERGE_GROUP_HEAD_SHA="$head_sha"
-    export PUSH_BEFORE_SHA="$base_sha"
+    if [ "$include_base_sha" = true ]; then
+      export PUSH_BEFORE_SHA="$base_sha"
+      export PR_BASE_SHA="$base_sha"
+    else
+      unset PUSH_BEFORE_SHA PR_BASE_SHA MERGE_GROUP_BASE_SHA
+    fi
     export WORKFLOW_SHA="$head_sha"
     bash "$CLASSIFIER_SCRIPT"
   )
@@ -62,6 +68,16 @@ main() {
   base_sha="$(git -C "$repo_dir" rev-parse HEAD)"
 
   run_classifier "$repo_dir" "$base_sha" "$base_sha" "$output_file" "schedule"
+  assert_exact_output "$output_file" "run_repo_quality" "true"
+  assert_exact_output "$output_file" "run_workflow_quality" "true"
+  assert_exact_output "$output_file" "run_ci_classifier_tests" "true"
+
+  run_classifier "$repo_dir" "$base_sha" "$base_sha" "$output_file" "push" false
+  assert_exact_output "$output_file" "run_repo_quality" "true"
+  assert_exact_output "$output_file" "run_workflow_quality" "true"
+  assert_exact_output "$output_file" "run_ci_classifier_tests" "true"
+
+  run_classifier "$repo_dir" "$base_sha" "$base_sha" "$output_file" "pull_request" false
   assert_exact_output "$output_file" "run_repo_quality" "true"
   assert_exact_output "$output_file" "run_workflow_quality" "true"
   assert_exact_output "$output_file" "run_ci_classifier_tests" "true"
@@ -123,6 +139,23 @@ main() {
   printf 'export const example = 1;\n' > "$repo_dir/server/src/example.ts"
   git -C "$repo_dir" add server/src/example.ts
   git -C "$repo_dir" commit -qm "code change"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "run_repo_quality" "true"
+  assert_exact_output "$output_file" "run_workflow_quality" "false"
+  assert_exact_output "$output_file" "run_ci_classifier_tests" "false"
+
+  base_sha="$head_sha"
+  mkdir -p "$repo_dir/src"
+  printf 'export const renamed = true;\n' > "$repo_dir/src/renamed.ts"
+  git -C "$repo_dir" add src/renamed.ts
+  git -C "$repo_dir" commit -qm "add source before rename"
+  base_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  mkdir -p "$repo_dir/docs"
+  git -C "$repo_dir" mv src/renamed.ts docs/renamed.md
+  git -C "$repo_dir" commit -qm "rename source to docs"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
 
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"

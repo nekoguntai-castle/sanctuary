@@ -14,7 +14,8 @@ Rebuild policy: `after-plan`
 | Phase 2b | `main` | `codex/implement-merge/ci-quick-lane-dedup` | `/home/nekoguntai/sanctuary-ci-quick-lane-dedup` | yes | no | retained pending final cleanup | [#882](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/882) | `908d7ede694a9772aa246565c0749fb8064f5860` |
 | Phase 3a | `main` | `codex/implement-merge/ci-architecture-scope` | `/home/nekoguntai/sanctuary-ci-architecture-scope` | yes | no | retained pending final cleanup | [#883](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/883) | `07c7d37cac14f461b7cd6e321ddebf8e7f07712d` |
 | Phase 3b (rejected pilot) | `main` | `codex/implement-merge/ci-frontend-coverage-parallel` | `/home/nekoguntai/sanctuary-ci-frontend-coverage-parallel` | yes | no | retained as experiment record | [#884](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/884) | not merged (timing rollback) |
-| Phase 3c | `main` | `codex/implement-merge/ci-artifact-policy` | `/home/nekoguntai/sanctuary-ci-artifact-policy` | yes | no | active | [#885](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/885) | pending |
+| Phase 3c | `main` | `codex/implement-merge/ci-artifact-policy` | `/home/nekoguntai/sanctuary-ci-artifact-policy` | yes | no | retained pending final cleanup | [#885](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/885) | `f6894c80135e29147e1d37262c038a8632841a20` |
+| Phase 1d | `main` | `codex/implement-merge/ci-quality-push-scope` | `/home/nekoguntai/sanctuary-ci-quality-push-scope` | yes | no | active | [#886](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/886) | pending |
 
 ## Ownership boundary
 
@@ -146,3 +147,21 @@ from cleanup and mutation.
   extraction path, removes an unused mutation download, and makes 16 verbose
   Test diagnostic bundles plus two Playwright HTML reports failure-only while
   preserving coverage, mutation, and Playwright timing evidence.
+- 2026-08-21: Phase 3c merged through PR #885 as `f6894c8013`. Its final PR
+  Test run passed in 1,422 seconds. Full Test Summary downloaded all four
+  coverage artifacts successfully, including gateway coverage at the corrected
+  extraction root. The successful run retained 13 required coverage, mutation,
+  and Playwright timing artifacts while publishing no verbose diagnostic or
+  Playwright HTML artifact.
+- 2026-08-21: The Phase 3c landed-main quality run 11881 exposed a distinct
+  Phase 1 contract defect: `Determine Quality Scope` did not receive the push
+  event's `before` SHA, diffed the merge commit against itself, and skipped 11
+  quality jobs. Phase 1d starts from exact merged main `f6894c8013`; it owns
+  exact push-range wiring, fail-closed missing-range behavior, and cross-scope
+  rename classification without changing the protected aggregate name.
+- 2026-08-21: Phase 1d PR #886's first complete Quality attempt selected all
+  intended leaves and passed 11 of them. Workflow lint never reached actionlint:
+  runner 1c1c5ea1 timed out in the Podman archive API while copying workflow
+  command files after checkout. Local actionlint and the independent diff review
+  remain clean; the failed attempt is classified as a proven runner fault, not
+  a source failure.
