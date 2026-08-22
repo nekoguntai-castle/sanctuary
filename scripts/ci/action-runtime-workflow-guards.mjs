@@ -96,8 +96,7 @@ export function inspectStrictFullTestSummaryGate(workflow, relativePath, state) 
 function inspectExhaustivePrDeduplication(workflow, relativePath, state) {
   const mappings = [
     ['quick-frontend-tests', 'full-frontend-coverage-merge', 'frontend_changed'],
-    ['quick-backend-typecheck', 'full-backend-typecheck', 'backend_changed'],
-    ['quick-critical-mutation-shards', 'full-critical-mutation-shards', 'critical_mutation_changed'],
+    ['quick-critical-mutation', 'full-critical-mutation-shards', 'critical_mutation_changed'],
     ['quick-gateway-tests', 'full-gateway-tests', 'gateway_changed'],
     ['quick-llm-egress-proxy-tests', 'full-llm-egress-proxy-tests', 'llm_egress_proxy_changed'],
     ['quick-browser-smoke', 'full-browser-e2e-tests', 'browser_smoke_changed'],

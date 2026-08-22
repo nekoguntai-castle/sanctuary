@@ -141,20 +141,24 @@ this Tier 0 checklist before retrying.
 
 ### Tier 1 - PR Feedback And Full Gate
 
-The PR quick lane provides changed-file feedback before the path-aware full lane.
-Both lanes are currently part of the required pre-merge contract.
+The PR quick lane and path-aware full lane start concurrently after changed-file
+classification. Both lanes are part of the required pre-merge contract, but the
+quick lane is feedback rather than a prerequisite for starting exhaustive work.
 
 `Test Suite` runs changed-file detection and then conditionally runs:
 
 - Test hygiene for changed tests.
-- Frontend typecheck plus related Vitest tests.
-- Backend test typecheck in a DB-free job plus DB-backed related non-integration Vitest tests.
+- Frontend related Vitest tests; strict typechecks run once in the full lane.
+- Backend related non-integration Vitest tests. The test typecheck runs once in
+  the full lane.
 - Backend integration smoke for backend changes that touch integration-sensitive surfaces, such as API routes, middleware, repositories, Prisma migrations, worker/queue infrastructure, package/config files, or integration tests. Clearly unit-scoped backend helper changes still run backend typecheck and related non-integration tests, but skip the DB-backed smoke lane.
 - Gateway related tests.
 - LLM egress proxy build plus the dedicated `tests/llm-egress-proxy` suite for `llm-egress-proxy/` source/config changes and `tests/llm-egress-proxy/` changes. These paths do not run frontend tests unless a separate frontend path changed.
 - Chromium browser smoke only for browser-flow-relevant paths such as app routing, auth/API clients, selected shell routes, server API/routing/auth middleware, and non-render E2E specs.
 - Chromium render regression only for visual/rendering paths such as app shell, components, hooks, providers, themes, utilities, and render-regression fixtures/snapshots.
-- Critical mutation gate for critical Bitcoin/auth/access-control paths.
+- Critical mutation configuration sanity for critical
+  Bitcoin/auth/access-control paths. The full lane owns the single exhaustive
+  pre-merge mutation execution.
 
 `PR Required Checks` fails if any required quick-lane child or `Full Test
 Summary` fails, and allows skipped path-conditional children.
@@ -179,7 +183,7 @@ Markdown and MDX files are docs-only for the test classifiers, including package
 - Full backend unit coverage for backend changes, test-workflow changes, or exhaustive runs. This remains DB-backed and keeps publishing the stable `backend-coverage` artifact.
 - Full backend integration tests for integration-sensitive backend changes, test-workflow changes, or exhaustive runs. Integration-sensitive paths include API routes, middleware, repositories, Prisma migrations, worker/queue infrastructure, package/config files, and integration tests. Clearly unit-scoped backend helpers skip the DB-backed integration groups on merge/main but still run backend typecheck and unit coverage.
 - `Full Backend Tests` remains the aggregate backend result consumed by `Full Test Summary`, so branch protection does not depend on path-conditional source or integration leaf jobs.
-- Full frontend app typecheck, test typecheck, and threshold-enforced coverage for frontend changes, test-workflow changes, or exhaustive runs. Typechecks currently run in a small matrix. The two logical coverage shards run sequentially after one checkout/install in the coverage job, which then combines their blob reports, generates the normal `coverage/` output, and enforces the existing thresholds once. The `full-frontend-tests` job remains the aggregate result consumed by `Full Test Summary`.
+- Full frontend app typecheck, test typecheck, and threshold-enforced coverage for frontend changes, test-workflow changes, or exhaustive runs. The three typecheck commands run as separately timed steps after one checkout/install. The two logical coverage shards run sequentially after one checkout/install in the coverage job, which then combines their blob reports, generates the normal `coverage/` output, and enforces the existing thresholds once. The `full-frontend-tests` job remains the aggregate result consumed by `Full Test Summary`.
 - Full gateway coverage for gateway changes, test-workflow changes, or exhaustive runs.
 - Full LLM egress proxy build plus `tests/llm-egress-proxy` for LLM egress proxy changes, test-workflow changes, or exhaustive runs.
 - Critical mutation gate for critical mutation paths or exhaustive runs.

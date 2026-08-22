@@ -171,12 +171,10 @@ jobs:
       needs.detect-changes.outputs.test_suite_changed != 'true' &&
       needs.detect-changes.outputs.frontend_changed == 'true' &&
       (needs.quick-test-hygiene.result == 'success' ||
-       needs.quick-test-hygiene.result == 'skipped') &&
-      (needs.quick-critical-mutation.result == 'success' ||
-       needs.quick-critical-mutation.result == 'skipped')
+       needs.quick-test-hygiene.result == 'skipped')
     runs-on: ubuntu-22.04
     timeout-minutes: 20
-    needs: [detect-changes, quick-test-hygiene, quick-critical-mutation]
+    needs: [detect-changes, quick-test-hygiene]
     env:
       DIAGNOSTIC_DIR: .tmp/ci-diagnostics/quick-frontend
     steps:
@@ -205,9 +203,6 @@ jobs:
               sleep $((attempt * 10))
             done
             bash scripts/ci/setup-verifier-test-dependencies.sh
-            npm run typecheck:app
-            npm run typecheck:tests
-            npm run typecheck:all
             related_files=()
             if [ -n "$FRONTEND_FILES" ]; then
               read -r -a related_files <<< "$FRONTEND_FILES"
@@ -231,68 +226,15 @@ jobs:
           include-hidden-files: true
           retention-days: 7
 
-  quick-backend-typecheck:
-    name: Quick Backend Typecheck
-    if: >-
-      github.event_name == 'pull_request' &&
-      needs.detect-changes.outputs.full_scan != 'true' &&
-      needs.detect-changes.outputs.test_suite_changed != 'true' &&
-      needs.detect-changes.outputs.backend_changed == 'true'
-    runs-on: ubuntu-22.04
-    timeout-minutes: 20
-    needs: [detect-changes]
-    env:
-      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quick-backend-typecheck
-    defaults:
-      run:
-        working-directory: server
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-
-      - name: Verify Node.js toolchain
-        uses: ./.github/actions/setup-node-toolchain
-
-      - name: Setup server dependencies
-        uses: ./.github/actions/setup-server-deps
-
-      - name: Run server test typecheck
-        env:
-          SANCTUARY_RETRY_ATTEMPTS: '5'
-        run: >
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/server-test-typecheck.log"
-          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
-          ${{ github.workspace }}/scripts/ci/retry-command.sh "quick backend typecheck"
-          ${{ github.workspace }}/scripts/ci/time-command.sh "quick backend typecheck"
-          npm run typecheck:tests
-
-      - name: Write quick backend typecheck diagnostic summary
-        if: always()
-        continue-on-error: true
-        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Backend Typecheck"
-
-      - name: Upload quick backend typecheck diagnostics
-        if: always()
-        continue-on-error: true
-        uses: ./.github/actions/upload-artifact
-        with:
-          name: ci-diagnostics-quick-backend-typecheck
-          path: .tmp/ci-diagnostics/quick-backend-typecheck/
-          if-no-files-found: ignore
-          include-hidden-files: true
-          retention-days: 7
-
   quick-backend-tests:
     name: Quick Backend Tests
     if: |
       always() &&
       github.event_name == 'pull_request' &&
-      needs.detect-changes.outputs.backend_changed == 'true' &&
-      needs.quick-backend-typecheck.result == 'success'
+      needs.detect-changes.outputs.backend_changed == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 20
-    needs: [detect-changes, quick-backend-typecheck]
+    needs: [detect-changes]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quick-backend-tests
     defaults:
@@ -397,11 +339,10 @@ jobs:
     if: |
       always() &&
       github.event_name == 'pull_request' &&
-      needs.detect-changes.outputs.backend_integration_changed == 'true' &&
-      needs.quick-backend-tests.result == 'success'
+      needs.detect-changes.outputs.backend_integration_changed == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 25
-    needs: [detect-changes, quick-backend-tests]
+    needs: [detect-changes]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quick-backend-integration-smoke
     defaults:
@@ -482,146 +423,26 @@ jobs:
           include-hidden-files: true
           retention-days: 7
 
-  # Sharded Stryker runs. Each shard mutates a disjoint subset of files so
-  # they can run in parallel. Reports are merged + gated by
-  # `quick-critical-mutation` below, which downstream `needs:` keep referencing
-  # so existing branch protection / status checks need no changes.
-  quick-critical-mutation-shards:
-    name: Quick Critical Mutation Gate (shard ${{ matrix.shard }})
-    if: |
-      always() &&
+  quick-critical-mutation:
+    name: Quick Critical Mutation Configuration
+    # The exhaustive full mutation gate is the single pre-merge execution.
+    # This quick lane only proves that its shard/configuration contract loads,
+    # avoiding a second three-runner Stryker pass for the same pull request.
+    if: >-
       github.event_name == 'pull_request' &&
       needs.detect-changes.outputs.full_scan != 'true' &&
       needs.detect-changes.outputs.test_suite_changed != 'true' &&
-      needs.detect-changes.outputs.critical_mutation_changed == 'true' &&
-      (needs.quick-backend-integration-smoke.result == 'success' ||
-       needs.quick-backend-integration-smoke.result == 'skipped')
+      needs.detect-changes.outputs.critical_mutation_changed == 'true'
     runs-on: ubuntu-22.04
-    timeout-minutes: 60
-    needs: [detect-changes, quick-backend-integration-smoke]
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3]
-    env:
-      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quick-critical-mutation-shard-${{ matrix.shard }}
-      MUTATION_SHARD: ${{ matrix.shard }}
-    defaults:
-      run:
-        working-directory: server
+    timeout-minutes: 5
+    needs: [detect-changes]
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Verify Node.js toolchain
-        uses: ./.github/actions/setup-node-toolchain
-
-      - name: Setup server dependencies
-        uses: ./.github/actions/setup-server-deps
-
-      # Stryker's `incremental: true` only helps when the cache file persists
-      # across CI runs. Each shard has its own incremental file
-      # (`.stryker-cache/critical-incremental.shard-N.json`) and its own cache
-      # key prefix so shards don't invalidate each other's caches.
-      - name: Restore Stryker incremental cache (shard ${{ matrix.shard }})
-        uses: ./.github/actions/cache
-        with:
-          path: server/.stryker-cache
-          key: stryker-critical-shard-${{ matrix.shard }}-${{ hashFiles('server/src/services/bitcoin/addressDerivation.ts', 'server/src/services/bitcoin/addressDerivation/**', 'server/src/services/bitcoin/psbtValidation.ts', 'server/src/services/bitcoin/psbtInfo.ts', 'server/src/services/bitcoin/validationEvidenceContracts.ts', 'server/src/services/bitcoin/transactions/broadcastContracts.ts', 'server/src/services/bitcoin/transactions/broadcasting.ts', 'server/src/services/bitcoin/blockchain/broadcastPreflight.ts', 'server/src/services/bitcoin/signingIntent/**', 'server/src/repositories/transactionSigningIntentRepository.ts', 'server/src/api/transactions/broadcasting.ts', 'server/src/middleware/auth.ts', 'server/src/services/accessControl.ts', 'server/scripts/mutation/shards.mjs', 'server/stryker.critical.config.mjs') }}
-          restore-keys: |
-            stryker-critical-shard-${{ matrix.shard }}-
-
-      - name: Run critical mutation shard ${{ matrix.shard }}
-        run: >
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/critical-mutation-gate.log"
-          npm run test:mutation:critical:shard
-
-      - name: Upload critical mutation shard report
-        if: always()
-        uses: ./.github/actions/upload-artifact
-        with:
-          name: critical-mutation-report-pr-shard-${{ matrix.shard }}
-          path: server/reports/mutation/
-          retention-days: 14
-
-      - name: Write quick critical mutation diagnostic summary
-        if: always()
-        continue-on-error: true
-        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Critical Mutation shard ${{ matrix.shard }}"
-
-      - name: Upload quick critical mutation diagnostics
-        if: always()
-        continue-on-error: true
-        uses: ./.github/actions/upload-artifact
-        with:
-          name: ci-diagnostics-quick-critical-mutation-shard-${{ matrix.shard }}
-          path: .tmp/ci-diagnostics/quick-critical-mutation-shard-${{ matrix.shard }}/
-          if-no-files-found: ignore
-          include-hidden-files: true
-          retention-days: 7
-
-  quick-critical-mutation:
-    name: Quick Critical Mutation Gate
-    # Runs whenever the shards finished (success OR failure). The first step
-    # propagates a shard-level failure as a hard failure of the gate so a
-    # broken shard cannot be silently observed as 'skipped' by the umbrella.
-    if: |
-      always() &&
-      github.event_name == 'pull_request' &&
-      needs.detect-changes.outputs.critical_mutation_changed == 'true' &&
-      (needs.quick-critical-mutation-shards.result == 'success' ||
-       needs.quick-critical-mutation-shards.result == 'failure')
-    runs-on: ubuntu-22.04
-    timeout-minutes: 10
-    needs: [detect-changes, quick-critical-mutation-shards]
-    defaults:
-      run:
-        working-directory: server
-
-    steps:
-      - name: Fail fast if any shard failed
-        if: needs.quick-critical-mutation-shards.result != 'success'
-        run: |
-          echo "::error::One or more Quick Critical Mutation shards failed (result: ${{ needs.quick-critical-mutation-shards.result }}). Refusing to run the aggregator so the gate cannot be silently bypassed."
-          exit 1
-
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-
-      - name: Verify Node.js toolchain
-        uses: ./.github/actions/setup-node-toolchain
-
-      - name: Download shard 1 report
-        uses: ./.github/actions/download-artifact
-        with:
-          name: critical-mutation-report-pr-shard-1
-          path: server/reports/mutation/
-
-      - name: Download shard 2 report
-        uses: ./.github/actions/download-artifact
-        with:
-          name: critical-mutation-report-pr-shard-2
-          path: server/reports/mutation/
-
-      - name: Download shard 3 report
-        uses: ./.github/actions/download-artifact
-        with:
-          name: critical-mutation-report-pr-shard-3
-          path: server/reports/mutation/
-
-      - name: Merge shard reports and run gate
-        run: |
-          npm run mutation:merge-shards
-          node scripts/mutation/check-critical-mutation-gate.mjs
-
-      - name: Upload merged critical mutation report
-        if: always()
-        uses: ./.github/actions/upload-artifact
-        with:
-          name: critical-mutation-report-pr
-          path: server/reports/mutation/critical-mutation-report.json
-          retention-days: 14
+      - name: Validate critical mutation shard contract
+        run: node scripts/ci/check-critical-mutation-config.mjs
 
   quick-gateway-tests:
     name: Quick Gateway Tests
@@ -797,11 +618,9 @@ jobs:
       github.event_name == 'pull_request' &&
       needs.detect-changes.outputs.full_scan != 'true' &&
       needs.detect-changes.outputs.test_suite_changed != 'true' &&
-      needs.detect-changes.outputs.browser_smoke_changed == 'true' &&
-      (needs.quick-frontend-tests.result == 'success' ||
-       needs.quick-frontend-tests.result == 'skipped')
+      needs.detect-changes.outputs.browser_smoke_changed == 'true'
     runs-on: ubuntu-22.04
-    needs: [detect-changes, quick-frontend-tests]
+    needs: [detect-changes]
     timeout-minutes: 30
     env:
       DIAGNOSTIC_DIR: .tmp/ci-diagnostics/quick-browser
@@ -890,11 +709,9 @@ jobs:
       github.event_name == 'pull_request' &&
       needs.detect-changes.outputs.full_scan != 'true' &&
       needs.detect-changes.outputs.test_suite_changed != 'true' &&
-      needs.detect-changes.outputs.render_changed == 'true' &&
-      (needs.quick-browser-smoke.result == 'success' ||
-       needs.quick-browser-smoke.result == 'skipped')
+      needs.detect-changes.outputs.render_changed == 'true'
     runs-on: ubuntu-22.04
-    needs: [detect-changes, quick-browser-smoke]
+    needs: [detect-changes]
     timeout-minutes: 30
     env:
       DIAGNOSTIC_DIR: .tmp/ci-diagnostics/quick-render
@@ -988,7 +805,6 @@ jobs:
       - detect-changes
       - quick-test-hygiene
       - quick-frontend-tests
-      - quick-backend-typecheck
       - quick-backend-tests
       - quick-backend-integration-smoke
       - quick-critical-mutation
@@ -1003,7 +819,6 @@ jobs:
           DETECT_CHANGES: ${{ needs.detect-changes.result }}
           QUICK_TEST_HYGIENE: ${{ needs.quick-test-hygiene.result }}
           QUICK_FRONTEND_TESTS: ${{ needs.quick-frontend-tests.result }}
-          QUICK_BACKEND_TYPECHECK: ${{ needs.quick-backend-typecheck.result }}
           QUICK_BACKEND_TESTS: ${{ needs.quick-backend-tests.result }}
           QUICK_BACKEND_INTEGRATION_SMOKE: ${{ needs.quick-backend-integration-smoke.result }}
           QUICK_CRITICAL_MUTATION: ${{ needs.quick-critical-mutation.result }}
@@ -1043,10 +858,9 @@ jobs:
           require_success "Detect Changed Files" "$DETECT_CHANGES"
           allow_success_or_skipped "Quick Test Hygiene" "$QUICK_TEST_HYGIENE"
           allow_success_or_skipped "Quick Frontend Tests" "$QUICK_FRONTEND_TESTS"
-          allow_success_or_skipped "Quick Backend Typecheck" "$QUICK_BACKEND_TYPECHECK"
           allow_success_or_skipped "Quick Backend Tests" "$QUICK_BACKEND_TESTS"
           allow_success_or_skipped "Quick Backend Integration Smoke" "$QUICK_BACKEND_INTEGRATION_SMOKE"
-          allow_success_or_skipped "Quick Critical Mutation Gate" "$QUICK_CRITICAL_MUTATION"
+          allow_success_or_skipped "Quick Critical Mutation Configuration" "$QUICK_CRITICAL_MUTATION"
           allow_success_or_skipped "Quick Gateway Tests" "$QUICK_GATEWAY_TESTS"
           allow_success_or_skipped "Quick LLM Egress Proxy Tests" "$QUICK_LLM_EGRESS_PROXY_TESTS"
           allow_success_or_skipped "Quick Browser Smoke" "$QUICK_BROWSER_SMOKE"
@@ -1062,87 +876,17 @@ jobs:
     if: always()
     runs-on: ubuntu-22.04
     timeout-minutes: 10
-    needs:
-      - detect-changes
-      - quick-test-hygiene
-      - quick-frontend-tests
-      - quick-backend-typecheck
-      - quick-backend-tests
-      - quick-backend-integration-smoke
-      - quick-critical-mutation
-      - quick-gateway-tests
-      - quick-llm-egress-proxy-tests
-      - quick-browser-smoke
-      - quick-render-regression
+    needs: [detect-changes]
     steps:
       - name: Check full lane prerequisites
         env:
-          EVENT_NAME: ${{ github.event_name }}
           DETECT_CHANGES: ${{ needs.detect-changes.result }}
-          QUICK_TEST_HYGIENE: ${{ needs.quick-test-hygiene.result }}
-          QUICK_FRONTEND_TESTS: ${{ needs.quick-frontend-tests.result }}
-          QUICK_BACKEND_TYPECHECK: ${{ needs.quick-backend-typecheck.result }}
-          QUICK_BACKEND_TESTS: ${{ needs.quick-backend-tests.result }}
-          QUICK_BACKEND_INTEGRATION_SMOKE: ${{ needs.quick-backend-integration-smoke.result }}
-          QUICK_CRITICAL_MUTATION: ${{ needs.quick-critical-mutation.result }}
-          QUICK_GATEWAY_TESTS: ${{ needs.quick-gateway-tests.result }}
-          QUICK_LLM_EGRESS_PROXY_TESTS: ${{ needs.quick-llm-egress-proxy-tests.result }}
-          QUICK_BROWSER_SMOKE: ${{ needs.quick-browser-smoke.result }}
-          QUICK_RENDER_REGRESSION: ${{ needs.quick-render-regression.result }}
         run: |
-          failed=false
-
-          require_success() {
-            name="$1"
-            result="$2"
-            if [ "$result" != "success" ]; then
-              echo "::error::$name result was $result; expected success"
-              failed=true
-            else
-              echo "$name: $result"
-            fi
-          }
-
-          allow_success_or_skipped() {
-            name="$1"
-            result="$2"
-            case "$result" in
-              success|skipped)
-                echo "$name: $result"
-                ;;
-              *)
-                echo "::error::$name result was $result; expected success or skipped"
-                failed=true
-                ;;
-            esac
-          }
-
-          require_success "Detect Changed Files" "$DETECT_CHANGES"
-
-          case "$EVENT_NAME" in
-            pull_request)
-              allow_success_or_skipped "Quick Test Hygiene" "$QUICK_TEST_HYGIENE"
-              allow_success_or_skipped "Quick Frontend Tests" "$QUICK_FRONTEND_TESTS"
-              allow_success_or_skipped "Quick Backend Typecheck" "$QUICK_BACKEND_TYPECHECK"
-              allow_success_or_skipped "Quick Backend Tests" "$QUICK_BACKEND_TESTS"
-              allow_success_or_skipped "Quick Backend Integration Smoke" "$QUICK_BACKEND_INTEGRATION_SMOKE"
-              allow_success_or_skipped "Quick Critical Mutation Gate" "$QUICK_CRITICAL_MUTATION"
-              allow_success_or_skipped "Quick Gateway Tests" "$QUICK_GATEWAY_TESTS"
-              allow_success_or_skipped "Quick LLM Egress Proxy Tests" "$QUICK_LLM_EGRESS_PROXY_TESTS"
-              allow_success_or_skipped "Quick Browser Smoke" "$QUICK_BROWSER_SMOKE"
-              allow_success_or_skipped "Quick Render Regression" "$QUICK_RENDER_REGRESSION"
-              ;;
-            merge_group)
-              echo "Merge group full lane is gated by Full Test Summary."
-              ;;
-            *)
-              echo "Quick PR lane is not required for $EVENT_NAME."
-              ;;
-          esac
-
-          if [ "$failed" = "true" ]; then
+          if [ "$DETECT_CHANGES" != "success" ]; then
+            echo "::error::Detect Changed Files result was $DETECT_CHANGES; expected success"
             exit 1
           fi
+          echo "Detect Changed Files: $DETECT_CHANGES"
 
   # ============================================
   # Full Lane (pull requests, merge queue, main, nightly, manual)
@@ -1679,7 +1423,7 @@ jobs:
           fi
 
   full-frontend-typechecks:
-    name: Full Frontend Typecheck (${{ matrix.target }})
+    name: Full Frontend Typechecks
     if: >-
       always() &&
       needs.full-lane-ready.result == 'success' &&
@@ -1690,14 +1434,7 @@ jobs:
     timeout-minutes: 30
     needs: [detect-changes, full-lane-ready]
     env:
-      DIAGNOSTIC_DIR: .tmp/ci-diagnostics/frontend-typecheck-${{ matrix.target }}
-    strategy:
-      fail-fast: false
-      matrix:
-        target:
-          - app-typecheck
-          - test-typecheck
-          - all-typecheck
+      DIAGNOSTIC_DIR: .tmp/ci-diagnostics/frontend-typechecks
 
     steps:
       - name: Checkout repository
@@ -1707,6 +1444,7 @@ jobs:
         uses: ./.github/actions/setup-node-toolchain
 
       - name: Install dependencies
+        id: install-dependencies
         run: >
           scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-dependencies.log"
           scripts/ci/with-runner-lock.sh node-toolchain
@@ -1715,7 +1453,7 @@ jobs:
           npm ci --strict-allow-scripts --audit=false --fund=false --cache .tmp/npm-cache
 
       - name: Run strict app typecheck
-        if: matrix.target == 'app-typecheck'
+        if: always() && steps.install-dependencies.outcome == 'success'
         run: >
           scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/app-typecheck.log"
           scripts/ci/with-runner-lock.sh node-toolchain
@@ -1724,7 +1462,7 @@ jobs:
           npm run typecheck:app
 
       - name: Run strict test typecheck
-        if: matrix.target == 'test-typecheck'
+        if: always() && steps.install-dependencies.outcome == 'success'
         run: >
           scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/test-typecheck.log"
           scripts/ci/with-runner-lock.sh node-toolchain
@@ -1733,7 +1471,7 @@ jobs:
           npm run typecheck:tests
 
       - name: Run catch-all frontend workspace typecheck
-        if: matrix.target == 'all-typecheck'
+        if: always() && steps.install-dependencies.outcome == 'success'
         run: >
           scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/all-typecheck.log"
           scripts/ci/with-runner-lock.sh node-toolchain
@@ -1744,14 +1482,14 @@ jobs:
       - name: Write frontend typecheck diagnostic summary
         if: always()
         continue-on-error: true
-        run: scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Frontend Typecheck (${{ matrix.target }})"
+        run: scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Frontend Typechecks"
 
       - name: Upload frontend typecheck diagnostics
         if: always()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
-          name: ci-diagnostics-frontend-typecheck-${{ matrix.target }}
+          name: ci-diagnostics-frontend-typechecks
           path: ${{ env.DIAGNOSTIC_DIR }}/
           if-no-files-found: ignore
           include-hidden-files: true

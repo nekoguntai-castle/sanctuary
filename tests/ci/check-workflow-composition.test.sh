@@ -1077,6 +1077,8 @@ TEST_WORKFLOW="$REPO_ROOT/.github/workflows/test.yml"
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full frontend app typecheck retry composition" \
   "full-frontend-typechecks:" \
+  "id: install-dependencies" \
+  "if: always() && steps.install-dependencies.outcome == 'success'" \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/app-typecheck.log"' \
   "scripts/ci/with-runner-lock.sh node-toolchain" \
   'scripts/ci/retry-command.sh "frontend app typecheck"' \
@@ -1086,6 +1088,8 @@ assert_contains_in_order "$TEST_WORKFLOW" \
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full frontend test typecheck retry composition" \
   "full-frontend-typechecks:" \
+  "id: install-dependencies" \
+  "if: always() && steps.install-dependencies.outcome == 'success'" \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/test-typecheck.log"' \
   "scripts/ci/with-runner-lock.sh node-toolchain" \
   'scripts/ci/retry-command.sh "frontend test typecheck"' \
@@ -1095,6 +1099,8 @@ assert_contains_in_order "$TEST_WORKFLOW" \
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full frontend catch-all typecheck retry composition" \
   "full-frontend-typechecks:" \
+  "id: install-dependencies" \
+  "if: always() && steps.install-dependencies.outcome == 'success'" \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/all-typecheck.log"' \
   "scripts/ci/with-runner-lock.sh node-toolchain" \
   'scripts/ci/retry-command.sh "frontend catch-all typecheck"' \
@@ -1104,9 +1110,19 @@ assert_contains_in_order "$TEST_WORKFLOW" \
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full frontend typecheck diagnostic upload" \
   "Write frontend typecheck diagnostic summary" \
-  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Frontend Typecheck (${{ matrix.target }})"' \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Frontend Typechecks"' \
   "Upload frontend typecheck diagnostics" \
-  'ci-diagnostics-frontend-typecheck-${{ matrix.target }}'
+  'ci-diagnostics-frontend-typechecks'
+
+assert_named_job_not_contains "$TEST_WORKFLOW" \
+  "full-frontend-typechecks" \
+  "full frontend typechecks must share one checkout and install" \
+  'matrix.target'
+
+assert_occurrence_count "$TEST_WORKFLOW" \
+  "all consolidated frontend typechecks preserve independent diagnostics" \
+  "if: always() && steps.install-dependencies.outcome == 'success'" \
+  3
 
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full backend typecheck diagnostics" \
@@ -1308,17 +1324,10 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "Upload quick frontend diagnostics" \
   "ci-diagnostics-quick-frontend"
 
-assert_contains_in_order "$TEST_WORKFLOW" \
-  "quick backend typecheck diagnostics" \
-  "quick-backend-typecheck:" \
-  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/server-test-typecheck.log"' \
-  "scripts/ci/with-runner-lock.sh node-toolchain" \
-  'scripts/ci/retry-command.sh "quick backend typecheck"' \
-  "npm run typecheck:tests" \
-  "Write quick backend typecheck diagnostic summary" \
-  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Backend Typecheck"' \
-  "Upload quick backend typecheck diagnostics" \
-  "ci-diagnostics-quick-backend-typecheck"
+assert_named_job_not_contains "$TEST_WORKFLOW" \
+  "quick-frontend-tests" \
+  "quick frontend does not repeat full typechecks" \
+  "npm run typecheck:"
 
 # The retry here MUST be signature-filtered. retry-command.sh retries any
 # non-zero exit up to 3 times; it was harmless while this lane selected zero
@@ -1346,30 +1355,40 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "Upload quick backend integration smoke diagnostics" \
   "ci-diagnostics-quick-backend-integration-smoke"
 
-assert_contains_in_order "$TEST_WORKFLOW" \
-  "quick critical mutation shards diagnostics" \
-  "quick-critical-mutation-shards:" \
-  'matrix:' \
-  'shard: [1, 2, 3]' \
-  'MUTATION_SHARD: ${{ matrix.shard }}' \
-  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/critical-mutation-gate.log"' \
-  "npm run test:mutation:critical:shard" \
-  "Write quick critical mutation diagnostic summary" \
-  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Critical Mutation shard ${{ matrix.shard }}"' \
-  "Upload quick critical mutation diagnostics" \
-  "ci-diagnostics-quick-critical-mutation-shard-"
+assert_named_job_not_contains "$TEST_WORKFLOW" \
+  "quick-backend-tests" \
+  "quick backend tests do not wait for typecheck" \
+  "quick-backend-typecheck"
+
+assert_not_contains "$TEST_WORKFLOW" \
+  "quick lane does not duplicate backend typecheck" \
+  "quick-backend-typecheck:"
+
+assert_named_job_not_contains "$TEST_WORKFLOW" \
+  "quick-backend-integration-smoke" \
+  "quick backend integration does not wait for unit tests" \
+  "quick-backend-tests"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
-  "quick critical mutation aggregate" \
+  "quick critical mutation validates configuration only" \
   "quick-critical-mutation:" \
-  "needs.quick-critical-mutation-shards.result == 'success'" \
-  "Fail fast if any shard failed" \
-  "needs.quick-critical-mutation-shards.result != 'success'" \
-  "Download shard 1 report" \
-  "Download shard 2 report" \
-  "Download shard 3 report" \
-  "npm run mutation:merge-shards" \
-  "node scripts/mutation/check-critical-mutation-gate.mjs"
+  "needs: [detect-changes]" \
+  "Validate critical mutation shard contract" \
+  "node scripts/ci/check-critical-mutation-config.mjs"
+
+assert_not_contains "$TEST_WORKFLOW" \
+  "quick lane must not duplicate full Stryker execution" \
+  "quick-critical-mutation-shards:"
+
+assert_named_job_not_contains "$TEST_WORKFLOW" \
+  "quick-browser-smoke" \
+  "quick browser does not wait for frontend unit tests" \
+  "quick-frontend-tests"
+
+assert_named_job_not_contains "$TEST_WORKFLOW" \
+  "quick-render-regression" \
+  "quick render does not wait for browser smoke" \
+  "quick-browser-smoke"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
   "quick gateway diagnostics" \
@@ -1438,12 +1457,16 @@ assert_not_contains "$TEST_WORKFLOW" \
   "Merge group no-op"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
-  "full lane ready gates directly on quick lane" \
+  "full lane starts directly after classification" \
   "full-lane-ready:" \
-  "quick-test-hygiene" \
-  "quick-render-regression" \
+  "needs: [detect-changes]" \
   "Check full lane prerequisites" \
-  "Quick PR lane is not required for \$EVENT_NAME."
+  'if [ "$DETECT_CHANGES" != "success" ]; then'
+
+assert_named_job_not_contains "$TEST_WORKFLOW" \
+  "full-lane-ready" \
+  "full lane ready does not wait for quick work" \
+  "quick-"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
   "quick LLM egress proxy diagnostics" \
@@ -1577,10 +1600,7 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "quick-frontend-tests:" \
   "needs.detect-changes.outputs.full_scan != 'true'" \
   "needs.detect-changes.outputs.test_suite_changed != 'true'" \
-  "quick-backend-typecheck:" \
-  "needs.detect-changes.outputs.full_scan != 'true'" \
-  "needs.detect-changes.outputs.test_suite_changed != 'true'" \
-  "quick-critical-mutation-shards:" \
+  "quick-critical-mutation:" \
   "needs.detect-changes.outputs.full_scan != 'true'" \
   "needs.detect-changes.outputs.test_suite_changed != 'true'" \
   "quick-gateway-tests:" \
@@ -2421,7 +2441,7 @@ assert_jobs_use_node24_runners \
 assert_jobs_use_node24_runners \
   "$REPO_ROOT/.github/workflows/test.yml" \
   "test jobs select Node 24-capable runners" \
-  30
+  28
 
 assert_runner_parser_rejects_post_comment_drift
 assert_cache_calls_use_wrapper

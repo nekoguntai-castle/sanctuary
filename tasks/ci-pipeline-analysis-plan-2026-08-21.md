@@ -255,17 +255,17 @@ receive immediate quality validation.
 
 ### Phase 2 — Remove PR critical-path duplication
 
-- [ ] Decouple full-lane readiness from completion of every quick job so quick
+- [x] Decouple full-lane readiness from completion of every quick job so quick
       feedback and exhaustive validation can start concurrently.
-- [ ] Remove cross-domain quick-lane `needs` edges that exchange no artifact or
+- [x] Remove cross-domain quick-lane `needs` edges that exchange no artifact or
       state; make the aggregate, not an unrelated leaf, own failure propagation.
 - [ ] Compare each quick job with its full counterpart and retain only checks
       that provide materially earlier, distinct signal.
-- [ ] Collapse the three frontend typecheck matrix jobs into one checkout/install
+- [x] Collapse the three frontend typecheck matrix jobs into one checkout/install
       with three separately timed steps and equivalent failure diagnostics.
-- [ ] Avoid repeating mutation in quick and full lanes for the same PR; keep the
+- [x] Avoid repeating mutation in quick and full lanes for the same PR; keep the
       strongest pre-merge result and a fast manifest/config sanity check.
-- [ ] Preserve path-aware full lanes and stable aggregate branch-protection names.
+- [x] Preserve path-aware full lanes and stable aggregate branch-protection names.
 
 Acceptance: ordinary frontend/backend PR p50 is below 8 minutes or improves by
 at least 30% without a regression in escaped-to-main failures; total runner time

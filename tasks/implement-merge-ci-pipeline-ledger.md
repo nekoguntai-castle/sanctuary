@@ -9,7 +9,8 @@ Rebuild policy: `after-plan`
 | Phase 0/1a | `main` | `codex/implement-merge/ci-truthful-gates` | `/home/nekoguntai/sanctuary-ci-truthful-gates` | yes | no | retained pending final cleanup | [#871](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/871) | `331bcb83272a12d58b7b9299832d5950c7ef3dd6` |
 | Phase 1b | `main` | `codex/implement-merge/ci-install-hermetic` | `/home/nekoguntai/sanctuary-ci-install-hermetic` | yes | no | retained pending final cleanup | [#873](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/873) | `fdee4acc2bf41126a8dab309a7345a2c6179d7e9` |
 | Phase 1c | `main` | `codex/implement-merge/ci-upgrade-sync-fixture` | `/home/nekoguntai/sanctuary-ci-upgrade-sync-fixture` | yes | no | retained pending final cleanup | [#874](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/874) | `c8200025442cc8bab6a9bf9d87d31ee36b9a1fdc` |
-| Phase 0b | `main` | `codex/implement-merge/ci-performance-report` | `/home/nekoguntai/sanctuary-ci-performance-report` | yes | no | active | pending | pending |
+| Phase 0b | `main` | `codex/implement-merge/ci-performance-report` | `/home/nekoguntai/sanctuary-ci-performance-report` | yes | no | retained pending final cleanup | [#875](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/875) | `e3a8780e7869cda3ffadd60de35dc710830c5582` |
+| Phase 2a | `main` | `codex/implement-merge/ci-critical-path` | `/home/nekoguntai/sanctuary-ci-critical-path` | yes | no | active | pending | pending |
 
 ## Ownership boundary
 
@@ -54,3 +55,25 @@ from cleanup and mutation.
 - 2026-08-21: Phase 0b started from `c8200025442c` to replace the GitHub-only
   trend collector with GET-only Forgejo reporting and a trusted,
   event-separated, non-blocking weekly artifact.
+- 2026-08-21: Phase 0b merged through PR #875. Manual merged-main run 11835
+  produced a valid 10-cohort performance artifact; its pre-optimization Test
+  PR baseline is p50 1,229 seconds and p90 1,905 seconds, while vector PR proof
+  is p50 1,081 seconds and p90 1,295 seconds.
+- 2026-08-21: Per user direction, Phase 2a moved ahead of the remaining
+  coverage-hardening phases so later PRs benefit from the shorter CI feedback
+  loop. The phase starts from `e3a8780e7869` and owns only test-workflow DAG,
+  duplicated quick mutation, and frontend typecheck setup reductions.
+- 2026-08-21: Phase 2a implementation starts the full lane immediately after
+  classification, removes false quick-job ordering, removes duplicate quick
+  backend/frontend typechecks, replaces the duplicate quick Stryker pass with
+  a dependency-free shard/baseline contract check, and consolidates frontend
+  typechecks behind one install. Protected aggregate names remain unchanged.
+- 2026-08-21: Comparable historical runs project the DAG change removing 516
+  seconds of imposed delay from frontend PR run 11717 (about 42% of wall time)
+  and 455 seconds from backend PR run 11703 (about 36%). Full mutation run
+  11620 used about 823 runner-seconds and 565 wall seconds; Phase 2a avoids
+  paying that Stryker work twice on a matching PR.
+- 2026-08-21: Phase 2a local verification passed 312 workflow-composition
+  assertions, action-runtime policy, test-only policy, actionlint 1.7.12,
+  frontend strict/catch-all TypeScript plus 7,999 tests, and backend TypeScript
+  plus 14,257 tests. PR and landed-main timing evidence remain pending.
