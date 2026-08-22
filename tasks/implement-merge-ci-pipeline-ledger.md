@@ -11,7 +11,8 @@ Rebuild policy: `after-plan`
 | Phase 1c | `main` | `codex/implement-merge/ci-upgrade-sync-fixture` | `/home/nekoguntai/sanctuary-ci-upgrade-sync-fixture` | yes | no | retained pending final cleanup | [#874](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/874) | `c8200025442cc8bab6a9bf9d87d31ee36b9a1fdc` |
 | Phase 0b | `main` | `codex/implement-merge/ci-performance-report` | `/home/nekoguntai/sanctuary-ci-performance-report` | yes | no | retained pending final cleanup | [#875](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/875) | `e3a8780e7869cda3ffadd60de35dc710830c5582` |
 | Phase 2a | `main` | `codex/implement-merge/ci-critical-path` | `/home/nekoguntai/sanctuary-ci-critical-path` | yes | no | retained pending final cleanup | [#881](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/881) | `4e43ab9acd1ed36a9b75b34a094c927261f23b02` |
-| Phase 2b | `main` | `codex/implement-merge/ci-quick-lane-dedup` | `/home/nekoguntai/sanctuary-ci-quick-lane-dedup` | yes | no | active | pending | pending |
+| Phase 2b | `main` | `codex/implement-merge/ci-quick-lane-dedup` | `/home/nekoguntai/sanctuary-ci-quick-lane-dedup` | yes | no | retained pending final cleanup | [#882](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/882) | `908d7ede694a9772aa246565c0749fb8064f5860` |
+| Phase 3a | `main` | `codex/implement-merge/ci-architecture-scope` | `/home/nekoguntai/sanctuary-ci-architecture-scope` | yes | no | active | pending | pending |
 
 ## Ownership boundary
 
@@ -104,3 +105,24 @@ from cleanup and mutation.
   test-only policy, actionlint 1.7.12, frontend strict/catch-all TypeScript plus
   7,999 tests, and backend TypeScript plus 14,257 tests. Independent final review
   found no stale dependency, classifier, full-summary, or protected-context gap.
+- 2026-08-21: Phase 2b merged through PR #882 as `908d7ede69`. The final PR
+  Test run passed in 1,291 seconds with all 30 contexts green. Landed-main
+  architecture, quality, Test, and vector workflows passed in 134, 380, 1,176,
+  and 1,011 seconds respectively. The main Test run retained all selected full
+  jobs, skipped the PR-only quick lane, and completed 202 seconds faster than
+  the pre-Phase-2 main run 11833.
+- 2026-08-21: Phase 3 evidence rejects a shared frontend build artifact for now.
+  Browser and render builds embed different `VITE_API_URL` values, still need
+  their own Playwright dependencies, and spend only 4-6 seconds building. Warm
+  npm download-cache hits also left `npm ci` near the existing 16-20 second
+  range, so neither mechanism has a measured critical-path win yet.
+- 2026-08-21: Phase 3a starts from `908d7ede69` and separates architecture
+  graph/boundary proof from Docusaurus validation inside one stable job.
+  Landed-main run 11852 spent 30 seconds installing both dependency trees, 45
+  seconds building docs, one second typechecking docs, and nine seconds
+  regenerating dependency graphs in a 134-second combined job. A 202-run audit
+  found meaningful runner queues and projects that two parallel jobs would add
+  about 11% PR runner use. In-job scope selection instead lets source-only
+  changes avoid about 54 seconds of docs work, docs-only changes avoid about 35
+  seconds of application/architecture work, and 16% of sampled main pushes skip
+  the workflow entirely while retaining one visible Architecture result.

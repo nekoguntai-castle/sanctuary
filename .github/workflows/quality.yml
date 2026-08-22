@@ -658,6 +658,7 @@ jobs:
           bash -n scripts/ci/check-provider-leaks.sh
           bash -n scripts/ci/vendor/forgejo-artifact-v4/build.sh
           bash -n scripts/ci/classify-test-changes.sh
+          bash -n scripts/ci/classify-architecture-scope.sh
           bash -n scripts/ci/classify-docker-build-images.sh
           bash -n scripts/ci/validate-docker-build-results.sh
           bash -n scripts/ci/classify-quality-scope.sh
@@ -734,6 +735,7 @@ jobs:
           bash -n tests/ci/check-provider-leaks.test.sh
           bash -n tests/ci/playwright-timing-reporter.test.sh
           bash -n tests/ci/classify-test-changes.test.sh
+          bash -n tests/ci/classify-architecture-scope.test.sh
           bash -n tests/ci/classify-docker-build-images.test.sh
           bash -n tests/ci/validate-docker-build-results.test.sh
           bash -n tests/ci/classify-quality-scope.test.sh
@@ -822,6 +824,7 @@ jobs:
           # Existing CI helper tests.
           bash tests/ci/playwright-timing-reporter.test.sh
           bash tests/ci/classify-test-changes.test.sh
+          bash tests/ci/classify-architecture-scope.test.sh
           bash tests/ci/classify-docker-build-images.test.sh
           bash tests/ci/validate-docker-build-results.test.sh
           bash tests/ci/classify-quality-scope.test.sh

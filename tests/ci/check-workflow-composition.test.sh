@@ -118,6 +118,36 @@ assert_occurrence_count() {
   fi
 }
 
+assert_event_paths_equal() {
+  local file="$1"
+  local label="$2"
+  local first_event="$3"
+  local second_event="$4"
+  local first_paths second_paths
+
+  extract_paths() {
+    local event_name="$1"
+    awk -v event_name="$event_name" '
+      $0 == "  " event_name ":" { in_event = 1; next }
+      in_event && /^  [[:alnum:]_-]+:/ { exit }
+      in_event && $0 == "    paths:" { in_paths = 1; next }
+      in_paths && /^      - / { sub(/^      - /, ""); print; next }
+      in_paths { exit }
+    ' "$file"
+  }
+
+  first_paths="$(extract_paths "$first_event")"
+  second_paths="$(extract_paths "$second_event")"
+  if [ -n "$first_paths" ] && [ "$first_paths" = "$second_paths" ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: $label"
+  else
+    FAIL=$((FAIL + 1))
+    FAILURES+=("$label: $first_event and $second_event path lists differ or are empty in $file")
+    echo "FAIL: $label" >&2
+  fi
+}
+
 assert_active_yaml_line_count() {
   local file="$1"
   local label="$2"
@@ -1007,23 +1037,61 @@ else
   echo "PASS: verify-vectors.yml uses stable server Vitest CI entrypoint"
 fi
 
-# --- architecture native-toolchain retry stability --------------------------
+# --- architecture and docs-site scope / native-toolchain stability -----------
 ARCHITECTURE_WORKFLOW="$REPO_ROOT/.github/workflows/architecture.yml"
 
-assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
-  "architecture docs-site trigger coverage" \
-  "docs/**"
+assert_event_paths_equal "$ARCHITECTURE_WORKFLOW" \
+  "architecture paths are equivalent on PR and main push" \
+  "pull_request" "push"
+
+assert_occurrence_count "$ARCHITECTURE_WORKFLOW" \
+  "architecture triggers for its diagram-linted README" \
+  "README.md" 2
+assert_occurrence_count "$ARCHITECTURE_WORKFLOW" \
+  "architecture triggers for frontend dependency-cruiser tsconfig" \
+  "config/tooling/tsconfig.app.json" 2
+assert_occurrence_count "$ARCHITECTURE_WORKFLOW" \
+  "architecture triggers for server dependency-cruiser tsconfig" \
+  "server/tsconfig.json" 2
+assert_occurrence_count "$ARCHITECTURE_WORKFLOW" \
+  "architecture triggers for gateway dependency-cruiser tsconfig" \
+  "gateway/tsconfig.json" 2
 
 assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
-  "architecture docs-site install composition" \
-  "Install dependencies (application workspaces and docs site)" \
-  'scripts/ci/retry-command.sh "docs-site npm ci"' \
-  "npm --prefix docs/site ci" \
-  '.npm-cache/docs-site'
+  "architecture scope classifier composition" \
+  "Determine architecture validation scope" \
+  "id: scope" \
+  'git diff --no-renames --name-only -z "$BASE_SHA" "$HEAD_SHA"' \
+  "scripts/ci/classify-architecture-scope.sh"
+
+for architecture_shared_input in \
+  "scripts/ci/time-command.sh" \
+  "scripts/ci/record-command-timing.mjs" \
+  "scripts/ci/redactor.sh" \
+  "scripts/ci/provider-context.sh" \
+  ".github/ci-performance-budget.json"; do
+  expected_occurrences=2
+  if [ "$architecture_shared_input" = "scripts/ci/time-command.sh" ]; then
+    expected_occurrences=3
+  fi
+  assert_occurrence_count "$ARCHITECTURE_WORKFLOW" \
+    "architecture triggers for $architecture_shared_input on PR and main push" \
+    "$architecture_shared_input" "$expected_occurrences"
+done
+
+assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
+  "architecture installs each selected dependency tree only" \
+  "Install application workspace dependencies" \
+  "if: steps.scope.outputs.core == 'true'" \
+  'scripts/ci/retry-command.sh "root npm ci"' \
+  "Install docs-site dependencies" \
+  "if: steps.scope.outputs.docs == 'true'" \
+  'scripts/ci/retry-command.sh "docs-site npm ci"'
 
 assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
   "architecture runtime boundary gate composition" \
   "Enforce runtime architecture boundaries" \
+  "if: steps.scope.outputs.core == 'true'" \
   ".tmp/ci-diagnostics/architecture/runtime-boundaries.log" \
   "npm run check:architecture-boundaries"
 
@@ -1040,8 +1108,9 @@ assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
   "npm run check:server-cycle-baseline"
 
 assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
-  "architecture docs typecheck retry composition" \
+  "docs-site typecheck retry composition" \
   "Typecheck Docusaurus site" \
+  "if: steps.scope.outputs.docs == 'true'" \
   "SANCTUARY_RETRY_ATTEMPTS: '5'" \
   "scripts/ci/run-with-log.sh" \
   ".tmp/ci-diagnostics/architecture/docs-typecheck.log" \

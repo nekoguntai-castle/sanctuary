@@ -10,23 +10,70 @@ on:
       - '**/*.mjs'
       - '**/*.cjs'
       - '**/ARCHITECTURE.md'
+      - 'README.md'
       - 'docs/**'
       - '.github/CONTRIBUTING.md'
       - 'config/tooling/dependency-cruiser.cjs'
       - 'server/.dependency-cruiser.cjs'
       - 'gateway/.dependency-cruiser.cjs'
+      - 'config/tooling/tsconfig.app.json'
+      - 'server/tsconfig.json'
+      - 'gateway/tsconfig.json'
       - 'scripts/architecture/**'
       - 'scripts/quality/architecture-boundary-exceptions.json'
       - 'scripts/quality/server-cycle-baseline.json'
       - 'package.json'
+      - 'package-lock.json'
       - 'server/package.json'
       - 'scripts/ci/create-isolated-workspace.sh'
+      - 'scripts/ci/classify-architecture-scope.sh'
       - 'scripts/ci/retry-command.sh'
       - 'scripts/ci/run-with-log.sh'
+      - 'scripts/ci/redactor.sh'
+      - 'scripts/ci/provider-context.sh'
+      - 'scripts/ci/time-command.sh'
+      - 'scripts/ci/record-command-timing.mjs'
+      - 'scripts/ci/with-runner-lock.sh'
       - 'scripts/ci/write-diagnostic-summary.sh'
+      - '.github/ci-performance-budget.json'
       - '.github/workflows/architecture.yml'
   push:
     branches: [main]
+    paths:
+      - '**/*.ts'
+      - '**/*.tsx'
+      - '**/*.js'
+      - '**/*.jsx'
+      - '**/*.mjs'
+      - '**/*.cjs'
+      - '**/ARCHITECTURE.md'
+      - 'README.md'
+      - 'docs/**'
+      - '.github/CONTRIBUTING.md'
+      - 'config/tooling/dependency-cruiser.cjs'
+      - 'server/.dependency-cruiser.cjs'
+      - 'gateway/.dependency-cruiser.cjs'
+      - 'config/tooling/tsconfig.app.json'
+      - 'server/tsconfig.json'
+      - 'gateway/tsconfig.json'
+      - 'scripts/architecture/**'
+      - 'scripts/quality/architecture-boundary-exceptions.json'
+      - 'scripts/quality/server-cycle-baseline.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'server/package.json'
+      - 'scripts/ci/create-isolated-workspace.sh'
+      - 'scripts/ci/classify-architecture-scope.sh'
+      - 'scripts/ci/retry-command.sh'
+      - 'scripts/ci/run-with-log.sh'
+      - 'scripts/ci/redactor.sh'
+      - 'scripts/ci/provider-context.sh'
+      - 'scripts/ci/time-command.sh'
+      - 'scripts/ci/record-command-timing.mjs'
+      - 'scripts/ci/with-runner-lock.sh'
+      - 'scripts/ci/write-diagnostic-summary.sh'
+      - '.github/ci-performance-budget.json'
+      - '.github/workflows/architecture.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.head.ref || github.ref_name || github.ref }}
@@ -42,7 +89,7 @@ env:
 
 jobs:
   build:
-    name: Lint diagrams, regenerate graphs, build site
+    name: Architecture and docs validation
     runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
@@ -54,6 +101,23 @@ jobs:
       - name: Verify Node.js toolchain
         uses: ./.github/actions/setup-node-toolchain
 
+      - name: Determine architecture validation scope
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || \
+             [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ] || \
+             ! git cat-file -e "$BASE_SHA^{commit}"; then
+            echo "::warning::Could not resolve the event base commit; running both architecture scopes"
+            printf 'core=true\ndocs=true\n' >> "$GITHUB_OUTPUT"
+          else
+            git diff --no-renames --name-only -z "$BASE_SHA" "$HEAD_SHA" | \
+              scripts/ci/classify-architecture-scope.sh >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Prepare architecture workspace
         run: |
           ARCH_WORKDIR="$(scripts/ci/create-isolated-workspace.sh architecture)"
@@ -61,7 +125,8 @@ jobs:
           echo "ARCH_WORKDIR=$ARCH_WORKDIR" >> "$GITHUB_ENV"
           echo "ARCH_ROOT=$ARCH_ROOT" >> "$GITHUB_ENV"
 
-      - name: Install dependencies (application workspaces and docs site)
+      - name: Install application workspace dependencies
+        if: steps.scope.outputs.core == 'true'
         run: |
           DIAGNOSTIC_DIR=".tmp/ci-diagnostics/architecture"
           mkdir -p "$DIAGNOSTIC_DIR"
@@ -73,14 +138,26 @@ jobs:
             scripts/ci/with-runner-lock.sh node-toolchain bash -euo pipefail <<'INNER'
           set -euo pipefail
           cd "$ARCH_WORKDIR"
-          # Phase B: root npm ci installs all workspaces (shared, server, gateway).
+          # Root npm ci installs all workspaces (shared, server, gateway).
           # Per-package npm ci is redundant and broken because workspace deps
-          # don't publish to the npm registry. The docs site remains standalone.
+          # don't publish to the npm registry.
           scripts/ci/retry-command.sh "root npm ci" npm ci --strict-allow-scripts --audit=false --fund=false --cache "$ARCH_WORKDIR/.npm-cache/root"
+          INNER
+
+      - name: Install docs-site dependencies
+        if: steps.scope.outputs.docs == 'true'
+        run: |
+          DIAGNOSTIC_DIR=".tmp/ci-diagnostics/architecture"
+          mkdir -p "$DIAGNOSTIC_DIR"
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-docs-dependencies.log" \
+            scripts/ci/with-runner-lock.sh node-toolchain bash -euo pipefail <<'INNER'
+          set -euo pipefail
+          cd "$ARCH_WORKDIR"
           scripts/ci/retry-command.sh "docs-site npm ci" npm --prefix docs/site ci --strict-allow-scripts --audit=false --fund=false --cache "$ARCH_WORKDIR/.npm-cache/docs-site"
           INNER
 
       - name: Lint diagram click hrefs
+        if: steps.scope.outputs.core == 'true'
         run: |
           scripts/ci/run-with-log.sh ".tmp/ci-diagnostics/architecture/lint-diagrams.log" \
             bash -euo pipefail <<'INNER'
@@ -89,6 +166,7 @@ jobs:
           INNER
 
       - name: Enforce runtime architecture boundaries
+        if: steps.scope.outputs.core == 'true'
         run: |
           scripts/ci/run-with-log.sh ".tmp/ci-diagnostics/architecture/runtime-boundaries.log" \
             bash -euo pipefail <<'INNER'
@@ -97,6 +175,7 @@ jobs:
           INNER
 
       - name: Enforce repository-owned Prisma access
+        if: steps.scope.outputs.core == 'true'
         run: |
           scripts/ci/run-with-log.sh ".tmp/ci-diagnostics/architecture/prisma-imports.log" \
             bash -euo pipefail <<'INNER'
@@ -105,6 +184,7 @@ jobs:
           INNER
 
       - name: Enforce server dependency cycle baseline
+        if: steps.scope.outputs.core == 'true'
         run: |
           scripts/ci/run-with-log.sh ".tmp/ci-diagnostics/architecture/server-cycle-baseline.log" \
             bash -euo pipefail <<'INNER'
@@ -113,7 +193,7 @@ jobs:
           INNER
 
       - name: Warn on diagram drift (changed files referenced by C4 diagrams)
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && steps.scope.outputs.core == 'true'
         # Non-blocking — surfaces a job-summary warning when a PR touches a
         # file referenced by a hand-authored diagram without also updating
         # the diagram. Author confirms the diagram is still accurate or
@@ -126,6 +206,7 @@ jobs:
           node scripts/architecture/detect-drift.mjs "$BASE_SHA"
 
       - name: Regenerate dependency graphs
+        if: steps.scope.outputs.core == 'true'
         run: |
           scripts/ci/run-with-log.sh ".tmp/ci-diagnostics/architecture/dependency-graphs.log" \
             scripts/ci/with-runner-lock.sh node-toolchain bash -euo pipefail <<'INNER'
@@ -135,6 +216,7 @@ jobs:
           INNER
 
       - name: Regenerate function-level call graphs
+        if: steps.scope.outputs.core == 'true'
         run: |
           scripts/ci/run-with-log.sh ".tmp/ci-diagnostics/architecture/call-graphs.log" \
             scripts/ci/with-runner-lock.sh node-toolchain bash -euo pipefail <<'INNER'
@@ -144,6 +226,7 @@ jobs:
           INNER
 
       - name: Detect stale generated graphs
+        if: steps.scope.outputs.core == 'true'
         run: |
           scripts/ci/run-with-log.sh ".tmp/ci-diagnostics/architecture/stale-generated-graphs.log" \
             bash -euo pipefail <<'INNER'
@@ -203,6 +286,7 @@ jobs:
           } > "$diagnostic_dir/env.txt" 2>&1
 
       - name: Typecheck Docusaurus site
+        if: steps.scope.outputs.docs == 'true'
         env:
           SANCTUARY_RETRY_ATTEMPTS: '5'
         run: |
@@ -214,12 +298,13 @@ jobs:
           INNER
 
       - name: Build Docusaurus site
+        if: steps.scope.outputs.docs == 'true'
         run: |
           scripts/ci/run-with-log.sh ".tmp/ci-diagnostics/architecture/docs-build.log" \
             scripts/ci/with-runner-lock.sh node-toolchain bash -euo pipefail <<'INNER'
           set -euo pipefail
           cd "$ARCH_WORKDIR"
-          scripts/ci/retry-command.sh "docs build" npm run docs:build
+          scripts/ci/retry-command.sh "docs build" npm --prefix docs/site run build
           INNER
 
       - name: Write architecture diagnostic summary

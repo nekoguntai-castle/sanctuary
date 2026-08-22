@@ -170,6 +170,14 @@ Summary` fails, and allows skipped path-conditional children.
 
 The CI lizard job currently gates a measured CI-scope baseline of 9 warnings. That prevents new complexity regressions while the broader remediation loop continues ratcheting down the full lizard backlog. Lower `LIZARD_WARNING_BASELINE` whenever the CI-scope warning count is reduced.
 
+The `Architecture` workflow classifies its changed paths into independent core
+architecture and Docusaurus validation groups. Source, architecture-script,
+boundary-policy, and generated-architecture changes skip docs-site install and
+build work. Published documentation and docs-site implementation changes skip
+application-workspace install, boundary scans, and graph regeneration. Changes
+under `docs/architecture/` and per-service `ARCHITECTURE.md` files intentionally
+run both because they are architecture evidence and published site input.
+
 ### Tier 2 - Main Confidence Backstop
 
 The post-merge `main` gate proves the final merged commit after the same
@@ -198,6 +206,10 @@ Markdown and MDX files are docs-only for the test classifiers, including package
 
 Push-to-main full-lane runs are the path-aware backstop for the final merged
 commit; scheduled and manual runs provide periodic exhaustive proof.
+
+`Architecture` uses the same trigger paths for PR and `main` events. A merge
+therefore receives the same specialized backstop that validated its source
+branch, while unrelated main pushes do not consume an architecture runner.
 
 ### Tier 3 - Scheduled Deep Validation
 

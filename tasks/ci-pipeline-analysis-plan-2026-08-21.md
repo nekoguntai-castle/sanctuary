@@ -281,7 +281,7 @@ falls; no required context can succeed when its selected test set is empty.
       with frontend typecheck/coverage; measure cold and warm cases.
 - [ ] Upload verbose diagnostics on failure only where reliable; always retain
       coverage, mutation, release, and other required evidence.
-- [ ] Split architecture graph/boundary checks from docs-site validation, and
+- [x] Split architecture graph/boundary checks from docs-site validation, and
       apply equivalent path filters to main pushes.
 
 Acceptance: main full-gate p50 is below 15 minutes or improves by at least 20%;
