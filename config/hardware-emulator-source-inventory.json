@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "common": {
+    "files": [
+      ".github/actions/setup-node-toolchain/action.yml",
+      ".github/actions/upload-artifact/action.yml",
+      ".github/workflows/verify-vectors.yml",
+      ".nvmrc",
+      "config/hardware-emulator-source-inventory.json",
+      "config/hardware-wallet-implementation-inventory.json",
+      "config/wallet-safety-critical-paths.json",
+      "package-lock.json",
+      "package.json",
+      "src/api/authPolicy.ts",
+      "src/api/baseUrl.ts",
+      "src/api/client.ts",
+      "src/api/refresh.ts",
+      "src/api/retryPolicy.ts",
+      "scripts/ci/bootstrap-node.sh",
+      "scripts/ci/check-wallet-safety-classifier.mjs",
+      "scripts/ci/docker-exec-tcp-forwarder.mjs",
+      "scripts/ci/ensure-node.sh",
+      "scripts/ci/hardware-emulator-source-inventory.mjs",
+      "scripts/ci/provider-context.sh",
+      "scripts/ci/retry-command.sh",
+      "scripts/ci/run-with-log.sh",
+      "scripts/ci/wait-for-docker.sh",
+      "scripts/ci/with-runner-lock.sh",
+      "scripts/verify-psbt/proof-manifest.json",
+      "src/utils/bufferUtils.ts",
+      "src/utils/download.ts",
+      "src/utils/logger.ts",
+      "tests/ci/check-hardware-emulator-source-inventory.test.mjs",
+      "tests/ci/check-wallet-safety-classifier.test.mjs"
+    ],
+    "patterns": ["shared/**", "src/services/hardwareWallet/*.ts"]
+  },
+  "vendors": {
+    "trezor": {
+      "files": [
+        "config/tooling/vitest.trezor-emulator.config.ts",
+        "config/trezor-emulator-proof.json",
+        "scripts/ci/check-trezor-transport-provenance.sh",
+        "scripts/ci/images/go-runner.Dockerfile",
+        "scripts/ci/resolve-trezor-publish-binding.sh",
+        "scripts/ci/run-trezor-emulator-proof.sh",
+        "src/hooks/send/types.ts",
+        "src/hooks/send/useUsbSigning.ts",
+        "src/hooks/useHardwareWallet.ts",
+        "tests/ci/dockerExecTcpForwarder.test.ts",
+        "tests/ci/trezorEmulatorRunnerPreflight.test.ts",
+        "tests/config/trezorEmulatorProofBinding.test.ts",
+        "tests/config/trezorEmulatorProofConfig.test.ts",
+        "tests/fixtures/trezorEmulatorProof.ts",
+        "tests/integration/trezorEmulator.integration.test.ts"
+      ],
+      "patterns": [
+        "src/services/hardwareWallet/adapters/trezor/**",
+        "tests/integration/trezorEmulator/**"
+      ]
+    },
+    "ledger": {
+      "files": [
+        "config/ledger-emulator/Dockerfile",
+        "config/ledger-emulator/automation.json",
+        "config/ledger-emulator/proof.json",
+        "config/tooling/vitest.ledger-emulator.config.ts",
+        "scripts/ci/run-ledger-emulator-proof.sh",
+        "tests/integration/ledgerEmulator.integration.test.ts"
+      ],
+      "patterns": [
+        "src/services/hardwareWallet/adapters/ledger/**",
+        "tests/integration/ledgerEmulator/**"
+      ]
+    },
+    "jade": {
+      "files": [
+        ".github/workflows/quality.yml",
+        "config/jade-emulator-proof.json",
+        "config/tooling/vitest.jade-emulator.config.ts",
+        "docs/reference/hardware-wallet-validation.md",
+        "docs/reference/release-gates.md",
+        "docs/reference/trust-and-verification.md",
+        "scripts/ci/download-verified-source.sh",
+        "scripts/ci/run-jade-emulator-proof.sh",
+        "scripts/ci/verify-jade-junit.mjs",
+        "server/tests/fixtures/hardware-signed-psbt-vectors.ts",
+        "server/tests/helpers/hardwareSignedEvidenceProvenance.ts",
+        "server/tests/helpers/hardwareSignedFixtureIntake.ts",
+        "tests/ci/check-workflow-composition.test.sh",
+        "tests/ci/download-verified-source.test.sh",
+        "tests/ci/verify-jade-junit.test.mjs",
+        "tests/config/jadeEmulatorProofConfig.test.ts",
+        "tests/integration/jadeEmulator.integration.test.ts"
+      ],
+      "patterns": [
+        "src/services/hardwareWallet/adapters/jade*.ts",
+        "tests/integration/jadeEmulator/**"
+      ]
+    }
+  }
+}

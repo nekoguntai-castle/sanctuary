@@ -28,6 +28,9 @@ test('checked-in classifier covers every hardware proof helper and emulator modu
     readFileSync(resolve(REPO_ROOT, 'config/wallet-safety-critical-paths.json'), 'utf8')
   );
   const proofFiles = [
+    'config/hardware-emulator-source-inventory.json',
+    'scripts/ci/hardware-emulator-source-inventory.mjs',
+    'tests/ci/check-hardware-emulator-source-inventory.test.mjs',
     ...recursiveFiles('server/tests/helpers').filter((path) =>
       /\/hardwareSigned[^/]*\.ts$/.test(path)
     ),
@@ -51,6 +54,7 @@ const BROAD_WORKFLOW = `  pull_request:
   schedule:
   VERIFY_PSBT_CORE_IMAGE: bitcoin/bitcoin:29.0@sha256:${'a'.repeat(64)}
       - run: node scripts/ci/check-wallet-safety-classifier.mjs
+      - run: node scripts/ci/hardware-emulator-source-inventory.mjs validate
       - working-directory: scripts/verify-psbt
         run: npm run verify
       - run: psbt.signed-vectors.test.ts
@@ -157,6 +161,7 @@ test('duplicate classifier rows are rejected', () => {
 
 test('mandatory PSBT and hardware proof commands and exact Core image fail closed', () => {
   for (const missing of [
+    'hardware-emulator-source-inventory.mjs validate',
     'scripts/verify-psbt',
     'npm run verify',
     'psbt.signed-vectors.test.ts',

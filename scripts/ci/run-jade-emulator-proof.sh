@@ -243,42 +243,20 @@ for network in mainnet testnet; do
   container_started=0
 done
 
-readonly -a proof_sources=(
-  .github/workflows/quality.yml
-  .github/workflows/verify-vectors.yml
-  .nvmrc
-  package.json
-  package-lock.json
-  config/jade-emulator-proof.json
-  config/tooling/vitest.jade-emulator.config.ts
-  config/wallet-safety-critical-paths.json
-  docs/reference/hardware-wallet-validation.md
-  docs/reference/release-gates.md
-  docs/reference/trust-and-verification.md
-  scripts/ci/check-wallet-safety-classifier.mjs
-  scripts/ci/docker-exec-tcp-forwarder.mjs
-  scripts/ci/download-verified-source.sh
-  scripts/ci/provider-context.sh
-  scripts/ci/run-jade-emulator-proof.sh
-  scripts/ci/verify-jade-junit.mjs
-  shared/constants/walletPolicy.ts
-  shared/schemas/psbtSigningContext.ts
-  src/services/hardwareWallet/adapters/jadeIdentity.ts
-  server/tests/fixtures/hardware-signed-psbt-vectors.ts
-  server/tests/helpers/hardwareSignedEvidenceProvenance.ts
-  server/tests/helpers/hardwareSignedFixtureIntake.ts
-  src/services/hardwareWallet/adapters/jadeProtocol.ts
-  src/services/hardwareWallet/adapters/jadeSignedPsbt.ts
-  src/services/hardwareWallet/psbtAccountBinding.ts
-  tests/ci/check-wallet-safety-classifier.test.mjs
-  tests/ci/check-workflow-composition.test.sh
-  tests/ci/download-verified-source.test.sh
-  tests/ci/verify-jade-junit.test.mjs
-  tests/config/jadeEmulatorProofConfig.test.ts
-  tests/integration/jadeEmulator.integration.test.ts
-  tests/integration/jadeEmulator/fixtures.ts
-  tests/integration/jadeEmulator/tcpTransport.ts
-)
+proof_sources_text=''
+if ! proof_sources_text="$(
+  node scripts/ci/hardware-emulator-source-inventory.mjs \
+    list --vendor jade --format lines --require-clean
+)"; then
+  echo 'Failed to resolve Jade proof-source inventory' >&2
+  exit 1
+fi
+if [ -z "$proof_sources_text" ]; then
+  echo 'Jade proof-source inventory resolved empty' >&2
+  exit 1
+fi
+mapfile -t proof_sources <<< "$proof_sources_text"
+readonly -a proof_sources
 sha256sum "${proof_sources[@]}" > "$proof_dir/proof-sources.sha256"
 jq -n \
   --arg status passed \

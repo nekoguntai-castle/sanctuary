@@ -79,6 +79,7 @@ function validateCoreImage(workflowText, proofManifest) {
 
 function validateProofCommands(workflowText) {
   for (const command of [
+    'hardware-emulator-source-inventory.mjs validate',
     'scripts/verify-psbt',
     'npm run verify',
     'psbt.signed-vectors.test.ts',

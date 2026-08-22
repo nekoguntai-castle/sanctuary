@@ -112,6 +112,17 @@ main() {
   assert_exact_output "$output_file" "run_ci_classifier_tests" "false"
 
   base_sha="$head_sha"
+  printf 'name: Verify Bitcoin Vectors\non: pull_request\njobs: {}\n' > "$repo_dir/.github/workflows/verify-vectors.yml"
+  git -C "$repo_dir" add .github/workflows/verify-vectors.yml
+  git -C "$repo_dir" commit -qm "vector workflow change"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "run_repo_quality" "false"
+  assert_exact_output "$output_file" "run_workflow_quality" "true"
+  assert_exact_output "$output_file" "run_ci_classifier_tests" "true"
+
+  base_sha="$head_sha"
   printf 'name: Code Quality\non: pull_request\njobs: {}\n' > "$repo_dir/.github/workflows/quality.yml"
   git -C "$repo_dir" add .github/workflows/quality.yml
   git -C "$repo_dir" commit -qm "quality workflow change"
@@ -127,6 +138,18 @@ main() {
   printf '#!/usr/bin/env bash\necho classifier\n' > "$repo_dir/scripts/ci/classify-quality-scope.sh"
   git -C "$repo_dir" add scripts/ci/classify-quality-scope.sh
   git -C "$repo_dir" commit -qm "ci classifier change"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "run_repo_quality" "true"
+  assert_exact_output "$output_file" "run_workflow_quality" "false"
+  assert_exact_output "$output_file" "run_ci_classifier_tests" "true"
+
+  base_sha="$head_sha"
+  mkdir -p "$repo_dir/config"
+  printf '{"schemaVersion":1}\n' > "$repo_dir/config/hardware-emulator-source-inventory.json"
+  git -C "$repo_dir" add config/hardware-emulator-source-inventory.json
+  git -C "$repo_dir" commit -qm "hardware emulator source inventory change"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
 
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"

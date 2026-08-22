@@ -311,9 +311,14 @@ schedule, and tag paths have executable contract tests.
 - [ ] Attribute 30-60 days of vector, emulator, mutation, cross-browser, and
       install failures to product defect, deterministic test defect, dependency
       drift, registry/rate limit, queueing, or proven runner fault.
+      The exact 60-day vector/emulator audit is complete and supports shadow
+      measurement only; mutation, cross-browser, and install attribution remain.
 - [ ] If evidence supports it, keep fast wallet-safety invariants on every PR and
       move unaffected hardware emulators to nightly/RC, while forcing them for
       wallet/signing/hardware-sensitive changes.
+      Before any re-tiering, Phase 5a gives all three proof runners one canonical
+      hashed-source inventory; Phase 5b will observe a classifier without
+      changing execution.
 - [ ] Decide whether 100% statement/branch/function/line coverage remains global
       or becomes 100% on funds/auth boundaries plus a non-decreasing ratchet
       elsewhere. Do not lower thresholds without mutation and escaped-defect data.

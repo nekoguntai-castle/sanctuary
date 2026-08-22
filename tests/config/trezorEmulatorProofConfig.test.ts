@@ -240,34 +240,13 @@ describe("Trezor emulator proof test configuration", () => {
     ]) {
       expect(runner).toContain(field);
     }
-    for (const source of [
-      ".github/actions/setup-node-toolchain/action.yml",
-      ".github/workflows/verify-vectors.yml",
-      ".nvmrc",
-      "package.json",
-      "package-lock.json",
-      "scripts/ci/ensure-node.sh",
-      "scripts/ci/check-trezor-transport-provenance.sh",
-      "scripts/ci/docker-exec-tcp-forwarder.mjs",
-      "scripts/ci/images/go-runner.Dockerfile",
-      "scripts/ci/provider-context.sh",
-      "scripts/ci/resolve-trezor-publish-binding.sh",
-      "scripts/ci/run-trezor-emulator-proof.sh",
-      "tests/ci/dockerExecTcpForwarder.test.ts",
-      "tests/ci/trezorEmulatorRunnerPreflight.test.ts",
-      "config/trezor-emulator-proof.json",
-      "config/tooling/vitest.trezor-emulator.config.ts",
-      "tests/fixtures/trezorEmulatorProof.ts",
-      "tests/config/trezorEmulatorProofBinding.test.ts",
-      "tests/config/trezorEmulatorProofConfig.test.ts",
-      "tests/integration/trezorEmulator.integration.test.ts",
-      "tests/integration/trezorEmulator/proofReplay.ts",
-      "src/services/hardwareWallet/adapters/trezor/trezorAdapter.ts",
-      "src/services/hardwareWallet/identity.ts",
-      "src/services/hardwareWallet/psbtAccountBinding.ts",
-    ]) {
-      expect(runner).toContain(source);
-    }
+    expect(runner).toContain("hardware-emulator-source-inventory.mjs");
+    expect(runner).toContain(
+      "list --vendor trezor --format lines --require-clean",
+    );
+    expect(runner).toContain("if ! proof_sources_text=");
+    expect(runner).toContain("Trezor proof-source inventory resolved empty");
+    expect(runner).not.toContain("mapfile -t proof_sources < <(");
     expect(runner).toContain("Workflow commit differs from checked-out HEAD");
     const workflow = readFileSync(
       path.join(repoRoot, ".github/workflows/verify-vectors.yml"),

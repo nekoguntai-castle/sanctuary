@@ -1873,8 +1873,25 @@ assert_not_contains "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
   "verify-vectors has no path-filter blind spots" \
   "paths:"
 
+for vendor in trezor ledger jade; do
+  vendor_title="${vendor^}"
+  assert_contains_in_order \
+    "$REPO_ROOT/scripts/ci/run-${vendor}-emulator-proof.sh" \
+    "$vendor_title proof resolves the canonical source inventory fail closed" \
+    "proof_sources_text=''" \
+    "if ! proof_sources_text=" \
+    "hardware-emulator-source-inventory.mjs" \
+    "list --vendor $vendor --format lines --require-clean" \
+    "Failed to resolve $vendor_title proof-source inventory" \
+    "$vendor_title proof-source inventory resolved empty" \
+    'mapfile -t proof_sources <<< "$proof_sources_text"' \
+    "readonly -a proof_sources"
+done
+
 assert_contains_in_order "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
   "verify-vectors executes hardware truthfulness contracts" \
+  "Verify hardware emulator source inventory" \
+  "node scripts/ci/hardware-emulator-source-inventory.mjs validate" \
   "Run pinned Jade vendor protocol harness" \
   "npm run test:jade-protocol-harness" \
   "Run hardware capability truthfulness tests" \
@@ -2167,6 +2184,11 @@ assert_contains_in_order "$QUALITY_WORKFLOW" \
   'WORKFLOW_SHA: ${{ github.sha }}' \
   "scripts/ci/classify-quality-scope.sh"
 
+assert_contains_in_order "$REPO_ROOT/scripts/ci/classify-quality-scope.sh" \
+  "quality reruns classifier contracts for hardware inventory and vector workflow changes" \
+  "config/hardware-emulator-source-inventory.json" \
+  ".github/workflows/verify-vectors.yml"
+
 assert_contains_in_order "$REPO_ROOT/config/tooling/eslint.config.js" \
   "LLM egress proxy production source receives the TypeScript lint policy" \
   "const productionSource" \
@@ -2336,6 +2358,7 @@ done
 assert_contains_in_order "$QUALITY_WORKFLOW" \
   "quality frontend Compose contract" \
   "Run CI classifier tests" \
+  "node tests/ci/check-hardware-emulator-source-inventory.test.mjs" \
   "node tests/ci/check-npm-install-scripts.test.mjs" \
   "node tests/ci/check-root-layout.test.mjs" \
   "node tests/ci/docker-compose-test-contract.test.mjs" \

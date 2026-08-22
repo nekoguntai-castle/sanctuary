@@ -487,44 +487,20 @@ jq -e \
   and .packages["node_modules/@trezor/connect-web"].integrity == $connectWebIntegrity
 ' package-lock.json >/dev/null
 
-mapfile -t proof_sources < <(
-  {
-    printf '%s\n' \
-      '.github/actions/setup-node-toolchain/action.yml' \
-      '.github/workflows/verify-vectors.yml' \
-      '.nvmrc' \
-      'package.json' \
-      'package-lock.json' \
-      'scripts/ci/ensure-node.sh' \
-      'scripts/ci/check-trezor-transport-provenance.sh' \
-      'scripts/ci/images/go-runner.Dockerfile' \
-      'scripts/ci/provider-context.sh' \
-      'scripts/ci/docker-exec-tcp-forwarder.mjs' \
-      'scripts/ci/resolve-trezor-publish-binding.sh' \
-      'shared/constants/hardwareWalletCapabilities.ts' \
-      'shared/constants/walletPolicy.ts' \
-      'src/hooks/send/types.ts' \
-      'src/hooks/send/useUsbSigning.ts' \
-      'src/hooks/useHardwareWallet.ts' \
-      'src/services/hardwareWallet/identity.ts' \
-      'src/services/hardwareWallet/psbtAccountBinding.ts' \
-      'src/services/hardwareWallet/service.ts' \
-      'src/services/hardwareWallet/types.ts' \
-      'src/services/hardwareWallet/adapters/trezor/trezorAdapter.ts' \
-      'config/tooling/vitest.trezor-emulator.config.ts' \
-      'config/trezor-emulator-proof.json' \
-      'scripts/ci/run-trezor-emulator-proof.sh' \
-      'tests/fixtures/trezorEmulatorProof.ts' \
-      'tests/ci/dockerExecTcpForwarder.test.ts' \
-      'tests/ci/trezorEmulatorRunnerPreflight.test.ts' \
-      'tests/config/trezorEmulatorProofBinding.test.ts' \
-      'tests/config/trezorEmulatorProofConfig.test.ts' \
-      'tests/integration/trezorEmulator.integration.test.ts' \
-      'tests/integration/trezorEmulator/proofReplay.ts'
-    find src/services/hardwareWallet/adapters/trezor \
-      tests/integration/trezorEmulator -type f -name '*.ts' -print
-  } | LC_ALL=C sort -u
-)
+proof_sources_text=''
+if ! proof_sources_text="$(
+  node scripts/ci/hardware-emulator-source-inventory.mjs \
+    list --vendor trezor --format lines --require-clean
+)"; then
+  echo 'Failed to resolve Trezor proof-source inventory' >&2
+  exit 1
+fi
+if [ -z "$proof_sources_text" ]; then
+  echo 'Trezor proof-source inventory resolved empty' >&2
+  exit 1
+fi
+mapfile -t proof_sources <<< "$proof_sources_text"
+readonly -a proof_sources
 source_manifest='[]'
 for source_path in "${proof_sources[@]}"; do
   if [ ! -f "$source_path" ]; then

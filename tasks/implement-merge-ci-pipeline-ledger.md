@@ -15,7 +15,8 @@ Rebuild policy: `after-plan`
 | Phase 3a | `main` | `codex/implement-merge/ci-architecture-scope` | `/home/nekoguntai/sanctuary-ci-architecture-scope` | yes | no | retained pending final cleanup | [#883](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/883) | `07c7d37cac14f461b7cd6e321ddebf8e7f07712d` |
 | Phase 3b (rejected pilot) | `main` | `codex/implement-merge/ci-frontend-coverage-parallel` | `/home/nekoguntai/sanctuary-ci-frontend-coverage-parallel` | yes | no | retained as experiment record | [#884](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/884) | not merged (timing rollback) |
 | Phase 3c | `main` | `codex/implement-merge/ci-artifact-policy` | `/home/nekoguntai/sanctuary-ci-artifact-policy` | yes | no | retained pending final cleanup | [#885](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/885) | `f6894c80135e29147e1d37262c038a8632841a20` |
-| Phase 1d | `main` | `codex/implement-merge/ci-quality-push-scope` | `/home/nekoguntai/sanctuary-ci-quality-push-scope` | yes | no | active | [#886](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/886) | pending |
+| Phase 1d | `main` | `codex/implement-merge/ci-quality-push-scope` | `/home/nekoguntai/sanctuary-ci-quality-push-scope` | yes | no | retained pending final cleanup | [#886](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/886) | `1c608ae13f1ad4747ecf2c43226088b56b8eb39b` |
+| Phase 5a | `main` | `codex/implement-merge/ci-hardware-proof-sources` | `/home/nekoguntai/sanctuary-ci-hardware-proof-sources` | yes | no | active | [#887](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/887) | pending |
 
 ## Ownership boundary
 
@@ -165,3 +166,39 @@ from cleanup and mutation.
   command files after checkout. Local actionlint and the independent diff review
   remain clean; the failed attempt is classified as a proven runner fault, not
   a source failure.
+- 2026-08-21: Phase 1d merged through PR #886 as `1c608ae13f`. The final PR
+  commit and landed-main commit both passed all 30 contexts. The main Quality
+  event exposed the exact `before=f6894c8013` and `after=1c608ae13f` range;
+  Determine Scope selected all 11 leaves, every leaf passed, and the stable
+  aggregate passed. Landed Quality, Test, and Vector workflows completed in
+  738, 1,406, and 1,002 seconds respectively.
+- 2026-08-21: A reproducible GET-only 60-day Vector audit captured 434 runs and
+  1,558 SHA256-manifested evidence files. In the comparable current-topology
+  cohort, 55 successful unrelated PR runs model a median 425.5 runner-second
+  and 272 wall-second emulator saving, but only ten days of topology exposure
+  and zero product-validation emulator failures cannot establish false-negative
+  retention. Phase 5 therefore does not activate skipping yet.
+- 2026-08-21: Phase 5a starts from exact merged main `1c608ae13f`. It owns one
+  canonical, conservatively expanded common/vendor proof-source inventory and
+  atomically migrates Trezor, Ledger, and Jade source hashing to it. The phase
+  changes no emulator condition, workflow dependency, summary result, artifact
+  schema, required context, or branch-protection rule; a separate Phase 5b will
+  add report-only classifier observation after this dependency closure lands.
+- 2026-08-21: Phase 5a's final local audit made the proof inventory strictly
+  commit-bound: selectors expand from Git's tracked index only, and vendor
+  runners reject relevant modified, staged, deleted, or untracked paths plus
+  selected symlinks before hashing. The resolved inventories contain 115
+  Trezor, 94 Ledger, and 106 Jade sources while retaining every legacy source
+  and the recursive local-import closure of each proof entrypoint. Focused
+  verification passed 10 inventory tests, 8 wallet-classifier tests,
+  351 workflow-composition assertions, 12 emulator configuration tests, Quality
+  scope classification, action-runtime guards, workflow test-only policy,
+  provider-context tests, actionlint, ESLint, syntax checks, and diff checks. The
+  official repeatable address verifier regenerated both byte-identical vector
+  fixtures to bind their provenance hash to the intentional Vector workflow
+  change; its generated-vector and hardware-compatibility suites passed 19/19.
+- 2026-08-21: Phase 5a opened as PR #887 from exact main `1c608ae13f` after the
+  full pre-commit backend and frontend suites also passed. The PR remains a
+  dependency-closure change only: all three emulator jobs still execute
+  unconditionally, and the existing Vector summary and protected contexts are
+  unchanged pending terminal PR and landed-main verification.

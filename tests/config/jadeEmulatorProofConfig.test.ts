@@ -78,12 +78,13 @@ describe('pinned Jade QEMU proof configuration', () => {
       'Jade QEMU controller did not become ready',
       'cleanBootPerNetwork: true',
       'networkProofs: [$mainnetProof[0], $testnetProof[0]]',
-      'src/services/hardwareWallet/adapters/jadeProtocol.ts',
-      'src/services/hardwareWallet/adapters/jadeSignedPsbt.ts',
+      'hardware-emulator-source-inventory.mjs',
+      'list --vendor jade --format lines --require-clean',
+      'if ! proof_sources_text=',
+      'Jade proof-source inventory resolved empty',
       'scripts/ci/verify-jade-junit.mjs',
-      'tests/ci/download-verified-source.test.sh',
-      'tests/ci/verify-jade-junit.test.mjs',
     ]) expect(runner).toContain(required);
+    expect(runner).not.toContain('readonly -a proof_sources=(');
     expect(runner).not.toContain('curl --fail --location');
     expect(runner).not.toContain('testCount: 3');
     expect(runner).not.toMatch(/docker run[^\n]*(?:-v|--volume|--mount)/);

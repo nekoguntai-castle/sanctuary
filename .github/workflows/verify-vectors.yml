@@ -77,6 +77,9 @@ jobs:
       - name: Verify wallet-safety classifier completeness
         run: node scripts/ci/check-wallet-safety-classifier.mjs
 
+      - name: Verify hardware emulator source inventory
+        run: node scripts/ci/hardware-emulator-source-inventory.mjs validate
+
       - name: Verify Go toolchain
         uses: ./.github/actions/setup-go-toolchain
 

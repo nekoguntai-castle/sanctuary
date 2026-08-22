@@ -55,7 +55,10 @@ describe('pinned Ledger emulator proof configuration', () => {
     expect(runner).toContain('LEDGER_EMULATOR_PROOF=1');
     expect(runner).toContain('proof-sources.sha256');
     expect(runner).toContain('sourceTreeState');
-    expect(runner).toContain('src/services/hardwareWallet/adapters/ledger/signPsbt.ts');
-    expect(runner).toContain('.github/workflows/verify-vectors.yml');
+    expect(runner).toContain('hardware-emulator-source-inventory.mjs');
+    expect(runner).toContain('list --vendor ledger --format lines --require-clean');
+    expect(runner).toContain('if ! proof_sources_text=');
+    expect(runner).toContain('Ledger proof-source inventory resolved empty');
+    expect(runner).not.toContain('readonly -a proof_sources=(');
   });
 });

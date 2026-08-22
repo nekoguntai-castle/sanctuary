@@ -38,6 +38,20 @@ independent finalization on both coin families. Run it with:
 npm run test:ledger-emulator-proof
 ```
 
+All three Tier 2 runners resolve their hashed repository inputs from
+`config/hardware-emulator-source-inventory.json` through the single validated
+`scripts/ci/hardware-emulator-source-inventory.mjs` resolver. Common toolchain,
+shared-workspace, and hardware-wallet sources are included in every vendor
+manifest; vendor adapter and fixture trees are added to the applicable proof.
+Selectors expand only to tracked repository files, must resolve to a nonempty
+sorted set, and reject unsafe, duplicate, or overlapping paths. Proof execution
+also rejects relevant modified, staged, deleted, or untracked sources and
+selected symlinks, so the hashed source set remains reproducibly bound to the
+reported commit. A resolver error or empty result stops the proof before any
+success artifact can be produced. This conservative inventory is the
+prerequisite for measuring a future path classifier; it does not currently skip
+or condition any emulator job.
+
 The Ledger app binaries and Speculos runtime are baked into this dedicated proof
 image; CI does not download or repair them after the container starts. The root
 SDK and WebUSB versions are exact lockfile pins checked against the proof

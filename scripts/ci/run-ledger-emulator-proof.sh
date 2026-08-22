@@ -20,22 +20,20 @@ if [ "$ci_environment_file" != '/dev/stdout' ]; then
     "LEDGER_EMULATOR_DIAGNOSTICS_DIR=$diagnostics_dir"
 fi
 
-readonly -a proof_sources=(
-  package-lock.json
-  config/ledger-emulator/Dockerfile
-  config/ledger-emulator/automation.json
-  config/ledger-emulator/proof.json
-  config/tooling/vitest.ledger-emulator.config.ts
-  scripts/ci/docker-exec-tcp-forwarder.mjs
-  scripts/ci/run-ledger-emulator-proof.sh
-  src/services/hardwareWallet/adapters/ledger/ledgerAdapter.ts
-  src/services/hardwareWallet/adapters/ledger/session.ts
-  src/services/hardwareWallet/adapters/ledger/signPsbt.ts
-  src/services/hardwareWallet/adapters/ledger/walletPolicy.ts
-  tests/integration/ledgerEmulator.integration.test.ts
-  tests/integration/ledgerEmulator/fixtures.ts
-  .github/workflows/verify-vectors.yml
-)
+proof_sources_text=''
+if ! proof_sources_text="$(
+  node scripts/ci/hardware-emulator-source-inventory.mjs \
+    list --vendor ledger --format lines --require-clean
+)"; then
+  echo 'Failed to resolve Ledger proof-source inventory' >&2
+  exit 1
+fi
+if [ -z "$proof_sources_text" ]; then
+  echo 'Ledger proof-source inventory resolved empty' >&2
+  exit 1
+fi
+mapfile -t proof_sources <<< "$proof_sources_text"
+readonly -a proof_sources
 sha256sum "${proof_sources[@]}" > "$evidence_root/proof-sources.sha256"
 
 jq -e '
