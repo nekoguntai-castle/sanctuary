@@ -1380,33 +1380,15 @@ assert_not_contains "$TEST_WORKFLOW" \
   "quick lane must not duplicate full Stryker execution" \
   "quick-critical-mutation-shards:"
 
-assert_named_job_not_contains "$TEST_WORKFLOW" \
-  "quick-browser-smoke" \
-  "quick browser does not wait for frontend unit tests" \
-  "quick-frontend-tests"
-
-assert_named_job_not_contains "$TEST_WORKFLOW" \
-  "quick-render-regression" \
-  "quick render does not wait for browser smoke" \
-  "quick-browser-smoke"
-
-assert_contains_in_order "$TEST_WORKFLOW" \
-  "quick gateway diagnostics" \
+for retired_quick_job in \
   "quick-gateway-tests:" \
-  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/related-gateway-tests.log"' \
-  "npx vitest related --run --passWithNoTests" \
-  "Write quick gateway diagnostic summary" \
-  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Gateway"' \
-  "Upload quick gateway diagnostics" \
-  "ci-diagnostics-quick-gateway"
-
-assert_contains_in_order "$TEST_WORKFLOW" \
-  "quick gateway rejects corrupt exact cache hit" \
-  "Restore gateway node_modules cache" \
-  "Install dependencies" \
-  'cache-quick-gateway-node-modules.outputs.cache-hit' \
-  '[ -x node_modules/.bin/vitest ]' \
-  'npm ci --strict-allow-scripts'
+  "quick-llm-egress-proxy-tests:" \
+  "quick-browser-smoke:" \
+  "quick-render-regression:"; do
+  assert_not_contains "$TEST_WORKFLOW" \
+    "retired duplicate job $retired_quick_job stays absent" \
+    "$retired_quick_job"
+done
 
 # Changed filenames must reach vitest as array data, never interpolated into
 # the command string. They additionally go through related-test-args.sh, which
@@ -1423,15 +1405,6 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   'npx vitest related --run --passWithNoTests' \
   '"${related_files[@]}"'
 
-assert_contains_in_order "$TEST_WORKFLOW" \
-  "quick gateway changed files passed as data" \
-  "Run related gateway tests" \
-  'GATEWAY_FILES: ${{ needs.detect-changes.outputs.gateway_files }}' \
-  'RELATED_FILES="${GATEWAY_FILES:-}"' \
-  'scripts/ci/related-test-args.sh" gateway' \
-  'mapfile -t related_files < "$args_file"' \
-  'npx vitest related --run --passWithNoTests "${related_files[@]}"'
-
 assert_not_contains "$TEST_WORKFLOW" \
   "quick backend changed files must not interpolate into command" \
   'npx vitest related --run --passWithNoTests ${{ needs.detect-changes.outputs.backend_files }}'
@@ -1440,10 +1413,6 @@ assert_not_contains "$TEST_WORKFLOW" \
 assert_not_contains "$TEST_WORKFLOW" \
   "quick backend related tests must not use the blanket retry wrapper" \
   'scripts/ci/retry-command.sh "quick backend related tests"'
-
-assert_not_contains "$TEST_WORKFLOW" \
-  "quick gateway changed files must not interpolate into command" \
-  'npx vitest related --run --passWithNoTests ${{ needs.detect-changes.outputs.gateway_files }}'
 
 assert_contains_in_order "$TEST_WORKFLOW" \
   "PR required checks require full summary" \
@@ -1467,44 +1436,6 @@ assert_named_job_not_contains "$TEST_WORKFLOW" \
   "full-lane-ready" \
   "full lane ready does not wait for quick work" \
   "quick-"
-
-assert_contains_in_order "$TEST_WORKFLOW" \
-  "quick LLM egress proxy diagnostics" \
-  "quick-llm-egress-proxy-tests:" \
-  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/llm-egress-proxy-tests.log"' \
-  "npm --prefix llm-egress-proxy run test" \
-  "Write quick LLM egress proxy diagnostic summary" \
-  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick LLM Egress Proxy"' \
-  "Upload quick LLM egress proxy diagnostics" \
-  "ci-diagnostics-quick-llm-egress-proxy"
-
-assert_contains_in_order "$TEST_WORKFLOW" \
-  "quick browser diagnostics" \
-  "quick-browser-smoke:" \
-  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/quick-browser-smoke.log"' \
-  "scripts/ci/with-runner-lock.sh e2e" \
-  'scripts/ci/retry-playwright-infrastructure-failure.sh "quick browser smoke"' \
-  "Write quick browser diagnostic summary" \
-  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Browser"' \
-  "Upload quick browser diagnostics" \
-  "ci-diagnostics-quick-browser"
-
-assert_contains_in_order "$TEST_WORKFLOW" \
-  "quick render diagnostics" \
-  "quick-render-regression:" \
-  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/quick-render-regression.log"' \
-  "scripts/ci/with-runner-lock.sh e2e" \
-  'scripts/ci/retry-playwright-infrastructure-failure.sh "quick render regression"' \
-  "Write quick render diagnostic summary" \
-  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Render"' \
-  "Upload quick render diagnostics" \
-  "ci-diagnostics-quick-render"
-
-assert_contains_in_order "$TEST_WORKFLOW" \
-  "quick LLM egress proxy package test composition" \
-  "quick-llm-egress-proxy-tests:" \
-  "npm --prefix llm-egress-proxy run build" \
-  "npm --prefix llm-egress-proxy run test"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full LLM egress proxy Vitest coverage retry composition" \
@@ -1532,18 +1463,6 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "SANCTUARY_RETRY_ATTEMPTS: '5'" \
   'scripts/ci/retry-command.sh" "build check backend build"' \
   "npm --ignore-scripts run build"
-
-assert_contains_in_order "$TEST_WORKFLOW" \
-  "quick browser Playwright infrastructure retry" \
-  'scripts/ci/retry-playwright-infrastructure-failure.sh "quick browser smoke"' \
-  'scripts/ci/time-command.sh "quick browser smoke"' \
-  "npm run test:e2e -- --project=chromium tests/e2e/admin-drafts-smoke.spec.ts"
-
-assert_contains_in_order "$TEST_WORKFLOW" \
-  "quick render Playwright infrastructure retry" \
-  'scripts/ci/retry-playwright-infrastructure-failure.sh "quick render regression"' \
-  'scripts/ci/time-command.sh "quick render regression"' \
-  "npm run test:e2e -- --project=chromium tests/e2e/render-regression.spec.ts"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full browser Playwright infrastructure retry" \
@@ -1601,18 +1520,6 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "needs.detect-changes.outputs.full_scan != 'true'" \
   "needs.detect-changes.outputs.test_suite_changed != 'true'" \
   "quick-critical-mutation:" \
-  "needs.detect-changes.outputs.full_scan != 'true'" \
-  "needs.detect-changes.outputs.test_suite_changed != 'true'" \
-  "quick-gateway-tests:" \
-  "needs.detect-changes.outputs.full_scan != 'true'" \
-  "needs.detect-changes.outputs.test_suite_changed != 'true'" \
-  "quick-llm-egress-proxy-tests:" \
-  "needs.detect-changes.outputs.full_scan != 'true'" \
-  "needs.detect-changes.outputs.test_suite_changed != 'true'" \
-  "quick-browser-smoke:" \
-  "needs.detect-changes.outputs.full_scan != 'true'" \
-  "needs.detect-changes.outputs.test_suite_changed != 'true'" \
-  "quick-render-regression:" \
   "needs.detect-changes.outputs.full_scan != 'true'" \
   "needs.detect-changes.outputs.test_suite_changed != 'true'"
 
@@ -2173,7 +2080,7 @@ assert_occurrence_count "$GO_RUNNER_DOCKERFILE" \
 declare -A strict_install_counts=(
   [architecture.yml]=2
   [quality.yml]=1
-  [test.yml]=15
+  [test.yml]=10
   [verify-vectors.yml]=8
 )
 for workflow in "${!strict_install_counts[@]}"; do
@@ -2441,7 +2348,7 @@ assert_jobs_use_node24_runners \
 assert_jobs_use_node24_runners \
   "$REPO_ROOT/.github/workflows/test.yml" \
   "test jobs select Node 24-capable runners" \
-  28
+  24
 
 assert_runner_parser_rejects_post_comment_drift
 assert_cache_calls_use_wrapper

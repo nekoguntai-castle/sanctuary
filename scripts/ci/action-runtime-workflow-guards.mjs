@@ -97,10 +97,6 @@ function inspectExhaustivePrDeduplication(workflow, relativePath, state) {
   const mappings = [
     ['quick-frontend-tests', 'full-frontend-coverage-merge', 'frontend_changed'],
     ['quick-critical-mutation', 'full-critical-mutation-shards', 'critical_mutation_changed'],
-    ['quick-gateway-tests', 'full-gateway-tests', 'gateway_changed'],
-    ['quick-llm-egress-proxy-tests', 'full-llm-egress-proxy-tests', 'llm_egress_proxy_changed'],
-    ['quick-browser-smoke', 'full-browser-e2e-tests', 'browser_smoke_changed'],
-    ['quick-render-regression', 'full-render-e2e-tests', 'render_changed'],
   ];
 
   for (const [quickJob, fullJob, relevantOutput] of mappings) {

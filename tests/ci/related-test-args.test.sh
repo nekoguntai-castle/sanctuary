@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# Regression: the quick backend and gateway lanes must actually select tests.
+# Regression: quick related-test lanes must actually select tests.
 #
 # detect-changes emits repo-root-relative paths (`server/src/...`,
 # `gateway/src/...`) while those lanes set `working-directory:` to that same
 # workspace. Vitest resolves `related` entries against its root
 # (resolve(resolved.root, file)), so the untranslated paths became
 # `server/server/src/...` / `gateway/gateway/src/...`, matched nothing, and
-# `--passWithNoTests` exited 0 — two REQUIRED PR checks that never ran a test.
-# These cases pin the translation that closes that hole.
+# `--passWithNoTests` exited 0 — REQUIRED PR checks that never ran a test.
+# These cases pin the translation itself for both workspaces. The workflow
+# assertion below covers only the backend lane because the quick gateway lane
+# was retired in favor of the exhaustive full gateway suite.
 
 set -uo pipefail
 
@@ -115,13 +117,11 @@ fi
 WORKFLOW="$REPO_ROOT/.github/workflows/test.yml"
 normalized="$(tr '\n' ' ' < "$WORKFLOW" | tr -s ' ')"
 
-for ws in server gateway; do
-  if printf '%s' "$normalized" | grep -q "related-test-args.sh\" $ws"; then
-    pass "test.yml routes the $ws lane through the translation"
-  else
-    fail "test.yml does not translate changed files for the $ws lane"
-  fi
-done
+if printf '%s' "$normalized" | grep -q 'related-test-args.sh" server'; then
+  pass 'test.yml routes the server lane through the translation'
+else
+  fail 'test.yml does not translate changed files for the server lane'
+fi
 
 # Integration specs must stay out of the quick backend lane regardless of where
 # they live, so its Postgres-free guarantee holds.

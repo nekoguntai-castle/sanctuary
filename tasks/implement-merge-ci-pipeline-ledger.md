@@ -10,7 +10,8 @@ Rebuild policy: `after-plan`
 | Phase 1b | `main` | `codex/implement-merge/ci-install-hermetic` | `/home/nekoguntai/sanctuary-ci-install-hermetic` | yes | no | retained pending final cleanup | [#873](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/873) | `fdee4acc2bf41126a8dab309a7345a2c6179d7e9` |
 | Phase 1c | `main` | `codex/implement-merge/ci-upgrade-sync-fixture` | `/home/nekoguntai/sanctuary-ci-upgrade-sync-fixture` | yes | no | retained pending final cleanup | [#874](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/874) | `c8200025442cc8bab6a9bf9d87d31ee36b9a1fdc` |
 | Phase 0b | `main` | `codex/implement-merge/ci-performance-report` | `/home/nekoguntai/sanctuary-ci-performance-report` | yes | no | retained pending final cleanup | [#875](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/875) | `e3a8780e7869cda3ffadd60de35dc710830c5582` |
-| Phase 2a | `main` | `codex/implement-merge/ci-critical-path` | `/home/nekoguntai/sanctuary-ci-critical-path` | yes | no | active | pending | pending |
+| Phase 2a | `main` | `codex/implement-merge/ci-critical-path` | `/home/nekoguntai/sanctuary-ci-critical-path` | yes | no | retained pending final cleanup | [#881](http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/881) | `4e43ab9acd1ed36a9b75b34a094c927261f23b02` |
+| Phase 2b | `main` | `codex/implement-merge/ci-quick-lane-dedup` | `/home/nekoguntai/sanctuary-ci-quick-lane-dedup` | yes | no | active | pending | pending |
 
 ## Ownership boundary
 
@@ -76,4 +77,30 @@ from cleanup and mutation.
 - 2026-08-21: Phase 2a local verification passed 312 workflow-composition
   assertions, action-runtime policy, test-only policy, actionlint 1.7.12,
   frontend strict/catch-all TypeScript plus 7,999 tests, and backend TypeScript
-  plus 14,257 tests. PR and landed-main timing evidence remain pending.
+  plus 14,257 tests.
+- 2026-08-21: Phase 2a merged through PR #881 as `4e43ab9acd`. All 30 PR
+  contexts passed, including the exact protected Code Quality, PR Required
+  Checks, and Full Test Summary contexts. The Test PR run finished in 1,353
+  seconds and proved that the full lane started immediately after the 9-second
+  classifier while the CI-only quick leaves skipped as intended.
+- 2026-08-21: Every landed-main workflow passed at the Phase 2a merge commit.
+  The Test push run finished in 1,239 seconds with 21 successful jobs, 10
+  expected path/event skips, and no failures; architecture finished in 105
+  seconds, quality in 510 seconds, and vector verification in 1,165 seconds.
+- 2026-08-21: Phase 2b starts from `4e43ab9acd` in a new isolated worktree. It
+  owns the remaining evidence-based comparison of quick jobs with their full
+  counterparts and will retain only materially earlier, distinct PR signal.
+- 2026-08-21: A GET-only audit of 393 completed Test PR runs retained changed-test
+  hygiene, related frontend/backend tests, DB-backed integration smoke, and the
+  mutation configuration contract because they provide unique or materially
+  earlier signal. Quick gateway and proxy were slower than their immediately
+  concurrent full supersets in representative runs. Quick browser and render
+  exercised no unique spec, consumed at least 21,929 observed runner-seconds,
+  and held the same E2E lock needed by full validation. Phase 2b removes those
+  four quick jobs while preserving every authoritative full job and stable
+  aggregate context.
+- 2026-08-21: Phase 2b local verification passed 304 workflow-composition
+  assertions, classifier and browser-group regressions, action-runtime policy,
+  test-only policy, actionlint 1.7.12, frontend strict/catch-all TypeScript plus
+  7,999 tests, and backend TypeScript plus 14,257 tests. Independent final review
+  found no stale dependency, classifier, full-summary, or protected-context gap.

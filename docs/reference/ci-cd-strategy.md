@@ -152,10 +152,13 @@ quick lane is feedback rather than a prerequisite for starting exhaustive work.
 - Backend related non-integration Vitest tests. The test typecheck runs once in
   the full lane.
 - Backend integration smoke for backend changes that touch integration-sensitive surfaces, such as API routes, middleware, repositories, Prisma migrations, worker/queue infrastructure, package/config files, or integration tests. Clearly unit-scoped backend helper changes still run backend typecheck and related non-integration tests, but skip the DB-backed smoke lane.
-- Gateway related tests.
-- LLM egress proxy build plus the dedicated `tests/llm-egress-proxy` suite for `llm-egress-proxy/` source/config changes and `tests/llm-egress-proxy/` changes. These paths do not run frontend tests unless a separate frontend path changed.
-- Chromium browser smoke only for browser-flow-relevant paths such as app routing, auth/API clients, selected shell routes, server API/routing/auth middleware, and non-render E2E specs.
-- Chromium render regression only for visual/rendering paths such as app shell, components, hooks, providers, themes, utilities, and render-regression fixtures/snapshots.
+- Gateway and LLM egress proxy changes rely on their full jobs, which start
+  immediately after classification and include the former quick signal plus
+  production build and coverage enforcement.
+- Browser-flow and render changes rely on their full Playwright jobs. The
+  retired quick copies exercised no unique specs, repeated dependency and
+  browser setup, and contended with the exhaustive jobs for the shared E2E
+  lock.
 - Critical mutation configuration sanity for critical
   Bitcoin/auth/access-control paths. The full lane owns the single exhaustive
   pre-merge mutation execution.

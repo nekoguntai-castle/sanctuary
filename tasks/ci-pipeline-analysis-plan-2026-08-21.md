@@ -259,7 +259,7 @@ receive immediate quality validation.
       feedback and exhaustive validation can start concurrently.
 - [x] Remove cross-domain quick-lane `needs` edges that exchange no artifact or
       state; make the aggregate, not an unrelated leaf, own failure propagation.
-- [ ] Compare each quick job with its full counterpart and retain only checks
+- [x] Compare each quick job with its full counterpart and retain only checks
       that provide materially earlier, distinct signal.
 - [x] Collapse the three frontend typecheck matrix jobs into one checkout/install
       with three separately timed steps and equivalent failure diagnostics.
@@ -275,7 +275,7 @@ falls; no required context can succeed when its selected test set is empty.
 
 - [ ] Pilot one shared frontend build artifact for browser/render jobs and retain
       it only if measured wall and runner time beat independent builds.
-- [ ] Consolidate quick browser/render preparation or remove those quick jobs if
+- [x] Consolidate quick browser/render preparation or remove those quick jobs if
       Phase 2 proves they add no unique signal.
 - [ ] Standardize root npm caching through a single composite action, beginning
       with frontend typecheck/coverage; measure cold and warm cases.
