@@ -152,6 +152,11 @@ export interface IncrementalSyncIntentState {
   processedFullResyncGeneration: number;
 }
 
+export interface IncrementalSyncLifecycleState
+  extends IncrementalSyncIntentState, WalletSyncState {
+  lastSyncedBlockHeight: number | null;
+}
+
 export type IncrementalSyncRequestMode = 'automatic' | 'explicit_reopen';
 
 export type IncrementalSyncRequestResult =
@@ -175,14 +180,15 @@ export type IncrementalSyncClaimResult =
   | {
     status: 'claimed';
     claim: IncrementalSyncClaim;
-    state: IncrementalSyncIntentState;
+    state: IncrementalSyncLifecycleState;
   }
+  | { status: 'already_claimed' }
   | { status: 'not_claimed' };
 
 export type IncrementalSyncTerminalResult =
   | {
     status: 'applied';
-    state: IncrementalSyncIntentState;
+    state: IncrementalSyncLifecycleState;
     trailingGenerationPending: boolean;
   }
   | { status: 'lost_fence' };

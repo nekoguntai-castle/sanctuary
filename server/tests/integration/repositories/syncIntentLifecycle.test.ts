@@ -13,6 +13,7 @@ import { createTestUser, createTestWallet } from './setup';
 const describeWithDatabase = process.env.DATABASE_URL ? describe : describe.skip;
 const NOW = new Date('2026-08-22T07:00:00.000Z');
 const LEASE_END = new Date('2026-08-22T07:05:00.000Z');
+const SYNCED_AT = new Date('2026-08-22T07:06:00.000Z');
 
 describeWithDatabase('sync intent lifecycle', () => {
   const userIds: string[] = [];
@@ -57,8 +58,20 @@ describeWithDatabase('sync intent lifecycle', () => {
       leaseToken: token,
       claimedAt: NOW,
       leaseExpiresAt: LEASE_END,
+      expectedRequestedGeneration: 1,
     });
-    expect(claim).toMatchObject({ status: 'claimed', claim: { generation: 1 } });
+    expect(claim).toMatchObject({
+      status: 'claimed',
+      claim: { generation: 1 },
+      state: {
+        syncInProgress: true,
+        lastSyncStatus: 'syncing',
+        lastSyncError: null,
+        syncExecutionOwner: 'worker',
+        syncStartedAt: NOW,
+        syncStateVersion: 1,
+      },
+    });
 
     const trailingRequests = await Promise.all(
       Array.from({ length: 5 }, () => requestIncrementalSync(walletId)),
@@ -66,16 +79,27 @@ describeWithDatabase('sync intent lifecycle', () => {
     expect(trailingRequests.filter(result => result.status === 'requested')).toHaveLength(1);
     expect(trailingRequests.filter(result => result.status === 'merged')).toHaveLength(4);
 
-    await expect(completeIncrementalSync(walletId, {
-      generation: 1,
-      leaseToken: token,
-    })).resolves.toMatchObject({
+    await expect(completeIncrementalSync(
+      walletId,
+      { generation: 1, leaseToken: token },
+      { syncedAt: SYNCED_AT, lastSyncedBlockHeight: 840_000 },
+    )).resolves.toMatchObject({
       status: 'applied',
       trailingGenerationPending: true,
       state: {
         requestedIncrementalSyncGeneration: 2,
         claimedIncrementalSyncGeneration: 1,
         processedIncrementalSyncGeneration: 1,
+        syncInProgress: false,
+        lastSyncedAt: SYNCED_AT,
+        lastSyncedBlockHeight: 840_000,
+        lastSyncStatus: 'success',
+        syncExecutionOwner: null,
+        syncStartedAt: null,
+        syncRetryCount: 0,
+        syncNextRetryAt: null,
+        syncActionRequiredAt: null,
+        syncStateVersion: 2,
       },
     });
   });
@@ -88,10 +112,11 @@ describeWithDatabase('sync intent lifecycle', () => {
         leaseToken: randomUUID(),
         claimedAt: NOW,
         leaseExpiresAt: LEASE_END,
+        expectedRequestedGeneration: 1,
       })
     )));
     expect(claims.filter(result => result.status === 'claimed')).toHaveLength(1);
-    expect(claims.filter(result => result.status === 'not_claimed')).toHaveLength(5);
+    expect(claims.filter(result => result.status === 'already_claimed')).toHaveLength(5);
   });
 
   it('preserves action-required retry state until explicit reopen', async () => {
@@ -139,10 +164,35 @@ describeWithDatabase('sync intent lifecycle', () => {
       leaseToken: randomUUID(),
       claimedAt: NOW,
       leaseExpiresAt: LEASE_END,
+      expectedRequestedGeneration: 1,
     })).resolves.toEqual({ status: 'not_claimed' });
   });
 
-  it('reclaims an expired claim only through its exact previous fence', async () => {
+  it('binds a wake-up to its expected requested generation', async () => {
+    const walletId = await createWallet();
+    await prisma.wallet.update({
+      where: { id: walletId },
+      data: {
+        requestedIncrementalSyncGeneration: 2,
+        claimedIncrementalSyncGeneration: 1,
+        processedIncrementalSyncGeneration: 1,
+      },
+    });
+    await expect(claimIncrementalSync(walletId, {
+      leaseToken: randomUUID(),
+      claimedAt: NOW,
+      leaseExpiresAt: LEASE_END,
+      expectedRequestedGeneration: 1,
+    })).resolves.toEqual({ status: 'not_claimed' });
+    await expect(claimIncrementalSync(walletId, {
+      leaseToken: randomUUID(),
+      claimedAt: NOW,
+      leaseExpiresAt: LEASE_END,
+      expectedRequestedGeneration: 2,
+    })).resolves.toMatchObject({ status: 'claimed', claim: { generation: 2 } });
+  });
+
+  it('does not reclaim an expired incremental lease in Phase 2B', async () => {
     const walletId = await createWallet();
     const oldToken = randomUUID();
     const oldClaimedAt = new Date('2026-08-22T06:00:00.000Z');
@@ -162,28 +212,34 @@ describeWithDatabase('sync intent lifecycle', () => {
       leaseToken: randomUUID(),
       claimedAt: NOW,
       leaseExpiresAt: LEASE_END,
-    })).resolves.toEqual({ status: 'not_claimed' });
+      expectedRequestedGeneration: 1,
+    })).resolves.toEqual({ status: 'already_claimed' });
     await expect(claimIncrementalSync(walletId, {
       leaseToken: randomUUID(),
       claimedAt: NOW,
       leaseExpiresAt: LEASE_END,
+      expectedRequestedGeneration: 1,
       expectedExpiredFence: { generation: 1, leaseToken: randomUUID() },
-    })).resolves.toEqual({ status: 'not_claimed' });
+    })).rejects.toThrow('cannot be reclaimed');
+  });
 
-    const newToken = randomUUID();
-    await expect(claimIncrementalSync(walletId, {
-      leaseToken: newToken,
+  it('does not acknowledge an active generation after a trailing request arrives', async () => {
+    const walletId = await createWallet();
+    await requestIncrementalSync(walletId);
+    await claimIncrementalSync(walletId, {
+      leaseToken: randomUUID(),
       claimedAt: NOW,
       leaseExpiresAt: LEASE_END,
-      expectedExpiredFence: { generation: 1, leaseToken: oldToken },
-    })).resolves.toMatchObject({
-      status: 'claimed',
-      claim: { generation: 1, leaseToken: newToken },
+      expectedRequestedGeneration: 1,
     });
-    await expect(completeIncrementalSync(walletId, {
-      generation: 1,
-      leaseToken: oldToken,
-    })).resolves.toEqual({ status: 'lost_fence' });
+    await requestIncrementalSync(walletId);
+
+    await expect(claimIncrementalSync(walletId, {
+      leaseToken: randomUUID(),
+      claimedAt: NOW,
+      leaseExpiresAt: LEASE_END,
+      expectedRequestedGeneration: 1,
+    })).resolves.toEqual({ status: 'already_claimed' });
   });
 
   it('releases retries and terminal failures without consuming pending intent', async () => {
@@ -194,12 +250,18 @@ describeWithDatabase('sync intent lifecycle', () => {
       leaseToken: firstToken,
       claimedAt: NOW,
       leaseExpiresAt: LEASE_END,
+      expectedRequestedGeneration: 1,
     });
     const retryAt = new Date('2026-08-22T07:10:00.000Z');
     await expect(releaseIncrementalSyncForRetry(
       walletId,
       { generation: 1, leaseToken: firstToken },
-      { releasedAt: NOW, nextRetryAt: retryAt },
+      {
+        releasedAt: NOW,
+        nextRetryAt: retryAt,
+        errorMessage: 'Electrum unavailable',
+        failureClass: 'electrum_unavailable',
+      },
     )).resolves.toMatchObject({
       status: 'applied',
       state: {
@@ -208,6 +270,13 @@ describeWithDatabase('sync intent lifecycle', () => {
         processedIncrementalSyncGeneration: 0,
         syncRetryCount: 1,
         syncNextRetryAt: retryAt,
+        syncInProgress: false,
+        lastSyncStatus: 'retrying',
+        lastSyncError: 'Electrum unavailable',
+        lastSyncFailureClass: 'electrum_unavailable',
+        syncExecutionOwner: 'worker',
+        syncStartedAt: null,
+        syncStateVersion: 2,
       },
     });
 
@@ -215,6 +284,7 @@ describeWithDatabase('sync intent lifecycle', () => {
       leaseToken: randomUUID(),
       claimedAt: NOW,
       leaseExpiresAt: LEASE_END,
+      expectedRequestedGeneration: 1,
     })).resolves.toEqual({ status: 'not_claimed' });
     const secondToken = randomUUID();
     const secondClaimAt = new Date('2026-08-22T07:10:00.000Z');
@@ -222,12 +292,17 @@ describeWithDatabase('sync intent lifecycle', () => {
       leaseToken: secondToken,
       claimedAt: secondClaimAt,
       leaseExpiresAt: new Date('2026-08-22T07:15:00.000Z'),
+      expectedRequestedGeneration: 1,
     });
     const actionAt = new Date('2026-08-22T07:11:00.000Z');
     await expect(releaseIncrementalSyncAsActionRequired(
       walletId,
       { generation: 1, leaseToken: secondToken },
-      actionAt,
+      {
+        actionRequiredAt: actionAt,
+        errorMessage: 'Descriptor requires repair',
+        failureClass: 'descriptor_policy_missing',
+      },
     )).resolves.toMatchObject({
       status: 'applied',
       state: {
@@ -237,7 +312,40 @@ describeWithDatabase('sync intent lifecycle', () => {
         syncRetryCount: 2,
         syncNextRetryAt: null,
         syncActionRequiredAt: actionAt,
+        syncInProgress: false,
+        lastSyncStatus: 'failed',
+        lastSyncError: 'Descriptor requires repair',
+        lastSyncFailureClass: 'descriptor_policy_missing',
+        syncExecutionOwner: null,
+        syncStartedAt: null,
+        syncStateVersion: 4,
       },
+    });
+  });
+
+  it('rejects a mismatched completion token without changing lifecycle state', async () => {
+    const walletId = await createWallet();
+    await requestIncrementalSync(walletId);
+    const token = randomUUID();
+    await claimIncrementalSync(walletId, {
+      leaseToken: token,
+      claimedAt: NOW,
+      leaseExpiresAt: LEASE_END,
+      expectedRequestedGeneration: 1,
+    });
+
+    await expect(completeIncrementalSync(
+      walletId,
+      { generation: 1, leaseToken: randomUUID() },
+      { syncedAt: SYNCED_AT, lastSyncedBlockHeight: 840_000 },
+    )).resolves.toEqual({ status: 'lost_fence' });
+    await expect(prisma.wallet.findUnique({ where: { id: walletId } })).resolves.toMatchObject({
+      claimedIncrementalSyncGeneration: 1,
+      processedIncrementalSyncGeneration: 0,
+      incrementalSyncLeaseToken: token,
+      syncInProgress: true,
+      lastSyncStatus: 'syncing',
+      syncStateVersion: 1,
     });
   });
 

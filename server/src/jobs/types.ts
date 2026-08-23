@@ -15,6 +15,8 @@ import type { Job, JobsOptions } from 'bullmq';
 export interface JobExecutionContext {
   signal: AbortSignal;
   throwIfAborted: () => void;
+  /** Present only while this processor still owns the handler's distributed lock. */
+  readonly acquiredLock?: Readonly<{ key: string }>;
 }
 
 /** What the processor can tell a handler after giving up on lock contention. */

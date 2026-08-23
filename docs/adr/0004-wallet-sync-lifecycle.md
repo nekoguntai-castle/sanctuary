@@ -51,19 +51,22 @@ precedence without erasing later incremental activity.
 
 The compatibility precursor is additive:
 
-- consumers read retained unversioned/v1 and future v2 wallet job payloads while
-  producers continue to emit v1;
+- consumers read retained unversioned/v1 payloads and generation-bound v2 wallet
+  wake-ups while production producers continue to emit v1;
 - schema and checkpoint additions are readable before producers rely on them;
 - a durable policy understood by every supported rollback binary must be able to
   move `check-stale-wallets` from desired to forbidden and purge retained work;
 - missing policy retains legacy behavior before cutover, while malformed or
   unreadable policy must not silently recreate a schedule after cutover.
 
-The dormant admission capability may persist and recover coalesced intent, but
-it has no production callers in the precursor. Restores discard database lease
-authority while retaining pending generations, and a full-resync generation is
-processed only after its prepared rebuild completes successfully. Activation,
-queue payload emission, and handler claiming remain a separate cutover change.
+The admission capability can persist coalesced intent, and the worker can claim
+and execute an explicitly generation-bound v2 wake-up while it owns the canonical
+Redis wallet lock. No production producer or repair loop emits that wake-up in
+this precursor. Restores discard database lease authority while retaining pending
+generations, and a full-resync generation is processed only after its prepared
+rebuild completes successfully. Producer and repair-loop activation remain a
+separate change; automatic expired-lease reclaim remains forbidden until low-level
+wallet-history mutations are fenced against a paused former owner.
 
 This ADR and `config/wallet-sync-lifecycle-contract.json` establish the target and
 freeze the current compatibility exceptions. They do **not** retire the recurring
@@ -78,7 +81,7 @@ single-admission boundary is already complete.
 | `WSYNC-BLOCK-001` | Headers update tip/known confirmations only; time and headers do not request wallet history. |
 | `WSYNC-ADMISSION-001` | The target has one durable admission module; compatibility exceptions cannot grow. |
 | `WSYNC-WORKER-001` | The worker is the target low-level executor and subscription owner. |
-| `WSYNC-COMPAT-001` | Unversioned/v1 remain readable, v2 becomes readable before emission, and unknown versions fail closed. |
+| `WSYNC-COMPAT-001` | Unversioned/v1 remain readable, generation-bound v2 is accepted only by the fenced worker consumer, production emission remains disabled, and unknown versions fail closed. |
 | `WSYNC-STALE-001` | The stale scheduler remains explicitly legacy during the precursor and becomes forbidden only after the durable rollback floor is deployed. |
 
 ## Consequences

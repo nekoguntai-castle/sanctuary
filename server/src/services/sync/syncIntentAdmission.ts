@@ -1,8 +1,13 @@
 import { toBullMqJobId } from '../../jobs/bullMqJobIds';
 import {
+  enqueueIncrementalSyncWakeup,
+} from '../workerSyncQueue';
+import {
   syncIntentRepository,
+  type IncrementalSyncActionRequiredReleaseInput,
   type IncrementalSyncClaimInput,
   type IncrementalSyncRetryReleaseInput,
+  type IncrementalSyncSuccessInput,
 } from '../../repositories/syncIntentRepository';
 import type {
   IncrementalSyncClaimResult,
@@ -146,9 +151,18 @@ export function createSyncIntentAdmission(
     };
   }
 
+  async function wake(walletId: string, generation: number): Promise<boolean> {
+    return enqueueSafely(dependencies.enqueueWakeup, {
+      walletId,
+      generation,
+      jobId: incrementalSyncWakeupJobId(walletId, generation),
+    });
+  }
+
   return {
     request,
     recover,
+    wake,
     claim: (
       walletId: string,
       input: IncrementalSyncClaimInput,
@@ -156,7 +170,10 @@ export function createSyncIntentAdmission(
     complete: (
       walletId: string,
       fence: IncrementalSyncFence,
-    ): Promise<IncrementalSyncTerminalResult> => repository.completeIncrementalSync(walletId, fence),
+      success: IncrementalSyncSuccessInput,
+    ): Promise<IncrementalSyncTerminalResult> => (
+      repository.completeIncrementalSync(walletId, fence, success)
+    ),
     releaseForRetry: (
       walletId: string,
       fence: IncrementalSyncFence,
@@ -167,11 +184,16 @@ export function createSyncIntentAdmission(
     releaseAsActionRequired: (
       walletId: string,
       fence: IncrementalSyncFence,
-      actionRequiredAt: Date,
+      input: IncrementalSyncActionRequiredReleaseInput,
     ): Promise<IncrementalSyncTerminalResult> => (
-      repository.releaseIncrementalSyncAsActionRequired(walletId, fence, actionRequiredAt)
+      repository.releaseIncrementalSyncAsActionRequired(walletId, fence, input)
     ),
   };
 }
 
 export type SyncIntentAdmission = ReturnType<typeof createSyncIntentAdmission>;
+
+/** Process-wide canonical adapter; producer call sites remain disabled in this phase. */
+export const syncIntentAdmission = createSyncIntentAdmission({
+  enqueueWakeup: enqueueIncrementalSyncWakeup,
+});

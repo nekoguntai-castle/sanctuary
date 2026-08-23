@@ -41,6 +41,7 @@ const DORMANT_ADMISSION_MUTATIONS = [
   'requestIncrementalSync',
 ];
 const SYNC_INTENT_REPOSITORY_PATH = 'server/src/repositories/syncIntentRepository.ts';
+const INCREMENTAL_WAKEUP_ADAPTER_PATH = 'server/src/services/workerSyncQueue.ts';
 
 function normalize(filePath) {
   return filePath.split(path.sep).join('/');
@@ -206,8 +207,12 @@ export function parseWalletSyncLifecycleContract(source) {
 
 function validateCompatibility(value) {
   const compatibility = requireObject(value, 'compatibility');
-  if (compatibility.admissionState !== 'dormant_no_production_callers') {
-    throw new Error('the compatibility precursor must keep durable admission dormant');
+  if (compatibility.admissionState !== 'generation_consumer_enabled_no_production_producers') {
+    throw new Error('the compatibility precursor must expose only the generation consumer');
+  }
+  if (compatibility.generationConsumerModule
+    !== 'server/src/worker/jobs/canonicalIncrementalSync.ts') {
+    throw new Error('compatibility.generationConsumerModule must name the bounded worker engine');
   }
   if (compatibility.staleScheduleName !== 'check-stale-wallets') {
     throw new Error('compatibility.staleScheduleName must retain the legacy wire identity');
@@ -237,7 +242,12 @@ function actualReferenceFiles(sources, pattern) {
     .sort();
 }
 
-function dormantAdmissionConsumers(sources, admissionModule) {
+function unexpectedAdmissionConsumers(
+  sources,
+  admissionModule,
+  workerExecutor,
+  generationConsumerModule,
+) {
   const moduleConsumers = actualReferenceFiles(
     sources,
     /['"][^'"]*syncIntentAdmission(?:\.[cm]?[jt]s)?['"]/,
@@ -246,10 +256,53 @@ function dormantAdmissionConsumers(sources, admissionModule) {
     `\\b(?:${DORMANT_ADMISSION_MUTATIONS.join('|')})\\b`,
   );
   const mutationConsumers = actualReferenceFiles(sources, mutationPattern);
-  const allowed = new Set([admissionModule, SYNC_INTENT_REPOSITORY_PATH]);
-  return [...new Set([...moduleConsumers, ...mutationConsumers])]
-    .filter(file => !allowed.has(file))
+  const wakeupAdapterConsumers = actualReferenceFiles(
+    sources,
+    /\benqueueIncrementalSyncWakeup\b/,
+  );
+  const allowedModuleConsumers = new Set([
+    admissionModule,
+    workerExecutor,
+    generationConsumerModule,
+  ]);
+  const allowedMutationConsumers = new Set([admissionModule, SYNC_INTENT_REPOSITORY_PATH]);
+  const allowedWakeupAdapterConsumers = new Set([
+    admissionModule,
+    INCREMENTAL_WAKEUP_ADAPTER_PATH,
+  ]);
+  const forbiddenAdmissionCalls = [...sources]
+    .filter(([, source]) => admissionSingletonAliases(source).some(alias => (
+      hasForbiddenAdmissionAccess(source, alias)
+    )))
+    .map(([file]) => file);
+  return [...new Set([
+    ...moduleConsumers.filter(file => !allowedModuleConsumers.has(file)),
+    ...mutationConsumers.filter(file => !allowedMutationConsumers.has(file)),
+    ...wakeupAdapterConsumers.filter(file => !allowedWakeupAdapterConsumers.has(file)),
+    ...forbiddenAdmissionCalls,
+  ])]
     .sort();
+}
+
+function admissionSingletonAliases(source) {
+  const aliases = [];
+  const imports = /\bimport\s+([\s\S]*?)\s+from\s+['"]([^'"]+)['"]\s*;?/g;
+  for (const match of source.matchAll(imports)) {
+    if (!/syncIntentAdmission(?:\.[cm]?[jt]s)?$/.test(match[2])) continue;
+    aliases.push(...namedImportAliases(match[1], 'syncIntentAdmission'));
+    const namespace = /\*\s+as\s+([A-Za-z_$][\w$]*)/.exec(match[1])?.[1];
+    if (namespace) aliases.push(`${namespace}.syncIntentAdmission`);
+  }
+  return aliases;
+}
+
+function hasForbiddenAdmissionAccess(source, alias) {
+  const root = `\\b${escapeRegExp(alias)}`;
+  return new RegExp(`${root}\\s*(?:\\?\\.|\\.)(?:request|recover)\\b`).test(source)
+    || new RegExp(`${root}\\s*(?:\\?\\.)?\\[\\s*['"](?:request|recover)['"]\\s*\\]`).test(source)
+    || new RegExp(
+      `\\{[^}]*\\b(?:request|recover)\\b[^}]*\\}\\s*=\\s*${root}`,
+    ).test(source);
 }
 
 function expectedFiles(entries) {
@@ -337,7 +390,7 @@ function validateWireSource(root, errors) {
     errors.push('sync job producers must remain on wire version 1');
   }
   if (!/SYNC_WALLET_JOB_READER_VERSION\s*=\s*2\s+as\s+const/.test(source)) {
-    errors.push('sync wallet consumers must expose the reader-only version 2 contract');
+    errors.push('sync wallet consumers must expose the version 2 generation contract');
   }
 }
 
@@ -345,13 +398,15 @@ export function checkWalletSyncLifecycleContract(root) {
   const contract = parseWalletSyncLifecycleContract(readRequired(root, CONTRACT_PATH));
   const sources = collectSources(root);
   const errors = [];
-  const admissionConsumers = dormantAdmissionConsumers(
+  const admissionConsumers = unexpectedAdmissionConsumers(
     sources,
     contract.futureOwnership.singleAdmissionModule,
+    contract.futureOwnership.walletHistoryExecutor,
+    contract.compatibility.generationConsumerModule,
   );
   if (admissionConsumers.length > 0) {
     errors.push(
-      `durable admission activated before cutover: ${admissionConsumers.join(', ')}`,
+      `durable admission producer activated before cutover: ${admissionConsumers.join(', ')}`,
     );
   }
   compareDirectCalls(sources, contract.inventory.directExecutorCalls, errors);

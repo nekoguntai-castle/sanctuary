@@ -4,7 +4,10 @@ import {
   type SyncPriority,
 } from '@sanctuary/shared/constants/sync';
 import { getConfig } from '../config';
-import { isFullResyncGeneration } from '../constants/fullResync';
+import {
+  FULL_RESYNC_GENERATION_MAX,
+  isFullResyncGeneration,
+} from '../constants/fullResync';
 
 /**
  * Current Redis wire version. Bump only for an incompatible payload change;
@@ -44,16 +47,27 @@ export interface SyncWalletLockContention {
 export interface SyncWalletJobDataV1 extends SyncWalletJobFields {
   version?: typeof SYNC_JOB_CONTRACT_VERSION;
   lockContention?: never;
+  incrementalSyncGeneration?: never;
 }
 
 /**
- * Reader-only compatibility shape. Producers remain on v1 until the compatible
- * consumer release has fully deployed.
+ * Generation-aware consumer shape. Production producers remain on v1 until the
+ * compatible consumer release has fully deployed.
  */
-export interface SyncWalletJobDataV2 extends SyncWalletJobFields {
+interface SyncWalletJobDataV2Base {
   version: typeof SYNC_WALLET_JOB_READER_VERSION;
   lockContention?: SyncWalletLockContention;
 }
+
+export type SyncWalletJobDataV2 = SyncWalletJobDataV2Base & (
+  | (SyncWalletJobFields & { incrementalSyncGeneration?: never })
+  | (Omit<SyncWalletJobFields, 'fullResync' | 'fullResyncGeneration'> & {
+      /** Durable incremental intent generation carried only by canonical wallet-v2 wake-ups. */
+      incrementalSyncGeneration: number;
+      fullResync?: never;
+      fullResyncGeneration?: never;
+    })
+);
 
 export type SyncWalletJobData = SyncWalletJobDataV1 | SyncWalletJobDataV2;
 
@@ -170,6 +184,13 @@ function isRecord(value: unknown): boolean {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+function isIncrementalSyncGeneration(value: unknown): value is number {
+  return typeof value === 'number'
+    && Number.isInteger(value)
+    && value >= 1
+    && value <= FULL_RESYNC_GENERATION_MAX;
+}
+
 const readLockContention = (
   value: unknown,
 ): SyncWalletLockContention | undefined | null => {
@@ -195,28 +216,52 @@ const readLockContention = (
   };
 };
 
+type ReadSyncWalletJobFields = SyncWalletJobFields & {
+  incrementalSyncGeneration?: number;
+};
+
+const hasValidWalletJobBaseFields = (value: UnknownRecord): boolean => {
+  return typeof value.walletId === 'string'
+    && value.walletId.trim().length > 0
+    && (value.priority === undefined || isSyncPriority(value.priority))
+    && (value.reason === undefined || typeof value.reason === 'string');
+};
+
+const hasValidFullResyncFields = (value: UnknownRecord): boolean => {
+  if (value.fullResync !== undefined && typeof value.fullResync !== 'boolean') return false;
+  return value.fullResync === true
+    ? isFullResyncGeneration(value.fullResyncGeneration)
+    : value.fullResyncGeneration === undefined;
+};
+
+const hasValidIncrementalGeneration = (value: UnknownRecord): boolean => {
+  if (value.incrementalSyncGeneration === undefined) return true;
+  return isIncrementalSyncGeneration(value.incrementalSyncGeneration)
+    && value.fullResync === undefined
+    && value.fullResyncGeneration === undefined;
+};
+
+const buildSyncWalletJobFields = (value: UnknownRecord): ReadSyncWalletJobFields => {
+  const fields: ReadSyncWalletJobFields = { walletId: value.walletId as string };
+  if (value.priority !== undefined) fields.priority = value.priority as SyncPriority;
+  if (typeof value.reason === 'string') fields.reason = value.reason;
+  if (typeof value.fullResync === 'boolean') fields.fullResync = value.fullResync;
+  if (typeof value.fullResyncGeneration === 'number') {
+    fields.fullResyncGeneration = value.fullResyncGeneration;
+  }
+  if (typeof value.incrementalSyncGeneration === 'number') {
+    fields.incrementalSyncGeneration = value.incrementalSyncGeneration;
+  }
+  return fields;
+};
+
 const readSyncWalletJobFields = (
   value: UnknownRecord,
-): SyncWalletJobFields | null => {
-  const priority = value.priority;
-  const reason = value.reason;
-  const fullResync = value.fullResync;
-  const generation = value.fullResyncGeneration;
-  if (typeof value.walletId !== 'string' || value.walletId.trim().length === 0) return null;
-  if (priority !== undefined && !isSyncPriority(priority)) return null;
-  if (reason !== undefined && typeof reason !== 'string') return null;
-  if (fullResync !== undefined && typeof fullResync !== 'boolean') return null;
-  if (fullResync === true ? !isFullResyncGeneration(generation) : generation !== undefined) {
-    return null;
-  }
-  const fields: SyncWalletJobFields = {
-    walletId: value.walletId,
-  };
-  if (priority !== undefined) fields.priority = priority;
-  if (reason !== undefined) fields.reason = reason;
-  if (fullResync !== undefined) fields.fullResync = fullResync;
-  if (typeof generation === 'number') fields.fullResyncGeneration = generation;
-  return fields;
+): ReadSyncWalletJobFields | null => {
+  if (!hasValidWalletJobBaseFields(value)
+    || !hasValidFullResyncFields(value)
+    || !hasValidIncrementalGeneration(value)) return null;
+  return buildSyncWalletJobFields(value);
 };
 
 /** Parse retained unversioned/v1 and additive v2 wallet jobs. */
@@ -227,16 +272,36 @@ export function readSyncWalletJobData(value: unknown): NormalizedSyncWalletJobDa
   if (fields === null) return null;
   const wireVersion = record.version ?? SYNC_JOB_CONTRACT_VERSION;
   if (wireVersion === SYNC_JOB_CONTRACT_VERSION) {
-    if (record.lockContention !== undefined) return null;
-    return { version: SYNC_JOB_CONTRACT_VERSION, ...fields };
+    if (record.lockContention !== undefined || fields.incrementalSyncGeneration !== undefined) {
+      return null;
+    }
+    const { incrementalSyncGeneration: _v2Generation, ...v1Fields } = fields;
+    return { version: SYNC_JOB_CONTRACT_VERSION, ...v1Fields };
   }
   if (wireVersion !== SYNC_WALLET_JOB_READER_VERSION) return null;
   const lockContention = readLockContention(record.lockContention);
   if (lockContention === null) return null;
-  return {
+  const commonV2 = {
     version: SYNC_WALLET_JOB_READER_VERSION,
-    ...fields,
     ...(lockContention === undefined ? {} : { lockContention }),
+  };
+  if (fields.incrementalSyncGeneration !== undefined) {
+    const {
+      incrementalSyncGeneration,
+      fullResync: _fullResync,
+      fullResyncGeneration: _fullResyncGeneration,
+      ...ordinaryFields
+    } = fields;
+    return {
+      ...commonV2,
+      ...ordinaryFields,
+      incrementalSyncGeneration,
+    };
+  }
+  const { incrementalSyncGeneration: _incrementalGeneration, ...legacyV2Fields } = fields;
+  return {
+    ...commonV2,
+    ...legacyV2Fields,
   };
 }
 
@@ -271,6 +336,12 @@ export function isSyncWalletJobLockData(
   const lockContention = readLockContention(record.lockContention);
   if (lockContention === null) return false;
   if (version === SYNC_JOB_CONTRACT_VERSION && lockContention !== undefined) return false;
+  if (record.incrementalSyncGeneration !== undefined && (
+    version !== SYNC_WALLET_JOB_READER_VERSION
+    || !isIncrementalSyncGeneration(record.incrementalSyncGeneration)
+    || record.fullResync !== undefined
+    || record.fullResyncGeneration !== undefined
+  )) return false;
   return typeof record.walletId === 'string' && record.walletId.trim().length > 0;
 }
 

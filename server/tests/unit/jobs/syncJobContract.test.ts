@@ -94,6 +94,78 @@ describe('sync job contract', () => {
       version: 2,
       walletId: 'marker-free-v2',
     });
+    expect(readSyncWalletJobData({
+      version: 2,
+      walletId: 'canonical-v2',
+      incrementalSyncGeneration: 2_147_483_647,
+    })).toEqual({
+      version: 2,
+      walletId: 'canonical-v2',
+      incrementalSyncGeneration: 2_147_483_647,
+    });
+    expect(readSyncWalletJobData({
+      version: 2,
+      walletId: 'canonical-v2-minimum',
+      incrementalSyncGeneration: 1,
+    })).toEqual({
+      version: 2,
+      walletId: 'canonical-v2-minimum',
+      incrementalSyncGeneration: 1,
+    });
+  });
+
+  it.each([
+    0,
+    -1,
+    1.5,
+    2_147_483_648,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    '1',
+  ])('rejects malformed incremental generation before lock effects: %j', (generation) => {
+    const payload = {
+      version: 2,
+      walletId: 'wallet-1',
+      incrementalSyncGeneration: generation,
+    };
+    expect(readSyncWalletJobData(payload)).toBeNull();
+    expect(isSyncWalletJobData(payload)).toBe(false);
+    expect(isSyncWalletJobLockData(payload)).toBe(false);
+  });
+
+  it('keeps canonical incremental generations exclusive from legacy and full-resync shapes', () => {
+    const legacyGeneration = {
+      version: 1,
+      walletId: 'wallet-1',
+      incrementalSyncGeneration: 1,
+    };
+    const mixedFullResync = {
+      version: 2,
+      walletId: 'wallet-1',
+      incrementalSyncGeneration: 1,
+      fullResync: true,
+      fullResyncGeneration: 1,
+    };
+    const explicitIncremental = {
+      version: 2,
+      walletId: 'wallet-1',
+      incrementalSyncGeneration: 1,
+      fullResync: false,
+    };
+    const generationWithoutFullResync = {
+      version: 2,
+      walletId: 'wallet-1',
+      incrementalSyncGeneration: 1,
+      fullResyncGeneration: 1,
+    };
+    expect(readSyncWalletJobData(legacyGeneration)).toBeNull();
+    expect(isSyncWalletJobLockData(legacyGeneration)).toBe(false);
+    expect(readSyncWalletJobData(mixedFullResync)).toBeNull();
+    expect(isSyncWalletJobLockData(mixedFullResync)).toBe(false);
+    expect(readSyncWalletJobData(explicitIncremental)).toBeNull();
+    expect(isSyncWalletJobLockData(explicitIncremental)).toBe(false);
+    expect(readSyncWalletJobData(generationWithoutFullResync)).toBeNull();
+    expect(isSyncWalletJobLockData(generationWithoutFullResync)).toBe(false);
   });
 
   it.each([

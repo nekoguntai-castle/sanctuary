@@ -54,6 +54,7 @@ import {
   closeWorkerSyncQueue,
   enqueueDeadLetterJob,
   enqueueFullResyncBatch,
+  enqueueIncrementalSyncWakeup,
   enqueueWalletSync,
   enqueueWalletSyncBatch,
 } from "../../../src/services/workerSyncQueue";
@@ -122,6 +123,54 @@ describe("workerSyncQueue", () => {
         jobId: toBullMqJobId("manual-sync:wallet-1"),
       },
     );
+  });
+
+  it("enqueues an explicit wallet-v2 incremental wake-up with the admission identity", async () => {
+    const queued = await enqueueIncrementalSyncWakeup({
+      walletId: "wallet-1",
+      generation: 2_147_483_647,
+      jobId: "b64_c3luYzppbnRlbnQ6d2FsbGV0LTE6MjE0NzQ4MzY0Nw",
+    });
+
+    expect(queued).toBe(true);
+    expect(mocks.mockQueueAdd).toHaveBeenCalledWith(
+      "sync-wallet",
+      {
+        version: 2,
+        walletId: "wallet-1",
+        incrementalSyncGeneration: 2_147_483_647,
+      },
+      {
+        ...SYNC_WALLET_JOB_OPTIONS,
+        jobId: "b64_c3luYzppbnRlbnQ6d2FsbGV0LTE6MjE0NzQ4MzY0Nw",
+      },
+    );
+  });
+
+  it("contains incremental wake-up enqueue errors", async () => {
+    mocks.mockQueueAdd.mockRejectedValueOnce(new Error("Redis write failed"));
+
+    await expect(enqueueIncrementalSyncWakeup({
+      walletId: "wallet-1",
+      generation: 1,
+      jobId: "stable-job-id",
+    })).resolves.toBe(false);
+  });
+
+  it.each([
+    { generation: 0, jobId: "stable-job-id" },
+    { generation: 2_147_483_648, jobId: "stable-job-id" },
+    { generation: 1, jobId: "" },
+  ])("rejects an invalid incremental wake-up before queue access: %j", async ({
+    generation,
+    jobId,
+  }) => {
+    await expect(enqueueIncrementalSyncWakeup({
+      walletId: "wallet-1",
+      generation,
+      jobId,
+    })).resolves.toBe(false);
+    expect(mocks.mockQueueAdd).not.toHaveBeenCalled();
   });
 
   it("queues deduplicated full-resync intentions with per-wallet outcomes", async () => {
@@ -475,6 +524,11 @@ describe("workerSyncQueue", () => {
     mocks.mockIsRedisConnected.mockReturnValue(false);
 
     await expect(enqueueWalletSync("wallet-1")).resolves.toBe(false);
+    await expect(enqueueIncrementalSyncWakeup({
+      walletId: "wallet-1",
+      generation: 1,
+      jobId: "stable-job-id",
+    })).resolves.toBe(false);
     await expect(enqueueWalletSyncBatch(["wallet-1"])).resolves.toBe(0);
     await expect(
       enqueueDeadLetterJob(syncDeadLetterEnvelope(), "entry-1"),

@@ -10,6 +10,7 @@ import {
 } from './workerJobQueueTestHarness';
 import { processJobWithLock } from '../../../../src/worker/workerJobQueue/jobProcessor';
 import { hasSupportedSyncJobContractVersion } from '../../../../src/jobs/syncJobContract';
+import type { JobExecutionContext } from '../../../../src/jobs/types';
 import { registerWorkerJobQueueInternalLockConfigContracts } from './workerJobQueue.internal-lock-config.contracts';
 
 export const registerWorkerJobQueueInternalLockContracts = (getQueue: WorkerJobQueueAccessor) => {
@@ -39,6 +40,41 @@ export const registerWorkerJobQueueInternalLockContracts = (getQueue: WorkerJobQ
       });
 
       expect(result).toEqual({ ok: true });
+    });
+
+    it('does not expose an acquired-lock proof to unlocked handlers', async () => {
+      const handler = vi.fn(async (_job, execution) => ({
+        proof: execution?.acquiredLock,
+        hasProofProperty: Object.prototype.hasOwnProperty.call(execution, 'acquiredLock'),
+      }));
+
+      await expect(processJobWithLock(
+        'sync:unlocked-proof',
+        { handler },
+        { id: 'j-unlocked-proof', data: {} } as any,
+      )).resolves.toEqual({ proof: undefined, hasProofProperty: false });
+    });
+
+    it('exposes only the exact acquired key while lock ownership is live', async () => {
+      let capturedExecution: JobExecutionContext | undefined;
+      const handler = vi.fn(async (_job, execution) => {
+        capturedExecution = execution;
+        expect(execution?.acquiredLock).toEqual({ key: 'lock:proof' });
+        expect(Object.isFrozen(execution?.acquiredLock)).toBe(true);
+        expect(execution?.acquiredLock).not.toHaveProperty('token');
+        return { ok: true };
+      });
+
+      await expect(processJobWithLock(
+        'sync:locked-proof',
+        {
+          handler,
+          lockOptions: { lockKey: () => 'lock:proof', lockTtlMs: 2000 },
+        },
+        { id: 'j-locked-proof', data: {} } as any,
+      )).resolves.toEqual({ ok: true });
+
+      expect(capturedExecution?.acquiredLock).toBeUndefined();
     });
 
     it('rejects unsupported sync versions before lock acquisition or contention effects', async () => {
@@ -799,11 +835,13 @@ export const registerWorkerJobQueueInternalLockContracts = (getQueue: WorkerJobQ
         return fakeTimer;
       });
       let capturedSignal: AbortSignal | undefined;
+      let capturedExecution: JobExecutionContext | undefined;
       queue.registerHandler('sync', {
         name: 'loss-wins',
         queue: 'sync',
         handler: vi.fn((_job, execution) => {
           capturedSignal = execution?.signal;
+          capturedExecution = execution;
           return new Promise(() => undefined);
         }),
         lockOptions: { lockKey: () => 'lock:loss-wins', lockTtlMs: 1800 },
@@ -822,6 +860,7 @@ export const registerWorkerJobQueueInternalLockContracts = (getQueue: WorkerJobQ
 
       await rejection;
       expect(capturedSignal?.aborted).toBe(true);
+      expect(capturedExecution?.acquiredLock).toBeUndefined();
       expect(mockHardTerminate).toHaveBeenCalledTimes(1);
       expect(releaseLock).not.toHaveBeenCalledWith(
         expect.objectContaining({ key: 'lock:loss-wins' })

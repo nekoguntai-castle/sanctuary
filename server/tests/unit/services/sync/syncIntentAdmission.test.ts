@@ -91,6 +91,21 @@ describe('syncIntentAdmission', () => {
     expect(repository.requestIncrementalSync).toHaveBeenCalledTimes(2);
   });
 
+  it('best-effort wakes an already durable exact generation', async () => {
+    const repository = repositoryMock();
+    enqueueWakeup.mockResolvedValueOnce(true).mockRejectedValueOnce(new Error('Redis down'));
+    const admission = createSyncIntentAdmission({ repository, enqueueWakeup });
+
+    await expect(admission.wake('wallet-1', 4)).resolves.toBe(true);
+    await expect(admission.wake('wallet-1', 4)).resolves.toBe(false);
+    expect(enqueueWakeup).toHaveBeenNthCalledWith(1, {
+      walletId: 'wallet-1',
+      generation: 4,
+      jobId: incrementalSyncWakeupJobId('wallet-1', 4),
+    });
+    expect(repository.requestIncrementalSync).not.toHaveBeenCalled();
+  });
+
   it.each([
     [
       'deferred_action_required',
@@ -196,13 +211,22 @@ describe('syncIntentAdmission', () => {
     const admission = createSyncIntentAdmission({ repository, enqueueWakeup });
     const fence = { generation: 1, leaseToken: '10000000-0000-4000-8000-000000000001' };
     const claim = {
-      ...fence,
+      leaseToken: fence.leaseToken,
+      expectedRequestedGeneration: fence.generation,
       claimedAt: NOW,
       leaseExpiresAt: new Date('2026-08-22T07:05:00.000Z'),
     };
+    const success = { syncedAt: NOW, lastSyncedBlockHeight: 900_000 };
     const retry = {
       releasedAt: NOW,
       nextRetryAt: new Date('2026-08-22T07:01:00.000Z'),
+      errorMessage: 'retry',
+      failureClass: 'other' as const,
+    };
+    const actionRequired = {
+      actionRequiredAt: NOW,
+      errorMessage: 'action required',
+      failureClass: 'other' as const,
     };
 
     await expect(admission.recover({ now: NOW })).resolves.toEqual({
@@ -211,15 +235,15 @@ describe('syncIntentAdmission', () => {
       unavailable: 0,
     });
     await admission.claim('wallet-1', claim);
-    await admission.complete('wallet-1', fence);
+    await admission.complete('wallet-1', fence, success);
     await admission.releaseForRetry('wallet-1', fence, retry);
-    await admission.releaseAsActionRequired('wallet-1', fence, NOW);
+    await admission.releaseAsActionRequired('wallet-1', fence, actionRequired);
     expect(repository.claimIncrementalSync).toHaveBeenCalledWith('wallet-1', claim);
-    expect(repository.completeIncrementalSync).toHaveBeenCalledWith('wallet-1', fence);
+    expect(repository.completeIncrementalSync).toHaveBeenCalledWith('wallet-1', fence, success);
     expect(repository.releaseIncrementalSyncForRetry).toHaveBeenCalledWith(
       'wallet-1', fence, retry,
     );
     expect(repository.releaseIncrementalSyncAsActionRequired)
-      .toHaveBeenCalledWith('wallet-1', fence, NOW);
+      .toHaveBeenCalledWith('wallet-1', fence, actionRequired);
   });
 });

@@ -1,9 +1,14 @@
 import { Prisma } from '../generated/prisma/client';
+import {
+  isWalletSyncFailureClass,
+  type WalletSyncFailureClass,
+} from '@sanctuary/shared/constants/sync';
 import prisma from '../models/prisma';
 import type {
   IncrementalSyncClaimResult,
   IncrementalSyncFence,
   IncrementalSyncIntentState,
+  IncrementalSyncLifecycleState,
   IncrementalSyncRequestMode,
   IncrementalSyncRequestResult,
   IncrementalSyncTerminalResult,
@@ -29,6 +34,31 @@ const syncIntentSelect = {
   processedFullResyncGeneration: true,
 } satisfies Prisma.WalletSelect;
 
+const lifecycleReturningColumns = Prisma.raw(`
+  "id",
+  "requestedIncrementalSyncGeneration",
+  "claimedIncrementalSyncGeneration",
+  "processedIncrementalSyncGeneration",
+  "incrementalSyncLeaseToken",
+  "incrementalSyncClaimedAt",
+  "incrementalSyncLeaseExpiresAt",
+  "syncRetryCount",
+  "syncNextRetryAt",
+  "syncActionRequiredAt",
+  "requestedFullResyncGeneration",
+  "preparedFullResyncGeneration",
+  "processedFullResyncGeneration",
+  "syncInProgress",
+  "lastSyncedAt",
+  "lastSyncedBlockHeight",
+  "lastSyncStatus",
+  "lastSyncError",
+  "lastSyncFailureClass",
+  "syncExecutionOwner",
+  "syncStartedAt",
+  "syncStateVersion"
+`);
+
 interface RequestRow extends IncrementalSyncIntentState {
   previousRequestedGeneration: number;
 }
@@ -37,12 +67,27 @@ export interface IncrementalSyncClaimInput {
   leaseToken: string;
   claimedAt: Date;
   leaseExpiresAt: Date;
+  expectedRequestedGeneration: number;
+  /** @deprecated Phase 2B deliberately does not reclaim expired database leases. */
   expectedExpiredFence?: IncrementalSyncFence;
 }
 
 export interface IncrementalSyncRetryReleaseInput {
   nextRetryAt: Date;
   releasedAt: Date;
+  errorMessage: string;
+  failureClass: WalletSyncFailureClass;
+}
+
+export interface IncrementalSyncSuccessInput {
+  syncedAt: Date;
+  lastSyncedBlockHeight: number;
+}
+
+export interface IncrementalSyncActionRequiredReleaseInput {
+  actionRequiredAt: Date;
+  errorMessage: string;
+  failureClass: WalletSyncFailureClass;
 }
 
 function recoveryLimit(limit: number | undefined): number {
@@ -53,14 +98,19 @@ function recoveryLimit(limit: number | undefined): number {
   return Math.min(limit, MAX_RECOVERY_BATCH_SIZE);
 }
 
-function requireFence(fence: IncrementalSyncFence): void {
-  if (
-    !Number.isInteger(fence.generation)
-    || fence.generation < 1
-    || fence.generation > MAX_SYNC_GENERATION
-  ) {
+function requireGeneration(generation: number): void {
+  const supported = [
+    Number.isInteger(generation),
+    generation >= 1,
+    generation <= MAX_SYNC_GENERATION,
+  ].every(Boolean);
+  if (!supported) {
     throw new Error('Incremental sync fence generation is outside the supported range');
   }
+}
+
+function requireFence(fence: IncrementalSyncFence): void {
+  requireGeneration(fence.generation);
   if (!UUID_PATTERN.test(fence.leaseToken)) {
     throw new Error('Incremental sync fence token must be a UUID');
   }
@@ -74,21 +124,44 @@ function requireDate(value: Date, description: string): void {
 
 function requireClaimInput(input: IncrementalSyncClaimInput): void {
   requireFence({ generation: 1, leaseToken: input.leaseToken });
+  requireGeneration(input.expectedRequestedGeneration ?? 0);
   requireDate(input.claimedAt, 'Incremental sync claim time');
   requireDate(input.leaseExpiresAt, 'Incremental sync lease expiry');
   if (input.leaseExpiresAt.getTime() <= input.claimedAt.getTime()) {
     throw new Error('Incremental sync lease must expire after it is claimed');
   }
-  if (input.expectedExpiredFence) {
-    requireFence(input.expectedExpiredFence);
-    if (input.expectedExpiredFence.leaseToken === input.leaseToken) {
-      throw new Error('Reclaimed incremental sync work requires a new fence token');
-    }
+  if (input.expectedExpiredFence !== undefined) {
+    throw new Error('Expired incremental sync claims cannot be reclaimed');
   }
 }
 
+function requireFailureMetadata(errorMessage: string, failureClass: unknown): void {
+  const valid = [
+    errorMessage.trim().length > 0,
+    isWalletSyncFailureClass(failureClass),
+  ].every(Boolean);
+  if (!valid) {
+    throw new Error('Incremental sync failure metadata is invalid');
+  }
+}
+
+function requireSuccessInput(
+  input: IncrementalSyncSuccessInput | undefined,
+): IncrementalSyncSuccessInput {
+  if (!input) throw new Error('Incremental sync completion requires success metadata');
+  requireDate(input.syncedAt, 'Incremental sync completion time');
+  const validHeight = [
+    Number.isInteger(input.lastSyncedBlockHeight),
+    input.lastSyncedBlockHeight >= 0,
+  ].every(Boolean);
+  if (!validHeight) {
+    throw new Error('Incremental sync block height must be a non-negative integer');
+  }
+  return input;
+}
+
 function terminalResult(
-  rows: IncrementalSyncIntentState[],
+  rows: IncrementalSyncLifecycleState[],
 ): IncrementalSyncTerminalResult {
   const state = rows[0];
   if (!state) return { status: 'lost_fence' };
@@ -191,50 +264,41 @@ export async function claimIncrementalSync(
   input: IncrementalSyncClaimInput,
 ): Promise<IncrementalSyncClaimResult> {
   requireClaimInput(input);
-  const expectedGeneration = input.expectedExpiredFence?.generation ?? null;
-  const expectedToken = input.expectedExpiredFence?.leaseToken ?? null;
-  const rows = await prisma.$queryRaw<IncrementalSyncIntentState[]>(Prisma.sql`
+  const expectedGeneration = input.expectedRequestedGeneration!;
+  const rows = await prisma.$queryRaw<IncrementalSyncLifecycleState[]>(Prisma.sql`
     UPDATE "wallets"
-    SET "claimedIncrementalSyncGeneration" = "requestedIncrementalSyncGeneration",
+    SET "claimedIncrementalSyncGeneration" = ${expectedGeneration},
         "incrementalSyncLeaseToken" = ${input.leaseToken}::UUID,
         "incrementalSyncClaimedAt" = ${input.claimedAt},
         "incrementalSyncLeaseExpiresAt" = ${input.leaseExpiresAt},
+        "syncInProgress" = TRUE,
+        "lastSyncStatus" = 'syncing',
+        "lastSyncError" = NULL,
+        "lastSyncFailureClass" = NULL,
+        "syncExecutionOwner" = 'worker',
         "syncNextRetryAt" = NULL,
-        "updatedAt" = CURRENT_TIMESTAMP
+        "syncStartedAt" = ${input.claimedAt},
+        "syncStateVersion" = "syncStateVersion" + 1,
+        "updatedAt" = ${input.claimedAt}
     WHERE "id" = ${walletId}
       AND "requestedIncrementalSyncGeneration" > "processedIncrementalSyncGeneration"
+      AND "requestedIncrementalSyncGeneration" = ${expectedGeneration}
       AND "requestedFullResyncGeneration" = "processedFullResyncGeneration"
       AND "syncActionRequiredAt" IS NULL
       AND ("syncNextRetryAt" IS NULL OR "syncNextRetryAt" <= ${input.claimedAt})
-      AND (
-        (
-          ${expectedGeneration}::INTEGER IS NULL
-          AND "claimedIncrementalSyncGeneration" = "processedIncrementalSyncGeneration"
-        )
-        OR (
-          ${expectedGeneration}::INTEGER IS NOT NULL
-          AND "claimedIncrementalSyncGeneration" = ${expectedGeneration}
-          AND "incrementalSyncLeaseToken" = ${expectedToken}::UUID
-          AND "incrementalSyncLeaseExpiresAt" <= ${input.claimedAt}
-        )
-      )
-    RETURNING
-      "id",
-      "requestedIncrementalSyncGeneration",
-      "claimedIncrementalSyncGeneration",
-      "processedIncrementalSyncGeneration",
-      "incrementalSyncLeaseToken",
-      "incrementalSyncClaimedAt",
-      "incrementalSyncLeaseExpiresAt",
-      "syncRetryCount",
-      "syncNextRetryAt",
-      "syncActionRequiredAt",
-      "requestedFullResyncGeneration",
-      "preparedFullResyncGeneration",
-      "processedFullResyncGeneration"
+      AND "claimedIncrementalSyncGeneration" = "processedIncrementalSyncGeneration"
+    RETURNING ${lifecycleReturningColumns}
   `);
   const state = rows[0];
-  if (!state) return { status: 'not_claimed' };
+  if (!state) {
+    const current = await findIncrementalSyncIntent(walletId);
+    if (current
+      && current.claimedIncrementalSyncGeneration === expectedGeneration
+      && current.processedIncrementalSyncGeneration < expectedGeneration) {
+      return { status: 'already_claimed' };
+    }
+    return { status: 'not_claimed' };
+  }
   return {
     status: 'claimed',
     claim: {
@@ -251,9 +315,11 @@ export async function claimIncrementalSync(
 export async function completeIncrementalSync(
   walletId: string,
   fence: IncrementalSyncFence,
+  success: IncrementalSyncSuccessInput,
 ): Promise<IncrementalSyncTerminalResult> {
   requireFence(fence);
-  const rows = await prisma.$queryRaw<IncrementalSyncIntentState[]>(Prisma.sql`
+  const completed = requireSuccessInput(success);
+  const rows = await prisma.$queryRaw<IncrementalSyncLifecycleState[]>(Prisma.sql`
     UPDATE "wallets"
     SET "processedIncrementalSyncGeneration" = "claimedIncrementalSyncGeneration",
         "incrementalSyncLeaseToken" = NULL,
@@ -262,25 +328,21 @@ export async function completeIncrementalSync(
         "syncRetryCount" = 0,
         "syncNextRetryAt" = NULL,
         "syncActionRequiredAt" = NULL,
-        "updatedAt" = CURRENT_TIMESTAMP
+        "syncInProgress" = FALSE,
+        "lastSyncedAt" = ${completed.syncedAt},
+        "lastSyncedBlockHeight" = ${completed.lastSyncedBlockHeight},
+        "lastSyncStatus" = 'success',
+        "lastSyncError" = NULL,
+        "lastSyncFailureClass" = NULL,
+        "syncExecutionOwner" = NULL,
+        "syncStartedAt" = NULL,
+        "syncStateVersion" = "syncStateVersion" + 1,
+        "updatedAt" = ${completed.syncedAt}
     WHERE "id" = ${walletId}
       AND "claimedIncrementalSyncGeneration" = ${fence.generation}
       AND "claimedIncrementalSyncGeneration" > "processedIncrementalSyncGeneration"
       AND "incrementalSyncLeaseToken" = ${fence.leaseToken}::UUID
-    RETURNING
-      "id",
-      "requestedIncrementalSyncGeneration",
-      "claimedIncrementalSyncGeneration",
-      "processedIncrementalSyncGeneration",
-      "incrementalSyncLeaseToken",
-      "incrementalSyncClaimedAt",
-      "incrementalSyncLeaseExpiresAt",
-      "syncRetryCount",
-      "syncNextRetryAt",
-      "syncActionRequiredAt",
-      "requestedFullResyncGeneration",
-      "preparedFullResyncGeneration",
-      "processedFullResyncGeneration"
+    RETURNING ${lifecycleReturningColumns}
   `);
   return terminalResult(rows);
 }
@@ -297,7 +359,9 @@ export async function releaseIncrementalSyncForRetry(
   if (input.nextRetryAt.getTime() <= input.releasedAt.getTime()) {
     throw new Error('Incremental sync retry must be scheduled in the future');
   }
-  const rows = await prisma.$queryRaw<IncrementalSyncIntentState[]>(Prisma.sql`
+  const { errorMessage, failureClass } = input;
+  requireFailureMetadata(errorMessage, failureClass);
+  const rows = await prisma.$queryRaw<IncrementalSyncLifecycleState[]>(Prisma.sql`
     UPDATE "wallets"
     SET "claimedIncrementalSyncGeneration" = "processedIncrementalSyncGeneration",
         "incrementalSyncLeaseToken" = NULL,
@@ -306,25 +370,19 @@ export async function releaseIncrementalSyncForRetry(
         "syncRetryCount" = "syncRetryCount" + 1,
         "syncNextRetryAt" = ${input.nextRetryAt},
         "syncActionRequiredAt" = NULL,
+        "syncInProgress" = FALSE,
+        "lastSyncStatus" = 'retrying',
+        "lastSyncError" = ${errorMessage},
+        "lastSyncFailureClass" = ${failureClass},
+        "syncExecutionOwner" = 'worker',
+        "syncStartedAt" = NULL,
+        "syncStateVersion" = "syncStateVersion" + 1,
         "updatedAt" = ${input.releasedAt}
     WHERE "id" = ${walletId}
       AND "claimedIncrementalSyncGeneration" = ${fence.generation}
       AND "claimedIncrementalSyncGeneration" > "processedIncrementalSyncGeneration"
       AND "incrementalSyncLeaseToken" = ${fence.leaseToken}::UUID
-    RETURNING
-      "id",
-      "requestedIncrementalSyncGeneration",
-      "claimedIncrementalSyncGeneration",
-      "processedIncrementalSyncGeneration",
-      "incrementalSyncLeaseToken",
-      "incrementalSyncClaimedAt",
-      "incrementalSyncLeaseExpiresAt",
-      "syncRetryCount",
-      "syncNextRetryAt",
-      "syncActionRequiredAt",
-      "requestedFullResyncGeneration",
-      "preparedFullResyncGeneration",
-      "processedFullResyncGeneration"
+    RETURNING ${lifecycleReturningColumns}
   `);
   return terminalResult(rows);
 }
@@ -333,11 +391,13 @@ export async function releaseIncrementalSyncForRetry(
 export async function releaseIncrementalSyncAsActionRequired(
   walletId: string,
   fence: IncrementalSyncFence,
-  actionRequiredAt: Date,
+  input: IncrementalSyncActionRequiredReleaseInput,
 ): Promise<IncrementalSyncTerminalResult> {
   requireFence(fence);
+  const { actionRequiredAt, errorMessage, failureClass } = input;
   requireDate(actionRequiredAt, 'Incremental sync action-required time');
-  const rows = await prisma.$queryRaw<IncrementalSyncIntentState[]>(Prisma.sql`
+  requireFailureMetadata(errorMessage, failureClass);
+  const rows = await prisma.$queryRaw<IncrementalSyncLifecycleState[]>(Prisma.sql`
     UPDATE "wallets"
     SET "claimedIncrementalSyncGeneration" = "processedIncrementalSyncGeneration",
         "incrementalSyncLeaseToken" = NULL,
@@ -346,25 +406,19 @@ export async function releaseIncrementalSyncAsActionRequired(
         "syncRetryCount" = "syncRetryCount" + 1,
         "syncNextRetryAt" = NULL,
         "syncActionRequiredAt" = ${actionRequiredAt},
+        "syncInProgress" = FALSE,
+        "lastSyncStatus" = 'failed',
+        "lastSyncError" = ${errorMessage},
+        "lastSyncFailureClass" = ${failureClass},
+        "syncExecutionOwner" = NULL,
+        "syncStartedAt" = NULL,
+        "syncStateVersion" = "syncStateVersion" + 1,
         "updatedAt" = ${actionRequiredAt}
     WHERE "id" = ${walletId}
       AND "claimedIncrementalSyncGeneration" = ${fence.generation}
       AND "claimedIncrementalSyncGeneration" > "processedIncrementalSyncGeneration"
       AND "incrementalSyncLeaseToken" = ${fence.leaseToken}::UUID
-    RETURNING
-      "id",
-      "requestedIncrementalSyncGeneration",
-      "claimedIncrementalSyncGeneration",
-      "processedIncrementalSyncGeneration",
-      "incrementalSyncLeaseToken",
-      "incrementalSyncClaimedAt",
-      "incrementalSyncLeaseExpiresAt",
-      "syncRetryCount",
-      "syncNextRetryAt",
-      "syncActionRequiredAt",
-      "requestedFullResyncGeneration",
-      "preparedFullResyncGeneration",
-      "processedFullResyncGeneration"
+    RETURNING ${lifecycleReturningColumns}
   `);
   return terminalResult(rows);
 }

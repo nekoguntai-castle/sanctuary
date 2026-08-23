@@ -83,11 +83,21 @@ function createFatalSignal(): FatalSignal {
   };
 }
 
-function createExecutionContext(controller: AbortController): JobExecutionContext {
-  return {
+function createExecutionContext(
+  controller: AbortController,
+  resolveAcquiredLock?: () => JobExecutionContext['acquiredLock'],
+): JobExecutionContext {
+  const context: JobExecutionContext = {
     signal: controller.signal,
     throwIfAborted: () => controller.signal.throwIfAborted(),
   };
+  if (resolveAcquiredLock) {
+    Object.defineProperty(context, 'acquiredLock', {
+      enumerable: true,
+      get: resolveAcquiredLock,
+    });
+  }
+  return context;
 }
 
 function createExecutionController(shutdownSignal?: AbortSignal): {
@@ -214,7 +224,6 @@ export async function processJobWithLock(
 
   const executionController = createExecutionController(dependencies.shutdownSignal);
   const { controller } = executionController;
-  const execution = createExecutionContext(controller);
   const fatal = createFatalSignal();
   const hardTerminate = dependencies.hardTerminate ?? hardTerminateProcess;
   // Refresh near one-third of the TTL, clamped strictly below even very short
@@ -223,6 +232,11 @@ export async function processJobWithLock(
   let state: OwnershipState = 'owned';
   let refreshTimer: NodeJS.Timeout | null = null;
   let refreshInFlight: Promise<void> | null = null;
+  const acquiredLockProof = Object.freeze({ key: lockKey });
+  const execution = createExecutionContext(
+    controller,
+    () => state === 'owned' && lock !== null ? acquiredLockProof : undefined,
+  );
 
   const stopRefreshTimer = (): void => {
     if (!refreshTimer) return;

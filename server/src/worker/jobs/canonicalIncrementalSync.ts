@@ -1,0 +1,178 @@
+import { randomUUID } from 'node:crypto';
+import { UnrecoverableError, type Job } from 'bullmq';
+import { getConfig } from '../../config';
+import {
+  getSyncLockKey,
+  SYNC_JOB_CONTRACT_VERSION,
+  type NormalizedSyncWalletJobData,
+  type SyncWalletJobData,
+  type SyncWalletJobResult,
+} from '../../jobs/syncJobContract';
+import { syncWallet, getCachedBlockHeight } from '../../services/bitcoin/blockchain';
+import { populateMissingTransactionFields } from '../../services/bitcoin/sync/confirmations';
+import { normalizeLegacyBitcoinNetwork } from '../../services/bitcoin/networks';
+import { classifyWalletSyncFailure } from '../../services/sync/failureClassification';
+import { syncIntentAdmission } from '../../services/sync/syncIntentAdmission';
+import {
+  runSyncAttemptWithTimeout,
+  SYNC_ABORT_GRACE_MS,
+  type PersistedSyncTransition,
+} from '../../services/sync/syncAttemptLifecycle';
+import { syncLifecyclePublisher } from '../../services/sync/syncLifecyclePublisher';
+import { getErrorMessage } from '../../utils/errors';
+import { createLogger } from '../../utils/logger';
+import type { JobExecutionContext } from './types';
+
+const log = createLogger('JOB:SYNC:INCREMENTAL');
+
+export type CanonicalIncrementalSyncData = NormalizedSyncWalletJobData & {
+  version: 2;
+  incrementalSyncGeneration: number;
+};
+
+interface CanonicalIncrementalSyncDependencies {
+  isFinalAttempt: (job: Job<SyncWalletJobData>) => boolean;
+  lockTtlMs: number;
+  publishAttemptTransition: (
+    job: Job<SyncWalletJobData>,
+    transition: PersistedSyncTransition,
+  ) => Promise<void>;
+  retryState: (job: Job<SyncWalletJobData>) => { nextRetryAt: Date };
+}
+
+class LostIncrementalSyncFenceError extends Error {
+  constructor(walletId: string, generation: number) {
+    super(`Incremental sync fence was lost for wallet ${walletId} generation ${generation}`);
+    this.name = 'LostIncrementalSyncFenceError';
+  }
+}
+
+function incrementalTransition(
+  walletId: string,
+  transition: PersistedSyncTransition['transition'],
+  state: PersistedSyncTransition['state'],
+): PersistedSyncTransition {
+  return { walletId, transition, state };
+}
+
+export async function executeCanonicalIncrementalSync(
+  job: Job<SyncWalletJobData>,
+  data: CanonicalIncrementalSyncData,
+  execution: JobExecutionContext | undefined,
+  walletNetwork: string,
+  startTime: number,
+  dependencies: CanonicalIncrementalSyncDependencies,
+): Promise<SyncWalletJobResult> {
+  const expectedLockKey = getSyncLockKey(data);
+  if (execution?.acquiredLock?.key !== expectedLockKey) {
+    throw new UnrecoverableError('Generation-bound wallet sync requires acquired lock proof');
+  }
+
+  const claimedAt = new Date();
+  const claimResult = await syncIntentAdmission.claim(data.walletId, {
+    leaseToken: randomUUID(),
+    claimedAt,
+    leaseExpiresAt: new Date(claimedAt.getTime() + dependencies.lockTtlMs),
+    expectedRequestedGeneration: data.incrementalSyncGeneration,
+  });
+  if (claimResult.status === 'already_claimed') {
+    throw new Error(
+      `Incremental sync generation ${data.incrementalSyncGeneration} already has an active claim`,
+    );
+  }
+  if (claimResult.status === 'not_claimed') {
+    log.info(`Ignoring obsolete incremental wake-up for wallet ${data.walletId}`, {
+      generation: data.incrementalSyncGeneration,
+      jobId: job.id,
+    });
+    return {
+      version: SYNC_JOB_CONTRACT_VERSION,
+      success: true,
+      duration: Date.now() - startTime,
+    };
+  }
+
+  const fence = {
+    generation: claimResult.claim.generation,
+    leaseToken: claimResult.claim.leaseToken,
+  };
+  await syncLifecyclePublisher.publish(incrementalTransition(
+    data.walletId,
+    'started',
+    claimResult.state,
+  ));
+
+  try {
+    const result = await runSyncAttemptWithTimeout(
+      async (signal) => {
+        const syncResult = await syncWallet(data.walletId, 0, signal);
+        await populateMissingTransactionFields(data.walletId, signal);
+        return syncResult;
+      },
+      getConfig().sync.maxSyncDurationMs,
+      SYNC_ABORT_GRACE_MS,
+      execution.signal,
+    );
+    execution.throwIfAborted();
+
+    const network = normalizeLegacyBitcoinNetwork(walletNetwork, 'mainnet');
+    const syncedAt = new Date();
+    const completion = await syncIntentAdmission.complete(data.walletId, fence, {
+      syncedAt,
+      lastSyncedBlockHeight: getCachedBlockHeight(network),
+    });
+    if (completion.status === 'lost_fence') {
+      throw new LostIncrementalSyncFenceError(data.walletId, fence.generation);
+    }
+    await syncLifecyclePublisher.publish(incrementalTransition(
+      data.walletId,
+      'succeeded',
+      completion.state,
+    ));
+    if (completion.trailingGenerationPending) {
+      await syncIntentAdmission.wake(
+        data.walletId,
+        completion.state.requestedIncrementalSyncGeneration,
+      );
+    }
+
+    return {
+      version: SYNC_JOB_CONTRACT_VERSION,
+      success: true,
+      duration: Date.now() - startTime,
+      transactionsFound: result.transactions,
+      utxosUpdated: result.utxos,
+    };
+  } catch (error) {
+    if (error instanceof LostIncrementalSyncFenceError) throw error;
+    const releasedAt = new Date();
+    const errorMessage = getErrorMessage(error, 'Unknown error');
+    const failureClass = classifyWalletSyncFailure(errorMessage);
+    const finalAttempt = dependencies.isFinalAttempt(job);
+    const terminal = finalAttempt
+      ? await syncIntentAdmission.releaseAsActionRequired(data.walletId, fence, {
+        actionRequiredAt: releasedAt,
+        errorMessage,
+        failureClass,
+      })
+      : await syncIntentAdmission.releaseForRetry(data.walletId, fence, {
+        releasedAt,
+        nextRetryAt: dependencies.retryState(job).nextRetryAt,
+        errorMessage,
+        failureClass,
+      });
+    if (terminal.status === 'applied') {
+      await dependencies.publishAttemptTransition(job, incrementalTransition(
+        data.walletId,
+        finalAttempt ? 'failed' : 'retrying',
+        terminal.state,
+      ));
+    } else {
+      log.warn(`Incremental sync failure lost its durable fence for wallet ${data.walletId}`, {
+        generation: fence.generation,
+        jobId: job.id,
+      });
+    }
+    throw error;
+  }
+}

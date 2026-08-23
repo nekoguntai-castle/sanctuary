@@ -9,8 +9,13 @@
  */
 
 import { UnrecoverableError, type Job } from 'bullmq';
-import type { LockRetryBudgetExhaustedDetail, WorkerJobHandler } from './types';
 import type {
+  JobExecutionContext,
+  LockRetryBudgetExhaustedDetail,
+  WorkerJobHandler,
+} from './types';
+import type {
+  NormalizedSyncWalletJobData,
   SyncWalletJobFields,
   SyncWalletJobData,
   SyncWalletJobResult,
@@ -72,6 +77,10 @@ import {
 import { syncLifecyclePublisher } from '../../services/sync/syncLifecyclePublisher';
 import { classifyStaleWalletScheduleJob } from '../../jobs/staleWalletJobPolicy';
 import { readStaleWalletSchedulePolicy } from '../../repositories/walletSyncSchedulePolicyRepository';
+import {
+  executeCanonicalIncrementalSync,
+  type CanonicalIncrementalSyncData,
+} from './canonicalIncrementalSync';
 
 const log = createLogger('JOB:SYNC');
 
@@ -334,6 +343,12 @@ class SupersededFullResyncCompletionError extends Error {
   }
 }
 
+function isCanonicalIncrementalSyncData(
+  data: NormalizedSyncWalletJobData | null,
+): data is CanonicalIncrementalSyncData {
+  return data?.version === 2 && 'incrementalSyncGeneration' in data;
+}
+
 /**
  * Clear syncInProgress for wallets whose sync is demonstrably not running.
  *
@@ -509,6 +524,22 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
         duration: 0,
         error: 'Wallet not found',
       };
+    }
+
+    if (isCanonicalIncrementalSyncData(normalizedData)) {
+      return executeCanonicalIncrementalSync(
+        job,
+        normalizedData,
+        execution,
+        wallet.network,
+        startTime,
+        {
+          isFinalAttempt,
+          lockTtlMs: SYNC_LOCK_TTL_MS,
+          publishAttemptTransition: publishWorkerAttemptTransition,
+          retryState: workerRetryState,
+        },
+      );
     }
 
     let syncFlagSet = false;

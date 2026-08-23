@@ -30,6 +30,13 @@ const log = createLogger("WORKER_SYNC_QUEUE");
 const WORKER_QUEUE_PREFIX = "sanctuary:worker";
 const FULL_RESYNC_ENQUEUE_CONCURRENCY = 10;
 
+export interface IncrementalSyncWakeup {
+  walletId: string;
+  generation: number;
+  /** Stable, BullMQ-safe identity supplied by durable admission. */
+  jobId: string;
+}
+
 function resetReplayContentionClock(data: unknown): SyncWalletJobData {
   const normalized = readSyncWalletJobData(data);
   if (normalized?.version !== SYNC_WALLET_JOB_READER_VERSION) {
@@ -203,6 +210,55 @@ export async function enqueueWalletSync(
   } catch (error) {
     log.error("Failed to enqueue wallet sync", {
       walletId,
+      error: getErrorMessage(error),
+    });
+    return false;
+  }
+}
+
+/**
+ * Add one generation-bound incremental wake-up. Durable admission remains the
+ * authority; this queue entry carries no claim or reusable lock credential.
+ */
+export async function enqueueIncrementalSyncWakeup(
+  wakeup: IncrementalSyncWakeup,
+): Promise<boolean> {
+  const data = {
+    version: SYNC_WALLET_JOB_READER_VERSION,
+    walletId: wakeup.walletId,
+    incrementalSyncGeneration: wakeup.generation,
+  } as const;
+  if (!wakeup.jobId || readSyncWalletJobData(data) === null) {
+    log.warn("Invalid incremental wallet sync wake-up", {
+      walletId: wakeup.walletId,
+      generation: wakeup.generation,
+    });
+    return false;
+  }
+
+  const queue = getOrCreateSyncQueue();
+  if (!queue) {
+    log.warn("Worker sync queue unavailable, incremental wake-up not added", {
+      walletId: wakeup.walletId,
+      generation: wakeup.generation,
+    });
+    return false;
+  }
+
+  try {
+    await queue.add(
+      SYNC_WALLET_JOB_NAME,
+      data,
+      {
+        ...SYNC_WALLET_JOB_OPTIONS,
+        jobId: wakeup.jobId,
+      },
+    );
+    return true;
+  } catch (error) {
+    log.error("Failed to enqueue incremental wallet sync wake-up", {
+      walletId: wakeup.walletId,
+      generation: wakeup.generation,
       error: getErrorMessage(error),
     });
     return false;

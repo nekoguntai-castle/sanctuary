@@ -196,9 +196,9 @@ compatibility precursor still retains legacy API execution and the recurring
 `check-stale-wallets` schedule; the executable inventory in
 `config/wallet-sync-lifecycle-contract.json` prevents those exceptions from
 growing while the single-admission, worker-owned path is introduced. The
-durable admission service is currently a dormant capability with no production
-callers; existing v1 producers and legacy execution remain unchanged until the
-separate cutover release.
+durable admission service currently has one generation-bound worker consumer,
+but no production producer or repair loop. Existing v1 producers and legacy
+execution remain unchanged until the separate activation release.
 
 The wallet sync process uses a modular pipeline architecture where each phase is an independent, testable function. The pipeline orchestrator executes phases in sequence, passing a shared context object between them.
 

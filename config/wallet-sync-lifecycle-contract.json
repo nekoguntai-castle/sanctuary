@@ -36,7 +36,8 @@
     "queueRole": "at_least_once_wakeup_only"
   },
   "compatibility": {
-    "admissionState": "dormant_no_production_callers",
+    "admissionState": "generation_consumer_enabled_no_production_producers",
+    "generationConsumerModule": "server/src/worker/jobs/canonicalIncrementalSync.ts",
     "staleScheduleName": "check-stale-wallets",
     "staleScheduleState": "legacy_desired_until_cutover",
     "durableDisablePolicyState": "compatibility_floor_available_marker_not_activated",
@@ -83,9 +84,14 @@
             "role": "legacy_direct_executor"
           },
           {
+            "file": "server/src/worker/jobs/canonicalIncrementalSync.ts",
+            "count": 1,
+            "role": "generation_bound_worker_executor"
+          },
+          {
             "file": "server/src/worker/jobs/syncJobs.ts",
             "count": 1,
-            "role": "canonical_worker_executor"
+            "role": "legacy_worker_executor_and_canonical_entrypoint"
           }
         ]
       }
@@ -150,11 +156,24 @@
         "entries": [
           {
             "file": "server/src/jobs/syncJobContract.ts",
-            "role": "reader_only_v2_compatibility"
+            "role": "v2_generation_consumer_contract"
           },
           {
             "file": "server/src/services/workerSyncQueue.ts",
-            "role": "retained_v2_dead_letter_replay_clock_reset"
+            "role": "dormant_v2_wakeup_adapter_and_retained_replay_clock_reset"
+          }
+        ]
+      },
+      {
+        "symbol": "enqueueIncrementalSyncWakeup",
+        "entries": [
+          {
+            "file": "server/src/services/sync/syncIntentAdmission.ts",
+            "role": "canonical_dormant_wakeup_adapter_composition"
+          },
+          {
+            "file": "server/src/services/workerSyncQueue.ts",
+            "role": "dormant_generation_wakeup_adapter_definition"
           }
         ]
       },
@@ -176,6 +195,19 @@
           {
             "file": "server/src/worker/jobs/syncJobs.ts",
             "role": "legacy_worker_age_trigger"
+          }
+        ]
+      },
+      {
+        "symbol": "syncIntentAdmission",
+        "entries": [
+          {
+            "file": "server/src/services/sync/syncIntentAdmission.ts",
+            "role": "canonical_admission_singleton_definition"
+          },
+          {
+            "file": "server/src/worker/jobs/canonicalIncrementalSync.ts",
+            "role": "generation_bound_consumer_only"
           }
         ]
       }

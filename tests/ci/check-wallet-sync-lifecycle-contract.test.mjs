@@ -20,6 +20,13 @@ const liveContract = JSON.parse(readFileSync(
 // source imports.
 const retiredBlockchainImport = ['..', '..', 'services', 'bitcoin', 'blockchain'].join('/');
 const siblingBlockchainImport = ['..', 'services', 'bitcoin', 'blockchain'].join('/');
+const canonicalAdmissionImport = [
+  '..',
+  '..',
+  'services',
+  'sync',
+  'syncIntentAdmission',
+].join('/');
 
 function write(root, relativePath, contents) {
   const target = path.join(root, relativePath);
@@ -40,9 +47,14 @@ function fixtureContract() {
       implementationModules: ['server/src/services/bitcoin/blockchain/syncWallet.ts'],
       entries: [
         {
+          file: 'server/src/worker/jobs/canonicalIncrementalSync.ts',
+          count: 1,
+          role: 'generation_bound_worker_executor',
+        },
+        {
           file: 'server/src/worker/jobs/syncJobs.ts',
           count: 1,
-          role: 'canonical_worker_executor',
+          role: 'legacy_worker_executor_and_canonical_entrypoint',
         },
       ],
     },
@@ -61,9 +73,23 @@ function fixtureContract() {
     }] },
     { symbol: 'SYNC_WALLET_JOB_READER_VERSION', entries: [{
       file: 'server/src/jobs/syncJobContract.ts',
-      role: 'reader_only_v2_compatibility',
+      role: 'v2_generation_consumer_contract',
+    }] },
+    { symbol: 'enqueueIncrementalSyncWakeup', entries: [{
+      file: 'server/src/services/sync/syncIntentAdmission.ts',
+      role: 'canonical_dormant_wakeup_adapter_composition',
+    }, {
+      file: 'server/src/services/workerSyncQueue.ts',
+      role: 'dormant_generation_wakeup_adapter_definition',
     }] },
     { symbol: 'findStale', entries: [] },
+    { symbol: 'syncIntentAdmission', entries: [{
+      file: 'server/src/services/sync/syncIntentAdmission.ts',
+      role: 'canonical_admission_singleton_definition',
+    }, {
+      file: 'server/src/worker/jobs/canonicalIncrementalSync.ts',
+      role: 'generation_bound_consumer_only',
+    }] },
   ];
   contract.inventory.literalReferences = [
     { literal: 'check-stale-wallets', entries: [] },
@@ -97,6 +123,25 @@ function createFixture() {
     'server/src/worker/jobs/syncJobs.ts',
     `import { syncWallet } from '${retiredBlockchainImport}';\nvoid CHECK_STALE_WALLETS_JOB_NAME;\nvoid SYNC_WALLET_JOB_NAME;\nsyncWallet();\n`,
   );
+  write(
+    root,
+    'server/src/worker/jobs/canonicalIncrementalSync.ts',
+    `import { syncWallet } from '${retiredBlockchainImport}';\n`
+      + `import { syncIntentAdmission } from '${canonicalAdmissionImport}';\n`
+      + 'void syncIntentAdmission;\nsyncWallet();\n',
+  );
+  write(
+    root,
+    'server/src/services/workerSyncQueue.ts',
+    'export function enqueueIncrementalSyncWakeup() { return true; }\n',
+  );
+  write(
+    root,
+    'server/src/services/sync/syncIntentAdmission.ts',
+    "import { enqueueIncrementalSyncWakeup } from '../workerSyncQueue';\n"
+      + 'void enqueueIncrementalSyncWakeup;\n'
+      + 'export const syncIntentAdmission = {};\n',
+  );
   return root;
 }
 
@@ -105,7 +150,10 @@ test('live compatibility inventory matches production without claiming cutover',
   assert.deepEqual(result.errors, []);
   assert.equal(result.contract.cutoverComplete, false);
   assert.equal(result.contract.compatibility.staleScheduleState, 'legacy_desired_until_cutover');
-  assert.equal(result.contract.compatibility.admissionState, 'dormant_no_production_callers');
+  assert.equal(
+    result.contract.compatibility.admissionState,
+    'generation_consumer_enabled_no_production_producers',
+  );
 });
 
 test('accepts an exact compatibility inventory fixture', () => {
@@ -166,7 +214,7 @@ test('rejects premature cutover and lifecycle weakening', () => {
   );
 });
 
-test('rejects a production admission caller before the activation release', () => {
+test('rejects a production admission producer before the activation release', () => {
   const root = createFixture();
   write(
     root,
@@ -176,7 +224,53 @@ test('rejects a production admission caller before the activation release', () =
   );
   assert.match(
     checkWalletSyncLifecycleContract(root).errors.join('\n'),
-    /durable admission activated before cutover/,
+    /durable admission producer activated before cutover/,
+  );
+});
+
+test('rejects direct generation wake-up production outside canonical admission', () => {
+  const root = createFixture();
+  write(
+    root,
+    'server/src/services/earlyWakeup.ts',
+    "import { enqueueIncrementalSyncWakeup as enqueue } from './workerSyncQueue';\n"
+      + "void enqueue({ walletId: 'wallet-1', generation: 1, jobId: 'job-1' });\n",
+  );
+  assert.match(
+    checkWalletSyncLifecycleContract(root).errors.join('\n'),
+    /durable admission producer activated before cutover/,
+  );
+});
+
+test('rejects repair-loop activation from the permitted worker consumer', () => {
+  const root = createFixture();
+  const workerPath = 'server/src/worker/jobs/canonicalIncrementalSync.ts';
+  write(
+    root,
+    workerPath,
+    `import { syncWallet } from '${retiredBlockchainImport}';\n`
+      + `import { syncIntentAdmission as admission } from '${canonicalAdmissionImport}';\n`
+      + 'syncWallet();\nvoid admission.recover;\n',
+  );
+  assert.match(
+    checkWalletSyncLifecycleContract(root).errors.join('\n'),
+    /durable admission producer activated before cutover/,
+  );
+});
+
+test('rejects namespace and bracket repair activation from the permitted worker', () => {
+  const root = createFixture();
+  const workerPath = 'server/src/worker/jobs/canonicalIncrementalSync.ts';
+  write(
+    root,
+    workerPath,
+    `import { syncWallet } from '${retiredBlockchainImport}';\n`
+      + `import * as intents from '${canonicalAdmissionImport}';\n`
+      + "syncWallet();\nvoid intents.syncIntentAdmission?.['recover'];\n",
+  );
+  assert.match(
+    checkWalletSyncLifecycleContract(root).errors.join('\n'),
+    /durable admission producer activated before cutover/,
   );
 });
 
