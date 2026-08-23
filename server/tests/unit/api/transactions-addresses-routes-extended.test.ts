@@ -29,7 +29,9 @@ function mockCanonicalAllocationSummary(
 ) {
   mockPrismaClient.$queryRaw.mockImplementation((query: { strings?: readonly string[] }) => {
     const sql = query.strings?.join(" ") ?? "";
-    if (sql.includes("FOR UPDATE")) return Promise.resolve([{ id: "wallet-1" }]);
+    if (sql.includes("FOR UPDATE")) {
+      return Promise.resolve([{ id: "wallet-1", network: "testnet3" }]);
+    }
     if (sql.includes("WITH canonical")) {
       return Promise.resolve(canonicalBranchSummary(receiveMax, changeMax));
     }
@@ -123,6 +125,9 @@ describe("Transactions Addresses Routes (Extended)", () => {
 
     mockPrismaClient.address.findMany.mockResolvedValue([]);
     mockPrismaClient.uTXO.findMany.mockResolvedValue([]);
+    mockPrismaClient.address.createManyAndReturn.mockImplementation(async ({ data }) => (
+      data.map((row: object, index: number) => ({ ...row, id: `generated-${index}` }))
+    ));
 
     mockDeriveCanonicalAddress.mockImplementation(
       (_descriptors: unknown, coordinate: { branch: 0 | 1; index: number }) => ({
@@ -188,7 +193,7 @@ describe("Transactions Addresses Routes (Extended)", () => {
         capability: "display",
       });
       expect(mockDeriveCanonicalAddress).not.toHaveBeenCalled();
-      expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
+      expect(mockPrismaClient.address.createManyAndReturn).not.toHaveBeenCalled();
       expect(JSON.stringify(response.body)).not.toContain("tb1qunverified");
     },
   );
@@ -355,7 +360,7 @@ describe("Transactions Addresses Routes (Extended)", () => {
     expect(response.status).toBe(200);
     expect(response.body).toEqual([]);
     expect(mockDeriveCanonicalAddress).not.toHaveBeenCalled();
-    expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
+    expect(mockPrismaClient.address.createManyAndReturn).not.toHaveBeenCalled();
   });
 
   it("returns 500 when address listing fails unexpectedly", async () => {
@@ -505,7 +510,7 @@ describe("Transactions Addresses Routes (Extended)", () => {
       "Wallet requires authoritative receive and change descriptors",
     );
     expect(mockDeriveCanonicalAddress).not.toHaveBeenCalled();
-    expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
+    expect(mockPrismaClient.address.createManyAndReturn).not.toHaveBeenCalled();
   });
 
   it("rejects generation with contradictory canonical policy evidence", async () => {
@@ -527,7 +532,7 @@ describe("Transactions Addresses Routes (Extended)", () => {
 
     expect(response.status).toBe(400);
     expect(mockDeriveCanonicalAddress).not.toHaveBeenCalled();
-    expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
+    expect(mockPrismaClient.address.createManyAndReturn).not.toHaveBeenCalled();
   });
 
   it("generates canonical receive and change addresses without duplicate skipping", async () => {
@@ -539,7 +544,7 @@ describe("Transactions Addresses Routes (Extended)", () => {
 
     expect(response.status).toBe(200);
     expect(mockDeriveCanonicalAddress).toHaveBeenCalledTimes(4);
-    expect(mockPrismaClient.address.createMany).toHaveBeenCalledWith({
+    expect(mockPrismaClient.address.createManyAndReturn).toHaveBeenCalledWith({
       data: expect.arrayContaining([
         expect.objectContaining({
           derivationPath: "m/84'/1'/0'/0/4",
@@ -565,8 +570,9 @@ describe("Transactions Addresses Routes (Extended)", () => {
           index: 6,
         }),
       ]),
+      select: { id: true },
     });
-    expect(mockPrismaClient.address.createMany.mock.calls[0][0]).not.toHaveProperty(
+    expect(mockPrismaClient.address.createManyAndReturn.mock.calls[0][0]).not.toHaveProperty(
       "skipDuplicates",
     );
     expect(response.body).toEqual({
@@ -584,7 +590,7 @@ describe("Transactions Addresses Routes (Extended)", () => {
       .send({ count: 2 });
 
     expect(response.status).toBe(200);
-    expect(mockPrismaClient.address.createMany).toHaveBeenCalledWith({
+    expect(mockPrismaClient.address.createManyAndReturn).toHaveBeenCalledWith({
       data: expect.arrayContaining([
         expect.objectContaining({
           derivationPath: "m/84'/1'/0'/0/10",
@@ -603,6 +609,7 @@ describe("Transactions Addresses Routes (Extended)", () => {
           index: 4,
         }),
       ]),
+      select: { id: true },
     });
   });
 
@@ -618,7 +625,7 @@ describe("Transactions Addresses Routes (Extended)", () => {
     expect(response.status).toBe(200);
     expect(mockDeriveCanonicalAddress).toHaveBeenCalledTimes(4);
     expect(mockPrismaClient.address.findMany).not.toHaveBeenCalled();
-    expect(mockPrismaClient.address.createMany).toHaveBeenCalledWith({
+    expect(mockPrismaClient.address.createManyAndReturn).toHaveBeenCalledWith({
       data: expect.arrayContaining([
         expect.objectContaining({
           derivationPath: "m/84'/1'/0'/0/0",
@@ -637,6 +644,7 @@ describe("Transactions Addresses Routes (Extended)", () => {
           index: 1,
         }),
       ]),
+      select: { id: true },
     });
     expect(response.body).toEqual({
       generated: 4,
@@ -657,13 +665,15 @@ describe("Transactions Addresses Routes (Extended)", () => {
 
     expect(response.status).toBe(500);
     expect(response.body.code).toBe("INTERNAL_ERROR");
-    expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
+    expect(mockPrismaClient.address.createManyAndReturn).not.toHaveBeenCalled();
   });
 
   it("returns 500 when address generation fails unexpectedly", async () => {
     mockPrismaClient.$queryRaw.mockImplementation((query: { strings?: readonly string[] }) => {
       const sql = query.strings?.join(" ") ?? "";
-      if (sql.includes("FOR UPDATE")) return Promise.resolve([{ id: "wallet-1" }]);
+      if (sql.includes("FOR UPDATE")) {
+        return Promise.resolve([{ id: "wallet-1", network: "testnet3" }]);
+      }
       return Promise.reject(new Error("summary failed"));
     });
 
@@ -682,7 +692,7 @@ describe("Transactions Addresses Routes (Extended)", () => {
 
     expect(response.status).toBe(400);
     expect(mockDeriveCanonicalAddress).not.toHaveBeenCalled();
-    expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
+    expect(mockPrismaClient.address.createManyAndReturn).not.toHaveBeenCalled();
   });
 
   it("rejects non-numeric count (string coercion guard)", async () => {
@@ -692,7 +702,7 @@ describe("Transactions Addresses Routes (Extended)", () => {
 
     expect(response.status).toBe(400);
     expect(mockDeriveCanonicalAddress).not.toHaveBeenCalled();
-    expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
+    expect(mockPrismaClient.address.createManyAndReturn).not.toHaveBeenCalled();
   });
 
   it("rejects negative count", async () => {
@@ -706,8 +716,6 @@ describe("Transactions Addresses Routes (Extended)", () => {
 
   it("applies default count=10 when body is empty", async () => {
     mockCanonicalAllocationSummary();
-    mockPrismaClient.address.createMany.mockResolvedValue({ count: 20 } as any);
-
     const response = await request(app)
       .post("/api/v1/wallets/wallet-1/addresses/generate")
       .send({});
@@ -723,10 +731,6 @@ describe("Transactions Addresses Routes (Extended)", () => {
 
   it("accepts count at the upper bound", async () => {
     mockCanonicalAllocationSummary();
-    mockPrismaClient.address.createMany.mockResolvedValue({
-      count: 2000,
-    } as any);
-
     const response = await request(app)
       .post("/api/v1/wallets/wallet-1/addresses/generate")
       .send({ count: 1000 });

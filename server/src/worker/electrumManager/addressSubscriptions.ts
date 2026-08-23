@@ -19,6 +19,30 @@ import {
 
 const log = createLogger('WORKER:ELECTRUM_ADDR');
 
+interface SubscriptionExecutionOptions {
+  resubscribe?: boolean;
+  isActive?: () => boolean;
+}
+
+class SubscriptionOwnershipChangedError extends Error {
+  constructor() {
+    super('Electrum subscription ownership changed during network work');
+    this.name = 'SubscriptionOwnershipChangedError';
+  }
+}
+
+function requireActiveOwnership(
+  state: NetworkState | undefined,
+  isActive: (() => boolean) | undefined,
+): void {
+  if (!isActive || isActive()) return;
+  if (state) {
+    state.connected = false;
+    state.client.disconnect();
+  }
+  throw new SubscriptionOwnershipChangedError();
+}
+
 /**
  * Subscribe to all wallet addresses across all networks.
  *
@@ -27,7 +51,12 @@ const log = createLogger('WORKER:ELECTRUM_ADDR');
  */
 export async function subscribeAllAddresses(
   networks: Map<BitcoinNetwork, NetworkState>,
-  addressToWallet: Map<string, AddressWalletInfo>
+  addressToWallet: Map<string, AddressWalletInfo>,
+  observeStatuses?: (
+    network: BitcoinNetwork,
+    statuses: Map<string, string | null>,
+  ) => Promise<void>,
+  isActive?: () => boolean,
 ): Promise<void> {
   log.info('Subscribing to all wallet addresses...');
 
@@ -37,10 +66,12 @@ export async function subscribeAllAddresses(
 
   // Process addresses in pages to avoid memory issues with large deployments
   while (true) {
+    requireActiveOwnership(undefined, isActive);
     const addresses = await addressRepository.findAllWithWalletNetworkPaginated({
       take: PAGE_SIZE,
       cursor,
     });
+    requireActiveOwnership(undefined, isActive);
 
     if (addresses.length === 0) break;
 
@@ -73,7 +104,11 @@ export async function subscribeAllAddresses(
         continue;
       }
 
-      await subscribeAddressBatch(state, networkAddresses);
+      const statuses = await subscribeAddressBatch(state, networkAddresses, { isActive });
+      if (statuses.size > 0) {
+        await observeStatuses?.(network, statuses);
+        requireActiveOwnership(state, isActive);
+      }
     }
 
     totalProcessed += addresses.length;
@@ -97,8 +132,14 @@ export async function subscribeAllAddresses(
 export async function subscribeNetworkAddresses(
   network: BitcoinNetwork,
   networks: Map<BitcoinNetwork, NetworkState>,
-  addressToWallet: Map<string, AddressWalletInfo>
+  addressToWallet: Map<string, AddressWalletInfo>,
+  observeStatuses?: (
+    network: BitcoinNetwork,
+    statuses: Map<string, string | null>,
+  ) => Promise<void>,
+  options: SubscriptionExecutionOptions = {},
 ): Promise<void> {
+  requireActiveOwnership(undefined, options.isActive);
   const state = networks.get(network);
   if (!state?.connected) return;
 
@@ -115,7 +156,11 @@ export async function subscribeNetworkAddresses(
   }
 
   if (networkAddresses.length > 0) {
-    await subscribeAddressBatch(state, networkAddresses);
+    const statuses = await subscribeAddressBatch(state, networkAddresses, options);
+    if (statuses.size > 0) {
+      await observeStatuses?.(network, statuses);
+      requireActiveOwnership(state, options.isActive);
+    }
   }
 }
 
@@ -124,16 +169,24 @@ export async function subscribeNetworkAddresses(
  */
 export async function subscribeAddressBatch(
   state: NetworkState,
-  addresses: Array<{ address: string; walletId: string }>
-): Promise<void> {
+  addresses: Array<{ address: string; walletId: string }>,
+  options: SubscriptionExecutionOptions = {},
+): Promise<Map<string, string | null>> {
   const { client, network } = state;
+  const statuses = new Map<string, string | null>();
+  requireActiveOwnership(state, options.isActive);
 
   // Filter out already subscribed addresses
-  const toSubscribe = addresses.filter(a => !state.subscribedAddresses.has(a.address));
+  const candidates = options.resubscribe
+    ? addresses
+    : addresses.filter(a => !state.subscribedAddresses.has(a.address));
+  const toSubscribe = [...new Map(
+    candidates.map((candidate) => [candidate.address, candidate]),
+  ).values()];
 
   if (toSubscribe.length === 0) {
     log.debug(`No new addresses to subscribe for ${network}`);
-    return;
+    return statuses;
   }
 
   log.info(`Subscribing to ${toSubscribe.length} addresses on ${network}`);
@@ -144,16 +197,22 @@ export async function subscribeAddressBatch(
     const addressList = batch.map(a => a.address);
 
     try {
-      await client.subscribeAddressBatch(addressList);
+      requireActiveOwnership(state, options.isActive);
+      const batchStatuses = await client.subscribeAddressBatch(addressList);
+      requireActiveOwnership(state, options.isActive);
 
       for (const addr of batch) {
+        if (!batchStatuses.has(addr.address)) continue;
         state.subscribedAddresses.add(addr.address);
+        statuses.set(addr.address, batchStatuses.get(addr.address) ?? null);
       }
 
       log.debug(`Subscribed batch ${Math.floor(i / SUBSCRIPTION_BATCH_SIZE) + 1} on ${network}`, {
         count: batch.length,
       });
     } catch (error) {
+      if (error instanceof SubscriptionOwnershipChangedError) throw error;
+      requireActiveOwnership(state, options.isActive);
       log.error(`Failed to subscribe address batch on ${network}`, {
         error: getErrorMessage(error),
         startIndex: i,
@@ -162,9 +221,16 @@ export async function subscribeAddressBatch(
       // Try individual subscriptions as fallback
       for (const addr of batch) {
         try {
-          await client.subscribeAddress(addr.address);
+          requireActiveOwnership(state, options.isActive);
+          const status = await client.subscribeAddress(addr.address);
+          requireActiveOwnership(state, options.isActive);
           state.subscribedAddresses.add(addr.address);
+          statuses.set(addr.address, status);
         } catch (individualError) {
+          if (individualError instanceof SubscriptionOwnershipChangedError) {
+            throw individualError;
+          }
+          requireActiveOwnership(state, options.isActive);
           log.warn(`Failed to subscribe individual address on ${network}`, {
             address: addr.address,
             error: getErrorMessage(individualError),
@@ -173,6 +239,8 @@ export async function subscribeAddressBatch(
       }
     }
   }
+  requireActiveOwnership(state, options.isActive);
+  return statuses;
 }
 
 /**
@@ -181,9 +249,12 @@ export async function subscribeAddressBatch(
 export async function subscribeWalletAddresses(
   walletId: string,
   networks: Map<BitcoinNetwork, NetworkState>,
-  addressToWallet: Map<string, AddressWalletInfo>
+  addressToWallet: Map<string, AddressWalletInfo>,
+  isActive?: () => boolean,
 ): Promise<void> {
+  requireActiveOwnership(undefined, isActive);
   const walletNetwork = await walletRepository.findNetwork(walletId);
+  requireActiveOwnership(undefined, isActive);
 
   if (!walletNetwork) return;
 
@@ -197,6 +268,7 @@ export async function subscribeWalletAddresses(
   }
 
   const addressStrings = await addressRepository.findAddressStrings(walletId);
+  requireActiveOwnership(state, isActive);
 
   const addressData = addressStrings.map(address => ({
     address,
@@ -211,7 +283,7 @@ export async function subscribeWalletAddresses(
     });
   }
 
-  await subscribeAddressBatch(state, addressData);
+  await subscribeAddressBatch(state, addressData, { isActive });
 }
 
 /**

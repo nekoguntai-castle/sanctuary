@@ -171,6 +171,20 @@
       "reviewWhenTouched": true,
       "lastReviewed": "2026-08-23"
     },
+    "server/tests/unit/services/walletImport.operations.test.ts": {
+      "category": "proof-harness",
+      "owner": "wallet-sync-checkpoints",
+      "reason": "Wallet-import operations proof harness sharing one hoisted repository, descriptor, transaction, and checkpoint-enrollment mock boundary across atomic import behavior.",
+      "reviewWhenTouched": true,
+      "lastReviewed": "2026-08-23"
+    },
+    "server/tests/unit/worker/electrumManager/electrumManager.standalone.contracts.ts": {
+      "category": "proof-harness",
+      "owner": "wallet-sync-checkpoints",
+      "reason": "Electrum ownership proof harness sharing one manager, lock, client, timer, and checkpoint-observer boundary across reconnect, former-owner, and wire-order races.",
+      "reviewWhenTouched": true,
+      "lastReviewed": "2026-08-23"
+    },
     "tests/ci/check-wallet-sync-lifecycle-contract.test.mjs": {
       "category": "proof-harness",
       "owner": "wallet-sync-lifecycle",

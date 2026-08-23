@@ -21,6 +21,7 @@ import {
   ServerVersionSchema,
   ServerFeaturesSchema,
   HeadersSubscribeSchema,
+  parseElectrumSubscriptionStatus,
   validateResponse,
 } from './types';
 import type {
@@ -268,7 +269,11 @@ export async function subscribeAddress(
   // Track the mapping so we can resolve address from notifications
   scriptHashToAddress.set(scriptHash, address);
   const result = await requestFn('blockchain.scripthash.subscribe', [scriptHash]);
-  return result as string | null;
+  const status = parseElectrumSubscriptionStatus(result);
+  if (status === undefined) {
+    throw new Error('Invalid Electrum response for subscribeAddress: malformed status');
+  }
+  return status;
 }
 
 /**
@@ -377,7 +382,8 @@ export async function subscribeAddressBatch(
   // Map results back to addresses
   const resultMap = new Map<string, string | null>();
   for (let i = 0; i < addresses.length; i++) {
-    resultMap.set(addresses[i], (results[i] as string | null) || null);
+    const status = parseElectrumSubscriptionStatus(results[i]);
+    if (status !== undefined) resultMap.set(addresses[i], status);
   }
 
   return resultMap;

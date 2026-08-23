@@ -202,12 +202,13 @@ export const registerWalletImportDescriptorContracts = () => {
       );
 
       // Verify addresses were generated (20 receive + 20 change)
-      expect(mockPrismaClient.address.createMany).toHaveBeenCalledWith(
+      expect(mockPrismaClient.address.createManyAndReturn).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.arrayContaining([
             expect.objectContaining({ address: expect.stringContaining('receive') }),
             expect.objectContaining({ address: expect.stringContaining('change') }),
           ]),
+          select: { id: true },
         })
       );
     });

@@ -9,11 +9,13 @@ import {
   setupDeviceMocks,
   setupBeforeEach,
   mockAssertHardwareWalletCapability,
+  mockCheckpointCreateMany,
   mockWakeInitialWalletSync,
 } from './walletImport.setup';
 import { mockPrismaClient } from '../../mocks/prisma';
 import * as walletImport from '../../../src/services/walletImport';
 import { createWalletTransaction } from '../../../src/services/walletImport/walletImportService';
+import * as addressGeneration from '../../../src/services/wallet/addressGeneration';
 import type { Network } from '../../../src/services/bitcoin/descriptorParser';
 
 const VALID_RECEIVE_DESCRIPTOR = "wpkh([d34db33f/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/0/*)";
@@ -162,7 +164,7 @@ describe('Wallet Import Service - Operations', () => {
       });
 
       // Verify address generation was called
-      const addressCreateCall = mockPrismaClient.address.createMany.mock.calls[0][0];
+      const addressCreateCall = mockPrismaClient.address.createManyAndReturn.mock.calls[0][0];
       expect(addressCreateCall.data).toHaveLength(40); // 20 receive + 20 change
 
       // Verify receive addresses
@@ -197,6 +199,12 @@ describe('Wallet Import Service - Operations', () => {
         }),
       ]));
       expect(addressCreateCall).not.toHaveProperty('skipDuplicates');
+      expect(mockCheckpointCreateMany).toHaveBeenCalledWith({
+        data: Array.from({ length: 40 }, (_, index) => ({
+          addressId: `import-address-${index}`,
+          network: 'mainnet',
+        })),
+      });
       expect(mockDeriveCanonicalAddress).toHaveBeenCalledWith(
         {
           receiveDescriptor: VALID_RECEIVE_DESCRIPTOR,
@@ -256,10 +264,10 @@ describe('Wallet Import Service - Operations', () => {
         name: 'Test',
       })).rejects.toThrow('Address derivation failed');
 
-      expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
+      expect(mockPrismaClient.address.createManyAndReturn).not.toHaveBeenCalled();
     });
 
-    it('should reject the import when atomic initial address persistence fails', async () => {
+    it('should reject the import when atomic checkpoint persistence fails', async () => {
       const descriptor = "wpkh([abcd1234/84'/0'/0']xpub6Dz...)";
 
       mockParseImportInput.mockReturnValue({
@@ -295,17 +303,18 @@ describe('Wallet Import Service - Operations', () => {
         descriptor: 'wpkh([abcd1234/84h/0h/0h]xpub6Dz...)',
         fingerprint: 'wallet-fp',
       });
-      mockPrismaClient.address.createMany.mockRejectedValueOnce(
-        new Error('atomic address insertion failed'),
+      mockCheckpointCreateMany.mockRejectedValueOnce(
+        new Error('atomic checkpoint insertion failed'),
       );
 
       await expect(walletImport.importFromDescriptor(userId, {
         descriptor,
         name: 'Atomic import',
-      })).rejects.toThrow('atomic address insertion failed');
+      })).rejects.toThrow('atomic checkpoint insertion failed');
 
       expect(mockPrismaClient.$transaction).toHaveBeenCalledTimes(1);
-      expect(mockPrismaClient.address.createMany).toHaveBeenCalledTimes(1);
+      expect(mockPrismaClient.address.createManyAndReturn).toHaveBeenCalledTimes(1);
+      expect(mockCheckpointCreateMany).toHaveBeenCalledTimes(1);
     });
 
     it('should execute import in transaction', async () => {
@@ -360,6 +369,63 @@ describe('Wallet Import Service - Operations', () => {
   });
 
   describe('Edge Cases', () => {
+    it('skips address and checkpoint writes when initial derivation returns an empty set', async () => {
+      vi.spyOn(addressGeneration, 'buildInitialAddressTemplates').mockReturnValueOnce([]);
+      mockPrismaClient.wallet.create.mockResolvedValue({
+        id: 'wallet-without-initial-addresses',
+        name: 'Empty initial window',
+        type: 'single_sig',
+        scriptType: 'native_segwit',
+        network: 'mainnet',
+        quorum: null,
+        totalSigners: null,
+        descriptor: VALID_RECEIVE_DESCRIPTOR,
+      });
+
+      await expect(createWalletTransaction(userId, {
+        name: 'Empty initial window',
+        network: 'mainnet',
+        parsed: {
+          type: 'single_sig',
+          scriptType: 'native_segwit',
+          devices: [],
+          network: 'mainnet',
+          isChange: false,
+        },
+        resolutions: [],
+      })).resolves.toMatchObject({
+        wallet: { id: 'wallet-without-initial-addresses' },
+      });
+
+      expect(mockPrismaClient.address.createManyAndReturn).not.toHaveBeenCalled();
+      expect(mockCheckpointCreateMany).not.toHaveBeenCalled();
+      expect(mockWakeInitialWalletSync).toHaveBeenCalledWith('wallet-without-initial-addresses');
+    });
+
+    it('rejects a legacy network before writing initial addresses or checkpoints', async () => {
+      mockPrismaClient.wallet.create.mockResolvedValue({
+        id: 'wallet-legacy-network',
+        network: 'testnet',
+      });
+
+      await expect(createWalletTransaction(userId, {
+        name: 'Legacy network import',
+        network: 'testnet' as never,
+        parsed: {
+          type: 'single_sig',
+          scriptType: 'native_segwit',
+          devices: [],
+          network: 'testnet',
+          isChange: false,
+        },
+        resolutions: [],
+      })).rejects.toThrow('Imported wallet has an unsupported subscription network');
+
+      expect(mockPrismaClient.address.createManyAndReturn).not.toHaveBeenCalled();
+      expect(mockCheckpointCreateMany).not.toHaveBeenCalled();
+      expect(mockWakeInitialWalletSync).not.toHaveBeenCalled();
+    });
+
     it.each(['ledger', 'jade', 'trezor'])(
       'blocks %s import before opening a transaction or writing wallet state',
       async type => {
@@ -396,7 +462,7 @@ describe('Wallet Import Service - Operations', () => {
 
         expect(mockPrismaClient.$transaction).not.toHaveBeenCalled();
         expect(mockPrismaClient.wallet.create).not.toHaveBeenCalled();
-        expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
+        expect(mockPrismaClient.address.createManyAndReturn).not.toHaveBeenCalled();
       },
     );
 

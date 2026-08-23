@@ -48,6 +48,10 @@ export function registerBlockchainGapLimitTests(): void {
       mockPrismaClient.wallet.findUnique.mockReset();
       mockPrismaClient.address.findMany.mockReset();
       mockPrismaClient.address.createMany.mockReset();
+      mockPrismaClient.address.createManyAndReturn.mockReset();
+      mockPrismaClient.address.createManyAndReturn.mockImplementation(async ({ data }) => (
+        data.map((_: unknown, index: number) => ({ id: `generated-${index}` }))
+      ));
       mockLockedCanonicalBranchSummary({
         walletId,
         receive: { maxIndex: 24, unusedTail: 20 },
@@ -72,7 +76,7 @@ export function registerBlockchainGapLimitTests(): void {
       const result = await getBlockchainService().ensureGapLimit(walletId);
 
       expect(result).toHaveLength(0);
-      expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
+      expect(mockPrismaClient.address.createManyAndReturn).not.toHaveBeenCalled();
     });
 
     it("excludes legacy-null coordinates in the compact locked summary query", async () => {
@@ -84,7 +88,7 @@ export function registerBlockchainGapLimitTests(): void {
       });
 
       await expect(getBlockchainService().ensureGapLimit(walletId)).resolves.toEqual([]);
-      expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
+      expect(mockPrismaClient.address.createManyAndReturn).not.toHaveBeenCalled();
       const summaryQuery = mockPrismaClient.$queryRaw.mock.calls[1]?.[0] as {
         strings?: string[];
         values?: unknown[];
@@ -102,14 +106,12 @@ export function registerBlockchainGapLimitTests(): void {
         receive: { maxIndex: 14, unusedTail: 10 },
         change: { maxIndex: 24, unusedTail: 20 },
       });
-      mockPrismaClient.address.createMany.mockResolvedValue({ count: 10 });
-
       const result = await getBlockchainService().ensureGapLimit(walletId);
 
       // Should generate 10 more receive addresses to reach gap limit of 20
       // Change addresses already have gap of 20, so none generated for change
       expect(result.length).toBe(10);
-      expect(mockPrismaClient.address.createMany).toHaveBeenCalled();
+      expect(mockPrismaClient.address.createManyAndReturn).toHaveBeenCalled();
     });
 
     it("should handle both receive and change addresses separately", async () => {
@@ -120,8 +122,6 @@ export function registerBlockchainGapLimitTests(): void {
         receive: { maxIndex: 24, unusedTail: 20 },
         change: { maxIndex: 9, unusedTail: 5 },
       });
-      mockPrismaClient.address.createMany.mockResolvedValue({ count: 15 });
-
       const result = await getBlockchainService().ensureGapLimit(walletId);
 
       // Should only generate change addresses (15 more to reach gap of 20)
@@ -162,8 +162,6 @@ export function registerBlockchainGapLimitTests(): void {
         receive: { maxIndex: null, unusedTail: 0 },
         change: { maxIndex: null, unusedTail: 0 },
       });
-      mockPrismaClient.address.createMany.mockResolvedValue({ count: 40 });
-
       const result = await getBlockchainService().ensureGapLimit(walletId);
 
       // No addresses means gap is 0 for both receive and change
@@ -179,8 +177,6 @@ export function registerBlockchainGapLimitTests(): void {
         receive: { maxIndex: 9, unusedTail: 0 },
         change: { maxIndex: 9, unusedTail: 0 },
       });
-      mockPrismaClient.address.createMany.mockResolvedValue({ count: 40 });
-
       const result = await getBlockchainService().ensureGapLimit(walletId);
 
       // Should generate 20 receive + 20 change = 40 new addresses
@@ -205,7 +201,7 @@ export function registerBlockchainGapLimitTests(): void {
       await expect(
         getBlockchainService().ensureGapLimit(walletId),
       ).rejects.toThrow("receive derive failed");
-      expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
+      expect(mockPrismaClient.address.createManyAndReturn).not.toHaveBeenCalled();
     });
 
     it("fails closed when change address derivation throws", async () => {
@@ -236,7 +232,7 @@ export function registerBlockchainGapLimitTests(): void {
       await expect(
         getBlockchainService().ensureGapLimit(walletId),
       ).rejects.toThrow("change derive failed");
-      expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
+      expect(mockPrismaClient.address.createManyAndReturn).not.toHaveBeenCalled();
     });
 
     it("does not persist a partial batch after canonical validation fails", async () => {
@@ -256,7 +252,7 @@ export function registerBlockchainGapLimitTests(): void {
       await expect(
         getBlockchainService().ensureGapLimit(walletId),
       ).rejects.toThrow("canonical validation failed");
-      expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
+      expect(mockPrismaClient.address.createManyAndReturn).not.toHaveBeenCalled();
     });
   });
 }

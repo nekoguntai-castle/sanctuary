@@ -37,20 +37,41 @@ export function startLockRefresh(
   setLock: (lock: DistributedLock | null) => void,
   onLockLost: () => Promise<void>
 ): NodeJS.Timeout {
+  let refreshInFlight = false;
   const timer = setInterval(async () => {
+    if (refreshInFlight) return;
     const lock = getLock();
     if (!lock) return;
 
-    const refreshed = await extendLock(lock, ELECTRUM_SUBSCRIPTION_LOCK_TTL_MS);
-    if (!refreshed) {
-      log.warn('Lost Electrum subscription lock, stopping manager');
-      setLock(null);
-      clearInterval(timer);
-      await onLockLost();
-      return;
-    }
+    refreshInFlight = true;
+    try {
+      let refreshed: DistributedLock | null;
+      try {
+        refreshed = await extendLock(lock, ELECTRUM_SUBSCRIPTION_LOCK_TTL_MS);
+      } catch (error) {
+        log.error('Electrum subscription lock refresh failed; stopping manager', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        refreshed = null;
+      }
 
-    setLock(refreshed);
+      const currentLock = getLock();
+      const stillOwnsRefreshEpoch = currentLock?.key === lock.key
+        && currentLock.token === lock.token;
+      if (!stillOwnsRefreshEpoch) return;
+
+      if (!refreshed) {
+        log.warn('Lost Electrum subscription lock, stopping manager');
+        setLock(null);
+        clearInterval(timer);
+        await onLockLost();
+        return;
+      }
+
+      setLock(refreshed);
+    } finally {
+      refreshInFlight = false;
+    }
   }, ELECTRUM_SUBSCRIPTION_LOCK_REFRESH_MS);
 
   timer.unref?.();

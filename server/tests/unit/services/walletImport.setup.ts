@@ -8,6 +8,11 @@ import { vi } from 'vitest';
 import { mockPrismaClient, resetPrismaMocks } from '../../mocks/prisma';
 import { resolveDescriptorTextPair as actualResolveDescriptorTextPair } from '../../../src/services/bitcoin/descriptorParser/descriptorParser';
 
+export const mockCheckpointCreateMany = vi.fn();
+Object.assign(mockPrismaClient, {
+  addressSubscriptionCheckpoint: { createMany: mockCheckpointCreateMany },
+});
+
 // Mock Prisma
 vi.mock('../../../src/models/prisma', () => ({
   __esModule: true,
@@ -100,8 +105,14 @@ export const setupDeviceMocks = (devices: any[], existingDevices: any[] = []) =>
 export function setupBeforeEach() {
   vi.clearAllMocks();
   resetPrismaMocks();
+  mockPrismaClient.address.createManyAndReturn.mockImplementation(
+    ({ data }: { data: unknown[] }) => Promise.resolve(
+      data.map((_address, index) => ({ id: `import-address-${index}` })),
+    ),
+  );
   mockAssertHardwareWalletCapability.mockReturnValue(undefined);
   mockWakeInitialWalletSync.mockResolvedValue(undefined);
+  mockCheckpointCreateMany.mockResolvedValue({ count: 0 });
 
   // Default mock implementations
   mockBuildDescriptorFromDevices.mockReturnValue({

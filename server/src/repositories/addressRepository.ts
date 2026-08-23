@@ -8,6 +8,10 @@ import prisma, { type PrismaTxClient } from "../models/prisma";
 import { Prisma, type Address } from "../generated/prisma/client";
 import { buildWalletAccessWhere } from "./accessControl";
 import {
+  isNetworkType,
+  type NetworkType,
+} from "@sanctuary/shared/constants/bitcoin";
+import {
   parseAddressDerivationPath,
   type DerivationAddressChain,
 } from "@sanctuary/shared/utils/bitcoin";
@@ -41,7 +45,6 @@ export interface CanonicalAddressWrite extends AddressWriteBase {
   scriptPubKey: string;
 }
 
-export type LegacyAddressEvidenceWrite = AddressWriteBase;
 export type NextCanonicalAddressData = Omit<
   CanonicalAddressWrite,
   'walletId' | 'branch' | 'index'
@@ -60,6 +63,11 @@ export interface CanonicalBatchState {
 }
 export type CanonicalBatchRequest = CanonicalBatchCounts
   | ((state: CanonicalBatchState) => CanonicalBatchCounts);
+
+interface CanonicalWalletRow {
+  id: string;
+  network: string;
+}
 
 function isExactNonempty(value: string): boolean {
   return value.length > 0 && value === value.trim();
@@ -88,15 +96,26 @@ function validateCanonicalAddressWrite(data: CanonicalAddressWrite): void {
   }
 }
 
-function legacyEvidenceData(data: LegacyAddressEvidenceWrite) {
-  return {
-    ...data,
-    branch: null,
-    coordinateVersion: null,
-    canonicalPolicyId: null,
-    canonicalPolicyVersion: null,
-    scriptPubKey: null,
-  };
+function readCanonicalWalletNetwork(rows: CanonicalWalletRow[]): NetworkType {
+  if (rows.length !== 1) {
+    throw new Error('Wallet is missing or lacks canonical policy during address allocation');
+  }
+  const network = rows[0].network;
+  if (!isNetworkType(network)) {
+    throw new Error('Canonical wallet has an unsupported subscription network');
+  }
+  return network;
+}
+
+async function createPendingSubscriptionCheckpoints(
+  tx: PrismaTxClient,
+  addresses: Array<{ id: string }>,
+  network: NetworkType,
+): Promise<void> {
+  if (addresses.length === 0) return;
+  await tx.addressSubscriptionCheckpoint.createMany({
+    data: addresses.map(({ id }) => ({ addressId: id, network })),
+  });
 }
 
 const addressLabelsInclude = {
@@ -470,30 +489,6 @@ export async function findByWalletIdWithLabels(
 }
 
 /**
- * Bulk create addresses
- */
-export async function createMany(
-  data: CanonicalAddressWrite[],
-) {
-  data.forEach(validateCanonicalAddressWrite);
-  return prisma.address.createMany({
-    data,
-  });
-}
-
-/**
- * Persists pre-coordinate evidence without claiming canonical policy binding.
- * Only import/remediation boundaries may use this explicitly named API.
- */
-export async function createManyLegacyEvidence(
-  data: LegacyAddressEvidenceWrite[],
-) {
-  return prisma.address.createMany({
-    data: data.map(legacyEvidenceData),
-  });
-}
-
-/**
  * Serialize next-index allocation on the wallet row. The builder runs only
  * after the branch-scoped next coordinate is known, and the derived evidence
  * is inserted in the same transaction.
@@ -505,16 +500,14 @@ export async function createNextCanonical(
 ): Promise<Address> {
   assertCanonicalRelativeCoordinate({ branch, index: 0 });
   return prisma.$transaction(async (tx) => {
-    const walletRows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-      SELECT "id" FROM "wallets"
+    const walletRows = await tx.$queryRaw<CanonicalWalletRow[]>(Prisma.sql`
+      SELECT "id", "network" FROM "wallets"
       WHERE "id" = ${walletId}
         AND "canonicalPolicyId" IS NOT NULL
         AND "canonicalPolicyVersion" = ${WALLET_POLICY_REGISTRY_VERSION}
       FOR UPDATE
     `);
-    if (walletRows.length !== 1) {
-      throw new Error('Wallet is missing or lacks canonical policy during address allocation');
-    }
+    const network = readCanonicalWalletNetwork(walletRows);
     const latest = await tx.address.findFirst({
       where: { walletId, branch },
       orderBy: { index: 'desc' },
@@ -531,7 +524,9 @@ export async function createNextCanonical(
       index,
     };
     validateCanonicalAddressWrite(data);
-    return tx.address.create({ data });
+    const address = await tx.address.create({ data });
+    await createPendingSubscriptionCheckpoints(tx, [address], network);
+    return address;
   }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
 }
 
@@ -615,16 +610,14 @@ export async function createCanonicalBatch(
     assertCanonicalBatchCount(request.change);
   }
   const allocate = async (tx: PrismaTxClient): Promise<CanonicalAddressWrite[]> => {
-    const walletRows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-      SELECT "id" FROM "wallets"
+    const walletRows = await tx.$queryRaw<CanonicalWalletRow[]>(Prisma.sql`
+      SELECT "id", "network" FROM "wallets"
       WHERE "id" = ${walletId}
         AND "canonicalPolicyId" IS NOT NULL
         AND "canonicalPolicyVersion" = ${WALLET_POLICY_REGISTRY_VERSION}
       FOR UPDATE
     `);
-    if (walletRows.length !== 1) {
-      throw new Error('Wallet is missing or lacks canonical policy during address allocation');
-    }
+    const network = readCanonicalWalletNetwork(walletRows);
     const state = await readCanonicalBatchState(tx, walletId);
     const counts = typeof request === 'function' ? request(state) : request;
     assertCanonicalBatchCount(counts.receive);
@@ -642,7 +635,13 @@ export async function createCanonicalBatch(
         created.push(data);
       }
     }
-    if (created.length > 0) await tx.address.createMany({ data: created });
+    if (created.length > 0) {
+      const addresses = await tx.address.createManyAndReturn({
+        data: created,
+        select: { id: true },
+      });
+      await createPendingSubscriptionCheckpoints(tx, addresses, network);
+    }
     return created;
   };
   if (client) return allocate(client);
@@ -925,21 +924,6 @@ export async function findByWalletIdAndAddressWithWallet(
   });
 }
 
-/**
- * Create a single address
- */
-export async function create(data: CanonicalAddressWrite): Promise<Address> {
-  validateCanonicalAddressWrite(data);
-  return prisma.address.create({ data });
-}
-
-/** Persist one legacy/import evidence row without assigning coordinates. */
-export async function createLegacyEvidence(
-  data: LegacyAddressEvidenceWrite,
-): Promise<Address> {
-  return prisma.address.create({ data: legacyEvidenceData(data) });
-}
-
 // Export as namespace
 export const addressRepository = {
   resetUsedFlags,
@@ -957,10 +941,8 @@ export const addressRepository = {
   findWithLabels,
   findByIdWithAccess,
   findByWalletIdWithLabels,
-  createMany,
   createCanonicalBatch,
   createNextCanonical,
-  createManyLegacyEvidence,
   findDerivationPaths,
   getAddressSummary,
   findUtxoBalancesByAddresses,
@@ -977,8 +959,6 @@ export const addressRepository = {
   findByAddress,
   findByAddressWithWallet,
   findByWalletIdAndAddressWithWallet,
-  create,
-  createLegacyEvidence,
 };
 
 export default addressRepository;

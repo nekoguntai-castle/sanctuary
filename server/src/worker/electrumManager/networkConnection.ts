@@ -11,7 +11,6 @@ import { hashBlockHeader } from '../../services/bitcoin/networkIdentity';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import {
-  getAddressSubscriptionKey,
   type AddressWalletInfo,
   type BitcoinNetwork,
   type NetworkState,
@@ -45,12 +44,24 @@ export async function connectNetwork(
 
     const client = getElectrumClientForNetwork(network);
     await client.connect();
+    if (!isRunning()) {
+      client.disconnect();
+      return;
+    }
 
     // Negotiate protocol version
     try {
       const version = await client.getServerVersion();
+      if (!isRunning()) {
+        client.disconnect();
+        return;
+      }
       log.info(`Connected to Electrum ${network}: ${version.server} (protocol ${version.protocol})`);
     } catch (versionError) {
+      if (!isRunning()) {
+        client.disconnect();
+        return;
+      }
       log.warn(`Could not get server version for ${network}, continuing`, {
         error: getErrorMessage(versionError),
       });
@@ -71,7 +82,12 @@ export async function connectNetwork(
     networks.set(network, state);
 
     // Subscribe to headers
-    await subscribeHeaders(state);
+    await subscribeHeaders(state, isRunning);
+    if (!isRunning()) {
+      if (networks.get(network) === state) networks.delete(network);
+      client.disconnect();
+      return;
+    }
 
     // Set up event handlers
     setupEventHandlers(state, addressToWallet, callbacks, isRunning, scheduleReconnect);
@@ -81,18 +97,29 @@ export async function connectNetwork(
     log.error(`Failed to connect to Electrum ${network}`, {
       error: getErrorMessage(error),
     });
-    scheduleReconnect(network);
+    if (isRunning()) scheduleReconnect(network);
   }
 }
 
 /**
  * Subscribe to block headers for a network.
  */
-export async function subscribeHeaders(state: NetworkState): Promise<void> {
+export async function subscribeHeaders(
+  state: NetworkState,
+  isRunning: () => boolean = () => true,
+): Promise<void> {
   if (state.subscribedToHeaders) return;
+  if (!isRunning()) {
+    state.client.disconnect();
+    return;
+  }
 
   try {
     const header = await state.client.subscribeHeaders();
+    if (!isRunning()) {
+      state.client.disconnect();
+      return;
+    }
     state.subscribedToHeaders = true;
     state.lastBlockHeight = header.height;
 
@@ -101,6 +128,10 @@ export async function subscribeHeaders(state: NetworkState): Promise<void> {
 
     log.info(`Subscribed to ${state.network} headers, current height: ${header.height}`);
   } catch (error) {
+    if (!isRunning()) {
+      state.client.disconnect();
+      return;
+    }
     log.error(`Failed to subscribe to ${state.network} headers`, {
       error: getErrorMessage(error),
     });
@@ -112,7 +143,7 @@ export async function subscribeHeaders(state: NetworkState): Promise<void> {
  */
 export function setupEventHandlers(
   state: NetworkState,
-  addressToWallet: Map<string, AddressWalletInfo>,
+  _addressToWallet: Map<string, AddressWalletInfo>,
   callbacks: ElectrumManagerCallbacks,
   isRunning: () => boolean,
   scheduleReconnect: (network: BitcoinNetwork) => void
@@ -121,6 +152,7 @@ export function setupEventHandlers(
 
   // Handle new blocks
   client.on('newBlock', (block: { height: number; hex: string }) => {
+    if (!isRunning()) return;
     state.lastBlockHeight = block.height;
     setCachedBlockHeight(block.height, network);
 
@@ -129,22 +161,10 @@ export function setupEventHandlers(
   });
 
   // Handle address activity
-  client.on('addressActivity', (activity: { scriptHash: string; address?: string; status: string }) => {
-    const address = activity.address;
-    if (!address) {
-      log.warn(`Address activity without resolved address on ${network}`);
-      return;
-    }
-
-    const walletInfo = addressToWallet.get(
-      getAddressSubscriptionKey(network, address),
-    );
-    if (walletInfo && walletInfo.network === network) {
-      log.info(`Address activity on ${network}: ${address} (wallet: ${walletInfo.walletId})`);
-      callbacks.onAddressActivity(network, walletInfo.walletId, address);
-    } else {
-      log.debug(`Address activity for untracked address: ${address}`);
-    }
+  client.on('addressActivity', (activity: { scriptHash: string; address?: string; status: string | null }) => {
+    if (!isRunning()) return;
+    log.info(`Address activity on ${network}`, { scriptHash: activity.scriptHash });
+    callbacks.onAddressActivity(network, activity.scriptHash, activity.status);
   });
 
   // Handle connection close

@@ -30,8 +30,19 @@ export function getAddressFromSubscriptionKey(key: string): string {
 export interface ElectrumManagerCallbacks {
   /** Called when a new block is received */
   onNewBlock: (network: BitcoinNetwork, height: number, hash: string) => void;
-  /** Called when address activity is detected */
-  onAddressActivity: (network: BitcoinNetwork, walletId: string, address: string) => void;
+  /** Called for an exact live Electrum scripthash status notification. */
+  onAddressActivity: (
+    network: BitcoinNetwork,
+    scriptHash: string,
+    status: string | null,
+  ) => void;
+  /** Called after a network connection is ready, before current addresses are reconciled. */
+  onNetworkReady?: (network: BitcoinNetwork) => Promise<void>;
+  /** Called with authoritative statuses returned while restoring subscriptions. */
+  onSubscriptionStatuses?: (
+    network: BitcoinNetwork,
+    statuses: Map<string, string | null>,
+  ) => Promise<void>;
 }
 
 export interface NetworkState {

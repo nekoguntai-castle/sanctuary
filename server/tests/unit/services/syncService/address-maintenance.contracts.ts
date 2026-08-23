@@ -1,7 +1,5 @@
 import { expect, it, vi } from 'vitest';
 import {
-  mockElectrumClient,
-  mockGetNodeClient,
   mockNotificationService,
   mockPopulateMissingTransactionFields,
   mockPrismaClient,
@@ -12,49 +10,6 @@ import {
 } from './syncServiceTestHarness';
 
 export function registerSyncServiceAddressMaintenanceTests(context: SyncServiceTestContext): void {
-  describe('address subscriptions', () => {
-    it('should subscribe to wallet addresses', async () => {
-      context.syncService['subscriptionOwnership'] = 'self';
-      mockPrismaClient.address.findMany.mockResolvedValue([
-        { address: 'tb1qaddr1' },
-        { address: 'tb1qaddr2' },
-      ]);
-
-      await context.syncService.subscribeNewWalletAddresses('wallet-1');
-
-      expect(mockElectrumClient.subscribeAddress).toHaveBeenCalledTimes(2);
-    });
-
-    it('should unsubscribe wallet addresses', async () => {
-      context.syncService['subscriptionOwnership'] = 'self';
-      context.syncService['addressToWalletMap'].set('addr1', 'wallet-1');
-      context.syncService['addressToWalletMap'].set('addr2', 'wallet-1');
-      context.syncService['addressToWalletMap'].set('addr3', 'wallet-2');
-
-      await context.syncService.unsubscribeWalletAddresses('wallet-1');
-
-      expect(context.syncService['addressToWalletMap'].size).toBe(1);
-      expect(mockElectrumClient.unsubscribeAddress).toHaveBeenCalledTimes(2);
-    });
-
-    it('should gracefully handle unsubscribe errors for individual addresses', async () => {
-      context.syncService['subscriptionOwnership'] = 'self';
-      context.syncService['addressToWalletMap'].set('addr1', 'wallet-1');
-      context.syncService['addressToWalletMap'].set('addr2', 'wallet-1');
-      context.syncService['addressToWalletMap'].set('addr3', 'wallet-2');
-
-      mockElectrumClient.unsubscribeAddress
-        .mockRejectedValueOnce(new Error('electrum disconnect'))
-        .mockResolvedValueOnce(undefined);
-
-      await context.syncService.unsubscribeWalletAddresses('wallet-1');
-
-      // Both addresses removed from map despite one unsubscribe failing
-      expect(context.syncService['addressToWalletMap'].size).toBe(1);
-      expect(context.syncService['addressToWalletMap'].has('addr3')).toBe(true);
-      expect(mockElectrumClient.unsubscribeAddress).toHaveBeenCalledTimes(2);
-    });
-  });
 
   describe('stale sync checks', () => {
     it('repairs authorized stuck flags without requesting wallets based on elapsed age', async () => {
@@ -165,20 +120,6 @@ export function registerSyncServiceAddressMaintenanceTests(context: SyncServiceT
   });
 
   describe('confirmation update flows', () => {
-    it('scopes live confirmation refreshes to the producing network', async () => {
-      context.syncService['isRunning'] = true;
-      mockPrismaClient.transaction.findMany.mockResolvedValueOnce([]);
-
-      await context.syncService['updateNetworkConfirmations']('testnet4');
-
-      expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledWith(expect.objectContaining({
-        where: {
-          confirmations: { lt: 6 },
-          wallet: { network: 'testnet4' },
-        },
-      }));
-    });
-
     it('delegates confirmation updates to the single event-service publisher', async () => {
       context.syncService['isRunning'] = true;
 
@@ -251,117 +192,6 @@ export function registerSyncServiceAddressMaintenanceTests(context: SyncServiceT
       mockPrismaClient.transaction.findMany.mockRejectedValueOnce(new Error('confirmations query failed'));
 
       await expect(context.syncService['updateAllConfirmations']()).resolves.toBeUndefined();
-    });
-  });
-
-  describe('address activity and subscription helpers', () => {
-    it('ignores address-activity events without a resolved address', async () => {
-      await context.syncService['handleAddressActivity']({ scriptHash: 'hash-1', status: 'status' });
-      expect(mockPrismaClient.address.findFirst).not.toHaveBeenCalled();
-    });
-
-    it('queues a mapped wallet on address activity', async () => {
-      context.syncService['addressToWalletMap'].set('tb1mapped', 'wallet-mapped');
-      await context.syncService['handleAddressActivity']({
-        scriptHash: 'hash-2',
-        address: 'tb1mapped',
-        status: 'status',
-      });
-
-      await vi.waitFor(() => expect(mockSyncIntentRequest).toHaveBeenCalledWith('wallet-mapped'));
-    });
-
-    it('falls back to DB lookup when address is not in memory map', async () => {
-      mockPrismaClient.address.findFirst.mockResolvedValueOnce({ walletId: 'wallet-db' });
-      await context.syncService['handleAddressActivity']({
-        scriptHash: 'hash-3',
-        address: 'tb1lookup',
-        status: 'status',
-      });
-
-      expect(context.syncService['addressToWalletMap'].get('tb1lookup')).toBe('wallet-db');
-      await vi.waitFor(() => expect(mockSyncIntentRequest).toHaveBeenCalledWith('wallet-db'));
-    });
-
-    it('does not queue when DB lookup cannot resolve address activity wallet', async () => {
-      mockPrismaClient.address.findFirst.mockResolvedValueOnce(null);
-      const queueSpy = vi.spyOn(context.syncService as any, 'queueSync');
-
-      await context.syncService['handleAddressActivity']({
-        scriptHash: 'hash-4',
-        address: 'tb1unknown',
-        status: 'status',
-      });
-
-      expect(queueSpy).not.toHaveBeenCalled();
-      expect(context.syncService['addressToWalletMap'].has('tb1unknown')).toBe(false);
-    });
-
-    it('subscribes wallet addresses using wallet network when present', async () => {
-      mockPrismaClient.wallet.findUnique.mockResolvedValueOnce({ network: 'testnet3' });
-      mockPrismaClient.address.findMany.mockResolvedValueOnce([
-        { address: 'tb1qaddr-a' },
-        { address: 'tb1qaddr-b' },
-      ]);
-
-      await context.syncService.subscribeWalletAddresses('wallet-1');
-
-      expect(mockGetNodeClient).toHaveBeenCalledWith('testnet3');
-      expect(mockElectrumClient.subscribeAddress).toHaveBeenCalledTimes(2);
-    });
-
-    it('defaults to mainnet and continues when one address subscription fails', async () => {
-      mockPrismaClient.wallet.findUnique.mockResolvedValueOnce(null);
-      mockPrismaClient.address.findMany.mockResolvedValueOnce([
-        { address: 'bc1qaddr-a' },
-        { address: 'bc1qaddr-b' },
-      ]);
-      mockElectrumClient.subscribeAddress
-        .mockRejectedValueOnce(new Error('first failed'))
-        .mockResolvedValueOnce(undefined);
-
-      await context.syncService.subscribeWalletAddresses('wallet-2');
-
-      expect(mockGetNodeClient).toHaveBeenCalledWith('mainnet');
-      expect(mockElectrumClient.subscribeAddress).toHaveBeenCalledTimes(2);
-    });
-  });
-
-  describe('address map reconciliation', () => {
-    it('removes stale address-to-wallet mappings for deleted wallets', async () => {
-      context.syncService['addressToWalletMap'].set('addr-keep', 'wallet-keep');
-      context.syncService['addressToWalletMap'].set('addr-remove', 'wallet-remove');
-      mockPrismaClient.address.findMany.mockResolvedValueOnce([
-        { address: 'addr-keep', walletId: 'wallet-keep' },
-      ]);
-
-      await context.syncService['reconcileAddressToWalletMap']();
-
-      expect(context.syncService['addressToWalletMap'].has('addr-keep')).toBe(true);
-      expect(context.syncService['addressToWalletMap'].has('addr-remove')).toBe(false);
-    });
-
-    it('skips reconciliation query when map is empty', async () => {
-      context.syncService['addressToWalletMap'].clear();
-      await context.syncService['reconcileAddressToWalletMap']();
-      expect(mockPrismaClient.address.findMany).not.toHaveBeenCalled();
-    });
-
-    it('subscribes new addresses during reconciliation when ownership is self', async () => {
-      context.syncService['subscriptionOwnership'] = 'self';
-      context.syncService['addressToWalletMap'].set('addr-existing', 'wallet-1');
-      mockPrismaClient.address.findMany.mockResolvedValueOnce([
-        { address: 'addr-existing', walletId: 'wallet-1' },
-        { address: 'addr-new', walletId: 'wallet-2' },
-      ]);
-      mockElectrumClient.subscribeAddressBatch.mockResolvedValueOnce(
-        new Map([['addr-new', 'status-new']])
-      );
-
-      await context.syncService['reconcileAddressToWalletMap']();
-
-      expect(mockElectrumClient.subscribeAddressBatch).toHaveBeenCalledWith(['addr-new']);
-      expect(context.syncService['addressToWalletMap'].get('addr-new')).toBe('wallet-2');
     });
   });
 

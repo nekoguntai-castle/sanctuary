@@ -215,7 +215,7 @@ interface LockedBranchSummary {
 
 /**
  * Model the two SQL reads performed by canonical batch allocation: the wallet
- * row lock followed by the compact receive/change allocation summary.
+ * row lock (including its subscription network) and compact branch summary.
  */
 export function mockLockedCanonicalBranchSummary(options: {
   walletId: string;
@@ -224,7 +224,7 @@ export function mockLockedCanonicalBranchSummary(options: {
 }): void {
   mockPrismaClient.$queryRaw.mockReset();
   mockPrismaClient.$queryRaw
-    .mockResolvedValueOnce([{ id: options.walletId }])
+    .mockResolvedValueOnce([{ id: options.walletId, network: 'mainnet' }])
     .mockResolvedValueOnce([
       {
         branch: 0,

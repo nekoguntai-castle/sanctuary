@@ -19,6 +19,10 @@ const walletRepositoryMocks = vi.hoisted(() => {
     },
     address: {
       createMany: vi.fn(),
+      createManyAndReturn: vi.fn(),
+    },
+    addressSubscriptionCheckpoint: {
+      createMany: vi.fn(),
     },
     $transaction: vi.fn(),
   };
@@ -35,6 +39,10 @@ const walletRepositoryMocks = vi.hoisted(() => {
     },
     address: {
       createMany: prisma.address.createMany,
+      createManyAndReturn: prisma.address.createManyAndReturn,
+    },
+    addressSubscriptionCheckpoint: {
+      createMany: prisma.addressSubscriptionCheckpoint.createMany,
     },
   }));
 

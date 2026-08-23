@@ -1,6 +1,8 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   manager,
+  mockClient,
+  mockCallbacks,
 } from './electrumManagerTestHarness';
 import prisma from '../../../../src/models/prisma';
 import { getAddressSubscriptionKey } from '../../../../src/worker/electrumManager/types';
@@ -25,6 +27,11 @@ function addressRecord(id: string, address: string, walletId: string, network?: 
 
 export function registerElectrumManagerReconcileContracts() {
   describe('reconcileSubscriptions', () => {
+    beforeEach(() => {
+      (manager as any).isRunningFlag = true;
+      (manager as any).subscriptionLock = { key: 'lock', token: 'token' };
+    });
+
     it('should remove addresses that no longer exist in database', async () => {
       // Setup: Manager has addresses tracked
       const addressToWallet = (manager as unknown as { addressToWallet: Map<string, unknown> }).addressToWallet;
@@ -65,6 +72,32 @@ export function registerElectrumManagerReconcileContracts() {
       expect(addressToWallet.size).toBe(2);
       expect(addressToWallet.has(getAddressSubscriptionKey('mainnet', 'addr1'))).toBe(true);
       expect(addressToWallet.has(getAddressSubscriptionKey('mainnet', 'addr2'))).toBe(true);
+    });
+
+    it('does not publish an empty authoritative status batch', async () => {
+      const onSubscriptionStatuses = vi.fn().mockResolvedValue(undefined);
+      mockCallbacks.onSubscriptionStatuses = onSubscriptionStatuses;
+      (manager as any).networks.set('mainnet', {
+        network: 'mainnet',
+        client: mockClient,
+        connected: true,
+        subscribedToHeaders: true,
+        subscribedAddresses: new Set<string>(),
+        lastBlockHeight: 0,
+        reconnectTimer: null,
+        reconnectAttempts: 0,
+      });
+      mockClient.subscribeAddressBatch.mockResolvedValueOnce(new Map());
+      vi.mocked(prisma.address.findMany).mockResolvedValueOnce([
+        addressRecord('empty-status', 'addr-empty-status', 'wallet1', 'mainnet'),
+      ]);
+
+      try {
+        await manager.reconcileSubscriptions();
+        expect(onSubscriptionStatuses).not.toHaveBeenCalled();
+      } finally {
+        delete mockCallbacks.onSubscriptionStatuses;
+      }
     });
 
     it('should track the same address string separately per network', async () => {

@@ -26,7 +26,6 @@ export {
   DefiniteBroadcastRejectionError,
   getFeeEstimates,
   getTransactionDetails,
-  monitorAddress,
   checkAddress,
 } from './networkOperations';
 

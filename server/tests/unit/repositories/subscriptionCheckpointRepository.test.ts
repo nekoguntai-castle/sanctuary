@@ -159,6 +159,34 @@ describe('subscriptionCheckpointRepository readers', () => {
       .toEqual(expect.arrayContaining(['', 'mainnet', 200]));
   });
 
+  it('scopes a pending enrollment page to the exact wallet', async () => {
+    mocks.queryRaw.mockResolvedValue([]);
+
+    await findPendingSubscriptionEnrollments({
+      network: 'mainnet',
+      walletId: 'wallet-1',
+      cursor: 'address-4',
+      limit: 12,
+    });
+
+    const query = mocks.queryRaw.mock.calls[0][0];
+    expect(query.values).toEqual([
+      'address-4',
+      'mainnet',
+      expect.objectContaining({ values: ['wallet-1'] }),
+      12,
+    ]);
+    expect(query.values[2].strings.join('')).toContain('"addresses"."walletId" = ');
+  });
+
+  it('rejects an empty wallet enrollment scope before querying', async () => {
+    await expect(findPendingSubscriptionEnrollments({
+      network: 'mainnet',
+      walletId: '',
+    })).rejects.toThrow('wallet ID');
+    expect(mocks.queryRaw).not.toHaveBeenCalled();
+  });
+
   it.each([0, -3, 2.5])('rejects invalid enrollment limit %s', async (limit) => {
     await expect(findPendingSubscriptionEnrollments({
       network: 'mainnet',

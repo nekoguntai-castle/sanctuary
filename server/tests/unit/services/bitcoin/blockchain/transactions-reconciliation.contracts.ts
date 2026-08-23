@@ -225,36 +225,6 @@ export function registerBlockchainTransactionsReconciliationTests(): void {
     });
   });
 
-  describe('monitorAddress', () => {
-    it('should subscribe to address notifications', async () => {
-      const address = testnetAddresses.nativeSegwit[0];
-      const subscriptionId = 'subscription-123';
-
-      mockElectrumClient.subscribeAddress.mockResolvedValue(subscriptionId);
-
-      const result = await getBlockchainService().monitorAddress(address, 'testnet4');
-
-      expect(result).toBe(subscriptionId);
-      expect(mockElectrumClient.subscribeAddress).toHaveBeenCalledWith(address);
-    });
-
-    it('should propagate error when subscription fails', async () => {
-      const address = testnetAddresses.nativeSegwit[0];
-
-      mockElectrumClient.subscribeAddress.mockRejectedValue(new Error('Subscription failed'));
-
-      await expect(getBlockchainService().monitorAddress(address, 'testnet4')).rejects.toThrow('Subscription failed');
-    });
-
-    it('should propagate error when client not connected', async () => {
-      const address = testnetAddresses.nativeSegwit[0];
-
-      mockElectrumClient.subscribeAddress.mockRejectedValue(new Error('Not connected'));
-
-      await expect(getBlockchainService().monitorAddress(address, 'testnet4')).rejects.toThrow('Not connected');
-    });
-  });
-
   describe('populateMissingTransactionFields', () => {
     const walletId = 'test-wallet-id';
 

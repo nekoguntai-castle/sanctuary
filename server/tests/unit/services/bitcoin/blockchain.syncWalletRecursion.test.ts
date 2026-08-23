@@ -67,7 +67,7 @@ describe('Blockchain syncWallet recursion', () => {
     const result = await syncWallet(walletId);
 
     expect(mockExecuteSyncPipeline).toHaveBeenCalledTimes(2);
-    expect(mockElectrumClient.subscribeAddressBatch).toHaveBeenCalledWith([scanAddress]);
+    expect(mockElectrumClient.subscribeAddressBatch).not.toHaveBeenCalled();
     const ownershipRepair = mockPrismaClient.$executeRaw.mock.calls
       .map(([statement]) => statement as { strings: string[]; values: unknown[] })
       .find(statement => statement.strings.join('').includes(
@@ -193,8 +193,8 @@ describe('Blockchain syncWallet recursion', () => {
     expect(mockExecuteSyncPipeline).toHaveBeenCalledTimes(1);
   });
 
-  it('falls back to individual subscriptions when batch subscription fails', async () => {
-    const walletId = 'wallet-subscribe-fallback';
+  it('scans generated addresses without mutating subscription ownership', async () => {
+    const walletId = 'wallet-network-read-only';
     const scanAddress = 'tb1qv2m8n0h3l6j4z8u3n6n2s4m5k7y8p9q0r1t2u3';
     const baseResult = {
       addresses: 2,
@@ -211,14 +211,12 @@ describe('Blockchain syncWallet recursion', () => {
     mockPrismaClient.address.findMany.mockResolvedValue([
       { id: 'addr-fallback', address: scanAddress, used: false },
     ]);
-    mockElectrumClient.subscribeAddressBatch.mockRejectedValueOnce(new Error('batch failed'));
-    mockElectrumClient.subscribeAddress.mockResolvedValueOnce(undefined);
     mockElectrumClient.getAddressHistoryBatch.mockResolvedValue(new Map([[scanAddress, []]]));
 
     const result = await syncWallet(walletId);
 
-    expect(mockElectrumClient.subscribeAddressBatch).toHaveBeenCalledWith([scanAddress]);
-    expect(mockElectrumClient.subscribeAddress).toHaveBeenCalledWith(scanAddress);
+    expect(mockElectrumClient.subscribeAddressBatch).not.toHaveBeenCalled();
+    expect(mockElectrumClient.subscribeAddress).not.toHaveBeenCalled();
     expect(result).toEqual({
       addresses: baseResult.addresses,
       transactions: baseResult.transactions,

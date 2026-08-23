@@ -125,25 +125,42 @@ write or complete, while any newer requested generation remains a trailing pass.
 The additive checkpoint repository also owns the only enrollment request and
 completion writers. Exact enrollment completion compares the authoritative
 network/address status and advances any required incremental wallet generation
-in the same short PostgreSQL statement: an unknown null status establishes the
+in the same short PostgreSQL transaction: an unknown null status establishes the
 baseline without history work, while unknown non-null history and later status
 changes coalesce durable intent. The returned exact generation is only a
 post-commit wake-up input, so queue loss cannot separate checkpoint evidence
-from intent. No production source calls the request writer. A bounded,
-network-explicit enrollment coordinator composes the completion writer with
-injected subscription batch I/O, but remains dormant: no API, server startup,
-worker startup, subscription manager, or recovery loop constructs or calls it in
-this precursor. Missing checkpoint rows remain rolling-upgrade
+from intent. A bounded, network-explicit enrollment coordinator composes the
+completion writer with
+injected subscription batch I/O. The worker-owned bounded checkpoint runtime is
+the sole production consumer: `server/src/worker.ts` constructs
+`server/src/worker/subscriptionCheckpointRuntime.ts`, which owns startup,
+reconnect, reconciliation, and live status-comparison pages. API startup,
+`SyncService`, and direct subscription callbacks cannot construct the runtime or
+call checkpoint writers. Missing checkpoint rows remain rolling-upgrade
 candidates, authoritative null status remains distinct from unknown status, and
 partial or unavailable subscription batches do not silently mark enrollment
-complete. Coordinator activation and transfer of live subscription ownership are
-a separate reviewed change.
+complete. Every page is bounded and network-explicit; committed exact-generation
+intents are published and woken only after the checkpoint transaction commits.
+The elected worker advances a persistent keyset cursor on its one-second recovery
+loop so an unavailable leading page cannot starve later checkpoints. Canonical
+jobs consumed by a non-owner worker wait on the durable wallet checkpoint state
+for the elected owner instead of issuing network I/O or failing the job. Live
+statuses are serialized by exact network and script hash, and any rejected lock
+refresh immediately tears down the former owner before its lease can expire.
+Subscription RPC responses are emitted into the activity stream synchronously in
+Electrum wire order before their promises resolve, while initial checkpoint
+enrollment holds a worker-local mutation-order barrier; a later notification
+therefore cannot be overwritten by an older subscribe response. A fair keyset
+page re-observes authoritative statuses every minute so a transient database
+failure before a durable request exists self-heals without an unbounded network
+scan. Startup and reconnect work are bound to an exact ownership epoch, checked
+after each await, and late connections are disconnected after lease loss.
 
 This ADR and `config/wallet-sync-lifecycle-contract.json` establish the target and
 freeze the current compatibility exceptions. The canonical producer boundary is
-active, but this change does **not** retire the recurring schedule, activate
-subscription enrollment, or mark the cutover and legacy-retirement gate complete;
-`cutoverComplete` remains false.
+active and worker-owned checkpoint enrollment is enabled, but this change does
+**not** retire the recurring schedule or mark the cutover and legacy-retirement
+gate complete; `cutoverComplete` remains false.
 
 Public status is a token-free projection of the same versioned wallet row. REST
 status plus wallet list/detail responses, canonical WebSocket snapshots, and the
@@ -161,7 +178,7 @@ or lease tokens and are not authority for live Redis execution ownership.
 | `WSYNC-LIFECYCLE-001` | Lifecycle and allowed wallet-history triggers match this decision. |
 | `WSYNC-BLOCK-001` | Headers update tip/known confirmations only; time and headers do not request wallet history. |
 | `WSYNC-ADMISSION-001` | Production producers and recovery use one gate-enforced durable admission module; compatibility exceptions cannot grow. |
-| `WSYNC-WORKER-001` | The worker is the target low-level executor and subscription owner; the checkpoint enrollment coordinator remains dormant until that ownership transfer is activated. |
+| `WSYNC-WORKER-001` | The worker is the sole low-level executor and checkpoint-subscription owner; only its bounded runtime may consume the enrollment coordinator and checkpoint writers. |
 | `WSYNC-COMPAT-001` | Unversioned/v1 and retained v2 remain readable only as durable-intent bridges; they cannot enter the unfenced executor. Canonical emission uses floor-bound v3, which a pre-floor worker rejects before locking; unknown versions fail closed. |
 | `WSYNC-STALE-001` | The stale scheduler remains explicitly legacy and routes retained completions through admission; it becomes forbidden only after the durable rollback floor is deployed and cutover is authorized. |
 
@@ -174,7 +191,7 @@ fail required CI. Removing a listed legacy path also fails until the contract is
 updated in the same reviewed change, preventing stale exceptions from disguising
 progress.
 
-The remaining compatibility ledger keeps subscription enrollment, scheduler
+The remaining compatibility ledger keeps subscription ownership, scheduler
 retirement, and the observation/cutover steps independently reviewable while
 preventing the transition surface from expanding.
 

@@ -28,9 +28,15 @@ type NewAddressesByNetwork = Map<BitcoinNetwork, Array<{ address: string; wallet
  */
 export async function checkHealth(
   networks: Map<BitcoinNetwork, NetworkState>,
-  scheduleReconnect: (network: BitcoinNetwork) => void
+  scheduleReconnect: (network: BitcoinNetwork) => void,
+  isActive: () => boolean = () => true,
 ): Promise<void> {
   for (const [network, state] of networks) {
+    if (!isActive()) {
+      state.connected = false;
+      state.client.disconnect();
+      return;
+    }
     if (!state.connected) {
       log.debug(`Health check: ${network} disconnected`);
       continue;
@@ -40,8 +46,18 @@ export async function checkHealth(
     try {
       // Simple ping by getting server version
       await state.client.getServerVersion();
+      if (!isActive()) {
+        state.connected = false;
+        state.client.disconnect();
+        return;
+      }
       log.debug(`Health check: ${network} OK`);
     } catch (error) {
+      if (!isActive()) {
+        state.connected = false;
+        state.client.disconnect();
+        return;
+      }
       log.warn(`Health check: ${network} failed`, { error: getErrorMessage(error) });
       state.connected = false;
       scheduleReconnect(network);
@@ -61,7 +77,12 @@ export async function checkHealth(
  */
 export async function reconcileSubscriptions(
   networks: Map<BitcoinNetwork, NetworkState>,
-  addressToWallet: Map<string, AddressWalletInfo>
+  addressToWallet: Map<string, AddressWalletInfo>,
+  observeStatuses?: (
+    network: BitcoinNetwork,
+    statuses: Map<string, string | null>,
+  ) => Promise<void>,
+  isActive: () => boolean = () => true,
 ): Promise<{ removed: number; added: number }> {
   log.info('Reconciling Electrum subscriptions with database...');
 
@@ -73,16 +94,24 @@ export async function reconcileSubscriptions(
   // - Build a set of all network-scoped address keys (just strings, lightweight)
   // - Find and subscribe to new addresses in batches
   while (true) {
+    if (!isActive()) return { removed: 0, added };
     const addresses = await addressRepository.findAllWithWalletNetworkPaginated({
       take: RECONCILE_PAGE_SIZE,
       cursor,
     });
+    if (!isActive()) return { removed: 0, added };
 
     if (addresses.length === 0) break;
 
     const pageResult = collectReconcilePage(addresses, dbAddressSet, addressToWallet);
     added += pageResult.added;
-    await subscribeNewAddressesByNetwork(networks, pageResult.newAddressesByNetwork);
+    await subscribeNewAddressesByNetwork(
+      networks,
+      pageResult.newAddressesByNetwork,
+      observeStatuses,
+      isActive,
+    );
+    if (!isActive()) return { removed: 0, added };
 
     cursor = addresses[addresses.length - 1].id;
     if (addresses.length < RECONCILE_PAGE_SIZE) break;
@@ -155,7 +184,12 @@ function getNetworkAddressBatch(
 
 async function subscribeNewAddressesByNetwork(
   networks: Map<BitcoinNetwork, NetworkState>,
-  newAddressesByNetwork: NewAddressesByNetwork
+  newAddressesByNetwork: NewAddressesByNetwork,
+  observeStatuses?: (
+    network: BitcoinNetwork,
+    statuses: Map<string, string | null>,
+  ) => Promise<void>,
+  isActive?: () => boolean,
 ): Promise<void> {
   for (const [network, networkAddresses] of newAddressesByNetwork) {
     const state = networks.get(network);
@@ -163,7 +197,15 @@ async function subscribeNewAddressesByNetwork(
       continue;
     }
 
-    await subscribeAddressBatch(state, networkAddresses);
+    const statuses = await subscribeAddressBatch(state, networkAddresses, { isActive });
+    if (statuses.size > 0) {
+      await observeStatuses?.(network, statuses);
+      if (isActive && !isActive()) {
+        state.connected = false;
+        state.client.disconnect();
+        return;
+      }
+    }
   }
 }
 

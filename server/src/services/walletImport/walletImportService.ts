@@ -83,6 +83,25 @@ interface MaterializedDevice {
   created: boolean;
 }
 
+async function createInitialAddressesWithPendingCheckpoints(
+  tx: PrismaTxClient,
+  walletId: string,
+  network: unknown,
+  addresses: ReturnType<typeof buildInitialAddressTemplates>,
+): Promise<void> {
+  if (addresses.length === 0) return;
+  if (!isBitcoinNetwork(network)) {
+    throw new Error('Imported wallet has an unsupported subscription network');
+  }
+  const created = await tx.address.createManyAndReturn({
+    data: addresses.map((address) => ({ walletId, ...address })),
+    select: { id: true },
+  });
+  await tx.addressSubscriptionCheckpoint.createMany({
+    data: created.map(({ id }) => ({ addressId: id, network })),
+  });
+}
+
 async function createImportedDevice(
   tx: PrismaTxClient,
   resolution: DeviceResolution,
@@ -329,9 +348,12 @@ export async function createWalletTransaction(
       })),
     });
 
-    await tx.address.createMany({
-      data: initialAddresses.map((address) => ({ walletId: wallet.id, ...address })),
-    });
+    await createInitialAddressesWithPendingCheckpoints(
+      tx,
+      wallet.id,
+      wallet.network,
+      initialAddresses,
+    );
 
     return {
       wallet: {

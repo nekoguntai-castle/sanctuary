@@ -1,6 +1,7 @@
 import { expect, it, vi } from "vitest";
 import {
   mockGetWorkerHealthStatus,
+  mockSubscriptionsEnabled,
   type SyncServiceTestContext,
 } from "./syncServiceTestHarness";
 
@@ -32,12 +33,25 @@ export function registerSyncServicePollingModeTests(
       expect(context.syncService["confirmationInterval"]).toBeNull();
     });
 
-    it("should always start reconciliation interval regardless of worker health", async () => {
+    it("reports disabled subscription ownership when subscriptions are disabled", async () => {
+      mockSubscriptionsEnabled.value = false;
+
+      await context.syncService.start();
+
+      expect(context.syncService.getHealthMetrics()).toMatchObject({
+        subscriptionsEnabled: false,
+        subscriptionOwnership: "disabled",
+      });
+    });
+
+    it("should not run API confirmation polling while worker is healthy", async () => {
       mockGetWorkerHealthStatus.mockReturnValue({ healthy: true });
 
       await context.syncService.start();
 
-      expect(context.syncService["reconciliationInterval"]).not.toBeNull();
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(context.syncService["confirmationInterval"]).toBeNull();
     });
 
     it("should always start workerHealthPollTimer", async () => {

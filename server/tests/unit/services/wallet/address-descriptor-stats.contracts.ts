@@ -3,9 +3,7 @@ import {
   mockBuildDescriptorFromDevices,
   mockHookExecuteAfter,
   mockLogWarn,
-  mockNotificationUnsubscribeWalletAddresses,
   mockPrismaClient,
-  mockSyncUnsubscribeWalletAddresses,
 } from './walletTestHarness';
 import {
   addDeviceToWallet,

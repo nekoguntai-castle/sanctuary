@@ -5,9 +5,7 @@ import {
   mockHookExecuteAfter,
   mockLogError,
   mockLogWarn,
-  mockNotificationUnsubscribeWalletAddresses,
   mockPrismaClient,
-  mockSyncUnsubscribeWalletAddresses,
 } from './walletTestHarness';
 import { ForbiddenError } from '../../../../src/errors';
 import {

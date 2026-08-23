@@ -61,4 +61,33 @@ describe('lockCoordination', () => {
 
     clearInterval(timer);
   });
+
+  it('serializes refreshes and rejects a late result after ownership is cleared', async () => {
+    let resolveRefresh!: (lock: { key: string; token: string; expiresAt: number; isLocal: boolean }) => void;
+    const refreshResult = new Promise<{ key: string; token: string; expiresAt: number; isLocal: boolean }>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    const originalLock = { key: 'subscription', token: 'old-token', expiresAt: 1, isLocal: false };
+    let currentLock: typeof originalLock | null = originalLock;
+    const getLock = vi.fn(() => currentLock);
+    const setLock = vi.fn((lock: typeof originalLock | null) => {
+      currentLock = lock;
+    });
+    const onLockLost = vi.fn().mockResolvedValue(undefined);
+    mockExtendLock.mockReturnValue(refreshResult);
+
+    const timer = startLockRefresh(getLock, setLock, onLockLost);
+    vi.advanceTimersByTime(60_000);
+    vi.advanceTimersByTime(60_000);
+
+    expect(mockExtendLock).toHaveBeenCalledOnce();
+    currentLock = null;
+    resolveRefresh({ ...originalLock, expiresAt: 2 });
+    await vi.runAllTicks();
+
+    expect(currentLock).toBeNull();
+    expect(setLock).not.toHaveBeenCalled();
+    expect(onLockLost).not.toHaveBeenCalled();
+    clearInterval(timer);
+  });
 });

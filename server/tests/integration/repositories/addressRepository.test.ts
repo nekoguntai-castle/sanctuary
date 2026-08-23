@@ -22,6 +22,33 @@ import { provenAuditSnapshot } from "../../fixtures/walletSafetyAuditFixture";
 import { addressRepository } from "../../../src/repositories/addressRepository";
 
 const CANONICAL_POLICY_ID = "single-sig-native-segwit-bip84-v1";
+const CHECKPOINT_FAILURE_TRIGGER = "test_fail_canonical_address_checkpoint_trigger";
+const CHECKPOINT_FAILURE_FUNCTION = "test_fail_canonical_address_checkpoint";
+
+async function dropCheckpointFailure(client: PrismaClient): Promise<void> {
+  await client.$executeRawUnsafe(
+    `DROP TRIGGER IF EXISTS ${CHECKPOINT_FAILURE_TRIGGER} ON "address_subscription_checkpoints"`,
+  );
+  await client.$executeRawUnsafe(
+    `DROP FUNCTION IF EXISTS ${CHECKPOINT_FAILURE_FUNCTION}()`,
+  );
+}
+
+async function installCheckpointFailure(client: PrismaClient): Promise<void> {
+  await dropCheckpointFailure(client);
+  await client.$executeRawUnsafe(`
+    CREATE FUNCTION ${CHECKPOINT_FAILURE_FUNCTION}() RETURNS trigger AS $$
+    BEGIN
+      RAISE EXCEPTION 'forced canonical checkpoint enrollment failure';
+    END;
+    $$ LANGUAGE plpgsql
+  `);
+  await client.$executeRawUnsafe(`
+    CREATE TRIGGER ${CHECKPOINT_FAILURE_TRIGGER}
+    BEFORE INSERT ON "address_subscription_checkpoints"
+    FOR EACH ROW EXECUTE FUNCTION ${CHECKPOINT_FAILURE_FUNCTION}()
+  `);
+}
 
 async function createCanonicalWallet(tx: PrismaClient) {
   const evidence = provenAuditSnapshot().wallets[0];
@@ -237,6 +264,62 @@ describeIfDatabase("AddressRepository Integration Tests", () => {
         });
         expect(rows.map(({ index }) => index)).toEqual([0, 1]);
       } finally {
+        await client.address.deleteMany({ where: { walletId: wallet.id } });
+        await client.wallet.delete({ where: { id: wallet.id } });
+      }
+    });
+
+    it("atomically enrolls next and batch canonical addresses on the wallet network", async () => {
+      const client = await getTestPrisma();
+      const wallet = await createCanonicalWallet(client);
+      try {
+        await addressRepository.createNextCanonical(wallet.id, 0, allocatedAddress);
+        await addressRepository.createCanonicalBatch(
+          wallet.id,
+          { receive: 2, change: 0 },
+          (_branch, index) => allocatedAddress(index),
+        );
+
+        const addresses = await client.address.findMany({
+          where: { walletId: wallet.id },
+          orderBy: { index: "asc" },
+          include: { subscriptionCheckpoint: true },
+        });
+        expect(addresses).toHaveLength(3);
+        expect(addresses.map(({ subscriptionCheckpoint }) => subscriptionCheckpoint))
+          .toEqual(addresses.map(({ id }) => expect.objectContaining({
+            addressId: id,
+            network: wallet.network,
+            statusKnown: false,
+            requestedEnrollmentGeneration: 1,
+            processedEnrollmentGeneration: 0,
+          })));
+      } finally {
+        await client.address.deleteMany({ where: { walletId: wallet.id } });
+        await client.wallet.delete({ where: { id: wallet.id } });
+      }
+    });
+
+    it("rolls back next and batch addresses when checkpoint enrollment cannot persist", async () => {
+      const client = await getTestPrisma();
+      const wallet = await createCanonicalWallet(client);
+      try {
+        await installCheckpointFailure(client);
+
+        await expect(addressRepository.createNextCanonical(wallet.id, 0, allocatedAddress))
+          .rejects.toThrow("forced canonical checkpoint enrollment failure");
+        await expect(addressRepository.createCanonicalBatch(
+          wallet.id,
+          { receive: 2, change: 0 },
+          (_branch, index) => allocatedAddress(index),
+        )).rejects.toThrow("forced canonical checkpoint enrollment failure");
+
+        await expect(client.address.count({ where: { walletId: wallet.id } })).resolves.toBe(0);
+        await expect(client.addressSubscriptionCheckpoint.count({
+          where: { address: { walletId: wallet.id } },
+        })).resolves.toBe(0);
+      } finally {
+        await dropCheckpointFailure(client);
         await client.address.deleteMany({ where: { walletId: wallet.id } });
         await client.wallet.delete({ where: { id: wallet.id } });
       }

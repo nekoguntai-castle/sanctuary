@@ -62,6 +62,7 @@ export function scheduleReconnect(
 
     // Attempt reconnection
     await connectNetwork(network, networks, addressToWallet, callbacks, isRunning, boundScheduleReconnect);
+    if (!isRunning()) return;
 
     // Re-subscribe addresses if connected
     const currentState = networks.get(network);

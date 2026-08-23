@@ -167,6 +167,96 @@ describe('subscriptionCheckpointEnrollment', () => {
     });
   });
 
+  it('scopes pending enrollment to one wallet when requested', async () => {
+    const repository = repositoryMock();
+    vi.mocked(repository.findPendingSubscriptionEnrollments).mockResolvedValue([]);
+    const enrollment = createSubscriptionCheckpointEnrollment({ repository, subscribeBatch });
+
+    await enrollment.enrollPage({ network: 'mainnet', walletId: 'wallet-1' });
+
+    expect(repository.findPendingSubscriptionEnrollments).toHaveBeenCalledWith({
+      network: 'mainnet',
+      walletId: 'wallet-1',
+      limit: 200,
+    });
+  });
+
+  it('stops before network work when subscription ownership is inactive', async () => {
+    const repository = repositoryMock();
+    vi.mocked(repository.findPendingSubscriptionEnrollments).mockResolvedValue([
+      candidate('address-1', ADDRESS_1),
+    ]);
+    const enrollment = createSubscriptionCheckpointEnrollment({
+      repository,
+      subscribeBatch,
+      isActive: () => false,
+    });
+
+    await expect(enrollment.enrollPage({ network: 'mainnet' })).resolves.toMatchObject({
+      scanned: 1,
+      enrolled: 0,
+      unavailable: 1,
+    });
+    expect(subscribeBatch).not.toHaveBeenCalled();
+  });
+
+  it('does not commit observations after subscription ownership is lost', async () => {
+    const repository = repositoryMock();
+    const active = vi.fn().mockReturnValueOnce(true).mockReturnValue(false);
+    vi.mocked(repository.findPendingSubscriptionEnrollments).mockResolvedValue([
+      candidate('address-1', ADDRESS_1),
+    ]);
+    subscribeBatch.mockResolvedValue(new Map([[ADDRESS_1, STATUS_1]]));
+    const enrollment = createSubscriptionCheckpointEnrollment({
+      repository,
+      subscribeBatch,
+      isActive: active,
+    });
+
+    await expect(enrollment.enrollPage({ network: 'mainnet' })).resolves.toMatchObject({
+      enrolled: 0,
+      unavailable: 1,
+    });
+    expect(repository.completeSubscriptionEnrollment).not.toHaveBeenCalled();
+  });
+
+  it('stops between candidates when subscription ownership is lost mid-commit loop', async () => {
+    const repository = repositoryMock();
+    const first = candidate('address-1', ADDRESS_1);
+    const second = candidate('address-2', ADDRESS_2);
+    const active = vi.fn()
+      .mockReturnValueOnce(true)
+      .mockReturnValueOnce(true)
+      .mockReturnValueOnce(true)
+      .mockReturnValue(false);
+    vi.mocked(repository.findPendingSubscriptionEnrollments).mockResolvedValue([first, second]);
+    subscribeBatch.mockResolvedValue(new Map([
+      [ADDRESS_1, STATUS_1],
+      [ADDRESS_2, STATUS_2],
+    ]));
+    vi.mocked(repository.completeSubscriptionEnrollment).mockResolvedValueOnce({
+      status: 'applied',
+      state: appliedState(first, STATUS_1),
+      syncIntent: null,
+    });
+    const enrollment = createSubscriptionCheckpointEnrollment({
+      repository,
+      subscribeBatch,
+      isActive: active,
+      now: () => NOW,
+    });
+
+    await expect(enrollment.enrollPage({ network: 'mainnet' })).resolves.toMatchObject({
+      scanned: 2,
+      enrolled: 1,
+      unavailable: 1,
+    });
+    expect(repository.completeSubscriptionEnrollment).toHaveBeenCalledTimes(1);
+    expect(repository.completeSubscriptionEnrollment).toHaveBeenCalledWith(
+      expect.objectContaining({ addressId: 'address-1' }),
+    );
+  });
+
   it('persists only returned entries and leaves missing or invalid statuses unavailable', async () => {
     const repository = repositoryMock();
     const first = candidate('address-1', ADDRESS_1);

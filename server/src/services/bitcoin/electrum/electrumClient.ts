@@ -295,7 +295,7 @@ class ElectrumClient extends EventEmitter {
         }
       }, this.requestTimeoutMs);
 
-      this.pendingRequests.set(id, { resolve, reject, timeoutId });
+      this.pendingRequests.set(id, { resolve, reject, timeoutId, method, params });
 
       const message = createRequestMessage(method, params, id);
       log.debug(`Sending request: method=${method} id=${id} pendingCount=${this.pendingRequests.size}`);
@@ -332,7 +332,13 @@ class ElectrumClient extends EventEmitter {
           }
         }, this.batchRequestTimeoutMs);
 
-        this.pendingRequests.set(id, { resolve, reject, timeoutId });
+        this.pendingRequests.set(id, {
+          resolve,
+          reject,
+          timeoutId,
+          method: requests[i].method,
+          params: requests[i].params,
+        });
       });
       requestPromises.push(promise);
     }

@@ -140,17 +140,18 @@ describe('ElectrumClient behavior', () => {
 
   it('tracks address subscriptions and header subscriptions', async () => {
     const client = makeClient();
+    const status = 'a'.repeat(64);
     vi.spyOn(client as any, 'request')
-      .mockResolvedValueOnce('status-1')
+      .mockResolvedValueOnce(status)
       .mockResolvedValueOnce({ height: 123, hex: 'abcd' })
       .mockResolvedValueOnce('headerhex')
       .mockResolvedValueOnce({ height: 456 });
     vi.spyOn(client as any, 'batchRequest')
-      .mockResolvedValueOnce(['s1', null])
+      .mockResolvedValueOnce([status, null])
       .mockResolvedValueOnce([[{ tx_hash: 'a'.repeat(64), height: 1 }], []])
       .mockResolvedValueOnce([[{ tx_hash: 'b'.repeat(64), tx_pos: 0, height: 2, value: 500 }], []]);
 
-    await expect(client.subscribeAddress(testAddress)).resolves.toBe('status-1');
+    await expect(client.subscribeAddress(testAddress)).resolves.toBe(status);
     expect(client.getSubscribedAddresses()).toContain(testAddress);
     client.unsubscribeAddress(testAddress);
     expect(client.getSubscribedAddresses()).not.toContain(testAddress);
@@ -168,6 +169,17 @@ describe('ElectrumClient behavior', () => {
     expect((await client.subscribeAddressBatch([])).size).toBe(0);
     expect((await client.getAddressHistoryBatch([])).size).toBe(0);
     expect((await client.getAddressUTXOsBatch([])).size).toBe(0);
+  });
+
+  it('rejects malformed single subscription statuses and omits malformed batch statuses', async () => {
+    const client = makeClient();
+    vi.spyOn(client as any, 'request').mockResolvedValueOnce({ malformed: true });
+    vi.spyOn(client as any, 'batchRequest').mockResolvedValueOnce([undefined]);
+
+    await expect(client.subscribeAddress(testAddress)).rejects.toThrow(
+      'Invalid Electrum response for subscribeAddress: malformed status',
+    );
+    await expect(client.subscribeAddressBatch([testAddress])).resolves.toEqual(new Map());
   });
 
   it('caches server version responses', async () => {
@@ -269,7 +281,7 @@ describe('ElectrumClient behavior', () => {
       jsonrpc: '2.0',
       id: null,
       method: 'blockchain.scripthash.subscribe',
-      params: ['hash1', 'status-1'],
+      params: ['hash1', '1'.repeat(64)],
     }, client, (client as any).scriptHashToAddress);
     handleNotification({
       jsonrpc: '2.0',
@@ -310,11 +322,7 @@ describe('ElectrumClient behavior', () => {
       Buffer.from('\n{"jsonrpc":"2.0","method":"blockchain.scripthash.subscribe","params":["hash-undefined"]}\n')
     );
 
-    expect(addrActivity).toHaveBeenCalledWith(expect.objectContaining({
-      scriptHash: 'hash-undefined',
-      address: testAddress,
-      status: undefined,
-    }));
+    expect(addrActivity).not.toHaveBeenCalled();
   });
 
   it('ignores orphan responses that have neither id nor method', () => {
@@ -354,14 +362,14 @@ describe('ElectrumClient behavior', () => {
       jsonrpc: '2.0',
       id: null,
       method: 'blockchain.scripthash.subscribe',
-      params: ['unknown-hash', 'status-value'],
+      params: ['unknown-hash', '2'.repeat(64)],
     }, client, (client as any).scriptHashToAddress);
 
     expect(newBlock).not.toHaveBeenCalled();
     expect(addrActivity).toHaveBeenCalledWith(expect.objectContaining({
       scriptHash: 'unknown-hash',
       address: undefined,
-      status: 'status-value',
+      status: '2'.repeat(64),
     }));
   });
 

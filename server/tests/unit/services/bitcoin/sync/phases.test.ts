@@ -783,12 +783,14 @@ describe('Sync Phases', () => {
       };
       mockPrismaClient.$queryRaw
         .mockReset()
-        .mockResolvedValueOnce([{ id: 'test-wallet' }])
+        .mockResolvedValueOnce([{ id: 'test-wallet', network: 'mainnet' }])
         .mockResolvedValueOnce([summarize(0), summarize(1)]);
     };
 
     beforeEach(() => {
-      mockPrismaClient.$queryRaw.mockResolvedValue([{ id: 'test-wallet' }]);
+      mockPrismaClient.$queryRaw.mockResolvedValue([{
+        id: 'test-wallet', network: 'mainnet',
+      }]);
       mockPrismaClient.wallet.findUnique.mockResolvedValue({
         id: 'test-wallet',
         descriptor: mockDescriptor,
@@ -829,7 +831,7 @@ describe('Sync Phases', () => {
       const result = await gapLimitPhase(ctx);
 
       expect(result.newAddresses.length).toBe(0);
-      expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
+      expect(mockPrismaClient.address.createManyAndReturn).not.toHaveBeenCalled();
     });
 
     it('should generate addresses when gap limit is not satisfied', async () => {
@@ -843,8 +845,6 @@ describe('Sync Phases', () => {
       }));
 
       mockLockedCoordinates(addresses);
-      mockPrismaClient.address.createMany.mockResolvedValue({ count: 15 });
-
       const ctx = createTestContext({ walletId: 'test-wallet' });
       const result = await gapLimitPhase(ctx);
 

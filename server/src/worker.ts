@@ -21,6 +21,7 @@ import { initializeOpenTelemetry } from './utils/tracing/otel';
 const otelPromise = initializeOpenTelemetry();
 
 import os from 'node:os';
+import { setTimeout as delay } from 'node:timers/promises';
 import { getConfig } from './config';
 import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from './constants/walletSyncActivation';
 import { createLogger } from './utils/logger';
@@ -87,6 +88,11 @@ import {
   type WalletSyncRecoveryRuntime,
 } from './worker/walletSyncRecoveryRuntime';
 import { syncIntentAdmission } from './services/sync/syncIntentAdmission';
+import { normalizeLegacyBitcoinNetwork } from './services/bitcoin/networks';
+import {
+  createProductionSubscriptionCheckpointRuntime,
+  type SubscriptionCheckpointRuntime,
+} from './worker/subscriptionCheckpointRuntime';
 
 const log = createLogger('WORKER');
 
@@ -106,10 +112,23 @@ let recurringScheduleCoordinator: RecurringScheduleCoordinator | null = null;
 let workerStartedAt = 0;
 let diagnosticHeartbeat: WorkerHeartbeatWriter | null = null;
 let walletSyncRecoveryRuntime: WalletSyncRecoveryRuntime | null = null;
+let subscriptionCheckpointRuntime: SubscriptionCheckpointRuntime | null = null;
+let subscriptionCheckpointTimer: NodeJS.Timeout | null = null;
+let subscriptionStatusRefreshTimer: NodeJS.Timeout | null = null;
+let subscriptionCheckpointInFlight = false;
+let subscriptionStatusRefreshInFlight = false;
+const subscriptionCheckpointCursors = new Map<BitcoinNetwork, string>();
+const subscriptionStatusRefreshCursors = new Map<BitcoinNetwork, string>();
+const subscriptionStatusTails = new Map<string, Promise<void>>();
+let subscriptionCheckpointMutationTail: Promise<void> = Promise.resolve();
 let stopUiEventBridge: (() => Promise<void>) | null = null;
 
 // Reconciliation interval - clean up stale subscriptions every 15 minutes
 const RECONCILIATION_INTERVAL_MS = 15 * 60 * 1000;
+const SUBSCRIPTION_CHECKPOINT_INTERVAL_MS = 1_000;
+const SUBSCRIPTION_STATUS_REFRESH_INTERVAL_MS = 60_000;
+const SUBSCRIPTION_CHECKPOINT_PAGE_SIZE = 200;
+const SUBSCRIPTION_CHECKPOINT_WAIT_MS = 250;
 const STALE_COMPATIBILITY_ADMISSION_CONCURRENCY = 5;
 
 /**
@@ -169,6 +188,141 @@ function getWorkerDiagnosticsSnapshot(
   });
 }
 
+function activeSubscriptionCheckpointRuntime(): SubscriptionCheckpointRuntime {
+  if (!subscriptionCheckpointRuntime) {
+    throw new Error('Subscription checkpoint runtime is not initialized');
+  }
+  return subscriptionCheckpointRuntime;
+}
+
+function logCheckpointDispatchFailures(
+  context: string,
+  result: {
+    unavailable: number;
+    dispatch: { publicationFailed: number; wakeUnavailable: number };
+  },
+): void {
+  if (result.unavailable === 0
+    && result.dispatch.publicationFailed === 0
+    && result.dispatch.wakeUnavailable === 0) {
+    return;
+  }
+  log.warn('Subscription checkpoint work remains durable for recovery', {
+    context,
+    unavailable: result.unavailable,
+    publicationFailed: result.dispatch.publicationFailed,
+    wakeUnavailable: result.dispatch.wakeUnavailable,
+  });
+}
+
+function serializeSubscriptionCheckpointMutation<T>(operation: () => Promise<T>): Promise<T> {
+  const result = subscriptionCheckpointMutationTail
+    .catch(() => undefined)
+    .then(operation);
+  subscriptionCheckpointMutationTail = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
+
+async function enrollPendingSubscriptionPage(
+  network: BitcoinNetwork,
+): Promise<void> {
+  if (!electrumManager?.isSubscriptionOwner()) return;
+  const cursor = subscriptionCheckpointCursors.get(network);
+  const result = await serializeSubscriptionCheckpointMutation(() => (
+    activeSubscriptionCheckpointRuntime().enrollPendingPage({
+      network,
+      ...(cursor !== undefined ? { cursor } : {}),
+      limit: SUBSCRIPTION_CHECKPOINT_PAGE_SIZE,
+    })
+  ));
+  logCheckpointDispatchFailures(`network:${network}`, result);
+  if (result.scanned === SUBSCRIPTION_CHECKPOINT_PAGE_SIZE && result.nextCursor) {
+    subscriptionCheckpointCursors.set(network, result.nextCursor);
+  } else {
+    subscriptionCheckpointCursors.delete(network);
+  }
+}
+
+async function enrollWalletSubscriptions(
+  walletId: string,
+  walletNetwork: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const network = normalizeLegacyBitcoinNetwork(walletNetwork, 'mainnet');
+  let cursor: string | undefined;
+  while (true) {
+    signal.throwIfAborted();
+    if (!electrumManager?.isSubscriptionOwner()) {
+      const pending = await activeSubscriptionCheckpointRuntime()
+        .hasPendingWalletEnrollment({ network, walletId });
+      if (!pending) return;
+      await delay(SUBSCRIPTION_CHECKPOINT_WAIT_MS, undefined, { signal });
+      continue;
+    }
+    const result = await serializeSubscriptionCheckpointMutation(() => (
+      activeSubscriptionCheckpointRuntime().enrollPendingPage({
+        network,
+        walletId,
+        ...(cursor !== undefined ? { cursor } : {}),
+        limit: SUBSCRIPTION_CHECKPOINT_PAGE_SIZE,
+      })
+    ));
+    logCheckpointDispatchFailures(`wallet:${walletId}`, result);
+    if (result.unavailable > 0) {
+      throw new Error(`Subscription enrollment remains incomplete for wallet ${walletId}`);
+    }
+    if (result.scanned !== SUBSCRIPTION_CHECKPOINT_PAGE_SIZE || !result.nextCursor) return;
+    cursor = result.nextCursor;
+  }
+}
+
+async function recordSubscriptionStatus(
+  network: BitcoinNetwork,
+  scriptHash: string,
+  observedStatus: string | null,
+): Promise<void> {
+  const key = `${network}:${scriptHash}`;
+  const previous = subscriptionStatusTails.get(key) ?? Promise.resolve();
+  const current = previous.catch(() => undefined).then(() => (
+    recordSubscriptionStatusPages(network, scriptHash, observedStatus)
+  ));
+  subscriptionStatusTails.set(key, current);
+  try {
+    await current;
+  } finally {
+    if (subscriptionStatusTails.get(key) === current) {
+      subscriptionStatusTails.delete(key);
+    }
+  }
+}
+
+async function recordSubscriptionStatusPages(
+  network: BitcoinNetwork,
+  scriptHash: string,
+  observedStatus: string | null,
+): Promise<void> {
+  let cursor: string | undefined;
+  do {
+    if (!electrumManager?.isSubscriptionOwner()) return;
+    const result = await serializeSubscriptionCheckpointMutation(() => (
+      activeSubscriptionCheckpointRuntime().recordStatusPage({
+        network,
+        scriptHash,
+        observedStatus,
+        ...(cursor !== undefined ? { cursor } : {}),
+        limit: SUBSCRIPTION_CHECKPOINT_PAGE_SIZE,
+      })
+    ));
+    logCheckpointDispatchFailures(`status:${network}:${scriptHash}`, result);
+    cursor = result.scanned === SUBSCRIPTION_CHECKPOINT_PAGE_SIZE
+      ? result.nextCursor
+      : undefined;
+  } while (cursor !== undefined);
+}
+
 // =============================================================================
 // Worker Startup
 // =============================================================================
@@ -212,7 +366,7 @@ async function startWorker(): Promise<void> {
   });
 
   // Register handlers before BullMQ workers start consuming retained jobs.
-  registerWorkerJobs(jobQueue);
+  registerWorkerJobs(jobQueue, { enrollWalletSubscriptions });
   await jobQueue.initialize();
   log.info('Job handlers registered', {
     jobs: jobQueue.getRegisteredJobs(),
@@ -238,18 +392,31 @@ async function startWorker(): Promise<void> {
   setupStaleWalletHandler();
   await featureFlagService.initialize();
   // Retained jobs can execute only after the durable feature snapshot is
-  // installed, conditional schedules converge, the worker acknowledges it, and
-  // their progress has somewhere to be reported.
+  // installed, conditional schedules converge, the worker acknowledges it,
+  // their progress has somewhere to be reported, and the elected subscription
+  // runtime can enroll every address before a sync commits current state.
   await uiEventBridgeStarted;
-  jobQueue.startConsumers();
 
   // Initialize Electrum subscription manager
   log.info('Starting Electrum subscription manager...');
   electrumManager = new ElectrumSubscriptionManager({
     onNewBlock: handleNewBlock,
     onAddressActivity: handleAddressActivity,
+    onNetworkReady: enrollPendingSubscriptionPage,
   });
+  subscriptionCheckpointRuntime = createProductionSubscriptionCheckpointRuntime(
+    ({ network, addresses }) => {
+      if (!electrumManager) {
+        throw new Error('Electrum subscription manager is not initialized');
+      }
+      return electrumManager.subscribeCheckpointAddresses(network, addresses);
+    },
+    () => electrumManager?.isSubscriptionOwner() ?? false,
+  );
   await electrumManager.start();
+  startSubscriptionCheckpointTimer();
+  startSubscriptionStatusRefreshTimer();
+  jobQueue.startConsumers();
 
   workerStartedAt = Date.now();
 
@@ -376,6 +543,8 @@ function startReconciliationTimer(): void {
     if (isShuttingDown || !electrumManager) return;
 
     try {
+      const network = getConfig().bitcoin.network as BitcoinNetwork;
+      await enrollPendingSubscriptionPage(network);
       await electrumManager.reconcileSubscriptions();
     } catch (error) {
       log.error('Subscription reconciliation failed', {
@@ -387,6 +556,60 @@ function startReconciliationTimer(): void {
   log.info('Subscription reconciliation timer started', {
     interval: `${RECONCILIATION_INTERVAL_MS / 60000}m`,
   });
+}
+
+function startSubscriptionStatusRefreshTimer(): void {
+  subscriptionStatusRefreshTimer = setInterval(() => {
+    const network = getConfig().bitcoin.network as BitcoinNetwork;
+    if (isShuttingDown || !electrumManager?.isSubscriptionOwner()) {
+      subscriptionStatusRefreshCursors.delete(network);
+      return;
+    }
+    if (subscriptionStatusRefreshInFlight) return;
+    subscriptionStatusRefreshInFlight = true;
+    const cursor = subscriptionStatusRefreshCursors.get(network);
+    return electrumManager.refreshSubscriptionStatusPage(network, {
+      ...(cursor !== undefined ? { cursor } : {}),
+      limit: SUBSCRIPTION_CHECKPOINT_PAGE_SIZE,
+    }).then((result) => {
+      if (result.scanned === SUBSCRIPTION_CHECKPOINT_PAGE_SIZE && result.nextCursor) {
+        subscriptionStatusRefreshCursors.set(network, result.nextCursor);
+      } else {
+        subscriptionStatusRefreshCursors.delete(network);
+      }
+    }).catch((error) => {
+      log.error('Subscription status refresh failed', {
+        error: getErrorMessage(error),
+        network,
+      });
+    }).finally(() => {
+      subscriptionStatusRefreshInFlight = false;
+    });
+  }, SUBSCRIPTION_STATUS_REFRESH_INTERVAL_MS);
+  subscriptionStatusRefreshTimer.unref?.();
+}
+
+function startSubscriptionCheckpointTimer(): void {
+  subscriptionCheckpointTimer = setInterval(() => {
+    const network = getConfig().bitcoin.network as BitcoinNetwork;
+    if (isShuttingDown || !electrumManager?.isSubscriptionOwner()) {
+      subscriptionCheckpointCursors.delete(network);
+      return;
+    }
+    if (subscriptionCheckpointInFlight) return;
+    subscriptionCheckpointInFlight = true;
+    return enrollPendingSubscriptionPage(network)
+      .catch((error) => {
+        log.error('Subscription checkpoint recovery failed', {
+          error: getErrorMessage(error),
+          network,
+        });
+      })
+      .finally(() => {
+        subscriptionCheckpointInFlight = false;
+      });
+  }, SUBSCRIPTION_CHECKPOINT_INTERVAL_MS);
+  subscriptionCheckpointTimer.unref?.();
 }
 
 // =============================================================================
@@ -426,23 +649,16 @@ function handleNewBlock(network: BitcoinNetwork, height: number, hash: string): 
 /**
  * Handle address activity event from Electrum
  */
-function handleAddressActivity(network: BitcoinNetwork, walletId: string, address: string): void {
-  log.info('Address activity requested wallet history sync', { network, walletId });
-  void address;
-  syncIntentAdmission.request(walletId).then(result => {
-    if (result.status === 'blocked'
-      || (('wakeup' in result) && result.wakeup === 'unavailable')) {
-      log.warn('Address activity sync wake-up deferred to recovery', {
-        network,
-        walletId,
-        status: result.status,
-      });
-    }
-  }).catch(error => {
-    log.error('Failed to persist address activity sync intent', {
+function handleAddressActivity(
+  network: BitcoinNetwork,
+  scriptHash: string,
+  status: string | null,
+): void {
+  void recordSubscriptionStatus(network, scriptHash, status).catch(error => {
+    log.error('Failed to persist address activity checkpoint', {
       error: getErrorMessage(error),
-      walletId,
       network,
+      scriptHash,
     });
   });
 }
@@ -596,6 +812,19 @@ async function shutdown(signal: string, exitCode: 0 | 1 = 0): Promise<void> {
     clearInterval(reconciliationTimer);
     reconciliationTimer = null;
   }
+  if (subscriptionCheckpointTimer) {
+    clearInterval(subscriptionCheckpointTimer);
+    subscriptionCheckpointTimer = null;
+  }
+  if (subscriptionStatusRefreshTimer) {
+    clearInterval(subscriptionStatusRefreshTimer);
+    subscriptionStatusRefreshTimer = null;
+  }
+  subscriptionCheckpointCursors.clear();
+  subscriptionStatusRefreshCursors.clear();
+  subscriptionCheckpointInFlight = false;
+  subscriptionStatusRefreshInFlight = false;
+  subscriptionStatusTails.clear();
   if (scheduleReconciliationTimer) {
     clearInterval(scheduleReconciliationTimer);
     scheduleReconciliationTimer = null;
@@ -636,7 +865,9 @@ async function shutdown(signal: string, exitCode: 0 | 1 = 0): Promise<void> {
     } catch (err) {
       log.error('Error stopping Electrum manager', { error: getErrorMessage(err) });
     }
+    electrumManager = null;
   }
+  subscriptionCheckpointRuntime = null;
 
   // Drain job queue
   if (jobQueue) {

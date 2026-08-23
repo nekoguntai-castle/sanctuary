@@ -374,7 +374,24 @@ class ConfirmationUpdateAggregateError extends Error {
  * 4. Populates missing transaction fields
  * 5. Updates wallet metadata
  */
-export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobResult> = {
+export interface SyncJobsRuntimeDependencies {
+  enrollWalletSubscriptions: (
+    walletId: string,
+    network: string,
+    signal: AbortSignal,
+  ) => Promise<void>;
+}
+
+const unavailableRuntimeDependencies: SyncJobsRuntimeDependencies = {
+  enrollWalletSubscriptions: async () => {
+    throw new Error('Subscription checkpoint runtime dependency is required');
+  },
+};
+
+export function createSyncWalletJob(
+  runtimeDependencies: SyncJobsRuntimeDependencies,
+): WorkerJobHandler<SyncWalletJobData, SyncWalletJobResult> {
+  return {
   name: SYNC_WALLET_JOB_NAME,
   queue: SYNC_QUEUE_NAME,
   options: SYNC_WALLET_JOB_OPTIONS,
@@ -455,13 +472,18 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
           lockTtlMs: SYNC_LOCK_TTL_MS,
           publishAttemptTransition: publishWorkerAttemptTransition,
           retryState: workerRetryState,
+          enrollWalletSubscriptions: runtimeDependencies.enrollWalletSubscriptions,
         },
       );
     }
 
     return bridgeRetainedSyncWalletJob(data);
   },
-};
+  };
+}
+
+/** Fail-closed metadata export retained for lock-policy consumers and tests. */
+export const syncWalletJob = createSyncWalletJob(unavailableRuntimeDependencies);
 
 // =============================================================================
 // Check Stale Wallets Job
@@ -663,9 +685,10 @@ export const updateAllConfirmationsJob: WorkerJobHandler<
 // =============================================================================
 
 export function createSyncJobs(
+  runtimeDependencies: SyncJobsRuntimeDependencies,
 ): WorkerJobHandler<unknown, unknown>[] {
   return [
-    syncWalletJob as WorkerJobHandler<unknown, unknown>,
+    createSyncWalletJob(runtimeDependencies) as WorkerJobHandler<unknown, unknown>,
     createCheckStaleWalletsJob() as WorkerJobHandler<unknown, unknown>,
     updateConfirmationsJob as WorkerJobHandler<unknown, unknown>,
     updateAllConfirmationsJob as WorkerJobHandler<unknown, unknown>,

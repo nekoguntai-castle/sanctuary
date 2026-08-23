@@ -69,7 +69,7 @@ function mockLockedCoordinates(
   };
   mockPrisma.$queryRaw
     .mockReset()
-    .mockResolvedValueOnce([{ id: "wallet-1" }])
+    .mockResolvedValueOnce([{ id: "wallet-1", network: "mainnet" }])
     .mockResolvedValueOnce([summarize(0), summarize(1)]);
 }
 
@@ -77,7 +77,7 @@ export function registerBlockchainAddressDiscoveryContracts(): void {
   describe("Blockchain Service - Address Discovery (Gap Limit)", () => {
     beforeEach(() => {
       vi.clearAllMocks();
-      mockPrisma.$queryRaw.mockResolvedValue([{ id: "wallet-1" }]);
+      mockPrisma.$queryRaw.mockResolvedValue([{ id: "wallet-1", network: "mainnet" }]);
       mockCanonicalDerivation();
     });
 
@@ -96,7 +96,7 @@ export function registerBlockchainAddressDiscoveryContracts(): void {
 
           await expect(ensureGapLimit("wallet-1")).resolves.toEqual([]);
           expect(mockPrisma.address.findMany).not.toHaveBeenCalled();
-          expect(mockPrisma.address.createMany).not.toHaveBeenCalled();
+          expect(mockPrisma.address.createManyAndReturn).not.toHaveBeenCalled();
           expect(mockDeriveAddress).not.toHaveBeenCalled();
         },
       );
@@ -138,12 +138,10 @@ export function registerBlockchainAddressDiscoveryContracts(): void {
 
         mockPrisma.wallet.findUnique.mockResolvedValue(testWallet);
         mockLockedCoordinates(addresses);
-        mockPrisma.address.createMany.mockResolvedValue({ count: 10 });
-
         const newAddresses = await ensureGapLimit("wallet-1");
 
         // Should generate addresses to meet gap limit
-        expect(mockPrisma.address.createMany).toHaveBeenCalled();
+        expect(mockPrisma.address.createManyAndReturn).toHaveBeenCalled();
         expect(newAddresses.length).toBeGreaterThan(0);
       });
 
@@ -170,7 +168,7 @@ export function registerBlockchainAddressDiscoveryContracts(): void {
 
         // Should not generate any new addresses
         expect(newAddresses.length).toBe(0);
-        expect(mockPrisma.address.createMany).not.toHaveBeenCalled();
+        expect(mockPrisma.address.createManyAndReturn).not.toHaveBeenCalled();
       });
 
       it("should handle both receive and change address chains", async () => {
@@ -191,8 +189,6 @@ export function registerBlockchainAddressDiscoveryContracts(): void {
 
         mockPrisma.wallet.findUnique.mockResolvedValue(testWallet);
         mockLockedCoordinates(addresses);
-        mockPrisma.address.createMany.mockResolvedValue({ count: 15 });
-
         const newAddresses = await ensureGapLimit("wallet-1");
 
         // Should generate change addresses only
@@ -224,8 +220,6 @@ export function registerBlockchainAddressDiscoveryContracts(): void {
 
         mockPrisma.wallet.findUnique.mockResolvedValue(testWallet);
         mockLockedCoordinates(addresses);
-        mockPrisma.address.createMany.mockResolvedValue({ count: 20 });
-
         const newAddresses = await ensureGapLimit("wallet-1");
 
         expect(newAddresses).toHaveLength(20);
@@ -236,7 +230,7 @@ export function registerBlockchainAddressDiscoveryContracts(): void {
               "change",
           ),
         ).toBe(true);
-        expect(mockPrisma.address.createMany).toHaveBeenCalledWith({
+        expect(mockPrisma.address.createManyAndReturn).toHaveBeenCalledWith({
           data: expect.arrayContaining([
             expect.objectContaining({
               derivationPath: "m/84'/0'/0'/1/0",
@@ -247,6 +241,7 @@ export function registerBlockchainAddressDiscoveryContracts(): void {
               index: 0,
             }),
           ]),
+          select: { id: true },
         });
       });
 
@@ -270,7 +265,7 @@ export function registerBlockchainAddressDiscoveryContracts(): void {
         await expect(ensureGapLimit("wallet-1")).rejects.toThrow(
           "canonical derivation failed at 1/0",
         );
-        expect(mockPrisma.address.createMany).not.toHaveBeenCalled();
+        expect(mockPrisma.address.createManyAndReturn).not.toHaveBeenCalled();
       });
 
       it("does not persist a partial batch when canonical derivation fails", async () => {
@@ -291,7 +286,7 @@ export function registerBlockchainAddressDiscoveryContracts(): void {
         await expect(ensureGapLimit("wallet-1")).rejects.toThrow(
           "canonical derivation failed",
         );
-        expect(mockPrisma.address.createMany).not.toHaveBeenCalled();
+        expect(mockPrisma.address.createManyAndReturn).not.toHaveBeenCalled();
       });
 
       it("should skip wallets without descriptors", async () => {

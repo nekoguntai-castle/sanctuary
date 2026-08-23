@@ -139,12 +139,20 @@ export async function findSubscriptionCheckpointOwners(
  * producer can still insert an address without its additive enrollment row.
  */
 export async function findPendingSubscriptionEnrollments(options: {
-  network: string;
+  network: NetworkType;
+  walletId?: string;
   cursor?: string;
   limit?: number;
 }): Promise<SubscriptionEnrollmentCandidate[]> {
+  requireNetwork(options.network);
+  if (options.walletId !== undefined) {
+    requireNonEmpty(options.walletId, 'Subscription enrollment wallet ID');
+  }
   const limit = enrollmentLimit(options.limit);
   const cursor = options.cursor ?? '';
+  const walletScope = options.walletId === undefined
+    ? Prisma.empty
+    : Prisma.sql`AND "addresses"."walletId" = ${options.walletId}`;
 
   return prisma.$queryRaw<SubscriptionEnrollmentCandidate[]>(Prisma.sql`
     SELECT
@@ -165,6 +173,7 @@ export async function findPendingSubscriptionEnrollments(options: {
       ON "checkpoints"."addressId" = "addresses"."id"
     WHERE "addresses"."id" > ${cursor}
       AND "wallets"."network" = ${options.network}
+      ${walletScope}
       AND (
         "checkpoints"."addressId" IS NULL
         OR "checkpoints"."requestedEnrollmentGeneration" > "checkpoints"."processedEnrollmentGeneration"

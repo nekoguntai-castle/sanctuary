@@ -402,6 +402,7 @@ describeWithRedis('expired incremental reclaim authority chain', () => {
         lockTtlMs: 60_000,
         publishAttemptTransition: vi.fn(),
         retryState: () => ({ nextRetryAt: new Date(Date.now() + 60_000) }),
+        enrollWalletSubscriptions: vi.fn().mockResolvedValue(undefined),
       },
     );
     await networkEntered.promise;

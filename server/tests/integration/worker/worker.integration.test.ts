@@ -1,12 +1,62 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createWorkerTestHarness } from '../setup/workerHarness';
 
+const checkpointMocks = vi.hoisted(() => {
+  const runtime = {
+    enrollPendingPage: vi.fn(async () => ({
+      scanned: 0,
+      subscribed: 0,
+      unavailable: 0,
+      syncIntents: [],
+      dispatch: {
+        intents: 0,
+        published: 0,
+        publicationFailed: 0,
+        woken: 0,
+        wakeUnavailable: 0,
+      },
+    })),
+    hasPendingWalletEnrollment: vi.fn(async () => false),
+    recordStatusPage: vi.fn(async () => ({
+      scanned: 0,
+      completed: 0,
+      unavailable: 0,
+      syncIntents: [],
+      dispatch: {
+        intents: 0,
+        published: 0,
+        publicationFailed: 0,
+        woken: 0,
+        wakeUnavailable: 0,
+      },
+    })),
+  };
+  return {
+    runtime,
+    createProductionSubscriptionCheckpointRuntime: vi.fn(() => runtime),
+  };
+});
+
+vi.mock('../../../src/worker/subscriptionCheckpointRuntime', () => ({
+  createProductionSubscriptionCheckpointRuntime:
+    checkpointMocks.createProductionSubscriptionCheckpointRuntime,
+}));
+
 describe('worker integration', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('starts services and schedules recurring jobs', async () => {
     const harness = await createWorkerTestHarness();
 
     expect(harness.jobQueue.initialize).toHaveBeenCalled();
     expect(harness.electrumManager.start).toHaveBeenCalled();
+    expect(checkpointMocks.createProductionSubscriptionCheckpointRuntime).toHaveBeenCalledOnce();
+    expect(harness.jobQueue.startConsumers).toHaveBeenCalledOnce();
+    expect(harness.electrumManager.start.mock.invocationCallOrder[0]).toBeLessThan(
+      harness.jobQueue.startConsumers.mock.invocationCallOrder[0],
+    );
     expect(harness.registerWorkerJobs).toHaveBeenCalled();
     expect(harness.walletSyncRecoveryRuntime.start).toHaveBeenCalledOnce();
 
@@ -37,9 +87,10 @@ describe('worker integration', () => {
 
     const onNewBlock = harness.electrumOptions.onNewBlock!;
     const onAddressActivity = harness.electrumOptions.onAddressActivity!;
+    harness.electrumManager.isSubscriptionOwner = vi.fn(() => true);
 
     onNewBlock('testnet3', 123, 'hash-123');
-    onAddressActivity('testnet3', 'wallet-1', 'addr-1');
+    onAddressActivity('testnet3', 'a'.repeat(64), 'b'.repeat(64));
 
     expect(harness.jobQueue.addJob).toHaveBeenCalledWith(
       'confirmations',
@@ -48,7 +99,15 @@ describe('worker integration', () => {
       { priority: 1, jobId: 'confirmations:testnet3:123:hash-123' },
     );
 
-    expect(harness.requestSyncIntent).toHaveBeenCalledWith('wallet-1');
+    await vi.waitFor(() => {
+      expect(checkpointMocks.runtime.recordStatusPage).toHaveBeenCalledWith({
+        network: 'testnet3',
+        scriptHash: 'a'.repeat(64),
+        observedStatus: 'b'.repeat(64),
+        limit: 200,
+      });
+    });
+    expect(harness.requestSyncIntent).not.toHaveBeenCalled();
     expect(harness.jobQueue.addJob.mock.calls).not.toContainEqual(
       expect.arrayContaining(['sync', 'sync-wallet']),
     );

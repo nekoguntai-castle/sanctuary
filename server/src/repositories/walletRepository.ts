@@ -7,6 +7,7 @@
 
 import prisma from '../models/prisma';
 import type { Wallet, Prisma } from '../generated/prisma/client';
+import { isNetworkType } from '@sanctuary/shared/constants/bitcoin';
 import { WALLET_EDIT_ROLE_VALUES } from '@sanctuary/shared/constants/walletRoles';
 import type {
   NetworkType,
@@ -800,8 +801,31 @@ export interface WalletDescriptorAssignment {
   addresses: Prisma.AddressCreateManyInput[];
 }
 
+type AddressCheckpointWriteClient = Pick<
+  typeof prisma,
+  'address' | 'addressSubscriptionCheckpoint'
+>;
+
+async function createAddressesWithPendingCheckpoints(
+  tx: AddressCheckpointWriteClient,
+  addresses: Prisma.AddressCreateManyInput[],
+  network: unknown,
+): Promise<void> {
+  if (addresses.length === 0) return;
+  if (!isNetworkType(network)) {
+    throw new Error('Wallet address persistence requires a supported subscription network');
+  }
+  const created = await tx.address.createManyAndReturn({
+    data: addresses,
+    select: { id: true },
+  });
+  await tx.addressSubscriptionCheckpoint.createMany({
+    data: created.map(({ id }) => ({ addressId: id, network })),
+  });
+}
+
 async function assignMissingDescriptor(
-  tx: Pick<typeof prisma, 'wallet' | 'address'>,
+  tx: Pick<typeof prisma, 'wallet' | 'address' | 'addressSubscriptionCheckpoint'>,
   walletId: string,
   assignment: WalletDescriptorAssignment,
 ): Promise<void> {
@@ -831,7 +855,15 @@ async function assignMissingDescriptor(
   if (updated.count !== 1) {
     throw new Error('Wallet descriptor changed before signer binding completed');
   }
-  await tx.address.createMany({ data: assignment.addresses });
+  if (assignment.addresses.some((address) => address.walletId !== walletId)) {
+    throw new Error('Descriptor address wallet identity does not match its assignment');
+  }
+  const wallet = await tx.wallet.findUnique({
+    where: { id: walletId },
+    select: { network: true },
+  });
+  if (!wallet) throw new Error('Wallet disappeared during descriptor assignment');
+  await createAddressesWithPendingCheckpoints(tx, assignment.addresses, wallet.network);
 }
 
 export async function linkDeviceWithDescriptor(
@@ -876,12 +908,14 @@ export async function createWithDeviceLinks(
     }
 
     if (initialAddresses.length > 0) {
-      await tx.address.createMany({
-        data: initialAddresses.map((address) => ({
+      await createAddressesWithPendingCheckpoints(
+        tx,
+        initialAddresses.map((address) => ({
           ...address,
           walletId: wallet.id,
         })),
-      });
+        wallet.network,
+      );
     }
 
     const result = await tx.wallet.findUnique({

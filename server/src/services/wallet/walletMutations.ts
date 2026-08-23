@@ -111,15 +111,6 @@ export async function deleteWallet(walletId: string, userId: string): Promise<vo
     throw new ForbiddenError('Only wallet owners can delete wallet');
   }
 
-  // Unsubscribe from address notifications to prevent memory leak
-  const { getSyncService } = await import('../syncService');
-  const syncService = getSyncService();
-  await syncService.unsubscribeWalletAddresses(walletId);
-
-  // Also clean up notification service subscriptions
-  const { notificationService } = await import('../../websocket/notifications');
-  await notificationService.unsubscribeWalletAddresses(walletId);
-
   await walletRepository.deleteById(walletId);
 
   // Execute after hooks for audit logging

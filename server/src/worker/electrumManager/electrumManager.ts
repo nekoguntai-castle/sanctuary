@@ -10,6 +10,9 @@ import { getConfig } from '../../config';
 import { getErrorMessage } from '../../utils/errors';
 import { createLogger } from '../../utils/logger';
 import {
+  addressRepository,
+} from '../../repositories';
+import {
   LockAuthorityUnavailableError,
   type DistributedLock,
 } from '../../infrastructure';
@@ -24,6 +27,7 @@ import { acquireSubscriptionLock, startLockRefresh, releaseSubscriptionLock } fr
 import { connectNetwork } from './networkConnection';
 import { scheduleReconnect } from './reconnection';
 import {
+  subscribeAddressBatch,
   subscribeAllAddresses,
   subscribeNetworkAddresses,
   subscribeWalletAddresses as doSubscribeWalletAddresses,
@@ -48,6 +52,8 @@ export class ElectrumSubscriptionManager {
   private subscriptionLockRefresh: NodeJS.Timeout | null = null;
   private subscriptionLockRetryTimer: NodeJS.Timeout | null = null;
   private subscriptionLockRetryInFlight = false;
+  private startupInFlight = false;
+  private ownershipEpoch = 0;
   private explicitlyStopped = false;
 
   constructor(callbacks: ElectrumManagerCallbacks) {
@@ -81,6 +87,10 @@ export class ElectrumSubscriptionManager {
       this.startSubscriptionOwnershipRetry();
       return;
     }
+    if (this.explicitlyStopped) {
+      await releaseSubscriptionLock(lock, null);
+      return;
+    }
     if (!lock) {
       this.startSubscriptionOwnershipRetry();
       return;
@@ -90,6 +100,8 @@ export class ElectrumSubscriptionManager {
   }
 
   private async startWithLock(lock: DistributedLock): Promise<void> {
+    const ownershipEpoch = ++this.ownershipEpoch;
+    this.startupInFlight = true;
     this.stopSubscriptionOwnershipRetry();
     this.subscriptionLock = lock;
     this.subscriptionLockRefresh = startLockRefresh(
@@ -106,11 +118,30 @@ export class ElectrumSubscriptionManager {
 
     try {
       // Connect to primary network
-      await this.doConnectNetwork(primaryNetwork);
+      await this.doConnectNetwork(primaryNetwork, ownershipEpoch);
+      if (!this.hasOwnership(ownershipEpoch)) {
+        await this.stopRunningManager();
+        return;
+      }
+      if (this.networks.get(primaryNetwork)?.connected) {
+        await this.callbacks.onNetworkReady?.(primaryNetwork);
+        if (!this.hasOwnership(ownershipEpoch)) {
+          await this.stopRunningManager();
+          return;
+        }
+      }
 
       // Subscribe to all wallet addresses
-      await subscribeAllAddresses(this.networks, this.addressToWallet);
-
+      await subscribeAllAddresses(
+        this.networks,
+        this.addressToWallet,
+        undefined,
+        () => this.hasOwnership(ownershipEpoch),
+      );
+      if (!this.hasOwnership(ownershipEpoch)) {
+        await this.stopRunningManager();
+        return;
+      }
       // Start health check timer
       this.healthCheckTimer = setInterval(() => {
         this.doCheckHealth();
@@ -121,9 +152,18 @@ export class ElectrumSubscriptionManager {
         subscribedAddresses: this.addressToWallet.size,
       });
     } catch (error) {
+      if (!this.hasOwnership(ownershipEpoch)) return;
       await this.stopRunningManager();
       throw error;
+    } finally {
+      this.startupInFlight = false;
     }
+  }
+
+  private hasOwnership(epoch: number): boolean {
+    return this.isRunningFlag
+      && this.subscriptionLock !== null
+      && this.ownershipEpoch === epoch;
   }
 
   private startSubscriptionOwnershipRetry(): void {
@@ -151,7 +191,10 @@ export class ElectrumSubscriptionManager {
   }
 
   private async tryAcquireSubscriptionOwnership(): Promise<void> {
-    if (this.explicitlyStopped || this.subscriptionLockRetryInFlight || this.isRunningFlag) {
+    if (this.explicitlyStopped
+      || this.subscriptionLockRetryInFlight
+      || this.startupInFlight
+      || this.isRunningFlag) {
       return;
     }
 
@@ -190,31 +233,50 @@ export class ElectrumSubscriptionManager {
     this.startSubscriptionOwnershipRetry();
   }
 
-  private async doConnectNetwork(network: BitcoinNetwork): Promise<void> {
+  private async doConnectNetwork(network: BitcoinNetwork, ownershipEpoch = this.ownershipEpoch): Promise<void> {
     await connectNetwork(
       network,
       this.networks,
       this.addressToWallet,
       this.callbacks,
-      () => this.isRunningFlag,
-      (net) => this.doScheduleReconnect(net)
+      () => this.hasOwnership(ownershipEpoch),
+      (net) => this.doScheduleReconnect(net, ownershipEpoch)
     );
   }
 
-  private doScheduleReconnect(network: BitcoinNetwork): void {
+  private doScheduleReconnect(
+    network: BitcoinNetwork,
+    ownershipEpoch = this.ownershipEpoch,
+  ): void {
+    const hasOwnership = () => this.hasOwnership(ownershipEpoch);
     scheduleReconnect(
       network,
       this.networks,
       this.addressToWallet,
       this.callbacks,
-      () => this.isRunningFlag,
-      (net) => subscribeNetworkAddresses(net, this.networks, this.addressToWallet)
+      hasOwnership,
+      async (net) => {
+        await this.callbacks.onNetworkReady?.(net);
+        if (!hasOwnership()) return;
+        await subscribeNetworkAddresses(
+          net,
+          this.networks,
+          this.addressToWallet,
+          undefined,
+          { isActive: hasOwnership },
+        );
+      },
     );
   }
 
   private async doCheckHealth(): Promise<void> {
+    const ownershipEpoch = this.ownershipEpoch;
     /* v8 ignore start -- health-check reconnect callback is covered through standalone manager tests */
-    await checkHealth(this.networks, (net) => this.doScheduleReconnect(net));
+    await checkHealth(
+      this.networks,
+      (net) => this.doScheduleReconnect(net, ownershipEpoch),
+      () => this.hasOwnership(ownershipEpoch),
+    );
     /* v8 ignore stop */
   }
 
@@ -222,7 +284,13 @@ export class ElectrumSubscriptionManager {
    * Subscribe to new addresses for a wallet (call when wallet is created or addresses generated)
    */
   async subscribeWalletAddresses(walletId: string): Promise<void> {
-    await doSubscribeWalletAddresses(walletId, this.networks, this.addressToWallet);
+    const ownershipEpoch = this.ownershipEpoch;
+    await doSubscribeWalletAddresses(
+      walletId,
+      this.networks,
+      this.addressToWallet,
+      () => this.hasOwnership(ownershipEpoch),
+    );
   }
 
   /**
@@ -236,7 +304,70 @@ export class ElectrumSubscriptionManager {
    * Reconcile subscription state with database
    */
   async reconcileSubscriptions(): Promise<{ removed: number; added: number }> {
-    return doReconcileSubscriptions(this.networks, this.addressToWallet);
+    const ownershipEpoch = this.ownershipEpoch;
+    return doReconcileSubscriptions(
+      this.networks,
+      this.addressToWallet,
+      undefined,
+      () => this.hasOwnership(ownershipEpoch),
+    );
+  }
+
+  /** Re-read one fair authoritative status page so transient checkpoint writes self-heal. */
+  async refreshSubscriptionStatusPage(
+    network: BitcoinNetwork,
+    options: { cursor?: string; limit: number },
+  ): Promise<{ scanned: number; nextCursor?: string }> {
+    const ownershipEpoch = this.ownershipEpoch;
+    if (!this.hasOwnership(ownershipEpoch)) return { scanned: 0 };
+    const addresses = await addressRepository.findAllWithWalletNetworkPaginated({
+      take: options.limit,
+      ...(options.cursor !== undefined ? { cursor: options.cursor } : {}),
+    });
+    if (!this.hasOwnership(ownershipEpoch)) return { scanned: 0 };
+    const state = this.networks.get(network);
+    if (state?.connected) {
+      const networkAddresses = addresses
+        .filter((address) => address.wallet.network === network)
+        .map((address) => ({ address: address.address, walletId: address.walletId }));
+      await subscribeAddressBatch(state, networkAddresses, {
+        resubscribe: true,
+        isActive: () => this.hasOwnership(ownershipEpoch),
+      });
+    }
+    return {
+      scanned: addresses.length,
+      ...(addresses.length === options.limit
+        ? { nextCursor: addresses[addresses.length - 1].id }
+        : {}),
+    };
+  }
+
+  /** Subscribe through the elected worker-owned transport and return exact statuses. */
+  async subscribeCheckpointAddresses(
+    network: BitcoinNetwork,
+    addresses: string[],
+  ): Promise<Map<string, string | null>> {
+    const ownershipEpoch = this.ownershipEpoch;
+    if (!this.hasOwnership(ownershipEpoch)) {
+      throw new Error('Electrum subscription ownership is not active');
+    }
+    const state = this.networks.get(network);
+    if (!state?.connected) {
+      throw new Error(`Electrum network ${network} is not connected`);
+    }
+    return subscribeAddressBatch(
+      state,
+      addresses.map((address) => ({ address, walletId: '' })),
+      {
+        resubscribe: true,
+        isActive: () => this.hasOwnership(ownershipEpoch),
+      },
+    );
+  }
+
+  isSubscriptionOwner(): boolean {
+    return this.isRunningFlag && this.subscriptionLock !== null;
   }
 
   /**
@@ -266,10 +397,15 @@ export class ElectrumSubscriptionManager {
   }
 
   private async stopRunningManager(): Promise<void> {
-    if (!this.isRunningFlag) return;
-
-    log.info('Stopping Electrum subscription manager...');
+    const hadRuntime = this.isRunningFlag
+      || this.subscriptionLock !== null
+      || this.subscriptionLockRefresh !== null
+      || this.healthCheckTimer !== null
+      || this.networks.size > 0
+      || this.addressToWallet.size > 0;
     this.isRunningFlag = false;
+    this.ownershipEpoch += 1;
+    if (hadRuntime) log.info('Stopping Electrum subscription manager...');
 
     // Clear health check timer
     if (this.healthCheckTimer) {
@@ -277,9 +413,11 @@ export class ElectrumSubscriptionManager {
       this.healthCheckTimer = null;
     }
 
-    await releaseSubscriptionLock(this.subscriptionLock, this.subscriptionLockRefresh);
+    const lock = this.subscriptionLock;
+    const lockRefresh = this.subscriptionLockRefresh;
     this.subscriptionLock = null;
     this.subscriptionLockRefresh = null;
+    await releaseSubscriptionLock(lock, lockRefresh);
 
     // Clear reconnection timers
     for (const state of this.networks.values()) {
@@ -296,6 +434,6 @@ export class ElectrumSubscriptionManager {
     this.networks.clear();
     this.addressToWallet.clear();
 
-    log.info('Electrum subscription manager stopped');
+    if (hadRuntime) log.info('Electrum subscription manager stopped');
   }
 }

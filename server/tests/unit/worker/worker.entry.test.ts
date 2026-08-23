@@ -32,8 +32,11 @@ const mocks = vi.hoisted(() => {
     start: vi.fn(),
     stop: vi.fn(),
     isConnected: vi.fn(),
+    isSubscriptionOwner: vi.fn(),
+    subscribeCheckpointAddresses: vi.fn(),
     getHealthMetrics: vi.fn(),
     reconcileSubscriptions: vi.fn(),
+    refreshSubscriptionStatusPage: vi.fn(),
   };
 
   const healthServerHandle = {
@@ -41,7 +44,15 @@ const mocks = vi.hoisted(() => {
   };
 
   let electrumCallbacks:
-    | { onNewBlock: (network: NetworkType, height: number, hash: string) => void; onAddressActivity: (network: NetworkType, walletId: string, address: string) => void }
+    | {
+        onNewBlock: (network: NetworkType, height: number, hash: string) => void;
+        onAddressActivity: (network: NetworkType, scriptHash: string, status: string | null) => void;
+        onNetworkReady?: (network: NetworkType) => Promise<void>;
+        onSubscriptionStatuses?: (
+          network: NetworkType,
+          statuses: Map<string, string | null>,
+        ) => Promise<void>;
+      }
     | undefined;
   let healthProvider:
     | { getHealth: () => Promise<unknown>; getMetrics: () => Promise<unknown> }
@@ -78,6 +89,19 @@ const mocks = vi.hoisted(() => {
   };
   const createProductionWalletSyncRecoveryRuntime = vi.fn(
     () => walletSyncRecoveryRuntime,
+  );
+  const subscriptionCheckpointRuntime = {
+    enrollPendingPage: vi.fn(),
+    hasPendingWalletEnrollment: vi.fn(),
+    recordStatusPage: vi.fn(),
+  };
+  const createProductionSubscriptionCheckpointRuntime = vi.fn<(
+    subscribeBatch: (
+      request: { network: NetworkType; addresses: string[] },
+    ) => Promise<Map<string, string | null>>,
+    isActive: () => boolean,
+  ) => typeof subscriptionCheckpointRuntime>(
+    () => subscriptionCheckpointRuntime,
   );
 
   const getConfig = vi.fn(() => ({
@@ -120,8 +144,19 @@ const mocks = vi.hoisted(() => {
     WorkerHeartbeatWriter,
     walletSyncRecoveryRuntime,
     createProductionWalletSyncRecoveryRuntime,
+    subscriptionCheckpointRuntime,
+    createProductionSubscriptionCheckpointRuntime,
     getConfig,
-    registerWorkerJobs: vi.fn(),
+    registerWorkerJobs: vi.fn<(
+      queue: unknown,
+      dependencies: {
+        enrollWalletSubscriptions: (
+          walletId: string,
+          network: string,
+          signal: AbortSignal,
+        ) => Promise<void>;
+      },
+    ) => void>(),
     initializeOpenTelemetry: vi.fn(),
     connectWithRetry: vi.fn(),
     disconnect: vi.fn(),
@@ -229,6 +264,11 @@ vi.mock('../../../src/worker/walletSyncRecoveryRuntime', () => ({
     mocks.createProductionWalletSyncRecoveryRuntime,
 }));
 
+vi.mock('../../../src/worker/subscriptionCheckpointRuntime', () => ({
+  createProductionSubscriptionCheckpointRuntime:
+    mocks.createProductionSubscriptionCheckpointRuntime,
+}));
+
 vi.mock('../../../src/services/sync/syncIntentAdmission', () => ({
   syncIntentAdmission: { request: mocks.syncIntentRequest },
 }));
@@ -327,6 +367,8 @@ describe('worker entrypoint', () => {
     mocks.electrumInstance.start.mockResolvedValue(undefined);
     mocks.electrumInstance.stop.mockResolvedValue(undefined);
     mocks.electrumInstance.isConnected.mockReturnValue(true);
+    mocks.electrumInstance.isSubscriptionOwner.mockReturnValue(true);
+    mocks.electrumInstance.subscribeCheckpointAddresses.mockResolvedValue(new Map());
     mocks.electrumInstance.getHealthMetrics.mockReturnValue({
       isRunning: true,
       ownershipRetryActive: false,
@@ -334,6 +376,37 @@ describe('worker entrypoint', () => {
       networks: { testnet: { connected: true } },
     });
     mocks.electrumInstance.reconcileSubscriptions.mockResolvedValue(undefined);
+    mocks.electrumInstance.refreshSubscriptionStatusPage.mockResolvedValue({ scanned: 0 });
+    mocks.subscriptionCheckpointRuntime.enrollPendingPage.mockResolvedValue({
+      scanned: 0,
+      subscribed: 0,
+      unavailable: 0,
+      syncIntents: [],
+      dispatch: {
+        intents: 0,
+        published: 0,
+        publicationFailed: 0,
+        woken: 0,
+        wakeUnavailable: 0,
+      },
+    });
+    mocks.subscriptionCheckpointRuntime.hasPendingWalletEnrollment.mockResolvedValue(false);
+    mocks.subscriptionCheckpointRuntime.recordStatusPage.mockResolvedValue({
+      scanned: 0,
+      completed: 0,
+      unavailable: 0,
+      syncIntents: [],
+      dispatch: {
+        intents: 0,
+        published: 0,
+        publicationFailed: 0,
+        woken: 0,
+        wakeUnavailable: 0,
+      },
+    });
+    mocks.createProductionSubscriptionCheckpointRuntime.mockReturnValue(
+      mocks.subscriptionCheckpointRuntime,
+    );
 
     mocks.healthServerHandle.close.mockResolvedValue(undefined);
     mocks.heartbeatInstance.write.mockResolvedValue(undefined);
@@ -418,6 +491,294 @@ describe('worker entrypoint', () => {
     );
     expect(mocks.heartbeatInstance.start.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.walletSyncRecoveryRuntime.start.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('starts consumers only after the worker-owned checkpoint transport is ready', async () => {
+    vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
+      void event;
+      void handler;
+      return process;
+    }) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+    let releaseElectrum!: () => void;
+    mocks.electrumInstance.start.mockImplementationOnce(() => new Promise<void>((resolve) => {
+      releaseElectrum = resolve;
+    }));
+
+    await import('../../../src/worker.ts');
+    await vi.waitFor(() => {
+      expect(mocks.electrumInstance.start).toHaveBeenCalledOnce();
+    });
+
+    expect(mocks.createProductionSubscriptionCheckpointRuntime).toHaveBeenCalledOnce();
+    expect(mocks.queueInstance.startConsumers).not.toHaveBeenCalled();
+
+    releaseElectrum();
+    await vi.dynamicImportSettled();
+
+    expect(mocks.queueInstance.startConsumers).toHaveBeenCalledOnce();
+    expect(mocks.electrumInstance.start.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.queueInstance.startConsumers.mock.invocationCallOrder[0],
+    );
+
+    const [subscribeBatch, isActive] =
+      mocks.createProductionSubscriptionCheckpointRuntime.mock.calls[0]!;
+    await expect(subscribeBatch({
+      network: 'testnet4',
+      addresses: ['tb1qcheckpoint'],
+    })).resolves.toEqual(new Map());
+    expect(mocks.electrumInstance.subscribeCheckpointAddresses).toHaveBeenCalledWith(
+      'testnet4',
+      ['tb1qcheckpoint'],
+    );
+    expect(isActive()).toBe(true);
+
+    const callbacks = mocks.getElectrumCallbacks();
+    await callbacks?.onNetworkReady?.('testnet4');
+    expect(mocks.subscriptionCheckpointRuntime.enrollPendingPage).toHaveBeenCalledWith({
+      network: 'testnet4',
+      limit: 200,
+    });
+
+    callbacks?.onAddressActivity('testnet4', 'a'.repeat(64), 'c'.repeat(64));
+    await vi.waitFor(() => {
+      expect(mocks.subscriptionCheckpointRuntime.recordStatusPage).toHaveBeenCalledOnce();
+    });
+    expect(mocks.subscriptionCheckpointRuntime.recordStatusPage).toHaveBeenCalledWith({
+      network: 'testnet4',
+      scriptHash: 'a'.repeat(64),
+      observedStatus: 'c'.repeat(64),
+      limit: 200,
+    });
+  });
+
+  it('lets a non-owner consumer wait for the elected owner to finish enrollment', async () => {
+    vi.spyOn(process, 'on').mockImplementation(((_event: string, _handler: (...args: any[]) => any) => (
+      process
+    )) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+    mocks.electrumInstance.isSubscriptionOwner.mockReturnValue(false);
+    mocks.subscriptionCheckpointRuntime.hasPendingWalletEnrollment
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+
+    const dependencies = mocks.registerWorkerJobs.mock.calls[0]?.[1];
+    expect(dependencies).toBeDefined();
+    await expect(dependencies!.enrollWalletSubscriptions(
+      'wallet-1',
+      'testnet4',
+      new AbortController().signal,
+    )).resolves.toBeUndefined();
+    expect(mocks.subscriptionCheckpointRuntime.hasPendingWalletEnrollment).toHaveBeenCalledTimes(2);
+    expect(mocks.subscriptionCheckpointRuntime.hasPendingWalletEnrollment).toHaveBeenLastCalledWith({
+      network: 'testnet4', walletId: 'wallet-1',
+    });
+    expect(mocks.subscriptionCheckpointRuntime.enrollPendingPage).not.toHaveBeenCalled();
+  });
+
+  it('serializes live status writes for the same network and script hash', async () => {
+    vi.spyOn(process, 'on').mockImplementation(((_event: string, _handler: (...args: any[]) => any) => (
+      process
+    )) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+    let releaseFirst!: () => void;
+    const firstWrite = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const emptyResult = {
+      scanned: 0,
+      completed: 0,
+      unavailable: 0,
+      syncIntents: [],
+      dispatch: {
+        intents: 0,
+        published: 0,
+        publicationFailed: 0,
+        woken: 0,
+        wakeUnavailable: 0,
+      },
+    };
+    mocks.subscriptionCheckpointRuntime.recordStatusPage
+      .mockImplementationOnce(async () => {
+        await firstWrite;
+        return emptyResult;
+      })
+      .mockResolvedValueOnce(emptyResult);
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+
+    const callbacks = mocks.getElectrumCallbacks();
+    callbacks!.onAddressActivity('testnet4', 'c'.repeat(64), 'a'.repeat(64));
+    await vi.waitFor(() => {
+      expect(mocks.subscriptionCheckpointRuntime.recordStatusPage).toHaveBeenCalledTimes(1);
+    });
+    callbacks!.onAddressActivity('testnet4', 'c'.repeat(64), 'b'.repeat(64));
+    await Promise.resolve();
+    expect(mocks.subscriptionCheckpointRuntime.recordStatusPage).toHaveBeenCalledTimes(1);
+
+    releaseFirst();
+    await vi.waitFor(() => {
+      expect(mocks.subscriptionCheckpointRuntime.recordStatusPage).toHaveBeenCalledTimes(2);
+    });
+    expect(mocks.subscriptionCheckpointRuntime.recordStatusPage).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ observedStatus: 'b'.repeat(64) }),
+    );
+  });
+
+  it('orders live activity after the initial checkpoint baseline commits', async () => {
+    vi.spyOn(process, 'on').mockImplementation(((_event: string, _handler: (...args: any[]) => any) => (
+      process
+    )) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+    let finishEnrollment!: () => void;
+    const enrollment = new Promise<void>((resolve) => {
+      finishEnrollment = resolve;
+    });
+    mocks.subscriptionCheckpointRuntime.enrollPendingPage.mockImplementationOnce(async () => {
+      await enrollment;
+      return {
+        scanned: 0,
+        subscribed: 0,
+        unavailable: 0,
+        syncIntents: [],
+        dispatch: {
+          intents: 0,
+          published: 0,
+          publicationFailed: 0,
+          woken: 0,
+          wakeUnavailable: 0,
+        },
+      };
+    });
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+    const callbacks = mocks.getElectrumCallbacks()!;
+    const baseline = callbacks.onNetworkReady!('testnet4');
+    await vi.waitFor(() => {
+      expect(mocks.subscriptionCheckpointRuntime.enrollPendingPage).toHaveBeenCalledOnce();
+    });
+
+    callbacks.onAddressActivity('testnet4', 'a'.repeat(64), 'b'.repeat(64));
+    await Promise.resolve();
+    expect(mocks.subscriptionCheckpointRuntime.recordStatusPage).not.toHaveBeenCalled();
+
+    finishEnrollment();
+    await baseline;
+    await vi.waitFor(() => {
+      expect(mocks.subscriptionCheckpointRuntime.recordStatusPage).toHaveBeenCalledOnce();
+    });
+  });
+
+  it('advances and wraps the periodic checkpoint enrollment cursor fairly', async () => {
+    vi.spyOn(process, 'on').mockImplementation(((_event: string, _handler: (...args: any[]) => any) => (
+      process
+    )) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+    let checkpointCallback: (() => Promise<void> | void) | undefined;
+    vi.spyOn(global, 'setInterval').mockImplementation(((
+      callback: () => Promise<void> | void,
+      interval: number,
+    ) => {
+      if (interval === 1_000) checkpointCallback = callback;
+      return { unref: vi.fn() } as any;
+    }) as any);
+    mocks.subscriptionCheckpointRuntime.enrollPendingPage
+      .mockResolvedValueOnce({
+        scanned: 200,
+        subscribed: 200,
+        unavailable: 0,
+        nextCursor: 'checkpoint-200',
+        syncIntents: [],
+        dispatch: {
+          intents: 0,
+          published: 0,
+          publicationFailed: 0,
+          woken: 0,
+          wakeUnavailable: 0,
+        },
+      })
+      .mockResolvedValueOnce({
+        scanned: 0,
+        subscribed: 0,
+        unavailable: 0,
+        syncIntents: [],
+        dispatch: {
+          intents: 0,
+          published: 0,
+          publicationFailed: 0,
+          woken: 0,
+          wakeUnavailable: 0,
+        },
+      });
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+    expect(checkpointCallback).toBeDefined();
+
+    await checkpointCallback!();
+    expect(mocks.subscriptionCheckpointRuntime.enrollPendingPage).toHaveBeenCalledTimes(1);
+    await checkpointCallback!();
+    expect(mocks.subscriptionCheckpointRuntime.enrollPendingPage).toHaveBeenCalledTimes(2);
+    expect(mocks.subscriptionCheckpointRuntime.enrollPendingPage).toHaveBeenNthCalledWith(2, {
+      network: 'testnet',
+      cursor: 'checkpoint-200',
+      limit: 200,
+    });
+
+    await checkpointCallback!();
+    expect(mocks.subscriptionCheckpointRuntime.enrollPendingPage).toHaveBeenCalledTimes(3);
+    expect(mocks.subscriptionCheckpointRuntime.enrollPendingPage).toHaveBeenNthCalledWith(3, {
+      network: 'testnet',
+      limit: 200,
+    });
+  });
+
+  it('advances and wraps the bounded authoritative status refresh cursor', async () => {
+    vi.spyOn(process, 'on').mockImplementation(((_event: string, _handler: (...args: any[]) => any) => (
+      process
+    )) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+    let statusRefreshCallback: (() => Promise<void> | void) | undefined;
+    vi.spyOn(global, 'setInterval').mockImplementation(((
+      callback: () => Promise<void> | void,
+      interval: number,
+    ) => {
+      if (interval === 60_000 && statusRefreshCallback === undefined) {
+        statusRefreshCallback = callback;
+      }
+      return { unref: vi.fn() } as any;
+    }) as any);
+    mocks.electrumInstance.refreshSubscriptionStatusPage
+      .mockResolvedValueOnce({ scanned: 200, nextCursor: 'address-200' })
+      .mockResolvedValueOnce({ scanned: 0 });
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+    expect(statusRefreshCallback).toBeDefined();
+
+    await statusRefreshCallback!();
+    expect(mocks.electrumInstance.refreshSubscriptionStatusPage).toHaveBeenCalledTimes(1);
+    await statusRefreshCallback!();
+    expect(mocks.electrumInstance.refreshSubscriptionStatusPage).toHaveBeenCalledTimes(2);
+    expect(mocks.electrumInstance.refreshSubscriptionStatusPage).toHaveBeenNthCalledWith(
+      2,
+      'testnet',
+      { cursor: 'address-200', limit: 200 },
+    );
+
+    await statusRefreshCallback!();
+    expect(mocks.electrumInstance.refreshSubscriptionStatusPage).toHaveBeenCalledTimes(3);
+    expect(mocks.electrumInstance.refreshSubscriptionStatusPage).toHaveBeenNthCalledWith(
+      3,
+      'testnet',
+      { limit: 200 },
     );
   });
 
@@ -995,11 +1356,11 @@ describe('worker entrypoint', () => {
 
     await import('../../../src/worker.ts');
     await vi.dynamicImportSettled();
-    for (let i = 0; i < 200 && intervalCallbacks.length < 3; i += 1) {
+    for (let i = 0; i < 200 && intervalCallbacks.length < 5; i += 1) {
       await Promise.resolve();
     }
 
-    expect(intervalCallbacks).toHaveLength(3);
+    expect(intervalCallbacks).toHaveLength(5);
     expect(mocks.WorkerJobQueue).toHaveBeenCalledWith({
       concurrency: 5,
       queues: ['sync', 'notifications', 'confirmations', 'maintenance'],
@@ -1164,12 +1525,14 @@ describe('worker entrypoint', () => {
       expect.objectContaining({ jobId: 'confirmations:testnet4:101:def' }),
     );
 
-    mocks.syncIntentRequest.mockRejectedValueOnce(new Error('cannot persist sync intent'));
-    electrumCallbacks?.onAddressActivity('testnet4', 'wallet-1', 'tb1qxyz');
+    mocks.subscriptionCheckpointRuntime.recordStatusPage.mockRejectedValueOnce(
+      new Error('cannot persist checkpoint'),
+    );
+    electrumCallbacks?.onAddressActivity('testnet4', 'a'.repeat(64), 'b'.repeat(64));
     await vi.waitFor(() => {
       expect(mocks.logger.error).toHaveBeenCalledWith(
-        'Failed to persist address activity sync intent',
-        expect.objectContaining({ error: 'cannot persist sync intent' })
+        'Failed to persist address activity checkpoint',
+        expect.objectContaining({ error: 'cannot persist checkpoint' })
       );
     });
 
@@ -1380,9 +1743,9 @@ describe('worker entrypoint', () => {
       expect.objectContaining({ jobQueue: false, recurringSchedules: false }),
     );
 
-    const reconciliation = intervals.find(({ delay }) => delay === 60_000);
-    expect(reconciliation).toBeDefined();
-    reconciliation?.callback();
+    const reconciliations = intervals.filter(({ delay }) => delay === 60_000);
+    expect(reconciliations.length).toBeGreaterThan(0);
+    await Promise.all(reconciliations.map(({ callback }) => callback()));
     let recovered = false;
     for (let index = 0; index < 100 && !recovered; index += 1) {
       await Promise.resolve();

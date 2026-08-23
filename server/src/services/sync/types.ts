@@ -48,10 +48,7 @@ export interface SyncState {
   syncQueue: SyncJob[];
   activeSyncs: Set<string>;
   activeLocks: Map<string, DistributedLock>;
-  addressToWalletMap: Map<string, string>;
   pendingRetries: Map<string, NodeJS.Timeout>;
-  subscriptionLock: DistributedLock | null;
-  subscriptionLockRefresh: NodeJS.Timeout | null;
   subscriptionsEnabled: boolean;
   subscriptionOwnership: SubscriptionOwnership;
   subscribedToHeaders: boolean;

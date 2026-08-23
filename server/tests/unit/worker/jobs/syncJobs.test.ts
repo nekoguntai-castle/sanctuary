@@ -29,6 +29,7 @@ const syncIntentMocks = vi.hoisted(() => ({
   wake: vi.fn(),
   reset: vi.fn(),
 }));
+const mockEnrollWalletSubscriptions = vi.hoisted(() => vi.fn());
 
 vi.mock('../../../../src/services/sync/syncLifecyclePublisher', () => ({
   syncLifecyclePublisher: { publish: syncJobPrismaMocks.publishLifecycle },
@@ -120,8 +121,16 @@ vi.mock('../../../../src/services/bitcoin/sync/confirmations', () => ({
 import prisma from '../../../../src/models/prisma';
 import { syncWallet, assertChainReachable } from '../../../../src/services/bitcoin/blockchain';
 import { populateMissingTransactionFields } from '../../../../src/services/bitcoin/sync/confirmations';
-import { createSyncJobs, syncWalletJob } from '../../../../src/worker/jobs/syncJobs';
+import {
+  createSyncJobs,
+  createSyncWalletJob,
+  syncWalletJob as failClosedSyncWalletJob,
+} from '../../../../src/worker/jobs/syncJobs';
 import { resyncRepository } from '../../../../src/repositories';
+
+const syncWalletJob = createSyncWalletJob({
+  enrollWalletSubscriptions: mockEnrollWalletSubscriptions,
+});
 
 function persistedSyncState(args?: unknown, stateVersion = 1): Record<string, unknown> {
   const data = (args as { data?: Record<string, unknown> } | undefined)?.data ?? {};
@@ -182,10 +191,13 @@ describe('Sync Jobs', () => {
         },
       })
     ));
+    mockEnrollWalletSubscriptions.mockReset().mockResolvedValue(undefined);
   });
 
   it('builds the complete sync handler set from neutral dependencies', () => {
-    const jobs = createSyncJobs();
+    const jobs = createSyncJobs({
+      enrollWalletSubscriptions: mockEnrollWalletSubscriptions,
+    });
 
     expect(jobs.map(({ name }) => name)).toEqual([
       'sync-wallet',
@@ -537,6 +549,74 @@ describe('Sync Jobs', () => {
         expect.objectContaining({ transition: 'succeeded', state: completedState }),
       );
       expect(syncIntentMocks.wake).not.toHaveBeenCalled();
+    });
+
+    it('enrolls every wallet checkpoint after canonical mutations and before completion', async () => {
+      const enrollWalletSubscriptions = vi.fn().mockResolvedValue(undefined);
+      const handler = createSyncWalletJob({ enrollWalletSubscriptions });
+      syncIntentMocks.claimFresh.mockResolvedValueOnce({
+        status: 'claimed',
+        claim: { generation: 1, leaseToken: 'lease-token' },
+        state: canonicalIntentState(),
+      });
+      syncIntentMocks.complete.mockResolvedValueOnce({
+        status: 'applied',
+        state: canonicalIntentState({ processedIncrementalSyncGeneration: 1 }),
+        trailingGenerationPending: false,
+      });
+
+      await handler.handler(canonicalJob(), acquiredExecution());
+
+      expect(enrollWalletSubscriptions).toHaveBeenCalledWith(
+        'wallet-intent',
+        'mainnet',
+        expect.any(AbortSignal),
+      );
+      expect(vi.mocked(populateMissingTransactionFields))
+        .toHaveBeenCalledBefore(enrollWalletSubscriptions);
+      expect(enrollWalletSubscriptions).toHaveBeenCalledBefore(syncIntentMocks.complete);
+    });
+
+    it('fenced-releases the claim when checkpoint enrollment remains incomplete', async () => {
+      const enrollWalletSubscriptions = vi.fn()
+        .mockRejectedValue(new Error('checkpoint enrollment incomplete'));
+      const handler = createSyncWalletJob({ enrollWalletSubscriptions });
+      syncIntentMocks.claimFresh.mockResolvedValueOnce({
+        status: 'claimed',
+        claim: { generation: 1, leaseToken: 'lease-token' },
+        state: canonicalIntentState(),
+      });
+      syncIntentMocks.releaseForRetry.mockResolvedValueOnce({
+        status: 'applied',
+        state: canonicalIntentState({ syncInProgress: false, lastSyncStatus: 'retrying' }),
+      });
+
+      await expect(handler.handler(canonicalJob(), acquiredExecution()))
+        .rejects.toThrow('checkpoint enrollment incomplete');
+
+      expect(syncIntentMocks.complete).not.toHaveBeenCalled();
+      expect(syncIntentMocks.releaseForRetry).toHaveBeenCalledWith(
+        'wallet-intent',
+        { walletId: 'wallet-intent', generation: 1, leaseToken: 'lease-token' },
+        expect.objectContaining({ errorMessage: 'checkpoint enrollment incomplete' }),
+      );
+    });
+
+    it('fails closed when the metadata-only export reaches canonical enrollment', async () => {
+      syncIntentMocks.claimFresh.mockResolvedValueOnce({
+        status: 'claimed',
+        claim: { generation: 1, leaseToken: 'lease-token' },
+        state: canonicalIntentState(),
+      });
+      syncIntentMocks.releaseForRetry.mockResolvedValueOnce({
+        status: 'applied',
+        state: canonicalIntentState({ syncInProgress: false, lastSyncStatus: 'retrying' }),
+      });
+
+      await expect(failClosedSyncWalletJob.handler(canonicalJob(), acquiredExecution()))
+        .rejects.toThrow('Subscription checkpoint runtime dependency is required');
+      expect(syncIntentMocks.complete).not.toHaveBeenCalled();
+      expect(syncIntentMocks.releaseForRetry).toHaveBeenCalledOnce();
     });
 
     it('executes a v3 full resync through one immutable incremental mutation fence', async () => {

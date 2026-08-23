@@ -208,6 +208,8 @@ export const registerWalletRepositoryMutationContracts = () => {
 
     it('writes the signer, descriptor, and addresses in one transaction', async () => {
       prisma.wallet.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.wallet.findUnique.mockResolvedValueOnce({ network: 'mainnet' });
+      prisma.address.createManyAndReturn.mockResolvedValueOnce([{ id: 'descriptor-address' }]);
 
       await walletRepository.linkDeviceWithDescriptor('w1', signer, assignment);
 
@@ -226,8 +228,12 @@ export const registerWalletRepositoryMutationContracts = () => {
           fingerprint: '12345678',
         }),
       });
-      expect(prisma.address.createMany).toHaveBeenCalledWith({
+      expect(prisma.address.createManyAndReturn).toHaveBeenCalledWith({
         data: assignment.addresses,
+        select: { id: true },
+      });
+      expect(prisma.addressSubscriptionCheckpoint.createMany).toHaveBeenCalledWith({
+        data: [{ addressId: 'descriptor-address', network: 'mainnet' }],
       });
     });
 
@@ -237,12 +243,62 @@ export const registerWalletRepositoryMutationContracts = () => {
       await expect(
         walletRepository.linkDeviceWithDescriptor('w1', signer, assignment),
       ).rejects.toThrow('Wallet descriptor changed');
-      expect(prisma.address.createMany).not.toHaveBeenCalled();
+      expect(prisma.address.createManyAndReturn).not.toHaveBeenCalled();
+    });
+
+    it('rejects descriptor addresses assigned to a different wallet', async () => {
+      prisma.wallet.updateMany.mockResolvedValueOnce({ count: 1 });
+
+      await expect(walletRepository.linkDeviceWithDescriptor('w1', signer, {
+        ...assignment,
+        addresses: [{ ...assignment.addresses[0], walletId: 'w2' }],
+      })).rejects.toThrow('Descriptor address wallet identity does not match its assignment');
+
+      expect(prisma.wallet.findUnique).not.toHaveBeenCalled();
+      expect(prisma.address.createManyAndReturn).not.toHaveBeenCalled();
+    });
+
+    it('fails closed when the wallet disappears during descriptor assignment', async () => {
+      prisma.wallet.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.wallet.findUnique.mockResolvedValueOnce(null);
+
+      await expect(
+        walletRepository.linkDeviceWithDescriptor('w1', signer, assignment),
+      ).rejects.toThrow('Wallet disappeared during descriptor assignment');
+
+      expect(prisma.address.createManyAndReturn).not.toHaveBeenCalled();
+      expect(prisma.addressSubscriptionCheckpoint.createMany).not.toHaveBeenCalled();
+    });
+
+    it('rejects a wallet network that cannot own subscription checkpoints', async () => {
+      prisma.wallet.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.wallet.findUnique.mockResolvedValueOnce({ network: 'testnet' });
+
+      await expect(
+        walletRepository.linkDeviceWithDescriptor('w1', signer, assignment),
+      ).rejects.toThrow('Wallet address persistence requires a supported subscription network');
+
+      expect(prisma.address.createManyAndReturn).not.toHaveBeenCalled();
+      expect(prisma.addressSubscriptionCheckpoint.createMany).not.toHaveBeenCalled();
+    });
+
+    it('assigns descriptor metadata without issuing empty address or checkpoint writes', async () => {
+      prisma.wallet.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.wallet.findUnique.mockResolvedValueOnce({ network: 'mainnet' });
+
+      await walletRepository.linkDeviceWithDescriptor('w1', signer, {
+        ...assignment,
+        addresses: [],
+      });
+
+      expect(prisma.address.createManyAndReturn).not.toHaveBeenCalled();
+      expect(prisma.addressSubscriptionCheckpoint.createMany).not.toHaveBeenCalled();
     });
 
     it('propagates address insertion failure from the atomic signer assignment', async () => {
       prisma.wallet.updateMany.mockResolvedValueOnce({ count: 1 });
-      prisma.address.createMany.mockRejectedValueOnce(new Error('address insertion failed'));
+      prisma.wallet.findUnique.mockResolvedValueOnce({ network: 'mainnet' });
+      prisma.address.createManyAndReturn.mockRejectedValueOnce(new Error('address insertion failed'));
 
       await expect(
         walletRepository.linkDeviceWithDescriptor('w1', signer, assignment),
@@ -251,7 +307,25 @@ export const registerWalletRepositoryMutationContracts = () => {
       expect(prisma.$transaction).toHaveBeenCalledTimes(1);
       expect(prisma.walletDevice.create).toHaveBeenCalled();
       expect(prisma.wallet.updateMany).toHaveBeenCalled();
-      expect(prisma.address.createMany).toHaveBeenCalled();
+      expect(prisma.address.createManyAndReturn).toHaveBeenCalled();
+    });
+
+    it('propagates checkpoint failure from the atomic signer assignment', async () => {
+      prisma.wallet.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.wallet.findUnique.mockResolvedValueOnce({ network: 'mainnet' });
+      prisma.address.createManyAndReturn.mockResolvedValueOnce([{ id: 'uncommitted-address' }]);
+      prisma.addressSubscriptionCheckpoint.createMany.mockRejectedValueOnce(
+        new Error('checkpoint insertion failed'),
+      );
+
+      await expect(
+        walletRepository.linkDeviceWithDescriptor('w1', signer, assignment),
+      ).rejects.toThrow('checkpoint insertion failed');
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.addressSubscriptionCheckpoint.createMany).toHaveBeenCalledWith({
+        data: [{ addressId: 'uncommitted-address', network: 'mainnet' }],
+      });
     });
   });
 
@@ -279,6 +353,8 @@ export const registerWalletRepositoryMutationContracts = () => {
 
     it('assigns a missing descriptor and its derived addresses in one transaction', async () => {
       prisma.wallet.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.wallet.findUnique.mockResolvedValueOnce({ network: 'signet' });
+      prisma.address.createManyAndReturn.mockResolvedValueOnce([{ id: 'repair-address' }]);
 
       await walletRepository.assignDescriptorWithAddresses('w1', assignment);
 
@@ -295,8 +371,12 @@ export const registerWalletRepositoryMutationContracts = () => {
           fingerprint: assignment.fingerprint,
         }),
       });
-      expect(prisma.address.createMany).toHaveBeenCalledWith({
+      expect(prisma.address.createManyAndReturn).toHaveBeenCalledWith({
         data: assignment.addresses,
+        select: { id: true },
+      });
+      expect(prisma.addressSubscriptionCheckpoint.createMany).toHaveBeenCalledWith({
+        data: [{ addressId: 'repair-address', network: 'signet' }],
       });
     });
 
@@ -307,12 +387,15 @@ export const registerWalletRepositoryMutationContracts = () => {
         walletRepository.assignDescriptorWithAddresses('w1', assignment),
       ).rejects.toThrow('Wallet descriptor changed before signer binding completed');
 
-      expect(prisma.address.createMany).not.toHaveBeenCalled();
+      expect(prisma.address.createManyAndReturn).not.toHaveBeenCalled();
     });
 
     it('propagates address insertion failure from the atomic repair assignment', async () => {
       prisma.wallet.updateMany.mockResolvedValueOnce({ count: 1 });
-      prisma.address.createMany.mockRejectedValueOnce(new Error('repair address insertion failed'));
+      prisma.wallet.findUnique.mockResolvedValueOnce({ network: 'mainnet' });
+      prisma.address.createManyAndReturn.mockRejectedValueOnce(
+        new Error('repair address insertion failed'),
+      );
 
       await expect(
         walletRepository.assignDescriptorWithAddresses('w1', assignment),
@@ -320,7 +403,7 @@ export const registerWalletRepositoryMutationContracts = () => {
 
       expect(prisma.$transaction).toHaveBeenCalledTimes(1);
       expect(prisma.wallet.updateMany).toHaveBeenCalled();
-      expect(prisma.address.createMany).toHaveBeenCalled();
+      expect(prisma.address.createManyAndReturn).toHaveBeenCalled();
     });
   });
 
@@ -338,15 +421,17 @@ export const registerWalletRepositoryMutationContracts = () => {
         devices: [{ deviceId: 'd1' }],
         addresses: [{ id: 'address-1' }],
       };
-      const walletCreate = vi.fn().mockResolvedValue({ id: 'new-wallet' });
+      const walletCreate = vi.fn().mockResolvedValue({ id: 'new-wallet', network: 'mainnet' });
       const walletFindUnique = vi.fn().mockResolvedValue(created);
       const walletDeviceCreateMany = vi.fn().mockResolvedValue({ count: 1 });
-      const addressCreateMany = vi.fn().mockResolvedValue({ count: 1 });
+      const addressCreateManyAndReturn = vi.fn().mockResolvedValue([{ id: 'address-1' }]);
+      const checkpointCreateMany = vi.fn().mockResolvedValue({ count: 1 });
       prisma.$transaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => {
         const tx = {
           wallet: { create: walletCreate, findUnique: walletFindUnique },
           walletDevice: { createMany: walletDeviceCreateMany },
-          address: { createMany: addressCreateMany },
+          address: { createManyAndReturn: addressCreateManyAndReturn },
+          addressSubscriptionCheckpoint: { createMany: checkpointCreateMany },
         };
         return fn(tx);
       });
@@ -370,10 +455,14 @@ export const registerWalletRepositoryMutationContracts = () => {
       expect(result.id).toBe('new-wallet');
       expect(walletCreate).toHaveBeenCalledTimes(1);
       expect(walletDeviceCreateMany).toHaveBeenCalledTimes(1);
-      expect(addressCreateMany).toHaveBeenCalledWith({
+      expect(addressCreateManyAndReturn).toHaveBeenCalledWith({
         data: [{ walletId: 'new-wallet', ...initialAddresses[0] }],
+        select: { id: true },
       });
-      expect(addressCreateMany.mock.invocationCallOrder[0]).toBeLessThan(
+      expect(checkpointCreateMany).toHaveBeenCalledWith({
+        data: [{ addressId: 'address-1', network: 'mainnet' }],
+      });
+      expect(checkpointCreateMany.mock.invocationCallOrder[0]).toBeLessThan(
         walletFindUnique.mock.invocationCallOrder[0],
       );
     });
@@ -384,7 +473,8 @@ export const registerWalletRepositoryMutationContracts = () => {
         const tx = {
           wallet: { create: vi.fn().mockResolvedValue({ id: 'new-wallet' }), findUnique: vi.fn().mockResolvedValue(created) },
           walletDevice: { createMany: vi.fn() },
-          address: { createMany: vi.fn() },
+          address: { createManyAndReturn: vi.fn() },
+          addressSubscriptionCheckpoint: { createMany: vi.fn() },
         };
         return fn(tx);
       });
@@ -398,17 +488,18 @@ export const registerWalletRepositoryMutationContracts = () => {
 
     it('propagates initial address insertion failure before returning a wallet', async () => {
       const walletFindUnique = vi.fn();
-      const addressCreateMany = vi.fn().mockRejectedValue(
+      const addressCreateManyAndReturn = vi.fn().mockRejectedValue(
         new Error('atomic create address insertion failed'),
       );
       prisma.$transaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => {
         const tx = {
           wallet: {
-            create: vi.fn().mockResolvedValue({ id: 'new-wallet' }),
+            create: vi.fn().mockResolvedValue({ id: 'new-wallet', network: 'mainnet' }),
             findUnique: walletFindUnique,
           },
           walletDevice: { createMany: vi.fn().mockResolvedValue({ count: 0 }) },
-          address: { createMany: addressCreateMany },
+          address: { createManyAndReturn: addressCreateManyAndReturn },
+          addressSubscriptionCheckpoint: { createMany: vi.fn() },
         };
         return fn(tx);
       });
@@ -419,8 +510,41 @@ export const registerWalletRepositoryMutationContracts = () => {
         initialAddresses,
       )).rejects.toThrow('atomic create address insertion failed');
 
-      expect(addressCreateMany).toHaveBeenCalledWith({
+      expect(addressCreateManyAndReturn).toHaveBeenCalledWith({
         data: [{ walletId: 'new-wallet', ...initialAddresses[0] }],
+        select: { id: true },
+      });
+      expect(walletFindUnique).not.toHaveBeenCalled();
+    });
+
+    it('propagates initial-address checkpoint failure before returning a wallet', async () => {
+      const walletFindUnique = vi.fn();
+      const checkpointCreateMany = vi.fn().mockRejectedValue(
+        new Error('atomic create checkpoint failed'),
+      );
+      prisma.$transaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = {
+          wallet: {
+            create: vi.fn().mockResolvedValue({ id: 'new-wallet', network: 'testnet4' }),
+            findUnique: walletFindUnique,
+          },
+          walletDevice: { createMany: vi.fn().mockResolvedValue({ count: 0 }) },
+          address: {
+            createManyAndReturn: vi.fn().mockResolvedValue([{ id: 'uncommitted-address' }]),
+          },
+          addressSubscriptionCheckpoint: { createMany: checkpointCreateMany },
+        };
+        return fn(tx);
+      });
+
+      await expect(walletRepository.createWithDeviceLinks(
+        { name: 'Atomic create', type: 'single_sig', scriptType: 'native_segwit', network: 'testnet4' },
+        [],
+        initialAddresses,
+      )).rejects.toThrow('atomic create checkpoint failed');
+
+      expect(checkpointCreateMany).toHaveBeenCalledWith({
+        data: [{ addressId: 'uncommitted-address', network: 'testnet4' }],
       });
       expect(walletFindUnique).not.toHaveBeenCalled();
     });
@@ -430,7 +554,8 @@ export const registerWalletRepositoryMutationContracts = () => {
         const tx = {
           wallet: { create: vi.fn().mockResolvedValue({ id: 'ghost' }), findUnique: vi.fn().mockResolvedValue(null) },
           walletDevice: { createMany: vi.fn() },
-          address: { createMany: vi.fn() },
+          address: { createManyAndReturn: vi.fn() },
+          addressSubscriptionCheckpoint: { createMany: vi.fn() },
         };
         return fn(tx);
       });

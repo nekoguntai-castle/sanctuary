@@ -25,6 +25,7 @@ export type SubscriptionBatchPort = (
 export interface SubscriptionCheckpointEnrollmentRepositoryPort {
   findPendingSubscriptionEnrollments(options: {
     network: NetworkType;
+    walletId?: string;
     cursor?: string;
     limit?: number;
   }): Promise<SubscriptionEnrollmentCandidate[]>;
@@ -37,10 +38,12 @@ export interface SubscriptionCheckpointEnrollmentDependencies {
   repository: SubscriptionCheckpointEnrollmentRepositoryPort;
   subscribeBatch: SubscriptionBatchPort;
   now?: () => Date;
+  isActive?: () => boolean;
 }
 
 export interface EnrollSubscriptionCheckpointPageOptions {
   network: NetworkType;
+  walletId?: string;
   cursor?: string;
   limit?: number;
 }
@@ -165,6 +168,7 @@ export function createSubscriptionCheckpointEnrollment(
     const candidates = (
       await dependencies.repository.findPendingSubscriptionEnrollments({
         network: options.network,
+        ...(options.walletId !== undefined ? { walletId: options.walletId } : {}),
         ...(options.cursor !== undefined ? { cursor: options.cursor } : {}),
         limit,
       })
@@ -175,6 +179,9 @@ export function createSubscriptionCheckpointEnrollment(
       .map((candidate) => prepareCandidate(candidate, options.network))
       .filter((candidate): candidate is PreparedEnrollment => candidate !== null);
     if (prepared.length === 0) return pageResult(candidates, 0);
+    if (dependencies.isActive && !dependencies.isActive()) {
+      return pageResult(candidates, 0);
+    }
 
     let statuses: Map<string, string | null>;
     try {
@@ -186,11 +193,15 @@ export function createSubscriptionCheckpointEnrollment(
       return pageResult(candidates, 0);
     }
     if (!(statuses instanceof Map)) return pageResult(candidates, 0);
+    if (dependencies.isActive && !dependencies.isActive()) {
+      return pageResult(candidates, 0);
+    }
     const observedAt = enrollmentTime(dependencies.now ?? (() => new Date()));
 
     let enrolled = 0;
     const syncIntents = new Map<string, SubscriptionCheckpointSyncIntent>();
     for (const item of prepared) {
+      if (dependencies.isActive && !dependencies.isActive()) break;
       const observation = returnedStatus(statuses, item.candidate.address);
       if (!observation.returned) continue;
       const completion = await completeSafely(

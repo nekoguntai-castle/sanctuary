@@ -72,6 +72,9 @@ export const createWorkerTestHarness = async (
     start: vi.fn(async () => undefined),
     stop: vi.fn(async () => undefined),
     reconcileSubscriptions: vi.fn(async () => undefined),
+    refreshSubscriptionStatusPage: vi.fn(async () => ({ scanned: 0 })),
+    isSubscriptionOwner: vi.fn(() => true),
+    subscribeCheckpointAddresses: vi.fn(async () => new Map()),
     isConnected: vi.fn(() => true),
     getHealthMetrics: vi.fn(() => ({
       totalSubscribedAddresses: 0,

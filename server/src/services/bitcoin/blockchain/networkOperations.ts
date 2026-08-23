@@ -126,19 +126,6 @@ export async function getTransactionDetails(
 }
 
 /**
- * Monitor address for new transactions
- * Subscribe to address and get notifications
- */
-export async function monitorAddress(
-  address: string,
-  network: BitcoinNetwork
-): Promise<string | null> {
-  const client = await getNodeClient(network);
-
-  return client.subscribeAddress(address);
-}
-
-/**
  * Validate and check if address is used
  */
 export async function checkAddress(

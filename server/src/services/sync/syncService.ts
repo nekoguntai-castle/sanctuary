@@ -11,35 +11,17 @@ import { walletRepository } from '../../repositories';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { getConfig } from '../../config';
-import { releaseLock, withLock } from '../../infrastructure';
+import { releaseLock } from '../../infrastructure';
 import { getWorkerHealthStatus } from '../workerHealth';
 import { syncPollingModeTransitions } from '../../observability/metrics';
 import type { SyncExecutionOwner, SyncPriority } from '@sanctuary/shared/constants/sync';
-import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 import type { SyncState, SyncResult, SyncHealthMetrics, PollingMode } from './types';
-import { SubscriptionAuthorityRetryController } from './lockAuthorityRecovery';
 import { classifyWalletSyncFailure } from './failureClassification';
 import { clearStuckSyncIfAuthorized } from './staleWalletChecker';
 import {
   refreshAllPendingConfirmations,
-  refreshPendingConfirmations,
   type PendingConfirmationRefreshResult,
 } from './confirmationUpdater';
-import { syncIntentAdmission } from './syncIntentAdmission';
-import {
-  setupRealTimeSubscriptions as doSetupRealTimeSubscriptions,
-  teardownRealTimeSubscriptions as doTeardownRealTimeSubscriptions,
-  releaseSubscriptionLock as doReleaseSubscriptionLock,
-  unsubscribeWalletAddresses as doUnsubscribeWalletAddresses,
-  subscribeNewWalletAddresses as doSubscribeNewWalletAddresses,
-  subscribeWalletAddresses as doSubscribeWalletAddresses,
-  reconcileAddressToWalletMap as doReconcileAddressToWalletMap,
-  subscribeAllWalletAddresses as doSubscribeAllWalletAddresses,
-  handleNewBlock as doHandleNewBlock,
-  handleAddressActivity as doHandleAddressActivity,
-  startSubscriptionLockRefresh as doStartSubscriptionLockRefresh,
-  stopSubscriptionLockRefresh as doStopSubscriptionLockRefresh,
-} from './subscriptionManager';
 
 const log = createLogger('SYNC:SVC');
 
@@ -47,11 +29,8 @@ class SyncService {
   private static instance: SyncService;
   private syncInterval: NodeJS.Timeout | null = null;
   private confirmationInterval: NodeJS.Timeout | null = null;
-  // Periodic reconciliation interval for addressToWalletMap cleanup
-  private reconciliationInterval: NodeJS.Timeout | null = null;
   // Polls worker health to dynamically start/stop in-process intervals
   private workerHealthPollTimer: NodeJS.Timeout | null = null;
-  private readonly subscriptionAuthorityRetry: SubscriptionAuthorityRetryController;
 
   /**
    * Shared mutable state accessed by sub-modules.
@@ -62,25 +41,14 @@ class SyncService {
     syncQueue: [],
     activeSyncs: new Set(),
     activeLocks: new Map(),
-    addressToWalletMap: new Map(),
     pendingRetries: new Map(),
-    subscriptionLock: null,
-    subscriptionLockRefresh: null,
     subscriptionsEnabled: false,
     subscriptionOwnership: 'disabled',
     subscribedToHeaders: false,
     pollingMode: 'in-process',
   };
 
-  private constructor() {
-    this.subscriptionAuthorityRetry = new SubscriptionAuthorityRetryController({
-      isRunning: () => this.state.isRunning,
-      getOwnership: () => this.state.subscriptionOwnership,
-      setup: () => this.setupRealTimeSubscriptions(),
-      teardown: () => this.teardownRealTimeSubscriptions(),
-      release: () => this.releaseSubscriptionLock(),
-    });
-  }
+  private constructor() {}
 
   static getInstance(): SyncService {
     if (!SyncService.instance) {
@@ -98,15 +66,6 @@ class SyncService {
 
   get activeSyncs(): typeof this.state.activeSyncs { return this.state.activeSyncs; }
   set activeSyncs(v: typeof this.state.activeSyncs) { this.state.activeSyncs = v; }
-
-  get addressToWalletMap(): typeof this.state.addressToWalletMap { return this.state.addressToWalletMap; }
-  set addressToWalletMap(v: typeof this.state.addressToWalletMap) { this.state.addressToWalletMap = v; }
-
-  get subscriptionLock(): typeof this.state.subscriptionLock { return this.state.subscriptionLock; }
-  set subscriptionLock(v: typeof this.state.subscriptionLock) { this.state.subscriptionLock = v; }
-
-  get subscriptionLockRefresh(): typeof this.state.subscriptionLockRefresh { return this.state.subscriptionLockRefresh; }
-  set subscriptionLockRefresh(v: typeof this.state.subscriptionLockRefresh) { this.state.subscriptionLockRefresh = v; }
 
   get subscriptionsEnabled(): boolean { return this.state.subscriptionsEnabled; }
   set subscriptionsEnabled(v: boolean) { this.state.subscriptionsEnabled = v; }
@@ -134,6 +93,9 @@ class SyncService {
     // Get config values
     const syncConfig = getConfig().sync;
     this.state.subscriptionsEnabled = syncConfig.electrumSubscriptionsEnabled;
+    this.state.subscriptionOwnership = this.state.subscriptionsEnabled
+      ? 'external'
+      : 'disabled';
 
     // Decide initial polling mode based on worker health.
     // If the worker is healthy it owns stale-wallet checks and confirmation updates;
@@ -147,26 +109,6 @@ class SyncService {
       this.startPollingIntervals();
       log.info('[SYNC] Worker unhealthy — starting in-process polling');
     }
-
-    // Set up real-time subscriptions (async, don't block startup)
-    this.subscriptionAuthorityRetry.start();
-
-    // Periodic reconciliation of addressToWalletMap (every hour)
-    // Rebuilds map from database to clean up entries for deleted wallets
-    // Always runs — worker has no in-memory address map
-    // Uses distributed lock so only one API instance runs reconciliation at a time
-    this.reconciliationInterval = setInterval(() => {
-      withLock('sync:reconciliation', 5 * 60 * 1000, async () => {
-        await this.reconcileAddressToWalletMap();
-      }).then(result => {
-        if (!result.success) {
-          log.debug('[SYNC] Reconciliation skipped — another instance holds the lock');
-        }
-      }).catch(err => {
-        log.error('[SYNC] Address map reconciliation failed', { error: getErrorMessage(err) });
-      });
-    }, 60 * 60 * 1000); // 1 hour
-    this.reconciliationInterval.unref?.();
 
     // Poll worker health and start/stop intervals dynamically
     this.workerHealthPollTimer = setInterval(() => {
@@ -196,20 +138,10 @@ class SyncService {
       this.confirmationInterval = null;
     }
 
-    if (this.reconciliationInterval) {
-      clearInterval(this.reconciliationInterval);
-      this.reconciliationInterval = null;
-    }
-
     if (this.workerHealthPollTimer) {
       clearInterval(this.workerHealthPollTimer);
       this.workerHealthPollTimer = null;
     }
-
-    this.subscriptionAuthorityRetry.stop();
-
-    await this.teardownRealTimeSubscriptions();
-    await this.releaseSubscriptionLock();
 
     // Cancel all pending retry timers
     if (this.state.pendingRetries.size > 0) {
@@ -256,7 +188,7 @@ class SyncService {
       isRunning: this.state.isRunning,
       queueLength: this.state.syncQueue.length,
       activeSyncs: this.state.activeSyncs.size,
-      subscribedAddresses: this.state.addressToWalletMap.size,
+      subscribedAddresses: 0,
       subscriptionsEnabled: this.state.subscriptionsEnabled,
       subscriptionOwnership: this.state.subscriptionOwnership,
       pollingMode: this.state.pollingMode,
@@ -331,102 +263,9 @@ class SyncService {
     throw new Error('Immediate wallet sync is retired; use durable sync intent admission');
   }
 
-  /**
-   * Unsubscribe all addresses for a wallet (call when wallet is deleted).
-   * Prevents memory leak by cleaning up the addressToWalletMap.
-   */
-  async unsubscribeWalletAddresses(walletId: string): Promise<void> {
-    return doUnsubscribeWalletAddresses(this.state, walletId);
-  }
-
-  /**
-   * Subscribe to new addresses for a wallet (called when wallet is created/imported).
-   */
-  async subscribeNewWalletAddresses(walletId: string): Promise<void> {
-    return doSubscribeNewWalletAddresses(this.state, walletId);
-  }
-
-  /**
-   * Subscribe to Electrum address notifications for a wallet.
-   * This enables real-time updates when transactions are received.
-   */
-  async subscribeWalletAddresses(walletId: string): Promise<void> {
-    return doSubscribeWalletAddresses(walletId);
-  }
-
-  private async setupRealTimeSubscriptions(): Promise<void> {
-    return doSetupRealTimeSubscriptions(
-      this.state,
-      (walletId) => this.requestAddressActivitySync(walletId),
-      (network) => this.updateNetworkConfirmations(network),
-    );
-  }
-
-  private requestAddressActivitySync(walletId: string): void {
-    syncIntentAdmission.request(walletId).then(result => {
-      if (result.status === 'blocked'
-        || (('wakeup' in result) && result.wakeup === 'unavailable')) {
-        log.warn('[SYNC] Address activity wake-up deferred to recovery', {
-          walletId,
-          status: result.status,
-        });
-      }
-    }).catch(error => {
-      log.error('[SYNC] Failed to persist address activity sync intent', {
-        walletId,
-        error: getErrorMessage(error),
-      });
-    });
-  }
-
-  private async teardownRealTimeSubscriptions(): Promise<void> {
-    return doTeardownRealTimeSubscriptions(this.state);
-  }
-
-  private async releaseSubscriptionLock(): Promise<void> {
-    return doReleaseSubscriptionLock(this.state);
-  }
-
   /** @deprecated Inline execution locks are owned only by the canonical worker. */
   public async acquireSyncLock(_walletId: string): Promise<boolean> {
     return false;
-  }
-
-  public async subscribeAllWalletAddresses(): Promise<void> {
-    return doSubscribeAllWalletAddresses(this.state);
-  }
-
-  private async reconcileAddressToWalletMap(): Promise<void> {
-    return doReconcileAddressToWalletMap(this.state);
-  }
-
-  public async handleNewBlock(block: { height: number; hex: string }): Promise<void> {
-    return doHandleNewBlock(
-      this.state,
-      block,
-      (network) => this.updateNetworkConfirmations(network),
-    );
-  }
-
-  public async handleAddressActivity(activity: { scriptHash: string; address?: string; status: string }): Promise<void> {
-    return doHandleAddressActivity(
-      this.state,
-      activity,
-      (walletId) => this.requestAddressActivitySync(walletId),
-    );
-  }
-
-  public startSubscriptionLockRefresh(): void {
-    doStartSubscriptionLockRefresh(
-      this.state,
-      /* v8 ignore next -- delegate callback; confirmation refresh behavior is covered separately */
-      (network) => this.updateNetworkConfirmations(network),
-      () => this.teardownRealTimeSubscriptions(),
-    );
-  }
-
-  public stopSubscriptionLockRefresh(): void {
-    doStopSubscriptionLockRefresh(this.state);
   }
 
   /**
@@ -564,10 +403,6 @@ class SyncService {
    */
   private async updateAllConfirmations(): Promise<void> {
     return this.updateConfirmations(() => refreshAllPendingConfirmations());
-  }
-
-  private async updateNetworkConfirmations(network: NetworkType): Promise<void> {
-    return this.updateConfirmations(() => refreshPendingConfirmations(network));
   }
 
   private async updateConfirmations(

@@ -21,12 +21,6 @@ import {
   broadcastSyncStatus,
   broadcastWalletLog,
 } from './broadcasts';
-import {
-  subscribeToBlocks,
-  subscribeToAddress,
-  subscribeWallet,
-  unsubscribeWalletAddresses,
-} from './subscriptions';
 import type {
   TransactionNotification,
   BalanceUpdate,
@@ -42,7 +36,6 @@ import type {
 const log = createLogger('WS:NOTIFY_SVC');
 
 export class NotificationService {
-  private subscribedAddresses: Set<string> = new Set();
   private isRunning: boolean = false;
 
   /**
@@ -57,9 +50,6 @@ export class NotificationService {
     this.isRunning = true;
     log.debug('Starting notification service...');
 
-    // Subscribe to Electrum blockchain headers for new blocks
-    await subscribeToBlocks();
-
     log.debug('Notification service started');
   }
 
@@ -69,28 +59,6 @@ export class NotificationService {
   stop() {
     this.isRunning = false;
     log.debug('Notification service stopped');
-  }
-
-  /**
-   * Unsubscribe all addresses for a wallet (call when wallet is deleted)
-   * Prevents memory leak by cleaning up the subscribedAddresses set
-   */
-  async unsubscribeWalletAddresses(walletId: string): Promise<void> {
-    await unsubscribeWalletAddresses(walletId, this.subscribedAddresses);
-  }
-
-  /**
-   * Subscribe to address updates
-   */
-  async subscribeToAddress(address: string, walletId: string) {
-    await subscribeToAddress(address, walletId, this.subscribedAddresses);
-  }
-
-  /**
-   * Subscribe wallet to real-time updates
-   */
-  async subscribeWallet(walletId: string) {
-    await subscribeWallet(walletId, this.subscribedAddresses);
   }
 
   /**

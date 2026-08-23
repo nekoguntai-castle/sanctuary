@@ -119,4 +119,94 @@ export function registerElectrumConnectionEdgeDataContracts(): void {
 
     expect(newBlock).toHaveBeenCalledWith({ height: 101, hex: 'abcd' });
   });
+
+  it('emits subscription responses before later notifications from the same wire buffer', async () => {
+    const socket = new FakeSocket();
+    const client = new ElectrumClient({
+      host: 'localhost',
+      port: 50001,
+      protocol: 'tcp',
+    });
+    const scriptHash = 'a'.repeat(64);
+    const olderStatus = 'b'.repeat(64);
+    const newerStatus = 'c'.repeat(64);
+    (client as any).socket = socket;
+    (client as any).connected = true;
+    (client as any).scriptHashToAddress.set(scriptHash, 'bc1qordered');
+    const observations: string[] = [];
+    client.on('addressActivity', ({ status }: { status: string }) => {
+      observations.push(status);
+    });
+    socket.write.mockImplementationOnce((message: string) => {
+      const { id } = JSON.parse(message.trim());
+      (client as any).handleData(Buffer.from([
+        JSON.stringify({ jsonrpc: '2.0', id, result: olderStatus }),
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: null,
+          method: 'blockchain.scripthash.subscribe',
+          params: [scriptHash, newerStatus],
+        }),
+        '',
+      ].join('\n')));
+    });
+
+    await expect((client as any).batchRequest([{
+      method: 'blockchain.scripthash.subscribe',
+      params: [scriptHash],
+    }])).resolves.toEqual([olderStatus]);
+    expect(observations).toEqual([olderStatus, newerStatus]);
+  });
+
+  it('normalizes null subscription responses and ignores missing script-hash metadata', async () => {
+    const socket = new FakeSocket();
+    const client = new ElectrumClient({ host: 'localhost', port: 50001, protocol: 'tcp' });
+    (client as any).socket = socket;
+    (client as any).connected = true;
+    const activity = vi.fn();
+    client.on('addressActivity', activity);
+    socket.write.mockImplementation((message: string) => {
+      const requests = message.trim().split('\n').map((line) => JSON.parse(line));
+      (client as any).handleData(Buffer.from(requests.map(({ id }: { id: number }) => (
+        JSON.stringify({ jsonrpc: '2.0', id, result: null })
+      )).join('\n') + '\n'));
+    });
+
+    await (client as any).batchRequest([
+      { method: 'blockchain.scripthash.subscribe', params: ['b'.repeat(64)] },
+      { method: 'blockchain.scripthash.subscribe', params: [] },
+    ]);
+
+    expect(activity).toHaveBeenCalledOnce();
+    expect(activity).toHaveBeenCalledWith(expect.objectContaining({
+      scriptHash: 'b'.repeat(64), status: null,
+    }));
+  });
+
+  it('ignores malformed subscription response and notification statuses', async () => {
+    const socket = new FakeSocket();
+    const client = new ElectrumClient({ host: 'localhost', port: 50001, protocol: 'tcp' });
+    const scriptHash = 'd'.repeat(64);
+    (client as any).socket = socket;
+    (client as any).connected = true;
+    const activity = vi.fn();
+    client.on('addressActivity', activity);
+    socket.write.mockImplementation((message: string) => {
+      const { id } = JSON.parse(message.trim());
+      (client as any).handleData(Buffer.from([
+        JSON.stringify({ jsonrpc: '2.0', id, result: { malformed: true } }),
+        JSON.stringify({
+          jsonrpc: '2.0', id: null, method: 'blockchain.scripthash.subscribe',
+          params: [scriptHash, 'too-short'],
+        }),
+        '',
+      ].join('\n')));
+    });
+
+    await (client as any).batchRequest([{
+      method: 'blockchain.scripthash.subscribe', params: [scriptHash],
+    }]);
+
+    expect(activity).not.toHaveBeenCalled();
+  });
 }

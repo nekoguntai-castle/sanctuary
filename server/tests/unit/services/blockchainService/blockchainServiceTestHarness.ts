@@ -21,7 +21,14 @@ export const mockPrisma = {
     findMany: vi.fn<any>(),
     updateMany: vi.fn<any>(),
     createMany: vi.fn<any>(),
+    createManyAndReturn: vi.fn<(args: { data: object[] }) => Promise<object[]>>()
+      .mockImplementation(({ data }) => (
+      Promise.resolve(data.map((row, index) => ({ ...row, id: `address-${index}` })))
+      )),
     update: vi.fn<any>(),
+  },
+  addressSubscriptionCheckpoint: {
+    createMany: vi.fn<any>().mockResolvedValue({ count: 0 }),
   },
   transaction: {
     findUnique: vi.fn<any>(),

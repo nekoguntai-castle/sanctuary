@@ -47,6 +47,11 @@ interface CanonicalIncrementalSyncDependencies {
     transition: PersistedSyncTransition,
   ) => Promise<void>;
   retryState: (job: Job<SyncWalletJobData>) => { nextRetryAt: Date };
+  enrollWalletSubscriptions: (
+    walletId: string,
+    network: string,
+    signal: AbortSignal,
+  ) => Promise<void>;
 }
 
 class LostIncrementalSyncFenceError extends Error {
@@ -182,6 +187,11 @@ export async function executeCanonicalIncrementalSync(
       async (signal) => {
         const syncResult = await syncWallet(data.walletId, 0, signal, fence);
         await populateMissingTransactionFields(data.walletId, signal, undefined, fence);
+        await dependencies.enrollWalletSubscriptions(
+          data.walletId,
+          walletNetwork,
+          signal,
+        );
         return syncResult;
       },
       getConfig().sync.maxSyncDurationMs,

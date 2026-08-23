@@ -92,7 +92,10 @@ export class MockElectrumClient extends EventEmitter {
   getServerVersion = vi.fn().mockResolvedValue({ server: 'test', protocol: '1.4' });
   subscribeHeaders = vi.fn().mockResolvedValue({ height: 100000, hex: '00'.repeat(80) });
   subscribeAddress = vi.fn().mockResolvedValue('status');
-  subscribeAddressBatch = vi.fn().mockResolvedValue([]);
+  subscribeAddressBatch = vi.fn().mockImplementation(async (addresses: string[]) => (
+    new Map(addresses.map(address => [address, 'status']))
+  ));
+  disconnect = vi.fn();
 }
 
 export let manager: ElectrumSubscriptionManager;

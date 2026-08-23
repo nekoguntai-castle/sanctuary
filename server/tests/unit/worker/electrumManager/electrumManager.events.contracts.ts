@@ -8,6 +8,8 @@ import prisma from '../../../../src/models/prisma';
 import { acquireLock } from '../../../../src/infrastructure';
 import { getAddressSubscriptionKey } from '../../../../src/worker/electrumManager/types';
 import { hashBlockHeader } from '../../../../src/services/bitcoin/networkIdentity';
+import { setCachedBlockHeight } from '../../../../src/services/bitcoin/blockchain';
+import { setupEventHandlers } from '../../../../src/worker/electrumManager/networkConnection';
 
 const BLOCK_HEADER = 'a'.repeat(160);
 const SAME_PARENT_REPLACEMENT_HEADER = `${'a'.repeat(64)}${'b'.repeat(96)}`;
@@ -45,7 +47,29 @@ export function registerElectrumManagerEventContracts() {
       expect(hashBlockHeader(SAME_PARENT_REPLACEMENT_HEADER)).not.toBe(
         hashBlockHeader(BLOCK_HEADER),
       );
-      expect(mockCallbacks.onAddressActivity).toHaveBeenCalledWith('mainnet', 'wallet1', 'addr1');
+      expect(mockCallbacks.onAddressActivity).toHaveBeenCalledWith('mainnet', 'hash', 'updated');
+    });
+
+    it('ignores block and address events after the manager stops running', () => {
+      const state = {
+        network: 'mainnet' as const,
+        client: mockClient as any,
+        connected: true,
+        subscribedToHeaders: true,
+        subscribedAddresses: new Set<string>(),
+        lastBlockHeight: 100,
+        reconnectTimer: null,
+        reconnectAttempts: 0,
+      };
+      setupEventHandlers(state, new Map(), mockCallbacks, () => false, vi.fn());
+
+      mockClient.emit('newBlock', { height: 101, hex: BLOCK_HEADER });
+      mockClient.emit('addressActivity', { scriptHash: 'ignored', status: null });
+
+      expect(state.lastBlockHeight).toBe(100);
+      expect(setCachedBlockHeight).not.toHaveBeenCalled();
+      expect(mockCallbacks.onNewBlock).not.toHaveBeenCalled();
+      expect(mockCallbacks.onAddressActivity).not.toHaveBeenCalled();
     });
   });
 }

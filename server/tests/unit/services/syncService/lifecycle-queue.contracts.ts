@@ -4,10 +4,8 @@ import {
   mockAcquireLock,
   mockPrismaClient,
   mockReleaseLock,
-  mockWithLock,
   type SyncServiceTestContext,
 } from './syncServiceTestHarness';
-import { LockAuthorityUnavailableError } from '../../../../src/infrastructure';
 
 export function registerSyncServiceLifecycleQueueTests(context: SyncServiceTestContext): void {
   describe('singleton pattern', () => {
@@ -20,15 +18,6 @@ export function registerSyncServiceLifecycleQueueTests(context: SyncServiceTestC
   });
 
   describe('state getters', () => {
-    it('should expose subscriptionLockRefresh via getter', () => {
-      expect(context.syncService.subscriptionLockRefresh).toBeNull();
-      const fakeTimer = setInterval(() => {}, 99999);
-      context.syncService.subscriptionLockRefresh = fakeTimer;
-      expect(context.syncService.subscriptionLockRefresh).toBe(fakeTimer);
-      clearInterval(fakeTimer);
-      context.syncService.subscriptionLockRefresh = null;
-    });
-
     it('should expose subscriptionsEnabled via getter', () => {
       expect(context.syncService.subscriptionsEnabled).toBe(false);
       context.syncService.subscriptionsEnabled = true;
@@ -61,7 +50,6 @@ export function registerSyncServiceLifecycleQueueTests(context: SyncServiceTestC
 
     it('clears pending compatibility state and contains lock-release failures on stop', async () => {
       await context.syncService.start();
-      context.syncService['state'].subscriptionLock = null;
       mockReleaseLock.mockClear();
       const retryTimer = setTimeout(() => undefined, 60_000);
       context.syncService['state'].pendingRetries.set('wallet-retry', retryTimer);
@@ -105,177 +93,23 @@ export function registerSyncServiceLifecycleQueueTests(context: SyncServiceTestC
       });
     });
 
-    it('invokes periodic maintenance callbacks after start', async () => {
+    it('invokes only compatibility polling callbacks after start', async () => {
       const staleSpy = vi.spyOn(context.syncService as any, 'checkAndQueueStaleSyncs').mockResolvedValue(undefined);
       const confirmationsSpy = vi.spyOn(context.syncService as any, 'updateAllConfirmations').mockResolvedValue(undefined);
-      const reconcileSpy = vi.spyOn(context.syncService as any, 'reconcileAddressToWalletMap').mockResolvedValue(undefined);
-      vi.spyOn(context.syncService as any, 'setupRealTimeSubscriptions').mockResolvedValue(undefined);
 
       await context.syncService.start();
       await vi.advanceTimersByTimeAsync(60_000);
-      await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
 
       expect(staleSpy).toHaveBeenCalled();
       expect(confirmationsSpy).toHaveBeenCalled();
-      expect(reconcileSpy).toHaveBeenCalled();
     });
 
-    it('handles reconciliation interval callback errors', async () => {
-      vi.spyOn(context.syncService as any, 'setupRealTimeSubscriptions').mockResolvedValue(undefined);
-      const reconcileSpy = vi
-        .spyOn(context.syncService as any, 'reconcileAddressToWalletMap')
-        .mockRejectedValue(new Error('reconcile failed'));
-
+    it('leaves subscription ownership external without acquiring API authority', async () => {
       await context.syncService.start();
-      await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
-
-      expect(reconcileSpy).toHaveBeenCalled();
-    });
-
-    it('skips reconciliation when another instance holds the lock', async () => {
-      vi.spyOn(context.syncService as any, 'setupRealTimeSubscriptions').mockResolvedValue(undefined);
-      const reconcileSpy = vi
-        .spyOn(context.syncService as any, 'reconcileAddressToWalletMap')
-        .mockResolvedValue(undefined);
-
-      await context.syncService.start();
-
-      // Make the next withLock call return { success: false } to simulate lock contention
-      mockWithLock.mockImplementationOnce(async () => ({ success: false }));
-
-      await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
-
-      // reconcileAddressToWalletMap should NOT have been called because the lock was not acquired
-      expect(reconcileSpy).not.toHaveBeenCalled();
-    });
-
-    it('handles async setupRealTimeSubscriptions rejection during start', async () => {
-      vi.spyOn(context.syncService as any, 'setupRealTimeSubscriptions').mockRejectedValue(new Error('setup failed'));
-
-      await context.syncService.start();
-      await Promise.resolve();
-      await Promise.resolve();
 
       expect(context.syncService['isRunning']).toBe(true);
-    });
-
-    it('retries unavailable subscription authority after recovery', async () => {
-      mockAcquireLock
-        .mockRejectedValueOnce(new LockAuthorityUnavailableError('acquire'))
-        .mockResolvedValueOnce(null);
-
-      await context.syncService.start();
-      await Promise.resolve();
-      await Promise.resolve();
-
-      expect(context.syncService['subscriptionOwnership']).toBe('unavailable');
-
-      await vi.advanceTimersByTimeAsync(15_000);
-
-      expect(mockAcquireLock).toHaveBeenCalledTimes(2);
       expect(context.syncService['subscriptionOwnership']).toBe('external');
-    });
-
-    it('cancels unavailable subscription authority retry during stop', async () => {
-      mockAcquireLock.mockRejectedValueOnce(
-        new LockAuthorityUnavailableError('acquire'),
-      );
-
-      await context.syncService.start();
-      await Promise.resolve();
-      await Promise.resolve();
-      await context.syncService.stop();
-      await vi.advanceTimersByTimeAsync(15_000);
-
-      expect(mockAcquireLock).toHaveBeenCalledOnce();
-    });
-
-    it('cleans up subscription setup that recovers during shutdown', async () => {
-      let resolveRetry: (() => void) | undefined;
-      const retry = new Promise<void>((resolve) => {
-        resolveRetry = resolve;
-      });
-      const setupSpy = vi
-        .spyOn(context.syncService as any, 'setupRealTimeSubscriptions')
-        .mockImplementationOnce(async () => {
-          context.syncService['subscriptionOwnership'] = 'unavailable';
-          throw new LockAuthorityUnavailableError('acquire');
-        })
-        .mockReturnValueOnce(retry);
-      const teardownSpy = vi
-        .spyOn(context.syncService as any, 'teardownRealTimeSubscriptions')
-        .mockResolvedValue(undefined);
-      const releaseSpy = vi
-        .spyOn(context.syncService as any, 'releaseSubscriptionLock')
-        .mockResolvedValue(undefined);
-
-      await context.syncService.start();
-      await Promise.resolve();
-      await Promise.resolve();
-      await vi.advanceTimersByTimeAsync(15_000);
-      await context.syncService.stop();
-      resolveRetry?.();
-      await Promise.resolve();
-      await Promise.resolve();
-
-      expect(setupSpy).toHaveBeenCalledTimes(2);
-      expect(teardownSpy).toHaveBeenCalledTimes(2);
-      expect(releaseSpy).toHaveBeenCalledTimes(2);
-    });
-
-    it('cleans up initial subscription setup that finishes during shutdown', async () => {
-      let resolveSetup: (() => void) | undefined;
-      const setup = new Promise<void>((resolve) => {
-        resolveSetup = resolve;
-      });
-      const setupSpy = vi
-        .spyOn(context.syncService as any, 'setupRealTimeSubscriptions')
-        .mockReturnValueOnce(setup);
-      const teardownSpy = vi
-        .spyOn(context.syncService as any, 'teardownRealTimeSubscriptions')
-        .mockResolvedValue(undefined);
-      const releaseSpy = vi
-        .spyOn(context.syncService as any, 'releaseSubscriptionLock')
-        .mockResolvedValue(undefined);
-
-      await context.syncService.start();
-      await context.syncService.stop();
-      resolveSetup?.();
-      await Promise.resolve();
-      await Promise.resolve();
-
-      expect(setupSpy).toHaveBeenCalledOnce();
-      expect(teardownSpy).toHaveBeenCalledTimes(2);
-      expect(releaseSpy).toHaveBeenCalledTimes(2);
-    });
-
-    it('reacquires subscription authority after a rapid stop and start', async () => {
-      let resolveStaleSetup: (() => void) | undefined;
-      const staleSetup = new Promise<void>((resolve) => {
-        resolveStaleSetup = resolve;
-      });
-      const setupSpy = vi
-        .spyOn(context.syncService as any, 'setupRealTimeSubscriptions')
-        .mockReturnValueOnce(staleSetup)
-        .mockResolvedValueOnce(undefined);
-      const teardownSpy = vi
-        .spyOn(context.syncService as any, 'teardownRealTimeSubscriptions')
-        .mockResolvedValue(undefined);
-      const releaseSpy = vi
-        .spyOn(context.syncService as any, 'releaseSubscriptionLock')
-        .mockResolvedValue(undefined);
-
-      await context.syncService.start();
-      await context.syncService.stop();
-      await context.syncService.start();
-      resolveStaleSetup?.();
-      await vi.advanceTimersByTimeAsync(0);
-      await Promise.resolve();
-
-      expect(setupSpy).toHaveBeenCalledTimes(2);
-      expect(teardownSpy).toHaveBeenCalledTimes(2);
-      expect(releaseSpy).toHaveBeenCalledTimes(2);
-      expect(context.syncService['isRunning']).toBe(true);
+      expect(mockAcquireLock).not.toHaveBeenCalled();
     });
   });
 

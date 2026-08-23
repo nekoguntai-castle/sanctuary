@@ -5,9 +5,7 @@ import {
   mockHookExecuteAfter,
   mockLogError,
   mockLogWarn,
-  mockNotificationUnsubscribeWalletAddresses,
   mockPrismaClient,
-  mockSyncUnsubscribeWalletAddresses,
 } from './walletTestHarness';
 import { ForbiddenError } from '../../../../src/errors';
 import {
@@ -229,13 +227,11 @@ export function registerWalletMutationMaintenanceTests(): void {
       expect(mockPrismaClient.wallet.update).not.toHaveBeenCalled();
     });
 
-    it('deletes wallet after unsubscribing realtime listeners', async () => {
+    it('deletes a wallet without creating API-side subscription ownership', async () => {
       mockPrismaClient.walletUser.findFirst.mockResolvedValueOnce({ role: 'owner' });
 
       await deleteWallet('wallet-1', 'owner-1');
 
-      expect(mockSyncUnsubscribeWalletAddresses).toHaveBeenCalledWith('wallet-1');
-      expect(mockNotificationUnsubscribeWalletAddresses).toHaveBeenCalledWith('wallet-1');
       expect(mockPrismaClient.wallet.delete).toHaveBeenCalledWith({ where: { id: 'wallet-1' } });
     });
 
@@ -262,8 +258,6 @@ export function registerWalletMutationMaintenanceTests(): void {
 
       await expect(deleteWallet('wallet-1', 'signer-1')).rejects.toThrow('Only wallet owners can delete wallet');
       expect(mockPrismaClient.wallet.delete).not.toHaveBeenCalled();
-      expect(mockSyncUnsubscribeWalletAddresses).not.toHaveBeenCalled();
-      expect(mockNotificationUnsubscribeWalletAddresses).not.toHaveBeenCalled();
     });
 
     const signerFixture = (path: string) => {

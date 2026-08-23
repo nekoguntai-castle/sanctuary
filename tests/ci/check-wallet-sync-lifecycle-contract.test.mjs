@@ -123,6 +123,7 @@ function compareInventorySymbols(left, right) {
 
 function fixtureContract() {
   const contract = structuredClone(liveContract);
+  contract.inventory.addressCreationAuthorities = [];
   contract.inventory.rawQueueMutations = [];
   contract.inventory.producerCallsites = [{
     sink: 'admission.recover',
@@ -145,6 +146,13 @@ function fixtureContract() {
     count: 1,
     trigger: 'explicit_user_request',
     role: 'canonical_manual_api_admission',
+  }, {
+    sink: 'admission.wake',
+    file: 'server/src/worker/subscriptionCheckpointRuntime.ts',
+    enclosingFunction: 'createProductionSubscriptionCheckpointRuntime',
+    count: 1,
+    trigger: 'subscription_checkpoint_comparison',
+    role: 'post_commit_exact_generation_wakeup',
   }, {
     sink: 'admission.wakeReservedFullResync',
     file: 'server/src/worker/walletSyncRecoveryRuntime.ts',
@@ -202,6 +210,10 @@ function fixtureContract() {
       file: 'server/src/services/workerSyncQueue.ts',
       role: 'dormant_v2_wakeup_adapter_and_retained_replay_clock_reset',
     }] },
+    { symbol: 'addressSubscriptionCheckpoint', entries: [{
+      file: 'server/src/repositories/subscriptionCheckpointRepository.ts',
+      role: 'canonical_checkpoint_repository',
+    }] },
     { symbol: 'completeSubscriptionEnrollment', entries: [{
       file: 'server/src/repositories/index.ts',
       role: 'neutral_repository_barrel_export',
@@ -210,11 +222,28 @@ function fixtureContract() {
       role: 'canonical_atomic_checkpoint_intent_writer',
     }, {
       file: 'server/src/services/sync/subscriptionCheckpointEnrollment.ts',
-      role: 'dormant_subscription_enrollment_coordinator',
+      role: 'bounded_subscription_enrollment_coordinator',
+    }, {
+      file: 'server/src/worker/subscriptionCheckpointRuntime.ts',
+      role: 'worker_owned_checkpoint_runtime_composition',
+    }] },
+    { symbol: 'createProductionSubscriptionCheckpointRuntime', entries: [{
+      file: 'server/src/worker.ts',
+      role: 'sole_subscription_runtime_consumer',
+    }, {
+      file: 'server/src/worker/subscriptionCheckpointRuntime.ts',
+      role: 'production_subscription_runtime_factory',
     }] },
     { symbol: 'createSubscriptionCheckpointEnrollment', entries: [{
       file: 'server/src/services/sync/subscriptionCheckpointEnrollment.ts',
-      role: 'dormant_subscription_enrollment_coordinator_definition',
+      role: 'bounded_subscription_enrollment_coordinator_definition',
+    }, {
+      file: 'server/src/worker/subscriptionCheckpointRuntime.ts',
+      role: 'worker_owned_runtime_coordinator_composition',
+    }] },
+    { symbol: 'createSubscriptionCheckpointRuntime', entries: [{
+      file: 'server/src/worker/subscriptionCheckpointRuntime.ts',
+      role: 'bounded_subscription_runtime_constructor',
     }] },
     { symbol: 'createSyncIntentRecoveryCoordinator', entries: [{
       file: 'server/src/worker/syncIntentRecovery.ts',
@@ -243,14 +272,37 @@ function fixtureContract() {
       file: 'server/src/worker/walletSyncRecoveryRuntime.ts',
       role: 'gate_authorized_composition',
     }] },
+    { symbol: 'findPendingSubscriptionEnrollments', entries: [{
+      file: 'server/src/repositories/subscriptionCheckpointRepository.ts',
+      role: 'canonical_bounded_pending_checkpoint_reader',
+    }, {
+      file: 'server/src/services/sync/subscriptionCheckpointEnrollment.ts',
+      role: 'bounded_enrollment_coordinator_reader',
+    }, {
+      file: 'server/src/worker/subscriptionCheckpointRuntime.ts',
+      role: 'worker_owned_pending_checkpoint_composition',
+    }] },
     { symbol: 'findStale', entries: [] },
+    { symbol: 'findSubscriptionCheckpointOwners', entries: [{
+      file: 'server/src/repositories/subscriptionCheckpointRepository.ts',
+      role: 'canonical_bounded_checkpoint_owner_reader',
+    }, {
+      file: 'server/src/worker/subscriptionCheckpointRuntime.ts',
+      role: 'worker_owned_status_comparison_reader',
+    }] },
     { symbol: 'requestSubscriptionEnrollment', entries: [{
       file: 'server/src/repositories/index.ts',
       role: 'neutral_repository_barrel_export',
     }, {
       file: 'server/src/repositories/subscriptionCheckpointRepository.ts',
       role: 'canonical_checkpoint_request_writer',
+    }, {
+      file: 'server/src/worker/subscriptionCheckpointRuntime.ts',
+      role: 'worker_owned_checkpoint_comparison_requester',
     }] },
+    { symbol: 'subscribeAddress', entries: [] },
+    { symbol: 'subscribeAddressBatch', entries: [] },
+    { symbol: 'subscribeHeaders', entries: [] },
     { symbol: 'syncIntentAdmission', entries: [{
       file: 'server/src/services/sync/manualProducer.ts',
       role: 'canonical_manual_api_admission',
@@ -260,6 +312,9 @@ function fixtureContract() {
     }, {
       file: 'server/src/worker/jobs/canonicalIncrementalSync.ts',
       role: 'generation_bound_consumer_only',
+    }, {
+      file: 'server/src/worker/subscriptionCheckpointRuntime.ts',
+      role: 'post_commit_checkpoint_intent_wakeup',
     }, {
       file: 'server/src/worker/syncIntentRecovery.ts',
       role: 'bounded_recovery_type_contract',
@@ -370,13 +425,18 @@ function createFixture() {
     'server/src/worker.ts',
     "import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from './constants/walletSyncActivation';\n"
       + "import { createProductionWalletSyncRecoveryRuntime } from './worker/walletSyncRecoveryRuntime';\n"
+      + "import { createProductionSubscriptionCheckpointRuntime } from './worker/subscriptionCheckpointRuntime';\n"
       + 'void WALLET_SYNC_MUTATION_FENCE_FLOOR;\n'
+      + 'void createProductionSubscriptionCheckpointRuntime;\n'
       + 'void createProductionWalletSyncRecoveryRuntime();\n',
   );
   write(
     root,
     'server/src/repositories/subscriptionCheckpointRepository.ts',
-    'export function completeSubscriptionEnrollment() {}\n'
+    'void addressSubscriptionCheckpoint;\n'
+      + 'export function completeSubscriptionEnrollment() {}\n'
+      + 'export function findPendingSubscriptionEnrollments() {}\n'
+      + 'export function findSubscriptionCheckpointOwners() {}\n'
       + 'export function requestSubscriptionEnrollment() {}\n',
   );
   write(
@@ -388,8 +448,22 @@ function createFixture() {
     root,
     'server/src/services/sync/subscriptionCheckpointEnrollment.ts',
     "import { completeSubscriptionEnrollment } from '../../repositories/subscriptionCheckpointRepository';\n"
-      + 'void completeSubscriptionEnrollment;\n'
+      + 'void completeSubscriptionEnrollment;\nvoid findPendingSubscriptionEnrollments;\n'
       + 'export function createSubscriptionCheckpointEnrollment() {}\n',
+  );
+  write(
+    root,
+    'server/src/worker/subscriptionCheckpointRuntime.ts',
+    "import { completeSubscriptionEnrollment, findPendingSubscriptionEnrollments, findSubscriptionCheckpointOwners, requestSubscriptionEnrollment } from '../repositories/subscriptionCheckpointRepository';\n"
+      + "import { createSubscriptionCheckpointEnrollment } from '../services/sync/subscriptionCheckpointEnrollment';\n"
+      + "import { syncIntentAdmission } from '../services/sync/syncIntentAdmission';\n"
+      + 'void completeSubscriptionEnrollment;\nvoid findPendingSubscriptionEnrollments;\n'
+      + 'void findSubscriptionCheckpointOwners;\nvoid requestSubscriptionEnrollment;\n'
+      + 'void createSubscriptionCheckpointEnrollment;\n'
+      + 'export function createSubscriptionCheckpointRuntime() {}\n'
+      + 'export function createProductionSubscriptionCheckpointRuntime() {\n'
+      + "  void syncIntentAdmission.wake('wallet-1', 1);\n"
+      + '  return createSubscriptionCheckpointRuntime();\n}\n',
   );
   write(
     root,
@@ -465,7 +539,7 @@ test('live canonical producer inventory matches production without claiming cuto
   );
   assert.equal(
     result.contract.compatibility.subscriptionEnrollmentState,
-    'dormant_no_production_consumers',
+    'worker_owned_bounded_runtime_enabled',
   );
 });
 
@@ -755,18 +829,32 @@ test('rejects premature cutover and lifecycle weakening', () => {
     /lifecycle\.forbiddenWalletHistoryTriggers/,
   );
 
-  const activatedEnrollment = fixtureContract();
-  activatedEnrollment.compatibility.subscriptionEnrollmentState = 'active';
+  const dormantEnrollment = fixtureContract();
+  dormantEnrollment.compatibility.subscriptionEnrollmentState = 'dormant_no_production_consumers';
   assert.throws(
-    () => parseWalletSyncLifecycleContract(JSON.stringify(activatedEnrollment)),
-    /subscription enrollment must remain dormant/,
+    () => parseWalletSyncLifecycleContract(JSON.stringify(dormantEnrollment)),
+    /subscription enrollment must remain bounded and worker-owned/,
   );
 
   const movedCoordinator = fixtureContract();
   movedCoordinator.futureOwnership.subscriptionEnrollmentCoordinator = 'server/src/worker.ts';
   assert.throws(
     () => parseWalletSyncLifecycleContract(JSON.stringify(movedCoordinator)),
-    /must name the dormant coordinator/,
+    /must name the canonical coordinator/,
+  );
+
+  const movedRuntime = fixtureContract();
+  movedRuntime.futureOwnership.subscriptionCheckpointRuntime = 'server/src/services/sync/syncService.ts';
+  assert.throws(
+    () => parseWalletSyncLifecycleContract(JSON.stringify(movedRuntime)),
+    /must name the worker-owned runtime/,
+  );
+
+  const retiredScheduler = fixtureContract();
+  retiredScheduler.compatibility.staleScheduleState = 'retired';
+  assert.throws(
+    () => parseWalletSyncLifecycleContract(JSON.stringify(retiredScheduler)),
+    /must not claim stale-schedule cutover/,
   );
 });
 
@@ -1128,7 +1216,7 @@ test('rejects a request alias inside the otherwise permitted recovery coordinato
   );
 });
 
-test('rejects a directly aliased subscription checkpoint writer outside the coordinator', () => {
+test('rejects a directly aliased subscription checkpoint writer outside the worker runtime', () => {
   const root = createFixture();
   write(
     root,
@@ -1138,8 +1226,54 @@ test('rejects a directly aliased subscription checkpoint writer outside the coor
   );
   assert.match(
     checkWalletSyncLifecycleContract(root).errors.join('\n'),
-    /subscription enrollment activated outside its dormant boundary/,
+    /subscription enrollment consumed outside its worker-owned boundary/,
   );
+});
+
+test('rejects a new direct checkpoint-model owner outside the static inventory', () => {
+  const root = createFixture();
+  write(
+    root,
+    'server/src/api/unsafeCheckpoint.ts',
+    'export async function write(prisma) {\n'
+      + '  await prisma.addressSubscriptionCheckpoint.create({ data: {} });\n'
+      + '}\n',
+  );
+  assert.match(
+    checkWalletSyncLifecycleContract(root).errors.join('\n'),
+    /symbol addressSubscriptionCheckpoint references changed/,
+  );
+});
+
+test('rejects an address repository writer that bypasses atomic checkpoint creation', () => {
+  for (const source of [
+    'export async function create(prisma, data) { return prisma.address.create({ data }); }\n',
+    "export async function create(prisma, data) { return prisma['address']['create']({ data }); }\n",
+    "export async function create(prisma, data) { const model = prisma.address; return model['create']({ data }); }\n",
+    "export async function create(prisma, data) { const { address: model } = prisma; return model.create({ data }); }\n",
+  ]) {
+    const root = createFixture();
+    write(root, 'server/src/repositories/addressRepository.ts', source);
+    assert.match(
+      checkWalletSyncLifecycleContract(root).errors.join('\n'),
+      /address creation authority inventory changed/,
+    );
+  }
+});
+
+test('rejects direct Electrum subscription ownership outside the static inventory', () => {
+  for (const symbol of ['subscribeAddress', 'subscribeAddressBatch', 'subscribeHeaders']) {
+    const root = createFixture();
+    write(
+      root,
+      'server/src/api/unsafeSubscription.ts',
+      `export function own(client) { return client.${symbol}(); }\n`,
+    );
+    assert.match(
+      checkWalletSyncLifecycleContract(root).errors.join('\n'),
+      new RegExp(`symbol ${symbol} references changed`),
+    );
+  }
 });
 
 test('rejects namespace and bracket checkpoint writer access outside the coordinator', () => {
@@ -1152,11 +1286,11 @@ test('rejects namespace and bracket checkpoint writer access outside the coordin
   );
   assert.match(
     checkWalletSyncLifecycleContract(root).errors.join('\n'),
-    /subscription enrollment activated outside its dormant boundary/,
+    /subscription enrollment consumed outside its worker-owned boundary/,
   );
 });
 
-test('rejects direct or namespace consumers of the dormant enrollment coordinator', () => {
+test('rejects direct or namespace consumers of the enrollment coordinator outside its runtime', () => {
   const consumers = [
     "import { createSubscriptionCheckpointEnrollment as create } from '../services/sync/subscriptionCheckpointEnrollment';\nvoid create;\n",
     "import * as enrollment from '../services/sync/subscriptionCheckpointEnrollment';\nvoid enrollment.createSubscriptionCheckpointEnrollment;\n",
@@ -1166,7 +1300,22 @@ test('rejects direct or namespace consumers of the dormant enrollment coordinato
     write(root, 'server/src/worker/earlyEnrollment.ts', source);
     assert.match(
       checkWalletSyncLifecycleContract(root).errors.join('\n'),
-      /subscription enrollment activated outside its dormant boundary/,
+      /subscription enrollment consumed outside its worker-owned boundary/,
+    );
+  }
+});
+
+test('rejects API or alternate worker consumers of the subscription checkpoint runtime', () => {
+  const consumers = [
+    ['server/src/api/earlyEnrollment.ts', "import { createProductionSubscriptionCheckpointRuntime } from '../worker/subscriptionCheckpointRuntime';\nvoid createProductionSubscriptionCheckpointRuntime;\n"],
+    ['server/src/worker/alternateEnrollment.ts', "import * as runtime from './subscriptionCheckpointRuntime';\nvoid runtime.createSubscriptionCheckpointRuntime;\n"],
+  ];
+  for (const [file, source] of consumers) {
+    const root = createFixture();
+    write(root, file, source);
+    assert.match(
+      checkWalletSyncLifecycleContract(root).errors.join('\n'),
+      /subscription enrollment consumed outside its worker-owned boundary/,
     );
   }
 });

@@ -92,6 +92,7 @@ describe('feature flag admin + worker integration', () => {
         networks: {},
       })),
       reconcileSubscriptions: vi.fn(async () => undefined),
+      refreshSubscriptionStatusPage: vi.fn(async () => ({ scanned: 0 })),
     };
 
     let reconcileFeatureRuntime: (() => Promise<void>) | undefined;

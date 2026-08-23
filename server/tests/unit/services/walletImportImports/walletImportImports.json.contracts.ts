@@ -389,7 +389,7 @@ export const registerWalletImportJsonContracts = () => {
       })).rejects.toThrow('Address derivation failed for json import');
 
       expect(mockPrismaClient.wallet.create).not.toHaveBeenCalled();
-      expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
+      expect(mockPrismaClient.address.createManyAndReturn).not.toHaveBeenCalled();
     });
   });
 };

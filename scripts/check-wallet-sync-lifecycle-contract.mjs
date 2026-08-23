@@ -74,6 +74,12 @@ const ACTIVATION_STABILIZATION_REPOSITORY_PATH =
   'server/src/repositories/walletSyncActivationStabilizationRepository.ts';
 const REPOSITORY_BARREL_PATH = 'server/src/repositories/index.ts';
 const SUBSCRIPTION_ENROLLMENT_COORDINATOR_SYMBOL = 'createSubscriptionCheckpointEnrollment';
+const SUBSCRIPTION_CHECKPOINT_RUNTIME_PATH =
+  'server/src/worker/subscriptionCheckpointRuntime.ts';
+const SUBSCRIPTION_CHECKPOINT_RUNTIME_FACTORY_SYMBOL =
+  'createSubscriptionCheckpointRuntime';
+const PRODUCTION_SUBSCRIPTION_CHECKPOINT_RUNTIME_FACTORY_SYMBOL =
+  'createProductionSubscriptionCheckpointRuntime';
 const SUBSCRIPTION_ENROLLMENT_WRITERS = [
   'completeSubscriptionEnrollment',
   'requestSubscriptionEnrollment',
@@ -267,6 +273,23 @@ function validateInventory(inventory) {
     return rawQueueMutationIdentity(item);
   });
   assertSortedUnique(rawQueueMutations, 'inventory.rawQueueMutations identities');
+  const addressAuthorities = requireArray(
+    parsed.addressCreationAuthorities,
+    'inventory.addressCreationAuthorities',
+  ).map((entry, index) => {
+    const item = requireObject(entry, `inventory.addressCreationAuthorities[${index}]`);
+    for (const field of ['file', 'enclosingFunction', 'method', 'role']) {
+      requireString(item[field], `inventory.addressCreationAuthorities[${index}].${field}`);
+    }
+    if (!['create', 'createMany', 'createManyAndReturn'].includes(item.method)) {
+      throw new Error(`inventory.addressCreationAuthorities[${index}].method is invalid`);
+    }
+    if (!Number.isSafeInteger(item.count) || item.count < 1) {
+      throw new Error(`inventory.addressCreationAuthorities[${index}].count must be positive`);
+    }
+    return `${item.file}\0${item.enclosingFunction}\0${item.method}`;
+  });
+  assertSortedUnique(addressAuthorities, 'inventory.addressCreationAuthorities identities');
   const forbidden = requireObject(
     parsed.forbiddenClientWalletHistory,
     'inventory.forbiddenClientWalletHistory',
@@ -331,7 +354,10 @@ function validateOwnership(value) {
   }
   if (ownership.subscriptionEnrollmentCoordinator
     !== 'server/src/services/sync/subscriptionCheckpointEnrollment.ts') {
-    throw new Error('futureOwnership.subscriptionEnrollmentCoordinator must name the dormant coordinator');
+    throw new Error('futureOwnership.subscriptionEnrollmentCoordinator must name the canonical coordinator');
+  }
+  if (ownership.subscriptionCheckpointRuntime !== SUBSCRIPTION_CHECKPOINT_RUNTIME_PATH) {
+    throw new Error('futureOwnership.subscriptionCheckpointRuntime must name the worker-owned runtime');
   }
   if (ownership.walletHistoryExecutor !== 'server/src/worker/jobs/syncJobs.ts') {
     throw new Error('futureOwnership.walletHistoryExecutor must remain worker-owned');
@@ -367,8 +393,8 @@ function validateCompatibility(value) {
   if (compatibility.recoveryCoordinatorModule !== RECOVERY_COORDINATOR_PATH) {
     throw new Error('compatibility.recoveryCoordinatorModule must name the bounded coordinator');
   }
-  if (compatibility.subscriptionEnrollmentState !== 'dormant_no_production_consumers') {
-    throw new Error('subscription enrollment must remain dormant before its activation release');
+  if (compatibility.subscriptionEnrollmentState !== 'worker_owned_bounded_runtime_enabled') {
+    throw new Error('subscription enrollment must remain bounded and worker-owned after activation');
   }
   if (compatibility.staleScheduleName !== 'check-stale-wallets') {
     throw new Error('compatibility.staleScheduleName must retain the legacy wire identity');
@@ -954,8 +980,9 @@ function subscriptionSymbolEntries(inventory, symbol) {
 function validateSubscriptionInventory(inventory, ownership) {
   const repository = ownership.subscriptionCheckpointRepository;
   const coordinator = ownership.subscriptionEnrollmentCoordinator;
+  const runtime = ownership.subscriptionCheckpointRuntime;
   for (const writer of SUBSCRIPTION_ENROLLMENT_WRITERS) {
-    const expected = [REPOSITORY_BARREL_PATH, repository];
+    const expected = [REPOSITORY_BARREL_PATH, repository, runtime];
     if (writer === 'completeSubscriptionEnrollment') expected.push(coordinator);
     assertExact(
       subscriptionSymbolEntries(inventory, writer),
@@ -965,14 +992,38 @@ function validateSubscriptionInventory(inventory, ownership) {
   }
   assertExact(
     subscriptionSymbolEntries(inventory, SUBSCRIPTION_ENROLLMENT_COORDINATOR_SYMBOL),
-    [coordinator],
+    [coordinator, runtime].sort(),
     'subscription enrollment coordinator references',
+  );
+  assertExact(
+    subscriptionSymbolEntries(inventory, 'findPendingSubscriptionEnrollments'),
+    [coordinator, repository, runtime].sort(),
+    'pending subscription enrollment reader references',
+  );
+  assertExact(
+    subscriptionSymbolEntries(inventory, 'findSubscriptionCheckpointOwners'),
+    [repository, runtime].sort(),
+    'subscription checkpoint owner reader references',
+  );
+  assertExact(
+    subscriptionSymbolEntries(inventory, SUBSCRIPTION_CHECKPOINT_RUNTIME_FACTORY_SYMBOL),
+    [runtime],
+    'subscription checkpoint runtime factory references',
+  );
+  assertExact(
+    subscriptionSymbolEntries(
+      inventory,
+      PRODUCTION_SUBSCRIPTION_CHECKPOINT_RUNTIME_FACTORY_SYMBOL,
+    ),
+    [runtime, WORKER_PATH].sort(),
+    'production subscription checkpoint runtime factory references',
   );
 }
 
 function unexpectedSubscriptionBoundaryConsumers(sources, ownership) {
   const repository = ownership.subscriptionCheckpointRepository;
   const coordinator = ownership.subscriptionEnrollmentCoordinator;
+  const runtime = ownership.subscriptionCheckpointRuntime;
   const writers = new RegExp(`\\b(?:${SUBSCRIPTION_ENROLLMENT_WRITERS.join('|')})\\b`);
   const executableSources = new Map([...sources].map(([file, source]) => [
     file,
@@ -983,11 +1034,98 @@ function unexpectedSubscriptionBoundaryConsumers(sources, ownership) {
     sources,
     /['"][^'"]*subscriptionCheckpointEnrollment(?:\.[cm]?[jt]s)?['"]|\bcreateSubscriptionCheckpointEnrollment\b/,
   );
-  const allowedWriters = new Set([repository, coordinator]);
+  const runtimeConsumers = actualReferenceFiles(
+    sources,
+    /['"][^'"]*subscriptionCheckpointRuntime(?:\.[cm]?[jt]s)?['"]/,
+  );
+  const allowedWriters = new Set([repository, coordinator, runtime]);
+  const allowedCoordinatorConsumers = new Set([coordinator, runtime]);
   return [...new Set([
     ...writerConsumers.filter(file => !allowedWriters.has(file)),
-    ...coordinatorConsumers.filter(file => file !== coordinator),
+    ...coordinatorConsumers.filter(file => !allowedCoordinatorConsumers.has(file)),
+    ...runtimeConsumers.filter(file => file !== WORKER_PATH),
   ])].sort();
+}
+
+function addressDelegateAliases(sourceFile) {
+  const aliases = new Set();
+  for (let pass = 0; pass < 20; pass += 1) {
+    let changed = false;
+    const bind = (name) => {
+      if (!ts.isIdentifier(name) || aliases.has(name.text)) return;
+      aliases.add(name.text);
+      changed = true;
+    };
+    const isAddressDelegate = (expression) => {
+      const current = unwrapExpression(expression);
+      return (ts.isIdentifier(current) && aliases.has(current.text))
+        || expressionProperty(current) === 'address';
+    };
+    function visit(node) {
+      if (ts.isVariableDeclaration(node) && node.initializer) {
+        if (isAddressDelegate(node.initializer)) bind(node.name);
+        if (ts.isObjectBindingPattern(node.name)) {
+          for (const element of node.name.elements) {
+            if (propertyText(element.propertyName ?? element.name) === 'address') bind(element.name);
+          }
+        }
+      } else if (ts.isBinaryExpression(node)
+        && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+        && isAddressDelegate(node.right)) {
+        bind(node.left);
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(sourceFile);
+    if (!changed) break;
+  }
+  return aliases;
+}
+
+function collectAddressCreationAuthorities(productionSources) {
+  const authorities = new Map();
+  for (const [file, source] of productionSources) {
+    if (file.startsWith('server/src/generated/')) continue;
+    const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
+    const aliases = addressDelegateAliases(sourceFile);
+    function visit(node) {
+      if (ts.isCallExpression(node)) {
+        const method = expressionProperty(node.expression);
+        const receiver = (ts.isPropertyAccessExpression(node.expression)
+          || ts.isElementAccessExpression(node.expression))
+          ? unwrapExpression(node.expression.expression)
+          : null;
+        const addressDelegate = receiver && (
+          expressionProperty(receiver) === 'address'
+          || (ts.isIdentifier(receiver) && aliases.has(receiver.text))
+        );
+        if (addressDelegate && ['create', 'createMany', 'createManyAndReturn'].includes(method)) {
+          const enclosingFunction = enclosingFunctionName(node);
+          const key = `${file}\0${enclosingFunction}\0${method}`;
+          authorities.set(key, (authorities.get(key) ?? 0) + 1);
+        }
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(sourceFile);
+  }
+  return authorities;
+}
+
+function validateCheckpointedAddressWriters(productionSources, inventory, errors) {
+  const actual = collectAddressCreationAuthorities(productionSources);
+  const expected = new Map(inventory.addressCreationAuthorities.map((entry) => [
+    `${entry.file}\0${entry.enclosingFunction}\0${entry.method}`,
+    entry.count,
+  ]));
+  const identities = [...new Set([...actual.keys(), ...expected.keys()])].sort();
+  const mismatches = identities.filter((identity) => actual.get(identity) !== expected.get(identity));
+  if (mismatches.length > 0) {
+    errors.push(`address creation authority inventory changed: ${mismatches.map((identity) => {
+      const [file, enclosingFunction, method] = identity.split('\0');
+      return `${file}:${enclosingFunction}:${method} expected=${expected.get(identity) ?? 0} actual=${actual.get(identity) ?? 0}`;
+    }).join(', ')}`);
+  }
 }
 
 function unexpectedAdmissionConsumers(
@@ -1389,7 +1527,7 @@ export function checkWalletSyncLifecycleContract(root) {
   );
   if (subscriptionConsumers.length > 0) {
     errors.push(
-      `subscription enrollment activated outside its dormant boundary: ${subscriptionConsumers.join(', ')}`,
+      `subscription enrollment consumed outside its worker-owned boundary: ${subscriptionConsumers.join(', ')}`,
     );
   }
   validateRecoveryComposition(
@@ -1407,6 +1545,7 @@ export function checkWalletSyncLifecycleContract(root) {
   validateForbiddenClientHistory(productionSources, contract.inventory, errors);
   validateNoTrackedProducerReexports(productionSources, errors);
   validateNoTrackedCommonJsImports(productionSources, errors);
+  validateCheckpointedAddressWriters(productionSources, contract.inventory, errors);
   compareDirectCalls(productionSources, contract.inventory.directExecutorCalls, errors);
   compareReferenceInventory(
     sources,

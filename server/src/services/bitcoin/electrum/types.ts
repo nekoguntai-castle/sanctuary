@@ -11,6 +11,14 @@ import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 import { createLogger } from '../../../utils/logger';
 
 const log = createLogger('ELECTRUM:SVC');
+const ELECTRUM_STATUS_PATTERN = /^[0-9a-f]{64}$/;
+
+/** Parse the only two authoritative scripthash subscription status forms. */
+export function parseElectrumSubscriptionStatus(value: unknown): string | null | undefined {
+  if (value === null) return null;
+  if (typeof value === 'string' && ELECTRUM_STATUS_PATTERN.test(value)) return value;
+  return undefined;
+}
 
 // ==============================================================================
 // ZOD SCHEMAS FOR ELECTRUM RESPONSE VALIDATION
@@ -220,4 +228,6 @@ export interface PendingRequest {
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
   timeoutId: NodeJS.Timeout;
+  method?: string;
+  params?: unknown[];
 }

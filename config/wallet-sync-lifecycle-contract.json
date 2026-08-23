@@ -35,6 +35,7 @@
     "singleAdmissionModule": "server/src/services/sync/syncIntentAdmission.ts",
     "subscriptionCheckpointRepository": "server/src/repositories/subscriptionCheckpointRepository.ts",
     "subscriptionEnrollmentCoordinator": "server/src/services/sync/subscriptionCheckpointEnrollment.ts",
+    "subscriptionCheckpointRuntime": "server/src/worker/subscriptionCheckpointRuntime.ts",
     "walletHistoryExecutor": "server/src/worker/jobs/syncJobs.ts",
     "subscriptionOwner": "worker",
     "queueRole": "at_least_once_wakeup_only"
@@ -47,7 +48,7 @@
     "generationConsumerModule": "server/src/worker/jobs/canonicalIncrementalSync.ts",
     "recoveryState": "gate_enforced_bounded_runtime_enabled",
     "recoveryCoordinatorModule": "server/src/worker/syncIntentRecovery.ts",
-    "subscriptionEnrollmentState": "dormant_no_production_consumers",
+    "subscriptionEnrollmentState": "worker_owned_bounded_runtime_enabled",
     "staleScheduleName": "check-stale-wallets",
     "staleScheduleState": "legacy_desired_until_cutover",
     "durableDisablePolicyState": "immutable_activation_floor_live_fleet_enforced",
@@ -63,6 +64,36 @@
     "WSYNC-WORKER-001"
   ],
   "inventory": {
+    "addressCreationAuthorities": [
+      {
+        "file": "server/src/repositories/addressRepository.ts",
+        "enclosingFunction": "allocate",
+        "method": "createManyAndReturn",
+        "count": 1,
+        "role": "checkpoint_atomic_canonical_batch"
+      },
+      {
+        "file": "server/src/repositories/addressRepository.ts",
+        "enclosingFunction": "createNextCanonical",
+        "method": "create",
+        "count": 1,
+        "role": "checkpoint_atomic_next_address"
+      },
+      {
+        "file": "server/src/repositories/walletRepository.ts",
+        "enclosingFunction": "createAddressesWithPendingCheckpoints",
+        "method": "createManyAndReturn",
+        "count": 1,
+        "role": "checkpoint_atomic_wallet_creation"
+      },
+      {
+        "file": "server/src/services/walletImport/walletImportService.ts",
+        "enclosingFunction": "createInitialAddressesWithPendingCheckpoints",
+        "method": "createManyAndReturn",
+        "count": 1,
+        "role": "checkpoint_atomic_wallet_import"
+      }
+    ],
     "directExecutorCalls": [
       {
         "callee": "syncAddress",
@@ -176,27 +207,11 @@
       },
       {
         "sink": "admission.request",
-        "file": "server/src/services/sync/syncService.ts",
-        "enclosingFunction": "requestAddressActivitySync",
-        "count": 1,
-        "trigger": "address_activity",
-        "role": "transitional_api_subscription_activity_admission"
-      },
-      {
-        "sink": "admission.request",
         "file": "server/src/worker.ts",
         "enclosingFunction": "admitRetainedStaleWallets",
         "count": 1,
         "trigger": "legacy_stale_compatibility",
         "role": "gate_enforced_stale_scheduler_completion_bridge_until_retirement"
-      },
-      {
-        "sink": "admission.request",
-        "file": "server/src/worker.ts",
-        "enclosingFunction": "handleAddressActivity",
-        "count": 1,
-        "trigger": "address_activity",
-        "role": "worker_subscription_activity_admission"
       },
       {
         "sink": "admission.requestFullResync",
@@ -261,6 +276,14 @@
         "count": 1,
         "trigger": "trailing_generation",
         "role": "generation_bound_consumer_followup"
+      },
+      {
+        "sink": "admission.wake",
+        "file": "server/src/worker/subscriptionCheckpointRuntime.ts",
+        "enclosingFunction": "createProductionSubscriptionCheckpointRuntime",
+        "count": 1,
+        "trigger": "subscription_checkpoint_comparison",
+        "role": "post_commit_exact_generation_wakeup"
       },
       {
         "sink": "admission.wakeReservedFullResync",
@@ -624,6 +647,55 @@
         ]
       },
       {
+        "symbol": "addressSubscriptionCheckpoint",
+        "entries": [
+          {
+            "file": "server/src/generated/prisma/internal/class.ts",
+            "role": "generated_prisma_client_surface"
+          },
+          {
+            "file": "server/src/generated/prisma/internal/prismaNamespace.ts",
+            "role": "generated_prisma_namespace_surface"
+          },
+          {
+            "file": "server/src/generated/prisma/models/AddressSubscriptionCheckpoint.ts",
+            "role": "generated_checkpoint_model_surface"
+          },
+          {
+            "file": "server/src/repositories/addressRepository.ts",
+            "role": "atomic_new_address_checkpoint_creation"
+          },
+          {
+            "file": "server/src/repositories/subscriptionCheckpointCompletion.ts",
+            "role": "atomic_checkpoint_observation_completion"
+          },
+          {
+            "file": "server/src/repositories/subscriptionCheckpointRepository.ts",
+            "role": "canonical_checkpoint_repository"
+          },
+          {
+            "file": "server/src/repositories/walletRepository.ts",
+            "role": "atomic_wallet_address_checkpoint_creation"
+          },
+          {
+            "file": "server/src/services/backupService/constants.ts",
+            "role": "backup_table_identity"
+          },
+          {
+            "file": "server/src/services/backupService/restoreDeserialization.ts",
+            "role": "backup_checkpoint_deserialization"
+          },
+          {
+            "file": "server/src/services/backupService/validation.ts",
+            "role": "backup_checkpoint_validation"
+          },
+          {
+            "file": "server/src/services/walletImport/walletImportService.ts",
+            "role": "atomic_imported_address_checkpoint_creation"
+          }
+        ]
+      },
+      {
         "symbol": "completeSubscriptionEnrollment",
         "entries": [
           {
@@ -636,7 +708,24 @@
           },
           {
             "file": "server/src/services/sync/subscriptionCheckpointEnrollment.ts",
-            "role": "dormant_subscription_enrollment_coordinator"
+            "role": "bounded_subscription_enrollment_coordinator"
+          },
+          {
+            "file": "server/src/worker/subscriptionCheckpointRuntime.ts",
+            "role": "worker_owned_checkpoint_runtime_composition"
+          }
+        ]
+      },
+      {
+        "symbol": "createProductionSubscriptionCheckpointRuntime",
+        "entries": [
+          {
+            "file": "server/src/worker.ts",
+            "role": "sole_subscription_runtime_consumer"
+          },
+          {
+            "file": "server/src/worker/subscriptionCheckpointRuntime.ts",
+            "role": "production_subscription_runtime_factory"
           }
         ]
       },
@@ -658,7 +747,20 @@
         "entries": [
           {
             "file": "server/src/services/sync/subscriptionCheckpointEnrollment.ts",
-            "role": "dormant_subscription_enrollment_coordinator_definition"
+            "role": "bounded_subscription_enrollment_coordinator_definition"
+          },
+          {
+            "file": "server/src/worker/subscriptionCheckpointRuntime.ts",
+            "role": "worker_owned_runtime_coordinator_composition"
+          }
+        ]
+      },
+      {
+        "symbol": "createSubscriptionCheckpointRuntime",
+        "entries": [
+          {
+            "file": "server/src/worker/subscriptionCheckpointRuntime.ts",
+            "role": "bounded_subscription_runtime_constructor"
           }
         ]
       },
@@ -732,6 +834,23 @@
         ]
       },
       {
+        "symbol": "findPendingSubscriptionEnrollments",
+        "entries": [
+          {
+            "file": "server/src/repositories/subscriptionCheckpointRepository.ts",
+            "role": "canonical_bounded_pending_checkpoint_reader"
+          },
+          {
+            "file": "server/src/services/sync/subscriptionCheckpointEnrollment.ts",
+            "role": "bounded_enrollment_coordinator_reader"
+          },
+          {
+            "file": "server/src/worker/subscriptionCheckpointRuntime.ts",
+            "role": "worker_owned_pending_checkpoint_composition"
+          }
+        ]
+      },
+      {
         "symbol": "findStale",
         "entries": [
           {
@@ -745,6 +864,19 @@
         ]
       },
       {
+        "symbol": "findSubscriptionCheckpointOwners",
+        "entries": [
+          {
+            "file": "server/src/repositories/subscriptionCheckpointRepository.ts",
+            "role": "canonical_bounded_checkpoint_owner_reader"
+          },
+          {
+            "file": "server/src/worker/subscriptionCheckpointRuntime.ts",
+            "role": "worker_owned_status_comparison_reader"
+          }
+        ]
+      },
+      {
         "symbol": "requestSubscriptionEnrollment",
         "entries": [
           {
@@ -754,6 +886,89 @@
           {
             "file": "server/src/repositories/subscriptionCheckpointRepository.ts",
             "role": "canonical_checkpoint_request_writer"
+          },
+          {
+            "file": "server/src/worker/subscriptionCheckpointRuntime.ts",
+            "role": "worker_owned_checkpoint_comparison_requester"
+          }
+        ]
+      },
+      {
+        "symbol": "subscribeAddress",
+        "entries": [
+          {
+            "file": "server/src/services/bitcoin/electrum/electrumClient.ts",
+            "role": "low_level_electrum_client_method"
+          },
+          {
+            "file": "server/src/services/bitcoin/electrum/methods.ts",
+            "role": "low_level_electrum_subscription_implementation"
+          },
+          {
+            "file": "server/src/services/bitcoin/electrum/publicApi.ts",
+            "role": "low_level_electrum_public_adapter"
+          },
+          {
+            "file": "server/src/services/bitcoin/nodeClient.ts",
+            "role": "canonical_node_client_contract"
+          },
+          {
+            "file": "server/src/worker/electrumManager/addressSubscriptions.ts",
+            "role": "sole_worker_owned_subscription_fallback"
+          }
+        ]
+      },
+      {
+        "symbol": "subscribeAddressBatch",
+        "entries": [
+          {
+            "file": "server/src/services/bitcoin/electrum/electrumClient.ts",
+            "role": "low_level_electrum_client_method"
+          },
+          {
+            "file": "server/src/services/bitcoin/electrum/methods.ts",
+            "role": "low_level_electrum_batch_implementation"
+          },
+          {
+            "file": "server/src/services/bitcoin/electrum/publicApi.ts",
+            "role": "low_level_electrum_public_adapter"
+          },
+          {
+            "file": "server/src/services/bitcoin/nodeClient.ts",
+            "role": "canonical_node_client_contract"
+          },
+          {
+            "file": "server/src/worker/electrumManager/addressSubscriptions.ts",
+            "role": "sole_worker_owned_batch_subscription"
+          },
+          {
+            "file": "server/src/worker/electrumManager/electrumManager.ts",
+            "role": "worker_owned_subscription_transport"
+          },
+          {
+            "file": "server/src/worker/electrumManager/healthMonitoring.ts",
+            "role": "worker_owned_subscription_reconciliation"
+          }
+        ]
+      },
+      {
+        "symbol": "subscribeHeaders",
+        "entries": [
+          {
+            "file": "server/src/services/bitcoin/electrum/electrumClient.ts",
+            "role": "low_level_electrum_client_method"
+          },
+          {
+            "file": "server/src/services/bitcoin/electrum/methods.ts",
+            "role": "low_level_header_subscription_implementation"
+          },
+          {
+            "file": "server/src/services/bitcoin/electrum/publicApi.ts",
+            "role": "low_level_electrum_public_adapter"
+          },
+          {
+            "file": "server/src/worker/electrumManager/networkConnection.ts",
+            "role": "sole_worker_owned_header_subscription"
           }
         ]
       },
@@ -781,12 +996,8 @@
             "role": "gate_enforced_admission_singleton_definition"
           },
           {
-            "file": "server/src/services/sync/syncService.ts",
-            "role": "transitional_subscription_activity_request_producer"
-          },
-          {
             "file": "server/src/worker.ts",
-            "role": "worker_subscription_activity_request_producer"
+            "role": "gate_enforced_stale_scheduler_completion_bridge_until_retirement"
           },
           {
             "file": "server/src/worker/jobs/canonicalIncrementalSync.ts",
@@ -795,6 +1006,10 @@
           {
             "file": "server/src/worker/jobs/syncJobs.ts",
             "role": "legacy_lock_owned_lease_revoking_cleanup"
+          },
+          {
+            "file": "server/src/worker/subscriptionCheckpointRuntime.ts",
+            "role": "post_commit_checkpoint_intent_wakeup"
           },
           {
             "file": "server/src/worker/syncIntentRecovery.ts",

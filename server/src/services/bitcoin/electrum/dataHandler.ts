@@ -8,7 +8,11 @@
 import { EventEmitter } from 'events';
 import { createLogger } from '../../../utils/logger';
 import { parseResponseBuffer, isNotification, processResponse } from './protocol';
-import type { ElectrumResponse, PendingRequest } from './types';
+import {
+  parseElectrumSubscriptionStatus,
+  type ElectrumResponse,
+  type PendingRequest,
+} from './types';
 
 const log = createLogger('ELECTRUM:SVC_DATA');
 
@@ -31,11 +35,32 @@ export function handleIncomingData(
     if (isNotification(response)) {
       handleNotification(response, emitter, scriptHashToAddress);
     } else {
+      handleSubscriptionResponse(response, pendingRequests, emitter, scriptHashToAddress);
       processResponse(response, pendingRequests);
     }
   }
 
   return remainingBuffer;
+}
+
+function handleSubscriptionResponse(
+  response: ElectrumResponse,
+  pendingRequests: Map<number, PendingRequest>,
+  emitter: EventEmitter,
+  scriptHashToAddress: Map<string, string>,
+): void {
+  if (response.error || response.id === null || response.id === undefined) return;
+  const request = pendingRequests.get(response.id);
+  if (request?.method !== 'blockchain.scripthash.subscribe') return;
+  const scriptHash = request.params?.[0];
+  if (typeof scriptHash !== 'string') return;
+  const status = parseElectrumSubscriptionStatus(response.result);
+  if (status === undefined) return;
+  emitter.emit('addressActivity', {
+    scriptHash,
+    address: scriptHashToAddress.get(scriptHash),
+    status,
+  });
 }
 
 /**
@@ -59,9 +84,9 @@ export function handleNotification(
     }
   } else if (method === 'blockchain.scripthash.subscribe') {
     const scriptHash = params?.[0] as string | undefined;
-    const status = params?.[1] as string | undefined;
+    const status = parseElectrumSubscriptionStatus(params?.[1]);
 
-    if (scriptHash) {
+    if (typeof scriptHash === 'string' && status !== undefined) {
       const address = scriptHashToAddress.get(scriptHash);
       log.info(`[NOTIFICATION] Address activity: ${address || scriptHash} (status: ${status?.slice(0, 8)}...)`);
       emitter.emit('addressActivity', {

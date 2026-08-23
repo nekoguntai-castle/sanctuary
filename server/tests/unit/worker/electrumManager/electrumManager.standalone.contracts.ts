@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { connectNetwork, setupEventHandlers, subscribeHeaders } from '../../../../src/worker/electrumManager/networkConnection';
 import { scheduleReconnect } from '../../../../src/worker/electrumManager/reconnection';
 import { subscribeAddressBatch, subscribeAllAddresses, subscribeNetworkAddresses } from '../../../../src/worker/electrumManager/addressSubscriptions';
-import { checkHealth } from '../../../../src/worker/electrumManager/healthMonitoring';
+import { checkHealth, reconcileSubscriptions } from '../../../../src/worker/electrumManager/healthMonitoring';
 import {
   getAddressSubscriptionKey,
   type AddressWalletInfo,
@@ -89,6 +89,109 @@ export function registerElectrumManagerStandaloneContracts() {
       expect(state!.subscribedToHeaders).toBe(false);
     });
 
+    it('disconnects when ownership is lost after successful version negotiation', async () => {
+      let active = true;
+      mockClient.getServerVersion.mockImplementationOnce(async () => {
+        active = false;
+        return { server: 'stale', protocol: '1.4' };
+      });
+
+      await connectNetwork(
+        'mainnet', getNetworks(), getAddressToWallet(), mockCallbacks, () => active, vi.fn(),
+      );
+
+      expect(mockClient.subscribeHeaders).not.toHaveBeenCalled();
+      expect(mockClient.disconnect).toHaveBeenCalled();
+    });
+
+    it('stops before header subscription when ownership is lost during version negotiation', async () => {
+      const networks = getNetworks();
+      let active = true;
+      mockClient.getServerVersion.mockImplementationOnce(async () => {
+        active = false;
+        throw new Error('closed during version negotiation');
+      });
+
+      await connectNetwork(
+        'mainnet', networks, getAddressToWallet(), mockCallbacks, () => active, vi.fn(),
+      );
+
+      expect(mockClient.subscribeHeaders).not.toHaveBeenCalled();
+      expect(mockClient.disconnect).toHaveBeenCalled();
+      expect(networks.size).toBe(0);
+    });
+
+    it('disconnects a network when ownership is lost during header subscription', async () => {
+      const networks = getNetworks();
+      let active = true;
+      mockClient.subscribeHeaders.mockImplementationOnce(async () => {
+        active = false;
+        return { height: 100000, hex: '00'.repeat(80) };
+      });
+      const schedule = vi.fn();
+
+      await connectNetwork(
+        'mainnet',
+        networks,
+        getAddressToWallet(),
+        mockCallbacks,
+        () => active,
+        schedule,
+      );
+
+      expect(networks.size).toBe(0);
+      expect(mockClient.disconnect).toHaveBeenCalled();
+      expect(schedule).not.toHaveBeenCalled();
+    });
+
+    it('does not delete a replacement owner state when an old header subscription returns', async () => {
+      const networks = getNetworks();
+      let active = true;
+      const replacement = {
+        network: 'mainnet' as const,
+        client: { replacement: true } as any,
+        connected: true,
+        subscribedToHeaders: true,
+        subscribedAddresses: new Set<string>(),
+        lastBlockHeight: 200000,
+        reconnectTimer: null,
+        reconnectAttempts: 0,
+      };
+      mockClient.subscribeHeaders.mockImplementationOnce(async () => {
+        networks.set('mainnet', replacement);
+        active = false;
+        return { height: 100000, hex: '00'.repeat(80) };
+      });
+
+      await connectNetwork(
+        'mainnet',
+        networks,
+        getAddressToWallet(),
+        mockCallbacks,
+        () => active,
+        vi.fn(),
+      );
+
+      expect(networks.get('mainnet')).toBe(replacement);
+      expect(mockClient.disconnect).toHaveBeenCalled();
+    });
+
+    it('does not schedule reconnect after a failed connect when ownership is gone', async () => {
+      mockClient.connect.mockRejectedValueOnce(new Error('connect failed'));
+      const schedule = vi.fn();
+
+      await connectNetwork(
+        'mainnet',
+        getNetworks(),
+        getAddressToWallet(),
+        mockCallbacks,
+        () => false,
+        schedule,
+      );
+
+      expect(schedule).not.toHaveBeenCalled();
+    });
+
     it('handles additional event paths for untracked addresses, missing address, close, and error', async () => {
       vi.mocked(acquireLock).mockResolvedValue({ key: 'lock', token: 'token' } as any);
       vi.mocked(prisma.address.findMany).mockResolvedValue([]);
@@ -99,7 +202,8 @@ export function registerElectrumManagerStandaloneContracts() {
 
       mockClient.emit('addressActivity', { scriptHash: 'x', status: 'changed' });
       mockClient.emit('addressActivity', { scriptHash: 'x', address: 'unknown', status: 'changed' });
-      expect(mockCallbacks.onAddressActivity).not.toHaveBeenCalled();
+      expect(mockCallbacks.onAddressActivity).toHaveBeenNthCalledWith(1, 'mainnet', 'x', 'changed');
+      expect(mockCallbacks.onAddressActivity).toHaveBeenNthCalledWith(2, 'mainnet', 'x', 'changed');
 
       mockClient.emit('error', new Error('socket exploded'));
       mockClient.emit('close');
@@ -163,6 +267,101 @@ export function registerElectrumManagerStandaloneContracts() {
       expect(state.subscribedAddresses.has('new-b')).toBe(false);
     });
 
+    it('does not enter individual fallback after ownership loss rejects a batch', async () => {
+      const state: NetworkState = {
+        network: 'mainnet', client: mockClient as any, connected: true,
+        subscribedToHeaders: true, subscribedAddresses: new Set<string>(),
+        lastBlockHeight: 0, reconnectTimer: null, reconnectAttempts: 0,
+      };
+      let active = true;
+      mockClient.subscribeAddressBatch.mockImplementationOnce(async () => {
+        active = false;
+        throw new Error('closed during batch');
+      });
+
+      await expect(subscribeAddressBatch(
+        state,
+        [{ address: 'former-owner', walletId: 'wallet' }],
+        { isActive: () => active },
+      )).rejects.toThrow('Electrum subscription ownership changed');
+
+      expect(mockClient.subscribeAddress).not.toHaveBeenCalled();
+      expect(mockClient.disconnect).toHaveBeenCalled();
+      expect(state.connected).toBe(false);
+    });
+
+    it('rejects an old-epoch batch result after ownership is reacquired', async () => {
+      const state: NetworkState = {
+        network: 'mainnet', client: mockClient as any, connected: true,
+        subscribedToHeaders: true, subscribedAddresses: new Set<string>(),
+        lastBlockHeight: 0, reconnectTimer: null, reconnectAttempts: 0,
+      };
+      let resolveBatch!: (value: Map<string, string | null>) => void;
+      mockClient.subscribeAddressBatch.mockReturnValueOnce(
+        new Promise<Map<string, string | null>>((resolve) => { resolveBatch = resolve; }),
+      );
+      let ownershipEpoch = 1;
+      const initiatingEpoch = ownershipEpoch;
+      const subscription = subscribeAddressBatch(
+        state,
+        [{ address: 'old-epoch', walletId: 'wallet' }],
+        { isActive: () => ownershipEpoch === initiatingEpoch },
+      );
+      ownershipEpoch = 2;
+      resolveBatch(new Map([['old-epoch', null]]));
+
+      await expect(subscription).rejects.toThrow('Electrum subscription ownership changed');
+      expect(state.subscribedAddresses).not.toContain('old-epoch');
+      expect(mockClient.disconnect).toHaveBeenCalled();
+    });
+
+    it('stops individual fallback when ownership changes during the request', async () => {
+      const state: NetworkState = {
+        network: 'mainnet', client: mockClient as any, connected: true,
+        subscribedToHeaders: true, subscribedAddresses: new Set<string>(),
+        lastBlockHeight: 0, reconnectTimer: null, reconnectAttempts: 0,
+      };
+      let active = true;
+      mockClient.subscribeAddressBatch.mockRejectedValueOnce(new Error('batch failed'));
+      mockClient.subscribeAddress.mockImplementationOnce(async () => {
+        active = false;
+        return null;
+      });
+
+      await expect(subscribeAddressBatch(
+        state,
+        [{ address: 'former-owner-single', walletId: 'wallet' }],
+        { isActive: () => active },
+      )).rejects.toThrow('Electrum subscription ownership changed');
+
+      expect(state.subscribedAddresses).not.toContain('former-owner-single');
+      expect(mockClient.disconnect).toHaveBeenCalled();
+    });
+
+    it('tracks only addresses acknowledged by a successful batch response', async () => {
+      const state: NetworkState = {
+        network: 'mainnet',
+        client: mockClient as any,
+        connected: true,
+        subscribedToHeaders: true,
+        subscribedAddresses: new Set<string>(),
+        lastBlockHeight: 0,
+        reconnectTimer: null,
+        reconnectAttempts: 0,
+      };
+      mockClient.subscribeAddressBatch.mockResolvedValueOnce(
+        new Map([['acknowledged', null]]),
+      );
+
+      const statuses = await subscribeAddressBatch(state, [
+        { address: 'acknowledged', walletId: 'w1' },
+        { address: 'omitted', walletId: 'w1' },
+      ]);
+
+      expect(statuses).toEqual(new Map([['acknowledged', null]]));
+      expect(state.subscribedAddresses).toEqual(new Set(['acknowledged']));
+    });
+
     it('covers subscribeAllAddresses pagination progress and disconnected-network warning', async () => {
       const networks = getNetworks();
       const addressToWallet = getAddressToWallet();
@@ -201,6 +400,33 @@ export function registerElectrumManagerStandaloneContracts() {
       expect(mockClient.subscribeAddressBatch).not.toHaveBeenCalled();
     });
 
+    it('does not publish empty status results from initial or network resubscription', async () => {
+      const networks = getNetworks();
+      const addressToWallet = getAddressToWallet();
+      const observeStatuses = vi.fn().mockResolvedValue(undefined);
+      networks.set('mainnet', {
+        network: 'mainnet',
+        client: mockClient as any,
+        connected: true,
+        subscribedToHeaders: true,
+        subscribedAddresses: new Set<string>(),
+        lastBlockHeight: 0,
+        reconnectTimer: null,
+        reconnectAttempts: 0,
+      });
+      vi.mocked(prisma.address.findMany).mockResolvedValueOnce([{
+        id: 'empty-result', address: 'addr-empty', walletId: 'wallet-empty',
+        wallet: { network: 'mainnet' },
+      }] as any);
+      mockClient.subscribeAddressBatch.mockResolvedValue(new Map());
+
+      await subscribeAllAddresses(networks, addressToWallet, observeStatuses);
+      await subscribeNetworkAddresses('mainnet', networks, addressToWallet, observeStatuses);
+
+      expect(mockClient.subscribeAddressBatch).toHaveBeenCalledTimes(2);
+      expect(observeStatuses).not.toHaveBeenCalled();
+    });
+
     it('covers subscribeNetworkAddresses and checkHealth reconnect behavior', async () => {
       const networks = getNetworks();
       const addressToWallet = getAddressToWallet();
@@ -229,8 +455,13 @@ export function registerElectrumManagerStandaloneContracts() {
       networks.set('testnet3', disconnected);
       addressToWallet.set(getAddressSubscriptionKey('mainnet', 'addr-main'), { walletId: 'w-main', network: 'mainnet' });
 
-      await subscribeNetworkAddresses('mainnet', networks, addressToWallet);
+      const observeStatuses = vi.fn().mockResolvedValue(undefined);
+      await subscribeNetworkAddresses('mainnet', networks, addressToWallet, observeStatuses);
       expect(mockClient.subscribeAddressBatch).toHaveBeenCalledWith(['addr-main']);
+      expect(observeStatuses).toHaveBeenCalledWith(
+        'mainnet',
+        new Map([['addr-main', 'status']]),
+      );
 
       mockClient.getServerVersion.mockRejectedValueOnce(new Error('health failed'));
       const scheduleReconnectSpy = vi.fn();
@@ -239,6 +470,92 @@ export function registerElectrumManagerStandaloneContracts() {
       expect(disconnected.connected).toBe(false);
       expect(state.connected).toBe(false);
       expect(scheduleReconnectSpy).toHaveBeenCalledWith('mainnet');
+    });
+
+    it.each(['before', 'after-success', 'after-failure'] as const)(
+      'disconnects health work when ownership is lost %s',
+      async (timing) => {
+        const state: NetworkState = {
+          network: 'mainnet', client: mockClient as any, connected: true,
+          subscribedToHeaders: true, subscribedAddresses: new Set<string>(),
+          lastBlockHeight: 0, reconnectTimer: null, reconnectAttempts: 0,
+        };
+        const networks = new Map<BitcoinNetwork, NetworkState>([['mainnet', state]]);
+        let active = timing !== 'before';
+        if (timing === 'after-success') {
+          mockClient.getServerVersion.mockImplementationOnce(async () => {
+            active = false;
+            return { server: 'stale', protocol: '1.4' };
+          });
+        } else if (timing === 'after-failure') {
+          mockClient.getServerVersion.mockImplementationOnce(async () => {
+            active = false;
+            throw new Error('closed');
+          });
+        }
+
+        const schedule = vi.fn();
+        await checkHealth(networks, schedule, () => active);
+
+        expect(state.connected).toBe(false);
+        expect(mockClient.disconnect).toHaveBeenCalled();
+        expect(schedule).not.toHaveBeenCalled();
+      },
+    );
+
+    it('stops reconciliation when ownership changes across its database page', async () => {
+      let active = true;
+      vi.mocked(prisma.address.findMany).mockImplementationOnce((async () => {
+        active = false;
+        return [];
+      }) as any);
+      (manager as any).isRunningFlag = true;
+      (manager as any).subscriptionLock = { key: 'lock', token: 'token' };
+      const epoch = (manager as any).ownershipEpoch;
+      const result = await reconcileSubscriptions(
+        getNetworks(), getAddressToWallet(), undefined,
+        () => active && (manager as any).ownershipEpoch === epoch,
+      );
+
+      expect(result).toEqual({ removed: 0, added: 0 });
+    });
+
+    it('covers default-active and inactive-entry reconciliation boundaries', async () => {
+      vi.mocked(prisma.address.findMany).mockResolvedValueOnce([]);
+      await expect(reconcileSubscriptions(new Map(), new Map()))
+        .resolves.toEqual({ removed: 0, added: 0 });
+      await expect(reconcileSubscriptions(new Map(), new Map(), undefined, () => false))
+        .resolves.toEqual({ removed: 0, added: 0 });
+    });
+
+    it('rejects subscription work that starts without active ownership', async () => {
+      await expect(subscribeNetworkAddresses(
+        'mainnet', getNetworks(), getAddressToWallet(), undefined,
+        { isActive: () => false },
+      )).rejects.toThrow('ownership changed');
+    });
+
+    it('stops reconciliation when ownership changes in the status observer', async () => {
+      const networks = getNetworks();
+      networks.set('mainnet', {
+        network: 'mainnet', client: mockClient as any, connected: true,
+        subscribedToHeaders: true, subscribedAddresses: new Set<string>(),
+        lastBlockHeight: 0, reconnectTimer: null, reconnectAttempts: 0,
+      });
+      vi.mocked(prisma.address.findMany).mockResolvedValueOnce([{
+        id: 'observer-loss', address: 'addr-observer-loss', walletId: 'wallet',
+        wallet: { network: 'mainnet' },
+      }] as any);
+      let active = true;
+      const result = await reconcileSubscriptions(
+        networks,
+        getAddressToWallet(),
+        vi.fn(async () => { active = false; }),
+        () => active,
+      );
+
+      expect(result).toEqual({ removed: 0, added: 1 });
+      expect(mockClient.disconnect).toHaveBeenCalled();
     });
 
     it('removes wallet addresses from tracking and subscribed sets', () => {
@@ -279,6 +596,8 @@ export function registerElectrumManagerStandaloneContracts() {
     it('reconciles with connected network subscriptions and subscribed-address cleanup', async () => {
       const networks = getNetworks();
       const addressToWallet = getAddressToWallet();
+      (manager as any).isRunningFlag = true;
+      (manager as any).subscriptionLock = { key: 'lock', token: 'token' };
 
       const state: NetworkState = {
         network: 'mainnet',
@@ -367,6 +686,65 @@ export function registerElectrumManagerStandaloneContracts() {
       vi.useRealTimers();
     });
 
+    it('stops ownership when subscription lock refresh rejects', async () => {
+      vi.useFakeTimers();
+      vi.mocked(acquireLock).mockResolvedValue({ key: 'lock', token: 'token' } as any);
+      vi.mocked(prisma.address.findMany).mockResolvedValue([]);
+      vi.mocked(extendLock).mockRejectedValueOnce(new Error('Redis unavailable'));
+
+      await manager.start();
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(manager.getHealthMetrics().isRunning).toBe(false);
+      expect(manager.getHealthMetrics().ownershipRetryActive).toBe(true);
+      expect(vi.mocked(closeAllElectrumClients)).toHaveBeenCalled();
+
+      vi.useRealTimers();
+    });
+
+    it('stops ownership when lock refresh rejects with a non-Error reason', async () => {
+      vi.useFakeTimers();
+      vi.mocked(acquireLock).mockResolvedValue({ key: 'lock', token: 'token' } as any);
+      vi.mocked(prisma.address.findMany).mockResolvedValue([]);
+      vi.mocked(extendLock).mockRejectedValueOnce('Redis unavailable');
+
+      await manager.start();
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(manager.getHealthMetrics().isRunning).toBe(false);
+      expect(vi.mocked(closeAllElectrumClients)).toHaveBeenCalled();
+
+      vi.useRealTimers();
+    });
+
+    it('discards a late startup connection after lock loss', async () => {
+      vi.useFakeTimers();
+      let finishConnect!: () => void;
+      mockClient.connect.mockReturnValueOnce(new Promise<void>((resolve) => {
+        finishConnect = resolve;
+      }));
+      vi.mocked(acquireLock).mockResolvedValueOnce({ key: 'lock', token: 'token' } as any);
+      vi.mocked(extendLock).mockRejectedValueOnce(new Error('Redis unavailable'));
+
+      const startup = manager.start();
+      await vi.waitFor(() => {
+        expect(mockClient.connect).toHaveBeenCalledOnce();
+      });
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(manager.getHealthMetrics().isRunning).toBe(false);
+      expect(manager.getHealthMetrics().ownershipRetryActive).toBe(true);
+
+      finishConnect();
+      await startup;
+
+      expect(mockClient.subscribeHeaders).not.toHaveBeenCalled();
+      expect(mockClient.subscribeAddressBatch).not.toHaveBeenCalled();
+      expect(mockClient.disconnect).toHaveBeenCalled();
+      expect(getNetworks().size).toBe(0);
+      expect(vi.mocked(closeAllElectrumClients)).toHaveBeenCalled();
+      vi.useRealTimers();
+    });
+
     it('skips subscribeHeaders when already subscribed', async () => {
       const state: NetworkState = {
         network: 'mainnet',
@@ -381,6 +759,28 @@ export function registerElectrumManagerStandaloneContracts() {
 
       await subscribeHeaders(state);
       expect(mockClient.subscribeHeaders).not.toHaveBeenCalled();
+    });
+
+    it('covers direct header subscription and inactive entry/failure guards', async () => {
+      const state: NetworkState = {
+        network: 'mainnet', client: mockClient as any, connected: true,
+        subscribedToHeaders: false, subscribedAddresses: new Set<string>(),
+        lastBlockHeight: 0, reconnectTimer: null, reconnectAttempts: 0,
+      };
+      await subscribeHeaders(state);
+      expect(state.subscribedToHeaders).toBe(true);
+
+      state.subscribedToHeaders = false;
+      await subscribeHeaders(state, () => false);
+      expect(mockClient.disconnect).toHaveBeenCalled();
+
+      let active = true;
+      mockClient.subscribeHeaders.mockImplementationOnce(async () => {
+        active = false;
+        throw new Error('closed during headers');
+      });
+      await subscribeHeaders(state, () => active);
+      expect(state.subscribedToHeaders).toBe(false);
     });
 
     it('clears existing reconnect timer and logs when attempts exceed max', () => {
@@ -502,6 +902,7 @@ export function registerElectrumManagerStandaloneContracts() {
       });
       addressToWallet.set(getAddressSubscriptionKey('mainnet', 'addr-manager-reconnect'), { walletId: 'wallet-reconnect', network: 'mainnet' });
       (manager as any).isRunningFlag = true;
+      (manager as any).subscriptionLock = { key: 'lock', token: 'token' };
 
       (manager as any).doScheduleReconnect('mainnet');
       await vi.advanceTimersByTimeAsync(5_000);
@@ -509,6 +910,82 @@ export function registerElectrumManagerStandaloneContracts() {
       expect(mockClient.subscribeAddressBatch).toHaveBeenCalledWith(['addr-manager-reconnect']);
       expect(networks.get('mainnet')?.reconnectAttempts).toBe(0);
 
+      vi.useRealTimers();
+    });
+
+    it('discards a late reconnect after exact ownership is lost', async () => {
+      vi.useFakeTimers();
+      const networks = getNetworks();
+      let finishConnect!: () => void;
+      mockClient.connect.mockReturnValueOnce(new Promise<void>((resolve) => {
+        finishConnect = resolve;
+      }));
+      networks.set('mainnet', {
+        network: 'mainnet',
+        client: mockClient as any,
+        connected: false,
+        subscribedToHeaders: false,
+        subscribedAddresses: new Set<string>(),
+        lastBlockHeight: 0,
+        reconnectTimer: null,
+        reconnectAttempts: 0,
+      });
+      (manager as any).isRunningFlag = true;
+      (manager as any).subscriptionLock = { key: 'lock', token: 'token' };
+
+      (manager as any).doScheduleReconnect('mainnet');
+      vi.advanceTimersByTime(5_000);
+      await vi.waitFor(() => {
+        expect(mockClient.connect).toHaveBeenCalledOnce();
+      });
+      await (manager as any).stopRunningManager();
+      finishConnect();
+      await vi.waitFor(() => {
+        expect(mockClient.disconnect).toHaveBeenCalled();
+      });
+
+      expect(mockClient.subscribeHeaders).not.toHaveBeenCalled();
+      expect(mockClient.subscribeAddressBatch).not.toHaveBeenCalled();
+      expect(networks.size).toBe(0);
+      vi.useRealTimers();
+    });
+
+    it('stops reconnect resubscription when ownership is lost during readiness', async () => {
+      vi.useFakeTimers();
+      const networks = getNetworks();
+      let finishReady!: () => void;
+      mockCallbacks.onNetworkReady = vi.fn(() => new Promise<void>((resolve) => {
+        finishReady = resolve;
+      }));
+      networks.set('mainnet', {
+        network: 'mainnet',
+        client: mockClient as any,
+        connected: true,
+        subscribedToHeaders: true,
+        subscribedAddresses: new Set<string>(),
+        lastBlockHeight: 0,
+        reconnectTimer: null,
+        reconnectAttempts: 0,
+      });
+      getAddressToWallet().set(
+        getAddressSubscriptionKey('mainnet', 'addr-reconnect'),
+        { walletId: 'wallet-1', network: 'mainnet' },
+      );
+      (manager as any).isRunningFlag = true;
+      (manager as any).subscriptionLock = { key: 'lock', token: 'token' };
+
+      (manager as any).doScheduleReconnect('mainnet');
+      vi.advanceTimersByTime(5_000);
+      await vi.waitFor(() => {
+        expect(mockCallbacks.onNetworkReady).toHaveBeenCalledOnce();
+      });
+      await (manager as any).stopRunningManager();
+      finishReady();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(mockClient.subscribeAddressBatch).not.toHaveBeenCalled();
+      delete mockCallbacks.onNetworkReady;
       vi.useRealTimers();
     });
 
@@ -532,9 +1009,14 @@ export function registerElectrumManagerStandaloneContracts() {
         { id: '1', address: 'addr-connected', walletId: 'wallet1', wallet: { network: 'mainnet' } },
       ] as any);
 
-      await subscribeAllAddresses(networks, addressToWallet);
+      const observeStatuses = vi.fn().mockResolvedValue(undefined);
+      await subscribeAllAddresses(networks, addressToWallet, observeStatuses);
 
       expect(mockClient.subscribeAddressBatch).toHaveBeenCalledWith(['addr-connected']);
+      expect(observeStatuses).toHaveBeenCalledWith(
+        'mainnet',
+        new Map([['addr-connected', 'status']]),
+      );
     });
 
     it('defaults to mainnet in subscribeAllAddresses when wallet network is missing', async () => {

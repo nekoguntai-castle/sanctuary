@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   manager,
   mockClient,
+  mockCallbacks,
 } from './electrumManagerTestHarness';
 import prisma from '../../../../src/models/prisma';
 import {
@@ -146,6 +147,23 @@ export function registerElectrumManagerStartContracts() {
       expect(getElectrumClientForNetwork).not.toHaveBeenCalled();
     });
 
+    it('releases an initially acquired lock when explicit stop wins the race', async () => {
+      const lock = { key: 'lock', token: 'token' } as any;
+      let finishAcquire!: (value: typeof lock) => void;
+      vi.mocked(acquireLock).mockReturnValueOnce(
+        new Promise((resolve) => { finishAcquire = resolve; }),
+      );
+
+      const startup = manager.start();
+      await manager.stop();
+      finishAcquire(lock);
+      await startup;
+
+      expect(vi.mocked(releaseLock)).toHaveBeenCalledWith(lock);
+      expect(getElectrumClientForNetwork).not.toHaveBeenCalled();
+      expect(manager.getHealthMetrics().isRunning).toBe(false);
+    });
+
     it('rearms ownership retry when retry-acquired startup fails', async () => {
       vi.useFakeTimers();
       vi.mocked(acquireLock).mockResolvedValueOnce({ key: 'lock', token: 'token' } as any);
@@ -172,6 +190,105 @@ export function registerElectrumManagerStartContracts() {
       expect(mockClient.subscribeHeaders).toHaveBeenCalled();
       expect(setCachedBlockHeight).toHaveBeenCalledWith(100000, 'mainnet');
       expect(manager.isConnected()).toBe(true);
+    });
+
+    it('publishes network readiness before initial address subscription', async () => {
+      const onNetworkReady = vi.fn().mockResolvedValue(undefined);
+      mockCallbacks.onNetworkReady = onNetworkReady;
+      vi.mocked(acquireLock).mockResolvedValueOnce({ key: 'lock', token: 'token' } as any);
+      vi.mocked(prisma.address.findMany).mockResolvedValueOnce([{
+        id: 'address-1', address: 'bc1qready', walletId: 'wallet-1',
+        wallet: { network: 'mainnet' },
+      }] as any);
+
+      try {
+        await manager.start();
+
+        expect(onNetworkReady).toHaveBeenCalledWith('mainnet');
+        expect(mockClient.subscribeAddressBatch).toHaveBeenCalledWith(['bc1qready']);
+        expect(onNetworkReady).toHaveBeenCalledBefore(mockClient.subscribeAddressBatch);
+      } finally {
+        delete mockCallbacks.onNetworkReady;
+      }
+    });
+
+    it('does not publish network readiness when the primary connection fails', async () => {
+      const onNetworkReady = vi.fn().mockResolvedValue(undefined);
+      mockCallbacks.onNetworkReady = onNetworkReady;
+      vi.mocked(acquireLock).mockResolvedValueOnce({ key: 'lock', token: 'token' } as any);
+      mockClient.connect.mockRejectedValueOnce(new Error('primary unavailable'));
+      vi.mocked(prisma.address.findMany).mockResolvedValueOnce([]);
+
+      try {
+        await manager.start();
+        expect(onNetworkReady).not.toHaveBeenCalled();
+      } finally {
+        delete mockCallbacks.onNetworkReady;
+      }
+    });
+
+    it('stops startup when ownership is lost during network readiness', async () => {
+      let finishReady!: () => void;
+      mockCallbacks.onNetworkReady = vi.fn(() => new Promise<void>((resolve) => {
+        finishReady = resolve;
+      }));
+      vi.mocked(acquireLock).mockResolvedValueOnce({ key: 'lock', token: 'token' } as any);
+
+      const startup = manager.start();
+      await vi.waitFor(() => {
+        expect(mockCallbacks.onNetworkReady).toHaveBeenCalledOnce();
+      });
+      await manager.stop();
+      finishReady();
+      await startup;
+
+      expect(mockClient.subscribeAddressBatch).not.toHaveBeenCalled();
+      expect(manager.getHealthMetrics().isRunning).toBe(false);
+      delete mockCallbacks.onNetworkReady;
+    });
+
+    it('stops startup when ownership is lost during initial address subscription', async () => {
+      let finishSubscription!: (statuses: Map<string, string | null>) => void;
+      mockClient.subscribeAddressBatch.mockReturnValueOnce(
+        new Promise<Map<string, string | null>>((resolve) => {
+          finishSubscription = resolve;
+        }),
+      );
+      vi.mocked(acquireLock).mockResolvedValueOnce({ key: 'lock', token: 'token' } as any);
+      vi.mocked(prisma.address.findMany).mockResolvedValueOnce([{
+        id: 'address-1', address: 'bc1qready', walletId: 'wallet-1',
+        wallet: { network: 'mainnet' },
+      }] as any);
+
+      const startup = manager.start();
+      await vi.waitFor(() => {
+        expect(mockClient.subscribeAddressBatch).toHaveBeenCalledOnce();
+      });
+      await manager.stop();
+      finishSubscription(new Map([['bc1qready', 'status']]));
+      await startup;
+
+      expect(manager.getHealthMetrics().isRunning).toBe(false);
+    });
+
+    it('does not install health checks when ownership changes as the final page completes', async () => {
+      vi.mocked(acquireLock).mockResolvedValueOnce({ key: 'lock', token: 'token' } as any);
+      const finalPage = new Proxy([], {
+        get(target, property, receiver) {
+          if (property === 'length') {
+            (manager as any).isRunningFlag = false;
+            (manager as any).subscriptionLock = null;
+            (manager as any).ownershipEpoch += 1;
+          }
+          return Reflect.get(target, property, receiver);
+        },
+      });
+      vi.mocked(prisma.address.findMany).mockResolvedValueOnce(finalPage as any);
+
+      await manager.start();
+
+      expect((manager as any).healthCheckTimer).toBeNull();
+      expect(manager.getHealthMetrics().isRunning).toBe(false);
     });
 
     it('returns early when start is called while manager is already running', async () => {

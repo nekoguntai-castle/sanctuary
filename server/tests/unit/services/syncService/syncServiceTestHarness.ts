@@ -7,7 +7,7 @@ import { afterEach, beforeEach, vi } from 'vitest';
  * - Concurrent sync handling
  * - Retry logic
  * - Error handling
- * - Real-time subscriptions
+ * - Worker-delegated maintenance
  */
 
 // Use vi.hoisted to define mocks that are used in vi.mock factories
@@ -18,19 +18,15 @@ const {
   mockPopulateMissingTransactionFields,
   mockGetBlockHeight,
   mockSetCachedBlockHeight,
-  mockElectrumClient,
-  mockGetNodeClient,
-  mockGetElectrumClientIfActive,
   mockNotificationService,
   mockAcquireLock,
-  mockExtendLock,
   mockReleaseLock,
   mockWithLock,
-  mockIsLocked,
   mockGetWorkerHealthStatus,
   mockSyncLifecyclePublish,
   mockSyncIntentRequest,
   mockSyncIntentReset,
+  mockSubscriptionsEnabled,
 } = vi.hoisted(() => ({
   mockPrismaClient: {
     wallet: {
@@ -60,17 +56,6 @@ const {
   mockPopulateMissingTransactionFields: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   mockGetBlockHeight: vi.fn<(...args: unknown[]) => Promise<number>>(),
   mockSetCachedBlockHeight: vi.fn<(...args: unknown[]) => void>(),
-  mockElectrumClient: {
-    getServerVersion: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
-    subscribeHeaders: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
-    subscribeAddress: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
-    subscribeAddressBatch: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
-    unsubscribeAddress: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
-    on: vi.fn<(...args: unknown[]) => unknown>(),
-    removeAllListeners: vi.fn<(...args: unknown[]) => unknown>(),
-  },
-  mockGetNodeClient: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
-  mockGetElectrumClientIfActive: vi.fn<(...args: unknown[]) => unknown>(),
   mockNotificationService: {
     broadcastSyncStatus: vi.fn<(...args: unknown[]) => void>(),
     broadcastBalanceUpdate: vi.fn<(...args: unknown[]) => void>(),
@@ -79,17 +64,16 @@ const {
     broadcastTransactionNotification: vi.fn<(...args: unknown[]) => void>(),
   },
   mockAcquireLock: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
-  mockExtendLock: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   mockReleaseLock: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   mockWithLock: vi.fn<(key: string, ttl: number, fn: () => Promise<unknown>) => Promise<{ success: boolean; result?: unknown }>>().mockImplementation(async (_key, _ttl, fn) => {
     const result = await fn();
     return { success: true, result };
   }),
-  mockIsLocked: vi.fn<(key: string) => Promise<boolean>>(),
   mockGetWorkerHealthStatus: vi.fn<() => { healthy: boolean }>().mockReturnValue({ healthy: false }),
   mockSyncLifecyclePublish: vi.fn<(...args: unknown[]) => Promise<void>>(),
   mockSyncIntentRequest: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   mockSyncIntentReset: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+  mockSubscriptionsEnabled: { value: true },
 }));
 
 vi.mock('../../../../src/services/sync/syncIntentAdmission', () => ({
@@ -309,7 +293,7 @@ vi.mock('../../../../src/config', () => ({
       retryDelaysMs: [1000, 5000, 15000],
       maxSyncDurationMs: 120000,
       transactionBatchSize: 100,
-      electrumSubscriptionsEnabled: true,
+      electrumSubscriptionsEnabled: mockSubscriptionsEnabled.value,
       workerHealthPollIntervalMs: 30000,
     },
     bitcoin: {
@@ -324,11 +308,6 @@ vi.mock('../../../../src/services/bitcoin/blockchain', () => ({
   populateMissingTransactionFields: mockPopulateMissingTransactionFields,
   getBlockHeight: mockGetBlockHeight,
   setCachedBlockHeight: mockSetCachedBlockHeight,
-}));
-
-vi.mock('../../../../src/services/bitcoin/nodeClient', () => ({
-  getNodeClient: mockGetNodeClient,
-  getElectrumClientIfActive: mockGetElectrumClientIfActive,
 }));
 
 vi.mock('../../../../src/websocket/notifications', () => ({
@@ -349,16 +328,8 @@ vi.mock('../../../../src/services/eventService', () => ({
 
 vi.mock('../../../../src/infrastructure', () => ({
   acquireLock: mockAcquireLock,
-  extendLock: mockExtendLock,
-  LockAuthorityUnavailableError: class LockAuthorityUnavailableError extends Error {
-    constructor(operation: string) {
-      super(`Distributed lock authority unavailable during ${operation}`);
-      this.name = 'LockAuthorityUnavailableError';
-    }
-  },
   releaseLock: mockReleaseLock,
   withLock: mockWithLock,
-  isLocked: mockIsLocked,
 }));
 
 // Mock dead letter queue
@@ -390,10 +361,7 @@ export function resetSyncServiceState(syncService: SyncService): void {
   syncService['state'].syncQueue = [];
   syncService['activeSyncs'] = new Set();
   syncService['state'].activeLocks = new Map();
-  syncService['addressToWalletMap'] = new Map();
   syncService['state'].pendingRetries = new Map();
-  syncService['subscriptionLock'] = null;
-  syncService['subscriptionLockRefresh'] = null;
   syncService['subscriptionsEnabled'] = false;
   syncService['subscriptionOwnership'] = 'disabled';
 
@@ -401,22 +369,20 @@ export function resetSyncServiceState(syncService: SyncService): void {
   if (syncService['syncInterval']) { clearInterval(syncService['syncInterval']); syncService['syncInterval'] = null; }
   if (syncService['confirmationInterval']) { clearInterval(syncService['confirmationInterval']); syncService['confirmationInterval'] = null; }
   if (syncService['workerHealthPollTimer']) { clearInterval(syncService['workerHealthPollTimer']); syncService['workerHealthPollTimer'] = null; }
-  if (syncService['reconciliationInterval']) { clearInterval(syncService['reconciliationInterval']); syncService['reconciliationInterval'] = null; }
 }
 
 export function setDefaultSyncServiceMocks(): void {
+  mockSubscriptionsEnabled.value = true;
   // Default worker health: unhealthy (in-process polling)
   mockGetWorkerHealthStatus.mockReturnValue({ healthy: false });
-  mockIsLocked.mockResolvedValue(false);
 
   // Default mock implementations
   mockAcquireLock.mockResolvedValue({
-    key: 'electrum:subscriptions',
+    key: 'sync:wallet:test',
     token: 'test-token',
-    expiresAt: Date.now() + 60000,
+    expiresAt: Date.now() + 60_000,
     isLocal: true,
   });
-  mockExtendLock.mockImplementation(async (lock) => lock);
   mockReleaseLock.mockResolvedValue(undefined);
   mockSyncWallet.mockResolvedValue({ addresses: 10, transactions: 5, utxos: 3 });
   mockPopulateMissingTransactionFields.mockResolvedValue({ updated: 0, confirmationUpdates: [] });
@@ -425,11 +391,6 @@ export function setDefaultSyncServiceMocks(): void {
   mockPrismaClient.wallet.update.mockResolvedValue({});
   mockPrismaClient.address.findMany.mockResolvedValue([]);
   mockPrismaClient.uTXO.aggregate.mockResolvedValue({ _sum: { amount: BigInt(0) } });
-  mockElectrumClient.subscribeHeaders.mockResolvedValue({ height: 100000 });
-  mockElectrumClient.subscribeAddressBatch.mockResolvedValue(new Map());
-  mockElectrumClient.getServerVersion.mockResolvedValue({ server: 'test', protocol: '1.4' });
-  mockGetNodeClient.mockResolvedValue(mockElectrumClient);
-  mockGetElectrumClientIfActive.mockResolvedValue(mockElectrumClient);
   mockSyncIntentRequest.mockResolvedValue({
     status: 'requested',
     generation: 1,
@@ -514,10 +475,6 @@ export function getSyncServiceInstanceForTest(): SyncService {
 
 export {
   mockAcquireLock,
-  mockElectrumClient,
-  mockExtendLock,
-  mockGetElectrumClientIfActive,
-  mockGetNodeClient,
   mockGetWorkerHealthStatus,
   mockNotificationService,
   mockPopulateMissingTransactionFields,
@@ -527,8 +484,8 @@ export {
   mockSyncWallet,
   mockUpdateTransactionConfirmations,
   mockWithLock,
-  mockIsLocked,
   mockSyncLifecyclePublish,
   mockSyncIntentRequest,
   mockSyncIntentReset,
+  mockSubscriptionsEnabled,
 };
