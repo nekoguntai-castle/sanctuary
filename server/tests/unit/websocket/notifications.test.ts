@@ -439,12 +439,13 @@ describe('NotificationService', () => {
         change: 0,
       });
       service.broadcastBlockNotification({
+        network: 'mainnet',
         height: 800000,
         hash: 'blockhash123',
         timestamp: new Date(),
         transactionCount: 2500,
       });
-      service.broadcastNewBlock({ height: 800001 });
+      service.broadcastNewBlock({ network: 'mainnet', height: 800001 });
       service.broadcastMempoolNotification({
         txid: 'mempool-tx-123',
         fee: 5000,
@@ -570,6 +571,7 @@ describe('NotificationService', () => {
   describe('broadcastBlockNotification', () => {
     it('should broadcast block notification', () => {
       const notification: BlockNotification = {
+        network: 'testnet4',
         height: 800000,
         hash: 'blockhash123',
         timestamp: new Date(),
@@ -582,6 +584,7 @@ describe('NotificationService', () => {
         expect.objectContaining({
           type: 'block',
           data: expect.objectContaining({
+            network: 'testnet4',
             height: 800000,
             hash: 'blockhash123',
             transactionCount: 2500,
@@ -593,12 +596,13 @@ describe('NotificationService', () => {
 
   describe('broadcastNewBlock', () => {
     it('should broadcast new block with minimal data', () => {
-      service.broadcastNewBlock({ height: 800001 });
+      service.broadcastNewBlock({ network: 'signet', height: 800001 });
 
       expect(mockBroadcast).toHaveBeenCalledWith(
         expect.objectContaining({
           type: 'newBlock',
           data: expect.objectContaining({
+            network: 'signet',
             height: 800001,
             timestamp: expect.any(String),
           }),

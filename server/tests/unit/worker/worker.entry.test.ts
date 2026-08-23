@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 
 const mocks = vi.hoisted(() => {
   const logger = {
@@ -40,7 +41,7 @@ const mocks = vi.hoisted(() => {
   };
 
   let electrumCallbacks:
-    | { onNewBlock: (network: 'bitcoin' | 'testnet', height: number, hash: string) => void; onAddressActivity: (network: 'bitcoin' | 'testnet', walletId: string, address: string) => void }
+    | { onNewBlock: (network: NetworkType, height: number, hash: string) => void; onAddressActivity: (network: NetworkType, walletId: string, address: string) => void }
     | undefined;
   let healthProvider:
     | { getHealth: () => Promise<unknown>; getMetrics: () => Promise<unknown> }
@@ -1134,15 +1135,37 @@ describe('worker entrypoint', () => {
     expect(electrumCallbacks).toBeDefined();
 
     mocks.queueInstance.addJob.mockRejectedValueOnce(new Error('cannot queue confirmations'));
-    electrumCallbacks?.onNewBlock('testnet', 101, 'abc');
+    electrumCallbacks?.onNewBlock('testnet4', 101, 'abc');
     await Promise.resolve();
+    expect(mocks.queueInstance.addJob).toHaveBeenCalledWith(
+      'confirmations',
+      'update-confirmations',
+      {
+        version: 2,
+        network: 'testnet4',
+        height: 101,
+        hash: 'abc',
+      },
+      {
+        priority: 1,
+        jobId: 'confirmations:testnet4:101:abc',
+      },
+    );
     expect(mocks.logger.error).toHaveBeenCalledWith(
       'Failed to queue confirmation update job',
       expect.objectContaining({ error: 'cannot queue confirmations' })
     );
 
+    electrumCallbacks?.onNewBlock('testnet4', 101, 'def');
+    expect(mocks.queueInstance.addJob).toHaveBeenLastCalledWith(
+      'confirmations',
+      'update-confirmations',
+      expect.objectContaining({ network: 'testnet4', height: 101, hash: 'def' }),
+      expect.objectContaining({ jobId: 'confirmations:testnet4:101:def' }),
+    );
+
     mocks.syncIntentRequest.mockRejectedValueOnce(new Error('cannot persist sync intent'));
-    electrumCallbacks?.onAddressActivity('testnet', 'wallet-1', 'tb1qxyz');
+    electrumCallbacks?.onAddressActivity('testnet4', 'wallet-1', 'tb1qxyz');
     await vi.waitFor(() => {
       expect(mocks.logger.error).toHaveBeenCalledWith(
         'Failed to persist address activity sync intent',

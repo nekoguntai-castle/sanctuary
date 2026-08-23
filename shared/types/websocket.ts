@@ -13,6 +13,7 @@ import type {
   SyncLifecycleTransitionKind,
   WalletSyncFailureClass,
 } from '../constants/sync';
+import type { NetworkType } from '../constants/bitcoin';
 
 // =============================================================================
 // Client-to-Server Messages
@@ -256,6 +257,7 @@ export interface ConfirmationEvent {
 export interface BlockEvent {
   type: 'block';
   data: {
+    network: NetworkType;
     height: number;
     hash: string;
     timestamp: Date | string;
@@ -269,6 +271,7 @@ export interface BlockEvent {
 export interface NewBlockEvent {
   type: 'newBlock';
   data: {
+    network: NetworkType;
     height: number;
     timestamp: Date | string;
   };

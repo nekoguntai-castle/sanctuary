@@ -24,6 +24,7 @@ export type {
   TransactionNotification,
   BalanceUpdate,
   BlockNotification,
+  NewBlockNotification,
   MempoolNotification,
   LogLevel,
   WalletLogEntry,

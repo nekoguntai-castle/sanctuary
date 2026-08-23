@@ -7,6 +7,7 @@
 
 import { getElectrumClientForNetwork } from '../../services/bitcoin/electrum';
 import { setCachedBlockHeight } from '../../services/bitcoin/blockchain';
+import { hashBlockHeader } from '../../services/bitcoin/networkIdentity';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import {
@@ -124,7 +125,7 @@ export function setupEventHandlers(
     setCachedBlockHeight(block.height, network);
 
     log.info(`New ${network} block at height ${block.height}`);
-    callbacks.onNewBlock(network, block.height, block.hex.slice(0, 64));
+    callbacks.onNewBlock(network, block.height, hashBlockHeader(block.hex));
   });
 
   // Handle address activity

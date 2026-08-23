@@ -23,6 +23,7 @@ import type {
   TransactionNotification,
   BalanceUpdate,
   BlockNotification,
+  NewBlockNotification,
   MempoolNotification,
   WalletLogEntry,
   SyncStatusUpdate,
@@ -86,6 +87,7 @@ export function broadcastBlockNotification(notification: BlockNotification): voi
   if (!canBroadcast('block')) return;
 
   broadcastBlock({
+    network: notification.network,
     height: notification.height,
     hash: notification.hash,
     timestamp: notification.timestamp,
@@ -98,14 +100,15 @@ export function broadcastBlockNotification(notification: BlockNotification): voi
  * Broadcast new block notification (minimal - just height)
  * Used by real-time Electrum subscription
  */
-export function broadcastNewBlock(block: { height: number }): void {
+export function broadcastNewBlock(block: NewBlockNotification): void {
   if (!canBroadcast('newBlock')) return;
 
   broadcastTypedNewBlock({
+    network: block.network,
     height: block.height,
     timestamp: new Date(),
   });
-  log.info(`New block at height ${block.height}`);
+  log.info(`New block at height ${block.height}`, { network: block.network });
 }
 
 /**

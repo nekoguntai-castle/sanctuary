@@ -5,7 +5,7 @@ import {
   SYNC_JOB_CONTRACT_VERSION,
   UPDATE_ALL_CONFIRMATIONS_JOB_NAME,
   type CheckStaleWalletsJobData,
-  type UpdateConfirmationsJobData,
+  type UpdateAllConfirmationsJobData,
 } from '../jobs/syncJobContract';
 import type {
   RecurringScheduleDefinition,
@@ -116,7 +116,7 @@ export function buildBaselineRecurringSchedules(
       every(config.sync.intervalMs),
       syncFreshness(config.sync.intervalMs),
     ),
-    defineSchedule<UpdateConfirmationsJobData>(
+    defineSchedule<UpdateAllConfirmationsJobData>(
       CONFIRMATIONS_QUEUE_NAME,
       UPDATE_ALL_CONFIRMATIONS_JOB_NAME,
       { version: SYNC_JOB_CONTRACT_VERSION },

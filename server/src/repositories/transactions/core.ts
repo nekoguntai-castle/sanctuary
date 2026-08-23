@@ -1,5 +1,6 @@
 import prisma from '../../models/prisma';
 import type { Transaction, Prisma } from '../../generated/prisma/client';
+import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 import type {
   TransactionPaginationOptions,
   TransactionPaginatedResult,
@@ -439,10 +440,14 @@ export async function findBlockTimesByTxids(
 }
 
 export async function findWalletIdsWithPendingConfirmations(
-  threshold: number = 6
+  threshold: number = 6,
+  network?: NetworkType,
 ): Promise<string[]> {
   const results = await prisma.transaction.findMany({
-    where: { confirmations: { lt: threshold } },
+    where: {
+      confirmations: { lt: threshold },
+      ...(network === undefined ? {} : { wallet: { network } }),
+    },
     select: { walletId: true },
     distinct: ['walletId'],
   });

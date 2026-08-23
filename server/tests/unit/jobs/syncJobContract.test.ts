@@ -17,7 +17,9 @@ import {
   isCheckStaleWalletsJobData,
   isSyncWalletJobData,
   isSyncWalletJobLockData,
+  isUpdateAllConfirmationsJobData,
   isUpdateConfirmationsJobData,
+  NETWORK_CONFIRMATIONS_JOB_VERSION,
   ORDINARY_SYNC_LOCK_RETRY_DELAY_MS,
   ORDINARY_SYNC_LOCK_RETRY_WINDOW_MS,
   SYNC_JOB_CONTRACT_VERSION,
@@ -36,6 +38,7 @@ import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from '../../../src/constants/walletS
 describe('sync job contract', () => {
   it('freezes the v1 wire identity and worker retry defaults', () => {
     expect(SYNC_JOB_CONTRACT_VERSION).toBe(1);
+    expect(NETWORK_CONFIRMATIONS_JOB_VERSION).toBe(2);
     expect(SYNC_QUEUE_NAME).toBe('sync');
     expect(SYNC_WALLET_JOB_NAME).toBe('sync-wallet');
     expect(CHECK_STALE_WALLETS_JOB_NAME).toBe('check-stale-wallets');
@@ -355,8 +358,24 @@ describe('sync job contract', () => {
     expect(isCheckStaleWalletsJobData({ priority: 'urgent' })).toBe(false);
     expect(isUpdateConfirmationsJobData({ height: 100 })).toBe(true);
     expect(isUpdateConfirmationsJobData({ version: 1, hash: 'abc' })).toBe(true);
+    expect(isUpdateConfirmationsJobData({
+      version: 2,
+      network: 'testnet4',
+      height: 100,
+      hash: 'abc',
+    })).toBe(true);
     expect(isUpdateConfirmationsJobData({ version: 2 })).toBe(false);
+    expect(isUpdateConfirmationsJobData({ version: 2, network: 'testnet' })).toBe(false);
+    expect(isUpdateConfirmationsJobData({ version: 1, network: 'mainnet' })).toBe(false);
     expect(isUpdateConfirmationsJobData({ height: '100' })).toBe(false);
+    expect(isUpdateConfirmationsJobData(null)).toBe(false);
+    expect(isUpdateAllConfirmationsJobData({})).toBe(true);
+    expect(isUpdateAllConfirmationsJobData({ version: 1 })).toBe(true);
+    expect(isUpdateAllConfirmationsJobData({ version: 2, network: 'mainnet' })).toBe(false);
+    expect(isUpdateAllConfirmationsJobData({ version: 1, network: 'mainnet' })).toBe(false);
+    expect(isUpdateAllConfirmationsJobData({ version: 1, height: '100' })).toBe(false);
+    expect(isUpdateAllConfirmationsJobData({ version: 1, hash: 100 })).toBe(false);
+    expect(isUpdateAllConfirmationsJobData(null)).toBe(false);
   });
 
   it('accepts legacy and current results while rejecting unknown versions', () => {

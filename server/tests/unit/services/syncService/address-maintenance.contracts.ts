@@ -165,6 +165,20 @@ export function registerSyncServiceAddressMaintenanceTests(context: SyncServiceT
   });
 
   describe('confirmation update flows', () => {
+    it('scopes live confirmation refreshes to the producing network', async () => {
+      context.syncService['isRunning'] = true;
+      mockPrismaClient.transaction.findMany.mockResolvedValueOnce([]);
+
+      await context.syncService['updateNetworkConfirmations']('testnet4');
+
+      expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: {
+          confirmations: { lt: 6 },
+          wallet: { network: 'testnet4' },
+        },
+      }));
+    });
+
     it('delegates confirmation updates to the single event-service publisher', async () => {
       context.syncService['isRunning'] = true;
 

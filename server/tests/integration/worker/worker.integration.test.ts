@@ -44,8 +44,8 @@ describe('worker integration', () => {
     expect(harness.jobQueue.addJob).toHaveBeenCalledWith(
       'confirmations',
       'update-confirmations',
-      { version: 1, height: 123, hash: 'hash-123' },
-      { priority: 1, jobId: 'confirmations:123' }
+      { version: 2, network: 'testnet3', height: 123, hash: 'hash-123' },
+      { priority: 1, jobId: 'confirmations:testnet3:123:hash-123' },
     );
 
     expect(harness.requestSyncIntent).toHaveBeenCalledWith('wallet-1');

@@ -15,11 +15,16 @@ import { releaseLock, withLock } from '../../infrastructure';
 import { getWorkerHealthStatus } from '../workerHealth';
 import { syncPollingModeTransitions } from '../../observability/metrics';
 import type { SyncExecutionOwner, SyncPriority } from '@sanctuary/shared/constants/sync';
+import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 import type { SyncState, SyncResult, SyncHealthMetrics, PollingMode } from './types';
 import { SubscriptionAuthorityRetryController } from './lockAuthorityRecovery';
 import { classifyWalletSyncFailure } from './failureClassification';
 import { clearStuckSyncIfAuthorized } from './staleWalletChecker';
-import { refreshPendingConfirmations } from './confirmationUpdater';
+import {
+  refreshAllPendingConfirmations,
+  refreshPendingConfirmations,
+  type PendingConfirmationRefreshResult,
+} from './confirmationUpdater';
 import { syncIntentAdmission } from './syncIntentAdmission';
 import {
   setupRealTimeSubscriptions as doSetupRealTimeSubscriptions,
@@ -353,7 +358,7 @@ class SyncService {
     return doSetupRealTimeSubscriptions(
       this.state,
       (walletId) => this.requestAddressActivitySync(walletId),
-      () => this.updateAllConfirmations(),
+      (network) => this.updateNetworkConfirmations(network),
     );
   }
 
@@ -396,7 +401,11 @@ class SyncService {
   }
 
   public async handleNewBlock(block: { height: number; hex: string }): Promise<void> {
-    return doHandleNewBlock(this.state, block, () => this.updateAllConfirmations());
+    return doHandleNewBlock(
+      this.state,
+      block,
+      (network) => this.updateNetworkConfirmations(network),
+    );
   }
 
   public async handleAddressActivity(activity: { scriptHash: string; address?: string; status: string }): Promise<void> {
@@ -411,7 +420,7 @@ class SyncService {
     doStartSubscriptionLockRefresh(
       this.state,
       /* v8 ignore next -- delegate callback; confirmation refresh behavior is covered separately */
-      () => this.updateAllConfirmations(),
+      (network) => this.updateNetworkConfirmations(network),
       () => this.teardownRealTimeSubscriptions(),
     );
   }
@@ -554,10 +563,20 @@ class SyncService {
    * Update confirmations for all wallets with pending transactions
    */
   private async updateAllConfirmations(): Promise<void> {
+    return this.updateConfirmations(() => refreshAllPendingConfirmations());
+  }
+
+  private async updateNetworkConfirmations(network: NetworkType): Promise<void> {
+    return this.updateConfirmations(() => refreshPendingConfirmations(network));
+  }
+
+  private async updateConfirmations(
+    refresh: () => Promise<PendingConfirmationRefreshResult>,
+  ): Promise<void> {
     if (!this.state.isRunning) return;
 
     try {
-      const result = await refreshPendingConfirmations();
+      const result = await refresh();
       for (const failure of result.failures) {
         log.error(`[SYNC] Failed to update confirmations for wallet ${failure.walletId}`, {
           error: getErrorMessage(failure.error),

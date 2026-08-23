@@ -59,6 +59,7 @@ vi.mock('../../../../src/services/eventService', () => ({
 import {
   ConfirmationLockUnavailableError,
   ConfirmationRefreshError,
+  refreshAllPendingConfirmations,
   refreshPendingConfirmations,
   refreshWalletConfirmations,
 } from '../../../../src/services/sync/confirmationUpdater';
@@ -166,10 +167,13 @@ describe('confirmationUpdater', () => {
       { walletId: 'wallet-m' },
     ]);
 
-    const result = await refreshPendingConfirmations();
+    const result = await refreshPendingConfirmations('testnet4');
 
     expect(mockFindMany).toHaveBeenCalledWith({
-      where: { confirmations: { lt: 6 } },
+      where: {
+        confirmations: { lt: 6 },
+        wallet: { network: 'testnet4' },
+      },
       select: { walletId: true },
       distinct: ['walletId'],
     });
@@ -191,7 +195,7 @@ describe('confirmationUpdater', () => {
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({ key: 'sync:wallet:wallet-b', token: 'wallet-b' });
 
-    const result = await refreshPendingConfirmations();
+    const result = await refreshPendingConfirmations('mainnet');
 
     expect(result.failures).toEqual([{
       walletId: 'wallet-a',
@@ -218,7 +222,7 @@ describe('confirmationUpdater', () => {
       .mockRejectedValueOnce(walletError)
       .mockResolvedValueOnce({ updated: 0, confirmationUpdates: [] });
 
-    const result = await refreshPendingConfirmations();
+    const result = await refreshPendingConfirmations('mainnet');
 
     expect(mockPopulateMissingTransactionFields).toHaveBeenCalledTimes(2);
     expect(result.failures).toEqual([
@@ -241,7 +245,7 @@ describe('confirmationUpdater', () => {
     const publicationError = new Error('publisher unavailable');
     mockEmitTransactionConfirmed.mockImplementationOnce(() => { throw publicationError; });
 
-    const result = await refreshPendingConfirmations();
+    const result = await refreshPendingConfirmations('mainnet');
 
     expect(result).toMatchObject({
       fieldUpdates: 2,
@@ -296,7 +300,7 @@ describe('confirmationUpdater', () => {
       throw updateError;
     });
 
-    const result = await refreshPendingConfirmations();
+    const result = await refreshPendingConfirmations('mainnet');
 
     expect(result.wallets).toEqual([
       expect.objectContaining({
@@ -528,8 +532,13 @@ describe('confirmationUpdater', () => {
     mockFindMany.mockResolvedValueOnce([{ walletId: 'wallet-1' }]);
     mockAcquireLock.mockRejectedValueOnce(authorityError);
 
-    const result = await refreshPendingConfirmations();
+    const result = await refreshAllPendingConfirmations();
 
+    expect(mockFindMany).toHaveBeenCalledWith({
+      where: { confirmations: { lt: 6 } },
+      select: { walletId: true },
+      distinct: ['walletId'],
+    });
     expect(result.failures).toEqual([{ walletId: 'wallet-1', error: authorityError }]);
     expect(result.wallets).toEqual([]);
   });
@@ -538,6 +547,6 @@ describe('confirmationUpdater', () => {
     const queryError = new Error('database unavailable');
     mockFindMany.mockRejectedValue(queryError);
 
-    await expect(refreshPendingConfirmations()).rejects.toBe(queryError);
+    await expect(refreshAllPendingConfirmations()).rejects.toBe(queryError);
   });
 });

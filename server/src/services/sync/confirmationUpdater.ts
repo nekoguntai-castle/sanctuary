@@ -23,6 +23,7 @@ import {
 } from '../bitcoin/blockchain';
 import { eventService } from '../eventService';
 import { getErrorMessage } from '../../utils/errors';
+import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 import {
   runSyncAttemptWithTimeout,
   SYNC_ABORT_GRACE_MS,
@@ -286,10 +287,9 @@ export async function refreshWalletConfirmations(
   }
 }
 
-export async function refreshPendingConfirmations(): Promise<PendingConfirmationRefreshResult> {
-  const pendingWalletIds = await transactionRepository.findWalletIdsWithPendingConfirmations(
-    CONFIRMATION_THRESHOLD,
-  );
+async function refreshPendingConfirmationWallets(
+  pendingWalletIds: string[],
+): Promise<PendingConfirmationRefreshResult> {
   const walletIds = [...new Set(pendingWalletIds)].sort();
   const wallets: WalletConfirmationRefreshResult[] = [];
   const failures: ConfirmationRefreshFailure[] = [];
@@ -323,4 +323,23 @@ export async function refreshPendingConfirmations(): Promise<PendingConfirmation
     publicationFailures: wallets.flatMap(({ publicationFailures }) => publicationFailures),
     failures,
   };
+}
+
+/** Refresh only wallets on the network that emitted a new block. */
+export async function refreshPendingConfirmations(
+  network: NetworkType,
+): Promise<PendingConfirmationRefreshResult> {
+  const pendingWalletIds = await transactionRepository.findWalletIdsWithPendingConfirmations(
+    CONFIRMATION_THRESHOLD,
+    network,
+  );
+  return refreshPendingConfirmationWallets(pendingWalletIds);
+}
+
+/** Scheduled maintenance intentionally refreshes pending wallets across all networks. */
+export async function refreshAllPendingConfirmations(): Promise<PendingConfirmationRefreshResult> {
+  const pendingWalletIds = await transactionRepository.findWalletIdsWithPendingConfirmations(
+    CONFIRMATION_THRESHOLD,
+  );
+  return refreshPendingConfirmationWallets(pendingWalletIds);
 }

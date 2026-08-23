@@ -5,6 +5,7 @@
  */
 
 import type { SyncEvent } from '@sanctuary/shared/types/websocket';
+import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 
 export interface TransactionNotification {
   txid: string;
@@ -25,10 +26,16 @@ export interface BalanceUpdate {
 }
 
 export interface BlockNotification {
+  network: NetworkType;
   height: number;
   hash: string;
   timestamp: Date;
   transactionCount: number;
+}
+
+export interface NewBlockNotification {
+  network: NetworkType;
+  height: number;
 }
 
 export interface MempoolNotification {

@@ -150,6 +150,7 @@ describe('EventBuilders', () => {
   describe('block', () => {
     it('should create a block event', () => {
       const event = EventBuilders.block({
+        network: 'signet',
         height: 800000,
         hash: 'blockhash123',
         timestamp: new Date('2024-01-01T00:00:00Z'),
@@ -159,6 +160,7 @@ describe('EventBuilders', () => {
       expect(event).toEqual({
         type: 'block',
         data: {
+          network: 'signet',
           height: 800000,
           hash: 'blockhash123',
           timestamp: expect.any(Date),
@@ -169,6 +171,7 @@ describe('EventBuilders', () => {
 
     it('should handle block with few transactions', () => {
       const event = EventBuilders.block({
+        network: 'testnet4',
         height: 800001,
         hash: 'blockhash456',
         timestamp: new Date(),
@@ -182,6 +185,7 @@ describe('EventBuilders', () => {
   describe('newBlock', () => {
     it('should create a newBlock event', () => {
       const event = EventBuilders.newBlock({
+        network: 'signet',
         height: 800000,
         timestamp: new Date('2024-01-01T00:00:00Z'),
       });
@@ -189,6 +193,7 @@ describe('EventBuilders', () => {
       expect(event).toEqual({
         type: 'newBlock',
         data: {
+          network: 'signet',
           height: 800000,
           timestamp: expect.any(Date),
         },
@@ -197,11 +202,12 @@ describe('EventBuilders', () => {
 
     it('should only include height and timestamp', () => {
       const event = EventBuilders.newBlock({
+        network: 'testnet4',
         height: 800001,
         timestamp: new Date(),
       });
 
-      expect(Object.keys(event.data).sort()).toEqual(['height', 'timestamp']);
+      expect(Object.keys(event.data).sort()).toEqual(['height', 'network', 'timestamp']);
     });
   });
 

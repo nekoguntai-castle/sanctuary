@@ -264,8 +264,15 @@ vi.mock('../../../../src/repositories', () => ({
     findByAddress: (address: string) => mockPrismaClient.address.findFirst({ where: { address }, select: { walletId: true } }),
   },
   transactionRepository: {
-    findWalletIdsWithPendingConfirmations: (threshold: number) =>
-      mockPrismaClient.transaction.findMany({ where: { confirmations: { lt: threshold } }, select: { walletId: true }, distinct: ['walletId'] })
+    findWalletIdsWithPendingConfirmations: (threshold: number, network?: string) =>
+      mockPrismaClient.transaction.findMany({
+        where: {
+          confirmations: { lt: threshold },
+          ...(network === undefined ? {} : { wallet: { network } }),
+        },
+        select: { walletId: true },
+        distinct: ['walletId'],
+      })
         .then((results: any[]) => results.map((r: any) => r.walletId)),
   },
   utxoRepository: {

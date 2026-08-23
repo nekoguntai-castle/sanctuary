@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMockJob } from '../../../helpers/workerJob';
 
 const confirmationJobMocks = vi.hoisted(() => ({
+  refreshAllPendingConfirmations: vi.fn(),
   refreshPendingConfirmations: vi.fn(),
 }));
 
@@ -20,6 +21,7 @@ vi.mock('../../../../src/models/prisma', () => ({
 }));
 
 vi.mock('../../../../src/services/sync/confirmationUpdater', () => ({
+  refreshAllPendingConfirmations: confirmationJobMocks.refreshAllPendingConfirmations,
   refreshPendingConfirmations: confirmationJobMocks.refreshPendingConfirmations,
 }));
 
@@ -62,6 +64,15 @@ describe('Confirmation Jobs', () => {
       publicationFailures: [],
       failures: [],
     });
+    confirmationJobMocks.refreshAllPendingConfirmations.mockResolvedValue({
+      walletIds: [],
+      wallets: [],
+      fieldUpdates: 0,
+      confirmationUpdateCount: 0,
+      milestoneCount: 0,
+      publicationFailures: [],
+      failures: [],
+    });
   });
 
   describe('updateConfirmationsJob', () => {
@@ -79,6 +90,19 @@ describe('Confirmation Jobs', () => {
       await updateConfirmationsJob.handler(mockJob);
 
       expect(setCachedBlockHeight).toHaveBeenCalledWith(100005, 'mainnet');
+      expect(confirmationJobMocks.refreshPendingConfirmations).toHaveBeenCalledWith('mainnet');
+    });
+
+    it('uses the event payload network for cache and confirmation work', async () => {
+      const mockJob = createMockJob(
+        { version: 2 as const, network: 'testnet4' as const, height: 3_000_005 },
+        { id: 'confirmations:testnet4:3000005', opts: { attempts: 2 } },
+      );
+
+      await updateConfirmationsJob.handler(mockJob);
+
+      expect(setCachedBlockHeight).toHaveBeenCalledWith(3_000_005, 'testnet4');
+      expect(confirmationJobMocks.refreshPendingConfirmations).toHaveBeenCalledWith('testnet4');
     });
 
     it('should return early if no pending transactions', async () => {
@@ -91,7 +115,7 @@ describe('Confirmation Jobs', () => {
 
       expect(result.updated).toBe(0);
       expect(result.notified).toBe(0);
-      expect(confirmationJobMocks.refreshPendingConfirmations).toHaveBeenCalledOnce();
+      expect(confirmationJobMocks.refreshPendingConfirmations).toHaveBeenCalledWith('mainnet');
     });
 
     it('should update confirmations for wallets with pending transactions', async () => {
@@ -231,25 +255,26 @@ describe('Confirmation Jobs', () => {
   });
 
   describe('updateAllConfirmationsJob', () => {
-    it('delegates to updateConfirmationsJob without block data', async () => {
-      const handlerSpy = vi.spyOn(updateConfirmationsJob, 'handler').mockResolvedValueOnce({
-        updated: 2,
-        notified: 1,
+    it('runs separately named all-network maintenance', async () => {
+      confirmationJobMocks.refreshAllPendingConfirmations.mockResolvedValueOnce({
+        walletIds: ['mainnet-wallet', 'signet-wallet'],
+        wallets: [],
+        fieldUpdates: 0,
+        confirmationUpdateCount: 2,
+        milestoneCount: 1,
+        publicationFailures: [],
+        failures: [],
       });
 
       const job = createMockJob({}, { id: 'update-all-legacy', opts: { attempts: 1 } });
       const result = await updateAllConfirmationsJob.handler(job);
 
-      expect(handlerSpy).toHaveBeenCalledWith(job);
-      expect(result).toEqual({ updated: 2, notified: 1 });
+      expect(confirmationJobMocks.refreshAllPendingConfirmations).toHaveBeenCalledOnce();
+      expect(confirmationJobMocks.refreshPendingConfirmations).not.toHaveBeenCalled();
+      expect(result).toEqual({ version: 1, updated: 2, notified: 1 });
     });
 
-    it('accepts explicit v1 and rejects unknown versions before delegation', async () => {
-      const handlerSpy = vi.spyOn(updateConfirmationsJob, 'handler').mockResolvedValueOnce({
-        version: 1,
-        updated: 0,
-        notified: 0,
-      });
+    it('accepts explicit v1 and rejects network-scoped v2 payloads', async () => {
       const currentJob = createMockJob(
         { version: 1 as const },
         { id: 'update-all-v1', opts: { attempts: 1 } },
@@ -260,16 +285,16 @@ describe('Confirmation Jobs', () => {
         updated: 0,
         notified: 0,
       });
-      expect(handlerSpy).toHaveBeenCalledWith(currentJob);
+      expect(confirmationJobMocks.refreshAllPendingConfirmations).toHaveBeenCalledOnce();
 
       const futureJob = createMockJob(
-        { version: 2 } as never,
+        { version: 2, network: 'mainnet' } as never,
         { id: 'update-all-v2', opts: { attempts: 1 } },
       );
       await expect(updateAllConfirmationsJob.handler(futureJob)).rejects.toThrow(
         'Unsupported or invalid update-all-confirmations job payload',
       );
-      expect(handlerSpy).toHaveBeenCalledTimes(1);
+      expect(confirmationJobMocks.refreshAllPendingConfirmations).toHaveBeenCalledTimes(1);
     });
   });
 });

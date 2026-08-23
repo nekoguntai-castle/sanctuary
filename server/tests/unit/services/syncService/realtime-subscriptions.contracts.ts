@@ -13,6 +13,10 @@ import {
 } from './syncServiceTestHarness';
 import { startSubscriptionLockRefresh } from '../../../../src/services/sync/subscriptionManager';
 import { LockAuthorityUnavailableError } from '../../../../src/infrastructure';
+import { hashBlockHeader } from '../../../../src/services/bitcoin/networkIdentity';
+
+const BLOCK_HEADER_A = 'a'.repeat(160);
+const BLOCK_HEADER_B = 'b'.repeat(160);
 
 export function registerSyncServiceRealtimeSubscriptionTests(context: SyncServiceTestContext): void {
   describe('real-time subscriptions and block handling', () => {
@@ -117,7 +121,7 @@ export function registerSyncServiceRealtimeSubscriptionTests(context: SyncServic
       mockElectrumClient.subscribeAddressBatch.mockResolvedValueOnce(
         new Map([['addr-callback', 'status-callback']])
       );
-      const updateSpy = vi.spyOn(context.syncService as any, 'updateAllConfirmations').mockResolvedValue(undefined);
+      const updateSpy = vi.spyOn(context.syncService as any, 'updateNetworkConfirmations').mockResolvedValue(undefined);
 
       await context.syncService['setupRealTimeSubscriptions']();
 
@@ -131,10 +135,11 @@ export function registerSyncServiceRealtimeSubscriptionTests(context: SyncServic
       expect(newBlockHandler).toBeDefined();
       expect(addressActivityHandler).toBeDefined();
 
-      newBlockHandler?.({ height: 123, hex: 'f'.repeat(80) });
+      newBlockHandler?.({ height: 123, hex: 'f'.repeat(160) });
       addressActivityHandler?.({ scriptHash: 'hash-callback', address: 'addr-callback', status: 'changed' });
 
       await vi.waitFor(() => expect(updateSpy).toHaveBeenCalled());
+      expect(updateSpy).toHaveBeenCalledWith('testnet3');
       await vi.waitFor(() => expect(mockSyncIntentRequest).toHaveBeenCalledWith('wallet-callback'));
     });
 
@@ -380,16 +385,25 @@ export function registerSyncServiceRealtimeSubscriptionTests(context: SyncServic
 
     it('handles new block success and confirmation-update failure paths', async () => {
       const { eventService } = await import('../../../../src/services/eventService');
-      const updateSpy = vi.spyOn(context.syncService as any, 'updateAllConfirmations')
+      const updateSpy = vi.spyOn(context.syncService as any, 'updateNetworkConfirmations')
         .mockResolvedValueOnce(undefined)
         .mockRejectedValueOnce(new Error('confirmations failed'));
 
-      await context.syncService['handleNewBlock']({ height: 200, hex: 'a'.repeat(80) });
-      await context.syncService['handleNewBlock']({ height: 201, hex: 'b'.repeat(80) });
+      await context.syncService['handleNewBlock']({ height: 200, hex: BLOCK_HEADER_A });
+      await context.syncService['handleNewBlock']({ height: 201, hex: BLOCK_HEADER_B });
 
       expect(updateSpy).toHaveBeenCalledTimes(2);
-      expect(eventService.emitNewBlock).toHaveBeenCalledWith('testnet3', 200, 'a'.repeat(64));
-      expect(mockNotificationService.broadcastNewBlock).toHaveBeenCalledWith({ height: 200 });
+      expect(updateSpy).toHaveBeenNthCalledWith(1, 'testnet3');
+      expect(updateSpy).toHaveBeenNthCalledWith(2, 'testnet3');
+      expect(eventService.emitNewBlock).toHaveBeenCalledWith(
+        'testnet3',
+        200,
+        hashBlockHeader(BLOCK_HEADER_A),
+      );
+      expect(mockNotificationService.broadcastNewBlock).toHaveBeenCalledWith({
+        network: 'testnet3',
+        height: 200,
+      });
     });
 
     it('tears down subscriptions even when unsubscribe throws', async () => {

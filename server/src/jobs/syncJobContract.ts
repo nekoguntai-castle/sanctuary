@@ -3,6 +3,10 @@ import {
   isSyncPriority,
   type SyncPriority,
 } from '@sanctuary/shared/constants/sync';
+import {
+  isNetworkType,
+  type NetworkType,
+} from '@sanctuary/shared/constants/bitcoin';
 import { getConfig } from '../config';
 import {
   FULL_RESYNC_GENERATION_MAX,
@@ -18,6 +22,7 @@ import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from '../constants/walletSyncActivat
 export const SYNC_JOB_CONTRACT_VERSION = 1 as const;
 export const SYNC_WALLET_JOB_READER_VERSION = 2 as const;
 export const SYNC_WALLET_MUTATION_FENCE_JOB_VERSION = 3 as const;
+export const NETWORK_CONFIRMATIONS_JOB_VERSION = 2 as const;
 export const SYNC_QUEUE_NAME = 'sync' as const;
 export const SYNC_WALLET_JOB_NAME = 'sync-wallet' as const;
 export const CHECK_STALE_WALLETS_JOB_NAME = 'check-stale-wallets' as const;
@@ -119,10 +124,27 @@ export interface CheckStaleWalletsJobData extends VersionedSyncJobContract {
   reason?: string;
 }
 
-export interface UpdateConfirmationsJobData extends VersionedSyncJobContract {
+/** Retained v1 payloads are interpreted against the configured network. */
+export interface RetainedUpdateConfirmationsJobData extends VersionedSyncJobContract {
+  height?: number;
+  hash?: string;
+  network?: never;
+}
+
+/** New-block confirmation work is scoped to the network that produced it. */
+export interface NetworkUpdateConfirmationsJobData {
+  version: typeof NETWORK_CONFIRMATIONS_JOB_VERSION;
+  network: NetworkType;
   height?: number;
   hash?: string;
 }
+
+export type UpdateConfirmationsJobData =
+  | RetainedUpdateConfirmationsJobData
+  | NetworkUpdateConfirmationsJobData;
+
+/** Scheduled maintenance intentionally sweeps every wallet network. */
+export type UpdateAllConfirmationsJobData = RetainedUpdateConfirmationsJobData;
 
 export interface SyncWalletJobResult extends VersionedSyncJobContract {
   success: boolean;
@@ -463,8 +485,23 @@ export function isCheckStaleWalletsJobData(
 export function isUpdateConfirmationsJobData(
   value: unknown,
 ): value is UpdateConfirmationsJobData {
+  if (!isRecord(value)) return false;
+  const data = value as Record<string, unknown>;
+  const hasValidBlockIdentity = (data.height === undefined || typeof data.height === 'number')
+    && (data.hash === undefined || typeof data.hash === 'string');
+  if (!hasValidBlockIdentity) return false;
+  if (data.version === NETWORK_CONFIRMATIONS_JOB_VERSION) {
+    return isNetworkType(data.network);
+  }
+  return hasSupportedSyncJobContractVersion(data) && data.network === undefined;
+}
+
+export function isUpdateAllConfirmationsJobData(
+  value: unknown,
+): value is UpdateAllConfirmationsJobData {
   if (!isRecord(value) || !hasSupportedSyncJobContractVersion(value)) return false;
   const data = value as Record<string, unknown>;
-  return (data.height === undefined || typeof data.height === 'number')
+  return data.network === undefined
+    && (data.height === undefined || typeof data.height === 'number')
     && (data.hash === undefined || typeof data.hash === 'string');
 }

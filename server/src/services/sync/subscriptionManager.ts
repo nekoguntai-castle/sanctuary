@@ -10,6 +10,7 @@
 
 import { walletRepository, addressRepository } from "../../repositories";
 import { setCachedBlockHeight } from "../bitcoin/blockchain";
+import { hashBlockHeader } from "../bitcoin/networkIdentity";
 import {
   getNodeClient,
   getElectrumClientIfActive,
@@ -27,6 +28,7 @@ import {
 } from "../../infrastructure";
 import { normalizeLegacyBitcoinNetwork } from "../bitcoin/networks";
 import type { SyncPriority } from "@sanctuary/shared/constants/sync";
+import type { NetworkType } from "@sanctuary/shared/constants/bitcoin";
 import type { SyncState } from "./types";
 import {
   ELECTRUM_SUBSCRIPTION_LOCK_KEY,
@@ -51,12 +53,12 @@ function getConfiguredSubscriptionNetwork() {
  * Set up real-time subscriptions for block and address notifications.
  *
  * @param queueSync - Callback to queue a wallet sync (avoids circular dependency with queue module).
- * @param updateAllConfirmations - Callback to update confirmations for all pending transactions.
+ * @param updateNetworkConfirmations - Callback scoped to the subscribed network.
  */
 export async function setupRealTimeSubscriptions(
   state: SyncState,
   queueSync: (walletId: string, priority: SyncPriority) => void,
-  updateAllConfirmations: () => Promise<void>,
+  updateNetworkConfirmations: (network: NetworkType) => Promise<void>,
 ): Promise<void> {
   try {
     const syncConfig = getConfig().sync;
@@ -82,7 +84,7 @@ export async function setupRealTimeSubscriptions(
 
     state.subscriptionLock = lock;
     state.subscriptionOwnership = "self";
-    startSubscriptionLockRefresh(state, updateAllConfirmations);
+    startSubscriptionLockRefresh(state, updateNetworkConfirmations);
     log.info("[SYNC] Acquired Electrum subscription ownership");
 
     const subscriptionNetwork = getConfiguredSubscriptionNetwork();
@@ -128,7 +130,7 @@ export async function setupRealTimeSubscriptions(
       electrumClient.on(
         "newBlock",
         (block: { height: number; hex: string }) => {
-          handleNewBlock(state, block, updateAllConfirmations);
+          handleNewBlock(state, block, updateNetworkConfirmations);
         },
       );
 
@@ -171,7 +173,7 @@ export async function setupRealTimeSubscriptions(
  */
 export function startSubscriptionLockRefresh(
   state: SyncState,
-  _updateAllConfirmations: () => Promise<void>,
+  _updateNetworkConfirmations: (network: NetworkType) => Promise<void>,
   teardown?: () => Promise<void>,
 ): void {
   if (state.subscriptionLockRefresh) return;
@@ -591,7 +593,7 @@ export async function subscribeWalletAddresses(
 export async function handleNewBlock(
   _state: SyncState,
   block: { height: number; hex: string },
-  updateAllConfirmations: () => Promise<void>,
+  updateNetworkConfirmations: (network: NetworkType) => Promise<void>,
 ): Promise<void> {
   log.info(`[SYNC] New block received at height ${block.height}`);
 
@@ -600,15 +602,16 @@ export async function handleNewBlock(
   setCachedBlockHeight(block.height, network);
 
   // Emit new block event (handles both event bus and WebSocket)
-  eventService.emitNewBlock(network, block.height, block.hex.slice(0, 64));
+  eventService.emitNewBlock(network, block.height, hashBlockHeader(block.hex));
 
-  // Immediately update confirmations for all pending transactions
+  // Immediately update confirmations only for wallets on this block's network.
   try {
-    await updateAllConfirmations();
+    await updateNetworkConfirmations(network);
 
     // Notify frontend of new block
     const notificationService = getNotificationService();
     notificationService.broadcastNewBlock({
+      network,
       height: block.height,
     });
   } catch (error) {

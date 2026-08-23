@@ -21,6 +21,7 @@ import type {
   SyncWalletJobResult,
   CheckStaleWalletsJobData,
   CheckStaleWalletsResult,
+  UpdateAllConfirmationsJobData,
   UpdateConfirmationsJobData,
   UpdateConfirmationsResult,
 } from '../../jobs/syncJobContract';
@@ -35,7 +36,9 @@ import {
   hasSupportedSyncJobContractVersion,
   isCheckStaleWalletsJobData,
   isSyncWalletJobLockData,
+  isUpdateAllConfirmationsJobData,
   isUpdateConfirmationsJobData,
+  NETWORK_CONFIRMATIONS_JOB_VERSION,
   readSyncWalletJobData,
   readSyncWalletLockContractState,
   SYNC_JOB_CONTRACT_VERSION,
@@ -48,7 +51,11 @@ import {
 } from '../../jobs/syncJobContract';
 import { walletRepository } from '../../repositories';
 import { syncWallet } from '../../services/bitcoin/blockchain';
-import { refreshPendingConfirmations } from '../../services/sync/confirmationUpdater';
+import {
+  refreshAllPendingConfirmations,
+  refreshPendingConfirmations,
+  type PendingConfirmationRefreshResult,
+} from '../../services/sync/confirmationUpdater';
 import { setCachedBlockHeight } from '../../services/bitcoin/blockchain';
 import { getConfig } from '../../config';
 import { withLock } from '../../infrastructure';
@@ -557,6 +564,44 @@ export function createCheckStaleWalletsJob(
 // Update Confirmations Job
 // =============================================================================
 
+function summarizeConfirmationRefresh(
+  result: PendingConfirmationRefreshResult,
+): UpdateConfirmationsResult {
+  if (result.walletIds.length === 0) {
+    log.debug('No wallets with pending transactions');
+    return { version: SYNC_JOB_CONTRACT_VERSION, updated: 0, notified: 0 };
+  }
+
+  log.debug(`Updating confirmations for ${result.walletIds.length} wallets`);
+  for (const failure of result.failures) {
+    log.error(`Failed to update confirmations for wallet ${failure.walletId}`, {
+      error: getErrorMessage(failure.error),
+    });
+  }
+  for (const failure of result.publicationFailures) {
+    log.error(`Failed to publish confirmation update for wallet ${failure.walletId}`, {
+      error: getErrorMessage(failure.error),
+      txid: failure.txid,
+    });
+  }
+
+  if (result.confirmationUpdateCount > 0) {
+    log.info(`Updated ${result.confirmationUpdateCount} transaction confirmations`, {
+      wallets: result.walletIds.length,
+    });
+  }
+
+  if (result.failures.length > 0) {
+    throw new ConfirmationUpdateAggregateError(result.failures);
+  }
+
+  return {
+    version: SYNC_JOB_CONTRACT_VERSION,
+    updated: result.confirmationUpdateCount,
+    notified: result.milestoneCount,
+  };
+}
+
 /**
  * Update confirmations for pending transactions
  *
@@ -577,49 +622,17 @@ export const updateConfirmationsJob: WorkerJobHandler<UpdateConfirmationsJobData
       throw new Error('Unsupported or invalid update-confirmations job payload');
     }
     const { height, hash } = job.data;
+    const network = job.data.version === NETWORK_CONFIRMATIONS_JOB_VERSION
+      ? job.data.network
+      : getConfig().bitcoin.network;
 
     // Update cached block height if provided
-    if (height) {
-      const config = getConfig();
-      const network = config.bitcoin.network;
+    if (height !== undefined) {
       setCachedBlockHeight(height, network);
-      log.info(`Block height updated to ${height}`, { hash: hash?.slice(0, 16) });
+      log.info(`Block height updated to ${height}`, { hash: hash?.slice(0, 16), network });
     }
 
-    const result = await refreshPendingConfirmations();
-    if (result.walletIds.length === 0) {
-      log.debug('No wallets with pending transactions');
-      return { version: SYNC_JOB_CONTRACT_VERSION, updated: 0, notified: 0 };
-    }
-
-    log.debug(`Updating confirmations for ${result.walletIds.length} wallets`);
-    for (const failure of result.failures) {
-      log.error(`Failed to update confirmations for wallet ${failure.walletId}`, {
-        error: getErrorMessage(failure.error),
-      });
-    }
-    for (const failure of result.publicationFailures) {
-      log.error(`Failed to publish confirmation update for wallet ${failure.walletId}`, {
-        error: getErrorMessage(failure.error),
-        txid: failure.txid,
-      });
-    }
-
-    if (result.confirmationUpdateCount > 0) {
-      log.info(`Updated ${result.confirmationUpdateCount} transaction confirmations`, {
-        wallets: result.walletIds.length,
-      });
-    }
-
-    if (result.failures.length > 0) {
-      throw new ConfirmationUpdateAggregateError(result.failures);
-    }
-
-    return {
-      version: SYNC_JOB_CONTRACT_VERSION,
-      updated: result.confirmationUpdateCount,
-      notified: result.milestoneCount,
-    };
+    return summarizeConfirmationRefresh(await refreshPendingConfirmations(network));
   },
 };
 
@@ -628,7 +641,7 @@ export const updateConfirmationsJob: WorkerJobHandler<UpdateConfirmationsJobData
  * This runs on a cron schedule as a fallback to real-time updates
  */
 export const updateAllConfirmationsJob: WorkerJobHandler<
-  UpdateConfirmationsJobData,
+  UpdateAllConfirmationsJobData,
   UpdateConfirmationsResult
 > = {
   name: UPDATE_ALL_CONFIRMATIONS_JOB_NAME,
@@ -636,12 +649,12 @@ export const updateAllConfirmationsJob: WorkerJobHandler<
   options: {
     attempts: 1,
   },
-  validateData: isUpdateConfirmationsJobData,
-  handler: async (job: Job<UpdateConfirmationsJobData>): Promise<UpdateConfirmationsResult> => {
-    if (!isUpdateConfirmationsJobData(job.data)) {
+  validateData: isUpdateAllConfirmationsJobData,
+  handler: async (job: Job<UpdateAllConfirmationsJobData>): Promise<UpdateConfirmationsResult> => {
+    if (!isUpdateAllConfirmationsJobData(job.data)) {
       throw new Error('Unsupported or invalid update-all-confirmations job payload');
     }
-    return updateConfirmationsJob.handler(job);
+    return summarizeConfirmationRefresh(await refreshAllPendingConfirmations());
   },
 };
 

@@ -31,6 +31,7 @@ import type {
   TransactionNotification,
   BalanceUpdate,
   BlockNotification,
+  NewBlockNotification,
   MempoolNotification,
   WalletLogEntry,
   SyncStatusUpdate,
@@ -117,7 +118,7 @@ export class NotificationService {
    * Broadcast new block notification (minimal - just height)
    * Used by real-time Electrum subscription
    */
-  public broadcastNewBlock(block: { height: number }) {
+  public broadcastNewBlock(block: NewBlockNotification) {
     broadcastNewBlock(block);
   }
 

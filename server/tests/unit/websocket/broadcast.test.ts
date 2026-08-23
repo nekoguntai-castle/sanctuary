@@ -380,6 +380,7 @@ describe('Broadcast Helpers', () => {
   describe('broadcastBlock', () => {
     it('should broadcast block event', () => {
       broadcastBlock({
+        network: 'mainnet',
         height: 800000,
         hash: 'blockhash123',
         transactionCount: 2500,
@@ -389,6 +390,7 @@ describe('Broadcast Helpers', () => {
         expect.objectContaining({
           type: 'block',
           data: expect.objectContaining({
+            network: 'mainnet',
             height: 800000,
             hash: 'blockhash123',
             transactionCount: 2500,
@@ -400,6 +402,7 @@ describe('Broadcast Helpers', () => {
     it('should serialize Date timestamp for block events', () => {
       const ts = new Date('2024-01-02T03:04:05.000Z');
       broadcastBlock({
+        network: 'testnet4',
         height: 800010,
         hash: 'blockhash-with-date',
         timestamp: ts,
@@ -419,6 +422,7 @@ describe('Broadcast Helpers', () => {
   describe('broadcastNewBlock', () => {
     it('should broadcast new block event', () => {
       broadcastNewBlock({
+        network: 'signet',
         height: 800001,
       });
 
@@ -426,6 +430,7 @@ describe('Broadcast Helpers', () => {
         expect.objectContaining({
           type: 'newBlock',
           data: expect.objectContaining({
+            network: 'signet',
             height: 800001,
           }),
         })
@@ -435,6 +440,7 @@ describe('Broadcast Helpers', () => {
     it('should serialize Date timestamp for new block events', () => {
       const ts = new Date('2024-01-02T03:04:05.000Z');
       broadcastNewBlock({
+        network: 'regtest',
         height: 800002,
         timestamp: ts,
       });

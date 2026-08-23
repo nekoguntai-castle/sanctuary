@@ -7,6 +7,10 @@ import {
 import prisma from '../../../../src/models/prisma';
 import { acquireLock } from '../../../../src/infrastructure';
 import { getAddressSubscriptionKey } from '../../../../src/worker/electrumManager/types';
+import { hashBlockHeader } from '../../../../src/services/bitcoin/networkIdentity';
+
+const BLOCK_HEADER = 'a'.repeat(160);
+const SAME_PARENT_REPLACEMENT_HEADER = `${'a'.repeat(64)}${'b'.repeat(96)}`;
 
 export function registerElectrumManagerEventContracts() {
   describe('event handling', () => {
@@ -22,10 +26,25 @@ export function registerElectrumManagerEventContracts() {
         .addressToWallet
         .set(getAddressSubscriptionKey('mainnet', 'addr1'), { walletId: 'wallet1', network: 'mainnet' });
 
-      mockClient.emit('newBlock', { height: 123, hex: 'a'.repeat(80) });
+      mockClient.emit('newBlock', { height: 123, hex: BLOCK_HEADER });
+      mockClient.emit('newBlock', { height: 123, hex: SAME_PARENT_REPLACEMENT_HEADER });
       mockClient.emit('addressActivity', { scriptHash: 'hash', address: 'addr1', status: 'updated' });
 
-      expect(mockCallbacks.onNewBlock).toHaveBeenCalledWith('mainnet', 123, 'a'.repeat(64));
+      expect(mockCallbacks.onNewBlock).toHaveBeenNthCalledWith(
+        1,
+        'mainnet',
+        123,
+        hashBlockHeader(BLOCK_HEADER),
+      );
+      expect(mockCallbacks.onNewBlock).toHaveBeenNthCalledWith(
+        2,
+        'mainnet',
+        123,
+        hashBlockHeader(SAME_PARENT_REPLACEMENT_HEADER),
+      );
+      expect(hashBlockHeader(SAME_PARENT_REPLACEMENT_HEADER)).not.toBe(
+        hashBlockHeader(BLOCK_HEADER),
+      );
       expect(mockCallbacks.onAddressActivity).toHaveBeenCalledWith('mainnet', 'wallet1', 'addr1');
     });
   });

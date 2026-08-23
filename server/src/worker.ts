@@ -52,6 +52,7 @@ import { registerWorkerJobs } from './worker/jobs';
 import {
   CHECK_STALE_WALLETS_JOB_NAME,
   CONFIRMATIONS_QUEUE_NAME,
+  NETWORK_CONFIRMATIONS_JOB_VERSION,
   SYNC_JOB_CONTRACT_VERSION,
   SYNC_QUEUE_NAME,
   hasSupportedSyncJobContractVersion,
@@ -403,12 +404,15 @@ function handleNewBlock(network: BitcoinNetwork, height: number, hash: string): 
     CONFIRMATIONS_QUEUE_NAME,
     UPDATE_CONFIRMATIONS_JOB_NAME,
     {
-      version: SYNC_JOB_CONTRACT_VERSION,
+      version: NETWORK_CONFIRMATIONS_JOB_VERSION,
+      network,
       height,
       hash,
     }, {
       priority: 1, // High priority
-      jobId: `confirmations:${height}`, // Deduplicate by height
+      // Include header identity so a same-height replacement/reorg is not
+      // suppressed by a retained completed BullMQ job for the prior header.
+      jobId: `confirmations:${network}:${height}:${hash}`,
     },
   ).catch(err => {
     log.error('Failed to queue confirmation update job', {
