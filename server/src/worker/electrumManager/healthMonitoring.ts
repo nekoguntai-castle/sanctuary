@@ -8,6 +8,7 @@
 import { addressRepository } from '../../repositories';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
+import { resolvePersistedBitcoinNetwork } from '../../services/bitcoin/networks';
 import { subscribeAddressBatch } from './addressSubscriptions';
 import {
   getAddressFromSubscriptionKey,
@@ -147,7 +148,7 @@ function collectReconcilePage(
 }
 
 function getAddressNetwork(addr: ReconcileAddress): BitcoinNetwork {
-  return (addr.wallet.network || 'mainnet') as BitcoinNetwork;
+  return resolvePersistedBitcoinNetwork(addr.wallet.network);
 }
 
 function trackNewAddress(

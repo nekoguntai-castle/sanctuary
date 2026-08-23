@@ -123,22 +123,48 @@ export function registerElectrumManagerReconcileContracts() {
       });
     });
 
-    it('should default to mainnet when reconciling addresses with missing wallet network', async () => {
+    it.each([undefined, 'unsupported'])('fails closed when reconciling a %s persisted wallet network', async (network) => {
       const addressToWallet = (manager as unknown as { addressToWallet: Map<string, { walletId: string; network: string }> })
         .addressToWallet;
 
       vi.mocked(prisma.address.findMany).mockResolvedValueOnce([
-        addressRecord('1', 'addr-fallback', 'wallet-fallback'),
+        addressRecord('1', 'addr-invalid', 'wallet-invalid', network),
       ]);
 
-      const result = await manager.reconcileSubscriptions();
+      await expect(manager.reconcileSubscriptions()).rejects.toThrow(
+        'Invalid persisted Bitcoin network',
+      );
 
-      expect(result.added).toBe(1);
-      expect(result.removed).toBe(0);
-      expect(addressToWallet.get(getAddressSubscriptionKey('mainnet', 'addr-fallback'))).toEqual({
-        walletId: 'wallet-fallback',
-        network: 'mainnet',
+      expect(addressToWallet.size).toBe(0);
+    });
+
+    it('publishes the exact authoritative statuses for newly reconciled addresses', async () => {
+      const onSubscriptionStatuses = vi.fn().mockResolvedValue(undefined);
+      mockCallbacks.onSubscriptionStatuses = onSubscriptionStatuses;
+      (manager as any).networks.set('mainnet', {
+        network: 'mainnet', client: mockClient, connected: true,
+        subscribedToHeaders: true, subscribedAddresses: new Set<string>(),
+        lastBlockHeight: 0, reconnectTimer: null, reconnectAttempts: 0,
       });
+      mockClient.subscribeAddressBatch.mockResolvedValueOnce(new Map([
+        ['addr-a', 'status-a'],
+        ['addr-b', null],
+      ]));
+      vi.mocked(prisma.address.findMany).mockResolvedValueOnce([
+        addressRecord('1', 'addr-a', 'wallet-a', 'mainnet'),
+        addressRecord('2', 'addr-b', 'wallet-b', 'mainnet'),
+      ]);
+
+      try {
+        await expect(manager.reconcileSubscriptions()).resolves.toEqual({ removed: 0, added: 2 });
+        expect(onSubscriptionStatuses).toHaveBeenCalledOnce();
+        expect(onSubscriptionStatuses).toHaveBeenCalledWith(
+          'mainnet',
+          new Map([['addr-a', 'status-a'], ['addr-b', null]]),
+        );
+      } finally {
+        delete mockCallbacks.onSubscriptionStatuses;
+      }
     });
 
     it('should handle mixed add and remove operations', async () => {

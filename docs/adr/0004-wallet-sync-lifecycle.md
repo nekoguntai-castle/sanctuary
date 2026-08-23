@@ -156,6 +156,16 @@ failure before a durable request exists self-heals without an unbounded network
 scan. Startup and reconnect work are bound to an exact ownership epoch, checked
 after each await, and late connections are disconnected after lease loss.
 
+The elected worker opens Electrum connections for the configured primary
+network plus every strictly validated network represented by persisted wallets.
+It may add another supported network on demand, but persisted missing or unknown
+network values fail closed; only the historical `testnet` spelling is normalized
+to `testnet3`. Startup, reconnect, reconciliation, refresh, and direct wallet
+subscription responses all flow through the authoritative subscription-status
+callback. Periodic checkpoint and status work rotates fairly across the managed
+network set. Durable per-network readiness and reorganization evidence remain a
+later rollout gate, so this phase does not retire or disable the stale scheduler.
+
 This ADR and `config/wallet-sync-lifecycle-contract.json` establish the target and
 freeze the current compatibility exceptions. The canonical producer boundary is
 active and worker-owned checkpoint enrollment is enabled, but this change does

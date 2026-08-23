@@ -885,10 +885,47 @@ export function registerElectrumManagerStandaloneContracts() {
       vi.useRealTimers();
     });
 
+    it('contains reconnect restoration failures inside the timer callback', async () => {
+      vi.useFakeTimers();
+      const networks = getNetworks();
+      const addressToWallet = getAddressToWallet();
+      const state: NetworkState = {
+        network: 'mainnet',
+        client: mockClient as any,
+        connected: true,
+        subscribedToHeaders: false,
+        subscribedAddresses: new Set<string>(),
+        lastBlockHeight: 0,
+        reconnectTimer: null,
+        reconnectAttempts: 0,
+      };
+      networks.set('mainnet', state);
+      const resubscribeSpy = vi.fn().mockRejectedValue(new Error('checkpoint unavailable'));
+
+      try {
+        scheduleReconnect(
+          'mainnet',
+          networks,
+          addressToWallet,
+          mockCallbacks,
+          () => true,
+          resubscribeSpy,
+        );
+        await vi.advanceTimersByTimeAsync(5_000);
+        expect(resubscribeSpy).toHaveBeenCalledWith('mainnet');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('resubscribes through the manager reconnect callback after a reconnect succeeds', async () => {
       vi.useFakeTimers();
       const networks = getNetworks();
       const addressToWallet = getAddressToWallet();
+      const onNetworkReady = vi.fn().mockResolvedValue(undefined);
+      const onSubscriptionStatuses = vi.fn().mockResolvedValue(undefined);
+      mockCallbacks.onNetworkReady = onNetworkReady;
+      mockCallbacks.onSubscriptionStatuses = onSubscriptionStatuses;
 
       networks.set('mainnet', {
         network: 'mainnet',
@@ -904,13 +941,24 @@ export function registerElectrumManagerStandaloneContracts() {
       (manager as any).isRunningFlag = true;
       (manager as any).subscriptionLock = { key: 'lock', token: 'token' };
 
-      (manager as any).doScheduleReconnect('mainnet');
-      await vi.advanceTimersByTimeAsync(5_000);
+      try {
+        (manager as any).doScheduleReconnect('mainnet');
+        await vi.advanceTimersByTimeAsync(5_000);
 
-      expect(mockClient.subscribeAddressBatch).toHaveBeenCalledWith(['addr-manager-reconnect']);
-      expect(networks.get('mainnet')?.reconnectAttempts).toBe(0);
-
-      vi.useRealTimers();
+        expect(onNetworkReady).toHaveBeenCalledOnce();
+        expect(onNetworkReady).toHaveBeenCalledWith('mainnet');
+        expect(mockClient.subscribeAddressBatch).toHaveBeenCalledWith(['addr-manager-reconnect']);
+        expect(onSubscriptionStatuses).toHaveBeenCalledOnce();
+        expect(onSubscriptionStatuses).toHaveBeenCalledWith(
+          'mainnet',
+          new Map([['addr-manager-reconnect', 'status']]),
+        );
+        expect(networks.get('mainnet')?.reconnectAttempts).toBe(0);
+      } finally {
+        delete mockCallbacks.onNetworkReady;
+        delete mockCallbacks.onSubscriptionStatuses;
+        vi.useRealTimers();
+      }
     });
 
     it('discards a late reconnect after exact ownership is lost', async () => {
@@ -1019,7 +1067,7 @@ export function registerElectrumManagerStandaloneContracts() {
       );
     });
 
-    it('defaults to mainnet in subscribeAllAddresses when wallet network is missing', async () => {
+    it.each([undefined, 'unsupported'])('fails closed in subscribeAllAddresses for a %s persisted network', async (network) => {
       const networks = getNetworks();
       const addressToWallet = getAddressToWallet();
 
@@ -1036,12 +1084,14 @@ export function registerElectrumManagerStandaloneContracts() {
       networks.set('mainnet', connectedState);
 
       vi.mocked(prisma.address.findMany).mockResolvedValueOnce([
-        { id: '1', address: 'addr-fallback-sub', walletId: 'wallet1', wallet: {} },
+        { id: '1', address: 'addr-invalid-sub', walletId: 'wallet1', wallet: { network } },
       ] as any);
 
-      await subscribeAllAddresses(networks, addressToWallet);
+      await expect(subscribeAllAddresses(networks, addressToWallet))
+        .rejects.toThrow('Invalid persisted Bitcoin network');
 
-      expect(mockClient.subscribeAddressBatch).toHaveBeenCalledWith(['addr-fallback-sub']);
+      expect(mockClient.subscribeAddressBatch).not.toHaveBeenCalled();
+      expect(addressToWallet.size).toBe(0);
     });
 
     it('returns early in subscribeNetworkAddresses when state is disconnected', async () => {

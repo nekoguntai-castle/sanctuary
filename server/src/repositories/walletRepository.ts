@@ -7,7 +7,7 @@
 
 import prisma from '../models/prisma';
 import type { Wallet, Prisma } from '../generated/prisma/client';
-import { isNetworkType } from '@sanctuary/shared/constants/bitcoin';
+import { BITCOIN_NETWORKS, isNetworkType } from '@sanctuary/shared/constants/bitcoin';
 import { WALLET_EDIT_ROLE_VALUES } from '@sanctuary/shared/constants/walletRoles';
 import type {
   NetworkType,
@@ -20,6 +20,9 @@ import type {
   CursorPaginatedResult,
 } from './types';
 import { buildWalletAccessWhere } from './accessControl';
+
+// Accept canonical values plus the `testnet` alias; the final slot detects overflow.
+const REPRESENTED_NETWORK_READ_LIMIT = BITCOIN_NETWORKS.length + 2;
 
 const walletSyncStateSelect = {
   syncInProgress: true,
@@ -443,6 +446,22 @@ export async function findNetwork(walletId: string): Promise<string | null> {
     select: { network: true },
   });
   return wallet?.network ?? null;
+}
+
+/** Return unvalidated raw values for worker normalization.
+ * Throw on overflow so unexpected persisted vocabulary fails startup closed. */
+export async function findRepresentedNetworks(): Promise<string[]> {
+  const rows = await prisma.wallet.findMany({
+    distinct: ['network'],
+    orderBy: { network: 'asc' },
+    select: { network: true },
+    take: REPRESENTED_NETWORK_READ_LIMIT,
+  });
+  if (rows.length >= REPRESENTED_NETWORK_READ_LIMIT) {
+    throw new Error('Persisted wallet network read exceeded its bound');
+  }
+
+  return rows.map(({ network }) => network);
 }
 
 /**
@@ -954,6 +973,7 @@ export const walletRepository = {
   findGroupRoleByMembership,
   findNameById,
   findNetwork,
+  findRepresentedNetworks,
   resetAllStuckSyncFlags,
   demoteStrandedInlineRetries,
   clearSyncStateIfUnchanged,

@@ -12,6 +12,7 @@ import {
 } from '../../../../src/infrastructure';
 import { getElectrumClientForNetwork } from '../../../../src/services/bitcoin/electrum';
 import { setCachedBlockHeight } from '../../../../src/services/bitcoin/blockchain';
+import { walletRepository } from '../../../../src/repositories';
 
 export function registerElectrumManagerStartContracts() {
   describe('start', () => {
@@ -192,9 +193,46 @@ export function registerElectrumManagerStartContracts() {
       expect(manager.isConnected()).toBe(true);
     });
 
+    it('connects every represented wallet network exactly once at startup', async () => {
+      vi.mocked(acquireLock).mockResolvedValueOnce({ key: 'lock', token: 'token' } as any);
+      vi.mocked(walletRepository.findRepresentedNetworks).mockResolvedValueOnce([
+        'testnet',
+        'testnet3',
+        'mainnet',
+        'testnet4',
+        'signet',
+        'regtest',
+      ]);
+      vi.mocked(prisma.address.findMany).mockResolvedValueOnce([]);
+
+      await manager.start();
+
+      expect(getElectrumClientForNetwork).toHaveBeenCalledTimes(5);
+      expect(getElectrumClientForNetwork).toHaveBeenNthCalledWith(1, 'mainnet');
+      expect(getElectrumClientForNetwork).toHaveBeenNthCalledWith(2, 'testnet3');
+      expect(getElectrumClientForNetwork).toHaveBeenNthCalledWith(3, 'testnet4');
+      expect(getElectrumClientForNetwork).toHaveBeenNthCalledWith(4, 'signet');
+      expect(getElectrumClientForNetwork).toHaveBeenNthCalledWith(5, 'regtest');
+      expect(manager.getManagedNetworks()).toEqual([
+        'mainnet', 'testnet3', 'testnet4', 'signet', 'regtest',
+      ]);
+    });
+
+    it('fails startup closed before connecting an invalid persisted wallet network', async () => {
+      vi.mocked(acquireLock).mockResolvedValueOnce({ key: 'lock', token: 'token' } as any);
+      vi.mocked(walletRepository.findRepresentedNetworks).mockResolvedValueOnce(['unknown']);
+
+      await expect(manager.start()).rejects.toThrow('Invalid persisted Bitcoin network');
+
+      expect(getElectrumClientForNetwork).not.toHaveBeenCalled();
+      expect(manager.isSubscriptionOwner()).toBe(false);
+    });
+
     it('publishes network readiness before initial address subscription', async () => {
       const onNetworkReady = vi.fn().mockResolvedValue(undefined);
+      const onSubscriptionStatuses = vi.fn().mockResolvedValue(undefined);
       mockCallbacks.onNetworkReady = onNetworkReady;
+      mockCallbacks.onSubscriptionStatuses = onSubscriptionStatuses;
       vi.mocked(acquireLock).mockResolvedValueOnce({ key: 'lock', token: 'token' } as any);
       vi.mocked(prisma.address.findMany).mockResolvedValueOnce([{
         id: 'address-1', address: 'bc1qready', walletId: 'wallet-1',
@@ -207,8 +245,14 @@ export function registerElectrumManagerStartContracts() {
         expect(onNetworkReady).toHaveBeenCalledWith('mainnet');
         expect(mockClient.subscribeAddressBatch).toHaveBeenCalledWith(['bc1qready']);
         expect(onNetworkReady).toHaveBeenCalledBefore(mockClient.subscribeAddressBatch);
+        expect(onSubscriptionStatuses).toHaveBeenCalledOnce();
+        expect(onSubscriptionStatuses).toHaveBeenCalledWith(
+          'mainnet',
+          new Map([['bc1qready', 'status']]),
+        );
       } finally {
         delete mockCallbacks.onNetworkReady;
+        delete mockCallbacks.onSubscriptionStatuses;
       }
     });
 

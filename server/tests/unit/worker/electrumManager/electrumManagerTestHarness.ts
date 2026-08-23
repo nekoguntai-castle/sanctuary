@@ -26,6 +26,7 @@ vi.mock('../../../../src/repositories', async () => {
   return {
     walletRepository: {
       findNetwork: vi.fn().mockResolvedValue(null),
+      findRepresentedNetworks: vi.fn().mockResolvedValue([]),
       findById: vi.fn().mockResolvedValue(null),
     },
     addressRepository: {

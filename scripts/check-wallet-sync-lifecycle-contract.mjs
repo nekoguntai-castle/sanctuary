@@ -34,6 +34,13 @@ const REQUIRED_FORBIDDEN_TRIGGERS = [
   'ordinary_navigation',
   'session_restore',
 ];
+const REQUIRED_SUBSCRIPTION_NETWORKS = [
+  'mainnet',
+  'testnet3',
+  'testnet4',
+  'signet',
+  'regtest',
+];
 const SYNC_INTENT_REPOSITORY_BOUNDARY_SYMBOLS = [
   'claimIncrementalSync',
   'completeIncrementalSync',
@@ -333,6 +340,28 @@ export function parseWalletSyncLifecycleContract(source) {
   );
   if (lifecycle.blockHeaderRole !== 'chain_tip_and_known_transaction_confirmations_only') {
     throw new Error('block headers must remain confirmation/tip events only');
+  }
+  const multiNetwork = requireObject(
+    contract.multiNetworkSubscription,
+    'multiNetworkSubscription',
+  );
+  assertExact(
+    multiNetwork.supportedNetworks,
+    REQUIRED_SUBSCRIPTION_NETWORKS,
+    'multiNetworkSubscription.supportedNetworks',
+  );
+  const expectedMultiNetworkFields = {
+    representedNetworkReader: 'walletRepository.findRepresentedNetworks',
+    strictPersistedNetworkResolver: 'resolvePersistedBitcoinNetwork',
+    authoritativeStatusCallback: 'onSubscriptionStatuses',
+    startupPolicy: 'configured_plus_represented',
+    dynamicPolicy: 'connect_supported_network_on_demand',
+    invalidPersistedNetworkPolicy: 'fail_closed_without_mainnet_fallback',
+  };
+  for (const [field, expected] of Object.entries(expectedMultiNetworkFields)) {
+    if (multiNetwork[field] !== expected) {
+      throw new Error(`multiNetworkSubscription.${field} must be ${expected}`);
+    }
   }
 
   const ownership = validateOwnership(contract.futureOwnership);
@@ -1499,6 +1528,321 @@ function validateWireSource(root, errors) {
   }
 }
 
+function parseContractSource(file, source) {
+  return ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+}
+
+function expressionPath(expression) {
+  const current = unwrapExpression(expression);
+  if (ts.isIdentifier(current)) return current.text;
+  if (current.kind === ts.SyntaxKind.ThisKeyword) return 'this';
+  if (!ts.isPropertyAccessExpression(current) && !ts.isElementAccessExpression(current)) {
+    return null;
+  }
+  const receiver = expressionPath(current.expression);
+  const property = propertyText(ts.isPropertyAccessExpression(current)
+    ? current.name
+    : current.argumentExpression);
+  return receiver && property ? `${receiver}.${property}` : null;
+}
+
+function collectContractNodes(file, source, predicate) {
+  const sourceFile = parseContractSource(file, source);
+  const nodes = [];
+  const visit = (node) => {
+    if (predicate(node, sourceFile)) nodes.push(node);
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return nodes;
+}
+
+function callsPath(file, source, pathName, functionName) {
+  return collectContractNodes(file, source, (node) => (
+    ts.isCallExpression(node)
+    && expressionPath(node.expression) === pathName
+    && (functionName === undefined || enclosingFunctionName(node) === functionName)
+  ));
+}
+
+function callHasArgumentPath(call, pathName) {
+  return call.arguments.some((argument) => expressionPath(argument) === pathName);
+}
+
+function hasStrictRepresentedNetworkMap(file, source) {
+  return collectContractNodes(file, source, (node) => (
+    ts.isCallExpression(node)
+    && expressionPath(node.expression) === 'representedNetworkValues.map'
+    && node.arguments.length === 1
+    && expressionPath(node.arguments[0]) === 'resolvePersistedBitcoinNetwork'
+    && enclosingFunctionName(node) === 'startWithLock'
+  )).length > 0;
+}
+
+function hasWorkerStatusCallback(file, source) {
+  return collectContractNodes(file, source, (node) => {
+    if (!ts.isNewExpression(node)
+      || expressionPath(node.expression) !== 'ElectrumSubscriptionManager') return false;
+    const options = node.arguments?.[0];
+    if (!options || !ts.isObjectLiteralExpression(options)) return false;
+    return options.properties.some((property) => (
+      ts.isPropertyAssignment(property)
+      && staticPropertyText(property.name, new Map()) === 'onSubscriptionStatuses'
+      && expressionPath(property.initializer) === 'recordSubscriptionStatuses'
+    ));
+  }).length > 0;
+}
+
+function usesPersistedNetworkFallback(file, source) {
+  return collectContractNodes(file, source, (node, sourceFile) => (
+    ts.isBinaryExpression(node)
+    && [ts.SyntaxKind.BarBarToken, ts.SyntaxKind.QuestionQuestionToken]
+      .includes(node.operatorToken.kind)
+    && node.left.getText(sourceFile).includes('wallet.network')
+  )).length > 0;
+}
+
+function hasBoundedRepresentedNetworkRead(file, source) {
+  return callsPath(file, source, 'prisma.wallet.findMany').some((call) => {
+    const options = call.arguments[0];
+    if (!options || !ts.isObjectLiteralExpression(options)) return false;
+    return options.properties.some((property) => (
+      ts.isPropertyAssignment(property)
+      && staticPropertyText(property.name, new Map()) === 'take'
+      && expressionPath(property.initializer) === 'REPRESENTED_NETWORK_READ_LIMIT'
+    ));
+  });
+}
+
+function hasFairTimerOrder(file, source, functionName, inFlightName, indexName) {
+  const sourceFile = parseContractSource(file, source);
+  const calls = callsPath(file, source, 'electrumManager.getManagedNetworks', functionName);
+  if (calls.length !== 1) return false;
+  const callPosition = calls[0].getStart(sourceFile);
+  const guards = collectContractNodes(file, source, (node) => (
+    ts.isIfStatement(node)
+    && expressionPath(node.expression) === inFlightName
+    && enclosingFunctionName(node) === functionName
+  ));
+  const advances = collectContractNodes(file, source, (node) => (
+    ts.isBinaryExpression(node)
+    && expressionPath(node.left) === indexName
+    && node.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken
+    && enclosingFunctionName(node) === functionName
+  ));
+  return guards.some((guard) => guard.getStart(sourceFile) < callPosition)
+    && advances.length === 1
+    && advances[0].getStart(sourceFile) > callPosition;
+}
+
+function descendantNodes(node, predicate) {
+  const matches = [];
+  const visit = (current) => {
+    if (predicate(current)) matches.push(current);
+    ts.forEachChild(current, visit);
+  };
+  visit(node);
+  return matches;
+}
+
+function findMethod(file, source, methodName) {
+  return collectContractNodes(file, source, (node) => (
+    ts.isMethodDeclaration(node) && propertyText(node.name) === methodName
+  ))[0];
+}
+
+function findExistingPromiseGuard(method) {
+  return descendantNodes(method.body, (node) => ts.isIfStatement(node)).find((guard) => (
+    expressionPath(guard.expression) === 'existing'
+    && descendantNodes(guard.thenStatement, (node) => (
+      ts.isAwaitExpression(node) && expressionPath(node.expression) === 'existing'
+    )).length > 0
+    && descendantNodes(guard.thenStatement, ts.isReturnStatement).length > 0
+  ));
+}
+
+function hasGuardedConnectionCleanup(method) {
+  return descendantNodes(method.body, ts.isTryStatement).some((attempt) => {
+    if (!attempt.finallyBlock) return false;
+    const awaitsConnection = descendantNodes(attempt.tryBlock, (node) => (
+      ts.isAwaitExpression(node) && expressionPath(node.expression) === 'connection'
+    )).length > 0;
+    const guardedDelete = descendantNodes(attempt.finallyBlock, (node) => (
+      ts.isIfStatement(node)
+      && ts.isBinaryExpression(node.expression)
+      && node.expression.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken
+      && ts.isCallExpression(node.expression.left)
+      && expressionPath(node.expression.left.expression) === 'this.networkConnections.get'
+      && expressionPath(node.expression.right) === 'connection'
+      && descendantNodes(node.thenStatement, (child) => (
+        ts.isCallExpression(child)
+        && expressionPath(child.expression) === 'this.networkConnections.delete'
+      )).length > 0
+    )).length > 0;
+    return awaitsConnection && guardedDelete;
+  });
+}
+
+function hasSingleFlightConnection(file, source) {
+  const method = findMethod(file, source, 'doConnectNetwork');
+  if (!method?.body) return false;
+  const existingGuard = findExistingPromiseGuard(method);
+  if (!existingGuard) return false;
+  const calls = descendantNodes(method.body, ts.isCallExpression);
+  const setConnection = calls.find((call) => (
+    expressionPath(call.expression) === 'this.networkConnections.set'
+    && expressionPath(call.arguments[1]) === 'connection'
+  ));
+  const existingDeclaration = descendantNodes(method.body, (node) => (
+    ts.isVariableDeclaration(node)
+    && ts.isIdentifier(node.name)
+    && node.name.text === 'existing'
+    && node.initializer
+    && ts.isCallExpression(unwrapExpression(node.initializer))
+    && expressionPath(unwrapExpression(node.initializer).expression)
+      === 'this.networkConnections.get'
+  ))[0];
+  const connectionDeclaration = descendantNodes(method.body, (node) => (
+    ts.isVariableDeclaration(node)
+    && ts.isIdentifier(node.name)
+    && node.name.text === 'connection'
+    && node.initializer
+    && ts.isCallExpression(unwrapExpression(node.initializer))
+    && expressionPath(unwrapExpression(node.initializer).expression) === 'connectNetwork'
+  ))[0];
+  const attempt = descendantNodes(method.body, ts.isTryStatement)[0];
+  return Boolean(existingDeclaration && connectionDeclaration && setConnection && attempt)
+    && existingDeclaration.pos < existingGuard.pos
+    && existingGuard.pos < connectionDeclaration.pos
+    && connectionDeclaration.pos < setConnection.pos
+    && setConnection.pos < attempt.pos
+    && hasGuardedConnectionCleanup(method);
+}
+
+function hasSingleFlightReconnectAdapter(file, source) {
+  const method = findMethod(file, source, 'doScheduleReconnect');
+  if (!method?.body) return false;
+  return descendantNodes(method.body, (node) => (
+    ts.isCallExpression(node)
+    && expressionPath(node.expression) === 'scheduleReconnect'
+    && node.arguments.some((argument) => (
+      ts.isArrowFunction(argument)
+      && descendantNodes(argument.body, (child) => (
+        ts.isCallExpression(child)
+        && expressionPath(child.expression) === 'this.doConnectNetwork'
+      )).length > 0
+    ))
+  )).length > 0;
+}
+
+function validateManagerNetworkCalls(managerFile, manager, errors) {
+  const requiredManagerCalls = [
+    ['walletRepository.findRepresentedNetworks', 'startWithLock', 'represented networks at startup'],
+    ['this.ensureNetworkConnected', 'subscribeWalletAddresses', 'dynamic wallet network connection'],
+    ['this.ensureNetworkConnected', 'subscribeCheckpointAddresses', 'dynamic checkpoint network connection'],
+  ];
+  for (const [callPath, functionName, description] of requiredManagerCalls) {
+    if (callsPath(managerFile, manager, callPath, functionName).length === 0) {
+      errors.push(`multi-network subscription must retain ${description}`);
+    }
+  }
+  const checkpointConnectionCalls = callsPath(
+    managerFile,
+    manager,
+    'this.ensureNetworkConnected',
+    'subscribeCheckpointAddresses',
+  );
+  if (!checkpointConnectionCalls.some((call) => (
+    call.arguments[2]?.kind === ts.SyntaxKind.FalseKeyword
+  ))) {
+    errors.push('multi-network checkpoint subscriptions must suppress reentrant readiness');
+  }
+  if (!hasSingleFlightConnection(managerFile, manager)) {
+    errors.push('multi-network dynamic connections must retain single-flight promise sharing');
+  }
+  if (!hasSingleFlightReconnectAdapter(managerFile, manager)) {
+    errors.push('multi-network scheduled reconnects must route through single-flight connection');
+  }
+}
+
+function validateManagerStatusCalls(managerFile, manager, errors) {
+  for (const callPath of [
+    'subscribeAllAddresses',
+    'subscribeNetworkAddresses',
+    'doReconcileSubscriptions',
+    'doSubscribeWalletAddresses',
+  ]) {
+    if (!callsPath(managerFile, manager, callPath)
+      .some((call) => callHasArgumentPath(call, 'this.callbacks.onSubscriptionStatuses'))) {
+      errors.push(`multi-network subscription must forward authoritative statuses through ${callPath}`);
+    }
+  }
+  if (callsPath(managerFile, manager, 'this.callbacks.onSubscriptionStatuses').length === 0) {
+    errors.push('multi-network subscription must publish refresh statuses through its callback');
+  }
+  if (!hasStrictRepresentedNetworkMap(managerFile, manager)) {
+    errors.push('multi-network subscription must strictly validate represented networks');
+  }
+}
+
+function validateWorkerMultiNetworkCalls(worker, errors) {
+  if (!hasWorkerStatusCallback(WORKER_PATH, worker)) {
+    errors.push('multi-network subscription must wire worker checkpoint comparison');
+  }
+  for (const [functionName, inFlightName, indexName] of [
+    [
+      'startSubscriptionStatusRefreshTimer',
+      'subscriptionStatusRefreshInFlight',
+      'subscriptionStatusRefreshNetworkIndex',
+    ],
+    [
+      'startSubscriptionCheckpointTimer',
+      'subscriptionCheckpointInFlight',
+      'subscriptionCheckpointNetworkIndex',
+    ],
+  ]) {
+    if (!hasFairTimerOrder(WORKER_PATH, worker, functionName, inFlightName, indexName)) {
+      errors.push(`multi-network subscription must retain network-fair recovery in ${functionName}`);
+    }
+  }
+}
+
+function validatePersistedNetworkReaders(root, errors) {
+  const repositoryFile = 'server/src/repositories/walletRepository.ts';
+  const repository = readRequired(root, repositoryFile);
+  if (!hasBoundedRepresentedNetworkRead(repositoryFile, repository)) {
+    errors.push('multi-network subscription must bound its represented-network read');
+  }
+  for (const [file, source, minimumCalls] of [
+    [
+      'server/src/worker/electrumManager/addressSubscriptions.ts',
+      readRequired(root, 'server/src/worker/electrumManager/addressSubscriptions.ts'),
+      2,
+    ],
+    [
+      'server/src/worker/electrumManager/healthMonitoring.ts',
+      readRequired(root, 'server/src/worker/electrumManager/healthMonitoring.ts'),
+      1,
+    ],
+  ]) {
+    if (callsPath(file, source, 'resolvePersistedBitcoinNetwork').length < minimumCalls) {
+      errors.push(`${file} must use the strict persisted-network resolver`);
+    }
+    if (usesPersistedNetworkFallback(file, source)) {
+      errors.push(`${file} must not fall back an invalid persisted network to mainnet`);
+    }
+  }
+}
+
+function validateMultiNetworkSubscriptionSource(root, errors) {
+  const managerFile = 'server/src/worker/electrumManager/electrumManager.ts';
+  const manager = readRequired(root, managerFile);
+  validateManagerNetworkCalls(managerFile, manager, errors);
+  validateManagerStatusCalls(managerFile, manager, errors);
+  validateWorkerMultiNetworkCalls(readRequired(root, WORKER_PATH), errors);
+  validatePersistedNetworkReaders(root, errors);
+}
+
 export function checkWalletSyncLifecycleContract(root) {
   const contract = parseWalletSyncLifecycleContract(readRequired(root, CONTRACT_PATH));
   const sources = collectSources(root);
@@ -1563,6 +1907,7 @@ export function checkWalletSyncLifecycleContract(root) {
   );
   validateDocumentation(root, contract, errors);
   validateWireSource(root, errors);
+  validateMultiNetworkSubscriptionSource(root, errors);
   return { contract, errors, scannedFiles: sources.size };
 }
 

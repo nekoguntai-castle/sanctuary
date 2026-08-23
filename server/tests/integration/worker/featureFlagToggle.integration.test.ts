@@ -87,6 +87,9 @@ describe('feature flag admin + worker integration', () => {
       start: vi.fn(async () => undefined),
       stop: vi.fn(async () => undefined),
       isConnected: vi.fn(() => true),
+      isSubscriptionOwner: vi.fn(() => true),
+      getManagedNetworks: vi.fn(() => ['mainnet']),
+      ensureNetworkConnected: vi.fn(async () => undefined),
       getHealthMetrics: vi.fn(() => ({
         totalSubscribedAddresses: 0,
         networks: {},

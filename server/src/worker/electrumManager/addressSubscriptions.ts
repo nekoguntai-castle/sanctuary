@@ -8,6 +8,7 @@
 import { walletRepository, addressRepository } from '../../repositories';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
+import { resolvePersistedBitcoinNetwork } from '../../services/bitcoin/networks';
 import { SUBSCRIPTION_BATCH_SIZE } from './types';
 import {
   getAddressFromSubscriptionKey,
@@ -79,7 +80,7 @@ export async function subscribeAllAddresses(
     const byNetwork = new Map<BitcoinNetwork, Array<{ address: string; walletId: string }>>();
 
     for (const addr of addresses) {
-      const network = (addr.wallet.network || 'mainnet') as BitcoinNetwork;
+      const network = resolvePersistedBitcoinNetwork(addr.wallet.network);
 
       if (!byNetwork.has(network)) {
         byNetwork.set(network, []);
@@ -251,6 +252,10 @@ export async function subscribeWalletAddresses(
   networks: Map<BitcoinNetwork, NetworkState>,
   addressToWallet: Map<string, AddressWalletInfo>,
   isActive?: () => boolean,
+  observeStatuses?: (
+    network: BitcoinNetwork,
+    statuses: Map<string, string | null>,
+  ) => Promise<void>,
 ): Promise<void> {
   requireActiveOwnership(undefined, isActive);
   const walletNetwork = await walletRepository.findNetwork(walletId);
@@ -258,8 +263,7 @@ export async function subscribeWalletAddresses(
 
   if (!walletNetwork) return;
 
-  /* v8 ignore next -- walletNetwork fallback is defensive after early return */
-  const network = (walletNetwork || 'mainnet') as BitcoinNetwork;
+  const network = resolvePersistedBitcoinNetwork(walletNetwork);
   const state = networks.get(network);
 
   if (!state?.connected) {
@@ -283,7 +287,11 @@ export async function subscribeWalletAddresses(
     });
   }
 
-  await subscribeAddressBatch(state, addressData, { isActive });
+  const statuses = await subscribeAddressBatch(state, addressData, { isActive });
+  if (statuses.size > 0) {
+    await observeStatuses?.(network, statuses);
+    requireActiveOwnership(state, isActive);
+  }
 }
 
 /**

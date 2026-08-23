@@ -31,6 +31,15 @@
     "blockHeaderRole": "chain_tip_and_known_transaction_confirmations_only",
     "gapRecovery": "compare_durable_address_status_checkpoints_and_request_only_changed_or_unknown_wallets"
   },
+  "multiNetworkSubscription": {
+    "supportedNetworks": ["mainnet", "testnet3", "testnet4", "signet", "regtest"],
+    "representedNetworkReader": "walletRepository.findRepresentedNetworks",
+    "strictPersistedNetworkResolver": "resolvePersistedBitcoinNetwork",
+    "authoritativeStatusCallback": "onSubscriptionStatuses",
+    "startupPolicy": "configured_plus_represented",
+    "dynamicPolicy": "connect_supported_network_on_demand",
+    "invalidPersistedNetworkPolicy": "fail_closed_without_mainnet_fallback"
+  },
   "futureOwnership": {
     "singleAdmissionModule": "server/src/services/sync/syncIntentAdmission.ts",
     "subscriptionCheckpointRepository": "server/src/repositories/subscriptionCheckpointRepository.ts",

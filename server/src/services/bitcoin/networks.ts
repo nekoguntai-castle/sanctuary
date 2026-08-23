@@ -16,6 +16,18 @@ export const isBitcoinNetwork = isNetworkType;
 
 export const isBitcoinTestnetFamily = isTestnetFamilyNetwork;
 
+/**
+ * Resolve the persisted wallet-network vocabulary without a default.
+ *
+ * `testnet` is the sole legacy storage alias. Invalid database values must stop
+ * startup consumers rather than silently routing wallet work to mainnet.
+ */
+export function resolvePersistedBitcoinNetwork(value: unknown): BitcoinNetwork {
+  if (value === 'testnet') return 'testnet3';
+  if (isBitcoinNetwork(value)) return value;
+  throw new Error('Invalid persisted Bitcoin network');
+}
+
 export function resolveDetectedBitcoinNetwork(
   detected: DetectedBitcoinNetwork | null | undefined,
   requested?: BitcoinNetwork,

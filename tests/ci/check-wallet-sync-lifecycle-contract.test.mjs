@@ -333,6 +333,58 @@ function fixtureContract() {
   return contract;
 }
 
+function writeMultiNetworkFixture(root) {
+  write(
+    root,
+    'server/src/worker.ts',
+    "import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from './constants/walletSyncActivation';\n"
+      + "import { createProductionWalletSyncRecoveryRuntime } from './worker/walletSyncRecoveryRuntime';\n"
+      + "import { createProductionSubscriptionCheckpointRuntime } from './worker/subscriptionCheckpointRuntime';\n"
+      + 'void WALLET_SYNC_MUTATION_FENCE_FLOOR;\n'
+      + 'function recordSubscriptionStatuses() {}\n'
+      + 'function startSubscriptionStatusRefreshTimer() { if (subscriptionStatusRefreshInFlight) return; electrumManager.getManagedNetworks(); promise.finally(() => { subscriptionStatusRefreshNetworkIndex += 1; }); }\n'
+      + 'function startSubscriptionCheckpointTimer() { if (subscriptionCheckpointInFlight) return; electrumManager.getManagedNetworks(); promise.finally(() => { subscriptionCheckpointNetworkIndex += 1; }); }\n'
+      + 'new ElectrumSubscriptionManager({ onSubscriptionStatuses: recordSubscriptionStatuses });\n'
+      + 'void createProductionSubscriptionCheckpointRuntime;\n'
+      + 'void createProductionWalletSyncRecoveryRuntime();\n',
+  );
+  write(
+    root,
+    'server/src/worker/electrumManager/electrumManager.ts',
+    'class ElectrumSubscriptionManager {\n'
+      + '  async startWithLock() {\n'
+      + '    const representedNetworkValues = await walletRepository.findRepresentedNetworks();\n'
+      + '    representedNetworkValues.map(resolvePersistedBitcoinNetwork);\n'
+      + '    await subscribeAllAddresses(a, b, this.callbacks.onSubscriptionStatuses);\n'
+      + '  }\n'
+      + '  async reconnect() { await subscribeNetworkAddresses(a, b, c, this.callbacks.onSubscriptionStatuses); }\n'
+      + '  async reconcileSubscriptions() { return doReconcileSubscriptions(a, b, this.callbacks.onSubscriptionStatuses); }\n'
+      + '  async subscribeWalletAddresses() { await this.ensureNetworkConnected(a); await doSubscribeWalletAddresses(a, b, c, d, this.callbacks.onSubscriptionStatuses); }\n'
+      + '  async subscribeCheckpointAddresses() { await this.ensureNetworkConnected(a, b, false); }\n'
+      + '  async refresh() { await this.callbacks.onSubscriptionStatuses(a, b); }\n'
+      + '  async ensureNetworkConnected() {}\n'
+      + '  async doConnectNetwork() { const existing = this.networkConnections.get(a); if (existing) { await existing; return; } const connection = connectNetwork(); this.networkConnections.set(a, connection); try { await connection; } finally { if (this.networkConnections.get(a) === connection) this.networkConnections.delete(a); } }\n'
+      + '  doScheduleReconnect() { scheduleReconnect(a, b, c, d, e, f, (network) => this.doConnectNetwork(network)); }\n'
+      + '}\n',
+  );
+  write(
+    root,
+    'server/src/worker/electrumManager/addressSubscriptions.ts',
+    'resolvePersistedBitcoinNetwork(first.wallet.network);\n'
+      + 'resolvePersistedBitcoinNetwork(second.wallet.network);\n',
+  );
+  write(
+    root,
+    'server/src/worker/electrumManager/healthMonitoring.ts',
+    'resolvePersistedBitcoinNetwork(wallet.network);\n',
+  );
+  write(
+    root,
+    'server/src/repositories/walletRepository.ts',
+    'prisma.wallet.findMany({ take: REPRESENTED_NETWORK_READ_LIMIT });\n',
+  );
+}
+
 function createFixture() {
   const root = mkdtempSync(path.join(tmpdir(), 'sanctuary-wallet-lifecycle-'));
   const contract = fixtureContract();
@@ -420,16 +472,7 @@ function createFixture() {
       + '  void { activate: () => walletSyncActivationGate.activate() };\n'
       + '  return createWalletSyncRecoveryRuntime();\n}\n',
   );
-  write(
-    root,
-    'server/src/worker.ts',
-    "import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from './constants/walletSyncActivation';\n"
-      + "import { createProductionWalletSyncRecoveryRuntime } from './worker/walletSyncRecoveryRuntime';\n"
-      + "import { createProductionSubscriptionCheckpointRuntime } from './worker/subscriptionCheckpointRuntime';\n"
-      + 'void WALLET_SYNC_MUTATION_FENCE_FLOOR;\n'
-      + 'void createProductionSubscriptionCheckpointRuntime;\n'
-      + 'void createProductionWalletSyncRecoveryRuntime();\n',
-  );
+  writeMultiNetworkFixture(root);
   write(
     root,
     'server/src/repositories/subscriptionCheckpointRepository.ts',
@@ -545,6 +588,106 @@ test('live canonical producer inventory matches production without claiming cuto
 
 test('accepts an exact gated bounded-recovery inventory fixture', () => {
   assert.deepEqual(checkWalletSyncLifecycleContract(createFixture()).errors, []);
+});
+
+test('rejects loss of represented-network and strict routing boundaries', () => {
+  const missingStartup = createFixture();
+  write(
+    missingStartup,
+    'server/src/worker/electrumManager/electrumManager.ts',
+    'void ensureNetworkConnected;\nclass Manager { run() { void this.callbacks.onSubscriptionStatuses; } }\n',
+  );
+  assert.ok(checkWalletSyncLifecycleContract(missingStartup).errors.some(
+    (error) => error.includes('represented networks at startup'),
+  ));
+
+  const fallback = createFixture();
+  write(
+    fallback,
+    'server/src/worker/electrumManager/addressSubscriptions.ts',
+    "void resolvePersistedBitcoinNetwork;\nvoid (wallet.network || 'mainnet');\n",
+  );
+  assert.ok(checkWalletSyncLifecycleContract(fallback).errors.some(
+    (error) => error.includes('must not fall back an invalid persisted network to mainnet'),
+  ));
+
+  const inertWorkerTokens = createFixture();
+  const workerPath = path.join(inertWorkerTokens, 'server/src/worker.ts');
+  write(
+    inertWorkerTokens,
+    'server/src/worker.ts',
+    readFileSync(workerPath, 'utf8')
+      .replace('electrumManager.getManagedNetworks();', 'void electrumManager.getManagedNetworks;')
+      .replace(
+        'new ElectrumSubscriptionManager({ onSubscriptionStatuses: recordSubscriptionStatuses });',
+        'void { onSubscriptionStatuses: recordSubscriptionStatuses };',
+      ),
+  );
+  const inertErrors = checkWalletSyncLifecycleContract(inertWorkerTokens).errors;
+  assert.ok(inertErrors.some((error) => error.includes('worker checkpoint comparison')));
+  assert.ok(inertErrors.some((error) => error.includes('startSubscriptionStatusRefreshTimer')));
+
+  const starvingTimer = createFixture();
+  const starvingWorkerPath = path.join(starvingTimer, 'server/src/worker.ts');
+  write(
+    starvingTimer,
+    'server/src/worker.ts',
+    readFileSync(starvingWorkerPath, 'utf8').replace(
+      'if (subscriptionStatusRefreshInFlight) return; electrumManager.getManagedNetworks(); promise.finally(() => { subscriptionStatusRefreshNetworkIndex += 1; });',
+      'electrumManager.getManagedNetworks(); subscriptionStatusRefreshNetworkIndex += 1; if (subscriptionStatusRefreshInFlight) return;',
+    ),
+  );
+  assert.ok(checkWalletSyncLifecycleContract(starvingTimer).errors.some(
+    (error) => error.includes('startSubscriptionStatusRefreshTimer'),
+  ));
+
+  const inertManagerTokens = createFixture();
+  const managerPath = path.join(
+    inertManagerTokens,
+    'server/src/worker/electrumManager/electrumManager.ts',
+  );
+  write(
+    inertManagerTokens,
+    'server/src/worker/electrumManager/electrumManager.ts',
+    readFileSync(managerPath, 'utf8').replace(
+      'await subscribeAllAddresses(a, b, this.callbacks.onSubscriptionStatuses);',
+      'void subscribeAllAddresses; void this.callbacks.onSubscriptionStatuses;',
+    ),
+  );
+  assert.ok(checkWalletSyncLifecycleContract(inertManagerTokens).errors.some(
+    (error) => error.includes('through subscribeAllAddresses'),
+  ));
+
+  const unsafeManager = createFixture();
+  const unsafeManagerPath = path.join(
+    unsafeManager,
+    'server/src/worker/electrumManager/electrumManager.ts',
+  );
+  write(
+    unsafeManager,
+    'server/src/worker/electrumManager/electrumManager.ts',
+    readFileSync(unsafeManagerPath, 'utf8')
+      .replace('this.ensureNetworkConnected(a, b, false)', 'this.ensureNetworkConnected(a)')
+      .replace('this.networkConnections.set(a, connection);', 'void connection;')
+      .replace(
+        '(network) => this.doConnectNetwork(network)',
+        '(network) => connectNetwork(network)',
+      ),
+  );
+  const unsafeManagerErrors = checkWalletSyncLifecycleContract(unsafeManager).errors;
+  assert.ok(unsafeManagerErrors.some((error) => error.includes('suppress reentrant readiness')));
+  assert.ok(unsafeManagerErrors.some((error) => error.includes('single-flight promise sharing')));
+  assert.ok(unsafeManagerErrors.some((error) => error.includes('scheduled reconnects')));
+
+  const inertRepositoryTokens = createFixture();
+  write(
+    inertRepositoryTokens,
+    'server/src/repositories/walletRepository.ts',
+    'void prisma.wallet.findMany; void REPRESENTED_NETWORK_READ_LIMIT;\n',
+  );
+  assert.ok(checkWalletSyncLifecycleContract(inertRepositoryTokens).errors.some(
+    (error) => error.includes('bound its represented-network read'),
+  ));
 });
 
 test('rejects growth in direct execution and wallet-job reference boundaries', () => {

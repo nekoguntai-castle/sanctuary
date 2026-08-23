@@ -378,6 +378,43 @@ export const registerWalletRepositoryQueryContracts = () => {
     });
   });
 
+  describe('findRepresentedNetworks', () => {
+    it('returns the bounded distinct persisted network vocabulary for strict consumers', async () => {
+      (prisma.wallet.findMany as Mock).mockResolvedValue([
+        { network: 'mainnet' },
+        { network: 'testnet' },
+        { network: 'testnet3' },
+        { network: 'signet' },
+      ]);
+
+      const result = await walletRepository.findRepresentedNetworks();
+
+      expect(result).toEqual(['mainnet', 'testnet', 'testnet3', 'signet']);
+      expect(prisma.wallet.findMany).toHaveBeenCalledWith({
+        distinct: ['network'],
+        orderBy: { network: 'asc' },
+        select: { network: true },
+        take: 7,
+      });
+    });
+
+    it('returns an empty list when no wallets are persisted', async () => {
+      (prisma.wallet.findMany as Mock).mockResolvedValue([]);
+
+      await expect(walletRepository.findRepresentedNetworks()).resolves.toEqual([]);
+    });
+
+    it('fails closed if the bounded distinct read exceeds accepted raw values', async () => {
+      (prisma.wallet.findMany as Mock).mockResolvedValue(
+        Array.from({ length: 7 }, () => ({ network: 'mainnet' })),
+      );
+
+      await expect(walletRepository.findRepresentedNetworks()).rejects.toThrow(
+        'Persisted wallet network read exceeded its bound',
+      );
+    });
+  });
+
   describe('findByUserIdWithInclude', () => {
     it('should find user wallets with include', async () => {
       const wallets = [{ ...mockWallet, addresses: [] }];

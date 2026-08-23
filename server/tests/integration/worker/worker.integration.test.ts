@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createWorkerTestHarness } from '../setup/workerHarness';
 
+vi.mock('../../../src/services/bitcoin/electrum/methods', () => ({
+  addressToScriptHash: vi.fn(() => 'c'.repeat(64)),
+}));
+
 const checkpointMocks = vi.hoisted(() => {
   const runtime = {
     enrollPendingPage: vi.fn(async () => ({
@@ -87,10 +91,15 @@ describe('worker integration', () => {
 
     const onNewBlock = harness.electrumOptions.onNewBlock!;
     const onAddressActivity = harness.electrumOptions.onAddressActivity!;
+    const onSubscriptionStatuses = harness.electrumOptions.onSubscriptionStatuses!;
     harness.electrumManager.isSubscriptionOwner = vi.fn(() => true);
 
     onNewBlock('testnet3', 123, 'hash-123');
     onAddressActivity('testnet3', 'a'.repeat(64), 'b'.repeat(64));
+    await onSubscriptionStatuses(
+      'testnet3',
+      new Map([['tb1q-authoritative-address', 'd'.repeat(64)]]),
+    );
 
     expect(harness.jobQueue.addJob).toHaveBeenCalledWith(
       'confirmations',
@@ -106,6 +115,12 @@ describe('worker integration', () => {
         observedStatus: 'b'.repeat(64),
         limit: 200,
       });
+    });
+    expect(checkpointMocks.runtime.recordStatusPage).toHaveBeenCalledWith({
+      network: 'testnet3',
+      scriptHash: 'c'.repeat(64),
+      observedStatus: 'd'.repeat(64),
+      limit: 200,
     });
     expect(harness.requestSyncIntent).not.toHaveBeenCalled();
     expect(harness.jobQueue.addJob.mock.calls).not.toContainEqual(

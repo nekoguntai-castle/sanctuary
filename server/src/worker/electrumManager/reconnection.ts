@@ -6,6 +6,7 @@
 
 import { getElectrumClientForNetwork } from '../../services/bitcoin/electrum';
 import { createLogger } from '../../utils/logger';
+import { getErrorMessage } from '../../utils/errors';
 import {
   RECONNECT_BASE_DELAY_MS,
   RECONNECT_MAX_DELAY_MS,
@@ -25,7 +26,8 @@ export function scheduleReconnect(
   addressToWallet: Map<string, { walletId: string; network: BitcoinNetwork }>,
   callbacks: ElectrumManagerCallbacks,
   isRunning: () => boolean,
-  subscribeNetworkAddresses: (network: BitcoinNetwork) => Promise<void>
+  subscribeNetworkAddresses: (network: BitcoinNetwork) => Promise<void>,
+  connectNetworkAttempt?: (network: BitcoinNetwork) => Promise<void>,
 ): void {
   const state = networks.get(network);
 
@@ -49,26 +51,51 @@ export function scheduleReconnect(
 
   // Create a bound scheduleReconnect for passing to connectNetwork
   const boundScheduleReconnect = (net: BitcoinNetwork) =>
-    scheduleReconnect(net, networks, addressToWallet, callbacks, isRunning, subscribeNetworkAddresses);
+    scheduleReconnect(
+      net,
+      networks,
+      addressToWallet,
+      callbacks,
+      isRunning,
+      subscribeNetworkAddresses,
+      connectNetworkAttempt,
+    );
 
   const timer = setTimeout(async () => {
     if (!isRunning()) return;
+    try {
+      // Update state
+      if (state) {
+        state.reconnectTimer = null;
+        state.reconnectAttempts++;
+      }
 
-    // Update state
-    if (state) {
-      state.reconnectTimer = null;
-      state.reconnectAttempts++;
-    }
+      // Attempt reconnection
+      if (connectNetworkAttempt) {
+        await connectNetworkAttempt(network);
+      } else {
+        await connectNetwork(
+          network,
+          networks,
+          addressToWallet,
+          callbacks,
+          isRunning,
+          boundScheduleReconnect,
+        );
+      }
+      if (!isRunning()) return;
 
-    // Attempt reconnection
-    await connectNetwork(network, networks, addressToWallet, callbacks, isRunning, boundScheduleReconnect);
-    if (!isRunning()) return;
-
-    // Re-subscribe addresses if connected
-    const currentState = networks.get(network);
-    if (currentState?.connected) {
-      currentState.reconnectAttempts = 0; // Reset on success
-      await subscribeNetworkAddresses(network);
+      // Re-subscribe addresses if connected. A failed checkpoint persistence is
+      // retried by the bounded status-refresh loop and must not escape the timer.
+      const currentState = networks.get(network);
+      if (currentState?.connected) {
+        currentState.reconnectAttempts = 0; // Reset on success
+        await subscribeNetworkAddresses(network);
+      }
+    } catch (error) {
+      log.error(`Electrum ${network} reconnect restoration failed`, {
+        error: getErrorMessage(error),
+      });
     }
   }, delay);
 

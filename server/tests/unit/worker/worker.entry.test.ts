@@ -33,6 +33,8 @@ const mocks = vi.hoisted(() => {
     stop: vi.fn(),
     isConnected: vi.fn(),
     isSubscriptionOwner: vi.fn(),
+    getManagedNetworks: vi.fn(),
+    ensureNetworkConnected: vi.fn(),
     subscribeCheckpointAddresses: vi.fn(),
     getHealthMetrics: vi.fn(),
     reconcileSubscriptions: vi.fn(),
@@ -368,6 +370,8 @@ describe('worker entrypoint', () => {
     mocks.electrumInstance.stop.mockResolvedValue(undefined);
     mocks.electrumInstance.isConnected.mockReturnValue(true);
     mocks.electrumInstance.isSubscriptionOwner.mockReturnValue(true);
+    mocks.electrumInstance.getManagedNetworks.mockReturnValue(['testnet3']);
+    mocks.electrumInstance.ensureNetworkConnected.mockResolvedValue(undefined);
     mocks.electrumInstance.subscribeCheckpointAddresses.mockResolvedValue(new Map());
     mocks.electrumInstance.getHealthMetrics.mockReturnValue({
       isRunning: true,
@@ -727,7 +731,7 @@ describe('worker entrypoint', () => {
     await checkpointCallback!();
     expect(mocks.subscriptionCheckpointRuntime.enrollPendingPage).toHaveBeenCalledTimes(2);
     expect(mocks.subscriptionCheckpointRuntime.enrollPendingPage).toHaveBeenNthCalledWith(2, {
-      network: 'testnet',
+      network: 'testnet3',
       cursor: 'checkpoint-200',
       limit: 200,
     });
@@ -735,7 +739,7 @@ describe('worker entrypoint', () => {
     await checkpointCallback!();
     expect(mocks.subscriptionCheckpointRuntime.enrollPendingPage).toHaveBeenCalledTimes(3);
     expect(mocks.subscriptionCheckpointRuntime.enrollPendingPage).toHaveBeenNthCalledWith(3, {
-      network: 'testnet',
+      network: 'testnet3',
       limit: 200,
     });
   });
@@ -769,7 +773,7 @@ describe('worker entrypoint', () => {
     expect(mocks.electrumInstance.refreshSubscriptionStatusPage).toHaveBeenCalledTimes(2);
     expect(mocks.electrumInstance.refreshSubscriptionStatusPage).toHaveBeenNthCalledWith(
       2,
-      'testnet',
+      'testnet3',
       { cursor: 'address-200', limit: 200 },
     );
 
@@ -777,9 +781,95 @@ describe('worker entrypoint', () => {
     expect(mocks.electrumInstance.refreshSubscriptionStatusPage).toHaveBeenCalledTimes(3);
     expect(mocks.electrumInstance.refreshSubscriptionStatusPage).toHaveBeenNthCalledWith(
       3,
-      'testnet',
+      'testnet3',
       { limit: 200 },
     );
+  });
+
+  it('does not skip a managed network while a status refresh is still in flight', async () => {
+    vi.spyOn(process, 'on').mockImplementation(((_event: string, _handler: (...args: any[]) => any) => (
+      process
+    )) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+    let statusRefreshCallback: (() => Promise<void> | void) | undefined;
+    vi.spyOn(global, 'setInterval').mockImplementation(((
+      callback: () => Promise<void> | void,
+      interval: number,
+    ) => {
+      if (interval === 60_000 && statusRefreshCallback === undefined) {
+        statusRefreshCallback = callback;
+      }
+      return { unref: vi.fn() } as any;
+    }) as any);
+    mocks.electrumInstance.getManagedNetworks.mockReturnValue(['mainnet', 'testnet3']);
+    let finishFirst!: (result: { scanned: number }) => void;
+    mocks.electrumInstance.refreshSubscriptionStatusPage
+      .mockReturnValueOnce(new Promise((resolve) => { finishFirst = resolve; }))
+      .mockResolvedValueOnce({ scanned: 0 });
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+    const first = statusRefreshCallback!() as Promise<void>;
+    expect(statusRefreshCallback!()).toBeUndefined();
+    expect(mocks.electrumInstance.refreshSubscriptionStatusPage).toHaveBeenCalledOnce();
+    finishFirst({ scanned: 0 });
+    await first;
+
+    await statusRefreshCallback!();
+    expect(mocks.electrumInstance.refreshSubscriptionStatusPage).toHaveBeenNthCalledWith(
+      2,
+      'testnet3',
+      { limit: 200 },
+    );
+  });
+
+  it('does not skip a managed network while checkpoint enrollment is still in flight', async () => {
+    vi.spyOn(process, 'on').mockImplementation(((_event: string, _handler: (...args: any[]) => any) => (
+      process
+    )) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+    let checkpointCallback: (() => Promise<void> | void) | undefined;
+    vi.spyOn(global, 'setInterval').mockImplementation(((
+      callback: () => Promise<void> | void,
+      interval: number,
+    ) => {
+      if (interval === 1_000) checkpointCallback = callback;
+      return { unref: vi.fn() } as any;
+    }) as any);
+    mocks.electrumInstance.getManagedNetworks.mockReturnValue(['mainnet', 'testnet3']);
+    const emptyCheckpointResult = {
+      scanned: 0,
+      subscribed: 0,
+      unavailable: 0,
+      syncIntents: [],
+      dispatch: {
+        intents: 0,
+        published: 0,
+        publicationFailed: 0,
+        woken: 0,
+        wakeUnavailable: 0,
+      },
+    };
+    let finishFirst!: (result: typeof emptyCheckpointResult) => void;
+    mocks.subscriptionCheckpointRuntime.enrollPendingPage
+      .mockReturnValueOnce(new Promise((resolve) => { finishFirst = resolve; }))
+      .mockResolvedValueOnce(emptyCheckpointResult);
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+    const first = checkpointCallback!() as Promise<void>;
+    await vi.waitFor(() => {
+      expect(mocks.subscriptionCheckpointRuntime.enrollPendingPage).toHaveBeenCalledOnce();
+    });
+    expect(checkpointCallback!()).toBeUndefined();
+    finishFirst(emptyCheckpointResult);
+    await first;
+
+    await checkpointCallback!();
+    expect(mocks.subscriptionCheckpointRuntime.enrollPendingPage).toHaveBeenNthCalledWith(2, {
+      network: 'testnet3',
+      limit: 200,
+    });
   });
 
   it('fails startup when wallet-sync recovery cannot start', async () => {

@@ -9,6 +9,7 @@ import {
   isBitcoinTestnetFamily,
   normalizeLegacyBitcoinNetwork,
   resolveDetectedBitcoinNetwork,
+  resolvePersistedBitcoinNetwork,
 } from "../../../../src/services/bitcoin/networks";
 
 describe("bitcoin network helpers", () => {
@@ -26,6 +27,26 @@ describe("bitcoin network helpers", () => {
     expect(isBitcoinNetwork("testnet")).toBe(false);
     expect(isBitcoinNetwork(null)).toBe(false);
   });
+
+  it.each([
+    ["mainnet", "mainnet"],
+    ["testnet3", "testnet3"],
+    ["testnet4", "testnet4"],
+    ["signet", "signet"],
+    ["regtest", "regtest"],
+    ["testnet", "testnet3"],
+  ] as const)("strictly resolves persisted network %s", (persisted, expected) => {
+    expect(resolvePersistedBitcoinNetwork(persisted)).toBe(expected);
+  });
+
+  it.each([null, undefined, "", " ", "MAINNET", "unknown", 0])(
+    "rejects invalid persisted network value %j instead of falling back",
+    (persisted) => {
+      expect(() => resolvePersistedBitcoinNetwork(persisted)).toThrow(
+        "Invalid persisted Bitcoin network",
+      );
+    },
+  );
 
   it("maps app networks to bitcoinjs network families and BIP coin types", () => {
     expect(bitcoinJsNetworkName("mainnet")).toBe("mainnet");

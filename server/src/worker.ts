@@ -88,7 +88,8 @@ import {
   type WalletSyncRecoveryRuntime,
 } from './worker/walletSyncRecoveryRuntime';
 import { syncIntentAdmission } from './services/sync/syncIntentAdmission';
-import { normalizeLegacyBitcoinNetwork } from './services/bitcoin/networks';
+import { resolvePersistedBitcoinNetwork } from './services/bitcoin/networks';
+import { addressToScriptHash } from './services/bitcoin/electrum/methods';
 import {
   createProductionSubscriptionCheckpointRuntime,
   type SubscriptionCheckpointRuntime,
@@ -117,6 +118,8 @@ let subscriptionCheckpointTimer: NodeJS.Timeout | null = null;
 let subscriptionStatusRefreshTimer: NodeJS.Timeout | null = null;
 let subscriptionCheckpointInFlight = false;
 let subscriptionStatusRefreshInFlight = false;
+let subscriptionCheckpointNetworkIndex = 0;
+let subscriptionStatusRefreshNetworkIndex = 0;
 const subscriptionCheckpointCursors = new Map<BitcoinNetwork, string>();
 const subscriptionStatusRefreshCursors = new Map<BitcoinNetwork, string>();
 const subscriptionStatusTails = new Map<string, Promise<void>>();
@@ -251,7 +254,7 @@ async function enrollWalletSubscriptions(
   walletNetwork: string,
   signal: AbortSignal,
 ): Promise<void> {
-  const network = normalizeLegacyBitcoinNetwork(walletNetwork, 'mainnet');
+  const network = resolvePersistedBitcoinNetwork(walletNetwork);
   let cursor: string | undefined;
   while (true) {
     signal.throwIfAborted();
@@ -262,6 +265,7 @@ async function enrollWalletSubscriptions(
       await delay(SUBSCRIPTION_CHECKPOINT_WAIT_MS, undefined, { signal });
       continue;
     }
+    await electrumManager.ensureNetworkConnected(network);
     const result = await serializeSubscriptionCheckpointMutation(() => (
       activeSubscriptionCheckpointRuntime().enrollPendingPage({
         network,
@@ -276,6 +280,19 @@ async function enrollWalletSubscriptions(
     }
     if (result.scanned !== SUBSCRIPTION_CHECKPOINT_PAGE_SIZE || !result.nextCursor) return;
     cursor = result.nextCursor;
+  }
+}
+
+async function recordSubscriptionStatuses(
+  network: BitcoinNetwork,
+  statuses: Map<string, string | null>,
+): Promise<void> {
+  for (const [address, status] of statuses) {
+    await recordSubscriptionStatus(
+      network,
+      addressToScriptHash(address, network),
+      status,
+    );
   }
 }
 
@@ -403,6 +420,7 @@ async function startWorker(): Promise<void> {
     onNewBlock: handleNewBlock,
     onAddressActivity: handleAddressActivity,
     onNetworkReady: enrollPendingSubscriptionPage,
+    onSubscriptionStatuses: recordSubscriptionStatuses,
   });
   subscriptionCheckpointRuntime = createProductionSubscriptionCheckpointRuntime(
     ({ network, addresses }) => {
@@ -560,12 +578,14 @@ function startReconciliationTimer(): void {
 
 function startSubscriptionStatusRefreshTimer(): void {
   subscriptionStatusRefreshTimer = setInterval(() => {
-    const network = getConfig().bitcoin.network as BitcoinNetwork;
     if (isShuttingDown || !electrumManager?.isSubscriptionOwner()) {
-      subscriptionStatusRefreshCursors.delete(network);
+      subscriptionStatusRefreshCursors.clear();
       return;
     }
     if (subscriptionStatusRefreshInFlight) return;
+    const networks = electrumManager.getManagedNetworks();
+    const network = networks[subscriptionStatusRefreshNetworkIndex % networks.length];
+    if (!network) return;
     subscriptionStatusRefreshInFlight = true;
     const cursor = subscriptionStatusRefreshCursors.get(network);
     return electrumManager.refreshSubscriptionStatusPage(network, {
@@ -584,6 +604,7 @@ function startSubscriptionStatusRefreshTimer(): void {
       });
     }).finally(() => {
       subscriptionStatusRefreshInFlight = false;
+      subscriptionStatusRefreshNetworkIndex += 1;
     });
   }, SUBSCRIPTION_STATUS_REFRESH_INTERVAL_MS);
   subscriptionStatusRefreshTimer.unref?.();
@@ -591,12 +612,14 @@ function startSubscriptionStatusRefreshTimer(): void {
 
 function startSubscriptionCheckpointTimer(): void {
   subscriptionCheckpointTimer = setInterval(() => {
-    const network = getConfig().bitcoin.network as BitcoinNetwork;
     if (isShuttingDown || !electrumManager?.isSubscriptionOwner()) {
-      subscriptionCheckpointCursors.delete(network);
+      subscriptionCheckpointCursors.clear();
       return;
     }
     if (subscriptionCheckpointInFlight) return;
+    const networks = electrumManager.getManagedNetworks();
+    const network = networks[subscriptionCheckpointNetworkIndex % networks.length];
+    if (!network) return;
     subscriptionCheckpointInFlight = true;
     return enrollPendingSubscriptionPage(network)
       .catch((error) => {
@@ -607,6 +630,7 @@ function startSubscriptionCheckpointTimer(): void {
       })
       .finally(() => {
         subscriptionCheckpointInFlight = false;
+        subscriptionCheckpointNetworkIndex += 1;
       });
   }, SUBSCRIPTION_CHECKPOINT_INTERVAL_MS);
   subscriptionCheckpointTimer.unref?.();

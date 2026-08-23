@@ -6,6 +6,12 @@ interface WorkerHarnessOptions {
   configOverrides?: Record<string, any>;
 }
 
+interface WorkerElectrumOptions {
+  onNewBlock?: (...args: any[]) => void;
+  onAddressActivity?: (...args: any[]) => void;
+  onSubscriptionStatuses?: (...args: any[]) => Promise<void>;
+}
+
 interface WorkerHarnessHandle {
   jobQueue: any;
   electrumManager: any;
@@ -16,7 +22,7 @@ interface WorkerHarnessHandle {
     start: ReturnType<typeof vi.fn>;
     stop: ReturnType<typeof vi.fn>;
   };
-  electrumOptions: { onNewBlock?: (...args: any[]) => void; onAddressActivity?: (...args: any[]) => void };
+  electrumOptions: WorkerElectrumOptions;
   exitSpy: ReturnType<typeof vi.spyOn>;
   shutdown: () => Promise<void>;
   stopProcessExitSpy: () => void;
@@ -74,6 +80,8 @@ export const createWorkerTestHarness = async (
     reconcileSubscriptions: vi.fn(async () => undefined),
     refreshSubscriptionStatusPage: vi.fn(async () => ({ scanned: 0 })),
     isSubscriptionOwner: vi.fn(() => true),
+    getManagedNetworks: vi.fn(() => ['testnet3']),
+    ensureNetworkConnected: vi.fn(async () => undefined),
     subscribeCheckpointAddresses: vi.fn(async () => new Map()),
     isConnected: vi.fn(() => true),
     getHealthMetrics: vi.fn(() => ({
@@ -209,7 +217,7 @@ export const createWorkerTestHarness = async (
     },
   }));
 
-  const electrumOptions: { onNewBlock?: (...args: any[]) => void; onAddressActivity?: (...args: any[]) => void } = {};
+  const electrumOptions: WorkerElectrumOptions = {};
   vi.doMock('../../../src/worker/electrumManager', () => ({
     ElectrumSubscriptionManager: class {
       constructor(options: typeof electrumOptions) {
