@@ -13,7 +13,10 @@ import { syncWallet, getCachedBlockHeight } from '../../services/bitcoin/blockch
 import { populateMissingTransactionFields } from '../../services/bitcoin/sync/confirmations';
 import { normalizeLegacyBitcoinNetwork } from '../../services/bitcoin/networks';
 import { classifyWalletSyncFailure } from '../../services/sync/failureClassification';
-import { syncIntentAdmission } from '../../services/sync/syncIntentAdmission';
+import {
+  syncIntentAdmission,
+  type ClaimFreshIncrementalSyncResult,
+} from '../../services/sync/syncIntentAdmission';
 import {
   runSyncAttemptWithTimeout,
   SYNC_ABORT_GRACE_MS,
@@ -55,6 +58,33 @@ function incrementalTransition(
   return { walletId, transition, state };
 }
 
+async function claimIncrementalExecution(
+  data: CanonicalIncrementalSyncData,
+  claimedAt: Date,
+  leaseExpiresAt: Date,
+): Promise<Exclude<
+  ClaimFreshIncrementalSyncResult,
+  { status: 'already_claimed' }
+>> {
+  const input = {
+    leaseToken: randomUUID(),
+    claimedAt,
+    leaseExpiresAt,
+    expectedRequestedGeneration: data.incrementalSyncGeneration,
+  };
+  const fresh = await syncIntentAdmission.claimFresh(data.walletId, input);
+  if (fresh.status === 'blocked') return fresh;
+  if (fresh.status !== 'already_claimed') return fresh;
+  const reclaimed = await syncIntentAdmission.reclaimExpired(data.walletId, input);
+  if (reclaimed.status === 'blocked') return reclaimed;
+  if (reclaimed.status !== 'claimed') {
+    throw new Error(
+      `Incremental sync generation ${data.incrementalSyncGeneration} already has an active claim`,
+    );
+  }
+  return reclaimed;
+}
+
 export async function executeCanonicalIncrementalSync(
   job: Job<SyncWalletJobData>,
   data: CanonicalIncrementalSyncData,
@@ -69,16 +99,25 @@ export async function executeCanonicalIncrementalSync(
   }
 
   const claimedAt = new Date();
-  const claimResult = await syncIntentAdmission.claim(data.walletId, {
-    leaseToken: randomUUID(),
+  const claimResult = await claimIncrementalExecution(
+    data,
     claimedAt,
-    leaseExpiresAt: new Date(claimedAt.getTime() + dependencies.lockTtlMs),
-    expectedRequestedGeneration: data.incrementalSyncGeneration,
-  });
-  if (claimResult.status === 'already_claimed') {
-    throw new Error(
-      `Incremental sync generation ${data.incrementalSyncGeneration} already has an active claim`,
-    );
+    new Date(claimedAt.getTime() + dependencies.lockTtlMs),
+  );
+  if (claimResult.status === 'blocked') {
+    // Durable intent remains authoritative and replacement-safe recovery will
+    // wake it after activation returns. Neutral completion avoids consuming
+    // BullMQ attempts for a rollout gate rather than an execution failure.
+    log.info(`Deferring gated incremental wake-up for wallet ${data.walletId}`, {
+      generation: data.incrementalSyncGeneration,
+      jobId: job.id,
+      activationStatus: claimResult.activation.status,
+    });
+    return {
+      version: SYNC_JOB_CONTRACT_VERSION,
+      success: true,
+      duration: Date.now() - startTime,
+    };
   }
   if (claimResult.status === 'not_claimed') {
     log.info(`Ignoring obsolete incremental wake-up for wallet ${data.walletId}`, {

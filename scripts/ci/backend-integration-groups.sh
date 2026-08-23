@@ -82,9 +82,11 @@ list_group_specs() {
         tests/integration/websocket/websocket.integration.test.ts \
         tests/integration/worker/featureFlagToggle.integration.test.ts \
         tests/integration/worker/deadLetterQueue.integration.test.ts \
+        tests/integration/worker/expiredIncrementalReclaim.integration.test.ts \
         tests/integration/worker/jobProcessorLockLoss.integration.test.ts \
         tests/integration/worker/notificationDispatcherRetention.integration.test.ts \
         tests/integration/worker/recurringSchedules.integration.test.ts \
+        tests/integration/worker/workerHeartbeatRegistryRetirement.integration.test.ts \
         tests/integration/worker/webhookRetryRecovery.integration.test.ts \
         tests/integration/worker/worker.integration.test.ts \
         tests/integration/worker/workerJobQueueLock.integration.test.ts

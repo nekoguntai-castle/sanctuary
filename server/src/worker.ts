@@ -26,6 +26,7 @@ import {
   type SyncPriority,
 } from '@sanctuary/shared/constants/sync';
 import { getConfig } from './config';
+import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from './constants/walletSyncActivation';
 import { createLogger } from './utils/logger';
 import { getErrorMessage } from './utils/errors';
 import { registerFatalProcessHandlers } from './utils/fatalProcessHandlers';
@@ -52,7 +53,10 @@ import { WorkerJobQueue } from './worker/workerJobQueue';
 import { ElectrumSubscriptionManager, type BitcoinNetwork } from './worker/electrumManager';
 import { startHealthServer, type HealthServerHandle } from './worker/healthServer';
 import { registerWorkerJobs } from './worker/jobs';
-import { enqueueFullResyncBatch } from './services/workerSyncQueue';
+import {
+  enqueueFullResyncBatch,
+  enqueueReservedFullResyncWakeup,
+} from './services/workerSyncQueue';
 import {
   CHECK_STALE_WALLETS_JOB_NAME,
   CONFIRMATIONS_QUEUE_NAME,
@@ -87,6 +91,10 @@ import type { WorkerDiagnosticsResponse } from './internal/workerDiagnostics/pro
 import { startCaptureParticipant, stopCaptureParticipant } from './services/supportPackage/captureRuntime';
 import { initializeRedisBridge, shutdownRedisBridge } from './websocket/redisBridge';
 import { readStaleWalletSchedulePolicy } from './repositories/walletSyncSchedulePolicyRepository';
+import {
+  createProductionWalletSyncRecoveryRuntime,
+  type WalletSyncRecoveryRuntime,
+} from './worker/walletSyncRecoveryRuntime';
 
 const log = createLogger('WORKER');
 
@@ -105,6 +113,7 @@ let shutdownExitCode: 0 | 1 = 0;
 let recurringScheduleCoordinator: RecurringScheduleCoordinator | null = null;
 let workerStartedAt = 0;
 let diagnosticHeartbeat: WorkerHeartbeatWriter | null = null;
+let walletSyncRecoveryRuntime: WalletSyncRecoveryRuntime | null = null;
 let stopUiEventBridge: (() => Promise<void>) | null = null;
 
 // Reconciliation interval - clean up stale subscriptions every 15 minutes
@@ -279,6 +288,10 @@ async function startWorker(): Promise<void> {
           electrum: electrumManager?.isConnected() ?? false,
           jobQueue: jobQueueHealthy,
           recurringSchedules: scheduleHealth.healthy,
+          walletSyncActivation: walletSyncRecoveryRuntime?.getActivationState() ?? {
+            status: 'dormant',
+            requiredFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
+          },
         };
       },
       getMetrics: async () => {
@@ -303,6 +316,10 @@ async function startWorker(): Promise<void> {
           },
           jobCompletions: scheduleHealth.completionTimes,
           recurringSchedules: scheduleHealth,
+          walletSyncActivation: walletSyncRecoveryRuntime?.getActivationState() ?? {
+            status: 'dormant',
+            requiredFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
+          },
         };
       },
     },
@@ -310,7 +327,12 @@ async function startWorker(): Promise<void> {
   diagnosticHeartbeat = new WorkerHeartbeatWriter(
     () => getWorkerDiagnosticsSnapshot(workerConcurrency),
   );
+  await diagnosticHeartbeat.write();
   diagnosticHeartbeat.start();
+  walletSyncRecoveryRuntime = createProductionWalletSyncRecoveryRuntime({
+    enqueueReservedFullResyncWakeup,
+  });
+  await walletSyncRecoveryRuntime.start();
 
   // Initialize Prometheus metrics service
   metricsService.initialize();
@@ -595,6 +617,15 @@ async function shutdown(signal: string, exitCode: 0 | 1 = 0): Promise<void> {
     } catch (err) {
       log.error('Error closing health server', { error: getErrorMessage(err) });
     }
+  }
+
+  if (walletSyncRecoveryRuntime) {
+    try {
+      await walletSyncRecoveryRuntime.stop();
+    } catch (err) {
+      log.error('Error stopping wallet-sync recovery', { error: getErrorMessage(err) });
+    }
+    walletSyncRecoveryRuntime = null;
   }
 
   // Stop Electrum subscriptions

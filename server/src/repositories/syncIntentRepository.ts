@@ -93,6 +93,16 @@ export interface IncrementalSyncActionRequiredReleaseInput {
   failureClass: WalletSyncFailureClass;
 }
 
+export interface ExpiredIncrementalSyncClaimCursor {
+  leaseExpiresAt: Date;
+  walletId: string;
+}
+
+export interface ExpiredIncrementalSyncClaim extends ExpiredIncrementalSyncClaimCursor {
+  generation: number;
+  leaseToken: string;
+}
+
 function recoveryLimit(limit: number | undefined): number {
   if (limit === undefined) return MAX_RECOVERY_BATCH_SIZE;
   if (!Number.isInteger(limit) || limit < 1) {
@@ -134,6 +144,11 @@ function requireDate(value: Date, description: string): void {
 function requireMutationFence(fence: WalletSyncMutationFence): void {
   requireWalletId(fence.walletId);
   requireFence(fence);
+}
+
+function requireExpiredClaimCursor(cursor: ExpiredIncrementalSyncClaimCursor): void {
+  requireDate(cursor.leaseExpiresAt, 'Expired incremental sync claim cursor time');
+  requireWalletId(cursor.walletId);
 }
 
 function requireClaimInput(walletId: string, input: IncrementalSyncClaimInput): void {
@@ -520,6 +535,52 @@ export async function releaseIncrementalSyncAsActionRequired(
   return terminalResult(rows);
 }
 
+/**
+ * Read one bounded, due-time ordered page of exact expired claim identities.
+ * This reader never probes execution locks or rotates a lease; those authority
+ * checks remain in admission and the lock-owning canonical consumer. The
+ * composite cursor matches the existing partial expiry index.
+ */
+export async function findExpiredIncrementalSyncClaims(options: {
+  now: Date;
+  cursor?: ExpiredIncrementalSyncClaimCursor;
+  limit?: number;
+}): Promise<ExpiredIncrementalSyncClaim[]> {
+  requireDate(options.now, 'Expired incremental sync claim recovery time');
+  if (options.cursor) requireExpiredClaimCursor(options.cursor);
+  const limit = recoveryLimit(options.limit);
+  const cursor = options.cursor;
+
+  return prisma.$queryRaw<ExpiredIncrementalSyncClaim[]>(Prisma.sql`
+    SELECT
+      "id" AS "walletId",
+      "claimedIncrementalSyncGeneration" AS "generation",
+      "incrementalSyncLeaseToken"::TEXT AS "leaseToken",
+      "incrementalSyncLeaseExpiresAt" AS "leaseExpiresAt"
+    FROM "wallets"
+    WHERE "incrementalSyncLeaseExpiresAt" <= ${options.now}
+      AND "incrementalSyncLeaseExpiresAt" IS NOT NULL
+      AND "incrementalSyncLeaseToken" IS NOT NULL
+      AND "claimedIncrementalSyncGeneration" >= 1
+      AND "claimedIncrementalSyncGeneration" > "processedIncrementalSyncGeneration"
+      AND "requestedIncrementalSyncGeneration" >= "claimedIncrementalSyncGeneration"
+      AND "requestedFullResyncGeneration" = "processedFullResyncGeneration"
+      AND "syncActionRequiredAt" IS NULL
+      AND ("syncNextRetryAt" IS NULL OR "syncNextRetryAt" <= ${options.now})
+      ${cursor ? Prisma.sql`
+        AND (
+          "incrementalSyncLeaseExpiresAt" > ${cursor.leaseExpiresAt}
+          OR (
+            "incrementalSyncLeaseExpiresAt" = ${cursor.leaseExpiresAt}
+            AND "id" > ${cursor.walletId}
+          )
+        )
+      ` : Prisma.empty}
+    ORDER BY "incrementalSyncLeaseExpiresAt" ASC, "id" ASC
+    LIMIT ${limit}
+  `);
+}
+
 /** Read a bounded page for wake-up repair; this function never reclaims. */
 export async function findActionableIncrementalSyncIntents(options: {
   now: Date;
@@ -566,6 +627,7 @@ export const syncIntentRepository = {
   completeIncrementalSync,
   releaseIncrementalSyncForRetry,
   releaseIncrementalSyncAsActionRequired,
+  findExpiredIncrementalSyncClaims,
   findActionableIncrementalSyncIntents,
 };
 

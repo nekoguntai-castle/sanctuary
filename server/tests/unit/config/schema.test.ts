@@ -225,6 +225,16 @@ describe('Config Schema Validation', () => {
     expect(result.errors.some(error => error.includes('security.jwt.secret'))).toBe(true);
   });
 
+  it('enforces the declared pre-floor wallet execution drain bound', () => {
+    const invalidConfig = buildValidConfig();
+    invalidConfig.sync.maxSyncDurationMs = 30 * 60_000 + 1;
+
+    const result = validateConfigSchema(invalidConfig);
+
+    expect(result.success).toBe(false);
+    expect(result.errors.some(error => error.includes('sync.maxSyncDurationMs'))).toBe(true);
+  });
+
   it('assertValidConfig does not throw for valid config', () => {
     expect(() => assertValidConfig(buildValidConfig())).not.toThrow();
   });

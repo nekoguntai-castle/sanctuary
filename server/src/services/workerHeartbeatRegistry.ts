@@ -2,7 +2,10 @@ import { createHash, randomUUID } from "node:crypto";
 import Redis from "ioredis";
 import { z } from "zod";
 import { getConfig } from "../config";
-import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from "../constants/walletSyncActivation";
+import {
+  WALLET_SYNC_ACTIVATION_DRAIN_HORIZON_MS,
+  WALLET_SYNC_MUTATION_FENCE_FLOOR,
+} from "../constants/walletSyncActivation";
 import { NOTIFICATION_RETENTION_CONTRACT_VERSION } from "../internal/notificationRetention";
 import {
   WorkerDiagnosticsResponseSchema,
@@ -21,7 +24,15 @@ const REGISTRY_KEY = `${KEY_PREFIX}:members`;
 const HEARTBEAT_INTERVAL_MS = 10_000;
 const HEARTBEAT_TTL_MS = 35_000;
 const REGISTRY_RETENTION_MS = 15 * 60_000;
-const RESTART_MARKER_TTL_MS = 24 * 60 * 60 * 1_000;
+// Restart/collision evidence must outlive both a stale registry member and the
+// maximum pre-floor execution drain. Once it expires, a healthy observation
+// still has to begin and complete the durable activation stabilization horizon.
+// This keeps the fail-closed window safety-derived and bounded rather than
+// retaining an arbitrary day-long marker after the exact boot has disappeared.
+const RESTART_MARKER_TTL_MS = Math.max(
+  REGISTRY_RETENTION_MS,
+  WALLET_SYNC_ACTIVATION_DRAIN_HORIZON_MS,
+);
 const READ_TIMEOUT_MS = 1_000;
 const WRITE_TIMEOUT_MS = 1_000;
 const MAX_REPLICAS = 32;
@@ -136,6 +147,7 @@ const workerMutationFenceReadinessReasonSchema = z.enum([
   "no_workers",
   "incomplete_fleet",
   "worker_below_floor",
+  "restart_observed",
   "unavailable",
   "timeout",
 ]);
@@ -195,6 +207,19 @@ if count > tonumber(ARGV[8]) then
   local oldest = redis.call('ZRANGE', KEYS[2], 0, excess - 1)
   if #oldest > 0 then redis.call('ZREM', KEYS[2], unpack(oldest)) end
 end
+return 1
+`;
+
+// Graceful shutdown may retire only the boot epoch it wrote. A crash never runs
+// this script, and a stale shutdown sees the replacement epoch and becomes a
+// no-op, preserving fail-closed collision evidence and the replacement record.
+const RETIRE_SCRIPT = `
+local current_boot = redis.call('GET', KEYS[3])
+if not current_boot or current_boot ~= ARGV[2] then
+  return 0
+end
+redis.call('DEL', KEYS[1], KEYS[3], KEYS[4])
+redis.call('ZREM', KEYS[2], ARGV[1])
 return 1
 `;
 
@@ -266,6 +291,7 @@ export class WorkerHeartbeatWriter {
   private stopped = false;
   private fence = 0;
   private inFlight: Promise<void> | null = null;
+  private stopPromise: Promise<void> | null = null;
 
   constructor(
     private readonly getSnapshot: () => WorkerDiagnosticsResponse,
@@ -283,14 +309,21 @@ export class WorkerHeartbeatWriter {
     this.timer.unref();
   }
 
-  async stop(): Promise<void> {
+  stop(): Promise<void> {
+    if (!this.stopPromise) this.stopPromise = this.stopGracefully();
+    return this.stopPromise;
+  }
+
+  private async stopGracefully(): Promise<void> {
     this.stopped = true;
     this.fence += 1;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     const pending = this.inFlight;
-    this.client?.disconnect(false);
     await pending?.catch(() => undefined);
+    this.client?.disconnect(false);
+    this.client = null;
+    await this.retireExactBoot();
   }
 
   write(nowMs = Date.now()): Promise<void> {
@@ -356,9 +389,56 @@ export class WorkerHeartbeatWriter {
     );
   }
 
+  private async retireExactBoot(): Promise<void> {
+    let client: Redis | null = null;
+    let timer: NodeJS.Timeout | null = null;
+    let timedOut = false;
+    try {
+      client = this.createClient();
+      const retirement = this.performRetirement(client, () => timedOut);
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          timedOut = true;
+          client?.disconnect(false);
+          reject(new Error("worker_heartbeat_retirement_timeout"));
+        }, WRITE_TIMEOUT_MS);
+      });
+      await Promise.race([retirement, timeout]);
+    } catch (error) {
+      this.logRetirementFailure(error);
+    } finally {
+      if (timer) clearTimeout(timer);
+      client?.disconnect(false);
+    }
+  }
+
+  private async performRetirement(
+    client: Redis,
+    didTimeOut: () => boolean,
+  ): Promise<void> {
+    if (client.status === "wait") await client.connect();
+    if (didTimeOut()) return;
+    await client.eval(
+      RETIRE_SCRIPT,
+      4,
+      heartbeatKey(this.replicaIdentity.id),
+      REGISTRY_KEY,
+      bootKey(this.replicaIdentity.id),
+      restartKey(this.replicaIdentity.id),
+      this.replicaIdentity.id,
+      this.bootEpoch,
+    );
+  }
+
   private logWriteFailure(_error: unknown): void {
     log.warn("Privacy-safe worker heartbeat write failed", {
       code: "heartbeat_write_failed",
+    });
+  }
+
+  private logRetirementFailure(_error: unknown): void {
+    log.warn("Privacy-safe worker heartbeat retirement failed", {
+      code: "heartbeat_retirement_failed",
     });
   }
 }
@@ -426,7 +506,14 @@ function unavailableFleet(
 }
 
 export class WorkerHeartbeatReader {
-  constructor(private readonly createClient: () => Redis = defaultClient) {}
+  /**
+   * Set `disconnectAfterRead` to false only when `createClient` returns a
+   * process-owned client whose lifecycle is closed elsewhere.
+   */
+  constructor(
+    private readonly createClient: () => Redis = defaultClient,
+    private readonly disconnectAfterRead = true,
+  ) {}
 
   async read(nowMs = Date.now()): Promise<WorkerFleetSnapshot> {
     const registry = await this.readRegistry(nowMs);
@@ -453,6 +540,7 @@ export class WorkerHeartbeatReader {
     }
     if (registry.members.length === 0) return blockedReadiness("no_workers");
     if (!registry.complete) return blockedReadiness("incomplete_fleet");
+    if (registry.restartObserved) return blockedReadiness("restart_observed");
     if (
       registry.records.some(
         (record) =>
@@ -469,8 +557,9 @@ export class WorkerHeartbeatReader {
   }
 
   private async readRegistry(nowMs: number): Promise<WorkerRegistryRead> {
-    const client = this.createClient();
+    let client: Redis | null = null;
     try {
+      client = this.createClient();
       return await withTimeout(this.readRegistryWithClient(client, nowMs));
     } catch (error) {
       return {
@@ -481,7 +570,7 @@ export class WorkerHeartbeatReader {
             : "unavailable",
       };
     } finally {
-      client.disconnect(false);
+      if (this.disconnectAfterRead) client?.disconnect(false);
     }
   }
 

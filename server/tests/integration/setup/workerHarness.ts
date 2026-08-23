@@ -11,6 +11,10 @@ interface WorkerHarnessHandle {
   electrumManager: any;
   healthServer: { close: ReturnType<typeof vi.fn> };
   registerWorkerJobs: ReturnType<typeof vi.fn>;
+  walletSyncRecoveryRuntime: {
+    start: ReturnType<typeof vi.fn>;
+    stop: ReturnType<typeof vi.fn>;
+  };
   electrumOptions: { onNewBlock?: (...args: any[]) => void; onAddressActivity?: (...args: any[]) => void };
   exitSpy: ReturnType<typeof vi.spyOn>;
   shutdown: () => Promise<void>;
@@ -169,9 +173,19 @@ export const createWorkerTestHarness = async (
 
   vi.doMock('../../../src/services/workerHeartbeatRegistry', () => ({
     WorkerHeartbeatWriter: class {
+      write = vi.fn(async () => undefined);
       start = vi.fn();
       stop = vi.fn(async () => undefined);
     },
+  }));
+
+  const walletSyncRecoveryRuntime = {
+    getActivationState: vi.fn(() => ({ status: 'dormant', requiredFloor: 1 })),
+    start: vi.fn(async () => undefined),
+    stop: vi.fn(async () => undefined),
+  };
+  vi.doMock('../../../src/worker/walletSyncRecoveryRuntime', () => ({
+    createProductionWalletSyncRecoveryRuntime: vi.fn(() => walletSyncRecoveryRuntime),
   }));
 
   vi.doMock('../../../src/worker/workerJobQueue', () => ({
@@ -261,6 +275,7 @@ export const createWorkerTestHarness = async (
     electrumManager: electrumManagerInstance,
     healthServer: healthServerHandle,
     registerWorkerJobs,
+    walletSyncRecoveryRuntime,
     electrumOptions,
     exitSpy,
     shutdown: async () => {

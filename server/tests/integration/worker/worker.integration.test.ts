@@ -8,6 +8,7 @@ describe('worker integration', () => {
     expect(harness.jobQueue.initialize).toHaveBeenCalled();
     expect(harness.electrumManager.start).toHaveBeenCalled();
     expect(harness.registerWorkerJobs).toHaveBeenCalled();
+    expect(harness.walletSyncRecoveryRuntime.start).toHaveBeenCalledOnce();
 
     expect(harness.jobQueue.scheduleRecurring).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -73,6 +74,7 @@ describe('worker integration', () => {
     expect(harness.healthServer.close).toHaveBeenCalled();
     expect(harness.electrumManager.stop).toHaveBeenCalled();
     expect(harness.jobQueue.shutdown).toHaveBeenCalled();
+    expect(harness.walletSyncRecoveryRuntime.stop).toHaveBeenCalledOnce();
     expect(harness.exitSpy).toHaveBeenCalledWith(0);
 
     harness.stopProcessExitSpy();

@@ -101,6 +101,26 @@ function readerClient(
 }
 
 describe("wallet sync mutation-fence fleet readiness", () => {
+  it("can reuse a process-owned Redis client and fails closed if none is available", async () => {
+    const client = readerClient([], []);
+
+    await expect(new WorkerHeartbeatReader(
+      () => client as unknown as Redis,
+      false,
+    ).readMutationFenceReadiness(100_000)).resolves.toMatchObject({
+      ready: false,
+      reason: "no_workers",
+    });
+    expect(client.disconnect).not.toHaveBeenCalled();
+
+    await expect(new WorkerHeartbeatReader(() => {
+      throw new Error("Redis unavailable");
+    }).readMutationFenceReadiness(100_000)).resolves.toMatchObject({
+      ready: false,
+      reason: "unavailable",
+    });
+  });
+
   const current = (bootEpoch: string, writtenAt: number) =>
     stored(bootEpoch, writtenAt);
   const old = (bootEpoch: string, writtenAt: number) =>
@@ -154,6 +174,25 @@ describe("wallet sync mutation-fence fleet readiness", () => {
       ready: false,
       requiredFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
       reason: "worker_below_floor",
+    });
+  });
+
+  it("resets activation evidence after a non-colliding worker restart", async () => {
+    const now = 100_000;
+    const client = readerClient(
+      ["restarted"],
+      [
+        [null, current("11111111-1111-4111-8111-111111111111", now)],
+        [null, "restart"],
+      ],
+    );
+
+    await expect(new WorkerHeartbeatReader(
+      () => client as unknown as Redis,
+    ).readMutationFenceReadiness(now)).resolves.toEqual({
+      ready: false,
+      requiredFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
+      reason: "restart_observed",
     });
   });
 

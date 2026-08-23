@@ -11,18 +11,52 @@ function dependencies(
 ): SyncIntentRecoveryDependencies {
   return {
     findStrandedFullResyncWalletsPage: vi.fn().mockResolvedValue([]),
-    enqueueReservedFullResyncWakeup: vi.fn().mockResolvedValue(true),
+    enqueueReservedFullResyncWakeup: vi.fn().mockResolvedValue({ status: 'enqueued' }),
     recoverIncrementalSync: vi.fn().mockResolvedValue({
       scanned: 0,
       enqueued: 0,
       unavailable: 0,
     }),
+    recoverExpiredIncrementalSync: vi.fn().mockResolvedValue({
+      scanned: 0,
+      enqueued: 0,
+      locked: 0,
+      unavailable: 0,
+    }),
+    authorize: vi.fn().mockResolvedValue(true),
     now: () => NOW,
     ...overrides,
   };
 }
 
 describe('syncIntentRecovery', () => {
+  it('fails closed with zero work when recovery is unauthorized', async () => {
+    const deps = dependencies({
+      authorize: vi.fn().mockResolvedValue(false),
+      observe: vi.fn(),
+    });
+    const coordinator = createSyncIntentRecoveryCoordinator(deps);
+
+    await expect(coordinator.runNow()).resolves.toEqual({
+      fullResync: { scanned: 0, enqueued: 0, unavailable: 0 },
+      incremental: { scanned: 0, enqueued: 0, unavailable: 0 },
+      expiredIncremental: {
+        scanned: 0,
+        enqueued: 0,
+        locked: 0,
+        unavailable: 0,
+      },
+      errors: [],
+    });
+
+    expect(deps.authorize).toHaveBeenCalledOnce();
+    expect(deps.findStrandedFullResyncWalletsPage).not.toHaveBeenCalled();
+    expect(deps.enqueueReservedFullResyncWakeup).not.toHaveBeenCalled();
+    expect(deps.recoverIncrementalSync).not.toHaveBeenCalled();
+    expect(deps.recoverExpiredIncrementalSync).not.toHaveBeenCalled();
+    expect(deps.observe).not.toHaveBeenCalled();
+  });
+
   it('is dormant until called and repairs exact full generations before incremental work', async () => {
     const order: string[] = [];
     const deps = dependencies({
@@ -37,11 +71,15 @@ describe('syncIntentRecovery', () => {
       }),
       enqueueReservedFullResyncWakeup: vi.fn(async () => {
         order.push('enqueue-full');
-        return true;
+        return { status: 'enqueued' as const };
       }),
       recoverIncrementalSync: vi.fn(async () => {
         order.push('incremental');
         return { scanned: 0, enqueued: 0, unavailable: 0 };
+      }),
+      recoverExpiredIncrementalSync: vi.fn(async () => {
+        order.push('expired-incremental');
+        return { scanned: 0, enqueued: 0, locked: 0, unavailable: 0 };
       }),
     });
     const coordinator = createSyncIntentRecoveryCoordinator(deps);
@@ -50,9 +88,15 @@ describe('syncIntentRecovery', () => {
     await expect(coordinator.runNow()).resolves.toEqual({
       fullResync: { scanned: 1, enqueued: 1, unavailable: 0 },
       incremental: { scanned: 0, enqueued: 0, unavailable: 0 },
+      expiredIncremental: {
+        scanned: 0,
+        enqueued: 0,
+        locked: 0,
+        unavailable: 0,
+      },
       errors: [],
     });
-    expect(order).toEqual(['find-full', 'enqueue-full', 'incremental']);
+    expect(order).toEqual(['find-full', 'enqueue-full', 'incremental', 'expired-incremental']);
     expect(deps.enqueueReservedFullResyncWakeup).toHaveBeenCalledWith({
       walletId: 'wallet-1',
       generation: 7,
@@ -90,6 +134,82 @@ describe('syncIntentRecovery', () => {
     ]);
   });
 
+  it('fairly advances and wraps the expired incremental composite cursor', async () => {
+    const firstCursor = {
+      leaseExpiresAt: new Date('2026-08-22T11:01:00.000Z'),
+      walletId: 'wallet-2',
+    };
+    const unavailableCursor = {
+      leaseExpiresAt: new Date('2026-08-22T11:00:00.000Z'),
+      walletId: 'wallet-1',
+    };
+    const lockedCursor = {
+      leaseExpiresAt: new Date('2026-08-22T11:02:00.000Z'),
+      walletId: 'wallet-3',
+    };
+    const recoverExpiredIncrementalSync = vi
+      .fn()
+      .mockResolvedValueOnce({
+        scanned: 2,
+        enqueued: 2,
+        locked: 0,
+        unavailable: 0,
+        nextCursor: firstCursor,
+      })
+      .mockResolvedValueOnce({
+        scanned: 0,
+        enqueued: 0,
+        locked: 0,
+        unavailable: 0,
+      })
+      .mockResolvedValueOnce({
+        scanned: 1,
+        enqueued: 0,
+        locked: 0,
+        unavailable: 1,
+        nextCursor: unavailableCursor,
+      })
+      .mockResolvedValueOnce({
+        scanned: 1,
+        enqueued: 0,
+        locked: 1,
+        unavailable: 0,
+        nextCursor: lockedCursor,
+      })
+      .mockResolvedValueOnce({
+        scanned: 0,
+        enqueued: 0,
+        locked: 0,
+        unavailable: 0,
+      })
+      .mockResolvedValueOnce({
+        scanned: 1,
+        enqueued: 1,
+        locked: 0,
+        unavailable: 0,
+        nextCursor: unavailableCursor,
+      });
+    const coordinator = createSyncIntentRecoveryCoordinator(dependencies({ recoverExpiredIncrementalSync }), {
+      incrementalPageSize: 20,
+    });
+
+    await coordinator.runNow();
+    await coordinator.runNow();
+    await coordinator.runNow();
+    await coordinator.runNow();
+    await coordinator.runNow();
+    await coordinator.runNow();
+
+    expect(recoverExpiredIncrementalSync.mock.calls.map(([options]) => options)).toEqual([
+      { now: NOW, limit: 20 },
+      { now: NOW, cursor: firstCursor, limit: 20 },
+      { now: NOW, limit: 20 },
+      { now: NOW, cursor: unavailableCursor, limit: 20 },
+      { now: NOW, cursor: lockedCursor, limit: 20 },
+      { now: NOW, limit: 20 },
+    ]);
+  });
+
   it('advances full-resync pages before wrapping to revisit unavailable wallets', async () => {
     const findStrandedFullResyncWalletsPage = vi.fn()
       .mockResolvedValueOnce([{
@@ -112,8 +232,8 @@ describe('syncIntentRecovery', () => {
         processedFullResyncGeneration: 0,
       }]);
     const enqueueReservedFullResyncWakeup = vi.fn()
-      .mockResolvedValueOnce(false)
-      .mockResolvedValue(true);
+      .mockResolvedValueOnce({ status: 'unavailable' })
+      .mockResolvedValue({ status: 'enqueued' });
     const coordinator = createSyncIntentRecoveryCoordinator(dependencies({
       findStrandedFullResyncWalletsPage,
       enqueueReservedFullResyncWakeup,
@@ -133,6 +253,71 @@ describe('syncIntentRecovery', () => {
     expect(enqueueReservedFullResyncWakeup).toHaveBeenCalledTimes(3);
   });
 
+  it('does not advance full-resync recovery past a mid-page activation block', async () => {
+    const page = [
+      {
+        id: 'wallet-1',
+        name: 'one',
+        requestedFullResyncGeneration: 1,
+        processedFullResyncGeneration: 0,
+      },
+      {
+        id: 'wallet-2',
+        name: 'two',
+        requestedFullResyncGeneration: 2,
+        processedFullResyncGeneration: 0,
+      },
+      {
+        id: 'wallet-3',
+        name: 'three',
+        requestedFullResyncGeneration: 3,
+        processedFullResyncGeneration: 0,
+      },
+    ];
+    const findStrandedFullResyncWalletsPage = vi.fn().mockResolvedValue(page);
+    const enqueueReservedFullResyncWakeup = vi.fn()
+      .mockResolvedValueOnce({ status: 'enqueued' })
+      .mockResolvedValue({ status: 'blocked' });
+    const coordinator = createSyncIntentRecoveryCoordinator(dependencies({
+      findStrandedFullResyncWalletsPage,
+      enqueueReservedFullResyncWakeup,
+    }));
+
+    await expect(coordinator.runNow()).resolves.toMatchObject({
+      fullResync: { scanned: 1, enqueued: 1, unavailable: 1 },
+    });
+    await coordinator.runNow();
+
+    expect(findStrandedFullResyncWalletsPage.mock.calls).toEqual([
+      [undefined],
+      ['wallet-1'],
+    ]);
+    expect(enqueueReservedFullResyncWakeup).toHaveBeenCalledTimes(3);
+  });
+
+  it('restarts full-resync recovery from the beginning when the first row is blocked', async () => {
+    const findStrandedFullResyncWalletsPage = vi.fn().mockResolvedValue([{
+      id: 'wallet-1',
+      name: 'one',
+      requestedFullResyncGeneration: 1,
+      processedFullResyncGeneration: 0,
+    }]);
+    const coordinator = createSyncIntentRecoveryCoordinator(dependencies({
+      findStrandedFullResyncWalletsPage,
+      enqueueReservedFullResyncWakeup: vi.fn().mockResolvedValue({ status: 'blocked' }),
+    }));
+
+    await expect(coordinator.runNow()).resolves.toMatchObject({
+      fullResync: { scanned: 0, enqueued: 0, unavailable: 1 },
+    });
+    await coordinator.runNow();
+
+    expect(findStrandedFullResyncWalletsPage.mock.calls).toEqual([
+      [undefined],
+      [undefined],
+    ]);
+  });
+
   it('coalesces overlapping passes into one single-flight promise', async () => {
     let release: (() => void) | undefined;
     const blocked = new Promise<void>(resolve => {
@@ -142,20 +327,41 @@ describe('syncIntentRecovery', () => {
       await blocked;
       return [];
     });
-    const coordinator = createSyncIntentRecoveryCoordinator(
-      dependencies({ findStrandedFullResyncWalletsPage }),
-    );
+    const recoverExpiredIncrementalSync = vi.fn().mockResolvedValue({
+      scanned: 0,
+      enqueued: 0,
+      locked: 0,
+      unavailable: 0,
+    });
+    const deps = dependencies({
+      findStrandedFullResyncWalletsPage,
+      recoverExpiredIncrementalSync,
+    });
+    const coordinator = createSyncIntentRecoveryCoordinator(deps);
 
     const first = coordinator.runNow();
     const second = coordinator.runNow();
     expect(second).toBe(first);
+    await Promise.resolve();
     expect(findStrandedFullResyncWalletsPage).toHaveBeenCalledOnce();
     release?.();
     await first;
+    expect(deps.authorize).toHaveBeenCalledOnce();
+    expect(recoverExpiredIncrementalSync).toHaveBeenCalledOnce();
   });
 
-  it('contains phase failures so full recovery cannot suppress incremental recovery', async () => {
+  it('contains phase failures so full recovery cannot suppress later phases', async () => {
     const observe = vi.fn();
+    const recoverExpiredIncrementalSync = vi.fn().mockResolvedValue({
+      scanned: 1,
+      enqueued: 0,
+      locked: 1,
+      unavailable: 0,
+      nextCursor: {
+        leaseExpiresAt: new Date('2026-08-22T11:00:00.000Z'),
+        walletId: 'wallet-expired',
+      },
+    });
     const coordinator = createSyncIntentRecoveryCoordinator(dependencies({
       findStrandedFullResyncWalletsPage: vi.fn().mockRejectedValue(new Error('database down')),
       recoverIncrementalSync: vi.fn().mockResolvedValue({
@@ -164,14 +370,26 @@ describe('syncIntentRecovery', () => {
         unavailable: 0,
         nextCursor: 'wallet-1',
       }),
+      recoverExpiredIncrementalSync,
       observe,
     }));
 
     await expect(coordinator.runNow()).resolves.toEqual({
       fullResync: { scanned: 0, enqueued: 0, unavailable: 0 },
       incremental: { scanned: 1, enqueued: 1, unavailable: 0, nextCursor: 'wallet-1' },
+      expiredIncremental: {
+        scanned: 1,
+        enqueued: 0,
+        locked: 1,
+        unavailable: 0,
+        nextCursor: {
+          leaseExpiresAt: new Date('2026-08-22T11:00:00.000Z'),
+          walletId: 'wallet-expired',
+        },
+      },
       errors: ['full_resync'],
     });
+    expect(recoverExpiredIncrementalSync).toHaveBeenCalledOnce();
     expect(observe).toHaveBeenCalledWith({
       phase: 'full_resync',
       outcome: 'failed',
@@ -185,7 +403,7 @@ describe('syncIntentRecovery', () => {
     });
     const enqueueReservedFullResyncWakeup = vi.fn()
       .mockRejectedValueOnce(new Error('queue unavailable'))
-      .mockResolvedValueOnce(true);
+      .mockResolvedValueOnce({ status: 'enqueued' });
     const coordinator = createSyncIntentRecoveryCoordinator(dependencies({
       findStrandedFullResyncWalletsPage: vi.fn().mockResolvedValue([
         {
@@ -208,6 +426,12 @@ describe('syncIntentRecovery', () => {
         unavailable: 1,
         nextCursor: 'wallet-3',
       }),
+      recoverExpiredIncrementalSync: vi.fn().mockResolvedValue({
+        scanned: 2,
+        enqueued: 0,
+        locked: 0,
+        unavailable: 2,
+      }),
       observe,
     }));
 
@@ -219,10 +443,16 @@ describe('syncIntentRecovery', () => {
         unavailable: 1,
         nextCursor: 'wallet-3',
       },
+      expiredIncremental: {
+        scanned: 2,
+        enqueued: 0,
+        locked: 0,
+        unavailable: 2,
+      },
       errors: [],
     });
     expect(enqueueReservedFullResyncWakeup).toHaveBeenCalledTimes(2);
-    expect(observe).toHaveBeenCalledTimes(2);
+    expect(observe).toHaveBeenCalledTimes(3);
   });
 
   it('uses the current time and resets the cursor after incremental recovery fails', async () => {
@@ -264,6 +494,67 @@ describe('syncIntentRecovery', () => {
     vi.useRealTimers();
   });
 
+  it('isolates expired recovery failures, resets its cursor, and observes outcomes', async () => {
+    const expiredCursor = {
+      leaseExpiresAt: new Date('2026-08-22T11:00:00.000Z'),
+      walletId: 'wallet-expired',
+    };
+    const recoverExpiredIncrementalSync = vi
+      .fn()
+      .mockResolvedValueOnce({
+        scanned: 1,
+        enqueued: 0,
+        locked: 0,
+        unavailable: 1,
+        nextCursor: expiredCursor,
+      })
+      .mockRejectedValueOnce(new Error('expired recovery unavailable'))
+      .mockResolvedValueOnce({
+        scanned: 0,
+        enqueued: 0,
+        locked: 0,
+        unavailable: 0,
+      });
+    const recoverIncrementalSync = vi.fn().mockResolvedValue({
+      scanned: 0,
+      enqueued: 0,
+      unavailable: 0,
+    });
+    const observe = vi.fn();
+    const coordinator = createSyncIntentRecoveryCoordinator(
+      dependencies({
+        recoverIncrementalSync,
+        recoverExpiredIncrementalSync,
+        observe,
+      }),
+    );
+
+    await coordinator.runNow();
+    await expect(coordinator.runNow()).resolves.toMatchObject({
+      fullResync: { scanned: 0, enqueued: 0, unavailable: 0 },
+      incremental: { scanned: 0, enqueued: 0, unavailable: 0 },
+      expiredIncremental: {
+        scanned: 0,
+        enqueued: 0,
+        locked: 0,
+        unavailable: 0,
+      },
+      errors: ['expired_incremental'],
+    });
+    await coordinator.runNow();
+
+    expect(recoverExpiredIncrementalSync.mock.calls.map(([options]) => options)).toEqual([
+      { now: NOW, limit: 100 },
+      { now: NOW, cursor: expiredCursor, limit: 100 },
+      { now: NOW, limit: 100 },
+    ]);
+    expect(recoverIncrementalSync).toHaveBeenCalledTimes(3);
+    expect(observe.mock.calls).toEqual([
+      [{ phase: 'expired_incremental', outcome: 'unavailable', count: 1 }],
+      [{ phase: 'expired_incremental', outcome: 'failed', count: 1 }],
+    ]);
+  });
+
   it('stops its timer and waits for an in-flight pass to settle', async () => {
     let timerCallback: (() => void) | undefined;
     const timer = { unref: vi.fn() } as unknown as NodeJS.Timeout;
@@ -280,8 +571,15 @@ describe('syncIntentRecovery', () => {
       await blocked;
       return [];
     });
+    const recoverExpiredIncrementalSync = vi.fn().mockResolvedValue({
+      scanned: 0,
+      enqueued: 0,
+      locked: 0,
+      unavailable: 0,
+    });
     const coordinator = createSyncIntentRecoveryCoordinator(dependencies({
       findStrandedFullResyncWalletsPage,
+      recoverExpiredIncrementalSync,
       setInterval,
       clearInterval,
     }), { intervalMs: 500 });
@@ -297,6 +595,7 @@ describe('syncIntentRecovery', () => {
     timerCallback?.();
     await Promise.resolve();
     expect(findStrandedFullResyncWalletsPage).toHaveBeenCalledOnce();
+    expect(recoverExpiredIncrementalSync).toHaveBeenCalledOnce();
     await expect(coordinator.runNow()).rejects.toThrow('is stopped');
     await expect(coordinator.start()).rejects.toThrow('is stopped');
   });

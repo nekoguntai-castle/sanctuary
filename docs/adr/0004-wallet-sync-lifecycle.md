@@ -1,6 +1,6 @@
 # ADR 0004: Durable, activity-driven wallet synchronization lifecycle
 
-- **Status:** Accepted through mutation-fence activation floor
+- **Status:** Accepted through live-gated recovery activation
 - **Date:** 2026-08-22
 - **Accepted on:** 2026-08-22
 - **Owner:** Sanctuary maintainers
@@ -64,21 +64,47 @@ The compatibility and mutation-fence activation floors are additive:
 
 The admission capability can persist coalesced intent, and the worker can claim
 and execute an explicitly generation-bound v2 or fenced v3 wake-up while it owns the canonical
-Redis wallet lock. A bounded recovery coordinator can revisit unclaimed intent
-and enqueue an exact already-reserved full-resync generation, but it has no
-production startup or timer caller in this precursor. Restores discard database
+Redis wallet lock. A bounded worker recovery runtime now revisits unclaimed
+intent and enqueues an exact already-reserved full-resync generation. Restores discard database
 lease authority while retaining pending
 generations, and a full-resync generation is processed only after its prepared
-rebuild completes successfully. Producer and repair-loop activation remain a
-separate change; automatic expired-lease reclaim remains forbidden until low-level
-wallet-history mutations are fenced against a paused former owner. That mutation
-boundary is now complete. Workers advertise its explicit capability floor through
+rebuild completes successfully. Producer activation remains separate. This
+release activates only the bounded repair loop and exact expired-lease reclaim
+after completing the low-level fence against a paused former owner.
+Workers advertise the mutation boundary's explicit capability floor through
 the bounded heartbeat registry, old heartbeat records remain readable but block
 activation, and an immutable operational activation record defaults to dormant.
 The record can be established only through the activation gate after exact,
-fresh, stable-identity evidence proves every indexed worker meets the floor.
-Production admission and recovery still have no caller in this release, and the
-activation record itself is not written automatically.
+fresh, stable-identity evidence proves every indexed worker meets the floor
+continuously for the declared maximum wallet execution plus lock slack. The
+continuous interval is serialized in a separate operational setting, resets on
+blocked, unavailable, stale, or restarted-fleet evidence, and is deliberately
+not backup authority. Configuration enforces the declared 30-minute maximum
+execution duration, and activation always drains its full 31-minute lock horizon
+rather than trusting a smaller per-replica value. Graceful worker shutdown retires only its exact boot epoch;
+a stale shutdown cannot erase a replacement worker or crash evidence.
+
+Deployments configured with `SYNC_MAX_DURATION_MS` above 30 minutes must lower
+that value before starting a floor-capable worker. Such a worker fails closed at
+configuration validation; it does not silently shorten an operator-selected
+timeout or advertise a drain guarantee it cannot satisfy.
+
+The immutable marker is necessary but never sufficient: admission and every
+recovery/reclaim pass recheck current live fleet evidence and the continuous
+drain proof. Worker health exposes only the bounded activation state, floor,
+reason, and timestamps—never replica identities or lease tokens. The recovery
+runtime polls the gate while dormant; its coordinator starts only after
+activation, repairs on activation, a bounded timer, and Redis reconnect, and
+stops before the queue and Redis authority drain. Canonical production producers
+remain disabled in this release.
+
+Expired incremental claims are selected by the existing partial
+`(lease expiry, wallet id)` index. Recovery proves the Redis execution lock is
+absent and emits only the stable old-generation v3 wake-up; it never places the
+old lease token in BullMQ. After acquiring the exact wallet lock, the canonical
+worker rereads the expired database fence, rechecks activation, and atomically
+rotates the token on the same generation. A stale former owner therefore cannot
+write or complete, while any newer requested generation remains a trailing pass.
 
 The additive checkpoint repository also owns the only enrollment request and
 completion writers. No production source calls the request writer. A bounded,
@@ -93,8 +119,8 @@ a separate reviewed change.
 
 This ADR and `config/wallet-sync-lifecycle-contract.json` establish the target and
 freeze the current compatibility exceptions. They do **not** retire the recurring
-schedule, change a production trigger, install either durable marker, or claim that the
-single-admission boundary is already complete.
+schedule, change a production trigger, activate subscription enrollment, or claim
+that the single-admission producer boundary is already complete.
 
 ## Executable invariants
 
@@ -125,10 +151,12 @@ reviewable and prevents the transition surface from expanding meanwhile.
 Deploy additive schema, compatible readers, the complete mutation fence, worker
 capability heartbeat, and durable activation reader to every worker replica.
 Every replica must have a unique stable `WORKER_REPLICA_ID`. Only the activation
-gate may establish the immutable floor, and only after its exact fleet proof is
-ready. Admission, recovery, and reclaim must continue to require both the durable
-activation and current fleet readiness. Until those later callers ship,
-`check-stale-wallets` remains desired and no canonical production trigger emits.
+gate may establish the immutable floor, and only after continuous exact fleet
+proof has survived the full drain horizon. A single ready snapshot is never
+activation authority. Admission, recovery, and reclaim continue to require the
+durable marker, current fleet readiness, and fresh stabilization evidence after
+activation. `check-stale-wallets` remains desired and no canonical production
+trigger emits until the later producer and scheduler-cutover releases.
 
 After cutover begins, rollback is supported only to a binary that understands
 and honors the durable forbidden marker. Rolling back below that floor would

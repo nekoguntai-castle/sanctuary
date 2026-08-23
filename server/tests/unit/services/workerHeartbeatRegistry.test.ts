@@ -118,8 +118,9 @@ describe("privacy-safe worker heartbeat registry", () => {
 
     await writer.write(50_000);
     await writer.stop();
+    await writer.stop();
 
-    expect(client.eval).toHaveBeenCalledOnce();
+    expect(client.eval).toHaveBeenCalledTimes(2);
     const args = client.eval.mock.calls[0];
     expect(args[1]).toBe(4);
     expect(args[0]).toContain("previous_snapshot and 'collision' or 'restart'");
@@ -133,6 +134,9 @@ describe("privacy-safe worker heartbeat registry", () => {
       `"walletSyncMutationFenceFloor":${WALLET_SYNC_MUTATION_FENCE_FLOOR}`,
     );
     expect(String(serialized)).not.toMatch(/hostname|"replicaId"|"workerId"/i);
+    expect(client.eval.mock.calls[1][0]).toContain(
+      "current_boot ~= ARGV[2]",
+    );
     expect(client.disconnect).toHaveBeenCalledWith(false);
   });
 
@@ -202,21 +206,33 @@ describe("privacy-safe worker heartbeat registry", () => {
     writer.start();
 
     expect(client.connect).toHaveBeenCalledOnce();
-    expect(client.eval).toHaveBeenCalledTimes(2);
-    expect(client.disconnect).toHaveBeenCalledOnce();
+    expect(client.eval).toHaveBeenCalledTimes(3);
+    expect(client.eval.mock.calls[2][0]).toContain(
+      "current_boot ~= ARGV[2]",
+    );
+    expect(client.disconnect).toHaveBeenCalledTimes(2);
     vi.useRealTimers();
   });
 
   it("single-flights writes and force-disconnects a bounded stalled write", async () => {
     vi.useFakeTimers();
-    const client = {
+    const stalledClient = {
       status: "ready",
       eval: vi.fn().mockReturnValue(new Promise(() => undefined)),
       disconnect: vi.fn(),
     };
+    const retirementClient = {
+      status: "ready",
+      eval: vi.fn().mockResolvedValue(0),
+      disconnect: vi.fn(),
+    };
+    const createClient = vi
+      .fn()
+      .mockReturnValueOnce(stalledClient)
+      .mockReturnValueOnce(retirementClient);
     const writer = new WorkerHeartbeatWriter(
       () => snapshot(),
-      () => client as unknown as Redis,
+      createClient as () => Redis,
     );
 
     const first = writer.write(50_000);
@@ -231,9 +247,11 @@ describe("privacy-safe worker heartbeat registry", () => {
 
     await firstRejection;
     await secondRejection;
-    expect(client.eval).toHaveBeenCalledOnce();
-    expect(client.disconnect).toHaveBeenCalledWith(false);
+    expect(stalledClient.eval).toHaveBeenCalledOnce();
+    expect(stalledClient.disconnect).toHaveBeenCalledWith(false);
     await writer.stop();
+    expect(retirementClient.eval).toHaveBeenCalledOnce();
+    expect(retirementClient.disconnect).toHaveBeenCalledWith(false);
     vi.useRealTimers();
   });
 
@@ -290,9 +308,18 @@ describe("privacy-safe worker heartbeat registry", () => {
       eval: vi.fn(),
       disconnect: vi.fn(),
     };
+    const retirementClient = {
+      status: "ready",
+      eval: vi.fn().mockResolvedValue(0),
+      disconnect: vi.fn(),
+    };
+    const createClient = vi
+      .fn()
+      .mockReturnValueOnce(client)
+      .mockReturnValueOnce(retirementClient);
     const writer = new WorkerHeartbeatWriter(
       () => snapshot(),
-      () => client as unknown as Redis,
+      createClient as () => Redis,
     );
 
     const writing = writer.write(50_000);
@@ -303,6 +330,8 @@ describe("privacy-safe worker heartbeat registry", () => {
 
     expect(client.eval).not.toHaveBeenCalled();
     expect(client.disconnect).toHaveBeenCalledOnce();
+    expect(retirementClient.eval).toHaveBeenCalledOnce();
+    expect(retirementClient.disconnect).toHaveBeenCalledOnce();
     vi.useRealTimers();
   });
 
@@ -313,9 +342,18 @@ describe("privacy-safe worker heartbeat registry", () => {
       eval: vi.fn().mockReturnValue(new Promise(() => undefined)),
       disconnect: vi.fn(),
     };
+    const retirementClient = {
+      status: "ready",
+      eval: vi.fn().mockResolvedValue(0),
+      disconnect: vi.fn(),
+    };
+    const createClient = vi
+      .fn()
+      .mockReturnValueOnce(client)
+      .mockReturnValueOnce(retirementClient);
     const writer = new WorkerHeartbeatWriter(
       () => snapshot(),
-      () => client as unknown as Redis,
+      createClient as () => Redis,
     );
     const writing = writer.write(50_000);
     const rejected = expect(writing).rejects.toThrow(
@@ -327,6 +365,8 @@ describe("privacy-safe worker heartbeat registry", () => {
     await stopping;
     await rejected;
     expect(client.disconnect).toHaveBeenCalled();
+    expect(retirementClient.eval).toHaveBeenCalledOnce();
+    expect(retirementClient.disconnect).toHaveBeenCalledOnce();
     vi.useRealTimers();
   });
 

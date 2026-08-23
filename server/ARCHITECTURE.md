@@ -197,16 +197,22 @@ compatibility precursor still retains legacy API execution and the recurring
 `config/wallet-sync-lifecycle-contract.json` prevents those exceptions from
 growing while the single-admission, worker-owned path is introduced. The
 durable admission service currently has one generation-bound worker consumer
-and a bounded recovery coordinator, but neither has a production producer or
-startup/timer caller. Canonical wallet mutations use an explicit immutable
+and a live-gated bounded worker recovery runtime, but no production trigger calls
+admission yet. Canonical wallet mutations use an explicit immutable
 generation-and-lease-token fence at every short transaction boundary. Workers
-advertise that capability through the bounded heartbeat registry; a dormant,
-immutable activation policy can be established only after exact fleet proof.
+advertise that capability through the bounded heartbeat registry. An immutable
+activation policy can be established only after current exact fleet proof has
+remained continuously ready for a complete wallet-lock drain horizon; blocked,
+unavailable, stale, or restart evidence resets that durable stabilization.
+The marker alone never authorizes work: every admission, recovery, and reclaim
+boundary rechecks live and stabilized evidence.
 Canonical wake-ups use floor-bound v3 so pre-fence workers reject them before
-locking, while retained v1/v2 jobs remain readable. The dormant coordinator can repair exact reserved
-full-resync generations and unclaimed incremental intent without reclaiming an
-expired lease. Existing v1 producers and legacy execution remain unchanged until
-the separate activation release.
+locking, while retained v1/v2 jobs remain readable. Recovery repairs exact
+reserved full-resync generations, unclaimed intent, and expired claims through
+bounded indexed pages. It probes the Redis execution lock without serializing the
+old lease token; only the lock-owning canonical worker can rotate that exact token
+on the same generation. Existing v1 producers and legacy execution remain
+unchanged until the producer migration release.
 
 Subscription checkpoint enrollment has the same additive boundary. The only
 checkpoint request/completion writers live in

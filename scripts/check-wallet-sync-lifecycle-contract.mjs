@@ -33,21 +33,39 @@ const REQUIRED_FORBIDDEN_TRIGGERS = [
   'ordinary_navigation',
   'session_restore',
 ];
-const DORMANT_ADMISSION_MUTATIONS = [
+const SYNC_INTENT_REPOSITORY_BOUNDARY_SYMBOLS = [
   'claimIncrementalSync',
   'completeIncrementalSync',
+  'findActionableIncrementalSyncIntents',
+  'findExpiredIncrementalSyncClaims',
+  'findIncrementalSyncIntent',
   'releaseIncrementalSyncAsActionRequired',
   'releaseIncrementalSyncForRetry',
   'requestIncrementalSync',
 ];
+const ADMISSION_SINGLETON_METHODS = [
+  'claimFresh',
+  'complete',
+  'recover',
+  'recoverExpired',
+  'reclaimExpired',
+  'releaseAsActionRequired',
+  'releaseForRetry',
+  'request',
+  'wake',
+];
 const SYNC_INTENT_REPOSITORY_PATH = 'server/src/repositories/syncIntentRepository.ts';
 const INCREMENTAL_WAKEUP_ADAPTER_PATH = 'server/src/services/workerSyncQueue.ts';
-const DORMANT_RECOVERY_COORDINATOR_PATH = 'server/src/worker/syncIntentRecovery.ts';
-const DORMANT_RECOVERY_COORDINATOR_SYMBOL = 'createSyncIntentRecoveryCoordinator';
-const DORMANT_ACTIVATION_GATE_PATH =
+const RECOVERY_COORDINATOR_PATH = 'server/src/worker/syncIntentRecovery.ts';
+const RECOVERY_COORDINATOR_SYMBOL = 'createSyncIntentRecoveryCoordinator';
+const RECOVERY_RUNTIME_PATH = 'server/src/worker/walletSyncRecoveryRuntime.ts';
+const WORKER_PATH = 'server/src/worker.ts';
+const ACTIVATION_GATE_PATH =
   'server/src/services/sync/walletSyncActivationGate.ts';
 const ACTIVATION_POLICY_REPOSITORY_PATH =
   'server/src/repositories/walletSyncActivationPolicyRepository.ts';
+const ACTIVATION_STABILIZATION_REPOSITORY_PATH =
+  'server/src/repositories/walletSyncActivationStabilizationRepository.ts';
 const REPOSITORY_BARREL_PATH = 'server/src/repositories/index.ts';
 const SUBSCRIPTION_ENROLLMENT_COORDINATOR_SYMBOL = 'createSubscriptionCheckpointEnrollment';
 const SUBSCRIPTION_ENROLLMENT_WRITERS = [
@@ -174,8 +192,8 @@ function validateInventory(inventory) {
 export function parseWalletSyncLifecycleContract(source) {
   const contract = requireObject(JSON.parse(source), 'contract');
   if (contract.schemaVersion !== 1) throw new Error('schemaVersion must be 1');
-  if (contract.deliveryState !== 'mutation_fence_activation_floor') {
-    throw new Error('deliveryState must remain mutation_fence_activation_floor in this slice');
+  if (contract.deliveryState !== 'gated_bounded_recovery') {
+    throw new Error('deliveryState must remain gated_bounded_recovery in this slice');
   }
   if (contract.cutoverComplete !== false) throw new Error('cutoverComplete must remain false');
 
@@ -236,12 +254,12 @@ function validateOwnership(value) {
 
 function validateCompatibility(value) {
   const compatibility = requireObject(value, 'compatibility');
-  if (compatibility.admissionState !== 'generation_consumer_enabled_no_production_producers') {
-    throw new Error('the compatibility precursor must expose only the generation consumer');
+  if (compatibility.admissionState !== 'gate_enforced_consumer_and_recovery_no_request_producers') {
+    throw new Error('admission must remain gate-enforced without request producers');
   }
-  if (compatibility.activationState !== 'fleet_floor_available_marker_not_activated'
+  if (compatibility.activationState !== 'continuous_fleet_floor_gate_runtime_enabled'
     || compatibility.mutationFenceFloor !== 1) {
-    throw new Error('the mutation-fence fleet floor must remain available and dormant');
+    throw new Error('the continuous mutation-fence fleet floor gate must remain enabled');
   }
   if (compatibility.preFenceWorkerBehavior !== 'reject_v3_before_lock') {
     throw new Error('pre-fence workers must reject canonical v3 before locking');
@@ -250,11 +268,11 @@ function validateCompatibility(value) {
     !== 'server/src/worker/jobs/canonicalIncrementalSync.ts') {
     throw new Error('compatibility.generationConsumerModule must name the bounded worker engine');
   }
-  if (compatibility.recoveryState !== 'dormant_coordinator_no_production_callers') {
-    throw new Error('intent recovery must remain dormant before its activation release');
+  if (compatibility.recoveryState !== 'gate_enforced_bounded_runtime_enabled') {
+    throw new Error('intent recovery must remain bounded and activation-gate enforced');
   }
-  if (compatibility.recoveryCoordinatorModule !== DORMANT_RECOVERY_COORDINATOR_PATH) {
-    throw new Error('compatibility.recoveryCoordinatorModule must name the dormant coordinator');
+  if (compatibility.recoveryCoordinatorModule !== RECOVERY_COORDINATOR_PATH) {
+    throw new Error('compatibility.recoveryCoordinatorModule must name the bounded coordinator');
   }
   if (compatibility.subscriptionEnrollmentState !== 'dormant_no_production_consumers') {
     throw new Error('subscription enrollment must remain dormant before its activation release');
@@ -265,8 +283,8 @@ function validateCompatibility(value) {
   if (compatibility.staleScheduleState !== 'legacy_desired_until_cutover') {
     throw new Error('the precursor must not claim stale-schedule cutover');
   }
-  if (compatibility.durableDisablePolicyState !== 'compatibility_floor_available_marker_not_activated') {
-    throw new Error('the durable disable policy must remain available but inactive in the precursor');
+  if (compatibility.durableDisablePolicyState !== 'immutable_activation_floor_live_fleet_enforced') {
+    throw new Error('the immutable activation floor must remain live-fleet enforced');
   }
   if (compatibility.legacyEntriesAreTemporary !== true) {
     throw new Error('compatibility legacy entries must be explicitly temporary');
@@ -335,7 +353,6 @@ function unexpectedSubscriptionBoundaryConsumers(sources, ownership) {
 function unexpectedAdmissionConsumers(
   sources,
   admissionModule,
-  workerExecutor,
   generationConsumerModule,
 ) {
   const moduleConsumers = actualReferenceFiles(
@@ -343,55 +360,145 @@ function unexpectedAdmissionConsumers(
     /['"][^'"]*syncIntentAdmission(?:\.[cm]?[jt]s)?['"]/,
   );
   const mutationPattern = new RegExp(
-    `\\b(?:${DORMANT_ADMISSION_MUTATIONS.join('|')})\\b`,
+    `\\b(?:${SYNC_INTENT_REPOSITORY_BOUNDARY_SYMBOLS.join('|')})\\b`,
   );
   const mutationConsumers = actualReferenceFiles(sources, mutationPattern);
   const wakeupAdapterConsumers = actualReferenceFiles(
     sources,
     /\benqueueIncrementalSyncWakeup\b/,
   );
+  const expiredFenceConsumers = actualReferenceFiles(
+    sources,
+    /\bexpectedExpiredFence\b/,
+  );
   const allowedModuleConsumers = new Set([
     admissionModule,
-    workerExecutor,
     generationConsumerModule,
-    DORMANT_RECOVERY_COORDINATOR_PATH,
+    RECOVERY_COORDINATOR_PATH,
+    RECOVERY_RUNTIME_PATH,
   ]);
   const allowedMutationConsumers = new Set([admissionModule, SYNC_INTENT_REPOSITORY_PATH]);
   const allowedWakeupAdapterConsumers = new Set([
     admissionModule,
     INCREMENTAL_WAKEUP_ADAPTER_PATH,
   ]);
+  const allowedAdmissionMethods = new Map([
+    [generationConsumerModule, new Set([
+      'claimFresh',
+      'complete',
+      'reclaimExpired',
+      'releaseAsActionRequired',
+      'releaseForRetry',
+      'wake',
+    ])],
+    [RECOVERY_RUNTIME_PATH, new Set(['recover', 'recoverExpired'])],
+  ]);
   const forbiddenAdmissionCalls = [...sources]
     .filter(([file, source]) => admissionSingletonAliases(source).some(alias => (
       hasForbiddenAdmissionAccess(
         source,
         alias,
-        file === DORMANT_RECOVERY_COORDINATOR_PATH ? ['request'] : ['request', 'recover'],
+        ADMISSION_SINGLETON_METHODS.filter(
+          method => !allowedAdmissionMethods.get(file)?.has(method),
+        ),
       )
     )))
     .map(([file]) => file);
-  const forbiddenRecoveryProducerAliases = sources.get(DORMANT_RECOVERY_COORDINATOR_PATH)
-    ?.match(/\brequest\b/) ? [DORMANT_RECOVERY_COORDINATOR_PATH] : [];
   const recoveryCoordinatorConsumers = actualReferenceFiles(
     sources,
-    new RegExp(`\\b${DORMANT_RECOVERY_COORDINATOR_SYMBOL}\\b`),
-  ).filter(file => file !== DORMANT_RECOVERY_COORDINATOR_PATH);
+    new RegExp(`\\b${RECOVERY_COORDINATOR_SYMBOL}\\b`),
+  ).filter(file => file !== RECOVERY_COORDINATOR_PATH && file !== RECOVERY_RUNTIME_PATH);
+  const recoveryRuntimeConsumers = actualReferenceFiles(
+    sources,
+    /['"][^'"]*walletSyncRecoveryRuntime(?:\.[cm]?[jt]s)?['"]|\bcreateProductionWalletSyncRecoveryRuntime\b/,
+  ).filter(file => file !== RECOVERY_RUNTIME_PATH && file !== WORKER_PATH);
   return [...new Set([
     ...moduleConsumers.filter(file => !allowedModuleConsumers.has(file)),
     ...mutationConsumers.filter(file => !allowedMutationConsumers.has(file)),
     ...wakeupAdapterConsumers.filter(file => !allowedWakeupAdapterConsumers.has(file)),
+    ...expiredFenceConsumers.filter(file => !allowedMutationConsumers.has(file)),
     ...forbiddenAdmissionCalls,
-    ...forbiddenRecoveryProducerAliases,
     ...recoveryCoordinatorConsumers,
+    ...recoveryRuntimeConsumers,
   ])]
     .sort();
+}
+
+function validateRecoveryComposition(sources, admissionModule, errors) {
+  const runtime = sources.get(RECOVERY_RUNTIME_PATH) ?? '';
+  const admission = sources.get(admissionModule) ?? '';
+  const requiredRuntimePatterns = [
+    [
+      /await\s+walletSyncActivationGate\.inspect\(\)[\s\S]{0,80}status\s*===\s*['"]active['"]/,
+      'recovery runtime authorization must inspect the live activation gate',
+    ],
+    [
+      /if\s*\(\s*!\s*await\s+authorize\(\)\s*\)\s*return\s*\{\s*status\s*:\s*['"]blocked['"]\s*\}[\s\S]{0,240}await\s+enqueueReservedFullResyncWakeup\s*\(/,
+      'reserved full-resync recovery wake-ups must recheck activation inline',
+    ],
+    [
+      /syncIntentAdmission\.recover\s*\(/,
+      'recovery runtime must use gate-enforced incremental recovery',
+    ],
+    [
+      /syncIntentAdmission\.recoverExpired\s*\(/,
+      'recovery runtime must use gate-enforced expired recovery',
+    ],
+    [
+      /activate\s*:\s*\(\)\s*=>\s*walletSyncActivationGate\.activate\s*\(\)/,
+      'recovery runtime activation must use the canonical activation gate',
+    ],
+  ];
+  for (const [pattern, message] of requiredRuntimePatterns) {
+    if (!pattern.test(runtime)) errors.push(message);
+  }
+  const wakeupAliases = ['enqueueReservedFullResyncWakeup'];
+  const destructuredAliases = runtime.matchAll(
+    /\b(?:const|let|var)\s*\{[^}]*\benqueueReservedFullResyncWakeup\s*:\s*([A-Za-z_$][\w$]*)[^}]*\}\s*=/g,
+  );
+  for (const match of destructuredAliases) wakeupAliases.push(match[1]);
+  for (let index = 0; index < wakeupAliases.length; index += 1) {
+    const alias = wakeupAliases[index];
+    const sourceExpression = `(?:${escapeRegExp(alias)}\\b|[A-Za-z_$][\\w$]*\\s*(?:\\.\\s*${escapeRegExp(alias)}\\b|\\[\\s*['"]${escapeRegExp(alias)}['"]\\s*\\]))`;
+    const assignments = new RegExp(
+      `\\b(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*${sourceExpression}`,
+      'g',
+    );
+    for (const match of runtime.matchAll(assignments)) {
+      if (!wakeupAliases.includes(match[1])) wakeupAliases.push(match[1]);
+    }
+  }
+  const reservedWakeupCalls = wakeupAliases.reduce(
+    (count, alias) => count + countMatches(
+      runtime,
+      new RegExp(
+        `(?:\\b${escapeRegExp(alias)}\\s*\\(|\\[\\s*['"]${escapeRegExp(alias)}['"]\\s*\\]\\s*\\()`,
+        'g',
+      ),
+    ),
+    0,
+  );
+  if (reservedWakeupCalls !== 1) {
+    errors.push('recovery runtime must contain exactly one guarded reserved full-resync enqueue');
+  }
+  if (countMatches(runtime, /\bcreateSyncIntentRecoveryCoordinator\s*\(/g) !== 1) {
+    errors.push('recovery runtime must construct exactly one bounded coordinator');
+  }
+  if (!/inspectActivation\s*:\s*\(\)\s*=>\s*walletSyncActivationGate\.inspect\s*\(\)/.test(admission)) {
+    errors.push('canonical admission must inspect the activation gate');
+  }
 }
 
 function unexpectedActivationConsumers(sources) {
   const gateConsumers = actualReferenceFiles(
     sources,
     /['"][^'"]*walletSyncActivationGate(?:\.[cm]?[jt]s)?['"]/,
-  ).filter(file => file !== DORMANT_ACTIVATION_GATE_PATH);
+  ).filter(file => !new Set([
+    ACTIVATION_GATE_PATH,
+    'server/src/services/sync/syncIntentAdmission.ts',
+    'server/src/worker/healthServer.ts',
+    RECOVERY_RUNTIME_PATH,
+  ]).has(file));
   const policyConsumers = actualReferenceFiles(
     sources,
     /['"][^'"]*walletSyncActivationPolicyRepository(?:\.[cm]?[jt]s)?['"]/,
@@ -400,17 +507,23 @@ function unexpectedActivationConsumers(sources) {
     sources,
     /\bwalletSyncActivationPolicyRepo\b/,
   ).filter(file => file !== ACTIVATION_POLICY_REPOSITORY_PATH
-    && file !== DORMANT_ACTIVATION_GATE_PATH);
+    && file !== ACTIVATION_GATE_PATH);
+  const stabilizationConsumers = actualReferenceFiles(
+    sources,
+    /['"][^'"]*walletSyncActivationStabilizationRepository(?:\.[cm]?[jt]s)?['"]|\bwalletSyncActivationStabilizationRepository\b/,
+  ).filter(file => file !== ACTIVATION_STABILIZATION_REPOSITORY_PATH
+    && file !== ACTIVATION_GATE_PATH);
   return [...new Set([
     ...gateConsumers,
     ...policyConsumers,
     ...policyAliasConsumers,
+    ...stabilizationConsumers,
   ])].sort();
 }
 
 function isPermittedActivationPolicyConsumer(file, source = '') {
   if (file === ACTIVATION_POLICY_REPOSITORY_PATH
-    || file === DORMANT_ACTIVATION_GATE_PATH) return true;
+    || file === ACTIVATION_GATE_PATH) return true;
   const validationOnlyConsumers = new Set([
     'server/src/services/backupService/creation.ts',
     'server/src/services/backupService/restore.ts',
@@ -441,6 +554,16 @@ function admissionSingletonAliases(source) {
     aliases.push(...namedImportAliases(match[1], 'syncIntentAdmission'));
     const namespace = /\*\s+as\s+([A-Za-z_$][\w$]*)/.exec(match[1])?.[1];
     if (namespace) aliases.push(`${namespace}.syncIntentAdmission`);
+  }
+  for (let index = 0; index < aliases.length; index += 1) {
+    const alias = aliases[index];
+    const assignments = new RegExp(
+      `\\b(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*${escapeRegExp(alias)}\\b`,
+      'g',
+    );
+    for (const match of source.matchAll(assignments)) {
+      if (!aliases.includes(match[1])) aliases.push(match[1]);
+    }
   }
   return aliases;
 }
@@ -557,7 +680,6 @@ export function checkWalletSyncLifecycleContract(root) {
   const admissionConsumers = unexpectedAdmissionConsumers(
     sources,
     contract.futureOwnership.singleAdmissionModule,
-    contract.futureOwnership.walletHistoryExecutor,
     contract.compatibility.generationConsumerModule,
   );
   if (admissionConsumers.length > 0) {
@@ -580,6 +702,11 @@ export function checkWalletSyncLifecycleContract(root) {
       `subscription enrollment activated outside its dormant boundary: ${subscriptionConsumers.join(', ')}`,
     );
   }
+  validateRecoveryComposition(
+    sources,
+    contract.futureOwnership.singleAdmissionModule,
+    errors,
+  );
   compareDirectCalls(sources, contract.inventory.directExecutorCalls, errors);
   compareReferenceInventory(
     sources,

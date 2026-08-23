@@ -1,3 +1,5 @@
+import { WALLET_SYNC_MAX_EXECUTION_MS } from '../constants/walletSyncActivation';
+
 const parseIntegerEnvFrom = (names: string[], fallback: number): number => {
   for (const name of names) {
     const value = process.env[name];
@@ -77,7 +79,7 @@ export function buildSyncConfig() {
     maxRetryAttempts: parseIntegerEnv('SYNC_MAX_RETRIES', 3),
     lockContentionRetryDelayMs: parseIntegerEnv('SYNC_LOCK_CONTENTION_RETRY_DELAY_MS', 30_000),
     retryDelaysMs: parseRetryDelays(),
-    maxSyncDurationMs: parseIntegerEnv('SYNC_MAX_DURATION_MS', 30 * 60 * 1000),
+    maxSyncDurationMs: parseIntegerEnv('SYNC_MAX_DURATION_MS', WALLET_SYNC_MAX_EXECUTION_MS),
     transactionBatchSize: parseIntegerEnv('SYNC_TRANSACTION_BATCH_SIZE', 100),
     electrumSubscriptionsEnabled: process.env.SYNC_ELECTRUM_SUBSCRIPTIONS_ENABLED !== 'false',
     workerHealthPollIntervalMs: parseIntegerEnv('SYNC_WORKER_HEALTH_POLL_MS', 30000),

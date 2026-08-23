@@ -19,7 +19,8 @@ const syncJobPrismaMocks = vi.hoisted(() => ({
   publishLifecycle: vi.fn<(...args: unknown[]) => Promise<void>>(),
 }));
 const syncIntentMocks = vi.hoisted(() => ({
-  claim: vi.fn(),
+  claimFresh: vi.fn(),
+  reclaimExpired: vi.fn(),
   complete: vi.fn(),
   releaseForRetry: vi.fn(),
   releaseAsActionRequired: vi.fn(),
@@ -153,7 +154,8 @@ describe('Sync Jobs', () => {
     vi.mocked(syncWallet).mockReset();
     vi.mocked(syncWallet).mockResolvedValue({ transactions: 0, utxos: 0 } as never);
     mockIsLocked.mockResolvedValue(false);
-    syncIntentMocks.claim.mockReset();
+    syncIntentMocks.claimFresh.mockReset();
+    syncIntentMocks.reclaimExpired.mockReset();
     syncIntentMocks.complete.mockReset();
     syncIntentMocks.releaseForRetry.mockReset();
     syncIntentMocks.releaseAsActionRequired.mockReset();
@@ -223,19 +225,19 @@ describe('Sync Jobs', () => {
         'Generation-bound wallet sync requires acquired lock proof',
       );
 
-      expect(syncIntentMocks.claim).not.toHaveBeenCalled();
+      expect(syncIntentMocks.claimFresh).not.toHaveBeenCalled();
       expect(syncWallet).not.toHaveBeenCalled();
     });
 
     it('neutralizes an obsolete generation-bound wake-up without executing sync', async () => {
-      syncIntentMocks.claim.mockResolvedValueOnce({ status: 'not_claimed' });
+      syncIntentMocks.claimFresh.mockResolvedValueOnce({ status: 'not_claimed' });
 
       await expect(syncWalletJob.handler(
         canonicalJob(),
         acquiredExecution(),
       )).resolves.toMatchObject({ success: true });
 
-      expect(syncIntentMocks.claim).toHaveBeenCalledWith('wallet-intent', expect.objectContaining({
+      expect(syncIntentMocks.claimFresh).toHaveBeenCalledWith('wallet-intent', expect.objectContaining({
         expectedRequestedGeneration: 1,
       }));
       expect(syncWallet).not.toHaveBeenCalled();
@@ -243,7 +245,8 @@ describe('Sync Jobs', () => {
     });
 
     it('rethrows a retry whose exact generation still has an active durable claim', async () => {
-      syncIntentMocks.claim.mockResolvedValueOnce({ status: 'already_claimed' });
+      syncIntentMocks.claimFresh.mockResolvedValueOnce({ status: 'already_claimed' });
+      syncIntentMocks.reclaimExpired.mockResolvedValueOnce({ status: 'not_claimed' });
 
       await expect(syncWalletJob.handler(
         canonicalJob(1),
@@ -253,6 +256,80 @@ describe('Sync Jobs', () => {
       expect(syncWallet).not.toHaveBeenCalled();
       expect(syncIntentMocks.complete).not.toHaveBeenCalled();
       expect(syncIntentMocks.releaseForRetry).not.toHaveBeenCalled();
+    });
+
+    it('rotates an expired exact claim only after the execution lock is acquired', async () => {
+      const claimedState = canonicalIntentState();
+      syncIntentMocks.claimFresh.mockResolvedValueOnce({ status: 'already_claimed' });
+      syncIntentMocks.reclaimExpired.mockResolvedValueOnce({
+        status: 'claimed',
+        claim: { generation: 1, leaseToken: 'rotated-token' },
+        state: claimedState,
+      });
+      syncIntentMocks.complete.mockResolvedValueOnce({
+        status: 'applied',
+        state: canonicalIntentState({ processedIncrementalSyncGeneration: 1 }),
+        trailingGenerationPending: false,
+      });
+
+      await expect(syncWalletJob.handler(canonicalJob(), acquiredExecution()))
+        .resolves.toMatchObject({ success: true });
+
+      expect(syncIntentMocks.reclaimExpired).toHaveBeenCalledWith(
+        'wallet-intent',
+        expect.objectContaining({
+          expectedRequestedGeneration: 1,
+          claimedAt: expect.any(Date),
+          leaseExpiresAt: expect.any(Date),
+          leaseToken: expect.any(String),
+        }),
+      );
+      expect(syncWallet).toHaveBeenCalledWith(
+        'wallet-intent',
+        0,
+        expect.any(AbortSignal),
+        { walletId: 'wallet-intent', generation: 1, leaseToken: 'rotated-token' },
+      );
+    });
+
+    it('neutral-completes when the fleet gate blocks expired reclaim', async () => {
+      syncIntentMocks.claimFresh.mockResolvedValueOnce({ status: 'already_claimed' });
+      syncIntentMocks.reclaimExpired.mockResolvedValueOnce({
+        status: 'blocked',
+        activation: {
+          status: 'fleet_blocked',
+          requiredFloor: 1,
+          reason: 'worker_below_floor',
+        },
+      });
+
+      await expect(syncWalletJob.handler(canonicalJob(), acquiredExecution()))
+        .resolves.toMatchObject({ success: true });
+      expect(syncWallet).not.toHaveBeenCalled();
+      expect(syncIntentMocks.complete).not.toHaveBeenCalled();
+      expect(syncIntentMocks.releaseForRetry).not.toHaveBeenCalled();
+      expect(syncIntentMocks.releaseAsActionRequired).not.toHaveBeenCalled();
+      expect(syncJobPrismaMocks.publishLifecycle).not.toHaveBeenCalled();
+    });
+
+    it('neutral-completes when the fleet gate blocks a fresh claim', async () => {
+      syncIntentMocks.claimFresh.mockResolvedValueOnce({
+        status: 'blocked',
+        activation: {
+          status: 'fleet_blocked',
+          requiredFloor: 1,
+          reason: 'worker_below_floor',
+        },
+      });
+
+      await expect(syncWalletJob.handler(canonicalJob(), acquiredExecution()))
+        .resolves.toMatchObject({ success: true });
+      expect(syncIntentMocks.reclaimExpired).not.toHaveBeenCalled();
+      expect(syncWallet).not.toHaveBeenCalled();
+      expect(syncIntentMocks.complete).not.toHaveBeenCalled();
+      expect(syncIntentMocks.releaseForRetry).not.toHaveBeenCalled();
+      expect(syncIntentMocks.releaseAsActionRequired).not.toHaveBeenCalled();
+      expect(syncJobPrismaMocks.publishLifecycle).not.toHaveBeenCalled();
     });
 
     it('claims, executes, and atomically completes the exact incremental generation', async () => {
@@ -265,7 +342,7 @@ describe('Sync Jobs', () => {
         syncInProgress: false,
         lastSyncStatus: 'success',
       });
-      syncIntentMocks.claim.mockResolvedValueOnce({
+      syncIntentMocks.claimFresh.mockResolvedValueOnce({
         status: 'claimed',
         claim: { generation: 1, leaseToken: 'lease-token' },
         state: claimedState,
@@ -315,7 +392,7 @@ describe('Sync Jobs', () => {
     });
 
     it('best-effort wakes the exact trailing generation after durable completion', async () => {
-      syncIntentMocks.claim.mockResolvedValueOnce({
+      syncIntentMocks.claimFresh.mockResolvedValueOnce({
         status: 'claimed',
         claim: { generation: 1, leaseToken: 'lease-token' },
         state: canonicalIntentState({ requestedIncrementalSyncGeneration: 2 }),
@@ -345,7 +422,7 @@ describe('Sync Jobs', () => {
     ] as const)(
       'fenced-releases a canonical failure as $transition',
       async ({ attemptsMade, transition, release }) => {
-        syncIntentMocks.claim.mockResolvedValueOnce({
+        syncIntentMocks.claimFresh.mockResolvedValueOnce({
           status: 'claimed',
           claim: { generation: 1, leaseToken: 'lease-token' },
           state: canonicalIntentState(),
@@ -387,7 +464,7 @@ describe('Sync Jobs', () => {
     );
 
     it('does not write retry or failure state after losing the completion fence', async () => {
-      syncIntentMocks.claim.mockResolvedValueOnce({
+      syncIntentMocks.claimFresh.mockResolvedValueOnce({
         status: 'claimed',
         claim: { generation: 1, leaseToken: 'lease-token' },
         state: canonicalIntentState(),
@@ -410,7 +487,7 @@ describe('Sync Jobs', () => {
       attemptsMade,
       release,
     }) => {
-      syncIntentMocks.claim.mockResolvedValueOnce({
+      syncIntentMocks.claimFresh.mockResolvedValueOnce({
         status: 'claimed',
         claim: { generation: 1, leaseToken: 'lease-token' },
         state: canonicalIntentState(),

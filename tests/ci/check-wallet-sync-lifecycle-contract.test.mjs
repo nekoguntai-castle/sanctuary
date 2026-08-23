@@ -53,20 +53,42 @@ function fixtureActivationSymbolReferences() {
           file: 'server/src/repositories/walletSyncActivationPolicyRepository.ts',
           role: 'immutable_durable_floor',
         },
-        { file: 'server/src/services/sync/walletSyncActivationGate.ts', role: 'dormant_activation_gate' },
+        {
+          file: 'server/src/repositories/walletSyncActivationStabilizationRepository.ts',
+          role: 'continuous_ready_evidence_floor',
+        },
+        { file: 'server/src/services/sync/walletSyncActivationGate.ts', role: 'activation_gate' },
         {
           file: 'server/src/services/workerHeartbeatRegistry.ts',
           role: 'exact_worker_capability_evidence',
         },
-        { file: 'server/src/services/workerSyncQueue.ts', role: 'dormant_fenced_v3_emission' },
+        { file: 'server/src/services/workerSyncQueue.ts', role: 'fenced_v3_emission' },
+        { file: 'server/src/worker.ts', role: 'worker_runtime_floor' },
+        { file: 'server/src/worker/walletSyncRecoveryRuntime.ts', role: 'recovery_runtime_floor' },
       ],
     },
     {
-      symbol: 'walletSyncActivationGate',
+      symbol: 'createProductionWalletSyncRecoveryRuntime',
+      entries: [
+        { file: 'server/src/worker.ts', role: 'sole_runtime_consumer' },
+        { file: 'server/src/worker/walletSyncRecoveryRuntime.ts', role: 'runtime_composition' },
+      ],
+    },
+    {
+      symbol: 'createWalletSyncRecoveryRuntime',
       entries: [{
-        file: 'server/src/services/sync/walletSyncActivationGate.ts',
-        role: 'dormant_activation_gate_definition',
+        file: 'server/src/worker/walletSyncRecoveryRuntime.ts',
+        role: 'runtime_constructor',
       }],
+    },
+    {
+      symbol: 'walletSyncActivationGate',
+      entries: [
+        { file: 'server/src/services/sync/syncIntentAdmission.ts', role: 'gate_enforced_admission' },
+        { file: 'server/src/services/sync/walletSyncActivationGate.ts', role: 'gate_definition' },
+        { file: 'server/src/worker/healthServer.ts', role: 'gate_state_type' },
+        { file: 'server/src/worker/walletSyncRecoveryRuntime.ts', role: 'runtime_authority' },
+      ],
     },
     {
       symbol: 'walletSyncActivationPolicyRepository',
@@ -79,6 +101,16 @@ function fixtureActivationSymbolReferences() {
           file: 'server/src/services/sync/walletSyncActivationGate.ts',
           role: 'sole_activation_policy_service_consumer',
         },
+      ],
+    },
+    {
+      symbol: 'walletSyncActivationStabilizationRepository',
+      entries: [
+        {
+          file: 'server/src/repositories/walletSyncActivationStabilizationRepository.ts',
+          role: 'stabilization_definition',
+        },
+        { file: 'server/src/services/sync/walletSyncActivationGate.ts', role: 'sole_consumer' },
       ],
     },
   ];
@@ -149,7 +181,10 @@ function fixtureContract() {
     }] },
     { symbol: 'createSyncIntentRecoveryCoordinator', entries: [{
       file: 'server/src/worker/syncIntentRecovery.ts',
-      role: 'dormant_recovery_coordinator_definition',
+      role: 'bounded_recovery_coordinator_definition',
+    }, {
+      file: 'server/src/worker/walletSyncRecoveryRuntime.ts',
+      role: 'sole_production_composition',
     }] },
     { symbol: 'enqueueIncrementalSyncWakeup', entries: [{
       file: 'server/src/services/sync/syncIntentAdmission.ts',
@@ -160,10 +195,13 @@ function fixtureContract() {
     }] },
     { symbol: 'enqueueReservedFullResyncWakeup', entries: [{
       file: 'server/src/services/workerSyncQueue.ts',
-      role: 'dormant_reserved_generation_wakeup_adapter_definition',
+      role: 'reserved_generation_wakeup_adapter_definition',
     }, {
       file: 'server/src/worker/syncIntentRecovery.ts',
-      role: 'dormant_exact_generation_recovery_composition',
+      role: 'bounded_recovery_port',
+    }, {
+      file: 'server/src/worker/walletSyncRecoveryRuntime.ts',
+      role: 'gate_authorized_composition',
     }] },
     { symbol: 'findStale', entries: [] },
     { symbol: 'requestSubscriptionEnrollment', entries: [{
@@ -181,7 +219,10 @@ function fixtureContract() {
       role: 'generation_bound_consumer_only',
     }, {
       file: 'server/src/worker/syncIntentRecovery.ts',
-      role: 'dormant_bounded_recovery_composition',
+      role: 'bounded_recovery_type_contract',
+    }, {
+      file: 'server/src/worker/walletSyncRecoveryRuntime.ts',
+      role: 'gate_authorized_recovery_composition',
     }] },
   ];
   contract.inventory.symbolReferences.push(...fixtureActivationSymbolReferences());
@@ -241,16 +282,47 @@ function createFixture() {
     root,
     'server/src/services/sync/syncIntentAdmission.ts',
     "import { enqueueIncrementalSyncWakeup } from '../workerSyncQueue';\n"
+      + "import { walletSyncActivationGate } from './walletSyncActivationGate';\n"
       + 'void enqueueIncrementalSyncWakeup;\n'
+      + 'void { inspectActivation: () => walletSyncActivationGate.inspect() };\n'
       + 'export const syncIntentAdmission = {};\n',
   );
   write(
     root,
     'server/src/worker/syncIntentRecovery.ts',
-    `import { syncIntentAdmission } from '${canonicalAdmissionImport}';\n`
-      + "import { enqueueReservedFullResyncWakeup } from '../services/workerSyncQueue';\n"
-      + 'void syncIntentAdmission.recover;\nvoid enqueueReservedFullResyncWakeup;\n'
+    `import type { syncIntentAdmission } from '${canonicalAdmissionImport}';\n`
+      + "import type { enqueueReservedFullResyncWakeup } from '../services/workerSyncQueue';\n"
+      + 'export type RecoveryAdmission = typeof syncIntentAdmission;\n'
+      + 'export type RecoveryWakeup = typeof enqueueReservedFullResyncWakeup;\n'
       + 'export function createSyncIntentRecoveryCoordinator() {}\n',
+  );
+  write(
+    root,
+    'server/src/worker/walletSyncRecoveryRuntime.ts',
+    "import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from '../constants/walletSyncActivation';\n"
+      + "import { syncIntentAdmission } from '../services/sync/syncIntentAdmission';\n"
+      + "import { walletSyncActivationGate } from '../services/sync/walletSyncActivationGate';\n"
+      + "import { enqueueReservedFullResyncWakeup } from '../services/workerSyncQueue';\n"
+      + "import { createSyncIntentRecoveryCoordinator } from './syncIntentRecovery';\n"
+      + 'export function createWalletSyncRecoveryRuntime() {}\n'
+      + 'export function createProductionWalletSyncRecoveryRuntime() {\n'
+      + "  const authorize = async () => (await walletSyncActivationGate.inspect()).status === 'active';\n"
+      + '  void WALLET_SYNC_MUTATION_FENCE_FLOOR;\n'
+      + '  void walletSyncActivationGate.activate();\n'
+      + '  void syncIntentAdmission.recover({});\n'
+      + '  void syncIntentAdmission.recoverExpired({});\n'
+      + "  void (async (wakeup) => { if (!await authorize()) return { status: 'blocked' }; return { status: await enqueueReservedFullResyncWakeup(wakeup) ? 'enqueued' : 'unavailable' }; });\n"
+      + '  void createSyncIntentRecoveryCoordinator();\n'
+      + '  void { activate: () => walletSyncActivationGate.activate() };\n'
+      + '  return createWalletSyncRecoveryRuntime();\n}\n',
+  );
+  write(
+    root,
+    'server/src/worker.ts',
+    "import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from './constants/walletSyncActivation';\n"
+      + "import { createProductionWalletSyncRecoveryRuntime } from './worker/walletSyncRecoveryRuntime';\n"
+      + 'void WALLET_SYNC_MUTATION_FENCE_FLOOR;\n'
+      + 'void createProductionWalletSyncRecoveryRuntime();\n',
   );
   write(
     root,
@@ -283,6 +355,12 @@ function createFixture() {
   );
   write(
     root,
+    'server/src/repositories/walletSyncActivationStabilizationRepository.ts',
+    'void WALLET_SYNC_MUTATION_FENCE_FLOOR;\n'
+      + 'export const walletSyncActivationStabilizationRepository = {};\n',
+  );
+  write(
+    root,
     'server/src/services/workerHeartbeatRegistry.ts',
     'void WALLET_SYNC_MUTATION_FENCE_FLOOR;\n',
   );
@@ -291,23 +369,36 @@ function createFixture() {
     'server/src/services/sync/walletSyncActivationGate.ts',
     'void WALLET_SYNC_MUTATION_FENCE_FLOOR;\n'
       + 'void walletSyncActivationPolicyRepository;\n'
+      + 'void walletSyncActivationStabilizationRepository;\n'
       + 'export const walletSyncActivationGate = {};\n',
+  );
+  write(
+    root,
+    'server/src/worker/healthServer.ts',
+    "import type { walletSyncActivationGate } from '../services/sync/walletSyncActivationGate';\n"
+      + 'export type Gate = typeof walletSyncActivationGate;\n',
   );
   return root;
 }
 
-test('live activation-floor inventory matches production without claiming cutover', () => {
+test('live gated-recovery inventory matches production without claiming cutover', () => {
   const result = checkWalletSyncLifecycleContract(repoRoot);
   assert.deepEqual(result.errors, []);
+  assert.equal(result.contract.deliveryState, 'gated_bounded_recovery');
   assert.equal(result.contract.cutoverComplete, false);
+  assert.equal(result.contract.wireContract.currentProducerVersion, 1);
   assert.equal(result.contract.compatibility.staleScheduleState, 'legacy_desired_until_cutover');
   assert.equal(
     result.contract.compatibility.admissionState,
-    'generation_consumer_enabled_no_production_producers',
+    'gate_enforced_consumer_and_recovery_no_request_producers',
   );
   assert.equal(
     result.contract.compatibility.activationState,
-    'fleet_floor_available_marker_not_activated',
+    'continuous_fleet_floor_gate_runtime_enabled',
+  );
+  assert.equal(
+    result.contract.compatibility.recoveryState,
+    'gate_enforced_bounded_runtime_enabled',
   );
   assert.equal(
     result.contract.compatibility.subscriptionEnrollmentState,
@@ -315,7 +406,7 @@ test('live activation-floor inventory matches production without claiming cutove
   );
 });
 
-test('accepts an exact mutation-fence activation-floor inventory fixture', () => {
+test('accepts an exact gated bounded-recovery inventory fixture', () => {
   assert.deepEqual(checkWalletSyncLifecycleContract(createFixture()).errors, []);
 });
 
@@ -401,6 +492,61 @@ test('rejects a production admission producer before the activation release', ()
   );
 });
 
+test('rejects request and recovery calls outside their gate-enforced owners', () => {
+  const attempts = [
+    'void syncIntentAdmission.request(\'wallet-1\');\n',
+    'void syncIntentAdmission.recover({ now: new Date() });\n',
+    'void syncIntentAdmission.recoverExpired({ now: new Date() });\n',
+  ];
+  for (const attempt of attempts) {
+    const root = createFixture();
+    write(
+      root,
+      'server/src/api/earlyIntent.ts',
+      `import { syncIntentAdmission } from '${canonicalAdmissionImport}';\n${attempt}`,
+    );
+    assert.match(
+      checkWalletSyncLifecycleContract(root).errors.join('\n'),
+      /durable admission producer activated before cutover/,
+    );
+  }
+});
+
+test('rejects raw request, recovery-read, and reclaim repository access', () => {
+  const symbols = [
+    'requestIncrementalSync',
+    'findActionableIncrementalSyncIntents',
+    'findExpiredIncrementalSyncClaims',
+    'claimIncrementalSync',
+  ];
+  for (const symbol of symbols) {
+    const root = createFixture();
+    write(
+      root,
+      'server/src/api/rawIntent.ts',
+      `import { ${symbol} as bypass } from '../repositories/syncIntentRepository';\nvoid bypass;\n`,
+    );
+    assert.match(
+      checkWalletSyncLifecycleContract(root).errors.join('\n'),
+      /durable admission producer activated before cutover/,
+    );
+  }
+});
+
+test('rejects expectedExpiredFence construction outside repository and admission', () => {
+  const root = createFixture();
+  write(
+    root,
+    'server/src/worker/unsafeReclaim.ts',
+    'const expectedExpiredFence = { walletId: \'wallet-1\', generation: 1, leaseToken: \'old\' };\n'
+      + 'void expectedExpiredFence;\n',
+  );
+  assert.match(
+    checkWalletSyncLifecycleContract(root).errors.join('\n'),
+    /durable admission producer activated before cutover/,
+  );
+});
+
 test('rejects direct generation wake-up production outside canonical admission', () => {
   const root = createFixture();
   write(
@@ -412,6 +558,129 @@ test('rejects direct generation wake-up production outside canonical admission',
   assert.match(
     checkWalletSyncLifecycleContract(root).errors.join('\n'),
     /durable admission producer activated before cutover/,
+  );
+});
+
+test('rejects reserved full-resync queue wakeups outside the exact recovery runtime', () => {
+  const root = createFixture();
+  write(
+    root,
+    'server/src/api/earlyFullResyncWakeup.ts',
+    "import { enqueueReservedFullResyncWakeup as wake } from '../services/workerSyncQueue';\n"
+      + 'void wake;\n',
+  );
+  assert.match(
+    checkWalletSyncLifecycleContract(root).errors.join('\n'),
+    /symbol enqueueReservedFullResyncWakeup references changed/,
+  );
+});
+
+test('rejects an unguarded reserved wakeup inside the recovery composition root', () => {
+  const root = createFixture();
+  write(
+    root,
+    'server/src/worker/walletSyncRecoveryRuntime.ts',
+    "import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from '../constants/walletSyncActivation';\n"
+      + "import { syncIntentAdmission } from '../services/sync/syncIntentAdmission';\n"
+      + "import { walletSyncActivationGate } from '../services/sync/walletSyncActivationGate';\n"
+      + "import { enqueueReservedFullResyncWakeup } from '../services/workerSyncQueue';\n"
+      + "import { createSyncIntentRecoveryCoordinator } from './syncIntentRecovery';\n"
+      + 'export function createWalletSyncRecoveryRuntime() {}\n'
+      + 'export async function createProductionWalletSyncRecoveryRuntime() {\n'
+      + '  void WALLET_SYNC_MUTATION_FENCE_FLOOR;\n'
+      + "  void (await walletSyncActivationGate.inspect()).status === 'active';\n"
+      + '  void syncIntentAdmission.recover({});\n'
+      + '  void syncIntentAdmission.recoverExpired({});\n'
+      + '  await enqueueReservedFullResyncWakeup({});\n'
+      + '  void createSyncIntentRecoveryCoordinator();\n'
+      + '  void { activate: () => walletSyncActivationGate.activate() };\n'
+      + '  return createWalletSyncRecoveryRuntime();\n}\n',
+  );
+  assert.match(
+    checkWalletSyncLifecycleContract(root).errors.join('\n'),
+    /reserved full-resync recovery wake-ups must recheck activation inline/,
+  );
+});
+
+test('rejects an extra unguarded reserved wakeup beside the guarded adapter', () => {
+  const additions = [
+    'await enqueueReservedFullResyncWakeup({});',
+    'const unguardedWake = enqueueReservedFullResyncWakeup;\n  await unguardedWake({});',
+    'const firstAlias = enqueueReservedFullResyncWakeup;\n  const secondAlias = firstAlias;\n  await secondAlias({});',
+    "const bracketWake = dependencies['enqueueReservedFullResyncWakeup'];\n  await bracketWake({});",
+    "await dependencies['enqueueReservedFullResyncWakeup']({});",
+    'const { enqueueReservedFullResyncWakeup: destructuredWake } = dependencies;\n  await destructuredWake({});',
+  ];
+  for (const addition of additions) {
+    const root = createFixture();
+    const runtimePath = 'server/src/worker/walletSyncRecoveryRuntime.ts';
+    const source = readFileSync(path.join(root, runtimePath), 'utf8');
+    write(
+      root,
+      runtimePath,
+      source.replace(
+        'return createWalletSyncRecoveryRuntime();',
+        `${addition}\n  return createWalletSyncRecoveryRuntime();`,
+      ),
+    );
+    assert.match(
+      checkWalletSyncLifecycleContract(root).errors.join('\n'),
+      /exactly one guarded reserved full-resync enqueue/,
+    );
+  }
+});
+
+test('rejects removal of every required gated recovery composition boundary', () => {
+  const runtimePath = 'server/src/worker/walletSyncRecoveryRuntime.ts';
+  const cases = [
+    [
+      'walletSyncActivationGate.inspect()',
+      'walletSyncActivationGate.activate()',
+      /recovery runtime authorization must inspect the live activation gate/,
+    ],
+    [
+      'syncIntentAdmission.recover({})',
+      'undefined',
+      /recovery runtime must use gate-enforced incremental recovery/,
+    ],
+    [
+      'syncIntentAdmission.recoverExpired({})',
+      'undefined',
+      /recovery runtime must use gate-enforced expired recovery/,
+    ],
+    [
+      'activate: () => walletSyncActivationGate.activate()',
+      'activate: () => undefined',
+      /recovery runtime activation must use the canonical activation gate/,
+    ],
+    [
+      'void createSyncIntentRecoveryCoordinator();',
+      'void undefined;',
+      /recovery runtime must construct exactly one bounded coordinator/,
+    ],
+  ];
+  for (const [needle, replacement, expected] of cases) {
+    const root = createFixture();
+    const source = readFileSync(path.join(root, runtimePath), 'utf8');
+    assert.ok(source.includes(needle));
+    write(root, runtimePath, source.replace(needle, replacement));
+    assert.match(checkWalletSyncLifecycleContract(root).errors.join('\n'), expected);
+  }
+
+  const root = createFixture();
+  const admissionPath = 'server/src/services/sync/syncIntentAdmission.ts';
+  const admission = readFileSync(path.join(root, admissionPath), 'utf8');
+  write(
+    root,
+    admissionPath,
+    admission.replace(
+      'inspectActivation: () => walletSyncActivationGate.inspect()',
+      'inspectActivation: () => walletSyncActivationGate.activate()',
+    ),
+  );
+  assert.match(
+    checkWalletSyncLifecycleContract(root).errors.join('\n'),
+    /canonical admission must inspect the activation gate/,
   );
 });
 
@@ -447,7 +716,7 @@ test('rejects namespace and bracket repair activation from the permitted worker'
   );
 });
 
-test('rejects construction of the dormant recovery coordinator', () => {
+test('rejects alternate construction of the bounded recovery coordinator', () => {
   const root = createFixture();
   write(
     root,
@@ -461,6 +730,20 @@ test('rejects construction of the dormant recovery coordinator', () => {
   );
 });
 
+test('rejects alternate recovery-runtime construction outside the worker composition root', () => {
+  const root = createFixture();
+  write(
+    root,
+    'server/src/api/alternateRuntime.ts',
+    "import { createWalletSyncRecoveryRuntime } from '../worker/walletSyncRecoveryRuntime';\n"
+      + 'void createWalletSyncRecoveryRuntime({});\n',
+  );
+  assert.match(
+    checkWalletSyncLifecycleContract(root).errors.join('\n'),
+    /durable admission producer activated before cutover|symbol createWalletSyncRecoveryRuntime references changed/,
+  );
+});
+
 test('rejects activation-gate or policy consumption before the activation release', () => {
   const consumers = [
     "import { walletSyncActivationGate } from './services/sync/walletSyncActivationGate';\nvoid walletSyncActivationGate.activate();\n",
@@ -470,6 +753,21 @@ test('rejects activation-gate or policy consumption before the activation releas
   for (const source of consumers) {
     const root = createFixture();
     write(root, 'server/src/worker.ts', source);
+    assert.match(
+      checkWalletSyncLifecycleContract(root).errors.join('\n'),
+      /wallet-sync activation floor consumed before activation release/,
+    );
+  }
+});
+
+test('rejects new activation-gate and stabilization repository consumers', () => {
+  const consumers = [
+    "import { walletSyncActivationGate as gate } from './services/sync/walletSyncActivationGate';\nvoid gate.inspect();\n",
+    "import { walletSyncActivationStabilizationRepository as state } from './repositories/walletSyncActivationStabilizationRepository';\nvoid state.observe;\n",
+  ];
+  for (const source of consumers) {
+    const root = createFixture();
+    write(root, 'server/src/newConsumer.ts', source);
     assert.match(
       checkWalletSyncLifecycleContract(root).errors.join('\n'),
       /wallet-sync activation floor consumed before activation release/,
@@ -498,7 +796,7 @@ test('rejects a request alias inside the otherwise permitted recovery coordinato
     'server/src/worker/syncIntentRecovery.ts',
     `import { syncIntentAdmission } from '${canonicalAdmissionImport}';\n`
       + "import { enqueueReservedFullResyncWakeup } from '../services/workerSyncQueue';\n"
-      + 'const producer = syncIntentAdmission;\nvoid producer.request;\n'
+      + 'const producer = syncIntentAdmission;\nconst indirect = producer;\nvoid indirect.request;\n'
       + 'void enqueueReservedFullResyncWakeup;\n'
       + 'export function createSyncIntentRecoveryCoordinator() {}\n',
   );

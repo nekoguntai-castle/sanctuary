@@ -21,6 +21,7 @@ vi.mock('../../../src/models/prisma', () => ({
 
 vi.mock('../../../src/generated/prisma/client', () => ({
   Prisma: {
+    empty: { strings: [''], values: [] },
     raw: (value: string) => value,
     sql: (strings: TemplateStringsArray, ...values: unknown[]) => ({ strings, values }),
   },
@@ -30,6 +31,7 @@ import {
   claimIncrementalSync,
   completeIncrementalSync,
   findActionableIncrementalSyncIntents,
+  findExpiredIncrementalSyncClaims,
   findIncrementalSyncIntent,
   releaseIncrementalSyncAsActionRequired,
   releaseIncrementalSyncForRetry,
@@ -540,6 +542,73 @@ describe('syncIntentRepository', () => {
     expect(query.strings.join('')).not.toContain(
       '"incrementalSyncLeaseExpiresAt" <=',
     );
+  });
+
+  it('reads expired claims with an exact composite keyset cursor and bounded page', async () => {
+    const cursor = {
+      leaseExpiresAt: new Date('2026-08-22T06:55:00.000Z'),
+      walletId: 'wallet-7',
+    };
+    mocks.queryRaw.mockResolvedValue([{
+      walletId: 'wallet-8',
+      generation: 3,
+      leaseToken: TOKEN_A,
+      leaseExpiresAt: NOW,
+    }]);
+
+    await expect(findExpiredIncrementalSyncClaims({ now: NOW, cursor, limit: 500 }))
+      .resolves.toEqual([{
+        walletId: 'wallet-8',
+        generation: 3,
+        leaseToken: TOKEN_A,
+        leaseExpiresAt: NOW,
+      }]);
+
+    const query = mocks.queryRaw.mock.calls[0][0];
+    const sql = query.strings.join('');
+    const cursorFragment = query.values.find(
+      (value: unknown) => typeof value === 'object' && value !== null && 'strings' in value,
+    ) as { strings: string[]; values: unknown[] };
+    expect(query.values).toEqual(expect.arrayContaining([NOW, 100]));
+    expect(sql).toContain('ORDER BY "incrementalSyncLeaseExpiresAt" ASC, "id" ASC');
+    expect(sql).toContain('"incrementalSyncLeaseToken" IS NOT NULL');
+    expect(sql).toContain(
+      '"requestedFullResyncGeneration" = "processedFullResyncGeneration"',
+    );
+    expect(sql).toContain('"syncActionRequiredAt" IS NULL');
+    expect(cursorFragment.strings.join('')).toContain(
+      '"incrementalSyncLeaseExpiresAt" > ',
+    );
+    expect(cursorFragment.strings.join('')).toContain('AND "id" > ');
+    expect(cursorFragment.values).toEqual([
+      cursor.leaseExpiresAt,
+      cursor.leaseExpiresAt,
+      cursor.walletId,
+    ]);
+  });
+
+  it('defaults and validates expired-claim recovery boundaries before querying', async () => {
+    mocks.queryRaw.mockResolvedValue([]);
+    await findExpiredIncrementalSyncClaims({ now: NOW });
+    expect(mocks.queryRaw.mock.calls[0][0].values)
+      .toEqual(expect.arrayContaining([NOW, 100]));
+
+    vi.clearAllMocks();
+    await expect(findExpiredIncrementalSyncClaims({ now: new Date('invalid') }))
+      .rejects.toThrow('recovery time must be a valid date');
+    await expect(findExpiredIncrementalSyncClaims({
+      now: NOW,
+      cursor: { leaseExpiresAt: new Date('invalid'), walletId: 'wallet-1' },
+    })).rejects.toThrow('cursor time must be a valid date');
+    await expect(findExpiredIncrementalSyncClaims({
+      now: NOW,
+      cursor: { leaseExpiresAt: NOW, walletId: ' ' },
+    })).rejects.toThrow('wallet ID must not be empty');
+    for (const limit of [0, -1, 1.5]) {
+      await expect(findExpiredIncrementalSyncClaims({ now: NOW, limit }))
+        .rejects.toThrow('positive integer');
+    }
+    expect(mocks.queryRaw).not.toHaveBeenCalled();
   });
 
   it('uses bounded recovery defaults and rejects invalid limits', async () => {

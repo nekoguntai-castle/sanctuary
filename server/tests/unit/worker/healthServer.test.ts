@@ -157,6 +157,41 @@ describe('Worker Health Server', () => {
     expect(payload.status).toBe('healthy');
   });
 
+  it('serializes the privacy-safe wallet-sync activation state in health and metrics', async () => {
+    const walletSyncActivation = {
+      status: 'active' as const,
+      requiredFloor: 1 as const,
+      activatedAt: '2026-08-22T12:00:00.000Z',
+    };
+    startHealthServer({
+      port: 3020,
+      healthProvider: {
+        getHealth: async () => ({
+          redis: true,
+          electrum: true,
+          jobQueue: true,
+          walletSyncActivation,
+        }),
+        getMetrics: async () => ({
+          queues: {},
+          electrum: { subscribedAddresses: 0, networks: {} },
+          walletSyncActivation,
+        }),
+      },
+    });
+
+    const health = makeRes();
+    await capturedHandler?.({ url: '/health' }, health);
+    const metrics = makeRes();
+    await capturedHandler?.({ url: '/metrics' }, metrics);
+
+    expect(JSON.parse(health.body).components.walletSyncActivation).toEqual(
+      walletSyncActivation,
+    );
+    expect(JSON.parse(metrics.body).walletSyncActivation).toEqual(walletSyncActivation);
+    expect(`${health.body}${metrics.body}`).not.toMatch(/replica|leaseToken/i);
+  });
+
   it('handles root path as health endpoint', async () => {
     startHealthServer({
       port: 3004,

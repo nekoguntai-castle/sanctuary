@@ -63,12 +63,21 @@ const mocks = vi.hoisted(() => {
     return healthServerHandle;
   });
   const heartbeatInstance = {
+    write: vi.fn(),
     start: vi.fn(),
     stop: vi.fn(),
   };
   const WorkerHeartbeatWriter = vi.fn(function WorkerHeartbeatWriterMock() {
     return heartbeatInstance;
   });
+  const walletSyncRecoveryRuntime = {
+    getActivationState: vi.fn(),
+    start: vi.fn(),
+    stop: vi.fn(),
+  };
+  const createProductionWalletSyncRecoveryRuntime = vi.fn(
+    () => walletSyncRecoveryRuntime,
+  );
 
   const getConfig = vi.fn(() => ({
     bitcoin: { network: 'testnet' },
@@ -108,6 +117,8 @@ const mocks = vi.hoisted(() => {
     startHealthServer,
     heartbeatInstance,
     WorkerHeartbeatWriter,
+    walletSyncRecoveryRuntime,
+    createProductionWalletSyncRecoveryRuntime,
     getConfig,
     registerWorkerJobs: vi.fn(),
     initializeOpenTelemetry: vi.fn(),
@@ -211,6 +222,11 @@ vi.mock('../../../src/services/workerHeartbeatRegistry', () => ({
   WorkerHeartbeatWriter: mocks.WorkerHeartbeatWriter,
 }));
 
+vi.mock('../../../src/worker/walletSyncRecoveryRuntime', () => ({
+  createProductionWalletSyncRecoveryRuntime:
+    mocks.createProductionWalletSyncRecoveryRuntime,
+}));
+
 vi.mock('../../../src/worker/jobs', () => ({
   registerWorkerJobs: mocks.registerWorkerJobs,
 }));
@@ -309,8 +325,19 @@ describe('worker entrypoint', () => {
     mocks.electrumInstance.reconcileSubscriptions.mockResolvedValue(undefined);
 
     mocks.healthServerHandle.close.mockResolvedValue(undefined);
+    mocks.heartbeatInstance.write.mockResolvedValue(undefined);
     mocks.heartbeatInstance.start.mockReturnValue(undefined);
     mocks.heartbeatInstance.stop.mockResolvedValue(undefined);
+    mocks.walletSyncRecoveryRuntime.getActivationState.mockReturnValue({
+      status: 'active',
+      requiredFloor: 1,
+      activatedAt: '2026-08-22T07:00:00.000Z',
+    });
+    mocks.walletSyncRecoveryRuntime.start.mockResolvedValue(undefined);
+    mocks.walletSyncRecoveryRuntime.stop.mockResolvedValue(undefined);
+    mocks.createProductionWalletSyncRecoveryRuntime.mockReturnValue(
+      mocks.walletSyncRecoveryRuntime,
+    );
 
     mocks.mockFeatureFlagService.initialize.mockImplementation(async () => {
       const reconcileInstalledSnapshot = mocks.mockFeatureFlagService.configureRuntime
@@ -354,6 +381,132 @@ describe('worker entrypoint', () => {
     expect(mocks.electrumInstance.stop).not.toHaveBeenCalled();
     expect(mocks.queueInstance.shutdown).not.toHaveBeenCalled();
     expect(processExitSpy).toHaveBeenCalledWith(0);
+  });
+
+  it('publishes the initial heartbeat before starting wallet-sync recovery', async () => {
+    vi.spyOn(process, 'on').mockImplementation(((
+      _event: string,
+      _handler: (...args: any[]) => any,
+    ) => process) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+    let resolveHeartbeat!: () => void;
+    mocks.heartbeatInstance.write.mockImplementationOnce(() => new Promise<void>((resolve) => {
+      resolveHeartbeat = resolve;
+    }));
+
+    await import('../../../src/worker.ts');
+    await vi.waitFor(() => expect(mocks.heartbeatInstance.write).toHaveBeenCalledOnce());
+    expect(mocks.createProductionWalletSyncRecoveryRuntime).not.toHaveBeenCalled();
+    expect(mocks.walletSyncRecoveryRuntime.start).not.toHaveBeenCalled();
+
+    resolveHeartbeat();
+    await vi.dynamicImportSettled();
+
+    expect(mocks.heartbeatInstance.write.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.heartbeatInstance.start.mock.invocationCallOrder[0],
+    );
+    expect(mocks.heartbeatInstance.start.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.walletSyncRecoveryRuntime.start.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('fails startup when wallet-sync recovery cannot start', async () => {
+    vi.spyOn(process, 'on').mockImplementation(((
+      _event: string,
+      _handler: (...args: any[]) => any,
+    ) => process) as any);
+    const processExitSpy = vi
+      .spyOn(process, 'exit')
+      .mockImplementation((() => undefined) as any);
+    mocks.walletSyncRecoveryRuntime.start.mockRejectedValueOnce(
+      new Error('recovery unavailable'),
+    );
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+
+    expect(mocks.logger.error).toHaveBeenCalledWith(
+      'Worker startup failed',
+      expect.objectContaining({ error: 'recovery unavailable' }),
+    );
+    expect(mocks.heartbeatInstance.write).toHaveBeenCalledOnce();
+    expect(mocks.walletSyncRecoveryRuntime.start).toHaveBeenCalledOnce();
+    expect(processExitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('fails startup before recovery when the initial capability heartbeat cannot publish', async () => {
+    vi.spyOn(process, 'on').mockImplementation(((
+      _event: string,
+      _handler: (...args: any[]) => any,
+    ) => process) as any);
+    const processExitSpy = vi
+      .spyOn(process, 'exit')
+      .mockImplementation((() => undefined) as any);
+    mocks.heartbeatInstance.write.mockRejectedValueOnce(new Error('heartbeat unavailable'));
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+
+    expect(mocks.logger.error).toHaveBeenCalledWith(
+      'Worker startup failed',
+      expect.objectContaining({ error: 'heartbeat unavailable' }),
+    );
+    expect(mocks.heartbeatInstance.start).not.toHaveBeenCalled();
+    expect(mocks.createProductionWalletSyncRecoveryRuntime).not.toHaveBeenCalled();
+    expect(processExitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('exposes activation health without making it queue readiness authority', async () => {
+    vi.spyOn(process, 'on').mockImplementation(((
+      _event: string,
+      _handler: (...args: any[]) => any,
+    ) => process) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+    const activation = {
+      status: 'fleet_blocked',
+      requiredFloor: 1,
+      reason: 'worker_below_floor',
+    } as const;
+    mocks.walletSyncRecoveryRuntime.getActivationState.mockReturnValue(activation);
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+
+    await expect(mocks.getHealthProvider()?.getHealth()).resolves.toEqual({
+      redis: true,
+      electrum: true,
+      jobQueue: true,
+      recurringSchedules: true,
+      walletSyncActivation: activation,
+    });
+    await expect(mocks.getHealthProvider()?.getMetrics()).resolves.toEqual(
+      expect.objectContaining({ walletSyncActivation: activation }),
+    );
+  });
+
+  it('stops wallet-sync recovery before draining the queue and Redis', async () => {
+    const handlers: Record<string, Array<(...args: any[]) => any>> = {};
+    vi.spyOn(process, 'on').mockImplementation(((
+      event: string,
+      handler: (...args: any[]) => any,
+    ) => {
+      handlers[event] ??= [];
+      handlers[event].push(handler);
+      return process;
+    }) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+    await handlers.SIGTERM?.[0]();
+
+    expect(mocks.walletSyncRecoveryRuntime.stop).toHaveBeenCalledOnce();
+    expect(mocks.walletSyncRecoveryRuntime.stop.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.queueInstance.shutdown.mock.invocationCallOrder[0],
+    );
+    expect(mocks.walletSyncRecoveryRuntime.stop.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.shutdownRedis.mock.invocationCallOrder[0],
+    );
   });
 
   it('fails startup when Redis connection check reports disconnected', async () => {
@@ -861,6 +1014,11 @@ describe('worker entrypoint', () => {
       electrum: true,
       jobQueue: true,
       recurringSchedules: true,
+      walletSyncActivation: {
+        status: 'active',
+        requiredFloor: 1,
+        activatedAt: '2026-08-22T07:00:00.000Z',
+      },
     });
     mocks.electrumInstance.isConnected.mockReturnValueOnce(undefined as any);
     mocks.queueInstance.isHealthy.mockReturnValueOnce(undefined as any);
@@ -869,6 +1027,11 @@ describe('worker entrypoint', () => {
       electrum: false,
       jobQueue: false,
       recurringSchedules: true,
+      walletSyncActivation: {
+        status: 'active',
+        requiredFloor: 1,
+        activatedAt: '2026-08-22T07:00:00.000Z',
+      },
     });
     await expect(healthProvider?.getMetrics()).resolves.toEqual({
       worker: expect.objectContaining({
@@ -896,6 +1059,11 @@ describe('worker entrypoint', () => {
         reconciliationFailed: false,
         heartbeatHealthy: true,
         completionTimes: expect.any(Object),
+      },
+      walletSyncActivation: {
+        status: 'active',
+        requiredFloor: 1,
+        activatedAt: '2026-08-22T07:00:00.000Z',
       },
     });
 
@@ -945,6 +1113,11 @@ describe('worker entrypoint', () => {
         reconciliationFailed: false,
         heartbeatHealthy: true,
         completionTimes: expect.any(Object),
+      },
+      walletSyncActivation: {
+        status: 'active',
+        requiredFloor: 1,
+        activatedAt: '2026-08-22T07:00:00.000Z',
       },
     });
 
@@ -1069,6 +1242,11 @@ describe('worker entrypoint', () => {
       electrum: true,
       jobQueue: true,
       recurringSchedules: true,
+      walletSyncActivation: {
+        status: 'active',
+        requiredFloor: 1,
+        activatedAt: '2026-08-22T07:00:00.000Z',
+      },
     });
 
     // Advance past grace period (syncIntervalMs=300000 + 30000 = 330000)
@@ -1100,6 +1278,11 @@ describe('worker entrypoint', () => {
       electrum: true,
       jobQueue: false,
       recurringSchedules: false,
+      walletSyncActivation: {
+        status: 'active',
+        requiredFloor: 1,
+        activatedAt: '2026-08-22T07:00:00.000Z',
+      },
     });
 
     Date.now = realDateNow;
@@ -1130,6 +1313,11 @@ describe('worker entrypoint', () => {
       electrum: true,
       jobQueue: false,
       recurringSchedules: false,
+      walletSyncActivation: {
+        status: 'active',
+        requiredFloor: 1,
+        activatedAt: '2026-08-22T07:00:00.000Z',
+      },
     });
   });
 

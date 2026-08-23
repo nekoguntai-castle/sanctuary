@@ -1,14 +1,25 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  buildSyncConfig,
   buildMcpConfig,
   buildWorkerHealthConfig,
   parseIntegerEnv,
   parseStringEnv,
 } from '../../../src/config/envSections';
+import { WALLET_SYNC_MAX_EXECUTION_MS } from '../../../src/constants/walletSyncActivation';
 
 describe('config env section builders', () => {
   afterEach(() => {
     vi.unstubAllEnvs();
+  });
+
+  it('uses the rollout execution ceiling by default and preserves an explicit duration', () => {
+    vi.stubEnv('SYNC_MAX_DURATION_MS', '');
+    expect(buildSyncConfig().maxSyncDurationMs).toBe(WALLET_SYNC_MAX_EXECUTION_MS);
+
+    vi.stubEnv('SYNC_MAX_DURATION_MS', String(WALLET_SYNC_MAX_EXECUTION_MS + 1));
+
+    expect(buildSyncConfig().maxSyncDurationMs).toBe(WALLET_SYNC_MAX_EXECUTION_MS + 1);
   });
 
   it('reads typed primitive env values with fallbacks', () => {

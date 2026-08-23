@@ -23,6 +23,7 @@ import {
   type WorkerDiagnosticsHandlerOptions,
   type WorkerDiagnosticsRequestHandler,
 } from "./diagnostics/requestHandler";
+import type { WalletSyncActivationState } from "../services/sync/walletSyncActivationGate";
 
 const log = createLogger("WORKER:HEALTH");
 
@@ -37,6 +38,7 @@ export interface HealthCheckProvider {
     jobQueue: boolean;
     recurringSchedules?: boolean;
     database?: boolean;
+    walletSyncActivation?: WalletSyncActivationState;
   }>;
   getMetrics?(): Promise<{
     worker?: {
@@ -73,6 +75,7 @@ export interface HealthCheckProvider {
       heartbeatHealthy: boolean;
       completionTimes: Record<string, number>;
     };
+    walletSyncActivation?: WalletSyncActivationState;
   }>;
 }
 

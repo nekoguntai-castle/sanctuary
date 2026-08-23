@@ -6,6 +6,7 @@
  */
 
 import { z } from 'zod';
+import { WALLET_SYNC_MAX_EXECUTION_MS } from '../constants/walletSyncActivation';
 import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
 
 // =============================================================================
@@ -137,7 +138,7 @@ export const SyncConfigSchema = z.object({
   maxRetryAttempts: z.number().int().min(0).max(10),
   lockContentionRetryDelayMs: z.number().int().min(1000).max(600_000),
   retryDelaysMs: z.array(z.number().int().min(0)),
-  maxSyncDurationMs: z.number().int().min(1000),
+  maxSyncDurationMs: z.number().int().min(1000).max(WALLET_SYNC_MAX_EXECUTION_MS),
   transactionBatchSize: z.number().int().min(1).max(10000),
   electrumSubscriptionsEnabled: z.boolean(),
   workerHealthPollIntervalMs: z.number().int().min(1000).max(300000),

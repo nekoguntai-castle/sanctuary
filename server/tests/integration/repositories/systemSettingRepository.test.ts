@@ -9,6 +9,17 @@ import {
   setupRepositoryTests,
   withTestTransaction,
 } from './setup';
+import prisma from '../../../src/models/prisma';
+import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from '../../../src/constants/walletSyncActivation';
+import {
+  WALLET_SYNC_ACTIVATION_KEY,
+  WALLET_SYNC_ACTIVATION_STABILIZATION_KEY,
+} from '../../../src/repositories/operationalSystemSettings';
+import {
+  inspectWalletSyncActivationReadiness,
+  observeWalletSyncActivationReadiness,
+  readWalletSyncActivationStabilization,
+} from '../../../src/repositories/walletSyncActivationStabilizationRepository';
 
 describeIfDatabase('SystemSettingRepository Integration Tests', () => {
   setupRepositoryTests();
@@ -380,6 +391,143 @@ describeIfDatabase('SystemSettingRepository Integration Tests', () => {
         expect(mode?.value).toBe('true');
         expect(message?.value).toBe('System upgrade in progress');
       });
+    });
+  });
+
+  describe('wallet-sync activation stabilization', () => {
+    const input = (evaluatedAt = new Date()) => ({
+      observation: { status: 'ready' as const, observedAt: evaluatedAt },
+      evaluatedAt,
+      readyObservationMaxAgeMs: 15_000,
+      drainHorizonMs: 30_000,
+    });
+
+    afterEach(async () => {
+      await prisma.systemSetting.deleteMany({
+        where: {
+          key: { in: [
+            WALLET_SYNC_ACTIVATION_KEY,
+            WALLET_SYNC_ACTIVATION_STABILIZATION_KEY,
+          ] },
+        },
+      });
+    });
+
+    it('serializes concurrent replica observations into one monotonic interval', async () => {
+      const before = Date.now();
+      const results = await Promise.all([
+        observeWalletSyncActivationReadiness(input()),
+        observeWalletSyncActivationReadiness(input()),
+      ]);
+      const after = Date.now();
+
+      expect(results.every(result => result.readyObservationAccepted)).toBe(true);
+      const state = await readWalletSyncActivationStabilization();
+      expect(state).toMatchObject({
+        version: 1,
+        requiredMutationFenceFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
+      });
+      expect(Date.parse(state.candidateReadySince!)).toBeGreaterThanOrEqual(before);
+      expect(Date.parse(state.lastReadyAt!)).toBeGreaterThanOrEqual(
+        Date.parse(state.candidateReadySince!),
+      );
+      expect(Date.parse(state.lastReadyAt!)).toBeLessThanOrEqual(after + 1_000);
+    });
+
+    it('reads ready evidence without waiting for a concurrent row-lock holder', async () => {
+      await observeWalletSyncActivationReadiness(input());
+      let releaseLock!: () => void;
+      const holdLock = new Promise<void>((resolve) => {
+        releaseLock = resolve;
+      });
+      let locked!: () => void;
+      const rowLocked = new Promise<void>((resolve) => {
+        locked = resolve;
+      });
+      const lockOwner = prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`
+          SELECT "value"
+          FROM "system_settings"
+          WHERE "key" = ${WALLET_SYNC_ACTIVATION_STABILIZATION_KEY}
+          FOR UPDATE
+        `;
+        locked();
+        await holdLock;
+      });
+      await rowLocked;
+
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const inspected = await Promise.race([
+          inspectWalletSyncActivationReadiness({
+            readyObservationMaxAgeMs: 15_000,
+            drainHorizonMs: 30_000,
+          }),
+          new Promise<never>((_resolve, reject) => {
+            timeout = setTimeout(
+              () => reject(new Error('read-only inspection waited for row lock')),
+              1_000,
+            );
+          }),
+        ]);
+        expect(inspected.readyObservationAccepted).toBe(true);
+      } finally {
+        if (timeout !== undefined) clearTimeout(timeout);
+        releaseLock();
+        await lockOwner;
+      }
+    });
+
+    it('atomically clears continuous evidence on a blocked observation', async () => {
+      await observeWalletSyncActivationReadiness(input());
+
+      await expect(observeWalletSyncActivationReadiness({
+        observation: { status: 'blocked' },
+        evaluatedAt: new Date(),
+        readyObservationMaxAgeMs: 15_000,
+        drainHorizonMs: 30_000,
+      })).resolves.toMatchObject({
+        state: {
+          candidateReadySince: null,
+          lastReadyAt: null,
+        },
+        drainHorizonSatisfied: false,
+      });
+    });
+
+    it('never mutates the immutable active policy while recording readiness', async () => {
+      const activeValue = JSON.stringify({
+        version: 1,
+        activatedAt: '2026-08-22T00:00:00.000Z',
+        mutationFenceFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
+      });
+      await prisma.systemSetting.create({
+        data: { key: WALLET_SYNC_ACTIVATION_KEY, value: activeValue },
+      });
+
+      await observeWalletSyncActivationReadiness(input());
+
+      await expect(prisma.systemSetting.findUnique({
+        where: { key: WALLET_SYNC_ACTIVATION_KEY },
+        select: { value: true },
+      })).resolves.toEqual({ value: activeValue });
+    });
+
+    it('leaves malformed durable evidence untouched when observation fails closed', async () => {
+      await prisma.systemSetting.create({
+        data: {
+          key: WALLET_SYNC_ACTIVATION_STABILIZATION_KEY,
+          value: '{}',
+        },
+      });
+
+      await expect(observeWalletSyncActivationReadiness(input())).rejects.toThrow(
+        'Invalid durable wallet-sync activation stabilization state',
+      );
+      await expect(prisma.systemSetting.findUnique({
+        where: { key: WALLET_SYNC_ACTIVATION_STABILIZATION_KEY },
+        select: { value: true },
+      })).resolves.toEqual({ value: '{}' });
     });
   });
 });

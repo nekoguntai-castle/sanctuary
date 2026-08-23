@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "deliveryState": "mutation_fence_activation_floor",
+  "deliveryState": "gated_bounded_recovery",
   "cutoverComplete": false,
   "wireContract": {
     "currentProducerVersion": 1,
@@ -40,17 +40,17 @@
     "queueRole": "at_least_once_wakeup_only"
   },
   "compatibility": {
-    "admissionState": "generation_consumer_enabled_no_production_producers",
-    "activationState": "fleet_floor_available_marker_not_activated",
+    "admissionState": "gate_enforced_consumer_and_recovery_no_request_producers",
+    "activationState": "continuous_fleet_floor_gate_runtime_enabled",
     "mutationFenceFloor": 1,
     "preFenceWorkerBehavior": "reject_v3_before_lock",
     "generationConsumerModule": "server/src/worker/jobs/canonicalIncrementalSync.ts",
-    "recoveryState": "dormant_coordinator_no_production_callers",
+    "recoveryState": "gate_enforced_bounded_runtime_enabled",
     "recoveryCoordinatorModule": "server/src/worker/syncIntentRecovery.ts",
     "subscriptionEnrollmentState": "dormant_no_production_consumers",
     "staleScheduleName": "check-stale-wallets",
     "staleScheduleState": "legacy_desired_until_cutover",
-    "durableDisablePolicyState": "compatibility_floor_available_marker_not_activated",
+    "durableDisablePolicyState": "immutable_activation_floor_live_fleet_enforced",
     "rollbackFloor": "all_running_binaries_must_honor_the_durable_forbidden_marker_before_cutover",
     "legacyEntriesAreTemporary": true
   },
@@ -207,8 +207,12 @@
             "role": "immutable_durable_floor"
           },
           {
+            "file": "server/src/repositories/walletSyncActivationStabilizationRepository.ts",
+            "role": "continuous_ready_evidence_floor"
+          },
+          {
             "file": "server/src/services/sync/walletSyncActivationGate.ts",
-            "role": "dormant_activation_gate"
+            "role": "continuous_ready_activation_gate"
           },
           {
             "file": "server/src/services/workerHeartbeatRegistry.ts",
@@ -216,7 +220,45 @@
           },
           {
             "file": "server/src/services/workerSyncQueue.ts",
-            "role": "dormant_fenced_v3_emission"
+            "role": "gate_authorized_fenced_v3_emission"
+          },
+          {
+            "file": "server/src/worker.ts",
+            "role": "activation_runtime_diagnostics_floor"
+          },
+          {
+            "file": "server/src/worker/walletSyncRecoveryRuntime.ts",
+            "role": "gated_recovery_runtime_floor"
+          }
+        ]
+      },
+      {
+        "symbol": "WorkerHeartbeatReader",
+        "entries": [
+          {
+            "file": "server/src/services/supportPackage/collectors/notificationWorkerFleet.ts",
+            "role": "existing_notification_fleet_support_reader"
+          },
+          {
+            "file": "server/src/services/sync/walletSyncActivationGate.ts",
+            "role": "activation_fleet_readiness_reader"
+          },
+          {
+            "file": "server/src/services/workerHeartbeatRegistry.ts",
+            "role": "heartbeat_reader_definition"
+          }
+        ]
+      },
+      {
+        "symbol": "WorkerHeartbeatWriter",
+        "entries": [
+          {
+            "file": "server/src/services/workerHeartbeatRegistry.ts",
+            "role": "heartbeat_writer_definition"
+          },
+          {
+            "file": "server/src/worker.ts",
+            "role": "worker_capability_publisher"
           }
         ]
       },
@@ -238,6 +280,19 @@
         ]
       },
       {
+        "symbol": "createProductionWalletSyncRecoveryRuntime",
+        "entries": [
+          {
+            "file": "server/src/worker.ts",
+            "role": "sole_recovery_runtime_consumer"
+          },
+          {
+            "file": "server/src/worker/walletSyncRecoveryRuntime.ts",
+            "role": "production_recovery_composition_definition"
+          }
+        ]
+      },
+      {
         "symbol": "createSubscriptionCheckpointEnrollment",
         "entries": [
           {
@@ -251,7 +306,20 @@
         "entries": [
           {
             "file": "server/src/worker/syncIntentRecovery.ts",
-            "role": "dormant_recovery_coordinator_definition"
+            "role": "bounded_recovery_coordinator_definition"
+          },
+          {
+            "file": "server/src/worker/walletSyncRecoveryRuntime.ts",
+            "role": "sole_production_recovery_composition"
+          }
+        ]
+      },
+      {
+        "symbol": "createWalletSyncRecoveryRuntime",
+        "entries": [
+          {
+            "file": "server/src/worker/walletSyncRecoveryRuntime.ts",
+            "role": "exact_runtime_constructor_and_composition"
           }
         ]
       },
@@ -260,11 +328,11 @@
         "entries": [
           {
             "file": "server/src/services/sync/syncIntentAdmission.ts",
-            "role": "canonical_dormant_wakeup_adapter_composition"
+            "role": "gate_enforced_wakeup_adapter_composition"
           },
           {
             "file": "server/src/services/workerSyncQueue.ts",
-            "role": "dormant_generation_wakeup_adapter_definition"
+            "role": "canonical_generation_wakeup_adapter_definition"
           }
         ]
       },
@@ -273,11 +341,32 @@
         "entries": [
           {
             "file": "server/src/services/workerSyncQueue.ts",
-            "role": "dormant_reserved_generation_wakeup_adapter_definition"
+            "role": "reserved_generation_wakeup_adapter_definition"
+          },
+          {
+            "file": "server/src/worker.ts",
+            "role": "process_boundary_recovery_wakeup_injection"
           },
           {
             "file": "server/src/worker/syncIntentRecovery.ts",
-            "role": "dormant_exact_generation_recovery_composition"
+            "role": "bounded_exact_generation_recovery_port"
+          },
+          {
+            "file": "server/src/worker/walletSyncRecoveryRuntime.ts",
+            "role": "gate_authorized_reserved_wakeup_composition"
+          }
+        ]
+      },
+      {
+        "symbol": "expectedExpiredFence",
+        "entries": [
+          {
+            "file": "server/src/repositories/syncIntentRepository.ts",
+            "role": "atomic_exact_expired_fence_repository_check"
+          },
+          {
+            "file": "server/src/services/sync/syncIntentAdmission.ts",
+            "role": "gate_authorized_expired_fence_projection"
           }
         ]
       },
@@ -320,7 +409,7 @@
         "entries": [
           {
             "file": "server/src/services/sync/syncIntentAdmission.ts",
-            "role": "canonical_admission_singleton_definition"
+            "role": "gate_enforced_admission_singleton_definition"
           },
           {
             "file": "server/src/worker/jobs/canonicalIncrementalSync.ts",
@@ -328,7 +417,11 @@
           },
           {
             "file": "server/src/worker/syncIntentRecovery.ts",
-            "role": "dormant_bounded_recovery_composition"
+            "role": "bounded_recovery_type_contract"
+          },
+          {
+            "file": "server/src/worker/walletSyncRecoveryRuntime.ts",
+            "role": "gate_authorized_recovery_composition"
           }
         ]
       },
@@ -336,8 +429,20 @@
         "symbol": "walletSyncActivationGate",
         "entries": [
           {
+            "file": "server/src/services/sync/syncIntentAdmission.ts",
+            "role": "gate_enforced_admission"
+          },
+          {
             "file": "server/src/services/sync/walletSyncActivationGate.ts",
-            "role": "dormant_activation_gate_definition"
+            "role": "activation_gate_definition"
+          },
+          {
+            "file": "server/src/worker/healthServer.ts",
+            "role": "activation_state_type_consumer"
+          },
+          {
+            "file": "server/src/worker/walletSyncRecoveryRuntime.ts",
+            "role": "activation_and_recovery_authority"
           }
         ]
       },
@@ -363,6 +468,19 @@
           {
             "file": "server/src/services/sync/walletSyncActivationGate.ts",
             "role": "sole_activation_policy_service_consumer"
+          }
+        ]
+      },
+      {
+        "symbol": "walletSyncActivationStabilizationRepository",
+        "entries": [
+          {
+            "file": "server/src/repositories/walletSyncActivationStabilizationRepository.ts",
+            "role": "durable_continuous_ready_evidence_definition"
+          },
+          {
+            "file": "server/src/services/sync/walletSyncActivationGate.ts",
+            "role": "sole_stabilization_consumer"
           }
         ]
       }
