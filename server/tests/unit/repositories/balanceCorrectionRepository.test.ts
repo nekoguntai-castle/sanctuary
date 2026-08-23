@@ -52,4 +52,17 @@ describe('balanceCorrectionRepository', () => {
       ['wallet-a'],
     )).rejects.toThrow('output failed');
   });
+
+  it('reuses a supplied transaction client without opening a nested transaction', async () => {
+    mockPrismaClient.transaction.updateMany.mockResolvedValue({ count: 1 });
+
+    await expect(correctTransactionToConsolidation(
+      'tx-1',
+      BigInt(-50),
+      ['wallet-a'],
+      mockPrismaClient as never,
+    )).resolves.toBe(true);
+
+    expect(mockPrismaClient.$transaction).not.toHaveBeenCalled();
+  });
 });

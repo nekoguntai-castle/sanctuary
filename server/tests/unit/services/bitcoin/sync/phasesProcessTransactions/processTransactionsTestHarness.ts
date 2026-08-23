@@ -7,6 +7,10 @@ vi.mock('../../../../../../src/models/prisma', () => ({
   default: mockPrismaClient,
 }));
 
+vi.mock('../../../../../../src/repositories/syncIntentRepository', () => ({
+  withWalletSyncMutationFence: vi.fn(async (_fence, callback) => callback(mockPrismaClient)),
+}));
+
 vi.mock('../../../../../../src/services/bitcoin/nodeClient', () => ({
   getNodeClient: vi.fn().mockResolvedValue(mockElectrumClient),
 }));

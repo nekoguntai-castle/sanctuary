@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   batchUpdateByIds: vi.fn(),
   walletLog: vi.fn(),
+  withWalletSyncMutationFence: vi.fn(),
 }));
 
 vi.mock('../../../../../../src/repositories', () => ({
@@ -17,10 +18,19 @@ vi.mock('../../../../../../src/websocket/notifications', () => ({
   walletLog: mocks.walletLog,
 }));
 
+vi.mock('../../../../../../src/repositories/syncIntentRepository', () => ({
+  withWalletSyncMutationFence: mocks.withWalletSyncMutationFence,
+}));
+
 import { executeInChunks } from '../../../../../../src/services/bitcoin/sync/confirmations/batchUpdates';
 
 describe('confirmation batch updates', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.withWalletSyncMutationFence.mockImplementation(
+      async (_fence, callback) => callback({ transaction: {} }),
+    );
+  });
 
   it('reports each batch only after it commits and retains earlier commit evidence on failure', async () => {
     const failure = new Error('second batch failed');
@@ -44,6 +54,59 @@ describe('confirmation batch updates', () => {
       'debug',
       'DB',
       expect.stringContaining('Processing batch 1/2'),
+    );
+  });
+
+  it('commits a chunk when no post-commit observer is registered', async () => {
+    const item = { id: 'one', data: { confirmations: 1 } };
+
+    await expect(executeInChunks([item], 'wallet-1')).resolves.toBeUndefined();
+
+    expect(mocks.batchUpdateByIds).toHaveBeenCalledWith(
+      [item],
+      1,
+      undefined,
+    );
+    expect(mocks.walletLog).not.toHaveBeenCalled();
+  });
+
+  it('requires a wallet target for a fenced chunk', async () => {
+    await expect(executeInChunks(
+      [{ id: 'one', data: {} }],
+      undefined,
+      undefined,
+      undefined,
+      { walletId: 'wallet-1', generation: 1, leaseToken: 'a'.repeat(64) },
+    )).rejects.toThrow('require a target wallet ID');
+
+    expect(mocks.batchUpdateByIds).not.toHaveBeenCalled();
+  });
+
+  it('uses a supplied fence and cancellation signal for a targeted chunk', async () => {
+    const item = { id: 'one', data: { confirmations: 1 } };
+    const signal = new AbortController().signal;
+    const fence = { walletId: 'wallet-1', generation: 1, leaseToken: 'a'.repeat(64) };
+
+    await executeInChunks([item], 'wallet-1', undefined, signal, fence);
+
+    expect(mocks.withWalletSyncMutationFence).toHaveBeenCalledWith(
+      fence,
+      expect.any(Function),
+    );
+    expect(mocks.batchUpdateByIds).toHaveBeenCalledWith(
+      [item],
+      1,
+      expect.objectContaining({ transaction: {} }),
+    );
+  });
+
+  it('retains compatibility behavior without a wallet target or fence', async () => {
+    await executeInChunks([{ id: 'one', data: {} }]);
+
+    expect(mocks.batchUpdateByIds).toHaveBeenCalledWith(
+      [{ id: 'one', data: {} }],
+      1,
+      undefined,
     );
   });
 });

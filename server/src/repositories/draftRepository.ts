@@ -471,10 +471,13 @@ export async function getSupportStats(now: Date = new Date()): Promise<DraftSupp
 /**
  * Delete multiple drafts by IDs (for sync reconciliation when UTXOs are spent)
  */
-export async function deleteManyByIds(draftIds: string[]): Promise<number> {
+export async function deleteManyByIds(
+  draftIds: string[],
+  client: PrismaTxClient = prisma
+): Promise<number> {
   /* v8 ignore next -- sync reconciliation avoids empty draft batches */
   if (draftIds.length === 0) return 0;
-  const result = await prisma.draftTransaction.deleteMany({
+  const result = await client.draftTransaction.deleteMany({
     where: {
       id: { in: draftIds },
       status: { in: [...ACTIONABLE_DRAFT_STATUS_VALUES] },

@@ -8,8 +8,12 @@
 
 import { createLogger } from '../../../../utils/logger';
 import { walletLog } from '../../../../websocket/notifications';
-import { ensureGapLimit } from '../addressDiscovery';
+import {
+  persistGapLimitExpansion,
+  prepareGapLimitExpansion,
+} from '../addressDiscovery';
 import type { SyncContext } from '../types';
+import { runWalletSyncMutation } from '../mutationBoundary';
 
 const log = createLogger('BITCOIN:SVC_SYNC_GAP');
 
@@ -26,7 +30,19 @@ export async function gapLimitPhase(ctx: SyncContext): Promise<SyncContext> {
   walletLog(walletId, 'debug', 'SYNC', 'Checking address gap limit...');
 
   // Use the existing modularized function
-  const newAddresses = await ensureGapLimit(walletId);
+  const preparation = await prepareGapLimitExpansion(walletId);
+  const newAddresses = preparation
+    ? await runWalletSyncMutation(
+      ctx,
+      'gap_limit_expansion',
+      (tx, deferPostCommit) => persistGapLimitExpansion(
+        walletId,
+        preparation,
+        tx,
+        deferPostCommit,
+      ),
+    )
+    : [];
 
   if (newAddresses.length === 0) {
     return ctx;

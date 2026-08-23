@@ -8,6 +8,7 @@ import type { Address, Wallet } from '../../../generated/prisma/client';
 import type { NodeClientInterface } from '../nodeClient';
 import { addressToOutputScript } from '../utils';
 import type { SyncContext, SyncStats, BitcoinNetwork } from './types';
+import type { WalletSyncMutationFence } from '../../../repositories/types';
 
 /**
  * Give one address row the ownership anchor the evidence phases require.
@@ -67,9 +68,11 @@ export function createSyncContext(params: {
   addresses: Address[];
   currentBlockHeight: number;
   viaTor?: boolean;
+  mutationFence?: WalletSyncMutationFence;
 }): SyncContext {
   const {
     walletId, wallet, network, client, currentBlockHeight, viaTor = false,
+    mutationFence,
   } = params;
   const addresses = params.addresses.map(address => withOwnershipScript(address, network));
 
@@ -92,6 +95,7 @@ export function createSyncContext(params: {
     walletId,
     wallet,
     network,
+    mutationFence,
 
     // Services
     client,

@@ -26,6 +26,8 @@ import type {
   PopulateFieldsCommitHandler,
   PopulateFieldsResult,
 } from './types';
+import type { WalletSyncMutationFence } from '../../../../repositories/types';
+import { runWalletSyncMutation } from '../mutationBoundary';
 
 const log = createLogger('BITCOIN:SVC_CONFIRMATIONS');
 
@@ -50,6 +52,7 @@ export async function populateMissingTransactionFields(
   walletId: string,
   signal?: AbortSignal,
   onCommit?: PopulateFieldsCommitHandler,
+  mutationFence?: WalletSyncMutationFence,
 ): Promise<PopulateFieldsResult> {
   signal?.throwIfAborted();
   // Get wallet to determine network for correct block height
@@ -147,7 +150,7 @@ export async function populateMissingTransactionFields(
             updated: committedUpdates.length,
             confirmationUpdates,
           });
-        }, signal);
+        }, signal, mutationFence);
         signal?.throwIfAborted();
         if (pendingUpdates.some(u => u.data.amount !== undefined)) {
           hasAmountUpdates = true;
@@ -174,7 +177,15 @@ export async function populateMissingTransactionFields(
       walletLog(walletId, 'info', 'POPULATE', `Saved ${totalUpdated} transaction updates`);
       if (hasAmountUpdates) {
         walletLog(walletId, 'info', 'POPULATE', 'Recalculating running balances...');
-        await recalculateWalletBalances(walletId);
+        await runWalletSyncMutation(
+          { walletId, mutationFence },
+          'balance_recalculation',
+          (tx, deferPostCommit) => recalculateWalletBalances(
+            walletId,
+            tx,
+            deferPostCommit,
+          ),
+        );
       }
     } else {
       walletLog(walletId, 'info', 'POPULATE', 'No transaction updates needed');

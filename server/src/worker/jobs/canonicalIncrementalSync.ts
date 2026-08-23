@@ -92,10 +92,11 @@ export async function executeCanonicalIncrementalSync(
     };
   }
 
-  const fence = {
+  const fence = Object.freeze({
+    walletId: data.walletId,
     generation: claimResult.claim.generation,
     leaseToken: claimResult.claim.leaseToken,
-  };
+  });
   await syncLifecyclePublisher.publish(incrementalTransition(
     data.walletId,
     'started',
@@ -105,8 +106,8 @@ export async function executeCanonicalIncrementalSync(
   try {
     const result = await runSyncAttemptWithTimeout(
       async (signal) => {
-        const syncResult = await syncWallet(data.walletId, 0, signal);
-        await populateMissingTransactionFields(data.walletId, signal);
+        const syncResult = await syncWallet(data.walletId, 0, signal, fence);
+        await populateMissingTransactionFields(data.walletId, signal, undefined, fence);
         return syncResult;
       },
       getConfig().sync.maxSyncDurationMs,

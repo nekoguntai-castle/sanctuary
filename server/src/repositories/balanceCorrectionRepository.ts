@@ -1,4 +1,4 @@
-import prisma from '../models/prisma';
+import prisma, { type PrismaTxClient } from '../models/prisma';
 
 /**
  * Atomically promotes a still-sent transaction to consolidation. `amount` is
@@ -9,8 +9,9 @@ export async function correctTransactionToConsolidation(
   transactionId: string,
   amount: bigint,
   walletAddresses: string[],
+  client?: PrismaTxClient,
 ): Promise<boolean> {
-  return prisma.$transaction(async tx => {
+  const correct = async (tx: PrismaTxClient): Promise<boolean> => {
     const updated = await tx.transaction.updateMany({
       where: { id: transactionId, type: 'sent' },
       data: { type: 'consolidation', amount },
@@ -28,7 +29,9 @@ export async function correctTransactionToConsolidation(
       },
     });
     return true;
-  });
+  };
+  if (client) return correct(client);
+  return prisma.$transaction(correct);
 }
 
 export const balanceCorrectionRepository = {

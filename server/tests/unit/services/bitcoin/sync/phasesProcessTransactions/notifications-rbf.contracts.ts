@@ -19,8 +19,44 @@ import { getBlockTimestamp } from '../../../../../../src/services/bitcoin/utils/
 import { getNotificationService, walletLog } from '../../../../../../src/websocket/notifications';
 import { notifyNewTransactions } from '../../../../../../src/services/notifications/notificationService';
 import { fetchAuthenticatedTransactions } from '../../../../../../src/services/bitcoin/sync/evidenceAuthentication';
+import { detectRBFReplacements } from '../../../../../../src/services/bitcoin/sync/phases/processTransactions/rbfDetection';
 
 export function registerProcessTransactionNotificationsRbfTests(walletId: string): void {
+    it('defers fenced RBF publication until after commit', async () => {
+      const publishEffects: Array<() => void | Promise<void>> = [];
+      mockPrismaClient.transaction.findMany.mockResolvedValueOnce([{
+        id: 'pending-row',
+        txid: 'pending-tx',
+        inputs: [{ txid: 'shared-input', vout: 0 }],
+      }]);
+
+      await detectRBFReplacements(
+        walletId,
+        [{ id: 'confirmed-row', txid: 'confirmed-tx', type: 'received' }],
+        new Set(['confirmed-tx']),
+        [{
+          transactionId: 'confirmed-row',
+          inputIndex: 0,
+          txid: 'shared-input',
+          vout: 0,
+          address: 'external',
+          amount: BigInt(1),
+        }],
+        mockPrismaClient as never,
+        effect => publishEffects.push(effect),
+      );
+
+      expect(walletLog).not.toHaveBeenCalled();
+      expect(publishEffects).toHaveLength(1);
+      await publishEffects[0]();
+      expect(walletLog).toHaveBeenCalledWith(
+        walletId,
+        'info',
+        'RBF',
+        expect.stringContaining('Linked pending tx'),
+      );
+    });
+
     it('should mark pending active RBF transactions as replaced when confirmed tx reuses input', async () => {
       const txid = 'confirmed_in_phase'.padEnd(64, 'a');
       const pendingTxid = 'pending_in_phase'.padEnd(64, 'b');
@@ -162,6 +198,11 @@ export function registerProcessTransactionNotificationsRbfTests(walletId: string
 
       const ctx = createTestContext({
         walletId,
+        mutationFence: {
+          walletId,
+          generation: 1,
+          leaseToken: '11111111-1111-4111-8111-111111111111',
+        },
         client: mockElectrumClient as any,
         newTxids: [txid],
         historyResults: new Map([[walletAddress, [{ tx_hash: txid, height: 800000 }]]]),

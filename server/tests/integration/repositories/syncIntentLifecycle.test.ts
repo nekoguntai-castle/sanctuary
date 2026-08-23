@@ -7,8 +7,16 @@ import {
   releaseIncrementalSyncAsActionRequired,
   releaseIncrementalSyncForRetry,
   requestIncrementalSync,
+  WalletSyncMutationFenceLostError,
+  withWalletSyncMutationFence,
 } from '../../../src/repositories/syncIntentRepository';
-import { createTestUser, createTestWallet } from './setup';
+import { createTestTransaction, createTestUser, createTestWallet } from './setup';
+import { runWalletSyncMutation } from '../../../src/services/bitcoin/sync/mutationBoundary';
+import { persistGapLimitExpansion } from '../../../src/services/bitcoin/sync/addressDiscovery';
+import { executeInChunks } from '../../../src/services/bitcoin/sync/confirmations/batchUpdates';
+import { buildCanonicalAddressEvidence } from '../../../src/services/wallet/addressGeneration';
+import { addressRepository } from '../../../src/repositories';
+import { getNotificationService } from '../../../src/websocket/notifications';
 
 const describeWithDatabase = process.env.DATABASE_URL ? describe : describe.skip;
 const NOW = new Date('2026-08-22T07:00:00.000Z');
@@ -192,7 +200,7 @@ describeWithDatabase('sync intent lifecycle', () => {
     })).resolves.toMatchObject({ status: 'claimed', claim: { generation: 2 } });
   });
 
-  it('does not reclaim an expired incremental lease in Phase 2B', async () => {
+  it('reclaims only the exact expired incremental lease and rotates its token', async () => {
     const walletId = await createWallet();
     const oldToken = randomUUID();
     const oldClaimedAt = new Date('2026-08-22T06:00:00.000Z');
@@ -200,7 +208,7 @@ describeWithDatabase('sync intent lifecycle', () => {
     await prisma.wallet.update({
       where: { id: walletId },
       data: {
-        requestedIncrementalSyncGeneration: 1,
+        requestedIncrementalSyncGeneration: 2,
         claimedIncrementalSyncGeneration: 1,
         incrementalSyncLeaseToken: oldToken,
         incrementalSyncClaimedAt: oldClaimedAt,
@@ -219,8 +227,453 @@ describeWithDatabase('sync intent lifecycle', () => {
       claimedAt: NOW,
       leaseExpiresAt: LEASE_END,
       expectedRequestedGeneration: 1,
-      expectedExpiredFence: { generation: 1, leaseToken: randomUUID() },
-    })).rejects.toThrow('cannot be reclaimed');
+      expectedExpiredFence: { walletId, generation: 1, leaseToken: randomUUID() },
+    })).resolves.toEqual({ status: 'already_claimed' });
+
+    const newToken = randomUUID();
+    await expect(claimIncrementalSync(walletId, {
+      leaseToken: newToken,
+      claimedAt: NOW,
+      leaseExpiresAt: LEASE_END,
+      expectedRequestedGeneration: 1,
+      expectedExpiredFence: { walletId, generation: 1, leaseToken: oldToken },
+    })).resolves.toMatchObject({
+      status: 'claimed',
+      claim: { walletId, generation: 1, leaseToken: newToken },
+      state: {
+        requestedIncrementalSyncGeneration: 2,
+        claimedIncrementalSyncGeneration: 1,
+        processedIncrementalSyncGeneration: 0,
+        incrementalSyncLeaseToken: newToken,
+      },
+    });
+  });
+
+  it('serializes an old fenced mutation before reclaim then rejects its stale token', async () => {
+    const walletId = await createWallet();
+    const oldToken = randomUUID();
+    await prisma.wallet.update({
+      where: { id: walletId },
+      data: {
+        requestedIncrementalSyncGeneration: 1,
+        claimedIncrementalSyncGeneration: 1,
+        incrementalSyncLeaseToken: oldToken,
+        incrementalSyncClaimedAt: new Date('2026-08-22T06:00:00.000Z'),
+        incrementalSyncLeaseExpiresAt: new Date('2026-08-22T06:05:00.000Z'),
+      },
+    });
+
+    let releaseMutation!: () => void;
+    const mutationGate = new Promise<void>((resolve) => { releaseMutation = resolve; });
+    let reportMutationStarted!: () => void;
+    const mutationStarted = new Promise<void>((resolve) => { reportMutationStarted = resolve; });
+    const oldFence = { walletId, generation: 1, leaseToken: oldToken };
+    const oldMutation = withWalletSyncMutationFence(oldFence, async (tx) => {
+      await tx.wallet.update({
+        where: { id: walletId },
+        data: { lastSyncedBlockHeight: 840_001 },
+      });
+      reportMutationStarted();
+      await mutationGate;
+    });
+    await mutationStarted;
+
+    const newToken = randomUUID();
+    let reclaimSettled = false;
+    const reclaim = claimIncrementalSync(walletId, {
+      leaseToken: newToken,
+      claimedAt: NOW,
+      leaseExpiresAt: LEASE_END,
+      expectedRequestedGeneration: 1,
+      expectedExpiredFence: oldFence,
+    });
+    void reclaim.then(() => { reclaimSettled = true; });
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(reclaimSettled).toBe(false);
+
+    releaseMutation();
+    await oldMutation;
+    await expect(reclaim).resolves.toMatchObject({
+      status: 'claimed',
+      claim: { walletId, generation: 1, leaseToken: newToken },
+    });
+    await expect(withWalletSyncMutationFence(oldFence, async () => undefined))
+      .rejects.toBeInstanceOf(WalletSyncMutationFenceLostError);
+    await expect(prisma.wallet.findUnique({ where: { id: walletId } })).resolves.toMatchObject({
+      lastSyncedBlockHeight: 840_001,
+      incrementalSyncLeaseToken: newToken,
+    });
+  });
+
+  it('rolls back on connection loss and releases the row lock for pooled reuse', async () => {
+    const walletId = await createWallet();
+    await requestIncrementalSync(walletId);
+    const token = randomUUID();
+    const claim = await claimIncrementalSync(walletId, {
+      leaseToken: token,
+      claimedAt: NOW,
+      leaseExpiresAt: LEASE_END,
+      expectedRequestedGeneration: 1,
+    });
+    expect(claim).toMatchObject({ status: 'claimed' });
+    const fence = { walletId, generation: 1, leaseToken: token };
+
+    await expect(withWalletSyncMutationFence(fence, async (tx) => {
+      await tx.wallet.update({
+        where: { id: walletId },
+        data: { lastSyncedBlockHeight: 840_002 },
+      });
+      await tx.$queryRawUnsafe('SELECT pg_terminate_backend(pg_backend_pid())');
+    })).rejects.toThrow();
+    await expect(prisma.wallet.findUnique({ where: { id: walletId } })).resolves.toMatchObject({
+      lastSyncedBlockHeight: null,
+    });
+
+    await expect(withWalletSyncMutationFence(fence, async (tx) => tx.wallet.update({
+      where: { id: walletId },
+      data: { lastSyncedBlockHeight: 840_003 },
+    }))).resolves.toMatchObject({ lastSyncedBlockHeight: 840_003 });
+  });
+
+  it('preserves committed progress and suppresses post-commit effects on rollback', async () => {
+    const walletId = await createWallet();
+    await requestIncrementalSync(walletId);
+    const token = randomUUID();
+    await claimIncrementalSync(walletId, {
+      leaseToken: token,
+      claimedAt: NOW,
+      leaseExpiresAt: LEASE_END,
+      expectedRequestedGeneration: 1,
+    });
+    const mutationFence = { walletId, generation: 1, leaseToken: token };
+    const published: string[] = [];
+
+    await runWalletSyncMutation(
+      { walletId, mutationFence },
+      'gap_limit_expansion',
+      async (tx, deferPostCommit) => {
+        await tx!.wallet.update({
+          where: { id: walletId },
+          data: { lastSyncedBlockHeight: 840_010 },
+        });
+        deferPostCommit(() => {
+          published.push('gap-limit-committed');
+        });
+      },
+    );
+    const rollback = new Error('missing-field chunk failed');
+    await expect(runWalletSyncMutation(
+      { walletId, mutationFence },
+      'missing_field_chunk',
+      async (tx, deferPostCommit) => {
+        await tx!.wallet.update({
+          where: { id: walletId },
+          data: { lastSyncedBlockHeight: 840_011 },
+        });
+        deferPostCommit(() => {
+          published.push('must-not-publish');
+        });
+        throw rollback;
+      },
+    )).rejects.toBe(rollback);
+
+    await expect(prisma.wallet.findUnique({ where: { id: walletId } })).resolves.toMatchObject({
+      lastSyncedBlockHeight: 840_010,
+    });
+    expect(published).toEqual(['gap-limit-committed']);
+  });
+
+  it('rejects a cross-wallet mutation target before opening the fenced transaction', async () => {
+    const walletId = await createWallet();
+    const otherWalletId = await createWallet();
+    await requestIncrementalSync(walletId);
+    const leaseToken = randomUUID();
+    await claimIncrementalSync(walletId, {
+      leaseToken,
+      claimedAt: NOW,
+      leaseExpiresAt: LEASE_END,
+      expectedRequestedGeneration: 1,
+    });
+    const mutationFence = { walletId, generation: 1, leaseToken } as const;
+
+    await expect(runWalletSyncMutation(
+      { walletId: otherWalletId, mutationFence },
+      'address_usage',
+      async (tx) => tx!.wallet.update({
+        where: { id: otherWalletId },
+        data: { lastSyncedBlockHeight: 840_019 },
+      }),
+    )).rejects.toThrow('does not match the mutation target wallet');
+    await expect(prisma.wallet.findUnique({ where: { id: otherWalletId } }))
+      .resolves.toMatchObject({ lastSyncedBlockHeight: null });
+  });
+
+  it('stops a former owner paused between committed mutation units after token rotation', async () => {
+    const walletId = await createWallet();
+    const oldToken = randomUUID();
+    const oldFence = { walletId, generation: 1, leaseToken: oldToken };
+    await prisma.wallet.update({
+      where: { id: walletId },
+      data: {
+        requestedIncrementalSyncGeneration: 1,
+        claimedIncrementalSyncGeneration: 1,
+        incrementalSyncLeaseToken: oldToken,
+        incrementalSyncClaimedAt: new Date('2026-08-22T06:00:00.000Z'),
+        incrementalSyncLeaseExpiresAt: new Date('2026-08-22T06:05:00.000Z'),
+      },
+    });
+    await runWalletSyncMutation(
+      { walletId, mutationFence: oldFence },
+      'transaction_batch',
+      async (tx) => {
+        await tx!.wallet.update({
+          where: { id: walletId },
+          data: { lastSyncedBlockHeight: 840_020 },
+        });
+      },
+    );
+
+    const newToken = randomUUID();
+    await expect(claimIncrementalSync(walletId, {
+      leaseToken: newToken,
+      claimedAt: NOW,
+      leaseExpiresAt: LEASE_END,
+      expectedRequestedGeneration: 1,
+      expectedExpiredFence: oldFence,
+    })).resolves.toMatchObject({ status: 'claimed' });
+    const staleEffect = vi.fn();
+    await expect(runWalletSyncMutation(
+      { walletId, mutationFence: oldFence },
+      'utxo_reconciliation',
+      async (tx, deferPostCommit) => {
+        await tx!.wallet.update({
+          where: { id: walletId },
+          data: { lastSyncedBlockHeight: 840_021 },
+        });
+        deferPostCommit(staleEffect);
+      },
+    )).rejects.toBeInstanceOf(WalletSyncMutationFenceLostError);
+
+    await expect(prisma.wallet.findUnique({ where: { id: walletId } })).resolves.toMatchObject({
+      lastSyncedBlockHeight: 840_020,
+      incrementalSyncLeaseToken: newToken,
+    });
+    expect(staleEffect).not.toHaveBeenCalled();
+  });
+
+  it('does not pin transactions while five syncs wait on slow network work', async () => {
+    const fences = await Promise.all(Array.from({ length: 5 }, async () => {
+      const walletId = await createWallet();
+      await requestIncrementalSync(walletId);
+      const leaseToken = randomUUID();
+      await claimIncrementalSync(walletId, {
+        leaseToken,
+        claimedAt: NOW,
+        leaseExpiresAt: LEASE_END,
+        expectedRequestedGeneration: 1,
+      });
+      return { walletId, generation: 1, leaseToken } as const;
+    }));
+    let releaseNetwork!: () => void;
+    const slowNetwork = new Promise<void>(resolve => { releaseNetwork = resolve; });
+    const reachedNetwork: Array<Promise<void>> = [];
+    const syncs = fences.map((mutationFence, index) => {
+      let reportNetwork!: () => void;
+      reachedNetwork.push(new Promise<void>(resolve => { reportNetwork = resolve; }));
+      return (async () => {
+        await runWalletSyncMutation(
+          { walletId: mutationFence.walletId, mutationFence },
+          'gap_limit_expansion',
+          async (tx) => {
+            await tx!.wallet.update({
+              where: { id: mutationFence.walletId },
+              data: { lastSyncedBlockHeight: 840_100 + index },
+            });
+          },
+        );
+        reportNetwork();
+        await slowNetwork;
+        await runWalletSyncMutation(
+          { walletId: mutationFence.walletId, mutationFence },
+          'missing_field_chunk',
+          async (tx) => {
+            await tx!.wallet.update({
+              where: { id: mutationFence.walletId },
+              data: { lastSyncedBlockHeight: 840_200 + index },
+            });
+          },
+        );
+      })();
+    });
+    await Promise.all(reachedNetwork);
+
+    await Promise.all(fences.map(mutationFence => prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe("SET LOCAL lock_timeout = '250ms'");
+      await tx.wallet.update({
+        where: { id: mutationFence.walletId },
+        data: { lastSyncError: 'network-wait-observed' },
+      });
+    })));
+    releaseNetwork();
+    await Promise.all(syncs);
+
+    await expect(prisma.wallet.findMany({
+      where: { id: { in: fences.map(fence => fence.walletId) } },
+      select: { lastSyncedBlockHeight: true, lastSyncError: true },
+      orderBy: { lastSyncedBlockHeight: 'asc' },
+    })).resolves.toEqual(Array.from({ length: 5 }, (_, index) => ({
+      lastSyncedBlockHeight: 840_200 + index,
+      lastSyncError: 'network-wait-observed',
+    })));
+  });
+
+  it('fences recursive canonical gap expansion and missing-field chunk commits', async () => {
+    const walletId = await createWallet();
+    const tpub = 'tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M';
+    const descriptor = `wpkh([aabbccdd/84'/1'/0']${tpub}/0/*)`;
+    const changeDescriptor = `wpkh([aabbccdd/84'/1'/0']${tpub}/1/*)`;
+    const canonicalPolicyId = 'single-sig-native-segwit-bip84-v1';
+    await prisma.wallet.update({
+      where: { id: walletId },
+      data: {
+        network: 'testnet3',
+        descriptor,
+        changeDescriptor,
+        descriptorPolicyVersion: 1,
+        descriptorSourceKind: 'generated_pair',
+        sourceDescriptor: descriptor,
+        sourceChangeDescriptor: changeDescriptor,
+        canonicalPolicyId,
+        canonicalPolicyVersion: 1,
+      },
+    });
+    await requestIncrementalSync(walletId);
+    const leaseToken = randomUUID();
+    await claimIncrementalSync(walletId, {
+      leaseToken,
+      claimedAt: NOW,
+      leaseExpiresAt: LEASE_END,
+      expectedRequestedGeneration: 1,
+    });
+    const mutationFence = { walletId, generation: 1, leaseToken } as const;
+    const preparation = {
+      derive: (branch: 0 | 1, index: number) => buildCanonicalAddressEvidence(
+        descriptor,
+        changeDescriptor,
+        'testnet3',
+        { canonicalPolicyId, canonicalPolicyVersion: 1 },
+        branch,
+        index,
+      ),
+    };
+
+    const initial = await runWalletSyncMutation(
+      { walletId, mutationFence },
+      'gap_limit_expansion',
+      (tx, deferPostCommit) => persistGapLimitExpansion(
+        walletId,
+        preparation,
+        tx,
+        deferPostCommit,
+      ),
+    );
+    expect(initial).toHaveLength(40);
+    const receiveTail = await prisma.address.findFirstOrThrow({
+      where: { walletId, branch: 0, index: 19 },
+    });
+
+    // This represents authoritative history observed after the first commit.
+    // The follow-up expansion is a distinct fenced mutation, never one long
+    // transaction around the recursive network pass.
+    await runWalletSyncMutation(
+      { walletId, mutationFence },
+      'address_usage',
+      async (tx) => {
+        await addressRepository.markAsUsed(receiveTail.id, tx);
+      },
+    );
+    const recursive = await runWalletSyncMutation(
+      { walletId, mutationFence },
+      'gap_limit_expansion',
+      (tx, deferPostCommit) => persistGapLimitExpansion(
+        walletId,
+        preparation,
+        tx,
+        deferPostCommit,
+      ),
+    );
+    expect(recursive).toHaveLength(20);
+
+    const transaction = await createTestTransaction(factoryClient, walletId, {
+      blockHeight: null,
+    });
+    const committed: string[] = [];
+    await executeInChunks(
+      [{
+        id: transaction.id,
+        data: { counterpartyAddress: 'bc1qfencedmissingfield' },
+      }],
+      walletId,
+      updates => committed.push(...updates.map(update => update.id)),
+      undefined,
+      mutationFence,
+    );
+    expect(committed).toEqual([transaction.id]);
+    await expect(prisma.transaction.findUnique({ where: { id: transaction.id } }))
+      .resolves.toMatchObject({ counterpartyAddress: 'bc1qfencedmissingfield' });
+  });
+
+  it('suppresses production gap-limit wallet logs when its database write rolls back', async () => {
+    const walletId = await createWallet();
+    const tpub = 'tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M';
+    const descriptor = `wpkh([aabbccdd/84'/1'/0']${tpub}/0/*)`;
+    const changeDescriptor = `wpkh([aabbccdd/84'/1'/0']${tpub}/1/*)`;
+    const canonicalPolicyId = 'single-sig-native-segwit-bip84-v1';
+    await prisma.wallet.update({
+      where: { id: walletId },
+      data: {
+        descriptor,
+        changeDescriptor,
+        descriptorPolicyVersion: 1,
+        descriptorSourceKind: 'generated_pair',
+        sourceDescriptor: descriptor,
+        sourceChangeDescriptor: changeDescriptor,
+        canonicalPolicyId,
+        canonicalPolicyVersion: 1,
+      },
+    });
+    await requestIncrementalSync(walletId);
+    const leaseToken = randomUUID();
+    await claimIncrementalSync(walletId, {
+      leaseToken,
+      claimedAt: NOW,
+      leaseExpiresAt: LEASE_END,
+      expectedRequestedGeneration: 1,
+    });
+    const mutationFence = { walletId, generation: 1, leaseToken } as const;
+    const firstEvidence = buildCanonicalAddressEvidence(
+      descriptor,
+      changeDescriptor,
+      'testnet3',
+      { canonicalPolicyId, canonicalPolicyVersion: 1 },
+      0,
+      0,
+    );
+    const broadcast = vi.spyOn(getNotificationService(), 'broadcastWalletLog');
+
+    await expect(runWalletSyncMutation(
+      { walletId, mutationFence },
+      'gap_limit_expansion',
+      (tx, deferPostCommit) => persistGapLimitExpansion(
+        walletId,
+        { derive: () => firstEvidence },
+        tx,
+        deferPostCommit,
+      ),
+    )).rejects.toThrow();
+    expect(broadcast).not.toHaveBeenCalled();
+    await expect(prisma.address.count({ where: { walletId } })).resolves.toBe(0);
+    broadcast.mockRestore();
   });
 
   it('does not acknowledge an active generation after a trailing request arrives', async () => {

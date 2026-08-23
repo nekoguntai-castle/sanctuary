@@ -8,6 +8,8 @@
 import { transactionRepository } from '../../../../repositories';
 import { getConfig } from '../../../../config';
 import { walletLog } from '../../../../websocket/notifications';
+import type { WalletSyncMutationFence } from '../../../../repositories/types';
+import { runWalletSyncMutation } from '../mutationBoundary';
 
 /**
  * Execute database updates in chunks to avoid long-running transactions.
@@ -19,7 +21,11 @@ export async function executeInChunks<T extends { id: string; data: Record<strin
   walletId?: string,
   onChunkCommitted?: (items: T[]) => void,
   signal?: AbortSignal,
+  mutationFence?: WalletSyncMutationFence,
 ): Promise<void> {
+  if (mutationFence && !walletId) {
+    throw new Error('Fenced missing-field updates require a target wallet ID');
+  }
   const config = getConfig();
   const batchSize = config.sync.transactionBatchSize;
   const totalChunks = Math.ceil(items.length / batchSize);
@@ -33,7 +39,15 @@ export async function executeInChunks<T extends { id: string; data: Record<strin
       walletLog(walletId, 'debug', 'DB', `Processing batch ${chunkNum}/${totalChunks} (${chunk.length} updates)`);
     }
 
-    await transactionRepository.batchUpdateByIds(chunk, chunk.length);
-    onChunkCommitted?.(chunk);
+    await runWalletSyncMutation(
+      { walletId: walletId ?? '', mutationFence },
+      'missing_field_chunk',
+      async (tx, deferPostCommit) => {
+        await transactionRepository.batchUpdateByIds(chunk, chunk.length, tx);
+        if (onChunkCommitted) {
+          deferPostCommit(() => onChunkCommitted(chunk));
+        }
+      },
+    );
   }
 }

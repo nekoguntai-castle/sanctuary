@@ -4,7 +4,7 @@
  * Abstracts database operations for UTXOs.
  */
 
-import prisma from '../models/prisma';
+import prisma, { type PrismaTxClient } from '../models/prisma';
 import type { UTXO, Prisma } from '../generated/prisma/client';
 
 /**
@@ -80,9 +80,14 @@ export async function findUnspent(
 /**
  * Mark UTXOs as spent
  */
-export async function markAsSpent(walletId: string, txid: string, vout: number): Promise<UTXO | null> {
+export async function markAsSpent(
+  walletId: string,
+  txid: string,
+  vout: number,
+  client: PrismaTxClient = prisma
+): Promise<UTXO | null> {
   try {
-    return await prisma.uTXO.update({
+    return await client.uTXO.update({
       where: { walletId_txid_vout: { walletId, txid, vout } },
       data: { spent: true },
     });
@@ -379,9 +384,10 @@ export async function findAvailableForSpending(
  */
 export async function findByWalletIdWithSelect<T extends Prisma.UTXOSelect>(
   walletId: string,
-  select: T
+  select: T,
+  client: PrismaTxClient = prisma
 ) {
-  return prisma.uTXO.findMany({
+  return client.uTXO.findMany({
     where: { walletId },
     select,
   });
@@ -390,10 +396,13 @@ export async function findByWalletIdWithSelect<T extends Prisma.UTXOSelect>(
 /**
  * Bulk mark UTXOs as spent by IDs
  */
-export async function markManyAsSpent(ids: string[]): Promise<number> {
+export async function markManyAsSpent(
+  ids: string[],
+  client: PrismaTxClient = prisma
+): Promise<number> {
   /* v8 ignore next -- sync callers avoid empty UTXO update batches */
   if (ids.length === 0) return 0;
-  const result = await prisma.uTXO.updateMany({
+  const result = await client.uTXO.updateMany({
     where: { id: { in: ids } },
     data: { spent: true },
   });
@@ -406,10 +415,20 @@ export async function markManyAsSpent(ids: string[]): Promise<number> {
  */
 export async function batchUpdateByIds(
   updates: Array<{ id: string; data: Record<string, unknown> }>,
-  batchSize: number
+  batchSize: number,
+  client?: PrismaTxClient
 ): Promise<void> {
   for (let i = 0; i < updates.length; i += batchSize) {
     const chunk = updates.slice(i, i + batchSize);
+    if (client) {
+      for (const item of chunk) {
+        await client.uTXO.update({
+          where: { id: item.id },
+          data: item.data,
+        });
+      }
+      continue;
+    }
     await prisma.$transaction(
       chunk.map(u =>
         prisma.uTXO.update({
@@ -499,9 +518,10 @@ export async function createMany(
     blockHeight: number | null;
     spent: boolean;
   }>,
-  options?: { skipDuplicates?: boolean }
+  options?: { skipDuplicates?: boolean },
+  client: PrismaTxClient = prisma
 ): Promise<{ count: number }> {
-  return prisma.uTXO.createMany({
+  return client.uTXO.createMany({
     data,
     skipDuplicates: options?.skipDuplicates,
   });

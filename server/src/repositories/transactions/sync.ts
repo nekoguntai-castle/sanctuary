@@ -73,10 +73,11 @@ const getAuthoritativeClassificationData = (data: AddressSyncTransactionInput) =
  */
 export async function markClassificationRepairAttempts(
   walletId: string,
-  txids: string[]
+  txids: string[],
+  client: PrismaTxClient = prisma
 ): Promise<void> {
   if (txids.length === 0) return;
-  await prisma.$executeRaw(Prisma.sql`
+  await client.$executeRaw(Prisma.sql`
     UPDATE "transactions"
     SET "classificationLastAttemptAt" = CURRENT_TIMESTAMP
     WHERE "walletId" = ${walletId}
@@ -98,10 +99,11 @@ export async function markClassificationRepairAttempts(
 export async function markOwnershipRepairNeeded(
   walletId: string,
   txids: string[],
-  targetAddressCount: number
+  targetAddressCount: number,
+  client?: PrismaTxClient
 ): Promise<void> {
   if (txids.length === 0) return;
-  await prisma.$transaction(async tx => {
+  const markRepair = async (tx: PrismaTxClient): Promise<void> => {
     await lockTransactionSyncKeys(
       tx,
       txids.map(txid => getTransactionSyncKey(walletId, txid))
@@ -127,15 +129,18 @@ export async function markOwnershipRepairNeeded(
         AND "txid" IN (${Prisma.join(txids)})
         AND "ioComplete" = true
     `);
-  }, { timeout: 60_000 });
+  };
+  if (client) return markRepair(client);
+  await prisma.$transaction(markRepair, { timeout: 60_000 });
 }
 
 export async function findOwnershipRepairTargets(
   walletId: string,
-  txids: string[]
+  txids: string[],
+  client: PrismaTxClient = prisma
 ): Promise<Array<{ txid: string; targetAddressCount: number }>> {
   if (txids.length === 0) return [];
-  return prisma.transactionOwnershipRepair.findMany({
+  return client.transactionOwnershipRepair.findMany({
     where: { walletId, txid: { in: txids } },
     select: { txid: true, targetAddressCount: true },
   });
@@ -146,8 +151,11 @@ export async function findOwnershipRepairTargets(
  * Recalculation deletes existing markers before its read so racing mutations
  * append a marker that survives the in-flight pass.
  */
-export async function hasPendingBalanceRecalculation(walletId: string): Promise<boolean> {
-  const pending = await prisma.$queryRaw<Array<{ pending: boolean }>>(Prisma.sql`
+export async function hasPendingBalanceRecalculation(
+  walletId: string,
+  client: PrismaTxClient = prisma
+): Promise<boolean> {
+  const pending = await client.$queryRaw<Array<{ pending: boolean }>>(Prisma.sql`
     SELECT true AS "pending"
     FROM "wallet_balance_repairs"
     WHERE "walletId" = ${walletId}
@@ -159,10 +167,11 @@ export async function hasPendingBalanceRecalculation(walletId: string): Promise<
 /** Advances the private I/O repair cursor without mutating public updatedAt. */
 export async function markIoRepairAttempts(
   walletId: string,
-  txids: string[]
+  txids: string[],
+  client: PrismaTxClient = prisma
 ): Promise<void> {
   if (txids.length === 0) return;
-  await prisma.$executeRaw(Prisma.sql`
+  await client.$executeRaw(Prisma.sql`
     UPDATE "transactions"
     SET "ioLastAttemptAt" = CURRENT_TIMESTAMP
     WHERE "walletId" = ${walletId}
@@ -263,7 +272,8 @@ export async function persistAddressSyncIORows(
   inputs: AddressSyncInputRow[],
   outputs: AddressSyncOutputRow[],
   completeTransactionIds: string[] = [],
-  classificationAddressCount?: number
+  classificationAddressCount?: number,
+  client?: PrismaTxClient
 ): Promise<void> {
   const transactionIds = [...new Set([
     ...inputs.map(input => input.transactionId),
@@ -272,7 +282,7 @@ export async function persistAddressSyncIORows(
   ])].sort();
   if (transactionIds.length === 0) return;
 
-  await prisma.$transaction(async tx => {
+  const persist = async (tx: PrismaTxClient): Promise<void> => {
     await tx.$queryRaw(Prisma.sql`
       /* address-sync-io-lock */
       SELECT "id"
@@ -332,7 +342,9 @@ export async function persistAddressSyncIORows(
           AND "ioComplete" = false
       `);
     }
-  });
+  };
+  if (client) return persist(client);
+  await prisma.$transaction(persist);
 }
 
 type OwnershipRepairRow = {
@@ -404,9 +416,10 @@ const isAtLeastAsAuthoritative = (
  * `unchanged` for duplicate, same-strength, or downgrade candidates.
  */
 export async function reconcileAddressSyncTransaction(
-  data: AddressSyncTransactionInput
+  data: AddressSyncTransactionInput,
+  client?: PrismaTxClient
 ): Promise<AddressSyncReconcileOutcome> {
-  return prisma.$transaction(async tx => {
+  const reconcile = async (tx: PrismaTxClient): Promise<AddressSyncReconcileOutcome> => {
     await lockTransactionSyncKeys(tx, [getTransactionSyncKey(data.walletId, data.txid)]);
     const ownershipRepair = await lockOwnershipRepair(tx, data);
     const targetAddressCount = ownershipRepair?.targetAddressCount ?? 0;
@@ -438,7 +451,9 @@ export async function reconcileAddressSyncTransaction(
     await reconcileClassificationOutputTypes(tx, data);
     await clearOwnershipRepair(tx, ownershipRepair);
     return 'repaired';
-  }, { timeout: 60_000 });
+  };
+  if (client) return reconcile(client);
+  return prisma.$transaction(reconcile, { timeout: 60_000 });
 }
 
 type LockedBatchCandidate = {
@@ -530,11 +545,12 @@ const reconcileLockedBatchCandidate = async (
  * ownership under concurrent wallet/address sync without per-row inserts.
  */
 export async function reconcileTransactionBatch(
-  data: AddressSyncTransactionInput[]
+  data: AddressSyncTransactionInput[],
+  client?: PrismaTxClient
 ): Promise<TransactionReconcileResult[]> {
   if (data.length === 0) return [];
 
-  return prisma.$transaction(async tx => {
+  const reconcile = async (tx: PrismaTxClient): Promise<TransactionReconcileResult[]> => {
     const candidates = await lockBatchCandidates(tx, data);
     const eligible = candidates
       .filter(candidate => !candidate.blockedByRepair)
@@ -559,22 +575,28 @@ export async function reconcileTransactionBatch(
       transaction,
       outcome: outcomes.get(getBatchCandidateKey(transaction)) as AddressSyncReconcileOutcome,
     }));
-  }, { timeout: 60_000 });
+  };
+  if (client) return reconcile(client);
+  return prisma.$transaction(reconcile, { timeout: 60_000 });
 }
 
 export async function findByWalletIdAndTxids<T extends Prisma.TransactionSelect>(
   walletId: string,
   txids: string[],
-  select: T
+  select: T,
+  client: PrismaTxClient = prisma
 ) {
-  return prisma.transaction.findMany({
+  return client.transaction.findMany({
     where: { walletId, txid: { in: txids } },
     select,
   });
 }
 
-export async function findPendingWithInputs(walletId: string) {
-  return prisma.transaction.findMany({
+export async function findPendingWithInputs(
+  walletId: string,
+  client: PrismaTxClient = prisma
+) {
+  return client.transaction.findMany({
     where: {
       walletId,
       confirmations: 0,
@@ -591,9 +613,10 @@ export async function findPendingWithInputs(walletId: string) {
 
 export async function findConfirmedWithSharedInputs(
   walletId: string,
-  inputPatterns: Array<{ txid: string; vout: number }>
+  inputPatterns: Array<{ txid: string; vout: number }>,
+  client: PrismaTxClient = prisma
 ) {
-  return prisma.transaction.findMany({
+  return client.transaction.findMany({
     where: {
       walletId,
       confirmations: { gt: 0 },
@@ -612,9 +635,10 @@ export async function findConfirmedWithSharedInputs(
 
 export async function updateRbfStatus(
   id: string,
-  data: { rbfStatus?: string; replacedByTxid?: string | null }
+  data: { rbfStatus?: string; replacedByTxid?: string | null },
+  client: PrismaTxClient = prisma
 ): Promise<void> {
-  await prisma.transaction.update({
+  await client.transaction.update({
     where: { id },
     data,
   });
@@ -622,9 +646,10 @@ export async function updateRbfStatus(
 
 export async function findPendingWithSharedInputs(
   walletId: string,
-  inputPatterns: Array<{ txid: string; vout: number }>
+  inputPatterns: Array<{ txid: string; vout: number }>,
+  client: PrismaTxClient = prisma
 ) {
-  return prisma.transaction.findMany({
+  return client.transaction.findMany({
     where: {
       walletId,
       confirmations: 0,
@@ -643,8 +668,11 @@ export async function findPendingWithSharedInputs(
   });
 }
 
-export async function findUnlinkedReplaced(walletId: string) {
-  return prisma.transaction.findMany({
+export async function findUnlinkedReplaced(
+  walletId: string,
+  client: PrismaTxClient = prisma
+) {
+  return client.transaction.findMany({
     where: {
       walletId,
       rbfStatus: 'replaced',
@@ -660,27 +688,32 @@ export async function findUnlinkedReplaced(walletId: string) {
 
 export async function createManyTransactionLabels(
   data: Array<{ transactionId: string; labelId: string }>,
-  options?: { skipDuplicates?: boolean }
+  options?: { skipDuplicates?: boolean },
+  client: PrismaTxClient = prisma
 ): Promise<{ count: number }> {
-  return prisma.transactionLabel.createMany({
+  return client.transactionLabel.createMany({
     data,
     skipDuplicates: options?.skipDuplicates,
   });
 }
 
-export async function findAddressLabelsByAddressIds(addressIds: string[]) {
-  return prisma.addressLabel.findMany({
+export async function findAddressLabelsByAddressIds(
+  addressIds: string[],
+  client: PrismaTxClient = prisma
+) {
+  return client.addressLabel.findMany({
     where: { addressId: { in: addressIds } },
   });
 }
 
 export async function findWithoutIO(
   walletId: string,
-  txids: string[]
+  txids: string[],
+  client: PrismaTxClient = prisma
 ) {
   // Durable completion, rather than relation shape, distinguishes partial writes
   // from valid coinbase/no-address transactions with intentionally empty sides.
-  return prisma.transaction.findMany({
+  return client.transaction.findMany({
     where: {
       walletId,
       txid: { in: txids },
@@ -691,22 +724,35 @@ export async function findWithoutIO(
 }
 
 export async function batchUpdateRbfStatus(
-  updates: Array<{ id: string; rbfStatus: string; replacedByTxid: string }>
+  updates: Array<{ id: string; rbfStatus: string; replacedByTxid: string }>,
+  client?: PrismaTxClient
 ): Promise<void> {
   /* v8 ignore next -- sync pipeline avoids empty RBF update batches */
   if (updates.length === 0) return;
+  const update = async (tx: PrismaTxClient): Promise<void> => {
+    for (const item of updates) {
+      await tx.transaction.update({
+        where: { id: item.id },
+        data: { rbfStatus: item.rbfStatus, replacedByTxid: item.replacedByTxid },
+      });
+    }
+  };
+  if (client) return update(client);
   await prisma.$transaction(
-    updates.map(u =>
+    updates.map(item =>
       prisma.transaction.update({
-        where: { id: u.id },
-        data: { rbfStatus: u.rbfStatus, replacedByTxid: u.replacedByTxid },
+        where: { id: item.id },
+        data: { rbfStatus: item.rbfStatus, replacedByTxid: item.replacedByTxid },
       })
     )
   );
 }
 
-export async function findSentWithOutputs(walletId: string) {
-  return prisma.transaction.findMany({
+export async function findSentWithOutputs(
+  walletId: string,
+  client: PrismaTxClient = prisma
+) {
+  return client.transaction.findMany({
     where: { walletId, type: 'sent' },
     include: {
       outputs: {
@@ -721,8 +767,11 @@ export async function findSentWithOutputs(walletId: string) {
  * transaction-scoped advisory lock prevents an older reader from overwriting a
  * newer repair's running balances after that repair has recalculated.
  */
-export async function recalculateBalancesAtomically(walletId: string): Promise<number> {
-  return prisma.$transaction(async tx => {
+export async function recalculateBalancesAtomically(
+  walletId: string,
+  client?: PrismaTxClient
+): Promise<number> {
+  const recalculate = async (tx: PrismaTxClient): Promise<number> => {
     // Salt 0 is the wallet-balance lock namespace. The SQL window/update keeps
     // the full recalculation database-side, avoiding wallet-sized application
     // memory and timestamp churn for rows whose balance is already correct.
@@ -751,14 +800,17 @@ export async function recalculateBalancesAtomically(walletId: string): Promise<n
       WHERE transaction."id" = running_balances."id"
         AND transaction."balanceAfter" IS DISTINCT FROM running_balances."balanceAfter"
     `);
-  }, { timeout: 60_000 });
+  };
+  if (client) return recalculate(client);
+  return prisma.$transaction(recalculate, { timeout: 60_000 });
 }
 
 export async function findBelowConfirmationThreshold(
   walletId: string,
-  threshold: number
+  threshold: number,
+  client: PrismaTxClient = prisma
 ) {
-  return prisma.transaction.findMany({
+  return client.transaction.findMany({
     where: {
       walletId,
       confirmations: { lt: threshold },
@@ -768,8 +820,11 @@ export async function findBelowConfirmationThreshold(
   });
 }
 
-export async function findWithMissingFields(walletId: string) {
-  return prisma.transaction.findMany({
+export async function findWithMissingFields(
+  walletId: string,
+  client: PrismaTxClient = prisma
+) {
+  return client.transaction.findMany({
     where: {
       walletId,
       OR: [
@@ -797,10 +852,15 @@ export async function findWithMissingFields(walletId: string) {
 
 export async function batchUpdateByIds(
   updates: Array<{ id: string; data: Record<string, unknown> }>,
-  batchSize: number
+  batchSize: number,
+  client?: PrismaTxClient
 ): Promise<void> {
   for (let i = 0; i < updates.length; i += batchSize) {
     const chunk = updates.slice(i, i + batchSize);
+    if (client) {
+      await executeTransactionFieldPatch(chunk, client);
+      continue;
+    }
     await prisma.$transaction(
       chunk.map(u =>
         prisma.transaction.update({
@@ -810,4 +870,64 @@ export async function batchUpdateByIds(
       )
     );
   }
+}
+
+const TRANSACTION_PATCH_FIELDS = new Set([
+  'addressId',
+  'amount',
+  'blockHeight',
+  'blockTime',
+  'confirmations',
+  'counterpartyAddress',
+  'fee',
+  'rbfStatus',
+]);
+
+function serializeTransactionFieldPatches(
+  updates: Array<{ id: string; data: Record<string, unknown> }>,
+): string {
+  for (const update of updates) {
+    for (const field of Object.keys(update.data)) {
+      if (!TRANSACTION_PATCH_FIELDS.has(field)) {
+        throw new Error(`Unsupported transaction batch-update field: ${field}`);
+      }
+    }
+  }
+  return JSON.stringify(updates, (_key, value) => (
+    typeof value === 'bigint' ? value.toString() : value
+  ));
+}
+
+/** Apply one heterogeneous field-update chunk with one PostgreSQL round trip. */
+async function executeTransactionFieldPatch(
+  updates: Array<{ id: string; data: Record<string, unknown> }>,
+  client: PrismaTxClient,
+): Promise<void> {
+  const patches = serializeTransactionFieldPatches(updates);
+  await client.$executeRaw(Prisma.sql`
+    WITH patches AS (
+      SELECT "id", "data"
+      FROM jsonb_to_recordset(${patches}::JSONB) AS patch("id" TEXT, "data" JSONB)
+    )
+    UPDATE "transactions" AS transaction
+    SET "addressId" = CASE WHEN patches."data" ? 'addressId'
+          THEN patches."data" ->> 'addressId' ELSE transaction."addressId" END,
+        "amount" = CASE WHEN patches."data" ? 'amount'
+          THEN (patches."data" ->> 'amount')::BIGINT ELSE transaction."amount" END,
+        "blockHeight" = CASE WHEN patches."data" ? 'blockHeight'
+          THEN (patches."data" ->> 'blockHeight')::INTEGER ELSE transaction."blockHeight" END,
+        "blockTime" = CASE WHEN patches."data" ? 'blockTime'
+          THEN (patches."data" ->> 'blockTime')::TIMESTAMP(3) ELSE transaction."blockTime" END,
+        "confirmations" = CASE WHEN patches."data" ? 'confirmations'
+          THEN (patches."data" ->> 'confirmations')::INTEGER ELSE transaction."confirmations" END,
+        "counterpartyAddress" = CASE WHEN patches."data" ? 'counterpartyAddress'
+          THEN patches."data" ->> 'counterpartyAddress' ELSE transaction."counterpartyAddress" END,
+        "fee" = CASE WHEN patches."data" ? 'fee'
+          THEN (patches."data" ->> 'fee')::BIGINT ELSE transaction."fee" END,
+        "rbfStatus" = CASE WHEN patches."data" ? 'rbfStatus'
+          THEN patches."data" ->> 'rbfStatus' ELSE transaction."rbfStatus" END,
+        "updatedAt" = CURRENT_TIMESTAMP
+    FROM patches
+    WHERE transaction."id" = patches."id"
+  `);
 }

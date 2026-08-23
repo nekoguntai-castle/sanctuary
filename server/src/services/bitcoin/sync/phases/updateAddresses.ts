@@ -9,6 +9,7 @@ import { addressRepository } from '../../../../repositories';
 import { createLogger } from '../../../../utils/logger';
 import { walletLog } from '../../../../websocket/notifications';
 import type { SyncContext } from '../types';
+import { runWalletSyncMutation } from '../mutationBoundary';
 
 const log = createLogger('BITCOIN:SVC_SYNC_ADDRESSES');
 
@@ -32,15 +33,19 @@ export async function updateAddressesPhase(ctx: SyncContext): Promise<SyncContex
   }
 
   if (usedAddresses.size > 0) {
-    const count = await addressRepository.markManyAsUsedByAddress(
-      walletId,
-      Array.from(usedAddresses)
-    );
-
-    if (count > 0) {
-      ctx.stats.addressesUpdated = count;
-      log.debug(`[SYNC] Marked ${count} addresses as used`);
-    }
+    await runWalletSyncMutation(ctx, 'address_usage', async (tx, deferPostCommit) => {
+      const count = await addressRepository.markManyAsUsedByAddress(
+        walletId,
+        Array.from(usedAddresses),
+        tx,
+      );
+      if (count > 0) {
+        deferPostCommit(() => {
+          ctx.stats.addressesUpdated = count;
+          log.debug(`[SYNC] Marked ${count} addresses as used`);
+        });
+      }
+    });
   }
 
   return ctx;

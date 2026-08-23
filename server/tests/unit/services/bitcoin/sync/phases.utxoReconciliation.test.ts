@@ -309,6 +309,27 @@ describe('Sync Phases', () => {
         'Invalidated 1 draft(s) after authenticated UTXO spend evidence'
       );
     });
+
+    it('commits large spent sets in bounded mutation chunks', async () => {
+      const rows = Array.from({ length: 201 }, (_, index) => ({
+        ...authenticatedExisting(index.toString().padEnd(64, 'a')).row,
+        id: `utxo-${index}`,
+      }));
+      mockPrismaClient.uTXO.findMany.mockResolvedValue(rows);
+      const ctx = createTestContext({
+        walletId: 'test-wallet',
+        allUtxoKeys: new Set(),
+        authenticatedSpentOutpointKeys: new Set(rows.map(row => `${row.txid}:0`)),
+      });
+
+      await reconcileUtxosPhase(ctx);
+
+      expect(mockPrismaClient.uTXO.updateMany).toHaveBeenCalledTimes(3);
+      expect(mockPrismaClient.uTXO.updateMany.mock.calls.map(
+        ([args]) => args.where.id.in.length,
+      )).toEqual([100, 100, 1]);
+      expect(ctx.stats.utxosMarkedSpent).toBe(201);
+    });
   });
 
   describe('insertUtxosPhase', () => {
@@ -361,6 +382,45 @@ describe('Sync Phases', () => {
         })
       );
       expect(result.stats.utxosCreated).toBe(1);
+    });
+
+    it('should commit large UTXO insertions in bounded fenced chunks', async () => {
+      const entries = Array.from({ length: 201 }, (_, index) => {
+        const txid = index.toString(16).padStart(64, '0');
+        const address = `tb1q_batch_${index}`;
+        return {
+          key: `${txid}:0`,
+          data: {
+            address,
+            utxo: { tx_hash: txid, tx_pos: 0, value: 1000, height: 800000 },
+          },
+          transaction: createMockTransaction({
+            txid,
+            outputs: [{ value: 0.00001, address }],
+          }),
+        };
+      });
+      mockPrismaClient.uTXO.findMany.mockResolvedValue([]);
+      mockPrismaClient.uTXO.createMany.mockImplementation(async ({ data }) => ({
+        count: data.length,
+      }));
+
+      const ctx = createTestContext({
+        walletId,
+        allUtxoKeys: new Set(entries.map(entry => entry.key)),
+        utxoDataMap: new Map(entries.map(entry => [entry.key, entry.data])),
+        txDetailsCache: new Map(entries.map(entry => [entry.data.utxo.tx_hash, entry.transaction])) as any,
+        currentBlockHeight: 800100,
+      });
+
+      await insertUtxosPhase(ctx);
+
+      expect(mockPrismaClient.uTXO.createMany).toHaveBeenCalledTimes(3);
+      expect(mockPrismaClient.uTXO.createMany.mock.calls.map(
+        ([args]) => args.data.length,
+      )).toEqual([100, 100, 1]);
+      expect(ctx.stats.utxosCreated).toBe(201);
+      expect(walletLog).toHaveBeenCalledTimes(3);
     });
 
     it('should skip UTXOs that already exist in database', async () => {

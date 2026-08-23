@@ -11,6 +11,7 @@
  */
 
 import { transactionRepository } from '../../../../../repositories';
+import type { PrismaTxClient } from '../../../../../models/prisma';
 import { createLogger } from '../../../../../utils/logger';
 import { getErrorMessage } from '../../../../../utils/errors';
 import { walletLog } from '../../../../../websocket/notifications';
@@ -21,6 +22,7 @@ import { repairTransactionIO, storeTransactionIO } from './transactionIO';
 import { applyAddressLabels } from './addressLabels';
 import { sendNotifications } from './notifications';
 import { fetchAuthenticatedTransactions } from '../../evidenceAuthentication';
+import { runWalletSyncMutation } from '../../mutationBoundary';
 
 const log = createLogger('BITCOIN:SVC_SYNC_TX');
 
@@ -57,7 +59,9 @@ export async function processTransactionsPhase(ctx: SyncContext): Promise<SyncCo
     // Creates and authoritative repairs leave balanceAfter null until the
     // serialized balance pass succeeds, so unchanged polling remains cheap.
     if (await transactionRepository.hasPendingBalanceRecalculation(walletId)) {
-      await recalculateWalletBalances(walletId);
+      await runWalletSyncMutation(ctx, 'balance_recalculation', async (tx, deferPostCommit) => {
+        await recalculateWalletBalances(walletId, tx, deferPostCommit);
+      });
     }
     return ctx;
   }
@@ -78,8 +82,14 @@ export async function processTransactionsPhase(ctx: SyncContext): Promise<SyncCo
 
     // Advance selected repairs before network I/O so missing/null/failed raw
     // fetches rotate behind the durable backlog instead of starving it.
-    await transactionRepository.markClassificationRepairAttempts(walletId, classificationRepairTxids);
-    await transactionRepository.markIoRepairAttempts(walletId, ioRepairTxids);
+    await runWalletSyncMutation(ctx, 'repair_attempt_cursors', async (tx) => {
+      await transactionRepository.markClassificationRepairAttempts(
+        walletId,
+        classificationRepairTxids,
+        tx,
+      );
+      await transactionRepository.markIoRepairAttempts(walletId, ioRepairTxids, tx);
+    });
 
     walletLog(
       walletId,
@@ -101,9 +111,19 @@ export async function processTransactionsPhase(ctx: SyncContext): Promise<SyncCo
 
     // Step 3: Insert batch to DB
     if (transactionsToCreate.length > 0) {
-      const persisted = await persistTransactionBatch(ctx, transactionsToCreate);
+      const persisted = await runWalletSyncMutation(
+        ctx,
+        'transaction_batch',
+        (tx, deferPostCommit) => persistTransactionBatch(
+          ctx,
+          transactionsToCreate,
+          tx,
+          deferPostCommit,
+        ),
+      );
       const newTransactions = persisted.created;
       repairedTransactions += persisted.repaired.length;
+      await applyPersistedAddressLabels(ctx, [...persisted.created, ...persisted.repaired]);
 
       if (newTransactions.length > 0) {
         totalTransactions += newTransactions.length;
@@ -117,7 +137,18 @@ export async function processTransactionsPhase(ctx: SyncContext): Promise<SyncCo
     const unclassifiedIoRepairTxids = ioRepairTxids.filter(
       txid => batchTxidSet.has(txid) && !classifiedTxids.has(txid)
     );
-    await repairTransactionIO(ctx, unclassifiedIoRepairTxids);
+    if (unclassifiedIoRepairTxids.length > 0) {
+      await runWalletSyncMutation(
+        ctx,
+        'transaction_io_repair',
+        (tx, deferPostCommit) => repairTransactionIO(
+          ctx,
+          unclassifiedIoRepairTxids,
+          tx,
+          deferPostCommit,
+        ),
+      );
+    }
 
     // Small delay between batches
     if (batchIndex + TX_BATCH_SIZE < newTxids.length) {
@@ -130,7 +161,9 @@ export async function processTransactionsPhase(ctx: SyncContext): Promise<SyncCo
     || repairedTransactions > 0
     || await transactionRepository.hasPendingBalanceRecalculation(walletId)
   ) {
-    await recalculateWalletBalances(walletId);
+    await runWalletSyncMutation(ctx, 'balance_recalculation', async (tx, deferPostCommit) => {
+      await recalculateWalletBalances(walletId, tx, deferPostCommit);
+    });
   }
 
   if (allNewTransactions.length > 0 || repairedTransactions > 0) {
@@ -189,29 +222,56 @@ async function prefetchPreviousTransactions(
  */
 async function persistTransactionBatch(
   ctx: SyncContext,
-  transactionsToCreate: TransactionCreateData[]
+  transactionsToCreate: TransactionCreateData[],
+  tx: PrismaTxClient | undefined,
+  deferPostCommit: (effect: () => void | Promise<void>) => void,
 ): Promise<BatchPersistenceResult> {
-  const results = await transactionRepository.reconcileTransactionBatch(transactionsToCreate);
+  const results = await transactionRepository.reconcileTransactionBatch(
+    transactionsToCreate,
+    tx,
+  );
   const created = results
     .filter(result => result.outcome === 'created')
     .map(result => result.transaction as TransactionCreateData);
   const repaired = results
     .filter(result => result.outcome === 'repaired')
     .map(result => result.transaction as TransactionCreateData);
-  const changed = [...created, ...repaired];
-
   // I/O persistence is duplicate-safe and repairs incomplete prior attempts for
   // created, repaired, and unchanged classifications alike.
-  await storeTransactionIO(ctx, results.map(result => result.transaction as TransactionCreateData));
+  await storeTransactionIO(
+    ctx,
+    results.map(result => result.transaction as TransactionCreateData),
+    tx,
+    deferPostCommit,
+  );
 
-  if (changed.length > 0) {
-    await applyAddressLabels(ctx.walletId, changed);
-  }
   if (created.length > 0) {
-    await sendNotifications(ctx.walletId, created);
+    deferPostCommit(() => sendNotifications(ctx.walletId, created));
   }
 
   return { created, repaired };
+}
+
+/**
+ * Labels are cosmetic follow-up work. Give them their own fenced transaction
+ * so a label write failure cannot roll back an authoritative transaction/IO
+ * batch that has already committed.
+ */
+async function applyPersistedAddressLabels(
+  ctx: SyncContext,
+  transactions: TransactionCreateData[],
+): Promise<void> {
+  if (transactions.length === 0) return;
+  const labelFailure = await runWalletSyncMutation(
+    ctx,
+    'transaction_labels',
+    async (tx) => {
+      await applyAddressLabels(ctx.walletId, transactions, tx);
+    },
+  ).then(() => undefined, error => error);
+  if (labelFailure !== undefined) {
+    log.warn(`[SYNC] Failed to auto-apply address labels: ${labelFailure}`);
+  }
 }
 
 /**

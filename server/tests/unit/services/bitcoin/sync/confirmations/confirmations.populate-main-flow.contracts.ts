@@ -174,7 +174,11 @@ export function registerPopulateMissingTransactionFieldsMainFlowContracts() {
         amount: BigInt(-2000),
       }),
     });
-    expect(mockRecalculateWalletBalances).toHaveBeenCalledWith('wallet-1');
+    expect(mockRecalculateWalletBalances).toHaveBeenCalledWith(
+      'wallet-1',
+      undefined,
+      expect.any(Function),
+    );
   });
 
   it('stops before fetching a later population chunk when cancellation arrives during the current chunk write', async () => {

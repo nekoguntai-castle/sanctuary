@@ -67,7 +67,8 @@ vi.mock('../../../../../src/config', () => ({
 // Mock balance calculation
 vi.mock('../../../../../src/services/bitcoin/utils/balanceCalculation', () => ({
   recalculateWalletBalances: vi.fn().mockResolvedValue(undefined),
-  correctMisclassifiedConsolidations: vi.fn().mockResolvedValue(0),
+  prepareMisclassifiedConsolidations: vi.fn(),
+  persistMisclassifiedConsolidations: vi.fn(),
 }));
 
 // Mock address derivation
@@ -113,7 +114,8 @@ import {
 
 // Import the mocked balance calculation to control it per test
 import {
-  correctMisclassifiedConsolidations,
+  persistMisclassifiedConsolidations,
+  prepareMisclassifiedConsolidations,
   recalculateWalletBalances,
 } from '../../../../../src/services/bitcoin/utils/balanceCalculation';
 
@@ -869,20 +871,32 @@ describe('Sync Phases', () => {
 
     beforeEach(() => {
       vi.clearAllMocks();
-      (correctMisclassifiedConsolidations as Mock).mockResolvedValue(0);
+      (prepareMisclassifiedConsolidations as Mock).mockResolvedValue({
+        walletId,
+        walletAddresses: [],
+        candidates: [],
+      });
+      (persistMisclassifiedConsolidations as Mock).mockImplementation(
+        async (plan: { candidates: unknown[] }) => plan.candidates.length,
+      );
       (recalculateWalletBalances as Mock).mockResolvedValue(undefined);
     });
 
-    it('should call correctMisclassifiedConsolidations with wallet ID', async () => {
+    it('should prepare misclassified consolidations outside the mutation transaction', async () => {
       const ctx = createTestContext({ walletId });
 
       await fixConsolidationsPhase(ctx);
 
-      expect(correctMisclassifiedConsolidations).toHaveBeenCalledWith(walletId);
+      expect(prepareMisclassifiedConsolidations).toHaveBeenCalledWith(walletId);
+      expect(persistMisclassifiedConsolidations).not.toHaveBeenCalled();
     });
 
     it('should update stats when consolidations are corrected', async () => {
-      (correctMisclassifiedConsolidations as Mock).mockResolvedValue(3);
+      (prepareMisclassifiedConsolidations as Mock).mockResolvedValue({
+        walletId,
+        walletAddresses: ['address'],
+        candidates: Array.from({ length: 3 }, (_, index) => ({ id: `${index}`, txid: `${index}`, amount: 0n })),
+      });
 
       const ctx = createTestContext({ walletId });
       const result = await fixConsolidationsPhase(ctx);
@@ -891,17 +905,43 @@ describe('Sync Phases', () => {
     });
 
     it('should recalculate balances when consolidations are corrected', async () => {
-      (correctMisclassifiedConsolidations as Mock).mockResolvedValue(2);
+      (prepareMisclassifiedConsolidations as Mock).mockResolvedValue({
+        walletId,
+        walletAddresses: ['address'],
+        candidates: Array.from({ length: 2 }, (_, index) => ({ id: `${index}`, txid: `${index}`, amount: 0n })),
+      });
 
       const ctx = createTestContext({ walletId });
       await fixConsolidationsPhase(ctx);
 
-      expect(recalculateWalletBalances).toHaveBeenCalledWith(walletId);
+      expect(recalculateWalletBalances).toHaveBeenCalledWith(
+        walletId,
+        undefined,
+        expect.any(Function),
+      );
+    });
+
+    it('commits consolidation corrections in bounded chunks before balance recalculation', async () => {
+      (prepareMisclassifiedConsolidations as Mock).mockResolvedValue({
+        walletId,
+        walletAddresses: ['address'],
+        candidates: Array.from({ length: 201 }, (_, index) => ({
+          id: `${index}`,
+          txid: `${index}`,
+          amount: 0n,
+        })),
+      });
+
+      await fixConsolidationsPhase(createTestContext({ walletId }));
+
+      expect(persistMisclassifiedConsolidations).toHaveBeenCalledTimes(3);
+      expect((persistMisclassifiedConsolidations as Mock).mock.calls.map(
+        ([plan]) => plan.candidates.length,
+      )).toEqual([100, 100, 1]);
+      expect(recalculateWalletBalances).toHaveBeenCalledOnce();
     });
 
     it('should not recalculate balances when no corrections needed', async () => {
-      (correctMisclassifiedConsolidations as Mock).mockResolvedValue(0);
-
       const ctx = createTestContext({ walletId });
       await fixConsolidationsPhase(ctx);
 
@@ -909,7 +949,11 @@ describe('Sync Phases', () => {
     });
 
     it('should return context with stats updated', async () => {
-      (correctMisclassifiedConsolidations as Mock).mockResolvedValue(5);
+      (prepareMisclassifiedConsolidations as Mock).mockResolvedValue({
+        walletId,
+        walletAddresses: ['address'],
+        candidates: Array.from({ length: 5 }, (_, index) => ({ id: `${index}`, txid: `${index}`, amount: 0n })),
+      });
 
       const ctx = createTestContext({ walletId });
       const result = await fixConsolidationsPhase(ctx);

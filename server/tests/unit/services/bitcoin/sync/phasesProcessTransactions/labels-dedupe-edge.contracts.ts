@@ -18,8 +18,35 @@ import {
 import { getBlockTimestamp } from '../../../../../../src/services/bitcoin/utils/blockHeight';
 import { getNotificationService, walletLog } from '../../../../../../src/websocket/notifications';
 import { notifyNewTransactions } from '../../../../../../src/services/notifications/notificationService';
+import { applyAddressLabels } from '../../../../../../src/services/bitcoin/sync/phases/processTransactions/addressLabels';
 
 export function registerProcessTransactionLabelsDedupeEdgeTests(walletId: string): void {
+    it('propagates label failures from a fenced mutation instead of containing them', async () => {
+      mockPrismaClient.addressLabel.findMany.mockRejectedValueOnce(new Error('label lookup failed'));
+
+      await expect(applyAddressLabels(
+        walletId,
+        [{ txid: 'fenced-label', addressId: 'address-1' } as any],
+        mockPrismaClient as never,
+      )).rejects.toThrow('label lookup failed');
+
+      expect(mockPrismaClient.addressLabel.findMany).toHaveBeenCalledWith({
+        where: { addressId: { in: ['address-1'] } },
+      });
+    });
+
+    it('returns after a successful fenced label lookup with no associations', async () => {
+      mockPrismaClient.addressLabel.findMany.mockResolvedValueOnce([]);
+
+      await expect(applyAddressLabels(
+        walletId,
+        [{ txid: 'fenced-label', addressId: 'address-1' } as any],
+        mockPrismaClient as never,
+      )).resolves.toBeUndefined();
+
+      expect(mockPrismaClient.transactionLabel.createMany).not.toHaveBeenCalled();
+    });
+
     it('should skip transaction label creation when returned labels do not match created tx addresses', async () => {
       const txid = 'labels_no_match'.padEnd(64, 'a');
       const walletAddress = 'tb1q_wallet_addr';

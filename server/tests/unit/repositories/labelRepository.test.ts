@@ -491,6 +491,28 @@ describe('Label Repository', () => {
 
       expect(prisma.$transaction).toHaveBeenCalled();
     });
+
+    it('reuses a supplied transaction client without opening a nested transaction', async () => {
+      (prisma.addressLabel.deleteMany as Mock).mockResolvedValue({ count: 1 });
+      (prisma.addressLabel.createMany as Mock).mockResolvedValue({ count: 2 });
+
+      await labelRepository.replaceAddressLabels(
+        'addr-123',
+        ['label-1', 'label-2'],
+        prisma as never,
+      );
+
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma.addressLabel.deleteMany).toHaveBeenCalledWith({
+        where: { addressId: 'addr-123' },
+      });
+      expect(prisma.addressLabel.createMany).toHaveBeenCalledWith({
+        data: [
+          { addressId: 'addr-123', labelId: 'label-1' },
+          { addressId: 'addr-123', labelId: 'label-2' },
+        ],
+      });
+    });
   });
 
   describe('removeLabelFromAddress', () => {

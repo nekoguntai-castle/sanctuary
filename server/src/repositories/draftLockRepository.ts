@@ -4,7 +4,7 @@
  * Abstracts database operations for draft transaction UTXO locks.
  */
 
-import prisma from '../models/prisma';
+import prisma, { type PrismaTxClient } from '../models/prisma';
 import type { DraftUtxoLock } from '../generated/prisma/client';
 
 export type DraftLockDbClient = Pick<typeof prisma, 'draftUtxoLock' | 'uTXO'>;
@@ -96,8 +96,11 @@ export async function lockUtxos(
 /**
  * Delete all locks for a draft
  */
-export async function deleteByDraftId(draftId: string): Promise<number> {
-  const result = await prisma.draftUtxoLock.deleteMany({
+export async function deleteByDraftId(
+  draftId: string,
+  client: PrismaTxClient = prisma
+): Promise<number> {
+  const result = await client.draftUtxoLock.deleteMany({
     where: { draftId },
   });
   return result.count;
@@ -184,10 +187,13 @@ export async function resolveUtxoRefs(
 /**
  * Find locks for spent UTXOs with draft label info (for sync reconciliation)
  */
-export async function findLocksByUtxoIdsWithDraftInfo(utxoIds: string[]) {
+export async function findLocksByUtxoIdsWithDraftInfo(
+  utxoIds: string[],
+  client: PrismaTxClient = prisma
+) {
   /* v8 ignore next -- sync reconciliation avoids empty UTXO batches */
   if (utxoIds.length === 0) return [];
-  return prisma.draftUtxoLock.findMany({
+  return client.draftUtxoLock.findMany({
     where: { utxoId: { in: utxoIds } },
     select: {
       draftId: true,

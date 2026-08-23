@@ -19,9 +19,46 @@ import {
 import { getBlockTimestamp } from '../../../../../../src/services/bitcoin/utils/blockHeight';
 import { getNotificationService, walletLog } from '../../../../../../src/websocket/notifications';
 import { notifyNewTransactions } from '../../../../../../src/services/notifications/notificationService';
-import { repairTransactionIO } from '../../../../../../src/services/bitcoin/sync/phases/processTransactions/transactionIO';
+import {
+  repairTransactionIO,
+  storeTransactionIO,
+} from '../../../../../../src/services/bitcoin/sync/phases/processTransactions/transactionIO';
 
 export function registerProcessTransactionStoreIoPrimaryTests(walletId: string): void {
+    it('uses the supplied transaction for new I/O persistence', async () => {
+      mockPrismaClient.transaction.findMany.mockResolvedValueOnce([]);
+
+      await expect(storeTransactionIO(
+        createTestContext({ walletId }),
+        [],
+        mockPrismaClient as never,
+      )).resolves.toBeUndefined();
+
+      expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { walletId, txid: { in: [] } } }),
+      );
+    });
+
+    it('propagates fenced I/O repair failures to roll back the mutation', async () => {
+      mockPrismaClient.transaction.findMany.mockRejectedValueOnce(new Error('lookup unavailable'));
+
+      await expect(repairTransactionIO(
+        createTestContext({ walletId }),
+        ['fenced-repair'],
+        mockPrismaClient as never,
+      )).rejects.toThrow('lookup unavailable');
+    });
+
+    it('returns after a successful fenced I/O repair with no matching records', async () => {
+      mockPrismaClient.transaction.findMany.mockResolvedValueOnce([]);
+
+      await expect(repairTransactionIO(
+        createTestContext({ walletId }),
+        ['fenced-repair'],
+        mockPrismaClient as never,
+      )).resolves.toBeUndefined();
+    });
+
     it('skips an empty I/O repair batch', async () => {
       await repairTransactionIO(createTestContext({ walletId }), []);
 

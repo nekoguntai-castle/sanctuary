@@ -9,6 +9,7 @@
 import { transactionRepository } from '../../../../repositories';
 import { walletLog } from '../../../../websocket/notifications';
 import type { SyncContext } from '../types';
+import { runWalletSyncMutation } from '../mutationBoundary';
 
 interface TxWithInputs {
   id: string;
@@ -72,17 +73,18 @@ export async function rbfCleanupPhase(ctx: SyncContext): Promise<SyncContext> {
       const replacementTxid = findReplacement(pendingTx, inputToConfirmedTxid);
 
       if (replacementTxid) {
-        await transactionRepository.updateRbfStatus(pendingTx.id, {
-          rbfStatus: 'replaced',
-          replacedByTxid: replacementTxid,
+        await runWalletSyncMutation(ctx, 'rbf_cleanup', async (tx, deferPostCommit) => {
+          await transactionRepository.updateRbfStatus(pendingTx.id, {
+            rbfStatus: 'replaced',
+            replacedByTxid: replacementTxid,
+          }, tx);
+          deferPostCommit(() => walletLog(
+            walletId,
+            'info',
+            'RBF',
+            `Cleanup: Marked ${pendingTx.txid.slice(0, 8)}... as replaced by ${replacementTxid.slice(0, 8)}...`
+          ));
         });
-
-        walletLog(
-          walletId,
-          'info',
-          'RBF',
-          `Cleanup: Marked ${pendingTx.txid.slice(0, 8)}... as replaced by ${replacementTxid.slice(0, 8)}...`
-        );
       }
     }
   }
@@ -109,17 +111,18 @@ export async function rbfCleanupPhase(ctx: SyncContext): Promise<SyncContext> {
       for (const replacedTx of txsWithInputs) {
         const replacementTxid = findReplacement(replacedTx, inputToConfirmed);
 
-        if (replacementTxid) {
-          await transactionRepository.updateRbfStatus(replacedTx.id, {
-            replacedByTxid: replacementTxid,
+      if (replacementTxid) {
+          await runWalletSyncMutation(ctx, 'rbf_cleanup', async (tx, deferPostCommit) => {
+            await transactionRepository.updateRbfStatus(replacedTx.id, {
+              replacedByTxid: replacementTxid,
+            }, tx);
+            deferPostCommit(() => walletLog(
+              walletId,
+              'info',
+              'RBF',
+              `Retroactive link: ${replacedTx.txid.slice(0, 8)}... replaced by ${replacementTxid.slice(0, 8)}...`
+            ));
           });
-
-          walletLog(
-            walletId,
-            'info',
-            'RBF',
-            `Retroactive link: ${replacedTx.txid.slice(0, 8)}... replaced by ${replacementTxid.slice(0, 8)}...`
-          );
         }
       }
     }

@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "canonicalScopes": [
+    "server/src/services/bitcoin/blockchain/syncWallet.ts",
+    "server/src/services/bitcoin/sync/**",
+    "server/src/services/bitcoin/utils/balanceCalculation.ts",
+    "server/src/worker/jobs/canonicalIncrementalSync.ts"
+  ],
+  "architecture": {
+    "fence": {
+      "file": "server/src/repositories/types.ts",
+      "symbol": "WalletSyncMutationFence",
+      "readonlyFields": [
+        "generation",
+        "leaseToken",
+        "walletId"
+      ]
+    },
+    "boundary": {
+      "file": "server/src/services/bitcoin/sync/mutationBoundary.ts",
+      "symbol": "runWalletSyncMutation",
+      "requiredContextProperties": [
+        "mutationFence",
+        "walletId"
+      ],
+      "callbackParameters": [
+        "tx",
+        "deferPostCommit"
+      ]
+    }
+  },
+  "approvedMutationUnits": [
+    "address_usage",
+    "balance_recalculation",
+    "consolidation_repair",
+    "gap_limit_expansion",
+    "missing_field_chunk",
+    "ownership_repair",
+    "rbf_cleanup",
+    "repair_attempt_cursors",
+    "transaction_batch",
+    "transaction_io_repair",
+    "transaction_labels",
+    "utxo_insert",
+    "utxo_reconciliation"
+  ],
+  "callsites": [
+    { "file": "server/src/services/bitcoin/blockchain/syncWallet.ts", "enclosingFunction": "syncWallet", "repository": "walletRepository", "method": "findById", "kind": "read", "count": 1 },
+    { "file": "server/src/services/bitcoin/blockchain/syncWallet.ts", "enclosingFunction": "syncWallet", "repository": "addressRepository", "method": "findRecentUnused", "kind": "read", "count": 1 },
+    { "file": "server/src/services/bitcoin/blockchain/syncWallet.ts", "enclosingFunction": "syncWallet", "repository": "addressRepository", "method": "findAddressStrings", "kind": "mutation", "mutationUnits": ["ownership_repair"], "transactionClientArgument": 1, "count": 1 },
+    { "file": "server/src/services/bitcoin/blockchain/syncWallet.ts", "enclosingFunction": "syncWallet", "repository": "transactionRepository", "method": "markOwnershipRepairNeeded", "kind": "mutation", "mutationUnits": ["ownership_repair"], "transactionClientArgument": 3, "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/addressDiscovery.ts", "enclosingFunction": "prepareGapLimitExpansion", "repository": "walletRepository", "method": "findByIdWithSelect", "kind": "read", "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/addressDiscovery.ts", "enclosingFunction": "persistGapLimitExpansion", "repository": "addressRepository", "method": "createCanonicalBatch", "kind": "mutation", "mutationUnits": ["gap_limit_expansion"], "transactionClientArgument": 3, "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/confirmations/batchUpdates.ts", "enclosingFunction": "executeInChunks", "repository": "transactionRepository", "method": "batchUpdateByIds", "kind": "mutation", "mutationUnits": ["missing_field_chunk"], "transactionClientArgument": 2, "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/confirmations/populateFields.ts", "enclosingFunction": "populateMissingTransactionFields", "repository": "walletRepository", "method": "findNetwork", "kind": "read", "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/confirmations/populateFields.ts", "enclosingFunction": "populateMissingTransactionFields", "repository": "transactionRepository", "method": "findWithMissingFields", "kind": "read", "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/confirmations/populateFields.ts", "enclosingFunction": "populateMissingTransactionFields", "repository": "addressRepository", "method": "findIdAndAddressByWalletId", "kind": "read", "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/confirmations/updateConfirmations.ts", "enclosingFunction": "updateTransactionConfirmations", "repository": "walletRepository", "method": "findNetwork", "kind": "read", "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/confirmations/updateConfirmations.ts", "enclosingFunction": "updateTransactionConfirmations", "repository": "systemSettingRepository", "method": "getParsed", "kind": "read", "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/confirmations/updateConfirmations.ts", "enclosingFunction": "updateTransactionConfirmations", "repository": "transactionRepository", "method": "findBelowConfirmationThreshold", "kind": "read", "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/phases/checkExisting.ts", "enclosingFunction": "checkExistingPhase", "repository": "transactionRepository", "method": "findByWalletIdAndTxids", "kind": "read", "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/phases/checkExisting.ts", "enclosingFunction": "checkExistingPhase", "repository": "transactionRepository", "method": "findOwnershipRepairTargets", "kind": "read", "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/phases/insertUtxos.ts", "enclosingFunction": "insertUtxosPhase", "repository": "utxoRepository", "method": "findExistingByOutpoints", "kind": "read", "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/phases/insertUtxos.ts", "enclosingFunction": "insertUtxosPhase", "repository": "utxoRepository", "method": "createMany", "kind": "mutation", "mutationUnits": ["utxo_insert"], "transactionClientArgument": 2, "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/phases/processTransactions/addressLabels.ts", "enclosingFunction": "applyAddressLabelsUnchecked", "repository": "transactionRepository", "method": "findAddressLabelsByAddressIds", "kind": "mutation", "mutationUnits": ["transaction_labels"], "transactionClientArgument": 1, "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/phases/processTransactions/addressLabels.ts", "enclosingFunction": "applyAddressLabelsUnchecked", "repository": "transactionRepository", "method": "findByWalletIdAndTxids", "kind": "mutation", "mutationUnits": ["transaction_labels"], "transactionClientArgument": 3, "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/phases/processTransactions/addressLabels.ts", "enclosingFunction": "applyAddressLabelsUnchecked", "repository": "transactionRepository", "method": "createManyTransactionLabels", "kind": "mutation", "mutationUnits": ["transaction_labels"], "transactionClientArgument": 2, "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/phases/processTransactions/processTransactionsPhase.ts", "enclosingFunction": "processTransactionsPhase", "repository": "transactionRepository", "method": "hasPendingBalanceRecalculation", "kind": "read", "count": 2 },
+    { "file": "server/src/services/bitcoin/sync/phases/processTransactions/processTransactionsPhase.ts", "enclosingFunction": "processTransactionsPhase", "repository": "transactionRepository", "method": "markClassificationRepairAttempts", "kind": "mutation", "mutationUnits": ["repair_attempt_cursors"], "transactionClientArgument": 2, "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/phases/processTransactions/processTransactionsPhase.ts", "enclosingFunction": "processTransactionsPhase", "repository": "transactionRepository", "method": "markIoRepairAttempts", "kind": "mutation", "mutationUnits": ["repair_attempt_cursors"], "transactionClientArgument": 2, "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/phases/processTransactions/processTransactionsPhase.ts", "enclosingFunction": "persistTransactionBatch", "repository": "transactionRepository", "method": "reconcileTransactionBatch", "kind": "mutation", "mutationUnits": ["transaction_batch"], "transactionClientArgument": 1, "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/phases/processTransactions/rbfDetection.ts", "enclosingFunction": "detectRBFReplacements", "repository": "transactionRepository", "method": "findPendingWithSharedInputs", "kind": "mutation", "mutationUnits": ["transaction_batch", "transaction_io_repair"], "transactionClientArgument": 2, "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/phases/processTransactions/rbfDetection.ts", "enclosingFunction": "detectRBFReplacements", "repository": "transactionRepository", "method": "batchUpdateRbfStatus", "kind": "mutation", "mutationUnits": ["transaction_batch", "transaction_io_repair"], "transactionClientArgument": 1, "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/phases/processTransactions/transactionIO.ts", "enclosingFunction": "storeTransactionIOUnchecked", "repository": "transactionRepository", "method": "findByWalletIdAndTxids", "kind": "mutation", "mutationUnits": ["transaction_batch"], "transactionClientArgument": 3, "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/phases/processTransactions/transactionIO.ts", "enclosingFunction": "repairTransactionIOUnchecked", "repository": "transactionRepository", "method": "findByWalletIdAndTxids", "kind": "mutation", "mutationUnits": ["transaction_io_repair"], "transactionClientArgument": 3, "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/phases/processTransactions/transactionIO.ts", "enclosingFunction": "persistTransactionIORows", "repository": "transactionRepository", "method": "persistAddressSyncIORows", "kind": "mutation", "mutationUnits": ["transaction_batch", "transaction_io_repair"], "transactionClientArgument": 4, "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/phases/rbfCleanup.ts", "enclosingFunction": "rbfCleanupPhase", "repository": "transactionRepository", "method": "findPendingWithInputs", "kind": "read", "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/phases/rbfCleanup.ts", "enclosingFunction": "rbfCleanupPhase", "repository": "transactionRepository", "method": "findConfirmedWithSharedInputs", "kind": "read", "count": 2 },
+    { "file": "server/src/services/bitcoin/sync/phases/rbfCleanup.ts", "enclosingFunction": "rbfCleanupPhase", "repository": "transactionRepository", "method": "updateRbfStatus", "kind": "mutation", "mutationUnits": ["rbf_cleanup"], "transactionClientArgument": 2, "count": 2 },
+    { "file": "server/src/services/bitcoin/sync/phases/rbfCleanup.ts", "enclosingFunction": "rbfCleanupPhase", "repository": "transactionRepository", "method": "findUnlinkedReplaced", "kind": "read", "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/phases/reconcileUtxos.ts", "enclosingFunction": "markSpentAndInvalidateDrafts", "repository": "utxoRepository", "method": "markManyAsSpent", "kind": "mutation", "mutationUnits": ["utxo_reconciliation"], "transactionClientArgument": 1, "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/phases/reconcileUtxos.ts", "enclosingFunction": "markSpentAndInvalidateDrafts", "repository": "draftLockRepository", "method": "findLocksByUtxoIdsWithDraftInfo", "kind": "mutation", "mutationUnits": ["utxo_reconciliation"], "transactionClientArgument": 1, "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/phases/reconcileUtxos.ts", "enclosingFunction": "markSpentAndInvalidateDrafts", "repository": "draftRepository", "method": "deleteManyByIds", "kind": "mutation", "mutationUnits": ["utxo_reconciliation"], "transactionClientArgument": 1, "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/phases/reconcileUtxos.ts", "enclosingFunction": "persistUtxoUpdates", "repository": "utxoRepository", "method": "batchUpdateByIds", "kind": "mutation", "mutationUnits": ["utxo_reconciliation"], "transactionClientArgument": 2, "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/phases/reconcileUtxos.ts", "enclosingFunction": "reconcileUtxosPhase", "repository": "utxoRepository", "method": "findByWalletIdWithSelect", "kind": "read", "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/phases/updateAddresses.ts", "enclosingFunction": "updateAddressesPhase", "repository": "addressRepository", "method": "markManyAsUsedByAddress", "kind": "mutation", "mutationUnits": ["address_usage"], "transactionClientArgument": 2, "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/pipeline.ts", "enclosingFunction": "executeSyncPipeline", "repository": "walletRepository", "method": "findById", "kind": "read", "count": 1 },
+    { "file": "server/src/services/bitcoin/sync/pipeline.ts", "enclosingFunction": "executeSyncPipeline", "repository": "addressRepository", "method": "findByWalletId", "kind": "read", "count": 1 },
+    { "file": "server/src/services/bitcoin/utils/balanceCalculation.ts", "enclosingFunction": "prepareMisclassifiedConsolidations", "repository": "addressRepository", "method": "findAddressStrings", "kind": "read", "count": 1 },
+    { "file": "server/src/services/bitcoin/utils/balanceCalculation.ts", "enclosingFunction": "prepareMisclassifiedConsolidations", "repository": "transactionRepository", "method": "findSentWithOutputs", "kind": "read", "count": 1 },
+    { "file": "server/src/services/bitcoin/utils/balanceCalculation.ts", "enclosingFunction": "persistMisclassifiedConsolidations", "repository": "balanceCorrectionRepository", "method": "correctTransactionToConsolidation", "kind": "mutation", "mutationUnits": ["consolidation_repair"], "transactionClientArgument": 3, "count": 1 },
+    { "file": "server/src/services/bitcoin/utils/balanceCalculation.ts", "enclosingFunction": "recalculateWalletBalances", "repository": "transactionRepository", "method": "recalculateBalancesAtomically", "kind": "mutation", "mutationUnits": ["balance_recalculation"], "transactionClientArgument": 1, "count": 1 }
+  ]
+}

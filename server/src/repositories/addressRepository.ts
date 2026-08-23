@@ -4,7 +4,7 @@
  * Abstracts database operations for addresses.
  */
 
-import prisma from "../models/prisma";
+import prisma, { type PrismaTxClient } from "../models/prisma";
 import { Prisma, type Address } from "../generated/prisma/client";
 import { buildWalletAccessWhere } from "./accessControl";
 import {
@@ -249,8 +249,11 @@ export async function findByWalletId(
 /**
  * Mark address as used
  */
-export async function markAsUsed(addressId: string): Promise<Address> {
-  return prisma.address.update({
+export async function markAsUsed(
+  addressId: string,
+  client: PrismaTxClient = prisma,
+): Promise<Address> {
+  return client.address.update({
     where: { id: addressId },
     data: { used: true },
   });
@@ -605,12 +608,13 @@ export async function createCanonicalBatch(
   walletId: string,
   request: CanonicalBatchRequest,
   build: (branch: 0 | 1, index: number) => NextCanonicalAddressData,
+  client?: PrismaTxClient,
 ): Promise<CanonicalAddressWrite[]> {
   if (typeof request !== 'function') {
     assertCanonicalBatchCount(request.receive);
     assertCanonicalBatchCount(request.change);
   }
-  return prisma.$transaction(async (tx) => {
+  const allocate = async (tx: PrismaTxClient): Promise<CanonicalAddressWrite[]> => {
     const walletRows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
       SELECT "id" FROM "wallets"
       WHERE "id" = ${walletId}
@@ -640,7 +644,9 @@ export async function createCanonicalBatch(
     }
     if (created.length > 0) await tx.address.createMany({ data: created });
     return created;
-  }, {
+  };
+  if (client) return allocate(client);
+  return prisma.$transaction(allocate, {
     isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
     maxWait: CANONICAL_ALLOCATION_MAX_WAIT_MS,
     timeout: CANONICAL_ALLOCATION_TIMEOUT_MS,
@@ -765,8 +771,11 @@ export async function findWalletSummariesByAddresses(addresses: string[]) {
 /**
  * Find address strings for a wallet (lean query for sync operations)
  */
-export async function findAddressStrings(walletId: string): Promise<string[]> {
-  const addresses = await prisma.address.findMany({
+export async function findAddressStrings(
+  walletId: string,
+  client: PrismaTxClient = prisma,
+): Promise<string[]> {
+  const addresses = await client.address.findMany({
     where: { walletId },
     select: { address: true },
   });
@@ -791,10 +800,11 @@ export async function findIdAndAddressByWalletId(
 export async function markManyAsUsedByAddress(
   walletId: string,
   addresses: string[],
+  client: PrismaTxClient = prisma,
 ): Promise<number> {
   /* v8 ignore next -- bulk callers avoid empty address batches */
   if (addresses.length === 0) return 0;
-  const result = await prisma.address.updateMany({
+  const result = await client.address.updateMany({
     where: {
       walletId,
       address: { in: addresses },

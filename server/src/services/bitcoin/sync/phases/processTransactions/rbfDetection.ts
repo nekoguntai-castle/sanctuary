@@ -9,6 +9,7 @@
 import { transactionRepository } from '../../../../../repositories';
 import { walletLog } from '../../../../../websocket/notifications';
 import type { TxInputCreateData } from '../../types';
+import type { PrismaTxClient } from '../../../../../models/prisma';
 
 /**
  * Detect and link RBF (Replace-By-Fee) replacements
@@ -17,7 +18,9 @@ export async function detectRBFReplacements(
   walletId: string,
   createdTxRecords: Array<{ id: string; txid: string; type: string }>,
   confirmedTxids: ReadonlySet<string>,
-  txInputsToCreate: TxInputCreateData[]
+  txInputsToCreate: TxInputCreateData[],
+  tx?: PrismaTxClient,
+  deferPostCommit?: (effect: () => void | Promise<void>) => void,
 ): Promise<void> {
   const confirmedTxRecords = createdTxRecords.filter(tx => confirmedTxids.has(tx.txid));
 
@@ -39,7 +42,8 @@ export async function detectRBFReplacements(
 
   const pendingTxsWithMatchingInputs = await transactionRepository.findPendingWithSharedInputs(
     walletId,
-    confirmedInputPatterns.map(p => ({ txid: p.inputTxid, vout: p.inputVout }))
+    confirmedInputPatterns.map(p => ({ txid: p.inputTxid, vout: p.inputVout })),
+    tx,
   );
 
   const rbfUpdates: Array<{ id: string; txid: string; replacementTxid: string }> = [];
@@ -61,16 +65,19 @@ export async function detectRBFReplacements(
         id: u.id,
         rbfStatus: 'replaced',
         replacedByTxid: u.replacementTxid,
-      }))
+      })),
+      tx,
     );
 
     for (const update of rbfUpdates) {
-      walletLog(
-        walletId,
-        'info',
-        'RBF',
-        `Linked pending tx ${update.txid.slice(0, 8)}... as replaced by confirmed tx ${update.replacementTxid.slice(0, 8)}...`
-      );
+      const publish = () => walletLog(
+          walletId,
+          'info',
+          'RBF',
+          `Linked pending tx ${update.txid.slice(0, 8)}... as replaced by confirmed tx ${update.replacementTxid.slice(0, 8)}...`
+        );
+      if (deferPostCommit) deferPostCommit(publish);
+      else publish();
     }
   }
 }

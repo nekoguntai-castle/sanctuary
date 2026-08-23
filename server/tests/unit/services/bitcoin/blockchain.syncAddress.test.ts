@@ -125,6 +125,9 @@ import {
   markIoRepairAttempts,
   reconcileAddressSyncTransaction,
   reconcileTransactionBatch,
+  batchUpdateRbfStatus,
+  batchUpdateByIds as batchUpdateTransactionsByIds,
+  recalculateBalancesAtomically,
 } from '../../../../src/repositories/transactions/sync';
 import { storeTransactionIO } from '../../../../src/services/bitcoin/blockchain/transactionIO';
 import { processHistoryTransactions } from '../../../../src/services/bitcoin/blockchain/historyTransactions';
@@ -1368,7 +1371,10 @@ describe('Blockchain syncAddress branch coverage', () => {
     } satisfies AddressSyncTransactionInput;
     Reflect.deleteProperty(legacyCandidate, 'classificationAddressCount');
 
-    const outcome = await reconcileAddressSyncTransaction(legacyCandidate);
+    const outcome = await reconcileAddressSyncTransaction(
+      legacyCandidate,
+      mockPrismaClient as never,
+    );
 
     expect(outcome).toBe('repaired');
     expect(mockPrismaClient.transactionOutput.updateMany).toHaveBeenCalledWith({
@@ -1416,7 +1422,7 @@ describe('Blockchain syncAddress branch coverage', () => {
         classificationVersion: 2,
         classificationAddressCount: 1,
       },
-    ]);
+    ], mockPrismaClient as never);
 
     expect(results.map(result => result.outcome)).toEqual(['created', 'repaired']);
   });
@@ -1698,6 +1704,89 @@ describe('Blockchain syncAddress branch coverage', () => {
     expect(statement.values).toEqual(['wallet-io-attempt', txid]);
   });
 
+  it('reuses the supplied client for ownership repair and bulk sync writers', async () => {
+    await markOwnershipRepairNeeded(
+      'wallet-fenced',
+      ['a'.repeat(64)],
+      3,
+      mockPrismaClient as never,
+    );
+    await batchUpdateRbfStatus([{
+      id: 'tx-rbf',
+      rbfStatus: 'replaced',
+      replacedByTxid: 'replacement',
+    }], mockPrismaClient as never);
+    await batchUpdateTransactionsByIds(
+      [{ id: 'tx-fields', data: { confirmations: 2 } }],
+      100,
+      mockPrismaClient as never,
+    );
+    await expect(recalculateBalancesAtomically(
+      'wallet-fenced',
+      mockPrismaClient as never,
+    )).resolves.toBe(0);
+
+    expect(mockPrismaClient.$transaction).not.toHaveBeenCalled();
+    expect(mockPrismaClient.transaction.update).toHaveBeenCalledWith({
+      where: { id: 'tx-rbf' },
+      data: { rbfStatus: 'replaced', replacedByTxid: 'replacement' },
+    });
+    const fieldPatch = mockPrismaClient.$executeRaw.mock.calls.find(([statement]) => (
+      (statement as { strings?: string[] }).strings?.join('').includes('jsonb_to_recordset')
+    ));
+    expect(fieldPatch).toBeDefined();
+    expect((fieldPatch?.[0] as { values: unknown[] }).values).toContain(
+      JSON.stringify([{ id: 'tx-fields', data: { confirmations: 2 } }]),
+    );
+  });
+
+  it('serializes heterogeneous transaction field patches in one client round trip', async () => {
+    const blockTime = new Date('2026-08-22T12:34:56.000Z');
+    await batchUpdateTransactionsByIds([{
+      id: 'tx-fields',
+      data: {
+        addressId: 'address-1',
+        amount: 123n,
+        blockHeight: 900_000,
+        blockTime,
+        confirmations: 2,
+        counterpartyAddress: 'counterparty',
+        fee: 4n,
+        rbfStatus: 'confirmed',
+      },
+    }], 100, mockPrismaClient as never);
+
+    expect(mockPrismaClient.$executeRaw).toHaveBeenCalledOnce();
+    const statement = mockPrismaClient.$executeRaw.mock.calls[0][0] as {
+      strings: string[];
+      values: unknown[];
+    };
+    expect(statement.strings.join('')).toContain('jsonb_to_recordset');
+    expect(statement.values).toContain(JSON.stringify([{
+      id: 'tx-fields',
+      data: {
+        addressId: 'address-1',
+        amount: '123',
+        blockHeight: 900_000,
+        blockTime: blockTime.toISOString(),
+        confirmations: 2,
+        counterpartyAddress: 'counterparty',
+        fee: '4',
+        rbfStatus: 'confirmed',
+      },
+    }]));
+  });
+
+  it('rejects unsupported transaction field patches before querying', async () => {
+    await expect(batchUpdateTransactionsByIds([{
+      id: 'tx-fields',
+      data: { walletId: 'another-wallet' },
+    }], 100, mockPrismaClient as never)).rejects.toThrow(
+      'Unsupported transaction batch-update field: walletId',
+    );
+    expect(mockPrismaClient.$executeRaw).not.toHaveBeenCalled();
+  });
+
   it('skips an empty repair-attempt batch and avoids a reconciliation double-touch', async () => {
     await markClassificationRepairAttempts('wallet-incomplete-attempt', []);
     await markOwnershipRepairNeeded('wallet-incomplete-attempt', [], 0);
@@ -1782,13 +1871,14 @@ describe('Blockchain syncAddress branch coverage', () => {
         address: 'input-address',
         amount: BigInt(1),
       },
-    ], []);
+    ], [], [], undefined, mockPrismaClient as never);
 
     expect(mockPrismaClient.transactionInput.createMany).toHaveBeenCalledWith({
       data: [expect.objectContaining({ transactionId: 'inputs-only' })],
       skipDuplicates: true,
     });
     expect(mockPrismaClient.transactionOutput.createMany).not.toHaveBeenCalled();
+    expect(mockPrismaClient.$transaction).not.toHaveBeenCalled();
   });
 
   it('completes coinbase/no-input I/O atomically without changing updatedAt', async () => {

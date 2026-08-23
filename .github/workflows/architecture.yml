@@ -18,6 +18,7 @@ on:
       - 'gateway/.dependency-cruiser.cjs'
       - 'config/tooling/tsconfig.app.json'
       - 'config/wallet-sync-lifecycle-contract.json'
+      - 'config/wallet-sync-mutation-boundaries.json'
       - 'server/prisma/schema.prisma'
       - 'server/prisma/migrations/**'
       - 'server/tsconfig.json'
@@ -26,6 +27,7 @@ on:
       - 'scripts/quality/architecture-boundary-exceptions.json'
       - 'scripts/quality/server-cycle-baseline.json'
       - 'scripts/check-wallet-sync-lifecycle-contract.mjs'
+      - 'scripts/check-wallet-sync-mutation-boundaries.mjs'
       - 'package.json'
       - 'package-lock.json'
       - 'server/package.json'
@@ -59,6 +61,7 @@ on:
       - 'gateway/.dependency-cruiser.cjs'
       - 'config/tooling/tsconfig.app.json'
       - 'config/wallet-sync-lifecycle-contract.json'
+      - 'config/wallet-sync-mutation-boundaries.json'
       - 'server/prisma/schema.prisma'
       - 'server/prisma/migrations/**'
       - 'server/tsconfig.json'
@@ -67,6 +70,7 @@ on:
       - 'scripts/quality/architecture-boundary-exceptions.json'
       - 'scripts/quality/server-cycle-baseline.json'
       - 'scripts/check-wallet-sync-lifecycle-contract.mjs'
+      - 'scripts/check-wallet-sync-mutation-boundaries.mjs'
       - 'package.json'
       - 'package-lock.json'
       - 'server/package.json'
@@ -188,6 +192,16 @@ jobs:
             bash -euo pipefail <<'INNER'
           cd "$ARCH_WORKDIR"
           npm run check:wallet-sync-lifecycle-contract
+          INNER
+
+      - name: Enforce wallet sync mutation boundaries
+        if: steps.scope.outputs.core == 'true'
+        run: |
+          scripts/ci/run-with-log.sh ".tmp/ci-diagnostics/architecture/wallet-sync-mutation-boundaries.log" \
+            bash -euo pipefail <<'INNER'
+          cd "$ARCH_WORKDIR"
+          npm run check:wallet-sync-mutation-boundaries
+          node --test tests/ci/check-wallet-sync-mutation-boundaries.test.mjs
           INNER
 
       - name: Enforce repository-owned Prisma access

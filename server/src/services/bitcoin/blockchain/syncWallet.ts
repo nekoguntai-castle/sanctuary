@@ -16,6 +16,8 @@ import { walletLog } from '../../../websocket/notifications';
 import { executeSyncPipeline, defaultSyncPhases } from '../sync';
 import { normalizeLegacyBitcoinNetwork } from '../networks';
 import type { SyncWalletResult } from './types';
+import type { WalletSyncMutationFence } from '../../../repositories/types';
+import { runWalletSyncMutation } from '../sync/mutationBoundary';
 
 const log = createLogger('BITCOIN:SVC_SYNC_WALLET');
 
@@ -88,9 +90,13 @@ export async function syncWallet(
   walletId: string,
   depth = 0,
   signal?: AbortSignal,
+  mutationFence?: WalletSyncMutationFence,
 ): Promise<SyncWalletResult> {
   signal?.throwIfAborted();
-  const result = await executeSyncPipeline(walletId, defaultSyncPhases, { signal });
+  const result = await executeSyncPipeline(walletId, defaultSyncPhases, {
+    signal,
+    mutationFence,
+  });
   signal?.throwIfAborted();
 
   // Handle recursive sync for gap limit expansion
@@ -136,20 +142,37 @@ export async function syncWallet(
                 history.map(item => item.tx_hash)
               )
             )];
-            const targetAddressCount = (
-              await addressRepository.findAddressStrings(walletId)
-            ).length;
             try {
-              await transactionRepository.markOwnershipRepairNeeded(
-                walletId,
-                ownershipRepairTxids,
-                targetAddressCount
+              await runWalletSyncMutation(
+                { walletId, mutationFence },
+                'ownership_repair',
+                async (tx, deferPostCommit) => {
+                  const targetAddressCount = (
+                    await addressRepository.findAddressStrings(walletId, tx)
+                  ).length;
+                  await transactionRepository.markOwnershipRepairNeeded(
+                    walletId,
+                    ownershipRepairTxids,
+                    targetAddressCount,
+                    tx,
+                  );
+                  deferPostCommit(() => walletLog(
+                    walletId,
+                    'info',
+                    'BLOCKCHAIN',
+                    `Found transactions on new addresses, re-syncing (depth ${depth + 1})...`,
+                  ));
+                },
               );
             } catch (error) {
               throw new OwnershipRepairPersistenceError(error);
             }
-            walletLog(walletId, 'info', 'BLOCKCHAIN', `Found transactions on new addresses, re-syncing (depth ${depth + 1})...`);
-            const recursiveResult = await syncWallet(walletId, depth + 1, signal);
+            const recursiveResult = await syncWallet(
+              walletId,
+              depth + 1,
+              signal,
+              mutationFence,
+            );
             return {
               addresses: result.addresses + recursiveResult.addresses,
               transactions: result.transactions + recursiveResult.transactions,

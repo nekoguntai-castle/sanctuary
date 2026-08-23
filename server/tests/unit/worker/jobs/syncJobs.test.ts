@@ -288,12 +288,21 @@ describe('Sync Jobs', () => {
 
       expect(syncIntentMocks.complete).toHaveBeenCalledWith(
         'wallet-intent',
-        { generation: 1, leaseToken: 'lease-token' },
+        { walletId: 'wallet-intent', generation: 1, leaseToken: 'lease-token' },
         expect.objectContaining({
           syncedAt: expect.any(Date),
           lastSyncedBlockHeight: 100000,
         }),
       );
+      const forwardedFence = vi.mocked(syncWallet).mock.calls[0]?.[3];
+      expect(forwardedFence).toEqual({
+        walletId: 'wallet-intent',
+        generation: 1,
+        leaseToken: 'lease-token',
+      });
+      expect(Object.isFrozen(forwardedFence)).toBe(true);
+      expect(vi.mocked(populateMissingTransactionFields).mock.calls[0]?.[3])
+        .toBe(forwardedFence);
       expect(syncJobPrismaMocks.publishLifecycle).toHaveBeenNthCalledWith(
         1,
         expect.objectContaining({ transition: 'started', state: claimedState }),
@@ -357,7 +366,7 @@ describe('Sync Jobs', () => {
 
         expect(syncIntentMocks[release]).toHaveBeenCalledWith(
           'wallet-intent',
-          { generation: 1, leaseToken: 'lease-token' },
+          { walletId: 'wallet-intent', generation: 1, leaseToken: 'lease-token' },
           expect.objectContaining({
             errorMessage: 'electrum unavailable',
             failureClass: expect.any(String),

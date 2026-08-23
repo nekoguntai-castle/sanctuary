@@ -5,7 +5,7 @@
  * Provides centralized access patterns for label management.
  */
 
-import prisma from '../models/prisma';
+import prisma, { type PrismaTxClient } from '../models/prisma';
 import type { Label } from '../generated/prisma/client';
 
 /**
@@ -339,9 +339,10 @@ export async function getLabelsForAddress(
  */
 export async function addLabelsToAddress(
   addressId: string,
-  labelIds: string[]
+  labelIds: string[],
+  client: PrismaTxClient = prisma
 ): Promise<void> {
-  await prisma.addressLabel.createMany({
+  await client.addressLabel.createMany({
     data: labelIds.map(labelId => ({ addressId, labelId })),
     skipDuplicates: true,
   });
@@ -352,14 +353,17 @@ export async function addLabelsToAddress(
  */
 export async function replaceAddressLabels(
   addressId: string,
-  labelIds: string[]
+  labelIds: string[],
+  client?: PrismaTxClient
 ): Promise<void> {
-  await prisma.$transaction([
-    prisma.addressLabel.deleteMany({ where: { addressId } }),
-    prisma.addressLabel.createMany({
+  const replace = async (tx: PrismaTxClient): Promise<void> => {
+    await tx.addressLabel.deleteMany({ where: { addressId } });
+    await tx.addressLabel.createMany({
       data: labelIds.map(labelId => ({ addressId, labelId })),
-    }),
-  ]);
+    });
+  };
+  if (client) return replace(client);
+  await prisma.$transaction(replace);
 }
 
 /**

@@ -18,9 +18,12 @@ vi.mock('../../../src/models/prisma', () => ({
       findUnique: vi.fn(),
       findMany: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
+      createMany: vi.fn(),
       deleteMany: vi.fn(),
       count: vi.fn(),
     },
+    $transaction: vi.fn(),
   },
 }));
 
@@ -217,6 +220,41 @@ describe('UTXO Repository', () => {
       const result = await utxoRepository.markAsSpent('wallet-456', 'nonexistent', 0);
 
       expect(result).toBeNull();
+    });
+  });
+
+  describe('sync transaction client plumbing', () => {
+    it('uses the supplied client for bulk spent, create, and update writes', async () => {
+      (prisma.uTXO.updateMany as Mock).mockResolvedValue({ count: 2 });
+      (prisma.uTXO.createMany as Mock).mockResolvedValue({ count: 1 });
+      (prisma.uTXO.update as Mock).mockResolvedValue(mockUtxo);
+
+      await expect(utxoRepository.markManyAsSpent(
+        ['utxo-1', 'utxo-2'],
+        prisma as never,
+      )).resolves.toBe(2);
+      await expect(utxoRepository.createMany([{
+        walletId: 'wallet-456',
+        txid: 'abc123def456',
+        vout: 0,
+        address: 'bc1qaddress',
+        amount: BigInt(100000),
+        scriptPubKey: '0014',
+        confirmations: 1,
+        blockHeight: 1,
+        spent: false,
+      }], { skipDuplicates: true }, prisma as never)).resolves.toEqual({ count: 1 });
+      await utxoRepository.batchUpdateByIds(
+        [{ id: 'utxo-1', data: { confirmations: 2 } }],
+        100,
+        prisma as never,
+      );
+
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma.uTXO.update).toHaveBeenCalledWith({
+        where: { id: 'utxo-1' },
+        data: { confirmations: 2 },
+      });
     });
   });
 

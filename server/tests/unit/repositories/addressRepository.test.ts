@@ -61,46 +61,6 @@ describe("Address Repository", () => {
     vi.clearAllMocks();
   });
 
-  describe("resetUsedFlags", () => {
-    it("should reset used flags for all addresses in wallet", async () => {
-      (prisma.address.updateMany as Mock).mockResolvedValue({ count: 100 });
-
-      const count = await addressRepository.resetUsedFlags("wallet-456");
-
-      expect(count).toBe(100);
-      expect(prisma.address.updateMany).toHaveBeenCalledWith({
-        where: { walletId: "wallet-456" },
-        data: { used: false },
-      });
-    });
-
-    it("should return 0 when no addresses to reset", async () => {
-      (prisma.address.updateMany as Mock).mockResolvedValue({ count: 0 });
-
-      const count = await addressRepository.resetUsedFlags("empty-wallet");
-
-      expect(count).toBe(0);
-    });
-  });
-
-  describe("resetUsedFlagsForWallets", () => {
-    it("should reset used flags for multiple wallets", async () => {
-      (prisma.address.updateMany as Mock).mockResolvedValue({ count: 500 });
-
-      const count = await addressRepository.resetUsedFlagsForWallets([
-        "wallet-1",
-        "wallet-2",
-        "wallet-3",
-      ]);
-
-      expect(count).toBe(500);
-      expect(prisma.address.updateMany).toHaveBeenCalledWith({
-        where: { walletId: { in: ["wallet-1", "wallet-2", "wallet-3"] } },
-        data: { used: false },
-      });
-    });
-  });
-
   describe("findByWalletId", () => {
     it("should find all addresses for wallet", async () => {
       const addresses = [
@@ -819,6 +779,20 @@ describe("Address Repository", () => {
         expect.any(Function),
         { isolationLevel: "ReadCommitted", maxWait: 5_000, timeout: 30_000 },
       );
+    });
+
+    it("reuses a supplied transaction client without opening a nested transaction", async () => {
+      mockCanonicalBatchState({ maxIndex: null });
+
+      await expect(addressRepository.createCanonicalBatch(
+        "w1",
+        { receive: 0, change: 0 },
+        vi.fn(),
+        prisma as never,
+      )).resolves.toEqual([]);
+
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
     });
 
     it("resolves gap counts only after locking against the latest coordinate state", async () => {

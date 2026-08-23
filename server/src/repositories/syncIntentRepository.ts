@@ -3,7 +3,7 @@ import {
   isWalletSyncFailureClass,
   type WalletSyncFailureClass,
 } from '@sanctuary/shared/constants/sync';
-import prisma from '../models/prisma';
+import prisma, { type PrismaTxClient } from '../models/prisma';
 import type {
   IncrementalSyncClaimResult,
   IncrementalSyncFence,
@@ -12,10 +12,14 @@ import type {
   IncrementalSyncRequestMode,
   IncrementalSyncRequestResult,
   IncrementalSyncTerminalResult,
+  WalletSyncMutationFence,
 } from './types';
 
 const MAX_RECOVERY_BATCH_SIZE = 100;
 const MAX_SYNC_GENERATION = 2_147_483_647;
+// Preserve the deliberate ceiling used by wallet-sized SQL repair statements.
+// Mutation units remain logically bounded and never include network work.
+const WALLET_SYNC_MUTATION_TIMEOUT_MS = 60_000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const syncIntentSelect = {
@@ -68,8 +72,7 @@ export interface IncrementalSyncClaimInput {
   claimedAt: Date;
   leaseExpiresAt: Date;
   expectedRequestedGeneration: number;
-  /** @deprecated Phase 2B deliberately does not reclaim expired database leases. */
-  expectedExpiredFence?: IncrementalSyncFence;
+  expectedExpiredFence?: WalletSyncMutationFence;
 }
 
 export interface IncrementalSyncRetryReleaseInput {
@@ -109,6 +112,12 @@ function requireGeneration(generation: number): void {
   }
 }
 
+function requireWalletId(walletId: string): void {
+  if (walletId.trim().length === 0) {
+    throw new Error('Wallet sync mutation fence wallet ID must not be empty');
+  }
+}
+
 function requireFence(fence: IncrementalSyncFence): void {
   requireGeneration(fence.generation);
   if (!UUID_PATTERN.test(fence.leaseToken)) {
@@ -122,7 +131,13 @@ function requireDate(value: Date, description: string): void {
   }
 }
 
-function requireClaimInput(input: IncrementalSyncClaimInput): void {
+function requireMutationFence(fence: WalletSyncMutationFence): void {
+  requireWalletId(fence.walletId);
+  requireFence(fence);
+}
+
+function requireClaimInput(walletId: string, input: IncrementalSyncClaimInput): void {
+  requireWalletId(walletId);
   requireFence({ generation: 1, leaseToken: input.leaseToken });
   requireGeneration(input.expectedRequestedGeneration ?? 0);
   requireDate(input.claimedAt, 'Incremental sync claim time');
@@ -131,8 +146,75 @@ function requireClaimInput(input: IncrementalSyncClaimInput): void {
     throw new Error('Incremental sync lease must expire after it is claimed');
   }
   if (input.expectedExpiredFence !== undefined) {
-    throw new Error('Expired incremental sync claims cannot be reclaimed');
+    requireMutationFence(input.expectedExpiredFence);
+    if (input.expectedExpiredFence.walletId !== walletId) {
+      throw new Error('Expired incremental sync fence belongs to another wallet');
+    }
+    if (input.expectedExpiredFence.generation !== input.expectedRequestedGeneration) {
+      throw new Error('Expired incremental sync fence generation must match the requested generation');
+    }
+    if (input.expectedExpiredFence.leaseToken === input.leaseToken) {
+      throw new Error('Expired incremental sync reclaim must rotate the lease token');
+    }
   }
+}
+
+interface LockedMutationFenceRow {
+  claimedIncrementalSyncGeneration: number;
+  incrementalSyncLeaseToken: string | null;
+}
+
+/** A short mutation transaction no longer owns the exact wallet-sync fence. */
+export class WalletSyncMutationFenceLostError extends Error {
+  readonly code = 'wallet_sync_mutation_fence_lost';
+  readonly fence: WalletSyncMutationFence;
+
+  constructor(fence: WalletSyncMutationFence) {
+    super('Wallet sync mutation fence is no longer authoritative');
+    this.name = 'WalletSyncMutationFenceLostError';
+    this.fence = Object.freeze({ ...fence });
+  }
+}
+
+/**
+ * Repository-owned short transaction for non-sync or compatibility mutations
+ * that do not claim wallet-sync lease authority. Canonical sync writes must use
+ * `withWalletSyncMutationFence` instead.
+ */
+export async function withWalletSyncMutationTransaction<T>(
+  callback: (tx: PrismaTxClient) => Promise<T>,
+): Promise<T> {
+  return prisma.$transaction(callback);
+}
+
+/**
+ * Run one canonical mutation unit under the exact wallet generation/token.
+ * The row lock and writes share one short transaction; callers must finish the
+ * callback before resuming network I/O. PostgreSQL renders UUID text in lower
+ * case, so token comparison normalizes case without changing UUID identity.
+ */
+export async function withWalletSyncMutationFence<T>(
+  fence: WalletSyncMutationFence,
+  callback: (tx: PrismaTxClient) => Promise<T>,
+): Promise<T> {
+  requireMutationFence(fence);
+  return prisma.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<LockedMutationFenceRow[]>(Prisma.sql`
+      SELECT
+        "claimedIncrementalSyncGeneration",
+        "incrementalSyncLeaseToken"::TEXT AS "incrementalSyncLeaseToken"
+      FROM "wallets"
+      WHERE "id" = ${fence.walletId}
+      FOR UPDATE
+    `);
+    const locked = rows[0];
+    if (!locked
+      || locked.claimedIncrementalSyncGeneration !== fence.generation
+      || locked.incrementalSyncLeaseToken?.toLowerCase() !== fence.leaseToken.toLowerCase()) {
+      throw new WalletSyncMutationFenceLostError(fence);
+    }
+    return callback(tx);
+  }, { timeout: WALLET_SYNC_MUTATION_TIMEOUT_MS });
 }
 
 function requireFailureMetadata(errorMessage: string, failureClass: unknown): void {
@@ -258,13 +340,27 @@ export async function requestIncrementalSync(
 /**
  * Claim pending work after the caller has acquired the wallet execution lock.
  * Reclaiming an expired lease additionally requires the exact previous fence.
+ * The reclaim keeps that old claimed generation while rotating its token; a
+ * newer requested generation is deliberately left pending as a trailing pass.
  */
 export async function claimIncrementalSync(
   walletId: string,
   input: IncrementalSyncClaimInput,
 ): Promise<IncrementalSyncClaimResult> {
-  requireClaimInput(input);
+  requireClaimInput(walletId, input);
   const expectedGeneration = input.expectedRequestedGeneration!;
+  const expectedExpiredFence = input.expectedExpiredFence;
+  const eligibility = expectedExpiredFence === undefined
+    ? Prisma.sql`
+      AND "requestedIncrementalSyncGeneration" = ${expectedGeneration}
+      AND "claimedIncrementalSyncGeneration" = "processedIncrementalSyncGeneration"
+    `
+    : Prisma.sql`
+      AND "claimedIncrementalSyncGeneration" = ${expectedExpiredFence.generation}
+      AND "incrementalSyncLeaseToken" = ${expectedExpiredFence.leaseToken}::UUID
+      AND "incrementalSyncLeaseExpiresAt" IS NOT NULL
+      AND "incrementalSyncLeaseExpiresAt" <= ${input.claimedAt}
+    `;
   const rows = await prisma.$queryRaw<IncrementalSyncLifecycleState[]>(Prisma.sql`
     UPDATE "wallets"
     SET "claimedIncrementalSyncGeneration" = ${expectedGeneration},
@@ -282,11 +378,11 @@ export async function claimIncrementalSync(
         "updatedAt" = ${input.claimedAt}
     WHERE "id" = ${walletId}
       AND "requestedIncrementalSyncGeneration" > "processedIncrementalSyncGeneration"
-      AND "requestedIncrementalSyncGeneration" = ${expectedGeneration}
+      AND "requestedIncrementalSyncGeneration" >= ${expectedGeneration}
       AND "requestedFullResyncGeneration" = "processedFullResyncGeneration"
       AND "syncActionRequiredAt" IS NULL
       AND ("syncNextRetryAt" IS NULL OR "syncNextRetryAt" <= ${input.claimedAt})
-      AND "claimedIncrementalSyncGeneration" = "processedIncrementalSyncGeneration"
+      ${eligibility}
     RETURNING ${lifecycleReturningColumns}
   `);
   const state = rows[0];
@@ -301,12 +397,13 @@ export async function claimIncrementalSync(
   }
   return {
     status: 'claimed',
-    claim: {
+    claim: Object.freeze({
+      walletId,
       generation: state.claimedIncrementalSyncGeneration,
       leaseToken: input.leaseToken,
       claimedAt: input.claimedAt,
       leaseExpiresAt: input.leaseExpiresAt,
-    },
+    }),
     state,
   };
 }

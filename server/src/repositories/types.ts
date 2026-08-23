@@ -167,13 +167,22 @@ export type IncrementalSyncRequestResult =
   | { status: 'generation_exhausted' | 'not_found' };
 
 export interface IncrementalSyncFence {
-  generation: number;
-  leaseToken: string;
+  readonly generation: number;
+  readonly leaseToken: string;
 }
 
-export interface IncrementalSyncClaim extends IncrementalSyncFence {
-  claimedAt: Date;
-  leaseExpiresAt: Date;
+/**
+ * Immutable authority passed to every wallet-sync mutation boundary.
+ * The wallet identity is part of the fence so authority cannot be reused for
+ * another wallet by pairing a generation/token with a separate argument.
+ */
+export interface WalletSyncMutationFence extends IncrementalSyncFence {
+  readonly walletId: string;
+}
+
+export interface IncrementalSyncClaim extends WalletSyncMutationFence {
+  readonly claimedAt: Date;
+  readonly leaseExpiresAt: Date;
 }
 
 export type IncrementalSyncClaimResult =

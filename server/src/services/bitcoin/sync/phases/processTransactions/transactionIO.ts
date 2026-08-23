@@ -16,6 +16,9 @@ import type {
   TxOutputCreateData,
 } from '../../types';
 import { detectRBFReplacements } from './rbfDetection';
+import type { PrismaTxClient } from '../../../../../models/prisma';
+
+type DeferPostCommit = (effect: () => void | Promise<void>) => void;
 
 const log = createLogger('BITCOIN:SVC_SYNC_TX');
 
@@ -42,69 +45,105 @@ type InputScriptPubKey = NonNullable<
  */
 export async function storeTransactionIO(
   ctx: SyncContext,
-  newTransactions: TransactionCreateData[]
+  newTransactions: TransactionCreateData[],
+  tx?: PrismaTxClient,
+  deferPostCommit?: DeferPostCommit,
 ): Promise<void> {
+  if (tx) {
+    await storeTransactionIOUnchecked(ctx, newTransactions, tx, deferPostCommit);
+    return;
+  }
   const { walletId } = ctx;
 
   try {
-    const createdTxRecords = await transactionRepository.findByWalletIdAndTxids(
-      walletId,
-      newTransactions.map(tx => tx.txid),
-      { id: true, txid: true, type: true }
-    );
-
-    const { inputs, outputs } = await persistTransactionIORows(ctx, createdTxRecords);
-
-    // Keep RBF linking after durable input persistence, using the same captured
-    // rows and candidate set as the prior primary-sync path.
-    if (inputs.length > 0) {
-      const confirmedTxids = new Set(
-        newTransactions
-          .filter(transaction => transaction.confirmations > 0)
-          .map(transaction => transaction.txid)
-      );
-      await detectRBFReplacements(walletId, createdTxRecords, confirmedTxids, inputs);
-    }
+    await storeTransactionIOUnchecked(ctx, newTransactions);
   } catch (ioError) {
     log.warn(`[SYNC] Failed to store transaction inputs/outputs: ${ioError}`);
   }
 }
 
+async function storeTransactionIOUnchecked(
+  ctx: SyncContext,
+  newTransactions: TransactionCreateData[],
+  tx?: PrismaTxClient,
+  deferPostCommit?: DeferPostCommit,
+): Promise<void> {
+  const createdTxRecords = await transactionRepository.findByWalletIdAndTxids(
+    ctx.walletId,
+    newTransactions.map(transaction => transaction.txid),
+    { id: true, txid: true, type: true },
+    tx,
+  );
+  const { inputs } = await persistTransactionIORows(ctx, createdTxRecords, tx);
+  if (inputs.length === 0) return;
+  const confirmedTxids = new Set(
+    newTransactions
+      .filter(transaction => transaction.confirmations > 0)
+      .map(transaction => transaction.txid)
+  );
+  await detectRBFReplacements(
+    ctx.walletId,
+    createdTxRecords,
+    confirmedTxids,
+    inputs,
+    tx,
+    deferPostCommit,
+  );
+}
+
 export async function repairTransactionIO(
   ctx: SyncContext,
-  txids: string[]
+  txids: string[],
+  tx?: PrismaTxClient,
+  deferPostCommit?: DeferPostCommit,
 ): Promise<void> {
   if (txids.length === 0) return;
 
+  if (tx) {
+    await repairTransactionIOUnchecked(ctx, txids, tx, deferPostCommit);
+    return;
+  }
   try {
-    const transactionRecords = await transactionRepository.findByWalletIdAndTxids(
-      ctx.walletId,
-      txids,
-      { id: true, txid: true, type: true, confirmations: true }
-    );
-    const { inputs } = await persistTransactionIORows(ctx, transactionRecords);
-    if (inputs.length > 0) {
-      const confirmedTxids = new Set(
-        transactionRecords
-          .filter(record => record.confirmations > 0)
-          .map(record => record.txid)
-      );
-      await detectRBFReplacements(
-        ctx.walletId,
-        transactionRecords,
-        confirmedTxids,
-        inputs
-      );
-    }
+    await repairTransactionIOUnchecked(ctx, txids);
   } catch (ioError) {
     log.warn(`[SYNC] Failed to repair transaction inputs/outputs: ${ioError}`);
     return;
   }
 }
 
+async function repairTransactionIOUnchecked(
+  ctx: SyncContext,
+  txids: string[],
+  tx?: PrismaTxClient,
+  deferPostCommit?: DeferPostCommit,
+): Promise<void> {
+  const transactionRecords = await transactionRepository.findByWalletIdAndTxids(
+    ctx.walletId,
+    txids,
+    { id: true, txid: true, type: true, confirmations: true },
+    tx,
+  );
+  const { inputs } = await persistTransactionIORows(ctx, transactionRecords, tx);
+  if (inputs.length === 0) return;
+  const confirmedTxids = new Set(
+    transactionRecords
+      .filter(record => record.confirmations > 0)
+      .map(record => record.txid)
+  );
+  await detectRBFReplacements(
+    ctx.walletId,
+    transactionRecords,
+    confirmedTxids,
+    inputs,
+    tx,
+    deferPostCommit,
+  );
+}
+
 const persistTransactionIORows = async (
   ctx: SyncContext,
-  transactionRecords: CreatedTransactionRecord[]
+  transactionRecords: CreatedTransactionRecord[],
+  tx?: PrismaTxClient,
 ): Promise<TransactionIoRows> => {
   const rows = buildTransactionIoRows(ctx, transactionRecords);
   const completeTransactionIds = transactionRecords
@@ -115,7 +154,8 @@ const persistTransactionIORows = async (
     rows.inputs,
     rows.outputs,
     completeTransactionIds,
-    ctx.walletAddressSet.size
+    ctx.walletAddressSet.size,
+    tx,
   );
   return rows;
 };

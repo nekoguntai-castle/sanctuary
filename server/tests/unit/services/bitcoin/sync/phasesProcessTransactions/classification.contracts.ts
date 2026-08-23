@@ -102,7 +102,12 @@ export function registerProcessTransactionClassificationTests(walletId: string):
       await expect(processTransactionsPhase(ctx)).resolves.toBe(ctx);
 
       expect(recalculateWalletBalances).toHaveBeenCalledTimes(2);
-      expect(recalculateWalletBalances).toHaveBeenNthCalledWith(2, walletId);
+      expect(recalculateWalletBalances).toHaveBeenNthCalledWith(
+        2,
+        walletId,
+        undefined,
+        expect.any(Function),
+      );
     });
 
     it('should classify transaction as received when external inputs only', async () => {
@@ -689,7 +694,11 @@ export function registerProcessTransactionClassificationTests(walletId: string):
         data: [{ transactionId: 'repair-row-id', labelId: 'label-repair' }],
         skipDuplicates: true,
       });
-      expect(recalculateWalletBalances).toHaveBeenCalledWith(walletId);
+      expect(recalculateWalletBalances).toHaveBeenCalledWith(
+        walletId,
+        undefined,
+        expect.any(Function),
+      );
       expect(notifyNewTransactions).not.toHaveBeenCalled();
       expect(result.newTransactions).toEqual([]);
       expect(result.stats.newTransactionsCreated).toBe(0);

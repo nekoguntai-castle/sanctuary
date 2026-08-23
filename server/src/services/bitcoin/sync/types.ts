@@ -8,6 +8,7 @@ import type { Address, Wallet } from '../../../generated/prisma/client';
 import type { NodeClientInterface } from '../nodeClient';
 import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 import type { RbfStatus } from '@sanctuary/shared/constants/transactions';
+import type { WalletSyncMutationFence } from '../../../repositories/types';
 
 // ============================================
 // Core Types
@@ -93,6 +94,8 @@ export interface SyncContext {
   walletId: string;
   wallet: Wallet;
   network: BitcoinNetwork;
+  /** Exact generation owner required by every canonical database mutation. */
+  readonly mutationFence?: WalletSyncMutationFence;
 
   // Services
   client: NodeClientInterface;
@@ -212,6 +215,8 @@ export type SyncPhase = {
 export interface PipelineOptions {
   /** Cooperative cancellation checked between completed sync phases. */
   signal?: AbortSignal;
+  /** Present only for generation-bound canonical worker execution. */
+  mutationFence?: WalletSyncMutationFence;
   /** Skip certain phases (by name) */
   skipPhases?: string[];
   /** Run only these phases (by name) */

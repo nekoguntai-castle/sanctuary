@@ -1,9 +1,11 @@
 const hoisted = vi.hoisted(() => ({
-  ensureGapLimit: vi.fn(),
+  prepareGapLimitExpansion: vi.fn(),
+  persistGapLimitExpansion: vi.fn(),
 }));
 
 vi.mock('../../../../../src/services/bitcoin/sync/addressDiscovery', () => ({
-  ensureGapLimit: (...args: any[]) => hoisted.ensureGapLimit(...args),
+  prepareGapLimitExpansion: (...args: any[]) => hoisted.prepareGapLimitExpansion(...args),
+  persistGapLimitExpansion: (...args: any[]) => hoisted.persistGapLimitExpansion(...args),
 }));
 
 vi.mock('../../../../../src/websocket/notifications', () => ({
@@ -26,12 +28,13 @@ import { walletLog } from '../../../../../src/websocket/notifications';
 
 describe('gapLimitPhase', () => {
   beforeEach(() => {
-    hoisted.ensureGapLimit.mockReset();
+    hoisted.prepareGapLimitExpansion.mockReset().mockResolvedValue({ derive: vi.fn() });
+    hoisted.persistGapLimitExpansion.mockReset();
     vi.mocked(walletLog).mockReset();
   });
 
   it('returns unchanged context when no new addresses are needed', async () => {
-    hoisted.ensureGapLimit.mockResolvedValue([]);
+    hoisted.persistGapLimitExpansion.mockResolvedValue([]);
     const client = { getAddressHistoryBatch: vi.fn() };
     const ctx = createTestContext({
       walletId: 'wallet-gap-none',
@@ -50,7 +53,7 @@ describe('gapLimitPhase', () => {
       { address: 'tb1qnew000000000000000000000000000000000001', derivationPath: "m/84'/1'/0'/0/20" },
       { address: 'tb1qnew000000000000000000000000000000000002', derivationPath: "m/84'/1'/0'/0/21" },
     ];
-    hoisted.ensureGapLimit.mockResolvedValue(generated);
+    hoisted.persistGapLimitExpansion.mockResolvedValue(generated);
     const client = {
       getAddressHistoryBatch: vi.fn().mockResolvedValue(
         new Map([
@@ -87,7 +90,7 @@ describe('gapLimitPhase', () => {
     const generated = [
       { address: 'tb1qnew000000000000000000000000000000000003', derivationPath: "m/84'/1'/0'/0/22" },
     ];
-    hoisted.ensureGapLimit.mockResolvedValue(generated);
+    hoisted.persistGapLimitExpansion.mockResolvedValue(generated);
     const client = {
       getAddressHistoryBatch: vi.fn().mockResolvedValue(
         new Map([
@@ -114,7 +117,7 @@ describe('gapLimitPhase', () => {
     const generated = [
       { address: 'tb1qnew000000000000000000000000000000000004', derivationPath: "m/84'/1'/0'/0/23" },
     ];
-    hoisted.ensureGapLimit.mockResolvedValue(generated);
+    hoisted.persistGapLimitExpansion.mockResolvedValue(generated);
     const client = {
       getAddressHistoryBatch: vi.fn().mockRejectedValue(new Error('scan failed')),
     };

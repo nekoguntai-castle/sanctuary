@@ -7,12 +7,15 @@ import type {
 const mocks = vi.hoisted(() => ({
   walletFindUnique: vi.fn(),
   queryRaw: vi.fn(),
+  transaction: vi.fn(),
+  txQueryRaw: vi.fn(),
 }));
 
 vi.mock('../../../src/models/prisma', () => ({
   default: {
     wallet: { findUnique: mocks.walletFindUnique },
     $queryRaw: mocks.queryRaw,
+    $transaction: mocks.transaction,
   },
 }));
 
@@ -31,6 +34,9 @@ import {
   releaseIncrementalSyncAsActionRequired,
   releaseIncrementalSyncForRetry,
   requestIncrementalSync,
+  WalletSyncMutationFenceLostError,
+  withWalletSyncMutationFence,
+  withWalletSyncMutationTransaction,
 } from '../../../src/repositories/syncIntentRepository';
 
 const TOKEN_A = '10000000-0000-4000-8000-000000000001';
@@ -78,7 +84,12 @@ function lifecycleState(
 }
 
 describe('syncIntentRepository', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.transaction.mockImplementation(async (callback) => callback({
+      $queryRaw: mocks.txQueryRaw,
+    }));
+  });
 
   it('reads the complete intent and fencing snapshot', async () => {
     mocks.walletFindUnique.mockResolvedValue({ id: 'wallet-1' });
@@ -145,12 +156,12 @@ describe('syncIntentRepository', () => {
       expectedRequestedGeneration: 1,
     })).resolves.toMatchObject({
       status: 'claimed',
-      claim: { generation: 1, leaseToken: TOKEN_A },
+      claim: { walletId: 'wallet-1', generation: 1, leaseToken: TOKEN_A },
     });
     const sql = mocks.queryRaw.mock.calls[0][0].strings.join('');
     expect(sql).toContain('"requestedFullResyncGeneration" = "processedFullResyncGeneration"');
     expect(sql).toContain('"syncActionRequiredAt" IS NULL');
-    expect(sql).toContain('"requestedIncrementalSyncGeneration" = ');
+    expect(sql).toContain('"requestedIncrementalSyncGeneration" >= ');
     expect(sql).toContain('"lastSyncStatus" = \'syncing\'');
     expect(sql).toContain('"syncStateVersion" = "syncStateVersion" + 1');
   });
@@ -171,9 +182,10 @@ describe('syncIntentRepository', () => {
     expect(mocks.queryRaw.mock.calls[0][0].values).toEqual(
       expect.arrayContaining([1]),
     );
-    expect(mocks.queryRaw.mock.calls[0][0].strings.join('')).toContain(
-      '"requestedIncrementalSyncGeneration" = ',
-    );
+    const eligibility = mocks.queryRaw.mock.calls[0][0].values.find(
+      (value: unknown) => typeof value === 'object' && value !== null && 'strings' in value,
+    ) as { strings: string[] };
+    expect(eligibility.strings.join('')).toContain('"requestedIncrementalSyncGeneration" = ');
   });
 
   it('distinguishes the exact generation that already has an active claim', async () => {
@@ -231,15 +243,118 @@ describe('syncIntentRepository', () => {
     })).resolves.toEqual({ status: 'not_claimed' });
   });
 
-  it('rejects expired-lease reclaim instead of enabling it', async () => {
+  it('reclaims only an exact expired fence by rotating its token on the same generation', async () => {
+    mocks.queryRaw.mockResolvedValue([lifecycleState({
+      claimedIncrementalSyncGeneration: 1,
+      incrementalSyncLeaseToken: TOKEN_B,
+      incrementalSyncClaimedAt: LATER,
+      incrementalSyncLeaseExpiresAt: new Date('2026-08-22T07:10:00.000Z'),
+    })]);
     await expect(claimIncrementalSync('wallet-1', {
       leaseToken: TOKEN_B,
       claimedAt: LATER,
       leaseExpiresAt: new Date('2026-08-22T07:10:00.000Z'),
       expectedRequestedGeneration: 1,
-      expectedExpiredFence: { generation: 1, leaseToken: TOKEN_A },
-    })).rejects.toThrow('cannot be reclaimed');
+      expectedExpiredFence: { walletId: 'wallet-1', generation: 1, leaseToken: TOKEN_A },
+    })).resolves.toMatchObject({
+      status: 'claimed',
+      claim: { walletId: 'wallet-1', generation: 1, leaseToken: TOKEN_B },
+    });
+    const eligibility = mocks.queryRaw.mock.calls[0][0].values.find(
+      (value: unknown) => typeof value === 'object' && value !== null && 'strings' in value,
+    ) as { strings: string[] };
+    expect(eligibility.strings.join('')).toContain('"incrementalSyncLeaseExpiresAt" <=');
+  });
+
+  it('rejects malformed expired-fence reclaim boundaries before querying', async () => {
+    const base = {
+      leaseToken: TOKEN_B,
+      claimedAt: LATER,
+      leaseExpiresAt: new Date('2026-08-22T07:10:00.000Z'),
+      expectedRequestedGeneration: 1,
+    };
+    await expect(claimIncrementalSync('wallet-1', {
+      ...base,
+      expectedExpiredFence: { walletId: 'wallet-2', generation: 1, leaseToken: TOKEN_A },
+    })).rejects.toThrow('belongs to another wallet');
+    await expect(claimIncrementalSync('wallet-1', {
+      ...base,
+      expectedExpiredFence: { walletId: 'wallet-1', generation: 2, leaseToken: TOKEN_A },
+    })).rejects.toThrow('must match the requested generation');
+    await expect(claimIncrementalSync('wallet-1', {
+      ...base,
+      leaseToken: TOKEN_A,
+      expectedExpiredFence: { walletId: 'wallet-1', generation: 1, leaseToken: TOKEN_A },
+    })).rejects.toThrow('must rotate the lease token');
     expect(mocks.queryRaw).not.toHaveBeenCalled();
+  });
+
+  it('runs ordinary and fenced mutation callbacks through explicit short transactions', async () => {
+    const ordinaryCallback = vi.fn().mockResolvedValue('ordinary');
+    await expect(withWalletSyncMutationTransaction(ordinaryCallback)).resolves.toBe('ordinary');
+
+    mocks.txQueryRaw.mockResolvedValue([{
+      claimedIncrementalSyncGeneration: 1,
+      incrementalSyncLeaseToken: TOKEN_A,
+    }]);
+    const fencedCallback = vi.fn().mockResolvedValue('fenced');
+    await expect(withWalletSyncMutationFence({
+      walletId: 'wallet-1', generation: 1, leaseToken: TOKEN_A.toUpperCase(),
+    }, fencedCallback)).resolves.toBe('fenced');
+
+    expect(mocks.transaction).toHaveBeenCalledTimes(2);
+    expect(ordinaryCallback).toHaveBeenCalledWith(expect.objectContaining({
+      $queryRaw: mocks.txQueryRaw,
+    }));
+    expect(fencedCallback).toHaveBeenCalledWith(expect.objectContaining({
+      $queryRaw: mocks.txQueryRaw,
+    }));
+    expect(mocks.transaction).toHaveBeenNthCalledWith(
+      2,
+      expect.any(Function),
+      { timeout: 60_000 },
+    );
+    expect(mocks.txQueryRaw.mock.calls[0][0].strings.join('')).toContain('FOR UPDATE');
+  });
+
+  it.each([
+    ['missing wallet', []],
+    ['stale generation', [{
+      claimedIncrementalSyncGeneration: 2,
+      incrementalSyncLeaseToken: TOKEN_A,
+    }]],
+    ['stale token', [{
+      claimedIncrementalSyncGeneration: 1,
+      incrementalSyncLeaseToken: TOKEN_B,
+    }]],
+  ])('throws a typed lost-fence failure for a %s before invoking the callback', async (
+    _case,
+    lockedRows,
+  ) => {
+    mocks.txQueryRaw.mockResolvedValue(lockedRows);
+    const callback = vi.fn();
+    const fence = { walletId: 'wallet-1', generation: 1, leaseToken: TOKEN_A };
+    await expect(withWalletSyncMutationFence(fence, callback)).rejects.toMatchObject({
+      name: 'WalletSyncMutationFenceLostError',
+      code: 'wallet_sync_mutation_fence_lost',
+      fence,
+    });
+    expect(callback).not.toHaveBeenCalled();
+    expect(new WalletSyncMutationFenceLostError(fence)).toBeInstanceOf(Error);
+  });
+
+  it('rejects malformed mutation fences before opening a transaction', async () => {
+    const callback = vi.fn();
+    await expect(withWalletSyncMutationFence({
+      walletId: ' ', generation: 1, leaseToken: TOKEN_A,
+    }, callback)).rejects.toThrow('wallet ID must not be empty');
+    await expect(withWalletSyncMutationFence({
+      walletId: 'wallet-1', generation: 0, leaseToken: TOKEN_A,
+    }, callback)).rejects.toThrow('outside the supported range');
+    await expect(withWalletSyncMutationFence({
+      walletId: 'wallet-1', generation: 1, leaseToken: 'bad-token',
+    }, callback)).rejects.toThrow('must be a UUID');
+    expect(mocks.transaction).not.toHaveBeenCalled();
   });
 
   it('rejects malformed claim and retry boundaries before querying', async () => {

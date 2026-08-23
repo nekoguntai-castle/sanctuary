@@ -9,7 +9,9 @@ import { utxoRepository } from '../../../../repositories';
 import { createLogger } from '../../../../utils/logger';
 import { getErrorMessage } from '../../../../utils/errors';
 import { walletLog } from '../../../../websocket/notifications';
+import { getConfig } from '../../../../config';
 import type { SyncContext, UTXOCreateData } from '../types';
+import { runWalletSyncMutation } from '../mutationBoundary';
 
 const log = createLogger('BITCOIN:SVC_SYNC_UTXO_INSERT');
 
@@ -81,22 +83,33 @@ export async function insertUtxosPhase(ctx: SyncContext): Promise<SyncContext> {
     });
   }
 
-  // Batch insert
+  // Insert in bounded chunks. Each chunk revalidates the immutable fence and
+  // releases the wallet row lock before the next mutation begins.
   if (utxosToCreate.length > 0) {
     log.debug(`[SYNC] Inserting ${utxosToCreate.length} UTXOs...`);
+    const batchSize = getConfig().sync.transactionBatchSize;
+    ctx.stats.utxosCreated = 0;
 
-    await utxoRepository.createMany(utxosToCreate, { skipDuplicates: true });
-
-    ctx.stats.utxosCreated = utxosToCreate.length;
-
-    // Calculate total value
-    const totalValue = utxosToCreate.reduce((sum, u) => sum + Number(u.amount), 0);
-    walletLog(
-      walletId,
-      'info',
-      'UTXO',
-      `Found ${utxosToCreate.length} new UTXOs (${(totalValue / 100000000).toFixed(8)} BTC)`
-    );
+    for (let offset = 0; offset < utxosToCreate.length; offset += batchSize) {
+      const chunk = utxosToCreate.slice(offset, offset + batchSize);
+      await runWalletSyncMutation(ctx, 'utxo_insert', async (tx, deferPostCommit) => {
+        const inserted = await utxoRepository.createMany(
+          chunk,
+          { skipDuplicates: true },
+          tx,
+        );
+        const totalValue = chunk.reduce((sum, utxo) => sum + Number(utxo.amount), 0);
+        deferPostCommit(() => {
+          ctx.stats.utxosCreated += inserted.count;
+          walletLog(
+            walletId,
+            'info',
+            'UTXO',
+            `Found ${inserted.count} new UTXOs (${(totalValue / 100000000).toFixed(8)} BTC)`,
+          );
+        });
+      });
+    }
   }
 
   return ctx;

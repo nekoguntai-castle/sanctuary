@@ -12,6 +12,10 @@ import { utxoRepository, draftLockRepository, draftRepository } from '../../../.
 import { createLogger } from '../../../../utils/logger';
 import { walletLog } from '../../../../websocket/notifications';
 import type { SyncContext } from '../types';
+import type { PrismaTxClient } from '../../../../models/prisma';
+import { runWalletSyncMutation } from '../mutationBoundary';
+
+type DeferPostCommit = (effect: () => void | Promise<void>) => void;
 
 const log = createLogger('BITCOIN:SVC_SYNC_RECONCILE');
 
@@ -83,24 +87,31 @@ const collectReconciliationChanges = (
 const markSpentAndInvalidateDrafts = async (
   ctx: SyncContext,
   spentIds: string[],
+  tx: PrismaTxClient | undefined,
+  deferPostCommit: DeferPostCommit,
 ): Promise<void> => {
-  if (spentIds.length === 0) return;
-  await utxoRepository.markManyAsSpent(spentIds);
-  ctx.stats.utxosMarkedSpent = spentIds.length;
-  const locks = await draftLockRepository.findLocksByUtxoIdsWithDraftInfo(spentIds);
+  // Callers pass only non-empty configured-size chunks.
+  await utxoRepository.markManyAsSpent(spentIds, tx);
+  deferPostCommit(() => {
+    ctx.stats.utxosMarkedSpent += spentIds.length;
+  });
+  const locks = await draftLockRepository.findLocksByUtxoIdsWithDraftInfo(spentIds, tx);
   if (locks.length === 0) return;
   const draftIds = [...new Set(locks.map(lock => lock.draftId))];
-  await draftRepository.deleteManyByIds(draftIds);
-  walletLog(
+  await draftRepository.deleteManyByIds(draftIds, tx);
+  deferPostCommit(() => walletLog(
     ctx.walletId,
     'info',
     'DRAFT',
     `Invalidated ${draftIds.length} draft(s) after authenticated UTXO spend evidence`,
-  );
+  ));
 };
 
-const persistUtxoUpdates = async (updates: UtxoUpdate[]): Promise<void> => {
-  if (updates.length === 0) return;
+const persistUtxoUpdates = async (
+  updates: UtxoUpdate[],
+  tx: PrismaTxClient | undefined,
+  deferPostCommit: DeferPostCommit,
+): Promise<void> => {
   await utxoRepository.batchUpdateByIds(
     updates.map(update => ({
       id: update.id,
@@ -111,9 +122,34 @@ const persistUtxoUpdates = async (updates: UtxoUpdate[]): Promise<void> => {
       },
     })),
     getConfig().sync.transactionBatchSize,
+    tx,
   );
-  log.debug(`[SYNC] Updated confirmations for ${updates.length} UTXOs`);
+  deferPostCommit(() => log.debug(`[SYNC] Updated confirmations for ${updates.length} UTXOs`));
 };
+
+function chunksOf<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let offset = 0; offset < items.length; offset += size) {
+    chunks.push(items.slice(offset, offset + size));
+  }
+  return chunks;
+}
+
+async function persistSpentChunks(ctx: SyncContext, spentIds: string[], batchSize: number) {
+  for (const chunk of chunksOf(spentIds, batchSize)) {
+    await runWalletSyncMutation(ctx, 'utxo_reconciliation', async (tx, deferPostCommit) => {
+      await markSpentAndInvalidateDrafts(ctx, chunk, tx, deferPostCommit);
+    });
+  }
+}
+
+async function persistUpdateChunks(ctx: SyncContext, updates: UtxoUpdate[], batchSize: number) {
+  for (const chunk of chunksOf(updates, batchSize)) {
+    await runWalletSyncMutation(ctx, 'utxo_reconciliation', async (tx, deferPostCommit) => {
+      await persistUtxoUpdates(chunk, tx, deferPostCommit);
+    });
+  }
+}
 
 /**
  * Execute reconcile UTXOs phase
@@ -128,7 +164,8 @@ export async function reconcileUtxosPhase(ctx: SyncContext): Promise<SyncContext
 
   walletLog(walletId, 'info', 'SYNC', `Reconciling ${allUtxoKeys.size} UTXOs with database...`);
 
-  // Get all UTXOs from DB (both spent and unspent)
+  // Read and compare outside a transaction. Each bounded write chunk validates
+  // the fence afresh, so reclaim can rotate authority between commits.
   const existingUtxos = await utxoRepository.findByWalletIdWithSelect(walletId, {
     id: true,
     txid: true,
@@ -140,18 +177,13 @@ export async function reconcileUtxosPhase(ctx: SyncContext): Promise<SyncContext
     amount: true,
     scriptPubKey: true,
   });
-
-  const existingUtxoMap = new Map(existingUtxos.map(u => [`${u.txid}:${u.vout}`, u]));
-
+  const existingUtxoMap = new Map(existingUtxos.map(utxo => [`${utxo.txid}:${utxo.vout}`, utxo]));
   const changes = collectReconciliationChanges(ctx, existingUtxoMap);
-  await markSpentAndInvalidateDrafts(ctx, changes.spentIds);
-  await persistUtxoUpdates(changes.updates);
+  const batchSize = getConfig().sync.transactionBatchSize;
+  await persistSpentChunks(ctx, changes.spentIds, batchSize);
+  await persistUpdateChunks(ctx, changes.updates, batchSize);
 
-  // Log debug info
-  const newUtxoCount = Array.from(allUtxoKeys).filter(
-    key => !existingUtxoMap.has(key)
-  ).length;
-
+  const newUtxoCount = Array.from(allUtxoKeys).filter(key => !existingUtxoMap.has(key)).length;
   log.debug(
     `[SYNC] Found ${newUtxoCount} new UTXOs (${existingUtxoMap.size} already exist, ${changes.spentIds.length} authenticated spends)`
   );

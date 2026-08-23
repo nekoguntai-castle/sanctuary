@@ -19,6 +19,14 @@ import type {
   NextCanonicalAddressData,
 } from '../../../repositories/addressRepository';
 import { buildCanonicalAddressEvidence } from '../../wallet/addressGeneration';
+import type { PrismaTxClient } from '../../../models/prisma';
+
+type DeferPostCommit = (effect: () => void | Promise<void>) => void;
+type GapLimitDeriver = (branch: 0 | 1, index: number) => NextCanonicalAddressData;
+
+export interface GapLimitExpansionPreparation {
+  readonly derive: GapLimitDeriver;
+}
 
 const log = createLogger("BITCOIN:SVC_ADDR_DISCOVERY");
 
@@ -55,11 +63,12 @@ function logBranchExpansion(
  * to ensure there are always at least 20 unused addresses at the end of both
  * the receive and change chains.
  *
- * @returns Array of newly generated addresses that should be scanned
+ * Descriptor/policy reads and BIP-32 derivation preparation occur here, before
+ * the caller enters its short fenced persistence transaction.
  */
-export async function ensureGapLimit(
+export async function prepareGapLimitExpansion(
   walletId: string,
-): Promise<Array<{ address: string; derivationPath: string }>> {
+): Promise<GapLimitExpansionPreparation | null> {
   const wallet = await walletRepository.findByIdWithSelect(walletId, {
     id: true,
     descriptor: true,
@@ -73,7 +82,7 @@ export async function ensureGapLimit(
 
   if (!wallet?.descriptor || !wallet.changeDescriptor) {
     log.debug(`Wallet ${walletId} has no descriptor, skipping gap limit check`);
-    return [];
+    return null;
   }
 
   try {
@@ -83,14 +92,14 @@ export async function ensureGapLimit(
       log.warn("Skipping gap expansion while wallet address display is disabled", {
         walletId,
       });
-      return [];
+      return null;
     }
     throw error;
   }
 
   const policy = assertPersistedCanonicalPolicy(wallet);
 
-  const derive = (branch: 0 | 1, index: number): NextCanonicalAddressData => {
+  const derive: GapLimitDeriver = (branch, index) => {
     return buildCanonicalAddressEvidence(
       wallet.descriptor as string,
       wallet.changeDescriptor as string,
@@ -100,29 +109,56 @@ export async function ensureGapLimit(
       index,
     );
   };
+  return { derive };
+}
+
+/** Persist one prepared gap expansion through the caller's explicit transaction client. */
+export async function persistGapLimitExpansion(
+  walletId: string,
+  preparation: GapLimitExpansionPreparation,
+  tx?: PrismaTxClient,
+  deferPostCommit?: DeferPostCommit,
+): Promise<Array<{ address: string; derivationPath: string }>> {
 
   const addressesToCreate = await addressRepository.createCanonicalBatch(
     walletId,
     (state) => {
       const counts = requiredGapCounts(state);
-      logBranchExpansion(walletId, 'receive', state, counts);
-      logBranchExpansion(walletId, 'change', state, counts);
+      const publishExpansion = () => {
+        logBranchExpansion(walletId, 'receive', state, counts);
+        logBranchExpansion(walletId, 'change', state, counts);
+      };
+      if (deferPostCommit) deferPostCommit(publishExpansion);
+      else publishExpansion();
       return counts;
     },
-    derive,
+    preparation.derive,
+    tx,
   );
 
   if (addressesToCreate.length > 0) {
-    walletLog(
+    const publishGenerated = () => walletLog(
       walletId,
       "info",
       "ADDRESS",
       `Generated ${addressesToCreate.length} new addresses to maintain gap limit`,
     );
+    if (deferPostCommit) deferPostCommit(publishGenerated);
+    else publishGenerated();
   }
 
   return addressesToCreate.map(({ address, derivationPath }) => ({
     address,
     derivationPath,
   }));
+}
+
+export async function ensureGapLimit(
+  walletId: string,
+  tx?: PrismaTxClient,
+  deferPostCommit?: DeferPostCommit,
+): Promise<Array<{ address: string; derivationPath: string }>> {
+  const preparation = await prepareGapLimitExpansion(walletId);
+  if (!preparation) return [];
+  return persistGapLimitExpansion(walletId, preparation, tx, deferPostCommit);
 }

@@ -152,6 +152,7 @@ export async function executeSyncPipeline(
     addresses,
     currentBlockHeight,
     viaTor,
+    mutationFence: options?.mutationFence,
   });
 
   // Filter phases based on options
