@@ -6,6 +6,7 @@ import type {
   SubscriptionEnrollmentCompletionInput,
   SubscriptionEnrollmentCompletionResult,
   SubscriptionEnrollmentCandidate,
+  SubscriptionCheckpointSyncIntent,
 } from '../../repositories/types';
 import { addressToScriptHash } from '../bitcoin/electrum/methods';
 
@@ -48,6 +49,8 @@ export interface SubscriptionCheckpointEnrollmentResult {
   scanned: number;
   enrolled: number;
   unavailable: number;
+  /** Exact committed generations, deduplicated by wallet/generation for post-commit wake-up. */
+  syncIntents: SubscriptionCheckpointSyncIntent[];
   nextCursor?: string;
 }
 
@@ -90,11 +93,13 @@ function prepareCandidate(
 function pageResult(
   candidates: SubscriptionEnrollmentCandidate[],
   enrolled: number,
+  syncIntents: SubscriptionCheckpointSyncIntent[] = [],
 ): SubscriptionCheckpointEnrollmentResult {
   return {
     scanned: candidates.length,
     enrolled,
     unavailable: candidates.length - enrolled,
+    syncIntents,
     ...(candidates.length > 0
       ? { nextCursor: candidates[candidates.length - 1].addressId }
       : {}),
@@ -121,7 +126,7 @@ async function completeSafely(
   network: NetworkType,
   observedStatus: string | null,
   observedAt: Date,
-): Promise<boolean> {
+): Promise<SubscriptionEnrollmentCompletionResult> {
   try {
     const { candidate, scriptHash } = prepared;
     const result = await repository.completeSubscriptionEnrollment({
@@ -133,10 +138,18 @@ async function completeSafely(
       observedStatus,
       observedAt,
     });
-    return result.status === 'applied';
+    return result;
   } catch {
-    return false;
+    return { status: 'not_applied' };
   }
+}
+
+function addSyncIntent(
+  intents: Map<string, SubscriptionCheckpointSyncIntent>,
+  intent: SubscriptionCheckpointSyncIntent | null,
+): void {
+  if (!intent) return;
+  intents.set(`${intent.walletId}:${intent.generation}`, intent);
 }
 
 export function createSubscriptionCheckpointEnrollment(
@@ -176,20 +189,23 @@ export function createSubscriptionCheckpointEnrollment(
     const observedAt = enrollmentTime(dependencies.now ?? (() => new Date()));
 
     let enrolled = 0;
+    const syncIntents = new Map<string, SubscriptionCheckpointSyncIntent>();
     for (const item of prepared) {
       const observation = returnedStatus(statuses, item.candidate.address);
       if (!observation.returned) continue;
-      if (await completeSafely(
+      const completion = await completeSafely(
         dependencies.repository,
         item,
         options.network,
         observation.status,
         observedAt,
-      )) {
+      );
+      if (completion.status === 'applied') {
         enrolled += 1;
+        addSyncIntent(syncIntents, completion.syncIntent);
       }
     }
-    return pageResult(candidates, enrolled);
+    return pageResult(candidates, enrolled, [...syncIntents.values()]);
   }
 
   return { enrollPage };

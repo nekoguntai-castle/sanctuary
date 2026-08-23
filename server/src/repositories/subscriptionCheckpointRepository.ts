@@ -5,12 +5,14 @@ import {
 } from '@sanctuary/shared/constants/bitcoin';
 import prisma from '../models/prisma';
 import type {
+  SubscriptionCheckpointOwner,
   SubscriptionCheckpointState,
   SubscriptionEnrollmentCompletionInput,
   SubscriptionEnrollmentCompletionResult,
   SubscriptionEnrollmentCandidate,
   SubscriptionEnrollmentRequestResult,
 } from './types';
+import { applySubscriptionEnrollmentCompletion } from './subscriptionCheckpointCompletion';
 
 const MAX_ENROLLMENT_BATCH_SIZE = 200;
 const MAX_ENROLLMENT_GENERATION = 2_147_483_647;
@@ -20,6 +22,7 @@ interface EnrollmentRequestRow extends SubscriptionCheckpointState {
   inserted: boolean;
   previousRequestedGeneration: number | null;
 }
+
 
 function requireNonEmpty(value: string, description: string): void {
   const valid = [typeof value === 'string', /\S/.test(value)].every(Boolean);
@@ -41,6 +44,12 @@ function requireNetwork(network: unknown): void {
   }
 }
 
+function requireScriptHash(scriptHash: string): void {
+  if (!ELECTRUM_HASH_PATTERN.test(scriptHash)) {
+    throw new Error('Subscription enrollment script hash must be 64 lowercase hexadecimal characters');
+  }
+}
+
 function requireGeneration(generation: number): void {
   if (
     !Number.isInteger(generation)
@@ -55,9 +64,7 @@ function requireCompletionInput(input: SubscriptionEnrollmentCompletionInput): v
   requireAddressIdentity(input.addressId, input.address);
   requireNetwork(input.network);
   requireGeneration(input.generation);
-  if (!ELECTRUM_HASH_PATTERN.test(input.scriptHash)) {
-    throw new Error('Subscription enrollment script hash must be 64 lowercase hexadecimal characters');
-  }
+  requireScriptHash(input.scriptHash);
   if (input.observedStatus !== null && !ELECTRUM_HASH_PATTERN.test(input.observedStatus)) {
     throw new Error('Subscription enrollment observed status must be null or a lowercase Electrum hash');
   }
@@ -90,6 +97,41 @@ export async function findSubscriptionCheckpoint(
       processedEnrollmentGeneration: true,
     },
   });
+}
+
+/** Return one bounded owner page for an exact enrolled network/script-hash identity. */
+export async function findSubscriptionCheckpointOwners(
+  network: NetworkType,
+  scriptHash: string,
+  options: { cursor?: string; limit?: number } = {},
+): Promise<SubscriptionCheckpointOwner[]> {
+  requireNetwork(network);
+  requireScriptHash(scriptHash);
+  const limit = enrollmentLimit(options.limit);
+  const cursor = options.cursor ?? '';
+  return prisma.$queryRaw<SubscriptionCheckpointOwner[]>(Prisma.sql`
+    SELECT
+      "checkpoints"."addressId",
+      "addresses"."walletId",
+      "addresses"."address",
+      "checkpoints"."network",
+      "checkpoints"."scriptHash",
+      "checkpoints"."statusKnown",
+      "checkpoints"."observedStatus",
+      "checkpoints"."lastObservedAt",
+      "checkpoints"."requestedEnrollmentGeneration",
+      "checkpoints"."processedEnrollmentGeneration"
+    FROM "address_subscription_checkpoints" AS "checkpoints"
+    INNER JOIN "addresses" ON "addresses"."id" = "checkpoints"."addressId"
+    INNER JOIN "wallets" ON "wallets"."id" = "addresses"."walletId"
+    WHERE "checkpoints"."network" = ${network}
+      AND "wallets"."network" = ${network}
+      AND "checkpoints"."scriptHash" = ${scriptHash}
+      AND "checkpoints"."statusKnown" = TRUE
+      AND "checkpoints"."addressId" > ${cursor}
+    ORDER BY "checkpoints"."addressId" ASC
+    LIMIT ${limit}
+  `);
 }
 
 /**
@@ -227,76 +269,12 @@ export async function completeSubscriptionEnrollment(
   input: SubscriptionEnrollmentCompletionInput,
 ): Promise<SubscriptionEnrollmentCompletionResult> {
   requireCompletionInput(input);
-  const rows = await prisma.$queryRaw<SubscriptionCheckpointState[]>(Prisma.sql`
-    WITH "target" AS MATERIALIZED (
-      SELECT "addresses"."id" AS "addressId", "wallets"."network"
-      FROM "addresses"
-      INNER JOIN "wallets" ON "wallets"."id" = "addresses"."walletId"
-      WHERE "addresses"."id" = ${input.addressId}
-        AND "addresses"."address" = ${input.address}
-        AND "wallets"."network" = ${input.network}
-    ),
-    "inserted" AS (
-      INSERT INTO "address_subscription_checkpoints" (
-        "addressId",
-        "network",
-        "scriptHash",
-        "statusKnown",
-        "observedStatus",
-        "lastObservedAt",
-        "requestedEnrollmentGeneration",
-        "processedEnrollmentGeneration"
-      )
-      SELECT
-        "target"."addressId",
-        "target"."network",
-        ${input.scriptHash},
-        TRUE,
-        ${input.observedStatus},
-        ${input.observedAt},
-        1,
-        1
-      FROM "target"
-      WHERE ${input.generation} = 1
-      ON CONFLICT ("addressId") DO NOTHING
-      RETURNING *
-    ),
-    "updated" AS (
-      UPDATE "address_subscription_checkpoints" AS "checkpoints"
-      SET "scriptHash" = ${input.scriptHash},
-          "statusKnown" = TRUE,
-          "observedStatus" = ${input.observedStatus},
-          "lastObservedAt" = ${input.observedAt},
-          "processedEnrollmentGeneration" = ${input.generation},
-          "updatedAt" = CURRENT_TIMESTAMP
-      FROM "target"
-      WHERE "checkpoints"."addressId" = "target"."addressId"
-        AND "checkpoints"."network" = "target"."network"
-        AND "checkpoints"."requestedEnrollmentGeneration" = ${input.generation}
-        AND "checkpoints"."processedEnrollmentGeneration" < ${input.generation}
-      RETURNING "checkpoints".*
-    )
-    SELECT
-      "completed"."addressId",
-      "completed"."network",
-      "completed"."scriptHash",
-      "completed"."statusKnown",
-      "completed"."observedStatus",
-      "completed"."lastObservedAt",
-      "completed"."requestedEnrollmentGeneration",
-      "completed"."processedEnrollmentGeneration"
-    FROM (
-      SELECT * FROM "inserted"
-      UNION ALL
-      SELECT * FROM "updated"
-    ) AS "completed"
-  `);
-  const state = rows[0];
-  return state ? { status: 'applied', state } : { status: 'not_applied' };
+  return applySubscriptionEnrollmentCompletion(input);
 }
 
 export const subscriptionCheckpointRepository = {
   findSubscriptionCheckpoint,
+  findSubscriptionCheckpointOwners,
   findPendingSubscriptionEnrollments,
   requestSubscriptionEnrollment,
   completeSubscriptionEnrollment,

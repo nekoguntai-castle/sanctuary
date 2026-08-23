@@ -272,6 +272,14 @@
       },
       {
         "sink": "authority.requestedIncrementalSyncGenerationWrite",
+        "file": "server/src/repositories/subscriptionCheckpointCompletion.ts",
+        "enclosingFunction": "applyIntent",
+        "count": 1,
+        "trigger": "subscription_checkpoint_comparison",
+        "role": "atomic_checkpoint_status_intent"
+      },
+      {
+        "sink": "authority.requestedIncrementalSyncGenerationWrite",
         "file": "server/src/services/backupService/restoreTransforms.ts",
         "enclosingFunction": "normalizeRestoredSyncAuthority",
         "count": 1,
@@ -624,7 +632,7 @@
           },
           {
             "file": "server/src/repositories/subscriptionCheckpointRepository.ts",
-            "role": "canonical_checkpoint_completion_writer"
+            "role": "canonical_atomic_checkpoint_intent_writer"
           },
           {
             "file": "server/src/services/sync/subscriptionCheckpointEnrollment.ts",

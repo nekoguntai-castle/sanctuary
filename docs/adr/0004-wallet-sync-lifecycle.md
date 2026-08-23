@@ -123,7 +123,13 @@ rotates the token on the same generation. A stale former owner therefore cannot
 write or complete, while any newer requested generation remains a trailing pass.
 
 The additive checkpoint repository also owns the only enrollment request and
-completion writers. No production source calls the request writer. A bounded,
+completion writers. Exact enrollment completion compares the authoritative
+network/address status and advances any required incremental wallet generation
+in the same short PostgreSQL statement: an unknown null status establishes the
+baseline without history work, while unknown non-null history and later status
+changes coalesce durable intent. The returned exact generation is only a
+post-commit wake-up input, so queue loss cannot separate checkpoint evidence
+from intent. No production source calls the request writer. A bounded,
 network-explicit enrollment coordinator composes the completion writer with
 injected subscription batch I/O, but remains dormant: no API, server startup,
 worker startup, subscription manager, or recovery loop constructs or calls it in

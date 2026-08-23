@@ -232,6 +232,18 @@ export interface SubscriptionEnrollmentCandidate extends SubscriptionCheckpointS
   checkpointMissing: boolean;
 }
 
+export interface SubscriptionCheckpointOwner extends SubscriptionCheckpointState {
+  walletId: string;
+  address: string;
+}
+
+/** Exact durable intent committed with a checkpoint status transition. */
+export interface SubscriptionCheckpointSyncIntent {
+  walletId: string;
+  generation: number;
+  state: IncrementalSyncLifecycleState;
+}
+
 export type SubscriptionEnrollmentRequestResult =
   | {
     status: 'requested' | 'merged';
@@ -253,8 +265,10 @@ export type SubscriptionEnrollmentCompletionResult =
   | {
     status: 'applied';
     state: SubscriptionCheckpointState;
+    /** Exact committed intent to publish/wake after commit; null means no history work. */
+    syncIntent: SubscriptionCheckpointSyncIntent | null;
   }
-  | { status: 'not_applied' };
+  | { status: 'generation_exhausted' | 'not_applied' };
 
 /** Repository-managed patches; callers cannot set the monotonic version. */
 export type WalletSyncStatePatch = Partial<Omit<WalletSyncState, 'syncStateVersion'>>;

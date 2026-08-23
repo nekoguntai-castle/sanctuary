@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   SubscriptionCheckpointState,
+  SubscriptionCheckpointSyncIntent,
   SubscriptionEnrollmentCandidate,
 } from '../../../../src/repositories/types';
 import { addressToScriptHash } from '../../../../src/services/bitcoin/electrum/methods';
@@ -54,6 +55,37 @@ function appliedState(
   };
 }
 
+function syncIntent(walletId: string, generation = 1): SubscriptionCheckpointSyncIntent {
+  return {
+    walletId,
+    generation,
+    state: {
+      id: walletId,
+      requestedIncrementalSyncGeneration: generation,
+      claimedIncrementalSyncGeneration: 0,
+      processedIncrementalSyncGeneration: 0,
+      incrementalSyncLeaseToken: null,
+      incrementalSyncClaimedAt: null,
+      incrementalSyncLeaseExpiresAt: null,
+      syncRetryCount: 0,
+      syncNextRetryAt: null,
+      syncActionRequiredAt: null,
+      requestedFullResyncGeneration: 0,
+      preparedFullResyncGeneration: 0,
+      processedFullResyncGeneration: 0,
+      syncInProgress: false,
+      lastSyncedAt: null,
+      lastSyncedBlockHeight: null,
+      lastSyncStatus: null,
+      lastSyncError: null,
+      lastSyncFailureClass: null,
+      syncExecutionOwner: null,
+      syncStartedAt: null,
+      syncStateVersion: 1,
+    },
+  };
+}
+
 function repositoryMock(): SubscriptionCheckpointEnrollmentRepositoryPort {
   return {
     findPendingSubscriptionEnrollments: vi.fn(),
@@ -79,8 +111,16 @@ describe('subscriptionCheckpointEnrollment', () => {
       [ADDRESS_2, null],
     ]));
     vi.mocked(repository.completeSubscriptionEnrollment)
-      .mockResolvedValueOnce({ status: 'applied', state: appliedState(first, STATUS_1) })
-      .mockResolvedValueOnce({ status: 'applied', state: appliedState(second, null) });
+      .mockResolvedValueOnce({
+        status: 'applied',
+        state: appliedState(first, STATUS_1),
+        syncIntent: syncIntent(first.walletId, 3),
+      })
+      .mockResolvedValueOnce({
+        status: 'applied',
+        state: appliedState(second, null),
+        syncIntent: null,
+      });
     const enrollment = createSubscriptionCheckpointEnrollment({
       repository,
       subscribeBatch,
@@ -95,6 +135,7 @@ describe('subscriptionCheckpointEnrollment', () => {
       scanned: 2,
       enrolled: 2,
       unavailable: 0,
+      syncIntents: [syncIntent(first.walletId, 3)],
       nextCursor: 'address-2',
     });
     expect(repository.findPendingSubscriptionEnrollments).toHaveBeenCalledWith({
@@ -139,7 +180,9 @@ describe('subscriptionCheckpointEnrollment', () => {
       ['unrequested-address', STATUS_3],
     ]) as unknown as Map<string, string | null>);
     vi.mocked(repository.completeSubscriptionEnrollment)
-      .mockResolvedValue({ status: 'applied', state: appliedState(first, null) });
+      .mockResolvedValue({
+        status: 'applied', state: appliedState(first, null), syncIntent: null,
+      });
     const enrollment = createSubscriptionCheckpointEnrollment({
       repository,
       subscribeBatch,
@@ -150,6 +193,7 @@ describe('subscriptionCheckpointEnrollment', () => {
       scanned: 3,
       enrolled: 1,
       unavailable: 2,
+      syncIntents: [],
       nextCursor: 'address-3',
     });
     expect(repository.completeSubscriptionEnrollment).toHaveBeenCalledTimes(1);
@@ -175,6 +219,7 @@ describe('subscriptionCheckpointEnrollment', () => {
       scanned: 2,
       enrolled: 0,
       unavailable: 2,
+      syncIntents: [],
       nextCursor: 'address-2',
     });
     expect(repository.completeSubscriptionEnrollment).not.toHaveBeenCalled();
@@ -196,6 +241,7 @@ describe('subscriptionCheckpointEnrollment', () => {
       scanned: 1,
       enrolled: 0,
       unavailable: 1,
+      syncIntents: [],
       nextCursor: 'address-1',
     });
     expect(repository.completeSubscriptionEnrollment).not.toHaveBeenCalled();
@@ -219,6 +265,7 @@ describe('subscriptionCheckpointEnrollment', () => {
       .mockResolvedValueOnce({
         status: 'applied',
         state: appliedState(third, STATUS_3),
+        syncIntent: null,
       });
     const enrollment = createSubscriptionCheckpointEnrollment({
       repository,
@@ -230,9 +277,41 @@ describe('subscriptionCheckpointEnrollment', () => {
       scanned: 3,
       enrolled: 1,
       unavailable: 2,
+      syncIntents: [],
       nextCursor: 'address-3',
     });
     expect(repository.completeSubscriptionEnrollment).toHaveBeenCalledTimes(3);
+  });
+
+  it('coalesces committed wake intents by exact wallet generation', async () => {
+    const repository = repositoryMock();
+    const first = candidate('address-1', ADDRESS_1, { walletId: 'wallet-shared' });
+    const second = candidate('address-2', ADDRESS_2, { walletId: 'wallet-shared' });
+    const intent = syncIntent('wallet-shared', 4);
+    vi.mocked(repository.findPendingSubscriptionEnrollments)
+      .mockResolvedValue([first, second]);
+    subscribeBatch.mockResolvedValue(new Map([
+      [ADDRESS_1, STATUS_1],
+      [ADDRESS_2, STATUS_2],
+    ]));
+    vi.mocked(repository.completeSubscriptionEnrollment)
+      .mockResolvedValueOnce({
+        status: 'applied', state: appliedState(first, STATUS_1), syncIntent: intent,
+      })
+      .mockResolvedValueOnce({
+        status: 'applied', state: appliedState(second, STATUS_2), syncIntent: intent,
+      });
+    const enrollment = createSubscriptionCheckpointEnrollment({
+      repository,
+      subscribeBatch,
+      now: () => NOW,
+    });
+
+    await expect(enrollment.enrollPage({ network: 'mainnet' })).resolves.toMatchObject({
+      enrolled: 2,
+      unavailable: 0,
+      syncIntents: [intent],
+    });
   });
 
   it('does not subscribe invalid-address or wrong-network candidates', async () => {
@@ -247,6 +326,7 @@ describe('subscriptionCheckpointEnrollment', () => {
     vi.mocked(repository.completeSubscriptionEnrollment).mockResolvedValue({
       status: 'applied',
       state: appliedState(valid, STATUS_1),
+      syncIntent: null,
     });
     const enrollment = createSubscriptionCheckpointEnrollment({
       repository,
@@ -258,6 +338,7 @@ describe('subscriptionCheckpointEnrollment', () => {
       scanned: 3,
       enrolled: 1,
       unavailable: 2,
+      syncIntents: [],
       nextCursor: 'address-3',
     });
     expect(subscribeBatch).toHaveBeenCalledWith({
@@ -282,6 +363,7 @@ describe('subscriptionCheckpointEnrollment', () => {
       scanned: 2,
       enrolled: 0,
       unavailable: 2,
+      syncIntents: [],
       nextCursor: 'address-2',
     });
     expect(subscribeBatch).not.toHaveBeenCalled();
@@ -300,6 +382,7 @@ describe('subscriptionCheckpointEnrollment', () => {
       scanned: 0,
       enrolled: 0,
       unavailable: 0,
+      syncIntents: [],
     });
     expect(subscribeBatch).not.toHaveBeenCalled();
   });
@@ -312,6 +395,7 @@ describe('subscriptionCheckpointEnrollment', () => {
     vi.mocked(repository.completeSubscriptionEnrollment).mockResolvedValue({
       status: 'applied',
       state: appliedState(first, STATUS_1),
+      syncIntent: null,
     });
     const enrollment = createSubscriptionCheckpointEnrollment({
       repository,

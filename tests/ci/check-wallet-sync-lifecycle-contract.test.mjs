@@ -207,7 +207,7 @@ function fixtureContract() {
       role: 'neutral_repository_barrel_export',
     }, {
       file: 'server/src/repositories/subscriptionCheckpointRepository.ts',
-      role: 'canonical_checkpoint_completion_writer',
+      role: 'canonical_atomic_checkpoint_intent_writer',
     }, {
       file: 'server/src/services/sync/subscriptionCheckpointEnrollment.ts',
       role: 'dormant_subscription_enrollment_coordinator',
