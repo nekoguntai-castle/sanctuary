@@ -89,12 +89,23 @@ function fixtureContract() {
       file: 'server/src/services/sync/subscriptionCheckpointEnrollment.ts',
       role: 'dormant_subscription_enrollment_coordinator_definition',
     }] },
+    { symbol: 'createSyncIntentRecoveryCoordinator', entries: [{
+      file: 'server/src/worker/syncIntentRecovery.ts',
+      role: 'dormant_recovery_coordinator_definition',
+    }] },
     { symbol: 'enqueueIncrementalSyncWakeup', entries: [{
       file: 'server/src/services/sync/syncIntentAdmission.ts',
       role: 'canonical_dormant_wakeup_adapter_composition',
     }, {
       file: 'server/src/services/workerSyncQueue.ts',
       role: 'dormant_generation_wakeup_adapter_definition',
+    }] },
+    { symbol: 'enqueueReservedFullResyncWakeup', entries: [{
+      file: 'server/src/services/workerSyncQueue.ts',
+      role: 'dormant_reserved_generation_wakeup_adapter_definition',
+    }, {
+      file: 'server/src/worker/syncIntentRecovery.ts',
+      role: 'dormant_exact_generation_recovery_composition',
     }] },
     { symbol: 'findStale', entries: [] },
     { symbol: 'requestSubscriptionEnrollment', entries: [{
@@ -110,6 +121,9 @@ function fixtureContract() {
     }, {
       file: 'server/src/worker/jobs/canonicalIncrementalSync.ts',
       role: 'generation_bound_consumer_only',
+    }, {
+      file: 'server/src/worker/syncIntentRecovery.ts',
+      role: 'dormant_bounded_recovery_composition',
     }] },
   ];
   contract.inventory.literalReferences = [
@@ -154,7 +168,8 @@ function createFixture() {
   write(
     root,
     'server/src/services/workerSyncQueue.ts',
-    'export function enqueueIncrementalSyncWakeup() { return true; }\n',
+    'export function enqueueIncrementalSyncWakeup() { return true; }\n'
+      + 'export function enqueueReservedFullResyncWakeup() { return true; }\n',
   );
   write(
     root,
@@ -162,6 +177,14 @@ function createFixture() {
     "import { enqueueIncrementalSyncWakeup } from '../workerSyncQueue';\n"
       + 'void enqueueIncrementalSyncWakeup;\n'
       + 'export const syncIntentAdmission = {};\n',
+  );
+  write(
+    root,
+    'server/src/worker/syncIntentRecovery.ts',
+    `import { syncIntentAdmission } from '${canonicalAdmissionImport}';\n`
+      + "import { enqueueReservedFullResyncWakeup } from '../services/workerSyncQueue';\n"
+      + 'void syncIntentAdmission.recover;\nvoid enqueueReservedFullResyncWakeup;\n'
+      + 'export function createSyncIntentRecoveryCoordinator() {}\n',
   );
   write(
     root,
@@ -324,6 +347,37 @@ test('rejects namespace and bracket repair activation from the permitted worker'
     `import { syncWallet } from '${retiredBlockchainImport}';\n`
       + `import * as intents from '${canonicalAdmissionImport}';\n`
       + "syncWallet();\nvoid intents.syncIntentAdmission?.['recover'];\n",
+  );
+  assert.match(
+    checkWalletSyncLifecycleContract(root).errors.join('\n'),
+    /durable admission producer activated before cutover/,
+  );
+});
+
+test('rejects construction of the dormant recovery coordinator', () => {
+  const root = createFixture();
+  write(
+    root,
+    'server/src/worker.ts',
+    "import { createSyncIntentRecoveryCoordinator } from './worker/syncIntentRecovery';\n"
+      + 'void createSyncIntentRecoveryCoordinator();\n',
+  );
+  assert.match(
+    checkWalletSyncLifecycleContract(root).errors.join('\n'),
+    /durable admission producer activated before cutover/,
+  );
+});
+
+test('rejects a request alias inside the otherwise permitted recovery coordinator', () => {
+  const root = createFixture();
+  write(
+    root,
+    'server/src/worker/syncIntentRecovery.ts',
+    `import { syncIntentAdmission } from '${canonicalAdmissionImport}';\n`
+      + "import { enqueueReservedFullResyncWakeup } from '../services/workerSyncQueue';\n"
+      + 'const producer = syncIntentAdmission;\nvoid producer.request;\n'
+      + 'void enqueueReservedFullResyncWakeup;\n'
+      + 'export function createSyncIntentRecoveryCoordinator() {}\n',
   );
   assert.match(
     checkWalletSyncLifecycleContract(root).errors.join('\n'),

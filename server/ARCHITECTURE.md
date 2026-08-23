@@ -196,9 +196,12 @@ compatibility precursor still retains legacy API execution and the recurring
 `check-stale-wallets` schedule; the executable inventory in
 `config/wallet-sync-lifecycle-contract.json` prevents those exceptions from
 growing while the single-admission, worker-owned path is introduced. The
-durable admission service currently has one generation-bound worker consumer,
-but no production producer or repair loop. Existing v1 producers and legacy
-execution remain unchanged until the separate activation release.
+durable admission service currently has one generation-bound worker consumer
+and a bounded recovery coordinator, but neither has a production producer or
+startup/timer caller. The dormant coordinator can repair exact reserved
+full-resync generations and unclaimed incremental intent without reclaiming an
+expired lease. Existing v1 producers and legacy execution remain unchanged until
+the separate activation release.
 
 Subscription checkpoint enrollment has the same additive boundary. The only
 checkpoint request/completion writers live in

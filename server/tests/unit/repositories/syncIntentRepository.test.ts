@@ -419,6 +419,12 @@ describe('syncIntentRepository', () => {
     expect(query.strings.join('')).toContain(
       '"requestedFullResyncGeneration" = "processedFullResyncGeneration"',
     );
+    expect(query.strings.join('')).toContain(
+      '"claimedIncrementalSyncGeneration" = "processedIncrementalSyncGeneration"',
+    );
+    expect(query.strings.join('')).not.toContain(
+      '"incrementalSyncLeaseExpiresAt" <=',
+    );
   });
 
   it('uses bounded recovery defaults and rejects invalid limits', async () => {

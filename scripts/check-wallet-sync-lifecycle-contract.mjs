@@ -42,6 +42,8 @@ const DORMANT_ADMISSION_MUTATIONS = [
 ];
 const SYNC_INTENT_REPOSITORY_PATH = 'server/src/repositories/syncIntentRepository.ts';
 const INCREMENTAL_WAKEUP_ADAPTER_PATH = 'server/src/services/workerSyncQueue.ts';
+const DORMANT_RECOVERY_COORDINATOR_PATH = 'server/src/worker/syncIntentRecovery.ts';
+const DORMANT_RECOVERY_COORDINATOR_SYMBOL = 'createSyncIntentRecoveryCoordinator';
 const REPOSITORY_BARREL_PATH = 'server/src/repositories/index.ts';
 const SUBSCRIPTION_ENROLLMENT_COORDINATOR_SYMBOL = 'createSubscriptionCheckpointEnrollment';
 const SUBSCRIPTION_ENROLLMENT_WRITERS = [
@@ -233,6 +235,12 @@ function validateCompatibility(value) {
     !== 'server/src/worker/jobs/canonicalIncrementalSync.ts') {
     throw new Error('compatibility.generationConsumerModule must name the bounded worker engine');
   }
+  if (compatibility.recoveryState !== 'dormant_coordinator_no_production_callers') {
+    throw new Error('intent recovery must remain dormant before its activation release');
+  }
+  if (compatibility.recoveryCoordinatorModule !== DORMANT_RECOVERY_COORDINATOR_PATH) {
+    throw new Error('compatibility.recoveryCoordinatorModule must name the dormant coordinator');
+  }
   if (compatibility.subscriptionEnrollmentState !== 'dormant_no_production_consumers') {
     throw new Error('subscription enrollment must remain dormant before its activation release');
   }
@@ -331,6 +339,7 @@ function unexpectedAdmissionConsumers(
     admissionModule,
     workerExecutor,
     generationConsumerModule,
+    DORMANT_RECOVERY_COORDINATOR_PATH,
   ]);
   const allowedMutationConsumers = new Set([admissionModule, SYNC_INTENT_REPOSITORY_PATH]);
   const allowedWakeupAdapterConsumers = new Set([
@@ -338,15 +347,27 @@ function unexpectedAdmissionConsumers(
     INCREMENTAL_WAKEUP_ADAPTER_PATH,
   ]);
   const forbiddenAdmissionCalls = [...sources]
-    .filter(([, source]) => admissionSingletonAliases(source).some(alias => (
-      hasForbiddenAdmissionAccess(source, alias)
+    .filter(([file, source]) => admissionSingletonAliases(source).some(alias => (
+      hasForbiddenAdmissionAccess(
+        source,
+        alias,
+        file === DORMANT_RECOVERY_COORDINATOR_PATH ? ['request'] : ['request', 'recover'],
+      )
     )))
     .map(([file]) => file);
+  const forbiddenRecoveryProducerAliases = sources.get(DORMANT_RECOVERY_COORDINATOR_PATH)
+    ?.match(/\brequest\b/) ? [DORMANT_RECOVERY_COORDINATOR_PATH] : [];
+  const recoveryCoordinatorConsumers = actualReferenceFiles(
+    sources,
+    new RegExp(`\\b${DORMANT_RECOVERY_COORDINATOR_SYMBOL}\\b`),
+  ).filter(file => file !== DORMANT_RECOVERY_COORDINATOR_PATH);
   return [...new Set([
     ...moduleConsumers.filter(file => !allowedModuleConsumers.has(file)),
     ...mutationConsumers.filter(file => !allowedMutationConsumers.has(file)),
     ...wakeupAdapterConsumers.filter(file => !allowedWakeupAdapterConsumers.has(file)),
     ...forbiddenAdmissionCalls,
+    ...forbiddenRecoveryProducerAliases,
+    ...recoveryCoordinatorConsumers,
   ])]
     .sort();
 }
@@ -363,12 +384,13 @@ function admissionSingletonAliases(source) {
   return aliases;
 }
 
-function hasForbiddenAdmissionAccess(source, alias) {
+function hasForbiddenAdmissionAccess(source, alias, methods) {
   const root = `\\b${escapeRegExp(alias)}`;
-  return new RegExp(`${root}\\s*(?:\\?\\.|\\.)(?:request|recover)\\b`).test(source)
-    || new RegExp(`${root}\\s*(?:\\?\\.)?\\[\\s*['"](?:request|recover)['"]\\s*\\]`).test(source)
+  const methodPattern = `(?:${methods.join('|')})`;
+  return new RegExp(`${root}\\s*(?:\\?\\.|\\.)${methodPattern}\\b`).test(source)
+    || new RegExp(`${root}\\s*(?:\\?\\.)?\\[\\s*['"]${methodPattern}['"]\\s*\\]`).test(source)
     || new RegExp(
-      `\\{[^}]*\\b(?:request|recover)\\b[^}]*\\}\\s*=\\s*${root}`,
+      `\\{[^}]*\\b${methodPattern}\\b[^}]*\\}\\s*=\\s*${root}`,
     ).test(source);
 }
 

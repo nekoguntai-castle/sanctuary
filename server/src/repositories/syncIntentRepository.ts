@@ -456,10 +456,7 @@ export async function findActionableIncrementalSyncIntents(options: {
         "syncNextRetryAt" IS NULL
         OR "syncNextRetryAt" <= ${options.now}
       )
-      AND (
-        "claimedIncrementalSyncGeneration" = "processedIncrementalSyncGeneration"
-        OR "incrementalSyncLeaseExpiresAt" <= ${options.now}
-      )
+      AND "claimedIncrementalSyncGeneration" = "processedIncrementalSyncGeneration"
     ORDER BY "id" ASC
     LIMIT ${limit}
   `);

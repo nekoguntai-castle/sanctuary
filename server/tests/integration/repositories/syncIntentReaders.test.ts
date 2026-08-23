@@ -76,6 +76,31 @@ describeWithDatabase('sync intent readers', () => {
       .resolves.not.toEqual(expect.arrayContaining([expect.objectContaining({ id: wallet.id })]));
   });
 
+  it('does not reclaim an expired incremental claim during wake-up repair', async () => {
+    const { wallet } = await createFixture();
+    const claimedAt = new Date('2026-08-22T10:00:00.000Z');
+    await prisma.wallet.update({
+      where: { id: wallet.id },
+      data: {
+        requestedIncrementalSyncGeneration: 1,
+        claimedIncrementalSyncGeneration: 1,
+        processedIncrementalSyncGeneration: 0,
+        incrementalSyncLeaseToken: '10000000-0000-4000-8000-000000000001',
+        incrementalSyncClaimedAt: claimedAt,
+        incrementalSyncLeaseExpiresAt: new Date('2026-08-22T10:05:00.000Z'),
+        syncInProgress: true,
+        syncExecutionOwner: 'worker',
+        syncStartedAt: claimedAt,
+      },
+    });
+
+    await expect(findActionableIncrementalSyncIntents({
+      now: new Date('2026-08-22T11:00:00.000Z'),
+    })).resolves.not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: wallet.id }),
+    ]));
+  });
+
   it('distinguishes a missing checkpoint from authoritative null status', async () => {
     const { address } = await createFixture();
 

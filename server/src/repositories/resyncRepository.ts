@@ -66,6 +66,23 @@ export async function findStrandedFullResyncWallets(): Promise<StrandedFullResyn
   `);
 }
 
+/** Read one stable keyset page for the dormant bounded recovery coordinator. */
+export async function findStrandedFullResyncWalletsPage(
+  cursor?: string,
+): Promise<StrandedFullResyncWallet[]> {
+  return prisma.$queryRaw<StrandedFullResyncWallet[]>(Prisma.sql`
+    SELECT "id",
+           "name",
+           "requestedFullResyncGeneration",
+           "processedFullResyncGeneration"
+    FROM "wallets"
+    WHERE "requestedFullResyncGeneration" > "processedFullResyncGeneration"
+      ${cursor ? Prisma.sql`AND "id" > ${cursor}` : Prisma.empty}
+    ORDER BY "id" ASC
+    LIMIT ${MAX_STRANDED_FULL_RESYNCS}
+  `);
+}
+
 /** Atomically allocates the next durable full-resync generation for a wallet. */
 export async function reserveFullResyncGeneration(walletId: string): Promise<number> {
   const wallet = await prisma.wallet.update({
@@ -228,10 +245,11 @@ export async function completeWalletFullResync(
 }
 
 export const resyncRepository = {
+  findStrandedFullResyncWallets,
+  findStrandedFullResyncWalletsPage,
   reserveFullResyncGeneration,
   resetWalletForFullResync,
   completeWalletFullResync,
-  findStrandedFullResyncWallets,
 };
 
 export default resyncRepository;

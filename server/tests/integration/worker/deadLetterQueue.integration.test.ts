@@ -12,8 +12,14 @@ import { RedisDeadLetterStore } from '../../../src/services/redisDeadLetterStore
 import {
   closeWorkerSyncQueue,
   enqueueDeadLetterJob,
+  enqueueIncrementalSyncWakeup,
+  enqueueReservedFullResyncWakeup,
 } from '../../../src/services/workerSyncQueue';
 import { toBullMqJobId } from '../../../src/jobs/bullMqJobIds';
+import {
+  SYNC_JOB_CONTRACT_VERSION,
+  getSyncLockTtlMs,
+} from '../../../src/jobs/syncJobContract';
 import { setupWorkerEventHandlers } from '../../../src/worker/workerJobQueue/eventHandlers';
 import { describeWithRedis } from '../setup/redis';
 
@@ -283,6 +289,74 @@ describeWithRedis('dead letter queue Redis integration', () => {
       await worker.close();
       await queue.obliterate({ force: true });
       await queue.close();
+    }
+  });
+
+  it('replaces exhausted exact sync generations with live wake-ups', async () => {
+    redis = new Redis(process.env.REDIS_URL!);
+    const walletId = `reserved-recovery-${process.pid}-${Date.now()}`;
+    const generation = 7;
+    const prefix = 'sanctuary:worker';
+    const connection = bullConnection(redis);
+    const queue = new Queue('sync', { connection, prefix });
+    const worker = new Worker('sync', async () => {
+      throw new Error('intentional exhausted generation');
+    }, { connection, prefix });
+    const jobId = toBullMqJobId(`full-resync-attempt:${walletId}:${generation}`);
+    const deduplicationId = toBullMqJobId(`full-resync:${walletId}`);
+    const incrementalWalletId = `${walletId}-incremental`;
+    const incrementalJobId = toBullMqJobId(
+      `sync:intent:${incrementalWalletId}:${generation}`,
+    );
+
+    try {
+      const failed = await queue.add('sync-wallet', {
+        version: SYNC_JOB_CONTRACT_VERSION,
+        walletId,
+        fullResync: true,
+        fullResyncGeneration: generation,
+      }, {
+        attempts: 1,
+        jobId,
+        deduplication: { id: deduplicationId, ttl: getSyncLockTtlMs() },
+      });
+      const failedIncremental = await queue.add('sync-wallet', {
+        version: 2,
+        walletId: incrementalWalletId,
+        incrementalSyncGeneration: generation,
+      }, { attempts: 1, jobId: incrementalJobId });
+      await waitUntil(async () => (
+        (await failed.getState()) === 'failed'
+        && (await failedIncremental.getState()) === 'failed'
+      ));
+      await worker.close();
+      await initializeRedis();
+
+      await expect(enqueueReservedFullResyncWakeup({
+        walletId,
+        generation,
+      })).resolves.toBe(true);
+      const replacement = await queue.getJob(jobId);
+      await expect(replacement?.getState()).resolves.toMatch(/waiting|prioritized/);
+      expect(replacement?.data).toEqual(expect.objectContaining({
+        walletId,
+        fullResyncGeneration: generation,
+      }));
+      await expect(enqueueIncrementalSyncWakeup({
+        walletId: incrementalWalletId,
+        generation,
+        jobId: incrementalJobId,
+      })).resolves.toBe(true);
+      await expect((await queue.getJob(incrementalJobId))?.getState())
+        .resolves.toMatch(/waiting|prioritized/);
+    } finally {
+      await worker.close();
+      await (await queue.getJob(jobId))?.remove();
+      await (await queue.getJob(incrementalJobId))?.remove();
+      await queue.removeDeduplicationKey(deduplicationId);
+      await queue.close();
+      await closeWorkerSyncQueue();
+      await shutdownRedis();
     }
   });
 

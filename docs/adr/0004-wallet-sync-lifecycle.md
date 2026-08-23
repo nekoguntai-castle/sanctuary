@@ -61,8 +61,10 @@ The compatibility precursor is additive:
 
 The admission capability can persist coalesced intent, and the worker can claim
 and execute an explicitly generation-bound v2 wake-up while it owns the canonical
-Redis wallet lock. No production producer or repair loop emits that wake-up in
-this precursor. Restores discard database lease authority while retaining pending
+Redis wallet lock. A bounded recovery coordinator can revisit unclaimed intent
+and enqueue an exact already-reserved full-resync generation, but it has no
+production startup or timer caller in this precursor. Restores discard database
+lease authority while retaining pending
 generations, and a full-resync generation is processed only after its prepared
 rebuild completes successfully. Producer and repair-loop activation remain a
 separate change; automatic expired-lease reclaim remains forbidden until low-level

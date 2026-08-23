@@ -11,6 +11,7 @@ import {
 } from "@sanctuary/shared/constants/sync";
 import type { SyncWalletJobData } from "../jobs/syncJobContract";
 import { reserveFullResyncGeneration } from "../repositories/resyncRepository";
+import { isFullResyncGeneration } from "../constants/fullResync";
 import {
   SYNC_JOB_CONTRACT_VERSION,
   SYNC_QUEUE_NAME,
@@ -35,6 +36,12 @@ export interface IncrementalSyncWakeup {
   generation: number;
   /** Stable, BullMQ-safe identity supplied by durable admission. */
   jobId: string;
+}
+
+export interface ReservedFullResyncWakeup {
+  walletId: string;
+  generation: number;
+  reason?: string;
 }
 
 function resetReplayContentionClock(data: unknown): SyncWalletJobData {
@@ -245,8 +252,12 @@ export async function enqueueIncrementalSyncWakeup(
     return false;
   }
 
+  const existing = await prepareIncrementalSyncCandidate(queue, wakeup);
+  if (existing === "live") return true;
+  if (existing !== "ready") return false;
+
   try {
-    await queue.add(
+    const job = await queue.add(
       SYNC_WALLET_JOB_NAME,
       data,
       {
@@ -254,7 +265,8 @@ export async function enqueueIncrementalSyncWakeup(
         jobId: wakeup.jobId,
       },
     );
-    return true;
+    return job.id === wakeup.jobId
+      && isRepairSatisfiedState(await job.getState());
   } catch (error) {
     log.error("Failed to enqueue incremental wallet sync wake-up", {
       walletId: wakeup.walletId,
@@ -262,6 +274,82 @@ export async function enqueueIncrementalSyncWakeup(
       error: getErrorMessage(error),
     });
     return false;
+  }
+}
+
+/**
+ * Repair one already-reserved full-resync generation without allocating a new
+ * generation. This is intentionally separate from the operator-request path.
+ */
+export async function enqueueReservedFullResyncWakeup(
+  wakeup: ReservedFullResyncWakeup,
+): Promise<boolean> {
+  const reason = wakeup.reason ?? "reconcile-stranded-full-resync";
+  const data = {
+    version: SYNC_JOB_CONTRACT_VERSION,
+    walletId: wakeup.walletId,
+    priority: "high",
+    reason,
+    fullResync: true,
+    fullResyncGeneration: wakeup.generation,
+  } as const;
+  if (
+    wakeup.walletId.trim().length === 0
+    || !isFullResyncGeneration(wakeup.generation)
+    || readSyncWalletJobData(data) === null
+  ) {
+    log.warn("Invalid reserved full-resync wake-up", {
+      walletId: wakeup.walletId,
+      generation: wakeup.generation,
+    });
+    return false;
+  }
+
+  const queue = getOrCreateSyncQueue();
+  if (!queue) return false;
+
+  const candidateJobId = toBullMqJobId(
+    `full-resync-attempt:${wakeup.walletId}:${wakeup.generation}`,
+  );
+  const deduplicationId = toBullMqJobId(`full-resync:${wakeup.walletId}`);
+  const existing = await prepareReservedFullResyncCandidate(
+    queue,
+    wakeup.walletId,
+    wakeup.generation,
+    candidateJobId,
+  );
+  if (existing === "live") return true;
+  if (existing !== "ready") return false;
+  try {
+    const job = await queue.add(SYNC_WALLET_JOB_NAME, data, {
+      ...SYNC_WALLET_JOB_OPTIONS,
+      priority: toBullPriority("high"),
+      jobId: candidateJobId,
+      deduplication: { id: deduplicationId, ttl: getSyncLockTtlMs() },
+    });
+    if (job.id === candidateJobId) {
+      return FULL_RESYNC_LIVE_STATES.has(await job.getState());
+    }
+    return typeof job.id === "string" && await retainedFullResyncWakeupExists(
+      queue,
+      wakeup.walletId,
+      wakeup.generation,
+      job.id,
+      deduplicationId,
+    );
+  } catch (error) {
+    log.error("Failed to enqueue reserved full resync", {
+      walletId: wakeup.walletId,
+      generation: wakeup.generation,
+      error: getErrorMessage(error),
+    });
+    return reconcileReservedFullResyncWakeup(
+      queue,
+      wakeup.walletId,
+      wakeup.generation,
+      candidateJobId,
+      deduplicationId,
+    );
   }
 }
 
@@ -304,6 +392,59 @@ const FULL_RESYNC_PRESTART_STATES = new Set([
   "waiting",
   "waiting-children",
 ]);
+const FULL_RESYNC_LIVE_STATES = new Set([...FULL_RESYNC_PRESTART_STATES, "active"]);
+
+function isRepairSatisfiedState(state: string): boolean {
+  return FULL_RESYNC_LIVE_STATES.has(state) || state === "completed";
+}
+
+async function prepareIncrementalSyncCandidate(
+  queue: Queue<SyncWalletJobData>,
+  wakeup: IncrementalSyncWakeup,
+): Promise<"live" | "ready" | "unavailable"> {
+  try {
+    const existing = await queue.getJob(wakeup.jobId);
+    if (!existing) return "ready";
+    const data = readSyncWalletJobData(existing.data);
+    if (
+      data?.version !== SYNC_WALLET_JOB_READER_VERSION
+      || data.walletId !== wakeup.walletId
+      || data.incrementalSyncGeneration !== wakeup.generation
+    ) return "unavailable";
+    const state = await existing.getState();
+    if (FULL_RESYNC_LIVE_STATES.has(state)) return "live";
+    if (state !== "failed" && state !== "completed") return "unavailable";
+    await existing.remove();
+    return "ready";
+  } catch {
+    return "unavailable";
+  }
+}
+
+async function prepareReservedFullResyncCandidate(
+  queue: Queue<SyncWalletJobData>,
+  walletId: string,
+  generation: number,
+  candidateJobId: string,
+): Promise<"live" | "ready" | "unavailable"> {
+  try {
+    const existing = await queue.getJob(candidateJobId);
+    if (!existing) return "ready";
+    const data = readSyncWalletJobData(existing.data);
+    if (
+      data?.walletId !== walletId
+      || data.fullResync !== true
+      || data.fullResyncGeneration !== generation
+    ) return "unavailable";
+    const state = await existing.getState();
+    if (isRepairSatisfiedState(state)) return "live";
+    if (state !== "failed") return "unavailable";
+    await existing.remove();
+    return "ready";
+  } catch {
+    return "unavailable";
+  }
+}
 
 function indeterminateFullResyncOutcome(
   walletId: string,
@@ -328,6 +469,61 @@ async function releaseStaleDeduplicationKey(
       walletId,
       error: getErrorMessage(error),
     });
+  }
+}
+
+async function retainedFullResyncWakeupExists(
+  queue: Queue<SyncWalletJobData>,
+  walletId: string,
+  generation: number,
+  retainedJobId: string,
+  deduplicationId: string,
+): Promise<boolean> {
+  try {
+    const retainedJob = await queue.getJob(retainedJobId);
+    if (!retainedJob) {
+      await releaseStaleDeduplicationKey(queue, walletId, deduplicationId);
+      return false;
+    }
+    const data = readSyncWalletJobData(retainedJob.data);
+    if (
+      data?.walletId !== walletId
+      || data.fullResync !== true
+      || data.fullResyncGeneration !== generation
+    ) return false;
+    return FULL_RESYNC_LIVE_STATES.has(await retainedJob.getState());
+  } catch {
+    return false;
+  }
+}
+
+async function reconcileReservedFullResyncWakeup(
+  queue: Queue<SyncWalletJobData>,
+  walletId: string,
+  generation: number,
+  candidateJobId: string,
+  deduplicationId: string,
+): Promise<boolean> {
+  try {
+    const candidate = await queue.getJob(candidateJobId);
+    if (candidate) {
+      const data = readSyncWalletJobData(candidate.data);
+      return data?.walletId === walletId
+        && data.fullResync === true
+        && data.fullResyncGeneration === generation
+        && FULL_RESYNC_LIVE_STATES.has(await candidate.getState());
+    }
+    const retainedJobId = await queue.getDeduplicationJobId(deduplicationId);
+    if (!retainedJobId) return false;
+    return retainedFullResyncWakeupExists(
+      queue,
+      walletId,
+      generation,
+      retainedJobId,
+      deduplicationId,
+    );
+  } catch {
+    return false;
   }
 }
 

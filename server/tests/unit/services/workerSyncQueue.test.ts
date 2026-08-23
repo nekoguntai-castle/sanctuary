@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   mockQueueGetJob: vi.fn(),
   mockQueueGetDeduplicationJobId: vi.fn(),
   mockQueueRemoveDeduplicationKey: vi.fn(),
+  mockJobRemove: vi.fn(),
   mockReserveFullResyncGeneration: vi.fn(),
   mockQueueClose: vi.fn().mockResolvedValue(undefined),
   mockGetRedisClient: vi.fn(),
@@ -83,13 +84,20 @@ function syncDeadLetterEnvelope(): DeadLetterJobEnvelope {
 describe("workerSyncQueue", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    mocks.mockQueueAdd.mockReset();
+    mocks.mockQueueGetJob.mockReset();
+    mocks.mockQueueGetDeduplicationJobId.mockReset();
+    mocks.mockQueueRemoveDeduplicationKey.mockReset();
+    mocks.mockJobRemove.mockReset();
     mocks.mockQueueAdd.mockImplementation(async (_name, data, options) => ({
       id: options?.jobId ?? "job-1",
       data,
+      getState: vi.fn().mockResolvedValue("waiting"),
     }));
     mocks.mockQueueGetJob.mockResolvedValue(null);
     mocks.mockQueueGetDeduplicationJobId.mockResolvedValue(null);
     mocks.mockQueueRemoveDeduplicationKey.mockResolvedValue(1);
+    mocks.mockJobRemove.mockResolvedValue(undefined);
     mocks.mockReserveFullResyncGeneration.mockResolvedValue(1);
     mocks.mockGetRedisClient.mockReturnValue({
       options: { host: "localhost", port: 6379, db: 0 },

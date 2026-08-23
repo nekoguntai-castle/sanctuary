@@ -19,7 +19,10 @@ vi.mock('../../../src/models/prisma', () => ({
   default: { wallet: { findMany: mockFindMany }, $queryRaw: mockQueryRaw },
 }));
 
-import { findStrandedFullResyncWallets } from '../../../src/repositories/resyncRepository';
+import {
+  findStrandedFullResyncWallets,
+  findStrandedFullResyncWalletsPage,
+} from '../../../src/repositories/resyncRepository';
 
 describe('findStrandedFullResyncWallets', () => {
   beforeEach(() => {
@@ -57,6 +60,29 @@ describe('findStrandedFullResyncWallets', () => {
   it('bounds the result so a corrupted table cannot flood the queue', async () => {
     await findStrandedFullResyncWallets();
     expect(JSON.stringify(mockQueryRaw.mock.calls[0][0])).toContain('LIMIT');
+  });
+
+  it('uses an id cursor so unavailable early pages cannot starve later wallets', async () => {
+    await findStrandedFullResyncWalletsPage('wallet-025');
+    const sql = JSON.stringify(mockQueryRaw.mock.calls[0][0]);
+    expect(sql).toContain('id');
+    expect(sql).toContain('>');
+    expect(sql).toContain('ORDER BY');
+    expect(mockQueryRaw.mock.calls[0][0].values).toContain('wallet-025');
+  });
+
+  it('starts the keyset scan without a cursor predicate or cursor value', async () => {
+    await findStrandedFullResyncWalletsPage();
+    const query = mockQueryRaw.mock.calls[0][0];
+
+    expect(JSON.stringify(query)).toContain('ORDER BY');
+    expect(query.values).not.toContain('wallet-025');
+    expect(query.values).toEqual([25]);
+  });
+
+  it('preserves oldest-first ordering for the active cursorless compatibility caller', async () => {
+    await findStrandedFullResyncWallets();
+    expect(JSON.stringify(mockQueryRaw.mock.calls[0][0])).toContain('updatedAt');
   });
 
   it('does not issue a second wallet query that would interleave with the stale sweep', async () => {
