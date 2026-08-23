@@ -25,6 +25,13 @@ create_repo() {
   git init -q "$repo_dir"
   git -C "$repo_dir" config user.name "Codex Test"
   git -C "$repo_dir" config user.email "codex@example.com"
+  # The fixture creates enough commits to trip runner-specific auto-maintenance
+  # thresholds. Keep cleanup deterministic by preventing detached Git writers
+  # from racing the EXIT trap inside .git/objects.
+  git -C "$repo_dir" config gc.auto 0
+  git -C "$repo_dir" config gc.autoDetach false
+  git -C "$repo_dir" config maintenance.auto false
+  git -C "$repo_dir" config maintenance.autoDetach false
   printf '{ "name": "fixture" }\n' > "$repo_dir/package.json"
   git -C "$repo_dir" add package.json
   git -C "$repo_dir" commit -qm "base"
