@@ -8,6 +8,7 @@ import {
   mockNotificationService,
   mockPrismaClient,
   mockReleaseLock,
+  mockSyncIntentRequest,
   type SyncServiceTestContext,
 } from './syncServiceTestHarness';
 import { startSubscriptionLockRefresh } from '../../../../src/services/sync/subscriptionManager';
@@ -117,7 +118,6 @@ export function registerSyncServiceRealtimeSubscriptionTests(context: SyncServic
         new Map([['addr-callback', 'status-callback']])
       );
       const updateSpy = vi.spyOn(context.syncService as any, 'updateAllConfirmations').mockResolvedValue(undefined);
-      const queueSpy = vi.spyOn(context.syncService, 'queueSync').mockImplementation(() => undefined);
 
       await context.syncService['setupRealTimeSubscriptions']();
 
@@ -135,7 +135,23 @@ export function registerSyncServiceRealtimeSubscriptionTests(context: SyncServic
       addressActivityHandler?.({ scriptHash: 'hash-callback', address: 'addr-callback', status: 'changed' });
 
       await vi.waitFor(() => expect(updateSpy).toHaveBeenCalled());
-      expect(queueSpy).toHaveBeenCalledWith('wallet-callback', 'high');
+      await vi.waitFor(() => expect(mockSyncIntentRequest).toHaveBeenCalledWith('wallet-callback'));
+    });
+
+    it('contains blocked, unavailable, and failed address-activity admission', async () => {
+      mockSyncIntentRequest
+        .mockResolvedValueOnce({ status: 'blocked' })
+        .mockResolvedValueOnce({
+          status: 'requested', generation: 2, wakeup: 'unavailable',
+        })
+        .mockRejectedValueOnce(new Error('database unavailable'));
+
+      context.syncService['requestAddressActivitySync']('wallet-blocked');
+      context.syncService['requestAddressActivitySync']('wallet-unavailable');
+      context.syncService['requestAddressActivitySync']('wallet-failed');
+
+      await vi.waitFor(() => expect(mockSyncIntentRequest).toHaveBeenCalledTimes(3));
+      await Promise.resolve();
     });
 
     it('handles setup errors after acquiring lock', async () => {

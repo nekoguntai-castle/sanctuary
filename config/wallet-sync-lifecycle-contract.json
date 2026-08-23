@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "deliveryState": "gated_bounded_recovery",
+  "deliveryState": "canonical_producers_active",
   "cutoverComplete": false,
   "wireContract": {
-    "currentProducerVersion": 1,
+    "currentProducerVersion": 3,
     "canonicalWakeupVersion": 3,
     "preMutationFenceMaximumReadableVersion": 2,
     "requiredReadableVersions": [1, 2, 3],
@@ -40,7 +40,7 @@
     "queueRole": "at_least_once_wakeup_only"
   },
   "compatibility": {
-    "admissionState": "gate_enforced_consumer_and_recovery_no_request_producers",
+    "admissionState": "gate_enforced_canonical_request_producers_active",
     "activationState": "continuous_fleet_floor_gate_runtime_enabled",
     "mutationFenceFloor": 1,
     "preFenceWorkerBehavior": "reject_v3_before_lock",
@@ -69,13 +69,7 @@
         "implementationModules": [
           "server/src/services/bitcoin/blockchain/syncAddress.ts"
         ],
-        "entries": [
-          {
-            "file": "server/src/api/bitcoin/address.ts",
-            "count": 1,
-            "role": "legacy_direct_executor"
-          }
-        ]
+        "entries": []
       },
       {
         "callee": "syncWallet",
@@ -84,28 +78,391 @@
         ],
         "entries": [
           {
-            "file": "server/src/services/sync/syncCoordinator.ts",
-            "count": 1,
-            "role": "legacy_direct_executor"
-          },
-          {
-            "file": "server/src/services/sync/walletSync.ts",
-            "count": 1,
-            "role": "legacy_direct_executor"
-          },
-          {
             "file": "server/src/worker/jobs/canonicalIncrementalSync.ts",
             "count": 1,
             "role": "generation_bound_worker_executor"
-          },
-          {
-            "file": "server/src/worker/jobs/syncJobs.ts",
-            "count": 1,
-            "role": "legacy_worker_executor_and_canonical_entrypoint"
           }
         ]
       }
     ],
+    "producerCallsites": [
+      {
+        "sink": "admission.bridgeRetained",
+        "file": "server/src/worker/jobs/syncJobs.ts",
+        "enclosingFunction": "bridgeRetainedSyncWalletJob",
+        "count": 1,
+        "trigger": "retained_prefence_wallet_job",
+        "role": "durable_fenced_intent_bridge"
+      },
+      {
+        "sink": "admission.claimFresh",
+        "file": "server/src/worker/jobs/canonicalIncrementalSync.ts",
+        "enclosingFunction": "claimIncrementalExecution",
+        "count": 1,
+        "trigger": "generation_claim",
+        "role": "exact_generation_claim_authority"
+      },
+      {
+        "sink": "admission.complete",
+        "file": "server/src/worker/jobs/canonicalIncrementalSync.ts",
+        "enclosingFunction": "completeCanonicalSync",
+        "count": 1,
+        "trigger": "generation_completion",
+        "role": "exact_generation_completion_authority"
+      },
+      {
+        "sink": "admission.reclaimExpired",
+        "file": "server/src/worker/jobs/canonicalIncrementalSync.ts",
+        "enclosingFunction": "claimIncrementalExecution",
+        "count": 1,
+        "trigger": "expired_lease_reclaim",
+        "role": "exact_expired_lease_rotation_authority"
+      },
+      {
+        "sink": "admission.recover",
+        "file": "server/src/worker/walletSyncRecoveryRuntime.ts",
+        "enclosingFunction": "createProductionWalletSyncRecoveryRuntime",
+        "count": 1,
+        "trigger": "bounded_recovery",
+        "role": "gate_rechecked_incremental_recovery"
+      },
+      {
+        "sink": "admission.recoverExpired",
+        "file": "server/src/worker/walletSyncRecoveryRuntime.ts",
+        "enclosingFunction": "createProductionWalletSyncRecoveryRuntime",
+        "count": 1,
+        "trigger": "bounded_recovery",
+        "role": "gate_rechecked_expired_lease_recovery"
+      },
+      {
+        "sink": "admission.releaseAsActionRequired",
+        "file": "server/src/worker/jobs/canonicalIncrementalSync.ts",
+        "enclosingFunction": "executeCanonicalIncrementalSync",
+        "count": 1,
+        "trigger": "terminal_generation_failure",
+        "role": "exact_fenced_terminal_release"
+      },
+      {
+        "sink": "admission.releaseForRetry",
+        "file": "server/src/worker/jobs/canonicalIncrementalSync.ts",
+        "enclosingFunction": "executeCanonicalIncrementalSync",
+        "count": 1,
+        "trigger": "retryable_generation_failure",
+        "role": "exact_fenced_retry_release"
+      },
+      {
+        "sink": "admission.request",
+        "file": "server/src/services/sync/syncCoordinator.ts",
+        "enclosingFunction": "requestWalletHistory",
+        "count": 1,
+        "trigger": "explicit_user_request",
+        "role": "canonical_manual_api_admission"
+      },
+      {
+        "sink": "admission.request",
+        "file": "server/src/services/sync/syncCoordinator.ts",
+        "enclosingFunction": "requestWalletHistoryBatch",
+        "count": 1,
+        "trigger": "explicit_user_request",
+        "role": "canonical_bounded_manual_batch_admission"
+      },
+      {
+        "sink": "admission.request",
+        "file": "server/src/services/sync/syncDeadLetterRetryAdmission.ts",
+        "enclosingFunction": "retryDeadLetterSyncJob",
+        "count": 2,
+        "trigger": "explicit_user_request",
+        "role": "canonical_admin_dead_letter_retry_and_stale_conversion_admission"
+      },
+      {
+        "sink": "admission.request",
+        "file": "server/src/services/sync/syncService.ts",
+        "enclosingFunction": "requestAddressActivitySync",
+        "count": 1,
+        "trigger": "address_activity",
+        "role": "transitional_api_subscription_activity_admission"
+      },
+      {
+        "sink": "admission.request",
+        "file": "server/src/worker.ts",
+        "enclosingFunction": "admitRetainedStaleWallets",
+        "count": 1,
+        "trigger": "legacy_stale_compatibility",
+        "role": "gate_enforced_stale_scheduler_completion_bridge_until_retirement"
+      },
+      {
+        "sink": "admission.request",
+        "file": "server/src/worker.ts",
+        "enclosingFunction": "handleAddressActivity",
+        "count": 1,
+        "trigger": "address_activity",
+        "role": "worker_subscription_activity_admission"
+      },
+      {
+        "sink": "admission.requestFullResync",
+        "file": "server/src/services/sync/syncCoordinator.ts",
+        "enclosingFunction": "requestFullResyncBatch",
+        "count": 1,
+        "trigger": "explicit_user_request",
+        "role": "canonical_manual_network_full_resync_admission"
+      },
+      {
+        "sink": "admission.requestFullResync",
+        "file": "server/src/services/sync/syncCoordinator.ts",
+        "enclosingFunction": "resyncWallet",
+        "count": 1,
+        "trigger": "explicit_user_request",
+        "role": "canonical_manual_wallet_full_resync_admission"
+      },
+      {
+        "sink": "admission.requestFullResync",
+        "file": "server/src/services/sync/syncDeadLetterRetryAdmission.ts",
+        "enclosingFunction": "retryDeadLetterSyncJob",
+        "count": 1,
+        "trigger": "explicit_user_request",
+        "role": "canonical_admin_full_resync_dead_letter_retry_admission"
+      },
+      {
+        "sink": "admission.reset",
+        "file": "server/src/services/sync/staleWalletChecker.ts",
+        "enclosingFunction": "clearStuckSyncIfAuthorized",
+        "count": 1,
+        "trigger": "stale_attempt_repair",
+        "role": "lock_owned_lease_revoking_compatibility_reset"
+      },
+      {
+        "sink": "admission.reset",
+        "file": "server/src/services/sync/syncCoordinator.ts",
+        "enclosingFunction": "resetWalletSyncState",
+        "count": 1,
+        "trigger": "explicit_user_request",
+        "role": "manual_lease_revoking_reset"
+      },
+      {
+        "sink": "admission.reset",
+        "file": "server/src/worker/jobs/syncJobs.ts",
+        "enclosingFunction": "resetStuckSyncFlags",
+        "count": 1,
+        "trigger": "stale_attempt_repair",
+        "role": "lock_owned_lease_revoking_stale_reset"
+      },
+      {
+        "sink": "admission.wake",
+        "file": "server/src/services/sync/initialSyncIntent.ts",
+        "enclosingFunction": "wakeInitialWalletSync",
+        "count": 1,
+        "trigger": "first_never_synced",
+        "role": "post_commit_initial_generation_wakeup"
+      },
+      {
+        "sink": "admission.wake",
+        "file": "server/src/worker/jobs/canonicalIncrementalSync.ts",
+        "enclosingFunction": "executeCanonicalIncrementalSync",
+        "count": 1,
+        "trigger": "trailing_generation",
+        "role": "generation_bound_consumer_followup"
+      },
+      {
+        "sink": "admission.wakeReservedFullResync",
+        "file": "server/src/worker/walletSyncRecoveryRuntime.ts",
+        "enclosingFunction": "createProductionWalletSyncRecoveryRuntime",
+        "count": 1,
+        "trigger": "bounded_recovery",
+        "role": "gate_rechecked_exact_full_resync_repair"
+      },
+      {
+        "sink": "authority.requestedIncrementalSyncGenerationWrite",
+        "file": "server/src/services/backupService/restoreTransforms.ts",
+        "enclosingFunction": "normalizeRestoredSyncAuthority",
+        "count": 1,
+        "trigger": "backup_restore",
+        "role": "backup_safe_lease_revocation_generation_repair"
+      },
+      {
+        "sink": "authority.requestedIncrementalSyncGenerationWrite",
+        "file": "server/src/services/backupService/restoreTransforms.ts",
+        "enclosingFunction": "processWalletSyncIntentRecord",
+        "count": 1,
+        "trigger": "backup_restore",
+        "role": "legacy_backup_durable_intent_migration"
+      },
+      {
+        "sink": "authority.requestedIncrementalSyncGenerationWrite",
+        "file": "server/src/services/wallet/walletCreate.ts",
+        "enclosingFunction": "createWallet",
+        "count": 1,
+        "trigger": "first_never_synced",
+        "role": "atomic_initial_generation_creation"
+      },
+      {
+        "sink": "authority.requestedIncrementalSyncGenerationWrite",
+        "file": "server/src/services/walletImport/walletImportService.ts",
+        "enclosingFunction": "createWalletTransaction",
+        "count": 1,
+        "trigger": "first_never_synced",
+        "role": "atomic_imported_initial_generation_creation"
+      },
+      {
+        "sink": "coordinator.queueNetworkSync",
+        "file": "server/src/api/sync.ts",
+        "enclosingFunction": "<module>",
+        "count": 1,
+        "trigger": "explicit_user_request",
+        "role": "manual_network_batch_route_only"
+      },
+      {
+        "sink": "coordinator.queueUserWallets",
+        "file": "server/src/api/sync.ts",
+        "enclosingFunction": "<module>",
+        "count": 1,
+        "trigger": "explicit_user_request",
+        "role": "manual_user_batch_route_only"
+      },
+      {
+        "sink": "coordinator.queueWalletSync",
+        "file": "server/src/api/sync.ts",
+        "enclosingFunction": "<module>",
+        "count": 1,
+        "trigger": "explicit_user_request",
+        "role": "manual_wallet_queue_route_only"
+      },
+      {
+        "sink": "coordinator.resyncNetwork",
+        "file": "server/src/api/sync.ts",
+        "enclosingFunction": "<module>",
+        "count": 1,
+        "trigger": "explicit_user_request",
+        "role": "manual_network_full_resync_route_only"
+      },
+      {
+        "sink": "coordinator.resyncWallet",
+        "file": "server/src/api/sync.ts",
+        "enclosingFunction": "<module>",
+        "count": 1,
+        "trigger": "explicit_user_request",
+        "role": "manual_wallet_full_resync_route_only"
+      },
+      {
+        "sink": "coordinator.syncLegacyBitcoinAddress",
+        "file": "server/src/api/bitcoin/address.ts",
+        "enclosingFunction": "<module>",
+        "count": 1,
+        "trigger": "explicit_user_request",
+        "role": "legacy_manual_address_shim_route_only"
+      },
+      {
+        "sink": "coordinator.syncLegacyBitcoinWallet",
+        "file": "server/src/api/bitcoin/sync.ts",
+        "enclosingFunction": "<module>",
+        "count": 1,
+        "trigger": "explicit_user_request",
+        "role": "legacy_manual_wallet_shim_route_only"
+      },
+      {
+        "sink": "coordinator.syncWalletNow",
+        "file": "server/src/api/sync.ts",
+        "enclosingFunction": "<module>",
+        "count": 1,
+        "trigger": "explicit_user_request",
+        "role": "manual_wallet_route_only"
+      },
+      {
+        "sink": "frontend.resyncNetworkWallets",
+        "file": "src/components/NetworkSyncActions/useNetworkSyncActions.ts",
+        "enclosingFunction": "handleResyncAll",
+        "count": 1,
+        "trigger": "explicit_user_request",
+        "role": "explicit_confirmed_network_resync_action"
+      },
+      {
+        "sink": "frontend.resyncWallet",
+        "file": "src/components/WalletDetail/hooks/useWalletSync.ts",
+        "enclosingFunction": "handleFullResync",
+        "count": 1,
+        "trigger": "explicit_user_request",
+        "role": "explicit_confirmed_wallet_resync_action"
+      },
+      {
+        "sink": "frontend.syncNetworkWallets",
+        "file": "src/components/NetworkSyncActions/useNetworkSyncActions.ts",
+        "enclosingFunction": "handleSyncAll",
+        "count": 1,
+        "trigger": "explicit_user_request",
+        "role": "explicit_network_sync_action"
+      },
+      {
+        "sink": "frontend.syncWallet",
+        "file": "src/components/WalletDetail/hooks/useWalletSync.ts",
+        "enclosingFunction": "handleSync",
+        "count": 1,
+        "trigger": "explicit_user_request",
+        "role": "explicit_wallet_sync_action"
+      },
+      {
+        "sink": "initial.wakeInitialWalletSync",
+        "file": "server/src/services/wallet/walletCreate.ts",
+        "enclosingFunction": "createWallet",
+        "count": 1,
+        "trigger": "first_never_synced",
+        "role": "post_commit_created_wallet_wakeup"
+      },
+      {
+        "sink": "initial.wakeInitialWalletSync",
+        "file": "server/src/services/walletImport/walletImportService.ts",
+        "enclosingFunction": "createWalletTransaction",
+        "count": 1,
+        "trigger": "first_never_synced",
+        "role": "post_commit_imported_wallet_wakeup"
+      }
+    ],
+    "rawQueueMutations": [
+      {
+        "file": "server/src/services/workerSyncQueue.ts",
+        "enclosingFunction": "enqueueDeadLetterJob",
+        "method": "add",
+        "count": 1,
+        "role": "retained_dead_letter_replay"
+      },
+      {
+        "file": "server/src/services/workerSyncQueue.ts",
+        "enclosingFunction": "enqueueFullResyncWallet",
+        "method": "add",
+        "count": 1,
+        "role": "legacy_full_resync_batch_adapter"
+      },
+      {
+        "file": "server/src/services/workerSyncQueue.ts",
+        "enclosingFunction": "enqueueIncrementalSyncWakeup",
+        "method": "add",
+        "count": 1,
+        "role": "canonical_incremental_wakeup"
+      },
+      {
+        "file": "server/src/services/workerSyncQueue.ts",
+        "enclosingFunction": "enqueueReservedFullResyncWakeup",
+        "method": "add",
+        "count": 1,
+        "role": "canonical_full_resync_wakeup"
+      },
+      {
+        "file": "server/src/services/workerSyncQueue.ts",
+        "enclosingFunction": "enqueueWalletSync",
+        "method": "add",
+        "count": 1,
+        "role": "legacy_single_wallet_adapter"
+      },
+      {
+        "file": "server/src/services/workerSyncQueue.ts",
+        "enclosingFunction": "enqueueWalletSyncBatch",
+        "method": "addBulk",
+        "count": 1,
+        "role": "legacy_wallet_batch_adapter"
+      }
+    ],
+    "forbiddenClientWalletHistory": {
+      "symbols": ["queueUserWallets"],
+      "paths": ["/sync/user"]
+    },
     "symbolReferences": [
       {
         "symbol": "CHECK_STALE_WALLETS_JOB_NAME",
@@ -150,10 +507,6 @@
           {
             "file": "server/src/services/workerSyncQueue.ts",
             "role": "legacy_wallet_job_producer"
-          },
-          {
-            "file": "server/src/worker.ts",
-            "role": "compatibility_guarded_stale_completion_producer"
           },
           {
             "file": "server/src/worker/jobs/syncJobs.ts",
@@ -340,20 +693,20 @@
         "symbol": "enqueueReservedFullResyncWakeup",
         "entries": [
           {
+            "file": "server/src/services/sync/syncIntentAdmission.ts",
+            "role": "gate_enforced_full_resync_wakeup_adapter_composition"
+          },
+          {
             "file": "server/src/services/workerSyncQueue.ts",
             "role": "reserved_generation_wakeup_adapter_definition"
           },
           {
-            "file": "server/src/worker.ts",
-            "role": "process_boundary_recovery_wakeup_injection"
-          },
-          {
             "file": "server/src/worker/syncIntentRecovery.ts",
-            "role": "bounded_exact_generation_recovery_port"
+            "role": "bounded_full_resync_recovery_port"
           },
           {
             "file": "server/src/worker/walletSyncRecoveryRuntime.ts",
-            "role": "gate_authorized_reserved_wakeup_composition"
+            "role": "canonical_admission_recovery_adapter"
           }
         ]
       },
@@ -378,14 +731,6 @@
             "role": "legacy_age_query"
           },
           {
-            "file": "server/src/services/sync/staleWalletChecker.ts",
-            "role": "legacy_inline_age_trigger"
-          },
-          {
-            "file": "server/src/services/sync/syncService.ts",
-            "role": "legacy_inline_age_trigger"
-          },
-          {
             "file": "server/src/worker/jobs/syncJobs.ts",
             "role": "legacy_worker_age_trigger"
           }
@@ -408,12 +753,40 @@
         "symbol": "syncIntentAdmission",
         "entries": [
           {
+            "file": "server/src/services/sync/initialSyncIntent.ts",
+            "role": "post_commit_initial_generation_wakeup"
+          },
+          {
+            "file": "server/src/services/sync/staleWalletChecker.ts",
+            "role": "lock_owned_lease_revoking_compatibility_reset"
+          },
+          {
+            "file": "server/src/services/sync/syncCoordinator.ts",
+            "role": "canonical_manual_api_request_producer"
+          },
+          {
+            "file": "server/src/services/sync/syncDeadLetterRetryAdmission.ts",
+            "role": "canonical_admin_dead_letter_retry_producer"
+          },
+          {
             "file": "server/src/services/sync/syncIntentAdmission.ts",
             "role": "gate_enforced_admission_singleton_definition"
           },
           {
+            "file": "server/src/services/sync/syncService.ts",
+            "role": "transitional_subscription_activity_request_producer"
+          },
+          {
+            "file": "server/src/worker.ts",
+            "role": "worker_subscription_activity_request_producer"
+          },
+          {
             "file": "server/src/worker/jobs/canonicalIncrementalSync.ts",
             "role": "generation_bound_consumer_only"
+          },
+          {
+            "file": "server/src/worker/jobs/syncJobs.ts",
+            "role": "legacy_lock_owned_lease_revoking_cleanup"
           },
           {
             "file": "server/src/worker/syncIntentRecovery.ts",
@@ -530,10 +903,6 @@
           {
             "file": "server/src/services/workerSyncQueue.ts",
             "role": "retained_stale_dead_letter_provenance"
-          },
-          {
-            "file": "server/src/worker.ts",
-            "role": "legacy_timestamped_child_job"
           }
         ]
       }

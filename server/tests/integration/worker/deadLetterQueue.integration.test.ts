@@ -18,8 +18,10 @@ import {
 import { toBullMqJobId } from '../../../src/jobs/bullMqJobIds';
 import {
   SYNC_JOB_CONTRACT_VERSION,
+  SYNC_WALLET_MUTATION_FENCE_JOB_VERSION,
   getSyncLockTtlMs,
 } from '../../../src/jobs/syncJobContract';
+import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from '../../../src/constants/walletSyncActivation';
 import { setupWorkerEventHandlers } from '../../../src/worker/workerJobQueue/eventHandlers';
 import { describeWithRedis } from '../setup/redis';
 
@@ -311,10 +313,12 @@ describeWithRedis('dead letter queue Redis integration', () => {
 
     try {
       const failed = await queue.add('sync-wallet', {
-        version: SYNC_JOB_CONTRACT_VERSION,
+        version: SYNC_WALLET_MUTATION_FENCE_JOB_VERSION,
         walletId,
         fullResync: true,
         fullResyncGeneration: generation,
+        incrementalSyncGeneration: generation,
+        requiredMutationFenceFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
       }, {
         attempts: 1,
         jobId,
@@ -335,12 +339,14 @@ describeWithRedis('dead letter queue Redis integration', () => {
       await expect(enqueueReservedFullResyncWakeup({
         walletId,
         generation,
+        incrementalGeneration: generation,
       })).resolves.toBe(true);
       const replacement = await queue.getJob(jobId);
       await expect(replacement?.getState()).resolves.toMatch(/waiting|prioritized/);
       expect(replacement?.data).toEqual(expect.objectContaining({
         walletId,
         fullResyncGeneration: generation,
+        incrementalSyncGeneration: generation,
       }));
       await expect(enqueueIncrementalSyncWakeup({
         walletId: incrementalWalletId,

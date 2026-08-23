@@ -1,16 +1,10 @@
 /**
- * Background Sync Service
+ * Sync Service Compatibility Layer
  *
- * Manages wallet synchronization with the blockchain.
- * - Queues sync jobs for wallets
- * - Runs periodic background sync
+ * Preserves status, confirmation, and subscription behavior while wallet-history
+ * producers use durable intent admission and the canonical worker consumer.
  * - Updates confirmations for pending transactions
  * - Notifies frontend via WebSocket when data changes
- *
- * This is the main orchestrator that delegates to focused sub-modules:
- * - syncQueue.ts: Queue management and priority ordering
- * - walletSync.ts: Per-wallet sync execution with retry logic
- * - subscriptionManager.ts: Electrum real-time subscriptions
  */
 
 import { walletRepository } from '../../repositories';
@@ -20,18 +14,13 @@ import { getConfig } from '../../config';
 import { releaseLock, withLock } from '../../infrastructure';
 import { getWorkerHealthStatus } from '../workerHealth';
 import { syncPollingModeTransitions } from '../../observability/metrics';
-import {
-  DEFAULT_SYNC_PRIORITY,
-  type SyncExecutionOwner,
-  type SyncPriority,
-} from '@sanctuary/shared/constants/sync';
+import type { SyncExecutionOwner, SyncPriority } from '@sanctuary/shared/constants/sync';
 import type { SyncState, SyncResult, SyncHealthMetrics, PollingMode } from './types';
-import { queueSync as doQueueSync, processQueue as doProcessQueue } from './syncQueue';
-import { executeSyncJob as doExecuteSyncJob, acquireSyncLock as doAcquireSyncLock } from './walletSync';
 import { SubscriptionAuthorityRetryController } from './lockAuthorityRecovery';
 import { classifyWalletSyncFailure } from './failureClassification';
 import { clearStuckSyncIfAuthorized } from './staleWalletChecker';
 import { refreshPendingConfirmations } from './confirmationUpdater';
+import { syncIntentAdmission } from './syncIntentAdmission';
 import {
   setupRealTimeSubscriptions as doSetupRealTimeSubscriptions,
   teardownRealTimeSubscriptions as doTeardownRealTimeSubscriptions,
@@ -102,20 +91,11 @@ class SyncService {
   get isRunning(): boolean { return this.state.isRunning; }
   set isRunning(v: boolean) { this.state.isRunning = v; }
 
-  get syncQueue(): typeof this.state.syncQueue { return this.state.syncQueue; }
-  set syncQueue(v: typeof this.state.syncQueue) { this.state.syncQueue = v; }
-
   get activeSyncs(): typeof this.state.activeSyncs { return this.state.activeSyncs; }
   set activeSyncs(v: typeof this.state.activeSyncs) { this.state.activeSyncs = v; }
 
-  get activeLocks(): typeof this.state.activeLocks { return this.state.activeLocks; }
-  set activeLocks(v: typeof this.state.activeLocks) { this.state.activeLocks = v; }
-
   get addressToWalletMap(): typeof this.state.addressToWalletMap { return this.state.addressToWalletMap; }
   set addressToWalletMap(v: typeof this.state.addressToWalletMap) { this.state.addressToWalletMap = v; }
-
-  get pendingRetries(): typeof this.state.pendingRetries { return this.state.pendingRetries; }
-  set pendingRetries(v: typeof this.state.pendingRetries) { this.state.pendingRetries = v; }
 
   get subscriptionLock(): typeof this.state.subscriptionLock { return this.state.subscriptionLock; }
   set subscriptionLock(v: typeof this.state.subscriptionLock) { this.state.subscriptionLock = v; }
@@ -162,9 +142,6 @@ class SyncService {
       this.startPollingIntervals();
       log.info('[SYNC] Worker unhealthy — starting in-process polling');
     }
-
-    // Process any existing queue
-    this.processQueue();
 
     // Set up real-time subscriptions (async, don't block startup)
     this.subscriptionAuthorityRetry.start();
@@ -281,29 +258,9 @@ class SyncService {
     };
   }
 
-  /**
-   * Queue a wallet for sync
-   */
-  queueSync(walletId: string, priority: SyncPriority = DEFAULT_SYNC_PRIORITY): void {
-    doQueueSync(
-      this.state,
-      walletId,
-      priority,
-      (wId) => this.executeSyncJob(wId),
-    );
-  }
-
-  /**
-   * Queue all user's wallets for sync (called on login/page load)
-   */
-  async queueUserWallets(userId: string, priority: SyncPriority = DEFAULT_SYNC_PRIORITY): Promise<void> {
-    const wallets = await walletRepository.findByUserId(userId);
-
-    for (const wallet of wallets) {
-      this.queueSync(wallet.id, priority);
-    }
-
-    log.info(`[SYNC] Queued ${wallets.length} wallets for user ${userId}`);
+  /** @deprecated Inline queueing is retired; use syncIntentAdmission. */
+  queueSync(_walletId: string, _priority?: SyncPriority): never {
+    throw new Error('Inline wallet sync queue is retired; use durable sync intent admission');
   }
 
   /**
@@ -320,6 +277,15 @@ class SyncService {
     nextRetryAt: Date | null;
     startedAt: Date | null;
     stateVersion: number;
+    requestedIncrementalSyncGeneration: number;
+    claimedIncrementalSyncGeneration: number;
+    processedIncrementalSyncGeneration: number;
+    incrementalSyncClaimedAt: Date | null;
+    incrementalSyncLeaseExpiresAt: Date | null;
+    syncActionRequiredAt: Date | null;
+    requestedFullResyncGeneration: number;
+    preparedFullResyncGeneration: number;
+    processedFullResyncGeneration: number;
   }> {
     const wallet = await walletRepository.findSyncState(walletId);
 
@@ -327,7 +293,6 @@ class SyncService {
       throw new Error('Wallet not found');
     }
 
-    const queuePosition = this.state.syncQueue.findIndex(j => j.walletId === walletId);
     const { staleThresholdMs } = getConfig().sync;
     const isStale = !wallet.lastSyncedAt ||
       (Date.now() - wallet.lastSyncedAt.getTime()) > staleThresholdMs;
@@ -337,31 +302,28 @@ class SyncService {
       syncStatus: wallet.lastSyncStatus,
       syncInProgress: wallet.syncInProgress,
       isStale,
-      queuePosition: queuePosition >= 0 ? queuePosition + 1 : null,
+      // The in-process queue is retired; durable generations are authoritative.
+      queuePosition: null,
       executionOwner: wallet.syncExecutionOwner,
       retryCount: wallet.syncRetryCount,
       nextRetryAt: wallet.syncNextRetryAt,
       startedAt: wallet.syncStartedAt,
       stateVersion: wallet.syncStateVersion,
+      requestedIncrementalSyncGeneration: wallet.requestedIncrementalSyncGeneration,
+      claimedIncrementalSyncGeneration: wallet.claimedIncrementalSyncGeneration,
+      processedIncrementalSyncGeneration: wallet.processedIncrementalSyncGeneration,
+      incrementalSyncClaimedAt: wallet.incrementalSyncClaimedAt,
+      incrementalSyncLeaseExpiresAt: wallet.incrementalSyncLeaseExpiresAt,
+      syncActionRequiredAt: wallet.syncActionRequiredAt,
+      requestedFullResyncGeneration: wallet.requestedFullResyncGeneration,
+      preparedFullResyncGeneration: wallet.preparedFullResyncGeneration,
+      processedFullResyncGeneration: wallet.processedFullResyncGeneration,
     };
   }
 
-  /**
-   * Force immediate sync of a wallet (high priority)
-   */
-  async syncNow(walletId: string): Promise<SyncResult> {
-    // If already syncing, wait for completion
-    if (this.state.activeSyncs.has(walletId)) {
-      return {
-        success: false,
-        addresses: 0,
-        transactions: 0,
-        utxos: 0,
-        error: 'Sync already in progress',
-      };
-    }
-
-    return this.executeSyncJob(walletId);
+  /** @deprecated Immediate inline execution is retired; use syncIntentAdmission. */
+  async syncNow(_walletId: string): Promise<SyncResult> {
+    throw new Error('Immediate wallet sync is retired; use durable sync intent admission');
   }
 
   /**
@@ -387,29 +349,29 @@ class SyncService {
     return doSubscribeWalletAddresses(walletId);
   }
 
-  // ── Private delegates for sub-modules ─────────────────────────────────
-  // These methods delegate to extracted module functions while preserving the
-  // original method names. Tests call them via syncService['methodName']().
-
-  private executeSyncJob(walletId: string, retryCount: number = 0): Promise<SyncResult> {
-    return doExecuteSyncJob(
-      this.state,
-      walletId,
-      (wId, retry) => this.executeSyncJob(wId, retry),
-      retryCount,
-    );
-  }
-
-  private processQueue(): void {
-    doProcessQueue(this.state, (wId) => this.executeSyncJob(wId));
-  }
-
   private async setupRealTimeSubscriptions(): Promise<void> {
     return doSetupRealTimeSubscriptions(
       this.state,
-      (walletId, priority) => this.queueSync(walletId, priority),
+      (walletId) => this.requestAddressActivitySync(walletId),
       () => this.updateAllConfirmations(),
     );
+  }
+
+  private requestAddressActivitySync(walletId: string): void {
+    syncIntentAdmission.request(walletId).then(result => {
+      if (result.status === 'blocked'
+        || (('wakeup' in result) && result.wakeup === 'unavailable')) {
+        log.warn('[SYNC] Address activity wake-up deferred to recovery', {
+          walletId,
+          status: result.status,
+        });
+      }
+    }).catch(error => {
+      log.error('[SYNC] Failed to persist address activity sync intent', {
+        walletId,
+        error: getErrorMessage(error),
+      });
+    });
   }
 
   private async teardownRealTimeSubscriptions(): Promise<void> {
@@ -420,8 +382,9 @@ class SyncService {
     return doReleaseSubscriptionLock(this.state);
   }
 
-  public async acquireSyncLock(walletId: string): Promise<boolean> {
-    return doAcquireSyncLock(this.state, walletId);
+  /** @deprecated Inline execution locks are owned only by the canonical worker. */
+  public async acquireSyncLock(_walletId: string): Promise<boolean> {
+    return false;
   }
 
   public async subscribeAllWalletAddresses(): Promise<void> {
@@ -440,7 +403,7 @@ class SyncService {
     return doHandleAddressActivity(
       this.state,
       activity,
-      (walletId, priority) => this.queueSync(walletId, priority),
+      (walletId) => this.requestAddressActivitySync(walletId),
     );
   }
 
@@ -558,8 +521,8 @@ class SyncService {
   }
 
   /**
-   * Check for stale wallets and queue them for sync.
-   * Also auto-unstuck wallets that have syncInProgress=true but aren't actually syncing.
+   * Repair legacy stuck inline markers while the compatibility service remains.
+   * Elapsed wall-clock age must never request wallet-history work.
    */
   private async checkAndQueueStaleSyncs(): Promise<void> {
     if (!this.state.isRunning) return;
@@ -582,17 +545,6 @@ class SyncService {
         log.info(`[SYNC] Auto-unstuck ${unstuckCount} wallets that had stale syncInProgress flags`);
       }
 
-      // Now check for stale wallets that need syncing
-      const { staleThresholdMs } = getConfig().sync;
-      const staleWallets = await walletRepository.findStale({ staleThresholdMs });
-
-      for (const wallet of staleWallets) {
-        this.queueSync(wallet.id, 'low');
-      }
-
-      if (staleWallets.length > 0) {
-        log.info(`[SYNC] Queued ${staleWallets.length} stale wallets for background sync`);
-      }
     } catch (error) {
       log.error('[SYNC] Failed to check for stale syncs', { error: getErrorMessage(error) });
     }

@@ -123,6 +123,43 @@ function compareInventorySymbols(left, right) {
 
 function fixtureContract() {
   const contract = structuredClone(liveContract);
+  contract.inventory.rawQueueMutations = [];
+  contract.inventory.producerCallsites = [{
+    sink: 'admission.recover',
+    file: 'server/src/worker/walletSyncRecoveryRuntime.ts',
+    enclosingFunction: 'createProductionWalletSyncRecoveryRuntime',
+    count: 1,
+    trigger: 'bounded_recovery',
+    role: 'gate_rechecked_incremental_recovery',
+  }, {
+    sink: 'admission.recoverExpired',
+    file: 'server/src/worker/walletSyncRecoveryRuntime.ts',
+    enclosingFunction: 'createProductionWalletSyncRecoveryRuntime',
+    count: 1,
+    trigger: 'bounded_recovery',
+    role: 'gate_rechecked_expired_recovery',
+  }, {
+    sink: 'admission.request',
+    file: 'server/src/services/sync/manualProducer.ts',
+    enclosingFunction: 'requestWalletHistory',
+    count: 1,
+    trigger: 'explicit_user_request',
+    role: 'canonical_manual_api_admission',
+  }, {
+    sink: 'admission.wakeReservedFullResync',
+    file: 'server/src/worker/walletSyncRecoveryRuntime.ts',
+    enclosingFunction: 'createProductionWalletSyncRecoveryRuntime',
+    count: 1,
+    trigger: 'bounded_recovery',
+    role: 'gate_rechecked_exact_full_resync_repair_admission',
+  }, {
+    sink: 'frontend.syncWallet',
+    file: 'src/components/ManualSync.ts',
+    enclosingFunction: 'handleSync',
+    count: 1,
+    trigger: 'explicit_user_request',
+    role: 'explicit_wallet_sync_action',
+  }];
   contract.inventory.directExecutorCalls = [
     {
       callee: 'syncAddress',
@@ -194,6 +231,9 @@ function fixtureContract() {
       role: 'dormant_generation_wakeup_adapter_definition',
     }] },
     { symbol: 'enqueueReservedFullResyncWakeup', entries: [{
+      file: 'server/src/services/sync/syncIntentAdmission.ts',
+      role: 'canonical_raw_queue_authority',
+    }, {
       file: 'server/src/services/workerSyncQueue.ts',
       role: 'reserved_generation_wakeup_adapter_definition',
     }, {
@@ -212,6 +252,9 @@ function fixtureContract() {
       role: 'canonical_checkpoint_request_writer',
     }] },
     { symbol: 'syncIntentAdmission', entries: [{
+      file: 'server/src/services/sync/manualProducer.ts',
+      role: 'canonical_manual_api_admission',
+    }, {
       file: 'server/src/services/sync/syncIntentAdmission.ts',
       role: 'canonical_admission_singleton_definition',
     }, {
@@ -281,19 +324,26 @@ function createFixture() {
   write(
     root,
     'server/src/services/sync/syncIntentAdmission.ts',
-    "import { enqueueIncrementalSyncWakeup } from '../workerSyncQueue';\n"
+    "import { enqueueIncrementalSyncWakeup, enqueueReservedFullResyncWakeup } from '../workerSyncQueue';\n"
       + "import { walletSyncActivationGate } from './walletSyncActivationGate';\n"
-      + 'void enqueueIncrementalSyncWakeup;\n'
+      + "import { syncLifecyclePublisher } from './syncLifecyclePublisher';\n"
+      + 'void enqueueIncrementalSyncWakeup;\nvoid enqueueReservedFullResyncWakeup;\n'
       + 'void { inspectActivation: () => walletSyncActivationGate.inspect() };\n'
+      + 'void { publishTransition: syncLifecyclePublisher.publish };\n'
+      + 'async function publishCommittedRequests(repository, persistFullResyncRequest, publishTransition) {\n'
+      + '  await repository.requestIncrementalSync();\n'
+      + "  await publishTransition({ transition: 'requested' });\n"
+      + '  await persistFullResyncRequest(walletId);\n'
+      + "  await publishTransition({ transition: 'requested' });\n"
+      + '}\nvoid publishCommittedRequests;\n'
       + 'export const syncIntentAdmission = {};\n',
   );
   write(
     root,
     'server/src/worker/syncIntentRecovery.ts',
     `import type { syncIntentAdmission } from '${canonicalAdmissionImport}';\n`
-      + "import type { enqueueReservedFullResyncWakeup } from '../services/workerSyncQueue';\n"
       + 'export type RecoveryAdmission = typeof syncIntentAdmission;\n'
-      + 'export type RecoveryWakeup = typeof enqueueReservedFullResyncWakeup;\n'
+      + 'export interface RecoveryDependencies { enqueueReservedFullResyncWakeup: (wakeup: unknown) => Promise<unknown>; }\n'
       + 'export function createSyncIntentRecoveryCoordinator() {}\n',
   );
   write(
@@ -302,7 +352,6 @@ function createFixture() {
     "import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from '../constants/walletSyncActivation';\n"
       + "import { syncIntentAdmission } from '../services/sync/syncIntentAdmission';\n"
       + "import { walletSyncActivationGate } from '../services/sync/walletSyncActivationGate';\n"
-      + "import { enqueueReservedFullResyncWakeup } from '../services/workerSyncQueue';\n"
       + "import { createSyncIntentRecoveryCoordinator } from './syncIntentRecovery';\n"
       + 'export function createWalletSyncRecoveryRuntime() {}\n'
       + 'export function createProductionWalletSyncRecoveryRuntime() {\n'
@@ -311,7 +360,7 @@ function createFixture() {
       + '  void walletSyncActivationGate.activate();\n'
       + '  void syncIntentAdmission.recover({});\n'
       + '  void syncIntentAdmission.recoverExpired({});\n'
-      + "  void (async (wakeup) => { if (!await authorize()) return { status: 'blocked' }; return { status: await enqueueReservedFullResyncWakeup(wakeup) ? 'enqueued' : 'unavailable' }; });\n"
+      + "  void { enqueueReservedFullResyncWakeup: async (wakeup) => { if (!await authorize()) return { status: 'blocked' }; const enqueued = await syncIntentAdmission.wakeReservedFullResync(wakeup); return { status: enqueued ? 'enqueued' : 'unavailable' }; } };\n"
       + '  void createSyncIntentRecoveryCoordinator();\n'
       + '  void { activate: () => walletSyncActivationGate.activate() };\n'
       + '  return createWalletSyncRecoveryRuntime();\n}\n',
@@ -378,19 +427,33 @@ function createFixture() {
     "import type { walletSyncActivationGate } from '../services/sync/walletSyncActivationGate';\n"
       + 'export type Gate = typeof walletSyncActivationGate;\n',
   );
+  write(
+    root,
+    'server/src/services/sync/manualProducer.ts',
+    "import { syncIntentAdmission } from './syncIntentAdmission';\n"
+      + 'export async function requestWalletHistory(walletId) {\n'
+      + '  return syncIntentAdmission.request(walletId);\n}\n',
+  );
+  write(root, 'src/api/sync.ts', 'export async function syncWallet(walletId) { return walletId; }\n');
+  write(
+    root,
+    'src/components/ManualSync.ts',
+    "import * as syncApi from '../api/sync';\n"
+      + 'export async function handleSync(walletId) { return syncApi.syncWallet(walletId); }\n',
+  );
   return root;
 }
 
-test('live gated-recovery inventory matches production without claiming cutover', () => {
+test('live canonical producer inventory matches production without claiming cutover', () => {
   const result = checkWalletSyncLifecycleContract(repoRoot);
   assert.deepEqual(result.errors, []);
-  assert.equal(result.contract.deliveryState, 'gated_bounded_recovery');
+  assert.equal(result.contract.deliveryState, 'canonical_producers_active');
   assert.equal(result.contract.cutoverComplete, false);
-  assert.equal(result.contract.wireContract.currentProducerVersion, 1);
+  assert.equal(result.contract.wireContract.currentProducerVersion, 3);
   assert.equal(result.contract.compatibility.staleScheduleState, 'legacy_desired_until_cutover');
   assert.equal(
     result.contract.compatibility.admissionState,
-    'gate_enforced_consumer_and_recovery_no_request_producers',
+    'gate_enforced_canonical_request_producers_active',
   );
   assert.equal(
     result.contract.compatibility.activationState,
@@ -432,6 +495,235 @@ test('rejects an aliased low-level executor import outside the baseline', () => 
   assert.match(
     checkWalletSyncLifecycleContract(root).errors.join('\n'),
     /direct syncWallet call inventory changed/,
+  );
+});
+
+test('rejects dynamic, destructured, and intermediary direct executor bypasses', () => {
+  const attempts = [
+    "const module = await import('../bitcoin/blockchain');\nmodule.syncWallet('wallet-1');\n",
+    "const { syncWallet: execute } = await import('../bitcoin/blockchain');\nexecute('wallet-1');\n",
+    "import * as blockchain from '../bitcoin/blockchain';\nconst first = blockchain;\nconst second = first;\nsecond['syncWallet']('wallet-1');\n",
+  ];
+  for (const source of attempts) {
+    const root = createFixture();
+    write(root, 'server/src/services/executorBypass.ts', source);
+    assert.match(
+      checkWalletSyncLifecycleContract(root).errors.join('\n'),
+      /direct syncWallet call inventory changed/,
+    );
+  }
+});
+
+test('rejects tracked producer re-exports while permitting type-only re-exports', () => {
+  const root = createFixture();
+  write(
+    root,
+    'server/src/services/executorFacade.ts',
+    "export { syncWallet as execute } from './bitcoin/blockchain';\n",
+  );
+  assert.match(
+    checkWalletSyncLifecycleContract(root).errors.join('\n'),
+    /tracked wallet-history producer re-export added/,
+  );
+
+  write(
+    root,
+    'server/src/services/executorFacade.ts',
+    "export type { SyncWalletOptions } from './bitcoin/blockchain';\n",
+  );
+  assert.deepEqual(checkWalletSyncLifecycleContract(root).errors, []);
+});
+
+test('rejects CommonJS and TypeScript import-equals aliases of tracked modules', () => {
+  for (const source of [
+    "const { syncIntentAdmission: hiddenAdmission } = require('./sync/syncIntentAdmission');\nvoid hiddenAdmission.request('wallet-1');\n",
+    "import hiddenAdmission = require('./sync/syncIntentAdmission');\nvoid hiddenAdmission;\n",
+  ]) {
+    const root = createFixture();
+    write(root, 'server/src/services/commonJsBypass.ts', source);
+    assert.match(
+      checkWalletSyncLifecycleContract(root).errors.join('\n'),
+      /tracked wallet-history modules require static ES imports/,
+    );
+  }
+});
+
+test('rejects a newly named raw wallet-sync queue mutation', () => {
+  const root = createFixture();
+  const queuePath = 'server/src/services/workerSyncQueue.ts';
+  const current = readFileSync(path.join(root, queuePath), 'utf8');
+  write(
+    root,
+    queuePath,
+    `${current}\nexport function enqueueWalletSyncBypass() { return getOrCreateSyncQueue().add(SYNC_WALLET_JOB_NAME, { walletId: 'wallet-1' }); }\n`,
+  );
+  assert.match(
+    checkWalletSyncLifecycleContract(root).errors.join('\n'),
+    /raw wallet-sync queue mutations changed/,
+  );
+});
+
+test('rejects a wallet-sync BullMQ mutation outside the canonical queue adapter', () => {
+  const root = createFixture();
+  write(
+    root,
+    'server/src/services/alternateWalletQueue.ts',
+    "import { Queue } from 'bullmq';\n"
+      + "const hidden = new Queue('wallet-sync');\n"
+      + "export function enqueue() { return hidden.add(['sync', 'wallet'].join('-'), { version: 1, walletId: 'wallet-1' }); }\n",
+  );
+  assert.match(
+    checkWalletSyncLifecycleContract(root).errors.join('\n'),
+    /raw wallet-sync queue mutations changed/,
+  );
+});
+
+test('rejects namespace and aliased BullMQ queue mutations with constant names', () => {
+  const root = createFixture();
+  write(
+    root,
+    'server/src/services/alternateWalletQueue.ts',
+    "import * as BullMQ from 'bullmq';\n"
+      + "const queueName = 'wallet-' + 'sync';\n"
+      + "const jobName = ['sync', 'wallet'].join('-');\n"
+      + 'const { Queue: QueueAlias } = BullMQ;\n'
+      + "const resolveJobName = () => ['sync', 'wallet'].join('-');\n"
+      + 'const hidden = new QueueAlias(queueName);\n'
+      + 'const queueAlias = hidden;\n'
+      + 'export function enqueue() {\n'
+      + "  return queueAlias.add(resolveJobName() || jobName, { version: 1, walletId: 'wallet-1' });\n"
+      + '}\n',
+  );
+  assert.match(
+    checkWalletSyncLifecycleContract(root).errors.join('\n'),
+    /raw wallet-sync queue mutations changed/,
+  );
+});
+
+test('rejects an extra admission request inside an inventoried producer function', () => {
+  const root = createFixture();
+  write(
+    root,
+    'server/src/services/sync/manualProducer.ts',
+    "import { syncIntentAdmission } from './syncIntentAdmission';\n"
+      + 'export async function requestWalletHistory(walletId) {\n'
+      + '  await syncIntentAdmission.request(walletId);\n'
+      + '  return syncIntentAdmission.request(walletId);\n}\n',
+  );
+  assert.match(
+    checkWalletSyncLifecycleContract(root).errors.join('\n'),
+    /wallet-history producer callsites changed/,
+  );
+});
+
+test('rejects unlisted frontend wallet-history producers and retired user-batch surfaces', () => {
+  const attempts = [
+    "import { syncWallet } from '../api/sync';\nexport function restoreSession(id) { return syncWallet(id); }\n",
+    "export function queueUserWallets() { return fetch('/sync/user', { method: 'POST' }); }\n",
+  ];
+  for (const source of attempts) {
+    const root = createFixture();
+    write(root, 'src/auth/sessionRestore.ts', source);
+    const errors = checkWalletSyncLifecycleContract(root).errors.join('\n');
+    assert.match(errors, /wallet-history producer callsites changed|forbidden client wallet-history/);
+  }
+});
+
+test('rejects non-route callers of manual coordinator producer methods', () => {
+  const root = createFixture();
+  write(
+    root,
+    'server/src/auth/sessionRestore.ts',
+    "import { getSyncCoordinator } from '../services/sync/syncCoordinator';\n"
+      + 'export function restoreSession(userId) {\n'
+      + '  return getSyncCoordinator().queueUserWallets(userId);\n}\n',
+  );
+  assert.match(
+    checkWalletSyncLifecycleContract(root).errors.join('\n'),
+    /wallet-history producer callsites changed/,
+  );
+});
+
+test('rejects uninventoried initial generation writes and wakeups', () => {
+  const root = createFixture();
+  write(
+    root,
+    'server/src/services/wallet/alternateCreate.ts',
+    "import { INITIAL_SYNC_GENERATION, wakeInitialWalletSync } from '../sync/initialSyncIntent';\n"
+      + 'export async function createAlternate(walletId) {\n'
+      + '  const data = { requestedIncrementalSyncGeneration: INITIAL_SYNC_GENERATION };\n'
+      + '  await wakeInitialWalletSync(walletId);\n'
+      + '  return data;\n}\n',
+  );
+  assert.match(
+    checkWalletSyncLifecycleContract(root).errors.join('\n'),
+    /wallet-history producer callsites changed/,
+  );
+});
+
+test('rejects generic requested-generation mutation shapes outside the inventory', () => {
+  const root = createFixture();
+  write(
+    root,
+    'server/src/services/unsafeGenerationWrite.ts',
+    "export function mutate(walletRepository) {\n"
+      + "  return walletRepository.update('wallet-1', {\n"
+      + '    requestedIncrementalSyncGeneration: { increment: 1 },\n'
+      + '  });\n'
+      + '}\n',
+  );
+  assert.match(
+    checkWalletSyncLifecycleContract(root).errors.join('\n'),
+    /wallet-history producer callsites changed/,
+  );
+});
+
+test('rejects a computed requested-generation authority key', () => {
+  const root = createFixture();
+  write(
+    root,
+    'server/src/services/unsafeComputedGenerationWrite.ts',
+    'let generationField;\n'
+      + "generationField = 'requestedIncremental' + 'SyncGeneration';\n"
+      + 'export function mutate(walletRepository) {\n'
+      + "  return walletRepository.update('wallet-1', {\n"
+      + '    [generationField]: { increment: 1 },\n'
+      + '  });\n'
+      + '}\n',
+  );
+  assert.match(
+    checkWalletSyncLifecycleContract(root).errors.join('\n'),
+    /wallet-history producer callsites changed/,
+  );
+});
+
+test('rejects reintroduced direct legacy queue producers', () => {
+  for (const producer of ['enqueueDeadLetterJob', 'enqueueWalletSync', 'enqueueWalletSyncBatch']) {
+    const root = createFixture();
+    write(
+      root,
+      'server/src/api/directQueueProducer.ts',
+      `import { ${producer} as enqueue } from '../services/workerSyncQueue';\n`
+        + 'export function retry(job) { return enqueue(job); }\n',
+    );
+    assert.match(
+      checkWalletSyncLifecycleContract(root).errors.join('\n'),
+      /wallet-history producer callsites changed/,
+    );
+  }
+});
+
+test('rejects a retired bitcoin API wallet-history caller', () => {
+  const root = createFixture();
+  write(
+    root,
+    'src/auth/legacyWalletLoad.ts',
+    "import { syncWallet as load } from '../api/bitcoin';\n"
+      + 'export function loadWallet(walletId) { return load(walletId); }\n',
+  );
+  assert.match(
+    checkWalletSyncLifecycleContract(root).errors.join('\n'),
+    /wallet-history producer callsites changed/,
   );
 });
 
@@ -488,7 +780,7 @@ test('rejects a production admission producer before the activation release', ()
   );
   assert.match(
     checkWalletSyncLifecycleContract(root).errors.join('\n'),
-    /durable admission producer activated before cutover/,
+    /durable admission consumed outside the exact producer\/consumer inventory/,
   );
 });
 
@@ -507,7 +799,7 @@ test('rejects request and recovery calls outside their gate-enforced owners', ()
     );
     assert.match(
       checkWalletSyncLifecycleContract(root).errors.join('\n'),
-      /durable admission producer activated before cutover/,
+      /durable admission consumed outside the exact producer\/consumer inventory/,
     );
   }
 });
@@ -528,7 +820,27 @@ test('rejects raw request, recovery-read, and reclaim repository access', () => 
     );
     assert.match(
       checkWalletSyncLifecycleContract(root).errors.join('\n'),
-      /durable admission producer activated before cutover/,
+      /durable admission consumed outside the exact producer\/consumer inventory/,
+    );
+  }
+});
+
+test('rejects direct reset and full-resync generation mutation authorities', () => {
+  const attempts = [
+    ['resetIncrementalSyncAttempt', '../repositories/syncIntentRepository'],
+    ['requestFullResyncGeneration', '../repositories/resyncRepository'],
+    ['reserveFullResyncGeneration', '../repositories/resyncRepository'],
+  ];
+  for (const [symbol, modulePath] of attempts) {
+    const root = createFixture();
+    write(
+      root,
+      'server/src/api/rawGenerationMutation.ts',
+      `import { ${symbol} as bypass } from '${modulePath}';\nvoid bypass;\n`,
+    );
+    assert.match(
+      checkWalletSyncLifecycleContract(root).errors.join('\n'),
+      /durable admission consumed outside the exact producer\/consumer inventory/,
     );
   }
 });
@@ -543,7 +855,7 @@ test('rejects expectedExpiredFence construction outside repository and admission
   );
   assert.match(
     checkWalletSyncLifecycleContract(root).errors.join('\n'),
-    /durable admission producer activated before cutover/,
+    /durable admission consumed outside the exact producer\/consumer inventory/,
   );
 });
 
@@ -557,77 +869,67 @@ test('rejects direct generation wake-up production outside canonical admission',
   );
   assert.match(
     checkWalletSyncLifecycleContract(root).errors.join('\n'),
-    /durable admission producer activated before cutover/,
+    /durable admission consumed outside the exact producer\/consumer inventory/,
   );
 });
 
-test('rejects reserved full-resync queue wakeups outside the exact recovery runtime', () => {
-  const root = createFixture();
-  write(
-    root,
-    'server/src/api/earlyFullResyncWakeup.ts',
-    "import { enqueueReservedFullResyncWakeup as wake } from '../services/workerSyncQueue';\n"
-      + 'void wake;\n',
-  );
-  assert.match(
-    checkWalletSyncLifecycleContract(root).errors.join('\n'),
-    /symbol enqueueReservedFullResyncWakeup references changed/,
-  );
-});
-
-test('rejects an unguarded reserved wakeup inside the recovery composition root', () => {
-  const root = createFixture();
-  write(
-    root,
-    'server/src/worker/walletSyncRecoveryRuntime.ts',
-    "import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from '../constants/walletSyncActivation';\n"
-      + "import { syncIntentAdmission } from '../services/sync/syncIntentAdmission';\n"
-      + "import { walletSyncActivationGate } from '../services/sync/walletSyncActivationGate';\n"
-      + "import { enqueueReservedFullResyncWakeup } from '../services/workerSyncQueue';\n"
-      + "import { createSyncIntentRecoveryCoordinator } from './syncIntentRecovery';\n"
-      + 'export function createWalletSyncRecoveryRuntime() {}\n'
-      + 'export async function createProductionWalletSyncRecoveryRuntime() {\n'
-      + '  void WALLET_SYNC_MUTATION_FENCE_FLOOR;\n'
-      + "  void (await walletSyncActivationGate.inspect()).status === 'active';\n"
-      + '  void syncIntentAdmission.recover({});\n'
-      + '  void syncIntentAdmission.recoverExpired({});\n'
-      + '  await enqueueReservedFullResyncWakeup({});\n'
-      + '  void createSyncIntentRecoveryCoordinator();\n'
-      + '  void { activate: () => walletSyncActivationGate.activate() };\n'
-      + '  return createWalletSyncRecoveryRuntime();\n}\n',
-  );
-  assert.match(
-    checkWalletSyncLifecycleContract(root).errors.join('\n'),
-    /reserved full-resync recovery wake-ups must recheck activation inline/,
-  );
-});
-
-test('rejects an extra unguarded reserved wakeup beside the guarded adapter', () => {
-  const additions = [
-    'await enqueueReservedFullResyncWakeup({});',
-    'const unguardedWake = enqueueReservedFullResyncWakeup;\n  await unguardedWake({});',
-    'const firstAlias = enqueueReservedFullResyncWakeup;\n  const secondAlias = firstAlias;\n  await secondAlias({});',
-    "const bracketWake = dependencies['enqueueReservedFullResyncWakeup'];\n  await bracketWake({});",
-    "await dependencies['enqueueReservedFullResyncWakeup']({});",
-    'const { enqueueReservedFullResyncWakeup: destructuredWake } = dependencies;\n  await destructuredWake({});',
+test('rejects raw reserved full-resync queue authority outside canonical admission', () => {
+  const attempts = [
+    "import { enqueueReservedFullResyncWakeup as wake } from '../services/workerSyncQueue';\nvoid wake;\n",
+    "import { enqueueReservedFullResyncWakeup as wake } from '../services';\nvoid wake;\n",
+    "import * as queue from '../services/workerSyncQueue';\nvoid queue;\n",
+    "void import('../services/workerSyncQueue');\n",
   ];
-  for (const addition of additions) {
+  for (const source of attempts) {
     const root = createFixture();
-    const runtimePath = 'server/src/worker/walletSyncRecoveryRuntime.ts';
-    const source = readFileSync(path.join(root, runtimePath), 'utf8');
-    write(
-      root,
-      runtimePath,
-      source.replace(
-        'return createWalletSyncRecoveryRuntime();',
-        `${addition}\n  return createWalletSyncRecoveryRuntime();`,
-      ),
-    );
+    write(root, 'server/src/api/earlyFullResyncWakeup.ts', source);
     assert.match(
       checkWalletSyncLifecycleContract(root).errors.join('\n'),
-      /exactly one guarded reserved full-resync enqueue/,
+      /raw reserved full-resync queue authority escaped canonical admission/,
     );
   }
+});
+
+test('rejects full-resync recovery admission without its inline gate recheck', () => {
+  const root = createFixture();
+  const runtimePath = 'server/src/worker/walletSyncRecoveryRuntime.ts';
+  const source = readFileSync(path.join(root, runtimePath), 'utf8');
+  write(root, runtimePath, source.replace(
+    "if (!await authorize()) return { status: 'blocked' }; ",
+    '',
+  ));
+  assert.match(
+    checkWalletSyncLifecycleContract(root).errors.join('\n'),
+    /full-resync recovery must recheck activation then use exact canonical admission/,
+  );
+});
+
+test('rejects a second full-resync admission inside the recovery adapter', () => {
+  const root = createFixture();
+  const runtimePath = 'server/src/worker/walletSyncRecoveryRuntime.ts';
+  const source = readFileSync(path.join(root, runtimePath), 'utf8');
+  write(root, runtimePath, source.replace(
+    'return createWalletSyncRecoveryRuntime();',
+    "void syncIntentAdmission.wakeReservedFullResync({ walletId: 'wallet-2' });\n  return createWalletSyncRecoveryRuntime();",
+  ));
+  assert.match(
+    checkWalletSyncLifecycleContract(root).errors.join('\n'),
+    /exactly one exact full-resync repair admission|wallet-history producer callsites changed/,
+  );
+});
+
+test('rejects a raw reserved wakeup call hidden in the recovery runtime', () => {
+  const root = createFixture();
+  const runtimePath = 'server/src/worker/walletSyncRecoveryRuntime.ts';
+  const source = readFileSync(path.join(root, runtimePath), 'utf8');
+  write(root, runtimePath, source.replace(
+    'return createWalletSyncRecoveryRuntime();',
+    'void dependencies.enqueueReservedFullResyncWakeup({});\n  return createWalletSyncRecoveryRuntime();',
+  ));
+  assert.match(
+    checkWalletSyncLifecycleContract(root).errors.join('\n'),
+    /raw reserved full-resync queue authority escaped canonical admission/,
+  );
 });
 
 test('rejects removal of every required gated recovery composition boundary', () => {
@@ -647,6 +949,11 @@ test('rejects removal of every required gated recovery composition boundary', ()
       'syncIntentAdmission.recoverExpired({})',
       'undefined',
       /recovery runtime must use gate-enforced expired recovery/,
+    ],
+    [
+      'syncIntentAdmission.wakeReservedFullResync(wakeup)',
+      'undefined',
+      /full-resync recovery must recheck activation then use exact canonical admission/,
     ],
     [
       'activate: () => walletSyncActivationGate.activate()',
@@ -696,7 +1003,22 @@ test('rejects repair-loop activation from the permitted worker consumer', () => 
   );
   assert.match(
     checkWalletSyncLifecycleContract(root).errors.join('\n'),
-    /durable admission producer activated before cutover/,
+    /durable admission consumed outside the exact producer\/consumer inventory/,
+  );
+});
+
+test('rejects admission that stops publishing exact committed request state', () => {
+  const root = createFixture();
+  const admissionPath = 'server/src/services/sync/syncIntentAdmission.ts';
+  const admission = readFileSync(path.join(root, admissionPath), 'utf8');
+  write(
+    root,
+    admissionPath,
+    admission.replace('transition: \'requested\'', 'transition: \'cleared\''),
+  );
+  assert.match(
+    checkWalletSyncLifecycleContract(root).errors.join('\n'),
+    /incremental and full-resync admission must each publish requested state/,
   );
 });
 
@@ -712,7 +1034,7 @@ test('rejects namespace and bracket repair activation from the permitted worker'
   );
   assert.match(
     checkWalletSyncLifecycleContract(root).errors.join('\n'),
-    /durable admission producer activated before cutover/,
+    /durable admission consumed outside the exact producer\/consumer inventory/,
   );
 });
 
@@ -726,7 +1048,7 @@ test('rejects alternate construction of the bounded recovery coordinator', () =>
   );
   assert.match(
     checkWalletSyncLifecycleContract(root).errors.join('\n'),
-    /durable admission producer activated before cutover/,
+    /durable admission consumed outside the exact producer\/consumer inventory/,
   );
 });
 
@@ -740,7 +1062,7 @@ test('rejects alternate recovery-runtime construction outside the worker composi
   );
   assert.match(
     checkWalletSyncLifecycleContract(root).errors.join('\n'),
-    /durable admission producer activated before cutover|symbol createWalletSyncRecoveryRuntime references changed/,
+    /durable admission consumed outside the exact producer\/consumer inventory|symbol createWalletSyncRecoveryRuntime references changed/,
   );
 });
 
@@ -802,7 +1124,7 @@ test('rejects a request alias inside the otherwise permitted recovery coordinato
   );
   assert.match(
     checkWalletSyncLifecycleContract(root).errors.join('\n'),
-    /durable admission producer activated before cutover/,
+    /durable admission consumed outside the exact producer\/consumer inventory/,
   );
 });
 

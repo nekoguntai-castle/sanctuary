@@ -3,19 +3,27 @@ import { getSyncLockKey } from '../../jobs/syncJobContract';
 import { isLocked } from '../../infrastructure/distributedLock';
 import {
   enqueueIncrementalSyncWakeup,
+  enqueueReservedFullResyncWakeup,
 } from '../workerSyncQueue';
+import {
+  isExactFullResyncPending,
+  requestFullResyncGeneration,
+  type FullResyncRequestResult,
+} from '../../repositories/resyncRepository';
 import {
   syncIntentRepository,
   type ExpiredIncrementalSyncClaimCursor,
   type IncrementalSyncActionRequiredReleaseInput,
   type IncrementalSyncClaimInput,
   type IncrementalSyncRetryReleaseInput,
+  type IncrementalSyncResetSnapshot,
   type IncrementalSyncSuccessInput,
 } from '../../repositories/syncIntentRepository';
 import type {
   IncrementalSyncClaimResult,
   IncrementalSyncFence,
   IncrementalSyncIntentState,
+  IncrementalSyncLifecycleState,
   IncrementalSyncRequestMode,
   IncrementalSyncTerminalResult,
 } from '../../repositories/types';
@@ -23,6 +31,10 @@ import {
   walletSyncActivationGate,
   type WalletSyncActivationState,
 } from './walletSyncActivationGate';
+import {
+  syncLifecyclePublisher,
+  type SyncLifecyclePublisher,
+} from './syncLifecyclePublisher';
 
 export interface IncrementalSyncWakeup {
   walletId: string;
@@ -50,6 +62,18 @@ export type IncrementalSyncAdmissionResult =
   | { status: 'generation_exhausted' | 'not_found' }
   | { status: 'blocked'; activation: WalletSyncActivationState };
 
+export type FullResyncWakeupDisposition = 'enqueued' | 'unavailable';
+
+export type FullResyncAdmissionResult =
+  | {
+    status: 'requested' | 'merged';
+    generation: number;
+    incrementalGeneration: number;
+    wakeup: FullResyncWakeupDisposition;
+  }
+  | Exclude<FullResyncRequestResult, { status: 'requested' | 'merged' }>
+  | { status: 'blocked'; activation: WalletSyncActivationState };
+
 export interface IncrementalSyncRecoveryResult {
   scanned: number;
   enqueued: number;
@@ -71,14 +95,44 @@ type SyncIntentRepositoryPort = typeof syncIntentRepository;
 
 export interface SyncIntentAdmissionDependencies {
   enqueueWakeup: EnqueueIncrementalSyncWakeup;
+  enqueueFullResyncWakeup: typeof enqueueReservedFullResyncWakeup;
   inspectActivation: () => Promise<WalletSyncActivationState>;
   isExecutionLockHeld: (walletId: string) => Promise<boolean>;
   repository?: SyncIntentRepositoryPort;
+  requestFullResyncGeneration?: typeof requestFullResyncGeneration;
+  isExactFullResyncPending?: typeof isExactFullResyncPending;
+  publishTransition: SyncLifecyclePublisher['publish'];
 }
 
 export interface RequestIncrementalSyncOptions {
   mode?: IncrementalSyncRequestMode;
   now?: Date;
+}
+
+export interface RequestFullResyncOptions {
+  reason: string;
+}
+
+export interface RetainedSyncBridgeOptions {
+  fullResync: boolean;
+  reason?: string;
+}
+
+export type RetainedSyncBridgeResult =
+  | IncrementalSyncAdmissionResult
+  | FullResyncAdmissionResult
+  | {
+    status: 'requested' | 'merged';
+    generation: number;
+    incrementalGeneration?: number;
+    wakeup: 'deferred_activation';
+  };
+
+export interface ReservedFullResyncWakeup {
+  walletId: string;
+  generation: number;
+  incrementalGeneration: number;
+  reason: string;
 }
 
 export interface RecoverIncrementalSyncOptions {
@@ -108,9 +162,9 @@ export function incrementalSyncWakeupJobId(walletId: string, generation: number)
   return toBullMqJobId(`sync:intent:${walletId}:${generation}`);
 }
 
-async function enqueueSafely(
-  enqueueWakeup: EnqueueIncrementalSyncWakeup,
-  wakeup: IncrementalSyncWakeup,
+async function enqueueSafely<TWakeup>(
+  enqueueWakeup: (wakeup: TWakeup) => Promise<boolean>,
+  wakeup: TWakeup,
 ): Promise<boolean> {
   try {
     return await enqueueWakeup(wakeup);
@@ -137,10 +191,71 @@ export function createSyncIntentAdmission(
   dependencies: SyncIntentAdmissionDependencies,
 ) {
   const repository = dependencies.repository ?? syncIntentRepository;
+  const persistFullResyncRequest = dependencies.requestFullResyncGeneration
+    ?? requestFullResyncGeneration;
+  const validateExactFullResync = dependencies.isExactFullResyncPending
+    ?? isExactFullResyncPending;
+  const publishTransition = dependencies.publishTransition;
 
   async function requireActive(): Promise<WalletSyncActivationState | null> {
     const activation = await dependencies.inspectActivation();
     return activation.status === 'active' ? null : activation;
+  }
+
+  async function persistIncrementalRequest(
+    walletId: string,
+    mode: IncrementalSyncRequestMode,
+  ) {
+    const result = await repository.requestIncrementalSync(walletId, mode);
+    if ('state' in result) {
+      await publishTransition({ walletId, transition: 'requested', state: result.state });
+    }
+    return result;
+  }
+
+  async function enqueuePersistedIncrementalRequest(
+    walletId: string,
+    result: Extract<Awaited<ReturnType<typeof persistIncrementalRequest>>, { state: unknown }>,
+    now: Date,
+  ): Promise<IncrementalSyncAdmissionResult> {
+    const generation = result.state.requestedIncrementalSyncGeneration;
+    const deferred = deferredWakeup(result.state, now);
+    if (deferred) return { status: result.status, generation, wakeup: deferred };
+    if (await requireActive()) return { status: result.status, generation, wakeup: 'unavailable' };
+    const enqueued = await enqueueSafely(dependencies.enqueueWakeup, {
+      walletId,
+      generation,
+      jobId: incrementalSyncWakeupJobId(walletId, generation),
+    });
+    return { status: result.status, generation, wakeup: enqueued ? 'enqueued' : 'unavailable' };
+  }
+
+  async function persistFullResync(walletId: string) {
+    const result = await persistFullResyncRequest(walletId);
+    if ('generation' in result) {
+      await publishTransition({ walletId, transition: 'requested', state: result.state });
+    }
+    return result;
+  }
+
+  async function enqueuePersistedFullResync(
+    walletId: string,
+    result: Extract<Awaited<ReturnType<typeof persistFullResync>>, { generation: unknown }>,
+    reason: string,
+  ): Promise<FullResyncAdmissionResult> {
+    const admitted = {
+      status: result.status,
+      generation: result.generation,
+      incrementalGeneration: result.incrementalGeneration,
+    } as const;
+    if (await requireActive()) return { ...admitted, wakeup: 'unavailable' };
+    const enqueued = await enqueueSafely(dependencies.enqueueFullResyncWakeup, {
+      walletId,
+      generation: result.generation,
+      incrementalGeneration: result.incrementalGeneration,
+      reason,
+    });
+    return { ...admitted, wakeup: enqueued ? 'enqueued' : 'unavailable' };
   }
 
   async function request(
@@ -149,32 +264,71 @@ export function createSyncIntentAdmission(
   ): Promise<IncrementalSyncAdmissionResult> {
     const blocked = await requireActive();
     if (blocked) return { status: 'blocked', activation: blocked };
-    const result = await repository.requestIncrementalSync(
-      walletId,
-      options.mode ?? 'automatic',
-    );
-    if (!('state' in result)) {
-      return result;
-    }
+    const result = await persistIncrementalRequest(walletId, options.mode ?? 'automatic');
+    return 'state' in result
+      ? enqueuePersistedIncrementalRequest(walletId, result, options.now ?? new Date())
+      : result;
+  }
 
+  async function requestFullResync(
+    walletId: string,
+    options: RequestFullResyncOptions,
+  ): Promise<FullResyncAdmissionResult> {
+    const blocked = await requireActive();
+    if (blocked) return { status: 'blocked', activation: blocked };
+    const result = await persistFullResync(walletId);
+    if (!('generation' in result)) return result;
+    return enqueuePersistedFullResync(walletId, result, options.reason);
+  }
+
+  async function bridgeRetained(
+    walletId: string,
+    options: RetainedSyncBridgeOptions,
+  ): Promise<RetainedSyncBridgeResult> {
+    if (options.fullResync) {
+      const result = await persistFullResync(walletId);
+      if (!('generation' in result)) return result;
+      if (await requireActive()) {
+        return {
+          status: result.status,
+          generation: result.generation,
+          incrementalGeneration: result.incrementalGeneration,
+          wakeup: 'deferred_activation',
+        };
+      }
+      return enqueuePersistedFullResync(
+        walletId, result, options.reason ?? 'retained-full-resync-bridge',
+      );
+    }
+    const result = await persistIncrementalRequest(walletId, 'automatic');
+    if (!('state' in result)) return result;
     const generation = result.state.requestedIncrementalSyncGeneration;
-    const deferred = deferredWakeup(result.state, options.now ?? new Date());
+    const deferred = deferredWakeup(result.state, new Date());
     if (deferred) return { status: result.status, generation, wakeup: deferred };
-
     if (await requireActive()) {
-      return { status: result.status, generation, wakeup: 'unavailable' };
+      return { status: result.status, generation, wakeup: 'deferred_activation' };
     }
+    return enqueuePersistedIncrementalRequest(walletId, result, new Date());
+  }
 
-    const enqueued = await enqueueSafely(dependencies.enqueueWakeup, {
-      walletId,
-      generation,
-      jobId: incrementalSyncWakeupJobId(walletId, generation),
-    });
-    return {
-      status: result.status,
-      generation,
-      wakeup: enqueued ? 'enqueued' : 'unavailable',
-    };
+  async function wakeReservedFullResync(
+    wakeup: ReservedFullResyncWakeup,
+  ): Promise<boolean> {
+    if (await requireActive()) return false;
+    if (!await validateExactFullResync(
+      wakeup.walletId,
+      wakeup.generation,
+      wakeup.incrementalGeneration,
+    )) return false;
+    if (await requireActive()) return false;
+    return enqueueSafely(dependencies.enqueueFullResyncWakeup, wakeup);
+  }
+
+  async function reset(
+    walletId: string,
+    expected?: IncrementalSyncResetSnapshot,
+  ): Promise<IncrementalSyncLifecycleState | null> {
+    return repository.resetIncrementalSyncAttempt(walletId, expected);
   }
 
   async function recover(
@@ -341,6 +495,10 @@ export function createSyncIntentAdmission(
 
   return {
     request,
+    requestFullResync,
+    bridgeRetained,
+    wakeReservedFullResync,
+    reset,
     recover,
     recoverExpired,
     wake,
@@ -372,9 +530,11 @@ export function createSyncIntentAdmission(
 
 export type SyncIntentAdmission = ReturnType<typeof createSyncIntentAdmission>;
 
-/** Canonical gate-enforced adapter; trigger producers remain disabled in this phase. */
+/** Canonical gate-enforced adapter for durable production sync requests and recovery. */
 export const syncIntentAdmission = createSyncIntentAdmission({
   enqueueWakeup: enqueueIncrementalSyncWakeup,
+  enqueueFullResyncWakeup: enqueueReservedFullResyncWakeup,
   inspectActivation: () => walletSyncActivationGate.inspect(),
   isExecutionLockHeld: (walletId) => isLocked(getSyncLockKey({ walletId })),
+  publishTransition: syncLifecyclePublisher.publish,
 });

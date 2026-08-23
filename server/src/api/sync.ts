@@ -33,7 +33,7 @@ router.use(authenticate);
 
 /**
  * POST /api/v1/sync/wallet/:walletId
- * Trigger immediate sync for a wallet
+ * Request an asynchronous durable sync for a wallet
  */
 router.post('/wallet/:walletId', rateLimitByUser('sync:trigger'), asyncHandler(async (req, res) => {
   const userId = requireAuthenticatedUser(req).userId;
@@ -81,7 +81,8 @@ router.get('/logs/:walletId', asyncHandler(async (req, res) => {
 
 /**
  * POST /api/v1/sync/user
- * Queue all user's wallets for background sync (called on login/page load)
+ * Explicitly request an asynchronous durable sync for all accessible wallets.
+ * Session restoration and ordinary page loads must never call this endpoint.
  */
 router.post('/user', rateLimitByUser('sync:batch'), validate(
   { body: SyncPriorityBodySchema }

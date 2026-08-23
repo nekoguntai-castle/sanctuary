@@ -153,6 +153,7 @@ const mocks = vi.hoisted(() => {
     getDiagnosticsProvider: () => diagnosticsProvider,
     startCaptureParticipant: vi.fn(),
     stopCaptureParticipant: vi.fn(),
+    syncIntentRequest: vi.fn(),
   };
 });
 
@@ -227,6 +228,10 @@ vi.mock('../../../src/worker/walletSyncRecoveryRuntime', () => ({
     mocks.createProductionWalletSyncRecoveryRuntime,
 }));
 
+vi.mock('../../../src/services/sync/syncIntentAdmission', () => ({
+  syncIntentAdmission: { request: mocks.syncIntentRequest },
+}));
+
 vi.mock('../../../src/worker/jobs', () => ({
   registerWorkerJobs: mocks.registerWorkerJobs,
 }));
@@ -263,6 +268,11 @@ describe('worker entrypoint', () => {
 
     mocks.initializeOpenTelemetry.mockResolvedValue(undefined);
     mocks.connectWithRetry.mockResolvedValue(undefined);
+    mocks.syncIntentRequest.mockResolvedValue({
+      status: 'requested',
+      generation: 1,
+      wakeup: 'enqueued',
+    });
     mocks.disconnect.mockResolvedValue(undefined);
     mocks.getLastDatabaseHealth.mockReturnValue(true);
     mocks.initializeRedis.mockResolvedValue(undefined);
@@ -822,7 +832,7 @@ describe('worker entrypoint', () => {
     );
   });
 
-  it('setupStaleWalletHandler registers onJobCompleted and queues sync jobs for stale wallets', async () => {
+  it('setupStaleWalletHandler routes stale compatibility results through admission', async () => {
     vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
       void event;
       void handler;
@@ -851,21 +861,10 @@ describe('worker entrypoint', () => {
     // Simulate stale wallet check completing with results
     await callback({ version: 1, staleWalletIds: ['w1', 'w2'], queued: 2 });
 
-    expect(mocks.queueInstance.addBulkJobs).toHaveBeenCalledWith(
-      'sync',
-      expect.arrayContaining([
-        expect.objectContaining({
-          name: 'sync-wallet',
-          data: { version: 1, walletId: 'w1', priority: 'low', reason: 'stale' },
-          options: expect.objectContaining({ delay: 0, priority: 3 }),
-        }),
-        expect.objectContaining({
-          name: 'sync-wallet',
-          data: { version: 1, walletId: 'w2', priority: 'low', reason: 'stale' },
-          options: expect.objectContaining({ delay: 2000, priority: 3 }),
-        }),
-      ])
-    );
+    expect(mocks.syncIntentRequest).toHaveBeenCalledTimes(2);
+    expect(mocks.syncIntentRequest).toHaveBeenNthCalledWith(1, 'w1');
+    expect(mocks.syncIntentRequest).toHaveBeenNthCalledWith(2, 'w2');
+    expect(mocks.queueInstance.addBulkJobs).not.toHaveBeenCalled();
   });
 
   it('setupStaleWalletHandler skips queueing when no stale wallets found', async () => {
@@ -1142,13 +1141,14 @@ describe('worker entrypoint', () => {
       expect.objectContaining({ error: 'cannot queue confirmations' })
     );
 
-    mocks.queueInstance.addJob.mockRejectedValueOnce(new Error('cannot queue sync'));
+    mocks.syncIntentRequest.mockRejectedValueOnce(new Error('cannot persist sync intent'));
     electrumCallbacks?.onAddressActivity('testnet', 'wallet-1', 'tb1qxyz');
-    await Promise.resolve();
-    expect(mocks.logger.error).toHaveBeenCalledWith(
-      'Failed to queue sync job',
-      expect.objectContaining({ error: 'cannot queue sync' })
-    );
+    await vi.waitFor(() => {
+      expect(mocks.logger.error).toHaveBeenCalledWith(
+        'Failed to persist address activity sync intent',
+        expect.objectContaining({ error: 'cannot persist sync intent' })
+      );
+    });
 
     mocks.healthServerHandle.close.mockRejectedValueOnce(new Error('health close failed'));
     mocks.electrumInstance.stop.mockRejectedValueOnce(new Error('electrum stop failed'));

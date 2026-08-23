@@ -48,20 +48,10 @@ describe('worker integration', () => {
       { priority: 1, jobId: 'confirmations:123' }
     );
 
-    const syncCall = harness.jobQueue.addJob.mock.calls.find(
-      ([queue, name]: [string, string, ...unknown[]]) => (
-        queue === 'sync' && name === 'sync-wallet'
-      )
+    expect(harness.requestSyncIntent).toHaveBeenCalledWith('wallet-1');
+    expect(harness.jobQueue.addJob.mock.calls).not.toContainEqual(
+      expect.arrayContaining(['sync', 'sync-wallet']),
     );
-    expect(syncCall).toBeDefined();
-    expect(syncCall![2]).toEqual({
-      version: 1,
-      walletId: 'wallet-1',
-      priority: 'high',
-      reason: 'address_activity:addr-1',
-    });
-    expect(syncCall![3].priority).toBe(1);
-    expect(syncCall![3].jobId).toMatch(/^sync:wallet-1:/);
 
     harness.stopProcessExitSpy();
   });

@@ -35,6 +35,7 @@ import {
   findIncrementalSyncIntent,
   releaseIncrementalSyncAsActionRequired,
   releaseIncrementalSyncForRetry,
+  resetIncrementalSyncAttempt,
   requestIncrementalSync,
   WalletSyncMutationFenceLostError,
   withWalletSyncMutationFence,
@@ -85,6 +86,14 @@ function lifecycleState(
   };
 }
 
+function sqlFragments(query: { values: unknown[] }): string[] {
+  return query.values
+    .filter((value): value is { strings: string[] } => (
+      typeof value === 'object' && value !== null && 'strings' in value
+    ))
+    .map(value => value.strings.join(''));
+}
+
 describe('syncIntentRepository', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -112,7 +121,7 @@ describe('syncIntentRepository', () => {
 
   it('coalesces requests to max(requested, claimed + 1)', async () => {
     mocks.queryRaw.mockResolvedValue([{
-      ...intentState({ requestedIncrementalSyncGeneration: 4 }),
+      ...lifecycleState({ requestedIncrementalSyncGeneration: 4 }),
       previousRequestedGeneration: 4,
     }]);
 
@@ -123,11 +132,15 @@ describe('syncIntentRepository', () => {
     const query = mocks.queryRaw.mock.calls[0][0];
     expect(query.strings.join('')).toContain('GREATEST(');
     expect(query.strings.join('')).toContain('"claimedIncrementalSyncGeneration"::BIGINT + 1');
+    expect(query.strings.join('')).toContain(
+      '"syncStateVersion" = wallet."syncStateVersion" + CASE',
+    );
+    expect(query.strings.join('')).toContain('wallet."lastSyncStatus"');
   });
 
   it('reports a newly advanced request and explicit reopen policy', async () => {
     mocks.queryRaw.mockResolvedValue([{
-      ...intentState(),
+      ...lifecycleState(),
       previousRequestedGeneration: 0,
     }]);
     await expect(requestIncrementalSync('wallet-1', 'explicit_reopen')).resolves
@@ -161,11 +174,34 @@ describe('syncIntentRepository', () => {
       claim: { walletId: 'wallet-1', generation: 1, leaseToken: TOKEN_A },
     });
     const sql = mocks.queryRaw.mock.calls[0][0].strings.join('');
-    expect(sql).toContain('"requestedFullResyncGeneration" = "processedFullResyncGeneration"');
+    expect(sqlFragments(mocks.queryRaw.mock.calls[0][0])).toContain(
+      'AND "requestedFullResyncGeneration" = "processedFullResyncGeneration"',
+    );
     expect(sql).toContain('"syncActionRequiredAt" IS NULL');
     expect(sql).toContain('"requestedIncrementalSyncGeneration" >= ');
     expect(sql).toContain('"lastSyncStatus" = \'syncing\'');
     expect(sql).toContain('"syncStateVersion" = "syncStateVersion" + 1');
+  });
+
+  it('claims only the exact reserved full-resync generation', async () => {
+    mocks.queryRaw.mockResolvedValue([lifecycleState({
+      requestedFullResyncGeneration: 2,
+      claimedIncrementalSyncGeneration: 1,
+      incrementalSyncLeaseToken: TOKEN_A,
+    })]);
+
+    await expect(claimIncrementalSync('wallet-1', {
+      leaseToken: TOKEN_A,
+      claimedAt: NOW,
+      leaseExpiresAt: LATER,
+      expectedRequestedGeneration: 1,
+      fullResyncGeneration: 2,
+    })).resolves.toMatchObject({ status: 'claimed' });
+    const fragments = sqlFragments(mocks.queryRaw.mock.calls[0][0]);
+    expect(fragments.some(fragment => (
+      fragment.includes('"requestedFullResyncGeneration" = ')
+      && fragment.includes('"processedFullResyncGeneration" < ')
+    ))).toBe(true);
   });
 
   it('does not let a stale generation wake-up claim newer pending work', async () => {
@@ -184,10 +220,24 @@ describe('syncIntentRepository', () => {
     expect(mocks.queryRaw.mock.calls[0][0].values).toEqual(
       expect.arrayContaining([1]),
     );
-    const eligibility = mocks.queryRaw.mock.calls[0][0].values.find(
-      (value: unknown) => typeof value === 'object' && value !== null && 'strings' in value,
-    ) as { strings: string[] };
-    expect(eligibility.strings.join('')).toContain('"requestedIncrementalSyncGeneration" = ');
+    expect(sqlFragments(mocks.queryRaw.mock.calls[0][0]).some(fragment => (
+      fragment.includes('"requestedIncrementalSyncGeneration" = ')
+    ))).toBe(true);
+  });
+
+  it('defers an ordinary claim while a full resync remains pending', async () => {
+    mocks.queryRaw.mockResolvedValue([]);
+    mocks.walletFindUnique.mockResolvedValue(intentState({
+      requestedFullResyncGeneration: 2,
+      processedFullResyncGeneration: 1,
+    }));
+
+    await expect(claimIncrementalSync('wallet-1', {
+      leaseToken: TOKEN_A,
+      claimedAt: NOW,
+      leaseExpiresAt: LATER,
+      expectedRequestedGeneration: 1,
+    })).resolves.toEqual({ status: 'not_claimed' });
   });
 
   it('distinguishes the exact generation that already has an active claim', async () => {
@@ -262,10 +312,9 @@ describe('syncIntentRepository', () => {
       status: 'claimed',
       claim: { walletId: 'wallet-1', generation: 1, leaseToken: TOKEN_B },
     });
-    const eligibility = mocks.queryRaw.mock.calls[0][0].values.find(
-      (value: unknown) => typeof value === 'object' && value !== null && 'strings' in value,
-    ) as { strings: string[] };
-    expect(eligibility.strings.join('')).toContain('"incrementalSyncLeaseExpiresAt" <=');
+    expect(sqlFragments(mocks.queryRaw.mock.calls[0][0]).some(fragment => (
+      fragment.includes('"incrementalSyncLeaseExpiresAt" <=')
+    ))).toBe(true);
   });
 
   it('rejects malformed expired-fence reclaim boundaries before querying', async () => {
@@ -405,6 +454,13 @@ describe('syncIntentRepository', () => {
       leaseExpiresAt: LATER,
       expectedRequestedGeneration: undefined as never,
     })).rejects.toThrow('outside the supported range');
+    await expect(claimIncrementalSync('wallet-1', {
+      leaseToken: TOKEN_A,
+      claimedAt: NOW,
+      leaseExpiresAt: LATER,
+      expectedRequestedGeneration: 1,
+      fullResyncGeneration: 0,
+    })).rejects.toThrow('Full resync claim generation is outside the supported range');
     await expect(completeIncrementalSync(
       'wallet-1',
       { generation: 1, leaseToken: TOKEN_A },
@@ -623,5 +679,47 @@ describe('syncIntentRepository', () => {
         .rejects.toThrow('positive integer');
     }
     expect(mocks.queryRaw).not.toHaveBeenCalled();
+  });
+
+  it('atomically revokes a mutation lease while preserving pending intent', async () => {
+    const resetState = lifecycleState({
+      requestedIncrementalSyncGeneration: 2,
+      claimedIncrementalSyncGeneration: 0,
+      incrementalSyncLeaseToken: null,
+      syncInProgress: false,
+      lastSyncStatus: null,
+    });
+    mocks.queryRaw
+      .mockResolvedValueOnce([resetState])
+      .mockResolvedValueOnce([resetState])
+      .mockResolvedValueOnce([]);
+
+    await expect(resetIncrementalSyncAttempt('wallet-1')).resolves.toBe(resetState);
+    const sql = mocks.queryRaw.mock.calls[0][0].strings.join('');
+    expect(sql).toContain(
+      '"claimedIncrementalSyncGeneration" = "processedIncrementalSyncGeneration"',
+    );
+    expect(sql).toContain('"incrementalSyncLeaseToken" = NULL');
+    expect(sql).toContain('"syncStateVersion" = "syncStateVersion" + 1');
+    const snapshot = {
+      syncStateVersion: 7,
+      syncExecutionOwner: 'worker',
+      syncStartedAt: NOW,
+    };
+    await expect(resetIncrementalSyncAttempt('wallet-1', snapshot)).resolves.toBe(resetState);
+    const guardedQuery = mocks.queryRaw.mock.calls[1][0];
+    const guardedFragment = guardedQuery.values.find(
+      (value: unknown) => typeof value === 'object' && value !== null && 'strings' in value,
+    ) as { strings: string[]; values: unknown[] };
+    const guardedSql = guardedFragment.strings.join('');
+    expect(guardedSql).toContain('"syncInProgress" = TRUE');
+    expect(guardedSql).toContain('"syncStateVersion" = ');
+    expect(guardedSql).toContain('"syncExecutionOwner" IS NOT DISTINCT FROM');
+    expect(guardedSql).toContain('"syncStartedAt" IS NOT DISTINCT FROM');
+    expect(guardedQuery.values).toContain('wallet-1');
+    expect(guardedFragment.values).toEqual(expect.arrayContaining([
+      snapshot.syncStateVersion, snapshot.syncExecutionOwner, snapshot.syncStartedAt,
+    ]));
+    await expect(resetIncrementalSyncAttempt('missing')).resolves.toBeNull();
   });
 });

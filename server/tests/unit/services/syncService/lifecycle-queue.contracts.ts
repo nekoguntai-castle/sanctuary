@@ -3,7 +3,7 @@ import {
   getSyncServiceInstanceForTest,
   mockAcquireLock,
   mockPrismaClient,
-  mockSyncWallet,
+  mockReleaseLock,
   mockWithLock,
   type SyncServiceTestContext,
 } from './syncServiceTestHarness';
@@ -57,6 +57,31 @@ export function registerSyncServiceLifecycleQueueTests(context: SyncServiceTestC
       await context.syncService.stop();
 
       expect(context.syncService['isRunning']).toBe(false);
+    });
+
+    it('clears pending compatibility state and contains lock-release failures on stop', async () => {
+      await context.syncService.start();
+      context.syncService['state'].subscriptionLock = null;
+      mockReleaseLock.mockClear();
+      const retryTimer = setTimeout(() => undefined, 60_000);
+      context.syncService['state'].pendingRetries.set('wallet-retry', retryTimer);
+      context.syncService['state'].activeLocks.set('wallet-ok', { key: 'ok' } as never);
+      context.syncService['state'].activeLocks.set('wallet-failed', { key: 'failed' } as never);
+      context.syncService['state'].activeSyncs.add('wallet-ok');
+      context.syncService['state'].syncQueue.push({
+        walletId: 'wallet-queued', priority: 'normal', requestedAt: new Date(),
+      });
+      mockReleaseLock
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error('release unavailable'));
+
+      await context.syncService.stop();
+
+      expect(context.syncService['state'].pendingRetries.size).toBe(0);
+      expect(context.syncService['state'].activeLocks.size).toBe(0);
+      expect(context.syncService['state'].activeSyncs.size).toBe(0);
+      expect(context.syncService['state'].syncQueue).toHaveLength(0);
+      expect(mockReleaseLock).toHaveBeenCalledTimes(2);
     });
 
     it('should reset stuck syncs on start', async () => {
@@ -254,113 +279,18 @@ export function registerSyncServiceLifecycleQueueTests(context: SyncServiceTestC
     });
   });
 
-  describe('queueSync', () => {
-    it('should add wallet to queue when service is running', async () => {
-      // Start the service first so isRunning is true
-      mockPrismaClient.wallet.updateMany.mockResolvedValue({ count: 0 });
-      await context.syncService.start();
-
-      context.syncService.queueSync('wallet-1', 'normal');
-
-      // Verify queueSync was called (internal queue state is implementation detail)
-      // The important thing is that it doesn't throw
-      expect(context.syncService['isRunning']).toBe(true);
+  describe('retired inline compatibility entry points', () => {
+    it('fails closed when legacy callers try to queue or execute inline sync', async () => {
+      expect(() => context.syncService.queueSync('wallet-1', 'high')).toThrow(
+        'Inline wallet sync queue is retired; use durable sync intent admission',
+      );
+      await expect(context.syncService.syncNow('wallet-1')).rejects.toThrow(
+        'Immediate wallet sync is retired; use durable sync intent admission',
+      );
     });
 
-    it('should not throw on duplicate queue calls', async () => {
-      mockPrismaClient.wallet.updateMany.mockResolvedValue({ count: 0 });
-      await context.syncService.start();
-
-      // Should not throw
-      context.syncService.queueSync('wallet-1');
-      context.syncService.queueSync('wallet-1');
-
-      expect(context.syncService['isRunning']).toBe(true);
-    });
-
-    it('should handle priority upgrade request', async () => {
-      mockPrismaClient.wallet.updateMany.mockResolvedValue({ count: 0 });
-      await context.syncService.start();
-
-      // Should not throw when upgrading priority
-      context.syncService.queueSync('wallet-1', 'low');
-      context.syncService.queueSync('wallet-1', 'high');
-
-      expect(context.syncService['isRunning']).toBe(true);
-    });
-
-    it('should not queue if already syncing', async () => {
-      mockPrismaClient.wallet.updateMany.mockResolvedValue({ count: 0 });
-      await context.syncService.start();
-      context.syncService['activeSyncs'].add('wallet-1');
-
-      // Should not throw when trying to queue an already syncing wallet
-      context.syncService.queueSync('wallet-1');
-
-      expect(context.syncService['isRunning']).toBe(true);
-    });
-
-    it('should handle multiple different wallet queues', async () => {
-      mockPrismaClient.wallet.updateMany.mockResolvedValue({ count: 0 });
-      await context.syncService.start();
-
-      // Should not throw when queuing multiple wallets with different priorities
-      context.syncService.queueSync('wallet-low', 'low');
-      context.syncService.queueSync('wallet-normal', 'normal');
-      context.syncService.queueSync('wallet-high', 'high');
-
-      expect(context.syncService['isRunning']).toBe(true);
-    });
-
-    it('should handle large queue gracefully', async () => {
-      mockPrismaClient.wallet.updateMany.mockResolvedValue({ count: 0 });
-      await context.syncService.start();
-
-      // Queue many wallets - should not throw
-      for (let i = 0; i < 100; i++) {
-        context.syncService.queueSync(`wallet-${i}`, 'normal');
-      }
-
-      expect(context.syncService['isRunning']).toBe(true);
-
-      // Additional wallet should also not throw
-      context.syncService.queueSync('wallet-overflow', 'high');
-
-      expect(context.syncService['isRunning']).toBe(true);
-    });
-  });
-
-  describe('queueUserWallets', () => {
-    it('should query wallets for a user', async () => {
-      mockPrismaClient.wallet.updateMany.mockResolvedValue({ count: 0 });
-      await context.syncService.start();
-
-      mockPrismaClient.wallet.findMany.mockResolvedValue([
-        { id: 'wallet-1' },
-        { id: 'wallet-2' },
-        { id: 'wallet-3' },
-      ]);
-
-      await context.syncService.queueUserWallets('user-1');
-
-      // Verify the database was queried for user's wallets
-      expect(mockPrismaClient.wallet.findMany).toHaveBeenCalled();
-    });
-
-    it('should include group wallets in query', async () => {
-      mockPrismaClient.wallet.updateMany.mockResolvedValue({ count: 0 });
-      await context.syncService.start();
-
-      mockPrismaClient.wallet.findMany.mockResolvedValue([
-        { id: 'personal-wallet' },
-        { id: 'group-wallet' },
-      ]);
-
-      await context.syncService.queueUserWallets('user-1', 'high');
-
-      // Production calls walletRepository.findByUserId(userId) which is
-      // mocked to forward to mockPrismaClient.wallet.findMany(userId)
-      expect(mockPrismaClient.wallet.findMany).toHaveBeenCalledWith('user-1');
+    it('keeps inline execution locks retired', async () => {
+      await expect(context.syncService.acquireSyncLock('wallet-1')).resolves.toBe(false);
     });
   });
 
@@ -420,9 +350,9 @@ export function registerSyncServiceLifecycleQueueTests(context: SyncServiceTestC
       expect(status.isStale).toBe(true);
     });
 
-    it('should return queue position', async () => {
+    it('reports durable intent state and never invents a retired local queue position', async () => {
       context.syncService['isRunning'] = true;
-      context.syncService['syncQueue'] = [
+      context.syncService['state'].syncQueue = [
         { walletId: 'wallet-1', priority: 'high', requestedAt: new Date() },
         { walletId: 'wallet-2', priority: 'normal', requestedAt: new Date() },
       ];
@@ -431,11 +361,28 @@ export function registerSyncServiceLifecycleQueueTests(context: SyncServiceTestC
         lastSyncedAt: null,
         lastSyncStatus: null,
         syncInProgress: false,
+        requestedIncrementalSyncGeneration: 9,
+        claimedIncrementalSyncGeneration: 8,
+        processedIncrementalSyncGeneration: 7,
+        incrementalSyncClaimedAt: new Date('2026-08-20T12:00:00.000Z'),
+        incrementalSyncLeaseExpiresAt: new Date('2026-08-20T12:05:00.000Z'),
+        syncActionRequiredAt: null,
+        requestedFullResyncGeneration: 4,
+        preparedFullResyncGeneration: 3,
+        processedFullResyncGeneration: 2,
       });
 
       const status = await context.syncService.getSyncStatus('wallet-2');
 
-      expect(status.queuePosition).toBe(2);
+      expect(status).toMatchObject({
+        queuePosition: null,
+        requestedIncrementalSyncGeneration: 9,
+        claimedIncrementalSyncGeneration: 8,
+        processedIncrementalSyncGeneration: 7,
+        requestedFullResyncGeneration: 4,
+        preparedFullResyncGeneration: 3,
+        processedFullResyncGeneration: 2,
+      });
     });
 
     it('should throw for non-existent wallet', async () => {
@@ -445,37 +392,4 @@ export function registerSyncServiceLifecycleQueueTests(context: SyncServiceTestC
     });
   });
 
-  describe('syncNow', () => {
-    it('should execute immediate sync', async () => {
-      context.syncService['isRunning'] = true;
-
-      mockPrismaClient.wallet.update.mockResolvedValue({});
-      mockPrismaClient.uTXO.aggregate
-        .mockResolvedValueOnce({ _sum: { amount: BigInt(100000) } })
-        .mockResolvedValueOnce({ _sum: { amount: BigInt(0) } })
-        .mockResolvedValueOnce({ _sum: { amount: BigInt(100000) } })
-        .mockResolvedValueOnce({ _sum: { amount: BigInt(0) } });
-
-      const result = await context.syncService.syncNow('wallet-1');
-
-      expect(result.success).toBe(true);
-      // The signal is what lets the duration cap cancel a hung sync instead of
-      // waiting on it forever and leaking the wallet's activeSyncs entry.
-      expect(mockSyncWallet).toHaveBeenCalledWith(
-        'wallet-1',
-        0,
-        expect.any(AbortSignal),
-      );
-    });
-
-    it('should return error if already syncing', async () => {
-      context.syncService['isRunning'] = true;
-      context.syncService['activeSyncs'].add('wallet-1');
-
-      const result = await context.syncService.syncNow('wallet-1');
-
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('already in progress');
-    });
-  });
 }

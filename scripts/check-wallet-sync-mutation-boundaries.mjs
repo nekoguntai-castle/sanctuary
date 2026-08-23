@@ -39,42 +39,56 @@ function assertSortedUnique(values, context) {
   }
 }
 
+function requireArgumentIndex(value, context) {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${context} must be a non-negative safe integer`);
+  }
+}
+
+function validateMutationCallsite(item, context) {
+  const units = requireArray(item.mutationUnits, `${context}.mutationUnits`)
+    .map((unit, unitIndex) => requireString(unit, `${context}.mutationUnits[${unitIndex}]`));
+  assertSortedUnique(units, `${context}.mutationUnits`);
+  if (units.length === 0) throw new Error(`${context}.mutationUnits must not be empty`);
+  requireArgumentIndex(item.transactionClientArgument, `${context}.transactionClientArgument`);
+}
+
+function validateFencedLifecycleCallsite(item, context, repository, method) {
+  requireArgumentIndex(item.fenceArgument, `${context}.fenceArgument`);
+  if ('mutationUnits' in item || 'transactionClientArgument' in item) {
+    throw new Error(`fenced lifecycle callsite ${repository}.${method} must not declare mutation metadata`);
+  }
+}
+
+function validateReadCallsite(item, repository, method) {
+  if ('mutationUnits' in item || 'transactionClientArgument' in item || 'fenceArgument' in item) {
+    throw new Error(`read callsite ${repository}.${method} must not declare mutation metadata`);
+  }
+}
+
+function validateCallsite(entry, index) {
+  const context = `inventory.callsites[${index}]`;
+  const item = requireObject(entry, context);
+  const file = requireString(item.file, `${context}.file`);
+  const enclosingFunction = requireString(item.enclosingFunction, `${context}.enclosingFunction`);
+  const repository = requireString(item.repository, `${context}.repository`);
+  const method = requireString(item.method, `${context}.method`);
+  if (!['read', 'mutation', 'fenced_lifecycle'].includes(item.kind)) {
+    throw new Error(`${context}.kind must be read, mutation, or fenced_lifecycle`);
+  }
+  if (!Number.isSafeInteger(item.count) || item.count < 1) {
+    throw new Error(`${context}.count must be a positive safe integer`);
+  }
+  if (item.kind === 'mutation') validateMutationCallsite(item, context);
+  if (item.kind === 'fenced_lifecycle') {
+    validateFencedLifecycleCallsite(item, context, repository, method);
+  }
+  if (item.kind === 'read') validateReadCallsite(item, repository, method);
+  return [file, enclosingFunction, repository, method].join('\0');
+}
+
 function validateCallsites(value) {
-  const identities = requireArray(value, 'inventory.callsites').map((entry, index) => {
-    const item = requireObject(entry, `inventory.callsites[${index}]`);
-    const file = requireString(item.file, `inventory.callsites[${index}].file`);
-    const enclosingFunction = requireString(
-      item.enclosingFunction,
-      `inventory.callsites[${index}].enclosingFunction`,
-    );
-    const repository = requireString(item.repository, `inventory.callsites[${index}].repository`);
-    const method = requireString(item.method, `inventory.callsites[${index}].method`);
-    if (!['read', 'mutation'].includes(item.kind)) {
-      throw new Error(`inventory.callsites[${index}].kind must be read or mutation`);
-    }
-    if (!Number.isSafeInteger(item.count) || item.count < 1) {
-      throw new Error(`inventory.callsites[${index}].count must be a positive safe integer`);
-    }
-    if (item.kind === 'mutation') {
-      const units = requireArray(
-        item.mutationUnits,
-        `inventory.callsites[${index}].mutationUnits`,
-      ).map((unit, unitIndex) => requireString(
-        unit,
-        `inventory.callsites[${index}].mutationUnits[${unitIndex}]`,
-      ));
-      assertSortedUnique(units, `inventory.callsites[${index}].mutationUnits`);
-      if (units.length === 0) throw new Error(`inventory.callsites[${index}].mutationUnits must not be empty`);
-      if (!Number.isSafeInteger(item.transactionClientArgument) || item.transactionClientArgument < 0) {
-        throw new Error(
-          `inventory.callsites[${index}].transactionClientArgument must be a non-negative safe integer`,
-        );
-      }
-    } else if ('mutationUnits' in item || 'transactionClientArgument' in item) {
-      throw new Error(`read callsite ${repository}.${method} must not declare mutation metadata`);
-    }
-    return [file, enclosingFunction, repository, method].join('\0');
-  });
+  const identities = requireArray(value, 'inventory.callsites').map(validateCallsite);
   if (new Set(identities).size !== identities.length) {
     throw new Error('inventory.callsites identities must be unique');
   }
@@ -300,33 +314,205 @@ function validateRepositoryImports(files, boundary) {
   return errors;
 }
 
-function collectFunctionGraph(files) {
+function namedFunctionDefinition(node) {
+  if (ts.isFunctionDeclaration(node) && node.name) return node.name.text;
+  if (
+    (ts.isArrowFunction(node) || ts.isFunctionExpression(node))
+    && ts.isVariableDeclaration(node.parent)
+    && ts.isIdentifier(node.parent.name)
+  ) return node.parent.name.text;
+  return undefined;
+}
+
+function recordFunctionDefinition(definitions, definitionsByFile, file, name, node) {
+  const entry = { file, name, node };
+  const entries = definitions.get(name) ?? [];
+  entries.push(entry);
+  definitions.set(name, entries);
+  const fileDefinitions = definitionsByFile.get(file) ?? new Map();
+  const namedDefinitions = fileDefinitions.get(name) ?? [];
+  namedDefinitions.push(entry);
+  fileDefinitions.set(name, namedDefinitions);
+  definitionsByFile.set(file, fileDefinitions);
+}
+
+function recordFunctionCall(calls, file, node) {
+  const entries = calls.get(node.expression.text) ?? [];
+  entries.push({ file, node });
+  calls.set(node.expression.text, entries);
+}
+
+function storeImportedHelperBinding(file, name, binding, helpers, namespaces) {
+  const key = `${file}\0${name}`;
+  if (binding?.namespace && !namespaces.has(key)) {
+    namespaces.set(key, binding.file);
+    return true;
+  }
+  if (binding && !binding.namespace && !helpers.has(key)) {
+    helpers.set(key, binding);
+    return true;
+  }
+  return false;
+}
+
+function storeDestructuredHelperBindings(file, pattern, binding, helpers) {
+  if (!binding?.namespace || !ts.isObjectBindingPattern(pattern)) return false;
+  let changed = false;
+  for (const element of pattern.elements) {
+    if (!ts.isIdentifier(element.name)) continue;
+    const importedName = element.propertyName?.getText() ?? element.name.text;
+    const key = `${file}\0${element.name.text}`;
+    if (!helpers.has(key)) {
+      helpers.set(key, { file: binding.file, name: importedName });
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+function propagateHelperNode(file, node, resolve, helpers, namespaces) {
+  if (ts.isVariableDeclaration(node) && node.initializer) {
+    const binding = resolve(file, node.initializer);
+    if (ts.isIdentifier(node.name)) {
+      return storeImportedHelperBinding(file, node.name.text, binding, helpers, namespaces);
+    }
+    return storeDestructuredHelperBindings(file, node.name, binding, helpers);
+  }
+  if (!ts.isBinaryExpression(node)
+    || node.operatorToken.kind !== ts.SyntaxKind.EqualsToken
+    || !ts.isIdentifier(node.left)) return false;
+  return storeImportedHelperBinding(
+    file,
+    node.left.text,
+    resolve(file, node.right),
+    helpers,
+    namespaces,
+  );
+}
+
+function collectFunctionGraph(files, callFiles = new Set(files.keys())) {
   const definitions = new Map();
+  const definitionsByFile = new Map();
   const calls = new Map();
   for (const [file, sourceFile] of files) {
     const visit = node => {
-      let definition;
-      if (ts.isFunctionDeclaration(node) && node.name) definition = node.name.text;
-      if (
-        (ts.isArrowFunction(node) || ts.isFunctionExpression(node))
-        && ts.isVariableDeclaration(node.parent)
-        && ts.isIdentifier(node.parent.name)
-      ) definition = node.parent.name.text;
-      if (definition) {
-        const entries = definitions.get(definition) ?? [];
-        entries.push({ file, name: definition, node });
-        definitions.set(definition, entries);
-      }
-      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-        const entries = calls.get(node.expression.text) ?? [];
-        entries.push({ file, node });
-        calls.set(node.expression.text, entries);
+      const definition = namedFunctionDefinition(node);
+      if (definition) recordFunctionDefinition(
+        definitions,
+        definitionsByFile,
+        file,
+        definition,
+        node,
+      );
+      if (callFiles.has(file) && ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+        recordFunctionCall(calls, file, node);
       }
       ts.forEachChild(node, visit);
     };
     visit(sourceFile);
   }
-  return { definitions, calls };
+  const importedHelpers = new Map();
+  const importedNamespaces = new Map();
+  const resolveImportFile = (file, specifier) => {
+    if (!specifier.startsWith('.')) return undefined;
+    const base = normalize(path.join(path.dirname(file), specifier));
+    return [base, `${base}.ts`, `${base}.tsx`, `${base}/index.ts`, `${base}/index.tsx`]
+      .find(candidate => files.has(candidate));
+  };
+  for (const [file, sourceFile] of files) {
+    for (const statement of sourceFile.statements) {
+      if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) {
+        continue;
+      }
+      const targetFile = resolveImportFile(file, statement.moduleSpecifier.text);
+      const bindings = statement.importClause?.namedBindings;
+      if (!targetFile) continue;
+      if (statement.importClause?.name) {
+        importedHelpers.set(`${file}\0${statement.importClause.name.text}`, {
+          file: targetFile,
+          name: null,
+        });
+      }
+      if (bindings && ts.isNamespaceImport(bindings)) {
+        importedNamespaces.set(`${file}\0${bindings.name.text}`, targetFile);
+        continue;
+      }
+      if (!bindings || !ts.isNamedImports(bindings)) continue;
+      for (const element of bindings.elements) {
+        if (element.isTypeOnly) continue;
+        importedHelpers.set(`${file}\0${element.name.text}`, {
+          file: targetFile,
+          name: element.propertyName?.text ?? element.name.text,
+        });
+      }
+    }
+  }
+  const unwrapHelperExpression = node => {
+    let current = node;
+    while (current && (
+      ts.isAwaitExpression(current)
+      || ts.isParenthesizedExpression(current)
+      || ts.isAsExpression(current)
+      || ts.isNonNullExpression(current)
+    )) current = current.expression;
+    return current;
+  };
+  const resolveHelperBinding = (file, expression) => {
+    const current = unwrapHelperExpression(expression);
+    if (!current) return undefined;
+    if (ts.isIdentifier(current)) {
+      return importedHelpers.get(`${file}\0${current.text}`)
+        ?? (importedNamespaces.has(`${file}\0${current.text}`)
+          ? { file: importedNamespaces.get(`${file}\0${current.text}`), namespace: true }
+          : undefined);
+    }
+    if (ts.isCallExpression(current) && current.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      const specifier = current.arguments[0];
+      if (!specifier || !ts.isStringLiteralLike(specifier)) return undefined;
+      const targetFile = resolveImportFile(file, specifier.text);
+      return targetFile ? { file: targetFile, namespace: true } : undefined;
+    }
+    if (!ts.isPropertyAccessExpression(current)) return undefined;
+    const receiver = resolveHelperBinding(file, current.expression);
+    if (!receiver?.namespace) return undefined;
+    return { file: receiver.file, name: current.name.text };
+  };
+  for (let pass = 0; pass < 20; pass += 1) {
+    let changed = false;
+    for (const [file, sourceFile] of files) {
+      const visit = node => {
+        changed = propagateHelperNode(
+          file,
+          node,
+          resolveHelperBinding,
+          importedHelpers,
+          importedNamespaces,
+        ) || changed;
+        ts.forEachChild(node, visit);
+      };
+      visit(sourceFile);
+    }
+    if (!changed) break;
+  }
+  return {
+    definitions,
+    definitionsByFile,
+    calls,
+    importedHelpers,
+    importedNamespaces,
+    repositoryBindingsByFile: new Map(
+      [...files].map(([file, sourceFile]) => [file, repositoryBindings(sourceFile)]),
+    ),
+    externalStaticErrorsByFile: new Map([...files].map(([file, sourceFile]) => [
+      file,
+      [
+        ...sourceFile.statements.flatMap(statement => (
+          validateRepositoryImportStatement(file, statement, '')
+        )),
+        ...validateDirectPrismaAccess(new Map([[file, sourceFile]])),
+      ],
+    ])),
+  };
 }
 
 function findAncestor(node, predicate) {
@@ -395,7 +581,7 @@ function traceMutationFunction(definition, expected, boundary, graph, seen = new
       errors.push(`${caller.file}: ${definition.name} is callable outside ${boundary.symbol}`);
       continue;
     }
-    const ownerDefinitions = graph.definitions.get(owner.name) ?? [];
+    const ownerDefinitions = graph.definitionsByFile.get(caller.file)?.get(owner.name) ?? [];
     if (ownerDefinitions.length !== 1 || ownerDefinitions[0].node !== owner.node) {
       errors.push(`${caller.file}: mutation helper ${owner.name} is ambiguous`);
       continue;
@@ -422,7 +608,9 @@ function validateMutationCall(call, expected, boundary, graph) {
     }
   } else {
     const owner = enclosingNamedFunction(call.node);
-    const definitions = owner ? graph.definitions.get(owner.name) ?? [] : [];
+    const definitions = owner
+      ? graph.definitionsByFile.get(call.file)?.get(owner.name) ?? []
+      : [];
     const definition = definitions.find(candidate => candidate.node === owner?.node);
     if (!definition) {
       errors.push(`${call.file}: ${call.repository}.${call.method} is outside ${boundary.symbol}`);
@@ -446,6 +634,16 @@ function validateMutationCall(call, expected, boundary, graph) {
     );
   }
   return errors;
+}
+
+function validateFencedLifecycleCall(call, expected) {
+  const argument = call.node.arguments[expected.fenceArgument];
+  return argument && ts.isIdentifier(argument) && argument.text === 'fence'
+    ? []
+    : [
+      `${call.file}: ${call.repository}.${call.method} argument `
+      + `${expected.fenceArgument + 1} must be the explicit immutable fence`,
+    ];
 }
 
 function isWithinDeferredEffect(node, runnerCallback) {
@@ -670,7 +868,17 @@ function isCommitSensitiveEffect(text) {
   return text === 'walletLog' || /^(?:log|logger)\./.test(text);
 }
 
-function inspectMutationCall(file, node, callback, errors, inspectHelper) {
+function inspectExternalRepositoryCall(file, node, errors, graph) {
+  const repository = repositoryCall(node, graph.repositoryBindingsByFile.get(file) ?? new Map());
+  if (repository && !graph.canonicalFiles.has(file)) {
+    errors.push(
+      `${file}: imported mutation helper reaches uninventoried repository call `
+      + `${repository.repository}.${repository.method}`,
+    );
+  }
+}
+
+function inspectForbiddenMutationCall(file, node, callback, errors) {
   const text = node.expression.getText();
   if (/\$transaction$/.test(text)) {
     errors.push(`${file}: nested transaction inside runWalletSyncMutation is forbidden`);
@@ -685,6 +893,9 @@ function inspectMutationCall(file, node, callback, errors, inspectHelper) {
   ) {
     errors.push(`${file}: ${text} must be buffered with deferPostCommit`);
   }
+}
+
+function inspectIdentifierHelper(node, callback, inspectHelper) {
   if (
     ts.isIdentifier(node.expression)
     && node.expression.text !== 'deferPostCommit'
@@ -695,8 +906,44 @@ function inspectMutationCall(file, node, callback, errors, inspectHelper) {
   }
 }
 
+function inspectImportedPropertyHelper(file, node, errors, inspectHelper, graph) {
+  if (!ts.isPropertyAccessExpression(node.expression)) return;
+  let receiver = node.expression.expression;
+  while (
+    ts.isAwaitExpression(receiver)
+    || ts.isParenthesizedExpression(receiver)
+    || ts.isAsExpression(receiver)
+    || ts.isNonNullExpression(receiver)
+  ) receiver = receiver.expression;
+  if (ts.isIdentifier(receiver)) {
+    const targetFile = graph.importedNamespaces.get(`${file}\0${receiver.text}`);
+    if (targetFile) {
+      const definitions = graph.definitionsByFile.get(targetFile)
+        ?.get(node.expression.name.text) ?? [];
+      inspectHelper(`${receiver.text}.${node.expression.name.text}`, node, definitions);
+    }
+  }
+  if (/\bimport\s*\(/.test(receiver.getText())) {
+    errors.push(`${file}: dynamic imported mutation helpers are forbidden`);
+  }
+}
+
+function inspectMutationCall(file, node, callback, errors, inspectHelper, graph) {
+  inspectExternalRepositoryCall(file, node, errors, graph);
+  inspectForbiddenMutationCall(file, node, callback, errors);
+  inspectIdentifierHelper(node, callback, inspectHelper);
+  inspectImportedPropertyHelper(file, node, errors, inspectHelper, graph);
+}
+
 function inspectCallback(file, callback, errors, graph, active = new Set(), inspected = new Set()) {
   const resolveHelper = (name, callNode) => {
+    const imported = graph.importedHelpers.get(`${file}\0${name}`);
+    if (imported) {
+      const importedDefinitions = graph.definitionsByFile.get(imported.file)?.get(imported.name) ?? [];
+      return imported.name !== null && importedDefinitions.length === 1
+        ? importedDefinitions[0]
+        : null;
+    }
     const definitions = graph.definitions.get(name);
     if (!definitions) return undefined;
     if (definitions.length === 1) return definitions[0];
@@ -709,8 +956,10 @@ function inspectCallback(file, callback, errors, graph, active = new Set(), insp
     });
     return lexical.length === 1 ? lexical[0] : null;
   };
-  const inspectHelper = (name, callNode) => {
-    const definition = resolveHelper(name, callNode);
+  const inspectHelper = (name, callNode, candidates) => {
+    const definition = candidates
+      ? (candidates.length === 1 ? candidates[0] : null)
+      : resolveHelper(name, callNode);
     if (definition === undefined) return;
     if (definition === null) {
       errors.push(`${file}: mutation helper ${name} is ambiguous`);
@@ -723,6 +972,9 @@ function inspectCallback(file, callback, errors, graph, active = new Set(), insp
     }
     if (inspected.has(identity)) return;
     inspected.add(identity);
+    if (!graph.canonicalFiles.has(definition.file)) {
+      errors.push(...(graph.externalStaticErrorsByFile.get(definition.file) ?? []));
+    }
     inspectCallback(
       definition.file,
       definition.node,
@@ -733,7 +985,9 @@ function inspectCallback(file, callback, errors, graph, active = new Set(), insp
     );
   };
   const visit = node => {
-    if (ts.isCallExpression(node)) inspectMutationCall(file, node, callback, errors, inspectHelper);
+    if (ts.isCallExpression(node)) {
+      inspectMutationCall(file, node, callback, errors, inspectHelper, graph);
+    }
     ts.forEachChild(node, visit);
   };
   visit(callback.body);
@@ -927,9 +1181,14 @@ export function checkWalletSyncMutationBoundaries(root = process.cwd()) {
     file,
     parseSource(root, file),
   ]));
+  const graphFiles = new Map(walk(root, 'server/src')
+    .filter(file => !file.startsWith('server/src/generated/'))
+    .map(file => [file, files.get(file) ?? parseSource(root, file)]));
   const errors = [];
   const actualCalls = collectRepositoryCalls(files);
-  const functionGraph = collectFunctionGraph(files);
+  const canonicalFiles = new Set(files.keys());
+  const functionGraph = collectFunctionGraph(graphFiles, canonicalFiles);
+  functionGraph.canonicalFiles = canonicalFiles;
   const actualByIdentity = Map.groupBy(actualCalls, callIdentity);
   const expectedByIdentity = new Map(inventory.callsites.map(call => [callIdentity(call), call]));
 
@@ -955,6 +1214,8 @@ export function checkWalletSyncMutationBoundaries(root = process.cwd()) {
           functionGraph,
         ));
       }
+    } else if (expected.kind === 'fenced_lifecycle') {
+      for (const call of calls) errors.push(...validateFencedLifecycleCall(call, expected));
     }
   }
   for (const [identity, expected] of expectedByIdentity) {

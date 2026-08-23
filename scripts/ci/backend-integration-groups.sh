@@ -80,6 +80,7 @@ list_group_specs() {
     "$GROUP_OPS_WORKERS")
       printf '%s\n' \
         tests/integration/websocket/websocket.integration.test.ts \
+        tests/integration/worker/canonicalProducerAdmission.integration.test.ts \
         tests/integration/worker/featureFlagToggle.integration.test.ts \
         tests/integration/worker/deadLetterQueue.integration.test.ts \
         tests/integration/worker/expiredIncrementalReclaim.integration.test.ts \

@@ -120,6 +120,62 @@ describe('applyAuthoritativeSyncSnapshot', () => {
       syncStateVersion: 0,
     });
   });
+
+  it('applies the complete token-free durable intent snapshot', () => {
+    expect(applyAuthoritativeSyncSnapshot({ id: 'wallet-1' }, {
+      inProgress: false,
+      stateVersion: 1,
+      requestedIncrementalSyncGeneration: 3,
+      claimedIncrementalSyncGeneration: 2,
+      processedIncrementalSyncGeneration: 1,
+      incrementalSyncClaimedAt: null,
+      incrementalSyncLeaseExpiresAt: null,
+      syncActionRequiredAt: '2026-08-20T12:00:00.000Z',
+      requestedFullResyncGeneration: 4,
+      preparedFullResyncGeneration: 3,
+      processedFullResyncGeneration: 2,
+    })).toMatchObject({
+      requestedIncrementalSyncGeneration: 3,
+      claimedIncrementalSyncGeneration: 2,
+      processedIncrementalSyncGeneration: 1,
+      syncActionRequiredAt: '2026-08-20T12:00:00.000Z',
+      requestedFullResyncGeneration: 4,
+      preparedFullResyncGeneration: 3,
+      processedFullResyncGeneration: 2,
+    });
+  });
+
+  it('applies a requested snapshot without fabricating or retaining stale authority', () => {
+    expect(applyAuthoritativeSyncSnapshot({
+      ...versionedWallet,
+      syncStateVersion: 8,
+      lastSyncStatus: 'failed',
+      syncActionRequiredAt: '2026-08-20T12:00:00.000Z',
+      requestedIncrementalSyncGeneration: 1,
+      claimedIncrementalSyncGeneration: 1,
+      processedIncrementalSyncGeneration: 0,
+    }, {
+      inProgress: false,
+      transition: 'requested',
+      status: 'retrying',
+      syncStatus: 'retrying',
+      stateVersion: 9,
+      requestedIncrementalSyncGeneration: 2,
+      claimedIncrementalSyncGeneration: 1,
+      processedIncrementalSyncGeneration: 0,
+      incrementalSyncClaimedAt: null,
+      incrementalSyncLeaseExpiresAt: null,
+      syncActionRequiredAt: null,
+      requestedFullResyncGeneration: 0,
+      preparedFullResyncGeneration: 0,
+      processedFullResyncGeneration: 0,
+    })).toMatchObject({
+      syncStateVersion: 9,
+      lastSyncStatus: 'retrying',
+      syncActionRequiredAt: null,
+      requestedIncrementalSyncGeneration: 2,
+    });
+  });
 });
 
 describe('HTTP and WebSocket sync snapshot convergence', () => {

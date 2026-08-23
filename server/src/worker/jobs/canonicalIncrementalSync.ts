@@ -9,7 +9,11 @@ import {
   type SyncWalletJobData,
   type SyncWalletJobResult,
 } from '../../jobs/syncJobContract';
-import { syncWallet, getCachedBlockHeight } from '../../services/bitcoin/blockchain';
+import {
+  assertChainReachable,
+  getCachedBlockHeight,
+  syncWallet,
+} from '../../services/bitcoin/blockchain';
 import { populateMissingTransactionFields } from '../../services/bitcoin/sync/confirmations';
 import { normalizeLegacyBitcoinNetwork } from '../../services/bitcoin/networks';
 import { classifyWalletSyncFailure } from '../../services/sync/failureClassification';
@@ -26,6 +30,8 @@ import { syncLifecyclePublisher } from '../../services/sync/syncLifecyclePublish
 import { getErrorMessage } from '../../utils/errors';
 import { createLogger } from '../../utils/logger';
 import type { JobExecutionContext } from './types';
+import { resyncRepository } from '../../repositories';
+import type { IncrementalSyncLifecycleState } from '../../repositories/types';
 
 const log = createLogger('JOB:SYNC:INCREMENTAL');
 
@@ -58,6 +64,24 @@ function incrementalTransition(
   return { walletId, transition, state };
 }
 
+async function completeCanonicalSync(
+  data: CanonicalIncrementalSyncData,
+  fence: Readonly<{ walletId: string; generation: number; leaseToken: string }>,
+  success: { syncedAt: Date; lastSyncedBlockHeight: number },
+): Promise<IncrementalSyncLifecycleState | null> {
+  if (data.fullResync === true) {
+    const completion = await resyncRepository.completeFencedWalletFullResync(
+      data.walletId,
+      data.fullResyncGeneration,
+      fence,
+      success,
+    );
+    return completion.completionRecorded ? completion.syncState : null;
+  }
+  const completion = await syncIntentAdmission.complete(data.walletId, fence, success);
+  return completion.status === 'applied' ? completion.state : null;
+}
+
 async function claimIncrementalExecution(
   data: CanonicalIncrementalSyncData,
   claimedAt: Date,
@@ -71,6 +95,9 @@ async function claimIncrementalExecution(
     claimedAt,
     leaseExpiresAt,
     expectedRequestedGeneration: data.incrementalSyncGeneration,
+    ...(data.fullResync === true
+      ? { fullResyncGeneration: data.fullResyncGeneration }
+      : {}),
   };
   const fresh = await syncIntentAdmission.claimFresh(data.walletId, input);
   if (fresh.status === 'blocked') return fresh;
@@ -143,6 +170,14 @@ export async function executeCanonicalIncrementalSync(
   ));
 
   try {
+    if (data.fullResync === true) {
+      await assertChainReachable(normalizeLegacyBitcoinNetwork(walletNetwork, 'mainnet'));
+      await resyncRepository.resetWalletForFullResync(
+        data.walletId,
+        data.fullResyncGeneration,
+        fence,
+      );
+    }
     const result = await runSyncAttemptWithTimeout(
       async (signal) => {
         const syncResult = await syncWallet(data.walletId, 0, signal, fence);
@@ -157,22 +192,24 @@ export async function executeCanonicalIncrementalSync(
 
     const network = normalizeLegacyBitcoinNetwork(walletNetwork, 'mainnet');
     const syncedAt = new Date();
-    const completion = await syncIntentAdmission.complete(data.walletId, fence, {
+    const success = {
       syncedAt,
       lastSyncedBlockHeight: getCachedBlockHeight(network),
-    });
-    if (completion.status === 'lost_fence') {
+    };
+    const completionState = await completeCanonicalSync(data, fence, success);
+    if (!completionState) {
       throw new LostIncrementalSyncFenceError(data.walletId, fence.generation);
     }
     await syncLifecyclePublisher.publish(incrementalTransition(
       data.walletId,
       'succeeded',
-      completion.state,
+      completionState,
     ));
-    if (completion.trailingGenerationPending) {
+    if (completionState.requestedIncrementalSyncGeneration
+      > completionState.processedIncrementalSyncGeneration) {
       await syncIntentAdmission.wake(
         data.walletId,
-        completion.state.requestedIncrementalSyncGeneration,
+        completionState.requestedIncrementalSyncGeneration,
       );
     }
 

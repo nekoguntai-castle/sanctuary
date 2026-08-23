@@ -6,9 +6,6 @@ import {
   walletSyncActivationGate,
   type WalletSyncActivationState,
 } from '../services/sync/walletSyncActivationGate';
-import type {
-  enqueueReservedFullResyncWakeup as EnqueueReservedFullResyncWakeup,
-} from '../services/workerSyncQueue';
 import {
   createSyncIntentRecoveryCoordinator,
   type SyncIntentRecoveryCoordinator,
@@ -135,19 +132,13 @@ export type WalletSyncRecoveryRuntime = ReturnType<
   typeof createWalletSyncRecoveryRuntime
 >;
 
-export interface ProductionWalletSyncRecoveryRuntimeDependencies {
-  enqueueReservedFullResyncWakeup: typeof EnqueueReservedFullResyncWakeup;
-}
-
 /**
  * Compose the sole production recovery authority. Construction fails closed
  * without Redis, and each full-resync wake-up plus both incremental adapters
  * re-enter the live activation gate before touching queue or reclaim state.
  */
 export function createProductionWalletSyncRecoveryRuntime(
-  dependencies: ProductionWalletSyncRecoveryRuntimeDependencies,
 ): WalletSyncRecoveryRuntime {
-  const { enqueueReservedFullResyncWakeup } = dependencies;
   const authorize = async (): Promise<boolean> => (
     (await walletSyncActivationGate.inspect()).status === 'active'
   );
@@ -156,11 +147,8 @@ export function createProductionWalletSyncRecoveryRuntime(
     findStrandedFullResyncWalletsPage,
     enqueueReservedFullResyncWakeup: async (wakeup) => {
       if (!await authorize()) return { status: 'blocked' };
-      return {
-        status: await enqueueReservedFullResyncWakeup(wakeup)
-          ? 'enqueued'
-          : 'unavailable',
-      };
+      const enqueued = await syncIntentAdmission.wakeReservedFullResync(wakeup);
+      return { status: enqueued ? 'enqueued' : 'unavailable' };
     },
     recoverIncrementalSync: (options) => syncIntentAdmission.recover(options),
     recoverExpiredIncrementalSync: (options) => syncIntentAdmission.recoverExpired(options),

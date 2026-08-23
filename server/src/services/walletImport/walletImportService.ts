@@ -50,6 +50,10 @@ import {
   requireCanonicalWalletPolicy,
 } from '../wallet/canonicalPolicy';
 import { prepareWalletImport } from './prepareImport';
+import {
+  INITIAL_SYNC_GENERATION,
+  wakeInitialWalletSync,
+} from '../sync/initialSyncIntent';
 
 const log = createLogger('WALLET_IMPORT:SVC');
 
@@ -248,7 +252,7 @@ export async function createWalletTransaction(
     canonicalIdentity,
   );
 
-  return await withTransaction(async (tx) => {
+  const result = await withTransaction(async (tx) => {
     const createdDeviceIds: string[] = [];
     const reusedDeviceIds: string[] = [];
     // Track imported device info for building descriptor
@@ -299,6 +303,7 @@ export async function createWalletTransaction(
         ...descriptorPolicy,
         ...canonicalIdentity,
         fingerprint: policyFingerprint,
+        requestedIncrementalSyncGeneration: INITIAL_SYNC_GENERATION,
         users: {
           create: {
             userId,
@@ -345,6 +350,8 @@ export async function createWalletTransaction(
       reusedDeviceIds,
     };
   });
+  await wakeInitialWalletSync(result.wallet.id);
+  return result;
 }
 
 /**

@@ -29,6 +29,8 @@ const {
   mockIsLocked,
   mockGetWorkerHealthStatus,
   mockSyncLifecyclePublish,
+  mockSyncIntentRequest,
+  mockSyncIntentReset,
 } = vi.hoisted(() => ({
   mockPrismaClient: {
     wallet: {
@@ -86,6 +88,12 @@ const {
   mockIsLocked: vi.fn<(key: string) => Promise<boolean>>(),
   mockGetWorkerHealthStatus: vi.fn<() => { healthy: boolean }>().mockReturnValue({ healthy: false }),
   mockSyncLifecyclePublish: vi.fn<(...args: unknown[]) => Promise<void>>(),
+  mockSyncIntentRequest: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+  mockSyncIntentReset: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+}));
+
+vi.mock('../../../../src/services/sync/syncIntentAdmission', () => ({
+  syncIntentAdmission: { request: mockSyncIntentRequest, reset: mockSyncIntentReset },
 }));
 
 vi.mock('../../../../src/services/sync/syncLifecyclePublisher', () => ({
@@ -115,6 +123,15 @@ vi.mock('../../../../src/repositories', () => ({
         syncNextRetryAt: true,
         syncStartedAt: true,
         syncStateVersion: true,
+        requestedIncrementalSyncGeneration: true,
+        claimedIncrementalSyncGeneration: true,
+        processedIncrementalSyncGeneration: true,
+        incrementalSyncClaimedAt: true,
+        incrementalSyncLeaseExpiresAt: true,
+        syncActionRequiredAt: true,
+        requestedFullResyncGeneration: true,
+        preparedFullResyncGeneration: true,
+        processedFullResyncGeneration: true,
       },
     }),
     findById: (id: string) => mockPrismaClient.wallet.findUnique({ where: { id } }),
@@ -123,8 +140,20 @@ vi.mock('../../../../src/repositories', () => ({
     updateSyncState: async (id: string, state: any) => {
       await mockPrismaClient.wallet.update({ where: { id }, data: state });
       return {
+        id,
+        requestedIncrementalSyncGeneration: 1,
+        claimedIncrementalSyncGeneration: 1,
+        processedIncrementalSyncGeneration: 0,
+        incrementalSyncLeaseToken: '10000000-0000-4000-8000-000000000001',
+        incrementalSyncClaimedAt: null,
+        incrementalSyncLeaseExpiresAt: null,
+        syncActionRequiredAt: null,
+        requestedFullResyncGeneration: 0,
+        preparedFullResyncGeneration: 0,
+        processedFullResyncGeneration: 0,
         syncInProgress: false,
         lastSyncedAt: null,
+        lastSyncedBlockHeight: null,
         lastSyncStatus: null,
         lastSyncError: null,
         lastSyncFailureClass: null,
@@ -156,8 +185,20 @@ vi.mock('../../../../src/repositories', () => ({
       });
       if (result.count !== 1) return null;
       return {
+        id: candidate.id,
+        requestedIncrementalSyncGeneration: 1,
+        claimedIncrementalSyncGeneration: 1,
+        processedIncrementalSyncGeneration: 0,
+        incrementalSyncLeaseToken: null,
+        incrementalSyncClaimedAt: null,
+        incrementalSyncLeaseExpiresAt: null,
+        syncActionRequiredAt: null,
+        requestedFullResyncGeneration: 0,
+        preparedFullResyncGeneration: 0,
+        processedFullResyncGeneration: 0,
         syncInProgress: false,
         lastSyncedAt: null,
+        lastSyncedBlockHeight: null,
         lastSyncStatus: null,
         lastSyncError: null,
         lastSyncFailureClass: null,
@@ -339,11 +380,11 @@ export interface SyncServiceTestContext {
 
 export function resetSyncServiceState(syncService: SyncService): void {
   syncService['isRunning'] = false;
-  syncService['syncQueue'] = [];
+  syncService['state'].syncQueue = [];
   syncService['activeSyncs'] = new Set();
-  syncService['activeLocks'] = new Map();
+  syncService['state'].activeLocks = new Map();
   syncService['addressToWalletMap'] = new Map();
-  syncService['pendingRetries'] = new Map();
+  syncService['state'].pendingRetries = new Map();
   syncService['subscriptionLock'] = null;
   syncService['subscriptionLockRefresh'] = null;
   syncService['subscriptionsEnabled'] = false;
@@ -382,6 +423,35 @@ export function setDefaultSyncServiceMocks(): void {
   mockElectrumClient.getServerVersion.mockResolvedValue({ server: 'test', protocol: '1.4' });
   mockGetNodeClient.mockResolvedValue(mockElectrumClient);
   mockGetElectrumClientIfActive.mockResolvedValue(mockElectrumClient);
+  mockSyncIntentRequest.mockResolvedValue({
+    status: 'requested',
+    generation: 1,
+    wakeup: 'enqueued',
+  });
+  mockSyncIntentReset.mockResolvedValue({
+    id: 'wallet-1',
+    requestedIncrementalSyncGeneration: 1,
+    claimedIncrementalSyncGeneration: 1,
+    processedIncrementalSyncGeneration: 0,
+    incrementalSyncLeaseToken: null,
+    incrementalSyncClaimedAt: null,
+    incrementalSyncLeaseExpiresAt: null,
+    syncActionRequiredAt: null,
+    requestedFullResyncGeneration: 0,
+    preparedFullResyncGeneration: 0,
+    processedFullResyncGeneration: 0,
+    syncInProgress: false,
+    lastSyncedAt: null,
+    lastSyncedBlockHeight: null,
+    lastSyncStatus: null,
+    lastSyncError: null,
+    lastSyncFailureClass: null,
+    syncExecutionOwner: null,
+    syncRetryCount: 0,
+    syncNextRetryAt: null,
+    syncStartedAt: null,
+    syncStateVersion: 2,
+  });
 }
 
 export function setupSyncServiceTestHooks(): SyncServiceTestContext {
@@ -413,9 +483,9 @@ export function setupSyncServiceErrorHandlingTestHooks(): SyncServiceTestContext
     vi.clearAllMocks();
     context.syncService = getSyncService();
     context.syncService['isRunning'] = false;
-    context.syncService['syncQueue'] = [];
+    context.syncService['state'].syncQueue = [];
     context.syncService['activeSyncs'] = new Set();
-    context.syncService['activeLocks'] = new Map();
+    context.syncService['state'].activeLocks = new Map();
 
     mockAcquireLock.mockResolvedValue({ id: 'lock-1', resource: 'test' });
     mockReleaseLock.mockResolvedValue(undefined);
@@ -452,4 +522,6 @@ export {
   mockWithLock,
   mockIsLocked,
   mockSyncLifecyclePublish,
+  mockSyncIntentRequest,
+  mockSyncIntentReset,
 };

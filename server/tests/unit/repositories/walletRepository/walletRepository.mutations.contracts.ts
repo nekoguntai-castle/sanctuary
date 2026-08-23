@@ -64,6 +64,15 @@ export const registerWalletRepositoryMutationContracts = () => {
           syncNextRetryAt: true,
           syncStartedAt: true,
           syncStateVersion: true,
+          requestedIncrementalSyncGeneration: true,
+          claimedIncrementalSyncGeneration: true,
+          processedIncrementalSyncGeneration: true,
+          incrementalSyncClaimedAt: true,
+          incrementalSyncLeaseExpiresAt: true,
+          syncActionRequiredAt: true,
+          requestedFullResyncGeneration: true,
+          preparedFullResyncGeneration: true,
+          processedFullResyncGeneration: true,
         },
       });
     });
@@ -553,6 +562,15 @@ export const registerWalletRepositoryMutationContracts = () => {
           syncNextRetryAt: true,
           syncStartedAt: true,
           syncStateVersion: true,
+          requestedIncrementalSyncGeneration: true,
+          claimedIncrementalSyncGeneration: true,
+          processedIncrementalSyncGeneration: true,
+          incrementalSyncClaimedAt: true,
+          incrementalSyncLeaseExpiresAt: true,
+          syncActionRequiredAt: true,
+          requestedFullResyncGeneration: true,
+          preparedFullResyncGeneration: true,
+          processedFullResyncGeneration: true,
         },
       });
     });

@@ -46,8 +46,15 @@ describe('NetworkSyncActions branch coverage', () => {
     vi.clearAllMocks();
     vi.mocked(syncApi.syncNetworkWallets).mockResolvedValue({
       success: true,
-      queued: 2,
+      requested: 2,
+      merged: 0,
+      rejected: 0,
+      indeterminate: 0,
       walletIds: ['w1', 'w2'],
+      outcomes: [
+        { walletId: 'w1', status: 'requested', generation: 1, wakeup: 'enqueued' },
+        { walletId: 'w2', status: 'requested', generation: 1, wakeup: 'enqueued' },
+      ],
     });
     vi.mocked(syncApi.resyncNetworkWallets).mockResolvedValue({
       success: true,
@@ -70,22 +77,28 @@ describe('NetworkSyncActions branch coverage', () => {
     const { onSyncStarted } = renderActions({ walletCount: 1, network: 'testnet3' });
     vi.mocked(syncApi.syncNetworkWallets).mockResolvedValueOnce({
       success: true,
-      queued: 1,
+      requested: 1,
+      merged: 0,
+      rejected: 0,
+      indeterminate: 0,
       walletIds: ['w1'],
+      outcomes: [
+        { walletId: 'w1', status: 'requested', generation: 2, wakeup: 'enqueued' },
+      ],
     });
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Sync All Testnet3' }));
     });
 
-    expect(screen.getByText('Queued 1 wallet for sync')).toBeInTheDocument();
+    expect(screen.getByText('Requested sync for 1 new wallet.')).toBeInTheDocument();
     expect(onSyncStarted).toHaveBeenCalledTimes(1);
 
     act(() => {
       vi.advanceTimersByTime(5000);
     });
 
-    expect(screen.queryByText('Queued 1 wallet for sync')).not.toBeInTheDocument();
+    expect(screen.queryByText('Requested sync for 1 new wallet.')).not.toBeInTheDocument();
   });
 
   it('renders fallback sync error for unknown error types', async () => {
@@ -97,6 +110,102 @@ describe('NetworkSyncActions branch coverage', () => {
     });
 
     expect(screen.getByText('Failed to queue wallets for sync')).toBeInTheDocument();
+  });
+
+  it('surfaces merged and deferred durable sync outcomes as a warning', async () => {
+    renderActions();
+    vi.mocked(syncApi.syncNetworkWallets).mockResolvedValueOnce({
+      success: true,
+      requested: 1,
+      merged: 1,
+      rejected: 0,
+      indeterminate: 0,
+      walletIds: ['w1', 'w2'],
+      outcomes: [
+        { walletId: 'w1', status: 'requested', generation: 3, wakeup: 'unavailable' },
+        { walletId: 'w2', status: 'merged', generation: 7, wakeup: 'deferred_retry' },
+      ],
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Sync All Mainnet' }));
+    });
+
+    expect(screen.getByText(
+      'Requested sync for 1 new wallet; 1 wallet merged with existing work; Alpha (saved for recovery); Beta (waiting for retry).',
+    )).toHaveClass('text-warning-600');
+  });
+
+  it('does not present an all-merged sync batch as newly requested', async () => {
+    renderActions();
+    vi.mocked(syncApi.syncNetworkWallets).mockResolvedValueOnce({
+      success: true,
+      requested: 0,
+      merged: 2,
+      rejected: 0,
+      indeterminate: 0,
+      walletIds: ['w1', 'w2'],
+      outcomes: [
+        { walletId: 'w1', status: 'merged', generation: 3, wakeup: 'enqueued' },
+        { walletId: 'w2', status: 'merged', generation: 7, wakeup: 'enqueued' },
+      ],
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Sync All Mainnet' }));
+    });
+
+    expect(screen.getByText(
+      'Requested sync for 0 new wallets; 2 wallets merged with existing work.',
+    )).toHaveClass('text-warning-600');
+  });
+
+  it('names every rejected and indeterminate wallet in a partial sync batch', async () => {
+    renderActions();
+    vi.mocked(syncApi.syncNetworkWallets).mockResolvedValueOnce({
+      success: true,
+      requested: 0,
+      merged: 0,
+      rejected: 1,
+      indeterminate: 1,
+      walletIds: ['w1', 'w2'],
+      outcomes: [
+        { walletId: 'w1', status: 'rejected', reason: 'blocked' },
+        { walletId: 'w2', status: 'indeterminate', reason: 'admission_error' },
+      ],
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Sync All Mainnet' }));
+    });
+
+    expect(screen.getByText(
+      'Requested sync for 0 new wallets; 1 wallet rejected: Alpha (wallet sync is temporarily gated); 1 wallet with unknown admission state: Beta (admission result unknown).',
+    )).toHaveClass('text-warning-600');
+  });
+
+  it('preserves unknown server reason codes in partial sync diagnostics', async () => {
+    renderActions();
+    vi.mocked(syncApi.syncNetworkWallets).mockResolvedValueOnce({
+      success: true,
+      requested: 0,
+      merged: 0,
+      rejected: 1,
+      indeterminate: 1,
+      walletIds: ['w1', 'w2'],
+      outcomes: [
+        { walletId: 'w1', status: 'rejected', reason: 'future_rejection' },
+        { walletId: 'w2', status: 'indeterminate', reason: 'future_unknown' },
+      ],
+    } as unknown as syncApi.NetworkSyncResult);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Sync All Mainnet' }));
+    });
+
+    expect(screen.getByText(
+      'Requested sync for 0 new wallets; 1 wallet rejected: Alpha (future_rejection); 1 wallet with unknown admission state: Beta (future_unknown).',
+    )).toHaveClass('text-warning-600');
   });
 
   it('renders singular resync message and clears it after timeout', async () => {
@@ -163,6 +272,30 @@ describe('NetworkSyncActions branch coverage', () => {
     expect(screen.getByText(
       'Queued 1 wallet for resync; 1 rejected: Beta (queue error).',
     )).toBeInTheDocument();
+  });
+
+  it('names durable full-resync requests that are awaiting queue recovery', async () => {
+    renderActions();
+    vi.mocked(syncApi.resyncNetworkWallets).mockResolvedValueOnce({
+      success: true,
+      queued: 0,
+      walletIds: [],
+      acceptedWalletIds: ['w1'],
+      deduplicatedWalletIds: ['w2'],
+      deferredWalletIds: ['w1', 'w2'],
+      rejectedWallets: [],
+      indeterminateWallets: [],
+      excludedWallets: [],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Full Resync All Mainnet' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Resync All Wallets' }));
+    });
+
+    expect(screen.getByText(
+      'Queued 0 wallets for resync; 2 awaiting queue recovery: Alpha, Beta.',
+    )).toHaveClass('text-warning-600');
   });
 
   it('renders a rejection as an error, not a green success line', async () => {

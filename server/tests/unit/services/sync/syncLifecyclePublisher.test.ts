@@ -13,7 +13,7 @@ vi.mock('../../../../src/websocket/notifications/broadcasts', () => ({
   broadcastSyncStatus: defaultChannels.broadcast,
 }));
 
-import type { WalletSyncState } from '../../../../src/repositories/types';
+import type { IncrementalSyncLifecycleState } from '../../../../src/repositories/types';
 import type { PersistedSyncTransition } from '../../../../src/services/sync/syncAttemptLifecycle';
 import {
   createSyncLifecyclePublisher,
@@ -21,9 +21,21 @@ import {
   toSyncLifecycleWebSocketSnapshot,
 } from '../../../../src/services/sync/syncLifecyclePublisher';
 
-const state: WalletSyncState = {
+const state: IncrementalSyncLifecycleState = {
+  id: 'wallet-1',
+  requestedIncrementalSyncGeneration: 5,
+  claimedIncrementalSyncGeneration: 5,
+  processedIncrementalSyncGeneration: 4,
+  incrementalSyncLeaseToken: '10000000-0000-4000-8000-000000000001',
+  incrementalSyncClaimedAt: new Date('2026-08-20T12:00:00.000Z'),
+  incrementalSyncLeaseExpiresAt: new Date('2026-08-20T12:05:00.000Z'),
+  syncActionRequiredAt: null,
+  requestedFullResyncGeneration: 3,
+  preparedFullResyncGeneration: 2,
+  processedFullResyncGeneration: 1,
   syncInProgress: true,
   lastSyncedAt: new Date('2026-08-20T11:30:00.000Z'),
+  lastSyncedBlockHeight: 839_999,
   lastSyncStatus: 'retrying',
   lastSyncError: 'Electrum connection refused',
   lastSyncFailureClass: 'electrum_unavailable',
@@ -60,11 +72,50 @@ describe('sync lifecycle publisher', () => {
       nextRetryAt: state.syncNextRetryAt,
       startedAt: state.syncStartedAt,
       stateVersion: 19,
+      requestedIncrementalSyncGeneration: 5,
+      claimedIncrementalSyncGeneration: 5,
+      processedIncrementalSyncGeneration: 4,
+      incrementalSyncClaimedAt: state.incrementalSyncClaimedAt,
+      incrementalSyncLeaseExpiresAt: state.incrementalSyncLeaseExpiresAt,
+      syncActionRequiredAt: null,
+      requestedFullResyncGeneration: 3,
+      preparedFullResyncGeneration: 2,
+      processedFullResyncGeneration: 1,
       retriesExhausted: false,
+    });
+    expect(toSyncLifecycleWebSocketSnapshot(transition()))
+      .not.toHaveProperty('incrementalSyncLeaseToken');
+  });
+
+  it('projects token-free durable intent authority from every committed row', () => {
+    const durableState: IncrementalSyncLifecycleState = {
+      ...state,
+      requestedIncrementalSyncGeneration: 5,
+      claimedIncrementalSyncGeneration: 5,
+      processedIncrementalSyncGeneration: 4,
+      incrementalSyncClaimedAt: new Date('2026-08-20T12:00:00.000Z'),
+      incrementalSyncLeaseExpiresAt: new Date('2026-08-20T12:05:00.000Z'),
+      syncActionRequiredAt: null,
+      requestedFullResyncGeneration: 3,
+      preparedFullResyncGeneration: 2,
+      processedFullResyncGeneration: 1,
+    };
+
+    expect(toSyncLifecycleWebSocketSnapshot(transition({ state: durableState }))).toMatchObject({
+      requestedIncrementalSyncGeneration: 5,
+      claimedIncrementalSyncGeneration: 5,
+      processedIncrementalSyncGeneration: 4,
+      incrementalSyncClaimedAt: durableState.incrementalSyncClaimedAt,
+      incrementalSyncLeaseExpiresAt: durableState.incrementalSyncLeaseExpiresAt,
+      syncActionRequiredAt: null,
+      requestedFullResyncGeneration: 3,
+      preparedFullResyncGeneration: 2,
+      processedFullResyncGeneration: 1,
     });
   });
 
   it.each([
+    ['requested', 'retrying', false],
     ['started', 'syncing', false],
     ['succeeded', 'success', false],
     ['retrying', 'retrying', false],
@@ -85,6 +136,16 @@ describe('sync lifecycle publisher', () => {
       state: { ...state, lastSyncStatus: null },
     }))).toMatchObject({
       status: 'idle',
+      syncStatus: null,
+    });
+  });
+
+  it('uses pending compatibility status for a request without legacy status', () => {
+    expect(toSyncLifecycleWebSocketSnapshot(transition({
+      transition: 'requested',
+      state: { ...state, lastSyncStatus: null },
+    }))).toMatchObject({
+      status: 'pending',
       syncStatus: null,
     });
   });

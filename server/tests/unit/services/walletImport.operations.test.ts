@@ -9,6 +9,7 @@ import {
   setupDeviceMocks,
   setupBeforeEach,
   mockAssertHardwareWalletCapability,
+  mockWakeInitialWalletSync,
 } from './walletImport.setup';
 import { mockPrismaClient } from '../../mocks/prisma';
 import * as walletImport from '../../../src/services/walletImport';
@@ -584,9 +585,11 @@ describe('Wallet Import Service - Operations', () => {
             network: 'testnet3',
             canonicalPolicyId: 'single-sig-native-segwit-bip84-v1',
             canonicalPolicyVersion: 1,
+            requestedIncrementalSyncGeneration: 1,
           }),
         })
       );
+      expect(mockWakeInitialWalletSync).toHaveBeenCalledWith('wallet-testnet');
       expect(mockDeriveCanonicalAddress).toHaveBeenCalledWith(
         expect.objectContaining({
           receiveDescriptor: VALID_RECEIVE_DESCRIPTOR,

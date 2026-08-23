@@ -19,14 +19,16 @@ export const syncPaths = {
   "/sync/wallet/{walletId}": {
     post: {
       tags: ["Sync"],
-      summary: "Sync wallet",
-      description: "Synchronize a wallet immediately with the blockchain.",
+      summary: "Request wallet sync",
+      description:
+        "Durably request asynchronous wallet synchronization. A merged response means the request coalesced with existing work.",
       security: bearerAuth,
       parameters: [walletIdParameter],
       responses: {
-        200: jsonResponse("Sync complete", "#/components/schemas/SyncResult"),
+        200: jsonResponse("Sync requested", "#/components/schemas/SyncResult"),
         401: apiErrorResponse,
         404: apiErrorResponse,
+        503: apiErrorResponse,
         500: apiErrorResponse,
       },
     },
@@ -34,8 +36,9 @@ export const syncPaths = {
   "/sync/queue/{walletId}": {
     post: {
       tags: ["Sync"],
-      summary: "Queue wallet sync",
-      description: "Queue a wallet for background synchronization.",
+      summary: "Request wallet sync",
+      description:
+        "Compatibility route for durable asynchronous wallet sync admission. Priority is accepted for request compatibility but does not bypass generation coalescing.",
       security: bearerAuth,
       parameters: [walletIdParameter],
       requestBody: optionalJsonRequestBody(
@@ -43,11 +46,12 @@ export const syncPaths = {
       ),
       responses: {
         200: jsonResponse(
-          "Wallet queued for sync",
+          "Sync requested",
           "#/components/schemas/QueuedWalletSyncResponse",
         ),
         401: apiErrorResponse,
         404: apiErrorResponse,
+        503: apiErrorResponse,
         500: apiErrorResponse,
       },
     },
@@ -93,17 +97,18 @@ export const syncPaths = {
       tags: ["Sync"],
       summary: "Queue all user wallets",
       description:
-        "Queue all wallets owned or accessible by the authenticated user for background sync.",
+        "Explicitly request durable asynchronous sync for all wallets owned or accessible by the authenticated user. This route is not used during login, session restoration, or page load.",
       security: bearerAuth,
       requestBody: optionalJsonRequestBody(
         "#/components/schemas/SyncPriorityRequest",
       ),
       responses: {
         200: jsonResponse(
-          "User wallets queued for sync",
-          "#/components/schemas/SyncSimpleSuccessResponse",
+          "User wallet sync requests accepted or merged",
+          "#/components/schemas/WalletSyncBatchResponse",
         ),
         401: apiErrorResponse,
+        503: apiErrorResponse,
         500: apiErrorResponse,
       },
     },
@@ -131,12 +136,12 @@ export const syncPaths = {
       tags: ["Sync"],
       summary: "Full wallet resync",
       description:
-        "Queue a high-priority full resync. Wallet data is cleared only after exclusive sync ownership is acquired.",
+        "Durably request a high-priority full resync and report its exact generation and queue wakeup disposition. Wallet data is cleared only after exclusive sync ownership is acquired.",
       security: bearerAuth,
       parameters: [walletIdParameter],
       responses: {
         200: jsonResponse(
-          "Full wallet resync queued",
+          "Full wallet resync durably accepted or deduplicated",
           "#/components/schemas/ResyncWalletResponse",
         ),
         401: apiErrorResponse,
@@ -154,7 +159,7 @@ export const syncPaths = {
       tags: ["Sync"],
       summary: "Queue network sync",
       description:
-        "Queue all authenticated-user wallets on a supported network for background sync.",
+        "Durably request asynchronous sync for every authenticated-user wallet on a supported network, returning each wallet generation and wakeup outcome.",
       security: bearerAuth,
       parameters: [syncNetworkParameter],
       requestBody: optionalJsonRequestBody(
@@ -162,11 +167,12 @@ export const syncPaths = {
       ),
       responses: {
         200: jsonResponse(
-          "Network wallets queued for sync",
+          "Network wallet sync requests accepted or merged",
           "#/components/schemas/NetworkSyncResponse",
         ),
         400: apiErrorResponse,
         401: apiErrorResponse,
+        503: apiErrorResponse,
         500: apiErrorResponse,
       },
     },
@@ -468,7 +474,7 @@ export const bitcoinPaths = {
       tags: ["Bitcoin"],
       summary: "Sync address",
       description:
-        "Synchronize one wallet address after checking authenticated wallet access.",
+        "Compatibility route that durably requests asynchronous sync for the address's wallet after checking authenticated access.",
       security: bearerAuth,
       parameters: [
         {
@@ -480,11 +486,12 @@ export const bitcoinPaths = {
       ],
       responses: {
         200: jsonResponse(
-          "Address sync result",
+          "Wallet sync requested",
           "#/components/schemas/AddressSyncResponse",
         ),
         401: apiErrorResponse,
         404: apiErrorResponse,
+        503: apiErrorResponse,
         500: apiErrorResponse,
       },
     },
@@ -633,16 +640,17 @@ export const bitcoinPaths = {
       tags: ["Bitcoin"],
       summary: "Legacy wallet sync",
       description:
-        "Synchronize a wallet through the legacy Bitcoin sync route after checking wallet access.",
+        "Compatibility route that durably requests asynchronous wallet sync after checking wallet access.",
       security: bearerAuth,
       parameters: [walletIdParameter],
       responses: {
         200: jsonResponse(
-          "Legacy wallet sync result",
+          "Wallet sync requested",
           "#/components/schemas/BitcoinLegacyWalletSyncResponse",
         ),
         401: apiErrorResponse,
         404: apiErrorResponse,
+        503: apiErrorResponse,
         500: apiErrorResponse,
       },
     },

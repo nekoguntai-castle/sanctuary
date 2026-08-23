@@ -7,13 +7,22 @@ vi.mock('../../../src/models/prisma', () => ({
 }));
 
 import {
+  completeFencedWalletFullResync,
   completeWalletFullResync,
+  isExactFullResyncPending,
+  isFullResyncGenerationProcessed,
+  requestFullResyncGeneration,
   reserveFullResyncGeneration,
   resetWalletForFullResync,
 } from '../../../src/repositories/resyncRepository';
 import { FULL_RESYNC_GENERATION_MAX } from '../../../src/constants/fullResync';
 
 describe('resyncRepository', () => {
+  const fence = {
+    walletId: 'wallet-1',
+    generation: 6,
+    leaseToken: '10000000-0000-4000-8000-000000000001',
+  } as const;
   beforeEach(() => {
     resetPrismaMocks();
     mockPrismaClient.$queryRaw.mockResolvedValue([{
@@ -36,6 +45,125 @@ describe('resyncRepository', () => {
     expect(mockPrismaClient.wallet.update).toHaveBeenCalledWith({
       where: { id: 'wallet-1' },
       data: { requestedFullResyncGeneration: { increment: 1 } },
+      select: { requestedFullResyncGeneration: true },
+    });
+  });
+
+  it('atomically requests a new full-resync generation and merges outstanding work', async () => {
+    mockPrismaClient.$queryRaw
+      .mockResolvedValueOnce([{
+        id: 'wallet-1',
+        requestedFullResyncGeneration: 4,
+        requestedIncrementalSyncGeneration: 6,
+        previousRequestedGeneration: 3,
+        syncStateVersion: 8,
+      }])
+      .mockResolvedValueOnce([{
+        id: 'wallet-1',
+        requestedFullResyncGeneration: 4,
+        requestedIncrementalSyncGeneration: 6,
+        previousRequestedGeneration: 4,
+        syncStateVersion: 9,
+      }]);
+
+    await expect(requestFullResyncGeneration('wallet-1')).resolves.toEqual({
+      status: 'requested',
+      generation: 4,
+      incrementalGeneration: 6,
+      state: expect.objectContaining({ id: 'wallet-1', syncStateVersion: 8 }),
+    });
+    await expect(requestFullResyncGeneration('wallet-1')).resolves.toEqual({
+      status: 'merged',
+      generation: 4,
+      incrementalGeneration: 6,
+      state: expect.objectContaining({ id: 'wallet-1', syncStateVersion: 9 }),
+    });
+
+    const sql = mockPrismaClient.$queryRaw.mock.calls[0]?.[0];
+    expect(sql.strings.join(' ')).toContain('FOR UPDATE');
+    expect(sql.strings.join(' ')).toContain('"requestedFullResyncGeneration" + 1');
+    expect(sql.strings.join(' ')).toContain('"processedFullResyncGeneration"');
+    expect(sql.strings.join(' ')).toContain('"claimedIncrementalSyncGeneration"');
+    expect(sql.strings.join(' ')).toContain('"syncActionRequiredAt" = NULL');
+    expect(sql.strings.join(' ')).toContain('"syncNextRetryAt" = NULL');
+    expect(sql.strings.join(' ')).toContain('"syncRetryCount" = 0');
+    expect(sql.strings.join(' ')).toContain(
+      '"syncStateVersion" = wallet."syncStateVersion" + CASE',
+    );
+  });
+
+  it('accepts terminal full-resync reopen by clearing claim blockers', async () => {
+    mockPrismaClient.$queryRaw.mockResolvedValueOnce([{
+      id: 'wallet-1',
+      requestedFullResyncGeneration: 4,
+      requestedIncrementalSyncGeneration: 6,
+      previousRequestedGeneration: 4,
+      syncStateVersion: 10,
+    }]);
+
+    await expect(requestFullResyncGeneration('wallet-1')).resolves.toMatchObject({
+      status: 'merged', generation: 4, incrementalGeneration: 6,
+    });
+    const sql = mockPrismaClient.$queryRaw.mock.calls[0]?.[0].strings.join(' ');
+    expect(sql).toContain('"syncActionRequiredAt" = NULL');
+    expect(sql).toContain('"syncNextRetryAt" = NULL');
+  });
+
+  it('uses durable state as completed full-resync proof', async () => {
+    mockPrismaClient.wallet.findUnique
+      .mockResolvedValueOnce({ processedFullResyncGeneration: 7 })
+      .mockResolvedValueOnce({ processedFullResyncGeneration: 6 })
+      .mockResolvedValueOnce(null);
+
+    await expect(isFullResyncGenerationProcessed('wallet-1', 7)).resolves.toBe(true);
+    await expect(isFullResyncGenerationProcessed('wallet-1', 7)).resolves.toBe(false);
+    await expect(isFullResyncGenerationProcessed('missing', 7)).resolves.toBe(false);
+    await expect(isFullResyncGenerationProcessed('wallet-1', 0)).resolves.toBe(false);
+  });
+
+  it('revalidates the exact paired pending full-resync generations', async () => {
+    mockPrismaClient.wallet.findUnique
+      .mockResolvedValueOnce({
+        requestedFullResyncGeneration: 7,
+        processedFullResyncGeneration: 6,
+        requestedIncrementalSyncGeneration: 9,
+        syncActionRequiredAt: null,
+      })
+      .mockResolvedValueOnce({
+        requestedFullResyncGeneration: 7,
+        processedFullResyncGeneration: 7,
+        requestedIncrementalSyncGeneration: 9,
+        syncActionRequiredAt: null,
+      })
+      .mockResolvedValueOnce({
+        requestedFullResyncGeneration: 7,
+        processedFullResyncGeneration: 6,
+        requestedIncrementalSyncGeneration: 9,
+        syncActionRequiredAt: new Date(),
+      });
+
+    await expect(isExactFullResyncPending('wallet-1', 7, 9)).resolves.toBe(true);
+    await expect(isExactFullResyncPending('wallet-1', 7, 9)).resolves.toBe(false);
+    await expect(isExactFullResyncPending('wallet-1', 7, 9)).resolves.toBe(false);
+    await expect(isExactFullResyncPending('wallet-1', 0, 9)).resolves.toBe(false);
+    expect(mockPrismaClient.wallet.findUnique).toHaveBeenCalledWith({
+      where: { id: 'wallet-1' },
+      select: expect.objectContaining({ syncActionRequiredAt: true }),
+    });
+  });
+
+  it('distinguishes missing wallets from exhausted full-resync generations', async () => {
+    mockPrismaClient.$queryRaw.mockResolvedValue([]);
+    mockPrismaClient.wallet.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ requestedFullResyncGeneration: FULL_RESYNC_GENERATION_MAX });
+
+    await expect(requestFullResyncGeneration('missing')).resolves
+      .toEqual({ status: 'not_found' });
+    await expect(requestFullResyncGeneration('wallet-1')).resolves
+      .toEqual({ status: 'generation_exhausted' });
+    expect(mockPrismaClient.wallet.findUnique).toHaveBeenNthCalledWith(1, {
+      where: { id: 'missing' },
       select: { requestedFullResyncGeneration: true },
     });
   });
@@ -181,6 +309,102 @@ describe('resyncRepository', () => {
     mockPrismaClient.address.updateMany.mockRejectedValue(new Error('address reset failed'));
 
     await expect(resetWalletForFullResync('wallet-1', 1)).rejects.toThrow('address reset failed');
+    expect(mockPrismaClient.wallet.update).not.toHaveBeenCalled();
+  });
+
+  it('runs a destructive reset through the exact mutation fence', async () => {
+    mockPrismaClient.$queryRaw
+      .mockResolvedValueOnce([{
+        claimedIncrementalSyncGeneration: 6,
+        incrementalSyncLeaseToken: fence.leaseToken,
+      }])
+      .mockResolvedValueOnce([{
+        requestedFullResyncGeneration: 4,
+        preparedFullResyncGeneration: 0,
+        processedFullResyncGeneration: 0,
+        lastSyncedAt: null,
+        lastSyncStatus: null,
+        syncInProgress: true,
+      }]);
+
+    await expect(resetWalletForFullResync('wallet-1', 4, fence)).resolves.toEqual({
+      deletedTransactions: 4,
+      resetPerformed: true,
+    });
+    expect(mockPrismaClient.$transaction).toHaveBeenCalledOnce();
+  });
+
+  it('rejects a full-resync fence for another wallet', async () => {
+    await expect(resetWalletForFullResync('wallet-1', 4, {
+      ...fence,
+      walletId: 'wallet-2',
+    })).rejects.toThrow('Full resync mutation fence belongs to another wallet');
+    await expect(completeFencedWalletFullResync('wallet-1', 4, {
+      ...fence,
+      walletId: 'wallet-2',
+    }, {
+      syncedAt: new Date(),
+      lastSyncedBlockHeight: 250,
+    })).rejects.toThrow('Full resync mutation fence belongs to another wallet');
+  });
+
+  it.each([0, FULL_RESYNC_GENERATION_MAX + 1])(
+    'rejects fenced completion generation outside the PostgreSQL integer domain: %s',
+    async generation => {
+      await expect(completeFencedWalletFullResync('wallet-1', generation, fence, {
+        syncedAt: new Date(),
+        lastSyncedBlockHeight: 250,
+      })).rejects.toThrow('Full resync generation is outside the supported range');
+    },
+  );
+
+  it('atomically completes the full and incremental fenced generations', async () => {
+    const syncedAt = new Date('2026-08-22T20:00:00.000Z');
+    const syncState = { id: 'wallet-1', lastSyncStatus: 'success' };
+    mockPrismaClient.$queryRaw
+      .mockResolvedValueOnce([{
+        claimedIncrementalSyncGeneration: 6,
+        incrementalSyncLeaseToken: fence.leaseToken,
+      }])
+      .mockResolvedValueOnce([{
+        requestedFullResyncGeneration: 4,
+        preparedFullResyncGeneration: 4,
+        processedFullResyncGeneration: 3,
+      }]);
+    mockPrismaClient.wallet.update.mockResolvedValue(syncState);
+
+    await expect(completeFencedWalletFullResync('wallet-1', 4, fence, {
+      syncedAt,
+      lastSyncedBlockHeight: 250,
+    })).resolves.toEqual({ completionRecorded: true, syncState });
+    expect(mockPrismaClient.wallet.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'wallet-1' },
+      data: expect.objectContaining({
+        processedIncrementalSyncGeneration: 6,
+        processedFullResyncGeneration: 4,
+        incrementalSyncLeaseToken: null,
+        lastSyncedAt: syncedAt,
+      }),
+    }));
+  });
+
+  it.each([
+    undefined,
+    { requestedFullResyncGeneration: 5, preparedFullResyncGeneration: 4, processedFullResyncGeneration: 3 },
+    { requestedFullResyncGeneration: 4, preparedFullResyncGeneration: 3, processedFullResyncGeneration: 2 },
+    { requestedFullResyncGeneration: 4, preparedFullResyncGeneration: 4, processedFullResyncGeneration: 4 },
+  ])('rejects ineligible fenced full-resync completion state: %j', async wallet => {
+    mockPrismaClient.$queryRaw
+      .mockResolvedValueOnce([{
+        claimedIncrementalSyncGeneration: 6,
+        incrementalSyncLeaseToken: fence.leaseToken,
+      }])
+      .mockResolvedValueOnce(wallet ? [wallet] : []);
+
+    await expect(completeFencedWalletFullResync('wallet-1', 4, fence, {
+      syncedAt: new Date(),
+      lastSyncedBlockHeight: 250,
+    })).resolves.toEqual({ completionRecorded: false });
     expect(mockPrismaClient.wallet.update).not.toHaveBeenCalled();
   });
 

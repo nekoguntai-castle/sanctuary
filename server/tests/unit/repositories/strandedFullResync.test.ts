@@ -41,6 +41,7 @@ describe('findStrandedFullResyncWallets', () => {
     const sql = JSON.stringify(mockQueryRaw.mock.calls[0][0]);
     expect(sql).toContain('requestedFullResyncGeneration');
     expect(sql).toContain('processedFullResyncGeneration');
+    expect(sql).toContain('syncActionRequiredAt');
   });
 
   it('returns the wallets it finds', async () => {

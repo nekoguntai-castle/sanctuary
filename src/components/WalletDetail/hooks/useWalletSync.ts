@@ -14,7 +14,23 @@ import type { RouteToken } from '../../../hooks/requestOwnership';
 import { useWalletRouteOwnership } from './useWalletRouteOwnership';
 
 const log = createLogger("useWalletSync");
-const NETWORK_SYNC_OFF_PATTERN = /sync is off in Node Configuration/i;
+
+const describeSyncRequest = (
+  result: syncApi.WalletSyncRequestResult,
+): { title: string; warning: boolean } => {
+  if (result.status === "merged") {
+    return { title: "Sync Request Merged", warning: true };
+  }
+  if (result.wakeup === "enqueued") {
+    return { title: "Sync Requested", warning: false };
+  }
+  return {
+    title: result.wakeup === "unavailable"
+      ? "Sync Request Saved"
+      : "Sync Request Deferred",
+    warning: true,
+  };
+};
 
 // ---------------------------------------------------------------------------
 // Types
@@ -78,18 +94,13 @@ export function useWalletSync({
       setSyncing(true);
       const result = await syncApi.syncWallet(id);
       if (!owns(token, id)) return;
-      if (!result.success && result.error) {
-        log.error("Sync error", { error: result.error });
-        // The pattern selects the *title*, not whether the user is told at all.
-        // Every other failure used to reach `log.error` and nowhere else.
-        showWarning(
-          result.error,
-          NETWORK_SYNC_OFF_PATTERN.test(result.error)
-            ? "Wallet Sync Off"
-            : "Sync Failed",
-        );
+      const notification = describeSyncRequest(result);
+      if (notification.warning) {
+        showWarning(result.message, notification.title);
+      } else {
+        showSuccess(result.message, notification.title);
       }
-      // Reload wallet data after sync
+      // Refresh durable status; transaction/history updates arrive asynchronously.
       await onDataRefresh();
     } catch (err) {
       log.error("Failed to sync wallet", { error: err });
@@ -123,6 +134,8 @@ export function useWalletSync({
       // never changes. The two outcomes must not look alike.
       if (result.status === "deduplicated") {
         showWarning(result.message, "Resync Already Queued");
+      } else if (result.wakeup === "unavailable") {
+        showWarning(result.message, "Resync Request Saved");
       } else {
         showSuccess(result.message, "Resync Queued");
       }

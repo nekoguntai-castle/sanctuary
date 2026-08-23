@@ -113,6 +113,15 @@ export interface WalletWithBalance {
   syncNextRetryAt?: Date | null;
   syncStartedAt?: Date | null;
   syncStateVersion?: number;
+  requestedIncrementalSyncGeneration?: number;
+  claimedIncrementalSyncGeneration?: number;
+  processedIncrementalSyncGeneration?: number;
+  incrementalSyncClaimedAt?: Date | null;
+  incrementalSyncLeaseExpiresAt?: Date | null;
+  syncActionRequiredAt?: Date | null;
+  requestedFullResyncGeneration?: number;
+  preparedFullResyncGeneration?: number;
+  processedFullResyncGeneration?: number;
   // Sharing info
   isShared: boolean;
   sharedWith?: {

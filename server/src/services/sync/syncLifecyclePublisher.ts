@@ -8,6 +8,7 @@ import { getErrorMessage } from '../../utils/errors';
 import { createLogger } from '../../utils/logger';
 import { broadcastSyncStatus } from '../../websocket/notifications/broadcasts';
 import type { PersistedSyncTransition } from './syncAttemptLifecycle';
+import type { WalletSyncDurableState } from '../../repositories/types';
 
 const log = createLogger('SYNC:LIFECYCLE_PUBLISHER');
 
@@ -24,8 +25,43 @@ export interface SyncLifecycleWebSocketSnapshot {
   nextRetryAt: Date | null;
   startedAt: Date | null;
   stateVersion: number;
+  requestedIncrementalSyncGeneration: number;
+  claimedIncrementalSyncGeneration: number;
+  processedIncrementalSyncGeneration: number;
+  incrementalSyncClaimedAt: Date | null;
+  incrementalSyncLeaseExpiresAt: Date | null;
+  syncActionRequiredAt: Date | null;
+  requestedFullResyncGeneration: number;
+  preparedFullResyncGeneration: number;
+  processedFullResyncGeneration: number;
   maxRetries?: number;
   retriesExhausted: boolean;
+}
+
+function durableIntentSnapshot(state: WalletSyncDurableState): Pick<
+SyncLifecycleWebSocketSnapshot,
+| 'requestedIncrementalSyncGeneration'
+| 'claimedIncrementalSyncGeneration'
+| 'processedIncrementalSyncGeneration'
+| 'incrementalSyncClaimedAt'
+| 'incrementalSyncLeaseExpiresAt'
+| 'syncActionRequiredAt'
+| 'requestedFullResyncGeneration'
+| 'preparedFullResyncGeneration'
+| 'processedFullResyncGeneration'
+> {
+  const durable = state;
+  return {
+    requestedIncrementalSyncGeneration: durable.requestedIncrementalSyncGeneration,
+    claimedIncrementalSyncGeneration: durable.claimedIncrementalSyncGeneration,
+    processedIncrementalSyncGeneration: durable.processedIncrementalSyncGeneration,
+    incrementalSyncClaimedAt: durable.incrementalSyncClaimedAt,
+    incrementalSyncLeaseExpiresAt: durable.incrementalSyncLeaseExpiresAt,
+    syncActionRequiredAt: durable.syncActionRequiredAt,
+    requestedFullResyncGeneration: durable.requestedFullResyncGeneration,
+    preparedFullResyncGeneration: durable.preparedFullResyncGeneration,
+    processedFullResyncGeneration: durable.processedFullResyncGeneration,
+  };
 }
 
 export interface SyncLifecyclePublicationContext {
@@ -63,6 +99,8 @@ export interface SyncLifecyclePublisherDependencies {
 
 function compatibleStatus(transition: PersistedSyncTransition): string {
   switch (transition.transition) {
+    case 'requested':
+      return transition.state.lastSyncStatus ?? 'pending';
     case 'started':
       return 'syncing';
     case 'succeeded':
@@ -95,6 +133,7 @@ export function toSyncLifecycleWebSocketSnapshot(
     nextRetryAt: state.syncNextRetryAt,
     startedAt: state.syncStartedAt,
     stateVersion: state.syncStateVersion,
+    ...durableIntentSnapshot(state),
     ...(context.maxRetries !== undefined && { maxRetries: context.maxRetries }),
     retriesExhausted: transition.transition === 'failed',
   };

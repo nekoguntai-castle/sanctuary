@@ -11,6 +11,7 @@ interface WorkerHarnessHandle {
   electrumManager: any;
   healthServer: { close: ReturnType<typeof vi.fn> };
   registerWorkerJobs: ReturnType<typeof vi.fn>;
+  requestSyncIntent: ReturnType<typeof vi.fn>;
   walletSyncRecoveryRuntime: {
     start: ReturnType<typeof vi.fn>;
     stop: ReturnType<typeof vi.fn>;
@@ -83,6 +84,11 @@ export const createWorkerTestHarness = async (
   };
 
   const registerWorkerJobs = vi.fn();
+  const requestSyncIntent = vi.fn(async () => ({
+    status: 'requested' as const,
+    generation: 1,
+    wakeup: 'enqueued' as const,
+  }));
   const otelInit = createDeferred();
 
   vi.doMock('../../../src/utils/tracing/otel', () => ({
@@ -188,6 +194,10 @@ export const createWorkerTestHarness = async (
     createProductionWalletSyncRecoveryRuntime: vi.fn(() => walletSyncRecoveryRuntime),
   }));
 
+  vi.doMock('../../../src/services/sync/syncIntentAdmission', () => ({
+    syncIntentAdmission: { request: requestSyncIntent },
+  }));
+
   vi.doMock('../../../src/worker/workerJobQueue', () => ({
     WorkerJobQueue: class {
       constructor() {
@@ -216,7 +226,12 @@ export const createWorkerTestHarness = async (
 
   vi.doMock('../../../src/observability/metrics/registry', () => ({
     metricsService: { initialize: vi.fn() },
-    registry: { metrics: vi.fn(async () => ''), contentType: 'text/plain' },
+    registry: {
+      metrics: vi.fn(async () => ''),
+      contentType: 'text/plain',
+      registerMetric: vi.fn(),
+      getSingleMetric: vi.fn(),
+    },
   }));
 
   vi.doMock('../../../src/observability/metrics/infrastructureMetrics', () => ({
@@ -275,6 +290,7 @@ export const createWorkerTestHarness = async (
     electrumManager: electrumManagerInstance,
     healthServer: healthServerHandle,
     registerWorkerJobs,
+    requestSyncIntent,
     walletSyncRecoveryRuntime,
     electrumOptions,
     exitSpy,

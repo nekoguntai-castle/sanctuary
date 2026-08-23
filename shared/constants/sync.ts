@@ -14,6 +14,7 @@ export type SyncExecutionOwner = (typeof SYNC_EXECUTION_OWNER_VALUES)[number];
 
 /** Persisted lifecycle transitions that may be published to sync observers. */
 export const SYNC_LIFECYCLE_TRANSITION_VALUES = [
+  'requested',
   'started',
   'succeeded',
   'retrying',

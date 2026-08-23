@@ -217,6 +217,15 @@ export interface WalletSyncStatus {
   nextRetryAt: string | null;
   startedAt: string | null;
   stateVersion: number;
+  requestedIncrementalSyncGeneration: number;
+  claimedIncrementalSyncGeneration: number;
+  processedIncrementalSyncGeneration: number;
+  incrementalSyncClaimedAt: string | null;
+  incrementalSyncLeaseExpiresAt: string | null;
+  syncActionRequiredAt: string | null;
+  requestedFullResyncGeneration: number;
+  preparedFullResyncGeneration: number;
+  processedFullResyncGeneration: number;
 }
 
 // =============================================================================

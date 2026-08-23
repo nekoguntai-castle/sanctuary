@@ -89,6 +89,8 @@
     { "file": "server/src/services/bitcoin/utils/balanceCalculation.ts", "enclosingFunction": "prepareMisclassifiedConsolidations", "repository": "addressRepository", "method": "findAddressStrings", "kind": "read", "count": 1 },
     { "file": "server/src/services/bitcoin/utils/balanceCalculation.ts", "enclosingFunction": "prepareMisclassifiedConsolidations", "repository": "transactionRepository", "method": "findSentWithOutputs", "kind": "read", "count": 1 },
     { "file": "server/src/services/bitcoin/utils/balanceCalculation.ts", "enclosingFunction": "persistMisclassifiedConsolidations", "repository": "balanceCorrectionRepository", "method": "correctTransactionToConsolidation", "kind": "mutation", "mutationUnits": ["consolidation_repair"], "transactionClientArgument": 3, "count": 1 },
-    { "file": "server/src/services/bitcoin/utils/balanceCalculation.ts", "enclosingFunction": "recalculateWalletBalances", "repository": "transactionRepository", "method": "recalculateBalancesAtomically", "kind": "mutation", "mutationUnits": ["balance_recalculation"], "transactionClientArgument": 1, "count": 1 }
+    { "file": "server/src/services/bitcoin/utils/balanceCalculation.ts", "enclosingFunction": "recalculateWalletBalances", "repository": "transactionRepository", "method": "recalculateBalancesAtomically", "kind": "mutation", "mutationUnits": ["balance_recalculation"], "transactionClientArgument": 1, "count": 1 },
+    { "file": "server/src/worker/jobs/canonicalIncrementalSync.ts", "enclosingFunction": "completeCanonicalSync", "repository": "resyncRepository", "method": "completeFencedWalletFullResync", "kind": "fenced_lifecycle", "fenceArgument": 2, "count": 1 },
+    { "file": "server/src/worker/jobs/canonicalIncrementalSync.ts", "enclosingFunction": "executeCanonicalIncrementalSync", "repository": "resyncRepository", "method": "resetWalletForFullResync", "kind": "fenced_lifecycle", "fenceArgument": 2, "count": 1 }
   ]
 }

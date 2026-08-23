@@ -5,8 +5,10 @@ import {
   app,
   mockAdvancedTx,
   mockBlockchain,
+  mockEnqueueWalletSyncBatch,
   mockMempool,
   mockNodeClient,
+  mockSyncIntentAdmission,
   mockUtils,
   request,
 } from './bitcoinTestHarness';
@@ -159,24 +161,24 @@ export const registerBitcoinAddressRouteTests = () => {
     });
 
     describe('POST /bitcoin/address/:addressId/sync', () => {
-      it('should sync address when user has access', async () => {
+      it('should request its wallet sync when user has address access', async () => {
         mockPrismaClient.address.findFirst.mockResolvedValue({
           id: 'addr-1',
           address: 'bc1qtest',
           walletId: 'wallet-1',
         });
-        mockBlockchain.syncAddress.mockResolvedValue({
-          transactionsFound: 5,
-          newBalance: 100000,
-        });
-
         const response = await request(app).post('/bitcoin/address/addr-1/sync');
 
         expect(response.status).toBe(200);
         expect(response.body).toMatchObject({
-          message: 'Address synced successfully',
-          transactionsFound: 5,
+          success: true,
+          status: 'requested',
+          generation: 7,
+          message: 'Wallet sync requested',
         });
+        expect(mockSyncIntentAdmission.request).toHaveBeenCalledWith('wallet-1', { mode: 'explicit_reopen' });
+        expect(mockBlockchain.syncAddress).not.toHaveBeenCalled();
+        expect(mockEnqueueWalletSyncBatch).not.toHaveBeenCalled();
       });
 
       it('should return 404 when address not found', async () => {
@@ -187,13 +189,15 @@ export const registerBitcoinAddressRouteTests = () => {
         expect(response.status).toBe(404);
       });
 
-      it('should return 500 on sync error', async () => {
-        mockPrismaClient.address.findFirst.mockResolvedValue({ id: 'addr-1' });
-        mockBlockchain.syncAddress.mockRejectedValue(new Error('Sync failed'));
+      it('should return 503 when wallet sync admission is exhausted', async () => {
+        mockPrismaClient.address.findFirst.mockResolvedValue({ id: 'addr-1', walletId: 'wallet-1' });
+        mockSyncIntentAdmission.request.mockResolvedValue({ status: 'generation_exhausted' });
 
         const response = await request(app).post('/bitcoin/address/addr-1/sync');
 
-        expect(response.status).toBe(500);
+        expect(response.status).toBe(503);
+        expect(response.body.message).toBe('Wallet sync generation limit reached');
+        expect(mockBlockchain.syncAddress).not.toHaveBeenCalled();
       });
     });
 

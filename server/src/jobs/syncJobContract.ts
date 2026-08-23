@@ -12,8 +12,8 @@ import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from '../constants/walletSyncActivat
 
 /**
  * Current Redis wire version. Bump only for an incompatible payload change;
- * consumers must reject unknown versions while continuing to accept the
- * unversioned legacy v1 shape until retained jobs have drained.
+ * consumers must reject unknown versions while continuing to parse the
+ * unversioned legacy v1 shape so retained work can be bridged to durable intent.
  */
 export const SYNC_JOB_CONTRACT_VERSION = 1 as const;
 export const SYNC_WALLET_JOB_READER_VERSION = 2 as const;
@@ -53,8 +53,7 @@ export interface SyncWalletJobDataV1 extends SyncWalletJobFields {
 }
 
 /**
- * Generation-aware consumer shape. Production producers remain on v1 until the
- * compatible consumer release has fully deployed.
+ * Generation-aware compatibility shape retained for rolling-upgrade reads.
  */
 interface SyncWalletJobDataV2Base {
   version: typeof SYNC_WALLET_JOB_READER_VERSION;
@@ -75,17 +74,23 @@ export type SyncWalletJobDataV2 = SyncWalletJobDataV2Base & (
  * Canonical wake-up emitted only after the mutation-fence rollout floor is
  * active. A pre-floor v2 reader rejects this version before acquiring a lock.
  */
-export interface SyncWalletJobDataV3 extends Omit<
-  SyncWalletJobFields,
-  'fullResync' | 'fullResyncGeneration'
-> {
+interface SyncWalletJobDataV3Base {
   version: typeof SYNC_WALLET_MUTATION_FENCE_JOB_VERSION;
   incrementalSyncGeneration: number;
   requiredMutationFenceFloor: typeof WALLET_SYNC_MUTATION_FENCE_FLOOR;
   lockContention?: SyncWalletLockContention;
-  fullResync?: never;
-  fullResyncGeneration?: never;
 }
+
+export type SyncWalletJobDataV3 = SyncWalletJobDataV3Base & (
+  | (Omit<SyncWalletJobFields, 'fullResync' | 'fullResyncGeneration'> & {
+      fullResync?: never;
+      fullResyncGeneration?: never;
+    })
+  | (SyncWalletJobFields & {
+      fullResync: true;
+      fullResyncGeneration: number;
+    })
+);
 
 export type SyncWalletJobData =
   | SyncWalletJobDataV1
@@ -141,20 +146,7 @@ export interface UpdateConfirmationsResult extends VersionedSyncJobContract {
   notified: number;
 }
 
-export interface FullResyncRequeueResult {
-  acceptedWalletIds: string[];
-  deduplicatedWalletIds: string[];
-  indeterminateWallets: Array<{ walletId: string }>;
-}
-
 /** Producer port injected into worker job definitions at the process boundary. */
-export interface SyncJobDependencies {
-  enqueueFullResyncBatch: (
-    walletIds: string[],
-    options: { reason: string; staggerDelayMs?: number },
-  ) => Promise<FullResyncRequeueResult>;
-}
-
 export const SYNC_WALLET_JOB_OPTIONS: JobsOptions = {
   attempts: 3,
   backoff: { type: 'exponential', delay: 5000 },
@@ -261,9 +253,7 @@ const hasValidFullResyncFields = (value: UnknownRecord): boolean => {
 
 const hasValidIncrementalGeneration = (value: UnknownRecord): boolean => {
   if (value.incrementalSyncGeneration === undefined) return true;
-  return isIncrementalSyncGeneration(value.incrementalSyncGeneration)
-    && value.fullResync === undefined
-    && value.fullResyncGeneration === undefined;
+  return isIncrementalSyncGeneration(value.incrementalSyncGeneration);
 };
 
 const buildSyncWalletJobFields = (value: UnknownRecord): ReadSyncWalletJobFields => {
@@ -297,12 +287,9 @@ function buildVersionedSyncWalletJob(
   lockContention: SyncWalletLockContention | undefined,
 ): SyncWalletJobDataV2 | SyncWalletJobDataV3 | null {
   if (version === SYNC_WALLET_MUTATION_FENCE_JOB_VERSION) {
-    if (
-      fields.incrementalSyncGeneration === undefined
-      || fields.fullResync !== undefined
-      || fields.fullResyncGeneration !== undefined
-    ) return null;
-    return {
+    if (fields.incrementalSyncGeneration === undefined) return null;
+    if (fields.fullResync !== undefined && fields.fullResync !== true) return null;
+    const commonV3 = {
       version,
       ...(lockContention === undefined ? {} : { lockContention }),
       walletId: fields.walletId,
@@ -311,7 +298,17 @@ function buildVersionedSyncWalletJob(
       incrementalSyncGeneration: fields.incrementalSyncGeneration,
       requiredMutationFenceFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
     };
+    if (fields.fullResync === true) {
+      return {
+        ...commonV3,
+        fullResync: true,
+        fullResyncGeneration: fields.fullResyncGeneration!,
+      };
+    }
+    return commonV3;
   }
+  if (fields.incrementalSyncGeneration !== undefined && fields.fullResync === true) return null;
+  if (fields.incrementalSyncGeneration !== undefined && fields.fullResync !== undefined) return null;
   const commonV2 = {
     version,
     ...(lockContention === undefined ? {} : { lockContention }),
@@ -405,10 +402,13 @@ function hasValidLockIncrementalGeneration(
     return false;
   }
   if (generation === undefined) return true;
-  return version !== SYNC_JOB_CONTRACT_VERSION
-    && isIncrementalSyncGeneration(generation)
-    && record.fullResync === undefined
-    && record.fullResyncGeneration === undefined;
+  if (version === SYNC_JOB_CONTRACT_VERSION || !isIncrementalSyncGeneration(generation)) {
+    return false;
+  }
+  if (version === SYNC_WALLET_MUTATION_FENCE_JOB_VERSION && record.fullResync === true) {
+    return isFullResyncGeneration(record.fullResyncGeneration);
+  }
+  return record.fullResync === undefined && record.fullResyncGeneration === undefined;
 }
 
 /**

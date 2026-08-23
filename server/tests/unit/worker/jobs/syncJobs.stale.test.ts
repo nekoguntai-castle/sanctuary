@@ -12,14 +12,17 @@ const staleJobPrismaMocks = vi.hoisted(() => ({
   walletFindMany: vi.fn<() => Promise<unknown[]>>(),
   walletUpdate: vi.fn<(args?: unknown) => Promise<unknown>>(),
   publishLifecycle: vi.fn<(...args: unknown[]) => Promise<void>>(),
+  resetIntent: vi.fn(),
 }));
 
 vi.mock('../../../../src/services/sync/syncLifecyclePublisher', () => ({
   syncLifecyclePublisher: { publish: staleJobPrismaMocks.publishLifecycle },
 }));
+vi.mock('../../../../src/services/sync/syncIntentAdmission', () => ({
+  syncIntentAdmission: { reset: staleJobPrismaMocks.resetIntent },
+}));
 
 const mockIsLocked = vi.hoisted(() => vi.fn<(key: string) => Promise<boolean>>());
-const mockEnqueueFullResync = vi.hoisted(() => vi.fn());
 const mockReadStaleWalletSchedulePolicy = vi.hoisted(() => vi.fn());
 
 vi.mock('../../../../src/repositories/walletSyncSchedulePolicyRepository', () => ({
@@ -29,6 +32,11 @@ vi.mock('../../../../src/repositories/walletSyncSchedulePolicyRepository', () =>
 vi.mock('../../../../src/infrastructure/distributedLock', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   isLocked: mockIsLocked,
+  withLock: vi.fn(async (key: string, _ttl: number, callback: () => Promise<unknown>) => (
+    await mockIsLocked(key)
+      ? { success: false }
+      : { success: true, result: await callback() }
+  )),
 }));
 
 vi.mock('../../../../src/models/prisma', () => ({
@@ -68,9 +76,7 @@ vi.mock('../../../../src/services/bitcoin/sync/confirmations', () => ({
 import prisma from '../../../../src/models/prisma';
 import { createCheckStaleWalletsJob } from '../../../../src/worker/jobs/syncJobs';
 
-const checkStaleWalletsJob = createCheckStaleWalletsJob({
-  enqueueFullResyncBatch: mockEnqueueFullResync,
-});
+const checkStaleWalletsJob = createCheckStaleWalletsJob();
 
 describe('checkStaleWalletsJob', () => {
   beforeEach(() => {
@@ -90,12 +96,13 @@ describe('checkStaleWalletsJob', () => {
       ...args?.data,
       syncStateVersion: ++stateVersion,
     }));
+    staleJobPrismaMocks.resetIntent.mockImplementation(async (walletId: string) => (
+      staleJobPrismaMocks.walletUpdate({
+        where: { id: walletId },
+        data: { syncInProgress: false, syncExecutionOwner: null },
+      })
+    ));
     mockIsLocked.mockResolvedValue(false);
-    mockEnqueueFullResync.mockResolvedValue({
-      acceptedWalletIds: [],
-      deduplicatedWalletIds: [],
-      indeterminateWallets: [],
-    });
   });
 
   it('should have correct configuration', () => {
@@ -124,7 +131,6 @@ describe('checkStaleWalletsJob', () => {
       queued: 0,
     }));
     expect(staleJobPrismaMocks.walletFindMany).not.toHaveBeenCalled();
-    expect(mockEnqueueFullResync).not.toHaveBeenCalled();
   });
 
   it('rejects an unsupported live command version', async () => {
@@ -253,12 +259,16 @@ describe('checkStaleWalletsJob', () => {
       {
         id: 'wallet-stuck-1',
         name: 'Stuck Wallet 1',
+        syncExecutionOwner: 'worker',
         syncStartedAt: new Date('2026-04-08T05:07:00Z'),
+        syncStateVersion: 4,
       },
       {
         id: 'wallet-stuck-2',
         name: 'Stuck Wallet 2',
+        syncExecutionOwner: 'inline',
         syncStartedAt: new Date('2026-04-08T05:08:00Z'),
+        syncStateVersion: 9,
       },
     ];
 
@@ -274,6 +284,17 @@ describe('checkStaleWalletsJob', () => {
     } as unknown as Job;
 
     await checkStaleWalletsJob.handler(mockJob);
+
+    expect(staleJobPrismaMocks.resetIntent).toHaveBeenNthCalledWith(1, 'wallet-stuck-1', {
+      syncStateVersion: 4,
+      syncExecutionOwner: 'worker',
+      syncStartedAt: stuckWallets[0].syncStartedAt,
+    });
+    expect(staleJobPrismaMocks.resetIntent).toHaveBeenNthCalledWith(2, 'wallet-stuck-2', {
+      syncStateVersion: 9,
+      syncExecutionOwner: 'inline',
+      syncStartedAt: stuckWallets[1].syncStartedAt,
+    });
 
     expect(prisma.wallet.update).toHaveBeenCalledWith({
       where: { id: 'wallet-stuck-1' },
@@ -364,7 +385,13 @@ describe('checkStaleWalletsJob', () => {
             { syncStartedAt: null },
           ],
         },
-        select: { id: true, name: true, syncStartedAt: true },
+        select: {
+          id: true,
+          name: true,
+          syncExecutionOwner: true,
+          syncStartedAt: true,
+          syncStateVersion: true,
+        },
       }),
     );
   });

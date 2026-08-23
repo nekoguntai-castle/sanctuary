@@ -23,6 +23,15 @@ export interface WalletSyncSnapshotFields {
   syncStartedAt?: string | null;
   syncStateVersion?: number;
   lastSyncedAt?: string | null;
+  requestedIncrementalSyncGeneration?: number;
+  claimedIncrementalSyncGeneration?: number;
+  processedIncrementalSyncGeneration?: number;
+  incrementalSyncClaimedAt?: string | null;
+  incrementalSyncLeaseExpiresAt?: string | null;
+  syncActionRequiredAt?: string | null;
+  requestedFullResyncGeneration?: number;
+  preparedFullResyncGeneration?: number;
+  processedFullResyncGeneration?: number;
 }
 
 const syncSnapshotFields = (
@@ -38,6 +47,15 @@ const syncSnapshotFields = (
   syncStartedAt: wallet.syncStartedAt,
   syncStateVersion: wallet.syncStateVersion,
   lastSyncedAt: wallet.lastSyncedAt,
+  requestedIncrementalSyncGeneration: wallet.requestedIncrementalSyncGeneration,
+  claimedIncrementalSyncGeneration: wallet.claimedIncrementalSyncGeneration,
+  processedIncrementalSyncGeneration: wallet.processedIncrementalSyncGeneration,
+  incrementalSyncClaimedAt: wallet.incrementalSyncClaimedAt,
+  incrementalSyncLeaseExpiresAt: wallet.incrementalSyncLeaseExpiresAt,
+  syncActionRequiredAt: wallet.syncActionRequiredAt,
+  requestedFullResyncGeneration: wallet.requestedFullResyncGeneration,
+  preparedFullResyncGeneration: wallet.preparedFullResyncGeneration,
+  processedFullResyncGeneration: wallet.processedFullResyncGeneration,
 });
 
 function isValidStateVersion(value: number | undefined): value is number {
@@ -104,7 +122,7 @@ export function mergeWalletListHttpSyncState<
   return incoming.map(wallet => mergeWalletHttpSyncState(currentById.get(wallet.id), wallet));
 }
 
-const directSyncSnapshotPatch = (
+const coreSyncSnapshotPatch = (
   snapshot: SyncSnapshotEvent,
 ): WalletSyncSnapshotFields => {
   const patch: WalletSyncSnapshotFields = {};
@@ -118,6 +136,55 @@ const directSyncSnapshotPatch = (
   if (hasSnapshotValue(snapshot, 'stateVersion')) patch.syncStateVersion = snapshot.stateVersion;
   return patch;
 };
+
+const incrementalIntentSnapshotPatch = (
+  snapshot: SyncSnapshotEvent,
+): WalletSyncSnapshotFields => {
+  const patch: WalletSyncSnapshotFields = {};
+  if (hasSnapshotValue(snapshot, 'requestedIncrementalSyncGeneration')) {
+    patch.requestedIncrementalSyncGeneration = snapshot.requestedIncrementalSyncGeneration;
+  }
+  if (hasSnapshotValue(snapshot, 'claimedIncrementalSyncGeneration')) {
+    patch.claimedIncrementalSyncGeneration = snapshot.claimedIncrementalSyncGeneration;
+  }
+  if (hasSnapshotValue(snapshot, 'processedIncrementalSyncGeneration')) {
+    patch.processedIncrementalSyncGeneration = snapshot.processedIncrementalSyncGeneration;
+  }
+  if (hasSnapshotValue(snapshot, 'incrementalSyncClaimedAt')) {
+    patch.incrementalSyncClaimedAt = snapshot.incrementalSyncClaimedAt;
+  }
+  if (hasSnapshotValue(snapshot, 'incrementalSyncLeaseExpiresAt')) {
+    patch.incrementalSyncLeaseExpiresAt = snapshot.incrementalSyncLeaseExpiresAt;
+  }
+  if (hasSnapshotValue(snapshot, 'syncActionRequiredAt')) {
+    patch.syncActionRequiredAt = snapshot.syncActionRequiredAt;
+  }
+  return patch;
+};
+
+const fullResyncSnapshotPatch = (
+  snapshot: SyncSnapshotEvent,
+): WalletSyncSnapshotFields => {
+  const patch: WalletSyncSnapshotFields = {};
+  if (hasSnapshotValue(snapshot, 'requestedFullResyncGeneration')) {
+    patch.requestedFullResyncGeneration = snapshot.requestedFullResyncGeneration;
+  }
+  if (hasSnapshotValue(snapshot, 'preparedFullResyncGeneration')) {
+    patch.preparedFullResyncGeneration = snapshot.preparedFullResyncGeneration;
+  }
+  if (hasSnapshotValue(snapshot, 'processedFullResyncGeneration')) {
+    patch.processedFullResyncGeneration = snapshot.processedFullResyncGeneration;
+  }
+  return patch;
+};
+
+const directSyncSnapshotPatch = (
+  snapshot: SyncSnapshotEvent,
+): WalletSyncSnapshotFields => ({
+  ...coreSyncSnapshotPatch(snapshot),
+  ...incrementalIntentSnapshotPatch(snapshot),
+  ...fullResyncSnapshotPatch(snapshot),
+});
 
 const syncStatusPatch = (snapshot: SyncSnapshotEvent): WalletSyncSnapshotFields => {
   if (hasSnapshotValue(snapshot, 'syncStatus')) {

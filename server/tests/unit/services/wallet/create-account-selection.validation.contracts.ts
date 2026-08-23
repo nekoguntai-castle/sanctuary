@@ -212,6 +212,7 @@ export function registerWalletCreateAccountSelectionValidationTests({
           changeDescriptor: VALID_CHANGE_DESCRIPTOR,
           canonicalPolicyId: NATIVE_SEGWIT_POLICY_ID,
           canonicalPolicyVersion: 1,
+          requestedIncrementalSyncGeneration: 1,
         }),
         [expect.objectContaining({
           deviceAccountId: "device-1-account-0",

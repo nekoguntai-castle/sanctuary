@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
   inspect: vi.fn(),
   getRedisClient: vi.fn(),
   findFull: vi.fn(),
-  enqueueFull: vi.fn(),
+  wakeFull: vi.fn(),
   recover: vi.fn(),
   recoverExpired: vi.fn(),
   createCoordinator: vi.fn(),
@@ -30,6 +30,7 @@ vi.mock('../../../src/services/sync/syncIntentAdmission', () => ({
   syncIntentAdmission: {
     recover: mocks.recover,
     recoverExpired: mocks.recoverExpired,
+    wakeReservedFullResync: mocks.wakeFull,
   },
 }));
 vi.mock('../../../src/worker/syncIntentRecovery', () => ({
@@ -54,7 +55,7 @@ describe('production walletSyncRecoveryRuntime composition', () => {
     vi.clearAllMocks();
     mocks.activate.mockResolvedValue(ACTIVE);
     mocks.inspect.mockResolvedValue(ACTIVE);
-    mocks.enqueueFull.mockResolvedValue(true);
+    mocks.wakeFull.mockResolvedValue(true);
     mocks.recover.mockResolvedValue({ scanned: 0, enqueued: 0, unavailable: 0 });
     mocks.recoverExpired.mockResolvedValue({
       scanned: 0, enqueued: 0, locked: 0, unavailable: 0,
@@ -68,29 +69,28 @@ describe('production walletSyncRecoveryRuntime composition', () => {
 
   it('fails closed when the shared Redis authority is absent', () => {
     mocks.getRedisClient.mockReturnValue(null);
-    expect(() => createProductionWalletSyncRecoveryRuntime({
-      enqueueReservedFullResyncWakeup: mocks.enqueueFull,
-    }))
+    expect(() => createProductionWalletSyncRecoveryRuntime())
       .toThrow('Wallet-sync recovery requires Redis');
   });
 
   it('composes live-gated full, incremental, expired, startup, and shutdown boundaries', async () => {
-    const runtime = createProductionWalletSyncRecoveryRuntime({
-      enqueueReservedFullResyncWakeup: mocks.enqueueFull,
-    });
+    const runtime = createProductionWalletSyncRecoveryRuntime();
     const dependencies = mocks.createCoordinator.mock.calls[0]?.[0];
-    const fullWakeup = { walletId: 'wallet-1', generation: 7 };
+    const fullWakeup = {
+      walletId: 'wallet-1', generation: 7, incrementalGeneration: 4,
+      reason: 'reconcile-stranded-full-resync' as const,
+    };
     const incrementalOptions = { now: new Date('2026-08-22T12:00:00.000Z') };
 
     await expect(dependencies.authorize()).resolves.toBe(true);
     mocks.inspect.mockResolvedValueOnce(BLOCKED);
     await expect(dependencies.enqueueReservedFullResyncWakeup(fullWakeup))
       .resolves.toEqual({ status: 'blocked' });
-    expect(mocks.enqueueFull).not.toHaveBeenCalled();
+    expect(mocks.wakeFull).not.toHaveBeenCalled();
     await expect(dependencies.enqueueReservedFullResyncWakeup(fullWakeup))
       .resolves.toEqual({ status: 'enqueued' });
-    expect(mocks.enqueueFull).toHaveBeenCalledWith(fullWakeup);
-    mocks.enqueueFull.mockResolvedValueOnce(false);
+    expect(mocks.wakeFull).toHaveBeenCalledWith(fullWakeup);
+    mocks.wakeFull.mockResolvedValueOnce(false);
     await expect(dependencies.enqueueReservedFullResyncWakeup(fullWakeup))
       .resolves.toEqual({ status: 'unavailable' });
     await dependencies.findStrandedFullResyncWalletsPage('wallet-0');

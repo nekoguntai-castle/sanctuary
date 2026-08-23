@@ -21,6 +21,7 @@ const {
   mockAssertHardwareWalletCapability,
   mockAssertWalletHardwareCapability,
   mockAssertWalletHardwareCapabilityById,
+  mockWakeInitialWalletSync,
 } = vi.hoisted(() => {
   const createModelMock = () => ({
     findMany: vi.fn().mockResolvedValue([]),
@@ -95,6 +96,7 @@ const {
     mockAssertHardwareWalletCapability: vi.fn(),
     mockAssertWalletHardwareCapability: vi.fn(),
     mockAssertWalletHardwareCapabilityById: vi.fn(),
+    mockWakeInitialWalletSync: vi.fn().mockResolvedValue(undefined),
     mockCache: {
       get: vi.fn().mockResolvedValue(null),
       set: vi.fn().mockResolvedValue(undefined),
@@ -358,6 +360,11 @@ vi.mock('../../../../src/services/syncService', () => ({
   }),
 }));
 
+vi.mock('../../../../src/services/sync/initialSyncIntent', () => ({
+  INITIAL_SYNC_GENERATION: 1,
+  wakeInitialWalletSync: mockWakeInitialWalletSync,
+}));
+
 vi.mock('../../../../src/websocket/notifications', () => ({
   notificationService: {
     unsubscribeWalletAddresses: mockNotificationUnsubscribeWalletAddresses,
@@ -393,4 +400,5 @@ export {
   mockNotificationUnsubscribeWalletAddresses,
   mockPrismaClient,
   mockSyncUnsubscribeWalletAddresses,
+  mockWakeInitialWalletSync,
 };

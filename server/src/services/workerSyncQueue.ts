@@ -10,7 +10,10 @@ import {
   type SyncPriority,
 } from "@sanctuary/shared/constants/sync";
 import type { SyncWalletJobData } from "../jobs/syncJobContract";
-import { reserveFullResyncGeneration } from "../repositories/resyncRepository";
+import {
+  isFullResyncGenerationProcessed,
+  reserveFullResyncGeneration,
+} from "../repositories/resyncRepository";
 import { isFullResyncGeneration } from "../constants/fullResync";
 import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from "../constants/walletSyncActivation";
 import {
@@ -43,6 +46,7 @@ export interface IncrementalSyncWakeup {
 export interface ReservedFullResyncWakeup {
   walletId: string;
   generation: number;
+  incrementalGeneration: number;
   reason?: string;
 }
 
@@ -272,7 +276,7 @@ export async function enqueueIncrementalSyncWakeup(
       },
     );
     return job.id === wakeup.jobId
-      && isRepairSatisfiedState(await job.getState());
+      && isIncrementalWakeupAcceptedState(await job.getState());
   } catch (error) {
     log.error("Failed to enqueue incremental wallet sync wake-up", {
       walletId: wakeup.walletId,
@@ -292,12 +296,14 @@ export async function enqueueReservedFullResyncWakeup(
 ): Promise<boolean> {
   const reason = wakeup.reason ?? "reconcile-stranded-full-resync";
   const data = {
-    version: SYNC_JOB_CONTRACT_VERSION,
+    version: SYNC_WALLET_MUTATION_FENCE_JOB_VERSION,
     walletId: wakeup.walletId,
     priority: "high",
     reason,
     fullResync: true,
     fullResyncGeneration: wakeup.generation,
+    incrementalSyncGeneration: wakeup.incrementalGeneration,
+    requiredMutationFenceFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
   } as const;
   if (
     wakeup.walletId.trim().length === 0
@@ -322,6 +328,7 @@ export async function enqueueReservedFullResyncWakeup(
     queue,
     wakeup.walletId,
     wakeup.generation,
+    wakeup.incrementalGeneration,
     candidateJobId,
   );
   if (existing === "live") return true;
@@ -340,6 +347,7 @@ export async function enqueueReservedFullResyncWakeup(
       queue,
       wakeup.walletId,
       wakeup.generation,
+      wakeup.incrementalGeneration,
       job.id,
       deduplicationId,
     );
@@ -347,12 +355,14 @@ export async function enqueueReservedFullResyncWakeup(
     log.error("Failed to enqueue reserved full resync", {
       walletId: wakeup.walletId,
       generation: wakeup.generation,
+      incrementalGeneration: wakeup.incrementalGeneration,
       error: getErrorMessage(error),
     });
     return reconcileReservedFullResyncWakeup(
       queue,
       wakeup.walletId,
       wakeup.generation,
+      wakeup.incrementalGeneration,
       candidateJobId,
       deduplicationId,
     );
@@ -400,7 +410,7 @@ const FULL_RESYNC_PRESTART_STATES = new Set([
 ]);
 const FULL_RESYNC_LIVE_STATES = new Set([...FULL_RESYNC_PRESTART_STATES, "active"]);
 
-function isRepairSatisfiedState(state: string): boolean {
+function isIncrementalWakeupAcceptedState(state: string): boolean {
   return FULL_RESYNC_LIVE_STATES.has(state) || state === "completed";
 }
 
@@ -434,6 +444,7 @@ async function prepareReservedFullResyncCandidate(
   queue: Queue<SyncWalletJobData>,
   walletId: string,
   generation: number,
+  incrementalGeneration: number,
   candidateJobId: string,
 ): Promise<"live" | "ready" | "unavailable"> {
   try {
@@ -446,8 +457,16 @@ async function prepareReservedFullResyncCandidate(
       || data.fullResyncGeneration !== generation
     ) return "unavailable";
     const state = await existing.getState();
-    if (isRepairSatisfiedState(state)) return "live";
-    if (state !== "failed") return "unavailable";
+    if (FULL_RESYNC_LIVE_STATES.has(state)) {
+      return data.incrementalSyncGeneration === incrementalGeneration
+        ? "live"
+        : "unavailable";
+    }
+    if (state === "completed") {
+      if (await isFullResyncGenerationProcessed(walletId, generation)) return "live";
+    } else if (state !== "failed") {
+      return "unavailable";
+    }
     await existing.remove();
     return "ready";
   } catch {
@@ -485,6 +504,7 @@ async function retainedFullResyncWakeupExists(
   queue: Queue<SyncWalletJobData>,
   walletId: string,
   generation: number,
+  incrementalGeneration: number,
   retainedJobId: string,
   deduplicationId: string,
 ): Promise<boolean> {
@@ -499,6 +519,7 @@ async function retainedFullResyncWakeupExists(
       data?.walletId !== walletId
       || data.fullResync !== true
       || data.fullResyncGeneration !== generation
+      || data.incrementalSyncGeneration !== incrementalGeneration
     ) return false;
     return FULL_RESYNC_LIVE_STATES.has(await retainedJob.getState());
   } catch {
@@ -510,6 +531,7 @@ async function reconcileReservedFullResyncWakeup(
   queue: Queue<SyncWalletJobData>,
   walletId: string,
   generation: number,
+  incrementalGeneration: number,
   candidateJobId: string,
   deduplicationId: string,
 ): Promise<boolean> {
@@ -520,6 +542,7 @@ async function reconcileReservedFullResyncWakeup(
       return data?.walletId === walletId
         && data.fullResync === true
         && data.fullResyncGeneration === generation
+        && data.incrementalSyncGeneration === incrementalGeneration
         && FULL_RESYNC_LIVE_STATES.has(await candidate.getState());
     }
     const retainedJobId = await queue.getDeduplicationJobId(deduplicationId);
@@ -528,6 +551,7 @@ async function reconcileReservedFullResyncWakeup(
       queue,
       walletId,
       generation,
+      incrementalGeneration,
       retainedJobId,
       deduplicationId,
     );

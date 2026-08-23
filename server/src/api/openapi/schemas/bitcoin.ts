@@ -323,12 +323,7 @@ export const bitcoinSchemas = {
     required: ["address", "balance", "transactionCount", "type"],
   },
   AddressSyncResponse: {
-    type: "object",
-    properties: {
-      message: { type: "string" },
-    },
-    required: ["message"],
-    additionalProperties: true,
+    $ref: "#/components/schemas/WalletSyncAdmissionResponse",
   },
   AddressLookupRequest: {
     type: "object",

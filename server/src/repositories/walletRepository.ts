@@ -12,6 +12,8 @@ import type {
   NetworkType,
   WalletWithAddresses,
   WalletSyncState,
+  WalletSyncDurableState,
+  IncrementalSyncLifecycleState,
   WalletSyncStatePatch,
   CursorPaginationOptions,
   CursorPaginatedResult,
@@ -29,6 +31,15 @@ const walletSyncStateSelect = {
   syncNextRetryAt: true,
   syncStartedAt: true,
   syncStateVersion: true,
+  requestedIncrementalSyncGeneration: true,
+  claimedIncrementalSyncGeneration: true,
+  processedIncrementalSyncGeneration: true,
+  incrementalSyncClaimedAt: true,
+  incrementalSyncLeaseExpiresAt: true,
+  syncActionRequiredAt: true,
+  requestedFullResyncGeneration: true,
+  preparedFullResyncGeneration: true,
+  processedFullResyncGeneration: true,
 } satisfies Prisma.WalletSelect;
 
 /**
@@ -130,7 +141,17 @@ export async function findByNetwork(
 export async function findByNetworkWithSyncStatus(
   userId: string,
   network: NetworkType
-): Promise<Array<{ id: string; syncInProgress: boolean; lastSyncStatus: string | null; lastSyncedAt: Date | null }>> {
+): Promise<Array<{
+  id: string;
+  syncInProgress: boolean;
+  lastSyncStatus: string | null;
+  lastSyncedAt: Date | null;
+  requestedIncrementalSyncGeneration: number;
+  processedIncrementalSyncGeneration: number;
+  requestedFullResyncGeneration: number;
+  processedFullResyncGeneration: number;
+  syncActionRequiredAt: Date | null;
+}>> {
   return prisma.wallet.findMany({
     where: {
       network,
@@ -141,6 +162,11 @@ export async function findByNetworkWithSyncStatus(
       syncInProgress: true,
       lastSyncStatus: true,
       lastSyncedAt: true,
+      requestedIncrementalSyncGeneration: true,
+      processedIncrementalSyncGeneration: true,
+      requestedFullResyncGeneration: true,
+      processedFullResyncGeneration: true,
+      syncActionRequiredAt: true,
     },
   });
 }
@@ -168,14 +194,14 @@ export async function getIdsByNetwork(
 export async function updateSyncState(
   walletId: string,
   state: WalletSyncStatePatch
-): Promise<WalletSyncState> {
+): Promise<IncrementalSyncLifecycleState> {
   return prisma.wallet.update({
     where: { id: walletId },
     data: {
       ...state,
       syncStateVersion: { increment: 1 },
     },
-  }) as Promise<WalletSyncState>;
+  }) as Promise<IncrementalSyncLifecycleState>;
 }
 
 /** Atomically persist a worker sync's success metadata and lifecycle state. */
@@ -183,7 +209,7 @@ export async function completeSyncSuccess(
   walletId: string,
   lastSyncedAt: Date,
   lastSyncedBlockHeight: number,
-): Promise<WalletSyncState> {
+): Promise<IncrementalSyncLifecycleState> {
   return prisma.wallet.update({
     where: { id: walletId },
     data: {
@@ -199,15 +225,15 @@ export async function completeSyncSuccess(
       syncStartedAt: null,
       syncStateVersion: { increment: 1 },
     },
-  }) as Promise<WalletSyncState>;
+  }) as Promise<IncrementalSyncLifecycleState>;
 }
 
 /** Read the authoritative persisted sync lifecycle state. */
-export async function findSyncState(walletId: string): Promise<WalletSyncState | null> {
+export async function findSyncState(walletId: string): Promise<WalletSyncDurableState | null> {
   return prisma.wallet.findUnique({
     where: { id: walletId },
     select: walletSyncStateSelect,
-  }) as Promise<WalletSyncState | null>;
+  }) as Promise<WalletSyncDurableState | null>;
 }
 
 /**
@@ -492,7 +518,7 @@ export async function clearSyncStateIfUnchanged(candidate: {
   syncExecutionOwner: string | null;
   syncStartedAt: Date | null;
   syncStateVersion: number;
-}): Promise<WalletSyncState | null> {
+}): Promise<WalletSyncDurableState | null> {
   return prisma.$transaction(async (tx) => {
     const result = await tx.wallet.updateMany({
       where: {
@@ -518,7 +544,7 @@ export async function clearSyncStateIfUnchanged(candidate: {
     return tx.wallet.findUnique({
       where: { id: candidate.id },
       select: walletSyncStateSelect,
-    }) as Promise<WalletSyncState | null>;
+    }) as Promise<WalletSyncDurableState | null>;
   });
 }
 
@@ -579,7 +605,13 @@ export async function findStale(options: {
  */
 export async function findStuckWithCutoff(
   cutoff: Date
-): Promise<Array<{ id: string; name: string; syncStartedAt: Date | null }>> {
+): Promise<Array<{
+  id: string;
+  name: string;
+  syncExecutionOwner: string | null;
+  syncStartedAt: Date | null;
+  syncStateVersion: number;
+}>> {
   return prisma.wallet.findMany({
     where: {
       syncInProgress: true,
@@ -588,7 +620,13 @@ export async function findStuckWithCutoff(
         { syncStartedAt: null },
       ],
     },
-    select: { id: true, name: true, syncStartedAt: true },
+    select: {
+      id: true,
+      name: true,
+      syncExecutionOwner: true,
+      syncStartedAt: true,
+      syncStateVersion: true,
+    },
   });
 }
 

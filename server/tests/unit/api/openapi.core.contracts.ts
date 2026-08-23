@@ -464,8 +464,11 @@ export function registerOpenApiCoreTests() {
       minItems: 1,
     });
     expect(
-      openApiSpec.components.schemas.BitcoinLegacyWalletSyncResponse.required,
-    ).toEqual(["message"]);
+      openApiSpec.components.schemas.BitcoinLegacyWalletSyncResponse.$ref,
+    ).toBe("#/components/schemas/WalletSyncAdmissionResponse");
+    expect(openApiSpec.components.schemas.AddressSyncResponse.$ref).toBe(
+      "#/components/schemas/WalletSyncAdmissionResponse",
+    );
     expect(
       openApiSpec.components.schemas.BitcoinUpdateConfirmationsResponse
         .required,
@@ -542,15 +545,45 @@ export function registerOpenApiCoreTests() {
     expect(
       openApiSpec.components.schemas.SyncPriorityRequest.additionalProperties,
     ).toBe(false);
-    expect(openApiSpec.components.schemas.SyncResult.required).toEqual([
-      "success",
-      "syncedAddresses",
-      "newTransactions",
-      "newUtxos",
-    ]);
     expect(
-      openApiSpec.components.schemas.SyncResult.properties,
-    ).not.toHaveProperty("walletId");
+      openApiSpec.components.schemas.WalletSyncAdmissionResponse.required,
+    ).toEqual(["success", "status", "generation", "wakeup", "message"]);
+    expect(
+      openApiSpec.components.schemas.WalletSyncAdmissionResponse.properties.status,
+    ).toEqual({ type: "string", enum: ["requested", "merged"] });
+    expect(
+      openApiSpec.components.schemas.WalletSyncWakeupDisposition.enum,
+    ).toEqual([
+      "deferred_action_required",
+      "deferred_full_resync",
+      "deferred_retry",
+      "enqueued",
+      "unavailable",
+    ]);
+    expect(openApiSpec.components.schemas.SyncResult.$ref).toBe(
+      "#/components/schemas/WalletSyncAdmissionResponse",
+    );
+    expect(
+      openApiSpec.paths["/sync/wallet/{walletId}"].post.responses[200].content[
+        "application/json"
+      ].schema,
+    ).toEqual({ $ref: "#/components/schemas/SyncResult" });
+    expect(
+      openApiSpec.paths["/bitcoin/wallet/{walletId}/sync"].post.responses[200]
+        .content["application/json"].schema,
+    ).toEqual({ $ref: "#/components/schemas/BitcoinLegacyWalletSyncResponse" });
+    expect(
+      openApiSpec.paths["/bitcoin/address/{addressId}/sync"].post.responses[200]
+        .content["application/json"].schema,
+    ).toEqual({ $ref: "#/components/schemas/AddressSyncResponse" });
+    for (const path of [
+      "/sync/wallet/{walletId}",
+      "/sync/queue/{walletId}",
+      "/bitcoin/wallet/{walletId}/sync",
+      "/bitcoin/address/{addressId}/sync",
+    ] as const) {
+      expect(openApiSpec.paths[path].post.responses).toHaveProperty("503");
+    }
     expect(
       openApiSpec.paths["/sync/queue/{walletId}"].post.requestBody,
     ).toMatchObject({
@@ -563,9 +596,25 @@ export function registerOpenApiCoreTests() {
     ).toEqual({
       $ref: "#/components/schemas/SyncPriorityRequest",
     });
+    expect(openApiSpec.components.schemas.QueuedWalletSyncResponse.$ref).toBe(
+      "#/components/schemas/WalletSyncAdmissionResponse",
+    );
     expect(
-      openApiSpec.components.schemas.QueuedWalletSyncResponse.required,
-    ).toEqual(["queued", "queuePosition", "syncInProgress"]);
+      openApiSpec.paths["/sync/user"].post.responses[200].content[
+        "application/json"
+      ].schema,
+    ).toEqual({ $ref: "#/components/schemas/WalletSyncBatchResponse" });
+    expect(openApiSpec.components.schemas.WalletSyncBatchResponse.required).toEqual([
+      "success",
+      "requested",
+      "merged",
+      "rejected",
+      "indeterminate",
+      "outcomes",
+    ]);
+    expect(
+      openApiSpec.components.schemas.WalletSyncBatchResponse.properties.outcomes.items,
+    ).toEqual({ $ref: "#/components/schemas/WalletSyncBatchOutcome" });
     expect(openApiSpec.components.schemas.WalletSyncStatus.required).toEqual([
       "lastSyncedAt",
       "syncStatus",
@@ -577,6 +626,15 @@ export function registerOpenApiCoreTests() {
       "nextRetryAt",
       "startedAt",
       "stateVersion",
+      "requestedIncrementalSyncGeneration",
+      "claimedIncrementalSyncGeneration",
+      "processedIncrementalSyncGeneration",
+      "incrementalSyncClaimedAt",
+      "incrementalSyncLeaseExpiresAt",
+      "syncActionRequiredAt",
+      "requestedFullResyncGeneration",
+      "preparedFullResyncGeneration",
+      "processedFullResyncGeneration",
     ]);
     expect(openApiSpec.components.schemas.WalletSyncStatus.properties).toMatchObject({
       executionOwner: {
@@ -587,16 +645,25 @@ export function registerOpenApiCoreTests() {
       nextRetryAt: { format: "date-time", nullable: true },
       startedAt: { format: "date-time", nullable: true },
       stateVersion: { minimum: 0 },
+      requestedIncrementalSyncGeneration: { minimum: 0 },
+      claimedIncrementalSyncGeneration: { minimum: 0 },
+      processedIncrementalSyncGeneration: { minimum: 0 },
+      incrementalSyncClaimedAt: { format: "date-time", nullable: true },
+      incrementalSyncLeaseExpiresAt: { format: "date-time", nullable: true },
+      syncActionRequiredAt: { format: "date-time", nullable: true },
+      requestedFullResyncGeneration: { minimum: 0 },
+      preparedFullResyncGeneration: { minimum: 0 },
+      processedFullResyncGeneration: { minimum: 0 },
     });
-    expect(
-      openApiSpec.components.schemas.QueuedWalletSyncResponse.properties,
-    ).not.toHaveProperty("executionOwner");
     expect(
       openApiSpec.components.schemas.WalletSyncLogsResponse.required,
     ).toEqual(["logs"]);
     expect(
       openApiSpec.components.schemas.ResyncWalletResponse.required,
-    ).toEqual(["success", "message", "status", "walletId"]);
+    ).toEqual([
+      "success", "message", "status", "walletId",
+      "generation", "incrementalGeneration", "wakeup",
+    ]);
     expect(
       openApiSpec.paths["/sync/resync/{walletId}"].post.responses[503].content[
         "application/json"
@@ -623,16 +690,35 @@ export function registerOpenApiCoreTests() {
       openApiSpec.paths["/sync/resync/{walletId}"].post.description,
     ).toContain("after exclusive sync ownership");
     expect(openApiSpec.components.schemas.NetworkSyncResponse.required).toEqual(
-      ["success", "queued", "walletIds"],
+      [
+        "success",
+        "requested",
+        "merged",
+        "rejected",
+        "indeterminate",
+        "walletIds",
+        "outcomes",
+      ],
     );
+    expect(
+      openApiSpec.components.schemas.NetworkSyncResponse.properties.outcomes.items,
+    ).toEqual({ $ref: "#/components/schemas/WalletSyncBatchOutcome" });
     expect(
       openApiSpec.components.schemas.NetworkResyncResponse.allOf,
     ).toContainEqual({
-      $ref: "#/components/schemas/NetworkSyncResponse",
+      $ref: "#/components/schemas/NetworkResyncBaseResponse",
     });
+    expect(openApiSpec.components.schemas.NetworkResyncBaseResponse.required).toEqual([
+      "success",
+      "queued",
+      "walletIds",
+    ]);
     expect(
       openApiSpec.components.schemas.NetworkResyncResponse.allOf[1].required,
     ).toContain("indeterminateWallets");
+    expect(
+      openApiSpec.components.schemas.NetworkResyncResponse.allOf[1].required,
+    ).toContain("deferredWalletIds");
     expect(
       openApiSpec.components.schemas.NetworkSyncStatusResponse.properties
         .network.enum,

@@ -61,7 +61,9 @@ export const SUPPORT_PACKAGE_AUTHORITIES = [
   'worker_delivery_aggregates',
   'worker_delivery',
   'wallet_sync_state',
+  'wallet_incremental_sync_intent',
   'wallet_full_resync_intent',
+  'wallet_sync_lease_row',
   'wallet_sync_execution',
 ] as const;
 export type SupportPackageAuthority = typeof SUPPORT_PACKAGE_AUTHORITIES[number];

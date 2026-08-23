@@ -525,6 +525,15 @@ export interface Wallet {
   syncNextRetryAt?: string | null;
   syncStartedAt?: string | null;
   syncStateVersion?: number;
+  requestedIncrementalSyncGeneration?: number;
+  claimedIncrementalSyncGeneration?: number;
+  processedIncrementalSyncGeneration?: number;
+  incrementalSyncClaimedAt?: string | null;
+  incrementalSyncLeaseExpiresAt?: string | null;
+  syncActionRequiredAt?: string | null;
+  requestedFullResyncGeneration?: number;
+  preparedFullResyncGeneration?: number;
+  processedFullResyncGeneration?: number;
   isShared?: boolean;
   sharedWith?: {
     groupName?: string | null;
@@ -628,13 +637,18 @@ export interface WebSocketConfirmationData {
 
 export type WebSocketSyncData = Omit<
   SyncEvent["data"],
-  "inProgress" | "lastSyncedAt" | "nextRetryAt" | "startedAt" | "timestamp"
+  "inProgress" | "lastSyncedAt" | "nextRetryAt" | "startedAt"
+    | "incrementalSyncClaimedAt" | "incrementalSyncLeaseExpiresAt"
+    | "syncActionRequiredAt" | "timestamp"
 > & {
   inProgress?: boolean;
   lastSyncedAt?: string | null;
   lastSyncedBlockHeight?: number | null;
   nextRetryAt?: string | null;
   startedAt?: string | null;
+  incrementalSyncClaimedAt?: string | null;
+  incrementalSyncLeaseExpiresAt?: string | null;
+  syncActionRequiredAt?: string | null;
   walletId?: string;
 };
 

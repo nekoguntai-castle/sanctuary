@@ -25,10 +25,64 @@ const REJECTION_REASONS: Record<string, string> = {
   queue_error: 'queue error',
 };
 
-const createSyncSuccessResult = (queued: number): NetworkSyncResult => ({
-  type: 'success',
-  message: `Queued ${queued} wallet${queued !== 1 ? 's' : ''} for sync`,
-});
+const WAKEUP_DESCRIPTIONS: Record<syncApi.WalletSyncWakeupDisposition, string> = {
+  deferred_action_required: 'waiting for required action',
+  deferred_full_resync: 'waiting for full resync',
+  deferred_retry: 'waiting for retry',
+  enqueued: 'enqueued',
+  unavailable: 'saved for recovery',
+};
+
+const ADMISSION_REASONS: Record<string, string> = {
+  admission_error: 'admission result unknown',
+  blocked: 'wallet sync is temporarily gated',
+  generation_exhausted: 'sync generation exhausted',
+  not_found: 'wallet not found',
+};
+
+const createSyncResult = (
+  response: syncApi.NetworkSyncResult,
+  nameOf: (walletId: string) => string,
+): NetworkSyncResult => {
+  const plural = (count: number) => `wallet${count === 1 ? '' : 's'}`;
+  const admitted = response.outcomes.filter((outcome): outcome is Extract<
+    syncApi.WalletSyncBatchOutcome,
+    { status: 'requested' | 'merged' }
+  > => outcome.status === 'requested' || outcome.status === 'merged');
+  const deferred = admitted.filter(({ wakeup }) => wakeup !== 'enqueued');
+  const rejected = response.outcomes.filter((outcome): outcome is Extract<
+    syncApi.WalletSyncBatchOutcome,
+    { status: 'rejected' }
+  > => outcome.status === 'rejected');
+  const indeterminate = response.outcomes.filter((outcome): outcome is Extract<
+    syncApi.WalletSyncBatchOutcome,
+    { status: 'indeterminate' }
+  > => outcome.status === 'indeterminate');
+  const details = [
+    ...(response.merged > 0
+      ? [`${response.merged} ${plural(response.merged)} merged with existing work`]
+      : []),
+    ...deferred.map(({ walletId, wakeup }) => (
+      `${nameOf(walletId)} (${WAKEUP_DESCRIPTIONS[wakeup]})`
+    )),
+    ...(rejected.length > 0
+      ? [`${rejected.length} ${plural(rejected.length)} rejected: ${rejected
+          .map(({ walletId, reason }) => `${nameOf(walletId)} (${ADMISSION_REASONS[reason] ?? reason})`)
+          .join(', ')}`]
+      : []),
+    ...(indeterminate.length > 0
+      ? [`${indeterminate.length} ${plural(indeterminate.length)} with unknown admission state: ${indeterminate
+          .map(({ walletId, reason }) => `${nameOf(walletId)} (${ADMISSION_REASONS[reason] ?? reason})`)
+          .join(', ')}`]
+      : []),
+  ];
+  const suffix = details.length > 0 ? `; ${details.join('; ')}` : '';
+
+  return {
+    type: response.requested === 0 || details.length > 0 ? 'warning' : 'success',
+    message: `Requested sync for ${response.requested} new ${plural(response.requested)}${suffix}.`,
+  };
+};
 
 /**
  * Describe the outcome of a per-network full resync.
@@ -45,10 +99,18 @@ const createResyncResult = (
 ): NetworkSyncResult => {
   const accepted = response.acceptedWalletIds.length;
   const list = (walletIds: string[]) => walletIds.map(nameOf).join(', ');
+  const deferredWalletIds = response.deferredWalletIds ?? [];
+  const deferredWalletIdSet = new Set(deferredWalletIds);
+  const queuedDeduplicatedWalletIds = response.deduplicatedWalletIds.filter(
+    walletId => !deferredWalletIdSet.has(walletId),
+  );
 
   const details = [
-    ...(response.deduplicatedWalletIds.length > 0
-      ? [`${response.deduplicatedWalletIds.length} already queued: ${list(response.deduplicatedWalletIds)}`]
+    ...(queuedDeduplicatedWalletIds.length > 0
+      ? [`${queuedDeduplicatedWalletIds.length} already queued: ${list(queuedDeduplicatedWalletIds)}`]
+      : []),
+    ...(deferredWalletIds.length > 0
+      ? [`${deferredWalletIds.length} awaiting queue recovery: ${list(deferredWalletIds)}`]
       : []),
     ...(response.rejectedWallets.length > 0
       ? [
@@ -80,6 +142,7 @@ const createResyncResult = (
     response.rejectedWallets.length > 0
       ? 'error'
       : accepted === 0 ||
+          (response.deferredWalletIds?.length ?? 0) > 0 ||
           response.indeterminateWallets.length > 0 ||
           response.excludedWallets.length > 0
         ? 'warning'
@@ -87,7 +150,7 @@ const createResyncResult = (
 
   return {
     type,
-    message: `Queued ${accepted} wallet${accepted !== 1 ? 's' : ''} for resync${suffix}`,
+    message: `Queued ${response.queued} wallet${response.queued !== 1 ? 's' : ''} for resync${suffix}`,
   };
 };
 
@@ -118,7 +181,7 @@ export const useNetworkSyncActions = ({
 
     try {
       const response = await syncApi.syncNetworkWallets(network);
-      setResult(createSyncSuccessResult(response.queued));
+      setResult(createSyncResult(response, nameOf));
       onSyncStarted?.();
     } catch (error) {
       setResult(createErrorResult(error, 'Failed to queue wallets for sync'));

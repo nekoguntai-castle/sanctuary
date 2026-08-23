@@ -10,6 +10,7 @@ import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 import type { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import type { FeeEstimates } from '@sanctuary/shared/types/api';
 import type { BitcoinTransactionDetails, BlockHeader } from '../types';
+import type { WalletSyncRequestResult } from './sync';
 import {
   BatchTransactionResponseSchema,
   CPFPTransactionResponseSchema,
@@ -110,12 +111,7 @@ export interface ValidateAddressResponse {
   transactionCount?: number;
 }
 
-export interface SyncResult {
-  message: string;
-  addresses?: number;
-  transactions: number;
-  utxos: number;
-}
+export type SyncResult = WalletSyncRequestResult;
 
 export interface BroadcastRawNetworkTransactionRequest {
   rawTx: string;

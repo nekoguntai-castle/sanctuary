@@ -118,6 +118,15 @@ export function registerWalletAccessQueryTests(): void {
           syncNextRetryAt: null,
           syncStartedAt: null,
           syncStateVersion: 7,
+          requestedIncrementalSyncGeneration: 5,
+          claimedIncrementalSyncGeneration: 4,
+          processedIncrementalSyncGeneration: 3,
+          incrementalSyncClaimedAt: null,
+          incrementalSyncLeaseExpiresAt: null,
+          syncActionRequiredAt: null,
+          requestedFullResyncGeneration: 2,
+          preparedFullResyncGeneration: 1,
+          processedFullResyncGeneration: 0,
         },
       ]);
       mockPrismaClient.uTXO.groupBy.mockResolvedValueOnce([
@@ -147,6 +156,12 @@ export function registerWalletAccessQueryTests(): void {
         },
         syncStateVersion: 7,
         syncRetryCount: 0,
+        requestedIncrementalSyncGeneration: 5,
+        claimedIncrementalSyncGeneration: 4,
+        processedIncrementalSyncGeneration: 3,
+        requestedFullResyncGeneration: 2,
+        preparedFullResyncGeneration: 1,
+        processedFullResyncGeneration: 0,
       }));
     });
 
@@ -284,6 +299,15 @@ export function registerWalletAccessQueryTests(): void {
         syncNextRetryAt: null,
         syncStartedAt: null,
         syncStateVersion: 11,
+        requestedIncrementalSyncGeneration: 8,
+        claimedIncrementalSyncGeneration: 7,
+        processedIncrementalSyncGeneration: 6,
+        incrementalSyncClaimedAt: null,
+        incrementalSyncLeaseExpiresAt: null,
+        syncActionRequiredAt: null,
+        requestedFullResyncGeneration: 5,
+        preparedFullResyncGeneration: 4,
+        processedFullResyncGeneration: 3,
       });
       mockPrismaClient.wallet.findUnique.mockResolvedValueOnce({
         id: 'wallet-1',
@@ -303,6 +327,12 @@ export function registerWalletAccessQueryTests(): void {
         isShared: true,
         syncStateVersion: 11,
         syncRetryCount: 0,
+        requestedIncrementalSyncGeneration: 8,
+        claimedIncrementalSyncGeneration: 7,
+        processedIncrementalSyncGeneration: 6,
+        requestedFullResyncGeneration: 5,
+        preparedFullResyncGeneration: 4,
+        processedFullResyncGeneration: 3,
       }));
     });
 

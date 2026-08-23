@@ -37,6 +37,10 @@ import {
   canonicalPolicyIdentity,
   requireCanonicalWalletPolicy,
 } from './canonicalPolicy';
+import {
+  INITIAL_SYNC_GENERATION,
+  wakeInitialWalletSync,
+} from '../sync/initialSyncIntent';
 
 const log = createLogger("WALLET:SVC_CREATE");
 
@@ -261,6 +265,7 @@ export async function createWallet(
       ...policy,
       ...(policy ? canonicalIdentity : {}),
       fingerprint,
+      requestedIncrementalSyncGeneration: INITIAL_SYNC_GENERATION,
       /* v8 ignore start -- group association is optional and covered by admin group flows */
       group: input.groupId ? { connect: { id: input.groupId } } : undefined,
       /* v8 ignore stop */
@@ -278,6 +283,7 @@ export async function createWallet(
   const result = buildWalletResult(wallet);
 
   executeWalletCreateHooks(userId, input, result);
+  await wakeInitialWalletSync(wallet.id);
 
   return result;
 }

@@ -3,6 +3,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 
 const CONTRACT_PATH = 'config/wallet-sync-lifecycle-contract.json';
 const ADR_PATH = 'docs/adr/0004-wallet-sync-lifecycle.md';
@@ -44,6 +45,7 @@ const SYNC_INTENT_REPOSITORY_BOUNDARY_SYMBOLS = [
   'requestIncrementalSync',
 ];
 const ADMISSION_SINGLETON_METHODS = [
+  'bridgeRetained',
   'claimFresh',
   'complete',
   'recover',
@@ -52,9 +54,13 @@ const ADMISSION_SINGLETON_METHODS = [
   'releaseAsActionRequired',
   'releaseForRetry',
   'request',
+  'requestFullResync',
+  'reset',
   'wake',
+  'wakeReservedFullResync',
 ];
 const SYNC_INTENT_REPOSITORY_PATH = 'server/src/repositories/syncIntentRepository.ts';
+const RESYNC_REPOSITORY_PATH = 'server/src/repositories/resyncRepository.ts';
 const INCREMENTAL_WAKEUP_ADAPTER_PATH = 'server/src/services/workerSyncQueue.ts';
 const RECOVERY_COORDINATOR_PATH = 'server/src/worker/syncIntentRecovery.ts';
 const RECOVERY_COORDINATOR_SYMBOL = 'createSyncIntentRecoveryCoordinator';
@@ -72,6 +78,46 @@ const SUBSCRIPTION_ENROLLMENT_WRITERS = [
   'completeSubscriptionEnrollment',
   'requestSubscriptionEnrollment',
 ];
+const PRODUCTION_SOURCE_ROOTS = ['gateway/src', 'server/src', 'src'];
+const TRACKED_PRODUCER_SINKS = new Set([
+  'authority.requestedIncrementalSyncGenerationWrite',
+  'admission.bridgeRetained', 'admission.claimFresh', 'admission.complete', 'admission.recover',
+  'admission.recoverExpired', 'admission.reclaimExpired',
+  'admission.releaseAsActionRequired', 'admission.releaseForRetry',
+  'admission.request', 'admission.requestFullResync', 'admission.reset',
+  'admission.wake', 'admission.wakeReservedFullResync',
+  'coordinator.queueNetworkSync', 'coordinator.queueUserWallets',
+  'coordinator.queueWalletSync', 'coordinator.resyncNetwork', 'coordinator.resyncWallet',
+  'coordinator.syncLegacyBitcoinAddress', 'coordinator.syncLegacyBitcoinWallet',
+  'coordinator.syncWalletNow',
+  'frontend.queueSync', 'frontend.queueUserWallets', 'frontend.syncAddress',
+  'frontend.resyncNetworkWallets', 'frontend.resyncWallet',
+  'frontend.syncNetworkWallets', 'frontend.syncWallet',
+  'initial.generationOneWrite', 'initial.wakeInitialWalletSync',
+  'legacy.enqueueDeadLetterJob', 'legacy.enqueueFullResyncBatch',
+  'legacy.enqueueWalletSync', 'legacy.enqueueWalletSyncBatch',
+]);
+const TRACKED_EXECUTOR_SINKS = new Set(['executor.syncAddress', 'executor.syncWallet']);
+const IMPORTED_IDENTITIES = new Map([
+  ['admission\0syncIntentAdmission', 'admission'],
+  ['coordinator\0getSyncCoordinator', 'coordinator.factory'],
+  ['coordinator\0SyncCoordinator', 'coordinator.class'],
+  ...[
+    'queueNetworkSync', 'queueUserWallets', 'queueWalletSync', 'resyncNetwork', 'resyncWallet',
+    'syncLegacyBitcoinAddress', 'syncLegacyBitcoinWallet', 'syncWalletNow',
+  ].map(name => [`coordinator\0${name}`, `coordinator.${name}`]),
+  ...[
+    'queueSync', 'queueUserWallets', 'resyncNetworkWallets', 'resyncWallet', 'syncAddress',
+    'syncNetworkWallets', 'syncWallet',
+  ].map(name => [`frontend\0${name}`, `frontend.${name}`]),
+  ...['syncAddress', 'syncWallet'].map(name => [`executor\0${name}`, `executor.${name}`]),
+  ...[
+    'enqueueDeadLetterJob', 'enqueueFullResyncBatch',
+    'enqueueWalletSync', 'enqueueWalletSyncBatch',
+  ].map(name => [`legacy\0${name}`, `legacy.${name}`]),
+  ['initial\0wakeInitialWalletSync', 'initial.wakeInitialWalletSync'],
+  ['initial\0INITIAL_SYNC_GENERATION', 'initial.generationConstant'],
+]);
 
 function normalize(filePath) {
   return filePath.split(path.sep).join('/');
@@ -100,6 +146,12 @@ function walkCode(root, relativePath = 'server/src', files = []) {
     walkCode(root, path.join(relativePath, entry), files);
   }
   return files;
+}
+
+function collectProductionSources(root) {
+  return new Map(PRODUCTION_SOURCE_ROOTS.flatMap(sourceRoot => walkCode(root, sourceRoot))
+    .filter(file => !file.startsWith('server/src/generated/'))
+    .map(file => [file, readFileSync(path.join(root, file), 'utf8')]));
 }
 
 function readRequired(root, relativePath) {
@@ -186,20 +238,61 @@ function validateInventory(inventory) {
     });
     assertSortedUnique(identities, `inventory.${key} identities`);
   }
+  const callsites = requireArray(parsed.producerCallsites, 'inventory.producerCallsites')
+    .map((entry, index) => {
+      const item = requireObject(entry, `inventory.producerCallsites[${index}]`);
+      for (const field of ['sink', 'file', 'enclosingFunction', 'trigger', 'role']) {
+        requireString(item[field], `inventory.producerCallsites[${index}].${field}`);
+      }
+      if (!Number.isSafeInteger(item.count) || item.count < 1) {
+        throw new Error(`inventory.producerCallsites[${index}].count must be a positive safe integer`);
+      }
+      return producerCallsiteIdentity(item);
+    });
+  assertSortedUnique(callsites, 'inventory.producerCallsites identities');
+  const rawQueueMutations = requireArray(
+    parsed.rawQueueMutations,
+    'inventory.rawQueueMutations',
+  ).map((entry, index) => {
+    const item = requireObject(entry, `inventory.rawQueueMutations[${index}]`);
+    for (const field of ['file', 'enclosingFunction', 'method', 'role']) {
+      requireString(item[field], `inventory.rawQueueMutations[${index}].${field}`);
+    }
+    if (!['add', 'addBulk'].includes(item.method)) {
+      throw new Error(`inventory.rawQueueMutations[${index}].method must be add or addBulk`);
+    }
+    if (!Number.isSafeInteger(item.count) || item.count < 1) {
+      throw new Error(`inventory.rawQueueMutations[${index}].count must be a positive safe integer`);
+    }
+    return rawQueueMutationIdentity(item);
+  });
+  assertSortedUnique(rawQueueMutations, 'inventory.rawQueueMutations identities');
+  const forbidden = requireObject(
+    parsed.forbiddenClientWalletHistory,
+    'inventory.forbiddenClientWalletHistory',
+  );
+  for (const field of ['symbols', 'paths']) {
+    const values = requireArray(forbidden[field], `inventory.forbiddenClientWalletHistory.${field}`)
+      .map((value, index) => requireString(
+        value,
+        `inventory.forbiddenClientWalletHistory.${field}[${index}]`,
+      ));
+    assertSortedUnique(values, `inventory.forbiddenClientWalletHistory.${field}`);
+  }
   return parsed;
 }
 
 export function parseWalletSyncLifecycleContract(source) {
   const contract = requireObject(JSON.parse(source), 'contract');
   if (contract.schemaVersion !== 1) throw new Error('schemaVersion must be 1');
-  if (contract.deliveryState !== 'gated_bounded_recovery') {
-    throw new Error('deliveryState must remain gated_bounded_recovery in this slice');
+  if (contract.deliveryState !== 'canonical_producers_active') {
+    throw new Error('deliveryState must be canonical_producers_active in this slice');
   }
   if (contract.cutoverComplete !== false) throw new Error('cutoverComplete must remain false');
 
   const wire = requireObject(contract.wireContract, 'wireContract');
-  if (wire.currentProducerVersion !== 1 || wire.unversionedPayloadMeans !== 1) {
-    throw new Error('the compatibility precursor must retain v1 producers and unversioned-v1 reads');
+  if (wire.currentProducerVersion !== 3 || wire.unversionedPayloadMeans !== 1) {
+    throw new Error('canonical producers must emit v3 while retaining unversioned-v1 reads');
   }
   if (wire.canonicalWakeupVersion !== 3
     || wire.preMutationFenceMaximumReadableVersion !== 2) {
@@ -254,8 +347,8 @@ function validateOwnership(value) {
 
 function validateCompatibility(value) {
   const compatibility = requireObject(value, 'compatibility');
-  if (compatibility.admissionState !== 'gate_enforced_consumer_and_recovery_no_request_producers') {
-    throw new Error('admission must remain gate-enforced without request producers');
+  if (compatibility.admissionState !== 'gate_enforced_canonical_request_producers_active') {
+    throw new Error('canonical request producers must remain gate-enforced');
   }
   if (compatibility.activationState !== 'continuous_fleet_floor_gate_runtime_enabled'
     || compatibility.mutationFenceFloor !== 1) {
@@ -296,6 +389,553 @@ function collectSources(root) {
     file,
     stripComments(readFileSync(path.join(root, file), 'utf8')),
   ]));
+}
+
+function producerCallsiteIdentity({ sink, file, enclosingFunction }) {
+  return `${sink}\0${file}\0${enclosingFunction}`;
+}
+
+function rawQueueMutationIdentity({ file, enclosingFunction, method }) {
+  return `${file}\0${enclosingFunction}\0${method}`;
+}
+
+function moduleKind(specifier) {
+  if (/syncIntentAdmission(?:\.[cm]?[jt]s)?$/.test(specifier)) return 'admission';
+  if (/syncCoordinator(?:\.[cm]?[jt]s)?$/.test(specifier)) return 'coordinator';
+  if (/\/api\/(?:bitcoin|sync)(?:\.[cm]?[jt]s)?$/.test(specifier)) return 'frontend';
+  if (/\/bitcoin\/blockchain(?:\/[^/]+)?$/.test(specifier)) return 'executor';
+  if (/workerSyncQueue(?:\.[cm]?[jt]s)?$/.test(specifier)) return 'legacy';
+  if (/initialSyncIntent(?:\.[cm]?[jt]s)?$/.test(specifier)) return 'initial';
+  return null;
+}
+
+function importedIdentity(kind, imported) {
+  return IMPORTED_IDENTITIES.get(`${kind}\0${imported}`) ?? null;
+}
+
+function propertyText(node) {
+  return node && (ts.isIdentifier(node) || ts.isStringLiteralLike(node)) ? node.text : null;
+}
+
+function unwrapExpression(expression) {
+  let current = expression;
+  while (ts.isAwaitExpression(current) || ts.isParenthesizedExpression(current)
+    || ts.isAsExpression(current) || ts.isNonNullExpression(current)
+    || ts.isTypeAssertionExpression(current)) current = current.expression;
+  return current;
+}
+
+function dynamicImportKind(expression) {
+  const current = unwrapExpression(expression);
+  if (!ts.isCallExpression(current) || current.expression.kind !== ts.SyntaxKind.ImportKeyword) return null;
+  return ts.isStringLiteralLike(current.arguments[0]) ? moduleKind(current.arguments[0].text) : null;
+}
+
+function resolveConstructedExpression(current, bindings) {
+  if (ts.isCallExpression(current)) {
+    return resolveExpression(current.expression, bindings) === 'coordinator.factory'
+      ? 'coordinator'
+      : null;
+  }
+  if (!ts.isNewExpression(current)) return null;
+  return resolveExpression(current.expression, bindings) === 'coordinator.class'
+    ? 'coordinator'
+    : null;
+}
+
+function resolvePropertyExpression(current, bindings) {
+  if (!ts.isPropertyAccessExpression(current) && !ts.isElementAccessExpression(current)) return null;
+  const base = resolveExpression(current.expression, bindings);
+  const property = propertyText(ts.isPropertyAccessExpression(current)
+    ? current.name
+    : current.argumentExpression);
+  if (!base || !property) return null;
+  if (base === 'namespace:admission' && property === 'syncIntentAdmission') return 'admission';
+  return importedIdentity(base.replace(/^namespace:/, ''), property) ?? `${base}.${property}`;
+}
+
+function resolveExpression(expression, bindings) {
+  const current = unwrapExpression(expression);
+  if (ts.isIdentifier(current)) return bindings.get(current.text) ?? null;
+  const dynamicKind = dynamicImportKind(current);
+  if (dynamicKind) return `namespace:${dynamicKind}`;
+  return resolveConstructedExpression(current, bindings)
+    ?? resolvePropertyExpression(current, bindings);
+}
+
+function bindName(name, identity, bindings) {
+  if (!identity) return false;
+  if (ts.isIdentifier(name)) {
+    if (bindings.get(name.text) === identity) return false;
+    bindings.set(name.text, identity);
+    return true;
+  }
+  if (!ts.isObjectBindingPattern(name)) return false;
+  let changed = false;
+  for (const element of name.elements) {
+    const property = propertyText(element.propertyName ?? element.name);
+    if (!property) continue;
+    const resolved = importedIdentity(identity.replace(/^namespace:/, ''), property)
+      ?? (identity === 'namespace:admission' && property === 'syncIntentAdmission'
+        ? 'admission'
+        : `${identity}.${property}`);
+    changed = bindName(element.name, resolved, bindings) || changed;
+  }
+  return changed;
+}
+
+function bindDefaultImport(clause, kind, specifier, bindings) {
+  if (!clause.name || !kind) return;
+  if (kind !== 'executor') {
+    bindings.set(clause.name.text, kind === 'admission' ? 'admission' : `namespace:${kind}`);
+    return;
+  }
+  const imported = /(?:^|\/)(syncAddress|syncWallet)(?:\.[cm]?[jt]s)?$/.exec(specifier)?.[1];
+  if (imported) bindings.set(clause.name.text, `executor.${imported}`);
+}
+
+function fallbackImportKind(file, imported) {
+  if (file.startsWith('server/src/') && ['syncAddress', 'syncWallet'].includes(imported)) {
+    return `executor.${imported}`;
+  }
+  if (file.startsWith('server/src/')) return importedIdentity('legacy', imported);
+  if (file.startsWith('src/')) return importedIdentity('frontend', imported);
+  return null;
+}
+
+function bindNamedImports(namedImports, kind, file, bindings) {
+  for (const element of namedImports.elements) {
+    const imported = (element.propertyName ?? element.name).text;
+    const identity = kind
+      ? importedIdentity(kind, imported)
+      : fallbackImportKind(file, imported);
+    if (identity) bindings.set(element.name.text, identity);
+  }
+}
+
+function bindImportDeclaration(statement, file, bindings) {
+  if (!ts.isStringLiteralLike(statement.moduleSpecifier)) return;
+  const clause = statement.importClause;
+  if (!clause || clause.isTypeOnly) return;
+  const specifier = statement.moduleSpecifier.text;
+  const kind = moduleKind(specifier);
+  bindDefaultImport(clause, kind, specifier, bindings);
+  if (!clause.namedBindings) return;
+  if (ts.isNamespaceImport(clause.namedBindings)) {
+    if (kind) bindings.set(clause.namedBindings.name.text, `namespace:${kind}`);
+    return;
+  }
+  bindNamedImports(clause.namedBindings, kind, file, bindings);
+}
+
+function collectImportBindings(sourceFile, file) {
+  const bindings = new Map();
+  for (const statement of sourceFile.statements) {
+    if (ts.isImportDeclaration(statement)) bindImportDeclaration(statement, file, bindings);
+  }
+  return bindings;
+}
+
+function propagateBindings(sourceFile, bindings) {
+  for (let pass = 0; pass < 20; pass += 1) {
+    let changed = false;
+    function visit(node) {
+      if (ts.isVariableDeclaration(node) && node.initializer) {
+        changed = bindName(node.name, resolveExpression(node.initializer, bindings), bindings) || changed;
+      } else if (ts.isBinaryExpression(node)
+        && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+        && ts.isIdentifier(node.left)) {
+        changed = bindName(node.left, resolveExpression(node.right, bindings), bindings) || changed;
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(sourceFile);
+    if (!changed) break;
+  }
+}
+
+function collectBindings(sourceFile, file) {
+  const bindings = collectImportBindings(sourceFile, file);
+  propagateBindings(sourceFile, bindings);
+  return bindings;
+}
+
+function enclosingFunctionName(node) {
+  for (let current = node.parent; current; current = current.parent) {
+    if ((ts.isFunctionDeclaration(current) || ts.isMethodDeclaration(current)) && current.name) {
+      return current.name.getText();
+    }
+    if ((ts.isArrowFunction(current) || ts.isFunctionExpression(current))
+      && ts.isVariableDeclaration(current.parent) && ts.isIdentifier(current.parent.name)) {
+      return current.parent.name.text;
+    }
+  }
+  return '<module>';
+}
+
+function expressionProperty(expression) {
+  if (ts.isIdentifier(expression)) return expression.text;
+  if (!ts.isPropertyAccessExpression(expression) && !ts.isElementAccessExpression(expression)) {
+    return null;
+  }
+  return propertyText(ts.isPropertyAccessExpression(expression)
+    ? expression.name
+    : expression.argumentExpression);
+}
+
+function resolveTrackedCallsiteSink(node, file, bindings) {
+  const resolved = resolveExpression(node.expression, bindings);
+  if (resolved || !file.startsWith('server/src/')) return resolved;
+  const property = expressionProperty(node.expression);
+  if (['syncAddress', 'syncWallet'].includes(property)) return `executor.${property}`;
+  return property ? importedIdentity('legacy', property) : null;
+}
+
+function isSameFieldProjection(value, field, strings) {
+  return (ts.isPropertyAccessExpression(value) || ts.isElementAccessExpression(value))
+    && staticPropertyText(
+      ts.isPropertyAccessExpression(value) ? value.name : value.argumentExpression,
+      strings,
+    )
+      === field;
+}
+
+function isGenerationMutationObject(value, strings) {
+  return ts.isObjectLiteralExpression(value) && value.properties.some(property => (
+    ts.isPropertyAssignment(property)
+    && ['increment', 'set'].includes(staticPropertyText(property.name, strings))
+  ));
+}
+
+function staticPropertyText(node, strings) {
+  if (ts.isComputedPropertyName(node)) return staticString(node.expression, strings);
+  return propertyText(node);
+}
+
+function isRequestedIncrementalGenerationWrite(node, file, strings) {
+  if (!file.startsWith('server/src/')) return false;
+  const field = 'requestedIncrementalSyncGeneration';
+  if (ts.isShorthandPropertyAssignment(node)) return node.name.text === field;
+  if (!ts.isPropertyAssignment(node) || staticPropertyText(node.name, strings) !== field) return false;
+  const value = unwrapExpression(node.initializer);
+  if (value.kind === ts.SyntaxKind.TrueKeyword || isSameFieldProjection(value, field, strings)) {
+    return false;
+  }
+  if (ts.isObjectLiteralExpression(value)) return isGenerationMutationObject(value, strings);
+  return true;
+}
+
+function collectTrackedCallsites(productionSources) {
+  const counts = new Map();
+  const record = (sink, file, node) => {
+    const callsite = { sink, file, enclosingFunction: enclosingFunctionName(node) };
+    const identity = producerCallsiteIdentity(callsite);
+    counts.set(identity, { ...callsite, count: (counts.get(identity)?.count ?? 0) + 1 });
+  };
+  for (const [file, source] of productionSources) {
+    const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
+    const bindings = collectBindings(sourceFile, file);
+    const strings = staticStringBindings(sourceFile);
+    function visit(node) {
+      if (ts.isCallExpression(node)) {
+        const sink = resolveTrackedCallsiteSink(node, file, bindings);
+        if (sink && (TRACKED_PRODUCER_SINKS.has(sink) || TRACKED_EXECUTOR_SINKS.has(sink))) {
+          record(sink, file, node);
+        }
+      } else if (isRequestedIncrementalGenerationWrite(node, file, strings)) {
+        record('authority.requestedIncrementalSyncGenerationWrite', file, node);
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(sourceFile);
+  }
+  return [...counts.values()].sort((left, right) => (
+    producerCallsiteIdentity(left).localeCompare(producerCallsiteIdentity(right))
+  ));
+}
+
+function validateProducerCallsites(productionSources, inventory, errors) {
+  const actual = collectTrackedCallsites(productionSources)
+    .filter(callsite => TRACKED_PRODUCER_SINKS.has(callsite.sink));
+  const expected = inventory.producerCallsites.map(({ sink, file, enclosingFunction, count }) => ({
+    sink, file, enclosingFunction, count,
+  })).sort((left, right) => producerCallsiteIdentity(left).localeCompare(producerCallsiteIdentity(right)));
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    errors.push(`wallet-history producer callsites changed: expected ${JSON.stringify(expected)}; found ${JSON.stringify(actual)}`);
+  }
+}
+
+function staticString(node, bindings = new Map(), active = new Set()) {
+  if (!node) return null;
+  const value = unwrapExpression(node);
+  if (ts.isIdentifier(value)) {
+    if (active.has(value.text)) return null;
+    return staticString(bindings.get(value.text), bindings, new Set(active).add(value.text));
+  }
+  if (ts.isStringLiteralLike(value)) return value.text;
+  if (ts.isBinaryExpression(value) && value.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+    const left = staticString(value.left, bindings, active);
+    const right = staticString(value.right, bindings, active);
+    return left === null || right === null ? null : left + right;
+  }
+  if (!ts.isCallExpression(value) || !ts.isPropertyAccessExpression(value.expression)
+    || value.expression.name.text !== 'join'
+    || !ts.isArrayLiteralExpression(value.expression.expression)) return null;
+  const separator = value.arguments.length === 0
+    ? ','
+    : staticString(value.arguments[0], bindings, active);
+  if (separator === null) return null;
+  const parts = value.expression.expression.elements
+    .map(element => staticString(element, bindings, active));
+  return parts.some(part => part === null) ? null : parts.join(separator);
+}
+
+function staticStringBindings(sourceFile) {
+  const bindings = new Map();
+  const visit = node => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+      bindings.set(node.name.text, node.initializer);
+    }
+    if (ts.isBinaryExpression(node)
+      && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+      && ts.isIdentifier(node.left)) {
+      bindings.set(node.left.text, node.right);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return bindings;
+}
+
+function collectBullMqImports(sourceFile) {
+  const constructors = new Set();
+  const namespaces = new Set();
+  for (const statement of sourceFile.statements) {
+    if (!ts.isImportDeclaration(statement)
+      || !ts.isStringLiteralLike(statement.moduleSpecifier)
+      || statement.moduleSpecifier.text !== 'bullmq'
+      || !statement.importClause) continue;
+    if (statement.importClause.name) namespaces.add(statement.importClause.name.text);
+    const named = statement.importClause.namedBindings;
+    if (named && ts.isNamespaceImport(named)) namespaces.add(named.name.text);
+    if (named && ts.isNamedImports(named)) {
+      for (const element of named.elements) {
+        if ((element.propertyName?.text ?? element.name.text) === 'Queue') {
+          constructors.add(element.name.text);
+        }
+      }
+    }
+  }
+  return { constructors, namespaces };
+}
+
+function aliasesQueueConstructor(node, queueTypes) {
+  const value = unwrapExpression(node);
+  if (ts.isIdentifier(value)) return queueTypes.constructors.has(value.text);
+  return ts.isPropertyAccessExpression(value)
+    && ts.isIdentifier(value.expression)
+    && queueTypes.namespaces.has(value.expression.text)
+    && value.name.text === 'Queue';
+}
+
+function bindDestructuredQueueConstructor(node, queueTypes) {
+  if (!ts.isVariableDeclaration(node) || !ts.isObjectBindingPattern(node.name)
+    || !node.initializer || !ts.isIdentifier(unwrapExpression(node.initializer))
+    || !queueTypes.namespaces.has(unwrapExpression(node.initializer).text)) return false;
+  let changed = false;
+  for (const element of node.name.elements) {
+    if (!ts.isIdentifier(element.name)) continue;
+    const imported = element.propertyName?.getText() ?? element.name.text;
+    if (imported === 'Queue' && !queueTypes.constructors.has(element.name.text)) {
+      queueTypes.constructors.add(element.name.text);
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+function bindNamedQueueConstructor(node, queueTypes) {
+  if (!ts.isVariableDeclaration(node) || !ts.isIdentifier(node.name) || !node.initializer
+    || !aliasesQueueConstructor(node.initializer, queueTypes)
+    || queueTypes.constructors.has(node.name.text)) return false;
+  queueTypes.constructors.add(node.name.text);
+  return true;
+}
+
+function propagateQueueConstructorAliases(sourceFile, queueTypes) {
+  for (let pass = 0; pass < 20; pass += 1) {
+    let changed = false;
+    const visit = node => {
+      changed = bindDestructuredQueueConstructor(node, queueTypes) || changed;
+      changed = bindNamedQueueConstructor(node, queueTypes) || changed;
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+    if (!changed) break;
+  }
+}
+
+function bullMqQueueConstructors(sourceFile) {
+  const queueTypes = collectBullMqImports(sourceFile);
+  propagateQueueConstructorAliases(sourceFile, queueTypes);
+  return queueTypes;
+}
+
+function isQueueConstructor(node, queueTypes) {
+  if (ts.isIdentifier(node)) return queueTypes.constructors.has(node.text);
+  return ts.isPropertyAccessExpression(node)
+    && ts.isIdentifier(node.expression)
+    && queueTypes.namespaces.has(node.expression.text)
+    && node.name.text === 'Queue';
+}
+
+function isWalletQueueConstruction(node, queueTypes, strings) {
+  return ts.isNewExpression(node)
+    && isQueueConstructor(node.expression, queueTypes)
+    && typeof staticString(node.arguments?.[0], strings) === 'string'
+    && staticString(node.arguments?.[0], strings).includes('sync');
+}
+
+function walletQueueBindings(sourceFile, queueTypes, strings) {
+  const names = new Set();
+  for (let pass = 0; pass < 20; pass += 1) {
+    let changed = false;
+    const visit = node => {
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+        const value = unwrapExpression(node.initializer);
+        const walletQueue = isWalletQueueConstruction(value, queueTypes, strings)
+          || (ts.isIdentifier(value) && names.has(value.text));
+        if (walletQueue && !names.has(node.name.text)) {
+          names.add(node.name.text);
+          changed = true;
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+    if (!changed) break;
+  }
+  return names;
+}
+
+function isPotentialWalletQueueMutation(node, file, queueNames, queueTypes, strings) {
+  if (file === 'server/src/services/workerSyncQueue.ts') return true;
+  const receiver = ts.isPropertyAccessExpression(node.expression)
+    ? unwrapExpression(node.expression.expression)
+    : null;
+  if (receiver && ts.isIdentifier(receiver) && queueNames.has(receiver.text)) return true;
+  if (receiver && isWalletQueueConstruction(receiver, queueTypes, strings)) {
+    return true;
+  }
+  const jobName = node.expression.name.text === 'add'
+    ? staticString(node.arguments[0], strings)
+    : null;
+  return jobName === 'sync-wallet';
+}
+
+function collectRawQueueMutations(productionSources) {
+  const counts = new Map();
+  for (const [file, source] of productionSources) {
+    const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
+    const queueTypes = bullMqQueueConstructors(sourceFile);
+    const strings = staticStringBindings(sourceFile);
+    const queueNames = walletQueueBindings(sourceFile, queueTypes, strings);
+    function visit(node) {
+      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+        const method = node.expression.name.text;
+        if ((method === 'add' || method === 'addBulk')
+          && isPotentialWalletQueueMutation(node, file, queueNames, queueTypes, strings)) {
+          const entry = { file, enclosingFunction: enclosingFunctionName(node), method };
+          const identity = rawQueueMutationIdentity(entry);
+          counts.set(identity, { ...entry, count: (counts.get(identity)?.count ?? 0) + 1 });
+        }
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(sourceFile);
+  }
+  return [...counts.values()].sort((left, right) => (
+    rawQueueMutationIdentity(left).localeCompare(rawQueueMutationIdentity(right))
+  ));
+}
+
+function validateRawQueueMutations(productionSources, inventory, errors) {
+  const actual = collectRawQueueMutations(productionSources);
+  const expected = inventory.rawQueueMutations.map(({ file, enclosingFunction, method, count }) => ({
+    file, enclosingFunction, method, count,
+  }));
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    errors.push(`raw wallet-sync queue mutations changed: expected ${JSON.stringify(expected)}; found ${JSON.stringify(actual)}`);
+  }
+}
+
+function trackedCommonJsImport(node) {
+  if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)
+    && node.expression.text === 'require' && ts.isStringLiteralLike(node.arguments[0])) {
+    return moduleKind(node.arguments[0].text);
+  }
+  if (!ts.isImportEqualsDeclaration(node)
+    || !ts.isExternalModuleReference(node.moduleReference)
+    || !ts.isStringLiteralLike(node.moduleReference.expression)) return null;
+  return moduleKind(node.moduleReference.expression.text);
+}
+
+function validateNoTrackedCommonJsImports(productionSources, errors) {
+  const imports = [];
+  for (const [file, source] of productionSources) {
+    const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
+    function visit(node) {
+      const kind = trackedCommonJsImport(node);
+      if (kind) imports.push(`${file}: ${kind}`);
+      ts.forEachChild(node, visit);
+    }
+    visit(sourceFile);
+  }
+  if (imports.length) {
+    errors.push(`tracked wallet-history modules require static ES imports: ${imports.sort().join(', ')}`);
+  }
+}
+
+function validateForbiddenClientHistory(productionSources, inventory, errors) {
+  const clients = new Map([...productionSources].filter(([file]) => (
+    file.startsWith('src/') || file.startsWith('gateway/src/')
+  )));
+  for (const symbol of inventory.forbiddenClientWalletHistory.symbols) {
+    const files = actualReferenceFiles(clients, new RegExp(`\\b${escapeRegExp(symbol)}\\b`));
+    if (files.length) errors.push(`forbidden client wallet-history symbol ${symbol}: ${files.join(', ')}`);
+  }
+  for (const requestPath of inventory.forbiddenClientWalletHistory.paths) {
+    const files = actualReferenceFiles(clients, new RegExp(escapeRegExp(requestPath)));
+    if (files.length) errors.push(`forbidden client wallet-history request ${requestPath}: ${files.join(', ')}`);
+  }
+}
+
+function trackedReexports(statement, file) {
+  if (!ts.isExportDeclaration(statement) || statement.isTypeOnly
+    || !statement.moduleSpecifier || !ts.isStringLiteralLike(statement.moduleSpecifier)) return [];
+  const kind = moduleKind(statement.moduleSpecifier.text);
+  if (!kind) return [];
+  if (!statement.exportClause || ts.isNamespaceExport(statement.exportClause)) {
+    return [`${file}: export * from ${statement.moduleSpecifier.text}`];
+  }
+  return statement.exportClause.elements.flatMap((element) => {
+    if (element.isTypeOnly) return [];
+    const exported = (element.propertyName ?? element.name).text;
+    const identity = importedIdentity(kind, exported);
+    const tracked = identity && (TRACKED_PRODUCER_SINKS.has(identity)
+      || TRACKED_EXECUTOR_SINKS.has(identity) || identity === 'admission');
+    return tracked ? [`${file}: ${identity}`] : [];
+  });
+}
+
+function validateNoTrackedProducerReexports(productionSources, errors) {
+  const reexports = [...productionSources].flatMap(([file, source]) => {
+    const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
+    return sourceFile.statements.flatMap(statement => trackedReexports(statement, file));
+  });
+  if (reexports.length) {
+    errors.push(`tracked wallet-history producer re-export added: ${reexports.sort().join(', ')}`);
+  }
 }
 
 function actualReferenceFiles(sources, pattern) {
@@ -354,6 +994,7 @@ function unexpectedAdmissionConsumers(
   sources,
   admissionModule,
   generationConsumerModule,
+  producerCallsites,
 ) {
   const moduleConsumers = actualReferenceFiles(
     sources,
@@ -371,11 +1012,31 @@ function unexpectedAdmissionConsumers(
     sources,
     /\bexpectedExpiredFence\b/,
   );
+  const protectedRepositoryAuthorities = [
+    {
+      symbol: 'resetIncrementalSyncAttempt',
+      allowed: new Set([admissionModule, SYNC_INTENT_REPOSITORY_PATH]),
+    },
+    {
+      symbol: 'requestFullResyncGeneration',
+      allowed: new Set([admissionModule, RESYNC_REPOSITORY_PATH]),
+    },
+    {
+      symbol: 'reserveFullResyncGeneration',
+      allowed: new Set([INCREMENTAL_WAKEUP_ADAPTER_PATH, RESYNC_REPOSITORY_PATH]),
+    },
+  ];
+  const repositoryAuthorityConsumers = protectedRepositoryAuthorities.flatMap(({ symbol, allowed }) => (
+    actualReferenceFiles(sources, new RegExp(`\\b${symbol}\\b`))
+      .filter(file => !allowed.has(file))
+  ));
   const allowedModuleConsumers = new Set([
     admissionModule,
     generationConsumerModule,
     RECOVERY_COORDINATOR_PATH,
     RECOVERY_RUNTIME_PATH,
+    ...producerCallsites.filter(callsite => callsite.sink.startsWith('admission.'))
+      .map(callsite => callsite.file),
   ]);
   const allowedMutationConsumers = new Set([admissionModule, SYNC_INTENT_REPOSITORY_PATH]);
   const allowedWakeupAdapterConsumers = new Set([
@@ -391,8 +1052,14 @@ function unexpectedAdmissionConsumers(
       'releaseForRetry',
       'wake',
     ])],
-    [RECOVERY_RUNTIME_PATH, new Set(['recover', 'recoverExpired'])],
+    [RECOVERY_RUNTIME_PATH, new Set(['recover', 'recoverExpired', 'wakeReservedFullResync'])],
   ]);
+  for (const callsite of producerCallsites) {
+    if (!callsite.sink.startsWith('admission.')) continue;
+    const methods = allowedAdmissionMethods.get(callsite.file) ?? new Set();
+    methods.add(callsite.sink.slice('admission.'.length));
+    allowedAdmissionMethods.set(callsite.file, methods);
+  }
   const forbiddenAdmissionCalls = [...sources]
     .filter(([file, source]) => admissionSingletonAliases(source).some(alias => (
       hasForbiddenAdmissionAccess(
@@ -417,6 +1084,7 @@ function unexpectedAdmissionConsumers(
     ...mutationConsumers.filter(file => !allowedMutationConsumers.has(file)),
     ...wakeupAdapterConsumers.filter(file => !allowedWakeupAdapterConsumers.has(file)),
     ...expiredFenceConsumers.filter(file => !allowedMutationConsumers.has(file)),
+    ...repositoryAuthorityConsumers,
     ...forbiddenAdmissionCalls,
     ...recoveryCoordinatorConsumers,
     ...recoveryRuntimeConsumers,
@@ -433,8 +1101,8 @@ function validateRecoveryComposition(sources, admissionModule, errors) {
       'recovery runtime authorization must inspect the live activation gate',
     ],
     [
-      /if\s*\(\s*!\s*await\s+authorize\(\)\s*\)\s*return\s*\{\s*status\s*:\s*['"]blocked['"]\s*\}[\s\S]{0,240}await\s+enqueueReservedFullResyncWakeup\s*\(/,
-      'reserved full-resync recovery wake-ups must recheck activation inline',
+      /if\s*\(\s*!\s*await\s+authorize\(\)\s*\)\s*return\s*\{\s*status\s*:\s*['"]blocked['"]\s*\}[\s\S]{0,180}await\s+syncIntentAdmission\.wakeReservedFullResync\s*\(\s*wakeup\s*\)/,
+      'full-resync recovery must recheck activation then use exact canonical admission',
     ],
     [
       /syncIntentAdmission\.recover\s*\(/,
@@ -452,40 +1120,77 @@ function validateRecoveryComposition(sources, admissionModule, errors) {
   for (const [pattern, message] of requiredRuntimePatterns) {
     if (!pattern.test(runtime)) errors.push(message);
   }
-  const wakeupAliases = ['enqueueReservedFullResyncWakeup'];
-  const destructuredAliases = runtime.matchAll(
-    /\b(?:const|let|var)\s*\{[^}]*\benqueueReservedFullResyncWakeup\s*:\s*([A-Za-z_$][\w$]*)[^}]*\}\s*=/g,
-  );
-  for (const match of destructuredAliases) wakeupAliases.push(match[1]);
-  for (let index = 0; index < wakeupAliases.length; index += 1) {
-    const alias = wakeupAliases[index];
-    const sourceExpression = `(?:${escapeRegExp(alias)}\\b|[A-Za-z_$][\\w$]*\\s*(?:\\.\\s*${escapeRegExp(alias)}\\b|\\[\\s*['"]${escapeRegExp(alias)}['"]\\s*\\]))`;
-    const assignments = new RegExp(
-      `\\b(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*${sourceExpression}`,
-      'g',
-    );
-    for (const match of runtime.matchAll(assignments)) {
-      if (!wakeupAliases.includes(match[1])) wakeupAliases.push(match[1]);
-    }
-  }
-  const reservedWakeupCalls = wakeupAliases.reduce(
-    (count, alias) => count + countMatches(
-      runtime,
-      new RegExp(
-        `(?:\\b${escapeRegExp(alias)}\\s*\\(|\\[\\s*['"]${escapeRegExp(alias)}['"]\\s*\\]\\s*\\()`,
-        'g',
-      ),
-    ),
-    0,
-  );
-  if (reservedWakeupCalls !== 1) {
-    errors.push('recovery runtime must contain exactly one guarded reserved full-resync enqueue');
+  if (countMatches(runtime, /\bsyncIntentAdmission\.wakeReservedFullResync\s*\(/g) !== 1) {
+    errors.push('recovery runtime must contain exactly one exact full-resync repair admission');
   }
   if (countMatches(runtime, /\bcreateSyncIntentRecoveryCoordinator\s*\(/g) !== 1) {
     errors.push('recovery runtime must construct exactly one bounded coordinator');
   }
   if (!/inspectActivation\s*:\s*\(\)\s*=>\s*walletSyncActivationGate\.inspect\s*\(\)/.test(admission)) {
     errors.push('canonical admission must inspect the activation gate');
+  }
+  if (!/publishTransition\s*:\s*syncLifecyclePublisher\.publish/.test(admission)) {
+    errors.push('canonical admission must publish committed durable request state');
+  }
+  if (countMatches(admission, /transition\s*:\s*['"]requested['"]/g) !== 2) {
+    errors.push('incremental and full-resync admission must each publish requested state');
+  }
+  const incrementalPersistence = admission.indexOf('repository.requestIncrementalSync(');
+  const fullPersistence = admission.indexOf('persistFullResyncRequest(walletId)');
+  const publications = [...admission.matchAll(/await\s+publishTransition\s*\(/g)]
+    .map(match => match.index ?? -1);
+  if (publications.length !== 2
+    || publications[0] <= incrementalPersistence
+    || publications[1] <= fullPersistence) {
+    errors.push('canonical admission must publish only after each durable request commits');
+  }
+}
+
+function importsReservedFullResyncAuthority(node) {
+  if (!ts.isImportDeclaration(node) || !ts.isStringLiteralLike(node.moduleSpecifier)
+    || node.importClause?.isTypeOnly) return false;
+  const bindings = node.importClause?.namedBindings;
+  const importsReservedWakeup = Boolean(bindings && ts.isNamedImports(bindings))
+    && bindings.elements.some(element => !element.isTypeOnly
+      && (element.propertyName ?? element.name).text === 'enqueueReservedFullResyncWakeup');
+  const importsRawQueueModule = moduleKind(node.moduleSpecifier.text) === 'legacy'
+    && (!bindings || ts.isNamespaceImport(bindings));
+  return importsReservedWakeup || importsRawQueueModule;
+}
+
+function dynamicallyImportsLegacyQueue(node) {
+  return ts.isCallExpression(node)
+    && node.expression.kind === ts.SyntaxKind.ImportKeyword
+    && ts.isStringLiteralLike(node.arguments[0])
+    && moduleKind(node.arguments[0].text) === 'legacy';
+}
+
+function callsReservedFullResyncWakeup(node, file) {
+  if (file === RECOVERY_COORDINATOR_PATH || !ts.isCallExpression(node)) return false;
+  return expressionProperty(unwrapExpression(node.expression)) === 'enqueueReservedFullResyncWakeup';
+}
+
+function fileUsesReservedFullResyncAuthority(sourceFile, file) {
+  let found = false;
+  function visit(node) {
+    if (importsReservedFullResyncAuthority(node)
+      || dynamicallyImportsLegacyQueue(node)
+      || callsReservedFullResyncWakeup(node, file)) found = true;
+    if (!found) ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+  return found;
+}
+
+function validateReservedFullResyncQueueAuthority(productionSources, admissionModule, errors) {
+  const consumers = [];
+  for (const [file, source] of productionSources) {
+    if (file === admissionModule) continue;
+    const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
+    if (fileUsesReservedFullResyncAuthority(sourceFile, file)) consumers.push(file);
+  }
+  if (consumers.length) {
+    errors.push(`raw reserved full-resync queue authority escaped canonical admission: ${[...new Set(consumers)].sort().join(', ')}`);
   }
 }
 
@@ -607,34 +1312,17 @@ function namedImportAliases(clause, callee) {
   });
 }
 
-function countLowLevelCalls(source, callee) {
-  let count = 0;
-  const imports = /\bimport\s+([\s\S]*?)\s+from\s+['"]([^'"]+)['"]\s*;?/g;
-  for (const match of source.matchAll(imports)) {
-    if (!/\/bitcoin\/blockchain(?:\/[^'"]+)?$/.test(match[2])) continue;
-    const namespace = /\*\s+as\s+([A-Za-z_$][\w$]*)/.exec(match[1])?.[1];
-    if (namespace) {
-      count += countMatches(
-        source,
-        new RegExp(`\\b${escapeRegExp(namespace)}\\.${escapeRegExp(callee)}\\s*\\(`, 'g'),
-      );
-    }
-    for (const alias of namedImportAliases(match[1], callee)) {
-      count += countMatches(source, new RegExp(`\\b${escapeRegExp(alias)}\\s*\\(`, 'g'));
-    }
-  }
-  return count;
-}
-
-function compareDirectCalls(sources, definitions, errors) {
+function compareDirectCalls(productionSources, definitions, errors) {
+  const executorCalls = collectTrackedCallsites(productionSources)
+    .filter(callsite => TRACKED_EXECUTOR_SINKS.has(callsite.sink));
   for (const definition of definitions) {
     const excluded = new Set(definition.implementationModules);
-    const actual = [];
-    for (const [file, source] of sources) {
-      if (excluded.has(file)) continue;
-      const count = countLowLevelCalls(source, definition.callee);
-      if (count > 0) actual.push({ file, count });
+    const counts = new Map();
+    for (const callsite of executorCalls) {
+      if (callsite.sink !== `executor.${definition.callee}` || excluded.has(callsite.file)) continue;
+      counts.set(callsite.file, (counts.get(callsite.file) ?? 0) + callsite.count);
     }
+    const actual = [...counts].map(([file, count]) => ({ file, count }));
     actual.sort((left, right) => left.file.localeCompare(right.file));
     const expected = definition.entries.map(({ file, count }) => ({ file, count }));
     if (JSON.stringify(actual) !== JSON.stringify(expected)) {
@@ -660,7 +1348,7 @@ function validateDocumentation(root, contract, errors) {
 function validateWireSource(root, errors) {
   const source = readRequired(root, 'server/src/jobs/syncJobContract.ts');
   if (!/SYNC_JOB_CONTRACT_VERSION\s*=\s*1\s+as\s+const/.test(source)) {
-    errors.push('sync job producers must remain on wire version 1');
+    errors.push('retained compatibility jobs must preserve wire version 1');
   }
   if (!/SYNC_WALLET_JOB_READER_VERSION\s*=\s*2\s+as\s+const/.test(source)) {
     errors.push('sync wallet consumers must expose the version 2 generation contract');
@@ -676,15 +1364,17 @@ function validateWireSource(root, errors) {
 export function checkWalletSyncLifecycleContract(root) {
   const contract = parseWalletSyncLifecycleContract(readRequired(root, CONTRACT_PATH));
   const sources = collectSources(root);
+  const productionSources = collectProductionSources(root);
   const errors = [];
   const admissionConsumers = unexpectedAdmissionConsumers(
     sources,
     contract.futureOwnership.singleAdmissionModule,
     contract.compatibility.generationConsumerModule,
+    contract.inventory.producerCallsites,
   );
   if (admissionConsumers.length > 0) {
     errors.push(
-      `durable admission producer activated before cutover: ${admissionConsumers.join(', ')}`,
+      `durable admission consumed outside the exact producer/consumer inventory: ${admissionConsumers.join(', ')}`,
     );
   }
   const activationConsumers = unexpectedActivationConsumers(sources);
@@ -707,7 +1397,17 @@ export function checkWalletSyncLifecycleContract(root) {
     contract.futureOwnership.singleAdmissionModule,
     errors,
   );
-  compareDirectCalls(sources, contract.inventory.directExecutorCalls, errors);
+  validateReservedFullResyncQueueAuthority(
+    productionSources,
+    contract.futureOwnership.singleAdmissionModule,
+    errors,
+  );
+  validateProducerCallsites(productionSources, contract.inventory, errors);
+  validateRawQueueMutations(productionSources, contract.inventory, errors);
+  validateForbiddenClientHistory(productionSources, contract.inventory, errors);
+  validateNoTrackedProducerReexports(productionSources, errors);
+  validateNoTrackedCommonJsImports(productionSources, errors);
+  compareDirectCalls(productionSources, contract.inventory.directExecutorCalls, errors);
   compareReferenceInventory(
     sources,
     contract.inventory.symbolReferences,

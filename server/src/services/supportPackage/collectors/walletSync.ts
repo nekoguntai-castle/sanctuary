@@ -38,6 +38,10 @@ interface NetworkSection {
   syncInProgressCount: number;
   stuckCandidatesCount: number;
   fullResyncPendingCount: number;
+  incrementalPendingCount: number;
+  actionRequiredCount: number;
+  activeLeaseCount: number;
+  expiredLeaseCount: number;
 }
 
 /** Bucket `requested - processed` full resync generations without exporting either. */
@@ -69,6 +73,10 @@ function emptyNetworkSection(): NetworkSection {
     syncInProgressCount: 0,
     stuckCandidatesCount: 0,
     fullResyncPendingCount: 0,
+    incrementalPendingCount: 0,
+    actionRequiredCount: 0,
+    activeLeaseCount: 0,
+    expiredLeaseCount: 0,
   };
 }
 
@@ -92,6 +100,24 @@ function summarize(aggregates: WalletSyncAggregates, staleThresholdMs: number) {
   let stuckCandidatesCount = 0;
   let fullResyncPendingCount = 0;
   let maxFullResyncDrift = 0;
+  let incrementalPendingCount = 0;
+  let unclaimedIncrementalPendingCount = 0;
+  let claimedIncrementalPendingCount = 0;
+  let trailingIncrementalRequestCount = 0;
+  let readyIncrementalPendingCount = 0;
+  let maxIncrementalDrift = 0;
+  let unpreparedFullResyncPendingCount = 0;
+  let preparedFullResyncPendingCount = 0;
+  let actionRequiredCount = 0;
+  let actionRequiredPendingCount = 0;
+  let orphanedActionRequiredCount = 0;
+  let deferredRetryPendingCount = 0;
+  let dueRetryPendingCount = 0;
+  let activeLeaseCount = 0;
+  let expiredLeaseCount = 0;
+  let inProgressWithoutClaimCount = 0;
+  let claimWithoutInProgressCount = 0;
+  let incoherentLeaseCount = 0;
   let withSyncError = 0;
 
   for (const row of aggregates.networks) {
@@ -111,6 +137,24 @@ function summarize(aggregates: WalletSyncAggregates, staleThresholdMs: number) {
     stuckCandidatesCount += row.stuckCandidates;
     fullResyncPendingCount += row.fullResyncPending;
     maxFullResyncDrift = Math.max(maxFullResyncDrift, row.maxFullResyncDrift);
+    incrementalPendingCount += row.incrementalPending;
+    unclaimedIncrementalPendingCount += row.unclaimedIncrementalPending;
+    claimedIncrementalPendingCount += row.claimedIncrementalPending;
+    trailingIncrementalRequestCount += row.trailingIncrementalRequest;
+    readyIncrementalPendingCount += row.readyIncrementalPending;
+    maxIncrementalDrift = Math.max(maxIncrementalDrift, row.maxIncrementalDrift);
+    unpreparedFullResyncPendingCount += row.unpreparedFullResyncPending;
+    preparedFullResyncPendingCount += row.preparedFullResyncPending;
+    actionRequiredCount += row.actionRequired;
+    actionRequiredPendingCount += row.actionRequiredPending;
+    orphanedActionRequiredCount += row.orphanedActionRequired;
+    deferredRetryPendingCount += row.deferredRetryPending;
+    dueRetryPendingCount += row.dueRetryPending;
+    activeLeaseCount += row.activeLease;
+    expiredLeaseCount += row.expiredLease;
+    inProgressWithoutClaimCount += row.inProgressWithoutClaim;
+    claimWithoutInProgressCount += row.claimWithoutInProgress;
+    incoherentLeaseCount += row.incoherentLease;
     withSyncError += row.withSyncError;
 
     // `wallets.network` is enum-constrained on write, so an unrecognized value
@@ -127,6 +171,10 @@ function summarize(aggregates: WalletSyncAggregates, staleThresholdMs: number) {
     section.syncInProgressCount += row.syncInProgress;
     section.stuckCandidatesCount += row.stuckCandidates;
     section.fullResyncPendingCount += row.fullResyncPending;
+    section.incrementalPendingCount += row.incrementalPending;
+    section.actionRequiredCount += row.actionRequired;
+    section.activeLeaseCount += row.activeLease;
+    section.expiredLeaseCount += row.expiredLease;
   }
 
   let classified = 0;
@@ -157,6 +205,10 @@ function summarize(aggregates: WalletSyncAggregates, staleThresholdMs: number) {
         syncInProgressCount: boundedCount(section.syncInProgressCount),
         stuckCandidatesCount: boundedCount(section.stuckCandidatesCount),
         fullResyncPendingCount: boundedCount(section.fullResyncPendingCount),
+        incrementalPendingCount: boundedCount(section.incrementalPendingCount),
+        actionRequiredCount: boundedCount(section.actionRequiredCount),
+        activeLeaseCount: boundedCount(section.activeLeaseCount),
+        expiredLeaseCount: boundedCount(section.expiredLeaseCount),
       }]),
     ),
     syncInProgressCount: boundedCount(syncInProgressCount),
@@ -165,6 +217,32 @@ function summarize(aggregates: WalletSyncAggregates, staleThresholdMs: number) {
     fullResync: {
       pendingCount: boundedCount(fullResyncPendingCount),
       maxDrift: toFullResyncDriftBucket(maxFullResyncDrift),
+      unpreparedPendingCount: boundedCount(unpreparedFullResyncPendingCount),
+      preparedAwaitingCompletionCount: boundedCount(preparedFullResyncPendingCount),
+    },
+    incremental: {
+      pendingCount: boundedCount(incrementalPendingCount),
+      unclaimedPendingCount: boundedCount(unclaimedIncrementalPendingCount),
+      claimedPendingCount: boundedCount(claimedIncrementalPendingCount),
+      trailingRequestCount: boundedCount(trailingIncrementalRequestCount),
+      readyUnclaimedCount: boundedCount(readyIncrementalPendingCount),
+      maxDrift: toFullResyncDriftBucket(maxIncrementalDrift),
+    },
+    actionRequired: {
+      totalCount: boundedCount(actionRequiredCount),
+      pendingIntentCount: boundedCount(actionRequiredPendingCount),
+      orphanedCount: boundedCount(orphanedActionRequiredCount),
+    },
+    retry: {
+      deferredPendingCount: boundedCount(deferredRetryPendingCount),
+      duePendingCount: boundedCount(dueRetryPendingCount),
+    },
+    leaseAuthority: {
+      activeCount: boundedCount(activeLeaseCount),
+      expiredCount: boundedCount(expiredLeaseCount),
+      inProgressWithoutClaimCount: boundedCount(inProgressWithoutClaimCount),
+      claimWithoutInProgressCount: boundedCount(claimWithoutInProgressCount),
+      incoherentCount: boundedCount(incoherentLeaseCount),
     },
     errorClasses: boundedCounts(errorClasses),
   };
@@ -185,6 +263,11 @@ registerShareableCollector('walletSync', {
   schema: walletSyncSchema,
   sourceProcess: 'database_shared',
   sourceKind: 'aggregate_query',
-  authoritativeFor: ['wallet_sync_state', 'wallet_full_resync_intent'],
+  authoritativeFor: [
+    'wallet_sync_state',
+    'wallet_incremental_sync_intent',
+    'wallet_full_resync_intent',
+    'wallet_sync_lease_row',
+  ],
   notAuthoritativeFor: ['wallet_sync_execution'],
 });

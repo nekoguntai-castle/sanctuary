@@ -63,7 +63,7 @@ const lifecycleReturningColumns = Prisma.raw(`
   "syncStateVersion"
 `);
 
-interface RequestRow extends IncrementalSyncIntentState {
+interface RequestRow extends IncrementalSyncLifecycleState {
   previousRequestedGeneration: number;
 }
 
@@ -72,6 +72,7 @@ export interface IncrementalSyncClaimInput {
   claimedAt: Date;
   leaseExpiresAt: Date;
   expectedRequestedGeneration: number;
+  fullResyncGeneration?: number;
   expectedExpiredFence?: WalletSyncMutationFence;
 }
 
@@ -151,6 +152,20 @@ function requireExpiredClaimCursor(cursor: ExpiredIncrementalSyncClaimCursor): v
   requireWalletId(cursor.walletId);
 }
 
+const requireOptionalFullResyncGeneration = (
+  generation: number | undefined,
+): void => {
+  if (generation === undefined) return;
+  const supported = [
+    Number.isInteger(generation),
+    generation >= 1,
+    generation <= MAX_SYNC_GENERATION,
+  ].every(Boolean);
+  if (!supported) {
+    throw new Error('Full resync claim generation is outside the supported range');
+  }
+};
+
 function requireClaimInput(walletId: string, input: IncrementalSyncClaimInput): void {
   requireWalletId(walletId);
   requireFence({ generation: 1, leaseToken: input.leaseToken });
@@ -172,6 +187,7 @@ function requireClaimInput(walletId: string, input: IncrementalSyncClaimInput): 
       throw new Error('Expired incremental sync reclaim must rotate the lease token');
     }
   }
+  requireOptionalFullResyncGeneration(input.fullResyncGeneration);
 }
 
 interface LockedMutationFenceRow {
@@ -293,7 +309,10 @@ export async function requestIncrementalSync(
     WITH current AS (
       SELECT "id",
              "requestedIncrementalSyncGeneration",
-             "claimedIncrementalSyncGeneration"
+             "claimedIncrementalSyncGeneration",
+             "syncActionRequiredAt",
+             "syncNextRetryAt",
+             "syncRetryCount"
       FROM "wallets"
       WHERE "id" = ${walletId}
       FOR UPDATE
@@ -314,6 +333,19 @@ export async function requestIncrementalSync(
         "syncRetryCount" = CASE
           WHEN ${explicitReopen} THEN 0
           ELSE wallet."syncRetryCount"
+        END,
+        "syncStateVersion" = wallet."syncStateVersion" + CASE
+          WHEN GREATEST(
+            current."requestedIncrementalSyncGeneration"::BIGINT,
+            current."claimedIncrementalSyncGeneration"::BIGINT + 1
+          )::INTEGER <> current."requestedIncrementalSyncGeneration"
+            OR (${explicitReopen} AND (
+              current."syncActionRequiredAt" IS NOT NULL
+              OR current."syncNextRetryAt" IS NOT NULL
+              OR current."syncRetryCount" <> 0
+            ))
+          THEN 1
+          ELSE 0
         END,
         "updatedAt" = CURRENT_TIMESTAMP
     FROM current
@@ -336,6 +368,15 @@ export async function requestIncrementalSync(
       wallet."requestedFullResyncGeneration",
       wallet."preparedFullResyncGeneration",
       wallet."processedFullResyncGeneration",
+      wallet."syncInProgress",
+      wallet."lastSyncedAt",
+      wallet."lastSyncedBlockHeight",
+      wallet."lastSyncStatus",
+      wallet."lastSyncError",
+      wallet."lastSyncFailureClass",
+      wallet."syncExecutionOwner",
+      wallet."syncStartedAt",
+      wallet."syncStateVersion",
       current."requestedIncrementalSyncGeneration" AS "previousRequestedGeneration"
   `);
   const row = rows[0];
@@ -365,6 +406,12 @@ export async function claimIncrementalSync(
   requireClaimInput(walletId, input);
   const expectedGeneration = input.expectedRequestedGeneration!;
   const expectedExpiredFence = input.expectedExpiredFence;
+  const fullResyncEligibility = input.fullResyncGeneration === undefined
+    ? Prisma.sql`AND "requestedFullResyncGeneration" = "processedFullResyncGeneration"`
+    : Prisma.sql`
+      AND "requestedFullResyncGeneration" = ${input.fullResyncGeneration}
+      AND "processedFullResyncGeneration" < ${input.fullResyncGeneration}
+    `;
   const eligibility = expectedExpiredFence === undefined
     ? Prisma.sql`
       AND "requestedIncrementalSyncGeneration" = ${expectedGeneration}
@@ -394,7 +441,7 @@ export async function claimIncrementalSync(
     WHERE "id" = ${walletId}
       AND "requestedIncrementalSyncGeneration" > "processedIncrementalSyncGeneration"
       AND "requestedIncrementalSyncGeneration" >= ${expectedGeneration}
-      AND "requestedFullResyncGeneration" = "processedFullResyncGeneration"
+      ${fullResyncEligibility}
       AND "syncActionRequiredAt" IS NULL
       AND ("syncNextRetryAt" IS NULL OR "syncNextRetryAt" <= ${input.claimedAt})
       ${eligibility}
@@ -404,7 +451,14 @@ export async function claimIncrementalSync(
   if (!state) {
     const current = await findIncrementalSyncIntent(walletId);
     if (current
-      && current.claimedIncrementalSyncGeneration === expectedGeneration
+      && input.fullResyncGeneration === undefined
+      && current.requestedFullResyncGeneration > current.processedFullResyncGeneration) {
+      return { status: 'not_claimed' };
+    }
+    if (current
+      && current.claimedIncrementalSyncGeneration
+        > current.processedIncrementalSyncGeneration
+      && current.claimedIncrementalSyncGeneration <= expectedGeneration
       && current.processedIncrementalSyncGeneration < expectedGeneration) {
       return { status: 'already_claimed' };
     }
@@ -536,6 +590,51 @@ export async function releaseIncrementalSyncAsActionRequired(
 }
 
 /**
+ * Revoke any current mutation fence while preserving unprocessed durable intent.
+ * The atomic row update waits behind an in-flight fenced mutation transaction;
+ * after it commits, every former owner fails the next exact-token validation.
+ */
+export interface IncrementalSyncResetSnapshot {
+  syncStateVersion: number;
+  syncExecutionOwner: string | null;
+  syncStartedAt: Date | null;
+}
+
+export async function resetIncrementalSyncAttempt(
+  walletId: string,
+  expected?: IncrementalSyncResetSnapshot,
+): Promise<IncrementalSyncLifecycleState | null> {
+  const rows = await prisma.$queryRaw<IncrementalSyncLifecycleState[]>(Prisma.sql`
+    UPDATE "wallets"
+    SET "claimedIncrementalSyncGeneration" = "processedIncrementalSyncGeneration",
+        "incrementalSyncLeaseToken" = NULL,
+        "incrementalSyncClaimedAt" = NULL,
+        "incrementalSyncLeaseExpiresAt" = NULL,
+        "syncInProgress" = FALSE,
+        "lastSyncStatus" = NULL,
+        "lastSyncError" = NULL,
+        "lastSyncFailureClass" = NULL,
+        "syncExecutionOwner" = NULL,
+        "syncRetryCount" = 0,
+        "syncNextRetryAt" = NULL,
+        "syncStartedAt" = NULL,
+        "syncStateVersion" = "syncStateVersion" + 1,
+        "updatedAt" = CURRENT_TIMESTAMP
+    WHERE "id" = ${walletId}
+      ${expected === undefined
+        ? Prisma.empty
+        : Prisma.sql`
+          AND "syncInProgress" = TRUE
+          AND "syncStateVersion" = ${expected.syncStateVersion}
+          AND "syncExecutionOwner" IS NOT DISTINCT FROM ${expected.syncExecutionOwner}
+          AND "syncStartedAt" IS NOT DISTINCT FROM ${expected.syncStartedAt}
+        `}
+    RETURNING ${lifecycleReturningColumns}
+  `);
+  return rows[0] ?? null;
+}
+
+/**
  * Read one bounded, due-time ordered page of exact expired claim identities.
  * This reader never probes execution locks or rotates a lease; those authority
  * checks remain in admission and the lock-owning canonical consumer. The
@@ -627,6 +726,7 @@ export const syncIntentRepository = {
   completeIncrementalSync,
   releaseIncrementalSyncForRetry,
   releaseIncrementalSyncAsActionRequired,
+  resetIncrementalSyncAttempt,
   findExpiredIncrementalSyncClaims,
   findActionableIncrementalSyncIntents,
 };

@@ -178,6 +178,32 @@ describe("WalletHeader", () => {
     expect(screen.queryByText("Wallet not synced")).not.toBeInTheDocument();
   });
 
+  it("renders durable queued work instead of the never-synced banner", () => {
+    renderHeader({
+      lastSyncedAt: null,
+      lastSyncStatus: null,
+      syncInProgress: false,
+      requestedIncrementalSyncGeneration: 2,
+      processedIncrementalSyncGeneration: 1,
+    });
+
+    expect(screen.getByText("Sync pending")).toBeInTheDocument();
+    expect(screen.queryByText("Wallet not synced")).not.toBeInTheDocument();
+  });
+
+  it("renders durable full-resync work instead of the never-synced banner", () => {
+    renderHeader({
+      lastSyncedAt: null,
+      lastSyncStatus: null,
+      syncInProgress: false,
+      requestedFullResyncGeneration: 2,
+      processedFullResyncGeneration: 1,
+    });
+
+    expect(screen.getByText("Resync pending")).toBeInTheDocument();
+    expect(screen.queryByText("Wallet not synced")).not.toBeInTheDocument();
+  });
+
   it("shows syncing badge and disables sync controls while syncing", () => {
     renderHeader({}, { syncing: true });
 

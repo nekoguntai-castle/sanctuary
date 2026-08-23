@@ -16,7 +16,7 @@ import {
 import { createLogger } from '../../utils/logger';
 import { cache } from '../../services/cache';
 import { deadLetterQueue, type DeadLetterCategory } from '../../services/deadLetterQueue';
-import { enqueueDeadLetterJob } from '../../services/workerSyncQueue';
+import { retryDeadLetterSyncJob } from '../../services/sync/syncDeadLetterRetryAdmission';
 import { getWebSocketServer, getRateLimitEvents } from '../../websocket/server';
 import { getErrorMessage } from '../../utils/errors';
 import * as docker from '../../utils/docker';
@@ -198,7 +198,7 @@ router.post('/dlq/:id/retry', authenticate, requireAdmin, asyncHandler(async (re
   }
   let accepted = false;
   try {
-    accepted = await enqueueDeadLetterJob(entry.job, entry.id);
+    accepted = await retryDeadLetterSyncJob(entry.job, entry.id);
   } catch (error) {
     await deadLetterQueue.releaseRetry(entry.id, token);
     log.error('DLQ retry dispatch failed', {

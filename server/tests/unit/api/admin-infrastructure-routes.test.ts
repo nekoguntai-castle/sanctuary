@@ -61,8 +61,8 @@ vi.mock('../../../src/services/deadLetterQueue', () => ({
   },
 }));
 
-vi.mock('../../../src/services/workerSyncQueue', () => ({
-  enqueueDeadLetterJob: mockEnqueueDeadLetterJob,
+vi.mock('../../../src/services/sync/syncDeadLetterRetryAdmission', () => ({
+  retryDeadLetterSyncJob: mockEnqueueDeadLetterJob,
 }));
 
 vi.mock('../../../src/websocket/server', () => ({

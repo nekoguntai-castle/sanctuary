@@ -82,6 +82,15 @@ describe('walletDataFormatters', () => {
       syncNextRetryAt: '2026-08-20T12:01:00.000Z',
       syncStartedAt: null,
       syncStateVersion: 17,
+      requestedIncrementalSyncGeneration: 9,
+      claimedIncrementalSyncGeneration: 8,
+      processedIncrementalSyncGeneration: 7,
+      incrementalSyncClaimedAt: null,
+      incrementalSyncLeaseExpiresAt: '2026-08-20T12:05:00.000Z',
+      syncActionRequiredAt: null,
+      requestedFullResyncGeneration: 6,
+      preparedFullResyncGeneration: 5,
+      processedFullResyncGeneration: 4,
     } as any, 'user-1');
 
     expect(formatted).toMatchObject({
@@ -91,6 +100,15 @@ describe('walletDataFormatters', () => {
       syncNextRetryAt: '2026-08-20T12:01:00.000Z',
       syncStartedAt: null,
       syncStateVersion: 17,
+      requestedIncrementalSyncGeneration: 9,
+      claimedIncrementalSyncGeneration: 8,
+      processedIncrementalSyncGeneration: 7,
+      incrementalSyncClaimedAt: null,
+      incrementalSyncLeaseExpiresAt: '2026-08-20T12:05:00.000Z',
+      syncActionRequiredAt: null,
+      requestedFullResyncGeneration: 6,
+      preparedFullResyncGeneration: 5,
+      processedFullResyncGeneration: 4,
     });
   });
 

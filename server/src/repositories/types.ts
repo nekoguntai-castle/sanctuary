@@ -136,6 +136,19 @@ export interface WalletSyncState {
   syncStateVersion: number;
 }
 
+/** Complete persisted state used by public status projections. */
+export interface WalletSyncDurableState extends WalletSyncState {
+  requestedIncrementalSyncGeneration: number;
+  claimedIncrementalSyncGeneration: number;
+  processedIncrementalSyncGeneration: number;
+  incrementalSyncClaimedAt: Date | null;
+  incrementalSyncLeaseExpiresAt: Date | null;
+  syncActionRequiredAt: Date | null;
+  requestedFullResyncGeneration: number;
+  preparedFullResyncGeneration: number;
+  processedFullResyncGeneration: number;
+}
+
 export interface IncrementalSyncIntentState {
   id: string;
   requestedIncrementalSyncGeneration: number;
@@ -162,7 +175,7 @@ export type IncrementalSyncRequestMode = 'automatic' | 'explicit_reopen';
 export type IncrementalSyncRequestResult =
   | {
     status: 'requested' | 'merged';
-    state: IncrementalSyncIntentState;
+    state: IncrementalSyncLifecycleState;
   }
   | { status: 'generation_exhausted' | 'not_found' };
 

@@ -14,7 +14,6 @@ export { webhookDeliveryJobs } from './webhookDeliveryJobs';
 
 import type { WorkerJobQueue } from '../workerJobQueue';
 import type { WorkerJobHandler } from './types';
-import type { SyncJobDependencies } from '../../jobs/syncJobContract';
 import { createSyncJobs } from './syncJobs';
 import { notificationJobs } from './notificationJobs';
 import { maintenanceJobs } from './maintenanceJobs';
@@ -28,10 +27,9 @@ import { webhookDeliveryJobs } from './webhookDeliveryJobs';
  */
 export function registerWorkerJobs(
   queue: WorkerJobQueue,
-  dependencies: SyncJobDependencies,
 ): void {
   const allJobs: WorkerJobHandler<unknown, unknown>[] = [
-    ...createSyncJobs(dependencies),
+    ...createSyncJobs(),
     ...notificationJobs,
     ...maintenanceJobs,
     ...autopilotJobs,

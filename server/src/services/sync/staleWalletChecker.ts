@@ -1,19 +1,18 @@
 /**
  * Stale Wallet Checker
  *
- * Detects and handles wallets with stale or stuck sync states:
+ * Handles wallets with stuck sync states:
  * - resetStuckSyncs: Clears syncInProgress flags left over from a previous server session.
- * - checkAndQueueStaleSyncs: Finds wallets that haven't been synced recently and queues them.
  */
 
 import { walletRepository } from '../../repositories';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { getConfig } from '../../config';
-import type { SyncPriority } from '@sanctuary/shared/constants/sync';
-import type { SyncState } from './types';
 import { withLock } from '../../infrastructure';
 import { syncLifecyclePublisher } from './syncLifecyclePublisher';
+import { syncIntentAdmission } from './syncIntentAdmission';
+import { getSyncLockKey, getSyncLockTtlMs } from '../../jobs/syncJobContract';
 
 const log = createLogger('SYNC:STALE');
 
@@ -35,7 +34,11 @@ export async function clearStuckSyncIfAuthorized(
   activeSyncs: ReadonlySet<string>,
 ): Promise<boolean> {
   if (activeSyncs.has(wallet.id)) return false;
-  if (!Number.isInteger(wallet.syncStateVersion)) return false;
+  if (
+    !Number.isInteger(wallet.syncStateVersion)
+    || wallet.syncExecutionOwner === undefined
+    || wallet.syncStartedAt === undefined
+  ) return false;
 
   if (wallet.syncExecutionOwner === 'worker') {
     const { maxSyncDurationMs } = getConfig().sync;
@@ -46,14 +49,15 @@ export async function clearStuckSyncIfAuthorized(
   }
 
   try {
-    const result = await withLock(`sync:wallet:${wallet.id}`, 30_000, async () => {
-      return walletRepository.clearSyncStateIfUnchanged({
-        id: wallet.id,
-        syncExecutionOwner: wallet.syncExecutionOwner ?? null,
-        syncStartedAt: wallet.syncStartedAt ?? null,
+    const result = await withLock(
+      getSyncLockKey({ walletId: wallet.id }),
+      getSyncLockTtlMs(),
+      () => syncIntentAdmission.reset(wallet.id, {
         syncStateVersion: wallet.syncStateVersion as number,
-      });
-    });
+        syncExecutionOwner: wallet.syncExecutionOwner as string | null,
+        syncStartedAt: wallet.syncStartedAt as Date | null,
+      }),
+    );
     if (!result.success || result.result === null) return false;
     await syncLifecyclePublisher.publish({
       walletId: wallet.id,
@@ -82,53 +86,5 @@ export async function resetStuckSyncs(): Promise<void> {
     }
   } catch (error) {
     log.error('[SYNC] Failed to reset stuck sync flags', { error: getErrorMessage(error) });
-  }
-}
-
-/**
- * Check for stale wallets and queue them for sync.
- * Also auto-unstucks wallets that have syncInProgress=true but aren't actually syncing.
- *
- * @param state - Shared sync state (reads isRunning and activeSyncs).
- * @param queueSync - Callback to queue a wallet for sync with a given priority.
- */
-export async function checkAndQueueStaleSyncs(
-  state: SyncState,
-  queueSync: (walletId: string, priority: SyncPriority) => void,
-): Promise<void> {
-  if (!state.isRunning) return;
-
-  try {
-    // First, check for stuck syncs - wallets marked as syncing in DB but not in memory
-    // This can happen if sync times out or crashes without proper cleanup
-    const stuckWallets = await walletRepository.findStuckSyncing();
-
-    // Reset any wallet that's marked as syncing but isn't actually syncing
-    let unstuckCount = 0;
-    for (const wallet of stuckWallets) {
-      if (await clearStuckSyncIfAuthorized(wallet, state.activeSyncs)) {
-        /* v8 ignore next -- fallback id is defensive when wallet name is absent */
-        log.warn(`[SYNC] Auto-unstuck wallet ${wallet.name || wallet.id} (was stuck with syncInProgress=true)`);
-        unstuckCount++;
-      }
-    }
-
-    if (unstuckCount > 0) {
-      log.info(`[SYNC] Auto-unstuck ${unstuckCount} wallets that had stale syncInProgress flags`);
-    }
-
-    // Now check for stale wallets that need syncing
-    const { staleThresholdMs } = getConfig().sync;
-    const staleWallets = await walletRepository.findStale({ staleThresholdMs });
-
-    for (const wallet of staleWallets) {
-      queueSync(wallet.id, 'low');
-    }
-
-    if (staleWallets.length > 0) {
-      log.info(`[SYNC] Queued ${staleWallets.length} stale wallets for background sync`);
-    }
-  } catch (error) {
-    log.error('[SYNC] Failed to check for stale syncs', { error: getErrorMessage(error) });
   }
 }

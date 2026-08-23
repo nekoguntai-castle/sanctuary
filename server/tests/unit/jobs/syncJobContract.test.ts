@@ -153,6 +153,16 @@ describe('sync job contract', () => {
       incrementalSyncGeneration: 1,
       requiredMutationFenceFloor: 1,
     });
+    const fullResync = {
+      version: 3,
+      walletId: 'full-resync-v3',
+      incrementalSyncGeneration: 1,
+      requiredMutationFenceFloor: 1,
+      fullResync: true,
+      fullResyncGeneration: 1,
+    } as const;
+    expect(readSyncWalletJobData(fullResync)).toEqual(fullResync);
+    expect(isSyncWalletJobLockData(fullResync)).toBe(true);
   });
 
   it.each([
@@ -174,11 +184,17 @@ describe('sync job contract', () => {
     },
     {
       version: 3,
-      walletId: 'full-resync-v3',
+      walletId: 'full-resync-v3-missing-full-generation',
       incrementalSyncGeneration: 1,
       requiredMutationFenceFloor: 1,
       fullResync: true,
-      fullResyncGeneration: 1,
+    },
+    {
+      version: 3,
+      walletId: 'explicit-false-v3',
+      incrementalSyncGeneration: 1,
+      requiredMutationFenceFloor: 1,
+      fullResync: false,
     },
     {
       version: 2,

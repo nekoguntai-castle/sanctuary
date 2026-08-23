@@ -15,14 +15,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
   mockUpdate, mockFindByIdWithSelect, mockPublishLifecycle, mockBroadcastWalletLog,
-  mockFindStranded, mockEnqueueFullResync, mockFindStale, mockFindStuckWithCutoff,
+  mockFindStale, mockFindStuckWithCutoff,
 } = vi.hoisted(() => ({
   mockUpdate: vi.fn(),
   mockFindByIdWithSelect: vi.fn(),
   mockPublishLifecycle: vi.fn(),
   mockBroadcastWalletLog: vi.fn(),
-  mockFindStranded: vi.fn(),
-  mockEnqueueFullResync: vi.fn(),
   mockFindStale: vi.fn(),
   mockFindStuckWithCutoff: vi.fn(),
 }));
@@ -37,8 +35,20 @@ vi.mock('../../../../src/repositories', () => ({
     updateSyncState: async (walletId: string, state: Record<string, unknown>) => {
       await mockUpdate(walletId, state);
       return {
+        id: walletId,
+        requestedIncrementalSyncGeneration: 1,
+        claimedIncrementalSyncGeneration: 1,
+        processedIncrementalSyncGeneration: 0,
+        incrementalSyncLeaseToken: '10000000-0000-4000-8000-000000000001',
+        incrementalSyncClaimedAt: null,
+        incrementalSyncLeaseExpiresAt: null,
+        syncActionRequiredAt: null,
+        requestedFullResyncGeneration: 0,
+        preparedFullResyncGeneration: 0,
+        processedFullResyncGeneration: 0,
         syncInProgress: false,
         lastSyncedAt: null,
+        lastSyncedBlockHeight: null,
         lastSyncStatus: null,
         lastSyncError: null,
         lastSyncFailureClass: null,
@@ -57,7 +67,6 @@ vi.mock('../../../../src/repositories', () => ({
   transactionRepository: { findWalletIdsWithPendingConfirmations: vi.fn() },
   resyncRepository: {
     resetWalletForFullResync: vi.fn(),
-    findStrandedFullResyncWallets: mockFindStranded,
   },
 }));
 
@@ -80,9 +89,7 @@ import {
   readSyncWalletJobData,
 } from '../../../../src/jobs/syncJobContract';
 
-const checkStaleWalletsJob = createCheckStaleWalletsJob({
-  enqueueFullResyncBatch: mockEnqueueFullResync,
-});
+const checkStaleWalletsJob = createCheckStaleWalletsJob();
 
 describe('sync lock contention is never a silent success', () => {
   beforeEach(() => {
@@ -91,10 +98,6 @@ describe('sync lock contention is never a silent success', () => {
     mockUpdate.mockResolvedValue({});
     mockFindStale.mockResolvedValue([]);
     mockFindStuckWithCutoff.mockResolvedValue([]);
-    mockFindStranded.mockResolvedValue([]);
-    mockEnqueueFullResync.mockResolvedValue({
-      acceptedWalletIds: [], deduplicatedWalletIds: [], indeterminateWallets: [], outcomes: [],
-    });
   });
 
   it('re-delays an ordinary sync instead of skipping it', () => {
@@ -344,56 +347,49 @@ describe('sync lock contention is never a silent success', () => {
       expect(mockUpdate).not.toHaveBeenCalled();
       expect(mockPublishLifecycle).not.toHaveBeenCalled();
     });
-  });
-});
 
+    it('publishes only after a transient durable-write failure recovers', async () => {
+      vi.useFakeTimers();
+      try {
+        mockFindByIdWithSelect.mockResolvedValue({ syncInProgress: false });
+        mockUpdate
+          .mockRejectedValueOnce(new Error('database down'))
+          .mockResolvedValueOnce({});
 
-describe('stranded full-resync reconciliation', () => {
-  const staleJob = (id: string) => ({
-    id, data: {}, attemptsMade: 0, opts: { attempts: 2 },
-  }) as never;
+        const pending = syncWalletJob.lockOptions?.onLockRetryBudgetExhausted?.(
+          { walletId: 'w5' },
+          detail,
+        );
+        await vi.runAllTimersAsync();
+        await expect(pending).resolves.toBeUndefined();
 
-  beforeEach(() => {
-    mockReadStaleWalletSchedulePolicy.mockResolvedValue({ mode: 'legacy_enabled' });
-    mockFindStale.mockResolvedValue([]);
-    mockFindStuckWithCutoff.mockResolvedValue([]);
-  });
-
-  it('looks for stranded generations on every stale sweep', async () => {
-    // Nothing else in the server reads requested > processed. If this call is
-    // removed, a lost full-resync generation is permanent and invisible again.
-    await checkStaleWalletsJob.handler(staleJob('job-0'));
-    expect(mockFindStranded).toHaveBeenCalled();
-  });
-
-  it('logs and continues when the lookup itself fails', async () => {
-    mockFindStranded.mockRejectedValueOnce(new Error('db down'));
-    await expect(checkStaleWalletsJob.handler(staleJob('job-1'))).resolves.toBeDefined();
-  });
-
-  it('re-enqueues a stranded generation when the queue accepts it', async () => {
-    mockFindStranded.mockResolvedValueOnce([{
-      id: 'w9', name: 'AMN-MS3',
-      requestedFullResyncGeneration: 1, processedFullResyncGeneration: 0,
-    }]);
-    mockEnqueueFullResync.mockResolvedValueOnce({
-      acceptedWalletIds: ['w9'], deduplicatedWalletIds: [], indeterminateWallets: [], outcomes: [],
+        expect(mockUpdate).toHaveBeenCalledTimes(2);
+        expect(mockPublishLifecycle).toHaveBeenCalledWith(
+          expect.objectContaining({ walletId: 'w5', transition: 'failed' }),
+        );
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
-    await expect(checkStaleWalletsJob.handler(staleJob('job-3'))).resolves.toBeDefined();
-    expect(mockEnqueueFullResync).toHaveBeenCalledWith(
-      ['w9'],
-      { reason: 'reconcile-stranded-full-resync' },
-    );
-  });
+    it('keeps the durable failure when wallet-log publication throws', async () => {
+      mockFindByIdWithSelect.mockResolvedValue({ syncInProgress: false });
+      mockBroadcastWalletLog.mockImplementationOnce(() => {
+        throw new Error('log bridge failed');
+      });
 
-  it('logs and continues when re-enqueueing throws', async () => {
-    mockFindStranded.mockResolvedValueOnce([{
-      id: 'w1', name: 'AMN-MS3',
-      requestedFullResyncGeneration: 1, processedFullResyncGeneration: 0,
-    }]);
-    mockEnqueueFullResync.mockRejectedValueOnce(new Error('queue unavailable'));
+      await expect(syncWalletJob.lockOptions?.onLockRetryBudgetExhausted?.(
+        { walletId: 'w5' },
+        detail,
+      )).resolves.toBeUndefined();
 
-    await expect(checkStaleWalletsJob.handler(staleJob('job-2'))).resolves.toBeDefined();
+      expect(mockUpdate).toHaveBeenCalledWith('w5', expect.objectContaining({
+        lastSyncStatus: 'failed',
+        lastSyncFailureClass: 'lock_contention',
+      }));
+      expect(mockPublishLifecycle).toHaveBeenCalledWith(
+        expect.objectContaining({ walletId: 'w5', transition: 'failed' }),
+      );
+    });
   });
 });

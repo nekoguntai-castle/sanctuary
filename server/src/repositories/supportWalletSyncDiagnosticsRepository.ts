@@ -28,6 +28,24 @@ export interface WalletSyncNetworkAggregate {
   ageOverSevenDays: number;
   fullResyncPending: number;
   maxFullResyncDrift: number;
+  incrementalPending: number;
+  unclaimedIncrementalPending: number;
+  claimedIncrementalPending: number;
+  trailingIncrementalRequest: number;
+  readyIncrementalPending: number;
+  maxIncrementalDrift: number;
+  unpreparedFullResyncPending: number;
+  preparedFullResyncPending: number;
+  actionRequired: number;
+  actionRequiredPending: number;
+  orphanedActionRequired: number;
+  deferredRetryPending: number;
+  dueRetryPending: number;
+  activeLease: number;
+  expiredLease: number;
+  inProgressWithoutClaim: number;
+  claimWithoutInProgress: number;
+  incoherentLease: number;
   withSyncError: number;
 }
 
@@ -103,6 +121,100 @@ export async function getWalletSyncAggregates(
         COALESCE(
           MAX("requestedFullResyncGeneration" - "processedFullResyncGeneration"), 0
         )::int AS "maxFullResyncDrift",
+        COUNT(*) FILTER (
+          WHERE "requestedIncrementalSyncGeneration" > "processedIncrementalSyncGeneration"
+        )::int AS "incrementalPending",
+        COUNT(*) FILTER (
+          WHERE "requestedIncrementalSyncGeneration" > "processedIncrementalSyncGeneration"
+            AND "claimedIncrementalSyncGeneration" = "processedIncrementalSyncGeneration"
+        )::int AS "unclaimedIncrementalPending",
+        COUNT(*) FILTER (
+          WHERE "claimedIncrementalSyncGeneration" > "processedIncrementalSyncGeneration"
+        )::int AS "claimedIncrementalPending",
+        COUNT(*) FILTER (
+          WHERE "requestedIncrementalSyncGeneration" > "claimedIncrementalSyncGeneration"
+            AND "claimedIncrementalSyncGeneration" > "processedIncrementalSyncGeneration"
+        )::int AS "trailingIncrementalRequest",
+        COUNT(*) FILTER (
+          WHERE "requestedIncrementalSyncGeneration" > "processedIncrementalSyncGeneration"
+            AND "claimedIncrementalSyncGeneration" = "processedIncrementalSyncGeneration"
+            AND "syncActionRequiredAt" IS NULL
+            AND ("syncNextRetryAt" IS NULL OR "syncNextRetryAt" <= NOW())
+            AND "requestedFullResyncGeneration" = "processedFullResyncGeneration"
+        )::int AS "readyIncrementalPending",
+        COALESCE(
+          MAX("requestedIncrementalSyncGeneration" - "processedIncrementalSyncGeneration"), 0
+        )::int AS "maxIncrementalDrift",
+        COUNT(*) FILTER (
+          WHERE "requestedFullResyncGeneration" > "preparedFullResyncGeneration"
+        )::int AS "unpreparedFullResyncPending",
+        COUNT(*) FILTER (
+          WHERE "preparedFullResyncGeneration" > "processedFullResyncGeneration"
+        )::int AS "preparedFullResyncPending",
+        COUNT(*) FILTER (WHERE "syncActionRequiredAt" IS NOT NULL)::int AS "actionRequired",
+        COUNT(*) FILTER (
+          WHERE "syncActionRequiredAt" IS NOT NULL
+            AND (
+              "requestedIncrementalSyncGeneration" > "processedIncrementalSyncGeneration"
+              OR "requestedFullResyncGeneration" > "processedFullResyncGeneration"
+            )
+        )::int AS "actionRequiredPending",
+        COUNT(*) FILTER (
+          WHERE "syncActionRequiredAt" IS NOT NULL
+            AND "requestedIncrementalSyncGeneration" = "processedIncrementalSyncGeneration"
+            AND "requestedFullResyncGeneration" = "processedFullResyncGeneration"
+        )::int AS "orphanedActionRequired",
+        COUNT(*) FILTER (
+          WHERE "syncNextRetryAt" > NOW()
+            AND "syncActionRequiredAt" IS NULL
+            AND "requestedIncrementalSyncGeneration" > "processedIncrementalSyncGeneration"
+        )::int AS "deferredRetryPending",
+        COUNT(*) FILTER (
+          WHERE "syncNextRetryAt" <= NOW()
+            AND "syncActionRequiredAt" IS NULL
+            AND "requestedIncrementalSyncGeneration" > "processedIncrementalSyncGeneration"
+        )::int AS "dueRetryPending",
+        COUNT(*) FILTER (
+          WHERE "claimedIncrementalSyncGeneration" > "processedIncrementalSyncGeneration"
+            AND "incrementalSyncLeaseToken" IS NOT NULL
+            AND "incrementalSyncClaimedAt" IS NOT NULL
+            AND "incrementalSyncLeaseExpiresAt" > NOW()
+        )::int AS "activeLease",
+        COUNT(*) FILTER (
+          WHERE "claimedIncrementalSyncGeneration" > "processedIncrementalSyncGeneration"
+            AND "incrementalSyncLeaseToken" IS NOT NULL
+            AND "incrementalSyncClaimedAt" IS NOT NULL
+            AND "incrementalSyncLeaseExpiresAt" <= NOW()
+        )::int AS "expiredLease",
+        COUNT(*) FILTER (
+          WHERE "syncInProgress"
+            AND "claimedIncrementalSyncGeneration" <= "processedIncrementalSyncGeneration"
+        )::int AS "inProgressWithoutClaim",
+        COUNT(*) FILTER (
+          WHERE NOT "syncInProgress"
+            AND "claimedIncrementalSyncGeneration" > "processedIncrementalSyncGeneration"
+        )::int AS "claimWithoutInProgress",
+        COUNT(*) FILTER (
+          WHERE "processedIncrementalSyncGeneration" > "claimedIncrementalSyncGeneration"
+            OR "claimedIncrementalSyncGeneration" > "requestedIncrementalSyncGeneration"
+            OR (
+              "claimedIncrementalSyncGeneration" > "processedIncrementalSyncGeneration"
+              AND num_nonnulls(
+                "incrementalSyncLeaseToken",
+                "incrementalSyncClaimedAt",
+                "incrementalSyncLeaseExpiresAt"
+              ) <> 3
+            )
+            OR (
+              "claimedIncrementalSyncGeneration" <= "processedIncrementalSyncGeneration"
+              AND num_nonnulls(
+                "incrementalSyncLeaseToken",
+                "incrementalSyncClaimedAt",
+                "incrementalSyncLeaseExpiresAt"
+              ) <> 0
+            )
+            OR "incrementalSyncLeaseExpiresAt" <= "incrementalSyncClaimedAt"
+        )::int AS "incoherentLease",
         COUNT(*) FILTER (WHERE "lastSyncError" IS NOT NULL)::int AS "withSyncError"
       FROM "wallets"
       GROUP BY "network"

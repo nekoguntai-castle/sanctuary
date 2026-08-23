@@ -38,6 +38,7 @@ describe('sync priority constants', () => {
 
   it('defines the persisted lifecycle transition vocabulary', () => {
     expect(SYNC_LIFECYCLE_TRANSITION_VALUES).toEqual([
+      'requested',
       'started',
       'succeeded',
       'retrying',

@@ -1,4 +1,4 @@
-import { walletRepository } from '../../repositories';
+import { addressRepository, walletRepository } from '../../repositories';
 import { BITCOIN_NON_REGTEST_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
 import { DEFAULT_SYNC_PRIORITY, type SyncPriority } from '@sanctuary/shared/constants/sync';
 import type { NetworkType } from '../../repositories/types';
@@ -8,40 +8,44 @@ import {
   ServiceUnavailableError,
   SyncInProgressError,
 } from '../../errors/ApiError';
-import { createLogger } from '../../utils/logger';
-import * as blockchain from '../bitcoin/blockchain';
 import {
   ConfirmationLockUnavailableError,
   ConfirmationRefreshError,
   refreshWalletConfirmations,
 } from './confirmationUpdater';
-import { clearActiveSyncAttempt } from './syncAttemptLifecycle';
 import { syncLifecyclePublisher } from './syncLifecyclePublisher';
 import type { ConfirmationUpdate } from '../bitcoin/blockchain';
-
-const log = createLogger('SYNC:COORDINATOR');
+import { createLogger } from '../../utils/logger';
+import { getErrorMessage } from '../../utils/errors';
+import {
+  syncIntentAdmission,
+  type IncrementalSyncAdmissionResult,
+  type IncrementalSyncWakeupDisposition,
+} from './syncIntentAdmission';
 
 const SYNC_NETWORKS = BITCOIN_NON_REGTEST_NETWORKS;
+const SYNC_ADMISSION_BATCH_CONCURRENCY = 5;
+const log = createLogger('SYNC:COORDINATOR');
 
 type SyncNetwork = Extract<NetworkType, (typeof SYNC_NETWORKS)[number]>;
 
 export interface WalletSyncResponse {
-  success: boolean;
-  syncedAddresses: number;
-  newTransactions: number;
-  newUtxos: number;
-  error?: string;
+  success: true;
+  status: 'requested' | 'merged';
+  generation: number;
+  wakeup: IncrementalSyncWakeupDisposition;
+  message: string;
 }
 
-export interface QueuedWalletSyncResponse {
-  queued: true;
-  queuePosition: number | null;
-  syncInProgress: boolean;
-}
+export type QueuedWalletSyncResponse = WalletSyncResponse;
 
 export interface QueueUserWalletsResponse {
   success: true;
-  message: string;
+  requested: number;
+  merged: number;
+  rejected: number;
+  indeterminate: number;
+  outcomes: WalletSyncBatchOutcome[];
 }
 
 export interface ResetWalletSyncResponse {
@@ -54,18 +58,45 @@ export interface ResyncWalletResponse {
   message: string;
   status: 'accepted' | 'deduplicated';
   walletId: string;
+  generation: number;
+  incrementalGeneration: number;
+  wakeup: 'enqueued' | 'unavailable';
 }
 
 export interface QueueNetworkSyncResponse {
   success: true;
-  queued: number;
+  requested: number;
+  merged: number;
+  rejected: number;
+  indeterminate: number;
   walletIds: string[];
+  outcomes: WalletSyncBatchOutcome[];
   message?: string;
 }
 
-export interface ResyncNetworkResponse extends QueueNetworkSyncResponse {
+export type WalletSyncBatchOutcome = {
+  walletId: string;
+  status: 'requested' | 'merged';
+  generation: number;
+  wakeup: IncrementalSyncWakeupDisposition;
+} | {
+  walletId: string;
+  status: 'rejected';
+  reason: 'blocked' | 'generation_exhausted' | 'not_found';
+} | {
+  walletId: string;
+  status: 'indeterminate';
+  reason: 'admission_error';
+};
+
+export interface ResyncNetworkResponse {
+  success: true;
+  queued: number;
+  walletIds: string[];
+  message?: string;
   acceptedWalletIds: string[];
   deduplicatedWalletIds: string[];
+  deferredWalletIds: string[];
   rejectedWallets: Array<{
     walletId: string;
     reason: 'queue_unavailable' | 'queue_error';
@@ -93,10 +124,37 @@ export interface NetworkSyncStatusResponse {
   lastSyncAt: string | null;
 }
 
-export interface LegacyWalletSyncResponse {
-  message: string;
-  [key: string]: unknown;
+type NetworkWalletSyncState = Awaited<
+ReturnType<typeof walletRepository.findByNetworkWithSyncStatus>
+>[number];
+
+function hasDurablePendingSync(wallet: NetworkWalletSyncState): boolean {
+  return wallet.requestedIncrementalSyncGeneration
+      > wallet.processedIncrementalSyncGeneration
+    || wallet.requestedFullResyncGeneration
+      > wallet.processedFullResyncGeneration;
 }
+
+function isNetworkSyncFailed(wallet: NetworkWalletSyncState): boolean {
+  if (wallet.syncInProgress) return false;
+  if (wallet.syncActionRequiredAt !== null) return true;
+  return !hasDurablePendingSync(wallet) && wallet.lastSyncStatus === 'failed';
+}
+
+function isNetworkSyncPending(wallet: NetworkWalletSyncState): boolean {
+  return !wallet.syncInProgress
+    && wallet.syncActionRequiredAt === null
+    && (hasDurablePendingSync(wallet) || wallet.lastSyncStatus === null);
+}
+
+function isNetworkSyncCurrent(wallet: NetworkWalletSyncState): boolean {
+  return !wallet.syncInProgress
+    && wallet.syncActionRequiredAt === null
+    && !hasDurablePendingSync(wallet)
+    && wallet.lastSyncStatus === 'success';
+}
+
+export type LegacyWalletSyncResponse = WalletSyncResponse;
 
 export interface UpdateConfirmationsResponse {
   message: string;
@@ -138,41 +196,143 @@ async function findWalletsExcludedFromSync(userId: string): Promise<ExcludedWall
   return wallets.map(({ id }) => ({ walletId: id, reason: 'network_not_syncable' as const }));
 }
 
-async function getSyncStaggerDelayMs(): Promise<number> {
-  const { getConfig } = await import('../../config');
-  return getConfig().sync.syncStaggerDelayMs;
-}
-
 async function getSyncServiceInstance() {
   const { getSyncService } = await import('./syncService');
   return getSyncService();
 }
 
+type IncrementalSyncAdmissionFailure = Exclude<
+  IncrementalSyncAdmissionResult,
+  { status: 'requested' | 'merged' }
+>;
+
+function admissionFailure(result: IncrementalSyncAdmissionFailure): never {
+  if (result.status === 'not_found') throw new NotFoundError('Wallet not found');
+  throw new ServiceUnavailableError(result.status === 'generation_exhausted'
+    ? 'Wallet sync generation limit reached'
+    : 'Wallet sync is temporarily unavailable');
+}
+
+async function requestWalletHistory(walletId: string): Promise<WalletSyncResponse> {
+  const result = await syncIntentAdmission.request(walletId, { mode: 'explicit_reopen' });
+  if (!('generation' in result)) {
+    return admissionFailure(result);
+  }
+  return {
+    success: true,
+    status: result.status,
+    generation: result.generation,
+    wakeup: result.wakeup,
+    message: result.status === 'requested'
+      ? 'Wallet sync requested'
+      : 'Wallet sync merged with existing work',
+  };
+}
+
+async function requestWalletHistoryBatch(walletIds: string[]): Promise<WalletSyncBatchOutcome[]> {
+  const outcomes: WalletSyncBatchOutcome[] = [];
+  for (let offset = 0; offset < walletIds.length; offset += SYNC_ADMISSION_BATCH_CONCURRENCY) {
+    const page = walletIds.slice(offset, offset + SYNC_ADMISSION_BATCH_CONCURRENCY);
+    const pageOutcomes = await Promise.all(page.map(async walletId => {
+      try {
+        const result = await syncIntentAdmission.request(walletId, { mode: 'explicit_reopen' });
+        if (result.status === 'requested' || result.status === 'merged') {
+          return {
+            walletId,
+            status: result.status,
+            generation: result.generation,
+            wakeup: result.wakeup,
+          };
+        }
+        return {
+          walletId,
+          status: 'rejected' as const,
+          reason: result.status,
+        };
+      } catch (error) {
+        log.error('Wallet sync batch admission failed with unknown durable outcome', {
+          walletId,
+          error: getErrorMessage(error),
+        });
+        return { walletId, status: 'indeterminate' as const, reason: 'admission_error' as const };
+      }
+    }));
+    outcomes.push(...pageOutcomes);
+  }
+  return outcomes;
+}
+
+function countBatchStatus(outcomes: WalletSyncBatchOutcome[], status: WalletSyncBatchOutcome['status']): number {
+  return outcomes.filter(outcome => outcome.status === status).length;
+}
+
+type FullResyncBatchOutcome =
+  | {
+    walletId: string;
+    status: 'requested' | 'merged';
+    generation: number;
+    incrementalGeneration: number;
+    wakeup: 'enqueued' | 'unavailable';
+  }
+  | { walletId: string; status: 'rejected'; reason: 'queue_unavailable' | 'queue_error' }
+  | { walletId: string; status: 'indeterminate'; reason: 'queue_state_unknown' };
+
+async function requestFullResyncBatch(
+  walletIds: string[],
+  reason: string,
+): Promise<FullResyncBatchOutcome[]> {
+  const outcomes: FullResyncBatchOutcome[] = [];
+  for (let offset = 0; offset < walletIds.length; offset += SYNC_ADMISSION_BATCH_CONCURRENCY) {
+    const page = walletIds.slice(offset, offset + SYNC_ADMISSION_BATCH_CONCURRENCY);
+    const pageOutcomes = await Promise.all(page.map(async walletId => {
+      try {
+        const result = await syncIntentAdmission.requestFullResync(walletId, { reason });
+        if (result.status === 'requested' || result.status === 'merged') {
+          return {
+            walletId,
+            status: result.status,
+            generation: result.generation,
+            incrementalGeneration: result.incrementalGeneration,
+            wakeup: result.wakeup,
+          };
+        }
+        return {
+          walletId,
+          status: 'rejected' as const,
+          reason: result.status === 'blocked' ? 'queue_unavailable' as const : 'queue_error' as const,
+        };
+      } catch (error) {
+        log.error('Full-resync batch admission failed with unknown durable outcome', {
+          walletId,
+          error: getErrorMessage(error),
+        });
+        return {
+          walletId,
+          status: 'indeterminate' as const,
+          reason: 'queue_state_unknown' as const,
+        };
+      }
+    }));
+    outcomes.push(...pageOutcomes);
+  }
+  return outcomes;
+}
+
 export class SyncCoordinator {
   async syncWalletNow(userId: string, walletId: string): Promise<WalletSyncResponse> {
     await requireWalletAccess(walletId, userId);
-
-    const syncService = await getSyncServiceInstance();
-    const result = await syncService.syncNow(walletId);
-
-    return {
-      success: result.success,
-      syncedAddresses: result.addresses,
-      newTransactions: result.transactions,
-      newUtxos: result.utxos,
-      error: result.error,
-    };
+    return requestWalletHistory(walletId);
   }
 
   async syncLegacyBitcoinWallet(userId: string, walletId: string): Promise<LegacyWalletSyncResponse> {
     await requireWalletAccess(walletId, userId);
+    return requestWalletHistory(walletId);
+  }
 
-    const result = await blockchain.syncWallet(walletId);
-
-    return {
-      message: 'Wallet synced successfully',
-      ...result,
-    };
+  async syncLegacyBitcoinAddress(userId: string, addressId: string): Promise<LegacyWalletSyncResponse> {
+    const address = await addressRepository.findByIdWithAccess(addressId, userId);
+    if (!address) throw new NotFoundError('Address not found');
+    return requestWalletHistory(address.walletId);
   }
 
   async updateWalletConfirmations(userId: string, walletId: string): Promise<UpdateConfirmationsResponse> {
@@ -203,17 +363,8 @@ export class SyncCoordinator {
     priority: SyncPriority = DEFAULT_SYNC_PRIORITY
   ): Promise<QueuedWalletSyncResponse> {
     await requireWalletAccess(walletId, userId);
-
-    const syncService = await getSyncServiceInstance();
-    syncService.queueSync(walletId, priority);
-
-    const status = await syncService.getSyncStatus(walletId);
-
-    return {
-      queued: true,
-      queuePosition: status.queuePosition,
-      syncInProgress: status.syncInProgress,
-    };
+    void priority;
+    return requestWalletHistory(walletId);
   }
 
   async getWalletSyncStatus(userId: string, walletId: string) {
@@ -234,18 +385,24 @@ export class SyncCoordinator {
   }
 
   async queueUserWallets(userId: string, priority: SyncPriority = DEFAULT_SYNC_PRIORITY): Promise<QueueUserWalletsResponse> {
-    const syncService = await getSyncServiceInstance();
-    await syncService.queueUserWallets(userId, priority);
-
+    void priority;
+    const wallets = await walletRepository.findByUserId(userId);
+    const outcomes = await requestWalletHistoryBatch(wallets.map(wallet => wallet.id));
     return {
       success: true,
-      message: 'All wallets queued for sync',
+      requested: outcomes.filter(outcome => outcome.status === 'requested').length,
+      merged: outcomes.filter(outcome => outcome.status === 'merged').length,
+      rejected: countBatchStatus(outcomes, 'rejected'),
+      indeterminate: countBatchStatus(outcomes, 'indeterminate'),
+      outcomes,
     };
   }
 
   async resetWalletSyncState(userId: string, walletId: string): Promise<ResetWalletSyncResponse> {
     await requireWalletAccess(walletId, userId);
-    const transition = await clearActiveSyncAttempt(walletId, walletRepository);
+    const state = await syncIntentAdmission.reset(walletId);
+    if (!state) throw new NotFoundError('Wallet not found');
+    const transition = { walletId, transition: 'cleared' as const, state };
     await syncLifecyclePublisher.publish(transition);
 
     return {
@@ -261,32 +418,30 @@ export class SyncCoordinator {
       throw new NotFoundError('Wallet not found');
     }
 
-    const { enqueueFullResyncBatch } = await import('../workerSyncQueue');
-    const result = await enqueueFullResyncBatch([walletId], {
+    const result = await syncIntentAdmission.requestFullResync(walletId, {
       reason: `manual-wallet-resync:${userId}`,
     });
-    const status = result.acceptedWalletIds.length > 0
-      ? 'accepted'
-      : result.deduplicatedWalletIds.length > 0
-        ? 'deduplicated'
-        : null;
-    if (!status) {
-      throw new ServiceUnavailableError(
-        result.indeterminateWallets.length > 0
-          ? 'Full resync queue state could not be confirmed'
-          : 'Full resync queue is unavailable',
-        undefined,
-        { outcomes: result.outcomes },
-      );
+    if (!('generation' in result)) {
+      if (result.status === 'not_found') throw new NotFoundError('Wallet not found');
+      if (result.status === 'generation_exhausted') {
+        throw new ServiceUnavailableError('Wallet full-resync generation limit reached');
+      }
+      throw new ServiceUnavailableError('Wallet sync is temporarily unavailable');
     }
+    const status = result.status === 'requested' ? 'accepted' : 'deduplicated';
 
     return {
       success: true,
-      message: status === 'accepted'
-        ? 'Full resync queued. Wallet data will be reset after exclusive sync ownership is acquired.'
-        : 'A full resync is already queued for this wallet.',
+      message: result.wakeup === 'unavailable'
+        ? 'Full resync requested durably; recovery will enqueue it when queue authority is available.'
+        : status === 'accepted'
+          ? 'Full resync queued. Wallet data will be reset after exclusive sync ownership is acquired.'
+          : 'A full resync is already queued for this wallet.',
       status,
       walletId,
+      generation: result.generation,
+      incrementalGeneration: result.incrementalGeneration,
+      wakeup: result.wakeup,
     };
   }
 
@@ -301,28 +456,27 @@ export class SyncCoordinator {
     if (walletIds.length === 0) {
       return {
         success: true,
-        queued: 0,
+        requested: 0,
+        merged: 0,
+        rejected: 0,
+        indeterminate: 0,
         walletIds: [],
+        outcomes: [],
         message: `No ${syncNetwork} wallets found`,
       };
     }
 
-    const [{ enqueueWalletSyncBatch }, staggerDelayMs] = await Promise.all([
-      import('../workerSyncQueue'),
-      getSyncStaggerDelayMs(),
-    ]);
-
-    const queued = await enqueueWalletSyncBatch(walletIds, {
-      priority,
-      reason: `manual-network-sync:${syncNetwork}`,
-      staggerDelayMs,
-      jobIdPrefix: `manual-network-sync:${syncNetwork}:${userId}`,
-    });
+    void priority;
+    const outcomes = await requestWalletHistoryBatch(walletIds);
 
     return {
       success: true,
-      queued,
+      requested: outcomes.filter(outcome => outcome.status === 'requested').length,
+      merged: outcomes.filter(outcome => outcome.status === 'merged').length,
+      rejected: countBatchStatus(outcomes, 'rejected'),
+      indeterminate: countBatchStatus(outcomes, 'indeterminate'),
       walletIds,
+      outcomes,
     };
   }
 
@@ -352,6 +506,7 @@ export class SyncCoordinator {
         walletIds: [],
         acceptedWalletIds: [],
         deduplicatedWalletIds: [],
+        deferredWalletIds: [],
         rejectedWallets: [],
         indeterminateWallets: [],
         excludedWallets,
@@ -361,45 +516,60 @@ export class SyncCoordinator {
       };
     }
 
-    const walletIds = wallets.map(w => w.id);
-    const [{ enqueueFullResyncBatch }, staggerDelayMs] = await Promise.all([
-      import('../workerSyncQueue'),
-      getSyncStaggerDelayMs(),
-    ]);
-    const result = await enqueueFullResyncBatch(walletIds, {
-      reason: `manual-network-resync:${syncNetwork}`,
-      staggerDelayMs,
-    });
-    const retainedWalletCount = result.acceptedWalletIds.length
-      + result.deduplicatedWalletIds.length;
-    if (retainedWalletCount === 0) {
-      throw new ServiceUnavailableError(
-        'Full resync queue is unavailable or could not be confirmed',
-        undefined,
-        { outcomes: result.outcomes },
-      );
-    }
+    const outcomes = await requestFullResyncBatch(
+      wallets.map(wallet => wallet.id),
+      `manual-network-resync:${syncNetwork}`,
+    );
+    const acceptedWalletIds = outcomes
+      .filter(outcome => outcome.status === 'requested')
+      .map(outcome => outcome.walletId);
+    const deduplicatedWalletIds = outcomes
+      .filter(outcome => outcome.status === 'merged')
+      .map(outcome => outcome.walletId);
+    const queuedWalletIds = outcomes
+      .filter(outcome => outcome.status === 'requested' && outcome.wakeup === 'enqueued')
+      .map(outcome => outcome.walletId);
+    const deferredWalletIds = outcomes
+      .filter((outcome): outcome is Extract<FullResyncBatchOutcome, {
+        status: 'requested' | 'merged';
+      }> => outcome.status === 'requested' || outcome.status === 'merged')
+      .filter(outcome => outcome.wakeup === 'unavailable')
+      .map(outcome => outcome.walletId);
+    const rejectedWallets = outcomes
+      .filter((outcome): outcome is Extract<FullResyncBatchOutcome, { status: 'rejected' }> => (
+        outcome.status === 'rejected'
+      ))
+      .map(({ walletId, reason }) => ({ walletId, reason }));
+    const indeterminateWallets = outcomes
+      .filter((outcome): outcome is Extract<FullResyncBatchOutcome, { status: 'indeterminate' }> => (
+        outcome.status === 'indeterminate'
+      ))
+      .map(({ walletId, reason }) => ({ walletId, reason }));
 
     return {
       success: true,
-      queued: result.acceptedWalletIds.length,
+      queued: queuedWalletIds.length,
       // Deduplicated wallets are reported in their own bucket: folding them in
       // here would claim work was queued for a wallet that may already be wedged
       // behind the retained job.
-      walletIds: result.acceptedWalletIds,
-      acceptedWalletIds: result.acceptedWalletIds,
-      deduplicatedWalletIds: result.deduplicatedWalletIds,
-      rejectedWallets: result.rejectedWallets,
-      indeterminateWallets: result.indeterminateWallets,
+      walletIds: queuedWalletIds,
+      acceptedWalletIds,
+      deduplicatedWalletIds,
+      deferredWalletIds,
+      rejectedWallets,
+      indeterminateWallets,
       excludedWallets,
       message: [
-        `Queued ${walletCountLabel(result.acceptedWalletIds.length)}`,
-        `${walletCountLabel(result.deduplicatedWalletIds.length)} already queued`,
-        ...(result.rejectedWallets.length > 0
-          ? [`${walletCountLabel(result.rejectedWallets.length)} rejected`]
+        `Queued ${walletCountLabel(queuedWalletIds.length)}`,
+        `${walletCountLabel(deduplicatedWalletIds.length)} already requested`,
+        ...(deferredWalletIds.length > 0
+          ? [`${walletCountLabel(deferredWalletIds.length)} awaiting queue recovery`]
           : []),
-        ...(result.indeterminateWallets.length > 0
-          ? [`${walletCountLabel(result.indeterminateWallets.length)} queue state unknown`]
+        ...(rejectedWallets.length > 0
+          ? [`${walletCountLabel(rejectedWallets.length)} rejected`]
+          : []),
+        ...(indeterminateWallets.length > 0
+          ? [`${walletCountLabel(indeterminateWallets.length)} queue state unknown`]
           : []),
         ...(exclusionClause ? [exclusionClause] : []),
       ].join('; ') + '.',
@@ -411,9 +581,9 @@ export class SyncCoordinator {
     const wallets = await walletRepository.findByNetworkWithSyncStatus(userId, syncNetwork);
 
     const syncing = wallets.filter(w => w.syncInProgress).length;
-    const synced = wallets.filter(w => !w.syncInProgress && w.lastSyncStatus === 'success').length;
-    const failed = wallets.filter(w => !w.syncInProgress && w.lastSyncStatus === 'failed').length;
-    const pending = wallets.filter(w => !w.syncInProgress && !w.lastSyncStatus).length;
+    const synced = wallets.filter(isNetworkSyncCurrent).length;
+    const failed = wallets.filter(isNetworkSyncFailed).length;
+    const pending = wallets.filter(isNetworkSyncPending).length;
     const syncTimes = wallets
       .filter(w => w.lastSyncedAt)
       .map(w => new Date(w.lastSyncedAt!).getTime());

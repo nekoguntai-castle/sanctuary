@@ -53,6 +53,14 @@ describe('support wallet sync diagnostics repository', () => {
     expect(aggregate).toContain('"syncStartedAt" IS NULL');
     expect(aggregate).toContain('"syncStartedAt" < NOW()');
     expect(aggregate).toContain('"requestedFullResyncGeneration"');
+    expect(aggregate).toContain('"requestedIncrementalSyncGeneration"');
+    expect(aggregate).toContain('"incrementalSyncLeaseExpiresAt" > NOW()');
+    expect(aggregate).toContain('"incrementalSyncLeaseExpiresAt" <= NOW()');
+    expect(aggregate).toContain('"syncActionRequiredAt" IS NOT NULL');
+    expect(aggregate).toMatch(
+      /"requestedIncrementalSyncGeneration" > "claimedIncrementalSyncGeneration"\s+AND "claimedIncrementalSyncGeneration" > "processedIncrementalSyncGeneration"/,
+    );
+    expect(aggregate).toContain('num_nonnulls');
     expect(aggregate).not.toContain('"descriptor"');
     expect(aggregate).not.toContain('"name"');
     expect(aggregate).not.toContain('SELECT *');

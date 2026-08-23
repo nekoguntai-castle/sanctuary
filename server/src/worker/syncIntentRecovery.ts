@@ -38,6 +38,7 @@ export interface SyncIntentRecoveryDependencies {
   enqueueReservedFullResyncWakeup: (wakeup: {
     walletId: string;
     generation: number;
+    incrementalGeneration: number;
     reason: 'reconcile-stranded-full-resync';
   }) => Promise<FullResyncRecoveryWakeupResult>;
   recoverIncrementalSync: (
@@ -99,6 +100,7 @@ async function recoverFullResyncs(
       const result = await dependencies.enqueueReservedFullResyncWakeup({
         walletId: wallet.id,
         generation: wallet.requestedFullResyncGeneration,
+        incrementalGeneration: wallet.requestedIncrementalSyncGeneration,
         reason: 'reconcile-stranded-full-resync',
       });
       if (result.status === 'blocked') {

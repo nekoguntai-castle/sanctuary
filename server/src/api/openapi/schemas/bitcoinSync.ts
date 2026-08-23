@@ -16,25 +16,85 @@ export const syncSchemas = {
     },
     additionalProperties: false,
   },
-  SyncResult: {
-    type: "object",
-    properties: {
-      success: { type: "boolean" },
-      syncedAddresses: { type: "integer", minimum: 0 },
-      newTransactions: { type: "integer", minimum: 0 },
-      newUtxos: { type: "integer", minimum: 0 },
-      error: { type: "string", nullable: true },
-    },
-    required: ["success", "syncedAddresses", "newTransactions", "newUtxos"],
+  WalletSyncWakeupDisposition: {
+    type: "string",
+    enum: [
+      "deferred_action_required",
+      "deferred_full_resync",
+      "deferred_retry",
+      "enqueued",
+      "unavailable",
+    ],
   },
-  QueuedWalletSyncResponse: {
+  WalletSyncAdmissionResponse: {
     type: "object",
     properties: {
-      queued: { type: "boolean", enum: [true] },
-      queuePosition: { type: "integer", nullable: true, minimum: 0 },
-      syncInProgress: { type: "boolean" },
+      success: { type: "boolean", enum: [true] },
+      status: { type: "string", enum: ["requested", "merged"] },
+      generation: { type: "integer", minimum: 1 },
+      wakeup: { $ref: "#/components/schemas/WalletSyncWakeupDisposition" },
+      message: { type: "string" },
     },
-    required: ["queued", "queuePosition", "syncInProgress"],
+    required: ["success", "status", "generation", "wakeup", "message"],
+    additionalProperties: false,
+  },
+  SyncResult: { $ref: "#/components/schemas/WalletSyncAdmissionResponse" },
+  QueuedWalletSyncResponse: {
+    $ref: "#/components/schemas/WalletSyncAdmissionResponse",
+  },
+  WalletSyncBatchOutcome: {
+    oneOf: [
+      {
+        type: "object",
+        properties: {
+          walletId: { type: "string" },
+          status: { type: "string", enum: ["requested", "merged"] },
+          generation: { type: "integer", minimum: 1 },
+          wakeup: { $ref: "#/components/schemas/WalletSyncWakeupDisposition" },
+        },
+        required: ["walletId", "status", "generation", "wakeup"],
+        additionalProperties: false,
+      },
+      {
+        type: "object",
+        properties: {
+          walletId: { type: "string" },
+          status: { type: "string", enum: ["rejected"] },
+          reason: {
+            type: "string",
+            enum: ["blocked", "generation_exhausted", "not_found"],
+          },
+        },
+        required: ["walletId", "status", "reason"],
+        additionalProperties: false,
+      },
+      {
+        type: "object",
+        properties: {
+          walletId: { type: "string" },
+          status: { type: "string", enum: ["indeterminate"] },
+          reason: { type: "string", enum: ["admission_error"] },
+        },
+        required: ["walletId", "status", "reason"],
+        additionalProperties: false,
+      },
+    ],
+  },
+  WalletSyncBatchResponse: {
+    type: "object",
+    properties: {
+      success: { type: "boolean", enum: [true] },
+      requested: { type: "integer", minimum: 0 },
+      merged: { type: "integer", minimum: 0 },
+      rejected: { type: "integer", minimum: 0 },
+      indeterminate: { type: "integer", minimum: 0 },
+      outcomes: {
+        type: "array",
+        items: { $ref: "#/components/schemas/WalletSyncBatchOutcome" },
+      },
+    },
+    required: ["success", "requested", "merged", "rejected", "indeterminate", "outcomes"],
+    additionalProperties: false,
   },
   WalletSyncStatus: {
     type: "object",
@@ -53,6 +113,15 @@ export const syncSchemas = {
       nextRetryAt: { type: "string", format: "date-time", nullable: true },
       startedAt: { type: "string", format: "date-time", nullable: true },
       stateVersion: { type: "integer", minimum: 0 },
+      requestedIncrementalSyncGeneration: { type: "integer", minimum: 0 },
+      claimedIncrementalSyncGeneration: { type: "integer", minimum: 0 },
+      processedIncrementalSyncGeneration: { type: "integer", minimum: 0 },
+      incrementalSyncClaimedAt: { type: "string", format: "date-time", nullable: true },
+      incrementalSyncLeaseExpiresAt: { type: "string", format: "date-time", nullable: true },
+      syncActionRequiredAt: { type: "string", format: "date-time", nullable: true },
+      requestedFullResyncGeneration: { type: "integer", minimum: 0 },
+      preparedFullResyncGeneration: { type: "integer", minimum: 0 },
+      processedFullResyncGeneration: { type: "integer", minimum: 0 },
     },
     required: [
       "lastSyncedAt",
@@ -65,6 +134,15 @@ export const syncSchemas = {
       "nextRetryAt",
       "startedAt",
       "stateVersion",
+      "requestedIncrementalSyncGeneration",
+      "claimedIncrementalSyncGeneration",
+      "processedIncrementalSyncGeneration",
+      "incrementalSyncClaimedAt",
+      "incrementalSyncLeaseExpiresAt",
+      "syncActionRequiredAt",
+      "requestedFullResyncGeneration",
+      "preparedFullResyncGeneration",
+      "processedFullResyncGeneration",
     ],
   },
   WalletSyncLogsResponse: {
@@ -95,8 +173,14 @@ export const syncSchemas = {
       message: { type: "string" },
       status: { type: "string", enum: ["accepted", "deduplicated"] },
       walletId: { type: "string" },
+      generation: { type: "integer", minimum: 1 },
+      incrementalGeneration: { type: "integer", minimum: 1 },
+      wakeup: { type: "string", enum: ["enqueued", "unavailable"] },
     },
-    required: ["success", "message", "status", "walletId"],
+    required: [
+      "success", "message", "status", "walletId",
+      "generation", "incrementalGeneration", "wakeup",
+    ],
   },
   FullResyncEnqueueOutcome: {
     oneOf: [
@@ -160,6 +244,29 @@ export const syncSchemas = {
     type: "object",
     properties: {
       success: { type: "boolean", enum: [true] },
+      requested: { type: "integer", minimum: 0 },
+      merged: { type: "integer", minimum: 0 },
+      rejected: { type: "integer", minimum: 0 },
+      indeterminate: { type: "integer", minimum: 0 },
+      walletIds: {
+        type: "array",
+        items: { type: "string" },
+      },
+      outcomes: {
+        type: "array",
+        items: { $ref: "#/components/schemas/WalletSyncBatchOutcome" },
+      },
+      message: { type: "string" },
+    },
+    required: [
+      "success", "requested", "merged", "rejected", "indeterminate", "walletIds", "outcomes",
+    ],
+    additionalProperties: false,
+  },
+  NetworkResyncBaseResponse: {
+    type: "object",
+    properties: {
+      success: { type: "boolean", enum: [true] },
       queued: { type: "integer", minimum: 0 },
       walletIds: {
         type: "array",
@@ -171,7 +278,7 @@ export const syncSchemas = {
   },
   NetworkResyncResponse: {
     allOf: [
-      { $ref: "#/components/schemas/NetworkSyncResponse" },
+      { $ref: "#/components/schemas/NetworkResyncBaseResponse" },
       {
         type: "object",
         properties: {
@@ -180,6 +287,10 @@ export const syncSchemas = {
             items: { type: "string" },
           },
           deduplicatedWalletIds: {
+            type: "array",
+            items: { type: "string" },
+          },
+          deferredWalletIds: {
             type: "array",
             items: { type: "string" },
           },
@@ -226,6 +337,7 @@ export const syncSchemas = {
         required: [
           "acceptedWalletIds",
           "deduplicatedWalletIds",
+          "deferredWalletIds",
           "rejectedWallets",
           "indeterminateWallets",
           "excludedWallets",
@@ -255,12 +367,7 @@ export const syncSchemas = {
     ],
   },
   BitcoinLegacyWalletSyncResponse: {
-    type: "object",
-    properties: {
-      message: { type: "string" },
-    },
-    required: ["message"],
-    additionalProperties: true,
+    $ref: "#/components/schemas/WalletSyncAdmissionResponse",
   },
   BitcoinUpdateConfirmationsResponse: {
     type: "object",

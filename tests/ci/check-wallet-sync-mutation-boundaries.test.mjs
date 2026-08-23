@@ -350,6 +350,125 @@ test('recursively rejects forbidden work hidden in local mutation helpers', () =
   }
 });
 
+test('rejects repository writes hidden in imported helpers outside canonical scopes', () => {
+  assert.match(errorsAfter(({ root }) => {
+    const example = path.join(root, 'server/src/services/bitcoin/sync/example.ts');
+    writeFileSync(
+      example,
+      "import { unsafeMutation } from '../unsafeMutation';\n"
+        + readFileSync(example, 'utf8').replace(
+          '    const result = await addressRepository.markAsUsed(addressId, tx);',
+          '    const result = await unsafeMutation(addressId);',
+        ),
+    );
+    write(
+      root,
+      'server/src/services/bitcoin/unsafeMutation.ts',
+      "import { addressRepository } from '../../repositories';\n"
+        + 'export async function unsafeMutation(addressId) {\n'
+        + '  return addressRepository.markAsUsed(addressId);\n'
+        + '}\n',
+    );
+  }), /imported mutation helper reaches uninventoried repository call/);
+});
+
+test('rejects namespace, default, dynamic, and direct Prisma imported helper escapes', () => {
+  for (const [name, importLine, invocation, helperSource, pattern] of [
+    [
+      'namespace',
+      "import * as unsafe from '../unsafeMutation';",
+      'unsafe.unsafeMutation(addressId)',
+      "import { addressRepository } from '../../repositories';\n"
+        + 'export async function unsafeMutation(addressId) {\n'
+        + '  return addressRepository.markAsUsed(addressId);\n'
+        + '}\n',
+      /imported mutation helper reaches uninventoried repository call/,
+    ],
+    [
+      'default',
+      "import unsafe from '../unsafeMutation';",
+      'unsafe(addressId)',
+      'export default async function unsafeMutation(addressId) { return addressId; }\n',
+      /mutation helper unsafe is ambiguous/,
+    ],
+    [
+      'dynamic',
+      '',
+      "(await import('../unsafeMutation')).unsafeMutation(addressId)",
+      'export async function unsafeMutation(addressId) { return addressId; }\n',
+      /dynamic imported mutation helpers are forbidden/,
+    ],
+    [
+      'prisma',
+      "import { unsafeMutation } from '../unsafeMutation';",
+      'unsafeMutation(addressId)',
+      "import prisma from '../../models/prisma';\n"
+        + 'export async function unsafeMutation(addressId) {\n'
+        + '  return prisma.address.update({ where: { id: addressId }, data: {} });\n'
+        + '}\n',
+      /default Prisma value import prisma is forbidden[\s\S]*direct Prisma\/model call/,
+    ],
+  ]) {
+    assert.match(errorsAfter(({ root }) => {
+      const example = path.join(root, 'server/src/services/bitcoin/sync/example.ts');
+      writeFileSync(
+        example,
+        `${importLine}\n${readFileSync(example, 'utf8').replace(
+          '    const result = await addressRepository.markAsUsed(addressId, tx);',
+          `    const result = await ${invocation};`,
+        )}`,
+      );
+      write(root, 'server/src/services/bitcoin/unsafeMutation.ts', helperSource);
+    }), pattern, name);
+  }
+});
+
+test('rejects imported helper and dynamic import aliases', () => {
+  for (const [name, prefix, invocation] of [
+    [
+      'named alias',
+      "import { unsafeMutation } from '../unsafeMutation';\nconst aliasedMutation = unsafeMutation;",
+      'aliasedMutation(addressId)',
+    ],
+    [
+      'dynamic alias',
+      "const unsafePromise = import('../unsafeMutation');",
+      '(await unsafePromise).unsafeMutation(addressId)',
+    ],
+    [
+      'namespace destructuring',
+      "import * as unsafe from '../unsafeMutation';\n"
+        + 'const { unsafeMutation: aliasedMutation } = unsafe;',
+      'aliasedMutation(addressId)',
+    ],
+    [
+      'assignment alias',
+      "import { unsafeMutation } from '../unsafeMutation';\n"
+        + 'let aliasedMutation;\naliasedMutation = unsafeMutation;',
+      'aliasedMutation(addressId)',
+    ],
+  ]) {
+    assert.match(errorsAfter(({ root }) => {
+      const example = path.join(root, 'server/src/services/bitcoin/sync/example.ts');
+      writeFileSync(
+        example,
+        `${prefix}\n${readFileSync(example, 'utf8').replace(
+          '    const result = await addressRepository.markAsUsed(addressId, tx);',
+          `    const result = await ${invocation};`,
+        )}`,
+      );
+      write(
+        root,
+        'server/src/services/bitcoin/unsafeMutation.ts',
+        "import { addressRepository } from '../../repositories';\n"
+          + 'export async function unsafeMutation(addressId) {\n'
+          + '  return addressRepository.markAsUsed(addressId);\n'
+          + '}\n',
+      );
+    }), /imported mutation helper reaches uninventoried repository call/, name);
+  }
+});
+
 test('allows recursively inspected post-commit effects', () => {
   assert.doesNotMatch(errorsAfter(({ root }) => {
     replace(

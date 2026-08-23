@@ -5,8 +5,7 @@ import {
   type SyncLifecycleTransitionKind,
 } from '@sanctuary/shared/constants/sync';
 import type {
-  Wallet,
-  WalletSyncState,
+  IncrementalSyncLifecycleState,
   WalletSyncStatePatch,
 } from '../../repositories/types';
 import { withTimeout } from '../../utils/async';
@@ -26,7 +25,7 @@ export const SYNC_ABORT_GRACE_MS = 30_000;
 /** Backoff between persistence attempts; its length plus one is the attempt count. */
 const PERSISTENCE_RETRY_BACKOFF_MS = [250, 1_000, 3_000] as const;
 
-type WalletSyncStateRecord = Pick<Wallet, keyof WalletSyncState>;
+type WalletSyncStateRecord = IncrementalSyncLifecycleState;
 
 export interface SyncAttemptWriter {
   updateSyncState: (
@@ -44,13 +43,13 @@ export type SyncStatePersister = (
   walletId: string,
   state: WalletSyncStatePatch,
   writer: SyncAttemptWriter,
-) => Promise<WalletSyncState | null>;
+) => Promise<IncrementalSyncLifecycleState | null>;
 
 /** Exact database snapshot produced by one persisted lifecycle transition. */
 export interface PersistedSyncTransition {
   walletId: string;
   transition: SyncLifecycleTransitionKind;
-  state: WalletSyncState;
+  state: IncrementalSyncLifecycleState;
 }
 
 export interface StartSyncAttemptInput {
@@ -83,7 +82,7 @@ export interface SyncLockContentionInput {
 function persistedTransition(
   walletId: string,
   transition: SyncLifecycleTransitionKind,
-  state: WalletSyncState,
+  state: IncrementalSyncLifecycleState,
 ): PersistedSyncTransition {
   return { walletId, transition, state };
 }
@@ -104,16 +103,28 @@ function persistedSyncStateError(record: WalletSyncStateRecord): string | null {
   return null;
 }
 
-function projectSyncState(record: WalletSyncStateRecord): WalletSyncState {
+function projectSyncState(record: WalletSyncStateRecord): IncrementalSyncLifecycleState {
   return {
+    id: record.id,
+    requestedIncrementalSyncGeneration: record.requestedIncrementalSyncGeneration,
+    claimedIncrementalSyncGeneration: record.claimedIncrementalSyncGeneration,
+    processedIncrementalSyncGeneration: record.processedIncrementalSyncGeneration,
+    incrementalSyncLeaseToken: record.incrementalSyncLeaseToken,
+    incrementalSyncClaimedAt: record.incrementalSyncClaimedAt,
+    incrementalSyncLeaseExpiresAt: record.incrementalSyncLeaseExpiresAt,
+    syncActionRequiredAt: record.syncActionRequiredAt,
+    requestedFullResyncGeneration: record.requestedFullResyncGeneration,
+    preparedFullResyncGeneration: record.preparedFullResyncGeneration,
+    processedFullResyncGeneration: record.processedFullResyncGeneration,
     syncInProgress: record.syncInProgress,
     lastSyncedAt: record.lastSyncedAt,
+    lastSyncedBlockHeight: record.lastSyncedBlockHeight,
     lastSyncStatus: record.lastSyncStatus,
     lastSyncError: record.lastSyncError,
     lastSyncFailureClass:
-      record.lastSyncFailureClass as WalletSyncState['lastSyncFailureClass'],
+      record.lastSyncFailureClass as IncrementalSyncLifecycleState['lastSyncFailureClass'],
     syncExecutionOwner:
-      record.syncExecutionOwner as WalletSyncState['syncExecutionOwner'],
+      record.syncExecutionOwner as IncrementalSyncLifecycleState['syncExecutionOwner'],
     syncRetryCount: record.syncRetryCount,
     syncNextRetryAt: record.syncNextRetryAt,
     syncStartedAt: record.syncStartedAt,
@@ -121,7 +132,9 @@ function projectSyncState(record: WalletSyncStateRecord): WalletSyncState {
   };
 }
 
-function requirePersistedSyncState(record: WalletSyncStateRecord): WalletSyncState {
+function requirePersistedSyncState(
+  record: WalletSyncStateRecord,
+): IncrementalSyncLifecycleState {
   const validationError = persistedSyncStateError(record);
   if (validationError) throw new Error(validationError);
   return projectSyncState(record);
@@ -210,7 +223,7 @@ export async function persistSyncStateWithRetry(
   walletId: string,
   state: WalletSyncStatePatch,
   writer: SyncAttemptWriter,
-): Promise<WalletSyncState | null> {
+): Promise<IncrementalSyncLifecycleState | null> {
   for (
     let attempt = 0;
     attempt <= PERSISTENCE_RETRY_BACKOFF_MS.length;

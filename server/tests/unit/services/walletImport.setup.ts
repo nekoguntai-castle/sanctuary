@@ -36,6 +36,12 @@ export const mockParseJsonImport = vi.fn();
 export const mockValidateDescriptor = vi.fn();
 export const mockValidateJsonImport = vi.fn();
 export const mockAssertHardwareWalletCapability = vi.fn();
+export const mockWakeInitialWalletSync = vi.fn();
+
+vi.mock('../../../src/services/sync/initialSyncIntent', () => ({
+  INITIAL_SYNC_GENERATION: 1,
+  wakeInitialWalletSync: (...args: unknown[]) => mockWakeInitialWalletSync(...args),
+}));
 
 vi.mock('../../../src/services/hardwareWalletCapabilities', () => ({
   assertHardwareWalletCapability: (...args: unknown[]) =>
@@ -95,6 +101,7 @@ export function setupBeforeEach() {
   vi.clearAllMocks();
   resetPrismaMocks();
   mockAssertHardwareWalletCapability.mockReturnValue(undefined);
+  mockWakeInitialWalletSync.mockResolvedValue(undefined);
 
   // Default mock implementations
   mockBuildDescriptorFromDevices.mockReturnValue({

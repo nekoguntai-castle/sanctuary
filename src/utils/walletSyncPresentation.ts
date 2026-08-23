@@ -1,4 +1,4 @@
-import { RefreshCw } from 'lucide-react';
+import { AlertTriangle, Clock3, RefreshCw } from 'lucide-react';
 import type {
   WalletSyncPresentation,
   WalletSyncRetryDetail,
@@ -87,6 +87,41 @@ function syncingPresentation(): WalletSyncPresentation {
   };
 }
 
+function pendingPresentation(fullResync: boolean): WalletSyncPresentation {
+  const label = fullResync ? 'Resync pending' : 'Sync pending';
+  const description = fullResync
+    ? 'A durable full-resync request is saved and waiting for a worker.'
+    : 'A durable sync request is saved and waiting for a worker.';
+  return {
+    tone: fullResync ? 'resyncing' : 'retrying',
+    label,
+    reason: description,
+    description,
+    icon: Clock3,
+    spinning: false,
+  };
+}
+
+function actionRequiredPresentation(wallet: WalletSyncSubject): WalletSyncPresentation {
+  const description = wallet.lastSyncError
+    || 'Automatic retries stopped. Request another sync after resolving the underlying problem.';
+  return {
+    tone: 'failed',
+    label: 'Action required',
+    reason: description,
+    description,
+    icon: AlertTriangle,
+    spinning: false,
+  };
+}
+
+export function isSyncGenerationPending(
+  requested: number | undefined,
+  processed: number | undefined,
+): boolean {
+  return requested !== undefined && processed !== undefined && requested > processed;
+}
+
 /** Statuses that describe a settled, non-successful outcome. */
 const TERMINAL_PRESENTATIONS: Record<
   string,
@@ -120,11 +155,25 @@ export function getWalletSyncPresentation(
 ): WalletSyncPresentation {
   const status = wallet.lastSyncStatus;
 
+  if (wallet.syncActionRequiredAt) return actionRequiredPresentation(wallet);
   if (status === 'resyncing') return resyncingPresentation(wallet);
-  if (status === 'retrying' || syncRetryInfo) {
+  if (syncRetryInfo) {
     return retryingPresentation(wallet, syncRetryInfo);
   }
-  if (wallet.syncInProgress) return syncingPresentation();
+  if (wallet.syncInProgress) {
+    return status === 'retrying'
+      ? retryingPresentation(wallet, null)
+      : syncingPresentation();
+  }
+  if (isSyncGenerationPending(
+    wallet.requestedFullResyncGeneration,
+    wallet.processedFullResyncGeneration,
+  )) return pendingPresentation(true);
+  if (isSyncGenerationPending(
+    wallet.requestedIncrementalSyncGeneration,
+    wallet.processedIncrementalSyncGeneration,
+  )) return pendingPresentation(false);
+  if (status === 'retrying') return retryingPresentation(wallet, null);
   if (status === 'success') return successPresentation(wallet, now);
   if (!status) return idlePresentation(wallet);
 

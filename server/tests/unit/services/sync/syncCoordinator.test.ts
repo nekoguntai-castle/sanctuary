@@ -5,8 +5,10 @@ const mocks = vi.hoisted(() => ({
   findByNetworkWithSyncStatus: vi.fn(),
   findAccessibleWithSelect: vi.fn(),
   enqueueFullResyncBatch: vi.fn(),
+  requestFullResync: vi.fn(),
   refreshWalletConfirmations: vi.fn(),
-  clearActiveSyncAttempt: vi.fn(),
+  resetSyncIntent: vi.fn(),
+  requestIncrementalSync: vi.fn(),
   publishLifecycle: vi.fn(),
 }));
 
@@ -34,8 +36,12 @@ vi.mock('../../../../src/services/sync/confirmationUpdater', () => ({
   refreshWalletConfirmations: mocks.refreshWalletConfirmations,
 }));
 
-vi.mock('../../../../src/services/sync/syncAttemptLifecycle', () => ({
-  clearActiveSyncAttempt: mocks.clearActiveSyncAttempt,
+vi.mock('../../../../src/services/sync/syncIntentAdmission', () => ({
+  syncIntentAdmission: {
+    request: mocks.requestIncrementalSync,
+    requestFullResync: mocks.requestFullResync,
+    reset: mocks.resetSyncIntent,
+  },
 }));
 
 vi.mock('../../../../src/services/sync/syncLifecyclePublisher', () => ({
@@ -49,6 +55,7 @@ vi.mock('../../../../src/services/workerSyncQueue', () => ({
 import { getSyncCoordinator, resetSyncCoordinatorForTests } from '../../../../src/services/sync/syncCoordinator';
 
 describe('SyncCoordinator.resyncNetwork', () => {
+  const NOW = new Date('2026-08-22T07:00:00.000Z');
   beforeEach(() => {
     vi.clearAllMocks();
     resetSyncCoordinatorForTests();
@@ -56,11 +63,17 @@ describe('SyncCoordinator.resyncNetwork', () => {
     mocks.refreshWalletConfirmations.mockResolvedValue({
       confirmationUpdates: [],
     });
-    mocks.clearActiveSyncAttempt.mockResolvedValue({
-      walletId: 'wallet-1',
-      transition: 'cleared',
-      state: { syncStateVersion: 4 },
+    mocks.resetSyncIntent.mockResolvedValue({ syncStateVersion: 4 });
+    mocks.requestIncrementalSync.mockResolvedValue({
+      status: 'requested', generation: 1, wakeup: 'enqueued',
     });
+    mocks.requestFullResync
+      .mockResolvedValueOnce({
+        status: 'requested', generation: 1, incrementalGeneration: 1, wakeup: 'enqueued',
+      })
+      .mockResolvedValueOnce({
+        status: 'merged', generation: 1, incrementalGeneration: 1, wakeup: 'enqueued',
+      });
     mocks.findByNetworkWithSyncStatus.mockResolvedValue([
       { id: 'wallet-1', syncInProgress: false },
       { id: 'wallet-2', syncInProgress: false },
@@ -85,6 +98,13 @@ describe('SyncCoordinator.resyncNetwork', () => {
     expect(result.walletIds).toEqual(['wallet-1']);
     expect(result.acceptedWalletIds).toEqual(['wallet-1']);
     expect(result.deduplicatedWalletIds).toEqual(['wallet-2']);
+  });
+
+  it('maps a vanished wallet during incremental admission to not found', async () => {
+    mocks.requestIncrementalSync.mockResolvedValueOnce({ status: 'not_found' });
+
+    await expect(getSyncCoordinator().syncWalletNow('user-1', 'wallet-1'))
+      .rejects.toMatchObject({ statusCode: 404 });
   });
 
   it('reports wallets excluded from the batch by network as their own bucket', async () => {
@@ -114,7 +134,7 @@ describe('SyncCoordinator.resyncNetwork', () => {
       { walletId: 'wallet-regtest', reason: 'network_not_syncable' },
     ]);
     expect(result.message).toContain('not on a syncable network');
-    expect(mocks.enqueueFullResyncBatch).not.toHaveBeenCalled();
+    expect(mocks.requestFullResync).not.toHaveBeenCalled();
   });
 
   it('reports an empty network without an exclusion clause', async () => {
@@ -128,6 +148,7 @@ describe('SyncCoordinator.resyncNetwork', () => {
       walletIds: [],
       acceptedWalletIds: [],
       deduplicatedWalletIds: [],
+      deferredWalletIds: [],
       rejectedWallets: [],
       indeterminateWallets: [],
       excludedWallets: [],
@@ -135,17 +156,21 @@ describe('SyncCoordinator.resyncNetwork', () => {
     });
   });
 
-  it('still rejects a batch in which nothing was retained', async () => {
-    mocks.enqueueFullResyncBatch.mockResolvedValue({
-      outcomes: [{ walletId: 'wallet-1', status: 'rejected', reason: 'queue_error' }],
-      acceptedWalletIds: [],
-      deduplicatedWalletIds: [],
-      rejectedWallets: [{ walletId: 'wallet-1', reason: 'queue_error' }],
-      indeterminateWallets: [],
-    });
+  it('returns exhaustive rejection outcomes when no full resync was retained', async () => {
+    mocks.requestFullResync.mockReset();
+    mocks.requestFullResync.mockResolvedValue({ status: 'blocked' });
 
     await expect(getSyncCoordinator().resyncNetwork('user-1', 'mainnet', true))
-      .rejects.toThrow('Full resync queue is unavailable or could not be confirmed');
+      .resolves.toMatchObject({
+        queued: 0,
+        acceptedWalletIds: [],
+        deduplicatedWalletIds: [],
+        rejectedWallets: [
+          { walletId: 'wallet-1', reason: 'queue_unavailable' },
+          { walletId: 'wallet-2', reason: 'queue_unavailable' },
+        ],
+        indeterminateWallets: [],
+      });
   });
 
   it('requires the confirmation flag', async () => {
@@ -198,20 +223,51 @@ describe('SyncCoordinator.resyncNetwork', () => {
       transition: 'cleared',
       state: { syncStateVersion: 4 },
     };
-    mocks.clearActiveSyncAttempt.mockResolvedValueOnce(transition);
+    mocks.resetSyncIntent.mockResolvedValueOnce(transition.state);
 
     await expect(
       getSyncCoordinator().resetWalletSyncState('user-1', 'wallet-1'),
     ).resolves.toEqual({ success: true, message: 'Sync state reset' });
 
     expect(mocks.findByIdWithAccess).toHaveBeenCalledWith('wallet-1', 'user-1');
-    expect(mocks.clearActiveSyncAttempt).toHaveBeenCalledWith(
-      'wallet-1',
-      expect.any(Object),
-    );
+    expect(mocks.resetSyncIntent).toHaveBeenCalledWith('wallet-1');
     expect(mocks.publishLifecycle).toHaveBeenCalledWith(transition);
-    expect(mocks.clearActiveSyncAttempt.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(mocks.resetSyncIntent.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.publishLifecycle.mock.invocationCallOrder[0] ?? 0,
     );
+  });
+
+  it('fails reset if the authorized wallet disappears before lease revocation', async () => {
+    mocks.resetSyncIntent.mockResolvedValueOnce(null);
+
+    await expect(getSyncCoordinator().resetWalletSyncState('user-1', 'wallet-1'))
+      .rejects.toMatchObject({ statusCode: 404 });
+    expect(mocks.publishLifecycle).not.toHaveBeenCalled();
+  });
+
+  it('classifies durable pending and action-required wallets ahead of stale success', async () => {
+    mocks.findByNetworkWithSyncStatus.mockResolvedValueOnce([
+      {
+        id: 'pending', syncInProgress: false, lastSyncStatus: 'success', lastSyncedAt: NOW,
+        requestedIncrementalSyncGeneration: 2, processedIncrementalSyncGeneration: 1,
+        requestedFullResyncGeneration: 0, processedFullResyncGeneration: 0,
+        syncActionRequiredAt: null,
+      },
+      {
+        id: 'action', syncInProgress: false, lastSyncStatus: 'success', lastSyncedAt: NOW,
+        requestedIncrementalSyncGeneration: 3, processedIncrementalSyncGeneration: 2,
+        requestedFullResyncGeneration: 0, processedFullResyncGeneration: 0,
+        syncActionRequiredAt: NOW,
+      },
+      {
+        id: 'current', syncInProgress: false, lastSyncStatus: 'success', lastSyncedAt: NOW,
+        requestedIncrementalSyncGeneration: 1, processedIncrementalSyncGeneration: 1,
+        requestedFullResyncGeneration: 0, processedFullResyncGeneration: 0,
+        syncActionRequiredAt: null,
+      },
+    ]);
+
+    await expect(getSyncCoordinator().getNetworkSyncStatus('user-1', 'mainnet'))
+      .resolves.toMatchObject({ total: 3, syncing: 0, synced: 1, failed: 1, pending: 1 });
   });
 });

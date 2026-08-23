@@ -6,10 +6,18 @@ import {
   completeIncrementalSync,
   releaseIncrementalSyncAsActionRequired,
   releaseIncrementalSyncForRetry,
+  resetIncrementalSyncAttempt,
   requestIncrementalSync,
   WalletSyncMutationFenceLostError,
   withWalletSyncMutationFence,
 } from '../../../src/repositories/syncIntentRepository';
+import {
+  completeFencedWalletFullResync,
+  findStrandedFullResyncWalletsPage,
+  isExactFullResyncPending,
+  requestFullResyncGeneration,
+  resetWalletForFullResync,
+} from '../../../src/repositories/resyncRepository';
 import { createTestTransaction, createTestUser, createTestWallet } from './setup';
 import { runWalletSyncMutation } from '../../../src/services/bitcoin/sync/mutationBoundary';
 import { persistGapLimitExpansion } from '../../../src/services/bitcoin/sync/addressDiscovery';
@@ -17,6 +25,7 @@ import { executeInChunks } from '../../../src/services/bitcoin/sync/confirmation
 import { buildCanonicalAddressEvidence } from '../../../src/services/wallet/addressGeneration';
 import { addressRepository } from '../../../src/repositories';
 import { getNotificationService } from '../../../src/websocket/notifications';
+import { getWalletSyncAggregates } from '../../../src/repositories/supportWalletSyncDiagnosticsRepository';
 
 const describeWithDatabase = process.env.DATABASE_URL ? describe : describe.skip;
 const NOW = new Date('2026-08-22T07:00:00.000Z');
@@ -77,7 +86,7 @@ describeWithDatabase('sync intent lifecycle', () => {
         lastSyncError: null,
         syncExecutionOwner: 'worker',
         syncStartedAt: NOW,
-        syncStateVersion: 1,
+        syncStateVersion: 2,
       },
     });
 
@@ -107,9 +116,263 @@ describeWithDatabase('sync intent lifecycle', () => {
         syncRetryCount: 0,
         syncNextRetryAt: null,
         syncActionRequiredAt: null,
-        syncStateVersion: 2,
+        syncStateVersion: 4,
       },
     });
+  });
+
+  it('counts only a request behind an active claim as trailing', async () => {
+    const trailingCount = async (): Promise<number> => {
+      const aggregates = await getWalletSyncAggregates({ staleThresholdMs: 600_000 });
+      return aggregates.networks.find(row => row.network === 'testnet3')
+        ?.trailingIncrementalRequest ?? 0;
+    };
+    const baseline = await trailingCount();
+    const walletId = await createWallet();
+
+    await requestIncrementalSync(walletId);
+    await expect(trailingCount()).resolves.toBe(baseline);
+
+    const leaseToken = randomUUID();
+    await claimIncrementalSync(walletId, {
+      leaseToken,
+      claimedAt: NOW,
+      leaseExpiresAt: LEASE_END,
+      expectedRequestedGeneration: 1,
+    });
+    await requestIncrementalSync(walletId);
+
+    await expect(trailingCount()).resolves.toBe(baseline + 1);
+  });
+
+  it('does not clear a newer successful lifecycle state from an older stale snapshot', async () => {
+    const walletId = await createWallet();
+    await requestIncrementalSync(walletId);
+    const leaseToken = randomUUID();
+    await claimIncrementalSync(walletId, {
+      leaseToken,
+      claimedAt: NOW,
+      leaseExpiresAt: LEASE_END,
+      expectedRequestedGeneration: 1,
+    });
+    const staleSnapshot = await prisma.wallet.findUniqueOrThrow({
+      where: { id: walletId },
+      select: {
+        syncStateVersion: true,
+        syncExecutionOwner: true,
+        syncStartedAt: true,
+      },
+    });
+    await completeIncrementalSync(
+      walletId,
+      { generation: 1, leaseToken },
+      { syncedAt: SYNCED_AT, lastSyncedBlockHeight: 840_000 },
+    );
+
+    await expect(resetIncrementalSyncAttempt(walletId, staleSnapshot)).resolves.toBeNull();
+    await expect(prisma.wallet.findUniqueOrThrow({
+      where: { id: walletId },
+      select: {
+        lastSyncStatus: true,
+        lastSyncedAt: true,
+        incrementalSyncLeaseToken: true,
+      },
+    })).resolves.toEqual({
+      lastSyncStatus: 'success',
+      lastSyncedAt: SYNCED_AT,
+      incrementalSyncLeaseToken: null,
+    });
+  });
+
+  it('holds terminal full resyncs out of recovery until explicit exact reopen', async () => {
+    const walletId = await createWallet();
+    await expect(requestFullResyncGeneration(walletId)).resolves.toMatchObject({
+      status: 'requested', generation: 1, incrementalGeneration: 1,
+      state: { id: walletId, syncStateVersion: 1 },
+    });
+    const leaseToken = randomUUID();
+    await expect(claimIncrementalSync(walletId, {
+      leaseToken,
+      claimedAt: NOW,
+      leaseExpiresAt: LEASE_END,
+      expectedRequestedGeneration: 1,
+      fullResyncGeneration: 1,
+    })).resolves.toMatchObject({ status: 'claimed' });
+    await expect(releaseIncrementalSyncAsActionRequired(
+      walletId,
+      { generation: 1, leaseToken },
+      {
+        actionRequiredAt: SYNCED_AT,
+        errorMessage: 'operator repair required',
+        failureClass: 'other',
+      },
+    )).resolves.toMatchObject({
+      status: 'applied',
+      state: { syncActionRequiredAt: SYNCED_AT },
+    });
+
+    await expect(findStrandedFullResyncWalletsPage()).resolves.not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: walletId })]),
+    );
+    await expect(isExactFullResyncPending(walletId, 1, 1)).resolves.toBe(false);
+    await expect(requestFullResyncGeneration(walletId)).resolves.toMatchObject({
+      status: 'merged', generation: 1, incrementalGeneration: 1,
+      state: { id: walletId, syncStateVersion: 4 },
+    });
+    await expect(isExactFullResyncPending(walletId, 1, 1)).resolves.toBe(true);
+  });
+
+  it('coalesces concurrent full-resync requests into one exact outstanding generation', async () => {
+    const walletId = await createWallet();
+
+    const requests = await Promise.all(
+      Array.from({ length: 8 }, () => requestFullResyncGeneration(walletId)),
+    );
+
+    expect(requests.filter(result => result.status === 'requested')).toHaveLength(1);
+    expect(requests.filter(result => result.status === 'merged')).toHaveLength(7);
+    expect(requests.every(result => (
+      'generation' in result
+      && result.generation === 1
+      && result.incrementalGeneration === 1
+    ))).toBe(true);
+    await expect(prisma.wallet.findUnique({
+      where: { id: walletId },
+      select: {
+        requestedFullResyncGeneration: true,
+        requestedIncrementalSyncGeneration: true,
+        processedFullResyncGeneration: true,
+      },
+    })).resolves.toEqual({
+      requestedFullResyncGeneration: 1,
+      requestedIncrementalSyncGeneration: 1,
+      processedFullResyncGeneration: 0,
+    });
+  });
+
+  it('admits only the exact fenced full-resync generation and completes both intents', async () => {
+    const walletId = await createWallet();
+    await expect(requestFullResyncGeneration(walletId)).resolves.toMatchObject({
+      status: 'requested',
+      generation: 1,
+      incrementalGeneration: 1,
+      state: { id: walletId, syncStateVersion: 1 },
+    });
+    const ordinaryToken = randomUUID();
+    await expect(claimIncrementalSync(walletId, {
+      leaseToken: ordinaryToken,
+      claimedAt: NOW,
+      leaseExpiresAt: LEASE_END,
+      expectedRequestedGeneration: 1,
+    })).resolves.toEqual({ status: 'not_claimed' });
+
+    const leaseToken = randomUUID();
+    await expect(claimIncrementalSync(walletId, {
+      leaseToken,
+      claimedAt: NOW,
+      leaseExpiresAt: LEASE_END,
+      expectedRequestedGeneration: 1,
+      fullResyncGeneration: 1,
+    })).resolves.toMatchObject({
+      status: 'claimed',
+      claim: { generation: 1, leaseToken },
+    });
+    const fence = Object.freeze({ walletId, generation: 1, leaseToken });
+    await expect(resetWalletForFullResync(walletId, 1, fence)).resolves.toEqual({
+      deletedTransactions: 0,
+      resetPerformed: true,
+    });
+    await expect(resetWalletForFullResync(walletId, 1, {
+      ...fence,
+      leaseToken: randomUUID(),
+    })).rejects.toBeInstanceOf(WalletSyncMutationFenceLostError);
+    await expect(completeFencedWalletFullResync(
+      walletId,
+      1,
+      fence,
+      { syncedAt: SYNCED_AT, lastSyncedBlockHeight: 840_000 },
+    )).resolves.toMatchObject({
+      completionRecorded: true,
+      syncState: {
+        requestedFullResyncGeneration: 1,
+        processedFullResyncGeneration: 1,
+        requestedIncrementalSyncGeneration: 1,
+        processedIncrementalSyncGeneration: 1,
+        incrementalSyncLeaseToken: null,
+        lastSyncStatus: 'success',
+      },
+    });
+  });
+
+  it('keeps a full resync claimable when requested behind an active older generation', async () => {
+    const walletId = await createWallet();
+    await requestIncrementalSync(walletId);
+    const oldToken = randomUUID();
+    await expect(claimIncrementalSync(walletId, {
+      leaseToken: oldToken,
+      claimedAt: NOW,
+      leaseExpiresAt: LEASE_END,
+      expectedRequestedGeneration: 1,
+    })).resolves.toMatchObject({ status: 'claimed' });
+    await expect(requestFullResyncGeneration(walletId)).resolves.toMatchObject({
+      status: 'requested', generation: 1, incrementalGeneration: 2,
+      state: { id: walletId, syncStateVersion: 3 },
+    });
+
+    await expect(claimIncrementalSync(walletId, {
+      leaseToken: randomUUID(),
+      claimedAt: NOW,
+      leaseExpiresAt: LEASE_END,
+      expectedRequestedGeneration: 2,
+      fullResyncGeneration: 1,
+    })).resolves.toEqual({ status: 'already_claimed' });
+
+    await completeIncrementalSync(
+      walletId,
+      { generation: 1, leaseToken: oldToken },
+      { syncedAt: SYNCED_AT, lastSyncedBlockHeight: 840_000 },
+    );
+    await expect(claimIncrementalSync(walletId, {
+      leaseToken: randomUUID(),
+      claimedAt: NOW,
+      leaseExpiresAt: LEASE_END,
+      expectedRequestedGeneration: 2,
+      fullResyncGeneration: 1,
+    })).resolves.toMatchObject({ status: 'claimed', claim: { generation: 2 } });
+  });
+
+  it('explicitly reopens terminal full-resync intent without allocating a new generation', async () => {
+    const walletId = await createWallet();
+    await requestFullResyncGeneration(walletId);
+    const failedToken = randomUUID();
+    await claimIncrementalSync(walletId, {
+      leaseToken: failedToken,
+      claimedAt: NOW,
+      leaseExpiresAt: LEASE_END,
+      expectedRequestedGeneration: 1,
+      fullResyncGeneration: 1,
+    });
+    await releaseIncrementalSyncAsActionRequired(
+      walletId,
+      { generation: 1, leaseToken: failedToken },
+      {
+        actionRequiredAt: NOW,
+        errorMessage: 'terminal full-resync failure',
+        failureClass: 'other',
+      },
+    );
+
+    await expect(requestFullResyncGeneration(walletId)).resolves.toMatchObject({
+      status: 'merged', generation: 1, incrementalGeneration: 1,
+      state: { id: walletId, syncStateVersion: 4, syncRetryCount: 0 },
+    });
+    await expect(claimIncrementalSync(walletId, {
+      leaseToken: randomUUID(),
+      claimedAt: NOW,
+      leaseExpiresAt: LEASE_END,
+      expectedRequestedGeneration: 1,
+      fullResyncGeneration: 1,
+    })).resolves.toMatchObject({ status: 'claimed' });
   });
 
   it('admits exactly one concurrent claim', async () => {
@@ -147,6 +410,7 @@ describeWithDatabase('sync intent lifecycle', () => {
         syncRetryCount: 3,
         syncNextRetryAt: retryAt,
         syncActionRequiredAt: actionRequiredAt,
+        syncStateVersion: 0,
       },
     });
     await expect(requestIncrementalSync(walletId, 'explicit_reopen')).resolves.toMatchObject({
@@ -155,6 +419,7 @@ describeWithDatabase('sync intent lifecycle', () => {
         syncRetryCount: 0,
         syncNextRetryAt: null,
         syncActionRequiredAt: null,
+        syncStateVersion: 1,
       },
     });
   });
@@ -333,6 +598,51 @@ describeWithDatabase('sync intent lifecycle', () => {
       where: { id: walletId },
       data: { lastSyncedBlockHeight: 840_003 },
     }))).resolves.toMatchObject({ lastSyncedBlockHeight: 840_003 });
+  });
+
+  it('serializes manual reset behind a mutation and revokes the former owner', async () => {
+    const walletId = await createWallet();
+    await requestIncrementalSync(walletId);
+    const leaseToken = randomUUID();
+    await claimIncrementalSync(walletId, {
+      leaseToken,
+      claimedAt: NOW,
+      leaseExpiresAt: LEASE_END,
+      expectedRequestedGeneration: 1,
+    });
+    const fence = { walletId, generation: 1, leaseToken };
+    let releaseMutation!: () => void;
+    const mutationGate = new Promise<void>(resolve => { releaseMutation = resolve; });
+    let reportMutationStarted!: () => void;
+    const mutationStarted = new Promise<void>(resolve => { reportMutationStarted = resolve; });
+    const mutation = withWalletSyncMutationFence(fence, async (tx) => {
+      await tx.wallet.update({
+        where: { id: walletId },
+        data: { lastSyncedBlockHeight: 840_004 },
+      });
+      reportMutationStarted();
+      await mutationGate;
+    });
+    await mutationStarted;
+
+    let resetSettled = false;
+    const reset = resetIncrementalSyncAttempt(walletId);
+    void reset.then(() => { resetSettled = true; });
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(resetSettled).toBe(false);
+    releaseMutation();
+    await mutation;
+    await expect(reset).resolves.toMatchObject({
+      requestedIncrementalSyncGeneration: 1,
+      claimedIncrementalSyncGeneration: 0,
+      processedIncrementalSyncGeneration: 0,
+      incrementalSyncLeaseToken: null,
+      syncInProgress: false,
+      lastSyncStatus: null,
+      lastSyncedBlockHeight: 840_004,
+    });
+    await expect(withWalletSyncMutationFence(fence, async () => undefined))
+      .rejects.toBeInstanceOf(WalletSyncMutationFenceLostError);
   });
 
   it('preserves committed progress and suppresses post-commit effects on rollback', async () => {
@@ -729,7 +1039,7 @@ describeWithDatabase('sync intent lifecycle', () => {
         lastSyncFailureClass: 'electrum_unavailable',
         syncExecutionOwner: 'worker',
         syncStartedAt: null,
-        syncStateVersion: 2,
+        syncStateVersion: 3,
       },
     });
 
@@ -771,7 +1081,7 @@ describeWithDatabase('sync intent lifecycle', () => {
         lastSyncFailureClass: 'descriptor_policy_missing',
         syncExecutionOwner: null,
         syncStartedAt: null,
-        syncStateVersion: 4,
+        syncStateVersion: 5,
       },
     });
   });
@@ -798,7 +1108,7 @@ describeWithDatabase('sync intent lifecycle', () => {
       incrementalSyncLeaseToken: token,
       syncInProgress: true,
       lastSyncStatus: 'syncing',
-      syncStateVersion: 1,
+      syncStateVersion: 2,
     });
   });
 

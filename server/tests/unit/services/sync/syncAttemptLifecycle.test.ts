@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type {
-  WalletSyncState,
+  IncrementalSyncLifecycleState,
   WalletSyncStatePatch,
 } from '../../../../src/repositories/types';
 import {
@@ -15,9 +15,21 @@ import {
   type SyncAttemptWriter,
 } from '../../../../src/services/sync/syncAttemptLifecycle';
 
-const persistedState: WalletSyncState = {
+const persistedState: IncrementalSyncLifecycleState = {
+  id: 'wallet-1',
+  requestedIncrementalSyncGeneration: 1,
+  claimedIncrementalSyncGeneration: 1,
+  processedIncrementalSyncGeneration: 1,
+  incrementalSyncLeaseToken: null,
+  incrementalSyncClaimedAt: null,
+  incrementalSyncLeaseExpiresAt: null,
+  syncActionRequiredAt: null,
+  requestedFullResyncGeneration: 0,
+  preparedFullResyncGeneration: 0,
+  processedFullResyncGeneration: 0,
   syncInProgress: false,
   lastSyncedAt: new Date('2026-08-20T12:01:00.000Z'),
+  lastSyncedBlockHeight: 840_000,
   lastSyncStatus: 'success',
   lastSyncError: null,
   lastSyncFailureClass: null,
@@ -28,7 +40,9 @@ const persistedState: WalletSyncState = {
   syncStateVersion: 7,
 };
 
-function createWriter(state: WalletSyncState = persistedState): SyncAttemptWriter {
+function createWriter(
+  state: IncrementalSyncLifecycleState = persistedState,
+): SyncAttemptWriter {
   return {
     updateSyncState: vi.fn().mockResolvedValue(state),
     completeSyncSuccess: vi.fn().mockResolvedValue(state),

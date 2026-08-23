@@ -37,9 +37,10 @@ describe("useWalletSync", () => {
     } as never);
     vi.mocked(syncApi.syncWallet).mockResolvedValue({
       success: true,
-      syncedAddresses: 1,
-      newTransactions: 0,
-      newUtxos: 0,
+      status: "requested",
+      generation: 1,
+      wakeup: "enqueued",
+      message: "Wallet sync requested",
     });
     vi.mocked(syncApi.resyncWallet).mockResolvedValue({
       message: "queued",
@@ -62,6 +63,10 @@ describe("useWalletSync", () => {
     });
 
     expect(syncApi.syncWallet).toHaveBeenCalledWith("wallet-1");
+    expect(showSuccess).toHaveBeenCalledWith(
+      "Wallet sync requested",
+      "Sync Requested",
+    );
     expect(onDataRefresh).toHaveBeenCalled();
     expect(result.current.syncing).toBe(false);
   });
@@ -84,63 +89,14 @@ describe("useWalletSync", () => {
     expect(result.current.syncing).toBe(false);
   });
 
-  it("refreshes data when sync result is non-success without an explicit error", async () => {
+  it("warns when a request merges with existing work", async () => {
     vi.mocked(syncApi.syncWallet).mockResolvedValue({
-      success: false,
-      syncedAddresses: 0,
-      newTransactions: 0,
-      newUtxos: 0,
-    } as never);
-
-    const { result } = renderHook(() =>
-      useWalletSync({
-        walletId: "wallet-1",
-        onDataRefresh,
-      }),
-    );
-
-    await act(async () => {
-      await result.current.handleSync();
+      success: true,
+      status: "merged",
+      generation: 4,
+      wakeup: "enqueued",
+      message: "Wallet sync merged with existing work",
     });
-
-    expect(onDataRefresh).toHaveBeenCalled();
-    expect(handleError).not.toHaveBeenCalled();
-  });
-
-  it("surfaces a sync failure that does not match the network-sync-off wording", async () => {
-    vi.mocked(syncApi.syncWallet).mockResolvedValue({
-      success: false,
-      syncedAddresses: 0,
-      newTransactions: 0,
-      newUtxos: 0,
-      error: "backend timeout",
-    } as never);
-
-    const { result } = renderHook(() =>
-      useWalletSync({
-        walletId: "wallet-1",
-        onDataRefresh,
-      }),
-    );
-
-    await act(async () => {
-      await result.current.handleSync();
-    });
-
-    expect(showWarning).toHaveBeenCalledWith("backend timeout", "Sync Failed");
-    expect(onDataRefresh).toHaveBeenCalled();
-    expect(handleError).not.toHaveBeenCalled();
-  });
-
-  it("warns when a network sync is off in node configuration", async () => {
-    vi.mocked(syncApi.syncWallet).mockResolvedValue({
-      success: false,
-      syncedAddresses: 0,
-      newTransactions: 0,
-      newUtxos: 0,
-      error:
-        "Testnet sync is off in Node Configuration. Enable Testnet under Network Connections, save settings, then sync testnet wallets again.",
-    } as never);
 
     const { result } = renderHook(() =>
       useWalletSync({
@@ -154,8 +110,63 @@ describe("useWalletSync", () => {
     });
 
     expect(showWarning).toHaveBeenCalledWith(
-      expect.stringContaining("Testnet sync is off in Node Configuration"),
-      "Wallet Sync Off",
+      "Wallet sync merged with existing work",
+      "Sync Request Merged",
+    );
+    expect(onDataRefresh).toHaveBeenCalledTimes(1);
+    expect(handleError).not.toHaveBeenCalled();
+  });
+
+  it("warns that a durable request was saved when its wakeup is unavailable", async () => {
+    vi.mocked(syncApi.syncWallet).mockResolvedValue({
+      success: true,
+      status: "requested",
+      generation: 5,
+      wakeup: "unavailable",
+      message: "Wallet sync requested",
+    });
+
+    const { result } = renderHook(() =>
+      useWalletSync({
+        walletId: "wallet-1",
+        onDataRefresh,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.handleSync();
+    });
+
+    expect(showWarning).toHaveBeenCalledWith(
+      "Wallet sync requested",
+      "Sync Request Saved",
+    );
+    expect(onDataRefresh).toHaveBeenCalled();
+  });
+
+  it("warns when a durable request is deferred behind current work", async () => {
+    vi.mocked(syncApi.syncWallet).mockResolvedValue({
+      success: true,
+      status: "requested",
+      generation: 6,
+      wakeup: "deferred_full_resync",
+      message: "Wallet sync requested",
+    });
+
+    const { result } = renderHook(() =>
+      useWalletSync({
+        walletId: "wallet-1",
+        onDataRefresh,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.handleSync();
+    });
+
+    expect(showWarning).toHaveBeenCalledWith(
+      "Wallet sync requested",
+      "Sync Request Deferred",
     );
     expect(onDataRefresh).toHaveBeenCalled();
   });
@@ -224,6 +235,33 @@ describe("useWalletSync", () => {
     expect(showWarning).toHaveBeenCalledWith(
       "Full resync already queued for this wallet",
       "Resync Already Queued",
+    );
+  });
+
+  it("warns when a full-resync request is saved but not yet enqueued", async () => {
+    vi.mocked(syncApi.resyncWallet).mockResolvedValue({
+      success: true,
+      message: "Full resync requested durably",
+      status: "accepted",
+      walletId: "wallet-1",
+      generation: 2,
+      incrementalGeneration: 3,
+      wakeup: "unavailable",
+    });
+
+    const { result } = renderHook(() => useWalletSync({
+      walletId: "wallet-1",
+      onDataRefresh,
+    }));
+
+    await act(async () => {
+      await result.current.handleFullResync();
+    });
+
+    expect(showSuccess).not.toHaveBeenCalled();
+    expect(showWarning).toHaveBeenCalledWith(
+      "Full resync requested durably",
+      "Resync Request Saved",
     );
   });
 

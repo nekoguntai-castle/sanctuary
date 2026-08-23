@@ -175,8 +175,10 @@ describeWithRedis('expired incremental reclaim authority chain', () => {
     return {
       admission: createSyncIntentAdmission({
         enqueueWakeup: enqueueIncrementalSyncWakeup,
+        enqueueFullResyncWakeup: vi.fn(async () => true),
         inspectActivation,
         isExecutionLockHeld: walletId => isLocked(getSyncLockKey({ walletId })),
+        publishTransition: async () => undefined,
       }),
       inspectActivation,
     };

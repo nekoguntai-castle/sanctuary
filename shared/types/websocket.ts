@@ -306,6 +306,15 @@ export interface SyncEvent {
     nextRetryAt?: Date | string | null;
     startedAt?: Date | string | null;
     stateVersion?: number;
+    requestedIncrementalSyncGeneration?: number;
+    claimedIncrementalSyncGeneration?: number;
+    processedIncrementalSyncGeneration?: number;
+    incrementalSyncClaimedAt?: Date | string | null;
+    incrementalSyncLeaseExpiresAt?: Date | string | null;
+    syncActionRequiredAt?: Date | string | null;
+    requestedFullResyncGeneration?: number;
+    preparedFullResyncGeneration?: number;
+    processedFullResyncGeneration?: number;
     maxRetries?: number;
     retryingIn?: number;
     retriesExhausted?: boolean;

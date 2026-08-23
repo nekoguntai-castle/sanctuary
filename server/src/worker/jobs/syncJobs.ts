@@ -23,7 +23,6 @@ import type {
   CheckStaleWalletsResult,
   UpdateConfirmationsJobData,
   UpdateConfirmationsResult,
-  SyncJobDependencies,
 } from '../../jobs/syncJobContract';
 import {
   CHECK_STALE_WALLETS_JOB_NAME,
@@ -47,33 +46,20 @@ import {
   UPDATE_ALL_CONFIRMATIONS_JOB_NAME,
   UPDATE_CONFIRMATIONS_JOB_NAME,
 } from '../../jobs/syncJobContract';
-import { resyncRepository, walletRepository } from '../../repositories';
+import { walletRepository } from '../../repositories';
 import { syncWallet } from '../../services/bitcoin/blockchain';
-import { populateMissingTransactionFields } from '../../services/bitcoin/sync/confirmations';
 import { refreshPendingConfirmations } from '../../services/sync/confirmationUpdater';
-import {
-  setCachedBlockHeight,
-  getCachedBlockHeight,
-  assertChainReachable,
-} from '../../services/bitcoin/blockchain';
+import { setCachedBlockHeight } from '../../services/bitcoin/blockchain';
 import { getConfig } from '../../config';
-import { normalizeLegacyBitcoinNetwork } from '../../services/bitcoin/networks';
-import { isLocked } from '../../infrastructure';
+import { withLock } from '../../infrastructure';
 import { broadcastWalletLog } from '../../websocket/notifications/broadcasts';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { isFullResyncGeneration } from '../../constants/fullResync';
 import {
-  clearActiveSyncAttempt,
   recordSyncFailure,
   recordSyncLockContention,
-  recordSyncRetry,
-  recordSyncSuccess,
-  SYNC_ABORT_GRACE_MS,
-  runSyncAttemptWithTimeout,
-  startSyncAttempt,
   type PersistedSyncTransition,
-  type SyncAttemptWriter,
 } from '../../services/sync/syncAttemptLifecycle';
 import { syncLifecyclePublisher } from '../../services/sync/syncLifecyclePublisher';
 import { classifyStaleWalletScheduleJob } from '../../jobs/staleWalletJobPolicy';
@@ -82,6 +68,7 @@ import {
   executeCanonicalIncrementalSync,
   type CanonicalIncrementalSyncData,
 } from './canonicalIncrementalSync';
+import { syncIntentAdmission } from '../../services/sync/syncIntentAdmission';
 
 const log = createLogger('JOB:SYNC');
 
@@ -163,9 +150,8 @@ function workerMaxRetries(job: Job<SyncWalletJobData>): number {
 
 async function publishWorkerAttemptTransition(
   job: Job<SyncWalletJobData>,
-  transition: PersistedSyncTransition | null,
+  transition: PersistedSyncTransition,
 ): Promise<void> {
-  if (transition === null) return;
   if (transition.transition === 'retrying') {
     await syncLifecyclePublisher.publish(transition, {
       maxRetries: workerMaxRetries(job),
@@ -250,27 +236,6 @@ async function recordLockRetryBudgetExhausted(
   });
 }
 
-/**
- * Is a sync actually running for this wallet right now?
- *
- * Legacy rows with no `syncStartedAt` have no time bound. The wallet's sync lock
- * is the only liveness signal available cross-process, so probe it before
- * force-clearing anything.
- */
-async function isSyncLockHeld(walletId: string): Promise<boolean> {
-  try {
-    return await isLocked(`sync:wallet:${walletId}`);
-  } catch (error) {
-    // Fail closed: without a usable lock authority a live sync is
-    // indistinguishable from an orphaned flag, and clearing the flag under a
-    // running sync is what makes a resync look idle while it is still working.
-    log.warn(`Could not probe sync lock for wallet ${walletId}, leaving flag intact`, {
-      error: getErrorMessage(error),
-    });
-    return true;
-  }
-}
-
 function isFinalAttempt(job: Job<SyncWalletJobData>): boolean {
   const attempts = typeof job.opts?.attempts === 'number'
     ? job.opts.attempts
@@ -282,66 +247,7 @@ function hasDeferredFullResyncGenerationError(data: SyncWalletJobData): boolean 
   if (data.fullResync !== true || isFullResyncGeneration(data.fullResyncGeneration)) {
     return false;
   }
-  return readSyncWalletJobData({
-    ...data,
-    fullResyncGeneration: 1,
-  }) !== null;
-}
-
-async function prepareFullResync(
-  data: SyncWalletJobFields,
-  jobId: string | undefined,
-  walletNetwork: string,
-): Promise<void> {
-  if (!data.fullResync) return;
-  const generation = data.fullResyncGeneration;
-  if (!isFullResyncGeneration(generation)) {
-    throw new Error('Full resync job is missing its durable generation');
-  }
-
-  // Prove the chain is reachable before deleting anything. The reset drops every
-  // transaction for the wallet, and the rebuild that would restore them is the
-  // very thing an unreachable node prevents - so without this the wallet is left
-  // empty with no way back until the node returns.
-  await assertChainReachable(normalizeLegacyBitcoinNetwork(walletNetwork, 'mainnet'));
-
-  const reset = await resyncRepository.resetWalletForFullResync(
-    data.walletId,
-    generation,
-  );
-  log.info(`Prepared full resync for wallet ${data.walletId}`, {
-    deletedTransactions: reset.deletedTransactions,
-    resetPerformed: reset.resetPerformed,
-    jobId,
-  });
-}
-
-function syncAttemptWriterFor(data: SyncWalletJobFields): SyncAttemptWriter {
-  if (data.fullResync !== true || !isFullResyncGeneration(data.fullResyncGeneration)) {
-    return walletRepository;
-  }
-  const generation = data.fullResyncGeneration;
-  return {
-    updateSyncState: walletRepository.updateSyncState,
-    completeSyncSuccess: async (walletId, syncedAt, lastSyncedBlockHeight) => {
-      const completion = await resyncRepository.completeWalletFullResync(
-        walletId,
-        generation,
-        { syncedAt, lastSyncedBlockHeight },
-      );
-      if (!completion.completionRecorded || !completion.syncState) {
-        throw new SupersededFullResyncCompletionError();
-      }
-      return completion.syncState;
-    },
-  };
-}
-
-class SupersededFullResyncCompletionError extends Error {
-  constructor() {
-    super('Full resync completion lost its durable generation fence');
-    this.name = 'SupersededFullResyncCompletionError';
-  }
+  return readSyncWalletJobData({ ...data, fullResyncGeneration: 1 }) !== null;
 }
 
 function isCanonicalIncrementalSyncData(
@@ -355,6 +261,26 @@ function isCanonicalIncrementalSyncData(
     && 'incrementalSyncGeneration' in data;
 }
 
+async function bridgeRetainedSyncWalletJob(
+  data: SyncWalletJobFields,
+): Promise<SyncWalletJobResult> {
+  const result = await syncIntentAdmission.bridgeRetained(data.walletId, {
+    fullResync: data.fullResync === true,
+    reason: data.reason,
+  });
+  const accepted = result.status === 'requested' || result.status === 'merged';
+  log.info(`Bridged retained sync-wallet job for ${data.walletId}`, {
+    fullResync: data.fullResync === true,
+    admissionStatus: result.status,
+  });
+  return {
+    version: SYNC_JOB_CONTRACT_VERSION,
+    success: accepted,
+    duration: 0,
+    ...(!accepted && { error: `Retained sync admission ${result.status}` }),
+  };
+}
+
 /**
  * Clear syncInProgress for wallets whose sync is demonstrably not running.
  *
@@ -363,48 +289,6 @@ function isCanonicalIncrementalSyncData(
  * `lastSyncedAt IS NULL` arm has no time bound, so a full resync - which nulls
  * that column before it starts - matches within seconds of beginning.
  */
-/**
- * Re-enqueue full resyncs that were requested but never carried out.
- *
- * `reserveFullResyncGeneration` commits the request before the job is enqueued,
- * so a job lost between the two - or dropped from the queue afterwards - leaves
- * `requested > processed` with nothing to consume it. Nothing else in the server
- * reads that pair, so the operator's click silently did nothing and the wallet
- * kept a healthy badge. Observed live on 2026-08-20 with drift 1, no queued job
- * and no dedup key.
- */
-async function reconcileStrandedFullResyncs(
-  enqueueFullResyncBatch: SyncJobDependencies['enqueueFullResyncBatch'],
-): Promise<void> {
-  let stranded: Awaited<ReturnType<typeof resyncRepository.findStrandedFullResyncWallets>>;
-  try {
-    stranded = await resyncRepository.findStrandedFullResyncWallets();
-  } catch (error) {
-    log.error('Could not look for stranded full resyncs', { error: getErrorMessage(error) });
-    return;
-  }
-  if (stranded.length === 0) return;
-
-  log.warn(`Re-enqueueing ${stranded.length} full resyncs that were requested but never ran`, {
-    walletIds: stranded.map(wallet => wallet.id),
-  });
-
-  try {
-    const result = await enqueueFullResyncBatch(
-      stranded.map(wallet => wallet.id),
-      { reason: 'reconcile-stranded-full-resync' },
-    );
-    log.info('Stranded full-resync reconciliation finished', {
-      accepted: result.acceptedWalletIds.length,
-      deduplicated: result.deduplicatedWalletIds.length,
-      indeterminate: result.indeterminateWallets.length,
-    });
-  } catch (error) {
-    // Reconciliation is best-effort; the stale sweep must still run.
-    log.error('Could not re-enqueue stranded full resyncs', { error: getErrorMessage(error) });
-  }
-}
-
 async function resetStuckSyncFlags(maxSyncDurationMs: number): Promise<void> {
   const stuckCutoff = new Date(Date.now() - maxSyncDurationMs);
   const stuckWallets = await walletRepository.findStuckWithCutoff(stuckCutoff);
@@ -412,13 +296,33 @@ async function resetStuckSyncFlags(maxSyncDurationMs: number): Promise<void> {
 
   let resetCount = 0;
   for (const wallet of stuckWallets) {
-    if (await isSyncLockHeld(wallet.id)) {
+    let reset;
+    try {
+      reset = await withLock(
+        getSyncLockKey({ walletId: wallet.id }),
+        SYNC_LOCK_TTL_MS,
+        () => syncIntentAdmission.reset(wallet.id, {
+          syncStateVersion: wallet.syncStateVersion,
+          syncExecutionOwner: wallet.syncExecutionOwner,
+          syncStartedAt: wallet.syncStartedAt,
+        }),
+      );
+    } catch (error) {
+      log.warn(`Could not acquire stale-sync authority for wallet ${wallet.id}`, {
+        error: getErrorMessage(error),
+      });
+      continue;
+    }
+    if (!reset.success || reset.result === null) {
       /* v8 ignore next -- fallback id is defensive logging metadata */
       log.debug(`Sync still running for wallet ${wallet.name || wallet.id}, leaving flag set`);
       continue;
     }
-    const transition = await clearActiveSyncAttempt(wallet.id, walletRepository);
-    await syncLifecyclePublisher.publish(transition);
+    await syncLifecyclePublisher.publish({
+      walletId: wallet.id,
+      transition: 'cleared',
+      state: reset.result,
+    });
     resetCount++;
     // Serialise the Date explicitly. The logger renders a bare Date as `{}`;
     // logging the authoritative start clock makes the measured age auditable
@@ -548,183 +452,7 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
       );
     }
 
-    let syncFlagSet = false;
-    let flagCleared = false;
-    let preparingFullResync = data.fullResync === true;
-    try {
-      await prepareFullResync(data, job.id, wallet.network);
-      if (data.fullResync === true) {
-        // Reset preparation commits syncInProgress=true. Arm cleanup before the
-        // first abort checkpoint so shutdown cannot strand that durable state.
-        syncFlagSet = true;
-      }
-      preparingFullResync = false;
-      execution?.throwIfAborted();
-
-      // Keep the mark and the abort checkpoint inside the cleanup guard. If
-      // cooperative shutdown arrives while the write is in flight, the flag is
-      // reset before the handler settles and its lock is released.
-      const startedTransition = await startSyncAttempt(walletId, {
-        owner: 'worker',
-        retryCount: job.attemptsMade,
-        startedAt: new Date(startTime),
-      }, walletRepository);
-      syncFlagSet = true;
-      await syncLifecyclePublisher.publish(startedTransition);
-      runWorkerSideEffect('Sync start log publication', () => {
-        broadcastWalletLog(walletId, {
-          level: 'info',
-          module: 'SYNC',
-          message: data.fullResync === true ? 'Full resync started' : 'Sync started',
-          details: { reason, jobId: job.id },
-        });
-      });
-      execution?.throwIfAborted();
-
-      // Execute sync
-      const result = await runSyncAttemptWithTimeout(
-        async (signal) => {
-          const syncResult = await syncWallet(walletId, 0, signal);
-          await populateMissingTransactionFields(walletId, signal);
-          return syncResult;
-        },
-        getConfig().sync.maxSyncDurationMs,
-        SYNC_ABORT_GRACE_MS,
-        execution?.signal,
-      );
-      execution?.throwIfAborted();
-
-      // Get current block height for this network
-      const network = normalizeLegacyBitcoinNetwork(wallet.network, 'mainnet');
-      const currentBlockHeight = getCachedBlockHeight(network);
-
-      const syncedAt = new Date();
-      const successTransition = await recordSyncSuccess(walletId, {
-        syncedAt,
-        lastSyncedBlockHeight: currentBlockHeight,
-      }, syncAttemptWriterFor(data));
-      flagCleared = true;
-      await syncLifecyclePublisher.publish(successTransition);
-
-      const duration = Date.now() - startTime;
-
-      log.info(`Wallet ${walletId} synced successfully`, {
-        duration,
-        transactions: result.transactions,
-        utxos: result.utxos,
-        jobId: job.id,
-      });
-      runWorkerSideEffect('Sync completion log publication', () => {
-        broadcastWalletLog(walletId, {
-          level: 'info',
-          module: 'SYNC',
-          message: 'Sync completed',
-          details: {
-            duration,
-            transactions: result.transactions,
-            utxos: result.utxos,
-          },
-        });
-      });
-
-      return {
-        version: SYNC_JOB_CONTRACT_VERSION,
-        success: true,
-        duration,
-        transactionsFound: result.transactions,
-        utxosUpdated: result.utxos,
-      };
-    } catch (caughtError) {
-      if (caughtError instanceof SupersededFullResyncCompletionError) {
-        // A newer destructive generation owns the wallet lifecycle now. Any
-        // legacy retry/failure or safety-net write from this stale attempt
-        // would clear or relabel that newer owner's state without its fence.
-        flagCleared = true;
-        log.warn(`Ignoring stale full-resync completion for wallet ${walletId}`, {
-          jobId: job.id,
-        });
-        throw caughtError;
-      }
-      let error = caughtError;
-      try {
-        execution?.throwIfAborted();
-      } catch (abortError) {
-        error = abortError;
-      }
-      const duration = Date.now() - startTime;
-      const errorMsg = getErrorMessage(error);
-      const finalAttempt = isFinalAttempt(job);
-
-      if (preparingFullResync) {
-        const transition = finalAttempt
-          ? await recordSyncFailure(walletId, { error }, walletRepository)
-          : await recordSyncRetry(walletId, {
-            owner: 'worker',
-            ...workerRetryState(job),
-            error,
-          }, walletRepository);
-        flagCleared = transition !== null;
-        await publishWorkerAttemptTransition(job, transition);
-        runWorkerSideEffect('Sync failure log publication', () => {
-          broadcastWalletLog(walletId, {
-            level: 'error',
-            module: 'SYNC',
-            message: `Sync failed: ${errorMsg}`,
-            details: { duration, jobId: job.id, attemptsMade: job.attemptsMade },
-          });
-        });
-        log.warn(`Full resync preparation will retry for wallet ${walletId}`, {
-          error: errorMsg,
-          jobId: job.id,
-          finalAttempt,
-        });
-        throw error;
-      }
-
-      const transition = finalAttempt
-        ? await recordSyncFailure(walletId, { error }, walletRepository)
-        : await recordSyncRetry(walletId, {
-          owner: 'worker',
-          ...workerRetryState(job),
-          error,
-        }, walletRepository);
-      flagCleared = transition !== null;
-      await publishWorkerAttemptTransition(job, transition);
-      runWorkerSideEffect('Sync failure log publication', () => {
-        broadcastWalletLog(walletId, {
-          level: 'error',
-          module: 'SYNC',
-          message: `Sync failed: ${errorMsg}`,
-          details: { duration, jobId: job.id, attemptsMade: job.attemptsMade },
-        });
-      });
-
-      log.error(`Wallet ${walletId} sync failed`, {
-        error: errorMsg,
-        duration,
-        jobId: job.id,
-        attemptsMade: job.attemptsMade,
-      });
-
-      throw error;
-    } finally {
-      // Safety net: if neither try nor catch managed to clear the flag,
-      // force-reset it so the wallet doesn't stay stuck forever.
-      if (syncFlagSet && !flagCleared) {
-        try {
-          const clearedTransition = await clearActiveSyncAttempt(
-            walletId,
-            walletRepository,
-          );
-          await syncLifecyclePublisher.publish(clearedTransition);
-          log.warn(`Safety-net reset syncInProgress for wallet ${walletId}`);
-        } catch (cleanupError) {
-          log.error(`Failed to safety-net reset syncInProgress for wallet ${walletId}`, {
-            error: getErrorMessage(cleanupError),
-          });
-        }
-      }
-    }
+    return bridgeRetainedSyncWalletJob(data);
   },
 };
 
@@ -740,7 +468,6 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
  * Limited to a configured batch size to prevent queue flooding.
  */
 export function createCheckStaleWalletsJob(
-  dependencies: SyncJobDependencies,
 ): WorkerJobHandler<CheckStaleWalletsJobData, CheckStaleWalletsResult> {
   return {
     name: CHECK_STALE_WALLETS_JOB_NAME,
@@ -783,8 +510,6 @@ export function createCheckStaleWalletsJob(
       });
 
       await resetStuckSyncFlags(config.sync.maxSyncDurationMs);
-      await reconcileStrandedFullResyncs(dependencies.enqueueFullResyncBatch);
-
       // Find stale wallets, prioritizing those never synced, then oldest first
       // Limited to prevent queue flooding
       const staleWallets = await walletRepository.findStale({
@@ -925,11 +650,10 @@ export const updateAllConfirmationsJob: WorkerJobHandler<
 // =============================================================================
 
 export function createSyncJobs(
-  dependencies: SyncJobDependencies,
 ): WorkerJobHandler<unknown, unknown>[] {
   return [
     syncWalletJob as WorkerJobHandler<unknown, unknown>,
-    createCheckStaleWalletsJob(dependencies) as WorkerJobHandler<unknown, unknown>,
+    createCheckStaleWalletsJob() as WorkerJobHandler<unknown, unknown>,
     updateConfirmationsJob as WorkerJobHandler<unknown, unknown>,
     updateAllConfirmationsJob as WorkerJobHandler<unknown, unknown>,
   ];

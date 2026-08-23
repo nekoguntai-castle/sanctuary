@@ -140,6 +140,11 @@ export const registerWalletRepositoryQueryContracts = () => {
           syncInProgress: true,
           lastSyncStatus: true,
           lastSyncedAt: true,
+          requestedIncrementalSyncGeneration: true,
+          processedIncrementalSyncGeneration: true,
+          requestedFullResyncGeneration: true,
+          processedFullResyncGeneration: true,
+          syncActionRequiredAt: true,
         },
       });
     });

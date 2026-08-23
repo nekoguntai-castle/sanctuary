@@ -7,7 +7,6 @@ import { vi } from 'vitest';
 
 import express from 'express';
 import request from 'supertest';
-import { DEFAULT_SYNC_PRIORITY } from '@sanctuary/shared/constants/sync';
 import type { WalletLogEntry } from '../../../src/websocket/notifications';
 
 // Hoist mock variables for use in vi.mock() factories
@@ -17,11 +16,13 @@ const {
   mockAddressRepository,
   mockSyncService,
   mockWalletLogBufferGet,
+  mockSyncIntentAdmission,
   mockEnqueueWalletSyncBatch,
   mockEnqueueFullResyncBatch,
 } = vi.hoisted(() => ({
   mockWalletRepository: {
     findByIdWithAccess: vi.fn(),
+    findByUserId: vi.fn(),
     updateSyncState: vi.fn(),
     getIdsByNetwork: vi.fn(),
     findByNetworkWithSyncStatus: vi.fn(),
@@ -32,6 +33,7 @@ const {
     deleteByWalletId: vi.fn(),
   },
   mockAddressRepository: {
+    findByIdWithAccess: vi.fn(),
     resetUsedFlags: vi.fn(),
   },
   mockSyncService: {
@@ -41,6 +43,11 @@ const {
     queueUserWallets: vi.fn(),
   },
   mockWalletLogBufferGet: vi.fn<() => WalletLogEntry[]>(() => []),
+  mockSyncIntentAdmission: {
+    request: vi.fn(),
+    requestFullResync: vi.fn(),
+    reset: vi.fn(),
+  },
   mockEnqueueWalletSyncBatch: vi.fn(),
   mockEnqueueFullResyncBatch: vi.fn(),
 }));
@@ -57,6 +64,10 @@ vi.mock('../../../src/services/syncService', () => ({
 
 vi.mock('../../../src/services/sync/syncService', () => ({
   getSyncService: () => mockSyncService,
+}));
+
+vi.mock('../../../src/services/sync/syncIntentAdmission', () => ({
+  syncIntentAdmission: mockSyncIntentAdmission,
 }));
 
 vi.mock('../../../src/services/bitcoin/blockchain', () => ({
@@ -140,6 +151,32 @@ describe('Sync API - Network Endpoints', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSyncService.getSyncStatus.mockResolvedValue({ queuePosition: 1, syncInProgress: false });
+    mockSyncIntentAdmission.request.mockResolvedValue({
+      status: 'requested',
+      generation: 7,
+      wakeup: 'enqueued',
+    });
+    mockSyncIntentAdmission.requestFullResync.mockResolvedValue({
+      status: 'requested',
+      generation: 8,
+      incrementalGeneration: 8,
+      wakeup: 'enqueued',
+    });
+    mockSyncIntentAdmission.reset.mockResolvedValue({
+      id: 'wallet-1',
+      syncInProgress: false,
+      lastSyncedAt: null,
+      lastSyncedBlockHeight: null,
+      lastSyncStatus: null,
+      lastSyncError: null,
+      lastSyncFailureClass: null,
+      syncExecutionOwner: null,
+      syncRetryCount: 0,
+      syncNextRetryAt: null,
+      syncActionRequiredAt: null,
+      syncStartedAt: null,
+      syncStateVersion: 2,
+    });
     mockEnqueueWalletSyncBatch.mockImplementation(async (walletIds: string[]) => walletIds.length);
     mockEnqueueFullResyncBatch.mockImplementation(async (walletIds: string[]) => ({
       outcomes: walletIds.map(walletId => ({ walletId, status: 'accepted' })),
@@ -151,15 +188,8 @@ describe('Sync API - Network Endpoints', () => {
   });
 
   describe('wallet-level endpoints', () => {
-    it('POST /sync/wallet/:walletId triggers immediate sync', async () => {
+    it('POST /sync/wallet/:walletId durably requests asynchronous sync', async () => {
       mockWalletRepository.findByIdWithAccess.mockResolvedValue({ id: 'wallet-1' });
-      mockSyncService.syncNow.mockResolvedValue({
-        success: true,
-        addresses: 4,
-        transactions: 2,
-        utxos: 6,
-        error: null,
-      });
 
       const response = await request(app)
         .post('/sync/wallet/wallet-1')
@@ -168,13 +198,15 @@ describe('Sync API - Network Endpoints', () => {
       expect(response.status).toBe(200);
       expect(response.body).toEqual({
         success: true,
-        syncedAddresses: 4,
-        newTransactions: 2,
-        newUtxos: 6,
-        error: null,
+        status: 'requested',
+        generation: 7,
+        wakeup: 'enqueued',
+        message: 'Wallet sync requested',
       });
       expect(mockWalletRepository.findByIdWithAccess).toHaveBeenCalledWith('wallet-1', 'test-user-id');
-      expect(mockSyncService.syncNow).toHaveBeenCalledWith('wallet-1');
+      expect(mockSyncIntentAdmission.request).toHaveBeenCalledWith('wallet-1', { mode: 'explicit_reopen' });
+      expect(mockSyncService.syncNow).not.toHaveBeenCalled();
+      expect(mockEnqueueWalletSyncBatch).not.toHaveBeenCalled();
     });
 
     it('POST /sync/wallet/:walletId returns 404 when wallet missing', async () => {
@@ -188,21 +220,28 @@ describe('Sync API - Network Endpoints', () => {
       expect(response.body.message).toBe('Wallet not found');
     });
 
-    it('POST /sync/wallet/:walletId returns 500 on sync errors', async () => {
+    it.each([
+      ['blocked', 'Wallet sync is temporarily unavailable'],
+      ['generation_exhausted', 'Wallet sync generation limit reached'],
+    ])('POST /sync/wallet/:walletId maps %s admission to 503', async (status, message) => {
       mockWalletRepository.findByIdWithAccess.mockResolvedValue({ id: 'wallet-1' });
-      mockSyncService.syncNow.mockRejectedValue(new Error('sync exploded'));
+      mockSyncIntentAdmission.request.mockResolvedValue({ status });
 
       const response = await request(app)
         .post('/sync/wallet/wallet-1')
         .send({});
 
-      expect(response.status).toBe(500);
-      expect(response.body.code).toBe('INTERNAL_ERROR');
+      expect(response.status).toBe(503);
+      expect(response.body.message).toBe(message);
     });
 
-    it('POST /sync/queue/:walletId queues sync and returns status', async () => {
+    it('POST /sync/queue/:walletId merges through canonical admission', async () => {
       mockWalletRepository.findByIdWithAccess.mockResolvedValue({ id: 'wallet-1' });
-      mockSyncService.getSyncStatus.mockResolvedValue({ queuePosition: 3, syncInProgress: true });
+      mockSyncIntentAdmission.request.mockResolvedValue({
+        status: 'merged',
+        generation: 12,
+        wakeup: 'already_present',
+      });
 
       const response = await request(app)
         .post('/sync/queue/wallet-1')
@@ -210,11 +249,15 @@ describe('Sync API - Network Endpoints', () => {
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({
-        queued: true,
-        queuePosition: 3,
-        syncInProgress: true,
+        success: true,
+        status: 'merged',
+        generation: 12,
+        wakeup: 'already_present',
+        message: 'Wallet sync merged with existing work',
       });
-      expect(mockSyncService.queueSync).toHaveBeenCalledWith('wallet-1', 'high');
+      expect(mockSyncIntentAdmission.request).toHaveBeenCalledWith('wallet-1', { mode: 'explicit_reopen' });
+      expect(mockSyncService.queueSync).not.toHaveBeenCalled();
+      expect(mockEnqueueWalletSyncBatch).not.toHaveBeenCalled();
     });
 
     it('POST /sync/queue/:walletId defaults omitted bodies to normal priority', async () => {
@@ -224,7 +267,8 @@ describe('Sync API - Network Endpoints', () => {
         .post('/sync/queue/wallet-1');
 
       expect(response.status).toBe(200);
-      expect(mockSyncService.queueSync).toHaveBeenCalledWith('wallet-1', DEFAULT_SYNC_PRIORITY);
+      expect(mockSyncIntentAdmission.request).toHaveBeenCalledWith('wallet-1', { mode: 'explicit_reopen' });
+      expect(mockSyncService.queueSync).not.toHaveBeenCalled();
     });
 
     it.each([
@@ -274,17 +318,20 @@ describe('Sync API - Network Endpoints', () => {
     it('GET /sync/status/:walletId returns wallet sync state', async () => {
       mockWalletRepository.findByIdWithAccess.mockResolvedValue({ id: 'wallet-1' });
       mockSyncService.getSyncStatus.mockResolvedValue({
-        queuePosition: 0,
+        queuePosition: null,
         syncInProgress: false,
-        lastSyncAt: '2025-01-01T00:00:00.000Z',
+        requestedIncrementalSyncGeneration: 3,
+        processedIncrementalSyncGeneration: 2,
       });
 
       const response = await request(app)
         .get('/sync/status/wallet-1');
 
       expect(response.status).toBe(200);
-      expect(response.body.queuePosition).toBe(0);
+      expect(response.body.queuePosition).toBeNull();
       expect(response.body.syncInProgress).toBe(false);
+      expect(response.body.requestedIncrementalSyncGeneration).toBe(3);
+      expect(response.body.processedIncrementalSyncGeneration).toBe(2);
     });
 
     it('GET /sync/status/:walletId returns 404 when wallet missing', async () => {
@@ -355,43 +402,74 @@ describe('Sync API - Network Endpoints', () => {
       expect(response.body.code).toBe('INTERNAL_ERROR');
     });
 
-    it('POST /sync/user queues all wallets', async () => {
-      mockSyncService.queueUserWallets.mockResolvedValue(undefined);
+    it('POST /sync/user requests and merges every wallet through admission', async () => {
+      mockWalletRepository.findByUserId.mockResolvedValue([
+        { id: 'wallet-1' },
+        { id: 'wallet-2' },
+      ]);
+      mockSyncIntentAdmission.request
+        .mockResolvedValueOnce({ status: 'requested', generation: 3, wakeup: 'enqueued' })
+        .mockResolvedValueOnce({ status: 'merged', generation: 4, wakeup: 'already_present' });
 
       const response = await request(app)
         .post('/sync/user')
         .send({ priority: 'low' });
 
       expect(response.status).toBe(200);
-      expect(response.body.success).toBe(true);
-      expect(mockSyncService.queueUserWallets).toHaveBeenCalledWith('test-user-id', 'low');
+      expect(response.body).toEqual({
+        success: true,
+        requested: 1,
+        merged: 1,
+        rejected: 0,
+        indeterminate: 0,
+        outcomes: [
+          { walletId: 'wallet-1', status: 'requested', generation: 3, wakeup: 'enqueued' },
+          { walletId: 'wallet-2', status: 'merged', generation: 4, wakeup: 'already_present' },
+        ],
+      });
+      expect(mockWalletRepository.findByUserId).toHaveBeenCalledWith('test-user-id');
+      expect(mockSyncService.queueUserWallets).not.toHaveBeenCalled();
+      expect(mockEnqueueWalletSyncBatch).not.toHaveBeenCalled();
     });
 
-    it('POST /sync/user returns 500 when batch queue fails', async () => {
-      mockSyncService.queueUserWallets.mockRejectedValue(new Error('batch failed'));
+    it('POST /sync/user reports a blocked wallet without hiding batch outcomes', async () => {
+      mockWalletRepository.findByUserId.mockResolvedValue([{ id: 'wallet-1' }]);
+      mockSyncIntentAdmission.request.mockResolvedValue({ status: 'blocked' });
 
       const response = await request(app)
         .post('/sync/user')
         .send({ priority: 'normal' });
 
-      expect(response.status).toBe(500);
-      expect(response.body.code).toBe('INTERNAL_ERROR');
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        requested: 0,
+        merged: 0,
+        rejected: 1,
+        indeterminate: 0,
+        outcomes: [{ walletId: 'wallet-1', status: 'rejected', reason: 'blocked' }],
+      });
+    });
+
+    it('POST /sync/user preserves an unknown admission result as indeterminate', async () => {
+      mockWalletRepository.findByUserId.mockResolvedValue([{ id: 'wallet-1' }]);
+      mockSyncIntentAdmission.request.mockRejectedValue(new Error('commit acknowledgement lost'));
+
+      const response = await request(app).post('/sync/user').send({ priority: 'normal' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        requested: 0,
+        merged: 0,
+        rejected: 0,
+        indeterminate: 1,
+        outcomes: [{
+          walletId: 'wallet-1', status: 'indeterminate', reason: 'admission_error',
+        }],
+      });
     });
 
     it('POST /sync/reset/:walletId resets stuck state', async () => {
       mockWalletRepository.findByIdWithAccess.mockResolvedValue({ id: 'wallet-1' });
-      mockWalletRepository.updateSyncState.mockResolvedValue({
-        syncInProgress: false,
-        lastSyncedAt: null,
-        lastSyncStatus: 'failed',
-        lastSyncError: 'stale sync',
-        lastSyncFailureClass: 'other',
-        syncExecutionOwner: null,
-        syncRetryCount: 0,
-        syncNextRetryAt: null,
-        syncStartedAt: null,
-        syncStateVersion: 2,
-      });
 
       const response = await request(app)
         .post('/sync/reset/wallet-1')
@@ -399,16 +477,7 @@ describe('Sync API - Network Endpoints', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-      expect(mockWalletRepository.updateSyncState).toHaveBeenCalledWith('wallet-1', {
-        syncInProgress: false,
-        lastSyncStatus: null,
-        lastSyncError: null,
-        lastSyncFailureClass: null,
-        syncExecutionOwner: null,
-        syncRetryCount: 0,
-        syncNextRetryAt: null,
-        syncStartedAt: null,
-      });
+      expect(mockSyncIntentAdmission.reset).toHaveBeenCalledWith('wallet-1');
     });
 
     it('POST /sync/reset/:walletId returns 404 when wallet missing', async () => {
@@ -424,7 +493,7 @@ describe('Sync API - Network Endpoints', () => {
 
     it('POST /sync/reset/:walletId returns 500 on reset errors', async () => {
       mockWalletRepository.findByIdWithAccess.mockResolvedValue({ id: 'wallet-1' });
-      mockWalletRepository.updateSyncState.mockRejectedValue(new Error('reset failed'));
+      mockSyncIntentAdmission.reset.mockRejectedValue(new Error('reset failed'));
 
       const response = await request(app)
         .post('/sync/reset/wallet-1')
@@ -447,12 +516,36 @@ describe('Sync API - Network Endpoints', () => {
         message: 'Full resync queued. Wallet data will be reset after exclusive sync ownership is acquired.',
         status: 'accepted',
         walletId: 'wallet-1',
+        generation: 8,
+        incrementalGeneration: 8,
+        wakeup: 'enqueued',
       });
-      expect(mockEnqueueFullResyncBatch).toHaveBeenCalledWith(
-        ['wallet-1'],
-        { reason: 'manual-wallet-resync:test-user-id' },
-      );
+      expect(mockSyncIntentAdmission.requestFullResync).toHaveBeenCalledWith('wallet-1', {
+        reason: 'manual-wallet-resync:test-user-id',
+      });
+      expect(mockEnqueueFullResyncBatch).not.toHaveBeenCalled();
       expect(mockTransactionRepository.deleteByWalletId).not.toHaveBeenCalled();
+    });
+
+    it('POST /sync/resync/:walletId reports durable intent when queue wakeup is unavailable', async () => {
+      mockWalletRepository.findByIdWithAccess.mockResolvedValue({ id: 'wallet-1' });
+      mockSyncIntentAdmission.requestFullResync.mockResolvedValue({
+        status: 'requested',
+        generation: 9,
+        incrementalGeneration: 12,
+        wakeup: 'unavailable',
+      });
+
+      const response = await request(app).post('/sync/resync/wallet-1').send({});
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        status: 'accepted',
+        generation: 9,
+        incrementalGeneration: 12,
+        wakeup: 'unavailable',
+        message: 'Full resync requested durably; recovery will enqueue it when queue authority is available.',
+      });
     });
 
     it('POST /sync/resync/:walletId returns 404 when wallet missing', async () => {
@@ -466,75 +559,38 @@ describe('Sync API - Network Endpoints', () => {
       expect(response.body.message).toBe('Wallet not found');
     });
 
-    it('POST /sync/resync/:walletId returns 503 when the durable queue rejects it', async () => {
-      mockWalletRepository.findByIdWithAccess.mockResolvedValue({ id: 'wallet-1', syncInProgress: false });
-      mockEnqueueFullResyncBatch.mockResolvedValue({
-        outcomes: [{
-          walletId: 'wallet-1',
-          status: 'rejected',
-          reason: 'queue_unavailable',
-        }],
-        acceptedWalletIds: [],
-        deduplicatedWalletIds: [],
-        rejectedWallets: [{
-          walletId: 'wallet-1',
-          reason: 'queue_unavailable',
-        }],
-        indeterminateWallets: [],
-      });
+    it('POST /sync/resync/:walletId returns 404 when admission loses the wallet', async () => {
+      mockWalletRepository.findByIdWithAccess.mockResolvedValue({ id: 'wallet-1' });
+      mockSyncIntentAdmission.requestFullResync.mockResolvedValue({ status: 'not_found' });
 
-      const response = await request(app)
-        .post('/sync/resync/wallet-1')
-        .send({});
+      const response = await request(app).post('/sync/resync/wallet-1').send({});
 
-      expect(response.status).toBe(503);
-      expect(response.body.code).toBe('SERVICE_UNAVAILABLE');
-      expect(response.body.details.outcomes).toEqual([{
-        walletId: 'wallet-1',
-        status: 'rejected',
-        reason: 'queue_unavailable',
-      }]);
+      expect(response.status).toBe(404);
+      expect(response.body.message).toBe('Wallet not found');
     });
 
-    it('POST /sync/resync/:walletId returns indeterminate state without calling it rejected', async () => {
-      mockWalletRepository.findByIdWithAccess.mockResolvedValue({ id: 'wallet-1' });
-      mockEnqueueFullResyncBatch.mockResolvedValue({
-        outcomes: [{
-          walletId: 'wallet-1',
-          status: 'indeterminate',
-          reason: 'queue_state_unknown',
-        }],
-        acceptedWalletIds: [],
-        deduplicatedWalletIds: [],
-        rejectedWallets: [],
-        indeterminateWallets: [{
-          walletId: 'wallet-1',
-          reason: 'queue_state_unknown',
-        }],
-      });
+    it.each([
+      ['blocked', 'Wallet sync is temporarily unavailable'],
+      ['generation_exhausted', 'Wallet full-resync generation limit reached'],
+    ])('POST /sync/resync/:walletId maps %s admission to 503', async (status, message) => {
+      mockWalletRepository.findByIdWithAccess.mockResolvedValue({ id: 'wallet-1', syncInProgress: false });
+      mockSyncIntentAdmission.requestFullResync.mockResolvedValue({ status });
 
       const response = await request(app)
         .post('/sync/resync/wallet-1')
         .send({});
 
       expect(response.status).toBe(503);
-      expect(response.body.message).toBe('Full resync queue state could not be confirmed');
-      expect(response.body.details.outcomes).toEqual([{
-        walletId: 'wallet-1',
-        status: 'indeterminate',
-        reason: 'queue_state_unknown',
-      }]);
-      expect(JSON.stringify(response.body)).not.toContain('rejected');
+      expect(response.body.message).toBe(message);
     });
 
     it('POST /sync/resync/:walletId reports an already retained intention', async () => {
       mockWalletRepository.findByIdWithAccess.mockResolvedValue({ id: 'wallet-1' });
-      mockEnqueueFullResyncBatch.mockResolvedValue({
-        outcomes: [{ walletId: 'wallet-1', status: 'deduplicated' }],
-        acceptedWalletIds: [],
-        deduplicatedWalletIds: ['wallet-1'],
-        rejectedWallets: [],
-        indeterminateWallets: [],
+      mockSyncIntentAdmission.requestFullResync.mockResolvedValue({
+        status: 'merged',
+        generation: 8,
+        incrementalGeneration: 8,
+        wakeup: 'enqueued',
       });
 
       const response = await request(app)
@@ -547,11 +603,34 @@ describe('Sync API - Network Endpoints', () => {
         message: 'A full resync is already queued for this wallet.',
       });
     });
+
+    it('reports unknown network full-resync admission without calling it rejected', async () => {
+      mockWalletRepository.findByNetworkWithSyncStatus.mockResolvedValue([
+        { id: 'wallet-1', syncInProgress: false },
+      ]);
+      mockSyncIntentAdmission.requestFullResync
+        .mockRejectedValue(new Error('commit acknowledgement lost'));
+
+      const response = await request(app)
+        .post('/sync/network/mainnet/resync')
+        .set('X-Confirm-Resync', 'true')
+        .send({});
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        queued: 0,
+        rejectedWallets: [],
+        indeterminateWallets: [{ walletId: 'wallet-1', reason: 'queue_state_unknown' }],
+      });
+    });
   });
 
   describe('POST /sync/network/:network', () => {
-    it('should queue all mainnet wallets for sync', async () => {
+    it('should request and merge all mainnet wallets through admission', async () => {
       mockWalletRepository.getIdsByNetwork.mockResolvedValue(['wallet-1', 'wallet-2']);
+      mockSyncIntentAdmission.request
+        .mockResolvedValueOnce({ status: 'requested', generation: 2, wakeup: 'enqueued' })
+        .mockResolvedValueOnce({ status: 'merged', generation: 3, wakeup: 'already_present' });
 
       const response = await request(app)
         .post('/sync/network/mainnet')
@@ -560,18 +639,17 @@ describe('Sync API - Network Endpoints', () => {
       expect(response.status).toBe(200);
       expect(response.body).toEqual({
         success: true,
-        queued: 2,
+        requested: 1,
+        merged: 1,
+        rejected: 0,
+        indeterminate: 0,
         walletIds: ['wallet-1', 'wallet-2'],
+        outcomes: [
+          { walletId: 'wallet-1', status: 'requested', generation: 2, wakeup: 'enqueued' },
+          { walletId: 'wallet-2', status: 'merged', generation: 3, wakeup: 'already_present' },
+        ],
       });
-      expect(mockEnqueueWalletSyncBatch).toHaveBeenCalledWith(
-        ['wallet-1', 'wallet-2'],
-        expect.objectContaining({
-          priority: 'normal',
-          reason: 'manual-network-sync:mainnet',
-          staggerDelayMs: 2000,
-          jobIdPrefix: 'manual-network-sync:mainnet:test-user-id',
-        })
-      );
+      expect(mockEnqueueWalletSyncBatch).not.toHaveBeenCalled();
     });
 
     it('should queue testnet3 wallets for sync', async () => {
@@ -582,13 +660,10 @@ describe('Sync API - Network Endpoints', () => {
         .send({ priority: 'high' });
 
       expect(response.status).toBe(200);
-      expect(response.body.queued).toBe(1);
-      expect(mockEnqueueWalletSyncBatch).toHaveBeenCalledWith(
-        ['testnet3-wallet-1'],
-        expect.objectContaining({
-          priority: 'high',
-          reason: 'manual-network-sync:testnet3',
-        })
+      expect(response.body.requested).toBe(1);
+      expect(mockSyncIntentAdmission.request).toHaveBeenCalledWith(
+        'testnet3-wallet-1',
+        { mode: 'explicit_reopen' },
       );
     });
 
@@ -600,7 +675,7 @@ describe('Sync API - Network Endpoints', () => {
         .send({});
 
       expect(response.status).toBe(200);
-      expect(response.body.queued).toBe(1);
+      expect(response.body.requested).toBe(1);
     });
 
     it('should return empty result when no wallets found', async () => {
@@ -613,8 +688,12 @@ describe('Sync API - Network Endpoints', () => {
       expect(response.status).toBe(200);
       expect(response.body).toEqual({
         success: true,
-        queued: 0,
+        requested: 0,
+        merged: 0,
+        rejected: 0,
+        indeterminate: 0,
         walletIds: [],
+        outcomes: [],
         message: 'No testnet4 wallets found',
       });
       expect(mockEnqueueWalletSyncBatch).not.toHaveBeenCalled();
@@ -629,17 +708,15 @@ describe('Sync API - Network Endpoints', () => {
       expect(response.body.message).toContain('Invalid network');
     });
 
-    it('should default to normal priority', async () => {
+    it('ignores legacy priority without bypassing canonical admission', async () => {
       mockWalletRepository.getIdsByNetwork.mockResolvedValue(['wallet-1']);
 
       await request(app)
         .post('/sync/network/mainnet')
         .send({});
 
-      expect(mockEnqueueWalletSyncBatch).toHaveBeenCalledWith(
-        ['wallet-1'],
-        expect.objectContaining({ priority: 'normal' })
-      );
+      expect(mockSyncIntentAdmission.request).toHaveBeenCalledWith('wallet-1', { mode: 'explicit_reopen' });
+      expect(mockEnqueueWalletSyncBatch).not.toHaveBeenCalled();
     });
 
     it('should return 500 when network queue lookup fails', async () => {
@@ -676,11 +753,16 @@ describe('Sync API - Network Endpoints', () => {
         walletIds: ['wallet-1', 'wallet-2'],
         acceptedWalletIds: ['wallet-1', 'wallet-2'],
         deduplicatedWalletIds: [],
+        deferredWalletIds: [],
         rejectedWallets: [],
         indeterminateWallets: [],
         excludedWallets: [],
-        message: 'Queued 2 wallets; 0 wallets already queued.',
+        message: 'Queued 2 wallets; 0 wallets already requested.',
       });
+      expect(mockSyncIntentAdmission.requestFullResync).toHaveBeenNthCalledWith(1, 'wallet-1', {
+        reason: 'manual-network-resync:mainnet',
+      });
+      expect(mockEnqueueFullResyncBatch).not.toHaveBeenCalled();
     });
 
     it('preserves input order across accepted and deduplicated outcomes', async () => {
@@ -689,17 +771,16 @@ describe('Sync API - Network Endpoints', () => {
         { id: 'wallet-2', syncInProgress: false },
         { id: 'wallet-3', syncInProgress: false },
       ]);
-      mockEnqueueFullResyncBatch.mockResolvedValue({
-        outcomes: [
-          { walletId: 'wallet-1', status: 'deduplicated' },
-          { walletId: 'wallet-2', status: 'accepted' },
-          { walletId: 'wallet-3', status: 'deduplicated' },
-        ],
-        acceptedWalletIds: ['wallet-2'],
-        deduplicatedWalletIds: ['wallet-1', 'wallet-3'],
-        rejectedWallets: [],
-        indeterminateWallets: [],
-      });
+      mockSyncIntentAdmission.requestFullResync
+        .mockResolvedValueOnce({
+          status: 'merged', generation: 1, incrementalGeneration: 1, wakeup: 'enqueued',
+        })
+        .mockResolvedValueOnce({
+          status: 'requested', generation: 2, incrementalGeneration: 2, wakeup: 'enqueued',
+        })
+        .mockResolvedValueOnce({
+          status: 'merged', generation: 3, incrementalGeneration: 3, wakeup: 'enqueued',
+        });
 
       const response = await request(app)
         .post('/sync/network/mainnet/resync')
@@ -712,6 +793,35 @@ describe('Sync API - Network Endpoints', () => {
       expect(response.body.walletIds).toEqual(['wallet-2']);
       expect(response.body.deduplicatedWalletIds).toEqual(['wallet-1', 'wallet-3']);
       expect(response.body.queued).toBe(1);
+    });
+
+    it('does not count durable requests as queued when their wakeup is unavailable', async () => {
+      mockWalletRepository.findByNetworkWithSyncStatus.mockResolvedValue([
+        { id: 'wallet-1', syncInProgress: false },
+        { id: 'wallet-2', syncInProgress: false },
+      ]);
+      mockSyncIntentAdmission.requestFullResync
+        .mockResolvedValueOnce({
+          status: 'requested', generation: 2, incrementalGeneration: 3, wakeup: 'unavailable',
+        })
+        .mockResolvedValueOnce({
+          status: 'merged', generation: 4, incrementalGeneration: 5, wakeup: 'unavailable',
+        });
+
+      const response = await request(app)
+        .post('/sync/network/mainnet/resync')
+        .set('X-Confirm-Resync', 'true')
+        .send({});
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        queued: 0,
+        walletIds: [],
+        acceptedWalletIds: ['wallet-1'],
+        deduplicatedWalletIds: ['wallet-2'],
+        deferredWalletIds: ['wallet-1', 'wallet-2'],
+      });
+      expect(response.body.message).toContain('2 wallets awaiting queue recovery');
     });
 
     it('should require confirmation header', async () => {
@@ -742,73 +852,14 @@ describe('Sync API - Network Endpoints', () => {
       expect(mockTransactionRepository.deleteByWalletId).not.toHaveBeenCalled();
     });
 
-    it('should report partial full-resync enqueue acceptance', async () => {
-      mockWalletRepository.findByNetworkWithSyncStatus.mockResolvedValue([
-        { id: 'wallet-1', syncInProgress: true },
-        { id: 'wallet-2', syncInProgress: false },
-      ]);
-      mockEnqueueFullResyncBatch.mockResolvedValue({
-        outcomes: [
-          { walletId: 'wallet-1', status: 'accepted' },
-          {
-            walletId: 'wallet-2',
-            status: 'rejected',
-            reason: 'queue_error',
-          },
-        ],
-        acceptedWalletIds: ['wallet-1'],
-        deduplicatedWalletIds: [],
-        rejectedWallets: [{
-          walletId: 'wallet-2',
-          reason: 'queue_error',
-        }],
-        indeterminateWallets: [],
-      });
-
-      const response = await request(app)
-        .post('/sync/network/mainnet/resync')
-        .set('X-Confirm-Resync', 'true')
-        .send({});
-
-      expect(response.status).toBe(200);
-      expect(response.body).toEqual({
-        success: true,
-        queued: 1,
-        walletIds: ['wallet-1'],
-        acceptedWalletIds: ['wallet-1'],
-        deduplicatedWalletIds: [],
-        rejectedWallets: [{
-          walletId: 'wallet-2',
-          reason: 'queue_error',
-        }],
-        indeterminateWallets: [],
-        excludedWallets: [],
-        message: 'Queued 1 wallet; 0 wallets already queued; 1 wallet rejected.',
-      });
-    });
-
-    it('reports partial indeterminate queue state separately from rejection', async () => {
+    it.each([
+      ['blocked', 'queue_unavailable'],
+      ['generation_exhausted', 'queue_error'],
+    ])('reports network full-resync %s admission per wallet', async (status, reason) => {
       mockWalletRepository.findByNetworkWithSyncStatus.mockResolvedValue([
         { id: 'wallet-1', syncInProgress: false },
-        { id: 'wallet-2', syncInProgress: false },
       ]);
-      mockEnqueueFullResyncBatch.mockResolvedValue({
-        outcomes: [
-          { walletId: 'wallet-1', status: 'accepted' },
-          {
-            walletId: 'wallet-2',
-            status: 'indeterminate',
-            reason: 'queue_state_unknown',
-          },
-        ],
-        acceptedWalletIds: ['wallet-1'],
-        deduplicatedWalletIds: [],
-        rejectedWallets: [],
-        indeterminateWallets: [{
-          walletId: 'wallet-2',
-          reason: 'queue_state_unknown',
-        }],
-      });
+      mockSyncIntentAdmission.requestFullResync.mockResolvedValue({ status });
 
       const response = await request(app)
         .post('/sync/network/mainnet/resync')
@@ -816,19 +867,10 @@ describe('Sync API - Network Endpoints', () => {
         .send({});
 
       expect(response.status).toBe(200);
-      expect(response.body).toEqual({
-        success: true,
-        queued: 1,
-        walletIds: ['wallet-1'],
-        acceptedWalletIds: ['wallet-1'],
-        deduplicatedWalletIds: [],
-        rejectedWallets: [],
-        indeterminateWallets: [{
-          walletId: 'wallet-2',
-          reason: 'queue_state_unknown',
-        }],
-        excludedWallets: [],
-        message: 'Queued 1 wallet; 0 wallets already queued; 1 wallet queue state unknown.',
+      expect(response.body).toMatchObject({
+        queued: 0,
+        rejectedWallets: [{ walletId: 'wallet-1', reason }],
+        indeterminateWallets: [],
       });
     });
 
@@ -857,47 +899,11 @@ describe('Sync API - Network Endpoints', () => {
         walletIds: [],
         acceptedWalletIds: [],
         deduplicatedWalletIds: [],
+        deferredWalletIds: [],
         rejectedWallets: [],
         indeterminateWallets: [],
         excludedWallets: [],
         message: 'No signet wallets found',
-      });
-    });
-
-    it('should report partial network enqueue outcomes without eager deletion', async () => {
-      mockWalletRepository.findByNetworkWithSyncStatus.mockResolvedValue([
-        { id: 'wallet-1', syncInProgress: false },
-      ]);
-      mockEnqueueFullResyncBatch.mockResolvedValue({
-        outcomes: [{
-          walletId: 'wallet-1',
-          status: 'rejected',
-          reason: 'queue_unavailable',
-        }],
-        acceptedWalletIds: [],
-        deduplicatedWalletIds: [],
-        rejectedWallets: [{
-          walletId: 'wallet-1',
-          reason: 'queue_unavailable',
-        }],
-        indeterminateWallets: [],
-      });
-
-      const response = await request(app)
-        .post('/sync/network/mainnet/resync')
-        .set('X-Confirm-Resync', 'true')
-        .send({});
-
-      expect(response.status).toBe(503);
-      expect(response.body.details.outcomes).toEqual([{
-        walletId: 'wallet-1',
-        status: 'rejected',
-        reason: 'queue_unavailable',
-      }]);
-      expect(mockTransactionRepository.deleteByWalletId).not.toHaveBeenCalled();
-      expect(mockEnqueueFullResyncBatch).toHaveBeenCalledWith(['wallet-1'], {
-        reason: 'manual-network-resync:mainnet',
-        staggerDelayMs: 2000,
       });
     });
 
@@ -917,9 +923,26 @@ describe('Sync API - Network Endpoints', () => {
   describe('GET /sync/network/:network/status', () => {
     it('should return aggregate sync status for network', async () => {
       mockWalletRepository.findByNetworkWithSyncStatus.mockResolvedValue([
-        { id: 'wallet-1', syncInProgress: false, lastSyncStatus: 'success', lastSyncedAt: new Date('2024-01-01') },
-        { id: 'wallet-2', syncInProgress: true, lastSyncStatus: null, lastSyncedAt: null },
-        { id: 'wallet-3', syncInProgress: false, lastSyncStatus: 'failed', lastSyncedAt: new Date('2024-01-02') },
+        {
+          id: 'wallet-1', syncInProgress: false, lastSyncStatus: 'success',
+          lastSyncedAt: new Date('2024-01-01'),
+          requestedIncrementalSyncGeneration: 1, processedIncrementalSyncGeneration: 1,
+          requestedFullResyncGeneration: 0, processedFullResyncGeneration: 0,
+          syncActionRequiredAt: null,
+        },
+        {
+          id: 'wallet-2', syncInProgress: true, lastSyncStatus: null, lastSyncedAt: null,
+          requestedIncrementalSyncGeneration: 1, processedIncrementalSyncGeneration: 0,
+          requestedFullResyncGeneration: 0, processedFullResyncGeneration: 0,
+          syncActionRequiredAt: null,
+        },
+        {
+          id: 'wallet-3', syncInProgress: false, lastSyncStatus: 'failed',
+          lastSyncedAt: new Date('2024-01-02'),
+          requestedIncrementalSyncGeneration: 1, processedIncrementalSyncGeneration: 1,
+          requestedFullResyncGeneration: 0, processedFullResyncGeneration: 0,
+          syncActionRequiredAt: null,
+        },
       ]);
 
       const response = await request(app)

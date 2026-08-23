@@ -5,8 +5,10 @@ import {
   app,
   mockAdvancedTx,
   mockBlockchain,
+  mockEnqueueWalletSyncBatch,
   mockMempool,
   mockNodeClient,
+  mockSyncIntentAdmission,
   mockUtils,
   request,
 } from './bitcoinTestHarness';
@@ -14,25 +16,29 @@ import {
 export const registerBitcoinSyncRouteTests = () => {
   describe('Sync Routes', () => {
     describe('POST /bitcoin/wallet/:walletId/sync', () => {
-      it('should sync wallet when user has access', async () => {
+      it('should request asynchronous wallet sync when user has access', async () => {
         mockPrismaClient.wallet.findFirst.mockResolvedValue({
           id: 'wallet-1',
           name: 'Test Wallet',
         });
-        mockBlockchain.syncWallet.mockResolvedValue({
-          addressesScanned: 100,
-          transactionsFound: 50,
-          newBalance: 5000000,
+        mockSyncIntentAdmission.request.mockResolvedValue({
+          status: 'merged',
+          generation: 9,
+          wakeup: 'already_present',
         });
-
         const response = await request(app).post('/bitcoin/wallet/wallet-1/sync');
 
         expect(response.status).toBe(200);
         expect(response.body).toMatchObject({
-          message: 'Wallet synced successfully',
-          addressesScanned: 100,
-          transactionsFound: 50,
+          success: true,
+          status: 'merged',
+          generation: 9,
+          wakeup: 'already_present',
+          message: 'Wallet sync merged with existing work',
         });
+        expect(mockSyncIntentAdmission.request).toHaveBeenCalledWith('wallet-1', { mode: 'explicit_reopen' });
+        expect(mockBlockchain.syncWallet).not.toHaveBeenCalled();
+        expect(mockEnqueueWalletSyncBatch).not.toHaveBeenCalled();
       });
 
       it('should return 404 when wallet not found', async () => {
@@ -43,13 +49,15 @@ export const registerBitcoinSyncRouteTests = () => {
         expect(response.status).toBe(404);
       });
 
-      it('should return 500 on sync error', async () => {
+      it('should return 503 when canonical admission is blocked', async () => {
         mockPrismaClient.wallet.findFirst.mockResolvedValue({ id: 'wallet-1' });
-        mockBlockchain.syncWallet.mockRejectedValue(new Error('Sync failed'));
+        mockSyncIntentAdmission.request.mockResolvedValue({ status: 'blocked' });
 
         const response = await request(app).post('/bitcoin/wallet/wallet-1/sync');
 
-        expect(response.status).toBe(500);
+        expect(response.status).toBe(503);
+        expect(response.body.message).toBe('Wallet sync is temporarily unavailable');
+        expect(mockBlockchain.syncWallet).not.toHaveBeenCalled();
       });
     });
 

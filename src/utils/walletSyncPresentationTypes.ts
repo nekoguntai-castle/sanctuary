@@ -20,6 +20,11 @@ export interface WalletSyncSubject {
   lastSyncError?: string | null;
   lastSyncedAt?: string | null;
   syncInProgress?: boolean;
+  requestedIncrementalSyncGeneration?: number;
+  processedIncrementalSyncGeneration?: number;
+  syncActionRequiredAt?: string | null;
+  requestedFullResyncGeneration?: number;
+  processedFullResyncGeneration?: number;
 }
 
 /**

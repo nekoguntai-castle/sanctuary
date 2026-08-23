@@ -39,6 +39,10 @@ const networkSectionSchema = z.object({
   syncInProgressCount: boundedCountSchema,
   stuckCandidatesCount: boundedCountSchema,
   fullResyncPendingCount: boundedCountSchema,
+  incrementalPendingCount: boundedCountSchema,
+  actionRequiredCount: boundedCountSchema,
+  activeLeaseCount: boundedCountSchema,
+  expiredLeaseCount: boundedCountSchema,
 }).strict();
 
 const byNetworkSchema = z.object(
@@ -74,6 +78,32 @@ export const walletSyncSchema = z.discriminatedUnion('observation', [
     fullResync: z.object({
       pendingCount: boundedCountSchema,
       maxDrift: fullResyncDriftBucketSchema,
+      unpreparedPendingCount: boundedCountSchema,
+      preparedAwaitingCompletionCount: boundedCountSchema,
+    }).strict(),
+    incremental: z.object({
+      pendingCount: boundedCountSchema,
+      unclaimedPendingCount: boundedCountSchema,
+      claimedPendingCount: boundedCountSchema,
+      trailingRequestCount: boundedCountSchema,
+      readyUnclaimedCount: boundedCountSchema,
+      maxDrift: fullResyncDriftBucketSchema,
+    }).strict(),
+    actionRequired: z.object({
+      totalCount: boundedCountSchema,
+      pendingIntentCount: boundedCountSchema,
+      orphanedCount: boundedCountSchema,
+    }).strict(),
+    retry: z.object({
+      deferredPendingCount: boundedCountSchema,
+      duePendingCount: boundedCountSchema,
+    }).strict(),
+    leaseAuthority: z.object({
+      activeCount: boundedCountSchema,
+      expiredCount: boundedCountSchema,
+      inProgressWithoutClaimCount: boundedCountSchema,
+      claimWithoutInProgressCount: boundedCountSchema,
+      incoherentCount: boundedCountSchema,
     }).strict(),
     errorClasses: errorClassesSchema,
   }).strict(),

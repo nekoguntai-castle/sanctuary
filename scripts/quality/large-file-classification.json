@@ -3,6 +3,20 @@
   "lineLimit": 1000,
   "warningLimit": 800,
   "classifications": {
+    "scripts/check-wallet-sync-lifecycle-contract.mjs": {
+      "category": "proof-harness",
+      "owner": "wallet-sync-lifecycle",
+      "reason": "Executable architecture proof that exhaustively inventories wallet-sync producers, queue mutations, lifecycle authority, activation gates, and compatibility surfaces as one auditable contract.",
+      "reviewWhenTouched": true,
+      "lastReviewed": "2026-08-23"
+    },
+    "scripts/check-wallet-sync-mutation-boundaries.mjs": {
+      "category": "proof-harness",
+      "owner": "wallet-sync-mutation-fence",
+      "reason": "Security-critical static proof that recursively inventories every canonical sync mutation, explicit transaction-client path, immutable fence, and post-commit effect boundary.",
+      "reviewWhenTouched": true,
+      "lastReviewed": "2026-08-23"
+    },
     "scripts/perf/phase3-compose-benchmark-smoke.mjs": {
       "category": "proof-harness",
       "owner": "performance-proof",
@@ -142,6 +156,27 @@
       "reason": "Distributed-lock execution proof harness sharing one queue instance and lock/timer/termination mock boundary across contention, refresh, shutdown, and authority-loss races.",
       "reviewWhenTouched": true,
       "lastReviewed": "2026-08-22"
+    },
+    "server/tests/integration/repositories/syncIntentLifecycle.test.ts": {
+      "category": "proof-harness",
+      "owner": "wallet-sync-lifecycle",
+      "reason": "Real PostgreSQL lifecycle proof sharing one migrated database boundary across request, claim, reclaim, reset, generation, lease, rollback, and concurrent former-owner behavior.",
+      "reviewWhenTouched": true,
+      "lastReviewed": "2026-08-23"
+    },
+    "server/tests/unit/services/sync/syncIntentAdmission.test.ts": {
+      "category": "proof-harness",
+      "owner": "wallet-sync-admission",
+      "reason": "Canonical admission proof harness sharing one gate, repository, publisher, queue, and recovery boundary across exact generation and lease-token lifecycle outcomes.",
+      "reviewWhenTouched": true,
+      "lastReviewed": "2026-08-23"
+    },
+    "tests/ci/check-wallet-sync-lifecycle-contract.test.mjs": {
+      "category": "proof-harness",
+      "owner": "wallet-sync-lifecycle",
+      "reason": "Adversarial executable architecture fixture that proves exhaustive producer, queue, generation-authority, activation, compatibility, and subscription lifecycle discovery cannot be bypassed.",
+      "reviewWhenTouched": true,
+      "lastReviewed": "2026-08-23"
     },
     "tests/components/WalletDetail/hooks/useWalletData.test.ts": {
       "category": "proof-harness",

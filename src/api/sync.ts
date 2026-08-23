@@ -12,25 +12,41 @@ import type { WalletSyncStatus } from '@sanctuary/shared/types/api';
 
 export type SyncStatus = WalletSyncStatus;
 
-export interface SyncResult {
-  success: boolean;
-  syncedAddresses: number;
-  newTransactions: number;
-  newUtxos: number;
-  error?: string;
+export type WalletSyncWakeupDisposition =
+  | 'deferred_action_required'
+  | 'deferred_full_resync'
+  | 'deferred_retry'
+  | 'enqueued'
+  | 'unavailable';
+
+export interface WalletSyncRequestResult {
+  success: true;
+  status: 'requested' | 'merged';
+  generation: number;
+  wakeup: WalletSyncWakeupDisposition;
+  message: string;
 }
 
-export interface QueueResult {
-  queued: boolean;
-  queuePosition: number | null;
-  syncInProgress: boolean;
-}
+export type WalletSyncBatchOutcome = {
+  walletId: string;
+  status: WalletSyncRequestResult['status'];
+  generation: number;
+  wakeup: WalletSyncWakeupDisposition;
+} | {
+  walletId: string;
+  status: 'rejected';
+  reason: 'blocked' | 'generation_exhausted' | 'not_found';
+} | {
+  walletId: string;
+  status: 'indeterminate';
+  reason: 'admission_error';
+};
 
 /**
  * Trigger immediate sync for a wallet
  */
-export async function syncWallet(walletId: string): Promise<SyncResult> {
-  return apiClient.post<SyncResult>(`/sync/wallet/${walletId}`);
+export async function syncWallet(walletId: string): Promise<WalletSyncRequestResult> {
+  return apiClient.post<WalletSyncRequestResult>(`/sync/wallet/${walletId}`);
 }
 
 /**
@@ -39,8 +55,8 @@ export async function syncWallet(walletId: string): Promise<SyncResult> {
 export async function queueSync(
   walletId: string,
   priority: SyncPriority = DEFAULT_SYNC_PRIORITY
-): Promise<QueueResult> {
-  return apiClient.post<QueueResult>(`/sync/queue/${walletId}`, { priority });
+): Promise<WalletSyncRequestResult> {
+  return apiClient.post<WalletSyncRequestResult>(`/sync/queue/${walletId}`, { priority });
 }
 
 /**
@@ -50,21 +66,14 @@ export async function getSyncStatus(walletId: string): Promise<SyncStatus> {
   return apiClient.get<SyncStatus>(`/sync/status/${walletId}`);
 }
 
-/**
- * Queue all user's wallets for background sync
- * Call this on login or page load
- */
-export async function queueUserWallets(
-  priority: SyncPriority = DEFAULT_SYNC_PRIORITY
-): Promise<{ success: boolean; message: string }> {
-  return apiClient.post<{ success: boolean; message: string }>('/sync/user', { priority });
-}
-
 export interface ResyncResult {
   success: boolean;
   message: string;
   status: 'accepted' | 'deduplicated';
   walletId: string;
+  generation: number;
+  incrementalGeneration: number;
+  wakeup: 'enqueued' | 'unavailable';
 }
 
 /**
@@ -79,9 +88,13 @@ export async function resyncWallet(walletId: string): Promise<ResyncResult> {
 export type NetworkType = Exclude<BitcoinNetworkType, 'regtest'>;
 
 export interface NetworkSyncResult {
-  success: boolean;
-  queued: number;
+  success: true;
+  requested: number;
+  merged: number;
+  rejected: number;
+  indeterminate: number;
   walletIds: string[];
+  outcomes: WalletSyncBatchOutcome[];
   message?: string;
 }
 
@@ -91,6 +104,7 @@ export interface NetworkResyncResult {
   walletIds: string[];
   acceptedWalletIds: string[];
   deduplicatedWalletIds: string[];
+  deferredWalletIds?: string[];
   rejectedWallets: Array<{
     walletId: string;
     reason: 'queue_unavailable' | 'queue_error';

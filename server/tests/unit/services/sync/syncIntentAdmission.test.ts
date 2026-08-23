@@ -3,12 +3,14 @@ import { fromBullMqJobId } from '../../../../src/jobs/bullMqJobIds';
 
 const processMocks = vi.hoisted(() => ({
   enqueueWakeup: vi.fn(),
+  enqueueFullResyncWakeup: vi.fn(),
   inspectActivation: vi.fn(),
   isLocked: vi.fn(),
 }));
 
 vi.mock('../../../../src/services/workerSyncQueue', () => ({
   enqueueIncrementalSyncWakeup: processMocks.enqueueWakeup,
+  enqueueReservedFullResyncWakeup: processMocks.enqueueFullResyncWakeup,
 }));
 
 vi.mock('../../../../src/infrastructure/distributedLock', () => ({
@@ -20,7 +22,8 @@ vi.mock('../../../../src/services/sync/walletSyncActivationGate', () => ({
 }));
 
 import { syncIntentRepository } from '../../../../src/repositories/syncIntentRepository';
-import type { IncrementalSyncIntentState } from '../../../../src/repositories/types';
+import * as resyncRepository from '../../../../src/repositories/resyncRepository';
+import type { IncrementalSyncLifecycleState } from '../../../../src/repositories/types';
 import {
   createSyncIntentAdmission,
   incrementalSyncWakeupJobId,
@@ -57,8 +60,8 @@ const TOKEN_A = '10000000-0000-4000-8000-000000000001';
 const TOKEN_B = '20000000-0000-4000-8000-000000000002';
 
 function intentState(
-  overrides: Partial<IncrementalSyncIntentState> = {},
-): IncrementalSyncIntentState {
+  overrides: Partial<IncrementalSyncLifecycleState> = {},
+): IncrementalSyncLifecycleState {
   return {
     id: 'wallet-1',
     requestedIncrementalSyncGeneration: 1,
@@ -73,6 +76,15 @@ function intentState(
     requestedFullResyncGeneration: 0,
     preparedFullResyncGeneration: 0,
     processedFullResyncGeneration: 0,
+    syncInProgress: false,
+    lastSyncedAt: null,
+    lastSyncedBlockHeight: null,
+    lastSyncStatus: null,
+    lastSyncError: null,
+    lastSyncFailureClass: null,
+    syncExecutionOwner: null,
+    syncStartedAt: null,
+    syncStateVersion: 1,
     ...overrides,
   };
 }
@@ -85,6 +97,7 @@ function repositoryMock() {
     completeIncrementalSync: vi.fn(),
     releaseIncrementalSyncForRetry: vi.fn(),
     releaseIncrementalSyncAsActionRequired: vi.fn(),
+    resetIncrementalSyncAttempt: vi.fn(),
     findActionableIncrementalSyncIntents: vi.fn(),
     findExpiredIncrementalSyncClaims: vi.fn(),
   } as unknown as typeof syncIntentRepository;
@@ -92,14 +105,22 @@ function repositoryMock() {
 
 describe('syncIntentAdmission', () => {
   const enqueueWakeup = vi.fn();
+  const enqueueFullResyncWakeup = vi.fn();
+  const requestFullResyncGeneration = vi.fn();
+  const isExactFullResyncPending = vi.fn();
   const inspectActivation = vi.fn();
   const isExecutionLockHeld = vi.fn();
+  const publishTransition = vi.fn();
 
   function createAdmission(repository?: ReturnType<typeof repositoryMock>) {
     return createSyncIntentAdmission({
       enqueueWakeup,
+      enqueueFullResyncWakeup,
       inspectActivation,
       isExecutionLockHeld,
+      requestFullResyncGeneration,
+      isExactFullResyncPending,
+      publishTransition,
       ...(repository ? { repository } : {}),
     });
   }
@@ -111,6 +132,10 @@ describe('syncIntentAdmission', () => {
     processMocks.inspectActivation.mockResolvedValue(ACTIVE);
     processMocks.isLocked.mockResolvedValue(false);
     processMocks.enqueueWakeup.mockResolvedValue(true);
+    processMocks.enqueueFullResyncWakeup.mockResolvedValue(true);
+    enqueueFullResyncWakeup.mockResolvedValue(true);
+    isExactFullResyncPending.mockResolvedValue(true);
+    publishTransition.mockResolvedValue(undefined);
   });
 
   it('enqueues newly requested and merged work with one stable generation identity', async () => {
@@ -139,6 +164,17 @@ describe('syncIntentAdmission', () => {
     expect(enqueueWakeup.mock.calls[0]).toEqual(enqueueWakeup.mock.calls[1]);
     expect(fromBullMqJobId(enqueueWakeup.mock.calls[0][0].jobId))
       .toBe('sync:intent:wallet-1:1');
+    expect(publishTransition).toHaveBeenNthCalledWith(1, {
+      walletId: 'wallet-1',
+      transition: 'requested',
+      state: expect.objectContaining({ syncStateVersion: 1 }),
+    });
+    expect(vi.mocked(repository.requestIncrementalSync).mock.invocationCallOrder[0]).toBeLessThan(
+      publishTransition.mock.invocationCallOrder[0] ?? 0,
+    );
+    expect(publishTransition.mock.invocationCallOrder[0]).toBeLessThan(
+      enqueueWakeup.mock.invocationCallOrder[0] ?? 0,
+    );
   });
 
   it('keeps durable intent when enqueue returns false or throws', async () => {
@@ -155,7 +191,237 @@ describe('syncIntentAdmission', () => {
     await expect(admission.request('wallet-1', { now: NOW })).resolves
       .toMatchObject({ status: 'requested', wakeup: 'unavailable' });
     expect(repository.requestIncrementalSync).toHaveBeenCalledTimes(2);
+    expect(publishTransition).toHaveBeenCalledTimes(2);
   });
+
+  it('requests and merges one exact full-resync generation', async () => {
+    requestFullResyncGeneration
+      .mockResolvedValueOnce({
+        status: 'requested', generation: 3, incrementalGeneration: 8,
+        state: intentState({ requestedFullResyncGeneration: 3, syncStateVersion: 2 }),
+      })
+      .mockResolvedValueOnce({
+        status: 'merged', generation: 3, incrementalGeneration: 8,
+        state: intentState({ requestedFullResyncGeneration: 3, syncStateVersion: 3 }),
+      });
+    const admission = createAdmission(repositoryMock());
+
+    await expect(admission.requestFullResync('wallet-1', { reason: 'manual' }))
+      .resolves.toEqual({
+        status: 'requested', generation: 3, incrementalGeneration: 8, wakeup: 'enqueued',
+      });
+    await expect(admission.requestFullResync('wallet-1', { reason: 'manual' }))
+      .resolves.toEqual({
+        status: 'merged', generation: 3, incrementalGeneration: 8, wakeup: 'enqueued',
+      });
+    expect(enqueueFullResyncWakeup).toHaveBeenCalledTimes(2);
+    expect(enqueueFullResyncWakeup).toHaveBeenNthCalledWith(1, {
+      walletId: 'wallet-1',
+      generation: 3,
+      incrementalGeneration: 8,
+      reason: 'manual',
+    });
+    expect(enqueueFullResyncWakeup.mock.calls[0])
+      .toEqual(enqueueFullResyncWakeup.mock.calls[1]);
+    expect(publishTransition).toHaveBeenNthCalledWith(1, {
+      walletId: 'wallet-1',
+      transition: 'requested',
+      state: expect.objectContaining({ requestedFullResyncGeneration: 3, syncStateVersion: 2 }),
+    });
+  });
+
+  it('retains durable full-resync intent when the exact wakeup is unavailable', async () => {
+    requestFullResyncGeneration.mockResolvedValue({
+      status: 'requested', generation: 4, incrementalGeneration: 9,
+      state: intentState({ requestedFullResyncGeneration: 4 }),
+    });
+    enqueueFullResyncWakeup
+      .mockResolvedValueOnce(false)
+      .mockRejectedValueOnce(new Error('Redis down'));
+    const admission = createAdmission(repositoryMock());
+
+    await expect(admission.requestFullResync('wallet-1', { reason: 'manual' }))
+      .resolves.toMatchObject({ status: 'requested', generation: 4, wakeup: 'unavailable' });
+    await expect(admission.requestFullResync('wallet-1', { reason: 'manual' }))
+      .resolves.toMatchObject({ status: 'requested', generation: 4, wakeup: 'unavailable' });
+    expect(requestFullResyncGeneration).toHaveBeenCalledTimes(2);
+  });
+
+  it('persists retained incremental work while activation is dormant without enqueueing it', async () => {
+    const repository = repositoryMock();
+    vi.mocked(repository.requestIncrementalSync).mockResolvedValue({
+      status: 'requested',
+      state: intentState({ syncStateVersion: 4 }),
+    });
+    inspectActivation.mockResolvedValue(DORMANT);
+    const admission = createAdmission(repository);
+
+    await expect(admission.bridgeRetained('wallet-1', {
+      fullResync: false,
+      reason: 'retained-v1',
+    })).resolves.toEqual({
+      status: 'requested', generation: 1, wakeup: 'deferred_activation',
+    });
+    expect(repository.requestIncrementalSync).toHaveBeenCalledWith('wallet-1', 'automatic');
+    expect(publishTransition).toHaveBeenCalledWith(expect.objectContaining({
+      walletId: 'wallet-1', transition: 'requested',
+    }));
+    expect(enqueueWakeup).not.toHaveBeenCalled();
+  });
+
+  it('persists retained full-resync work while activation is dormant without enqueueing it', async () => {
+    requestFullResyncGeneration.mockResolvedValue({
+      status: 'merged',
+      generation: 3,
+      incrementalGeneration: 8,
+      state: intentState({ requestedFullResyncGeneration: 3 }),
+    });
+    inspectActivation.mockResolvedValue(STABILIZING);
+    const admission = createAdmission(repositoryMock());
+
+    await expect(admission.bridgeRetained('wallet-1', {
+      fullResync: true,
+    })).resolves.toEqual({
+      status: 'merged',
+      generation: 3,
+      incrementalGeneration: 8,
+      wakeup: 'deferred_activation',
+    });
+    expect(publishTransition).toHaveBeenCalledOnce();
+    expect(enqueueFullResyncWakeup).not.toHaveBeenCalled();
+  });
+
+  it('enqueues retained work through v3 adapters only after the gate is active', async () => {
+    const repository = repositoryMock();
+    vi.mocked(repository.requestIncrementalSync).mockResolvedValue({
+      status: 'merged', state: intentState(),
+    });
+    requestFullResyncGeneration.mockResolvedValue({
+      status: 'requested',
+      generation: 2,
+      incrementalGeneration: 3,
+      state: intentState({ requestedFullResyncGeneration: 2 }),
+    });
+    enqueueWakeup.mockResolvedValue(true);
+    enqueueFullResyncWakeup.mockResolvedValue(true);
+    const admission = createAdmission(repository);
+
+    await expect(admission.bridgeRetained('wallet-1', { fullResync: false }))
+      .resolves.toMatchObject({ status: 'merged', wakeup: 'enqueued' });
+    await expect(admission.bridgeRetained('wallet-1', {
+      fullResync: true, reason: 'retained-full',
+    })).resolves.toMatchObject({ status: 'requested', wakeup: 'enqueued' });
+    expect(enqueueFullResyncWakeup).toHaveBeenCalledWith(expect.objectContaining({
+      reason: 'retained-full',
+    }));
+  });
+
+  it('uses a stable bridge reason when an active retained full resync has none', async () => {
+    requestFullResyncGeneration.mockResolvedValue({
+      status: 'requested',
+      generation: 2,
+      incrementalGeneration: 3,
+      state: intentState({ requestedFullResyncGeneration: 2 }),
+    });
+    enqueueFullResyncWakeup.mockResolvedValue(true);
+    const admission = createAdmission(repositoryMock());
+
+    await expect(admission.bridgeRetained('wallet-1', { fullResync: true }))
+      .resolves.toMatchObject({ status: 'requested', wakeup: 'enqueued' });
+    expect(enqueueFullResyncWakeup).toHaveBeenCalledWith(expect.objectContaining({
+      reason: 'retained-full-resync-bridge',
+    }));
+  });
+
+  it('returns terminal retained-bridge persistence outcomes without queue access', async () => {
+    const repository = repositoryMock();
+    vi.mocked(repository.requestIncrementalSync).mockResolvedValue({ status: 'not_found' });
+    requestFullResyncGeneration.mockResolvedValue({ status: 'generation_exhausted' });
+    const admission = createAdmission(repository);
+
+    await expect(admission.bridgeRetained('wallet-1', { fullResync: false }))
+      .resolves.toEqual({ status: 'not_found' });
+    await expect(admission.bridgeRetained('wallet-1', { fullResync: true }))
+      .resolves.toEqual({ status: 'generation_exhausted' });
+    expect(enqueueWakeup).not.toHaveBeenCalled();
+    expect(enqueueFullResyncWakeup).not.toHaveBeenCalled();
+  });
+
+  it('preserves retry deferral when retained work is bridged', async () => {
+    const repository = repositoryMock();
+    vi.mocked(repository.requestIncrementalSync).mockResolvedValue({
+      status: 'merged',
+      state: intentState({ syncNextRetryAt: new Date('2099-01-01T00:00:00.000Z') }),
+    });
+    const admission = createAdmission(repository);
+
+    await expect(admission.bridgeRetained('wallet-1', { fullResync: false }))
+      .resolves.toMatchObject({ status: 'merged', wakeup: 'deferred_retry' });
+    expect(enqueueWakeup).not.toHaveBeenCalled();
+  });
+
+  it('repairs only the exact still-pending full-resync generations', async () => {
+    const admission = createAdmission(repositoryMock());
+    const wakeup = {
+      walletId: 'wallet-1', generation: 4, incrementalGeneration: 9, reason: 'recovery',
+    };
+    isExactFullResyncPending.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+
+    await expect(admission.wakeReservedFullResync(wakeup)).resolves.toBe(false);
+    expect(enqueueFullResyncWakeup).not.toHaveBeenCalled();
+    await expect(admission.wakeReservedFullResync(wakeup)).resolves.toBe(true);
+    expect(isExactFullResyncPending).toHaveBeenCalledWith('wallet-1', 4, 9);
+    expect(enqueueFullResyncWakeup).toHaveBeenCalledWith(wakeup);
+  });
+
+  it('fails exact full-resync repair closed across activation drift', async () => {
+    const admission = createAdmission(repositoryMock());
+    const wakeup = {
+      walletId: 'wallet-1', generation: 4, incrementalGeneration: 9, reason: 'recovery',
+    };
+    inspectActivation
+      .mockResolvedValueOnce(FLEET_BLOCKED)
+      .mockResolvedValueOnce(ACTIVE)
+      .mockResolvedValueOnce(FLEET_BLOCKED);
+
+    await expect(admission.wakeReservedFullResync(wakeup)).resolves.toBe(false);
+    expect(isExactFullResyncPending).not.toHaveBeenCalled();
+    await expect(admission.wakeReservedFullResync(wakeup)).resolves.toBe(false);
+    expect(enqueueFullResyncWakeup).not.toHaveBeenCalled();
+  });
+
+  it('fails full-resync admission closed before persistence and after activation drift', async () => {
+    const admission = createAdmission(repositoryMock());
+    inspectActivation.mockResolvedValueOnce(FLEET_BLOCKED);
+    await expect(admission.requestFullResync('wallet-1', { reason: 'manual' }))
+      .resolves.toEqual({ status: 'blocked', activation: FLEET_BLOCKED });
+    expect(requestFullResyncGeneration).not.toHaveBeenCalled();
+
+    requestFullResyncGeneration.mockResolvedValueOnce({
+      status: 'requested', generation: 5, incrementalGeneration: 10,
+      state: intentState({ requestedFullResyncGeneration: 5 }),
+    });
+    inspectActivation
+      .mockResolvedValueOnce(ACTIVE)
+      .mockResolvedValueOnce(FLEET_BLOCKED);
+    await expect(admission.requestFullResync('wallet-1', { reason: 'manual' }))
+      .resolves.toEqual({
+        status: 'requested', generation: 5, incrementalGeneration: 10, wakeup: 'unavailable',
+      });
+    expect(enqueueFullResyncWakeup).not.toHaveBeenCalled();
+  });
+
+  it.each(['not_found', 'generation_exhausted'] as const)(
+    'returns full-resync %s without touching the queue',
+    async status => {
+      requestFullResyncGeneration.mockResolvedValueOnce({ status });
+      const admission = createAdmission(repositoryMock());
+
+      await expect(admission.requestFullResync('wallet-1', { reason: 'manual' }))
+        .resolves.toEqual({ status });
+      expect(enqueueFullResyncWakeup).not.toHaveBeenCalled();
+    },
+  );
 
   it('keeps newly durable intent queued when activation drifts before enqueue', async () => {
     const repository = repositoryMock();
@@ -175,6 +441,12 @@ describe('syncIntentAdmission', () => {
     });
     expect(repository.requestIncrementalSync).toHaveBeenCalledOnce();
     expect(enqueueWakeup).not.toHaveBeenCalled();
+    expect(publishTransition).toHaveBeenCalledOnce();
+    expect(publishTransition).toHaveBeenCalledWith(expect.objectContaining({
+      walletId: 'wallet-1',
+      transition: 'requested',
+      state: expect.objectContaining({ syncStateVersion: 1 }),
+    }));
   });
 
   it('best-effort wakes an already durable exact generation', async () => {
@@ -219,6 +491,12 @@ describe('syncIntentAdmission', () => {
       wakeup,
     });
     expect(enqueueWakeup).not.toHaveBeenCalled();
+    expect(publishTransition).toHaveBeenCalledOnce();
+    expect(publishTransition).toHaveBeenCalledWith(expect.objectContaining({
+      walletId: 'wallet-1',
+      transition: 'requested',
+      state: expect.objectContaining(overrides),
+    }));
   });
 
   it('passes explicit reopen policy to the repository', async () => {
@@ -457,6 +735,46 @@ describe('syncIntentAdmission', () => {
     }
   });
 
+  it('uses the canonical full-resync authorities when no overrides are supplied', async () => {
+    const wakeup = {
+      walletId: 'wallet-1', generation: 4, incrementalGeneration: 9, reason: 'recovery',
+    };
+    const requestSpy = vi.spyOn(resyncRepository, 'requestFullResyncGeneration')
+      .mockResolvedValue({
+        status: 'requested', generation: 4, incrementalGeneration: 9,
+        state: intentState({ requestedFullResyncGeneration: 4 }),
+      });
+    const validateSpy = vi.spyOn(resyncRepository, 'isExactFullResyncPending')
+      .mockResolvedValue(true);
+    const admission = createSyncIntentAdmission({
+      enqueueWakeup,
+      enqueueFullResyncWakeup,
+      inspectActivation,
+      isExecutionLockHeld,
+      publishTransition,
+      repository: repositoryMock(),
+    });
+
+    try {
+      await expect(admission.requestFullResync('wallet-1', { reason: 'manual' }))
+        .resolves.toEqual({
+          status: 'requested', generation: 4, incrementalGeneration: 9, wakeup: 'enqueued',
+        });
+      await expect(admission.wakeReservedFullResync(wakeup)).resolves.toBe(true);
+
+      expect(requestSpy).toHaveBeenCalledWith('wallet-1');
+      expect(validateSpy).toHaveBeenCalledWith('wallet-1', 4, 9);
+      expect(enqueueFullResyncWakeup).toHaveBeenNthCalledWith(1, {
+        ...wakeup,
+        reason: 'manual',
+      });
+      expect(enqueueFullResyncWakeup).toHaveBeenNthCalledWith(2, wakeup);
+    } finally {
+      requestSpy.mockRestore();
+      validateSpy.mockRestore();
+    }
+  });
+
   it('contains per-row activation drift during expired recovery', async () => {
     const repository = repositoryMock();
     const expiry = new Date('2026-08-22T06:00:00.000Z');
@@ -643,10 +961,19 @@ describe('syncIntentAdmission', () => {
       unavailable: 0,
     });
     await admission.claimFresh('wallet-1', claim);
+    const resetSnapshot = {
+      syncStateVersion: 7,
+      syncExecutionOwner: 'worker',
+      syncStartedAt: NOW,
+    };
+    await admission.reset('wallet-1', resetSnapshot);
     await admission.complete('wallet-1', fence, success);
     await admission.releaseForRetry('wallet-1', fence, retry);
     await admission.releaseAsActionRequired('wallet-1', fence, actionRequired);
     expect(repository.claimIncrementalSync).toHaveBeenCalledWith('wallet-1', claim);
+    expect(repository.resetIncrementalSyncAttempt).toHaveBeenCalledWith(
+      'wallet-1', resetSnapshot,
+    );
     expect(repository.completeIncrementalSync).toHaveBeenCalledWith('wallet-1', fence, success);
     expect(repository.releaseIncrementalSyncForRetry).toHaveBeenCalledWith(
       'wallet-1', fence, retry,

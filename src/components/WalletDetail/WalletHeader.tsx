@@ -14,6 +14,7 @@ import {
 import type { SyncRetryInfo } from "./types";
 import { WalletBadges } from "./WalletHeaderBadges";
 import { canEditWallet } from "../../utils/walletCapabilities";
+import { isSyncGenerationPending } from "../../utils/walletSyncPresentation";
 import { Card } from '../ui/Card';
 
 export interface WalletAgentLinkBadge {
@@ -54,6 +55,18 @@ function isNetworkSyncOffMessage(message: string): boolean {
  */
 function hasSyncFailureBanner(wallet: Wallet): boolean {
   return wallet.lastSyncStatus === "failed" && !!wallet.lastSyncError;
+}
+
+function hasDurableSyncWork(wallet: Wallet): boolean {
+  const incrementalPending = isSyncGenerationPending(
+    wallet.requestedIncrementalSyncGeneration,
+    wallet.processedIncrementalSyncGeneration,
+  );
+  const fullResyncPending = isSyncGenerationPending(
+    wallet.requestedFullResyncGeneration,
+    wallet.processedFullResyncGeneration,
+  );
+  return incrementalPending || fullResyncPending;
 }
 
 function SyncFailureBanner({
@@ -236,6 +249,8 @@ export const WalletHeader: React.FC<WalletHeaderProps> = ({
       !syncing &&
       !wallet.syncInProgress &&
       wallet.lastSyncStatus !== "resyncing" &&
+      !wallet.syncActionRequiredAt &&
+      !hasDurableSyncWork(wallet) &&
       !hasSyncFailureBanner(wallet) && (
         <div className="surface-elevated rounded-xl p-4 shadow-sm border border-warning-200 dark:border-warning-800 bg-warning-50 dark:bg-warning-950/30 animate-fade-in">
           <div className="flex items-center gap-3">

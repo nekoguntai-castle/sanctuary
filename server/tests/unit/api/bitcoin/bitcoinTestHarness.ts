@@ -52,6 +52,11 @@ const bitcoinApiMocks = vi.hoisted(() => ({
     createSigningIntent: vi.fn(),
   },
   mockAssertWalletHardwareCapabilityById: vi.fn(),
+  mockSyncIntentAdmission: {
+    request: vi.fn(),
+    requestFullResync: vi.fn(),
+  },
+  mockEnqueueWalletSyncBatch: vi.fn(),
 }));
 
 export const mockNodeClient = bitcoinApiMocks.mockNodeClient;
@@ -63,6 +68,8 @@ export const mockSilentPayments = bitcoinApiMocks.mockSilentPayments;
 export const mockSigningIntent = bitcoinApiMocks.mockSigningIntent;
 export const mockAssertWalletHardwareCapabilityById =
   bitcoinApiMocks.mockAssertWalletHardwareCapabilityById;
+export const mockSyncIntentAdmission = bitcoinApiMocks.mockSyncIntentAdmission;
+export const mockEnqueueWalletSyncBatch = bitcoinApiMocks.mockEnqueueWalletSyncBatch;
 export { createMockTransaction, mockElectrumClient, mockElectrumPool, mockPrismaClient };
 
 vi.mock('../../../../src/models/prisma', () => ({
@@ -72,6 +79,12 @@ vi.mock('../../../../src/models/prisma', () => ({
 
 vi.mock('../../../../src/services/bitcoin/nodeClient', () => bitcoinApiMocks.mockNodeClient);
 vi.mock('../../../../src/services/bitcoin/blockchain', () => bitcoinApiMocks.mockBlockchain);
+vi.mock('../../../../src/services/sync/syncIntentAdmission', () => ({
+  syncIntentAdmission: bitcoinApiMocks.mockSyncIntentAdmission,
+}));
+vi.mock('../../../../src/services/workerSyncQueue', () => ({
+  enqueueWalletSyncBatch: bitcoinApiMocks.mockEnqueueWalletSyncBatch,
+}));
 vi.mock('../../../../src/services/sync/confirmationUpdater', () => ({
   refreshWalletConfirmations: async (walletId: string) => ({
     confirmationUpdates: await bitcoinApiMocks.mockBlockchain.updateTransactionConfirmations(walletId),
@@ -267,6 +280,11 @@ export const setupBitcoinApiMocks = () => {
     intentDigest: 'digest-bitcoin-api',
   });
   mockAssertWalletHardwareCapabilityById.mockResolvedValue(undefined);
+  mockSyncIntentAdmission.request.mockResolvedValue({
+    status: 'requested',
+    generation: 7,
+    wakeup: 'enqueued',
+  });
 
   // Default prisma mocks
   mockPrismaClient.wallet.findUnique.mockResolvedValue({

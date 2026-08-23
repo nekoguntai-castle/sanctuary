@@ -12,8 +12,9 @@ import { validate } from '../../middleware/validate';
 import * as blockchain from '../../services/bitcoin/blockchain';
 import * as utils from '../../services/bitcoin/utils';
 import { addressRepository } from '../../repositories';
+import { getSyncCoordinator } from '../../services/sync/syncCoordinator';
 import { asyncHandler } from '../../errors/errorHandler';
-import { ValidationError, NotFoundError } from '../../errors/ApiError';
+import { ValidationError } from '../../errors/ApiError';
 
 const router = Router();
 
@@ -85,19 +86,7 @@ router.post('/address/:addressId/sync', authenticate, asyncHandler(async (req, r
   const userId = requireAuthenticatedUser(req).userId;
   const { addressId } = req.params;
 
-  // Check user has access to address's wallet
-  const address = await addressRepository.findByIdWithAccess(addressId, userId);
-
-  if (!address) {
-    throw new NotFoundError('Address not found');
-  }
-
-  const result = await blockchain.syncAddress(addressId);
-
-  res.json({
-    message: 'Address synced successfully',
-    ...result,
-  });
+  res.json(await getSyncCoordinator().syncLegacyBitcoinAddress(userId, addressId));
 }));
 
 /**

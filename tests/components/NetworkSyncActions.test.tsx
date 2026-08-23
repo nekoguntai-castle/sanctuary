@@ -23,7 +23,17 @@ describe('NetworkSyncActions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
-    (syncApi.syncNetworkWallets as ReturnType<typeof vi.fn>).mockResolvedValue({ queued: 3 });
+    (syncApi.syncNetworkWallets as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: true,
+      requested: 3,
+      merged: 0,
+      walletIds: ['w1', 'w2', 'w3'],
+      outcomes: [
+        { walletId: 'w1', status: 'requested', generation: 1, wakeup: 'enqueued' },
+        { walletId: 'w2', status: 'requested', generation: 1, wakeup: 'enqueued' },
+        { walletId: 'w3', status: 'requested', generation: 1, wakeup: 'enqueued' },
+      ],
+    });
     (syncApi.resyncNetworkWallets as ReturnType<typeof vi.fn>).mockResolvedValue({
       queued: 3,
       acceptedWalletIds: ['w1', 'w2', 'w3'],
@@ -131,7 +141,7 @@ describe('NetworkSyncActions', () => {
         fireEvent.click(syncButton!);
       });
 
-      expect(screen.getByText('Queued 3 wallets for sync')).toBeInTheDocument();
+      expect(screen.getByText('Requested sync for 3 new wallets.')).toBeInTheDocument();
     });
 
     it('should show error message on sync failure', async () => {

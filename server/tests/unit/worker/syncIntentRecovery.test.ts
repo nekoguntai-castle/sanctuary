@@ -66,6 +66,7 @@ describe('syncIntentRecovery', () => {
           id: 'wallet-1',
           name: 'wallet',
           requestedFullResyncGeneration: 7,
+          requestedIncrementalSyncGeneration: 4,
           processedFullResyncGeneration: 4,
         }];
       }),
@@ -100,6 +101,7 @@ describe('syncIntentRecovery', () => {
     expect(deps.enqueueReservedFullResyncWakeup).toHaveBeenCalledWith({
       walletId: 'wallet-1',
       generation: 7,
+      incrementalGeneration: 4,
       reason: 'reconcile-stranded-full-resync',
     });
   });
@@ -216,12 +218,14 @@ describe('syncIntentRecovery', () => {
         id: 'wallet-1',
         name: 'one',
         requestedFullResyncGeneration: 1,
+        requestedIncrementalSyncGeneration: 1,
         processedFullResyncGeneration: 0,
       }])
       .mockResolvedValueOnce([{
         id: 'wallet-2',
         name: 'two',
         requestedFullResyncGeneration: 2,
+        requestedIncrementalSyncGeneration: 2,
         processedFullResyncGeneration: 0,
       }])
       .mockResolvedValueOnce([])
@@ -229,6 +233,7 @@ describe('syncIntentRecovery', () => {
         id: 'wallet-1',
         name: 'one',
         requestedFullResyncGeneration: 1,
+        requestedIncrementalSyncGeneration: 1,
         processedFullResyncGeneration: 0,
       }]);
     const enqueueReservedFullResyncWakeup = vi.fn()
@@ -259,18 +264,21 @@ describe('syncIntentRecovery', () => {
         id: 'wallet-1',
         name: 'one',
         requestedFullResyncGeneration: 1,
+        requestedIncrementalSyncGeneration: 1,
         processedFullResyncGeneration: 0,
       },
       {
         id: 'wallet-2',
         name: 'two',
         requestedFullResyncGeneration: 2,
+        requestedIncrementalSyncGeneration: 2,
         processedFullResyncGeneration: 0,
       },
       {
         id: 'wallet-3',
         name: 'three',
         requestedFullResyncGeneration: 3,
+        requestedIncrementalSyncGeneration: 3,
         processedFullResyncGeneration: 0,
       },
     ];
@@ -300,6 +308,7 @@ describe('syncIntentRecovery', () => {
       id: 'wallet-1',
       name: 'one',
       requestedFullResyncGeneration: 1,
+      requestedIncrementalSyncGeneration: 1,
       processedFullResyncGeneration: 0,
     }]);
     const coordinator = createSyncIntentRecoveryCoordinator(dependencies({
@@ -410,12 +419,14 @@ describe('syncIntentRecovery', () => {
           id: 'wallet-1',
           name: 'one',
           requestedFullResyncGeneration: 1,
+          requestedIncrementalSyncGeneration: 1,
           processedFullResyncGeneration: 0,
         },
         {
           id: 'wallet-2',
           name: 'two',
           requestedFullResyncGeneration: 2,
+          requestedIncrementalSyncGeneration: 2,
           processedFullResyncGeneration: 0,
         },
       ]),

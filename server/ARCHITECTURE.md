@@ -190,29 +190,52 @@ The error handler middleware (`src/errors/errorHandler.ts`) automatically conver
 
 ## Wallet Sync Pipeline
 
-Wallet synchronization is converging on the durable, activity-driven lifecycle
-defined by [ADR 0004](../docs/adr/0004-wallet-sync-lifecycle.md). The current
-compatibility precursor still retains legacy API execution and the recurring
-`check-stale-wallets` schedule; the executable inventory in
-`config/wallet-sync-lifecycle-contract.json` prevents those exceptions from
-growing while the single-admission, worker-owned path is introduced. The
-durable admission service currently has one generation-bound worker consumer
-and a live-gated bounded worker recovery runtime, but no production trigger calls
-admission yet. Canonical wallet mutations use an explicit immutable
-generation-and-lease-token fence at every short transaction boundary. Workers
+Wallet synchronization follows the durable, activity-driven lifecycle defined
+by [ADR 0004](../docs/adr/0004-wallet-sync-lifecycle.md). Manual/API requests,
+initial sync, address activity, dead-letter retry, and the retained
+`check-stale-wallets` compatibility bridge can produce wallet-history work only
+through gate-enforced durable admission. Admission persists or merges the
+generation before BullMQ receives an at-least-once wake-up; neither producers
+nor bounded recovery have raw queue or repository authority. The recurring
+stale schedule itself remains legacy and desired until the separate cutover,
+but its retained completions route through admission rather than inline
+execution. The executable inventory in
+`config/wallet-sync-lifecycle-contract.json` prevents bypasses from growing.
+
+Canonical wallet mutations use an explicit immutable wallet, generation, and
+lease-token fence at every short PostgreSQL transaction boundary, with network
+work outside the transaction. Workers
 advertise that capability through the bounded heartbeat registry. An immutable
 activation policy can be established only after current exact fleet proof has
 remained continuously ready for a complete wallet-lock drain horizon; blocked,
 unavailable, stale, or restart evidence resets that durable stabilization.
 The marker alone never authorizes work: every admission, recovery, and reclaim
 boundary rechecks live and stabilized evidence.
-Canonical wake-ups use floor-bound v3 so pre-fence workers reject them before
-locking, while retained v1/v2 jobs remain readable. Recovery repairs exact
-reserved full-resync generations, unclaimed intent, and expired claims through
-bounded indexed pages. It probes the Redis execution lock without serializing the
-old lease token; only the lock-owning canonical worker can rotate that exact token
-on the same generation. Existing v1 producers and legacy execution remain
-unchanged until the producer migration release.
+Canonical incremental and full-resync wake-ups use floor-bound v3 so pre-fence
+workers reject them before locking. Retained v1 and generation-less v2 jobs
+remain readable only long enough to persist equivalent durable intent; the
+current worker never routes them into the unfenced executor.
+A full-resync wake-up carries the exact reserved full-resync generation, its
+captured incremental generation, and the required mutation-fence floor; its
+reset and all later pipeline mutations execute under the explicit fence.
+Recovery repairs exact reserved full-resync generations, unclaimed intent, and
+expired claims through admission and bounded indexed pages. It probes the Redis
+execution lock without serializing the old lease token; only the lock-owning
+canonical worker can rotate that exact token on the same generation.
+Action-required full resyncs stay out of automatic recovery until an explicit
+operator retry reopens the same reserved generation. Stale-marker cleanup uses
+the selected lifecycle version, owner, and start time as a database CAS while
+revoking its lease token, preventing a stale snapshot from clearing a newer
+successful completion after lock acquisition.
+
+Wallet list/detail responses, the sync-status endpoint, and canonical WebSocket
+events project the complete token-free durable state under `syncStateVersion`.
+This lets every UI surface distinguish queued incremental work, queued full
+resync, and action-required state after a reload. The legacy local queue position
+is retained as a nullable compatibility field but is never treated as authority.
+Support diagnostics report only bounded aggregate intent, retry, lease-row, and
+full-resync stage counts; live execution-lock ownership remains outside that
+database collector's authority.
 
 Subscription checkpoint enrollment has the same additive boundary. The only
 checkpoint request/completion writers live in
@@ -224,6 +247,11 @@ wired into API, server, worker, Electrum-manager, or recovery startup. The
 executable lifecycle contract inventories both writers and the coordinator so a
 production consumer cannot appear before the separate subscription-ownership
 activation review.
+
+The lifecycle cutover is not complete: subscription checkpoint enrollment is
+still dormant, `check-stale-wallets` has not been purged, and the durable
+cutover/legacy-retirement gate remains false. Retained legacy payloads therefore
+remain readable compatibility inputs, not authority for new legacy production.
 
 The wallet sync process uses a modular pipeline architecture where each phase is an independent, testable function. The pipeline orchestrator executes phases in sequence, passing a shared context object between them.
 

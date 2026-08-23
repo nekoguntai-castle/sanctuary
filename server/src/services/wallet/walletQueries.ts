@@ -117,6 +117,15 @@ export async function getUserWallets(
       syncNextRetryAt: wallet.syncNextRetryAt,
       syncStartedAt: wallet.syncStartedAt,
       syncStateVersion: wallet.syncStateVersion,
+      requestedIncrementalSyncGeneration: wallet.requestedIncrementalSyncGeneration,
+      claimedIncrementalSyncGeneration: wallet.claimedIncrementalSyncGeneration,
+      processedIncrementalSyncGeneration: wallet.processedIncrementalSyncGeneration,
+      incrementalSyncClaimedAt: wallet.incrementalSyncClaimedAt,
+      incrementalSyncLeaseExpiresAt: wallet.incrementalSyncLeaseExpiresAt,
+      syncActionRequiredAt: wallet.syncActionRequiredAt,
+      requestedFullResyncGeneration: wallet.requestedFullResyncGeneration,
+      preparedFullResyncGeneration: wallet.preparedFullResyncGeneration,
+      processedFullResyncGeneration: wallet.processedFullResyncGeneration,
       // Sharing info
       isShared,
       sharedWith: isShared
@@ -218,6 +227,15 @@ export async function getWalletById(
     syncNextRetryAt: wallet.syncNextRetryAt,
     syncStartedAt: wallet.syncStartedAt,
     syncStateVersion: wallet.syncStateVersion,
+    requestedIncrementalSyncGeneration: wallet.requestedIncrementalSyncGeneration,
+    claimedIncrementalSyncGeneration: wallet.claimedIncrementalSyncGeneration,
+    processedIncrementalSyncGeneration: wallet.processedIncrementalSyncGeneration,
+    incrementalSyncClaimedAt: wallet.incrementalSyncClaimedAt,
+    incrementalSyncLeaseExpiresAt: wallet.incrementalSyncLeaseExpiresAt,
+    syncActionRequiredAt: wallet.syncActionRequiredAt,
+    requestedFullResyncGeneration: wallet.requestedFullResyncGeneration,
+    preparedFullResyncGeneration: wallet.preparedFullResyncGeneration,
+    processedFullResyncGeneration: wallet.processedFullResyncGeneration,
     // Sharing info
     isShared,
     sharedWith: isShared

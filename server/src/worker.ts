@@ -21,10 +21,6 @@ import { initializeOpenTelemetry } from './utils/tracing/otel';
 const otelPromise = initializeOpenTelemetry();
 
 import os from 'node:os';
-import {
-  SYNC_PRIORITY_BULLMQ_PRIORITY,
-  type SyncPriority,
-} from '@sanctuary/shared/constants/sync';
 import { getConfig } from './config';
 import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from './constants/walletSyncActivation';
 import { createLogger } from './utils/logger';
@@ -54,19 +50,13 @@ import { ElectrumSubscriptionManager, type BitcoinNetwork } from './worker/elect
 import { startHealthServer, type HealthServerHandle } from './worker/healthServer';
 import { registerWorkerJobs } from './worker/jobs';
 import {
-  enqueueFullResyncBatch,
-  enqueueReservedFullResyncWakeup,
-} from './services/workerSyncQueue';
-import {
   CHECK_STALE_WALLETS_JOB_NAME,
   CONFIRMATIONS_QUEUE_NAME,
   SYNC_JOB_CONTRACT_VERSION,
   SYNC_QUEUE_NAME,
-  SYNC_WALLET_JOB_NAME,
   hasSupportedSyncJobContractVersion,
   type CheckStaleWalletsJobData,
   type CheckStaleWalletsResult,
-  type SyncWalletJobData,
   type UpdateConfirmationsJobData,
   UPDATE_CONFIRMATIONS_JOB_NAME,
 } from './jobs/syncJobContract';
@@ -95,6 +85,7 @@ import {
   createProductionWalletSyncRecoveryRuntime,
   type WalletSyncRecoveryRuntime,
 } from './worker/walletSyncRecoveryRuntime';
+import { syncIntentAdmission } from './services/sync/syncIntentAdmission';
 
 const log = createLogger('WORKER');
 
@@ -118,10 +109,7 @@ let stopUiEventBridge: (() => Promise<void>) | null = null;
 
 // Reconciliation interval - clean up stale subscriptions every 15 minutes
 const RECONCILIATION_INTERVAL_MS = 15 * 60 * 1000;
-
-function toBullPriority(priority: SyncPriority): number {
-  return SYNC_PRIORITY_BULLMQ_PRIORITY[priority];
-}
+const STALE_COMPATIBILITY_ADMISSION_CONCURRENCY = 5;
 
 /**
  * Start publishing this process's WebSocket events onto the Redis bridge.
@@ -223,7 +211,7 @@ async function startWorker(): Promise<void> {
   });
 
   // Register handlers before BullMQ workers start consuming retained jobs.
-  registerWorkerJobs(jobQueue, { enqueueFullResyncBatch });
+  registerWorkerJobs(jobQueue);
   await jobQueue.initialize();
   log.info('Job handlers registered', {
     jobs: jobQueue.getRegisteredJobs(),
@@ -329,9 +317,7 @@ async function startWorker(): Promise<void> {
   );
   await diagnosticHeartbeat.write();
   diagnosticHeartbeat.start();
-  walletSyncRecoveryRuntime = createProductionWalletSyncRecoveryRuntime({
-    enqueueReservedFullResyncWakeup,
-  });
+  walletSyncRecoveryRuntime = createProductionWalletSyncRecoveryRuntime();
   await walletSyncRecoveryRuntime.start();
 
   // Initialize Prometheus metrics service
@@ -437,22 +423,21 @@ function handleNewBlock(network: BitcoinNetwork, height: number, hash: string): 
  * Handle address activity event from Electrum
  */
 function handleAddressActivity(network: BitcoinNetwork, walletId: string, address: string): void {
-  log.info(`Address activity on ${network}: ${address} (wallet: ${walletId})`);
-
-  // Queue high-priority sync job
-  jobQueue?.addJob<SyncWalletJobData>(SYNC_QUEUE_NAME, SYNC_WALLET_JOB_NAME, {
-    version: SYNC_JOB_CONTRACT_VERSION,
-    walletId,
-    priority: 'high',
-    reason: `address_activity:${address}`,
-  }, {
-    priority: 1, // High priority
-    jobId: `sync:${walletId}:${Date.now()}`, // Allow multiple syncs
-  }).catch(err => {
-    log.error('Failed to queue sync job', {
-      error: getErrorMessage(err),
+  log.info('Address activity requested wallet history sync', { network, walletId });
+  void address;
+  syncIntentAdmission.request(walletId).then(result => {
+    if (result.status === 'blocked'
+      || (('wakeup' in result) && result.wakeup === 'unavailable')) {
+      log.warn('Address activity sync wake-up deferred to recovery', {
+        network,
+        walletId,
+        status: result.status,
+      });
+    }
+  }).catch(error => {
+    log.error('Failed to persist address activity sync intent', {
+      error: getErrorMessage(error),
       walletId,
-      address,
       network,
     });
   });
@@ -535,6 +520,30 @@ function startScheduleReconciliationTimer(): void {
  * Listens for completed `check-stale-wallets` jobs and queues individual
  * `sync-wallet` jobs for each stale wallet returned.
  */
+async function admitRetainedStaleWallets(walletIds: string[]): Promise<void> {
+  for (let offset = 0; offset < walletIds.length; offset += STALE_COMPATIBILITY_ADMISSION_CONCURRENCY) {
+    if ((await readStaleWalletSchedulePolicy()).mode === 'forbidden') return;
+    const page = walletIds.slice(offset, offset + STALE_COMPATIBILITY_ADMISSION_CONCURRENCY);
+    await Promise.all(page.map(async walletId => {
+      try {
+        const result = await syncIntentAdmission.request(walletId);
+        if (result.status === 'blocked'
+          || (('wakeup' in result) && result.wakeup === 'unavailable')) {
+          log.warn('Retained stale-wallet intent deferred to durable recovery', {
+            walletId,
+            status: result.status,
+          });
+        }
+      } catch (error) {
+        log.error('Failed to persist retained stale-wallet sync intent', {
+          walletId,
+          error: getErrorMessage(error),
+        });
+      }
+    }));
+  }
+}
+
 function setupStaleWalletHandler(): void {
   if (!jobQueue) return;
 
@@ -554,23 +563,11 @@ function setupStaleWalletHandler(): void {
 
     log.info(`Queueing sync for ${result.staleWalletIds.length} stale wallets`);
 
-    const config = getConfig();
-    const priority = result.priority ?? 'low';
-    const staggerDelayMs = result.staggerDelayMs ?? config.sync.syncStaggerDelayMs;
-    const reason = result.reason ?? 'stale';
     if ((await readStaleWalletSchedulePolicy()).mode === 'forbidden') {
       log.warn('Ignoring stale-wallet completion that raced durable scheduler retirement');
       return;
     }
-    await jobQueue!.addBulkJobs<SyncWalletJobData>(SYNC_QUEUE_NAME, result.staleWalletIds.map((walletId, index) => ({
-      name: SYNC_WALLET_JOB_NAME,
-      data: { version: SYNC_JOB_CONTRACT_VERSION, walletId, priority, reason },
-      options: {
-        priority: toBullPriority(priority),
-        jobId: `sync:stale:${walletId}:${Date.now()}`,
-        delay: index * staggerDelayMs,
-      },
-    })));
+    await admitRetainedStaleWallets(result.staleWalletIds);
   });
 }
 
