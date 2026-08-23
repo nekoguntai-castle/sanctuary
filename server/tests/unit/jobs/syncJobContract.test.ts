@@ -21,6 +21,7 @@ import {
   ORDINARY_SYNC_LOCK_RETRY_DELAY_MS,
   ORDINARY_SYNC_LOCK_RETRY_WINDOW_MS,
   SYNC_JOB_CONTRACT_VERSION,
+  SYNC_WALLET_MUTATION_FENCE_JOB_VERSION,
   SYNC_WALLET_JOB_READER_VERSION,
   SYNC_QUEUE_NAME,
   SYNC_WALLET_JOB_NAME,
@@ -30,6 +31,7 @@ import {
   readSyncWalletJobData,
   readSyncWalletLockContractState,
 } from '../../../src/jobs/syncJobContract';
+import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from '../../../src/constants/walletSyncActivation';
 
 describe('sync job contract', () => {
   it('freezes the v1 wire identity and worker retry defaults', () => {
@@ -114,6 +116,82 @@ describe('sync job contract', () => {
     });
   });
 
+  it('reads fenced canonical v3 jobs while preserving retained v2 compatibility', () => {
+    const payload = {
+      version: SYNC_WALLET_MUTATION_FENCE_JOB_VERSION,
+      walletId: 'wallet-v3',
+      incrementalSyncGeneration: 7,
+      requiredMutationFenceFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
+      priority: 'high',
+      reason: 'manual',
+      lockContention: {
+        firstLockContentionAt: 1_786_000_000_000,
+        attemptEpoch: 1,
+      },
+    } as const;
+
+    expect(readSyncWalletJobData(payload)).toEqual(payload);
+    expect(isSyncWalletJobData(payload)).toBe(true);
+    expect(isSyncWalletJobLockData(payload)).toBe(true);
+    expect(readSyncWalletLockContractState(payload)).toEqual({
+      version: 3,
+      lockContention: payload.lockContention,
+    });
+    expect(readSyncWalletJobData({
+      version: 2,
+      walletId: 'retained-v2',
+      incrementalSyncGeneration: 7,
+    })).not.toBeNull();
+    expect(readSyncWalletJobData({
+      version: 3,
+      walletId: 'minimal-v3',
+      incrementalSyncGeneration: 1,
+      requiredMutationFenceFloor: 1,
+    })).toEqual({
+      version: 3,
+      walletId: 'minimal-v3',
+      incrementalSyncGeneration: 1,
+      requiredMutationFenceFloor: 1,
+    });
+  });
+
+  it.each([
+    {
+      version: 3,
+      walletId: 'missing-floor',
+      incrementalSyncGeneration: 1,
+    },
+    {
+      version: 3,
+      walletId: 'wrong-floor',
+      incrementalSyncGeneration: 1,
+      requiredMutationFenceFloor: 2,
+    },
+    {
+      version: 3,
+      walletId: 'missing-generation',
+      requiredMutationFenceFloor: 1,
+    },
+    {
+      version: 3,
+      walletId: 'full-resync-v3',
+      incrementalSyncGeneration: 1,
+      requiredMutationFenceFloor: 1,
+      fullResync: true,
+      fullResyncGeneration: 1,
+    },
+    {
+      version: 2,
+      walletId: 'floor-on-v2',
+      incrementalSyncGeneration: 1,
+      requiredMutationFenceFloor: 1,
+    },
+  ])('rejects malformed or downgraded fenced canonical payload before lock effects: %j', (payload) => {
+    expect(readSyncWalletJobData(payload)).toBeNull();
+    expect(isSyncWalletJobData(payload)).toBe(false);
+    expect(isSyncWalletJobLockData(payload)).toBe(false);
+  });
+
   it.each([
     0,
     -1,
@@ -172,7 +250,7 @@ describe('sync job contract', () => {
     null,
     {},
     { walletId: '' },
-    { version: 3, walletId: 'wallet-1' },
+    { version: 4, walletId: 'wallet-1' },
     { walletId: 'wallet-1', priority: 'urgent' },
     { walletId: 'wallet-1', reason: 42 },
     { walletId: 'wallet-1', fullResync: 'yes' },
@@ -180,6 +258,10 @@ describe('sync job contract', () => {
     { walletId: 'wallet-1', fullResync: false, fullResyncGeneration: 1 },
   ])('rejects an incompatible payload: %j', (payload) => {
     expect(isSyncWalletJobData(payload)).toBe(false);
+  });
+
+  it('rejects an unknown wallet wire version before lock effects', () => {
+    expect(isSyncWalletJobLockData({ version: 4, walletId: 'wallet-1' })).toBe(false);
   });
 
   it.each([

@@ -13,9 +13,16 @@ import {
 } from '../ai/providerCredentials';
 import type { BackupRecord } from './types';
 import { redactWebhookDiagnosticHeaders } from '../webhooks/diagnostics';
-import { isOperationalSystemSettingKey } from '../../repositories/operationalSystemSettings';
-import { STALE_WALLET_SCHEDULE_FORBIDDEN_KEY } from '../../repositories/operationalSystemSettings';
+import {
+  isOperationalSystemSettingKey,
+  STALE_WALLET_SCHEDULE_FORBIDDEN_KEY,
+  WALLET_SYNC_ACTIVATION_KEY,
+} from '../../repositories/operationalSystemSettings';
 import { parseStaleWalletScheduleTombstone } from '../../repositories/walletSyncSchedulePolicyRepository';
+import {
+  assertCurrentBinarySupportsWalletSyncActivation,
+  parseWalletSyncActivation,
+} from '../../repositories/walletSyncActivationPolicyRepository';
 
 const WALLET_INCREMENTAL_SYNC_FIELDS = [
   'requestedIncrementalSyncGeneration',
@@ -94,12 +101,36 @@ function shouldRestoreSystemSetting(
   if (typeof record.key !== 'string' || !isOperationalSystemSettingKey(record.key)) {
     return true;
   }
-  if (record.key !== STALE_WALLET_SCHEDULE_FORBIDDEN_KEY) return false;
-  if (typeof record.value !== 'string') {
-    throw new Error('Invalid durable stale-wallet schedule tombstone');
+  if (record.key === STALE_WALLET_SCHEDULE_FORBIDDEN_KEY) {
+    validateRestorableOperationalSetting(
+      record,
+      parseStaleWalletScheduleTombstone,
+      'Invalid durable stale-wallet schedule tombstone',
+    );
+    return !preservedOperationalKeys.has(STALE_WALLET_SCHEDULE_FORBIDDEN_KEY);
   }
-  parseStaleWalletScheduleTombstone(record.value);
-  return !preservedOperationalKeys.has(STALE_WALLET_SCHEDULE_FORBIDDEN_KEY);
+  if (record.key === WALLET_SYNC_ACTIVATION_KEY) {
+    validateRestorableWalletSyncActivation(record);
+    return !preservedOperationalKeys.has(WALLET_SYNC_ACTIVATION_KEY);
+  }
+  return false;
+}
+
+function validateRestorableOperationalSetting(
+  record: BackupRecord,
+  parse: (value: string) => unknown,
+  invalidMessage: string,
+): void {
+  if (typeof record.value !== 'string') throw new Error(invalidMessage);
+  parse(record.value);
+}
+
+function validateRestorableWalletSyncActivation(record: BackupRecord): void {
+  if (typeof record.value !== 'string') {
+    throw new Error('Invalid durable wallet-sync activation policy');
+  }
+  const activation = parseWalletSyncActivation(record.value);
+  assertCurrentBinarySupportsWalletSyncActivation(activation);
 }
 
 export function processWalletSyncIntentRecords(

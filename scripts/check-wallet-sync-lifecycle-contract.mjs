@@ -44,6 +44,10 @@ const SYNC_INTENT_REPOSITORY_PATH = 'server/src/repositories/syncIntentRepositor
 const INCREMENTAL_WAKEUP_ADAPTER_PATH = 'server/src/services/workerSyncQueue.ts';
 const DORMANT_RECOVERY_COORDINATOR_PATH = 'server/src/worker/syncIntentRecovery.ts';
 const DORMANT_RECOVERY_COORDINATOR_SYMBOL = 'createSyncIntentRecoveryCoordinator';
+const DORMANT_ACTIVATION_GATE_PATH =
+  'server/src/services/sync/walletSyncActivationGate.ts';
+const ACTIVATION_POLICY_REPOSITORY_PATH =
+  'server/src/repositories/walletSyncActivationPolicyRepository.ts';
 const REPOSITORY_BARREL_PATH = 'server/src/repositories/index.ts';
 const SUBSCRIPTION_ENROLLMENT_COORDINATOR_SYMBOL = 'createSubscriptionCheckpointEnrollment';
 const SUBSCRIPTION_ENROLLMENT_WRITERS = [
@@ -170,8 +174,8 @@ function validateInventory(inventory) {
 export function parseWalletSyncLifecycleContract(source) {
   const contract = requireObject(JSON.parse(source), 'contract');
   if (contract.schemaVersion !== 1) throw new Error('schemaVersion must be 1');
-  if (contract.deliveryState !== 'compatibility_precursor') {
-    throw new Error('deliveryState must remain compatibility_precursor in this slice');
+  if (contract.deliveryState !== 'mutation_fence_activation_floor') {
+    throw new Error('deliveryState must remain mutation_fence_activation_floor in this slice');
   }
   if (contract.cutoverComplete !== false) throw new Error('cutoverComplete must remain false');
 
@@ -179,7 +183,11 @@ export function parseWalletSyncLifecycleContract(source) {
   if (wire.currentProducerVersion !== 1 || wire.unversionedPayloadMeans !== 1) {
     throw new Error('the compatibility precursor must retain v1 producers and unversioned-v1 reads');
   }
-  assertExact(wire.requiredReadableVersions, [1, 2], 'wireContract.requiredReadableVersions');
+  if (wire.canonicalWakeupVersion !== 3
+    || wire.preMutationFenceMaximumReadableVersion !== 2) {
+    throw new Error('canonical wake-ups must use v3 above the pre-fence v2 reader ceiling');
+  }
+  assertExact(wire.requiredReadableVersions, [1, 2, 3], 'wireContract.requiredReadableVersions');
 
   const lifecycle = requireObject(contract.lifecycle, 'lifecycle');
   assertExact(lifecycle.states, REQUIRED_STATES, 'lifecycle.states');
@@ -230,6 +238,13 @@ function validateCompatibility(value) {
   const compatibility = requireObject(value, 'compatibility');
   if (compatibility.admissionState !== 'generation_consumer_enabled_no_production_producers') {
     throw new Error('the compatibility precursor must expose only the generation consumer');
+  }
+  if (compatibility.activationState !== 'fleet_floor_available_marker_not_activated'
+    || compatibility.mutationFenceFloor !== 1) {
+    throw new Error('the mutation-fence fleet floor must remain available and dormant');
+  }
+  if (compatibility.preFenceWorkerBehavior !== 'reject_v3_before_lock') {
+    throw new Error('pre-fence workers must reject canonical v3 before locking');
   }
   if (compatibility.generationConsumerModule
     !== 'server/src/worker/jobs/canonicalIncrementalSync.ts') {
@@ -372,6 +387,52 @@ function unexpectedAdmissionConsumers(
     .sort();
 }
 
+function unexpectedActivationConsumers(sources) {
+  const gateConsumers = actualReferenceFiles(
+    sources,
+    /['"][^'"]*walletSyncActivationGate(?:\.[cm]?[jt]s)?['"]/,
+  ).filter(file => file !== DORMANT_ACTIVATION_GATE_PATH);
+  const policyConsumers = actualReferenceFiles(
+    sources,
+    /['"][^'"]*walletSyncActivationPolicyRepository(?:\.[cm]?[jt]s)?['"]/,
+  ).filter(file => !isPermittedActivationPolicyConsumer(file, sources.get(file)));
+  const policyAliasConsumers = actualReferenceFiles(
+    sources,
+    /\bwalletSyncActivationPolicyRepo\b/,
+  ).filter(file => file !== ACTIVATION_POLICY_REPOSITORY_PATH
+    && file !== DORMANT_ACTIVATION_GATE_PATH);
+  return [...new Set([
+    ...gateConsumers,
+    ...policyConsumers,
+    ...policyAliasConsumers,
+  ])].sort();
+}
+
+function isPermittedActivationPolicyConsumer(file, source = '') {
+  if (file === ACTIVATION_POLICY_REPOSITORY_PATH
+    || file === DORMANT_ACTIVATION_GATE_PATH) return true;
+  const validationOnlyConsumers = new Set([
+    'server/src/services/backupService/creation.ts',
+    'server/src/services/backupService/restore.ts',
+    'server/src/services/backupService/restoreTransforms.ts',
+  ]);
+  if (!validationOnlyConsumers.has(file)) return false;
+  const allowedImports = new Set([
+    'assertCurrentBinarySupportsWalletSyncActivation',
+    'parseWalletSyncActivation',
+  ]);
+  const imports = /\bimport\s+([^;]*?)\s+from\s+['"]([^'"]*walletSyncActivationPolicyRepository(?:\.[cm]?[jt]s)?)['"]\s*;?/g;
+  const matches = [...source.matchAll(imports)];
+  return matches.length > 0 && matches.every(([, clause]) => {
+    const named = /^\s*\{([\s\S]*)\}\s*$/.exec(clause)?.[1];
+    if (named === undefined) return false;
+    const symbols = named.split(',')
+      .map(entry => entry.trim().split(/\s+as\s+/)[0])
+      .filter(Boolean);
+    return symbols.length > 0 && symbols.every(symbol => allowedImports.has(symbol));
+  });
+}
+
 function admissionSingletonAliases(source) {
   const aliases = [];
   const imports = /\bimport\s+([\s\S]*?)\s+from\s+['"]([^'"]+)['"]\s*;?/g;
@@ -481,6 +542,12 @@ function validateWireSource(root, errors) {
   if (!/SYNC_WALLET_JOB_READER_VERSION\s*=\s*2\s+as\s+const/.test(source)) {
     errors.push('sync wallet consumers must expose the version 2 generation contract');
   }
+  if (!/SYNC_WALLET_MUTATION_FENCE_JOB_VERSION\s*=\s*3\s+as\s+const/.test(source)) {
+    errors.push('canonical fenced wake-ups must use wire version 3');
+  }
+  if (!source.includes('requiredMutationFenceFloor')) {
+    errors.push('canonical fenced wake-ups must carry their required mutation-fence floor');
+  }
 }
 
 export function checkWalletSyncLifecycleContract(root) {
@@ -496,6 +563,12 @@ export function checkWalletSyncLifecycleContract(root) {
   if (admissionConsumers.length > 0) {
     errors.push(
       `durable admission producer activated before cutover: ${admissionConsumers.join(', ')}`,
+    );
+  }
+  const activationConsumers = unexpectedActivationConsumers(sources);
+  if (activationConsumers.length > 0) {
+    errors.push(
+      `wallet-sync activation floor consumed before activation release: ${activationConsumers.join(', ')}`,
     );
   }
   const subscriptionConsumers = unexpectedSubscriptionBoundaryConsumers(

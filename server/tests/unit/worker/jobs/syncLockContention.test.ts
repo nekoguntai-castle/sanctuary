@@ -74,6 +74,11 @@ import {
   resolveSyncLockRetryStartedAt,
   syncWalletJob,
 } from '../../../../src/worker/jobs/syncJobs';
+import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from '../../../../src/constants/walletSyncActivation';
+import {
+  isSyncWalletJobLockData,
+  readSyncWalletJobData,
+} from '../../../../src/jobs/syncJobContract';
 
 const checkStaleWalletsJob = createCheckStaleWalletsJob({
   enqueueFullResyncBatch: mockEnqueueFullResync,
@@ -158,6 +163,30 @@ describe('sync lock contention is never a silent success', () => {
           attemptEpoch: 1,
         },
       });
+    });
+
+    it('preserves a valid fenced v3 payload for the next lock attempt', async () => {
+      vi.spyOn(Date, 'now').mockReturnValueOnce(1_786_000_000_001);
+      const job = makeJob({
+        version: 3,
+        walletId: 'w-v3',
+        incrementalSyncGeneration: 7,
+        requiredMutationFenceFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
+      }, 1, 100);
+
+      await expect(resolveSyncLockRetryStartedAt(job)).resolves.toBe(1_786_000_000_001);
+      expect(job.updateData).toHaveBeenCalledWith({
+        version: 3,
+        walletId: 'w-v3',
+        incrementalSyncGeneration: 7,
+        requiredMutationFenceFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
+        lockContention: {
+          firstLockContentionAt: 1_786_000_000_001,
+          attemptEpoch: 1,
+        },
+      });
+      expect(isSyncWalletJobLockData(job.data)).toBe(true);
+      expect(readSyncWalletJobData(job.data)).not.toBeNull();
     });
 
     it('reuses a matching marker and replaces one from an earlier attempt', async () => {

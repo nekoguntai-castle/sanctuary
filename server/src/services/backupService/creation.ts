@@ -23,9 +23,14 @@ import {
 import type { BackupRecord, SanctuaryBackup, BackupOptions } from './types';
 import {
   STALE_WALLET_SCHEDULE_FORBIDDEN_KEY,
+  WALLET_SYNC_ACTIVATION_KEY,
   isOperationalSystemSettingKey,
 } from '../../repositories/operationalSystemSettings';
 import { parseStaleWalletScheduleTombstone } from '../../repositories/walletSyncSchedulePolicyRepository';
+import {
+  assertCurrentBinarySupportsWalletSyncActivation,
+  parseWalletSyncActivation,
+} from '../../repositories/walletSyncActivationPolicyRepository';
 
 const log = createLogger('BACKUP:SVC');
 export const BACKUP_TRANSACTION_MAX_WAIT_MS = 10_000;
@@ -117,13 +122,35 @@ export async function createBackupSnapshot(
 function isOperationalRecord(table: string, record: BackupRecord): boolean {
   if (table !== 'systemSetting' || typeof record.key !== 'string') return false;
   if (record.key === STALE_WALLET_SCHEDULE_FORBIDDEN_KEY) {
-    if (typeof record.value !== 'string') {
-      throw new Error('Invalid durable stale-wallet schedule tombstone');
-    }
-    parseStaleWalletScheduleTombstone(record.value);
+    validateOperationalSettingValue(
+      record,
+      parseStaleWalletScheduleTombstone,
+      'Invalid durable stale-wallet schedule tombstone',
+    );
+    return false;
+  }
+  if (record.key === WALLET_SYNC_ACTIVATION_KEY) {
+    validateWalletSyncActivationRecord(record);
     return false;
   }
   return isOperationalSystemSettingKey(record.key);
+}
+
+function validateOperationalSettingValue(
+  record: BackupRecord,
+  parse: (value: string) => unknown,
+  invalidMessage: string,
+): void {
+  if (typeof record.value !== 'string') throw new Error(invalidMessage);
+  parse(record.value);
+}
+
+function validateWalletSyncActivationRecord(record: BackupRecord): void {
+  if (typeof record.value !== 'string') {
+    throw new Error('Invalid durable wallet-sync activation policy');
+  }
+  const activation = parseWalletSyncActivation(record.value);
+  assertCurrentBinarySupportsWalletSyncActivation(activation);
 }
 
 /**

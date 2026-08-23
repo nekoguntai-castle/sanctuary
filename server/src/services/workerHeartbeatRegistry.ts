@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import Redis from "ioredis";
 import { z } from "zod";
 import { getConfig } from "../config";
+import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from "../constants/walletSyncActivation";
 import { NOTIFICATION_RETENTION_CONTRACT_VERSION } from "../internal/notificationRetention";
 import {
   WorkerDiagnosticsResponseSchema,
@@ -32,6 +33,9 @@ const StoredHeartbeatSchema = z
     writtenAt: z.number().int().nonnegative(),
     stableReplicaIdentity: z.boolean(),
     retentionContractVersion: z.number().int().positive(),
+    // Optional so a rolling reader can retain old-worker evidence and fail the
+    // activation check closed instead of treating the whole registry as corrupt.
+    walletSyncMutationFenceFloor: z.number().int().positive().optional(),
     snapshot: WorkerDiagnosticsResponseSchema,
   })
   .strict();
@@ -127,6 +131,52 @@ export type WorkerFleetSnapshot = z.infer<typeof workerFleetSnapshotSchema>;
 type ObservedWorkerFleetSnapshot = z.infer<
   typeof observedWorkerFleetSnapshotSchema
 >;
+
+const workerMutationFenceReadinessReasonSchema = z.enum([
+  "no_workers",
+  "incomplete_fleet",
+  "worker_below_floor",
+  "unavailable",
+  "timeout",
+]);
+
+export const workerMutationFenceReadinessSchema = z.discriminatedUnion(
+  "ready",
+  [
+    z
+      .object({
+        ready: z.literal(true),
+        requiredFloor: z.literal(WALLET_SYNC_MUTATION_FENCE_FLOOR),
+      })
+      .strict(),
+    z
+      .object({
+        ready: z.literal(false),
+        requiredFloor: z.literal(WALLET_SYNC_MUTATION_FENCE_FLOOR),
+        reason: workerMutationFenceReadinessReasonSchema,
+      })
+      .strict(),
+  ],
+);
+
+export type WorkerMutationFenceReadiness = z.infer<
+  typeof workerMutationFenceReadinessSchema
+>;
+
+interface RegistryMember {
+  id: string;
+  writtenAt: number;
+}
+
+type WorkerRegistryRead =
+  | {
+      observation: "observed";
+      members: RegistryMember[];
+      records: StoredHeartbeat[];
+      restartObserved: boolean;
+      complete: boolean;
+    }
+  | { observation: "unavailable" | "timeout" };
 
 const WRITE_SCRIPT = `
 local previous_boot = redis.call('GET', KEYS[3])
@@ -285,6 +335,7 @@ export class WorkerHeartbeatWriter {
       writtenAt: nowMs,
       stableReplicaIdentity: this.replicaIdentity.stable,
       retentionContractVersion: NOTIFICATION_RETENTION_CONTRACT_VERSION,
+      walletSyncMutationFenceFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
       snapshot: this.getSnapshot(),
     });
     await client.eval(
@@ -378,27 +429,66 @@ export class WorkerHeartbeatReader {
   constructor(private readonly createClient: () => Redis = defaultClient) {}
 
   async read(nowMs = Date.now()): Promise<WorkerFleetSnapshot> {
+    const registry = await this.readRegistry(nowMs);
+    if (registry.observation !== "observed" || registry.members.length === 0) {
+      return unavailableFleet(
+        registry.observation === "observed"
+          ? "unavailable"
+          : registry.observation,
+      );
+    }
+    return workerFleetSnapshotSchema.parse(toFleetSnapshot(registry, nowMs));
+  }
+
+  /**
+   * Exact, identity-free activation proof for the current mutation-fence floor.
+   * Any incomplete registry evidence or old worker blocks activation.
+   */
+  async readMutationFenceReadiness(
+    nowMs = Date.now(),
+  ): Promise<WorkerMutationFenceReadiness> {
+    const registry = await this.readRegistry(nowMs);
+    if (registry.observation !== "observed") {
+      return blockedReadiness(registry.observation);
+    }
+    if (registry.members.length === 0) return blockedReadiness("no_workers");
+    if (!registry.complete) return blockedReadiness("incomplete_fleet");
+    if (
+      registry.records.some(
+        (record) =>
+          (record.walletSyncMutationFenceFloor ?? 0) <
+          WALLET_SYNC_MUTATION_FENCE_FLOOR,
+      )
+    ) {
+      return blockedReadiness("worker_below_floor");
+    }
+    return workerMutationFenceReadinessSchema.parse({
+      ready: true,
+      requiredFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
+    });
+  }
+
+  private async readRegistry(nowMs: number): Promise<WorkerRegistryRead> {
     const client = this.createClient();
     try {
-      return workerFleetSnapshotSchema.parse(
-        await withTimeout(this.readWithClient(client, nowMs)),
-      );
+      return await withTimeout(this.readRegistryWithClient(client, nowMs));
     } catch (error) {
-      return unavailableFleet(
-        error instanceof Error &&
+      return {
+        observation:
+          error instanceof Error &&
           error.message === "worker_heartbeat_read_timeout"
-          ? "timeout"
-          : "unavailable",
-      );
+            ? "timeout"
+            : "unavailable",
+      };
     } finally {
       client.disconnect(false);
     }
   }
 
-  private async readWithClient(
+  private async readRegistryWithClient(
     client: Redis,
     nowMs: number,
-  ): Promise<WorkerFleetSnapshot> {
+  ): Promise<WorkerRegistryRead> {
     if (client.status === "wait") await client.connect();
     const memberEntries = await client.zrangebyscore(
       REGISTRY_KEY,
@@ -409,7 +499,15 @@ export class WorkerHeartbeatReader {
       0,
       MAX_REPLICAS + 1,
     );
-    if (memberEntries.length === 0) return unavailableFleet("unavailable");
+    if (memberEntries.length === 0) {
+      return {
+        observation: "observed",
+        members: [],
+        records: [],
+        restartObserved: false,
+        complete: false,
+      };
+    }
     if (memberEntries.length % 2 !== 0)
       throw new Error("worker_heartbeat_registry_malformed");
 
@@ -472,73 +570,96 @@ export class WorkerHeartbeatReader {
       records.push(record);
     }
 
-    const retentionVersions = new Set(
-      records.map((record) => record.retentionContractVersion),
-    );
     // Aggregate capability and provider state only when every indexed replica has
     // a fresh, parseable heartbeat with a stable identity. Any gap fails closed.
     const complete =
       !missing &&
       records.length === members.length &&
       records.every((record) => record.stableReplicaIdentity);
-    const writerHealth = complete
-      ? telemetryWriter(records)
-      : {
-          telemetryWriterCircuit: "mixed_or_unknown" as const,
-          telemetryDroppedEvents: "mixed_or_unknown" as const,
-        };
     return {
-      version: HEARTBEAT_VERSION,
       observation: "observed",
-      coverage: complete ? "complete" : "degraded",
-      workerCount: bucketCount(members.length),
-      oldestHeartbeatAge: bucketAge(
-        Math.min(...members.map((member) => member.writtenAt)),
-        nowMs,
-      ),
+      members,
+      records,
       restartObserved,
-      notificationConsumer: complete
-        ? capability(
-            records.map(
-              (record) => record.snapshot.notificationPipeline.consumerRunning,
-            ),
-          )
-        : "mixed_or_unknown",
-      transactionHandler: complete
-        ? capability(
-            records.map(
-              (record) =>
-                record.snapshot.notificationPipeline
-                  .transactionHandlerRegistered,
-            ),
-          )
-        : "mixed_or_unknown",
-      ...writerHealth,
-      telegramCircuit: complete ? telegramCircuit(records) : "mixed_or_unknown",
-      telegramLastSuccessAge: complete
-        ? uniformValue(
-            records.map((record) => record.snapshot.telegram.lastSuccessAge),
-          )
-        : "mixed_or_unknown",
-      telegramLastFailureAge: complete
-        ? uniformValue(
-            records.map((record) => record.snapshot.telegram.lastFailureAge),
-          )
-        : "mixed_or_unknown",
-      telegramFailureClass: complete
-        ? uniformValue(
-            records.map((record) => record.snapshot.telegram.lastFailureClass),
-          )
-        : "mixed_or_unknown",
-      retentionContract:
-        !complete || records.length === 0
-          ? "unknown"
-          : retentionVersions.size > 1 ||
-              !retentionVersions.has(NOTIFICATION_RETENTION_CONTRACT_VERSION)
-            ? "mixed_version"
-            : "uniform",
+      complete,
     };
   }
+}
+
+function blockedReadiness(
+  reason: z.infer<typeof workerMutationFenceReadinessReasonSchema>,
+): WorkerMutationFenceReadiness {
+  return workerMutationFenceReadinessSchema.parse({
+    ready: false,
+    requiredFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
+    reason,
+  });
+}
+
+function toFleetSnapshot(
+  registry: Extract<WorkerRegistryRead, { observation: "observed" }>,
+  nowMs: number,
+): WorkerFleetSnapshot {
+  const { complete, members, records, restartObserved } = registry;
+  const retentionVersions = new Set(
+    records.map((record) => record.retentionContractVersion),
+  );
+  const writerHealth = complete
+    ? telemetryWriter(records)
+    : {
+        telemetryWriterCircuit: "mixed_or_unknown" as const,
+        telemetryDroppedEvents: "mixed_or_unknown" as const,
+      };
+  return {
+    version: HEARTBEAT_VERSION,
+    observation: "observed",
+    coverage: complete ? "complete" : "degraded",
+    workerCount: bucketCount(members.length),
+    oldestHeartbeatAge: bucketAge(
+      Math.min(...members.map((member) => member.writtenAt)),
+      nowMs,
+    ),
+    restartObserved,
+    notificationConsumer: complete
+      ? capability(
+          records.map(
+            (record) => record.snapshot.notificationPipeline.consumerRunning,
+          ),
+        )
+      : "mixed_or_unknown",
+    transactionHandler: complete
+      ? capability(
+          records.map(
+            (record) =>
+              record.snapshot.notificationPipeline.transactionHandlerRegistered,
+          ),
+        )
+      : "mixed_or_unknown",
+    ...writerHealth,
+    telegramCircuit: complete ? telegramCircuit(records) : "mixed_or_unknown",
+    telegramLastSuccessAge: complete
+      ? uniformValue(
+          records.map((record) => record.snapshot.telegram.lastSuccessAge),
+        )
+      : "mixed_or_unknown",
+    telegramLastFailureAge: complete
+      ? uniformValue(
+          records.map((record) => record.snapshot.telegram.lastFailureAge),
+        )
+      : "mixed_or_unknown",
+    telegramFailureClass: complete
+      ? uniformValue(
+          records.map((record) => record.snapshot.telegram.lastFailureClass),
+        )
+      : "mixed_or_unknown",
+    retentionContract:
+      !complete || records.length === 0
+        ? "unknown"
+        : retentionVersions.size > 1 ||
+            !retentionVersions.has(NOTIFICATION_RETENTION_CONTRACT_VERSION)
+          ? "mixed_version"
+          : "uniform",
+  };
 }
 
 export type { AgeBucket, CountBucket };

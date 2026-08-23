@@ -4,7 +4,8 @@ import { getConfig } from '../../config';
 import {
   getSyncLockKey,
   SYNC_JOB_CONTRACT_VERSION,
-  type NormalizedSyncWalletJobData,
+  type SyncWalletJobDataV2,
+  type SyncWalletJobDataV3,
   type SyncWalletJobData,
   type SyncWalletJobResult,
 } from '../../jobs/syncJobContract';
@@ -25,10 +26,9 @@ import type { JobExecutionContext } from './types';
 
 const log = createLogger('JOB:SYNC:INCREMENTAL');
 
-export type CanonicalIncrementalSyncData = NormalizedSyncWalletJobData & {
-  version: 2;
-  incrementalSyncGeneration: number;
-};
+export type CanonicalIncrementalSyncData =
+  | Extract<SyncWalletJobDataV2, { incrementalSyncGeneration: number }>
+  | SyncWalletJobDataV3;
 
 interface CanonicalIncrementalSyncDependencies {
   isFinalAttempt: (job: Job<SyncWalletJobData>) => boolean;

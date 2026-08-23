@@ -41,7 +41,14 @@ import { serializeRecord } from './serialization';
 import { featureFlagRepository } from '../../repositories/featureFlagRepository';
 import { featureFlagService } from '../featureFlagService';
 import type { FeatureRuntimeState } from '../../repositories/featureFlagRepository';
-import { OPERATIONAL_SYSTEM_SETTING_PREFIX } from '../../repositories/operationalSystemSettings';
+import {
+  OPERATIONAL_SYSTEM_SETTING_PREFIX,
+  WALLET_SYNC_ACTIVATION_KEY,
+} from '../../repositories/operationalSystemSettings';
+import {
+  assertCurrentBinarySupportsWalletSyncActivation,
+  parseWalletSyncActivation,
+} from '../../repositories/walletSyncActivationPolicyRepository';
 import type { Prisma } from '../../generated/prisma/client';
 
 const log = createLogger('BACKUP:SVC');
@@ -50,9 +57,18 @@ const RESTORE_ACCESS_CACHE_CLEAR_TIMEOUT_MS = 5_000;
 async function readOperationalSettings(
   tx: PrismaTxClient,
 ): Promise<Prisma.SystemSettingCreateManyInput[]> {
-  return tx.systemSetting.findMany({
+  const settings = await tx.systemSetting.findMany({
     where: { key: { startsWith: OPERATIONAL_SYSTEM_SETTING_PREFIX } },
   });
+  const activation = settings.find(({ key }) => key === WALLET_SYNC_ACTIVATION_KEY);
+  if (activation) {
+    if (typeof activation.value !== 'string') {
+      throw new Error('Invalid durable wallet-sync activation policy');
+    }
+    const parsed = parseWalletSyncActivation(activation.value);
+    assertCurrentBinarySupportsWalletSyncActivation(parsed);
+  }
+  return settings;
 }
 
 async function preserveOperationalSettings(
@@ -238,9 +254,8 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
           throw new Error(errorMsg);
         }
       }
-      // Live operational settings always win. The irreversible stale-schedule
-      // floor is the sole operational setting that may seed an empty recovery
-      // database from a strictly validated backup.
+      // Live operational settings always win. Strictly validated irreversible
+      // wallet-sync floors may seed an empty recovery database from backup.
       await preserveOperationalSettings(tx, currentOperationalSettings);
       const generation = await featureFlagRepository.advanceGeneration(
         tx,

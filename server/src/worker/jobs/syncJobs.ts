@@ -41,6 +41,7 @@ import {
   readSyncWalletLockContractState,
   SYNC_JOB_CONTRACT_VERSION,
   SYNC_QUEUE_NAME,
+  SYNC_WALLET_MUTATION_FENCE_JOB_VERSION,
   SYNC_WALLET_JOB_NAME,
   SYNC_WALLET_JOB_OPTIONS,
   UPDATE_ALL_CONFIRMATIONS_JOB_NAME,
@@ -128,14 +129,14 @@ export async function resolveSyncLockRetryStartedAt(
     return state.lockContention.firstLockContentionAt;
   }
   const firstLockContentionAt = now;
-  const nextData: SyncWalletJobData = {
+  const nextData = {
     ...job.data,
-    version: 2,
+    version: state.version,
     lockContention: {
       firstLockContentionAt,
       attemptEpoch: job.attemptsMade,
     },
-  };
+  } as SyncWalletJobData;
   await job.updateData(nextData);
   job.data = nextData;
   return firstLockContentionAt;
@@ -346,7 +347,12 @@ class SupersededFullResyncCompletionError extends Error {
 function isCanonicalIncrementalSyncData(
   data: NormalizedSyncWalletJobData | null,
 ): data is CanonicalIncrementalSyncData {
-  return data?.version === 2 && 'incrementalSyncGeneration' in data;
+  return data !== null
+    && (
+      data.version === 2
+      || data.version === SYNC_WALLET_MUTATION_FENCE_JOB_VERSION
+    )
+    && 'incrementalSyncGeneration' in data;
 }
 
 /**

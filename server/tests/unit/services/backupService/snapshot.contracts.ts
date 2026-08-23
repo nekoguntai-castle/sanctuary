@@ -15,7 +15,9 @@ import { migrationService } from '../../../../src/services/migrationService';
 import {
   FEATURE_RUNTIME_GENERATION_KEY,
   STALE_WALLET_SCHEDULE_FORBIDDEN_KEY,
+  WALLET_SYNC_ACTIVATION_KEY,
 } from '../../../../src/repositories/operationalSystemSettings';
+import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from '../../../../src/constants/walletSyncActivation';
 import {
   processSystemSettingRecords,
   processWalletSyncIntentRecords,
@@ -25,6 +27,16 @@ const validFloorValue = JSON.stringify({
   version: 1,
   forbiddenAt: '2026-08-22T00:00:00.000Z',
   compatibilityFloor: 2,
+});
+const validActivationValue = JSON.stringify({
+  version: 1,
+  activatedAt: '2026-08-22T01:00:00.000Z',
+  mutationFenceFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
+});
+const futureActivationValue = JSON.stringify({
+  version: 1,
+  activatedAt: '2026-08-22T01:00:00.000Z',
+  mutationFenceFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR + 1,
 });
 
 export function registerBackupSnapshotTests(): void {
@@ -100,10 +112,11 @@ export function registerBackupSnapshotTests(): void {
         .rejects.toThrow('snapshot query failed');
     });
 
-    it('exports the irreversible scheduler floor but excludes ephemeral operational metadata', async () => {
+    it('exports irreversible wallet-sync floors but excludes ephemeral operational metadata', async () => {
       mockPrismaClient.systemSetting.findMany.mockResolvedValue([
         { id: 'op', key: FEATURE_RUNTIME_GENERATION_KEY, value: '99' },
         { id: 'floor', key: STALE_WALLET_SCHEDULE_FORBIDDEN_KEY, value: validFloorValue },
+        { id: 'activation', key: WALLET_SYNC_ACTIVATION_KEY, value: validActivationValue },
         { id: 'durable', key: 'registrationEnabled', value: 'true' },
       ]);
 
@@ -111,9 +124,10 @@ export function registerBackupSnapshotTests(): void {
 
       expect(backup.data.systemSetting).toEqual([
         expect.objectContaining({ key: STALE_WALLET_SCHEDULE_FORBIDDEN_KEY }),
+        expect.objectContaining({ key: WALLET_SYNC_ACTIVATION_KEY }),
         expect.objectContaining({ key: 'registrationEnabled' }),
       ]);
-      expect(backup.meta.recordCounts.systemSetting).toBe(2);
+      expect(backup.meta.recordCounts.systemSetting).toBe(3);
     });
 
     it('fails backup creation when the durable scheduler floor is malformed', async () => {
@@ -131,24 +145,65 @@ export function registerBackupSnapshotTests(): void {
         .rejects.toThrow('Invalid durable stale-wallet schedule tombstone');
     });
 
-    it('allows only a valid backup floor when no live floor exists', () => {
+    it('fails backup creation when the durable activation marker is malformed', async () => {
+      mockPrismaClient.systemSetting.findMany.mockResolvedValue([
+        { id: 'activation', key: WALLET_SYNC_ACTIVATION_KEY, value: '{}' },
+      ]);
+
+      await expect(backupService.createBackup('admin'))
+        .rejects.toThrow('Invalid durable wallet-sync activation policy');
+
+      mockPrismaClient.systemSetting.findMany.mockResolvedValue([
+        { id: 'activation', key: WALLET_SYNC_ACTIVATION_KEY, value: null },
+      ]);
+      await expect(backupService.createBackup('admin'))
+        .rejects.toThrow('Invalid durable wallet-sync activation policy');
+    });
+
+    it('refuses to export an activation marker above the current binary floor', async () => {
+      mockPrismaClient.systemSetting.findMany.mockResolvedValue([{
+        id: 'activation',
+        key: WALLET_SYNC_ACTIVATION_KEY,
+        value: futureActivationValue,
+      }]);
+
+      await expect(backupService.createBackup('admin'))
+        .rejects.toThrow('Wallet-sync activation requires mutation-fence floor');
+    });
+
+    it('allows only valid backup floors when their live records do not exist', () => {
       expect(processSystemSettingRecords([
         { key: FEATURE_RUNTIME_GENERATION_KEY, value: '999999' },
         { key: STALE_WALLET_SCHEDULE_FORBIDDEN_KEY, value: validFloorValue },
+        { key: WALLET_SYNC_ACTIVATION_KEY, value: validActivationValue },
         { key: 'registrationEnabled', value: 'true' },
       ], [])).toEqual([
         { key: STALE_WALLET_SCHEDULE_FORBIDDEN_KEY, value: validFloorValue },
+        { key: WALLET_SYNC_ACTIVATION_KEY, value: validActivationValue },
         { key: 'registrationEnabled', value: 'true' },
       ]);
       expect(processSystemSettingRecords([
         { key: STALE_WALLET_SCHEDULE_FORBIDDEN_KEY, value: validFloorValue },
-      ], [], new Set([STALE_WALLET_SCHEDULE_FORBIDDEN_KEY]))).toEqual([]);
+        { key: WALLET_SYNC_ACTIVATION_KEY, value: validActivationValue },
+      ], [], new Set([
+        STALE_WALLET_SCHEDULE_FORBIDDEN_KEY,
+        WALLET_SYNC_ACTIVATION_KEY,
+      ]))).toEqual([]);
       expect(() => processSystemSettingRecords([
         { key: STALE_WALLET_SCHEDULE_FORBIDDEN_KEY, value: '{}' },
       ], [])).toThrow('Invalid durable stale-wallet schedule tombstone');
       expect(() => processSystemSettingRecords([
         { key: STALE_WALLET_SCHEDULE_FORBIDDEN_KEY, value: null },
       ], [])).toThrow('Invalid durable stale-wallet schedule tombstone');
+      expect(() => processSystemSettingRecords([
+        { key: WALLET_SYNC_ACTIVATION_KEY, value: '{}' },
+      ], [])).toThrow('Invalid durable wallet-sync activation policy');
+      expect(() => processSystemSettingRecords([
+        { key: WALLET_SYNC_ACTIVATION_KEY, value: null },
+      ], [])).toThrow('Invalid durable wallet-sync activation policy');
+      expect(() => processSystemSettingRecords([
+        { key: WALLET_SYNC_ACTIVATION_KEY, value: futureActivationValue },
+      ], [])).toThrow('Wallet-sync activation requires mutation-fence floor');
     });
 
     it('backfills old wallet backups with the same conservative sync intent as SQL', () => {

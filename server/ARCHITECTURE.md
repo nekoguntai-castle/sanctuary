@@ -198,7 +198,12 @@ compatibility precursor still retains legacy API execution and the recurring
 growing while the single-admission, worker-owned path is introduced. The
 durable admission service currently has one generation-bound worker consumer
 and a bounded recovery coordinator, but neither has a production producer or
-startup/timer caller. The dormant coordinator can repair exact reserved
+startup/timer caller. Canonical wallet mutations use an explicit immutable
+generation-and-lease-token fence at every short transaction boundary. Workers
+advertise that capability through the bounded heartbeat registry; a dormant,
+immutable activation policy can be established only after exact fleet proof.
+Canonical wake-ups use floor-bound v3 so pre-fence workers reject them before
+locking, while retained v1/v2 jobs remain readable. The dormant coordinator can repair exact reserved
 full-resync generations and unclaimed incremental intent without reclaiming an
 expired lease. Existing v1 producers and legacy execution remain unchanged until
 the separate activation release.

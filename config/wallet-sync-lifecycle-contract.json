@@ -1,10 +1,12 @@
 {
   "schemaVersion": 1,
-  "deliveryState": "compatibility_precursor",
+  "deliveryState": "mutation_fence_activation_floor",
   "cutoverComplete": false,
   "wireContract": {
     "currentProducerVersion": 1,
-    "requiredReadableVersions": [1, 2],
+    "canonicalWakeupVersion": 3,
+    "preMutationFenceMaximumReadableVersion": 2,
+    "requiredReadableVersions": [1, 2, 3],
     "unversionedPayloadMeans": 1
   },
   "lifecycle": {
@@ -39,6 +41,9 @@
   },
   "compatibility": {
     "admissionState": "generation_consumer_enabled_no_production_producers",
+    "activationState": "fleet_floor_available_marker_not_activated",
+    "mutationFenceFloor": 1,
+    "preFenceWorkerBehavior": "reject_v3_before_lock",
     "generationConsumerModule": "server/src/worker/jobs/canonicalIncrementalSync.ts",
     "recoveryState": "dormant_coordinator_no_production_callers",
     "recoveryCoordinatorModule": "server/src/worker/syncIntentRecovery.ts",
@@ -170,6 +175,52 @@
         ]
       },
       {
+        "symbol": "SYNC_WALLET_MUTATION_FENCE_JOB_VERSION",
+        "entries": [
+          {
+            "file": "server/src/jobs/syncJobContract.ts",
+            "role": "fenced_v3_canonical_wire_contract"
+          },
+          {
+            "file": "server/src/services/workerSyncQueue.ts",
+            "role": "dormant_fenced_v3_wakeup_adapter"
+          },
+          {
+            "file": "server/src/worker/jobs/syncJobs.ts",
+            "role": "compatible_v3_worker_consumer"
+          }
+        ]
+      },
+      {
+        "symbol": "WALLET_SYNC_MUTATION_FENCE_FLOOR",
+        "entries": [
+          {
+            "file": "server/src/constants/walletSyncActivation.ts",
+            "role": "canonical_deployment_floor"
+          },
+          {
+            "file": "server/src/jobs/syncJobContract.ts",
+            "role": "fenced_v3_wire_requirement"
+          },
+          {
+            "file": "server/src/repositories/walletSyncActivationPolicyRepository.ts",
+            "role": "immutable_durable_floor"
+          },
+          {
+            "file": "server/src/services/sync/walletSyncActivationGate.ts",
+            "role": "dormant_activation_gate"
+          },
+          {
+            "file": "server/src/services/workerHeartbeatRegistry.ts",
+            "role": "exact_worker_capability_evidence"
+          },
+          {
+            "file": "server/src/services/workerSyncQueue.ts",
+            "role": "dormant_fenced_v3_emission"
+          }
+        ]
+      },
+      {
         "symbol": "completeSubscriptionEnrollment",
         "entries": [
           {
@@ -278,6 +329,40 @@
           {
             "file": "server/src/worker/syncIntentRecovery.ts",
             "role": "dormant_bounded_recovery_composition"
+          }
+        ]
+      },
+      {
+        "symbol": "walletSyncActivationGate",
+        "entries": [
+          {
+            "file": "server/src/services/sync/walletSyncActivationGate.ts",
+            "role": "dormant_activation_gate_definition"
+          }
+        ]
+      },
+      {
+        "symbol": "walletSyncActivationPolicyRepository",
+        "entries": [
+          {
+            "file": "server/src/repositories/walletSyncActivationPolicyRepository.ts",
+            "role": "immutable_activation_policy_definition"
+          },
+          {
+            "file": "server/src/services/backupService/creation.ts",
+            "role": "strict_activation_marker_backup_export"
+          },
+          {
+            "file": "server/src/services/backupService/restore.ts",
+            "role": "live_activation_marker_restore_precedence"
+          },
+          {
+            "file": "server/src/services/backupService/restoreTransforms.ts",
+            "role": "strict_activation_marker_restore_validation"
+          },
+          {
+            "file": "server/src/services/sync/walletSyncActivationGate.ts",
+            "role": "sole_activation_policy_service_consumer"
           }
         ]
       }

@@ -34,6 +34,61 @@ function write(root, relativePath, contents) {
   writeFileSync(target, contents);
 }
 
+function fixtureActivationSymbolReferences() {
+  return [
+    {
+      symbol: 'SYNC_WALLET_MUTATION_FENCE_JOB_VERSION',
+      entries: [
+        { file: 'server/src/jobs/syncJobContract.ts', role: 'fenced_v3_canonical_wire_contract' },
+        { file: 'server/src/services/workerSyncQueue.ts', role: 'dormant_fenced_v3_wakeup_adapter' },
+        { file: 'server/src/worker/jobs/syncJobs.ts', role: 'compatible_v3_worker_consumer' },
+      ],
+    },
+    {
+      symbol: 'WALLET_SYNC_MUTATION_FENCE_FLOOR',
+      entries: [
+        { file: 'server/src/constants/walletSyncActivation.ts', role: 'canonical_deployment_floor' },
+        { file: 'server/src/jobs/syncJobContract.ts', role: 'fenced_v3_wire_requirement' },
+        {
+          file: 'server/src/repositories/walletSyncActivationPolicyRepository.ts',
+          role: 'immutable_durable_floor',
+        },
+        { file: 'server/src/services/sync/walletSyncActivationGate.ts', role: 'dormant_activation_gate' },
+        {
+          file: 'server/src/services/workerHeartbeatRegistry.ts',
+          role: 'exact_worker_capability_evidence',
+        },
+        { file: 'server/src/services/workerSyncQueue.ts', role: 'dormant_fenced_v3_emission' },
+      ],
+    },
+    {
+      symbol: 'walletSyncActivationGate',
+      entries: [{
+        file: 'server/src/services/sync/walletSyncActivationGate.ts',
+        role: 'dormant_activation_gate_definition',
+      }],
+    },
+    {
+      symbol: 'walletSyncActivationPolicyRepository',
+      entries: [
+        {
+          file: 'server/src/repositories/walletSyncActivationPolicyRepository.ts',
+          role: 'immutable_activation_policy_definition',
+        },
+        {
+          file: 'server/src/services/sync/walletSyncActivationGate.ts',
+          role: 'sole_activation_policy_service_consumer',
+        },
+      ],
+    },
+  ];
+}
+
+function compareInventorySymbols(left, right) {
+  if (left.symbol === right.symbol) return 0;
+  return left.symbol < right.symbol ? -1 : 1;
+}
+
 function fixtureContract() {
   const contract = structuredClone(liveContract);
   contract.inventory.directExecutorCalls = [
@@ -74,6 +129,9 @@ function fixtureContract() {
     { symbol: 'SYNC_WALLET_JOB_READER_VERSION', entries: [{
       file: 'server/src/jobs/syncJobContract.ts',
       role: 'v2_generation_consumer_contract',
+    }, {
+      file: 'server/src/services/workerSyncQueue.ts',
+      role: 'dormant_v2_wakeup_adapter_and_retained_replay_clock_reset',
     }] },
     { symbol: 'completeSubscriptionEnrollment', entries: [{
       file: 'server/src/repositories/index.ts',
@@ -126,6 +184,8 @@ function fixtureContract() {
       role: 'dormant_bounded_recovery_composition',
     }] },
   ];
+  contract.inventory.symbolReferences.push(...fixtureActivationSymbolReferences());
+  contract.inventory.symbolReferences.sort(compareInventorySymbols);
   contract.inventory.literalReferences = [
     { literal: 'check-stale-wallets', entries: [] },
     { literal: 'sync-wallet', entries: [] },
@@ -151,12 +211,15 @@ function createFixture() {
   write(
     root,
     'server/src/jobs/syncJobContract.ts',
-    'export const SYNC_JOB_CONTRACT_VERSION = 1 as const;\nexport const SYNC_WALLET_JOB_READER_VERSION = 2 as const;\n',
+    'export const SYNC_JOB_CONTRACT_VERSION = 1 as const;\n'
+      + 'export const SYNC_WALLET_JOB_READER_VERSION = 2 as const;\n'
+      + 'export const SYNC_WALLET_MUTATION_FENCE_JOB_VERSION = 3 as const;\n'
+      + 'void WALLET_SYNC_MUTATION_FENCE_FLOOR;\nvoid requiredMutationFenceFloor;\n',
   );
   write(
     root,
     'server/src/worker/jobs/syncJobs.ts',
-    `import { syncWallet } from '${retiredBlockchainImport}';\nvoid CHECK_STALE_WALLETS_JOB_NAME;\nvoid SYNC_WALLET_JOB_NAME;\nsyncWallet();\n`,
+    `import { syncWallet } from '${retiredBlockchainImport}';\nvoid CHECK_STALE_WALLETS_JOB_NAME;\nvoid SYNC_WALLET_JOB_NAME;\nvoid SYNC_WALLET_MUTATION_FENCE_JOB_VERSION;\nsyncWallet();\n`,
   );
   write(
     root,
@@ -168,7 +231,10 @@ function createFixture() {
   write(
     root,
     'server/src/services/workerSyncQueue.ts',
-    'export function enqueueIncrementalSyncWakeup() { return true; }\n'
+    'void SYNC_WALLET_JOB_READER_VERSION;\n'
+      + 'void SYNC_WALLET_MUTATION_FENCE_JOB_VERSION;\n'
+      + 'void WALLET_SYNC_MUTATION_FENCE_FLOOR;\n'
+      + 'export function enqueueIncrementalSyncWakeup() { return true; }\n'
       + 'export function enqueueReservedFullResyncWakeup() { return true; }\n',
   );
   write(
@@ -204,10 +270,33 @@ function createFixture() {
       + 'void completeSubscriptionEnrollment;\n'
       + 'export function createSubscriptionCheckpointEnrollment() {}\n',
   );
+  write(
+    root,
+    'server/src/constants/walletSyncActivation.ts',
+    'export const WALLET_SYNC_MUTATION_FENCE_FLOOR = 1 as const;\n',
+  );
+  write(
+    root,
+    'server/src/repositories/walletSyncActivationPolicyRepository.ts',
+    'void WALLET_SYNC_MUTATION_FENCE_FLOOR;\n'
+      + 'export const walletSyncActivationPolicyRepository = {};\n',
+  );
+  write(
+    root,
+    'server/src/services/workerHeartbeatRegistry.ts',
+    'void WALLET_SYNC_MUTATION_FENCE_FLOOR;\n',
+  );
+  write(
+    root,
+    'server/src/services/sync/walletSyncActivationGate.ts',
+    'void WALLET_SYNC_MUTATION_FENCE_FLOOR;\n'
+      + 'void walletSyncActivationPolicyRepository;\n'
+      + 'export const walletSyncActivationGate = {};\n',
+  );
   return root;
 }
 
-test('live compatibility inventory matches production without claiming cutover', () => {
+test('live activation-floor inventory matches production without claiming cutover', () => {
   const result = checkWalletSyncLifecycleContract(repoRoot);
   assert.deepEqual(result.errors, []);
   assert.equal(result.contract.cutoverComplete, false);
@@ -217,12 +306,16 @@ test('live compatibility inventory matches production without claiming cutover',
     'generation_consumer_enabled_no_production_producers',
   );
   assert.equal(
+    result.contract.compatibility.activationState,
+    'fleet_floor_available_marker_not_activated',
+  );
+  assert.equal(
     result.contract.compatibility.subscriptionEnrollmentState,
     'dormant_no_production_consumers',
   );
 });
 
-test('accepts an exact compatibility inventory fixture', () => {
+test('accepts an exact mutation-fence activation-floor inventory fixture', () => {
   assert.deepEqual(checkWalletSyncLifecycleContract(createFixture()).errors, []);
 });
 
@@ -365,6 +458,36 @@ test('rejects construction of the dormant recovery coordinator', () => {
   assert.match(
     checkWalletSyncLifecycleContract(root).errors.join('\n'),
     /durable admission producer activated before cutover/,
+  );
+});
+
+test('rejects activation-gate or policy consumption before the activation release', () => {
+  const consumers = [
+    "import { walletSyncActivationGate } from './services/sync/walletSyncActivationGate';\nvoid walletSyncActivationGate.activate();\n",
+    "import policy from './repositories/walletSyncActivationPolicyRepository';\nvoid policy.activate();\n",
+    "import { walletSyncActivationPolicyRepo } from './repositories';\nvoid walletSyncActivationPolicyRepo.activate();\n",
+  ];
+  for (const source of consumers) {
+    const root = createFixture();
+    write(root, 'server/src/worker.ts', source);
+    assert.match(
+      checkWalletSyncLifecycleContract(root).errors.join('\n'),
+      /wallet-sync activation floor consumed before activation release/,
+    );
+  }
+});
+
+test('rejects activation capability imported by a validation-only backup consumer', () => {
+  const root = createFixture();
+  write(
+    root,
+    'server/src/services/backupService/creation.ts',
+    "import { activateWalletSync } from '../../repositories/walletSyncActivationPolicyRepository';\n"
+      + 'void activateWalletSync();\n',
+  );
+  assert.match(
+    checkWalletSyncLifecycleContract(root).errors.join('\n'),
+    /wallet-sync activation floor consumed before activation release/,
   );
 });
 

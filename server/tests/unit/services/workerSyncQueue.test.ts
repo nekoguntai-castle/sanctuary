@@ -63,11 +63,13 @@ import { toBullMqJobId } from "../../../src/jobs/bullMqJobIds";
 import { SYNC_PRIORITY_BULLMQ_PRIORITY } from "@sanctuary/shared/constants/sync";
 import {
   SYNC_JOB_CONTRACT_VERSION,
+  SYNC_WALLET_MUTATION_FENCE_JOB_VERSION,
   SYNC_WALLET_JOB_OPTIONS,
   getSyncLockTtlMs,
 } from "../../../src/jobs/syncJobContract";
 import type { DeadLetterJobEnvelope } from "../../../src/services/deadLetterQueueTypes";
 import { FULL_RESYNC_GENERATION_MAX } from "../../../src/constants/fullResync";
+import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from "../../../src/constants/walletSyncActivation";
 
 function syncDeadLetterEnvelope(): DeadLetterJobEnvelope {
   return {
@@ -133,7 +135,7 @@ describe("workerSyncQueue", () => {
     );
   });
 
-  it("enqueues an explicit wallet-v2 incremental wake-up with the admission identity", async () => {
+  it("enqueues an explicit fenced canonical wake-up with the admission identity", async () => {
     const queued = await enqueueIncrementalSyncWakeup({
       walletId: "wallet-1",
       generation: 2_147_483_647,
@@ -144,9 +146,10 @@ describe("workerSyncQueue", () => {
     expect(mocks.mockQueueAdd).toHaveBeenCalledWith(
       "sync-wallet",
       {
-        version: 2,
+        version: SYNC_WALLET_MUTATION_FENCE_JOB_VERSION,
         walletId: "wallet-1",
         incrementalSyncGeneration: 2_147_483_647,
+        requiredMutationFenceFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
       },
       {
         ...SYNC_WALLET_JOB_OPTIONS,

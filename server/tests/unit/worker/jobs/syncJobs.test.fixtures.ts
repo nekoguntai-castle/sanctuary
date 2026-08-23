@@ -1,5 +1,6 @@
 import type { Job } from 'bullmq';
 import type { JobExecutionContext } from '../../../../src/jobs/types';
+import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from '../../../../src/constants/walletSyncActivation';
 
 export function canonicalIntentState(
   overrides: Record<string, unknown> = {},
@@ -35,9 +36,10 @@ export function canonicalJob(attemptsMade = 0): Job {
   return {
     id: 'canonical-generation-1',
     data: {
-      version: 2,
+      version: 3,
       walletId: 'wallet-intent',
       incrementalSyncGeneration: 1,
+      requiredMutationFenceFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
     },
     attemptsMade,
     opts: { attempts: 3, backoff: { type: 'exponential', delay: 5_000 } },

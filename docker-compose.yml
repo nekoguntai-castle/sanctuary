@@ -346,7 +346,10 @@ services:
       # Worker-specific settings
       WORKER_HEALTH_PORT: 3002
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-5}
-      WORKER_REPLICA_ID: ${WORKER_REPLICA_ID:-}
+      # The bundled deployment has one worker slot. A stable default makes its
+      # capability heartbeat authoritative; multi-replica operators must assign
+      # a distinct stable value to each independently defined worker service.
+      WORKER_REPLICA_ID: ${WORKER_REPLICA_ID:-sanctuary-worker-1}
       WORKER_DIAGNOSTICS_SECRET: ${WORKER_DIAGNOSTICS_SECRET:?WORKER_DIAGNOSTICS_SECRET is required}
       SUPPORT_CAPTURE_SOCKET_DIR: /run/sanctuary-support-capture
       SUPPORT_CAPTURE_EXPECTED_PARTICIPANTS: api,notification-worker

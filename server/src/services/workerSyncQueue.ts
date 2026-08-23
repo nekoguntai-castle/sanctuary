@@ -12,9 +12,11 @@ import {
 import type { SyncWalletJobData } from "../jobs/syncJobContract";
 import { reserveFullResyncGeneration } from "../repositories/resyncRepository";
 import { isFullResyncGeneration } from "../constants/fullResync";
+import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from "../constants/walletSyncActivation";
 import {
   SYNC_JOB_CONTRACT_VERSION,
   SYNC_QUEUE_NAME,
+  SYNC_WALLET_MUTATION_FENCE_JOB_VERSION,
   SYNC_WALLET_JOB_NAME,
   SYNC_WALLET_JOB_READER_VERSION,
   SYNC_WALLET_JOB_OPTIONS,
@@ -46,7 +48,10 @@ export interface ReservedFullResyncWakeup {
 
 function resetReplayContentionClock(data: unknown): SyncWalletJobData {
   const normalized = readSyncWalletJobData(data);
-  if (normalized?.version !== SYNC_WALLET_JOB_READER_VERSION) {
+  if (
+    normalized?.version !== SYNC_WALLET_JOB_READER_VERSION
+    && normalized?.version !== SYNC_WALLET_MUTATION_FENCE_JOB_VERSION
+  ) {
     return data as SyncWalletJobData;
   }
   const { lockContention: _retiredClock, ...withoutContentionClock } = normalized;
@@ -231,9 +236,10 @@ export async function enqueueIncrementalSyncWakeup(
   wakeup: IncrementalSyncWakeup,
 ): Promise<boolean> {
   const data = {
-    version: SYNC_WALLET_JOB_READER_VERSION,
+    version: SYNC_WALLET_MUTATION_FENCE_JOB_VERSION,
     walletId: wakeup.walletId,
     incrementalSyncGeneration: wakeup.generation,
+    requiredMutationFenceFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
   } as const;
   if (!wakeup.jobId || readSyncWalletJobData(data) === null) {
     log.warn("Invalid incremental wallet sync wake-up", {
@@ -407,7 +413,10 @@ async function prepareIncrementalSyncCandidate(
     if (!existing) return "ready";
     const data = readSyncWalletJobData(existing.data);
     if (
-      data?.version !== SYNC_WALLET_JOB_READER_VERSION
+      (
+        data?.version !== SYNC_WALLET_JOB_READER_VERSION
+        && data?.version !== SYNC_WALLET_MUTATION_FENCE_JOB_VERSION
+      )
       || data.walletId !== wakeup.walletId
       || data.incrementalSyncGeneration !== wakeup.generation
     ) return "unavailable";

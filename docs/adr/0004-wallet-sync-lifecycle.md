@@ -1,6 +1,6 @@
 # ADR 0004: Durable, activity-driven wallet synchronization lifecycle
 
-- **Status:** Accepted for compatibility precursor
+- **Status:** Accepted through mutation-fence activation floor
 - **Date:** 2026-08-22
 - **Accepted on:** 2026-08-22
 - **Owner:** Sanctuary maintainers
@@ -49,10 +49,13 @@ an at-least-once wake-up mechanism; database claims, monotonic generations,
 leases, and fencing own admission and completion truth. Full resync takes
 precedence without erasing later incremental activity.
 
-The compatibility precursor is additive:
+The compatibility and mutation-fence activation floors are additive:
 
-- consumers read retained unversioned/v1 payloads and generation-bound v2 wallet
-  wake-ups while production producers continue to emit v1;
+- consumers read retained unversioned/v1 payloads, generation-bound v2 wake-ups,
+  and mutation-fence-required v3 canonical wake-ups while legacy production
+  producers continue to emit v1;
+- the dormant canonical wake-up adapter emits v3 with the required mutation-fence
+  floor. A pre-floor v2 worker rejects v3 before acquiring the wallet lock;
 - schema and checkpoint additions are readable before producers rely on them;
 - a durable policy understood by every supported rollback binary must be able to
   move `check-stale-wallets` from desired to forbidden and purge retained work;
@@ -60,7 +63,7 @@ The compatibility precursor is additive:
   unreadable policy must not silently recreate a schedule after cutover.
 
 The admission capability can persist coalesced intent, and the worker can claim
-and execute an explicitly generation-bound v2 wake-up while it owns the canonical
+and execute an explicitly generation-bound v2 or fenced v3 wake-up while it owns the canonical
 Redis wallet lock. A bounded recovery coordinator can revisit unclaimed intent
 and enqueue an exact already-reserved full-resync generation, but it has no
 production startup or timer caller in this precursor. Restores discard database
@@ -68,7 +71,14 @@ lease authority while retaining pending
 generations, and a full-resync generation is processed only after its prepared
 rebuild completes successfully. Producer and repair-loop activation remain a
 separate change; automatic expired-lease reclaim remains forbidden until low-level
-wallet-history mutations are fenced against a paused former owner.
+wallet-history mutations are fenced against a paused former owner. That mutation
+boundary is now complete. Workers advertise its explicit capability floor through
+the bounded heartbeat registry, old heartbeat records remain readable but block
+activation, and an immutable operational activation record defaults to dormant.
+The record can be established only through the activation gate after exact,
+fresh, stable-identity evidence proves every indexed worker meets the floor.
+Production admission and recovery still have no caller in this release, and the
+activation record itself is not written automatically.
 
 The additive checkpoint repository also owns the only enrollment request and
 completion writers. No production source calls the request writer. A bounded,
@@ -83,7 +93,7 @@ a separate reviewed change.
 
 This ADR and `config/wallet-sync-lifecycle-contract.json` establish the target and
 freeze the current compatibility exceptions. They do **not** retire the recurring
-schedule, change a producer, install the durable disable marker, or claim that the
+schedule, change a production trigger, install either durable marker, or claim that the
 single-admission boundary is already complete.
 
 ## Executable invariants
@@ -94,7 +104,7 @@ single-admission boundary is already complete.
 | `WSYNC-BLOCK-001` | Headers update tip/known confirmations only; time and headers do not request wallet history. |
 | `WSYNC-ADMISSION-001` | The target has one durable admission module; compatibility exceptions cannot grow. |
 | `WSYNC-WORKER-001` | The worker is the target low-level executor and subscription owner; the checkpoint enrollment coordinator remains dormant until that ownership transfer is activated. |
-| `WSYNC-COMPAT-001` | Unversioned/v1 remain readable, generation-bound v2 is accepted only by the fenced worker consumer, production emission remains disabled, and unknown versions fail closed. |
+| `WSYNC-COMPAT-001` | Unversioned/v1 and retained v2 remain readable; dormant canonical emission uses floor-bound v3, which a pre-floor worker rejects before locking; production trigger emission remains disabled and unknown versions fail closed. |
 | `WSYNC-STALE-001` | The stale scheduler remains explicitly legacy during the precursor and becomes forbidden only after the durable rollback floor is deployed. |
 
 ## Consequences
@@ -112,9 +122,13 @@ reviewable and prevents the transition surface from expanding meanwhile.
 
 ## Rollout and rollback
 
-Deploy additive schema, compatible readers, and the durable scheduler policy to
-every API and worker replica before changing producers or setting the policy to
-forbidden. Until then, `check-stale-wallets` remains desired.
+Deploy additive schema, compatible readers, the complete mutation fence, worker
+capability heartbeat, and durable activation reader to every worker replica.
+Every replica must have a unique stable `WORKER_REPLICA_ID`. Only the activation
+gate may establish the immutable floor, and only after its exact fleet proof is
+ready. Admission, recovery, and reclaim must continue to require both the durable
+activation and current fleet readiness. Until those later callers ship,
+`check-stale-wallets` remains desired and no canonical production trigger emits.
 
 After cutover begins, rollback is supported only to a binary that understands
 and honors the durable forbidden marker. Rolling back below that floor would

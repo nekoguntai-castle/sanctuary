@@ -21,7 +21,9 @@ import {
 import {
   FEATURE_RUNTIME_GENERATION_KEY,
   STALE_WALLET_SCHEDULE_FORBIDDEN_KEY,
+  WALLET_SYNC_ACTIVATION_KEY,
 } from '../../../../src/repositories/operationalSystemSettings';
+import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from '../../../../src/constants/walletSyncActivation';
 
 export function registerBackupRestoreTests(): void {
 describe('restoreFromBackup', () => {
@@ -29,6 +31,14 @@ describe('restoreFromBackup', () => {
   const mockClearAccessCacheStrict = getMockClearAccessCacheStrict();
   const mockBackupLogger = getMockBackupLogger();
   const mockFeatureRuntimeReconcile = getMockFeatureRuntimeReconcile();
+  const activationValue = (
+    activatedAt: string,
+    mutationFenceFloor: number = WALLET_SYNC_MUTATION_FENCE_FLOOR,
+  ) => JSON.stringify({
+    version: 1,
+    activatedAt,
+    mutationFenceFloor,
+  });
 
   const createValidBackup = (): SanctuaryBackup => ({
     meta: {
@@ -334,6 +344,139 @@ describe('restoreFromBackup', () => {
         .flatMap(([args]) => args.data as Array<{ key: string; value: string }>);
       expect(writes.filter(({ key }) => key === STALE_WALLET_SCHEDULE_FORBIDDEN_KEY))
         .toEqual([backupFloor]);
+    });
+
+    it('preserves a live activation marker instead of accepting a backup replacement', async () => {
+      const backup = createValidBackup();
+      backup.data.systemSetting = [{
+        id: 'backup-activation',
+        key: WALLET_SYNC_ACTIVATION_KEY,
+        value: activationValue('2026-08-20T00:00:00.000Z'),
+      }];
+      const liveActivation = {
+        id: 'live-activation',
+        key: WALLET_SYNC_ACTIVATION_KEY,
+        value: activationValue('2026-08-22T00:00:00.000Z'),
+        createdAt: new Date('2026-08-22T00:00:00.000Z'),
+        updatedAt: new Date('2026-08-22T00:00:00.000Z'),
+      };
+      mockPrismaClient.systemSetting.findMany.mockResolvedValue([liveActivation]);
+      mockPrismaClient.$transaction.mockImplementation(async (fn: any) => fn(mockPrismaClient));
+      mockAllTableWrites();
+
+      await expect(backupService.restoreFromBackup(backup)).resolves.toMatchObject({
+        success: true,
+      });
+      const writes = mockPrismaClient.systemSetting.createMany.mock.calls
+        .flatMap(([args]) => args.data as Array<{ key: string; value: string }>);
+      expect(writes.filter(({ key }) => key === WALLET_SYNC_ACTIVATION_KEY))
+        .toEqual([liveActivation]);
+    });
+
+    it('restores a valid activation marker only when the live database has none', async () => {
+      const backup = createValidBackup();
+      const backupActivation = {
+        id: 'backup-activation',
+        key: WALLET_SYNC_ACTIVATION_KEY,
+        value: activationValue('2026-08-22T00:00:00.000Z'),
+      };
+      backup.data.systemSetting = [backupActivation];
+      mockPrismaClient.systemSetting.findMany.mockResolvedValue([]);
+      mockPrismaClient.$transaction.mockImplementation(async (fn: any) => fn(mockPrismaClient));
+      mockAllTableWrites();
+
+      await expect(backupService.restoreFromBackup(backup)).resolves.toMatchObject({
+        success: true,
+      });
+      const writes = mockPrismaClient.systemSetting.createMany.mock.calls
+        .flatMap(([args]) => args.data as Array<{ key: string; value: string }>);
+      expect(writes.filter(({ key }) => key === WALLET_SYNC_ACTIVATION_KEY))
+        .toEqual([backupActivation]);
+    });
+
+    it.each(['{}', null])(
+      'fails closed before deletion when the live activation marker is invalid: %s',
+      async (value) => {
+        const backup = createValidBackup();
+        mockPrismaClient.systemSetting.findMany.mockResolvedValue([{
+          id: 'live-activation',
+          key: WALLET_SYNC_ACTIVATION_KEY,
+          value,
+        }]);
+        mockPrismaClient.$transaction.mockImplementation(async (fn: any) => fn(mockPrismaClient));
+        mockAllTableWrites();
+
+        await expect(backupService.restoreFromBackup(backup)).resolves.toMatchObject({
+          success: false,
+          committed: false,
+          error: expect.stringContaining('Invalid durable wallet-sync activation policy'),
+        });
+        expect(mockPrismaClient.systemSetting.deleteMany).not.toHaveBeenCalled();
+        expect(mockClearAccessCacheStrict).not.toHaveBeenCalled();
+      },
+    );
+
+    it('refuses a live activation marker above the current binary floor before deletion', async () => {
+      const backup = createValidBackup();
+      mockPrismaClient.systemSetting.findMany.mockResolvedValue([{
+        id: 'live-activation',
+        key: WALLET_SYNC_ACTIVATION_KEY,
+        value: activationValue(
+          '2026-08-22T00:00:00.000Z',
+          WALLET_SYNC_MUTATION_FENCE_FLOOR + 1,
+        ),
+      }]);
+      mockPrismaClient.$transaction.mockImplementation(async (fn: any) => fn(mockPrismaClient));
+      mockAllTableWrites();
+
+      await expect(backupService.restoreFromBackup(backup)).resolves.toMatchObject({
+        success: false,
+        committed: false,
+        error: expect.stringContaining('Wallet-sync activation requires mutation-fence floor'),
+      });
+      expect(mockPrismaClient.systemSetting.deleteMany).not.toHaveBeenCalled();
+      expect(mockClearAccessCacheStrict).not.toHaveBeenCalled();
+    });
+
+    it('fails closed and rolls back an invalid backup activation marker', async () => {
+      const backup = createValidBackup();
+      backup.data.systemSetting = [{
+        id: 'backup-activation',
+        key: WALLET_SYNC_ACTIVATION_KEY,
+        value: '{}',
+      }];
+      mockPrismaClient.systemSetting.findMany.mockResolvedValue([]);
+      mockPrismaClient.$transaction.mockImplementation(async (fn: any) => fn(mockPrismaClient));
+      mockAllTableWrites();
+
+      await expect(backupService.restoreFromBackup(backup)).resolves.toMatchObject({
+        success: false,
+        committed: false,
+        error: expect.stringContaining('Invalid durable wallet-sync activation policy'),
+      });
+      expect(mockClearAccessCacheStrict).not.toHaveBeenCalled();
+    });
+
+    it('refuses and rolls back a backup activation above the current binary floor', async () => {
+      const backup = createValidBackup();
+      backup.data.systemSetting = [{
+        id: 'backup-activation',
+        key: WALLET_SYNC_ACTIVATION_KEY,
+        value: activationValue(
+          '2026-08-22T00:00:00.000Z',
+          WALLET_SYNC_MUTATION_FENCE_FLOOR + 1,
+        ),
+      }];
+      mockPrismaClient.systemSetting.findMany.mockResolvedValue([]);
+      mockPrismaClient.$transaction.mockImplementation(async (fn: any) => fn(mockPrismaClient));
+      mockAllTableWrites();
+
+      await expect(backupService.restoreFromBackup(backup)).resolves.toMatchObject({
+        success: false,
+        committed: false,
+        error: expect.stringContaining('Wallet-sync activation requires mutation-fence floor'),
+      });
+      expect(mockClearAccessCacheStrict).not.toHaveBeenCalled();
     });
 
     it('should not clear access cache when validation fails before the transaction', async () => {

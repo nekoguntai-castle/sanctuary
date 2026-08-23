@@ -16,4 +16,13 @@ describe('worker database timeout contract', () => {
     expect(worker).toContain('PRISMA_TRANSACTION_MAX_WAIT_MS: 10000');
     expect(worker).toContain('PRISMA_TRANSACTION_TIMEOUT_MS: 30000');
   });
+
+  it('gives the bundled worker an authoritative stable replica identity', () => {
+    const worker = workerServiceBlock();
+
+    expect(worker).toContain(
+      'WORKER_REPLICA_ID: ${WORKER_REPLICA_ID:-sanctuary-worker-1}',
+    );
+    expect(worker).not.toContain('WORKER_REPLICA_ID: ${WORKER_REPLICA_ID:-}');
+  });
 });

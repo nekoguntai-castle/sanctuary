@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type Redis from "ioredis";
+import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from "../../../src/constants/walletSyncActivation";
 import {
   WorkerHeartbeatReader,
   WorkerHeartbeatWriter,
@@ -63,6 +64,7 @@ function stored(
   retentionContractVersion = 1,
   overrides: Parameters<typeof snapshot>[0] = {},
   stableReplicaIdentity = true,
+  mutationFenceFloor: number | null = WALLET_SYNC_MUTATION_FENCE_FLOOR,
 ) {
   return JSON.stringify({
     version: 1,
@@ -70,6 +72,9 @@ function stored(
     writtenAt,
     stableReplicaIdentity,
     retentionContractVersion,
+    ...(mutationFenceFloor === null
+      ? {}
+      : { walletSyncMutationFenceFloor: mutationFenceFloor }),
     snapshot: snapshot(overrides),
   });
 }
@@ -124,6 +129,9 @@ describe("privacy-safe worker heartbeat registry", () => {
         typeof value === "string" && value.includes("retentionContractVersion"),
     );
     expect(workerFleetSnapshotSchema.safeParse(serialized).success).toBe(false);
+    expect(serialized).toContain(
+      `"walletSyncMutationFenceFloor":${WALLET_SYNC_MUTATION_FENCE_FLOOR}`,
+    );
     expect(String(serialized)).not.toMatch(/hostname|"replicaId"|"workerId"/i);
     expect(client.disconnect).toHaveBeenCalledWith(false);
   });
@@ -819,4 +827,5 @@ describe("privacy-safe worker heartbeat registry", () => {
       coverage: "unavailable",
     });
   });
+
 });
