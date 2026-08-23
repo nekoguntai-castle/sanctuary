@@ -68,6 +68,17 @@ rebuild completes successfully. Producer and repair-loop activation remain a
 separate change; automatic expired-lease reclaim remains forbidden until low-level
 wallet-history mutations are fenced against a paused former owner.
 
+The additive checkpoint repository also owns the only enrollment request and
+completion writers. No production source calls the request writer. A bounded,
+network-explicit enrollment coordinator composes the completion writer with
+injected subscription batch I/O, but remains dormant: no API, server startup,
+worker startup, subscription manager, or recovery loop constructs or calls it in
+this precursor. Missing checkpoint rows remain rolling-upgrade
+candidates, authoritative null status remains distinct from unknown status, and
+partial or unavailable subscription batches do not silently mark enrollment
+complete. Coordinator activation and transfer of live subscription ownership are
+a separate reviewed change.
+
 This ADR and `config/wallet-sync-lifecycle-contract.json` establish the target and
 freeze the current compatibility exceptions. They do **not** retire the recurring
 schedule, change a producer, install the durable disable marker, or claim that the
@@ -80,17 +91,18 @@ single-admission boundary is already complete.
 | `WSYNC-LIFECYCLE-001` | Lifecycle and allowed wallet-history triggers match this decision. |
 | `WSYNC-BLOCK-001` | Headers update tip/known confirmations only; time and headers do not request wallet history. |
 | `WSYNC-ADMISSION-001` | The target has one durable admission module; compatibility exceptions cannot grow. |
-| `WSYNC-WORKER-001` | The worker is the target low-level executor and subscription owner. |
+| `WSYNC-WORKER-001` | The worker is the target low-level executor and subscription owner; the checkpoint enrollment coordinator remains dormant until that ownership transfer is activated. |
 | `WSYNC-COMPAT-001` | Unversioned/v1 remain readable, generation-bound v2 is accepted only by the fenced worker consumer, production emission remains disabled, and unknown versions fail closed. |
 | `WSYNC-STALE-001` | The stale scheduler remains explicitly legacy during the precursor and becomes forbidden only after the durable rollback floor is deployed. |
 
 ## Consequences
 
 The compatibility inventory is intentionally a debt ledger. New direct
-executors, wallet-job producers, age-driven history paths, or spellings of the
-legacy job identities fail required CI. Removing a listed legacy path also fails
-until the contract is updated in the same reviewed change, preventing stale
-exceptions from disguising progress.
+executors, wallet-job producers, subscription-checkpoint writers or coordinator
+consumers, age-driven history paths, or spellings of the legacy job identities
+fail required CI. Removing a listed legacy path also fails until the contract is
+updated in the same reviewed change, preventing stale exceptions from disguising
+progress.
 
 The precursor does not reduce current sync frequency. It makes the later schema,
 producer migration, scheduler retirement, and observation steps independently

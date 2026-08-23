@@ -31,6 +31,8 @@
   },
   "futureOwnership": {
     "singleAdmissionModule": "server/src/services/sync/syncIntentAdmission.ts",
+    "subscriptionCheckpointRepository": "server/src/repositories/subscriptionCheckpointRepository.ts",
+    "subscriptionEnrollmentCoordinator": "server/src/services/sync/subscriptionCheckpointEnrollment.ts",
     "walletHistoryExecutor": "server/src/worker/jobs/syncJobs.ts",
     "subscriptionOwner": "worker",
     "queueRole": "at_least_once_wakeup_only"
@@ -38,6 +40,7 @@
   "compatibility": {
     "admissionState": "generation_consumer_enabled_no_production_producers",
     "generationConsumerModule": "server/src/worker/jobs/canonicalIncrementalSync.ts",
+    "subscriptionEnrollmentState": "dormant_no_production_consumers",
     "staleScheduleName": "check-stale-wallets",
     "staleScheduleState": "legacy_desired_until_cutover",
     "durableDisablePolicyState": "compatibility_floor_available_marker_not_activated",
@@ -165,6 +168,32 @@
         ]
       },
       {
+        "symbol": "completeSubscriptionEnrollment",
+        "entries": [
+          {
+            "file": "server/src/repositories/index.ts",
+            "role": "neutral_repository_barrel_export"
+          },
+          {
+            "file": "server/src/repositories/subscriptionCheckpointRepository.ts",
+            "role": "canonical_checkpoint_completion_writer"
+          },
+          {
+            "file": "server/src/services/sync/subscriptionCheckpointEnrollment.ts",
+            "role": "dormant_subscription_enrollment_coordinator"
+          }
+        ]
+      },
+      {
+        "symbol": "createSubscriptionCheckpointEnrollment",
+        "entries": [
+          {
+            "file": "server/src/services/sync/subscriptionCheckpointEnrollment.ts",
+            "role": "dormant_subscription_enrollment_coordinator_definition"
+          }
+        ]
+      },
+      {
         "symbol": "enqueueIncrementalSyncWakeup",
         "entries": [
           {
@@ -195,6 +224,19 @@
           {
             "file": "server/src/worker/jobs/syncJobs.ts",
             "role": "legacy_worker_age_trigger"
+          }
+        ]
+      },
+      {
+        "symbol": "requestSubscriptionEnrollment",
+        "entries": [
+          {
+            "file": "server/src/repositories/index.ts",
+            "role": "neutral_repository_barrel_export"
+          },
+          {
+            "file": "server/src/repositories/subscriptionCheckpointRepository.ts",
+            "role": "canonical_checkpoint_request_writer"
           }
         ]
       },

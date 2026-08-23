@@ -42,6 +42,12 @@ const DORMANT_ADMISSION_MUTATIONS = [
 ];
 const SYNC_INTENT_REPOSITORY_PATH = 'server/src/repositories/syncIntentRepository.ts';
 const INCREMENTAL_WAKEUP_ADAPTER_PATH = 'server/src/services/workerSyncQueue.ts';
+const REPOSITORY_BARREL_PATH = 'server/src/repositories/index.ts';
+const SUBSCRIPTION_ENROLLMENT_COORDINATOR_SYMBOL = 'createSubscriptionCheckpointEnrollment';
+const SUBSCRIPTION_ENROLLMENT_WRITERS = [
+  'completeSubscriptionEnrollment',
+  'requestSubscriptionEnrollment',
+];
 
 function normalize(filePath) {
   return filePath.split(path.sep).join('/');
@@ -185,9 +191,26 @@ export function parseWalletSyncLifecycleContract(source) {
     throw new Error('block headers must remain confirmation/tip events only');
   }
 
-  const ownership = requireObject(contract.futureOwnership, 'futureOwnership');
+  const ownership = validateOwnership(contract.futureOwnership);
+  validateCompatibility(contract.compatibility);
+  assertExact(contract.requiredInvariantIds, REQUIRED_INVARIANTS, 'requiredInvariantIds');
+  const inventory = validateInventory(contract.inventory);
+  validateSubscriptionInventory(inventory, ownership);
+  return contract;
+}
+
+function validateOwnership(value) {
+  const ownership = requireObject(value, 'futureOwnership');
   if (ownership.singleAdmissionModule !== 'server/src/services/sync/syncIntentAdmission.ts') {
     throw new Error('futureOwnership.singleAdmissionModule must name the canonical intent service');
+  }
+  if (ownership.subscriptionCheckpointRepository
+    !== 'server/src/repositories/subscriptionCheckpointRepository.ts') {
+    throw new Error('futureOwnership.subscriptionCheckpointRepository must name the canonical repository');
+  }
+  if (ownership.subscriptionEnrollmentCoordinator
+    !== 'server/src/services/sync/subscriptionCheckpointEnrollment.ts') {
+    throw new Error('futureOwnership.subscriptionEnrollmentCoordinator must name the dormant coordinator');
   }
   if (ownership.walletHistoryExecutor !== 'server/src/worker/jobs/syncJobs.ts') {
     throw new Error('futureOwnership.walletHistoryExecutor must remain worker-owned');
@@ -198,11 +221,7 @@ export function parseWalletSyncLifecycleContract(source) {
   if (ownership.queueRole !== 'at_least_once_wakeup_only') {
     throw new Error('futureOwnership.queueRole must remain an at-least-once wake-up only');
   }
-
-  validateCompatibility(contract.compatibility);
-  assertExact(contract.requiredInvariantIds, REQUIRED_INVARIANTS, 'requiredInvariantIds');
-  validateInventory(contract.inventory);
-  return contract;
+  return ownership;
 }
 
 function validateCompatibility(value) {
@@ -213,6 +232,9 @@ function validateCompatibility(value) {
   if (compatibility.generationConsumerModule
     !== 'server/src/worker/jobs/canonicalIncrementalSync.ts') {
     throw new Error('compatibility.generationConsumerModule must name the bounded worker engine');
+  }
+  if (compatibility.subscriptionEnrollmentState !== 'dormant_no_production_consumers') {
+    throw new Error('subscription enrollment must remain dormant before its activation release');
   }
   if (compatibility.staleScheduleName !== 'check-stale-wallets') {
     throw new Error('compatibility.staleScheduleName must retain the legacy wire identity');
@@ -240,6 +262,51 @@ function actualReferenceFiles(sources, pattern) {
     .filter(([, source]) => pattern.test(source))
     .map(([file]) => file)
     .sort();
+}
+
+function subscriptionSymbolEntries(inventory, symbol) {
+  const definition = inventory.symbolReferences.find(item => item.symbol === symbol);
+  if (!definition) throw new Error(`inventory.symbolReferences must include ${symbol}`);
+  return expectedFiles(definition.entries);
+}
+
+function validateSubscriptionInventory(inventory, ownership) {
+  const repository = ownership.subscriptionCheckpointRepository;
+  const coordinator = ownership.subscriptionEnrollmentCoordinator;
+  for (const writer of SUBSCRIPTION_ENROLLMENT_WRITERS) {
+    const expected = [REPOSITORY_BARREL_PATH, repository];
+    if (writer === 'completeSubscriptionEnrollment') expected.push(coordinator);
+    assertExact(
+      subscriptionSymbolEntries(inventory, writer),
+      expected.sort(),
+      `subscription enrollment writer ${writer}`,
+    );
+  }
+  assertExact(
+    subscriptionSymbolEntries(inventory, SUBSCRIPTION_ENROLLMENT_COORDINATOR_SYMBOL),
+    [coordinator],
+    'subscription enrollment coordinator references',
+  );
+}
+
+function unexpectedSubscriptionBoundaryConsumers(sources, ownership) {
+  const repository = ownership.subscriptionCheckpointRepository;
+  const coordinator = ownership.subscriptionEnrollmentCoordinator;
+  const writers = new RegExp(`\\b(?:${SUBSCRIPTION_ENROLLMENT_WRITERS.join('|')})\\b`);
+  const executableSources = new Map([...sources].map(([file, source]) => [
+    file,
+    source.replace(/\bexport\s*\{[\s\S]*?\}\s*from\s*['"][^'"]+['"]\s*;?/g, ''),
+  ]));
+  const writerConsumers = actualReferenceFiles(executableSources, writers);
+  const coordinatorConsumers = actualReferenceFiles(
+    sources,
+    /['"][^'"]*subscriptionCheckpointEnrollment(?:\.[cm]?[jt]s)?['"]|\bcreateSubscriptionCheckpointEnrollment\b/,
+  );
+  const allowedWriters = new Set([repository, coordinator]);
+  return [...new Set([
+    ...writerConsumers.filter(file => !allowedWriters.has(file)),
+    ...coordinatorConsumers.filter(file => file !== coordinator),
+  ])].sort();
 }
 
 function unexpectedAdmissionConsumers(
@@ -407,6 +474,15 @@ export function checkWalletSyncLifecycleContract(root) {
   if (admissionConsumers.length > 0) {
     errors.push(
       `durable admission producer activated before cutover: ${admissionConsumers.join(', ')}`,
+    );
+  }
+  const subscriptionConsumers = unexpectedSubscriptionBoundaryConsumers(
+    sources,
+    contract.futureOwnership,
+  );
+  if (subscriptionConsumers.length > 0) {
+    errors.push(
+      `subscription enrollment activated outside its dormant boundary: ${subscriptionConsumers.join(', ')}`,
     );
   }
   compareDirectCalls(sources, contract.inventory.directExecutorCalls, errors);

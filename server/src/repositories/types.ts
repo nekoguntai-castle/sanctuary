@@ -210,6 +210,30 @@ export interface SubscriptionEnrollmentCandidate extends SubscriptionCheckpointS
   checkpointMissing: boolean;
 }
 
+export type SubscriptionEnrollmentRequestResult =
+  | {
+    status: 'requested' | 'merged';
+    state: SubscriptionCheckpointState;
+  }
+  | { status: 'generation_exhausted' | 'not_applied' };
+
+export interface SubscriptionEnrollmentCompletionInput {
+  addressId: string;
+  address: string;
+  network: NetworkType;
+  generation: number;
+  scriptHash: string;
+  observedStatus: string | null;
+  observedAt: Date;
+}
+
+export type SubscriptionEnrollmentCompletionResult =
+  | {
+    status: 'applied';
+    state: SubscriptionCheckpointState;
+  }
+  | { status: 'not_applied' };
+
 /** Repository-managed patches; callers cannot set the monotonic version. */
 export type WalletSyncStatePatch = Partial<Omit<WalletSyncState, 'syncStateVersion'>>;
 

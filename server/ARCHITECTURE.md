@@ -200,6 +200,17 @@ durable admission service currently has one generation-bound worker consumer,
 but no production producer or repair loop. Existing v1 producers and legacy
 execution remain unchanged until the separate activation release.
 
+Subscription checkpoint enrollment has the same additive boundary. The only
+checkpoint request/completion writers live in
+`src/repositories/subscriptionCheckpointRepository.ts`; the bounded coordinator
+in `src/services/sync/subscriptionCheckpointEnrollment.ts` is the completion
+writer's only service consumer, while the request writer has no production
+consumer. It accepts injected batch subscription I/O and is deliberately not
+wired into API, server, worker, Electrum-manager, or recovery startup. The
+executable lifecycle contract inventories both writers and the coordinator so a
+production consumer cannot appear before the separate subscription-ownership
+activation review.
+
 The wallet sync process uses a modular pipeline architecture where each phase is an independent, testable function. The pipeline orchestrator executes phases in sequence, passing a shared context object between them.
 
 **Location:** `src/services/bitcoin/sync/`

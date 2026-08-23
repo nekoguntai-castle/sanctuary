@@ -19,9 +19,32 @@ vi.mock('../../../src/generated/prisma/client', () => ({
 }));
 
 import {
+  completeSubscriptionEnrollment,
   findPendingSubscriptionEnrollments,
   findSubscriptionCheckpoint,
+  requestSubscriptionEnrollment,
 } from '../../../src/repositories/subscriptionCheckpointRepository';
+import type { SubscriptionCheckpointState } from '../../../src/repositories/types';
+
+const NOW = new Date('2026-08-22T10:00:00.000Z');
+const SCRIPT_HASH = 'a'.repeat(64);
+const OBSERVED_STATUS = 'b'.repeat(64);
+
+function checkpointState(
+  overrides: Partial<SubscriptionCheckpointState> = {},
+): SubscriptionCheckpointState {
+  return {
+    addressId: 'address-1',
+    network: 'signet',
+    scriptHash: null,
+    statusKnown: false,
+    observedStatus: null,
+    lastObservedAt: null,
+    requestedEnrollmentGeneration: 1,
+    processedEnrollmentGeneration: 0,
+    ...overrides,
+  };
+}
 
 describe('subscriptionCheckpointRepository readers', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -71,6 +94,135 @@ describe('subscriptionCheckpointRepository readers', () => {
       network: 'mainnet',
       limit,
     })).rejects.toThrow('positive integer');
+    expect(mocks.queryRaw).not.toHaveBeenCalled();
+  });
+
+  it('requests one pending generation and coalesces a repeated request', async () => {
+    mocks.queryRaw
+      .mockResolvedValueOnce([{
+        ...checkpointState(),
+        inserted: true,
+        previousRequestedGeneration: null,
+      }])
+      .mockResolvedValueOnce([{
+        ...checkpointState(),
+        inserted: false,
+        previousRequestedGeneration: 1,
+      }]);
+
+    await expect(requestSubscriptionEnrollment('address-1', 'signet')).resolves.toMatchObject({
+      status: 'requested',
+      state: { requestedEnrollmentGeneration: 1 },
+    });
+    await expect(requestSubscriptionEnrollment('address-1', 'signet')).resolves.toMatchObject({
+      status: 'merged',
+      state: { requestedEnrollmentGeneration: 1 },
+    });
+
+    const query = mocks.queryRaw.mock.calls[0][0];
+    expect(query.strings.join('')).toContain('GREATEST');
+    expect(query.strings.join('')).toContain('(xmax = 0)');
+    expect(query.strings.join('')).toContain('"wallets"."network" = ');
+    expect(query.values).toContain(2_147_483_647);
+  });
+
+  it('fails closed when the enrollment generation is exhausted', async () => {
+    mocks.queryRaw.mockResolvedValue([]);
+    mocks.checkpointFindUnique.mockResolvedValue(checkpointState({
+      requestedEnrollmentGeneration: 2_147_483_647,
+      processedEnrollmentGeneration: 2_147_483_647,
+    }));
+
+    await expect(requestSubscriptionEnrollment('address-1', 'signet'))
+      .resolves.toEqual({ status: 'generation_exhausted' });
+  });
+
+  it('does not apply a request when the address or owning network is unavailable', async () => {
+    mocks.queryRaw.mockResolvedValue([]);
+    mocks.checkpointFindUnique.mockResolvedValue(null);
+
+    await expect(requestSubscriptionEnrollment('address-1', 'signet'))
+      .resolves.toEqual({ status: 'not_applied' });
+  });
+
+  it.each([
+    ['', 'signet', 'address ID'],
+    ['address-1', 'testnet', 'network'],
+  ] as const)('rejects invalid request identity %#', async (addressId, network, message) => {
+    await expect(requestSubscriptionEnrollment(addressId, network as 'signet'))
+      .rejects.toThrow(message);
+    expect(mocks.queryRaw).not.toHaveBeenCalled();
+  });
+
+  it('atomically completes the exact generation for the unchanged address', async () => {
+    const completed = checkpointState({
+      scriptHash: SCRIPT_HASH,
+      statusKnown: true,
+      observedStatus: OBSERVED_STATUS,
+      lastObservedAt: NOW,
+      processedEnrollmentGeneration: 1,
+    });
+    mocks.queryRaw.mockResolvedValue([completed]);
+
+    await expect(completeSubscriptionEnrollment({
+      addressId: 'address-1',
+      address: 'tb1qexample',
+      network: 'signet',
+      generation: 1,
+      scriptHash: SCRIPT_HASH,
+      observedStatus: OBSERVED_STATUS,
+      observedAt: NOW,
+    })).resolves.toEqual({ status: 'applied', state: completed });
+
+    const query = mocks.queryRaw.mock.calls[0][0];
+    const sql = query.strings.join('');
+    expect(sql).toContain('INSERT INTO "address_subscription_checkpoints"');
+    expect(sql).toContain('ON CONFLICT ("addressId") DO NOTHING');
+    expect(sql).toContain('"addresses"."address" = ');
+    expect(sql).toContain('"wallets"."network" = ');
+    expect(sql).toContain('"requestedEnrollmentGeneration" = ');
+    expect(sql).toContain('"processedEnrollmentGeneration" < ');
+    expect(query.values).toEqual(expect.arrayContaining([
+      'address-1',
+      'tb1qexample',
+      'signet',
+      1,
+      SCRIPT_HASH,
+      OBSERVED_STATUS,
+      NOW,
+    ]));
+  });
+
+  it('reports stale or concurrent completion as not applied', async () => {
+    mocks.queryRaw.mockResolvedValue([]);
+    await expect(completeSubscriptionEnrollment({
+      addressId: 'address-1',
+      address: 'tb1qexample',
+      network: 'signet',
+      generation: 1,
+      scriptHash: SCRIPT_HASH,
+      observedStatus: null,
+      observedAt: NOW,
+    })).resolves.toEqual({ status: 'not_applied' });
+  });
+
+  it.each([
+    [{ generation: 0 }, 'generation'],
+    [{ scriptHash: 'A'.repeat(64) }, 'script hash'],
+    [{ observedStatus: 'not-a-status' }, 'observed status'],
+    [{ observedAt: new Date('invalid') }, 'valid date'],
+    [{ address: ' ' }, 'address must be non-empty'],
+  ])('rejects invalid completion evidence %#', async (override, message) => {
+    await expect(completeSubscriptionEnrollment({
+      addressId: 'address-1',
+      address: 'tb1qexample',
+      network: 'signet',
+      generation: 1,
+      scriptHash: SCRIPT_HASH,
+      observedStatus: null,
+      observedAt: NOW,
+      ...override,
+    })).rejects.toThrow(message as string);
     expect(mocks.queryRaw).not.toHaveBeenCalled();
   });
 });

@@ -75,6 +75,20 @@ function fixtureContract() {
       file: 'server/src/jobs/syncJobContract.ts',
       role: 'v2_generation_consumer_contract',
     }] },
+    { symbol: 'completeSubscriptionEnrollment', entries: [{
+      file: 'server/src/repositories/index.ts',
+      role: 'neutral_repository_barrel_export',
+    }, {
+      file: 'server/src/repositories/subscriptionCheckpointRepository.ts',
+      role: 'canonical_checkpoint_completion_writer',
+    }, {
+      file: 'server/src/services/sync/subscriptionCheckpointEnrollment.ts',
+      role: 'dormant_subscription_enrollment_coordinator',
+    }] },
+    { symbol: 'createSubscriptionCheckpointEnrollment', entries: [{
+      file: 'server/src/services/sync/subscriptionCheckpointEnrollment.ts',
+      role: 'dormant_subscription_enrollment_coordinator_definition',
+    }] },
     { symbol: 'enqueueIncrementalSyncWakeup', entries: [{
       file: 'server/src/services/sync/syncIntentAdmission.ts',
       role: 'canonical_dormant_wakeup_adapter_composition',
@@ -83,6 +97,13 @@ function fixtureContract() {
       role: 'dormant_generation_wakeup_adapter_definition',
     }] },
     { symbol: 'findStale', entries: [] },
+    { symbol: 'requestSubscriptionEnrollment', entries: [{
+      file: 'server/src/repositories/index.ts',
+      role: 'neutral_repository_barrel_export',
+    }, {
+      file: 'server/src/repositories/subscriptionCheckpointRepository.ts',
+      role: 'canonical_checkpoint_request_writer',
+    }] },
     { symbol: 'syncIntentAdmission', entries: [{
       file: 'server/src/services/sync/syncIntentAdmission.ts',
       role: 'canonical_admission_singleton_definition',
@@ -142,6 +163,24 @@ function createFixture() {
       + 'void enqueueIncrementalSyncWakeup;\n'
       + 'export const syncIntentAdmission = {};\n',
   );
+  write(
+    root,
+    'server/src/repositories/subscriptionCheckpointRepository.ts',
+    'export function completeSubscriptionEnrollment() {}\n'
+      + 'export function requestSubscriptionEnrollment() {}\n',
+  );
+  write(
+    root,
+    'server/src/repositories/index.ts',
+    "export { completeSubscriptionEnrollment, requestSubscriptionEnrollment } from './subscriptionCheckpointRepository';\n",
+  );
+  write(
+    root,
+    'server/src/services/sync/subscriptionCheckpointEnrollment.ts',
+    "import { completeSubscriptionEnrollment } from '../../repositories/subscriptionCheckpointRepository';\n"
+      + 'void completeSubscriptionEnrollment;\n'
+      + 'export function createSubscriptionCheckpointEnrollment() {}\n',
+  );
   return root;
 }
 
@@ -153,6 +192,10 @@ test('live compatibility inventory matches production without claiming cutover',
   assert.equal(
     result.contract.compatibility.admissionState,
     'generation_consumer_enabled_no_production_producers',
+  );
+  assert.equal(
+    result.contract.compatibility.subscriptionEnrollmentState,
+    'dormant_no_production_consumers',
   );
 });
 
@@ -211,6 +254,20 @@ test('rejects premature cutover and lifecycle weakening', () => {
   assert.throws(
     () => parseWalletSyncLifecycleContract(JSON.stringify(weakened)),
     /lifecycle\.forbiddenWalletHistoryTriggers/,
+  );
+
+  const activatedEnrollment = fixtureContract();
+  activatedEnrollment.compatibility.subscriptionEnrollmentState = 'active';
+  assert.throws(
+    () => parseWalletSyncLifecycleContract(JSON.stringify(activatedEnrollment)),
+    /subscription enrollment must remain dormant/,
+  );
+
+  const movedCoordinator = fixtureContract();
+  movedCoordinator.futureOwnership.subscriptionEnrollmentCoordinator = 'server/src/worker.ts';
+  assert.throws(
+    () => parseWalletSyncLifecycleContract(JSON.stringify(movedCoordinator)),
+    /must name the dormant coordinator/,
   );
 });
 
@@ -272,6 +329,49 @@ test('rejects namespace and bracket repair activation from the permitted worker'
     checkWalletSyncLifecycleContract(root).errors.join('\n'),
     /durable admission producer activated before cutover/,
   );
+});
+
+test('rejects a directly aliased subscription checkpoint writer outside the coordinator', () => {
+  const root = createFixture();
+  write(
+    root,
+    'server/src/worker/earlyEnrollment.ts',
+    "import { requestSubscriptionEnrollment as request } from '../repositories/subscriptionCheckpointRepository';\n"
+      + "void request('address-1');\n",
+  );
+  assert.match(
+    checkWalletSyncLifecycleContract(root).errors.join('\n'),
+    /subscription enrollment activated outside its dormant boundary/,
+  );
+});
+
+test('rejects namespace and bracket checkpoint writer access outside the coordinator', () => {
+  const root = createFixture();
+  write(
+    root,
+    'server/src/worker/earlyEnrollment.ts',
+    "import * as checkpoints from '../repositories/subscriptionCheckpointRepository';\n"
+      + "void checkpoints['completeSubscriptionEnrollment'];\n",
+  );
+  assert.match(
+    checkWalletSyncLifecycleContract(root).errors.join('\n'),
+    /subscription enrollment activated outside its dormant boundary/,
+  );
+});
+
+test('rejects direct or namespace consumers of the dormant enrollment coordinator', () => {
+  const consumers = [
+    "import { createSubscriptionCheckpointEnrollment as create } from '../services/sync/subscriptionCheckpointEnrollment';\nvoid create;\n",
+    "import * as enrollment from '../services/sync/subscriptionCheckpointEnrollment';\nvoid enrollment.createSubscriptionCheckpointEnrollment;\n",
+  ];
+  for (const source of consumers) {
+    const root = createFixture();
+    write(root, 'server/src/worker/earlyEnrollment.ts', source);
+    assert.match(
+      checkWalletSyncLifecycleContract(root).errors.join('\n'),
+      /subscription enrollment activated outside its dormant boundary/,
+    );
+  }
 });
 
 test('requires ADR and architecture links to remain executable documentation', () => {

@@ -59,6 +59,8 @@ export type {
   IncrementalSyncRetryReleaseInput,
 } from './syncIntentRepository';
 export {
+  completeSubscriptionEnrollment,
+  requestSubscriptionEnrollment,
   subscriptionCheckpointRepository,
   default as subscriptionCheckpointRepo,
 } from './subscriptionCheckpointRepository';
@@ -90,6 +92,9 @@ export type {
   IncrementalSyncTerminalResult,
   SubscriptionCheckpointState,
   SubscriptionEnrollmentCandidate,
+  SubscriptionEnrollmentRequestResult,
+  SubscriptionEnrollmentCompletionInput,
+  SubscriptionEnrollmentCompletionResult,
   TransactionFilter,
   AddressFilter,
 } from './types';
