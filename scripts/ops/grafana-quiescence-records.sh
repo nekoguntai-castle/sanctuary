@@ -38,10 +38,64 @@ validate_control_helper_identity() {
         && [ "$nonce" = "$expected_nonce" ]
 }
 
+last_observed_control_helper_state=""
+last_observed_control_helper_exit_code=""
+
+await_terminal_control_helper_identity() {
+    local helper_id="$1" expected_owner="$2" expected_operation="$3" expected_nonce="$4" wait_code="$5"
+    local attempt=1 identity state exit_code
+
+    while :; do
+        identity="$(inspect_control_helper "$helper_id")" || return 2
+        validate_control_helper_identity \
+            "$identity" "$helper_id" "$expected_owner" "$expected_operation" "$expected_nonce" \
+            || return 3
+        IFS='|' read -r _ _ state exit_code _ <<< "$identity"
+        last_observed_control_helper_state="$state"
+        last_observed_control_helper_exit_code="$exit_code"
+        if [ "$state" = "exited" ] && [ "$exit_code" = "$wait_code" ]; then
+            return 0
+        fi
+        [ "$attempt" -lt "$control_helper_terminal_settle_attempts" ] || return 1
+        attempt=$((attempt + 1))
+        sleep "$control_helper_terminal_settle_delay"
+    done
+}
+
+complete_control_helper() {
+    local helper_id="$1" operation="$2" nonce="$3"
+    local status output wait_output settle_status
+
+    docker container start "$helper_id" >/dev/null \
+        || fail "Grafana control helper start failed."
+    wait_output="$(docker wait "$helper_id")" \
+        || fail "Grafana control helper completion is unavailable."
+    case "$wait_output" in
+        ''|*[!0-9]*) fail "Grafana control helper exit status is invalid." ;;
+    esac
+    status="$wait_output"
+    output="$(docker logs "$helper_id")" \
+        || fail "Grafana control helper output is unavailable."
+    settle_status=0
+    await_terminal_control_helper_identity \
+        "$helper_id" "$wrapper_owner_token" "$operation" "$nonce" "$status" \
+        || settle_status=$?
+    [ "$settle_status" != "2" ] \
+        || fail "completed Grafana control helper identity is unavailable."
+    [ "$settle_status" != "3" ] \
+        || fail "completed Grafana control helper identity is invalid."
+    [ "$settle_status" = "0" ] \
+        || fail "Grafana control helper terminal state is inconsistent (state=$last_observed_control_helper_state exit_code=$last_observed_control_helper_exit_code wait_code=$status)."
+    docker container rm "$helper_id" >/dev/null \
+        || fail "completed Grafana control helper could not be removed."
+    [ "$status" -eq 0 ] || fail "Grafana control helper failed with exit code $status."
+    CONTROL_HELPER_OUTPUT="$output"
+}
+
 run_control_helper() {
     local operation="$1" command="$2"
     shift 2
-    local nonce helper_name id identity state exit_code status output
+    local nonce helper_name id identity state
     nonce="$(openssl rand -hex 16)"
     helper_name="${resolved_project}-sanctuary-grafana-control-${nonce}"
     id="$(docker container create --pull never --name "$helper_name" \
@@ -60,23 +114,9 @@ run_control_helper() {
         || fail "created Grafana control helper identity is unavailable."
     validate_control_helper_identity "$identity" "$id" "$wrapper_owner_token" "$operation" "$nonce" \
         || fail "created Grafana control helper identity is invalid."
-    IFS='|' read -r _ _ state exit_code _ <<< "$identity"
+    IFS='|' read -r _ _ state _ <<< "$identity"
     [ "$state" = "created" ] || fail "created Grafana control helper is not startable."
-    set +e
-    output="$(docker container start -a "$id")"
-    status=$?
-    set -e
-    identity="$(inspect_control_helper "$id")" \
-        || fail "completed Grafana control helper identity is unavailable."
-    validate_control_helper_identity "$identity" "$id" "$wrapper_owner_token" "$operation" "$nonce" \
-        || fail "completed Grafana control helper identity is invalid."
-    IFS='|' read -r _ _ state exit_code _ <<< "$identity"
-    [ "$state" = "exited" ] && [ "$exit_code" = "$status" ] \
-        || fail "Grafana control helper terminal state is inconsistent."
-    docker container rm "$id" >/dev/null \
-        || fail "completed Grafana control helper could not be removed."
-    [ "$status" -eq 0 ] || fail "Grafana control helper failed with exit code $status."
-    CONTROL_HELPER_OUTPUT="$output"
+    complete_control_helper "$id" "$operation" "$nonce"
 }
 
 daemon_epoch() {
