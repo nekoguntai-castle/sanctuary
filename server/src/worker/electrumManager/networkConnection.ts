@@ -153,11 +153,28 @@ export function setupEventHandlers(
   // Handle new blocks
   client.on('newBlock', (block: { height: number; hex: string }) => {
     if (!isRunning()) return;
+
+    // `hashBlockHeader` rejects a header that is not exactly 80 bytes. The
+    // Electrum layer already validates the notification before emitting, so this
+    // should be unreachable — but this listener runs synchronously from the
+    // socket 'data' handler in a long-running worker, where an uncaught throw
+    // would take the process down. Do not depend on another module's validation
+    // holding: drop the block and keep the connection alive.
+    let blockHash: string;
+    try {
+      blockHash = hashBlockHeader(block.hex);
+    } catch (error) {
+      log.warn(`Discarding malformed ${network} block header at height ${block.height}`, {
+        reason: getErrorMessage(error, 'Unknown error'),
+      });
+      return;
+    }
+
     state.lastBlockHeight = block.height;
     setCachedBlockHeight(block.height, network);
 
     log.info(`New ${network} block at height ${block.height}`);
-    callbacks.onNewBlock(network, block.height, hashBlockHeader(block.hex));
+    callbacks.onNewBlock(network, block.height, blockHash);
   });
 
   // Handle address activity

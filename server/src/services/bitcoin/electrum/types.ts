@@ -76,11 +76,43 @@ export const ServerVersionSchema = z.tuple([z.string(), z.string()]);
 export const ServerFeaturesSchema = z.record(z.string(), z.unknown());
 
 /**
- * Block headers subscribe response schema
+ * A Bitcoin block header is exactly 80 bytes, so 160 hex characters. Pinning the
+ * length matters because `Buffer.from(hex, 'hex')` truncates silently at the
+ * first invalid pair, so an unconstrained string would hash to a valid-looking
+ * digest of the wrong bytes.
+ */
+export const BlockHeaderHexSchema = z.string().regex(
+  /^[0-9a-fA-F]{160}$/,
+  'expected a 160-character hex block header (80 bytes)',
+);
+
+/**
+ * Block headers subscribe response schema.
+ *
+ * `hex` is deliberately NOT constrained to a 160-character header here, unlike
+ * the notification schema below. Today this path consumes only `height` (see
+ * `worker/electrumManager/networkConnection.ts`), so tightening `hex` would
+ * guard nothing — while a throw from `subscribeHeaders()` is swallowed by that
+ * module's catch, which logs and schedules no reconnect, leaving the network
+ * permanently unsubscribed. Tighten this only together with a fix to that catch,
+ * at the point the reconnect tip is actually routed through the header
+ * classifier.
  */
 export const HeadersSubscribeSchema = z.object({
   height: z.number().int().min(0),
   hex: z.string(),
+});
+
+/**
+ * Header pushed by `blockchain.headers.subscribe`. Same payload as the subscribe
+ * response, but it arrives unsolicited from a server we do not control AND is
+ * consumed in full: the height feeds the process tip cache that confirmation
+ * counts derive from, and the hex is hashed into the block identity used as a
+ * confirmation job id. So it is validated strictly at the point of receipt.
+ */
+export const BlockHeaderNotificationSchema = z.object({
+  height: z.number().int().min(0),
+  hex: BlockHeaderHexSchema,
 });
 
 // ==============================================================================

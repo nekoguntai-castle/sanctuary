@@ -23,11 +23,29 @@ const NETWORK_LABELS: Record<NetworkType, string> = {
   regtest: "Regtest",
 };
 
+/** A Bitcoin block header is exactly 80 bytes, so 160 hex characters. */
+const BLOCK_HEADER_HEX_PATTERN = /^[0-9a-fA-F]{160}$/;
+
 /**
  * Hash a raw Bitcoin block header using the standard double-SHA256 algorithm.
  * The digest is reversed to the big-endian display order used by block hashes.
+ *
+ * The input is validated because `Buffer.from(hex, 'hex')` truncates silently at
+ * the first invalid pair: `'zzzz'` decodes to zero bytes and `'abc'` to one, so
+ * a malformed header would otherwise yield a valid-looking 64-hex digest of the
+ * wrong bytes with no error. Header bytes arrive from an Electrum server we do
+ * not control, and this digest becomes the block identity in the confirmation
+ * job id — and durable reorg evidence once per-network header state lands — so
+ * it must fail closed rather than hash whatever it can decode.
+ *
+ * @throws {Error} if `headerHex` is not exactly 160 hex characters. Callers on a
+ * long-running path must handle this rather than let it escape — see the guard
+ * in `worker/electrumManager/networkConnection.ts`.
  */
 export function hashBlockHeader(headerHex: string): string {
+  if (!BLOCK_HEADER_HEX_PATTERN.test(headerHex)) {
+    throw new Error('Invalid Bitcoin block header: expected 160 hex characters (80 bytes)');
+  }
   const header = Buffer.from(headerHex, "hex");
   const first = createHash("sha256").update(header).digest();
   const second = createHash("sha256").update(first).digest();

@@ -9,6 +9,7 @@ import { EventEmitter } from 'events';
 import { createLogger } from '../../../utils/logger';
 import { parseResponseBuffer, isNotification, processResponse } from './protocol';
 import {
+  BlockHeaderNotificationSchema,
   parseElectrumSubscriptionStatus,
   type ElectrumResponse,
   type PendingRequest,
@@ -74,12 +75,23 @@ export function handleNotification(
   const { method, params } = notification;
 
   if (method === 'blockchain.headers.subscribe') {
-    const blockHeader = params?.[0] as { height: number; hex: string } | undefined;
-    if (blockHeader) {
-      log.info(`[NOTIFICATION] New block at height ${blockHeader.height}`);
+    // Validate rather than cast. This header is unsolicited input from a server
+    // we do not control, and everything downstream treats it as fact: the height
+    // is written into the process tip cache that confirmation counts derive
+    // from, and the hex is hashed into the block identity used as a confirmation
+    // job id. A malformed notification must emit nothing at all.
+    const blockHeader = BlockHeaderNotificationSchema.safeParse(params?.[0]);
+    if (blockHeader.success) {
+      log.info(`[NOTIFICATION] New block at height ${blockHeader.data.height}`);
       emitter.emit('newBlock', {
-        height: blockHeader.height,
-        hex: blockHeader.hex,
+        height: blockHeader.data.height,
+        hex: blockHeader.data.hex,
+      });
+    } else {
+      // Warn, not debug: a server that persistently sends malformed headers
+      // stops tip advancement altogether, and that stall is otherwise silent.
+      log.warn('[NOTIFICATION] Discarding malformed block header notification', {
+        reason: blockHeader.error.issues[0]?.message,
       });
     }
   } else if (method === 'blockchain.scripthash.subscribe') {

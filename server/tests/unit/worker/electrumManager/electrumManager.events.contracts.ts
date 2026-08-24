@@ -16,6 +16,36 @@ const SAME_PARENT_REPLACEMENT_HEADER = `${'a'.repeat(64)}${'b'.repeat(96)}`;
 
 export function registerElectrumManagerEventContracts() {
   describe('event handling', () => {
+    // The Electrum layer validates header notifications before emitting, so a
+    // malformed hex should never reach here. But this listener runs
+    // synchronously from the socket 'data' handler in a 24/7 worker, where an
+    // uncaught throw from hashBlockHeader would take the process down. Prove the
+    // guard drops the block and leaves everything else untouched.
+    it('discards a malformed block header without throwing or advancing the tip', async () => {
+      vi.mocked(acquireLock).mockResolvedValueOnce({
+        key: 'lock', token: 'token', expiresAt: Date.now() + 30_000, isLocal: false,
+      });
+      vi.mocked(prisma.address.findMany).mockResolvedValueOnce([]);
+
+      await manager.start();
+      vi.mocked(setCachedBlockHeight).mockClear();
+      vi.mocked(mockCallbacks.onNewBlock).mockClear();
+
+      expect(() => mockClient.emit('newBlock', { height: 404, hex: 'not-a-header' }))
+        .not.toThrow();
+
+      expect(mockCallbacks.onNewBlock).not.toHaveBeenCalled();
+      expect(setCachedBlockHeight).not.toHaveBeenCalled();
+
+      // The connection stays usable: a well-formed header still lands.
+      mockClient.emit('newBlock', { height: 405, hex: BLOCK_HEADER });
+      expect(mockCallbacks.onNewBlock).toHaveBeenCalledWith(
+        'mainnet',
+        405,
+        hashBlockHeader(BLOCK_HEADER),
+      );
+    });
+
     it('invokes callbacks for new blocks and address activity', async () => {
       vi.mocked(acquireLock).mockResolvedValueOnce({
         key: 'lock', token: 'token', expiresAt: Date.now() + 30_000, isLocal: false,

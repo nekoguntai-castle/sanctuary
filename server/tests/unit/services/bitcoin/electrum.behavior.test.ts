@@ -143,7 +143,7 @@ describe('ElectrumClient behavior', () => {
     const status = 'a'.repeat(64);
     vi.spyOn(client as any, 'request')
       .mockResolvedValueOnce(status)
-      .mockResolvedValueOnce({ height: 123, hex: 'abcd' })
+      .mockResolvedValueOnce({ height: 123, hex: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' })
       .mockResolvedValueOnce('headerhex')
       .mockResolvedValueOnce({ height: 456 });
     vi.spyOn(client as any, 'batchRequest')
@@ -161,7 +161,7 @@ describe('ElectrumClient behavior', () => {
     expect((await client.getAddressHistoryBatch([testAddress])).get(testAddress)).toBeDefined();
     expect((await client.getAddressUTXOsBatch([testAddress])).get(testAddress)).toBeDefined();
 
-    await expect(client.subscribeHeaders()).resolves.toEqual({ height: 123, hex: 'abcd' });
+    await expect(client.subscribeHeaders()).resolves.toEqual({ height: 123, hex: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' });
     expect(client.isSubscribedToHeaders()).toBe(true);
     await expect(client.getBlockHeader(100)).resolves.toBe('headerhex');
     await expect(client.getBlockHeight()).resolves.toBe(456);
@@ -275,7 +275,7 @@ describe('ElectrumClient behavior', () => {
       jsonrpc: '2.0',
       id: null,
       method: 'blockchain.headers.subscribe',
-      params: [{ height: 999, hex: 'beef' }],
+      params: [{ height: 999, hex: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }],
     }, client, (client as any).scriptHashToAddress);
     handleNotification({
       jsonrpc: '2.0',
@@ -290,7 +290,7 @@ describe('ElectrumClient behavior', () => {
       params: [],
     }, client, (client as any).scriptHashToAddress);
 
-    expect(newBlock).toHaveBeenCalledWith({ height: 999, hex: 'beef' });
+    expect(newBlock).toHaveBeenCalledWith({ height: 999, hex: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' });
     expect(addrActivity).toHaveBeenCalledWith(expect.objectContaining({
       scriptHash: 'hash1',
       address: testAddress,
