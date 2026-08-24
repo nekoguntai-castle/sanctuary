@@ -19,7 +19,7 @@ import { Semaphore } from '../../../../events/semaphore';
 import { executeInChunks } from './batchUpdates';
 import { fetchBlockHeightsFromHistory, fetchTransactionDetails, fetchPreviousTransactions } from './fetchHelpers';
 import { processTransactionUpdates } from './processUpdates';
-import { normalizeLegacyBitcoinNetwork } from '../../networks';
+import { resolvePersistedBitcoinNetwork } from '../../networks';
 import type {
   ConfirmationUpdate,
   PopulationStats,
@@ -64,7 +64,7 @@ export async function populateMissingTransactionFields(
   // Acquire semaphore to limit concurrent populate operations
   return populateSemaphore.run(async () => {
     signal?.throwIfAborted();
-    const castNetwork = normalizeLegacyBitcoinNetwork(network, 'mainnet');
+    const castNetwork = resolvePersistedBitcoinNetwork(network);
     const client = await getNodeClient(castNetwork);
 
     // Find transactions with missing fields

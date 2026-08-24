@@ -15,7 +15,7 @@ import {
   syncWallet,
 } from '../../services/bitcoin/blockchain';
 import { populateMissingTransactionFields } from '../../services/bitcoin/sync/confirmations';
-import { normalizeLegacyBitcoinNetwork } from '../../services/bitcoin/networks';
+import { resolvePersistedBitcoinNetwork, type BitcoinNetwork } from '../../services/bitcoin/networks';
 import { classifyWalletSyncFailure } from '../../services/sync/failureClassification';
 import {
   syncIntentAdmission,
@@ -58,6 +58,21 @@ class LostIncrementalSyncFenceError extends Error {
   constructor(walletId: string, generation: number) {
     super(`Incremental sync fence was lost for wallet ${walletId} generation ${generation}`);
     this.name = 'LostIncrementalSyncFenceError';
+  }
+}
+
+/**
+ * A failure that no retry can repair, such as a persisted wallet network the
+ * vocabulary does not recognise. The catch in `executeCanonicalIncrementalSync`
+ * releases these straight to `action_required` regardless of attempt number, and
+ * rethrows them as `UnrecoverableError` so BullMQ stops retrying. Releasing for
+ * retry instead would let bounded recovery keep re-waking a wallet that can
+ * never succeed, and it would never surface to an operator.
+ */
+class PermanentIncrementalSyncError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PermanentIncrementalSyncError';
   }
 }
 
@@ -175,8 +190,22 @@ export async function executeCanonicalIncrementalSync(
   ));
 
   try {
+    // An unrecognised persisted network is a permanent property of the row:
+    // retrying cannot repair it. Raise it as a typed permanent failure so the
+    // catch below releases straight to action_required through the single
+    // existing release callsite, rather than adding a second wallet-history
+    // producer callsite to the frozen inventory.
+    let resolvedNetwork: BitcoinNetwork;
+    try {
+      resolvedNetwork = resolvePersistedBitcoinNetwork(walletNetwork);
+    } catch {
+      throw new PermanentIncrementalSyncError(
+        `Wallet ${data.walletId} has an unrecognised persisted network; refusing to route sync work`,
+      );
+    }
+
     if (data.fullResync === true) {
-      await assertChainReachable(normalizeLegacyBitcoinNetwork(walletNetwork, 'mainnet'));
+      await assertChainReachable(resolvedNetwork);
       await resyncRepository.resetWalletForFullResync(
         data.walletId,
         data.fullResyncGeneration,
@@ -200,7 +229,7 @@ export async function executeCanonicalIncrementalSync(
     );
     execution.throwIfAborted();
 
-    const network = normalizeLegacyBitcoinNetwork(walletNetwork, 'mainnet');
+    const network = resolvedNetwork;
     const syncedAt = new Date();
     const success = {
       syncedAt,
@@ -235,7 +264,8 @@ export async function executeCanonicalIncrementalSync(
     const releasedAt = new Date();
     const errorMessage = getErrorMessage(error, 'Unknown error');
     const failureClass = classifyWalletSyncFailure(errorMessage);
-    const finalAttempt = dependencies.isFinalAttempt(job);
+    const permanent = error instanceof PermanentIncrementalSyncError;
+    const finalAttempt = permanent || dependencies.isFinalAttempt(job);
     const terminal = finalAttempt
       ? await syncIntentAdmission.releaseAsActionRequired(data.walletId, fence, {
         actionRequiredAt: releasedAt,
@@ -260,6 +290,7 @@ export async function executeCanonicalIncrementalSync(
         jobId: job.id,
       });
     }
+    if (permanent) throw new UnrecoverableError(errorMessage);
     throw error;
   }
 }

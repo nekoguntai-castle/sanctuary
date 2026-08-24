@@ -5,7 +5,14 @@ import { mockGetBlockTimestamp, mockGetNodeClient } from './confirmationsTestHar
 import { populateMissingTransactionFields } from '../../../../../../src/services/bitcoin/sync/confirmations';
 
 export function registerPopulateMissingTransactionFieldsNetworkHistoryContracts() {
-  it('covers network fallback and blockTime derivation branches when wallet has no addresses', async () => {
+  // This case previously mocked `network: ''` and asserted the node client was
+  // built for 'mainnet', pinning the fail-open fallback that
+  // `config/wallet-sync-lifecycle-contract.json` forbids
+  // (`invalidPersistedNetworkPolicy: fail_closed_without_mainnet_fallback`). An
+  // empty persisted network now throws — see the persisted-network-resolution
+  // contracts. The blockTime-derivation branches this case exists to cover are
+  // unchanged and are exercised here against a valid network.
+  it('covers blockTime derivation branches when wallet has no addresses', async () => {
     const mockClient = {
       getAddressHistory: vi.fn(async () => [{ tx_hash: 'tx-no-height', height: 0 }]),
       getTransaction: vi.fn(async (txid: string) => {
@@ -16,7 +23,7 @@ export function registerPopulateMissingTransactionFieldsNetworkHistoryContracts(
       }),
     };
 
-    mockPrismaClient.wallet.findUnique.mockResolvedValue({ network: '' });
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({ network: 'mainnet' });
     mockGetNodeClient.mockResolvedValue(mockClient);
     mockPrismaClient.transaction.findMany.mockResolvedValue([
       {

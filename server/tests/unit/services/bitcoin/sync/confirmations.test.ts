@@ -7,11 +7,16 @@ import { registerPopulateMissingTransactionFieldsErrorHandlingContracts } from '
 import { registerPopulateMissingTransactionFieldsMainFlowContracts } from './confirmations/confirmations.populate-main-flow.contracts';
 import { registerPopulateMissingTransactionFieldsMixedFallbacksContracts } from './confirmations/confirmations.populate-mixed-fallbacks.contracts';
 import { registerPopulateMissingTransactionFieldsNetworkHistoryContracts } from './confirmations/confirmations.populate-network-history.contracts';
+import { registerConfirmationsNetworkFailClosedContracts } from './confirmations/confirmations.network-fail-closed.contracts';
 import { registerConfirmationsTestHarness } from './confirmations/confirmationsTestHarness';
 import { registerUpdateTransactionConfirmationsContracts } from './confirmations/confirmations.update.contracts';
 
 describe('confirmations service', () => {
   registerConfirmationsTestHarness();
+
+  describe('persisted network resolution', () => {
+    registerConfirmationsNetworkFailClosedContracts();
+  });
 
   describe('updateTransactionConfirmations', () => {
     registerUpdateTransactionConfirmationsContracts();

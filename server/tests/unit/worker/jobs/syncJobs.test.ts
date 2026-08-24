@@ -14,6 +14,7 @@ import {
 } from './syncJobs.test.fixtures';
 
 const syncJobPrismaMocks = vi.hoisted(() => ({
+  walletFindUnique: vi.fn<(args?: unknown) => Promise<unknown>>(),
   walletFindMany: vi.fn<() => Promise<unknown[]>>(),
   walletUpdate: vi.fn<(args?: unknown) => Promise<unknown>>(),
   publishLifecycle: vi.fn<(...args: unknown[]) => Promise<void>>(),
@@ -63,7 +64,7 @@ vi.mock('../../../../src/models/prisma', () => ({
     const client: any = {
     wallet: {
       findMany: syncJobPrismaMocks.walletFindMany,
-      findUnique: vi.fn().mockResolvedValue({ network: 'mainnet' }),
+      findUnique: syncJobPrismaMocks.walletFindUnique,
       update: syncJobPrismaMocks.walletUpdate,
     },
     address: {
@@ -164,6 +165,7 @@ function persistedSyncState(args?: unknown, stateVersion = 1): Record<string, un
 describe('Sync Jobs', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    syncJobPrismaMocks.walletFindUnique.mockResolvedValue({ network: 'mainnet' });
     mockReadStaleWalletSchedulePolicy.mockResolvedValue({ mode: 'legacy_enabled' });
     let stateVersion = 0;
     syncJobPrismaMocks.walletUpdate.mockImplementation(async (args: unknown) => (
@@ -386,6 +388,77 @@ describe('Sync Jobs', () => {
       );
 
       expect(syncIntentMocks.claimFresh).not.toHaveBeenCalled();
+      expect(syncWallet).not.toHaveBeenCalled();
+    });
+
+    // A persisted network the vocabulary does not recognise is a permanent
+    // property of the row: retrying cannot repair it. Previously this value
+    // resolved to 'mainnet', routing the wallet at the funds-bearing network's
+    // tip. It must now fail closed, and must do so in a way that is BOTH
+    // non-retryable and durably visible: release straight to action_required,
+    // publish the terminal transition, and raise UnrecoverableError. Releasing
+    // for retry instead would let bounded recovery re-wake a wallet that can
+    // never succeed, and it would never surface to an operator.
+    it('fails a wake-up closed when the persisted network is unrecognised', async () => {
+      syncJobPrismaMocks.walletFindUnique.mockResolvedValue({ network: 'bogus-network' });
+      syncIntentMocks.claimFresh.mockResolvedValueOnce({
+        status: 'claimed',
+        claim: { generation: 1, leaseToken: 'lease-1' },
+        state: canonicalIntentState(),
+      });
+      syncIntentMocks.releaseAsActionRequired.mockResolvedValueOnce({
+        status: 'applied',
+        state: canonicalIntentState(),
+      });
+
+      const rejection = await syncWalletJob.handler(
+        canonicalJob(),
+        acquiredExecution(),
+      ).then(() => null, (error: unknown) => error);
+
+      expect(rejection).toBeInstanceOf(Error);
+      expect((rejection as Error).message).toMatch(/unrecognised persisted network/);
+      // The classification is the point: BullMQ must not retry a permanently
+      // invalid row. `jobFailureClassification` keys off Error.name.
+      expect((rejection as Error).name).toBe('UnrecoverableError');
+
+      // Terminal, not retryable — an operator must be able to see this wallet.
+      expect(syncIntentMocks.releaseAsActionRequired).toHaveBeenCalledWith(
+        'wallet-intent',
+        expect.objectContaining({ generation: 1, leaseToken: 'lease-1' }),
+        expect.objectContaining({ errorMessage: expect.stringMatching(/unrecognised persisted network/) }),
+      );
+      expect(syncIntentMocks.releaseForRetry).not.toHaveBeenCalled();
+      expect(syncJobPrismaMocks.publishLifecycle).toHaveBeenCalledWith(
+        expect.objectContaining({ walletId: 'wallet-intent', transition: 'failed' }),
+      );
+      expect(syncWallet).not.toHaveBeenCalled();
+    });
+
+    // Mirrors the generic catch's lost-fence branch: if the terminal release
+    // cannot re-assert the fence there is nothing durable to announce, so warn
+    // and still refuse to retry rather than publish a transition for a state we
+    // no longer own.
+    it('does not publish a terminal transition when the invalid-network release loses its fence', async () => {
+      syncJobPrismaMocks.walletFindUnique.mockResolvedValue({ network: 'bogus-network' });
+      syncIntentMocks.claimFresh.mockResolvedValueOnce({
+        status: 'claimed',
+        claim: { generation: 1, leaseToken: 'lease-1' },
+        state: canonicalIntentState(),
+      });
+      syncIntentMocks.releaseAsActionRequired.mockResolvedValueOnce({ status: 'lost_fence' });
+
+      const rejection = await syncWalletJob.handler(
+        canonicalJob(),
+        acquiredExecution(),
+      ).then(() => null, (error: unknown) => error);
+
+      expect((rejection as Error).name).toBe('UnrecoverableError');
+      // Only the 'started' transition — no terminal announcement for a fence we lost.
+      expect(syncJobPrismaMocks.publishLifecycle).toHaveBeenCalledTimes(1);
+      expect(syncJobPrismaMocks.publishLifecycle).toHaveBeenCalledWith(
+        expect.objectContaining({ transition: 'started' }),
+      );
       expect(syncWallet).not.toHaveBeenCalled();
     });
 

@@ -92,8 +92,16 @@ export function registerUpdateTransactionConfirmationsContracts() {
     expect(mockPrismaClient.wallet.findUnique).not.toHaveBeenCalled();
   });
 
-  it('uses network fallback and skips zero-height/unchanged transactions without writes', async () => {
-    mockPrismaClient.wallet.findUnique.mockResolvedValue({ network: '' });
+  // This case previously mocked `network: ''` and asserted the tip was read from
+  // 'mainnet', which pinned the fail-open fallback that
+  // `config/wallet-sync-lifecycle-contract.json` forbids
+  // (`invalidPersistedNetworkPolicy: fail_closed_without_mainnet_fallback`). An
+  // empty persisted network now throws — see the persisted-network-resolution
+  // contracts. The behaviour this case exists to cover, skipping zero-height and
+  // unchanged transactions without writes, is unchanged and is exercised here
+  // against a valid network.
+  it('skips zero-height/unchanged transactions without writes', async () => {
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({ network: 'mainnet' });
     mockPrismaClient.systemSetting.findUnique.mockResolvedValue({ value: '100' });
     mockPrismaClient.transaction.findMany.mockResolvedValue([
       { id: 't-zero', txid: 'tx-zero', blockHeight: 0, confirmations: 0 },

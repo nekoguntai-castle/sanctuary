@@ -9,7 +9,7 @@
 import { walletRepository, transactionRepository, systemSettingRepository } from '../../../../repositories';
 import { DEFAULT_DEEP_CONFIRMATION_THRESHOLD } from '../../../../constants';
 import { getBlockHeight } from '../../utils/blockHeight';
-import { normalizeLegacyBitcoinNetwork } from '../../networks';
+import { resolvePersistedBitcoinNetwork } from '../../networks';
 import { SystemSettingSchemas } from '../../../../utils/safeJson';
 import { executeInChunks } from './batchUpdates';
 import type { ConfirmationUpdate, PopulateFieldsCommitHandler } from './types';
@@ -33,7 +33,7 @@ export async function updateTransactionConfirmations(
   assertNotAborted(signal);
   if (network === null) return [];
 
-  const castNetwork = normalizeLegacyBitcoinNetwork(network, 'mainnet');
+  const castNetwork = resolvePersistedBitcoinNetwork(network);
 
   // Get deep confirmation threshold from settings
   const deepConfirmationThreshold = await systemSettingRepository.getParsed('deepConfirmationThreshold', SystemSettingSchemas.number, DEFAULT_DEEP_CONFIRMATION_THRESHOLD);
