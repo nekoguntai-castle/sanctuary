@@ -432,6 +432,26 @@ print_gate_banner() {
     fi
 }
 
+# Run a command with git's hook environment stripped.
+#
+# git exports GIT_INDEX_FILE, GIT_DIR and friends into every hook. `claude`
+# refreshes its plugin marketplaces on startup, and those marketplaces are
+# themselves git repositories — so any git command run inside one inherits
+# those variables and writes THAT repository's index entries into the index of
+# the repository being committed. The commit then dies during tree building:
+#
+#   error: invalid object 100644 <sha> for 'plugins/<x>/.claude-plugin/plugin.json'
+#   error: Error building trees
+#
+# with a blob this repository has never seen, and the corrupted index has to be
+# deleted and rebuilt by hand. Every agent invocation goes through here so the
+# stripping cannot be forgotten at one callsite.
+run_without_git_env() {
+    env -u GIT_INDEX_FILE -u GIT_DIR -u GIT_WORK_TREE -u GIT_PREFIX \
+        -u GIT_COMMON_DIR -u GIT_OBJECT_DIRECTORY \
+        -u GIT_ALTERNATE_OBJECT_DIRECTORIES "$@"
+}
+
 invoke_claude_agent() {
     # $1=claude_agent(empty=general) $2=prompt $3=output_file
     local claude_agent="$1"
@@ -439,9 +459,9 @@ invoke_claude_agent() {
     local output_file="$3"
 
     if [ -n "$claude_agent" ]; then
-        echo "$prompt" | claude --agent "$claude_agent" --print > "$output_file" 2>&1 || true
+        echo "$prompt" | run_without_git_env claude --agent "$claude_agent" --print > "$output_file" 2>&1 || true
     else
-        echo "$prompt" | claude --print > "$output_file" 2>&1 || true
+        echo "$prompt" | run_without_git_env claude --print > "$output_file" 2>&1 || true
     fi
 }
 

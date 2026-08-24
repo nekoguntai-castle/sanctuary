@@ -61,6 +61,11 @@ count="$(cat "$CLAUDE_COUNT_FILE" 2>/dev/null || printf '0')"
 count="$((count + 1))"
 printf '%s' "$count" > "$CLAUDE_COUNT_FILE"
 printf '%s\n' "$*" >> "$CLAUDE_ARGS_FILE"
+for var in GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_PREFIX GIT_COMMON_DIR \
+  GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES; do
+  eval "value=\${$var-<unset>}"
+  printf '%s=%s\n' "$var" "$value" >> "$CLAUDE_ENV_FILE"
+done
 cat > "$CLAUDE_PROMPT_DIR/prompt-${count}.txt"
 
 if [ -f "$CLAUDE_RESPONSE_DIR/${count}" ]; then
@@ -89,7 +94,9 @@ reset_case() {
   export CLAUDE_ARGS_FILE="$case_dir/args"
   export CLAUDE_PROMPT_DIR="$case_dir/prompts"
   export CLAUDE_RESPONSE_DIR="$case_dir/responses"
+  export CLAUDE_ENV_FILE="$case_dir/agent-env"
   : > "$CLAUDE_ARGS_FILE"
+  : > "$CLAUDE_ENV_FILE"
 }
 
 write_response() {
@@ -125,7 +132,7 @@ main() {
   trap cleanup EXIT
 
   local proceed_json='{"rubric":{"format":"OK"},"verdict":"PROCEED","issues":[]}'
-  local output cache_file
+  local output cache_file agent_env leaked_var
 
   reset_case "malformed-cache-rerun"
   cache_file="$(cache_file_for backend-quality)"
@@ -158,6 +165,29 @@ main() {
   assert_file_equals "2" "$CLAUDE_COUNT_FILE"
   assert_file_exists "$AGENT_TMP_DIR/backend-quality.stop"
   assert_file_absent "$cache_file"
+
+  # Non-regression: git exports its hook environment to every hook, and the
+  # agent refreshes plugin marketplaces that are themselves git repositories.
+  # Leaking GIT_INDEX_FILE/GIT_DIR into the agent lets a git command inside a
+  # marketplace write that repository's entries into the index being committed,
+  # which kills the commit with "error: Error building trees" and leaves a
+  # corrupted index behind.
+  reset_case "strips-git-env"
+  write_response 1 "$proceed_json"
+  GIT_INDEX_FILE="$TEST_TEMP_DIR/leaked-index" \
+  GIT_DIR="$TEST_TEMP_DIR/leaked-git-dir" \
+  GIT_WORK_TREE="$TEST_TEMP_DIR/leaked-work-tree" \
+  GIT_PREFIX="leaked/prefix/" \
+  GIT_COMMON_DIR="$TEST_TEMP_DIR/leaked-common-dir" \
+  GIT_OBJECT_DIRECTORY="$TEST_TEMP_DIR/leaked-objects" \
+  GIT_ALTERNATE_OBJECT_DIRECTORIES="$TEST_TEMP_DIR/leaked-alternates" \
+    run_agent >/dev/null 2>&1
+  assert_file_equals "1" "$CLAUDE_COUNT_FILE"
+  agent_env="$(cat "$CLAUDE_ENV_FILE")"
+  for leaked_var in GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_PREFIX \
+    GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES; do
+    assert_contains "$agent_env" "${leaked_var}=<unset>"
+  done
 
   echo "pre-commit agent gate regression checks passed"
 }
