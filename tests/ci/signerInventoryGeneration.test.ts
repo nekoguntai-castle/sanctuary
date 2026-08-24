@@ -7,13 +7,18 @@ import {
 } from '../../shared/constants/hardwareWalletCapabilities';
 
 import {
+  assertPrefiltersCoverMatchers,
   buildSignerInventory,
   checkSignerInventory,
+  collectPrefilterGaps,
+  ENFORCEMENT_PREFILTER,
+  FUNDS_EXECUTION_PREFILTER,
   OUTPUT_PATH,
   SOURCE_PATHS,
 } from '../../scripts/generate-signer-inventory.mjs';
 
 const readRepositoryFile = (path: string): string => readFileSync(resolve(path), 'utf8');
+const SOURCE_BACKSLASH = '\\';
 
 interface GeneratedCapabilityRow {
   id: string;
@@ -55,9 +60,87 @@ function overlayReader(path: string, transform: (source: string) => string) {
   };
 }
 
+function inventoryFailure(readFile: (path: string) => string, prefilter: boolean): string {
+  try {
+    buildSignerInventory(readFile, { prefilter });
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+  throw new Error(`Expected the ${prefilter ? 'filtered' : 'unfiltered'} scan to reject drift`);
+}
+
 describe('generated signer implementation inventory', { timeout: 20_000 }, () => {
   it('matches the checked-in deterministic projection', () => {
     expect(() => checkSignerInventory(readRepositoryFile)).not.toThrow();
+  });
+
+  // The walkers skip parsing any file whose text misses these prefilters. This is the load-
+  // bearing guarantee: run both scans with the prefilters disabled and require the emitted
+  // surfaces to be identical. Unlike a witness list, this catches a *new* matcher branch too —
+  // the unfiltered scan would find the surface the filtered scan skipped.
+  it('emits identical surfaces with the scan prefilters disabled', () => {
+    const filtered = buildSignerInventory(readRepositoryFile) as GeneratedInventory;
+    const unfiltered = buildSignerInventory(readRepositoryFile, {
+      prefilter: false,
+    }) as GeneratedInventory;
+    expect(unfiltered).toEqual(filtered);
+  });
+
+  it('keeps both scan prefilters at least as wide as the matchers they guard', () => {
+    expect(collectPrefilterGaps()).toEqual([]);
+    expect(() => assertPrefiltersCoverMatchers()).not.toThrow();
+  });
+
+  it.each([
+    ['identifier punctuation', 'export function broadcast$Signed(): void {}'],
+    ['escaped suffix', `export function broadcast${SOURCE_BACKSLASH}u0053igned(): void {}`],
+    ['escaped prefix', `export function ${SOURCE_BACKSLASH}u0062roadcastSigned(): void {}`],
+    ['hex-escaped quoted method',
+      `class EscapedName { '${SOURCE_BACKSLASH}x62roadcastSigned'(): void {} }`],
+    ['non-escape-character quoted method',
+      `class EscapedName { 'br${SOURCE_BACKSLASH}oadcastSigned'(): void {} }`],
+    ['quoted-method line continuation',
+      `class EscapedName { 'broad${SOURCE_BACKSLASH}\ncastSigned'(): void {} }`],
+  ])('does not let %s bypass the funds-execution prefilter', (_case, declaration) => {
+    const reader = overlayReader('src/App.tsx', (source) => `${source}\n${declaration}\n`);
+    const unfilteredFailure = inventoryFailure(reader, false);
+    expect(unfilteredFailure).toContain('Funds execution points drifted');
+    expect(inventoryFailure(reader, true)).toBe(unfilteredFailure);
+  });
+
+  it('does not let escaped identifiers bypass the enforcement prefilter', () => {
+    const reader = overlayReader('server/src/utils/errors.ts', (source) =>
+      `${source}\n${SOURCE_BACKSLASH}u0061ssertWalletHardwareCapabilityById('wallet', 'broadcast');\n`);
+    const unfilteredFailure = inventoryFailure(reader, false);
+    expect(unfilteredFailure).toContain('Server capability enforcement boundaries drifted');
+    expect(inventoryFailure(reader, true)).toBe(unfilteredFailure);
+  });
+
+  // A prefilter that matched everything would keep every other assertion green while silently
+  // restoring the whole-tree parse this change exists to avoid, so pin that it stays selective.
+  it('keeps both scan prefilters selective rather than degenerately broad', () => {
+    for (const noise of ['unrelatedHelperName', 'renderDashboardCard', '// plain comment']) {
+      expect(FUNDS_EXECUTION_PREFILTER.test(noise)).toBe(false);
+      expect(ENFORCEMENT_PREFILTER.test(noise)).toBe(false);
+    }
+  });
+
+  it('reports and throws when a prefilter is narrower than its matcher', () => {
+    // Exercise the reporting and failure paths without breaking the real configuration.
+    const narrowed = { fundsPrefilter: /broadcastTransaction/ };
+    const gaps = collectPrefilterGaps(narrowed);
+    expect(gaps.length).toBeGreaterThan(0);
+    expect(gaps.some((gap) => gap.includes('funds prefilter does not match'))).toBe(true);
+    expect(() => assertPrefiltersCoverMatchers(narrowed))
+      .toThrow(/prefilters are narrower than their matchers/);
+
+    const narrowedEnforcement = { enforcementPrefilter: /assertHardwareWalletCapability$/ };
+    expect(collectPrefilterGaps(narrowedEnforcement)
+      .some((gap) => gap.includes('enforcement prefilter does not match'))).toBe(true);
+
+    // The other reporting branch: a witness the matcher itself no longer recognises.
+    expect(collectPrefilterGaps({ witnesses: ['notARecognisedExecutionName'] }))
+      .toEqual(['executionCapability no longer recognises "notARecognisedExecutionName"']);
   });
 
   it('keeps every discovered surface disabled and identifies the open persisted domain', () => {

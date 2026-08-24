@@ -441,6 +441,109 @@ const BROADCAST_EXECUTION_NAMES = new Set([
   'broadcastWithConnectedHardwareWallet',
 ]);
 
+// Enforcement call sites recognised by serverCapabilityEnforcementSurfaces, mapped to the
+// argument index holding the capability literal (-1 means the capability is implied).
+// Hoisted to module scope so ENFORCEMENT_PREFILTER derives from the same table the AST walker
+// consumes, and so the self-guard below can assert the two never drift apart.
+const ENFORCEMENT_FUNCTIONS = new Map([
+  ['assertHardwareWalletCapability', 1],
+  ['assertWalletHardwareCapability', 1],
+  ['assertWalletHardwareCapabilityById', 1],
+  ['assertUnscopedRawTransactionBroadcastDisabled', -1],
+]);
+
+// Text prefilters. Both whole-tree walkers below build a full TypeScript AST (with parent
+// pointers) for every file under their roots, but a surface is only ever emitted when one of
+// the matched identifiers is physically present in the file text, or the file contains a
+// identifier or quoted-name escape that TypeScript may normalize into a matched name. The
+// funds walker accepts quoted method names, so any backslash makes it parse conservatively;
+// the enforcement walker accepts only identifiers and needs only Unicode identifier escapes.
+// Testing text first still skips the large majority of files that cannot match. Derived from
+// the matcher tables rather than hardcoded, so adding a name to either table widens the
+// prefilter with it; assertPrefiltersCoverMatchers() fails closed if that link ever breaks.
+const FUNDS_EXECUTION_PREFILTER_SOURCES = Object.freeze([
+  ...BROADCAST_EXECUTION_NAMES,
+  'broadcast.*Signed',
+  'finalize',
+  'signPSBT',
+  'signPsbt',
+  'signWith',
+  'uploadSignedPsbt',
+  'processQrSignedPsbt',
+]);
+export const FUNDS_EXECUTION_PREFILTER = new RegExp(FUNDS_EXECUTION_PREFILTER_SOURCES.join('|'));
+export const ENFORCEMENT_PREFILTER = new RegExp([...ENFORCEMENT_FUNCTIONS.keys()].join('|'));
+const SOURCE_BACKSLASH_PREFILTER = /\\/;
+const SOURCE_BACKSLASH_PATTERN = String.raw`\\`;
+const TYPESCRIPT_IDENTIFIER_ESCAPE_PREFILTER = new RegExp(
+  `${SOURCE_BACKSLASH_PATTERN}u(?:[0-9a-fA-F]{4}|[{][0-9a-fA-F]{1,6}[}])`,
+);
+
+function sourceMayMatchFundsExecution(source) {
+  return FUNDS_EXECUTION_PREFILTER.test(source) || SOURCE_BACKSLASH_PREFILTER.test(source);
+}
+
+function sourceMayMatchEnforcement(source) {
+  return ENFORCEMENT_PREFILTER.test(source)
+    || TYPESCRIPT_IDENTIFIER_ESCAPE_PREFILTER.test(source);
+}
+
+// Names the funds matcher must recognise: every broadcast literal, plus one representative per
+// pattern branch in executionCapability(), plus the two property-access operations the walker
+// matches directly rather than through executionCapability().
+const FUNDS_MATCHER_WITNESSES = Object.freeze([
+  ...BROADCAST_EXECUTION_NAMES,
+  'broadcastRelaySigned',
+  'broadcast$Signed',
+  'finalize',
+  'finalizeInput',
+  'finalizeAllInputs',
+  'signPSBT',
+  'signPsbt',
+  'signWithDevice',
+  'uploadSignedPsbt',
+  'processQrSignedPsbt',
+]);
+
+// Reports matcher/prefilter gaps; empty means the prefilters are wide enough. The regexes are
+// injectable so tests can exercise the reporting path with a deliberately narrow prefilter
+// instead of having to break the real configuration.
+export function collectPrefilterGaps({
+  fundsPrefilter = FUNDS_EXECUTION_PREFILTER,
+  enforcementPrefilter = ENFORCEMENT_PREFILTER,
+  witnesses = FUNDS_MATCHER_WITNESSES,
+} = {}) {
+  const gaps = [];
+  for (const name of witnesses) {
+    // Every witness must stay recognised: the two property-access operations are matched
+    // directly by the walker, but executionCapability() also accepts them via its `finalize`
+    // prefix branch, so no name here is exempt from the recognition assertion.
+    if (executionCapability(name) === null) {
+      gaps.push(`executionCapability no longer recognises "${name}"`);
+    } else if (!fundsPrefilter.test(name)) {
+      gaps.push(`funds prefilter does not match "${name}"`);
+    }
+  }
+  for (const name of ENFORCEMENT_FUNCTIONS.keys()) {
+    if (!enforcementPrefilter.test(name)) {
+      gaps.push(`enforcement prefilter does not match "${name}"`);
+    }
+  }
+  return gaps;
+}
+
+// Fails closed when a matcher gains a name its prefilter cannot see. Without this, widening
+// executionCapability() or ENFORCEMENT_FUNCTIONS would silently narrow the scan instead of
+// widening it, and the inventory would lose surfaces. Note this only covers the witnesses
+// above; the stronger guarantee is the prefilter-is-a-no-op test, which compares a filtered
+// scan against an unfiltered one and therefore catches novel matcher branches too.
+export function assertPrefiltersCoverMatchers(overrides) {
+  const gaps = collectPrefilterGaps(overrides);
+  if (gaps.length > 0) {
+    throw new Error(`signer inventory prefilters are narrower than their matchers:\n- ${gaps.join('\n- ')}`);
+  }
+}
+
 function executionCapability(name) {
   if (BROADCAST_EXECUTION_NAMES.has(name) || /^broadcast.*Signed/.test(name)) return 'broadcast';
   if (name.startsWith('finalize')) return 'finalize';
@@ -464,7 +567,7 @@ function executionVendor(path) {
   return match && KNOWN_VENDORS.has(match[1]) ? match[1] : 'generic';
 }
 
-function fundsExecutionPointSurfaces(readFile) {
+function fundsExecutionPointSurfaces(readFile, prefilter = true) {
   const sourcePaths = new Set([
     ...listTypeScriptFiles(SOURCE_PATHS.clientFundsExecution),
     ...listTypeScriptFiles(SOURCE_PATHS.serverBitcoinExecution),
@@ -472,6 +575,10 @@ function fundsExecutionPointSurfaces(readFile) {
   ]);
   const points = [];
   for (const path of [...sourcePaths].sort()) {
+    // Must read through the injected `readFile`, not the repository reader: the drift tests
+    // overlay a mutated source for exactly one path, and prefiltering the on-disk text would
+    // skip the file they mutated.
+    if (prefilter && !sourceMayMatchFundsExecution(readFile(path))) continue;
     const source = parseTypeScript(path, readFile);
     const counts = new Map();
     const addPoint = (name, capability, kind) => {
@@ -523,17 +630,14 @@ function fundsExecutionPointSurfaces(readFile) {
   return points;
 }
 
-function serverCapabilityEnforcementSurfaces(readFile) {
+function serverCapabilityEnforcementSurfaces(readFile, prefilter = true) {
   const servicePath = 'server/src/services/hardwareWalletCapabilities.ts';
-  const enforcementFunctions = new Map([
-    ['assertHardwareWalletCapability', 1],
-    ['assertWalletHardwareCapability', 1],
-    ['assertWalletHardwareCapabilityById', 1],
-    ['assertUnscopedRawTransactionBroadcastDisabled', -1],
-  ]);
+  const enforcementFunctions = ENFORCEMENT_FUNCTIONS;
   const surfaces = [];
   for (const path of listTypeScriptFiles(SOURCE_PATHS.serverCapabilityEnforcement)) {
     if (path === servicePath) continue;
+    // See the note in fundsExecutionPointSurfaces: prefilter through the injected reader.
+    if (prefilter && !sourceMayMatchEnforcement(readFile(path))) continue;
     const source = parseTypeScript(path, readFile);
     const counts = new Map();
     const visit = (node) => {
@@ -685,7 +789,10 @@ function bindCapabilityRows(surfaces, manifest) {
   });
 }
 
-export function buildSignerInventory(readFile = readRepositoryFile) {
+// `prefilter: false` runs both whole-tree walkers without their text prefilters. It exists so
+// tests can assert the prefiltered scan is a pure no-op on the emitted surfaces; production
+// callers should never pass it.
+export function buildSignerInventory(readFile = readRepositoryFile, { prefilter = true } = {}) {
   const manifest = runtimeCapabilityManifest(readFile);
   const discoveredSurfaces = [
     persistedDeviceSurface(readFile),
@@ -713,8 +820,8 @@ export function buildSignerInventory(readFile = readRepositoryFile) {
     ...uiImportSurfaces(readFile),
     ...uiSigningSurfaces(readFile),
     ...qrAirgapCodecSurfaces(readFile),
-    ...serverCapabilityEnforcementSurfaces(readFile),
-    ...fundsExecutionPointSurfaces(readFile),
+    ...serverCapabilityEnforcementSurfaces(readFile, prefilter),
+    ...fundsExecutionPointSurfaces(readFile, prefilter),
   ].sort((left, right) => left.id.localeCompare(right.id));
 
   assertCatalogMatchesCapabilityInventory(discoveredSurfaces, manifest);
