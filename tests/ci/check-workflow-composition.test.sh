@@ -795,15 +795,50 @@ assert_occurrence_count "$IT" \
 assert_occurrence_count "$IT" \
   "install unit lane runs the shared suite runner" \
   'scripts/ci/run-install-unit-tests.sh' \
-  1
+  3
+
+assert_occurrence_count "$IT" \
+  "install-test triggers on shared CI parser changes" \
+  "'tests/ci/lib/**'" \
+  2
+
+assert_occurrence_count "$IT" \
+  "install-test triggers on the shared retry helper" \
+  "'scripts/ci/retry-command.sh'" \
+  2
+
+assert_occurrence_count "$IT" \
+  "install-test triggers on the pinned Node setup action" \
+  "'.github/actions/setup-node-toolchain/**'" \
+  2
+
+assert_occurrence_count "$IT" \
+  "install-test triggers on composition contract changes" \
+  "'tests/ci/check-workflow-composition.test.sh'" \
+  2
 
 assert_occurrence_count "$REPO_ROOT/.github/workflows/release-candidate.yml" \
   "release-candidate unit lane runs the same shared suite runner" \
   'scripts/ci/run-install-unit-tests.sh' \
   1
 
+assert_contains_in_order "$IT" \
+  "install unit lane establishes the pinned Node toolchain" \
+  "unit-tests:" \
+  "Verify Node.js toolchain" \
+  "uses: ./.github/actions/setup-node-toolchain" \
+  "scripts/ci/run-install-unit-tests.sh"
+
+assert_contains_in_order "$REPO_ROOT/.github/workflows/release-candidate.yml" \
+  "release-candidate unit lane establishes the pinned Node toolchain" \
+  "unit-tests:" \
+  "Verify Node.js toolchain" \
+  "uses: ./.github/actions/setup-node-toolchain" \
+  "scripts/ci/run-install-unit-tests.sh"
+
 assert_contains_in_order "$REPO_ROOT/scripts/ci/run-install-unit-tests.sh" \
   "the suite runner globs every install unit suite" \
+  'npm ci --prefix tests/ci/lib --strict-allow-scripts --ignore-scripts --audit=false --fund=false' \
   'tests/install/unit/*.test.sh'
 
 assert_contains_in_order "$REPO_ROOT/scripts/ci/run-install-unit-tests.sh" \
@@ -2519,7 +2554,7 @@ assert_occurrence_count "$GO_RUNNER_DOCKERFILE" \
 
 declare -A strict_install_counts=(
   [architecture.yml]=2
-  [quality.yml]=1
+  [quality.yml]=2
   [test.yml]=10
   [verify-vectors.yml]=8
 )
@@ -2740,6 +2775,7 @@ assert_contains_in_order "$QUALITY_WORKFLOW" \
   "ci-classifier-tests:" \
   'DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-ci-classifier-tests' \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/ci-classifier-tests.log"' \
+  "npm ci --prefix tests/ci/lib --strict-allow-scripts --ignore-scripts --audit=false --fund=false" \
   "bash tests/ci/measure-wallclock.test.sh" \
   "bash tests/ci/check-workflow-composition.test.sh" \
   "Write CI classifier diagnostic summary" \
@@ -2940,6 +2976,104 @@ check_interpreter_heredocs() {
     echo "PASS: $label"
   fi
 }
+
+# `server` has no `pretest:run:ci` hook, so every `npm run test:run:ci` call site
+# must build @sanctuary/shared and generate the Prisma client itself, in an
+# earlier step of the same job. Either the setup-server-deps composite does both,
+# or the job runs the shared build and `prisma generate` explicitly. Without this
+# the hook's removal is guarded only by review: a new call site in a job that
+# skips the setup would resolve `@sanctuary/shared/*` against a stale or absent
+# shared/dist, or fail on a missing Prisma client, at runtime.
+test_run_ci_preparation_offenders_under() {
+  local workflows_dir="$1"
+
+  node "$REPO_ROOT/tests/ci/lib/test-run-ci-preparation.mjs" "$workflows_dir"
+}
+
+assert_test_run_ci_guard_fixtures() {
+  local label="test:run:ci preparation guard rejects late, commented, and yaml omissions"
+  local fixture_dir="$REPO_ROOT/tests/ci/fixtures/server-preparation"
+  local actual expected
+
+  if ! actual="$(test_run_ci_preparation_offenders_under "$fixture_dir")"; then
+    FAIL=$((FAIL + 1))
+    FAILURES+=("$label: fixture parser failed")
+    echo "FAIL: $label" >&2
+    return
+  fi
+  expected="server-preparation.yaml:setup-after-test (composite=0 shared=0 prisma=0)
+server-preparation.yaml:comment-only-setup (composite=0 shared=0 prisma=0)
+server-preparation.yaml:quoted-hash-test (composite=0 shared=0 prisma=0)
+server-preparation.yaml:folded-test-command (composite=0 shared=0 prisma=0)
+server-preparation.yaml:shell-continued-test-command (composite=0 shared=0 prisma=0)
+server-preparation.yaml:echo-composite-decoy (composite=0 shared=0 prisma=0)
+server-preparation.yaml:printf-explicit-decoys (composite=0 shared=0 prisma=0)
+server-preparation.yaml:conditional-false-setup (composite=0 shared=0 prisma=0)
+server-preparation.yaml:mismatched-condition-setup (composite=0 shared=0 prisma=0)
+server-preparation.yaml:matching-always-conditions (composite=0 shared=0 prisma=0)
+server-preparation.yaml:unconditional-setup-conditional-test (composite=0 shared=0 prisma=0)
+server-preparation.yaml:remote-action-decoy (composite=0 shared=0 prisma=0)
+server-preparation.yaml:conditional-shell-setup (composite=0 shared=0 prisma=0)
+server-preparation.yaml:heredoc-setup (composite=0 shared=0 prisma=0)
+server-preparation.yaml:failure-masked-setup (composite=0 shared=0 prisma=0)
+server-preparation.yaml:nonblocking-setup (composite=0 shared=0 prisma=0)
+server-preparation.yaml:custom-shell-setup (composite=0 shared=0 prisma=0)
+server-preparation.yaml:inherited-shell-setup (composite=0 shared=0 prisma=0)
+server-preparation.yaml:unprepared-yaml (composite=0 shared=0 prisma=0)
+workflow-default-shell.yaml:workflow-default-shell-setup (composite=0 shared=0 prisma=0)"
+
+  if [ "$actual" = "$expected" ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: $label"
+  else
+    FAIL=$((FAIL + 1))
+    FAILURES+=("$label: expected [$expected], found [$actual]")
+    echo "FAIL: $label" >&2
+  fi
+}
+
+assert_test_run_ci_guard_fails_on_invalid_yaml() {
+  local label="test:run:ci preparation guard propagates YAML parser failures"
+  local fixture_dir="$REPO_ROOT/tests/ci/fixtures/server-preparation-invalid"
+
+  if test_run_ci_preparation_offenders_under "$fixture_dir" >/dev/null 2>&1; then
+    FAIL=$((FAIL + 1))
+    FAILURES+=("$label: malformed YAML unexpectedly passed")
+    echo "FAIL: $label" >&2
+  else
+    PASS=$((PASS + 1))
+    echo "PASS: $label"
+  fi
+}
+
+assert_test_run_ci_jobs_prepare_server() {
+  local label="every test:run:ci job builds shared and generates Prisma first"
+  local output
+  local offenders=()
+
+  if ! output="$(test_run_ci_preparation_offenders_under "$REPO_ROOT/.github/workflows")"; then
+    FAIL=$((FAIL + 1))
+    FAILURES+=("$label: workflow parser failed")
+    echo "FAIL: $label" >&2
+    return
+  fi
+  if [ -n "$output" ]; then
+    mapfile -t offenders <<< "$output"
+  fi
+
+  if [ "${#offenders[@]}" -eq 0 ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: $label"
+  else
+    FAIL=$((FAIL + 1))
+    FAILURES+=("$label: ${offenders[*]}")
+    echo "FAIL: $label" >&2
+  fi
+}
+
+assert_test_run_ci_guard_fixtures
+assert_test_run_ci_guard_fails_on_invalid_yaml
+assert_test_run_ci_jobs_prepare_server
 
 check_interpreter_heredocs
 

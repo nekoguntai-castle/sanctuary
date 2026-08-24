@@ -256,6 +256,19 @@ main() {
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_scope "$output_file" "true" "true" "false" "false" "false" "false" "false" "false" "false" "false"
 
+  for unit_dependency_path in \
+    "scripts/ci/run-install-unit-tests.sh" \
+    "scripts/ci/retry-command.sh" \
+    ".github/actions/setup-node-toolchain/action.yml" \
+    "tests/ci/lib/package.json" \
+    "tests/ci/check-workflow-composition.test.sh"; do
+    base_sha="$head_sha"
+    commit_file "$repo_dir" "$unit_dependency_path" "# unit dependency" "unit dependency: $unit_dependency_path"
+    head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+    run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+    assert_unit_only_scope "$output_file"
+  done
+
   base_sha="$head_sha"
   commit_file "$repo_dir" "start.sh" "#!/usr/bin/env bash" "runtime entrypoint"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"

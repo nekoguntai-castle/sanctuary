@@ -429,7 +429,7 @@ while IFS= read -r file; do
     .github/workflows/install-test.yml)
       classify_install_workflow_change
       ;;
-    tests/install/unit/*|tests/install/utils/classify-install-scope.sh|tests/install/utils/classify-install-workflow-diff.sh)
+    tests/install/unit/*|tests/install/utils/classify-install-scope.sh|tests/install/utils/classify-install-workflow-diff.sh|scripts/ci/run-install-unit-tests.sh|scripts/ci/retry-command.sh|.github/actions/setup-node-toolchain/*|tests/ci/lib/*|tests/ci/check-workflow-composition.test.sh)
       enable_unit
       add_scope unit-only
       reason="Install unit/docs scope changed"

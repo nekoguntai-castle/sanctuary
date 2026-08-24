@@ -650,6 +650,7 @@ jobs:
       - name: Run CI classifier tests
         run: |
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/ci-classifier-tests.log" bash -euo pipefail <<'QUALITY_CI_CLASSIFIER_TESTS'
+          ${{ github.workspace }}/scripts/ci/retry-command.sh "CI YAML parser dependencies" npm ci --prefix tests/ci/lib --strict-allow-scripts --ignore-scripts --audit=false --fund=false
           # Production scripts (Phase 1-7 + pre-existing) — bash -n syntax sweep.
           bash -n scripts/ci/provider-context.sh
           bash -n scripts/ci/measure-wallclock.sh

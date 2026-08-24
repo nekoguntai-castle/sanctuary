@@ -33,6 +33,11 @@ on:
       - 'scripts/ci/wait-for-docker.sh'
       - 'scripts/ci/with-runner-lock.sh'
       - 'scripts/ci/write-diagnostic-summary.sh'
+      - 'scripts/ci/run-install-unit-tests.sh'
+      - 'scripts/ci/retry-command.sh'
+      - '.github/actions/setup-node-toolchain/**'
+      - 'tests/ci/lib/**'
+      - 'tests/ci/check-workflow-composition.test.sh'
       - 'tests/install/**'
       - '!tests/install/*.md'
       - '!tests/install/**/*.md'
@@ -69,6 +74,11 @@ on:
       - 'scripts/ci/wait-for-docker.sh'
       - 'scripts/ci/with-runner-lock.sh'
       - 'scripts/ci/write-diagnostic-summary.sh'
+      - 'scripts/ci/run-install-unit-tests.sh'
+      - 'scripts/ci/retry-command.sh'
+      - '.github/actions/setup-node-toolchain/**'
+      - 'tests/ci/lib/**'
+      - 'tests/ci/check-workflow-composition.test.sh'
       - 'tests/install/**'
       - '!tests/install/*.md'
       - '!tests/install/**/*.md'
@@ -130,6 +140,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
+  NODE_VERSION: '24.19.0'
+  NPM_VERSION: '11.19.0'
   GIT_CONFIG_COUNT: '1'
   GIT_CONFIG_KEY_0: init.defaultBranch
   GIT_CONFIG_VALUE_0: main
@@ -206,6 +218,9 @@ jobs:
         with:
           clean: false
           fetch-depth: 0
+
+      - name: Verify Node.js toolchain
+        uses: ./.github/actions/setup-node-toolchain
 
       - name: Run unit tests
         run: |

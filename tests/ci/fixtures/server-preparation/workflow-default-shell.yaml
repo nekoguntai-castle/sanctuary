@@ -1,0 +1,11 @@
+name: Workflow default shell guard fixture
+defaults:
+  run:
+    shell: echo {0}
+jobs:
+  workflow-default-shell-setup:
+    steps:
+      - run: npm --workspace shared run build
+      - run: npx prisma generate
+      - run: npm run test:run:ci
+        shell: bash

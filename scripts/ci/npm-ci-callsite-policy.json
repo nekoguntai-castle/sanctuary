@@ -96,6 +96,11 @@
       "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."
     },
     {
+      "file": "scripts/ci/run-install-unit-tests.sh",
+      "executable": true,
+      "rationale": "Installs only the locked CI YAML parser dependency with lifecycle scripts disabled for clean install/release unit checkouts."
+    },
+    {
       "file": "scripts/ci/setup-server-dependencies.sh",
       "executable": true,
       "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."

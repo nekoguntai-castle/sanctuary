@@ -31,7 +31,6 @@ describe('server pre-test shared rebuild hooks', () => {
   it.each([
     'pretest',
     'pretest:run',
-    'pretest:run:ci',
     'pretest:coverage',
     'pretest:ci',
   ] as const)(
@@ -42,4 +41,22 @@ describe('server pre-test shared rebuild hooks', () => {
       expect(value).toBe(`${HOOK_PREFIX}${HOOK_REMAINDER}`);
     },
   );
+
+  // `test:run:ci` deliberately has no pretest hook. It is only ever invoked from
+  // CI, and every one of its call sites already builds shared and generates the
+  // Prisma client in an earlier step of the same job:
+  //   - .github/workflows/test.yml:405, :942, :949 — preceded by the
+  //     setup-server-deps composite, which builds shared and runs prisma generate
+  //     (scripts/ci/setup-server-dependencies.sh).
+  //   - .github/workflows/verify-vectors.yml — twelve call sites, each in a job
+  //     whose "Install server dependencies" step runs `npm --workspace shared run
+  //     build` immediately before `npx prisma generate`.
+  // Re-adding the hook would re-run both on every invocation, which cost 12-25s
+  // per call and was paid twice per attempt inside a three-attempt retry loop in
+  // full-backend-integration-tests. If a new call site ever lacks that setup, add
+  // the setup to the job rather than restoring the hook.
+  it('leaves test:run:ci without a pretest hook, since CI sets up beforehand', () => {
+    expect(scripts['pretest:run:ci']).toBeUndefined();
+    expect(scripts['test:run:ci']).toBeDefined();
+  });
 });

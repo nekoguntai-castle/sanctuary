@@ -25,7 +25,6 @@
     "test": "vitest",
     "pretest:run": "npm run _predistshared && prisma generate",
     "test:run": "vitest run",
-    "pretest:run:ci": "npm run _predistshared && prisma generate",
     "test:run:ci": "vitest run --pool threads --maxWorkers=1 --no-file-parallelism",
     "test:watch": "vitest --watch",
     "pretest:coverage": "npm run _predistshared && prisma generate",

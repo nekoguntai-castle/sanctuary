@@ -23,6 +23,19 @@ test('default audit targets keep the standalone docs site at its canonical path'
   assert.equal(DEFAULT_TARGETS.some(({ label, cwd }) => label === 'website' || cwd === 'website'), false);
 });
 
+test('default audit targets cover the isolated CI YAML parser lock', () => {
+  assert.deepEqual(
+    DEFAULT_TARGETS.find(({ label }) => label === 'ci-yaml-parser'),
+    {
+      label: 'ci-yaml-parser',
+      cwd: 'tests/ci/lib',
+      lockfile: 'tests/ci/lib/package-lock.json',
+      roots: [''],
+      args: ['audit', '--json'],
+    },
+  );
+});
+
 const NOW = new Date('2026-07-30T18:00:00.000Z');
 const GHSA_A = 'GHSA-mh99-v99m-4gvg';
 const GHSA_B = 'GHSA-qwww-vcr4-c8h2';

@@ -1,0 +1,111 @@
+name: Server preparation guard fixtures
+jobs:
+  composite-before-test:
+    steps:
+      - uses: ./.github/actions/setup-server-deps
+      - run: npm run test:run:ci
+  explicit-before-test:
+    steps:
+      - run: npm --workspace shared run build
+      - run: npx prisma generate
+      - run: npm run test:run:ci
+  setup-after-test:
+    steps:
+      - run: npm run test:run:ci
+      - uses: ./.github/actions/setup-server-deps
+  comment-only-setup:
+    steps:
+      - run: |
+          # uses: ./.github/actions/setup-server-deps
+          npm run test:run:ci
+  quoted-hash-test:
+    steps:
+      - run: 'echo "#"; npm run test:run:ci'
+  folded-test-command:
+    steps:
+      - run: >
+          npm run
+          test:run:ci
+  shell-continued-test-command:
+    steps:
+      - run: |
+          npm run \
+            test:run:ci
+  echo-composite-decoy:
+    steps:
+      - run: 'echo uses: ./.github/actions/setup-server-deps'
+      - run: npm run test:run:ci
+  printf-explicit-decoys:
+    steps:
+      - run: printf '%s\n' 'npm --workspace shared run build' 'npx prisma generate'
+      - run: npm run test:run:ci
+  conditional-false-setup:
+    steps:
+      - uses: ./.github/actions/setup-server-deps
+        if: false
+      - run: npm run test:run:ci
+  mismatched-condition-setup:
+    steps:
+      - uses: ./.github/actions/setup-server-deps
+        if: github.event_name == 'push'
+      - run: npm run test:run:ci
+  matching-always-conditions:
+    steps:
+      - uses: ./.github/actions/setup-server-deps
+        if: always()
+      - run: npm run test:run:ci
+        if: always()
+  unconditional-setup-conditional-test:
+    steps:
+      - uses: ./.github/actions/setup-server-deps
+      - run: npm run test:run:ci
+        if: github.event_name == 'push'
+  remote-action-decoy:
+    steps:
+      - uses: attacker/setup-server-deps@v1
+      - run: npm run test:run:ci
+  conditional-shell-setup:
+    steps:
+      - run: |
+          if false; then
+            npm --workspace shared run build
+            npx prisma generate
+          fi
+      - run: npm run test:run:ci
+  heredoc-setup:
+    steps:
+      - run: |
+          cat >notes <<'EOF'
+          npm --workspace shared run build
+          npx prisma generate
+          EOF
+      - run: npm run test:run:ci
+  failure-masked-setup:
+    steps:
+      - run: npm --workspace shared run build || true
+      - run: npx prisma generate || true
+      - run: npm run test:run:ci
+  nonblocking-setup:
+    steps:
+      - uses: ./.github/actions/setup-server-deps
+        continue-on-error: true
+      - run: npm run test:run:ci
+  custom-shell-setup:
+    steps:
+      - run: npm --workspace shared run build
+        shell: echo {0}
+      - run: npx prisma generate
+        shell: echo {0}
+      - run: npm run test:run:ci
+  inherited-shell-setup:
+    defaults:
+      run:
+        shell: echo {0}
+    steps:
+      - run: npm --workspace shared run build
+      - run: npx prisma generate
+      - run: npm run test:run:ci
+        shell: bash
+  unprepared-yaml:
+    steps:
+      - run: npm run test:run:ci

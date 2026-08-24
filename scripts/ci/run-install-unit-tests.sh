@@ -31,6 +31,11 @@ set -euo pipefail
 
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+# The workflow-composition guard is also part of the install/release unit lane,
+# whose clean checkout deliberately has no root dependency install. Install its
+# one-package, lifecycle-disabled parser boundary instead of the monorepo tree.
+scripts/ci/retry-command.sh "CI YAML parser dependencies" npm ci --prefix tests/ci/lib --strict-allow-scripts --ignore-scripts --audit=false --fund=false
+
 run_suite() {
   local suite="$1"
   echo "=== ${suite}"

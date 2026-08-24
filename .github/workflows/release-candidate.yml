@@ -204,6 +204,9 @@ jobs:
           ref: ${{ needs.validation-info.outputs.candidate_sha }}
           fetch-depth: 0
 
+      - name: Verify Node.js toolchain
+        uses: ./.github/actions/setup-node-toolchain
+
       - name: Make test scripts executable
         run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh
 

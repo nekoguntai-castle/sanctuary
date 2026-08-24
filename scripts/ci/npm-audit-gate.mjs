@@ -20,6 +20,7 @@ export const DEFAULT_TARGETS = Object.freeze([
   { label: 'gateway', cwd: '.', lockfile: 'package-lock.json', roots: ['gateway'], args: ['audit', '--workspace', 'gateway', '--json'] },
   { label: 'llm-egress-proxy', cwd: 'llm-egress-proxy', lockfile: 'llm-egress-proxy/package-lock.json', roots: [''], args: ['audit', '--json'] },
   { label: 'docs-site', cwd: 'docs/site', lockfile: 'docs/site/package-lock.json', roots: [''], args: ['audit', '--json'] },
+  { label: 'ci-yaml-parser', cwd: 'tests/ci/lib', lockfile: 'tests/ci/lib/package-lock.json', roots: [''], args: ['audit', '--json'] },
   { label: 'verify-addresses', cwd: 'scripts/verify-addresses', lockfile: 'scripts/verify-addresses/package-lock.json', roots: [''], args: ['audit', '--json'] },
   { label: 'verify-psbt', cwd: 'scripts/verify-psbt', lockfile: 'scripts/verify-psbt/package-lock.json', roots: [''], args: ['audit', '--json'] },
 ]);
