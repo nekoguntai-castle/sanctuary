@@ -61,8 +61,7 @@ count="$(cat "$CLAUDE_COUNT_FILE" 2>/dev/null || printf '0')"
 count="$((count + 1))"
 printf '%s' "$count" > "$CLAUDE_COUNT_FILE"
 printf '%s\n' "$*" >> "$CLAUDE_ARGS_FILE"
-for var in GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_PREFIX GIT_COMMON_DIR \
-  GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES; do
+for var in $CLAUDE_GIT_ENV_VARS; do
   eval "value=\${$var-<unset>}"
   printf '%s=%s\n' "$var" "$value" >> "$CLAUDE_ENV_FILE"
 done
@@ -117,6 +116,9 @@ run_agent() {
 main() {
   TEST_TEMP_DIR="$(mktemp -d)"
   trap cleanup EXIT
+
+  export CLAUDE_GIT_ENV_VARS
+  CLAUDE_GIT_ENV_VARS="$(git rev-parse --local-env-vars)"
 
   local stub_dir="$TEST_TEMP_DIR/bin"
   write_claude_stub "$stub_dir"
@@ -174,19 +176,15 @@ main() {
   # corrupted index behind.
   reset_case "strips-git-env"
   write_response 1 "$proceed_json"
-  GIT_INDEX_FILE="$TEST_TEMP_DIR/leaked-index" \
-  GIT_DIR="$TEST_TEMP_DIR/leaked-git-dir" \
-  GIT_WORK_TREE="$TEST_TEMP_DIR/leaked-work-tree" \
-  GIT_PREFIX="leaked/prefix/" \
-  GIT_COMMON_DIR="$TEST_TEMP_DIR/leaked-common-dir" \
-  GIT_OBJECT_DIRECTORY="$TEST_TEMP_DIR/leaked-objects" \
-  GIT_ALTERNATE_OBJECT_DIRECTORIES="$TEST_TEMP_DIR/leaked-alternates" \
-    run_agent >/dev/null 2>&1
+  for leaked_var in $CLAUDE_GIT_ENV_VARS; do
+    export "$leaked_var=$TEST_TEMP_DIR/leaked-$leaked_var"
+  done
+  run_agent >/dev/null 2>&1
   assert_file_equals "1" "$CLAUDE_COUNT_FILE"
   agent_env="$(cat "$CLAUDE_ENV_FILE")"
-  for leaked_var in GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_PREFIX \
-    GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES; do
+  for leaked_var in $CLAUDE_GIT_ENV_VARS; do
     assert_contains "$agent_env" "${leaked_var}=<unset>"
+    unset "$leaked_var"
   done
 
   echo "pre-commit agent gate regression checks passed"

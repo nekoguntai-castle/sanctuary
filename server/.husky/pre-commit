@@ -30,6 +30,9 @@ fi
 # Get the repository root
 REPO_ROOT=$(git rev-parse --show-toplevel)
 GIT_DIR=$(git rev-parse --git-dir)
+# Cache Git's authoritative repository-local environment list once so the
+# agent boundary cannot drift when Git adds or removes a variable.
+HOOK_GIT_LOCAL_ENV_VARS=$(git rev-parse --local-env-vars)
 
 # =============================================
 # Agent telemetry + cache infrastructure
@@ -446,11 +449,12 @@ print_gate_banner() {
 # with a blob this repository has never seen, and the corrupted index has to be
 # deleted and rebuilt by hand. Every agent invocation goes through here so the
 # stripping cannot be forgotten at one callsite.
-run_without_git_env() {
-    env -u GIT_INDEX_FILE -u GIT_DIR -u GIT_WORK_TREE -u GIT_PREFIX \
-        -u GIT_COMMON_DIR -u GIT_OBJECT_DIRECTORY \
-        -u GIT_ALTERNATE_OBJECT_DIRECTORIES "$@"
-}
+run_without_git_env() (
+    for git_env_var in $HOOK_GIT_LOCAL_ENV_VARS; do
+        unset "$git_env_var"
+    done
+    "$@"
+)
 
 invoke_claude_agent() {
     # $1=claude_agent(empty=general) $2=prompt $3=output_file
