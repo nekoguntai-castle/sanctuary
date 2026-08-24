@@ -141,12 +141,14 @@ main() {
   assert_eq "browser seeder -> browser_smoke" "true" "$(json_query "$plan" lanes.browser_smoke.run)"
   assert_eq "browser seeder does not select render" "false" "$(json_query "$plan" lanes.render_regression.run)"
 
-  # ---- Workflow file change forces full scan -------------------------------
+  # ---- test.yml change forces full scan ------------------------------------
+  # Only test.yml defines the lanes this plan drives, so only test.yml triggers
+  # a full scan. Any other workflow must not (see the install-test.yml case below).
   base="$head"
   mkdir -p "$repo/.github/workflows"
-  printf 'name: x\non: push\njobs: {}\n' > "$repo/.github/workflows/x.yml"
+  printf 'name: Test Suite\non: push\njobs: {}\n' > "$repo/.github/workflows/test.yml"
   git -C "$repo" add -A
-  git -C "$repo" commit -qm 'workflow change'
+  git -C "$repo" commit -qm 'test workflow change'
   head="$(git -C "$repo" rev-parse HEAD)"
 
   plan="$(EVENT_NAME=pull_request run_planner "$repo" "$base" "$head")"
@@ -157,6 +159,32 @@ main() {
   assert_eq "full_scan -> build" "true" "$(json_query "$plan" lanes.build.run)"
   # Files arrays under full_scan are empty (lane runs full suite)
   assert_eq "full_scan -> empty files" "[]" "$(json_query "$plan" lanes.backend_unit.files)"
+
+  # ---- A non-test workflow file does NOT force a full scan -----------------
+  base="$head"
+  printf 'name: Install Tests\non: push\njobs: {}\n' > "$repo/.github/workflows/install-test.yml"
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm 'install workflow change'
+  head="$(git -C "$repo" rev-parse HEAD)"
+
+  plan="$(EVENT_NAME=pull_request run_planner "$repo" "$base" "$head")"
+  assert_eq "non-test workflow -> no full_scan" "false" "$(json_query "$plan" full_scan)"
+  assert_eq "non-test workflow -> no backend_unit" "false" "$(json_query "$plan" lanes.backend_unit.run)"
+  assert_eq "non-test workflow -> no e2e_full" "false" "$(json_query "$plan" lanes.e2e_full.run)"
+
+  # ---- A composite action still forces a full scan -------------------------
+  # `*` matches `/` in a bash case pattern, so this also covers the nested
+  # vendored composites under .github/actions/vendor/.
+  base="$head"
+  mkdir -p "$repo/.github/actions/vendor/forgejo-artifact-v4/upload"
+  printf 'name: Upload\nruns:\n  using: composite\n  steps: []\n' \
+    > "$repo/.github/actions/vendor/forgejo-artifact-v4/upload/action.yml"
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm 'vendored composite change'
+  head="$(git -C "$repo" rev-parse HEAD)"
+
+  plan="$(EVENT_NAME=pull_request run_planner "$repo" "$base" "$head")"
+  assert_eq "vendored composite -> full_scan" "true" "$(json_query "$plan" full_scan)"
 
   # ---- Docs-only PR is a no-op -------------------------------------------
   base="$head"

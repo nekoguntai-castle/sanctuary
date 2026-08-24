@@ -182,9 +182,22 @@ is_docs_only_file() {
   return 1
 }
 
-# Anything that touches dependency manifests, root configs, or workflow files
-# forces a full scan because the change blast-radius can't be inferred from
-# directory placement alone.
+# Anything that touches dependency manifests, root configs, or the workflow
+# definitions that shape the test lane forces a full scan, because the change
+# blast-radius can't be inferred from directory placement alone.
+#
+# `full_scan` is a Test Suite concept: it drives the lane plan consumed by
+# .github/workflows/test.yml. Only test.yml defines those lanes, so only test.yml
+# is listed here. The other workflows (install-test, quality, architecture,
+# docker-build, verify-vectors, podman-socket-canary, release-candidate) own
+# separate lanes with their own triggers and classifiers, and editing them cannot
+# change what test.yml runs — forcing a full test scan for them re-ran the three
+# heaviest lanes for nothing.
+#
+# Composite actions stay in: test.yml consumes them, and a change to one can
+# change how its jobs behave. Note `*` in a bash `case` pattern matches `/` too,
+# so `.github/actions/*/action.yml` already covers the nested vendored composites
+# under `.github/actions/vendor/...`; do not add deeper globs for them.
 is_full_scan_trigger_file() {
   case "$1" in
     package.json|package-lock.json|server/package.json|server/package-lock.json|gateway/package.json|gateway/package-lock.json|llm-egress-proxy/package.json|llm-egress-proxy/package-lock.json|scripts/verify-addresses/package.json|scripts/verify-addresses/package-lock.json)
@@ -193,7 +206,7 @@ is_full_scan_trigger_file() {
     config/tooling/*|server/vitest.config.*|gateway/vitest.config.*|llm-egress-proxy/vitest.config.*|server/tsconfig*.json|gateway/tsconfig*.json)
       return 0
       ;;
-    .github/workflows/*.yml|.github/workflows/*.yaml|.github/actions/*/action.yml)
+    .github/workflows/test.yml|.github/actions/*/action.yml)
       return 0
       ;;
   esac

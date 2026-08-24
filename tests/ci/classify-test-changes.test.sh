@@ -362,6 +362,37 @@ EOF_DOC
   assert_exact_output "$output_file" "render_changed" "false"
   assert_exact_output "$output_file" "build_changed" "false"
 
+  # A nested vendored composite must behave like a top-level one: `*` matches `/`
+  # in a bash case pattern, so `.github/actions/*/action.yml` covers both depths.
+  base_sha="$head_sha"
+  mkdir -p "$repo_dir/.github/actions/vendor/forgejo-artifact-v4/upload"
+  printf 'name: Upload\nruns:\n  using: composite\n  steps: []\n' \
+    > "$repo_dir/.github/actions/vendor/forgejo-artifact-v4/upload/action.yml"
+  git -C "$repo_dir" add .github/actions/vendor/forgejo-artifact-v4/upload/action.yml
+  git -C "$repo_dir" commit -qm "vendored artifact action"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "full_scan" "true"
+
+  # Only test.yml shapes the Test Suite lanes; every other workflow owns separate
+  # lanes with their own triggers, so editing one must not force a full test scan.
+  base_sha="$head_sha"
+  printf 'name: Install Tests\non: push\njobs: {}\n' > "$repo_dir/.github/workflows/install-test.yml"
+  git -C "$repo_dir" add .github/workflows/install-test.yml
+  git -C "$repo_dir" commit -qm "install workflow"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "full_scan" "false"
+  assert_exact_output "$output_file" "frontend_changed" "false"
+  assert_exact_output "$output_file" "backend_changed" "false"
+  assert_exact_output "$output_file" "backend_integration_changed" "false"
+  assert_exact_output "$output_file" "critical_mutation_changed" "false"
+  assert_exact_output "$output_file" "browser_smoke_changed" "false"
+  assert_exact_output "$output_file" "render_changed" "false"
+  assert_exact_output "$output_file" "build_changed" "false"
+
   base_sha="$head_sha"
   mkdir -p "$repo_dir/tests/components"
   printf 'export const example = 1;\n' > "$repo_dir/tests/components/example.test.tsx"
