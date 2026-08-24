@@ -95,6 +95,7 @@ export async function findSubscriptionCheckpoint(
       lastObservedAt: true,
       requestedEnrollmentGeneration: true,
       processedEnrollmentGeneration: true,
+      coverageGapStartedAt: true,
     },
   });
 }
@@ -120,7 +121,8 @@ export async function findSubscriptionCheckpointOwners(
       "checkpoints"."observedStatus",
       "checkpoints"."lastObservedAt",
       "checkpoints"."requestedEnrollmentGeneration",
-      "checkpoints"."processedEnrollmentGeneration"
+      "checkpoints"."processedEnrollmentGeneration",
+      "checkpoints"."coverageGapStartedAt"
     FROM "address_subscription_checkpoints" AS "checkpoints"
     INNER JOIN "addresses" ON "addresses"."id" = "checkpoints"."addressId"
     INNER JOIN "wallets" ON "wallets"."id" = "addresses"."walletId"
@@ -166,6 +168,7 @@ export async function findPendingSubscriptionEnrollments(options: {
       "checkpoints"."lastObservedAt",
       COALESCE("checkpoints"."requestedEnrollmentGeneration", 1) AS "requestedEnrollmentGeneration",
       COALESCE("checkpoints"."processedEnrollmentGeneration", 0) AS "processedEnrollmentGeneration",
+      COALESCE("checkpoints"."coverageGapStartedAt", "addresses"."createdAt") AS "coverageGapStartedAt",
       ("checkpoints"."addressId" IS NULL) AS "checkpointMissing"
     FROM "addresses"
     INNER JOIN "wallets" ON "wallets"."id" = "addresses"."walletId"
@@ -227,6 +230,14 @@ export async function requestSubscriptionEnrollment(
             "checkpoints"."requestedEnrollmentGeneration",
             "checkpoints"."processedEnrollmentGeneration" + 1
           ),
+          -- Repeated requests belong to the already-open gap and must not
+          -- reset its age; only a settled-to-pending transition starts a gap.
+          "coverageGapStartedAt" = CASE
+            WHEN "checkpoints"."requestedEnrollmentGeneration"
+              > "checkpoints"."processedEnrollmentGeneration"
+            THEN "checkpoints"."coverageGapStartedAt"
+            ELSE CURRENT_TIMESTAMP
+          END,
           "updatedAt" = CURRENT_TIMESTAMP
       WHERE "checkpoints"."network" = EXCLUDED."network"
         AND (
@@ -243,6 +254,7 @@ export async function requestSubscriptionEnrollment(
         "lastObservedAt",
         "requestedEnrollmentGeneration",
         "processedEnrollmentGeneration",
+        "coverageGapStartedAt",
         (xmax = 0) AS "inserted"
     )
     SELECT

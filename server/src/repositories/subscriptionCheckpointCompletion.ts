@@ -111,7 +111,8 @@ const checkpointColumns = Prisma.raw(`
   "observedStatus",
   "lastObservedAt",
   "requestedEnrollmentGeneration",
-  "processedEnrollmentGeneration"
+  "processedEnrollmentGeneration",
+  "coverageGapStartedAt"
 `);
 
 async function writeCheckpoint(
@@ -127,6 +128,7 @@ async function writeCheckpoint(
           "observedStatus" = ${input.observedStatus},
           "lastObservedAt" = ${input.observedAt},
           "processedEnrollmentGeneration" = ${input.generation},
+          "coverageGapStartedAt" = NULL,
           "updatedAt" = CURRENT_TIMESTAMP
       WHERE checkpoint."addressId" = ${input.addressId}
         AND checkpoint."network" = ${input.network}
@@ -140,10 +142,11 @@ async function writeCheckpoint(
   const rows = await tx.$queryRaw<SubscriptionCheckpointState[]>(Prisma.sql`
     INSERT INTO "address_subscription_checkpoints" AS checkpoint (
       "addressId", "network", "scriptHash", "statusKnown", "observedStatus",
-      "lastObservedAt", "requestedEnrollmentGeneration", "processedEnrollmentGeneration"
+      "lastObservedAt", "requestedEnrollmentGeneration", "processedEnrollmentGeneration",
+      "coverageGapStartedAt"
     ) VALUES (
       ${input.addressId}, ${input.network}, ${input.scriptHash}, TRUE,
-      ${input.observedStatus}, ${input.observedAt}, 1, 1
+      ${input.observedStatus}, ${input.observedAt}, 1, 1, NULL
     )
     ON CONFLICT ("addressId") DO UPDATE
     SET "scriptHash" = EXCLUDED."scriptHash",
@@ -151,6 +154,7 @@ async function writeCheckpoint(
         "observedStatus" = EXCLUDED."observedStatus",
         "lastObservedAt" = EXCLUDED."lastObservedAt",
         "processedEnrollmentGeneration" = EXCLUDED."processedEnrollmentGeneration",
+        "coverageGapStartedAt" = NULL,
         "updatedAt" = CURRENT_TIMESTAMP
     WHERE checkpoint."network" = EXCLUDED."network"
       AND checkpoint."requestedEnrollmentGeneration" = ${input.generation}
@@ -189,6 +193,17 @@ async function applyIntent(
   return { walletId: target.walletId, generation, state };
 }
 
+async function clearRecoveredComparisonFailure(
+  tx: PrismaTxClient,
+  input: SubscriptionEnrollmentCompletionInput,
+): Promise<void> {
+  await tx.$executeRaw(Prisma.sql`
+    DELETE FROM "address_subscription_comparison_failures"
+    WHERE "addressId" = ${input.addressId}
+      AND "enrollmentGeneration" = ${input.generation}
+  `);
+}
+
 async function completeInTransaction(
   tx: PrismaTxClient,
   input: SubscriptionEnrollmentCompletionInput,
@@ -202,6 +217,7 @@ async function completeInTransaction(
 
   const state = await writeCheckpoint(tx, input, current === null);
   if (!state) throw new CompletionLostRace();
+  await clearRecoveredComparisonFailure(tx, input);
   const syncIntent = requiresIntent(current, input.observedStatus)
     ? await applyIntent(tx, target)
     : null;

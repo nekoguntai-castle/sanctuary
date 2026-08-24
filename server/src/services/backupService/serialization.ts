@@ -100,6 +100,7 @@ export function camelToSnakeCase(modelName: string): string {
     'agentAlert': 'agent_alerts',
     'priceData': 'price_data',
     'feeEstimate': 'fee_estimates',
+    'networkSubscriptionCoverageState': 'network_subscription_coverage_state',
   };
 
   if (specialCases[modelName]) {

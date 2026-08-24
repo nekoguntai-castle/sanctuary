@@ -302,8 +302,35 @@ describeIfDb('Phase 2 operations proof', () => {
         statusKnown: true,
         observedStatus: createUniqueId('backup-observed-status'),
         lastObservedAt: new Date('2026-07-30T12:34:56.000Z'),
-        requestedEnrollmentGeneration: 1,
+        requestedEnrollmentGeneration: 2,
         processedEnrollmentGeneration: 1,
+        coverageGapStartedAt: new Date('2026-07-30T13:00:00.000Z'),
+      },
+    });
+    await prisma.addressSubscriptionComparisonFailure.create({
+      data: {
+        addressId: address.id,
+        enrollmentGeneration: 2,
+        firstFailedAt: new Date('2026-07-30T13:05:00.000Z'),
+        lastFailedAt: new Date('2026-07-30T13:10:00.000Z'),
+        attemptCount: 2,
+      },
+    });
+    await prisma.networkSubscriptionCoverageState.create({
+      data: {
+        network: wallet.network,
+        historicalComparisonFailureCount: 2,
+        firstComparisonFailureAt: new Date('2026-07-30T13:05:00.000Z'),
+        lastComparisonFailureAt: new Date('2026-07-30T13:10:00.000Z'),
+      },
+    });
+    await prisma.networkHeaderCheckpoint.create({
+      data: {
+        network: wallet.network,
+        lastProcessedHeight: 200,
+        lastProcessedHash: 'cd'.repeat(32),
+        observedAt: new Date('2026-07-30T12:00:00.000Z'),
+        coverageGapStartedAt: new Date('2026-07-30T13:00:00.000Z'),
       },
     });
     await seedWalletRemediationEvidence(wallet.id, { userId: user.id, username });

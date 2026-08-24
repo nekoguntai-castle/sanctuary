@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   checkpointFindUnique: vi.fn(),
   queryRaw: vi.fn(),
+  executeRaw: vi.fn(),
   transaction: vi.fn(),
   walletUpdate: vi.fn(),
 }));
@@ -84,6 +85,7 @@ function checkpointState(
     lastObservedAt: null,
     requestedEnrollmentGeneration: 1,
     processedEnrollmentGeneration: 0,
+    coverageGapStartedAt: NOW,
     ...overrides,
   };
 }
@@ -93,6 +95,7 @@ describe('subscriptionCheckpointRepository readers', () => {
     vi.clearAllMocks();
     mocks.transaction.mockImplementation(async (callback) => callback({
       $queryRaw: mocks.queryRaw,
+      $executeRaw: mocks.executeRaw,
       addressSubscriptionCheckpoint: { findUnique: mocks.checkpointFindUnique },
       wallet: { update: mocks.walletUpdate },
     }));

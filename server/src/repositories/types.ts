@@ -224,6 +224,7 @@ export interface SubscriptionCheckpointState {
   lastObservedAt: Date | null;
   requestedEnrollmentGeneration: number;
   processedEnrollmentGeneration: number;
+  coverageGapStartedAt: Date | null;
 }
 
 export interface SubscriptionEnrollmentCandidate extends SubscriptionCheckpointState {

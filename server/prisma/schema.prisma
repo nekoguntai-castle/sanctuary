@@ -399,13 +399,73 @@ model AddressSubscriptionCheckpoint {
   lastObservedAt DateTime?
   requestedEnrollmentGeneration Int @default(1)
   processedEnrollmentGeneration Int @default(0)
+  coverageGapStartedAt DateTime? @default(now())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   address Address @relation(fields: [addressId], references: [id], onDelete: Cascade)
+  comparisonFailure AddressSubscriptionComparisonFailure?
 
   @@index([network, scriptHash])
   @@map("address_subscription_checkpoints")
+}
+
+/// One unresolved status-comparison failure for the exact pending enrollment
+/// generation. Successful completion deletes only the matching address and
+/// generation; a success for another address cannot erase this evidence.
+model AddressSubscriptionComparisonFailure {
+  addressId String @id
+  enrollmentGeneration Int
+  firstFailedAt DateTime
+  lastFailedAt DateTime
+  attemptCount Int @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  checkpoint AddressSubscriptionCheckpoint @relation(fields: [addressId], references: [addressId], onDelete: Cascade)
+
+  @@map("address_subscription_comparison_failures")
+}
+
+/// Monotonic per-network comparison-failure history. Current unresolved
+/// failures remain address-scoped above; deleting an address must not erase the
+/// historical fact that its comparison failed.
+model NetworkSubscriptionCoverageState {
+  network String @id
+  historicalComparisonFailureCount Int @default(0)
+  firstComparisonFailureAt DateTime?
+  lastComparisonFailureAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("network_subscription_coverage_state")
+}
+
+/// Durable per-network chain-tip progress. One row per Bitcoin network, keyed by
+/// the network itself — the first table in this schema whose identity IS a
+/// network rather than a wallet or an address.
+///
+/// Absence of a row means UNKNOWN, never "the tip is current": a freshly
+/// migrated database must reconcile rather than read as covered.
+///
+/// A restored database keeps its row, and that is deliberate. Restoring an
+/// older snapshot leaves the checkpoint BEHIND the chain, so the next observed
+/// header classifies as a missed gap and reconciles the exact span. An
+/// `operational.` SystemSetting key would instead survive the restore and sit
+/// AHEAD of the restored wallets, reporting no gap where there is a large one.
+///
+/// No writer is wired yet. The reader and its observation classifier land first
+/// so the persistence contract can be reviewed on its own.
+model NetworkHeaderCheckpoint {
+  network String @id
+  lastProcessedHeight Int
+  lastProcessedHash String
+  observedAt DateTime
+  coverageGapStartedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("network_header_checkpoints")
 }
 
 model Transaction {

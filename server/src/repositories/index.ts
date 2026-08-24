@@ -59,11 +59,36 @@ export type {
   IncrementalSyncRetryReleaseInput,
 } from './syncIntentRepository';
 export {
+  classifyHeaderObservation,
+  findNetworkHeaderCheckpoint,
+  networkHeaderCheckpointRepository,
+  default as networkHeaderCheckpointRepo,
+} from './networkHeaderCheckpointRepository';
+export type {
+  HeaderObservation,
+  HeaderObservationClassification,
+  HeaderObservationVerdict,
+  NetworkHeaderCheckpointState,
+} from './networkHeaderCheckpointRepository';
+export {
   completeSubscriptionEnrollment,
   requestSubscriptionEnrollment,
   subscriptionCheckpointRepository,
   default as subscriptionCheckpointRepo,
 } from './subscriptionCheckpointRepository';
+export {
+  readSubscriptionCoverage,
+  recordSubscriptionComparisonFailure,
+  subscriptionCoverageRepository,
+  default as subscriptionCoverageRepo,
+} from './subscriptionCoverageRepository';
+export type {
+  NetworkSubscriptionCoverageSnapshot,
+  RecordSubscriptionComparisonFailureInput,
+  RecordSubscriptionComparisonFailureResult,
+  SubscriptionCoverageReadResult,
+  SubscriptionCoverageReason,
+} from './subscriptionCoverageRepository';
 export {
   walletSyncSchedulePolicyRepository,
   default as walletSyncSchedulePolicyRepo,

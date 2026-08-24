@@ -34,6 +34,7 @@ function candidate(
     lastObservedAt: null,
     requestedEnrollmentGeneration: 1,
     processedEnrollmentGeneration: 0,
+    coverageGapStartedAt: NOW,
     checkpointMissing: false,
     ...overrides,
   };
@@ -52,6 +53,7 @@ function appliedState(
     lastObservedAt: NOW,
     requestedEnrollmentGeneration: enrollment.requestedEnrollmentGeneration,
     processedEnrollmentGeneration: enrollment.requestedEnrollmentGeneration,
+    coverageGapStartedAt: null,
   };
 }
 
@@ -90,6 +92,10 @@ function repositoryMock(): SubscriptionCheckpointEnrollmentRepositoryPort {
   return {
     findPendingSubscriptionEnrollments: vi.fn(),
     completeSubscriptionEnrollment: vi.fn(),
+    recordSubscriptionComparisonFailure: vi.fn().mockResolvedValue({
+      status: 'recorded',
+      historicalCount: 1,
+    }),
   };
 }
 
@@ -290,6 +296,19 @@ describe('subscriptionCheckpointEnrollment', () => {
     expect(repository.completeSubscriptionEnrollment).toHaveBeenCalledWith(
       expect.objectContaining({ addressId: 'address-1', observedStatus: null }),
     );
+    expect(repository.recordSubscriptionComparisonFailure).toHaveBeenCalledTimes(2);
+    expect(repository.recordSubscriptionComparisonFailure).toHaveBeenNthCalledWith(1, {
+      addressId: 'address-2',
+      network: 'mainnet',
+      enrollmentGeneration: 1,
+      failedAt: NOW,
+    });
+    expect(repository.recordSubscriptionComparisonFailure).toHaveBeenNthCalledWith(2, {
+      addressId: 'address-3',
+      network: 'mainnet',
+      enrollmentGeneration: 1,
+      failedAt: NOW,
+    });
   });
 
   it('leaves the whole page pending when the batch subscription is unavailable', async () => {
@@ -313,6 +332,7 @@ describe('subscriptionCheckpointEnrollment', () => {
       nextCursor: 'address-2',
     });
     expect(repository.completeSubscriptionEnrollment).not.toHaveBeenCalled();
+    expect(repository.recordSubscriptionComparisonFailure).toHaveBeenCalledTimes(2);
   });
 
   it('fails a non-Map batch response closed without persisting it', async () => {
@@ -335,6 +355,154 @@ describe('subscriptionCheckpointEnrollment', () => {
       nextCursor: 'address-1',
     });
     expect(repository.completeSubscriptionEnrollment).not.toHaveBeenCalled();
+    expect(repository.recordSubscriptionComparisonFailure).toHaveBeenCalledOnce();
+  });
+
+  it('uses a current failure time for an invalid-only page without a clock override', async () => {
+    const repository = repositoryMock();
+    vi.mocked(repository.findPendingSubscriptionEnrollments).mockResolvedValue([
+      candidate('address-1', 'not-an-address'),
+    ]);
+    const enrollment = createSubscriptionCheckpointEnrollment({ repository, subscribeBatch });
+
+    await expect(enrollment.enrollPage({ network: 'mainnet' })).resolves.toMatchObject({
+      enrolled: 0,
+      unavailable: 1,
+    });
+    expect(repository.recordSubscriptionComparisonFailure).toHaveBeenCalledWith(
+      expect.objectContaining({ failedAt: expect.any(Date) }),
+    );
+  });
+
+  it('keeps an invalid-only page pending when the failure clock is invalid', async () => {
+    const repository = repositoryMock();
+    vi.mocked(repository.findPendingSubscriptionEnrollments).mockResolvedValue([
+      candidate('address-1', 'not-an-address'),
+    ]);
+    const enrollment = createSubscriptionCheckpointEnrollment({
+      repository,
+      subscribeBatch,
+      now: () => new Date(Number.NaN),
+    });
+
+    await expect(enrollment.enrollPage({ network: 'mainnet' })).resolves.toMatchObject({
+      enrolled: 0,
+      unavailable: 1,
+    });
+    expect(subscribeBatch).not.toHaveBeenCalled();
+    expect(repository.recordSubscriptionComparisonFailure).not.toHaveBeenCalled();
+  });
+
+  it('stops durable failure writes when subscription ownership becomes inactive', async () => {
+    const repository = repositoryMock();
+    const active = vi.fn().mockReturnValueOnce(true).mockReturnValue(false);
+    vi.mocked(repository.findPendingSubscriptionEnrollments).mockResolvedValue([
+      candidate('address-1', 'not-an-address'),
+      candidate('address-2', 'also-not-an-address'),
+    ]);
+    const enrollment = createSubscriptionCheckpointEnrollment({
+      repository,
+      subscribeBatch,
+      isActive: active,
+      now: () => NOW,
+    });
+
+    await expect(enrollment.enrollPage({ network: 'mainnet' })).resolves.toMatchObject({
+      enrolled: 0,
+      unavailable: 2,
+    });
+    expect(repository.recordSubscriptionComparisonFailure).toHaveBeenCalledOnce();
+    expect(repository.recordSubscriptionComparisonFailure).toHaveBeenCalledWith(
+      expect.objectContaining({ addressId: 'address-1' }),
+    );
+  });
+
+  it('uses a current failure time for a rejected batch without a clock override', async () => {
+    const repository = repositoryMock();
+    vi.mocked(repository.findPendingSubscriptionEnrollments).mockResolvedValue([
+      candidate('address-1', ADDRESS_1),
+    ]);
+    subscribeBatch.mockRejectedValue(new Error('Electrum unavailable'));
+    const enrollment = createSubscriptionCheckpointEnrollment({ repository, subscribeBatch });
+
+    await enrollment.enrollPage({ network: 'mainnet' });
+
+    expect(repository.recordSubscriptionComparisonFailure).toHaveBeenCalledWith(
+      expect.objectContaining({ failedAt: expect.any(Date) }),
+    );
+  });
+
+  it('uses a current failure time for a malformed batch without a clock override', async () => {
+    const repository = repositoryMock();
+    vi.mocked(repository.findPendingSubscriptionEnrollments).mockResolvedValue([
+      candidate('address-1', ADDRESS_1),
+    ]);
+    subscribeBatch.mockResolvedValue({ [ADDRESS_1]: STATUS_1 });
+    const enrollment = createSubscriptionCheckpointEnrollment({ repository, subscribeBatch });
+
+    await enrollment.enrollPage({ network: 'mainnet' });
+
+    expect(repository.recordSubscriptionComparisonFailure).toHaveBeenCalledWith(
+      expect.objectContaining({ failedAt: expect.any(Date) }),
+    );
+  });
+
+  it('keeps the page pending when the failure clock is invalid', async () => {
+    const repository = repositoryMock();
+    vi.mocked(repository.findPendingSubscriptionEnrollments).mockResolvedValue([
+      candidate('address-1', ADDRESS_1),
+    ]);
+    subscribeBatch.mockRejectedValue(new Error('Electrum unavailable'));
+    const enrollment = createSubscriptionCheckpointEnrollment({
+      repository,
+      subscribeBatch,
+      now: () => new Date(Number.NaN),
+    });
+
+    await expect(enrollment.enrollPage({ network: 'mainnet' })).resolves.toMatchObject({
+      enrolled: 0,
+      unavailable: 1,
+    });
+    expect(repository.recordSubscriptionComparisonFailure).not.toHaveBeenCalled();
+  });
+
+  it('keeps a malformed batch pending when the failure clock is invalid', async () => {
+    const repository = repositoryMock();
+    vi.mocked(repository.findPendingSubscriptionEnrollments).mockResolvedValue([
+      candidate('address-1', ADDRESS_1),
+    ]);
+    subscribeBatch.mockResolvedValue({ [ADDRESS_1]: STATUS_1 });
+    const enrollment = createSubscriptionCheckpointEnrollment({
+      repository,
+      subscribeBatch,
+      now: () => new Date(Number.NaN),
+    });
+
+    await expect(enrollment.enrollPage({ network: 'mainnet' })).resolves.toMatchObject({
+      enrolled: 0,
+      unavailable: 1,
+    });
+    expect(repository.recordSubscriptionComparisonFailure).not.toHaveBeenCalled();
+  });
+
+  it('remains fail-closed when durable failure evidence cannot be written', async () => {
+    const repository = repositoryMock();
+    vi.mocked(repository.findPendingSubscriptionEnrollments).mockResolvedValue([
+      candidate('address-1', ADDRESS_1),
+    ]);
+    vi.mocked(repository.recordSubscriptionComparisonFailure)
+      .mockRejectedValue(new Error('database unavailable'));
+    subscribeBatch.mockResolvedValue(new Map<string, string | null>());
+    const enrollment = createSubscriptionCheckpointEnrollment({
+      repository,
+      subscribeBatch,
+      now: () => NOW,
+    });
+
+    await expect(enrollment.enrollPage({ network: 'mainnet' })).resolves.toMatchObject({
+      enrolled: 0,
+      unavailable: 1,
+    });
   });
 
   it('continues after stale or failed completion while preserving pending work', async () => {
@@ -371,6 +539,13 @@ describe('subscriptionCheckpointEnrollment', () => {
       nextCursor: 'address-3',
     });
     expect(repository.completeSubscriptionEnrollment).toHaveBeenCalledTimes(3);
+    expect(repository.recordSubscriptionComparisonFailure).toHaveBeenCalledOnce();
+    expect(repository.recordSubscriptionComparisonFailure).toHaveBeenCalledWith({
+      addressId: 'address-2',
+      network: 'mainnet',
+      enrollmentGeneration: 1,
+      failedAt: NOW,
+    });
   });
 
   it('coalesces committed wake intents by exact wallet generation', async () => {

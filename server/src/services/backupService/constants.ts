@@ -51,6 +51,9 @@ export const COMPLETE_TABLE_POLICY: readonly BackupTablePolicyEntry[] = [
   { model: 'WalletDevice', table: 'walletDevice', classification: 'durable-restored' },
   { model: 'Address', table: 'address', classification: 'durable-restored' },
   { model: 'AddressSubscriptionCheckpoint', table: 'addressSubscriptionCheckpoint', classification: 'durable-restored' },
+  { model: 'AddressSubscriptionComparisonFailure', table: 'addressSubscriptionComparisonFailure', classification: 'durable-restored' },
+  { model: 'NetworkSubscriptionCoverageState', table: 'networkSubscriptionCoverageState', classification: 'durable-restored' },
+  { model: 'NetworkHeaderCheckpoint', table: 'networkHeaderCheckpoint', classification: 'durable-restored' },
   { model: 'Label', table: 'label', classification: 'durable-restored' },
   { model: 'DraftTransaction', table: 'draftTransaction', classification: 'durable-restored' },
   { model: 'MobilePermission', table: 'mobilePermission', classification: 'durable-restored' },
@@ -105,6 +108,12 @@ export const EPHEMERAL_TABLES = getTablesByClassification('security-ephemeral');
  * contract test recomputes this value so policy edits cannot retain a stale ID.
  */
 export const COMPLETE_TABLE_POLICY_HASH =
+  'a56baac6fa3430f1b15dd3bd1e979ab6072e08fef0c1adc3c8846bf249eee6b7';
+/** Policy hash emitted before durable subscription-coverage evidence existed. */
+export const PRE_SUBSCRIPTION_COVERAGE_COMPLETE_TABLE_POLICY_HASH =
+  'c3bf72c902b852c9f8546656f6e8915be39ae380c7b44990be4d623d28b020c9';
+/** Policy hash emitted before durable per-network header checkpoints existed. */
+export const PRE_HEADER_CHECKPOINT_COMPLETE_TABLE_POLICY_HASH =
   '594949940eebbc3590f682ec374580a3617180b479618e27d175cd05cf728240';
 /** Policy hash emitted before durable address-subscription checkpoints existed. */
 export const PRE_WALLET_SYNC_COMPLETE_TABLE_POLICY_HASH =
@@ -127,7 +136,22 @@ export const IMMUTABLE_EVIDENCE_TABLES = [
   'walletRemediationEvent',
 ] as const;
 
-const PRE_WALLET_SYNC_COMPLETE_TABLE_ORDER = TABLE_ORDER.filter(
+// Historical table orders chain newest-first: each one filters the order that
+// came after it, so it reconstructs exactly the tables that existed when that
+// policy hash was emitted. A new durable table extends this chain at the HEAD —
+// derive a new PRE_* order from TABLE_ORDER and re-point the current head at
+// it. Filtering TABLE_ORDER directly for an older policy would silently start
+// demanding a table that policy never wrote.
+const PRE_SUBSCRIPTION_COVERAGE_COMPLETE_TABLE_ORDER = TABLE_ORDER.filter(
+  table => table !== 'addressSubscriptionComparisonFailure'
+    && table !== 'networkSubscriptionCoverageState'
+);
+
+const PRE_HEADER_CHECKPOINT_COMPLETE_TABLE_ORDER = PRE_SUBSCRIPTION_COVERAGE_COMPLETE_TABLE_ORDER.filter(
+  table => table !== 'networkHeaderCheckpoint'
+);
+
+const PRE_WALLET_SYNC_COMPLETE_TABLE_ORDER = PRE_HEADER_CHECKPOINT_COMPLETE_TABLE_ORDER.filter(
   table => table !== 'addressSubscriptionCheckpoint'
 );
 
@@ -141,40 +165,47 @@ const PREVIOUS_COMPLETE_TABLE_ORDER = PRE_REMEDIATION_COMPLETE_TABLE_ORDER.filte
   table => table !== 'transactionOwnershipRepair'
 );
 
-const usesPreRemediationCompletePolicy = (
-  meta: Pick<BackupMeta, 'version' | 'tablePolicy'>
-): boolean => (
-  meta.version === BACKUP_FORMAT_VERSION
-  && meta.tablePolicy?.version === COMPLETE_TABLE_POLICY_VERSION
-  && meta.tablePolicy.hash === PRE_REMEDIATION_COMPLETE_TABLE_POLICY_HASH
-);
+/**
+ * Every complete-policy hash we still accept, mapped to the durable tables that
+ * existed when it was emitted. One map rather than a predicate-per-generation
+ * keeps the two restore-table selectors from drifting apart: adding a table
+ * means adding one row here, not editing two parallel if/else chains.
+ */
+const HISTORICAL_COMPLETE_TABLE_ORDERS: ReadonlyMap<string, readonly string[]> = new Map([
+  [
+    PRE_SUBSCRIPTION_COVERAGE_COMPLETE_TABLE_POLICY_HASH,
+    PRE_SUBSCRIPTION_COVERAGE_COMPLETE_TABLE_ORDER,
+  ],
+  [PRE_HEADER_CHECKPOINT_COMPLETE_TABLE_POLICY_HASH, PRE_HEADER_CHECKPOINT_COMPLETE_TABLE_ORDER],
+  [PRE_WALLET_SYNC_COMPLETE_TABLE_POLICY_HASH, PRE_WALLET_SYNC_COMPLETE_TABLE_ORDER],
+  [PRE_REMEDIATION_COMPLETE_TABLE_POLICY_HASH, PRE_REMEDIATION_COMPLETE_TABLE_ORDER],
+  [PRE_TOMBSTONE_COMPLETE_TABLE_POLICY_HASH, PRE_REMEDIATION_COMPLETE_TABLE_ORDER],
+  [PRE_SIGNING_INTENT_COMPLETE_TABLE_POLICY_HASH, PRE_REMEDIATION_COMPLETE_TABLE_ORDER],
+  [PREVIOUS_COMPLETE_TABLE_POLICY_HASH, PREVIOUS_COMPLETE_TABLE_ORDER],
+]);
 
-const usesPreWalletSyncCompletePolicy = (
-  meta: Pick<BackupMeta, 'version' | 'tablePolicy'>
-): boolean => (
-  meta.version === BACKUP_FORMAT_VERSION
-  && meta.tablePolicy?.version === COMPLETE_TABLE_POLICY_VERSION
-  && meta.tablePolicy.hash === PRE_WALLET_SYNC_COMPLETE_TABLE_POLICY_HASH
-);
+/**
+ * Whether a complete-policy hash is one we still know how to restore: the
+ * current policy, or any generation in the historical registry. Derived from
+ * the same map the table orders come from, so a hash can never be accepted
+ * without a matching table order.
+ */
+export function isRecognizedCompleteTablePolicyHash(hash: string): boolean {
+  return hash === COMPLETE_TABLE_POLICY_HASH || HISTORICAL_COMPLETE_TABLE_ORDERS.has(hash);
+}
 
-const usesOtherPreRemediationCompletePolicy = (
+/**
+ * The durable tables a complete-format backup carries, or null when the backup
+ * is not a recognized older complete-policy generation (current policy, or the
+ * legacy format the callers handle themselves).
+ */
+const historicalCompleteTableOrder = (
   meta: Pick<BackupMeta, 'version' | 'tablePolicy'>
-): boolean => (
-  meta.version === BACKUP_FORMAT_VERSION
-  && meta.tablePolicy?.version === COMPLETE_TABLE_POLICY_VERSION
-  && (
-    meta.tablePolicy.hash === PRE_TOMBSTONE_COMPLETE_TABLE_POLICY_HASH
-    || meta.tablePolicy.hash === PRE_SIGNING_INTENT_COMPLETE_TABLE_POLICY_HASH
-  )
-);
-
-const usesPreviousCompletePolicy = (
-  meta: Pick<BackupMeta, 'version' | 'tablePolicy'>
-): boolean => (
-  meta.version === BACKUP_FORMAT_VERSION
-  && meta.tablePolicy?.version === COMPLETE_TABLE_POLICY_VERSION
-  && meta.tablePolicy.hash === PREVIOUS_COMPLETE_TABLE_POLICY_HASH
-);
+): readonly string[] | null => {
+  if (meta.version !== BACKUP_FORMAT_VERSION) return null;
+  if (meta.tablePolicy?.version !== COMPLETE_TABLE_POLICY_VERSION) return null;
+  return HISTORICAL_COMPLETE_TABLE_ORDERS.get(meta.tablePolicy.hash) ?? null;
+};
 
 /**
  * The immutable table manifest used by pre-fix 1.0.0 backups.
@@ -267,13 +298,8 @@ export function getRequiredRestoreTables(
     requiredTables = LEGACY_TABLE_ORDER.filter(
       (table) => meta.schemaVersion >= LEGACY_RESTORE_TABLE_MIN_SCHEMA_VERSION[table]
     );
-  } else if (usesPreWalletSyncCompletePolicy(meta)) {
-    requiredTables = PRE_WALLET_SYNC_COMPLETE_TABLE_ORDER;
-  } else if (usesPreRemediationCompletePolicy(meta)
-    || usesOtherPreRemediationCompletePolicy(meta)) {
-    requiredTables = PRE_REMEDIATION_COMPLETE_TABLE_ORDER;
-  } else if (usesPreviousCompletePolicy(meta)) {
-    requiredTables = PREVIOUS_COMPLETE_TABLE_ORDER;
+  } else {
+    requiredTables = historicalCompleteTableOrder(meta) ?? TABLE_ORDER;
   }
 
   return meta.includesCache
@@ -292,13 +318,8 @@ export function getRestoreTables(
   let durableTables: readonly string[] = TABLE_ORDER;
   if (meta.version === LEGACY_BACKUP_FORMAT_VERSION) {
     durableTables = LEGACY_TABLE_ORDER.filter((table) => !EPHEMERAL_TABLES.includes(table));
-  } else if (usesPreWalletSyncCompletePolicy(meta)) {
-    durableTables = PRE_WALLET_SYNC_COMPLETE_TABLE_ORDER;
-  } else if (usesPreRemediationCompletePolicy(meta)
-    || usesOtherPreRemediationCompletePolicy(meta)) {
-    durableTables = PRE_REMEDIATION_COMPLETE_TABLE_ORDER;
-  } else if (usesPreviousCompletePolicy(meta)) {
-    durableTables = PREVIOUS_COMPLETE_TABLE_ORDER;
+  } else {
+    durableTables = historicalCompleteTableOrder(meta) ?? TABLE_ORDER;
   }
 
   return meta.includesCache
@@ -313,6 +334,7 @@ export const LARGE_TABLE_CURSOR_FIELDS: ReadonlyMap<string, string> = new Map([
   ['transaction', 'id'], ['uTXO', 'id'], ['transactionInput', 'id'], ['transactionOutput', 'id'],
   ['address', 'id'], ['auditLog', 'id'], ['addressLabel', 'id'], ['transactionLabel', 'id'],
   ['addressSubscriptionCheckpoint', 'addressId'],
+  ['addressSubscriptionComparisonFailure', 'addressId'],
   ['agentFundingAttempt', 'id'], ['agentAlert', 'id'], ['consolePromptHistory', 'id'],
   ['consoleTurn', 'id'], ['consoleToolTrace', 'id'], ['webhookDelivery', 'id'],
   ['featureFlagAudit', 'id'], ['policyEvent', 'id'], ['approvalVote', 'id'],

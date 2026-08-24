@@ -29,7 +29,30 @@ export const RESTORE_DATE_FIELDS: Record<string, readonly string[]> = {
   deviceUser: ['createdAt'],
   walletDevice: ['createdAt'],
   address: ['createdAt'],
-  addressSubscriptionCheckpoint: ['lastObservedAt', 'createdAt', 'updatedAt'],
+  addressSubscriptionCheckpoint: [
+    'lastObservedAt',
+    'coverageGapStartedAt',
+    'createdAt',
+    'updatedAt',
+  ],
+  addressSubscriptionComparisonFailure: [
+    'firstFailedAt',
+    'lastFailedAt',
+    'createdAt',
+    'updatedAt',
+  ],
+  networkSubscriptionCoverageState: [
+    'firstComparisonFailureAt',
+    'lastComparisonFailureAt',
+    'createdAt',
+    'updatedAt',
+  ],
+  networkHeaderCheckpoint: [
+    'observedAt',
+    'coverageGapStartedAt',
+    'createdAt',
+    'updatedAt',
+  ],
   transaction: [
     'classificationLastAttemptAt',
     'ioLastAttemptAt',

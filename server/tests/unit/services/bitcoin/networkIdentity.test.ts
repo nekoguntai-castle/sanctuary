@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   getExpectedGenesisHash,
   hashBlockHeader,
+  previousBlockHashFromHeader,
   verifyNodeClientNetwork,
 } from '../../../../src/services/bitcoin/networkIdentity';
 
@@ -12,6 +13,33 @@ const TESTNET4_GENESIS_HEADER =
   '0100000000000000000000000000000000000000000000000000000000000000000000004e7b2b9128fe0291db0693af2ae418b767e657cd407e80cb1434221eaea7a07a046f3566ffff001dbb0c7817';
 
 describe('network identity', () => {
+  describe('previousBlockHashFromHeader', () => {
+    it('reads genesis as building on the all-zero parent', () => {
+      expect(previousBlockHashFromHeader(TESTNET3_GENESIS_HEADER)).toBe('0'.repeat(64));
+    });
+
+    it('reads a parent hash in the same display order hashBlockHeader emits', () => {
+      // A header whose parent is testnet4 genesis: same 80-byte layout, with
+      // the parent field written in internal (reversed) byte order.
+      const parent = hashBlockHeader(TESTNET4_GENESIS_HEADER);
+      const parentInternal = Buffer.from(parent, 'hex').reverse().toString('hex');
+      const child = `01000000${parentInternal}${TESTNET4_GENESIS_HEADER.slice(72)}`;
+
+      expect(child).toHaveLength(160);
+      expect(previousBlockHashFromHeader(child)).toBe(parent);
+    });
+
+    it.each([
+      ['a truncated header', 'abcd'],
+      ['a non-hex header', 'z'.repeat(160)],
+      ['an over-long header', '0'.repeat(162)],
+      ['an empty header', ''],
+    ])('rejects %s rather than returning a partial parent', (_label, headerHex) => {
+      expect(() => previousBlockHashFromHeader(headerHex))
+        .toThrow('Invalid Bitcoin block header: expected 160 hex characters (80 bytes)');
+    });
+  });
+
   it('hashes genesis headers using Bitcoin double-SHA256 byte order', () => {
     expect(hashBlockHeader(TESTNET4_GENESIS_HEADER)).toBe(
       '00000000da84f2bafbbc53dee25a72ae507ff4914b867c565be350b0da8bf043',

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  getBackupOnlyModelMock,
   getMockBackupLogger,
   getMockClearAccessCacheStrict,
   getMockFeatureRuntimeReconcile,
@@ -189,6 +190,48 @@ describe('restoreFromBackup', () => {
         incrementalSyncLeaseToken: null,
         syncActionRequiredAt: null,
         preparedFullResyncGeneration: 0,
+      });
+    });
+
+    it('backfills a durable gap start while restoring a pre-coverage checkpoint', async () => {
+      const backup = createValidBackup();
+      for (const table of TABLE_ORDER) backup.data[table] ??= [];
+      backup.meta.version = '1.1.0';
+      backup.meta.tablePolicy = {
+        version: COMPLETE_TABLE_POLICY_VERSION,
+        hash: COMPLETE_TABLE_POLICY_HASH,
+      };
+      const createdAt = '2026-08-22T00:00:00.000Z';
+      backup.data.address.push({
+        id: 'address-1',
+        walletId: 'wallet-1',
+        address: 'tb1qcoverage',
+      });
+      backup.data.addressSubscriptionCheckpoint.push({
+        addressId: 'address-1',
+        network: 'testnet',
+        statusKnown: false,
+        requestedEnrollmentGeneration: 1,
+        processedEnrollmentGeneration: 0,
+        createdAt,
+      });
+      backup.meta.recordCounts = Object.fromEntries(
+        Object.entries(backup.data).map(([table, records]) => [table, records.length]),
+      );
+      mockPrismaClient.$transaction.mockImplementation(async (fn: any) => fn(mockPrismaClient));
+      mockAllTableWrites();
+
+      await expect(backupService.restoreFromBackup(backup)).resolves.toMatchObject({
+        success: true,
+      });
+
+      const checkpointModel = getBackupOnlyModelMock('addressSubscriptionCheckpoint');
+      expect(checkpointModel.createMany).toHaveBeenCalledWith({
+        data: [expect.objectContaining({
+          addressId: 'address-1',
+          coverageGapStartedAt: new Date(createdAt),
+        })],
+        skipDuplicates: false,
       });
     });
 

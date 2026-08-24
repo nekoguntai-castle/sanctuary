@@ -8,15 +8,10 @@
 import { migrationService } from '../migrationService';
 import {
   BACKUP_FORMAT_VERSION,
-  COMPLETE_TABLE_POLICY_HASH,
   COMPLETE_TABLE_POLICY_VERSION,
-  PRE_SIGNING_INTENT_COMPLETE_TABLE_POLICY_HASH,
-  PRE_WALLET_SYNC_COMPLETE_TABLE_POLICY_HASH,
-  PRE_REMEDIATION_COMPLETE_TABLE_POLICY_HASH,
   getRequiredRestoreTables,
+  isRecognizedCompleteTablePolicyHash,
   LEGACY_BACKUP_FORMAT_VERSION,
-  PRE_TOMBSTONE_COMPLETE_TABLE_POLICY_HASH,
-  PREVIOUS_COMPLETE_TABLE_POLICY_HASH,
   TABLE_ORDER,
 } from './constants';
 import type { BackupRecord, BackupMeta, ValidationResult } from './types';
@@ -215,6 +210,7 @@ export async function validateBackup(backup: unknown): Promise<ValidationResult>
   validateDeviceReferences(data, issues);
   validateWalletUserReferences(data, issues);
   validateSubscriptionCheckpointReferences(data, issues);
+  validateSubscriptionCoverageReferences(data, issues);
 
   return createValidationResult(issues.length === 0, issues, warnings, meta, tables, data);
 }
@@ -353,13 +349,7 @@ const validateTablePolicy = (meta: BackupMeta, issues: string[]): void => {
   }
 
   const { version, hash } = meta.tablePolicy;
-  const recognizedHash = hash === COMPLETE_TABLE_POLICY_HASH
-    || hash === PRE_WALLET_SYNC_COMPLETE_TABLE_POLICY_HASH
-    || hash === PRE_REMEDIATION_COMPLETE_TABLE_POLICY_HASH
-    || hash === PRE_SIGNING_INTENT_COMPLETE_TABLE_POLICY_HASH
-    || hash === PRE_TOMBSTONE_COMPLETE_TABLE_POLICY_HASH
-    || hash === PREVIOUS_COMPLETE_TABLE_POLICY_HASH;
-  if (version !== COMPLETE_TABLE_POLICY_VERSION || !recognizedHash) {
+  if (version !== COMPLETE_TABLE_POLICY_VERSION || !isRecognizedCompleteTablePolicyHash(hash)) {
     issues.push(`Unknown table policy: ${version}/${hash}`);
   }
 };
@@ -509,6 +499,42 @@ const validateSubscriptionCheckpointReferences = (
       issues.push(
         `AddressSubscriptionCheckpoint ${String(checkpoint.addressId)} network ${String(checkpoint.network)} does not match owning wallet ${String(wallet.id)} network ${String(wallet.network)}`,
       );
+    }
+  }
+};
+
+const validateSubscriptionCoverageReferences = (
+  data: Record<string, BackupRecord[]>,
+  issues: string[],
+): void => {
+  const checkpoints = Array.isArray(data.addressSubscriptionCheckpoint)
+    ? new Map(data.addressSubscriptionCheckpoint.map(checkpoint => [checkpoint.addressId, checkpoint]))
+    : null;
+  if (checkpoints && Array.isArray(data.addressSubscriptionComparisonFailure)) {
+    for (const failure of data.addressSubscriptionComparisonFailure) {
+      const checkpoint = checkpoints.get(failure.addressId);
+      if (!checkpoint) {
+        issues.push(
+          `AddressSubscriptionComparisonFailure ${String(failure.addressId)} references non-existent checkpoint`,
+        );
+        continue;
+      }
+      if (failure.enrollmentGeneration !== checkpoint.requestedEnrollmentGeneration
+        || Number(checkpoint.processedEnrollmentGeneration) >= Number(failure.enrollmentGeneration)) {
+        issues.push(
+          `AddressSubscriptionComparisonFailure ${String(failure.addressId)} does not match an exact pending enrollment generation`,
+        );
+      }
+    }
+  }
+
+  if (Array.isArray(data.networkSubscriptionCoverageState)) {
+    for (const state of data.networkSubscriptionCoverageState) {
+      if (!isBitcoinNetwork(state.network)) {
+        issues.push(
+          `NetworkSubscriptionCoverageState has invalid network ${String(state.network)}`,
+        );
+      }
     }
   }
 };

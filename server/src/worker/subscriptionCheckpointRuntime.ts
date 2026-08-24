@@ -8,6 +8,7 @@ import {
   findSubscriptionCheckpointOwners,
   requestSubscriptionEnrollment,
 } from '../repositories/subscriptionCheckpointRepository';
+import { recordSubscriptionComparisonFailure } from '../repositories/subscriptionCoverageRepository';
 import type {
   SubscriptionCheckpointOwner,
   SubscriptionCheckpointSyncIntent,
@@ -25,9 +26,12 @@ import {
   syncLifecyclePublisher,
   type SyncLifecyclePublisher,
 } from '../services/sync/syncLifecyclePublisher';
+import { getErrorMessage } from '../utils/errors';
+import { createLogger } from '../utils/logger';
 
 const MAX_RUNTIME_PAGE_SIZE = 200;
 const ELECTRUM_STATUS_PATTERN = /^[0-9a-f]{64}$/;
+const log = createLogger('WORKER:SUBSCRIPTION_CHECKPOINT_RUNTIME');
 
 interface RuntimeRepositoryPort extends SubscriptionCheckpointEnrollmentRepositoryPort {
   findSubscriptionCheckpointOwners(
@@ -211,15 +215,36 @@ export function createSubscriptionCheckpointRuntime(
       input.network,
     );
     if (!('state' in request)) return { status: request.status };
-    return dependencies.repository.completeSubscriptionEnrollment({
-      addressId: owner.addressId,
-      address: owner.address,
-      network: input.network,
-      generation: request.state.requestedEnrollmentGeneration,
-      scriptHash: input.scriptHash,
-      observedStatus: input.observedStatus,
-      observedAt,
-    });
+    const generation = request.state.requestedEnrollmentGeneration;
+    try {
+      return await dependencies.repository.completeSubscriptionEnrollment({
+        addressId: owner.addressId,
+        address: owner.address,
+        network: input.network,
+        generation,
+        scriptHash: input.scriptHash,
+        observedStatus: input.observedStatus,
+        observedAt,
+      });
+    } catch (error) {
+      try {
+        await dependencies.repository.recordSubscriptionComparisonFailure({
+          addressId: owner.addressId,
+          network: input.network,
+          enrollmentGeneration: generation,
+          failedAt: observedAt,
+        });
+      } catch (evidenceError) {
+        // The pending checkpoint keeps readiness fail-closed. Preserve the
+        // original completion error while still surfacing evidence-store loss.
+        log.error('Unable to persist subscription comparison failure evidence', {
+          addressId: owner.addressId,
+          completionError: getErrorMessage(error),
+          evidenceError: getErrorMessage(evidenceError),
+        });
+      }
+      throw error;
+    }
   }
 
   async function recordStatusPage(
@@ -285,6 +310,7 @@ export function createProductionSubscriptionCheckpointRuntime(
       findSubscriptionCheckpointOwners,
       requestSubscriptionEnrollment,
       completeSubscriptionEnrollment,
+      recordSubscriptionComparisonFailure,
     },
     subscribeBatch,
     publishTransition: (transition) => syncLifecyclePublisher.publish(transition),

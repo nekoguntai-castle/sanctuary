@@ -29,6 +29,7 @@ import {
   processAgentApiKeyRecords,
   processMcpApiKeyRecords,
   processNodeConfigRecords,
+  processSubscriptionCheckpointCoverageRecords,
   processSystemSettingRecords,
   processUserRecords,
   processWalletSyncIntentRecords,
@@ -96,6 +97,9 @@ function processRestoreRecords(
     );
   }
   if (table === 'wallet') processed = processWalletSyncIntentRecords(processed);
+  if (table === 'addressSubscriptionCheckpoint') {
+    processed = processSubscriptionCheckpointCoverageRecords(processed);
+  }
   if (table === 'user') {
     processed = processUserRecords(processed, warnings, currentSessionVersions);
   }

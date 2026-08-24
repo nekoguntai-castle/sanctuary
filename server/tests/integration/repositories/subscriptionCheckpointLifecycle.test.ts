@@ -508,6 +508,7 @@ describeWithDatabase('subscription checkpoint lifecycle', () => {
         lastObservedAt: NOW,
         requestedEnrollmentGeneration: 2_147_483_647,
         processedEnrollmentGeneration: 2_147_483_647,
+        coverageGapStartedAt: null,
       },
     });
 

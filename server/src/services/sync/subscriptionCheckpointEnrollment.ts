@@ -8,10 +8,17 @@ import type {
   SubscriptionEnrollmentCandidate,
   SubscriptionCheckpointSyncIntent,
 } from '../../repositories/types';
+import type {
+  RecordSubscriptionComparisonFailureInput,
+  RecordSubscriptionComparisonFailureResult,
+} from '../../repositories/subscriptionCoverageRepository';
+import { getErrorMessage } from '../../utils/errors';
+import { createLogger } from '../../utils/logger';
 import { addressToScriptHash } from '../bitcoin/electrum/methods';
 
 const MAX_ENROLLMENT_PAGE_SIZE = 200;
 const ELECTRUM_STATUS_PATTERN = /^[0-9a-f]{64}$/;
+const log = createLogger('SERVICE:SUBSCRIPTION_CHECKPOINT_ENROLLMENT');
 
 export interface SubscriptionBatchInput {
   network: NetworkType;
@@ -32,6 +39,9 @@ export interface SubscriptionCheckpointEnrollmentRepositoryPort {
   completeSubscriptionEnrollment(
     input: SubscriptionEnrollmentCompletionInput,
   ): Promise<SubscriptionEnrollmentCompletionResult>;
+  recordSubscriptionComparisonFailure(
+    input: RecordSubscriptionComparisonFailureInput,
+  ): Promise<RecordSubscriptionComparisonFailureResult>;
 }
 
 export interface SubscriptionCheckpointEnrollmentDependencies {
@@ -130,8 +140,8 @@ async function completeSafely(
   observedStatus: string | null,
   observedAt: Date,
 ): Promise<SubscriptionEnrollmentCompletionResult> {
+  const { candidate, scriptHash } = prepared;
   try {
-    const { candidate, scriptHash } = prepared;
     const result = await repository.completeSubscriptionEnrollment({
       addressId: candidate.addressId,
       address: candidate.address,
@@ -143,7 +153,57 @@ async function completeSafely(
     });
     return result;
   } catch {
+    await recordFailureSafely(repository, candidate, network, observedAt);
     return { status: 'not_applied' };
+  }
+}
+
+async function recordFailureSafely(
+  repository: SubscriptionCheckpointEnrollmentRepositoryPort,
+  candidate: SubscriptionEnrollmentCandidate,
+  network: NetworkType,
+  failedAt: Date,
+): Promise<void> {
+  try {
+    await repository.recordSubscriptionComparisonFailure({
+      addressId: candidate.addressId,
+      network,
+      enrollmentGeneration: candidate.requestedEnrollmentGeneration,
+      failedAt,
+    });
+  } catch (error) {
+    // The durable coverage gap remains open. The readiness reader therefore
+    // still fails closed even when failure-evidence persistence is unavailable.
+    log.error('Unable to persist subscription comparison failure evidence', {
+      addressId: candidate.addressId,
+      error: getErrorMessage(error),
+    });
+  }
+}
+
+async function recordFailures(
+  repository: SubscriptionCheckpointEnrollmentRepositoryPort,
+  candidates: SubscriptionEnrollmentCandidate[],
+  network: NetworkType,
+  failedAt: Date,
+  isActive?: () => boolean,
+): Promise<void> {
+  for (const candidate of candidates) {
+    // Every untouched candidate retains its durable open gap, so shutdown may
+    // stop this best-effort evidence loop without creating a false-ready state.
+    if (isActive && !isActive()) break;
+    await recordFailureSafely(repository, candidate, network, failedAt);
+  }
+}
+
+function safeFailureTime(now: () => Date): Date | null {
+  try {
+    return enrollmentTime(now);
+  } catch (error) {
+    log.error('Unable to timestamp subscription comparison failures', {
+      error: getErrorMessage(error),
+    });
+    return null;
   }
 }
 
@@ -175,10 +235,28 @@ export function createSubscriptionCheckpointEnrollment(
     ).slice(0, limit);
     if (candidates.length === 0) return pageResult(candidates, 0);
 
-    const prepared = candidates
-      .map((candidate) => prepareCandidate(candidate, options.network))
-      .filter((candidate): candidate is PreparedEnrollment => candidate !== null);
-    if (prepared.length === 0) return pageResult(candidates, 0);
+    const prepared: PreparedEnrollment[] = [];
+    const invalidCandidates: SubscriptionEnrollmentCandidate[] = [];
+    for (const candidate of candidates) {
+      const item = prepareCandidate(candidate, options.network);
+      if (item) prepared.push(item);
+      else invalidCandidates.push(candidate);
+    }
+    if (prepared.length === 0) {
+      const failedAt = safeFailureTime(dependencies.now ?? (() => new Date()));
+      // Without a trustworthy timestamp we cannot persist event history, but
+      // all candidates remain pending with durable gaps, so readiness is false.
+      if (failedAt) {
+        await recordFailures(
+          dependencies.repository,
+          invalidCandidates,
+          options.network,
+          failedAt,
+          dependencies.isActive,
+        );
+      }
+      return pageResult(candidates, 0);
+    }
     if (dependencies.isActive && !dependencies.isActive()) {
       return pageResult(candidates, 0);
     }
@@ -190,20 +268,57 @@ export function createSubscriptionCheckpointEnrollment(
         addresses: prepared.map(({ candidate }) => candidate.address),
       });
     } catch {
+      const failedAt = safeFailureTime(dependencies.now ?? (() => new Date()));
+      if (failedAt) {
+        await recordFailures(
+          dependencies.repository,
+          [...invalidCandidates, ...prepared.map(({ candidate }) => candidate)],
+          options.network,
+          failedAt,
+          dependencies.isActive,
+        );
+      }
       return pageResult(candidates, 0);
     }
-    if (!(statuses instanceof Map)) return pageResult(candidates, 0);
+    if (!(statuses instanceof Map)) {
+      const failedAt = safeFailureTime(dependencies.now ?? (() => new Date()));
+      if (failedAt) {
+        await recordFailures(
+          dependencies.repository,
+          [...invalidCandidates, ...prepared.map(({ candidate }) => candidate)],
+          options.network,
+          failedAt,
+          dependencies.isActive,
+        );
+      }
+      return pageResult(candidates, 0);
+    }
     if (dependencies.isActive && !dependencies.isActive()) {
       return pageResult(candidates, 0);
     }
     const observedAt = enrollmentTime(dependencies.now ?? (() => new Date()));
+    await recordFailures(
+      dependencies.repository,
+      invalidCandidates,
+      options.network,
+      observedAt,
+      dependencies.isActive,
+    );
 
     let enrolled = 0;
     const syncIntents = new Map<string, SubscriptionCheckpointSyncIntent>();
     for (const item of prepared) {
       if (dependencies.isActive && !dependencies.isActive()) break;
       const observation = returnedStatus(statuses, item.candidate.address);
-      if (!observation.returned) continue;
+      if (!observation.returned) {
+        await recordFailureSafely(
+          dependencies.repository,
+          item.candidate,
+          options.network,
+          observedAt,
+        );
+        continue;
+      }
       const completion = await completeSafely(
         dependencies.repository,
         item,

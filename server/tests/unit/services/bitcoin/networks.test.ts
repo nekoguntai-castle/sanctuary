@@ -10,7 +10,7 @@ import {
   normalizeLegacyBitcoinNetwork,
   resolveDetectedBitcoinNetwork,
   resolvePersistedBitcoinNetwork,
-} from "../../../../src/services/bitcoin/networks";
+} from "../../../../src/constants/bitcoinNetworks";
 
 describe("bitcoin network helpers", () => {
   it("re-exports the shared canonical network tuple", () => {

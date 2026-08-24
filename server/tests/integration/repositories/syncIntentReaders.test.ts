@@ -226,6 +226,7 @@ describeWithDatabase('sync intent readers', () => {
         observedStatus: null,
         lastObservedAt: new Date(),
         processedEnrollmentGeneration: 1,
+        coverageGapStartedAt: null,
       },
     });
 

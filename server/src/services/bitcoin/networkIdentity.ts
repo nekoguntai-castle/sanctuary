@@ -27,6 +27,21 @@ const NETWORK_LABELS: Record<NetworkType, string> = {
 const BLOCK_HEADER_HEX_PATTERN = /^[0-9a-fA-F]{160}$/;
 
 /**
+ * Byte offsets of the previous-block field inside a serialized header: it
+ * follows the 4-byte version and runs 32 bytes. Like every hash on the wire it
+ * is serialized in internal byte order — the reverse of the big-endian order
+ * block hashes are displayed in — which is why reading it requires a reverse.
+ */
+const PREV_BLOCK_OFFSET = 4;
+const PREV_BLOCK_END = 36;
+
+function assertBlockHeaderHex(headerHex: string): void {
+  if (!BLOCK_HEADER_HEX_PATTERN.test(headerHex)) {
+    throw new Error('Invalid Bitcoin block header: expected 160 hex characters (80 bytes)');
+  }
+}
+
+/**
  * Hash a raw Bitcoin block header using the standard double-SHA256 algorithm.
  * The digest is reversed to the big-endian display order used by block hashes.
  *
@@ -43,13 +58,29 @@ const BLOCK_HEADER_HEX_PATTERN = /^[0-9a-fA-F]{160}$/;
  * in `worker/electrumManager/networkConnection.ts`.
  */
 export function hashBlockHeader(headerHex: string): string {
-  if (!BLOCK_HEADER_HEX_PATTERN.test(headerHex)) {
-    throw new Error('Invalid Bitcoin block header: expected 160 hex characters (80 bytes)');
-  }
+  assertBlockHeaderHex(headerHex);
   const header = Buffer.from(headerHex, "hex");
   const first = createHash("sha256").update(header).digest();
   const second = createHash("sha256").update(first).digest();
   return Buffer.from(second).reverse().toString("hex");
+}
+
+/**
+ * Read the previous-block hash out of a serialized header, in the same
+ * big-endian display order hashBlockHeader returns.
+ *
+ * This is what makes a height advance provable rather than assumed: heights
+ * alone cannot distinguish extending the known tip from replacing it, because
+ * a one-block reorg also advances the height by one.
+ */
+export function previousBlockHashFromHeader(headerHex: string): string {
+  assertBlockHeaderHex(headerHex);
+  const header = Buffer.from(headerHex, "hex");
+  // Copy before reversing: reverse() mutates in place, and a subarray is a view
+  // onto the header rather than a buffer of its own.
+  return Buffer.from(header.subarray(PREV_BLOCK_OFFSET, PREV_BLOCK_END))
+    .reverse()
+    .toString("hex");
 }
 
 export function getExpectedGenesisHash(network: NetworkType): string | null {

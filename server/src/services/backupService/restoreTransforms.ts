@@ -139,6 +139,27 @@ export function processWalletSyncIntentRecords(
   return records.map(processWalletSyncIntentRecord);
 }
 
+/**
+ * Backfill the durable coverage clock for backups written before the field.
+ * Settled checkpoints have no open gap; pending checkpoints inherit createdAt
+ * so restore cannot make an old gap look new. Missing provenance fails closed.
+ */
+export function processSubscriptionCheckpointCoverageRecords(
+  records: BackupRecord[],
+): BackupRecord[] {
+  return records.map((record) => {
+    if ('coverageGapStartedAt' in record) return record;
+    const settled = record.statusKnown === true
+      && Number(record.processedEnrollmentGeneration)
+        === Number(record.requestedEnrollmentGeneration);
+    if (settled) return { ...record, coverageGapStartedAt: null };
+    if (!(record.createdAt instanceof Date) || !Number.isFinite(record.createdAt.getTime())) {
+      throw new Error('Restored pending subscription checkpoint is missing its durable gap start');
+    }
+    return { ...record, coverageGapStartedAt: record.createdAt };
+  });
+}
+
 function processWalletSyncIntentRecord(record: BackupRecord): BackupRecord {
   const presentFields = WALLET_INCREMENTAL_SYNC_FIELDS.filter(field => field in record);
   if (presentFields.length === WALLET_INCREMENTAL_SYNC_FIELDS.length) {

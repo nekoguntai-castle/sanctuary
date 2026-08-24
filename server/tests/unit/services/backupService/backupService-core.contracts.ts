@@ -18,7 +18,10 @@ import {
   PRE_SIGNING_INTENT_COMPLETE_TABLE_POLICY_HASH,
   PRE_WALLET_SYNC_COMPLETE_TABLE_POLICY_HASH,
   EPHEMERAL_TABLES,
+  getRequiredRestoreTables,
   getRestoreTables,
+  PRE_HEADER_CHECKPOINT_COMPLETE_TABLE_POLICY_HASH,
+  PRE_SUBSCRIPTION_COVERAGE_COMPLETE_TABLE_POLICY_HASH,
   LARGE_TABLE_CURSOR_FIELDS,
   LEGACY_TABLE_ORDER,
   PRE_TOMBSTONE_COMPLETE_TABLE_POLICY_HASH,
@@ -32,6 +35,7 @@ import {
 } from '../../../../src/services/backupService/restoreDeserialization';
 import {
   processNodeConfigRecords,
+  processSubscriptionCheckpointCoverageRecords,
   processUserRecords,
   processWebhookDeliveryRecords,
   processWebhookEndpointRecords,
@@ -414,6 +418,40 @@ describe('BackupService', () => {
       expect(getRestoreTables(backup.meta).includes('addressSubscriptionCheckpoint')).toBe(false);
     });
 
+    it('restores a backup written before per-network header checkpoints existed', async () => {
+      vi.mocked(migrationService.getSchemaVersion).mockResolvedValue(61);
+      const backup = createCompleteBackup();
+      backup.meta.tablePolicy!.hash = PRE_HEADER_CHECKPOINT_COMPLETE_TABLE_POLICY_HASH;
+      delete backup.data.networkHeaderCheckpoint;
+      delete backup.meta.recordCounts.networkHeaderCheckpoint;
+
+      const result = await backupService.validateBackupForRestore(backup);
+
+      expect(result.valid, result.issues.join('; ')).toBe(true);
+      // The table the older policy never wrote must not be demanded of it...
+      expect(getRequiredRestoreTables(backup.meta)).not.toContain('networkHeaderCheckpoint');
+      expect(getRestoreTables(backup.meta)).not.toContain('networkHeaderCheckpoint');
+      // ...while everything that policy did carry still restores.
+      expect(getRestoreTables(backup.meta)).toContain('addressSubscriptionCheckpoint');
+    });
+
+    it('restores a backup written before durable subscription coverage evidence existed', async () => {
+      vi.mocked(migrationService.getSchemaVersion).mockResolvedValue(61);
+      const backup = createCompleteBackup();
+      backup.meta.tablePolicy!.hash = PRE_SUBSCRIPTION_COVERAGE_COMPLETE_TABLE_POLICY_HASH;
+      delete backup.data.addressSubscriptionComparisonFailure;
+      delete backup.meta.recordCounts.addressSubscriptionComparisonFailure;
+      delete backup.data.networkSubscriptionCoverageState;
+      delete backup.meta.recordCounts.networkSubscriptionCoverageState;
+
+      const result = await backupService.validateBackupForRestore(backup);
+
+      expect(result.valid, result.issues.join('; ')).toBe(true);
+      expect(getRestoreTables(backup.meta)).toContain('networkHeaderCheckpoint');
+      expect(getRestoreTables(backup.meta)).not.toContain('addressSubscriptionComparisonFailure');
+      expect(getRestoreTables(backup.meta)).not.toContain('networkSubscriptionCoverageState');
+    });
+
     it('should return structure validation for non-object restore input', async () => {
       const result = await backupService.validateBackupForRestore(null);
 
@@ -582,6 +620,119 @@ describe('BackupService', () => {
       vi.mocked(migrationService.getSchemaVersion).mockResolvedValue(61);
       const backup = createCompleteBackup();
       addSubscriptionCheckpointGraph(backup);
+
+      const result = await backupService.validateBackupForRestore(backup);
+
+      expect(result.valid, result.issues.join('; ')).toBe(true);
+    });
+
+    it('rejects comparison failures without an exact pending checkpoint generation', async () => {
+      vi.mocked(migrationService.getSchemaVersion).mockResolvedValue(61);
+      const backup = createCompleteBackup();
+      addSubscriptionCheckpointGraph(backup);
+      backup.data.addressSubscriptionCheckpoint[0] = {
+        ...backup.data.addressSubscriptionCheckpoint[0],
+        requestedEnrollmentGeneration: 2,
+        processedEnrollmentGeneration: 1,
+      };
+      backup.data.addressSubscriptionComparisonFailure.push({
+        addressId: 'address-mainnet',
+        enrollmentGeneration: 1,
+      });
+      backup.meta.recordCounts.addressSubscriptionComparisonFailure = 1;
+
+      const result = await backupService.validateBackupForRestore(backup);
+
+      expect(result.valid).toBe(false);
+      expect(result.issues).toContain(
+        'AddressSubscriptionComparisonFailure address-mainnet does not match an exact pending enrollment generation',
+      );
+    });
+
+    it('rejects comparison failures for an already processed generation', async () => {
+      vi.mocked(migrationService.getSchemaVersion).mockResolvedValue(61);
+      const backup = createCompleteBackup();
+      addSubscriptionCheckpointGraph(backup);
+      backup.data.addressSubscriptionCheckpoint[0] = {
+        ...backup.data.addressSubscriptionCheckpoint[0],
+        requestedEnrollmentGeneration: 2,
+        processedEnrollmentGeneration: 2,
+      };
+      backup.data.addressSubscriptionComparisonFailure.push({
+        addressId: 'address-mainnet',
+        enrollmentGeneration: 2,
+      });
+      backup.meta.recordCounts.addressSubscriptionComparisonFailure = 1;
+
+      const result = await backupService.validateBackupForRestore(backup);
+
+      expect(result.valid).toBe(false);
+      expect(result.issues).toContain(
+        'AddressSubscriptionComparisonFailure address-mainnet does not match an exact pending enrollment generation',
+      );
+    });
+
+    it('accepts comparison failures for the exact pending generation', async () => {
+      vi.mocked(migrationService.getSchemaVersion).mockResolvedValue(61);
+      const backup = createCompleteBackup();
+      addSubscriptionCheckpointGraph(backup);
+      backup.data.addressSubscriptionCheckpoint[0] = {
+        ...backup.data.addressSubscriptionCheckpoint[0],
+        requestedEnrollmentGeneration: 2,
+        processedEnrollmentGeneration: 1,
+      };
+      backup.data.addressSubscriptionComparisonFailure.push({
+        addressId: 'address-mainnet',
+        enrollmentGeneration: 2,
+      });
+      backup.meta.recordCounts.addressSubscriptionComparisonFailure = 1;
+
+      const result = await backupService.validateBackupForRestore(backup);
+
+      expect(result.valid, result.issues.join('; ')).toBe(true);
+    });
+
+    it('rejects comparison failures whose checkpoint is absent', async () => {
+      vi.mocked(migrationService.getSchemaVersion).mockResolvedValue(61);
+      const backup = createCompleteBackup();
+      backup.data.addressSubscriptionComparisonFailure.push({
+        addressId: 'missing-address',
+        enrollmentGeneration: 1,
+      });
+      backup.meta.recordCounts.addressSubscriptionComparisonFailure = 1;
+
+      const result = await backupService.validateBackupForRestore(backup);
+
+      expect(result.valid).toBe(false);
+      expect(result.issues).toContain(
+        'AddressSubscriptionComparisonFailure missing-address references non-existent checkpoint',
+      );
+    });
+
+    it('rejects invalid persisted coverage-state networks', async () => {
+      vi.mocked(migrationService.getSchemaVersion).mockResolvedValue(61);
+      const backup = createCompleteBackup();
+      backup.data.networkSubscriptionCoverageState.push({ network: 'dogecoin' });
+      backup.meta.recordCounts.networkSubscriptionCoverageState = 1;
+
+      const result = await backupService.validateBackupForRestore(backup);
+
+      expect(result.valid).toBe(false);
+      expect(result.issues).toContain(
+        'NetworkSubscriptionCoverageState has invalid network dogecoin',
+      );
+    });
+
+    it('accepts a persisted coverage-state record on a supported network', async () => {
+      vi.mocked(migrationService.getSchemaVersion).mockResolvedValue(61);
+      const backup = createCompleteBackup();
+      backup.data.networkSubscriptionCoverageState.push({
+        network: 'mainnet',
+        historicalComparisonFailureCount: 1,
+        firstComparisonFailureAt: '2026-08-24T10:00:00.000Z',
+        lastComparisonFailureAt: '2026-08-24T11:00:00.000Z',
+      });
+      backup.meta.recordCounts.networkSubscriptionCoverageState = 1;
 
       const result = await backupService.validateBackupForRestore(backup);
 
@@ -797,9 +948,14 @@ describe('BackupService', () => {
 
     it('should declare the non-id cursor beside every paginated table', () => {
       expect(LARGE_TABLE_CURSOR_FIELDS.get('addressSubscriptionCheckpoint')).toBe('addressId');
+      expect(LARGE_TABLE_CURSOR_FIELDS.get('addressSubscriptionComparisonFailure'))
+        .toBe('addressId');
       expect(
         [...LARGE_TABLE_CURSOR_FIELDS.entries()]
-          .filter(([table]) => table !== 'addressSubscriptionCheckpoint')
+          .filter(([table]) => ![
+            'addressSubscriptionCheckpoint',
+            'addressSubscriptionComparisonFailure',
+          ].includes(table))
           .every(([, cursorField]) => cursorField === 'id')
       ).toBe(true);
     });
@@ -989,6 +1145,45 @@ describe('BackupService', () => {
       expect(record.amount).toBe(42n);
       expect(record.fee).toBe('plain-string');
       expect(deserializeRecordForTable('unknown', { value: null })).toEqual({ value: null });
+    });
+
+    it('restores pre-coverage checkpoints with a conservative durable gap start', () => {
+      const createdAt = new Date('2026-08-22T00:00:00.000Z');
+      expect(processSubscriptionCheckpointCoverageRecords([{
+        addressId: 'pending',
+        statusKnown: false,
+        requestedEnrollmentGeneration: 1,
+        processedEnrollmentGeneration: 0,
+        createdAt,
+      }])).toEqual([expect.objectContaining({ coverageGapStartedAt: createdAt })]);
+      expect(processSubscriptionCheckpointCoverageRecords([{
+        addressId: 'settled',
+        statusKnown: true,
+        requestedEnrollmentGeneration: 2,
+        processedEnrollmentGeneration: 2,
+        createdAt,
+      }])).toEqual([expect.objectContaining({ coverageGapStartedAt: null })]);
+    });
+
+    it('preserves an existing durable checkpoint coverage-gap field', () => {
+      const record = { addressId: 'pending', coverageGapStartedAt: null };
+      expect(processSubscriptionCheckpointCoverageRecords([record])).toEqual([record]);
+    });
+
+    it('rejects a pre-coverage pending checkpoint without a durable timestamp', () => {
+      expect(() => processSubscriptionCheckpointCoverageRecords([{
+        addressId: 'pending',
+        statusKnown: false,
+        requestedEnrollmentGeneration: 1,
+        processedEnrollmentGeneration: 0,
+      }])).toThrow('missing its durable gap start');
+    });
+
+    it('maps durable coverage models to their real PostgreSQL tables', () => {
+      expect(camelToSnakeCase('networkSubscriptionCoverageState'))
+        .toBe('network_subscription_coverage_state');
+      expect(camelToSnakeCase('addressSubscriptionComparisonFailure'))
+        .toBe('address_subscription_comparison_failures');
     });
 
     it('should restore both private transaction repair cursors as dates', () => {

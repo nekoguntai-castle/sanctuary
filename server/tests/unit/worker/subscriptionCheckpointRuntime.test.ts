@@ -16,6 +16,7 @@ const productionMocks = vi.hoisted(() => ({
   findSubscriptionCheckpointOwners: vi.fn(),
   requestSubscriptionEnrollment: vi.fn(),
   completeSubscriptionEnrollment: vi.fn(),
+  recordSubscriptionComparisonFailure: vi.fn(),
   publish: vi.fn(),
   wake: vi.fn(),
 }));
@@ -25,6 +26,10 @@ vi.mock('../../../src/repositories/subscriptionCheckpointRepository', () => ({
   findSubscriptionCheckpointOwners: productionMocks.findSubscriptionCheckpointOwners,
   requestSubscriptionEnrollment: productionMocks.requestSubscriptionEnrollment,
   completeSubscriptionEnrollment: productionMocks.completeSubscriptionEnrollment,
+}));
+
+vi.mock('../../../src/repositories/subscriptionCoverageRepository', () => ({
+  recordSubscriptionComparisonFailure: productionMocks.recordSubscriptionComparisonFailure,
 }));
 
 vi.mock('../../../src/services/sync/syncLifecyclePublisher', () => ({
@@ -90,6 +95,7 @@ function candidate(
     lastObservedAt: null,
     requestedEnrollmentGeneration: 1,
     processedEnrollmentGeneration: 0,
+    coverageGapStartedAt: NOW,
     checkpointMissing: false,
   };
 }
@@ -106,6 +112,7 @@ function owner(addressId: string, walletId: string): SubscriptionCheckpointOwner
     lastObservedAt: NOW,
     requestedEnrollmentGeneration: 1,
     processedEnrollmentGeneration: 1,
+    coverageGapStartedAt: null,
   };
 }
 
@@ -116,6 +123,10 @@ function createDependencies(): SubscriptionCheckpointRuntimeDependencies {
       findSubscriptionCheckpointOwners: vi.fn(),
       requestSubscriptionEnrollment: vi.fn(),
       completeSubscriptionEnrollment: vi.fn(),
+      recordSubscriptionComparisonFailure: vi.fn().mockResolvedValue({
+        status: 'recorded',
+        historicalCount: 1,
+      }),
     },
     subscribeBatch: vi.fn(),
     publishTransition: vi.fn(),
@@ -452,6 +463,83 @@ describe('subscriptionCheckpointRuntime', () => {
       dispatch: { intents: 0 },
     });
     expect(dependencies.wake).not.toHaveBeenCalled();
+  });
+
+  it('records only the exact owner generation whose completion throws', async () => {
+    const dependencies = createDependencies();
+    const first = owner('address-1', 'wallet-1');
+    const second = owner('address-2', 'wallet-2');
+    vi.mocked(dependencies.repository.findSubscriptionCheckpointOwners)
+      .mockResolvedValue([first, second]);
+    vi.mocked(dependencies.repository.requestSubscriptionEnrollment)
+      .mockResolvedValueOnce({
+        status: 'requested',
+        state: { ...first, requestedEnrollmentGeneration: 2 },
+      })
+      .mockResolvedValueOnce({
+        status: 'requested',
+        state: { ...second, requestedEnrollmentGeneration: 2 },
+      });
+    vi.mocked(dependencies.repository.completeSubscriptionEnrollment)
+      .mockRejectedValueOnce(new Error('comparison write failed'))
+      .mockResolvedValueOnce({
+        status: 'applied',
+        state: {
+          ...second,
+          requestedEnrollmentGeneration: 2,
+          processedEnrollmentGeneration: 2,
+          coverageGapStartedAt: null,
+        },
+        syncIntent: null,
+      });
+    const runtime = createSubscriptionCheckpointRuntime(dependencies);
+
+    await expect(runtime.recordStatusPage({
+      network: 'mainnet',
+      scriptHash: SCRIPT_HASH,
+      observedStatus: STATUS,
+    })).resolves.toMatchObject({ completed: 1, unavailable: 1 });
+    expect(dependencies.repository.recordSubscriptionComparisonFailure).toHaveBeenCalledOnce();
+    expect(dependencies.repository.recordSubscriptionComparisonFailure).toHaveBeenCalledWith({
+      addressId: 'address-1',
+      network: 'mainnet',
+      enrollmentGeneration: 2,
+      failedAt: NOW,
+    });
+  });
+
+  it('keeps completion unavailable when durable failure evidence also rejects', async () => {
+    const dependencies = createDependencies();
+    const currentOwner = owner('address-1', 'wallet-1');
+    vi.mocked(dependencies.repository.findSubscriptionCheckpointOwners)
+      .mockResolvedValue([currentOwner]);
+    vi.mocked(dependencies.repository.requestSubscriptionEnrollment)
+      .mockResolvedValue({
+        status: 'requested',
+        state: { ...currentOwner, requestedEnrollmentGeneration: 2 },
+      });
+    vi.mocked(dependencies.repository.completeSubscriptionEnrollment)
+      .mockRejectedValue(new Error('completion unavailable'));
+    vi.mocked(dependencies.repository.recordSubscriptionComparisonFailure)
+      .mockRejectedValue(new Error('evidence unavailable'));
+    const runtime = createSubscriptionCheckpointRuntime(dependencies);
+
+    await expect(runtime.recordStatusPage({
+      network: 'mainnet',
+      scriptHash: SCRIPT_HASH,
+      observedStatus: STATUS,
+    })).resolves.toMatchObject({
+      scanned: 1,
+      completed: 0,
+      unavailable: 1,
+      syncIntents: [],
+    });
+    expect(dependencies.repository.recordSubscriptionComparisonFailure).toHaveBeenCalledWith({
+      addressId: 'address-1',
+      network: 'mainnet',
+      enrollmentGeneration: 2,
+      failedAt: NOW,
+    });
   });
 
   it('counts an applied status checkpoint without a sync intent as completed', async () => {

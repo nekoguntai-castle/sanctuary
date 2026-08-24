@@ -691,6 +691,10 @@
             "role": "backup_table_identity"
           },
           {
+            "file": "server/src/services/backupService/restore.ts",
+            "role": "backup_checkpoint_coverage_state_restore"
+          },
+          {
             "file": "server/src/services/backupService/restoreDeserialization.ts",
             "role": "backup_checkpoint_deserialization"
           },
