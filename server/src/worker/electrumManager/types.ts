@@ -7,6 +7,10 @@
 
 import type { ElectrumClient } from '../../services/bitcoin/electrum';
 import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
+import type {
+  HeaderRangeFetcher,
+  RawHeaderObservation,
+} from '../../services/sync/networkHeaderReconciler';
 
 export type BitcoinNetwork = NetworkType;
 
@@ -28,8 +32,12 @@ export function getAddressFromSubscriptionKey(key: string): string {
 }
 
 export interface ElectrumManagerCallbacks {
-  /** Called when a new block is received */
-  onNewBlock: (network: BitcoinNetwork, height: number, hash: string) => void;
+  /** One durable path for the startup tip and every later raw header. */
+  onHeaderObservation: (
+    network: BitcoinNetwork,
+    observation: RawHeaderObservation,
+    fetchHeaders: HeaderRangeFetcher,
+  ) => Promise<unknown>;
   /** Called for an exact live Electrum scripthash status notification. */
   onAddressActivity: (
     network: BitcoinNetwork,

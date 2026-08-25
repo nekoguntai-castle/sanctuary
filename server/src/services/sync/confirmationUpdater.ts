@@ -21,10 +21,12 @@ import {
   type ConfirmationUpdate,
   type PopulateFieldsResult,
 } from '../bitcoin/blockchain';
+import { updateTransactionConfirmationsAtHeight } from '../bitcoin/sync/confirmations/updateConfirmations';
 import { eventService } from '../eventService';
 import { getErrorMessage } from '../../utils/errors';
 import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 import {
+  runSettledSyncAttemptWithTimeout,
   runSyncAttemptWithTimeout,
   SYNC_ABORT_GRACE_MS,
 } from './syncAttemptLifecycle';
@@ -33,6 +35,30 @@ const CONFIRMATION_THRESHOLD = 6;
 const NOTIFICATION_MILESTONES = new Set([1, 3, 6]);
 const CONFIRMATION_LOCK_WAIT_MS = 30_000;
 const CONFIRMATION_LOCK_RETRY_MS = 100;
+export const HEADER_CONFIRMATION_PAGE_SIZE = 100;
+export const HEADER_CONFIRMATION_PAGE_TIMEOUT_MS = 20_000;
+
+/** Reject an operation on abort without leaving an abort listener attached. */
+export function raceConfirmationAbort<T>(signal: AbortSignal, operation: Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => settle(() => reject(signal.reason));
+    const settle = (callback: () => void) => {
+      signal.removeEventListener('abort', onAbort);
+      callback();
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    operation.then(
+      value => settle(() => resolve(value)),
+      error => settle(() => reject(error)),
+    );
+  });
+}
+
+export function assertAuthoritativeHeight(height: number): void {
+  if (!Number.isSafeInteger(height) || height < 0) {
+    throw new Error('Authoritative block height must be a non-negative safe integer');
+  }
+}
 
 export interface ConfirmationPublicationFailure {
   walletId: string;
@@ -55,6 +81,7 @@ export interface ConfirmationRefreshFailure {
 }
 
 export interface PendingConfirmationRefreshResult {
+  /** Exact wallet identities selected by the producer, in its canonical order. */
   walletIds: string[];
   wallets: WalletConfirmationRefreshResult[];
   fieldUpdates: number;
@@ -62,6 +89,16 @@ export interface PendingConfirmationRefreshResult {
   milestoneCount: number;
   publicationFailures: ConfirmationPublicationFailure[];
   failures: ConfirmationRefreshFailure[];
+}
+
+/**
+ * Bounded database-enumerated page. The producer preserves PostgreSQL order;
+ * nextCursor is the final wallet ID, or the requested cursor for an empty page.
+ * The repository validates this identity contract before persistence.
+ */
+export interface PendingConfirmationPageResult extends PendingConfirmationRefreshResult {
+  nextCursor: string | null;
+  enumerationComplete: boolean;
 }
 
 export class ConfirmationRefreshError extends Error {
@@ -221,6 +258,8 @@ async function executeWalletConfirmationRefresh(
         populateCommittedCount += commit.updated;
         recordCommittedUpdates(walletId, accumulator, commit);
       },
+      undefined,
+      true,
     );
     recordCommittedUpdates(walletId, accumulator, {
       updated: Math.max(0, populateResult.updated - populateCommittedCount),
@@ -241,9 +280,40 @@ async function executeWalletConfirmationRefresh(
   }
 }
 
-export async function refreshWalletConfirmations(
+async function executeWalletHeightConfirmationRefresh(
   walletId: string,
-  lockWaitTimeMs = CONFIRMATION_LOCK_WAIT_MS,
+  authoritativeHeight: number,
+  signal: AbortSignal,
+  accumulator: RefreshAccumulator,
+): Promise<WalletConfirmationRefreshResult> {
+  try {
+    const updates = await updateTransactionConfirmationsAtHeight(
+      walletId,
+      authoritativeHeight,
+      signal,
+      commit => recordCommittedUpdates(walletId, accumulator, commit),
+    );
+    recordCommittedUpdates(walletId, accumulator, {
+      updated: 0,
+      confirmationUpdates: updates,
+    });
+    return refreshResult(walletId, accumulator);
+  } catch (error) {
+    throw new ConfirmationRefreshError(walletId, error, refreshResult(walletId, accumulator));
+  }
+}
+
+type WalletRefreshExecutor = (
+  signal: AbortSignal,
+  accumulator: RefreshAccumulator,
+) => Promise<WalletConfirmationRefreshResult>;
+
+async function refreshWalletWithLock(
+  walletId: string,
+  lockWaitTimeMs: number,
+  execute: WalletRefreshExecutor,
+  externalSignal?: AbortSignal,
+  awaitExecutionSettlement = false,
 ): Promise<WalletConfirmationRefreshResult> {
   const ttlMs = getSyncLockTtlMs();
   const lock = await acquireLock(getSyncLockKey({ walletId }), {
@@ -251,32 +321,38 @@ export async function refreshWalletConfirmations(
     waitTimeMs: lockWaitTimeMs,
     retryIntervalMs: CONFIRMATION_LOCK_RETRY_MS,
   });
-  if (!lock) {
-    const emptyResult = refreshResult(walletId, {
-      fieldUpdates: 0,
-      confirmationUpdates: new Map(),
-      publicationFailures: [],
-    });
-    throw new ConfirmationRefreshError(
-      walletId,
-      new ConfirmationLockUnavailableError(),
-      emptyResult,
-    );
-  }
-
-  const lease = startConfirmationLockLease(lock, ttlMs);
   const accumulator: RefreshAccumulator = {
     fieldUpdates: 0,
     confirmationUpdates: new Map(),
     publicationFailures: [],
   };
+  if (!lock) {
+    throw new ConfirmationRefreshError(
+      walletId,
+      new ConfirmationLockUnavailableError(),
+      refreshResult(walletId, accumulator),
+    );
+  }
+
+  const lease = startConfirmationLockLease(lock, ttlMs);
   try {
     try {
+      const parentSignal = externalSignal
+        ? AbortSignal.any([lease.signal, externalSignal])
+        : lease.signal;
+      const executeAttempt = (signal: AbortSignal) => execute(signal, accumulator);
+      if (awaitExecutionSettlement) {
+        return await runSettledSyncAttemptWithTimeout(
+          executeAttempt,
+          getConfig().sync.maxSyncDurationMs,
+          parentSignal,
+        );
+      }
       return await runSyncAttemptWithTimeout(
-        signal => executeWalletConfirmationRefresh(walletId, signal, accumulator),
+        executeAttempt,
         getConfig().sync.maxSyncDurationMs,
         SYNC_ABORT_GRACE_MS,
-        lease.signal,
+        parentSignal,
       );
     } catch (error) {
       if (error instanceof ConfirmationRefreshError) throw error;
@@ -287,18 +363,67 @@ export async function refreshWalletConfirmations(
   }
 }
 
-async function refreshPendingConfirmationWallets(
+export async function refreshWalletConfirmations(
+  walletId: string,
+  lockWaitTimeMs = CONFIRMATION_LOCK_WAIT_MS,
+): Promise<WalletConfirmationRefreshResult> {
+  return refreshWalletWithLock(
+    walletId,
+    lockWaitTimeMs,
+    (signal, accumulator) => executeWalletConfirmationRefresh(walletId, signal, accumulator),
+  );
+}
+
+export function refreshWalletConfirmationsAtHeight(
+  walletId: string,
+  authoritativeHeight: number,
+  lockWaitTimeMs: number,
+  signal?: AbortSignal,
+): Promise<WalletConfirmationRefreshResult> {
+  return refreshWalletWithLock(
+    walletId,
+    lockWaitTimeMs,
+    (signal, accumulator) => executeWalletHeightConfirmationRefresh(
+      walletId,
+      authoritativeHeight,
+      signal,
+      accumulator,
+    ),
+    signal,
+    true,
+  );
+}
+
+/**
+ * Refresh a stable wallet set and accumulate per-wallet failures. When a page
+ * signal aborts, every not-yet-attempted wallet is returned as failed so a
+ * durable caller can advance its cursor and retry those identities later.
+ */
+export async function refreshPendingConfirmationWallets(
   pendingWalletIds: string[],
+  refreshWallet: (walletId: string) => Promise<WalletConfirmationRefreshResult> = walletId => (
+    refreshWalletConfirmations(walletId, 0)
+  ),
+  signal?: AbortSignal,
 ): Promise<PendingConfirmationRefreshResult> {
   const walletIds = [...new Set(pendingWalletIds)].sort();
   const wallets: WalletConfirmationRefreshResult[] = [];
   const failures: ConfirmationRefreshFailure[] = [];
 
-  for (const walletId of walletIds) {
+  for (let index = 0; index < walletIds.length; index += 1) {
+    const walletId = walletIds[index];
+    if (signal?.aborted) {
+      const error: unknown = signal.reason;
+      failures.push(...walletIds.slice(index).map(remainingWalletId => ({
+        walletId: remainingWalletId,
+        error,
+      })));
+      break;
+    }
     try {
       // Sweeps must skip contended wallets immediately so one active sync does
       // not hold up confirmation refreshes for every later wallet.
-      wallets.push(await refreshWalletConfirmations(walletId, 0));
+      wallets.push(await refreshWallet(walletId));
     } catch (error) {
       if (error instanceof ConfirmationRefreshError) {
         if (hasCommittedRefreshWork(error.partialResult)) {

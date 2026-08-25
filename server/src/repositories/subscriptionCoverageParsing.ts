@@ -26,6 +26,8 @@ export interface SubscriptionCoverageRow {
   headerHeight: unknown;
   headerObservedAt: unknown;
   headerGapStartedAt: unknown;
+  headerReconciliationRowCount: unknown;
+  headerReconciliationGapStartedAt: unknown;
   coverageStateRowCount: unknown;
   historicalComparisonFailureCount: unknown;
   firstComparisonFailureAt: unknown;
@@ -88,6 +90,8 @@ interface ParsedSubscriptionCoverageRow {
   headerHeight: number | null;
   headerObservedAt: Date | null;
   headerGapStartedAt: Date | null;
+  headerReconciliationRowCount: number;
+  headerReconciliationGapStartedAt: Date | null;
   coverageStateRowCount: number;
   historicalComparisonFailureCount: number;
   firstComparisonFailureAt: Date | null;
@@ -139,6 +143,14 @@ function parseSubscriptionCoverageRow(
     row.headerGapStartedAt,
     "Header coverage gap start",
   );
+  const headerReconciliationRowCount = countValue(
+    row.headerReconciliationRowCount,
+    "Header reconciliation row count",
+  );
+  const headerReconciliationGapStartedAt = nullableDate(
+    row.headerReconciliationGapStartedAt,
+    "Header reconciliation gap start",
+  );
   const coverageStateRowCount = countValue(
     row.coverageStateRowCount,
     "Coverage history row count",
@@ -169,6 +181,8 @@ function parseSubscriptionCoverageRow(
     headerHeight,
     headerObservedAt,
     headerGapStartedAt,
+    headerReconciliationRowCount,
+    headerReconciliationGapStartedAt,
     coverageStateRowCount,
     historicalComparisonFailureCount,
     firstComparisonFailureAt,
@@ -185,7 +199,11 @@ function assertCoveragePartition(row: ParsedSubscriptionCoverageRow) {
   if (row.checkpointMismatchCount !== 0 || row.failureMismatchCount !== 0) {
     throw new Error("Subscription coverage contains mismatched durable state");
   }
-  if (row.headerRowCount > 1 || row.coverageStateRowCount > 1) {
+  if (
+    row.headerRowCount > 1
+    || row.headerReconciliationRowCount > 1
+    || row.coverageStateRowCount > 1
+  ) {
     throw new Error(
       "Subscription coverage contains duplicate canonical network state",
     );
@@ -241,6 +259,14 @@ function assertHeaderState(row: ParsedSubscriptionCoverageRow) {
   ) {
     throw new Error("Header checkpoint state is incoherent");
   }
+  if (
+    (row.headerReconciliationRowCount === 0
+      && row.headerReconciliationGapStartedAt !== null)
+    || (row.headerReconciliationRowCount === 1
+      && row.headerReconciliationGapStartedAt === null)
+  ) {
+    throw new Error("Header reconciliation gap state is incoherent");
+  }
 }
 
 function assertSubscriptionCoverageRow(row: ParsedSubscriptionCoverageRow) {
@@ -256,7 +282,7 @@ function coverageReason(
   // Report the earliest proof obligation: header coverage gates address state,
   // then exact failures outrank the derived unknown/pending buckets.
   if (row.headerRowCount === 0) return "header_unknown";
-  if (row.headerGapStartedAt) return "header_gap";
+  if (row.headerGapStartedAt || row.headerReconciliationRowCount > 0) return "header_gap";
   if (row.unresolvedComparisonFailures > 0) return "comparison_failure";
   if (row.unknown > 0) return "subscription_unknown";
   if (row.pending > 0) return "subscription_pending";
@@ -273,6 +299,7 @@ function toCoverageSnapshot(
   const gapStart = minimumDate(
     row.oldestAddressGapStartedAt,
     row.headerGapStartedAt,
+    row.headerReconciliationGapStartedAt,
   );
   const gapAge = gapStart ? evaluatedAt.getTime() - gapStart.getTime() : null;
   if (gapAge !== null && gapAge < 0)
@@ -288,9 +315,10 @@ function toCoverageSnapshot(
     historicalComparisonFailureCount: row.historicalComparisonFailureCount,
     firstComparisonFailureAt: row.firstComparisonFailureAt,
     lastComparisonFailureAt: row.lastComparisonFailureAt,
-    oldestOpenGapStartedAt: reason === "header_unknown" ? null : gapStart,
-    oldestOpenGapAgeMs: reason === "header_unknown" ? null : gapAge,
+    oldestOpenGapStartedAt: gapStart,
+    oldestOpenGapAgeMs: gapAge,
     headerCheckpointKnown: headerKnown,
+    headerReconciliationPending: row.headerReconciliationRowCount === 1,
     headerHeight: row.headerHeight,
     headerObservedAt: row.headerObservedAt,
     ready: reason === "ready",

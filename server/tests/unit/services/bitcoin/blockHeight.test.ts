@@ -47,6 +47,22 @@ describe("blockHeight utils", () => {
       expect(getCachedBlockHeight("testnet3")).toBe(456);
       expect(mockLogger.debug).toHaveBeenCalledTimes(2);
     });
+
+    it("accepts a lower height only through the authoritative reconciled setter", async () => {
+      const {
+        getCachedBlockHeight,
+        setAuthoritativeBlockHeight,
+        setCachedBlockHeight,
+      } = await loadModule();
+      setCachedBlockHeight(500, "signet");
+
+      setAuthoritativeBlockHeight(498, "signet");
+
+      expect(getCachedBlockHeight("signet")).toBe(498);
+      expect(() => setAuthoritativeBlockHeight(-1, "signet")).toThrow(
+        "Authoritative block height must be a non-negative safe integer",
+      );
+    });
   });
 
   describe("getBlockHeight", () => {

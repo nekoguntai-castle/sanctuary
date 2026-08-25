@@ -54,6 +54,22 @@ export function setCachedBlockHeight(
 }
 
 /**
+ * Replace the cache with a fully reconciled chain height. Unlike the monotonic
+ * observation cache, this deliberately accepts a lower height after a proven
+ * reorg. Callers must complete durable header reconciliation first.
+ */
+export function setAuthoritativeBlockHeight(
+  height: number,
+  network: Network = "mainnet",
+): void {
+  if (!Number.isSafeInteger(height) || height < 0) {
+    throw new Error("Authoritative block height must be a non-negative safe integer");
+  }
+  cachedBlockHeights.set(network, { height, time: Date.now() });
+  log.debug(`Authoritative block height for ${network} set to ${height}`);
+}
+
+/**
  * Get current block height from node
  * Updates the per-network cache on success
  */

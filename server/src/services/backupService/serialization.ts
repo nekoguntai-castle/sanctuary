@@ -101,6 +101,11 @@ export function camelToSnakeCase(modelName: string): string {
     'priceData': 'price_data',
     'feeEstimate': 'fee_estimates',
     'networkSubscriptionCoverageState': 'network_subscription_coverage_state',
+    'networkHeaderCheckpoint': 'network_header_checkpoints',
+    'networkHeaderReconciliation': 'network_header_reconciliations',
+    'networkHeaderConfirmationRetry': 'network_header_confirmation_retries',
+    'networkHeaderReconciliationHeader': 'network_header_reconciliation_headers',
+    'networkHeaderHistory': 'network_header_history',
   };
 
   if (specialCases[modelName]) {

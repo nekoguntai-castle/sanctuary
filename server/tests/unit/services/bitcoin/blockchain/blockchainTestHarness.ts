@@ -1,5 +1,9 @@
 import { beforeAll, beforeEach, vi } from 'vitest';
-import { mockPrismaClient, resetPrismaMocks } from '../../../../mocks/prisma';
+import {
+  mockPrismaClient,
+  mockWalletMutationTargetLock,
+  resetPrismaMocks,
+} from '../../../../mocks/prisma';
 import {
   mockElectrumClient,
   resetElectrumMocks,
@@ -199,6 +203,7 @@ export function setupBlockchainServiceTestHooks(): void {
   beforeEach(() => {
     legacyReceiveEvidence.transactions.clear();
     resetPrismaMocks();
+    mockWalletMutationTargetLock();
     resetElectrumMocks();
     mockAssertWalletHardwareCapabilityById.mockResolvedValue(undefined);
   });

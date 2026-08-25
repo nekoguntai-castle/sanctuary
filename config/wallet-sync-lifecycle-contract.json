@@ -31,6 +31,15 @@
     "blockHeaderRole": "chain_tip_and_known_transaction_confirmations_only",
     "gapRecovery": "compare_durable_address_status_checkpoints_and_request_only_changed_or_unknown_wallets"
   },
+  "rawHeaderIngress": {
+    "callback": "onHeaderObservation",
+    "ingressModule": "server/src/worker/electrumManager/networkConnection.ts",
+    "reconciliationRuntime": "server/src/worker/networkHeaderReconciliationRuntime.ts",
+    "startupTipPolicy": "same_durable_boundary_as_notifications",
+    "cacheAdvancePolicy": "after_durable_reconciliation_only",
+    "legacyCallback": "onNewBlock",
+    "legacyDirectCacheAdvance": "forbidden"
+  },
   "multiNetworkSubscription": {
     "supportedNetworks": ["mainnet", "testnet3", "testnet4", "signet", "regtest"],
     "representedNetworkReader": "walletRepository.findRepresentedNetworks",
@@ -886,6 +895,23 @@
           {
             "file": "server/src/worker/subscriptionCheckpointRuntime.ts",
             "role": "worker_owned_status_comparison_reader"
+          }
+        ]
+      },
+      {
+        "symbol": "onHeaderObservation",
+        "entries": [
+          {
+            "file": "server/src/worker.ts",
+            "role": "worker_reconciliation_runtime_adapter"
+          },
+          {
+            "file": "server/src/worker/electrumManager/networkConnection.ts",
+            "role": "single_startup_and_notification_ingress"
+          },
+          {
+            "file": "server/src/worker/electrumManager/types.ts",
+            "role": "raw_header_observation_callback_contract"
           }
         ]
       },

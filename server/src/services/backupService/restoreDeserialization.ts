@@ -53,6 +53,18 @@ export const RESTORE_DATE_FIELDS: Record<string, readonly string[]> = {
     'createdAt',
     'updatedAt',
   ],
+  networkHeaderReconciliation: [
+    'targetObservedAt',
+    'pendingTargetObservedAt',
+    'gapStartedAt',
+    'lastAttemptAt',
+    'retryEligibleAt',
+    'createdAt',
+    'updatedAt',
+  ],
+  networkHeaderConfirmationRetry: ['createdAt', 'updatedAt'],
+  networkHeaderReconciliationHeader: ['observedAt'],
+  networkHeaderHistory: ['observedAt', 'createdAt'],
   transaction: [
     'classificationLastAttemptAt',
     'ioLastAttemptAt',

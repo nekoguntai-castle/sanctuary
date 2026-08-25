@@ -41,6 +41,7 @@ describe('assembled shareable support profile', () => {
         'notificationTelemetry',
         'notificationWorker',
         'notificationWorkerFleet',
+        'schedulerRetirementReadiness',
         'walletSync',
       ]);
       for (const forbidden of [

@@ -20,6 +20,7 @@ import {
   EPHEMERAL_TABLES,
   getRequiredRestoreTables,
   getRestoreTables,
+  PRE_HEADER_RECONCILIATION_COMPLETE_TABLE_POLICY_HASH,
   PRE_HEADER_CHECKPOINT_COMPLETE_TABLE_POLICY_HASH,
   PRE_SUBSCRIPTION_COVERAGE_COMPLETE_TABLE_POLICY_HASH,
   LARGE_TABLE_CURSOR_FIELDS,
@@ -450,6 +451,37 @@ describe('BackupService', () => {
       expect(getRestoreTables(backup.meta)).toContain('networkHeaderCheckpoint');
       expect(getRestoreTables(backup.meta)).not.toContain('addressSubscriptionComparisonFailure');
       expect(getRestoreTables(backup.meta)).not.toContain('networkSubscriptionCoverageState');
+    });
+
+    it('does not require new header caches from a cache-bearing prior policy backup', async () => {
+      vi.mocked(migrationService.getSchemaVersion).mockResolvedValue(61);
+      const backup = createCompleteBackup();
+      backup.meta.tablePolicy!.hash = PRE_HEADER_RECONCILIATION_COMPLETE_TABLE_POLICY_HASH;
+      backup.meta.includesCache = true;
+      for (const table of ['feeEstimate', 'priceData']) {
+        backup.data[table] = [];
+        backup.meta.recordCounts[table] = 0;
+      }
+
+      const result = await backupService.validateBackupForRestore(backup);
+
+      expect(result.valid, result.issues.join('; ')).toBe(true);
+      expect(getRequiredRestoreTables(backup.meta)).not.toContain(
+        'networkHeaderReconciliation',
+      );
+      expect(getRestoreTables(backup.meta)).not.toContain('networkHeaderHistory');
+    });
+
+    it('requires and restores every cache table for the current complete policy', () => {
+      const backup = createCompleteBackup();
+      backup.meta.includesCache = true;
+
+      expect(getRequiredRestoreTables(backup.meta)).toEqual(
+        expect.arrayContaining([...CACHE_TABLES]),
+      );
+      expect(getRestoreTables(backup.meta)).toEqual(
+        expect.arrayContaining([...CACHE_TABLES]),
+      );
     });
 
     it('should return structure validation for non-object restore input', async () => {
@@ -1184,6 +1216,32 @@ describe('BackupService', () => {
         .toBe('network_subscription_coverage_state');
       expect(camelToSnakeCase('addressSubscriptionComparisonFailure'))
         .toBe('address_subscription_comparison_failures');
+      expect(camelToSnakeCase('networkHeaderReconciliation'))
+        .toBe('network_header_reconciliations');
+      expect(camelToSnakeCase('networkHeaderReconciliationHeader'))
+        .toBe('network_header_reconciliation_headers');
+      expect(camelToSnakeCase('networkHeaderHistory'))
+        .toBe('network_header_history');
+      expect(camelToSnakeCase('networkHeaderConfirmationRetry'))
+        .toBe('network_header_confirmation_retries');
+    });
+
+    it('revives pending-target and confirmation-retry timestamps for restore', () => {
+      const pendingTargetObservedAt = '2026-08-24T12:00:00.000Z';
+      const createdAt = '2026-08-24T12:01:00.000Z';
+      const updatedAt = '2026-08-24T12:02:00.000Z';
+
+      const reconciliation = deserializeRecordForTable('networkHeaderReconciliation', {
+        pendingTargetObservedAt,
+      });
+      const retry = deserializeRecordForTable('networkHeaderConfirmationRetry', {
+        createdAt,
+        updatedAt,
+      });
+
+      expect(reconciliation.pendingTargetObservedAt).toEqual(new Date(pendingTargetObservedAt));
+      expect(retry.createdAt).toEqual(new Date(createdAt));
+      expect(retry.updatedAt).toEqual(new Date(updatedAt));
     });
 
     it('should restore both private transaction repair cursors as dates', () => {

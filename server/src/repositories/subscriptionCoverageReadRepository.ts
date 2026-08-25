@@ -38,6 +38,12 @@ async function readSubscriptionCoverageRows(
       UNION
       SELECT DISTINCT ${coverageStateNetwork} AS network
       FROM "network_subscription_coverage_state" AS coverage_state
+      UNION
+      SELECT DISTINCT CASE
+        WHEN reconciliation."network" = 'testnet' THEN 'testnet3'
+        ELSE reconciliation."network"
+      END AS network
+      FROM "network_header_reconciliations" AS reconciliation
     ),
     address_coverage AS (
       SELECT
@@ -120,6 +126,20 @@ async function readSubscriptionCoverageRows(
         MAX(coverage_state."lastComparisonFailureAt") AS "lastComparisonFailureAt"
       FROM "network_subscription_coverage_state" AS coverage_state
       GROUP BY ${coverageStateNetwork}
+    ),
+    header_reconciliation AS (
+      SELECT
+        CASE
+          WHEN reconciliation."network" = 'testnet' THEN 'testnet3'
+          ELSE reconciliation."network"
+        END AS network,
+        COUNT(*) AS "headerReconciliationRowCount",
+        MIN(reconciliation."gapStartedAt") AS "headerReconciliationGapStartedAt"
+      FROM "network_header_reconciliations" AS reconciliation
+      GROUP BY CASE
+        WHEN reconciliation."network" = 'testnet' THEN 'testnet3'
+        ELSE reconciliation."network"
+      END
     )
     SELECT
       represented.network,
@@ -138,6 +158,9 @@ async function readSubscriptionCoverageRows(
       header_state."headerHeight",
       header_state."headerObservedAt",
       header_state."headerGapStartedAt",
+      COALESCE(header_reconciliation."headerReconciliationRowCount", 0)
+        AS "headerReconciliationRowCount",
+      header_reconciliation."headerReconciliationGapStartedAt",
       COALESCE(coverage_history."coverageStateRowCount", 0) AS "coverageStateRowCount",
       COALESCE(coverage_history."historicalComparisonFailureCount", 0)
         AS "historicalComparisonFailureCount",
@@ -147,6 +170,7 @@ async function readSubscriptionCoverageRows(
     LEFT JOIN address_coverage ON address_coverage.network = represented.network
     LEFT JOIN unresolved_failures ON unresolved_failures.network = represented.network
     LEFT JOIN header_state ON header_state.network = represented.network
+    LEFT JOIN header_reconciliation ON header_reconciliation.network = represented.network
     LEFT JOIN coverage_history ON coverage_history.network = represented.network
     ORDER BY represented.network ASC
   `);

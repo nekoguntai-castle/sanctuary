@@ -7,7 +7,6 @@ import {
 import prisma from '../../../../src/models/prisma';
 import { acquireLock } from '../../../../src/infrastructure';
 import { getAddressSubscriptionKey } from '../../../../src/worker/electrumManager/types';
-import { hashBlockHeader } from '../../../../src/services/bitcoin/networkIdentity';
 import { setCachedBlockHeight } from '../../../../src/services/bitcoin/blockchain';
 import { setupEventHandlers } from '../../../../src/worker/electrumManager/networkConnection';
 
@@ -29,20 +28,20 @@ export function registerElectrumManagerEventContracts() {
 
       await manager.start();
       vi.mocked(setCachedBlockHeight).mockClear();
-      vi.mocked(mockCallbacks.onNewBlock).mockClear();
+      vi.mocked(mockCallbacks.onHeaderObservation).mockClear();
 
       expect(() => mockClient.emit('newBlock', { height: 404, hex: 'not-a-header' }))
         .not.toThrow();
 
-      expect(mockCallbacks.onNewBlock).not.toHaveBeenCalled();
+      expect(mockCallbacks.onHeaderObservation).not.toHaveBeenCalled();
       expect(setCachedBlockHeight).not.toHaveBeenCalled();
 
       // The connection stays usable: a well-formed header still lands.
       mockClient.emit('newBlock', { height: 405, hex: BLOCK_HEADER });
-      expect(mockCallbacks.onNewBlock).toHaveBeenCalledWith(
+      expect(mockCallbacks.onHeaderObservation).toHaveBeenCalledWith(
         'mainnet',
-        405,
-        hashBlockHeader(BLOCK_HEADER),
+        { height: 405, hex: BLOCK_HEADER },
+        expect.any(Function),
       );
     });
 
@@ -53,6 +52,7 @@ export function registerElectrumManagerEventContracts() {
       vi.mocked(prisma.address.findMany).mockResolvedValueOnce([]);
 
       await manager.start();
+      vi.mocked(mockCallbacks.onHeaderObservation).mockClear();
 
       (manager as unknown as { addressToWallet: Map<string, { walletId: string; network: string }> })
         .addressToWallet
@@ -61,21 +61,19 @@ export function registerElectrumManagerEventContracts() {
       mockClient.emit('newBlock', { height: 123, hex: BLOCK_HEADER });
       mockClient.emit('newBlock', { height: 123, hex: SAME_PARENT_REPLACEMENT_HEADER });
       mockClient.emit('addressActivity', { scriptHash: 'hash', address: 'addr1', status: 'updated' });
+      await vi.waitFor(() => expect(mockCallbacks.onHeaderObservation).toHaveBeenCalledTimes(2));
 
-      expect(mockCallbacks.onNewBlock).toHaveBeenNthCalledWith(
+      expect(mockCallbacks.onHeaderObservation).toHaveBeenNthCalledWith(
         1,
         'mainnet',
-        123,
-        hashBlockHeader(BLOCK_HEADER),
+        { height: 123, hex: BLOCK_HEADER },
+        expect.any(Function),
       );
-      expect(mockCallbacks.onNewBlock).toHaveBeenNthCalledWith(
+      expect(mockCallbacks.onHeaderObservation).toHaveBeenNthCalledWith(
         2,
         'mainnet',
-        123,
-        hashBlockHeader(SAME_PARENT_REPLACEMENT_HEADER),
-      );
-      expect(hashBlockHeader(SAME_PARENT_REPLACEMENT_HEADER)).not.toBe(
-        hashBlockHeader(BLOCK_HEADER),
+        { height: 123, hex: SAME_PARENT_REPLACEMENT_HEADER },
+        expect.any(Function),
       );
       expect(mockCallbacks.onAddressActivity).toHaveBeenCalledWith('mainnet', 'hash', 'updated');
     });
@@ -98,8 +96,144 @@ export function registerElectrumManagerEventContracts() {
 
       expect(state.lastBlockHeight).toBe(100);
       expect(setCachedBlockHeight).not.toHaveBeenCalled();
-      expect(mockCallbacks.onNewBlock).not.toHaveBeenCalled();
+      expect(mockCallbacks.onHeaderObservation).not.toHaveBeenCalled();
       expect(mockCallbacks.onAddressActivity).not.toHaveBeenCalled();
+    });
+
+    it('does not advance the live tip when ownership is lost during reconciliation', async () => {
+      let active = true;
+      const state = {
+        network: 'mainnet' as const,
+        client: mockClient as any,
+        connected: true,
+        subscribedToHeaders: true,
+        subscribedAddresses: new Set<string>(),
+        lastBlockHeight: 100,
+        reconnectTimer: null,
+        reconnectAttempts: 0,
+      };
+      vi.mocked(mockCallbacks.onHeaderObservation).mockImplementationOnce(async (_network, _header, fetch) => {
+        await fetch(101, 1);
+        active = false;
+      });
+      setupEventHandlers(state, new Map(), mockCallbacks, () => active, vi.fn());
+
+      mockClient.emit('newBlock', { height: 101, hex: BLOCK_HEADER });
+      await vi.waitFor(() => expect(mockCallbacks.onHeaderObservation).toHaveBeenCalledOnce());
+
+      expect(state.lastBlockHeight).toBe(100);
+    });
+
+    it('reconnects after a rejected live-header ingress so the tip is replayed', async () => {
+      const state = {
+        network: 'mainnet' as const,
+        client: mockClient as any,
+        connected: true,
+        subscribedToHeaders: true,
+        subscribedAddresses: new Set<string>(),
+        lastBlockHeight: 100,
+        reconnectTimer: null,
+        reconnectAttempts: 0,
+      };
+      const scheduleReconnect = vi.fn();
+      vi.mocked(mockCallbacks.onHeaderObservation).mockRejectedValueOnce(new Error('write failed'));
+      setupEventHandlers(state, new Map(), mockCallbacks, () => true, scheduleReconnect);
+
+      mockClient.emit('newBlock', { height: 101, hex: BLOCK_HEADER });
+      await vi.waitFor(() => expect(state.connected).toBe(false));
+
+      expect(state.lastBlockHeight).toBe(100);
+      expect(state.subscribedToHeaders).toBe(false);
+      expect(mockClient.disconnect).toHaveBeenCalled();
+      expect(scheduleReconnect).toHaveBeenCalledWith('mainnet');
+    });
+
+    it('does not schedule replay after a live-header rejection caused by ownership loss', async () => {
+      let active = true;
+      const state = {
+        network: 'mainnet' as const,
+        client: mockClient as any,
+        connected: true,
+        subscribedToHeaders: true,
+        subscribedAddresses: new Set<string>(),
+        lastBlockHeight: 100,
+        reconnectTimer: null,
+        reconnectAttempts: 0,
+      };
+      const scheduleReconnect = vi.fn();
+      vi.mocked(mockCallbacks.onHeaderObservation).mockImplementationOnce(async () => {
+        active = false;
+        throw new Error('ownership lost');
+      });
+      setupEventHandlers(state, new Map(), mockCallbacks, () => active, scheduleReconnect);
+
+      mockClient.emit('newBlock', { height: 101, hex: BLOCK_HEADER });
+      await vi.waitFor(() => expect(state.connected).toBe(false));
+
+      expect(mockClient.disconnect).toHaveBeenCalled();
+      expect(scheduleReconnect).not.toHaveBeenCalled();
+    });
+
+    it('replaces stale handlers when a cached client is connected again', async () => {
+      const oldObservation = vi.fn().mockResolvedValue(undefined);
+      const oldState = {
+        network: 'mainnet' as const,
+        client: mockClient as any,
+        connected: true,
+        subscribedToHeaders: true,
+        subscribedAddresses: new Set<string>(),
+        lastBlockHeight: 100,
+        reconnectTimer: null,
+        reconnectAttempts: 0,
+      };
+      const currentState = { ...oldState, subscribedAddresses: new Set<string>() };
+      setupEventHandlers(oldState, new Map(), {
+        onHeaderObservation: oldObservation,
+        onAddressActivity: vi.fn(),
+      }, () => true, vi.fn());
+      setupEventHandlers(currentState, new Map(), mockCallbacks, () => true, vi.fn());
+
+      mockClient.emit('newBlock', { height: 101, hex: BLOCK_HEADER });
+      await vi.waitFor(() => expect(mockCallbacks.onHeaderObservation).toHaveBeenCalledOnce());
+
+      expect(oldObservation).not.toHaveBeenCalled();
+      expect(mockClient.listenerCount('newBlock')).toBe(1);
+      expect(mockClient.listenerCount('close')).toBe(1);
+    });
+
+    it('does not let a detached in-flight handler tear down its replacement connection', async () => {
+      let rejectOld!: (error: Error) => void;
+      const oldObservation = vi.fn(() => new Promise<void>((_resolve, reject) => {
+        rejectOld = reject;
+      }));
+      const oldState = {
+        network: 'mainnet' as const,
+        client: mockClient as any,
+        connected: true,
+        subscribedToHeaders: true,
+        subscribedAddresses: new Set<string>(),
+        lastBlockHeight: 100,
+        reconnectTimer: null,
+        reconnectAttempts: 0,
+      };
+      const currentState = { ...oldState, subscribedAddresses: new Set<string>() };
+      setupEventHandlers(oldState, new Map(), {
+        onHeaderObservation: oldObservation,
+        onAddressActivity: vi.fn(),
+      }, () => true, vi.fn());
+      mockClient.emit('newBlock', { height: 101, hex: BLOCK_HEADER });
+      await vi.waitFor(() => expect(oldObservation).toHaveBeenCalledOnce());
+
+      setupEventHandlers(currentState, new Map(), mockCallbacks, () => true, vi.fn());
+      rejectOld(new Error('stale write failed'));
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(currentState.connected).toBe(true);
+      expect(mockClient.disconnect).not.toHaveBeenCalled();
+      expect(mockClient.listenerCount('newBlock')).toBe(1);
+      mockClient.emit('newBlock', { height: 102, hex: BLOCK_HEADER });
+      await vi.waitFor(() => expect(mockCallbacks.onHeaderObservation).toHaveBeenCalledOnce());
     });
   });
 }

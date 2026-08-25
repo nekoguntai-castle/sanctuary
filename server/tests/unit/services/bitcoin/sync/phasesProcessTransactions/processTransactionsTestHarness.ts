@@ -9,6 +9,10 @@ vi.mock('../../../../../../src/models/prisma', () => ({
 
 vi.mock('../../../../../../src/repositories/syncIntentRepository', () => ({
   withWalletSyncMutationFence: vi.fn(async (_fence, callback) => callback(mockPrismaClient)),
+  withWalletSyncMutationLock: vi.fn(async (_walletId, assertAuthority, callback) => {
+    assertAuthority();
+    return callback(mockPrismaClient);
+  }),
 }));
 
 vi.mock('../../../../../../src/services/bitcoin/nodeClient', () => ({

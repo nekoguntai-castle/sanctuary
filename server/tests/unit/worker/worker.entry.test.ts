@@ -33,6 +33,7 @@ const mocks = vi.hoisted(() => {
     stop: vi.fn(),
     isConnected: vi.fn(),
     isSubscriptionOwner: vi.fn(),
+    getSubscriptionOwnershipEpoch: vi.fn(),
     getManagedNetworks: vi.fn(),
     ensureNetworkConnected: vi.fn(),
     subscribeCheckpointAddresses: vi.fn(),
@@ -47,7 +48,11 @@ const mocks = vi.hoisted(() => {
 
   let electrumCallbacks:
     | {
-        onNewBlock: (network: NetworkType, height: number, hash: string) => void;
+        onHeaderObservation: (
+          network: NetworkType,
+          observation: { height: number; hex: string },
+          fetchHeaders: (startHeight: number, count: number) => Promise<string[]>,
+        ) => Promise<unknown>;
         onAddressActivity: (network: NetworkType, scriptHash: string, status: string | null) => void;
         onNetworkReady?: (network: NetworkType) => Promise<void>;
         onSubscriptionStatuses?: (
@@ -105,6 +110,14 @@ const mocks = vi.hoisted(() => {
   ) => typeof subscriptionCheckpointRuntime>(
     () => subscriptionCheckpointRuntime,
   );
+  const networkHeaderReconciliationRuntime = {
+    observe: vi.fn(),
+    recoverDue: vi.fn(),
+    stop: vi.fn(),
+  };
+  const createProductionNetworkHeaderReconciliationRuntime = vi.fn(
+    () => networkHeaderReconciliationRuntime,
+  );
 
   const getConfig = vi.fn(() => ({
     bitcoin: { network: 'testnet' },
@@ -148,6 +161,8 @@ const mocks = vi.hoisted(() => {
     createProductionWalletSyncRecoveryRuntime,
     subscriptionCheckpointRuntime,
     createProductionSubscriptionCheckpointRuntime,
+    networkHeaderReconciliationRuntime,
+    createProductionNetworkHeaderReconciliationRuntime,
     getConfig,
     registerWorkerJobs: vi.fn<(
       queue: unknown,
@@ -271,6 +286,11 @@ vi.mock('../../../src/worker/subscriptionCheckpointRuntime', () => ({
     mocks.createProductionSubscriptionCheckpointRuntime,
 }));
 
+vi.mock('../../../src/worker/networkHeaderReconciliationRuntime', () => ({
+  createProductionNetworkHeaderReconciliationRuntime:
+    mocks.createProductionNetworkHeaderReconciliationRuntime,
+}));
+
 vi.mock('../../../src/services/sync/syncIntentAdmission', () => ({
   syncIntentAdmission: { request: mocks.syncIntentRequest },
 }));
@@ -370,6 +390,7 @@ describe('worker entrypoint', () => {
     mocks.electrumInstance.stop.mockResolvedValue(undefined);
     mocks.electrumInstance.isConnected.mockReturnValue(true);
     mocks.electrumInstance.isSubscriptionOwner.mockReturnValue(true);
+    mocks.electrumInstance.getSubscriptionOwnershipEpoch.mockReturnValue(1);
     mocks.electrumInstance.getManagedNetworks.mockReturnValue(['testnet3']);
     mocks.electrumInstance.ensureNetworkConnected.mockResolvedValue(undefined);
     mocks.electrumInstance.subscribeCheckpointAddresses.mockResolvedValue(new Map());
@@ -410,6 +431,12 @@ describe('worker entrypoint', () => {
     });
     mocks.createProductionSubscriptionCheckpointRuntime.mockReturnValue(
       mocks.subscriptionCheckpointRuntime,
+    );
+    mocks.networkHeaderReconciliationRuntime.observe.mockResolvedValue(null);
+    mocks.networkHeaderReconciliationRuntime.recoverDue.mockResolvedValue(undefined);
+    mocks.networkHeaderReconciliationRuntime.stop.mockReturnValue(undefined);
+    mocks.createProductionNetworkHeaderReconciliationRuntime.mockReturnValue(
+      mocks.networkHeaderReconciliationRuntime,
     );
 
     mocks.healthServerHandle.close.mockResolvedValue(undefined);
@@ -1421,6 +1448,7 @@ describe('worker entrypoint', () => {
   it('covers timer, queue-error handlers, process handlers, and graceful shutdown branches', async () => {
     const handlers: Record<string, Array<(...args: any[]) => any>> = {};
     const intervalCallbacks: Array<() => Promise<void> | void> = [];
+    const intervalDelays: number[] = [];
     const intervalHandle = { id: 'timer-1' } as any;
 
     vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
@@ -1433,8 +1461,12 @@ describe('worker entrypoint', () => {
       .spyOn(process, 'exit')
       .mockImplementation((() => undefined) as any);
 
-    vi.spyOn(global, 'setInterval').mockImplementation((((cb: () => Promise<void> | void) => {
+    vi.spyOn(global, 'setInterval').mockImplementation((((
+      cb: () => Promise<void> | void,
+      delay: number,
+    ) => {
       intervalCallbacks.push(cb);
+      intervalDelays.push(delay);
       return intervalHandle;
     }) as any));
     const clearIntervalSpy = vi.spyOn(global, 'clearInterval');
@@ -1446,17 +1478,23 @@ describe('worker entrypoint', () => {
 
     await import('../../../src/worker.ts');
     await vi.dynamicImportSettled();
-    for (let i = 0; i < 200 && intervalCallbacks.length < 5; i += 1) {
+    for (let i = 0; i < 200 && intervalCallbacks.length < 6; i += 1) {
       await Promise.resolve();
     }
 
-    expect(intervalCallbacks).toHaveLength(5);
+    expect(intervalCallbacks).toHaveLength(6);
+    expect(intervalDelays).toContain(5_000);
     expect(mocks.WorkerJobQueue).toHaveBeenCalledWith({
       concurrency: 5,
       queues: ['sync', 'notifications', 'confirmations', 'maintenance'],
       autorun: false,
     });
     expect(mocks.startDatabaseHealthCheck).toHaveBeenCalledOnce();
+    expect(mocks.networkHeaderReconciliationRuntime.recoverDue).toHaveBeenCalledOnce();
+    expect(mocks.electrumInstance.start.mock.invocationCallOrder[0])
+      .toBeLessThan(mocks.networkHeaderReconciliationRuntime.recoverDue.mock.invocationCallOrder[0]);
+    expect(mocks.networkHeaderReconciliationRuntime.recoverDue.mock.invocationCallOrder[0])
+      .toBeLessThan(mocks.queueInstance.startConsumers.mock.invocationCallOrder[0]);
 
     const healthProvider = mocks.getHealthProvider();
     expect(healthProvider).toBeDefined();
@@ -1574,45 +1612,36 @@ describe('worker entrypoint', () => {
 
     await Promise.all(intervalCallbacks.map(async (callback) => callback()));
     expect(mocks.electrumInstance.reconcileSubscriptions).toHaveBeenCalledTimes(1);
+    expect(mocks.networkHeaderReconciliationRuntime.recoverDue).toHaveBeenCalledTimes(2);
 
     mocks.electrumInstance.reconcileSubscriptions.mockRejectedValueOnce(new Error('reconcile failed'));
+    mocks.networkHeaderReconciliationRuntime.recoverDue.mockRejectedValueOnce(
+      new Error('header recovery failed'),
+    );
     await Promise.all(intervalCallbacks.map(async (callback) => callback()));
     expect(mocks.logger.error).toHaveBeenCalledWith(
       'Subscription reconciliation failed',
       { error: 'reconcile failed' }
     );
+    expect(mocks.logger.error).toHaveBeenCalledWith(
+      'Durable network-header recovery scan failed',
+      { error: 'header recovery failed' },
+    );
 
     const electrumCallbacks = mocks.getElectrumCallbacks();
     expect(electrumCallbacks).toBeDefined();
 
-    mocks.queueInstance.addJob.mockRejectedValueOnce(new Error('cannot queue confirmations'));
-    electrumCallbacks?.onNewBlock('testnet4', 101, 'abc');
-    await Promise.resolve();
-    expect(mocks.queueInstance.addJob).toHaveBeenCalledWith(
-      'confirmations',
-      'update-confirmations',
-      {
-        version: 2,
-        network: 'testnet4',
-        height: 101,
-        hash: 'abc',
-      },
-      {
-        priority: 1,
-        jobId: 'confirmations:testnet4:101:abc',
-      },
+    const fetchHeaders = vi.fn().mockResolvedValue(['00'.repeat(80)]);
+    mocks.networkHeaderReconciliationRuntime.observe.mockResolvedValueOnce({ status: 'progressed' });
+    await electrumCallbacks?.onHeaderObservation(
+      'testnet4',
+      { height: 101, hex: 'ab'.repeat(80) },
+      fetchHeaders,
     );
-    expect(mocks.logger.error).toHaveBeenCalledWith(
-      'Failed to queue confirmation update job',
-      expect.objectContaining({ error: 'cannot queue confirmations' })
-    );
-
-    electrumCallbacks?.onNewBlock('testnet4', 101, 'def');
-    expect(mocks.queueInstance.addJob).toHaveBeenLastCalledWith(
-      'confirmations',
-      'update-confirmations',
-      expect.objectContaining({ network: 'testnet4', height: 101, hash: 'def' }),
-      expect.objectContaining({ jobId: 'confirmations:testnet4:101:def' }),
+    expect(mocks.networkHeaderReconciliationRuntime.observe).toHaveBeenCalledWith(
+      'testnet4',
+      { height: 101, hex: 'ab'.repeat(80) },
+      fetchHeaders,
     );
 
     mocks.subscriptionCheckpointRuntime.recordStatusPage.mockRejectedValueOnce(
@@ -1636,6 +1665,7 @@ describe('worker entrypoint', () => {
     await handlers.SIGTERM?.[0]();
     await handlers.SIGINT?.[0]();
     await Promise.all(intervalCallbacks.map(async (callback) => callback()));
+    expect(mocks.networkHeaderReconciliationRuntime.recoverDue).toHaveBeenCalledTimes(3);
 
     expect(clearIntervalSpy).toHaveBeenCalledWith(intervalHandle);
     expect(mocks.electrumInstance.reconcileSubscriptions).toHaveBeenCalledTimes(2);

@@ -164,6 +164,13 @@
       "reviewWhenTouched": true,
       "lastReviewed": "2026-08-23"
     },
+    "server/tests/unit/repositories/networkHeaderReconciliationRepository.test.ts": {
+      "category": "proof-harness",
+      "owner": "wallet-sync-header-reconciliation",
+      "reason": "Durable network-header repository proof harness sharing one hoisted Prisma transaction, owner/generation fence, database-clock, staged-header, confirmation-retry, and finalization mock boundary across the complete reconciliation state machine.",
+      "reviewWhenTouched": true,
+      "lastReviewed": "2026-08-24"
+    },
     "server/tests/unit/services/sync/syncIntentAdmission.test.ts": {
       "category": "proof-harness",
       "owner": "wallet-sync-admission",

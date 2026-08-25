@@ -17,6 +17,7 @@ vi.mock('../../../src/models/prisma', () => ({
       findFirst: vi.fn(),
       findUnique: vi.fn(),
       count: vi.fn(),
+      groupBy: vi.fn(),
     },
   },
 }));
@@ -495,6 +496,41 @@ describe('Transaction Repository', () => {
           },
         },
       });
+    });
+  });
+
+  describe('findWalletIdsRequiringConfirmationUpdateAtHeight', () => {
+    it.each([0, 101, 1.5])('rejects invalid page limit %s', async limit => {
+      await expect(transactionRepository.findWalletIdsRequiringConfirmationUpdateAtHeight(
+        6,
+        'mainnet',
+        100,
+        null,
+        limit,
+      )).rejects.toThrow('page limit is invalid');
+      expect(prisma.transaction.groupBy).not.toHaveBeenCalled();
+    });
+
+    it.each(['', 'w'.repeat(201)])('rejects invalid page cursor %j', async cursor => {
+      await expect(transactionRepository.findWalletIdsRequiringConfirmationUpdateAtHeight(
+        6,
+        'mainnet',
+        100,
+        cursor,
+      )).rejects.toThrow('wallet cursor is invalid');
+      expect(prisma.transaction.groupBy).not.toHaveBeenCalled();
+    });
+
+    it.each([0, 60_001, 1.5])('rejects invalid query timeout %s', async timeoutMs => {
+      await expect(transactionRepository.findWalletIdsRequiringConfirmationUpdateAtHeight(
+        6,
+        'mainnet',
+        100,
+        null,
+        100,
+        timeoutMs,
+      )).rejects.toThrow('query timeout is invalid');
+      expect(prisma.transaction.groupBy).not.toHaveBeenCalled();
     });
   });
 

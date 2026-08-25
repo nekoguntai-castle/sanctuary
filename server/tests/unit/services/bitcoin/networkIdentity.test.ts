@@ -12,6 +12,9 @@ const TESTNET3_GENESIS_HEADER =
 const TESTNET4_GENESIS_HEADER =
   '0100000000000000000000000000000000000000000000000000000000000000000000004e7b2b9128fe0291db0693af2ae418b767e657cd407e80cb1434221eaea7a07a046f3566ffff001dbb0c7817';
 
+const REGTEST_GENESIS_HEADER =
+  '0100000000000000000000000000000000000000000000000000000000000000000000003ba3edfd7a7b12b27ac72c3e67768f617fc81bc3888a51323a9fb8aa4b1e5e4adae5494dffff7f2002000000';
+
 describe('network identity', () => {
   describe('previousBlockHashFromHeader', () => {
     it('reads genesis as building on the all-zero parent', () => {
@@ -109,11 +112,13 @@ describe('network identity', () => {
     ).rejects.toThrow('Testnet4 chain identity check timed out');
   });
 
-  it('skips identity validation for networks without a fixed genesis anchor', async () => {
-    const client = { getBlockHeader: vi.fn() };
+  it('validates Regtest against its fixed genesis anchor', async () => {
+    const client = { getBlockHeader: vi.fn().mockResolvedValue(REGTEST_GENESIS_HEADER) };
 
-    expect(getExpectedGenesisHash('regtest')).toBeNull();
+    expect(getExpectedGenesisHash('regtest')).toBe(
+      '0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206',
+    );
     await expect(verifyNodeClientNetwork(client, 'regtest')).resolves.toBeUndefined();
-    expect(client.getBlockHeader).not.toHaveBeenCalled();
+    expect(client.getBlockHeader).toHaveBeenCalledWith(0);
   });
 });

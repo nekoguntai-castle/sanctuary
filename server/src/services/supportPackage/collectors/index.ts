@@ -31,6 +31,7 @@ import './sync';
 import './database';
 import './wallets';
 import './walletSync';
+import './schedulerRetirementReadiness';
 import './walletLogs';
 import './electrumPool';
 import './jobQueue';

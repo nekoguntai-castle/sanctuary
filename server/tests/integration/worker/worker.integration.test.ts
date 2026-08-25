@@ -89,23 +89,27 @@ describe('worker integration', () => {
   it('queues jobs when electrum events fire', async () => {
     const harness = await createWorkerTestHarness();
 
-    const onNewBlock = harness.electrumOptions.onNewBlock!;
+    const onHeaderObservation = harness.electrumOptions.onHeaderObservation!;
     const onAddressActivity = harness.electrumOptions.onAddressActivity!;
     const onSubscriptionStatuses = harness.electrumOptions.onSubscriptionStatuses!;
+    const fetchHeaders = vi.fn(async () => ['header']);
     harness.electrumManager.isSubscriptionOwner = vi.fn(() => true);
 
-    onNewBlock('testnet3', 123, 'hash-123');
+    await onHeaderObservation(
+      'testnet3',
+      { height: 123, hex: 'header-123' },
+      fetchHeaders,
+    );
     onAddressActivity('testnet3', 'a'.repeat(64), 'b'.repeat(64));
     await onSubscriptionStatuses(
       'testnet3',
       new Map([['tb1q-authoritative-address', 'd'.repeat(64)]]),
     );
 
-    expect(harness.jobQueue.addJob).toHaveBeenCalledWith(
-      'confirmations',
-      'update-confirmations',
-      { version: 2, network: 'testnet3', height: 123, hash: 'hash-123' },
-      { priority: 1, jobId: 'confirmations:testnet3:123:hash-123' },
+    expect(harness.networkHeaderReconciliationRuntime.observe).toHaveBeenCalledWith(
+      'testnet3',
+      { height: 123, hex: 'header-123' },
+      fetchHeaders,
     );
 
     await vi.waitFor(() => {

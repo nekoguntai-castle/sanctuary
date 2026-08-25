@@ -7,7 +7,7 @@ interface WorkerHarnessOptions {
 }
 
 interface WorkerElectrumOptions {
-  onNewBlock?: (...args: any[]) => void;
+  onHeaderObservation?: (...args: any[]) => Promise<unknown>;
   onAddressActivity?: (...args: any[]) => void;
   onSubscriptionStatuses?: (...args: any[]) => Promise<void>;
 }
@@ -20,6 +20,11 @@ interface WorkerHarnessHandle {
   requestSyncIntent: ReturnType<typeof vi.fn>;
   walletSyncRecoveryRuntime: {
     start: ReturnType<typeof vi.fn>;
+    stop: ReturnType<typeof vi.fn>;
+  };
+  networkHeaderReconciliationRuntime: {
+    observe: ReturnType<typeof vi.fn>;
+    recoverDue: ReturnType<typeof vi.fn>;
     stop: ReturnType<typeof vi.fn>;
   };
   electrumOptions: WorkerElectrumOptions;
@@ -80,6 +85,7 @@ export const createWorkerTestHarness = async (
     reconcileSubscriptions: vi.fn(async () => undefined),
     refreshSubscriptionStatusPage: vi.fn(async () => ({ scanned: 0 })),
     isSubscriptionOwner: vi.fn(() => true),
+    getSubscriptionOwnershipEpoch: vi.fn(() => 1),
     getManagedNetworks: vi.fn(() => ['testnet3']),
     ensureNetworkConnected: vi.fn(async () => undefined),
     subscribeCheckpointAddresses: vi.fn(async () => new Map()),
@@ -205,6 +211,17 @@ export const createWorkerTestHarness = async (
     createProductionWalletSyncRecoveryRuntime: vi.fn(() => walletSyncRecoveryRuntime),
   }));
 
+  const networkHeaderReconciliationRuntime = {
+    observe: vi.fn(async () => null),
+    recoverDue: vi.fn(async () => undefined),
+    stop: vi.fn(async () => undefined),
+  };
+  vi.doMock('../../../src/worker/networkHeaderReconciliationRuntime', () => ({
+    createProductionNetworkHeaderReconciliationRuntime: vi.fn(
+      () => networkHeaderReconciliationRuntime,
+    ),
+  }));
+
   vi.doMock('../../../src/services/sync/syncIntentAdmission', () => ({
     syncIntentAdmission: { request: requestSyncIntent },
   }));
@@ -303,6 +320,7 @@ export const createWorkerTestHarness = async (
     registerWorkerJobs,
     requestSyncIntent,
     walletSyncRecoveryRuntime,
+    networkHeaderReconciliationRuntime,
     electrumOptions,
     exitSpy,
     shutdown: async () => {

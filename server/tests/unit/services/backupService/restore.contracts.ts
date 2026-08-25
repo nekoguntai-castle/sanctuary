@@ -705,6 +705,7 @@ describe('restoreFromBackup', () => {
     it('should restore cache tables when backup includes cache data', async () => {
       const backup = createValidBackup();
       backup.meta.includesCache = true;
+      for (const table of CACHE_TABLES) backup.data[table] ??= [];
       backup.data.priceData = [
         { symbol: 'BTC', currency: 'USD', price: 50000, timestamp: new Date().toISOString() },
       ];

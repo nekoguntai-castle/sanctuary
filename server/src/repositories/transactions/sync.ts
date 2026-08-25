@@ -820,6 +820,30 @@ export async function findBelowConfirmationThreshold(
   });
 }
 
+/**
+ * Select rows pending at either tip. At height H, a block at H-threshold+1 has
+ * exactly `threshold` confirmations, so only strictly newer heights can fall
+ * back below the notification threshold after a lower-tip reconciliation.
+ */
+export async function findRequiringConfirmationUpdateAtHeight(
+  walletId: string,
+  threshold: number,
+  authoritativeHeight: number,
+  client: PrismaTxClient = prisma,
+) {
+  return client.transaction.findMany({
+    where: {
+      walletId,
+      blockHeight: { not: null },
+      OR: [
+        { confirmations: { lt: threshold } },
+        { blockHeight: { gt: authoritativeHeight - threshold + 1 } },
+      ],
+    },
+    select: { id: true, txid: true, blockHeight: true, confirmations: true },
+  });
+}
+
 export async function findWithMissingFields(
   walletId: string,
   client: PrismaTxClient = prisma

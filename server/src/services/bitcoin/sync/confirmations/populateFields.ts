@@ -53,6 +53,7 @@ export async function populateMissingTransactionFields(
   signal?: AbortSignal,
   onCommit?: PopulateFieldsCommitHandler,
   mutationFence?: WalletSyncMutationFence,
+  serializeUnfenced = false,
 ): Promise<PopulateFieldsResult> {
   signal?.throwIfAborted();
   // Get wallet to determine network for correct block height
@@ -150,7 +151,7 @@ export async function populateMissingTransactionFields(
             updated: committedUpdates.length,
             confirmationUpdates,
           });
-        }, signal, mutationFence);
+        }, signal, mutationFence, serializeUnfenced);
         signal?.throwIfAborted();
         if (pendingUpdates.some(u => u.data.amount !== undefined)) {
           hasAmountUpdates = true;

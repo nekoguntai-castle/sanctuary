@@ -116,6 +116,8 @@ model Wallet {
   scriptType String // native_segwit, nested_segwit, taproot, legacy
   network    String @default("mainnet") // mainnet, testnet3, testnet4, signet, regtest
 
+  headerConfirmationRetries NetworkHeaderConfirmationRetry[]
+
   // Multi-sig configuration
   quorum       Int? // e.g., 2 for 2-of-3
   totalSigners Int? // e.g., 3 for 2-of-3
@@ -454,8 +456,6 @@ model NetworkSubscriptionCoverageState {
 /// `operational.` SystemSetting key would instead survive the restore and sit
 /// AHEAD of the restored wallets, reporting no gap where there is a large one.
 ///
-/// No writer is wired yet. The reader and its observation classifier land first
-/// so the persistence contract can be reviewed on its own.
 model NetworkHeaderCheckpoint {
   network String @id
   lastProcessedHeight Int
@@ -466,6 +466,93 @@ model NetworkHeaderCheckpoint {
   updatedAt DateTime @updatedAt
 
   @@map("network_header_checkpoints")
+}
+
+/// Durable, resumable proof work for one observed network tip. This is separate
+/// from NetworkHeaderCheckpoint so a partially validated chain can never be
+/// mistaken for authoritative coverage.
+model NetworkHeaderReconciliation {
+  network String @id
+  generation Int @default(1)
+  ownerToken String
+  mode String
+  targetHeight Int
+  targetHash String
+  targetHeaderHex String
+  targetObservedAt DateTime
+  anchorHeight Int
+  anchorHash String
+  cursorHeight Int?
+  cursorHash String?
+  confirmationCursorWalletId String?
+  confirmationEnumerationComplete Boolean @default(false)
+  pendingTargetHeight Int?
+  pendingTargetHash String?
+  pendingTargetPreviousHash String?
+  pendingTargetHeaderHex String?
+  pendingTargetObservedAt DateTime?
+  pendingTargetGenesisHash String?
+  gapStartedAt DateTime @default(now())
+  lastAttemptAt DateTime?
+  lastFailureClass String?
+  consecutiveFailureCount Int @default(0)
+  retryEligibleAt DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stagedHeaders NetworkHeaderReconciliationHeader[]
+  confirmationRetries NetworkHeaderConfirmationRetry[]
+
+  @@index([retryEligibleAt, network])
+  @@map("network_header_reconciliations")
+}
+
+/// Wallets whose confirmation refresh failed while the active target was
+/// enumerated. Keeping these separate lets later wallets make progress while
+/// finalization remains fail-closed until every retry succeeds.
+model NetworkHeaderConfirmationRetry {
+  network String
+  walletId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  reconciliation NetworkHeaderReconciliation @relation(fields: [network], references: [network], onDelete: Cascade)
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@id([network, walletId])
+  @@index([network, walletId])
+  @@index([walletId])
+  @@map("network_header_confirmation_retries")
+}
+
+/// Bounded tail of headers validated for the active reconciliation generation.
+/// Earlier pages are represented transitively by the fenced cursor hash.
+model NetworkHeaderReconciliationHeader {
+  network String
+  height Int
+  hash String
+  previousHash String
+  observedAt DateTime
+
+  reconciliation NetworkHeaderReconciliation @relation(fields: [network], references: [network], onDelete: Cascade)
+
+  @@id([network, height])
+  @@map("network_header_reconciliation_headers")
+}
+
+/// Bounded canonical tail used to locate a shallow reorg's highest common
+/// ancestor without weakening the genesis fallback for deeper reorganizations.
+model NetworkHeaderHistory {
+  network String
+  height Int
+  hash String
+  previousHash String
+  observedAt DateTime
+  createdAt DateTime @default(now())
+
+  @@id([network, height])
+  @@index([network, hash])
+  @@map("network_header_history")
 }
 
 model Transaction {

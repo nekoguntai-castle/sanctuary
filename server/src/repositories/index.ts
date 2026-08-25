@@ -64,6 +64,26 @@ export {
   networkHeaderCheckpointRepository,
   default as networkHeaderCheckpointRepo,
 } from './networkHeaderCheckpointRepository';
+export {
+  claimNetworkHeaderReconciliation,
+  finalizeNetworkHeaderReconciliation,
+  findDueNetworkHeaderReconciliations,
+  findNetworkHeaderHistory,
+  networkHeaderReconciliationRepository,
+  observeNetworkHeader,
+  recordNetworkHeaderCursor,
+  recordNetworkHeaderReconciliationFailure,
+  resetNetworkHeaderCursor,
+} from './networkHeaderReconciliationRepository';
+export type {
+  NetworkHeaderReconciliationFailureClass,
+  NetworkHeaderReconciliationMode,
+  NetworkHeaderReconciliationState,
+  ObserveNetworkHeaderInput,
+  ReconciledHeaderRecord,
+  ReconciliationFence,
+} from './networkHeaderReconciliationTypes';
+export { HeaderReconciliationOwnershipError } from './networkHeaderReconciliationTypes';
 export type {
   HeaderObservation,
   HeaderObservationClassification,

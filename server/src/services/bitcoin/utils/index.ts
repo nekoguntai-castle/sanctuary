@@ -7,6 +7,7 @@
 export {
   getCachedBlockHeight,
   setCachedBlockHeight,
+  setAuthoritativeBlockHeight,
   getBlockHeight,
   getBlockTimestamp,
   LRUCache,

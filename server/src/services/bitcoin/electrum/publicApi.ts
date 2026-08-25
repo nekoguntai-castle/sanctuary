@@ -174,6 +174,17 @@ export async function getBlockHeader(
 }
 
 /**
+ * Get an exact contiguous range of block headers.
+ */
+export async function getBlockHeaders(
+  requestFn: RequestFn,
+  startHeight: number,
+  count: number,
+): Promise<string[]> {
+  return methods.getBlockHeaders(requestFn, startHeight, count);
+}
+
+/**
  * Get current block height
  */
 export async function getBlockHeight(

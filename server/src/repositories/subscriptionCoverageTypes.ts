@@ -38,6 +38,7 @@ export interface NetworkSubscriptionCoverageSnapshot {
   oldestOpenGapStartedAt: Date | null;
   oldestOpenGapAgeMs: number | null;
   headerCheckpointKnown: boolean;
+  headerReconciliationPending: boolean;
   headerHeight: number | null;
   headerObservedAt: Date | null;
   ready: boolean;

@@ -55,6 +55,8 @@ function coverageRow(overrides: Record<string, unknown> = {}) {
     headerHeight: 900_000,
     headerObservedAt: OBSERVED_AT,
     headerGapStartedAt: null,
+    headerReconciliationRowCount: 0n,
+    headerReconciliationGapStartedAt: null,
     coverageStateRowCount: 0n,
     historicalComparisonFailureCount: 0,
     firstComparisonFailureAt: null,
@@ -118,6 +120,7 @@ describe("readSubscriptionCoverage", () => {
           oldestOpenGapStartedAt: null,
           oldestOpenGapAgeMs: null,
           headerCheckpointKnown: true,
+          headerReconciliationPending: false,
           headerHeight: 900_000,
           headerObservedAt: OBSERVED_AT,
           ready: true,
@@ -226,11 +229,37 @@ describe("readSubscriptionCoverage", () => {
       networks: [
         {
           headerCheckpointKnown: false,
-          oldestOpenGapStartedAt: null,
-          oldestOpenGapAgeMs: null,
+          headerReconciliationPending: false,
+          oldestOpenGapStartedAt: GAP_STARTED_AT,
+          oldestOpenGapAgeMs: 3_600_000,
           reason: "header_unknown",
         },
       ],
+    });
+  });
+
+  it("exposes a durable first-observation gap before a checkpoint exists", async () => {
+    runTransactionWithQueryResults(
+      [{ evaluatedAt: EVALUATED_AT }],
+      [coverageRow({
+        headerRowCount: 0n,
+        headerHeight: null,
+        headerObservedAt: null,
+        headerReconciliationRowCount: 1n,
+        headerReconciliationGapStartedAt: GAP_STARTED_AT,
+      })],
+    );
+
+    await expect(readSubscriptionCoverage()).resolves.toMatchObject({
+      status: "available",
+      ready: false,
+      networks: [{
+        headerCheckpointKnown: false,
+        headerReconciliationPending: true,
+        oldestOpenGapStartedAt: GAP_STARTED_AT,
+        oldestOpenGapAgeMs: 3_600_000,
+        reason: "header_unknown",
+      }],
     });
   });
 
@@ -306,6 +335,14 @@ describe("readSubscriptionCoverage", () => {
       },
     ],
     ["an incomplete header row", { headerHeight: null }],
+    [
+      "a reconciliation gap without reconciliation work",
+      { headerReconciliationGapStartedAt: GAP_STARTED_AT },
+    ],
+    [
+      "reconciliation work without a durable gap",
+      { headerReconciliationRowCount: 1n },
+    ],
     [
       "reversed history timestamps",
       {

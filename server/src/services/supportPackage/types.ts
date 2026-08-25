@@ -65,6 +65,7 @@ export const SUPPORT_PACKAGE_AUTHORITIES = [
   'wallet_full_resync_intent',
   'wallet_sync_lease_row',
   'wallet_sync_execution',
+  'scheduler_retirement_readiness',
 ] as const;
 export type SupportPackageAuthority = typeof SUPPORT_PACKAGE_AUTHORITIES[number];
 

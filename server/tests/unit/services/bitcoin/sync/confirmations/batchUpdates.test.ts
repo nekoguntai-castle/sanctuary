@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   batchUpdateByIds: vi.fn(),
   walletLog: vi.fn(),
   withWalletSyncMutationFence: vi.fn(),
+  withWalletSyncMutationLock: vi.fn(),
 }));
 
 vi.mock('../../../../../../src/repositories', () => ({
@@ -20,6 +21,7 @@ vi.mock('../../../../../../src/websocket/notifications', () => ({
 
 vi.mock('../../../../../../src/repositories/syncIntentRepository', () => ({
   withWalletSyncMutationFence: mocks.withWalletSyncMutationFence,
+  withWalletSyncMutationLock: mocks.withWalletSyncMutationLock,
 }));
 
 import { executeInChunks } from '../../../../../../src/services/bitcoin/sync/confirmations/batchUpdates';
@@ -29,6 +31,12 @@ describe('confirmation batch updates', () => {
     vi.clearAllMocks();
     mocks.withWalletSyncMutationFence.mockImplementation(
       async (_fence, callback) => callback({ transaction: {} }),
+    );
+    mocks.withWalletSyncMutationLock.mockImplementation(
+      async (_walletId, assertAuthority, callback) => {
+        assertAuthority();
+        return callback({ transaction: {} });
+      },
     );
   });
 
@@ -98,6 +106,28 @@ describe('confirmation batch updates', () => {
       1,
       expect.objectContaining({ transaction: {} }),
     );
+  });
+
+  it('rechecks cancellation after acquiring the compatibility wallet lock', async () => {
+    const controller = new AbortController();
+    const reason = new Error('wallet lease lost while waiting for its row');
+    mocks.withWalletSyncMutationLock.mockImplementationOnce(
+      async (_walletId, assertAuthority) => {
+        controller.abort(reason);
+        assertAuthority();
+      },
+    );
+
+    await expect(executeInChunks(
+      [{ id: 'one', data: { confirmations: 1 } }],
+      'wallet-1',
+      undefined,
+      controller.signal,
+      undefined,
+      true,
+    )).rejects.toBe(reason);
+
+    expect(mocks.batchUpdateByIds).not.toHaveBeenCalled();
   });
 
   it('retains compatibility behavior without a wallet target or fence', async () => {

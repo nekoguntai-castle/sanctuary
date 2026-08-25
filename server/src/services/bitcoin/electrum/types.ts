@@ -13,6 +13,18 @@ import { createLogger } from '../../../utils/logger';
 const log = createLogger('ELECTRUM:SVC');
 const ELECTRUM_STATUS_PATTERN = /^[0-9a-f]{64}$/;
 
+/** Untrusted Electrum payload failed its structural or semantic contract. */
+export class ElectrumResponseValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ElectrumResponseValidationError';
+  }
+}
+
+/** Electrum protocol limit for `blockchain.block.headers` responses. */
+export const ELECTRUM_MAX_HEADERS_PER_REQUEST = 2016;
+export const BITCOIN_BLOCK_HEADER_HEX_LENGTH = 160;
+
 /** Parse the only two authoritative scripthash subscription status forms. */
 export function parseElectrumSubscriptionStatus(value: unknown): string | null | undefined {
   if (value === null) return null;
@@ -87,20 +99,28 @@ export const BlockHeaderHexSchema = z.string().regex(
 );
 
 /**
+ * Raw `blockchain.block.headers` response. The dynamic relationship between
+ * `count` and `hex` is checked by the method because it also depends on the
+ * exact range requested by the caller.
+ */
+export const BlockHeadersResponseSchema = z.object({
+  count: z.number().int().min(0).max(ELECTRUM_MAX_HEADERS_PER_REQUEST),
+  hex: z.string()
+    .max(ELECTRUM_MAX_HEADERS_PER_REQUEST * BITCOIN_BLOCK_HEADER_HEX_LENGTH)
+    .regex(/^[0-9a-fA-F]*$/, 'expected hexadecimal block headers'),
+  max: z.number().int().min(1).max(ELECTRUM_MAX_HEADERS_PER_REQUEST).optional(),
+}).strict();
+
+/**
  * Block headers subscribe response schema.
  *
- * `hex` is deliberately NOT constrained to a 160-character header here, unlike
- * the notification schema below. Today this path consumes only `height` (see
- * `worker/electrumManager/networkConnection.ts`), so tightening `hex` would
- * guard nothing — while a throw from `subscribeHeaders()` is swallowed by that
- * module's catch, which logs and schedules no reconnect, leaving the network
- * permanently unsubscribed. Tighten this only together with a fix to that catch,
- * at the point the reconnect tip is actually routed through the header
- * classifier.
+ * Startup now consumes the complete header through the same reconciliation
+ * boundary as notifications, and a malformed response tears down/retries the
+ * connection instead of leaving it permanently unsubscribed.
  */
 export const HeadersSubscribeSchema = z.object({
   height: z.number().int().min(0),
-  hex: z.string(),
+  hex: BlockHeaderHexSchema,
 });
 
 /**
@@ -137,7 +157,9 @@ export function validateResponse<T>(
       dataPreview: JSON.stringify(data).substring(0, 200),
     });
     // Throw to let caller handle - invalid data shouldn't be silently used
-    throw new Error(`Invalid Electrum response for ${context}: ${result.error.issues[0]?.message}`);
+    throw new ElectrumResponseValidationError(
+      `Invalid Electrum response for ${context}: ${result.error.issues[0]?.message}`,
+    );
   }
   return result.data;
 }

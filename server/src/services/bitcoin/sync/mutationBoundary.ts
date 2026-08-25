@@ -1,5 +1,6 @@
 import type { PrismaTxClient } from '../../../models/prisma';
 import {
+  withWalletSyncMutationLock,
   withWalletSyncMutationFence,
 } from '../../../repositories/syncIntentRepository';
 import type { SyncContext } from './types';
@@ -37,6 +38,8 @@ export async function runWalletSyncMutation<T>(
     tx: PrismaTxClient | undefined,
     deferPostCommit: DeferPostCommit,
   ) => Promise<T>,
+  assertAuthority: () => void = () => undefined,
+  serializeUnfenced = false,
 ): Promise<T> {
   if (ctx.mutationFence && ctx.mutationFence.walletId !== ctx.walletId) {
     throw new Error(`Wallet sync ${unit} fence does not match the mutation target wallet`);
@@ -45,10 +48,19 @@ export async function runWalletSyncMutation<T>(
   const deferPostCommit: DeferPostCommit = effect => {
     effects.push(effect);
   };
-  const execute = (tx: PrismaTxClient): Promise<T> => callback(tx, deferPostCommit);
+  const execute = (tx: PrismaTxClient): Promise<T> => {
+    assertAuthority();
+    return callback(tx, deferPostCommit);
+  };
   const result = ctx.mutationFence
     ? await withWalletSyncMutationFence(ctx.mutationFence, execute)
-    : await callback(undefined, deferPostCommit);
+    : serializeUnfenced && ctx.walletId
+      ? await withWalletSyncMutationLock(
+          ctx.walletId,
+          assertAuthority,
+          tx => callback(tx, deferPostCommit),
+        )
+      : await callback(undefined, deferPostCommit);
 
   for (const effect of effects) {
     await effect();

@@ -33,6 +33,7 @@ export {
 export {
   getCachedBlockHeight,
   setCachedBlockHeight,
+  setAuthoritativeBlockHeight,
   getBlockHeight,
   assertChainReachable,
   getBlockTimestamp,

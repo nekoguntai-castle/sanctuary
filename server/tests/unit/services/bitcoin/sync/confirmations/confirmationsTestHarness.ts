@@ -1,6 +1,10 @@
 import { beforeEach, vi } from 'vitest';
 
-import { mockPrismaClient, resetPrismaMocks } from '../../../../../mocks/prisma';
+import {
+  mockPrismaClient,
+  mockWalletMutationTargetLock,
+  resetPrismaMocks,
+} from '../../../../../mocks/prisma';
 
 const confirmationMocks = vi.hoisted(() => ({
   mockWalletLog: vi.fn(),
@@ -47,6 +51,7 @@ vi.mock('../../../../../../src/services/bitcoin/utils/balanceCalculation', () =>
 export function registerConfirmationsTestHarness() {
   beforeEach(() => {
     resetPrismaMocks();
+    mockWalletMutationTargetLock();
     vi.clearAllMocks();
 
     mockGetConfig.mockReturnValue({

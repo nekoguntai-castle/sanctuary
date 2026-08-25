@@ -142,7 +142,7 @@ export function classifyHeaderObservation(
   };
 }
 
-interface PersistedHeaderCheckpointRow {
+export interface PersistedHeaderCheckpointRow {
   network: string;
   lastProcessedHeight: number;
   lastProcessedHash: string;
@@ -161,7 +161,9 @@ function assertValidDate(value: unknown, description: string): asserts value is 
  * enforce this shape, but a dump restored from before those constraints — or a
  * direct write — could still land here.
  */
-function toCheckpointState(row: PersistedHeaderCheckpointRow): NetworkHeaderCheckpointState {
+export function parseNetworkHeaderCheckpointRow(
+  row: PersistedHeaderCheckpointRow,
+): NetworkHeaderCheckpointState {
   const network = resolvePersistedBitcoinNetwork(row.network);
   if (!Number.isInteger(row.lastProcessedHeight)
     || row.lastProcessedHeight < 0
@@ -204,7 +206,7 @@ export async function findNetworkHeaderCheckpoint(
   if (!row) return null;
 
   try {
-    return toCheckpointState(row);
+    return parseNetworkHeaderCheckpointRow(row);
   } catch (error) {
     log.error('Discarding untrustworthy persisted header checkpoint', {
       network: resolved,

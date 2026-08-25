@@ -11,6 +11,7 @@ import {
   recordSyncRetry,
   recordSyncSuccess,
   runSyncAttemptWithTimeout,
+  runSettledSyncAttemptWithTimeout,
   startSyncAttempt,
   type SyncAttemptWriter,
 } from '../../../../src/services/sync/syncAttemptLifecycle';
@@ -565,6 +566,98 @@ describe('runSyncAttemptWithTimeout', () => {
 
     await expect(rejection).resolves.toBe(reason);
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe('runSettledSyncAttemptWithTimeout', () => {
+  it('delivers cancellation but waits for an uncooperative execution to settle', async () => {
+    vi.useFakeTimers();
+    const parent = new AbortController();
+    const reason = new Error('ownership lost');
+    let settle!: (value: string) => void;
+    const execution = new Promise<string>((resolve) => { settle = resolve; });
+    const attempt = runSettledSyncAttemptWithTimeout(
+      () => execution,
+      1_000,
+      parent.signal,
+    );
+    let finished = false;
+    void attempt.finally(() => { finished = true; }).catch(() => undefined);
+
+    parent.abort(reason);
+    await Promise.resolve();
+
+    expect(finished).toBe(false);
+    settle('late success');
+    await expect(attempt).rejects.toBe(reason);
+    expect(vi.getTimerCount()).toBe(0);
+    vi.useRealTimers();
+  });
+
+  it('ignores duplicate parent cancellation delivery while waiting for settlement', async () => {
+    vi.useFakeTimers();
+    const reason = new Error('ownership epoch ended');
+    let parentListener!: () => void;
+    const parentSignal = {
+      aborted: false,
+      reason,
+      addEventListener: vi.fn((_event, listener) => { parentListener = listener as () => void; }),
+      removeEventListener: vi.fn(),
+    } as unknown as AbortSignal;
+    let settle!: () => void;
+    const execution = new Promise<void>(resolve => { settle = resolve; });
+    const attempt = runSettledSyncAttemptWithTimeout(
+      () => execution,
+      1_000,
+      parentSignal,
+    );
+
+    parentListener();
+    parentListener();
+    settle();
+
+    await expect(attempt).rejects.toBe(reason);
+    expect(vi.getTimerCount()).toBe(0);
+    vi.useRealTimers();
+  });
+
+  it('does not start execution when its parent is already cancelled', async () => {
+    vi.useFakeTimers();
+    const parent = new AbortController();
+    const reason = new Error('former ownership epoch');
+    parent.abort(reason);
+    const execute = vi.fn(async () => 'must not run');
+
+    await expect(runSettledSyncAttemptWithTimeout(
+      execute,
+      1_000,
+      parent.signal,
+    )).rejects.toBe(reason);
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+    vi.useRealTimers();
+  });
+
+  it('times out an uncooperative execution but still waits for settlement', async () => {
+    vi.useFakeTimers();
+    let settle!: (value: string) => void;
+    const execution = new Promise<string>(resolve => { settle = resolve; });
+    const attempt = runSettledSyncAttemptWithTimeout(() => execution, 1_000);
+    const rejection = attempt.catch(error => error);
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    let finished = false;
+    void attempt.finally(() => { finished = true; }).catch(() => undefined);
+    await Promise.resolve();
+    expect(finished).toBe(false);
+
+    settle('late success');
+    await expect(rejection).resolves.toMatchObject({
+      message: 'Sync attempt timed out after 1000ms',
+    });
+    expect(vi.getTimerCount()).toBe(0);
+    vi.useRealTimers();
   });
 });
 

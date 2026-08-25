@@ -1,5 +1,5 @@
 import prisma from '../../models/prisma';
-import type { Transaction, Prisma } from '../../generated/prisma/client';
+import { Prisma, type Transaction } from '../../generated/prisma/client';
 import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 import type {
   TransactionPaginationOptions,
@@ -452,4 +452,46 @@ export async function findWalletIdsWithPendingConfirmations(
     distinct: ['walletId'],
   });
   return results.map(r => r.walletId);
+}
+
+/**
+ * Include wallets whose stored count was formerly deep enough but would fall
+ * below the threshold at a reconciled lower tip.
+ */
+export async function findWalletIdsRequiringConfirmationUpdateAtHeight(
+  threshold: number,
+  network: NetworkType,
+  authoritativeHeight: number,
+  afterWalletId: string | null = null,
+  limit = 100,
+  queryTimeoutMs = 19_000,
+): Promise<string[]> {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    throw new Error('Confirmation wallet page limit is invalid');
+  }
+  if (afterWalletId !== null && (afterWalletId.length < 1 || afterWalletId.length > 200)) {
+    throw new Error('Confirmation wallet cursor is invalid');
+  }
+  if (!Number.isInteger(queryTimeoutMs) || queryTimeoutMs < 1 || queryTimeoutMs > 60_000) {
+    throw new Error('Confirmation wallet query timeout is invalid');
+  }
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw(
+      Prisma.sql`SELECT set_config('statement_timeout', ${String(queryTimeoutMs)}, true)`,
+    );
+    const results = await tx.transaction.groupBy({
+      by: ['walletId'],
+      where: {
+        wallet: { network },
+        ...(afterWalletId === null ? {} : { walletId: { gt: afterWalletId } }),
+        OR: [
+          { confirmations: { lt: threshold } },
+          { blockHeight: { gt: authoritativeHeight - threshold + 1 } },
+        ],
+      },
+      orderBy: { walletId: 'asc' },
+      take: limit + 1,
+    });
+    return results.map(result => result.walletId);
+  }, { timeout: queryTimeoutMs + 1_000 });
 }

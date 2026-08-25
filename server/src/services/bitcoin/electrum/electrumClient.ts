@@ -39,6 +39,7 @@ interface ConnectionState {
 
 class ElectrumClient extends EventEmitter {
   private socket: net.Socket | tls.TLSSocket | null = null;
+  private connectionPromise: Promise<void> | null = null;
   private requestId = 0;
   private pendingRequests = new Map<number, PendingRequest>();
   private buffer = '';
@@ -95,6 +96,18 @@ class ElectrumClient extends EventEmitter {
    * Connect to Electrum server
    */
   async connect(): Promise<void> {
+    if (this.connected && this.socket) return;
+    if (this.connectionPromise) return this.connectionPromise;
+    const attempt = this.establishConnection();
+    this.connectionPromise = attempt;
+    try {
+      await attempt;
+    } finally {
+      this.connectionPromise = null;
+    }
+  }
+
+  private async establishConnection(): Promise<void> {
     const connectionConfig = await this.resolveConnectionConfig();
     const defaults = getDefaultTimeouts();
     const connectionTimeoutMs = this.explicitConfig?.connectionTimeoutMs ?? defaults.connectionTimeoutMs;
@@ -168,63 +181,85 @@ class ElectrumClient extends EventEmitter {
     connectionConfig: ResolvedConnectionConfig,
     state: ConnectionState
   ): void {
+    let socket: net.Socket | tls.TLSSocket;
     if (connectionConfig.protocol === 'ssl') {
-      this.finishTlsConnection(baseSocket, connectionConfig, state);
+      socket = this.finishTlsConnection(baseSocket, connectionConfig, state);
     } else {
-      this.finishTcpConnection(baseSocket, connectionConfig, state);
+      socket = this.finishTcpConnection(baseSocket, connectionConfig, state);
     }
-    this.attachSocketHandlers();
+    this.attachSocketHandlers(socket);
   }
 
   private finishTlsConnection(
     baseSocket: net.Socket,
     connectionConfig: ResolvedConnectionConfig,
     state: ConnectionState
-  ): void {
+  ): tls.TLSSocket {
     const { host, port, allowSelfSignedCert, proxy } = connectionConfig;
     const { tlsSocket, handshakePromise } = wrapSocketInTls(
       baseSocket, host, port, allowSelfSignedCert, !!proxy?.enabled
     );
+    this.buffer = '';
     this.socket = tlsSocket;
     handshakePromise
       .then(() => state.handleSuccess())
       .catch((err) => state.handleError(err));
+    return tlsSocket;
   }
 
   private finishTcpConnection(
     baseSocket: net.Socket,
     connectionConfig: ResolvedConnectionConfig,
     state: ConnectionState
-  ): void {
+  ): net.Socket {
     const { host, port, protocol, proxy } = connectionConfig;
+    this.buffer = '';
     this.socket = baseSocket;
     log.info(`Connected to ${host}:${port} (${protocol})${proxy?.enabled ? ' via proxy' : ''}`);
     applySocketOptimizations(baseSocket);
     state.handleSuccess();
+    return baseSocket;
   }
 
-  private attachSocketHandlers(): void {
-    this.socket!.on('data', (data) => this.handleData(data));
-    this.socket!.on('error', (error) => this.handleSocketError(error));
-    this.socket!.on('close', () => this.handleSocketClose());
-    this.socket!.on('end', () => this.handleSocketEnd());
+  private attachSocketHandlers(socket: net.Socket | tls.TLSSocket): void {
+    // Overlapping connect attempts can leave an older socket emitting late.
+    // Only the currently installed socket may mutate framing or request state.
+    socket.on('data', (data) => {
+      if (socket === this.socket) this.handleData(data);
+    });
+    socket.on('error', (error) => this.handleSocketError(socket, error));
+    socket.on('close', () => this.handleSocketClose(socket));
+    socket.on('end', () => this.handleSocketEnd(socket));
   }
 
-  private handleSocketError(error: Error): void {
+  private handleSocketError(socket: net.Socket | tls.TLSSocket, error: Error): void {
+    if (socket !== this.socket) return;
     log.error('Socket error', { error: getErrorMessage(error) });
     rejectAllPendingRequests(this.pendingRequests, new Error(`Socket error: ${error.message}`));
   }
 
-  private handleSocketClose(): void {
+  private handleSocketClose(socket: net.Socket | tls.TLSSocket): void {
+    if (socket !== this.socket) return;
     log.debug('Connection closed');
+    const notifyClose = this.connected;
     this.connected = false;
+    this.socket = null;
+    this.buffer = '';
+    this.serverVersion = null;
     rejectAllPendingRequests(this.pendingRequests, new Error('Connection closed unexpectedly'));
+    if (notifyClose) this.emit('close');
   }
 
-  private handleSocketEnd(): void {
+  private handleSocketEnd(socket: net.Socket | tls.TLSSocket): void {
+    if (socket !== this.socket) return;
     log.debug('Connection ended');
+    const notifyClose = this.connected;
     this.connected = false;
+    this.socket = null;
+    this.buffer = '';
+    this.serverVersion = null;
     rejectAllPendingRequests(this.pendingRequests, new Error('Connection ended'));
+    if (notifyClose) this.emit('close');
   }
 
   /**
@@ -234,10 +269,12 @@ class ElectrumClient extends EventEmitter {
     rejectAllPendingRequests(this.pendingRequests, new Error('Connection closed'));
 
     if (this.socket) {
-      this.socket.destroy();
-      this.socket = null;
+      const socket = this.socket;
       this.connected = false;
       this.serverVersion = null;
+      this.socket = null;
+      this.buffer = '';
+      socket.destroy();
       this.scriptHashToAddress.clear();
     }
   }
@@ -448,6 +485,14 @@ class ElectrumClient extends EventEmitter {
   async getBlockHeader(height: number): Promise<any> {
     return publicApi.getBlockHeader(
       (method, params) => this.request(method, params), height
+    );
+  }
+
+  async getBlockHeaders(startHeight: number, count: number): Promise<string[]> {
+    return publicApi.getBlockHeaders(
+      (method, params) => this.request(method, params),
+      startHeight,
+      count,
     );
   }
 

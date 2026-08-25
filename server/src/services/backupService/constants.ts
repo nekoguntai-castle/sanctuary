@@ -54,6 +54,12 @@ export const COMPLETE_TABLE_POLICY: readonly BackupTablePolicyEntry[] = [
   { model: 'AddressSubscriptionComparisonFailure', table: 'addressSubscriptionComparisonFailure', classification: 'durable-restored' },
   { model: 'NetworkSubscriptionCoverageState', table: 'networkSubscriptionCoverageState', classification: 'durable-restored' },
   { model: 'NetworkHeaderCheckpoint', table: 'networkHeaderCheckpoint', classification: 'durable-restored' },
+  // In-flight proof can be discarded on restore: the retained authoritative
+  // checkpoint reopens a gap and rebuilds this bounded operational state.
+  { model: 'NetworkHeaderReconciliation', table: 'networkHeaderReconciliation', classification: 'cache-optional' },
+  { model: 'NetworkHeaderConfirmationRetry', table: 'networkHeaderConfirmationRetry', classification: 'cache-optional' },
+  { model: 'NetworkHeaderReconciliationHeader', table: 'networkHeaderReconciliationHeader', classification: 'cache-optional' },
+  { model: 'NetworkHeaderHistory', table: 'networkHeaderHistory', classification: 'cache-optional' },
   { model: 'Label', table: 'label', classification: 'durable-restored' },
   { model: 'DraftTransaction', table: 'draftTransaction', classification: 'durable-restored' },
   { model: 'MobilePermission', table: 'mobilePermission', classification: 'durable-restored' },
@@ -102,12 +108,21 @@ const getTablesByClassification = (classification: BackupTableClassification): s
 export const TABLE_ORDER = getTablesByClassification('durable-restored');
 export const CACHE_TABLES = getTablesByClassification('cache-optional');
 export const EPHEMERAL_TABLES = getTablesByClassification('security-ephemeral');
+const PRE_HEADER_RECONCILIATION_CACHE_TABLES = CACHE_TABLES.filter(
+  table => table !== 'networkHeaderReconciliation'
+    && table !== 'networkHeaderConfirmationRetry'
+    && table !== 'networkHeaderReconciliationHeader'
+    && table !== 'networkHeaderHistory',
+);
 
 /**
  * SHA-256 of JSON.stringify(COMPLETE_TABLE_POLICY). The schema-classification
  * contract test recomputes this value so policy edits cannot retain a stale ID.
  */
 export const COMPLETE_TABLE_POLICY_HASH =
+  '919c754086a55684ac902b681638a42fa4c0ccb71bb73363b2db7b6d7a45c694';
+/** Policy hash emitted before optional header reconciliation/cache tables existed. */
+export const PRE_HEADER_RECONCILIATION_COMPLETE_TABLE_POLICY_HASH =
   'a56baac6fa3430f1b15dd3bd1e979ab6072e08fef0c1adc3c8846bf249eee6b7';
 /** Policy hash emitted before durable subscription-coverage evidence existed. */
 export const PRE_SUBSCRIPTION_COVERAGE_COMPLETE_TABLE_POLICY_HASH =
@@ -172,6 +187,7 @@ const PREVIOUS_COMPLETE_TABLE_ORDER = PRE_REMEDIATION_COMPLETE_TABLE_ORDER.filte
  * means adding one row here, not editing two parallel if/else chains.
  */
 const HISTORICAL_COMPLETE_TABLE_ORDERS: ReadonlyMap<string, readonly string[]> = new Map([
+  [PRE_HEADER_RECONCILIATION_COMPLETE_TABLE_POLICY_HASH, TABLE_ORDER],
   [
     PRE_SUBSCRIPTION_COVERAGE_COMPLETE_TABLE_POLICY_HASH,
     PRE_SUBSCRIPTION_COVERAGE_COMPLETE_TABLE_ORDER,
@@ -206,6 +222,17 @@ const historicalCompleteTableOrder = (
   if (meta.tablePolicy?.version !== COMPLETE_TABLE_POLICY_VERSION) return null;
   return HISTORICAL_COMPLETE_TABLE_ORDERS.get(meta.tablePolicy.hash) ?? null;
 };
+
+/** Cache tables actually emitted by this backup-policy generation. */
+function restoreCacheTables(
+  meta: Pick<BackupMeta, 'version' | 'includesCache' | 'tablePolicy'>,
+): readonly string[] {
+  if (!meta.includesCache) return [];
+  const hasCurrentPolicy = meta.version === BACKUP_FORMAT_VERSION
+    && meta.tablePolicy?.version === COMPLETE_TABLE_POLICY_VERSION
+    && meta.tablePolicy.hash === COMPLETE_TABLE_POLICY_HASH;
+  return hasCurrentPolicy ? CACHE_TABLES : PRE_HEADER_RECONCILIATION_CACHE_TABLES;
+}
 
 /**
  * The immutable table manifest used by pre-fix 1.0.0 backups.
@@ -302,9 +329,7 @@ export function getRequiredRestoreTables(
     requiredTables = historicalCompleteTableOrder(meta) ?? TABLE_ORDER;
   }
 
-  return meta.includesCache
-    ? [...requiredTables, ...CACHE_TABLES]
-    : [...requiredTables];
+  return [...requiredTables, ...restoreCacheTables(meta)];
 }
 
 /**
@@ -322,9 +347,7 @@ export function getRestoreTables(
     durableTables = historicalCompleteTableOrder(meta) ?? TABLE_ORDER;
   }
 
-  return meta.includesCache
-    ? [...durableTables, ...CACHE_TABLES]
-    : [...durableTables];
+  return [...durableTables, ...restoreCacheTables(meta)];
 }
 
 // Tables that can grow large and the unique, stable string field used for

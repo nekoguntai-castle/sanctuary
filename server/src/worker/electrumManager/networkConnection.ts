@@ -6,8 +6,7 @@
  */
 
 import { getElectrumClientForNetwork } from '../../services/bitcoin/electrum';
-import { setCachedBlockHeight } from '../../services/bitcoin/blockchain';
-import { hashBlockHeader } from '../../services/bitcoin/networkIdentity';
+import { hashBlockHeader, previousBlockHashFromHeader } from '../../services/bitcoin/networkIdentity';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import {
@@ -18,6 +17,66 @@ import {
 } from './types';
 
 const log = createLogger('WORKER:ELECTRUM_NET');
+type HeaderObservation = { height: number; hex: string };
+const pendingLiveHeaders = new WeakMap<NetworkState, HeaderObservation | null>();
+const activeClientStates = new WeakMap<NetworkState['client'], NetworkState>();
+interface LiveHeaderPump {
+  pending: HeaderObservation | null;
+  running: boolean;
+}
+const liveHeaderPumps = new WeakMap<NetworkState, LiveHeaderPump>();
+
+function isActiveClientState(state: NetworkState): boolean {
+  return activeClientStates.get(state.client) === state;
+}
+
+function detachEventHandlers(state: NetworkState): void {
+  for (const event of ['newBlock', 'addressActivity', 'close', 'error']) {
+    state.client.removeAllListeners(event);
+  }
+}
+
+function queueLatestLiveHeader(
+  state: NetworkState,
+  block: HeaderObservation,
+  observe: (block: HeaderObservation) => Promise<void>,
+): void {
+  // Intermediate notifications may be coalesced because reconciliation walks
+  // every parent-linked height from its durable cursor to the newest target.
+  const pump = liveHeaderPumps.get(state) ?? { pending: null, running: false };
+  liveHeaderPumps.set(state, pump);
+  pump.pending = block;
+  if (pump.running) return;
+  pump.running = true;
+  void (async () => {
+    try {
+      while (pump.pending && isActiveClientState(state)) {
+        const next = pump.pending;
+        pump.pending = null;
+        await observe(next);
+      }
+    } finally {
+      pump.running = false;
+      liveHeaderPumps.delete(state);
+    }
+  })();
+}
+
+async function observeLiveHeader(
+  state: NetworkState,
+  callbacks: ElectrumManagerCallbacks,
+  block: HeaderObservation,
+  isRunning: () => boolean,
+): Promise<void> {
+  await callbacks.onHeaderObservation(
+    state.network,
+    block,
+    (startHeight, count) => state.client.getBlockHeaders(startHeight, count),
+  );
+  if (!isRunning()) return;
+  state.lastBlockHeight = block.height;
+  log.info(`Observed ${state.network} block at height ${block.height}`);
+}
 
 /**
  * Connect to a specific network's Electrum server.
@@ -81,16 +140,18 @@ export async function connectNetwork(
 
     networks.set(network, state);
 
-    // Subscribe to headers
-    await subscribeHeaders(state, isRunning);
+    // Install listeners before subscribing so a notification racing the
+    // subscription response cannot fall into an unobserved window.
+    setupEventHandlers(state, addressToWallet, callbacks, isRunning, scheduleReconnect);
+
+    // Subscribe to headers and route the returned current tip through the same
+    // durable reconciliation boundary as later notifications.
+    await subscribeHeaders(state, callbacks, isRunning);
     if (!isRunning()) {
       if (networks.get(network) === state) networks.delete(network);
       client.disconnect();
       return;
     }
-
-    // Set up event handlers
-    setupEventHandlers(state, addressToWallet, callbacks, isRunning, scheduleReconnect);
 
     log.info(`Electrum ${network} connected and subscribed`);
   } catch (error) {
@@ -106,6 +167,7 @@ export async function connectNetwork(
  */
 export async function subscribeHeaders(
   state: NetworkState,
+  callbacks: ElectrumManagerCallbacks,
   isRunning: () => boolean = () => true,
 ): Promise<void> {
   if (state.subscribedToHeaders) return;
@@ -120,14 +182,36 @@ export async function subscribeHeaders(
       state.client.disconnect();
       return;
     }
-    state.subscribedToHeaders = true;
+    await callbacks.onHeaderObservation(
+      state.network,
+      { height: header.height, hex: header.hex },
+      (startHeight, count) => state.client.getBlockHeaders(startHeight, count),
+    );
+    if (!isRunning()) {
+      state.client.disconnect();
+      return;
+    }
     state.lastBlockHeight = header.height;
-
-    // Update cached block height
-    setCachedBlockHeight(header.height, state.network);
+    const buffered = pendingLiveHeaders.get(state);
+    pendingLiveHeaders.set(state, null);
+    if (buffered) {
+      await observeLiveHeader(state, callbacks, buffered, isRunning);
+      if (!isRunning()) {
+        state.client.disconnect();
+        return;
+      }
+    }
+    const deferred = pendingLiveHeaders.get(state);
+    pendingLiveHeaders.delete(state);
+    state.subscribedToHeaders = true;
+    if (deferred) state.client.emit('newBlock', deferred);
 
     log.info(`Subscribed to ${state.network} headers, current height: ${header.height}`);
   } catch (error) {
+    pendingLiveHeaders.delete(state);
+    if (!isActiveClientState(state)) return;
+    detachEventHandlers(state);
+    activeClientStates.delete(state.client);
     if (!isRunning()) {
       state.client.disconnect();
       return;
@@ -135,6 +219,9 @@ export async function subscribeHeaders(
     log.error(`Failed to subscribe to ${state.network} headers`, {
       error: getErrorMessage(error),
     });
+    state.connected = false;
+    state.client.disconnect();
+    throw error;
   }
 }
 
@@ -149,20 +236,17 @@ export function setupEventHandlers(
   scheduleReconnect: (network: BitcoinNetwork) => void
 ): void {
   const { client, network } = state;
+  detachEventHandlers(state);
+  activeClientStates.set(client, state);
+  if (!state.subscribedToHeaders) pendingLiveHeaders.set(state, null);
 
   // Handle new blocks
   client.on('newBlock', (block: { height: number; hex: string }) => {
     if (!isRunning()) return;
 
-    // `hashBlockHeader` rejects a header that is not exactly 80 bytes. The
-    // Electrum layer already validates the notification before emitting, so this
-    // should be unreachable — but this listener runs synchronously from the
-    // socket 'data' handler in a long-running worker, where an uncaught throw
-    // would take the process down. Do not depend on another module's validation
-    // holding: drop the block and keep the connection alive.
-    let blockHash: string;
     try {
-      blockHash = hashBlockHeader(block.hex);
+      hashBlockHeader(block.hex);
+      previousBlockHashFromHeader(block.hex);
     } catch (error) {
       log.warn(`Discarding malformed ${network} block header at height ${block.height}`, {
         reason: getErrorMessage(error, 'Unknown error'),
@@ -170,11 +254,28 @@ export function setupEventHandlers(
       return;
     }
 
-    state.lastBlockHeight = block.height;
-    setCachedBlockHeight(block.height, network);
-
-    log.info(`New ${network} block at height ${block.height}`);
-    callbacks.onNewBlock(network, block.height, blockHash);
+    if (pendingLiveHeaders.has(state)) {
+      pendingLiveHeaders.set(state, block);
+      return;
+    }
+    queueLatestLiveHeader(state, block, async next => {
+      try {
+        await observeLiveHeader(state, callbacks, next, isRunning);
+      } catch (error) {
+        if (!isActiveClientState(state)) return;
+        log.error(`Failed to reconcile ${network} block header at height ${next.height}`, {
+          error: getErrorMessage(error),
+        });
+        state.connected = false;
+        state.subscribedToHeaders = false;
+        state.subscribedAddresses.clear();
+        pendingLiveHeaders.delete(state);
+        detachEventHandlers(state);
+        activeClientStates.delete(client);
+        client.disconnect();
+        if (isRunning()) scheduleReconnect(network);
+      }
+    });
   });
 
   // Handle address activity
@@ -190,6 +291,9 @@ export function setupEventHandlers(
     state.connected = false;
     state.subscribedToHeaders = false;
     state.subscribedAddresses.clear();
+    pendingLiveHeaders.delete(state);
+    detachEventHandlers(state);
+    activeClientStates.delete(client);
 
     if (isRunning()) {
       scheduleReconnect(network);

@@ -2,8 +2,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
   mockFindMany,
+  mockGroupBy,
+  mockExecuteRaw,
+  mockTransaction,
   mockUpdateTransactionConfirmations,
+  mockUpdateTransactionConfirmationsAtHeight,
   mockPopulateMissingTransactionFields,
+  mockGetAddressHistory,
+  mockGetAddressHistoryBatch,
+  mockGetBlockHeight,
   mockEmitTransactionConfirmed,
   mockAcquireLock,
   mockExtendLock,
@@ -12,8 +19,15 @@ const {
   mockMaxSyncDurationMs,
 } = vi.hoisted(() => ({
   mockFindMany: vi.fn<(args: unknown) => Promise<Array<{ walletId: string }>>>(),
+  mockGroupBy: vi.fn<(args: unknown) => Promise<Array<{ walletId: string }>>>(),
+  mockExecuteRaw: vi.fn(),
+  mockTransaction: vi.fn(),
   mockUpdateTransactionConfirmations: vi.fn(),
+  mockUpdateTransactionConfirmationsAtHeight: vi.fn(),
   mockPopulateMissingTransactionFields: vi.fn(),
+  mockGetAddressHistory: vi.fn(),
+  mockGetAddressHistoryBatch: vi.fn(),
+  mockGetBlockHeight: vi.fn(),
   mockEmitTransactionConfirmed: vi.fn(),
   mockAcquireLock: vi.fn(),
   mockExtendLock: vi.fn(),
@@ -39,8 +53,10 @@ vi.mock('../../../../src/jobs/syncJobContract', () => ({
 
 vi.mock('../../../../src/models/prisma', () => ({
   default: {
+    $transaction: mockTransaction,
     transaction: {
       findMany: mockFindMany,
+      groupBy: mockGroupBy,
     },
   },
 }));
@@ -48,6 +64,13 @@ vi.mock('../../../../src/models/prisma', () => ({
 vi.mock('../../../../src/services/bitcoin/blockchain', () => ({
   updateTransactionConfirmations: mockUpdateTransactionConfirmations,
   populateMissingTransactionFields: mockPopulateMissingTransactionFields,
+  getAddressHistory: mockGetAddressHistory,
+  getAddressHistoryBatch: mockGetAddressHistoryBatch,
+  getBlockHeight: mockGetBlockHeight,
+}));
+
+vi.mock('../../../../src/services/bitcoin/sync/confirmations/updateConfirmations', () => ({
+  updateTransactionConfirmationsAtHeight: mockUpdateTransactionConfirmationsAtHeight,
 }));
 
 vi.mock('../../../../src/services/eventService', () => ({
@@ -63,12 +86,22 @@ import {
   refreshPendingConfirmations,
   refreshWalletConfirmations,
 } from '../../../../src/services/sync/confirmationUpdater';
+import {
+  refreshConfirmationRetryWalletsAtHeight,
+  refreshPendingConfirmationsAtHeight,
+} from '../../../../src/services/sync/headerConfirmationUpdater';
 import type { ConfirmationUpdate } from '../../../../src/services/bitcoin/blockchain';
 
 describe('confirmationUpdater', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockFindMany.mockResolvedValue([]);
+    mockGroupBy.mockResolvedValue([]);
+    mockExecuteRaw.mockResolvedValue(1);
+    mockTransaction.mockImplementation(async (callback) => callback({
+      $executeRaw: mockExecuteRaw,
+      transaction: { groupBy: mockGroupBy },
+    }));
     mockAcquireLock.mockResolvedValue({ key: 'sync:wallet:test', token: 'token' });
     mockExtendLock.mockImplementation(async lock => lock);
     mockGetSyncLockTtlMs.mockReturnValue(120_000);
@@ -79,6 +112,7 @@ describe('confirmationUpdater', () => {
       confirmationUpdates: [],
     });
     mockUpdateTransactionConfirmations.mockResolvedValue([]);
+    mockUpdateTransactionConfirmationsAtHeight.mockResolvedValue([]);
   });
 
   it('populates missing fields before updating confirmations', async () => {
@@ -98,6 +132,8 @@ describe('confirmationUpdater', () => {
       'wallet-1',
       expect.any(AbortSignal),
       expect.any(Function),
+      undefined,
+      true,
     );
     expect(mockUpdateTransactionConfirmations).toHaveBeenCalledWith(
       'wallet-1',
@@ -189,6 +225,415 @@ describe('confirmationUpdater', () => {
     }
   });
 
+  it('refreshes only the emitting network at an already-reconciled height', async () => {
+    mockGroupBy.mockResolvedValue([
+      { walletId: 'wallet-z' },
+      { walletId: 'wallet-a' },
+    ]);
+    mockUpdateTransactionConfirmationsAtHeight.mockResolvedValue([
+      { txid: 'persisted-tx', oldConfirmations: 4, newConfirmations: 2 },
+    ]);
+
+    const result = await refreshPendingConfirmationsAtHeight('signet', 102);
+
+    expect(mockGroupBy).toHaveBeenCalledWith({
+      by: ['walletId'],
+      where: {
+        wallet: { network: 'signet' },
+        OR: [
+          { confirmations: { lt: 6 } },
+          { blockHeight: { gt: 97 } },
+        ],
+      },
+      orderBy: { walletId: 'asc' },
+      take: 101,
+    });
+    expect(mockExecuteRaw).toHaveBeenCalledOnce();
+    expect(mockTransaction).toHaveBeenCalledWith(expect.any(Function), { timeout: 20_000 });
+    expect(mockUpdateTransactionConfirmationsAtHeight.mock.calls).toEqual([
+      ['wallet-a', 102, expect.any(AbortSignal), expect.any(Function)],
+      ['wallet-z', 102, expect.any(AbortSignal), expect.any(Function)],
+    ]);
+    expect(result.walletIds).toEqual(['wallet-z', 'wallet-a']);
+    expect(result).toMatchObject({
+      nextCursor: 'wallet-a',
+      enumerationComplete: true,
+    });
+    expect(mockAcquireLock).toHaveBeenCalledTimes(2);
+    expect(mockAcquireLock).toHaveBeenNthCalledWith(1, 'sync:wallet:wallet-a', {
+      ttlMs: 120_000,
+      waitTimeMs: 0,
+      retryIntervalMs: 100,
+    });
+    expect(mockReleaseLock).toHaveBeenCalledTimes(2);
+    expect(mockPopulateMissingTransactionFields).not.toHaveBeenCalled();
+    expect(mockUpdateTransactionConfirmations).not.toHaveBeenCalled();
+    expect(mockGetAddressHistory).not.toHaveBeenCalled();
+    expect(mockGetAddressHistoryBatch).not.toHaveBeenCalled();
+    expect(mockGetBlockHeight).not.toHaveBeenCalled();
+  });
+
+  it('bounds authoritative confirmation selection and returns a stable resume cursor', async () => {
+    const firstPage = Array.from({ length: 101 }, (_, index) => ({
+      walletId: `wallet-${String(index).padStart(3, '0')}`,
+    }));
+    mockGroupBy
+      .mockResolvedValueOnce(firstPage)
+      .mockResolvedValueOnce([{ walletId: 'wallet-100' }]);
+
+    const first = await refreshPendingConfirmationsAtHeight('mainnet', 100);
+    const second = await refreshPendingConfirmationsAtHeight(
+      'mainnet',
+      100,
+      () => true,
+      first.nextCursor,
+    );
+
+    expect(first).toMatchObject({
+      nextCursor: 'wallet-099',
+      enumerationComplete: false,
+    });
+    expect(first.walletIds).toHaveLength(100);
+    expect(second).toMatchObject({
+      nextCursor: 'wallet-100',
+      enumerationComplete: true,
+    });
+    expect(mockGroupBy).toHaveBeenNthCalledWith(2, {
+      by: ['walletId'],
+      where: {
+        wallet: { network: 'mainnet' },
+        walletId: { gt: 'wallet-099' },
+        OR: [
+          { confirmations: { lt: 6 } },
+          { blockHeight: { gt: 95 } },
+        ],
+      },
+      orderBy: { walletId: 'asc' },
+      take: 101,
+    });
+  });
+
+  it('records a failed first wallet but still processes every later candidate', async () => {
+    mockGroupBy.mockResolvedValue([
+      { walletId: 'wallet-a' },
+      { walletId: 'wallet-b' },
+      { walletId: 'wallet-c' },
+    ]);
+    const firstError = new Error('first wallet failed');
+    mockUpdateTransactionConfirmationsAtHeight
+      .mockRejectedValueOnce(firstError);
+
+    const result = await refreshPendingConfirmationsAtHeight('mainnet', 900_000);
+
+    expect(result.failures).toEqual([
+      { walletId: 'wallet-a', error: firstError },
+    ]);
+    expect(result.wallets.map(({ walletId }) => walletId)).toEqual([
+      'wallet-b',
+      'wallet-c',
+    ]);
+    expect(result.nextCursor).toBe('wallet-c');
+    expect(result.enumerationComplete).toBe(true);
+    expect(mockUpdateTransactionConfirmationsAtHeight).toHaveBeenCalledTimes(3);
+  });
+
+  it('refreshes every durable retry wallet at the explicit height without history lookups', async () => {
+    const result = await refreshConfirmationRetryWalletsAtHeight(
+      ['wallet-z', 'wallet-a'],
+      777,
+    );
+
+    expect(mockUpdateTransactionConfirmationsAtHeight.mock.calls).toEqual([
+      ['wallet-a', 777, expect.any(AbortSignal), expect.any(Function)],
+      ['wallet-z', 777, expect.any(AbortSignal), expect.any(Function)],
+    ]);
+    expect(result.walletIds).toEqual(['wallet-a', 'wallet-z']);
+    expect(result.failures).toEqual([]);
+    expect(mockAcquireLock).toHaveBeenCalledTimes(2);
+    expect(mockGroupBy).not.toHaveBeenCalled();
+    expect(mockFindMany).not.toHaveBeenCalled();
+    expect(mockPopulateMissingTransactionFields).not.toHaveBeenCalled();
+    expect(mockUpdateTransactionConfirmations).not.toHaveBeenCalled();
+    expect(mockGetAddressHistory).not.toHaveBeenCalled();
+    expect(mockGetAddressHistoryBatch).not.toHaveBeenCalled();
+    expect(mockGetBlockHeight).not.toHaveBeenCalled();
+  });
+
+  it('rejects an invalid authoritative height before refreshing retry wallets', async () => {
+    await expect(refreshConfirmationRetryWalletsAtHeight(['wallet-a'], -1)).rejects.toThrow(
+      'Authoritative block height must be a non-negative safe integer',
+    );
+
+    expect(mockAcquireLock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['empty', []],
+    ['oversize', Array.from({ length: 101 }, (_, index) => `wallet-${index}`)],
+  ])('rejects an %s confirmation retry page', async (_description, walletIds) => {
+    await expect(refreshConfirmationRetryWalletsAtHeight(walletIds, 100)).rejects.toThrow(
+      'retry page size is invalid',
+    );
+
+    expect(mockAcquireLock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a retry page that starts without reconciliation ownership', async () => {
+    await expect(refreshConfirmationRetryWalletsAtHeight(
+      ['wallet-a'],
+      100,
+      () => false,
+    )).rejects.toThrow('ownership is not active');
+
+    expect(mockAcquireLock).not.toHaveBeenCalled();
+  });
+
+  it('aborts and cleans up a retry page when its deadline expires', async () => {
+    vi.useFakeTimers();
+    mockMaxSyncDurationMs.mockReturnValue(30_000);
+    mockUpdateTransactionConfirmationsAtHeight.mockImplementationOnce((
+      _walletId: string,
+      _height: number,
+      signal: AbortSignal,
+    ) => new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    }));
+
+    try {
+      const refresh = refreshConfirmationRetryWalletsAtHeight(['wallet-a'], 100);
+      await vi.advanceTimersByTimeAsync(20_000);
+
+      await expect(refresh).resolves.toMatchObject({
+        failures: [{
+          walletId: 'wallet-a',
+          error: expect.objectContaining({
+            message: 'Network header confirmation retry page timed out',
+          }),
+        }],
+      });
+      expect(mockReleaseLock).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('records every unattempted wallet as retryable when a page deadline expires', async () => {
+    vi.useFakeTimers();
+    mockMaxSyncDurationMs.mockReturnValue(30_000);
+    mockGroupBy.mockResolvedValue([
+      { walletId: 'wallet-a' },
+      { walletId: 'wallet-b' },
+    ]);
+    mockUpdateTransactionConfirmationsAtHeight.mockImplementationOnce((
+      _walletId: string,
+      _height: number,
+      signal: AbortSignal,
+    ) => new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    }));
+
+    try {
+      const refresh = refreshPendingConfirmationsAtHeight('mainnet', 100);
+      await vi.advanceTimersByTimeAsync(20_000);
+
+      await expect(refresh).resolves.toMatchObject({
+        nextCursor: 'wallet-b',
+        enumerationComplete: true,
+        failures: [
+          { walletId: 'wallet-a', error: expect.objectContaining({
+            message: 'Network header confirmation page timed out',
+          }) },
+          { walletId: 'wallet-b', error: expect.objectContaining({
+            message: 'Network header confirmation page timed out',
+          }) },
+        ],
+      });
+      expect(mockUpdateTransactionConfirmationsAtHeight).toHaveBeenCalledOnce();
+      expect(mockReleaseLock).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('rejects an invalid authoritative height before selecting wallets', async () => {
+    await expect(refreshPendingConfirmationsAtHeight('mainnet', -1)).rejects.toThrow(
+      'Authoritative block height must be a non-negative safe integer',
+    );
+
+    expect(mockGroupBy).not.toHaveBeenCalled();
+    expect(mockAcquireLock).not.toHaveBeenCalled();
+  });
+
+  it.each([0, 101, 1.5])('rejects invalid confirmation page size %s', async pageSize => {
+    await expect(refreshPendingConfirmationsAtHeight(
+      'mainnet',
+      100,
+      () => true,
+      null,
+      pageSize,
+    )).rejects.toThrow('page size is invalid');
+
+    expect(mockGroupBy).not.toHaveBeenCalled();
+  });
+
+  it('rejects an authoritative-height sweep that starts without ownership', async () => {
+    await expect(refreshPendingConfirmationsAtHeight('mainnet', 100, () => false))
+      .rejects.toThrow('ownership is not active');
+
+    expect(mockGroupBy).not.toHaveBeenCalled();
+  });
+
+  it('keeps an authoritative-height sweep active while ownership remains valid', async () => {
+    vi.useFakeTimers();
+    let finishSelection!: (rows: Array<{ walletId: string }>) => void;
+    mockGroupBy.mockReturnValueOnce(new Promise(resolve => {
+      finishSelection = resolve;
+    }));
+
+    try {
+      const refresh = refreshPendingConfirmationsAtHeight('mainnet', 100, () => true);
+      await vi.advanceTimersByTimeAsync(25);
+      finishSelection([]);
+
+      await expect(refresh).resolves.toMatchObject({ walletIds: [], failures: [] });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('aborts an authoritative-height sweep when reconciliation ownership is lost', async () => {
+    vi.useFakeTimers();
+    mockGroupBy.mockReturnValueOnce(new Promise(() => undefined));
+    let active = true;
+
+    try {
+      const refresh = refreshPendingConfirmationsAtHeight('mainnet', 100, () => active);
+      const rejected = expect(refresh).rejects.toThrow('ownership was lost');
+      active = false;
+      await vi.advanceTimersByTimeAsync(25);
+
+      await rejected;
+      expect(mockAcquireLock).not.toHaveBeenCalled();
+      expect(mockUpdateTransactionConfirmationsAtHeight).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('aborts an authoritative-height page when its deadline expires', async () => {
+    vi.useFakeTimers();
+    mockGroupBy.mockReturnValueOnce(new Promise(() => undefined));
+
+    try {
+      const refresh = refreshPendingConfirmationsAtHeight('mainnet', 100);
+      const rejected = expect(refresh).rejects.toThrow('confirmation page timed out');
+      await vi.advanceTimersByTimeAsync(20_000);
+
+      await rejected;
+      expect(mockAcquireLock).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('propagates an authoritative-height selection failure', async () => {
+    const queryError = new Error('confirmation selection unavailable');
+    mockGroupBy.mockRejectedValueOnce(queryError);
+
+    await expect(refreshPendingConfirmationsAtHeight('mainnet', 100)).rejects.toBe(queryError);
+    expect(mockAcquireLock).not.toHaveBeenCalled();
+  });
+
+  it('retains the wallet lock until an uncooperative authoritative-height write settles', async () => {
+    vi.useFakeTimers();
+    mockGroupBy.mockResolvedValue([{ walletId: 'wallet-a' }]);
+    let settleWrite!: (updates: ConfirmationUpdate[]) => void;
+    mockUpdateTransactionConfirmationsAtHeight.mockImplementationOnce(
+      () => new Promise(resolve => { settleWrite = resolve; }),
+    );
+    let active = true;
+
+    try {
+      const refresh = refreshPendingConfirmationsAtHeight('mainnet', 100, () => active);
+      await vi.waitFor(() => {
+        expect(mockUpdateTransactionConfirmationsAtHeight).toHaveBeenCalledOnce();
+      });
+
+      active = false;
+      await vi.advanceTimersByTimeAsync(25);
+      expect(mockReleaseLock).not.toHaveBeenCalled();
+
+      settleWrite([]);
+      await expect(refresh).resolves.toMatchObject({
+        failures: [{
+          walletId: 'wallet-a',
+          error: expect.objectContaining({
+            message: 'Network header reconciliation ownership was lost',
+          }),
+        }],
+      });
+      expect(mockReleaseLock).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('retains a lost wallet lease until an in-flight authoritative-height write settles', async () => {
+    vi.useFakeTimers();
+    mockGetSyncLockTtlMs.mockReturnValue(300);
+    mockGroupBy.mockResolvedValue([{ walletId: 'wallet-a' }]);
+    mockExtendLock.mockResolvedValueOnce(null);
+    let settleWrite!: (updates: ConfirmationUpdate[]) => void;
+    mockUpdateTransactionConfirmationsAtHeight.mockImplementationOnce(
+      () => new Promise(resolve => { settleWrite = resolve; }),
+    );
+
+    try {
+      const refresh = refreshPendingConfirmationsAtHeight('mainnet', 100);
+      await vi.waitFor(() => {
+        expect(mockUpdateTransactionConfirmationsAtHeight).toHaveBeenCalledOnce();
+      });
+
+      await vi.advanceTimersByTimeAsync(100);
+      expect(mockExtendLock).toHaveBeenCalledOnce();
+      expect(mockReleaseLock).not.toHaveBeenCalled();
+
+      settleWrite([]);
+      await expect(refresh).resolves.toMatchObject({
+        failures: [{
+          walletId: 'wallet-a',
+          error: expect.objectContaining({
+            message: 'confirmation refresh lost its wallet sync lock',
+          }),
+        }],
+      });
+      expect(mockReleaseLock).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('publishes explicit-height updates only after their persistence callback', async () => {
+    mockGroupBy.mockResolvedValue([{ walletId: 'wallet-1' }]);
+    const change = { txid: 'persisted-tx', oldConfirmations: 0, newConfirmations: 1 };
+    mockUpdateTransactionConfirmationsAtHeight.mockImplementationOnce(async (
+      _walletId: string,
+      _height: number,
+      _signal: AbortSignal,
+      onCommit: (result: { updated: number; confirmationUpdates: typeof change[] }) => void,
+    ) => {
+      expect(mockEmitTransactionConfirmed).not.toHaveBeenCalled();
+      onCommit({ updated: 0, confirmationUpdates: [change] });
+      expect(mockEmitTransactionConfirmed).toHaveBeenCalledOnce();
+      return [change];
+    });
+
+    const result = await refreshPendingConfirmationsAtHeight('testnet4', 10);
+
+    expect(result.confirmationUpdateCount).toBe(1);
+    expect(mockEmitTransactionConfirmed).toHaveBeenCalledOnce();
+  });
+
   it('skips a contended sweep wallet immediately and continues with later wallets', async () => {
     mockFindMany.mockResolvedValue([{ walletId: 'wallet-a' }, { walletId: 'wallet-b' }]);
     mockAcquireLock
@@ -209,6 +654,8 @@ describe('confirmationUpdater', () => {
       'wallet-b',
       expect.any(AbortSignal),
       expect.any(Function),
+      undefined,
+      true,
     );
   });
 

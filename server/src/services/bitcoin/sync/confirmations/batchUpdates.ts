@@ -22,6 +22,7 @@ export async function executeInChunks<T extends { id: string; data: Record<strin
   onChunkCommitted?: (items: T[]) => void,
   signal?: AbortSignal,
   mutationFence?: WalletSyncMutationFence,
+  serializeUnfenced = false,
 ): Promise<void> {
   if (mutationFence && !walletId) {
     throw new Error('Fenced missing-field updates require a target wallet ID');
@@ -48,6 +49,8 @@ export async function executeInChunks<T extends { id: string; data: Record<strin
           deferPostCommit(() => onChunkCommitted(chunk));
         }
       },
+      () => signal?.throwIfAborted(),
+      serializeUnfenced,
     );
   }
 }

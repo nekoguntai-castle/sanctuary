@@ -24,6 +24,7 @@ export function registerElectrumManagerStartContracts() {
       expect(getElectrumClientForNetwork).not.toHaveBeenCalled();
       expect(manager.getHealthMetrics().isRunning).toBe(false);
       expect(manager.getHealthMetrics().ownershipRetryActive).toBe(true);
+      expect(manager.getSubscriptionOwnershipEpoch()).toBeNull();
     });
 
     it('keeps ownership retry active when lock authority is unavailable', async () => {
@@ -189,8 +190,14 @@ export function registerElectrumManagerStartContracts() {
 
       expect(mockClient.connect).toHaveBeenCalled();
       expect(mockClient.subscribeHeaders).toHaveBeenCalled();
-      expect(setCachedBlockHeight).toHaveBeenCalledWith(100000, 'mainnet');
+      expect(mockCallbacks.onHeaderObservation).toHaveBeenCalledWith(
+        'mainnet',
+        { height: 100000, hex: '00'.repeat(80) },
+        expect.any(Function),
+      );
+      expect(setCachedBlockHeight).not.toHaveBeenCalled();
       expect(manager.isConnected()).toBe(true);
+      expect(manager.getSubscriptionOwnershipEpoch()).toBe(1);
     });
 
     it('connects every represented wallet network exactly once at startup', async () => {

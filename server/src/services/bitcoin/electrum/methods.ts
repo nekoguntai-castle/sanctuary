@@ -21,6 +21,11 @@ import {
   ServerVersionSchema,
   ServerFeaturesSchema,
   HeadersSubscribeSchema,
+  BlockHeaderHexSchema,
+  BlockHeadersResponseSchema,
+  BITCOIN_BLOCK_HEADER_HEX_LENGTH,
+  ELECTRUM_MAX_HEADERS_PER_REQUEST,
+  ElectrumResponseValidationError,
   parseElectrumSubscriptionStatus,
   validateResponse,
 } from './types';
@@ -308,6 +313,54 @@ export async function getBlockHeader(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Electrum returns varying formats per server implementation
 ): Promise<any> {
   return requestFn('blockchain.block.header', [height]);
+}
+
+/**
+ * Fetch an exact contiguous range of Bitcoin block headers.
+ *
+ * Electrum protocol 1.4 caps `blockchain.block.headers` at 2,016 headers per
+ * request. A shorter server response is rejected rather than silently treated
+ * as complete, so reconciliation callers cannot advance over an unproven gap.
+ */
+export async function getBlockHeaders(
+  requestFn: RequestFn,
+  startHeight: number,
+  count: number,
+): Promise<string[]> {
+  if (!Number.isSafeInteger(startHeight) || startHeight < 0) {
+    throw new Error('Invalid Electrum block header start height: expected a non-negative integer');
+  }
+  if (!Number.isInteger(count) || count < 1 || count > ELECTRUM_MAX_HEADERS_PER_REQUEST) {
+    throw new Error(
+      `Invalid Electrum block header count: expected an integer from 1 to ${ELECTRUM_MAX_HEADERS_PER_REQUEST}`,
+    );
+  }
+
+  const result = await requestFn('blockchain.block.headers', [startHeight, count]);
+  const response = validateResponse(
+    BlockHeadersResponseSchema,
+    result,
+    `getBlockHeaders(${startHeight}, ${count})`,
+  );
+  if (response.count !== count) {
+    throw new ElectrumResponseValidationError(
+      `Invalid Electrum response for getBlockHeaders: expected ${count} headers, received ${response.count}`,
+    );
+  }
+
+  const expectedHexLength = count * BITCOIN_BLOCK_HEADER_HEX_LENGTH;
+  if (response.hex.length !== expectedHexLength) {
+    throw new ElectrumResponseValidationError(
+      `Invalid Electrum response for getBlockHeaders: expected ${expectedHexLength} hex characters, received ${response.hex.length}`,
+    );
+  }
+
+  const headers: string[] = [];
+  for (let offset = 0; offset < response.hex.length; offset += BITCOIN_BLOCK_HEADER_HEX_LENGTH) {
+    const header = response.hex.slice(offset, offset + BITCOIN_BLOCK_HEADER_HEX_LENGTH);
+    headers.push(validateResponse(BlockHeaderHexSchema, header, 'getBlockHeaders header'));
+  }
+  return headers;
 }
 
 /**

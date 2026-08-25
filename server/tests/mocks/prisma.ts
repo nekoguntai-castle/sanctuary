@@ -40,6 +40,10 @@ export const mockPrismaClient = {
   addressSubscriptionComparisonFailure: createModelMock(),
   networkSubscriptionCoverageState: createModelMock(),
   networkHeaderCheckpoint: createModelMock(),
+  networkHeaderReconciliation: createModelMock(),
+  networkHeaderConfirmationRetry: createModelMock(),
+  networkHeaderReconciliationHeader: createModelMock(),
+  networkHeaderHistory: createModelMock(),
   transaction: createModelMock(),
   uTXO: createModelMock(),
   group: createModelMock(),
@@ -151,6 +155,19 @@ export function resetPrismaMocks(): void {
   (mockPrismaClient.$executeRaw as Mock).mockResolvedValue(0);
   (mockPrismaClient.$queryRaw as Mock).mockReset();
   (mockPrismaClient.$queryRaw as Mock).mockResolvedValue([]);
+}
+
+/** Preserve empty raw-query defaults while modelling the confirmation writer's wallet row lock. */
+export function mockWalletMutationTargetLock(): void {
+  (mockPrismaClient.$queryRaw as Mock).mockImplementation((query: { strings?: string[]; values?: unknown[] }) => {
+    const sql = query?.strings?.join('') ?? '';
+    if (sql.includes('SELECT "id"')
+      && sql.includes('FROM "wallets"')
+      && sql.includes('FOR UPDATE')) {
+      return Promise.resolve([{ id: query.values?.[0] ?? 'wallet' }]);
+    }
+    return Promise.resolve([]);
+  });
 }
 
 // Helper to set up common mock returns

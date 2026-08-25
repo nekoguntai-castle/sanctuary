@@ -214,6 +214,50 @@ export async function runSyncAttemptWithTimeout<T>(
 }
 
 /**
+ * Run a lock-protected attempt with a duration cap without abandoning it.
+ *
+ * Cancellation is still delivered at the configured deadline, but this helper
+ * does not return until the underlying operation settles. Callers may therefore
+ * release an exclusive lock in `finally` without permitting a detached writer
+ * to overlap its successor.
+ */
+export async function runSettledSyncAttemptWithTimeout<T>(
+  execute: (signal: AbortSignal) => Promise<T>,
+  timeoutMs: number,
+  parentSignal?: AbortSignal,
+): Promise<T> {
+  const controller = new AbortController();
+  const abort = (reason: unknown): void => {
+    if (!controller.signal.aborted) controller.abort(reason);
+  };
+  const onParentAbort = (): void => abort(abortReason(parentSignal!));
+
+  if (parentSignal?.aborted) onParentAbort();
+  else parentSignal?.addEventListener('abort', onParentAbort, { once: true });
+
+  const timeoutHandle = setTimeout(
+    () => abort(new Error(`Sync attempt timed out after ${timeoutMs}ms`)),
+    timeoutMs,
+  );
+  timeoutHandle.unref?.();
+
+  try {
+    try {
+      controller.signal.throwIfAborted();
+      const result = await execute(controller.signal);
+      controller.signal.throwIfAborted();
+      return result;
+    } catch (error) {
+      if (controller.signal.aborted) controller.signal.throwIfAborted();
+      throw error;
+    }
+  } finally {
+    clearTimeout(timeoutHandle);
+    parentSignal?.removeEventListener('abort', onParentAbort);
+  }
+}
+
+/**
  * Persist sync state through a short, bounded database outage.
  *
  * This never throws because callers are already handling a sync failure and

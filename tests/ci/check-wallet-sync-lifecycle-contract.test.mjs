@@ -290,6 +290,16 @@ function fixtureContract() {
       file: 'server/src/worker/subscriptionCheckpointRuntime.ts',
       role: 'worker_owned_status_comparison_reader',
     }] },
+    { symbol: 'onHeaderObservation', entries: [{
+      file: 'server/src/worker.ts',
+      role: 'worker_reconciliation_runtime_adapter',
+    }, {
+      file: 'server/src/worker/electrumManager/networkConnection.ts',
+      role: 'single_startup_and_notification_ingress',
+    }, {
+      file: 'server/src/worker/electrumManager/types.ts',
+      role: 'raw_header_observation_callback_contract',
+    }] },
     { symbol: 'requestSubscriptionEnrollment', entries: [{
       file: 'server/src/repositories/index.ts',
       role: 'neutral_repository_barrel_export',
@@ -302,7 +312,10 @@ function fixtureContract() {
     }] },
     { symbol: 'subscribeAddress', entries: [] },
     { symbol: 'subscribeAddressBatch', entries: [] },
-    { symbol: 'subscribeHeaders', entries: [] },
+    { symbol: 'subscribeHeaders', entries: [{
+      file: 'server/src/worker/electrumManager/networkConnection.ts',
+      role: 'sole_worker_owned_header_subscription',
+    }] },
     { symbol: 'syncIntentAdmission', entries: [{
       file: 'server/src/services/sync/manualProducer.ts',
       role: 'canonical_manual_api_admission',
@@ -344,7 +357,8 @@ function writeMultiNetworkFixture(root) {
       + 'function recordSubscriptionStatuses() {}\n'
       + 'function startSubscriptionStatusRefreshTimer() { if (subscriptionStatusRefreshInFlight) return; electrumManager.getManagedNetworks(); promise.finally(() => { subscriptionStatusRefreshNetworkIndex += 1; }); }\n'
       + 'function startSubscriptionCheckpointTimer() { if (subscriptionCheckpointInFlight) return; electrumManager.getManagedNetworks(); promise.finally(() => { subscriptionCheckpointNetworkIndex += 1; }); }\n'
-      + 'new ElectrumSubscriptionManager({ onSubscriptionStatuses: recordSubscriptionStatuses });\n'
+      + 'const networkHeaderReconciliationRuntime = { observe() {} };\n'
+      + 'new ElectrumSubscriptionManager({ onSubscriptionStatuses: recordSubscriptionStatuses, onHeaderObservation: (network, observation, fetchHeaders) => networkHeaderReconciliationRuntime.observe(network, observation, fetchHeaders) });\n'
       + 'void createProductionSubscriptionCheckpointRuntime;\n'
       + 'void createProductionWalletSyncRecoveryRuntime();\n',
   );
@@ -377,6 +391,38 @@ function writeMultiNetworkFixture(root) {
     root,
     'server/src/worker/electrumManager/healthMonitoring.ts',
     'resolvePersistedBitcoinNetwork(wallet.network);\n',
+  );
+  write(
+    root,
+    'server/src/worker/electrumManager/networkConnection.ts',
+    'const pendingLiveHeaders = new WeakMap();\n'
+      + 'async function observeLiveHeader(state, callbacks, block) {\n'
+      + '  await callbacks.onHeaderObservation(state.network, block, (startHeight, count) => state.client.getBlockHeaders(startHeight, count));\n'
+      + '}\n'
+      + 'export async function subscribeHeaders(state, callbacks) {\n'
+      + '  const header = await state.client.subscribeHeaders();\n'
+      + '  await callbacks.onHeaderObservation(state.network, header, (startHeight, count) => state.client.getBlockHeaders(startHeight, count));\n'
+      + '  const block = pendingLiveHeaders.get(state);\n'
+      + '  pendingLiveHeaders.set(state, null);\n'
+      + '  if (block) {\n'
+      + '    await observeLiveHeader(state, callbacks, block);\n'
+      + '  }\n'
+      + '  const deferred = pendingLiveHeaders.get(state);\n'
+      + '  pendingLiveHeaders.delete(state);\n'
+      + "  if (deferred) state.client.emit('newBlock', deferred);\n"
+      + '}\n'
+      + 'export function setupEventHandlers(state, callbacks) {\n'
+      + '  pendingLiveHeaders.set(state, null);\n'
+      + "  state.client.on('newBlock', (block) => {\n"
+      + '    if (pendingLiveHeaders.has(state)) { pendingLiveHeaders.set(state, block); return; }\n'
+      + '    void observeLiveHeader(state, callbacks, block);\n'
+      + '  });\n'
+      + '}\n',
+  );
+  write(
+    root,
+    'server/src/worker/electrumManager/types.ts',
+    'export interface ElectrumManagerCallbacks { onHeaderObservation: (network: unknown, observation: unknown, fetchHeaders: unknown) => Promise<unknown>; }\n',
   );
   write(
     root,
@@ -584,6 +630,11 @@ test('live canonical producer inventory matches production without claiming cuto
     result.contract.compatibility.subscriptionEnrollmentState,
     'worker_owned_bounded_runtime_enabled',
   );
+  assert.equal(result.contract.rawHeaderIngress.callback, 'onHeaderObservation');
+  assert.equal(
+    result.contract.rawHeaderIngress.cacheAdvancePolicy,
+    'after_durable_reconciliation_only',
+  );
 });
 
 test('accepts an exact gated bounded-recovery inventory fixture', () => {
@@ -619,8 +670,8 @@ test('rejects loss of represented-network and strict routing boundaries', () => 
     readFileSync(workerPath, 'utf8')
       .replace('electrumManager.getManagedNetworks();', 'void electrumManager.getManagedNetworks;')
       .replace(
-        'new ElectrumSubscriptionManager({ onSubscriptionStatuses: recordSubscriptionStatuses });',
-        'void { onSubscriptionStatuses: recordSubscriptionStatuses };',
+        'onSubscriptionStatuses: recordSubscriptionStatuses,',
+        'onSubscriptionStatuses: inertStatusCallback,',
       ),
   );
   const inertErrors = checkWalletSyncLifecycleContract(inertWorkerTokens).errors;
@@ -688,6 +739,113 @@ test('rejects loss of represented-network and strict routing boundaries', () => 
   assert.ok(checkWalletSyncLifecycleContract(inertRepositoryTokens).errors.some(
     (error) => error.includes('bound its represented-network read'),
   ));
+});
+
+test('rejects split or legacy raw-header ingress and pre-reconciliation cache advance', () => {
+  const legacyCallback = createFixture();
+  const legacyPath = path.join(
+    legacyCallback,
+    'server/src/worker/electrumManager/networkConnection.ts',
+  );
+  write(
+    legacyCallback,
+    'server/src/worker/electrumManager/networkConnection.ts',
+    readFileSync(legacyPath, 'utf8').replace(
+      'callbacks.onHeaderObservation(state.network, block,',
+      'callbacks.onNewBlock(state.network, block,',
+    ),
+  );
+  assert.match(
+    checkWalletSyncLifecycleContract(legacyCallback).errors.join('\n'),
+    /must not retain the legacy onNewBlock callback/,
+  );
+
+  const directCacheAdvance = createFixture();
+  const cachePath = path.join(
+    directCacheAdvance,
+    'server/src/worker/electrumManager/networkConnection.ts',
+  );
+  write(
+    directCacheAdvance,
+    'server/src/worker/electrumManager/networkConnection.ts',
+    readFileSync(cachePath, 'utf8').replace(
+      'export function setupEventHandlers(state, callbacks) {',
+      'export function setupEventHandlers(state, callbacks) { setCachedBlockHeight(state.lastBlockHeight);',
+    ),
+  );
+  assert.match(
+    checkWalletSyncLifecycleContract(directCacheAdvance).errors.join('\n'),
+    /must not advance the block-height cache before reconciliation/,
+  );
+
+  const missingRangeFetcher = createFixture();
+  const fetcherPath = path.join(
+    missingRangeFetcher,
+    'server/src/worker/electrumManager/networkConnection.ts',
+  );
+  write(
+    missingRangeFetcher,
+    'server/src/worker/electrumManager/networkConnection.ts',
+    readFileSync(fetcherPath, 'utf8').replace(
+      'state.client.getBlockHeaders(startHeight, count)',
+      'state.client.getBlockHeader(startHeight)',
+    ),
+  );
+  assert.match(
+    checkWalletSyncLifecycleContract(missingRangeFetcher).errors.join('\n'),
+    /startup tip and notifications through one onHeaderObservation boundary with a range fetcher/,
+  );
+
+  const unbufferedStartup = createFixture();
+  const unbufferedPath = path.join(
+    unbufferedStartup,
+    'server/src/worker/electrumManager/networkConnection.ts',
+  );
+  write(
+    unbufferedStartup,
+    'server/src/worker/electrumManager/networkConnection.ts',
+    readFileSync(unbufferedPath, 'utf8').replace(
+      'if (pendingLiveHeaders.has(state)) { pendingLiveHeaders.set(state, block); return; }',
+      'if (pendingLiveHeaders.has(state)) { void observeLiveHeader(state, callbacks, block); return; }',
+    ),
+  );
+  assert.match(
+    checkWalletSyncLifecycleContract(unbufferedStartup).errors.join('\n'),
+    /must coalesce notifications received during startup and drain them after the startup tip/,
+  );
+
+  const fallthroughBuffer = createFixture();
+  const fallthroughPath = path.join(
+    fallthroughBuffer,
+    'server/src/worker/electrumManager/networkConnection.ts',
+  );
+  write(
+    fallthroughBuffer,
+    'server/src/worker/electrumManager/networkConnection.ts',
+    readFileSync(fallthroughPath, 'utf8').replace(
+      'pendingLiveHeaders.set(state, block); return;',
+      'pendingLiveHeaders.set(state, block);',
+    ),
+  );
+  assert.match(
+    checkWalletSyncLifecycleContract(fallthroughBuffer).errors.join('\n'),
+    /must coalesce notifications received during startup and drain them after the startup tip/,
+  );
+
+  const detachedWorker = createFixture();
+  const workerPath = path.join(detachedWorker, 'server/src/worker.ts');
+  write(
+    detachedWorker,
+    'server/src/worker.ts',
+    readFileSync(workerPath, 'utf8').replace(
+      'networkHeaderReconciliationRuntime.observe(network, observation, fetchHeaders)',
+      'networkHeaderReconciliationRuntime.defer(network, observation, fetchHeaders)',
+    ),
+  );
+  assert.match(
+    checkWalletSyncLifecycleContract(detachedWorker).errors.join('\n'),
+    /must adapt onHeaderObservation directly to the reconciliation runtime/,
+  );
 });
 
 test('rejects growth in direct execution and wallet-job reference boundaries', () => {
@@ -970,6 +1128,20 @@ test('rejects premature cutover and lifecycle weakening', () => {
   assert.throws(
     () => parseWalletSyncLifecycleContract(JSON.stringify(weakened)),
     /lifecycle\.forbiddenWalletHistoryTriggers/,
+  );
+
+  const splitIngress = fixtureContract();
+  splitIngress.rawHeaderIngress.callback = 'onNewBlock';
+  assert.throws(
+    () => parseWalletSyncLifecycleContract(JSON.stringify(splitIngress)),
+    /rawHeaderIngress\.callback must be onHeaderObservation/,
+  );
+
+  const eagerCache = fixtureContract();
+  eagerCache.rawHeaderIngress.cacheAdvancePolicy = 'on_observation';
+  assert.throws(
+    () => parseWalletSyncLifecycleContract(JSON.stringify(eagerCache)),
+    /rawHeaderIngress\.cacheAdvancePolicy must be after_durable_reconciliation_only/,
   );
 
   const dormantEnrollment = fixtureContract();

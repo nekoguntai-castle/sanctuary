@@ -1,8 +1,28 @@
 import { expect, it, vi } from 'vitest';
 
 import { mockPrismaClient } from '../../../../../mocks/prisma';
-import { mockGetBlockHeight, mockGetConfig, mockWalletLog } from './confirmationsTestHarness';
-import { updateTransactionConfirmations } from '../../../../../../src/services/bitcoin/sync/confirmations';
+import {
+  mockGetBlockHeight,
+  mockGetConfig,
+  mockGetNodeClient,
+  mockWalletLog,
+} from './confirmationsTestHarness';
+import {
+  updateTransactionConfirmations,
+} from '../../../../../../src/services/bitcoin/sync/confirmations';
+import {
+  updateTransactionConfirmationsAtHeight,
+} from '../../../../../../src/services/bitcoin/sync/confirmations/updateConfirmations';
+
+function committedTransactionPatches(): Array<{ id: string; data: Record<string, unknown> }> {
+  return mockPrismaClient.$executeRaw.mock.calls.flatMap(([query]) => {
+    const values = (query as { values?: unknown[] }).values ?? [];
+    const serialized = values.find(value => (
+      typeof value === 'string' && value.startsWith('[{"id"')
+    ));
+    return typeof serialized === 'string' ? JSON.parse(serialized) : [];
+  });
+}
 
 export function registerUpdateTransactionConfirmationsContracts() {
   it('returns empty when wallet does not exist', async () => {
@@ -64,14 +84,12 @@ export function registerUpdateTransactionConfirmationsContracts() {
         ],
       },
     ]);
-    expect(mockPrismaClient.transaction.update).toHaveBeenCalledWith({
-      where: { id: 't1' },
-      data: { confirmations: 1, rbfStatus: 'confirmed' },
-    });
-    expect(mockPrismaClient.transaction.update).toHaveBeenCalledWith({
-      where: { id: 't3' },
-      data: { confirmations: 3, rbfStatus: 'confirmed' },
-    });
+    expect(committedTransactionPatches()).toEqual([
+      { id: 't1', txid: 'tx-1', oldConfirmations: 0, newConfirmations: 1,
+        data: { confirmations: 1, rbfStatus: 'confirmed' } },
+      { id: 't3', txid: 'tx-3', oldConfirmations: 0, newConfirmations: 3,
+        data: { confirmations: 3, rbfStatus: 'confirmed' } },
+    ]);
     expect(mockWalletLog).toHaveBeenCalledWith(
       'wallet-1',
       'debug',
@@ -130,9 +148,103 @@ export function registerUpdateTransactionConfirmationsContracts() {
     expect(updates).toEqual([
       { txid: 'tx-already-confirmed', oldConfirmations: 1, newConfirmations: 2 },
     ]);
-    expect(mockPrismaClient.transaction.update).toHaveBeenCalledWith({
-      where: { id: 't-already-confirmed' },
-      data: { confirmations: 2 },
-    });
+    expect(committedTransactionPatches()).toEqual([{
+      id: 't-already-confirmed', txid: 'tx-already-confirmed',
+      oldConfirmations: 1, newConfirmations: 2, data: { confirmations: 2 },
+    }]);
   });
+
+  it('uses an authoritative lower height to reduce persisted confirmations only', async () => {
+    const getAddressHistory = vi.fn();
+    const getAddressHistoryBatch = vi.fn();
+    mockGetNodeClient.mockReturnValue({ getAddressHistory, getAddressHistoryBatch });
+    mockPrismaClient.systemSetting.findUnique.mockResolvedValue({ value: '100' });
+    mockPrismaClient.transaction.findMany.mockResolvedValue([
+      { id: 't-reorged', txid: 'tx-reorged', blockHeight: 100, confirmations: 4 },
+      { id: 't-unconfirmed', txid: 'tx-unconfirmed', blockHeight: 103, confirmations: 1 },
+    ]);
+
+    const updates = await updateTransactionConfirmationsAtHeight('wallet-1', 101);
+
+    expect(updates).toEqual([
+      { txid: 'tx-reorged', oldConfirmations: 4, newConfirmations: 2 },
+      { txid: 'tx-unconfirmed', oldConfirmations: 1, newConfirmations: 0 },
+    ]);
+    expect(mockPrismaClient.wallet.findUnique).not.toHaveBeenCalled();
+    expect(mockGetNodeClient).not.toHaveBeenCalled();
+    expect(getAddressHistory).not.toHaveBeenCalled();
+    expect(getAddressHistoryBatch).not.toHaveBeenCalled();
+    expect(mockGetBlockHeight).not.toHaveBeenCalled();
+    expect(committedTransactionPatches()).toEqual([
+      { id: 't-reorged', txid: 'tx-reorged', oldConfirmations: 4,
+        newConfirmations: 2, data: { confirmations: 2 } },
+      { id: 't-unconfirmed', txid: 'tx-unconfirmed', oldConfirmations: 1,
+        newConfirmations: 0, data: { confirmations: 0 } },
+    ]);
+  });
+
+  it('does not mutate RBF state when an authoritative height first confirms a transaction', async () => {
+    mockPrismaClient.systemSetting.findUnique.mockResolvedValue({ value: '100' });
+    mockPrismaClient.transaction.findMany.mockResolvedValue([
+      { id: 't-confirmed', txid: 'tx-confirmed', blockHeight: 100, confirmations: 0 },
+    ]);
+
+    await updateTransactionConfirmationsAtHeight('wallet-1', 100);
+
+    expect(committedTransactionPatches()).toEqual([{
+      id: 't-confirmed', txid: 'tx-confirmed', oldConfirmations: 0,
+      newConfirmations: 1, data: { confirmations: 1 },
+    }]);
+  });
+
+  it('skips an unchanged transaction selected for an explicit-height recheck', async () => {
+    mockPrismaClient.systemSetting.findUnique.mockResolvedValue({ value: '6' });
+    mockPrismaClient.transaction.findMany.mockResolvedValue([
+      { id: 't-unchanged', txid: 'tx-unchanged', blockHeight: 96, confirmations: 5 },
+    ]);
+
+    await expect(updateTransactionConfirmationsAtHeight('wallet-1', 100)).resolves.toEqual([]);
+
+    expect(mockPrismaClient.transaction.update).not.toHaveBeenCalled();
+    expect(mockPrismaClient.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('revisits a formerly deep transaction when a lower reconciled tip makes it pending again', async () => {
+    mockPrismaClient.systemSetting.findUnique.mockResolvedValue({ value: '6' });
+    mockPrismaClient.transaction.findMany.mockResolvedValue([
+      { id: 't-deep-reorg', txid: 'tx-deep-reorg', blockHeight: 96, confirmations: 6 },
+    ]);
+
+    await expect(updateTransactionConfirmationsAtHeight('wallet-1', 100)).resolves.toEqual([
+      { txid: 'tx-deep-reorg', oldConfirmations: 6, newConfirmations: 5 },
+    ]);
+
+    expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledWith({
+      where: {
+        walletId: 'wallet-1',
+        blockHeight: { not: null },
+        OR: [
+          { confirmations: { lt: 6 } },
+          { blockHeight: { gt: 95 } },
+        ],
+      },
+      select: { id: true, txid: true, blockHeight: true, confirmations: true },
+    });
+    expect(committedTransactionPatches()).toEqual([{
+      id: 't-deep-reorg', txid: 'tx-deep-reorg', oldConfirmations: 6,
+      newConfirmations: 5, data: { confirmations: 5 },
+    }]);
+  });
+
+  it.each([-1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
+    'rejects invalid authoritative height %s before reading persisted state',
+    async (height) => {
+      await expect(updateTransactionConfirmationsAtHeight('wallet-1', height)).rejects.toThrow(
+        'Authoritative block height must be a non-negative safe integer',
+      );
+
+      expect(mockPrismaClient.systemSetting.findUnique).not.toHaveBeenCalled();
+      expect(mockPrismaClient.transaction.findMany).not.toHaveBeenCalled();
+    },
+  );
 }

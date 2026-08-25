@@ -2,10 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const hoisted = vi.hoisted(() => ({
   withWalletSyncMutationFence: vi.fn(),
+  withWalletSyncMutationLock: vi.fn(),
 }));
 
 vi.mock('../../../../../src/repositories/syncIntentRepository', () => ({
   withWalletSyncMutationFence: hoisted.withWalletSyncMutationFence,
+  withWalletSyncMutationLock: hoisted.withWalletSyncMutationLock,
 }));
 
 import { runWalletSyncMutation } from '../../../../../src/services/bitcoin/sync/mutationBoundary';
@@ -19,6 +21,13 @@ const fence = {
 describe('wallet sync mutation boundary', () => {
   beforeEach(() => {
     hoisted.withWalletSyncMutationFence.mockReset();
+    hoisted.withWalletSyncMutationLock.mockReset();
+    hoisted.withWalletSyncMutationLock.mockImplementation(
+      async (_walletId, assertAuthority, callback) => {
+        assertAuthority();
+        return callback({ wallet: {} });
+      },
+    );
   });
 
   it('passes the explicit fenced transaction client and flushes effects after commit', async () => {
@@ -82,7 +91,25 @@ describe('wallet sync mutation boundary', () => {
     );
 
     expect(hoisted.withWalletSyncMutationFence).not.toHaveBeenCalled();
+    expect(hoisted.withWalletSyncMutationLock).not.toHaveBeenCalled();
     expect(effect).toHaveBeenCalledOnce();
+  });
+
+  it('rechecks cancellation inside the wallet row lock before writing', async () => {
+    const cancelled = new Error('lease was lost');
+    const assertAuthority = vi.fn(() => { throw cancelled; });
+    const write = vi.fn();
+
+    await expect(runWalletSyncMutation(
+      { walletId: 'legacy-wallet' },
+      'missing_field_chunk',
+      write,
+      assertAuthority,
+      true,
+    )).rejects.toBe(cancelled);
+
+    expect(assertAuthority).toHaveBeenCalledOnce();
+    expect(write).not.toHaveBeenCalled();
   });
 
   it('rejects a fence for another wallet before opening a transaction', async () => {

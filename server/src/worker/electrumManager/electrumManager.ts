@@ -438,6 +438,11 @@ export class ElectrumSubscriptionManager {
     return this.isRunningFlag && this.subscriptionLock !== null;
   }
 
+  /** Monotonic identity for the currently held subscription ownership epoch. */
+  getSubscriptionOwnershipEpoch(): number | null {
+    return this.isSubscriptionOwner() ? this.ownershipEpoch : null;
+  }
+
   /** Exact supported networks currently owned by this manager. */
   getManagedNetworks(): BitcoinNetwork[] {
     return [...this.networks.keys()];

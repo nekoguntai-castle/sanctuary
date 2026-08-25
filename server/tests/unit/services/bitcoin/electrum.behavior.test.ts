@@ -145,6 +145,7 @@ describe('ElectrumClient behavior', () => {
       .mockResolvedValueOnce(status)
       .mockResolvedValueOnce({ height: 123, hex: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' })
       .mockResolvedValueOnce('headerhex')
+      .mockResolvedValueOnce({ count: 2, hex: `${'00'.repeat(80)}${'ab'.repeat(80)}` })
       .mockResolvedValueOnce({ height: 456 });
     vi.spyOn(client as any, 'batchRequest')
       .mockResolvedValueOnce([status, null])
@@ -164,6 +165,10 @@ describe('ElectrumClient behavior', () => {
     await expect(client.subscribeHeaders()).resolves.toEqual({ height: 123, hex: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' });
     expect(client.isSubscribedToHeaders()).toBe(true);
     await expect(client.getBlockHeader(100)).resolves.toBe('headerhex');
+    await expect(client.getBlockHeaders(100, 2)).resolves.toEqual([
+      '00'.repeat(80),
+      'ab'.repeat(80),
+    ]);
     await expect(client.getBlockHeight()).resolves.toBe(456);
 
     expect((await client.subscribeAddressBatch([])).size).toBe(0);

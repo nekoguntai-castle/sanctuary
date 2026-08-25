@@ -83,6 +83,12 @@ const REPOSITORY_BARREL_PATH = 'server/src/repositories/index.ts';
 const SUBSCRIPTION_ENROLLMENT_COORDINATOR_SYMBOL = 'createSubscriptionCheckpointEnrollment';
 const SUBSCRIPTION_CHECKPOINT_RUNTIME_PATH =
   'server/src/worker/subscriptionCheckpointRuntime.ts';
+const RAW_HEADER_INGRESS_PATH =
+  'server/src/worker/electrumManager/networkConnection.ts';
+const RAW_HEADER_CALLBACK_TYPES_PATH =
+  'server/src/worker/electrumManager/types.ts';
+const RAW_HEADER_RECONCILIATION_RUNTIME_PATH =
+  'server/src/worker/networkHeaderReconciliationRuntime.ts';
 const SUBSCRIPTION_CHECKPOINT_RUNTIME_FACTORY_SYMBOL =
   'createSubscriptionCheckpointRuntime';
 const PRODUCTION_SUBSCRIPTION_CHECKPOINT_RUNTIME_FACTORY_SYMBOL =
@@ -341,6 +347,7 @@ export function parseWalletSyncLifecycleContract(source) {
   if (lifecycle.blockHeaderRole !== 'chain_tip_and_known_transaction_confirmations_only') {
     throw new Error('block headers must remain confirmation/tip events only');
   }
+  validateRawHeaderIngress(contract.rawHeaderIngress);
   const multiNetwork = requireObject(
     contract.multiNetworkSubscription,
     'multiNetworkSubscription',
@@ -370,6 +377,25 @@ export function parseWalletSyncLifecycleContract(source) {
   const inventory = validateInventory(contract.inventory);
   validateSubscriptionInventory(inventory, ownership);
   return contract;
+}
+
+function validateRawHeaderIngress(value) {
+  const ingress = requireObject(value, 'rawHeaderIngress');
+  const expectedFields = {
+    callback: 'onHeaderObservation',
+    ingressModule: RAW_HEADER_INGRESS_PATH,
+    reconciliationRuntime: RAW_HEADER_RECONCILIATION_RUNTIME_PATH,
+    startupTipPolicy: 'same_durable_boundary_as_notifications',
+    cacheAdvancePolicy: 'after_durable_reconciliation_only',
+    legacyCallback: 'onNewBlock',
+    legacyDirectCacheAdvance: 'forbidden',
+  };
+  for (const [field, expected] of Object.entries(expectedFields)) {
+    if (ingress[field] !== expected) {
+      throw new Error(`rawHeaderIngress.${field} must be ${expected}`);
+    }
+  }
+  return ingress;
 }
 
 function validateOwnership(value) {
@@ -1807,6 +1833,225 @@ function validateWorkerMultiNetworkCalls(worker, errors) {
   }
 }
 
+function callContainsHeaderRangeFetcher(call) {
+  return descendantNodes(call, (node) => (
+    ts.isCallExpression(node)
+    && expressionPath(node.expression)?.endsWith('.getBlockHeaders')
+  )).length > 0;
+}
+
+function callArgumentsMatch(call, ...paths) {
+  return call.arguments.length === paths.length
+    && paths.every((pathName, index) => expressionPath(call.arguments[index]) === pathName);
+}
+
+function hasReturningHeaderBufferBranch(ingress) {
+  return collectContractNodes(RAW_HEADER_INGRESS_PATH, ingress, (node) => {
+    if (!ts.isIfStatement(node) || enclosingFunctionName(node) !== 'setupEventHandlers') {
+      return false;
+    }
+    const conditionCalls = descendantNodes(node.expression, child => (
+      ts.isCallExpression(child)
+      && expressionPath(child.expression) === 'pendingLiveHeaders.has'
+      && callArgumentsMatch(child, 'state')
+    ));
+    const bufferedWrites = descendantNodes(node.thenStatement, child => (
+      ts.isCallExpression(child)
+      && expressionPath(child.expression) === 'pendingLiveHeaders.set'
+      && callArgumentsMatch(child, 'state', 'block')
+    ));
+    const returns = descendantNodes(node.thenStatement, child => ts.isReturnStatement(child));
+    return conditionCalls.length === 1 && bufferedWrites.length === 1 && returns.length === 1;
+  }).length === 1;
+}
+
+function isStateNullSet(call) {
+  return call.arguments.length === 2
+    && expressionPath(call.arguments[0]) === 'state'
+    && call.arguments[1].kind === ts.SyntaxKind.NullKeyword;
+}
+
+function collectRawHeaderBufferCalls(ingress) {
+  const setupSets = callsPath(
+    RAW_HEADER_INGRESS_PATH,
+    ingress,
+    'pendingLiveHeaders.set',
+    'setupEventHandlers',
+  );
+  const setupHas = callsPath(
+    RAW_HEADER_INGRESS_PATH,
+    ingress,
+    'pendingLiveHeaders.has',
+    'setupEventHandlers',
+  );
+  const subscribeGets = callsPath(
+    RAW_HEADER_INGRESS_PATH,
+    ingress,
+    'pendingLiveHeaders.get',
+    'subscribeHeaders',
+  );
+  const subscribeClears = callsPath(
+    RAW_HEADER_INGRESS_PATH,
+    ingress,
+    'pendingLiveHeaders.set',
+    'subscribeHeaders',
+  );
+  const subscribeDeletes = callsPath(
+    RAW_HEADER_INGRESS_PATH,
+    ingress,
+    'pendingLiveHeaders.delete',
+    'subscribeHeaders',
+  );
+  const startupCall = callsPath(
+    RAW_HEADER_INGRESS_PATH,
+    ingress,
+    'callbacks.onHeaderObservation',
+    'subscribeHeaders',
+  )[0];
+  const bufferedCall = callsPath(
+    RAW_HEADER_INGRESS_PATH,
+    ingress,
+    'observeLiveHeader',
+    'subscribeHeaders',
+  )[0];
+  const handoffCalls = callsPath(
+    RAW_HEADER_INGRESS_PATH,
+    ingress,
+    'state.client.emit',
+    'subscribeHeaders',
+  );
+  const drainDeletes = subscribeGets[1] && handoffCalls[0]
+    ? subscribeDeletes.filter(call => (
+        subscribeGets[1].getStart() < call.getStart()
+        && call.getStart() < handoffCalls[0].getStart()
+      ))
+    : [];
+  return {
+    setupSets,
+    setupHas,
+    subscribeGets,
+    subscribeClears,
+    startupCall,
+    bufferedCall,
+    drainDeletes,
+    handoffCalls,
+  };
+}
+
+function hasExpectedRawHeaderBufferShapes(ingress, calls) {
+  return calls.setupSets.some(call => callArgumentsMatch(call, 'state', 'block'))
+    && calls.setupSets.some(isStateNullSet)
+    && calls.setupHas.some(call => callArgumentsMatch(call, 'state'))
+    && hasReturningHeaderBufferBranch(ingress)
+    && calls.subscribeGets.length === 2
+    && calls.subscribeGets.every(call => callArgumentsMatch(call, 'state'))
+    && calls.subscribeClears.length === 1
+    && calls.subscribeClears.some(isStateNullSet)
+    && calls.drainDeletes.length === 1
+    && callArgumentsMatch(calls.drainDeletes[0], 'state')
+    && calls.handoffCalls.length === 1
+    && callArgumentsMatch(calls.handoffCalls[0], null, 'deferred')
+    && Boolean(calls.startupCall)
+    && Boolean(calls.bufferedCall);
+}
+
+function hasExpectedRawHeaderBufferOrder(calls) {
+  return calls.startupCall.getStart() < calls.subscribeGets[0].getStart()
+    && calls.subscribeGets[0].getStart() < calls.subscribeClears[0].getStart()
+    && calls.subscribeClears[0].getStart() < calls.bufferedCall.getStart()
+    && calls.bufferedCall.getStart() < calls.subscribeGets[1].getStart()
+    && calls.subscribeGets[1].getStart() < calls.drainDeletes[0].getStart()
+    && calls.drainDeletes[0].getStart() < calls.handoffCalls[0].getStart();
+}
+
+function hasBufferedRawHeaderOrdering(ingress) {
+  const calls = collectRawHeaderBufferCalls(ingress);
+  return hasExpectedRawHeaderBufferShapes(ingress, calls)
+    && hasExpectedRawHeaderBufferOrder(calls);
+}
+
+function hasWorkerRawHeaderAdapter(worker) {
+  return collectContractNodes(WORKER_PATH, worker, (node) => {
+    if (!ts.isNewExpression(node)
+      || expressionPath(node.expression) !== 'ElectrumSubscriptionManager') return false;
+    const options = node.arguments?.[0];
+    if (!options || !ts.isObjectLiteralExpression(options)) return false;
+    return options.properties.some((property) => (
+      ts.isPropertyAssignment(property)
+      && staticPropertyText(property.name, new Map()) === 'onHeaderObservation'
+      && descendantNodes(property.initializer, (child) => (
+        ts.isCallExpression(child)
+        && expressionPath(child.expression) === 'networkHeaderReconciliationRuntime.observe'
+      )).length === 1
+    ));
+  }).length === 1;
+}
+
+function hasCanonicalRawHeaderCallbackFlow(ingress) {
+  const startupCalls = callsPath(
+    RAW_HEADER_INGRESS_PATH,
+    ingress,
+    'callbacks.onHeaderObservation',
+    'subscribeHeaders',
+  );
+  const notificationCalls = callsPath(
+    RAW_HEADER_INGRESS_PATH,
+    ingress,
+    'callbacks.onHeaderObservation',
+    'observeLiveHeader',
+  );
+  const allCallbackCalls = callsPath(
+    RAW_HEADER_INGRESS_PATH,
+    ingress,
+    'callbacks.onHeaderObservation',
+  );
+  const directLiveCalls = callsPath(
+    RAW_HEADER_INGRESS_PATH,
+    ingress,
+    'observeLiveHeader',
+    'setupEventHandlers',
+  );
+  const bufferedLiveCalls = callsPath(
+    RAW_HEADER_INGRESS_PATH,
+    ingress,
+    'observeLiveHeader',
+    'subscribeHeaders',
+  );
+  return startupCalls.length === 1
+    && notificationCalls.length === 1
+    && allCallbackCalls.length === 2
+    && directLiveCalls.length === 1
+    && bufferedLiveCalls.length === 1
+    && [...startupCalls, ...notificationCalls].every(callContainsHeaderRangeFetcher);
+}
+
+function validateRawHeaderIngressSource(root, errors) {
+  const ingress = readRequired(root, RAW_HEADER_INGRESS_PATH);
+  const callbackTypes = readRequired(root, RAW_HEADER_CALLBACK_TYPES_PATH);
+  const worker = readRequired(root, WORKER_PATH);
+
+  if (!hasCanonicalRawHeaderCallbackFlow(ingress)) {
+    errors.push(
+      'raw-header ingress must route the startup tip and notifications through one onHeaderObservation boundary with a range fetcher',
+    );
+  }
+  if (!hasBufferedRawHeaderOrdering(ingress)) {
+    errors.push(
+      'raw-header ingress must coalesce notifications received during startup and drain them after the startup tip',
+    );
+  }
+  if (/\bsetCachedBlockHeight\b/.test(stripComments(ingress))) {
+    errors.push('raw-header ingress must not advance the block-height cache before reconciliation');
+  }
+  const legacyCallbackPattern = /\b(?:callbacks\.|this\.callbacks\.)?onNewBlock\s*(?::|\()/;
+  if ([ingress, callbackTypes, worker].some(source => legacyCallbackPattern.test(stripComments(source)))) {
+    errors.push('raw-header ingress must not retain the legacy onNewBlock callback');
+  }
+  if (!hasWorkerRawHeaderAdapter(worker)) {
+    errors.push('worker must adapt onHeaderObservation directly to the reconciliation runtime');
+  }
+}
+
 function validatePersistedNetworkReaders(root, errors) {
   const repositoryFile = 'server/src/repositories/walletRepository.ts';
   const repository = readRequired(root, repositoryFile);
@@ -1907,6 +2152,7 @@ export function checkWalletSyncLifecycleContract(root) {
   );
   validateDocumentation(root, contract, errors);
   validateWireSource(root, errors);
+  validateRawHeaderIngressSource(root, errors);
   validateMultiNetworkSubscriptionSource(root, errors);
   return { contract, errors, scannedFiles: sources.size };
 }

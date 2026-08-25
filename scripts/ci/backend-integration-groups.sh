@@ -52,6 +52,7 @@ list_group_specs() {
         tests/integration/repositories/auditLogRepository.test.ts \
         tests/integration/repositories/draftRepository.test.ts \
         tests/integration/repositories/labelRepository.test.ts \
+        tests/integration/repositories/networkHeaderReconciliationLifecycle.test.ts \
         tests/integration/repositories/policyRepository.audit.test.ts \
         tests/integration/repositories/syncCorrectionAtomicity.test.ts \
         tests/integration/repositories/syncIntentLifecycle.test.ts \
@@ -59,6 +60,7 @@ list_group_specs() {
         tests/integration/repositories/syncMutationNetworkTransactions.test.ts \
         tests/integration/repositories/syncMutationRecursion.test.ts \
         tests/integration/repositories/subscriptionCheckpointLifecycle.test.ts \
+        tests/integration/repositories/subscriptionCoverageLifecycle.test.ts \
         tests/integration/repositories/transactionExportPoolPressure.test.ts \
         tests/integration/repositories/transactionSigningIntentRepository.integration.test.ts \
         tests/integration/repositories/transactionRepository.test.ts \

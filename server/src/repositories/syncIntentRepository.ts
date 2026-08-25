@@ -195,6 +195,10 @@ interface LockedMutationFenceRow {
   incrementalSyncLeaseToken: string | null;
 }
 
+interface LockedMutationWalletRow {
+  id: string;
+}
+
 /** A short mutation transaction no longer owns the exact wallet-sync fence. */
 export class WalletSyncMutationFenceLostError extends Error {
   readonly code = 'wallet_sync_mutation_fence_lost';
@@ -219,7 +223,37 @@ export async function withWalletSyncMutationTransaction<T>(
 }
 
 /**
+ * Serialize an unfenced compatibility mutation on a wallet-scoped PostgreSQL
+ * advisory lock and recheck process-local authority only after acquiring it.
+ * Confirmation writers all use this boundary, so a writer that lost its Redis
+ * lease cannot race a replacement and commit last.
+ */
+export async function withWalletSyncMutationLock<T>(
+  walletId: string,
+  assertAuthority: () => void,
+  callback: (tx: PrismaTxClient) => Promise<T>,
+): Promise<T> {
+  if (walletId.trim().length === 0) throw new Error('Wallet mutation lock ID must not be empty');
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw(Prisma.sql`
+      SELECT pg_advisory_xact_lock(hashtextextended(${walletId}, 0))
+    `);
+    const wallets = await tx.$queryRaw<LockedMutationWalletRow[]>(Prisma.sql`
+      SELECT "id"
+      FROM "wallets"
+      WHERE "id" = ${walletId}
+      FOR UPDATE
+    `);
+    if (!wallets[0]) throw new Error('Wallet sync mutation target no longer exists');
+    assertAuthority();
+    return callback(tx);
+  }, { timeout: WALLET_SYNC_MUTATION_TIMEOUT_MS });
+}
+
+/**
  * Run one canonical mutation unit under the exact wallet generation/token.
+ * It deliberately hashes the same wallet key as withWalletSyncMutationLock so
+ * fenced sync writes and compatibility confirmation writes serialize together.
  * The row lock and writes share one short transaction; callers must finish the
  * callback before resuming network I/O. PostgreSQL renders UUID text in lower
  * case, so token comparison normalizes case without changing UUID identity.
@@ -230,6 +264,9 @@ export async function withWalletSyncMutationFence<T>(
 ): Promise<T> {
   requireMutationFence(fence);
   return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw(Prisma.sql`
+      SELECT pg_advisory_xact_lock(hashtextextended(${fence.walletId}, 0))
+    `);
     const rows = await tx.$queryRaw<LockedMutationFenceRow[]>(Prisma.sql`
       SELECT
         "claimedIncrementalSyncGeneration",

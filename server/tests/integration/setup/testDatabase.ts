@@ -98,6 +98,9 @@ export async function cleanupTestData(): Promise<void> {
   await prisma.uTXO.deleteMany();
   await prisma.address.deleteMany();
   await prisma.networkSubscriptionCoverageState.deleteMany();
+  await prisma.networkHeaderReconciliationHeader.deleteMany();
+  await prisma.networkHeaderReconciliation.deleteMany();
+  await prisma.networkHeaderHistory.deleteMany();
   await prisma.networkHeaderCheckpoint.deleteMany();
   await prisma.walletDevice.deleteMany();
   await prisma.mobilePermission.deleteMany();

@@ -52,15 +52,11 @@ import { startHealthServer, type HealthServerHandle } from './worker/healthServe
 import { registerWorkerJobs } from './worker/jobs';
 import {
   CHECK_STALE_WALLETS_JOB_NAME,
-  CONFIRMATIONS_QUEUE_NAME,
-  NETWORK_CONFIRMATIONS_JOB_VERSION,
   SYNC_JOB_CONTRACT_VERSION,
   SYNC_QUEUE_NAME,
   hasSupportedSyncJobContractVersion,
   type CheckStaleWalletsJobData,
   type CheckStaleWalletsResult,
-  type UpdateConfirmationsJobData,
-  UPDATE_CONFIRMATIONS_JOB_NAME,
 } from './jobs/syncJobContract';
 import { featureFlagService } from './services/featureFlagService';
 import { circuitBreakerRegistry } from './services/circuitBreaker';
@@ -94,6 +90,10 @@ import {
   createProductionSubscriptionCheckpointRuntime,
   type SubscriptionCheckpointRuntime,
 } from './worker/subscriptionCheckpointRuntime';
+import {
+  createProductionNetworkHeaderReconciliationRuntime,
+  type NetworkHeaderReconciliationRuntime,
+} from './worker/networkHeaderReconciliationRuntime';
 
 const log = createLogger('WORKER');
 
@@ -118,6 +118,8 @@ let subscriptionCheckpointTimer: NodeJS.Timeout | null = null;
 let subscriptionStatusRefreshTimer: NodeJS.Timeout | null = null;
 let subscriptionCheckpointInFlight = false;
 let subscriptionStatusRefreshInFlight = false;
+let networkHeaderReconciliationRuntime: NetworkHeaderReconciliationRuntime | null = null;
+let networkHeaderReconciliationTimer: NodeJS.Timeout | null = null;
 let subscriptionCheckpointNetworkIndex = 0;
 let subscriptionStatusRefreshNetworkIndex = 0;
 const subscriptionCheckpointCursors = new Map<BitcoinNetwork, string>();
@@ -132,6 +134,7 @@ const SUBSCRIPTION_CHECKPOINT_INTERVAL_MS = 1_000;
 const SUBSCRIPTION_STATUS_REFRESH_INTERVAL_MS = 60_000;
 const SUBSCRIPTION_CHECKPOINT_PAGE_SIZE = 200;
 const SUBSCRIPTION_CHECKPOINT_WAIT_MS = 250;
+const NETWORK_HEADER_RECONCILIATION_INTERVAL_MS = 5_000;
 const STALE_COMPATIBILITY_ADMISSION_CONCURRENCY = 5;
 
 /**
@@ -416,8 +419,15 @@ async function startWorker(): Promise<void> {
 
   // Initialize Electrum subscription manager
   log.info('Starting Electrum subscription manager...');
+  networkHeaderReconciliationRuntime = createProductionNetworkHeaderReconciliationRuntime(
+    () => isShuttingDown
+      ? null
+      : (electrumManager?.getSubscriptionOwnershipEpoch() ?? null),
+  );
   electrumManager = new ElectrumSubscriptionManager({
-    onNewBlock: handleNewBlock,
+    onHeaderObservation: (network, observation, fetchHeaders) => (
+      networkHeaderReconciliationRuntime!.observe(network, observation, fetchHeaders)
+    ),
     onAddressActivity: handleAddressActivity,
     onNetworkReady: enrollPendingSubscriptionPage,
     onSubscriptionStatuses: recordSubscriptionStatuses,
@@ -432,6 +442,8 @@ async function startWorker(): Promise<void> {
     () => electrumManager?.isSubscriptionOwner() ?? false,
   );
   await electrumManager.start();
+  await networkHeaderReconciliationRuntime.recoverDue();
+  startNetworkHeaderReconciliationTimer();
   startSubscriptionCheckpointTimer();
   startSubscriptionStatusRefreshTimer();
   jobQueue.startConsumers();
@@ -640,34 +652,16 @@ function startSubscriptionCheckpointTimer(): void {
 // Event Handlers
 // =============================================================================
 
-/**
- * Handle new block event from Electrum
- */
-function handleNewBlock(network: BitcoinNetwork, height: number, hash: string): void {
-  log.info(`New block on ${network}: ${height}`);
-
-  // Queue confirmation update job
-  jobQueue?.addJob<UpdateConfirmationsJobData>(
-    CONFIRMATIONS_QUEUE_NAME,
-    UPDATE_CONFIRMATIONS_JOB_NAME,
-    {
-      version: NETWORK_CONFIRMATIONS_JOB_VERSION,
-      network,
-      height,
-      hash,
-    }, {
-      priority: 1, // High priority
-      // Include header identity so a same-height replacement/reorg is not
-      // suppressed by a retained completed BullMQ job for the prior header.
-      jobId: `confirmations:${network}:${height}:${hash}`,
-    },
-  ).catch(err => {
-    log.error('Failed to queue confirmation update job', {
-      error: getErrorMessage(err),
-      height,
-      network,
+function startNetworkHeaderReconciliationTimer(): void {
+  networkHeaderReconciliationTimer = setInterval(() => {
+    if (isShuttingDown || !networkHeaderReconciliationRuntime) return;
+    void networkHeaderReconciliationRuntime.recoverDue().catch((error) => {
+      log.error('Durable network-header recovery scan failed', {
+        error: getErrorMessage(error),
+      });
     });
-  });
+  }, NETWORK_HEADER_RECONCILIATION_INTERVAL_MS);
+  networkHeaderReconciliationTimer.unref?.();
 }
 
 /**
@@ -843,6 +837,20 @@ async function shutdown(signal: string, exitCode: 0 | 1 = 0): Promise<void> {
   if (subscriptionStatusRefreshTimer) {
     clearInterval(subscriptionStatusRefreshTimer);
     subscriptionStatusRefreshTimer = null;
+  }
+  if (networkHeaderReconciliationTimer) {
+    clearInterval(networkHeaderReconciliationTimer);
+    networkHeaderReconciliationTimer = null;
+  }
+  if (networkHeaderReconciliationRuntime) {
+    try {
+      await networkHeaderReconciliationRuntime.stop();
+    } catch (err) {
+      log.error('Error stopping network-header reconciliation', {
+        error: getErrorMessage(err),
+      });
+    }
+    networkHeaderReconciliationRuntime = null;
   }
   subscriptionCheckpointCursors.clear();
   subscriptionStatusRefreshCursors.clear();

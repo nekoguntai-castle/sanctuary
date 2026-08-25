@@ -14,8 +14,123 @@ import { SystemSettingSchemas } from '../../../../utils/safeJson';
 import { executeInChunks } from './batchUpdates';
 import type { ConfirmationUpdate, PopulateFieldsCommitHandler } from './types';
 
+interface ConfirmationWriteOptions {
+  markNewlyConfirmedRbfStatus: boolean;
+}
+
 function assertNotAborted(signal?: AbortSignal): void {
   signal?.throwIfAborted();
+}
+
+function assertAuthoritativeHeight(currentHeight: number): void {
+  if (!Number.isSafeInteger(currentHeight) || currentHeight < 0) {
+    throw new Error('Authoritative block height must be a non-negative safe integer');
+  }
+}
+
+async function updatePersistedConfirmations(
+  walletId: string,
+  currentHeightSource: number | (() => Promise<number>),
+  options: ConfirmationWriteOptions,
+  signal?: AbortSignal,
+  onCommit?: PopulateFieldsCommitHandler,
+): Promise<ConfirmationUpdate[]> {
+  if (typeof currentHeightSource === 'number') {
+    assertAuthoritativeHeight(currentHeightSource);
+  }
+  assertNotAborted(signal);
+
+  const deepConfirmationThreshold = await systemSettingRepository.getParsed(
+    'deepConfirmationThreshold',
+    SystemSettingSchemas.number,
+    DEFAULT_DEEP_CONFIRMATION_THRESHOLD,
+  );
+  assertNotAborted(signal);
+
+  const transactions = typeof currentHeightSource === 'number'
+    ? await transactionRepository.findRequiringConfirmationUpdateAtHeight(
+        walletId,
+        deepConfirmationThreshold,
+        currentHeightSource,
+      )
+    : await transactionRepository.findBelowConfirmationThreshold(
+        walletId,
+        deepConfirmationThreshold,
+      );
+  assertNotAborted(signal);
+
+  if (transactions.length === 0) return [];
+
+  const currentHeight = typeof currentHeightSource === 'number'
+    ? currentHeightSource
+    : await currentHeightSource();
+  assertAuthoritativeHeight(currentHeight);
+  assertNotAborted(signal);
+
+  const updates = transactions.flatMap((tx) => {
+    if (!tx.blockHeight) return [];
+    const newConfirmations = Math.max(0, currentHeight - tx.blockHeight + 1);
+    if (newConfirmations === tx.confirmations) return [];
+    return [{
+      id: tx.id,
+      txid: tx.txid,
+      oldConfirmations: tx.confirmations,
+      newConfirmations,
+    }];
+  });
+
+  if (updates.length === 0) return [];
+  await executeInChunks(
+    updates.map(update => ({
+      ...update,
+      data: {
+        confirmations: update.newConfirmations,
+        ...(options.markNewlyConfirmedRbfStatus
+          && update.oldConfirmations === 0
+          && update.newConfirmations > 0
+          ? { rbfStatus: 'confirmed' }
+          : {}),
+      },
+    })),
+    walletId,
+    committed => onCommit?.({
+      updated: 0,
+      confirmationUpdates: committed.map(update => ({
+        txid: update.txid,
+        oldConfirmations: update.oldConfirmations,
+        newConfirmations: update.newConfirmations,
+      })),
+    }),
+    signal,
+    undefined,
+    true,
+  );
+
+  return updates.map(({ txid, oldConfirmations, newConfirmations }) => ({
+    txid,
+    oldConfirmations,
+    newConfirmations,
+  }));
+}
+
+/**
+ * Refresh already-persisted transaction confirmations from a reconciled tip.
+ * This path deliberately performs no wallet-history, missing-field, or live-tip
+ * lookup and writes no transaction field other than `confirmations`.
+ */
+export async function updateTransactionConfirmationsAtHeight(
+  walletId: string,
+  authoritativeHeight: number,
+  signal?: AbortSignal,
+  onCommit?: PopulateFieldsCommitHandler,
+): Promise<ConfirmationUpdate[]> {
+  return updatePersistedConfirmations(
+    walletId,
+    authoritativeHeight,
+    { markNewlyConfirmedRbfStatus: false },
+    signal,
+    onCommit,
+  );
 }
 
 /**
@@ -35,66 +150,11 @@ export async function updateTransactionConfirmations(
 
   const castNetwork = resolvePersistedBitcoinNetwork(network);
 
-  // Get deep confirmation threshold from settings
-  const deepConfirmationThreshold = await systemSettingRepository.getParsed('deepConfirmationThreshold', SystemSettingSchemas.number, DEFAULT_DEEP_CONFIRMATION_THRESHOLD);
-  assertNotAborted(signal);
-
-  const transactions = await transactionRepository.findBelowConfirmationThreshold(walletId, deepConfirmationThreshold);
-  assertNotAborted(signal);
-
-  if (transactions.length === 0) return [];
-
-  const currentHeight = await getBlockHeight(castNetwork);
-  assertNotAborted(signal);
-
-  // Calculate new confirmations and collect updates
-  const updates: Array<{ id: string; txid: string; oldConfirmations: number; newConfirmations: number }> = [];
-
-  for (const tx of transactions) {
-    if (tx.blockHeight) {
-      const newConfirmations = Math.max(0, currentHeight - tx.blockHeight + 1);
-      if (newConfirmations !== tx.confirmations) {
-        updates.push({
-          id: tx.id,
-          txid: tx.txid,
-          oldConfirmations: tx.confirmations,
-          newConfirmations,
-        });
-      }
-    }
-  }
-
-  // Batch update using chunked transactions to avoid long locks
-  if (updates.length > 0) {
-    await executeInChunks(
-      updates.map(u => ({
-        id: u.id,
-        txid: u.txid,
-        oldConfirmations: u.oldConfirmations,
-        newConfirmations: u.newConfirmations,
-        data: {
-          confirmations: u.newConfirmations,
-          // When a transaction transitions from 0 to confirmed, update rbfStatus
-          // to 'confirmed' to prevent cleanup logic from incorrectly marking it as replaced
-          ...(u.oldConfirmations === 0 && u.newConfirmations > 0 ? { rbfStatus: 'confirmed' } : {}),
-        },
-      })),
-      walletId,
-      (committed) => onCommit?.({
-        updated: 0,
-        confirmationUpdates: committed.map(update => ({
-          txid: update.txid,
-          oldConfirmations: update.oldConfirmations,
-          newConfirmations: update.newConfirmations,
-        })),
-      }),
-      signal,
-    );
-  }
-
-  return updates.map(u => ({
-    txid: u.txid,
-    oldConfirmations: u.oldConfirmations,
-    newConfirmations: u.newConfirmations,
-  }));
+  return updatePersistedConfirmations(
+    walletId,
+    () => getBlockHeight(castNetwork),
+    { markNewlyConfirmedRbfStatus: true },
+    signal,
+    onCommit,
+  );
 }

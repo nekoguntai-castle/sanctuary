@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   walletFindUnique: vi.fn(),
   queryRaw: vi.fn(),
   transaction: vi.fn(),
+  txExecuteRaw: vi.fn(),
   txQueryRaw: vi.fn(),
 }));
 
@@ -39,6 +40,7 @@ import {
   requestIncrementalSync,
   WalletSyncMutationFenceLostError,
   withWalletSyncMutationFence,
+  withWalletSyncMutationLock,
   withWalletSyncMutationTransaction,
 } from '../../../src/repositories/syncIntentRepository';
 
@@ -98,6 +100,7 @@ describe('syncIntentRepository', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.transaction.mockImplementation(async (callback) => callback({
+      $executeRaw: mocks.txExecuteRaw,
       $queryRaw: mocks.txQueryRaw,
     }));
   });
@@ -365,7 +368,54 @@ describe('syncIntentRepository', () => {
       expect.any(Function),
       { timeout: 60_000 },
     );
+    expect(mocks.txExecuteRaw.mock.calls[0][0].strings.join(''))
+      .toContain('pg_advisory_xact_lock');
     expect(mocks.txQueryRaw.mock.calls[0][0].strings.join('')).toContain('FOR UPDATE');
+  });
+
+  it('rechecks compatibility mutation authority after acquiring its database lock', async () => {
+    const assertAuthority = vi.fn();
+    const callback = vi.fn().mockResolvedValue('written');
+    mocks.txQueryRaw.mockResolvedValue([{ id: 'wallet-1' }]);
+
+    await expect(withWalletSyncMutationLock(
+      'wallet-1',
+      assertAuthority,
+      callback,
+    )).resolves.toBe('written');
+
+    expect(assertAuthority).toHaveBeenCalledOnce();
+    expect(callback).toHaveBeenCalledWith(expect.objectContaining({
+      $queryRaw: mocks.txQueryRaw,
+    }));
+    expect(mocks.txExecuteRaw.mock.calls[0][0].strings.join(''))
+      .toContain('pg_advisory_xact_lock');
+    expect(mocks.txQueryRaw.mock.calls[0][0].strings.join('')).toContain('FOR UPDATE');
+  });
+
+  it('rejects a missing compatibility mutation wallet before authority or writes', async () => {
+    const assertAuthority = vi.fn();
+    const callback = vi.fn();
+    mocks.txQueryRaw.mockResolvedValue([]);
+
+    await expect(withWalletSyncMutationLock(
+      'wallet-1',
+      assertAuthority,
+      callback,
+    )).rejects.toThrow('target no longer exists');
+
+    expect(assertAuthority).not.toHaveBeenCalled();
+    expect(callback).not.toHaveBeenCalled();
+  });
+
+  it('rejects an empty compatibility mutation wallet before opening a transaction', async () => {
+    await expect(withWalletSyncMutationLock(
+      ' ',
+      vi.fn(),
+      vi.fn(),
+    )).rejects.toThrow('must not be empty');
+
+    expect(mocks.transaction).not.toHaveBeenCalled();
   });
 
   it.each([
