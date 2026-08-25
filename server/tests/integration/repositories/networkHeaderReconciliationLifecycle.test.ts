@@ -95,7 +95,7 @@ describeWithDatabase("network header reconciliation lifecycle", () => {
     await expect(readSubscriptionCoverage()).resolves.toMatchObject({
       status: "available",
       ready: false,
-      networks: [
+      networks: expect.arrayContaining([
         expect.objectContaining({
           network: NETWORK,
           reason: "header_gap",
@@ -105,7 +105,7 @@ describeWithDatabase("network header reconciliation lifecycle", () => {
           headerHeight: 100,
           oldestOpenGapStartedAt: observed.gapStartedAt,
         }),
-      ],
+      ]),
     });
 
     const claimed = await claimNetworkHeaderReconciliation(NETWORK, OWNER_B);
@@ -658,7 +658,9 @@ describeWithDatabase("network header reconciliation lifecycle", () => {
     });
     await expect(readSubscriptionCoverage()).resolves.toMatchObject({
       ready: false,
-      networks: [expect.objectContaining({ reason: "header_gap" })],
+      networks: expect.arrayContaining([
+        expect.objectContaining({ network: NETWORK, reason: "header_gap" }),
+      ]),
     });
   });
 

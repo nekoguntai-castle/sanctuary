@@ -337,12 +337,15 @@ export async function findIncrementalSyncIntent(
  * the active claim, so any number of triggers during execution produce at most
  * one trailing pass.
  */
-export async function requestIncrementalSync(
+type IncrementalSyncRequestClient = Pick<PrismaTxClient, '$queryRaw' | 'wallet'>;
+
+export async function requestIncrementalSyncWithClient(
+  client: IncrementalSyncRequestClient,
   walletId: string,
   mode: IncrementalSyncRequestMode = 'automatic',
 ): Promise<IncrementalSyncRequestResult> {
   const explicitReopen = mode === 'explicit_reopen';
-  const rows = await prisma.$queryRaw<RequestRow[]>(Prisma.sql`
+  const rows = await client.$queryRaw<RequestRow[]>(Prisma.sql`
     WITH current AS (
       SELECT "id",
              "requestedIncrementalSyncGeneration",
@@ -418,7 +421,10 @@ export async function requestIncrementalSync(
   `);
   const row = rows[0];
   if (!row) {
-    const state = await findIncrementalSyncIntent(walletId);
+    const state = await client.wallet.findUnique({
+      where: { id: walletId },
+      select: syncIntentSelect,
+    });
     return { status: state ? 'generation_exhausted' : 'not_found' };
   }
   const { previousRequestedGeneration, ...state } = row;
@@ -428,6 +434,13 @@ export async function requestIncrementalSync(
       : 'merged',
     state,
   };
+}
+
+export async function requestIncrementalSync(
+  walletId: string,
+  mode: IncrementalSyncRequestMode = 'automatic',
+): Promise<IncrementalSyncRequestResult> {
+  return requestIncrementalSyncWithClient(prisma, walletId, mode);
 }
 
 /**

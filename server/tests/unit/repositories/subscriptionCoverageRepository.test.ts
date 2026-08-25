@@ -57,6 +57,7 @@ function coverageRow(overrides: Record<string, unknown> = {}) {
     headerGapStartedAt: null,
     headerReconciliationRowCount: 0n,
     headerReconciliationGapStartedAt: null,
+    confirmationRetryMismatchCount: 0n,
     coverageStateRowCount: 0n,
     historicalComparisonFailureCount: 0,
     firstComparisonFailureAt: null,
@@ -295,6 +296,7 @@ describe("readSubscriptionCoverage", () => {
     ["a broken partition", { persisted: 2n, subscribed: 0n }],
     ["a mismatched checkpoint network", { checkpointMismatchCount: 1n }],
     ["a mismatched failure generation", { failureMismatchCount: 1n }],
+    ["a cross-network confirmation retry", { confirmationRetryMismatchCount: 1n }],
     ["a non-integer count", { persisted: "not-an-integer" }],
     ["a negative count", { persisted: -1n }],
     [
@@ -432,6 +434,23 @@ describe("recordSubscriptionComparisonFailure", () => {
       maxWait: 5_000,
       timeout: 15_000,
     });
+  });
+
+  it("matches the persisted testnet alias for canonical testnet3 failure evidence", async () => {
+    const testnetInput = { ...input, network: "testnet3" as const };
+    runTransactionWithQueryResults(
+      [{ addressId: input.addressId, gapStartedAt: GAP_STARTED_AT }],
+      [{ addressId: input.addressId, gapStartedAt: GAP_STARTED_AT }],
+      [{ historicalCount: 1 }],
+    );
+
+    await expect(recordSubscriptionComparisonFailure(testnetInput)).resolves.toEqual({
+      status: "recorded",
+      historicalCount: 1,
+    });
+    expect(sqlText(mocks.queryRaw.mock.calls[0][0])).toContain(
+      `wallet."network" IN ('testnet3', 'testnet')`,
+    );
   });
 
   it("materializes a missing first-generation checkpoint from the address gap start", async () => {

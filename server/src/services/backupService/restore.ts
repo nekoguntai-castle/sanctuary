@@ -332,12 +332,34 @@ type BulkRestoreClient = {
   createMany(args: { data: BackupRecord[]; skipDuplicates: false }): Promise<unknown>;
 };
 
+type SubscriptionCheckpointRestoreClient = BulkRestoreClient & {
+  deleteMany(args: {
+    where: { addressId: { in: string[] } };
+  }): Promise<unknown>;
+};
+
+async function replaceTriggerCreatedSubscriptionCheckpoints(
+  tx: unknown,
+  records: BackupRecord[],
+): Promise<void> {
+  // Backup graph validation has already proved every checkpoint address ID.
+  const addressIds = records.map((record) => record.addressId) as string[];
+  const client = (tx as Record<string, SubscriptionCheckpointRestoreClient>)
+    .addressSubscriptionCheckpoint;
+  await client.deleteMany({ where: { addressId: { in: addressIds } } });
+  await client.createMany({ data: records, skipDuplicates: false });
+}
+
 async function persistRestoreRecords(
   tx: unknown,
   table: string,
   records: BackupRecord[],
   immutableEvidenceTables: ReadonlySet<string>,
 ): Promise<void> {
+  if (table === 'addressSubscriptionCheckpoint') {
+    await replaceTriggerCreatedSubscriptionCheckpoints(tx, records);
+    return;
+  }
   if (immutableEvidenceTables.has(table)) {
     await mergeImmutableEvidenceRecords(tx, table, records);
     return;

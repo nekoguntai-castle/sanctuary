@@ -4,7 +4,14 @@
  * Common interfaces for repository pattern implementation.
  */
 
-import type { Wallet, Address, Transaction, User, UTXO } from '../generated/prisma/client';
+import type {
+  Wallet,
+  Address,
+  Transaction,
+  User,
+  UTXO,
+  Prisma,
+} from '../generated/prisma/client';
 import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 import type {
   SyncExecutionOwner,
@@ -21,6 +28,21 @@ export type { NetworkType };
 // Wallet with includes
 export interface WalletWithAddresses extends Wallet {
   addresses: Address[];
+}
+
+export interface WalletDescriptorAssignment {
+  descriptor: string;
+  changeDescriptor: string;
+  fingerprint: string;
+  descriptorPolicyVersion: 1;
+  descriptorSourceKind: 'generated_pair' | 'imported_pair' | 'imported_multipath';
+  sourceDescriptor: string;
+  sourceChangeDescriptor: string | null;
+  sourceDescriptorChecksum: string | null;
+  sourceChangeDescriptorChecksum: string | null;
+  canonicalPolicyId: string;
+  canonicalPolicyVersion: number;
+  addresses: Prisma.AddressCreateManyInput[];
 }
 
 export interface WalletWithUsers extends Wallet {

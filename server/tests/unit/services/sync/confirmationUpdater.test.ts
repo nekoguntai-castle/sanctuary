@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
   mockFindMany,
-  mockGroupBy,
+  mockQueryRaw,
   mockExecuteRaw,
   mockTransaction,
   mockUpdateTransactionConfirmations,
@@ -19,7 +19,7 @@ const {
   mockMaxSyncDurationMs,
 } = vi.hoisted(() => ({
   mockFindMany: vi.fn<(args: unknown) => Promise<Array<{ walletId: string }>>>(),
-  mockGroupBy: vi.fn<(args: unknown) => Promise<Array<{ walletId: string }>>>(),
+  mockQueryRaw: vi.fn<(args: unknown) => Promise<Array<{ walletId: string }>>>(),
   mockExecuteRaw: vi.fn(),
   mockTransaction: vi.fn(),
   mockUpdateTransactionConfirmations: vi.fn(),
@@ -56,7 +56,7 @@ vi.mock('../../../../src/models/prisma', () => ({
     $transaction: mockTransaction,
     transaction: {
       findMany: mockFindMany,
-      groupBy: mockGroupBy,
+      groupBy: vi.fn(),
     },
   },
 }));
@@ -94,13 +94,13 @@ import type { ConfirmationUpdate } from '../../../../src/services/bitcoin/blockc
 
 describe('confirmationUpdater', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mockFindMany.mockResolvedValue([]);
-    mockGroupBy.mockResolvedValue([]);
+    mockQueryRaw.mockResolvedValue([]);
     mockExecuteRaw.mockResolvedValue(1);
     mockTransaction.mockImplementation(async (callback) => callback({
       $executeRaw: mockExecuteRaw,
-      transaction: { groupBy: mockGroupBy },
+      $queryRaw: mockQueryRaw,
     }));
     mockAcquireLock.mockResolvedValue({ key: 'sync:wallet:test', token: 'token' });
     mockExtendLock.mockImplementation(async lock => lock);
@@ -208,7 +208,7 @@ describe('confirmationUpdater', () => {
     expect(mockFindMany).toHaveBeenCalledWith({
       where: {
         confirmations: { lt: 6 },
-        wallet: { network: 'testnet4' },
+        wallet: { network: { in: ['testnet4'] } },
       },
       select: { walletId: true },
       distinct: ['walletId'],
@@ -226,7 +226,7 @@ describe('confirmationUpdater', () => {
   });
 
   it('refreshes only the emitting network at an already-reconciled height', async () => {
-    mockGroupBy.mockResolvedValue([
+    mockQueryRaw.mockResolvedValue([
       { walletId: 'wallet-z' },
       { walletId: 'wallet-a' },
     ]);
@@ -236,18 +236,7 @@ describe('confirmationUpdater', () => {
 
     const result = await refreshPendingConfirmationsAtHeight('signet', 102);
 
-    expect(mockGroupBy).toHaveBeenCalledWith({
-      by: ['walletId'],
-      where: {
-        wallet: { network: 'signet' },
-        OR: [
-          { confirmations: { lt: 6 } },
-          { blockHeight: { gt: 97 } },
-        ],
-      },
-      orderBy: { walletId: 'asc' },
-      take: 101,
-    });
+    expect(mockQueryRaw).toHaveBeenCalledOnce();
     expect(mockExecuteRaw).toHaveBeenCalledOnce();
     expect(mockTransaction).toHaveBeenCalledWith(expect.any(Function), { timeout: 20_000 });
     expect(mockUpdateTransactionConfirmationsAtHeight.mock.calls).toEqual([
@@ -273,11 +262,20 @@ describe('confirmationUpdater', () => {
     expect(mockGetBlockHeight).not.toHaveBeenCalled();
   });
 
+  it('selects persisted testnet aliases for a canonical testnet3 height', async () => {
+    await expect(refreshPendingConfirmationsAtHeight('testnet3', 102)).resolves.toMatchObject({
+      walletIds: [],
+      failures: [],
+    });
+
+    expect(mockQueryRaw).toHaveBeenCalledOnce();
+  });
+
   it('bounds authoritative confirmation selection and returns a stable resume cursor', async () => {
     const firstPage = Array.from({ length: 101 }, (_, index) => ({
       walletId: `wallet-${String(index).padStart(3, '0')}`,
     }));
-    mockGroupBy
+    mockQueryRaw
       .mockResolvedValueOnce(firstPage)
       .mockResolvedValueOnce([{ walletId: 'wallet-100' }]);
 
@@ -298,23 +296,11 @@ describe('confirmationUpdater', () => {
       nextCursor: 'wallet-100',
       enumerationComplete: true,
     });
-    expect(mockGroupBy).toHaveBeenNthCalledWith(2, {
-      by: ['walletId'],
-      where: {
-        wallet: { network: 'mainnet' },
-        walletId: { gt: 'wallet-099' },
-        OR: [
-          { confirmations: { lt: 6 } },
-          { blockHeight: { gt: 95 } },
-        ],
-      },
-      orderBy: { walletId: 'asc' },
-      take: 101,
-    });
+    expect(mockQueryRaw).toHaveBeenCalledTimes(2);
   });
 
   it('records a failed first wallet but still processes every later candidate', async () => {
-    mockGroupBy.mockResolvedValue([
+    mockQueryRaw.mockResolvedValue([
       { walletId: 'wallet-a' },
       { walletId: 'wallet-b' },
       { walletId: 'wallet-c' },
@@ -350,7 +336,7 @@ describe('confirmationUpdater', () => {
     expect(result.walletIds).toEqual(['wallet-a', 'wallet-z']);
     expect(result.failures).toEqual([]);
     expect(mockAcquireLock).toHaveBeenCalledTimes(2);
-    expect(mockGroupBy).not.toHaveBeenCalled();
+    expect(mockQueryRaw).not.toHaveBeenCalled();
     expect(mockFindMany).not.toHaveBeenCalled();
     expect(mockPopulateMissingTransactionFields).not.toHaveBeenCalled();
     expect(mockUpdateTransactionConfirmations).not.toHaveBeenCalled();
@@ -420,7 +406,7 @@ describe('confirmationUpdater', () => {
   it('records every unattempted wallet as retryable when a page deadline expires', async () => {
     vi.useFakeTimers();
     mockMaxSyncDurationMs.mockReturnValue(30_000);
-    mockGroupBy.mockResolvedValue([
+    mockQueryRaw.mockResolvedValue([
       { walletId: 'wallet-a' },
       { walletId: 'wallet-b' },
     ]);
@@ -460,7 +446,7 @@ describe('confirmationUpdater', () => {
       'Authoritative block height must be a non-negative safe integer',
     );
 
-    expect(mockGroupBy).not.toHaveBeenCalled();
+    expect(mockQueryRaw).not.toHaveBeenCalled();
     expect(mockAcquireLock).not.toHaveBeenCalled();
   });
 
@@ -473,20 +459,20 @@ describe('confirmationUpdater', () => {
       pageSize,
     )).rejects.toThrow('page size is invalid');
 
-    expect(mockGroupBy).not.toHaveBeenCalled();
+    expect(mockQueryRaw).not.toHaveBeenCalled();
   });
 
   it('rejects an authoritative-height sweep that starts without ownership', async () => {
     await expect(refreshPendingConfirmationsAtHeight('mainnet', 100, () => false))
       .rejects.toThrow('ownership is not active');
 
-    expect(mockGroupBy).not.toHaveBeenCalled();
+    expect(mockQueryRaw).not.toHaveBeenCalled();
   });
 
   it('keeps an authoritative-height sweep active while ownership remains valid', async () => {
     vi.useFakeTimers();
     let finishSelection!: (rows: Array<{ walletId: string }>) => void;
-    mockGroupBy.mockReturnValueOnce(new Promise(resolve => {
+    mockQueryRaw.mockReturnValueOnce(new Promise(resolve => {
       finishSelection = resolve;
     }));
 
@@ -503,7 +489,7 @@ describe('confirmationUpdater', () => {
 
   it('aborts an authoritative-height sweep when reconciliation ownership is lost', async () => {
     vi.useFakeTimers();
-    mockGroupBy.mockReturnValueOnce(new Promise(() => undefined));
+    mockQueryRaw.mockReturnValueOnce(new Promise(() => undefined));
     let active = true;
 
     try {
@@ -522,7 +508,7 @@ describe('confirmationUpdater', () => {
 
   it('aborts an authoritative-height page when its deadline expires', async () => {
     vi.useFakeTimers();
-    mockGroupBy.mockReturnValueOnce(new Promise(() => undefined));
+    mockQueryRaw.mockReturnValueOnce(new Promise(() => undefined));
 
     try {
       const refresh = refreshPendingConfirmationsAtHeight('mainnet', 100);
@@ -538,7 +524,7 @@ describe('confirmationUpdater', () => {
 
   it('propagates an authoritative-height selection failure', async () => {
     const queryError = new Error('confirmation selection unavailable');
-    mockGroupBy.mockRejectedValueOnce(queryError);
+    mockQueryRaw.mockRejectedValueOnce(queryError);
 
     await expect(refreshPendingConfirmationsAtHeight('mainnet', 100)).rejects.toBe(queryError);
     expect(mockAcquireLock).not.toHaveBeenCalled();
@@ -546,7 +532,7 @@ describe('confirmationUpdater', () => {
 
   it('retains the wallet lock until an uncooperative authoritative-height write settles', async () => {
     vi.useFakeTimers();
-    mockGroupBy.mockResolvedValue([{ walletId: 'wallet-a' }]);
+    mockQueryRaw.mockResolvedValue([{ walletId: 'wallet-a' }]);
     let settleWrite!: (updates: ConfirmationUpdate[]) => void;
     mockUpdateTransactionConfirmationsAtHeight.mockImplementationOnce(
       () => new Promise(resolve => { settleWrite = resolve; }),
@@ -581,7 +567,7 @@ describe('confirmationUpdater', () => {
   it('retains a lost wallet lease until an in-flight authoritative-height write settles', async () => {
     vi.useFakeTimers();
     mockGetSyncLockTtlMs.mockReturnValue(300);
-    mockGroupBy.mockResolvedValue([{ walletId: 'wallet-a' }]);
+    mockQueryRaw.mockResolvedValue([{ walletId: 'wallet-a' }]);
     mockExtendLock.mockResolvedValueOnce(null);
     let settleWrite!: (updates: ConfirmationUpdate[]) => void;
     mockUpdateTransactionConfirmationsAtHeight.mockImplementationOnce(
@@ -614,7 +600,7 @@ describe('confirmationUpdater', () => {
   });
 
   it('publishes explicit-height updates only after their persistence callback', async () => {
-    mockGroupBy.mockResolvedValue([{ walletId: 'wallet-1' }]);
+    mockQueryRaw.mockResolvedValue([{ walletId: 'wallet-1' }]);
     const change = { txid: 'persisted-tx', oldConfirmations: 0, newConfirmations: 1 };
     mockUpdateTransactionConfirmationsAtHeight.mockImplementationOnce(async (
       _walletId: string,

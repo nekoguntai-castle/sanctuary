@@ -1,8 +1,13 @@
 import { beforeAll, beforeEach, vi } from 'vitest';
+import type { IncrementalSyncRequestResult } from '../../../../src/repositories/types';
 
 type WalletRepository = typeof import('../../../../src/repositories/walletRepository').walletRepository;
 
 const walletRepositoryMocks = vi.hoisted(() => {
+  const requestIncrementalSyncWithClient = vi.fn(async (): Promise<IncrementalSyncRequestResult> => ({
+    status: 'merged' as const,
+    state: {},
+  } as IncrementalSyncRequestResult));
   const prisma = {
     wallet: {
       findFirst: vi.fn(),
@@ -46,7 +51,7 @@ const walletRepositoryMocks = vi.hoisted(() => {
     },
   }));
 
-  return { prisma };
+  return { prisma, requestIncrementalSyncWithClient };
 });
 
 vi.mock('../../../../src/models/prisma', () => ({
@@ -54,7 +59,14 @@ vi.mock('../../../../src/models/prisma', () => ({
   default: walletRepositoryMocks.prisma,
 }));
 
+vi.mock('../../../../src/repositories/syncIntentRepository', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../../src/repositories/syncIntentRepository')>(),
+  requestIncrementalSyncWithClient: walletRepositoryMocks.requestIncrementalSyncWithClient,
+}));
+
 export const prisma = walletRepositoryMocks.prisma;
+export const requestIncrementalSyncWithClient =
+  walletRepositoryMocks.requestIncrementalSyncWithClient;
 
 export let walletRepository: WalletRepository;
 

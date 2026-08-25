@@ -1,9 +1,4 @@
-/**
- * Address Repository Tests
- *
- * Tests for address data access layer operations including
- * address management, usage tracking, and label export.
- */
+/** Address repository data-access contracts. */
 
 import { vi, Mock } from "vitest";
 
@@ -63,6 +58,13 @@ describe("Address Repository", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    (prisma.$queryRaw as Mock).mockResolvedValue([{
+      id: "w1",
+      requestedIncrementalSyncGeneration: 1,
+      claimedIncrementalSyncGeneration: 1,
+      processedIncrementalSyncGeneration: 0,
+      previousRequestedGeneration: 1,
+    }]);
   });
 
   describe("findByWalletId", () => {
@@ -626,7 +628,15 @@ describe("Address Repository", () => {
     });
 
     it("serializes branch-scoped next-index allocation before deriving and inserting", async () => {
-      (prisma.$queryRaw as Mock).mockResolvedValue([{ id: "w1", network: "testnet3" }]);
+      (prisma.$queryRaw as Mock)
+        .mockResolvedValueOnce([{ id: "w1", network: "testnet3" }])
+        .mockResolvedValueOnce([{
+          id: "w1",
+          requestedIncrementalSyncGeneration: 2,
+          claimedIncrementalSyncGeneration: 1,
+          processedIncrementalSyncGeneration: 0,
+          previousRequestedGeneration: 1,
+        }]);
       (prisma.address.findFirst as Mock).mockResolvedValue({ index: 6 });
       (prisma.address.create as Mock).mockImplementation(({ data }) =>
         Promise.resolve({ id: "allocated", ...data }));
@@ -660,7 +670,11 @@ describe("Address Repository", () => {
       });
       expect(prisma.addressSubscriptionCheckpoint.createMany).toHaveBeenCalledWith({
         data: [{ addressId: "allocated", network: "testnet3" }],
+        skipDuplicates: true,
       });
+      const intentSql = (prisma.$queryRaw as Mock).mock.calls[1][0].strings.join(" ");
+      expect(intentSql).toContain('"requestedIncrementalSyncGeneration"');
+      expect(intentSql).toContain('"claimedIncrementalSyncGeneration"');
     });
 
     it("starts next-address allocation at zero when the locked branch is empty", async () => {
@@ -702,6 +716,7 @@ describe("Address Repository", () => {
 
       expect(prisma.addressSubscriptionCheckpoint.createMany).toHaveBeenCalledWith({
         data: [{ addressId: "uncommitted", network: "signet" }],
+        skipDuplicates: true,
       });
       expect(prisma.$transaction).toHaveBeenCalledOnce();
     });
@@ -732,7 +747,7 @@ describe("Address Repository", () => {
       expect(result.map(({ branch, index }) => [branch, index])).toEqual([
         [0, 5], [0, 6], [1, 9], [1, 10],
       ]);
-      expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(3);
       const lockSql = (prisma.$queryRaw as Mock).mock.calls[0][0].strings.join(" ");
       expect(lockSql).toContain('"canonicalPolicyId" IS NOT NULL');
       expect(lockSql).toContain('"canonicalPolicyVersion" =');
@@ -751,6 +766,7 @@ describe("Address Repository", () => {
           { addressId: "change-9", network: "testnet3" },
           { addressId: "change-10", network: "testnet3" },
         ],
+        skipDuplicates: true,
       });
       expect(prisma.address.findMany).not.toHaveBeenCalled();
       expect(prisma.$transaction).toHaveBeenCalledWith(
@@ -798,6 +814,7 @@ describe("Address Repository", () => {
       });
       expect(prisma.addressSubscriptionCheckpoint.createMany).toHaveBeenCalledWith({
         data: [{ addressId: "receive-7", network: "testnet3" }],
+        skipDuplicates: true,
       });
     });
 

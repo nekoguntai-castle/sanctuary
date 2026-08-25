@@ -446,7 +446,15 @@ export async function findWalletIdsWithPendingConfirmations(
   const results = await prisma.transaction.findMany({
     where: {
       confirmations: { lt: threshold },
-      ...(network === undefined ? {} : { wallet: { network } }),
+      ...(network === undefined
+        ? {}
+        : {
+            wallet: {
+              network: {
+                in: network === 'testnet3' ? ['testnet3', 'testnet'] : [network],
+              },
+            },
+          }),
     },
     select: { walletId: true },
     distinct: ['walletId'],
@@ -479,19 +487,33 @@ export async function findWalletIdsRequiringConfirmationUpdateAtHeight(
     await tx.$executeRaw(
       Prisma.sql`SELECT set_config('statement_timeout', ${String(queryTimeoutMs)}, true)`,
     );
-    const results = await tx.transaction.groupBy({
-      by: ['walletId'],
-      where: {
-        wallet: { network },
-        ...(afterWalletId === null ? {} : { walletId: { gt: afterWalletId } }),
-        OR: [
-          { confirmations: { lt: threshold } },
-          { blockHeight: { gt: authoritativeHeight - threshold + 1 } },
-        ],
-      },
-      orderBy: { walletId: 'asc' },
-      take: limit + 1,
-    });
+    const cursorPredicate = afterWalletId === null
+      ? Prisma.empty
+      : Prisma.sql`AND transaction."walletId" > ${afterWalletId}`;
+    const walletNetworkPredicate = network === 'testnet3'
+      ? Prisma.sql`wallet."network" IN ('testnet3', 'testnet')`
+      : Prisma.sql`wallet."network" = ${network}`;
+    const results = await tx.$queryRaw<Array<{ walletId: string }>>(Prisma.sql`
+      WITH candidates AS (
+        SELECT transaction."walletId"
+        FROM "transactions" AS transaction
+        INNER JOIN "wallets" AS wallet ON wallet."id" = transaction."walletId"
+        WHERE ${walletNetworkPredicate}
+          AND transaction."confirmations" < ${threshold}
+          ${cursorPredicate}
+        UNION
+        SELECT transaction."walletId"
+        FROM "transactions" AS transaction
+        INNER JOIN "wallets" AS wallet ON wallet."id" = transaction."walletId"
+        WHERE ${walletNetworkPredicate}
+          AND transaction."blockHeight" > ${authoritativeHeight - threshold + 1}
+          ${cursorPredicate}
+      )
+      SELECT candidates."walletId"
+      FROM candidates
+      ORDER BY candidates."walletId" ASC
+      LIMIT ${limit + 1}
+    `);
     return results.map(result => result.walletId);
   }, { timeout: queryTimeoutMs + 1_000 });
 }

@@ -22,6 +22,7 @@ import {
   parseCanonicalAddressPath,
   WALLET_POLICY_REGISTRY_VERSION,
 } from "@sanctuary/shared/constants/walletPolicy";
+import { requestIncrementalSyncWithClient } from "./syncIntentRepository";
 
 const ADDRESS_CHAIN_SCAN_PAGE_SIZE = 200;
 export { CANONICAL_ADDRESS_COORDINATE_VERSION };
@@ -115,7 +116,16 @@ async function createPendingSubscriptionCheckpoints(
   if (addresses.length === 0) return;
   await tx.addressSubscriptionCheckpoint.createMany({
     data: addresses.map(({ id }) => ({ addressId: id, network })),
+    // The rolling-version trigger may already have created the same pending
+    // checkpoint for an address written by this newer process.
+    skipDuplicates: true,
   });
+}
+
+async function requestAddressCatchUp(tx: PrismaTxClient, walletId: string): Promise<void> {
+  const request = await requestIncrementalSyncWithClient(tx, walletId);
+  if (request.status === 'requested' || request.status === 'merged') return;
+  throw new Error(`Wallet address catch-up request failed with status ${request.status}`);
 }
 
 const addressLabelsInclude = {
@@ -526,6 +536,7 @@ export async function createNextCanonical(
     validateCanonicalAddressWrite(data);
     const address = await tx.address.create({ data });
     await createPendingSubscriptionCheckpoints(tx, [address], network);
+    await requestAddressCatchUp(tx, walletId);
     return address;
   }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
 }
@@ -641,6 +652,7 @@ export async function createCanonicalBatch(
         select: { id: true },
       });
       await createPendingSubscriptionCheckpoints(tx, addresses, network);
+      await requestAddressCatchUp(tx, walletId);
     }
     return created;
   };

@@ -21,7 +21,6 @@ import { initializeOpenTelemetry } from './utils/tracing/otel';
 const otelPromise = initializeOpenTelemetry();
 
 import os from 'node:os';
-import { setTimeout as delay } from 'node:timers/promises';
 import { getConfig } from './config';
 import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from './constants/walletSyncActivation';
 import { createLogger } from './utils/logger';
@@ -94,6 +93,7 @@ import {
   createProductionNetworkHeaderReconciliationRuntime,
   type NetworkHeaderReconciliationRuntime,
 } from './worker/networkHeaderReconciliationRuntime';
+import { completeWalletSubscriptionEnrollment } from './worker/walletSubscriptionEnrollment';
 
 const log = createLogger('WORKER');
 
@@ -133,7 +133,6 @@ const RECONCILIATION_INTERVAL_MS = 15 * 60 * 1000;
 const SUBSCRIPTION_CHECKPOINT_INTERVAL_MS = 1_000;
 const SUBSCRIPTION_STATUS_REFRESH_INTERVAL_MS = 60_000;
 const SUBSCRIPTION_CHECKPOINT_PAGE_SIZE = 200;
-const SUBSCRIPTION_CHECKPOINT_WAIT_MS = 250;
 const NETWORK_HEADER_RECONCILIATION_INTERVAL_MS = 5_000;
 const STALE_COMPATIBILITY_ADMISSION_CONCURRENCY = 5;
 
@@ -258,32 +257,17 @@ async function enrollWalletSubscriptions(
   signal: AbortSignal,
 ): Promise<void> {
   const network = resolvePersistedBitcoinNetwork(walletNetwork);
-  let cursor: string | undefined;
-  while (true) {
-    signal.throwIfAborted();
-    if (!electrumManager?.isSubscriptionOwner()) {
-      const pending = await activeSubscriptionCheckpointRuntime()
-        .hasPendingWalletEnrollment({ network, walletId });
-      if (!pending) return;
-      await delay(SUBSCRIPTION_CHECKPOINT_WAIT_MS, undefined, { signal });
-      continue;
-    }
-    await electrumManager.ensureNetworkConnected(network);
-    const result = await serializeSubscriptionCheckpointMutation(() => (
-      activeSubscriptionCheckpointRuntime().enrollPendingPage({
-        network,
-        walletId,
-        ...(cursor !== undefined ? { cursor } : {}),
-        limit: SUBSCRIPTION_CHECKPOINT_PAGE_SIZE,
-      })
-    ));
-    logCheckpointDispatchFailures(`wallet:${walletId}`, result);
-    if (result.unavailable > 0) {
-      throw new Error(`Subscription enrollment remains incomplete for wallet ${walletId}`);
-    }
-    if (result.scanned !== SUBSCRIPTION_CHECKPOINT_PAGE_SIZE || !result.nextCursor) return;
-    cursor = result.nextCursor;
-  }
+  const runtime = activeSubscriptionCheckpointRuntime();
+  await completeWalletSubscriptionEnrollment({ walletId, network, signal }, {
+    runtime,
+    isSubscriptionOwner: () => electrumManager?.isSubscriptionOwner() ?? false,
+    ensureNetworkConnected: async (targetNetwork) => {
+      if (!electrumManager) throw new Error('Electrum subscription manager is not initialized');
+      await electrumManager.ensureNetworkConnected(targetNetwork);
+    },
+    serializeMutation: operation => serializeSubscriptionCheckpointMutation(operation),
+    onPageResult: result => logCheckpointDispatchFailures(`wallet:${walletId}`, result),
+  });
 }
 
 async function recordSubscriptionStatuses(

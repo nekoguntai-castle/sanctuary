@@ -8,6 +8,7 @@ import {
 import {
   findPendingSubscriptionEnrollments,
   findSubscriptionCheckpoint,
+  findSubscriptionCheckpointOwners,
 } from '../../../src/repositories/subscriptionCheckpointRepository';
 import {
   createTestAddress,
@@ -16,6 +17,43 @@ import {
 } from './setup';
 
 const describeWithDatabase = process.env.DATABASE_URL ? describe : describe.skip;
+
+interface ExplainPlanNode {
+  'Actual Loops'?: number;
+  'Actual Rows'?: number;
+  'Relation Name'?: string;
+  'Rows Removed by Filter'?: number;
+  'Rows Removed by Index Recheck'?: number;
+  'Rows Removed by Join Filter'?: number;
+  Plans?: ExplainPlanNode[];
+}
+
+interface ExplainResultRow {
+  'QUERY PLAN': Array<{ Plan: ExplainPlanNode }>;
+}
+
+function collectPlanNodes(
+  node: ExplainPlanNode,
+  predicate: (candidate: ExplainPlanNode) => boolean,
+): ExplainPlanNode[] {
+  return [
+    ...(predicate(node) ? [node] : []),
+    ...(node.Plans ?? []).flatMap(child => collectPlanNodes(child, predicate)),
+  ];
+}
+
+function touchedRowsForRelation(plan: ExplainPlanNode, relation: string): number {
+  return collectPlanNodes(plan, node => node['Relation Name'] === relation)
+    .reduce(
+      (total, node) => total + (
+        (node['Actual Rows'] ?? 0)
+        + (node['Rows Removed by Filter'] ?? 0)
+        + (node['Rows Removed by Index Recheck'] ?? 0)
+        + (node['Rows Removed by Join Filter'] ?? 0)
+      ) * (node['Actual Loops'] ?? 1),
+      0,
+    );
+}
 
 describeWithDatabase('sync intent readers', () => {
   const userIds: string[] = [];
@@ -209,18 +247,29 @@ describeWithDatabase('sync intent readers', () => {
     ]));
   });
 
-  it('distinguishes a missing checkpoint from authoritative null status', async () => {
+  it('makes an address-only rolling-version insert a pending unknown checkpoint', async () => {
     const { address } = await createFixture();
 
     await expect(findPendingSubscriptionEnrollments({ network: 'signet' }))
       .resolves.toEqual(expect.arrayContaining([
-        expect.objectContaining({ addressId: address.id, checkpointMissing: true }),
+        expect.objectContaining({
+          addressId: address.id,
+          checkpointMissing: false,
+          statusKnown: false,
+          requestedEnrollmentGeneration: 1,
+          processedEnrollmentGeneration: 0,
+        }),
       ]));
+    await expect(findSubscriptionCheckpoint(address.id)).resolves.toMatchObject({
+      network: 'signet',
+      statusKnown: false,
+      requestedEnrollmentGeneration: 1,
+      processedEnrollmentGeneration: 0,
+    });
 
-    await prisma.addressSubscriptionCheckpoint.create({
+    await prisma.addressSubscriptionCheckpoint.update({
+      where: { addressId: address.id },
       data: {
-        addressId: address.id,
-        network: 'signet',
         scriptHash: 'a'.repeat(64),
         statusKnown: true,
         observedStatus: null,
@@ -239,4 +288,128 @@ describeWithDatabase('sync intent readers', () => {
     await expect(findPendingSubscriptionEnrollments({ network: 'signet' }))
       .resolves.not.toEqual(expect.arrayContaining([expect.objectContaining({ addressId: address.id })]));
   });
+
+  it('pages pending enrollment without traversing a representative quiet address population', async () => {
+    const user = await createTestUser(factoryClient);
+    userIds.push(user.id);
+    const wallet = await createTestWallet(factoryClient, user.id, { network: 'signet' });
+    walletIds.push(wallet.id);
+    const quietIds = Array.from(
+      { length: 10_000 },
+      (_, index) => `a-quiet-${index.toString().padStart(5, '0')}`,
+    );
+    const pendingIds = Array.from(
+      { length: 201 },
+      (_, index) => `z-pending-${index.toString().padStart(3, '0')}`,
+    );
+    const rollingWriterId = 'zz-rolling-writer-000';
+    const allIds = [...quietIds, ...pendingIds, rollingWriterId];
+    await prisma.address.createMany({
+      data: allIds.map((id, index) => ({
+        id,
+        walletId: wallet.id,
+        address: `integration-${id}`,
+        derivationPath: `m/84'/1'/0'/0/${index}`,
+        index,
+      })),
+    });
+    const observedAt = new Date('2026-08-25T10:00:00.000Z');
+    await prisma.$executeRaw`
+      UPDATE "address_subscription_checkpoints"
+      SET "scriptHash" = ${'a'.repeat(64)},
+          "statusKnown" = TRUE,
+          "lastObservedAt" = ${observedAt},
+          "requestedEnrollmentGeneration" = 1,
+          "processedEnrollmentGeneration" = 1,
+          "coverageGapStartedAt" = NULL
+      WHERE "addressId" LIKE 'a-quiet-%'
+    `;
+    await prisma.$executeRaw`
+      UPDATE "address_subscription_checkpoints"
+      SET "scriptHash" = ${'b'.repeat(64)},
+          "statusKnown" = TRUE,
+          "lastObservedAt" = ${observedAt},
+          "requestedEnrollmentGeneration" = 2,
+          "processedEnrollmentGeneration" = 1,
+          "coverageGapStartedAt" = ${observedAt}
+      WHERE "addressId" LIKE 'z-pending-%'
+    `;
+    await expect(
+      prisma.addressSubscriptionCheckpoint.findUnique({
+        where: { addressId: rollingWriterId },
+      }),
+    ).resolves.toMatchObject({
+      network: 'signet',
+      statusKnown: false,
+      requestedEnrollmentGeneration: 1,
+      processedEnrollmentGeneration: 0,
+    });
+    await prisma.$executeRawUnsafe(
+      'ANALYZE "addresses", "wallets", "address_subscription_checkpoints"',
+    );
+
+    const firstPage = await findPendingSubscriptionEnrollments({
+      network: 'signet',
+      limit: 200,
+    });
+    const secondPage = await findPendingSubscriptionEnrollments({
+      network: 'signet',
+      cursor: firstPage.at(-1)?.addressId,
+      limit: 200,
+    });
+    expect(firstPage.map(row => row.addressId)).toEqual(pendingIds.slice(0, 200));
+    expect(secondPage.map(row => row.addressId)).toEqual([pendingIds[200], rollingWriterId]);
+    expect(secondPage.at(-1)).toMatchObject({
+      addressId: rollingWriterId,
+      checkpointMissing: false,
+    });
+    expect(new Set([...firstPage, ...secondPage].map(row => row.addressId)).size)
+      .toBe(pendingIds.length + 1);
+
+    const explained = await prisma.$queryRaw<ExplainResultRow[]>`
+      EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
+      SELECT
+        "addresses"."id" AS "addressId"
+      FROM "address_subscription_checkpoints" AS "checkpoints"
+      INNER JOIN LATERAL (
+        SELECT "addresses"."id"
+        FROM "addresses"
+        INNER JOIN "wallets" ON "wallets"."id" = "addresses"."walletId"
+        WHERE "addresses"."id" = "checkpoints"."addressId"
+          AND "wallets"."network" = ${'signet'}
+        LIMIT 1
+      ) AS "addresses" ON TRUE
+      WHERE "checkpoints"."addressId" > ${''}
+        AND "checkpoints"."network" = ${'signet'}
+        AND "checkpoints"."requestedEnrollmentGeneration"
+          > "checkpoints"."processedEnrollmentGeneration"
+      ORDER BY "checkpoints"."addressId" ASC
+      LIMIT ${200}
+    `;
+    const plan = explained[0]?.['QUERY PLAN'][0]?.Plan;
+    expect(plan?.['Actual Rows']).toBe(200);
+    expect(plan ? touchedRowsForRelation(plan, 'addresses') : Number.POSITIVE_INFINITY)
+      .toBeLessThanOrEqual(400);
+
+    const ownerExplain = await prisma.$queryRaw<ExplainResultRow[]>`
+      EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
+      SELECT "checkpoints"."addressId"
+      FROM "address_subscription_checkpoints" AS "checkpoints"
+      INNER JOIN "addresses" ON "addresses"."id" = "checkpoints"."addressId"
+      INNER JOIN "wallets" ON "wallets"."id" = "addresses"."walletId"
+      WHERE "checkpoints"."network" = ${'signet'}
+        AND "wallets"."network" = ${'signet'}
+        AND "checkpoints"."scriptHash" = ${'a'.repeat(64)}
+        AND "checkpoints"."statusKnown" = TRUE
+        AND "checkpoints"."addressId" > ${''}
+      ORDER BY "checkpoints"."addressId" ASC
+      LIMIT ${200}
+    `;
+    const ownerPlan = ownerExplain[0]?.['QUERY PLAN'][0]?.Plan;
+    expect(ownerPlan?.['Actual Rows']).toBe(200);
+    expect(ownerPlan ? touchedRowsForRelation(ownerPlan, 'addresses') : Number.POSITIVE_INFINITY)
+      .toBeLessThanOrEqual(400);
+    await expect(findSubscriptionCheckpointOwners('signet', 'a'.repeat(64), { limit: 200 }))
+      .resolves.toHaveLength(200);
+  }, 60_000);
 });

@@ -495,7 +495,11 @@ const validateSubscriptionCheckpointReferences = (
       );
       continue;
     }
-    if (checkpoint.network !== wallet.network) {
+    const checkpointNetwork = checkpoint.network === 'testnet'
+      ? 'testnet3'
+      : checkpoint.network;
+    const walletNetwork = wallet.network === 'testnet' ? 'testnet3' : wallet.network;
+    if (checkpointNetwork !== walletNetwork) {
       issues.push(
         `AddressSubscriptionCheckpoint ${String(checkpoint.addressId)} network ${String(checkpoint.network)} does not match owning wallet ${String(wallet.id)} network ${String(wallet.network)}`,
       );

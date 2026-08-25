@@ -19,7 +19,7 @@ vi.mock('../../../src/models/prisma', () => ({
 vi.mock('../../../src/generated/prisma/client', () => ({
   Prisma: {
     sql: (strings: TemplateStringsArray, ...values: unknown[]) => ({ strings, values }),
-    raw: (value: string) => value,
+    raw: (value: string) => ({ raw: value }),
   },
 }));
 
@@ -35,6 +35,21 @@ import type { SubscriptionCheckpointState } from '../../../src/repositories/type
 const NOW = new Date('2026-08-22T10:00:00.000Z');
 const SCRIPT_HASH = 'a'.repeat(64);
 const OBSERVED_STATUS = 'b'.repeat(64);
+
+function sqlText(value: unknown): string {
+  if (!value || typeof value !== 'object') return '';
+  if ('raw' in value) return String(value.raw);
+  if (!('strings' in value) || !('values' in value)) return '';
+  const sql = value as { strings: readonly string[]; values: readonly unknown[] };
+  return sql.strings.map((part, index) => `${part}${sqlText(sql.values[index])}`).join('');
+}
+
+function sqlValues(value: unknown): unknown[] {
+  if (!value || typeof value !== 'object') return [value];
+  if ('raw' in value) return [];
+  if (!('values' in value)) return [value];
+  return (value as { values: readonly unknown[] }).values.flatMap(sqlValues);
+}
 
 function completionRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -123,10 +138,12 @@ describe('subscriptionCheckpointRepository readers', () => {
       .resolves.toEqual([]);
 
     const query = mocks.queryRaw.mock.calls[0][0];
-    expect(query.values).toEqual(['signet', 'signet', SCRIPT_HASH, '', 200]);
-    expect(query.strings.join('')).toContain('"checkpoints"."statusKnown" = TRUE');
-    expect(query.strings.join('')).toContain('ORDER BY "checkpoints"."addressId" ASC');
-    expect(query.strings.join('')).toContain('LIMIT ');
+    expect(sqlValues(query)).toEqual([
+      'signet', 'signet', 'signet', SCRIPT_HASH, '', 200,
+    ]);
+    expect(sqlText(query)).toContain('"checkpoints"."statusKnown" = TRUE');
+    expect(sqlText(query)).toContain('ORDER BY "checkpoints"."addressId" ASC');
+    expect(sqlText(query)).toContain('LIMIT ');
   });
 
   it.each([
@@ -138,7 +155,7 @@ describe('subscriptionCheckpointRepository readers', () => {
     expect(mocks.queryRaw).not.toHaveBeenCalled();
   });
 
-  it('includes checkpoint rows missing from mixed-version address writes', async () => {
+  it('drives mixed-version enrollment recovery from bounded pending checkpoint rows', async () => {
     mocks.queryRaw.mockResolvedValue([]);
     await expect(findPendingSubscriptionEnrollments({
       network: 'signet',
@@ -147,18 +164,32 @@ describe('subscriptionCheckpointRepository readers', () => {
     })).resolves.toEqual([]);
 
     const query = mocks.queryRaw.mock.calls[0][0];
-    expect(query.values).toEqual(expect.arrayContaining(['address-4', 'signet', 12]));
-    expect(query.strings.join('')).toContain('"checkpoints"."addressId" IS NULL');
-    expect(query.strings.join('')).toContain(
-      '"requestedEnrollmentGeneration" > "checkpoints"."processedEnrollmentGeneration"',
+    expect(sqlValues(query)).toEqual(expect.arrayContaining(['address-4', 'signet', 12]));
+    expect(sqlText(query)).toContain(
+      'FROM "address_subscription_checkpoints" AS "checkpoints"',
     );
+    expect(sqlText(query)).toContain('INNER JOIN LATERAL');
+    expect(sqlText(query)).not.toContain('"checkpoints"."addressId" IS NULL');
+    expect(sqlText(query)).toMatch(
+      /"requestedEnrollmentGeneration"\s*> "checkpoints"\."processedEnrollmentGeneration"/,
+    );
+  });
+
+  it('includes the persisted testnet alias in canonical testnet3 enrollment recovery', async () => {
+    mocks.queryRaw.mockResolvedValue([]);
+
+    await findPendingSubscriptionEnrollments({ network: 'testnet3' });
+
+    const sql = sqlText(mocks.queryRaw.mock.calls[0][0]);
+    expect(sql).toContain('"wallets"."network" IN (\'testnet3\', \'testnet\')');
+    expect(sql).toContain('"checkpoints"."network" IN (\'testnet3\', \'testnet\')');
   });
 
   it('uses bounded defaults for the first enrollment page', async () => {
     mocks.queryRaw.mockResolvedValue([]);
     await findPendingSubscriptionEnrollments({ network: 'mainnet' });
 
-    expect(mocks.queryRaw.mock.calls[0][0].values)
+    expect(sqlValues(mocks.queryRaw.mock.calls[0][0]))
       .toEqual(expect.arrayContaining(['', 'mainnet', 200]));
   });
 
@@ -173,13 +204,10 @@ describe('subscriptionCheckpointRepository readers', () => {
     });
 
     const query = mocks.queryRaw.mock.calls[0][0];
-    expect(query.values).toEqual([
-      'address-4',
-      'mainnet',
-      expect.objectContaining({ values: ['wallet-1'] }),
-      12,
-    ]);
-    expect(query.values[2].strings.join('')).toContain('"addresses"."walletId" = ');
+    expect(sqlValues(query)).toEqual(expect.arrayContaining([
+      'address-4', 'mainnet', 'wallet-1', 12,
+    ]));
+    expect(sqlText(query)).toContain('"addresses"."walletId" = ');
   });
 
   it('rejects an empty wallet enrollment scope before querying', async () => {
@@ -221,10 +249,10 @@ describe('subscriptionCheckpointRepository readers', () => {
     });
 
     const query = mocks.queryRaw.mock.calls[0][0];
-    expect(query.strings.join('')).toContain('GREATEST');
-    expect(query.strings.join('')).toContain('(xmax = 0)');
-    expect(query.strings.join('')).toContain('"wallets"."network" = ');
-    expect(query.values).toContain(2_147_483_647);
+    expect(sqlText(query)).toContain('GREATEST');
+    expect(sqlText(query)).toContain('(xmax = 0)');
+    expect(sqlText(query)).toContain('"wallets"."network" = ');
+    expect(sqlValues(query)).toContain(2_147_483_647);
   });
 
   it('fails closed when the enrollment generation is exhausted', async () => {
@@ -303,14 +331,14 @@ describe('subscriptionCheckpointRepository readers', () => {
     });
 
     const query = mocks.queryRaw.mock.calls[1][0];
-    const sql = query.strings.join('');
+    const sql = sqlText(query);
     expect(sql).toContain('INSERT INTO "address_subscription_checkpoints"');
     expect(sql).toContain('ON CONFLICT ("addressId") DO UPDATE');
     expect(sql).toContain('checkpoint."requestedEnrollmentGeneration" = ');
     expect(sql).toContain('checkpoint."processedEnrollmentGeneration" < ');
     expect(sql).toContain('"requestedEnrollmentGeneration" = ');
     expect(sql).toContain('"processedEnrollmentGeneration" < ');
-    expect(query.values).toEqual(expect.arrayContaining([
+    expect(sqlValues(query)).toEqual(expect.arrayContaining([
       'address-1',
       'signet',
       1,
@@ -318,6 +346,35 @@ describe('subscriptionCheckpointRepository readers', () => {
       OBSERVED_STATUS,
       NOW,
     ]));
+  });
+
+  it('matches the persisted testnet alias during canonical testnet3 completion', async () => {
+    const completed = checkpointState({
+      network: 'testnet3',
+      scriptHash: SCRIPT_HASH,
+      statusKnown: true,
+      observedStatus: null,
+      lastObservedAt: NOW,
+      processedEnrollmentGeneration: 1,
+    });
+    mocks.checkpointFindUnique.mockResolvedValue(null);
+    mocks.queryRaw
+      .mockResolvedValueOnce([completionRow({ network: 'testnet' })])
+      .mockResolvedValueOnce([completed]);
+
+    await expect(completeSubscriptionEnrollment({
+      addressId: 'address-1',
+      address: 'tb1qexample',
+      network: 'testnet3',
+      generation: 1,
+      scriptHash: SCRIPT_HASH,
+      observedStatus: null,
+      observedAt: NOW,
+    })).resolves.toMatchObject({ status: 'applied', state: completed });
+
+    expect(sqlText(mocks.queryRaw.mock.calls[0][0])).toContain(
+      'wallet."network" IN (\'testnet3\', \'testnet\')',
+    );
   });
 
   it('establishes an unknown null checkpoint without returning sync intent', async () => {

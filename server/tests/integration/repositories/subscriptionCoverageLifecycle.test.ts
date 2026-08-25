@@ -9,7 +9,12 @@ import {
   recordSubscriptionComparisonFailure,
 } from "../../../src/repositories/subscriptionCoverageRepository";
 import { findNetworkHeaderCheckpoint } from "../../../src/repositories/networkHeaderCheckpointRepository";
-import { createTestAddress, createTestUser, createTestWallet } from "./setup";
+import {
+  cleanupTestData,
+  createTestAddress,
+  createTestUser,
+  createTestWallet,
+} from "./setup";
 
 const describeWithDatabase = process.env.DATABASE_URL
   ? describe
@@ -34,6 +39,10 @@ describeWithDatabase("subscription coverage lifecycle", () => {
       `DROP FUNCTION IF EXISTS ${FAILURE_FUNCTION}()`,
     );
   }
+
+  beforeEach(async () => {
+    await cleanupTestData();
+  });
 
   afterEach(async () => {
     await dropFailureTrigger();
@@ -157,17 +166,20 @@ describeWithDatabase("subscription coverage lifecycle", () => {
   );
 
   it("normalizes the exact old request and completion SQL shapes after migration", async () => {
-    const { addresses } = await createFixture(2);
-    const [existingAddress, missingAddress] = addresses;
-    await prisma.$executeRawUnsafe(`
-      INSERT INTO "address_subscription_checkpoints" (
-        "addressId", "network", "scriptHash", "statusKnown", "observedStatus",
-        "lastObservedAt", "requestedEnrollmentGeneration", "processedEnrollmentGeneration"
-      ) VALUES (
-        '${existingAddress.id}', 'signet', '${SCRIPT_HASH}', TRUE, NULL,
-        CURRENT_TIMESTAMP, 1, 1
-      )
-    `);
+    const { wallet } = await createFixture(0);
+    const existingAddress = await prisma.$transaction(async (tx) => {
+      const address = await createTestAddress(tx as unknown as PrismaClient, wallet.id);
+      await tx.$executeRawUnsafe(`
+        INSERT INTO "address_subscription_checkpoints" (
+          "addressId", "network", "scriptHash", "statusKnown", "observedStatus",
+          "lastObservedAt", "requestedEnrollmentGeneration", "processedEnrollmentGeneration"
+        ) VALUES (
+          '${address.id}', 'signet', '${SCRIPT_HASH}', TRUE, NULL,
+          CURRENT_TIMESTAMP, 1, 1
+        )
+      `);
+      return address;
+    });
     await expect(
       prisma.addressSubscriptionCheckpoint.findUniqueOrThrow({
         where: { addressId: existingAddress.id },
@@ -206,15 +218,19 @@ describeWithDatabase("subscription coverage lifecycle", () => {
       }),
     ).resolves.toMatchObject({ coverageGapStartedAt: null });
 
-    await prisma.$executeRawUnsafe(`
-      INSERT INTO "address_subscription_checkpoints" (
-        "addressId", "network", "scriptHash", "statusKnown", "observedStatus",
-        "lastObservedAt", "requestedEnrollmentGeneration", "processedEnrollmentGeneration"
-      ) VALUES (
-        '${missingAddress.id}', 'signet', '${SCRIPT_HASH}', TRUE, NULL,
-        CURRENT_TIMESTAMP, 1, 1
-      )
-    `);
+    const missingAddress = await prisma.$transaction(async (tx) => {
+      const address = await createTestAddress(tx as unknown as PrismaClient, wallet.id);
+      await tx.$executeRawUnsafe(`
+        INSERT INTO "address_subscription_checkpoints" (
+          "addressId", "network", "scriptHash", "statusKnown", "observedStatus",
+          "lastObservedAt", "requestedEnrollmentGeneration", "processedEnrollmentGeneration"
+        ) VALUES (
+          '${address.id}', 'signet', '${SCRIPT_HASH}', TRUE, NULL,
+          CURRENT_TIMESTAMP, 1, 1
+        )
+      `);
+      return address;
+    });
     await expect(
       prisma.addressSubscriptionCheckpoint.findUniqueOrThrow({
         where: { addressId: missingAddress.id },
@@ -225,6 +241,9 @@ describeWithDatabase("subscription coverage lifecycle", () => {
   it("records a first-generation comparison failure even when the checkpoint row is missing", async () => {
     const { addresses } = await createFixture();
     const [address] = addresses;
+    await prisma.addressSubscriptionCheckpoint.delete({
+      where: { addressId: address.id },
+    });
 
     await expect(
       recordSubscriptionComparisonFailure({

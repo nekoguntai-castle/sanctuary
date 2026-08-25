@@ -13,10 +13,18 @@ import type {
   SubscriptionEnrollmentRequestResult,
 } from './types';
 import { applySubscriptionEnrollmentCompletion } from './subscriptionCheckpointCompletion';
+import { resolvePersistedBitcoinNetwork } from '../constants/bitcoinNetworks';
 
 const MAX_ENROLLMENT_BATCH_SIZE = 200;
 const MAX_ENROLLMENT_GENERATION = 2_147_483_647;
 const ELECTRUM_HASH_PATTERN = /^[0-9a-f]{64}$/;
+
+function persistedNetworkPredicate(column: string, network: NetworkType): Prisma.Sql {
+  const sqlColumn = Prisma.raw(column);
+  return network === 'testnet3'
+    ? Prisma.sql`${sqlColumn} IN ('testnet3', 'testnet')`
+    : Prisma.sql`${sqlColumn} = ${network}`;
+}
 
 interface EnrollmentRequestRow extends SubscriptionCheckpointState {
   inserted: boolean;
@@ -110,12 +118,14 @@ export async function findSubscriptionCheckpointOwners(
   requireScriptHash(scriptHash);
   const limit = enrollmentLimit(options.limit);
   const cursor = options.cursor ?? '';
+  const checkpointNetwork = persistedNetworkPredicate('"checkpoints"."network"', network);
+  const walletNetwork = persistedNetworkPredicate('"wallets"."network"', network);
   return prisma.$queryRaw<SubscriptionCheckpointOwner[]>(Prisma.sql`
     SELECT
       "checkpoints"."addressId",
       "addresses"."walletId",
       "addresses"."address",
-      "checkpoints"."network",
+      ${network} AS "network",
       "checkpoints"."scriptHash",
       "checkpoints"."statusKnown",
       "checkpoints"."observedStatus",
@@ -126,8 +136,8 @@ export async function findSubscriptionCheckpointOwners(
     FROM "address_subscription_checkpoints" AS "checkpoints"
     INNER JOIN "addresses" ON "addresses"."id" = "checkpoints"."addressId"
     INNER JOIN "wallets" ON "wallets"."id" = "addresses"."walletId"
-    WHERE "checkpoints"."network" = ${network}
-      AND "wallets"."network" = ${network}
+    WHERE ${checkpointNetwork}
+      AND ${walletNetwork}
       AND "checkpoints"."scriptHash" = ${scriptHash}
       AND "checkpoints"."statusKnown" = TRUE
       AND "checkpoints"."addressId" > ${cursor}
@@ -137,8 +147,9 @@ export async function findSubscriptionCheckpointOwners(
 }
 
 /**
- * Include missing checkpoint rows during rolling upgrades because an old
- * producer can still insert an address without its additive enrollment row.
+ * Read one bounded page from the partial pending-checkpoint index. The
+ * rolling-version address trigger guarantees that an address-only old writer
+ * creates this row in the same transaction.
  */
 export async function findPendingSubscriptionEnrollments(options: {
   network: NetworkType;
@@ -155,33 +166,45 @@ export async function findPendingSubscriptionEnrollments(options: {
   const walletScope = options.walletId === undefined
     ? Prisma.empty
     : Prisma.sql`AND "addresses"."walletId" = ${options.walletId}`;
+  const checkpointNetwork = persistedNetworkPredicate(
+    '"checkpoints"."network"',
+    options.network,
+  );
+  const walletNetwork = persistedNetworkPredicate('"wallets"."network"', options.network);
 
   return prisma.$queryRaw<SubscriptionEnrollmentCandidate[]>(Prisma.sql`
     SELECT
-      "addresses"."id" AS "addressId",
-      "addresses"."walletId",
-      "addresses"."address",
-      "wallets"."network" AS "network",
+      "checkpoints"."addressId",
+      "owner"."walletId",
+      "owner"."address",
+      ${options.network} AS "network",
       "checkpoints"."scriptHash",
-      COALESCE("checkpoints"."statusKnown", FALSE) AS "statusKnown",
+      "checkpoints"."statusKnown",
       "checkpoints"."observedStatus",
       "checkpoints"."lastObservedAt",
-      COALESCE("checkpoints"."requestedEnrollmentGeneration", 1) AS "requestedEnrollmentGeneration",
-      COALESCE("checkpoints"."processedEnrollmentGeneration", 0) AS "processedEnrollmentGeneration",
-      COALESCE("checkpoints"."coverageGapStartedAt", "addresses"."createdAt") AS "coverageGapStartedAt",
-      ("checkpoints"."addressId" IS NULL) AS "checkpointMissing"
-    FROM "addresses"
-    INNER JOIN "wallets" ON "wallets"."id" = "addresses"."walletId"
-    LEFT JOIN "address_subscription_checkpoints" AS "checkpoints"
-      ON "checkpoints"."addressId" = "addresses"."id"
-    WHERE "addresses"."id" > ${cursor}
-      AND "wallets"."network" = ${options.network}
-      ${walletScope}
-      AND (
-        "checkpoints"."addressId" IS NULL
-        OR "checkpoints"."requestedEnrollmentGeneration" > "checkpoints"."processedEnrollmentGeneration"
-      )
-    ORDER BY "addresses"."id" ASC
+      "checkpoints"."requestedEnrollmentGeneration",
+      "checkpoints"."processedEnrollmentGeneration",
+      COALESCE("checkpoints"."coverageGapStartedAt", "owner"."createdAt") AS "coverageGapStartedAt",
+      FALSE AS "checkpointMissing"
+    FROM "address_subscription_checkpoints" AS "checkpoints"
+    INNER JOIN LATERAL (
+      SELECT
+        "addresses"."walletId",
+        "addresses"."address",
+        "addresses"."createdAt",
+        "wallets"."network"
+      FROM "addresses"
+      INNER JOIN "wallets" ON "wallets"."id" = "addresses"."walletId"
+      WHERE "addresses"."id" = "checkpoints"."addressId"
+        AND ${walletNetwork}
+        ${walletScope}
+      LIMIT 1
+    ) AS "owner" ON TRUE
+    WHERE "checkpoints"."addressId" > ${cursor}
+      AND ${checkpointNetwork}
+      AND "checkpoints"."requestedEnrollmentGeneration"
+        > "checkpoints"."processedEnrollmentGeneration"
+    ORDER BY "checkpoints"."addressId" ASC
     LIMIT ${limit}
   `);
 }
@@ -193,13 +216,15 @@ export async function requestSubscriptionEnrollment(
 ): Promise<SubscriptionEnrollmentRequestResult> {
   requireAddressIdentity(addressId);
   requireNetwork(network);
+  const walletNetwork = persistedNetworkPredicate('"wallets"."network"', network);
+  const checkpointNetwork = persistedNetworkPredicate('"checkpoints"."network"', network);
   const rows = await prisma.$queryRaw<EnrollmentRequestRow[]>(Prisma.sql`
     WITH "target" AS MATERIALIZED (
-      SELECT "addresses"."id" AS "addressId", "wallets"."network"
+      SELECT "addresses"."id" AS "addressId", ${network} AS "network"
       FROM "addresses"
       INNER JOIN "wallets" ON "wallets"."id" = "addresses"."walletId"
       WHERE "addresses"."id" = ${addressId}
-        AND "wallets"."network" = ${network}
+        AND ${walletNetwork}
     ),
     "existing" AS MATERIALIZED (
       SELECT
@@ -207,7 +232,7 @@ export async function requestSubscriptionEnrollment(
         "checkpoints"."requestedEnrollmentGeneration" AS "previousRequestedGeneration"
       FROM "address_subscription_checkpoints" AS "checkpoints"
       INNER JOIN "target" ON "target"."addressId" = "checkpoints"."addressId"
-      WHERE "checkpoints"."network" = ${network}
+      WHERE ${checkpointNetwork}
       FOR UPDATE
     ),
     "source" AS MATERIALIZED (
@@ -226,7 +251,8 @@ export async function requestSubscriptionEnrollment(
       SELECT "source"."addressId", "source"."network"
       FROM "source"
       ON CONFLICT ("addressId") DO UPDATE
-      SET "requestedEnrollmentGeneration" = GREATEST(
+      SET "network" = EXCLUDED."network",
+          "requestedEnrollmentGeneration" = GREATEST(
             "checkpoints"."requestedEnrollmentGeneration",
             "checkpoints"."processedEnrollmentGeneration" + 1
           ),
@@ -239,7 +265,13 @@ export async function requestSubscriptionEnrollment(
             ELSE CURRENT_TIMESTAMP
           END,
           "updatedAt" = CURRENT_TIMESTAMP
-      WHERE "checkpoints"."network" = EXCLUDED."network"
+      WHERE (
+          "checkpoints"."network" = EXCLUDED."network"
+          OR (
+            "checkpoints"."network" = 'testnet'
+            AND EXCLUDED."network" = 'testnet3'
+          )
+        )
         AND (
           "checkpoints"."requestedEnrollmentGeneration"
             > "checkpoints"."processedEnrollmentGeneration"
@@ -276,7 +308,8 @@ export async function requestSubscriptionEnrollment(
 
   const current = await findSubscriptionCheckpoint(addressId);
   if (
-    current?.network === network
+    current !== null
+    && resolvePersistedBitcoinNetwork(current.network) === network
     && current.requestedEnrollmentGeneration === MAX_ENROLLMENT_GENERATION
     && current.processedEnrollmentGeneration === MAX_ENROLLMENT_GENERATION
   ) {

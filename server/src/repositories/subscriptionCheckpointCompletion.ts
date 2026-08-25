@@ -7,8 +7,19 @@ import type {
   SubscriptionEnrollmentCompletionInput,
   SubscriptionEnrollmentCompletionResult,
 } from './types';
+import {
+  resolvePersistedBitcoinNetwork,
+  type BitcoinNetwork,
+} from '../constants/bitcoinNetworks';
 
 const MAX_SYNC_GENERATION = 2_147_483_647;
+
+function persistedNetworkPredicate(column: string, network: BitcoinNetwork): Prisma.Sql {
+  const sqlColumn = Prisma.raw(column);
+  return network === 'testnet3'
+    ? Prisma.sql`${sqlColumn} IN ('testnet3', 'testnet')`
+    : Prisma.sql`${sqlColumn} = ${network}`;
+}
 
 const lifecycleSelect = {
   id: true,
@@ -48,6 +59,7 @@ async function lockTarget(
   tx: PrismaTxClient,
   input: SubscriptionEnrollmentCompletionInput,
 ): Promise<LockedCompletionTarget | null> {
+  const walletNetwork = persistedNetworkPredicate('wallet."network"', input.network);
   const rows = await tx.$queryRaw<LockedCompletionTarget[]>(Prisma.sql`
     SELECT
       address."id" AS "addressId",
@@ -79,7 +91,7 @@ async function lockTarget(
     INNER JOIN "wallets" AS wallet ON wallet."id" = address."walletId"
     WHERE address."id" = ${input.addressId}
       AND address."address" = ${input.address}
-      AND wallet."network" = ${input.network}
+      AND ${walletNetwork}
     FOR UPDATE OF address, wallet
   `);
   return rows[0] ?? null;
@@ -90,7 +102,7 @@ function isEligible(
   input: SubscriptionEnrollmentCompletionInput,
 ): boolean {
   if (!current) return input.generation === 1;
-  return current.network === input.network
+  return resolvePersistedBitcoinNetwork(current.network) === input.network
     && current.requestedEnrollmentGeneration === input.generation
     && current.processedEnrollmentGeneration < input.generation;
 }
@@ -121,9 +133,14 @@ async function writeCheckpoint(
   missing: boolean,
 ): Promise<SubscriptionCheckpointState | null> {
   if (!missing) {
+    const checkpointNetwork = persistedNetworkPredicate(
+      'checkpoint."network"',
+      input.network,
+    );
     const rows = await tx.$queryRaw<SubscriptionCheckpointState[]>(Prisma.sql`
       UPDATE "address_subscription_checkpoints" AS checkpoint
-      SET "scriptHash" = ${input.scriptHash},
+      SET "network" = ${input.network},
+          "scriptHash" = ${input.scriptHash},
           "statusKnown" = TRUE,
           "observedStatus" = ${input.observedStatus},
           "lastObservedAt" = ${input.observedAt},
@@ -131,7 +148,7 @@ async function writeCheckpoint(
           "coverageGapStartedAt" = NULL,
           "updatedAt" = CURRENT_TIMESTAMP
       WHERE checkpoint."addressId" = ${input.addressId}
-        AND checkpoint."network" = ${input.network}
+        AND ${checkpointNetwork}
         AND checkpoint."requestedEnrollmentGeneration" = ${input.generation}
         AND checkpoint."processedEnrollmentGeneration" < ${input.generation}
       RETURNING ${checkpointColumns}
@@ -149,14 +166,21 @@ async function writeCheckpoint(
       ${input.observedStatus}, ${input.observedAt}, 1, 1, NULL
     )
     ON CONFLICT ("addressId") DO UPDATE
-    SET "scriptHash" = EXCLUDED."scriptHash",
+    SET "network" = EXCLUDED."network",
+        "scriptHash" = EXCLUDED."scriptHash",
         "statusKnown" = EXCLUDED."statusKnown",
         "observedStatus" = EXCLUDED."observedStatus",
         "lastObservedAt" = EXCLUDED."lastObservedAt",
         "processedEnrollmentGeneration" = EXCLUDED."processedEnrollmentGeneration",
         "coverageGapStartedAt" = NULL,
         "updatedAt" = CURRENT_TIMESTAMP
-    WHERE checkpoint."network" = EXCLUDED."network"
+    WHERE (
+        checkpoint."network" = EXCLUDED."network"
+        OR (
+          checkpoint."network" = 'testnet'
+          AND EXCLUDED."network" = 'testnet3'
+        )
+      )
       AND checkpoint."requestedEnrollmentGeneration" = ${input.generation}
       AND checkpoint."processedEnrollmentGeneration" < ${input.generation}
     RETURNING ${checkpointColumns}

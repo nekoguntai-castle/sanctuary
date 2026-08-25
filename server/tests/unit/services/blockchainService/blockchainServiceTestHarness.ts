@@ -92,6 +92,14 @@ vi.mock('../../../../src/models/prisma', () => ({
   default: mockPrisma,
 }));
 
+vi.mock('../../../../src/repositories/syncIntentRepository', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../../src/repositories/syncIntentRepository')>(),
+  requestIncrementalSyncWithClient: vi.fn(async () => ({
+    status: 'merged' as const,
+    state: {},
+  })),
+}));
+
 export const mockNodeClient = {
   getAddressHistory: vi.fn<any>(),
   getAddressHistoryBatch: vi.fn<any>(),

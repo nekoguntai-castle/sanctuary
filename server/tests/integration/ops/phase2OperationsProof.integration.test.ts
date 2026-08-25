@@ -294,10 +294,9 @@ describeIfDb('Phase 2 operations proof', () => {
         index: 0,
       },
     });
-    await prisma.addressSubscriptionCheckpoint.create({
+    await prisma.addressSubscriptionCheckpoint.update({
+      where: { addressId: address.id },
       data: {
-        addressId: address.id,
-        network: wallet.network,
         scriptHash: 'ab'.repeat(32),
         statusKnown: true,
         observedStatus: createUniqueId('backup-observed-status'),

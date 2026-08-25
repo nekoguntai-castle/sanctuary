@@ -534,4 +534,36 @@ describe('Transaction Repository', () => {
     });
   });
 
+  describe('findWalletIdsWithPendingConfirmations', () => {
+    it('includes the persisted testnet alias for canonical testnet3 block events', async () => {
+      (prisma.transaction.findMany as Mock).mockResolvedValue([{ walletId: 'legacy-wallet' }]);
+
+      await expect(transactionRepository.findWalletIdsWithPendingConfirmations(
+        6,
+        'testnet3',
+      )).resolves.toEqual(['legacy-wallet']);
+
+      expect(prisma.transaction.findMany).toHaveBeenCalledWith({
+        where: {
+          confirmations: { lt: 6 },
+          wallet: { network: { in: ['testnet3', 'testnet'] } },
+        },
+        select: { walletId: true },
+        distinct: ['walletId'],
+      });
+    });
+
+    it('retains the explicitly named all-network maintenance query', async () => {
+      (prisma.transaction.findMany as Mock).mockResolvedValue([]);
+
+      await transactionRepository.findWalletIdsWithPendingConfirmations(6);
+
+      expect(prisma.transaction.findMany).toHaveBeenCalledWith({
+        where: { confirmations: { lt: 6 } },
+        select: { walletId: true },
+        distinct: ['walletId'],
+      });
+    });
+  });
+
 });

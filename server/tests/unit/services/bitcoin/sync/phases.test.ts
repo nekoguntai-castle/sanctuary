@@ -26,6 +26,14 @@ vi.mock('../../../../../src/models/prisma', () => ({
   default: mockPrismaClient,
 }));
 
+vi.mock('../../../../../src/repositories/syncIntentRepository', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../../../src/repositories/syncIntentRepository')>(),
+  requestIncrementalSyncWithClient: vi.fn(async () => ({
+    status: 'merged' as const,
+    state: {},
+  })),
+}));
+
 // Mock node client
 vi.mock('../../../../../src/services/bitcoin/nodeClient', () => ({
   getNodeClient: vi.fn().mockResolvedValue(mockElectrumClient),

@@ -63,12 +63,31 @@ describe('withNetworkHeaderSerializableTransaction', () => {
     expect(mocks.transaction).toHaveBeenCalledOnce();
   });
 
+  it('serializes short state transactions while allowing callers to overlap', async () => {
+    let releaseFirst!: () => void;
+    const firstBlocked = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    mocks.transaction
+      .mockImplementationOnce(async () => {
+        await firstBlocked;
+        return 'first';
+      })
+      .mockResolvedValueOnce('second');
+
+    const first = withNetworkHeaderSerializableTransaction(vi.fn());
+    const second = withNetworkHeaderSerializableTransaction(vi.fn());
+    await vi.waitFor(() => expect(mocks.transaction).toHaveBeenCalledOnce());
+    expect(mocks.transaction).toHaveBeenCalledOnce();
+
+    releaseFirst();
+    await expect(Promise.all([first, second])).resolves.toEqual(['first', 'second']);
+    expect(mocks.transaction).toHaveBeenCalledTimes(2);
+  });
+
   it('rethrows the third serialization conflict after exhausting bounded attempts', async () => {
     const failures = [p2034(), p2034(), p2034()];
-    mocks.transaction
-      .mockRejectedValueOnce(failures[0])
-      .mockRejectedValueOnce(failures[1])
-      .mockRejectedValueOnce(failures[2]);
+    failures.forEach(failure => mocks.transaction.mockRejectedValueOnce(failure));
 
     await expect(withNetworkHeaderSerializableTransaction(vi.fn())).rejects.toBe(failures[2]);
     expect(mocks.transaction).toHaveBeenCalledTimes(3);

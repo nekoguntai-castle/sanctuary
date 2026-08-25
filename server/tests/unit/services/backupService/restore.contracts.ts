@@ -226,6 +226,9 @@ describe('restoreFromBackup', () => {
       });
 
       const checkpointModel = getBackupOnlyModelMock('addressSubscriptionCheckpoint');
+      expect(checkpointModel.deleteMany).toHaveBeenCalledWith({
+        where: { addressId: { in: ['address-1'] } },
+      });
       expect(checkpointModel.createMany).toHaveBeenCalledWith({
         data: [expect.objectContaining({
           addressId: 'address-1',

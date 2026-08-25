@@ -3,6 +3,7 @@ import { describe, expect, it, type Mock, vi } from 'vitest';
 import {
   mockWallet,
   prisma,
+  requestIncrementalSyncWithClient,
   walletRepository,
 } from './walletRepositoryTestHarness';
 
@@ -234,7 +235,12 @@ export const registerWalletRepositoryMutationContracts = () => {
       });
       expect(prisma.addressSubscriptionCheckpoint.createMany).toHaveBeenCalledWith({
         data: [{ addressId: 'descriptor-address', network: 'mainnet' }],
+        skipDuplicates: true,
       });
+      expect(requestIncrementalSyncWithClient).toHaveBeenCalledWith(
+        expect.anything(),
+        'w1',
+      );
     });
 
     it('fails closed when a concurrent descriptor assignment wins', async () => {
@@ -325,6 +331,7 @@ export const registerWalletRepositoryMutationContracts = () => {
       expect(prisma.$transaction).toHaveBeenCalledTimes(1);
       expect(prisma.addressSubscriptionCheckpoint.createMany).toHaveBeenCalledWith({
         data: [{ addressId: 'uncommitted-address', network: 'mainnet' }],
+        skipDuplicates: true,
       });
     });
   });
@@ -377,7 +384,12 @@ export const registerWalletRepositoryMutationContracts = () => {
       });
       expect(prisma.addressSubscriptionCheckpoint.createMany).toHaveBeenCalledWith({
         data: [{ addressId: 'repair-address', network: 'signet' }],
+        skipDuplicates: true,
       });
+      expect(requestIncrementalSyncWithClient).toHaveBeenCalledWith(
+        expect.anything(),
+        'w1',
+      );
     });
 
     it('does not create addresses when a concurrent descriptor assignment wins', async () => {
@@ -404,6 +416,26 @@ export const registerWalletRepositoryMutationContracts = () => {
       expect(prisma.$transaction).toHaveBeenCalledTimes(1);
       expect(prisma.wallet.updateMany).toHaveBeenCalled();
       expect(prisma.address.createManyAndReturn).toHaveBeenCalled();
+    });
+
+    it('fails the descriptor transaction when address catch-up cannot advance', async () => {
+      prisma.wallet.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.wallet.findUnique.mockResolvedValueOnce({ network: 'mainnet' });
+      prisma.address.createManyAndReturn.mockResolvedValueOnce([{ id: 'repair-address' }]);
+      requestIncrementalSyncWithClient.mockResolvedValueOnce({
+        status: 'generation_exhausted',
+      });
+
+      await expect(
+        walletRepository.assignDescriptorWithAddresses('w1', assignment),
+      ).rejects.toThrow(
+        'Wallet address catch-up request failed with status generation_exhausted',
+      );
+
+      expect(requestIncrementalSyncWithClient).toHaveBeenCalledWith(
+        expect.anything(),
+        'w1',
+      );
     });
   });
 
@@ -461,6 +493,7 @@ export const registerWalletRepositoryMutationContracts = () => {
       });
       expect(checkpointCreateMany).toHaveBeenCalledWith({
         data: [{ addressId: 'address-1', network: 'mainnet' }],
+        skipDuplicates: true,
       });
       expect(checkpointCreateMany.mock.invocationCallOrder[0]).toBeLessThan(
         walletFindUnique.mock.invocationCallOrder[0],
@@ -545,6 +578,7 @@ export const registerWalletRepositoryMutationContracts = () => {
 
       expect(checkpointCreateMany).toHaveBeenCalledWith({
         data: [{ addressId: 'uncommitted-address', network: 'testnet4' }],
+        skipDuplicates: true,
       });
       expect(walletFindUnique).not.toHaveBeenCalled();
     });

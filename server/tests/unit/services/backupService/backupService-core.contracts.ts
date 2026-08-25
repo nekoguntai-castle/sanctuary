@@ -658,6 +658,19 @@ describe('BackupService', () => {
       expect(result.valid, result.issues.join('; ')).toBe(true);
     });
 
+    it('accepts the canonical checkpoint identity for a legacy testnet wallet', async () => {
+      vi.mocked(migrationService.getSchemaVersion).mockResolvedValue(61);
+      const backup = createCompleteBackup();
+      addSubscriptionCheckpointGraph(backup, { checkpointNetwork: 'testnet3' });
+      const wallet = backup.data.wallet.find(record => record.id === 'wallet-mainnet');
+      if (!wallet) throw new Error('Expected checkpoint owner fixture');
+      wallet.network = 'testnet';
+
+      const result = await backupService.validateBackupForRestore(backup);
+
+      expect(result.valid, result.issues.join('; ')).toBe(true);
+    });
+
     it('rejects comparison failures without an exact pending checkpoint generation', async () => {
       vi.mocked(migrationService.getSchemaVersion).mockResolvedValue(61);
       const backup = createCompleteBackup();
@@ -1200,6 +1213,18 @@ describe('BackupService', () => {
     it('preserves an existing durable checkpoint coverage-gap field', () => {
       const record = { addressId: 'pending', coverageGapStartedAt: null };
       expect(processSubscriptionCheckpointCoverageRecords([record])).toEqual([record]);
+    });
+
+    it('canonicalizes legacy testnet checkpoint identity during restore', () => {
+      expect(processSubscriptionCheckpointCoverageRecords([{
+        addressId: 'legacy-testnet',
+        network: 'testnet',
+        coverageGapStartedAt: null,
+      }])).toEqual([{
+        addressId: 'legacy-testnet',
+        network: 'testnet3',
+        coverageGapStartedAt: null,
+      }]);
     });
 
     it('rejects a pre-coverage pending checkpoint without a durable timestamp', () => {

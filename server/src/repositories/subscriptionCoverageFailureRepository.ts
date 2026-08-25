@@ -1,6 +1,9 @@
 import { Prisma } from "../generated/prisma/client";
 import prisma, { type PrismaTxClient } from "../models/prisma";
-import { resolvePersistedBitcoinNetwork } from "../constants/bitcoinNetworks";
+import {
+  resolvePersistedBitcoinNetwork,
+  type BitcoinNetwork,
+} from "../constants/bitcoinNetworks";
 import type {
   RecordSubscriptionComparisonFailureInput,
   RecordSubscriptionComparisonFailureResult,
@@ -15,6 +18,13 @@ interface FailureTargetRow {
 
 interface HistoricalCountRow {
   historicalCount: number;
+}
+
+function persistedNetworkPredicate(column: string, network: BitcoinNetwork): Prisma.Sql {
+  const sqlColumn = Prisma.raw(column);
+  return network === "testnet3"
+    ? Prisma.sql`${sqlColumn} IN ('testnet3', 'testnet')`
+    : Prisma.sql`${sqlColumn} = ${network}`;
 }
 
 function requireFailureInput(
@@ -49,12 +59,14 @@ async function lockFailureAddress(
   tx: PrismaTxClient,
   input: RecordSubscriptionComparisonFailureInput,
 ): Promise<FailureTargetRow | null> {
+  const network = resolvePersistedBitcoinNetwork(input.network);
+  const walletNetwork = persistedNetworkPredicate('wallet."network"', network);
   const rows = await tx.$queryRaw<FailureTargetRow[]>(Prisma.sql`
     SELECT address."id" AS "addressId", address."createdAt" AS "gapStartedAt"
     FROM "addresses" AS address
     INNER JOIN "wallets" AS wallet ON wallet."id" = address."walletId"
     WHERE address."id" = ${input.addressId}
-      AND wallet."network" = ${input.network}
+      AND ${walletNetwork}
     FOR UPDATE OF address
   `);
   return rows[0] ?? null;
@@ -64,21 +76,23 @@ async function ensurePendingFailureTarget(
   tx: PrismaTxClient,
   input: RecordSubscriptionComparisonFailureInput,
 ): Promise<boolean> {
+  const network = resolvePersistedBitcoinNetwork(input.network);
   const address = await lockFailureAddress(tx, input);
   if (!address) return false;
   if (input.enrollmentGeneration === 1) {
     await tx.$executeRaw(Prisma.sql`
       INSERT INTO "address_subscription_checkpoints" (
         "addressId", "network", "coverageGapStartedAt"
-      ) VALUES (${input.addressId}, ${input.network}, ${address.gapStartedAt})
+      ) VALUES (${input.addressId}, ${network}, ${address.gapStartedAt})
       ON CONFLICT ("addressId") DO NOTHING
     `);
   }
+  const checkpointNetwork = persistedNetworkPredicate('checkpoint."network"', network);
   const rows = await tx.$queryRaw<FailureTargetRow[]>(Prisma.sql`
     SELECT checkpoint."addressId", checkpoint."coverageGapStartedAt" AS "gapStartedAt"
     FROM "address_subscription_checkpoints" AS checkpoint
     WHERE checkpoint."addressId" = ${input.addressId}
-      AND checkpoint."network" = ${input.network}
+      AND ${checkpointNetwork}
       AND checkpoint."requestedEnrollmentGeneration" = ${input.enrollmentGeneration}
       AND checkpoint."processedEnrollmentGeneration" < ${input.enrollmentGeneration}
     FOR UPDATE OF checkpoint

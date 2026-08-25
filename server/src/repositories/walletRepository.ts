@@ -5,7 +5,7 @@
  * Provides centralized access patterns and query logic.
  */
 
-import prisma from '../models/prisma';
+import prisma, { type PrismaTxClient } from '../models/prisma';
 import type { Wallet, Prisma } from '../generated/prisma/client';
 import { BITCOIN_NETWORKS, isNetworkType } from '@sanctuary/shared/constants/bitcoin';
 import { WALLET_EDIT_ROLE_VALUES } from '@sanctuary/shared/constants/walletRoles';
@@ -18,8 +18,12 @@ import type {
   WalletSyncStatePatch,
   CursorPaginationOptions,
   CursorPaginatedResult,
+  WalletDescriptorAssignment,
 } from './types';
 import { buildWalletAccessWhere } from './accessControl';
+import { requestIncrementalSyncWithClient } from './syncIntentRepository';
+
+export type { WalletDescriptorAssignment } from './types';
 
 // Accept canonical values plus the `testnet` alias; the final slot detects overflow.
 const REPRESENTED_NETWORK_READ_LIMIT = BITCOIN_NETWORKS.length + 2;
@@ -805,28 +809,9 @@ export async function linkDevice(
   });
 }
 
-export interface WalletDescriptorAssignment {
-  descriptor: string;
-  changeDescriptor: string;
-  fingerprint: string;
-  descriptorPolicyVersion: 1;
-  descriptorSourceKind: 'generated_pair' | 'imported_pair' | 'imported_multipath';
-  sourceDescriptor: string;
-  sourceChangeDescriptor: string | null;
-  sourceDescriptorChecksum: string | null;
-  sourceChangeDescriptorChecksum: string | null;
-  canonicalPolicyId: string;
-  canonicalPolicyVersion: number;
-  addresses: Prisma.AddressCreateManyInput[];
-}
-
-type AddressCheckpointWriteClient = Pick<
-  typeof prisma,
-  'address' | 'addressSubscriptionCheckpoint'
->;
-
 async function createAddressesWithPendingCheckpoints(
-  tx: AddressCheckpointWriteClient,
+  tx: PrismaTxClient,
+  walletId: string,
   addresses: Prisma.AddressCreateManyInput[],
   network: unknown,
 ): Promise<void> {
@@ -840,11 +825,17 @@ async function createAddressesWithPendingCheckpoints(
   });
   await tx.addressSubscriptionCheckpoint.createMany({
     data: created.map(({ id }) => ({ addressId: id, network })),
+    // Coexist with the rolling-version address trigger after the migration.
+    skipDuplicates: true,
   });
+  const request = await requestIncrementalSyncWithClient(tx, walletId);
+  if (request.status !== 'requested' && request.status !== 'merged') {
+    throw new Error(`Wallet address catch-up request failed with status ${request.status}`);
+  }
 }
 
 async function assignMissingDescriptor(
-  tx: Pick<typeof prisma, 'wallet' | 'address' | 'addressSubscriptionCheckpoint'>,
+  tx: PrismaTxClient,
   walletId: string,
   assignment: WalletDescriptorAssignment,
 ): Promise<void> {
@@ -882,7 +873,12 @@ async function assignMissingDescriptor(
     select: { network: true },
   });
   if (!wallet) throw new Error('Wallet disappeared during descriptor assignment');
-  await createAddressesWithPendingCheckpoints(tx, assignment.addresses, wallet.network);
+  await createAddressesWithPendingCheckpoints(
+    tx,
+    walletId,
+    assignment.addresses,
+    wallet.network,
+  );
 }
 
 export async function linkDeviceWithDescriptor(
@@ -929,6 +925,7 @@ export async function createWithDeviceLinks(
     if (initialAddresses.length > 0) {
       await createAddressesWithPendingCheckpoints(
         tx,
+        wallet.id,
         initialAddresses.map((address) => ({
           ...address,
           walletId: wallet.id,

@@ -204,6 +204,7 @@ describe('Wallet Import Service - Operations', () => {
           addressId: `import-address-${index}`,
           network: 'mainnet',
         })),
+        skipDuplicates: true,
       });
       expect(mockDeriveCanonicalAddress).toHaveBeenCalledWith(
         {

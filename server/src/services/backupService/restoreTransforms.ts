@@ -148,15 +148,21 @@ export function processSubscriptionCheckpointCoverageRecords(
   records: BackupRecord[],
 ): BackupRecord[] {
   return records.map((record) => {
-    if ('coverageGapStartedAt' in record) return record;
-    const settled = record.statusKnown === true
-      && Number(record.processedEnrollmentGeneration)
-        === Number(record.requestedEnrollmentGeneration);
-    if (settled) return { ...record, coverageGapStartedAt: null };
-    if (!(record.createdAt instanceof Date) || !Number.isFinite(record.createdAt.getTime())) {
+    const normalized = record.network === 'testnet'
+      ? { ...record, network: 'testnet3' }
+      : record;
+    if ('coverageGapStartedAt' in normalized) return normalized;
+    const settled = normalized.statusKnown === true
+      && Number(normalized.processedEnrollmentGeneration)
+        === Number(normalized.requestedEnrollmentGeneration);
+    if (settled) return { ...normalized, coverageGapStartedAt: null };
+    if (
+      !(normalized.createdAt instanceof Date)
+      || !Number.isFinite(normalized.createdAt.getTime())
+    ) {
       throw new Error('Restored pending subscription checkpoint is missing its durable gap start');
     }
-    return { ...record, coverageGapStartedAt: record.createdAt };
+    return { ...normalized, coverageGapStartedAt: normalized.createdAt };
   });
 }
 

@@ -24,6 +24,7 @@ const walletNetwork = canonicalNetworkSql('wallet."network"');
 const checkpointNetwork = canonicalNetworkSql('checkpoint."network"');
 const headerNetwork = canonicalNetworkSql('header_checkpoint."network"');
 const coverageStateNetwork = canonicalNetworkSql('coverage_state."network"');
+const retryWalletNetwork = canonicalNetworkSql('retry_wallet."network"');
 
 async function readSubscriptionCoverageRows(
   tx: PrismaTxClient,
@@ -133,9 +134,19 @@ async function readSubscriptionCoverageRows(
           WHEN reconciliation."network" = 'testnet' THEN 'testnet3'
           ELSE reconciliation."network"
         END AS network,
-        COUNT(*) AS "headerReconciliationRowCount",
-        MIN(reconciliation."gapStartedAt") AS "headerReconciliationGapStartedAt"
+        COUNT(DISTINCT reconciliation."network") AS "headerReconciliationRowCount",
+        MIN(reconciliation."gapStartedAt") AS "headerReconciliationGapStartedAt",
+        COUNT(retry."walletId") FILTER (WHERE
+          retry_wallet."id" IS NULL
+          OR ${retryWalletNetwork} <> CASE
+              WHEN reconciliation."network" = 'testnet' THEN 'testnet3'
+              ELSE reconciliation."network"
+            END
+        ) AS "confirmationRetryMismatchCount"
       FROM "network_header_reconciliations" AS reconciliation
+      LEFT JOIN "network_header_confirmation_retries" AS retry
+        ON retry."network" = reconciliation."network"
+      LEFT JOIN "wallets" AS retry_wallet ON retry_wallet."id" = retry."walletId"
       GROUP BY CASE
         WHEN reconciliation."network" = 'testnet' THEN 'testnet3'
         ELSE reconciliation."network"
@@ -161,6 +172,8 @@ async function readSubscriptionCoverageRows(
       COALESCE(header_reconciliation."headerReconciliationRowCount", 0)
         AS "headerReconciliationRowCount",
       header_reconciliation."headerReconciliationGapStartedAt",
+      COALESCE(header_reconciliation."confirmationRetryMismatchCount", 0)
+        AS "confirmationRetryMismatchCount",
       COALESCE(coverage_history."coverageStateRowCount", 0) AS "coverageStateRowCount",
       COALESCE(coverage_history."historicalComparisonFailureCount", 0)
         AS "historicalComparisonFailureCount",

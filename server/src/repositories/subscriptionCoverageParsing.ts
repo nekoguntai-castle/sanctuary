@@ -28,6 +28,7 @@ export interface SubscriptionCoverageRow {
   headerGapStartedAt: unknown;
   headerReconciliationRowCount: unknown;
   headerReconciliationGapStartedAt: unknown;
+  confirmationRetryMismatchCount: unknown;
   coverageStateRowCount: unknown;
   historicalComparisonFailureCount: unknown;
   firstComparisonFailureAt: unknown;
@@ -92,6 +93,7 @@ interface ParsedSubscriptionCoverageRow {
   headerGapStartedAt: Date | null;
   headerReconciliationRowCount: number;
   headerReconciliationGapStartedAt: Date | null;
+  confirmationRetryMismatchCount: number;
   coverageStateRowCount: number;
   historicalComparisonFailureCount: number;
   firstComparisonFailureAt: Date | null;
@@ -151,6 +153,10 @@ function parseSubscriptionCoverageRow(
     row.headerReconciliationGapStartedAt,
     "Header reconciliation gap start",
   );
+  const confirmationRetryMismatchCount = countValue(
+    row.confirmationRetryMismatchCount,
+    "Confirmation retry mismatch count",
+  );
   const coverageStateRowCount = countValue(
     row.coverageStateRowCount,
     "Coverage history row count",
@@ -183,6 +189,7 @@ function parseSubscriptionCoverageRow(
     headerGapStartedAt,
     headerReconciliationRowCount,
     headerReconciliationGapStartedAt,
+    confirmationRetryMismatchCount,
     coverageStateRowCount,
     historicalComparisonFailureCount,
     firstComparisonFailureAt,
@@ -198,6 +205,9 @@ function assertCoveragePartition(row: ParsedSubscriptionCoverageRow) {
     throw new Error("Subscription coverage partition is incomplete");
   if (row.checkpointMismatchCount !== 0 || row.failureMismatchCount !== 0) {
     throw new Error("Subscription coverage contains mismatched durable state");
+  }
+  if (row.confirmationRetryMismatchCount !== 0) {
+    throw new Error("Subscription coverage contains a cross-network confirmation retry");
   }
   if (
     row.headerRowCount > 1

@@ -3,6 +3,21 @@ import prisma, { type PrismaTxClient } from '../models/prisma';
 import { isSerializableTransactionConflict } from '../utils/prismaSerializableConflict';
 
 const MAX_NETWORK_HEADER_TRANSACTION_ATTEMPTS = 3;
+let transactionTail: Promise<void> = Promise.resolve();
+
+async function withLocalTransactionSlot<T>(operation: () => Promise<T>): Promise<T> {
+  let release!: () => void;
+  const previous = transactionTail;
+  transactionTail = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+  }
+}
 
 /**
  * Retry a complete network-header transaction after PostgreSQL rolls it back.
@@ -15,9 +30,11 @@ export async function withNetworkHeaderSerializableTransaction<T>(
 ): Promise<T> {
   for (let attempt = 1; attempt <= MAX_NETWORK_HEADER_TRANSACTION_ATTEMPTS; attempt += 1) {
     try {
-      return await prisma.$transaction(operation, {
-        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-      });
+      return await withLocalTransactionSlot(() => (
+        prisma.$transaction(operation, {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        })
+      ));
     } catch (error) {
       if (!isSerializableTransactionConflict(error)
         || attempt === MAX_NETWORK_HEADER_TRANSACTION_ATTEMPTS) {

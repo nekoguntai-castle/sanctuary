@@ -54,11 +54,11 @@ describeWithDatabase('subscription checkpoint lifecycle', () => {
     return { wallet, address };
   }
 
-  it('creates one pending enrollment slot and coalesces repeated requests', async () => {
+  it('coalesces repeated requests into the trigger-created pending slot', async () => {
     const { address } = await createFixture();
 
     await expect(requestSubscriptionEnrollment(address.id, 'signet')).resolves.toMatchObject({
-      status: 'requested',
+      status: 'merged',
       state: {
         addressId: address.id,
         network: 'signet',
@@ -75,14 +75,14 @@ describeWithDatabase('subscription checkpoint lifecycle', () => {
     });
   });
 
-  it('admits exactly one request when the initial checkpoint insert races', async () => {
+  it('coalesces concurrent requests after trigger-backed admission', async () => {
     const { address } = await createFixture();
 
     const requests = await Promise.all(Array.from({ length: 6 }, () => (
       requestSubscriptionEnrollment(address.id, 'signet')
     )));
-    expect(requests.filter(result => result.status === 'requested')).toHaveLength(1);
-    expect(requests.filter(result => result.status === 'merged')).toHaveLength(5);
+    expect(requests.filter(result => result.status === 'requested')).toHaveLength(0);
+    expect(requests.filter(result => result.status === 'merged')).toHaveLength(6);
     expect(requests).toEqual(expect.arrayContaining([
       expect.objectContaining({
         state: expect.objectContaining({
@@ -100,7 +100,11 @@ describeWithDatabase('subscription checkpoint lifecycle', () => {
       .resolves.toEqual({ status: 'not_applied' });
     await expect(prisma.addressSubscriptionCheckpoint.findUnique({
       where: { addressId: address.id },
-    })).resolves.toBeNull();
+    })).resolves.toMatchObject({
+      network: 'mainnet',
+      requestedEnrollmentGeneration: 1,
+      processedEnrollmentGeneration: 0,
+    });
   });
 
   it('advances one generation after completion under concurrent requests', async () => {
@@ -329,7 +333,7 @@ describeWithDatabase('subscription checkpoint lifecycle', () => {
     expect(await findSubscriptionCheckpointOwners('signet', SCRIPT_HASH)).toHaveLength(2);
   });
 
-  it('completes the implicit first generation for a missing checkpoint row', async () => {
+  it('completes the trigger-created first generation', async () => {
     const { address } = await createFixture();
 
     await expect(completeSubscriptionEnrollment({
@@ -343,7 +347,12 @@ describeWithDatabase('subscription checkpoint lifecycle', () => {
     })).resolves.toEqual({ status: 'not_applied' });
     await expect(prisma.addressSubscriptionCheckpoint.findUnique({
       where: { addressId: address.id },
-    })).resolves.toBeNull();
+    })).resolves.toMatchObject({
+      network: 'signet',
+      requestedEnrollmentGeneration: 1,
+      processedEnrollmentGeneration: 0,
+      statusKnown: false,
+    });
 
     await expect(completeSubscriptionEnrollment({
       addressId: address.id,
@@ -498,10 +507,9 @@ describeWithDatabase('subscription checkpoint lifecycle', () => {
 
   it('fails closed at the maximum enrollment generation', async () => {
     const { address } = await createFixture();
-    await prisma.addressSubscriptionCheckpoint.create({
+    await prisma.addressSubscriptionCheckpoint.update({
+      where: { addressId: address.id },
       data: {
-        addressId: address.id,
-        network: 'signet',
         scriptHash: SCRIPT_HASH,
         statusKnown: true,
         observedStatus: null,

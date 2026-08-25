@@ -99,6 +99,8 @@ async function createInitialAddressesWithPendingCheckpoints(
   });
   await tx.addressSubscriptionCheckpoint.createMany({
     data: created.map(({ id }) => ({ addressId: id, network })),
+    // Coexist with the rolling-version address trigger after the migration.
+    skipDuplicates: true,
   });
 }
 
