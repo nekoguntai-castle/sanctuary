@@ -20,6 +20,9 @@
 #   - The wrapped command's exit status is preserved verbatim; pipeline
 #     plumbing failures are reported through the sidecar `sink_status`
 #     and `redactor_exit`, not by clobbering the wrapped exit.
+#   - After redaction, validated CI timing and performance-budget annotations
+#     are also forwarded to parent stderr so Forgejo's live run logs retain the
+#     measurement signal. All ordinary wrapped output remains log-file-only.
 #   - A sidecar `<log>.status.json` is written atomically (`*.tmp`+rename)
 #     with schema_version=1. If the wrapper is killed by SIGTERM/SIGINT
 #     before the pipeline completes, a best-effort sidecar with
@@ -190,6 +193,28 @@ cap_filter() {
   '
 }
 
+# Preserve machine-readable timing and performance-budget annotations in the
+# live runner log without exposing the wrapped command's ordinary output. This
+# stage intentionally runs after redact_stream and accepts only the complete
+# annotation grammars emitted by time-command.sh and record-command-timing.mjs.
+# Its stdout remains the complete redacted stream consumed by the cap and
+# diagnostic-log sink; only validated lines are duplicated to wrapper stderr.
+forward_ci_timing_annotations() {
+  local line timing_re warning_budget_re hard_budget_re
+  timing_re='^::(notice|error) title=CI timing::.+ completed in [0-9]+m [0-9]+s \([0-9]+s\)( with exit code [0-9]+)?$'
+  warning_budget_re='^::warning title=CI performance budget::.+ took [0-9]+s; warning budget is [0-9]+s$'
+  hard_budget_re='^::error title=CI performance budget::.+ took [0-9]+s; hard budget is [0-9]+s$'
+
+  while IFS= read -r line || [ -n "$line" ]; do
+    printf '%s\n' "$line"
+    if [[ "$line" =~ $timing_re || "$line" =~ $warning_budget_re || "$line" =~ $hard_budget_re ]]; then
+      # Live-log observability is warning-only. Losing parent stderr must not
+      # fail an otherwise healthy command or its authoritative diagnostic log.
+      printf '%s\n' "$line" >&2 || true
+    fi
+  done
+}
+
 # Run the wrapped command. Capture exit status via a side-channel file so
 # the pipeline plumbing cannot clobber it. Stderr is merged into stdout
 # inside the brace group so the redactor sees both streams.
@@ -207,7 +232,11 @@ run_wrapped() {
 # the wrapped exit is captured out-of-band; pipefail would mask the wrapped
 # status with a downstream pipe failure that we already report through the
 # sidecar.
-{ run_wrapped "$@"; } 2>&1 | redact_stream | cap_filter "$CAP_BYTES" "$TRUNC_FLAG" | tee "$LOG_PATH" >/dev/null
+{ run_wrapped "$@"; } 2>&1 \
+  | redact_stream \
+  | forward_ci_timing_annotations \
+  | cap_filter "$CAP_BYTES" "$TRUNC_FLAG" \
+  | tee "$LOG_PATH" >/dev/null
 PIPELINE_RC=("${PIPESTATUS[@]}")
 
 WRAPPED_EXIT=0
@@ -219,15 +248,17 @@ if [ -f "$EXIT_FILE" ]; then
 fi
 
 REDACTOR_EXIT="${PIPELINE_RC[1]:-0}"
-CAP_EXIT="${PIPELINE_RC[2]:-0}"
-SINK_EXIT="${PIPELINE_RC[3]:-0}"
+FORWARD_EXIT="${PIPELINE_RC[2]:-0}"
+CAP_EXIT="${PIPELINE_RC[3]:-0}"
+SINK_EXIT="${PIPELINE_RC[4]:-0}"
 
 TRUNCATED="false"
 if [ -f "$TRUNC_FLAG" ]; then
   TRUNCATED="true"
 fi
 
-if [ "$REDACTOR_EXIT" -ne 0 ] || [ "$CAP_EXIT" -ne 0 ] || [ "$SINK_EXIT" -ne 0 ]; then
+if [ "$REDACTOR_EXIT" -ne 0 ] || [ "$FORWARD_EXIT" -ne 0 ] \
+  || [ "$CAP_EXIT" -ne 0 ] || [ "$SINK_EXIT" -ne 0 ]; then
   SINK_STATUS="failed"
 else
   SINK_STATUS="ok"

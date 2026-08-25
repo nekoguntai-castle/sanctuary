@@ -18,8 +18,8 @@
 #     never produces a sidecar claiming success
 #   - secrets in stdout AND in stderr are redacted (stdout/stderr capture
 #     proven directly)
-#   - time-command.sh measurement output (currently on stdout) is captured
-#     in the diagnostic log (composition-stack proof)
+#   - time-command.sh measurement output is captured in the diagnostic log
+#     and its redacted CI timing annotation alone is forwarded to the live log
 #
 # Tests are independent and use isolated temp directories.
 
@@ -30,6 +30,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 WRAPPER="$REPO_ROOT/scripts/ci/run-with-log.sh"
 REDACTOR="$REPO_ROOT/scripts/ci/redactor.sh"
 TIME_COMMAND="$REPO_ROOT/scripts/ci/time-command.sh"
+TIMING_REPORTER="$REPO_ROOT/scripts/ci/report-timing-notices.sh"
 
 PASS=0
 FAIL=0
@@ -288,12 +289,71 @@ assert_not_contains "$log" "should-be-hidden" "stderr secret value not leaked" |
 prev_fail=$FAIL
 start_test "time-command.sh measurement output captured in diagnostic log"
 log="$CURRENT_DIR/timed.log"
-"$WRAPPER" "$log" "$TIME_COMMAND" "smoke-timed" bash -c 'echo body-line'
+live_stdout="$CURRENT_DIR/live.stdout"
+live_stderr="$CURRENT_DIR/live.stderr"
+"$WRAPPER" "$log" "$TIME_COMMAND" "smoke-timed API_TOKEN=secret-timing" \
+  bash -c 'echo body-line; echo "::set-output name=unsafe::value"; echo "::notice title=unrelated::not timing"; echo "::notice title=CI timing::malformed"' \
+  >"$live_stdout" 2>"$live_stderr"
 status=$?
 assert_eq "$status" "0" "wrapper exit" || true
 assert_contains "$log" "body-line" "wrapped body captured" || true
-assert_contains "$log" "::group::smoke-timed" "time-command group line captured" || true
-assert_contains "$log" "smoke-timed completed in" "time-command timing line captured" || true
+assert_contains "$log" "::group::smoke-timed API_TOKEN=<redacted>" "time-command group line captured and redacted" || true
+assert_contains "$log" "::notice title=CI timing::smoke-timed API_TOKEN=<redacted> completed in" "time-command timing line captured and redacted" || true
+assert_contains "$live_stderr" "::notice title=CI timing::smoke-timed API_TOKEN=<redacted> completed in" "redacted timing annotation forwarded live" || true
+assert_not_contains "$live_stderr" "body-line" "ordinary output remains suppressed live" || true
+assert_not_contains "$live_stderr" "::group::" "group markers remain suppressed live" || true
+assert_not_contains "$live_stderr" "::set-output" "arbitrary workflow commands remain suppressed live" || true
+assert_not_contains "$live_stderr" "title=unrelated" "unrelated annotations remain suppressed live" || true
+assert_not_contains "$live_stderr" "CI timing::malformed" "malformed timing annotations remain suppressed live" || true
+assert_not_contains "$live_stderr" "secret-timing" "live timing annotation does not leak secrets" || true
+assert_eq "$(grep -cF '::notice title=CI timing::smoke-timed API_TOKEN=<redacted> completed in' "$log")" "1" "timing annotation captured exactly once" || true
+assert_eq "$(grep -cF '::notice title=CI timing::smoke-timed API_TOKEN=<redacted> completed in' "$live_stderr")" "1" "timing annotation forwarded exactly once" || true
+assert_eq "$(wc -c < "$live_stdout")" "0" "wrapper stdout remains suppressed" || true
+report="$CURRENT_DIR/timing-report.txt"
+"$TIMING_REPORTER" --log-file "$live_stderr" >"$report"
+assert_contains "$report" "smoke-timed API_TOKEN=<redacted>" "live wrapper output is reportable end to end" || true
+[ "$FAIL" -eq "$prev_fail" ] && end_test_pass
+
+# ----- 12. failed time-command annotation passthrough ---------------------
+prev_fail=$FAIL
+start_test "failed time-command annotation forwarded without masking exit"
+log="$CURRENT_DIR/timed-failure.log"
+live_stderr="$CURRENT_DIR/live.stderr"
+"$WRAPPER" "$log" "$TIME_COMMAND" "failed-timed" bash -c 'exit 23' \
+  >/dev/null 2>"$live_stderr"
+status=$?
+assert_eq "$status" "23" "wrapped failure remains authoritative" || true
+assert_eq "$(sidecar_field "$log.status.json" wrapped_exit)" "23" "failed timing sidecar preserves wrapped exit" || true
+assert_eq "$(grep -cF '::error title=CI timing::failed-timed completed in' "$log")" "1" "error annotation captured exactly once" || true
+assert_eq "$(grep -cF '::error title=CI timing::failed-timed completed in' "$live_stderr")" "1" "error annotation forwarded exactly once" || true
+[ "$FAIL" -eq "$prev_fail" ] && end_test_pass
+
+# ----- 13. performance-budget annotation passthrough ---------------------
+prev_fail=$FAIL
+start_test "performance budget annotation forwarded exactly once"
+log="$CURRENT_DIR/budget.log"
+live_stderr="$CURRENT_DIR/live.stderr"
+budget_file="$CURRENT_DIR/budgets.json"
+printf '%s\n' '{"schemaVersion":1,"budgets":{"budget-timed":{"warnSeconds":0,"hardSeconds":10}}}' >"$budget_file"
+SANCTUARY_CI_PERFORMANCE_BUDGET_FILE="$budget_file" \
+  "$WRAPPER" "$log" "$TIME_COMMAND" "budget-timed" sleep 1 \
+  >/dev/null 2>"$live_stderr"
+status=$?
+assert_eq "$status" "0" "warning-only budget preserves success" || true
+assert_eq "$(grep -cF '::warning title=CI performance budget::budget-timed took' "$log")" "1" "budget warning captured exactly once" || true
+assert_eq "$(grep -cF '::warning title=CI performance budget::budget-timed took' "$live_stderr")" "1" "budget warning forwarded exactly once" || true
+[ "$FAIL" -eq "$prev_fail" ] && end_test_pass
+
+# ----- 14. unavailable live annotation sink is nonblocking ---------------
+prev_fail=$FAIL
+start_test "closed live stderr does not fail a successful timed command"
+log="$CURRENT_DIR/closed-stderr.log"
+"$WRAPPER" "$log" "$TIME_COMMAND" "closed-stderr-timed" true 2>&-
+status=$?
+assert_eq "$status" "0" "live annotation delivery remains best-effort" || true
+assert_eq "$(sidecar_field "$log.status.json" wrapped_exit)" "0" "sidecar preserves successful wrapped exit" || true
+assert_eq "$(sidecar_field "$log.status.json" sink_status)" "ok" "diagnostic sink remains authoritative" || true
+assert_eq "$(grep -cF '::notice title=CI timing::closed-stderr-timed completed in' "$log")" "1" "timing annotation remains in diagnostic log" || true
 [ "$FAIL" -eq "$prev_fail" ] && end_test_pass
 
 # ----- summary ------------------------------------------------------------
