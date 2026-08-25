@@ -63,6 +63,89 @@ LOG
   : > "$empty_log_file"
   assert_fails_with 'no CI timing notices found' bash "$TIMING_SCRIPT" --log-file "$empty_log_file"
 
+  local archive_file url_log
+  archive_file="$TEST_TEMP_DIR/run-logs.zip"
+  url_log="$TEST_TEMP_DIR/urls.log"
+  python3 - "$archive_file" <<'PY'
+import sys
+import zipfile
+
+with zipfile.ZipFile(sys.argv[1], "w") as archive:
+    archive.writestr(
+        "Full Browser E2E Tests-101-attempt-1.log",
+        "2026-08-24T00:00:00Z ::notice title=CI timing::browser npm ci completed in 0m 19s (19s)\n",
+    )
+    archive.writestr(
+        "Backend Tests-102-attempt-1.log",
+        "2026-08-24T00:00:00Z ::notice title=CI timing::backend tests completed in 0m 42s (42s)\n",
+    )
+    archive.writestr("../unsafe-103-attempt-1.log", "must not be read\n")
+PY
+  mkdir -p "$TEST_TEMP_DIR/bin"
+  cat > "$TEST_TEMP_DIR/bin/curl" <<'CURL'
+#!/usr/bin/env bash
+set -euo pipefail
+config="$(cat)"
+[[ "$config" == *'Authorization: token test-token'* ]] || exit 1
+[[ " $* " != *'test-token'* ]] || exit 1
+[ -z "${FORGEJO_REPORT_TOKEN+x}" ] || exit 1
+[ -z "${FORGEJO_TOKEN+x}" ] || exit 1
+[[ " $* " == *' --header Accept: application/zip '* ]] || {
+  echo 'log request used the wrong Accept media type' >&2
+  exit 1
+}
+output=''
+header_file=''
+url="${!#}"
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --output) output="$2"; shift 2 ;;
+    --dump-header) header_file="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf '%s\n' "$url" >> "${TIMING_URL_LOG:?}"
+[ -n "$header_file" ] && printf 'HTTP/1.1 200 OK\r\n\r\n' > "$header_file"
+if [ "$output" = '-' ]; then
+  if [ "${TIMING_STREAM_OVERSIZE:-0}" = '1' ]; then
+    printf '0123456789abcdef'
+  else
+    cat "${TIMING_ZIP_FIXTURE:?}"
+  fi
+else
+  cp "${TIMING_ZIP_FIXTURE:?}" "$output"
+  printf '200'
+fi
+CURL
+  chmod +x "$TEST_TEMP_DIR/bin/curl"
+  : > "$url_log"
+  PATH="$TEST_TEMP_DIR/bin:$PATH" \
+    TIMING_URL_LOG="$url_log" \
+    TIMING_ZIP_FIXTURE="$archive_file" \
+    FORGEJO_API_URL='https://forge.example/api/v1' \
+    FORGEJO_REPOSITORY='owner/repo' \
+    FORGEJO_TOKEN='test-token' \
+    FORGEJO_REPORT_TOKEN='preexported' \
+    bash "$TIMING_SCRIPT" --run 42 --job-filter 'Browser E2E' > "$output_file"
+  assert_contains "$output_file" '19 | 0m 19s | Full Browser E2E Tests | browser npm ci'
+  if grep -Fq 'backend tests' "$output_file"; then
+    fail 'job filter admitted an unrelated Forgejo log'
+  fi
+  assert_contains "$url_log" 'https://forge.example/api/v1/repos/owner/repo/actions/runs/42/logs'
+  local bounded_output
+  bounded_output="$TEST_TEMP_DIR/bounded.zip"
+  assert_fails_with 'failed at the transport boundary' env \
+    PATH="$TEST_TEMP_DIR/bin:$PATH" TIMING_URL_LOG="$url_log" \
+    TIMING_ZIP_FIXTURE="$archive_file" TIMING_STREAM_OVERSIZE=1 \
+    FORGEJO_API_URL='https://forge.example' FORGEJO_REPOSITORY='owner/repo' \
+    FORGEJO_TOKEN='test-token' bash -c \
+    'source "$1"; forgejo_report_resolve_context; forgejo_report_get "actions/runs/42/logs" "$2" 8 application/zip' \
+    _ "$ROOT_DIR/scripts/ci/forgejo-report-api.sh" "$bounded_output"
+  [ ! -e "$bounded_output" ] || fail 'oversized streamed response was promoted'
+  assert_fails_with '--run must be a positive integer' env \
+    FORGEJO_API_URL='https://forge.example' FORGEJO_REPOSITORY='owner/repo' \
+    FORGEJO_TOKEN='test-token' bash "$TIMING_SCRIPT" --run invalid
+
   echo 'report-timing-notices tests passed.'
 }
 

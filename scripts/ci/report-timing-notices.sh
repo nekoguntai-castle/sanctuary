@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/ci/forgejo-report-api.sh
+source "$SCRIPT_DIR/forgejo-report-api.sh"
+
 usage() {
   cat <<'USAGE'
 Usage:
@@ -8,8 +12,8 @@ Usage:
   scripts/ci/report-timing-notices.sh --log-file FILE
 
 Parse CI timing notices/errors emitted by scripts/ci/time-command.sh and print
-a duration table. Live mode fetches matching job logs with gh; fixture mode
-reads a raw GitHub Actions log file.
+a duration table. Live mode reads the Forgejo run-log archive; fixture mode
+reads a raw Actions log file.
 USAGE
 }
 
@@ -116,17 +120,60 @@ main() {
     [ -f "$log_file" ] || fail "log file not found: $log_file"
     cp "$log_file" "$combined_log"
   elif [ -n "$run_id" ]; then
-    require_command gh
-    require_command jq
+    [[ "$run_id" =~ ^[1-9][0-9]*$ ]] || fail '--run must be a positive integer'
+    require_command curl
+    require_command python3
+    forgejo_report_resolve_context || fail 'could not resolve Forgejo API context'
 
-    gh run view "$run_id" --json jobs --jq '.jobs[] | [.databaseId, .name] | @tsv' |
-      while IFS=$'\t' read -r job_id job_name; do
-        [ -n "$job_id" ] || continue
-        if [ -n "$job_filter" ] && [[ "$job_name" != *"$job_filter"* ]]; then
-          continue
-        fi
-        gh run view --job "$job_id" --log >> "$combined_log"
-      done
+    local archive="$temp_dir/run-logs.zip"
+    forgejo_report_get "actions/runs/$run_id/logs" "$archive" 268435456 application/zip \
+      || fail "could not fetch logs for workflow run $run_id"
+    [ "$(wc -c < "$archive")" -le 268435456 ] \
+      || fail 'workflow log archive exceeds the 256 MiB safety bound'
+
+    if ! python3 - "$archive" "$job_filter" > "$combined_log" <<'PY'
+import re
+import sys
+import zipfile
+
+archive_path = sys.argv[1]
+job_filter = sys.argv[2]
+member_re = re.compile(r"^(.+)-([0-9]+)-attempt-([0-9]+)\.log$")
+selected = 0
+expanded_bytes = 0
+maximum_expanded_bytes = 512 * 1024 * 1024
+
+try:
+    archive = zipfile.ZipFile(archive_path)
+except (OSError, zipfile.BadZipFile) as exc:
+    print(f"report-timing-notices: invalid Forgejo log archive: {exc}", file=sys.stderr)
+    raise SystemExit(2)
+
+with archive:
+    for info in archive.infolist():
+        if "/" in info.filename or "\\" in info.filename:
+            continue
+        match = member_re.fullmatch(info.filename)
+        if not match:
+            continue
+        job_name = match.group(1)
+        if job_filter and job_filter not in job_name:
+            continue
+        expanded_bytes += info.file_size
+        if expanded_bytes > maximum_expanded_bytes:
+            print("report-timing-notices: expanded logs exceed the 512 MiB safety bound", file=sys.stderr)
+            raise SystemExit(2)
+        selected += 1
+        for line in archive.read(info).decode("utf-8", errors="replace").splitlines():
+            print(f"{job_name}\tarchive\t{line}")
+
+if selected == 0:
+    print("report-timing-notices: no matching Forgejo job logs found", file=sys.stderr)
+    raise SystemExit(3)
+PY
+    then
+      fail "could not read matching logs for workflow run $run_id"
+    fi
   else
     usage >&2
     exit 1

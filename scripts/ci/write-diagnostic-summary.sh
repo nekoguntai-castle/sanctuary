@@ -54,9 +54,10 @@ mkdir -p "$DIAGNOSTIC_DIR"
 
 SUMMARY_TMP="$(mktemp)"
 INDEX_TMP="$(mktemp)"
+LOCK_SUMMARY_TMP="$(mktemp)"
 
 cleanup() {
-  rm -f "$SUMMARY_TMP" "$INDEX_TMP"
+  rm -f "$SUMMARY_TMP" "$INDEX_TMP" "$LOCK_SUMMARY_TMP"
 }
 trap cleanup EXIT
 
@@ -277,3 +278,14 @@ PY
 
 mv "$INDEX_TMP" "$DIAGNOSTIC_DIR/diagnostic-index.md"
 ci_emit_summary < "$SUMMARY_TMP"
+
+# The logs still exist here on successful jobs, before failure-only diagnostic
+# artifact policy discards them. Aggregate locally so green runs retain the
+# lock wait/hold evidence without uploading verbose success-path logs. This is
+# observability-only: malformed or incomplete telemetry cannot replace the
+# owning command's result.
+if bash "$SCRIPT_DIR/aggregate-runner-locks.sh" "$DIAGNOSTIC_DIR" > "$LOCK_SUMMARY_TMP"; then
+  ci_emit_summary < "$LOCK_SUMMARY_TMP"
+else
+  ci_emit_warning 'Runner-lock aggregation failed; the owning job result is unchanged'
+fi

@@ -28,6 +28,7 @@ classify_path() {
       scripts/ci/redactor.sh | \
       scripts/ci/provider-context.sh | \
       scripts/ci/with-runner-lock.sh | \
+      scripts/ci/aggregate-runner-locks.sh | \
       scripts/ci/write-diagnostic-summary.sh)
       core=true
       docs=true

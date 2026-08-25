@@ -14,6 +14,12 @@
       "rationale": "Describes the delegated install in prose; the real npm ci lives in scripts/ci/setup-server-dependencies.sh."
     },
     {
+      "file": ".github/ci-performance-budget.json",
+      "executable": false,
+      "expectedMatches": 0,
+      "rationale": "Names ten install timing labels; these JSON keys cannot execute commands."
+    },
+    {
       "file": ".github/workflows/architecture.yml",
       "executable": true,
       "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."
@@ -156,6 +162,12 @@
       "file": "tests/ci/setup-server-dependencies.test.sh",
       "executable": true,
       "rationale": "Executes npm ci; must pass --strict-allow-scripts or --ignore-scripts."
+    },
+    {
+      "file": "tests/ci/time-command.test.sh",
+      "executable": false,
+      "expectedMatches": 0,
+      "rationale": "Asserts an install timing-label fixture, not an invocation."
     }
   ]
 }

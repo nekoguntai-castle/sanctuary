@@ -24,6 +24,37 @@ budget_file="$TEST_TEMP_DIR/budgets.json"
 timing_file="$TEST_TEMP_DIR/timings.jsonl"
 cp "$ROOT_DIR/.github/ci-performance-budget.json" "$budget_file"
 
+node -e '
+  const fs = require("node:fs");
+  const config = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+  const rolloutLabels = [
+    "backend unit coverage shard 1",
+    "backend unit coverage shard 2",
+    "critical mutation shard 1",
+    "critical mutation shard 2",
+    "critical mutation shard 3",
+    "frontend coverage shard 1/2",
+    "frontend coverage shard 2/2",
+    "frontend coverage merge",
+    "frontend coverage npm ci",
+    "fresh install e2e",
+    "install script e2e",
+    "render regression E2E",
+    "upgrade baseline latest-stable baseline",
+    "upgrade baseline n-2 baseline",
+  ];
+  for (const label of rolloutLabels) {
+    const budget = config.budgets[label];
+    if (!budget) throw new Error(`missing rollout budget: ${label}`);
+    if (!(budget.warnSeconds < budget.hardSeconds)) {
+      throw new Error(`rollout budget is not warning-first: ${label}`);
+    }
+    if (budget.hardSeconds !== 86400) {
+      throw new Error(`rollout hard ceiling can preempt its owning job: ${label}`);
+    }
+  }
+' "$budget_file" || fail 'shipped warning-first timing budgets are incomplete'
+
 SANCTUARY_CI_PERFORMANCE_BUDGET_FILE="$budget_file" \
   SANCTUARY_CI_TIMING_FILE="$timing_file" \
   "$TIME_COMMAND" "unbudgeted smoke" true >/dev/null

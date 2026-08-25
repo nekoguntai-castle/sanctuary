@@ -1244,6 +1244,18 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+      # Keep this separate from frontend-coverage. Combining repo-root
+      # junit.xml with coverage/ changes the artifact's least-common ancestor
+      # and silently breaks Full Test Summary's coverage-summary.json reader.
+      - name: Upload frontend JUnit
+        if: always()
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: frontend-junit
+          path: junit.xml
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Write frontend coverage merge diagnostic summary
         if: always()
         continue-on-error: true

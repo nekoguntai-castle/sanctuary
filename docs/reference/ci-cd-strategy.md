@@ -300,20 +300,47 @@ Track CI health by lane, not as one blended number:
 Use the duration helper when tuning a completed run:
 
 ```bash
-bash scripts/ci/report-workflow-durations.sh <run-id>
+FORGEJO_API_URL=https://forge.example/api/v1 \
+FORGEJO_REPOSITORY=owner/sanctuary \
+FORGEJO_TOKEN=... \
+  bash scripts/ci/report-workflow-durations.sh <run-id>
 ```
 
-The helper uses `gh run view --json jobs` and prints the longest jobs first. The full frontend jobs and the backend source/integration jobs also wrap their long typecheck, coverage, and integration steps with `scripts/ci/time-command.sh`, so use the job log timing notices to decide whether the next split should target frontend coverage, backend integration tests, or setup overhead.
+The helper uses Forgejo's read-only run, job, and task APIs and prints the
+longest jobs first. It resolves the database run ID to the run's exact task-ID
+set, scans bounded 50-row task pages until every started job is present, and
+fails rather than report a partial or still-running run as complete. The full
+frontend jobs and the backend source/integration jobs also wrap their long
+typecheck, coverage, and integration steps with `scripts/ci/time-command.sh`, so
+use the job log timing notices to decide whether the next split should target
+frontend coverage, backend integration tests, or setup overhead.
 
 Use the timing-notice helper when a job is the tail and the setup/runtime split matters:
 
 ```bash
-bash scripts/ci/report-timing-notices.sh --run <run-id> --job-filter "Full Browser E2E Tests"
-bash scripts/ci/report-timing-notices.sh --run <run-id> --job-filter "Full Backend Integration Tests"
-bash scripts/ci/report-timing-notices.sh --run <run-id> --job-filter "Install Stack Smoke"
+FORGEJO_API_URL=https://forge.example/api/v1 \
+FORGEJO_REPOSITORY=owner/sanctuary \
+FORGEJO_TOKEN=... \
+  bash scripts/ci/report-timing-notices.sh --run <run-id> --job-filter "Full Browser E2E Tests"
 ```
 
-This parses the notices emitted by `scripts/ci/time-command.sh` from matching job logs. Prefer this evidence over eyeballing logs when deciding whether repeated setup, build, migrations, or test runtime is the actual long pole.
+This parses the notices emitted by `scripts/ci/time-command.sh` from matching
+members of Forgejo's run-log ZIP without extracting attacker-controlled paths.
+Forgejo may expose a partial archive for a still-running job, so absence from a
+live run is unavailable evidence, not a zero duration. Prefer completed-run
+evidence over eyeballing logs when deciding whether repeated setup, build,
+migrations, or test runtime is the actual long pole.
+
+For a compact wall-clock CSV and p50/p90 summary across runs, use the older
+Forgejo-native collector:
+
+```bash
+SANCTUARY_FORGE_API_URL=https://forge.example \
+SANCTUARY_FORGE_OWNER=owner \
+SANCTUARY_FORGE_REPO=sanctuary \
+SANCTUARY_FORGE_TOKEN=... \
+  bash scripts/ci/measure-wallclock.sh --workflow test.yml --event push --branch main --limit 20
+```
 
 Use the trend helper before changing a workflow shape:
 
@@ -340,7 +367,10 @@ so `Full Test Summary` remains the branch-protection aggregate. Frontend
 coverage keeps two logical Vitest blobs but runs them sequentially in one job to
 avoid duplicate setup. If it becomes the long pole again, change parallelism
 only after measuring shard balance, setup overhead, runner pressure, and merge
-overhead from workflow durations.
+overhead from workflow durations. The merge job uploads root-level `junit.xml`
+as the separate `frontend-junit` artifact; never add it to the single-directory
+`frontend-coverage` artifact, because that changes its extraction root and can
+silently remove the coverage table from `Full Test Summary`.
 
 `Full Test Summary` attempts a non-blocking checkout before invoking the local
 Forgejo artifact downloader. The checkout and coverage downloads are
@@ -356,6 +386,14 @@ render HTML reports follow the same failure-only policy. Required evidence is
 different: coverage blobs and reports, mutation reports, and Playwright
 `test-results` timing files continue to upload on every outcome. Do not convert
 those evidence artifacts to failure-only troubleshooting data.
+
+Each diagnostic summary also aggregates the job's local
+`runner-lock: acquired/released/timeout` records into a wait/hold table before
+the success-path logs disappear. It preserves incomplete and unavailable values
+as `n/a`, writes `runner-lock-summary.json` beside failure diagnostics, and is
+strictly observational: aggregation failure cannot change the owning job result.
+The measurements are whole seconds and host-local. They must not justify lock
+removal until the separately tracked workspace-clean/inode issue is resolved.
 
 Backend integration tests now use deterministic groups in `scripts/ci/backend-integration-groups.sh`. Run the group check after adding, removing, or renaming an integration spec:
 

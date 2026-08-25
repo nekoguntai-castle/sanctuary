@@ -696,6 +696,7 @@ jobs:
           bash -n scripts/ci/time-command.sh
           node --check scripts/ci/record-command-timing.mjs
           bash -n scripts/ci/with-runner-lock.sh
+          bash -n scripts/ci/aggregate-runner-locks.sh
           bash -n scripts/ci/run-extended-upgrade-fixtures.sh
           bash -n scripts/ci/wait-for-docker.sh
           bash -n scripts/ci/backend-coverage-merge.sh
@@ -714,6 +715,7 @@ jobs:
           bash -n scripts/ci/run-in-isolated-workspace.sh
           bash -n scripts/ci/collect-playwright-artifacts.sh
           bash -n scripts/ci/check-actions-cache-service.sh
+          bash -n scripts/ci/forgejo-report-api.sh
           bash -n scripts/ci/report-workflow-durations.sh
           bash -n scripts/ci/report-workflow-trends.sh
           bash -n scripts/ci/report-timing-notices.sh
@@ -754,6 +756,7 @@ jobs:
           bash -n tests/ci/install-semgrep.test.sh
           bash -n tests/ci/setup-server-dependencies.test.sh
           bash -n tests/ci/with-runner-lock.test.sh
+          bash -n tests/ci/aggregate-runner-locks.test.sh
           bash -n tests/ci/run-extended-upgrade-fixtures.test.sh
           bash -n tests/ci/wait-for-docker.test.sh
           bash -n tests/ci/ci-registration-completeness.test.sh
@@ -774,6 +777,7 @@ jobs:
           bash -n tests/ci/isolated-workspace.test.sh
           bash -n tests/ci/collect-playwright-artifacts.test.sh
           bash -n tests/ci/check-actions-cache-service.test.sh
+          bash -n tests/ci/report-workflow-durations.test.sh
           bash -n tests/ci/report-workflow-trends.test.sh
           bash -n tests/ci/report-timing-notices.test.sh
           bash -n tests/ci/time-command.test.sh
@@ -850,6 +854,7 @@ jobs:
           bash tests/ci/quality-lizard-bootstrap.test.sh
           bash tests/ci/setup-server-dependencies.test.sh
           bash tests/ci/with-runner-lock.test.sh
+          bash tests/ci/aggregate-runner-locks.test.sh
           bash tests/ci/run-extended-upgrade-fixtures.test.sh
           bash tests/ci/wait-for-docker.test.sh
           bash tests/ci/ci-registration-completeness.test.sh
@@ -868,6 +873,7 @@ jobs:
           bash tests/ci/isolated-workspace.test.sh
           bash tests/ci/collect-playwright-artifacts.test.sh
           bash tests/ci/check-actions-cache-service.test.sh
+          bash tests/ci/report-workflow-durations.test.sh
           bash tests/ci/report-workflow-trends.test.sh
           bash tests/ci/report-timing-notices.test.sh
           bash tests/ci/time-command.test.sh

@@ -161,7 +161,10 @@ jobs:
             '
 
       - name: Prove exact transaction fee invariants by mutation
-        timeout-minutes: 8
+        # Two contended PR-event runs reached 91-92% before this step's former
+        # eight-minute bound; the same tree passed when run in isolation. Keep
+        # the proof blocking and finite while allowing that observed tail.
+        timeout-minutes: 15
         run: |
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/fee-policy-mutation.log" \
             ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain bash -c '

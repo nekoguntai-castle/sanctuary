@@ -1604,6 +1604,16 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "Upload render E2E diagnostics" \
   "ci-diagnostics-render-e2e"
 
+assert_occurrence_count "$TEST_WORKFLOW" \
+  "critical mutation timing is recorded exactly once per shard job" \
+  'scripts/ci/time-command.sh "critical mutation shard ${{ matrix.shard }}"' \
+  1
+
+assert_occurrence_count "$TEST_WORKFLOW" \
+  "render regression timing is recorded exactly once" \
+  'scripts/ci/time-command.sh "render regression E2E"' \
+  1
+
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full build-check diagnostics" \
   "full-build-check:" \
@@ -1899,6 +1909,25 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "Upload frontend coverage merge diagnostics" \
   "ci-diagnostics-frontend-coverage-merge"
 
+for junit_field in \
+  "if: always()" \
+  "name: frontend-junit" \
+  "path: junit.xml" \
+  "if-no-files-found: error" \
+  "retention-days: 14"; do
+  assert_named_job_step_contains "$TEST_WORKFLOW" \
+    "full-frontend-coverage-merge" \
+    "Upload frontend JUnit" \
+    "frontend JUnit artifact preserves its strict separate-upload contract: $junit_field" \
+    "$junit_field"
+done
+
+assert_named_job_step_not_contains "$TEST_WORKFLOW" \
+  "full-frontend-coverage-merge" \
+  "Upload frontend coverage" \
+  "frontend coverage artifact must not absorb the repo-root JUnit report" \
+  "path: junit.xml"
+
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full frontend coverage runs on full scan" \
   "full-frontend-coverage-merge:" \
@@ -1940,6 +1969,12 @@ assert_contains_in_order "$TEST_WORKFLOW" \
 
 # --- verify-vectors diagnostic coverage --------------------------------------
 VV="$REPO_ROOT/.github/workflows/verify-vectors.yml"
+
+assert_named_job_step_contains "$VV" \
+  "verify-vectors" \
+  "Prove exact transaction fee invariants by mutation" \
+  "verify-vectors fee-policy mutation proof has a contention-safe timeout" \
+  "timeout-minutes: 15"
 
 assert_contains_in_order "$VV" \
   "verify-vectors wait-for-docker diagnostics" \

@@ -72,7 +72,10 @@ if [ "$status" -ne 0 ]; then
 else
   assert_contains "$summary" "## Empty Job Diagnostics" "summary title" || true
   assert_contains "$summary" "No diagnostic logs were found." "empty summary" || true
+  assert_contains "$summary" "### Runner Lock Wait/Hold" "lock summary title" || true
+  assert_contains "$summary" "No runner-lock records were found." "empty lock summary" || true
   assert_contains "$diag/diagnostic-index.md" "No diagnostic logs were found." "empty artifact index" || true
+  [ -f "$diag/runner-lock-summary.json" ] || end_test_fail "runner-lock JSON was not written"
   [ "$FAIL" -eq "$prev_fail" ] && end_test_pass
 fi
 
@@ -177,7 +180,29 @@ else
   [ "$FAIL" -eq "$prev_fail" ] && end_test_pass
 fi
 
-# ----- 6. retired LAN publisher -------------------------------------------
+# ----- runner-lock integration ---------------------------------------------
+prev_fail=$FAIL
+start_test "runner locks: wait/hold evidence reaches the job summary"
+diag="$CURRENT_DIR/diagnostics"
+summary="$CURRENT_DIR/summary.md"
+mkdir -p "$diag"
+cat > "$diag/locked.log" <<'LOG'
+runner-lock: acquired node-toolchain after 2s
+runner-lock: released node-toolchain held 7s status=0
+LOG
+printf '{"schema_version":1,"wrapped_exit":0}\n' > "$diag/locked.log.status.json"
+run_summary "$diag" "Locked Job" "$summary"
+status=$?
+if [ "$status" -ne 0 ]; then
+  end_test_fail "expected exit 0, got $status"
+else
+  assert_contains "$summary" '| `node-toolchain` | 1 | 1 | 2s | 7s | 0 | 0 | 0 |' "lock aggregate row" || true
+  jq -e '.aggregates[0].lock == "node-toolchain"' "$diag/runner-lock-summary.json" >/dev/null \
+    || end_test_fail "runner-lock JSON did not preserve the aggregate"
+  [ "$FAIL" -eq "$prev_fail" ] && end_test_pass
+fi
+
+# ----- retired LAN publisher ----------------------------------------------
 prev_fail=$FAIL
 start_test "retired LAN publisher is absent from the diagnostic path"
 if [ -e "$REPO_ROOT/scripts/ci/publish-failed-logs.sh" ]; then
