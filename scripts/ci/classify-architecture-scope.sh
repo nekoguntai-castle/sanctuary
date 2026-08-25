@@ -10,7 +10,8 @@ classify_path() {
   saw_path=true
 
   case "$path" in
-    docs/architecture/* | ARCHITECTURE.md | */ARCHITECTURE.md)
+    docs/architecture/* | docs/adr/0004-wallet-sync-lifecycle.md | \
+      ARCHITECTURE.md | */ARCHITECTURE.md)
       core=true
       docs=true
       ;;

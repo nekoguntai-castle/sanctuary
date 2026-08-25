@@ -189,6 +189,7 @@ jobs:
           INNER
 
       - name: Enforce wallet sync lifecycle contract
+        if: steps.scope.outputs.core == 'true'
         run: |
           scripts/ci/run-with-log.sh ".tmp/ci-diagnostics/architecture/wallet-sync-lifecycle-contract.log" \
             bash -euo pipefail <<'INNER'

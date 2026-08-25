@@ -1288,6 +1288,7 @@ assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
 assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
   "wallet sync lifecycle contract gate composition" \
   "Enforce wallet sync lifecycle contract" \
+  "if: steps.scope.outputs.core == 'true'" \
   ".tmp/ci-diagnostics/architecture/wallet-sync-lifecycle-contract.log" \
   "npm run check:wallet-sync-lifecycle-contract"
 
