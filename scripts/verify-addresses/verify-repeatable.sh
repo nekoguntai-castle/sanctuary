@@ -21,6 +21,7 @@ core_identity=''
 started_bitcoind=0
 python_image_id=''
 python_iid_file=''
+python_image_loaded=0
 
 published_host="$(sanctuary_current_docker_published_host)"
 rpc_url_mainnet="http://${published_host}:19440"
@@ -32,7 +33,8 @@ core_image='bitcoin/bitcoin:29.0@sha256:a6aa8a9e349b4108d13c558dbe43064057bd7b64
 core_canonical_image="docker.io/bitcoin/bitcoin@${core_image##*@}"
 pinned_node_version='24.19.0'
 pinned_go_version='go1.25.12'
-python_image='sanctuary/verify-addresses-python:3.13.5-bip-utils-2.12.1-v1'
+python_image_base='sanctuary/verify-addresses-python:3.13.5-bip-utils-2.12.1-v1'
+python_image=''
 
 reject_external_core_configuration() {
   local variable
@@ -63,6 +65,9 @@ require_command() {
 cleanup() {
   if [[ -n "$python_iid_file" ]]; then
     rm -f "$python_iid_file" || true
+  fi
+  if [[ "$python_image_loaded" -eq 1 ]]; then
+    docker image rm "$python_image" >/dev/null 2>&1 || true
   fi
   if [[ "$started_bitcoind" -eq 1 && "${VERIFY_ADDRESSES_KEEP_BITCOIND:-0}" != "1" ]]; then
     docker compose -f "$script_dir/docker-compose.yml" down
@@ -102,6 +107,7 @@ generate_rpc_credentials() {
   rpc_user="verify_${credential_nonce:0:16}"
   rpc_pass="${credential_nonce:16}"
   core_identity="sanctuary-verify-$identity_nonce"
+  python_image="${python_image_base}-${identity_nonce}"
   export BITCOIN_RPC_USER="$rpc_user"
   export BITCOIN_RPC_PASS="$rpc_pass"
   export VERIFY_ADDRESSES_CORE_IDENTITY="$core_identity"
@@ -116,6 +122,9 @@ build_python_verifier() {
   fi
   printf 'Using Docker Buildx: %s\n' "$buildx_version"
   python_iid_file="$(mktemp)"
+  # The tag is unique to this invocation, so cleanup owns it even when Buildx
+  # loads the image but reports a late export/finalization failure.
+  python_image_loaded=1
   docker buildx build --pull \
     --load \
     --file "$script_dir/python-verifier.Dockerfile" \
