@@ -60,6 +60,8 @@ jobs:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-determine-scope
     outputs:
       run_repo_quality: ${{ steps.classify.outputs.run_repo_quality }}
+      run_source_quality: ${{ steps.classify.outputs.run_source_quality }}
+      run_dependency_audit: ${{ steps.classify.outputs.run_dependency_audit }}
       run_workflow_quality: ${{ steps.classify.outputs.run_workflow_quality }}
       run_ci_classifier_tests: ${{ steps.classify.outputs.run_ci_classifier_tests }}
     steps:
@@ -121,7 +123,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 25
     needs: [determine-scope]
-    if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
+    if: always() && needs.determine-scope.outputs.run_source_quality == 'true'
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-lint
     steps:
@@ -174,7 +176,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     needs: [determine-scope]
-    if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
+    if: always() && needs.determine-scope.outputs.run_dependency_audit == 'true'
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-lockfile-peer-resolution
     steps:
@@ -230,7 +232,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     needs: [determine-scope]
-    if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
+    if: always() && needs.determine-scope.outputs.run_dependency_audit == 'true'
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-dependency-audit
     steps:
@@ -411,7 +413,8 @@ jobs:
     needs: [determine-scope]
     if: |
       always() &&
-      (needs.determine-scope.outputs.run_repo_quality == 'true' ||
+      (needs.determine-scope.outputs.run_source_quality == 'true' ||
+       needs.determine-scope.outputs.run_repo_quality == 'true' ||
        needs.determine-scope.outputs.run_workflow_quality == 'true')
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-semgrep
@@ -942,7 +945,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     needs: [determine-scope]
-    if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
+    if: always() && needs.determine-scope.outputs.run_source_quality == 'true'
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-lizard
     steps:
@@ -991,7 +994,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     needs: [determine-scope]
-    if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
+    if: always() && needs.determine-scope.outputs.run_source_quality == 'true'
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-jscpd
     steps:
@@ -1118,6 +1121,8 @@ jobs:
       - name: Check quality job results
         env:
           RUN_REPO_QUALITY: ${{ needs.determine-scope.outputs.run_repo_quality }}
+          RUN_SOURCE_QUALITY: ${{ needs.determine-scope.outputs.run_source_quality }}
+          RUN_DEPENDENCY_AUDIT: ${{ needs.determine-scope.outputs.run_dependency_audit }}
           RUN_WORKFLOW_QUALITY: ${{ needs.determine-scope.outputs.run_workflow_quality }}
           RUN_CI_CLASSIFIER_TESTS: ${{ needs.determine-scope.outputs.run_ci_classifier_tests }}
           DETERMINE_SCOPE: ${{ needs.determine-scope.result }}
@@ -1136,6 +1141,8 @@ jobs:
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/quality-required-checks.log" bash -euo pipefail <<'QUALITY_REQUIRED_CHECKS'
           echo "=== quality-required-checks scope inputs ==="
           echo "RUN_REPO_QUALITY=$RUN_REPO_QUALITY"
+          echo "RUN_SOURCE_QUALITY=$RUN_SOURCE_QUALITY"
+          echo "RUN_DEPENDENCY_AUDIT=$RUN_DEPENDENCY_AUDIT"
           echo "RUN_WORKFLOW_QUALITY=$RUN_WORKFLOW_QUALITY"
           echo "RUN_CI_CLASSIFIER_TESTS=$RUN_CI_CLASSIFIER_TESTS"
           echo "=== sub-job results ==="
@@ -1179,23 +1186,31 @@ jobs:
             fi
           }
 
-          if [ "$RUN_REPO_QUALITY" = "true" ]; then
+          if [ "$RUN_SOURCE_QUALITY" = "true" ]; then
             require_success "Lint" "$LINT"
-            require_success "Lockfile peer resolution" "$LOCKFILE_PEER_RESOLUTION"
-            require_success "Dependency audit (npm)" "$DEPENDENCY_AUDIT"
             require_success "Cyclomatic complexity (lizard)" "$LIZARD"
             require_success "Duplication (jscpd)" "$JSCPD"
-            require_success "Large-file classification" "$LARGE_FILE_CLASSIFICATION"
           else
             allow_success_or_skipped "Lint" "$LINT"
-            allow_success_or_skipped "Lockfile peer resolution" "$LOCKFILE_PEER_RESOLUTION"
-            allow_success_or_skipped "Dependency audit (npm)" "$DEPENDENCY_AUDIT"
             allow_success_or_skipped "Cyclomatic complexity (lizard)" "$LIZARD"
             allow_success_or_skipped "Duplication (jscpd)" "$JSCPD"
+          fi
+
+          if [ "$RUN_DEPENDENCY_AUDIT" = "true" ]; then
+            require_success "Lockfile peer resolution" "$LOCKFILE_PEER_RESOLUTION"
+            require_success "Dependency audit (npm)" "$DEPENDENCY_AUDIT"
+          else
+            allow_success_or_skipped "Lockfile peer resolution" "$LOCKFILE_PEER_RESOLUTION"
+            allow_success_or_skipped "Dependency audit (npm)" "$DEPENDENCY_AUDIT"
+          fi
+
+          if [ "$RUN_REPO_QUALITY" = "true" ]; then
+            require_success "Large-file classification" "$LARGE_FILE_CLASSIFICATION"
+          else
             allow_success_or_skipped "Large-file classification" "$LARGE_FILE_CLASSIFICATION"
           fi
 
-          if [ "$RUN_REPO_QUALITY" = "true" ] || [ "$RUN_WORKFLOW_QUALITY" = "true" ]; then
+          if [ "$RUN_SOURCE_QUALITY" = "true" ] || [ "$RUN_REPO_QUALITY" = "true" ] || [ "$RUN_WORKFLOW_QUALITY" = "true" ]; then
             require_success "SAST (Semgrep)" "$SEMGREP_SAST"
           else
             allow_success_or_skipped "SAST (Semgrep)" "$SEMGREP_SAST"

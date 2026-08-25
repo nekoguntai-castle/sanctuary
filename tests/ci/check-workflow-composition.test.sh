@@ -273,6 +273,42 @@ assert_named_job_not_contains() {
   fi
 }
 
+assert_named_job_if_equals() {
+  local file="$1"
+  local job_name="$2"
+  local label="$3"
+  local expected="$4"
+  local job actual
+
+  job="$(extract_named_job "$file" "$job_name")"
+  actual="$(
+    awk '
+      /^    if: \|$/ { in_if = 1; next }
+      in_if && /^      / {
+        line = $0
+        sub(/^[[:space:]]+/, "", line)
+        parts[++count] = line
+        next
+      }
+      in_if { exit }
+      END {
+        for (i = 1; i <= count; i++) {
+          printf "%s%s", (i > 1 ? " " : ""), parts[i]
+        }
+      }
+    ' <<< "$job"
+  )"
+
+  if [ "$actual" = "$expected" ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: $label"
+  else
+    FAIL=$((FAIL + 1))
+    FAILURES+=("$label: expected $job_name if expression '$expected', got '$actual'")
+    echo "FAIL: $label" >&2
+  fi
+}
+
 assert_named_job_step_contains() {
   local file="$1"
   local job_name="$2"
@@ -315,6 +351,38 @@ assert_named_job_step_not_contains() {
     PASS=$((PASS + 1))
     echo "PASS: $label"
   fi
+}
+
+assert_named_job_step_contains_in_order() {
+  local file="$1"
+  local job_name="$2"
+  local step_name="$3"
+  local label="$4"
+  shift 4
+  local step_body remaining needle
+
+  if ! step_body="$(extract_named_job_step "$file" "$job_name" "$step_name")"; then
+    FAIL=$((FAIL + 1))
+    FAILURES+=("$label: could not extract $job_name/$step_name from $file")
+    echo "FAIL: $label" >&2
+    return
+  fi
+
+  remaining="$step_body"
+  for needle in "$@"; do
+    case "$remaining" in
+      *"$needle"*) remaining="${remaining#*"$needle"}" ;;
+      *)
+        FAIL=$((FAIL + 1))
+        FAILURES+=("$label: missing or out-of-order token in $job_name/$step_name: $needle")
+        echo "FAIL: $label" >&2
+        return
+        ;;
+    esac
+  done
+
+  PASS=$((PASS + 1))
+  echo "PASS: $label"
 }
 
 extract_step_with_mapping() {
@@ -2930,6 +2998,118 @@ assert_contains_in_order "$QUALITY_WORKFLOW" \
   "Write quality required checks diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Required Checks"' \
   "ci-diagnostics-quality-required-checks"
+
+assert_named_job_contains "$QUALITY_WORKFLOW" "determine-scope" \
+  "quality scope exposes source flag" \
+  'run_source_quality: ${{ steps.classify.outputs.run_source_quality }}'
+assert_named_job_contains "$QUALITY_WORKFLOW" "determine-scope" \
+  "quality scope exposes dependency flag" \
+  'run_dependency_audit: ${{ steps.classify.outputs.run_dependency_audit }}'
+
+for quality_scope_job in lint lizard jscpd; do
+  assert_named_job_contains "$QUALITY_WORKFLOW" "$quality_scope_job" \
+    "quality $quality_scope_job is source-scoped" \
+    "if: always() && needs.determine-scope.outputs.run_source_quality == 'true'"
+  assert_named_job_not_contains "$QUALITY_WORKFLOW" "$quality_scope_job" \
+    "quality $quality_scope_job no longer uses coarse repo scope" \
+    "needs.determine-scope.outputs.run_repo_quality == 'true'"
+done
+
+for quality_scope_job in lockfile-peer-resolution dependency-audit; do
+  assert_named_job_contains "$QUALITY_WORKFLOW" "$quality_scope_job" \
+    "quality $quality_scope_job is dependency-scoped" \
+    "if: always() && needs.determine-scope.outputs.run_dependency_audit == 'true'"
+  assert_named_job_not_contains "$QUALITY_WORKFLOW" "$quality_scope_job" \
+    "quality $quality_scope_job no longer uses coarse repo scope" \
+    "needs.determine-scope.outputs.run_repo_quality == 'true'"
+done
+
+assert_named_job_contains "$QUALITY_WORKFLOW" "large-file-classification" \
+  "large-file classification retains repo-wide scope" \
+  "if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'"
+assert_named_job_not_contains "$QUALITY_WORKFLOW" "large-file-classification" \
+  "large-file classification is not narrowed to source scope" \
+  "needs.determine-scope.outputs.run_source_quality == 'true'"
+assert_named_job_not_contains "$QUALITY_WORKFLOW" "large-file-classification" \
+  "large-file classification is not narrowed to dependency scope" \
+  "needs.determine-scope.outputs.run_dependency_audit == 'true'"
+
+assert_named_job_if_equals "$QUALITY_WORKFLOW" "semgrep-sast" \
+  "Semgrep runs for any owning quality scope" \
+  "always() && (needs.determine-scope.outputs.run_source_quality == 'true' || needs.determine-scope.outputs.run_repo_quality == 'true' || needs.determine-scope.outputs.run_workflow_quality == 'true')"
+
+for aggregate_scope in \
+  'RUN_SOURCE_QUALITY: ${{ needs.determine-scope.outputs.run_source_quality }}' \
+  'RUN_DEPENDENCY_AUDIT: ${{ needs.determine-scope.outputs.run_dependency_audit }}'; do
+  assert_named_job_step_contains "$QUALITY_WORKFLOW" "quality-required-checks" \
+    "Check quality job results" \
+    "quality aggregate exposes $aggregate_scope" \
+    "$aggregate_scope"
+done
+
+for aggregate_contract in \
+  'if [ "$RUN_SOURCE_QUALITY" = "true" ]; then' \
+  'require_success "Lint" "$LINT"' \
+  'allow_success_or_skipped "Lint" "$LINT"' \
+  'require_success "Cyclomatic complexity (lizard)" "$LIZARD"' \
+  'allow_success_or_skipped "Cyclomatic complexity (lizard)" "$LIZARD"' \
+  'require_success "Duplication (jscpd)" "$JSCPD"' \
+  'allow_success_or_skipped "Duplication (jscpd)" "$JSCPD"' \
+  'if [ "$RUN_DEPENDENCY_AUDIT" = "true" ]; then' \
+  'require_success "Lockfile peer resolution" "$LOCKFILE_PEER_RESOLUTION"' \
+  'allow_success_or_skipped "Lockfile peer resolution" "$LOCKFILE_PEER_RESOLUTION"' \
+  'require_success "Dependency audit (npm)" "$DEPENDENCY_AUDIT"' \
+  'allow_success_or_skipped "Dependency audit (npm)" "$DEPENDENCY_AUDIT"' \
+  'if [ "$RUN_REPO_QUALITY" = "true" ]; then' \
+  'require_success "Large-file classification" "$LARGE_FILE_CLASSIFICATION"' \
+  'allow_success_or_skipped "Large-file classification" "$LARGE_FILE_CLASSIFICATION"' \
+  'if [ "$RUN_SOURCE_QUALITY" = "true" ] || [ "$RUN_REPO_QUALITY" = "true" ] || [ "$RUN_WORKFLOW_QUALITY" = "true" ]; then' \
+  'require_success "SAST (Semgrep)" "$SEMGREP_SAST"' \
+  'allow_success_or_skipped "SAST (Semgrep)" "$SEMGREP_SAST"'; do
+  assert_named_job_step_contains "$QUALITY_WORKFLOW" "quality-required-checks" \
+    "Check quality job results" \
+    "quality aggregate pins $aggregate_contract" \
+    "$aggregate_contract"
+done
+
+assert_named_job_step_contains_in_order "$QUALITY_WORKFLOW" "quality-required-checks" \
+  "Check quality job results" \
+  "quality aggregate source branch owns only source jobs" \
+  'if [ "$RUN_SOURCE_QUALITY" = "true" ]; then' \
+  'require_success "Lint" "$LINT"' \
+  'require_success "Cyclomatic complexity (lizard)" "$LIZARD"' \
+  'require_success "Duplication (jscpd)" "$JSCPD"' \
+  'else' \
+  'allow_success_or_skipped "Lint" "$LINT"' \
+  'allow_success_or_skipped "Cyclomatic complexity (lizard)" "$LIZARD"' \
+  'allow_success_or_skipped "Duplication (jscpd)" "$JSCPD"' \
+  'fi'
+assert_named_job_step_contains_in_order "$QUALITY_WORKFLOW" "quality-required-checks" \
+  "Check quality job results" \
+  "quality aggregate dependency branch owns only dependency jobs" \
+  'if [ "$RUN_DEPENDENCY_AUDIT" = "true" ]; then' \
+  'require_success "Lockfile peer resolution" "$LOCKFILE_PEER_RESOLUTION"' \
+  'require_success "Dependency audit (npm)" "$DEPENDENCY_AUDIT"' \
+  'else' \
+  'allow_success_or_skipped "Lockfile peer resolution" "$LOCKFILE_PEER_RESOLUTION"' \
+  'allow_success_or_skipped "Dependency audit (npm)" "$DEPENDENCY_AUDIT"' \
+  'fi'
+assert_named_job_step_contains_in_order "$QUALITY_WORKFLOW" "quality-required-checks" \
+  "Check quality job results" \
+  "quality aggregate repo branch owns only large-file classification" \
+  'if [ "$RUN_REPO_QUALITY" = "true" ]; then' \
+  'require_success "Large-file classification" "$LARGE_FILE_CLASSIFICATION"' \
+  'else' \
+  'allow_success_or_skipped "Large-file classification" "$LARGE_FILE_CLASSIFICATION"' \
+  'fi'
+assert_named_job_step_contains_in_order "$QUALITY_WORKFLOW" "quality-required-checks" \
+  "Check quality job results" \
+  "quality aggregate Semgrep branch mirrors the three-way job scope" \
+  'if [ "$RUN_SOURCE_QUALITY" = "true" ] || [ "$RUN_REPO_QUALITY" = "true" ] || [ "$RUN_WORKFLOW_QUALITY" = "true" ]; then' \
+  'require_success "SAST (Semgrep)" "$SEMGREP_SAST"' \
+  'else' \
+  'allow_success_or_skipped "SAST (Semgrep)" "$SEMGREP_SAST"' \
+  'fi'
 
 quality_failure_diagnostic_steps=(
   "determine-scope|Upload quality scope diagnostics|Write quality scope diagnostic summary"

@@ -19,6 +19,21 @@ assert_exact_output() {
   [ "$actual" = "$expected" ] || fail "expected ${key}=${expected}, got ${key}=${actual}"
 }
 
+assert_quality_scope() {
+  local output_file="$1"
+  local repo="$2"
+  local source="$3"
+  local dependency="$4"
+  local workflow="$5"
+  local classifier="$6"
+
+  assert_exact_output "$output_file" "run_repo_quality" "$repo"
+  assert_exact_output "$output_file" "run_source_quality" "$source"
+  assert_exact_output "$output_file" "run_dependency_audit" "$dependency"
+  assert_exact_output "$output_file" "run_workflow_quality" "$workflow"
+  assert_exact_output "$output_file" "run_ci_classifier_tests" "$classifier"
+}
+
 create_repo() {
   local repo_dir="$1"
 
@@ -63,8 +78,41 @@ run_classifier() {
   )
 }
 
+commit_file() {
+  local repo_dir="$1"
+  local path="$2"
+  local content="$3"
+  local message="$4"
+
+  mkdir -p "$repo_dir/$(dirname "$path")"
+  printf '%s\n' "$content" > "$repo_dir/$path"
+  git -C "$repo_dir" add "$path"
+  git -C "$repo_dir" commit -qm "$message"
+}
+
+classify_commit() {
+  local repo_dir="$1"
+  local base_sha="$2"
+  local output_file="$3"
+  local path="$4"
+  local content="$5"
+  local message="$6"
+  local repo="$7"
+  local source="$8"
+  local dependency="$9"
+  local workflow="${10}"
+  local classifier="${11}"
+  local head_sha
+
+  commit_file "$repo_dir" "$path" "$content" "$message"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_quality_scope "$output_file" "$repo" "$source" "$dependency" "$workflow" "$classifier"
+  printf '%s\n' "$head_sha"
+}
+
 main() {
-  local temp_dir repo_dir output_file base_sha head_sha
+  local temp_dir repo_dir output_file base_sha head_sha entry path expected_source expected_dependency expected_classifier
 
   temp_dir="$(mktemp -d)"
   trap 'rm -rf "'"$temp_dir"'"' EXIT
@@ -75,19 +123,19 @@ main() {
   base_sha="$(git -C "$repo_dir" rev-parse HEAD)"
 
   run_classifier "$repo_dir" "$base_sha" "$base_sha" "$output_file" "schedule"
-  assert_exact_output "$output_file" "run_repo_quality" "true"
-  assert_exact_output "$output_file" "run_workflow_quality" "true"
-  assert_exact_output "$output_file" "run_ci_classifier_tests" "true"
+  assert_quality_scope "$output_file" true true true true true
+
+  run_classifier "$repo_dir" "$base_sha" "$base_sha" "$output_file" "workflow_dispatch"
+  assert_quality_scope "$output_file" true true true true true
+
+  run_classifier "$repo_dir" "$base_sha" "$base_sha" "$output_file" "repository_dispatch"
+  assert_quality_scope "$output_file" true true true true true
 
   run_classifier "$repo_dir" "$base_sha" "$base_sha" "$output_file" "push" false
-  assert_exact_output "$output_file" "run_repo_quality" "true"
-  assert_exact_output "$output_file" "run_workflow_quality" "true"
-  assert_exact_output "$output_file" "run_ci_classifier_tests" "true"
+  assert_quality_scope "$output_file" true true true true true
 
   run_classifier "$repo_dir" "$base_sha" "$base_sha" "$output_file" "pull_request" false
-  assert_exact_output "$output_file" "run_repo_quality" "true"
-  assert_exact_output "$output_file" "run_workflow_quality" "true"
-  assert_exact_output "$output_file" "run_ci_classifier_tests" "true"
+  assert_quality_scope "$output_file" true true true true true
 
   mkdir -p "$repo_dir/docs/images"
   printf '# Docs only\n' > "$repo_dir/README.md"
@@ -97,90 +145,92 @@ main() {
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
 
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_exact_output "$output_file" "run_repo_quality" "false"
-  assert_exact_output "$output_file" "run_workflow_quality" "false"
-  assert_exact_output "$output_file" "run_ci_classifier_tests" "false"
+  assert_quality_scope "$output_file" false false false false false
 
   base_sha="$head_sha"
-  mkdir -p "$repo_dir/.github/workflows"
-  printf 'name: Example\non: pull_request\njobs: {}\n' > "$repo_dir/.github/workflows/example.yml"
-  git -C "$repo_dir" add .github/workflows/example.yml
-  git -C "$repo_dir" commit -qm "workflow change"
-  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
-
-  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_exact_output "$output_file" "run_repo_quality" "false"
-  assert_exact_output "$output_file" "run_workflow_quality" "true"
-  assert_exact_output "$output_file" "run_ci_classifier_tests" "false"
+  head_sha="$(classify_commit "$repo_dir" "$base_sha" "$output_file" \
+    .github/workflows/example.yml 'name: Example' 'workflow change' \
+    false false false true false)"
 
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file" "merge_group"
-  assert_exact_output "$output_file" "run_repo_quality" "false"
-  assert_exact_output "$output_file" "run_workflow_quality" "true"
-  assert_exact_output "$output_file" "run_ci_classifier_tests" "false"
+  assert_quality_scope "$output_file" false false false true false
 
   base_sha="$head_sha"
-  printf 'name: Verify Bitcoin Vectors\non: pull_request\njobs: {}\n' > "$repo_dir/.github/workflows/verify-vectors.yml"
-  git -C "$repo_dir" add .github/workflows/verify-vectors.yml
-  git -C "$repo_dir" commit -qm "vector workflow change"
+  head_sha="$(classify_commit "$repo_dir" "$base_sha" "$output_file" \
+    .github/workflows/verify-vectors.yml 'name: Verify Bitcoin Vectors' 'vector workflow change' \
+    false false false true true)"
+
+  base_sha="$head_sha"
+  head_sha="$(classify_commit "$repo_dir" "$base_sha" "$output_file" \
+    .github/workflows/quality.yml 'name: Code Quality' 'quality workflow change' \
+    false true true true true)"
+
+  base_sha="$head_sha"
+  head_sha="$(classify_commit "$repo_dir" "$base_sha" "$output_file" \
+    scripts/ci/classify-quality-scope.sh 'echo classifier' 'ci classifier change' \
+    true true true false true)"
+
+  base_sha="$head_sha"
+  head_sha="$(classify_commit "$repo_dir" "$base_sha" "$output_file" \
+    config/hardware-emulator-source-inventory.json '{"schemaVersion":1}' \
+    'hardware emulator source inventory change' true false false false true)"
+
+  base_sha="$head_sha"
+  head_sha="$(classify_commit "$repo_dir" "$base_sha" "$output_file" \
+    server/src/example.ts 'export const example = 1;' 'code change' \
+    true true false false false)"
+
+  base_sha="$head_sha"
+  head_sha="$(classify_commit "$repo_dir" "$base_sha" "$output_file" \
+    package-lock.json '{"lockfileVersion": 3}' 'lockfile change' \
+    true true true false false)"
+
+  base_sha="$head_sha"
+  commit_file "$repo_dir" src/mixed.ts 'export const mixed = true;' 'mixed source'
+  printf '{"name":"fixture","version":"1.0.0"}\n' > "$repo_dir/package.json"
+  git -C "$repo_dir" add package.json
+  git -C "$repo_dir" commit --amend -qm 'mixed source and manifest'
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
-
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_exact_output "$output_file" "run_repo_quality" "false"
-  assert_exact_output "$output_file" "run_workflow_quality" "true"
-  assert_exact_output "$output_file" "run_ci_classifier_tests" "true"
+  assert_quality_scope "$output_file" true true true false false
 
   base_sha="$head_sha"
-  printf 'name: Code Quality\non: pull_request\njobs: {}\n' > "$repo_dir/.github/workflows/quality.yml"
-  git -C "$repo_dir" add .github/workflows/quality.yml
-  git -C "$repo_dir" commit -qm "quality workflow change"
-  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
-
-  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_exact_output "$output_file" "run_repo_quality" "false"
-  assert_exact_output "$output_file" "run_workflow_quality" "true"
-  assert_exact_output "$output_file" "run_ci_classifier_tests" "true"
+  head_sha="$(classify_commit "$repo_dir" "$base_sha" "$output_file" \
+    fixtures/archive.bin binary 'binary fixture' true false false false false)"
 
   base_sha="$head_sha"
-  mkdir -p "$repo_dir/scripts/ci"
-  printf '#!/usr/bin/env bash\necho classifier\n' > "$repo_dir/scripts/ci/classify-quality-scope.sh"
-  git -C "$repo_dir" add scripts/ci/classify-quality-scope.sh
-  git -C "$repo_dir" commit -qm "ci classifier change"
-  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
-
-  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_exact_output "$output_file" "run_repo_quality" "true"
-  assert_exact_output "$output_file" "run_workflow_quality" "false"
-  assert_exact_output "$output_file" "run_ci_classifier_tests" "true"
+  head_sha="$(classify_commit "$repo_dir" "$base_sha" "$output_file" \
+    .gitignore '*.generated.ts' 'root gitignore change' \
+    true true false false false)"
 
   base_sha="$head_sha"
-  mkdir -p "$repo_dir/config"
-  printf '{"schemaVersion":1}\n' > "$repo_dir/config/hardware-emulator-source-inventory.json"
-  git -C "$repo_dir" add config/hardware-emulator-source-inventory.json
-  git -C "$repo_dir" commit -qm "hardware emulator source inventory change"
-  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  head_sha="$(classify_commit "$repo_dir" "$base_sha" "$output_file" \
+    server/.gitignore 'generated/' 'nested gitignore change' \
+    true true false false false)"
 
-  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_exact_output "$output_file" "run_repo_quality" "true"
-  assert_exact_output "$output_file" "run_workflow_quality" "false"
-  assert_exact_output "$output_file" "run_ci_classifier_tests" "true"
+  for entry in \
+    'scripts/ci/run-quality-lint.sh|true|false' \
+    'scripts/quality.sh|true|false' \
+    'scripts/quality/lizard-only.sh|true|false' \
+    'scripts/quality/jscpd-only.sh|true|false' \
+    'scripts/quality/lizard-requirements.txt|true|false' \
+    'config/tooling/jscpd.json|true|false' \
+    'scripts/quality/check-lockfile-peer-resolution.sh|false|true' \
+    'scripts/quality/lockfile-peer-resolution-allowlist.txt|false|true' \
+    'scripts/ci/npm-policy.json|false|true'; do
+    IFS='|' read -r path expected_source expected_dependency <<< "$entry"
+    expected_classifier=false
+    case "$path" in
+      scripts/ci/*) expected_classifier=true ;;
+    esac
+    base_sha="$head_sha"
+    head_sha="$(classify_commit "$repo_dir" "$base_sha" "$output_file" \
+      "$path" tool "classify $path" true "$expected_source" "$expected_dependency" false \
+      "$expected_classifier")"
+  done
 
   base_sha="$head_sha"
-  mkdir -p "$repo_dir/server/src"
-  printf 'export const example = 1;\n' > "$repo_dir/server/src/example.ts"
-  git -C "$repo_dir" add server/src/example.ts
-  git -C "$repo_dir" commit -qm "code change"
-  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
-
-  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_exact_output "$output_file" "run_repo_quality" "true"
-  assert_exact_output "$output_file" "run_workflow_quality" "false"
-  assert_exact_output "$output_file" "run_ci_classifier_tests" "false"
-
-  base_sha="$head_sha"
-  mkdir -p "$repo_dir/src"
-  printf 'export const renamed = true;\n' > "$repo_dir/src/renamed.ts"
-  git -C "$repo_dir" add src/renamed.ts
-  git -C "$repo_dir" commit -qm "add source before rename"
+  commit_file "$repo_dir" src/renamed.ts 'export const renamed = true;' 'add source before rename'
   base_sha="$(git -C "$repo_dir" rev-parse HEAD)"
 
   mkdir -p "$repo_dir/docs"
@@ -189,9 +239,16 @@ main() {
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
 
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_exact_output "$output_file" "run_repo_quality" "true"
-  assert_exact_output "$output_file" "run_workflow_quality" "false"
-  assert_exact_output "$output_file" "run_ci_classifier_tests" "false"
+  assert_quality_scope "$output_file" true true false false false
+
+  base_sha="$head_sha"
+  commit_file "$repo_dir" nested/package-lock.json '{"lockfileVersion":3}' 'add nested lockfile'
+  base_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  git -C "$repo_dir" rm -q nested/package-lock.json
+  git -C "$repo_dir" commit -qm 'delete nested lockfile'
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_quality_scope "$output_file" true true true false false
 
   echo "classify-quality-scope regression checks passed"
 }

@@ -9,18 +9,24 @@ event_name="$(ci_event_name)"
 workflow_sha="$(ci_event_head_sha)"
 
 run_repo_quality=true
+run_source_quality=true
+run_dependency_audit=true
 run_workflow_quality=false
 run_ci_classifier_tests=false
 
 emit_outputs() {
   ci_emit_output \
     "run_repo_quality=$run_repo_quality" \
+    "run_source_quality=$run_source_quality" \
+    "run_dependency_audit=$run_dependency_audit" \
     "run_workflow_quality=$run_workflow_quality" \
     "run_ci_classifier_tests=$run_ci_classifier_tests"
 }
 
 mark_full_quality() {
   run_repo_quality=true
+  run_source_quality=true
+  run_dependency_audit=true
   run_workflow_quality=true
   run_ci_classifier_tests=true
 }
@@ -102,7 +108,65 @@ is_ci_classifier_file() {
   return 1
 }
 
+is_quality_control_plane_file() {
+  case "$1" in
+    .github/workflows/quality.yml|scripts/ci/classify-quality-scope.sh)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+# Package manifests and locks intentionally belong to both scopes: lint installs
+# its parser/plugin runtime from them, so dependency-only changes still exercise
+# the lint gate. Each scoped tool's own script/config is also an owning input;
+# otherwise the required-check aggregate would accept its skipped job.
+is_source_quality_file() {
+  case "$1" in
+    *.ts|*.tsx|*.js|*.jsx|*.mjs|*.cjs)
+      return 0
+      ;;
+    .gitignore|*/.gitignore)
+      # jscpd runs with --gitignore, so ignore-rule changes alter its scan set.
+      return 0
+      ;;
+    package.json|*/package.json|package-lock.json|*/package-lock.json)
+      return 0
+      ;;
+    scripts/ci/run-quality-lint.sh|scripts/quality.sh)
+      return 0
+      ;;
+    scripts/quality/lizard-only.sh|scripts/quality/jscpd-only.sh)
+      return 0
+      ;;
+    scripts/quality/lizard-requirements.txt|config/tooling/jscpd.json)
+      return 0
+      ;;
+  esac
+  is_quality_control_plane_file "$1"
+}
+
+is_dependency_audit_file() {
+  case "$1" in
+    package.json|*/package.json|package-lock.json|*/package-lock.json)
+      return 0
+      ;;
+    scripts/ci/npm-*.json|scripts/ci/npm-*.mjs|scripts/ci/check-npm-*.mjs)
+      return 0
+      ;;
+    scripts/quality/check-lockfile-peer-resolution.sh)
+      return 0
+      ;;
+    scripts/quality/lockfile-peer-resolution-allowlist.txt)
+      return 0
+      ;;
+  esac
+  is_quality_control_plane_file "$1"
+}
+
 run_repo_quality=false
+run_source_quality=false
+run_dependency_audit=false
 run_workflow_quality=false
 run_ci_classifier_tests=false
 
@@ -113,6 +177,12 @@ while IFS= read -r file; do
   fi
   if is_ci_classifier_file "$file"; then
     run_ci_classifier_tests=true
+  fi
+  if is_source_quality_file "$file"; then
+    run_source_quality=true
+  fi
+  if is_dependency_audit_file "$file"; then
+    run_dependency_audit=true
   fi
   if ! is_repo_quality_exempt_file "$file"; then
     run_repo_quality=true
