@@ -18,8 +18,8 @@
  * Phase 1 scope: this middleware is wired but no route currently issues the
  * `sanctuary_access` cookie, so `skipCsrfProtection` always returns true and
  * the middleware is effectively a no-op on every real request. Phase 2 turns
- * it on by setting the cookie in `/auth/login`, `/auth/2fa/verify`, and
- * `/auth/refresh`.
+ * it on by setting the cookie in `/auth/register`, `/auth/login`,
+ * `/auth/2fa/verify`, and `/auth/refresh`.
  *
  * ## Lazy initialization
  *
@@ -45,6 +45,8 @@ import {
   SANCTUARY_REFRESH_COOKIE_NAME,
   SANCTUARY_REFRESH_COOKIE_PATH,
 } from './authCookieNames';
+import { createAuthCookieClearPolicy, createAuthCookiePolicy } from './authCookiePolicy';
+import { createCsrfRecoveryErrorHandler } from './csrfRecovery';
 
 // Re-export the names so existing imports from `./csrf` still work. The
 // canonical source is `./authCookieNames`, which has zero transitive
@@ -60,6 +62,7 @@ export {
 
 type CsrfInstance = ReturnType<typeof doubleCsrf>;
 let cachedCsrfInstance: CsrfInstance | null = null;
+const authCookiesClearedResponses = new WeakSet<Response>();
 
 function getCsrfInstance(): CsrfInstance {
   if (cachedCsrfInstance) {
@@ -80,7 +83,7 @@ function getCsrfInstance(): CsrfInstance {
     getSessionIdentifier: (req: Request) => {
       // Bind the CSRF token to the access cookie value so the token rotates
       // with the access token. Phase 2 will issue a new csrf cookie alongside
-      // every new access cookie on login, 2FA verify, and refresh.
+      // every new access cookie on registration, login, 2FA verify, and refresh.
       /* v8 ignore next -- cookie parser supplies req.cookies for browser session requests */
       return req.cookies?.[SANCTUARY_ACCESS_COOKIE_NAME] ?? '';
     },
@@ -100,6 +103,11 @@ function getCsrfInstance(): CsrfInstance {
       // type union from csrf-csrf without an unreachable Array.isArray branch.
       const header = req.headers[SANCTUARY_CSRF_HEADER_NAME];
       return typeof header === 'string' ? header : undefined;
+    },
+    errorConfig: {
+      statusCode: 403,
+      message: 'invalid csrf token',
+      code: 'EBADCSRFTOKEN',
     },
     skipCsrfProtection: (req: Request) => {
       // The skip rule must mirror the auth middleware's source-selection
@@ -147,9 +155,9 @@ export function generateCsrfToken(
 }
 
 /**
- * Issue the browser auth cookies after a successful login, 2FA verify, or
- * refresh. Called by route handlers in Phase 2 of the cookie auth migration
- * (ADR 0001 / 0002).
+ * Issue the browser auth cookies after a successful registration, login,
+ * 2FA verify, or refresh. Called by route handlers in Phase 2 of the cookie
+ * auth migration (ADR 0001 / 0002).
  *
  * Sets three cookies:
  *   - sanctuary_access: HttpOnly, Secure (prod), SameSite=Strict, path=/,
@@ -193,22 +201,15 @@ export function setAuthCookies(
     throw new Error('Generated refresh token is missing expiry');
   }
   const refreshExpiresAt = new Date(decodedRefresh.exp * 1000);
-
-  res.cookie(SANCTUARY_ACCESS_COOKIE_NAME, accessToken, {
-    httpOnly: true,
+  const cookiePolicy = createAuthCookiePolicy({
+    accessExpiresAt,
+    refreshExpiresAt,
     secure: isProd,
-    sameSite: 'strict',
-    path: '/',
-    expires: accessExpiresAt,
   });
 
-  res.cookie(SANCTUARY_REFRESH_COOKIE_NAME, refreshToken, {
-    httpOnly: true,
-    secure: isProd,
-    sameSite: 'strict',
-    path: SANCTUARY_REFRESH_COOKIE_PATH,
-    expires: refreshExpiresAt,
-  });
+  res.cookie(SANCTUARY_ACCESS_COOKIE_NAME, accessToken, cookiePolicy.access);
+
+  res.cookie(SANCTUARY_REFRESH_COOKIE_NAME, refreshToken, cookiePolicy.refresh);
 
   // Mutate req.cookies so the CSRF token is bound to the NEW access cookie
   // value, not the one that was on the request. This matches the lifecycle
@@ -220,7 +221,10 @@ export function setAuthCookies(
     /* v8 ignore stop */
     [SANCTUARY_ACCESS_COOKIE_NAME]: accessToken,
   };
-  generateCsrfToken(req, res);
+  generateCsrfToken(req, res, {
+    overwrite: true,
+    cookieOptions: cookiePolicy.csrf,
+  });
 
   res.setHeader(SANCTUARY_ACCESS_EXPIRES_AT_HEADER, accessExpiresAt.toISOString());
 
@@ -237,29 +241,25 @@ export function setAuthCookies(
  * before expiring a cookie.
  */
 export function clearAuthCookies(res: Response): void {
+  // Recovery clears before authentication so invalid logout requests still
+  // clean up. A successful logout then reaches the route's normal cleanup;
+  // keep that second call from emitting duplicate Set-Cookie headers.
+  if (authCookiesClearedResponses.has(res)) {
+    return;
+  }
+  authCookiesClearedResponses.add(res);
+
   const isProd = config.nodeEnv === 'production';
+  const clearPolicy = createAuthCookieClearPolicy(isProd);
 
-  res.clearCookie(SANCTUARY_ACCESS_COOKIE_NAME, {
-    httpOnly: true,
-    secure: isProd,
-    sameSite: 'strict',
-    path: '/',
-  });
+  res.clearCookie(SANCTUARY_ACCESS_COOKIE_NAME, clearPolicy.access);
 
-  res.clearCookie(SANCTUARY_REFRESH_COOKIE_NAME, {
-    httpOnly: true,
-    secure: isProd,
-    sameSite: 'strict',
-    path: SANCTUARY_REFRESH_COOKIE_PATH,
-  });
+  res.clearCookie(SANCTUARY_REFRESH_COOKIE_NAME, clearPolicy.refresh);
 
-  res.clearCookie(SANCTUARY_CSRF_COOKIE_NAME, {
-    httpOnly: false,
-    secure: isProd,
-    sameSite: 'strict',
-    path: '/',
-  });
+  res.clearCookie(SANCTUARY_CSRF_COOKIE_NAME, clearPolicy.csrf);
 }
+
+export const csrfRecoveryErrorHandler = createCsrfRecoveryErrorHandler(clearAuthCookies);
 
 /**
  * Set the X-Access-Expires-At response header for endpoints that verify the

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ApiError,
+  AuthCsrfSessionStaleError,
   ConflictError,
   DatabaseError,
   DeviceNotFoundError,
@@ -85,6 +86,14 @@ describe('ApiError hierarchy', () => {
 
     const ownerOnly = new OwnershipRequiredError();
     expect(ownerOnly.code).toBe(ErrorCodes.OWNERSHIP_REQUIRED);
+
+    const staleCsrf = new AuthCsrfSessionStaleError();
+    expect(staleCsrf.statusCode).toBe(403);
+    expect(staleCsrf.code).toBe(ErrorCodes.AUTH_CSRF_SESSION_STALE);
+    expect(staleCsrf.toResponse()).toMatchObject({
+      error: 'AuthCsrfSessionStale',
+      code: 'AUTH_CSRF_SESSION_STALE',
+    });
   });
 
   it('maps not-found errors and optional identifier details', () => {

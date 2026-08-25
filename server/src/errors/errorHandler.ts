@@ -20,17 +20,9 @@ import {
 } from '../utils/errors';
 import { createLogger } from '../utils/logger';
 import { requestContext } from '../utils/requestContext';
+import { isInvalidCsrfTokenError } from '../middleware/csrfError';
 
 const log = createLogger('MW:ERROR_HANDLER');
-
-function isCsrfForbiddenError(error: Error): boolean {
-  const statusError = error as Error & { status?: number; statusCode?: number };
-  return (
-    error.name === 'ForbiddenError' &&
-    error.message === 'invalid csrf token' &&
-    (statusError.status === 403 || statusError.statusCode === 403)
-  );
-}
 
 /**
  * Main error handler middleware
@@ -92,7 +84,7 @@ export function errorHandler(
     return;
   }
 
-  if (isCsrfForbiddenError(error)) {
+  if (isInvalidCsrfTokenError(error)) {
     const apiError = new ForbiddenError('Invalid CSRF token');
     log.warn(`API Error: ${apiError.code}`, {
       message: apiError.message,

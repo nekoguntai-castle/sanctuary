@@ -25,6 +25,7 @@ import { mockElectrumForAuthIntegration, setAuthIntegrationContext } from './aut
 import { registerAuthTwoFactorContracts } from './auth/twoFactor.contracts';
 import { generateToken, getTokenLineage } from '../../../src/utils/jwt';
 import { createRefreshToken } from '../../../src/services/refreshTokenService';
+import config from '../../../src/config';
 
 // Increase timeout for integration tests
 vi.setConfig({ testTimeout: 30000 });
@@ -465,6 +466,45 @@ describeWithDb('Authentication Integration', () => {
   });
 
   describe('Logout', () => {
+    it('recovers a missing-CSRF cookie session through real revocation and audit', async () => {
+      const testUser = getTestUser();
+      const createdUser = await createTestUser(prisma, testUser);
+      const loginResponse = await request(app)
+        .post('/api/v1/auth/login')
+        .send({ username: testUser.username, password: testUser.password })
+        .expect(200);
+      const { token, refreshToken } = extractAuthTokens(loginResponse);
+
+      const logoutResponse = await request(app)
+        .post('/api/v1/auth/logout')
+        .set('Origin', config.clientUrl)
+        .set('Cookie', [
+          `sanctuary_access=${token}`,
+          `sanctuary_refresh=${refreshToken}`,
+        ])
+        .send({})
+        .expect(200);
+
+      const clearedCookies = logoutResponse.headers['set-cookie'] as unknown as string[];
+      expect(clearedCookies).toEqual(expect.arrayContaining([
+        expect.stringMatching(/^sanctuary_access=;/),
+        expect.stringMatching(/^sanctuary_refresh=;/),
+        expect.stringMatching(/^sanctuary_csrf=;/),
+      ]));
+      expect(await prisma.auditLog.findFirst({
+        where: { userId: createdUser.id, action: 'auth.logout' },
+      })).not.toBeNull();
+
+      await request(app)
+        .get('/api/v1/auth/me')
+        .set('Cookie', [`sanctuary_access=${token}`])
+        .expect(401);
+      await request(app)
+        .post('/api/v1/auth/refresh')
+        .send({ refreshToken })
+        .expect(401);
+    });
+
     it('should logout and invalidate access token', async () => {
       const testUser = getTestUser();
       await createTestUser(prisma, testUser);
@@ -523,6 +563,45 @@ describeWithDb('Authentication Integration', () => {
   });
 
   describe('Logout All Sessions', () => {
+    it('recovers missing CSRF through real all-session revocation and audit', async () => {
+      const testUser = getTestUser();
+      const createdUser = await createTestUser(prisma, testUser);
+      const login1 = await request(app)
+        .post('/api/v1/auth/login')
+        .send({ username: testUser.username, password: testUser.password })
+        .expect(200);
+      const login2 = await request(app)
+        .post('/api/v1/auth/login')
+        .send({ username: testUser.username, password: testUser.password })
+        .expect(200);
+      const tokens1 = extractAuthTokens(login1);
+      const tokens2 = extractAuthTokens(login2);
+
+      await request(app)
+        .post('/api/v1/auth/logout-all')
+        .set('Origin', config.clientUrl)
+        .set('Cookie', [`sanctuary_access=${tokens1.token}`])
+        .expect(200);
+
+      expect(await prisma.auditLog.findFirst({
+        where: {
+          userId: createdUser.id,
+          action: 'auth.logout',
+          details: { path: ['action'], equals: 'logout_all' },
+        },
+      })).not.toBeNull();
+      for (const tokens of [tokens1, tokens2]) {
+        await request(app)
+          .post('/api/v1/auth/refresh')
+          .send({ refreshToken: tokens.refreshToken })
+          .expect(401);
+        await request(app)
+          .get('/api/v1/auth/me')
+          .set('Authorization', `Bearer ${tokens.token}`)
+          .expect(401);
+      }
+    });
+
     it('should logout from all devices', async () => {
       const testUser = getTestUser();
       await createTestUser(prisma, testUser);

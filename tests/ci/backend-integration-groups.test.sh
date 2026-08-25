@@ -58,6 +58,7 @@ main() {
   assert_contains "$TEST_TEMP_DIR/groups" 'ops-destructive'
   "$GROUP_SCRIPT" ops-destructive > "$TEST_TEMP_DIR/ops-destructive"
   "$GROUP_SCRIPT" ops-workers > "$TEST_TEMP_DIR/ops-workers"
+  "$GROUP_SCRIPT" flows > "$TEST_TEMP_DIR/flows"
   "$GROUP_SCRIPT" repositories-core > "$TEST_TEMP_DIR/repositories-core"
   assert_contains "$TEST_TEMP_DIR/ops-destructive" 'tests/integration/ops/phase2OperationsProof.integration.test.ts'
   assert_not_contains "$TEST_TEMP_DIR/ops-workers" 'tests/integration/ops/phase2OperationsProof.integration.test.ts'
@@ -67,6 +68,7 @@ main() {
   assert_contains "$TEST_TEMP_DIR/ops-workers" 'tests/integration/worker/notificationDispatcherRetention.integration.test.ts'
   assert_contains "$TEST_TEMP_DIR/ops-workers" 'tests/integration/worker/recurringSchedules.integration.test.ts'
   assert_contains "$TEST_TEMP_DIR/ops-workers" 'tests/integration/worker/workerHeartbeatRegistryRetirement.integration.test.ts'
+  assert_contains "$TEST_TEMP_DIR/flows" 'tests/integration/flows/authCsrfRecovery.integration.test.ts'
   assert_redis_suite_contract 'tests/integration/worker/deadLetterQueue.integration.test.ts'
   assert_redis_suite_contract 'tests/integration/worker/expiredIncrementalReclaim.integration.test.ts'
   assert_redis_suite_contract 'tests/integration/worker/jobProcessorLockLoss.integration.test.ts'

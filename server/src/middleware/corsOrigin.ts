@@ -14,6 +14,56 @@ export interface ServerCorsOriginOptions {
 
 export type CorsOriginGuard = (origin: string | undefined, callback: CorsOriginCallback) => void;
 
+type RequestOriginInput = Pick<Request, 'headers' | 'protocol' | 'get'>;
+
+function isExactHttpOrigin(origin: string): boolean {
+  try {
+    const parsed = new URL(origin);
+    return (
+      (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+      parsed.username === '' &&
+      parsed.password === '' &&
+      parsed.pathname === '/' &&
+      parsed.search === '' &&
+      parsed.hash === '' &&
+      parsed.origin === origin
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function isServerOriginAllowed(
+  origin: string | undefined,
+  {
+    allowedOrigins = [],
+    clientUrl,
+    nodeEnv,
+    requestOrigin,
+  }: ServerCorsOriginOptions,
+): boolean {
+  if (!origin || !isExactHttpOrigin(origin)) {
+    return false;
+  }
+  const configuredOrigins = [requestOrigin ?? '', clientUrl, ...allowedOrigins]
+    .filter(configuredOrigin => configuredOrigin.length > 0);
+  return (
+    new Set(configuredOrigins).has(origin) ||
+    (nodeEnv === 'development' && isLoopbackOrigin(origin))
+  );
+}
+
+export function isRequestOriginAllowed(
+  req: RequestOriginInput,
+  origin: string | undefined,
+  options: Omit<ServerCorsOriginOptions, 'requestOrigin'>,
+): boolean {
+  return isServerOriginAllowed(origin, {
+    ...options,
+    requestOrigin: getRequestOrigin(req),
+  });
+}
+
 /**
  * Builds the backend CORS origin policy.
  *
@@ -31,17 +81,18 @@ export function createServerCorsOriginGuard({
   nodeEnv,
   requestOrigin,
 }: ServerCorsOriginOptions): CorsOriginGuard {
-  const configuredOrigins = [requestOrigin ?? '', clientUrl, ...allowedOrigins].filter(origin => origin.length > 0);
-  const allowedOriginSet = new Set(configuredOrigins);
-  const allowDevelopmentLoopbackOrigins = nodeEnv === 'development';
-
   return (origin, callback) => {
     if (!origin) {
       callback(null, false);
       return;
     }
 
-    if (allowedOriginSet.has(origin) || (allowDevelopmentLoopbackOrigins && isLoopbackOrigin(origin))) {
+    if (isServerOriginAllowed(origin, {
+      allowedOrigins,
+      clientUrl,
+      nodeEnv,
+      requestOrigin,
+    })) {
       callback(null, origin);
       return;
     }
@@ -71,15 +122,11 @@ export function createServerCorsOptionsDelegate(
 
 // URL.hostname normalizes IPv4/localhost and keeps IPv6 loopback bracketed in Node.
 function isLoopbackOrigin(origin: string): boolean {
-  try {
-    const parsed = new URL(origin);
-    return ['localhost', '127.0.0.1', '[::1]', '::1'].includes(parsed.hostname);
-  } catch {
-    return false;
-  }
+  const parsed = new URL(origin);
+  return ['localhost', '127.0.0.1', '[::1]', '::1'].includes(parsed.hostname);
 }
 
-function getRequestOrigin(req: Pick<Request, 'headers' | 'protocol' | 'get'>): string | null {
+export function getRequestOrigin(req: RequestOriginInput): string | null {
   // Uses Express's resolved protocol plus the request Host header as seen by
   // the reverse proxy. `server/src/index.ts` enables `trust proxy`, so
   // req.protocol already respects the trusted proxy boundary instead of

@@ -204,6 +204,7 @@ describe('errorHandler', () => {
     const err = Object.assign(new Error('invalid csrf token'), {
       name: 'ForbiddenError',
       statusCode: 403,
+      code: 'EBADCSRFTOKEN',
     });
 
     errorHandler(err, {} as Request, res, vi.fn() as NextFunction);

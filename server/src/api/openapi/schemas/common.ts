@@ -42,6 +42,17 @@ export const commonSchemas = {
     },
     required: ['error', 'code', 'message', 'timestamp'],
   },
+  AuthCsrfSessionStaleError: {
+    type: 'object',
+    properties: {
+      error: { type: 'string', enum: ['AuthCsrfSessionStale'] },
+      code: { type: 'string', enum: ['AUTH_CSRF_SESSION_STALE'] },
+      message: { type: 'string' },
+      timestamp: { type: 'string', format: 'date-time' },
+      requestId: { type: 'string' },
+    },
+    required: ['error', 'code', 'message', 'timestamp'],
+  },
   SuccessResponse: {
     type: 'object',
     properties: {

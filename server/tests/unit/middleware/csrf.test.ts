@@ -22,11 +22,8 @@
  *     - accepts when header matches the cookie
  */
 
-// Set JWT_SECRET BEFORE importing config (the config module reads it at load time).
-process.env.JWT_SECRET = 'test-jwt-secret-for-csrf-middleware-tests-32+chars';
-process.env.NODE_ENV = 'test';
-
 import { describe, it, expect, beforeEach } from 'vitest';
+import { vi } from 'vitest';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
@@ -39,6 +36,12 @@ import {
   SANCTUARY_CSRF_HEADER_NAME,
   setAuthCookies,
 } from '../../../src/middleware/csrf';
+
+// ESM imports are hoisted, so configure security inputs in Vitest's hoisted phase.
+vi.hoisted(() => {
+  process.env.JWT_SECRET = 'test-jwt-secret-for-csrf-middleware-tests-32+chars';
+  process.env.NODE_ENV = 'test';
+});
 
 /**
  * Build a tiny Express app that mirrors the production wiring order:
@@ -151,6 +154,26 @@ describe('csrf middleware (ADR 0001 / 0002 Phase 1)', () => {
     expect(expires).toBeDefined();
     expect(new Date(expires!).getTime() - before).toBeGreaterThan(119 * 60 * 1000);
     expect(new Date(expires!).getTime() - before).toBeLessThan(121 * 60 * 1000);
+  });
+
+  it('overwrites a stale CSRF cookie with access-aligned persistent attributes', async () => {
+    const response = await request(app)
+      .get('/test/issue-auth-cookies')
+      .set('Cookie', ['sanctuary_csrf=stale-session-cookie'])
+      .expect(200);
+    const cookies = response.headers['set-cookie'] as unknown as string[];
+    const accessCookie = cookies.find(cookie => cookie.startsWith('sanctuary_access='));
+    const csrfCookie = cookies.find(cookie => cookie.startsWith('sanctuary_csrf='));
+
+    expect(csrfCookie).toBeDefined();
+    expect(csrfCookie).not.toContain('sanctuary_csrf=stale-session-cookie');
+    expect(csrfCookie).not.toContain('HttpOnly');
+    expect(csrfCookie).toContain('Path=/');
+    expect(csrfCookie).toContain('SameSite=Strict');
+    expect(csrfCookie).not.toContain('Domain=');
+    expect(csrfCookie?.match(/Expires=([^;]+)/)?.[1]).toBe(
+      accessCookie?.match(/Expires=([^;]+)/)?.[1],
+    );
   });
 
   it('rejects an issued refresh credential without an expiry claim', async () => {

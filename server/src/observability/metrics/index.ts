@@ -53,6 +53,7 @@ export {
   activeWallets,
   activeUsers,
   syncPollingModeTransitions,
+  authCsrfSessionStaleTotal,
 } from './businessMetrics';
 
 // Infrastructure metrics

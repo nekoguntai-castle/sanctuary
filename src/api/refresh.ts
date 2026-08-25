@@ -150,7 +150,7 @@ function scheduleRefreshFromExpiryMs(expiresAtMs: number): void {
 
 /**
  * Called by `client.ts` whenever an auth response comes back with the
- * `X-Access-Expires-At` header (login, 2FA verify, refresh, /auth/me).
+ * `X-Access-Expires-At` header (registration, login, 2FA verify, refresh, /auth/me).
  * Updates in-memory state and reschedules the proactive timer.
  */
 export function scheduleRefreshFromHeader(expiresAtIso: string): void {

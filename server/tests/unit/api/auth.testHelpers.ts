@@ -10,7 +10,10 @@ import { vi } from 'vitest';
 import { mockPrismaClient, resetPrismaMocks } from '../../mocks/prisma';
 import express from 'express';
 import cookieParser from 'cookie-parser';
-import { doubleCsrfProtection } from '../../../src/middleware/csrf';
+import {
+  csrfRecoveryErrorHandler,
+  doubleCsrfProtection,
+} from '../../../src/middleware/csrf';
 import { errorHandler } from '../../../src/errors/errorHandler';
 
 // Re-export so consuming test files don't need to import from mocks/prisma directly
@@ -43,6 +46,7 @@ export const createAuthTestApp = async () => {
   // codeql[js/missing-token-validation] Test harness mirrors production cookie parsing and mounts doubleCsrfProtection before the dynamically imported auth router below.
   app.use(cookieParser());
   app.use(doubleCsrfProtection);
+  app.use(csrfRecoveryErrorHandler);
 
   // Import router dynamically after mocks
   const authModule = await import('../../../src/api/auth');

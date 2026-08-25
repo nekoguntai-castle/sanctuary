@@ -1162,6 +1162,7 @@ n_src_themes_index_ts-->n_src_themes_sunset__collapsed
 n_src_themes_index_ts-->n_src_utils_logger_ts
 n_src_themes_registry_ts-->n_src_themes_seasonal__collapsed
 n_src_themes_registry_ts-->n_src_utils_logger_ts
+n_src_types_index_ts-->n_shared_types_api_ts
 n_src_types_index_ts-->n_shared_types_domain_ts
 n_src_types_index_ts-->n_src_types_hardware_ts
 n_src_utils_bip21Parser_ts-->n_src_utils_sendAmount_ts

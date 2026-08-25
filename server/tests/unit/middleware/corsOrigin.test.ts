@@ -178,6 +178,25 @@ describe('createServerCorsOriginGuard', () => {
     expect(result.error?.message).toBe('Not allowed by CORS');
   });
 
+  it.each([
+    'null',
+    'https://user@app.example.com',
+    'https://app.example.com/path',
+    'https://app.example.com?query=1',
+    'https://app.example.com#fragment',
+    'https://app.example.com:443',
+  ])('rejects non-canonical browser origin syntax: %s', (origin) => {
+    const guard = createServerCorsOriginGuard({
+      allowedOrigins: [origin],
+      clientUrl: origin,
+      nodeEnv: 'production',
+    });
+
+    const result = evaluateOrigin(guard, origin);
+    expect(result.value).toBeUndefined();
+    expect(result.error).toBeInstanceOf(ForbiddenError);
+  });
+
   it('allows same-origin browser access derived from the current request host in production', () => {
     const result = evaluateDelegatedOrigin(createRequestLike({
       host: '10.0.0.5:8443',

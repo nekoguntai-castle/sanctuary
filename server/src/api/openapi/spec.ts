@@ -145,7 +145,7 @@ export const openApiSpec = {
         in: 'cookie',
         name: 'sanctuary_access',
         description:
-          'ADR 0001 — Browser auth via HttpOnly Secure SameSite=Strict cookie set on login/2FA-verify/refresh. Used by the web frontend. Mobile and gateway callers use bearerAuth instead.',
+          'ADR 0001 — Browser auth via HttpOnly Secure SameSite=Strict cookie set on registration/login/2FA-verify/refresh. Used by the web frontend. Mobile and gateway callers use bearerAuth instead.',
       },
       csrfToken: {
         type: 'apiKey',

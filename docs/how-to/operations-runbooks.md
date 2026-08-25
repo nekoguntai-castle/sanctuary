@@ -404,12 +404,12 @@ Browser auth cookies are set with `Secure`, which means the browser will only se
 ### Cookie names and scopes
 
 - `sanctuary_access` — HttpOnly, Secure, SameSite=Strict, Path=/. Access token; script cannot read it.
-- `sanctuary_refresh` — HttpOnly, Secure, SameSite=Strict, **Path=/api/v1/auth/refresh**. Refresh token; the browser never sends it to any other endpoint, which limits exposure to the refresh route only.
+- `sanctuary_refresh` — HttpOnly, Secure, SameSite=Strict, **Path=/api/v1/auth**. Refresh token; this narrow auth scope lets refresh and logout consume and revoke it without exposing it to application routes.
 - `sanctuary_csrf` — Secure, SameSite=Strict, **NOT HttpOnly**. The frontend reads it from `document.cookie` and echoes it as `X-CSRF-Token` on POST/PUT/PATCH/DELETE when authenticated via cookie.
 
 ### CSRF token rotation behavior
 
-`csrf-csrf` uses a per-session double-submit token derived from the sanctuary JWT secret material. The CSRF cookie rotates on every auth response (login, 2FA verify, refresh). A stale tab that missed a refresh broadcast may briefly hold an old CSRF token; the 401 interceptor will refresh and retry the request once, which also surfaces the rotated cookie to that tab. If a request persistently fails CSRF validation with `EBADCSRFTOKEN` in backend logs after Phase 4, the common causes are:
+`csrf-csrf` uses a per-session double-submit token derived from the sanctuary JWT secret material. The CSRF cookie rotates on every credential auth response (registration, login, 2FA verify, refresh). A stale tab that missed a refresh broadcast may briefly hold an old CSRF token; the 401 interceptor will refresh and retry the request once, which also surfaces the rotated cookie to that tab. If a request persistently fails CSRF validation with `EBADCSRFTOKEN` in backend logs after Phase 4, the common causes are:
 - The frontend read the cookie before the rotation response was processed (`sanctuary_csrf` is not HttpOnly so it is readable — confirm `document.cookie` reflects the new value).
 - A non-same-origin request tried to attach credentials; SameSite=Strict blocked the cookie and the request authenticated via no path at all, but hit the CSRF-exempt check incorrectly.
 - The JWT secret material was rotated without restarting the backend, invalidating all in-flight CSRF tokens.
@@ -418,6 +418,8 @@ Browser auth cookies are set with `Secure`, which means the browser will only se
 
 - **TTL:** 7 days. Matches the existing implicit value in `server/src/api/auth/tokens.ts` rotation logic. Configurable via the existing JWT/session config.
 - **Rotation:** on every successful `POST /api/v1/auth/refresh`, the server rotates the refresh token and issues a new `sanctuary_refresh` cookie. The previous token is marked used.
+- **CSRF lifetime/recovery:** `sanctuary_access` and `sanctuary_csrf` have the same expiry and rotate together. A trusted credential request with a stale pair is rejected once with `AUTH_CSRF_SESSION_STALE` after all auth cookies are cleared. Do not treat ordinary CSRF 403s as recoverable; protected routes, untrusted/originless requests, and missing/wrong headers with a present CSRF cookie remain hard failures.
+- **Rollout:** deploy the aligned server issuance/recovery contract to every replica before enabling the frontend retry/lock phase. Mixed old/new server issuance is unsupported. Roll back the frontend first.
 - **Rotation failure detection:** if the same refresh token is presented twice, the second presentation returns 401 (revoked). This is the rotation security primitive — do not weaken it.
 
 **Triage:** if a user reports "I was logged out after a short time":

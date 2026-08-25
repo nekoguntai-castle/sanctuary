@@ -404,6 +404,7 @@ jobs:
           ${{ github.workspace }}/scripts/ci/time-command.sh "quick backend integration smoke"
           npm run test:run:ci --
           tests/integration/websocket/websocket.integration.test.ts
+          tests/integration/flows/authCsrfRecovery.integration.test.ts
           tests/integration/flows/auth.integration.test.ts
           tests/integration/api/walletApprovalsAudit.test.ts
 

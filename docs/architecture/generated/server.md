@@ -115,6 +115,7 @@ n_src_assistant__collapsed-->n_src_services__collapsed
 n_src_assistant__collapsed-->n_src_utils__collapsed
 n_src_config__collapsed-->n_src_constants__collapsed
 n_src_config__collapsed-->n_src_utils__collapsed
+n_src_errors__collapsed-->n_src_middleware__collapsed
 n_src_errors__collapsed-->n_src_utils__collapsed
 n_src_events__collapsed-->n_src_utils__collapsed
 n_src_i18n__collapsed-->n_src_middleware__collapsed

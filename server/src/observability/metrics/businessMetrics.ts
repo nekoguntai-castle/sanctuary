@@ -65,3 +65,10 @@ export const syncPollingModeTransitions = new Counter({
   labelNames: ['from', 'to'],
   registers: [registry],
 });
+
+/** Stale browser access/CSRF pairs cleared or destructively recovered. */
+export const authCsrfSessionStaleTotal = new Counter({
+  name: 'sanctuary_auth_csrf_session_stale_total',
+  help: 'Total stale browser access and CSRF cookie pairs classified by the auth boundary',
+  registers: [registry],
+});

@@ -50,8 +50,8 @@ const RefreshBodySchema = z.preprocess(
  * auth surface in ADR 0001 / 0002:
  *
  *   1. `sanctuary_refresh` HttpOnly cookie — the browser path after the
- *      Phase 2 cookie migration, scoped to `/api/v1/auth/refresh` so it is
- *      never sent to any other endpoint.
+ *      Phase 2 cookie migration, scoped to `/api/v1/auth` so refresh and
+ *      logout can both consume and revoke it without exposing it to app routes.
  *   2. `req.body.refreshToken` — used by mobile/gateway callers that
  *      cannot set browser cookies, and by browser clients during the
  *      Phase 2-6 rollback window if the frontend is rolled back to the

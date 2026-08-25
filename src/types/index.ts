@@ -91,6 +91,7 @@ import type {
   PriceSource,
   AggregatedPrice,
 } from "@sanctuary/shared/types/api";
+export { AUTH_CSRF_SESSION_STALE_CODE } from "@sanctuary/shared/types/api";
 import type { PendingTransactionType } from "@sanctuary/shared/constants/transactions";
 import type { NodeMempoolEstimator } from "@sanctuary/shared/constants/nodeConfig";
 import type {

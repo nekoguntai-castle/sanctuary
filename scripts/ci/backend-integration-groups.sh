@@ -31,6 +31,7 @@ list_group_specs() {
       printf '%s\n' \
         tests/integration/flows/admin.integration.test.ts \
         tests/integration/flows/authIntentConcurrency.integration.test.ts \
+        tests/integration/flows/authCsrfRecovery.integration.test.ts \
         tests/integration/flows/auth.integration.test.ts \
         tests/integration/flows/coinControl.integration.test.ts \
         tests/integration/flows/internalReceivingPersistence.integration.test.ts \

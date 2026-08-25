@@ -7,8 +7,13 @@
 
 import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import { errorHandler } from '../../../src/errors/errorHandler';
 import { createServerCorsOptionsDelegate } from '../../../src/middleware/corsOrigin';
+import {
+  csrfRecoveryErrorHandler,
+  doubleCsrfProtection,
+} from '../../../src/middleware/csrf';
 
 // Import routes
 import authRoutes from '../../../src/api/auth';
@@ -39,6 +44,9 @@ function buildTestApp(options: TestAppOptions = {}): Express {
     nodeEnv: options.nodeEnv ?? 'development',
   })));
   app.use(express.json({ limit: '50mb' }));
+  app.use(cookieParser());
+  app.use(doubleCsrfProtection);
+  app.use(csrfRecoveryErrorHandler);
 
   app.use('/api/v1/auth', authRoutes);
   app.use('/api/v1/wallets', walletRoutes);

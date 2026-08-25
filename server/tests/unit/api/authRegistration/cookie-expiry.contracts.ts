@@ -40,6 +40,7 @@ export function registerAuthCookieExpiryTests(): void {
       expect(cookies.sanctuary_access.attrs.HttpOnly).toBe(true);
       expect(cookies.sanctuary_access.attrs.SameSite).toBe('Strict');
       expect(cookies.sanctuary_access.attrs.Path).toBe('/');
+      expect(cookies.sanctuary_access.attrs.Domain).toBeUndefined();
       // Should carry an absolute expiry matching the JWT exp claim (the
       // mocked decodeToken returns now+3600, so Expires is set).
       expect(cookies.sanctuary_access.attrs.Expires).toBeDefined();
@@ -48,6 +49,7 @@ export function registerAuthCookieExpiryTests(): void {
       expect(cookies.sanctuary_refresh.attrs.HttpOnly).toBe(true);
       expect(cookies.sanctuary_refresh.attrs.SameSite).toBe('Strict');
       expect(cookies.sanctuary_refresh.attrs.Path).toBe('/api/v1/auth');
+      expect(cookies.sanctuary_refresh.attrs.Domain).toBeUndefined();
       expect(cookies.sanctuary_refresh.attrs.Expires).toBeDefined();
 
       // sanctuary_csrf: NOT HttpOnly (frontend needs to read it),
@@ -55,6 +57,13 @@ export function registerAuthCookieExpiryTests(): void {
       expect(cookies.sanctuary_csrf.attrs.HttpOnly).toBeUndefined();
       expect(cookies.sanctuary_csrf.attrs.SameSite).toBe('Strict');
       expect(cookies.sanctuary_csrf.attrs.Path).toBe('/');
+      expect(cookies.sanctuary_csrf.attrs.Expires).toBe(
+        cookies.sanctuary_access.attrs.Expires,
+      );
+      expect(cookies.sanctuary_csrf.attrs.Secure).toBe(
+        cookies.sanctuary_access.attrs.Secure,
+      );
+      expect(cookies.sanctuary_csrf.attrs.Domain).toBeUndefined();
 
       return cookies;
     }
@@ -93,6 +102,23 @@ export function registerAuthCookieExpiryTests(): void {
       expect(cookies.sanctuary_refresh?.value).not.toBe('');
       expect(cookies.sanctuary_csrf?.value).not.toBe('');
     }
+
+    it.each(['/login', '/register', '/refresh'])(
+      'rejects and clears a stale browser cookie pair before the %s handler executes',
+      async (endpoint) => {
+        mockPrismaClient.user.findUnique.mockClear();
+        const response = await request(app)
+          .post(`/api/v1/auth${endpoint}`)
+          .set('Origin', 'http://localhost:3000')
+          .set('Cookie', ['sanctuary_access=stale-access'])
+          .send({})
+          .expect(403);
+
+        expect(response.body.code).toBe('AUTH_CSRF_SESSION_STALE');
+        assertAuthCookiesCleared(response.headers['set-cookie']);
+        expect(mockPrismaClient.user.findUnique).not.toHaveBeenCalled();
+      },
+    );
 
     // -- Login ------------------------------------------------------------
     it('login sets sanctuary_access/refresh/csrf cookies and X-Access-Expires-At header', async () => {
@@ -230,6 +256,27 @@ export function registerAuthCookieExpiryTests(): void {
       expect(response.body.refreshToken).toBeUndefined();
       assertAuthCookiesIssued(response.headers['set-cookie']);
       assertAccessExpiresAtHeader(response.headers);
+    });
+
+    it('refresh continuity overwrites an orphan CSRF cookie when access is absent', async () => {
+      mockPrismaClient.user.findUnique.mockResolvedValue({
+        id: 'test-user-id',
+        username: 'testuser',
+        isAdmin: false,
+        sessionVersion: 0,
+      });
+
+      const response = await request(app)
+        .post('/api/v1/auth/refresh')
+        .set('Cookie', [
+          'sanctuary_refresh=cookie-refresh-token',
+          'sanctuary_csrf=orphan-csrf-token',
+        ])
+        .send({})
+        .expect(200);
+
+      const cookies = assertAuthCookiesIssued(response.headers['set-cookie']);
+      expect(cookies.sanctuary_csrf.value).not.toBe('orphan-csrf-token');
     });
 
     it('refresh prefers cookie token over body token when both are present (ADR 0002)', async () => {
@@ -472,6 +519,54 @@ export function registerAuthCookieExpiryTests(): void {
       assertAuthCookiesCleared(response.headers['set-cookie']);
     });
 
+    it('missing-CSRF logout continues through revocation and audit before clearing cookies', async () => {
+      const { revokeLogoutCredentials } = await import('../../../../src/services/refreshTokenService');
+      const { auditService } = await import('../../../../src/services/auditService');
+      vi.mocked(revokeLogoutCredentials).mockClear();
+      vi.mocked(auditService.log).mockClear();
+
+      const response = await request(app)
+        .post('/api/v1/auth/logout')
+        .set('Origin', 'http://localhost:3000')
+        .set('Cookie', [
+          'sanctuary_access=cookie-access-token',
+          'sanctuary_refresh=cookie-refresh-token',
+        ])
+        .send({})
+        .expect(200);
+
+      expect(revokeLogoutCredentials).toHaveBeenCalledWith(expect.objectContaining({
+        refreshToken: 'cookie-refresh-token',
+      }));
+      expect(auditService.log).toHaveBeenCalledWith(expect.objectContaining({
+        action: 'LOGOUT',
+        success: true,
+      }));
+      assertAuthCookiesCleared(response.headers['set-cookie']);
+    });
+
+    it('logout keeps bearer identity precedence when stale cookies are also attached', async () => {
+      const { getTokenLineage } = await import('../../../../src/utils/jwt');
+      const { revokeLogoutCredentials } = await import('../../../../src/services/refreshTokenService');
+      vi.mocked(getTokenLineage).mockClear();
+      vi.mocked(revokeLogoutCredentials).mockClear();
+
+      await request(app)
+        .post('/api/v1/auth/logout')
+        .set('Origin', 'http://localhost:3000')
+        .set('Authorization', 'Bearer header-user-access-token')
+        .set('Cookie', [
+          'sanctuary_access=other-cookie-user-access-token',
+          'sanctuary_refresh=cookie-refresh-token',
+        ])
+        .send({})
+        .expect(200);
+
+      expect(getTokenLineage).toHaveBeenCalledWith('header-user-access-token');
+      expect(getTokenLineage).not.toHaveBeenCalledWith('other-cookie-user-access-token');
+      expect(revokeLogoutCredentials).toHaveBeenCalled();
+    });
+
     it.each(['Bearer  malformed', 'Bearer'])(
       'logout revokes the access cookie token when the bearer header is malformed: %s',
       async authorization => {
@@ -525,6 +620,27 @@ export function registerAuthCookieExpiryTests(): void {
         .send({});
 
       expect(response.status).toBe(200);
+      assertAuthCookiesCleared(response.headers['set-cookie']);
+    });
+
+    it('missing-CSRF logout-all executes all-session revocation and audit', async () => {
+      const { revokeAllUserTokens } = await import('../../../../src/services/tokenRevocation');
+      const { auditService } = await import('../../../../src/services/auditService');
+      vi.mocked(revokeAllUserTokens).mockClear();
+      vi.mocked(auditService.log).mockClear();
+
+      const response = await request(app)
+        .post('/api/v1/auth/logout-all')
+        .set('Origin', 'http://localhost:3000')
+        .set('Cookie', ['sanctuary_access=cookie-access-token'])
+        .send({})
+        .expect(200);
+
+      expect(revokeAllUserTokens).toHaveBeenCalledWith('test-user-id', 'logout_all_devices');
+      expect(auditService.log).toHaveBeenCalledWith(expect.objectContaining({
+        action: 'LOGOUT',
+        details: expect.objectContaining({ action: 'logout_all' }),
+      }));
       assertAuthCookiesCleared(response.headers['set-cookie']);
     });
 

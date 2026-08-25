@@ -31,6 +31,7 @@ const mockConfig = vi.hoisted(() => ({
   jwtRefreshExpiresIn: '7d',
   gatewaySecret: '',
   corsAllowedOrigins: [],
+  clientUrl: 'http://localhost:3000',
   nodeEnv: 'test',
   rateLimit: {
     enabled: false,
@@ -63,6 +64,7 @@ vi.mock('../../../../src/services/auditService', () => ({
   AuditAction: {
     LOGIN: 'LOGIN',
     LOGIN_FAILED: 'LOGIN_FAILED',
+    LOGOUT: 'LOGOUT',
     PASSWORD_CHANGE: 'PASSWORD_CHANGE',
     TWO_FACTOR_SETUP: 'TWO_FACTOR_SETUP',
     TWO_FACTOR_ENABLED: 'TWO_FACTOR_ENABLED',

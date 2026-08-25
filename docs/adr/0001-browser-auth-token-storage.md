@@ -183,10 +183,42 @@ These are deliberately left open. They should be answered before implementation,
 **Status: implemented as of 2026-04-13.** Phases 1-4 of the migration plan in `tasks/todo.md` landed in the following commits on `main`:
 
 - **Phase 1 — backend foundation:** `cookie-parser` and `csrf-csrf` wired into `server/src/index.ts`; `server/src/middleware/csrf.ts` (double-submit CSRF with lazy factory init); `server/src/middleware/authCookieNames.ts` (zero-import cookie-name constants); `server/src/middleware/auth.ts` extended with `extractAccessToken()` preferring Authorization header over cookie; `skipCsrfProtection` mirrors `extractTokenFromHeader` precedence so the bearer-header rollback path is not punished by CSRF.
-- **Phase 2 — backend response cookies + expiry header:** `/auth/login`, `/auth/2fa/verify`, `/auth/refresh` set `sanctuary_access`, `sanctuary_refresh` (scoped to `/api/v1/auth/refresh`), and `sanctuary_csrf`. All auth responses set `X-Access-Expires-At` as ISO 8601. Refresh accepts cookie or body with **cookie wins when both present** (per ADR 0002 migration item 2). Terminal refresh failures call `clearAuthCookies()` before throwing; transient rotation-service 500s do **not** clear cookies. OpenAPI `cookieAuth` and `csrfToken` security schemes are in `server/src/api/openapi/spec.ts:118-140`.
+- **Phase 2 — backend response cookies + expiry header:** `/auth/login`, `/auth/2fa/verify`, `/auth/refresh` set `sanctuary_access`, `sanctuary_refresh` (scoped to `/api/v1/auth` so refresh and logout can consume it), and `sanctuary_csrf`. All auth responses set `X-Access-Expires-At` as ISO 8601. Refresh accepts cookie or body with **cookie wins when both present** (per ADR 0002 migration item 2). Terminal refresh failures call `clearAuthCookies()` before throwing; transient rotation-service 500s do **not** clear cookies. OpenAPI `cookieAuth` and `csrfToken` security schemes are in `server/src/api/openapi/spec.ts:118-140`.
 - **Phase 3 — backend WebSocket cookie reading:** `server/src/websocket/auth.ts` reads `sanctuary_access` from the upgrade request's `Cookie` header via the `cookie` package's `parse()`; the deprecated `?token=` query parameter path is removed.
 - **Phase 4 — frontend cookie auth + Web Locks refresh flow:** `src/api/client.ts` switched every fetch to `credentials: 'include'`, removed `TokenStorageMode`/`getTokenStorageMode`/`setToken`/`getToken`/legacy localStorage migration/Authorization header injection, added a `sanctuary_csrf` cookie reader that injects `X-CSRF-Token` on state-changing requests. `src/api/refresh.ts` implements single-flight + `navigator.locks.request('sanctuary-auth-refresh', { mode: 'exclusive' }, ...)` + freshness check + BroadcastChannel state propagation (see ADR 0002 Resolution for details). `src/contexts/UserContext.tsx` boots via `/auth/me` unconditionally, subscribes to terminal-logout broadcasts, and logs out asynchronously so the backend revocation runs before redirect. The 401 interceptor exempt list was narrowed to the four credential-presentation endpoints (`/auth/login`, `/auth/register`, `/auth/2fa/verify`, `/auth/refresh`); `/auth/me`, `/auth/logout`, and `/auth/logout-all` now refresh-and-retry on 401 so valid-session recovery and server-side revocation both work.
 - **Phase 4 race fixes:** `src/services/websocket.ts` `isServerReady` flag gates all four subscribe/unsubscribe mutators on the server's `'connected'` welcome message, not on `readyState === OPEN`, because the server runs `verifyWebSocketAccessToken` asynchronously inside `authenticateOnUpgrade`. `disconnect()` resets `isServerReady` synchronously before touching `this.ws` so async close-event delivery cannot leave the flag stale on a null socket. See `tasks/lessons.md` "Pre-attached message handlers and welcome-message synchronization for async-auth WebSockets."
+
+### 2026-08-25 server compatibility amendment
+
+Every access-token issuance now overwrites the readable CSRF cookie and gives it
+the exact access-cookie expiry. Access and CSRF share Secure, SameSite=Strict,
+host-only Domain policy, and Path=/; access and refresh remain HttpOnly while
+CSRF remains readable. The refresh cookie keeps its longer independent expiry
+and Path=/api/v1/auth. All set and clear operations derive from the same cookie
+policy.
+
+An immediate post-CSRF error boundary recognizes only POST requests to the exact
+v1 credential endpoints (register, login, 2FA verify, refresh) or the two
+destruction endpoints (logout and logout-all). Recovery additionally requires an
+Origin accepted by the same exact CORS predicate, a non-empty access cookie, and
+either no CSRF cookie or an echoed CSRF cookie whose access binding failed.
+Originless/untrusted requests, protected application routes, and a present CSRF
+cookie with a missing or wrong header retain the ordinary 403 and do not clear
+cookies. Authorization-header precedence remains unchanged.
+
+Credential recovery clears all three cookies and returns the typed
+`AUTH_CSRF_SESSION_STALE` 403; the first unsafe request is never accepted.
+Qualifying logout/logout-all requests continue into their real handlers so
+revocation and audit semantics run before the handlers clear cookies. A
+refresh-only session (access and CSRF absent, valid refresh present) remains
+valid and rotates all cookies; an orphan CSRF cookie is overwritten on success.
+The counter and log contain only fixed endpoint/action values, never credential
+material.
+
+This is the server compatibility precursor. Every backend replica must run it
+before the bounded frontend retry/shared-lock amendment is deployed; mixed
+old/new issuance is unsupported. Rollback the frontend first and retain this
+backward-compatible server behavior.
 
 **Codex stop-time review caught and fixed the following bugs before merge:**
 - Refresh precedence inverted (was body-wins, fixed to cookie-wins) and missing `clearAuthCookies()` on terminal failure paths.
@@ -198,6 +230,6 @@ These are deliberately left open. They should be answered before implementation,
 - Ad-hoc `subscribe()`/`unsubscribe()` calls after the move still gated on `readyState === OPEN` and raced the same window; added `isServerReady` flag.
 - `disconnect()` relied on async `onclose` to reset `isServerReady`, leaving a window where `this.ws === null` but the flag was still `true`; reset synchronously.
 
-**Security grade movement:** `docs/plans/codebase-health-assessment.md` Security row moves from **B → A** on browser token handling. The access token is no longer script-readable (HttpOnly cookie), the refresh token is never in JavaScript reach (HttpOnly cookie scoped to `/api/v1/auth/refresh`), CSRF is enforced via double-submit on state-changing requests when authenticated via cookie, and the WebSocket upgrade carries the cookie same-origin with no token-in-URL leakage.
+**Security grade movement:** `docs/plans/codebase-health-assessment.md` Security row moves from **B → A** on browser token handling. The access token is no longer script-readable (HttpOnly cookie), the refresh token is never in JavaScript reach (HttpOnly cookie scoped to `/api/v1/auth`), CSRF is enforced via double-submit on state-changing requests when authenticated via cookie, and the WebSocket upgrade carries the cookie same-origin with no token-in-URL leakage.
 
 **Carried over to Phase 6 (one release after Phase 2):** remove the JSON `token`/`refreshToken` fields from the browser-mounted `/auth/login`, `/auth/2fa/verify`, and `/auth/refresh` response bodies; remove `VITE_AUTH_TOKEN_STORAGE` from `config/tooling/vite.config.ts` and `config/env/.env.example`; audit `src/api/client.ts` for Phase-4-era dead code.

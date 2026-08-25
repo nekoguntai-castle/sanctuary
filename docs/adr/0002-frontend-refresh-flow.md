@@ -39,7 +39,7 @@ What is **not** in scope:
 1. **No mid-task logouts.** A user filling in a transaction send form, scrolling through transaction history, or watching a wallet sync should never get an unexpected 401 because the access token expired in the background.
 2. **No silent failures.** When refresh genuinely cannot succeed (refresh token revoked, server down, network gone), the user must see a clear "your session expired, please log in again" path, not a wall of 401 errors.
 3. **No double-refresh races.** Two browser tabs hitting the same wallet should not both call `/auth/refresh` and have the second one fail because rotation already invalidated the token. Refresh-token rotation is a security feature; the client must coordinate with itself, not weaken rotation.
-4. **No corner-cut storage.** The refresh token never enters JavaScript reach. It lives in an HttpOnly, Secure, SameSite=Strict cookie scoped to the refresh path.
+4. **No corner-cut storage.** The refresh token never enters JavaScript reach. It lives in an HttpOnly, Secure, SameSite=Strict cookie scoped to the auth path used by refresh and logout.
 5. **Single source of truth for expiry.** The client should not guess when the access token expires; the server tells it explicitly on every auth response, and the client schedules accordingly.
 6. **Testable.** Every refresh path must be exercisable in unit tests without timing dependencies. Scheduled refresh uses injectable timers; tab coordination uses an injectable BroadcastChannel.
 
@@ -133,7 +133,7 @@ Concretely:
   - There is no `refresh-start` event. The Web Lock is the start signal.
 
 Refresh token storage and lifetime:
-- Refresh token lives in a separate HttpOnly, Secure, SameSite=Strict cookie named `sanctuary_refresh`, with `Path=/api/v1/auth/refresh` so the cookie is **never** sent to any other endpoint.
+- Refresh token lives in a separate HttpOnly, Secure, SameSite=Strict cookie named `sanctuary_refresh`, with `Path=/api/v1/auth` so the refresh and logout handlers can both consume and revoke it.
 - Refresh token TTL: **7 days**, matching the existing implicit value baked into `server/src/api/auth/tokens.ts` rotation logic. This is configurable via existing JWT/session config but the default stays 7 days.
 - Refresh token rotation on every use is preserved (already implemented at `server/src/api/auth/tokens.ts:67`).
 
@@ -292,6 +292,23 @@ These are deliberately left open. They should be answered before implementation 
 - Proactive refresh: every successful auth response parses `X-Access-Expires-At` and schedules `setTimeout` for `expiresAt - REFRESH_LEAD_TIME_MS`. Previous timers are cleared before scheduling a new one.
 - Reactive refresh: `src/api/client.ts:request` intercepts 401s, awaits `refreshAccessToken()`, and replays the request once. Exempt list is only the four credential-presentation endpoints (`/auth/login`, `/auth/register`, `/auth/2fa/verify`, `/auth/refresh`). The retry is bounded to one attempt; a second 401 surfaces as a normal error and triggers the logout flow.
 - `src/contexts/UserContext.tsx` — boot calls `/auth/me` unconditionally and hydrates from its response (refresh interceptor recovers valid-session on 401 transparently). Logout is async, calls the backend revocation, then calls `triggerLogout()` which fires `logout-broadcast`.
+
+### 2026-08-25 server precursor and frontend handoff
+
+The server now makes access and CSRF expiry atomic, overwrites CSRF on every
+access rotation, and exposes `AUTH_CSRF_SESSION_STALE` only for the exact trusted
+credential stale-pair cases defined in ADR 0001. The rejected request is not a
+CSRF bypass: credentials are cleared and the first unsafe request remains 403.
+Logout and logout-all are never frontend-retried; the server boundary instead
+continues qualifying stale destruction requests into the real revocation and
+audit handlers.
+
+Normal refresh-cookie-only continuity is preserved when access and CSRF are both
+absent. This precursor must be present on every backend replica before the
+frontend adds its one-attempt credential retry and shared-mutation/exclusive-
+refresh lock lifecycle. Until that separate frontend phase lands, this ADR does
+not claim that stale-credential retry or shared mutation locking is active.
+Frontend rollback comes first; the compatible server contract remains deployed.
 
 **Test scaffolding (`tests/setup.ts`):**
 - `navigator.locks` mock: Map of held lock names with FIFO waiters per name, supports `mode: 'exclusive'`, supports multi-instance "tab" simulation by sharing the Map across module imports. Installed via `Object.defineProperty(globalThis.navigator, 'locks', ...)` — **do not replace the whole `navigator` object**, react-dom reads `navigator.userAgent` during render and will crash.

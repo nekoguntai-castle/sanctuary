@@ -268,7 +268,23 @@ export function registerOpenApiGatewayTests() {
     expect(MobileRefreshTokenRequestSchema.safeParse({}).success).toBe(false);
     expect(openApiSpec.components.schemas.TwoFactorVerifyRequest).toBeDefined();
     expect(openApiSpec.components.schemas.SessionsResponse).toBeDefined();
-
+    expect(openApiSpec.components.schemas.AuthCsrfSessionStaleError.properties.code).toEqual({
+      type: 'string',
+      enum: ['AUTH_CSRF_SESSION_STALE'],
+    });
+    for (const path of [
+      '/auth/register',
+      '/auth/login',
+      '/auth/refresh',
+      '/auth/2fa/verify',
+    ] as const) {
+      expect(openApiSpec.paths[path].post.responses[403].content['application/json'].schema).toEqual({
+        anyOf: [
+          { $ref: '#/components/schemas/ApiError' },
+          { $ref: '#/components/schemas/AuthCsrfSessionStaleError' },
+        ],
+      });
+    }
     const loginSchema = openApiSpec.components.schemas.LoginRequest;
     expect(loginSchema.properties.username).toMatchObject({
       minLength: MOBILE_API_REQUEST_LIMITS.usernameMinLength,

@@ -164,7 +164,10 @@ gate for existing local and automation workflows.
 **Resolved as of 2026-04-13.** The HttpOnly cookie migration (ADR 0001) and Web Locks-coordinated refresh flow (ADR 0002) shipped together. See ADR 0001/0002 Resolution sections and `docs/how-to/operations-runbooks.md` "Browser Auth Cookies" for the full behavior.
 
 - The access token lives in a `sanctuary_access` HttpOnly, Secure, SameSite=Strict cookie. Scripts cannot read it.
-- The refresh token lives in a `sanctuary_refresh` HttpOnly cookie scoped to `Path=/api/v1/auth/refresh`. The browser never sends it to any other endpoint.
+- The refresh token lives in a `sanctuary_refresh` HttpOnly cookie scoped to `Path=/api/v1/auth`, where only refresh/logout auth handlers consume it.
+- Access and CSRF cookies have identical expiry/security/host-only attributes, CSRF is overwritten on every access rotation, and set/clear paths match.
+- `AUTH_CSRF_SESSION_STALE` is emitted only for the exact trusted credential stale-pair classifier; the first request is rejected, negatives remain ordinary 403s, and missing-CSRF logout/all still execute revocation and audit.
+- Every server replica must pass the precursor gate before frontend stale retry/shared-lock rollout; mixed old/new issuance is not allowed and frontend rollback comes first.
 - CSRF is enforced via a `sanctuary_csrf` readable double-submit cookie echoed as `X-CSRF-Token` on POST/PUT/PATCH/DELETE when the request authenticates via cookie. `Authorization: Bearer` requests (mobile/gateway) are exempt.
 - Proactive refresh fires 60s before `X-Access-Expires-At`; reactive refresh on 401 retries the request once; `navigator.locks` serializes refresh across same-origin tabs; BroadcastChannel propagates `refresh-complete` and `logout-broadcast` state.
 - Refresh-on-401 exempt list is only the four credential-presentation endpoints: `/auth/login`, `/auth/register`, `/auth/2fa/verify`, `/auth/refresh`. `/auth/me`, `/auth/logout`, and `/auth/logout-all` refresh-and-retry on 401 so valid-session recovery and server-side revocation both work.

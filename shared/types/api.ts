@@ -10,6 +10,8 @@
 
 import type { SyncExecutionOwner } from '../constants/sync';
 
+export const AUTH_CSRF_SESSION_STALE_CODE = 'AUTH_CSRF_SESSION_STALE' as const;
+
 // =============================================================================
 // Generic API Patterns
 // =============================================================================
@@ -19,6 +21,7 @@ import type { SyncExecutionOwner } from '../constants/sync';
  */
 export interface ApiErrorResponse {
   error: string;
+  code?: string;
   message?: string;
   details?: Record<string, unknown>;
   statusCode?: number;

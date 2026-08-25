@@ -6,6 +6,24 @@ import { mockPrismaClient } from '../auth.testHelpers';
 import { expectCanonicalAuthSessionUser } from '../authSessionUser.contractHelper';
 
 export function registerTwoFactorVerifyContracts() {
+  it('rejects and clears a stale browser cookie pair before 2FA verification executes', async () => {
+    mockPrismaClient.user.findUnique.mockClear();
+    const response = await request(app)
+      .post('/api/v1/auth/2fa/verify')
+      .set('Origin', 'http://localhost:3000')
+      .set('Cookie', ['sanctuary_access=stale-access'])
+      .send({ tempToken: 'preserved-temp-token', code: '123456' })
+      .expect(403);
+
+    expect(response.body.code).toBe('AUTH_CSRF_SESSION_STALE');
+    expect(response.headers['set-cookie']).toEqual(expect.arrayContaining([
+      expect.stringMatching(/^sanctuary_access=;/),
+      expect.stringMatching(/^sanctuary_refresh=;/),
+      expect.stringMatching(/^sanctuary_csrf=;/),
+    ]));
+    expect(mockPrismaClient.user.findUnique).not.toHaveBeenCalled();
+  });
+
   it('should return 400 when tempToken or code is missing', async () => {
     const response = await request(app)
       .post('/api/v1/auth/2fa/verify')
@@ -306,15 +324,22 @@ export function registerTwoFactorVerifyContracts() {
     expect(accessCookie).toContain('HttpOnly');
     expect(accessCookie).toContain('SameSite=Strict');
     expect(accessCookie).toContain('Path=/');
+    expect(accessCookie).not.toContain('Domain=');
 
     const refreshCookie = rawCookies.find((c) => c.startsWith('sanctuary_refresh='));
     expect(refreshCookie).toContain('HttpOnly');
     expect(refreshCookie).toContain('SameSite=Strict');
     expect(refreshCookie).toContain('Path=/api/v1/auth');
+    expect(refreshCookie).not.toContain('Domain=');
 
     const csrfCookie = rawCookies.find((c) => c.startsWith('sanctuary_csrf='));
     expect(csrfCookie).not.toContain('HttpOnly');
     expect(csrfCookie).toContain('SameSite=Strict');
+    expect(csrfCookie).toContain('Path=/');
+    expect(csrfCookie).not.toContain('Domain=');
+    expect(csrfCookie?.match(/Expires=([^;]+)/)?.[1]).toBe(
+      accessCookie?.match(/Expires=([^;]+)/)?.[1],
+    );
 
     const expiresHeader = response.headers['x-access-expires-at'];
     expect(typeof expiresHeader).toBe('string');

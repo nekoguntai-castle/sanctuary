@@ -39,6 +39,7 @@ export const ErrorCodes = {
   INVALID_TOKEN: 'INVALID_TOKEN',
   TOKEN_EXPIRED: 'TOKEN_EXPIRED',
   TWO_FA_REQUIRED: 'TWO_FA_REQUIRED',
+  AUTH_CSRF_SESSION_STALE: 'AUTH_CSRF_SESSION_STALE',
 
   // Authorization errors (403)
   FORBIDDEN: 'FORBIDDEN',
@@ -177,6 +178,15 @@ export class ForbiddenError extends ApiError {
     details?: Record<string, unknown>
   ) {
     super(message, 403, code, details);
+  }
+}
+
+export class AuthCsrfSessionStaleError extends ForbiddenError {
+  constructor() {
+    super(
+      'Browser authentication cookies were cleared because the CSRF session was stale',
+      ErrorCodes.AUTH_CSRF_SESSION_STALE,
+    );
   }
 }
 

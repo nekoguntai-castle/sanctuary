@@ -20,6 +20,7 @@ import {
   updateElectrumPoolMetrics,
   updateActiveStatsMetrics,
   notificationJobResultsTotal,
+  authCsrfSessionStaleTotal,
 } from '../../../src/observability/metrics';
 
 describe('observability/metrics', () => {
@@ -86,6 +87,14 @@ describe('observability/metrics', () => {
     expect(metricsText).toContain(
       'sanctuary_notification_job_results_total{job_name="transaction-notify",result="no_channels"} 1'
     );
+  });
+
+  it('records stale auth/CSRF pairs without token-bearing labels', async () => {
+    authCsrfSessionStaleTotal.inc();
+
+    const metricsText = await metricsService.getMetrics();
+    expect(metricsText).toContain('sanctuary_auth_csrf_session_stale_total 1');
+    expect(metricsText).not.toContain('sanctuary_auth_csrf_session_stale_total{');
   });
 
   it('updates active users and wallets gauges', async () => {

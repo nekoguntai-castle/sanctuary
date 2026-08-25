@@ -15,6 +15,20 @@ const apiErrorResponse = {
   },
 } as const;
 
+const authCsrfOrApiErrorResponse = {
+  description: 'A route-specific forbidden response, or a stale browser access/CSRF pair that was cleared.',
+  content: {
+    'application/json': {
+      schema: {
+        anyOf: [
+          { $ref: '#/components/schemas/ApiError' },
+          { $ref: '#/components/schemas/AuthCsrfSessionStaleError' },
+        ],
+      },
+    },
+  },
+} as const;
+
 const successResponse = {
   description: 'Success',
   content: {
@@ -112,7 +126,7 @@ export const authPaths = {
             },
           },
         },
-        403: apiErrorResponse,
+        403: authCsrfOrApiErrorResponse,
       },
     },
   },
@@ -146,7 +160,7 @@ export const authPaths = {
             },
           },
         },
-        403: apiErrorResponse,
+        403: authCsrfOrApiErrorResponse,
         409: apiErrorResponse,
       },
     },
@@ -161,6 +175,7 @@ export const authPaths = {
         200: jsonResponse('Token refreshed', '#/components/schemas/RefreshTokenResponse'),
         400: apiErrorResponse,
         401: apiErrorResponse,
+        403: authCsrfOrApiErrorResponse,
       },
     },
   },
@@ -181,6 +196,7 @@ export const authPaths = {
       responses: {
         200: successResponse,
         401: apiErrorResponse,
+        403: apiErrorResponse,
       },
     },
   },
@@ -193,6 +209,7 @@ export const authPaths = {
       responses: {
         200: jsonResponse('All sessions revoked', '#/components/schemas/LogoutAllResponse'),
         401: apiErrorResponse,
+        403: apiErrorResponse,
       },
     },
   },
@@ -206,6 +223,7 @@ export const authPaths = {
         200: jsonResponse('2FA verified', '#/components/schemas/LoginResponse'),
         400: apiErrorResponse,
         401: apiErrorResponse,
+        403: authCsrfOrApiErrorResponse,
       },
     },
   },

@@ -7,7 +7,7 @@
  * ## Authentication (ADR 0001 / 0002)
  *
  * Browser callers authenticate via the `sanctuary_access` HttpOnly cookie
- * set by the backend on login/2FA-verify/refresh. This module never
+ * set by the backend on registration/login/2FA-verify/refresh. This module never
  * touches the access token directly — it just sends every request with
  * `credentials: 'include'` so the browser attaches cookies automatically.
  *

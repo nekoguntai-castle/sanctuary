@@ -33,7 +33,7 @@ import { validateEncryptionKey } from './utils/encryption';
 import { requestLogger } from './middleware/requestLogger';
 import { requestTimeout } from './middleware/requestTimeout';
 import { defaultJsonParser, defaultUrlencodedParser } from './middleware/bodyParsing';
-import { doubleCsrfProtection } from './middleware/csrf';
+import { csrfRecoveryErrorHandler, doubleCsrfProtection } from './middleware/csrf';
 import { createServerCorsOptionsDelegate } from './middleware/corsOrigin';
 import { apiVersionMiddleware } from './middleware/apiVersion';
 import { getStartupStatus, isSystemDegraded } from './services/startupManager';
@@ -185,6 +185,7 @@ app.use('/api', apiVersionMiddleware({
 // skipCsrfProtection check inside middleware/csrf.ts. In Phase 1 this is wired
 // but no route currently issues the cookie, so it is a no-op on real traffic.
 app.use(doubleCsrfProtection);
+app.use(csrfRecoveryErrorHandler);
 
 // ========================================
 // ROUTES

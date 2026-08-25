@@ -19,6 +19,7 @@ export {
   transactionBroadcastsTotal,
   activeWallets,
   activeUsers,
+  authCsrfSessionStaleTotal,
   circuitBreakerState,
   rateLimitHitsTotal,
   cacheOperationsTotal,
