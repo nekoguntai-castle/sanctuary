@@ -412,13 +412,13 @@ while IFS= read -r file; do
   [ -n "$file" ] || continue
 
   # Anything that can change how the upgrade lane behaves: the shared helpers,
-  # the e2e specs, the upgrade fixtures, and the classifier that gates the lane
-  # itself. tests/install/unit/* is excluded deliberately -- those are
-  # self-contained and cannot alter the lane.
+  # upgrade e2e specs, upgrade fixtures, and the classifier that gates the lane
+  # itself. Unrelated e2e specs exercise their own lanes and tests/install/unit/*
+  # is self-contained, so neither can alter the upgrade harness.
   case "$file" in
     *.md|*.mdx)
       ;;
-    tests/install/utils/*|tests/install/e2e/*|tests/install/fixtures/upgrade/*)
+    tests/install/utils/*|tests/install/e2e/upgrade-*.test.sh|tests/install/fixtures/upgrade/*)
       upgrade_harness_touched=true
       ;;
   esac
@@ -517,7 +517,9 @@ while IFS= read -r file; do
       reason="Shared install helper changed"
       ;;
   esac
-done < <(git diff --name-only "$base_sha" "$head_sha")
+# Treat renames as deletion plus addition so moving a guarded file outside its
+# matched path cannot hide the removed side from scope classification.
+done < <(git diff --no-renames --name-only "$base_sha" "$head_sha")
 
 defer_automatic_upgrade_e2e
 enable_pr_upgrade_baseline_for_harness_changes

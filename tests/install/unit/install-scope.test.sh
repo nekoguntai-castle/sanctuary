@@ -362,6 +362,19 @@ main() {
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_scope "$output_file" "true" "true" "true" "false" "false" "true" "false" "false" "false" "true"
+  run_classifier_for_event "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
+  assert_exact_output "$output_file" "run_upgrade_baseline" "false"
+  assert_upgrade_selection "$output_file" "" ""
+
+  # install-script.test.sh exercises only the installer lane. A pull request
+  # that changes it must not consume the upgrade-baseline runner as a side
+  # effect of living beside the upgrade specs.
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "tests/install/e2e/install-script.test.sh" "echo install script" "install script test"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier_for_event "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
+  assert_exact_output "$output_file" "run_upgrade_baseline" "false"
+  assert_upgrade_selection "$output_file" "" ""
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "server/prisma/schema.prisma" "datasource db {}" "migration"
@@ -376,6 +389,22 @@ main() {
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_scope "$output_file" "true" "true" "false" "false" "false" "false" "false" "false" "false" "false"
   assert_upgrade_selection "$output_file" "" ""
+  run_classifier_for_event "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
+  assert_exact_output "$output_file" "run_upgrade_baseline" "true"
+  assert_upgrade_selection "$output_file" "latest-stable" ""
+
+  # A rename away from the upgrade-spec naming convention still removes the
+  # old harness path. Classification must inspect both sides of the rename so
+  # the deletion cannot bypass the bounded PR baseline.
+  base_sha="$head_sha"
+  git -C "$repo_dir" mv \
+    "tests/install/e2e/upgrade-install.test.sh" \
+    "tests/install/e2e/renamed-install.test.sh"
+  git -C "$repo_dir" commit -qm "rename upgrade harness"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier_for_event "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
+  assert_exact_output "$output_file" "run_upgrade_baseline" "true"
+  assert_upgrade_selection "$output_file" "latest-stable" ""
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "tests/install/fixtures/upgrade/browser-origin-ip.sh" "echo fixture" "upgrade fixture file"
@@ -383,6 +412,9 @@ main() {
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_scope "$output_file" "true" "true" "false" "false" "false" "false" "false" "false" "false" "false"
   assert_upgrade_selection "$output_file" "" ""
+  run_classifier_for_event "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
+  assert_exact_output "$output_file" "run_upgrade_baseline" "true"
+  assert_upgrade_selection "$output_file" "latest-stable" ""
 
   # A pull request that changes the upgrade harness runs the baseline lane.
   #
@@ -416,8 +448,8 @@ main() {
   # A PR that changes the classifier itself qualifies. This one caught a real
   # gap: the first cut keyed only on tests/install/utils/upgrade-*, so #737 --
   # the change that introduced this whole carve-out -- did not trigger its own
-  # rule and its Upgrade Baseline was skipped. Anything under tests/install/
-  # utils, e2e, or fixtures/upgrade can alter how the lane behaves.
+  # rule and its Upgrade Baseline was skipped. The classifier is a shared
+  # upgrade-harness helper; unrelated e2e specs are not.
   base_sha="$head_sha"
   commit_file "$repo_dir" "tests/install/utils/classify-install-scope.sh" "echo classifier" "classifier change"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
