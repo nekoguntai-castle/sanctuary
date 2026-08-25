@@ -1,5 +1,5 @@
 import { Prisma } from '../generated/prisma/client';
-import prisma, { type PrismaTxClient } from '../models/prisma';
+import type { PrismaTxClient } from '../models/prisma';
 import {
   assertFence,
   databaseNow,
@@ -11,6 +11,7 @@ import type {
   NetworkHeaderReconciliationState,
   ReconciliationFence,
 } from './networkHeaderReconciliationTypes';
+import { withNetworkHeaderSerializableTransaction } from './networkHeaderTransaction';
 
 const MAX_PAGE_SIZE = 100;
 
@@ -80,7 +81,7 @@ export async function recordNetworkHeaderConfirmationPage(input: ReconciliationF
   if (expectedPageCursor !== input.cursor) {
     throw new Error('Header reconciliation confirmation page cursor is invalid');
   }
-  return prisma.$transaction(async (tx) => {
+  return withNetworkHeaderSerializableTransaction(async (tx) => {
     const state = await lockState(tx, input.network);
     assertFence(state, input);
     if (state.confirmationEnumerationComplete) {
@@ -121,7 +122,7 @@ export async function recordNetworkHeaderConfirmationPage(input: ReconciliationF
       },
     });
     return parseState(updated);
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  });
 }
 
 /** Return a bounded database-ordered retry page under the exact active fence. */
@@ -133,7 +134,7 @@ export async function findNetworkHeaderConfirmationRetries(
   if (!Number.isInteger(limit) || limit < 1 || limit > MAX_PAGE_SIZE) {
     throw new Error('Header confirmation retry page limit is invalid');
   }
-  return prisma.$transaction(async (tx) => {
+  return withNetworkHeaderSerializableTransaction(async (tx) => {
     const state = await lockState(tx, fence.network);
     assertFence(state, fence);
     if (!state.confirmationEnumerationComplete) {
@@ -146,7 +147,7 @@ export async function findNetworkHeaderConfirmationRetries(
       select: { walletId: true },
     });
     return rows.map(row => row.walletId);
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  });
 }
 
 /** Delete successful retries while retaining failures as durable blockers. */
@@ -163,7 +164,7 @@ export async function recordNetworkHeaderConfirmationRetryResult(
     || input.failedWalletIds.some(walletId => !input.attemptedWalletIds.includes(walletId))) {
     throw new Error('Header confirmation retry result is invalid');
   }
-  return prisma.$transaction(async (tx) => {
+  return withNetworkHeaderSerializableTransaction(async (tx) => {
     const state = await lockState(tx, input.network);
     assertFence(state, input);
     const successful = input.attemptedWalletIds.filter(
@@ -187,5 +188,5 @@ export async function recordNetworkHeaderConfirmationRetryResult(
       },
     });
     return parseState(updated);
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  });
 }

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Prisma } from '../../../src/generated/prisma/client';
 
 const mocks = vi.hoisted(() => {
   const model = () => ({
@@ -129,6 +130,11 @@ const pendingTarget = {
   pendingTargetObservedAt: OBSERVED_AT,
   pendingTargetGenesisHash: GENESIS_HASH,
 };
+
+const serializableConflict = () => new Prisma.PrismaClientKnownRequestError('write conflict', {
+  code: 'P2034',
+  clientVersion: 'test',
+});
 
 function queueRaw(...results: unknown[]): void {
   for (const result of results) mocks.queryRaw.mockResolvedValueOnce(result);
@@ -639,6 +645,39 @@ describe('ownership, scan, and failure evidence', () => {
 });
 
 describe('cursor staging and reset', () => {
+  it('retries the complete serializable cursor transaction after a write conflict', async () => {
+    const current = stateRow({
+      cursorHeight: 100,
+      cursorHash: HASH_A,
+      targetHeight: 101,
+      targetHash: HASH_B,
+    });
+    const updated = stateRow({
+      cursorHeight: 101,
+      cursorHash: HASH_B,
+      targetHeight: 101,
+      targetHash: HASH_B,
+      lastAttemptAt: NOW,
+    });
+    queueRaw([current], [current], [{ now: NOW }]);
+    mocks.stagedHeader.createMany
+      .mockRejectedValueOnce(serializableConflict())
+      .mockResolvedValueOnce({ count: 1 });
+    mocks.reconciliation.update.mockResolvedValue(updated);
+
+    await expect(recordNetworkHeaderCursor({
+      network: 'mainnet',
+      generation: 3,
+      ownerToken: OWNER_A,
+      expectedCursor: { height: 100, hash: HASH_A },
+      headers: [header(101, HASH_B, HASH_A)],
+    })).resolves.toMatchObject({ cursorHeight: 101, cursorHash: HASH_B });
+
+    expect(mocks.transaction).toHaveBeenCalledTimes(2);
+    expect(mocks.stagedHeader.findMany).toHaveBeenCalledTimes(2);
+    expect(mocks.stagedHeader.createMany).toHaveBeenCalledTimes(2);
+  });
+
   it('stages a CAS-matched page, advances the cursor, and prunes the bounded tail', async () => {
     const current = stateRow({ cursorHeight: 100, cursorHash: HASH_A, targetHeight: 102 });
     const updated = stateRow({
@@ -886,6 +925,32 @@ describe('cursor staging and reset', () => {
 });
 
 describe('confirmation cursor fencing', () => {
+  it('retries the complete serializable confirmation transaction after a write conflict', async () => {
+    const current = stateRow();
+    const updated = stateRow({
+      confirmationEnumerationComplete: true,
+      lastAttemptAt: NOW,
+    });
+    queueRaw([current], [{ now: NOW }], [current], [{ now: NOW }]);
+    mocks.reconciliation.update
+      .mockRejectedValueOnce(serializableConflict())
+      .mockResolvedValueOnce(updated);
+
+    await expect(recordNetworkHeaderConfirmationPage({
+      network: 'mainnet',
+      generation: 3,
+      ownerToken: OWNER_A,
+      expectedCursor: null,
+      cursor: null,
+      enumerationComplete: true,
+      attemptedWalletIds: [],
+      failedWalletIds: [],
+    })).resolves.toMatchObject({ confirmationEnumerationComplete: true });
+
+    expect(mocks.transaction).toHaveBeenCalledTimes(2);
+    expect(mocks.reconciliation.update).toHaveBeenCalledTimes(2);
+  });
+
   it('atomically advances the database-order page cursor and persists failed wallets', async () => {
     queueRaw([stateRow({
       lastFailureClass: 'confirmation_failed',

@@ -1,4 +1,3 @@
-import { Prisma } from '../generated/prisma/client';
 import prisma, { type PrismaTxClient } from '../models/prisma';
 import { resolvePersistedBitcoinNetwork } from '../constants/bitcoinNetworks';
 import {
@@ -39,6 +38,7 @@ import {
   recordNetworkHeaderConfirmationPage,
   recordNetworkHeaderConfirmationRetryResult,
 } from './networkHeaderConfirmationRepository';
+import { withNetworkHeaderSerializableTransaction } from './networkHeaderTransaction';
 
 export { NETWORK_HEADER_HISTORY_WINDOW } from './networkHeaderReconciliationPersistence';
 export const NETWORK_HEADER_RECONCILIATION_MAX_RETRY_MS = 300_000;
@@ -48,7 +48,7 @@ export async function observeNetworkHeader(
   input: ObserveNetworkHeaderInput,
 ): Promise<NetworkHeaderReconciliationState> {
   requireObservation(input);
-  return prisma.$transaction(async (tx) => {
+  return withNetworkHeaderSerializableTransaction(async (tx) => {
     const now = await databaseNow(tx);
     const checkpoint = await lockCheckpoint(tx, input.network);
     const current = await lockState(tx, input.network);
@@ -61,7 +61,7 @@ export async function observeNetworkHeader(
     return current
       ? updateExistingState(tx, current, input, checkpoint, now)
       : createState(tx, input, checkpoint, now);
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  });
 }
 
 export async function claimNetworkHeaderReconciliation(
@@ -70,7 +70,7 @@ export async function claimNetworkHeaderReconciliation(
 ): Promise<NetworkHeaderReconciliationState | null> {
   const network = resolvePersistedBitcoinNetwork(networkInput);
   requireOwnerToken(ownerToken);
-  return prisma.$transaction(async (tx) => {
+  return withNetworkHeaderSerializableTransaction(async (tx) => {
     const current = await lockState(tx, network);
     if (!current || current.ownerToken === ownerToken) return current;
     const updated = await tx.networkHeaderReconciliation.update({
@@ -81,7 +81,7 @@ export async function claimNetworkHeaderReconciliation(
       },
     });
     return parseState(updated);
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  });
 }
 
 export async function findDueNetworkHeaderReconciliations(
@@ -165,7 +165,7 @@ export async function recordNetworkHeaderCursor(input: ReconciliationFence & {
   if (input.headers.length < 1 || input.headers.length > 2016) {
     throw new Error('Header reconciliation page size is invalid');
   }
-  return prisma.$transaction(async (tx) => {
+  return withNetworkHeaderSerializableTransaction(async (tx) => {
     const state = await lockState(tx, input.network);
     assertFence(state, input);
     if (state.cursorHeight !== (input.expectedCursor?.height ?? null)
@@ -199,7 +199,7 @@ export async function recordNetworkHeaderCursor(input: ReconciliationFence & {
       },
     });
     return parseState(updated);
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  });
 }
 
 export async function resetNetworkHeaderCursor(input: ReconciliationFence & {
@@ -211,7 +211,7 @@ export async function resetNetworkHeaderCursor(input: ReconciliationFence & {
   if (!isMode(input.mode)) throw new Error('Header reconciliation reset mode is invalid');
   requireHeight(input.anchorHeight, 'Header reconciliation reset anchor height');
   requireHash(input.anchorHash, 'Header reconciliation reset anchor hash');
-  return prisma.$transaction(async (tx) => {
+  return withNetworkHeaderSerializableTransaction(async (tx) => {
     const state = await lockState(tx, input.network);
     assertFence(state, input);
     const generation = nextGeneration(state.generation);
@@ -240,7 +240,7 @@ export async function resetNetworkHeaderCursor(input: ReconciliationFence & {
       },
     });
     return parseState(updated);
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  });
 }
 
 export async function recordNetworkHeaderReconciliationFailure(input: ReconciliationFence & {
@@ -252,7 +252,7 @@ export async function recordNetworkHeaderReconciliationFailure(input: Reconcilia
   if (!Number.isSafeInteger(input.retryDelayMs) || input.retryDelayMs < 0 || input.retryDelayMs > 3_600_000) {
     throw new Error('Header retry delay is invalid');
   }
-  return prisma.$transaction(async (tx) => {
+  return withNetworkHeaderSerializableTransaction(async (tx) => {
     const state = await lockState(tx, input.network);
     if (!state
       || state.generation !== input.generation
@@ -274,7 +274,7 @@ export async function recordNetworkHeaderReconciliationFailure(input: Reconcilia
       },
     });
     return true;
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  });
 }
 
 export {
@@ -310,7 +310,7 @@ export async function finalizeNetworkHeaderReconciliation(
   fence: ReconciliationFence,
 ): Promise<NetworkHeaderFinalizationResult> {
   requireFence(fence);
-  return prisma.$transaction(async (tx) => {
+  return withNetworkHeaderSerializableTransaction(async (tx) => {
     const state = await lockState(tx, fence.network);
     assertFence(state, fence);
     if (state.cursorHeight !== state.targetHeight || state.cursorHash !== state.targetHash) {
@@ -410,7 +410,7 @@ export async function finalizeNetworkHeaderReconciliation(
       },
     });
     return { checkpoint, continuation: parseState(continued) };
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  });
 }
 
 export const networkHeaderReconciliationRepository = {
