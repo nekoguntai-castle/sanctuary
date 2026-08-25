@@ -1,5 +1,6 @@
 import path from 'path';
 import { defineConfig } from 'vitest/config';
+import { coverageReporters } from '../config/tooling/coverageReporters';
 
 const repoRoot = path.resolve(__dirname, '..');
 
@@ -10,7 +11,7 @@ export default defineConfig({
     include: ['tests/llm-egress-proxy/**/*.test.ts'],
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'html', 'json-summary', 'lcov'],
+      reporter: coverageReporters(Boolean(process.env.CI)),
       include: ['llm-egress-proxy/src/**/*.ts'],
       exclude: [
         'llm-egress-proxy/src/**/*.d.ts',

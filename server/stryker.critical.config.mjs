@@ -110,6 +110,15 @@ const RUNNER_CONFIG =
         ],
       };
 
+export function criticalMutationReporters(shardId) {
+  return [
+    'clear-text',
+    'progress',
+    'json',
+    ...(shardId === 'all' ? ['html'] : []),
+  ];
+}
+
 /** @type {import('@stryker-mutator/api').PartialStrykerOptions} */
 export default {
   packageManager: 'npm',
@@ -118,7 +127,7 @@ export default {
 
   mutate: SHARD.mutate,
 
-  reporters: ['clear-text', 'progress', 'json', 'html'],
+  reporters: criticalMutationReporters(SHARD.id),
   jsonReporter: {
     fileName: shardReportFileName(SHARD.id),
   },

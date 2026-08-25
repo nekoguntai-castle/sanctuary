@@ -5,16 +5,22 @@ description: >-
   composites; delegates to the repository cache wrapper, which owns the
   actions/cache@<sha> pin validated by the action-runtime manifest guard.
 
-  The key is `<runner.os>-npm-<hashFiles(inputs.lockfile-glob)>`; on
-  miss we fall back to `<runner.os>-npm-` so a stale-but-not-too-stale
-  cache still seeds the next install.
+  The key is `<runner.os>-npm-<hashFiles(inputs.lockfile-glob)>`; on a miss
+  we fall back to `<runner.os>-npm-` so a stale-but-not-too-stale cache still
+  seeds the next install.
 inputs:
   lockfile-glob:
     description: >-
-      Glob (or newline-separated globs) passed to hashFiles() for the
-      cache key. Default matches every package-lock.json in the tree.
+      Glob (or newline-separated globs) passed to hashFiles() for the cache key.
+      The default is the fixed tracked set used by application and CI-test
+      installs; pass docs/site/package-lock.json explicitly for docs-only work.
     required: false
-    default: '**/package-lock.json'
+    default: |
+      package-lock.json
+      llm-egress-proxy/package-lock.json
+      scripts/verify-addresses/package-lock.json
+      scripts/verify-psbt/package-lock.json
+      tests/ci/lib/package-lock.json
   cache-paths:
     description: >-
       Newline-separated paths to cache. Default covers the runner-global
@@ -30,6 +36,11 @@ runs:
     - uses: ./.github/actions/cache
       with:
         path: ${{ inputs.cache-paths }}
+        # Do not replace the fixed input with `**/package-lock.json`: clean:false
+        # checkouts can retain installed dependency trees whose nested locks
+        # would make identical commits produce different keys. Forgejo run
+        # 12560 proves its hashFiles() treats this multiline input identically
+        # to the corresponding comma-separated literal arguments.
         key: ${{ runner.os }}-npm-${{ hashFiles(inputs.lockfile-glob) }}
         restore-keys: |
           ${{ runner.os }}-npm-

@@ -810,6 +810,7 @@ jobs:
           node tests/ci/check-redis-service.test.mjs
           node tests/ci/classify-hardware-emulator-shadow.test.mjs
           node tests/ci/check-npm-install-scripts.test.mjs
+          node --test tests/ci/check-critical-mutation-config.test.mjs
           # Also runs the call-site gate against the real checkout, so an
           # unprotected or unreviewed `npm ci` fails here.
           node tests/ci/check-npm-ci-callsites.test.mjs

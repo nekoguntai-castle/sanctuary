@@ -91,11 +91,37 @@ relay_distinguishes_skipped() {
   grep -qE '(skipped\|cancelled|skipped\))' <<<"$block"
 }
 
+relay_block_is_bounded_and_lightweight() {
+  local block="$1"
+  grep -q '^    timeout-minutes: 5$' <<<"$block" || return 1
+  [ "$(grep -Ec '^      - ' <<<"$block")" -eq 1 ] || return 1
+  ! grep -Eq '^[[:space:]]+(- )?uses:|actions/checkout|docker |run-with-log|with-runner-lock' <<<"$block"
+}
+
+relay_is_bounded_and_lightweight() {
+  relay_block_is_bounded_and_lightweight "$(job_block "$1")"
+}
+
+relay_rejects_extra_step() {
+  local extra_step="$1"
+  local block
+  block="$(job_block install-script-test)"
+  block="${block/    steps:/    steps:
+$extra_step}"
+  ! relay_block_is_bounded_and_lightweight "$block"
+}
+
+relay_rejects_block() {
+  ! relay_block_is_bounded_and_lightweight "$1"
+}
+
 for job in install-script-test upgrade-extended-test; do
   check "$job passes the upstream result through env, not run: interpolation" \
     relay_uses_env_not_interpolation "$job"
   check "$job surfaces the upstream result in its error text" \
     relay_reports_upstream_result "$job"
+  check "$job remains a five-minute one-step relay" \
+    relay_is_bounded_and_lightweight "$job"
 done
 
 # Only install-script-test relays a job that can legitimately be skipped by an
@@ -103,6 +129,11 @@ done
 # its `if:` expression.
 check "install-script-test distinguishes a skipped upstream from a failed one" \
   relay_distinguishes_skipped install-script-test
+
+check "relay guard rejects an extra unnamed shell step" \
+  relay_rejects_extra_step '      - run: sleep 600'
+check "relay guard rejects a one-step action relay" \
+  relay_rejects_block $'    timeout-minutes: 5\n    steps:\n      - name: Unexpected setup\n        uses: actions/checkout@fixture'
 
 printf '\n====================\n'
 printf 'Passed: %d\n' "$PASS"

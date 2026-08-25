@@ -734,7 +734,7 @@ jobs:
         with:
           name: backend-coverage
           path: |
-            server/coverage/
+            server/coverage/coverage-summary.json
             server/junit.xml
           retention-days: 14
 
@@ -1240,7 +1240,7 @@ jobs:
         uses: ./.github/actions/upload-artifact
         with:
           name: frontend-coverage
-          path: coverage/
+          path: coverage/coverage-summary.json
           if-no-files-found: ignore
           retention-days: 14
 
@@ -1390,7 +1390,7 @@ jobs:
         uses: ./.github/actions/upload-artifact
         with:
           name: gateway-coverage
-          path: gateway/coverage/
+          path: gateway/coverage/coverage-summary.json
           retention-days: 14
 
       - name: Write gateway diagnostic summary
@@ -1467,7 +1467,7 @@ jobs:
         with:
           name: llm-egress-proxy-coverage
           path: |
-            llm-egress-proxy/coverage/
+            llm-egress-proxy/coverage/coverage-summary.json
             llm-egress-proxy/junit.xml
           retention-days: 14
 
@@ -1546,7 +1546,8 @@ jobs:
         uses: ./.github/actions/upload-artifact
         with:
           name: critical-mutation-report-shard-${{ matrix.shard }}
-          path: server/reports/mutation/
+          path: server/reports/mutation/critical-mutation-report.shard-${{ matrix.shard }}.json
+          if-no-files-found: error
           retention-days: 14
 
       - name: Write critical mutation shard diagnostic summary

@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitest/config';
 import path from 'path';
+import { coverageReporters } from '../config/tooling/coverageReporters';
 
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
 
@@ -19,7 +20,7 @@ export default defineConfig({
     },
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'lcov', 'html', 'json-summary'],
+      reporter: coverageReporters(Boolean(process.env.CI)),
       reportsDirectory: './coverage',
       include: ['src/**/*.ts'],
       exclude: [

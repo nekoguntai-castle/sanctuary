@@ -4,6 +4,11 @@ import path from 'path';
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
 const sharedDistPath =
   process.env.SANCTUARY_SHARED_DIST ?? path.resolve(__dirname, '../shared/dist');
+// Keep this policy self-contained: Stryker copies the server package into an
+// isolated sandbox where repository-level config modules do not exist.
+const coverageReporters: Array<'text' | 'html' | 'json-summary' | 'lcov'> = process.env.CI
+  ? ['text', 'json-summary']
+  : ['text', 'html', 'json-summary', 'lcov'];
 
 export default defineConfig({
   test: {
@@ -22,7 +27,7 @@ export default defineConfig({
     },
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'lcov', 'html', 'json-summary'],
+      reporter: coverageReporters,
       reportsDirectory: './coverage',
       include: ['src/**/*.ts'],
       // Policy: backend unit coverage is held at literal 100%. Exclusions must be

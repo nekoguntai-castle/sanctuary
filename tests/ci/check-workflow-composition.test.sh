@@ -1270,6 +1270,7 @@ assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
 
 # --- full frontend typecheck retry stability --------------------------------
 TEST_WORKFLOW="$REPO_ROOT/.github/workflows/test.yml"
+CACHE_NPM_ACTION="$REPO_ROOT/.github/actions/cache-npm/action.yml"
 CLASSIFY_TEST_CHANGES="$REPO_ROOT/scripts/ci/classify-test-changes.sh"
 PLAN_TEST_RUN="$REPO_ROOT/scripts/ci/plan-test-run.sh"
 RETIRED_TEST_PLAN_ACTION="$REPO_ROOT/.github/actions/test-plan-load/action.yml"
@@ -1277,6 +1278,27 @@ FRONTEND_VITEST_CONFIG="$REPO_ROOT/config/tooling/vitest.config.ts"
 BACKEND_VITEST_CONFIG="$REPO_ROOT/server/vitest.config.ts"
 GATEWAY_VITEST_CONFIG="$REPO_ROOT/gateway/vitest.config.ts"
 PROXY_VITEST_CONFIG="$REPO_ROOT/llm-egress-proxy/vitest.config.ts"
+
+assert_not_contains "$CACHE_NPM_ACTION" \
+  "npm cache key rejects checkout-dependent recursive lockfile discovery" \
+  "default: '**/package-lock.json'"
+
+for default_lockfile in \
+  "package-lock.json" \
+  "llm-egress-proxy/package-lock.json" \
+  "scripts/verify-addresses/package-lock.json" \
+  "scripts/verify-psbt/package-lock.json" \
+  "tests/ci/lib/package-lock.json"; do
+  assert_contains_in_order "$CACHE_NPM_ACTION" \
+    "npm cache default key includes tracked lockfile: $default_lockfile" \
+    "default: |" \
+    "$default_lockfile"
+done
+
+assert_contains_in_order "$CACHE_NPM_ACTION" \
+  "npm cache hashes its explicit multiline input" \
+  "default: |" \
+  "key: \${{ runner.os }}-npm-\${{ hashFiles(inputs.lockfile-glob) }}"
 
 assert_occurrence_count "$TEST_WORKFLOW" \
   "test workflow invokes its scalar classifier exactly once" \
@@ -1928,6 +1950,49 @@ assert_named_job_step_not_contains "$TEST_WORKFLOW" \
   "frontend coverage artifact must not absorb the repo-root JUnit report" \
   "path: junit.xml"
 
+for coverage_contract in \
+  'full-backend-unit-coverage|Upload merged backend coverage|server/coverage/coverage-summary.json' \
+  'full-backend-unit-coverage|Upload merged backend coverage|server/junit.xml' \
+  'full-frontend-coverage-merge|Upload frontend coverage|path: coverage/coverage-summary.json' \
+  'full-gateway-tests|Upload gateway coverage|path: gateway/coverage/coverage-summary.json' \
+  'full-llm-egress-proxy-tests|Upload LLM egress proxy coverage|llm-egress-proxy/coverage/coverage-summary.json' \
+  'full-llm-egress-proxy-tests|Upload LLM egress proxy coverage|llm-egress-proxy/junit.xml'; do
+  IFS='|' read -r coverage_job coverage_step coverage_path <<<"$coverage_contract"
+  assert_named_job_step_contains "$TEST_WORKFLOW" \
+    "$coverage_job" \
+    "$coverage_step" \
+    "$coverage_job preserves the coverage artifact extraction contract: $coverage_path" \
+    "$coverage_path"
+done
+
+for coverage_consumer in \
+  'backend-results/coverage/coverage-summary.json' \
+  'frontend-results/coverage-summary.json' \
+  'gateway-results/coverage-summary.json' \
+  'llm-egress-proxy-results/coverage/coverage-summary.json'; do
+  assert_named_job_contains "$TEST_WORKFLOW" \
+    "full-test-summary" \
+    "full test summary preserves coverage consumer path: $coverage_consumer" \
+    "$coverage_consumer"
+done
+
+for mutation_field in \
+  'if: always()' \
+  'name: critical-mutation-report-shard-${{ matrix.shard }}' \
+  'path: server/reports/mutation/critical-mutation-report.shard-${{ matrix.shard }}.json' \
+  'if-no-files-found: error'; do
+  assert_named_job_step_contains "$TEST_WORKFLOW" \
+    "full-critical-mutation-shards" \
+    "Upload critical mutation shard report" \
+    "mutation shard upload preserves its strict exact-file contract: $mutation_field" \
+    "$mutation_field"
+done
+
+assert_occurrence_count "$TEST_WORKFLOW" \
+  "only the full mutation shard matrix uploads shard reports" \
+  "- name: Upload critical mutation shard report" \
+  "1"
+
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full frontend coverage runs on full scan" \
   "full-frontend-coverage-merge:" \
@@ -2504,6 +2569,12 @@ assert_named_job_step_config_rejected \
 
 # --- quality workflow diagnostic coverage -----------------------------------
 QUALITY_WORKFLOW="$REPO_ROOT/.github/workflows/quality.yml"
+
+assert_contains_in_order "$QUALITY_WORKFLOW" \
+  "quality executes the critical mutation configuration contract tests" \
+  "node tests/ci/check-npm-install-scripts.test.mjs" \
+  "node --test tests/ci/check-critical-mutation-config.test.mjs" \
+  "node tests/ci/check-npm-ci-callsites.test.mjs"
 
 assert_contains_in_order "$QUALITY_WORKFLOW" \
   "quality runs on direct main pushes" \

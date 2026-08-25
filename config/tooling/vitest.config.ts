@@ -1,6 +1,7 @@
 import path from 'path';
 import { configDefaults, defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+import { coverageReporters } from './coverageReporters';
 import { nodePolyfillsWithoutDeprecatedEsbuild } from './vite.nodePolyfills';
 
 const repoRoot = path.resolve(__dirname, '../..');
@@ -33,7 +34,7 @@ export default defineConfig({
     include: ['tests/**/*.test.{ts,tsx}'],
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'html', 'json-summary', 'lcov'],
+      reporter: coverageReporters(Boolean(process.env.CI)),
       include: ['src/**/*.{ts,tsx}', 'shared/**/*.ts'],
       exclude: [
         '**/*.test.{ts,tsx}',

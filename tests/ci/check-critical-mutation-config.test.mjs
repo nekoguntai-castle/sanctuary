@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
 import { checkCriticalMutationConfig } from '../../scripts/ci/check-critical-mutation-config.mjs';
+import { criticalMutationReporters } from '../../server/stryker.critical.config.mjs';
 
 function fixtureRoot(baseline) {
   const root = mkdtempSync(join(tmpdir(), 'critical-mutation-config-'));
@@ -19,6 +21,34 @@ test('accepts the repository mutation baseline and shard contract', () => {
   });
 
   assert.doesNotThrow(() => checkCriticalMutationConfig(root));
+});
+
+test('retains HTML for local full runs but not numbered shards', () => {
+  assert.deepEqual(criticalMutationReporters('all'), ['clear-text', 'progress', 'json', 'html']);
+  for (const shard of ['1', '2', '3']) {
+    assert.deepEqual(criticalMutationReporters(shard), ['clear-text', 'progress', 'json']);
+  }
+});
+
+test('wires the resolved shard into the reporter policy', () => {
+  const script = [
+    "import config from './server/stryker.critical.config.mjs';",
+    'process.stdout.write(JSON.stringify(config.reporters));',
+  ].join(' ');
+
+  for (const [shard, expected] of [
+    ['all', ['clear-text', 'progress', 'json', 'html']],
+    ['1', ['clear-text', 'progress', 'json']],
+    ['2', ['clear-text', 'progress', 'json']],
+    ['3', ['clear-text', 'progress', 'json']],
+  ]) {
+    const output = execFileSync(process.execPath, ['--input-type=module', '--eval', script], {
+      cwd: join(import.meta.dirname, '../..'),
+      encoding: 'utf8',
+      env: { ...process.env, MUTATION_SHARD: shard },
+    });
+    assert.deepEqual(JSON.parse(output), expected);
+  }
 });
 
 test('rejects a missing server critical baseline', () => {
