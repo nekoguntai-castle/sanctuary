@@ -1,10 +1,8 @@
 import type { CombinedConfig } from '../config';
 import {
-  CHECK_STALE_WALLETS_JOB_NAME,
   CONFIRMATIONS_QUEUE_NAME,
   SYNC_JOB_CONTRACT_VERSION,
   UPDATE_ALL_CONFIRMATIONS_JOB_NAME,
-  type CheckStaleWalletsJobData,
   type UpdateAllConfirmationsJobData,
 } from '../jobs/syncJobContract';
 import type {
@@ -14,6 +12,11 @@ import type {
   RecurringScheduleResult,
   WorkerJobQueue,
 } from './workerJobQueue';
+import {
+  buildStaleWalletCompatibilitySchedule,
+  requireStaleWalletCompatibilitySchedule,
+  type WithStaleWalletRetirementLock,
+} from './staleWalletScheduleCompatibility';
 
 const MINUTE_MS = 60_000;
 export const RECURRING_SCHEDULE_RECONCILIATION_INTERVAL_MS = MINUTE_MS;
@@ -50,16 +53,9 @@ interface ConditionalScheduleState {
 }
 
 const STALE_WALLET_PURGE_RESULT_ID = 'sync:stale-wallet-jobs';
+const STALE_WALLET_PURGE_MAX_PASSES = 5;
 
-export function requireStaleWalletSchedule(
-  schedules: readonly RecurringScheduleDefinition[],
-): RecurringScheduleDefinition {
-  const schedule = schedules.find(
-    ({ schedulerId }) => schedulerId === `sync:${CHECK_STALE_WALLETS_JOB_NAME}`,
-  );
-  if (!schedule) throw new Error('Stale-wallet schedule definition is missing');
-  return schedule;
-}
+export { requireStaleWalletCompatibilitySchedule as requireStaleWalletSchedule };
 
 function defineSchedule<T>(
   queue: string,
@@ -91,31 +87,11 @@ function utcCron(pattern: string): RecurringScheduleRecurrence {
   return { pattern, tz: 'UTC' };
 }
 
-function syncFreshness(intervalMs: number) {
-  const maxAgeMs = intervalMs * 2;
-  const startupGraceMs = intervalMs + 30_000;
-  if (
-    !Number.isSafeInteger(maxAgeMs) ||
-    !Number.isSafeInteger(startupGraceMs)
-  ) {
-    throw new Error(
-      'Recurring freshness interval exceeds the safe integer range',
-    );
-  }
-  return { maxAgeMs, startupGraceMs };
-}
-
 export function buildBaselineRecurringSchedules(
   config: CombinedConfig,
 ): RecurringScheduleDefinition[] {
   return [
-    defineSchedule<CheckStaleWalletsJobData>(
-      'sync',
-      CHECK_STALE_WALLETS_JOB_NAME,
-      { version: SYNC_JOB_CONTRACT_VERSION },
-      every(config.sync.intervalMs),
-      syncFreshness(config.sync.intervalMs),
-    ),
+    buildStaleWalletCompatibilitySchedule(config),
     defineSchedule<UpdateAllConfirmationsJobData>(
       CONFIRMATIONS_QUEUE_NAME,
       UPDATE_ALL_CONFIRMATIONS_JOB_NAME,
@@ -262,6 +238,24 @@ async function removeRecurringSchedules(
   return removals;
 }
 
+async function purgeStaleWalletJobsUntilClean(
+  queue: WorkerJobQueue,
+): Promise<RecurringRemovalResult> {
+  let removed = false;
+  for (let pass = 0; pass < STALE_WALLET_PURGE_MAX_PASSES; pass += 1) {
+    const result = await queue.purgeStaleWalletScheduleJobs();
+    if (result.status === 'failed') return result;
+    if (result.status === 'absent') {
+      return { status: removed ? 'removed' : 'absent' };
+    }
+    removed = true;
+  }
+  return {
+    status: 'failed',
+    error: 'Stale-wallet scheduler jobs kept reappearing during cleanup',
+  };
+}
+
 export class RecurringScheduleCoordinator {
   private tail: Promise<void> = Promise.resolve();
   private state: RecurringScheduleCoordinatorState = {
@@ -277,6 +271,7 @@ export class RecurringScheduleCoordinator {
     private readonly queue: WorkerJobQueue,
     private readonly config: CombinedConfig,
     private readonly readConditionalState: () => Promise<ConditionalScheduleState>,
+    private readonly withRetirementLock?: WithStaleWalletRetirementLock,
   ) {}
 
   reconcile(): Promise<RecurringScheduleReconciliation> {
@@ -299,8 +294,29 @@ export class RecurringScheduleCoordinator {
   private async reconcileCurrentState(): Promise<RecurringScheduleReconciliation> {
     try {
       const conditional = await this.readConditionalState();
+      const reconcile = (staleWalletScheduleForbidden: boolean) => (
+        this.reconcileConditionalState({
+          ...conditional,
+          staleWalletScheduleForbidden,
+        })
+      );
+      return this.withRetirementLock
+        ? await this.withRetirementLock(reconcile)
+        : await reconcile(conditional.staleWalletScheduleForbidden);
+    } catch (error) {
+      this.state = {
+        ...this.state,
+        reconciliationHealthy: false,
+      };
+      throw error;
+    }
+  }
+
+  private async reconcileConditionalState(
+    conditional: ConditionalScheduleState,
+  ): Promise<RecurringScheduleReconciliation> {
       const baseline = buildBaselineRecurringSchedules(this.config);
-      const staleWalletSchedule = requireStaleWalletSchedule(baseline);
+      const staleWalletSchedule = requireStaleWalletCompatibilitySchedule(baseline);
       const desiredConditional = [
         ...(conditional.autopilotEnabled ? AUTOPILOT_RECURRING_SCHEDULES : []),
         ...(conditional.intelligenceEnabled
@@ -335,7 +351,7 @@ export class RecurringScheduleCoordinator {
       const removals = await removeRecurringSchedules(this.queue, forbidden);
       if (conditional.staleWalletScheduleForbidden) {
         removals[STALE_WALLET_PURGE_RESULT_ID] =
-          await this.queue.purgeStaleWalletScheduleJobs();
+          await purgeStaleWalletJobsUntilClean(this.queue);
       }
       const removalHealthy = Object.values(removals).every(
         ({ status }) => status !== 'failed',
@@ -357,13 +373,6 @@ export class RecurringScheduleCoordinator {
         results: reconciliation.results,
         removals,
       };
-    } catch (error) {
-      this.state = {
-        ...this.state,
-        reconciliationHealthy: false,
-      };
-      throw error;
-    }
   }
 }
 

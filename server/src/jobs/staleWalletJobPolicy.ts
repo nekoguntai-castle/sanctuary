@@ -25,6 +25,15 @@ export function classifyStaleWalletScheduleJob(input: {
   if (input.name === CHECK_STALE_WALLETS_JOB_NAME) return 'stale';
   if (input.name !== SYNC_WALLET_JOB_NAME) return 'preserve';
 
+  // Payload provenance is authoritative when an old producer reused a stale
+  // job ID for newer explicit work. Retirement must never erase that work.
+  if (isRecord(input.data)) {
+    if (input.data.fullResync === true) return 'preserve';
+    if (typeof input.data.reason === 'string' && EXPLICIT_SYNC_REASONS.has(input.data.reason)) {
+      return 'preserve';
+    }
+  }
+
   let malformedEncodedId = false;
   if (input.jobId !== undefined && input.jobId !== null) {
     const logicalJobId = fromBullMqJobId(input.jobId);
@@ -35,10 +44,6 @@ export function classifyStaleWalletScheduleJob(input: {
   if (isRecord(input.data)) {
     if (typeof input.data.reason === 'string' && STALE_SYNC_REASONS.has(input.data.reason)) {
       return 'stale';
-    }
-    if (input.data.fullResync === true) return 'preserve';
-    if (typeof input.data.reason === 'string' && EXPLICIT_SYNC_REASONS.has(input.data.reason)) {
-      return 'preserve';
     }
   }
   return malformedEncodedId ? 'indeterminate' : 'preserve';

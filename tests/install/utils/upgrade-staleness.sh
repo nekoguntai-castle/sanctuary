@@ -15,14 +15,9 @@
 #     maxAgeMs < D < ttl   the stale-completion branch #657 fixed
 #     D > ttl          key expired, lastCompletedAt undefined -- a DIFFERENT branch
 #
-# and the two schedules that declare freshness have disjoint windows:
-#
-#     maintenance:webhook:recover-due-deliveries   120s .. 330s
-#     sync:check-stale-wallets                     600s .. 1530s
-#
-# So no single hold duration covers both, and a longer hold is not strictly
-# better -- past the ttl it stops testing this path at all. Waiting is the wrong
-# instrument.
+# The remaining schedule that declares restart freshness has a 120s .. 330s
+# window. A longer hold is not strictly better: past the ttl it stops testing
+# this path at all. Waiting is therefore still the wrong instrument.
 #
 # Instead: age the completion record in place before the stack goes down, and
 # give the key a long explicit TTL so the rebuild cannot outlast it. Editing the
@@ -36,11 +31,11 @@
 UPGRADE_STALENESS_KEY_PREFIX="sanctuary:worker:recurring-heartbeat:v1"
 
 # Schedules that declare freshness, with the maxAgeMs each is judged against.
-# Only these two exist (recurringHeartbeatStore.ts:158-163 filters on freshness),
-# so an unexpected key here means the schedule set changed and this helper needs
-# revisiting rather than silently covering less.
+# Only webhook recovery remains after wallet scheduler retirement
+# (recurringHeartbeatStore.ts filters on freshness). An unexpected key here means
+# the schedule set changed and this helper needs revisiting rather than silently
+# covering less.
 UPGRADE_STALENESS_SCHEDULES=(
-    "sync:check-stale-wallets:600000"
     "maintenance:webhook:recover-due-deliveries:120000"
 )
 

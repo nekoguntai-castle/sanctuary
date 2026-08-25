@@ -14,6 +14,8 @@ import type {
   IncrementalSyncTerminalResult,
   WalletSyncMutationFence,
 } from './types';
+import { acquireWalletSyncRetirementLock } from './walletSyncRetirementLock';
+import { readStaleWalletSchedulePolicyWithClient } from './walletSyncSchedulePolicyRepository';
 
 const MAX_RECOVERY_BATCH_SIZE = 100;
 const MAX_SYNC_GENERATION = 2_147_483_647;
@@ -443,6 +445,27 @@ export async function requestIncrementalSync(
   return requestIncrementalSyncWithClient(prisma, walletId, mode);
 }
 
+export type RetainedStaleIncrementalSyncRequestResult =
+  | IncrementalSyncRequestResult
+  | { status: 'retired' };
+
+/**
+ * Persist compatibility-only elapsed-age intent under the same global lock as
+ * irreversible cutover. A caller that observed legacy policy before waiting
+ * cannot commit stale intent after the tombstone.
+ */
+export async function requestRetainedStaleIncrementalSync(
+  walletId: string,
+): Promise<RetainedStaleIncrementalSyncRequestResult> {
+  return prisma.$transaction(async (tx) => {
+    await acquireWalletSyncRetirementLock(tx);
+    if ((await readStaleWalletSchedulePolicyWithClient(tx)).mode === 'forbidden') {
+      return { status: 'retired' };
+    }
+    return requestIncrementalSyncWithClient(tx, walletId, 'automatic');
+  }, { timeout: WALLET_SYNC_MUTATION_TIMEOUT_MS });
+}
+
 /**
  * Claim pending work after the caller has acquired the wallet execution lock.
  * Reclaiming an expired lease additionally requires the exact previous fence.
@@ -772,6 +795,7 @@ export async function findActionableIncrementalSyncIntents(options: {
 export const syncIntentRepository = {
   findIncrementalSyncIntent,
   requestIncrementalSync,
+  requestRetainedStaleIncrementalSync,
   claimIncrementalSync,
   completeIncrementalSync,
   releaseIncrementalSyncForRetry,

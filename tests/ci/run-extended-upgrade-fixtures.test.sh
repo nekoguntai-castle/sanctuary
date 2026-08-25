@@ -14,7 +14,7 @@ main() {
 
   bash -n "$SCRIPT"
 
-  expected=$'browser-origin-ip 21\nlegacy-runtime-env 24\nnotification-delivery 27\noptional-profiles 30'
+  expected=$'browser-origin-ip 21\nlegacy-runtime-env 24\nnotification-delivery 27\noptional-profiles 30\nwallet-sync-retirement 33'
   actual="$(bash "$SCRIPT" --list)"
   [ "$actual" = "$expected" ] || fail "unexpected fixture list: ${actual}"
 

@@ -264,6 +264,16 @@ describe('recurring schedule contracts', () => {
     expect(definitions[1]!.recurrence).toEqual({ every: confirmations });
   });
 
+  it('rejects an invalid confirmation recurrence interval', () => {
+    expect(() => buildBaselineRecurringSchedules({
+      ...config,
+      sync: {
+        ...config.sync,
+        confirmationUpdateIntervalMs: 999,
+      },
+    })).toThrow('Recurring interval must be a safe integer of at least 1000ms');
+  });
+
   it('rejects invalid or overflowing freshness intervals', () => {
     expect(() => buildBaselineRecurringSchedules({
       ...config,
@@ -518,10 +528,15 @@ describe('recurring schedule contracts', () => {
         operations.push(`remove:${name}`);
         return { status: 'removed' };
       }),
-      purgeStaleWalletScheduleJobs: vi.fn(async () => {
+      purgeStaleWalletScheduleJobs: vi.fn()
+        .mockImplementationOnce(async () => {
         operations.push('purge:stale-wallet-jobs');
         return { status: 'removed' };
-      }),
+        })
+        .mockImplementationOnce(async () => {
+          operations.push('purge:stale-wallet-jobs');
+          return { status: 'absent' };
+        }),
     } as any;
     const coordinator = new RecurringScheduleCoordinator(
       queue,
@@ -547,6 +562,80 @@ describe('recurring schedule contracts', () => {
     const firstSchedule = operations.findIndex((value) => value.startsWith('schedule:'));
     expect(operations.indexOf('remove:check-stale-wallets')).toBeLessThan(firstSchedule);
     expect(operations.indexOf('purge:stale-wallet-jobs')).toBeLessThan(firstSchedule);
+    expect(queue.purgeStaleWalletScheduleJobs).toHaveBeenCalledTimes(2);
+  });
+
+  it('rechecks retirement under the cutover lock before mutating Redis', async () => {
+    const operations: string[] = [];
+    const queue = {
+      scheduleRecurring: vi.fn(async (definition: { schedulerId: string }) => {
+        operations.push(`schedule:${definition.schedulerId}`);
+        return { status: 'unchanged' };
+      }),
+      removeRecurring: vi.fn(async (_queue: string, name: string) => {
+        operations.push(`remove:${name}`);
+        return { status: 'absent' };
+      }),
+      purgeStaleWalletScheduleJobs: vi.fn(async () => {
+        operations.push('purge:stale-wallet-jobs');
+        return { status: 'absent' };
+      }),
+    } as any;
+    const withRetirementLock = vi.fn(async (operation) => {
+      operations.push('lock');
+      const result = await operation(true);
+      operations.push('unlock');
+      return result;
+    });
+    const coordinator = new RecurringScheduleCoordinator(
+      queue,
+      config,
+      async () => ({
+        autopilotEnabled: false,
+        intelligenceEnabled: false,
+        // Simulate a stale read taken before another worker committed cutover.
+        staleWalletScheduleForbidden: false,
+      }),
+      withRetirementLock,
+    );
+
+    await expect(coordinator.reconcile()).resolves.toEqual(
+      expect.objectContaining({ healthy: true }),
+    );
+
+    expect(withRetirementLock).toHaveBeenCalledOnce();
+    expect(queue.scheduleRecurring).not.toHaveBeenCalledWith(
+      expect.objectContaining({ schedulerId: 'sync:check-stale-wallets' }),
+    );
+    expect(operations.indexOf('lock')).toBeLessThan(
+      operations.indexOf('remove:check-stale-wallets'),
+    );
+    expect(operations.indexOf('unlock')).toBeGreaterThan(
+      operations.findLastIndex((value) => value.startsWith('schedule:')),
+    );
+  });
+
+  it('fails closed when stale work keeps reappearing during bounded cleanup', async () => {
+    const queue = {
+      scheduleRecurring: vi.fn().mockResolvedValue({ status: 'unchanged' }),
+      removeRecurring: vi.fn().mockResolvedValue({ status: 'removed' }),
+      purgeStaleWalletScheduleJobs: vi.fn().mockResolvedValue({ status: 'removed' }),
+    } as any;
+    const coordinator = new RecurringScheduleCoordinator(
+      queue,
+      config,
+      async () => ({
+        autopilotEnabled: false,
+        intelligenceEnabled: false,
+        staleWalletScheduleForbidden: true,
+      }),
+    );
+
+    await expect(coordinator.reconcile()).resolves.toEqual(
+      expect.objectContaining({ healthy: false, results: {} }),
+    );
+    expect(queue.purgeStaleWalletScheduleJobs).toHaveBeenCalledTimes(5);
+    expect(queue.scheduleRecurring).not.toHaveBeenCalled();
   });
 
   it('does not schedule desired work when stale-wallet cleanup fails', async () => {

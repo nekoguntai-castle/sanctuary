@@ -49,14 +49,6 @@ import { WorkerJobQueue } from './worker/workerJobQueue';
 import { ElectrumSubscriptionManager, type BitcoinNetwork } from './worker/electrumManager';
 import { startHealthServer, type HealthServerHandle } from './worker/healthServer';
 import { registerWorkerJobs } from './worker/jobs';
-import {
-  CHECK_STALE_WALLETS_JOB_NAME,
-  SYNC_JOB_CONTRACT_VERSION,
-  SYNC_QUEUE_NAME,
-  hasSupportedSyncJobContractVersion,
-  type CheckStaleWalletsJobData,
-  type CheckStaleWalletsResult,
-} from './jobs/syncJobContract';
 import { featureFlagService } from './services/featureFlagService';
 import { circuitBreakerRegistry } from './services/circuitBreaker';
 import { buildWorkerDiagnosticsSnapshot } from './worker/diagnostics/snapshot';
@@ -77,12 +69,10 @@ import { WorkerHeartbeatWriter } from './services/workerHeartbeatRegistry';
 import type { WorkerDiagnosticsResponse } from './internal/workerDiagnostics/protocol';
 import { startCaptureParticipant, stopCaptureParticipant } from './services/supportPackage/captureRuntime';
 import { initializeRedisBridge, shutdownRedisBridge } from './websocket/redisBridge';
-import { readStaleWalletSchedulePolicy } from './repositories/walletSyncSchedulePolicyRepository';
 import {
   createProductionWalletSyncRecoveryRuntime,
   type WalletSyncRecoveryRuntime,
 } from './worker/walletSyncRecoveryRuntime';
-import { syncIntentAdmission } from './services/sync/syncIntentAdmission';
 import { resolvePersistedBitcoinNetwork } from './services/bitcoin/networks';
 import { addressToScriptHash } from './services/bitcoin/electrum/methods';
 import {
@@ -94,6 +84,14 @@ import {
   type NetworkHeaderReconciliationRuntime,
 } from './worker/networkHeaderReconciliationRuntime';
 import { completeWalletSubscriptionEnrollment } from './worker/walletSubscriptionEnrollment';
+import { schedulerRetirementCutover } from './services/sync/schedulerRetirementCutover';
+import { readSchedulerRetirementReadiness } from './services/sync/schedulerRetirementReadiness';
+import {
+  enqueueStaleWalletStartupCompatibility,
+  isStaleWalletScheduleForbidden,
+  registerStaleWalletCompletionCompatibility,
+  withStaleWalletRetirementLock,
+} from './worker/staleWalletScheduleCompatibility';
 
 const log = createLogger('WORKER');
 
@@ -106,6 +104,7 @@ let electrumManager: ElectrumSubscriptionManager | null = null;
 let healthServer: HealthServerHandle | null = null;
 let reconciliationTimer: NodeJS.Timeout | null = null;
 let scheduleReconciliationTimer: NodeJS.Timeout | null = null;
+let schedulerRetirementReconciliation: Promise<void> | null = null;
 let metricsTimer: NodeJS.Timeout | null = null;
 let isShuttingDown = false;
 let shutdownExitCode: 0 | 1 = 0;
@@ -134,7 +133,6 @@ const SUBSCRIPTION_CHECKPOINT_INTERVAL_MS = 1_000;
 const SUBSCRIPTION_STATUS_REFRESH_INTERVAL_MS = 60_000;
 const SUBSCRIPTION_CHECKPOINT_PAGE_SIZE = 200;
 const NETWORK_HEADER_RECONCILIATION_INTERVAL_MS = 5_000;
-const STALE_COMPATIBILITY_ADMISSION_CONCURRENCY = 5;
 
 /**
  * Start publishing this process's WebSocket events onto the Redis bridge.
@@ -384,16 +382,16 @@ async function startWorker(): Promise<void> {
       intelligenceEnabled: await featureFlagService.isEnabled(
         'treasuryIntelligence',
       ),
-      staleWalletScheduleForbidden:
-        (await readStaleWalletSchedulePolicy()).mode === 'forbidden',
+      staleWalletScheduleForbidden: await isStaleWalletScheduleForbidden(),
     }),
+    withStaleWalletRetirementLock,
   );
   // Worker acknowledgement follows snapshot installation and schedule convergence.
   featureFlagService.configureRuntime(
     'worker',
     reconcileApplicableRecurringSchedules,
   );
-  setupStaleWalletHandler();
+  registerStaleWalletCompletionCompatibility(jobQueue, () => isShuttingDown);
   await featureFlagService.initialize();
   // Retained jobs can execute only after the durable feature snapshot is
   // installed, conditional schedules converge, the worker acknowledges it,
@@ -427,6 +425,15 @@ async function startWorker(): Promise<void> {
   );
   await electrumManager.start();
   await networkHeaderReconciliationRuntime.recoverDue();
+  // The activation gate must observe this boot before deciding whether the
+  // fleet is capable of the irreversible scheduler cutover. Consumers remain
+  // stopped until cutover and queue purge complete.
+  diagnosticHeartbeat = new WorkerHeartbeatWriter(
+    () => getWorkerDiagnosticsSnapshot(workerConcurrency),
+  );
+  await diagnosticHeartbeat.write();
+  diagnosticHeartbeat.start();
+  await reconcileStaleWalletSchedulerRetirement();
   startNetworkHeaderReconciliationTimer();
   startSubscriptionCheckpointTimer();
   startSubscriptionStatusRefreshTimer();
@@ -494,11 +501,6 @@ async function startWorker(): Promise<void> {
       },
     },
   });
-  diagnosticHeartbeat = new WorkerHeartbeatWriter(
-    () => getWorkerDiagnosticsSnapshot(workerConcurrency),
-  );
-  await diagnosticHeartbeat.write();
-  diagnosticHeartbeat.start();
   walletSyncRecoveryRuntime = createProductionWalletSyncRecoveryRuntime();
   await walletSyncRecoveryRuntime.start();
 
@@ -527,18 +529,7 @@ async function startWorker(): Promise<void> {
   // Queue the compatibility catch-up only while the durable retirement marker
   // remains absent. A strict read failure aborts startup rather than recreating
   // work after cutover.
-  if ((await readStaleWalletSchedulePolicy()).mode === 'legacy_enabled') {
-    await jobQueue.addJob<CheckStaleWalletsJobData>(SYNC_QUEUE_NAME, CHECK_STALE_WALLETS_JOB_NAME, {
-      version: SYNC_JOB_CONTRACT_VERSION,
-      maxWallets: config.sync.startupCatchUpBatchSize,
-      priority: 'normal',
-      staggerDelayMs: config.sync.startupCatchUpStaggerDelayMs,
-      reason: 'startup-catch-up',
-    }, {
-      delay: config.sync.startupCatchUpDelayMs,
-      jobId: `startup-catch-up:${Date.now()}`,
-    });
-  }
+  await enqueueStaleWalletStartupCompatibility(jobQueue, config);
 
   log.info('Sanctuary Background Worker started successfully', {
     healthPort,
@@ -546,6 +537,43 @@ async function startWorker(): Promise<void> {
     network: config.bitcoin.network,
     reconciliationInterval: `${RECONCILIATION_INTERVAL_MS / 60000}m`,
   });
+}
+
+async function attemptStaleWalletSchedulerRetirement(): Promise<void> {
+  const result = await schedulerRetirementCutover.attempt();
+  if (result.status === 'legacy_enabled') {
+    await reconcileApplicableRecurringSchedules();
+    log.info('Retaining stale-wallet compatibility scheduler', {
+      reason: result.reason,
+    });
+    return;
+  }
+
+  // The queue was created with autorun:false. Reconcile the durable marker to
+  // Redis, then recheck exact DB readiness before any retained job can run.
+  await reconcileApplicableRecurringSchedules();
+  const readiness = result.newlyForbidden
+    ? await readSchedulerRetirementReadiness()
+    : null;
+  if (readiness !== null && readiness.status !== 'ready') {
+    throw new Error('Scheduler retirement readiness changed after queue purge');
+  }
+  log.info('Stale-wallet scheduler retirement is active', {
+    newlyForbidden: result.newlyForbidden,
+    forbiddenAt: result.tombstone.forbiddenAt,
+    networks: readiness?.status === 'ready' ? readiness.networks.length : undefined,
+  });
+}
+
+function reconcileStaleWalletSchedulerRetirement(): Promise<void> {
+  if (schedulerRetirementReconciliation) return schedulerRetirementReconciliation;
+  const operation = attemptStaleWalletSchedulerRetirement().finally(() => {
+    if (schedulerRetirementReconciliation === operation) {
+      schedulerRetirementReconciliation = null;
+    }
+  });
+  schedulerRetirementReconciliation = operation;
+  return operation;
 }
 
 /**
@@ -728,69 +756,12 @@ async function getRecurringScheduleHealth(): Promise<RecurringScheduleHealth> {
 function startScheduleReconciliationTimer(): void {
   scheduleReconciliationTimer = setInterval(() => {
     if (isShuttingDown) return;
-    void reconcileApplicableRecurringSchedules().catch((error) => {
-      log.error('Recurring schedule reconciliation failed', {
+    void reconcileStaleWalletSchedulerRetirement().catch((error) => {
+      log.error('Recurring schedule and retirement reconciliation failed', {
         error: getErrorMessage(error),
       });
     });
   }, RECURRING_SCHEDULE_RECONCILIATION_INTERVAL_MS);
-}
-
-/**
- * Set up handler for stale wallet check results.
- *
- * Listens for completed `check-stale-wallets` jobs and queues individual
- * `sync-wallet` jobs for each stale wallet returned.
- */
-async function admitRetainedStaleWallets(walletIds: string[]): Promise<void> {
-  for (let offset = 0; offset < walletIds.length; offset += STALE_COMPATIBILITY_ADMISSION_CONCURRENCY) {
-    if ((await readStaleWalletSchedulePolicy()).mode === 'forbidden') return;
-    const page = walletIds.slice(offset, offset + STALE_COMPATIBILITY_ADMISSION_CONCURRENCY);
-    await Promise.all(page.map(async walletId => {
-      try {
-        const result = await syncIntentAdmission.request(walletId);
-        if (result.status === 'blocked'
-          || (('wakeup' in result) && result.wakeup === 'unavailable')) {
-          log.warn('Retained stale-wallet intent deferred to durable recovery', {
-            walletId,
-            status: result.status,
-          });
-        }
-      } catch (error) {
-        log.error('Failed to persist retained stale-wallet sync intent', {
-          walletId,
-          error: getErrorMessage(error),
-        });
-      }
-    }));
-  }
-}
-
-function setupStaleWalletHandler(): void {
-  if (!jobQueue) return;
-
-  jobQueue.onJobCompleted(SYNC_QUEUE_NAME, CHECK_STALE_WALLETS_JOB_NAME, async (returnvalue) => {
-    if (isShuttingDown) return;
-    if (!hasSupportedSyncJobContractVersion(returnvalue)) {
-      log.warn('Ignoring check-stale-wallets result with an unsupported contract version');
-      return;
-    }
-
-    const result = returnvalue as Partial<CheckStaleWalletsResult> | undefined;
-    if (!result?.staleWalletIds?.length) return;
-    if ((await readStaleWalletSchedulePolicy()).mode === 'forbidden') {
-      log.warn('Ignoring stale-wallet completion after durable scheduler retirement');
-      return;
-    }
-
-    log.info(`Queueing sync for ${result.staleWalletIds.length} stale wallets`);
-
-    if ((await readStaleWalletSchedulePolicy()).mode === 'forbidden') {
-      log.warn('Ignoring stale-wallet completion that raced durable scheduler retirement');
-      return;
-    }
-    await admitRetainedStaleWallets(result.staleWalletIds);
-  });
 }
 
 // =============================================================================

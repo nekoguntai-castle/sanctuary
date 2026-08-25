@@ -240,6 +240,49 @@ describe('feature flag admin + worker integration', () => {
 
     vi.doMock('../../../src/repositories/walletSyncSchedulePolicyRepository', () => ({
       readStaleWalletSchedulePolicy: vi.fn(async () => ({ mode: 'legacy_enabled' })),
+      readStaleWalletSchedulePolicyWithClient: vi.fn(async () => ({ mode: 'legacy_enabled' })),
+    }));
+
+    vi.doMock('../../../src/services/sync/schedulerRetirementCutover', () => ({
+      schedulerRetirementCutover: {
+        attempt: vi.fn(async () => ({
+          status: 'legacy_enabled',
+          reason: 'activation_blocked',
+          activation: { status: 'dormant', requiredFloor: 1 },
+        })),
+      },
+    }));
+
+    vi.doMock('../../../src/services/workerHeartbeatRegistry', () => ({
+      WorkerHeartbeatWriter: class {
+        write = vi.fn(async () => undefined);
+        start = vi.fn();
+        stop = vi.fn(async () => undefined);
+      },
+    }));
+
+    vi.doMock('../../../src/services/sync/syncIntentAdmission', () => ({
+      syncIntentAdmission: {
+        request: vi.fn(async () => ({
+          status: 'requested',
+          generation: 1,
+          wakeup: 'enqueued',
+        })),
+      },
+    }));
+
+    vi.doMock('../../../src/worker/walletSyncRecoveryRuntime', () => ({
+      createProductionWalletSyncRecoveryRuntime: vi.fn(() => ({
+        getActivationState: vi.fn(() => ({ status: 'dormant', requiredFloor: 1 })),
+        start: vi.fn(async () => undefined),
+        stop: vi.fn(async () => undefined),
+      })),
+    }));
+
+    vi.doMock('../../../src/repositories/walletSyncRetirementLock', () => ({
+      withWalletSyncRetirementLock: vi.fn(async (operation: (tx: object) => Promise<unknown>) => (
+        operation({})
+      )),
     }));
 
     vi.doMock('../../../src/infrastructure', () => ({

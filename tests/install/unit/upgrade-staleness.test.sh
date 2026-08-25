@@ -23,7 +23,7 @@ FAILURES=()
 ok()  { PASS=$((PASS + 1)); echo "PASS: $1"; }
 bad() { FAIL=$((FAIL + 1)); FAILURES+=("$1"); echo "FAIL: $1" >&2; }
 
-SID='sync:check-stale-wallets'
+SID='maintenance:webhook:recover-due-deliveries'
 valid_record() {
   printf '{"version":1,"schedulerId":"%s","recurrenceFingerprint":"fp","generationToken":"tok","lastCompletedAt":%s}' \
     "$SID" "$1"
@@ -88,26 +88,18 @@ refuses 'malformed JSON' \
   '{not json'
 
 # ----- 4. the schedule list matches what declares freshness -----------------
-# Only two schedules declare freshness. If that set changes, this helper covers
+# Only one schedule declares freshness after wallet scheduler retirement. If that set changes, this helper covers
 # less than it claims and the drift is otherwise invisible.
 src="$PROJECT_ROOT/server/src/worker/recurringSchedules.ts"
 declared=$(grep -c "syncFreshness(\|maxAgeMs:" "$src" 2>/dev/null || echo 0)
 listed=${#UPGRADE_STALENESS_SCHEDULES[@]}
-if [ "$listed" -eq 2 ]; then
-  ok "covers both freshness schedules"
+if [ "$listed" -eq 1 ]; then
+  ok "covers the remaining freshness schedule"
 else
-  bad "expected 2 freshness schedules, helper lists ${listed}"
+  bad "expected 1 freshness schedule, helper lists ${listed}"
 fi
-# A literal grep of the schedule table is not enough on its own. #863 moved the
-# sync job names into jobs/syncJobContract.ts, so the table now reads
-# `CHECK_STALE_WALLETS_JOB_NAME` where it once read 'check-stale-wallets'. The
-# schedule, its scheduler id and the Redis key the helper ages were all
-# unchanged, but a literal-only check reported the schedule as deleted.
-#
-# Following the indirection keeps the guard honest in both directions: a name
-# behind a constant still resolves, and a schedule genuinely dropped from the
-# table resolves to nothing, because neither the literal nor the constant that
-# defines it is referenced there any more.
+# Follow schedule-name constants so the guard remains honest if a freshness
+# schedule is declared indirectly.
 schedule_is_defined() {
   local needle="$1"
   local table="$2"
@@ -132,21 +124,33 @@ for entry in "${UPGRADE_STALENESS_SCHEDULES[@]}"; do
   fi
 done
 
-# The check above is only worth having if it still fails when a schedule really
-# is removed. Prove that against a table with the reference stripped out, rather
-# than trusting that a widened matcher stayed strict.
-staleness_fixture_dir="$(mktemp -d)"
-
-grep -v 'CHECK_STALE_WALLETS_JOB_NAME' "$src" > "$staleness_fixture_dir/without-sync.ts"
-if schedule_is_defined "check-stale-wallets" "$staleness_fixture_dir/without-sync.ts" "$PROJECT_ROOT/server/src"; then
-  bad "drift check accepts a table that no longer references the sync schedule"
+# The retired wallet schedule must remain absent from both the active schedule
+# table and this upgrade helper. Its retained wire constant lives only in the
+# compatibility/purge boundary and is not evidence of active registration.
+if schedule_is_defined "check-stale-wallets" "$src" "$PROJECT_ROOT/server/src"; then
+  bad "retired sync schedule is still active in recurringSchedules.ts"
 else
-  ok "drift check still rejects a table that dropped the sync schedule"
+  ok "retired sync schedule is absent from recurringSchedules.ts"
+fi
+if printf '%s\n' "${UPGRADE_STALENESS_SCHEDULES[@]}" | grep -q 'sync:check-stale-wallets'; then
+  bad "upgrade helper still expects the retired sync freshness schedule"
+else
+  ok "upgrade helper no longer expects the retired sync freshness schedule"
 fi
 
-printf "%s\n" "const CHECK_STALE_WALLETS_JOB_NAME = 0;" > "$staleness_fixture_dir/literal.ts"
-printf "%s\n" "defineSchedule('sync', 'check-stale-wallets', {});" >> "$staleness_fixture_dir/literal.ts"
-if schedule_is_defined "check-stale-wallets" "$staleness_fixture_dir/literal.ts" "$PROJECT_ROOT/server/src"; then
+# The active-schedule check must still fail when the remaining schedule is
+# removed. Prove that against a table with the webhook reference stripped out.
+staleness_fixture_dir="$(mktemp -d)"
+
+grep -v 'WEBHOOK_RECOVERY_JOB_NAME' "$src" > "$staleness_fixture_dir/without-webhook.ts"
+if schedule_is_defined "recover-due-deliveries" "$staleness_fixture_dir/without-webhook.ts" "$PROJECT_ROOT/server/src"; then
+  bad "drift check accepts a table that no longer references the webhook schedule"
+else
+  ok "drift check rejects a table that dropped the webhook schedule"
+fi
+
+printf "%s\n" "defineSchedule('maintenance:webhook', 'recover-due-deliveries', {});" > "$staleness_fixture_dir/literal.ts"
+if schedule_is_defined "recover-due-deliveries" "$staleness_fixture_dir/literal.ts" "$PROJECT_ROOT/server/src"; then
   ok "drift check accepts a schedule declared with a plain literal"
 else
   bad "drift check rejects a schedule declared with a plain literal"
@@ -170,9 +174,8 @@ metrics_json() {
     "$3" "$2" "$1"
 }
 
-sync_aged=$((BOOT_MS - 723000))   # planted 723s before boot, past maxAge 600s
 web_aged=$((BOOT_MS - 223000))    # planted 223s before boot, past maxAge 120s
-STATE="{\"schedules\":[{\"schedulerId\":\"sync:check-stale-wallets\",\"agedTo\":${sync_aged},\"maxAgeMs\":600000},{\"schedulerId\":\"maintenance:webhook:recover-due-deliveries\",\"agedTo\":${web_aged},\"maxAgeMs\":120000}]}"
+STATE="{\"schedules\":[{\"schedulerId\":\"maintenance:webhook:recover-due-deliveries\",\"agedTo\":${web_aged},\"maxAgeMs\":120000}]}"
 
 verdict_is() {
   local label="$1" want="$2" state="$3" metrics="$4"
@@ -184,38 +187,38 @@ verdict_is() {
   esac
 }
 
-# The exact 9136 shape: both schedules re-ran after boot and look fresh now.
+# The exact recovery shape: the schedule re-ran after boot and looks fresh now.
 # Previously this was reported as "no schedule booted with a stale completion".
-verdict_is 'accepts schedules that recovered after booting stale' OK "$STATE" \
-  "$(metrics_json '"sync:check-stale-wallets":1786129549325,"maintenance:webhook:recover-due-deliveries":1786129560090' true "$BOOT_ISO")"
+verdict_is 'accepts a schedule that recovered after booting stale' OK "$STATE" \
+  "$(metrics_json '"maintenance:webhook:recover-due-deliveries":1786129560090' true "$BOOT_ISO")"
 
 # Booted stale and not yet re-run: the planted value is still what is reported.
 verdict_is 'accepts a planted completion that has not re-run yet' OK "$STATE" \
-  "$(metrics_json "\"sync:check-stale-wallets\":${sync_aged},\"maintenance:webhook:recover-due-deliveries\":${web_aged}" true "$BOOT_ISO")"
+  "$(metrics_json "\"maintenance:webhook:recover-due-deliveries\":${web_aged}" true "$BOOT_ISO")"
 
 # The #657 outcome itself must still be enforced.
 verdict_is 'rejects an unhealthy worker' FAIL "$STATE" \
-  "$(metrics_json '"sync:check-stale-wallets":1786129549325' false "$BOOT_ISO")"
+  "$(metrics_json '"maintenance:webhook:recover-due-deliveries":1786129560090' false "$BOOT_ISO")"
 
 # Nothing was aged -> the lane proves nothing. This is the vacuous-pass case.
 verdict_is 'rejects a missing state file' FAIL '' \
-  "$(metrics_json '"sync:check-stale-wallets":1786129549325' true "$BOOT_ISO")"
+  "$(metrics_json '"maintenance:webhook:recover-due-deliveries":1786129560090' true "$BOOT_ISO")"
 verdict_is 'rejects an empty schedule list' FAIL '{"schedules":[]}' \
-  "$(metrics_json '"sync:check-stale-wallets":1786129549325' true "$BOOT_ISO")"
+  "$(metrics_json '"maintenance:webhook:recover-due-deliveries":1786129560090' true "$BOOT_ISO")"
 
 # Without a boot time the comparison is impossible; it must not pass by default.
 verdict_is 'rejects metrics with no worker.startedAt' FAIL "$STATE" \
-  '{"recurringSchedules":{"healthy":true,"completionTimes":{"sync:check-stale-wallets":1}}}'
+  '{"recurringSchedules":{"healthy":true,"completionTimes":{"maintenance:webhook:recover-due-deliveries":1}}}'
 
 # Planted, but not actually stale at boot -- a downtime shorter than maxAgeMs.
-fresh_state="{\"schedules\":[{\"schedulerId\":\"sync:check-stale-wallets\",\"agedTo\":$((BOOT_MS - 10000)),\"maxAgeMs\":600000}]}"
+fresh_state="{\"schedules\":[{\"schedulerId\":\"maintenance:webhook:recover-due-deliveries\",\"agedTo\":$((BOOT_MS - 10000)),\"maxAgeMs\":120000}]}"
 verdict_is 'rejects a completion that was still fresh at boot' FAIL "$fresh_state" \
-  "$(metrics_json "\"sync:check-stale-wallets\":$((BOOT_MS - 10000))" true "$BOOT_ISO")"
+  "$(metrics_json "\"maintenance:webhook:recover-due-deliveries\":$((BOOT_MS - 10000))" true "$BOOT_ISO")"
 
 # A pre-boot completion we did not plant means our record never reached the
 # worker -- the branch was not exercised even though we tried.
 verdict_is 'rejects a pre-boot completion we did not plant' FAIL "$STATE" \
-  "$(metrics_json "\"sync:check-stale-wallets\":$((BOOT_MS - 5000)),\"maintenance:webhook:recover-due-deliveries\":$((BOOT_MS - 5000))" true "$BOOT_ISO")"
+  "$(metrics_json "\"maintenance:webhook:recover-due-deliveries\":$((BOOT_MS - 5000))" true "$BOOT_ISO")"
 
 # Record dropped entirely.
 verdict_is 'rejects a worker reporting no completion' FAIL "$STATE" \
@@ -269,8 +272,8 @@ process.stdout.write(`${state.schedules.length}|${ids}|${wellFormed}`);
 ' "$SANCTUARY_UPGRADE_STALENESS_STATE_FILE" 2>&1)"
 
 case "$state_check" in
-  '2|maintenance:webhook:recover-due-deliveries,sync:check-stale-wallets|true')
-    ok 'state file records both schedules, each already past its maxAge' ;;
+  '1|maintenance:webhook:recover-due-deliveries|true')
+    ok 'state file records the remaining schedule already past its maxAge' ;;
   *)
     bad "state file is malformed: ${state_check}" ;;
 esac
@@ -280,7 +283,7 @@ esac
 boot_iso="$(node -e 'process.stdout.write(new Date(Date.now() + 1000).toISOString())')"
 verdict_is 'state file drives an OK verdict against a later boot' OK \
   "$(cat "$SANCTUARY_UPGRADE_STALENESS_STATE_FILE")" \
-  "$(metrics_json "\"sync:check-stale-wallets\":$(( $(date +%s) * 1000 + 5000 )),\"maintenance:webhook:recover-due-deliveries\":$(( $(date +%s) * 1000 + 5000 ))" true "$boot_iso")"
+  "$(metrics_json "\"maintenance:webhook:recover-due-deliveries\":$(( $(date +%s) * 1000 + 5000 ))" true "$boot_iso")"
 
 echo
 echo "===================="

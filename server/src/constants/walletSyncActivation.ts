@@ -8,6 +8,13 @@
 export const WALLET_SYNC_MUTATION_FENCE_FLOOR = 1 as const;
 
 /**
+ * Deployment floor proving that every live worker understands the durable
+ * stale-wallet scheduler tombstone and participates in the retirement lock.
+ * This is intentionally independent of the mutation-fence floor.
+ */
+export const WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR = 2 as const;
+
+/**
  * Hard rollout bound shared by configuration validation and activation.
  * A pre-floor execution is allowed this entire duration plus the lock slack to
  * drain after the last below-floor heartbeat disappears.

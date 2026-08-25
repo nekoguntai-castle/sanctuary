@@ -30,6 +30,8 @@ import {
   parseIntegerEnv,
   parseStringEnv,
 } from './envSections';
+import { createLogger } from '../utils/logger';
+import { warnDeprecatedStaleSyncEnvironment } from './deprecatedSyncEnvironment';
 
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '../../.env') });
@@ -37,6 +39,7 @@ dotenv.config({ path: path.join(__dirname, '../../.env') });
 // Singleton config instance
 let configInstance: CombinedConfig | null = null;
 const LEGACY_DEFAULT_ENCRYPTION_SALT = 'sanctuary-node-config';
+const log = createLogger('CONFIG');
 
 /**
  * Get the application configuration
@@ -56,6 +59,7 @@ export function getConfig(): CombinedConfig {
  * Called once at startup
  */
 function loadConfig(): CombinedConfig {
+  warnDeprecatedStaleSyncEnvironment(log.warn);
   const jwtSecret = getJwtSecret();
   const jwtExpiresIn = parseStringEnv('JWT_EXPIRES_IN', '1h');
   const jwtRefreshExpiresIn = parseStringEnv('JWT_REFRESH_EXPIRES_IN', '7d');

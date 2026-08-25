@@ -26,7 +26,7 @@ const headerNetwork = canonicalNetworkSql('header_checkpoint."network"');
 const coverageStateNetwork = canonicalNetworkSql('coverage_state."network"');
 const retryWalletNetwork = canonicalNetworkSql('retry_wallet."network"');
 
-async function readSubscriptionCoverageRows(
+export async function readSubscriptionCoverageRows(
   tx: PrismaTxClient,
 ): Promise<SubscriptionCoverageRow[]> {
   return tx.$queryRaw<SubscriptionCoverageRow[]>(Prisma.sql`
@@ -189,28 +189,30 @@ async function readSubscriptionCoverageRows(
   `);
 }
 
+export async function readSubscriptionCoverageWithClient(
+  tx: PrismaTxClient,
+): Promise<Extract<SubscriptionCoverageReadResult, { status: "available" }>> {
+  const timestamps = await tx.$queryRaw<Array<{ evaluatedAt: Date }>>(Prisma.sql`
+    SELECT statement_timestamp() AS "evaluatedAt"
+  `);
+  const evaluatedAt = coverageEvaluationTime(timestamps[0]?.evaluatedAt);
+  const networks = buildCoverageSnapshots(
+    await readSubscriptionCoverageRows(tx),
+    evaluatedAt,
+  );
+  return {
+    status: "available",
+    evaluatedAt,
+    ready: networks.every((network) => network.ready),
+    networks,
+  };
+}
+
 export async function readSubscriptionCoverage(): Promise<SubscriptionCoverageReadResult> {
   const fallbackEvaluationTime = new Date();
   try {
     return await prisma.$transaction(
-      async (tx) => {
-        const timestamps = await tx.$queryRaw<
-          Array<{ evaluatedAt: Date }>
-        >(Prisma.sql`
-        SELECT CURRENT_TIMESTAMP AS "evaluatedAt"
-      `);
-        const evaluatedAt = coverageEvaluationTime(timestamps[0]?.evaluatedAt);
-        const networks = buildCoverageSnapshots(
-          await readSubscriptionCoverageRows(tx),
-          evaluatedAt,
-        );
-        return {
-          status: "available",
-          evaluatedAt,
-          ready: networks.every((network) => network.ready),
-          networks,
-        };
-      },
+      readSubscriptionCoverageWithClient,
       {
         maxWait: 5_000,
         timeout: 15_000,

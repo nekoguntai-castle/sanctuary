@@ -400,4 +400,85 @@ describeWithRedis('recurring schedule Redis integration', () => {
       }),
     ]);
   });
+
+  it('recovers an interrupted marker-to-purge boot and remains clean on a third boot', async () => {
+    redis = new Redis(process.env.REDIS_URL!);
+    vi.doMock('../../../src/infrastructure', () => ({
+      getRedisClient: () => redis,
+      isRedisConnected: () => true,
+    }));
+    const { WorkerJobQueue } = await import('../../../src/worker/workerJobQueue');
+    const prefix = `sanctuary:test:stale-restart:${process.pid}:${Date.now()}`;
+    const createQueue = async () => {
+      const queue = new WorkerJobQueue({
+        concurrency: 1,
+        queues: ['sync', 'notifications', 'confirmations', 'maintenance'],
+        prefix,
+        autorun: false,
+      });
+      await queue.initialize();
+      return queue;
+    };
+    const conditional = async () => ({
+      autopilotEnabled: false,
+      intelligenceEnabled: false,
+      staleWalletScheduleForbidden: true,
+    });
+
+    const first = await createQueue();
+    workerQueue = first;
+    const firstQueues = Array.from((first as any).queues.values()) as Array<{
+      queue: NonNullable<typeof bullQueue>;
+    }>;
+    const firstSync = firstQueues.find(({ queue }) => queue.name === 'sync')!.queue;
+    await firstSync.add('sync-wallet', { walletId: 'stale', reason: 'stale' }, {
+      delay: 60_000,
+      jobId: toBullMqJobId('sync:stale:wallet-stale:restart'),
+    });
+    await firstSync.add('sync-wallet', { walletId: 'manual', reason: 'manual' }, {
+      delay: 60_000,
+      jobId: toBullMqJobId('manual-sync:wallet-manual:restart'),
+    });
+    vi.spyOn(first, 'purgeStaleWalletScheduleJobs').mockResolvedValue({
+      status: 'failed',
+      error: 'simulated crash before purge',
+    });
+    await expect(new RecurringScheduleCoordinator(first, config, conditional).reconcile())
+      .resolves.toMatchObject({ healthy: false });
+    await first.shutdown();
+
+    const second = await createQueue();
+    workerQueue = second;
+    await expect(new RecurringScheduleCoordinator(second, config, conditional).reconcile())
+      .resolves.toMatchObject({ healthy: true });
+    await second.shutdown();
+
+    const third = await createQueue();
+    workerQueue = third;
+    const thirdQueues = Array.from((third as any).queues.values()) as Array<{
+      queue: NonNullable<typeof bullQueue>;
+    }>;
+    const thirdActiveQueues = thirdQueues.map(({ queue }) => queue);
+    allBullQueues = thirdActiveQueues;
+    const thirdSync = thirdActiveQueues.find(queue => queue.name === 'sync')!;
+    await expect(new RecurringScheduleCoordinator(third, config, conditional).reconcile())
+      .resolves.toMatchObject({ healthy: true });
+
+    expect((await thirdSync.getJobSchedulers()).some(
+      ({ name }) => name === 'check-stale-wallets',
+    )).toBe(false);
+    const retained = await thirdSync.getJobs([
+      'waiting',
+      'delayed',
+      'prioritized',
+      'paused',
+      'waiting-children',
+    ]);
+    expect(retained).toEqual([
+      expect.objectContaining({
+        id: toBullMqJobId('manual-sync:wallet-manual:restart'),
+        data: expect.objectContaining({ reason: 'manual' }),
+      }),
+    ]);
+  });
 });

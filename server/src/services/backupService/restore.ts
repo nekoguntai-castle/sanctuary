@@ -50,6 +50,7 @@ import {
   assertCurrentBinarySupportsWalletSyncActivation,
   parseWalletSyncActivation,
 } from '../../repositories/walletSyncActivationPolicyRepository';
+import { acquireWalletSyncRetirementLock } from '../../repositories/walletSyncRetirementLock';
 import type { Prisma } from '../../generated/prisma/client';
 
 const log = createLogger('BACKUP:SVC');
@@ -205,6 +206,9 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
   let restoredRuntimeState: FeatureRuntimeState;
   try {
     restoredRuntimeState = await prisma.$transaction(async (tx) => {
+      // Preserve irreversible wallet-sync floors against a cutover that races
+      // restore's initial operational-setting snapshot.
+      await acquireWalletSyncRetirementLock(tx);
       const currentSessionVersions = await getCurrentSessionVersions(tx);
       const currentFeatureGeneration = await featureFlagRepository.readGeneration(tx);
       const currentOperationalSettings = await readOperationalSettings(tx);

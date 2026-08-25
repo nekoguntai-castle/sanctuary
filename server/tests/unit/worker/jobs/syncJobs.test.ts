@@ -296,6 +296,7 @@ describe('Sync Jobs', () => {
       expect(syncIntentMocks.bridgeRetained).toHaveBeenCalledWith('wallet-retained', {
         fullResync,
         reason: data.reason,
+        ...(data.reason === 'stale' ? { retirementSensitive: true } : {}),
       });
       expect(syncIntentMocks.claimFresh).not.toHaveBeenCalled();
       expect(syncIntentMocks.reclaimExpired).not.toHaveBeenCalled();

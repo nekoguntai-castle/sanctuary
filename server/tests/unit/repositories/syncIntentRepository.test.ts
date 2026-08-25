@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   transaction: vi.fn(),
   txExecuteRaw: vi.fn(),
   txQueryRaw: vi.fn(),
+  txSystemSettingFindUnique: vi.fn(),
+  txWalletFindUnique: vi.fn(),
 }));
 
 vi.mock('../../../src/models/prisma', () => ({
@@ -38,6 +40,7 @@ import {
   releaseIncrementalSyncForRetry,
   resetIncrementalSyncAttempt,
   requestIncrementalSync,
+  requestRetainedStaleIncrementalSync,
   WalletSyncMutationFenceLostError,
   withWalletSyncMutationFence,
   withWalletSyncMutationLock,
@@ -102,6 +105,8 @@ describe('syncIntentRepository', () => {
     mocks.transaction.mockImplementation(async (callback) => callback({
       $executeRaw: mocks.txExecuteRaw,
       $queryRaw: mocks.txQueryRaw,
+      systemSetting: { findUnique: mocks.txSystemSettingFindUnique },
+      wallet: { findUnique: mocks.txWalletFindUnique },
     }));
   });
 
@@ -120,6 +125,37 @@ describe('syncIntentRepository', () => {
         preparedFullResyncGeneration: true,
       }),
     }));
+  });
+
+  it('serializes retained stale admission and refuses it after retirement', async () => {
+    mocks.txSystemSettingFindUnique.mockResolvedValue({
+      value: JSON.stringify({
+        version: 1,
+        forbiddenAt: '2026-08-25T00:00:00.000Z',
+        compatibilityFloor: 2,
+      }),
+    });
+
+    await expect(requestRetainedStaleIncrementalSync('wallet-1')).resolves.toEqual({
+      status: 'retired',
+    });
+    expect(mocks.txExecuteRaw).toHaveBeenCalledOnce();
+    expect(mocks.txQueryRaw).not.toHaveBeenCalled();
+  });
+
+  it('persists retained stale admission only after the locked policy recheck', async () => {
+    mocks.txSystemSettingFindUnique.mockResolvedValue(null);
+    mocks.txQueryRaw.mockResolvedValue([{ ...lifecycleState(), previousRequestedGeneration: 0 }]);
+
+    await expect(requestRetainedStaleIncrementalSync('wallet-1')).resolves.toMatchObject({
+      status: 'requested',
+    });
+    expect(mocks.txExecuteRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.txSystemSettingFindUnique.mock.invocationCallOrder[0] ?? 0,
+    );
+    expect(mocks.txSystemSettingFindUnique.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.txQueryRaw.mock.invocationCallOrder[0] ?? 0,
+    );
   });
 
   it('coalesces requests to max(requested, claimed + 1)', async () => {

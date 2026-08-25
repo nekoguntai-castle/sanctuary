@@ -269,11 +269,18 @@ function isCanonicalIncrementalSyncData(
 }
 
 async function bridgeRetainedSyncWalletJob(
+  job: Job<SyncWalletJobData>,
   data: SyncWalletJobFields,
 ): Promise<SyncWalletJobResult> {
+  const retirementSensitive = classifyStaleWalletScheduleJob({
+    name: SYNC_WALLET_JOB_NAME,
+    jobId: job.id,
+    data: job.data,
+  }) === 'stale';
   const result = await syncIntentAdmission.bridgeRetained(data.walletId, {
     fullResync: data.fullResync === true,
     reason: data.reason,
+    ...(retirementSensitive ? { retirementSensitive: true } : {}),
   });
   const accepted = result.status === 'requested' || result.status === 'merged';
   log.info(`Bridged retained sync-wallet job for ${data.walletId}`, {
@@ -477,7 +484,7 @@ export function createSyncWalletJob(
       );
     }
 
-    return bridgeRetainedSyncWalletJob(data);
+    return bridgeRetainedSyncWalletJob(job, data);
   },
   };
 }

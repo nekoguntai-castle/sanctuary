@@ -548,7 +548,7 @@ main() {
   assert_scope "$output_file" "true" "true" "true" "true" "true" "true" "true" "true" "true" "true"
   assert_upgrade_selection "$output_file" \
     "latest-stable,n-2" \
-    "browser-origin-ip,legacy-runtime-env,notification-delivery,optional-profiles"
+    "browser-origin-ip,legacy-runtime-env,notification-delivery,optional-profiles,wallet-sync-retirement"
 
   : > "$output_file"
   (
@@ -604,7 +604,7 @@ main() {
   assert_release_critical_scope "$output_file"
   assert_upgrade_selection "$output_file" \
     "latest-stable,n-2" \
-    "browser-origin-ip,legacy-runtime-env,notification-delivery,optional-profiles"
+    "browser-origin-ip,legacy-runtime-env,notification-delivery,optional-profiles,wallet-sync-retirement"
 
   : > "$output_file"
   (

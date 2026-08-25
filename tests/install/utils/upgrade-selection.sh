@@ -15,6 +15,7 @@ browser-origin-ip 21
 legacy-runtime-env 24
 notification-delivery 27
 optional-profiles 30
+wallet-sync-retirement 33
 EOF
 }
 
@@ -46,6 +47,17 @@ upgrade_extended_fixture_port_offset() {
     done < <(upgrade_active_extended_fixture_records)
 
     return 1
+}
+
+upgrade_extended_fixture_source_ref() {
+    local requested="$1"
+    local default_ref="$2"
+
+    if [ "$requested" = "wallet-sync-retirement" ]; then
+        printf '%s\n' 'v0.8.66'
+    else
+        printf '%s\n' "$default_ref"
+    fi
 }
 
 upgrade_validate_source_selector() {
@@ -187,7 +199,7 @@ upgrade_write_selection_manifest() {
     local target_commit
     local selector
     local selectors=()
-    local fixture port_offset
+    local fixture port_offset fixture_source_ref
 
     mkdir -p "$artifact_root"
     target_commit="$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || true)"
@@ -199,7 +211,7 @@ upgrade_write_selection_manifest() {
         echo "- Target commit: ${target_commit:-unknown}"
         echo "- Baseline refs: ${baseline_refs:-none}"
         echo "- Extended fixtures: ${extended_fixtures:-none}"
-        echo "- Extended source ref: ${extended_source_ref:-none}"
+        echo "- Default extended source ref: ${extended_source_ref:-none}"
         echo ""
         echo "## Baseline Source Refs"
         echo ""
@@ -212,10 +224,18 @@ upgrade_write_selection_manifest() {
             echo "- none"
         fi
         echo ""
-        echo "## Extended Source Ref"
+        echo "## Selected Extended Fixture Sources"
         echo ""
-        if [ -n "$extended_source_ref" ] && [ -n "$extended_fixtures" ]; then
-            upgrade_manifest_ref_line "$repo_root" "$extended_source_ref" "$target_commit"
+        if [ -n "$extended_fixtures" ]; then
+            IFS=',' read -ra selectors <<< "$extended_fixtures"
+            for fixture in "${selectors[@]}"; do
+                fixture_source_ref="$(upgrade_extended_fixture_source_ref "$fixture" "$extended_source_ref")"
+                echo "### $fixture"
+                echo ""
+                echo "- effective source ref: \`$fixture_source_ref\`"
+                upgrade_manifest_ref_line "$repo_root" "$fixture_source_ref" "$target_commit"
+                echo ""
+            done
         else
             echo "- none"
         fi
@@ -223,7 +243,8 @@ upgrade_write_selection_manifest() {
         echo "## Active Extended Fixture Registry"
         echo ""
         while read -r fixture port_offset; do
-            echo "- $fixture: port offset $port_offset"
+            fixture_source_ref="$(upgrade_extended_fixture_source_ref "$fixture" "$extended_source_ref")"
+            echo "- $fixture: port offset $port_offset; source ref $fixture_source_ref"
         done < <(upgrade_active_extended_fixture_records)
     } > "$manifest"
 }

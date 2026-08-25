@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { WALLET_SYNC_MUTATION_FENCE_FLOOR } from '../constants/walletSyncActivation';
-import prisma from '../models/prisma';
+import prisma, { type PrismaTxClient } from '../models/prisma';
 import { safeJsonParse } from '../utils/safeJson';
 import { WALLET_SYNC_ACTIVATION_KEY } from './operationalSystemSettings';
 
@@ -47,8 +47,12 @@ export function assertCurrentBinarySupportsWalletSyncActivation(
   }
 }
 
-export async function readWalletSyncActivationPolicy(): Promise<WalletSyncActivationPolicy> {
-  const setting = await prisma.systemSetting.findUnique({
+type ActivationPolicyClient = Pick<PrismaTxClient, 'systemSetting'>;
+
+export async function readWalletSyncActivationPolicyWithClient(
+  client: ActivationPolicyClient,
+): Promise<WalletSyncActivationPolicy> {
+  const setting = await client.systemSetting.findUnique({
     where: { key: WALLET_SYNC_ACTIVATION_KEY },
     select: { value: true },
   });
@@ -56,6 +60,10 @@ export async function readWalletSyncActivationPolicy(): Promise<WalletSyncActiva
   const activation = parseWalletSyncActivation(setting.value);
   assertCurrentBinarySupportsWalletSyncActivation(activation);
   return { mode: 'active', activation };
+}
+
+export async function readWalletSyncActivationPolicy(): Promise<WalletSyncActivationPolicy> {
+  return readWalletSyncActivationPolicyWithClient(prisma);
 }
 
 /**

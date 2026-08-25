@@ -665,6 +665,7 @@ export const registerWorkerJobQueueRecurringContracts = (
       await queue.initialize();
       const syncQueue = (queue as any).queues.get("sync").queue;
       syncQueue.getJobCounts.mockResolvedValue({ wait: 1 });
+      syncQueue.getJob.mockResolvedValue({ id: toBullMqJobId("sync:stale:wallet-1") });
       syncQueue.getJobs.mockResolvedValueOnce([{
         id: toBullMqJobId("sync:stale:wallet-1"),
         name: "sync-wallet",
@@ -676,6 +677,25 @@ export const registerWorkerJobQueueRecurringContracts = (
         status: "failed",
         error: "job became active",
       });
+    });
+
+    it("treats a concurrently removed matching job as an idempotent purge", async () => {
+      await queue.initialize();
+      const syncQueue = (queue as any).queues.get("sync").queue;
+      const staleJob = {
+        id: toBullMqJobId("sync:stale:wallet-1"),
+        name: "sync-wallet",
+        data: {},
+        remove: vi.fn().mockRejectedValue(new Error("job no longer exists")),
+      };
+      syncQueue.getJobCounts.mockResolvedValue({ wait: 1 });
+      syncQueue.getJobs.mockResolvedValueOnce([staleJob]);
+      syncQueue.getJob.mockResolvedValue(undefined);
+
+      await expect(queue.purgeStaleWalletScheduleJobs()).resolves.toEqual({
+        status: "removed",
+      });
+      expect(syncQueue.getJob).toHaveBeenCalledWith(staleJob.id);
     });
 
     it("fails closed instead of deleting an indeterminate encoded identity", async () => {

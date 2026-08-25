@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "deliveryState": "canonical_producers_active",
-  "cutoverComplete": false,
+  "cutoverComplete": true,
   "wireContract": {
     "currentProducerVersion": 3,
     "canonicalWakeupVersion": 3,
@@ -68,8 +68,8 @@
     "recoveryCoordinatorModule": "server/src/worker/syncIntentRecovery.ts",
     "subscriptionEnrollmentState": "worker_owned_bounded_runtime_enabled",
     "staleScheduleName": "check-stale-wallets",
-    "staleScheduleState": "legacy_desired_until_cutover",
-    "durableDisablePolicyState": "immutable_activation_floor_live_fleet_enforced",
+    "staleScheduleState": "durably_forbidden_compatibility_only",
+    "durableDisablePolicyState": "atomic_readiness_cutover_and_immutable_floor_active",
     "rollbackFloor": "all_running_binaries_must_honor_the_durable_forbidden_marker_before_cutover",
     "legacyEntriesAreTemporary": true
   },
@@ -224,14 +224,6 @@
         "role": "canonical_admin_dead_letter_retry_and_stale_conversion_admission"
       },
       {
-        "sink": "admission.request",
-        "file": "server/src/worker.ts",
-        "enclosingFunction": "admitRetainedStaleWallets",
-        "count": 1,
-        "trigger": "legacy_stale_compatibility",
-        "role": "gate_enforced_stale_scheduler_completion_bridge_until_retirement"
-      },
-      {
         "sink": "admission.requestFullResync",
         "file": "server/src/services/sync/syncCoordinator.ts",
         "enclosingFunction": "requestFullResyncBatch",
@@ -254,6 +246,14 @@
         "count": 1,
         "trigger": "explicit_user_request",
         "role": "canonical_admin_full_resync_dead_letter_retry_admission"
+      },
+      {
+        "sink": "admission.requestRetainedStale",
+        "file": "server/src/worker/staleWalletScheduleCompatibility.ts",
+        "enclosingFunction": "admitRetainedStaleWallets",
+        "count": 1,
+        "trigger": "legacy_stale_compatibility",
+        "role": "retirement_serialized_stale_completion_bridge"
       },
       {
         "sink": "admission.reset",
@@ -525,16 +525,12 @@
             "role": "neutral_wire_contract"
           },
           {
-            "file": "server/src/worker.ts",
-            "role": "compatibility_guarded_stale_producer_and_completion_bridge"
-          },
-          {
             "file": "server/src/worker/jobs/syncJobs.ts",
             "role": "legacy_stale_consumer"
           },
           {
-            "file": "server/src/worker/recurringSchedules.ts",
-            "role": "compatibility_schedule_definition_default_desired"
+            "file": "server/src/worker/staleWalletScheduleCompatibility.ts",
+            "role": "marker_locked_compatibility_and_purge_boundary"
           }
         ]
       },
@@ -635,11 +631,32 @@
         ]
       },
       {
+        "symbol": "WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR",
+        "entries": [
+          {
+            "file": "server/src/constants/walletSyncActivation.ts",
+            "role": "canonical_scheduler_retirement_floor"
+          },
+          {
+            "file": "server/src/repositories/walletSyncSchedulePolicyRepository.ts",
+            "role": "durable_tombstone_compatibility_floor"
+          },
+          {
+            "file": "server/src/services/workerHeartbeatRegistry.ts",
+            "role": "exact_scheduler_retirement_capability_evidence"
+          }
+        ]
+      },
+      {
         "symbol": "WorkerHeartbeatReader",
         "entries": [
           {
             "file": "server/src/services/supportPackage/collectors/notificationWorkerFleet.ts",
             "role": "existing_notification_fleet_support_reader"
+          },
+          {
+            "file": "server/src/services/sync/schedulerRetirementCutover.ts",
+            "role": "scheduler_retirement_fleet_readiness_reader"
           },
           {
             "file": "server/src/services/sync/walletSyncActivationGate.ts",
@@ -1035,16 +1052,16 @@
             "role": "gate_enforced_admission_singleton_definition"
           },
           {
-            "file": "server/src/worker.ts",
-            "role": "gate_enforced_stale_scheduler_completion_bridge_until_retirement"
-          },
-          {
             "file": "server/src/worker/jobs/canonicalIncrementalSync.ts",
             "role": "generation_bound_consumer_only"
           },
           {
             "file": "server/src/worker/jobs/syncJobs.ts",
             "role": "legacy_lock_owned_lease_revoking_cleanup"
+          },
+          {
+            "file": "server/src/worker/staleWalletScheduleCompatibility.ts",
+            "role": "retirement_serialized_compatibility_admission"
           },
           {
             "file": "server/src/worker/subscriptionCheckpointRuntime.ts",
@@ -1063,6 +1080,10 @@
       {
         "symbol": "walletSyncActivationGate",
         "entries": [
+          {
+            "file": "server/src/services/sync/schedulerRetirementCutover.ts",
+            "role": "atomic_scheduler_cutover_authority"
+          },
           {
             "file": "server/src/services/sync/syncIntentAdmission.ts",
             "role": "gate_enforced_admission"
@@ -1084,6 +1105,10 @@
       {
         "symbol": "walletSyncActivationPolicyRepository",
         "entries": [
+          {
+            "file": "server/src/repositories/schedulerRetirementCutoverRepository.ts",
+            "role": "atomic_activation_policy_cutover_reader"
+          },
           {
             "file": "server/src/repositories/walletSyncActivationPolicyRepository.ts",
             "role": "immutable_activation_policy_definition"
@@ -1133,12 +1158,12 @@
             "role": "durable_forbidden_marker_key"
           },
           {
-            "file": "server/src/worker.ts",
-            "role": "compatibility_guarded_stale_producer_and_completion_bridge"
-          },
-          {
             "file": "server/src/worker/jobs/syncJobs.ts",
             "role": "legacy_stale_consumer_diagnostic"
+          },
+          {
+            "file": "server/src/worker/staleWalletScheduleCompatibility.ts",
+            "role": "durably_marker_guarded_compatibility_boundary"
           }
         ]
       },

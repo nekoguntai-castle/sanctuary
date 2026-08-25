@@ -128,6 +128,7 @@ run_all_fixtures() {
   local status=0
   local port_offset
   local source_label
+  local fixture_source_ref
   local original_workspace
 
   if ! upgrade_validate_source_selector "$source_ref"; then
@@ -137,7 +138,6 @@ run_all_fixtures() {
     exit 1
   fi
 
-  source_label="$(upgrade_sanitize_label "$source_ref")"
   original_workspace="${SANCTUARY_CI_ORIGINAL_WORKSPACE:-$ROOT_DIR}"
   original_workspace="$(cd "$original_workspace" && pwd -P)"
   write_selection_manifest "$original_workspace"
@@ -145,7 +145,9 @@ run_all_fixtures() {
   IFS=',' read -ra fixtures <<< "$selected_fixtures"
   for fixture in "${fixtures[@]}"; do
     port_offset="$(upgrade_extended_fixture_port_offset "$fixture")"
-    if ! SANCTUARY_EXTENDED_UPGRADE_SOURCE_REF="$source_ref" \
+    fixture_source_ref="$(upgrade_extended_fixture_source_ref "$fixture" "$source_ref")"
+    source_label="$(upgrade_sanitize_label "$fixture_source_ref")"
+    if ! SANCTUARY_EXTENDED_UPGRADE_SOURCE_REF="$fixture_source_ref" \
          SANCTUARY_EXTENDED_UPGRADE_SOURCE_LABEL="$source_label" \
          run_fixture "$fixture" "$port_offset"; then
       ci_emit_error "Extended upgrade fixture failed: $fixture"

@@ -54,6 +54,7 @@ vi.mock('bullmq', () => {
     removeJobScheduler = vi.fn().mockResolvedValue(true);
     removeRepeatableByKey = vi.fn().mockResolvedValue(undefined);
     getJobs = vi.fn().mockResolvedValue([]);
+    getJob = vi.fn().mockResolvedValue(undefined);
     getJobCounts = vi.fn().mockResolvedValue({});
     getWaitingCount = vi.fn().mockResolvedValue(0);
     getActiveCount = vi.fn().mockResolvedValue(0);

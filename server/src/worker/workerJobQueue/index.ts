@@ -83,6 +83,18 @@ function readQueueStateCount(
   return count;
 }
 
+async function removeStaleJobIdempotently(
+  queue: Queue,
+  job: Job,
+): Promise<void> {
+  try {
+    await job.remove();
+  } catch (error) {
+    if (job.id !== undefined && await queue.getJob(job.id) == null) return;
+    throw error;
+  }
+}
+
 function definedJobOptions(options?: JobsOptions): JobsOptions | undefined {
   if (!options) return undefined;
   const entries = Object.entries(options).filter(
@@ -632,7 +644,9 @@ export class WorkerJobQueue {
           const staleJobs = classified
             .filter(({ classification }) => classification === "stale")
             .map(({ job }) => job);
-          for (const job of staleJobs) await job.remove();
+          for (const job of staleJobs) {
+            await removeStaleJobIdempotently(queueInstance.queue, job);
+          }
           removed += staleJobs.length;
           remaining -= jobs.length;
           if (jobs.length < pageSize) break;

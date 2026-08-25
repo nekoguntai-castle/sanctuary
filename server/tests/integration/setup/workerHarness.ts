@@ -171,6 +171,7 @@ export const createWorkerTestHarness = async (
 
   vi.doMock('../../../src/repositories/walletSyncSchedulePolicyRepository', () => ({
     readStaleWalletSchedulePolicy: vi.fn(async () => ({ mode: 'legacy_enabled' })),
+    readStaleWalletSchedulePolicyWithClient: vi.fn(async () => ({ mode: 'legacy_enabled' })),
   }));
 
   vi.doMock('../../../src/infrastructure', () => ({
@@ -200,6 +201,22 @@ export const createWorkerTestHarness = async (
       start = vi.fn();
       stop = vi.fn(async () => undefined);
     },
+  }));
+
+  vi.doMock('../../../src/services/sync/schedulerRetirementCutover', () => ({
+    schedulerRetirementCutover: {
+      attempt: vi.fn(async () => ({
+        status: 'legacy_enabled',
+        reason: 'activation_blocked',
+        activation: { status: 'dormant', requiredFloor: 1 },
+      })),
+    },
+  }));
+
+  vi.doMock('../../../src/repositories/walletSyncRetirementLock', () => ({
+    withWalletSyncRetirementLock: vi.fn(async (operation: (tx: object) => Promise<unknown>) => (
+      operation({})
+    )),
   }));
 
   const walletSyncRecoveryRuntime = {

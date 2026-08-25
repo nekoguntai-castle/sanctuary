@@ -356,6 +356,10 @@ describe('restoreFromBackup', () => {
       const result = await backupService.restoreFromBackup(backup);
 
       expect(result.success).toBe(true);
+      expect(mockPrismaClient.$executeRaw).toHaveBeenCalled();
+      expect(mockPrismaClient.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        mockPrismaClient.systemSetting.findMany.mock.invocationCallOrder[0] ?? 0,
+      );
       const writes = mockPrismaClient.systemSetting.createMany.mock.calls
         .map(([args]) => args.data as Array<{ key: string; value: string }>);
       expect(writes).toContainEqual([expect.objectContaining({

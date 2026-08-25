@@ -68,6 +68,23 @@ function fixtureActivationSymbolReferences() {
       ],
     },
     {
+      symbol: 'WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR',
+      entries: [
+        {
+          file: 'server/src/constants/walletSyncActivation.ts',
+          role: 'canonical_scheduler_retirement_floor',
+        },
+        {
+          file: 'server/src/repositories/walletSyncSchedulePolicyRepository.ts',
+          role: 'durable_tombstone_compatibility_floor',
+        },
+        {
+          file: 'server/src/services/workerHeartbeatRegistry.ts',
+          role: 'exact_scheduler_retirement_capability_evidence',
+        },
+      ],
+    },
+    {
       symbol: 'createProductionWalletSyncRecoveryRuntime',
       entries: [
         { file: 'server/src/worker.ts', role: 'sole_runtime_consumer' },
@@ -483,12 +500,23 @@ function createFixture() {
       + 'void enqueueIncrementalSyncWakeup;\nvoid enqueueReservedFullResyncWakeup;\n'
       + 'void { inspectActivation: () => walletSyncActivationGate.inspect() };\n'
       + 'void { publishTransition: syncLifecyclePublisher.publish };\n'
-      + 'async function publishCommittedRequests(repository, persistFullResyncRequest, publishTransition) {\n'
-      + '  await repository.requestIncrementalSync();\n'
-      + "  await publishTransition({ transition: 'requested' });\n"
-      + '  await persistFullResyncRequest(walletId);\n'
-      + "  await publishTransition({ transition: 'requested' });\n"
-      + '}\nvoid publishCommittedRequests;\n'
+      + 'async function publishIncrementalRequest(walletId, result) {\n'
+      + "  await publishTransition({ walletId, transition: 'requested' });\n"
+      + '  return result;\n'
+      + '}\n'
+      + 'async function persistIncrementalRequest(repository, walletId) {\n'
+      + '  return publishIncrementalRequest(walletId, await repository.requestIncrementalSync(walletId));\n'
+      + '}\n'
+      + 'async function persistRetainedStaleRequest(repository, walletId) {\n'
+      + '  const result = await repository.requestRetainedStaleIncrementalSync(walletId);\n'
+      + '  return publishIncrementalRequest(walletId, result);\n'
+      + '}\n'
+      + 'async function persistFullRequest(persistFullResyncRequest, walletId) {\n'
+      + '  const result = await persistFullResyncRequest(walletId);\n'
+      + "  await publishTransition({ walletId, transition: 'requested' });\n"
+      + '  return result;\n'
+      + '}\n'
+      + 'void persistIncrementalRequest;\nvoid persistRetainedStaleRequest;\nvoid persistFullRequest;\n'
       + 'export const syncIntentAdmission = {};\n',
   );
   write(
@@ -557,7 +585,8 @@ function createFixture() {
   write(
     root,
     'server/src/constants/walletSyncActivation.ts',
-    'export const WALLET_SYNC_MUTATION_FENCE_FLOOR = 1 as const;\n',
+    'export const WALLET_SYNC_MUTATION_FENCE_FLOOR = 1 as const;\n'
+      + 'export const WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR = 2 as const;\n',
   );
   write(
     root,
@@ -573,8 +602,14 @@ function createFixture() {
   );
   write(
     root,
+    'server/src/repositories/walletSyncSchedulePolicyRepository.ts',
+    'void WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR;\n',
+  );
+  write(
+    root,
     'server/src/services/workerHeartbeatRegistry.ts',
-    'void WALLET_SYNC_MUTATION_FENCE_FLOOR;\n',
+    'void WALLET_SYNC_MUTATION_FENCE_FLOOR;\n'
+      + 'void WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR;\n',
   );
   write(
     root,
@@ -607,13 +642,16 @@ function createFixture() {
   return root;
 }
 
-test('live canonical producer inventory matches production without claiming cutover', () => {
+test('live canonical producer inventory matches production after scheduler cutover', () => {
   const result = checkWalletSyncLifecycleContract(repoRoot);
   assert.deepEqual(result.errors, []);
   assert.equal(result.contract.deliveryState, 'canonical_producers_active');
-  assert.equal(result.contract.cutoverComplete, false);
+  assert.equal(result.contract.cutoverComplete, true);
   assert.equal(result.contract.wireContract.currentProducerVersion, 3);
-  assert.equal(result.contract.compatibility.staleScheduleState, 'legacy_desired_until_cutover');
+  assert.equal(
+    result.contract.compatibility.staleScheduleState,
+    'durably_forbidden_compatibility_only',
+  );
   assert.equal(
     result.contract.compatibility.admissionState,
     'gate_enforced_canonical_request_producers_active',
@@ -1115,12 +1153,12 @@ test('rejects stale compatibility entries after a legacy path is removed', () =>
   );
 });
 
-test('rejects premature cutover and lifecycle weakening', () => {
+test('rejects cutover rollback and lifecycle weakening', () => {
   const cutover = fixtureContract();
-  cutover.cutoverComplete = true;
+  cutover.cutoverComplete = false;
   assert.throws(
     () => parseWalletSyncLifecycleContract(JSON.stringify(cutover)),
-    /cutoverComplete must remain false/,
+    /cutoverComplete must remain true/,
   );
 
   const weakened = fixtureContract();
@@ -1166,10 +1204,10 @@ test('rejects premature cutover and lifecycle weakening', () => {
   );
 
   const retiredScheduler = fixtureContract();
-  retiredScheduler.compatibility.staleScheduleState = 'retired';
+  retiredScheduler.compatibility.staleScheduleState = 'legacy_desired_until_cutover';
   assert.throws(
     () => parseWalletSyncLifecycleContract(JSON.stringify(retiredScheduler)),
-    /must not claim stale-schedule cutover/,
+    /must remain durably forbidden after cutover/,
   );
 });
 

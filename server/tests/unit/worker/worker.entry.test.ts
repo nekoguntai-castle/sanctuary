@@ -201,6 +201,9 @@ const mocks = vi.hoisted(() => {
       isEnabled: vi.fn(),
     },
     readStaleWalletSchedulePolicy: vi.fn(),
+    withWalletSyncRetirementLock: vi.fn(),
+    schedulerRetirementAttempt: vi.fn(),
+    readSchedulerRetirementReadiness: vi.fn(),
     getElectrumCallbacks: () => electrumCallbacks,
     getHealthProvider: () => healthProvider,
     getDiagnosticsProvider: () => diagnosticsProvider,
@@ -258,6 +261,19 @@ vi.mock('../../../src/services/featureFlagService', () => ({
 
 vi.mock('../../../src/repositories/walletSyncSchedulePolicyRepository', () => ({
   readStaleWalletSchedulePolicy: mocks.readStaleWalletSchedulePolicy,
+  readStaleWalletSchedulePolicyWithClient: mocks.readStaleWalletSchedulePolicy,
+}));
+
+vi.mock('../../../src/repositories/walletSyncRetirementLock', () => ({
+  withWalletSyncRetirementLock: mocks.withWalletSyncRetirementLock,
+}));
+
+vi.mock('../../../src/services/sync/schedulerRetirementCutover', () => ({
+  schedulerRetirementCutover: { attempt: mocks.schedulerRetirementAttempt },
+}));
+
+vi.mock('../../../src/services/sync/schedulerRetirementReadiness', () => ({
+  readSchedulerRetirementReadiness: mocks.readSchedulerRetirementReadiness,
 }));
 
 vi.mock('../../../src/worker/workerJobQueue', () => ({
@@ -292,7 +308,10 @@ vi.mock('../../../src/worker/networkHeaderReconciliationRuntime', () => ({
 }));
 
 vi.mock('../../../src/services/sync/syncIntentAdmission', () => ({
-  syncIntentAdmission: { request: mocks.syncIntentRequest },
+  syncIntentAdmission: {
+    request: mocks.syncIntentRequest,
+    requestRetainedStale: mocks.syncIntentRequest,
+  },
 }));
 
 vi.mock('../../../src/worker/jobs', () => ({
@@ -461,6 +480,18 @@ describe('worker entrypoint', () => {
     });
     mocks.mockFeatureFlagService.isEnabled.mockResolvedValue(false);
     mocks.readStaleWalletSchedulePolicy.mockResolvedValue({ mode: 'legacy_enabled' });
+    mocks.withWalletSyncRetirementLock.mockImplementation(async (operation) => operation({}));
+    mocks.schedulerRetirementAttempt.mockResolvedValue({
+      status: 'legacy_enabled',
+      reason: 'activation_blocked',
+      activation: { status: 'dormant', requiredFloor: 3 },
+    });
+    mocks.readSchedulerRetirementReadiness.mockResolvedValue({
+      status: 'ready',
+      evaluatedAt: new Date('2026-08-25T00:00:00.000Z'),
+      maxAllowedOpenGapAgeMs: 0,
+      networks: [],
+    });
   });
 
   it('handles startup failure by logging and exiting with code 1', async () => {
@@ -1138,7 +1169,7 @@ describe('worker entrypoint', () => {
       'check-stale-wallets',
       { purgeQueued: true },
     );
-    expect(mocks.queueInstance.purgeStaleWalletScheduleJobs).toHaveBeenCalledOnce();
+    expect(mocks.queueInstance.purgeStaleWalletScheduleJobs).toHaveBeenCalledTimes(2);
     expect(mocks.queueInstance.purgeStaleWalletScheduleJobs.mock.invocationCallOrder[0])
       .toBeLessThan(mocks.queueInstance.startConsumers.mock.invocationCallOrder[0]);
     expect(mocks.queueInstance.scheduleRecurring).not.toHaveBeenCalledWith(
@@ -1149,6 +1180,131 @@ describe('worker entrypoint', () => {
       'check-stale-wallets',
       expect.anything(),
       expect.anything(),
+    );
+  });
+
+  it('starts from an existing marker while current enrollment readiness is transiently blocked', async () => {
+    vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
+      void event;
+      void handler;
+      return process;
+    }) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+    mocks.schedulerRetirementAttempt.mockResolvedValue({
+      status: 'forbidden',
+      newlyForbidden: false,
+      tombstone: {
+        version: 1,
+        forbiddenAt: '2026-08-22T00:00:00.000Z',
+        compatibilityFloor: 2,
+      },
+    });
+    mocks.readStaleWalletSchedulePolicy.mockResolvedValue({
+      mode: 'forbidden',
+      tombstone: {
+        version: 1,
+        forbiddenAt: '2026-08-22T00:00:00.000Z',
+        compatibilityFloor: 2,
+      },
+    });
+    mocks.readSchedulerRetirementReadiness.mockResolvedValue({
+      status: 'blocked',
+      evaluatedAt: new Date('2026-08-25T00:00:01.000Z'),
+      maxAllowedOpenGapAgeMs: 0,
+      networks: [],
+    });
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+
+    expect(mocks.queueInstance.purgeStaleWalletScheduleJobs).toHaveBeenCalledTimes(2);
+    expect(mocks.readSchedulerRetirementReadiness).not.toHaveBeenCalled();
+    expect(mocks.queueInstance.startConsumers).toHaveBeenCalledOnce();
+    expect(mocks.walletSyncRecoveryRuntime.start).toHaveBeenCalledOnce();
+  });
+
+  it('activates retirement after Electrum recovery and re-purges before consumers', async () => {
+    vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
+      void event;
+      void handler;
+      return process;
+    }) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+    mocks.schedulerRetirementAttempt.mockImplementationOnce(async () => {
+      mocks.readStaleWalletSchedulePolicy.mockResolvedValue({
+        mode: 'forbidden',
+        tombstone: {
+          version: 1,
+          forbiddenAt: '2026-08-25T00:00:00.000Z',
+          compatibilityFloor: 2,
+        },
+      });
+      return {
+        status: 'forbidden',
+        newlyForbidden: true,
+        tombstone: {
+          version: 1,
+          forbiddenAt: '2026-08-25T00:00:00.000Z',
+          compatibilityFloor: 2,
+        },
+      };
+    });
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+
+    expect(mocks.networkHeaderReconciliationRuntime.recoverDue.mock.invocationCallOrder[0])
+      .toBeLessThan(mocks.heartbeatInstance.write.mock.invocationCallOrder[0]);
+    expect(mocks.heartbeatInstance.write.mock.invocationCallOrder[0])
+      .toBeLessThan(mocks.schedulerRetirementAttempt.mock.invocationCallOrder[0]);
+    expect(mocks.schedulerRetirementAttempt.mock.invocationCallOrder[0])
+      .toBeLessThan(mocks.queueInstance.purgeStaleWalletScheduleJobs.mock.invocationCallOrder[0]);
+    expect(mocks.queueInstance.purgeStaleWalletScheduleJobs.mock.invocationCallOrder[0])
+      .toBeLessThan(mocks.readSchedulerRetirementReadiness.mock.invocationCallOrder[0]);
+    expect(mocks.readSchedulerRetirementReadiness.mock.invocationCallOrder[0])
+      .toBeLessThan(mocks.queueInstance.startConsumers.mock.invocationCallOrder[0]);
+  });
+
+  it('fails startup before consumers when post-purge readiness is no longer exact', async () => {
+    vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
+      void event;
+      void handler;
+      return process;
+    }) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+    mocks.schedulerRetirementAttempt.mockResolvedValue({
+      status: 'forbidden',
+      newlyForbidden: true,
+      tombstone: {
+        version: 1,
+        forbiddenAt: '2026-08-25T00:00:00.000Z',
+        compatibilityFloor: 2,
+      },
+    });
+    mocks.readStaleWalletSchedulePolicy.mockResolvedValue({
+      mode: 'forbidden',
+      tombstone: {
+        version: 1,
+        forbiddenAt: '2026-08-25T00:00:00.000Z',
+        compatibilityFloor: 2,
+      },
+    });
+    mocks.readSchedulerRetirementReadiness.mockResolvedValue({
+      status: 'blocked',
+      evaluatedAt: new Date('2026-08-25T00:00:01.000Z'),
+      maxAllowedOpenGapAgeMs: 0,
+      networks: [],
+    });
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+
+    expect(mocks.queueInstance.startConsumers).not.toHaveBeenCalled();
+    expect(mocks.logger.error).toHaveBeenCalledWith(
+      'Worker startup failed',
+      expect.objectContaining({
+        error: 'Scheduler retirement readiness changed after queue purge',
+      }),
     );
   });
 
@@ -1876,5 +2032,75 @@ describe('worker entrypoint', () => {
       );
     }
     expect(recovered).toBe(true);
+  });
+
+  it('retries a blocked scheduler cutover during periodic reconciliation', async () => {
+    vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
+      void event;
+      void handler;
+      return process;
+    }) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+    const intervals: Array<{ callback: () => Promise<void> | void; delay: number }> = [];
+    vi.spyOn(global, 'setInterval').mockImplementation(((
+      callback: () => Promise<void> | void,
+      delay: number,
+    ) => {
+      intervals.push({ callback, delay });
+      return { delay } as any;
+    }) as any);
+    let finishRetirement!: () => void;
+    const retirementBarrier = new Promise<void>((resolve) => {
+      finishRetirement = resolve;
+    });
+    mocks.schedulerRetirementAttempt
+      .mockResolvedValueOnce({
+        status: 'legacy_enabled',
+        reason: 'activation_blocked',
+        activation: { status: 'fleet_blocked', requiredFloor: 1, reason: 'restart_observed' },
+      })
+      .mockImplementationOnce(async () => {
+        await retirementBarrier;
+        mocks.readStaleWalletSchedulePolicy.mockResolvedValue({
+          mode: 'forbidden',
+          tombstone: {
+            version: 1,
+            forbiddenAt: '2026-08-25T00:00:00.000Z',
+            compatibilityFloor: 2,
+          },
+        });
+        return {
+          status: 'forbidden',
+          newlyForbidden: true,
+          tombstone: {
+            version: 1,
+            forbiddenAt: '2026-08-25T00:00:00.000Z',
+            compatibilityFloor: 2,
+          },
+        };
+      });
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+    expect(mocks.schedulerRetirementAttempt).toHaveBeenCalledOnce();
+    mocks.queueInstance.purgeStaleWalletScheduleJobs.mockClear();
+    mocks.queueInstance.scheduleRecurring.mockClear();
+
+    const reconciliations = intervals.filter(({ delay }) => delay === 60_000);
+    expect(reconciliations.length).toBeGreaterThan(0);
+    for (const { callback } of reconciliations) callback();
+    await vi.waitFor(() => expect(mocks.schedulerRetirementAttempt).toHaveBeenCalledTimes(2));
+    for (const { callback } of reconciliations) callback();
+    await Promise.resolve();
+    expect(mocks.schedulerRetirementAttempt).toHaveBeenCalledTimes(2);
+
+    finishRetirement();
+    await vi.waitFor(() => (
+      expect(mocks.queueInstance.purgeStaleWalletScheduleJobs).toHaveBeenCalled()
+    ));
+
+    expect(mocks.queueInstance.scheduleRecurring).not.toHaveBeenCalledWith(
+      expect.objectContaining({ schedulerId: 'sync:check-stale-wallets' }),
+    );
   });
 });

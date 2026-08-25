@@ -54,6 +54,7 @@ list_group_specs() {
         tests/integration/repositories/labelRepository.test.ts \
         tests/integration/repositories/networkHeaderReconciliationLifecycle.test.ts \
         tests/integration/repositories/policyRepository.audit.test.ts \
+        tests/integration/repositories/schedulerRetirementCutover.test.ts \
         tests/integration/repositories/syncCorrectionAtomicity.test.ts \
         tests/integration/repositories/syncIntentLifecycle.test.ts \
         tests/integration/repositories/syncIntentReaders.test.ts \

@@ -36,6 +36,26 @@ describe('staleWalletJobPolicy', () => {
     }
   });
 
+  it('lets explicit provenance override a stale-shaped retained job ID', () => {
+    const staleJobId = toBullMqJobId('sync:stale:wallet-1:123');
+
+    expect(classifyStaleWalletScheduleJob({
+      name: 'sync-wallet',
+      jobId: staleJobId,
+      data: { reason: 'manual' },
+    })).toBe('preserve');
+    expect(classifyStaleWalletScheduleJob({
+      name: 'sync-wallet',
+      jobId: staleJobId,
+      data: { reason: 'address_activity' },
+    })).toBe('preserve');
+    expect(classifyStaleWalletScheduleJob({
+      name: 'sync-wallet',
+      jobId: staleJobId,
+      data: { fullResync: true },
+    })).toBe('preserve');
+  });
+
   it('preserves positively identified manual and full-resync work with malformed IDs', () => {
     expect(isStaleWalletScheduleJob({
       name: 'sync-wallet',

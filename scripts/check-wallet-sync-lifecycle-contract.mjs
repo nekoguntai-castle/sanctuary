@@ -62,6 +62,7 @@ const ADMISSION_SINGLETON_METHODS = [
   'releaseForRetry',
   'request',
   'requestFullResync',
+  'requestRetainedStale',
   'reset',
   'wake',
   'wakeReservedFullResync',
@@ -79,6 +80,10 @@ const ACTIVATION_POLICY_REPOSITORY_PATH =
   'server/src/repositories/walletSyncActivationPolicyRepository.ts';
 const ACTIVATION_STABILIZATION_REPOSITORY_PATH =
   'server/src/repositories/walletSyncActivationStabilizationRepository.ts';
+const SCHEDULER_RETIREMENT_CUTOVER_PATH =
+  'server/src/services/sync/schedulerRetirementCutover.ts';
+const SCHEDULER_RETIREMENT_CUTOVER_REPOSITORY_PATH =
+  'server/src/repositories/schedulerRetirementCutoverRepository.ts';
 const REPOSITORY_BARREL_PATH = 'server/src/repositories/index.ts';
 const SUBSCRIPTION_ENROLLMENT_COORDINATOR_SYMBOL = 'createSubscriptionCheckpointEnrollment';
 const SUBSCRIPTION_CHECKPOINT_RUNTIME_PATH =
@@ -103,7 +108,8 @@ const TRACKED_PRODUCER_SINKS = new Set([
   'admission.bridgeRetained', 'admission.claimFresh', 'admission.complete', 'admission.recover',
   'admission.recoverExpired', 'admission.reclaimExpired',
   'admission.releaseAsActionRequired', 'admission.releaseForRetry',
-  'admission.request', 'admission.requestFullResync', 'admission.reset',
+  'admission.request', 'admission.requestFullResync', 'admission.requestRetainedStale',
+  'admission.reset',
   'admission.wake', 'admission.wakeReservedFullResync',
   'coordinator.queueNetworkSync', 'coordinator.queueUserWallets',
   'coordinator.queueWalletSync', 'coordinator.resyncNetwork', 'coordinator.resyncWallet',
@@ -324,7 +330,7 @@ export function parseWalletSyncLifecycleContract(source) {
   if (contract.deliveryState !== 'canonical_producers_active') {
     throw new Error('deliveryState must be canonical_producers_active in this slice');
   }
-  if (contract.cutoverComplete !== false) throw new Error('cutoverComplete must remain false');
+  if (contract.cutoverComplete !== true) throw new Error('cutoverComplete must remain true');
 
   const wire = requireObject(contract.wireContract, 'wireContract');
   if (wire.currentProducerVersion !== 3 || wire.unversionedPayloadMeans !== 1) {
@@ -454,11 +460,12 @@ function validateCompatibility(value) {
   if (compatibility.staleScheduleName !== 'check-stale-wallets') {
     throw new Error('compatibility.staleScheduleName must retain the legacy wire identity');
   }
-  if (compatibility.staleScheduleState !== 'legacy_desired_until_cutover') {
-    throw new Error('the precursor must not claim stale-schedule cutover');
+  if (compatibility.staleScheduleState !== 'durably_forbidden_compatibility_only') {
+    throw new Error('the stale scheduler must remain durably forbidden after cutover');
   }
-  if (compatibility.durableDisablePolicyState !== 'immutable_activation_floor_live_fleet_enforced') {
-    throw new Error('the immutable activation floor must remain live-fleet enforced');
+  if (compatibility.durableDisablePolicyState
+    !== 'atomic_readiness_cutover_and_immutable_floor_active') {
+    throw new Error('the atomic readiness cutover and immutable floor must remain active');
   }
   if (compatibility.legacyEntriesAreTemporary !== true) {
     throw new Error('compatibility legacy entries must be explicitly temporary');
@@ -1328,13 +1335,17 @@ function validateRecoveryComposition(sources, admissionModule, errors) {
   if (countMatches(admission, /transition\s*:\s*['"]requested['"]/g) !== 2) {
     errors.push('incremental and full-resync admission must each publish requested state');
   }
-  const incrementalPersistence = admission.indexOf('repository.requestIncrementalSync(');
-  const fullPersistence = admission.indexOf('persistFullResyncRequest(walletId)');
-  const publications = [...admission.matchAll(/await\s+publishTransition\s*\(/g)]
-    .map(match => match.index ?? -1);
-  if (publications.length !== 2
-    || publications[0] <= incrementalPersistence
-    || publications[1] <= fullPersistence) {
+  const incrementalPublishesAfterPersistence = /return\s+publishIncrementalRequest\s*\(\s*walletId\s*,\s*await\s+repository\.requestIncrementalSync\s*\(/.test(admission);
+  const retainedPublishesAfterPersistence = /const\s+result\s*=\s*await\s+repository\.requestRetainedStaleIncrementalSync\s*\([^;]+;[\s\S]{0,180}publishIncrementalRequest\s*\(\s*walletId\s*,\s*result\s*\)/.test(admission);
+  const fullPersistence = admission.indexOf(
+    'const result = await persistFullResyncRequest(walletId)',
+  );
+  const fullPublication = admission.indexOf('await publishTransition(', fullPersistence);
+  if (countMatches(admission, /await\s+publishTransition\s*\(/g) !== 2
+    || !incrementalPublishesAfterPersistence
+    || !retainedPublishesAfterPersistence
+    || fullPersistence < 0
+    || fullPublication <= fullPersistence) {
     errors.push('canonical admission must publish only after each durable request commits');
   }
 }
@@ -1396,6 +1407,7 @@ function unexpectedActivationConsumers(sources) {
     'server/src/services/sync/syncIntentAdmission.ts',
     'server/src/worker/healthServer.ts',
     RECOVERY_RUNTIME_PATH,
+    SCHEDULER_RETIREMENT_CUTOVER_PATH,
   ]).has(file));
   const policyConsumers = actualReferenceFiles(
     sources,
@@ -1421,7 +1433,8 @@ function unexpectedActivationConsumers(sources) {
 
 function isPermittedActivationPolicyConsumer(file, source = '') {
   if (file === ACTIVATION_POLICY_REPOSITORY_PATH
-    || file === ACTIVATION_GATE_PATH) return true;
+    || file === ACTIVATION_GATE_PATH
+    || file === SCHEDULER_RETIREMENT_CUTOVER_REPOSITORY_PATH) return true;
   const validationOnlyConsumers = new Set([
     'server/src/services/backupService/creation.ts',
     'server/src/services/backupService/restore.ts',

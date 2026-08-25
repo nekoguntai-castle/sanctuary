@@ -5,6 +5,7 @@ import { getConfig } from "../config";
 import {
   WALLET_SYNC_ACTIVATION_DRAIN_HORIZON_MS,
   WALLET_SYNC_MUTATION_FENCE_FLOOR,
+  WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR,
 } from "../constants/walletSyncActivation";
 import { NOTIFICATION_RETENTION_CONTRACT_VERSION } from "../internal/notificationRetention";
 import {
@@ -23,7 +24,10 @@ const KEY_PREFIX = `sanctuary:diagnostics:worker-heartbeat:v${HEARTBEAT_VERSION}
 const REGISTRY_KEY = `${KEY_PREFIX}:members`;
 const HEARTBEAT_INTERVAL_MS = 10_000;
 const HEARTBEAT_TTL_MS = 35_000;
-const REGISTRY_RETENTION_MS = 15 * 60_000;
+const REGISTRY_RETENTION_MS = Math.max(
+  15 * 60_000,
+  WALLET_SYNC_ACTIVATION_DRAIN_HORIZON_MS,
+);
 // Restart/collision evidence must outlive both a stale registry member and the
 // maximum pre-floor execution drain. Once it expires, a healthy observation
 // still has to begin and complete the durable activation stabilization horizon.
@@ -47,6 +51,9 @@ const StoredHeartbeatSchema = z
     // Optional so a rolling reader can retain old-worker evidence and fail the
     // activation check closed instead of treating the whole registry as corrupt.
     walletSyncMutationFenceFloor: z.number().int().positive().optional(),
+    // Optional so pre-retirement workers remain readable but block the
+    // independent scheduler-retirement fleet gate.
+    walletSyncSchedulerRetirementFloor: z.number().int().positive().optional(),
     snapshot: WorkerDiagnosticsResponseSchema,
   })
   .strict();
@@ -173,6 +180,29 @@ export const workerMutationFenceReadinessSchema = z.discriminatedUnion(
 
 export type WorkerMutationFenceReadiness = z.infer<
   typeof workerMutationFenceReadinessSchema
+>;
+
+export const workerSchedulerRetirementReadinessSchema = z.discriminatedUnion(
+  "ready",
+  [
+    z
+      .object({
+        ready: z.literal(true),
+        requiredFloor: z.literal(WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR),
+      })
+      .strict(),
+    z
+      .object({
+        ready: z.literal(false),
+        requiredFloor: z.literal(WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR),
+        reason: workerMutationFenceReadinessReasonSchema,
+      })
+      .strict(),
+  ],
+);
+
+export type WorkerSchedulerRetirementReadiness = z.infer<
+  typeof workerSchedulerRetirementReadinessSchema
 >;
 
 interface RegistryMember {
@@ -369,6 +399,7 @@ export class WorkerHeartbeatWriter {
       stableReplicaIdentity: this.replicaIdentity.stable,
       retentionContractVersion: NOTIFICATION_RETENTION_CONTRACT_VERSION,
       walletSyncMutationFenceFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
+      walletSyncSchedulerRetirementFloor: WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR,
       snapshot: this.getSnapshot(),
     });
     await client.eval(
@@ -556,6 +587,38 @@ export class WorkerHeartbeatReader {
     });
   }
 
+  /** Exact proof that every live worker honors scheduler retirement. */
+  async readSchedulerRetirementReadiness(
+    nowMs = Date.now(),
+  ): Promise<WorkerSchedulerRetirementReadiness> {
+    const registry = await this.readRegistry(nowMs);
+    if (registry.observation !== "observed") {
+      return blockedSchedulerRetirementReadiness(registry.observation);
+    }
+    if (registry.members.length === 0) {
+      return blockedSchedulerRetirementReadiness("no_workers");
+    }
+    if (!registry.complete) {
+      return blockedSchedulerRetirementReadiness("incomplete_fleet");
+    }
+    if (registry.restartObserved) {
+      return blockedSchedulerRetirementReadiness("restart_observed");
+    }
+    if (
+      registry.records.some(
+        (record) =>
+          (record.walletSyncSchedulerRetirementFloor ?? 0) <
+          WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR,
+      )
+    ) {
+      return blockedSchedulerRetirementReadiness("worker_below_floor");
+    }
+    return workerSchedulerRetirementReadinessSchema.parse({
+      ready: true,
+      requiredFloor: WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR,
+    });
+  }
+
   private async readRegistry(nowMs: number): Promise<WorkerRegistryRead> {
     let client: Redis | null = null;
     try {
@@ -681,6 +744,16 @@ function blockedReadiness(
   return workerMutationFenceReadinessSchema.parse({
     ready: false,
     requiredFloor: WALLET_SYNC_MUTATION_FENCE_FLOOR,
+    reason,
+  });
+}
+
+function blockedSchedulerRetirementReadiness(
+  reason: z.infer<typeof workerMutationFenceReadinessReasonSchema>,
+): WorkerSchedulerRetirementReadiness {
+  return workerSchedulerRetirementReadinessSchema.parse({
+    ready: false,
+    requiredFloor: WALLET_SYNC_SCHEDULER_RETIREMENT_FLOOR,
     reason,
   });
 }

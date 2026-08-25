@@ -24,6 +24,7 @@ What exists today:
   - `latest-stable / legacy-runtime-env`
   - `latest-stable / notification-delivery`
   - `latest-stable / optional-profiles`
+  - `v0.8.66 / wallet-sync-retirement`
 - The core lane seeds and validates encrypted operational 2FA state:
   - encrypted admin TOTP login after upgrade
   - encrypted secondary 2FA user login after upgrade
@@ -121,6 +122,11 @@ Fixture definitions:
 - `optional-profiles`
   - monitoring and/or Tor enabled before upgrade
   - validates profile survival and non-default compose shape
+- `wallet-sync-retirement`
+  - retained v0.8.66 stale-wallet scheduler plus stale/manual/activity queue work
+  - proves irreversible marker creation, selective cleanup, floor-aware restart,
+    and executable evidence that a below-floor rollback recreates forbidden work
+    before the floor-2 worker purges it again
 - `seeded-app-state`
   - additional user/group
   - labels
@@ -164,7 +170,7 @@ Exit criteria:
 
 ### Phase 4: Expand Workflow Coverage To A Historical Upgrade Matrix
 
-Status: implemented in the Install Tests workflow through `upgrade-baseline-test` for the baseline source refs, `upgrade-extended-fixture-test` for the extended fixtures, and the `upgrade-extended-test` aggregate consumed by Install Test Summary. Release Candidate Validation is a separate SHA-bound preflight and does not own upgrade evidence. The blocking matrix uses `latest-stable/baseline`, `n-2/baseline`, `latest-stable/browser-origin-ip`, `latest-stable/legacy-runtime-env`, `latest-stable/notification-delivery`, and `latest-stable/optional-profiles`.
+Status: implemented in the Install Tests workflow through `upgrade-baseline-test` for the baseline source refs, `upgrade-extended-fixture-test` for the extended fixtures, and the `upgrade-extended-test` aggregate consumed by Install Test Summary. Release Candidate Validation is a separate SHA-bound preflight and does not own upgrade evidence. The blocking matrix uses `latest-stable/baseline`, `n-2/baseline`, `latest-stable/browser-origin-ip`, `latest-stable/legacy-runtime-env`, `latest-stable/notification-delivery`, `latest-stable/optional-profiles`, and the pinned `v0.8.66/wallet-sync-retirement` lane.
 
 Purpose:
 

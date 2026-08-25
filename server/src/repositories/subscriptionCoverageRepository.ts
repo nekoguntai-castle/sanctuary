@@ -1,8 +1,14 @@
 import { recordSubscriptionComparisonFailure } from "./subscriptionCoverageFailureRepository";
-import { readSubscriptionCoverage } from "./subscriptionCoverageReadRepository";
+import {
+  readSubscriptionCoverage,
+  readSubscriptionCoverageWithClient,
+} from "./subscriptionCoverageReadRepository";
 
 export { recordSubscriptionComparisonFailure } from "./subscriptionCoverageFailureRepository";
-export { readSubscriptionCoverage } from "./subscriptionCoverageReadRepository";
+export {
+  readSubscriptionCoverage,
+  readSubscriptionCoverageWithClient,
+} from "./subscriptionCoverageReadRepository";
 export type {
   NetworkSubscriptionCoverageSnapshot,
   RecordSubscriptionComparisonFailureInput,
@@ -14,6 +20,7 @@ export type {
 export const subscriptionCoverageRepository = {
   recordSubscriptionComparisonFailure,
   readSubscriptionCoverage,
+  readSubscriptionCoverageWithClient,
 };
 
 export default subscriptionCoverageRepository;

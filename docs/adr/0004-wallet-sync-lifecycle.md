@@ -1,6 +1,6 @@
 # ADR 0004: Durable, activity-driven wallet synchronization lifecycle
 
-- **Status:** Accepted through gate-enforced canonical producer activation
+- **Status:** Accepted through durable stale-scheduler retirement
 - **Date:** 2026-08-22
 - **Accepted on:** 2026-08-22
 - **Owner:** Sanctuary maintainers
@@ -18,10 +18,9 @@ and every watched address are quiet. Multiple execution and subscription owners
 also make it hard to prove that activity is coalesced without being lost.
 
 The transition must be rolling-upgrade safe. Retained BullMQ payloads and older
-producers use the unversioned or explicit v1 wire shape. The recurring stale
-schedule remains live until the separately gated cutover, so retained schedule
-completions must use durable admission without describing the desired lifecycle
-as already cut over.
+producers use the unversioned or explicit v1 wire shape. A marker-absent
+compatibility path may consume those records only until the separately gated
+cutover establishes the irreversible retirement marker.
 
 ## Decision
 
@@ -163,14 +162,27 @@ network values fail closed; only the historical `testnet` spelling is normalized
 to `testnet3`. Startup, reconnect, reconciliation, refresh, and direct wallet
 subscription responses all flow through the authoritative subscription-status
 callback. Periodic checkpoint and status work rotates fairly across the managed
-network set. Durable per-network readiness and reorganization evidence remain a
-later rollout gate, so this phase does not retire or disable the stale scheduler.
+network set. Durable per-network readiness and reorganization evidence are the
+authoritative scheduler-retirement gate.
 
 This ADR and `config/wallet-sync-lifecycle-contract.json` establish the target and
-freeze the current compatibility exceptions. The canonical producer boundary is
-active and worker-owned checkpoint enrollment is enabled, but this change does
-**not** retire the recurring schedule or mark the cutover and legacy-retirement
-gate complete; `cutoverComplete` remains false.
+freeze the remaining compatibility exceptions. Scheduler retirement serializes
+the exact per-network readiness projection with address, checkpoint, failure,
+header, coverage, reconciliation, and confirmation-retry writers by taking the
+global retirement advisory lock and one fixed-order PostgreSQL table barrier.
+It writes the immutable marker only when activation and readiness remain exact,
+then removes the repeatable schedule and queued stale-only parents and children
+before startup consumers run. The worker repeats this reconciliation after
+interruption and periodically retries a legitimately blocked cutover. Explicit,
+activity, and full-resync intent always wins over a legacy-shaped job ID.
+
+Marker-absent compatibility scheduling, startup catch-up, and retained completion
+admission are isolated in `server/src/worker/staleWalletScheduleCompatibility.ts`.
+Their policy read and Redis mutation share the retirement advisory lock with
+cutover, while retained intent persistence rechecks the marker in the same locked
+database transaction. Once the marker exists these paths cannot create new
+elapsed-age work. Deprecated stale-threshold variables emit name-only warnings
+during the compatibility window. `cutoverComplete` is true.
 
 Public status is a token-free projection of the same versioned wallet row. REST
 status plus wallet list/detail responses, canonical WebSocket snapshots, and the
@@ -190,7 +202,7 @@ or lease tokens and are not authority for live Redis execution ownership.
 | `WSYNC-ADMISSION-001` | Production producers and recovery use one gate-enforced durable admission module; compatibility exceptions cannot grow. |
 | `WSYNC-WORKER-001` | The worker is the sole low-level executor and checkpoint-subscription owner; only its bounded runtime may consume the enrollment coordinator and checkpoint writers. |
 | `WSYNC-COMPAT-001` | Unversioned/v1 and retained v2 remain readable only as durable-intent bridges; they cannot enter the unfenced executor. Canonical emission uses floor-bound v3, which a pre-floor worker rejects before locking; unknown versions fail closed. |
-| `WSYNC-STALE-001` | The stale scheduler remains explicitly legacy and routes retained completions through admission; it becomes forbidden only after the durable rollback floor is deployed and cutover is authorized. |
+| `WSYNC-STALE-001` | The stale scheduler is durably forbidden after an atomic activation/readiness cutover; marker-absent compatibility is isolated, serialized with cutover, and cannot recreate elapsed-age work afterward. |
 
 ## Consequences
 
@@ -201,9 +213,9 @@ fail required CI. Removing a listed legacy path also fails until the contract is
 updated in the same reviewed change, preventing stale exceptions from disguising
 progress.
 
-The remaining compatibility ledger keeps subscription ownership, scheduler
-retirement, and the observation/cutover steps independently reviewable while
-preventing the transition surface from expanding.
+The remaining compatibility ledger keeps retained wire readers and the
+marker-absent rollback bridge reviewable while preventing the retired producer
+surface from expanding.
 
 ## Rollout and rollback
 
@@ -215,8 +227,11 @@ proof has survived the full drain horizon. A single ready snapshot is never
 activation authority. Admission, recovery, and reclaim continue to require the
 durable marker, current fleet readiness, and fresh stabilization evidence after
 activation. Canonical producers now emit only through admission after those
-checks. `check-stale-wallets` remains desired until the later scheduler-cutover
-release, and its retained wallet completions also pass through admission.
+checks. The scheduler-cutover release advertises the current worker floor before
+cutover inspection, atomically establishes the durable marker only after exact
+readiness, and purges stale-only Redis work. A transient block retains
+compatibility and is retried by bounded recurring reconciliation; a
+marker-present restart reconciles and purges before consumers start.
 
 After cutover begins, rollback is supported only to a binary that understands
 and honors the durable forbidden marker. Rolling back below that floor would

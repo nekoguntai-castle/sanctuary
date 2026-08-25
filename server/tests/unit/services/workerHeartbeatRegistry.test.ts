@@ -411,7 +411,7 @@ describe("privacy-safe worker heartbeat registry", () => {
     );
     expect(client.zrangebyscore).toHaveBeenCalledWith(
       expect.stringContaining(":members"),
-      now - 15 * 60_000,
+      now - 31 * 60_000,
       "+inf",
       "WITHSCORES",
       "LIMIT",

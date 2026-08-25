@@ -108,6 +108,7 @@ describe("worker heartbeat graceful retirement", () => {
 
     await first.write(50_000);
     const firstBootEpoch = state.bootEpoch;
+    expect(JSON.parse(state.snapshot!).walletSyncSchedulerRetirementFloor).toBe(2);
     await first.stop();
 
     expect(firstBootEpoch).toMatch(/^[0-9a-f-]{36}$/);

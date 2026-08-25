@@ -196,10 +196,11 @@ initial sync, address activity, dead-letter retry, and the retained
 `check-stale-wallets` compatibility bridge can produce wallet-history work only
 through gate-enforced durable admission. Admission persists or merges the
 generation before BullMQ receives an at-least-once wake-up; neither producers
-nor bounded recovery have raw queue or repository authority. The recurring
-stale schedule itself remains legacy and desired until the separate cutover,
-but its retained completions route through admission rather than inline
-execution. The executable inventory in
+nor bounded recovery have raw queue or repository authority. The elapsed-age
+schedule is now durably forbidden after an atomic readiness cutover. Its
+marker-absent compatibility producer and retained-completion bridge are isolated,
+share the retirement lock, and cannot create stale intent after the marker. The
+executable inventory in
 `config/wallet-sync-lifecycle-contract.json` prevents bypasses from growing.
 
 Canonical wallet mutations use an explicit immutable wallet, generation, and
@@ -241,17 +242,21 @@ Subscription checkpoint enrollment has the same additive boundary. The only
 checkpoint request/completion writers live in
 `src/repositories/subscriptionCheckpointRepository.ts`; the bounded coordinator
 in `src/services/sync/subscriptionCheckpointEnrollment.ts` is the completion
-writer's only service consumer, while the request writer has no production
-consumer. It accepts injected batch subscription I/O and is deliberately not
-wired into API, server, worker, Electrum-manager, or recovery startup. The
+writer's only service consumer. The worker-owned runtime composes it with
+injected batch subscription I/O for bounded startup, reconnect, and recovery
+pages; API and server processes cannot own that boundary. The
 executable lifecycle contract inventories both writers and the coordinator so a
-production consumer cannot appear before the separate subscription-ownership
-activation review.
+second production owner cannot appear.
 
-The lifecycle cutover is not complete: subscription checkpoint enrollment is
-still dormant, `check-stale-wallets` has not been purged, and the durable
-cutover/legacy-retirement gate remains false. Retained legacy payloads therefore
-remain readable compatibility inputs, not authority for new legacy production.
+The lifecycle cutover is complete. The worker advertises its capability floor
+before cutover inspection, serializes the final exact readiness projection with
+all readiness-table writers, writes the irreversible marker, then repeatably
+removes the scheduler and stale-only queued work. Marker-present startup purges
+before consumers run; blocked cutover retains the isolated compatibility path
+and periodic reconciliation retries it without requiring another restart.
+Retained legacy payloads remain readable compatibility inputs, not authority for
+new elapsed-age production, and rollback below the marker-aware floor is
+unsupported.
 
 The wallet sync process uses a modular pipeline architecture where each phase is an independent, testable function. The pipeline orchestrator executes phases in sequence, passing a shared context object between them.
 

@@ -116,6 +116,7 @@ export interface RequestFullResyncOptions {
 export interface RetainedSyncBridgeOptions {
   fullResync: boolean;
   reason?: string;
+  retirementSensitive?: boolean;
 }
 
 export type RetainedSyncBridgeResult =
@@ -126,7 +127,12 @@ export type RetainedSyncBridgeResult =
     generation: number;
     incrementalGeneration?: number;
     wakeup: 'deferred_activation';
-  };
+  }
+  | { status: 'retired' };
+
+export type RetainedStaleAdmissionResult =
+  | IncrementalSyncAdmissionResult
+  | { status: 'retired' };
 
 export interface ReservedFullResyncWakeup {
   walletId: string;
@@ -202,15 +208,31 @@ export function createSyncIntentAdmission(
     return activation.status === 'active' ? null : activation;
   }
 
-  async function persistIncrementalRequest(
+  async function publishIncrementalRequest(
     walletId: string,
-    mode: IncrementalSyncRequestMode,
+    result: Awaited<ReturnType<typeof repository.requestIncrementalSync>>,
   ) {
-    const result = await repository.requestIncrementalSync(walletId, mode);
     if ('state' in result) {
       await publishTransition({ walletId, transition: 'requested', state: result.state });
     }
     return result;
+  }
+
+  async function persistIncrementalRequest(
+    walletId: string,
+    mode: IncrementalSyncRequestMode,
+  ) {
+    return publishIncrementalRequest(
+      walletId,
+      await repository.requestIncrementalSync(walletId, mode),
+    );
+  }
+
+  async function persistRetainedStaleRequest(walletId: string) {
+    const result = await repository.requestRetainedStaleIncrementalSync(walletId);
+    return 'state' in result
+      ? publishIncrementalRequest(walletId, result)
+      : result;
   }
 
   async function enqueuePersistedIncrementalRequest(
@@ -270,6 +292,17 @@ export function createSyncIntentAdmission(
       : result;
   }
 
+  async function requestRetainedStale(
+    walletId: string,
+  ): Promise<RetainedStaleAdmissionResult> {
+    const blocked = await requireActive();
+    if (blocked) return { status: 'blocked', activation: blocked };
+    const result = await persistRetainedStaleRequest(walletId);
+    return 'state' in result
+      ? enqueuePersistedIncrementalRequest(walletId, result, new Date())
+      : result;
+  }
+
   async function requestFullResync(
     walletId: string,
     options: RequestFullResyncOptions,
@@ -300,7 +333,9 @@ export function createSyncIntentAdmission(
         walletId, result, options.reason ?? 'retained-full-resync-bridge',
       );
     }
-    const result = await persistIncrementalRequest(walletId, 'automatic');
+    const result = options.retirementSensitive
+      ? await persistRetainedStaleRequest(walletId)
+      : await persistIncrementalRequest(walletId, 'automatic');
     if (!('state' in result)) return result;
     const generation = result.state.requestedIncrementalSyncGeneration;
     const deferred = deferredWakeup(result.state, new Date());
@@ -495,6 +530,7 @@ export function createSyncIntentAdmission(
 
   return {
     request,
+    requestRetainedStale,
     requestFullResync,
     bridgeRetained,
     wakeReservedFullResync,

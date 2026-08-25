@@ -774,13 +774,14 @@ assert_contains_in_order "$UPGRADE_ROADMAP" \
   'upgrade-extended-test'
 
 assert_contains_in_order "$UPGRADE_ROADMAP" \
-  "upgrade roadmap records the complete six-lane blocking matrix" \
+  "upgrade roadmap records the complete seven-lane blocking matrix" \
   "latest-stable / baseline" \
   "n-2 / baseline" \
   "latest-stable / browser-origin-ip" \
   "latest-stable / legacy-runtime-env" \
   "latest-stable / notification-delivery" \
-  "latest-stable / optional-profiles"
+  "latest-stable / optional-profiles" \
+  "v0.8.66 / wallet-sync-retirement"
 
 assert_contains_in_order "$CI_STRATEGY" \
   "CI strategy records scheduled Install Tests as unit-only" \
