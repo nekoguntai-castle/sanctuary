@@ -282,7 +282,7 @@ services:
       - grafana_quiescence:/var/lib/sanctuary-grafana-control
 
   grafana:
-    image: grafana/grafana:10.2.0@sha256:1ee0c54286b8ca09a3dd1419ff8653e7780a148a006ac088544203bb0affe550
+    image: grafana/grafana:10.4.19-security-01@sha256:5584505cb75be8cb14c19d7473a87e2675c68b34b546bc1923ef74300c337111
     container_name: ${GRAFANA_CONTAINER_NAME:-sanctuary-grafana}
     restart: "${SANCTUARY_RESTART_POLICY:-unless-stopped}"
     depends_on:
