@@ -32,7 +32,7 @@ rpc_url_regtest="http://${published_host}:19444"
 core_image='bitcoin/bitcoin:29.0@sha256:a6aa8a9e349b4108d13c558dbe43064057bd7b6474b858966884f9cb95b7ed78'
 core_canonical_image="docker.io/bitcoin/bitcoin@${core_image##*@}"
 pinned_node_version='24.19.0'
-pinned_go_version='go1.25.12'
+pinned_go_version='go1.25.13'
 python_image_base='sanctuary/verify-addresses-python:3.13.5-bip-utils-2.12.1-v1'
 python_image=''
 

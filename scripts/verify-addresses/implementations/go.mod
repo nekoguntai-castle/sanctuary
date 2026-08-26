@@ -2,7 +2,7 @@ module verify-addresses
 
 go 1.25.0
 
-toolchain go1.25.12
+toolchain go1.25.13
 
 require (
 	github.com/btcsuite/btcd v0.25.0

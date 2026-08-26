@@ -71,14 +71,14 @@ export const VERIFIER_PROVENANCE = {
   "schemaVersion": 2,
   "matrixId": "sanctuary-seed-to-address-v2",
   "exactCaseCount": 480,
-  "sourceSha256": "29ea3cfb687aa9835701b702d8eaeea03a45ce8178053d9f1ada1dbfa16e133c",
+  "sourceSha256": "3df41591ae61d715202238ae3868be7ea0fa186854b56ba60f15242d9a85adbb",
   "coreImage": "bitcoin/bitcoin:29.0@sha256:a6aa8a9e349b4108d13c558dbe43064057bd7b6474b858966884f9cb95b7ed78",
   "runtimes": {
     "node": "24.19.0",
     "python": "3.13.5",
     "pythonEffectiveUid": 65532,
     "pythonImage": "sanctuary/verify-addresses-python:3.13.5-bip-utils-2.12.1-v1",
-    "go": "go1.25.12",
+    "go": "go1.25.13",
     "pythonRequirementsSha256": "acf87b4fadb8e4ade6968c4dde800c17ea27bd4b4b01f2a23d52fb1f7ac65356",
     "pythonDependencyFingerprint": "57052b64dabea0afb4ccadf9004b6512705e0975c4e90b2a32ad981500e9cda0",
     "pythonVerifierSourceSha256": "4e88240123b18514373e20ce2bc1781ab9b6f357b47b930cd7347fd72f86c1cc"

@@ -39,7 +39,7 @@ EOF
 #!/usr/bin/env bash
 set -euo pipefail
 if [ "${1:-}" = "env" ] && [ "${2:-}" = "GOVERSION" ] && [ "$#" -eq 2 ]; then
-  printf '%s\n' "${VERIFY_STUB_GO_VERSION:-go1.25.12}"
+  printf '%s\n' "${VERIFY_STUB_GO_VERSION:-go1.25.13}"
   exit 0
 fi
 exit 2
@@ -484,7 +484,7 @@ main() {
     bash "$SCRIPT" verify 2>&1)"; then
     fail 'expected a wrong Go runtime version to fail closed'
   fi
-  grep -F -- 'Go runtime is go1.25.11, expected go1.25.12' <<<"$failure_output" >/dev/null ||
+  grep -F -- 'Go runtime is go1.25.11, expected go1.25.13' <<<"$failure_output" >/dev/null ||
     fail 'expected the wrong Go runtime guard to report its exact cause'
   mv "$fixture_root/scripts/verify-addresses/node_modules/.bin/node" \
     "$fixture_root/scripts/verify-addresses/node.modules-node.saved"

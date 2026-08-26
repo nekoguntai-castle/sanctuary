@@ -28,7 +28,7 @@ export const PINNED_PYTHON_VERSION = '3.13.5' as const;
 export const PINNED_PYTHON_EFFECTIVE_UID = 65532 as const;
 export const PINNED_PYTHON_BASE_IMAGE = 'python:3.13.5-slim-bookworm@sha256:4c2cf9917bd1cbacc5e9b07320025bdb7cdf2df7b0ceaccb55e9dd7e30987419' as const;
 export const PYTHON_VERIFIER_IMAGE = 'sanctuary/verify-addresses-python:3.13.5-bip-utils-2.12.1-v1' as const;
-export const PINNED_GO_VERSION = 'go1.25.12' as const;
+export const PINNED_GO_VERSION = 'go1.25.13' as const;
 
 /**
  * Observed with Bitcoin Core 29.0 `getdescriptorinfo`. Core removes the private

@@ -2708,7 +2708,7 @@ assert_contains_in_order \
 assert_occurrence_count \
   "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
   "verify-vectors jobs use the immutable checksum-built wallet verifier image" \
-  "nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:8b50f6c8ccb016b042c7125a637b068a49c856a76e543365044b36a593edd81e" 5
+  "nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:c8562e65bcdd3c5b7f72412107d5b1e9b2e0351f05ed2897690fd12b86948d0a" 5
 assert_occurrence_count \
   "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
   "verify-vectors jobs disable network npm repair" \

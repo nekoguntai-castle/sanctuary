@@ -73,7 +73,7 @@ else
   bad 'exact module toolchain was rejected'
 fi
 
-for drift in 1.25.11 1.25.13; do
+for drift in 1.25.11 1.25.14; do
   out="$(PATH="$stub_bin" STUB_GO_VERSION="$drift" bash "$ENSURE_GO" 2>&1)"
   status=$?
   if [ "$status" -ne 0 ] && printf '%s' "$out" | grep -q "expected exact Go ${required}, got ${drift}"; then

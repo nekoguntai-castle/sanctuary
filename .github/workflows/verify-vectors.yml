@@ -59,7 +59,7 @@ jobs:
   verify-vectors:
     runs-on: docker-socket
     container:
-      image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:8b50f6c8ccb016b042c7125a637b068a49c856a76e543365044b36a593edd81e
+      image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:c8562e65bcdd3c5b7f72412107d5b1e9b2e0351f05ed2897690fd12b86948d0a
     timeout-minutes: 60
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/verify-vectors
@@ -463,7 +463,7 @@ jobs:
     # Bitcoin Core vector lane is concurrently churning the rootless daemon.
     needs: [verify-vectors]
     container:
-      image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:8b50f6c8ccb016b042c7125a637b068a49c856a76e543365044b36a593edd81e
+      image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:c8562e65bcdd3c5b7f72412107d5b1e9b2e0351f05ed2897690fd12b86948d0a
     # The isolated lane begins as soon as the roughly five-minute vector proof
     # completes. Its cold-cache fallback remains below the runner deadline.
     timeout-minutes: 48
@@ -558,7 +558,7 @@ jobs:
     runs-on: docker-socket
     needs: [verify-vectors]
     container:
-      image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:8b50f6c8ccb016b042c7125a637b068a49c856a76e543365044b36a593edd81e
+      image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:c8562e65bcdd3c5b7f72412107d5b1e9b2e0351f05ed2897690fd12b86948d0a
     timeout-minutes: 20
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/verify-ledger-emulator
@@ -648,7 +648,7 @@ jobs:
     runs-on: docker-socket
     needs: [verify-vectors]
     container:
-      image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:8b50f6c8ccb016b042c7125a637b068a49c856a76e543365044b36a593edd81e
+      image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:c8562e65bcdd3c5b7f72412107d5b1e9b2e0351f05ed2897690fd12b86948d0a
     timeout-minutes: 70
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/verify-jade-emulator
@@ -740,7 +740,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     runs-on: docker-socket
     container:
-      image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:8b50f6c8ccb016b042c7125a637b068a49c856a76e543365044b36a593edd81e
+      image: nexus.tabineko.dev/nekoguntai-castle/sanctuary-ci-go@sha256:c8562e65bcdd3c5b7f72412107d5b1e9b2e0351f05ed2897690fd12b86948d0a
     timeout-minutes: 60
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/regenerate-vectors
