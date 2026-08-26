@@ -101,7 +101,7 @@ is_workflow_file() {
 
 is_ci_classifier_file() {
   case "$1" in
-    scripts/ci/*|tests/ci/*|config/hardware-emulator-source-inventory.json|.github/workflows/test.yml|.github/workflows/install-test.yml|.github/workflows/quality.yml|.github/workflows/verify-vectors.yml)
+    scripts/ci/*|tests/ci/*|config/ci-toolchain-lock.json|config/hardware-emulator-source-inventory.json|.github/actions/setup-node-toolchain/action.yml|.github/workflows/test.yml|.github/workflows/install-test.yml|.github/workflows/quality.yml|.github/workflows/verify-vectors.yml)
       return 0
       ;;
   esac
@@ -136,6 +136,15 @@ is_source_quality_file() {
     scripts/ci/run-quality-lint.sh|scripts/quality.sh)
       return 0
       ;;
+    .github/actions/setup-node-toolchain/action.yml|.github/actions/setup-python-toolchain/action.yml)
+      return 0
+      ;;
+    scripts/ci/bootstrap-node.sh|scripts/ci/ensure-node.sh|scripts/ci/ensure-python.sh)
+      return 0
+      ;;
+    config/ci-toolchain-lock.json)
+      return 0
+      ;;
     scripts/quality/lizard-only.sh|scripts/quality/jscpd-only.sh)
       return 0
       ;;
@@ -158,6 +167,9 @@ is_dependency_audit_file() {
       return 0
       ;;
     scripts/quality/lockfile-peer-resolution-allowlist.txt)
+      return 0
+      ;;
+    .github/actions/setup-node-toolchain/action.yml|scripts/ci/bootstrap-node.sh|scripts/ci/ensure-node.sh|config/ci-toolchain-lock.json)
       return 0
       ;;
   esac

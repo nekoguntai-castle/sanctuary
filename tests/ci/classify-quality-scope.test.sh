@@ -209,6 +209,12 @@ main() {
     true true false false false)"
 
   for entry in \
+    '.github/actions/setup-node-toolchain/action.yml|true|true' \
+    '.github/actions/setup-python-toolchain/action.yml|true|false' \
+    'scripts/ci/bootstrap-node.sh|true|true' \
+    'scripts/ci/ensure-node.sh|true|true' \
+    'scripts/ci/ensure-python.sh|true|false' \
+    'config/ci-toolchain-lock.json|true|true' \
     'scripts/ci/run-quality-lint.sh|true|false' \
     'scripts/quality.sh|true|false' \
     'scripts/quality/lizard-only.sh|true|false' \
@@ -222,6 +228,8 @@ main() {
     expected_classifier=false
     case "$path" in
       scripts/ci/*) expected_classifier=true ;;
+      config/ci-toolchain-lock.json) expected_classifier=true ;;
+      .github/actions/setup-node-toolchain/action.yml) expected_classifier=true ;;
     esac
     base_sha="$head_sha"
     head_sha="$(classify_commit "$repo_dir" "$base_sha" "$output_file" \
