@@ -68,9 +68,21 @@ apply_optional_profile_isolation_defaults() {
 isolate_legacy_optional_profile_compose() {
     local project_dir="$1"
     local target_project_dir="${2:-}"
+    local base_compose="$project_dir/docker-compose.yml"
     local tor_compose
     local target_tor_compose=""
     local target_tor_ingress=""
+
+    if [ "$UPGRADE_EXPECT_OPTIONAL_PROFILES" != "true" ]; then
+        return 0
+    fi
+
+    # v0.8.66 binds MCP to an IPv4 socket but probes localhost, which Alpine
+    # resolves to ::1. Normalize only the disposable fixture checkout so the
+    # source service can become healthy before exercising the real upgrade.
+    if [ -f "$base_compose" ]; then
+        sed -i 's#http://localhost:3003/health#http://127.0.0.1:3003/health#g' "$base_compose"
+    fi
 
     tor_compose="$(resolve_compose_overlay "$project_dir" tor 2>/dev/null || true)"
     if [ -n "$target_project_dir" ]; then
@@ -78,7 +90,7 @@ isolate_legacy_optional_profile_compose() {
         target_tor_ingress="$target_project_dir/docker/tor/payjoin-ingress.conf"
     fi
 
-    if [ "$UPGRADE_EXPECT_OPTIONAL_PROFILES" != "true" ] || [ -z "$tor_compose" ]; then
+    if [ -z "$tor_compose" ]; then
         return 0
     fi
 

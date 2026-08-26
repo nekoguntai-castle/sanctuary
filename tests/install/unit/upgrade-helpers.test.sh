@@ -666,6 +666,30 @@ EOF
     "legacy Tor compose should not keep the fixed container name"
 }
 
+test_legacy_mcp_healthcheck_is_normalized_without_tor_overlay() {
+  local checkout="$TEST_TMP_DIR/source-mcp-health"
+  local compose_file="$checkout/docker-compose.yml"
+
+  mkdir -p "$checkout"
+  cat > "$compose_file" <<'EOF'
+services:
+  mcp:
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost:3003/health"]
+EOF
+
+  UPGRADE_EXPECT_OPTIONAL_PROFILES="true"
+  isolate_legacy_optional_profile_compose "$checkout"
+  UPGRADE_EXPECT_OPTIONAL_PROFILES="false"
+
+  local contents
+  contents="$(cat "$compose_file")"
+  assert_contains "$contents" 'http://127.0.0.1:3003/health' \
+    "legacy MCP fixture should use an IPv4 healthcheck"
+  assert_not_contains "$contents" 'http://localhost:3003/health' \
+    "legacy MCP fixture should not retain the broken localhost probe"
+}
+
 test_legacy_optional_profile_compose_can_use_target_tor_overlay() {
   local source_checkout="$TEST_TMP_DIR/source"
   local target_checkout="$TEST_TMP_DIR/target"
@@ -766,6 +790,16 @@ test_tor_compose_uses_supported_hidden_service_config() {
     "Tor compose should not use the exit-node country option for hidden services"
   assert_not_contains "$contents" 'check.torproject.org' \
     "Tor healthcheck should not depend on public Tor reachability"
+}
+
+test_mcp_healthcheck_uses_ipv4_loopback() {
+  local contents
+  contents="$(cat "$PROJECT_ROOT/docker-compose.yml")"
+
+  assert_contains "$contents" 'http://127.0.0.1:3003/health' \
+    "MCP healthcheck should use IPv4 because the server binds an IPv4 socket"
+  assert_not_contains "$contents" 'http://localhost:3003/health' \
+    "MCP healthcheck should not depend on localhost IPv6 resolution"
 }
 
 test_upgrade_teardown_captures_diagnostics_before_cleanup() {
@@ -1835,6 +1869,7 @@ main() {
   run_test "upgrade selection labels are sanitized" test_upgrade_selection_labels_are_sanitized
   run_test "upgrade selection manifest records resolved refs" test_upgrade_selection_manifest_records_resolved_refs
   run_test "legacy optional profile compose is isolated" test_legacy_optional_profile_compose_is_isolated
+  run_test "legacy MCP healthcheck is normalized without Tor overlay" test_legacy_mcp_healthcheck_is_normalized_without_tor_overlay
   run_test "install scopes monitoring config dir per checkout" test_install_scopes_monitoring_config_dir_per_checkout
   run_test "install scopes Tor ingress config per checkout" test_install_scopes_tor_ingress_config_per_checkout
   run_test "Tor ingress config maps workspace volume" test_tor_ingress_config_maps_workspace_volume
@@ -1847,6 +1882,7 @@ main() {
   run_test "legacy optional profile compose can use target tor overlay" test_legacy_optional_profile_compose_can_use_target_tor_overlay
   run_test "legacy optional profile compose requires target tor ingress" test_legacy_optional_profile_compose_requires_target_tor_ingress
   run_test "tor compose uses supported hidden service config" test_tor_compose_uses_supported_hidden_service_config
+  run_test "MCP healthcheck uses IPv4 loopback" test_mcp_healthcheck_uses_ipv4_loopback
   run_test "current compose builds shared backend image once" test_current_compose_builds_shared_backend_image_once
   run_test "upgrade harness sources extracted helpers" test_upgrade_harness_sources_extracted_helpers
   run_test "upgrade harness restart fallback is opt-in" test_upgrade_harness_restart_fallback_is_opt_in

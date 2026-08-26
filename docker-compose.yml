@@ -456,7 +456,7 @@ services:
           "--no-verbose",
           "--tries=1",
           "--spider",
-          "http://localhost:3003/health",
+          "http://127.0.0.1:3003/health",
         ]
       interval: 30s
       timeout: 10s
