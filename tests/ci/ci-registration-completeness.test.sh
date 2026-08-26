@@ -38,6 +38,10 @@ EXECUTION_ALLOWLIST=()
 # Files deliberately excluded from the bash -n sweep. Empty today.
 SWEEP_ALLOWLIST=()
 
+# tests/release files deliberately not executed by CI. Empty today. Release
+# tests are checked separately because they include both shell and Node suites.
+RELEASE_EXECUTION_ALLOWLIST=()
+
 # tests/install files deliberately not executed by CI. Both entries below are
 # dead code kept only until someone decides what to do with them: each calls a
 # helper that no longer exists, so wiring them in would fail immediately rather
@@ -64,6 +68,32 @@ allowed() {
   local entry
   for entry in "$@"; do [ "$entry" = "$needle" ] && return 0; done
   return 1
+}
+
+# Build canonical reference and execution inventories across all workflows.
+# Full-line comments are excluded so documentation cannot masquerade as
+# registration. The broader reference inventory catches stale bare and
+# workspace-prefixed script paths; the execution inventory deliberately keeps
+# command shape so a bash -n check cannot count as running a release test.
+workflow_source() {
+  find "$WORKFLOW_DIR" -type f \( -name '*.yml' -o -name '*.yaml' \) -print0 \
+    | sort -z \
+    | xargs -0 sed -E '/^[[:space:]]*#/d'
+}
+mapfile -t WORKFLOW_REFERENCES < <(
+  workflow_source \
+    | grep -oE '(tests/ci|scripts/ci|tests/release)/[A-Za-z0-9._/-]+\.(sh|mjs)' \
+    | sort -u
+)
+mapfile -t WORKFLOW_EXECUTIONS < <(
+  workflow_source \
+    | grep -oE '(bash |\./|node --test |node )(tests/ci|scripts/ci|tests/release)/[A-Za-z0-9._/-]+\.(sh|mjs)' \
+    | sed -E 's/^(bash |\.\/|node --test |node )//' \
+    | sort -u
+)
+
+workflow_executes() {
+  allowed "$1" ${WORKFLOW_EXECUTIONS+"${WORKFLOW_EXECUTIONS[@]}"}
 }
 
 [ -f "$QUALITY" ] || bad "quality.yml not found at $QUALITY"
@@ -130,20 +160,19 @@ else
   bad "not syntax-checked:${missing_sweep[*]/#/ }"
 fi
 
-# ----- 3. no dangling registrations -----------------------------------------
-# The mirror image: a list naming a file that no longer exists fails the lane
-# for a reason unrelated to the change that triggered it.
+# ----- 3. no dangling workflow references -----------------------------------
+# The mirror image: a workflow naming a file that no longer exists fails the
+# lane for a reason unrelated to the change that triggered it.
 dangling=()
 while IFS= read -r rel; do
   [ -n "$rel" ] || continue
   [ -f "$REPO_ROOT/$rel" ] || dangling+=("$rel")
-done < <(grep -oE '(bash -n |bash |\./)(tests/ci|scripts/ci)/[A-Za-z0-9._-]+\.(sh|mjs)' "$QUALITY" \
-          | sed -E 's/^(bash -n |bash |\.\/)//' | sort -u)
+done < <(printf '%s\n' ${WORKFLOW_REFERENCES+"${WORKFLOW_REFERENCES[@]}"})
 
 if [ "${#dangling[@]}" -eq 0 ]; then
   ok 'every registered path still exists'
 else
-  bad "quality.yml registers files that do not exist:${dangling[*]/#/ }"
+  bad "workflows reference files that do not exist:${dangling[*]/#/ }"
 fi
 
 # ----- 4. this guard is itself registered ------------------------------------
@@ -162,11 +191,13 @@ fi
 stale_alw=()
 for entry in ${EXECUTION_ALLOWLIST+"${EXECUTION_ALLOWLIST[@]}"} \
              ${SWEEP_ALLOWLIST+"${SWEEP_ALLOWLIST[@]}"} \
-             ${INSTALL_EXECUTION_ALLOWLIST+"${INSTALL_EXECUTION_ALLOWLIST[@]}"}; do
+             ${INSTALL_EXECUTION_ALLOWLIST+"${INSTALL_EXECUTION_ALLOWLIST[@]}"} \
+             ${RELEASE_EXECUTION_ALLOWLIST+"${RELEASE_EXECUTION_ALLOWLIST[@]}"}; do
   [ -f "$REPO_ROOT/tests/ci/$entry" ] \
     || [ -f "$REPO_ROOT/scripts/ci/$entry" ] \
     || [ -f "$REPO_ROOT/tests/install/unit/$entry" ] \
     || [ -f "$REPO_ROOT/tests/install/e2e/$entry" ] \
+    || [ -f "$REPO_ROOT/tests/release/$entry" ] \
     || stale_alw+=("$entry")
 done
 
@@ -220,7 +251,35 @@ else
   bad "tests/install tests that no workflow runs:${install_missing_exec[*]/#/ } — wire them in or allowlist them with a reason"
 fi
 
-# ----- 7. the documented local runner matches CI -----------------------------
+# ----- 7. tests/release is registered too ----------------------------------
+# Release-only checks exercise paths that ordinary CI does not. A suite left
+# off the workflow would stay silent until the release path needed it most.
+# Both shell and Node test files are in scope; executing them is their syntax
+# validation, so this intentionally does not add them to the bash -n sweep.
+release_missing_exec=()
+count_release=0
+while IFS= read -r path; do
+  [ -f "$path" ] || continue
+  name="$(basename "$path")"
+  rel="${path#"$REPO_ROOT"/}"
+  count_release=$((count_release + 1))
+  if workflow_executes "$rel"; then
+    continue
+  fi
+  allowed "$name" ${RELEASE_EXECUTION_ALLOWLIST+"${RELEASE_EXECUTION_ALLOWLIST[@]}"} && continue
+  release_missing_exec+=("$rel")
+done < <(find "$REPO_ROOT/tests/release" -maxdepth 1 -type f \
+          \( -name '*.test.sh' -o -name '*.test.mjs' \) | sort)
+
+if [ "$count_release" -lt 5 ]; then
+  bad "only found ${count_release} tests under tests/release — the scan has probably drifted"
+elif [ "${#release_missing_exec[@]}" -eq 0 ]; then
+  ok "all ${count_release} tests under tests/release are executed by a workflow"
+else
+  bad "tests/release tests that no workflow runs:${release_missing_exec[*]/#/ } — wire them in or allowlist them with a reason"
+fi
+
+# ----- 8. the documented local runner matches CI -----------------------------
 # tests/install/README.md tells developers to run run-all-tests.sh. When CI runs
 # a unit test that the local runner does not, the documented command silently
 # provides less coverage than CI, and a developer can be green locally on a test
