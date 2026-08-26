@@ -960,6 +960,8 @@ test_upgrade_harness_sources_extracted_helpers() {
     "upgrade harness should retry source install once after builder-cache recovery"
   assert_contains "$contents" 'emit_upgrade_phase_timing "$test_name" "$exit_code"' \
     "upgrade harness should time each run_test phase" || return 1
+  assert_contains "$contents" 'message="upgrade phase ${test_name} mode=${UPGRADE_TEST_MODE} fixture=${UPGRADE_FIXTURE} completed in ${minutes}m ${seconds}s (${duration}s)"' \
+    "upgrade phase timing should end in the live-forwarding grammar" || return 1
   assert_contains "$contents" '::notice title=CI timing::${message}' \
     "upgrade harness should emit CI timing notices for passed phases"
 }

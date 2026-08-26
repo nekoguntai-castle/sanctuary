@@ -314,7 +314,22 @@ report="$CURRENT_DIR/timing-report.txt"
 assert_contains "$report" "smoke-timed API_TOKEN=<redacted>" "live wrapper output is reportable end to end" || true
 [ "$FAIL" -eq "$prev_fail" ] && end_test_pass
 
-# ----- 12. failed time-command annotation passthrough ---------------------
+# ----- 12. upgrade phase timing passthrough --------------------------------
+prev_fail=$FAIL
+start_test "upgrade phase timing is forwarded live exactly once"
+log="$CURRENT_DIR/upgrade-phase.log"
+live_stderr="$CURRENT_DIR/live.stderr"
+phase_timing='::notice title=CI timing::upgrade phase wallet sync mode=core fixture=latest completed in 1m 2s (62s)'
+"$WRAPPER" "$log" bash -c 'printf "%s\n" "$1"; echo ordinary-phase-output' _ "$phase_timing" \
+  >/dev/null 2>"$live_stderr"
+status=$?
+assert_eq "$status" "0" "wrapper exit" || true
+assert_eq "$(grep -cF "$phase_timing" "$log")" "1" "phase timing captured exactly once" || true
+assert_eq "$(grep -cF "$phase_timing" "$live_stderr")" "1" "phase timing forwarded exactly once" || true
+assert_not_contains "$live_stderr" "ordinary-phase-output" "ordinary phase output remains suppressed live" || true
+[ "$FAIL" -eq "$prev_fail" ] && end_test_pass
+
+# ----- 13. failed time-command annotation passthrough ---------------------
 prev_fail=$FAIL
 start_test "failed time-command annotation forwarded without masking exit"
 log="$CURRENT_DIR/timed-failure.log"
@@ -328,7 +343,7 @@ assert_eq "$(grep -cF '::error title=CI timing::failed-timed completed in' "$log
 assert_eq "$(grep -cF '::error title=CI timing::failed-timed completed in' "$live_stderr")" "1" "error annotation forwarded exactly once" || true
 [ "$FAIL" -eq "$prev_fail" ] && end_test_pass
 
-# ----- 13. performance-budget annotation passthrough ---------------------
+# ----- 14. performance-budget annotation passthrough ---------------------
 prev_fail=$FAIL
 start_test "performance budget annotation forwarded exactly once"
 log="$CURRENT_DIR/budget.log"
@@ -344,7 +359,7 @@ assert_eq "$(grep -cF '::warning title=CI performance budget::budget-timed took'
 assert_eq "$(grep -cF '::warning title=CI performance budget::budget-timed took' "$live_stderr")" "1" "budget warning forwarded exactly once" || true
 [ "$FAIL" -eq "$prev_fail" ] && end_test_pass
 
-# ----- 14. unavailable live annotation sink is nonblocking ---------------
+# ----- 15. unavailable live annotation sink is nonblocking ---------------
 prev_fail=$FAIL
 start_test "closed live stderr does not fail a successful timed command"
 log="$CURRENT_DIR/closed-stderr.log"

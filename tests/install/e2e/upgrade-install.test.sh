@@ -502,7 +502,7 @@ emit_upgrade_phase_timing() {
     fi
     minutes="$((duration / 60))"
     seconds="$((duration % 60))"
-    message="upgrade phase ${test_name} completed in ${minutes}m ${seconds}s (${duration}s) mode=${UPGRADE_TEST_MODE} fixture=${UPGRADE_FIXTURE}"
+    message="upgrade phase ${test_name} mode=${UPGRADE_TEST_MODE} fixture=${UPGRADE_FIXTURE} completed in ${minutes}m ${seconds}s (${duration}s)"
 
     if [ "$exit_code" -eq 0 ]; then
         echo "::notice title=CI timing::${message}"
