@@ -11,6 +11,7 @@
       "config/wallet-safety-critical-paths.json",
       "package-lock.json",
       "package.json",
+      "src/api/authCoordination.ts",
       "src/api/authPolicy.ts",
       "src/api/baseUrl.ts",
       "src/api/client.ts",

@@ -111,6 +111,7 @@ for (const symbol of [
   'shouldAttemptRefreshAfterUnauthorized',
   'refreshAccessToken',
   'scheduleRefreshFromHeader',
+  'runSharedAuthAttempt',
 ]) {
   assert(clientExec.includes(symbol), `client.ts must use ${symbol}`);
 }
@@ -126,13 +127,37 @@ assert(!/\bBearer\b/.test(clientExec), 'client.ts must not build Bearer tokens f
 
 const refresh = read('src/api/refresh.ts');
 const refreshExec = stripComments(refresh);
+const authCoordination = read('src/api/authCoordination.ts');
+const authCoordinationExec = stripComments(authCoordination);
 assert(!/from\s+['"]\.\/client(?:\.ts)?['"]/.test(refreshExec), 'refresh.ts must not import ./client');
 assert(refreshExec.includes('attachCsrfHeader'), 'refresh.ts must attach CSRF on /auth/refresh');
 assert(refreshExec.includes('/auth/refresh'), 'refresh.ts must call /auth/refresh directly');
 assert(/method:\s*['"]POST['"]/.test(refreshExec), 'refresh.ts /auth/refresh call must use POST');
 assert(/credentials:\s*['"]include['"]/.test(refreshExec), 'refresh.ts /auth/refresh call must include cookies');
 assert(refreshExec.includes('BroadcastChannel'), 'refresh.ts must broadcast refresh/logout state across tabs');
-assert(refreshExec.includes('navigator.locks.request'), 'refresh.ts must serialize refresh with Web Locks');
+assert(
+  refreshExec.includes('runExclusiveAuthRefresh'),
+  'refresh.ts must delegate refresh serialization to runExclusiveAuthRefresh'
+);
+assert(
+  authCoordinationExec.includes("AUTH_COORDINATION_LOCK_NAME = 'sanctuary-auth-refresh'")
+    || authCoordinationExec.includes('AUTH_COORDINATION_LOCK_NAME = "sanctuary-auth-refresh"'),
+  'authCoordination must own the sanctuary-auth-refresh lock name'
+);
+assert(
+  authCoordinationExec.includes('navigator.locks.request'),
+  'authCoordination must acquire the browser Web Lock'
+);
+assert(
+  authCoordinationExec.includes("runWithAuthLock('shared'")
+    || authCoordinationExec.includes('runWithAuthLock("shared"'),
+  'authCoordination must provide shared unsafe-request locking'
+);
+assert(
+  authCoordinationExec.includes("runWithAuthLock('exclusive'")
+    || authCoordinationExec.includes('runWithAuthLock("exclusive"'),
+  'authCoordination must provide exclusive refresh locking'
+);
 
 const backup = read('src/api/admin/backup.ts');
 const backupExec = stripComments(backup);

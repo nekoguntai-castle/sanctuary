@@ -4,12 +4,14 @@ import {
   CSRF_HEADER_NAME,
   REFRESH_ON_401_EXEMPT_ENDPOINTS,
   attachCsrfHeader,
+  hasStaleCsrfSessionCode,
   isRefreshOn401ExemptEndpoint,
   normalizeAuthEndpoint,
   readCookieValue,
   readCsrfCookieValue,
   requiresCsrfHeader,
   shouldAttemptRefreshAfterUnauthorized,
+  shouldRetryAfterStaleCsrfSession,
 } from '../../src/api/authPolicy';
 
 describe('browser auth policy', () => {
@@ -58,6 +60,13 @@ describe('browser auth policy', () => {
       expect(headers[CSRF_HEADER_NAME]).toBe('csrf-token');
     });
 
+    it('preserves a caller CSRF header regardless of header-name casing', () => {
+      const headers = { 'x-csrf-token': 'caller-token' };
+      attachCsrfHeader(headers, 'POST', 'sanctuary_csrf=cookie-token');
+
+      expect(headers).toEqual({ 'x-csrf-token': 'caller-token' });
+    });
+
     it('does not inject CSRF for safe methods or missing cookies', () => {
       const getHeaders: Record<string, string> = {};
       attachCsrfHeader(getHeaders, 'GET', 'sanctuary_csrf=csrf-token');
@@ -66,6 +75,52 @@ describe('browser auth policy', () => {
       const postHeaders: Record<string, string> = {};
       attachCsrfHeader(postHeaders, 'POST', 'other=value');
       expect(postHeaders[CSRF_HEADER_NAME]).toBeUndefined();
+    });
+  });
+
+  describe('stale CSRF credential recovery', () => {
+    const staleResponse = { code: 'AUTH_CSRF_SESSION_STALE' };
+
+    it('recognizes only the top-level typed stale-session code', () => {
+      expect(hasStaleCsrfSessionCode(staleResponse)).toBe(true);
+      expect(hasStaleCsrfSessionCode({ error: { code: 'AUTH_CSRF_SESSION_STALE' } })).toBe(false);
+      expect(hasStaleCsrfSessionCode({ code: 'FORBIDDEN' })).toBe(false);
+      expect(hasStaleCsrfSessionCode(null)).toBe(false);
+    });
+
+    it('allows one exact POST replay for credential entry endpoints', () => {
+      for (const endpoint of ['/auth/register', '/auth/login', '/auth/2fa/verify']) {
+        expect(shouldRetryAfterStaleCsrfSession({
+          endpoint: `${endpoint}?source=browser#form`,
+          method: 'POST',
+          status: 403,
+          response: staleResponse,
+          isCsrfRecoveryRetry: false,
+        })).toBe(true);
+      }
+    });
+
+    it('rejects refresh, logout, protected, near-miss, wrong-shape, and second attempts', () => {
+      const base = {
+        endpoint: '/auth/login',
+        method: 'POST',
+        status: 403,
+        response: staleResponse,
+        isCsrfRecoveryRetry: false,
+      };
+      for (const endpoint of [
+        '/auth/refresh',
+        '/auth/logout',
+        '/auth/logout-all',
+        '/auth/login/extra',
+        '/wallets',
+      ]) {
+        expect(shouldRetryAfterStaleCsrfSession({ ...base, endpoint })).toBe(false);
+      }
+      expect(shouldRetryAfterStaleCsrfSession({ ...base, method: 'PUT' })).toBe(false);
+      expect(shouldRetryAfterStaleCsrfSession({ ...base, status: 401 })).toBe(false);
+      expect(shouldRetryAfterStaleCsrfSession({ ...base, response: { code: 'FORBIDDEN' } })).toBe(false);
+      expect(shouldRetryAfterStaleCsrfSession({ ...base, isCsrfRecoveryRetry: true })).toBe(false);
     });
   });
 

@@ -21,6 +21,7 @@
  */
 
 import { createLogger } from '../utils/logger';
+import { runExclusiveAuthRefresh } from './authCoordination';
 import { ACCESS_EXPIRES_AT_HEADER, attachCsrfHeader } from './authPolicy';
 import { getApiBaseUrl, joinApiBaseUrl } from './baseUrl';
 
@@ -29,8 +30,8 @@ const log = createLogger('AuthRefresh');
 // Refresh this many ms before the access token expires. 60 s matches
 // ADR 0002 open question 1; adjustable if /auth/refresh latency is high.
 const REFRESH_LEAD_TIME_MS = 60_000;
+const REFRESH_REQUEST_TIMEOUT_MS = 30_000;
 
-const REFRESH_LOCK_NAME = 'sanctuary-auth-refresh';
 const BROADCAST_CHANNEL_NAME = 'sanctuary-auth';
 
 // -----------------------------------------------------------------------------
@@ -109,6 +110,10 @@ function fireTerminalLogoutListeners(): void {
  * returned unsubscribe fn must be called on unmount.
  */
 export function onTerminalLogout(listener: () => void): () => void {
+  // Open the peer channel when auth lifecycle handling mounts. Waiting for an
+  // expiry-bearing response leaves a newly loaded tab unable to hear a logout
+  // broadcast if that response is absent, delayed, or still in flight.
+  ensureBroadcastChannel();
   terminalLogoutListeners.add(listener);
   return () => {
     terminalLogoutListeners.delete(listener);
@@ -181,7 +186,7 @@ export function getAccessExpiresAtMs(): number | null {
  * public-facing `refreshAccessToken` so the Web Lock + freshness check
  * can wrap it.
  */
-async function performRefreshRequest(): Promise<void> {
+async function performRefreshRequest(signal: AbortSignal): Promise<void> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
@@ -192,6 +197,7 @@ async function performRefreshRequest(): Promise<void> {
     credentials: 'include',
     headers,
     body: JSON.stringify({}),
+    signal,
   });
 
   if (response.status === 401 || response.status === 403) {
@@ -246,6 +252,7 @@ export function refreshAccessToken(): Promise<void> {
   if (inFlightRefresh) return inFlightRefresh;
 
   const promise = (async () => {
+    const refreshSignal = AbortSignal.timeout(REFRESH_REQUEST_TIMEOUT_MS);
     // Acquire the cross-tab exclusive Web Lock. Only one tab in the same
     // origin holds this lock at a time. If no Web Locks API is available
     // (very old environment), fall back to the raw request — the single-
@@ -259,23 +266,18 @@ export function refreshAccessToken(): Promise<void> {
         log.debug('Refresh short-circuited by fresh in-memory expiry');
         return;
       }
-      await performRefreshRequest();
+      await performRefreshRequest(refreshSignal);
     };
 
     try {
-      if (navigator.locks?.request) {
-        await navigator.locks.request(REFRESH_LOCK_NAME, { mode: 'exclusive' }, runUnderLock);
-      } else {
-        // Fallback for environments that lack the Web Locks API. The
-        // single-flight promise still serializes within the current tab;
-        // only the cross-tab mutex is missing. Per ADR 0002 caniuse
-        // analysis, all Sanctuary deployment targets have Web Locks.
-        await runUnderLock();
-      }
+      await runExclusiveAuthRefresh(runUnderLock, refreshSignal);
     } catch (err) {
       if (err instanceof RefreshFailedError) {
         triggerTerminalLogout();
         throw err;
+      }
+      if (refreshSignal.aborted) {
+        throw new RefreshTransientError('refresh timed out', 0);
       }
       // Transient or unknown error: don't trigger terminal logout.
       throw err;

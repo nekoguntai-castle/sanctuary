@@ -74,6 +74,7 @@ n_src_api_admin__collapsed[" "]
 end
 n_src_api_ai_ts["ai.ts"]
 n_src_api_auth_ts["auth.ts"]
+n_src_api_authCoordination_ts["authCoordination.ts"]
 n_src_api_authPolicy_ts["authPolicy.ts"]
 n_src_api_baseUrl_ts["baseUrl.ts"]
 n_src_api_bitcoin_ts["bitcoin.ts"]
@@ -483,9 +484,11 @@ n_src_api_admin__collapsed-->n_src_utils_download_ts
 n_src_api_ai_ts-->n_src_api_client_ts
 n_src_api_auth_ts-->n_src_api_client_ts
 n_src_api_auth_ts-->n_src_utils_logger_ts
+n_src_api_authPolicy_ts-->n_shared_types_api_ts
 n_src_api_bitcoin_ts-->n_shared_schemas_bitcoinResponses_ts
 n_src_api_bitcoin_ts-->n_src_api_client_ts
 n_src_api_client_ts-->n_shared_utils_errors_ts
+n_src_api_client_ts-->n_src_api_authCoordination_ts
 n_src_api_client_ts-->n_src_api_authPolicy_ts
 n_src_api_client_ts-->n_src_api_baseUrl_ts
 n_src_api_client_ts-->n_src_api_refresh_ts
@@ -503,6 +506,7 @@ n_src_api_payjoin_ts-->n_shared_schemas_bitcoinResponses_ts
 n_src_api_payjoin_ts-->n_src_api_client_ts
 n_src_api_price_ts-->n_shared_schemas_priceResponses_ts
 n_src_api_price_ts-->n_src_api_client_ts
+n_src_api_refresh_ts-->n_src_api_authCoordination_ts
 n_src_api_refresh_ts-->n_src_api_authPolicy_ts
 n_src_api_refresh_ts-->n_src_api_baseUrl_ts
 n_src_api_refresh_ts-->n_src_utils_logger_ts

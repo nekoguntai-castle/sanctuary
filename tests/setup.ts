@@ -152,21 +152,74 @@ global.fetch = vi.fn();
 // options, callback)` acquires an exclusive lock, runs the callback while
 // holding it, releases on resolve/reject.
 //
-// Tests that need to simulate cross-tab contention share the lock state
-// via this single Map. When a lock is held, subsequent request() calls for
-// the same name queue in FIFO order and fire only after the current holder
-// releases. This matches the real Web Locks API semantics closely enough
-// for the refresh flow's single-tab and cross-tab tests. See ADR 0002's
-// "Why the lock alone is sufficient for correctness" section for the
-// contract this mock upholds.
+// Tests that simulate cross-tab contention share state here. Multiple shared
+// holders may overlap, an exclusive holder waits for all readers, and once a
+// writer is queued later readers stay behind it. That FIFO/writer-progress
+// behavior is the contract used by auth mutation/refresh coordination.
 
-type WebLockCallback<T> = (lock: { name: string; mode: 'exclusive' } | null) => Promise<T>;
+type WebLockMode = 'exclusive' | 'shared';
+type WebLockCallback<T> = (lock: { name: string; mode: WebLockMode } | null) => Promise<T>;
 type WebLockOptions = { mode?: 'exclusive' | 'shared'; ifAvailable?: boolean; signal?: AbortSignal };
 interface WebLockQueueEntry {
-  resolve: () => void;
+  mode: WebLockMode;
+  start: () => void;
 }
-const webLockHolders = new Map<string, true>();
+interface WebLockState {
+  exclusiveHolder: boolean;
+  sharedHolders: number;
+}
+const webLockHolders = new Map<string, WebLockState>();
 const webLockWaiters = new Map<string, WebLockQueueEntry[]>();
+
+const getWebLockState = (name: string): WebLockState => {
+  const current = webLockHolders.get(name);
+  if (current) return current;
+  const created = { exclusiveHolder: false, sharedHolders: 0 };
+  webLockHolders.set(name, created);
+  return created;
+};
+
+const canAcquireWebLock = (name: string, mode: WebLockMode): boolean => {
+  const state = getWebLockState(name);
+  if ((webLockWaiters.get(name)?.length ?? 0) > 0 || state.exclusiveHolder) return false;
+  return mode === 'shared' || state.sharedHolders === 0;
+};
+
+const holdWebLock = (name: string, mode: WebLockMode): void => {
+  const state = getWebLockState(name);
+  if (mode === 'shared') state.sharedHolders += 1;
+  else state.exclusiveHolder = true;
+};
+
+const startQueuedWebLock = (name: string, entry: WebLockQueueEntry): void => {
+  holdWebLock(name, entry.mode);
+  entry.start();
+};
+
+const drainWebLockQueue = (name: string): void => {
+  const state = getWebLockState(name);
+  if (state.exclusiveHolder || state.sharedHolders > 0) return;
+  const waiters = webLockWaiters.get(name) ?? [];
+  const first = waiters.shift();
+  if (!first) {
+    webLockWaiters.delete(name);
+    webLockHolders.delete(name);
+    return;
+  }
+  startQueuedWebLock(name, first);
+  if (first.mode === 'shared') {
+    while (waiters[0]?.mode === 'shared') startQueuedWebLock(name, waiters.shift()!);
+  }
+  if (waiters.length === 0) webLockWaiters.delete(name);
+  else webLockWaiters.set(name, waiters);
+};
+
+const releaseWebLock = (name: string, mode: WebLockMode): void => {
+  const state = getWebLockState(name);
+  if (mode === 'shared') state.sharedHolders -= 1;
+  else state.exclusiveHolder = false;
+  drainWebLockQueue(name);
+};
 
 async function webLocksRequest<T>(
   name: string,
@@ -176,39 +229,53 @@ async function webLocksRequest<T>(
   const callback = typeof optionsOrCallback === 'function' ? optionsOrCallback : maybeCallback;
   const options = typeof optionsOrCallback === 'function' ? {} : optionsOrCallback;
   if (!callback) throw new Error('navigator.locks.request requires a callback');
+  if (options.signal?.aborted) {
+    return Promise.reject(options.signal.reason);
+  }
 
-  const mode: 'exclusive' = options.mode === 'shared' ? 'exclusive' : 'exclusive';
+  const mode: WebLockMode = options.mode ?? 'exclusive';
 
   // ifAvailable: if the lock is already held, immediately invoke the
   // callback with null. The real API has this; refresh.ts never uses it
   // but the mock supports it to match the contract.
-  if (options.ifAvailable && webLockHolders.has(name)) {
+  if (options.ifAvailable && !canAcquireWebLock(name, mode)) {
     return callback(null);
   }
 
-  // Acquire: if not held, grab it. If held, queue and wait.
-  if (webLockHolders.has(name)) {
-    await new Promise<void>((resolve) => {
+  return new Promise<T>((resolve, reject) => {
+    let queued = false;
+    const removeQueuedEntry = (): void => {
       const waiters = webLockWaiters.get(name) ?? [];
-      waiters.push({ resolve });
+      const entryIndex = waiters.indexOf(entry);
+      if (entryIndex >= 0) waiters.splice(entryIndex, 1);
+      if (waiters.length === 0) webLockWaiters.delete(name);
+      else webLockWaiters.set(name, waiters);
+    };
+    const abortQueuedRequest = (): void => {
+      if (!queued) return;
+      queued = false;
+      removeQueuedEntry();
+      reject(options.signal?.reason);
+    };
+    const entry: WebLockQueueEntry = {
+      mode,
+      start: () => {
+        queued = false;
+        options.signal?.removeEventListener('abort', abortQueuedRequest);
+        void callback({ name, mode })
+          .then(resolve, reject)
+          .finally(() => releaseWebLock(name, mode));
+      },
+    };
+    if (canAcquireWebLock(name, mode)) startQueuedWebLock(name, entry);
+    else {
+      queued = true;
+      const waiters = webLockWaiters.get(name) ?? [];
+      waiters.push(entry);
       webLockWaiters.set(name, waiters);
-    });
-  }
-  webLockHolders.set(name, true);
-
-  try {
-    return await callback({ name, mode });
-  } finally {
-    webLockHolders.delete(name);
-    const waiters = webLockWaiters.get(name) ?? [];
-    const next = waiters.shift();
-    if (waiters.length === 0) {
-      webLockWaiters.delete(name);
-    } else {
-      webLockWaiters.set(name, waiters);
+      options.signal?.addEventListener('abort', abortQueuedRequest, { once: true });
     }
-    next?.resolve();
-  }
+  });
 }
 
 // Attach the Web Locks mock WITHOUT replacing the navigator object.

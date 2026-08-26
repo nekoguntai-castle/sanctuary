@@ -35,6 +35,7 @@
 import { createLogger } from "../utils/logger";
 import { downloadBlob } from "../utils/download";
 import { getApiBaseUrl, joinApiBaseUrl } from "./baseUrl";
+import { runSharedAuthAttempt } from "./authCoordination";
 import {
   refreshAccessToken,
   scheduleRefreshFromHeader,
@@ -43,7 +44,10 @@ import {
 import {
   ACCESS_EXPIRES_AT_HEADER,
   attachCsrfHeader,
+  hasStaleCsrfSessionCode,
+  requiresCsrfHeader,
   shouldAttemptRefreshAfterUnauthorized,
+  shouldRetryAfterStaleCsrfSession,
 } from "./authPolicy";
 import {
   createRetryBudget,
@@ -121,6 +125,7 @@ interface TransferRequestOptions {
 
 interface RefreshableOperation<T> {
   endpoint: string;
+  method: string;
   operation: () => Promise<T>;
   retryContext?: string;
   retryOptions: RetryOptions;
@@ -129,7 +134,16 @@ interface RefreshableOperation<T> {
   // Cancels retry backoff as well as the underlying caller-owned fetch signal.
   signal?: AbortSignal;
   isRefreshRetry?: boolean;
+  isCsrfRecoveryRetry?: boolean;
 }
+
+const runCookieAuthAttempt = <T>(
+  method: string,
+  operation: () => Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> => requiresCsrfHeader(method)
+  ? runSharedAuthAttempt(operation, signal)
+  : operation();
 
 /**
  * Check if an error is retryable
@@ -545,6 +559,25 @@ export class ApiClient {
         input.signal,
       );
     } catch (error) {
+      if (error instanceof ApiError && hasStaleCsrfSessionCode(error.response)) {
+        if (shouldRetryAfterStaleCsrfSession({
+          endpoint: input.endpoint,
+          method: input.method,
+          status: error.status,
+          response: error.response,
+          isCsrfRecoveryRetry: input.isCsrfRecoveryRetry ?? false,
+        })) {
+          return this.executeApiOperation<T>({
+            ...input,
+            retryOptions,
+            retryContext,
+            retryBudget,
+            isCsrfRecoveryRetry: true,
+          });
+        }
+        throw error;
+      }
+
       if (
         error instanceof ApiError &&
         shouldAttemptRefreshAfterUnauthorized({
@@ -593,16 +626,19 @@ export class ApiClient {
 
     const performRequest = async (): Promise<T> => {
       const { timeoutMs, ...fetchOptions } = options;
-      const headers = buildJsonHeaders(fetchOptions.headers, method);
-      const response = await fetch(url, {
-        ...fetchOptions,
-        credentials: "include",
-        headers,
-        signal: createRequestSignal(
-          fetchOptions.signal,
-          timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
-        ),
-      });
+      const attemptSignal = createRequestSignal(
+        fetchOptions.signal,
+        timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
+      );
+      const response = await runCookieAuthAttempt(method, async () => {
+        const headers = buildJsonHeaders(fetchOptions.headers, method);
+        return fetch(url, {
+          ...fetchOptions,
+          credentials: "include",
+          headers,
+          signal: attemptSignal,
+        });
+      }, attemptSignal);
 
       // Every response may carry X-Access-Expires-At (auth responses do,
       // others do not). Forward to refresh.ts unconditionally — the
@@ -626,6 +662,7 @@ export class ApiClient {
 
     return this.executeApiOperation<T>({
       endpoint,
+      method,
       operation: performRequest,
       retryOptions: resolvedRetryOptions,
       signal: options.signal ?? undefined,
@@ -773,16 +810,20 @@ export class ApiClient {
     const method = (options.method ?? "GET").toUpperCase();
 
     const performFetchBlob = async (): Promise<Blob> => {
-      const headers = buildTransferHeaders(options.headers, method);
-      const response = await fetch(url, {
-        method: options.method || "GET",
-        credentials: "include",
-        headers,
-        body: options.body ?? undefined,
-        signal:
-          options.signal ??
-          AbortSignal.timeout(options.timeoutMs ?? FILE_TRANSFER_TIMEOUT_MS),
-      });
+      const attemptSignal = createRequestSignal(
+        options.signal,
+        options.timeoutMs ?? FILE_TRANSFER_TIMEOUT_MS,
+      );
+      const response = await runCookieAuthAttempt(method, async () => {
+        const headers = buildTransferHeaders(options.headers, method);
+        return fetch(url, {
+          method: options.method || "GET",
+          credentials: "include",
+          headers,
+          body: options.body ?? undefined,
+          signal: attemptSignal,
+        });
+      }, attemptSignal);
 
       handleAccessExpiryHeader(response);
 
@@ -793,6 +834,7 @@ export class ApiClient {
 
     return this.executeApiOperation<Blob>({
       endpoint: requestEndpoint,
+      method,
       operation: performFetchBlob,
       retryContext: `blob:${requestEndpoint}`,
       retryOptions: resolveRetryOptions(method),
@@ -812,21 +854,27 @@ export class ApiClient {
     const requestEndpoint = this.appendQueryParams(endpoint, options.params ?? {});
     const url = buildApiUrl(requestEndpoint);
     const method = (options.method ?? "GET").toUpperCase();
+    const requestBody = options.body === undefined
+      ? undefined
+      : JSON.stringify(options.body);
 
     const performDownload = async (): Promise<{
       blob: Blob;
       resolvedFilename: string;
     }> => {
-      const headers = options.body === undefined
-        ? buildTransferHeaders(undefined, method)
-        : buildJsonHeaders(undefined, method);
-      const response = await fetch(url, {
-        method: options.method || "GET",
-        credentials: "include",
-        headers,
-        ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
-        signal: AbortSignal.timeout(FILE_TRANSFER_TIMEOUT_MS),
-      });
+      const attemptSignal = AbortSignal.timeout(FILE_TRANSFER_TIMEOUT_MS);
+      const response = await runCookieAuthAttempt(method, async () => {
+        const headers = requestBody === undefined
+          ? buildTransferHeaders(undefined, method)
+          : buildJsonHeaders(undefined, method);
+        return fetch(url, {
+          method: options.method || "GET",
+          credentials: "include",
+          headers,
+          ...(requestBody === undefined ? {} : { body: requestBody }),
+          signal: attemptSignal,
+        });
+      }, attemptSignal);
 
       handleAccessExpiryHeader(response);
 
@@ -842,6 +890,7 @@ export class ApiClient {
       resolvedFilename: string;
     }>({
       endpoint: requestEndpoint,
+      method,
       operation: performDownload,
       retryContext: `download:${requestEndpoint}`,
       retryOptions: resolveRetryOptions(method),
@@ -860,14 +909,17 @@ export class ApiClient {
     const url = buildApiUrl(endpoint);
 
     const performUpload = async (): Promise<T> => {
-      const headers = buildTransferHeaders(undefined, "POST");
-      const response = await fetch(url, {
-        method: "POST",
-        credentials: "include",
-        headers,
-        body: formData,
-        signal: AbortSignal.timeout(FILE_TRANSFER_TIMEOUT_MS),
-      });
+      const attemptSignal = AbortSignal.timeout(FILE_TRANSFER_TIMEOUT_MS);
+      const response = await runCookieAuthAttempt("POST", async () => {
+        const headers = buildTransferHeaders(undefined, "POST");
+        return fetch(url, {
+          method: "POST",
+          credentials: "include",
+          headers,
+          body: formData,
+          signal: attemptSignal,
+        });
+      }, attemptSignal);
 
       handleAccessExpiryHeader(response);
 
@@ -881,6 +933,7 @@ export class ApiClient {
 
     return this.executeApiOperation<T>({
       endpoint,
+      method: "POST",
       operation: performUpload,
       retryContext: `upload:${endpoint}`,
       retryOptions: NO_RETRY,

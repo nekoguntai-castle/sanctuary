@@ -185,9 +185,7 @@ export const registerApiClientRetryContracts = () => {
         { initialDelayMs: 1_000 },
         { signal: controller.signal },
       );
-      await Promise.resolve();
-      await Promise.resolve();
-      expect(timeoutSpy).toHaveBeenCalled();
+      await vi.waitFor(() => expect(timeoutSpy).toHaveBeenCalled());
       controller.abort();
 
       await expect(request).rejects.toMatchObject({ name: 'AbortError' });

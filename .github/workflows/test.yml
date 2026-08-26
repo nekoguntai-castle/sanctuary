@@ -1845,6 +1845,10 @@ jobs:
           GATEWAY_SECRET: test-gateway-secret-for-ci-minimum-32-chars
           ENCRYPTION_SALT: test-encryption-salt-for-ci
           NODE_ENV: test
+          # Real-auth scenarios intentionally perform repeated logins against
+          # one isolated seeded account. Keep production defaults unchanged
+          # while preventing the suite from rate-limiting its own fixtures.
+          RATE_LIMIT_LOGIN: '100'
           CLIENT_URL: http://localhost:5173
           CORS_ALLOWED_ORIGINS: http://localhost:5173
           ELECTRUM_HOST: 127.0.0.1

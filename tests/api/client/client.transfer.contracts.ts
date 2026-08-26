@@ -96,6 +96,7 @@ export const registerApiClientTransferContracts = () => {
     });
 
     it("should refresh and retry uploads once after a 401", async () => {
+      const lockRequestSpy = vi.spyOn(navigator.locks, "request");
       const formData = new FormData();
       formData.append("file", new Blob(["test"]), "test.txt");
       mockFetch
@@ -114,6 +115,13 @@ export const registerApiClientTransferContracts = () => {
       expect(mockFetch.mock.calls[0][1].body).toBe(formData);
       expect(mockFetch.mock.calls[1][1].body).toBe(formData);
       expect(mockFetch.mock.calls[1][1].headers["Content-Type"]).toBeUndefined();
+      expect(lockRequestSpy.mock.calls.map(call => call[1]?.mode)).toEqual([
+        "shared",
+        "shared",
+      ]);
+      for (const [index, call] of lockRequestSpy.mock.calls.entries()) {
+        expect(call[1]?.signal).toBe(mockFetch.mock.calls[index][1].signal);
+      }
     });
 
     it("should re-read CSRF before replaying an upload after refresh", async () => {
@@ -214,9 +222,7 @@ export const registerApiClientTransferContracts = () => {
       const request = apiClient.fetchBlob("/exports/archive", {
         signal: controller.signal,
       });
-      await Promise.resolve();
-      await Promise.resolve();
-      expect(timeoutSpy).toHaveBeenCalled();
+      await vi.waitFor(() => expect(timeoutSpy).toHaveBeenCalled());
       controller.abort();
 
       await expect(request).rejects.toMatchObject({ name: "AbortError" });
@@ -224,6 +230,7 @@ export const registerApiClientTransferContracts = () => {
     });
 
     it("should fetch blob with params, method, and credentials:include", async () => {
+      const lockRequestSpy = vi.spyOn(navigator.locks, "request");
       const blob = new Blob(["file-bytes"], {
         type: "application/octet-stream",
       });
@@ -247,6 +254,20 @@ export const registerApiClientTransferContracts = () => {
       expect(mockFetch.mock.calls[0][1].method).toBe("POST");
       // Browser auth is via HttpOnly cookies, not a Bearer header.
       expect(mockFetch.mock.calls[0][1].credentials).toBe("include");
+      expect(lockRequestSpy).toHaveBeenCalledTimes(1);
+      expect(lockRequestSpy.mock.calls[0][1]?.mode).toBe("shared");
+      expect(lockRequestSpy.mock.calls[0][1]?.signal)
+        .toBe(mockFetch.mock.calls[0][1].signal);
+    });
+
+    it("should not lock a default GET blob attempt", async () => {
+      const lockRequestSpy = vi.spyOn(navigator.locks, "request");
+      const blob = new Blob(["safe-read"]);
+      mockFetch.mockResolvedValue(okBlobResponse(blob));
+
+      await apiClient.fetchBlob("/exports/archive");
+
+      expect(lockRequestSpy).not.toHaveBeenCalled();
     });
 
     it("should append blob params to endpoints that already include a query string", async () => {
@@ -319,17 +340,23 @@ export const registerApiClientTransferContracts = () => {
     });
 
     it("should refresh and retry fetchBlob once after a 401", async () => {
+      const lockRequestSpy = vi.spyOn(navigator.locks, "request");
       const blob = new Blob(["retried-bytes"], {
         type: "application/octet-stream",
       });
+      document.cookie = "sanctuary_csrf=blob-old-csrf; path=/";
       mockFetch
         .mockResolvedValueOnce(errorResponse(401))
         .mockResolvedValueOnce(okBlobResponse(blob));
-      mockRefreshAccessToken.mockResolvedValue(undefined);
+      mockRefreshAccessToken.mockImplementationOnce(() => {
+        document.cookie = "sanctuary_csrf=blob-new-csrf; path=/";
+        return Promise.resolve();
+      });
 
       const result = await apiClient.fetchBlob("/exports/archive", {
         method: "POST",
         params: { from: "2026-01-01" },
+        body: "preserved-blob-body",
       });
 
       expect(result).toBe(blob);
@@ -337,6 +364,19 @@ export const registerApiClientTransferContracts = () => {
       expect(mockFetch).toHaveBeenCalledTimes(2);
       expect(mockFetch.mock.calls[0][0]).toBe(mockFetch.mock.calls[1][0]);
       expect(mockFetch.mock.calls[1][1].method).toBe("POST");
+      expect(mockFetch.mock.calls.map(call => call[1].body)).toEqual([
+        "preserved-blob-body",
+        "preserved-blob-body",
+      ]);
+      expect(mockFetch.mock.calls.map(call => call[1].headers["X-CSRF-Token"]))
+        .toEqual(["blob-old-csrf", "blob-new-csrf"]);
+      expect(lockRequestSpy.mock.calls.map(call => call[1]?.mode)).toEqual([
+        "shared",
+        "shared",
+      ]);
+      for (const [index, call] of lockRequestSpy.mock.calls.entries()) {
+        expect(call[1]?.signal).toBe(mockFetch.mock.calls[index][1].signal);
+      }
     });
 
     it("should surface the original fetchBlob 401 when refresh fails", async () => {
@@ -458,6 +498,7 @@ export const registerApiClientTransferContracts = () => {
     });
 
     it("should resolve filename from Content-Disposition when downloading", async () => {
+      const lockRequestSpy = vi.spyOn(navigator.locks, "request");
       const blob = new Blob(["backup-bytes"], { type: "application/gzip" });
 
       mockFetch.mockResolvedValue({
@@ -480,6 +521,7 @@ export const registerApiClientTransferContracts = () => {
       // Cookie-based auth uses credentials:'include'.
       expect(mockFetch.mock.calls[0][1].credentials).toBe("include");
       expect(mockDownloadBlob).toHaveBeenCalledWith(blob, "backup-2026.tar.gz");
+      expect(lockRequestSpy).not.toHaveBeenCalled();
     });
 
     it("should retry default GET download transport failures", async () => {
@@ -544,7 +586,10 @@ export const registerApiClientTransferContracts = () => {
     });
 
     it("should refresh and retry downloads once while preserving retry filename", async () => {
+      const lockRequestSpy = vi.spyOn(navigator.locks, "request");
       const blob = new Blob(["backup-bytes"], { type: "application/gzip" });
+      const confirmation = { confirmShareableAggregate: true };
+      document.cookie = "sanctuary_csrf=download-old-csrf; path=/";
       mockFetch
         .mockResolvedValueOnce(errorResponse(401))
         .mockResolvedValueOnce(
@@ -552,10 +597,14 @@ export const registerApiClientTransferContracts = () => {
             "Content-Disposition": 'attachment; filename="backup-after-refresh.tar.gz"',
           }),
         );
-      mockRefreshAccessToken.mockResolvedValue(undefined);
+      mockRefreshAccessToken.mockImplementationOnce(() => {
+        document.cookie = "sanctuary_csrf=download-new-csrf; path=/";
+        return Promise.resolve();
+      });
 
       await apiClient.download("/admin/backup", "fallback.tar.gz", {
         method: "POST",
+        body: confirmation,
       });
 
       expect(mockRefreshAccessToken).toHaveBeenCalledTimes(1);
@@ -565,6 +614,19 @@ export const registerApiClientTransferContracts = () => {
         blob,
         "backup-after-refresh.tar.gz",
       );
+      expect(mockFetch.mock.calls.map(call => call[1].body)).toEqual([
+        JSON.stringify(confirmation),
+        JSON.stringify(confirmation),
+      ]);
+      expect(mockFetch.mock.calls.map(call => call[1].headers["X-CSRF-Token"]))
+        .toEqual(["download-old-csrf", "download-new-csrf"]);
+      expect(lockRequestSpy.mock.calls.map(call => call[1]?.mode)).toEqual([
+        "shared",
+        "shared",
+      ]);
+      for (const [index, call] of lockRequestSpy.mock.calls.entries()) {
+        expect(call[1]?.signal).toBe(mockFetch.mock.calls[index][1].signal);
+      }
     });
 
     it("should use default download filename when none is provided", async () => {

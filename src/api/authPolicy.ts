@@ -5,6 +5,8 @@
  * ApiClient, direct fetch helpers, UserContext, and auth tests.
  */
 
+import { AUTH_CSRF_SESSION_STALE_CODE } from '@sanctuary/shared/types/api';
+
 export const CSRF_COOKIE_NAME = 'sanctuary_csrf';
 export const CSRF_HEADER_NAME = 'X-CSRF-Token';
 export const ACCESS_EXPIRES_AT_HEADER = 'X-Access-Expires-At';
@@ -20,11 +22,24 @@ export const REFRESH_ON_401_EXEMPT_ENDPOINTS = Object.freeze([
 ]);
 
 const REFRESH_ON_401_EXEMPT_ENDPOINT_SET = new Set<string>(REFRESH_ON_401_EXEMPT_ENDPOINTS);
+const STALE_CSRF_RETRY_ENDPOINT_SET = new Set([
+  '/auth/register',
+  '/auth/login',
+  '/auth/2fa/verify',
+]);
 
 interface RefreshDecisionInput {
   endpoint: string;
   status: number;
   isRefreshRetry: boolean;
+}
+
+interface StaleCsrfRetryDecisionInput {
+  endpoint: string;
+  method: string;
+  status: number;
+  response?: unknown;
+  isCsrfRecoveryRetry: boolean;
 }
 
 function getDocumentCookieHeader(): string {
@@ -49,6 +64,27 @@ export function shouldAttemptRefreshAfterUnauthorized(input: RefreshDecisionInpu
     input.status === 401
     && !input.isRefreshRetry
     && !isRefreshOn401ExemptEndpoint(input.endpoint)
+  );
+}
+
+export function hasStaleCsrfSessionCode(response: unknown): boolean {
+  return (
+    typeof response === 'object'
+    && response !== null
+    && !Array.isArray(response)
+    && (response as Record<string, unknown>).code === AUTH_CSRF_SESSION_STALE_CODE
+  );
+}
+
+export function shouldRetryAfterStaleCsrfSession(
+  input: StaleCsrfRetryDecisionInput,
+): boolean {
+  return (
+    input.method.toUpperCase() === 'POST'
+    && input.status === 403
+    && !input.isCsrfRecoveryRetry
+    && hasStaleCsrfSessionCode(input.response)
+    && STALE_CSRF_RETRY_ENDPOINT_SET.has(normalizeAuthEndpoint(input.endpoint))
   );
 }
 
@@ -83,7 +119,10 @@ export function attachCsrfHeader(
   method: string,
   cookieHeader: string = getDocumentCookieHeader(),
 ): void {
-  if (!requiresCsrfHeader(method) || headers[CSRF_HEADER_NAME]) return;
+  const callerSuppliedCsrf = Object.keys(headers).some(
+    name => name.toLowerCase() === CSRF_HEADER_NAME.toLowerCase(),
+  );
+  if (!requiresCsrfHeader(method) || callerSuppliedCsrf) return;
 
   const csrf = readCsrfCookieValue(cookieHeader);
   if (csrf) {

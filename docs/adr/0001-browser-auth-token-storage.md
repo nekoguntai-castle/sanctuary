@@ -215,9 +215,27 @@ valid and rotates all cookies; an orphan CSRF cookie is overwritten on success.
 The counter and log contain only fixed endpoint/action values, never credential
 material.
 
-This is the server compatibility precursor. Every backend replica must run it
-before the bounded frontend retry/shared-lock amendment is deployed; mixed
-old/new issuance is unsupported. Rollback the frontend first and retain this
+Every backend replica must run the server compatibility precursor before this
+frontend amendment is deployed; mixed old/new issuance is unsupported. The
+frontend now retries exactly once after the typed stale-session 403 only for
+POST registration, login, and 2FA verification. It preserves the serialized
+body and re-reads the CSRF cookie for the second attempt. Refresh, logout,
+logout-all, endpoint lookalikes, and protected mutations never take this
+stale-session replay path; a typed stale refresh remains terminal. Existing
+401 refresh-and-replay behavior remains separate, including logout revocation.
+
+All unsafe JSON, blob/download, and upload network attempts acquire the shared
+`sanctuary-auth-refresh` Web Lock from CSRF-header construction through response
+receipt. Refresh acquires the same lock exclusively. The shared lock is released
+before parsing, refresh decisions, or either bounded replay, preventing lock
+upgrade deadlocks and ensuring each replay re-enters with the current cookie
+jar. The FIFO browser lock gives a queued refresh writer priority over later
+mutations. Each request attempt's existing timeout covers both its lock wait and
+fetch, while refresh has a 30-second lock-plus-fetch budget whose expiry is
+transient and releases the exclusive holder without logging out the session.
+When Web Locks are unavailable, the existing direct-execution fallback remains;
+same-tab refresh is still single-flight, but no unsupported cross-tab guarantee
+is claimed. Rollback the frontend first and retain the
 backward-compatible server behavior.
 
 **Codex stop-time review caught and fixed the following bugs before merge:**

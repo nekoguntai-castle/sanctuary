@@ -293,7 +293,7 @@ These are deliberately left open. They should be answered before implementation 
 - Reactive refresh: `src/api/client.ts:request` intercepts 401s, awaits `refreshAccessToken()`, and replays the request once. Exempt list is only the four credential-presentation endpoints (`/auth/login`, `/auth/register`, `/auth/2fa/verify`, `/auth/refresh`). The retry is bounded to one attempt; a second 401 surfaces as a normal error and triggers the logout flow.
 - `src/contexts/UserContext.tsx` — boot calls `/auth/me` unconditionally and hydrates from its response (refresh interceptor recovers valid-session on 401 transparently). Logout is async, calls the backend revocation, then calls `triggerLogout()` which fires `logout-broadcast`.
 
-### 2026-08-25 server precursor and frontend handoff
+### 2026-08-25 stale-session recovery and mutation/refresh coordination
 
 The server now makes access and CSRF expiry atomic, overwrites CSRF on every
 access rotation, and exposes `AUTH_CSRF_SESSION_STALE` only for the exact trusted
@@ -304,17 +304,43 @@ continues qualifying stale destruction requests into the real revocation and
 audit handlers.
 
 Normal refresh-cookie-only continuity is preserved when access and CSRF are both
-absent. This precursor must be present on every backend replica before the
-frontend adds its one-attempt credential retry and shared-mutation/exclusive-
-refresh lock lifecycle. Until that separate frontend phase lands, this ADR does
-not claim that stale-credential retry or shared mutation locking is active.
-Frontend rollback comes first; the compatible server contract remains deployed.
+absent. The compatible precursor must be present on every backend replica before
+the frontend described below is deployed. Frontend rollback comes first; the
+compatible server contract remains deployed.
+
+`src/api/authCoordination.ts` owns the existing
+`sanctuary-auth-refresh` lock name. One unsafe cookie-authenticated network
+attempt holds it in shared mode only while constructing the CSRF header and
+awaiting response receipt. JSON, blob/download, and upload paths all use that
+boundary. Response parsing and retry decisions happen after release. Refresh
+holds the same lock exclusively, so the required lifecycle is
+`mutation(shared) -> 401 -> release -> refresh(exclusive) -> replay(shared)`;
+queued writers retain FIFO progress ahead of later readers.
+
+The same per-attempt abort signal bounds both queue time and fetch time. Ordinary
+API attempts retain their configured 30-second or transfer timeout; refresh uses
+a 30-second lock-plus-fetch budget. A refresh timeout is a transient failure: it
+releases the exclusive lock and preserves session state rather than broadcasting
+a terminal logout.
+
+The client retries a typed `AUTH_CSRF_SESSION_STALE` response exactly once only
+for POST registration, login, and 2FA verification. It reuses the exact
+serialized body and reconstructs headers inside the new shared attempt.
+Refresh, logout/logout-all, protected routes, wrong methods/statuses/codes, and
+endpoint lookalikes never stale-replay. A second typed response surfaces. The
+first unsafe request therefore remains rejected, while a user who lost only the
+CSRF cookie can sign in immediately after the server clears the stale pair.
+
+The no-Web-Locks compatibility path continues to execute directly. Same-tab
+refresh remains single-flight, but cross-tab serialization is promised only on
+browsers with Web Locks. Caller abort signals are passed to queued shared lock
+requests so cancelled operations do not remain behind a refresh.
 
 **Test scaffolding (`tests/setup.ts`):**
-- `navigator.locks` mock: Map of held lock names with FIFO waiters per name, supports `mode: 'exclusive'`, supports multi-instance "tab" simulation by sharing the Map across module imports. Installed via `Object.defineProperty(globalThis.navigator, 'locks', ...)` — **do not replace the whole `navigator` object**, react-dom reads `navigator.userAgent` during render and will crash.
+- `navigator.locks` mock: per-name shared-holder counts, one exclusive holder, and FIFO waiters with writer progress; supports both modes, queued abort removal, and multi-instance "tab" simulation through shared state. Installed via `Object.defineProperty(globalThis.navigator, 'locks', ...)` — **do not replace the whole `navigator` object**, react-dom reads `navigator.userAgent` during render and will crash.
 - `BroadcastChannel` mock: multi-instance same-channel pub/sub, supports the `'message'` event.
 
-**Coverage (`tests/api/refresh.test.ts`, 27 tests):**
+**Coverage (`tests/api/refresh.test.ts`, auth coordination/client contracts, and browser auth tests):**
 - Within-tab single-flight: two concurrent `refreshAccessToken()` calls share one promise and acquire the lock exactly once.
 - Proactive refresh with fake timers: advancing past `expiresAt - REFRESH_LEAD_TIME_MS` triggers exactly one refresh; the new expiry is honored; the timer reschedules itself.
 - Reactive refresh: 401 → refresh → retry success surfaces normally; retry failure triggers logout.
@@ -325,6 +351,13 @@ Frontend rollback comes first; the compatible server contract remains deployed.
 - Malformed BroadcastChannel messages are ignored.
 - Web Locks fallback: environments without `navigator.locks` take the no-lock code path without crashing.
 - Terminal refresh failure releases the lock, sends `logout-broadcast`, rejects with `RefreshFailedError`.
+- Multiple shared attempts overlap; an exclusive refresh waits for all readers,
+  later readers remain behind the queued writer, and callback rejection or
+  queued cancellation releases/removes the holder correctly.
+- JSON and transfer helpers prove shared attempt boundaries, fresh-CSRF replay,
+  exact body preservation, and the deadlock-free shared/exclusive/shared order.
+- Browser coverage deletes only the CSRF cookie and proves immediate identical-
+  body login recovery, plus two-tab writer priority using the real Web Locks API.
 
 **Codex stop-time review caught and fixed the following bugs before merge (see ADR 0001 Resolution for the full list of race / state-eviction bugs; this section only covers the refresh-flow-specific ones):**
 - The original ADR draft recommended Option C (BroadcastChannel-only coordination). Codex caught that BroadcastChannel is asynchronous pub/sub and does not actually provide mutual exclusion — tab A and tab B can both decide to refresh at the same instant before the broadcast is delivered to tab B's event loop. The ADR was revised to Option E (Web Locks API for mutual exclusion + BroadcastChannel for state propagation only) and the Option C section was marked REJECTED in place so the reasoning history stays visible.

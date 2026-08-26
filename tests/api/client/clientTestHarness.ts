@@ -55,6 +55,7 @@ export const clearDocumentCookies = () => {
 export const setupApiClientTest = () => {
   vi.clearAllMocks();
   global.fetch = mockFetch;
+  mockFetch.mockReset();
   mockScheduleRefreshFromHeader.mockReset();
   mockRefreshAccessToken.mockReset();
   clearDocumentCookies();

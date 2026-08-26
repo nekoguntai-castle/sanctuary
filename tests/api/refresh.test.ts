@@ -25,6 +25,7 @@ import {
   RefreshFailedError,
   RefreshTransientError,
 } from '../../src/api/refresh';
+import { runSharedAuthAttempt } from '../../src/api/authCoordination';
 
 vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
@@ -116,6 +117,44 @@ describe('refresh module — within-tab single-flight', () => {
     // never touched the lock because it was coalesced into the
     // single-flight promise.
     expect(locksRequestSpy).toHaveBeenCalledTimes(1);
+    expect(locksRequestSpy.mock.calls[0][1]).toEqual({
+      mode: 'exclusive',
+      signal: expect.any(AbortSignal),
+    });
+  });
+
+  it('times out a stalled exclusive refresh and releases queued shared work', async () => {
+    const timeoutController = new AbortController();
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout')
+      .mockReturnValue(timeoutController.signal);
+    let resolveFetch!: (value: unknown) => void;
+    mockFetch.mockImplementationOnce((_url, init) => new Promise((resolve, reject) => {
+      resolveFetch = resolve;
+      const signal = init?.signal as AbortSignal | undefined;
+      signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+    }));
+
+    const refresh = refreshAccessToken();
+    await vi.waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+    const queuedShared = vi.fn(async () => undefined);
+    const shared = runSharedAuthAttempt(queuedShared);
+
+    try {
+      expect(timeoutSpy).toHaveBeenCalledWith(30_000);
+      expect(mockFetch.mock.calls[0][1]?.signal).toBe(timeoutController.signal);
+      expect(queuedShared).not.toHaveBeenCalled();
+
+      timeoutController.abort(new DOMException('refresh timed out', 'TimeoutError'));
+
+      await expect(refresh).rejects.toBeInstanceOf(RefreshTransientError);
+      await expect(shared).resolves.toBeUndefined();
+      expect(queuedShared).toHaveBeenCalledTimes(1);
+    } finally {
+      resolveFetch(okResponseNoExpiry());
+      await refresh.catch(() => undefined);
+      await shared.catch(() => undefined);
+      timeoutSpy.mockRestore();
+    }
   });
 });
 
@@ -233,6 +272,22 @@ describe('refresh module — terminal failure', () => {
     expect(getAccessExpiresAtMs()).toBeNull();
   });
 
+  it('treats a typed stale-CSRF 403 as terminal without replaying refresh', async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 403,
+      headers: { get: () => null },
+      json: async () => ({ code: 'AUTH_CSRF_SESSION_STALE' }),
+    });
+    const logoutListener = vi.fn();
+    onTerminalLogout(logoutListener);
+
+    await expect(refreshAccessToken()).rejects.toMatchObject({ status: 403 });
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(logoutListener).toHaveBeenCalledTimes(1);
+  });
+
   it('throws RefreshTransientError on 500 WITHOUT firing terminal-logout listeners', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: false,
@@ -301,8 +356,9 @@ describe('refresh module — BroadcastChannel state propagation', () => {
   });
 
   it('other-tab logout-broadcast fires local terminal-logout listeners and clears state', async () => {
-    scheduleRefreshFromHeader(isoInFuture(3600_000));
     const listener = vi.fn();
+    // Subscribing must open the channel by itself. Cross-tab logout cannot
+    // depend on first receiving an expiry-bearing auth response.
     onTerminalLogout(listener);
 
     const otherTabChannel = new BroadcastChannel('sanctuary-auth');

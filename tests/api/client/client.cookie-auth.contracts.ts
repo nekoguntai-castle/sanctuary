@@ -1,4 +1,6 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { AUTH_CSRF_SESSION_STALE_CODE } from '@sanctuary/shared/types/api';
 
 import {
   apiClient,
@@ -103,6 +105,28 @@ export const registerApiClientCookieAuthContracts = () => {
       expect(headers['X-CSRF-Token']).toBeUndefined();
     });
 
+    it('takes shared locks for unsafe JSON attempts but not safe reads', async () => {
+      const lockRequestSpy = vi.spyOn(navigator.locks, 'request');
+      mockFetch.mockResolvedValue(okResponse({}));
+
+      await apiClient.get('/wallets');
+      expect(lockRequestSpy).not.toHaveBeenCalled();
+
+      await apiClient.post('/wallets', { method: 'post' });
+      await apiClient.put('/wallets/1', { method: 'put' });
+      await apiClient.patch('/wallets/1', { method: 'patch' });
+      await apiClient.delete('/wallets/1', { method: 'delete' });
+
+      expect(lockRequestSpy).toHaveBeenCalledTimes(4);
+      for (const [index, call] of lockRequestSpy.mock.calls.entries()) {
+        expect(call[1]).toEqual({
+          mode: 'shared',
+          signal: expect.any(AbortSignal),
+        });
+        expect(call[1]?.signal).toBe(mockFetch.mock.calls[index + 1][1].signal);
+      }
+    });
+
     // -- X-Access-Expires-At forwarding ---------------------------------
     it('forwards X-Access-Expires-At to refresh.scheduleRefreshFromHeader on any response that carries it', async () => {
       const iso = new Date(Date.now() + 3600_000).toISOString();
@@ -171,6 +195,80 @@ export const registerApiClientCookieAuthContracts = () => {
 
         expect(mockRefreshAccessToken).not.toHaveBeenCalled();
       }
+    });
+
+    it.each([
+      ['/auth/register', { username: 'new-user', email: 'new@example.com', password: 'secret' }],
+      ['/auth/login', { username: 'user', password: 'secret' }],
+      ['/auth/2fa/verify', { tempToken: 'temp-token', code: '123456' }],
+    ])('retries %s exactly once after a typed stale-CSRF response with the same body', async (endpoint, body) => {
+      document.cookie = 'sanctuary_csrf=stale-token; path=/';
+      mockFetch
+        .mockImplementationOnce(async () => {
+          document.cookie = 'sanctuary_csrf=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
+          return errorResponse(403, {
+            error: 'AuthCsrfSessionStale',
+            code: AUTH_CSRF_SESSION_STALE_CODE,
+          });
+        })
+        .mockResolvedValueOnce(okResponse({ ok: true }));
+
+      await apiClient.post(endpoint, body);
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(mockRefreshAccessToken).not.toHaveBeenCalled();
+      expect(mockFetch.mock.calls.map(call => call[1].body)).toEqual([
+        JSON.stringify(body),
+        JSON.stringify(body),
+      ]);
+      expect((mockFetch.mock.calls[0][1].headers as Record<string, string>)['X-CSRF-Token'])
+        .toBe('stale-token');
+      expect((mockFetch.mock.calls[1][1].headers as Record<string, string>)['X-CSRF-Token'])
+        .toBeUndefined();
+    });
+
+    it('surfaces a second typed stale-CSRF response without a third attempt', async () => {
+      mockFetch.mockResolvedValue(errorResponse(403, {
+        error: 'AuthCsrfSessionStale',
+        code: AUTH_CSRF_SESSION_STALE_CODE,
+      }));
+
+      await expect(apiClient.post('/auth/login', { username: 'user', password: 'secret' }))
+        .rejects.toMatchObject({ status: 403 });
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(mockRefreshAccessToken).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      '/auth/refresh',
+      '/auth/logout',
+      '/auth/logout-all',
+      '/auth/login/extra',
+      '/wallets',
+    ])('never stale-replays forbidden endpoint %s', async (endpoint) => {
+      mockFetch.mockResolvedValue(errorResponse(403, {
+        error: 'AuthCsrfSessionStale',
+        code: AUTH_CSRF_SESSION_STALE_CODE,
+      }));
+
+      await expect(apiClient.post(endpoint, { preserved: true }))
+        .rejects.toMatchObject({ status: 403 });
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockRefreshAccessToken).not.toHaveBeenCalled();
+    });
+
+    it('does not route a typed stale-session code through generic 401 refresh logic', async () => {
+      mockFetch.mockResolvedValue(errorResponse(401, {
+        error: 'AuthCsrfSessionStale',
+        code: AUTH_CSRF_SESSION_STALE_CODE,
+      }));
+
+      await expect(apiClient.post('/wallets', {})).rejects.toMatchObject({ status: 401 });
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockRefreshAccessToken).not.toHaveBeenCalled();
     });
 
     it('DOES trigger refresh on 401 from /auth/me (valid-session recovery on boot)', async () => {

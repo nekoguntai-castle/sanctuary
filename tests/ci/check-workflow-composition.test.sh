@@ -1577,6 +1577,12 @@ assert_not_contains "$TEST_WORKFLOW" \
   "browser E2E auth coverage must not be skipped" \
   "SKIP_AUTH_TESTS"
 
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "browser E2E real-auth fixtures have an isolated login budget" \
+  "full-browser-e2e-tests:" \
+  "Run browser-flow E2E tests" \
+  "RATE_LIMIT_LOGIN: '100'"
+
 assert_occurrence_count "$TEST_WORKFLOW" \
   "full integration Redis health and resolver share one job-unique credential" \
   'sanctuary-redis-ci-${{ github.run_id }}-${{ github.run_attempt }}-full-integration' \
