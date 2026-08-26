@@ -266,9 +266,6 @@ check_docker_prerequisites() {
 # Run Docker checks
 check_docker_prerequisites
 
-MCP_PROFILE=""
-[ "$ENABLE_MCP" = "yes" ] && MCP_PROFILE="--profile mcp"
-
 # Check if local images exist - if not, we need to build
 NEED_BUILD="no"
 if ! docker image inspect sanctuary-backend:${SANCTUARY_IMAGE_TAG:-local} &>/dev/null; then
@@ -315,6 +312,44 @@ configure_compose_files() {
     return 0
 }
 
+detect_enabled_stacks() {
+    local include_stopped="${1:-no}"
+    local project_name="${COMPOSE_PROJECT_NAME:-sanctuary}"
+    local service
+    local -a docker_ps_args=(ps)
+
+    [ "$include_stopped" = "yes" ] && docker_ps_args+=(-a)
+
+    HAS_MONITORING="no"
+    HAS_TOR="no"
+    HAS_MCP="no"
+    [ "${ENABLE_MONITORING:-no}" = "yes" ] && HAS_MONITORING="yes"
+    [ "${ENABLE_TOR:-no}" = "yes" ] && HAS_TOR="yes"
+    [ "${ENABLE_MCP:-no}" = "yes" ] && HAS_MCP="yes"
+
+    while IFS= read -r service; do
+        case "$service" in
+            grafana|loki|promtail|prometheus|alertmanager|jaeger)
+                HAS_MONITORING="yes"
+                ;;
+            tor|tor-ingress)
+                HAS_TOR="yes"
+                ;;
+            mcp)
+                HAS_MCP="yes"
+                ;;
+        esac
+    done < <(docker "${docker_ps_args[@]}" \
+        --filter "label=com.docker.compose.project=$project_name" \
+        --format '{{.Label "com.docker.compose.service"}}')
+}
+
+configure_enabled_stacks() {
+    configure_compose_files "$HAS_MONITORING" "$HAS_TOR"
+    MCP_PROFILE=""
+    [ "$HAS_MCP" = "yes" ] && MCP_PROFILE="--profile mcp"
+}
+
 ensure_grafana_migration_image() {
     local image="sanctuary-grafana-migration:${SANCTUARY_IMAGE_TAG:-local}"
     docker image inspect "$image" >/dev/null 2>&1 && return 0
@@ -352,17 +387,15 @@ configure_compose_files
 case "${1:-}" in
     --stop)
         echo "Stopping Sanctuary..."
-        # Stop monitoring stack if running
-        if docker ps --format '{{.Names}}' | grep -qE '.*-(grafana|loki|promtail)'; then
-            configure_compose_files yes no
-            docker compose "${COMPOSE_FILE_ARGS[@]}" --profile mcp down
-        else
-            docker compose "${COMPOSE_FILE_ARGS[@]}" --profile mcp down
-        fi
+        detect_enabled_stacks yes
+        configure_enabled_stacks
+        docker compose "${COMPOSE_FILE_ARGS[@]}" $MCP_PROFILE down
         echo "Sanctuary stopped."
         ;;
     --logs)
-        docker compose "${COMPOSE_FILE_ARGS[@]}" logs -f
+        detect_enabled_stacks yes
+        configure_enabled_stacks
+        docker compose "${COMPOSE_FILE_ARGS[@]}" $MCP_PROFILE logs -f
         ;;
     --with-ai)
         echo "Starting Sanctuary..."
@@ -371,6 +404,8 @@ case "${1:-}" in
         echo "      Run Ollama, LM Studio, or another trusted provider outside Sanctuary,"
         echo "      then configure its endpoint in Admin → AI Settings."
         echo ""
+        detect_enabled_stacks
+        configure_enabled_stacks
         set_start_flags
         start_compose_stack "$MCP_PROFILE" "$UP_FLAGS"
         echo ""
@@ -389,8 +424,14 @@ case "${1:-}" in
         echo "MCP will bind to ${MCP_BIND_ADDRESS:-127.0.0.1}:${MCP_PORT:-3003}."
         echo "Create an MCP API key from Admin before connecting an LLM client."
         echo ""
+        detect_enabled_stacks
+        HAS_MCP="yes"
+        ENABLE_MCP="yes"
+        export ENABLE_MCP
+        persist_runtime_env_value "ENABLE_MCP" "yes"
+        configure_enabled_stacks
         set_start_flags
-        start_compose_stack "--profile mcp" "$UP_FLAGS"
+        start_compose_stack "$MCP_PROFILE" "$UP_FLAGS"
         echo ""
         echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"
         echo "MCP endpoint: http://${MCP_BIND_ADDRESS:-127.0.0.1}:${MCP_PORT:-3003}/mcp"
@@ -400,8 +441,13 @@ case "${1:-}" in
         echo ""
         echo "Note: First-time setup will download monitoring images (~500MB total)."
         echo ""
+        detect_enabled_stacks
+        HAS_MONITORING="yes"
+        ENABLE_MONITORING="yes"
+        export ENABLE_MONITORING
+        persist_runtime_env_value "ENABLE_MONITORING" "yes"
+        configure_enabled_stacks
         set_start_flags
-        configure_compose_files yes no
         start_compose_stack "$MCP_PROFILE" "$UP_FLAGS"
         echo ""
         echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"
@@ -418,8 +464,13 @@ case "${1:-}" in
         echo ""
         echo "Note: First-time setup will download the Tor image (~50MB)."
         echo ""
+        detect_enabled_stacks
+        HAS_TOR="yes"
+        ENABLE_TOR="yes"
+        export ENABLE_TOR
+        persist_runtime_env_value "ENABLE_TOR" "yes"
+        configure_enabled_stacks
         set_start_flags
-        configure_compose_files no yes
         start_compose_stack "$MCP_PROFILE" "$UP_FLAGS"
         echo ""
         echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"
@@ -465,25 +516,14 @@ case "${1:-}" in
             fi
         fi
 
-        # Detect which stacks are running (check containers or env preference)
-        HAS_MONITORING=$(docker ps -a --format '{{.Names}}' | grep -qE '.*-(grafana|loki|promtail)' && echo "yes" || echo "no")
-        HAS_TOR=$(docker ps -a --format '{{.Names}}' | grep -qE '.*-tor' && echo "yes" || echo "no")
-        HAS_MCP=$(docker ps -a --format '{{.Names}}' | grep -qE '.*-mcp-[0-9]+$' && echo "yes" || echo "no")
-        # Also check env preference from install
-        [ "$ENABLE_MONITORING" = "yes" ] && HAS_MONITORING="yes"
-        [ "$ENABLE_TOR" = "yes" ] && HAS_TOR="yes"
-        [ "$ENABLE_MCP" = "yes" ] && HAS_MCP="yes"
-
-        configure_compose_files "$HAS_MONITORING" "$HAS_TOR"
+        detect_enabled_stacks
+        configure_enabled_stacks
 
         # Force clean rebuild to ensure all code changes are included
         echo "Building fresh images (no cache)..."
         docker compose "${COMPOSE_FILE_ARGS[@]}" build --no-cache
 
-        PROFILES=""
-        [ "$HAS_MCP" = "yes" ] && PROFILES="$PROFILES --profile mcp"
-
-        start_compose_stack "$PROFILES" "-d"
+        start_compose_stack "$MCP_PROFILE" "-d"
         echo ""
         echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"
         ;;
@@ -526,23 +566,11 @@ case "${1:-}" in
         ;;
     *)
         echo "Starting Sanctuary..."
-        # Detect which stacks were previously running (check containers or env preference)
-        HAS_MONITORING=$(docker ps -a --format '{{.Names}}' | grep -qE '.*-(grafana|loki|promtail)' && echo "yes" || echo "no")
-        HAS_TOR=$(docker ps -a --format '{{.Names}}' | grep -qE '.*-tor' && echo "yes" || echo "no")
-        HAS_MCP=$(docker ps -a --format '{{.Names}}' | grep -qE '.*-mcp-[0-9]+$' && echo "yes" || echo "no")
-        # Also check env preference from install
-        [ "$ENABLE_MONITORING" = "yes" ] && HAS_MONITORING="yes"
-        [ "$ENABLE_TOR" = "yes" ] && HAS_TOR="yes"
-        [ "$ENABLE_MCP" = "yes" ] && HAS_MCP="yes"
-
-        configure_compose_files "$HAS_MONITORING" "$HAS_TOR"
+        detect_enabled_stacks
+        configure_enabled_stacks
 
         set_start_flags
-
-        PROFILES=""
-        [ "$HAS_MCP" = "yes" ] && PROFILES="$PROFILES --profile mcp"
-
-        start_compose_stack "$PROFILES" "$UP_FLAGS"
+        start_compose_stack "$MCP_PROFILE" "$UP_FLAGS"
         echo ""
         echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"
         ;;

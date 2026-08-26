@@ -20,6 +20,7 @@
 #   --upgrade            Force clean rebuild of Docker images (no cache)
 #   --enable-monitoring  Enable monitoring stack (Grafana/Loki/Promtail)
 #   --enable-tor         Enable Tor proxy
+#   --enable-mcp         Enable the read-only MCP server
 #   --skip-ssl           Skip SSL certificate generation
 #   --skip-prereqs       Skip prerequisite checks
 #   --from-install       Called from install.sh (adjusts messaging)
@@ -37,7 +38,7 @@
 #     SANCTUARY_SSL_DIR (default: $SANCTUARY_RUNTIME_DIR/ssl)
 #     SANCTUARY_COMPOSE_SSL_DIR (default: $SANCTUARY_SSL_DIR; advanced CI/container use)
 #     HTTPS_PORT, HTTP_PORT, GATEWAY_PORT (default: 8443, 8080, 4000)
-#     ENABLE_MONITORING, ENABLE_TOR (yes/no)
+#     ENABLE_MONITORING, ENABLE_TOR, ENABLE_MCP (yes/no)
 #
 
 set -e
@@ -83,6 +84,7 @@ OPT_UPGRADE=false
 OPT_OFFLINE="${SANCTUARY_OFFLINE_MODE:-false}"
 OPT_ENABLE_MONITORING="${ENABLE_MONITORING:-}"
 OPT_ENABLE_TOR="${ENABLE_TOR:-}"
+OPT_ENABLE_MCP="${ENABLE_MCP:-}"
 
 # Colors for output
 RED='\033[0;31m'
@@ -119,6 +121,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --enable-tor)
             OPT_ENABLE_TOR="yes"
+            shift
+            ;;
+        --enable-mcp)
+            OPT_ENABLE_MCP="yes"
             shift
             ;;
         --skip-ssl)
@@ -535,6 +541,7 @@ prompt_optional_features() {
         # Use defaults if not set (|| true prevents set -e exit when already set)
         [ -z "$OPT_ENABLE_MONITORING" ] && OPT_ENABLE_MONITORING="no" || true
         [ -z "$OPT_ENABLE_TOR" ] && OPT_ENABLE_TOR="no" || true
+        [ -z "$OPT_ENABLE_MCP" ] && OPT_ENABLE_MCP="no" || true
         return
     fi
 
@@ -542,6 +549,7 @@ prompt_optional_features() {
     if [ ! -t 0 ]; then
         [ -z "$OPT_ENABLE_MONITORING" ] && OPT_ENABLE_MONITORING="no" || true
         [ -z "$OPT_ENABLE_TOR" ] && OPT_ENABLE_TOR="no" || true
+        [ -z "$OPT_ENABLE_MCP" ] && OPT_ENABLE_MCP="no" || true
         return
     fi
 
@@ -632,6 +640,13 @@ load_or_generate_secrets() {
         source "$ENV_FILE"
         set +a
     fi
+
+    # Argument parsing happens before the runtime env is loaded. Transfer any
+    # persisted optional-feature preferences that were not explicitly enabled
+    # on this invocation so rewriting the env cannot silently disable them.
+    [ -z "$OPT_ENABLE_MONITORING" ] && OPT_ENABLE_MONITORING="${ENABLE_MONITORING:-}" || true
+    [ -z "$OPT_ENABLE_TOR" ] && OPT_ENABLE_TOR="${ENABLE_TOR:-}" || true
+    [ -z "$OPT_ENABLE_MCP" ] && OPT_ENABLE_MCP="${ENABLE_MCP:-}" || true
 
     # Existing runtime metadata describes the previous installation. An
     # explicit offline invocation must replace it with the accepted bundle's
@@ -781,6 +796,7 @@ GATEWAY_TLS_ENABLED=true
 
 ENABLE_MONITORING=${OPT_ENABLE_MONITORING:-no}
 ENABLE_TOR=${OPT_ENABLE_TOR:-no}
+ENABLE_MCP=${OPT_ENABLE_MCP:-no}
 SANCTUARY_INSTALL_MODE=${SANCTUARY_INSTALL_MODE:-$([ "$OPT_OFFLINE" = true ] && echo offline || echo online)}
 SANCTUARY_OFFLINE_VERSION=${SANCTUARY_OFFLINE_VERSION:-}
 
@@ -820,12 +836,15 @@ EOF
 }
 
 export_runtime_environment() {
+    ENABLE_MONITORING="${OPT_ENABLE_MONITORING:-no}"
+    ENABLE_TOR="${OPT_ENABLE_TOR:-no}"
+    ENABLE_MCP="${OPT_ENABLE_MCP:-no}"
     export SANCTUARY_ENV_FILE="$ENV_FILE"
     export SANCTUARY_SSL_DIR="$SSL_DIR"
     export SANCTUARY_COMPOSE_SSL_DIR="$COMPOSE_SSL_DIR"
     export JWT_SECRET ENCRYPTION_KEY ENCRYPTION_SALT GATEWAY_SECRET WORKER_DIAGNOSTICS_SECRET POSTGRES_PASSWORD GRAFANA_PASSWORD LLM_EGRESS_PROXY_SECRET REDIS_PASSWORD
     export LLM_EGRESS_PROXY_ALLOWED_HOSTS LLM_EGRESS_PROXY_ALLOWED_CIDRS LLM_EGRESS_PROXY_ALLOW_PUBLIC_HTTPS
-    export HTTPS_PORT HTTP_PORT GATEWAY_PORT ENABLE_MONITORING ENABLE_TOR SANCTUARY_INSTALL_MODE SANCTUARY_OFFLINE_VERSION
+    export HTTPS_PORT HTTP_PORT GATEWAY_PORT ENABLE_MONITORING ENABLE_TOR ENABLE_MCP SANCTUARY_INSTALL_MODE SANCTUARY_OFFLINE_VERSION
 }
 
 # ============================================
@@ -1030,6 +1049,7 @@ start_services() {
     COMPOSE_FILE_ARGS=(--project-directory "$PROJECT_DIR" -f "$PROJECT_DIR/docker-compose.yml")
     [ "$OPT_ENABLE_MONITORING" = "yes" ] && COMPOSE_FILE_ARGS+=(-f "$PROJECT_DIR/docker/compose/monitoring.yml")
     [ "$OPT_ENABLE_TOR" = "yes" ] && COMPOSE_FILE_ARGS+=(-f "$PROJECT_DIR/docker/compose/tor.yml")
+    [ "$OPT_ENABLE_MCP" = "yes" ] && COMPOSE_FILE_ARGS+=(--profile mcp)
 
     if [ "$OPT_OFFLINE" = true ]; then
         validate_offline_images

@@ -173,6 +173,9 @@ run_unit_suites() {
     if ! run_test_suite "Image Tag Isolation Unit Tests" "$SCRIPT_DIR/unit/image-tag-isolation.test.sh"; then
         suite_failed=true
     fi
+    if ! run_test_suite "Optional Stack Lifecycle Unit Tests" "$SCRIPT_DIR/unit/optional-stack-lifecycle.test.sh"; then
+        suite_failed=true
+    fi
 
     [ "$suite_failed" = "false" ]
 }
