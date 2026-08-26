@@ -353,6 +353,7 @@ test_fixture_defaults_are_composable() {
   UPGRADE_BROWSER_HOST=""
   UPGRADE_ENABLE_MONITORING="no"
   UPGRADE_ENABLE_TOR="no"
+  UPGRADE_ENABLE_MCP="no"
   UPGRADE_USE_LEGACY_RUNTIME_ENV="false"
   UPGRADE_SEED_NOTIFICATION_STATE="false"
   UPGRADE_EXPECT_OPTIONAL_PROFILES="false"
@@ -364,6 +365,7 @@ test_fixture_defaults_are_composable() {
   LOKI_PORT=""
   JAEGER_OTLP_GRPC_PORT=""
   JAEGER_OTLP_HTTP_PORT=""
+  MCP_PORT=""
   GRAFANA_CONTAINER_NAME=""
   PROMETHEUS_CONTAINER_NAME=""
   TOR_CONTAINER_NAME=""
@@ -384,6 +386,7 @@ test_fixture_defaults_are_composable() {
   assert_equals "true" "$UPGRADE_SEED_NOTIFICATION_STATE" "notification fixture should seed notification state"
   assert_equals "yes" "$UPGRADE_ENABLE_MONITORING" "optional fixture should enable monitoring"
   assert_equals "yes" "$UPGRADE_ENABLE_TOR" "optional fixture should enable Tor"
+  assert_equals "yes" "$UPGRADE_ENABLE_MCP" "optional fixture should enable MCP"
   assert_equals "19400" "$GRAFANA_PORT" "optional fixture should isolate Grafana host port"
   assert_equals "19401" "$PROMETHEUS_PORT" "optional fixture should isolate Prometheus host port"
   assert_equals "19402" "$ALERTMANAGER_PORT" "optional fixture should isolate Alertmanager host port"
@@ -391,6 +394,7 @@ test_fixture_defaults_are_composable() {
   assert_equals "19404" "$LOKI_PORT" "optional fixture should isolate Loki host port"
   assert_equals "19405" "$JAEGER_OTLP_GRPC_PORT" "optional fixture should isolate Jaeger gRPC host port"
   assert_equals "19406" "$JAEGER_OTLP_HTTP_PORT" "optional fixture should isolate Jaeger HTTP host port"
+  assert_equals "19407" "$MCP_PORT" "optional fixture should isolate MCP host port"
   assert_equals "upgrade-fixture-unit-grafana" "$GRAFANA_CONTAINER_NAME" "optional fixture should isolate Grafana container name"
   assert_equals "upgrade-fixture-unit-prometheus" "$PROMETHEUS_CONTAINER_NAME" "optional fixture should isolate Prometheus container name"
   assert_equals "upgrade-fixture-unit-tor" "$TOR_CONTAINER_NAME" "optional fixture should isolate Tor container name"
@@ -429,6 +433,7 @@ test_optional_profile_ports_follow_install_port_scope() {
   LOKI_PORT=""
   JAEGER_OTLP_GRPC_PORT=""
   JAEGER_OTLP_HTTP_PORT=""
+  MCP_PORT=""
 
   apply_upgrade_fixture_defaults "optional-profiles"
 
@@ -440,6 +445,7 @@ test_optional_profile_ports_follow_install_port_scope() {
   assert_equals "23134" "$LOKI_PORT" "optional fixture should derive Loki port from HTTPS scope" || result=1
   assert_equals "23135" "$JAEGER_OTLP_GRPC_PORT" "optional fixture should derive Jaeger gRPC port from HTTPS scope" || result=1
   assert_equals "23136" "$JAEGER_OTLP_HTTP_PORT" "optional fixture should derive Jaeger HTTP port from HTTPS scope" || result=1
+  assert_equals "23137" "$MCP_PORT" "optional fixture should derive MCP port from HTTPS scope" || result=1
 
   HTTPS_PORT=""
   UPGRADE_OPTIONAL_PROFILE_PORT_BASE=""
@@ -448,10 +454,12 @@ test_optional_profile_ports_follow_install_port_scope() {
 
 test_optional_profiles_is_in_release_coverage() {
   local install_contents
+  local upgrade_contents
   local extended_fixtures
   local failures=0
 
   install_contents="$(cat "$PROJECT_ROOT/.github/workflows/install-test.yml")"
+  upgrade_contents="$(cat "$PROJECT_ROOT/tests/install/e2e/upgrade-install.test.sh")"
   extended_fixtures="$("$PROJECT_ROOT/scripts/ci/run-extended-upgrade-fixtures.sh" --list)"
   # install-test.yml is the canonical upgrade gate on tag pushes;
   # release-candidate.yml no longer runs upgrade fixtures (the
@@ -465,6 +473,22 @@ test_optional_profiles_is_in_release_coverage() {
     "install extended upgrades should include optional profiles once" || failures=1
   assert_equals "1" "$(grep -c '^optional-profiles 30$' <<< "$extended_fixtures")" \
     "install extended upgrades should include optional profiles once" || failures=1
+  assert_contains "$upgrade_contents" 'export COMPOSE_PROFILES=mcp' \
+    "optional upgrade should activate MCP on the legacy source checkout" || failures=1
+  assert_contains "$upgrade_contents" 'checkout_supports_mcp_preference "$project_dir"' \
+    "optional upgrade should detect whether the source installer supports MCP preferences" || failures=1
+  assert_contains "$upgrade_contents" 'export ENABLE_MCP=yes' \
+    "MCP-aware source installers should receive the explicit MCP preference" || failures=1
+  assert_contains "$upgrade_contents" 'unset COMPOSE_PROFILES' \
+    "optional upgrade should not force MCP on the target checkout" || failures=1
+  assert_contains "$upgrade_contents" 'persist_source_mcp_preference || return 1' \
+    "optional upgrade should record the source MCP preference in the runtime env" || failures=1
+  assert_contains "$upgrade_contents" 'unset ENABLE_MCP' \
+    "optional upgrade should prove target preference recovery without inherited MCP state" || failures=1
+  assert_contains "$upgrade_contents" 'verify_mcp_profile_container "$PROJECT_ROOT" || return 1' \
+    "optional upgrade should verify MCP health on both sides of the upgrade" || failures=1
+  assert_contains "$upgrade_contents" $'export COMPOSE_PROFILES=mcp\n            run_project_compose "$PROJECT_ROOT" stop' \
+    "optional upgrade should stop the complete source profile stack" || failures=1
   assert_contains "$extended_fixtures" 'wallet-sync-retirement 33' \
     "install extended upgrades should include wallet-sync retirement once" || failures=1
 

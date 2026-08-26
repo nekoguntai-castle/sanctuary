@@ -3,6 +3,7 @@
 
 UPGRADE_ENABLE_MONITORING="${UPGRADE_ENABLE_MONITORING:-no}"
 UPGRADE_ENABLE_TOR="${UPGRADE_ENABLE_TOR:-no}"
+UPGRADE_ENABLE_MCP="${UPGRADE_ENABLE_MCP:-no}"
 UPGRADE_USE_LEGACY_RUNTIME_ENV="${UPGRADE_USE_LEGACY_RUNTIME_ENV:-false}"
 UPGRADE_RUN_BROWSER_SMOKE="${UPGRADE_RUN_BROWSER_SMOKE:-true}"
 UPGRADE_SEED_APP_STATE="${UPGRADE_SEED_APP_STATE:-true}"
@@ -31,7 +32,7 @@ apply_optional_profile_isolation_defaults() {
             return 1
             ;;
     esac
-    if [ $((10#$optional_port_base + 6)) -gt 65535 ]; then
+    if [ $((10#$optional_port_base + 7)) -gt 65535 ]; then
         log_error "Optional profile port range exceeds 65535"
         return 1
     fi
@@ -52,6 +53,8 @@ apply_optional_profile_isolation_defaults() {
     set_optional_profile_port_default LOKI_PORT 4
     set_optional_profile_port_default JAEGER_OTLP_GRPC_PORT 5
     set_optional_profile_port_default JAEGER_OTLP_HTTP_PORT 6
+    MCP_BIND_ADDRESS="${MCP_BIND_ADDRESS:-127.0.0.1}"
+    set_optional_profile_port_default MCP_PORT 7
 
     JAEGER_CONTAINER_NAME="${JAEGER_CONTAINER_NAME:-${profile_slug}-jaeger}"
     LOKI_CONTAINER_NAME="${LOKI_CONTAINER_NAME:-${profile_slug}-loki}"
@@ -107,7 +110,7 @@ Upgrade fixtures:
   browser-origin-ip    Baseline plus 127.0.0.1 browser-visible origin.
   legacy-runtime-env   Baseline using repo-root .env compatibility path across source/target checkouts.
   notification-delivery Baseline plus seeded notification config and post-upgrade worker/DLQ proof.
-  optional-profiles    Baseline with monitoring and Tor enabled through setup/start paths.
+  optional-profiles    Baseline with monitoring, Tor, and MCP enabled through setup/start paths.
   seeded-app-state     Explicit app-state fixture; useful when combined with other fixture names.
   wallet-sync-retirement Legacy scheduler/job retirement from a below-floor source.
 
@@ -184,6 +187,7 @@ apply_upgrade_fixture_defaults() {
     if fixture_list_contains "$fixture_list" "optional-profiles"; then
         UPGRADE_ENABLE_MONITORING=yes
         UPGRADE_ENABLE_TOR=yes
+        UPGRADE_ENABLE_MCP=yes
         UPGRADE_EXPECT_OPTIONAL_PROFILES=true
         apply_optional_profile_isolation_defaults
     fi
@@ -206,6 +210,7 @@ apply_upgrade_fixture_defaults() {
 
     export UPGRADE_ENABLE_MONITORING
     export UPGRADE_ENABLE_TOR
+    export UPGRADE_ENABLE_MCP
     export UPGRADE_USE_LEGACY_RUNTIME_ENV
     export UPGRADE_RUN_BROWSER_SMOKE
     export UPGRADE_SEED_APP_STATE
@@ -220,6 +225,8 @@ apply_upgrade_fixture_defaults() {
     export LOKI_PORT
     export JAEGER_OTLP_GRPC_PORT
     export JAEGER_OTLP_HTTP_PORT
+    export MCP_BIND_ADDRESS
+    export MCP_PORT
     export JAEGER_CONTAINER_NAME
     export LOKI_CONTAINER_NAME
     export PROMTAIL_CONTAINER_NAME

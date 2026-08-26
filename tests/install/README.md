@@ -182,7 +182,7 @@ Upgrade fixtures can be comma-separated:
 - `browser-origin-ip`: baseline plus `127.0.0.1` browser-visible origin
 - `legacy-runtime-env`: baseline using the repo-root `.env` compatibility path across source and target checkouts
 - `notification-delivery`: baseline plus seeded notification preferences and post-upgrade worker/DLQ proof
-- `optional-profiles`: baseline with monitoring and Tor enabled through setup/start paths
+- `optional-profiles`: baseline with monitoring, Tor, and MCP enabled through setup/start paths
 - `seeded-app-state`: explicit representative persisted state fixture, useful when combined with other fixture names
 
 `--mode full` runs the core lane and then continues into the older recovery scenarios such as password-drift recovery, rebuild, and volume-persistence checks.

@@ -310,6 +310,15 @@ cleanup_upgrade_source_checkout() {
     fi
 }
 
+checkout_supports_mcp_preference() {
+    local project_dir="$1"
+    local setup_script="$project_dir/scripts/setup.sh"
+
+    [ -f "$setup_script" ] &&
+        grep -q -- '--enable-mcp)' "$setup_script" &&
+        grep -q 'ENABLE_MCP=' "$setup_script"
+}
+
 run_install_script_command() {
     local project_dir="$1"
 
@@ -319,6 +328,19 @@ run_install_script_command() {
         export GATEWAY_PORT
         export ENABLE_MONITORING="$UPGRADE_ENABLE_MONITORING"
         export ENABLE_TOR="$UPGRADE_ENABLE_TOR"
+        export MCP_BIND_ADDRESS
+        export MCP_PORT
+        if [ "$UPGRADE_ENABLE_MCP" = "yes" ] && [ "$project_dir" != "$TARGET_PROJECT_ROOT" ]; then
+            export COMPOSE_PROFILES=mcp
+            if checkout_supports_mcp_preference "$project_dir"; then
+                export ENABLE_MCP=yes
+            else
+                unset ENABLE_MCP
+            fi
+        else
+            unset COMPOSE_PROFILES
+            unset ENABLE_MCP
+        fi
         export SANCTUARY_DIR="$project_dir"
         export SANCTUARY_RUNTIME_DIR="$TEST_RUNTIME_DIR"
         export SANCTUARY_ENV_FILE="$TEST_ENV_FILE"
@@ -471,6 +493,34 @@ run_install_script() {
     log_error "install.sh failed for checkout: $project_dir"
     log_error "Install log: $install_log"
     return "$exit_code"
+}
+
+persist_source_mcp_preference() {
+    local env_file=""
+    local current_value=""
+
+    [ "$UPGRADE_ENABLE_MCP" = "yes" ] || return 0
+
+    env_file="$(resolve_env_file)"
+    if [ ! -f "$env_file" ]; then
+        log_error "Cannot persist the source MCP preference; runtime env is missing: $env_file"
+        return 1
+    fi
+
+    current_value="$(awk -F= '$1 == "ENABLE_MCP" { print $2 }' "$env_file" | tail -n 1)"
+    case "$current_value" in
+        yes)
+            return 0
+            ;;
+        "")
+            printf '\nENABLE_MCP=yes\n' >> "$env_file"
+            chmod 600 "$env_file" 2>/dev/null || true
+            ;;
+        *)
+            log_error "Source runtime env contains a conflicting ENABLE_MCP value"
+            return 1
+            ;;
+    esac
 }
 
 # Test counters
@@ -669,6 +719,8 @@ test_ensure_existing_installation() {
         return 1
     fi
 
+    persist_source_mcp_preference || return 1
+
     if ! assert_installed_image_matches_checkout "$PROJECT_ROOT"; then
         log_error "Source installation is running code from the wrong ref"
         return 1
@@ -696,6 +748,14 @@ test_ensure_existing_installation() {
     sleep 5
 
     if load_runtime_env; then
+        if [ "$UPGRADE_ENABLE_MCP" = "yes" ]; then
+            if [ "${ENABLE_MCP:-}" != "yes" ]; then
+                log_error "Source optional-profiles installation did not persist ENABLE_MCP=yes"
+                return 1
+            fi
+            verify_mcp_profile_container "$PROJECT_ROOT" || return 1
+        fi
+
         ORIGINAL_JWT_SECRET="$JWT_SECRET"
         ORIGINAL_ENCRYPTION_KEY="$ENCRYPTION_KEY"
         ORIGINAL_ENCRYPTION_SALT="$ENCRYPTION_SALT"
@@ -1218,7 +1278,14 @@ test_stop_containers_for_upgrade() {
         force_recurring_completion_staleness || return 1
     fi
 
-    run_project_compose "$PROJECT_ROOT" stop 2>&1
+    if [ "$UPGRADE_ENABLE_MCP" = "yes" ]; then
+        (
+            export COMPOSE_PROFILES=mcp
+            run_project_compose "$PROJECT_ROOT" stop
+        ) 2>&1
+    else
+        run_project_compose "$PROJECT_ROOT" stop 2>&1
+    fi
 
     # Verify containers stopped
     local running=$(docker ps --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" --filter "status=running" -q | wc -l)
@@ -1388,6 +1455,19 @@ wait_for_optional_profile_container() {
     esac
 }
 
+verify_mcp_profile_container() {
+    local project_dir="$1"
+    local container_name=""
+
+    container_name="$(get_container_name mcp)"
+    if [ -z "$container_name" ]; then
+        log_error "MCP profile service is not running for $project_dir"
+        return 1
+    fi
+
+    wait_for_optional_profile_container "$container_name" "MCP" healthy
+}
+
 verify_optional_profile_containers_after_upgrade() {
     wait_for_optional_profile_container "${JAEGER_CONTAINER_NAME:-}" "Jaeger" healthy || return 1
     wait_for_optional_profile_container "${LOKI_CONTAINER_NAME:-}" "Loki" healthy || return 1
@@ -1396,6 +1476,7 @@ verify_optional_profile_containers_after_upgrade() {
     wait_for_optional_profile_container "${ALERTMANAGER_CONTAINER_NAME:-}" "Alertmanager" healthy || return 1
     wait_for_optional_profile_container "${GRAFANA_CONTAINER_NAME:-}" "Grafana" healthy || return 1
     wait_for_optional_profile_container "${TOR_CONTAINER_NAME:-}" "Tor" healthy || return 1
+    verify_mcp_profile_container "$PROJECT_ROOT" || return 1
 }
 
 test_verify_fixture_runtime_shape() {
@@ -1412,10 +1493,11 @@ test_verify_fixture_runtime_shape() {
     fi
 
     if [ "$UPGRADE_EXPECT_OPTIONAL_PROFILES" = "true" ]; then
-        if [ "${ENABLE_MONITORING:-}" != "yes" ] || [ "${ENABLE_TOR:-}" != "yes" ]; then
-            log_error "optional-profiles fixture did not persist monitoring/Tor flags"
+        if [ "${ENABLE_MONITORING:-}" != "yes" ] || [ "${ENABLE_TOR:-}" != "yes" ] || [ "${ENABLE_MCP:-}" != "yes" ]; then
+            log_error "optional-profiles fixture did not persist monitoring/Tor/MCP flags"
             log_error "ENABLE_MONITORING=${ENABLE_MONITORING:-unset}"
             log_error "ENABLE_TOR=${ENABLE_TOR:-unset}"
+            log_error "ENABLE_MCP=${ENABLE_MCP:-unset}"
             return 1
         fi
 
@@ -1715,6 +1797,10 @@ test_recover_postgres_password_drift() {
         export GATEWAY_PORT
         export ENABLE_MONITORING="$UPGRADE_ENABLE_MONITORING"
         export ENABLE_TOR="$UPGRADE_ENABLE_TOR"
+        export MCP_BIND_ADDRESS
+        export MCP_PORT
+        unset ENABLE_MCP
+        unset COMPOSE_PROFILES
         export RATE_LIMIT_LOGIN=100
         export RATE_LIMIT_2FA=100
         export RATE_LIMIT_PASSWORD_CHANGE=100
