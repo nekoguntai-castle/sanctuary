@@ -1,0 +1,15 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "timezone": "Pacific/Honolulu",
+  "schedule": ["at any time"],
+  "prHourlyLimit": 1,
+  "prConcurrentLimit": 2,
+  "packageRules": [
+    {
+      "description": "Ignore the locally built Bitcoin Core verification image",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["sanctuary-bitcoind"],
+      "enabled": false
+    }
+  ]
+}

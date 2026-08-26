@@ -10,8 +10,8 @@
     "seed": "node --experimental-specifier-resolution=node dist/prisma/seed.js"
   },
   "overrides": {
-    "hono": "4.12.26",
-    "protobufjs": "7.6.4"
+    "hono": "4.12.34",
+    "protobufjs": "7.6.5"
   },
   "scripts": {
     "postinstall": "prisma generate",
@@ -77,7 +77,7 @@
     "@opentelemetry/sdk-node": "^0.221.0",
     "@prisma/adapter-pg": "^7.6.0",
     "@prisma/client": "^7.6.0",
-    "axios": "^1.7.9",
+    "axios": "^1.18.0",
     "bcryptjs": "^3.0.3",
     "bip32": "^5.0.1",
     "bitcoinjs-lib": "7.0.1",
